@@ -182,11 +182,14 @@ func (w *terminalOutput) writeColored(tag byte, value string) {
 		// Parse JSON to update status bar
 		var info agentpkg.SystemInfo
 		if err := json.Unmarshal([]byte(value), &info); err == nil {
+			baseStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#45475a"))
+			queueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8")).Bold(true)
+
 			if info.QueueCount > 0 {
-				queueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8")).Bold(true)
-				w.status = fmt.Sprintf("Queue: %s | Context: %d | Total: %d", queueStyle.Render(fmt.Sprintf("%d", info.QueueCount)), info.ContextTokens, info.TotalTokens)
+				queueNum := queueStyle.Render(fmt.Sprintf("%d", info.QueueCount))
+				w.status = baseStyle.Render("Queue: ") + queueNum + baseStyle.Render(fmt.Sprintf(" | Context: %d | Total: %d", info.ContextTokens, info.TotalTokens))
 			} else {
-				w.status = fmt.Sprintf("Context: %d | Total: %d", info.ContextTokens, info.TotalTokens)
+				w.status = baseStyle.Render(fmt.Sprintf("Context: %d | Total: %d", info.ContextTokens, info.TotalTokens))
 			}
 		}
 		// Don't append to display for TagSystem - it updates status bar only
@@ -641,7 +644,6 @@ func (m *Terminal) View() string {
 	// Style display, input, and status (accounting for padding)
 	displayStyle := lipgloss.NewStyle().Padding(0, 4)
 	inputStyle := m.inputStyle.Width(max(0, windowWidth-4))
-	statusStyle := m.statusStyle.Width(max(0, windowWidth-8)).Padding(0, 4)
 
 	// Input border color based on focus
 	var inputBorderColor string
@@ -656,7 +658,7 @@ func (m *Terminal) View() string {
 		BorderForeground(lipgloss.Color(inputBorderColor)).
 		Padding(0, 1)
 
-	statusBar := statusStyle.Render(m.status)
+	statusBar := lipgloss.NewStyle().Width(max(0, windowWidth-8)).Padding(0, 4).Render(m.status)
 
 	// Build the view
 	var sb strings.Builder
