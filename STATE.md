@@ -180,6 +180,15 @@ For this project, simplicity is more important than efficiency.
   - Only status field changes; Content and ActiveForm stay constant
   - **Width matching**: Todo box width now matches input box width (fixed width calculation)
 
+- ✅ **Fixed missing top row when todo appears**
+  - **Problem**: When todo box appears, one row disappears from top of display box; when todo box disappears, row returns.
+  - **Root cause**: `updateDisplayHeight()` changed viewport height without adjusting YOffset appropriately.
+  - **Solution**: Added YOffset adjustment based on scroll state:
+    - Auto-scroll mode (`userScrolledAway = false`): keep bottom line constant
+    - Manual scroll mode (`userScrolledAway = true`): keep top line constant
+  - **Implementation**: Updated `updateDisplayHeight()` with proper line counting and clamping.
+  - **Testing**: Added `TestMissingTopRowWhenTodoAppears`, `TestAutoScrollKeepsBottomWhenTodoAppears`, `TestTodoToggleScrollConsistency`.
+
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)
 - **Tools**: read_file, todo_read, todo_write, write_file, activate_skill, posix_shell

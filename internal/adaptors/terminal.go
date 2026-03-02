@@ -395,7 +395,47 @@ func (m *Terminal) updateDisplayHeight() {
 		height -= (1 + len(m.todos) + 2)
 	}
 
-	m.display.Height = max(0, height)
+	newHeight := max(0, height)
+	oldHeight := m.display.Height
+
+	// Only adjust YOffset if height actually changes
+	if oldHeight != newHeight {
+		// Get raw content and word-wrap to count lines
+		rawContent := m.terminalOutput.display.GetAll()
+		wrapped := wordwrap(rawContent, m.display.Width)
+		totalLines := strings.Count(wrapped, "\n") + 1 // content may have trailing newline
+		// Ensure totalLines is at least 1
+		if totalLines < 1 {
+			totalLines = 1
+		}
+
+		topLine := m.display.YOffset
+		var newTopLine int
+
+		if m.userScrolledAway {
+			// User manually scrolled up: keep top line constant
+			newTopLine = topLine
+		} else {
+			// Auto-scroll mode: keep bottom line constant
+			bottomLine := topLine + oldHeight - 1
+			newTopLine = bottomLine - newHeight + 1
+		}
+
+		// Clamp to ensure visible region stays within content
+		maxTopLine := max(0, totalLines-newHeight)
+		if newTopLine > maxTopLine {
+			newTopLine = maxTopLine
+		}
+		if newTopLine < 0 {
+			newTopLine = 0
+		}
+
+		m.display.Height = newHeight
+		m.display.SetYOffset(newTopLine)
+	} else {
+		m.display.Height = newHeight
+	}
+
 	m.updateDisplayContent()
 }
 
@@ -431,7 +471,9 @@ func (m *Terminal) renderTodos() string {
 		}
 
 		sb.WriteString(statusStyle.Render(todoText))
-		sb.WriteString("\n")
+		if i < len(m.todos)-1 {
+			sb.WriteString("\n")
+		}
 	}
 
 	return sb.String()
