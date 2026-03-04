@@ -280,7 +280,6 @@ func (s *Session) handleCommandSync(ctx context.Context, cmd string) {
 func (s *Session) cancelTask() {
 	if s.inProgress && s.cancelCurrent != nil {
 		s.cancelCurrent()
-		s.SetTodos(todo.TodoList{})
 		return
 	}
 	s.writeError("nothing to cancel")

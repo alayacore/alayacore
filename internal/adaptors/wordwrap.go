@@ -50,7 +50,7 @@ func wordwrap(text string, width int) string {
 				breakAt++
 			}
 
-			// Try to break at last space for word boundary
+			// Find last space before breakAt for word boundary
 			lastSpace := -1
 			for i := breakAt - 1; i >= 0; i-- {
 				if middle[i] == ' ' {
@@ -59,8 +59,40 @@ func wordwrap(text string, width int) string {
 				}
 			}
 
+			// Orphan prevention: if the segment after the last space is very short,
+			// consider packing it onto the current line instead
 			if lastSpace > 0 {
-				breakAt = lastSpace + 1
+				segmentAfter := middle[lastSpace+1:]
+				afterWidth := lipgloss.Width(segmentAfter)
+
+				// If remaining segment is very short (< 30% of width), check if we can pack it
+				if afterWidth < width*3/10 {
+					// Check if the current line is not already too full
+					beforeWidth := lipgloss.Width(middle[:lastSpace])
+
+					// If we can fit the remaining segment on the current line without going too far over width,
+					// pack it together with the previous segment
+					if beforeWidth+afterWidth <= width*12/10 { // Allow going up to 120% of width
+						// Pack the segments together: find the space before lastSpace
+						prevSpace := -1
+						for i := lastSpace - 1; i >= 0; i-- {
+							if middle[i] == ' ' {
+								prevSpace = i
+								break
+							}
+						}
+						if prevSpace > 0 {
+							lastSpace = prevSpace
+						} else {
+							// No previous space, use all remaining text on this line
+							breakAt = len(middle)
+						}
+					}
+				}
+
+				if breakAt != len(middle) {
+					breakAt = lastSpace + 1
+				}
 			}
 
 			if breakAt == 0 {

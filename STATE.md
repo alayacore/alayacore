@@ -174,7 +174,7 @@ For this project, simplicity is more important than efficiency.
   - Display updates automatically when todos change
   - Dynamic height adjustment - viewport shrinks when todos appear
   - Status-based coloring: white (pending), green/italic (in-progress), green (completed)
-  - Runtime-only - todos are cleared on /cancel, not persisted to session files
+  - Runtime-only - todos are preserved on /cancel, not persisted to session files
   - Updated system prompt to enforce Content field preservation when updating status
   - Content remains exactly the same when changing from pending→in_progress→completed
   - Only status field changes; Content and ActiveForm stay constant
@@ -188,6 +188,16 @@ For this project, simplicity is more important than efficiency.
     - Manual scroll mode (`userScrolledAway = true`): keep top line constant
   - **Implementation**: Updated `updateDisplayHeight()` with proper line counting and clamping.
   - **Testing**: Added `TestMissingTopRowWhenTodoAppears`, `TestAutoScrollKeepsBottomWhenTodoAppears`, `TestTodoToggleScrollConsistency`.
+
+- ✅ **Fixed wordwrap orphan prevention**
+  - **Problem**: Last word sometimes placed on new line even when the previous line had space remaining, creating short "orphan" lines (e.g., "first.", "properly." on separate lines)
+  - **Root cause**: Greedy wordwrap algorithm filled each line to maximum width without considering balance between lines, causing short final words to be isolated
+  - **Solution**: Added orphan detection in `wordwrap()` function:
+    - When breaking at a space would create a short segment (< 30% of width)
+    - Check if the remaining text can be packed onto the current line without exceeding 120% of width
+    - If so, find an earlier space to break at, or pack entire remaining segment onto current line
+  - **Implementation**: Enhanced `wordwrap()` with orphan detection logic that looks for previous spaces and packs short segments together
+  - **Testing**: Added `TestWordwrapOrphanPrevention` with multiple test cases to verify no short orphan lines appear
 
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)
