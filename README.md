@@ -57,7 +57,7 @@ coreclaw --type anthropic --base-url http://localhost:11434 --api-key=xxx --mode
 coreclaw-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Custom address
-coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4-20250514 --addr :9090
+coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4 --addr :9090
 ```
 
 - **Web UI**: Open `http://localhost:8080` in browser
@@ -70,11 +70,12 @@ coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $AN
 - `-base-url string` - API endpoint URL (required)
 - `-api-key string` - API key (required)
 - `-model string` - Model name to use
+- `-system string` - Override system prompt
+- `-skill string` - Skills directory path (can be specified multiple times)
+- `-session string` - Session file path to load/save conversations
+- `-debug-api` - Write raw API requests and responses to log file
 - `-version` - Show version information
 - `-help` - Show help information
-- `-debug-api` - Write raw API requests and responses to log file
-- `-system string` - Override system prompt
-- `-skill string` - Skills directory path
 
 ## Features
 
@@ -92,6 +93,34 @@ coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $AN
 - Skills system (agentskills.io compatible)
 - Web server with WebSocket support and chat UI
 - Todo list management for task tracking
+- Session file persistence
+
+## Terminal Controls
+
+When running the Terminal version:
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Switch focus between display and input window |
+| `Enter` | Submit prompt (when input focused) |
+| `Ctrl+S` | Save session to file |
+| `Ctrl+O` | Open external editor for multi-line input |
+| `j` | Scroll down 1 line (when display focused) |
+| `k` | Scroll up 1 line (when display focused) |
+| `g` | Go to top of display (when display focused) |
+| `G` | Go to bottom of display (when display focused) |
+| `Ctrl+D` | Scroll down half page (when display focused) |
+| `Ctrl+U` | Scroll up half page (when display focused) |
+| `/` | Switch to input with "/" prefix (when display focused) |
+| `Ctrl+C` | Cancel current request |
+| `/quit`, `/exit` | Exit with confirmation (press y/n) |
+
+## Session Commands
+
+- `/save [filename]` - Save session to file
+- `/cancel` - Cancel current request and clear todos
+- `/summarize` - Summarize conversation to reduce token usage
+- `/quit`, `/exit` - Exit with confirmation
 
 ## Project Status
 

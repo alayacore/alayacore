@@ -219,19 +219,6 @@ func (t *DebugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		writef("  %s: %v\n", k, v)
 	}
 
-	// Check if it's a streaming response by looking at Content-Type
-	if req.Body != nil {
-		// Read the original request body to check for "stream": true
-		bodyBytes, _ := io.ReadAll(req.Body)
-		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-		var reqBody map[string]any
-		if json.Unmarshal(bodyBytes, &reqBody) == nil {
-			if stream, ok := reqBody["stream"].(bool); ok && stream {
-				isStreaming = true
-			}
-		}
-	}
-
 	// Check response content type to confirm streaming
 	contentType := resp.Header.Get("Content-Type")
 	if isStreaming && strings.Contains(contentType, "text/event-stream") {

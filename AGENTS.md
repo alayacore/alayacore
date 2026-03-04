@@ -102,6 +102,8 @@ CoreClaw allows you to save and restore conversations manually using session fil
 ```sh
 /save                    # Save to current session file (if set with --session)
 /save ~/mysession.json    # Save to specific file
+/cancel                  # Cancel current request and clear todos
+/summarize              # Summarize the entire conversation to a single message
 ```
 
 ### Loading Sessions
@@ -126,7 +128,7 @@ coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_AP
 coreclaw-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Custom address
-coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4-20250514 --addr :9090
+coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4 --addr :9090
 ```
 
 - **Web UI**: Open `http://localhost:8080` in browser
@@ -159,8 +161,11 @@ When running the Terminal version:
 | `Ctrl+O` | Open external editor for multi-line input |
 | `j` | Scroll down 1 line (when display focused) |
 | `k` | Scroll up 1 line (when display focused) |
+| `g` | Go to top of display (when display focused) |
+| `G` | Go to bottom of display (when display focused) |
 | `Ctrl+D` | Scroll down half page (when display focused) |
 | `Ctrl+U` | Scroll up half page (when display focused) |
+| `/` | Switch to input with "/" prefix (when display focused) |
 | `Ctrl+C` | Cancel current request |
 | `/quit`, `/exit` | Exit with confirmation (press y/n) |
 

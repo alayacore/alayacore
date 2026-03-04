@@ -10,7 +10,7 @@ For this project, simplicity is more important than efficiency.
 
 ### Completed
 - ✅ Go module initialized (github.com/wallacegibbon/coreclaw)
-- ✅ fantasy dependency added (v0.10.0)
+- ✅ fantasy dependency added (v0.11.0)
 - ✅ Direct stdin reading for terminal input
 - ✅ Basic agent structure with OpenAI provider
 - ✅ Shell tool implementation with `fantasy.NewAgentTool`
@@ -251,7 +251,7 @@ main.go        - coreclaw entry point
 - Token usage tracking
 - Error handling for command execution
 - CLI-based provider configuration (no env vars)
-- CLI flags: --type, --base-url, --api-key, --model, --skill
+- CLI flags: --type, --base-url, --api-key, --model, --skill, --session
 - Provider types: anthropic, openai
 - Color-coded output for better readability
 - Command history for interactive sessions
@@ -259,6 +259,8 @@ main.go        - coreclaw entry point
 - Proper conversation history management for multi-turn tool calls
 - IOStream abstraction with TLV protocol
 - Web server with WebSocket support and chat UI
+- Session commands: /save, /cancel, /summarize, /quit, /exit
+- Session file persistence for conversation history
 
 ### Usage
 ```sh
@@ -266,7 +268,7 @@ main.go        - coreclaw entry point
 ./coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Anthropic API
-./coreclaw --type anthropic --base-url https://api.Anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4-20250514
+./coreclaw --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
 
 # Local AI server (e.g., Ollama)
 ./coreclaw --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
@@ -283,9 +285,18 @@ main.go        - coreclaw entry point
 # Run with skills
 ./coreclaw --skill ./skills --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
+# Run with session persistence
+./coreclaw --session ~/mysession.json --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+
 # Show help
 ./coreclaw --help
 ```
+
+### Session Commands
+- `/save [filename]` - Save session to file (uses configured session file if no filename provided)
+- `/cancel` - Cancel current request and clear todo list
+- `/summarize` - Summarize the entire conversation to a single message to reduce token usage
+- `/quit`, `/exit` - Exit with confirmation
 
 ### coreclaw-web (WebSocket Server)
 ```sh

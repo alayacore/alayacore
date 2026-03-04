@@ -25,8 +25,6 @@ func NewManager(skillPaths []string) (*Manager, error) {
 		return m, nil
 	}
 
-	// Use first skill path as skill directory
-	// (multiple paths could be supported in future)
 	m.skillDir = skillPaths[0]
 
 	// Discover and load skill metadata
