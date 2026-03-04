@@ -5,18 +5,18 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/wallacegibbon/coreclaw/internal/stream"
 )
 
 func TestCtrlOOpensEditor(t *testing.T) {
 	terminal := NewTerminal(nil, newTerminalOutput(), stream.NewChanInput(10), "")
 
-	msg := tea.KeyMsg{
-		Type: tea.KeyCtrlO,
-	}
+	msg := tea.KeyPressMsg(tea.Key{
+		Code: 'o',
+		Mod:  tea.ModCtrl,
+	})
 
 	model, cmd := terminal.Update(msg)
 
@@ -33,9 +33,10 @@ func TestCtrlOWithExistingContent(t *testing.T) {
 	terminal := NewTerminal(nil, newTerminalOutput(), stream.NewChanInput(10), "")
 	terminal.input.SetValue("existing input text")
 
-	msg := tea.KeyMsg{
-		Type: tea.KeyCtrlO,
-	}
+	msg := tea.KeyPressMsg(tea.Key{
+		Code: 'o',
+		Mod:  tea.ModCtrl,
+	})
 
 	model, cmd := terminal.Update(msg)
 
@@ -160,8 +161,7 @@ func TestEditorSelectionOrder(t *testing.T) {
 }
 
 func TestRenderMultiline(t *testing.T) {
-	// Ensure we have color output in tests
-	lipgloss.SetColorProfile(termenv.TrueColor)
+	// Note: lipgloss.SetColorProfile is no longer needed in v2
 
 	output := newTerminalOutput()
 	// Use existing reasoning style which should produce ANSI codes
@@ -195,8 +195,7 @@ func TestRenderMultiline(t *testing.T) {
 }
 
 func TestColorizeToolMultiline(t *testing.T) {
-	// Ensure we have color output in tests
-	lipgloss.SetColorProfile(termenv.TrueColor)
+	// Note: lipgloss.SetColorProfile is no longer needed in v2
 
 	output := newTerminalOutput()
 	// Test multiline tool output with colon on first line
@@ -219,8 +218,7 @@ func TestColorizeToolMultiline(t *testing.T) {
 }
 
 func TestWordwrapPreservesANSI(t *testing.T) {
-	// Ensure we have color output in tests
-	lipgloss.SetColorProfile(termenv.TrueColor)
+	// Note: lipgloss.SetColorProfile is no longer needed in v2
 
 	// Create a styled line with ANSI escape sequences (dimmed reasoning style)
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("#585b70")).Italic(true)
@@ -245,8 +243,8 @@ func TestWordwrapPreservesANSI(t *testing.T) {
 				if !strings.HasPrefix(line, "\x1b[") {
 					t.Errorf("Line %d does not start with ANSI escape sequence: %q", i, line)
 				}
-				// Ensure each line ends with reset sequence (\x1b[0m)
-				if !strings.HasSuffix(line, "\x1b[0m") {
+				// Ensure each line ends with reset sequence (\x1b[0m or \x1b[m)
+				if !strings.HasSuffix(line, "\x1b[0m") && !strings.HasSuffix(line, "\x1b[m") {
 					t.Errorf("Line %d does not end with reset sequence: %q", i, line)
 				}
 			}

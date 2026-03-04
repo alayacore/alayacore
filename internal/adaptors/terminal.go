@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	agentpkg "github.com/wallacegibbon/coreclaw/internal/agent"
 	"github.com/wallacegibbon/coreclaw/internal/app"
@@ -91,7 +91,7 @@ func (a *TerminalAdaptor) Start() {
 
 	t := NewTerminal(session, terminalOutput, inputStream, a.sessionFile)
 
-	p := tea.NewProgram(t, tea.WithAltScreen(), tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
+	p := tea.NewProgram(t, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
 	p.Run()
 }
 
@@ -319,12 +319,13 @@ func NewTerminal(session *agentpkg.Session, terminalOutput *terminalOutput, inpu
 	input.Placeholder = "Enter your prompt..."
 	input.Focus()
 	input.Prompt = "> "
+	input.SetWidth(76) // Initial width (80 - 4 for border padding)
 
 	inputStyle := lipgloss.NewStyle()
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#45475a"))
 
 	coloredWelcome := colorizeWelcomeText(WelcomeText)
-	display := viewport.New(80, 20)
+	display := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	m := &Terminal{
 		session:        session,
@@ -343,10 +344,10 @@ func NewTerminal(session *agentpkg.Session, terminalOutput *terminalOutput, inpu
 	hasExistingContent := len(terminalOutput.display.Messages) > 0
 	if hasExistingContent {
 		existingContent := terminalOutput.display.GetAll()
-		wrapped := wordwrap(existingContent, display.Width)
+		wrapped := wordwrap(existingContent, display.Width())
 		newlineCount := strings.Count(wrapped, "\n")
 		display.SetContent(wrapped)
-		display.SetYOffset(max(0, newlineCount-display.Height))
+		display.SetYOffset(max(0, newlineCount-display.Height()))
 		m.showingWelcome = false
 	} else {
 		display.SetContent(coloredWelcome)
@@ -374,20 +375,20 @@ func (m *Terminal) updateDisplayHeight() {
 	}
 
 	newHeight := max(0, height)
-	oldHeight := m.display.Height
+	oldHeight := m.display.Height()
 
 	// Only adjust YOffset if height actually changes
 	if oldHeight != newHeight {
 		// Get raw content and word-wrap to count lines
 		rawContent := m.terminalOutput.display.GetAll()
-		wrapped := wordwrap(rawContent, m.display.Width)
+		wrapped := wordwrap(rawContent, m.display.Width())
 		totalLines := strings.Count(wrapped, "\n") + 1 // content may have trailing newline
 		// Ensure totalLines is at least 1
 		if totalLines < 1 {
 			totalLines = 1
 		}
 
-		topLine := m.display.YOffset
+		topLine := m.display.YOffset()
 		var newTopLine int
 
 		if m.userScrolledAway {
@@ -408,10 +409,10 @@ func (m *Terminal) updateDisplayHeight() {
 			newTopLine = 0
 		}
 
-		m.display.Height = newHeight
+		m.display.SetHeight(newHeight)
 		m.display.SetYOffset(newTopLine)
 	} else {
-		m.display.Height = newHeight
+		m.display.SetHeight(newHeight)
 	}
 
 	m.updateDisplayContent()
@@ -486,7 +487,8 @@ func (m *Terminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.windowWidth = msg.Width
 		m.windowHeight = msg.Height
-		m.display.Width = max(0, msg.Width-8) // Leave room for padding (4 on each side)
+		m.display.SetWidth(max(0, msg.Width-8)) // Leave room for padding (4 on each side)
+		m.input.SetWidth(max(0, msg.Width-4))  // Leave room for border padding (2 on each side)
 		m.updateDisplayHeight()
 		m.centerWelcomeText()
 		m.updateTodos()
@@ -546,7 +548,7 @@ func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Handle Tab to switch focus
-	if msg.Type == tea.KeyTab {
+	if msg.String() == "tab" {
 		if m.focusedWindow == "display" {
 			m.focusedWindow = "input"
 			m.input.Focus()
@@ -582,7 +584,7 @@ func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.userScrolledAway = true
 			return m, nil
 		case "ctrl+d":
-			m.display.ScrollDown(m.display.Height / 2)
+			m.display.ScrollDown(m.display.Height() / 2)
 			if m.display.AtBottom() {
 				m.userScrolledAway = false
 			} else {
@@ -590,7 +592,7 @@ func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "ctrl+u":
-			m.display.ScrollUp(m.display.Height / 2)
+			m.display.ScrollUp(m.display.Height() / 2)
 			m.userScrolledAway = true
 			return m, nil
 		case "/":
@@ -602,17 +604,17 @@ func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	switch msg.Type {
-	case tea.KeyCtrlC:
+	switch msg.String() {
+	case "ctrl+c":
 		// Cancel the current request
 		return m, m.submitCommand("cancel", false)
-	case tea.KeyCtrlS:
+	case "ctrl+s":
 		// Save session
 		return m, m.submitCommand("save", false)
-	case tea.KeyCtrlO:
+	case "ctrl+o":
 		// Open external editor for multi-line input
 		return m, m.openEditor()
-	case tea.KeyEnter:
+	case "enter":
 		var prompt string
 
 		// Check if we have editor content to submit
@@ -675,8 +677,8 @@ func (m *Terminal) submitCommand(command string, clearInput bool) tea.Cmd {
 }
 
 func (m *Terminal) centerWelcomeText() {
-	width := m.display.Width
-	height := m.display.Height
+	width := m.display.Width()
+	height := m.display.Height()
 	if width == 0 || height == 0 {
 		return
 	}
@@ -791,7 +793,7 @@ func (m *Terminal) updateDisplayContent() {
 	}
 
 	// Wordwrap to viewport width for proper word boundary wrapping
-	width := m.display.Width
+	width := m.display.Width()
 
 	if width > 0 {
 		newContent = wordwrap(newContent, width)
@@ -804,7 +806,7 @@ func (m *Terminal) updateDisplayContent() {
 }
 
 // View renders the Terminal
-func (m *Terminal) View() string {
+func (m *Terminal) View() tea.View {
 	windowWidth := m.windowWidth
 	focused := m.focusedWindow == "input"
 	borderColor := map[bool]string{true: "#89d4fa", false: "#45475a"}[focused]
@@ -814,12 +816,17 @@ func (m *Terminal) View() string {
 		BorderForeground(lipgloss.Color(borderColor)).
 		Padding(0, 1)
 
-	m.input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor)).Bold(true)
+	styles := textinput.DefaultStyles(true)
+	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor)).Bold(true)
+	styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor)).Bold(true)
 	if focused {
-		m.input.TextStyle = lipgloss.NewStyle()
+		styles.Focused.Text = lipgloss.NewStyle()
+		styles.Blurred.Text = lipgloss.NewStyle()
 	} else {
-		m.input.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#45475a"))
+		styles.Focused.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#45475a"))
+		styles.Blurred.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#45475a"))
 	}
+	m.input.SetStyles(styles)
 
 	var sb strings.Builder
 	sb.WriteString(lipgloss.NewStyle().Padding(0, 4).Render(m.display.View()))
@@ -851,7 +858,9 @@ func (m *Terminal) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(lipgloss.NewStyle().Width(max(0, windowWidth-8)).Padding(0, 4).Render(m.terminalOutput.status))
 
-	return sb.String()
+	v := tea.NewView(sb.String())
+	v.AltScreen = true
+	return v
 }
 
 var (

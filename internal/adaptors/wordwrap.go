@@ -3,7 +3,7 @@ package adaptors
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // wordwrap breaks text to fit the given width

@@ -12,7 +12,9 @@ For this project, simplicity is more important than efficiency.
 - Binary: `coreclaw`
 - Dependencies:
   - `charm.land/fantasy` - Agent framework
-  - `github.com/charmbracelet/bubbletea` - Terminal UI framework
+  - `charm.land/bubbletea/v2` - Terminal UI framework v2
+  - `charm.land/lipgloss/v2` - Styling framework v2
+  - `charm.land/bubbles/v2` - Bubble Tea components v2
   - `github.com/gorilla/websocket` - WebSocket server
   - `mvdan.cc/sh/v3` - Shell interpreter
 

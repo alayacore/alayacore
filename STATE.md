@@ -199,6 +199,25 @@ For this project, simplicity is more important than efficiency.
   - **Implementation**: Enhanced `wordwrap()` with orphan detection logic that looks for previous spaces and packs short segments together
   - **Testing**: Added `TestWordwrapOrphanPrevention` with multiple test cases to verify no short orphan lines appear
 
+- ✅ **Upgraded to bubbletea/lipgloss/bubbles v2.x**
+  - Updated go.mod with v2 versions from charm.land vanity domain:
+    - charm.land/bubbletea/v2@v2.0.1
+    - charm.land/lipgloss/v2@v2.0.0
+    - charm.land/bubbles/v2@v2.0.0
+  - Updated all imports across internal/adaptors/ (terminal.go, wordwrap.go, test files)
+  - Fixed breaking API changes:
+    - View() return type: `string` → `tea.View` (wrap with `tea.NewView()`)
+    - KeyMsg API: changed from struct to interface with `msg.String()` for comparison
+    - Key constants: removed `tea.KeyCtrlC`, use string `"ctrl+c"` instead
+    - Viewport API: `Width/Height` fields → `Width()/Height()` methods
+    - Viewport constructor: `viewport.New(w, h)` → `viewport.New(viewport.WithWidth(w), viewport.WithHeight(h))`
+    - textinput styles: `PromptStyle`/`TextStyle` fields removed, use `SetStyles(Styles)` method
+    - Program options: `tea.WithAltScreen()` removed, set `view.AltScreen = true` in View()
+    - lipgloss: `SetColorProfile()` removed (no longer needed)
+  - Fixed test KeyMsg construction: `tea.KeyPressMsg(tea.Key{Code: 'o', Mod: tea.ModCtrl})` instead of struct literal
+  - Updated ANSI reset sequence test to accept both `\x1b[0m` and `\x1b[m` (equivalent in v2)
+  - All tests pass, project builds successfully
+
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)
 - **Tools**: read_file, todo_read, todo_write, write_file, activate_skill, posix_shell
