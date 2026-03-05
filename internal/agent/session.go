@@ -492,33 +492,63 @@ func (s *Session) sendTodoList() {
 // ============================================================================
 
 func formatToolCall(toolName, input string) string {
+	var fields map[string]interface{}
+	if err := json.Unmarshal([]byte(input), &fields); err != nil {
+		return ""
+	}
+
 	switch toolName {
 	case "posix_shell":
-		if cmd := extractJSONField(input, "command"); cmd != "" {
+		if cmd, ok := fields["command"].(string); ok {
 			return fmt.Sprintf("%s: %s", toolName, escapeNewlines(cmd))
 		}
 	case "activate_skill":
-		if name := extractJSONField(input, "name"); name != "" {
+		if name, ok := fields["name"].(string); ok {
 			return fmt.Sprintf("%s: %s", toolName, name)
 		}
-	case "read_file", "write_file":
-		if path := extractJSONField(input, "path"); path != "" {
-			return fmt.Sprintf("%s: %s", toolName, path)
+	case "read_file":
+		args := []string{}
+		if path, ok := fields["path"].(string); ok {
+			args = append(args, path)
+		}
+		if startLine, ok := fields["start_line"].(string); ok && startLine != "" {
+			args = append(args, startLine)
+		}
+		if endLine, ok := fields["end_line"].(string); ok && endLine != "" {
+			args = append(args, endLine)
+		}
+		if len(args) > 0 {
+			return fmt.Sprintf("%s: %s", toolName, strings.Join(args, ", "))
+		}
+	case "write_file":
+		args := []string{}
+		if path, ok := fields["path"].(string); ok {
+			args = append(args, path)
+		}
+		if content, ok := fields["content"].(string); ok {
+			truncated := truncateString(content, 50)
+			args = append(args, truncated)
+		}
+		if len(args) > 0 {
+			return fmt.Sprintf("%s: %s", toolName, strings.Join(args, ", "))
 		}
 	case "todo_read":
 		return "todo_read: Reading todo list"
 	case "todo_write":
+		if todos, ok := fields["todos"].(string); ok && todos != "" {
+			truncated := truncateString(todos, 50)
+			return fmt.Sprintf("%s: %s", toolName, truncated)
+		}
 		return "todo_write: Updating todo list"
 	}
 	return ""
 }
 
-func extractJSONField(input, field string) string {
-	var m map[string]string
-	if err := json.Unmarshal([]byte(input), &m); err != nil {
-		return ""
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
 	}
-	return m[field]
+	return s[:maxLen] + "..."
 }
 
 func escapeNewlines(s string) string {

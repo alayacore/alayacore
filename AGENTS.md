@@ -141,7 +141,7 @@ CoreClaw provides the following tools (ordered from safest to most dangerous):
 
 | Tool | Description |
 |------|-------------|
-| `read_file` | Read the contents of a file |
+| `read_file` | Read the contents of a file. Supports optional line range using start_line and end_line parameters (1-indexed). |
 | `todo_read` | Read the current todo list |
 | `todo_write` | Write or update the todo list |
 | `write_file` | Create a new file or replace entire file content |
@@ -247,7 +247,7 @@ Skills metadata is injected into the system prompt using XML format:
 
 Tools must be ordered from safest to most dangerous:
 
-1. `read_file` - Read file contents
+1. `read_file` - Read file contents (supports line range with start_line and end_line parameters, 1-indexed)
 2. `todo_read` - Read todo list
 3. `todo_write` - Write/update todo list
 4. `write_file` - Create or replace files (full overwrite)
