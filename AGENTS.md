@@ -171,7 +171,13 @@ When running the Terminal version:
 | `Ctrl+G` | Cancel current request (with confirmation) |
 | `/cancel` | Cancel current request (with confirmation) |
 | `/quit`, `/exit` | Exit with confirmation (press y/n) |
+## Window Container
 
+CoreClaw's terminal adaptor organizes concurrent streams into separate windows with synchronized widths. Each stream (reasoning, text, tool outputs) appears in its own window with dimmed borders.
+
+- **Stream ID suffix**: To prevent collisions across conversation turns, stream IDs include a monotonic suffix (e.g., `0-1`, `1-1` for first turn; `0-2`, `1-2` for second turn). This ensures each turn's content appears in distinct windows while keeping related deltas grouped within a turn.
+- **Width synchronization**: All windows match the input box width for consistent layout.
+- **Delta routing**: Content with stream ID prefix `[:id:]` is routed to the appropriate window via `parseStreamID()`.
 
 ## Skills System
 

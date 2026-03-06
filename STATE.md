@@ -104,7 +104,7 @@ For this project, simplicity is more important than efficiency.
   - Test coverage for parsing, discovery, and activation
 - ✅ IOStream abstraction layer
   - Input/Output interfaces in internal/stream/stream.go
-  - TLV protocol (TagAssistantText='B', TagTool='D', TagReasoning='C', TagError='E', TagNotify='N', TagSystem='S', TagPromptStart='P', TagUserText='A')
+  - TLV protocol (TagAssistantText='B', TagTool='D', TagReasoning='C', TagError='E', TagNotify='N', TagSystem='S', TagUserText='A', TagTodo='F')
   - Buffered reads/writes with Flush() method
   - ChanInput helper for channel-based input with configurable buffer
   - WriteTLV/ReadTLV functions for encoding/decoding
@@ -143,11 +143,11 @@ For this project, simplicity is more important than efficiency.
     2. **Session loading**: Entire dimmed text block loses color when loading from session file
   - Root causes:
     - ANSI escape sequences only applied at beginning of text blocks via Style.Render()
-    - Session loading format didn't match live streaming format (missing TagStreamGap separators)
+    - Session loading format didn't match live streaming format (missing tool formatting)
     - Word wrapping broke ANSI escape sequences across line breaks
   - Solutions implemented:
     1. **Per-line styling**: Added `renderMultiline` helper that splits text by newlines and applies styling per line
-    2. **Session format consistency**: Updated `session.go:DisplayMessages()` to match live streaming format with proper TagStreamGap separators and tool formatting
+    2. **Session format consistency**: Updated `session.go:DisplayMessages()` to match live streaming format with proper tool formatting
     3. **Wordwrap ANSI preservation**: Replaced custom `wordwrap()` with `lipgloss.Wrap()` which automatically preserves ANSI escape sequences across line breaks
     4. **Panic fix**: Fixed slice bounds panic when line contains only escape sequences by extracting suffix from remaining text after prefix removal
   - Testing:
@@ -237,13 +237,48 @@ For this project, simplicity is more important than efficiency.
   - **Testing**: Updated `TestCtrlGTriggersCancel` to verify dialog is shown and confirmed before sending command
   - **Documentation**: Updated AGENTS.md and README.md to note `/cancel` requires confirmation
 
+- ✅ **Window container feature with synchronized widths**
+  - **Problem**: Terminal display area was a flat string buffer, preventing proper organization of concurrent streams and causing width mismatches between windows and input box.
+  - **Solution**: Transformed display area into a container of windows with dimmed borders, synchronized widths between windows and input box.
+  - **Implementation**:
+    - Created `Window` and `WindowBuffer` types in `window.go` with ordered storage and ID-based lookup
+    - Updated delta messages to include stream ID prefix (`[:id:]`) in `session.go`
+    - Refactored terminal adaptor to route delta content to correct windows via `parseStreamID`
+    - Non-delta messages create new windows; deltas append to existing windows
+    - Fixed width synchronization: window borders now match input box width (terminal width - 4 for inner content)
+    - Updated UI rendering to use window container instead of flat display buffer
+  - **Testing**: Added comprehensive tests for delta routing, window rendering, edge cases, and width synchronization
+  - **Documentation**: Updated AGENTS.md with window container description
+
+- ✅ **Fixed stream ID reuse across conversation turns**
+  - **Problem**: All text data (reasoning and assistant text) appended into the same message window across multiple conversation turns. The fantasy library reuses stream IDs ("0", "1") for each turn, causing window collisions.
+  - **Solution**: Added monotonic suffix counter to stream IDs within each session turn, making stream IDs unique per turn while preserving grouping within a single turn.
+  - **Implementation**:
+    - Added `strconv` import to `session.go`
+    - Added `streamCounter map[string]int` local variable in `processPrompt()`
+    - Increment counter on each `OnTextStart` and `OnReasoningStart`
+    - Append suffix (`-1`, `-2`, etc.) to IDs in delta handlers: `[:id-suffix:]content`
+  - **Testing**: Verified all terminal adaptor tests pass; existing test `TestWindowBufferDeltaRouting` still works with new ID format.
+  - **Documentation**: Updated AGENTS.md with stream ID suffix approach (implicitly via this entry).
+
+- ✅ **Removed unused TagStreamGap TLV tag**
+  - **Problem**: TagStreamGap was originally used to separate streams with newline, but window container now handles separation automatically, making the tag redundant.
+  - **Solution**: Removed TagStreamGap entirely from codebase.
+  - **Implementation**:
+    - Removed TagStreamGap constant from `internal/stream/stream.go`
+    - Removed TagStreamGap writes from `session.go` (OnTextStart, OnReasoningStart, OnToolCall, displayAssistantMessage, displayToolMessage, writeGapped)
+    - Removed TagStreamGap handling from `output.go` (writeColored case statement, triggerUpdateForTag)
+    - Removed unused `currentBlock` variable from `session.go`
+  - **Testing**: All tests pass after removal.
+  - **Documentation**: Updated STATE.md to remove TagStreamGap references.
+
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)
 - **Tools**: read_file, todo_read, todo_write, edit_file, write_file, activate_skill, posix_shell
 - **Framework**: charm.land/fantasy
 - **UI Styling**: Raw ANSI escape codes (lightweight, no padding)
 - **Stream Protocol**: TLV (Tag-Length-Value) for structured output
-  - Session-to-user: TagAssistantText, TagTool, TagReasoning, TagError, TagSystem (JSON), TagNotify, TagStreamGap, TagPromptStart
+  - Session-to-user: TagAssistantText, TagTool, TagReasoning, TagError, TagSystem (JSON), TagNotify, TagUserText, TagTodo
   - User-to-session: TagUserText
   - Session validates and unwraps user TLV messages
   - TagSystem contains JSON-encoded SystemInfo struct with token usage and queue: `{"context":1234,"total":5678,"queue":2}`

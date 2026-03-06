@@ -116,6 +116,9 @@ When running the Terminal version:
 | `Ctrl+G` | Cancel current request (with confirmation) |
 | `/cancel` | Cancel current request (with confirmation) |
 | `/quit`, `/exit` | Exit with confirmation (press y/n) |
+## Window Container
+
+The terminal organizes concurrent streams into separate windows with synchronized widths. Stream IDs include monotonic suffixes to prevent collisions across conversation turns.
 
 ## Session Commands
 

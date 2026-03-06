@@ -138,9 +138,9 @@ func NewTerminal(session *agentpkg.Session, terminalOutput *terminalOutput, inpu
 		editor:         NewEditor(),
 	}
 
-	hasExistingContent := len(terminalOutput.display.Messages) > 0
+	hasExistingContent := false // window buffer starts empty
 	if hasExistingContent {
-		existingContent := terminalOutput.display.GetAll()
+		existingContent := terminalOutput.windowBuffer.GetAll()
 		wrapped := lipgloss.Wrap(existingContent, display.Width(), " ")
 		newlineCount := strings.Count(wrapped, "\n")
 		display.SetContent(wrapped)
@@ -177,9 +177,8 @@ func (m *Terminal) updateDisplayHeight() {
 	// Only adjust YOffset if height actually changes
 	if oldHeight != newHeight {
 		// Get raw content and word-wrap to count lines
-		rawContent := m.terminalOutput.display.GetAll()
-		wrapped := lipgloss.Wrap(rawContent, m.display.Width(), " ")
-		totalLines := max(1, strings.Count(wrapped, "\n")+1)
+		rawContent := m.terminalOutput.windowBuffer.GetAll()
+		totalLines := max(1, strings.Count(rawContent, "\n")+1)
 
 		topLine := m.display.YOffset()
 		var newTopLine int
@@ -270,8 +269,9 @@ func (m *Terminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.windowWidth = msg.Width
 		m.windowHeight = msg.Height
-		m.display.SetWidth(max(0, msg.Width-8)) // Leave room for padding (4 on each side)
-		m.input.SetWidth(max(0, msg.Width-8))   // Leave room for border padding (2 on each side)
+		m.display.SetWidth(max(0, msg.Width)) // Full terminal width
+		m.input.SetWidth(max(0, msg.Width-8)) // Leave room for border padding (2 on each side)
+		m.terminalOutput.SetWindowWidth(max(0, msg.Width))
 		m.updateDisplayHeight()
 		m.centerWelcomeText()
 		m.updateTodos()
@@ -566,7 +566,7 @@ func (m *Terminal) getInputForEditor() string {
 }
 
 func (m *Terminal) updateDisplayContent() {
-	newContent := m.terminalOutput.display.GetAll()
+	newContent := m.terminalOutput.windowBuffer.GetAll()
 
 	// If showing welcome, only switch to real content when it actually exists
 	if m.showingWelcome {
@@ -576,12 +576,8 @@ func (m *Terminal) updateDisplayContent() {
 			return
 		}
 	}
-
-	// Wordwrap to viewport width for proper word boundary wrapping
-	width := m.display.Width()
-
-	if width > 0 {
-		newContent = lipgloss.Wrap(newContent, width, " ")
+	// Debug: log first line of newContent
+	if lines := strings.Split(newContent, "\n"); len(lines) > 0 {
 	}
 	m.display.SetContent(newContent)
 	// Auto-scroll by default, unless user has manually scrolled away
@@ -611,7 +607,8 @@ func (m *Terminal) View() tea.View {
 	m.input.SetStyles(styles)
 
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Padding(0, 4).Render(m.display.View()))
+	displayView := m.display.View()
+	sb.WriteString(displayView)
 	sb.WriteString("\n")
 
 	// Add todo list between display and input
@@ -630,11 +627,12 @@ func (m *Terminal) View() tea.View {
 		confirmText := m.styles.Confirm.Width(max(0, windowWidth-4)).Render("Confirm cancel? Press y/n")
 		sb.WriteString(borderStyle.Render(confirmText))
 	} else {
-		sb.WriteString(borderStyle.Render(m.styles.Input.Width(max(0, windowWidth-4)).Render(m.input.View())))
+		inputBorder := borderStyle.Render(m.styles.Input.Width(max(0, windowWidth-4)).Render(m.input.View()))
+		sb.WriteString(inputBorder)
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(lipgloss.NewStyle().Width(max(0, windowWidth-8)).Padding(0, 4).Render(m.terminalOutput.status))
+	sb.WriteString(m.styles.Status.Width(max(0, windowWidth-4)).Padding(0, 1).Render(m.terminalOutput.status))
 
 	v := tea.NewView(sb.String())
 	v.AltScreen = true

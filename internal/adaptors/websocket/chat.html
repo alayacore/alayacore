@@ -340,14 +340,8 @@
                     // Not JSON, display as plain system message
                     addMessage('system', value);
                 }
-            } else if (tag === 'P') {
+            } else if (tag === 'A') {
                 addMessage('user', value);
-            } else if (tag === 'G') {
-                flushCurrentText();
-                currentTextValue += '\n';
-                if (currentTextElement) {
-                    updateMessageContent(currentTextElement, 'assistant', currentTextValue);
-                }
             } else if (tag === 'F') {
                 // TagTodo: update todo list
                 updateTodos(value);

@@ -43,21 +43,22 @@ func (d *DisplayBuffer) GetAll() string {
 
 // terminalOutput writes to the Terminal display with TLV support
 type terminalOutput struct {
-	display    *DisplayBuffer
-	buffer     []byte
-	mu         sync.Mutex
-	updateChan chan struct{}
-	status     string        // Status bar content from TagSystem
-	todos      todo.TodoList // Current todo list
-	inProgress bool          // Whether session has task in progress
-	styles     *Styles       // UI styles
+	windowBuffer *WindowBuffer
+	buffer       []byte
+	mu           sync.Mutex
+	updateChan   chan struct{}
+	status       string        // Status bar content from TagSystem
+	todos        todo.TodoList // Current todo list
+	inProgress   bool          // Whether session has task in progress
+	styles       *Styles       // UI styles
+	nextWindowID int           // Monotonic counter for generating window IDs
 }
 
 func NewTerminalOutput() *terminalOutput {
 	return &terminalOutput{
-		display:    NewDisplayBuffer(),
-		updateChan: make(chan struct{}, 1),
-		styles:     DefaultStyles(),
+		windowBuffer: NewWindowBuffer(80), // default width, will be updated later
+		updateChan:   make(chan struct{}, 1),
+		styles:       DefaultStyles(),
 	}
 }
 
@@ -80,7 +81,8 @@ func (w *terminalOutput) Flush() error {
 // AppendError adds an error message to the display buffer with error styling
 func (w *terminalOutput) AppendError(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	w.display.Append(w.styles.Error.Render(msg))
+	id := w.generateWindowID()
+	w.windowBuffer.AppendOrUpdate(id, stream.TagError, w.styles.Error.Render(msg))
 }
 
 // processBuffer parses TLV-encoded data from the buffer
@@ -108,28 +110,51 @@ func (w *terminalOutput) writeColored(tag byte, value string) {
 	}
 
 	switch tag {
-	case stream.TagAssistantText:
-		w.display.Append(output(w.styles.Text, value))
-	case stream.TagTool:
-		w.display.Append(strings.TrimRight(w.colorizeTool(value), " "))
-	case stream.TagReasoning:
-		w.display.Append(output(w.styles.Reasoning, value))
+	case stream.TagAssistantText, stream.TagReasoning, stream.TagTool:
+		// Delta messages with stream ID prefix
+		id, content, ok := w.parseStreamID(value)
+		if !ok {
+			// Should not happen, but fallback
+			id = w.generateWindowID()
+			content = value
+		}
+		var styled string
+		switch tag {
+		case stream.TagAssistantText:
+			styled = output(w.styles.Text, content)
+		case stream.TagReasoning:
+			styled = output(w.styles.Reasoning, content)
+		case stream.TagTool:
+			styled = strings.TrimRight(w.colorizeTool(content), " ")
+		}
+		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+
 	case stream.TagError:
-		w.display.Append(output(w.styles.Error, value))
+		id := w.generateWindowID()
+		styled := output(w.styles.Error, value)
+		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+
 	case stream.TagNotify:
-		w.display.Append(output(w.styles.System, value))
+		id := w.generateWindowID()
+		styled := output(w.styles.System, value)
+		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+
 	case stream.TagSystem:
 		w.handleSystemTag(value)
 		return
+
 	case stream.TagTodo:
 		json.Unmarshal([]byte(value), &w.todos)
 		return
-	case stream.TagPromptStart:
-		w.display.Append(strings.TrimRight(w.styles.Prompt.Render("> ")+w.styles.UserInput.Render(value), " "))
-	case stream.TagStreamGap:
-		w.display.Append("\n")
+
+	case stream.TagUserText:
+		id := w.generateWindowID()
+		styled := strings.TrimRight(w.styles.Prompt.Render("> ")+w.styles.UserInput.Render(value), " ")
+		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+
 	default:
-		w.display.Append(value)
+		id := w.generateWindowID()
+		w.windowBuffer.AppendOrUpdate(id, tag, value)
 	}
 }
 
@@ -137,7 +162,7 @@ func (w *terminalOutput) writeColored(tag byte, value string) {
 func (w *terminalOutput) triggerUpdateForTag(tag byte) {
 	switch tag {
 	case stream.TagAssistantText, stream.TagTool, stream.TagReasoning, stream.TagError,
-		stream.TagNotify, stream.TagSystem, stream.TagPromptStart, stream.TagStreamGap, stream.TagTodo:
+		stream.TagNotify, stream.TagSystem, stream.TagUserText, stream.TagTodo:
 		select {
 		case w.updateChan <- struct{}{}:
 		default:
@@ -150,13 +175,7 @@ func (w *terminalOutput) handleSystemTag(value string) {
 	var info agentpkg.SystemInfo
 	if err := json.Unmarshal([]byte(value), &info); err == nil {
 		w.inProgress = info.InProgress
-		if info.QueueCount > 0 {
-			queueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8")).Bold(true)
-			queueNum := queueStyle.Render(fmt.Sprintf("%d", info.QueueCount))
-			w.status = fmt.Sprintf("Queue: %s | Context: %d | Total: %d", queueNum, info.ContextTokens, info.TotalTokens)
-		} else {
-			w.status = fmt.Sprintf("Context: %d | Total: %d", info.ContextTokens, info.TotalTokens)
-		}
+		w.status = fmt.Sprintf("Context: %d | Total: %d", info.ContextTokens, info.TotalTokens)
 	}
 }
 
@@ -211,4 +230,32 @@ func (w *terminalOutput) colorizeMultiLineTool(lines []string) string {
 		result.WriteString(strings.TrimRight(w.styles.ToolContent.Render(line), " "))
 	}
 	return result.String()
+}
+
+// parseStreamID extracts stream ID prefix from value.
+// Format: "[:id:]content". Returns id, content, true if prefix found.
+func (w *terminalOutput) parseStreamID(value string) (string, string, bool) {
+	const prefixStart = "[:"
+	const prefixEnd = ":]"
+	if !strings.HasPrefix(value, prefixStart) {
+		return "", value, false
+	}
+	endIdx := strings.Index(value, prefixEnd)
+	if endIdx == -1 {
+		return "", value, false
+	}
+	id := value[len(prefixStart):endIdx]
+	content := value[endIdx+len(prefixEnd):]
+	return id, content, true
+}
+
+// generateWindowID returns a unique window ID for non-delta messages.
+func (w *terminalOutput) generateWindowID() string {
+	w.nextWindowID++
+	return fmt.Sprintf("win%d", w.nextWindowID)
+}
+
+// SetWindowWidth updates the window buffer width.
+func (w *terminalOutput) SetWindowWidth(width int) {
+	w.windowBuffer.SetWidth(width)
 }

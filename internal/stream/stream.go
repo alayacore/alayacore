@@ -7,16 +7,14 @@ import (
 
 // Message tags for TLV protocol
 const (
-	TagUserText      = 'A' // User text input from client to session
+	TagUserText      = 'A' // User text input
 	TagAssistantText = 'B' // Assistant text output
 	TagReasoning     = 'C' // Reasoning/thinking content
 	TagTool          = 'D' // Tool call output
 	TagError         = 'E' // Error messages
+	TagTodo          = 'F' // Todo list updates (JSON wrapped in TagTodo)
 	TagNotify        = 'N' // Notification messages
 	TagSystem        = 'S' // System messages (queue status, etc.)
-	TagStreamGap     = 'G' // Stream gap to separate data
-	TagPromptStart   = 'P' // Prompt started processing (show user message + context/total)
-	TagTodo          = 'F' // Todo list updates (JSON wrapped in TagTodo)
 )
 
 // ChanInput implements Input using a channel.

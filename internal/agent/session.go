@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -190,11 +191,11 @@ func (s *Session) readFromInput() {
 
 func (s *Session) submitTask(task Task) {
 	if !s.tryQueueTask(task) {
-		s.writeNotify("[Busy] Cannot queue, try again shortly.")
+		s.writeNotify("Busy. Cannot queue, try again shortly.")
 		return
 	}
 	if s.inProgress {
-		s.writeNotify("[Queued] Previous task in progress. Will run after completion.")
+		s.writeNotify("Queued. Previous task in progress. Will run after completion.")
 		s.sendSystemInfo()
 	} else {
 		go s.runTaskQueue()
@@ -280,44 +281,41 @@ func (s *Session) handleUserPrompt(ctx context.Context, prompt string) {
 	}
 }
 
+var promptCount uint64
+
 func (s *Session) processPrompt(ctx context.Context, prompt string, history []fantasy.Message) (fantasy.Message, fantasy.Usage, error) {
 	call := fantasy.AgentStreamCall{Prompt: prompt}
+	promptId := promptCount
+	promptCount++
+
+	var stepCount int = 0
+
 	if len(history) > 0 {
 		call.Messages = history
 	}
 
-	var currentBlock string // tracks current content block id
+	/// the final ID is [:promptId-stepCount-id:]
+	assembleId := func(id string) string {
+		return "[:" + strconv.FormatUint(promptId, 10) + "-" + strconv.FormatInt(int64(stepCount), 10) + "-" + id + ":]"
+	}
 
-	call.OnTextStart = func(id string) error {
-		if currentBlock != "" {
-			stream.WriteTLV(s.Output, stream.TagStreamGap, "")
-		}
-		currentBlock = id
+	call.OnStepStart = func(step int) error {
+		stepCount = step
 		return nil
 	}
-	call.OnTextDelta = func(_, text string) error {
-		stream.WriteTLV(s.Output, stream.TagAssistantText, text)
+
+	call.OnTextDelta = func(id, text string) error {
+		stream.WriteTLV(s.Output, stream.TagAssistantText, assembleId(id)+text)
 		s.Output.Flush()
 		return nil
 	}
-	call.OnReasoningStart = func(id string, _ fantasy.ReasoningContent) error {
-		if currentBlock != "" {
-			stream.WriteTLV(s.Output, stream.TagStreamGap, "")
-		}
-		currentBlock = id
-		return nil
-	}
-	call.OnReasoningDelta = func(_, text string) error {
-		stream.WriteTLV(s.Output, stream.TagReasoning, text)
+	call.OnReasoningDelta = func(id, text string) error {
+		stream.WriteTLV(s.Output, stream.TagReasoning, assembleId(id)+text)
 		s.Output.Flush()
 		return nil
 	}
 	call.OnToolCall = func(tc fantasy.ToolCallContent) error {
-		if currentBlock != "" {
-			stream.WriteTLV(s.Output, stream.TagStreamGap, "")
-		}
-		currentBlock = tc.ToolCallID
-		s.writeToolCall(tc.ToolName, tc.Input)
+		s.writeToolCall(tc.ToolName, tc.Input, tc.ToolCallID)
 		s.Output.Flush()
 		return nil
 	}
@@ -433,11 +431,11 @@ func (s *Session) saveSession(args []string) {
 // ============================================================================
 
 func (s *Session) signalPromptStart(prompt string) {
-	s.writeGapped(stream.TagPromptStart, prompt)
+	s.writeGapped(stream.TagUserText, prompt)
 }
 
 func (s *Session) signalCommandStart(cmd string) {
-	s.writeGapped(stream.TagPromptStart, "/"+cmd)
+	s.writeGapped(stream.TagUserText, "/"+cmd)
 }
 
 func (s *Session) writeError(msg string) {
@@ -452,15 +450,13 @@ func (s *Session) writeGapped(tag byte, msg string) {
 	if s.Output == nil {
 		return
 	}
-	stream.WriteTLV(s.Output, stream.TagStreamGap, "")
 	stream.WriteTLV(s.Output, tag, msg)
-	stream.WriteTLV(s.Output, stream.TagStreamGap, "")
 	s.Output.Flush()
 }
 
-func (s *Session) writeToolCall(toolName, input string) {
+func (s *Session) writeToolCall(toolName, input, id string) {
 	if value := formatToolCall(toolName, input); value != "" {
-		stream.WriteTLV(s.Output, stream.TagTool, value)
+		stream.WriteTLV(s.Output, stream.TagTool, "[:"+id+":]"+value)
 	}
 }
 
@@ -716,21 +712,12 @@ func (s *Session) displayUserMessage(msg fantasy.Message) {
 }
 
 func (s *Session) displayAssistantMessage(msg fantasy.Message) {
-	first := true
 	for _, part := range msg.Content {
 		switch p := part.(type) {
 		case fantasy.TextPart:
-			if !first {
-				stream.WriteTLV(s.Output, stream.TagStreamGap, "")
-			}
-			first = false
 			stream.WriteTLV(s.Output, stream.TagAssistantText, p.Text)
 			s.Output.Flush()
 		case fantasy.ReasoningPart:
-			if !first {
-				stream.WriteTLV(s.Output, stream.TagStreamGap, "")
-			}
-			first = false
 			stream.WriteTLV(s.Output, stream.TagReasoning, p.Text)
 			s.Output.Flush()
 		}
@@ -741,7 +728,6 @@ func (s *Session) displayToolMessage(msg fantasy.Message) {
 	for _, part := range msg.Content {
 		if tc, ok := part.(fantasy.ToolCallPart); ok {
 			if info := formatToolCall(tc.ToolName, tc.Input); info != "" {
-				stream.WriteTLV(s.Output, stream.TagStreamGap, "")
 				stream.WriteTLV(s.Output, stream.TagTool, info)
 				s.Output.Flush()
 			}
