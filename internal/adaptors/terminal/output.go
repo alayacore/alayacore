@@ -14,33 +14,6 @@ import (
 	"github.com/wallacegibbon/coreclaw/internal/todo"
 )
 
-// DisplayBuffer holds text to display in Terminal
-type DisplayBuffer struct {
-	mu       sync.Mutex
-	Messages []string
-}
-
-// NewDisplayBuffer creates a new display buffer
-func NewDisplayBuffer() *DisplayBuffer {
-	return &DisplayBuffer{
-		Messages: []string{},
-	}
-}
-
-// Append adds text to the display buffer
-func (d *DisplayBuffer) Append(text string) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.Messages = append(d.Messages, text)
-}
-
-// GetAll returns all messages joined together
-func (d *DisplayBuffer) GetAll() string {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return strings.Join(d.Messages, "")
-}
-
 // terminalOutput writes to the Terminal display with TLV support
 type terminalOutput struct {
 	windowBuffer *WindowBuffer
@@ -79,7 +52,7 @@ func (w *terminalOutput) Flush() error {
 }
 
 // AppendError adds an error message to the display buffer with error styling
-func (w *terminalOutput) AppendError(format string, args ...interface{}) {
+func (w *terminalOutput) AppendError(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	id := w.generateWindowID()
 	w.windowBuffer.AppendOrUpdate(id, stream.TagError, w.styles.Error.Render(msg))

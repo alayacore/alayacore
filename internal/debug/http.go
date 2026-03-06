@@ -40,7 +40,7 @@ func Enable() {
 		// Find next available log number
 		logNum := 0
 		var logFile *os.File
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			logName := fmt.Sprintf("%s-%d.log", baseName, i)
 			logPath := filepath.Join(execDir, logName)
 			f, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
@@ -105,8 +105,8 @@ func (dr *debugReader) Read(p []byte) (n int, err error) {
 
 			// Skip "data: " prefix and try to parse as JSON
 			jsonStr := line
-			if strings.HasPrefix(line, "data:") {
-				jsonStr = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if rest, found := strings.CutPrefix(line, "data:"); found {
+				jsonStr = strings.TrimSpace(rest)
 			}
 
 			// Try to parse as JSON and log it

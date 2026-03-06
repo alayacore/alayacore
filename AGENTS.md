@@ -180,10 +180,10 @@ CoreClaw's terminal adaptor organizes concurrent streams into separate windows w
 
 ### Window Cursor
 
-The Window Cursor highlights one window in the display area with a brighter border. Use `J` and `K` keys to navigate between windows.
+The Window Cursor highlights one window in the display area with a brighter border. Use `j` and `k` keys to navigate between windows.
 
 - **Default position**: The cursor defaults to the last window and updates automatically when new windows are created.
-- **Scroll synchronization**: When using `g`, `G`, `Ctrl+D`, or `Ctrl+U`, the cursor follows the scroll movement to remain visible.
+- **Scroll synchronization**: When using `g` or `G`, the cursor follows the scroll movement to remain visible.
 - **Highlighted border**: The selected window displays a bright blue border (`#89b4fa`) instead of the dimmed default (`#6c7086`).
 - **Wrap mode**: Press `Space` to toggle the active window between normal and wrap mode. In wrap mode, the window shows only the last 3 lines of content, displaying the newest content. Wrapped windows display a `Wrapped - Space to expand` indicator with a subtle background color.
 

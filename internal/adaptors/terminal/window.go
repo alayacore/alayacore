@@ -173,7 +173,7 @@ func (wb *WindowBuffer) GetWindowStartLine(windowIndex int) int {
 	}
 
 	startLine := 0
-	for i := 0; i < windowIndex; i++ {
+	for i := range windowIndex {
 		startLine += wb.lineHeights[i]
 	}
 	return startLine

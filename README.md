@@ -109,8 +109,6 @@ When running the Terminal version:
 | `k` | Move window cursor up (when display focused) |
 | `g` | Go to top of display (when display focused) |
 | `G` | Go to bottom of display (when display focused) |
-| `Ctrl+D` | Scroll down half page (when display focused) |
-| `Ctrl+U` | Scroll up half page (when display focused) |
 | `:` | Switch to input with ":" prefix (when display focused) |
 | `Ctrl+C` | Clear input (when input focused) |
 | `Ctrl+G` | Cancel current request (with confirmation) |
