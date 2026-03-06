@@ -412,11 +412,11 @@
         }
 
         function sendCancelCommand() {
-            sendTLV('A', '/cancel');
+            sendTLV('A', ':cancel');
         }
 
         function sendSaveCommand() {
-            sendTLV('A', '/save');
+            sendTLV('A', ':save');
         }
 
         send.addEventListener('click', sendMessage);
@@ -442,12 +442,12 @@
             }
         });
 
-        // Handle "/" key to focus input and insert it
+        // Handle ":" key to focus input and insert it
         document.addEventListener('keydown', (e) => {
-            if (e.key === '/' && document.activeElement !== prompt) {
+            if (e.key === ':' && document.activeElement !== prompt) {
                 e.preventDefault();
                 prompt.focus();
-                prompt.value = '/';
+                prompt.value = ':';
             }
         });
 

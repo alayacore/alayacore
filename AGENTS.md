@@ -82,7 +82,7 @@ CoreClaw allows you to save and restore conversations manually using session fil
 
 ### Behavior
 
-- **Manual-save**: Sessions are saved only when you use `/save [filename]` or press `Ctrl+S`
+- **Manual-save**: Sessions are saved only when you use `:save [filename]` or press `Ctrl+S`
 - **Load**: On startup, CoreClaw creates a new empty session unless you specify `--session` to load an existing one
 - **Path expansion**: Paths like `~/mysession.json` are expanded to your home directory
 
@@ -100,10 +100,10 @@ CoreClaw allows you to save and restore conversations manually using session fil
 ### Session Commands
 
 ```sh
-/save                    # Save to current session file (if set with --session)
-/save ~/mysession.json    # Save to specific file
-/cancel                  # Cancel current request and clear todos (with confirmation)
-/summarize              # Summarize the entire conversation to a single message
+:save                    # Save to current session file (if set with --session)
+:save ~/mysession.json    # Save to specific file
+:cancel                  # Cancel current request and clear todos (with confirmation)
+:summarize              # Summarize the entire conversation to a single message
 ```
 
 ### Loading Sessions
@@ -166,11 +166,11 @@ When running the Terminal version:
 | `G` | Go to bottom of display (when display focused) |
 | `Ctrl+D` | Scroll down half page (when display focused) |
 | `Ctrl+U` | Scroll up half page (when display focused) |
-| `/` | Switch to input with "/" prefix (when display focused) |
+| `:` | Switch to input with ":" prefix (when display focused) |
 | `Ctrl+C` | Clear input (when input focused) |
 | `Ctrl+G` | Cancel current request (with confirmation) |
-| `/cancel` | Cancel current request (with confirmation) |
-| `/quit`, `/exit` | Exit with confirmation (press y/n) |
+| `:cancel` | Cancel current request (with confirmation) |
+| `:quit`, `:exit` | Exit with confirmation (press y/n) |
 ## Window Container
 
 CoreClaw's terminal adaptor organizes concurrent streams into separate windows with synchronized widths. Each stream (reasoning, text, tool outputs) appears in its own window with dimmed borders.

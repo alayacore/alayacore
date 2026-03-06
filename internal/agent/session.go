@@ -177,7 +177,7 @@ func (s *Session) readFromInput() {
 			s.writeError(fmt.Sprintf("Invalid input tag: %c (only %c is allowed)", tag, stream.TagUserText))
 			continue
 		}
-		if len(value) > 0 && value[0] == '/' {
+		if len(value) > 0 && value[0] == ':' {
 			s.submitCommand(value[1:])
 		} else {
 			s.submitTask(UserPrompt(value))
@@ -415,7 +415,7 @@ func (s *Session) saveSession(args []string) {
 	case 1:
 		path = expandPath(args[0])
 	default:
-		s.writeError("usage: /save [filename]")
+		s.writeError("usage: :save [filename]")
 		return
 	}
 
@@ -435,7 +435,7 @@ func (s *Session) signalPromptStart(prompt string) {
 }
 
 func (s *Session) signalCommandStart(cmd string) {
-	s.writeGapped(stream.TagUserText, "/"+cmd)
+	s.writeGapped(stream.TagUserText, ":"+cmd)
 }
 
 func (s *Session) writeError(msg string) {

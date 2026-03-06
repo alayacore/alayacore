@@ -130,7 +130,7 @@ For this project, simplicity is more important than efficiency.
   - Added TagUserText='A' for user text input from client to session
   - Session reads TLV messages from input stream and unwraps TagUserText
   - Session validates tags and emits TagError for invalid ones
-  - Session detects commands (starts with "/") and routes to handler
+  - Session detects commands (starts with ":") and routes to handler
   - Session checks command errors and emits TagError to user
   - ChanInput helper in stream.go with configurable buffer size
   - Terminal uses 10-buffer for human-paced input
@@ -174,7 +174,7 @@ For this project, simplicity is more important than efficiency.
   - Display updates automatically when todos change
   - Dynamic height adjustment - viewport shrinks when todos appear
   - Status-based coloring: white (pending), green/italic (in-progress), green (completed)
-  - Runtime-only - todos are preserved on /cancel, not persisted to session files
+  - Runtime-only - todos are preserved on :cancel, not persisted to session files
   - Updated system prompt to enforce Content field preservation when updating status
   - Content remains exactly the same when changing from pending→in_progress→completed
   - Only status field changes; Content and ActiveForm stay constant
@@ -225,17 +225,17 @@ For this project, simplicity is more important than efficiency.
   - Updated ANSI reset sequence test to accept both `\x1b[0m` and `\x1b[m` (equivalent in v2)
   - All tests pass, project builds successfully
 
-- ✅ **Added confirmation dialog for /cancel command**
-  - **Problem**: `/cancel` command executed immediately without confirmation, potentially interrupting work accidentally
-  - **Solution**: Added confirmation dialog similar to `/quit` for `/cancel` command
+- ✅ **Added confirmation dialog for :cancel command**
+  - **Problem**: `:cancel` command executed immediately without confirmation, potentially interrupting work accidentally
+  - **Solution**: Added confirmation dialog similar to `:quit` for `:cancel` command
   - **Implementation**:
     - Added `cancelConfirmDialog` bool field to Terminal struct
-    - Updated `/cancel` command handling to show confirmation dialog
+    - Updated `:cancel` command handling to show confirmation dialog
     - Updated Ctrl+G key binding to show confirmation dialog instead of sending command directly
     - Updated `handleKeyMsg()` to handle both quit and cancel confirmation dialogs
     - Updated `View()` to show "Confirm cancel? Press y/n" message when cancelConfirmDialog is true
   - **Testing**: Updated `TestCtrlGTriggersCancel` to verify dialog is shown and confirmed before sending command
-  - **Documentation**: Updated AGENTS.md and README.md to note `/cancel` requires confirmation
+  - **Documentation**: Updated AGENTS.md and README.md to note `:cancel` requires confirmation
 
 - ✅ **Window container feature with synchronized widths**
   - **Problem**: Terminal display area was a flat string buffer, preventing proper organization of concurrent streams and causing width mismatches between windows and input box.
@@ -313,7 +313,7 @@ main.go        - coreclaw entry point
 - Proper conversation history management for multi-turn tool calls
 - IOStream abstraction with TLV protocol
 - Web server with WebSocket support and chat UI
-- Session commands: /save, /cancel, /summarize, /quit, /exit
+- Session commands: :save, :cancel, :summarize, :quit, :exit
 - Session file persistence for conversation history
 
 ### Usage
@@ -347,10 +347,10 @@ main.go        - coreclaw entry point
 ```
 
 ### Session Commands
-- `/save [filename]` - Save session to file (uses configured session file if no filename provided)
-- `/cancel` - Cancel current request and clear todo list
-- `/summarize` - Summarize the entire conversation to a single message to reduce token usage
-- `/quit`, `/exit` - Exit with confirmation
+- `:save [filename]` - Save session to file (uses configured session file if no filename provided)
+- `:cancel` - Cancel current request and clear todo list
+- `:summarize` - Summarize the entire conversation to a single message to reduce token usage
+- `:quit`, `:exit` - Exit with confirmation
 
 ### coreclaw-web (WebSocket Server)
 ```sh

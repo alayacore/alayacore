@@ -111,21 +111,21 @@ When running the Terminal version:
 | `G` | Go to bottom of display (when display focused) |
 | `Ctrl+D` | Scroll down half page (when display focused) |
 | `Ctrl+U` | Scroll up half page (when display focused) |
-| `/` | Switch to input with "/" prefix (when display focused) |
+| `:` | Switch to input with ":" prefix (when display focused) |
 | `Ctrl+C` | Clear input (when input focused) |
 | `Ctrl+G` | Cancel current request (with confirmation) |
-| `/cancel` | Cancel current request (with confirmation) |
-| `/quit`, `/exit` | Exit with confirmation (press y/n) |
+| `:cancel` | Cancel current request (with confirmation) |
+| `:quit`, `:exit` | Exit with confirmation (press y/n) |
 ## Window Container
 
 The terminal organizes concurrent streams into separate windows with synchronized widths. Stream IDs include monotonic suffixes to prevent collisions across conversation turns.
 
 ## Session Commands
 
-- `/save [filename]` - Save session to file
-- `/cancel` - Cancel current request and clear todos (with confirmation)
-- `/summarize` - Summarize conversation to reduce token usage
-- `/quit`, `/exit` - Exit with confirmation
+- `:save [filename]` - Save session to file
+- `:cancel` - Cancel current request and clear todos (with confirmation)
+- `:summarize` - Summarize conversation to reduce token usage
+- `:quit`, `:exit` - Exit with confirmation
 
 ## Project Status
 

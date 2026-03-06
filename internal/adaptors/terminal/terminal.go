@@ -288,10 +288,10 @@ func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case "ctrl+u":
 		m.display.ScrollUp(m.display.GetHeight() / 2)
 		return nil, true
-	case "/":
+	case ":":
 		m.focusedWindow = "input"
 		m.input.Focus()
-		m.input.SetValue("/")
+		m.input.SetValue(":")
 		m.input.CursorEnd()
 		return nil, true
 	}
@@ -334,7 +334,7 @@ func (m *Terminal) handleSubmit() tea.Cmd {
 		return nil
 	}
 
-	if command, found := strings.CutPrefix(prompt, "/"); found {
+	if command, found := strings.CutPrefix(prompt, ":"); found {
 		if command == "quit" || command == "exit" {
 			m.confirmDialog = true
 			return nil
@@ -356,7 +356,7 @@ func (m *Terminal) handleSubmit() tea.Cmd {
 }
 
 func (m *Terminal) submitCommand(command string, clearInput bool) tea.Cmd {
-	m.streamInput.EmitTLV(stream.TagUserText, "/"+command)
+	m.streamInput.EmitTLV(stream.TagUserText, ":"+command)
 	if clearInput {
 		m.input.SetValue("")
 	}

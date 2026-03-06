@@ -83,9 +83,9 @@ func readMessages(conn *websocket.Conn, input *stream.ChanInput) {
 			continue
 		}
 
-		// Filter out /quit and /exit commands from web client.
+		// Filter out :quit and :exit commands from web client.
 		if tag, value, ok := parseTLV(message); ok && tag == stream.TagUserText {
-			if value == "/quit" || value == "/exit" {
+			if value == ":quit" || value == ":exit" {
 				continue
 			}
 		}
