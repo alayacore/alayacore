@@ -160,10 +160,8 @@
         let reconnectTimeout = null;
 
         let buffer = [];
-        let currentTextValue = '';
-        let currentTextElement = null;
-        let currentReasoningValue = '';
-        let currentReasoningElement = null;
+        let currentStreams = {};  // Map of streamId -> {value, element, type}
+        let streamOrder = [];     // Track order of streams for display
 
         // TLV encoding helper
         function encodeTLV(tag, text) {
@@ -293,32 +291,49 @@
             }
         }
 
+        // Parse stream ID prefix from value. Format: "[:id:]content"
+        function parseStreamID(value) {
+            const prefixStart = "[:";
+            const prefixEnd = ":]";
+            if (!value.startsWith(prefixStart)) {
+                return {id: null, content: value};
+            }
+            const endIdx = value.indexOf(prefixEnd);
+            if (endIdx === -1) {
+                return {id: null, content: value};
+            }
+            const id = value.substring(prefixStart.length, endIdx);
+            const content = value.substring(endIdx + prefixEnd.length);
+            return {id, content};
+        }
+
         function handleTLV(tag, value) {
-            if (tag === 'B') {
-                currentTextValue += value;
-                if (currentTextElement) {
-                    updateMessageContent(currentTextElement, 'assistant', currentTextValue);
+            if (tag === 'B' || tag === 'C' || tag === 'D') {
+                // Delta messages with stream ID prefix
+                const {id, content} = parseStreamID(value);
+                const streamId = id || ('unknown-' + Date.now());
+                const streamType = tag === 'B' ? 'assistant' : tag === 'C' ? 'reasoning' : 'tool';
+                if (currentStreams[streamId]) {
+                    // Append to existing stream
+                    currentStreams[streamId].value += content;
+                    updateMessageContent(currentStreams[streamId].element, streamType, currentStreams[streamId].value);
                 } else {
-                    currentTextElement = addMessageElement('assistant', currentTextValue);
+                    // New stream
+                    currentStreams[streamId] = {
+                        value: content,
+                        element: addMessageElement(streamType, content),
+                        type: streamType
+                    };
+                    streamOrder.push(streamId);
                 }
-            } else if (tag === 'C') {
-                currentReasoningValue += value;
-                if (currentReasoningElement) {
-                    updateMessageContent(currentReasoningElement, 'reasoning', currentReasoningValue);
-                } else {
-                    currentReasoningElement = addMessageElement('reasoning', currentReasoningValue);
-                }
-            } else if (tag === 'D') {
-                flushCurrentText();
-                addMessage('tool', value);
             } else if (tag === 'E') {
-                flushCurrentText();
+                flushCurrentStreams();
                 addMessage('error', value);
             } else if (tag === 'N') {
-                flushCurrentText();
+                flushCurrentStreams();
                 addMessage('system', value);
             } else if (tag === 'S') {
-                flushCurrentText();
+                flushCurrentStreams();
                 try {
                     const systemInfo = JSON.parse(value);
                     let statusText = '';
@@ -348,17 +363,10 @@
             }
         }
 
-        function flushCurrentText() {
-            if (currentTextElement && currentTextValue) {
-                updateMessageContent(currentTextElement, 'assistant', currentTextValue);
-            }
-            if (currentReasoningElement && currentReasoningValue) {
-                updateMessageContent(currentReasoningElement, 'reasoning', currentReasoningValue);
-            }
-            currentTextValue = '';
-            currentTextElement = null;
-            currentReasoningValue = '';
-            currentReasoningElement = null;
+        function flushCurrentStreams() {
+            // All streams are already updated in place, just clear the tracking
+            currentStreams = {};
+            streamOrder = [];
         }
 
         function addMessageElement(type, text) {
@@ -394,7 +402,7 @@
         }
 
         function addMessage(type, text) {
-            flushCurrentText();
+            flushCurrentStreams();
             addMessageElement(type, text);
         }
 
