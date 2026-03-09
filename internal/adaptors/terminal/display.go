@@ -385,3 +385,97 @@ func (m *DisplayModel) ToggleWindowWrap() bool {
 	}
 	return m.windowBuffer.ToggleWrap(m.windowCursor)
 }
+
+// MoveWindowCursorToTop moves the window cursor to the window at the top of the visible screen.
+// Returns true if the cursor moved, false otherwise.
+func (m *DisplayModel) MoveWindowCursorToTop() bool {
+	windowCount := m.windowBuffer.GetWindowCount()
+	if windowCount == 0 {
+		return false
+	}
+
+	viewportTop := m.viewport.YOffset()
+
+	// Find the window that contains or is closest to the top of the viewport
+	for i := 0; i < windowCount; i++ {
+		startLine := m.windowBuffer.GetWindowStartLine(i)
+		endLine := m.windowBuffer.GetWindowEndLine(i)
+		// If this window overlaps with viewport top
+		if startLine <= viewportTop && endLine > viewportTop {
+			m.windowCursor = i
+			m.userMovedCursorAway = true
+			return true
+		}
+		// If this window is below viewport top (first visible window)
+		if startLine >= viewportTop {
+			m.windowCursor = i
+			m.userMovedCursorAway = true
+			return true
+		}
+	}
+	return false
+}
+
+// MoveWindowCursorToBottom moves the window cursor to the window at the bottom of the visible screen.
+// Returns true if the cursor moved, false otherwise.
+func (m *DisplayModel) MoveWindowCursorToBottom() bool {
+	windowCount := m.windowBuffer.GetWindowCount()
+	if windowCount == 0 {
+		return false
+	}
+
+	viewportBottom := m.viewport.YOffset() + m.viewport.Height()
+
+	// Find the window that contains or is closest to the bottom of the viewport
+	// Iterate in reverse to find the first window from bottom
+	for i := windowCount - 1; i >= 0; i-- {
+		startLine := m.windowBuffer.GetWindowStartLine(i)
+		endLine := m.windowBuffer.GetWindowEndLine(i)
+		// If this window overlaps with viewport bottom
+		if startLine < viewportBottom && endLine >= viewportBottom {
+			m.windowCursor = i
+			m.userMovedCursorAway = true
+			return true
+		}
+		// If this window is above viewport bottom (last visible window)
+		if endLine <= viewportBottom {
+			m.windowCursor = i
+			m.userMovedCursorAway = true
+			return true
+		}
+	}
+	return false
+}
+
+// MoveWindowCursorToCenter moves the window cursor to the window at the center of the visible screen.
+// Returns true if the cursor moved, false otherwise.
+func (m *DisplayModel) MoveWindowCursorToCenter() bool {
+	windowCount := m.windowBuffer.GetWindowCount()
+	if windowCount == 0 {
+		return false
+	}
+
+	viewportCenter := m.viewport.YOffset() + m.viewport.Height()/2
+
+	// Find the window that contains the center line of the viewport
+	for i := 0; i < windowCount; i++ {
+		startLine := m.windowBuffer.GetWindowStartLine(i)
+		endLine := m.windowBuffer.GetWindowEndLine(i)
+		// If this window contains the center line
+		if startLine <= viewportCenter && endLine > viewportCenter {
+			m.windowCursor = i
+			m.userMovedCursorAway = true
+			return true
+		}
+		// If past the center, pick the previous window (or this one if first)
+		if startLine > viewportCenter {
+			m.windowCursor = max(0, i-1)
+			m.userMovedCursorAway = true
+			return true
+		}
+	}
+	// If center is past all windows, select the last one
+	m.windowCursor = windowCount - 1
+	m.userMovedCursorAway = true
+	return true
+}

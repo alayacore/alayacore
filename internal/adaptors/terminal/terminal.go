@@ -296,6 +296,21 @@ func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case "K":
 		m.display.ScrollUp(1)
 		return nil, true
+	case "H":
+		if m.display.MoveWindowCursorToTop() {
+			m.display.updateContent()
+		}
+		return nil, true
+	case "L":
+		if m.display.MoveWindowCursorToBottom() {
+			m.display.updateContent()
+		}
+		return nil, true
+	case "M":
+		if m.display.MoveWindowCursorToCenter() {
+			m.display.updateContent()
+		}
+		return nil, true
 	case "G":
 		m.display.GotoBottom()
 		m.display.SetCursorToLastWindow()
