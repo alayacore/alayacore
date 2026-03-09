@@ -203,22 +203,12 @@ func (wb *WindowBuffer) GetTotalLines() int {
 }
 
 // ToggleWrap toggles the wrap state of the window at the given index.
-// Returns true if toggled successfully, false if index is invalid or window has 3 or fewer lines.
+// Returns true if toggled successfully, false if index is invalid.
 func (wb *WindowBuffer) ToggleWrap(windowIndex int) bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
 	if windowIndex < 0 || windowIndex >= len(wb.Windows) {
-		return false
-	}
-
-	// Check if window has more than 3 lines when wrapped
-	innerWidth := max(0, wb.width-4)
-	wrapped := lipgloss.Wrap(wb.Windows[windowIndex].Content, innerWidth, " ")
-	lineCount := strings.Count(wrapped, "\n") + 1
-
-	// Only allow toggle if window has more than 3 lines
-	if lineCount <= 3 {
 		return false
 	}
 
