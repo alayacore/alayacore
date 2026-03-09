@@ -259,23 +259,37 @@ func (wb *WindowBuffer) renderWindowContent(w *Window, innerWidth int) string {
 	}
 
 	if w.Wrapped {
-		// In wrapped mode, show only last 3 visual lines
-		// Grab last 3 logical lines (enough since wrapping only expands, never merges)
-		lastLinesRaw := getLastLines(w.Content, 3)
-		wrappedContent := lipgloss.Wrap(lastLinesRaw, innerWidth, " ")
+		// In wrapped mode, show first line, wrap indicator, and last line
+		wrappedContent := lipgloss.Wrap(w.Content, innerWidth, " ")
 
-		// Show wrap indicator if original content was truncated
-		if len(lastLinesRaw) < len(w.Content) {
-			contentToRender := getLastLines(wrappedContent, 3)
-			wrapIndicator := lipgloss.NewStyle().
-				Background(lipgloss.Color("#45475a")).
-				Render(" Wrapped - Space to expand ")
-			if contentToRender != "" {
-				return wrapIndicator + "\n" + contentToRender
+		// Check if content spans more than 3 lines (needs truncation)
+		lines := strings.Split(wrappedContent, "\n")
+		if len(lines) > 3 {
+			// Show: first line, wrap indicator, last line
+			firstLine := lines[0]
+			lastLine := lines[len(lines)-1]
+
+			// Create dashed wrap indicator with text on left, dashes on right
+			wrapText := "Wrapped - Space to expand "
+			dashChar := "┈" // Light quadruple dash horizontal (U+2508)
+			textWidth := lipgloss.Width(wrapText)
+			remainingWidth := innerWidth - textWidth
+
+			var wrapIndicator string
+			if remainingWidth > 0 {
+				dashes := strings.Repeat(dashChar, remainingWidth)
+				wrapIndicator = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#585b70")).
+					Render(wrapText + dashes)
+			} else {
+				// Text is too long, just show it without dashes
+				wrapIndicator = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#585b70")).
+					Render(wrapText)
 			}
-			return wrapIndicator
+			return firstLine + "\n" + wrapIndicator + "\n" + lastLine
 		}
-		// Content fits in 3 logical lines, just show wrapped content
+		// Content fits in 3 lines or less, just show wrapped content
 		return wrappedContent
 	}
 	return lipgloss.Wrap(w.Content, innerWidth, " ")
