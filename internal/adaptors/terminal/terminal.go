@@ -48,6 +48,7 @@ func (a *TerminalAdaptor) Start() {
 		inputStream,
 		terminalOutput,
 		a.sessionFile,
+		a.Config.Cfg.ContextLimit,
 	)
 
 	t := NewTerminal(session, terminalOutput, inputStream, a.sessionFile)

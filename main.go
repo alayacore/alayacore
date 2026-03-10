@@ -48,6 +48,7 @@ Flags:
   -skill strings      Skills directory path (can be specified multiple times)
   -session string     Session file path to load/save conversations
   -proxy string       HTTP proxy URL (supports HTTP, HTTPS, and SOCKS5)
+  -context-limit string  Provider context window size in tokens (supports K/M suffix, e.g., 200K, 1M)
   -debug-api          Write raw API requests and responses to log file
   -version            Show version information
   -help               Show help information

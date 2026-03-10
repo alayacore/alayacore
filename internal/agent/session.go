@@ -34,6 +34,7 @@ func (CommandPrompt) isTask() {}
 // SystemInfo holds session state for clients.
 type SystemInfo struct {
 	ContextTokens int64 `json:"context"`
+	ContextLimit  int64 `json:"context_limit"`
 	TotalTokens   int64 `json:"total"`
 	QueueCount    int   `json:"queue"`
 	InProgress    bool  `json:"in_progress"`
@@ -48,6 +49,7 @@ type Session struct {
 	SessionFile   string
 	TotalSpent    fantasy.Usage
 	ContextTokens int64
+	ContextLimit  int64
 	Todos         todo.TodoList
 	Input         stream.Input
 	Output        stream.Output
@@ -85,25 +87,26 @@ type SessionData struct {
 // ============================================================================
 
 // LoadOrNewSession loads a session from file or creates a new one.
-func LoadOrNewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt, baseURL, modelName string, input stream.Input, output stream.Output, sessionFile string) (*Session, string) {
+func LoadOrNewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt, baseURL, modelName string, input stream.Input, output stream.Output, sessionFile string, contextLimit int64) (*Session, string) {
 	sessionFile = expandPath(sessionFile)
 	if sessionFile != "" {
 		if data, err := LoadSession(sessionFile); err == nil {
-			return RestoreFromSession(model, baseTools, systemPrompt, baseURL, modelName, input, output, data, sessionFile), sessionFile
+			return RestoreFromSession(model, baseTools, systemPrompt, baseURL, modelName, input, output, data, sessionFile, contextLimit), sessionFile
 		}
 	}
-	return NewSession(model, baseTools, systemPrompt, baseURL, modelName, input, output, sessionFile), sessionFile
+	return NewSession(model, baseTools, systemPrompt, baseURL, modelName, input, output, sessionFile, contextLimit), sessionFile
 }
 
 // NewSession creates a fresh session.
-func NewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt, baseURL, modelName string, input stream.Input, output stream.Output, sessionFile string) *Session {
+func NewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt, baseURL, modelName string, input stream.Input, output stream.Output, sessionFile string, contextLimit int64) *Session {
 	s := &Session{
-		BaseURL:     baseURL,
-		ModelName:   modelName,
-		SessionFile: sessionFile,
-		Input:       input,
-		Output:      output,
-		taskQueue:   make(chan Task, 10),
+		BaseURL:      baseURL,
+		ModelName:    modelName,
+		SessionFile:  sessionFile,
+		ContextLimit: contextLimit,
+		Input:        input,
+		Output:       output,
+		taskQueue:    make(chan Task, 10),
 	}
 	s.initAgent(model, baseTools, systemPrompt)
 	go s.readFromInput()
@@ -111,7 +114,7 @@ func NewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, syst
 }
 
 // RestoreFromSession creates a session from saved data.
-func RestoreFromSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt, baseURL, modelName string, input stream.Input, output stream.Output, data *SessionData, sessionFile string) *Session {
+func RestoreFromSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt, baseURL, modelName string, input stream.Input, output stream.Output, data *SessionData, sessionFile string, contextLimit int64) *Session {
 	s := &Session{
 		Messages:      data.Messages,
 		BaseURL:       baseURL,
@@ -119,6 +122,7 @@ func RestoreFromSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTo
 		SessionFile:   sessionFile,
 		TotalSpent:    data.TotalSpent,
 		ContextTokens: data.ContextTokens,
+		ContextLimit:  contextLimit,
 		Todos:         data.Todos,
 		Input:         input,
 		Output:        output,
@@ -487,6 +491,7 @@ func (s *Session) sendSystemInfo() {
 	}
 	info := SystemInfo{
 		ContextTokens: s.ContextTokens,
+		ContextLimit:  s.ContextLimit,
 		TotalTokens:   s.TotalSpent.TotalTokens,
 		QueueCount:    len(s.taskQueue),
 		InProgress:    s.inProgress,

@@ -339,6 +339,18 @@ For this project, simplicity is more important than efficiency.
   - Removed userScrolledAway; viewport follow and cursor follow both use userMovedCursorAway
   - UpdateHeightForTodos uses same logic: keep bottom when following, keep top when not
 
+- ✅ **Context limit flag and status bar fraction display**
+  - Added `--context-limit` CLI flag to specify the provider's context window size in tokens
+  - Supports K/M suffixes: `200K` → 200000, `1M` → 1000000, `128000` → 128000
+  - `ContextLimit` field added to `config.Settings`, `agent.Session`, and `agent.SystemInfo`
+  - Passed through: `config` → `app.Config.Cfg` → `LoadOrNewSession` / `NewSession` / `RestoreFromSession` → `Session.ContextLimit` → `sendSystemInfo()` → `SystemInfo.ContextLimit`
+  - Updated both callers of `LoadOrNewSession` (terminal and websocket adaptors)
+  - Status bar now shows two formats depending on whether the limit is set:
+    - Without limit (default): `Context: 45231 | Total: 67890`
+    - With limit: `Context: 45231 / 128000 (35.3%) | Total: 67890`
+  - When 0 (default), behavior is identical to before — no regression
+  - Updated `docs/cli-reference.md` and `STATE.md`
+
 - ✅ **Terminal adaptor refactor for clarity and maintainability**
   - Added doc.go with package-level architecture docs (message flow, key files)
   - Added constants.go: DefaultWidth/Height, LayoutGap, TodoHeaderRows, timing constants
@@ -379,7 +391,7 @@ main.go        - coreclaw entry point
 - Token usage tracking
 - Error handling for command execution
 - CLI-based provider configuration (no env vars)
-- CLI flags: --type, --base-url, --api-key, --model, --skill, --session
+- CLI flags: --type, --base-url, --api-key, --model, --skill, --session, --context-limit
 - Provider types: anthropic, openai
 - Color-coded output for better readability
 - Command history for interactive sessions
