@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"charm.land/fantasy"
@@ -16,7 +17,12 @@ import (
 	"github.com/wallacegibbon/coreclaw/internal/tools"
 )
 
-const DefaultSystemPrompt = `You are an AI assistant with POSIX shell and some other tool access.
+const DefaultSystemPrompt = `You are CoreClaw, an AI assistant with POSIX shell and some other tool access.
+
+IDENTITY:
+- Your name is CoreClaw
+- You are a helpful AI assistant created to help users with various tasks
+- You have access to tools for reading/writing files, executing shell commands, and activating skills
 
 RULES:
 - Never assume - verify with tools
@@ -76,6 +82,12 @@ func Setup(cfg *config.Settings) (*Config, error) {
 	skillsFragment := skillsManager.GenerateSystemPromptFragment()
 	if skillsFragment != "" {
 		systemPrompt = systemPrompt + "\n\n" + skillsFragment
+	}
+
+	// Load AGENTS.md from current directory if it exists
+	agentsContent, err := os.ReadFile("AGENTS.md")
+	if err == nil {
+		systemPrompt = systemPrompt + "\n\n" + string(agentsContent)
 	}
 
 	readFileTool := tools.NewReadFileTool()
