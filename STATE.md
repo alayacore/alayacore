@@ -310,6 +310,12 @@ For this project, simplicity is more important than efficiency.
     - GetTotalLines() ensures cache is built when dirty, returns line count only
     - Update throttle increased 100ms → 150ms
 
+- ✅ **Incremental window rendering**
+  - Only re-render the window that changed; reuse cached renders for others
+  - dirtyIndex tracks: -1=clean, >=0=single dirty window, fullRebuild=all
+  - rebuildOneWindow re-renders one window and concatenates with others' cache
+  - Full rebuild on width change or when multiple windows updated before render
+
 - ✅ **Terminal adaptor refactor for clarity and maintainability**
   - Added doc.go with package-level architecture docs (message flow, key files)
   - Added constants.go: DefaultWidth/Height, LayoutGap, TodoHeaderRows, timing constants

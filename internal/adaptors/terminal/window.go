@@ -9,6 +9,8 @@ import (
 	"github.com/wallacegibbon/coreclaw/internal/stream"
 )
 
+const fullRebuild = -2 // dirtyIndex value meaning all windows need re-render
+
 // Window represents a single display window with border and content.
 type Window struct {
 	ID      string         // stream ID or generated unique ID
@@ -37,7 +39,7 @@ type WindowBuffer struct {
 	styles       *Styles // styles for diff rendering
 	lineHeights  []int   // cached line heights for each window (after rendering)
 	totalLines   int     // total lines across all windows
-	dirty        bool    // true if content has changed and needs re-render
+	dirtyIndex   int     // -1 = full rebuild, >=0 = only this window dirty (incremental)
 	cachedRender string  // cached full render of all windows
 }
 
@@ -84,7 +86,7 @@ func (wb *WindowBuffer) SetWidth(width int) {
 	defer wb.mu.Unlock()
 	if wb.width != width {
 		wb.width = width
-		wb.dirty = true
+		wb.dirtyIndex = fullRebuild
 	}
 }
 
@@ -104,13 +106,11 @@ func (wb *WindowBuffer) AppendOrUpdate(id string, tag byte, content string) {
 	defer wb.mu.Unlock()
 
 	if idx, ok := wb.idIndex[id]; ok {
-		// Append to existing window
 		window := wb.Windows[idx]
 		window.Content += content
-		wb.dirty = true
+		wb.markDirty(idx)
 		return
 	}
-	// Create new window - reasoning windows are wrapped by default
 	window := &Window{
 		ID:      id,
 		Tag:     tag,
@@ -120,7 +120,7 @@ func (wb *WindowBuffer) AppendOrUpdate(id string, tag byte, content string) {
 	}
 	wb.Windows = append(wb.Windows, window)
 	wb.idIndex[id] = len(wb.Windows) - 1
-	wb.dirty = true
+	wb.markDirty(len(wb.Windows) - 1)
 }
 
 // AppendDiff adds a diff window with side-by-side old/new content.
@@ -144,7 +144,16 @@ func (wb *WindowBuffer) AppendDiff(id string, path string, lines []DiffLinePair)
 	}
 	wb.Windows = append(wb.Windows, window)
 	wb.idIndex[id] = len(wb.Windows) - 1
-	wb.dirty = true
+	wb.markDirty(len(wb.Windows) - 1)
+}
+
+// markDirty marks a window as needing re-render. If another window is already dirty, triggers full rebuild.
+func (wb *WindowBuffer) markDirty(idx int) {
+	if wb.dirtyIndex >= 0 && wb.dirtyIndex != idx {
+		wb.dirtyIndex = fullRebuild
+	} else {
+		wb.dirtyIndex = idx
+	}
 }
 
 // IsDiffWindow returns true if the window is a diff window
@@ -153,34 +162,18 @@ func (w *Window) IsDiffWindow() bool {
 }
 
 // GetAll returns the concatenated rendered windows as a single string.
-// Each window is rendered with its border and padded to the current width.
-// If cursorIndex >= 0, that window is highlighted with cursor border style.
-// If a window is in Wrapped mode, it shows only the last 3 lines of content.
+// Uses incremental rendering when only one window changed.
 func (wb *WindowBuffer) GetAll(cursorIndex int) string {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
-	// Check if we need to re-render
-	needsRender := wb.dirty
-	if !needsRender {
-		// Check if any window content has changed (quick length check)
-		for _, w := range wb.Windows {
-			if w.IsDiffWindow() {
-				// Diff windows need re-render if width changed
-				if w.cachedWidth != wb.width {
-					needsRender = true
-					break
-				}
-			} else if len(w.Content) != w.lastContentLen {
-				needsRender = true
-				break
-			}
+	if wb.dirtyIndex != -1 {
+		if wb.dirtyIndex == fullRebuild {
+			wb.rebuildCache()
+		} else {
+			wb.rebuildOneWindow(wb.dirtyIndex)
 		}
-	}
-
-	if needsRender {
-		wb.rebuildCache()
-		wb.dirty = false
+		wb.dirtyIndex = -1
 	}
 
 	// If no cursor or cursor out of range, return cached render
@@ -203,21 +196,68 @@ func (wb *WindowBuffer) rebuildCache() {
 		if i > 0 {
 			sb.WriteString("\n")
 		}
-		innerWidth := max(0, wb.width-4)
-		contentToRender := wb.renderWindowContent(w, innerWidth)
-
-		styled := w.Style.Width(wb.width).Render(contentToRender)
+		styled := wb.renderAndCacheWindow(i, w)
 		sb.WriteString(styled)
-
-		// Track line height and cache rendered content
-		lineCount := strings.Count(styled, "\n") + 1
-		wb.lineHeights[i] = lineCount
-		wb.totalLines += lineCount
-		w.cachedRender = styled
-		w.cachedWidth = wb.width
-		w.lastContentLen = len(w.Content)
+	}
+	wb.totalLines = 0
+	for _, h := range wb.lineHeights {
+		wb.totalLines += h
 	}
 	wb.cachedRender = sb.String()
+}
+
+// rebuildOneWindow re-renders only the window at idx and updates the full cached string.
+func (wb *WindowBuffer) rebuildOneWindow(idx int) {
+	if idx < 0 || idx >= len(wb.Windows) {
+		return
+	}
+	w := wb.Windows[idx]
+
+	// Ensure lineHeights has right length (new window case)
+	for len(wb.lineHeights) < len(wb.Windows) {
+		wb.lineHeights = append(wb.lineHeights, 0)
+	}
+
+	// Re-render the dirty window (don't use totalLines from renderAndCacheWindow)
+	styled := wb.renderAndCacheWindow(idx, w)
+	wb.lineHeights[idx] = strings.Count(styled, "\n") + 1
+
+	// Rebuild totalLines from all lineHeights
+	wb.totalLines = 0
+	for _, h := range wb.lineHeights {
+		wb.totalLines += h
+	}
+
+	// Rebuild cachedRender by concatenating: [before] + [new] + [after]
+	var sb strings.Builder
+	for i := 0; i < len(wb.Windows); i++ {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		if i == idx {
+			sb.WriteString(styled)
+		} else {
+			sb.WriteString(wb.Windows[i].cachedRender)
+		}
+	}
+	wb.cachedRender = sb.String()
+}
+
+// renderAndCacheWindow renders a window, updates its cache and lineHeights[i], returns styled string.
+// Caller recalculates totalLines from lineHeights.
+func (wb *WindowBuffer) renderAndCacheWindow(i int, w *Window) string {
+	innerWidth := max(0, wb.width-4)
+	contentToRender := wb.renderWindowContent(w, innerWidth)
+	styled := w.Style.Width(wb.width).Render(contentToRender)
+	lineCount := strings.Count(styled, "\n") + 1
+
+	if i < len(wb.lineHeights) {
+		wb.lineHeights[i] = lineCount
+	}
+	w.cachedRender = styled
+	w.cachedWidth = wb.width
+	w.lastContentLen = len(w.Content)
+	return styled
 }
 
 // renderWithCursor renders all windows with cursor highlighting on the specified window
@@ -385,7 +425,7 @@ func (wb *WindowBuffer) Clear() {
 	wb.lineHeights = nil
 	wb.totalLines = 0
 	wb.cachedRender = ""
-	wb.dirty = true
+	wb.dirtyIndex = fullRebuild
 }
 
 // GetWindowCount returns the number of windows.
@@ -428,28 +468,18 @@ func (wb *WindowBuffer) GetWindowEndLine(windowIndex int) int {
 }
 
 // GetTotalLines returns the total number of lines across all windows.
-// Ensures cache is built first when dirty, so the count is accurate without allocating the full render string.
+// Ensures cache is built first when dirty, so the count is accurate.
 func (wb *WindowBuffer) GetTotalLines() int {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
-	needsRender := wb.dirty
-	if !needsRender {
-		for _, w := range wb.Windows {
-			if w.IsDiffWindow() {
-				if w.cachedWidth != wb.width {
-					needsRender = true
-					break
-				}
-			} else if len(w.Content) != w.lastContentLen {
-				needsRender = true
-				break
-			}
+	if wb.dirtyIndex != -1 {
+		if wb.dirtyIndex == fullRebuild {
+			wb.rebuildCache()
+		} else {
+			wb.rebuildOneWindow(wb.dirtyIndex)
 		}
-	}
-	if needsRender {
-		wb.rebuildCache()
-		wb.dirty = false
+		wb.dirtyIndex = -1
 	}
 	return wb.totalLines
 }
@@ -465,7 +495,7 @@ func (wb *WindowBuffer) ToggleWrap(windowIndex int) bool {
 	}
 
 	wb.Windows[windowIndex].Wrapped = !wb.Windows[windowIndex].Wrapped
-	wb.dirty = true
+	wb.markDirty(windowIndex)
 	return true
 }
 

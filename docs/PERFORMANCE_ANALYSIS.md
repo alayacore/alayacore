@@ -64,7 +64,10 @@ Session goroutine holds `w.mu` while parsing all TLV messages, calling `renderMu
 2. **Use GetTotalLines() in UpdateHeightForTodos** ✅ - Avoids GetAll() + strings.Count; GetTotalLines() now ensures cache and returns count without allocating full render string
 3. **Increase update throttle** ✅ - 100ms → 150ms to reduce update frequency during heavy streaming
 
+4. **Incremental window rendering** ✅ - Only re-render dirty window(s), reuse cached renders for others
+   - dirtyIndex: -1=clean, >=0=single window dirty, fullRebuild(-2)=all
+   - rebuildOneWindow re-renders one window, concatenates with others' cache
+
 ## Remaining (lower priority)
 
-4. **Incremental window rendering** - Only re-render dirty window(s), reuse cached renders for others
 5. **Cursor-only border swap** - When cursor changes, reuse content and only swap border style
