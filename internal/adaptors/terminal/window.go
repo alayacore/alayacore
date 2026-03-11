@@ -378,18 +378,12 @@ func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int) s
 		// Check if content is the same (before truncation)
 		isSame := pair.Old == pair.New
 
-		// Truncate if needed (use rune count for proper Unicode handling)
-		oldRunes := []rune(oldPart)
-		newRunes := []rune(newPart)
-		if len(oldRunes) > sideWidth {
-			oldPart = string(oldRunes[:sideWidth-3]) + "..."
-		}
-		if len(newRunes) > sideWidth {
-			newPart = string(newRunes[:sideWidth-3]) + "..."
-		}
+		// Truncate if needed (use display width for proper Unicode handling)
+		oldPart = truncateByWidth(oldPart, sideWidth)
+		newPart = truncateByWidth(newPart, sideWidth)
 
-		// Pad old part to fixed width (use rune count)
-		paddedOld := oldPart + strings.Repeat(" ", max(0, sideWidth-len([]rune(oldPart))))
+		// Pad old part to fixed width (use display width)
+		paddedOld := oldPart + strings.Repeat(" ", max(0, sideWidth-lipgloss.Width(oldPart)))
 
 		if isSame {
 			// Dimmed style for unchanged content
@@ -528,4 +522,26 @@ func getLastLines(wrapped string, n int) string {
 		return wrapped[idx+1:]
 	}
 	return wrapped
+}
+
+// truncateByWidth truncates a string to fit within maxDisplayWidth using lipgloss.Width
+// which properly handles wide Unicode characters and ANSI escape sequences
+func truncateByWidth(s string, maxDisplayWidth int) string {
+	if lipgloss.Width(s) <= maxDisplayWidth {
+		return s
+	}
+
+	// Binary search or incremental build to find truncation point
+	var result strings.Builder
+
+	for _, r := range s {
+		test := result.String() + string(r)
+		w := lipgloss.Width(test)
+		if w > maxDisplayWidth-3 { // Reserve space for "..."
+			break
+		}
+		result.WriteRune(r)
+	}
+
+	return result.String() + "..."
 }
