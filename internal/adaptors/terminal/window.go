@@ -363,6 +363,10 @@ func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int) s
 		oldPart := strings.ReplaceAll(expandTabs(pair.Old), "\n", "\\n")
 		newPart := strings.ReplaceAll(expandTabs(pair.New), "\n", "\\n")
 
+		// Check if one side is empty (different line counts)
+		oldEmpty := pair.Old == ""
+		newEmpty := pair.New == ""
+
 		// Check if content is the same (before truncation)
 		isSame := pair.Old == pair.New
 
@@ -373,19 +377,26 @@ func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int) s
 		// Pad old part to fixed width (use display width)
 		paddedOld := oldPart + strings.Repeat(" ", max(0, sideWidth-lipgloss.Width(oldPart)))
 
-		if isSame {
+		var left, right string
+		if oldEmpty {
+			// Old side is empty (new has more lines) - use spaces, no sign
+			left = "  " + paddedOld
+			right = wb.styles.DiffAdd.Render("+ " + newPart)
+		} else if newEmpty {
+			// New side is empty (old has more lines) - use spaces, no sign
+			left = wb.styles.DiffRemove.Render("- " + paddedOld)
+			right = "  " + newPart
+		} else if isSame {
 			// Dimmed style for unchanged content
-			left := wb.styles.DiffSame.Render("= " + paddedOld)
-			sep := wb.styles.DiffSep.Render("|")
-			right := wb.styles.DiffSame.Render("= " + newPart)
-			lines = append(lines, left+" "+sep+" "+right)
+			left = wb.styles.DiffSame.Render("= " + paddedOld)
+			right = wb.styles.DiffSame.Render("= " + newPart)
 		} else {
 			// Colored style for changed content
-			left := wb.styles.DiffRemove.Render("- " + paddedOld)
-			sep := wb.styles.DiffSep.Render("|")
-			right := wb.styles.DiffAdd.Render("+ " + newPart)
-			lines = append(lines, left+" "+sep+" "+right)
+			left = wb.styles.DiffRemove.Render("- " + paddedOld)
+			right = wb.styles.DiffAdd.Render("+ " + newPart)
 		}
+		sep := wb.styles.DiffSep.Render("|")
+		lines = append(lines, left+" "+sep+" "+right)
 	}
 
 	return strings.Join(lines, "\n")
