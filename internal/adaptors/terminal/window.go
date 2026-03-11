@@ -6,7 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/wallacegibbon/coreclaw/internal/stream"
+	"github.com/wallacegibbon/alayacore/internal/stream"
 )
 
 const fullRebuild = -2 // dirtyIndex value meaning all windows need re-render

@@ -1,7 +1,7 @@
-# CoreClaw Project Status
+# AlayaCore Project Status
 
 ## Overview
-CoreClaw is a minimal AI Agent that can handle toolcalling. It provides seven tools: `read_file` (supports line range), `todo_read`, `todo_write`, `edit_file` (search/replace), `write_file`, `activate_skill`, and `posix_shell`.
+AlayaCore is a minimal AI Agent that can handle toolcalling. It provides seven tools: `read_file` (supports line range), `todo_read`, `todo_write`, `edit_file` (search/replace), `write_file`, `activate_skill`, and `posix_shell`.
 All skills are based on these tools.
 
 For this project, simplicity is more important than efficiency.
@@ -9,7 +9,7 @@ For this project, simplicity is more important than efficiency.
 ## Implementation Status
 
 ### Completed
-- ✅ Go module initialized (github.com/wallacegibbon/coreclaw)
+- ✅ Go module initialized (github.com/wallacegibbon/alayacore)
 - ✅ fantasy dependency added (v0.11.0)
 - ✅ Direct stdin reading for terminal input
 - ✅ Basic agent structure with OpenAI provider
@@ -30,7 +30,7 @@ For this project, simplicity is more important than efficiency.
 - ✅ README.md with comprehensive documentation
 - ✅ Terminal input handling (bubbles textinput)
   - Automatic TTY detection
-  - Command history support (~/.coreclaw_history, max 1000 entries)
+  - Command history support (~/.alayacore_history, max 1000 entries)
   - Proper backspace/delete for all character encodings
   - Ctrl-C interruption support
 - ✅ Real-time streaming output
@@ -87,8 +87,8 @@ For this project, simplicity is more important than efficiency.
   - styles.go - lipgloss styling for terminal UI
   - chat.html - Embedded chat UI
   - Removed NewSession function - create processor/session directly
-- ✅ coreclaw-web command
-  - cmd/coreclaw-web/main.go entry point
+- ✅ alayacore-web command
+  - cmd/alayacore-web/main.go entry point
   - Per-client independent agent sessions
   - Embedded chat UI (auto-served at /)
   - WebSocket endpoint at /ws
@@ -182,8 +182,8 @@ internal/
   stream/      - IOStream interfaces and TLV protocol
   todo/        - Todo list management for task planning
   tools/       - Tool implementations (posix_shell, read_file, edit_file, write_file, activate_skill, todo_read, todo_write)
-cmd/coreclaw-web/       - coreclaw-web entry point
-main.go        - coreclaw entry point
+cmd/alayacore-web/       - alayacore-web entry point
+main.go        - alayacore entry point
 ```
 
 ### Features
@@ -206,31 +206,31 @@ main.go        - coreclaw entry point
 ### Usage
 ```sh
 # OpenAI API
-./coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+./alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Anthropic API
-./coreclaw --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
+./alayacore --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
 
 # Local AI server (e.g., Ollama)
-./coreclaw --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
+./alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
 
 # Run with API debug
-./coreclaw --debug-api --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+./alayacore --debug-api --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Run with custom system prompt
-./coreclaw --system "You are a code reviewer" --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+./alayacore --system "You are a code reviewer" --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Run interactively
-./coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+./alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Run with skills
-./coreclaw --skill ./skills --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+./alayacore --skill ./skills --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Run with session persistence
-./coreclaw --session ~/mysession.md --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+./alayacore --session ~/mysession.md --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Show help
-./coreclaw --help
+./alayacore --help
 ```
 
 ### Session Commands
@@ -239,13 +239,13 @@ main.go        - coreclaw entry point
 - `:summarize` - Summarize the entire conversation to a single message to reduce token usage
 - `:quit`, `:q` - Exit with confirmation
 
-### coreclaw-web (WebSocket Server)
+### alayacore-web (WebSocket Server)
 ```sh
 # Start WebSocket server
-./coreclaw-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+./alayacore-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Custom address
-./coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4-20250514 --addr :9090
+./alayacore-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4-20250514 --addr :9090
 
 # Then open http://localhost:8080 in browser
 # WebSocket endpoint: ws://localhost:8080/ws

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	"charm.land/fantasy"
-	"github.com/wallacegibbon/coreclaw/internal/todo"
+	"github.com/wallacegibbon/alayacore/internal/todo"
 )
 
 // TodoReader is an interface for reading todos

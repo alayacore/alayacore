@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
-	"github.com/wallacegibbon/coreclaw/internal/stream"
-	"github.com/wallacegibbon/coreclaw/internal/todo"
+	"github.com/wallacegibbon/alayacore/internal/stream"
+	"github.com/wallacegibbon/alayacore/internal/todo"
 )
 
 func TestGetSessionsDir(t *testing.T) {
@@ -116,11 +116,11 @@ func TestSaveAndLoadSession(t *testing.T) {
 
 func TestLoadLatestSession_EmptyDir(t *testing.T) {
 	// Test the function doesn't crash
-	// This will use ~/.coreclaw/sessions which may or may not exist
+	// This will use ~/.alayacore/sessions which may or may not exist
 	_, _, err := LoadLatestSession()
 	// Should not crash, may return nil or error
 	if err != nil {
-		// This is expected if ~/.coreclaw/sessions doesn't exist
+		// This is expected if ~/.alayacore/sessions doesn't exist
 		t.Logf("LoadLatestSession returned error (expected for empty state): %v", err)
 	}
 }
@@ -151,7 +151,7 @@ func TestLoadLatestSession_WithFiles(t *testing.T) {
 		}
 	}
 
-	// Note: LoadLatestSession uses GetSessionsDir which returns ~/.coreclaw/sessions
+	// Note: LoadLatestSession uses GetSessionsDir which returns ~/.alayacore/sessions
 	// We can't test with our tmpDir without refactoring
 	// This test just verifies the mechanism exists
 	t.Skip("LoadLatestSession test skipped - uses hardcoded path")

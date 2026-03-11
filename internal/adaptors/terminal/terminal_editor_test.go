@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/wallacegibbon/coreclaw/internal/stream"
+	"github.com/wallacegibbon/alayacore/internal/stream"
 )
 
 func visibleLength(s string) int {

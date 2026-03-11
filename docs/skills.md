@@ -1,12 +1,12 @@
 # Skills System
 
-CoreClaw supports the Agent Skills specification from [agentskills.io](https://agentskills.io). Skills are packages of instructions, scripts, and resources that agents can discover and use to perform specific tasks.
+AlayaCore supports the Agent Skills specification from [agentskills.io](https://agentskills.io). Skills are packages of instructions, scripts, and resources that agents can discover and use to perform specific tasks.
 
 ## Usage
 
 ```sh
 # With skills directory
-coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --skill ./skills "extract text from document.pdf"
+alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --skill ./skills "extract text from document.pdf"
 ```
 
 ## Skill Directory Structure
@@ -37,7 +37,7 @@ Instructions for the agent...
 
 ## How Skills Work
 
-1. **Discovery**: At startup, CoreClaw scans the skills directory and loads only skill names and descriptions
+1. **Discovery**: At startup, AlayaCore scans the skills directory and loads only skill names and descriptions
 2. **Activation**: When a task matches a skill's description, the agent can activate it to load full instructions
 3. **Execution**: The agent follows the instructions, optionally running bundled scripts
 

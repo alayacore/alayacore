@@ -31,7 +31,7 @@ func Enable() {
 		execPath, err := os.Executable()
 		if err != nil {
 			// Fallback to current directory
-			execPath = "coreclaw"
+			execPath = "alayacore"
 		}
 
 		execDir := filepath.Dir(execPath)
@@ -39,8 +39,8 @@ func Enable() {
 			execDir, _ = os.Getwd()
 		}
 
-		// Generate log file name: coreclaw-debug-api-N.log
-		baseName := "coreclaw-debug-api"
+		// Generate log file name: alayacore-debug-api-N.log
+		baseName := "alayacore-debug-api"
 
 		// Find next available log number
 		logNum := 0
@@ -59,7 +59,7 @@ func Enable() {
 		if logFile != nil {
 			debugWriter = logFile
 			log.SetOutput(logFile)
-			log.Printf("Debug log started: coreclaw-debug-api-%d.log", logNum)
+			log.Printf("Debug log started: alayacore-debug-api-%d.log", logNum)
 		} else {
 			// Fallback to stderr if we can't create log file
 			debugWriter = os.Stderr

@@ -1,25 +1,25 @@
-# CoreClaw
+# AlayaCore
 
 A minimal AI Agent that can handle toolcalling, powered by Large Language Models. It provides multiple tools for file operations and shell execution.
 
-CoreClaw supports all OpenAI-compatible or Anthropic-compatible API servers.
+AlayaCore supports all OpenAI-compatible or Anthropic-compatible API servers.
 
 For this project, simplicity is more important than efficiency.
 
 ## Installation
 
 ```sh
-go install github.com/wallacegibbon/coreclaw@latest
-go install github.com/wallacegibbon/coreclaw/cmd/coreclaw-web@latest
+go install github.com/wallacegibbon/alayacore@latest
+go install github.com/wallacegibbon/alayacore/cmd/alayacore-web@latest
 ```
 
 Or build from source:
 
 ```sh
-git clone https://github.com/wallacegibbon/coreclaw.git
-cd coreclaw
+git clone https://github.com/wallacegibbon/alayacore.git
+cd alayacore
 go build
-go build ./cmd/coreclaw-web/
+go build ./cmd/alayacore-web/
 ```
 
 ## Usage
@@ -28,36 +28,36 @@ All configuration must be specified via command line flags:
 
 ```sh
 # Local Ollama OpenAI-compatible server
-coreclaw --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
+alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
 
 # Local Ollama Anthropic-compatible server
-coreclaw --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b
+alayacore --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b
 
 # MiniMax (Anthropic-compatible)
-coreclaw --type anthropic --base-url $MINIMAXI_API_URL --api-key $MINIMAXI_API_KEY --model MiniMax-M2.5
+alayacore --type anthropic --base-url $MINIMAXI_API_URL --api-key $MINIMAXI_API_KEY --model MiniMax-M2.5
 
 # DeepSeek (OpenAI-compatible)
-coreclaw --type openai --base-url $DEEPSEEK_API_URL --api-key $DEEPSEEK_API_KEY --model deepseek-chat
+alayacore --type openai --base-url $DEEPSEEK_API_URL --api-key $DEEPSEEK_API_KEY --model deepseek-chat
 
 # ZAI (OpenAI-compatible)
-coreclaw --type openai --base-url $ZAI_API_URL --api-key $ZAI_API_KEY --model GLM-4.7
+alayacore --type openai --base-url $ZAI_API_URL --api-key $ZAI_API_KEY --model GLM-4.7
 ```
 
 Running with skills
 ```sh
-coreclaw --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b --skill ~/playground/coreclaw/misc/samples/skills/
+alayacore --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b --skill ~/playground/alayacore/misc/samples/skills/
 ```
 
 ## Web Server
 
-`coreclaw-web` runs a WebSocket server with a built-in chat UI.
+`alayacore-web` runs a WebSocket server with a built-in chat UI.
 
 ```sh
 # Start WebSocket server
-coreclaw-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+alayacore-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Custom address
-coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4 --addr :9090
+alayacore-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4 --addr :9090
 ```
 
 - **Web UI**: Open `http://localhost:8080` in browser

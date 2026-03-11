@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/wallacegibbon/coreclaw/internal/adaptors/common"
+	"github.com/wallacegibbon/alayacore/internal/adaptors/common"
 )
 
 // DisplayModel holds the viewport over WindowBuffer content.
@@ -27,14 +27,13 @@ type DisplayModel struct {
 
 // NewDisplayModel creates a new display model
 func NewDisplayModel(windowBuffer *WindowBuffer, styles *Styles) DisplayModel {
-	coloredWelcome := colorizeWelcomeText(common.WelcomeText)
 	vp := viewport.New(viewport.WithWidth(DefaultWidth), viewport.WithHeight(DefaultHeight))
-	vp.SetContent(coloredWelcome)
+	vp.SetContent(common.WelcomeText)
 
 	return DisplayModel{
 		viewport:            vp,
 		showingWelcome:      true,
-		welcomeText:         coloredWelcome,
+		welcomeText:         common.WelcomeText,
 		windowBuffer:        windowBuffer,
 		styles:              styles,
 		width:               DefaultWidth,

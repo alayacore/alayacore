@@ -1,15 +1,15 @@
 # Web Server
 
-`coreclaw-web` runs a WebSocket server with a built-in chat UI.
+`alayacore-web` runs a WebSocket server with a built-in chat UI.
 
 ## Usage
 
 ```sh
 # Start WebSocket server
-coreclaw-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+alayacore-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Custom address
-coreclaw-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4 --addr :9090
+alayacore-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4 --addr :9090
 ```
 
 ## Endpoints

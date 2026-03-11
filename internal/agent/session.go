@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"charm.land/fantasy"
-	"github.com/wallacegibbon/coreclaw/internal/stream"
-	"github.com/wallacegibbon/coreclaw/internal/todo"
-	"github.com/wallacegibbon/coreclaw/internal/tools"
+	"github.com/wallacegibbon/alayacore/internal/stream"
+	"github.com/wallacegibbon/alayacore/internal/todo"
+	"github.com/wallacegibbon/alayacore/internal/tools"
 	"gopkg.in/yaml.v3"
 )
 
@@ -705,7 +705,7 @@ func GetSessionsDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(home, ".coreclaw", "sessions")
+	dir := filepath.Join(home, ".alayacore", "sessions")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}

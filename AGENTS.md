@@ -1,15 +1,15 @@
-# CoreClaw
+# AlayaCore
 
 A minimal AI Agent that can handle toolcalling, powered by Large Language Models. It provides multiple tools for file operations and shell execution.
 
-CoreClaw supports all OpenAI-compatible or Anthropic-compatible API servers.
+AlayaCore supports all OpenAI-compatible or Anthropic-compatible API servers.
 
 For this project, simplicity is more important than efficiency.
 
 
 ## Project
-- Module: `github.com/wallacegibbon/coreclaw`
-- Binary: `coreclaw`
+- Module: `github.com/wallacegibbon/alayacore`
+- Binary: `alayacore`
 - Dependencies:
   - `charm.land/fantasy` - Agent framework
   - `charm.land/bubbletea/v2` - Terminal UI framework v2
@@ -22,17 +22,17 @@ For this project, simplicity is more important than efficiency.
 ## Installation
 
 ```sh
-go install github.com/wallacegibbon/coreclaw@latest
-go install github.com/wallacegibbon/coreclaw/cmd/coreclaw-web@latest
+go install github.com/wallacegibbon/alayacore@latest
+go install github.com/wallacegibbon/alayacore/cmd/alayacore-web@latest
 ```
 
 Or build from source:
 
 ```sh
-git clone https://github.com/wallacegibbon/coreclaw.git
-cd coreclaw
+git clone https://github.com/wallacegibbon/alayacore.git
+cd alayacore
 go build
-go build ./cmd/coreclaw-web/
+go build ./cmd/alayacore-web/
 ```
 
 
@@ -40,10 +40,10 @@ go build ./cmd/coreclaw-web/
 
 ```sh
 # OpenAI-compatible server
-coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 
 # Anthropic-compatible server
-coreclaw --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
+alayacore --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
 ```
 
 See [CLI Reference](docs/cli-reference.md) for all flags and usage examples.
@@ -51,7 +51,7 @@ See [CLI Reference](docs/cli-reference.md) for all flags and usage examples.
 
 ## Tools
 
-CoreClaw provides the following tools (ordered from safest to most dangerous):
+AlayaCore provides the following tools (ordered from safest to most dangerous):
 
 | Tool | Description |
 |------|-------------|

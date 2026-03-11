@@ -1,4 +1,4 @@
-module github.com/wallacegibbon/coreclaw
+module github.com/wallacegibbon/alayacore
 
 go 1.26.0
 

@@ -1,4 +1,4 @@
-// Package terminal provides the TUI adaptor for CoreClaw using Bubble Tea.
+// Package terminal provides the TUI adaptor for AlayaCore using Bubble Tea.
 //
 // # Architecture
 //

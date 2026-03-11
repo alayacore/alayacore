@@ -8,9 +8,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	agentpkg "github.com/wallacegibbon/coreclaw/internal/agent"
-	"github.com/wallacegibbon/coreclaw/internal/app"
-	"github.com/wallacegibbon/coreclaw/internal/stream"
+	agentpkg "github.com/wallacegibbon/alayacore/internal/agent"
+	"github.com/wallacegibbon/alayacore/internal/app"
+	"github.com/wallacegibbon/alayacore/internal/stream"
 )
 
 // --- Adaptor (entry point) ---
@@ -58,33 +58,6 @@ func (a *TerminalAdaptor) Start() {
 }
 
 // --- Terminal model ---
-
-// colorizeWelcomeText applies gradient coloring to the ASCII art
-func colorizeWelcomeText(text string) string {
-	lines := strings.Split(text, "\n")
-	colors := []string{
-		"#cba6f7",
-		"#f38ba8",
-		"#f9e2af",
-		"#a6e3a1",
-		"#89d4fa",
-		"#cba6f7",
-	}
-
-	var result strings.Builder
-	for i, line := range lines {
-		if i < len(colors) && line != "" {
-			style := lipgloss.NewStyle().Foreground(lipgloss.Color(colors[i]))
-			result.WriteString(style.Render(line))
-		} else {
-			result.WriteString(line)
-		}
-		if i < len(lines)-1 {
-			result.WriteString("\n")
-		}
-	}
-	return result.String()
-}
 
 // Terminal is the main Bubble Tea model; composes display, input, todo, status.
 type Terminal struct {

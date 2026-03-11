@@ -23,7 +23,7 @@ type Editor struct {
 // NewEditor creates a new editor handler
 func NewEditor() *Editor {
 	return &Editor{
-		tempFilePrefix: "coreclaw-input-*.txt",
+		tempFilePrefix: "alayacore-input-*.txt",
 	}
 }
 

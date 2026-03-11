@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"charm.land/fantasy"
-	"github.com/wallacegibbon/coreclaw/internal/todo"
+	"github.com/wallacegibbon/alayacore/internal/todo"
 )
 
 // TodoWriter is an interface for writing todos

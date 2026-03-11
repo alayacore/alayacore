@@ -6,24 +6,24 @@ All configuration must be specified via command line flags:
 
 ```sh
 # Local Ollama OpenAI-compatible server
-coreclaw --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
+alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
 
 # Local Ollama Anthropic-compatible server
-coreclaw --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b
+alayacore --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b
 
 # MiniMax (Anthropic-compatible)
-coreclaw --type anthropic --base-url $MINIMAXI_API_URL --api-key $MINIMAXI_API_KEY --model MiniMax-M2.5
+alayacore --type anthropic --base-url $MINIMAXI_API_URL --api-key $MINIMAXI_API_KEY --model MiniMax-M2.5
 
 # DeepSeek (OpenAI-compatible)
-coreclaw --type openai --base-url $DEEPSEEK_API_URL --api-key $DEEPSEEK_API_KEY --model deepseek-chat
+alayacore --type openai --base-url $DEEPSEEK_API_URL --api-key $DEEPSEEK_API_KEY --model deepseek-chat
 
 # ZAI (OpenAI-compatible)
-coreclaw --type openai --base-url $ZAI_API_URL --api-key $ZAI_API_KEY --model GLM-4.7
+alayacore --type openai --base-url $ZAI_API_URL --api-key $ZAI_API_KEY --model GLM-4.7
 ```
 
 Running with skills:
 ```sh
-coreclaw --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b --skill ~/playground/coreclaw/misc/samples/skills/
+alayacore --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b --skill ~/playground/alayacore/misc/samples/skills/
 ```
 
 

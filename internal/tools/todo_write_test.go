@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
-	"github.com/wallacegibbon/coreclaw/internal/todo"
+	"github.com/wallacegibbon/alayacore/internal/todo"
 )
 
 // mockTodoWriter implements TodoWriter for testing

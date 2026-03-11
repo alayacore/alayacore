@@ -1,11 +1,11 @@
 # Session Persistence
 
-CoreClaw allows you to save and restore conversations manually using session files.
+AlayaCore allows you to save and restore conversations manually using session files.
 
 ## Behavior
 
 - **Manual-save**: Sessions are saved only when you use `:save [filename]` or press `Ctrl+S`
-- **Load**: On startup, CoreClaw creates a new empty session unless you specify `--session` to load an existing one
+- **Load**: On startup, AlayaCore creates a new empty session unless you specify `--session` to load an existing one
 - **Path expansion**: Paths like `~/mysession.md` are expanded to your home directory
 
 ## What's Saved
@@ -34,8 +34,8 @@ You can load an existing session using the `--session` flag:
 
 ```sh
 # Load a specific session file
-coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --session ~/mysession.md
+alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --session ~/mysession.md
 
 # Start fresh with a new session (default behavior)
-coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
 ```

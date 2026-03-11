@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wallacegibbon/coreclaw/internal/adaptors/terminal"
-	"github.com/wallacegibbon/coreclaw/internal/app"
-	"github.com/wallacegibbon/coreclaw/internal/config"
+	"github.com/wallacegibbon/alayacore/internal/adaptors/terminal"
+	"github.com/wallacegibbon/alayacore/internal/app"
+	"github.com/wallacegibbon/alayacore/internal/config"
 )
 
 func main() {
 	cfg := config.Parse()
 
 	if cfg.ShowVersion {
-		fmt.Printf("coreclaw version %s\n", config.Version)
+		fmt.Printf("alayacore version %s\n", config.Version)
 		os.Exit(0)
 	}
 
@@ -34,10 +34,10 @@ func main() {
 }
 
 func printHelp() {
-	fmt.Print(`CoreClaw - A minimal AI Agent
+	fmt.Print(`AlayaCore - A minimal AI Agent
 
 Usage:
-  coreclaw [flags]
+  alayacore [flags]
 
 Flags:
   -type string        Provider type: anthropic, openai (required)
@@ -54,12 +54,12 @@ Flags:
   -help               Show help information
 
 Examples:
-  coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
-  coreclaw --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
-  coreclaw --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
-  coreclaw --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3 --session ~/mysession.md
-  coreclaw --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3 --skill ./skills1 --skill ./skills2
-  coreclaw --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --proxy http://127.0.0.1:7890
+  alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+  alayacore --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
+  alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
+  alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3 --session ~/mysession.md
+  alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3 --skill ./skills1 --skill ./skills2
+  alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --proxy http://127.0.0.1:7890
 
 `)
 }

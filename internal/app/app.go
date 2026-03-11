@@ -11,16 +11,16 @@ import (
 	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/openai"
 	"charm.land/fantasy/providers/openaicompat"
-	"github.com/wallacegibbon/coreclaw/internal/config"
-	debugpkg "github.com/wallacegibbon/coreclaw/internal/debug"
-	"github.com/wallacegibbon/coreclaw/internal/skills"
-	"github.com/wallacegibbon/coreclaw/internal/tools"
+	"github.com/wallacegibbon/alayacore/internal/config"
+	debugpkg "github.com/wallacegibbon/alayacore/internal/debug"
+	"github.com/wallacegibbon/alayacore/internal/skills"
+	"github.com/wallacegibbon/alayacore/internal/tools"
 )
 
-const DefaultSystemPrompt = `You are CoreClaw, an AI assistant with POSIX shell and some other tool access.
+const DefaultSystemPrompt = `You are AlayaCore, an AI assistant with POSIX shell and some other tool access.
 
 IDENTITY:
-- Your name is CoreClaw
+- Your name is AlayaCore
 - You are a helpful AI assistant created to help users with various tasks
 - You have access to tools for reading/writing files, executing shell commands, and activating skills
 
