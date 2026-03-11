@@ -18,19 +18,22 @@ import (
 // outputWriter parses TLV from the session and writes styled content to the WindowBuffer.
 // It implements io.Writer for the agent/session output stream.
 type outputWriter struct {
-	windowBuffer  *WindowBuffer
-	buffer        []byte
-	mu            sync.Mutex
-	updateChan    chan struct{}
-	done          chan struct{} // Signal goroutine to stop
-	status        string        // Status bar content from TagSystem
-	todos         todo.TodoList // Current todo list
-	inProgress    bool          // Whether session has task in progress
-	styles        *Styles       // UI styles
-	nextWindowID  int           // Monotonic counter for generating window IDs
-	pendingUpdate bool          // Whether there's a pending update to flush
-	lastUpdate    time.Time     // Last time an update was sent
-	updateMu      sync.Mutex    // Mutex for update throttling
+	windowBuffer       *WindowBuffer
+	buffer             []byte
+	mu                 sync.Mutex
+	updateChan         chan struct{}
+	done               chan struct{}         // Signal goroutine to stop
+	status             string                // Status bar content from TagSystem
+	todos              todo.TodoList         // Current todo list
+	inProgress         bool                  // Whether session has task in progress
+	styles             *Styles               // UI styles
+	nextWindowID       int                   // Monotonic counter for generating window IDs
+	pendingUpdate      bool                  // Whether there's a pending update to flush
+	lastUpdate         time.Time             // Last time an update was sent
+	updateMu           sync.Mutex            // Mutex for update throttling
+	models             []agentpkg.ModelInfo  // Current model list
+	activeModelID      string                // Current active model ID
+	pendingModelConfig *agentpkg.ModelConfig // Full config from model_set (with API key)
 }
 
 func NewTerminalOutput() *outputWriter {
@@ -97,6 +100,13 @@ func (w *outputWriter) AppendError(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	id := w.generateWindowID()
 	w.windowBuffer.AppendOrUpdate(id, stream.TagError, w.styles.Error.Render(msg))
+}
+
+// WriteNotify writes a notification message to the display
+func (w *outputWriter) WriteNotify(msg string) {
+	id := w.generateWindowID()
+	w.windowBuffer.AppendOrUpdate(id, stream.TagNotify, w.styles.System.Render(msg))
+	w.triggerUpdateForTag(stream.TagNotify)
 }
 
 // processBuffer parses TLV-encoded data from the buffer
@@ -212,7 +222,37 @@ func (w *outputWriter) handleSystemTag(value string) {
 		} else {
 			w.status = fmt.Sprintf("Context: %d | Total: %d", info.ContextTokens, info.TotalTokens)
 		}
+		// Store model info
+		w.models = info.Models
+		w.activeModelID = info.ActiveModelID
+		// If full config is provided, store it for the terminal to pick up
+		if info.ActiveModelConfig != nil {
+			w.pendingModelConfig = info.ActiveModelConfig
+		}
 	}
+}
+
+// GetActiveModel returns and clears the pending model config from a model_set response
+func (w *outputWriter) GetActiveModel() *agentpkg.ModelConfig {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	m := w.pendingModelConfig
+	w.pendingModelConfig = nil
+	return m
+}
+
+// GetModels returns the current model list
+func (w *outputWriter) GetModels() []agentpkg.ModelInfo {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.models
+}
+
+// GetActiveModelID returns the current active model ID
+func (w *outputWriter) GetActiveModelID() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.activeModelID
 }
 
 // renderMultiline applies a style to each line of text

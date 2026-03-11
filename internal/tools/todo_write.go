@@ -13,6 +13,8 @@ import (
 type TodoWriter interface {
 	SetTodos(todos todo.TodoList)
 	GetTodos() todo.TodoList
+	GetLastWrittenTodos() todo.TodoList
+	SetLastWrittenTodos(todos todo.TodoList)
 }
 
 // TodoWriteInput represents the input for the todo_write tool
@@ -55,6 +57,36 @@ func NewTodoWriteTool(todoWriter TodoWriter) fantasy.AgentTool {
 			// Get current todos
 			currentTodos := todoWriter.GetTodos()
 
+			// Check if this is a repeated write of the same content (loop detection)
+			lastWritten := todoWriter.GetLastWrittenTodos()
+			if len(lastWritten) > 0 && len(todos) == len(lastWritten) {
+				// Build a map of last written todos by content
+				lastWrittenMap := make(map[string]todo.TodoItem, len(lastWritten))
+				for _, item := range lastWritten {
+					lastWrittenMap[item.Content] = item
+				}
+
+				// Check if the new todos are identical to the last written todos
+				identical := true
+				for _, item := range todos {
+					if lastItem, found := lastWrittenMap[item.Content]; !found || lastItem.Status != item.Status {
+						identical = false
+						break
+					}
+				}
+
+				if identical {
+					// This looks like a loop - the agent is repeatedly writing the same todos
+					return fantasy.NewTextErrorResponse(
+						"LOOP DETECTED: You are repeatedly writing the same todo list without making progress. " +
+							"This suggests you may be stuck. Please:\n" +
+							"1. STOP calling todo_write with the same content\n" +
+							"2. Actually EXECUTE the pending tasks instead of just updating the todo list\n" +
+							"3. Only call todo_write when you have genuinely completed a task and need to mark it as completed\n" +
+							"4. If you cannot complete a task, explain why to the user instead of looping"), nil
+				}
+			}
+
 			// If there are existing todos, validate that only status changes are made
 			if len(currentTodos) > 0 {
 				// Build a map of current todos by content
@@ -91,6 +123,8 @@ func NewTodoWriteTool(todoWriter TodoWriter) fantasy.AgentTool {
 
 			// Set todos via session (this will send TagTodo to adaptors)
 			todoWriter.SetTodos(todos)
+			// Track last written todos for loop detection
+			todoWriter.SetLastWrittenTodos(todos)
 
 			// Check if all todos are completed, if so clear the list
 			allCompleted := true

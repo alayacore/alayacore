@@ -33,26 +33,31 @@ func (CommandPrompt) isTask() {}
 
 // SystemInfo holds session state for clients.
 type SystemInfo struct {
-	ContextTokens int64 `json:"context"`
-	ContextLimit  int64 `json:"context_limit"`
-	TotalTokens   int64 `json:"total"`
-	QueueCount    int   `json:"queue"`
-	InProgress    bool  `json:"in_progress"`
+	ContextTokens     int64        `json:"context"`
+	ContextLimit      int64        `json:"context_limit"`
+	TotalTokens       int64        `json:"total"`
+	QueueCount        int          `json:"queue"`
+	InProgress        bool         `json:"in_progress"`
+	Models            []ModelInfo  `json:"models,omitempty"`
+	ActiveModelID     string       `json:"active_model_id,omitempty"`
+	ActiveModelConfig *ModelConfig `json:"active_model_config,omitempty"` // Full config (with API key), only when model changes
 }
 
 // Session manages conversation state and task execution.
 type Session struct {
-	Messages      []fantasy.Message
-	Agent         fantasy.Agent
-	BaseURL       string
-	ModelName     string
-	SessionFile   string
-	TotalSpent    fantasy.Usage
-	ContextTokens int64
-	ContextLimit  int64
-	Todos         todo.TodoList
-	Input         stream.Input
-	Output        stream.Output
+	Messages         []fantasy.Message
+	Agent            fantasy.Agent
+	BaseURL          string
+	ModelName        string
+	SessionFile      string
+	TotalSpent       fantasy.Usage
+	ContextTokens    int64
+	ContextLimit     int64
+	Todos            todo.TodoList
+	LastWrittenTodos todo.TodoList // For loop detection
+	Input            stream.Input
+	Output           stream.Output
+	ModelManager     *ModelManager
 
 	taskQueue     chan Task
 	inProgress    bool
@@ -106,6 +111,7 @@ func NewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, syst
 		ContextLimit: contextLimit,
 		Input:        input,
 		Output:       output,
+		ModelManager: NewModelManager(),
 		taskQueue:    make(chan Task, 10),
 	}
 	s.initAgent(model, baseTools, systemPrompt)
@@ -126,6 +132,7 @@ func RestoreFromSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTo
 		Todos:         data.Todos,
 		Input:         input,
 		Output:        output,
+		ModelManager:  NewModelManager(),
 		taskQueue:     make(chan Task, 10),
 	}
 	s.initAgent(model, baseTools, systemPrompt)
@@ -148,6 +155,16 @@ func (s *Session) initAgent(model fantasy.LanguageModel, baseTools []fantasy.Age
 		fantasy.WithSystemPrompt(systemPrompt),
 		fantasy.WithPrepareStep(s.prepareStep),
 	)
+}
+
+// SwitchModel switches the session to use a new model
+func (s *Session) SwitchModel(model fantasy.LanguageModel, baseURL, modelName string, baseTools []fantasy.AgentTool, systemPrompt string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.BaseURL = baseURL
+	s.ModelName = modelName
+	s.initAgent(model, baseTools, systemPrompt)
 }
 
 func (s *Session) prepareStep(ctx context.Context, opts fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
@@ -397,6 +414,12 @@ func (s *Session) handleCommandSync(ctx context.Context, cmd string) {
 		s.cancelTask()
 	case "save":
 		s.saveSession(parts[1:])
+	case "model_get_all":
+		s.handleModelGetAll()
+	case "model_set":
+		s.handleModelSet(parts[1:])
+	case "model_load":
+		s.handleModelLoad()
 	default:
 		s.writeError(fmt.Sprintf("unknown cmd <%s>", cmd))
 	}
@@ -452,6 +475,68 @@ func (s *Session) saveSession(args []string) {
 }
 
 // ============================================================================
+// Model Commands
+// ============================================================================
+
+func (s *Session) handleModelGetAll() {
+	if s.ModelManager == nil {
+		s.writeError("model manager not initialized")
+		return
+	}
+	// sendSystemInfo now includes model list and active ID
+	s.sendSystemInfo()
+}
+
+func (s *Session) handleModelSet(args []string) {
+	if s.ModelManager == nil {
+		s.writeError("model manager not initialized")
+		return
+	}
+
+	if len(args) == 0 {
+		s.writeError("usage: :model_set <id>")
+		return
+	}
+
+	modelID := args[0]
+	model := s.ModelManager.GetModel(modelID)
+	if model == nil {
+		s.writeError(fmt.Sprintf("model not found: %s", modelID))
+		return
+	}
+
+	// Update active ID
+	if err := s.ModelManager.SetActive(modelID); err != nil {
+		s.writeError(err.Error())
+		return
+	}
+
+	// Send system info with full model config (terminal needs API key to switch)
+	s.sendSystemInfoWithModel(model)
+}
+
+func (s *Session) handleModelLoad() {
+	if s.ModelManager == nil {
+		s.writeError("model manager not initialized")
+		return
+	}
+
+	path := s.ModelManager.GetFilePath()
+	if path == "" {
+		s.writeError("no model file path configured")
+		return
+	}
+
+	if err := s.ModelManager.LoadFromFile(path); err != nil {
+		s.writeError(fmt.Sprintf("failed to load models: %v", err))
+		return
+	}
+
+	// Send system info with model list to adaptor via TagSystem
+	s.sendSystemInfo()
+}
+
+// ============================================================================
 // Output Helpers
 // ============================================================================
 
@@ -489,12 +574,46 @@ func (s *Session) sendSystemInfo() {
 	if s.Output == nil {
 		return
 	}
+	var models []ModelInfo
+	var activeID string
+	if s.ModelManager != nil {
+		models = s.ModelManager.GetModels()
+		activeID = s.ModelManager.GetActiveID()
+	}
 	info := SystemInfo{
 		ContextTokens: s.ContextTokens,
 		ContextLimit:  s.ContextLimit,
 		TotalTokens:   s.TotalSpent.TotalTokens,
 		QueueCount:    len(s.taskQueue),
 		InProgress:    s.inProgress,
+		Models:        models,
+		ActiveModelID: activeID,
+	}
+	data, _ := json.Marshal(info)
+	stream.WriteTLV(s.Output, stream.TagSystem, string(data))
+	s.Output.Flush()
+}
+
+// sendSystemInfoWithModel sends system info including full model config (for model switching)
+func (s *Session) sendSystemInfoWithModel(model *ModelConfig) {
+	if s.Output == nil {
+		return
+	}
+	var models []ModelInfo
+	var activeID string
+	if s.ModelManager != nil {
+		models = s.ModelManager.GetModels()
+		activeID = s.ModelManager.GetActiveID()
+	}
+	info := SystemInfo{
+		ContextTokens:     s.ContextTokens,
+		ContextLimit:      s.ContextLimit,
+		TotalTokens:       s.TotalSpent.TotalTokens,
+		QueueCount:        len(s.taskQueue),
+		InProgress:        s.inProgress,
+		Models:            models,
+		ActiveModelID:     activeID,
+		ActiveModelConfig: model,
 	}
 	data, _ := json.Marshal(info)
 	stream.WriteTLV(s.Output, stream.TagSystem, string(data))
@@ -618,6 +737,18 @@ func (s *Session) SetTodos(todos todo.TodoList) {
 	s.Todos = todos
 	s.mu.Unlock()
 	s.sendTodoList()
+}
+
+func (s *Session) GetLastWrittenTodos() todo.TodoList {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.LastWrittenTodos
+}
+
+func (s *Session) SetLastWrittenTodos(todos todo.TodoList) {
+	s.mu.Lock()
+	s.LastWrittenTodos = todos
+	s.mu.Unlock()
 }
 
 // ============================================================================

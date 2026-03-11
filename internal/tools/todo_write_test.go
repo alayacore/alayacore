@@ -11,7 +11,8 @@ import (
 
 // mockTodoWriter implements TodoWriter for testing
 type mockTodoWriter struct {
-	todos todo.TodoList
+	todos       todo.TodoList
+	lastWritten todo.TodoList
 }
 
 func (m *mockTodoWriter) SetTodos(todos todo.TodoList) {
@@ -20,6 +21,14 @@ func (m *mockTodoWriter) SetTodos(todos todo.TodoList) {
 
 func (m *mockTodoWriter) GetTodos() todo.TodoList {
 	return m.todos
+}
+
+func (m *mockTodoWriter) GetLastWrittenTodos() todo.TodoList {
+	return m.lastWritten
+}
+
+func (m *mockTodoWriter) SetLastWrittenTodos(todos todo.TodoList) {
+	m.lastWritten = todos
 }
 
 func TestTodoWrite_EmptyInput(t *testing.T) {
@@ -370,4 +379,71 @@ func TestTodoWrite_ToolInterface(t *testing.T) {
 	if tool.Info().Description == "" {
 		t.Error("tool description should not be empty")
 	}
+}
+
+// Test loop detection - writing same todos repeatedly should be rejected
+func TestTodoWrite_LoopDetection(t *testing.T) {
+	writer := &mockTodoWriter{}
+	tool := NewTodoWriteTool(writer)
+
+	// First, create initial todos
+	input := `{"todos": "[{\"content\":\"Task 1\",\"active_form\":\"Doing task 1\",\"status\":\"pending\"}]"}`
+	resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "test", Name: "todo_write", Input: input})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.IsError {
+		t.Fatalf("first write should succeed: %s", resp.Content)
+	}
+
+	// Try to write the same todos again - should trigger loop detection
+	resp2, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "test", Name: "todo_write", Input: input})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp2.IsError {
+		t.Error("expected error response for repeated identical write (loop detection)")
+	}
+	if !contains(resp2.Content, "LOOP DETECTED") {
+		t.Errorf("expected loop detection error message, got: %s", resp2.Content)
+	}
+}
+
+// Test loop detection doesn't block legitimate status updates
+func TestTodoWrite_LoopDetectionAllowsStatusChange(t *testing.T) {
+	writer := &mockTodoWriter{}
+	tool := NewTodoWriteTool(writer)
+
+	// First, create initial todos
+	input1 := `{"todos": "[{\"content\":\"Task 1\",\"active_form\":\"Doing task 1\",\"status\":\"pending\"}]"}`
+	resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "test", Name: "todo_write", Input: input1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.IsError {
+		t.Fatalf("first write should succeed: %s", resp.Content)
+	}
+
+	// Update status - should NOT trigger loop detection
+	input2 := `{"todos": "[{\"content\":\"Task 1\",\"active_form\":\"Doing task 1\",\"status\":\"in_progress\"}]"}`
+	resp2, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "test", Name: "todo_write", Input: input2})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp2.IsError {
+		t.Errorf("status update should succeed: %s", resp2.Content)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

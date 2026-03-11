@@ -75,6 +75,29 @@ func (e *Editor) Open(currentContent string) tea.Cmd {
 	})
 }
 
+// FileEditorFinishedMsg is sent when external editor closes for a specific file
+type FileEditorFinishedMsg struct {
+	Path string
+	Err  error
+}
+
+// OpenFile opens an external editor for a specific file path
+func (e *Editor) OpenFile(path string) tea.Cmd {
+	editorCmd := getEditorCommand(os.Getenv("EDITOR"))
+
+	if editorCmd == "" {
+		return func() tea.Msg {
+			return FileEditorFinishedMsg{Path: path, Err: fmt.Errorf("no editor found (tried: vim, vi, nano)")}
+		}
+	}
+
+	cmd := exec.Command(editorCmd, path)
+
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return FileEditorFinishedMsg{Path: path, Err: err}
+	})
+}
+
 // FormatEditorContent formats editor content for preview in the input field
 func FormatEditorContent(content string) string {
 	lineCount := strings.Count(content, "\n") + 1

@@ -77,7 +77,7 @@ For this project, simplicity is more important than efficiency.
   - Test coverage for parsing, discovery, and activation
 - ✅ IOStream abstraction layer
   - Input/Output interfaces in internal/stream/stream.go
-  - TLV protocol (TagAssistantText='B', TagTool='D', TagReasoning='C', TagError='E', TagNotify='N', TagSystem='S', TagUserText='A', TagTodo='F')
+  - TLV protocol (TagAssistantText='A', TagTool='T', TagReasoning='R', TagError='E', TagNotify='N', TagSystem='S', TagUserText='U', TagTodo='P', TagModel='M')
   - Buffered reads/writes with Flush() method
   - ChanInput helper for channel-based input with configurable buffer
   - WriteTLV/ReadTLV functions for encoding/decoding
@@ -153,11 +153,39 @@ For this project, simplicity is more important than efficiency.
   - Supports K/M suffixes: `200K` → 200000, `1M` → 1000000
   - Status bar shows: `Context: 45231 / 128000 (35.3%) | Total: 67890` when limit is set
 
+- ✅ **Model Selector UI for switching/managing model configurations**
+  - Press `Ctrl+L` to open model selector overlay
+  - Floating overlay using lipgloss layers and compositor (centered on screen)
+  - List view shows saved models with details (protocol type, base URL)
+  - Key bindings: `e` edit file, `r` reload, `enter` select, `esc` close
+  - External editor ($EDITOR or vi) for editing `~/.alayacore/models.json`
+  - Uses `tea.ExecProcess` for proper terminal state handling when editor exits
+  - Model window remains open after editor exits, models auto-reload
+  - Persistence to `~/.alayacore/models.json` (permissions 0600 for security)
+  - Active model selection persisted across sessions
+  - Initial model from CLI args automatically added to list and saved
+  - Located in `internal/adaptors/terminal/model_selector.go`
+
+- ✅ **Model Management Commands**
+  - `:model_get_all` - Get all available models (returns via TagSystem with models field)
+  - `:model_set <ID>` - Switch to a model by its ID
+  - `:model_load [file]` - Load models from config file (default: ~/.alayacore/models.json)
+  - ModelManager in `internal/agent/model_manager.go` manages models with runtime IDs
+  - Model info included in SystemInfo struct (models, active_model_id, active_model_config)
+  - Terminal sends commands to session instead of calling session methods directly
+
 - ✅ **Terminal adaptor refactor for clarity and maintainability**
   - Added doc.go with package-level architecture docs
   - Added constants.go for timing and layout constants
   - Renamed terminalOutput → outputWriter
   - Removed dead code: DisplayMsg, InputMsg, StatusMsg, TodoMsg
+
+- ✅ **Todo list loop detection**
+  - Detects when agent repeatedly writes the same todo list without making progress
+  - Returns helpful error message to guide agent out of the loop
+  - Prevents agent from getting stuck in planning loops
+  - Added `LastWrittenTodos` tracking to Session struct
+  - Added `GetLastWrittenTodos` and `SetLastWrittenTodos` methods to TodoWriter interface
 
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)
@@ -168,7 +196,9 @@ For this project, simplicity is more important than efficiency.
   - Session-to-user: TagAssistantText, TagTool, TagReasoning, TagError, TagSystem (JSON), TagNotify, TagUserText, TagTodo
   - User-to-session: TagUserText
   - Session validates and unwraps user TLV messages
-  - TagSystem contains JSON-encoded SystemInfo struct with token usage and queue: `{"context":1234,"total":5678,"queue":2}`
+  - TagSystem contains JSON-encoded SystemInfo struct with token usage, queue, and model info:
+    - `{"context":1234,"total":5678,"queue":2,"models":[...],"active_model_id":"abc123"}`
+    - When model changes, includes `active_model_config` with full config (including API key)
 
 ### Code Structure
 ```
