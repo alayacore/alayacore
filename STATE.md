@@ -146,6 +146,12 @@ For this project, simplicity is more important than efficiency.
   - Supports K/M suffixes: `200K` → 200000, `1M` → 1000000
   - Status bar shows: `Context: 45231 / 128000 (35.3%) | Total: 67890` when limit is set
 
+- ✅ **Auto-summarize at 80% context usage**
+  - Automatically triggers `:summarize` command when context reaches 80% of the limit
+  - Shows notification with current usage before summarizing
+  - Prevents context overflow errors from API providers
+  - Only triggers when `--context-limit` is configured
+
 - ✅ **Model Selector UI for switching/managing model configurations**
   - Press `Ctrl+L` to open model selector overlay
   - Floating overlay using lipgloss layers and compositor (centered on screen)

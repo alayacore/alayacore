@@ -55,10 +55,12 @@ type Session struct {
 	Output        stream.Output
 	ModelManager  *ModelManager
 
-	taskQueue     chan Task
-	inProgress    bool
-	cancelCurrent func()
-	mu            sync.Mutex
+	taskQueue         []Task
+	taskAvailable     chan struct{}
+	inProgress        bool
+	cancelCurrent     func()
+	skipAutoSummarize bool // Prevent auto-summarize loops
+	mu                sync.Mutex
 }
 
 // SessionMeta is the YAML frontmatter metadata.
@@ -100,14 +102,15 @@ func LoadOrNewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool
 // NewSession creates a fresh session.
 func NewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt, baseURL, modelName string, input stream.Input, output stream.Output, sessionFile string, contextLimit int64) *Session {
 	s := &Session{
-		BaseURL:      baseURL,
-		ModelName:    modelName,
-		SessionFile:  sessionFile,
-		ContextLimit: contextLimit,
-		Input:        input,
-		Output:       output,
-		ModelManager: NewModelManager(),
-		taskQueue:    make(chan Task, 10),
+		BaseURL:       baseURL,
+		ModelName:     modelName,
+		SessionFile:   sessionFile,
+		ContextLimit:  contextLimit,
+		Input:         input,
+		Output:        output,
+		ModelManager:  NewModelManager(),
+		taskQueue:     make([]Task, 0),
+		taskAvailable: make(chan struct{}, 1),
 	}
 	s.initAgent(model, baseTools, systemPrompt)
 	go s.readFromInput()
@@ -127,7 +130,8 @@ func RestoreFromSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTo
 		Input:         input,
 		Output:        output,
 		ModelManager:  NewModelManager(),
-		taskQueue:     make(chan Task, 10),
+		taskQueue:     make([]Task, 0),
+		taskAvailable: make(chan struct{}, 1),
 	}
 	s.initAgent(model, baseTools, systemPrompt)
 	go s.readFromInput()
@@ -181,10 +185,18 @@ func (s *Session) readFromInput() {
 // ============================================================================
 
 func (s *Session) submitTask(task Task) {
-	if !s.tryQueueTask(task) {
+	s.mu.Lock()
+	queueLen := len(s.taskQueue)
+	// Check queue capacity (max 10 tasks)
+	if queueLen >= 10 {
+		s.mu.Unlock()
 		s.writeNotify("Busy. Cannot queue, try again shortly.")
 		return
 	}
+	s.taskQueue = append(s.taskQueue, task)
+	s.signalTaskAvailable()
+	s.mu.Unlock()
+
 	if s.inProgress {
 		s.writeNotify("Queued. Previous task in progress. Will run after completion.")
 		s.sendSystemInfo()
@@ -193,12 +205,19 @@ func (s *Session) submitTask(task Task) {
 	}
 }
 
-func (s *Session) tryQueueTask(task Task) bool {
+// prependTasks inserts tasks at the front of the queue (for auto-summarize)
+func (s *Session) prependTasks(tasks ...Task) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.taskQueue = append(tasks, s.taskQueue...)
+	s.signalTaskAvailable()
+}
+
+// signalTaskAvailable notifies the task runner that a new task is available
+func (s *Session) signalTaskAvailable() {
 	select {
-	case s.taskQueue <- task:
-		return true
+	case s.taskAvailable <- struct{}{}:
 	default:
-		return false
 	}
 }
 
@@ -211,12 +230,22 @@ func (s *Session) runTaskQueue() {
 	}()
 
 	for {
-		select {
-		case task := <-s.taskQueue:
-			s.runTask(task)
-		default:
-			return // Queue empty
+		s.mu.Lock()
+		if len(s.taskQueue) == 0 {
+			s.mu.Unlock()
+			// Wait for new task or shutdown
+			select {
+			case <-s.taskAvailable:
+				continue
+			case <-time.After(100 * time.Millisecond):
+				return // Queue empty, exit
+			}
 		}
+		task := s.taskQueue[0]
+		s.taskQueue = s.taskQueue[1:]
+		s.mu.Unlock()
+
+		s.runTask(task)
 	}
 }
 
@@ -257,6 +286,23 @@ func (s *Session) appendCancelMessage() {
 // ============================================================================
 
 func (s *Session) handleUserPrompt(ctx context.Context, prompt string) {
+	// Auto-summarize when context usage reaches 80% of the limit
+	// Skip if we've already attempted auto-summarize (prevents loops)
+	if !s.skipAutoSummarize && s.ContextLimit > 0 && s.ContextTokens > 0 {
+		threshold := s.ContextLimit * 80 / 100
+		if s.ContextTokens >= threshold {
+			s.writeNotify(fmt.Sprintf("Context usage at %d/%d tokens (%.0f%%). Auto-summarizing...", s.ContextTokens, s.ContextLimit, float64(s.ContextTokens)*100/float64(s.ContextLimit)))
+			// Set flag to prevent auto-summarize loop
+			s.skipAutoSummarize = true
+			// Put current task back to front, then insert summarize command before it
+			s.prependTasks(CommandPrompt{Command: "summarize"}, UserPrompt(prompt))
+			return
+		}
+	}
+
+	// Clear the flag - we're either processing normally or after auto-summarize
+	s.skipAutoSummarize = false
+
 	s.Messages = append(s.Messages, fantasy.NewUserMessage(prompt))
 	history := s.Messages[:len(s.Messages)-1]
 
@@ -538,12 +584,17 @@ func (s *Session) sendSystemInfo() {
 		models = s.ModelManager.GetModels()
 		activeID = s.ModelManager.GetActiveID()
 	}
+	s.mu.Lock()
+	queueCount := len(s.taskQueue)
+	inProgress := s.inProgress
+	s.mu.Unlock()
+
 	info := SystemInfo{
 		ContextTokens: s.ContextTokens,
 		ContextLimit:  s.ContextLimit,
 		TotalTokens:   s.TotalSpent.TotalTokens,
-		QueueCount:    len(s.taskQueue),
-		InProgress:    s.inProgress,
+		QueueCount:    queueCount,
+		InProgress:    inProgress,
 		Models:        models,
 		ActiveModelID: activeID,
 	}
@@ -563,12 +614,17 @@ func (s *Session) sendSystemInfoWithModel(model *ModelConfig) {
 		models = s.ModelManager.GetModels()
 		activeID = s.ModelManager.GetActiveID()
 	}
+	s.mu.Lock()
+	queueCount := len(s.taskQueue)
+	inProgress := s.inProgress
+	s.mu.Unlock()
+
 	info := SystemInfo{
 		ContextTokens:     s.ContextTokens,
 		ContextLimit:      s.ContextLimit,
 		TotalTokens:       s.TotalSpent.TotalTokens,
-		QueueCount:        len(s.taskQueue),
-		InProgress:        s.inProgress,
+		QueueCount:        queueCount,
+		InProgress:        inProgress,
 		Models:            models,
 		ActiveModelID:     activeID,
 		ActiveModelConfig: model,
