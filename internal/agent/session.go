@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -733,45 +732,6 @@ func LoadSession(path string) (*SessionData, error) {
 	return parseSessionMarkdown(data)
 }
 
-func LoadLatestSession() (*SessionData, string, error) {
-	dir, err := GetSessionsDir()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to get sessions directory: %w", err)
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, "", nil
-		}
-		return nil, "", fmt.Errorf("failed to read sessions directory: %w", err)
-	}
-
-	var files []os.FileInfo
-	for _, entry := range entries {
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".md" {
-			if info, err := entry.Info(); err == nil {
-				files = append(files, info)
-			}
-		}
-	}
-
-	if len(files) == 0 {
-		return nil, "", nil
-	}
-
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].ModTime().After(files[j].ModTime())
-	})
-
-	latestPath := filepath.Join(dir, files[0].Name())
-	data, err := LoadSession(latestPath)
-	if err != nil {
-		return nil, "", err
-	}
-	return data, latestPath, nil
-}
-
 func (s *Session) saveSessionToFile(path string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -798,22 +758,6 @@ func (s *Session) saveSessionToFile(path string) error {
 		return fmt.Errorf("failed to write session file: %w", err)
 	}
 	return nil
-}
-
-func GetSessionsDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(home, ".alayacore", "sessions")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
-
-func GenerateSessionFilename() string {
-	return time.Now().Format("2006-01-02-150405") + "-1.md"
 }
 
 // ============================================================================

@@ -207,6 +207,12 @@ For this project, simplicity is more important than efficiency.
   - Focus is restored to previously focused window when model selector closes
   - Provides better visual feedback and prevents accidental input
 
+- ✅ **Removed unused session directory code**
+  - Deleted `LoadLatestSession()`, `GetSessionsDir()`, and `GenerateSessionFilename()` functions
+  - Removed related tests: `TestGetSessionsDir`, `TestGenerateSessionFilename`, `TestLoadLatestSession_EmptyDir`, `TestLoadLatestSession_WithFiles`
+  - Cleaned up unused imports (`sort`, `time`)
+  - Session persistence now handled via explicit file paths only (no directory scanning)
+
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)
 - **Tools**: read_file, edit_file, write_file, activate_skill, posix_shell

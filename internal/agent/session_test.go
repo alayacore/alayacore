@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"charm.land/fantasy"
 	"github.com/alayacore/alayacore/internal/stream"
@@ -28,49 +27,6 @@ func (m *MockOutput) WriteString(s string) (int, error) {
 
 func (m *MockOutput) Flush() error {
 	return nil
-}
-
-func TestGetSessionsDir(t *testing.T) {
-	sessionsDir, err := GetSessionsDir()
-	if err != nil {
-		t.Fatalf("GetSessionsDir failed: %v", err)
-	}
-
-	if sessionsDir == "" {
-		t.Fatal("GetSessionsDir returned empty string")
-	}
-
-	// Verify directory exists or can be created
-	if stat, err := os.Stat(sessionsDir); err != nil {
-		t.Fatalf("Sessions directory stat failed: %v", err)
-	} else if !stat.IsDir() {
-		t.Fatal("Sessions path is not a directory")
-	}
-}
-
-func TestGenerateSessionFilename(t *testing.T) {
-	filename := GenerateSessionFilename()
-
-	if filename == "" {
-		t.Fatal("GenerateSessionFilename returned empty string")
-	}
-
-	// Check format ends with -1.md
-	if !strings.HasSuffix(filename, "-1.md") {
-		t.Fatalf("Invalid filename format: %s (expected to end with -1.md)", filename)
-	}
-
-	// Parse to verify it's a valid date (prefix before the -1.md suffix)
-	baseFilename := strings.TrimSuffix(filename, "-1.md")
-	parsed, err := time.Parse("2006-01-02-150405", baseFilename)
-	if err != nil {
-		t.Fatalf("Failed to parse filename as date: %v", err)
-	}
-
-	// Verify it's recent (within last minute)
-	if time.Since(parsed) > time.Minute {
-		t.Fatalf("Generated filename is not recent: %s", filename)
-	}
 }
 
 func TestSaveAndLoadSession(t *testing.T) {
@@ -130,49 +86,6 @@ func TestSaveAndLoadSession(t *testing.T) {
 	if loadedData.ContextTokens != sessionData.ContextTokens {
 		t.Errorf("ContextTokens mismatch: got %d, want %d", loadedData.ContextTokens, sessionData.ContextTokens)
 	}
-}
-
-func TestLoadLatestSession_EmptyDir(t *testing.T) {
-	// Test the function doesn't crash
-	// This will use ~/.alayacore/sessions which may or may not exist
-	_, _, err := LoadLatestSession()
-	// Should not crash, may return nil or error
-	if err != nil {
-		// This is expected if ~/.alayacore/sessions doesn't exist
-		t.Logf("LoadLatestSession returned error (expected for empty state): %v", err)
-	}
-}
-
-func TestLoadLatestSession_WithFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create multiple session files
-	now := time.Now()
-	for i := range 3 {
-		filename := filepath.Join(tmpDir, now.Add(time.Duration(i)*time.Minute).Format("2006-01-02-1504.md"))
-		data := &SessionData{
-			BaseURL:   "https://api.test.com",
-			ModelName: "test-model",
-		}
-
-		// Create a minimal session
-		session := &Session{
-			BaseURL:   data.BaseURL,
-			ModelName: data.ModelName,
-			Input:     &stream.NopInput{},
-			Output:    &stream.NopOutput{},
-			taskQueue: make([]Task, 0),
-		}
-
-		if err := session.saveSessionToFile(filename); err != nil {
-			t.Fatalf("Failed to save session %d: %v", i, err)
-		}
-	}
-
-	// Note: LoadLatestSession uses GetSessionsDir which returns ~/.alayacore/sessions
-	// We can't test with our tmpDir without refactoring
-	// This test just verifies the mechanism exists
-	t.Skip("LoadLatestSession test skipped - uses hardcoded path")
 }
 
 func TestLoadOrNewSession(t *testing.T) {
