@@ -2,7 +2,7 @@ package stream
 
 import "io"
 
-// GenericWriter wraps any io.Writer as a stream.Output
+// GenericWriter wraps any io.Writer as a stream.Output.
 type GenericWriter struct {
 	io.Writer
 }
@@ -18,7 +18,11 @@ func (w *GenericWriter) Flush() error {
 	return nil
 }
 
-// GenericReader wraps any io.Reader as a stream.Input
+// GenericReader wraps any io.Reader as a stream.Input.
 type GenericReader struct {
 	io.Reader
+}
+
+func (r *GenericReader) Read(p []byte) (int, error) {
+	return r.Reader.Read(p)
 }

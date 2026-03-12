@@ -1,5 +1,10 @@
 package debug
 
+// Package debug contains a small HTTP transport wrapper that logs API
+// requests and responses to a rotating local log file (or stderr as a
+// fallback). It is only used when the CLI enables --debug-api or when
+// providers are created with debug turned on.
+
 import (
 	"bytes"
 	"context"
@@ -27,44 +32,45 @@ var (
 
 func Enable() {
 	initOnce.Do(func() {
-		// Try to create log file in executable directory
-		execPath, err := os.Executable()
-		if err != nil {
-			// Fallback to current directory
-			execPath = "alayacore"
-		}
-
-		execDir := filepath.Dir(execPath)
-		if execDir == "." {
-			execDir, _ = os.Getwd()
-		}
-
-		// Generate log file name: alayacore-debug-api-N.log
-		baseName := "alayacore-debug-api"
-
-		// Find next available log number
-		logNum := 0
-		var logFile *os.File
-		for i := range 100 {
-			logName := fmt.Sprintf("%s-%d.log", baseName, i)
-			logPath := filepath.Join(execDir, logName)
-			f, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-			if err == nil {
-				logFile = f
-				logNum = i
-				break
-			}
-		}
-
-		if logFile != nil {
-			debugWriter = logFile
-			log.SetOutput(logFile)
-			log.Printf("Debug log started: alayacore-debug-api-%d.log", logNum)
-		} else {
-			// Fallback to stderr if we can't create log file
-			debugWriter = os.Stderr
-		}
+		debugWriter = newDebugWriter()
+		// Keep the standard library logger consistent with our chosen writer.
+		log.SetOutput(debugWriter)
 	})
+}
+
+// newDebugWriter picks a log destination:
+//   - prefer a new file named alayacore-debug-api-N.log next to the binary;
+//   - fall back to the current working directory;
+//   - finally fall back to stderr if nothing works.
+func newDebugWriter() io.Writer {
+	// Try to create log file in executable directory.
+	execPath, err := os.Executable()
+	if err != nil {
+		// Fallback to current directory.
+		execPath = "alayacore"
+	}
+
+	execDir := filepath.Dir(execPath)
+	if execDir == "." {
+		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+			execDir = cwd
+		}
+	}
+
+	const baseName = "alayacore-debug-api"
+
+	// Find next available log number.
+	for i := range 100 {
+		logName := fmt.Sprintf("%s-%d.log", baseName, i)
+		logPath := filepath.Join(execDir, logName)
+		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644); err == nil {
+			log.Printf("Debug log started: %s\n", filepath.Base(logPath))
+			return f
+		}
+	}
+
+	// Fallback to stderr if we can't create a log file.
+	return os.Stderr
 }
 
 func writef(format string, args ...any) {

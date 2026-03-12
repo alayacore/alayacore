@@ -1,11 +1,16 @@
 package stream
 
+// Package stream defines the minimal IO abstraction and TLV encoding
+// used between adaptors (terminal/websocket) and the core session.
+// It intentionally stays small: a simple Input/Output pair plus helpers
+// for reading/writing framed Tag-Length-Value messages.
+
 import (
 	"encoding/binary"
 	"io"
 )
 
-// Message tags for TLV protocol
+// Message tags for TLV protocol.
 const (
 	TagUserText      = 'U' // User text input
 	TagAssistantText = 'A' // Assistant text output
@@ -16,7 +21,7 @@ const (
 	TagSystem        = 'S' // System messages (queue status, model info, etc.)
 )
 
-// ChanInput implements Input using a channel.
+// ChanInput implements Input using a channel of raw TLV-encoded messages.
 type ChanInput struct {
 	ch  chan []byte
 	buf []byte
@@ -76,54 +81,47 @@ func (i *ChanInput) EmitTLV(tag byte, value string) error {
 	return i.Emit(EncodeTLV(tag, value))
 }
 
-// WriteTLV writes a TLV message to the output
+// WriteTLV writes a TLV message to the output.
 func WriteTLV(output Output, tag byte, value string) error {
 	_, err := output.Write(EncodeTLV(tag, value))
 	return err
 }
 
-// ReadTLV reads a TLV message from the input
-// Returns tag, value, and error
+// ReadTLV reads a single TLV-framed message from input.
+// It blocks until a full frame has been read or an error occurs.
 func ReadTLV(input Input) (byte, string, error) {
-	// Read tag (1 byte)
-	tagBuf := make([]byte, 1)
-	_, err := input.Read(tagBuf)
-	if err != nil {
+	header := make([]byte, 5)
+	if _, err := io.ReadFull(input, header); err != nil {
 		return 0, "", err
 	}
-	tag := tagBuf[0]
+	tag := header[0]
+	length := binary.BigEndian.Uint32(header[1:])
 
-	// Read length (4 bytes)
-	lenBuf := make([]byte, 4)
-	_, err = input.Read(lenBuf)
-	if err != nil {
-		return 0, "", err
+	if length == 0 {
+		return tag, "", nil
 	}
-	length := binary.BigEndian.Uint32(lenBuf)
 
-	// Read value
 	valueBuf := make([]byte, length)
-	_, err = input.Read(valueBuf)
-	if err != nil {
+	if _, err := io.ReadFull(input, valueBuf); err != nil {
 		return 0, "", err
 	}
 
 	return tag, string(valueBuf), nil
 }
 
-// Input defines the input interface for the agent processor
+// Input defines the input interface for the agent processor.
 type Input interface {
 	Read(p []byte) (n int, err error)
 }
 
-// Output defines the output interface for the agent processor
+// Output defines the output interface for the agent processor.
 type Output interface {
 	Write(p []byte) (n int, err error)
 	WriteString(s string) (n int, err error)
 	Flush() error
 }
 
-// ReadCloser combines Input with io.Closer
+// ReadCloser combines Input with io.Closer.
 type ReadCloser struct {
 	Input
 }
@@ -132,7 +130,7 @@ func (rc *ReadCloser) Close() error {
 	return nil
 }
 
-// WriteCloser combines Output with io.Closer
+// WriteCloser combines Output with io.Closer.
 type WriteCloser struct {
 	Output
 }
@@ -141,14 +139,14 @@ func (wc *WriteCloser) Close() error {
 	return nil
 }
 
-// NopInput is an Input that returns EOF
+// NopInput is an Input that always returns EOF.
 type NopInput struct{}
 
 func (n *NopInput) Read(p []byte) (int, error) {
 	return 0, io.EOF
 }
 
-// NopOutput is an Output that discards all output
+// NopOutput is an Output that discards all output.
 type NopOutput struct{}
 
 func (n *NopOutput) Write(p []byte) (int, error) {

@@ -37,7 +37,7 @@ For this project, simplicity is more important than efficiency.
   - All text (including thinking) displays immediately
   - Interleaved with posix_shell command outputs
 - ✅ API debug mode (--debug-api)
-  - Logs raw API requests and responses to stderr
+  - Logs raw API requests and responses to local debug logs (or stderr as fallback)
   - Shows HTTP method, URL, headers (with sensitive data masked), and body
   - Colors request messages in green and response messages in purple
   - Useful for troubleshooting API communication issues
@@ -80,7 +80,8 @@ For this project, simplicity is more important than efficiency.
   - TLV protocol (TagAssistantText='A', TagTool='T', TagReasoning='R', TagError='E', TagNotify='N', TagSystem='S', TagUserText='U', TagModel='M')
   - Buffered reads/writes with Flush() method
   - ChanInput helper for channel-based input with configurable buffer
-  - WriteTLV/ReadTLV functions for encoding/decoding
+  - WriteTLV/ReadTLV functions for encoding/decoding (ReadTLV uses io.ReadFull to avoid partial frames)
+  - GenericReader/GenericWriter helpers to adapt plain io.Reader/io.Writer
 - ✅ Adaptors in internal/adaptors/
   - terminal.go - Terminal adaptor with Terminal (lipgloss/bubbletea)
   - websocket.go - WebSocket server with per-client sessions
