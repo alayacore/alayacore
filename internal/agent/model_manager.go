@@ -143,16 +143,30 @@ func (mm *ModelManager) saveToFileLocked(path string) error {
 		}
 	}
 
-	// Clear API keys before saving (for security)
-	modelsToSave := make([]ModelConfig, len(mm.models))
+	// persistedModel is the format for saving to file (no ID field)
+	type persistedModel struct {
+		Name         string `json:"name"`
+		ProtocolType string `json:"protocol_type"`
+		BaseURL      string `json:"base_url"`
+		APIKey       string `json:"api_key,omitempty"`
+		ModelName    string `json:"model_name"`
+	}
+
+	// Convert to persisted format (without ID)
+	modelsToSave := make([]persistedModel, len(mm.models))
 	for i, m := range mm.models {
-		modelsToSave[i] = m
-		// Keep API key in saved file - user needs it
+		modelsToSave[i] = persistedModel{
+			Name:         m.Name,
+			ProtocolType: m.ProtocolType,
+			BaseURL:      m.BaseURL,
+			APIKey:       m.APIKey,
+			ModelName:    m.ModelName,
+		}
 	}
 
 	wrapper := struct {
-		Models      []ModelConfig `json:"models"`
-		ActiveIndex int           `json:"active_index,omitempty"`
+		Models      []persistedModel `json:"models"`
+		ActiveIndex int              `json:"active_index,omitempty"`
 	}{
 		Models:      modelsToSave,
 		ActiveIndex: activeIndex,
