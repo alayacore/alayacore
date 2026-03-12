@@ -40,10 +40,11 @@ Usage:
   alayacore [flags]
 
 Flags:
-  -type string        Provider type: anthropic, openai (required)
-  -base-url string    API endpoint URL (required)
-  -api-key string     API key for the provider (required)
+  -type string        Provider type: anthropic, openai (optional if models.conf exists)
+  -base-url string    API endpoint URL (optional if models.conf exists)
+  -api-key string     API key for the provider (optional if models.conf exists)
   -model string       Model name to use
+  -model-config string  Model config file path (default: ~/.alayacore/models.conf)
   -system string      Override system prompt
   -skill strings      Skills directory path (can be specified multiple times)
   -session string     Session file path to load/save conversations
@@ -54,12 +55,19 @@ Flags:
   -help               Show help information
 
 Examples:
+  # Using model config file (recommended)
+  alayacore
+
+  # Using CLI arguments
   alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
   alayacore --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
   alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
-  alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3 --session ~/mysession.md
-  alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3 --skill ./skills1 --skill ./skills2
-  alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --proxy http://127.0.0.1:7890
+
+  # With optional flags
+  alayacore --session ~/mysession.md
+  alayacore --skill ./skills1 --skill ./skills2
+  alayacore --proxy http://127.0.0.1:7890
+  alayacore --model-config ./my-models.conf
 
 `)
 }

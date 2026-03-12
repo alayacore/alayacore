@@ -50,19 +50,68 @@ func (a *TerminalAdaptor) Start() {
 		terminalOutput,
 		a.sessionFile,
 		a.Config.Cfg.ContextLimit,
+		a.Config.Cfg.ModelConfig,
 	)
 
-	t := NewTerminal(session, terminalOutput, inputStream, a.sessionFile, a.Config)
-
-	// Initialize model selector from session's model manager
-	t.modelSelector.LoadFromManager(session.ModelManager)
-	// Set initial model from CLI if no active model
+	// Set initial model from CLI - this appends CLI model to the runtime list
 	session.ModelManager.SetInitialModel(
 		a.Config.Cfg.ProviderType,
 		a.Config.Cfg.BaseURL,
 		a.Config.Cfg.APIKey,
 		a.Config.Cfg.ModelName,
 	)
+
+	// Check if we have any models available
+	if !session.ModelManager.HasModels() {
+		modelPath := session.ModelManager.GetFilePath()
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Error: No models configured.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Please edit the model config file:")
+		fmt.Fprintf(os.Stderr, "  %s\n", modelPath)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Example format:")
+		fmt.Fprintln(os.Stderr, `name: "OpenAI GPT-4o"
+protocol_type: "openai"
+base_url: "https://api.openai.com/v1"
+api_key: "your-api-key"
+model_name: "gpt-4o"
+context_limit: 128000
+---
+name: "Ollama GPT-OSS:20B"
+protocol_type: "anthropic"
+base_url: "https://127.0.0.1:11434"
+api_key: "your-api-key"
+model_name: "gpt-oss:20b"
+context_limit: 32768`)
+		fmt.Fprintln(os.Stderr, "")
+		os.Exit(1)
+	}
+
+	// If no CLI model was provided, switch to the active model from config
+	if a.Config.Model == nil {
+		activeModel := session.ModelManager.GetActive()
+		if activeModel != nil {
+			provider, err := app.CreateProvider(activeModel.ProtocolType, activeModel.APIKey, activeModel.BaseURL, a.Config.Cfg.DebugAPI, a.Config.Cfg.Proxy)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to create provider: %v\n\n", err)
+				os.Exit(1)
+			}
+
+			model, err := provider.LanguageModel(context.Background(), activeModel.ModelName)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to create language model: %v\n\n", err)
+				os.Exit(1)
+			}
+
+			session.SwitchModel(model, activeModel.BaseURL, activeModel.ModelName, a.Config.AgentTools, a.Config.SystemPrompt)
+		}
+	}
+
+	t := NewTerminal(session, terminalOutput, inputStream, a.sessionFile, a.Config)
+
+	// Initialize model selector from session's model manager
+	t.modelSelector.LoadFromManager(session.ModelManager)
 
 	p := tea.NewProgram(t, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
 	p.Run()
@@ -246,6 +295,15 @@ func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.modelSelector.ConsumeReloadModels() {
 			m.streamInput.EmitTLV(stream.TagUserText, ":model_load")
 		}
+		// Restore focus when model selector closes
+		if !m.modelSelector.IsOpen() {
+			if m.focusedWindow == "display" {
+				m.display.SetDisplayFocused(true)
+			} else {
+				m.input.Focus()
+			}
+			m.display.updateContent()
+		}
 		return m, nil
 	}
 
@@ -413,6 +471,10 @@ func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return m.input.OpenEditor(), true
 	case "ctrl+l":
 		m.modelSelector.Open()
+		// Blur both input and display when model selector opens
+		m.input.Blur()
+		m.display.SetDisplayFocused(false)
+		m.display.updateContent()
 		return nil, true
 	case "enter":
 		return m.handleSubmit(), true
@@ -475,10 +537,10 @@ func (m *Terminal) switchToSelectedModel() {
 
 // openModelConfigFile opens the model config file with $EDITOR using shared Editor
 func (m *Terminal) openModelConfigFile() tea.Cmd {
-	path, err := ModelsConfigFile()
-	if err != nil {
+	path := m.session.ModelManager.GetFilePath()
+	if path == "" {
 		return func() tea.Msg {
-			return FileEditorFinishedMsg{Path: "", Err: err}
+			return FileEditorFinishedMsg{Path: "", Err: fmt.Errorf("no model config file path configured")}
 		}
 	}
 

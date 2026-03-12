@@ -165,18 +165,27 @@ For this project, simplicity is more important than efficiency.
   - Floating overlay using lipgloss layers and compositor (centered on screen)
   - List view shows saved models with details (protocol type, base URL)
   - Key bindings: `e` edit file, `r` reload, `enter` select, `esc` close
-  - External editor ($EDITOR or vi) for editing `~/.alayacore/models.json`
+  - External editor ($EDITOR or vi) for editing model config file
   - Uses `tea.ExecProcess` for proper terminal state handling when editor exits
   - Model window remains open after editor exits, models auto-reload
-  - Persistence to `~/.alayacore/models.json` (permissions 0600 for security)
-  - Active model selection persisted across sessions
-  - Initial model from CLI args automatically added to list and saved
+  - Config file: `~/.alayacore/models.conf` (default) or custom path via `--model-config`
+  - **IMPORTANT: Program NEVER writes to model config file**
+    - Users must edit the file manually with text editor (press 'e')
+    - This ensures user has full control over model configurations
+  - Config file uses YAML-like format with `---` separator between models
+  - Supported fields: `name`, `protocol_type`, `base_url`, `api_key`, `model_name`, `context_limit`
+  - `context_limit` is optional and specifies maximum context length (0 means unlimited)
+  - Runtime model list created from: (1) model config file, (2) CLI arguments (if provided)
+  - CLI model is appended to the end of the runtime list (if CLI args provided)
+  - When models exist, the last one becomes active
+  - Program exits with helpful error if no models are available
+  - **All CLI arguments are optional** - can run with just `alayacore` if models.conf exists
   - Located in `internal/adaptors/terminal/model_selector.go`
 
 - ✅ **Model Management Commands**
   - `:model_get_all` - Get all available models (returns via TagSystem with models field)
   - `:model_set <ID>` - Switch to a model by its ID
-  - `:model_load [file]` - Load models from config file (default: ~/.alayacore/models.json)
+  - `:model_load [file]` - Load models from config file (default: path from --model-config or ~/.alayacore/models.conf)
   - ModelManager in `internal/agent/model_manager.go` manages models with runtime IDs
   - Model info included in SystemInfo struct (models, active_model_id, active_model_config)
   - Terminal sends commands to session instead of calling session methods directly
@@ -186,6 +195,17 @@ For this project, simplicity is more important than efficiency.
   - Added constants.go for timing and layout constants
   - Renamed terminalOutput → outputWriter
   - Removed dead code: DisplayMsg, InputMsg, StatusMsg
+
+- ✅ **Model selector focus management**
+  - Input and display windows lose focus when model selector is shown
+
+- ✅ **Prevent model switching during task execution**
+  - `:model_set` command returns error "cannot switch model while task is running" when a task is in progress
+  - Ensures model configuration consistency during active operations
+  - Users must wait for task completion before switching models
+  - Check implemented with mutex-protected `inProgress` flag in session
+  - Focus is restored to previously focused window when model selector closes
+  - Provides better visual feedback and prevents accidental input
 
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)

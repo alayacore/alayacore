@@ -11,6 +11,25 @@ import (
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
+// MockOutput captures output messages for testing
+type MockOutput struct {
+	Messages []string
+}
+
+func (m *MockOutput) Write(p []byte) (int, error) {
+	m.Messages = append(m.Messages, string(p))
+	return len(p), nil
+}
+
+func (m *MockOutput) WriteString(s string) (int, error) {
+	m.Messages = append(m.Messages, s)
+	return len(s), nil
+}
+
+func (m *MockOutput) Flush() error {
+	return nil
+}
+
 func TestGetSessionsDir(t *testing.T) {
 	sessionsDir, err := GetSessionsDir()
 	if err != nil {
@@ -163,7 +182,7 @@ func TestLoadOrNewSession(t *testing.T) {
 	systemPrompt := "test system prompt"
 
 	// Test creating a new session without specifying session file
-	session, sessionFile := LoadOrNewSession(model, baseTools, systemPrompt, "https://api.test.com", "test-model", &stream.NopInput{}, &stream.NopOutput{}, "", 0)
+	session, sessionFile := LoadOrNewSession(model, baseTools, systemPrompt, "https://api.test.com", "test-model", &stream.NopInput{}, &stream.NopOutput{}, "", 0, "")
 	if session == nil {
 		t.Fatal("LoadOrNewSession returned nil session")
 	}
@@ -515,5 +534,81 @@ func TestTextAndReasoningInSameMessage(t *testing.T) {
 	}
 	if _, ok := loaded.Messages[2].Content[0].(fantasy.TextPart); !ok {
 		t.Errorf("Third message part should be TextPart, got %T", loaded.Messages[2].Content[0])
+	}
+}
+
+func TestModelSetWhileTaskRunning(t *testing.T) {
+	// Create a mock output to capture messages
+	output := &MockOutput{}
+
+	// Create a session with a model manager
+	session := &Session{
+		Messages:     []fantasy.Message{},
+		BaseURL:      "https://api.test.com/v1",
+		ModelName:    "test-model",
+		Input:        &stream.NopInput{},
+		Output:       output,
+		taskQueue:    make([]Task, 0),
+		ModelManager: NewModelManager(""),
+	}
+
+	// Add a test model to the manager
+	testModel := ModelConfig{
+		ID:           "test-model-1",
+		Name:         "Test Model",
+		ProtocolType: "openai",
+		BaseURL:      "https://api.test.com/v1",
+		APIKey:       "test-key",
+		ModelName:    "test-model",
+	}
+	session.ModelManager.models = append(session.ModelManager.models, testModel)
+
+	// Test 1: model_set should work when no task is running
+	session.handleModelSet([]string{"test-model-1"})
+
+	// Check that the model was switched (no error should be in output)
+	foundError := false
+	for _, msg := range output.Messages {
+		if strings.Contains(msg, "cannot switch model while task is running") {
+			foundError = true
+			break
+		}
+	}
+	if foundError {
+		t.Error("model_set should succeed when no task is running, but got error")
+	}
+
+	// Test 2: model_set should fail when task is running
+	output.Messages = nil // Clear previous messages
+	session.inProgress = true
+	session.handleModelSet([]string{"test-model-1"})
+
+	// Check that the error message was written
+	foundError = false
+	for _, msg := range output.Messages {
+		if strings.Contains(msg, "cannot switch model while task is running") {
+			foundError = true
+			break
+		}
+	}
+	if !foundError {
+		t.Error("model_set should fail when task is running, but no error was returned")
+	}
+
+	// Test 3: model_set should work again after task completes
+	output.Messages = nil // Clear previous messages
+	session.inProgress = false
+	session.handleModelSet([]string{"test-model-1"})
+
+	// Check that the model was switched (no error should be in output)
+	foundError = false
+	for _, msg := range output.Messages {
+		if strings.Contains(msg, "cannot switch model while task is running") {
+			foundError = true
+			break
+		}
+	}
+	if foundError {
+		t.Error("model_set should succeed after task completes, but got error")
 	}
 }

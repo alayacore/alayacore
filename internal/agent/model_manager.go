@@ -1,10 +1,12 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -18,6 +20,7 @@ type ModelConfig struct {
 	BaseURL      string `json:"base_url"`          // API server URL
 	APIKey       string `json:"api_key,omitempty"` // API key (omitted in JSON responses for security)
 	ModelName    string `json:"model_name"`        // Model identifier
+	ContextLimit int    `json:"context_limit"`     // Maximum context length (0 means unlimited)
 }
 
 // ModelInfo is the safe version for JSON responses (no API key)
@@ -27,6 +30,7 @@ type ModelInfo struct {
 	ProtocolType string `json:"protocol_type"`
 	BaseURL      string `json:"base_url"`
 	ModelName    string `json:"model_name"`
+	ContextLimit int    `json:"context_limit"`
 	IsActive     bool   `json:"is_active"`
 }
 
@@ -37,6 +41,8 @@ type ModelListResponse struct {
 }
 
 // ModelManager manages model configurations
+// NOTE: ModelManager NEVER writes to the model config file.
+// Users must edit the file with a text editor (press 'e' in model selector).
 type ModelManager struct {
 	models   []ModelConfig
 	activeID string
@@ -45,11 +51,22 @@ type ModelManager struct {
 }
 
 // NewModelManager creates a new model manager
-func NewModelManager() *ModelManager {
-	path, err := modelsConfigFile()
-	if err != nil {
-		path = ""
+// If configPath is empty, uses the default path (~/.alayacore/models.json)
+func NewModelManager(configPath string) *ModelManager {
+	var path string
+	var err error
+
+	if configPath != "" {
+		// Use user-specified path
+		path = configPath
+	} else {
+		// Use default path
+		path, err = defaultModelsConfigFile()
+		if err != nil {
+			path = ""
+		}
 	}
+
 	mm := &ModelManager{
 		filePath: path,
 	}
@@ -59,8 +76,8 @@ func NewModelManager() *ModelManager {
 	return mm
 }
 
-// modelsConfigFile returns the path to the models configuration file
-func modelsConfigFile() (string, error) {
+// defaultModelsConfigFile returns the default path to the models configuration file
+func defaultModelsConfigFile() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -69,10 +86,23 @@ func modelsConfigFile() (string, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "models.json"), nil
+	return filepath.Join(dir, "models.conf"), nil
 }
 
-// LoadFromFile loads models from a JSON file
+// LoadFromFile loads models from a config file in YAML-like format
+// NOTE: This does NOT create the file if it doesn't exist.
+// The user must create and edit the file manually.
+//
+// File format:
+//
+//	name: "Model Name"
+//	protocol_type: "openai"
+//	base_url: "https://api.example.com/v1"
+//	api_key: "your-api-key"
+//	model_name: "gpt-4o"
+//	---
+//	name: "Another Model"
+//	...
 func (mm *ModelManager) LoadFromFile(path string) error {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
@@ -80,35 +110,25 @@ func (mm *ModelManager) LoadFromFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Create empty config file
-			emptyData := []byte("{\n  \"models\": [],\n  \"active_index\": -1\n}\n")
-			if writeErr := os.WriteFile(path, emptyData, 0600); writeErr != nil {
-				return writeErr
-			}
+			// File doesn't exist - user needs to create it
 			return nil
 		}
 		return err
 	}
 
-	// Try to load with wrapper (new format with active_index)
-	var wrapper struct {
-		Models      []ModelConfig `json:"models"`
-		ActiveIndex int           `json:"active_index,omitempty"`
-	}
-	if err := json.Unmarshal(data, &wrapper); err != nil {
-		return err
-	}
+	models := parseModelConfig(string(data))
 
 	// Generate IDs for models that don't have one
-	for i := range wrapper.Models {
-		if wrapper.Models[i].ID == "" {
-			wrapper.Models[i].ID = uuid.New().String()[:8]
+	for i := range models {
+		if models[i].ID == "" {
+			models[i].ID = uuid.New().String()[:8]
 		}
 	}
 
-	mm.models = wrapper.Models
-	if wrapper.ActiveIndex >= 0 && wrapper.ActiveIndex < len(mm.models) {
-		mm.activeID = mm.models[wrapper.ActiveIndex].ID
+	mm.models = models
+	// Set active to the last model
+	if len(mm.models) > 0 {
+		mm.activeID = mm.models[len(mm.models)-1].ID
 	}
 
 	if mm.filePath == "" {
@@ -118,74 +138,91 @@ func (mm *ModelManager) LoadFromFile(path string) error {
 	return nil
 }
 
-// SaveToFile saves models to a JSON file
-func (mm *ModelManager) SaveToFile(path string) error {
-	mm.mu.Lock()
-	defer mm.mu.Unlock()
-	return mm.saveToFileLocked(path)
-}
+// parseModelConfig parses the YAML-like model config format
+func parseModelConfig(content string) []ModelConfig {
+	var models []ModelConfig
 
-// saveToFileLocked is the internal implementation that assumes the lock is already held
-func (mm *ModelManager) saveToFileLocked(path string) error {
-	if path == "" {
-		path = mm.filePath
-	}
-	if path == "" {
-		return fmt.Errorf("no file path specified")
-	}
+	// Split by "\n---\n" to get individual model blocks
+	blocks := strings.Split(content, "\n---\n")
 
-	// Find active index
-	activeIndex := -1
-	for i, m := range mm.models {
-		if m.ID == mm.activeID {
-			activeIndex = i
-			break
+	for _, block := range blocks {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+
+		model := parseModelBlock(block)
+		if model.Name != "" || model.ModelName != "" {
+			models = append(models, model)
 		}
 	}
 
-	// persistedModel is the format for saving to file (no ID field)
-	type persistedModel struct {
-		Name         string `json:"name"`
-		ProtocolType string `json:"protocol_type"`
-		BaseURL      string `json:"base_url"`
-		APIKey       string `json:"api_key,omitempty"`
-		ModelName    string `json:"model_name"`
-	}
+	return models
+}
 
-	// Convert to persisted format (without ID)
-	modelsToSave := make([]persistedModel, len(mm.models))
-	for i, m := range mm.models {
-		modelsToSave[i] = persistedModel{
-			Name:         m.Name,
-			ProtocolType: m.ProtocolType,
-			BaseURL:      m.BaseURL,
-			APIKey:       m.APIKey,
-			ModelName:    m.ModelName,
+// parseModelBlock parses a single model block
+func parseModelBlock(block string) ModelConfig {
+	model := ModelConfig{}
+	lines := strings.Split(block, "\n")
+
+	// Regex to match: key: "value" or key: 'value' or key: value
+	re := regexp.MustCompile(`^(\w+):\s*["']?(.+?)["']?\s*$`)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		matches := re.FindStringSubmatch(line)
+		if len(matches) == 3 {
+			key := matches[1]
+			value := matches[2]
+
+			// Remove surrounding quotes if present
+			if (strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)) ||
+				(strings.HasPrefix(value, `'`) && strings.HasSuffix(value, `'`)) {
+				value = value[1 : len(value)-1]
+			}
+
+			switch key {
+			case "name":
+				model.Name = value
+			case "protocol_type":
+				model.ProtocolType = value
+			case "base_url":
+				model.BaseURL = value
+			case "api_key":
+				model.APIKey = value
+			case "model_name":
+				model.ModelName = value
+			case "context_limit":
+				if limit, err := strconv.Atoi(value); err == nil {
+					model.ContextLimit = limit
+				}
+			}
 		}
 	}
 
-	wrapper := struct {
-		Models      []persistedModel `json:"models"`
-		ActiveIndex int              `json:"active_index,omitempty"`
-	}{
-		Models:      modelsToSave,
-		ActiveIndex: activeIndex,
-	}
-
-	data, err := json.MarshalIndent(wrapper, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(path, data, 0600) // 0600 for security (contains API keys)
+	return model
 }
 
-// Save saves to the default file path
-func (mm *ModelManager) Save() error {
-	return mm.SaveToFile("")
+// Reload reloads models from the config file
+func (mm *ModelManager) Reload() error {
+	if mm.filePath == "" {
+		return fmt.Errorf("no config file path set")
+	}
+	return mm.LoadFromFile(mm.filePath)
 }
 
-// AddModel adds a new model and returns its ID
+// HasModels returns true if there are any models available
+func (mm *ModelManager) HasModels() bool {
+	mm.mu.RLock()
+	defer mm.mu.RUnlock()
+	return len(mm.models) > 0
+}
+
+// AddModel adds a new model to the runtime list (does NOT persist to file)
 func (mm *ModelManager) AddModel(m ModelConfig) string {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
@@ -210,6 +247,7 @@ func (mm *ModelManager) GetModels() []ModelInfo {
 			ProtocolType: m.ProtocolType,
 			BaseURL:      m.BaseURL,
 			ModelName:    m.ModelName,
+			ContextLimit: m.ContextLimit,
 			IsActive:     m.ID == mm.activeID,
 		}
 	}
@@ -229,7 +267,7 @@ func (mm *ModelManager) GetModel(id string) *ModelConfig {
 	return nil
 }
 
-// SetActive sets the active model by ID
+// SetActive sets the active model by ID (does NOT persist to file)
 func (mm *ModelManager) SetActive(id string) error {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
@@ -264,7 +302,7 @@ func (mm *ModelManager) GetActiveID() string {
 	return mm.activeID
 }
 
-// DeleteModel removes a model by ID
+// DeleteModel removes a model by ID from runtime list (does NOT persist to file)
 func (mm *ModelManager) DeleteModel(id string) error {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
@@ -284,7 +322,7 @@ func (mm *ModelManager) DeleteModel(id string) error {
 	return fmt.Errorf("model not found: %s", id)
 }
 
-// UpdateModel updates a model by ID
+// UpdateModel updates a model by ID in runtime list (does NOT persist to file)
 func (mm *ModelManager) UpdateModel(id string, m ModelConfig) error {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
@@ -299,38 +337,50 @@ func (mm *ModelManager) UpdateModel(id string, m ModelConfig) error {
 	return fmt.Errorf("model not found: %s", id)
 }
 
-// SetInitialModel sets the initial model from CLI args if no active model exists
+// SetInitialModel appends CLI model to runtime list and sets it as active
+// This is called on startup to add the CLI-provided model.
+// When both file models and CLI model exist, the last one (CLI model) becomes active.
 func (mm *ModelManager) SetInitialModel(protocolType, baseURL, apiKey, modelName string) string {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
 
-	// If we already have an active model, return its ID
-	if mm.activeID != "" {
+	// If we already have an active model from file AND no CLI model provided, keep it
+	if mm.activeID != "" && modelName == "" {
 		return mm.activeID
 	}
 
-	// Check if this model already exists
-	for _, m := range mm.models {
-		if m.ProtocolType == protocolType && m.BaseURL == baseURL && m.ModelName == modelName {
-			mm.activeID = m.ID
-			return m.ID
+	// If CLI model is provided, always add it to the end of the list
+	if modelName != "" {
+		// Check if this exact model already exists
+		for _, m := range mm.models {
+			if m.ProtocolType == protocolType && m.BaseURL == baseURL && m.ModelName == modelName {
+				// Model exists, just set it as active
+				mm.activeID = m.ID
+				return m.ID
+			}
 		}
+
+		// Add the CLI model to the end of the list
+		newModel := ModelConfig{
+			ID:           uuid.New().String()[:8],
+			Name:         modelName + " (CLI)",
+			ProtocolType: protocolType,
+			BaseURL:      baseURL,
+			APIKey:       apiKey,
+			ModelName:    modelName,
+		}
+		mm.models = append(mm.models, newModel)
+		mm.activeID = newModel.ID
+		return newModel.ID
 	}
 
-	// Add the CLI model
-	newModel := ModelConfig{
-		ID:           uuid.New().String()[:8],
-		Name:         modelName + " (CLI)",
-		ProtocolType: protocolType,
-		BaseURL:      baseURL,
-		APIKey:       apiKey,
-		ModelName:    modelName,
+	// No CLI model, if we have models from file, select the last one
+	if len(mm.models) > 0 && mm.activeID == "" {
+		mm.activeID = mm.models[len(mm.models)-1].ID
+		return mm.activeID
 	}
-	mm.models = append(mm.models, newModel)
-	mm.activeID = newModel.ID
-	_ = mm.saveToFileLocked("") // Persist
 
-	return newModel.ID
+	return mm.activeID
 }
 
 // GetFilePath returns the current file path
@@ -338,4 +388,11 @@ func (mm *ModelManager) GetFilePath() string {
 	mm.mu.RLock()
 	defer mm.mu.RUnlock()
 	return mm.filePath
+}
+
+// ModelCount returns the number of models in the runtime list
+func (mm *ModelManager) ModelCount() int {
+	mm.mu.RLock()
+	defer mm.mu.RUnlock()
+	return len(mm.models)
 }

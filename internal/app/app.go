@@ -47,19 +47,24 @@ func Setup(cfg *config.Settings) (*Config, error) {
 		systemPrompt = cfg.SystemPrompt
 	}
 
+	// Try to get provider config from CLI args (optional)
 	providerConfig, err := cfg.GetProviderConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provider config: %w", err)
 	}
 
-	provider, err := CreateProvider(providerConfig.Provider, providerConfig.APIKey, providerConfig.BaseURL, cfg.DebugAPI, cfg.Proxy)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create provider: %w", err)
-	}
+	// Create model if CLI args were provided
+	var model fantasy.LanguageModel
+	if providerConfig != nil {
+		provider, err := CreateProvider(providerConfig.Provider, providerConfig.APIKey, providerConfig.BaseURL, cfg.DebugAPI, cfg.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create provider: %w", err)
+		}
 
-	model, err := provider.LanguageModel(context.Background(), providerConfig.ModelName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create language model: %w", err)
+		model, err = provider.LanguageModel(context.Background(), providerConfig.ModelName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create language model: %w", err)
+		}
 	}
 
 	skillsManager, err := skills.NewManager(cfg.Skills)
@@ -93,7 +98,7 @@ func Setup(cfg *config.Settings) (*Config, error) {
 
 	return &Config{
 		Cfg:          cfg,
-		Model:        model,
+		Model:        model, // Can be nil if no CLI args provided
 		SkillsMgr:    skillsManager,
 		AgentTools:   []fantasy.AgentTool{readFileTool, editFileTool, writeFileTool, activateSkillTool, posixShellTool},
 		SystemPrompt: systemPrompt,

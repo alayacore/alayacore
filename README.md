@@ -24,7 +24,37 @@ go build ./cmd/alayacore-web/
 
 ## Usage
 
-All configuration must be specified via command line flags:
+### Using Model Config File (Recommended)
+
+Create a model config file at `~/.alayacore/models.conf`:
+
+```
+name: "OpenAI GPT-4o"
+protocol_type: "openai"
+base_url: "https://api.openai.com/v1"
+api_key: "your-api-key"
+model_name: "gpt-4o"
+context_limit: 128000
+---
+name: "Ollama GPT-OSS:20B"
+protocol_type: "anthropic"
+base_url: "https://127.0.0.1:11434"
+api_key: "your-api-key"
+model_name: "gpt-oss:20b"
+context_limit: 32768
+```
+
+Then simply run:
+
+```sh
+alayacore
+```
+
+The program will load models from the config file and use the last model as default.
+
+### Using CLI Arguments
+
+All configuration can also be specified via command line flags:
 
 ```sh
 # Local Ollama OpenAI-compatible server
@@ -66,10 +96,11 @@ alayacore-web --type anthropic --base-url https://api.anthropic.com --api-key $A
 
 ## Flags
 
-- `-type string` - Provider type: `anthropic` or `openai` (required)
-- `-base-url string` - API endpoint URL (required)
-- `-api-key string` - API key (required)
+- `-type string` - Provider type: `anthropic` or `openai` (optional if models.conf exists)
+- `-base-url string` - API endpoint URL (optional if models.conf exists)
+- `-api-key string` - API key (optional if models.conf exists)
 - `-model string` - Model name to use
+- `-model-config string` - Model config file path (default: `~/.alayacore/models.conf`)
 - `-system string` - Override system prompt
 - `-skill string` - Skills directory path (can be specified multiple times)
 - `-session string` - Session file path to load/save conversations
@@ -96,6 +127,57 @@ alayacore-web --type anthropic --base-url https://api.anthropic.com --api-key $A
 - Web server with WebSocket support and chat UI
 - Session file persistence
 - HTTP/HTTPS/SOCKS5 proxy support
+
+## Model Configuration
+
+AlayaCore uses a model configuration file to store model configurations.
+
+- **Default location**: `~/.alayacore/models.conf`
+- **Custom location**: Use `--model-config /path/to/models.conf` to specify a different file
+
+**Important: The program NEVER writes to this file automatically.** You must edit it manually with a text editor.
+
+### Model Config File Format
+
+The config file uses a simple YAML-like format with `---` as a separator between models:
+
+```
+name: "OpenAI GPT-4o"
+protocol_type: "openai"
+base_url: "https://api.openai.com/v1"
+api_key: "your-api-key"
+model_name: "gpt-4o"
+context_limit: 128000
+---
+name: "Ollama GPT-OSS:20B"
+protocol_type: "anthropic"
+base_url: "https://127.0.0.1:11434"
+api_key: "your-api-key"
+model_name: "gpt-oss:20b"
+context_limit: 32768
+```
+
+**Fields:**
+- `name`: Display name for the model
+- `protocol_type`: "openai" or "anthropic"
+- `base_url`: API server URL
+- `api_key`: Your API key
+- `model_name`: Model identifier
+- `context_limit`: Maximum context length (optional, 0 means unlimited)
+
+### Model Selection Logic
+
+1. On startup, AlayaCore reads the model config file (from `--model-config` or default location)
+2. If CLI arguments (`--type`, `--base-url`, `--api-key`, `--model`) are provided, that model is appended to the runtime list
+3. The **last model** in the runtime list becomes the active model
+4. If no models are available (empty config file + no CLI args), the program exits with instructions
+
+### Editing Models
+
+- Press `Ctrl+L` to open the model selector
+- Press `e` to open the config file in your editor ($EDITOR or vi)
+- Press `r` to reload models after editing
+- Press `enter` to select a model
 
 ## Terminal Controls
 
