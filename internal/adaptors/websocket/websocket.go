@@ -53,7 +53,7 @@ func (a *WebSocketAdaptor) Start() {
 // serveIndex serves the embedded chat UI.
 func serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	html := strings.Replace(string(indexHTML), "{{welcome}}", common.WelcomeText, 1)
+	html := strings.Replace(string(indexHTML), "{{welcome}}", common.WelcomeText(), 1)
 	w.Write([]byte(html))
 }
 

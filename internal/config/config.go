@@ -50,8 +50,6 @@ func parseContextLimit(s string) (int64, error) {
 	return val * multiplier, nil
 }
 
-const Version = "0.1.0"
-
 // Settings holds all CLI configuration
 type Settings struct {
 	ShowVersion   bool

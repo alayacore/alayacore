@@ -95,4 +95,3 @@ func escapeNewlines(s string) string {
 	s = strings.ReplaceAll(s, "\t", "\\t")
 	return s
 }
-

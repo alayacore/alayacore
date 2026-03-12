@@ -28,12 +28,12 @@ type DisplayModel struct {
 // NewDisplayModel creates a new display model
 func NewDisplayModel(windowBuffer *WindowBuffer, styles *Styles) DisplayModel {
 	vp := viewport.New(viewport.WithWidth(DefaultWidth), viewport.WithHeight(DefaultHeight))
-	vp.SetContent(common.WelcomeText)
+	vp.SetContent(common.WelcomeText())
 
 	return DisplayModel{
 		viewport:            vp,
 		showingWelcome:      true,
-		welcomeText:         common.WelcomeText,
+		welcomeText:         common.WelcomeText(),
 		windowBuffer:        windowBuffer,
 		styles:              styles,
 		width:               DefaultWidth,

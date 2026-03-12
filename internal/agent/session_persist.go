@@ -104,4 +104,3 @@ func (s *Session) displayToolMessage(msg fantasy.Message) {
 		}
 	}
 }
-

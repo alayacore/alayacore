@@ -23,4 +23,3 @@ func expandPath(path string) string {
 	}
 	return filepath.Join(usr.HomeDir, path[1:])
 }
-

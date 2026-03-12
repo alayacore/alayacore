@@ -279,4 +279,3 @@ func indentString(s, indent string) string {
 	}
 	return strings.Join(lines, "\n")
 }
-

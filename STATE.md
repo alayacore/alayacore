@@ -96,6 +96,13 @@ For this project, simplicity is more important than efficiency.
 - ✅ Tab key to switch focus between display and input windows
   - Focused window has bright border (#89d4fa), unfocused has dimmed border (#45475a)
   - When display focused: j/k move window cursor; J/K scroll screen
+- ✅ Version display in welcome screen
+  - Version (e.g., v0.1.0) displayed on the last line only, at bottom right
+  - Aligned at column 52 (positioned relative to the ASCII art's visual width)
+  - Only one version string displayed (on the line containing "▀▀▀")
+  - Right-aligned on the last 2 content lines for visual balance
+  - Pulled from `config.Version` constant
+  - Positioned on the last non-empty line of welcome text
 - ✅ TLV protocol for user-to-session communication
   - Added TagUserText='U' for user text input from client to session
   - Session reads TLV messages from input stream and unwraps TagUserText
@@ -270,6 +277,11 @@ For this project, simplicity is more important than efficiency.
    - Terminal `Init` now starts the periodic tick loop immediately
    - Model switches from the selector (`Ctrl+L` → `enter`) are applied right away, even before the first prompt is sent
    - Keeps status/model info in sync without requiring an initial user submit
+ - ✅ **Welcome screen version alignment**
+   - Version is now right-aligned to the ASCII art’s right edge (no hardcoded column)
+   - Web chat UI now embeds welcome text by calling `common.WelcomeText()`
+- ✅ **Version constant in config**
+   - `internal/config.Version` is now a simple constant defined in code (no external files or ldflags)
 
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)

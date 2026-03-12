@@ -97,4 +97,3 @@ func (s *Session) sendSystemInfoInternal(activeModelConfig *ModelConfig) {
 	stream.WriteTLV(s.Output, stream.TagSystem, string(data))
 	s.Output.Flush()
 }
-
