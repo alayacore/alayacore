@@ -122,7 +122,11 @@ func (mm *ModelManager) LoadFromFile(path string) error {
 func (mm *ModelManager) SaveToFile(path string) error {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
+	return mm.saveToFileLocked(path)
+}
 
+// saveToFileLocked is the internal implementation that assumes the lock is already held
+func (mm *ModelManager) saveToFileLocked(path string) error {
 	if path == "" {
 		path = mm.filePath
 	}
@@ -310,7 +314,7 @@ func (mm *ModelManager) SetInitialModel(protocolType, baseURL, apiKey, modelName
 	}
 	mm.models = append(mm.models, newModel)
 	mm.activeID = newModel.ID
-	_ = mm.Save() // Persist
+	_ = mm.saveToFileLocked("") // Persist
 
 	return newModel.ID
 }
