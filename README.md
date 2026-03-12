@@ -24,8 +24,6 @@ go build ./cmd/alayacore-web/
 
 ## Usage
 
-### Using Model Config File (Recommended)
-
 Create a model config file at `~/.alayacore/models.conf`:
 
 ```
@@ -52,30 +50,9 @@ alayacore
 
 The program will load models from the config file and use the last model as default.
 
-### Using CLI Arguments
-
-All configuration can also be specified via command line flags:
-
+Running with skills:
 ```sh
-# Local Ollama OpenAI-compatible server
-alayacore --type openai --base-url http://localhost:11434/v1 --api-key xxx --model llama3
-
-# Local Ollama Anthropic-compatible server
-alayacore --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b
-
-# MiniMax (Anthropic-compatible)
-alayacore --type anthropic --base-url $MINIMAXI_API_URL --api-key $MINIMAXI_API_KEY --model MiniMax-M2.5
-
-# DeepSeek (OpenAI-compatible)
-alayacore --type openai --base-url $DEEPSEEK_API_URL --api-key $DEEPSEEK_API_KEY --model deepseek-chat
-
-# ZAI (OpenAI-compatible)
-alayacore --type openai --base-url $ZAI_API_URL --api-key $ZAI_API_KEY --model GLM-4.7
-```
-
-Running with skills
-```sh
-alayacore --type anthropic --base-url http://localhost:11434 --api-key=xxx --model gpt-oss:20b --skill ~/playground/alayacore/misc/samples/skills/
+alayacore --skill ~/playground/alayacore/misc/samples/skills/
 ```
 
 ## Web Server
@@ -84,10 +61,10 @@ alayacore --type anthropic --base-url http://localhost:11434 --api-key=xxx --mod
 
 ```sh
 # Start WebSocket server
-alayacore-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+alayacore-web
 
 # Custom address
-alayacore-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4 --addr :9090
+alayacore-web --addr :9090
 ```
 
 - **Web UI**: Open `http://localhost:8080` in browser
@@ -96,11 +73,8 @@ alayacore-web --type anthropic --base-url https://api.anthropic.com --api-key $A
 
 ## Flags
 
-- `-type string` - Provider type: `anthropic` or `openai` (optional if models.conf exists)
-- `-base-url string` - API endpoint URL (optional if models.conf exists)
-- `-api-key string` - API key (optional if models.conf exists)
-- `-model string` - Model name to use
 - `-model-config string` - Model config file path (default: `~/.alayacore/models.conf`)
+- `-runtime-config string` - Runtime config file path (default: same dir as model-config/runtime.conf)
 - `-system string` - Override system prompt
 - `-skill string` - Skills directory path (can be specified multiple times)
 - `-session string` - Session file path to load/save conversations
@@ -168,9 +142,8 @@ context_limit: 32768
 ### Model Selection Logic
 
 1. On startup, AlayaCore reads the model config file (from `--model-config` or default location)
-2. If CLI arguments (`--type`, `--base-url`, `--api-key`, `--model`) are provided, that model is appended to the runtime list
-3. The **last model** in the runtime list becomes the active model
-4. If no models are available (empty config file + no CLI args), the program exits with instructions
+2. The **last model** in the config file becomes the active model
+3. If no models are available, the program exits with instructions
 
 ### Editing Models
 

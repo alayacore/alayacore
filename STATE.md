@@ -225,6 +225,15 @@ For this project, simplicity is more important than efficiency.
   - Removed related tests: `TestGetSessionsDir`, `TestGenerateSessionFilename`, `TestLoadLatestSession_EmptyDir`, `TestLoadLatestSession_WithFiles`
   - Cleaned up unused imports (`sort`, `time`)
   - Session persistence now handled via explicit file paths only (no directory scanning)
+- ✅ **Migrated to config file-only model configuration**
+  - Removed CLI flags: --api-key, --base-url, --model, --type
+  - Model configuration now only supported via ~/.alayacore/models.conf file
+  - Removed SetInitialModel() method from ModelManager
+  - Removed GetProviderConfig() method from config.Settings
+  - Removed internal/provider/config.go file
+  - Simplified main.go and internal/app/app.go initialization
+  - Updated README.md and AGENTS.md to reflect config file-only workflow
+  - Updated CLI help text and documentation
 
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)

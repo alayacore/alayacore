@@ -337,52 +337,6 @@ func (mm *ModelManager) UpdateModel(id string, m ModelConfig) error {
 	return fmt.Errorf("model not found: %s", id)
 }
 
-// SetInitialModel appends CLI model to runtime list and sets it as active
-// This is called on startup to add the CLI-provided model.
-// When both file models and CLI model exist, the last one (CLI model) becomes active.
-func (mm *ModelManager) SetInitialModel(protocolType, baseURL, apiKey, modelName string) string {
-	mm.mu.Lock()
-	defer mm.mu.Unlock()
-
-	// If we already have an active model from file AND no CLI model provided, keep it
-	if mm.activeID != "" && modelName == "" {
-		return mm.activeID
-	}
-
-	// If CLI model is provided, always add it to the end of the list
-	if modelName != "" {
-		// Check if this exact model already exists
-		for _, m := range mm.models {
-			if m.ProtocolType == protocolType && m.BaseURL == baseURL && m.ModelName == modelName {
-				// Model exists, just set it as active
-				mm.activeID = m.ID
-				return m.ID
-			}
-		}
-
-		// Add the CLI model to the end of the list
-		newModel := ModelConfig{
-			ID:           uuid.New().String()[:8],
-			Name:         modelName + " (CLI)",
-			ProtocolType: protocolType,
-			BaseURL:      baseURL,
-			APIKey:       apiKey,
-			ModelName:    modelName,
-		}
-		mm.models = append(mm.models, newModel)
-		mm.activeID = newModel.ID
-		return newModel.ID
-	}
-
-	// No CLI model, if we have models from file, select the last one
-	if len(mm.models) > 0 && mm.activeID == "" {
-		mm.activeID = mm.models[len(mm.models)-1].ID
-		return mm.activeID
-	}
-
-	return mm.activeID
-}
-
 // GetFilePath returns the current file path
 func (mm *ModelManager) GetFilePath() string {
 	mm.mu.RLock()

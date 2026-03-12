@@ -6,8 +6,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/alayacore/alayacore/internal/provider"
 )
 
 // stringSlice implements flag.Value for multiple string flags
@@ -60,10 +58,6 @@ type Settings struct {
 	ShowHelp      bool
 	DebugAPI      bool
 	SystemPrompt  string
-	APIKey        string
-	BaseURL       string
-	ModelName     string
-	ProviderType  string
 	Skills        []string
 	Addr          string
 	Session       string
@@ -79,18 +73,14 @@ func Parse() *Settings {
 	showHelp := flag.Bool("help", false, "Show help information")
 	debugAPI := flag.Bool("debug-api", false, "Write raw API requests and responses to log file")
 	systemPrompt := flag.String("system", "", "Override system prompt")
-	apiKey := flag.String("api-key", "", "API key for the provider (required when using --base-url)")
-	baseURL := flag.String("base-url", "", "Base URL for the API endpoint (requires --api-key, ignores env vars)")
-	modelName := flag.String("model", "", "Model name to use (defaults to provider default)")
-	providerType := flag.String("type", "", "Provider type: anthropic, openai (overrides auto-detection)")
 	skill := &stringSlice{}
 	flag.Var(skill, "skill", "Skill path (can be specified multiple times)")
 	addr := flag.String("addr", ":8080", "Server address to listen on (for web server)")
 	session := flag.String("session", "", "Session file path to load/save conversations")
 	proxy := flag.String("proxy", "", "HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)")
 	contextLimitStr := flag.String("context-limit", "0", "Provider context window size in tokens (supports K/M suffix, e.g., 200K, 1M; 0 = unknown)")
-	modelConfig := flag.String("model-config", "", "Model config file path (default: ~/.alayacore/models.json)")
-	runtimeConfig := flag.String("runtime-config", "", "Runtime config file path (default: same dir as model-config/runtime.conf)")
+	modelConfig := flag.String("model-config", "", "Model config file path (default: ~/.alayacore/models.conf)")
+	runtimeConfig := flag.String("runtime-config", "", "Runtime config file path (default: <model-config-dir>/runtime.conf, or ~/.alayacore/runtime.conf)")
 	flag.Parse()
 
 	// Parse context limit with optional K/M suffix
@@ -108,10 +98,6 @@ func Parse() *Settings {
 		ShowHelp:      *showHelp,
 		DebugAPI:      *debugAPI,
 		SystemPrompt:  *systemPrompt,
-		APIKey:        *apiKey,
-		BaseURL:       *baseURL,
-		ModelName:     *modelName,
-		ProviderType:  *providerType,
 		Skills:        skillPaths,
 		Addr:          *addr,
 		Session:       *session,
@@ -122,9 +108,4 @@ func Parse() *Settings {
 	}
 
 	return s
-}
-
-// GetProviderConfig returns the provider configuration
-func (s *Settings) GetProviderConfig() (*provider.Config, error) {
-	return provider.GetProviderConfig(s.APIKey, s.BaseURL, s.ModelName, s.ProviderType)
 }

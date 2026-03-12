@@ -36,14 +36,37 @@ go build ./cmd/alayacore-web/
 ```
 
 
-## Quick Start
+## Usage
+
+Create a model config file at `~/.alayacore/models.conf`:
+
+```
+name: "OpenAI GPT-4o"
+protocol_type: "openai"
+base_url: "https://api.openai.com/v1"
+api_key: "your-api-key"
+model_name: "gpt-4o"
+context_limit: 128000
+---
+name: "Ollama GPT-OSS:20B"
+protocol_type: "anthropic"
+base_url: "https://127.0.0.1:11434"
+api_key: "your-api-key"
+model_name: "gpt-oss:20b"
+context_limit: 32768
+```
+
+Then simply run:
 
 ```sh
-# OpenAI-compatible server
-alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+alayacore
+```
 
-# Anthropic-compatible server
-alayacore --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4
+The program will load models from the config file and use the last model as default.
+
+Running with skills:
+```sh
+alayacore --skill ~/playground/alayacore/misc/samples/skills/
 ```
 
 See [CLI Reference](docs/cli-reference.md) for all flags and usage examples.

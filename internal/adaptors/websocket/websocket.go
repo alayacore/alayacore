@@ -66,7 +66,7 @@ func handleWebSocket(cfg *app.Config) func(http.ResponseWriter, *http.Request) {
 		output := newClientOutput(conn)
 
 		// Each connection gets its own agent session.
-		agentpkg.LoadOrNewSession(cfg.Model, cfg.AgentTools, cfg.SystemPrompt, cfg.Cfg.BaseURL, cfg.Cfg.ModelName, input, output, cfg.Cfg.Session, cfg.Cfg.ContextLimit, cfg.Cfg.ModelConfig, cfg.Cfg.RuntimeConfig)
+		agentpkg.LoadOrNewSession(cfg.Model, cfg.AgentTools, cfg.SystemPrompt, "", "", input, output, cfg.Cfg.Session, cfg.Cfg.ContextLimit, cfg.Cfg.ModelConfig, cfg.Cfg.RuntimeConfig)
 
 		readMessages(conn, input)
 	}

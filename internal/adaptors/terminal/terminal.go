@@ -44,8 +44,8 @@ func (a *TerminalAdaptor) Start() {
 		a.Config.Model,
 		a.Config.AgentTools,
 		a.Config.SystemPrompt,
-		a.Config.Cfg.BaseURL,
-		a.Config.Cfg.ModelName,
+		"", // baseURL - loaded from config file
+		"", // modelName - loaded from config file
 		inputStream,
 		terminalOutput,
 		a.sessionFile,
@@ -54,15 +54,7 @@ func (a *TerminalAdaptor) Start() {
 		a.Config.Cfg.RuntimeConfig,
 	)
 
-	// Set initial model from CLI - this appends CLI model to the runtime list
-	session.ModelManager.SetInitialModel(
-		a.Config.Cfg.ProviderType,
-		a.Config.Cfg.BaseURL,
-		a.Config.Cfg.APIKey,
-		a.Config.Cfg.ModelName,
-	)
-
-	// Load active model from runtime.conf if no CLI model was provided
+	// Load active model from runtime.conf if available
 	if a.Config.Model == nil && session.RuntimeManager != nil {
 		activeModelName := session.RuntimeManager.GetActiveModel()
 		if activeModelName != "" {
