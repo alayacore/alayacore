@@ -258,15 +258,21 @@ func (m *Terminal) handleSessionLoaded(msg sessionLoadedMsg) (tea.Model, tea.Cmd
 		m.applyModelSwitch(msg.activeModel)
 	}
 
+	// Clear welcome screen - session content should replace it
+	m.display.ClearWelcome()
+
 	// Update display with any loaded messages
-	if m.out.windowBuffer.GetWindowCount() > 0 {
-		m.status.SetStatus(m.out.status)
-		m.updateDisplayHeight()
-		if m.display.shouldFollow() {
-			m.display.SetCursorToLastWindow()
-		}
-		m.display.updateContent()
+	m.status.SetStatus(m.out.status)
+	m.updateDisplayHeight()
+
+	// Set cursor to last window if there are windows
+	windowCount := m.out.windowBuffer.GetWindowCount()
+	if windowCount > 0 {
+		m.display.SetCursorToLastWindow()
 	}
+
+	// Always update content to refresh the display
+	m.display.updateContent()
 
 	return m, tea.Tick(TickInterval, func(t time.Time) tea.Msg {
 		return tickMsg{}
@@ -381,6 +387,10 @@ func (m *Terminal) toggleFocus() {
 		m.focusedWindow = "display"
 		m.display.SetDisplayFocused(true)
 		m.input.Blur()
+		// Initialize cursor to last window if not set
+		if m.display.GetWindowCursor() < 0 {
+			m.display.SetCursorToLastWindow()
+		}
 	}
 	m.display.updateContent()
 }

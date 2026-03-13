@@ -313,6 +313,12 @@ For this project, simplicity is more important than efficiency.
   - Window resize events processed before session loads
    - Complete history maintained for better context preservation and session persistence
 
+- ✅ **Fixed display content not showing after session load**
+  - Clear welcome screen explicitly when session finishes loading
+  - Always call `updateContent()` regardless of window count
+  - Initialize cursor when switching focus to display if not set
+  - Both `updateDisplayHeight()` and `SetCursorToLastWindow()` called before final content update
+
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)
 - **Tools**: read_file, edit_file, write_file, activate_skill, posix_shell
