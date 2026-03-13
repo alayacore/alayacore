@@ -291,6 +291,14 @@ For this project, simplicity is more important than efficiency.
    - Web chat UI now embeds welcome text by calling `common.WelcomeText()`
 - ✅ **Version constant in config**
    - `internal/config.Version` is now a simple constant defined in code (no external files or ldflags)
+- ✅ **Complete message history preservation**
+   - Fixed `handleUserPrompt` to save ALL messages from agent execution
+   - Now includes assistant messages, tool calls, and tool results in session history
+   - Replaced `processPrompt` with `processPromptWithResult` for full result access
+   - Removed unnecessary abstractions: `extractAllMessages` and `extractAssistantMessage`
+   - Simplified `summarize()` to directly use `processPromptWithResult`
+   - Users can now naturally continue tasks with any prompt (e.g., "continue", "go on")
+   - Complete history maintained for better context preservation and session persistence
 
 ### Architecture
 - **Provider Types**: `anthropic` (native Anthropic API), `openai` (OpenAI-compatible)
