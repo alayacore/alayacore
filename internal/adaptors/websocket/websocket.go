@@ -8,14 +8,12 @@ package websocket
 
 import (
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
 
 	_ "embed"
 
-	"github.com/alayacore/alayacore/internal/adaptors/common"
 	agentpkg "github.com/alayacore/alayacore/internal/agent"
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/stream"
@@ -53,8 +51,7 @@ func (a *WebSocketAdaptor) Start() {
 // serveIndex serves the embedded chat UI.
 func serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	html := strings.Replace(string(indexHTML), "{{welcome}}", common.WelcomeText(), 1)
-	w.Write([]byte(html))
+	w.Write([]byte(indexHTML))
 }
 
 // handleWebSocket upgrades HTTP to WebSocket and runs a session.

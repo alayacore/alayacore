@@ -1,20 +1,13 @@
 package terminal
 
 import (
-	"strings"
-
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-
-	"github.com/alayacore/alayacore/internal/adaptors/common"
 )
 
 // DisplayModel holds the viewport over WindowBuffer content.
 type DisplayModel struct {
 	viewport            viewport.Model
-	showingWelcome      bool
-	welcomeText         string
 	windowBuffer        *WindowBuffer
 	styles              *Styles
 	width               int
@@ -28,12 +21,9 @@ type DisplayModel struct {
 // NewDisplayModel creates a new display model
 func NewDisplayModel(windowBuffer *WindowBuffer, styles *Styles) DisplayModel {
 	vp := viewport.New(viewport.WithWidth(DefaultWidth), viewport.WithHeight(DefaultHeight))
-	vp.SetContent(common.WelcomeText())
 
 	return DisplayModel{
 		viewport:            vp,
-		showingWelcome:      true,
-		welcomeText:         common.WelcomeText(),
 		windowBuffer:        windowBuffer,
 		styles:              styles,
 		width:               DefaultWidth,
@@ -55,7 +45,6 @@ func (m DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.viewport.SetWidth(max(0, msg.Width))
-		m.centerWelcomeText()
 	}
 	return m, nil
 }
@@ -100,14 +89,6 @@ func (m *DisplayModel) updateContent() {
 	}
 	newContent := m.windowBuffer.GetAll(cursorIndex)
 
-	if m.showingWelcome {
-		if newContent != "" && newContent != m.welcomeText {
-			m.showingWelcome = false
-		} else {
-			return
-		}
-	}
-
 	// Skip update if content hasn't changed
 	if newContent == m.lastContent {
 		return
@@ -123,57 +104,6 @@ func (m *DisplayModel) updateContent() {
 // ScrollDown scrolls down by lines.
 func (m *DisplayModel) ScrollDown(lines int) {
 	m.viewport.ScrollDown(lines)
-}
-
-// centerWelcomeText centers the welcome text in the viewport
-func (m *DisplayModel) centerWelcomeText() {
-	width := m.viewport.Width()
-	height := m.viewport.Height()
-	if width == 0 || height == 0 {
-		return
-	}
-
-	if !m.showingWelcome {
-		return
-	}
-
-	lines := strings.Split(m.welcomeText, "\n")
-	maxWidth := 0
-	for _, line := range lines {
-		lineWidth := lipgloss.Width(line)
-		if lineWidth > maxWidth {
-			maxWidth = lineWidth
-		}
-	}
-
-	lineCount := len(lines)
-	topPadding := max(0, (height-lineCount)/2)
-
-	centeredLines := make([]string, 0, len(lines)+topPadding)
-	if maxWidth < width {
-		padding := (width - maxWidth) / 2
-		for _, line := range lines {
-			centeredLines = append(centeredLines, strings.Repeat(" ", padding)+line)
-		}
-	} else {
-		centeredLines = append(centeredLines, lines...)
-	}
-
-	for range topPadding {
-		centeredLines = append([]string{""}, centeredLines...)
-	}
-
-	m.viewport.SetContent(strings.Join(centeredLines, "\n"))
-}
-
-// ClearWelcome clears the welcome screen
-func (m *DisplayModel) ClearWelcome() {
-	m.showingWelcome = false
-}
-
-// IsShowingWelcome returns whether welcome is being shown
-func (m DisplayModel) IsShowingWelcome() bool {
-	return m.showingWelcome
 }
 
 // AtBottom returns whether viewport is at bottom

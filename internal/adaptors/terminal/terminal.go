@@ -7,7 +7,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	agentpkg "github.com/alayacore/alayacore/internal/agent"
 	"github.com/alayacore/alayacore/internal/app"
@@ -38,8 +37,7 @@ type Terminal struct {
 	hasFocus            bool // tracks whether the terminal has application focus
 
 	// Loading state for async session initialization
-	isLoading      bool
-	loadingMessage string
+	isLoading bool
 }
 
 // NewTerminal creates a new Terminal model
@@ -66,28 +64,32 @@ func NewTerminal(session *agentpkg.Session, out *outputWriter, inputStream *stre
 }
 
 // NewLoadingTerminal creates a Terminal in loading state for async session initialization.
-// The terminal starts with a loading message and transitions to normal state when the
+// The terminal starts with a loading message in a window and transitions to normal state when the
 // sessionLoadedMsg is received.
 func NewLoadingTerminal(inputStream *stream.ChanInput, out *outputWriter, sessionFile string, appCfg *app.Config) *Terminal {
 	styles := DefaultStyles()
 
 	m := &Terminal{
-		session:        nil, // Will be set when session loads
-		out:            out,
-		streamInput:    inputStream,
-		appConfig:      appCfg,
-		display:        NewDisplayModel(out.windowBuffer, styles),
-		input:          NewInputModel(styles),
-		status:         NewStatusModel(styles),
-		modelSelector:  NewModelSelector(styles),
-		windowWidth:    DefaultWidth,
-		styles:         styles,
-		focusedWindow:  "input",
-		sessionFile:    sessionFile,
-		hasFocus:       true,
-		isLoading:      true,
-		loadingMessage: "Loading session...",
+		session:       nil, // Will be set when session loads
+		out:           out,
+		streamInput:   inputStream,
+		appConfig:     appCfg,
+		display:       NewDisplayModel(out.windowBuffer, styles),
+		input:         NewInputModel(styles),
+		status:        NewStatusModel(styles),
+		modelSelector: NewModelSelector(styles),
+		windowWidth:   DefaultWidth,
+		styles:        styles,
+		focusedWindow: "input",
+		sessionFile:   sessionFile,
+		hasFocus:      true,
+		isLoading:     true,
 	}
+
+	// Add loading window to display
+	loadingStyle := styles.System.Render("Loading session...")
+	out.windowBuffer.AppendOrUpdate(loadingWindowID, stream.TagNotify, loadingStyle)
+	m.display.SetCursorToLastWindow()
 
 	return m
 }
@@ -113,6 +115,8 @@ func (m *Terminal) Init() tea.Cmd {
 // --- Message handling ---
 
 type tickMsg struct{}
+
+const loadingWindowID = "__loading__"
 
 // sessionLoadedMsg is sent when async session loading completes
 type sessionLoadedMsg struct {
@@ -230,7 +234,6 @@ func (m *Terminal) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) 
 	// Keep model selector box within current screen bounds so borders render fully.
 	m.modelSelector.SetSize(msg.Width, msg.Height)
 	m.updateDisplayHeight()
-	m.display.centerWelcomeText()
 	return m, nil
 }
 
@@ -239,7 +242,10 @@ func (m *Terminal) handleSessionLoaded(msg sessionLoadedMsg) (tea.Model, tea.Cmd
 	if msg.err != nil {
 		// Loading failed - show error and quit
 		m.isLoading = false
-		m.loadingMessage = fmt.Sprintf("Error loading session: %v", msg.err)
+		// Update loading window with error message
+		errorStyle := m.styles.Error.Render(fmt.Sprintf("Error loading session: %v", msg.err))
+		m.out.windowBuffer.AppendOrUpdate(loadingWindowID, stream.TagError, errorStyle)
+		m.display.updateContent()
 		return m, tea.Quit
 	}
 
@@ -248,31 +254,34 @@ func (m *Terminal) handleSessionLoaded(msg sessionLoadedMsg) (tea.Model, tea.Cmd
 	m.sessionFile = msg.sessionFile
 	m.isLoading = false
 
+	// Remove loading window by replacing with empty content
+	m.out.windowBuffer.AppendOrUpdate(loadingWindowID, stream.TagNotify, "")
+
 	// Initialize model selector from loaded models
 	if len(msg.models) > 0 {
 		m.modelSelector.LoadModels(msg.models, msg.activeModelID)
 	}
 
-	// Apply active model if needed
-	if msg.activeModel != nil && m.appConfig.Model == nil {
-		m.applyModelSwitch(msg.activeModel)
-	}
+	// Update display dimensions (may have changed during loading)
+	m.out.SetWindowWidth(m.windowWidth)
+	m.display.SetWidth(m.windowWidth)
+	m.status.SetWidth(m.windowWidth)
 
-	// Clear welcome screen - session content should replace it
-	m.display.ClearWelcome()
-
-	// Update display with any loaded messages
+	// Update status from session
 	m.status.SetStatus(m.out.status)
-	m.updateDisplayHeight()
 
 	// Set cursor to last window if there are windows
-	windowCount := m.out.windowBuffer.GetWindowCount()
-	if windowCount > 0 {
+	if m.out.windowBuffer.GetWindowCount() > 0 {
 		m.display.SetCursorToLastWindow()
 	}
 
-	// Always update content to refresh the display
-	m.display.updateContent()
+	// Update display height (this also calls updateContent)
+	m.updateDisplayHeight()
+
+	// Apply active model if needed (this may trigger more output)
+	if msg.activeModel != nil && m.appConfig.Model == nil {
+		m.applyModelSwitch(msg.activeModel)
+	}
 
 	return m, tea.Tick(TickInterval, func(t time.Time) tea.Msg {
 		return tickMsg{}
@@ -597,11 +606,6 @@ func (m *Terminal) updateDisplayHeight() {
 
 // View renders the Terminal
 func (m *Terminal) View() tea.View {
-	// Show loading screen during async session initialization
-	if m.isLoading {
-		return m.renderLoadingView()
-	}
-
 	var sb strings.Builder
 
 	sb.WriteString(m.display.View().Content)
@@ -635,35 +639,6 @@ func (m *Terminal) View() tea.View {
 	v := tea.NewView(baseContent)
 	v.AltScreen = true
 	v.ReportFocus = true // Enable focus/blur events when user switches applications
-	return v
-}
-
-// renderLoadingView renders a simple loading screen
-func (m *Terminal) renderLoadingView() tea.View {
-	loadingStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("62")).
-		Padding(1, 3).
-		Bold(true)
-
-	msg := m.loadingMessage
-	if msg == "" {
-		msg = "Loading..."
-	}
-
-	// Center the loading message on screen
-	content := loadingStyle.Render(msg)
-
-	// Pad to fill screen
-	lines := strings.Count(content, "\n") + 1
-	height := m.windowHeight - lines
-	if height > 0 {
-		content += strings.Repeat("\n", height)
-	}
-
-	v := tea.NewView(content)
-	v.AltScreen = true
-	v.ReportFocus = true
 	return v
 }
 
