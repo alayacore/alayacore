@@ -128,18 +128,19 @@
         let currentStreams = {};  // Map of streamId -> {value, element, type}
         let streamOrder = [];     // Track order of streams for display
 
-        // TLV encoding helper
+        // TLV encoding helper (2-byte tag + 4-byte length)
         function encodeTLV(tag, text) {
             const encoder = new TextEncoder();
             const valueBytes = encoder.encode(text);
             const length = valueBytes.length;
-            const message = new Uint8Array(5 + length);
+            const message = new Uint8Array(6 + length);
             message[0] = tag.charCodeAt(0);
-            message[1] = (length >> 24) & 0xff;
-            message[2] = (length >> 16) & 0xff;
-            message[3] = (length >> 8) & 0xff;
-            message[4] = length & 0xff;
-            message.set(valueBytes, 5);
+            message[1] = tag.charCodeAt(1);
+            message[2] = (length >> 24) & 0xff;
+            message[3] = (length >> 16) & 0xff;
+            message[4] = (length >> 8) & 0xff;
+            message[5] = length & 0xff;
+            message.set(valueBytes, 6);
             return message;
         }
 
@@ -212,16 +213,16 @@
         }
 
         function processBuffer() {
-            while (buffer.length >= 5) {
-                const tag = String.fromCharCode(buffer[0]);
-                const length = new DataView(new Uint8Array(buffer.slice(1, 5)).buffer).getUint32(0, false);
+            while (buffer.length >= 6) {
+                const tag = String.fromCharCode(buffer[0]) + String.fromCharCode(buffer[1]);
+                const length = new DataView(new Uint8Array(buffer.slice(2, 6)).buffer).getUint32(0, false);
 
-                if (buffer.length < 5 + length) {
+                if (buffer.length < 6 + length) {
                     break;
                 }
 
-                const value = new TextDecoder().decode(new Uint8Array(buffer.slice(5, 5 + length)));
-                buffer = buffer.slice(5 + length);
+                const value = new TextDecoder().decode(new Uint8Array(buffer.slice(6, 6 + length)));
+                buffer = buffer.slice(6 + length);
 
                 handleTLV(tag, value);
             }
@@ -244,11 +245,11 @@
         }
 
         function handleTLV(tag, value) {
-            if (tag === 'A' || tag === 'R' || tag === 'T') {
-                // Delta messages with stream ID prefix
+            // Text content tags (delta messages with stream ID prefix)
+            if (tag === 'TA' || tag === 'TR' || tag === 'FS') {
                 const {id, content} = parseStreamID(value);
                 const streamId = id || ('unknown-' + Date.now());
-                const streamType = tag === 'A' ? 'assistant' : tag === 'R' ? 'reasoning' : 'tool';
+                const streamType = tag === 'TA' ? 'assistant' : tag === 'TR' ? 'reasoning' : 'tool';
                 if (currentStreams[streamId]) {
                     // Append to existing stream
                     currentStreams[streamId].value += content;
@@ -262,13 +263,14 @@
                     };
                     streamOrder.push(streamId);
                 }
-            } else if (tag === 'E') {
+            // System tags
+            } else if (tag === 'SE') {
                 flushCurrentStreams();
                 addMessage('error', value);
-            } else if (tag === 'N') {
+            } else if (tag === 'SN') {
                 flushCurrentStreams();
                 addMessage('system', value);
-            } else if (tag === 'S') {
+            } else if (tag === 'SD') {
                 flushCurrentStreams();
                 try {
                     const systemInfo = JSON.parse(value);
@@ -291,7 +293,8 @@
                     // Not JSON, display as plain system message
                     addMessage('system', value);
                 }
-            } else if (tag === 'U') {
+            // User text tag
+            } else if (tag === 'TU') {
                 addMessage('user', value);
             }
         }
@@ -348,16 +351,16 @@
         function sendMessage() {
             const text = prompt.value.trim();
             if (!text) return;
-            sendTLV('U', text);
+            sendTLV('TU', text);
             prompt.value = '';
         }
 
         function sendCancelCommand() {
-            sendTLV('U', ':cancel');
+            sendTLV('TU', ':cancel');
         }
 
         function sendSaveCommand() {
-            sendTLV('U', ':save');
+            sendTLV('TU', ':save');
         }
 
         send.addEventListener('click', sendMessage);
