@@ -5,11 +5,23 @@
 ## Usage
 
 ```sh
-# Start WebSocket server
-alayacore-web --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+# Start WebSocket server (uses models from config file)
+alayacore-web
 
 # Custom address
-alayacore-web --type anthropic --base-url https://api.anthropic.com --api-key $ANTHROPIC_API_KEY --model claude-sonnet-4 --addr :9090
+alayacore-web --addr :9090
+
+# With custom model config
+alayacore-web --model-config ./my-models.conf
+
+# With session persistence
+alayacore-web --session ~/my-session.md
+
+# With skills
+alayacore-web --skill ./skills
+
+# With proxy
+alayacore-web --proxy socks5://127.0.0.1:1080
 ```
 
 ## Endpoints

@@ -51,11 +51,14 @@ alayacore --skill ~/playground/alayacore/misc/samples/skills/
 ## Examples
 
 ```sh
-# Basic usage
+# Basic usage (loads models from ~/.alayacore/models.conf)
 alayacore
 
 # With custom model config
 alayacore --model-config ./my-models.conf
+
+# With custom runtime config
+alayacore --runtime-config ./my-runtime.conf
 
 # With session persistence
 alayacore --session ~/my-session.md
@@ -74,6 +77,9 @@ alayacore --context-limit 200K
 
 # Debug API requests
 alayacore --debug-api
+
+# Show version
+alayacore --version
 ```
 
 

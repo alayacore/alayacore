@@ -5,8 +5,14 @@ AlayaCore supports the Agent Skills specification from [agentskills.io](https://
 ## Usage
 
 ```sh
-# With skills directory
-alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --skill ./skills "extract text from document.pdf"
+# With skills directory (uses models from config file)
+alayacore --skill ./skills "extract text from document.pdf"
+
+# With multiple skill directories
+alayacore --skill ./skills1 --skill ./skills2
+
+# With custom model config
+alayacore --model-config ./my-models.conf --skill ./skills
 ```
 
 ## Skill Directory Structure

@@ -7,6 +7,7 @@ AlayaCore allows you to save and restore conversations manually using session fi
 - **Manual-save**: Sessions are saved only when you use `:save [filename]` or press `Ctrl+S`
 - **Load**: On startup, AlayaCore creates a new empty session unless you specify `--session` to load an existing one
 - **Path expansion**: Paths like `~/mysession.md` are expanded to your home directory
+- **Auto-summarize**: When `--context-limit` is set, AlayaCore automatically triggers `:summarize` when context reaches 80% of the limit to prevent context overflow errors
 
 ## What's Saved
 
@@ -34,11 +35,14 @@ AlayaCore allows you to save and restore conversations manually using session fi
 You can load an existing session using the `--session` flag:
 
 ```sh
-# Load a specific session file
-alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o --session ~/mysession.md
+# Load a specific session file (uses models from config file)
+alayacore --session ~/mysession.md
 
 # Start fresh with a new session (default behavior)
-alayacore --type openai --base-url https://api.openai.com/v1 --api-key $OPENAI_API_KEY --model gpt-4o
+alayacore
+
+# Load a session with custom model config
+alayacore --model-config ./my-models.conf --session ~/mysession.md
 ```
 
 ## File Format
@@ -59,22 +63,29 @@ updated_at: 2024-01-15T10:45:00Z
 ---
 
 
-U    Hello, how are you?
+TU    Hello, how are you?
 
-A    I'm doing well, thanks!
+TA    I'm doing well, thanks!
 
-R    User is asking about my state...
+TR    User is asking about my state...
 
-C    {"id":"call1","name":"read_file","input":"..."}
+FC    {"id":"call1","name":"read_file","input":"..."}
 
-T    {"id":"call1","output":"file contents..."}
+FR    {"id":"call1","output":"file contents..."}
 ```
 
 Each message part is encoded as:
 - Blank line separator (`\n\n`)
-- 1 byte: tag (`U`=user, `A`=assistant, `R`=reasoning, `C`=tool call, `T`=tool result)
+- 2 bytes: tag (e.g., `TU`=user text, `TA`=assistant text, `TR`=reasoning, `FC`=tool call, `FR`=tool result)
 - 4 bytes: length (big-endian)
-- N bytes: content
+- N bytes: content (text or JSON for tool calls/results)
+
+**TLV Tags:**
+- `TU` (Text User) - User text input
+- `TA` (Text Assistant) - Assistant text output
+- `TR` (Text Reasoning) - Reasoning/thinking content
+- `FC` (Function Call) - Tool call (JSON encoded)
+- `FR` (Function Result) - Tool result (JSON encoded)
 
 The TLV (Tag-Length-Value) encoding prevents recursion issues when session files contain tool results that include session-like content. The blank line separators make the file more readable when opened in a text editor.
 
