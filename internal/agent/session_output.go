@@ -19,7 +19,7 @@ func (s *Session) signalCommandStart(cmd string) {
 }
 
 func (s *Session) writeError(msg string) {
-	s.writeGapped(stream.TagError, msg)
+	s.writeGapped(stream.TagSystemError, msg)
 }
 
 func (s *Session) writeNotify(msg string) {

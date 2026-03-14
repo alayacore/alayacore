@@ -100,7 +100,7 @@ func (w *outputWriter) Flush() error {
 func (w *outputWriter) AppendError(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	id := w.generateWindowID()
-	w.windowBuffer.AppendOrUpdate(id, stream.TagError, w.styles.Error.Render(msg))
+	w.windowBuffer.AppendOrUpdate(id, stream.TagSystemError, w.styles.Error.Render(msg))
 }
 
 // WriteNotify writes a notification message to the display
@@ -159,7 +159,7 @@ func (w *outputWriter) writeColored(tag string, value string) {
 		}
 		w.windowBuffer.AppendOrUpdate(id, tag, styled)
 
-	case stream.TagError:
+	case stream.TagSystemError:
 		id := w.generateWindowID()
 		styled := output(w.styles.Error, value)
 		w.windowBuffer.AppendOrUpdate(id, tag, styled)
@@ -188,7 +188,7 @@ func (w *outputWriter) writeColored(tag string, value string) {
 // Uses throttling to batch rapid updates together
 func (w *outputWriter) triggerUpdateForTag(tag string) {
 	switch tag {
-	case stream.TagTextAssistant, stream.TagFunctionShow, stream.TagTextReasoning, stream.TagError,
+	case stream.TagTextAssistant, stream.TagFunctionShow, stream.TagTextReasoning, stream.TagSystemError,
 		stream.TagSystemNotify, stream.TagSystemData, stream.TagTextUser:
 		w.updateMu.Lock()
 		defer w.updateMu.Unlock()

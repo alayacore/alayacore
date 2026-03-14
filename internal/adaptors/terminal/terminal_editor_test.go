@@ -466,8 +466,8 @@ func TestWindowBufferRendering(t *testing.T) {
 
 func TestWindowBufferNonDeltaMessages(t *testing.T) {
 	out := NewTerminalOutput()
-	// Write a non-delta message (TagError)
-	err := stream.WriteTLV(out, stream.TagError, "Something went wrong")
+	// Write a non-delta message (TagSystemError)
+	err := stream.WriteTLV(out, stream.TagSystemError, "Something went wrong")
 	if err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
@@ -486,8 +486,8 @@ func TestWindowBufferNonDeltaMessages(t *testing.T) {
 		t.Errorf("Non-delta windows should have different IDs: %s", windows[0].ID)
 	}
 	// Ensure tags are correct
-	if windows[0].Tag != stream.TagError {
-		t.Errorf("Expected TagError, got %s", windows[0].Tag)
+	if windows[0].Tag != stream.TagSystemError {
+		t.Errorf("Expected TagSystemError, got %s", windows[0].Tag)
 	}
 	if windows[1].Tag != stream.TagSystemNotify {
 		t.Errorf("Expected TagSystemNotify, got %s", windows[1].Tag)
@@ -515,7 +515,7 @@ func TestWindowBufferEdgeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
-	err = stream.WriteTLV(out, stream.TagError, "Error")
+	err = stream.WriteTLV(out, stream.TagSystemError, "Error")
 	if err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
@@ -531,7 +531,7 @@ func TestWindowBufferEdgeCases(t *testing.T) {
 	if windows[1].Tag != stream.TagTextAssistant {
 		t.Errorf("Second window tag mismatch")
 	}
-	if windows[2].Tag != stream.TagError {
+	if windows[2].Tag != stream.TagSystemError {
 		t.Errorf("Third window tag mismatch")
 	}
 }

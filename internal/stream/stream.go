@@ -18,7 +18,7 @@ const (
 	TagFunctionShow   = "FS" // Function call output for display (adaptors)
 	TagFunctionCall   = "FC" // Function call for session saving/loading
 	TagFunctionResult = "FR" // Function result for session saving/loading
-	TagError          = "ER" // Error messages
+	TagSystemError    = "SE" // System error messages
 	TagSystemNotify   = "SN" // System notification messages (simple string)
 	TagSystemData     = "SD" // System data messages (complex data, queue status, model info, etc.)
 )
