@@ -223,7 +223,6 @@ For this project, simplicity is more important than efficiency.
   - Removed unused internal fields for simpler state
 
 - ✅ **Model Management Commands**
-  - `:model_get_all` - Get all available models (returns via TagSystemData with models field)
   - `:model_set <ID>` - Switch to a model by its ID (works even during task execution)
   - `:model_load [file]` - Load models from config file (default: path from --model-config or ~/.alayacore/model.conf)
   - ModelManager in `internal/agent/model_manager.go` manages models with runtime IDs

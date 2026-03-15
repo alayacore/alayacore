@@ -36,6 +36,5 @@ When running the Terminal version:
 |---------|--------|
 | `:cancel` | Cancel current request (with confirmation) |
 | `:quit`, `:q` | Exit with confirmation (press y/n) |
-| `:model_get_all` | List all saved model configurations |
-| `:model_set <name>` | Switch to a saved model configuration |
+| `:model_set <id>` | Switch to a saved model configuration |
 | `:model_load` | Load model configurations from default config file |

@@ -26,8 +26,6 @@ func (s *Session) handleCommandSync(ctx context.Context, cmd string) {
 		s.cancelTask()
 	case "save":
 		s.saveSession(parts[1:])
-	case "model_get_all":
-		s.handleModelGetAll()
 	case "model_set":
 		s.handleModelSet(parts[1:])
 	case "model_load":
@@ -106,15 +104,6 @@ func (s *Session) saveSession(args []string) {
 // ============================================================================
 // Model Commands
 // ============================================================================
-
-func (s *Session) handleModelGetAll() {
-	if s.ModelManager == nil {
-		s.writeError("model manager not initialized")
-		return
-	}
-	// sendSystemInfo now includes model list and active ID
-	s.sendSystemInfo()
-}
 
 func (s *Session) handleModelSet(args []string) {
 	if s.ModelManager == nil {

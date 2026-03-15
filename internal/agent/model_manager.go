@@ -40,12 +40,6 @@ type ModelInfo struct {
 	IsActive     bool   `json:"is_active"`
 }
 
-// ModelListResponse is the response for model_get_all command
-type ModelListResponse struct {
-	Models   []ModelInfo `json:"models"`
-	ActiveID string      `json:"active_id,omitempty"`
-}
-
 // ModelManager manages model configurations
 // NOTE: ModelManager NEVER writes to the model config file.
 // Users must edit the file with a text editor (press 'e' in model selector).

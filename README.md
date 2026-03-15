@@ -196,8 +196,7 @@ A Window Cursor highlights one window with a bright border. Use `j`/`k` to navig
 
 ## Model Management Commands
 
-- `:model_get_all` - List all saved model configurations
-- `:model_set <name>` - Switch to a saved model configuration
+- `:model_set <id>` - Switch to a saved model configuration
 - `:model_load` - Load model configurations from default config file
 
 ## Architecture
