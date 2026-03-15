@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -13,23 +12,32 @@ import (
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
-// Terminal is the main Bubble Tea model; composes display, input, status.
+// Terminal is the main Bubble Tea model that composes display, input, and status components.
+// It serves as the central coordinator for the terminal UI, managing:
+//   - User input and keyboard shortcuts (delegated to keys.go)
+//   - Command processing (delegated to commands.go)
+//   - Display updates from the agent session
+//   - Model selection and switching
+//   - Window focus management
 type Terminal struct {
+	// Core components
 	session     *agentpkg.Session
 	out         *outputWriter
 	streamInput *stream.ChanInput
 	appConfig   *app.Config
 
+	// UI components
 	display       DisplayModel
 	input         InputModel
 	status        StatusModel
 	modelSelector *ModelSelector
 
+	// State
 	quitting            bool
 	confirmDialog       bool
 	cancelConfirmDialog bool
 	cancelFromCommand   bool
-	focusedWindow       string
+	focusedWindow       string // "input" or "display"
 	windowWidth         int
 	windowHeight        int
 	sessionFile         string
@@ -37,8 +45,15 @@ type Terminal struct {
 	hasFocus            bool // tracks whether the terminal has application focus
 }
 
-// NewTerminal creates a new Terminal model
-func NewTerminal(session *agentpkg.Session, out *outputWriter, inputStream *stream.ChanInput, sessionFile string, appCfg *app.Config, initialWidth, initialHeight int) *Terminal {
+// NewTerminal creates a new Terminal model with all components initialized.
+func NewTerminal(
+	session *agentpkg.Session,
+	out *outputWriter,
+	inputStream *stream.ChanInput,
+	sessionFile string,
+	appCfg *app.Config,
+	initialWidth, initialHeight int,
+) *Terminal {
 	styles := DefaultStyles()
 
 	m := &Terminal{
@@ -55,481 +70,203 @@ func NewTerminal(session *agentpkg.Session, out *outputWriter, inputStream *stre
 		styles:        styles,
 		focusedWindow: "input",
 		sessionFile:   sessionFile,
-		hasFocus:      true, // program starts with focus
+		hasFocus:      true,
 	}
 
-	// Set initial width on all components
+	// Initialize component widths
 	m.display.SetWidth(initialWidth)
 	m.input.SetWidth(initialWidth)
 	m.status.SetWidth(initialWidth)
 	m.modelSelector.SetSize(initialWidth, initialHeight)
-
-	// Set initial display height
 	m.updateDisplayHeight()
 
 	return m
 }
 
-// Init initializes the Terminal
+// Init starts the periodic tick loop for processing session updates.
 func (m *Terminal) Init() tea.Cmd {
-	// Start the periodic tick loop immediately so we can process
-	// session updates (e.g. model switches) even before the user
-	// submits the first prompt.
 	return tea.Tick(TickInterval, func(t time.Time) tea.Msg {
 		return tickMsg{}
 	})
 }
 
-// --- Message handling ---
-
-type tickMsg struct{}
-
-// Update routes messages; KeyMsg first for responsive input (see PERFORMANCE_ANALYSIS.md).
+// Update handles all incoming messages and routes them to appropriate handlers.
+// Messages are processed in order of priority:
+//  1. KeyMsg - keyboard input (highest priority for responsiveness)
+//  2. WindowSizeMsg - terminal resize
+//  3. tickMsg - periodic updates for display and model switching
+//  4. Editor messages - external editor completion
+//  5. Focus/Blur - application focus changes
+//  6. Paste - clipboard paste
 func (m *Terminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Process user-facing messages FIRST to avoid blocking keyboard input.
-	// Display updates run after so keypress returns immediately.
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
+
 	case tea.WindowSizeMsg:
 		return m.handleWindowSize(msg)
+
 	case tickMsg:
-		// Drain pending display updates (non-blocking) so streaming content appears
-		var cmd tea.Cmd
-		select {
-		case <-m.out.updateChan:
-			if m.out.windowBuffer.GetWindowCount() > 0 {
-				m.status.SetStatus(m.out.status)
-				m.updateDisplayHeight()
-				if m.display.shouldFollow() {
-					m.display.SetCursorToLastWindow()
-				}
-				m.display.updateContent()
-			}
-			// Check for model switch from model_set command
-			if activeModel := m.out.GetActiveModel(); activeModel != nil {
-				m.applyModelSwitch(activeModel)
-			}
-			// Update model selector if models changed (via TagSystemData, not direct access)
-			cmd = m.modelSelector.LoadModels(m.out.GetModels(), m.out.GetActiveModelID())
-		default:
-			m.status.SetStatus(m.out.status)
-		}
-		// Always keep ticking to check for model switches and other updates
-		return m, tea.Batch(
-			tea.Tick(TickInterval, func(t time.Time) tea.Msg {
-				return tickMsg{}
-			}),
-			cmd,
-		)
+		return m.handleTick()
+
 	case editorFinishedMsg:
-		if msg.err != nil {
-			m.out.AppendError("Editor error: %v", msg.err)
-		} else if msg.content != "" {
-			m.input.editorContent = msg.content
-			m.input.SetValue(FormatEditorContent(msg.content))
-			m.input.CursorEnd()
-			m.input.Focus()
-		}
-		return m, nil
+		return m.handleEditorFinished(msg)
+
 	case FileEditorFinishedMsg:
-		// External editor finished for a specific file (e.g., model config)
-		if msg.Err != nil {
-			m.out.WriteNotify(fmt.Sprintf("Error editing file %s: %v", msg.Path, msg.Err))
-		}
-		// If it was the model config file, reload models.
-		// Model configs are stored in models.conf (or a custom path), so we
-		// just check for the default filename suffix here.
-		if strings.HasSuffix(msg.Path, "models.conf") {
-			m.streamInput.EmitTLV(stream.TagTextUser, ":model_load")
-		}
-		return m, nil
+		return m.handleFileEditorFinished(msg)
+
 	case tea.BlurMsg:
-		// User switched away from this program (e.g., to another tmux window)
-		m.hasFocus = false
-		m.display.SetDisplayFocused(false)
-		m.input.Blur()
-		m.display.updateContent() // re-render without cursor highlight
-		return m, nil
+		return m.handleBlur()
+
 	case tea.FocusMsg:
-		// User switched back to this program
-		m.hasFocus = true
-		// Restore focus to the previously focused window
-		if m.focusedWindow == "display" {
-			m.display.SetDisplayFocused(true)
-		} else {
-			m.input.Focus()
-		}
-		m.display.updateContent() // re-render with cursor if display focused
-		return m, nil
+		return m.handleFocus()
+
 	case tea.PasteMsg:
-		// Handle paste - route to input
 		m.input.updateFromMsg(msg)
 		return m, nil
 	}
 
+	// Default: pass to input component
 	m.input.updateFromMsg(msg)
 	return m, nil
 }
 
-// --- Key bindings ---
+// tickMsg is sent periodically to update the display.
+type tickMsg struct{}
 
-// handleWindowSize handles window resize events
+// handleWindowSize handles terminal resize events.
 func (m *Terminal) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.windowWidth = msg.Width
 	m.windowHeight = msg.Height
+
+	// Update all components
 	m.out.SetWindowWidth(max(0, msg.Width))
 	m.display.SetWidth(max(0, msg.Width))
 	m.input.SetWidth(max(0, msg.Width))
 	m.status.SetWidth(max(0, msg.Width))
-	// Keep model selector box within current screen bounds so borders render fully.
 	m.modelSelector.SetSize(msg.Width, msg.Height)
 	m.updateDisplayHeight()
+
 	return m, nil
 }
 
-// handleKeyMsg handles keyboard input
-func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle model selector input when open
-	if m.modelSelector.IsOpen() {
-		// Handle KeyMsg directly (needed for textinput to work properly)
-		cmd := m.modelSelector.HandleKeyMsg(msg)
-		// Check if a model was selected
-		if m.modelSelector.ConsumeModelSelected() {
-			m.switchToSelectedModel()
-		}
-		// Check if user wants to open model file
-		if m.modelSelector.ConsumeOpenModelFile() {
-			return m, tea.Batch(cmd, m.openModelConfigFile())
-		}
-		// Check if user wants to reload models
-		if m.modelSelector.ConsumeReloadModels() {
-			m.streamInput.EmitTLV(stream.TagTextUser, ":model_load")
-		}
-		// Restore focus when model selector closes
-		if !m.modelSelector.IsOpen() {
-			if m.focusedWindow == "display" {
-				m.display.SetDisplayFocused(true)
-			} else {
-				m.input.Focus()
+// handleTick processes periodic updates for display and model switching.
+func (m *Terminal) handleTick() (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	// Drain pending display updates (non-blocking)
+	select {
+	case <-m.out.updateChan:
+		if m.out.windowBuffer.GetWindowCount() > 0 {
+			m.status.SetStatus(m.out.status)
+			m.updateDisplayHeight()
+			if m.display.shouldFollow() {
+				m.display.SetCursorToLastWindow()
 			}
 			m.display.updateContent()
 		}
-		return m, cmd
-	}
 
-	if cmd, handled := m.handleConfirmDialog(msg); handled {
-		return m, cmd
-	}
-
-	if msg.String() == "tab" {
-		m.toggleFocus()
-		return m, nil
-	}
-
-	if m.focusedWindow == "display" {
-		if cmd, handled := m.handleDisplayKeys(msg); handled {
-			return m, cmd
+		// Check for model switch from model_set command
+		if activeModel := m.out.GetActiveModel(); activeModel != nil {
+			m.applyModelSwitch(activeModel)
 		}
+
+		// Update model selector if models changed
+		cmd = m.modelSelector.LoadModels(m.out.GetModels(), m.out.GetActiveModelID())
+
+	default:
+		m.status.SetStatus(m.out.status)
 	}
 
-	if cmd, handled := m.handleGlobalKeys(msg); handled {
-		return m, cmd
+	// Continue ticking
+	return m, tea.Batch(
+		tea.Tick(TickInterval, func(t time.Time) tea.Msg {
+			return tickMsg{}
+		}),
+		cmd,
+	)
+}
+
+// handleEditorFinished handles completion of the external editor.
+func (m *Terminal) handleEditorFinished(msg editorFinishedMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.out.AppendError("Editor error: %v", msg.err)
+	} else if msg.content != "" {
+		m.input.editorContent = msg.content
+		m.input.SetValue(FormatEditorContent(msg.content))
+		m.input.CursorEnd()
+		m.input.Focus()
+	}
+	return m, nil
+}
+
+// handleFileEditorFinished handles completion of file editing (e.g., model config).
+func (m *Terminal) handleFileEditorFinished(msg FileEditorFinishedMsg) (tea.Model, tea.Cmd) {
+	if msg.Err != nil {
+		m.out.WriteNotify(fmt.Sprintf("Error editing file %s: %v", msg.Path, msg.Err))
 	}
 
-	oldValue := m.input.Value()
-	m.input.updateFromMsg(msg)
-	newValue := m.input.Value()
-
-	if m.input.editorContent != "" && oldValue != newValue && !strings.HasPrefix(oldValue, "[") {
-		m.input.editorContent = ""
+	// Reload models if the model config file was edited
+	if strings.HasSuffix(msg.Path, "models.conf") {
+		m.streamInput.EmitTLV(stream.TagTextUser, ":model_load")
 	}
 
 	return m, nil
 }
 
-// handleConfirmDialog handles quit and cancel confirmation dialogs
-func (m *Terminal) handleConfirmDialog(msg tea.KeyMsg) (tea.Cmd, bool) {
-	if m.confirmDialog {
-		switch msg.String() {
-		case "y", "Y":
-			m.quitting = true
-			m.streamInput.Close()
-			m.out.Close()
-			return tea.Quit, true
-		case "n", "N", "esc", "ctrl+c":
-			m.confirmDialog = false
-			m.input.SetValue("")
-			return nil, true
-		}
-		return nil, true
-	}
-
-	if m.cancelConfirmDialog {
-		switch msg.String() {
-		case "y", "Y":
-			m.cancelConfirmDialog = false
-			if m.cancelFromCommand {
-				m.input.SetValue("")
-			}
-			return m.submitCommand("cancel", m.cancelFromCommand), true
-		case "n", "N", "esc", "ctrl+c":
-			m.cancelConfirmDialog = false
-			if m.cancelFromCommand {
-				m.input.SetValue("")
-			}
-			return nil, true
-		}
-		return nil, true
-	}
-
-	return nil, false
+// handleBlur handles loss of application focus.
+func (m *Terminal) handleBlur() (tea.Model, tea.Cmd) {
+	m.hasFocus = false
+	m.display.SetDisplayFocused(false)
+	m.input.Blur()
+	m.display.updateContent()
+	return m, nil
 }
 
-// toggleFocus switches between display and input windows
-func (m *Terminal) toggleFocus() {
+// handleFocus handles gain of application focus.
+func (m *Terminal) handleFocus() (tea.Model, tea.Cmd) {
+	m.hasFocus = true
+
+	// Restore focus to the previously focused window
 	if m.focusedWindow == "display" {
-		m.focusedWindow = "input"
-		m.display.SetDisplayFocused(false)
-		m.input.Focus()
-	} else {
-		m.focusedWindow = "display"
 		m.display.SetDisplayFocused(true)
-		m.input.Blur()
-		// Initialize cursor to last window if not set
-		if m.display.GetWindowCursor() < 0 {
-			m.display.SetCursorToLastWindow()
-		}
+	} else {
+		m.input.Focus()
 	}
 	m.display.updateContent()
+
+	return m, nil
 }
 
-// handleDisplayKeys handles key events when display window is focused
-func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
-	switch msg.String() {
-	case "j":
-		if m.display.MoveWindowCursorDown() {
-			m.display.updateContent()
-			m.display.EnsureCursorVisible()
-		}
-		return nil, true
-	case "k":
-		if m.display.MoveWindowCursorUp() {
-			m.display.updateContent()
-			m.display.EnsureCursorVisible()
-		}
-		return nil, true
-	case "J":
-		m.display.MarkUserScrolled()
-		m.display.ScrollDown(1)
-		return nil, true
-	case "K":
-		m.display.MarkUserScrolled()
-		m.display.ScrollUp(1)
-		return nil, true
-	case "H":
-		if m.display.MoveWindowCursorToTop() {
-			m.display.updateContent()
-		}
-		return nil, true
-	case "L":
-		if m.display.MoveWindowCursorToBottom() {
-			m.display.updateContent()
-		}
-		return nil, true
-	case "M":
-		if m.display.MoveWindowCursorToCenter() {
-			m.display.updateContent()
-		}
-		return nil, true
-	case "G":
-		m.display.GotoBottom()
-		m.display.SetCursorToLastWindow()
-		m.display.updateContent()
-		return nil, true
-	case "g":
-		m.display.GotoTop()
-		m.display.SetWindowCursor(0)
-		m.display.updateContent()
-		return nil, true
-	case ":":
-		m.focusedWindow = "input"
-		m.input.Focus()
-		m.input.SetValue(":")
-		m.input.CursorEnd()
-		return nil, true
-	case "space":
-		if m.display.ToggleWindowWrap() {
-			m.display.updateContent()
-		}
-		return nil, true
-	}
-	return nil, false
-}
-
-// handleGlobalKeys handles global keyboard shortcuts
-func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
-	switch msg.String() {
-	case "ctrl+g":
-		m.cancelConfirmDialog = true
-		m.cancelFromCommand = false
-		return nil, true
-	case "ctrl+c":
-		if m.focusedWindow == "input" {
-			m.input.SetValue("")
-			m.input.editorContent = ""
-		}
-		return nil, true
-	case "ctrl+u":
-		return nil, true
-	case "ctrl+s":
-		return m.submitCommand("save", false), true
-	case "ctrl+o":
-		return m.input.OpenEditor(), true
-	case "ctrl+l":
-		m.modelSelector.Open()
-		// Blur both input and display when model selector opens
-		m.input.Blur()
-		m.display.SetDisplayFocused(false)
-		m.display.updateContent()
-		return nil, true
-	case "enter":
-		return m.handleSubmit(), true
-	}
-	return nil, false
-}
-
-// handleSubmit processes the input when Enter is pressed
-func (m *Terminal) handleSubmit() tea.Cmd {
-	prompt := m.input.GetPrompt()
-	m.input.editorContent = ""
-
-	if prompt == "" {
-		return nil
-	}
-
-	if command, found := strings.CutPrefix(prompt, ":"); found {
-		if command == "quit" || command == "q" {
-			m.confirmDialog = true
-			return nil
-		}
-		if command == "cancel" {
-			m.cancelConfirmDialog = true
-			m.cancelFromCommand = true
-			return nil
-		}
-		return m.submitCommand(command, true)
-	}
-
-	m.streamInput.EmitTLV(stream.TagTextUser, prompt)
-	m.input.SetValue("")
-
-	return tea.Tick(SubmitTickDelay, func(t time.Time) tea.Msg {
-		return tickMsg{}
-	})
-}
-
-func (m *Terminal) submitCommand(command string, clearInput bool) tea.Cmd {
-	m.streamInput.EmitTLV(stream.TagTextUser, ":"+command)
-	if clearInput {
-		m.input.SetValue("")
-	}
-	return tea.Tick(SubmitTickDelay, func(t time.Time) tea.Msg {
-		return tickMsg{}
-	})
-}
-
-// switchToSelectedModel sends a model_set command to switch to the selected model
-func (m *Terminal) switchToSelectedModel() {
-	selectedModel := m.modelSelector.GetActiveModel()
-	if selectedModel == nil {
-		return
-	}
-
-	// Send model_set command to session instead of switching directly
-	if selectedModel.ID != "" {
-		m.streamInput.EmitTLV(stream.TagTextUser, ":model_set "+selectedModel.ID)
-	}
-}
-
-// openModelConfigFile opens the model config file with $EDITOR using shared Editor
-func (m *Terminal) openModelConfigFile() tea.Cmd {
-	// Get model config path from TagSystemData data (not direct session access)
-	path := m.out.GetModelConfigPath()
-	if path == "" {
-		return func() tea.Msg {
-			return FileEditorFinishedMsg{Path: "", Err: fmt.Errorf("no model config file path configured")}
-		}
-	}
-
-	return m.input.editor.OpenFile(path)
-}
-
-// applyModelSwitch applies a model switch from a model_set response.
-// This is the only place where the adaptor calls session.SwitchModel() directly.
-// This is necessary because provider/model creation requires proxy and debug settings
-// that are only available to the adaptor, not the session. The flow is:
-// 1. Terminal sends :model_set <id> via TLV (TagTextUser)
-// 2. Session handles command and sends TagSystemData with ActiveModelConfig (includes API key)
-// 3. Adaptor creates provider/model objects and calls SwitchModel
-// 4. Session state is updated with new model
-func (m *Terminal) applyModelSwitch(model *agentpkg.ModelConfig) {
-	if model == nil || m.appConfig == nil {
-		return
-	}
-
-	// Create new provider and model
-	provider, err := app.CreateProvider(model.ProtocolType, model.APIKey, model.BaseURL, m.appConfig.Cfg.DebugAPI, m.appConfig.Cfg.Proxy)
-	if err != nil {
-		m.out.WriteNotify("Failed to create provider: " + err.Error())
-		return
-	}
-
-	newModel, err := provider.LanguageModel(context.Background(), model.ModelName)
-	if err != nil {
-		m.out.WriteNotify("Failed to create language model: " + err.Error())
-		return
-	}
-
-	// Switch the session to the new model.
-	// This direct call is necessary because only the adaptor can create providers.
-	m.session.SwitchModel(newModel, model.BaseURL, model.ModelName, m.appConfig.AgentTools, m.appConfig.SystemPrompt)
-
-	// Show notification
-	m.out.WriteNotify("Switched to model: " + model.Name + " (" + model.ModelName + ")")
-}
-
-// --- Layout ---
-
-// updateDisplayHeight updates the display viewport height based on window size
+// updateDisplayHeight updates the display viewport height based on window size.
 func (m *Terminal) updateDisplayHeight() {
 	m.display.UpdateHeight(m.windowHeight)
 }
 
-// View renders the Terminal
+// View renders the complete terminal UI.
 func (m *Terminal) View() tea.View {
 	var sb strings.Builder
 
+	// Display area
 	sb.WriteString(m.display.View().Content)
 	sb.WriteString("\n")
 
+	// Input area with optional confirmation dialog
 	confirmText := ""
 	if m.confirmDialog {
 		confirmText = "Confirm exit? Press y/n"
 	} else if m.cancelConfirmDialog {
 		confirmText = "Confirm cancel? Press y/n"
 	}
+	sb.WriteString(m.input.RenderWithBorder(m.confirmDialog || m.cancelConfirmDialog, confirmText))
 
-	inputView := m.input.RenderWithBorder(m.confirmDialog || m.cancelConfirmDialog, confirmText)
-	sb.WriteString(inputView)
-
+	// Status bar
 	sb.WriteString("\n")
 	sb.WriteString(m.status.RenderString())
 
-	// Build the base content
 	baseContent := sb.String()
 
-	// Render model selector overlay if open (centered on screen, on top of base content)
+	// Render model selector overlay if open
 	if m.modelSelector.IsOpen() {
 		fullContent := m.modelSelector.RenderOverlay(baseContent, m.windowWidth, m.windowHeight)
 		v := tea.NewView(fullContent)
@@ -540,10 +277,9 @@ func (m *Terminal) View() tea.View {
 
 	v := tea.NewView(baseContent)
 	v.AltScreen = true
-	v.ReportFocus = true // Enable focus/blur events when user switches applications
+	v.ReportFocus = true
 	return v
 }
 
-var (
-	_ tea.Model = (*Terminal)(nil)
-)
+// Ensure Terminal implements tea.Model
+var _ tea.Model = (*Terminal)(nil)
