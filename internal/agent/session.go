@@ -3,7 +3,7 @@ package agent
 // Session wires together the model, tools, IO streams, and the model/
 // runtime managers. Rough dependency flow:
 //
-//   models.conf --(ModelManager)--> available models (no API keys in JSON)
+//   model.conf --(ModelManager)--> available models (no API keys in JSON)
 //         ^                               |
 //         |                               v
 //   runtime.conf --(RuntimeManager)--> active model name
@@ -49,7 +49,7 @@ type SystemInfo struct {
 	ActiveModelConfig *ModelConfig `json:"active_model_config,omitempty"` // Full config (with API key), only when model changes
 	ActiveModelName   string       `json:"active_model_name,omitempty"`   // Name of active model
 	HasModels         bool         `json:"has_models"`                    // Whether models are configured
-	ModelConfigPath   string       `json:"model_config_path,omitempty"`   // Path to models.conf
+	ModelConfigPath   string       `json:"model_config_path,omitempty"`   // Path to model.conf
 }
 
 // Session manages conversation state and task execution.

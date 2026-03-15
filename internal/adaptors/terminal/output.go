@@ -33,7 +33,7 @@ type outputWriter struct {
 	activeModelID      string                // Current active model ID
 	pendingModelConfig *agentpkg.ModelConfig // Full config from model_set (with API key)
 	hasModels          bool                  // Whether models are configured
-	modelConfigPath    string                // Path to models.conf
+	modelConfigPath    string                // Path to model.conf
 	activeModelName    string                // Name of active model
 }
 

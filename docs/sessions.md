@@ -42,7 +42,7 @@ alayacore --session ~/mysession.md
 alayacore
 
 # Load a session with custom model config
-alayacore --model-config ./my-models.conf --session ~/mysession.md
+alayacore --model-config ./my-model.conf --session ~/mysession.md
 ```
 
 ## File Format

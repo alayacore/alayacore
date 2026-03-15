@@ -40,7 +40,7 @@ Usage:
   alayacore [flags]
 
 Flags:
-  model-config string  Model config file path (default: ~/.alayacore/models.conf)
+  model-config string  Model config file path (default: ~/.alayacore/model.conf)
   runtime-config string  Runtime config file path (default: ~/.alayacore/runtime.conf)
   system string      Override system prompt
   skill strings      Skills directory path (can be specified multiple times)
@@ -59,7 +59,7 @@ Examples:
   alayacore --session ~/mysession.md
   alayacore --skill ./skills1 --skill ./skills2
   alayacore --proxy http://127.0.0.1:7890
-  alayacore --model-config ./my-models.conf
+  alayacore --model-config ./my-model.conf
 
 `)
 }

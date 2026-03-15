@@ -12,7 +12,7 @@ alayacore --skill ./skills "extract text from document.pdf"
 alayacore --skill ./skills1 --skill ./skills2
 
 # With custom model config
-alayacore --model-config ./my-models.conf --skill ./skills
+alayacore --model-config ./my-model.conf --skill ./skills
 ```
 
 ## Skill Directory Structure

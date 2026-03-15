@@ -2,7 +2,7 @@
 
 ## Usage
 
-AlayaCore loads models from a configuration file. Create `~/.alayacore/models.conf`:
+AlayaCore loads models from a configuration file. Create `~/.alayacore/model.conf`:
 
 ```
 name: "OpenAI GPT-4o"
@@ -36,7 +36,7 @@ alayacore --skill ~/playground/alayacore/misc/samples/skills/
 
 | Flag | Description |
 |------|-------------|
-| `-model-config string` | Model config file path (default: `~/.alayacore/models.conf`) |
+| `-model-config string` | Model config file path (default: `~/.alayacore/model.conf`) |
 | `-runtime-config string` | Runtime config file path (default: same dir as model-config/runtime.conf) |
 | `-system string` | Override system prompt |
 | `-skill string` | Skills directory path (can be specified multiple times) |
@@ -51,11 +51,11 @@ alayacore --skill ~/playground/alayacore/misc/samples/skills/
 ## Examples
 
 ```sh
-# Basic usage (loads models from ~/.alayacore/models.conf)
+# Basic usage (loads models from ~/.alayacore/model.conf)
 alayacore
 
 # With custom model config
-alayacore --model-config ./my-models.conf
+alayacore --model-config ./my-model.conf
 
 # With custom runtime config
 alayacore --runtime-config ./my-runtime.conf

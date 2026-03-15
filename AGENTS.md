@@ -38,7 +38,7 @@ go build ./cmd/alayacore-web/
 
 ## Usage
 
-Create a model config file at `~/.alayacore/models.conf`:
+Create a model config file at `~/.alayacore/model.conf`:
 
 ```
 name: "OpenAI GPT-4o"

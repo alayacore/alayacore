@@ -81,7 +81,7 @@ Usage:
   alayacore-web [flags]
 
 Flags:
-  model-config string  Model config file path (default: ~/.alayacore/models.conf)
+  model-config string  Model config file path (default: ~/.alayacore/model.conf)
   runtime-config string  Runtime config file path (default: ~/.alayacore/runtime.conf)
   system string     Override system prompt
   skill strings     Skills directory path (can be specified multiple times)
@@ -94,7 +94,7 @@ Flags:
 
 Examples:
   alayacore-web --addr :9090
-  alayacore-web --model-config ./my-models.conf
+  alayacore-web --model-config ./my-model.conf
   alayacore-web --session ~/my-session.md
   alayacore-web --skill ./skills1 --skill ./skills2
   alayacore-web --proxy socks5://127.0.0.1:1080

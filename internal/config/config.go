@@ -77,7 +77,7 @@ func Parse() *Settings {
 	session := flag.String("session", "", "Session file path to load/save conversations")
 	proxy := flag.String("proxy", "", "HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)")
 	contextLimitStr := flag.String("context-limit", "0", "Provider context window size in tokens (supports K/M suffix, e.g., 200K, 1M; 0 = unknown)")
-	modelConfig := flag.String("model-config", "", "Model config file path (default: ~/.alayacore/models.conf)")
+	modelConfig := flag.String("model-config", "", "Model config file path (default: ~/.alayacore/model.conf)")
 	runtimeConfig := flag.String("runtime-config", "", "Runtime config file path (default: <model-config-dir>/runtime.conf, or ~/.alayacore/runtime.conf)")
 	flag.Parse()
 

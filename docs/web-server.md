@@ -12,7 +12,7 @@ alayacore-web
 alayacore-web --addr :9090
 
 # With custom model config
-alayacore-web --model-config ./my-models.conf
+alayacore-web --model-config ./my-model.conf
 
 # With session persistence
 alayacore-web --session ~/my-session.md

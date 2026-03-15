@@ -24,7 +24,7 @@ go build ./cmd/alayacore-web/
 
 ## Usage
 
-Create a model config file at `~/.alayacore/models.conf`:
+Create a model config file at `~/.alayacore/model.conf`:
 
 ```
 name: "OpenAI GPT-4o"
@@ -73,7 +73,7 @@ alayacore-web --addr :9090
 
 ## Flags
 
-- `-model-config string` - Model config file path (default: `~/.alayacore/models.conf`)
+- `-model-config string` - Model config file path (default: `~/.alayacore/model.conf`)
 - `-runtime-config string` - Runtime config file path (default: same dir as model-config/runtime.conf)
 - `-system string` - Override system prompt
 - `-skill string` - Skills directory path (can be specified multiple times)
@@ -106,8 +106,8 @@ alayacore-web --addr :9090
 
 AlayaCore uses a model configuration file to store model configurations.
 
-- **Default location**: `~/.alayacore/models.conf`
-- **Custom location**: Use `--model-config /path/to/models.conf` to specify a different file
+- **Default location**: `~/.alayacore/model.conf`
+- **Custom location**: Use `--model-config /path/to/model.conf` to specify a different file
 
 **Important: The program NEVER writes to this file automatically.** You must edit it manually with a text editor.
 

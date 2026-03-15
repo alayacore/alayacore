@@ -15,7 +15,7 @@ func TestRuntimeManager(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	runtimePath := filepath.Join(tmpDir, "runtime.conf")
-	modelConfigPath := filepath.Join(tmpDir, "models.conf")
+	modelConfigPath := filepath.Join(tmpDir, "model.conf")
 
 	// Test creating a new RuntimeManager with empty path
 	rm := NewRuntimeManager(runtimePath, modelConfigPath)
@@ -52,7 +52,7 @@ func TestRuntimeManagerDefaultPath(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	modelConfigPath := filepath.Join(tmpDir, "models.conf")
+	modelConfigPath := filepath.Join(tmpDir, "model.conf")
 
 	// Test creating RuntimeManager with empty runtime path (should use default)
 	rm := NewRuntimeManager("", modelConfigPath)
@@ -129,7 +129,7 @@ func TestRuntimeManagerCreatesFileOnLoad(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	runtimePath := filepath.Join(tmpDir, "runtime.conf")
-	modelConfigPath := filepath.Join(tmpDir, "models.conf")
+	modelConfigPath := filepath.Join(tmpDir, "model.conf")
 
 	// Verify file doesn't exist initially
 	if _, err := os.Stat(runtimePath); !os.IsNotExist(err) {

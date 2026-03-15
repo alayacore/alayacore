@@ -185,7 +185,7 @@ For this project, simplicity is more important than efficiency.
   - External editor ($EDITOR or vi) for editing model config file
   - Uses `tea.ExecProcess` for proper terminal state handling when editor exits
   - Model window remains open after editor exits, models auto-reload
-  - Config file: `~/.alayacore/models.conf` (default) or custom path via `--model-config`
+  - Config file: `~/.alayacore/model.conf` (default) or custom path via `--model-config`
   - **IMPORTANT: Program NEVER writes to model config file**
     - Users must edit the file manually with text editor (press 'e')
     - This ensures user has full control over model configurations
@@ -196,7 +196,7 @@ For this project, simplicity is more important than efficiency.
   - CLI model is appended to the end of the runtime list (if CLI args provided)
   - When models exist, the last one becomes active
   - Program exits with helpful error if no models are available
-  - **All CLI arguments are optional** - can run with just `alayacore` if models.conf exists
+  - **All CLI arguments are optional** - can run with just `alayacore` if model.conf exists
   - Located in `internal/adaptors/terminal/model_selector.go`
   - **Search/Filter Functionality:**
     - Search input box above model list with "/ " prompt and "Search models..." placeholder
@@ -210,14 +210,14 @@ For this project, simplicity is more important than efficiency.
 
 - ✅ **Runtime Configuration for persisting active model**
   - `runtime.conf` file stores runtime data that changes during execution
-  - Default location: same directory as `models.conf` (e.g., `~/.alayacore/runtime.conf`)
+  - Default location: same directory as `model.conf` (e.g., `~/.alayacore/runtime.conf`)
   - Custom path via `--runtime-config` CLI flag
   - Currently stores: `active_model: "Model Name"` (the active model's name)
-  - On startup: loads `runtime.conf` after `models.conf`, finds model by name, sets it active
+  - On startup: loads `runtime.conf` after `model.conf`, finds model by name, sets it active
   - When model is switched: saves new active model name to `runtime.conf`
-  - **File is created automatically** if it doesn't exist (unlike readonly models.conf)
+  - **File is created automatically** if it doesn't exist (unlike readonly model.conf)
   - RuntimeManager in `internal/agent/runtime_manager.go` handles load/save
-  - File format is YAML-like for consistency with models.conf
+  - File format is YAML-like for consistency with model.conf
   - **Fixed**: Tick handler now always runs (not just during streaming) to process model switches
   - Clarified RuntimeManager locking and file-save behavior
   - Removed unused internal fields for simpler state
@@ -225,7 +225,7 @@ For this project, simplicity is more important than efficiency.
 - ✅ **Model Management Commands**
   - `:model_get_all` - Get all available models (returns via TagSystemData with models field)
   - `:model_set <ID>` - Switch to a model by its ID (works even during task execution)
-  - `:model_load [file]` - Load models from config file (default: path from --model-config or ~/.alayacore/models.conf)
+  - `:model_load [file]` - Load models from config file (default: path from --model-config or ~/.alayacore/model.conf)
   - ModelManager in `internal/agent/model_manager.go` manages models with runtime IDs
   - Model info included in SystemInfo struct (models, active_model_id, active_model_config)
   - Terminal sends commands to session instead of calling session methods directly
@@ -260,7 +260,7 @@ For this project, simplicity is more important than efficiency.
   - Session persistence now handled via explicit file paths only (no directory scanning)
 - ✅ **Migrated to config file-only model configuration**
   - Removed CLI flags: --api-key, --base-url, --model, --type
-  - Model configuration now only supported via ~/.alayacore/models.conf file
+  - Model configuration now only supported via ~/.alayacore/model.conf file
   - Removed SetInitialModel() method from ModelManager
   - Removed GetProviderConfig() method from config.Settings
   - Removed internal/provider/config.go file

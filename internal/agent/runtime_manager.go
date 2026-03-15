@@ -15,7 +15,7 @@ import (
 
 // RuntimeConfig holds runtime configuration that can change during execution
 type RuntimeConfig struct {
-	ActiveModel string `json:"active_model"` // Model name (from models.conf)
+	ActiveModel string `json:"active_model"` // Model name (from model.conf)
 }
 
 // RuntimeManager manages runtime configuration
@@ -37,7 +37,7 @@ func NewRuntimeManager(runtimePath, modelConfigPath string) *RuntimeManager {
 		// Determine the directory for runtime.conf
 		var dir string
 		if modelConfigPath != "" {
-			// Use same directory as models.conf
+			// Use same directory as model.conf
 			dir = filepath.Dir(modelConfigPath)
 		} else {
 			// Use default ~/.alayacore directory
