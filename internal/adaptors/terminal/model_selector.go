@@ -252,6 +252,13 @@ func (ms *ModelSelector) handleSearchInputKey(msg tea.KeyMsg, key string) tea.Cm
 		return nil
 	}
 
+	if key == "ctrl+c" {
+		ms.searchInput.SetValue("")
+		ms.updateFilteredModels()
+		ms.clampSelection()
+		return nil
+	}
+
 	if key == "enter" && len(ms.filteredModels) > 0 {
 		ms.selectedIdx = 0
 		ms.activeModel = &ms.filteredModels[0]

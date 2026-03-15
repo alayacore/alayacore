@@ -3,6 +3,8 @@ package terminal
 import (
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestFuzzyMatch(t *testing.T) {
@@ -112,5 +114,45 @@ func TestFuzzyMatch(t *testing.T) {
 				t.Errorf("fuzzyMatch(%q, %q) = %v, expected %v", tt.search, tt.target, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
+	styles := DefaultStyles()
+	ms := NewModelSelector(styles)
+	
+	// Set up some test models
+	models := []ModelConfig{
+		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
+		{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"},
+	}
+	ms.SetModels(models)
+	ms.Open()
+	
+	// Type in search input
+	ms.searchInput.SetValue("gpt4")
+	ms.updateFilteredModels()
+	
+	if ms.searchInput.Value() != "gpt4" {
+		t.Fatalf("Expected search input to be 'gpt4', got %q", ms.searchInput.Value())
+	}
+	
+	// Press Ctrl+C
+	msg := tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})
+	cmd := ms.HandleKeyMsg(msg)
+	
+	// Check that search input is cleared
+	if ms.searchInput.Value() != "" {
+		t.Errorf("Ctrl+C should clear search input, got %q", ms.searchInput.Value())
+	}
+	
+	// Check that all models are shown again after clearing
+	if len(ms.filteredModels) != len(models) {
+		t.Errorf("Expected %d filtered models after clear, got %d", len(models), len(ms.filteredModels))
+	}
+	
+	// Cmd should be nil (no action)
+	if cmd != nil {
+		t.Errorf("Ctrl+C should not return a command, got %v", cmd)
 	}
 }
