@@ -41,7 +41,6 @@ type Terminal struct {
 	focusedWindow       string // "input" or "display"
 	windowWidth         int
 	windowHeight        int
-	sessionFile         string
 	styles              *Styles
 	hasFocus            bool // tracks whether the terminal has application focus
 }
@@ -51,7 +50,6 @@ func NewTerminal(
 	session *agentpkg.Session,
 	out *outputWriter,
 	inputStream *stream.ChanInput,
-	sessionFile string,
 	appCfg *app.Config,
 	initialWidth, initialHeight int,
 ) *Terminal {
@@ -71,7 +69,6 @@ func NewTerminal(
 		windowHeight:  initialHeight,
 		styles:        styles,
 		focusedWindow: "input",
-		sessionFile:   sessionFile,
 		hasFocus:      true,
 	}
 

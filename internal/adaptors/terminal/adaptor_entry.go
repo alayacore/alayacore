@@ -19,21 +19,14 @@ import (
 
 // TerminalAdaptor starts the TUI; use from main/app.
 type TerminalAdaptor struct {
-	Config      *app.Config
-	sessionFile string
+	Config *app.Config
 }
 
 // NewTerminalAdaptor creates a new Terminal adaptor.
 func NewTerminalAdaptor(cfg *app.Config) *TerminalAdaptor {
 	return &TerminalAdaptor{
-		Config:      cfg,
-		sessionFile: "",
+		Config: cfg,
 	}
-}
-
-// SetSessionFile sets the session file path.
-func (a *TerminalAdaptor) SetSessionFile(sessionFile string) {
-	a.sessionFile = sessionFile
 }
 
 // getTerminalSize returns the current terminal size, or defaults if not a TTY.
@@ -57,20 +50,19 @@ func (a *TerminalAdaptor) Start() {
 	terminalOutput.SetWindowWidth(initialWidth)
 
 	// Load session synchronously before starting the UI
-	session, sessionFile := agentpkg.LoadOrNewSession(
+	session, _ := agentpkg.LoadOrNewSession(
 		a.Config.Model,
 		a.Config.AgentTools,
 		a.Config.SystemPrompt,
 		inputStream,
 		terminalOutput,
-		a.sessionFile,
+		a.Config.Cfg.Session,
 		a.Config.Cfg.ContextLimit,
 		a.Config.Cfg.ModelConfig,
 		a.Config.Cfg.RuntimeConfig,
 		a.Config.Cfg.DebugAPI,
 		a.Config.Cfg.Proxy,
 	)
-	a.sessionFile = sessionFile
 
 	// Check if we have any models available.
 	if !terminalOutput.HasModels() {
@@ -101,7 +93,7 @@ context_limit: 32768`)
 	}
 
 	// Create terminal with loaded session and initial window size
-	t := NewTerminal(session, terminalOutput, inputStream, sessionFile, a.Config, initialWidth, initialHeight)
+	t := NewTerminal(session, terminalOutput, inputStream, a.Config, initialWidth, initialHeight)
 
 	// Create and run the program
 	p := tea.NewProgram(t, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))

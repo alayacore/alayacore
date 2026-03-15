@@ -29,7 +29,6 @@ func main() {
 	}
 
 	adaptor := terminal.NewTerminalAdaptor(appCfg)
-	adaptor.SetSessionFile(appCfg.Cfg.Session)
 	adaptor.Start()
 }
 
