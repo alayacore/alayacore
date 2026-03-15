@@ -44,11 +44,6 @@ func (s *Session) sendSystemInfo() {
 	s.sendSystemInfoInternal(nil)
 }
 
-// sendSystemInfoWithModel sends system info including full model config (for model switching)
-func (s *Session) sendSystemInfoWithModel(model *ModelConfig) {
-	s.sendSystemInfoInternal(model)
-}
-
 func (s *Session) sendSystemInfoInternal(activeModelConfig *ModelConfig) {
 	if s.Output == nil {
 		return

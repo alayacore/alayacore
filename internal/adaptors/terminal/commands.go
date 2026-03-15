@@ -1,15 +1,12 @@
 package terminal
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
-	agentpkg "github.com/alayacore/alayacore/internal/agent"
-	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
@@ -98,51 +95,4 @@ func (m *Terminal) openModelConfigFile() tea.Cmd {
 	}
 
 	return m.input.editor.OpenFile(path)
-}
-
-// applyModelSwitch applies a model switch from a model_set response.
-// This is the only place where the adaptor calls session.SwitchModel() directly.
-// This is necessary because provider/model creation requires proxy and debug settings
-// that are only available to the adaptor, not the session.
-//
-// Flow:
-//  1. Terminal sends :model_set <id> via TLV (TagTextUser)
-//  2. Session handles command and sends TagSystemData with ActiveModelConfig
-//  3. Adaptor creates provider/model objects and calls SwitchModel
-//  4. Session state is updated with new model
-func (m *Terminal) applyModelSwitch(model *agentpkg.ModelConfig) {
-	if model == nil || m.appConfig == nil {
-		return
-	}
-
-	// Create new provider and model
-	provider, err := app.CreateProvider(
-		model.ProtocolType,
-		model.APIKey,
-		model.BaseURL,
-		m.appConfig.Cfg.DebugAPI,
-		m.appConfig.Cfg.Proxy,
-	)
-	if err != nil {
-		m.out.WriteNotify("Failed to create provider: " + err.Error())
-		return
-	}
-
-	newModel, err := provider.LanguageModel(context.Background(), model.ModelName)
-	if err != nil {
-		m.out.WriteNotify("Failed to create language model: " + err.Error())
-		return
-	}
-
-	// Switch the session to the new model
-	m.session.SwitchModel(
-		newModel,
-		model.BaseURL,
-		model.ModelName,
-		m.appConfig.AgentTools,
-		m.appConfig.SystemPrompt,
-	)
-
-	// Show notification
-	m.out.WriteNotify("Switched to model: " + model.Name + " (" + model.ModelName + ")")
 }

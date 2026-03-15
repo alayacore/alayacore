@@ -17,25 +17,24 @@ import (
 // outputWriter parses TLV from the session and writes styled content to the WindowBuffer.
 // It implements io.Writer for the agent/session output stream.
 type outputWriter struct {
-	windowBuffer       *WindowBuffer
-	buffer             []byte
-	mu                 sync.Mutex
-	updateChan         chan struct{}
-	done               chan struct{}         // Signal goroutine to stop
-	status             string                // Status bar content from TagSystem
-	inProgress         bool                  // Whether session has task in progress
-	styles             *Styles               // UI styles
-	nextWindowID       int                   // Monotonic counter for generating window IDs
-	pendingUpdate      bool                  // Whether there's a pending update to flush
-	lastUpdate         time.Time             // Last time an update was sent
-	updateMu           sync.Mutex            // Mutex for update throttling
-	models             []agentpkg.ModelInfo  // Current model list
-	activeModelID      string                // Current active model ID
-	pendingModelConfig *agentpkg.ModelConfig // Full config from model_set (with API key)
-	hasModels          bool                  // Whether models are configured
-	modelConfigPath    string                // Path to model.conf
-	activeModelName    string                // Name of active model
-	pendingQueueItems  []QueueItem           // Queue items from taskqueue_get_all
+	windowBuffer      *WindowBuffer
+	buffer            []byte
+	mu                sync.Mutex
+	updateChan        chan struct{}
+	done              chan struct{}        // Signal goroutine to stop
+	status            string               // Status bar content from TagSystem
+	inProgress        bool                 // Whether session has task in progress
+	styles            *Styles              // UI styles
+	nextWindowID      int                  // Monotonic counter for generating window IDs
+	pendingUpdate     bool                 // Whether there's a pending update to flush
+	lastUpdate        time.Time            // Last time an update was sent
+	updateMu          sync.Mutex           // Mutex for update throttling
+	models            []agentpkg.ModelInfo // Current model list
+	activeModelID     string               // Current active model ID
+	hasModels         bool                 // Whether models are configured
+	modelConfigPath   string               // Path to model.conf
+	activeModelName   string               // Name of active model
+	pendingQueueItems []QueueItem          // Queue items from taskqueue_get_all
 }
 
 func NewTerminalOutput() *outputWriter {
@@ -244,10 +243,6 @@ func (w *outputWriter) handleSystemTag(value string) {
 		w.hasModels = info.HasModels
 		w.modelConfigPath = info.ModelConfigPath
 		w.activeModelName = info.ActiveModelName
-		// If full config is provided, store it for the terminal to pick up
-		if info.ActiveModelConfig != nil {
-			w.pendingModelConfig = info.ActiveModelConfig
-		}
 		// Signal update so tick handler picks up model changes
 		select {
 		case w.updateChan <- struct{}{}:
@@ -300,15 +295,6 @@ func (w *outputWriter) GetQueueItems() []QueueItem {
 	items := w.pendingQueueItems
 	w.pendingQueueItems = nil
 	return items
-}
-
-// GetActiveModel returns and clears the pending model config from a model_set response
-func (w *outputWriter) GetActiveModel() *agentpkg.ModelConfig {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	m := w.pendingModelConfig
-	w.pendingModelConfig = nil
-	return m
 }
 
 // GetModels returns the current model list

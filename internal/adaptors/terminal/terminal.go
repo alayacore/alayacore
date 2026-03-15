@@ -176,11 +176,6 @@ func (m *Terminal) handleTick() (tea.Model, tea.Cmd) {
 			m.display.updateContent()
 		}
 
-		// Check for model switch from model_set command
-		if activeModel := m.out.GetActiveModel(); activeModel != nil {
-			m.applyModelSwitch(activeModel)
-		}
-
 		// Update model selector if models changed
 		cmd = m.modelSelector.LoadModels(m.out.GetModels(), m.out.GetActiveModelID())
 

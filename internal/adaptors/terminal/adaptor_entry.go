@@ -69,6 +69,8 @@ func (a *TerminalAdaptor) Start() {
 		a.Config.Cfg.ContextLimit,
 		a.Config.Cfg.ModelConfig,
 		a.Config.Cfg.RuntimeConfig,
+		a.Config.Cfg.DebugAPI,
+		a.Config.Cfg.Proxy,
 	)
 	a.sessionFile = sessionFile
 

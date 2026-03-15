@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
@@ -141,11 +142,30 @@ func (s *Session) handleModelSet(args []string) {
 		_ = s.RuntimeManager.SetActiveModel(model.Name)
 	}
 
-	// Update session context limit for this model, if configured.
-	s.applyModelContextLimit(model)
+	// Create provider and model
+	provider, err := app.CreateProvider(
+		model.ProtocolType,
+		model.APIKey,
+		model.BaseURL,
+		s.debugAPI,
+		s.proxyURL,
+	)
+	if err != nil {
+		s.writeError("Failed to create provider: " + err.Error())
+		return
+	}
 
-	// Send system info with full model config (terminal needs API key to switch)
-	s.sendSystemInfoWithModel(model)
+	newModel, err := provider.LanguageModel(context.Background(), model.ModelName)
+	if err != nil {
+		s.writeError("Failed to create language model: " + err.Error())
+		return
+	}
+
+	// Switch to the new model
+	s.SwitchModel(newModel, model.BaseURL, model.ModelName, s.baseTools, s.systemPrompt)
+
+	// Send notification
+	s.writeNotify("Switched to model: " + model.Name + " (" + model.ModelName + ")")
 }
 
 func (s *Session) handleModelLoad() {
@@ -168,12 +188,30 @@ func (s *Session) handleModelLoad() {
 	// Restore active model from runtime config
 	s.initModelManager()
 
-	// Send system info with model list to adaptor via TagSystemData.
-	// If an active model is known, also apply its context limit and
-	// include full config so the adaptor can recreate the provider.
+	// If an active model is known, switch to it
 	if active := s.ModelManager.GetActive(); active != nil {
-		s.applyModelContextLimit(active)
-		s.sendSystemInfoWithModel(active)
+		// Create provider and model
+		provider, err := app.CreateProvider(
+			active.ProtocolType,
+			active.APIKey,
+			active.BaseURL,
+			s.debugAPI,
+			s.proxyURL,
+		)
+		if err != nil {
+			s.writeError("Failed to create provider: " + err.Error())
+			return
+		}
+
+		newModel, err := provider.LanguageModel(context.Background(), active.ModelName)
+		if err != nil {
+			s.writeError("Failed to create language model: " + err.Error())
+			return
+		}
+
+		// Switch to the model
+		s.SwitchModel(newModel, active.BaseURL, active.ModelName, s.baseTools, s.systemPrompt)
+		s.writeNotify("Loaded models and switched to: " + active.Name)
 		return
 	}
 	s.sendSystemInfo()
