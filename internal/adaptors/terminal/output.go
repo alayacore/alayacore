@@ -35,6 +35,7 @@ type outputWriter struct {
 	modelConfigPath   string               // Path to model.conf
 	activeModelName   string               // Name of active model
 	pendingQueueItems []QueueItem          // Queue items from taskqueue_get_all
+	queueCount        int                  // Number of items in the queue
 }
 
 func NewTerminalOutput() *outputWriter {
@@ -231,6 +232,7 @@ func (w *outputWriter) handleSystemTag(value string) {
 	var info agentpkg.SystemInfo
 	if err := json.Unmarshal([]byte(value), &info); err == nil {
 		w.inProgress = info.InProgress
+		w.queueCount = info.QueueCount
 		if info.ContextLimit > 0 {
 			pct := float64(info.ContextTokens) * 100.0 / float64(info.ContextLimit)
 			w.status = fmt.Sprintf("Context: %d / %d (%.1f%%) | Total: %d", info.ContextTokens, info.ContextLimit, pct, info.TotalTokens)
@@ -280,6 +282,7 @@ func (w *outputWriter) handleTaskQueueList(value string) {
 	}
 
 	w.pendingQueueItems = items
+	w.queueCount = len(items)
 
 	// Signal update so tick handler picks up queue items
 	select {
@@ -330,6 +333,20 @@ func (w *outputWriter) GetActiveModelName() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.activeModelName
+}
+
+// GetQueueCount returns the current number of queued items
+func (w *outputWriter) GetQueueCount() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.queueCount
+}
+
+// GetStatus returns the current status string
+func (w *outputWriter) GetStatus() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.status
 }
 
 // renderMultiline applies a style to each line of text

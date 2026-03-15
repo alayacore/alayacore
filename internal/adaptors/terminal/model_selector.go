@@ -312,6 +312,13 @@ func (ms *ModelSelector) renderList() string {
 	sb.WriteString(searchBox)
 	sb.WriteString("\n\n")
 
+	// Show current model if set
+	if ms.activeModel != nil {
+		sb.WriteString(ms.styles.System.Render("Current: "))
+		sb.WriteString(ms.styles.Text.Render(ms.activeModel.Name))
+		sb.WriteString("\n\n")
+	}
+
 	// Model list
 	sb.WriteString(ms.renderModelList(lipgloss.Width(searchBox)))
 	sb.WriteString("\n")

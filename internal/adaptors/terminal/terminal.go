@@ -165,7 +165,7 @@ func (m *Terminal) handleTick() (tea.Model, tea.Cmd) {
 	select {
 	case <-m.out.updateChan:
 		if m.out.windowBuffer.GetWindowCount() > 0 {
-			m.status.SetStatus(m.out.status)
+			m.updateStatusWithQueue()
 			m.updateDisplayHeight()
 			if m.display.shouldFollow() {
 				m.display.SetCursorToLastWindow()
@@ -184,7 +184,7 @@ func (m *Terminal) handleTick() (tea.Model, tea.Cmd) {
 		}
 
 	default:
-		m.status.SetStatus(m.out.status)
+		m.updateStatusWithQueue()
 	}
 
 	// Continue ticking
@@ -257,6 +257,20 @@ func (m *Terminal) handleFocus() (tea.Model, tea.Cmd) {
 // updateDisplayHeight updates the display viewport height based on window size.
 func (m *Terminal) updateDisplayHeight() {
 	m.display.UpdateHeight(m.windowHeight)
+}
+
+// updateStatusWithQueue updates the status bar with queue count
+func (m *Terminal) updateStatusWithQueue() {
+	status := m.out.GetStatus()
+	queueCount := m.out.GetQueueCount()
+	if queueCount > 0 {
+		if status != "" {
+			status = fmt.Sprintf("Queued: %d | %s", queueCount, status)
+		} else {
+			status = fmt.Sprintf("Queued: %d", queueCount)
+		}
+	}
+	m.status.SetStatus(status)
 }
 
 // View renders the complete terminal UI.
