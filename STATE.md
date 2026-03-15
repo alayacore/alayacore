@@ -240,15 +240,18 @@ For this project, simplicity is more important than efficiency.
 
 - ✅ **Model selector focus management**
   - Input and display windows lose focus when model selector is shown
-
-- ✅ **Prevent model switching during task execution**
-  - `:model_set` command returns error "cannot switch model while task is running" when a task is in progress
-  - Ensures model configuration consistency during active operations
-  - Users must wait for task completion before switching models
-  - Check implemented with mutex-protected `inProgress` flag in session
-  - **Fixed race condition**: all reads/writes to `inProgress` now properly protected by mutex
   - Focus is restored to previously focused window when model selector closes
   - Provides better visual feedback and prevents accidental input
+
+- ✅ **Model selector keyboard handling improvements**
+  - Fixed command handling: `q`, `e`, `r` only work when list is focused, not when search input is focused
+  - TAB switches focus between search input and model list
+  - ENTER works in both modes (selects first model when search focused, highlighted model when list focused)
+  - ESC always closes selector regardless of focus state
+  - Fixed textinput delay by returning tea.Cmd instead of executing commands synchronously
+  - Fixed empty model list on open by using sentinel value for lastSearchValue
+  - Updated help text to show contextual commands based on focus state
+  - Character keys (including `q`, `e`, `r`) can be typed in search box for filtering
 
 - ✅ **Removed unused session directory code**
   - Deleted `LoadLatestSession()`, `GetSessionsDir()`, and `GenerateSessionFilename()` functions
