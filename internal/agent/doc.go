@@ -27,21 +27,21 @@
 //
 // Key Components:
 //
-//	- Session: Main session struct managing conversation state
-//	- ModelManager: Loads and manages AI model configurations
-//	- RuntimeManager: Persists runtime settings (active model)
-//	- Task Queue: FIFO queue for pending prompts/commands
-//	- Command Registry: Declarative command registration
+//   - Session: Main session struct managing conversation state
+//   - ModelManager: Loads and manages AI model configurations
+//   - RuntimeManager: Persists runtime settings (active model)
+//   - Task Queue: FIFO queue for pending prompts/commands
+//   - Command Registry: Declarative command registration
 //
 // Key Files:
 //
-//	- session.go: Session struct and main loop
-//	- session_prompt.go: Prompt processing and auto-summarization
-//	- session_commands.go: Command handlers
-//	- session_output.go: Output helpers (writeErrorf, writeNotifyf)
-//	- command_registry.go: Declarative command registration
-//	- model_manager.go: Model configuration management
-//	- runtime_manager.go: Runtime persistence
+//   - session.go: Session struct and main loop
+//   - session_prompt.go: Prompt processing and auto-summarization
+//   - session_commands.go: Command handlers
+//   - session_output.go: Output helpers (writeErrorf, writeNotifyf)
+//   - command_registry.go: Declarative command registration
+//   - model_manager.go: Model configuration management
+//   - runtime_manager.go: Runtime persistence
 //
 // Usage:
 //

@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"strings"
+
+	domainerrors "github.com/alayacore/alayacore/internal/errors"
 )
 
 // ============================================================================
@@ -138,7 +140,7 @@ func GetCommandRegistry() *CommandRegistry {
 func (s *Session) dispatchCommand(ctx context.Context, cmd string) bool {
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
-		s.writeError("empty command")
+		s.writeError(domainerrors.ErrEmptyCommand.Error())
 		return false
 	}
 

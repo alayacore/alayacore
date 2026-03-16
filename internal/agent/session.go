@@ -24,6 +24,7 @@ import (
 
 	"charm.land/fantasy"
 	"github.com/alayacore/alayacore/internal/app"
+	domainerrors "github.com/alayacore/alayacore/internal/errors"
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
@@ -302,7 +303,7 @@ func (s *Session) readFromInput() {
 			return // Input closed
 		}
 		if tag != stream.TagTextUser {
-			s.writeErrorf("Invalid input tag: %s (only %s is allowed)", tag, stream.TagTextUser)
+			s.writeError(domainerrors.NewSessionErrorf("input", "Invalid input tag: %s (only %s is allowed)", tag, stream.TagTextUser).Error())
 			continue
 		}
 		if len(value) > 0 && value[0] == ':' {

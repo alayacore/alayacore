@@ -20,19 +20,19 @@
 //	  - QueueManager: Modal for managing the task queue
 //
 // Communication with the session layer uses TLV (Tag-Length-Value) protocol:
-//	  - Input: ChanInput receives TLV messages from user actions
-//	  - Output: OutputWriter parses TLV and renders styled content
+//   - Input: ChanInput receives TLV messages from user actions
+//   - Output: OutputWriter parses TLV and renders styled content
 //
 // Key Files:
 //
-//	- terminal.go: Main Terminal model and message routing
-//	- keys.go: Keyboard handling and focus management
-//	- commands.go: Command processing (:quit, :model_set, etc.)
-//	- output.go: TLV parsing and styled rendering
-//	- window_*.go: Virtual scrolling and diff display
-//	- constants.go: Layout and timing constants, color palette
-//	- styles.go: Lipgloss style definitions
-//	- keybinds.go: Declarative key binding configuration
+//   - terminal.go: Main Terminal model and message routing
+//   - keys.go: Keyboard handling and focus management
+//   - commands.go: Command processing (:quit, :model_set, etc.)
+//   - output.go: TLV parsing and styled rendering
+//   - window_*.go: Virtual scrolling and diff display
+//   - constants.go: Layout and timing constants, color palette
+//   - styles.go: Lipgloss style definitions
+//   - keybinds.go: Declarative key binding configuration
 //
 // Usage:
 //

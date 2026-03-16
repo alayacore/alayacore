@@ -307,6 +307,12 @@ For this project, simplicity is more important than efficiency.
   - Enabled 25+ linters including security, complexity, and style checks
   - Configured exclusion rules for test files and generated code
 
+- ✅ **Structured errors integration (Phase 5.2 of REFACTOR.md)**
+  - Updated session.go to use domain errors for invalid input tag
+  - Updated session_commands.go to use domain errors throughout
+  - Updated command_registry.go to use domain errors
+  - All error messages now use SessionError type with operation context
+
 - ✅ **Model selector focus management**
   - Input and display windows lose focus when model selector is shown
   - Focus is restored to previously focused window when model selector closes

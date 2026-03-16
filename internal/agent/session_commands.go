@@ -8,6 +8,7 @@ import (
 
 	"charm.land/fantasy"
 	"github.com/alayacore/alayacore/internal/app"
+	domainerrors "github.com/alayacore/alayacore/internal/errors"
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
@@ -18,7 +19,7 @@ import (
 func (s *Session) handleCommandSync(ctx context.Context, cmd string) {
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
-		s.writeError("empty command")
+		s.writeError(domainerrors.ErrEmptyCommand.Error())
 		return
 	}
 
@@ -28,7 +29,7 @@ func (s *Session) handleCommandSync(ctx context.Context, cmd string) {
 	}
 
 	// Unknown command
-	s.writeErrorf("unknown cmd <%s>", parts[0])
+	s.writeError(domainerrors.NewSessionErrorf("command", "unknown cmd <%s>", parts[0]).Error())
 }
 
 func (s *Session) cancelTask() {
@@ -40,7 +41,7 @@ func (s *Session) cancelTask() {
 		cancelCurrent()
 		return
 	}
-	s.writeError("nothing to cancel")
+	s.writeError(domainerrors.ErrNothingToCancel.Error())
 }
 
 // summarize replaces the conversation history with a concise summary
@@ -79,7 +80,7 @@ func (s *Session) saveSession(args []string) {
 	switch len(args) {
 	case 0:
 		if s.SessionFile == "" {
-			s.writeError("no session file set and no filename provided")
+			s.writeError(domainerrors.ErrNoSessionFile.Error())
 			return
 		}
 		path = s.SessionFile
@@ -91,7 +92,7 @@ func (s *Session) saveSession(args []string) {
 	}
 
 	if err := s.saveSessionToFile(path); err != nil {
-		s.writeErrorf("failed to save session: %v", err)
+		s.writeError(domainerrors.Wrapf("save", err, "failed to save session").Error())
 	} else {
 		s.writeNotifyf("Session saved to %s", path)
 	}
@@ -103,7 +104,7 @@ func (s *Session) saveSession(args []string) {
 
 func (s *Session) handleModelSet(args []string) {
 	if s.ModelManager == nil {
-		s.writeError("model manager not initialized")
+		s.writeError(domainerrors.ErrModelManagerNotInitialized.Error())
 		return
 	}
 
@@ -115,7 +116,7 @@ func (s *Session) handleModelSet(args []string) {
 	modelID := args[0]
 	model := s.ModelManager.GetModel(modelID)
 	if model == nil {
-		s.writeErrorf("model not found: %s", modelID)
+		s.writeError(domainerrors.NewSessionErrorf("model_set", "model not found: %s", modelID).Error())
 		return
 	}
 
@@ -158,18 +159,18 @@ func (s *Session) handleModelSet(args []string) {
 
 func (s *Session) handleModelLoad() {
 	if s.ModelManager == nil {
-		s.writeError("model manager not initialized")
+		s.writeError(domainerrors.ErrModelManagerNotInitialized.Error())
 		return
 	}
 
 	path := s.ModelManager.GetFilePath()
 	if path == "" {
-		s.writeError("no model file path configured")
+		s.writeError(domainerrors.ErrNoModelFilePath.Error())
 		return
 	}
 
 	if err := s.ModelManager.LoadFromFile(path); err != nil {
-		s.writeErrorf("failed to load models: %v", err)
+		s.writeError(domainerrors.Wrapf("model_load", err, "failed to load models").Error())
 		return
 	}
 
@@ -187,13 +188,13 @@ func (s *Session) handleModelLoad() {
 			s.proxyURL,
 		)
 		if err != nil {
-			s.writeError("Failed to create provider: " + err.Error())
+			s.writeError(domainerrors.NewSessionErrorf("model_load", "Failed to create provider: %v", err).Error())
 			return
 		}
 
 		newModel, err := provider.LanguageModel(context.Background(), active.ModelName)
 		if err != nil {
-			s.writeError("Failed to create language model: " + err.Error())
+			s.writeError(domainerrors.NewSessionErrorf("model_load", "Failed to create language model: %v", err).Error())
 			return
 		}
 
@@ -242,7 +243,7 @@ func (s *Session) handleTaskQueueGetAll() {
 		"items": data,
 	})
 	if err != nil {
-		s.writeErrorf("failed to marshal queue items: %v", err)
+		s.writeError(domainerrors.NewSessionErrorf("taskqueue_get_all", "failed to marshal queue items: %v", err).Error())
 		return
 	}
 	stream.WriteTLV(s.Output, stream.TagSystemData, string(jsonData))
@@ -261,6 +262,6 @@ func (s *Session) handleTaskQueueDel(args []string) {
 		// Send system notification about the deletion
 		s.sendSystemInfo()
 	} else {
-		s.writeErrorf("queue item %s not found", queueID)
+		s.writeError(domainerrors.NewSessionErrorf("taskqueue_del", "queue item %s not found", queueID).Error())
 	}
 }

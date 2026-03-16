@@ -22,9 +22,9 @@
 //
 // Key Types:
 //
-//	- ChanInput: Input implementation using a channel of TLV messages
-//	- Input: Interface for reading bytes
-//	- Output: Interface for writing bytes with Flush
+//   - ChanInput: Input implementation using a channel of TLV messages
+//   - Input: Interface for reading bytes
+//   - Output: Interface for writing bytes with Flush
 //
 // Usage:
 //

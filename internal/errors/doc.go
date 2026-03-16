@@ -6,9 +6,9 @@
 //
 // Error Types:
 //
-//	- SessionError: Base error type with operation context
-//	  - Op: The operation that failed (e.g., "model_set", "save")
-//	  - Err: The underlying error
+//   - SessionError: Base error type with operation context
+//   - Op: The operation that failed (e.g., "model_set", "save")
+//   - Err: The underlying error
 //
 // Domain Errors:
 //
@@ -30,14 +30,14 @@
 //	  - ErrNothingToCancel: Nothing to cancel
 //
 // Input errors:
-//	  - ErrInvalidInputTag: Invalid TLV tag
+//   - ErrInvalidInputTag: Invalid TLV tag
 //
 // Helper Functions:
 //
-//	- NewSessionError(op, err): Create new error with operation
-//	- NewSessionErrorf(op, format, args...): Create with formatted message
-//	- Wrap(op, err): Wrap existing error with operation
-//	- Wrapf(op, err, format, args...): Wrap with formatted message
+//   - NewSessionError(op, err): Create new error with operation
+//   - NewSessionErrorf(op, format, args...): Create with formatted message
+//   - Wrap(op, err): Wrap existing error with operation
+//   - Wrapf(op, err, format, args...): Wrap with formatted message
 //
 // Usage:
 //

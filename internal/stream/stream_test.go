@@ -8,12 +8,12 @@ import (
 
 func TestEncodeTLV(t *testing.T) {
 	tests := []struct {
-		name     string
-		tag      string
-		value    string
-		wantLen  int
-		wantTag  string
-		wantVal  string
+		name    string
+		tag     string
+		value   string
+		wantLen int
+		wantTag string
+		wantVal string
 	}{
 		{
 			name:    "simple message",

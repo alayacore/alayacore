@@ -81,8 +81,10 @@ The project is well-structured (~11,500 lines of Go code) with clear separation 
   - Command errors: ErrEmptyCommand, ErrUnknownCommand, ErrNothingToCancel
   - SessionError type with operation context
 
-- [ ] **Task 5.2**: Use structured errors
-  - `SessionError` type with operation context
+- [x] **Task 5.2**: Use structured errors ✅
+  - Updated session.go to use domain errors for invalid input tag
+  - Updated session_commands.go to use domain errors for all error messages
+  - Updated command_registry.go to use domain errors
 
 ### Phase 6: Test Coverage Improvements (Priority: High)
 
@@ -143,7 +145,7 @@ The project is well-structured (~11,500 lines of Go code) with clear separation 
 | 4.1 | Create SessionInterface | ⏳ Pending |
 | 4.2 | Create OutputWriter interface | ✅ Done |
 | 5.1 | Define domain errors | ✅ Done |
-| 5.2 | Use structured errors | ⏳ Pending |
+| 5.2 | Use structured errors | ✅ Done |
 | 6.1 | Add terminal adaptor tests | ⏳ Pending |
 | 6.2 | Add tool tests | ⏳ Pending (edit_file_test.go exists) |
 | 6.3 | Add stream tests | ✅ Done |
