@@ -36,7 +36,7 @@ func (m StatusModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the status bar
 func (m StatusModel) View() tea.View {
-	return tea.NewView(m.styles.Status.Width(max(0, m.width-4)).Padding(0, 1).Render(m.status))
+	return tea.NewView(m.styles.Status.Render(m.status))
 }
 
 // SetStatus updates the status text
@@ -56,7 +56,7 @@ func (m *StatusModel) SetWidth(width int) {
 
 // RenderString returns the rendered status string
 func (m StatusModel) RenderString() string {
-	return m.styles.Status.Width(max(0, m.width-4)).Padding(0, 1).Render(m.status)
+	return m.styles.Status.Render(m.status)
 }
 
 var _ tea.Model = (*StatusModel)(nil)

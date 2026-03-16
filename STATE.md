@@ -569,5 +569,11 @@ main.go        - alayacore entry point
   - Solution: Removed the code that restores the old YOffset; now we trust `SetContent()`'s automatic adjustment and only call `GotoBottom()` when in follow mode
   - Located in `internal/adaptors/terminal/display.go` in the `updateContent()` method
 
+- ✅ **Fixed status bar alignment with input box**
+  - Problem: Status bar had padding before it, causing visual misalignment
+  - Root cause: Status bar was using `Width(width-4).Padding(0, 1)` which added padding
+  - Solution: Changed status bar to plain `Render(m.status)` with no width or padding, matching queue manager's help text style
+  - Located in `internal/adaptors/terminal/status.go` in `View()` and `RenderString()` methods
+
 ## Next Steps
 - Add more sophisticated skills built on posix_shell tool
