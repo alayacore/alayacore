@@ -5,9 +5,6 @@ run:
   timeout: 5m
   issues-exit-code: 1
   tests: true
-  skip-dirs:
-    - vendor
-    - testdata
 
 output:
   formats:
@@ -29,7 +26,7 @@ linters:
     - bodyclose      # Check HTTP response body is closed
     - dogsled        # Check for too many blank identifiers
     - dupl           # Check for duplicate code
-    - exportloopref  # Check for loop variable references
+    - copyloopvar    # Check for loop variable copies (replaces exportloopref)
     - gochecknoinits # Check for init functions
     - goconst        # Check for repeated strings that could be constants
     - gocritic       # Comprehensive Go source checker
@@ -103,6 +100,9 @@ linters-settings:
       - name: redefines-builtin-id
 
 issues:
+  exclude-dirs:
+    - vendor
+    - testdata
   exclude-rules:
     # Exclude some linters from test files
     - path: _test\.go

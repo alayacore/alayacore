@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -287,6 +288,11 @@ description: Second skill from directory 2
 }
 
 func TestDuplicateSkillNames(t *testing.T) {
+	// Suppress warnings during this test
+	original := warnWriter
+	warnWriter = io.Discard
+	defer func() { warnWriter = original }()
+
 	// Create first temp skill directory
 	tmpDir1 := t.TempDir()
 

@@ -2,10 +2,14 @@ package skills
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// warnWriter is where warnings are written. Can be set to io.Discard in tests.
+var warnWriter io.Writer = os.Stderr
 
 // Manager handles skill discovery and loading
 type Manager struct {
@@ -61,14 +65,14 @@ func (m *Manager) discoverSkills() error {
 			skill, err := m.loadSkillMetadata(skillFile, entry.Name())
 			if err != nil {
 				// Skip invalid skills but log warning
-				fmt.Fprintf(os.Stderr, "Warning: failed to load skill %s from %s: %v\n", entry.Name(), skillDir, err)
+				fmt.Fprintf(warnWriter, "Warning: failed to load skill %s from %s: %v\n", entry.Name(), skillDir, err)
 				continue
 			}
 
 			// Check for duplicate skill names
 			for _, existing := range m.skills {
 				if existing.Name == skill.Name {
-					fmt.Fprintf(os.Stderr, "Warning: duplicate skill name '%s' found, using version from %s\n", skill.Name, skillDir)
+					fmt.Fprintf(warnWriter, "Warning: duplicate skill name '%s' found in %s\n", skill.Name, skillDir)
 				}
 			}
 
