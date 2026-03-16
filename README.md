@@ -222,29 +222,24 @@ Queue manager shows real-time queue status and allows you to remove pending task
 
 ## Architecture
 
-Adaptors communicate with the session through TLV messages, ensuring clean separation:
+For detailed architecture documentation, see [docs/architecture.md](docs/architecture.md).
+
+### Quick Overview
+
+AlayaCore follows a layered architecture with clean separation via the TLV protocol:
 
 ```
-┌──────────────┐    TLV Messages          ┌──────────────┐
-│   Adaptor    │ ◄──────────────────────► │   Session    │
-│ (Terminal/   │    Text:                 │              │
-│  WebSocket)  │      TagTextUser "TU"    │              │
-│              │    Function:             │              │
-│              │      TagFunctionShow "FS"│              │
-│              │    System:               │              │
-│              │      TagSystemData "SD"  │              │
-│              │      TagSystemNotify "SN"│              │
-│              │      TagSystemError "SE" │              │
-└──────────────┘                          └──────────────┘
-       │
-       └── Only calls SwitchModel() when responding to
-           TagSystemData with ActiveModelConfig (requires
-           provider creation with proxy/debug settings)
+┌─────────────────┐                    ┌─────────────────┐
+│    Adaptors     │   TLV Messages     │     Session     │
+│ (Terminal/Web)  │ ◄────────────────► │   (Agent Core)  │
+└────────┬────────┘                    └────────┬────────┘
+         │                                      │
+         │  Tags: TU (user), TA (assistant),    │
+         │        FS (function), SN (notify)    │
+         └──────────────────────────────────────┘
 ```
 
-## Project Status
-
-See [STATE.md](STATE.md) for detailed implementation status.
+See [STATE.md](STATE.md) for implementation status.
 
 ## License
 
