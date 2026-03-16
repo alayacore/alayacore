@@ -156,6 +156,8 @@ func (ms *ModelSelector) SetModels(models []ModelConfig) {
 		ms.models[i].modelNameLower = strings.ToLower(ms.models[i].ModelName)
 		ms.models[i].baseURLLower = strings.ToLower(ms.models[i].BaseURL)
 	}
+	// Reset lastSearchValue to force updateFilteredModels to run
+	ms.lastSearchValue = "\x00"
 	ms.updateFilteredModels()
 }
 
@@ -211,11 +213,10 @@ func (ms *ModelSelector) LoadModels(models []agentpkg.ModelInfo, activeID string
 		}
 	}
 
-	// Preserve scroll position and only update filtered models if needed
-	currentSearch := ms.searchInput.Value()
-	if currentSearch != ms.lastSearchValue {
-		ms.updateFilteredModels()
-	}
+	// Always update filtered models after model list changes
+	// Reset lastSearchValue to force updateFilteredModels to run
+	ms.lastSearchValue = "\x00"
+	ms.updateFilteredModels()
 	if shouldPreserveSelection {
 		ms.selectedIdx = savedSelectedIdx
 		ms.scrollIdx = savedScrollIdx

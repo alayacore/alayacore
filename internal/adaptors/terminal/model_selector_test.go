@@ -161,3 +161,85 @@ func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
 		t.Errorf("Ctrl+C should not return a command, got %v", cmd)
 	}
 }
+
+func TestModelSelectorSetModelsUpdatesFilteredModels(t *testing.T) {
+	styles := DefaultStyles()
+	ms := NewModelSelector(styles)
+
+	// Set up initial models
+	models := []ModelConfig{
+		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
+		{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"},
+	}
+	ms.SetModels(models)
+	ms.Open()
+
+	// Verify filteredModels is set
+	if len(ms.filteredModels) != 2 {
+		t.Fatalf("Expected 2 filtered models, got %d", len(ms.filteredModels))
+	}
+
+	// Simulate user typing a search (so lastSearchValue is set)
+	ms.searchInput.SetValue("gpt")
+	ms.updateFilteredModels()
+
+	// Verify filtered models are now filtered
+	if len(ms.filteredModels) != 1 {
+		t.Fatalf("Expected 1 filtered model after search, got %d", len(ms.filteredModels))
+	}
+	if ms.filteredModels[0].Name != "OpenAI GPT-4" {
+		t.Errorf("Expected 'OpenAI GPT-4', got %q", ms.filteredModels[0].Name)
+	}
+
+	// Now set new models (simulating reload after editing config file)
+	// The search value is still "gpt", so without the fix, filteredModels wouldn't update
+	newModels := []ModelConfig{
+		{Name: "OpenAI GPT-4o", ProtocolType: "openai", ModelName: "gpt-4o"},
+		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
+		{Name: "Claude 3.5", ProtocolType: "anthropic", ModelName: "claude-3.5"},
+	}
+	ms.SetModels(newModels)
+
+	// After SetModels, filteredModels should be updated with the new models
+	// The search "gpt" should now match both GPT-4o and GPT-4
+	if len(ms.filteredModels) != 2 {
+		t.Errorf("Expected 2 filtered models matching 'gpt' after SetModels, got %d", len(ms.filteredModels))
+	}
+
+	// Clear search and verify all 3 models are shown
+	ms.searchInput.SetValue("")
+	ms.updateFilteredModels()
+	if len(ms.filteredModels) != 3 {
+		t.Errorf("Expected 3 filtered models after clearing search, got %d", len(ms.filteredModels))
+	}
+}
+
+func TestModelSelectorLoadModelsPreservesSelection(t *testing.T) {
+	styles := DefaultStyles()
+	ms := NewModelSelector(styles)
+
+	// Set up initial models
+	models := []ModelConfig{
+		{Name: "Model A", ProtocolType: "openai", ModelName: "model-a"},
+		{Name: "Model B", ProtocolType: "anthropic", ModelName: "model-b"},
+	}
+	ms.SetModels(models)
+	ms.Open()
+
+	// Select second model
+	ms.selectedIdx = 1
+
+	// Set new models (simulating reload)
+	// The selection should be preserved when selector is open
+	newModels := []ModelConfig{
+		{Name: "Model A", ProtocolType: "openai", ModelName: "model-a"},
+		{Name: "Model B", ProtocolType: "anthropic", ModelName: "model-b"},
+		{Name: "Model C", ProtocolType: "anthropic", ModelName: "model-c"},
+	}
+	ms.SetModels(newModels)
+
+	// Selection should still be at index 1 (Model B)
+	if ms.selectedIdx != 1 {
+		t.Errorf("Expected selectedIdx to be preserved at 1, got %d", ms.selectedIdx)
+	}
+}
