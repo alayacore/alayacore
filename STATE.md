@@ -252,6 +252,11 @@ For this project, simplicity is more important than efficiency.
   - Grouped bindings by context: global, display, model-selector, queue-manager, confirm-dialog
   - Updated `keys.go` (352 lines) to use key constants
 
+- ✅ **Focus manager extraction (Phase 1.3 of REFACTOR.md)**
+  - Created `focus_manager.go` (113 lines) for focus state management
+  - Moved focus functions from `keys.go` (352→281 lines) and `terminal.go` (324→293 lines)
+  - Contains: toggleFocus, focusInput, focusDisplay, openModelSelector, openQueueManager, handleBlur, handleFocus, restoreFocusAfter*
+
 - ✅ **Model selector focus management**
   - Input and display windows lose focus when model selector is shown
   - Focus is restored to previously focused window when model selector closes

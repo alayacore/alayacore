@@ -25,9 +25,10 @@ The project is well-structured (~11,500 lines of Go code) with clear separation 
   - Grouped bindings: global, display, model-selector, queue-manager, confirm-dialog
   - Updated `keys.go` to use key constants
 
-- [ ] **Task 1.3**: Reduce `terminal.go` size
-  - Extract `focus_manager.go` for focus state management
-  - Move focus-related logic from terminal.go
+- [x] **Task 1.3**: Reduce `terminal.go` size ✅
+  - Created `focus_manager.go` (113 lines) for focus state management
+  - Moved focus functions from `keys.go` (352→281 lines) and `terminal.go` (324→293 lines)
+  - Contains: toggleFocus, focusInput, focusDisplay, openModelSelector, openQueueManager, handleBlur, handleFocus
 
 ### Phase 2: Session Layer Refactoring (Priority: Medium)
 
@@ -109,7 +110,8 @@ The project is well-structured (~11,500 lines of Go code) with clear separation 
 |-------|------|--------|
 | 1.1 | Split window.go | ✅ Done |
 | 1.2 | Extract key bindings | ✅ Done |
-| 1.3 | Reduce terminal.go | ⏳ Pending |
+| 1.3 | Reduce terminal.go | ✅ Done |
+| 2.1 | Extract session_streaming.go | ⏳ Pending |
 | 2.1 | Extract session_streaming.go | ⏳ Pending |
 | 2.2 | Create session_errors.go | ⏳ Pending |
 | 2.3 | Create command_registry.go | ⏳ Pending |

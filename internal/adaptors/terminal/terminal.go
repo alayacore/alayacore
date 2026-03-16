@@ -223,37 +223,6 @@ func (m *Terminal) handleFileEditorFinished(msg FileEditorFinishedMsg) (tea.Mode
 	return m, nil
 }
 
-// handleBlur handles loss of application focus.
-func (m *Terminal) handleBlur() (tea.Model, tea.Cmd) {
-	m.hasFocus = false
-	m.display.SetDisplayFocused(false)
-	m.input.Blur()
-	m.display.updateContent()
-	return m, nil
-}
-
-// handleFocus handles gain of application focus.
-func (m *Terminal) handleFocus() (tea.Model, tea.Cmd) {
-	m.hasFocus = true
-
-	// If model selector is open, don't restore focus to main input
-	// The model selector maintains its own focus state
-	if m.modelSelector.IsOpen() {
-		m.display.updateContent()
-		return m, nil
-	}
-
-	// Restore focus to the previously focused window
-	if m.focusedWindow == "display" {
-		m.display.SetDisplayFocused(true)
-	} else {
-		m.input.Focus()
-	}
-	m.display.updateContent()
-
-	return m, nil
-}
-
 // updateDisplayHeight updates the display viewport height based on window size.
 func (m *Terminal) updateDisplayHeight() {
 	m.display.UpdateHeight(m.windowHeight)
