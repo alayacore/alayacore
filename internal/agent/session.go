@@ -76,15 +76,6 @@ func (s *Session) getAgentOptions(model fantasy.LanguageModel) []fantasy.AgentOp
 	// Add cache control for Anthropic-compatible APIs
 	if model.Provider() == anthropicProviderName {
 		opts = append(opts, fantasy.WithPrepareStep(createPrepareStepForCacheControl()))
-		// TODO: This WithHeaders call is required for prompt caching to work correctly.
-		// Without it, the cache is re-created on every request instead of being read.
-		// The actual header value doesn't matter (both "2023-06-01" and "2023-01-01" work).
-		// The HTTP header shown in debug logs remains "2023-06-01" regardless of this value.
-		// This may be a bug or undocumented behavior in fantasy SDK v0.11.0.
-		// When upgrading fantasy, try removing this code to see if it's still needed.
-		opts = append(opts, fantasy.WithHeaders(map[string]string{
-			"anthropic-version": "2023-06-01",
-		}))
 	}
 
 	return opts
