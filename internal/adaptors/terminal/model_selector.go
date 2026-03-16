@@ -96,6 +96,26 @@ func (ms *ModelSelector) Open() {
 	ms.updateSearchInputStyles()
 	ms.scrollIdx = 0
 	ms.updateFilteredModels()
+	// Position cursor at the active model
+	ms.selectActiveModel()
+}
+
+// selectActiveModel positions the cursor at the active model in the filtered list.
+func (ms *ModelSelector) selectActiveModel() {
+	if ms.activeModel == nil {
+		ms.clampSelection()
+		return
+	}
+	// Find active model in filtered list
+	for i, m := range ms.filteredModels {
+		if m.ID == ms.activeModel.ID {
+			ms.selectedIdx = i
+			// Ensure the active model is visible in the viewport
+			listHeight := 8
+			ms.ensureVisible(listHeight)
+			return
+		}
+	}
 	ms.clampSelection()
 }
 
@@ -129,8 +149,34 @@ func (ms *ModelSelector) SetModels(models []ModelConfig) {
 }
 
 func (ms *ModelSelector) LoadModels(models []agentpkg.ModelInfo, activeID string) tea.Cmd {
+	// Skip update if model list hasn't changed
+	if len(models) == ms.lastModelCount && len(models) == len(ms.models) {
+		modelsChanged := false
+		for i, m := range models {
+			if i >= len(ms.models) || ms.models[i].ID != m.ID || ms.models[i].Name != m.Name {
+				modelsChanged = true
+				break
+			}
+		}
+		if !modelsChanged {
+			// Just update active model pointer if needed
+			for i := range ms.models {
+				if ms.models[i].ID == activeID {
+					ms.activeModel = &ms.models[i]
+					break
+				}
+			}
+			return nil
+		}
+	}
+
 	ms.lastModelCount = len(models)
 	ms.models = make([]ModelConfig, len(models))
+
+	// Preserve user's selection when selector is open
+	savedSelectedIdx := ms.selectedIdx
+	savedScrollIdx := ms.scrollIdx
+	shouldPreserveSelection := ms.state != ModelSelectorClosed
 
 	for i, m := range models {
 		ms.models[i] = ModelConfig{
@@ -147,13 +193,23 @@ func (ms *ModelSelector) LoadModels(models []agentpkg.ModelInfo, activeID string
 		}
 		if m.ID == activeID {
 			ms.activeModel = &ms.models[i]
-			ms.selectedIdx = i
+			// Only set selectedIdx if selector is closed (initial load)
+			if !shouldPreserveSelection {
+				ms.selectedIdx = i
+			}
 		}
 	}
 
-	// Force filtered models update by resetting lastSearchValue
-	ms.lastSearchValue = "\x00"
-	ms.updateFilteredModels()
+	// Preserve scroll position and only update filtered models if needed
+	currentSearch := ms.searchInput.Value()
+	if currentSearch != ms.lastSearchValue {
+		ms.updateFilteredModels()
+	}
+	if shouldPreserveSelection {
+		ms.selectedIdx = savedSelectedIdx
+		ms.scrollIdx = savedScrollIdx
+		ms.clampSelection()
+	}
 	return func() tea.Msg { return nil }
 }
 

@@ -207,6 +207,10 @@ For this project, simplicity is more important than efficiency.
     - Fixed height model list (15 items) with scrolling support
     - Performance optimized with pre-computed lowercase fields and smart filtering
     - No outer border on model window; only model list has border
+  - **Cursor behavior:**
+    - Cursor points to current active model when model window opens
+    - Cursor position preserved when streaming text arrives during model selection
+    - Scroll position adjusts to make active model visible in viewport
 
 - ✅ **Runtime Configuration for persisting active model**
   - `runtime.conf` file stores runtime data that changes during execution
