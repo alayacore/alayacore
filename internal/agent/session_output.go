@@ -8,10 +8,6 @@ import (
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
-// ============================================================================
-// Output Helpers
-// ============================================================================
-
 func (s *Session) signalPromptStart(prompt string) {
 	s.writeGapped(stream.TagTextUser, prompt)
 }
@@ -22,11 +18,6 @@ func (s *Session) signalCommandStart(cmd string) {
 
 func (s *Session) writeError(msg string) {
 	s.writeGapped(stream.TagSystemError, msg)
-}
-
-// writeErrorf writes a formatted error message
-func (s *Session) writeErrorf(format string, args ...any) {
-	s.writeError(fmt.Sprintf(format, args...))
 }
 
 func (s *Session) writeNotify(msg string) {
@@ -119,10 +110,6 @@ func (s *Session) sendSystemInfoInternal(activeModelConfig *ModelConfig) {
 	s.Output.Flush()
 }
 
-// ============================================================================
-// Message Cleanup
-// ============================================================================
-
 // cleanIncompleteToolCalls removes incomplete tool calls from messages.
 // Uses two-phase approach:
 // 1. Forward pass to identify all unmatched tool calls (tool_call without corresponding tool_result)
@@ -174,11 +161,10 @@ func cleanIncompleteToolCalls(messages []fantasy.Message) []fantasy.Message {
 				// Has other content (text, reasoning, matched calls) - keep and stop
 				messages[i].Content = filteredParts
 				return messages[:i+1]
-			} else {
-				// Only had unmatched tool calls - remove and continue
-				messages = messages[:i]
-				continue
 			}
+			// Only had unmatched tool calls - remove and continue
+			messages = messages[:i]
+			continue
 		}
 
 		// No unmatched tool calls - message is complete, stop here

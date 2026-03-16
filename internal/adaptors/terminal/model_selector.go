@@ -187,7 +187,7 @@ func (ms *ModelSelector) ConsumeReloadModels() bool {
 
 func (ms *ModelSelector) Init() tea.Cmd { return nil }
 
-func (ms *ModelSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (ms *ModelSelector) Update(_ tea.Msg) (tea.Model, tea.Cmd) {
 	if ms.state == ModelSelectorClosed {
 		return ms, nil
 	}

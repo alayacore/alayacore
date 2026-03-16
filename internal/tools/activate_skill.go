@@ -17,7 +17,7 @@ func NewActivateSkillTool(skillsManager *skills.Manager) fantasy.AgentTool {
 	return fantasy.NewAgentTool(
 		"activate_skill",
 		"Activate a skill by name to load its full instructions. Use this instead of reading SKILL.md files.",
-		func(ctx context.Context, input ActivateSkillInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		func(_ context.Context, input ActivateSkillInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			if input.Name == "" {
 				return fantasy.NewTextErrorResponse("skill name is required"), nil
 			}

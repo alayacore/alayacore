@@ -64,7 +64,7 @@ func (m *Terminal) submitCommand(command string, clearInput bool) tea.Cmd {
 
 // scheduleTick schedules a tick message for UI updates.
 func scheduleTick() tea.Cmd {
-	return tea.Tick(SubmitTickDelay, func(t time.Time) tea.Msg {
+	return tea.Tick(SubmitTickDelay, func(_ time.Time) tea.Msg {
 		return tickMsg{}
 	})
 }

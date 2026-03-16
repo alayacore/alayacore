@@ -85,7 +85,7 @@ func NewTerminal(
 
 // Init starts the periodic tick loop for processing session updates.
 func (m *Terminal) Init() tea.Cmd {
-	return tea.Tick(TickInterval, func(t time.Time) tea.Msg {
+	return tea.Tick(TickInterval, func(_ time.Time) tea.Msg {
 		return tickMsg{}
 	})
 }
@@ -189,7 +189,7 @@ func (m *Terminal) handleTick() (tea.Model, tea.Cmd) {
 
 	// Continue ticking
 	return m, tea.Batch(
-		tea.Tick(TickInterval, func(t time.Time) tea.Msg {
+		tea.Tick(TickInterval, func(_ time.Time) tea.Msg {
 			return tickMsg{}
 		}),
 		cmd,

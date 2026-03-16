@@ -9,10 +9,6 @@ import (
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
-// ============================================================================
-// Persistence
-// ============================================================================
-
 func LoadSession(path string) (*SessionData, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -39,10 +35,6 @@ func (s *Session) saveSessionToFile(path string) error {
 	}
 	return nil
 }
-
-// ============================================================================
-// Message Display (for session restore)
-// ============================================================================
 
 func (s *Session) displayMessages() {
 	if s.Output == nil {

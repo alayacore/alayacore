@@ -23,7 +23,7 @@ func NewReadFileTool() fantasy.AgentTool {
 	return fantasy.NewAgentTool(
 		"read_file",
 		"Read the contents of a file. Supports optional line range using start_line and end_line parameters (1-indexed).",
-		func(ctx context.Context, input ReadFileInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		func(_ context.Context, input ReadFileInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			if input.Path == "" {
 				return fantasy.NewTextErrorResponse("path is required"), nil
 			}
@@ -39,7 +39,6 @@ func NewReadFileTool() fantasy.AgentTool {
 
 			startLine := 0
 			if input.StartLine != "" {
-				var err error
 				startLine, err = strconv.Atoi(input.StartLine)
 				if err != nil {
 					return fantasy.NewTextErrorResponse("invalid start_line: must be a number"), nil
@@ -51,7 +50,6 @@ func NewReadFileTool() fantasy.AgentTool {
 
 			endLine := 0
 			if input.EndLine != "" {
-				var err error
 				endLine, err = strconv.Atoi(input.EndLine)
 				if err != nil {
 					return fantasy.NewTextErrorResponse("invalid end_line: must be a number"), nil

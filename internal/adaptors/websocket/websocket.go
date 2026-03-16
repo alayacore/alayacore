@@ -9,6 +9,7 @@ package websocket
 import (
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -20,7 +21,7 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
+	CheckOrigin: func(_ *http.Request) bool {
 		return true
 	},
 }
@@ -39,7 +40,11 @@ func NewWebSocketAdaptor(port string, cfg *app.Config) *WebSocketAdaptor {
 
 	return &WebSocketAdaptor{
 		Config: cfg,
-		Server: &http.Server{Addr: port, Handler: mux},
+		Server: &http.Server{
+			Addr:              port,
+			Handler:           mux,
+			ReadHeaderTimeout: 10 * time.Second,
+		},
 	}
 }
 
@@ -49,7 +54,7 @@ func (a *WebSocketAdaptor) Start() {
 }
 
 // serveIndex serves the embedded chat UI.
-func serveIndex(w http.ResponseWriter, r *http.Request) {
+func serveIndex(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(indexHTML))
 }

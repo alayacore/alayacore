@@ -34,7 +34,10 @@ func TestTerminalResizeCursorValidation(t *testing.T) {
 	}
 
 	model, _ := terminal.Update(resizeMsg)
-	terminal = model.(*Terminal)
+	terminal, ok := model.(*Terminal)
+	if !ok {
+		t.Fatalf("Expected *Terminal, got %T", model)
+	}
 
 	// Cursor should still be valid
 	cursor := terminal.display.GetWindowCursor()
@@ -64,7 +67,10 @@ func TestTerminalResizeClampsCursor(t *testing.T) {
 	}
 
 	model, _ := terminal.Update(resizeMsg)
-	terminal = model.(*Terminal)
+	terminal, ok := model.(*Terminal)
+	if !ok {
+		t.Fatalf("Expected *Terminal, got %T", model)
+	}
 
 	// Cursor should be clamped to valid range
 	cursor := terminal.display.GetWindowCursor()
@@ -102,7 +108,10 @@ func TestTerminalResizeUpdatesDisplayContent(t *testing.T) {
 	}
 
 	model, _ := terminal.Update(resizeMsg)
-	terminal = model.(*Terminal)
+	terminal, ok := model.(*Terminal)
+	if !ok {
+		t.Fatalf("Expected *Terminal, got %T", model)
+	}
 
 	// Get the view after resize
 	resizedView := terminal.display.View()

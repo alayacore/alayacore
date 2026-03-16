@@ -18,7 +18,7 @@ func NewWriteFileTool() fantasy.AgentTool {
 	return fantasy.NewAgentTool(
 		"write_file",
 		"Create a new file or replace the entire content of an existing file.",
-		func(ctx context.Context, input WriteFileInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		func(_ context.Context, input WriteFileInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			if input.Path == "" {
 				return fantasy.NewTextErrorResponse("path is required"), nil
 			}

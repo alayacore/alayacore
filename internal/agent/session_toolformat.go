@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-// ============================================================================
-// Tool Call Formatting
-// ============================================================================
-
 func formatToolCall(toolName, input string) string {
 	var fields map[string]interface{}
 	if err := json.Unmarshal([]byte(input), &fields); err != nil {

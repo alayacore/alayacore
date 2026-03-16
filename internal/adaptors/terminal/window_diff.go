@@ -119,22 +119,3 @@ func truncateByWidth(s string, maxDisplayWidth int) string {
 
 	return result.String() + "..."
 }
-
-// getLastLines returns the last n lines from an already-wrapped string.
-// It finds the nth-to-last newline and returns everything after it.
-func getLastLines(wrapped string, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	idx := len(wrapped)
-	for i := 0; i < n && idx > 0; i++ {
-		idx = strings.LastIndex(wrapped[:idx], "\n")
-		if idx == -1 {
-			return wrapped
-		}
-	}
-	if idx >= 0 && idx < len(wrapped) {
-		return wrapped[idx+1:]
-	}
-	return wrapped
-}

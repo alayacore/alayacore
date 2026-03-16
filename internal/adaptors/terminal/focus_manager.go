@@ -6,13 +6,19 @@ import (
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
+// Window focus constants
+const (
+	focusDisplay = "display"
+	focusInput   = "input"
+)
+
 // FocusManager handles focus state management for the terminal UI.
 // This includes switching between display/input, managing overlay focus,
 // and handling application focus/blur events.
 
 // toggleFocus switches between display and input windows.
 func (m *Terminal) toggleFocus() {
-	if m.focusedWindow == "display" {
+	if m.focusedWindow == focusDisplay {
 		m.focusInput()
 	} else {
 		m.focusDisplay()
@@ -22,14 +28,14 @@ func (m *Terminal) toggleFocus() {
 
 // focusInput switches focus to the input window.
 func (m *Terminal) focusInput() {
-	m.focusedWindow = "input"
+	m.focusedWindow = focusInput
 	m.display.SetDisplayFocused(false)
 	m.input.Focus()
 }
 
 // focusDisplay switches focus to the display window.
 func (m *Terminal) focusDisplay() {
-	m.focusedWindow = "display"
+	m.focusedWindow = focusDisplay
 	m.display.SetDisplayFocused(true)
 	m.input.Blur()
 	// Initialize cursor to last window if not set
@@ -48,7 +54,7 @@ func (m *Terminal) openModelSelector() {
 
 // restoreFocusAfterSelector restores focus after model selector closes.
 func (m *Terminal) restoreFocusAfterSelector() {
-	if m.focusedWindow == "display" {
+	if m.focusedWindow == focusDisplay {
 		m.display.SetDisplayFocused(true)
 	} else {
 		m.input.Focus()
@@ -68,7 +74,7 @@ func (m *Terminal) openQueueManager() {
 
 // restoreFocusAfterQueueManager restores focus after queue manager closes.
 func (m *Terminal) restoreFocusAfterQueueManager() {
-	if m.focusedWindow == "display" {
+	if m.focusedWindow == focusDisplay {
 		m.display.SetDisplayFocused(true)
 	} else {
 		m.input.Focus()

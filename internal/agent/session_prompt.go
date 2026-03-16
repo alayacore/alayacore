@@ -9,10 +9,6 @@ import (
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
-// ============================================================================
-// Prompt Handling
-// ============================================================================
-
 func (s *Session) handleUserPrompt(ctx context.Context, prompt string) {
 	// Auto-summarize when context usage reaches 80% of the limit
 	if s.shouldAutoSummarize() {
@@ -52,7 +48,7 @@ func (s *Session) autoSummarize(ctx context.Context) {
 // Returns the output tokens from the response.
 func (s *Session) processPrompt(ctx context.Context, prompt string, history []fantasy.Message) (int64, error) {
 	call := fantasy.AgentStreamCall{Prompt: prompt}
-	promptId := atomic.AddUint64(&s.nextPromptID, 1) - 1
+	promptID := atomic.AddUint64(&s.nextPromptID, 1) - 1
 
 	var stepCount int
 	var outputTokens int64
@@ -61,9 +57,9 @@ func (s *Session) processPrompt(ctx context.Context, prompt string, history []fa
 		call.Messages = history
 	}
 
-	/// the final ID is [:promptId-stepCount-id:]
-	assembleId := func(id string) string {
-		return "[:" + strconv.FormatUint(promptId, 10) + "-" + strconv.FormatInt(int64(stepCount), 10) + "-" + id + ":]"
+	/// the final ID is [:promptID-stepCount-id:]
+	assembleID := func(id string) string {
+		return "[:" + strconv.FormatUint(promptID, 10) + "-" + strconv.FormatInt(int64(stepCount), 10) + "-" + id + ":]"
 	}
 
 	call.OnStepStart = func(step int) error {
@@ -84,12 +80,12 @@ func (s *Session) processPrompt(ctx context.Context, prompt string, history []fa
 	// The `id` in the callback is not reliable, it does not work for some providers.
 	// Here we only need to distinguish the delta type, so we give numbers directly.
 	call.OnTextDelta = func(_, text string) error {
-		stream.WriteTLV(s.Output, stream.TagTextAssistant, assembleId("t")+text)
+		stream.WriteTLV(s.Output, stream.TagTextAssistant, assembleID("t")+text)
 		s.Output.Flush()
 		return nil
 	}
 	call.OnReasoningDelta = func(_, text string) error {
-		stream.WriteTLV(s.Output, stream.TagTextReasoning, assembleId("r")+text)
+		stream.WriteTLV(s.Output, stream.TagTextReasoning, assembleID("r")+text)
 		s.Output.Flush()
 		return nil
 	}

@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-// ============================================================================
-// Path Utilities
-// ============================================================================
-
 func expandPath(path string) string {
 	if !strings.HasPrefix(path, "~") {
 		return path

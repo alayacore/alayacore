@@ -70,7 +70,7 @@ func TestSaveAndLoadSession(t *testing.T) {
 
 func TestLoadOrNewSession(t *testing.T) {
 	// Use nil for model since we're just testing session creation
-	var model fantasy.LanguageModel = nil
+	var model fantasy.LanguageModel
 	baseTools := []fantasy.AgentTool{}
 	systemPrompt := "test system prompt"
 
@@ -638,139 +638,6 @@ func TestCleanIncompleteToolCalls(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestParseMessagesWithEmbeddedNUL(t *testing.T) {
-	// Test case: tool_result output contains embedded NUL characters
-	// This should NOT be parsed as message separators
-	body := "\x00msg:user\nHello\n\x00tool_call\nid: call1\nname: test\ninput:\n  {}\n\x00tool_result\nid: call1\noutput:\n  This has \x00 embedded NUL\n\x00msg:assistant\nDone\n"
-
-	msgs, err := parseMessagesLegacy(body)
-	if err != nil {
-		t.Fatalf("parseMessagesLegacy failed: %v", err)
-	}
-
-	// Should parse correctly:
-	// 1. user message "Hello"
-	// 2. assistant message with tool_call
-	// 3. tool message with tool_result (containing embedded NUL)
-	// 4. assistant message "Done"
-	if len(msgs) != 4 {
-		t.Errorf("expected 4 messages, got %d", len(msgs))
-		for i, msg := range msgs {
-			t.Logf("msg[%d]: role=%s, parts=%d", i, msg.Role, len(msg.Content))
-		}
-		return
-	}
-
-	// Check that tool_result contains the embedded NUL
-	if len(msgs[2].Content) != 1 {
-		t.Fatalf("expected tool message to have 1 part, got %d", len(msgs[2].Content))
-	}
-	tr, ok := msgs[2].Content[0].(fantasy.ToolResultPart)
-	if !ok {
-		t.Fatalf("expected ToolResultPart, got %T", msgs[2].Content[0])
-	}
-	output, ok := tr.Output.(fantasy.ToolResultOutputContentText)
-	if !ok {
-		t.Fatalf("expected ToolResultOutputContentText, got %T", tr.Output)
-	}
-	if !strings.Contains(output.Text, "\x00") {
-		t.Errorf("tool_result output should contain embedded NUL, got: %q", output.Text)
-	}
-}
-
-func TestSplitByMessageSeparators(t *testing.T) {
-	tests := []struct {
-		name     string
-		body     string
-		wantLen  int
-		wantPart string // first part content check
-	}{
-		{
-			name:     "simple user message",
-			body:     "\x00msg:user\nHello",
-			wantLen:  1,
-			wantPart: "msg:user\nHello",
-		},
-		{
-			name:    "embedded NUL in content",
-			body:    "\x00msg:user\nHello\x00world",
-			wantLen: 1, // The embedded NUL should NOT split
-		},
-		{
-			name:    "multiple messages with embedded NUL",
-			body:    "\x00msg:user\nHello\x00world\n\x00msg:assistant\nHi",
-			wantLen: 2,
-		},
-		{
-			name:    "tool_call and tool_result",
-			body:    "\x00tool_call\nid: 1\nname: test\ninput:\n  {}\n\x00tool_result\nid: 1\noutput:\n  result",
-			wantLen: 2,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			parts := splitByMessageSeparators(tt.body)
-			if len(parts) != tt.wantLen {
-				t.Errorf("expected %d parts, got %d: %v", tt.wantLen, len(parts), parts)
-			}
-			if tt.wantPart != "" && len(parts) > 0 && parts[0] != tt.wantPart {
-				t.Errorf("first part = %q, want %q", parts[0], tt.wantPart)
-			}
-		})
-	}
-}
-
-func TestLoadSessionWithEmbeddedNUL(t *testing.T) {
-	// Create a temporary session file with embedded NUL characters in tool output
-	tmpDir := t.TempDir()
-	sessionPath := filepath.Join(tmpDir, "test-embedded-nul.md")
-
-	// Create session content with embedded NUL in tool_result output
-	content := `---
-base_url: https://api.test.com/v1
-model_name: test-model
-total_tokens: 100
-context_tokens: 50
----
-` + "\x00msg:user\nHello\n\x00tool_call\nid: call1\nname: test_tool\ninput:\n  {\"arg\": \"value\"}\n\x00tool_result\nid: call1\noutput:\n  This output has \x00 embedded NUL character\n\x00msg:assistant\nDone\n"
-
-	if err := os.WriteFile(sessionPath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
-
-	// Load the session
-	data, err := LoadSession(sessionPath)
-	if err != nil {
-		t.Fatalf("LoadSession failed: %v", err)
-	}
-
-	// Verify we got the expected messages
-	if len(data.Messages) != 4 {
-		t.Errorf("expected 4 messages, got %d", len(data.Messages))
-		for i, msg := range data.Messages {
-			t.Logf("msg[%d]: role=%s, parts=%d", i, msg.Role, len(msg.Content))
-		}
-		return
-	}
-
-	// Check that the tool_result contains the embedded NUL
-	if len(data.Messages[2].Content) != 1 {
-		t.Fatalf("expected tool message to have 1 part, got %d", len(data.Messages[2].Content))
-	}
-	tr, ok := data.Messages[2].Content[0].(fantasy.ToolResultPart)
-	if !ok {
-		t.Fatalf("expected ToolResultPart, got %T", data.Messages[2].Content[0])
-	}
-	output, ok := tr.Output.(fantasy.ToolResultOutputContentText)
-	if !ok {
-		t.Fatalf("expected ToolResultOutputContentText, got %T", tr.Output)
-	}
-	if !strings.Contains(output.Text, "\x00") {
-		t.Errorf("tool_result output should contain embedded NUL, got: %q", output.Text)
 	}
 }
 

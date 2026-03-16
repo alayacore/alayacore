@@ -12,17 +12,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ============================================================================
-// Session File Format (TLV-encoded)
-// ============================================================================
-
 // Session file uses TLV (Tag-Length-Value) encoding to avoid recursion issues
 // when session files contain tool results that might include session-like content.
 // The format is: 2-byte tag + 4-byte length (big-endian) + content
 // Tags are shared with stream package for consistency.
-
-// Deprecated: old NUL-based separator (kept for backward compat during migration)
-const msgSep = "\x00"
 
 // formatSessionMarkdown converts SessionData to markdown format with TLV encoding.
 // Format: YAML frontmatter + binary TLV-encoded messages
@@ -143,15 +136,11 @@ func parseSessionMarkdown(data []byte) (*SessionData, error) {
 		UpdatedAt: meta.UpdatedAt,
 	}
 
-	// Parse messages - try TLV first, fall back to legacy format
+	// Parse messages using TLV format
 	if len(body) > 0 {
 		msgs, err := parseMessagesTLV(body)
 		if err != nil {
-			// Fall back to legacy NUL-based format
-			msgs, err = parseMessagesLegacy(body)
-			if err != nil {
-				return nil, err
-			}
+			return nil, err
 		}
 		sd.Messages = msgs
 	}
@@ -285,133 +274,6 @@ func parseMessagesTLV(body string) ([]fantasy.Message, error) {
 	return messages, nil
 }
 
-// parseMessagesLegacy parses the old NUL-separated format for backward compatibility.
-func parseMessagesLegacy(body string) ([]fantasy.Message, error) {
-	var messages []fantasy.Message
-	var currentMsg *fantasy.Message
-
-	// Use a more robust parsing approach:
-	// Only recognize NUL followed by known message types as separators.
-	// This prevents embedded NUL characters in tool output from being
-	// incorrectly parsed as message boundaries.
-	parts := splitByMessageSeparators(body)
-
-	for _, part := range parts {
-		if part == "" {
-			continue
-		}
-
-		// First line is role/type
-		lines := strings.SplitN(part, "\n", 2)
-		role := lines[0]
-		content := ""
-		if len(lines) > 1 {
-			content = lines[1]
-		}
-
-		var msgPart fantasy.MessagePart
-		var msgRole fantasy.MessageRole
-		newMessage := false
-
-		// Check for "msg:" prefix which indicates a new message
-		if strings.HasPrefix(role, "msg:") {
-			newMessage = true
-			role = strings.TrimPrefix(role, "msg:")
-		}
-
-		switch role {
-		case string(fantasy.MessageRoleUser):
-			msgRole = fantasy.MessageRoleUser
-			msgPart = fantasy.TextPart{Text: strings.TrimSuffix(content, "\n")}
-		case string(fantasy.MessageRoleAssistant):
-			msgRole = fantasy.MessageRoleAssistant
-			msgPart = fantasy.TextPart{Text: strings.TrimSuffix(content, "\n")}
-		case string(fantasy.MessageRoleTool):
-			msgRole = fantasy.MessageRoleTool
-			msgPart = parseToolResultContent(content)
-		case "reasoning":
-			msgRole = fantasy.MessageRoleAssistant
-			msgPart = fantasy.ReasoningPart{Text: strings.TrimSuffix(content, "\n")}
-		case "tool_call":
-			msgRole = fantasy.MessageRoleAssistant
-			msgPart = parseToolCallContent(content)
-		case "tool_result":
-			msgRole = fantasy.MessageRoleTool
-			msgPart = parseToolResultContent(content)
-		default:
-			continue
-		}
-
-		// Create new message or append to current
-		// Start a new message if: explicitly requested, no current message, or role mismatch
-		roleMismatch := currentMsg != nil && currentMsg.Role != msgRole
-		if newMessage || currentMsg == nil || roleMismatch {
-			if currentMsg != nil {
-				messages = append(messages, *currentMsg)
-			}
-			currentMsg = &fantasy.Message{
-				Role:    msgRole,
-				Content: []fantasy.MessagePart{msgPart},
-			}
-		} else {
-			currentMsg.Content = append(currentMsg.Content, msgPart)
-		}
-	}
-
-	if currentMsg != nil {
-		messages = append(messages, *currentMsg)
-	}
-
-	return messages, nil
-}
-
-// parseToolCallContent parses tool_call section content.
-func parseToolCallContent(content string) fantasy.ToolCallPart {
-	tc := fantasy.ToolCallPart{}
-	lines := strings.Split(content, "\n")
-
-	var inputLines []string
-	inInput := false
-
-	for _, line := range lines {
-		if inInput {
-			inputLines = append(inputLines, strings.TrimPrefix(line, "  "))
-		} else if strings.HasPrefix(line, "id: ") {
-			tc.ToolCallID = strings.TrimPrefix(line, "id: ")
-		} else if strings.HasPrefix(line, "name: ") {
-			tc.ToolName = strings.TrimPrefix(line, "name: ")
-		} else if line == "input:" {
-			inInput = true
-		}
-	}
-
-	tc.Input = strings.Join(inputLines, "\n")
-	return tc
-}
-
-// parseToolResultContent parses tool_result section content.
-func parseToolResultContent(content string) fantasy.ToolResultPart {
-	tr := fantasy.ToolResultPart{}
-	lines := strings.Split(content, "\n")
-
-	var outputLines []string
-	inOutput := false
-
-	for _, line := range lines {
-		if inOutput {
-			outputLines = append(outputLines, strings.TrimPrefix(line, "  "))
-		} else if strings.HasPrefix(line, "id: ") {
-			tr.ToolCallID = strings.TrimPrefix(line, "id: ")
-		} else if line == "output:" {
-			inOutput = true
-		}
-	}
-
-	output := strings.Join(outputLines, "\n")
-	tr.Output = fantasy.ToolResultOutputContentText{Text: output}
-	return tr
-}
-
 // formatToolResultOutput converts ToolResultOutputContent to string.
 func formatToolResultOutput(output fantasy.ToolResultOutputContent) string {
 	if text, ok := output.(fantasy.ToolResultOutputContentText); ok {
@@ -425,68 +287,4 @@ func formatToolResultOutput(output fantasy.ToolResultOutputContent) string {
 		return e.Error.Error()
 	}
 	return fmt.Sprintf("%v", output)
-}
-
-// indentString indents each line of a string.
-func indentString(s, indent string) string {
-	lines := strings.Split(s, "\n")
-	for i, line := range lines {
-		if line != "" {
-			lines[i] = indent + line
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-// splitByMessageSeparators splits the body by NUL character but only when
-// followed by known message type markers. This prevents embedded NUL characters
-// in tool output from being incorrectly parsed as message boundaries.
-func splitByMessageSeparators(body string) []string {
-	var parts []string
-	var current strings.Builder
-
-	// Known message type markers that can follow NUL
-	markers := []string{
-		"msg:user",
-		"msg:assistant",
-		"msg:tool",
-		"msg:reasoning",
-		"tool_call",
-		"tool_result",
-	}
-
-	i := 0
-	for i < len(body) {
-		// Check if current position is NUL followed by a known marker
-		if body[i] == 0x00 {
-			found := false
-			for _, marker := range markers {
-				if i+1+len(marker) <= len(body) && body[i+1:i+1+len(marker)] == marker {
-					// Found a valid separator - save current part
-					if current.Len() > 0 {
-						parts = append(parts, current.String())
-						current.Reset()
-					}
-					i++ // Skip the NUL character
-					found = true
-					break
-				}
-			}
-			if !found {
-				// NUL not followed by a known marker - keep it in the content
-				current.WriteByte(body[i])
-				i++
-			}
-		} else {
-			current.WriteByte(body[i])
-			i++
-		}
-	}
-
-	// Add the last part
-	if current.Len() > 0 {
-		parts = append(parts, current.String())
-	}
-
-	return parts
 }

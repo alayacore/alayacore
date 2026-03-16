@@ -41,7 +41,7 @@ Example:
   "old_string": "func old() {\n    doSomething()\n}",
   "new_string": "func new() {\n    doSomethingElse()\n}"
 }`,
-		func(ctx context.Context, input EditFileInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		func(_ context.Context, input EditFileInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			if input.Path == "" {
 				return fantasy.NewTextErrorResponse("path is required"), nil
 			}

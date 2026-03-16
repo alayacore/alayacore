@@ -110,7 +110,7 @@ func TestWindowBuffer(t *testing.T) {
 }
 
 func TestWindowBufferViewport(t *testing.T) {
-	t.Run("set viewport position", func(t *testing.T) {
+	t.Run("set viewport position", func(_ *testing.T) {
 		wb := NewWindowBuffer(80)
 		wb.SetViewportPosition(10, 20)
 		// Should not panic

@@ -297,7 +297,7 @@ func NewHTTPClientWithProxy(proxyURL string) (*http.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SOCKS5 dialer: %w", err)
 		}
-		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
 			return dialer.Dial(network, addr)
 		}
 	default:

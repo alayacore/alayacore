@@ -12,10 +12,6 @@ import (
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
-// ============================================================================
-// Command Handling
-// ============================================================================
-
 func (s *Session) handleCommandSync(ctx context.Context, cmd string) {
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
@@ -97,10 +93,6 @@ func (s *Session) saveSession(args []string) {
 		s.writeNotifyf("Session saved to %s", path)
 	}
 }
-
-// ============================================================================
-// Model Commands
-// ============================================================================
 
 func (s *Session) handleModelSet(args []string) {
 	if s.ModelManager == nil {

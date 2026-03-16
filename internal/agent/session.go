@@ -116,10 +116,6 @@ type SessionData struct {
 	UpdatedAt time.Time
 }
 
-// ============================================================================
-// Session Lifecycle
-// ============================================================================
-
 // LoadOrNewSession loads a session from file or creates a new one.
 func LoadOrNewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt string, input stream.Input, output stream.Output, sessionFile string, contextLimit int64, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) (*Session, string) {
 	sessionFile = expandPath(sessionFile)
@@ -132,7 +128,7 @@ func LoadOrNewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool
 }
 
 // NewSession creates a fresh session.
-func NewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt string, input stream.Input, output stream.Output, sessionFile string, contextLimit int64, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
+func NewSession(_ fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt string, input stream.Input, output stream.Output, sessionFile string, contextLimit int64, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
 	s := &Session{
 		SessionFile:    sessionFile,
 		ContextLimit:   contextLimit,
@@ -156,7 +152,7 @@ func NewSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, syst
 }
 
 // RestoreFromSession creates a session from saved data.
-func RestoreFromSession(model fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt string, input stream.Input, output stream.Output, data *SessionData, sessionFile string, contextLimit int64, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
+func RestoreFromSession(_ fantasy.LanguageModel, baseTools []fantasy.AgentTool, systemPrompt string, input stream.Input, output stream.Output, data *SessionData, sessionFile string, contextLimit int64, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
 	s := &Session{
 		Messages:       data.Messages,
 		SessionFile:    sessionFile,
@@ -307,7 +303,7 @@ func (s *Session) readFromInput() {
 			continue
 		}
 		if len(value) > 0 && value[0] == ':' {
-			cmd := string(value[1:])
+			cmd := value[1:]
 			// These commands are immediate, not queued
 			if cmd == "cancel" || cmd == "taskqueue_get_all" || strings.HasPrefix(cmd, "taskqueue_del ") {
 				s.handleCommandSync(context.Background(), cmd)

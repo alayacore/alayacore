@@ -341,7 +341,7 @@ func TestCtrlGTriggersCancel(t *testing.T) {
 
 	// Test confirming the dialog by pressing 'y'
 	msg = tea.KeyPressMsg(tea.Key{Code: 'y'})
-	model, cmd = terminal.Update(msg)
+	_, cmd = terminal.Update(msg)
 
 	// Now should emit cancel command
 	if cmd == nil {

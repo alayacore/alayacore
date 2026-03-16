@@ -151,7 +151,7 @@ func (wc *WriteCloser) Close() error {
 // NopInput is an Input that always returns EOF.
 type NopInput struct{}
 
-func (n *NopInput) Read(p []byte) (int, error) {
+func (n *NopInput) Read(_ []byte) (int, error) {
 	return 0, io.EOF
 }
 

@@ -8,10 +8,6 @@ import (
 	"charm.land/fantasy"
 )
 
-// ============================================================================
-// Task Queue
-// ============================================================================
-
 func (s *Session) submitTask(task Task) {
 	s.mu.Lock()
 	queueLen := len(s.taskQueue)

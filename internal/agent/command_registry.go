@@ -7,10 +7,6 @@ import (
 	domainerrors "github.com/alayacore/alayacore/internal/errors"
 )
 
-// ============================================================================
-// Command Registry
-// ============================================================================
-
 // CommandHandler is the function signature for command handlers
 type CommandHandler func(ctx context.Context, args []string)
 
@@ -54,10 +50,6 @@ func (r *CommandRegistry) List() []*Command {
 	return cmds
 }
 
-// ============================================================================
-// Session Command Registry
-// ============================================================================
-
 // commandRegistry is the global command registry for the session
 var commandRegistry = NewCommandRegistry()
 
@@ -68,7 +60,7 @@ func init() {
 		Name:        "summarize",
 		Description: "Summarize the conversation to reduce context",
 		Usage:       "",
-		Handler: func(ctx context.Context, args []string) {
+		Handler: func(_ context.Context, _ []string) {
 			// Handler is resolved at runtime via Session method
 		},
 	})
@@ -77,7 +69,7 @@ func init() {
 		Name:        "cancel",
 		Description: "Cancel the current task",
 		Usage:       "",
-		Handler: func(ctx context.Context, args []string) {
+		Handler: func(_ context.Context, _ []string) {
 			// Handler is resolved at runtime via Session method
 		},
 	})
@@ -86,7 +78,7 @@ func init() {
 		Name:        "save",
 		Description: "Save the current session",
 		Usage:       "[filename]",
-		Handler: func(ctx context.Context, args []string) {
+		Handler: func(_ context.Context, _ []string) {
 			// Handler is resolved at runtime via Session method
 		},
 	})
@@ -96,7 +88,7 @@ func init() {
 		Name:        "model_set",
 		Description: "Switch to a different model",
 		Usage:       "<id>",
-		Handler: func(ctx context.Context, args []string) {
+		Handler: func(_ context.Context, _ []string) {
 			// Handler is resolved at runtime via Session method
 		},
 	})
@@ -105,7 +97,7 @@ func init() {
 		Name:        "model_load",
 		Description: "Reload models from configuration file",
 		Usage:       "",
-		Handler: func(ctx context.Context, args []string) {
+		Handler: func(_ context.Context, _ []string) {
 			// Handler is resolved at runtime via Session method
 		},
 	})
@@ -115,7 +107,7 @@ func init() {
 		Name:        "taskqueue_get_all",
 		Description: "List all queued tasks",
 		Usage:       "",
-		Handler: func(ctx context.Context, args []string) {
+		Handler: func(_ context.Context, _ []string) {
 			// Handler is resolved at runtime via Session method
 		},
 	})
@@ -124,7 +116,7 @@ func init() {
 		Name:        "taskqueue_del",
 		Description: "Delete a queued task",
 		Usage:       "<queue_id>",
-		Handler: func(ctx context.Context, args []string) {
+		Handler: func(_ context.Context, _ []string) {
 			// Handler is resolved at runtime via Session method
 		},
 	})
