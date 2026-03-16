@@ -290,6 +290,12 @@ For this project, simplicity is more important than efficiency.
   - SessionError type with operation context for structured error handling
   - Model, queue, session, command, and input error types defined
 
+- ✅ **Stream tests (Phase 6.3 of REFACTOR.md)**
+  - Created `internal/stream/stream_test.go` with comprehensive TLV tests
+  - Tests for EncodeTLV, ReadTLV, WriteTLV, ChanInput
+  - Coverage for unicode, empty values, long messages, multiple messages
+  - Created `internal/errors/errors_test.go` with domain error tests
+
 - ✅ **Model selector focus management**
   - Input and display windows lose focus when model selector is shown
   - Focus is restored to previously focused window when model selector closes

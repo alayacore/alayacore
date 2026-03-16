@@ -92,8 +92,11 @@ The project is well-structured (~11,500 lines of Go code) with clear separation 
 - [ ] **Task 6.2**: Add tool tests
   - `read_file_test.go`, `write_file_test.go`, `posix_shell_test.go`, `activate_skill_test.go`
 
-- [ ] **Task 6.3**: Add stream/TLV tests
-  - `stream_test.go`
+- [x] **Task 6.3**: Add stream/TLV tests ✅
+  - Created `internal/stream/stream_test.go`
+  - Tests for EncodeTLV, ReadTLV, WriteTLV
+  - Tests for ChanInput (emit, read, close, multiple messages)
+  - Tests for unicode and long messages
 
 ### Phase 7: Documentation Improvements (Priority: Low)
 
@@ -135,8 +138,8 @@ The project is well-structured (~11,500 lines of Go code) with clear separation 
 | 5.1 | Define domain errors | ✅ Done |
 | 5.2 | Use structured errors | ⏳ Pending |
 | 6.1 | Add terminal adaptor tests | ⏳ Pending |
-| 6.2 | Add tool tests | ⏳ Pending |
-| 6.3 | Add stream tests | ⏳ Pending |
+| 6.2 | Add tool tests | ⏳ Pending (edit_file_test.go exists) |
+| 6.3 | Add stream tests | ✅ Done |
 | 7.1 | Add package documentation | ⏳ Pending |
 | 7.2 | Create architecture docs | ⏳ Pending |
 | 8.1 | Add golangci-lint config | ⏳ Pending |
