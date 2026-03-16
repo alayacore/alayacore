@@ -154,14 +154,14 @@ func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 	// Window cursor navigation
 	switch keyStr {
-	case KeyJ:
+	case KeyJ, KeyDown:
 		if m.display.MoveWindowCursorDown() {
 			m.display.updateContent()
 			m.display.EnsureCursorVisible()
 		}
 		return nil, true
 
-	case KeyK:
+	case KeyK, KeyUp:
 		if m.display.MoveWindowCursorUp() {
 			m.display.updateContent()
 			m.display.EnsureCursorVisible()

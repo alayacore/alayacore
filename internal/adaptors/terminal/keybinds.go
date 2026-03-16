@@ -26,6 +26,8 @@ var globalKeyBindings = []KeyBinding{
 var displayKeyBindings = []KeyBinding{
 	{KeyJ, "Move window cursor down", "display"},
 	{KeyK, "Move window cursor up", "display"},
+	{KeyDown, "Move window cursor down", "display"},
+	{KeyUp, "Move window cursor up", "display"},
 	{KeyShiftJ, "Scroll down one line", "display"},
 	{KeyShiftK, "Scroll up one line", "display"},
 	{KeyG, "Go to bottom (last window)", "display"},
