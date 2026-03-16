@@ -200,6 +200,9 @@ func (qm *QueueManager) renderItem(item QueueItem, selected bool) string {
 	}
 
 	content := item.Content
+	// Escape newlines and tabs for single-line display
+	content = strings.ReplaceAll(content, "\n", "\\n")
+	content = strings.ReplaceAll(content, "\t", "\\t")
 	if len(content) > maxWidth {
 		content = content[:maxWidth-3] + "..."
 	}

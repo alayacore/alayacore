@@ -45,9 +45,10 @@ func (s *Session) submitTask(task Task) {
 	s.mu.Unlock()
 
 	if inProgress {
-		s.writeNotify("Queued. Previous task in progress. Will run after completion.")
-		s.sendSystemInfo()
+		s.writeNotifyf("Queued as %s. Previous task in progress. Will run after completion.", queueID)
 	}
+	// Always send system info so queue manager can update
+	s.sendSystemInfo()
 }
 
 // signalTaskAvailable notifies the task runner that a new task is available

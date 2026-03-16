@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"charm.land/fantasy"
 	"github.com/alayacore/alayacore/internal/stream"
@@ -85,7 +86,24 @@ func (s *Session) sendSystemInfoInternal(activeModelConfig *ModelConfig) {
 	}
 
 	s.mu.Lock()
-	queueCount := len(s.taskQueue)
+	queueItems := make([]QueueItemInfo, len(s.taskQueue))
+	for i, item := range s.taskQueue {
+		var itemType, content string
+		switch t := item.Task.(type) {
+		case UserPrompt:
+			itemType = "prompt"
+			content = t.Text
+		case CommandPrompt:
+			itemType = "command"
+			content = t.Command
+		}
+		queueItems[i] = QueueItemInfo{
+			QueueID:   item.QueueID,
+			Type:      itemType,
+			Content:   content,
+			CreatedAt: item.CreatedAt.Format(time.RFC3339),
+		}
+	}
 	inProgress := s.inProgress
 	contextTokens := s.ContextTokens
 	contextLimit := s.ContextLimit
@@ -96,7 +114,7 @@ func (s *Session) sendSystemInfoInternal(activeModelConfig *ModelConfig) {
 		ContextTokens:     contextTokens,
 		ContextLimit:      contextLimit,
 		TotalTokens:       totalTokens,
-		QueueCount:        queueCount,
+		QueueItems:        queueItems,
 		InProgress:        inProgress,
 		Models:            models,
 		ActiveModelID:     activeID,

@@ -2,14 +2,11 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
-	"time"
 
 	"charm.land/fantasy"
 	"github.com/alayacore/alayacore/internal/app"
 	domainerrors "github.com/alayacore/alayacore/internal/errors"
-	"github.com/alayacore/alayacore/internal/stream"
 )
 
 func (s *Session) handleCommandSync(ctx context.Context, cmd string) {
@@ -198,48 +195,9 @@ func (s *Session) handleModelLoad() {
 	s.sendSystemInfo()
 }
 
-// handleTaskQueueGetAll sends all queued items to the adaptor via TagSystemData
+// handleTaskQueueGetAll sends all queued items to the adaptor via SystemInfo
 func (s *Session) handleTaskQueueGetAll() {
-	items := s.GetQueueItems()
-
-	// Create a serializable representation
-	type QueueItemData struct {
-		QueueID   string `json:"queue_id"`
-		Type      string `json:"type"`
-		Content   string `json:"content"`
-		CreatedAt string `json:"created_at"`
-	}
-
-	data := make([]QueueItemData, len(items))
-	for i, item := range items {
-		var itemType, content string
-		switch t := item.Task.(type) {
-		case UserPrompt:
-			itemType = "prompt"
-			content = t.Text
-		case CommandPrompt:
-			itemType = "command"
-			content = t.Command
-		}
-		data[i] = QueueItemData{
-			QueueID:   item.QueueID,
-			Type:      itemType,
-			Content:   content,
-			CreatedAt: item.CreatedAt.Format(time.RFC3339),
-		}
-	}
-
-	// Send via TagSystemData
-	jsonData, err := json.Marshal(map[string]interface{}{
-		"type":  "taskqueue_list",
-		"items": data,
-	})
-	if err != nil {
-		s.writeError(domainerrors.NewSessionErrorf("taskqueue_get_all", "failed to marshal queue items: %v", err).Error())
-		return
-	}
-	stream.WriteTLV(s.Output, stream.TagSystemData, string(jsonData))
-	s.Output.Flush()
+	s.sendSystemInfo()
 }
 
 // handleTaskQueueDel deletes a queue item by ID

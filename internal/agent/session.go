@@ -63,19 +63,27 @@ func (c CommandPrompt) GetQueueID() string {
 	return c.queueID
 }
 
+// QueueItemInfo holds serializable queue item data for clients.
+type QueueItemInfo struct {
+	QueueID   string `json:"queue_id"`
+	Type      string `json:"type"`
+	Content   string `json:"content"`
+	CreatedAt string `json:"created_at"`
+}
+
 // SystemInfo holds session state for clients.
 type SystemInfo struct {
-	ContextTokens     int64        `json:"context"`
-	ContextLimit      int64        `json:"context_limit"`
-	TotalTokens       int64        `json:"total"`
-	QueueCount        int          `json:"queue"`
-	InProgress        bool         `json:"in_progress"`
-	Models            []ModelInfo  `json:"models,omitempty"`
-	ActiveModelID     string       `json:"active_model_id,omitempty"`
-	ActiveModelConfig *ModelConfig `json:"active_model_config,omitempty"` // Full config (with API key), only when model changes
-	ActiveModelName   string       `json:"active_model_name,omitempty"`   // Name of active model
-	HasModels         bool         `json:"has_models"`                    // Whether models are configured
-	ModelConfigPath   string       `json:"model_config_path,omitempty"`   // Path to model.conf
+	ContextTokens     int64           `json:"context"`
+	ContextLimit      int64           `json:"context_limit"`
+	TotalTokens       int64           `json:"total"`
+	QueueItems        []QueueItemInfo `json:"queue_items,omitempty"`
+	InProgress        bool            `json:"in_progress"`
+	Models            []ModelInfo     `json:"models,omitempty"`
+	ActiveModelID     string          `json:"active_model_id,omitempty"`
+	ActiveModelConfig *ModelConfig    `json:"active_model_config,omitempty"` // Full config (with API key), only when model changes
+	ActiveModelName   string          `json:"active_model_name,omitempty"`   // Name of active model
+	HasModels         bool            `json:"has_models"`                    // Whether models are configured
+	ModelConfigPath   string          `json:"model_config_path,omitempty"`   // Path to model.conf
 }
 
 // Session manages conversation state and task execution.
