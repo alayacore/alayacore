@@ -237,6 +237,14 @@ For this project, simplicity is more important than efficiency.
   - Extracted TerminalAdaptor entrypoint into adaptor_entry.go to keep Tea model focused
   - Clarified WebSocket/terminal adaptor responsibilities and config reload flow
 
+- ✅ **Window module refactoring (Phase 1.1 of REFACTOR.md)**
+  - Split `window.go` (709 lines) into focused modules for better maintainability
+  - `window.go` (236 lines) - Window struct, WindowBuffer type, and basic operations
+  - `window_render.go` (191 lines) - Rendering logic (GetAll, rebuildCache, renderWithCursor)
+  - `window_diff.go` (140 lines) - Diff display functionality (DiffContainer, renderDiffContent)
+  - `window_scroll.go` (158 lines) - Virtual scrolling and cursor management
+  - All tests pass after refactoring
+
 - ✅ **Model selector focus management**
   - Input and display windows lose focus when model selector is shown
   - Focus is restored to previously focused window when model selector closes
