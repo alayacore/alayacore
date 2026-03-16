@@ -311,7 +311,7 @@ func (s *Session) readFromInput() {
 		if len(value) > 0 && value[0] == ':' {
 			cmd := value[1:]
 			// These commands are immediate, not queued
-			if cmd == "cancel" || cmd == "taskqueue_get_all" || strings.HasPrefix(cmd, "taskqueue_del ") {
+			if cmd == "cancel" || cmd == "model_load" || cmd == "taskqueue_get_all" || strings.HasPrefix(cmd, "taskqueue_del ") {
 				s.handleCommandSync(context.Background(), cmd)
 			} else {
 				s.submitTask(CommandPrompt{Command: cmd})

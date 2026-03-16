@@ -163,36 +163,12 @@ func (s *Session) handleModelLoad() {
 		return
 	}
 
-	// Restore active model from runtime config
+	// Refresh the active model reference from runtime config
 	s.initModelManager()
 
-	// If an active model is known, switch to it
-	if active := s.ModelManager.GetActive(); active != nil {
-		// Create provider and model
-		provider, err := app.CreateProvider(
-			active.ProtocolType,
-			active.APIKey,
-			active.BaseURL,
-			s.debugAPI,
-			s.proxyURL,
-		)
-		if err != nil {
-			s.writeError(domainerrors.NewSessionErrorf("model_load", "Failed to create provider: %v", err).Error())
-			return
-		}
-
-		newModel, err := provider.LanguageModel(context.Background(), active.ModelName)
-		if err != nil {
-			s.writeError(domainerrors.NewSessionErrorf("model_load", "Failed to create language model: %v", err).Error())
-			return
-		}
-
-		// Switch to the model
-		s.SwitchModel(newModel, active)
-		s.writeNotifyf("Loaded models and switched to: %s", active.Name)
-		return
-	}
+	// Send updated model list to UI (does not switch the active model)
 	s.sendSystemInfo()
+	s.writeNotify("Models reloaded from configuration file")
 }
 
 // handleTaskQueueGetAll sends all queued items to the adaptor via SystemInfo
