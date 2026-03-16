@@ -87,6 +87,9 @@ func (m *Terminal) handleBlur() (tea.Model, tea.Cmd) {
 	m.hasFocus = false
 	m.display.SetDisplayFocused(false)
 	m.input.Blur()
+	// Propagate focus loss to overlays
+	m.modelSelector.SetHasFocus(false)
+	m.queueManager.SetHasFocus(false)
 	m.display.updateContent()
 	return m, nil
 }
@@ -95,9 +98,20 @@ func (m *Terminal) handleBlur() (tea.Model, tea.Cmd) {
 func (m *Terminal) handleFocus() (tea.Model, tea.Cmd) {
 	m.hasFocus = true
 
+	// Propagate focus gain to overlays
+	m.modelSelector.SetHasFocus(true)
+	m.queueManager.SetHasFocus(true)
+
 	// If model selector is open, don't restore focus to main input
 	// The model selector maintains its own focus state
 	if m.modelSelector.IsOpen() {
+		m.display.updateContent()
+		return m, nil
+	}
+
+	// If queue manager is open, don't restore focus to main input
+	// The queue manager maintains its own focus state
+	if m.queueManager.IsOpen() {
 		m.display.updateContent()
 		return m, nil
 	}

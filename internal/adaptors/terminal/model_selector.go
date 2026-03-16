@@ -63,6 +63,9 @@ type ModelSelector struct {
 	openModelFile  bool
 	reloadModels   bool
 	lastModelCount int
+
+	// App focus state (when app loses focus, dim all UI elements)
+	hasFocus bool
 }
 
 // NewModelSelector creates a new model selector.
@@ -78,6 +81,7 @@ func NewModelSelector(styles *Styles) *ModelSelector {
 		styles:      styles,
 		width:       60,
 		height:      20,
+		hasFocus:    true,
 		searchInput: searchInput,
 	}
 }
@@ -129,6 +133,13 @@ func (ms *ModelSelector) SetSize(width, height int) {
 		ms.searchInput.SetWidth(max(0, width-InputPaddingH))
 	}
 	ms.height = min(height-LayoutGap, SelectorMaxHeight)
+}
+
+// SetHasFocus sets the application focus state.
+// When the app loses focus, all UI elements should be dimmed.
+func (ms *ModelSelector) SetHasFocus(hasFocus bool) {
+	ms.hasFocus = hasFocus
+	ms.updateSearchInputStyles()
 }
 
 // --- Model Management ---
@@ -354,9 +365,10 @@ func (ms *ModelSelector) handleListNavigationKey(key string) tea.Cmd {
 func (ms *ModelSelector) renderList() string {
 	var sb strings.Builder
 
+	// When app doesn't have focus, dim all borders
 	// Search input with border
 	searchBorderColor := ColorAccent
-	if !ms.searchInputFocused {
+	if !ms.hasFocus || !ms.searchInputFocused {
 		searchBorderColor = ColorDim
 	}
 	searchBox := ms.styles.RenderBorderedBox(ms.searchInput.View(), ms.width, searchBorderColor)
@@ -373,7 +385,7 @@ func (ms *ModelSelector) renderList() string {
 
 	// Model list - bright border when list is focused
 	listBorderColor := ColorAccent
-	if ms.searchInputFocused {
+	if !ms.hasFocus || ms.searchInputFocused {
 		listBorderColor = ColorDim
 	}
 	sb.WriteString(ms.renderModelList(lipgloss.Width(searchBox), listBorderColor))
@@ -511,7 +523,8 @@ func (ms *ModelSelector) ensureVisible(listHeight int) {
 
 func (ms *ModelSelector) updateSearchInputStyles() {
 	var styles textinput.Styles
-	if ms.searchInputFocused {
+	// When app doesn't have focus, always show blurred/dimmed styles
+	if ms.searchInputFocused && ms.hasFocus {
 		styles = textinput.DefaultStyles(true)
 		styles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorAccent)).Bold(true)
 		styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorMuted))

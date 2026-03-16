@@ -34,16 +34,20 @@ type QueueManager struct {
 	width       int
 	height      int
 	styles      *Styles
+
+	// App focus state (when app loses focus, dim all UI elements)
+	hasFocus bool
 }
 
 // NewQueueManager creates a new queue manager
 func NewQueueManager(styles *Styles) *QueueManager {
 	return &QueueManager{
-		state:  QueueManagerClosed,
-		items:  []QueueItem{},
-		styles: styles,
-		width:  60,
-		height: 20,
+		state:    QueueManagerClosed,
+		items:    []QueueItem{},
+		styles:   styles,
+		width:    60,
+		height:   20,
+		hasFocus: true,
 	}
 }
 
@@ -102,6 +106,12 @@ func (qm *QueueManager) clampSelection() {
 func (qm *QueueManager) SetSize(width, height int) {
 	qm.width = width
 	qm.height = height
+}
+
+// SetHasFocus sets the application focus state.
+// When the app loses focus, all UI elements should be dimmed.
+func (qm *QueueManager) SetHasFocus(hasFocus bool) {
+	qm.hasFocus = hasFocus
 }
 
 // --- Input Handling ---
@@ -171,8 +181,13 @@ func (qm *QueueManager) View() string {
 	}
 
 	// Wrap in border with same style as input box
+	// Dim border when app doesn't have focus
+	borderColor := ColorAccent
+	if !qm.hasFocus {
+		borderColor = ColorDim
+	}
 	content := strings.Join(lines, "\n")
-	borderedBox := qm.styles.RenderBorderedBox(content, qm.width, ColorAccent, listHeight)
+	borderedBox := qm.styles.RenderBorderedBox(content, qm.width, borderColor, listHeight)
 
 	// Help text outside the bordered box
 	helpText := qm.styles.System.Render("j/k: navigate │ d: delete │ q/esc: close")
