@@ -80,8 +80,8 @@ func writef(format string, args ...any) {
 	}
 }
 
-// DebugTransport wraps an http.RoundTripper and logs requests and responses
-type DebugTransport struct {
+// Transport wraps an http.RoundTripper and logs requests and responses
+type Transport struct {
 	Transport http.RoundTripper
 }
 
@@ -97,6 +97,63 @@ func newDebugReader(r io.Reader) *debugReader {
 		reader:    r,
 		buf:       make([]byte, 0, 4096),
 		firstRead: true,
+	}
+}
+
+// processContentBlock handles logging of a single content block in Anthropic streaming format
+func (dr *debugReader) processContentBlock(block any) {
+	blockMap, ok := block.(map[string]any)
+	if !ok {
+		return
+	}
+	blockType, _ := blockMap["type"].(string) //nolint:errcheck // debug logging, optional field
+	switch blockType {
+	case "tool_use":
+		name, _ := blockMap["name"].(string)           //nolint:errcheck // debug logging
+		input, _ := blockMap["input"].(map[string]any) //nolint:errcheck // debug logging
+		inputJSON, _ := json.Marshal(input)            //nolint:errcheck // debug logging
+		writef("{ \"content\": { type: \"tool_use\", name: %q, input: %s } }\n", name, inputJSON)
+	case "thinking":
+		thinking, _ := blockMap["thinking"].(string) //nolint:errcheck // debug logging
+		if len(thinking) > 0 && dr.firstRead {
+			writef("<<< Response Stream\n")
+			writef("Chunks:\n")
+			dr.firstRead = false
+		}
+		writef("{ \"content\": { type: \"thinking\", ... } }\n")
+	}
+}
+
+// processJSONLine handles logging of a JSON line in SSE stream
+func (dr *debugReader) processJSONLine(jsonStr string) {
+	var jsonData map[string]any
+	if json.Unmarshal([]byte(jsonStr), &jsonData) != nil {
+		return
+	}
+
+	// Check if this is Anthropic streaming format (content as array)
+	if content, ok := jsonData["content"].([]any); ok && len(content) > 0 {
+		for _, block := range content {
+			dr.processContentBlock(block)
+		}
+	}
+
+	// Full format for final chunks or other cases
+	formatted, _ := json.MarshalIndent(jsonData, "", "  ") //nolint:errcheck // debug logging
+	if dr.firstRead {
+		writef("<<< Response Stream\n")
+		writef("Chunks:\n")
+		dr.firstRead = false
+	}
+	writef("%s\n", formatted)
+}
+
+// ensureHeaderWritten writes the stream header if not already written
+func (dr *debugReader) ensureHeaderWritten() {
+	if dr.firstRead {
+		writef("<<< Response Stream\n")
+		writef("Chunks:\n")
+		dr.firstRead = false
 	}
 }
 
@@ -124,47 +181,10 @@ func (dr *debugReader) Read(p []byte) (n int, err error) {
 			// Try to parse as JSON and log it
 			var jsonData map[string]any
 			if json.Unmarshal([]byte(jsonStr), &jsonData) == nil {
-				// Check if this is Anthropic streaming format (content as array)
-				if content, ok := jsonData["content"].([]any); ok && len(content) > 0 {
-					// Anthropic streaming format - check for content blocks
-					for _, block := range content {
-						blockMap, ok := block.(map[string]any)
-						if !ok {
-							continue
-						}
-						blockType, _ := blockMap["type"].(string)
-						if blockType == "tool_use" {
-							name, _ := blockMap["name"].(string)
-							input, _ := blockMap["input"].(map[string]any)
-							inputJson, _ := json.Marshal(input)
-							writef("{ \"content\": { type: \"tool_use\", name: %q, input: %s } }\n", name, inputJson)
-						} else if blockType == "thinking" {
-							thinking, _ := blockMap["thinking"].(string)
-							if len(thinking) > 0 && dr.firstRead {
-								writef("<<< Response Stream\n")
-								writef("Chunks:\n")
-								dr.firstRead = false
-							}
-							writef("{ \"content\": { type: \"thinking\", ... } }\n")
-						}
-					}
-				}
-
-				// Full format for final chunks or other cases
-				formatted, _ := json.MarshalIndent(jsonData, "", "  ")
-				if dr.firstRead {
-					writef("<<< Response Stream\n")
-					writef("Chunks:\n")
-					dr.firstRead = false
-				}
-				writef("%s\n", formatted)
+				dr.processJSONLine(jsonStr)
 			} else if jsonStr != "[DONE]" {
 				// Not JSON and not [DONE], print raw line
-				if dr.firstRead {
-					writef("<<< Response Stream\n")
-					writef("Chunks:\n")
-					dr.firstRead = false
-				}
+				dr.ensureHeaderWritten()
 				writef("%s\n", line)
 			}
 		}
@@ -174,13 +194,13 @@ func (dr *debugReader) Read(p []byte) (n int, err error) {
 }
 
 // RoundTrip implements the http.RoundTripper interface
-func (t *DebugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var requestBody []byte
 	var isStreaming bool
 
 	// Log request and check if streaming
 	if req.Body != nil {
-		requestBody, _ = io.ReadAll(req.Body)
+		requestBody, _ = io.ReadAll(req.Body) //nolint:errcheck // debug logging, best effort
 		req.Body = io.NopCloser(bytes.NewReader(requestBody))
 
 		var formattedBody any
@@ -192,7 +212,7 @@ func (t *DebugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 				}
 			}
 
-			formattedBody, _ = json.MarshalIndent(formattedBody, "", "  ")
+			formattedBody, _ = json.MarshalIndent(formattedBody, "", "  ") //nolint:errcheck // debug logging
 			writef(">>> Request\n")
 			writef("%s %s %s\n", req.Method, req.URL.Path, req.URL.RawQuery)
 			writef("Headers:\n")
@@ -243,16 +263,16 @@ func (t *DebugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			Closer: resp.Body,
 		}
 	} else {
-		responseBody, _ := io.ReadAll(resp.Body)
+		responseBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // debug logging, best effort
 		resp.Body = io.NopCloser(bytes.NewReader(responseBody))
 
 		var formattedBody any
 		if err := json.Unmarshal(responseBody, &formattedBody); err == nil {
-			formattedBody, _ = json.MarshalIndent(formattedBody, "", "  ")
+			formattedBody, _ = json.MarshalIndent(formattedBody, "", "  ") //nolint:errcheck // debug logging
 			writef("Body:\n")
 			writef("%s\n", formattedBody)
 		} else {
-			dump, _ := httputil.DumpResponse(resp, false)
+			dump, _ := httputil.DumpResponse(resp, false) //nolint:errcheck // debug logging
 			writef("Body:\n")
 			writef("%s\n", dump)
 		}
@@ -267,7 +287,7 @@ func (t *DebugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func NewHTTPClient() *http.Client {
 	Enable()
 	return &http.Client{
-		Transport: &DebugTransport{
+		Transport: &Transport{
 			Transport: http.DefaultTransport,
 		},
 	}
@@ -320,7 +340,7 @@ func NewHTTPClientWithProxyAndDebug(proxyURL string) (*http.Client, error) {
 
 	Enable()
 	// Wrap the transport with debug logging
-	client.Transport = &DebugTransport{
+	client.Transport = &Transport{
 		Transport: client.Transport,
 	}
 

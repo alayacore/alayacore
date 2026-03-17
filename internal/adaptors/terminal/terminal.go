@@ -217,7 +217,7 @@ func (m *Terminal) handleFileEditorFinished(msg FileEditorFinishedMsg) (tea.Mode
 
 	// Reload models if the model config file was edited
 	if strings.HasSuffix(msg.Path, "model.conf") {
-		m.streamInput.EmitTLV(stream.TagTextUser, ":model_load")
+		_ = m.streamInput.EmitTLV(stream.TagTextUser, ":model_load") //nolint:errcheck // best-effort input
 	}
 
 	return m, nil

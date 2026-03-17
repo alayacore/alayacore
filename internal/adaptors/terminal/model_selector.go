@@ -163,7 +163,8 @@ func (ms *ModelSelector) SetModels(models []ModelConfig) {
 
 func (ms *ModelSelector) LoadModels(models []agentpkg.ModelInfo, activeID string) tea.Cmd {
 	// Skip update if model list hasn't changed
-	if len(models) == ms.lastModelCount && len(models) == len(ms.models) {
+	//nolint:gocritic // checking both conditions is intentional for early exit optimization
+	if len(models) == len(ms.models) && len(models) == ms.lastModelCount {
 		modelsChanged := false
 		for i, m := range models {
 			if i >= len(ms.models) || ms.models[i].ID != m.ID || ms.models[i].Name != m.Name {
@@ -303,7 +304,7 @@ func (ms *ModelSelector) handleListKeyMsg(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (ms *ModelSelector) handleSearchInputKey(msg tea.KeyMsg, key string) tea.Cmd {
-	if key == "esc" {
+	if key == KeyEsc {
 		ms.state = ModelSelectorClosed
 		return nil
 	}
@@ -355,7 +356,7 @@ func (ms *ModelSelector) handleListNavigationKey(key string) tea.Cmd {
 		ms.openModelFile = true
 	case "r":
 		ms.reloadModels = true
-	case "esc", "q":
+	case KeyEsc, "q":
 		ms.state = ModelSelectorClosed
 	}
 	return nil
@@ -406,13 +407,14 @@ func (ms *ModelSelector) renderModelList(width int, borderColor string) string {
 	var content strings.Builder
 	listHeight := 8 // 8 content rows inside border
 
-	if len(ms.models) == 0 {
+	switch {
+	case len(ms.models) == 0:
 		content.WriteString(ms.styles.System.Render("No models configured."))
 		content.WriteString("\n")
 		content.WriteString(ms.styles.System.Render("Press 'e' to edit the model config file."))
-	} else if len(ms.filteredModels) == 0 {
+	case len(ms.filteredModels) == 0:
 		content.WriteString(ms.styles.System.Render("No models match your search."))
-	} else {
+	default:
 		ms.ensureVisible(listHeight)
 		for i := ms.scrollIdx; i < min(ms.scrollIdx+listHeight, len(ms.filteredModels)); i++ {
 			m := ms.filteredModels[i]

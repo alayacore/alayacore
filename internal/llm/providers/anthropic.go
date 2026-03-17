@@ -205,13 +205,6 @@ func (s *streamState) getUsage() llm.Usage {
 	return s.usage
 }
 
-// lastBlockType returns the type of the last completed block
-func (s *streamState) lastBlockType() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.currentType
-}
-
 // lastToolCall returns the last tool call if the current block is a tool_use
 func (s *streamState) lastToolCall() *llm.ToolCallPart {
 	s.mu.Lock()
@@ -229,13 +222,14 @@ func (s *streamState) lastToolCall() *llm.ToolCallPart {
 }
 
 // StreamMessages streams messages from Anthropic
+//
+//nolint:gocyclo // message conversion requires multiple type switches
 func (p *AnthropicProvider) StreamMessages(
 	ctx context.Context,
 	messages []llm.Message,
 	tools []llm.ToolDefinition,
 	systemPrompt string,
 ) (<-chan llm.StreamEvent, error) {
-
 	// Convert messages to Anthropic format
 	apiMessages := make([]anthropicMessage, 0, len(messages))
 	for _, msg := range messages {
@@ -334,8 +328,11 @@ func (p *AnthropicProvider) StreamMessages(
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("API error (status %d): failed to read error body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -367,12 +364,13 @@ func (p *AnthropicProvider) parseStream(reader io.Reader, eventChan chan<- llm.S
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		if strings.HasPrefix(line, "event: ") {
+		switch {
+		case strings.HasPrefix(line, "event: "):
 			eventType = strings.TrimPrefix(line, "event: ")
 			eventData.Reset()
-		} else if strings.HasPrefix(line, "data: ") {
+		case strings.HasPrefix(line, "data: "):
 			eventData.WriteString(strings.TrimPrefix(line, "data: "))
-		} else if line == "" && eventType != "" {
+		case line == "" && eventType != "":
 			// Process complete event
 			data := eventData.String()
 			if err := p.handleEvent(eventType, data, eventChan, state); err != nil {
@@ -431,17 +429,20 @@ func (p *AnthropicProvider) handleEvent(eventType, data string, eventChan chan<-
 }
 
 // handleContentBlockStart handles content_block_start events
-func (p *AnthropicProvider) handleContentBlockStart(payload map[string]interface{}, eventChan chan<- llm.StreamEvent, state *streamState) error {
-	index, _ := payload["index"].(float64)
+func (p *AnthropicProvider) handleContentBlockStart(payload map[string]interface{}, _ chan<- llm.StreamEvent, state *streamState) error {
+	index, ok := payload["index"].(float64)
+	if !ok {
+		return nil
+	}
 
 	contentBlock, ok := payload["content_block"].(map[string]interface{})
 	if !ok {
 		return nil
 	}
 
-	blockType, _ := contentBlock["type"].(string)
-	id, _ := contentBlock["id"].(string)
-	name, _ := contentBlock["name"].(string)
+	blockType, _ := contentBlock["type"].(string) //nolint:errcheck // type assertion for optional field
+	id, _ := contentBlock["id"].(string)          //nolint:errcheck // type assertion for optional field
+	name, _ := contentBlock["name"].(string)      //nolint:errcheck // type assertion for optional field
 
 	state.startBlock(int(index), blockType, id, name)
 	return nil
@@ -455,7 +456,7 @@ func (p *AnthropicProvider) handleContentDelta(payload map[string]interface{}, e
 	}
 
 	// Check the delta type
-	deltaType, _ := delta["type"].(string)
+	deltaType, _ := delta["type"].(string) //nolint:errcheck // type assertion for optional field
 
 	switch deltaType {
 	case "text_delta":
@@ -480,7 +481,7 @@ func (p *AnthropicProvider) handleContentDelta(payload map[string]interface{}, e
 }
 
 // handleContentBlockStop handles content_block_stop events
-func (p *AnthropicProvider) handleContentBlockStop(payload map[string]interface{}, eventChan chan<- llm.StreamEvent, state *streamState) error {
+func (p *AnthropicProvider) handleContentBlockStop(_ map[string]interface{}, eventChan chan<- llm.StreamEvent, state *streamState) error {
 	// Get the tool call info before finishBlock() clears it
 	tc := state.lastToolCall()
 
@@ -498,20 +499,26 @@ func (p *AnthropicProvider) handleContentBlockStop(payload map[string]interface{
 }
 
 // handleMessageDelta handles message-level delta events (usage, etc.)
-func (p *AnthropicProvider) handleMessageDelta(payload map[string]interface{}, eventChan chan<- llm.StreamEvent, state *streamState) error {
+func (p *AnthropicProvider) handleMessageDelta(payload map[string]interface{}, _ chan<- llm.StreamEvent, state *streamState) error {
 	// Check for usage
 	usage, ok := payload["usage"].(map[string]interface{})
 	if !ok {
 		// Also check in delta.usage
-		delta, ok := payload["delta"].(map[string]interface{})
-		if ok {
+		delta, deltaOK := payload["delta"].(map[string]interface{})
+		if deltaOK {
 			usage, ok = delta["usage"].(map[string]interface{})
 		}
 	}
 
 	if ok {
-		inputTokens, _ := usage["input_tokens"].(float64)
-		outputTokens, _ := usage["output_tokens"].(float64)
+		inputTokens := 0.0
+		if v, ok := usage["input_tokens"].(float64); ok {
+			inputTokens = v
+		}
+		outputTokens := 0.0
+		if v, ok := usage["output_tokens"].(float64); ok {
+			outputTokens = v
+		}
 		state.setUsage(int64(inputTokens), int64(outputTokens))
 	}
 

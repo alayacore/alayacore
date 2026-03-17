@@ -46,7 +46,10 @@ func executePosixShell(ctx context.Context, args PosixShellInput) (llm.ToolResul
 		return llm.NewTextErrorResponse("parse error: " + err.Error()), nil
 	}
 
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
 	runner, err := interp.New(
 		interp.Dir(cwd),
 		interp.Env(expand.ListEnviron(os.Environ()...)),

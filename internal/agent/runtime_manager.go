@@ -52,7 +52,7 @@ func NewRuntimeManager(runtimePath, modelConfigPath string) *RuntimeManager {
 
 	// Load if path is set
 	if rm.path != "" {
-		_ = rm.Load()
+		_ = rm.Load() //nolint:errcheck // best-effort load on init
 	}
 
 	return rm
@@ -100,7 +100,7 @@ func (rm *RuntimeManager) saveLocked() error {
 	}
 
 	content := formatRuntimeConfig(rm.config)
-	return os.WriteFile(rm.path, []byte(content), 0644)
+	return os.WriteFile(rm.path, []byte(content), 0600)
 }
 
 // parseRuntimeConfig parses the YAML-like runtime config format

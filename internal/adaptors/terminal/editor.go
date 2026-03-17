@@ -103,11 +103,12 @@ func FormatEditorContent(content string) string {
 	lineCount := strings.Count(content, "\n") + 1
 	preview := strings.Fields(content)
 	var previewText string
-	if len(preview) > 0 && len(preview[0]) > 20 {
+	switch {
+	case len(preview) > 0 && len(preview[0]) > 20:
 		previewText = preview[0][:20] + "..."
-	} else if len(preview) > 0 {
+	case len(preview) > 0:
 		previewText = preview[0]
-	} else {
+	default:
 		previewText = "(empty)"
 	}
 	return fmt.Sprintf("[%d lines] %s (press Enter to send)", lineCount, previewText)

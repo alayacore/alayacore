@@ -28,7 +28,7 @@ func (m *Terminal) handleSubmit() tea.Cmd {
 	}
 
 	// Regular prompt - send to agent
-	m.streamInput.EmitTLV(stream.TagTextUser, prompt)
+	_ = m.streamInput.EmitTLV(stream.TagTextUser, prompt) //nolint:errcheck // best-effort input
 	m.input.SetValue("")
 
 	return scheduleTick()
@@ -55,7 +55,7 @@ func (m *Terminal) handleCommand(command string) tea.Cmd {
 
 // submitCommand sends a command to the session and optionally clears input.
 func (m *Terminal) submitCommand(command string, clearInput bool) tea.Cmd {
-	m.streamInput.EmitTLV(stream.TagTextUser, ":"+command)
+	_ = m.streamInput.EmitTLV(stream.TagTextUser, ":"+command) //nolint:errcheck // best-effort input
 	if clearInput {
 		m.input.SetValue("")
 	}
@@ -78,7 +78,7 @@ func (m *Terminal) switchToSelectedModel() {
 
 	// Send model_set command to session
 	if selectedModel.ID != "" {
-		m.streamInput.EmitTLV(stream.TagTextUser, ":model_set "+selectedModel.ID)
+		_ = m.streamInput.EmitTLV(stream.TagTextUser, ":model_set "+selectedModel.ID) //nolint:errcheck // best-effort input
 	}
 }
 

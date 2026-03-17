@@ -32,7 +32,7 @@ func executeWriteFile(_ context.Context, args WriteFileInput) (llm.ToolResultOut
 		return llm.NewTextErrorResponse("content is required"), nil
 	}
 
-	if err := os.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
+	if err := os.WriteFile(args.Path, []byte(args.Content), 0600); err != nil {
 		return llm.NewTextErrorResponse(err.Error()), nil
 	}
 	return llm.NewTextResponse("File written successfully"), nil

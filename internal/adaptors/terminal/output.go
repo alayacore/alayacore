@@ -38,7 +38,7 @@ type outputWriter struct {
 	queueCount        int                  // Number of items in the queue
 }
 
-func NewTerminalOutput() *outputWriter {
+func NewTerminalOutput() *outputWriter { //nolint:revive // tests need access to internal methods
 	to := &outputWriter{
 		windowBuffer: NewWindowBuffer(DefaultWidth),
 		updateChan:   make(chan struct{}, 1),
@@ -115,9 +115,9 @@ func (w *outputWriter) WriteNotify(msg string) {
 func (w *outputWriter) processBuffer() {
 	for len(w.buffer) >= 6 {
 		tag := string(w.buffer[0:2])
-		length := int32(binary.BigEndian.Uint32(w.buffer[2:6]))
+		length := int(binary.BigEndian.Uint32(w.buffer[2:6]))
 
-		if len(w.buffer) < 6+int(length) {
+		if len(w.buffer) < 6+length {
 			break
 		}
 
@@ -237,7 +237,10 @@ func (w *outputWriter) handleSystemTag(value string) {
 		// Store queue items (always update, even if empty)
 		items := make([]QueueItem, len(info.QueueItems))
 		for i, item := range info.QueueItems {
-			createdAt, _ := time.Parse(time.RFC3339, item.CreatedAt)
+			createdAt, err := time.Parse(time.RFC3339, item.CreatedAt)
+			if err != nil {
+				createdAt = time.Now()
+			}
 			items[i] = QueueItem{
 				QueueID:   item.QueueID,
 				Type:      item.Type,
@@ -362,11 +365,12 @@ func (w *outputWriter) colorizeMultiLineTool(lines []string) string {
 	for _, line := range lines[1:] {
 		result.WriteString("\n")
 		// Fallback for other lines
-		if strings.HasPrefix(line, "- ") {
+		switch {
+		case strings.HasPrefix(line, "- "):
 			result.WriteString(strings.TrimRight(w.styles.DiffRemove.Render(line), " "))
-		} else if strings.HasPrefix(line, "+ ") {
+		case strings.HasPrefix(line, "+ "):
 			result.WriteString(strings.TrimRight(w.styles.DiffAdd.Render(line), " "))
-		} else {
+		default:
 			result.WriteString(strings.TrimRight(w.styles.ToolContent.Render(line), " "))
 		}
 	}
@@ -388,7 +392,7 @@ func (w *outputWriter) parseRawDiff(content string) (string, []DiffLinePair) {
 	path := strings.TrimPrefix(lines[0], "edit_file: ")
 
 	// Check if remaining lines have raw diff format (\x00 prefix)
-	var diffLines []DiffLinePair
+	diffLines := make([]DiffLinePair, 0, len(lines)-1)
 	for _, line := range lines[1:] {
 		if !strings.HasPrefix(line, "\x00") {
 			return "", nil

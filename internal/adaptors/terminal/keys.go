@@ -35,8 +35,8 @@ func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// 5. Display-specific keys when display is focused
 	if m.focusedWindow == "display" {
-		if cmd, handled := m.handleDisplayKeys(msg); handled {
-			return m, cmd
+		if handled := m.handleDisplayKeys(msg); handled {
+			return m, nil
 		}
 	}
 
@@ -65,7 +65,7 @@ func (m *Terminal) handleModelSelectorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 
 	// Check if user wants to reload models
 	if m.modelSelector.ConsumeReloadModels() {
-		m.streamInput.EmitTLV(stream.TagTextUser, ":model_load")
+		_ = m.streamInput.EmitTLV(stream.TagTextUser, ":model_load") //nolint:errcheck // best-effort input
 	}
 
 	// Restore focus when model selector closes
@@ -83,9 +83,9 @@ func (m *Terminal) handleQueueManagerKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		selectedItem := m.queueManager.GetSelectedItem()
 		if selectedItem != nil {
 			// Send delete command to session
-			m.streamInput.EmitTLV(stream.TagTextUser, ":taskqueue_del "+selectedItem.QueueID)
+			_ = m.streamInput.EmitTLV(stream.TagTextUser, ":taskqueue_del "+selectedItem.QueueID) //nolint:errcheck // best-effort input
 			// Request updated queue list
-			m.streamInput.EmitTLV(stream.TagTextUser, ":taskqueue_get_all")
+			_ = m.streamInput.EmitTLV(stream.TagTextUser, ":taskqueue_get_all") //nolint:errcheck // best-effort input
 		}
 		return m, nil
 	}
@@ -149,7 +149,9 @@ func (m *Terminal) handleCancelConfirm(msg tea.KeyMsg) (tea.Cmd, bool) {
 }
 
 // handleDisplayKeys handles key events when display window is focused.
-func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
+//
+//nolint:gocyclo // key handling requires many key cases
+func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) bool {
 	keyStr := msg.String()
 
 	// Window cursor navigation
@@ -159,71 +161,71 @@ func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.display.updateContent()
 			m.display.EnsureCursorVisible()
 		}
-		return nil, true
+		return true
 
 	case KeyK, KeyUp:
 		if m.display.MoveWindowCursorUp() {
 			m.display.updateContent()
 			m.display.EnsureCursorVisible()
 		}
-		return nil, true
+		return true
 
 	case KeyShiftJ:
 		m.display.MarkUserScrolled()
 		m.display.ScrollDown(1)
-		return nil, true
+		return true
 
 	case KeyShiftK:
 		m.display.MarkUserScrolled()
 		m.display.ScrollUp(1)
-		return nil, true
+		return true
 
 	case KeyShiftH:
 		if m.display.MoveWindowCursorToTop() {
 			m.display.updateContent()
 		}
-		return nil, true
+		return true
 
 	case KeyShiftL:
 		if m.display.MoveWindowCursorToBottom() {
 			m.display.updateContent()
 		}
-		return nil, true
+		return true
 
 	case KeyShiftM:
 		if m.display.MoveWindowCursorToCenter() {
 			m.display.updateContent()
 		}
-		return nil, true
+		return true
 
 	case KeyG:
 		m.display.GotoBottom()
 		m.display.SetCursorToLastWindow()
 		m.display.updateContent()
-		return nil, true
+		return true
 
 	case Keyg:
 		m.display.GotoTop()
 		m.display.SetWindowCursor(0)
 		m.display.updateContent()
-		return nil, true
+		return true
 
 	case KeyColon:
 		// Switch to input with ":" prefix for command mode
-		m.focusedWindow = "input"
+		m.focusedWindow = focusInput
 		m.input.Focus()
 		m.input.SetValue(":")
 		m.input.CursorEnd()
-		return nil, true
+		return true
 
 	case KeySpace:
 		if m.display.ToggleWindowWrap() {
 			m.display.updateContent()
 		}
-		return nil, true
+		return true
 	}
 
-	return nil, false
+	return false
 }
 
 // handleGlobalKeys handles global keyboard shortcuts.
@@ -235,7 +237,7 @@ func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case KeyCtrlC:
-		if m.focusedWindow == "input" {
+		if m.focusedWindow == focusInput {
 			m.input.SetValue("")
 			m.input.editorContent = ""
 		}

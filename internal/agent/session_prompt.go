@@ -46,7 +46,7 @@ func (s *Session) autoSummarize(ctx context.Context) {
 
 // processPrompt processes a prompt, appending messages to s.Messages via callbacks.
 // Returns the output tokens from the response.
-func (s *Session) processPrompt(ctx context.Context, prompt string, history []llm.Message) (int64, error) {
+func (s *Session) processPrompt(ctx context.Context, _ string, history []llm.Message) (int64, error) {
 	promptID := atomic.AddUint64(&s.nextPromptID, 1) - 1
 
 	var stepCount int
@@ -85,12 +85,12 @@ func (s *Session) processPrompt(ctx context.Context, prompt string, history []ll
 			return nil
 		},
 		OnTextDelta: func(delta string) error {
-			stream.WriteTLV(s.Output, stream.TagTextAssistant, assembleID("t")+delta)
+			_ = stream.WriteTLV(s.Output, stream.TagTextAssistant, assembleID("t")+delta) //nolint:errcheck // output stream
 			s.Output.Flush()
 			return nil
 		},
 		OnReasoningDelta: func(delta string) error {
-			stream.WriteTLV(s.Output, stream.TagTextReasoning, assembleID("r")+delta)
+			_ = stream.WriteTLV(s.Output, stream.TagTextReasoning, assembleID("r")+delta) //nolint:errcheck // output stream
 			s.Output.Flush()
 			return nil
 		},

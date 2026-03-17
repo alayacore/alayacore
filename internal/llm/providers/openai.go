@@ -101,7 +101,8 @@ func (s *openAIStreamState) getMessage() llm.Message {
 	defer s.mu.Unlock()
 
 	// Build content parts from accumulated text
-	var content []llm.ContentPart
+	// Preallocate for reasoning + text + tool calls
+	content := make([]llm.ContentPart, 0, 2+len(s.toolCalls))
 
 	// Add reasoning first (thinking before response)
 	if s.reasoningBuilder.Len() > 0 {
@@ -239,7 +240,6 @@ func (p *OpenAIProvider) StreamMessages(
 	tools []llm.ToolDefinition,
 	systemPrompt string,
 ) (<-chan llm.StreamEvent, error) {
-
 	// Convert messages to OpenAI format
 	apiMessages := make([]openAIMessage, 0, len(messages)+1)
 
@@ -297,8 +297,11 @@ func (p *OpenAIProvider) StreamMessages(
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("API error (status %d): failed to read error body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -319,57 +322,79 @@ func (p *OpenAIProvider) convertMessage(msg llm.Message) openAIMessage {
 
 	// Handle tool results specially
 	if msg.Role == llm.RoleTool {
-		if len(msg.Content) > 0 {
-			if tr, ok := msg.Content[0].(llm.ToolResultPart); ok {
-				apiMsg.ToolCallID = tr.ToolCallID
-				switch out := tr.Output.(type) {
-				case llm.ToolResultOutputText:
-					apiMsg.Content = out.Text
-				case llm.ToolResultOutputError:
-					apiMsg.Content = out.Error
-				}
-			}
-		}
+		p.convertToolResult(&apiMsg, msg.Content)
 		return apiMsg
 	}
 
 	// Handle assistant messages with tool calls
-	if msg.Role == llm.RoleAssistant {
-		var hasToolCalls bool
-		for _, part := range msg.Content {
-			if _, ok := part.(llm.ToolCallPart); ok {
-				hasToolCalls = true
-				break
-			}
-		}
-
-		if hasToolCalls {
-			apiMsg.ToolCalls = make([]openAIToolCall, 0)
-			for _, part := range msg.Content {
-				if tc, ok := part.(llm.ToolCallPart); ok {
-					// OpenAI expects arguments to be a JSON-encoded string
-					// We need to marshal the raw JSON to a string
-					argsStr, _ := json.Marshal(string(tc.Input))
-					apiMsg.ToolCalls = append(apiMsg.ToolCalls, openAIToolCall{
-						ID:   tc.ToolCallID,
-						Type: "function",
-						Function: openAIFunction{
-							Name:      tc.ToolName,
-							Arguments: argsStr,
-						},
-					})
-				}
-			}
-			// Content can be nil for tool calls
-			apiMsg.Content = nil
-			return apiMsg
-		}
+	if msg.Role == llm.RoleAssistant && p.hasToolCalls(msg.Content) {
+		p.convertToolCalls(&apiMsg, msg.Content)
+		return apiMsg
 	}
 
 	// Regular text/reasoning content
+	p.convertRegularContent(&apiMsg, msg.Content)
+	return apiMsg
+}
+
+// convertToolResult handles conversion of tool result messages
+func (p *OpenAIProvider) convertToolResult(apiMsg *openAIMessage, content []llm.ContentPart) {
+	if len(content) == 0 {
+		return
+	}
+	tr, ok := content[0].(llm.ToolResultPart)
+	if !ok {
+		return
+	}
+	apiMsg.ToolCallID = tr.ToolCallID
+	switch out := tr.Output.(type) {
+	case llm.ToolResultOutputText:
+		apiMsg.Content = out.Text
+	case llm.ToolResultOutputError:
+		apiMsg.Content = out.Error
+	}
+}
+
+// hasToolCalls checks if content contains tool calls
+func (p *OpenAIProvider) hasToolCalls(content []llm.ContentPart) bool {
+	for _, part := range content {
+		if _, ok := part.(llm.ToolCallPart); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// convertToolCalls handles conversion of assistant messages with tool calls
+func (p *OpenAIProvider) convertToolCalls(apiMsg *openAIMessage, content []llm.ContentPart) {
+	apiMsg.ToolCalls = make([]openAIToolCall, 0)
+	for _, part := range content {
+		if tc, ok := part.(llm.ToolCallPart); ok {
+			// OpenAI expects arguments to be a JSON-encoded string
+			// We need to marshal the raw JSON to a string
+			argsStr, err := json.Marshal(string(tc.Input))
+			if err != nil {
+				argsStr = []byte("{}")
+			}
+			apiMsg.ToolCalls = append(apiMsg.ToolCalls, openAIToolCall{
+				ID:   tc.ToolCallID,
+				Type: "function",
+				Function: openAIFunction{
+					Name:      tc.ToolName,
+					Arguments: argsStr,
+				},
+			})
+		}
+	}
+	// Content can be nil for tool calls
+	apiMsg.Content = nil
+}
+
+// convertRegularContent handles conversion of regular text/reasoning content
+func (p *OpenAIProvider) convertRegularContent(apiMsg *openAIMessage, content []llm.ContentPart) {
 	var contentParts []map[string]interface{}
 	var reasoningText string
-	for _, part := range msg.Content {
+	for _, part := range content {
 		switch v := part.(type) {
 		case llm.TextPart:
 			contentParts = append(contentParts, map[string]interface{}{
@@ -387,14 +412,15 @@ func (p *OpenAIProvider) convertMessage(msg llm.Message) openAIMessage {
 		apiMsg.ReasoningContent = reasoningText
 	}
 
-	if len(contentParts) == 1 {
+	switch len(contentParts) {
+	case 1:
 		// Single text part - use simple string
 		apiMsg.Content = contentParts[0]["text"]
-	} else if len(contentParts) > 1 {
+	case 0:
+		// No content parts
+	default:
 		apiMsg.Content = contentParts
 	}
-
-	return apiMsg
 }
 
 // parseStream parses the SSE stream from OpenAI

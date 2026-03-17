@@ -28,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	adaptor := terminal.NewTerminalAdaptor(appCfg)
+	adaptor := terminal.NewAdaptor(appCfg)
 	adaptor.Start()
 }
 

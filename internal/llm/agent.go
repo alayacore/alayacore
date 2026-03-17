@@ -90,49 +90,9 @@ func (a *Agent) Stream(
 		}
 
 		// Process events
-		var (
-			stepMessages []Message
-			stepUsage    Usage
-			toolCalls    []ToolCallPart
-		)
-
-		for event := range eventChan {
-			switch e := event.(type) {
-			case TextDeltaEvent:
-				if callbacks.OnTextDelta != nil {
-					if err := callbacks.OnTextDelta(e.Delta); err != nil {
-						return nil, fmt.Errorf("OnTextDelta callback failed: %w", err)
-					}
-				}
-
-			case ReasoningDeltaEvent:
-				if callbacks.OnReasoningDelta != nil {
-					if err := callbacks.OnReasoningDelta(e.Delta); err != nil {
-						return nil, fmt.Errorf("OnReasoningDelta callback failed: %w", err)
-					}
-				}
-
-			case ToolCallEvent:
-				toolCalls = append(toolCalls, ToolCallPart{
-					Type:       "tool_use",
-					ToolCallID: e.ToolCallID,
-					ToolName:   e.ToolName,
-					Input:      e.Input,
-				})
-
-				if callbacks.OnToolCall != nil {
-					if err := callbacks.OnToolCall(e.ToolCallID, e.ToolName, e.Input); err != nil {
-						return nil, fmt.Errorf("OnToolCall callback failed: %w", err)
-					}
-				}
-
-			case StepCompleteEvent:
-				stepMessages = e.Messages
-				stepUsage = e.Usage
-
-			case StreamErrorEvent:
-				return nil, e.Error
-			}
+		stepMessages, stepUsage, toolCalls, err := a.processStreamEvents(eventChan, callbacks)
+		if err != nil {
+			return nil, err
 		}
 
 		mu.Lock()
@@ -152,65 +112,12 @@ func (a *Agent) Stream(
 			break
 		}
 
-		// There are tool calls - add assistant message with tool calls
-		// Note: We construct the assistant message from ToolCallEvents which have complete tool input
-		assistantContent := make([]ContentPart, len(toolCalls))
-		for i, tc := range toolCalls {
-			assistantContent[i] = tc
-		}
+		// Execute tools and add results to messages
+		toolResults := a.executeTools(ctx, toolCalls, callbacks)
 		allMessages = append(allMessages, Message{
 			Role:    RoleAssistant,
-			Content: assistantContent,
+			Content: toolCallsToContent(toolCalls),
 		})
-
-		// Execute tools and add results to messages
-		toolResults := make([]ContentPart, len(toolCalls))
-		for i, tc := range toolCalls {
-			// Find the tool
-			var tool *Tool
-			for _, t := range a.config.Tools {
-				if t.Definition.Name == tc.ToolName {
-					tool = &t
-					break
-				}
-			}
-
-			if tool == nil {
-				toolResults[i] = ToolResultPart{
-					Type:       "tool_result",
-					ToolCallID: tc.ToolCallID,
-					Output: ToolResultOutputError{
-						Type:  "error",
-						Error: fmt.Sprintf("unknown tool: %s", tc.ToolName),
-					},
-				}
-				continue
-			}
-
-			// Execute tool
-			output, err := tool.Execute(ctx, tc.Input)
-			if err != nil {
-				output = ToolResultOutputError{
-					Type:  "error",
-					Error: err.Error(),
-				}
-			}
-
-			toolResults[i] = ToolResultPart{
-				Type:       "tool_result",
-				ToolCallID: tc.ToolCallID,
-				Output:     output,
-			}
-
-			// Notify callback about tool result
-			if callbacks.OnToolResult != nil {
-				if err := callbacks.OnToolResult(tc.ToolCallID, output); err != nil {
-					return nil, fmt.Errorf("OnToolResult callback failed: %w", err)
-				}
-			}
-		}
-
-		// Add tool results as a new message
 		allMessages = append(allMessages, Message{
 			Role:    RoleTool,
 			Content: toolResults,
@@ -221,4 +128,112 @@ func (a *Agent) Stream(
 		Messages: allMessages,
 		Usage:    totalUsage,
 	}, nil
+}
+
+// processStreamEvents handles streaming events from the provider
+func (a *Agent) processStreamEvents(eventChan <-chan StreamEvent, callbacks StreamCallbacks) ([]Message, Usage, []ToolCallPart, error) {
+	var (
+		stepMessages []Message
+		stepUsage    Usage
+		toolCalls    []ToolCallPart
+	)
+
+	for event := range eventChan {
+		switch e := event.(type) {
+		case TextDeltaEvent:
+			if callbacks.OnTextDelta != nil {
+				if err := callbacks.OnTextDelta(e.Delta); err != nil {
+					return nil, Usage{}, nil, fmt.Errorf("OnTextDelta callback failed: %w", err)
+				}
+			}
+
+		case ReasoningDeltaEvent:
+			if callbacks.OnReasoningDelta != nil {
+				if err := callbacks.OnReasoningDelta(e.Delta); err != nil {
+					return nil, Usage{}, nil, fmt.Errorf("OnReasoningDelta callback failed: %w", err)
+				}
+			}
+
+		case ToolCallEvent:
+			toolCalls = append(toolCalls, ToolCallPart{
+				Type:       "tool_use",
+				ToolCallID: e.ToolCallID,
+				ToolName:   e.ToolName,
+				Input:      e.Input,
+			})
+
+			if callbacks.OnToolCall != nil {
+				if err := callbacks.OnToolCall(e.ToolCallID, e.ToolName, e.Input); err != nil {
+					return nil, Usage{}, nil, fmt.Errorf("OnToolCall callback failed: %w", err)
+				}
+			}
+
+		case StepCompleteEvent:
+			stepMessages = e.Messages
+			stepUsage = e.Usage
+
+		case StreamErrorEvent:
+			return nil, Usage{}, nil, e.Error
+		}
+	}
+
+	return stepMessages, stepUsage, toolCalls, nil
+}
+
+// executeTools executes all tool calls and returns the results
+func (a *Agent) executeTools(ctx context.Context, toolCalls []ToolCallPart, callbacks StreamCallbacks) []ContentPart {
+	toolResults := make([]ContentPart, len(toolCalls))
+	for i, tc := range toolCalls {
+		// Find the tool
+		var tool *Tool
+		for _, t := range a.config.Tools {
+			if t.Definition.Name == tc.ToolName {
+				tool = &t
+				break
+			}
+		}
+
+		if tool == nil {
+			toolResults[i] = ToolResultPart{
+				Type:       "tool_result",
+				ToolCallID: tc.ToolCallID,
+				Output: ToolResultOutputError{
+					Type:  "error",
+					Error: fmt.Sprintf("unknown tool: %s", tc.ToolName),
+				},
+			}
+			continue
+		}
+
+		// Execute tool
+		output, err := tool.Execute(ctx, tc.Input)
+		if err != nil {
+			output = ToolResultOutputError{
+				Type:  "error",
+				Error: err.Error(),
+			}
+		}
+
+		toolResults[i] = ToolResultPart{
+			Type:       "tool_result",
+			ToolCallID: tc.ToolCallID,
+			Output:     output,
+		}
+
+		// Notify callback about tool result
+		if callbacks.OnToolResult != nil {
+			//nolint:errcheck // callback error shouldn't prevent tool result from being recorded
+			callbacks.OnToolResult(tc.ToolCallID, output)
+		}
+	}
+	return toolResults
+}
+
+// toolCallsToContent converts tool calls to content parts
+func toolCallsToContent(toolCalls []ToolCallPart) []ContentPart {
+	content := make([]ContentPart, len(toolCalls))
+	for i, tc := range toolCalls {
+		content[i] = tc
+	}
+	return content
 }

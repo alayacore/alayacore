@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+//nolint:gocyclo // tool formatting requires handling many tool types
 func formatToolCall(toolName, input string) string {
 	var fields map[string]interface{}
 	if err := json.Unmarshal([]byte(input), &fields); err != nil {
@@ -48,9 +49,12 @@ func formatToolCall(toolName, input string) string {
 			return fmt.Sprintf("%s: %s", toolName, strings.Join(args, ", "))
 		}
 	case "edit_file":
-		path, _ := fields["path"].(string)
-		oldStr, _ := fields["old_string"].(string)
-		newStr, _ := fields["new_string"].(string)
+		path, _ := fields["path"].(string)         //nolint:errcheck // type assertion for optional field
+		oldStr, _ := fields["old_string"].(string) //nolint:errcheck // type assertion for optional field
+		newStr, _ := fields["new_string"].(string) //nolint:errcheck // type assertion for optional field
+		if path == "" || oldStr == "" || newStr == "" {
+			return ""
+		}
 
 		var lines []string
 		lines = append(lines, fmt.Sprintf("%s: %s", toolName, path))

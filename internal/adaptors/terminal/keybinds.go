@@ -162,7 +162,7 @@ func GetKeyBindingsByContext(context string) []KeyBinding {
 	switch context {
 	case "global":
 		return globalKeyBindings
-	case "display":
+	case focusDisplay:
 		return displayKeyBindings
 	case "model-selector":
 		return modelSelectorKeyBindings

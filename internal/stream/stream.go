@@ -74,16 +74,22 @@ func (i *ChanInput) Emit(data []byte) error {
 // Format: [2-byte tag][4-byte length][value]
 func EncodeTLV(tag string, value string) []byte {
 	data := []byte(value)
-	length := int32(len(data))
+	length := len(data)
+	if length > maxMessageSize {
+		length = maxMessageSize
+		data = data[:maxMessageSize]
+	}
 
 	msg := make([]byte, 6+length)
 	msg[0] = tag[0]
 	msg[1] = tag[1]
-	binary.BigEndian.PutUint32(msg[2:], uint32(length))
+	binary.BigEndian.PutUint32(msg[2:], uint32(length)) //nolint:gosec // G115: length is bounded by maxMessageSize
 	copy(msg[6:], data)
 
 	return msg
 }
+
+const maxMessageSize = 1<<31 - 1 // Max int32 to fit in uint32
 
 // EmitTLV writes a TLV-encoded message to the input.
 func (i *ChanInput) EmitTLV(tag string, value string) error {

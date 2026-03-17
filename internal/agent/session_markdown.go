@@ -87,12 +87,17 @@ func formatSessionMarkdown(data *SessionData) ([]byte, error) {
 // writeTLV writes a TLV-encoded entry with separator: \n\n + 2-byte tag + 4-byte length + content
 func writeTLV(buf *strings.Builder, tag string, content string) {
 	data := []byte(content)
-	length := int32(len(data))
+	length := len(data)
 
 	buf.WriteString("\n\n") // Separator for readability
 	buf.WriteByte(tag[0])
 	buf.WriteByte(tag[1])
-	binary.Write(buf, binary.BigEndian, length)
+	buf.Write([]byte{
+		byte(length >> 24),
+		byte(length >> 16),
+		byte(length >> 8),
+		byte(length),
+	})
 	buf.Write(data)
 }
 
@@ -149,6 +154,8 @@ func parseSessionMarkdown(data []byte) (*SessionData, error) {
 }
 
 // parseMessagesTLV parses TLV-encoded message content.
+//
+//nolint:gocyclo // parsing requires multiple branches for tag types
 func parseMessagesTLV(body string) ([]llm.Message, error) {
 	var messages []llm.Message
 	var currentMsg *llm.Message
@@ -171,7 +178,7 @@ func parseMessagesTLV(body string) ([]llm.Message, error) {
 			}
 			if b != '\n' && b != '\r' && b != ' ' && b != '\t' {
 				// Found a non-whitespace byte - this is our tag
-				reader.UnreadByte()
+				reader.UnreadByte() //nolint:errcheck // we just read a byte, unreading should succeed
 				break
 			}
 		}

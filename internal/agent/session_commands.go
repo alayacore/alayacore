@@ -116,7 +116,7 @@ func (s *Session) handleModelSet(args []string) {
 
 	// Save active model name to runtime manager for persistence
 	if s.RuntimeManager != nil {
-		_ = s.RuntimeManager.SetActiveModel(model.Name)
+		_ = s.RuntimeManager.SetActiveModel(model.Name) //nolint:errcheck // best-effort persistence
 	}
 
 	// Switch to the new model

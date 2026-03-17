@@ -73,7 +73,7 @@ func NewModelManager(configPath string) *ModelManager {
 		filePath: path,
 	}
 	if path != "" {
-		_ = mm.LoadFromFile(path)
+		_ = mm.LoadFromFile(path) //nolint:errcheck // best-effort load on init
 	}
 	return mm
 }
@@ -159,6 +159,8 @@ func parseModelConfig(content string) []ModelConfig {
 }
 
 // parseModelBlock parses a single model block
+//
+//nolint:gocyclo // field parsing requires handling many config keys
 func parseModelBlock(block string) ModelConfig {
 	model := ModelConfig{}
 	lines := strings.Split(block, "\n")

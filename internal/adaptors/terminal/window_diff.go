@@ -20,7 +20,8 @@ type DiffLinePair struct {
 
 // renderDiffContent renders a diff container side by side
 func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int) string {
-	var lines []string
+	// Preallocate lines: header + diff lines
+	lines := make([]string, 0, 1+len(diff.Lines))
 
 	// Add header with file path
 	lines = append(lines, wb.styles.Tool.Render("edit_file: ")+wb.styles.ToolContent.Render(diff.Path))
@@ -55,19 +56,20 @@ func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int) s
 		paddedOld := oldPart + strings.Repeat(" ", max(0, sideWidth-lipgloss.Width(oldPart)))
 
 		var left, right string
-		if isSame {
+		switch {
+		case isSame:
 			// Unchanged content - use spaces, no sign
 			left = wb.styles.DiffSame.Render("  " + paddedOld)
 			right = wb.styles.DiffSame.Render("  " + newPart)
-		} else if oldEmpty {
+		case oldEmpty:
 			// Old side is empty (new has more lines) - use spaces, no sign
 			left = "  " + paddedOld
 			right = wb.styles.DiffAdd.Render("+ " + newPart)
-		} else if newEmpty {
+		case newEmpty:
 			// New side is empty (old has more lines) - use spaces, no sign
 			left = wb.styles.DiffRemove.Render("- " + paddedOld)
 			right = "  " + newPart
-		} else {
+		default:
 			// Colored style for changed content
 			left = wb.styles.DiffRemove.Render("- " + paddedOld)
 			right = wb.styles.DiffAdd.Render("+ " + newPart)

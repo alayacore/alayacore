@@ -80,7 +80,7 @@ func executeEditFile(_ context.Context, args EditFileInput) (llm.ToolResultOutpu
 	newContent := strings.Replace(originalStr, args.OldString, args.NewString, 1)
 
 	// Write back
-	if err := os.WriteFile(args.Path, []byte(newContent), 0644); err != nil {
+	if err := os.WriteFile(args.Path, []byte(newContent), 0600); err != nil {
 		return llm.NewTextErrorResponse(err.Error()), nil
 	}
 

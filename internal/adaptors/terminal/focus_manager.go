@@ -65,7 +65,7 @@ func (m *Terminal) restoreFocusAfterSelector() {
 // openQueueManager opens the queue manager UI.
 func (m *Terminal) openQueueManager() {
 	// Request queue items from session
-	m.streamInput.EmitTLV(stream.TagTextUser, ":taskqueue_get_all")
+	_ = m.streamInput.EmitTLV(stream.TagTextUser, ":taskqueue_get_all") //nolint:errcheck // best-effort input
 	m.queueManager.Open()
 	m.input.Blur()
 	m.display.SetDisplayFocused(false)
@@ -117,7 +117,7 @@ func (m *Terminal) handleFocus() (tea.Model, tea.Cmd) {
 	}
 
 	// Restore focus to the previously focused window
-	if m.focusedWindow == "display" {
+	if m.focusedWindow == focusDisplay {
 		m.display.SetDisplayFocused(true)
 	} else {
 		m.input.Focus()

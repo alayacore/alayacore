@@ -18,6 +18,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -58,11 +59,15 @@ func buildSystemPrompt(basePrompt, extraPrompt string) string {
 func createProviderFromConfig(config *ModelConfig, debugAPI bool, proxyURL string) (llm.Provider, error) {
 	// Create HTTP client with optional proxy and debug
 	var client *http.Client
+	var err error
 	if proxyURL != "" {
 		if debugAPI {
-			client, _ = debugpkg.NewHTTPClientWithProxyAndDebug(proxyURL)
+			client, err = debugpkg.NewHTTPClientWithProxyAndDebug(proxyURL)
 		} else {
-			client, _ = debugpkg.NewHTTPClientWithProxy(proxyURL)
+			client, err = debugpkg.NewHTTPClientWithProxy(proxyURL)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to create HTTP client with proxy: %w", err)
 		}
 	} else if debugAPI {
 		client = debugpkg.NewHTTPClient()

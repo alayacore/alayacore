@@ -30,7 +30,7 @@ func (s *Session) saveSessionToFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to format session data: %w", err)
 	}
-	if err := os.WriteFile(path, raw, 0644); err != nil {
+	if err := os.WriteFile(path, raw, 0600); err != nil {
 		return fmt.Errorf("failed to write session file: %w", err)
 	}
 	return nil
@@ -68,14 +68,14 @@ func (s *Session) displayAssistantMessage(msg llm.Message) {
 	for _, part := range msg.Content {
 		switch p := part.(type) {
 		case llm.TextPart:
-			stream.WriteTLV(s.Output, stream.TagTextAssistant, p.Text)
+			_ = stream.WriteTLV(s.Output, stream.TagTextAssistant, p.Text) //nolint:errcheck // output stream
 			s.Output.Flush()
 		case llm.ReasoningPart:
-			stream.WriteTLV(s.Output, stream.TagTextReasoning, p.Text)
+			_ = stream.WriteTLV(s.Output, stream.TagTextReasoning, p.Text) //nolint:errcheck // output stream
 			s.Output.Flush()
 		case llm.ToolCallPart:
 			if info := formatToolCall(p.ToolName, string(p.Input)); info != "" {
-				stream.WriteTLV(s.Output, stream.TagFunctionShow, info)
+				_ = stream.WriteTLV(s.Output, stream.TagFunctionShow, info) //nolint:errcheck // output stream
 				s.Output.Flush()
 			}
 		}
@@ -86,7 +86,7 @@ func (s *Session) displayToolMessage(msg llm.Message) {
 	for _, part := range msg.Content {
 		if tc, ok := part.(llm.ToolCallPart); ok {
 			if info := formatToolCall(tc.ToolName, string(tc.Input)); info != "" {
-				stream.WriteTLV(s.Output, stream.TagFunctionShow, info)
+				_ = stream.WriteTLV(s.Output, stream.TagFunctionShow, info) //nolint:errcheck // output stream
 				s.Output.Flush()
 			}
 		}

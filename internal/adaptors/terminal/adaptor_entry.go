@@ -17,14 +17,14 @@ import (
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
-// TerminalAdaptor starts the TUI; use from main/app.
-type TerminalAdaptor struct {
+// Adaptor starts the TUI; use from main/app.
+type Adaptor struct {
 	Config *app.Config
 }
 
-// NewTerminalAdaptor creates a new Terminal adaptor.
-func NewTerminalAdaptor(cfg *app.Config) *TerminalAdaptor {
-	return &TerminalAdaptor{
+// NewAdaptor creates a new Terminal adaptor.
+func NewAdaptor(cfg *app.Config) *Adaptor {
+	return &Adaptor{
 		Config: cfg,
 	}
 }
@@ -41,7 +41,7 @@ func getTerminalSize() (width, height int) {
 }
 
 // Start runs the Terminal program.
-func (a *TerminalAdaptor) Start() {
+func (a *Adaptor) Start() {
 	inputStream := stream.NewChanInput(10)
 	terminalOutput := NewTerminalOutput()
 
@@ -96,5 +96,5 @@ context_limit: 32768`)
 
 	// Create and run the program
 	p := tea.NewProgram(t, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
-	p.Run()
+	_, _ = p.Run() //nolint:errcheck // terminal program run, error not critical
 }

@@ -64,8 +64,8 @@ func Setup(cfg *config.Settings) (*Config, error) {
 	}
 
 	// Add current working directory to system prompt (at the end for better API cache reuse)
-	cwd, _ := os.Getwd()
-	if cwd != "" {
+	cwd, err := os.Getwd()
+	if err == nil && cwd != "" {
 		systemPrompt = systemPrompt + "\n\nCurrent working directory: " + cwd
 	}
 
@@ -111,11 +111,15 @@ func (c *Config) AgentFactory() func() *llm.Agent {
 func CreateProvider(providerType, apiKey, baseURL, model string, debugAPI bool, proxyURL string) (llm.Provider, error) {
 	// Create HTTP client with optional proxy and debug
 	var client *http.Client
+	var err error
 	if proxyURL != "" {
 		if debugAPI {
-			client, _ = debugpkg.NewHTTPClientWithProxyAndDebug(proxyURL)
+			client, err = debugpkg.NewHTTPClientWithProxyAndDebug(proxyURL)
 		} else {
-			client, _ = debugpkg.NewHTTPClientWithProxy(proxyURL)
+			client, err = debugpkg.NewHTTPClientWithProxy(proxyURL)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to create HTTP client with proxy: %w", err)
 		}
 	} else if debugAPI {
 		client = debugpkg.NewHTTPClient()

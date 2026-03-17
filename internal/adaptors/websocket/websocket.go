@@ -26,19 +26,19 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// WebSocketAdaptor connects WebSocket clients to agent sessions.
-type WebSocketAdaptor struct {
+// Adaptor connects WebSocket clients to agent sessions.
+type Adaptor struct {
 	Config *app.Config
 	Server *http.Server
 }
 
-// NewWebSocketAdaptor creates a WebSocket server. Each client gets its own agent session.
-func NewWebSocketAdaptor(port string, cfg *app.Config) *WebSocketAdaptor {
+// NewAdaptor creates a WebSocket server. Each client gets its own agent session.
+func NewAdaptor(port string, cfg *app.Config) *Adaptor {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", handleWebSocket(cfg))
 	mux.HandleFunc("/", serveIndex)
 
-	return &WebSocketAdaptor{
+	return &Adaptor{
 		Config: cfg,
 		Server: &http.Server{
 			Addr:              port,
@@ -49,14 +49,14 @@ func NewWebSocketAdaptor(port string, cfg *app.Config) *WebSocketAdaptor {
 }
 
 // Start begins listening in a goroutine.
-func (a *WebSocketAdaptor) Start() {
-	go a.Server.ListenAndServe()
+func (a *Adaptor) Start() {
+	go a.Server.ListenAndServe() //nolint:errcheck // server runs in background
 }
 
 // serveIndex serves the embedded chat UI.
 func serveIndex(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(indexHTML))
+	_, _ = w.Write(indexHTML) //nolint:errcheck // static HTML, write error not critical
 }
 
 // handleWebSocket upgrades HTTP to WebSocket and runs a session.
@@ -98,7 +98,7 @@ func readMessages(conn *websocket.Conn, input *stream.ChanInput) {
 			}
 		}
 
-		input.Emit(message)
+		_ = input.Emit(message) //nolint:errcheck // best-effort WebSocket message
 	}
 }
 

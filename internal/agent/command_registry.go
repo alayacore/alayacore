@@ -54,6 +54,8 @@ func (r *CommandRegistry) List() []*Command {
 var commandRegistry = NewCommandRegistry()
 
 // init registers all commands declaratively
+//
+//nolint:gochecknoinits // global command registry requires init-time registration
 func init() {
 	// Session management commands
 	commandRegistry.Register(&Command{

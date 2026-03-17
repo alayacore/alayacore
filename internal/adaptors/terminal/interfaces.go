@@ -16,6 +16,10 @@ type OutputWriter interface {
 	io.Writer
 	io.Closer
 
+	// stream.Output methods
+	WriteString(s string) (n int, err error)
+	Flush() error
+
 	// Configuration and state
 	SetWindowWidth(width int)
 	GetStatus() string

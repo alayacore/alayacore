@@ -34,7 +34,8 @@ func GenerateSchema(v interface{}) json.RawMessage {
 		"type":       "object",
 		"properties": make(map[string]SchemaField),
 	}
-	properties := schema["properties"].(map[string]SchemaField)
+	properties := make(map[string]SchemaField)
+	schema["properties"] = properties
 	var required []string
 
 	for i := 0; i < t.NumField(); i++ {
@@ -62,13 +63,14 @@ func GenerateSchema(v interface{}) json.RawMessage {
 			parts := strings.Split(tag, ",")
 			for _, part := range parts {
 				part = strings.TrimSpace(part)
-				if part == "required" {
+				switch {
+				case part == "required":
 					required = append(required, fieldName)
-				} else if strings.HasPrefix(part, "description=") {
+				case strings.HasPrefix(part, "description="):
 					schemaField.Description = strings.TrimPrefix(part, "description=")
-				} else if strings.HasPrefix(part, "type=") {
+				case strings.HasPrefix(part, "type="):
 					schemaField.Type = strings.TrimPrefix(part, "type=")
-				} else if strings.HasPrefix(part, "enum=") {
+				case strings.HasPrefix(part, "enum="):
 					enumStr := strings.TrimPrefix(part, "enum=")
 					schemaField.Enum = strings.Split(enumStr, "|")
 				}

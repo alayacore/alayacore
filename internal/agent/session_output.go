@@ -34,13 +34,13 @@ func (s *Session) writeGapped(tag string, msg string) {
 	if s.Output == nil {
 		return
 	}
-	stream.WriteTLV(s.Output, tag, msg)
+	_ = stream.WriteTLV(s.Output, tag, msg) //nolint:errcheck // output stream, errors not critical
 	s.Output.Flush()
 }
 
 func (s *Session) writeToolCall(toolName, input, id string) {
 	if value := formatToolCall(toolName, input); value != "" {
-		stream.WriteTLV(s.Output, stream.TagFunctionShow, "[:"+id+":]"+value)
+		_ = stream.WriteTLV(s.Output, stream.TagFunctionShow, "[:"+id+":]"+value) //nolint:errcheck // output stream
 	}
 }
 
@@ -121,8 +121,8 @@ func (s *Session) sendSystemInfoInternal(activeModelConfig *ModelConfig) {
 		HasModels:         hasModels,
 		ModelConfigPath:   modelConfigPath,
 	}
-	data, _ := json.Marshal(info)
-	stream.WriteTLV(s.Output, stream.TagSystemData, string(data))
+	data, _ := json.Marshal(info)                                     //nolint:errcheck // system info serialization
+	_ = stream.WriteTLV(s.Output, stream.TagSystemData, string(data)) //nolint:errcheck // output stream
 	s.Output.Flush()
 }
 

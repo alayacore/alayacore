@@ -51,7 +51,7 @@ func main() {
 	}
 
 	// Create WebSocket adaptor
-	adaptor := websocket.NewWebSocketAdaptor(port, appCfg)
+	adaptor := websocket.NewAdaptor(port, appCfg)
 	adaptor.Start()
 
 	// Wait for interrupt

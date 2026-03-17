@@ -41,10 +41,9 @@ func (m DisplayModel) Init() tea.Cmd {
 
 // Update handles messages for the display (WindowSizeMsg only; content updates via updateContent)
 func (m DisplayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.viewport.SetWidth(max(0, msg.Width))
+	if windowMsg, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = windowMsg.Width
+		m.viewport.SetWidth(max(0, windowMsg.Width))
 	}
 	return m, nil
 }
