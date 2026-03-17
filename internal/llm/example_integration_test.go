@@ -10,7 +10,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/llm/factory"
-	"github.com/alayacore/alayacore/internal/llm/llmcompat"
 )
 
 // TestFullIntegration shows complete end-to-end usage
@@ -41,22 +40,18 @@ func TestFullIntegration(t *testing.T) {
 	}
 
 	// 2. Define tools
-	echoTool := llmcompat.NewTool("echo", "Echo back a message").
-		WithSchema(json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"message": {"type": "string", "description": "Message to echo"}
-			},
-			"required": ["message"]
-		}`)).
+	type EchoInput struct {
+		Message string `json:"message" jsonschema:"required,description=Message to echo back"`
+	}
+
+	echoTool := llm.NewTool("echo", "Echo back a message").
+		WithSchema(llm.GenerateSchema(EchoInput{})).
 		WithExecute(func(ctx context.Context, input json.RawMessage) (llm.ToolResultOutput, error) {
-			var params struct {
-				Message string `json:"message"`
-			}
+			var params EchoInput
 			if err := json.Unmarshal(input, &params); err != nil {
-				return llmcompat.NewTextErrorResponse("invalid input"), nil
+				return llm.NewTextErrorResponse("invalid input"), nil
 			}
-			return llmcompat.NewTextResponse(fmt.Sprintf("Echo: %s", params.Message)), nil
+			return llm.NewTextResponse(fmt.Sprintf("Echo: %s", params.Message)), nil
 		}).
 		Build()
 
@@ -70,7 +65,7 @@ func TestFullIntegration(t *testing.T) {
 
 	// 4. Create conversation
 	messages := []llm.Message{
-		llmcompat.NewUserMessage("Hello!"),
+		llm.NewUserMessage("Hello!"),
 	}
 
 	// 5. Stream with callbacks

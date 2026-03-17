@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/llm/llmcompat"
 	"github.com/alayacore/alayacore/internal/llm/providers"
 )
 
@@ -21,22 +20,18 @@ func Example_usage() {
 	}
 
 	// Define a simple tool
-	tool := llmcompat.NewTool("echo", "Echo back the input").
-		WithSchema(json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"message": {"type": "string"}
-			},
-			"required": ["message"]
-		}`)).
+	type EchoInput struct {
+		Message string `json:"message" jsonschema:"required,description=Message to echo"`
+	}
+
+	tool := llm.NewTool("echo", "Echo back the input").
+		WithSchema(llm.GenerateSchema(EchoInput{})).
 		WithExecute(func(ctx context.Context, input json.RawMessage) (llm.ToolResultOutput, error) {
-			var params struct {
-				Message string `json:"message"`
-			}
+			var params EchoInput
 			if err := json.Unmarshal(input, &params); err != nil {
-				return llmcompat.NewTextErrorResponse("invalid input"), nil
+				return llm.NewTextErrorResponse("invalid input"), nil
 			}
-			return llmcompat.NewTextResponse(fmt.Sprintf("Echo: %s", params.Message)), nil
+			return llm.NewTextResponse(fmt.Sprintf("Echo: %s", params.Message)), nil
 		}).
 		Build()
 
@@ -49,7 +44,7 @@ func Example_usage() {
 
 	// Stream with callbacks
 	messages := []llm.Message{
-		llmcompat.NewUserMessage("Hello!"),
+		llm.NewUserMessage("Hello!"),
 	}
 
 	result, err := agent.Stream(context.Background(), messages, llm.StreamCallbacks{

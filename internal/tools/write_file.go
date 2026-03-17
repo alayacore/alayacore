@@ -2,56 +2,38 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/llm/llmcompat"
 )
 
 // WriteFileInput represents the input for the write_file tool
 type WriteFileInput struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
+	Path    string `json:"path" jsonschema:"required,description=The path of the file to write"`
+	Content string `json:"content" jsonschema:"required,description=The content to write to the file"`
 }
 
 // NewWriteFileTool creates a tool for writing files
 func NewWriteFileTool() llm.Tool {
-	schema := json.RawMessage(`{
-		"type": "object",
-		"properties": {
-			"path": {
-				"type": "string",
-				"description": "The path of the file to write"
-			},
-			"content": {
-				"type": "string",
-				"description": "The content to write to the file"
-			}
-		},
-		"required": ["path", "content"]
-	}`)
-
-	return llmcompat.NewTool(
+	return llm.NewTool(
 		"write_file",
 		"Create a new file or replace the entire content of an existing file.",
 	).
-		WithSchema(schema).
-		WithExecute(func(_ context.Context, input json.RawMessage) (llm.ToolResultOutput, error) {
-			var args WriteFileInput
-			if err := json.Unmarshal(input, &args); err != nil {
-				return llmcompat.NewTextErrorResponse("failed to parse input: " + err.Error()), nil
-			}
-
-			if args.Path == "" {
-				return llmcompat.NewTextErrorResponse("path is required"), nil
-			}
-
-			if err := os.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
-				return llmcompat.NewTextErrorResponse(err.Error()), nil
-			}
-
-			return llmcompat.NewTextResponse("File written successfully"), nil
-		}).
+		WithSchema(llm.GenerateSchema(WriteFileInput{})).
+		WithExecute(llm.TypedExecute(executeWriteFile)).
 		Build()
+}
+
+func executeWriteFile(_ context.Context, args WriteFileInput) (llm.ToolResultOutput, error) {
+	if args.Path == "" {
+		return llm.NewTextErrorResponse("path is required"), nil
+	}
+	if args.Content == "" {
+		return llm.NewTextErrorResponse("content is required"), nil
+	}
+
+	if err := os.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
+		return llm.NewTextErrorResponse(err.Error()), nil
+	}
+	return llm.NewTextResponse("File written successfully"), nil
 }

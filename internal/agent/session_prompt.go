@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/llm/llmcompat"
 	"github.com/alayacore/alayacore/internal/stream"
 )
 
@@ -17,7 +16,7 @@ func (s *Session) handleUserPrompt(ctx context.Context, prompt string) {
 		s.autoSummarize(ctx)
 	}
 
-	s.Messages = append(s.Messages, llmcompat.NewUserMessage(prompt))
+	s.Messages = append(s.Messages, llm.NewUserMessage(prompt))
 
 	_, err := s.processPrompt(ctx, prompt, s.Messages)
 
