@@ -194,12 +194,17 @@ func WithOpenAIModel(model string) OpenAIOption {
 
 // openAIRequest represents the OpenAI API request
 type openAIRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openAIMessage `json:"messages"`
-	Tools       []openAITool    `json:"tools,omitempty"`
-	Stream      bool            `json:"stream"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
+	Model         string               `json:"model"`
+	Messages      []openAIMessage      `json:"messages"`
+	Tools         []openAITool         `json:"tools,omitempty"`
+	Stream        bool                 `json:"stream"`
+	StreamOptions *openAIStreamOptions `json:"stream_options,omitempty"`
+	MaxTokens     int                  `json:"max_tokens,omitempty"`
+	Temperature   float64              `json:"temperature,omitempty"`
+}
+
+type openAIStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type openAIMessage struct {
@@ -276,6 +281,9 @@ func (p *OpenAIProvider) StreamMessages(
 		Messages: apiMessages,
 		Tools:    apiTools,
 		Stream:   true,
+		StreamOptions: &openAIStreamOptions{
+			IncludeUsage: true,
+		},
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
