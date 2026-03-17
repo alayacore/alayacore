@@ -137,4 +137,68 @@ func TestWindowBufferDiff(t *testing.T) {
 			t.Fatalf("len(Windows) = %d, want 1", len(wb.Windows))
 		}
 	})
+
+	t.Run("diff window folds when wrapped", func(t *testing.T) {
+		wb := NewWindowBuffer(80)
+
+		// Create a diff with many lines
+		lines := make([]DiffLinePair, 20)
+		for i := 0; i < 20; i++ {
+			lines[i] = DiffLinePair{
+				Old: string(rune('a' + i%26)),
+				New: string(rune('b' + i%26)),
+			}
+		}
+
+		wb.AppendDiff("diff-1", "test.txt", lines)
+
+		// Verify window is wrapped by default
+		if !wb.Windows[0].Wrapped {
+			t.Error("Diff window should be wrapped by default")
+		}
+
+		// Render and check that it folds
+		rendered := wb.GetAll(-1)
+		renderedLines := strings.Split(rendered, "\n")
+
+		// Should fold to ~5 lines of content (header + first + separator + last 3)
+		// Plus border lines, so approximately 7-8 lines total
+		if len(renderedLines) > 10 {
+			t.Errorf("Rendered diff has %d lines, should be folded to ~7-8", len(renderedLines))
+		}
+
+		// Verify it contains the fold indicator
+		hasIndicator := strings.Contains(rendered, "···") || strings.Contains(rendered, "·")
+		if !hasIndicator {
+			t.Error("Folded diff should contain dotted separator")
+		}
+	})
+
+	t.Run("diff window expands when unwrapped", func(t *testing.T) {
+		wb := NewWindowBuffer(80)
+
+		// Create a diff with many lines
+		lines := make([]DiffLinePair, 10)
+		for i := 0; i < 10; i++ {
+			lines[i] = DiffLinePair{
+				Old: string(rune('a' + i%26)),
+				New: string(rune('b' + i%26)),
+			}
+		}
+
+		wb.AppendDiff("diff-1", "test.txt", lines)
+
+		// Unwrap the window
+		wb.ToggleWrap(0)
+
+		// Render and check that it shows all lines
+		rendered := wb.GetAll(-1)
+
+		// Should show all 10 diff lines plus header
+		// Count the diff separators (|) to count diff lines
+		sepCount := strings.Count(rendered, "|")
+		if sepCount != 10 {
+			t.Errorf("Unwrapped diff should show 10 lines, found %d separators", sepCount)
+		}
+	})
 }

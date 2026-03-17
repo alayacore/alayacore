@@ -132,10 +132,11 @@ func (wb *WindowBuffer) AppendDiff(id string, path string, lines []DiffLinePair)
 
 	// Create window with diff
 	window := &Window{
-		ID:    id,
-		Tag:   stream.TagFunctionShow,
-		Style: wb.borderStyle,
-		Diff:  diff,
+		ID:      id,
+		Tag:     stream.TagFunctionShow,
+		Style:   wb.borderStyle,
+		Diff:    diff,
+		Wrapped: true, // Enable folding like other windows
 	}
 	wb.Windows = append(wb.Windows, window)
 	wb.idIndex[id] = len(wb.Windows) - 1

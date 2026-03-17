@@ -163,7 +163,27 @@ func (wb *WindowBuffer) renderWithCursor(cursorIndex int) string {
 func (wb *WindowBuffer) renderWindowContent(w *Window, innerWidth int) string {
 	// Handle diff windows
 	if w.IsDiffWindow() {
-		return wb.renderDiffContent(w.Diff, innerWidth, w.Status)
+		// Render diff content
+		fullContent := wb.renderDiffContent(w.Diff, innerWidth, w.Status)
+
+		// Apply folding if window is wrapped
+		if w.Wrapped {
+			lines := strings.Split(fullContent, "\n")
+			if len(lines) > 5 {
+				// Show: first line, dotted separator, last 3 lines (5 lines total)
+				firstLine := lines[0]
+				lastThreeLines := lines[len(lines)-3:]
+
+				// Create subtle dotted separator across full width
+				wrapIndicator := lipgloss.NewStyle().
+					Foreground(lipgloss.Color(ColorDim)).
+					Render(strings.Repeat("·", innerWidth))
+
+				// Show first line, separator, last 3 lines
+				return firstLine + "\n" + wrapIndicator + "\n" + strings.Join(lastThreeLines, "\n")
+			}
+		}
+		return fullContent
 	}
 
 	// Build content with optional status indicator
