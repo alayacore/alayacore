@@ -16,7 +16,7 @@
 //	  - TagFunctionNotify (FN): Function call for display
 //	  - TagFunctionCall (FC): Function call for session saving
 //	  - TagFunctionResult (FR): Function result for session saving
-//	  - TagFunctionState (FO): Function state indicator (pending/success/error)
+//	  - TagFunctionState (FS): Function state indicator (pending/success/error)
 //	  - TagSystemError (SE): System error messages
 //	  - TagSystemNotify (SN): System notifications
 //	  - TagSystemData (SD): System data (JSON)

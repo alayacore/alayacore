@@ -269,7 +269,7 @@
                     streamOrder.push(streamId);
                 }
             // Function output status indicator
-            } else if (tag === 'FO') {
+            } else if (tag === 'FS') {
                 const {id, content} = parseStreamID(value);
                 if (id && currentStreams[id]) {
                     // Update status for existing tool stream

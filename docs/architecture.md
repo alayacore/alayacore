@@ -143,7 +143,7 @@ Communication between adaptors and session uses a simple Tag-Length-Value (TLV) 
 | `TagFunctionNotify` | FN | Output | Function call for display |
 | `TagFunctionCall` | FC | Output | Function call for persistence |
 | `TagFunctionResult` | FR | Output | Function result for persistence |
-| `TagFunctionState` | FO | Output | Function state indicator (pending/success/error) |
+| `TagFunctionState` | FS | Output | Function state indicator (pending/success/error) |
 | `TagSystemError` | SE | Output | System error messages |
 | `TagSystemNotify` | SN | Output | System notifications |
 | `TagSystemData` | SD | Output | System data (JSON) |
