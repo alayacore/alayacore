@@ -90,10 +90,11 @@ func Setup(cfg *config.Settings) (*Config, error) {
 // CreateAgent creates a new agent with the configured tools and system prompt
 func (c *Config) CreateAgent() *llm.Agent {
 	return llm.NewAgent(llm.AgentConfig{
-		Provider:     c.Provider,
-		Tools:        c.AgentTools,
-		SystemPrompt: c.SystemPrompt,
-		MaxSteps:     c.MaxSteps,
+		Provider:          c.Provider,
+		Tools:             c.AgentTools,
+		SystemPrompt:      c.SystemPrompt,
+		ExtraSystemPrompt: c.ExtraSystemPrompt,
+		MaxSteps:          c.MaxSteps,
 	})
 }
 
@@ -101,10 +102,11 @@ func (c *Config) CreateAgent() *llm.Agent {
 func (c *Config) AgentFactory() func() *llm.Agent {
 	return func() *llm.Agent {
 		return llm.NewAgent(llm.AgentConfig{
-			Provider:     c.Provider,
-			Tools:        c.AgentTools,
-			SystemPrompt: c.SystemPrompt,
-			MaxSteps:     c.MaxSteps,
+			Provider:          c.Provider,
+			Tools:             c.AgentTools,
+			SystemPrompt:      c.SystemPrompt,
+			ExtraSystemPrompt: c.ExtraSystemPrompt,
+			MaxSteps:          c.MaxSteps,
 		})
 	}
 }

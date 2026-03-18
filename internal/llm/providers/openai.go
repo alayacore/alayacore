@@ -245,15 +245,23 @@ func (p *OpenAIProvider) StreamMessages(
 	messages []llm.Message,
 	tools []llm.ToolDefinition,
 	systemPrompt string,
+	extraSystemPrompt string,
 ) (<-chan llm.StreamEvent, error) {
 	// Convert messages to OpenAI format
-	apiMessages := make([]openAIMessage, 0, len(messages)+1)
+	apiMessages := make([]openAIMessage, 0, len(messages)+2)
 
-	// Add system message first
+	// Add system messages separately
 	if systemPrompt != "" {
 		apiMessages = append(apiMessages, openAIMessage{
 			Role:    "system",
 			Content: systemPrompt,
+		})
+	}
+
+	if extraSystemPrompt != "" {
+		apiMessages = append(apiMessages, openAIMessage{
+			Role:    "system",
+			Content: extraSystemPrompt,
 		})
 	}
 

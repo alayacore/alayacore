@@ -59,7 +59,7 @@ func TestAnthropicRealAPI(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Say 'Hello, world!' and nothing else."}}},
 	}
 
-	eventChan, err := provider.StreamMessages(ctx, messages, nil, "You are a helpful assistant. Be very brief.")
+	eventChan, err := provider.StreamMessages(ctx, messages, nil, "You are a helpful assistant. Be very brief.", "")
 	if err != nil {
 		t.Fatalf("Failed to stream messages: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestOpenAICompatibleRealAPI(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Say 'Hello!' and nothing else."}}},
 	}
 
-	eventChan, err := provider.StreamMessages(ctx, messages, nil, "")
+	eventChan, err := provider.StreamMessages(ctx, messages, nil, "", "")
 	if err != nil {
 		t.Fatalf("Failed to stream messages: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestAnthropicRealToolCall(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Use the echo tool to say 'test123'"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(ctx, messages, tools, "You are a helpful assistant. Use tools when requested.")
+	eventChan, err := provider.StreamMessages(ctx, messages, tools, "You are a helpful assistant. Use tools when requested.", "")
 	if err != nil {
 		t.Fatalf("Failed to stream messages: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestOpenAIRealAPI(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Say 'Hello, world!' and nothing else."}}},
 	}
 
-	eventChan, err := provider.StreamMessages(ctx, messages, nil, "You are a helpful assistant. Be very brief.")
+	eventChan, err := provider.StreamMessages(ctx, messages, nil, "You are a helpful assistant. Be very brief.", "")
 	if err != nil {
 		t.Fatalf("Failed to stream messages: %v", err)
 	}

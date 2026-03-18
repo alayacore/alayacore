@@ -58,7 +58,7 @@ func TestAnthropicProvider(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
 	if err != nil {
 		t.Fatalf("Failed to stream: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestOpenAIProvider(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
 	if err != nil {
 		t.Fatalf("Failed to stream: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestToolCallStreaming(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "test"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestToolCallStreamingChunked(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Run uname -a"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestAnthropicToolCallStreaming(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "What's the weather?"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +422,7 @@ func TestAnthropicReasoningStreaming(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "What is the answer?"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,7 +501,7 @@ func TestAnthropicAPIError(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	_, err = provider.StreamMessages(context.Background(), messages, nil, "")
+	_, err = provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err == nil {
 		t.Error("Expected error for invalid API key")
 	}
@@ -527,7 +527,7 @@ func TestOpenAIAPIError(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	_, err = provider.StreamMessages(context.Background(), messages, nil, "")
+	_, err = provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err == nil {
 		t.Error("Expected error for rate limit")
 	}
@@ -579,7 +579,7 @@ func TestOpenAIWithSystemPrompt(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,7 +642,7 @@ func TestAnthropicWithTools(t *testing.T) {
 		},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, tools, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, tools, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -683,7 +683,7 @@ func TestOpenAIWithReasoning(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Calculate"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -824,7 +824,7 @@ func TestAnthropicToolResultMessageFormat(t *testing.T) {
 		}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -873,7 +873,7 @@ func TestAnthropicMultiToolCall(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Get weather for NYC and LA"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -982,7 +982,7 @@ func TestOpenAIToolResultMessageFormat(t *testing.T) {
 		}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1108,7 +1108,7 @@ func TestOpenAIMultiToolResultMessageFormat(t *testing.T) {
 		}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1193,7 +1193,7 @@ func TestAnthropicToolResultError(t *testing.T) {
 		}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

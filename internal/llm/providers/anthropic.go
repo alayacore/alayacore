@@ -73,17 +73,23 @@ func WithAnthropicModel(model string) AnthropicOption {
 
 // anthropicRequest represents the Anthropic API request
 type anthropicRequest struct {
-	Model        string                 `json:"model"`
-	Messages     []anthropicMessage     `json:"messages"`
-	MaxTokens    int                    `json:"max_tokens"`
-	System       string                 `json:"system,omitempty"`
-	Tools        []anthropicTool        `json:"tools,omitempty"`
-	Stream       bool                   `json:"stream"`
-	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
+	Model        string                   `json:"model"`
+	Messages     []anthropicMessage       `json:"messages"`
+	MaxTokens    int                      `json:"max_tokens"`
+	System       []anthropicSystemMessage `json:"system,omitempty"`
+	Tools        []anthropicTool          `json:"tools,omitempty"`
+	Stream       bool                     `json:"stream"`
+	CacheControl *anthropicCacheControl   `json:"cache_control,omitempty"`
 }
 
 type anthropicCacheControl struct {
 	Type string `json:"type"`
+}
+
+type anthropicSystemMessage struct {
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text"`
+	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 type anthropicMessage struct {
@@ -230,6 +236,7 @@ func (p *AnthropicProvider) StreamMessages(
 	messages []llm.Message,
 	tools []llm.ToolDefinition,
 	systemPrompt string,
+	extraSystemPrompt string,
 ) (<-chan llm.StreamEvent, error) {
 	// Convert messages to Anthropic format
 	apiMessages := make([]anthropicMessage, 0, len(messages))
@@ -299,12 +306,31 @@ func (p *AnthropicProvider) StreamMessages(
 		})
 	}
 
+	// Build system messages array
+	systemMessages := make([]anthropicSystemMessage, 0, 2)
+
+	// Add default system prompt
+	if systemPrompt != "" {
+		systemMessages = append(systemMessages, anthropicSystemMessage{
+			Type: "text",
+			Text: systemPrompt,
+		})
+	}
+
+	// Add extra system prompt separately
+	if extraSystemPrompt != "" {
+		systemMessages = append(systemMessages, anthropicSystemMessage{
+			Type: "text",
+			Text: extraSystemPrompt,
+		})
+	}
+
 	// Build request
 	reqBody := anthropicRequest{
 		Model:     p.model,
 		Messages:  apiMessages,
 		MaxTokens: 4096,
-		System:    systemPrompt,
+		System:    systemMessages,
 		Tools:     apiTools,
 		Stream:    true,
 	}

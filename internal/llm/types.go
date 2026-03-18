@@ -142,10 +142,14 @@ func (StreamErrorEvent) isStreamEvent() {}
 // Provider defines the interface for LLM providers
 type Provider interface {
 	// StreamMessages streams a conversation with tools
+	// systemPrompt is the base system prompt (always present)
+	// extraSystemPrompt is the user-provided additional system prompt (optional, from --system flag)
+	// The provider should merge them appropriately (joined by "\n\n" if both present)
 	StreamMessages(
 		ctx context.Context,
 		messages []Message,
 		tools []ToolDefinition,
 		systemPrompt string,
+		extraSystemPrompt string,
 	) (<-chan StreamEvent, error)
 }

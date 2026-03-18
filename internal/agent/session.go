@@ -47,14 +47,6 @@ import (
 //   - streaming model output and system status back over TLV
 //   - delegating model listing/switching to ModelManager + RuntimeManager
 
-// buildSystemPrompt combines the base system prompt with extra system prompt
-func buildSystemPrompt(basePrompt, extraPrompt string) string {
-	if extraPrompt == "" {
-		return basePrompt
-	}
-	return basePrompt + "\n\n" + extraPrompt
-}
-
 // createProviderFromConfig creates an LLM provider from model config
 func createProviderFromConfig(config *ModelConfig, debugAPI bool, proxyURL string) (llm.Provider, error) {
 	// Create HTTP client with optional proxy and debug
@@ -299,15 +291,13 @@ func (s *Session) ensureAgentInitialized() string {
 		return "Failed to create provider: " + err.Error()
 	}
 
-	// Build combined system prompt
-	systemPrompt := buildSystemPrompt(s.systemPrompt, s.extraSystemPrompt)
-
-	// Create agent
+	// Create agent with separate system prompts
 	agent := llm.NewAgent(llm.AgentConfig{
-		Provider:     provider,
-		Tools:        s.baseTools,
-		SystemPrompt: systemPrompt,
-		MaxSteps:     s.maxSteps,
+		Provider:          provider,
+		Tools:             s.baseTools,
+		SystemPrompt:      s.systemPrompt,
+		ExtraSystemPrompt: s.extraSystemPrompt,
+		MaxSteps:          s.maxSteps,
 	})
 
 	s.mu.Lock()
@@ -326,13 +316,12 @@ func (s *Session) initAgentFromConfig(modelConfig *ModelConfig) error {
 		return err
 	}
 
-	systemPrompt := buildSystemPrompt(s.systemPrompt, s.extraSystemPrompt)
-
 	agent := llm.NewAgent(llm.AgentConfig{
-		Provider:     provider,
-		Tools:        s.baseTools,
-		SystemPrompt: systemPrompt,
-		MaxSteps:     s.maxSteps,
+		Provider:          provider,
+		Tools:             s.baseTools,
+		SystemPrompt:      s.systemPrompt,
+		ExtraSystemPrompt: s.extraSystemPrompt,
+		MaxSteps:          s.maxSteps,
 	})
 
 	s.mu.Lock()

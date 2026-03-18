@@ -4,9 +4,13 @@
 None
 
 ## Recent Changes
-- Tool windows from loaded sessions now show dimmed `·` as default status sign (no status in session file)
-- Tool windows during execution: dimmed `•` for pending, green `•` for success, red `•` for error
-- Status indicator logic moved from "only when Status is set" to "always show for tool windows (TagFunctionNotify)"
+- Fixed system prompt handling: external `--system` prompts are now sent as separate system messages
+  - Multiple `--system` flags are merged with "\n\n" separator in config parsing
+  - Default and extra system prompts are passed separately through the entire stack
+  - Providers send them as separate system message objects (not merged strings):
+    - Anthropic: `system: [{"type": "text", "text": "default"}, {"type": "text", "text": "extra"}]`
+    - OpenAI: `messages: [{"role": "system", "content": "default"}, {"role": "system", "content": "extra"}]`
+  - This preserves API cache efficiency and allows proper prompt separation
 
 ## Critical Gotchas
 

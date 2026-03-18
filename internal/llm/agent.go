@@ -15,10 +15,11 @@ type Tool struct {
 
 // AgentConfig configures the agent
 type AgentConfig struct {
-	Provider     Provider
-	Tools        []Tool
-	SystemPrompt string
-	MaxSteps     int
+	Provider          Provider
+	Tools             []Tool
+	SystemPrompt      string // Default system prompt (base)
+	ExtraSystemPrompt string // User-provided extra system prompt via --system flag
+	MaxSteps          int
 }
 
 // Agent orchestrates tool-calling loops
@@ -91,6 +92,7 @@ func (a *Agent) Stream(
 			allMessages,
 			toolDefs,
 			a.config.SystemPrompt,
+			a.config.ExtraSystemPrompt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("provider stream failed: %w", err)
