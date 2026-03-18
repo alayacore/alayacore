@@ -241,7 +241,7 @@ func (m *Terminal) updateStatusWithQueue() {
 
 	var stepsPart string
 	if inProgress && maxSteps > 0 {
-		stepsPart = fmt.Sprintf("Steps: (%d/%d)", currentStep, maxSteps)
+		stepsPart = fmt.Sprintf("Steps: %d/%d", currentStep, maxSteps)
 	}
 
 	if queueCount > 0 {

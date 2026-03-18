@@ -70,7 +70,7 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	if content == "" {
 		t.Error("Expected non-empty content")
 	}
-	// Should contain dot (·)
+	// Should contain hollow dot (·)
 
 	// Update with success status
 	wb.UpdateToolStatus("tool123", "success")
@@ -80,7 +80,7 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	if content == "" {
 		t.Error("Expected non-empty content")
 	}
-	// Should contain checkmark (✓)
+	// Should contain filled dot (•)
 
 	// Update with error status
 	wb.UpdateToolStatus("tool123", "error")
@@ -90,5 +90,5 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	if content == "" {
 		t.Error("Expected non-empty content")
 	}
-	// Should contain cross (✗)
+	// Should contain filled dot (•)
 }

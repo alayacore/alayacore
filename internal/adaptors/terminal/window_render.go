@@ -191,17 +191,17 @@ func (wb *WindowBuffer) renderWindowContent(w *Window, innerWidth int) string {
 	if w.Status != "" {
 		var indicator string
 		if w.Status == "success" {
-			// Green checkmark
+			// Green filled dot
 			indicator = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(ColorSuccess)).
-				Render("✓ ")
+				Render("• ")
 		} else if w.Status == "error" {
-			// Red cross
+			// Red filled dot
 			indicator = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(ColorError)).
-				Render("✗ ")
+				Render("• ")
 		} else if w.Status == "pending" {
-			// Yellow dot for pending (same width as checkmark)
+			// Yellow hollow dot for pending
 			indicator = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(ColorWarning)).
 				Render("· ")

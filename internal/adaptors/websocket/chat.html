@@ -344,9 +344,9 @@
             let displayText = text;
             if (type === 'tool' && status) {
                 if (status === 'success') {
-                    displayText = '<span class="status-success">✓</span> ' + escapeHtml(text);
+                    displayText = '<span class="status-success">•</span> ' + escapeHtml(text);
                 } else if (status === 'error') {
-                    displayText = '<span class="status-error">✗</span> ' + escapeHtml(text);
+                    displayText = '<span class="status-error">•</span> ' + escapeHtml(text);
                 } else if (status === 'pending') {
                     displayText = '<span class="status-pending">·</span> ' + escapeHtml(text);
                 }

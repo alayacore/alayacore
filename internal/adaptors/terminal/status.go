@@ -74,9 +74,10 @@ func (m StatusModel) RenderString() string {
 
 	if m.status != "" {
 		// Don't re-render status - it may already contain ANSI codes
-		return indicator + " " + m.status
+		// Apply padding (2 spaces left and right) to the entire status bar
+		return m.styles.Status.Padding(0, 2).Render(indicator + " " + m.status)
 	}
-	return indicator
+	return m.styles.Status.Padding(0, 2).Render(indicator)
 }
 
 var _ tea.Model = (*StatusModel)(nil)
