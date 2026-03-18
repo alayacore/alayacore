@@ -74,7 +74,7 @@ func handleWebSocket(cfg *app.Config) func(http.ResponseWriter, *http.Request) {
 		output := newClientOutput(conn)
 
 		// Each connection gets its own agent session.
-		agentpkg.LoadOrNewSession(cfg.AgentTools, cfg.SystemPrompt, cfg.ExtraSystemPrompt, input, output, cfg.Cfg.Session, cfg.Cfg.ModelConfig, cfg.Cfg.RuntimeConfig, cfg.Cfg.DebugAPI, cfg.Cfg.Proxy)
+		agentpkg.LoadOrNewSession(cfg.AgentTools, cfg.SystemPrompt, cfg.ExtraSystemPrompt, cfg.MaxSteps, input, output, cfg.Cfg.Session, cfg.Cfg.ModelConfig, cfg.Cfg.RuntimeConfig, cfg.Cfg.DebugAPI, cfg.Cfg.Proxy)
 
 		readMessages(conn, input)
 	}

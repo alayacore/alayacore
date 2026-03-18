@@ -45,6 +45,7 @@ Flags:
   --skill strings         Skill path (can be specified multiple times)
   --session string        Session file path to load/save conversations
   --proxy string          HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)
+  --max-steps int         Maximum agent loop steps (default: 50)
   --debug-api             Write raw API requests and responses to log file
   --version               Show version information
   --help                  Show help information
@@ -58,6 +59,7 @@ Examples:
   alayacore --skill ./skills1 --skill ./skills2
   alayacore --proxy http://127.0.0.1:7890
   alayacore --model-config ./my-model.conf
+  alayacore --max-steps 100
 
 Model config example (~/.alayacore/model.conf):
   name: "Claude 3.5 Sonnet"

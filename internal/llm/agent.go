@@ -29,7 +29,7 @@ type Agent struct {
 // NewAgent creates a new agent
 func NewAgent(config AgentConfig) *Agent {
 	if config.MaxSteps == 0 {
-		config.MaxSteps = 10
+		config.MaxSteps = 50
 	}
 	return &Agent{config: config}
 }
@@ -66,6 +66,13 @@ func (a *Agent) Stream(
 	copy(allMessages, messages)
 
 	for step = 1; step <= a.config.MaxSteps; step++ {
+		// Check for context cancellation between steps
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		if callbacks.OnStepStart != nil {
 			if err := callbacks.OnStepStart(step); err != nil {
 				return nil, fmt.Errorf("OnStepStart callback failed: %w", err)

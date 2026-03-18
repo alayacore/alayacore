@@ -178,6 +178,7 @@ type Session struct {
 	systemPrompt      string
 	extraSystemPrompt string // User-provided extra system prompt via --system flag
 	debugAPI          bool
+	maxSteps          int
 	proxyURL          string
 
 	taskQueue     []QueueItem
@@ -202,18 +203,18 @@ type SessionData struct {
 }
 
 // LoadOrNewSession loads a session from file or creates a new one.
-func LoadOrNewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) (*Session, string) {
+func LoadOrNewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) (*Session, string) {
 	sessionFile = expandPath(sessionFile)
 	if sessionFile != "" {
 		if data, err := LoadSession(sessionFile); err == nil {
-			return RestoreFromSession(baseTools, systemPrompt, extraSystemPrompt, input, output, data, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, proxyURL), sessionFile
+			return RestoreFromSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, data, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, proxyURL), sessionFile
 		}
 	}
-	return NewSession(baseTools, systemPrompt, extraSystemPrompt, input, output, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, proxyURL), sessionFile
+	return NewSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, proxyURL), sessionFile
 }
 
 // NewSession creates a fresh session.
-func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
+func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
 	s := &Session{
 		SessionFile:       sessionFile,
 		Input:             input,
@@ -225,6 +226,7 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 		extraSystemPrompt: extraSystemPrompt,
 		debugAPI:          debugAPI,
 		proxyURL:          proxyURL,
+		maxSteps:          maxSteps,
 		taskQueue:         make([]QueueItem, 0),
 		taskAvailable:     make(chan struct{}, 1),
 		done:              make(chan struct{}),
@@ -237,7 +239,7 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 }
 
 // RestoreFromSession creates a session from saved data.
-func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, input stream.Input, output stream.Output, data *SessionData, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
+func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, data *SessionData, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
 	s := &Session{
 		Messages:          data.Messages,
 		SessionFile:       sessionFile,
@@ -250,6 +252,7 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 		extraSystemPrompt: extraSystemPrompt,
 		debugAPI:          debugAPI,
 		proxyURL:          proxyURL,
+		maxSteps:          maxSteps,
 		taskQueue:         make([]QueueItem, 0),
 		taskAvailable:     make(chan struct{}, 1),
 		done:              make(chan struct{}),
@@ -301,7 +304,7 @@ func (s *Session) ensureAgentInitialized() string {
 		Provider:     provider,
 		Tools:        s.baseTools,
 		SystemPrompt: systemPrompt,
-		MaxSteps:     10,
+		MaxSteps:     s.maxSteps,
 	})
 
 	s.mu.Lock()
@@ -326,7 +329,7 @@ func (s *Session) initAgentFromConfig(modelConfig *ModelConfig) error {
 		Provider:     provider,
 		Tools:        s.baseTools,
 		SystemPrompt: systemPrompt,
-		MaxSteps:     10,
+		MaxSteps:     s.maxSteps,
 	})
 
 	s.mu.Lock()

@@ -54,6 +54,7 @@ func (a *Adaptor) Start() {
 		a.Config.AgentTools,
 		a.Config.SystemPrompt,
 		a.Config.ExtraSystemPrompt,
+		a.Config.MaxSteps,
 		inputStream,
 		terminalOutput,
 		a.Config.Cfg.Session,

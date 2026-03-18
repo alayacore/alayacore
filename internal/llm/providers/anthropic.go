@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 )
@@ -30,7 +31,7 @@ type AnthropicOption func(*AnthropicProvider)
 func NewAnthropic(opts ...AnthropicOption) (*AnthropicProvider, error) {
 	p := &AnthropicProvider{
 		baseURL: "https://api.anthropic.com",
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: 10 * time.Minute},
 		model:   "claude-3-5-sonnet-20241022",
 	}
 	for _, opt := range opts {

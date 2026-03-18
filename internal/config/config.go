@@ -35,6 +35,7 @@ type Settings struct {
 	Proxy         string
 	ModelConfig   string
 	RuntimeConfig string
+	MaxSteps      int
 }
 
 // Parse parses CLI flags and returns settings
@@ -51,6 +52,7 @@ func Parse() *Settings {
 	proxy := flag.String("proxy", "", "HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)")
 	modelConfig := flag.String("model-config", "", "Model config file path (default: ~/.alayacore/model.conf)")
 	runtimeConfig := flag.String("runtime-config", "", "Runtime config file path (default: <model-config-dir>/runtime.conf, or ~/.alayacore/runtime.conf)")
+	maxSteps := flag.Int("max-steps", 0, "Maximum agent loop steps (default: 50)")
 	flag.Parse()
 
 	// Collect skill paths
@@ -74,6 +76,7 @@ func Parse() *Settings {
 		Proxy:         *proxy,
 		ModelConfig:   *modelConfig,
 		RuntimeConfig: *runtimeConfig,
+		MaxSteps:      *maxSteps,
 	}
 
 	return s

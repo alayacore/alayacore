@@ -39,6 +39,7 @@ type Config struct {
 	AgentTools        []llm.Tool
 	SystemPrompt      string // Default system prompt (always present)
 	ExtraSystemPrompt string // User-provided extra system prompt via --system flag
+	MaxSteps          int    // Maximum agent loop steps
 }
 
 // Setup initializes the common app components
@@ -82,6 +83,7 @@ func Setup(cfg *config.Settings) (*Config, error) {
 		AgentTools:        []llm.Tool{readFileTool, editFileTool, writeFileTool, activateSkillTool, posixShellTool},
 		SystemPrompt:      systemPrompt,
 		ExtraSystemPrompt: cfg.SystemPrompt, // User-provided extra system prompt (supplemental, not replacement)
+		MaxSteps:          cfg.MaxSteps,
 	}, nil
 }
 
@@ -91,7 +93,7 @@ func (c *Config) CreateAgent() *llm.Agent {
 		Provider:     c.Provider,
 		Tools:        c.AgentTools,
 		SystemPrompt: c.SystemPrompt,
-		MaxSteps:     10,
+		MaxSteps:     c.MaxSteps,
 	})
 }
 
@@ -102,7 +104,7 @@ func (c *Config) AgentFactory() func() *llm.Agent {
 			Provider:     c.Provider,
 			Tools:        c.AgentTools,
 			SystemPrompt: c.SystemPrompt,
-			MaxSteps:     10,
+			MaxSteps:     c.MaxSteps,
 		})
 	}
 }
