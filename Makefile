@@ -1,4 +1,4 @@
-.PHONY: all build test lint fmt clean install run
+.PHONY: all build test lint fmt clean install run release
 
 # Go parameters
 GOCMD=go
@@ -16,25 +16,31 @@ WEB_BINARY=alayacore-web
 # Build flags
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
+RELEASE_LDFLAGS=-ldflags "-s -w -X main.Version=$(VERSION)"
+BUILDTAGS=-tags netgo
 
 all: test build
 
-## build: Build main binary
+## build: Build main binary (static)
 build:
-	$(GOBUILD) $(LDFLAGS) -o $(MAIN_BINARY) .
+	CGO_ENABLED=0 $(GOBUILD) $(BUILDTAGS) $(LDFLAGS) -o $(MAIN_BINARY) .
 
-## build-web: Build web binary (reference implementation)
+## build-web: Build web binary (reference implementation, static)
 build-web:
-	$(GOBUILD) $(LDFLAGS) -o $(WEB_BINARY) ./cmd/alayacore-web/
+	CGO_ENABLED=0 $(GOBUILD) $(BUILDTAGS) $(LDFLAGS) -o $(WEB_BINARY) ./cmd/alayacore-web/
 
 ## build-linux: Build for Linux
 build-linux:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(MAIN_BINARY)-linux .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) $(BUILDTAGS) $(LDFLAGS) -o $(MAIN_BINARY)-linux .
 
 ## build-darwin: Build for macOS
 build-darwin:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(MAIN_BINARY)-darwin-amd64 .
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(MAIN_BINARY)-darwin-arm64 .
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GOBUILD) $(BUILDTAGS) $(LDFLAGS) -o $(MAIN_BINARY)-darwin-amd64 .
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GOBUILD) $(BUILDTAGS) $(LDFLAGS) -o $(MAIN_BINARY)-darwin-arm64 .
+
+## release: Build optimized release binary (stripped)
+release:
+	CGO_ENABLED=0 $(GOBUILD) $(BUILDTAGS) $(RELEASE_LDFLAGS) -o $(MAIN_BINARY) .
 
 ## test: Run all tests
 test:
@@ -68,11 +74,11 @@ clean:
 
 ## install: Install main binary to GOPATH/bin
 install:
-	$(GOCMD) install $(LDFLAGS) .
+	CGO_ENABLED=0 $(GOCMD) install $(BUILDTAGS) $(LDFLAGS) .
 
 ## install-web: Install web binary to GOPATH/bin
 install-web:
-	$(GOCMD) install $(LDFLAGS) ./cmd/alayacore-web/
+	CGO_ENABLED=0 $(GOCMD) install $(BUILDTAGS) $(LDFLAGS) ./cmd/alayacore-web/
 
 ## mod: Download and tidy modules
 mod:
@@ -81,7 +87,7 @@ mod:
 
 ## run: Run the main binary
 run:
-	$(GOBUILD) -o $(MAIN_BINARY) .
+	CGO_ENABLED=0 $(GOBUILD) $(BUILDTAGS) -o $(MAIN_BINARY) .
 	./$(MAIN_BINARY)
 
 ## check: Run all checks (fmt, vet, lint, test)
