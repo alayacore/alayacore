@@ -71,7 +71,7 @@ func (m StatusModel) RenderString() string {
 		// Dimmed dot for idle
 		indicator = m.styles.Status.Foreground(lipgloss.Color(ColorDim)).Render("○")
 	}
-	
+
 	if m.status != "" {
 		return indicator + " " + m.styles.Status.Render(m.status)
 	}
