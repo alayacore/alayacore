@@ -258,8 +258,8 @@ func (p *OpenAIProvider) StreamMessages(
 
 	// Convert conversation messages
 	for _, msg := range messages {
-		apiMsg := p.convertMessage(msg)
-		apiMessages = append(apiMessages, apiMsg)
+		apiMsgs := p.convertMessages(msg)
+		apiMessages = append(apiMessages, apiMsgs...)
 	}
 
 	// Convert tools to OpenAI format
@@ -322,45 +322,50 @@ func (p *OpenAIProvider) StreamMessages(
 	return eventChan, nil
 }
 
-// convertMessage converts our message to OpenAI format
-func (p *OpenAIProvider) convertMessage(msg llm.Message) openAIMessage {
-	apiMsg := openAIMessage{
-		Role: string(msg.Role),
+// convertMessages converts our message to OpenAI format.
+// For tool messages, returns multiple messages (one per tool result).
+func (p *OpenAIProvider) convertMessages(msg llm.Message) []openAIMessage {
+	// Handle tool results specially - return multiple messages, one per result
+	if msg.Role == llm.RoleTool {
+		return p.convertToolResults(msg.Content)
 	}
 
-	// Handle tool results specially
-	if msg.Role == llm.RoleTool {
-		p.convertToolResult(&apiMsg, msg.Content)
-		return apiMsg
+	apiMsg := openAIMessage{
+		Role: string(msg.Role),
 	}
 
 	// Handle assistant messages with tool calls
 	if msg.Role == llm.RoleAssistant && p.hasToolCalls(msg.Content) {
 		p.convertToolCalls(&apiMsg, msg.Content)
-		return apiMsg
+		return []openAIMessage{apiMsg}
 	}
 
 	// Regular text/reasoning content
 	p.convertRegularContent(&apiMsg, msg.Content)
-	return apiMsg
+	return []openAIMessage{apiMsg}
 }
 
-// convertToolResult handles conversion of tool result messages
-func (p *OpenAIProvider) convertToolResult(apiMsg *openAIMessage, content []llm.ContentPart) {
-	if len(content) == 0 {
-		return
+// convertToolResults converts tool result content to multiple OpenAI messages
+func (p *OpenAIProvider) convertToolResults(content []llm.ContentPart) []openAIMessage {
+	var results []openAIMessage
+	for _, part := range content {
+		tr, ok := part.(llm.ToolResultPart)
+		if !ok {
+			continue
+		}
+		apiMsg := openAIMessage{
+			Role:       string(llm.RoleTool),
+			ToolCallID: tr.ToolCallID,
+		}
+		switch out := tr.Output.(type) {
+		case llm.ToolResultOutputText:
+			apiMsg.Content = out.Text
+		case llm.ToolResultOutputError:
+			apiMsg.Content = out.Error
+		}
+		results = append(results, apiMsg)
 	}
-	tr, ok := content[0].(llm.ToolResultPart)
-	if !ok {
-		return
-	}
-	apiMsg.ToolCallID = tr.ToolCallID
-	switch out := tr.Output.(type) {
-	case llm.ToolResultOutputText:
-		apiMsg.Content = out.Text
-	case llm.ToolResultOutputError:
-		apiMsg.Content = out.Error
-	}
+	return results
 }
 
 // hasToolCalls checks if content contains tool calls

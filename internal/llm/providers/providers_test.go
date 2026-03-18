@@ -994,6 +994,132 @@ func TestOpenAIToolResultMessageFormat(t *testing.T) {
 	}
 }
 
+func TestOpenAIMultiToolResultMessageFormat(t *testing.T) {
+	// Test that multiple tool results in a single message are converted to separate API messages
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify request body
+		var reqBody map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Error(err)
+			return
+		}
+
+		messages, ok := reqBody["messages"].([]interface{})
+		if !ok {
+			t.Fatal("Expected messages array")
+		}
+
+		// Should have: user, assistant with 2 tool_calls, 2 tool results
+		// That's 4 messages minimum
+		if len(messages) < 4 {
+			t.Fatalf("Expected at least 4 messages, got %d", len(messages))
+		}
+
+		// Count tool result messages (role: "tool")
+		var toolResultCount int
+		var toolCallIDs []string
+		for _, m := range messages {
+			msg, ok := m.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if msg["role"] == "tool" {
+				toolResultCount++
+				if msg["tool_call_id"] == nil {
+					t.Error("Tool result message should have tool_call_id")
+				}
+				if id, ok := msg["tool_call_id"].(string); ok {
+					toolCallIDs = append(toolCallIDs, id)
+				}
+				if msg["content"] == nil {
+					t.Error("Tool result message should have content")
+				}
+			}
+		}
+
+		if toolResultCount != 2 {
+			t.Errorf("Expected 2 tool result messages, got %d", toolResultCount)
+		}
+
+		// Verify both tool call IDs are present
+		foundCall1 := false
+		foundCall2 := false
+		for _, id := range toolCallIDs {
+			if id == "call-1" {
+				foundCall1 = true
+			}
+			if id == "call-2" {
+				foundCall2 = true
+			}
+		}
+		if !foundCall1 {
+			t.Error("Expected tool result for call-1")
+		}
+		if !foundCall2 {
+			t.Error("Expected tool result for call-2")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, _ := w.(http.Flusher)
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider, err := providers.NewOpenAI(
+		providers.WithOpenAIAPIKey("test-key"),
+		providers.WithOpenAIBaseURL(server.URL),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a conversation with 2 tool calls and 2 results in a single tool message
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Run two tools"}}},
+		{Role: llm.RoleAssistant, Content: []llm.ContentPart{
+			llm.ToolCallPart{
+				Type:       "tool_use",
+				ToolCallID: "call-1",
+				ToolName:   "tool_a",
+				Input:      json.RawMessage(`{}`),
+			},
+			llm.ToolCallPart{
+				Type:       "tool_use",
+				ToolCallID: "call-2",
+				ToolName:   "tool_b",
+				Input:      json.RawMessage(`{}`),
+			},
+		}},
+		{Role: llm.RoleTool, Content: []llm.ContentPart{
+			llm.ToolResultPart{
+				Type:       "tool_result",
+				ToolCallID: "call-1",
+				Output:     llm.ToolResultOutputText{Type: "text", Text: "Result A"},
+			},
+			llm.ToolResultPart{
+				Type:       "tool_result",
+				ToolCallID: "call-2",
+				Output:     llm.ToolResultOutputText{Type: "text", Text: "Result B"},
+			},
+		}},
+	}
+
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for event := range eventChan {
+		if err, ok := event.(llm.StreamErrorEvent); ok {
+			t.Fatalf("Stream error: %v", err.Error)
+		}
+	}
+}
+
 func TestAnthropicToolResultError(t *testing.T) {
 	// Test that tool result errors are properly formatted
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
