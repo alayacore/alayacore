@@ -82,7 +82,7 @@ Each message part is encoded as:
 - `TR` (Text Reasoning) - Reasoning/thinking content
 - `FC` (Function Call) - Tool call (JSON encoded)
 - `FR` (Function Result) - Tool result (JSON encoded)
-- `FO` (Function State) - Function state indicator (pending/success/error)
+- `FS` (Function State) - Function state indicator (pending/success/error)
 
 The TLV (Tag-Length-Value) encoding prevents recursion issues when session files contain tool results that include session-like content. The blank line separators make the file more readable when opened in a text editor.
 
