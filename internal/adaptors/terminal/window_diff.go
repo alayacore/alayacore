@@ -18,7 +18,7 @@ type DiffLinePair struct {
 	New string
 }
 
-// renderDiffContent renders a diff container side by side, showing only changed lines
+// renderDiffContent renders a diff container in unified diff style
 func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int, status string) string {
 	// Preallocate lines: header + diff lines
 	lines := make([]string, 0, 1+len(diff.Lines))
@@ -45,15 +45,10 @@ func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int, s
 	header := indicator + wb.styles.Tool.Render("edit_file: ") + wb.styles.ToolContent.Render(diff.Path)
 	lines = append(lines, header)
 
-	// Calculate width for each side
-	// Line format: prefix + content + padding + " │ " + prefix + content
-	// Prefix can be: "= ", "- ", "+ ", or "  " (2 chars each)
-	// Total: 2 + sideWidth + 3 + 2 + sideWidth = 2*sideWidth + 7
-	// We need: 2*sideWidth + 7 <= innerWidth
-	// So: sideWidth <= (innerWidth - 7) / 2
-	sideWidth := (innerWidth - 7) / 2
-	if sideWidth < 10 {
-		sideWidth = 10 // minimum width
+	// Calculate available width for content (subtract prefix width: 2 for "- " or "+ ")
+	contentWidth := innerWidth - 2
+	if contentWidth < 10 {
+		contentWidth = 10 // minimum width
 	}
 
 	for _, pair := range diff.Lines {
@@ -69,33 +64,24 @@ func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int, s
 		isSame := pair.Old == pair.New
 
 		// Truncate if needed (use display width for proper Unicode handling)
-		oldPart = truncateByWidth(oldPart, sideWidth)
-		newPart = truncateByWidth(newPart, sideWidth)
+		oldPart = truncateByWidth(oldPart, contentWidth)
+		newPart = truncateByWidth(newPart, contentWidth)
 
-		// Pad old part to fixed width (use display width)
-		paddedOld := oldPart + strings.Repeat(" ", max(0, sideWidth-lipgloss.Width(oldPart)))
-
-		var left, right string
 		switch {
 		case isSame:
-			// Unchanged content - show = on both sides
-			left = wb.styles.DiffSame.Render("= " + paddedOld)
-			right = wb.styles.DiffSame.Render("= " + newPart)
+			// Unchanged content - show with space prefix
+			lines = append(lines, "  "+oldPart)
 		case oldEmpty:
-			// Old side is empty (added line) - show spaces on left, + on right
-			left = "  " + paddedOld
-			right = wb.styles.DiffAdd.Render("+ " + newPart)
+			// Old side is empty (added line) - show + with green
+			lines = append(lines, wb.styles.DiffAdd.Render("+ "+newPart))
 		case newEmpty:
-			// New side is empty (removed line) - show - on left, spaces on right
-			left = wb.styles.DiffRemove.Render("- " + paddedOld)
-			right = "  " + newPart
+			// New side is empty (removed line) - show - with red
+			lines = append(lines, wb.styles.DiffRemove.Render("- "+oldPart))
 		default:
-			// Both sides differ: show - on left, + on right
-			left = wb.styles.DiffRemove.Render("- " + paddedOld)
-			right = wb.styles.DiffAdd.Render("+ " + newPart)
+			// Both sides differ: show - first, then +
+			lines = append(lines, wb.styles.DiffRemove.Render("- "+oldPart))
+			lines = append(lines, wb.styles.DiffAdd.Render("+ "+newPart))
 		}
-		sep := wb.styles.DiffSep.Render("│")
-		lines = append(lines, left+" "+sep+" "+right)
 	}
 
 	return strings.Join(lines, "\n")

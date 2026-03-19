@@ -221,15 +221,15 @@ func TestWindowBufferDiff(t *testing.T) {
 
 		rendered := wb.GetAll(-1)
 
-		// Check that unchanged lines have = prefix on both sides
-		if !strings.Contains(rendered, "= unchanged line 1") {
-			t.Error("Unchanged line 1 should have = prefix on both sides")
+		// Check that unchanged lines have space prefix
+		if !strings.Contains(rendered, "  unchanged line 1") {
+			t.Error("Unchanged line 1 should have space prefix")
 		}
-		if !strings.Contains(rendered, "= unchanged line 2") {
-			t.Error("Unchanged line 2 should have = prefix on both sides")
+		if !strings.Contains(rendered, "  unchanged line 2") {
+			t.Error("Unchanged line 2 should have space prefix")
 		}
 
-		// Check that changed line shows - on left, + on right
+		// Check that changed line shows - on one line, + on next
 		if !strings.Contains(rendered, "- old content") {
 			t.Error("Changed old content should have - prefix")
 		}
@@ -237,12 +237,12 @@ func TestWindowBufferDiff(t *testing.T) {
 			t.Error("Changed new content should have + prefix")
 		}
 
-		// Check that removed line shows - on left
+		// Check that removed line shows - prefix
 		if !strings.Contains(rendered, "- removed line") {
 			t.Error("Removed line should have - prefix")
 		}
 
-		// Check that added line shows + on right
+		// Check that added line shows + prefix
 		if !strings.Contains(rendered, "+ added line") {
 			t.Error("Added line should have + prefix")
 		}
@@ -273,6 +273,8 @@ func TestWindowBufferDiff(t *testing.T) {
 		wb.ToggleWrap(0)
 
 		// Second render - should be expanded (wrapped=false)
+		// In unified diff format, each changed line pair shows as "- old" then "+ new"
+		// So 20 line pairs = 20 lines with - prefix + 20 lines with + prefix = 40 total
 		rendered2 := wb.GetAll(-1)
 		removeCount2 := strings.Count(rendered2, "- ")
 		if removeCount2 != 20 {
@@ -284,9 +286,9 @@ func TestWindowBufferDiff(t *testing.T) {
 
 		// Third render - should be folded again
 		rendered3 := wb.GetAll(-1)
-		sepCount3 := strings.Count(rendered3, "|")
-		if sepCount3 >= 10 {
-			t.Errorf("Re-wrapped diff should fold lines again, found %d separators", sepCount3)
+		removeCount3 := strings.Count(rendered3, "- ")
+		if removeCount3 >= 10 {
+			t.Errorf("Re-wrapped diff should fold lines again, found %d - prefixes", removeCount3)
 		}
 	})
 }

@@ -3,16 +3,6 @@
 ## Current Work
 None
 
-## Recent Changes
-- Improved diff window display:
-  - Implemented LCS-based diff algorithm for proper line alignment in side-by-side view
-  - `=` for unchanged lines (both sides)
-  - `-` for removed lines (left side)
-  - `+` for added lines (right side)
-  - Lines are properly aligned using Longest Common Subsequence algorithm
-  - Changed separator from `|` to `│` (Unicode box-drawing character) to match border style
-  - Separator color matches diff window border color (ColorBase)
-
 ## Critical Gotchas
 
 - **ANSI escape sequences are not recursive**: When styling text with lipgloss (or any ANSI styling), each segment must be rendered individually before concatenation. You cannot render a string that already contains ANSI codes with a new style and expect it to work - the outer styling will not wrap the inner styled segments. Always render segments separately, then join them.
