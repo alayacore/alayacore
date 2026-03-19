@@ -137,6 +137,7 @@ type streamState struct {
 	mu           sync.Mutex
 	contentParts []llm.ContentPart
 	usage        llm.Usage
+	stopReason   string
 
 	// Current block being accumulated
 	currentIndex int
@@ -218,6 +219,18 @@ func (s *streamState) getUsage() llm.Usage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.usage
+}
+
+func (s *streamState) setStopReason(reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stopReason = reason
+}
+
+func (s *streamState) getStopReason() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stopReason
 }
 
 // lastToolCall returns the last tool call if the current block is a tool_use
@@ -576,6 +589,24 @@ func (p *AnthropicProvider) handleContentBlockStop(_ map[string]interface{}, eve
 
 // handleMessageDelta handles message-level delta events (usage, etc.)
 func (p *AnthropicProvider) handleMessageDelta(payload map[string]interface{}, _ chan<- llm.StreamEvent, state *streamState) error {
+	// Check for stop_reason in delta
+	if delta, ok := payload["delta"].(map[string]interface{}); ok {
+		if stopReason, ok := delta["stop_reason"].(string); ok {
+			// Check for error stop reasons
+			// Valid: "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn"
+			// Error: "refusal" (model refused to respond due to safety/content policy)
+			if stopReason == "refusal" {
+				return fmt.Errorf("model refused to respond: content policy violation")
+			}
+			// Check for unknown stop reasons
+			if stopReason != "" && stopReason != "end_turn" && stopReason != "max_tokens" &&
+				stopReason != "stop_sequence" && stopReason != "tool_use" && stopReason != "pause_turn" {
+				return fmt.Errorf("stream finished with unexpected stop reason: %s", stopReason)
+			}
+			state.setStopReason(stopReason)
+		}
+	}
+
 	// Check for usage in payload["usage"]
 	if usage, ok := payload["usage"].(map[string]interface{}); ok {
 		p.extractAndSetUsage(usage, state)

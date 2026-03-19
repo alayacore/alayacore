@@ -511,6 +511,260 @@ func TestAnthropicAPIError(t *testing.T) {
 	}
 }
 
+func TestAnthropicRefusalStopReason(t *testing.T) {
+	// Test Anthropic refusal stop reason handling
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, _ := w.(http.Flusher)
+		// Send message_start
+		fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\",\"role\":\"assistant\",\"content\":[]}}\n\n")
+		// Send text content
+		fmt.Fprint(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+		fmt.Fprint(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"I cannot\"}}\n\n")
+		// Send refusal stop reason
+		fmt.Fprint(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\"}}\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider, err := providers.NewAnthropic(
+		providers.WithAPIKey("test-key"),
+		providers.WithBaseURL(server.URL),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
+	}
+
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Collect events - should get an error
+	var gotError bool
+	for event := range eventChan {
+		if _, ok := event.(llm.StreamErrorEvent); ok {
+			gotError = true
+		}
+	}
+
+	if !gotError {
+		t.Error("Expected StreamErrorEvent for refusal stop reason")
+	}
+}
+
+func TestAnthropicUnknownStopReason(t *testing.T) {
+	// Test Anthropic unknown stop reason handling
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, _ := w.(http.Flusher)
+		// Send message_start
+		fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\",\"role\":\"assistant\",\"content\":[]}}\n\n")
+		// Send text content
+		fmt.Fprint(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+		fmt.Fprint(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Some text\"}}\n\n")
+		// Send unknown stop reason
+		fmt.Fprint(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"unknown_reason\"}}\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider, err := providers.NewAnthropic(
+		providers.WithAPIKey("test-key"),
+		providers.WithBaseURL(server.URL),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
+	}
+
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Collect events - should get an error
+	var gotError bool
+	for event := range eventChan {
+		if _, ok := event.(llm.StreamErrorEvent); ok {
+			gotError = true
+		}
+	}
+
+	if !gotError {
+		t.Error("Expected StreamErrorEvent for unknown stop reason")
+	}
+}
+
+func TestAnthropicValidStopReasons(t *testing.T) {
+	// Test that valid Anthropic stop reasons don't trigger errors
+	validReasons := []string{"end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn"}
+
+	for _, reason := range validReasons {
+		t.Run(reason, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+
+				flusher, _ := w.(http.Flusher)
+				// Send message_start
+				fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\",\"role\":\"assistant\",\"content\":[]}}\n\n")
+				// Send text content
+				fmt.Fprint(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+				fmt.Fprint(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Response\"}}\n\n")
+				fmt.Fprint(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+				// Send valid stop reason
+				fmt.Fprintf(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\"},\"usage\":{\"output_tokens\":10}}\n\n", reason)
+				fmt.Fprint(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+				flusher.Flush()
+			}))
+			defer server.Close()
+
+			provider, err := providers.NewAnthropic(
+				providers.WithAPIKey("test-key"),
+				providers.WithBaseURL(server.URL),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			messages := []llm.Message{
+				{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
+			}
+
+			eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Collect events - should NOT get an error
+			var gotError bool
+			var gotStepComplete bool
+			for event := range eventChan {
+				if _, ok := event.(llm.StreamErrorEvent); ok {
+					gotError = true
+				}
+				if _, ok := event.(llm.StepCompleteEvent); ok {
+					gotStepComplete = true
+				}
+			}
+
+			if gotError {
+				t.Errorf("Should not get error for valid stop reason '%s'", reason)
+			}
+			if !gotStepComplete {
+				t.Errorf("Expected StepCompleteEvent for valid stop reason '%s'", reason)
+			}
+		})
+	}
+}
+
+func TestOpenAIContentFilter(t *testing.T) {
+	// Test OpenAI content_filter finish reason handling
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, _ := w.(http.Flusher)
+		// Send partial content
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Some content\"}}]}\n\n")
+		// Then content_filter
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":\"content_filter\"}]}\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider, err := providers.NewOpenAI(
+		providers.WithOpenAIAPIKey("test-key"),
+		providers.WithOpenAIBaseURL(server.URL),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
+	}
+
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Collect events - should get an error
+	var gotError bool
+	for event := range eventChan {
+		if _, ok := event.(llm.StreamErrorEvent); ok {
+			gotError = true
+		}
+	}
+
+	if !gotError {
+		t.Error("Expected StreamErrorEvent for content_filter finish reason")
+	}
+}
+
+func TestOpenAILengthFinishReason(t *testing.T) {
+	// Test OpenAI length finish reason (should NOT error - it's valid)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, _ := w.(http.Flusher)
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Truncated\"},\"finish_reason\":\"length\"}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider, err := providers.NewOpenAI(
+		providers.WithOpenAIAPIKey("test-key"),
+		providers.WithOpenAIBaseURL(server.URL),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
+	}
+
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Collect events - should NOT get an error
+	var gotError bool
+	var gotStepComplete bool
+	for event := range eventChan {
+		if _, ok := event.(llm.StreamErrorEvent); ok {
+			gotError = true
+		}
+		if _, ok := event.(llm.StepCompleteEvent); ok {
+			gotStepComplete = true
+		}
+	}
+
+	if gotError {
+		t.Error("Should not get error for 'length' finish reason (it's valid, just truncated)")
+	}
+	if !gotStepComplete {
+		t.Error("Expected StepCompleteEvent for 'length' finish reason")
+	}
+}
+
 func TestOpenAIAPIError(t *testing.T) {
 	// Test OpenAI API error handling
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -534,6 +788,51 @@ func TestOpenAIAPIError(t *testing.T) {
 	_, err = provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err == nil {
 		t.Error("Expected error for rate limit")
+	}
+}
+
+func TestOpenAINetworkError(t *testing.T) {
+	// Test OpenAI network_error finish reason handling
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, _ := w.(http.Flusher)
+		// Send some content first
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Partial\"}}]}\n\n")
+		// Then send network_error
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":\"network_error\"}]}\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider, err := providers.NewOpenAI(
+		providers.WithOpenAIAPIKey("test-key"),
+		providers.WithOpenAIBaseURL(server.URL),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
+	}
+
+	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Collect events - should get an error
+	var gotError bool
+	for event := range eventChan {
+		if _, ok := event.(llm.StreamErrorEvent); ok {
+			gotError = true
+		}
+	}
+
+	if !gotError {
+		t.Error("Expected StreamErrorEvent for network_error finish reason")
 	}
 }
 

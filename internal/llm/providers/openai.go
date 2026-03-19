@@ -514,6 +514,18 @@ func (p *OpenAIProvider) handleEvent(data string, eventChan chan<- llm.StreamEve
 	}
 
 	for _, choice := range streamResp.Choices {
+		// Check for error finish reasons
+		// Valid: "stop" (normal), "length" (truncated), "tool_calls" (function calling)
+		// Error: "content_filter" (blocked by safety), anything else
+		if choice.FinishReason == "content_filter" {
+			return fmt.Errorf("content blocked by safety filter")
+		}
+		// Allow empty, "stop", "length", and "tool_calls"
+		if choice.FinishReason != "" && choice.FinishReason != "stop" &&
+			choice.FinishReason != "length" && choice.FinishReason != "tool_calls" {
+			return fmt.Errorf("stream finished with unexpected reason: %s", choice.FinishReason)
+		}
+
 		// Handle reasoning content (DeepSeek, Qwen, etc.)
 		if choice.Delta.ReasoningContent != "" {
 			state.addReasoningDelta(choice.Delta.ReasoningContent)

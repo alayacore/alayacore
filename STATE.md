@@ -4,6 +4,17 @@
 None
 
 ## Recent Changes
+- Added comprehensive error handling documentation in `docs/error-handling.md`
+  - Documents all valid and error finish reasons for OpenAI and Anthropic
+  - Includes implementation details and troubleshooting guidance
+  - References test coverage for error scenarios
+
+- Fixed error handling for LLM API finish reasons (both OpenAI and Anthropic providers)
+  - OpenAI: Detects `content_filter` and other error finish reasons (valid: `stop`, `length`, `tool_calls`)
+  - Anthropic: Detects `refusal` stop reason (content policy violation)
+  - Errors are propagated as `StreamErrorEvent` to prevent silent failures
+  - Prevents incomplete responses from silently stopping the agent loop
+
 - Implemented Anthropic automatic prompt caching via `prompt_cache: true` in model.conf
   - Uses single top-level `cache_control: {"type": "ephemeral"}` field in request
   - Anthropic automatically applies cache breakpoint to last cacheable block

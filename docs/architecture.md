@@ -105,7 +105,7 @@ Agent.Stream(ctx, messages, llm.StreamCallbacks{
 Messages are appended incrementally in `OnStepFinish` so they're preserved even if user cancels.
 
 **Stream ID Format:** Content is tagged with IDs like `[:0-1-abc123:]`:
-- `0` = prompt counter (increments per user message)  
+- `0` = prompt counter (increments per user message)
 - `1` = step number within that prompt
 - `abc123` = tool call ID or `t` (text) / `r` (reasoning)
 
