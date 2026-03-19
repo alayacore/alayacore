@@ -13,6 +13,8 @@ None
 
 ## Critical Gotchas
 
+- **ANSI escape sequences are not recursive**: When styling text with lipgloss (or any ANSI styling), each segment must be rendered individually before concatenation. You cannot render a string that already contains ANSI codes with a new style and expect it to work - the outer styling will not wrap the inner styled segments. Always render segments separately, then join them.
+
 - **SwitchModel deadlock**: Don't hold mutex while calling methods that may need the same mutex. Pattern: lock → update fields → unlock → call methods.
 
 - **Terminal scroll position**: `userMovedCursorAway` must be set for J/K scrolling, not just j/k, or scroll position is lost on focus switch.
