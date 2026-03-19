@@ -73,9 +73,10 @@ func (m StatusModel) RenderString() string {
 	}
 
 	if m.status != "" {
-		// Don't re-render status - it may already contain ANSI codes
-		// Apply padding (2 spaces left and right) to the entire status bar
-		return m.styles.Status.Padding(0, 2).Render(indicator + " " + m.status)
+		// Status already contains ANSI codes from rendered segments
+		// Just add padding, don't apply additional styling
+		padding := m.styles.Status.Padding(0, 2)
+		return padding.Render(indicator + " " + m.status)
 	}
 	return m.styles.Status.Padding(0, 2).Render(indicator)
 }

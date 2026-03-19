@@ -231,7 +231,7 @@ func (m *Terminal) updateDisplayHeight() {
 
 // updateStatusWithQueue updates the status bar with queue count
 func (m *Terminal) updateStatusWithQueue() {
-	status := m.out.GetStatus()
+	contextStatus := m.out.GetStatus()
 	queueCount := m.out.GetQueueCount()
 
 	// Add steps info if we're in progress
@@ -240,6 +240,17 @@ func (m *Terminal) updateStatusWithQueue() {
 	inProgress := m.out.IsInProgress()
 	lastCurrentStep, lastMaxSteps := m.out.GetLastStepInfo()
 
+	// Build status segments - each rendered separately with appropriate colors
+	var segments []string
+
+	// Queue segment - prefix dimmed, count highlighted
+	if queueCount > 0 {
+		prefix := m.styles.Status.Render("Queued(Ctrl-Q):")
+		count := m.styles.Status.Foreground(lipgloss.Color(ColorAccent)).Render(fmt.Sprintf("%d", queueCount))
+		segments = append(segments, prefix+" "+count)
+	}
+
+	// Steps segment (dimmed)
 	var stepsPart string
 	if inProgress && maxSteps > 0 {
 		stepsPart = fmt.Sprintf("Steps: %d/%d", currentStep, maxSteps)
@@ -247,30 +258,25 @@ func (m *Terminal) updateStatusWithQueue() {
 		// Show last step info when task completed (indicates loop termination reason)
 		stepsPart = fmt.Sprintf("Steps: %d/%d", lastCurrentStep, lastMaxSteps)
 	}
+	if stepsPart != "" {
+		segments = append(segments, m.styles.Status.Render(stepsPart))
+	}
 
-	if queueCount > 0 {
-		// Highlight just the count number
-		countStr := m.styles.Status.Foreground(lipgloss.Color(ColorAccent)).Render(fmt.Sprintf("%d", queueCount))
-		if stepsPart != "" {
-			if status != "" {
-				status = fmt.Sprintf("Queued(Ctrl-Q): %s | %s | %s", countStr, stepsPart, status)
-			} else {
-				status = fmt.Sprintf("Queued(Ctrl-Q): %s | %s", countStr, stepsPart)
-			}
-		} else {
-			if status != "" {
-				status = fmt.Sprintf("Queued(Ctrl-Q): %s | %s", countStr, status)
-			} else {
-				status = fmt.Sprintf("Queued(Ctrl-Q): %s", countStr)
-			}
-		}
-	} else if stepsPart != "" {
-		if status != "" {
-			status = fmt.Sprintf("%s | %s", stepsPart, status)
-		} else {
-			status = stepsPart
+	// Context segment (dimmed)
+	if contextStatus != "" {
+		segments = append(segments, m.styles.Status.Render(contextStatus))
+	}
+
+	// Join segments with dimmed separator
+	var status string
+	if len(segments) > 0 {
+		separator := m.styles.Status.Render("|")
+		status = segments[0]
+		for i := 1; i < len(segments); i++ {
+			status += " " + separator + " " + segments[i]
 		}
 	}
+
 	m.status.SetStatus(status)
 	m.status.SetInProgress(inProgress)
 }
