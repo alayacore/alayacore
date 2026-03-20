@@ -1,6 +1,22 @@
 // Package providers implements LLM provider clients
 package providers
 
+// Anthropic Provider Gotchas:
+//
+// 1. PROMPT CACHING: System message must be ≥1024 tokens for caching to activate.
+//    Shorter prompts won't be cached even with cache_control set.
+//
+// 2. CACHE CONTROL PLACEMENT: Cache control is applied only to the first 2 system
+//    messages (default prompt + --system extra). Other system messages in conversation
+//    history are not modified.
+//
+// 3. DUAL SYSTEM PROMPT: --system flag appends extra system prompt rather than
+//    replacing default. Both prompts become separate system messages, each with
+//    cache_control for Anthropic APIs.
+//
+// 4. PROMPT CACHE PER-MODEL: prompt_cache: true in model.conf enables cache_control
+//    markers for Anthropic. Other providers auto-cache and ignore this setting.
+
 import (
 	"bufio"
 	"bytes"

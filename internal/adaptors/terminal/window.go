@@ -1,5 +1,8 @@
 package terminal
 
+// Window buffer and rendering for the terminal display.
+// Provides virtual scrolling, incremental updates, and diff visualization.
+
 import (
 	"strings"
 	"sync"
@@ -10,6 +13,24 @@ import (
 )
 
 const fullRebuild = -2 // dirtyIndex value meaning all windows need re-render
+
+// CRITICAL: markDirty sentinel preservation
+// The markDirty function uses sentinel value fullRebuild = -2. Once set, it must NOT be
+// overwritten by a single-window index. The check `if wb.dirtyIndex == fullRebuild { return }`
+// is critical - without it, rapid window creation (e.g., session loading) would set
+// fullRebuild, then overwrite it with the last window index, causing only the last
+// window to render.
+
+// ============================================================================
+// Window Types
+// ============================================================================
+
+// Status constants for diff display
+const (
+	statusSuccess = "success"
+	statusError   = "error"
+	statusPending = "pending"
+)
 
 // Window represents a single display window with border and content.
 type Window struct {
@@ -36,6 +57,27 @@ type Window struct {
 	cachedInnerContent string // inner content before border (for cursor border swap)
 	cachedWidth        int    // width used for cached render
 }
+
+// DiffContainer holds two panes side by side for diff display
+type DiffContainer struct {
+	Path  string         // file path for header
+	Lines []DiffLinePair // raw line pairs
+}
+
+// DiffLinePair represents a pair of old/new lines in a diff
+type DiffLinePair struct {
+	Old string
+	New string
+}
+
+// IsDiffWindow returns true if the window is a diff window
+func (w *Window) IsDiffWindow() bool {
+	return w.Diff != nil
+}
+
+// ============================================================================
+// WindowBuffer
+// ============================================================================
 
 // WindowBuffer holds a sequence of windows in order of creation.
 type WindowBuffer struct {
@@ -104,8 +146,6 @@ func (wb *WindowBuffer) Width() int {
 
 // AppendOrUpdate adds content to an existing window identified by id,
 // or creates a new window if id not found.
-// tag is the TLV tag, content is the styled string (already styled by writeColored).
-// Reasoning windows are wrapped by default.
 func (wb *WindowBuffer) AppendOrUpdate(id string, tag string, content string) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -141,18 +181,15 @@ func (wb *WindowBuffer) AppendOrUpdate(id string, tag string, content string) {
 }
 
 // AppendDiff adds a diff window with side-by-side old/new content.
-// The window will be rendered with adaptive width on each render.
 func (wb *WindowBuffer) AppendDiff(id string, path string, lines []DiffLinePair) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
-	// Create diff container
 	diff := &DiffContainer{
 		Path:  path,
 		Lines: lines,
 	}
 
-	// Create window with diff
 	window := &Window{
 		ID:      id,
 		Tag:     stream.TagFunctionNotify,
@@ -165,38 +202,16 @@ func (wb *WindowBuffer) AppendDiff(id string, path string, lines []DiffLinePair)
 	wb.markDirty(len(wb.Windows) - 1)
 }
 
-// markDirty marks a window as needing re-render. If another window is already dirty, triggers full rebuild.
+// markDirty marks a window as needing re-render.
 func (wb *WindowBuffer) markDirty(idx int) {
 	if wb.dirtyIndex == fullRebuild {
-		// Already marked for full rebuild, keep it
-		return
+		return // Already marked for full rebuild
 	}
 	if wb.dirtyIndex >= 0 && wb.dirtyIndex != idx {
-		// Different window already dirty - need full rebuild
-		wb.dirtyIndex = fullRebuild
+		wb.dirtyIndex = fullRebuild // Different window dirty - need full rebuild
 	} else {
-		// Either clean (-1) or same window - mark just this one
 		wb.dirtyIndex = idx
 	}
-}
-
-// IsDiffWindow returns true if the window is a diff window
-func (w *Window) IsDiffWindow() bool {
-	return w.Diff != nil
-}
-
-// getOrBuildLines returns wrapped lines, using cache if valid or rebuilding if needed.
-// This is the core of the incremental wrap optimization.
-func (w *Window) getOrBuildLines(content string, width int) []string {
-	// Check if cached lines are still valid
-	if w.LineWidth == width && len(w.Lines) > 0 {
-		return w.Lines
-	}
-
-	// Cache miss or width changed - rebuild lines
-	w.Lines = wrapLines(content, width)
-	w.LineWidth = width
-	return w.Lines
 }
 
 // Clear removes all windows.
@@ -251,7 +266,6 @@ func (wb *WindowBuffer) GetWindowEndLine(windowIndex int) int {
 }
 
 // GetTotalLines returns the total number of lines across all windows.
-// Ensures cache is built first when dirty, so the count is accurate.
 func (wb *WindowBuffer) GetTotalLines() int {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -268,7 +282,6 @@ func (wb *WindowBuffer) GetTotalLines() int {
 }
 
 // ToggleWrap toggles the wrap state of the window at the given index.
-// Returns true if toggled successfully, false if index is invalid.
 func (wb *WindowBuffer) ToggleWrap(windowIndex int) bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -283,8 +296,6 @@ func (wb *WindowBuffer) ToggleWrap(windowIndex int) bool {
 }
 
 // UpdateToolStatus updates the status indicator for a tool window.
-// The toolCallID should match the window ID.
-// Also sets Wrapped=true for write_file windows when status becomes success/error.
 func (wb *WindowBuffer) UpdateToolStatus(toolCallID string, status string) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -292,13 +303,8 @@ func (wb *WindowBuffer) UpdateToolStatus(toolCallID string, status string) {
 	if idx, ok := wb.idIndex[toolCallID]; ok {
 		w := wb.Windows[idx]
 		w.Status = status
-		// Invalidate line cache since status affects indicator prefix
-		w.LineWidth = 0
-		// Set Wrapped=true for write_file windows when tool completes
-		// (content starts with "write_file:")
+		w.LineWidth = 0 // Invalidate line cache
 		if (status == statusSuccess || status == statusError) && len(w.Content) > 0 {
-			// Check if this is a write_file window by looking at content prefix
-			// Content is styled, but we can check the raw content
 			if isWriteFileWindow(w.Content) {
 				w.Wrapped = true
 			}
@@ -309,10 +315,576 @@ func (wb *WindowBuffer) UpdateToolStatus(toolCallID string, status string) {
 
 // isWriteFileWindow checks if window content is from write_file tool
 func isWriteFileWindow(content string) bool {
-	// Check for write_file prefix (may have ANSI codes at start)
-	// Simple check: look for "write_file" within first 30 chars
 	if len(content) < 10 {
 		return false
 	}
 	return strings.Contains(content[:min(30, len(content))], "write_file")
+}
+
+// getOrBuildLines returns wrapped lines, using cache if valid or rebuilding if needed.
+func (w *Window) getOrBuildLines(content string, width int) []string {
+	if w.LineWidth == width && len(w.Lines) > 0 {
+		return w.Lines
+	}
+	w.Lines = wrapLines(content, width)
+	w.LineWidth = width
+	return w.Lines
+}
+
+// ============================================================================
+// Virtual Rendering
+// ============================================================================
+
+// SetViewportPosition updates the viewport scroll position and height.
+func (wb *WindowBuffer) SetViewportPosition(yOffset, height int) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	wb.viewportYOffset = yOffset
+	wb.viewportHeight = height
+}
+
+// GetTotalLinesVirtual returns total lines, ensuring lineHeights are calculated.
+func (wb *WindowBuffer) GetTotalLinesVirtual() int {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	wb.ensureLineHeights()
+	return wb.totalLines
+}
+
+// ensureLineHeights calculates lineHeights if needed.
+func (wb *WindowBuffer) ensureLineHeights() {
+	if wb.dirtyIndex == -1 && len(wb.lineHeights) == len(wb.Windows) {
+		return
+	}
+
+	for len(wb.lineHeights) < len(wb.Windows) {
+		wb.lineHeights = append(wb.lineHeights, 0)
+	}
+
+	if wb.dirtyIndex >= 0 {
+		wb.rebuildOneWindowLineHeight(wb.dirtyIndex)
+	} else if wb.dirtyIndex == fullRebuild {
+		wb.rebuildAllLineHeights()
+	}
+	wb.dirtyIndex = -1
+}
+
+// rebuildOneWindowLineHeight re-renders only one window and updates its line height.
+func (wb *WindowBuffer) rebuildOneWindowLineHeight(idx int) {
+	if idx < 0 || idx >= len(wb.Windows) {
+		return
+	}
+	w := wb.Windows[idx]
+
+	innerWidth := max(0, wb.width-4)
+	innerContent := wb.renderWindowContent(w, innerWidth)
+	styled := w.Style.Width(wb.width).Render(innerContent)
+	newLineCount := strings.Count(styled, "\n") + 1
+
+	oldLineCount := wb.lineHeights[idx]
+	wb.totalLines += newLineCount - oldLineCount
+
+	wb.lineHeights[idx] = newLineCount
+	w.cachedRender = styled
+	w.cachedInnerContent = innerContent
+	w.cachedWidth = wb.width
+	w.lastContentLen = len(w.Content)
+	w.lastWrapped = w.Wrapped
+}
+
+// rebuildAllLineHeights rebuilds all window line heights.
+func (wb *WindowBuffer) rebuildAllLineHeights() {
+	wb.lineHeights = make([]int, len(wb.Windows))
+	wb.totalLines = 0
+
+	innerWidth := max(0, wb.width-4)
+	for i, w := range wb.Windows {
+		innerContent := wb.renderWindowContent(w, innerWidth)
+		styled := w.Style.Width(wb.width).Render(innerContent)
+		lineCount := strings.Count(styled, "\n") + 1
+
+		wb.lineHeights[i] = lineCount
+		wb.totalLines += lineCount
+
+		w.cachedRender = styled
+		w.cachedInnerContent = innerContent
+		w.cachedWidth = wb.width
+		w.lastContentLen = len(w.Content)
+		w.lastWrapped = w.Wrapped
+	}
+}
+
+// getVirtualRender returns rendered content using virtual rendering.
+func (wb *WindowBuffer) getVirtualRender(cursorIndex int) string {
+	wb.ensureLineHeights()
+
+	if len(wb.Windows) == 0 {
+		return ""
+	}
+
+	bufferWindows := 5
+	viewportLines := wb.viewportHeight
+	if viewportLines < 10 {
+		viewportLines = 10
+	}
+
+	startLine := wb.viewportYOffset - viewportLines
+	if startLine < 0 {
+		startLine = 0
+	}
+	endLine := wb.viewportYOffset + wb.viewportHeight + viewportLines
+
+	startWindow := wb.findWindowAtLine(startLine)
+	endWindow := wb.findWindowAtLine(endLine)
+
+	startWindow = max(0, startWindow-bufferWindows)
+	endWindow = min(len(wb.Windows)-1, endWindow+bufferWindows)
+
+	var sb strings.Builder
+
+	for i := range wb.Windows {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+
+		if i >= startWindow && i <= endWindow {
+			styled := wb.renderWindowCached(i, cursorIndex == i)
+			sb.WriteString(styled)
+		} else {
+			lineCount := wb.lineHeights[i]
+			for j := 0; j < lineCount; j++ {
+				if j > 0 {
+					sb.WriteString("\n")
+				}
+				sb.WriteString(" ")
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+// findWindowAtLine returns the window index containing the given line.
+func (wb *WindowBuffer) findWindowAtLine(line int) int {
+	currentLine := 0
+	for i, h := range wb.lineHeights {
+		if currentLine+h > line {
+			return i
+		}
+		currentLine += h
+	}
+	return len(wb.Windows) - 1
+}
+
+// renderWindowCached renders a single window, using cache if valid.
+func (wb *WindowBuffer) renderWindowCached(i int, isCursor bool) string {
+	w := wb.Windows[i]
+
+	cacheValid := w.cachedRender != "" && w.cachedWidth == wb.width &&
+		(w.IsDiffWindow() && w.Wrapped == w.lastWrapped || !w.IsDiffWindow() && len(w.Content) == w.lastContentLen)
+
+	if cacheValid {
+		if isCursor {
+			return wb.cursorStyle.Width(wb.width).Render(w.cachedInnerContent)
+		}
+		return w.cachedRender
+	}
+
+	innerWidth := max(0, wb.width-4)
+	innerContent := wb.renderWindowContent(w, innerWidth)
+
+	if isCursor {
+		styled := wb.cursorStyle.Width(wb.width).Render(innerContent)
+		w.cachedRender = w.Style.Width(wb.width).Render(innerContent)
+		w.cachedInnerContent = innerContent
+		w.cachedWidth = wb.width
+		w.lastContentLen = len(w.Content)
+		w.lastWrapped = w.Wrapped
+		return styled
+	}
+
+	styled := w.Style.Width(wb.width).Render(innerContent)
+	w.cachedRender = styled
+	w.cachedInnerContent = innerContent
+	w.cachedWidth = wb.width
+	w.lastContentLen = len(w.Content)
+	w.lastWrapped = w.Wrapped
+	return styled
+}
+
+// ============================================================================
+// Full Rendering
+// ============================================================================
+
+// GetAll returns the concatenated rendered windows as a single string.
+func (wb *WindowBuffer) GetAll(cursorIndex int) string {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+
+	if wb.viewportHeight > 0 {
+		return wb.getVirtualRender(cursorIndex)
+	}
+
+	if wb.dirtyIndex != -1 {
+		if wb.dirtyIndex == fullRebuild {
+			wb.rebuildCache()
+		} else {
+			wb.rebuildOneWindow(wb.dirtyIndex)
+		}
+		wb.dirtyIndex = -1
+	}
+
+	if cursorIndex < 0 || cursorIndex >= len(wb.Windows) {
+		return wb.cachedRender
+	}
+
+	return wb.renderWithCursor(cursorIndex)
+}
+
+// rebuildCache rebuilds the cached render for all windows
+func (wb *WindowBuffer) rebuildCache() {
+	var sb strings.Builder
+	wb.lineHeights = make([]int, len(wb.Windows))
+	wb.totalLines = 0
+
+	for i, w := range wb.Windows {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		styled := wb.renderAndCacheWindow(i, w)
+		sb.WriteString(styled)
+	}
+	wb.totalLines = 0
+	for _, h := range wb.lineHeights {
+		wb.totalLines += h
+	}
+	wb.cachedRender = sb.String()
+}
+
+// rebuildOneWindow re-renders only the window at idx.
+func (wb *WindowBuffer) rebuildOneWindow(idx int) {
+	if idx < 0 || idx >= len(wb.Windows) {
+		return
+	}
+	w := wb.Windows[idx]
+
+	for len(wb.lineHeights) < len(wb.Windows) {
+		wb.lineHeights = append(wb.lineHeights, 0)
+	}
+
+	oldLineHeight := wb.lineHeights[idx]
+
+	styled := wb.renderAndCacheWindow(idx, w)
+	newLineHeight := strings.Count(styled, "\n") + 1
+	wb.lineHeights[idx] = newLineHeight
+
+	wb.totalLines += newLineHeight - oldLineHeight
+
+	var sb strings.Builder
+	for i := 0; i < len(wb.Windows); i++ {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		if i == idx {
+			sb.WriteString(styled)
+		} else {
+			sb.WriteString(wb.Windows[i].cachedRender)
+		}
+	}
+	wb.cachedRender = sb.String()
+}
+
+// renderAndCacheWindow renders a window and updates its cache.
+func (wb *WindowBuffer) renderAndCacheWindow(i int, w *Window) string {
+	innerWidth := max(0, wb.width-4)
+	innerContent := wb.renderWindowContent(w, innerWidth)
+	styled := w.Style.Width(wb.width).Render(innerContent)
+	lineCount := strings.Count(styled, "\n") + 1
+
+	if i < len(wb.lineHeights) {
+		wb.lineHeights[i] = lineCount
+	}
+	w.cachedRender = styled
+	w.cachedInnerContent = innerContent
+	w.cachedWidth = wb.width
+	w.lastContentLen = len(w.Content)
+	w.lastWrapped = w.Wrapped
+	return styled
+}
+
+// isCacheValid checks if a window's cache is valid
+func (wb *WindowBuffer) isCacheValid(w *Window) bool {
+	if w.cachedWidth != wb.width {
+		return false
+	}
+	if w.IsDiffWindow() {
+		return w.Wrapped == w.lastWrapped
+	}
+	return len(w.Content) == w.lastContentLen
+}
+
+// renderWithCursor renders all windows with cursor highlighting.
+func (wb *WindowBuffer) renderWithCursor(cursorIndex int) string {
+	var sb strings.Builder
+
+	for i, w := range wb.Windows {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+
+		if i != cursorIndex {
+			if w.cachedRender != "" && wb.isCacheValid(w) {
+				sb.WriteString(w.cachedRender)
+			} else {
+				innerWidth := max(0, wb.width-4)
+				innerContent := wb.renderWindowContent(w, innerWidth)
+				styled := w.Style.Width(wb.width).Render(innerContent)
+				w.cachedRender = styled
+				w.cachedInnerContent = innerContent
+				w.cachedWidth = wb.width
+				w.lastContentLen = len(w.Content)
+				w.lastWrapped = w.Wrapped
+				sb.WriteString(styled)
+			}
+		} else {
+			if w.cachedInnerContent != "" && wb.isCacheValid(w) {
+				sb.WriteString(wb.cursorStyle.Width(wb.width).Render(w.cachedInnerContent))
+			} else {
+				innerWidth := max(0, wb.width-4)
+				innerContent := wb.renderWindowContent(w, innerWidth)
+				styled := wb.cursorStyle.Width(wb.width).Render(innerContent)
+				w.cachedRender = w.Style.Width(wb.width).Render(innerContent)
+				w.cachedInnerContent = innerContent
+				w.cachedWidth = wb.width
+				w.lastContentLen = len(w.Content)
+				w.lastWrapped = w.Wrapped
+				sb.WriteString(styled)
+			}
+		}
+	}
+	return sb.String()
+}
+
+// ============================================================================
+// Window Content Rendering
+// ============================================================================
+
+// renderWindowContent renders the content of a window
+func (wb *WindowBuffer) renderWindowContent(w *Window, innerWidth int) string {
+	// Handle diff windows
+	if w.IsDiffWindow() {
+		fullContent := wb.renderDiffContent(w.Diff, innerWidth, w.Status)
+
+		if w.Wrapped {
+			lines := strings.Split(fullContent, "\n")
+			if len(lines) > 5 {
+				firstLine := lines[0]
+				lastThreeLines := lines[len(lines)-3:]
+
+				wrapIndicator := lipgloss.NewStyle().
+					Foreground(wb.styles.ColorBase).
+					Render(strings.Repeat("⁝", innerWidth))
+
+				return firstLine + "\n" + wrapIndicator + "\n" + strings.Join(lastThreeLines, "\n")
+			}
+		}
+		return fullContent
+	}
+
+	// Build content with optional status indicator
+	content := w.Content
+	if w.Tag == stream.TagFunctionNotify {
+		var indicator string
+		switch w.Status {
+		case statusSuccess:
+			indicator = lipgloss.NewStyle().
+				Foreground(wb.styles.ColorSuccess).
+				Render("• ")
+		case statusError:
+			indicator = lipgloss.NewStyle().
+				Foreground(wb.styles.ColorError).
+				Render("• ")
+		case statusPending:
+			indicator = lipgloss.NewStyle().
+				Foreground(wb.styles.ColorDim).
+				Render("• ")
+		default:
+			indicator = lipgloss.NewStyle().
+				Foreground(wb.styles.ColorDim).
+				Render("· ")
+		}
+		content = indicator + content
+	}
+
+	lines := w.getOrBuildLines(content, innerWidth)
+
+	if w.Wrapped && len(lines) > 5 {
+		firstLine := lines[0]
+		lastThreeLines := lines[len(lines)-3:]
+
+		wrapIndicator := lipgloss.NewStyle().
+			Foreground(wb.styles.ColorBase).
+			Render(strings.Repeat("⁝", innerWidth))
+
+		return firstLine + "\n" + wrapIndicator + "\n" + strings.Join(lastThreeLines, "\n")
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// ============================================================================
+// Diff Rendering
+// ============================================================================
+
+// renderDiffContent renders a diff container in unified diff style
+func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int, status string) string {
+	lines := make([]string, 0, 1+len(diff.Lines))
+
+	var indicator string
+	switch status {
+	case statusSuccess:
+		indicator = lipgloss.NewStyle().
+			Foreground(wb.styles.ColorSuccess).
+			Render("• ")
+	case statusError:
+		indicator = lipgloss.NewStyle().
+			Foreground(wb.styles.ColorError).
+			Render("• ")
+	case statusPending:
+		indicator = lipgloss.NewStyle().
+			Foreground(wb.styles.ColorDim).
+			Render("• ")
+	default:
+		indicator = lipgloss.NewStyle().
+			Foreground(wb.styles.ColorDim).
+			Render("· ")
+	}
+	header := indicator + wb.styles.Tool.Render("edit_file: ") + wb.styles.ToolContent.Render(diff.Path)
+	lines = append(lines, header)
+
+	contentWidth := innerWidth - 2
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+
+	for _, pair := range diff.Lines {
+		oldPart := strings.ReplaceAll(expandTabs(pair.Old), "\n", "\\n")
+		newPart := strings.ReplaceAll(expandTabs(pair.New), "\n", "\\n")
+
+		oldEmpty := pair.Old == ""
+		newEmpty := pair.New == ""
+		isSame := pair.Old == pair.New
+
+		oldPart = truncateByWidth(oldPart, contentWidth)
+		newPart = truncateByWidth(newPart, contentWidth)
+
+		switch {
+		case isSame:
+			lines = append(lines, "  "+oldPart)
+		case oldEmpty:
+			lines = append(lines, wb.styles.DiffAdd.Render("+ "+newPart))
+		case newEmpty:
+			lines = append(lines, wb.styles.DiffRemove.Render("- "+oldPart))
+		default:
+			lines = append(lines, wb.styles.DiffRemove.Render("- "+oldPart))
+			lines = append(lines, wb.styles.DiffAdd.Render("+ "+newPart))
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// expandTabs converts tabs to spaces, treating tabs as 8-space width
+func expandTabs(s string) string {
+	var result strings.Builder
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			next := ((col / 8) + 1) * 8
+			spaces := next - col
+			result.WriteString(strings.Repeat(" ", spaces))
+			col = next
+		} else {
+			result.WriteRune(r)
+			col++
+		}
+	}
+	return result.String()
+}
+
+// truncateByWidth truncates a string to fit within maxDisplayWidth
+func truncateByWidth(s string, maxDisplayWidth int) string {
+	if lipgloss.Width(s) <= maxDisplayWidth {
+		return s
+	}
+
+	var result strings.Builder
+	for _, r := range s {
+		test := result.String() + string(r)
+		w := lipgloss.Width(test)
+		if w > maxDisplayWidth-3 {
+			break
+		}
+		result.WriteRune(r)
+	}
+
+	return result.String() + "..."
+}
+
+// ============================================================================
+// Line Wrapping
+// ============================================================================
+
+// wrapLines wraps content into lines at the given width.
+func wrapLines(content string, width int) []string {
+	if width <= 0 {
+		return []string{content}
+	}
+	wrapped := lipgloss.Wrap(content, width, " ")
+	return strings.Split(wrapped, "\n")
+}
+
+// appendDeltaToLines incrementally wraps a delta onto existing lines.
+func appendDeltaToLines(lines []string, delta string, width int) []string {
+	if len(lines) == 0 {
+		return wrapLines(delta, width)
+	}
+
+	if width <= 0 {
+		lines[len(lines)-1] += delta
+		return lines
+	}
+
+	if strings.Contains(delta, "\n") {
+		return appendDeltaWithNewlines(lines, delta, width)
+	}
+
+	lastLine := lines[len(lines)-1]
+	combined := lastLine + delta
+	newLines := wrapLines(combined, width)
+
+	return append(lines[:len(lines)-1], newLines...)
+}
+
+// appendDeltaWithNewlines handles delta that contains newlines.
+func appendDeltaWithNewlines(lines []string, delta string, width int) []string {
+	deltaParts := strings.Split(delta, "\n")
+
+	for i, part := range deltaParts {
+		if i == 0 {
+			if len(lines) == 0 {
+				lines = wrapLines(part, width)
+			} else {
+				lastLine := lines[len(lines)-1]
+				combined := lastLine + part
+				newLines := wrapLines(combined, width)
+				lines = append(lines[:len(lines)-1], newLines...)
+			}
+		} else {
+			newLines := wrapLines(part, width)
+			lines = append(lines, newLines...)
+		}
+	}
+
+	return lines
 }

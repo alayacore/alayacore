@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +12,9 @@ import (
 	"github.com/alayacore/alayacore/internal/skills"
 	"github.com/alayacore/alayacore/internal/tools"
 )
+
+// This package provides shared initialization for both terminal and web adaptors.
+// It builds the system prompt, initializes tools, and creates the app config.
 
 const DefaultSystemPrompt = `IDENTITY:
 - Your name is AlayaCore
@@ -87,30 +89,6 @@ func Setup(cfg *config.Settings) (*Config, error) {
 	}, nil
 }
 
-// CreateAgent creates a new agent with the configured tools and system prompt
-func (c *Config) CreateAgent() *llm.Agent {
-	return llm.NewAgent(llm.AgentConfig{
-		Provider:          c.Provider,
-		Tools:             c.AgentTools,
-		SystemPrompt:      c.SystemPrompt,
-		ExtraSystemPrompt: c.ExtraSystemPrompt,
-		MaxSteps:          c.MaxSteps,
-	})
-}
-
-// AgentFactory returns a function that creates new agents (for WebSocket)
-func (c *Config) AgentFactory() func() *llm.Agent {
-	return func() *llm.Agent {
-		return llm.NewAgent(llm.AgentConfig{
-			Provider:          c.Provider,
-			Tools:             c.AgentTools,
-			SystemPrompt:      c.SystemPrompt,
-			ExtraSystemPrompt: c.ExtraSystemPrompt,
-			MaxSteps:          c.MaxSteps,
-		})
-	}
-}
-
 // CreateProvider creates a provider based on type
 func CreateProvider(providerType, apiKey, baseURL, model string, debugAPI bool, proxyURL string) (llm.Provider, error) {
 	// Create HTTP client with optional proxy and debug
@@ -136,56 +114,4 @@ func CreateProvider(providerType, apiKey, baseURL, model string, debugAPI bool, 
 		Model:      model,
 		HTTPClient: client,
 	})
-}
-
-// ProviderConfig holds model configuration for provider creation
-type ProviderConfig struct {
-	ProtocolType string
-	APIKey       string
-	BaseURL      string
-	ModelName    string
-}
-
-// CreateProviderFromConfig creates a provider from a config struct
-func CreateProviderFromConfig(cfg *ProviderConfig, debugAPI bool, proxyURL string) (llm.Provider, error) {
-	return CreateProvider(cfg.ProtocolType, cfg.APIKey, cfg.BaseURL, cfg.ModelName, debugAPI, proxyURL)
-}
-
-// CreateAnthropicProvider creates an Anthropic provider (deprecated: use CreateProvider)
-func CreateAnthropicProvider(apiKey, baseURL, model string, debugAPI bool, proxyURL string) (llm.Provider, error) {
-	return CreateProvider("anthropic", apiKey, baseURL, model, debugAPI, proxyURL)
-}
-
-// CreateOpenAIProvider creates an OpenAI-compatible provider (deprecated: use CreateProvider)
-func CreateOpenAIProvider(apiKey, baseURL, model string, debugAPI bool, proxyURL string) (llm.Provider, error) {
-	return CreateProvider("openai", apiKey, baseURL, model, debugAPI, proxyURL)
-}
-
-// ModelConfig is an alias for the agent package's ModelConfig
-// This is kept for compatibility with external packages
-type ModelConfig = interface {
-	GetProtocolType() string
-	GetAPIKey() string
-	GetBaseURL() string
-	GetModelName() string
-}
-
-// Context-related interfaces for compatibility
-type contextKey string
-
-const (
-	configContextKey contextKey = "config"
-)
-
-// WithConfig adds config to context
-func WithConfig(ctx context.Context, cfg *Config) context.Context {
-	return context.WithValue(ctx, configContextKey, cfg)
-}
-
-// ConfigFromContext retrieves config from context
-func ConfigFromContext(ctx context.Context) *Config {
-	if cfg, ok := ctx.Value(configContextKey).(*Config); ok {
-		return cfg
-	}
-	return nil
 }

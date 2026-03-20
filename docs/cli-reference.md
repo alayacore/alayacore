@@ -113,6 +113,67 @@ model_name: "model-2"
 The first model in the file becomes the active model on startup (unless `runtime.conf` has a saved preference).
 
 
+## Terminal Controls
+
+### Navigation
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Switch focus between display and input window |
+| `j` | Move window cursor down (when display focused) |
+| `k` | Move window cursor up (when display focused) |
+| `J` | Move screen down (when display focused) |
+| `K` | Move screen up (when display focused) |
+| `g` | Go to first window and top of display (when display focused) |
+| `G` | Go to last window and bottom of display (when display focused) |
+| `H` | Move cursor to window at top of visible area (when display focused) |
+| `L` | Move cursor to window at bottom of visible area (when display focused) |
+| `M` | Move cursor to window at center of visible area (when display focused) |
+
+### Input & Actions
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Submit prompt (when input focused) |
+| `Ctrl+S` | Save session to file |
+| `Ctrl+O` | Open external editor for multi-line input |
+| `Ctrl+L` | Open model selector UI |
+| `Ctrl+Q` | Open task queue manager UI |
+| `:` | Switch to input with ":" prefix (when display focused) |
+| `Space` | Toggle wrap mode for active window (when display focused) |
+| `Ctrl+C` | Clear input (when input focused) |
+| `Ctrl+G` | Cancel current request (with confirmation) |
+
+### Commands
+
+| Command | Action |
+|---------|--------|
+| `:save [filename]` | Save session to file (uses `--session` path if no filename) |
+| `:cancel` | Cancel current request (with confirmation) |
+| `:summarize` | Summarize conversation to reduce token usage |
+| `:quit`, `:q` | Exit with confirmation (press y/n) |
+| `:model_set <id>` | Switch to a saved model configuration |
+| `:model_load` | Load model configurations from default config file |
+
+
+## Session Persistence
+
+- **Manual-save**: Sessions are saved only when you use `:save [filename]` or press `Ctrl+S`
+- **Load**: On startup, AlayaCore creates a new empty session unless you specify `--session` to load an existing one
+- **Auto-summarize**: When `context_limit` is set in the model config, AlayaCore automatically triggers `:summarize` when context reaches 80% of the limit
+
+Session files use TLV-encoded binary format with YAML frontmatter for metadata. See [architecture.md](architecture.md) for format details.
+
+
+## Window Container
+
+The terminal organizes concurrent streams into separate windows with synchronized widths:
+
+- **Window Cursor**: Use `j`/`k` to navigate between windows. The cursor defaults to the newest window.
+- **Auto-follow**: When new windows appear, cursor moves to them automatically. Pressing `k`, `g`, `H`, `L`, or `M` disables follow; returning to the last window re-enables it.
+- **Wrap mode**: Press `Space` to toggle wrap mode on the active window, showing only the last 3 lines.
+
+
 ## Web Server
 
 `alayacore-web` runs a WebSocket server with a built-in chat UI:

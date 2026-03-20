@@ -1,5 +1,12 @@
 package terminal
 
+// ANSI STYLING GOTCHA:
+// ANSI escape sequences are NOT recursive. When styling text with lipgloss (or any
+// ANSI styling), each segment must be rendered individually before concatenation.
+// You cannot render a string that already contains ANSI codes with a new style and
+// expect it to work - the outer styling will not wrap the inner styled segments.
+// Always render segments separately, then join them.
+
 import (
 	"encoding/binary"
 	"encoding/json"

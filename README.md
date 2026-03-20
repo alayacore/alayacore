@@ -223,24 +223,7 @@ Queue manager shows real-time queue status and allows you to remove pending task
 
 ## Architecture
 
-For detailed architecture documentation, see [docs/architecture.md](docs/architecture.md).
-
-### Quick Overview
-
-AlayaCore follows a layered architecture with clean separation via the TLV protocol:
-
-```
-┌─────────────────┐                    ┌─────────────────┐
-│    Adaptors     │   TLV Messages     │     Session     │
-│ (Terminal/Web)  │ ◄────────────────► │   (Agent Core)  │
-└────────┬────────┘                    └────────┬────────┘
-         │                                      │
-         │  Tags: TU (user), TA (assistant),    │
-         │        FN (function), SN (notify)    │
-         └──────────────────────────────────────┘
-```
-
-See [STATE.md](STATE.md) for implementation status.
+AlayaCore follows a layered architecture with clean separation via the TLV protocol. For details, see [docs/architecture.md](docs/architecture.md) and [docs/cli-reference.md](docs/cli-reference.md).
 
 ## License
 

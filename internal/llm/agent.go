@@ -1,5 +1,16 @@
 package llm
 
+// Agent Tool-Calling Gotchas:
+//
+// 1. TOOL RESULT MESSAGE ORDERING: OnStepFinish callback receives complete step messages.
+//    For tool-using steps, this includes both the assistant message (with tool calls) AND
+//    the tool result message. The OnToolResult callback should only send UI notifications,
+//    not append to session messages - the agent loop handles message assembly.
+//
+// 2. INCOMPLETE TOOL CALLS ON CANCEL: When user cancels mid-tool-call, messages may have
+//    tool_use without matching tool_result. Clean up these orphaned tool uses before the
+//    next API request to prevent errors.
+
 import (
 	"context"
 	"encoding/json"

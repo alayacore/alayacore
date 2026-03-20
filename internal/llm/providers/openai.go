@@ -1,5 +1,19 @@
 package providers
 
+// OpenAI Provider Gotchas:
+//
+// 1. TOOL CALL ARGUMENTS CHUNKING: OpenAI-compatible APIs split tool call arguments
+//    across multiple delta events. Critical: subsequent chunks have `"id": ""` (empty)
+//    but correct `"index"`. Must use `index` (not `id`) to associate argument chunks
+//    with their tool call. See `appendToolCallArgs()` in openAIStreamState.
+//
+// 2. TOOL CALL ARGUMENTS IN REQUESTS: When sending tool calls back in conversation
+//    history, arguments must be marshaled to a JSON string (not raw JSON).
+//    See `convertToolCalls()`.
+//
+// 3. REASONING SUPPORT: OpenAI-compatible APIs (DeepSeek, Qwen, etc.) use
+//    `reasoning_content` field for thinking tokens. Handled in `handleEvent()`.
+
 import (
 	"bufio"
 	"bytes"
