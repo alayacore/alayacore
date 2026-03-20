@@ -5,6 +5,8 @@ None
 
 ## Critical Gotchas
 
+- **Session loading tool call IDs**: When displaying tool calls from a loaded session, the `TagFunctionNotify` messages must include the `[:tool_call_id:]` prefix so the terminal adaptor can create windows with correct IDs. See `displayAssistantMessage` and `displayToolMessage` in `session_persist.go`.
+
 - **ANSI escape sequences are not recursive**: When styling text with lipgloss (or any ANSI styling), each segment must be rendered individually before concatenation. You cannot render a string that already contains ANSI codes with a new style and expect it to work - the outer styling will not wrap the inner styled segments. Always render segments separately, then join them.
 
 - **SwitchModel deadlock**: Don't hold mutex while calling methods that may need the same mutex. Pattern: lock → update fields → unlock → call methods.
@@ -28,3 +30,7 @@ None
 - **Tool result message ordering**: `OnStepFinish` callback receives complete step messages. For tool-using steps, this includes both the assistant message (with tool calls) AND the tool result message. The `OnToolResult` callback should only send UI notifications, not append to session messages - the agent loop handles message assembly.
 
 - **Incomplete tool calls on cancel**: When user cancels mid-tool-call, messages may have `tool_use` without matching `tool_result`. `cleanIncompleteToolCalls()` removes these to prevent API errors on next request.
+
+- **Session loading scroll position**: When restoring a session with existing messages, `userMovedCursorAway` must be set to `true` so the viewport starts at the top (YOffset=0) instead of scrolling to the bottom. This is handled in `NewTerminalWithTheme` when `WindowBuffer().GetWindowCount() > 0`.
+
+- **WindowBuffer markDirty sentinel preservation**: The `markDirty` function uses sentinel value `fullRebuild = -2`. Once set, it must NOT be overwritten by a single-window index. The check `if wb.dirtyIndex == fullRebuild { return }` is critical - without it, rapid window creation (e.g., session loading) would set fullRebuild, then overwrite it with the last window index, causing only the last window to render.

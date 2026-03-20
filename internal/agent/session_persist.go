@@ -75,7 +75,10 @@ func (s *Session) displayAssistantMessage(msg llm.Message) {
 			s.Output.Flush()
 		case llm.ToolCallPart:
 			if info := formatToolCall(p.ToolName, string(p.Input)); info != "" {
-				_ = stream.WriteTLV(s.Output, stream.TagFunctionNotify, info) //nolint:errcheck // output stream
+				// Include tool_call_id prefix so terminal can create window with correct ID
+				// This matches the format used in writeToolCall during live streaming
+				idPrefixedInfo := "[:" + p.ToolCallID + ":]" + info
+				_ = stream.WriteTLV(s.Output, stream.TagFunctionNotify, idPrefixedInfo) //nolint:errcheck // output stream
 				s.Output.Flush()
 			}
 		}
@@ -86,7 +89,10 @@ func (s *Session) displayToolMessage(msg llm.Message) {
 	for _, part := range msg.Content {
 		if tc, ok := part.(llm.ToolCallPart); ok {
 			if info := formatToolCall(tc.ToolName, string(tc.Input)); info != "" {
-				_ = stream.WriteTLV(s.Output, stream.TagFunctionNotify, info) //nolint:errcheck // output stream
+				// Include tool_call_id prefix so terminal can create window with correct ID
+				// This matches the format used in writeToolCall during live streaming
+				idPrefixedInfo := "[:" + tc.ToolCallID + ":]" + info
+				_ = stream.WriteTLV(s.Output, stream.TagFunctionNotify, idPrefixedInfo) //nolint:errcheck // output stream
 				s.Output.Flush()
 			}
 		}

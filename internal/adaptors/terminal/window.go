@@ -166,9 +166,15 @@ func (wb *WindowBuffer) AppendDiff(id string, path string, lines []DiffLinePair)
 
 // markDirty marks a window as needing re-render. If another window is already dirty, triggers full rebuild.
 func (wb *WindowBuffer) markDirty(idx int) {
+	if wb.dirtyIndex == fullRebuild {
+		// Already marked for full rebuild, keep it
+		return
+	}
 	if wb.dirtyIndex >= 0 && wb.dirtyIndex != idx {
+		// Different window already dirty - need full rebuild
 		wb.dirtyIndex = fullRebuild
 	} else {
+		// Either clean (-1) or same window - mark just this one
 		wb.dirtyIndex = idx
 	}
 }
