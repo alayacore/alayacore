@@ -182,10 +182,28 @@ The terminal organizes concurrent streams into separate windows with synchronize
 # Start server on default port (:8080)
 alayacore-web
 
-# Custom port
+# Custom address
 alayacore-web --addr :9090
+
+# With custom model config
+alayacore-web --model-config ./my-model.conf
+
+# With session persistence
+alayacore-web --session ~/my-session.md
+
+# With skills
+alayacore-web --skill ./skills
+
+# With proxy
+alayacore-web --proxy socks5://127.0.0.1:1080
+
+# With custom max steps
+alayacore-web --max-steps 100
 ```
+
+### Endpoints
 
 - **Web UI**: Open `http://localhost:8080` in browser
 - **WebSocket**: `ws://localhost:8080/ws`
-- Each browser tab gets its own independent agent session
+
+Each browser tab gets its own independent agent session.

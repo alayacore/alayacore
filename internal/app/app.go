@@ -2,13 +2,10 @@ package app
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/alayacore/alayacore/internal/config"
-	debugpkg "github.com/alayacore/alayacore/internal/debug"
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/llm/factory"
 	"github.com/alayacore/alayacore/internal/skills"
 	"github.com/alayacore/alayacore/internal/tools"
 )
@@ -87,31 +84,4 @@ func Setup(cfg *config.Settings) (*Config, error) {
 		ExtraSystemPrompt: cfg.SystemPrompt, // User-provided extra system prompt (supplemental, not replacement)
 		MaxSteps:          cfg.MaxSteps,
 	}, nil
-}
-
-// CreateProvider creates a provider based on type
-func CreateProvider(providerType, apiKey, baseURL, model string, debugAPI bool, proxyURL string) (llm.Provider, error) {
-	// Create HTTP client with optional proxy and debug
-	var client *http.Client
-	var err error
-	if proxyURL != "" {
-		if debugAPI {
-			client, err = debugpkg.NewHTTPClientWithProxyAndDebug(proxyURL)
-		} else {
-			client, err = debugpkg.NewHTTPClientWithProxy(proxyURL)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to create HTTP client with proxy: %w", err)
-		}
-	} else if debugAPI {
-		client = debugpkg.NewHTTPClient()
-	}
-
-	return factory.NewProvider(factory.ProviderConfig{
-		Type:       providerType,
-		APIKey:     apiKey,
-		BaseURL:    baseURL,
-		Model:      model,
-		HTTPClient: client,
-	})
 }

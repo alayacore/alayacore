@@ -49,6 +49,19 @@ internal/agent/
 └── doc.go              (52 lines)  - package doc
 ```
 
+### Phase 4: Polish ✅ COMPLETED
+
+1. **Documentation consolidation**
+   - Merged `web-server.md` into `cli-reference.md`
+   - Active docs reduced from 5 to 4
+
+2. **Removed unused CreateProvider from app.go**
+   - `createProviderFromConfig` in session.go handles provider creation with full ModelConfig
+
+3. **Model config types assessment**
+   - Kept existing structure: `ModelConfig` (internal, full config with API key), `ModelInfo` (safe JSON response), `ProviderConfig` (factory input)
+   - Unification would not provide clear benefit - each serves a distinct purpose
+
 ---
 
 ## Summary
