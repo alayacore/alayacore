@@ -24,6 +24,10 @@ type Window struct {
 	// Status indicator for tool windows
 	Status string // "success", "error", "pending", or "" (default: dimmed hollow dot for loaded sessions)
 
+	// Cached wrapped lines for incremental wrap optimization
+	Lines     []string // wrapped display lines (cached for O(1) delta append)
+	LineWidth int      // width used for wrapping (invalidated on resize)
+
 	// Cached rendering state
 	lastContentLen     int    // length of content when last rendered (for quick change detection)
 	lastWrapped        bool   // wrapped state when last rendered (for diff windows)
@@ -82,6 +86,10 @@ func (wb *WindowBuffer) SetWidth(width int) {
 	defer wb.mu.Unlock()
 	if wb.width != width {
 		wb.width = width
+		// Invalidate all line caches since width changed
+		for _, w := range wb.Windows {
+			w.LineWidth = 0
+		}
 		wb.dirtyIndex = fullRebuild
 	}
 }
@@ -101,18 +109,30 @@ func (wb *WindowBuffer) AppendOrUpdate(id string, tag string, content string) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
+	innerWidth := max(0, wb.width-4)
+
 	if idx, ok := wb.idIndex[id]; ok {
 		window := wb.Windows[idx]
 		window.Content += content
+
+		// Incremental wrap: only rewrap the affected portion
+		if window.LineWidth == innerWidth && len(window.Lines) > 0 && innerWidth > 0 {
+			// Width unchanged - incrementally wrap delta
+			window.Lines = appendDeltaToLines(window.Lines, content, innerWidth)
+		} else {
+			// Width changed or no lines yet - full rewrap needed
+			window.LineWidth = 0 // Invalidate, will be recomputed on render
+		}
 		wb.markDirty(idx)
 		return
 	}
 	window := &Window{
-		ID:      id,
-		Tag:     tag,
-		Content: content,
-		Style:   wb.borderStyle,
-		Wrapped: tag == stream.TagTextReasoning,
+		ID:        id,
+		Tag:       tag,
+		Content:   content,
+		Style:     wb.borderStyle,
+		Wrapped:   tag == stream.TagTextReasoning,
+		LineWidth: 0, // Will be computed on first render
 	}
 	wb.Windows = append(wb.Windows, window)
 	wb.idIndex[id] = len(wb.Windows) - 1
@@ -156,6 +176,20 @@ func (wb *WindowBuffer) markDirty(idx int) {
 // IsDiffWindow returns true if the window is a diff window
 func (w *Window) IsDiffWindow() bool {
 	return w.Diff != nil
+}
+
+// getOrBuildLines returns wrapped lines, using cache if valid or rebuilding if needed.
+// This is the core of the incremental wrap optimization.
+func (w *Window) getOrBuildLines(content string, width int) []string {
+	// Check if cached lines are still valid
+	if w.LineWidth == width && len(w.Lines) > 0 {
+		return w.Lines
+	}
+
+	// Cache miss or width changed - rebuild lines
+	w.Lines = wrapLines(content, width)
+	w.LineWidth = width
+	return w.Lines
 }
 
 // Clear removes all windows.
@@ -249,6 +283,8 @@ func (wb *WindowBuffer) UpdateToolStatus(toolCallID string, status string) {
 
 	if idx, ok := wb.idIndex[toolCallID]; ok {
 		wb.Windows[idx].Status = status
+		// Invalidate line cache since status affects indicator prefix
+		wb.Windows[idx].LineWidth = 0
 		wb.markDirty(idx)
 	}
 }

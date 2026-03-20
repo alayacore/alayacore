@@ -234,27 +234,22 @@ func (wb *WindowBuffer) renderWindowContent(w *Window, innerWidth int) string {
 		content = indicator + content
 	}
 
-	if w.Wrapped {
-		// In wrapped mode, show up to 5 lines
-		wrappedContent := lipgloss.Wrap(content, innerWidth, " ")
+	// Get or build wrapped lines (incremental wrap optimization)
+	lines := w.getOrBuildLines(content, innerWidth)
 
-		// Check if content spans more than 5 lines (needs truncation)
-		lines := strings.Split(wrappedContent, "\n")
-		if len(lines) > 5 {
-			// Show: first line, tricolon separator, last 3 lines (5 lines total)
-			firstLine := lines[0]
-			lastThreeLines := lines[len(lines)-3:]
+	if w.Wrapped && len(lines) > 5 {
+		// In wrapped mode with > 5 lines, show: first line, separator, last 3 lines
+		firstLine := lines[0]
+		lastThreeLines := lines[len(lines)-3:]
 
-			// Create full-width tricolon separator with border color
-			wrapIndicator := lipgloss.NewStyle().
-				Foreground(wb.styles.ColorBase).
-				Render(strings.Repeat("⁝", innerWidth))
+		// Create full-width tricolon separator with border color
+		wrapIndicator := lipgloss.NewStyle().
+			Foreground(wb.styles.ColorBase).
+			Render(strings.Repeat("⁝", innerWidth))
 
-			// Show first line, separator, last 3 lines
-			return firstLine + "\n" + wrapIndicator + "\n" + strings.Join(lastThreeLines, "\n")
-		}
-		// Content fits in 5 lines or less, just show wrapped content
-		return wrappedContent
+		return firstLine + "\n" + wrapIndicator + "\n" + strings.Join(lastThreeLines, "\n")
 	}
-	return lipgloss.Wrap(content, innerWidth, " ")
+
+	// Normal mode or fits in 5 lines: return all lines joined
+	return strings.Join(lines, "\n")
 }
