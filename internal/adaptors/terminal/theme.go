@@ -22,22 +22,28 @@ type Theme struct {
 	Success  string // Success color (green)
 	Peach    string // Peach color - used for window cursor border highlight
 	Cursor   string // Cursor color - used for text input cursor
+
+	// Diff colors
+	DiffAdd    string // Diff added line color (green)
+	DiffRemove string // Diff removed line color (red)
 }
 
 // DefaultTheme returns the default theme (Catppuccin Mocha)
 func DefaultTheme() *Theme {
 	return &Theme{
-		Base:     "#1e1e2e",
-		Surface1: "#585b70",
-		Accent:   "#89d4fa",
-		Dim:      "#45475a",
-		Muted:    "#6c7086",
-		Text:     "#cdd6f4",
-		Warning:  "#f9e2af",
-		Error:    "#f38ba8",
-		Success:  "#a6e3a1",
-		Peach:    "#fab387",
-		Cursor:   "#cdd6f4", // Light gray/white for visibility on dark backgrounds
+		Base:       "#1e1e2e",
+		Surface1:   "#585b70",
+		Accent:     "#89d4fa",
+		Dim:        "#45475a",
+		Muted:      "#6c7086",
+		Text:       "#cdd6f4",
+		Warning:    "#f9e2af",
+		Error:      "#f38ba8",
+		Success:    "#a6e3a1",
+		Peach:      "#fab387",
+		Cursor:     "#cdd6f4", // Light gray/white for visibility on dark backgrounds
+		DiffAdd:    "#a6e3a1", // Green for added lines
+		DiffRemove: "#f38ba8", // Red for removed lines
 	}
 }
 
@@ -56,6 +62,8 @@ var themeFieldSetters = map[string]func(*Theme, string){
 	"success":       func(t *Theme, v string) { t.Success = v },
 	"peach":         func(t *Theme, v string) { t.Peach = v },
 	"cursor":        func(t *Theme, v string) { t.Cursor = v },
+	"diff_add":      func(t *Theme, v string) { t.DiffAdd = v },
+	"diff_remove":   func(t *Theme, v string) { t.DiffRemove = v },
 }
 
 // LoadTheme loads a theme from a configuration file

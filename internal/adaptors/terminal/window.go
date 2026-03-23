@@ -43,6 +43,9 @@ type Window struct {
 	// For diff windows - if non-nil, Content is ignored and Diff is rendered instead
 	Diff *DiffContainer
 
+	// For write_file windows - if non-nil, Content is ignored and WriteFile is rendered instead
+	WriteFile *WriteFileContainer
+
 	// Status indicator for tool windows
 	Status string // "success", "error", "pending", or "" (default: dimmed hollow dot for loaded sessions)
 
@@ -70,9 +73,20 @@ type DiffLinePair struct {
 	New string
 }
 
+// WriteFileContainer holds the path and content for write_file display
+type WriteFileContainer struct {
+	Path    string // file path for header
+	Content string // file content
+}
+
 // IsDiffWindow returns true if the window is a diff window
 func (w *Window) IsDiffWindow() bool {
 	return w.Diff != nil
+}
+
+// IsWriteFileWindow returns true if the window is a write_file window
+func (w *Window) IsWriteFileWindow() bool {
+	return w.WriteFile != nil
 }
 
 // ============================================================================
@@ -209,6 +223,28 @@ func (wb *WindowBuffer) AppendDiff(id string, path string, lines []DiffLinePair)
 	wb.markDirty(len(wb.Windows) - 1)
 }
 
+// AppendWriteFile adds a write_file window with path and content.
+func (wb *WindowBuffer) AppendWriteFile(id string, path string, content string) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+
+	writeFile := &WriteFileContainer{
+		Path:    path,
+		Content: content,
+	}
+
+	window := &Window{
+		ID:        id,
+		Tag:       stream.TagFunctionNotify,
+		Style:     wb.borderStyle,
+		WriteFile: writeFile,
+		Wrapped:   true, // Enable folding like other windows
+	}
+	wb.Windows = append(wb.Windows, window)
+	wb.idIndex[id] = len(wb.Windows) - 1
+	wb.markDirty(len(wb.Windows) - 1)
+}
+
 // markDirty marks a window as needing re-render.
 func (wb *WindowBuffer) markDirty(idx int) {
 	if wb.dirtyIndex == fullRebuild {
@@ -312,7 +348,7 @@ func (wb *WindowBuffer) UpdateToolStatus(toolCallID string, status string) {
 		w.Status = status
 		w.LineWidth = 0 // Invalidate line cache
 		if (status == statusSuccess || status == statusError) && len(w.Content) > 0 {
-			if isWriteFileWindow(w.Content) {
+			if isWriteFileWindow(w.Content) || w.IsWriteFileWindow() {
 				w.Wrapped = true
 			}
 		}
@@ -320,7 +356,7 @@ func (wb *WindowBuffer) UpdateToolStatus(toolCallID string, status string) {
 	}
 }
 
-// isWriteFileWindow checks if window content is from write_file tool
+// isWriteFileWindow checks if window content is from write_file tool (legacy, for Content-based windows)
 func isWriteFileWindow(content string) bool {
 	if len(content) < 10 {
 		return false
@@ -678,95 +714,99 @@ func (wb *WindowBuffer) renderWithCursor(cursorIndex int) string {
 
 // renderWindowContent renders the content of a window
 func (wb *WindowBuffer) renderWindowContent(w *Window, innerWidth int) string {
-	// Handle diff windows
-	if w.IsDiffWindow() {
-		fullContent := wb.renderDiffContent(w.Diff, innerWidth, w.Status)
+	var fullContent string
 
-		if w.Wrapped {
-			lines := strings.Split(fullContent, "\n")
-			if len(lines) > 5 {
-				firstLine := lines[0]
-				lastThreeLines := lines[len(lines)-3:]
-
-				wrapIndicator := lipgloss.NewStyle().
-					Foreground(wb.styles.ColorBase).
-					Render(strings.Repeat("⁝", innerWidth))
-
-				return firstLine + "\n" + wrapIndicator + "\n" + strings.Join(lastThreeLines, "\n")
-			}
-		}
-		return fullContent
+	switch {
+	case w.IsWriteFileWindow():
+		fullContent = wb.renderWriteFileContent(w.WriteFile, w.Status)
+	case w.IsDiffWindow():
+		fullContent = wb.renderDiffContent(w.Diff, w.Status)
+	default:
+		fullContent = wb.renderGenericContent(w, innerWidth)
 	}
 
-	// Build content with optional status indicator
+	// Apply folding if needed
+	if w.Wrapped {
+		return wb.applyFolding(fullContent, innerWidth)
+	}
+	return fullContent
+}
+
+// applyFolding collapses content to first line + indicator + last 3 lines if > 5 lines
+func (wb *WindowBuffer) applyFolding(content string, innerWidth int) string {
+	lines := strings.Split(content, "\n")
+	if len(lines) <= 5 {
+		return content
+	}
+
+	firstLine := lines[0]
+	lastThreeLines := lines[len(lines)-3:]
+
+	wrapIndicator := lipgloss.NewStyle().
+		Foreground(wb.styles.ColorBase).
+		Render(strings.Repeat("⁝", innerWidth))
+
+	return firstLine + "\n" + wrapIndicator + "\n" + strings.Join(lastThreeLines, "\n")
+}
+
+// renderGenericContent renders a generic tool window content
+func (wb *WindowBuffer) renderGenericContent(w *Window, innerWidth int) string {
 	content := w.Content
 	if w.Tag == stream.TagFunctionNotify {
-		var indicator string
-		switch w.Status {
-		case statusSuccess:
-			indicator = lipgloss.NewStyle().
-				Foreground(wb.styles.ColorSuccess).
-				Render("• ")
-		case statusError:
-			indicator = lipgloss.NewStyle().
-				Foreground(wb.styles.ColorError).
-				Render("• ")
-		case statusPending:
-			indicator = lipgloss.NewStyle().
-				Foreground(wb.styles.ColorDim).
-				Render("• ")
-		default:
-			indicator = lipgloss.NewStyle().
-				Foreground(wb.styles.ColorDim).
-				Render("· ")
-		}
-		content = indicator + content
+		content = wb.renderStatusIndicator(w.Status) + content
 	}
 
 	lines := w.getOrBuildLines(content, innerWidth)
-
-	if w.Wrapped && len(lines) > 5 {
-		firstLine := lines[0]
-		lastThreeLines := lines[len(lines)-3:]
-
-		wrapIndicator := lipgloss.NewStyle().
-			Foreground(wb.styles.ColorBase).
-			Render(strings.Repeat("⁝", innerWidth))
-
-		return firstLine + "\n" + wrapIndicator + "\n" + strings.Join(lastThreeLines, "\n")
-	}
-
 	return strings.Join(lines, "\n")
+}
+
+// renderStatusIndicator returns the status indicator string for a tool window
+func (wb *WindowBuffer) renderStatusIndicator(status string) string {
+	switch status {
+	case statusSuccess:
+		return lipgloss.NewStyle().
+			Foreground(wb.styles.ColorSuccess).
+			Render("• ")
+	case statusError:
+		return lipgloss.NewStyle().
+			Foreground(wb.styles.ColorError).
+			Render("• ")
+	case statusPending:
+		return lipgloss.NewStyle().
+			Foreground(wb.styles.ColorDim).
+			Render("• ")
+	default:
+		return lipgloss.NewStyle().
+			Foreground(wb.styles.ColorDim).
+			Render("· ")
+	}
 }
 
 // ============================================================================
 // Diff Rendering
 // ============================================================================
 
+// renderWriteFileContent renders a write_file container
+func (wb *WindowBuffer) renderWriteFileContent(wf *WriteFileContainer, status string) string {
+	lines := make([]string, 0, 2)
+
+	header := wb.renderStatusIndicator(status) + wb.styles.Tool.Render("write_file: ") + wb.styles.ToolContent.Render(wf.Path)
+	lines = append(lines, header)
+
+	// Render content lines with Text style
+	contentLines := strings.Split(wf.Content, "\n")
+	for _, line := range contentLines {
+		lines = append(lines, wb.styles.Text.Render(expandTabs(line)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 // renderDiffContent renders a diff container in unified diff style
-func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int, status string) string {
+func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, status string) string {
 	lines := make([]string, 0, 1+len(diff.Lines))
 
-	var indicator string
-	switch status {
-	case statusSuccess:
-		indicator = lipgloss.NewStyle().
-			Foreground(wb.styles.ColorSuccess).
-			Render("• ")
-	case statusError:
-		indicator = lipgloss.NewStyle().
-			Foreground(wb.styles.ColorError).
-			Render("• ")
-	case statusPending:
-		indicator = lipgloss.NewStyle().
-			Foreground(wb.styles.ColorDim).
-			Render("• ")
-	default:
-		indicator = lipgloss.NewStyle().
-			Foreground(wb.styles.ColorDim).
-			Render("· ")
-	}
-	header := indicator + wb.styles.Tool.Render("edit_file: ") + wb.styles.ToolContent.Render(diff.Path)
+	header := wb.renderStatusIndicator(status) + wb.styles.Tool.Render("edit_file: ") + wb.styles.ToolContent.Render(diff.Path)
 	lines = append(lines, header)
 
 	for _, pair := range diff.Lines {
@@ -779,7 +819,7 @@ func (wb *WindowBuffer) renderDiffContent(diff *DiffContainer, innerWidth int, s
 
 		switch {
 		case isSame:
-			lines = append(lines, "  "+oldPart)
+			lines = append(lines, wb.styles.Text.Render("  "+oldPart))
 		case oldEmpty:
 			lines = append(lines, wb.styles.DiffAdd.Render("+ "+newPart))
 		case newEmpty:

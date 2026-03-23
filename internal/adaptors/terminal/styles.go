@@ -19,7 +19,6 @@ type Styles struct {
 	Prompt      lipgloss.Style
 	DiffRemove  lipgloss.Style
 	DiffAdd     lipgloss.Style
-	DiffSame    lipgloss.Style // dimmed for unchanged lines
 	DiffSep     lipgloss.Style // dimmed separator |
 
 	// Display styles
@@ -74,9 +73,8 @@ func NewStyles(theme *Theme) *Styles {
 		Error:       baseStyle.Foreground(lipgloss.Color(theme.Error)),
 		System:      baseStyle.Foreground(lipgloss.Color(theme.Muted)),
 		Prompt:      baseStyle.Foreground(lipgloss.Color(theme.Accent)).Bold(true),
-		DiffRemove:  baseStyle.Foreground(lipgloss.Color(theme.Error)),
-		DiffAdd:     baseStyle.Foreground(lipgloss.Color(theme.Success)),
-		DiffSame:    baseStyle.Foreground(lipgloss.Color(theme.Muted)),
+		DiffRemove:  baseStyle.Foreground(lipgloss.Color(theme.DiffRemove)),
+		DiffAdd:     baseStyle.Foreground(lipgloss.Color(theme.DiffAdd)),
 		DiffSep:     baseStyle.Foreground(lipgloss.Color(theme.Base)),
 
 		// Display styles

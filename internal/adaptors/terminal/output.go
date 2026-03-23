@@ -162,6 +162,11 @@ func (w *outputWriter) writeColored(tag string, value string) {
 		case stream.TagTextReasoning:
 			styled = output(w.styles.Reasoning, content)
 		case stream.TagFunctionNotify:
+			// Check if this is a write_file with path and content
+			if wfPath, wfContent, ok := w.parseWriteFile(content); ok {
+				w.windowBuffer.AppendWriteFile(id, wfPath, wfContent)
+				return
+			}
 			// Check if this is an edit_file with raw diff data
 			if diffPath, diffLines := w.parseRawDiff(content); diffLines != nil {
 				w.windowBuffer.AppendDiff(id, diffPath, diffLines)
@@ -482,6 +487,22 @@ func (w *outputWriter) parseRawDiff(content string) (string, []DiffLinePair) {
 	}
 
 	return path, diffLines
+}
+
+// parseWriteFile checks if content is a write_file with path and content.
+// Returns (path, content, true) if it's a write_file, or ("", "", false) otherwise.
+func (w *outputWriter) parseWriteFile(content string) (string, string, bool) {
+	lines := strings.SplitN(content, "\n", 2)
+	if len(lines) < 2 {
+		return "", "", false
+	}
+
+	// Check first line is "write_file: <path>"
+	if !strings.HasPrefix(lines[0], "write_file: ") {
+		return "", "", false
+	}
+	path := strings.TrimPrefix(lines[0], "write_file: ")
+	return path, lines[1], true
 }
 
 // parseStreamID extracts stream ID prefix from value.
