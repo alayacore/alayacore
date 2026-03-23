@@ -15,7 +15,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"golang.org/x/term"
 
 	agentpkg "github.com/alayacore/alayacore/internal/agent"
 	"github.com/alayacore/alayacore/internal/app"
@@ -74,9 +73,12 @@ type Terminal struct {
 	// UI components
 	display       DisplayModel
 	input         InputModel
-	statusBar     StatusBar
 	modelSelector *ModelSelector
 	queueManager  *QueueManager
+
+	// Status bar state (simplified - no separate struct)
+	statusText string
+	inProgress bool
 
 	// State
 	quitting            bool
@@ -119,7 +121,6 @@ func NewTerminalWithTheme(
 		appConfig:     appCfg,
 		display:       NewDisplayModel(out.WindowBuffer(), styles),
 		input:         NewInputModel(styles),
-		statusBar:     NewStatusBar(styles),
 		modelSelector: NewModelSelector(styles),
 		queueManager:  NewQueueManager(styles),
 		windowWidth:   initialWidth,
@@ -132,7 +133,6 @@ func NewTerminalWithTheme(
 	// Initialize component widths
 	m.display.SetWidth(initialWidth)
 	m.input.SetWidth(initialWidth)
-	m.statusBar.SetWidth(initialWidth)
 	m.modelSelector.SetSize(initialWidth, initialHeight)
 	m.queueManager.SetSize(initialWidth, initialHeight)
 	m.updateDisplayHeight()
@@ -203,7 +203,6 @@ func (m *Terminal) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) 
 	m.out.SetWindowWidth(max(0, msg.Width))
 	m.display.SetWidth(max(0, msg.Width))
 	m.input.SetWidth(max(0, msg.Width))
-	m.statusBar.SetWidth(max(0, msg.Width))
 	m.modelSelector.SetSize(msg.Width, msg.Height)
 	m.queueManager.SetSize(msg.Width, msg.Height)
 	m.updateDisplayHeight()
@@ -225,7 +224,7 @@ func (m *Terminal) handleTick() (tea.Model, tea.Cmd) {
 	select {
 	case <-m.out.UpdateChan():
 		if m.out.WindowBuffer().GetWindowCount() > 0 {
-			m.updateStatusWithQueue()
+			m.updateStatus()
 			m.updateDisplayHeight()
 			if m.display.shouldFollow() {
 				m.display.SetCursorToLastWindow()
@@ -244,7 +243,7 @@ func (m *Terminal) handleTick() (tea.Model, tea.Cmd) {
 		}
 
 	default:
-		m.updateStatusWithQueue()
+		m.updateStatus()
 	}
 
 	// Continue ticking
@@ -316,8 +315,8 @@ func (m *Terminal) updateDisplayHeight() {
 	m.display.UpdateHeight(m.windowHeight)
 }
 
-// updateStatusWithQueue updates the status bar with queue count
-func (m *Terminal) updateStatusWithQueue() {
+// updateStatus updates the status bar state from the output writer.
+func (m *Terminal) updateStatus() {
 	contextStatus := m.out.GetStatus()
 	queueCount := m.out.GetQueueCount()
 
@@ -361,8 +360,8 @@ func (m *Terminal) updateStatusWithQueue() {
 		}
 	}
 
-	m.statusBar.SetStatus(status)
-	m.statusBar.SetInProgress(inProgress)
+	m.statusText = status
+	m.inProgress = inProgress
 }
 
 // View renders the complete terminal UI.
@@ -382,9 +381,9 @@ func (m *Terminal) View() tea.View {
 	}
 	sb.WriteString(m.input.RenderWithBorder(m.confirmDialog || m.cancelConfirmDialog, confirmText))
 
-	// Status bar
+	// Status bar (simplified - just render directly)
 	sb.WriteString("\n")
-	sb.WriteString(m.statusBar.RenderString())
+	sb.WriteString(m.renderStatusBar())
 
 	baseContent := sb.String()
 
@@ -412,109 +411,24 @@ func (m *Terminal) View() tea.View {
 	return v
 }
 
+// renderStatusBar renders the status bar line.
+func (m *Terminal) renderStatusBar() string {
+	var indicator string
+	if m.inProgress {
+		indicator = m.styles.Status.Foreground(m.styles.ColorSuccess).Render("•")
+	} else {
+		indicator = m.styles.Status.Foreground(m.styles.ColorDim).Render("·")
+	}
+
+	if m.statusText != "" {
+		padding := m.styles.Status.Padding(0, 2)
+		return padding.Render(indicator + " " + m.statusText)
+	}
+	return m.styles.Status.Padding(0, 2).Render(indicator)
+}
+
 // Ensure Terminal implements tea.Model
 var _ tea.Model = (*Terminal)(nil)
-
-// ============================================================================
-// Terminal Adaptor (entry point for main/app)
-// ============================================================================
-
-// Adaptor starts the TUI; use from main/app.
-type Adaptor struct {
-	Config    *app.Config
-	ThemePath string
-}
-
-// NewAdaptor creates a new Terminal adaptor.
-func NewAdaptor(cfg *app.Config) *Adaptor {
-	return &Adaptor{
-		Config: cfg,
-	}
-}
-
-// NewAdaptorWithTheme creates a new Terminal adaptor with a custom theme path.
-func NewAdaptorWithTheme(cfg *app.Config, themePath string) *Adaptor {
-	return &Adaptor{
-		Config:    cfg,
-		ThemePath: themePath,
-	}
-}
-
-// Start runs the Terminal program.
-func (a *Adaptor) Start() {
-	// Load theme from config paths
-	theme := LoadThemeFromPaths(a.ThemePath)
-	styles := NewStyles(theme)
-
-	inputStream := stream.NewChanInput(10)
-	terminalOutput := NewTerminalOutput(styles)
-
-	// Get terminal size before loading session (so session loads with correct dimensions)
-	initialWidth, initialHeight := getTerminalSize()
-	terminalOutput.SetWindowWidth(initialWidth)
-
-	// Load session synchronously before starting the UI
-	session, _ := agentpkg.LoadOrNewSession(
-		a.Config.AgentTools,
-		a.Config.SystemPrompt,
-		a.Config.ExtraSystemPrompt,
-		a.Config.MaxSteps,
-		inputStream,
-		terminalOutput,
-		a.Config.Cfg.Session,
-		a.Config.Cfg.ModelConfig,
-		a.Config.Cfg.RuntimeConfig,
-		a.Config.Cfg.DebugAPI,
-		a.Config.Cfg.Proxy,
-	)
-
-	// Check if we have any models available.
-	if !terminalOutput.HasModels() {
-		// Print error to stderr and exit
-		modelPath := terminalOutput.GetModelConfigPath()
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Error: No models configured.")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Please edit the model config file:")
-		fmt.Fprintf(os.Stderr, "  %s\n", modelPath)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Example format:")
-		fmt.Fprintln(os.Stderr, `---
-name: "Ollama (127.0.0.1) / GPT OSS 20B"
-protocol_type: "anthropic"
-base_url: "http://127.0.0.1:11434"
-api_key: "no-key-by-default"
-model_name: "gpt-oss:20b"
-context_limit: 128000
----
-name: "OpenAI GPT-4o"
-protocol_type: "openai"
-base_url: "https://api.openai.com/v1"
-api_key: "your-api-key"
-model_name: "gpt-4o"
-context_limit: 128000`)
-		fmt.Fprintln(os.Stderr, "")
-		os.Exit(1)
-	}
-
-	// Create terminal with loaded session, initial window size, and theme
-	t := NewTerminalWithTheme(session, terminalOutput, inputStream, a.Config, initialWidth, initialHeight, theme)
-
-	// Create and run the program
-	p := tea.NewProgram(t, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
-	_, _ = p.Run() //nolint:errcheck // terminal program run, error not critical
-}
-
-// getTerminalSize returns the current terminal size, or defaults if not a TTY.
-func getTerminalSize() (width, height int) {
-	if term.IsTerminal(int(os.Stdout.Fd())) {
-		w, h, err := term.GetSize(int(os.Stdout.Fd()))
-		if err == nil {
-			return w, h
-		}
-	}
-	return DefaultWidth, DefaultHeight
-}
 
 // ============================================================================
 // Focus Management
@@ -620,81 +534,6 @@ func (m *Terminal) handleFocus() (tea.Model, tea.Cmd) {
 	m.display.updateContent()
 
 	return m, nil
-}
-
-// ============================================================================
-// Status Bar
-// ============================================================================
-
-// StatusBar shows the status bar (token usage, queue count, etc).
-type StatusBar struct {
-	status     string
-	inProgress bool
-	styles     *Styles
-	width      int
-}
-
-// NewStatusBar creates a new status bar
-func NewStatusBar(styles *Styles) StatusBar {
-	return StatusBar{
-		status: "",
-		styles: styles,
-		width:  DefaultWidth,
-	}
-}
-
-// Init initializes the status bar
-func (m StatusBar) Init() tea.Cmd {
-	return nil
-}
-
-// Update handles messages for the status bar
-func (m StatusBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if windowMsg, ok := msg.(tea.WindowSizeMsg); ok {
-		m.width = windowMsg.Width
-	}
-	return m, nil
-}
-
-// View renders the status bar
-func (m StatusBar) View() tea.View {
-	return tea.NewView(m.styles.Status.Render(m.status))
-}
-
-// SetStatus updates the status text
-func (m *StatusBar) SetStatus(status string) {
-	m.status = status
-}
-
-// SetInProgress updates the in-progress state
-func (m *StatusBar) SetInProgress(inProgress bool) {
-	m.inProgress = inProgress
-}
-
-// GetStatus returns the current status
-func (m StatusBar) GetStatus() string {
-	return m.status
-}
-
-// SetWidth sets the width for rendering
-func (m *StatusBar) SetWidth(width int) {
-	m.width = width
-}
-
-// RenderString returns the rendered status string
-func (m StatusBar) RenderString() string {
-	var indicator string
-	if m.inProgress {
-		indicator = m.styles.Status.Foreground(m.styles.ColorSuccess).Render("•")
-	} else {
-		indicator = m.styles.Status.Foreground(m.styles.ColorDim).Render("·")
-	}
-
-	if m.status != "" {
-		padding := m.styles.Status.Padding(0, 2)
-		return padding.Render(indicator + " " + m.status)
-	}
-	return m.styles.Status.Padding(0, 2).Render(indicator)
 }
 
 // ============================================================================
@@ -829,5 +668,3 @@ func getEditorCommand(editorCmd string) string {
 func hasEditorPrefix(value string) bool {
 	return len(value) > 0 && value[0] == '['
 }
-
-var _ tea.Model = (*StatusBar)(nil)
