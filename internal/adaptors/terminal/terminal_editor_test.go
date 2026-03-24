@@ -167,9 +167,9 @@ func TestEditorSelectionOrder(t *testing.T) {
 func TestRenderMultiline(t *testing.T) {
 	// Note: lipgloss.SetColorProfile is no longer needed in v2
 
-	output := NewTerminalOutput(DefaultStyles())
+	styles := DefaultStyles()
 	// Use existing reasoning style which should produce ANSI codes
-	style := output.styles.Reasoning
+	style := styles.Reasoning
 	// First test direct rendering
 	direct := style.Render("test")
 	t.Logf("Direct render: %q, bytes: %v", direct, []byte(direct))
@@ -178,7 +178,7 @@ func TestRenderMultiline(t *testing.T) {
 		t.Log("Warning: style.Render produced no ANSI codes (maybe color disabled)")
 	}
 	text := "line1\nline2\nline3"
-	result := output.renderMultiline(style, text, true)
+	result := styleMultiline(text, style)
 	lines := strings.Split(result, "\n")
 	if len(lines) != 3 {
 		t.Errorf("Expected 3 lines, got %d", len(lines))

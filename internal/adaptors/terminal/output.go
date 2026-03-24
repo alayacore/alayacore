@@ -11,11 +11,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
-
-	"charm.land/lipgloss/v2"
 
 	agentpkg "github.com/alayacore/alayacore/internal/agent"
 	"github.com/alayacore/alayacore/internal/stream"
@@ -142,10 +139,6 @@ func (w *outputWriter) processBuffer() {
 func (w *outputWriter) writeColored(tag string, value string) {
 	w.triggerUpdateForTag(tag)
 
-	output := func(style lipgloss.Style, text string) string {
-		return w.renderMultiline(style, text, false)
-	}
-
 	switch tag {
 	// Text content tags (delta messages with stream ID prefix)
 	case stream.TagTextAssistant, stream.TagTextReasoning:
@@ -155,14 +148,8 @@ func (w *outputWriter) writeColored(tag string, value string) {
 			id = w.generateWindowID()
 			content = value
 		}
-		var styled string
-		switch tag {
-		case stream.TagTextAssistant:
-			styled = output(w.styles.Text, content)
-		case stream.TagTextReasoning:
-			styled = output(w.styles.Reasoning, content)
-		}
-		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+		// Pass raw content - styling is applied during render
+		w.windowBuffer.AppendOrUpdate(id, tag, content)
 
 	// Function call (JSON: id, name, input)
 	case stream.TagFunctionCall:
@@ -183,8 +170,8 @@ func (w *outputWriter) writeColored(tag string, value string) {
 			w.windowBuffer.AppendDiff(tc.ID, diffPath, diffLines)
 			return
 		}
-		styled := ColorizeTool(formatted, w.styles)
-		w.windowBuffer.AppendToolCall(tc.ID, tc.Name, styled)
+		// Pass formatted but unstyled content - styling is applied during render
+		w.windowBuffer.AppendToolCall(tc.ID, tc.Name, formatted)
 
 	// Function result (JSON: id, output)
 	case stream.TagFunctionResult:
@@ -197,8 +184,8 @@ func (w *outputWriter) writeColored(tag string, value string) {
 			// Skip output for tools that don't show it
 			return
 		}
-		styled := output(w.styles.Text, tr.Output)
-		w.windowBuffer.AppendOrUpdate(tr.ID, tag, styled)
+		// Pass raw output - styling is applied during render
+		w.windowBuffer.AppendOrUpdate(tr.ID, tag, tr.Output)
 
 	// Function output status indicator
 	case stream.TagFunctionState:
@@ -212,13 +199,13 @@ func (w *outputWriter) writeColored(tag string, value string) {
 	// System tags
 	case stream.TagSystemError:
 		id := w.generateWindowID()
-		styled := output(w.styles.Error, value)
-		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+		// Pass raw value - styling is applied during render
+		w.windowBuffer.AppendOrUpdate(id, tag, value)
 
 	case stream.TagSystemNotify:
 		id := w.generateWindowID()
-		styled := output(w.styles.System, value)
-		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+		// Pass raw value - styling is applied during render
+		w.windowBuffer.AppendOrUpdate(id, tag, value)
 
 	case stream.TagSystemData:
 		w.handleSystemTag(value)
@@ -227,8 +214,8 @@ func (w *outputWriter) writeColored(tag string, value string) {
 	// User text tag
 	case stream.TagTextUser:
 		id := w.generateWindowID()
-		styled := strings.TrimRight(w.styles.Prompt.Render("> ")+w.styles.UserInput.Render(value), " ")
-		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+		// Pass raw value - styling is applied during render
+		w.windowBuffer.AppendOrUpdate(id, tag, value)
 
 	default:
 		id := w.generateWindowID()
@@ -406,22 +393,6 @@ func (w *outputWriter) GetLastStepInfo() (currentStep, maxSteps int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.lastCurrentStep, w.lastMaxSteps
-}
-
-// renderMultiline applies a style to each line of text
-func (w *outputWriter) renderMultiline(style lipgloss.Style, value string, trimRight bool) string {
-	// Expand tabs BEFORE styling to ensure correct column counting
-	value = expandTabs(value)
-
-	lines := strings.Split(value, "\n")
-	for i, line := range lines {
-		rendered := style.Render(line)
-		if trimRight {
-			rendered = strings.TrimRight(rendered, " ")
-		}
-		lines[i] = rendered
-	}
-	return strings.Join(lines, "\n")
 }
 
 // generateWindowID returns a unique window ID for non-delta messages.

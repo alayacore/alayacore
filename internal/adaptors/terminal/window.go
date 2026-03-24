@@ -39,7 +39,7 @@ type Window struct {
 	ID       string     // stream ID or generated unique ID
 	Tag      string     // TLV tag that created this window
 	ToolName string     // tool name (for FC/FR tags)
-	Content  string     // accumulated content (styled)
+	Content  string     // accumulated content (raw, unstyled)
 	Folded   bool       // true if window is in folded (collapsed) mode
 	Status   ToolStatus // status indicator for tool windows
 
@@ -134,8 +134,27 @@ func (w *Window) rebuildCache(width int, styles *Styles, borderStyle lipgloss.St
 // renderGenericContent renders a generic tool window content
 func (w *Window) renderGenericContent(innerWidth int, styles *Styles) string {
 	content := w.Content
-	if w.Tag == stream.TagFunctionCall {
-		content = w.Status.Indicator(styles) + content
+
+	// Apply styling based on tag
+	switch w.Tag {
+	case stream.TagFunctionCall:
+		// Tool calls: add status indicator and colorize
+		content = w.Status.Indicator(styles) + ColorizeTool(content, styles)
+	case stream.TagFunctionResult:
+		// Tool results: style as text
+		content = styleMultiline(content, styles.Text)
+	case stream.TagTextAssistant:
+		content = styleMultiline(content, styles.Text)
+	case stream.TagTextReasoning:
+		content = styleMultiline(content, styles.Reasoning)
+	case stream.TagTextUser:
+		content = styles.Prompt.Render("> ") + styles.UserInput.Render(content)
+	case stream.TagSystemError:
+		content = styleMultiline(content, styles.Error)
+	case stream.TagSystemNotify:
+		content = styleMultiline(content, styles.System)
+	default:
+		// No styling for unknown tags
 	}
 
 	// Expand tabs and wrap
@@ -152,6 +171,15 @@ func (w *Window) renderGenericContent(innerWidth int, styles *Styles) string {
 	wrapped := lipgloss.Wrap(content, innerWidth, " ")
 	w.cache.wrappedLines = strings.Split(wrapped, "\n")
 	return wrapped
+}
+
+// styleMultiline applies a style to each line of text
+func styleMultiline(content string, style lipgloss.Style) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		lines[i] = style.Render(line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // applyFolding collapses content to first line + indicator + last 3 lines
