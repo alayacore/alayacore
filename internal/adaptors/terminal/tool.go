@@ -74,29 +74,12 @@ type WriteFileContainer struct {
 }
 
 // ============================================================================
-// Parsing
+// Parsing (for diff/write_file special rendering)
 // ============================================================================
 
-// ParseStreamID extracts stream ID prefix from value.
-// Format: "[:id:]content". Returns id, content, true if prefix found.
-func ParseStreamID(value string) (id string, content string, ok bool) {
-	const prefixStart = "[:"
-	const prefixEnd = ":]"
-	if !strings.HasPrefix(value, prefixStart) {
-		return "", value, false
-	}
-	endIdx := strings.Index(value, prefixEnd)
-	if endIdx == -1 {
-		return "", value, false
-	}
-	id = value[len(prefixStart):endIdx]
-	content = value[endIdx+len(prefixEnd):]
-	return id, content, true
-}
-
-// ParseRawDiff checks if content is an edit_file with raw diff data.
+// parseDiffFromFormatted checks if content is an edit_file with raw diff data.
 // Returns (path, lines) if it's a raw diff, or ("", nil) otherwise.
-func ParseRawDiff(content string) (path string, lines []DiffLinePair) {
+func parseDiffFromFormatted(content string) (path string, lines []DiffLinePair) {
 	lines = nil // ensure nil on failure
 
 	contentLines := strings.Split(content, "\n")
@@ -134,9 +117,9 @@ func ParseRawDiff(content string) (path string, lines []DiffLinePair) {
 	return path, diffLines
 }
 
-// ParseWriteFile checks if content is a write_file with path and content.
+// parseWriteFileFromFormatted checks if content is a write_file with path and content.
 // Returns (path, content, true) if it's a write_file, or ("", "", false) otherwise.
-func ParseWriteFile(content string) (path string, fileContent string, ok bool) {
+func parseWriteFileFromFormatted(content string) (path string, fileContent string, ok bool) {
 	lines := strings.SplitN(content, "\n", 2)
 	if len(lines) < 2 {
 		return "", "", false
@@ -148,6 +131,27 @@ func ParseWriteFile(content string) (path string, fileContent string, ok bool) {
 	}
 	path = strings.TrimPrefix(lines[0], "write_file: ")
 	return path, lines[1], true
+}
+
+// ============================================================================
+// Stream ID Parsing (for text deltas and status updates)
+// ============================================================================
+
+// ParseStreamID extracts stream ID prefix from value.
+// Format: "[:id:]content". Returns id, content, true if prefix found.
+func ParseStreamID(value string) (id string, content string, ok bool) {
+	const prefixStart = "[:"
+	const prefixEnd = ":]"
+	if !strings.HasPrefix(value, prefixStart) {
+		return "", value, false
+	}
+	endIdx := strings.Index(value, prefixEnd)
+	if endIdx == -1 {
+		return "", value, false
+	}
+	id = value[len(prefixStart):endIdx]
+	content = value[endIdx+len(prefixEnd):]
+	return id, content, true
 }
 
 // ============================================================================
@@ -171,9 +175,9 @@ func colorizeSingleLineTool(value string, styles *Styles) string {
 	if colonIdx > 0 {
 		toolName := value[:colonIdx]
 		rest := value[colonIdx:]
-		return strings.TrimRight(styles.Tool.Render(toolName), " ") + strings.TrimRight(styles.ToolContent.Render(rest), " ")
+		return styles.Tool.Render(toolName) + styles.ToolContent.Render(rest)
 	}
-	return strings.TrimRight(styles.Tool.Render(value), " ")
+	return styles.Tool.Render(value)
 }
 
 func colorizeMultiLineTool(lines []string, styles *Styles) string {
@@ -184,10 +188,10 @@ func colorizeMultiLineTool(lines []string, styles *Styles) string {
 	if colonIdx > 0 {
 		toolName := firstLine[:colonIdx]
 		restFirst := firstLine[colonIdx:]
-		result.WriteString(strings.TrimRight(styles.Tool.Render(toolName), " "))
-		result.WriteString(strings.TrimRight(styles.ToolContent.Render(restFirst), " "))
+		result.WriteString(styles.Tool.Render(toolName))
+		result.WriteString(styles.ToolContent.Render(restFirst))
 	} else {
-		result.WriteString(strings.TrimRight(styles.Tool.Render(firstLine), " "))
+		result.WriteString(styles.Tool.Render(firstLine))
 	}
 
 	for _, line := range lines[1:] {
@@ -195,11 +199,11 @@ func colorizeMultiLineTool(lines []string, styles *Styles) string {
 		// Fallback for other lines
 		switch {
 		case strings.HasPrefix(line, "- "):
-			result.WriteString(strings.TrimRight(styles.DiffRemove.Render(line), " "))
+			result.WriteString(styles.DiffRemove.Render(line))
 		case strings.HasPrefix(line, "+ "):
-			result.WriteString(strings.TrimRight(styles.DiffAdd.Render(line), " "))
+			result.WriteString(styles.DiffAdd.Render(line))
 		default:
-			result.WriteString(strings.TrimRight(styles.ToolContent.Render(line), " "))
+			result.WriteString(styles.ToolContent.Render(line))
 		}
 	}
 	return result.String()

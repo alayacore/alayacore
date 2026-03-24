@@ -36,11 +36,12 @@ import (
 // Window represents a single display window with border and content.
 // Caching is handled internally - callers just call Render().
 type Window struct {
-	ID      string     // stream ID or generated unique ID
-	Tag     string     // TLV tag that created this window
-	Content string     // accumulated content (styled)
-	Folded  bool       // true if window is in folded (collapsed) mode
-	Status  ToolStatus // status indicator for tool windows
+	ID       string     // stream ID or generated unique ID
+	Tag      string     // TLV tag that created this window
+	ToolName string     // tool name (for FC/FR tags)
+	Content  string     // accumulated content (styled)
+	Folded   bool       // true if window is in folded (collapsed) mode
+	Status   ToolStatus // status indicator for tool windows
 
 	// Special content (if non-nil, Content is ignored)
 	Diff      *DiffContainer
@@ -133,7 +134,7 @@ func (w *Window) rebuildCache(width int, styles *Styles, borderStyle lipgloss.St
 // renderGenericContent renders a generic tool window content
 func (w *Window) renderGenericContent(innerWidth int, styles *Styles) string {
 	content := w.Content
-	if w.Tag == stream.TagFunctionNotify {
+	if w.Tag == stream.TagFunctionCall {
 		content = w.Status.Indicator(styles) + content
 	}
 
@@ -283,6 +284,44 @@ func (wb *WindowBuffer) AppendOrUpdate(id string, tag string, content string) {
 	wb.markDirty(len(wb.Windows) - 1)
 }
 
+// AppendToolCall adds a tool call window with tool name.
+func (wb *WindowBuffer) AppendToolCall(id string, toolName string, content string) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+
+	if idx, ok := wb.idIndex[id]; ok {
+		w := wb.Windows[idx]
+		w.AppendContent(content, max(0, wb.width-4))
+		wb.markDirty(idx)
+		return
+	}
+
+	w := &Window{
+		ID:       id,
+		Tag:      stream.TagFunctionCall,
+		ToolName: toolName,
+		Content:  content,
+		Folded:   true,
+	}
+	wb.Windows = append(wb.Windows, w)
+	wb.idIndex[id] = len(wb.Windows) - 1
+	wb.markDirty(len(wb.Windows) - 1)
+}
+
+// GetHandler returns the tool display handler for a window by ID.
+func (wb *WindowBuffer) GetHandler(id string) ToolDisplayHandler {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+
+	if idx, ok := wb.idIndex[id]; ok {
+		w := wb.Windows[idx]
+		if w.ToolName != "" {
+			return GetHandler(w.ToolName)
+		}
+	}
+	return nil
+}
+
 // markDirty marks that line heights need rebuilding.
 // Uses sentinel values to track single vs multiple dirty windows:
 //   - dirtyClean (-1): no dirty windows
@@ -312,10 +351,11 @@ func (wb *WindowBuffer) AppendDiff(id string, path string, lines []DiffLinePair)
 	defer wb.mu.Unlock()
 
 	w := &Window{
-		ID:     id,
-		Tag:    stream.TagFunctionNotify,
-		Diff:   &DiffContainer{Path: path, Lines: lines},
-		Folded: true,
+		ID:       id,
+		Tag:      stream.TagFunctionCall,
+		ToolName: "edit_file",
+		Diff:     &DiffContainer{Path: path, Lines: lines},
+		Folded:   true,
 	}
 	wb.Windows = append(wb.Windows, w)
 	wb.idIndex[id] = len(wb.Windows) - 1
@@ -329,7 +369,8 @@ func (wb *WindowBuffer) AppendWriteFile(id string, path string, content string) 
 
 	w := &Window{
 		ID:        id,
-		Tag:       stream.TagFunctionNotify,
+		Tag:       stream.TagFunctionCall,
+		ToolName:  "write_file",
 		WriteFile: &WriteFileContainer{Path: path, Content: content},
 		Folded:    true,
 	}

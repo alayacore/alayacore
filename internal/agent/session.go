@@ -108,6 +108,13 @@ type SessionMeta struct {
 type SessionData struct {
 	Messages  []llm.Message
 	UpdatedAt time.Time
+	TLVChunks []TLVChunk // Parsed TLV for direct display (avoids reconstruction)
+}
+
+// TLVChunk represents a single TLV message for display.
+type TLVChunk struct {
+	Tag   string
+	Value string
 }
 
 // ============================================================================
@@ -209,8 +216,11 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 	go s.readFromInput()
 	go s.taskRunner()
 
-	if len(s.Messages) > 0 {
-		s.displayMessages()
+	// Send TLV chunks directly to output (avoids reconstruction)
+	for _, chunk := range data.TLVChunks {
+		_ = stream.WriteTLV(s.Output, chunk.Tag, chunk.Value)
+	}
+	if len(data.TLVChunks) > 0 {
 		s.Output.Flush()
 	}
 	return s
@@ -604,8 +614,11 @@ func (s *Session) processPrompt(ctx context.Context, _ string, history []llm.Mes
 		},
 		OnToolResult: func(toolCallID string, output llm.ToolResultOutput) error {
 			status := "success"
-			if _, ok := output.(llm.ToolResultOutputError); ok {
+			if textOutput, ok := output.(llm.ToolResultOutputText); ok {
+				s.writeToolOutput(toolCallID, textOutput.Text)
+			} else if errOutput, ok := output.(llm.ToolResultOutputError); ok {
 				status = "error"
+				s.writeToolOutput(toolCallID, errOutput.Error)
 			}
 			s.writeToolResult(toolCallID, status)
 			return nil
@@ -669,11 +682,27 @@ func (s *Session) writeGapped(tag string, msg string) {
 }
 
 func (s *Session) writeToolCall(toolName, input, id string) {
-	if value := formatToolCall(toolName, input); value != "" {
-		_ = stream.WriteTLV(s.Output, stream.TagFunctionNotify, "[:"+id+":]"+value)
-		s.Output.Flush()
+	// Send tool call as JSON via FC tag
+	tc := toolCallData{
+		ID:    id,
+		Name:  toolName,
+		Input: input,
 	}
+	jsonData, _ := json.Marshal(tc)
+	_ = stream.WriteTLV(s.Output, stream.TagFunctionCall, string(jsonData))
+	s.Output.Flush()
 	s.writeToolResult(id, "pending")
+}
+
+func (s *Session) writeToolOutput(toolCallID string, output string) {
+	// Send tool result as JSON via FR tag
+	tr := toolResultData{
+		ID:     toolCallID,
+		Output: output,
+	}
+	jsonData, _ := json.Marshal(tr)
+	_ = stream.WriteTLV(s.Output, stream.TagFunctionResult, string(jsonData))
+	s.Output.Flush()
 }
 
 func (s *Session) writeToolResult(toolCallID string, status string) {

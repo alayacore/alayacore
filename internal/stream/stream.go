@@ -18,9 +18,8 @@ const (
 	TagTextReasoning = "TR" // Reasoning/thinking content
 
 	// Function/tool tags
-	TagFunctionNotify = "FN" // Function call output for display (adaptors)
-	TagFunctionCall   = "FC" // Function call for session saving/loading
-	TagFunctionResult = "FR" // Function result for session saving/loading
+	TagFunctionCall   = "FC" // Function call (JSON: id, name, input) - for both display and persistence
+	TagFunctionResult = "FR" // Function result (JSON: id, output) - for both display and persistence
 	TagFunctionState  = "FS" // Function state indicator (pending/success/error)
 
 	// System tags

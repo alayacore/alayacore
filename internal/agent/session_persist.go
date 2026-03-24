@@ -49,69 +49,6 @@ func (s *Session) saveSessionToFile(path string) error {
 }
 
 // ============================================================================
-// Display Messages
-// ============================================================================
-
-func (s *Session) displayMessages() {
-	if s.Output == nil {
-		return
-	}
-	for _, msg := range s.Messages {
-		switch msg.Role {
-		case llm.RoleUser:
-			s.displayUserMessage(msg)
-		case llm.RoleAssistant:
-			s.displayAssistantMessage(msg)
-		case llm.RoleTool:
-			s.displayToolMessage(msg)
-		}
-	}
-}
-
-func (s *Session) displayUserMessage(msg llm.Message) {
-	var text string
-	for _, part := range msg.Content {
-		if tp, ok := part.(llm.TextPart); ok {
-			text += tp.Text
-		}
-	}
-	if text != "" {
-		s.signalPromptStart(text)
-	}
-}
-
-func (s *Session) displayAssistantMessage(msg llm.Message) {
-	for _, part := range msg.Content {
-		switch p := part.(type) {
-		case llm.TextPart:
-			_ = stream.WriteTLV(s.Output, stream.TagTextAssistant, p.Text)
-			s.Output.Flush()
-		case llm.ReasoningPart:
-			_ = stream.WriteTLV(s.Output, stream.TagTextReasoning, p.Text)
-			s.Output.Flush()
-		case llm.ToolCallPart:
-			if info := formatToolCall(p.ToolName, string(p.Input)); info != "" {
-				idPrefixedInfo := "[:" + p.ToolCallID + ":]" + info
-				_ = stream.WriteTLV(s.Output, stream.TagFunctionNotify, idPrefixedInfo)
-				s.Output.Flush()
-			}
-		}
-	}
-}
-
-func (s *Session) displayToolMessage(msg llm.Message) {
-	for _, part := range msg.Content {
-		if tc, ok := part.(llm.ToolCallPart); ok {
-			if info := formatToolCall(tc.ToolName, string(tc.Input)); info != "" {
-				idPrefixedInfo := "[:" + tc.ToolCallID + ":]" + info
-				_ = stream.WriteTLV(s.Output, stream.TagFunctionNotify, idPrefixedInfo)
-				s.Output.Flush()
-			}
-		}
-	}
-}
-
-// ============================================================================
 // Markdown Format (TLV encoding)
 // ============================================================================
 
@@ -228,19 +165,21 @@ func parseSessionMarkdown(data []byte) (*SessionData, error) {
 	}
 
 	if len(body) > 0 {
-		msgs, err := parseMessagesTLV(body)
+		msgs, chunks, err := parseMessagesTLV(body)
 		if err != nil {
 			return nil, err
 		}
 		sd.Messages = msgs
+		sd.TLVChunks = chunks
 	}
 
 	return sd, nil
 }
 
 //nolint:gocyclo // parsing requires multiple branches for tag types
-func parseMessagesTLV(body string) ([]llm.Message, error) {
+func parseMessagesTLV(body string) ([]llm.Message, []TLVChunk, error) {
 	var messages []llm.Message
+	var chunks []TLVChunk
 	var currentMsg *llm.Message
 
 	reader := strings.NewReader(body)
@@ -252,10 +191,10 @@ func parseMessagesTLV(body string) ([]llm.Message, error) {
 				if currentMsg != nil {
 					messages = append(messages, *currentMsg)
 				}
-				return messages, nil
+				return messages, chunks, nil
 			}
 			if err != nil {
-				return nil, fmt.Errorf("failed to read: %w", err)
+				return nil, nil, fmt.Errorf("failed to read: %w", err)
 			}
 			if b != '\n' && b != '\r' && b != ' ' && b != '\t' {
 				reader.UnreadByte()
@@ -268,23 +207,26 @@ func parseMessagesTLV(body string) ([]llm.Message, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, fmt.Errorf("failed to read tag: %w", err)
+			return nil, nil, fmt.Errorf("failed to read tag: %w", err)
 		}
 		tag := string(tagBytes)
 
 		var length int32
 		if err := binary.Read(reader, binary.BigEndian, &length); err != nil {
-			return nil, fmt.Errorf("failed to read length: %w", err)
+			return nil, nil, fmt.Errorf("failed to read length: %w", err)
 		}
 
 		if length < 0 || length > 10*1024*1024 {
-			return nil, fmt.Errorf("invalid length: %d", length)
+			return nil, nil, fmt.Errorf("invalid length: %d", length)
 		}
 
 		content := make([]byte, length)
 		if _, err := io.ReadFull(reader, content); err != nil {
-			return nil, fmt.Errorf("failed to read content: %w", err)
+			return nil, nil, fmt.Errorf("failed to read content: %w", err)
 		}
+
+		// Store TLV chunk for display
+		chunks = append(chunks, TLVChunk{Tag: tag, Value: string(content)})
 
 		var msgPart llm.ContentPart
 		var msgRole llm.MessageRole
@@ -309,7 +251,7 @@ func parseMessagesTLV(body string) ([]llm.Message, error) {
 			msgRole = llm.RoleAssistant
 			var tc toolCallData
 			if err := json.Unmarshal(content, &tc); err != nil {
-				return nil, fmt.Errorf("failed to parse tool call: %w", err)
+				return nil, nil, fmt.Errorf("failed to parse tool call: %w", err)
 			}
 			msgPart = llm.ToolCallPart{
 				Type:       "tool_use",
@@ -322,7 +264,7 @@ func parseMessagesTLV(body string) ([]llm.Message, error) {
 			msgRole = llm.RoleTool
 			var tr toolResultData
 			if err := json.Unmarshal(content, &tr); err != nil {
-				return nil, fmt.Errorf("failed to parse tool result: %w", err)
+				return nil, nil, fmt.Errorf("failed to parse tool result: %w", err)
 			}
 			msgPart = llm.ToolResultPart{
 				Type:       "tool_result",
@@ -331,7 +273,7 @@ func parseMessagesTLV(body string) ([]llm.Message, error) {
 			}
 
 		default:
-			return nil, fmt.Errorf("unknown tag: %s", tag)
+			return nil, nil, fmt.Errorf("unknown tag: %s", tag)
 		}
 
 		roleMismatch := currentMsg != nil && currentMsg.Role != msgRole
@@ -352,7 +294,7 @@ func parseMessagesTLV(body string) ([]llm.Message, error) {
 		messages = append(messages, *currentMsg)
 	}
 
-	return messages, nil
+	return messages, chunks, nil
 }
 
 func formatToolResultOutput(output llm.ToolResultOutput) string {

@@ -131,7 +131,7 @@ func TestWindowBufferDiff(t *testing.T) {
 	t.Run("append diff content", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 		// Diff windows are created differently, this tests the structure
-		wb.AppendOrUpdate("diff-1", stream.TagFunctionNotify, "diff content")
+		wb.AppendToolCall("diff-1", "edit_file", "diff content")
 
 		if len(wb.Windows) != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", len(wb.Windows))
@@ -298,7 +298,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		// Create windows for different tag types
 		wb.AppendOrUpdate("user-1", stream.TagTextUser, "User message")
 		wb.AppendOrUpdate("assistant-1", stream.TagTextAssistant, "Assistant message")
-		wb.AppendOrUpdate("tool-1", stream.TagFunctionNotify, "Tool output")
+		wb.AppendToolCall("tool-1", "test_tool", "Tool output")
 		wb.AppendOrUpdate("reasoning-1", stream.TagTextReasoning, "Reasoning content")
 
 		// User and Assistant should NOT be folded (show full content)
@@ -309,10 +309,11 @@ func TestWindowBufferDiff(t *testing.T) {
 			t.Error("Assistant window should NOT be folded by default")
 		}
 
-		// Other tags should be folded (collapsed)
+		// Tool window should be folded
 		if !wb.Windows[2].Folded {
 			t.Error("Tool window should be folded by default")
 		}
+		// Reasoning should be folded
 		if !wb.Windows[3].Folded {
 			t.Error("Reasoning window should be folded by default")
 		}

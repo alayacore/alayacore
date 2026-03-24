@@ -143,12 +143,12 @@ func (w *outputWriter) writeColored(tag string, value string) {
 	w.triggerUpdateForTag(tag)
 
 	output := func(style lipgloss.Style, text string) string {
-		return strings.TrimRight(w.renderMultiline(style, text, true), " ")
+		return w.renderMultiline(style, text, false)
 	}
 
 	switch tag {
 	// Text content tags (delta messages with stream ID prefix)
-	case stream.TagTextAssistant, stream.TagTextReasoning, stream.TagFunctionNotify:
+	case stream.TagTextAssistant, stream.TagTextReasoning:
 		id, content, ok := ParseStreamID(value)
 		if !ok {
 			// Should not happen, but fallback
@@ -161,20 +161,44 @@ func (w *outputWriter) writeColored(tag string, value string) {
 			styled = output(w.styles.Text, content)
 		case stream.TagTextReasoning:
 			styled = output(w.styles.Reasoning, content)
-		case stream.TagFunctionNotify:
-			// Check if this is a write_file with path and content
-			if wfPath, wfContent, ok := ParseWriteFile(content); ok {
-				w.windowBuffer.AppendWriteFile(id, wfPath, wfContent)
-				return
-			}
-			// Check if this is an edit_file with raw diff data
-			if diffPath, diffLines := ParseRawDiff(content); diffLines != nil {
-				w.windowBuffer.AppendDiff(id, diffPath, diffLines)
-				return
-			}
-			styled = strings.TrimRight(ColorizeTool(content, w.styles), " ")
 		}
 		w.windowBuffer.AppendOrUpdate(id, tag, styled)
+
+	// Function call (JSON: id, name, input)
+	case stream.TagFunctionCall:
+		var tc ToolCallData
+		if err := json.Unmarshal([]byte(value), &tc); err != nil {
+			return
+		}
+		handler := GetHandler(tc.Name)
+		formatted := handler.FormatCall(json.RawMessage(tc.Input), w.styles)
+
+		// Check if this is a write_file with path and content
+		if wfPath, wfContent, ok := parseWriteFileFromFormatted(formatted); ok {
+			w.windowBuffer.AppendWriteFile(tc.ID, wfPath, wfContent)
+			return
+		}
+		// Check if this is an edit_file with raw diff data
+		if diffPath, diffLines := parseDiffFromFormatted(formatted); diffLines != nil {
+			w.windowBuffer.AppendDiff(tc.ID, diffPath, diffLines)
+			return
+		}
+		styled := ColorizeTool(formatted, w.styles)
+		w.windowBuffer.AppendToolCall(tc.ID, tc.Name, styled)
+
+	// Function result (JSON: id, output)
+	case stream.TagFunctionResult:
+		var tr ToolResultData
+		if err := json.Unmarshal([]byte(value), &tr); err != nil {
+			return
+		}
+		handler := w.windowBuffer.GetHandler(tr.ID)
+		if handler != nil && !handler.ShouldShowOutput() {
+			// Skip output for tools that don't show it
+			return
+		}
+		styled := output(w.styles.Text, tr.Output)
+		w.windowBuffer.AppendOrUpdate(tr.ID, tag, styled)
 
 	// Function output status indicator
 	case stream.TagFunctionState:
@@ -218,7 +242,7 @@ func (w *outputWriter) triggerUpdateForTag(tag string) {
 	switch tag {
 	// Text content tags
 	case stream.TagTextAssistant, stream.TagTextReasoning, stream.TagTextUser,
-		stream.TagFunctionNotify,
+		stream.TagFunctionCall,
 		// System tags
 		stream.TagSystemError, stream.TagSystemNotify, stream.TagSystemData:
 		w.updateMu.Lock()

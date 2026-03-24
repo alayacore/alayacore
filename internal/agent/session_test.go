@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/stream"
@@ -99,35 +100,6 @@ func TestLoadOrNewSession(t *testing.T) {
 	// Agent is lazily initialized, so it should be nil at startup
 	if session.Agent != nil {
 		t.Error("Session agent should be nil at startup (lazy initialization)")
-	}
-}
-
-func Test_displayMessages(t *testing.T) {
-	// Create a mock output to capture displayed messages
-	mockOutput := &mockOutput{}
-
-	// Create a session with some messages
-	session := &Session{
-		Output: mockOutput,
-		Messages: []llm.Message{
-			{
-				Role:    llm.RoleUser,
-				Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hello world"}},
-			},
-			{
-				Role:    llm.RoleAssistant,
-				Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi there!"}},
-			},
-		},
-		taskQueue: make([]QueueItem, 0),
-	}
-
-	// Display messages should not panic
-	session.displayMessages()
-
-	// Verify that output was written
-	if mockOutput.writeCount == 0 {
-		t.Error("displayMessages did not write any output")
 	}
 }
 
@@ -470,12 +442,8 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 }
 
 func TestDisplayMessagesWithToolCalls(t *testing.T) {
-	// Create a mock output to capture displayed messages
-	mockOutput := &mockOutput{}
-
-	// Create a session with tool calls (as they would be loaded from file)
-	session := &Session{
-		Output: mockOutput,
+	// Create session data with messages
+	sessionData := &SessionData{
 		Messages: []llm.Message{
 			{
 				Role:    llm.RoleUser,
@@ -511,44 +479,62 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 				Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Found 2 files!"}},
 			},
 		},
-		taskQueue: make([]QueueItem, 0),
+		UpdatedAt: time.Now(),
 	}
 
-	// Display messages
-	session.displayMessages()
+	// Generate RawTLV using the actual formatting function
+	raw, err := formatSessionMarkdown(sessionData)
+	if err != nil {
+		t.Fatalf("Failed to format session: %v", err)
+	}
+
+	// Parse back to extract TLVChunks
+	loadedData, err := LoadSessionFromBytes(raw)
+	if err != nil {
+		t.Fatalf("Failed to load session: %v", err)
+	}
+
+	// Verify TLVChunks were populated
+	if len(loadedData.TLVChunks) == 0 {
+		t.Error("TLVChunks should be populated after loading")
+	}
+
+	// Create mock output and send TLV chunks
+	mockOutput := &mockOutput{}
+	for _, chunk := range loadedData.TLVChunks {
+		_ = stream.WriteTLV(mockOutput, chunk.Tag, chunk.Value)
+	}
 
 	// Verify that output was written
 	if mockOutput.writeCount == 0 {
-		t.Error("displayMessages did not write any output")
+		t.Error("TLVChunks did not write any output")
 	}
 
-	// Parse the output data to check what was displayed
+	// Parse the output data to check what TLV was sent
 	outputStr := string(mockOutput.data)
 
-	// User message should be displayed
+	// User message should be in TLV
 	if !strings.Contains(outputStr, "List files") {
-		t.Error("User message should be displayed")
+		t.Error("User message should be in TLV")
 	}
 
-	// Assistant messages should be displayed
+	// Assistant messages should be in TLV
 	if !strings.Contains(outputStr, "I'll list files for you") {
-		t.Error("First assistant message should be displayed")
+		t.Error("First assistant message should be in TLV")
 	}
 	if !strings.Contains(outputStr, "Found 2 files!") {
-		t.Error("Second assistant message should be displayed")
+		t.Error("Second assistant message should be in TLV")
 	}
 
-	// Tool call should be displayed
-	if !strings.Contains(outputStr, "posix_shell:") {
-		t.Error("Tool call should be displayed")
+	// Tool call should be in TLV as FC tag
+	if !strings.Contains(outputStr, "posix_shell") {
+		t.Error("Tool call should be in TLV")
 	}
+}
 
-	// Tool result should NOT be displayed (it's in message history but not shown to user)
-	// This is the key behavior - tool results are context-only
-	// We can verify this by checking that the actual file names are NOT in the displayed output
-	if strings.Contains(outputStr, "file1.txt") || strings.Contains(outputStr, "file2.txt") {
-		t.Error("Tool result should NOT be displayed to user, it should only exist in message history")
-	}
+// LoadSessionFromBytes loads a session from raw bytes (for testing)
+func LoadSessionFromBytes(data []byte) (*SessionData, error) {
+	return parseSessionMarkdown(data)
 }
 
 func TestCleanIncompleteToolCalls(t *testing.T) {

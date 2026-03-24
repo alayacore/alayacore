@@ -3,8 +3,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/stream"
 )
 
 func TestFoldIndicator(t *testing.T) {
@@ -13,7 +11,7 @@ func TestFoldIndicator(t *testing.T) {
 	// Create a tool window with VERY long content that will definitely wrap to more than 5 lines
 	// At 76 chars inner width, we need more than 380 characters to get 6+ lines
 	longContent := strings.Repeat("This is a test sentence that will wrap. ", 12)
-	wb.AppendOrUpdate("tool123", stream.TagFunctionNotify, longContent)
+	wb.AppendToolCall("tool123", "test_tool", longContent)
 
 	// Set to folded mode
 	wb.Windows[0].Folded = true

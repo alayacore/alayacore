@@ -13,9 +13,8 @@
 //	  - TagTextUser (TU): User text input
 //	  - TagTextAssistant (TA): Assistant text output
 //	  - TagTextReasoning (TR): Reasoning/thinking content
-//	  - TagFunctionNotify (FN): Function call for display
-//	  - TagFunctionCall (FC): Function call for session saving
-//	  - TagFunctionResult (FR): Function result for session saving
+//	  - TagFunctionCall (FC): Function call (JSON: id, name, input)
+//	  - TagFunctionResult (FR): Function result (JSON: id, output)
 //	  - TagFunctionState (FS): Function state indicator (pending/success/error)
 //	  - TagSystemError (SE): System error messages
 //	  - TagSystemNotify (SN): System notifications
