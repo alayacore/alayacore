@@ -3,15 +3,13 @@ package tools
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"strings"
+	"os/exec"
+	"syscall"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
-	"mvdan.cc/sh/v3/expand"
-	"mvdan.cc/sh/v3/interp"
-	"mvdan.cc/sh/v3/syntax"
 )
 
 // PosixShellInput represents the input for the posix_shell tool
@@ -38,47 +36,91 @@ Rules:
 }
 
 func executePosixShell(ctx context.Context, args PosixShellInput) (llm.ToolResultOutput, error) {
+	cwd, _ := os.Getwd()
+
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", args.Command)
+	cmd.Dir = cwd
+	cmd.Env = os.Environ()
+
 	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-	parser := syntax.NewParser()
-	prog, err := parser.Parse(strings.NewReader(args.Command), "")
-	if err != nil {
-		return llm.NewTextErrorResponse("parse error: " + err.Error()), nil
+	// Set process group ID so we can signal the entire process group (shell + children)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
 	}
 
-	cwd, err := os.Getwd()
+	err := cmd.Start()
 	if err != nil {
-		cwd = "."
-	}
-	runner, err := interp.New(
-		interp.Dir(cwd),
-		interp.Env(expand.ListEnviron(os.Environ()...)),
-		interp.StdIO(os.Stdin, &stdout, &stderr),
-		interp.ExecHandlers(),
-	)
-	if err != nil {
-		return llm.NewTextErrorResponse("failed to create runner: " + err.Error()), nil
+		return llm.NewTextErrorResponse("failed to start command: " + err.Error()), nil
 	}
 
-	err = runner.Run(ctx, prog)
-	output := stdout.String()
-	if stderr.Len() > 0 {
+	// Wait for command to complete, handling cancellation
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		// Context cancelled - send SIGINT first
+		process := cmd.Process
+		if process != nil {
+			// Send SIGINT (Ctrl+C) to the process group so child processes also receive it
+			// Use negative PID to signal the entire process group
+			pgid, pgerr := syscall.Getpgid(process.Pid)
+			if pgerr == nil {
+				// Signal the process group
+				syscall.Kill(-pgid, syscall.SIGINT)
+			} else {
+				// Fallback: signal just the process
+				process.Signal(syscall.SIGINT)
+			}
+
+			// Give the process 2 seconds to clean up
+			select {
+			case <-done:
+				// Process exited cleanly after SIGINT
+			case <-time.After(2 * time.Second):
+				// Force kill if still running
+				if pgerr == nil {
+					syscall.Kill(-pgid, syscall.SIGKILL)
+				} else {
+					process.Kill()
+				}
+				<-done
+			}
+		}
+		output := stdout.String()
+		if stderr.Len() > 0 {
+			if output != "" {
+				output += "\n"
+			}
+			output += stderr.String()
+		}
 		if output != "" {
-			output += "\n"
+			return llm.NewTextErrorResponse("cancelled: " + output), nil
 		}
-		output += stderr.String()
-	}
+		return llm.NewTextErrorResponse("cancelled"), nil
 
-	if err != nil {
-		var exitStatus interp.ExitStatus
-		if errors.As(err, &exitStatus) {
-			return llm.NewTextErrorResponse(fmt.Sprintf("[%d] %s", exitStatus, output)), nil
+	case execErr := <-done:
+		// Command completed
+		output := stdout.String()
+		if stderr.Len() > 0 {
+			if output != "" {
+				output += "\n"
+			}
+			output += stderr.String()
 		}
-		if output != "" {
-			return llm.NewTextErrorResponse(fmt.Sprintf("%s\n%s", err.Error(), output)), nil
-		}
-		return llm.NewTextErrorResponse(err.Error()), nil
-	}
 
-	return llm.NewTextResponse(output), nil
+		if execErr != nil {
+			if exitErr, ok := execErr.(*exec.ExitError); ok {
+				return llm.NewTextErrorResponse(fmt.Sprintf("[%d] %s", exitErr.ExitCode(), output)), nil
+			}
+			return llm.NewTextErrorResponse(execErr.Error()), nil
+		}
+
+		return llm.NewTextResponse(output), nil
+	}
 }
