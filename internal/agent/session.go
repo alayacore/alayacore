@@ -99,15 +99,16 @@ type SystemInfo struct {
 	ModelConfigPath   string          `json:"model_config_path,omitempty"`
 }
 
-// SessionMeta is the YAML frontmatter metadata.
+// SessionMeta is the frontmatter metadata.
 type SessionMeta struct {
-	UpdatedAt time.Time `yaml:"updated_at"`
+	CreatedAt time.Time `session:"created_at"`
+	UpdatedAt time.Time `session:"updated_at"`
 }
 
 // SessionData is the persisted form of a Session.
 type SessionData struct {
+	SessionMeta
 	Messages  []llm.Message
-	UpdatedAt time.Time
 	TLVChunks []TLVChunk // Parsed TLV for direct display (avoids reconstruction)
 }
 
@@ -127,6 +128,7 @@ type Session struct {
 	Agent             *llm.Agent
 	Provider          llm.Provider
 	SessionFile       string
+	CreatedAt         time.Time
 	TotalSpent        llm.Usage
 	ContextTokens     int64
 	ContextLimit      int64
@@ -171,6 +173,7 @@ func LoadOrNewSession(baseTools []llm.Tool, systemPrompt string, extraSystemProm
 func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, proxyURL string) *Session {
 	s := &Session{
 		SessionFile:       sessionFile,
+		CreatedAt:         time.Now(),
 		Input:             input,
 		Output:            output,
 		ModelManager:      NewModelManager(modelConfigPath),
@@ -197,6 +200,7 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 	s := &Session{
 		Messages:          data.Messages,
 		SessionFile:       sessionFile,
+		CreatedAt:         data.CreatedAt,
 		Input:             input,
 		Output:            output,
 		ModelManager:      NewModelManager(modelConfigPath),

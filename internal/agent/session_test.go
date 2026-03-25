@@ -479,7 +479,9 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 				Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Found 2 files!"}},
 			},
 		},
-		UpdatedAt: time.Now(),
+		SessionMeta: SessionMeta{
+			UpdatedAt: time.Now(),
+		},
 	}
 
 	// Generate RawTLV using the actual formatting function

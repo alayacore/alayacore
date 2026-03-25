@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/stream"
-	"gopkg.in/yaml.v3"
 )
 
 // ============================================================================
@@ -34,8 +34,11 @@ func (s *Session) saveSessionToFile(path string) error {
 	defer s.mu.Unlock()
 
 	data := SessionData{
-		Messages:  s.Messages,
-		UpdatedAt: time.Now(),
+		SessionMeta: SessionMeta{
+			CreatedAt: s.CreatedAt,
+			UpdatedAt: time.Now(),
+		},
+		Messages: s.Messages,
 	}
 
 	raw, err := formatSessionMarkdown(&data)
@@ -52,21 +55,37 @@ func (s *Session) saveSessionToFile(path string) error {
 // Markdown Format (TLV encoding)
 // ============================================================================
 
+// formatFrontmatter writes the frontmatter using struct tags for field names.
+func formatFrontmatter(meta *SessionMeta) string {
+	var buf strings.Builder
+	buf.WriteString("---\n")
+
+	t := reflect.TypeOf(*meta)
+	v := reflect.ValueOf(*meta)
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		tag := field.Tag.Get("session")
+		if tag == "" {
+			continue
+		}
+		value := v.Field(i)
+		if field.Type.Kind() == reflect.TypeOf(time.Time{}).Kind() {
+			tm := value.Interface().(time.Time)
+			buf.WriteString(tag)
+			buf.WriteString(": ")
+			buf.WriteString(tm.Format(time.RFC3339))
+			buf.WriteString("\n")
+		}
+	}
+
+	buf.WriteString("---\n")
+	return buf.String()
+}
+
 // formatSessionMarkdown converts SessionData to markdown format with TLV encoding.
 func formatSessionMarkdown(data *SessionData) ([]byte, error) {
 	var buf strings.Builder
-
-	meta := SessionMeta{
-		UpdatedAt: data.UpdatedAt,
-	}
-
-	metaBytes, err := yaml.Marshal(meta)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-	buf.WriteString("---\n")
-	buf.Write(metaBytes)
-	buf.WriteString("---\n")
+	buf.WriteString(formatFrontmatter(&data.SessionMeta))
 
 	var binaryBuf strings.Builder
 	for _, msg := range data.Messages {
@@ -140,28 +159,75 @@ type toolResultData struct {
 }
 
 // parseSessionMarkdown parses markdown format with TLV encoding.
-func parseSessionMarkdown(data []byte) (*SessionData, error) {
-	content := string(data)
-
+// parseFrontmatter extracts the frontmatter and body from content with "---" delimiters.
+// Returns the frontmatter content (between the delimiters) and the body (after the closing delimiter).
+func parseFrontmatter(content string) (frontmatter, body string, err error) {
 	if !strings.HasPrefix(content, "---\n") {
-		return nil, fmt.Errorf("session file missing YAML frontmatter")
+		return "", "", fmt.Errorf("session file missing frontmatter")
 	}
 
 	endIdx := strings.Index(content[4:], "\n---\n")
 	if endIdx == -1 {
-		return nil, fmt.Errorf("session file missing frontmatter end marker")
+		return "", "", fmt.Errorf("session file missing frontmatter end marker")
 	}
 
-	frontmatter := content[4 : endIdx+4]
-	body := content[endIdx+9:]
+	frontmatter = content[4 : endIdx+4]
+	body = content[endIdx+9:]
+	return frontmatter, body, nil
+}
 
+// parseSessionMeta parses key-value pairs from frontmatter into SessionMeta using struct tags.
+func parseSessionMeta(frontmatter string) SessionMeta {
 	var meta SessionMeta
-	if err := yaml.Unmarshal([]byte(frontmatter), &meta); err != nil {
-		return nil, fmt.Errorf("failed to parse frontmatter: %w", err)
+
+	// Build map from tag names to field indices
+	tagToField := make(map[string]int)
+	t := reflect.TypeOf(meta)
+	for i := 0; i < t.NumField(); i++ {
+		tag := t.Field(i).Tag.Get("session")
+		if tag != "" {
+			tagToField[tag] = i
+		}
+	}
+
+	// Parse frontmatter lines
+	v := reflect.ValueOf(&meta).Elem()
+	for _, line := range strings.Split(frontmatter, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		key, value, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+
+		fieldIdx, ok := tagToField[key]
+		if !ok {
+			continue
+		}
+
+		field := v.Field(fieldIdx)
+		if field.Type().Kind() == reflect.TypeOf(time.Time{}).Kind() {
+			if t, err := time.Parse(time.RFC3339, value); err == nil {
+				field.Set(reflect.ValueOf(t))
+			}
+		}
+	}
+
+	return meta
+}
+
+func parseSessionMarkdown(data []byte) (*SessionData, error) {
+	frontmatter, body, err := parseFrontmatter(string(data))
+	if err != nil {
+		return nil, err
 	}
 
 	sd := &SessionData{
-		UpdatedAt: meta.UpdatedAt,
+		SessionMeta: parseSessionMeta(frontmatter),
 	}
 
 	if len(body) > 0 {
