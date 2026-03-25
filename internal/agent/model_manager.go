@@ -10,22 +10,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/alayacore/alayacore/internal/config"
 )
 
 // ModelConfig represents a model configuration
 type ModelConfig struct {
-	ID           int    `json:"id"`                // Runtime ID (generated, not persisted)
-	Name         string `json:"name"`              // Display name
-	ProtocolType string `json:"protocol_type"`     // "openai" or "anthropic"
-	BaseURL      string `json:"base_url"`          // API server URL
-	APIKey       string `json:"api_key,omitempty"` // API key (omitted in JSON responses for security)
-	ModelName    string `json:"model_name"`        // Model identifier
-	ContextLimit int    `json:"context_limit"`     // Maximum context length (0 means unlimited)
-	PromptCache  bool   `json:"prompt_cache"`      // Enable prompt caching (adds cache_control for Anthropic)
+	ID           int    `json:"id"`                                   // Runtime ID (generated, not persisted)
+	Name         string `json:"name" config:"name"`                   // Display name
+	ProtocolType string `json:"protocol_type" config:"protocol_type"` // "openai" or "anthropic"
+	BaseURL      string `json:"base_url" config:"base_url"`           // API server URL
+	APIKey       string `json:"api_key,omitempty" config:"api_key"`   // API key (omitted in JSON responses for security)
+	ModelName    string `json:"model_name" config:"model_name"`       // Model identifier
+	ContextLimit int    `json:"context_limit" config:"context_limit"` // Maximum context length (0 means unlimited)
+	PromptCache  bool   `json:"prompt_cache" config:"prompt_cache"`   // Enable prompt caching (adds cache_control for Anthropic)
 }
 
 // ModelInfo is the safe version for JSON responses (no API key)
@@ -172,7 +172,7 @@ func parseModelConfig(content string) []ModelConfig {
 	var models []ModelConfig
 
 	// Split by "\n---\n" to get individual model blocks
-	blocks := strings.Split(content, "\n---\n")
+	blocks := config.ParseKeyValueBlocks(content)
 
 	for _, block := range blocks {
 		block = strings.TrimSpace(block)
@@ -180,66 +180,14 @@ func parseModelConfig(content string) []ModelConfig {
 			continue
 		}
 
-		model := parseModelBlock(block)
+		var model ModelConfig
+		config.ParseKeyValue(block, &model)
 		if model.Name != "" || model.ModelName != "" {
 			models = append(models, model)
 		}
 	}
 
 	return models
-}
-
-// parseModelBlock parses a single model block
-//
-//nolint:gocyclo // field parsing requires handling many config keys
-func parseModelBlock(block string) ModelConfig {
-	model := ModelConfig{}
-	lines := strings.Split(block, "\n")
-
-	// Regex to match: key: "value" or key: 'value' or key: value
-	re := regexp.MustCompile(`^(\w+):\s*["']?(.+?)["']?\s*$`)
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		matches := re.FindStringSubmatch(line)
-		if len(matches) == 3 {
-			key := matches[1]
-			value := matches[2]
-
-			// Remove surrounding quotes if present
-			if (strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)) ||
-				(strings.HasPrefix(value, `'`) && strings.HasSuffix(value, `'`)) {
-				value = value[1 : len(value)-1]
-			}
-
-			switch key {
-			case "name":
-				model.Name = value
-			case "protocol_type":
-				model.ProtocolType = value
-			case "base_url":
-				model.BaseURL = value
-			case "api_key":
-				model.APIKey = value
-			case "model_name":
-				model.ModelName = value
-			case "context_limit":
-				if limit, err := strconv.Atoi(value); err == nil {
-					model.ContextLimit = limit
-				}
-			case "prompt_cache":
-				if strings.ToLower(value) == "true" || value == "1" {
-					model.PromptCache = true
-				}
-			}
-		}
-	}
-
-	return model
 }
 
 // Reload reloads models from the config file

@@ -182,7 +182,11 @@ model_name: "mini"`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseModelBlock(tt.input)
+			models := parseModelConfig(tt.input)
+			var result ModelConfig
+			if len(models) > 0 {
+				result = models[0]
+			}
 
 			if result.Name != tt.expected.Name {
 				t.Errorf("expected Name=%q, got %q", tt.expected.Name, result.Name)

@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/stream"
 )
@@ -60,23 +60,14 @@ func formatFrontmatter(meta *SessionMeta) string {
 	var buf strings.Builder
 	buf.WriteString("---\n")
 
-	t := reflect.TypeOf(*meta)
-	v := reflect.ValueOf(*meta)
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		tag := field.Tag.Get("session")
-		if tag == "" {
-			continue
-		}
-		value := v.Field(i)
-		if field.Type.Kind() == reflect.TypeOf(time.Time{}).Kind() {
-			tm := value.Interface().(time.Time)
-			buf.WriteString(tag)
-			buf.WriteString(": ")
-			buf.WriteString(tm.Format(time.RFC3339))
-			buf.WriteString("\n")
-		}
-	}
+	// Always write both fields for consistent format
+	buf.WriteString("created_at: ")
+	buf.WriteString(meta.CreatedAt.Format(time.RFC3339))
+	buf.WriteString("\n")
+
+	buf.WriteString("updated_at: ")
+	buf.WriteString(meta.UpdatedAt.Format(time.RFC3339))
+	buf.WriteString("\n")
 
 	buf.WriteString("---\n")
 	return buf.String()
@@ -179,44 +170,7 @@ func parseFrontmatter(content string) (frontmatter, body string, err error) {
 // parseSessionMeta parses key-value pairs from frontmatter into SessionMeta using struct tags.
 func parseSessionMeta(frontmatter string) SessionMeta {
 	var meta SessionMeta
-
-	// Build map from tag names to field indices
-	tagToField := make(map[string]int)
-	t := reflect.TypeOf(meta)
-	for i := 0; i < t.NumField(); i++ {
-		tag := t.Field(i).Tag.Get("session")
-		if tag != "" {
-			tagToField[tag] = i
-		}
-	}
-
-	// Parse frontmatter lines
-	v := reflect.ValueOf(&meta).Elem()
-	for _, line := range strings.Split(frontmatter, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		key, value, found := strings.Cut(line, ":")
-		if !found {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-
-		fieldIdx, ok := tagToField[key]
-		if !ok {
-			continue
-		}
-
-		field := v.Field(fieldIdx)
-		if field.Type().Kind() == reflect.TypeOf(time.Time{}).Kind() {
-			if t, err := time.Parse(time.RFC3339, value); err == nil {
-				field.Set(reflect.ValueOf(t))
-			}
-		}
-	}
-
+	config.ParseKeyValue(frontmatter, &meta)
 	return meta
 }
 

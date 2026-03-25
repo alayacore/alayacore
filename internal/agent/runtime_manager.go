@@ -11,11 +11,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/alayacore/alayacore/internal/config"
 )
 
 // RuntimeConfig holds runtime configuration that can change during execution
 type RuntimeConfig struct {
-	ActiveModel string `json:"active_model"` // Model name (from model.conf)
+	ActiveModel string `json:"active_model" config:"active_model"` // Model name (from model.conf)
 }
 
 // RuntimeManager manages runtime configuration
@@ -105,28 +107,9 @@ func (rm *RuntimeManager) saveLocked() error {
 
 // parseRuntimeConfig parses the key-value runtime config format
 func parseRuntimeConfig(content string) RuntimeConfig {
-	config := RuntimeConfig{}
-	lines := strings.Split(content, "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Parse: active_model: "Model Name"
-		if strings.HasPrefix(line, "active_model:") {
-			value := strings.TrimSpace(strings.TrimPrefix(line, "active_model:"))
-			// Remove surrounding quotes if present
-			if (strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)) ||
-				(strings.HasPrefix(value, `'`) && strings.HasSuffix(value, `'`)) {
-				value = value[1 : len(value)-1]
-			}
-			config.ActiveModel = value
-		}
-	}
-
-	return config
+	var cfg RuntimeConfig
+	config.ParseKeyValue(content, &cfg)
+	return cfg
 }
 
 // formatRuntimeConfig formats the runtime config as key-value text

@@ -101,8 +101,8 @@ type SystemInfo struct {
 
 // SessionMeta is the frontmatter metadata.
 type SessionMeta struct {
-	CreatedAt time.Time `session:"created_at"`
-	UpdatedAt time.Time `session:"updated_at"`
+	CreatedAt time.Time `config:"created_at"`
+	UpdatedAt time.Time `config:"updated_at"`
 }
 
 // SessionData is the persisted form of a Session.
