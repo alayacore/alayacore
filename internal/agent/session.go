@@ -262,6 +262,11 @@ func (s *Session) initModelManager() {
 	s.ModelManager.SetActiveToFirst()
 }
 
+// GetRuntimeManager returns the runtime manager for the session
+func (s *Session) GetRuntimeManager() *RuntimeManager {
+	return s.RuntimeManager
+}
+
 func (s *Session) ensureAgentInitialized() string {
 	s.mu.Lock()
 	if s.Agent != nil && s.Provider != nil {

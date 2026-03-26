@@ -116,6 +116,7 @@ var globalKeyBindings = []KeyBinding{
 	{KeyCtrlS, "Save session", "global"},
 	{KeyCtrlO, "Open external editor", "global"},
 	{KeyCtrlL, "Open model selector", "global"},
+	{KeyCtrlP, "Open theme selector", "global"},
 	{KeyCtrlQ, "Open queue manager", "global"},
 	{KeyEnter, "Submit prompt/command", "global"},
 }
@@ -157,6 +158,18 @@ var queueManagerKeyBindings = []KeyBinding{
 	{"d", "Delete selected queue item", "queue-manager"},
 }
 
+// Theme selector key bindings
+var themeSelectorKeyBindings = []KeyBinding{
+	{KeyUp, "Move selection up", "theme-selector"},
+	{KeyDown, "Move selection down", "theme-selector"},
+	{"j", "Move selection down", "theme-selector"},
+	{"k", "Move selection up", "theme-selector"},
+	{KeyEnter, "Select theme", "theme-selector"},
+	{KeyEsc, "Close theme selector", "theme-selector"},
+	{"r", "Reload themes from folder", "theme-selector"},
+	{"q", "Close theme selector", "theme-selector"},
+}
+
 // Confirmation dialog key bindings
 var confirmDialogKeyBindings = []KeyBinding{
 	{"y", "Confirm action", "confirm-dialog"},
@@ -172,6 +185,7 @@ func GetAllKeyBindings() []KeyBinding {
 	all = append(all, displayKeyBindings...)
 	all = append(all, modelSelectorKeyBindings...)
 	all = append(all, queueManagerKeyBindings...)
+	all = append(all, themeSelectorKeyBindings...)
 	all = append(all, confirmDialogKeyBindings...)
 	return all
 }
@@ -182,41 +196,83 @@ func GetAllKeyBindings() []KeyBinding {
 
 // handleKeyMsg routes keyboard input to the appropriate handler.
 func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// 1. Model selector takes precedence when open
+	// 1. Theme selector takes precedence when open
+	if m.themeSelector.IsOpen() {
+		return m.handleThemeSelectorKeys(msg)
+	}
+
+	// 2. Model selector takes precedence when open
 	if m.modelSelector.IsOpen() {
 		return m.handleModelSelectorKeys(msg)
 	}
 
-	// 2. Queue manager takes precedence when open
+	// 3. Queue manager takes precedence when open
 	if m.queueManager.IsOpen() {
 		return m.handleQueueManagerKeys(msg)
 	}
 
-	// 3. Confirmation dialogs block normal input
+	// 4. Confirmation dialogs block normal input
 	if cmd, handled := m.handleConfirmDialog(msg); handled {
 		return m, cmd
 	}
 
-	// 4. Tab toggles focus between display and input
+	// 5. Tab toggles focus between display and input
 	if msg.String() == KeyTab {
 		m.toggleFocus()
 		return m, nil
 	}
 
-	// 5. Display-specific keys when display is focused
+	// 6. Display-specific keys when display is focused
 	if m.focusedWindow == "display" {
 		if cmd, handled := m.handleDisplayKeys(msg); handled {
 			return m, cmd
 		}
 	}
 
-	// 6. Global shortcuts (work from any context)
+	// 7. Global shortcuts (work from any context)
 	if cmd, handled := m.handleGlobalKeys(msg); handled {
 		return m, cmd
 	}
 
-	// 7. Default: pass to input
+	// 8. Default: pass to input
 	return m.handleInputKeys(msg)
+}
+
+// handleThemeSelectorKeys handles input when theme selector is open.
+func (m *Terminal) handleThemeSelectorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Check if it's a reload request
+	if msg.String() == "r" && m.themeManager != nil {
+		m.themeManager.ReloadThemes()
+		m.themeSelector.Open(m.themeManager.GetThemes(), m.session.GetRuntimeManager().GetActiveTheme())
+		return m, nil
+	}
+
+	previewTheme, handled := m.themeSelector.HandleKeyMsg(msg, m.themeManager)
+	if !handled {
+		return m, nil
+	}
+
+	// Apply preview theme if changed
+	if previewTheme != nil {
+		m.applyTheme(previewTheme)
+	}
+
+	// Check if theme was selected
+	if m.themeSelector.ConsumeThemeSelected() {
+		selectedTheme := m.themeSelector.GetSelectedTheme()
+		if selectedTheme != nil {
+			// Save to runtime.conf
+			_ = m.session.GetRuntimeManager().SetActiveTheme(selectedTheme.Name) //nolint:errcheck // best-effort save
+		}
+		m.restoreFocusAfterThemeSelector()
+	}
+
+	// Restore focus when theme selector closes
+	if !m.themeSelector.IsOpen() {
+		m.restoreFocusAfterThemeSelector()
+	}
+
+	return m, nil
 }
 
 // handleModelSelectorKeys handles input when model selector is open.
@@ -462,6 +518,10 @@ func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 	case KeyCtrlL:
 		m.openModelSelector()
+		return nil, true
+
+	case KeyCtrlP:
+		m.openThemeSelector()
 		return nil, true
 
 	case KeyCtrlQ:

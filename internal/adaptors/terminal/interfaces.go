@@ -22,6 +22,7 @@ type OutputWriter interface {
 
 	// Configuration and state
 	SetWindowWidth(width int)
+	SetStyles(styles *Styles)
 	GetStatus() string
 	GetQueueCount() int
 	IsInProgress() bool

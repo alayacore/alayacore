@@ -298,6 +298,21 @@ func (wb *WindowBuffer) Width() int {
 	return wb.width
 }
 
+// SetStyles updates the styles for the window buffer.
+func (wb *WindowBuffer) SetStyles(styles *Styles) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	wb.styles = styles
+	wb.borderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorBase).Padding(0, 1)
+	wb.cursorStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.BorderCursor).Padding(0, 1)
+	// Invalidate all windows to pick up new styles
+	for _, w := range wb.Windows {
+		w.Invalidate()
+	}
+	wb.dirty = true
+	wb.dirtyIndex = dirtyFullRebuild
+}
+
 // AppendOrUpdate adds content to an existing window or creates a new one.
 func (wb *WindowBuffer) AppendOrUpdate(id string, tag string, content string) {
 	wb.mu.Lock()
@@ -782,6 +797,11 @@ func (m *DisplayModel) SetWidth(width int) {
 // SetDisplayFocused sets whether the display is focused
 func (m *DisplayModel) SetDisplayFocused(focused bool) {
 	m.displayFocused = focused
+}
+
+// SetStyles updates the styles for the display
+func (m *DisplayModel) SetStyles(styles *Styles) {
+	m.styles = styles
 }
 
 // YOffset returns the current scroll position

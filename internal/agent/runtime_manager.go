@@ -18,6 +18,7 @@ import (
 // RuntimeConfig holds runtime configuration that can change during execution
 type RuntimeConfig struct {
 	ActiveModel string `json:"active_model" config:"active_model"` // Model name (from model.conf)
+	ActiveTheme string `json:"active_theme" config:"active_theme"` // Theme name (without .conf extension)
 }
 
 // RuntimeManager manages runtime configuration
@@ -116,10 +117,13 @@ func parseRuntimeConfig(content string) RuntimeConfig {
 func formatRuntimeConfig(config RuntimeConfig) string {
 	var sb strings.Builder
 	sb.WriteString("# AlayaCore runtime configuration\n")
-	sb.WriteString("# This file is automatically updated when you switch models\n")
+	sb.WriteString("# This file is automatically updated when you switch models or themes\n")
 	sb.WriteString("\n")
 	sb.WriteString("active_model: \"")
 	sb.WriteString(config.ActiveModel)
+	sb.WriteString("\"\n")
+	sb.WriteString("active_theme: \"")
+	sb.WriteString(config.ActiveTheme)
 	sb.WriteString("\"\n")
 	return sb.String()
 }
@@ -135,6 +139,21 @@ func (rm *RuntimeManager) GetActiveModel() string {
 func (rm *RuntimeManager) SetActiveModel(name string) error {
 	rm.mu.Lock()
 	rm.config.ActiveModel = name
+	rm.mu.Unlock()
+	return rm.Save()
+}
+
+// GetActiveTheme returns the active theme name
+func (rm *RuntimeManager) GetActiveTheme() string {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	return rm.config.ActiveTheme
+}
+
+// SetActiveTheme sets the active theme name and saves to file
+func (rm *RuntimeManager) SetActiveTheme(name string) error {
+	rm.mu.Lock()
+	rm.config.ActiveTheme = name
 	rm.mu.Unlock()
 	return rm.Save()
 }

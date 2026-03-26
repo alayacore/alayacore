@@ -108,6 +108,10 @@ func (qm *QueueManager) SetSize(width, height int) {
 	qm.height = height
 }
 
+func (qm *QueueManager) SetStyles(styles *Styles) {
+	qm.styles = styles
+}
+
 // SetHasFocus sets the application focus state.
 // When the app loses focus, all UI elements should be dimmed.
 func (qm *QueueManager) SetHasFocus(hasFocus bool) {

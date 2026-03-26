@@ -72,6 +72,12 @@ func (m InputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the input field
 func (m InputModel) View() tea.View {
+	m.updateInputStyles()
+	return tea.NewView(m.input.View())
+}
+
+// updateInputStyles updates the text input styles based on current theme
+func (m InputModel) updateInputStyles() {
 	styles := textinput.DefaultStyles(true)
 	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(m.styles.ColorAccent).Bold(true)
 	styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(m.styles.ColorDim).Bold(true)
@@ -79,8 +85,6 @@ func (m InputModel) View() tea.View {
 	styles.Blurred.Text = lipgloss.NewStyle().Foreground(m.styles.ColorDim)
 	styles.Cursor.Color = m.styles.CursorColor
 	m.input.SetStyles(styles)
-
-	return tea.NewView(m.input.View())
 }
 
 // Focus sets focus on the input
@@ -170,6 +174,12 @@ func (m InputModel) RenderWithBorder(confirmDialog bool, confirmText string) str
 func (m *InputModel) SetWidth(width int) {
 	m.width = width
 	m.input.SetWidth(max(0, width-InputPaddingH))
+}
+
+// SetStyles updates the styles for the input
+func (m *InputModel) SetStyles(styles *Styles) {
+	m.styles = styles
+	m.updateInputStyles()
 }
 
 // CursorEnd moves cursor to end

@@ -136,6 +136,11 @@ func (ms *ModelSelector) SetSize(width, height int) {
 	ms.height = min(height-LayoutGap, SelectorMaxHeight)
 }
 
+func (ms *ModelSelector) SetStyles(styles *Styles) {
+	ms.styles = styles
+	ms.updateSearchInputStyles()
+}
+
 // SetHasFocus sets the application focus state.
 // When the app loses focus, all UI elements should be dimmed.
 func (ms *ModelSelector) SetHasFocus(hasFocus bool) {

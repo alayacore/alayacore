@@ -59,6 +59,14 @@ func NewTerminalOutput(styles *Styles) *outputWriter { //nolint:revive // tests 
 	return to
 }
 
+// SetStyles updates the styles for the output writer
+func (to *outputWriter) SetStyles(styles *Styles) {
+	to.mu.Lock()
+	to.styles = styles
+	to.mu.Unlock()
+	to.windowBuffer.SetStyles(styles)
+}
+
 // Close stops the background goroutine and cleans up resources
 func (w *outputWriter) Close() error {
 	close(w.done)

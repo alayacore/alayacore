@@ -62,6 +62,7 @@ const (
 //   - User input and keyboard shortcuts (delegated to keybinds.go)
 //   - Display updates from the agent session
 //   - Model selection and switching
+//   - Theme selection and switching
 //   - Window focus management
 type Terminal struct {
 	// Core components
@@ -75,6 +76,8 @@ type Terminal struct {
 	input         InputModel
 	modelSelector *ModelSelector
 	queueManager  *QueueManager
+	themeSelector *ThemeSelector
+	themeManager  *ThemeManager
 
 	// Status bar state (simplified - no separate struct)
 	statusText string
@@ -101,7 +104,7 @@ func NewTerminal(
 	appCfg *app.Config,
 	initialWidth, initialHeight int,
 ) *Terminal {
-	return NewTerminalWithTheme(session, out, inputStream, appCfg, initialWidth, initialHeight, DefaultTheme())
+	return NewTerminalWithTheme(session, out, inputStream, appCfg, initialWidth, initialHeight, DefaultTheme(), nil)
 }
 
 // NewTerminalWithTheme creates a new Terminal model with a custom theme.
@@ -112,6 +115,7 @@ func NewTerminalWithTheme(
 	appCfg *app.Config,
 	initialWidth, initialHeight int,
 	theme *Theme,
+	themeManager *ThemeManager,
 ) *Terminal {
 	styles := NewStyles(theme)
 
@@ -124,6 +128,8 @@ func NewTerminalWithTheme(
 		input:         NewInputModel(styles),
 		modelSelector: NewModelSelector(styles),
 		queueManager:  NewQueueManager(styles),
+		themeSelector: NewThemeSelector(styles),
+		themeManager:  themeManager,
 		windowWidth:   initialWidth,
 		windowHeight:  initialHeight,
 		styles:        styles,
@@ -136,6 +142,7 @@ func NewTerminalWithTheme(
 	m.input.SetWidth(initialWidth)
 	m.modelSelector.SetSize(initialWidth, initialHeight)
 	m.queueManager.SetSize(initialWidth, initialHeight)
+	m.themeSelector.SetSize(initialWidth, initialHeight)
 	m.updateDisplayHeight()
 
 	return m
@@ -209,6 +216,7 @@ func (m *Terminal) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) 
 	m.input.SetWidth(max(0, msg.Width))
 	m.modelSelector.SetSize(msg.Width, msg.Height)
 	m.queueManager.SetSize(msg.Width, msg.Height)
+	m.themeSelector.SetSize(msg.Width, msg.Height)
 	m.updateDisplayHeight()
 
 	// Validate cursor position after resize (window heights may have changed)
@@ -422,6 +430,15 @@ func (m *Terminal) View() tea.View {
 		return v
 	}
 
+	// Render theme selector overlay if open
+	if m.themeSelector.IsOpen() {
+		fullContent := m.themeSelector.RenderOverlay(baseContent, m.windowWidth, m.windowHeight)
+		v := tea.NewView(fullContent)
+		v.AltScreen = true
+		v.ReportFocus = true
+		return v
+	}
+
 	// Render queue manager overlay if open
 	if m.queueManager.IsOpen() {
 		fullContent := m.queueManager.RenderOverlay(baseContent, m.windowWidth, m.windowHeight)
@@ -525,6 +542,40 @@ func (m *Terminal) restoreFocusAfterQueueManager() {
 	m.display.updateContent()
 }
 
+// openThemeSelector opens the theme selector UI.
+func (m *Terminal) openThemeSelector() {
+	if m.themeManager == nil {
+		return
+	}
+
+	activeTheme := m.session.GetRuntimeManager().GetActiveTheme()
+	m.themeSelector.Open(m.themeManager.GetThemes(), activeTheme)
+	m.input.Blur()
+	m.display.SetDisplayFocused(false)
+	m.display.updateContent()
+}
+
+// restoreFocusAfterThemeSelector restores focus after theme selector closes.
+func (m *Terminal) restoreFocusAfterThemeSelector() {
+	if m.focusedWindow == focusDisplay {
+		m.focusDisplay()
+	} else {
+		m.focusInput()
+	}
+	m.display.updateContent()
+}
+
+// applyTheme applies a new theme to all UI components.
+func (m *Terminal) applyTheme(theme *Theme) {
+	m.styles = NewStyles(theme)
+	m.display.SetStyles(m.styles)
+	m.input.SetStyles(m.styles)
+	m.modelSelector.SetStyles(m.styles)
+	m.queueManager.SetStyles(m.styles)
+	m.themeSelector.SetStyles(m.styles)
+	m.display.updateContent()
+}
+
 // handleBlur handles loss of application focus.
 func (m *Terminal) handleBlur() (tea.Model, tea.Cmd) {
 	m.hasFocus = false
@@ -532,6 +583,7 @@ func (m *Terminal) handleBlur() (tea.Model, tea.Cmd) {
 	m.input.Blur()
 	m.modelSelector.SetHasFocus(false)
 	m.queueManager.SetHasFocus(false)
+	m.themeSelector.SetHasFocus(false)
 	m.display.updateContent()
 	return m, nil
 }
@@ -542,6 +594,7 @@ func (m *Terminal) handleFocus() (tea.Model, tea.Cmd) {
 
 	m.modelSelector.SetHasFocus(true)
 	m.queueManager.SetHasFocus(true)
+	m.themeSelector.SetHasFocus(true)
 
 	if m.modelSelector.IsOpen() {
 		m.display.updateContent()
@@ -549,6 +602,11 @@ func (m *Terminal) handleFocus() (tea.Model, tea.Cmd) {
 	}
 
 	if m.queueManager.IsOpen() {
+		m.display.updateContent()
+		return m, nil
+	}
+
+	if m.themeSelector.IsOpen() {
 		m.display.updateContent()
 		return m, nil
 	}

@@ -17,8 +17,8 @@ import (
 
 // Adaptor starts the TUI; use from main/app.
 type Adaptor struct {
-	Config    *app.Config
-	ThemePath string
+	Config       *app.Config
+	ThemesFolder string
 }
 
 // NewAdaptor creates a new Terminal adaptor.
@@ -28,22 +28,21 @@ func NewAdaptor(cfg *app.Config) *Adaptor {
 	}
 }
 
-// NewAdaptorWithTheme creates a new Terminal adaptor with a custom theme path.
-func NewAdaptorWithTheme(cfg *app.Config, themePath string) *Adaptor {
+// NewAdaptorWithThemes creates a new Terminal adaptor with a custom themes folder.
+func NewAdaptorWithThemes(cfg *app.Config, themesFolder string) *Adaptor {
 	return &Adaptor{
-		Config:    cfg,
-		ThemePath: themePath,
+		Config:       cfg,
+		ThemesFolder: themesFolder,
 	}
 }
 
 // Start runs the Terminal program.
 func (a *Adaptor) Start() {
-	// Load theme from config paths
-	theme := LoadThemeFromPaths(a.ThemePath)
-	styles := NewStyles(theme)
+	// Create theme manager
+	themeManager := NewThemeManager(a.ThemesFolder)
 
 	inputStream := stream.NewChanInput(10)
-	terminalOutput := NewTerminalOutput(styles)
+	terminalOutput := NewTerminalOutput(NewStyles(DefaultTheme()))
 
 	// Get terminal size before loading session (so session loads with correct dimensions)
 	initialWidth, initialHeight := getTerminalSize()
@@ -63,6 +62,14 @@ func (a *Adaptor) Start() {
 		a.Config.Cfg.DebugAPI,
 		a.Config.Cfg.Proxy,
 	)
+
+	// Load active theme from runtime.conf
+	activeThemeName := session.GetRuntimeManager().GetActiveTheme()
+	theme := themeManager.LoadTheme(activeThemeName)
+	styles := NewStyles(theme)
+
+	// Update output with new styles
+	terminalOutput.SetStyles(styles)
 
 	// Check if we have any models available.
 	if !terminalOutput.HasModels() {
@@ -93,8 +100,8 @@ context_limit: 128000`)
 		os.Exit(1)
 	}
 
-	// Create terminal with loaded session, initial window size, and theme
-	t := NewTerminalWithTheme(session, terminalOutput, inputStream, a.Config, initialWidth, initialHeight, theme)
+	// Create terminal with loaded session, initial window size, theme, and theme manager
+	t := NewTerminalWithTheme(session, terminalOutput, inputStream, a.Config, initialWidth, initialHeight, theme, themeManager)
 
 	// Create and run the program
 	p := tea.NewProgram(t, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
