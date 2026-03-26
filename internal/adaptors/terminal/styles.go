@@ -20,39 +20,92 @@ import (
 // Theme holds all color values for the terminal UI
 type Theme struct {
 	// Core palette
-	Base     string `config:"base"`     // Background color - used for invisible borders
-	Surface1 string `config:"surface1"` // Surface color - used for subtle backgrounds
-	Accent   string `config:"accent"`   // Primary accent color (blue) - used for focused borders, prompts
-	Dim      string `config:"dim"`      // Dimmed color - used for unfocused borders, blurred text
-	Muted    string `config:"muted"`    // Muted color - used for placeholder text, system messages
-	Text     string `config:"text"`     // Primary text color (white)
-	Warning  string `config:"warning"`  // Warning/accent color (yellow)
-	Error    string `config:"error"`    // Error color (red)
-	Success  string `config:"success"`  // Success color (green)
-	Peach    string `config:"peach"`    // Peach color - used for window cursor border highlight
-	Cursor   string `config:"cursor"`   // Cursor color - used for text input cursor
+	Background string `config:"background"` // Background color for borders and separators
+	Surface    string `config:"surface"`    // Surface color for subtle backgrounds
+	Primary    string `config:"primary"`    // Primary/accent color for highlights and focused borders
+	Dim        string `config:"dim"`        // Dimmed color for unfocused borders and blurred text
+	Muted      string `config:"muted"`      // Muted color for placeholder and secondary text
+	Text       string `config:"text"`       // Primary text color
+	Warning    string `config:"warning"`    // Warning color (yellow/orange)
+	Error      string `config:"error"`      // Error color (red)
+	Success    string `config:"success"`    // Success color (green)
+	Selection  string `config:"selection"`  // Selection/cursor border highlight color
+	Cursor     string `config:"cursor"`     // Text input cursor color
 
 	// Diff colors
-	DiffAdd    string `config:"diff_add"`    // Diff added line color (green)
-	DiffRemove string `config:"diff_remove"` // Diff removed line color (red)
+	Added   string `config:"added"`   // Added lines in diff (green)
+	Removed string `config:"removed"` // Removed lines in diff (red)
+
+	// Legacy field aliases for backwards compatibility
+	Base     string `config:"base"`      // Alias for Background
+	Surface1 string `config:"surface1"`  // Alias for Surface
+	Accent   string `config:"accent"`    // Alias for Primary
+	Peach    string `config:"peach"`     // Alias for Selection
+	DiffAdd  string `config:"diff_add"`  // Alias for Added
+	DiffRemove string `config:"diff_remove"` // Alias for Removed
 }
 
 // DefaultTheme returns the default theme (Catppuccin Mocha)
 func DefaultTheme() *Theme {
-	return &Theme{
-		Base:       "#1e1e2e",
-		Surface1:   "#585b70",
-		Accent:     "#89d4fa",
+	t := &Theme{
+		Background: "#1e1e2e",
+		Surface:    "#585b70",
+		Primary:    "#89d4fa",
 		Dim:        "#45475a",
 		Muted:      "#6c7086",
 		Text:       "#cdd6f4",
 		Warning:    "#f9e2af",
 		Error:      "#f38ba8",
 		Success:    "#a6e3a1",
-		Peach:      "#fab387",
-		Cursor:     "#cdd6f4", // Light gray/white for visibility on dark backgrounds
-		DiffAdd:    "#a6e3a1", // Green for added lines
-		DiffRemove: "#f38ba8", // Red for removed lines
+		Selection:  "#fab387",
+		Cursor:     "#cdd6f4",
+		Added:      "#a6e3a1",
+		Removed:    "#f38ba8",
+	}
+	normalizeTheme(t)
+	return t
+}
+
+// normalizeTheme ensures both new and legacy field names are populated
+func normalizeTheme(theme *Theme) {
+	// If legacy fields are set but new fields are not, copy them
+	if theme.Background == "" && theme.Base != "" {
+		theme.Background = theme.Base
+	}
+	if theme.Surface == "" && theme.Surface1 != "" {
+		theme.Surface = theme.Surface1
+	}
+	if theme.Primary == "" && theme.Accent != "" {
+		theme.Primary = theme.Accent
+	}
+	if theme.Selection == "" && theme.Peach != "" {
+		theme.Selection = theme.Peach
+	}
+	if theme.Added == "" && theme.DiffAdd != "" {
+		theme.Added = theme.DiffAdd
+	}
+	if theme.Removed == "" && theme.DiffRemove != "" {
+		theme.Removed = theme.DiffRemove
+	}
+
+	// If new fields are set but legacy fields are not, copy them
+	if theme.Base == "" && theme.Background != "" {
+		theme.Base = theme.Background
+	}
+	if theme.Surface1 == "" && theme.Surface != "" {
+		theme.Surface1 = theme.Surface
+	}
+	if theme.Accent == "" && theme.Primary != "" {
+		theme.Accent = theme.Primary
+	}
+	if theme.Peach == "" && theme.Selection != "" {
+		theme.Peach = theme.Selection
+	}
+	if theme.DiffAdd == "" && theme.Added != "" {
+		theme.DiffAdd = theme.Added
+	}
+	if theme.DiffRemove == "" && theme.Removed != "" {
+		theme.DiffRemove = theme.Removed
 	}
 }
 
@@ -64,8 +117,61 @@ func LoadTheme(path string) (*Theme, error) {
 		return nil, fmt.Errorf("failed to open theme file: %w", err)
 	}
 
-	theme := DefaultTheme()
+	// Start with an empty theme, parse config into it
+	theme := &Theme{}
 	config.ParseKeyValue(string(data), theme)
+	
+	// Normalize to populate all aliases
+	normalizeTheme(theme)
+	
+	// Apply defaults for any missing fields
+	defaults := DefaultTheme()
+	if theme.Background == "" {
+		theme.Background = defaults.Background
+		theme.Base = defaults.Base
+	}
+	if theme.Surface == "" {
+		theme.Surface = defaults.Surface
+		theme.Surface1 = defaults.Surface1
+	}
+	if theme.Primary == "" {
+		theme.Primary = defaults.Primary
+		theme.Accent = defaults.Accent
+	}
+	if theme.Dim == "" {
+		theme.Dim = defaults.Dim
+	}
+	if theme.Muted == "" {
+		theme.Muted = defaults.Muted
+	}
+	if theme.Text == "" {
+		theme.Text = defaults.Text
+	}
+	if theme.Warning == "" {
+		theme.Warning = defaults.Warning
+	}
+	if theme.Error == "" {
+		theme.Error = defaults.Error
+	}
+	if theme.Success == "" {
+		theme.Success = defaults.Success
+	}
+	if theme.Selection == "" {
+		theme.Selection = defaults.Selection
+		theme.Peach = defaults.Peach
+	}
+	if theme.Cursor == "" {
+		theme.Cursor = defaults.Cursor
+	}
+	if theme.Added == "" {
+		theme.Added = defaults.Added
+		theme.DiffAdd = defaults.DiffAdd
+	}
+	if theme.Removed == "" {
+		theme.Removed = defaults.Removed
+		theme.DiffRemove = defaults.DiffRemove
+	}
+	
 	return theme, nil
 }
 

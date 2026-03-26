@@ -74,45 +74,45 @@ func (tm *ThemeManager) createDefaultThemes() {
 	darkTheme := `# AlayaCore Dark Theme
 # Based on Catppuccin Mocha color palette
 
-# Background color - used for invisible borders, separator backgrounds
-base: #1e1e2e
+# Background - for borders and separators
+background: #1e1e2e
 
-# Surface color - used for subtle backgrounds
-surface1: #585b70
+# Surface - for subtle backgrounds
+surface: #585b70
 
-# Primary accent color (blue) - used for focused borders, prompts, highlights
-accent: #89d4fa
+# Primary - accent color for highlights and focused borders
+primary: #89d4fa
 
-# Dimmed color - used for unfocused borders, blurred text
+# Dim - for unfocused borders and blurred text
 dim: #45475a
 
-# Muted color - used for placeholder text, system messages, tool content
+# Muted - for placeholder and secondary text
 muted: #6c7086
 
-# Primary text color (white)
+# Text - primary text color
 text: #cdd6f4
 
-# Warning/accent color (yellow) - used for warnings, tool names
+# Warning - for warnings (yellow/orange)
 warning: #f9e2af
 
-# Error color (red) - used for errors, diff removals
+# Error - for errors (red)
 error: #f38ba8
 
-# Success color (green) - used for success indicators, diff additions
+# Success - for success indicators (green)
 success: #a6e3a1
 
-# Peach color - used for window cursor border highlight (when navigating windows with j/k)
-peach: #fab387
+# Selection - for cursor border highlight
+selection: #fab387
 
-# Cursor color - text input cursor in the input box
+# Cursor - text input cursor color
 cursor: #cdd6f4
 
 # Diff colors
-# Added lines in diff output (green)
-diff_add: #a6e3a1
+# Added lines (green)
+added: #a6e3a1
 
-# Removed lines in diff output (red)
-diff_remove: #f38ba8
+# Removed lines (red)
+removed: #f38ba8
 `
 	darkPath := filepath.Join(tm.themesFolder, "theme-dark.conf")
 	if err := os.WriteFile(darkPath, []byte(darkTheme), 0644); err != nil {
@@ -124,47 +124,45 @@ diff_remove: #f38ba8
 # Based on Catppuccin Latte color palette
 # Optimized for white/light terminal backgrounds
 
-# Background color - use a light gray that blends with light terminal background
-base: #e6e6e6
+# Background - light gray for borders
+background: #e6e6e6
 
-# Surface color - slightly darker for subtle backgrounds
-surface1: #ccd0da
+# Surface - slightly darker for subtle backgrounds
+surface: #ccd0da
 
-# Primary accent color - deep blue for visibility on light backgrounds
-accent: #1e66f5
+# Primary - deep blue for visibility on light backgrounds
+primary: #1e66f5
 
-# Dimmed color - medium gray for unfocused borders, blurred text
+# Dim - medium gray for unfocused borders
 dim: #acb0be
 
-# Muted color - for placeholder text, system messages
+# Muted - for placeholder and secondary text
 muted: #6c6f85
 
-# Primary text color - dark for readability on light backgrounds
+# Text - dark for readability
 text: #4c4f69
 
-# Warning/accent color - orange for visibility
+# Warning - orange for visibility
 warning: #df8e1d
 
-# Error color - deep red for errors
+# Error - deep red for errors
 error: #d20f39
 
-# Success color - deep green for success indicators
+# Success - deep green for success indicators
 success: #40a02b
 
-# Peach color - cursor border highlight (when navigating windows with j/k)
-# Dark maroon/burgundy for maximum visibility on light backgrounds
-peach: #881337
+# Selection - dark maroon for cursor border highlight
+selection: #881337
 
-# Cursor color - text input cursor in the input box
-# Dark color for visibility on light backgrounds
+# Cursor - dark color for visibility
 cursor: #1e1e2e
 
 # Diff colors
-# Added lines in diff output (deep green)
-diff_add: #40a02b
+# Added lines (deep green)
+added: #40a02b
 
-# Removed lines in diff output (deep red)
-diff_remove: #d20f39
+# Removed lines (deep red)
+removed: #d20f39
 `
 	lightPath := filepath.Join(tm.themesFolder, "theme-light.conf")
 	if err := os.WriteFile(lightPath, []byte(lightTheme), 0644); err != nil {
