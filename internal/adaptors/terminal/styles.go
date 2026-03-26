@@ -35,19 +35,11 @@ type Theme struct {
 	// Diff colors
 	Added   string `config:"added"`   // Added lines in diff (green)
 	Removed string `config:"removed"` // Removed lines in diff (red)
-
-	// Legacy field aliases for backwards compatibility
-	Base     string `config:"base"`      // Alias for Background
-	Surface1 string `config:"surface1"`  // Alias for Surface
-	Accent   string `config:"accent"`    // Alias for Primary
-	Peach    string `config:"peach"`     // Alias for Selection
-	DiffAdd  string `config:"diff_add"`  // Alias for Added
-	DiffRemove string `config:"diff_remove"` // Alias for Removed
 }
 
 // DefaultTheme returns the default theme (Catppuccin Mocha)
 func DefaultTheme() *Theme {
-	t := &Theme{
+	return &Theme{
 		Background: "#1e1e2e",
 		Surface:    "#585b70",
 		Primary:    "#89d4fa",
@@ -62,51 +54,6 @@ func DefaultTheme() *Theme {
 		Added:      "#a6e3a1",
 		Removed:    "#f38ba8",
 	}
-	normalizeTheme(t)
-	return t
-}
-
-// normalizeTheme ensures both new and legacy field names are populated
-func normalizeTheme(theme *Theme) {
-	// If legacy fields are set but new fields are not, copy them
-	if theme.Background == "" && theme.Base != "" {
-		theme.Background = theme.Base
-	}
-	if theme.Surface == "" && theme.Surface1 != "" {
-		theme.Surface = theme.Surface1
-	}
-	if theme.Primary == "" && theme.Accent != "" {
-		theme.Primary = theme.Accent
-	}
-	if theme.Selection == "" && theme.Peach != "" {
-		theme.Selection = theme.Peach
-	}
-	if theme.Added == "" && theme.DiffAdd != "" {
-		theme.Added = theme.DiffAdd
-	}
-	if theme.Removed == "" && theme.DiffRemove != "" {
-		theme.Removed = theme.DiffRemove
-	}
-
-	// If new fields are set but legacy fields are not, copy them
-	if theme.Base == "" && theme.Background != "" {
-		theme.Base = theme.Background
-	}
-	if theme.Surface1 == "" && theme.Surface != "" {
-		theme.Surface1 = theme.Surface
-	}
-	if theme.Accent == "" && theme.Primary != "" {
-		theme.Accent = theme.Primary
-	}
-	if theme.Peach == "" && theme.Selection != "" {
-		theme.Peach = theme.Selection
-	}
-	if theme.DiffAdd == "" && theme.Added != "" {
-		theme.DiffAdd = theme.Added
-	}
-	if theme.DiffRemove == "" && theme.Removed != "" {
-		theme.DiffRemove = theme.Removed
-	}
 }
 
 // LoadTheme loads a theme from a configuration file
@@ -117,61 +64,9 @@ func LoadTheme(path string) (*Theme, error) {
 		return nil, fmt.Errorf("failed to open theme file: %w", err)
 	}
 
-	// Start with an empty theme, parse config into it
-	theme := &Theme{}
+	// Start with defaults, then override with config values
+	theme := DefaultTheme()
 	config.ParseKeyValue(string(data), theme)
-	
-	// Normalize to populate all aliases
-	normalizeTheme(theme)
-	
-	// Apply defaults for any missing fields
-	defaults := DefaultTheme()
-	if theme.Background == "" {
-		theme.Background = defaults.Background
-		theme.Base = defaults.Base
-	}
-	if theme.Surface == "" {
-		theme.Surface = defaults.Surface
-		theme.Surface1 = defaults.Surface1
-	}
-	if theme.Primary == "" {
-		theme.Primary = defaults.Primary
-		theme.Accent = defaults.Accent
-	}
-	if theme.Dim == "" {
-		theme.Dim = defaults.Dim
-	}
-	if theme.Muted == "" {
-		theme.Muted = defaults.Muted
-	}
-	if theme.Text == "" {
-		theme.Text = defaults.Text
-	}
-	if theme.Warning == "" {
-		theme.Warning = defaults.Warning
-	}
-	if theme.Error == "" {
-		theme.Error = defaults.Error
-	}
-	if theme.Success == "" {
-		theme.Success = defaults.Success
-	}
-	if theme.Selection == "" {
-		theme.Selection = defaults.Selection
-		theme.Peach = defaults.Peach
-	}
-	if theme.Cursor == "" {
-		theme.Cursor = defaults.Cursor
-	}
-	if theme.Added == "" {
-		theme.Added = defaults.Added
-		theme.DiffAdd = defaults.DiffAdd
-	}
-	if theme.Removed == "" {
-		theme.Removed = defaults.Removed
-		theme.DiffRemove = defaults.DiffRemove
-	}
-	
 	return theme, nil
 }
 
@@ -269,16 +164,16 @@ func NewStyles(theme *Theme) *Styles {
 	return &Styles{
 		// Output text styles
 		Text:        baseStyle.Foreground(lipgloss.Color(theme.Text)).Bold(true),
-		UserInput:   baseStyle.Foreground(lipgloss.Color(theme.Accent)).Bold(true),
+		UserInput:   baseStyle.Foreground(lipgloss.Color(theme.Primary)).Bold(true),
 		Tool:        baseStyle.Foreground(lipgloss.Color(theme.Warning)),
 		ToolContent: baseStyle.Foreground(lipgloss.Color(theme.Muted)),
 		Reasoning:   baseStyle.Foreground(lipgloss.Color(theme.Muted)).Italic(true),
 		Error:       baseStyle.Foreground(lipgloss.Color(theme.Error)),
 		System:      baseStyle.Foreground(lipgloss.Color(theme.Muted)),
-		Prompt:      baseStyle.Foreground(lipgloss.Color(theme.Accent)).Bold(true),
-		DiffRemove:  baseStyle.Foreground(lipgloss.Color(theme.DiffRemove)),
-		DiffAdd:     baseStyle.Foreground(lipgloss.Color(theme.DiffAdd)),
-		DiffSep:     baseStyle.Foreground(lipgloss.Color(theme.Base)),
+		Prompt:      baseStyle.Foreground(lipgloss.Color(theme.Primary)).Bold(true),
+		DiffRemove:  baseStyle.Foreground(lipgloss.Color(theme.Removed)),
+		DiffAdd:     baseStyle.Foreground(lipgloss.Color(theme.Added)),
+		DiffSep:     baseStyle.Foreground(lipgloss.Color(theme.Background)),
 
 		// Display styles
 		Input:       baseStyle,
@@ -287,17 +182,17 @@ func NewStyles(theme *Theme) *Styles {
 		InputBorder: baseStyle.Border(lipgloss.RoundedBorder()),
 
 		// Component-specific colors
-		BorderFocused: lipgloss.Color(theme.Accent),
+		BorderFocused: lipgloss.Color(theme.Primary),
 		BorderBlurred: lipgloss.Color(theme.Dim),
-		BorderDimmed:  lipgloss.Color(theme.Base),
-		BorderCursor:  lipgloss.Color(theme.Peach),
+		BorderDimmed:  lipgloss.Color(theme.Background),
+		BorderCursor:  lipgloss.Color(theme.Selection),
 
-		ColorAccent:  lipgloss.Color(theme.Accent),
+		ColorAccent:  lipgloss.Color(theme.Primary),
 		ColorDim:     lipgloss.Color(theme.Dim),
 		ColorMuted:   lipgloss.Color(theme.Muted),
 		ColorError:   lipgloss.Color(theme.Error),
 		ColorSuccess: lipgloss.Color(theme.Success),
-		ColorBase:    lipgloss.Color(theme.Base),
+		ColorBase:    lipgloss.Color(theme.Background),
 		CursorColor:  lipgloss.Color(theme.Cursor),
 	}
 }

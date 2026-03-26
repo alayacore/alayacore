@@ -6,18 +6,25 @@ import (
 	"testing"
 )
 
-func TestThemeFieldAliases(t *testing.T) {
-	// Test that new field names work
-	t.Run("new field names", func(t *testing.T) {
+func TestThemeFieldNames(t *testing.T) {
+	// Test that field names work correctly
+	t.Run("field names", func(t *testing.T) {
 		testDir := t.TempDir()
-		themePath := filepath.Join(testDir, "test-new.conf")
+		themePath := filepath.Join(testDir, "test.conf")
 
-		// Create theme with new field names
-		content := `# Test theme with new field names
+		// Create theme with field names
+		content := `# Test theme
 background: #000000
 surface: #111111
 primary: #222222
+dim: #333333
+muted: #444444
+text: #555555
+warning: #666666
+error: #777777
+success: #888888
 selection: #999999
+cursor: #aaaaaa
 added: #bbbbbb
 removed: #cccccc
 `
@@ -30,7 +37,7 @@ removed: #cccccc
 			t.Fatalf("Failed to load theme: %v", err)
 		}
 
-		// Verify new fields are set
+		// Verify fields are set
 		if theme.Background != "#000000" {
 			t.Errorf("Expected background #000000, got %s", theme.Background)
 		}
@@ -40,35 +47,25 @@ removed: #cccccc
 		if theme.Primary != "#222222" {
 			t.Errorf("Expected primary #222222, got %s", theme.Primary)
 		}
-
-		// Verify legacy aliases are also populated
-		if theme.Base != "#000000" {
-			t.Errorf("Expected legacy base #000000, got %s", theme.Base)
+		if theme.Selection != "#999999" {
+			t.Errorf("Expected selection #999999, got %s", theme.Selection)
 		}
-		if theme.Surface1 != "#111111" {
-			t.Errorf("Expected legacy surface1 #111111, got %s", theme.Surface1)
+		if theme.Added != "#bbbbbb" {
+			t.Errorf("Expected added #bbbbbb, got %s", theme.Added)
 		}
-		if theme.Accent != "#222222" {
-			t.Errorf("Expected legacy accent #222222, got %s", theme.Accent)
-		}
-		if theme.Peach != "#999999" {
-			t.Errorf("Expected legacy peach #999999, got %s", theme.Peach)
+		if theme.Removed != "#cccccc" {
+			t.Errorf("Expected removed #cccccc, got %s", theme.Removed)
 		}
 	})
 
-	// Test that old field names still work
-	t.Run("legacy field names", func(t *testing.T) {
+	// Test defaults are applied for missing fields
+	t.Run("defaults", func(t *testing.T) {
 		testDir := t.TempDir()
-		themePath := filepath.Join(testDir, "test-legacy.conf")
+		themePath := filepath.Join(testDir, "test-defaults.conf")
 
-		// Create theme with legacy field names
-		content := `# Test theme with legacy field names
-base: #000000
-surface1: #111111
-accent: #222222
-peach: #999999
-diff_add: #bbbbbb
-diff_remove: #cccccc
+		// Create minimal theme
+		content := `# Minimal theme
+background: #000000
 `
 		if err := os.WriteFile(themePath, []byte(content), 0644); err != nil {
 			t.Fatalf("Failed to create theme file: %v", err)
@@ -79,29 +76,18 @@ diff_remove: #cccccc
 			t.Fatalf("Failed to load theme: %v", err)
 		}
 
-		// Verify legacy fields are set
-		if theme.Base != "#000000" {
-			t.Errorf("Expected base #000000, got %s", theme.Base)
-		}
-		if theme.Surface1 != "#111111" {
-			t.Errorf("Expected surface1 #111111, got %s", theme.Surface1)
-		}
-		if theme.Accent != "#222222" {
-			t.Errorf("Expected accent #222222, got %s", theme.Accent)
+		// Verify specified field is used
+		if theme.Background != "#000000" {
+			t.Errorf("Expected background #000000, got %s", theme.Background)
 		}
 
-		// Verify new field aliases are also populated
-		if theme.Background != "#000000" {
-			t.Errorf("Expected new background #000000, got %s", theme.Background)
+		// Verify defaults are applied for missing fields
+		defaults := DefaultTheme()
+		if theme.Surface != defaults.Surface {
+			t.Errorf("Expected default surface, got %s", theme.Surface)
 		}
-		if theme.Surface != "#111111" {
-			t.Errorf("Expected new surface #111111, got %s", theme.Surface)
-		}
-		if theme.Primary != "#222222" {
-			t.Errorf("Expected new primary #222222, got %s", theme.Primary)
-		}
-		if theme.Selection != "#999999" {
-			t.Errorf("Expected new selection #999999, got %s", theme.Selection)
+		if theme.Primary != defaults.Primary {
+			t.Errorf("Expected default primary, got %s", theme.Primary)
 		}
 	})
 }

@@ -8,11 +8,11 @@ import (
 
 func TestDefaultTheme(t *testing.T) {
 	theme := DefaultTheme()
-	if theme.Base != "#1e1e2e" {
-		t.Errorf("Expected Base #1e1e2e, got %s", theme.Base)
+	if theme.Background != "#1e1e2e" {
+		t.Errorf("Expected Background #1e1e2e, got %s", theme.Background)
 	}
-	if theme.Accent != "#89d4fa" {
-		t.Errorf("Expected Accent #89d4fa, got %s", theme.Accent)
+	if theme.Primary != "#89d4fa" {
+		t.Errorf("Expected Primary #89d4fa, got %s", theme.Primary)
 	}
 }
 
@@ -21,8 +21,8 @@ func TestLoadTheme(t *testing.T) {
 	tmpDir := t.TempDir()
 	themePath := filepath.Join(tmpDir, "test-theme.conf")
 	content := `# Test theme
-base: #000000
-accent: #ffffff
+background: #000000
+primary: #ffffff
 error: #ff0000
 `
 	if err := os.WriteFile(themePath, []byte(content), 0644); err != nil {
@@ -35,11 +35,11 @@ error: #ff0000
 	}
 
 	// Check that custom values were loaded
-	if theme.Base != "#000000" {
-		t.Errorf("Expected Base #000000, got %s", theme.Base)
+	if theme.Background != "#000000" {
+		t.Errorf("Expected Background #000000, got %s", theme.Background)
 	}
-	if theme.Accent != "#ffffff" {
-		t.Errorf("Expected Accent #ffffff, got %s", theme.Accent)
+	if theme.Primary != "#ffffff" {
+		t.Errorf("Expected Primary #ffffff, got %s", theme.Primary)
 	}
 	if theme.Error != "#ff0000" {
 		t.Errorf("Expected Error #ff0000, got %s", theme.Error)
@@ -51,16 +51,14 @@ error: #ff0000
 	}
 }
 
-func TestLoadThemeWithAliases(t *testing.T) {
-	// Note: The new config parser does not support aliases.
-	// Users should use canonical field names: base, muted, etc.
-	// This test verifies that unknown fields are simply ignored.
+func TestLoadThemeWithUnknownFields(t *testing.T) {
+	// Verify that unknown fields are simply ignored
 	tmpDir := t.TempDir()
-	themePath := filepath.Join(tmpDir, "alias-theme.conf")
-	content := `# Theme with old alias names (now ignored)
-window_border: #111111
-text_muted: #222222
-base: #333333
+	themePath := filepath.Join(tmpDir, "unknown-fields.conf")
+	content := `# Theme with unknown field names (ignored)
+unknown_field: #111111
+another_unknown: #222222
+background: #333333
 `
 	if err := os.WriteFile(themePath, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to create test theme file: %v", err)
@@ -72,10 +70,10 @@ base: #333333
 	}
 
 	// Unknown fields are ignored, known fields work
-	if theme.Base != "#333333" {
-		t.Errorf("Expected Base #333333, got %s", theme.Base)
+	if theme.Background != "#333333" {
+		t.Errorf("Expected Background #333333, got %s", theme.Background)
 	}
-	// Muted should be default since text_muted is not a recognized field
+	// Muted should be default since it's not specified
 	if theme.Muted != "#6c7086" {
 		t.Errorf("Expected Muted #6c7086 (default), got %s", theme.Muted)
 	}
@@ -95,30 +93,30 @@ func TestLoadThemeFromPaths(t *testing.T) {
 
 	// Test with nonexistent explicit path (should fallback to default)
 	theme := LoadThemeFromPaths("/nonexistent/theme.conf")
-	if theme.Base != "#1e1e2e" {
-		t.Errorf("Expected default theme, got Base %s", theme.Base)
+	if theme.Background != "#1e1e2e" {
+		t.Errorf("Expected default theme, got Background %s", theme.Background)
 	}
 
 	// Test with empty path (should use default)
 	theme = LoadThemeFromPaths("")
-	if theme.Base != "#1e1e2e" {
-		t.Errorf("Expected default theme, got Base %s", theme.Base)
+	if theme.Background != "#1e1e2e" {
+		t.Errorf("Expected default theme, got Background %s", theme.Background)
 	}
 }
 
 func TestNewStylesWithTheme(t *testing.T) {
 	theme := &Theme{
-		Base:     "#1e1e2e",
-		Surface1: "#585b70",
-		Accent:   "#custom1",
-		Dim:      "#custom2",
-		Muted:    "#custom3",
-		Text:     "#custom4",
-		Warning:  "#custom5",
-		Error:    "#custom6",
-		Success:  "#custom7",
-		Peach:    "#custom8",
-		Cursor:   "#custom9",
+		Background: "#1e1e2e",
+		Surface:    "#585b70",
+		Primary:    "#custom1",
+		Dim:        "#custom2",
+		Muted:      "#custom3",
+		Text:       "#custom4",
+		Warning:    "#custom5",
+		Error:      "#custom6",
+		Success:    "#custom7",
+		Selection:  "#custom8",
+		Cursor:     "#custom9",
 	}
 
 	styles := NewStyles(theme)
