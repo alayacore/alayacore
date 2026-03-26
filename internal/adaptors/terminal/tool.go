@@ -161,10 +161,13 @@ func RenderDiffContent(content string, status ToolStatus, styles *Styles) string
 // prepareContent normalizes content for rendering by stripping ANSI escape
 // sequences and expanding tabs to spaces (8-space width).
 func prepareContent(s string) string {
-	// Strip ANSI codes first - this prevents escape sequences from interfering
-	// with rendering, column counting, and lipgloss styling
 	s = stripANSI(s)
+	s = expandTabs(s)
+	return s
+}
 
+// expandTabs converts tabs to spaces, treating tabs as 8-space width.
+func expandTabs(s string) string {
 	var result strings.Builder
 	col := 0
 	for _, r := range s {
