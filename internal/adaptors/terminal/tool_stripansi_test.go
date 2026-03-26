@@ -193,10 +193,11 @@ func TestColorizeTool_WithANSI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ColorizeTool(tt.input, styles)
-			// Check that the result contains the expected text (ANSI from input stripped)
-			// Note: result will have lipgloss ANSI styling, which is intentional
-			// We just want to verify the input ANSI was stripped and text is present
+			// Prepare content first (as renderGenericContent does)
+			prepared := prepareContent(tt.input)
+			result := ColorizeTool(prepared, styles)
+			// Check that the result contains the expected text
+			// Result will have lipgloss ANSI styling, which is intentional
 			// Strip all ANSI from result to check plain text
 			stripped := stripANSI(result)
 			if !strings.Contains(stripped, tt.contains) {

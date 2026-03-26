@@ -132,6 +132,10 @@ func (w *Window) renderGenericContent(innerWidth int, styles *Styles) string {
 	// SLOW PATH: Full styling and wrapping
 	content := w.Content
 
+	// Prepare content FIRST: strip input ANSI and expand tabs
+	// This must happen BEFORE styling so we don't strip lipgloss ANSI
+	content = prepareContent(content)
+
 	// Apply styling based on tag
 	switch w.Tag {
 	case stream.TagFunctionCall:
@@ -154,8 +158,7 @@ func (w *Window) renderGenericContent(innerWidth int, styles *Styles) string {
 		// No styling for unknown tags
 	}
 
-	// Prepare content and wrap
-	content = prepareContent(content)
+	// Wrap content
 	if innerWidth <= 0 {
 		return content
 	}
@@ -201,7 +204,9 @@ func (w *Window) AppendContent(delta string, innerWidth int) {
 	// Try incremental update if we have cached wrapped lines and styles
 	// Skip incremental updates for diff windows as they need special rendering
 	if len(w.cache.wrappedLines) > 0 && innerWidth > 0 && w.styles != nil && !w.IsDiffWindow() {
-		styledDelta := w.styleContent(delta, w.styles)
+		// Prepare delta before styling (strip input ANSI, expand tabs)
+		preparedDelta := prepareContent(delta)
+		styledDelta := w.styleContent(preparedDelta, w.styles)
 		w.cache.wrappedLines = appendDeltaToLines(w.cache.wrappedLines, styledDelta, innerWidth)
 		// Mark cache as needing rebuild for rendered output, but wrappedLines is updated
 		// The rebuild will use cached wrappedLines instead of re-wrapping

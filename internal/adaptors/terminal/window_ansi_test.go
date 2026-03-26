@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/stream"
@@ -75,6 +76,77 @@ func TestWindow_WithANSIContent(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestWindow_PreservesLipglossColors verifies that lipgloss styling is preserved
+func TestWindow_PreservesLipglossColors(t *testing.T) {
+	styles := DefaultStyles()
+
+	tests := []struct {
+		name            string
+		tag             string
+		content         string
+		shouldHaveColor bool // Should the rendered output contain ANSI codes?
+	}{
+		{
+			name:            "tool call gets styled",
+			tag:             stream.TagFunctionCall,
+			content:         "posix_shell: echo test",
+			shouldHaveColor: true,
+		},
+		{
+			name:            "tool result gets styled",
+			tag:             stream.TagFunctionResult,
+			content:         "output text",
+			shouldHaveColor: true,
+		},
+		{
+			name:            "text assistant gets styled",
+			tag:             stream.TagTextAssistant,
+			content:         "Hello world",
+			shouldHaveColor: true,
+		},
+		{
+			name:            "reasoning gets styled",
+			tag:             stream.TagTextReasoning,
+			content:         "Thinking...",
+			shouldHaveColor: true,
+		},
+		{
+			name:            "system error gets styled",
+			tag:             stream.TagSystemError,
+			content:         "Error occurred",
+			shouldHaveColor: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &Window{
+				ID:      "test-window",
+				Tag:     tt.tag,
+				Content: tt.content,
+			}
+
+			// Render the window content
+			result := w.renderGenericContent(80, styles)
+
+			// Check if result contains ANSI codes
+			hasColor := containsANSI(result)
+
+			if tt.shouldHaveColor && !hasColor {
+				t.Errorf("Expected styled output with ANSI codes, but got none: %q", result)
+			}
+			if !tt.shouldHaveColor && hasColor {
+				t.Errorf("Expected no ANSI codes, but got: %q", result)
+			}
+		})
+	}
+}
+
+// containsANSI checks if a string contains any ANSI escape sequences
+func containsANSI(s string) bool {
+	return strings.Contains(s, "\x1b[")
 }
 
 // TestWindow_DiffContentWithANSI verifies that edit_file windows handle ANSI

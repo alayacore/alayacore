@@ -77,10 +77,8 @@ func ParseStreamID(value string) (id string, content string, ok bool) {
 // ============================================================================
 
 // ColorizeTool applies tool-specific styling to tool output.
+// Assumes content has already been prepared (ANSI stripped, tabs expanded).
 func ColorizeTool(value string, styles *Styles) string {
-	// Prepare content: strip ANSI and expand tabs BEFORE styling
-	value = prepareContent(value)
-
 	lines := strings.Split(value, "\n")
 	if len(lines) == 1 {
 		return colorizeSingleLineTool(value, styles)
@@ -116,7 +114,6 @@ func colorizeMultiLineTool(lines []string, styles *Styles) string {
 		result.WriteString("\n")
 		// Content lines use Text style for readability
 		// Note: Diff coloring is handled by RenderDiffContent for edit_file windows
-		// Note: Tabs already expanded in ColorizeTool
 		result.WriteString(styles.Text.Render(line))
 	}
 	return result.String()
