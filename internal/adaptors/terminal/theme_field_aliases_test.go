@@ -14,8 +14,6 @@ func TestThemeFieldNames(t *testing.T) {
 
 		// Create theme with field names
 		content := `# Test theme
-background: #000000
-surface: #111111
 primary: #222222
 dim: #333333
 muted: #444444
@@ -38,12 +36,6 @@ removed: #cccccc
 		}
 
 		// Verify fields are set
-		if theme.Background != "#000000" {
-			t.Errorf("Expected background #000000, got %s", theme.Background)
-		}
-		if theme.Surface != "#111111" {
-			t.Errorf("Expected surface #111111, got %s", theme.Surface)
-		}
 		if theme.Primary != "#222222" {
 			t.Errorf("Expected primary #222222, got %s", theme.Primary)
 		}
@@ -65,7 +57,7 @@ removed: #cccccc
 
 		// Create minimal theme
 		content := `# Minimal theme
-background: #000000
+dim: #000000
 `
 		if err := os.WriteFile(themePath, []byte(content), 0644); err != nil {
 			t.Fatalf("Failed to create theme file: %v", err)
@@ -77,15 +69,12 @@ background: #000000
 		}
 
 		// Verify specified field is used
-		if theme.Background != "#000000" {
-			t.Errorf("Expected background #000000, got %s", theme.Background)
+		if theme.Dim != "#000000" {
+			t.Errorf("Expected dim #000000, got %s", theme.Dim)
 		}
 
 		// Verify defaults are applied for missing fields
 		defaults := DefaultTheme()
-		if theme.Surface != defaults.Surface {
-			t.Errorf("Expected default surface, got %s", theme.Surface)
-		}
 		if theme.Primary != defaults.Primary {
 			t.Errorf("Expected default primary, got %s", theme.Primary)
 		}

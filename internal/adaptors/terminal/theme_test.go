@@ -8,9 +8,6 @@ import (
 
 func TestDefaultTheme(t *testing.T) {
 	theme := DefaultTheme()
-	if theme.Background != "#1e1e2e" {
-		t.Errorf("Expected Background #1e1e2e, got %s", theme.Background)
-	}
 	if theme.Primary != "#89d4fa" {
 		t.Errorf("Expected Primary #89d4fa, got %s", theme.Primary)
 	}
@@ -21,7 +18,6 @@ func TestLoadTheme(t *testing.T) {
 	tmpDir := t.TempDir()
 	themePath := filepath.Join(tmpDir, "test-theme.conf")
 	content := `# Test theme
-background: #000000
 primary: #ffffff
 error: #ff0000
 `
@@ -35,9 +31,6 @@ error: #ff0000
 	}
 
 	// Check that custom values were loaded
-	if theme.Background != "#000000" {
-		t.Errorf("Expected Background #000000, got %s", theme.Background)
-	}
 	if theme.Primary != "#ffffff" {
 		t.Errorf("Expected Primary #ffffff, got %s", theme.Primary)
 	}
@@ -58,7 +51,7 @@ func TestLoadThemeWithUnknownFields(t *testing.T) {
 	content := `# Theme with unknown field names (ignored)
 unknown_field: #111111
 another_unknown: #222222
-background: #333333
+primary: #333333
 `
 	if err := os.WriteFile(themePath, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to create test theme file: %v", err)
@@ -70,8 +63,8 @@ background: #333333
 	}
 
 	// Unknown fields are ignored, known fields work
-	if theme.Background != "#333333" {
-		t.Errorf("Expected Background #333333, got %s", theme.Background)
+	if theme.Primary != "#333333" {
+		t.Errorf("Expected Primary #333333, got %s", theme.Primary)
 	}
 	// Muted should be default since it's not specified
 	if theme.Muted != "#6c7086" {
@@ -93,30 +86,28 @@ func TestLoadThemeFromPaths(t *testing.T) {
 
 	// Test with nonexistent explicit path (should fallback to default)
 	theme := LoadThemeFromPaths("/nonexistent/theme.conf")
-	if theme.Background != "#1e1e2e" {
-		t.Errorf("Expected default theme, got Background %s", theme.Background)
+	if theme.Primary != "#89d4fa" {
+		t.Errorf("Expected default theme, got Primary %s", theme.Primary)
 	}
 
 	// Test with empty path (should use default)
 	theme = LoadThemeFromPaths("")
-	if theme.Background != "#1e1e2e" {
-		t.Errorf("Expected default theme, got Background %s", theme.Background)
+	if theme.Primary != "#89d4fa" {
+		t.Errorf("Expected default theme, got Primary %s", theme.Primary)
 	}
 }
 
 func TestNewStylesWithTheme(t *testing.T) {
 	theme := &Theme{
-		Background: "#1e1e2e",
-		Surface:    "#585b70",
-		Primary:    "#custom1",
-		Dim:        "#custom2",
-		Muted:      "#custom3",
-		Text:       "#custom4",
-		Warning:    "#custom5",
-		Error:      "#custom6",
-		Success:    "#custom7",
-		Selection:  "#custom8",
-		Cursor:     "#custom9",
+		Primary:   "#custom1",
+		Dim:       "#custom2",
+		Muted:     "#custom3",
+		Text:      "#custom4",
+		Warning:   "#custom5",
+		Error:     "#custom6",
+		Success:   "#custom7",
+		Selection: "#custom8",
+		Cursor:    "#custom9",
 	}
 
 	styles := NewStyles(theme)
@@ -134,6 +125,5 @@ func TestNewStylesWithTheme(t *testing.T) {
 	_ = styles.ColorDim
 	_ = styles.ColorError
 	_ = styles.ColorSuccess
-	_ = styles.ColorBase
 	_ = styles.CursorColor
 }

@@ -48,8 +48,8 @@ func TestThemeManagerCreatesDefaultThemes(t *testing.T) {
 		t.Errorf("Failed to load theme-dark")
 	}
 
-	if theme.Background != "#1e1e2e" {
-		t.Errorf("Expected theme-dark background color #1e1e2e, got %s", theme.Background)
+	if theme.Primary != "#89d4fa" {
+		t.Errorf("Expected theme-dark primary color #89d4fa, got %s", theme.Primary)
 	}
 }
 

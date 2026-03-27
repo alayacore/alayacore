@@ -166,7 +166,7 @@ func (w *Window) applyFolding(content string, innerWidth int, styles *Styles) st
 	}
 
 	indicator := lipgloss.NewStyle().
-		Foreground(styles.ColorBase).
+		Foreground(styles.ColorDim).
 		Render(strings.Repeat("⁝", innerWidth))
 
 	return lines[0] + "\n" + indicator + "\n" + strings.Join(lines[len(lines)-3:], "\n")
@@ -269,7 +269,7 @@ func NewWindowBuffer(width int, styles *Styles) *WindowBuffer {
 		idIndex:     make(map[string]int),
 		width:       width,
 		styles:      styles,
-		borderStyle: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorBase).Padding(0, 1),
+		borderStyle: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorDim).Padding(0, 1),
 		cursorStyle: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.BorderCursor).Padding(0, 1),
 		lineHeights: []int{},
 		dirtyIndex:  dirtyClean,
@@ -303,7 +303,7 @@ func (wb *WindowBuffer) SetStyles(styles *Styles) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 	wb.styles = styles
-	wb.borderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorBase).Padding(0, 1)
+	wb.borderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorDim).Padding(0, 1)
 	wb.cursorStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.BorderCursor).Padding(0, 1)
 	// Invalidate all windows to pick up new styles
 	for _, w := range wb.Windows {

@@ -20,17 +20,15 @@ import (
 // Theme holds all color values for the terminal UI
 type Theme struct {
 	// Core palette
-	Background string `config:"background"` // Background color for borders and separators
-	Surface    string `config:"surface"`    // Surface color for subtle backgrounds
-	Primary    string `config:"primary"`    // Primary/accent color for highlights and focused borders
-	Dim        string `config:"dim"`        // Dimmed color for unfocused borders and blurred text
-	Muted      string `config:"muted"`      // Muted color for placeholder and secondary text
-	Text       string `config:"text"`       // Primary text color
-	Warning    string `config:"warning"`    // Warning color (yellow/orange)
-	Error      string `config:"error"`      // Error color (red)
-	Success    string `config:"success"`    // Success color (green)
-	Selection  string `config:"selection"`  // Selection/cursor border highlight color
-	Cursor     string `config:"cursor"`     // Text input cursor color
+	Primary   string `config:"primary"`   // Primary/accent color for highlights and focused borders
+	Dim       string `config:"dim"`       // Dimmed color for unfocused borders and blurred text
+	Muted     string `config:"muted"`     // Muted color for placeholder and secondary text
+	Text      string `config:"text"`      // Primary text color
+	Warning   string `config:"warning"`   // Warning color (yellow/orange)
+	Error     string `config:"error"`     // Error color (red)
+	Success   string `config:"success"`   // Success color (green)
+	Selection string `config:"selection"` // Selection/cursor border highlight color
+	Cursor    string `config:"cursor"`    // Text input cursor color
 
 	// Diff colors
 	Added   string `config:"added"`   // Added lines in diff (green)
@@ -40,19 +38,17 @@ type Theme struct {
 // DefaultTheme returns the default theme (Catppuccin Mocha)
 func DefaultTheme() *Theme {
 	return &Theme{
-		Background: "#1e1e2e",
-		Surface:    "#585b70",
-		Primary:    "#89d4fa",
-		Dim:        "#45475a",
-		Muted:      "#6c7086",
-		Text:       "#cdd6f4",
-		Warning:    "#f9e2af",
-		Error:      "#f38ba8",
-		Success:    "#a6e3a1",
-		Selection:  "#fab387",
-		Cursor:     "#cdd6f4",
-		Added:      "#a6e3a1",
-		Removed:    "#f38ba8",
+		Primary:   "#89d4fa",
+		Dim:       "#313244",
+		Muted:     "#6c7086",
+		Text:      "#cdd6f4",
+		Warning:   "#f9e2af",
+		Error:     "#f38ba8",
+		Success:   "#a6e3a1",
+		Selection: "#fab387",
+		Cursor:    "#cdd6f4",
+		Added:     "#a6e3a1",
+		Removed:   "#f38ba8",
 	}
 }
 
@@ -117,7 +113,6 @@ type Styles struct {
 	Prompt      lipgloss.Style
 	DiffRemove  lipgloss.Style
 	DiffAdd     lipgloss.Style
-	DiffSep     lipgloss.Style // dimmed separator |
 
 	// Display styles
 	Input       lipgloss.Style
@@ -129,7 +124,6 @@ type Styles struct {
 	// Border colors
 	BorderFocused color.Color
 	BorderBlurred color.Color
-	BorderDimmed  color.Color
 	BorderCursor  color.Color
 
 	// Text colors for dynamic use
@@ -138,7 +132,6 @@ type Styles struct {
 	ColorMuted   color.Color
 	ColorError   color.Color
 	ColorSuccess color.Color
-	ColorBase    color.Color
 	CursorColor  color.Color
 }
 
@@ -173,7 +166,6 @@ func NewStyles(theme *Theme) *Styles {
 		Prompt:      baseStyle.Foreground(lipgloss.Color(theme.Primary)).Bold(true),
 		DiffRemove:  baseStyle.Foreground(lipgloss.Color(theme.Removed)),
 		DiffAdd:     baseStyle.Foreground(lipgloss.Color(theme.Added)),
-		DiffSep:     baseStyle.Foreground(lipgloss.Color(theme.Background)),
 
 		// Display styles
 		Input:       baseStyle,
@@ -184,7 +176,6 @@ func NewStyles(theme *Theme) *Styles {
 		// Component-specific colors
 		BorderFocused: lipgloss.Color(theme.Primary),
 		BorderBlurred: lipgloss.Color(theme.Dim),
-		BorderDimmed:  lipgloss.Color(theme.Background),
 		BorderCursor:  lipgloss.Color(theme.Selection),
 
 		ColorAccent:  lipgloss.Color(theme.Primary),
@@ -192,7 +183,6 @@ func NewStyles(theme *Theme) *Styles {
 		ColorMuted:   lipgloss.Color(theme.Muted),
 		ColorError:   lipgloss.Color(theme.Error),
 		ColorSuccess: lipgloss.Color(theme.Success),
-		ColorBase:    lipgloss.Color(theme.Background),
 		CursorColor:  lipgloss.Color(theme.Cursor),
 	}
 }

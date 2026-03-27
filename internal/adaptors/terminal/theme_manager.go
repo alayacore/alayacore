@@ -73,17 +73,11 @@ func (tm *ThemeManager) createDefaultThemes() {
 	darkTheme := `# AlayaCore Dark Theme
 # Based on Catppuccin Mocha color palette
 
-# Background - for borders and separators
-background: #1e1e2e
-
-# Surface - for subtle backgrounds
-surface: #585b70
-
 # Primary - accent color for highlights and focused borders
 primary: #89d4fa
 
 # Dim - for unfocused borders and blurred text
-dim: #45475a
+dim: #313244
 
 # Muted - for placeholder and secondary text
 muted: #6c7086
@@ -123,17 +117,11 @@ removed: #f38ba8
 # Based on Catppuccin Latte color palette
 # Optimized for white/light terminal backgrounds
 
-# Background - light gray for borders
-background: #e6e6e6
-
-# Surface - slightly darker for subtle backgrounds
-surface: #ccd0da
-
 # Primary - deep blue for visibility on light backgrounds
 primary: #1e66f5
 
-# Dim - medium gray for unfocused borders
-dim: #acb0be
+# Dim - for unfocused borders (darker, closer to background)
+dim: #d0d0d8
 
 # Muted - for placeholder and secondary text
 muted: #6c6f85
