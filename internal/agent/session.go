@@ -733,7 +733,7 @@ func (s *Session) trackUsage(usage llm.Usage) {
 	s.mu.Lock()
 	s.TotalSpent.InputTokens += usage.InputTokens
 	s.TotalSpent.OutputTokens += usage.OutputTokens
-	s.ContextTokens = usage.InputTokens
+	s.ContextTokens = usage.InputTokens + usage.CacheReadTokens + usage.CacheCreationTokens
 	s.mu.Unlock()
 	s.sendSystemInfo()
 }

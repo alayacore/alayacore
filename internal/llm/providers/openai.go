@@ -568,8 +568,10 @@ func (p *OpenAIProvider) handleEvent(data string, eventChan chan<- llm.StreamEve
 	// Track usage if available (may come in a chunk with empty choices)
 	if streamResp.Usage.PromptTokens > 0 || streamResp.Usage.CompletionTokens > 0 {
 		state.setUsage(llm.Usage{
-			InputTokens:  int64(streamResp.Usage.PromptTokens),
-			OutputTokens: int64(streamResp.Usage.CompletionTokens),
+			CacheCreationTokens: 0,
+			CacheReadTokens:     0,
+			InputTokens:         int64(streamResp.Usage.PromptTokens),
+			OutputTokens:        int64(streamResp.Usage.CompletionTokens),
 		})
 	}
 

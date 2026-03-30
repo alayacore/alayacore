@@ -92,10 +92,10 @@ type ToolDefinition struct {
 
 // Usage tracks token usage
 type Usage struct {
+	CacheCreationTokens int64 `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadTokens     int64 `json:"cache_read_input_tokens,omitempty"`
 	InputTokens         int64 `json:"input_tokens"`
 	OutputTokens        int64 `json:"output_tokens"`
-	CacheReadTokens     int64 `json:"cache_read_input_tokens,omitempty"`
-	CacheCreationTokens int64 `json:"cache_creation_input_tokens,omitempty"`
 }
 
 // StreamEvent represents a streaming event

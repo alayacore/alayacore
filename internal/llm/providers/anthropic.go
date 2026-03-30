@@ -221,10 +221,10 @@ func (s *streamState) setUsage(inputTokens, outputTokens, cacheReadTokens, cache
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.usage = llm.Usage{
-		InputTokens:         inputTokens + cacheReadTokens + cacheCreationTokens,
-		OutputTokens:        outputTokens,
-		CacheReadTokens:     cacheReadTokens,
 		CacheCreationTokens: cacheCreationTokens,
+		CacheReadTokens:     cacheReadTokens,
+		InputTokens:         inputTokens,
+		OutputTokens:        outputTokens,
 	}
 }
 
