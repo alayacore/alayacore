@@ -221,8 +221,10 @@ func (s *streamState) setUsage(inputTokens, outputTokens, cacheReadTokens, cache
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.usage = llm.Usage{
-		InputTokens:  inputTokens + cacheReadTokens + cacheCreationTokens,
-		OutputTokens: outputTokens,
+		InputTokens:         inputTokens + cacheReadTokens + cacheCreationTokens,
+		OutputTokens:        outputTokens,
+		CacheReadTokens:     cacheReadTokens,
+		CacheCreationTokens: cacheCreationTokens,
 	}
 }
 
@@ -510,25 +512,35 @@ func (p *AnthropicProvider) handleMessageStart(payload map[string]interface{}, _
 }
 
 // extractAndSetUsage extracts token counts from usage map and updates state
+// Note: Usage events may come in multiple chunks (message_start, message_delta, message_stop)
+// Each chunk may contain partial usage data, so we accumulate/merge with existing values.
 func (p *AnthropicProvider) extractAndSetUsage(usage map[string]interface{}, state *streamState) {
-	inputTokens := 0.0
+	// Get current usage to preserve values not present in this chunk
+	current := state.getUsage()
+
+	// Only update fields that are present in the incoming usage map
+	inputTokens := current.InputTokens
 	if v, ok := usage["input_tokens"].(float64); ok {
-		inputTokens = v
+		inputTokens = int64(v)
 	}
-	outputTokens := 0.0
+
+	outputTokens := current.OutputTokens
 	if v, ok := usage["output_tokens"].(float64); ok {
-		outputTokens = v
+		outputTokens = int64(v)
 	}
+
 	// Cache tokens are part of input tokens
-	cacheReadTokens := 0.0
+	cacheReadTokens := current.CacheReadTokens
 	if v, ok := usage["cache_read_input_tokens"].(float64); ok {
-		cacheReadTokens = v
+		cacheReadTokens = int64(v)
 	}
-	cacheCreationTokens := 0.0
+
+	cacheCreationTokens := current.CacheCreationTokens
 	if v, ok := usage["cache_creation_input_tokens"].(float64); ok {
-		cacheCreationTokens = v
+		cacheCreationTokens = int64(v)
 	}
-	state.setUsage(int64(inputTokens), int64(outputTokens), int64(cacheReadTokens), int64(cacheCreationTokens))
+
+	state.setUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens)
 }
 
 // handleContentBlockStart handles content_block_start events
