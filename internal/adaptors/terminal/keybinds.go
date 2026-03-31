@@ -56,6 +56,10 @@ const (
 	KeyY = "y"
 	KeyZ = "z"
 
+	// Shifted arrow keys
+	KeyShiftUp   = "shift+up"
+	KeyShiftDown = "shift+down"
+
 	// Shifted letter keys
 	KeyShiftA = "A"
 	KeyShiftH = "H"
@@ -123,19 +127,37 @@ var globalKeyBindings = []KeyBinding{
 
 // Display key bindings - only active when display is focused
 var displayKeyBindings = []KeyBinding{
+	// Move window cursor down
 	{KeyJ, "Move window cursor down", "display"},
-	{KeyK, "Move window cursor up", "display"},
 	{KeyDown, "Move window cursor down", "display"},
+	// Move window cursor up
+	{KeyK, "Move window cursor up", "display"},
 	{KeyUp, "Move window cursor up", "display"},
+	// Scroll down one line
 	{KeyShiftJ, "Scroll down one line", "display"},
+	{KeyShiftDown, "Scroll down one line", "display"},
+	// Scroll up one line
 	{KeyShiftK, "Scroll up one line", "display"},
-	{KeyE, "Open window content in external editor", "display"},
+	{KeyShiftUp, "Scroll up one line", "display"},
+	// Scroll down half screen
+	{KeyCtrlD, "Scroll down half screen", "display"},
+	// Scroll up half screen
+	{KeyCtrlU, "Scroll up half screen", "display"},
+	// Go to bottom (last window)
 	{KeyG, "Go to bottom (last window)", "display"},
+	// Go to top (first window)
 	{Keyg, "Go to top (first window)", "display"},
+	// Move cursor to top window
 	{KeyShiftH, "Move cursor to top window", "display"},
+	// Move cursor to bottom window
 	{KeyShiftL, "Move cursor to bottom window", "display"},
+	// Move cursor to middle window
 	{KeyShiftM, "Move cursor to middle window", "display"},
+	// Open window content in external editor
+	{KeyE, "Open window content in external editor", "display"},
+	// Switch to input with command prefix
 	{KeyColon, "Switch to input with command prefix", "display"},
+	// Toggle window fold (expand/collapse)
 	{KeySpace, "Toggle window fold (expand/collapse)", "display"},
 }
 
@@ -464,12 +486,22 @@ func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
-	case KeyShiftJ:
+	case KeyCtrlD:
+		m.display.MarkUserScrolled()
+		m.display.ScrollDown(max(1, m.display.GetHeight()/2))
+		return nil, true
+
+	case KeyCtrlU:
+		m.display.MarkUserScrolled()
+		m.display.ScrollUp(max(1, m.display.GetHeight()/2))
+		return nil, true
+
+	case KeyShiftJ, KeyShiftDown:
 		m.display.MarkUserScrolled()
 		m.display.ScrollDown(1)
 		return nil, true
 
-	case KeyShiftK:
+	case KeyShiftK, KeyShiftUp:
 		m.display.MarkUserScrolled()
 		m.display.ScrollUp(1)
 		return nil, true
@@ -548,7 +580,11 @@ func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case KeyCtrlU:
-		// Reserved for future use
+		// Handled by display handler when display focused; no-op in input
+		return nil, true
+
+	case KeyCtrlD:
+		// Handled by display handler when display focused; no-op in input
 		return nil, true
 
 	case KeyCtrlS:
