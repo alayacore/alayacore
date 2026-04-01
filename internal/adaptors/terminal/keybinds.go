@@ -579,14 +579,6 @@ func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
-	case KeyCtrlU:
-		// Handled by display handler when display focused; no-op in input
-		return nil, true
-
-	case KeyCtrlD:
-		// Handled by display handler when display focused; no-op in input
-		return nil, true
-
 	case KeyCtrlS:
 		return m.submitCommand("save", false), true
 
@@ -614,6 +606,13 @@ func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 // handleInputKeys handles keys when input is focused (default behavior).
 func (m *Terminal) handleInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Block keys that would modify input content unexpectedly
+	switch msg.String() {
+	case KeyCtrlU, KeyCtrlD:
+		// Swallow to prevent textinput's default clear-line / delete-char
+		return m, nil
+	}
+
 	oldValue := m.input.Value()
 	m.input.updateFromMsg(msg)
 	newValue := m.input.Value()

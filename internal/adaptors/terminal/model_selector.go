@@ -289,7 +289,7 @@ func (ms *ModelSelector) handleListKeyMsg(msg tea.KeyMsg) tea.Cmd {
 	key := msg.String()
 
 	// TAB: Toggle focus between search and list
-	if key == "tab" {
+	if key == KeyTab {
 		ms.searchInputFocused = !ms.searchInputFocused
 		if ms.searchInputFocused {
 			ms.searchInput.Focus()
@@ -315,14 +315,19 @@ func (ms *ModelSelector) handleSearchInputKey(msg tea.KeyMsg, key string) tea.Cm
 		return nil
 	}
 
-	if key == "ctrl+c" {
+	if key == KeyCtrlC {
 		ms.searchInput.SetValue("")
 		ms.updateFilteredModels()
 		ms.clampSelection()
 		return nil
 	}
 
-	if key == "enter" && len(ms.filteredModels) > 0 {
+	if key == KeyCtrlU || key == KeyCtrlD {
+		// Ignore in search input to prevent textinput's clear-line / delete-char behavior
+		return nil
+	}
+
+	if key == KeyEnter && len(ms.filteredModels) > 0 {
 		ms.selectedIdx = 0
 		ms.activeModel = &ms.filteredModels[0]
 		ms.modelJustSelected = true
@@ -344,25 +349,25 @@ func (ms *ModelSelector) handleSearchInputKey(msg tea.KeyMsg, key string) tea.Cm
 
 func (ms *ModelSelector) handleListNavigationKey(key string) tea.Cmd {
 	switch key {
-	case "up", "k":
+	case KeyUp, KeyK:
 		if ms.selectedIdx > 0 {
 			ms.selectedIdx--
 		}
-	case "down", "j":
+	case KeyDown, KeyJ:
 		if ms.selectedIdx < len(ms.filteredModels)-1 {
 			ms.selectedIdx++
 		}
-	case "enter":
+	case KeyEnter:
 		if len(ms.filteredModels) > 0 && ms.selectedIdx >= 0 {
 			ms.activeModel = &ms.filteredModels[ms.selectedIdx]
 			ms.modelJustSelected = true
 			ms.state = ModelSelectorClosed
 		}
-	case "e":
+	case KeyE:
 		ms.openModelFile = true
-	case "r":
+	case KeyR:
 		ms.reloadModels = true
-	case KeyEsc, "q":
+	case KeyEsc, KeyQ:
 		ms.state = ModelSelectorClosed
 	}
 	return nil

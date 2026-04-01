@@ -405,9 +405,6 @@
                 // Ctrl+S sends /save command
                 e.preventDefault();
                 sendSaveCommand();
-            } else if (e.ctrlKey && e.key === 'u') {
-                // Ctrl+U is disabled (prevent textinput's clear line behavior)
-                e.preventDefault();
             }
         });
 

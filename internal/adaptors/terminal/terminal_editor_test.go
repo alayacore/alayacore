@@ -496,7 +496,7 @@ func TestCtrlUDoesNothingInInput(t *testing.T) {
 		t.Fatal("Update returned nil model")
 	}
 
-	// Input should remain unchanged
+	// Input should remain unchanged (Ctrl+U is ignored in input)
 	if terminal.input.Value() != "test input text" {
 		t.Errorf("Input should remain unchanged after Ctrl+U in input window, got %q", terminal.input.Value())
 	}
