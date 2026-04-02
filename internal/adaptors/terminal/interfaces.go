@@ -12,22 +12,22 @@ import (
 
 // StatusSnapshot holds a consistent point-in-time view of session status.
 type StatusSnapshot struct {
-	ContextStatus string
-	QueueCount    int
-	InProgress    bool
-	CurrentStep   int
-	MaxSteps      int
+	ContextStatus   string
+	QueueCount      int
+	InProgress      bool
+	CurrentStep     int
+	MaxSteps        int
 	LastCurrentStep int
-	LastMaxSteps   int
+	LastMaxSteps    int
 }
 
 // ModelSnapshot holds a consistent point-in-time view of model state.
 type ModelSnapshot struct {
-	Models      []agentpkg.ModelInfo
-	ActiveID    int
-	ActiveName  string
-	HasModels   bool
-	ConfigPath  string
+	Models     []agentpkg.ModelInfo
+	ActiveID   int
+	ActiveName string
+	HasModels  bool
+	ConfigPath string
 }
 
 // ============================================================================

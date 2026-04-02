@@ -161,19 +161,19 @@ func (ts *ThemeSelector) HandleKeyMsg(msg tea.KeyMsg, themeManager *ThemeManager
 	var previewTheme *Theme
 
 	switch key {
-	case KeyUp, KeyK:
+	case "up", "k":
 		if ts.selectedIdx > 0 {
 			ts.selectedIdx--
 			ts.ensureVisible()
 			previewTheme = ts.getPreviewTheme(themeManager)
 		}
-	case KeyDown, KeyJ:
+	case "down", "j":
 		if ts.selectedIdx < len(ts.themes)-1 {
 			ts.selectedIdx++
 			ts.ensureVisible()
 			previewTheme = ts.getPreviewTheme(themeManager)
 		}
-	case KeyEnter:
+	case "enter":
 		if len(ts.themes) > 0 && ts.selectedIdx >= 0 {
 			ts.themeJustSelected = true
 			ts.state = ThemeSelectorClosed
@@ -181,10 +181,10 @@ func (ts *ThemeSelector) HandleKeyMsg(msg tea.KeyMsg, themeManager *ThemeManager
 			ts.previewTheme = nil
 			return previewTheme, true
 		}
-	case KeyR:
+	case "r":
 		// Reload themes - signal to parent
 		return nil, false // Parent will handle reload
-	case KeyEsc, KeyQ:
+	case "esc", "q":
 		ts.Close()
 		return nil, true
 	}

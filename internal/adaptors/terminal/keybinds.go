@@ -1,7 +1,8 @@
 package terminal
 
 // Key handling for the terminal UI.
-// This file provides key constants, bindings, and the key handler.
+// This file provides key bindings and the key handler.
+// Key strings are as reported by bubbletea's tea.KeyMsg.String().
 
 import (
 	"fmt"
@@ -9,94 +10,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-)
-
-// ============================================================================
-// Key Constants
-// ============================================================================
-
-// Key string constants (as reported by tea.KeyMsg.String())
-const (
-	// Navigation keys
-	KeyTab   = "tab"
-	KeyEnter = "enter"
-	KeyEsc   = "esc"
-	KeySpace = "space"
-	KeyUp    = "up"
-	KeyDown  = "down"
-	KeyLeft  = "left"
-	KeyRight = "right"
-
-	// Letter keys
-	KeyA = "a"
-	KeyB = "b"
-	KeyC = "c"
-	KeyD = "d"
-	KeyE = "e"
-	KeyG = "G"
-	KeyH = "h"
-	KeyI = "i"
-	KeyJ = "j"
-	KeyK = "k"
-	KeyL = "l"
-	KeyM = "m"
-	KeyN = "n"
-	KeyO = "o"
-	KeyP = "p"
-	KeyQ = "q"
-	KeyR = "r"
-	KeyS = "s"
-	KeyT = "t"
-	KeyU = "u"
-	KeyV = "v"
-	KeyW = "w"
-	KeyX = "x"
-	KeyY = "y"
-	KeyZ = "z"
-
-	// Shifted arrow keys
-	KeyShiftUp   = "shift+up"
-	KeyShiftDown = "shift+down"
-
-	// Shifted letter keys
-	KeyShiftA = "A"
-	KeyShiftH = "H"
-	KeyShiftJ = "J"
-	KeyShiftK = "K"
-	KeyShiftL = "L"
-	KeyShiftM = "M"
-
-	// Special keys
-	KeyColon = ":"
-	Keyg     = "g"
-
-	// Control keys
-	KeyCtrlA = "ctrl+a"
-	KeyCtrlB = "ctrl+b"
-	KeyCtrlC = "ctrl+c"
-	KeyCtrlD = "ctrl+d"
-	KeyCtrlE = "ctrl+e"
-	KeyCtrlF = "ctrl+f"
-	KeyCtrlG = "ctrl+g"
-	KeyCtrlH = "ctrl+h"
-	KeyCtrlI = "ctrl+i"
-	KeyCtrlJ = "ctrl+j"
-	KeyCtrlK = "ctrl+k"
-	KeyCtrlL = "ctrl+l"
-	KeyCtrlM = "ctrl+m"
-	KeyCtrlN = "ctrl+n"
-	KeyCtrlO = "ctrl+o"
-	KeyCtrlP = "ctrl+p"
-	KeyCtrlQ = "ctrl+q"
-	KeyCtrlR = "ctrl+r"
-	KeyCtrlS = "ctrl+s"
-	KeyCtrlT = "ctrl+t"
-	KeyCtrlU = "ctrl+u"
-	KeyCtrlV = "ctrl+v"
-	KeyCtrlW = "ctrl+w"
-	KeyCtrlX = "ctrl+x"
-	KeyCtrlY = "ctrl+y"
-	KeyCtrlZ = "ctrl+z"
 )
 
 // ============================================================================
@@ -112,80 +25,80 @@ type KeyBinding struct {
 
 // Global key bindings - work from any context
 var globalKeyBindings = []KeyBinding{
-	{KeyTab, "Toggle focus between display and input", "global"},
-	{KeyCtrlG, "Cancel current request (with confirmation)", "global"},
-	{KeyCtrlC, "Clear input field", "global"},
-	{KeyCtrlS, "Save session", "global"},
-	{KeyCtrlO, "Open external editor", "global"},
-	{KeyCtrlL, "Open model selector", "global"},
-	{KeyCtrlP, "Open theme selector", "global"},
-	{KeyCtrlQ, "Open queue manager", "global"},
-	{KeyEnter, "Submit prompt/command", "global"},
+	{"tab", "Toggle focus between display and input", "global"},
+	{"ctrl+g", "Cancel current request (with confirmation)", "global"},
+	{"ctrl+c", "Clear input field", "global"},
+	{"ctrl+s", "Save session", "global"},
+	{"ctrl+o", "Open external editor", "global"},
+	{"ctrl+l", "Open model selector", "global"},
+	{"ctrl+p", "Open theme selector", "global"},
+	{"ctrl+q", "Open queue manager", "global"},
+	{"enter", "Submit prompt/command", "global"},
 }
 
 // Display key bindings - only active when display is focused
 var displayKeyBindings = []KeyBinding{
 	// Move window cursor down
-	{KeyJ, "Move window cursor down", "display"},
-	{KeyDown, "Move window cursor down", "display"},
+	{"j", "Move window cursor down", "display"},
+	{"down", "Move window cursor down", "display"},
 	// Move window cursor up
-	{KeyK, "Move window cursor up", "display"},
-	{KeyUp, "Move window cursor up", "display"},
+	{"k", "Move window cursor up", "display"},
+	{"up", "Move window cursor up", "display"},
 	// Scroll down one line
-	{KeyShiftJ, "Scroll down one line", "display"},
-	{KeyShiftDown, "Scroll down one line", "display"},
+	{"J", "Scroll down one line", "display"},
+	{"shift+down", "Scroll down one line", "display"},
 	// Scroll up one line
-	{KeyShiftK, "Scroll up one line", "display"},
-	{KeyShiftUp, "Scroll up one line", "display"},
+	{"K", "Scroll up one line", "display"},
+	{"shift+up", "Scroll up one line", "display"},
 	// Scroll down half screen
-	{KeyCtrlD, "Scroll down half screen", "display"},
+	{"ctrl+d", "Scroll down half screen", "display"},
 	// Scroll up half screen
-	{KeyCtrlU, "Scroll up half screen", "display"},
+	{"ctrl+u", "Scroll up half screen", "display"},
 	// Go to bottom (last window)
-	{KeyG, "Go to bottom (last window)", "display"},
+	{"G", "Go to bottom (last window)", "display"},
 	// Go to top (first window)
-	{Keyg, "Go to top (first window)", "display"},
+	{"g", "Go to top (first window)", "display"},
 	// Move cursor to top window
-	{KeyShiftH, "Move cursor to top window", "display"},
+	{"H", "Move cursor to top window", "display"},
 	// Move cursor to bottom window
-	{KeyShiftL, "Move cursor to bottom window", "display"},
+	{"L", "Move cursor to bottom window", "display"},
 	// Move cursor to middle window
-	{KeyShiftM, "Move cursor to middle window", "display"},
+	{"M", "Move cursor to middle window", "display"},
 	// Open window content in external editor
-	{KeyE, "Open window content in external editor", "display"},
+	{"e", "Open window content in external editor", "display"},
 	// Switch to input with command prefix
-	{KeyColon, "Switch to input with command prefix", "display"},
+	{":", "Switch to input with command prefix", "display"},
 	// Toggle window fold (expand/collapse)
-	{KeySpace, "Toggle window fold (expand/collapse)", "display"},
+	{" ", "Toggle window fold (expand/collapse)", "display"},
 }
 
 // Model selector key bindings
 var modelSelectorKeyBindings = []KeyBinding{
-	{KeyUp, "Move selection up", "model-selector"},
-	{KeyDown, "Move selection down", "model-selector"},
-	{KeyEnter, "Select model", "model-selector"},
-	{KeyEsc, "Close model selector", "model-selector"},
-	{KeyTab, "Toggle focus between search and list", "model-selector"},
+	{"up", "Move selection up", "model-selector"},
+	{"down", "Move selection down", "model-selector"},
+	{"enter", "Select model", "model-selector"},
+	{"esc", "Close model selector", "model-selector"},
+	{"tab", "Toggle focus between search and list", "model-selector"},
 	{"e", "Edit model config file", "model-selector"},
 	{"r", "Reload models from file", "model-selector"},
 }
 
 // Queue manager key bindings
 var queueManagerKeyBindings = []KeyBinding{
-	{KeyUp, "Move selection up", "queue-manager"},
-	{KeyDown, "Move selection down", "queue-manager"},
-	{KeyEsc, "Close queue manager", "queue-manager"},
+	{"up", "Move selection up", "queue-manager"},
+	{"down", "Move selection down", "queue-manager"},
+	{"esc", "Close queue manager", "queue-manager"},
 	{"d", "Delete selected queue item", "queue-manager"},
 }
 
 // Theme selector key bindings
 var themeSelectorKeyBindings = []KeyBinding{
-	{KeyUp, "Move selection up", "theme-selector"},
-	{KeyDown, "Move selection down", "theme-selector"},
+	{"up", "Move selection up", "theme-selector"},
+	{"down", "Move selection down", "theme-selector"},
 	{"j", "Move selection down", "theme-selector"},
 	{"k", "Move selection up", "theme-selector"},
-	{KeyEnter, "Select theme", "theme-selector"},
-	{KeyEsc, "Close theme selector", "theme-selector"},
+	{"enter", "Select theme", "theme-selector"},
+	{"esc", "Close theme selector", "theme-selector"},
 	{"r", "Reload themes from folder", "theme-selector"},
 	{"q", "Close theme selector", "theme-selector"},
 }
@@ -194,8 +107,8 @@ var themeSelectorKeyBindings = []KeyBinding{
 var confirmDialogKeyBindings = []KeyBinding{
 	{"y", "Confirm action", "confirm-dialog"},
 	{"n", "Cancel action", "confirm-dialog"},
-	{KeyEsc, "Cancel action", "confirm-dialog"},
-	{KeyCtrlC, "Cancel action", "confirm-dialog"},
+	{"esc", "Cancel action", "confirm-dialog"},
+	{"ctrl+c", "Cancel action", "confirm-dialog"},
 }
 
 // GetAllKeyBindings returns all key bindings for help display
@@ -237,7 +150,7 @@ func (m *Terminal) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// 5. Tab toggles focus between display and input
-	if msg.String() == KeyTab {
+	if msg.String() == "tab" {
 		m.toggleFocus()
 		return m, nil
 	}
@@ -366,7 +279,7 @@ func (m *Terminal) handleModelSelectorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 // handleQueueManagerKeys handles input when queue manager is open.
 func (m *Terminal) handleQueueManagerKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle 'd' key for delete
-	if msg.String() == KeyD {
+	if msg.String() == "d" {
 		selectedItem := m.queueManager.GetSelectedItem()
 		if selectedItem != nil {
 			// Send delete command to session
@@ -396,7 +309,7 @@ func (m *Terminal) handleConfirmDialog(msg tea.KeyMsg) (tea.Cmd, bool) {
 	key := msg.String()
 
 	switch key {
-	case KeyY, "Y":
+	case "y", "Y":
 		kind := m.confirmDialog
 		fromCmd := m.confirmFromCommand
 		m.confirmDialog = confirmNone
@@ -420,7 +333,7 @@ func (m *Terminal) handleConfirmDialog(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return m.submitCommand("cancel_all", fromCmd), true
 		}
 
-	case KeyN, "N", KeyEsc, KeyCtrlC:
+	case "n", "N", "esc", "ctrl+c":
 		if m.confirmFromCommand {
 			m.input.SetValue("")
 		}
@@ -432,114 +345,109 @@ func (m *Terminal) handleConfirmDialog(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, true
 }
 
+// Display key handler helpers (shared between multiple keys)
+// Display key handler helpers (shared between multiple keys)
+// nolint:unparam
+func moveWindowCursorDown(m *Terminal) tea.Cmd {
+	if m.display.MoveWindowCursorDown() {
+		m.display.EnsureCursorVisible()
+		m.display.updateContent()
+	}
+	return nil
+}
+
+// nolint:unparam
+func moveWindowCursorUp(m *Terminal) tea.Cmd {
+	if m.display.MoveWindowCursorUp() {
+		m.display.EnsureCursorVisible()
+		m.display.updateContent()
+	}
+	return nil
+}
+
+// nolint:unparam
+func scrollDownLine(m *Terminal) tea.Cmd {
+	m.display.MarkUserScrolled()
+	m.display.ScrollDown(1)
+	return nil
+}
+
+// nolint:unparam
+func scrollUpLine(m *Terminal) tea.Cmd {
+	m.display.MarkUserScrolled()
+	m.display.ScrollUp(1)
+	return nil
+}
+
 // displayKeyMap maps display key strings to their handler functions.
 // Each handler returns a tea.Cmd (may be nil) for follow-up commands.
+// nolint:unparam // Some handlers always return nil (no follow-up command)
 var displayKeyMap = map[string]func(*Terminal) tea.Cmd{
-	KeyJ: func(m *Terminal) tea.Cmd {
-		if m.display.MoveWindowCursorDown() {
-			m.display.EnsureCursorVisible()
-			m.display.updateContent()
-		}
-		return nil
-	},
-	KeyDown: func(m *Terminal) tea.Cmd {
-		if m.display.MoveWindowCursorDown() {
-			m.display.EnsureCursorVisible()
-			m.display.updateContent()
-		}
-		return nil
-	},
-	KeyK: func(m *Terminal) tea.Cmd {
-		if m.display.MoveWindowCursorUp() {
-			m.display.EnsureCursorVisible()
-			m.display.updateContent()
-		}
-		return nil
-	},
-	KeyUp: func(m *Terminal) tea.Cmd {
-		if m.display.MoveWindowCursorUp() {
-			m.display.EnsureCursorVisible()
-			m.display.updateContent()
-		}
-		return nil
-	},
-	KeyCtrlD: func(m *Terminal) tea.Cmd {
+	"j":    moveWindowCursorDown,
+	"down": moveWindowCursorDown,
+	"k":    moveWindowCursorUp,
+	"up":   moveWindowCursorUp,
+	"ctrl+d": func(m *Terminal) tea.Cmd {
 		m.display.MarkUserScrolled()
 		m.display.ScrollDown(max(1, m.display.GetHeight()/2))
 		return nil
 	},
-	KeyCtrlU: func(m *Terminal) tea.Cmd {
+	"ctrl+u": func(m *Terminal) tea.Cmd {
 		m.display.MarkUserScrolled()
 		m.display.ScrollUp(max(1, m.display.GetHeight()/2))
 		return nil
 	},
-	KeyShiftJ: func(m *Terminal) tea.Cmd {
-		m.display.MarkUserScrolled()
-		m.display.ScrollDown(1)
-		return nil
-	},
-	KeyShiftDown: func(m *Terminal) tea.Cmd {
-		m.display.MarkUserScrolled()
-		m.display.ScrollDown(1)
-		return nil
-	},
-	KeyShiftK: func(m *Terminal) tea.Cmd {
-		m.display.MarkUserScrolled()
-		m.display.ScrollUp(1)
-		return nil
-	},
-	KeyShiftUp: func(m *Terminal) tea.Cmd {
-		m.display.MarkUserScrolled()
-		m.display.ScrollUp(1)
-		return nil
-	},
-	KeyShiftH: func(m *Terminal) tea.Cmd {
+	"J":          scrollDownLine,
+	"shift+down": scrollDownLine,
+	"K":          scrollUpLine,
+	"shift+up":   scrollUpLine,
+	"H": func(m *Terminal) tea.Cmd {
 		if m.display.MoveWindowCursorToTop() {
 			m.display.EnsureCursorVisible()
 			m.display.updateContent()
 		}
 		return nil
 	},
-	KeyShiftL: func(m *Terminal) tea.Cmd {
+	"L": func(m *Terminal) tea.Cmd {
 		if m.display.MoveWindowCursorToBottom() {
 			m.display.EnsureCursorVisible()
 			m.display.updateContent()
 		}
 		return nil
 	},
-	KeyShiftM: func(m *Terminal) tea.Cmd {
+	"M": func(m *Terminal) tea.Cmd {
 		if m.display.MoveWindowCursorToCenter() {
 			m.display.EnsureCursorVisible()
 			m.display.updateContent()
 		}
 		return nil
 	},
-	KeyG: func(m *Terminal) tea.Cmd {
+	"G": func(m *Terminal) tea.Cmd {
 		m.display.SetCursorToLastWindow()
 		m.display.GotoBottom()
 		m.display.updateContent()
 		return nil
 	},
-	Keyg: func(m *Terminal) tea.Cmd {
+	"g": func(m *Terminal) tea.Cmd {
 		m.display.SetWindowCursor(0)
 		m.display.GotoTop()
 		m.display.updateContent()
 		return nil
 	},
-	KeyColon: func(m *Terminal) tea.Cmd {
+	":": func(m *Terminal) tea.Cmd {
 		m.focusInput()
 		m.input.SetValue(":")
 		m.input.CursorEnd()
 		return nil
 	},
-	KeySpace: func(m *Terminal) tea.Cmd {
+	" ": func(m *Terminal) tea.Cmd {
 		if m.display.ToggleWindowFold() {
 			m.display.EnsureCursorVisible()
 			m.display.updateContent()
 		}
 		return nil
 	},
-	KeyE: func(m *Terminal) tea.Cmd {
+	"e": func(m *Terminal) tea.Cmd {
 		content := m.display.GetCursorWindowContent()
 		if content != "" {
 			return m.editor.OpenForDisplay(content)
@@ -564,37 +472,37 @@ func (m *Terminal) handleDisplayKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 // handleGlobalKeys handles global keyboard shortcuts.
 func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch msg.String() {
-	case KeyCtrlG:
+	case "ctrl+g":
 		m.confirmDialog = confirmCancel
 		m.confirmFromCommand = false
 		return nil, true
 
-	case KeyCtrlC:
+	case "ctrl+c":
 		if m.focusedWindow == focusInput {
 			m.input.SetValue("")
 			m.input.editorContent = ""
 		}
 		return nil, true
 
-	case KeyCtrlS:
+	case "ctrl+s":
 		return m.submitCommand("save", false), true
 
-	case KeyCtrlO:
+	case "ctrl+o":
 		return m.OpenEditor(), true
 
-	case KeyCtrlL:
+	case "ctrl+l":
 		m.openModelSelector()
 		return nil, true
 
-	case KeyCtrlP:
+	case "ctrl+p":
 		m.openThemeSelector()
 		return nil, true
 
-	case KeyCtrlQ:
+	case "ctrl+q":
 		m.openQueueManager()
 		return nil, true
 
-	case KeyEnter:
+	case "enter":
 		return m.handleSubmit(), true
 	}
 
@@ -605,7 +513,7 @@ func (m *Terminal) handleGlobalKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 func (m *Terminal) handleInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Block keys that would modify input content unexpectedly
 	switch msg.String() {
-	case KeyCtrlU, KeyCtrlD:
+	case "ctrl+u", "ctrl+d":
 		// Swallow to prevent textinput's default clear-line / delete-char
 		return m, nil
 	}

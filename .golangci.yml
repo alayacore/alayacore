@@ -120,6 +120,11 @@ issues:
       linters:
         - all
 
+    # Exclude goconst for terminal key handling - key strings are canonical
+    - path: internal/adaptors/terminal/
+      linters:
+        - goconst
+
   max-issues-per-linter: 0
   max-same-issues: 0
   new: false

@@ -122,25 +122,25 @@ func (qm *QueueManager) SetHasFocus(hasFocus bool) {
 // HandleKeyMsg processes keyboard input and returns a tea.Cmd
 func (qm *QueueManager) HandleKeyMsg(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
-	case KeyQ, KeyEsc, KeyCtrlC:
+	case "q", "esc", "ctrl+c":
 		qm.Close()
 		return nil
 
-	case KeyJ, KeyDown:
+	case "j", "down":
 		if len(qm.items) > 0 && qm.selectedIdx < len(qm.items)-1 {
 			qm.selectedIdx++
 			qm.updateScrollForHeight(SelectorListRows)
 		}
 		return nil
 
-	case KeyK, KeyUp:
+	case "k", "up":
 		if qm.selectedIdx > 0 {
 			qm.selectedIdx--
 			qm.updateScrollForHeight(SelectorListRows)
 		}
 		return nil
 
-	case KeyD:
+	case "d":
 		// Delete is handled by parent
 		return nil
 	}
