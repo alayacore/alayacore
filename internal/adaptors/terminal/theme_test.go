@@ -85,13 +85,13 @@ func TestLoadThemeFromPaths(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	// Test with nonexistent explicit path (should fallback to default)
-	theme := LoadThemeFromPaths("/nonexistent/theme.conf")
+	theme := LoadThemeFromPaths("/nonexistent/theme.conf", nil)
 	if theme.Primary != "#89d4fa" {
 		t.Errorf("Expected default theme, got Primary %s", theme.Primary)
 	}
 
 	// Test with empty path (should use default)
-	theme = LoadThemeFromPaths("")
+	theme = LoadThemeFromPaths("", nil)
 	if theme.Primary != "#89d4fa" {
 		t.Errorf("Expected default theme, got Primary %s", theme.Primary)
 	}

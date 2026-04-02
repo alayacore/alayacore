@@ -21,14 +21,17 @@ type ThemeInfo struct {
 type ThemeManager struct {
 	themesFolder string
 	themes       []ThemeInfo
+	wc           *WarningCollector
 }
 
 // NewThemeManager creates a new theme manager.
 // If themesFolder is empty, it defaults to ~/.alayacore/themes.
 // If the themes folder doesn't exist, it creates it with default themes.
 func NewThemeManager(themesFolder string) *ThemeManager {
+	wc := &WarningCollector{}
 	tm := &ThemeManager{
 		themesFolder: themesFolder,
+		wc:           wc,
 	}
 
 	// Set default folder if not provided
@@ -58,7 +61,7 @@ func (tm *ThemeManager) initializeThemesFolder() {
 	if _, err := os.Stat(tm.themesFolder); os.IsNotExist(err) {
 		// Create the folder
 		if err := os.MkdirAll(tm.themesFolder, 0755); err != nil {
-			AddWarningf("Warning: failed to create themes folder: %v", err)
+			AddWarningf(tm.wc, "Warning: failed to create themes folder: %v", err)
 			return
 		}
 
@@ -109,7 +112,7 @@ removed: #f38ba8
 `
 	darkPath := filepath.Join(tm.themesFolder, "theme-dark.conf")
 	if err := os.WriteFile(darkPath, []byte(darkTheme), 0600); err != nil {
-		AddWarningf("Warning: failed to create default dark theme: %v", err)
+		AddWarningf(tm.wc, "Warning: failed to create default dark theme: %v", err)
 	}
 
 	// theme-light.conf - using Catppuccin Latte colors
@@ -153,7 +156,7 @@ removed: #d20f39
 `
 	lightPath := filepath.Join(tm.themesFolder, "theme-light.conf")
 	if err := os.WriteFile(lightPath, []byte(lightTheme), 0600); err != nil {
-		AddWarningf("Warning: failed to create default light theme: %v", err)
+		AddWarningf(tm.wc, "Warning: failed to create default light theme: %v", err)
 	}
 }
 
@@ -220,7 +223,7 @@ func (tm *ThemeManager) LoadTheme(name string) *Theme {
 		if theme.Name == name {
 			loaded, err := LoadTheme(theme.Path)
 			if err != nil {
-				AddWarningf("Warning: failed to load theme %s: %v", name, err)
+				AddWarningf(tm.wc, "Warning: failed to load theme %s: %v", name, err)
 				return DefaultTheme()
 			}
 			return loaded
@@ -228,7 +231,7 @@ func (tm *ThemeManager) LoadTheme(name string) *Theme {
 	}
 
 	// Theme not found
-	AddWarningf("Warning: theme %s not found, using default", name)
+	AddWarningf(tm.wc, "Warning: theme %s not found, using default", name)
 	return DefaultTheme()
 }
 
@@ -240,4 +243,9 @@ func (tm *ThemeManager) ThemeExists(name string) bool {
 		}
 	}
 	return false
+}
+
+// GetWarnings returns all collected warnings and clears the buffer.
+func (tm *ThemeManager) GetWarnings() []Warning {
+	return tm.wc.GetAndClear()
 }

@@ -68,7 +68,7 @@ func LoadTheme(path string) (*Theme, error) {
 
 // LoadThemeFromPaths tries to load a theme from multiple paths in priority order
 // Returns the first successfully loaded theme, or the default theme if none found
-func LoadThemeFromPaths(explicitPath string) *Theme {
+func LoadThemeFromPaths(explicitPath string, wc *WarningCollector) *Theme {
 	// Try explicit path first (highest priority)
 	if explicitPath != "" {
 		theme, err := LoadTheme(explicitPath)
@@ -76,7 +76,7 @@ func LoadThemeFromPaths(explicitPath string) *Theme {
 			return theme
 		}
 		// If explicit path was given but failed, buffer warning but continue
-		AddWarningf("Warning: failed to load theme from %s: %v", explicitPath, err)
+		AddWarningf(wc, "Warning: failed to load theme from %s: %v", explicitPath, err)
 	}
 
 	// Try default user theme path
@@ -88,7 +88,7 @@ func LoadThemeFromPaths(explicitPath string) *Theme {
 			if err == nil {
 				return theme
 			}
-			AddWarningf("Warning: failed to load theme from %s: %v", defaultPath, err)
+			AddWarningf(wc, "Warning: failed to load theme from %s: %v", defaultPath, err)
 		}
 	}
 

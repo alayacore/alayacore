@@ -51,7 +51,17 @@ Refactoring `internal/adaptors/terminal/`. Package builds with `go build ./...` 
 - Removed unused `os`, `os/exec` imports from `model_selector.go`
 - Updated tests to use `searchableModel` with embedded `ModelInfo`
 
-### 6. Remove global WarningCollector
+### 6. Remove global WarningCollector ✅
+- Replaced package-level `var globalWarningCollector` with explicit DI via `*WarningCollector`
+- `WarningCollector` now owned by `ThemeManager` (injected at creation)
+- `AddWarningf()` changed to nil-safe helper: `AddWarningf(wc *WarningCollector, ...)`
+- `LoadThemeFromPaths()` now takes `wc *WarningCollector` parameter
+- `ThemeManager.GetWarnings()` exposes collector for `Terminal.Init()` to drain warnings
+- Removed `GetWarnings()` and old `AddWarningf()` free functions
+- Updated tests to use instance-based API
+
+## 🔧 TODO
+
+### 7. Consistency fixes
 - Standardize `DisplayModel` receivers (value → pointer)
-- Delete orphaned `OpenModelConfigFile` in `model_selector.go`
 - Fix `View()` return types on internal components

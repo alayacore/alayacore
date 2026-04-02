@@ -19,19 +19,6 @@ type WarningCollector struct {
 	warnings []Warning
 }
 
-// globalWarningCollector is the global instance used during initialization
-var globalWarningCollector = &WarningCollector{}
-
-// AddWarningf adds a warning to the collector
-func AddWarningf(format string, args ...interface{}) {
-	globalWarningCollector.Addf(format, args...)
-}
-
-// GetWarnings returns all collected warnings and clears the buffer
-func GetWarnings() []Warning {
-	return globalWarningCollector.GetAndClear()
-}
-
 // Addf adds a warning to the collector
 func (wc *WarningCollector) Addf(format string, args ...interface{}) {
 	wc.mu.Lock()
@@ -49,6 +36,13 @@ func (wc *WarningCollector) GetAndClear() []Warning {
 	warnings := wc.warnings
 	wc.warnings = nil
 	return warnings
+}
+
+// AddWarningf adds a warning to the collector (nil-safe)
+func AddWarningf(wc *WarningCollector, format string, args ...interface{}) {
+	if wc != nil {
+		wc.Addf(format, args...)
+	}
 }
 
 // HasWarnings checks if there are any warnings

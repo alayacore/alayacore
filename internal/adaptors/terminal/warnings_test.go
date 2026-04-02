@@ -6,14 +6,13 @@ import (
 )
 
 func TestWarningCollector(t *testing.T) {
-	// Reset global collector
-	globalWarningCollector = &WarningCollector{}
+	wc := &WarningCollector{}
 
 	// Test adding warnings (no trailing \n)
-	AddWarningf("Test warning %d", 1)
-	AddWarningf("Another warning")
+	AddWarningf(wc, "Test warning %d", 1)
+	AddWarningf(wc, "Another warning")
 
-	warnings := GetWarnings()
+	warnings := wc.GetAndClear()
 	if len(warnings) != 2 {
 		t.Errorf("Expected 2 warnings, got %d", len(warnings))
 	}
@@ -34,7 +33,7 @@ func TestWarningCollector(t *testing.T) {
 	}
 
 	// Test that warnings are cleared after retrieval
-	warnings = GetWarnings()
+	warnings = wc.GetAndClear()
 	if len(warnings) != 0 {
 		t.Errorf("Expected 0 warnings after GetAndClear, got %d", len(warnings))
 	}
@@ -56,4 +55,9 @@ func TestWarningCollectorHasWarnings(t *testing.T) {
 	if wc.HasWarnings() {
 		t.Error("Expected no warnings after GetAndClear")
 	}
+}
+
+func TestAddWarningfNilSafe(t *testing.T) {
+	// Should not panic with nil collector
+	AddWarningf(nil, "test %d", 1)
 }
