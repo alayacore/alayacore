@@ -1002,7 +1002,9 @@ func (m *DisplayModel) MoveWindowCursorUp() bool {
 	return true
 }
 
-// EnsureCursorVisible scrolls the viewport to make the cursor window visible
+// EnsureCursorVisible scrolls the viewport to make the cursor window fully visible.
+// Use this for active navigation (j/k/H/L/M/space) where the user explicitly
+// wants to see the selected window.
 func (m *DisplayModel) EnsureCursorVisible() {
 	if m.windowCursor < 0 {
 		return
@@ -1020,7 +1022,33 @@ func (m *DisplayModel) EnsureCursorVisible() {
 	}
 }
 
-// ValidateCursor ensures the window cursor is valid
+// EnsureCursorPartiallyVisible scrolls only if the cursor window is completely
+// off-screen. If any part is already visible, the Y offset is unchanged.
+// Use this for passive situations (resize, overlay close, focus regain) where
+// preserving the user's scroll position is preferred.
+func (m *DisplayModel) EnsureCursorPartiallyVisible() {
+	if m.windowCursor < 0 {
+		return
+	}
+
+	startLine := m.windowBuffer.GetWindowStartLine(m.windowCursor)
+	endLine := m.windowBuffer.GetWindowEndLine(m.windowCursor)
+	viewportTop := m.viewport.YOffset()
+	viewportBottom := viewportTop + m.viewport.Height()
+
+	// Only scroll if the window is entirely above or entirely below the viewport
+	if endLine <= viewportTop {
+		// Entirely above — scroll up to show the bottom edge
+		m.viewport.SetYOffset(max(0, endLine-m.viewport.Height()))
+	} else if startLine >= viewportBottom {
+		// Entirely below — scroll down to show the top edge
+		m.viewport.SetYOffset(startLine)
+	}
+	// Otherwise: at least partially visible → do nothing
+}
+
+// ValidateCursor ensures the window cursor is valid.
+// Uses partial visibility check to avoid jarring scroll jumps on resize.
 func (m *DisplayModel) ValidateCursor() {
 	windowCount := m.windowBuffer.GetWindowCount()
 	if m.windowCursor >= windowCount {
@@ -1030,7 +1058,7 @@ func (m *DisplayModel) ValidateCursor() {
 		m.windowCursor = -1
 	}
 	if m.windowCursor >= 0 && windowCount > 0 {
-		m.EnsureCursorVisible()
+		m.EnsureCursorPartiallyVisible()
 	}
 }
 
