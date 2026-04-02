@@ -69,7 +69,7 @@ var displayKeyBindings = []KeyBinding{
 	// Switch to input with command prefix
 	{":", "Switch to input with command prefix", "display"},
 	// Toggle window fold (expand/collapse)
-	{" ", "Toggle window fold (expand/collapse)", "display"},
+	{"space", "Toggle window fold (expand/collapse)", "display"},
 }
 
 // Model selector key bindings
@@ -440,7 +440,7 @@ var displayKeyMap = map[string]func(*Terminal) tea.Cmd{
 		m.input.CursorEnd()
 		return nil
 	},
-	" ": func(m *Terminal) tea.Cmd {
+	"space": func(m *Terminal) tea.Cmd {
 		if m.display.ToggleWindowFold() {
 			m.display.EnsureCursorVisible()
 			m.display.updateContent()
@@ -560,6 +560,7 @@ func (m *Terminal) handleCommand(command string) tea.Cmd {
 	// Quit command
 	if command == "quit" || command == "q" {
 		m.confirmDialog = confirmQuit
+		m.confirmFromCommand = true
 		return nil
 	}
 
