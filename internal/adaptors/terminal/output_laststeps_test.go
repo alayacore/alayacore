@@ -20,15 +20,15 @@ func TestLastMaxStepsPreservation(t *testing.T) {
 	w.handleSystemTag(string(data))
 
 	// Verify in-progress state
-	if !w.IsInProgress() {
+	snap := w.SnapshotStatus()
+	if !snap.InProgress {
 		t.Error("Expected in-progress to be true")
 	}
-	if w.GetMaxSteps() != 10 {
-		t.Errorf("Expected max steps 10, got %d", w.GetMaxSteps())
+	if snap.MaxSteps != 10 {
+		t.Errorf("Expected max steps 10, got %d", snap.MaxSteps)
 	}
-	lastCurrent, lastMax := w.GetLastStepInfo()
-	if lastCurrent != 0 || lastMax != 0 {
-		t.Errorf("Expected last step info (0, 0) (not set yet), got (%d, %d)", lastCurrent, lastMax)
+	if snap.LastCurrentStep != 0 || snap.LastMaxSteps != 0 {
+		t.Errorf("Expected last step info (0, 0) (not set yet), got (%d, %d)", snap.LastCurrentStep, snap.LastMaxSteps)
 	}
 
 	// Simulate task completion (transition from in-progress to done)
@@ -41,15 +41,15 @@ func TestLastMaxStepsPreservation(t *testing.T) {
 	w.handleSystemTag(string(data))
 
 	// Verify completed state
-	if w.IsInProgress() {
+	snap = w.SnapshotStatus()
+	if snap.InProgress {
 		t.Error("Expected in-progress to be false")
 	}
-	if w.GetMaxSteps() != 10 {
-		t.Errorf("Expected max steps 10, got %d", w.GetMaxSteps())
+	if snap.MaxSteps != 10 {
+		t.Errorf("Expected max steps 10, got %d", snap.MaxSteps)
 	}
-	lastCurrent, lastMax = w.GetLastStepInfo()
-	if lastCurrent != 5 || lastMax != 10 {
-		t.Errorf("Expected last step info (5, 10) (preserved), got (%d, %d)", lastCurrent, lastMax)
+	if snap.LastCurrentStep != 5 || snap.LastMaxSteps != 10 {
+		t.Errorf("Expected last step info (5, 10) (preserved), got (%d, %d)", snap.LastCurrentStep, snap.LastMaxSteps)
 	}
 
 	// Simulate a new task starting with different max steps
@@ -62,15 +62,15 @@ func TestLastMaxStepsPreservation(t *testing.T) {
 	w.handleSystemTag(string(data))
 
 	// Verify new task state - last step info should be reset when new task starts
-	if !w.IsInProgress() {
+	snap = w.SnapshotStatus()
+	if !snap.InProgress {
 		t.Error("Expected in-progress to be true")
 	}
-	if w.GetMaxSteps() != 20 {
-		t.Errorf("Expected max steps 20, got %d", w.GetMaxSteps())
+	if snap.MaxSteps != 20 {
+		t.Errorf("Expected max steps 20, got %d", snap.MaxSteps)
 	}
-	lastCurrent, lastMax = w.GetLastStepInfo()
-	if lastCurrent != 0 || lastMax != 0 {
-		t.Errorf("Expected last step info (0, 0) (reset for new task), got (%d, %d)", lastCurrent, lastMax)
+	if snap.LastCurrentStep != 0 || snap.LastMaxSteps != 0 {
+		t.Errorf("Expected last step info (0, 0) (reset for new task), got (%d, %d)", snap.LastCurrentStep, snap.LastMaxSteps)
 	}
 }
 
@@ -78,9 +78,9 @@ func TestLastMaxStepsZeroOnStart(t *testing.T) {
 	w := NewTerminalOutput(DefaultStyles())
 
 	// Initial state - no last step info
-	lastCurrent, lastMax := w.GetLastStepInfo()
-	if lastCurrent != 0 || lastMax != 0 {
-		t.Errorf("Expected last step info (0, 0) initially, got (%d, %d)", lastCurrent, lastMax)
+	snap := w.SnapshotStatus()
+	if snap.LastCurrentStep != 0 || snap.LastMaxSteps != 0 {
+		t.Errorf("Expected last step info (0, 0) initially, got (%d, %d)", snap.LastCurrentStep, snap.LastMaxSteps)
 	}
 
 	// First task starts - last step info should still be (0, 0)
@@ -92,9 +92,9 @@ func TestLastMaxStepsZeroOnStart(t *testing.T) {
 	data := marshalSystemInfo(t, systemInfoFirstTask)
 	w.handleSystemTag(string(data))
 
-	lastCurrent, lastMax = w.GetLastStepInfo()
-	if lastCurrent != 0 || lastMax != 0 {
-		t.Errorf("Expected last step info (0, 0) (task not completed yet), got (%d, %d)", lastCurrent, lastMax)
+	snap = w.SnapshotStatus()
+	if snap.LastCurrentStep != 0 || snap.LastMaxSteps != 0 {
+		t.Errorf("Expected last step info (0, 0) (task not completed yet), got (%d, %d)", snap.LastCurrentStep, snap.LastMaxSteps)
 	}
 }
 
@@ -113,9 +113,9 @@ func TestLastMaxStepsNotUpdatedWithoutTransition(t *testing.T) {
 	}
 
 	// Last step info should still be (0, 0) (no completion transition yet)
-	lastCurrent, lastMax := w.GetLastStepInfo()
-	if lastCurrent != 0 || lastMax != 0 {
-		t.Errorf("Expected last step info (0, 0) (no completion), got (%d, %d)", lastCurrent, lastMax)
+	snap := w.SnapshotStatus()
+	if snap.LastCurrentStep != 0 || snap.LastMaxSteps != 0 {
+		t.Errorf("Expected last step info (0, 0) (no completion), got (%d, %d)", snap.LastCurrentStep, snap.LastMaxSteps)
 	}
 
 	// Now complete the task
@@ -128,9 +128,9 @@ func TestLastMaxStepsNotUpdatedWithoutTransition(t *testing.T) {
 	w.handleSystemTag(string(data))
 
 	// Now last step info should be set to the last current step before completion
-	lastCurrent, lastMax = w.GetLastStepInfo()
-	if lastCurrent != 3 || lastMax != 15 {
-		t.Errorf("Expected last step info (3, 15), got (%d, %d)", lastCurrent, lastMax)
+	snap = w.SnapshotStatus()
+	if snap.LastCurrentStep != 3 || snap.LastMaxSteps != 15 {
+		t.Errorf("Expected last step info (3, 15), got (%d, %d)", snap.LastCurrentStep, snap.LastMaxSteps)
 	}
 }
 

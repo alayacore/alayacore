@@ -78,9 +78,10 @@ func (a *Adaptor) Start() {
 	terminalOutput.SetStyles(styles)
 
 	// Check if we have any models available.
-	if !terminalOutput.HasModels() {
+	modelSnap := terminalOutput.SnapshotModels()
+	if !modelSnap.HasModels {
 		// Print error to stderr and exit
-		modelPath := terminalOutput.GetModelConfigPath()
+		modelPath := modelSnap.ConfigPath
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Error: No models configured.")
 		fmt.Fprintln(os.Stderr, "")

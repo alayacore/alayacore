@@ -307,6 +307,36 @@ func (to *outputWriter) handleSystemTag(value string) {
 	}
 }
 
+// SnapshotStatus returns a consistent point-in-time view of session status.
+// All fields are read under a single lock, preventing torn reads.
+func (to *outputWriter) SnapshotStatus() StatusSnapshot {
+	to.mu.Lock()
+	defer to.mu.Unlock()
+	return StatusSnapshot{
+		ContextStatus:   to.status,
+		QueueCount:      to.queueCount,
+		InProgress:      to.inProgress,
+		CurrentStep:     to.currentStep,
+		MaxSteps:        to.maxSteps,
+		LastCurrentStep: to.lastCurrentStep,
+		LastMaxSteps:    to.lastMaxSteps,
+	}
+}
+
+// SnapshotModels returns a consistent point-in-time view of model state.
+// All fields are read under a single lock, preventing torn reads.
+func (to *outputWriter) SnapshotModels() ModelSnapshot {
+	to.mu.Lock()
+	defer to.mu.Unlock()
+	return ModelSnapshot{
+		Models:     to.models,
+		ActiveID:   to.activeModelID,
+		ActiveName: to.activeModelName,
+		HasModels:  to.hasModels,
+		ConfigPath: to.modelConfigPath,
+	}
+}
+
 // GetQueueItems returns and clears the pending queue items
 func (to *outputWriter) GetQueueItems() []QueueItem {
 	to.mu.Lock()
@@ -314,83 +344,6 @@ func (to *outputWriter) GetQueueItems() []QueueItem {
 	items := to.pendingQueueItems
 	to.pendingQueueItems = nil
 	return items
-}
-
-// GetModels returns the current model list
-func (to *outputWriter) GetModels() []agentpkg.ModelInfo {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.models
-}
-
-// GetActiveModelID returns the current active model ID
-func (to *outputWriter) GetActiveModelID() int {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.activeModelID
-}
-
-// HasModels returns whether models are configured
-func (to *outputWriter) HasModels() bool {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.hasModels
-}
-
-// GetModelConfigPath returns the path to the model config file
-func (to *outputWriter) GetModelConfigPath() string {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.modelConfigPath
-}
-
-// GetActiveModelName returns the name of the active model
-func (to *outputWriter) GetActiveModelName() string {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.activeModelName
-}
-
-// GetQueueCount returns the current number of queued items
-func (to *outputWriter) GetQueueCount() int {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.queueCount
-}
-
-// GetStatus returns the current status string
-func (to *outputWriter) GetStatus() string {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.status
-}
-
-// IsInProgress returns whether the session has a task in progress
-func (to *outputWriter) IsInProgress() bool {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.inProgress
-}
-
-// GetCurrentStep returns the current step in the agent loop
-func (to *outputWriter) GetCurrentStep() int {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.currentStep
-}
-
-// GetMaxSteps returns the maximum steps allowed
-func (to *outputWriter) GetMaxSteps() int {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.maxSteps
-}
-
-// GetLastStepInfo returns the last step info from a completed task
-func (to *outputWriter) GetLastStepInfo() (currentStep, maxSteps int) {
-	to.mu.Lock()
-	defer to.mu.Unlock()
-	return to.lastCurrentStep, to.lastMaxSteps
 }
 
 // generateWindowID returns a unique window ID for non-delta messages.

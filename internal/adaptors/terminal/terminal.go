@@ -271,7 +271,8 @@ func (m *Terminal) handleTick() (tea.Model, tea.Cmd) {
 		}
 
 		// Update model selector if models changed
-		cmd = m.modelSelector.LoadModels(m.out.GetModels(), m.out.GetActiveModelID())
+		modelSnap := m.out.SnapshotModels()
+		cmd = m.modelSelector.LoadModels(modelSnap.Models, modelSnap.ActiveID)
 
 		// Check for queue items update
 		if queueItems := m.out.GetQueueItems(); queueItems != nil {
@@ -375,37 +376,30 @@ func (m *Terminal) updateDisplayHeight() {
 
 // updateStatus updates the status bar state from the output writer.
 func (m *Terminal) updateStatus() {
-	contextStatus := m.out.GetStatus()
-	queueCount := m.out.GetQueueCount()
-
-	// Add steps info if we're in progress
-	currentStep := m.out.GetCurrentStep()
-	maxSteps := m.out.GetMaxSteps()
-	inProgress := m.out.IsInProgress()
-	lastCurrentStep, lastMaxSteps := m.out.GetLastStepInfo()
+	snap := m.out.SnapshotStatus()
 
 	// Build status segments - each rendered separately with appropriate colors
 	var segments []string
 
 	// Queue segment - prefix dimmed, count highlighted
-	if queueCount > 0 {
+	if snap.QueueCount > 0 {
 		prefix := m.styles.Status.Render("Queued(Ctrl-Q):")
-		count := m.styles.Status.Foreground(m.styles.ColorAccent).Render(fmt.Sprintf("%d", queueCount))
+		count := m.styles.Status.Foreground(m.styles.ColorAccent).Render(fmt.Sprintf("%d", snap.QueueCount))
 		segments = append(segments, prefix+" "+count)
 	}
 
 	// Steps segment (always show)
 	var stepsPart string
-	if lastMaxSteps > 0 {
-		stepsPart = fmt.Sprintf("Steps: %d/%d", lastCurrentStep, lastMaxSteps)
+	if snap.LastMaxSteps > 0 {
+		stepsPart = fmt.Sprintf("Steps: %d/%d", snap.LastCurrentStep, snap.LastMaxSteps)
 	} else {
-		stepsPart = fmt.Sprintf("Steps: %d/%d", currentStep, maxSteps)
+		stepsPart = fmt.Sprintf("Steps: %d/%d", snap.CurrentStep, snap.MaxSteps)
 	}
 	segments = append(segments, m.styles.Status.Render(stepsPart))
 
 	// Context segment (dimmed)
-	if contextStatus != "" {
-		segments = append(segments, m.styles.Status.Render(contextStatus))
+	if snap.ContextStatus != "" {
+		segments = append(segments, m.styles.Status.Render(snap.ContextStatus))
 	}
 
 	// Join segments with dimmed separator
@@ -419,7 +413,7 @@ func (m *Terminal) updateStatus() {
 	}
 
 	m.statusText = status
-	m.inProgress = inProgress
+	m.inProgress = snap.InProgress
 }
 
 // View renders the complete terminal UI.

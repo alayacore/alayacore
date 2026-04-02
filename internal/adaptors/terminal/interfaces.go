@@ -7,6 +7,30 @@ import (
 )
 
 // ============================================================================
+// Snapshot Types
+// ============================================================================
+
+// StatusSnapshot holds a consistent point-in-time view of session status.
+type StatusSnapshot struct {
+	ContextStatus string
+	QueueCount    int
+	InProgress    bool
+	CurrentStep   int
+	MaxSteps      int
+	LastCurrentStep int
+	LastMaxSteps   int
+}
+
+// ModelSnapshot holds a consistent point-in-time view of model state.
+type ModelSnapshot struct {
+	Models      []agentpkg.ModelInfo
+	ActiveID    int
+	ActiveName  string
+	HasModels   bool
+	ConfigPath  string
+}
+
+// ============================================================================
 // Interfaces for Testability
 // ============================================================================
 
@@ -20,22 +44,13 @@ type OutputWriter interface {
 	WriteString(s string) (n int, err error)
 	Flush() error
 
-	// Configuration and state
+	// Configuration
 	SetWindowWidth(width int)
 	SetStyles(styles *Styles)
-	GetStatus() string
-	GetQueueCount() int
-	IsInProgress() bool
-	GetCurrentStep() int
-	GetMaxSteps() int
-	GetLastStepInfo() (currentStep, maxSteps int)
 
-	// Model management
-	GetModels() []agentpkg.ModelInfo
-	GetActiveModelID() int
-	GetActiveModelName() string
-	HasModels() bool
-	GetModelConfigPath() string
+	// Snapshots (replaces many individual getters)
+	SnapshotStatus() StatusSnapshot
+	SnapshotModels() ModelSnapshot
 
 	// Queue management
 	GetQueueItems() []QueueItem

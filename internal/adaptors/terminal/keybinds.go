@@ -682,7 +682,7 @@ func (m *Terminal) switchToSelectedModel() {
 
 // openModelConfigFile opens the model config file with $EDITOR.
 func (m *Terminal) openModelConfigFile() tea.Cmd {
-	path := m.out.GetModelConfigPath()
+	path := m.out.SnapshotModels().ConfigPath
 	if path == "" {
 		return func() tea.Msg {
 			return FileEditorFinishedMsg{

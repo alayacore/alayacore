@@ -11,12 +11,18 @@ Refactoring `internal/adaptors/terminal/`. Package builds with `go build ./...` 
 - Unified `confirmKind` enum (3 booleans → enum + 1 bool)
 - Removed `GetTotalLinesVirtual` duplicate
 
-## 🔧 TODO (ordered by priority)
+### 1. Snapshot-based OutputWriter interface ✅
+- Added `StatusSnapshot` / `ModelSnapshot` structs in `interfaces.go`
+- Replaced 12 individual getters on `OutputWriter` interface with `SnapshotStatus()` + `SnapshotModels()`
+- Implemented both snapshot methods on `outputWriter` (single lock each)
+- Deleted 12 old getters: `GetStatus`, `GetQueueCount`, `IsInProgress`, `GetCurrentStep`, `GetMaxSteps`, `GetLastStepInfo`, `GetModels`, `GetActiveModelID`, `GetActiveModelName`, `HasModels`, `GetModelConfigPath` (from outputWriter)
+- Updated `updateStatus()` to use `SnapshotStatus()`
+- Updated `handleTick()` to use `SnapshotModels()` for model loading
+- Updated `adaptor.go` to use `SnapshotModels()` for startup model check
+- Updated `keybinds.go` to use `SnapshotModels()` for `openModelConfigFile()`
+- Updated tests in `output_laststeps_test.go` to use snapshot methods
 
-### 1. Snapshot-based OutputWriter interface
-- **Goal**: 12 individual getters → 2 snapshot structs (`SnapshotStatus()`, `SnapshotModels()`)
-- **Files**: `interfaces.go`, `output.go`, `terminal.go`, `model_selector.go`
-- **Steps**: Add `StatusSnapshot`/`ModelSnapshot` types → replace interface methods → implement on `outputWriter` (one lock each) → delete 12 getters → update `updateStatus()` to use snapshot → update `handleTick()` model loading → update `adaptor.go` model checks
+## 🔧 TODO (ordered by priority)
 
 ### 2. `emitCommand` helper
 - **Goal**: Replace 11 `_ = m.streamInput.EmitTLV(...)` + `//nolint` with one helper that logs errors
