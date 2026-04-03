@@ -21,7 +21,11 @@ AlayaCore follows a layered architecture with clear separation of concerns:
 │  │   Terminal Adaptor  │     │         WebSocket Adaptor            │   │
 │  │   (Bubble Tea TUI)  │     │         (HTTP/WebSocket)             │   │
 │  └──────────┬──────────┘     └───────────────┬──────────────────────┘   │
-└─────────────┼────────────────────────────────┼──────────────────────────┘
+│             │   ┌──────────────────────────┐ │                          │
+│             │   │     PlainIO Adaptor      │ │                          │
+│             │   │   (plain stdin/stdout)   │ │                          │
+│             │   └──────────────┬───────────┘ │                          │
+└─────────────┼──────────────────┼─────────────┼──────────────────────────┘
               │                                │
               │         TLV Protocol           │
               │  (Tag-Length-Value Messages)   │
@@ -72,7 +76,7 @@ The entry point wires together all components:
    - Skills manager (loads skill metadata)
    - Tools (read_file, edit_file, write_file, posix_shell, activate_skill)
    - System prompt (default + skills fragment + AGENTS.md + cwd)
-3. **Adaptor creation** - Terminal or WebSocket adaptor starts
+3. **Adaptor creation** - Terminal, WebSocket, or PlainIO adaptor starts
 
 ### Adaptors Layer
 
@@ -93,6 +97,13 @@ The adaptor layer handles user interaction and translates between user actions a
 - HTTP server with WebSocket upgrade
 - Each client gets its own session
 - Embedded HTML chat UI
+
+#### PlainIO Adaptor (`internal/adaptors/plainio/`)
+- Plain stdin/stdout mode, activated with `--plainio`
+- `--text-only` suppresses everything except user prompts and assistant text
+- Reads prompts from stdin (one per line, backslash continuation)
+- Prints plain text to stdout (no ANSI codes)
+- Ctrl-D exits gracefully (code 0), Ctrl-C sends `:cancel_all` and exits (code 1)
 
 ### Session Layer (`internal/agent/`)
 
@@ -380,7 +391,8 @@ alayacore/
 │   │   │   ├── tool_handler.go    # Tool execution handling
 │   │   │   ├── warnings.go    # Warning message handling
 │   │   │   └── doc.go         # Package documentation
-│   │   └── websocket/         # WebSocket adaptor
+│   │   ├── websocket/         # WebSocket adaptor
+│   │   └── plainio/             # Raw stdin/stdout adaptor (--plainio)
 │   ├── agent/
 │   │   ├── session.go         # Session management
 │   │   ├── session_io.go      # Session I/O and task handling

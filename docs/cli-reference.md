@@ -42,6 +42,8 @@ alayacore --skill ~/playground/alayacore/misc/samples/skills/
 | `--themes string` | Themes folder path (default: `~/.alayacore/themes`) |
 | `--max-steps int` | Maximum agent loop steps (default: 100) |
 | `--auto-summarize` | Automatically summarize conversation when context exceeds 80% of limit |
+| `--plainio` | Use plain stdin/stdout mode instead of terminal UI |
+| `--text-only` | Only show user prompts and assistant text (requires `--plainio`) |
 | `--debug-api` | Write raw API requests and responses to log file |
 | `--version` | Show version information |
 | `--help` | Show help information |
@@ -76,6 +78,15 @@ alayacore --themes ./my-themes
 
 # Debug API requests
 alayacore --debug-api
+
+# Raw IO mode (stdin/stdout, no terminal UI)
+alayacore --plainio
+
+# Piped input
+echo "what is 2+2?" | alayacore --plainio
+
+# Text-only mode (just user prompts and assistant text)
+echo "what is 2+2?" | alayacore --plainio --text-only
 
 # Show version
 alayacore --version
@@ -211,3 +222,56 @@ alayacore-web --max-steps 100
 - **WebSocket**: `ws://localhost:8080/ws`
 
 Each browser tab gets its own independent agent session.
+
+
+## Raw IO Mode
+
+Use `--plainio` to run AlayaCore as a plain stdin/stdout process with no terminal UI. This is useful for scripting, piping, or headless environments.
+
+### Input
+
+- Each line from stdin is a separate prompt
+- A trailing backslash (`\`) continues the prompt on the next line:
+
+```sh
+# Multi-line prompt
+alayacore --plainio
+This is a single \
+prompt that spans two lines.
+```
+
+- **Ctrl-D** (EOF): closes stdin, waits for queued tasks to finish, exits with code `0`
+- **Ctrl-C** (SIGINT): sends `:cancel_all`, exits with code `1`
+- Errors cause exit with a negative return code
+
+### Output
+
+All output is plain text with no ANSI codes:
+
+| Content | Format |
+|---------|--------|
+| Assistant text | Printed directly |
+| Reasoning | Printed directly |
+| User prompts | `> prompt` |
+| Tool calls | `[tool_name]` |
+| Tool results | Printed as-is |
+| Errors | `Error: message` |
+| Notifications | `[message]` |
+
+A blank line separates completed tasks from the next prompt.
+
+### Text-only mode
+
+Add `--text-only` to suppress everything except user prompts and assistant text:
+
+```sh
+echo "what is 2+2?" | alayacore --plainio --text-only
+```
+
+This hides tool calls, tool results, reasoning, errors, and notifications.
+
+### Piped Example
+
+```sh
+echo "what is 2+2?" | alayacore --plainio
+```

@@ -29,6 +29,8 @@ type Settings struct {
 	ShowHelp      bool
 	DebugAPI      bool
 	AutoSummarize bool
+	PlainIO       bool
+	TextOnly      bool
 	SystemPrompt  string
 	Skills        []string
 	Addr          string
@@ -46,6 +48,8 @@ func Parse() *Settings {
 	showHelp := flag.Bool("help", false, "Show help information")
 	debugAPI := flag.Bool("debug-api", false, "Write raw API requests and responses to log file")
 	autoSummarize := flag.Bool("auto-summarize", false, "Automatically summarize conversation when context exceeds 80% of limit")
+	plainIO := flag.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")
+	textOnly := flag.Bool("text-only", false, "Only show user/assistant text (requires --plainio)")
 	systemPrompt := &stringSlice{}
 	flag.Var(systemPrompt, "system", "Extra system prompt (can be specified multiple times, will be appended to default)")
 	skill := &stringSlice{}
@@ -74,6 +78,8 @@ func Parse() *Settings {
 		ShowHelp:      *showHelp,
 		DebugAPI:      *debugAPI,
 		AutoSummarize: *autoSummarize,
+		PlainIO:       *plainIO,
+		TextOnly:      *textOnly,
 		SystemPrompt:  mergedSystemPrompt,
 		Skills:        skillPaths,
 		Addr:          *addr,

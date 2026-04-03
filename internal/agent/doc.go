@@ -1,7 +1,7 @@
 // Package agent provides the core session management for AlayaCore.
 //
 // The agent package implements the session layer that sits between the
-// adaptors (terminal/websocket) and the AI model provider. It handles:
+// adaptors (terminal/websocket/plainio) and the AI model provider. It handles:
 //
 //   - Task queue management (prompts and commands)
 //   - Model interaction and streaming

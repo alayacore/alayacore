@@ -23,6 +23,8 @@ go install github.com/alayacore/alayacore@latest
 - `--themes string` - Themes folder path (default: `~/.alayacore/themes`)
 - `--max-steps int` - Maximum agent loop steps (default: 100)
 - `--auto-summarize` - Automatically summarize conversation when context exceeds 80% of limit
+- `--plainio` - Use plain stdin/stdout mode instead of terminal UI
+- `--text-only` - Only show user prompts and assistant text (requires `--plainio`)
 - `--debug-api` - Write raw API requests and responses to log file
 - `--version` - Show version information
 - `--help` - Show help information
@@ -43,6 +45,8 @@ go install github.com/alayacore/alayacore@latest
 - Skills system (agentskills.io compatible)
 - Session file persistence
 - HTTP/HTTPS/SOCKS5 proxy support
+- Raw IO mode (stdin/stdout) for scripting and piping (`--plainio`)
+- Text-only mode for clean output (`--plainio --text-only`)
 
 ## Model Configuration
 
@@ -125,6 +129,52 @@ When running the Terminal version:
 | `Ctrl+G` | Cancel current request (with confirmation) |
 | `:cancel` | Cancel current request (with confirmation) |
 | `:quit`, `:q` | Exit with confirmation (press y/n) |
+
+## Raw IO Mode
+
+Use `--plainio` to run AlayaCore as a plain stdin/stdout process with no terminal UI. This is useful for scripting, piping, or headless environments.
+
+### Input
+
+- Each line from stdin is treated as a separate prompt.
+- A trailing backslash (`\`) before newline continues the prompt on the next line:
+
+```
+This is a single \
+prompt that spans two lines.
+```
+
+- **Ctrl-D** (EOF): closes stdin. The program waits for queued tasks to finish, then exits with code `0`.
+- **Ctrl-C** (SIGINT): sends `:cancel_all` and exits with code `1`.
+- Errors cause exit with a negative return code.
+
+### Output
+
+All output is printed to stdout in plain text (no ANSI codes):
+
+- Assistant text and reasoning are printed directly.
+- User prompts are prefixed with `> `.
+- Tool calls are shown as `[tool_name]`.
+- Tool results are printed as-is (unescaped).
+- Errors are prefixed with `Error: `.
+- Notifications are prefixed with `[...]`.
+- A blank line separates completed tasks from the next prompt.
+
+### Example
+
+```sh
+echo "what is 2+2?" | alayacore --plainio
+```
+
+### Text-only mode
+
+Add `--text-only` to suppress everything except user prompts and assistant text:
+
+```sh
+echo "what is 2+2?" | alayacore --plainio --text-only
+```
+
+This hides tool calls, tool results, reasoning, errors, and notifications.
 
 ## Window Container
 

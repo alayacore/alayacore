@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/alayacore/alayacore/internal/adaptors/plainio"
 	"github.com/alayacore/alayacore/internal/adaptors/terminal"
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/config"
@@ -28,6 +29,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if cfg.PlainIO {
+		adaptor := plainio.NewAdaptor(appCfg, cfg.TextOnly)
+		os.Exit(adaptor.Start())
+	}
+
 	adaptor := terminal.NewAdaptorWithThemes(appCfg, cfg.ThemesFolder)
 	adaptor.Start()
 }
@@ -48,6 +54,8 @@ Flags:
   --themes string         Themes folder path (default: ~/.alayacore/themes)
   --max-steps int         Maximum agent loop steps (default: 100)
   --auto-summarize        Automatically summarize conversation when context exceeds 80% of limit
+  --plainio               Use plain stdin/stdout mode instead of terminal UI
+  --text-only             Only show user/assistant text (requires --plainio)
   --debug-api             Write raw API requests and responses to log file
   --version               Show version information
   --help                  Show help information
