@@ -63,6 +63,7 @@ func (a *Adaptor) Start() {
 		a.Config.Cfg.RuntimeConfig,
 		a.Config.Cfg.DebugAPI,
 		a.Config.Cfg.AutoSummarize,
+		a.Config.Cfg.AutoSave,
 		a.Config.Cfg.Proxy,
 	)
 

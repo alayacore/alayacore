@@ -42,6 +42,7 @@ alayacore --skill ~/playground/alayacore/misc/samples/skills/
 | `--themes string` | Themes folder path (default: `~/.alayacore/themes`) |
 | `--max-steps int` | Maximum agent loop steps (default: 100) |
 | `--auto-summarize` | Automatically summarize conversation when context exceeds 80% of limit |
+| `--auto-save` | Automatically save session after each response when `--session` is specified (default: enabled) |
 | `--plainio` | Use plain stdin/stdout mode instead of terminal UI |
 | `--text-only` | Only show user prompts and assistant text (requires `--plainio`) |
 | `--debug-api` | Write raw API requests and responses to log file |
@@ -62,6 +63,9 @@ alayacore --runtime-config ./my-runtime.conf
 
 # With session persistence
 alayacore --session ~/my-session.md
+
+# With session auto-save
+alayacore --session ~/my-session.md --auto-save
 
 # With multiple skill directories
 alayacore --skill ./skills1 --skill ./skills2
@@ -173,6 +177,7 @@ The first model in the file becomes the active model on startup (unless `runtime
 ## Session Persistence
 
 - **Manual-save**: Sessions are saved only when you use `:save [filename]` or press `Ctrl+S`
+- **Auto-save**: Enabled by default. When `--session` is specified, the session is automatically saved to the session file after each task completes (user prompt or command). If `--session` is not provided, auto-save is silently skipped. Use `--auto-save=false` to disable.
 - **Load**: On startup, AlayaCore creates a new empty session unless you specify `--session` to load an existing one
 - **Auto-summarize**: When `--auto-summarize` is enabled and `context_limit` is set in the model config, AlayaCore automatically triggers `:summarize` when context reaches 80% of the limit. This is disabled by default; use `:summarize` to manually reduce context at any time.
 

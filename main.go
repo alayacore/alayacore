@@ -54,6 +54,7 @@ Flags:
   --themes string         Themes folder path (default: ~/.alayacore/themes)
   --max-steps int         Maximum agent loop steps (default: 100)
   --auto-summarize        Automatically summarize conversation when context exceeds 80% of limit
+  --auto-save             Automatically save session after each response when --session is specified (default: enabled)
   --plainio               Use plain stdin/stdout mode instead of terminal UI
   --text-only             Only show user/assistant text (requires --plainio)
   --debug-api             Write raw API requests and responses to log file

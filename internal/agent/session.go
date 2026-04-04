@@ -141,6 +141,7 @@ type Session struct {
 	extraSystemPrompt    string
 	debugAPI             bool
 	autoSummarizeEnabled bool
+	autoSaveEnabled      bool
 	maxSteps             int
 	proxyURL             string
 
@@ -160,18 +161,18 @@ type Session struct {
 // ============================================================================
 
 // LoadOrNewSession loads a session from file or creates a new one.
-func LoadOrNewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, proxyURL string) (*Session, string) {
+func LoadOrNewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, proxyURL string) (*Session, string) {
 	sessionFile = expandPath(sessionFile)
 	if sessionFile != "" {
 		if data, err := LoadSession(sessionFile); err == nil {
-			return RestoreFromSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, data, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, autoSummarize, proxyURL), sessionFile
+			return RestoreFromSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, data, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, autoSummarize, autoSave, proxyURL), sessionFile
 		}
 	}
-	return NewSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, autoSummarize, proxyURL), sessionFile
+	return NewSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, autoSummarize, autoSave, proxyURL), sessionFile
 }
 
 // NewSession creates a fresh session.
-func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, proxyURL string) *Session {
+func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, proxyURL string) *Session {
 	s := &Session{
 		SessionFile:          sessionFile,
 		CreatedAt:            time.Now(),
@@ -184,6 +185,7 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 		extraSystemPrompt:    extraSystemPrompt,
 		debugAPI:             debugAPI,
 		autoSummarizeEnabled: autoSummarize,
+		autoSaveEnabled:      autoSave,
 		proxyURL:             proxyURL,
 		maxSteps:             maxSteps,
 		taskQueue:            make([]QueueItem, 0),
@@ -198,7 +200,7 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 }
 
 // RestoreFromSession creates a session from saved data.
-func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, data *SessionData, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, proxyURL string) *Session {
+func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, data *SessionData, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, proxyURL string) *Session {
 	s := &Session{
 		Messages:             data.Messages,
 		SessionFile:          sessionFile,
@@ -212,6 +214,7 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 		extraSystemPrompt:    extraSystemPrompt,
 		debugAPI:             debugAPI,
 		autoSummarizeEnabled: autoSummarize,
+		autoSaveEnabled:      autoSave,
 		proxyURL:             proxyURL,
 		maxSteps:             maxSteps,
 		taskQueue:            make([]QueueItem, 0),
@@ -527,6 +530,18 @@ func (s *Session) runTask(item QueueItem) {
 
 	if ctx.Err() == context.Canceled {
 		s.appendCancelMessage()
+	}
+
+	s.autoSaveIfEnabled()
+}
+
+// autoSaveIfEnabled saves the session to file if auto-save is enabled and a session file is set.
+func (s *Session) autoSaveIfEnabled() {
+	if !s.autoSaveEnabled || s.SessionFile == "" {
+		return
+	}
+	if err := s.saveSessionToFile(s.SessionFile); err != nil {
+		s.writeNotifyf("Auto-save failed: %v", err)
 	}
 }
 

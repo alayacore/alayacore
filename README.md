@@ -23,6 +23,7 @@ go install github.com/alayacore/alayacore@latest
 - `--themes string` - Themes folder path (default: `~/.alayacore/themes`)
 - `--max-steps int` - Maximum agent loop steps (default: 100)
 - `--auto-summarize` - Automatically summarize conversation when context exceeds 80% of limit
+- `--auto-save` - Automatically save session after each response when `--session` is specified (default: enabled)
 - `--plainio` - Use plain stdin/stdout mode instead of terminal UI
 - `--text-only` - Only show user prompts and assistant text (requires `--plainio`)
 - `--debug-api` - Write raw API requests and responses to log file
@@ -44,6 +45,7 @@ go install github.com/alayacore/alayacore@latest
 - API debug mode for HTTP requests and responses
 - Skills system (agentskills.io compatible)
 - Session file persistence
+- Auto-save session (`--auto-save`)
 - HTTP/HTTPS/SOCKS5 proxy support
 - Plain IO mode (stdin/stdout) for scripting and piping (`--plainio`)
 - Text-only mode for clean output (`--plainio --text-only`)
