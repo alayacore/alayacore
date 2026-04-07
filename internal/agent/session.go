@@ -421,11 +421,6 @@ func (s *Session) readFromInput() {
 
 func (s *Session) submitTask(task Task) {
 	s.mu.Lock()
-	if len(s.taskQueue) >= 10 {
-		s.mu.Unlock()
-		s.writeNotify("Busy. Cannot queue, try again shortly.")
-		return
-	}
 
 	s.nextQueueID++
 	queueID := fmt.Sprintf("Q%d", s.nextQueueID)
