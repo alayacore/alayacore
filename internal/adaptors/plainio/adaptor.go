@@ -27,7 +27,7 @@ func NewAdaptor(cfg *app.Config, textOnly bool) *Adaptor {
 }
 
 // Start runs the plainio adaptor. It blocks until the session finishes.
-// Returns the exit code: 0 for graceful EOF, 1 for Ctrl-C, negative for errors.
+// Returns the exit code: 0 for graceful exit, 1 for Ctrl-C, negative for errors.
 func (a *Adaptor) Start() int {
 	input := stream.NewChanInput(100)
 	output := newStdoutOutput(a.TextOnly)
@@ -58,9 +58,8 @@ func (a *Adaptor) Start() int {
 			resultCh <- -1
 			return
 		}
-		// EOF (Ctrl-D): close input so session finishes queued tasks
+		// EOF: close input so session finishes queued tasks
 		input.Close()
-		resultCh <- 0
 	}()
 
 	// Goroutine: handle SIGINT (Ctrl-C)
@@ -74,19 +73,17 @@ func (a *Adaptor) Start() int {
 		resultCh <- 1
 	}()
 
-	result := <-resultCh
-
-	// Drain the other goroutine's result (non-blocking)
-	select {
-	case <-resultCh:
-	default:
-	}
-
 	// Wait for the session to finish processing all queued tasks
 	sess.WaitDone()
 
 	// Give the output a final flush
 	fmt.Fprintln(output.writer)
 
-	return result
+	// Determine exit code
+	select {
+	case result := <-resultCh:
+		return result
+	default:
+		return 0
+	}
 }
