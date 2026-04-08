@@ -460,9 +460,10 @@ func (s *Session) taskRunner() {
 		if !ok {
 			return
 		}
-		s.setInProgress(true)
 		s.runTask(task)
-		s.setInProgress(s.hasQueuedTasks())
+		if !s.hasQueuedTasks() {
+			s.setInProgress(false)
+		}
 	}
 }
 
@@ -472,6 +473,7 @@ func (s *Session) waitForNextTask() (QueueItem, bool) {
 		if len(s.taskQueue) > 0 {
 			item := s.taskQueue[0]
 			s.taskQueue = s.taskQueue[1:]
+			s.inProgress = true
 			s.mu.Unlock()
 			return item, true
 		}
@@ -501,6 +503,26 @@ func (s *Session) setInProgress(v bool) {
 }
 
 func (s *Session) runTask(item QueueItem) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.cancelCurrent = cancel
+	s.mu.Unlock()
+	defer func() {
+		cancel()
+		s.mu.Lock()
+		s.cancelCurrent = nil
+		s.mu.Unlock()
+	}()
+
+	// Echo the task before any work so output ordering is correct even if
+	// the task is canceled during initialization.
+	switch t := item.Task.(type) {
+	case UserPrompt:
+		s.signalPromptStart(t.Text)
+	case CommandPrompt:
+		s.signalCommandStart(t.Command)
+	}
+
 	s.sendSystemInfo()
 
 	errMsg := s.ensureAgentInitialized()
@@ -514,22 +536,10 @@ func (s *Session) runTask(item QueueItem) {
 	s.currentStep = 0
 	s.mu.Unlock()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	s.mu.Lock()
-	s.cancelCurrent = cancel
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		s.cancelCurrent = nil
-		s.mu.Unlock()
-	}()
-
 	switch t := item.Task.(type) {
 	case UserPrompt:
-		s.signalPromptStart(t.Text)
 		s.handleUserPrompt(ctx, t.Text)
 	case CommandPrompt:
-		s.signalCommandStart(t.Command)
 		s.handleCommandSync(ctx, t.Command)
 	}
 
