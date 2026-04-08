@@ -16,6 +16,9 @@
 //
 // Output format:
 //   - Assistant text/reasoning: printed directly (stream ID prefix stripped).
+//     A blank line is inserted when consecutive deltas belong to different
+//     stream groups (e.g. assistant text followed by reasoning, or a new
+//     step's text after a tool call).
 //   - User prompts: prefixed with "> ".
 //   - Tool calls: shown as "[tool_name]".
 //   - Tool results: printed as-is (JSON-unescaped).

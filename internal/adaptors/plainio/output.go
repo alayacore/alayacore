@@ -33,11 +33,12 @@ type systemInfo struct {
 // stdoutOutput implements stream.Output.
 // It parses TLV messages and prints human-readable text to stdout.
 type stdoutOutput struct {
-	mu         sync.Mutex
-	writer     io.Writer
-	buf        []byte
-	inProgress bool
-	textOnly   bool
+	mu               sync.Mutex
+	writer           io.Writer
+	buf              []byte
+	inProgress       bool
+	textOnly         bool
+	lastStreamPrefix string // tracks last stream ID prefix for newline separation
 }
 
 func newStdoutOutput(textOnly bool) *stdoutOutput {
@@ -89,21 +90,32 @@ func (o *stdoutOutput) printMessage(tag string, value string) {
 
 	switch tag {
 	case stream.TagTextAssistant:
-		content := stripStreamID(value)
+		prefix, content := extractStreamPrefix(value)
+		if o.lastStreamPrefix != "" && prefix != o.lastStreamPrefix {
+			fmt.Fprintln(o.writer)
+		}
+		o.lastStreamPrefix = prefix
 		fmt.Fprint(o.writer, content)
 
 	case stream.TagTextReasoning:
-		content := stripStreamID(value)
+		prefix, content := extractStreamPrefix(value)
+		if o.lastStreamPrefix != "" && prefix != o.lastStreamPrefix {
+			fmt.Fprintln(o.writer)
+		}
+		o.lastStreamPrefix = prefix
 		fmt.Fprint(o.writer, content)
 
 	case stream.TagTextUser:
 		fmt.Fprintf(o.writer, "\n> %s\n", value)
+		o.lastStreamPrefix = ""
 
 	case stream.TagSystemError:
 		fmt.Fprintf(o.writer, "\nError: %s\n", value)
+		o.lastStreamPrefix = ""
 
 	case stream.TagSystemNotify:
 		fmt.Fprintf(o.writer, "\n[%s]\n", value)
+		o.lastStreamPrefix = ""
 
 	case stream.TagFunctionCall:
 		o.printFunctionCall(value)
@@ -118,7 +130,7 @@ func (o *stdoutOutput) printMessage(tag string, value string) {
 		o.handleSystemData(value)
 
 	default:
-		fmt.Fprintf(o.writer, "[%s] %s\n", tag, value)
+		fmt.Fprintf(o.writer, "\n<%s>%s\n", tag, value)
 	}
 }
 
@@ -129,6 +141,7 @@ func (o *stdoutOutput) printFunctionCall(value string) {
 	}
 	formatted := formatToolCall(tc.Name, tc.Input)
 	fmt.Fprintf(o.writer, "\n%s\n", formatted)
+	o.lastStreamPrefix = ""
 }
 
 func (o *stdoutOutput) printFunctionResult(value string) {
@@ -137,6 +150,7 @@ func (o *stdoutOutput) printFunctionResult(value string) {
 		return
 	}
 	fmt.Fprint(o.writer, tr.Output)
+	o.lastStreamPrefix = ""
 }
 
 // handleSystemData detects task completion transitions and prints a trailing newline.
@@ -147,20 +161,29 @@ func (o *stdoutOutput) handleSystemData(value string) {
 	}
 	if o.inProgress && !info.InProgress {
 		fmt.Fprintln(o.writer)
+		o.lastStreamPrefix = ""
 	}
 	o.inProgress = info.InProgress
 }
 
-// stripStreamID removes the "[:id:]content" prefix from streaming deltas.
-func stripStreamID(value string) string {
+// extractStreamPrefix splits "[:id:]content" into the prefix key and content.
+// The prefix key is everything between "[:":]" (including the brackets).
+// If there is no stream ID prefix, it returns ("", value).
+func extractStreamPrefix(value string) (prefix string, content string) {
 	if !strings.HasPrefix(value, "[:") {
-		return value
+		return "", value
 	}
 	endIdx := strings.Index(value, ":]")
 	if endIdx == -1 {
-		return value
+		return "", value
 	}
-	return value[endIdx+2:]
+	return value[:endIdx+2], value[endIdx+2:]
+}
+
+// stripStreamID removes the "[:id:]content" prefix from streaming deltas.
+func stripStreamID(value string) string {
+	_, content := extractStreamPrefix(value)
+	return content
 }
 
 // formatToolCall formats a tool call for display.
