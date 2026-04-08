@@ -57,7 +57,7 @@ func (s *Session) cancelAllTasks() {
 		currentCanceled = true
 		// Wait for runTask to finish so its output (errors, etc.)
 		// appears before our summary notification.
-		<-s.taskDone
+		s.taskWg.Wait()
 	}
 
 	// Send notification

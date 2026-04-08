@@ -31,16 +31,16 @@ type outputWriter struct {
 	styles            *Styles     // UI styles
 	nextWindowID      int         // Monotonic counter for generating window IDs
 	models            []agentpkg.ModelInfo
-	activeModelID     int       // Current active model ID
-	hasModels         bool      // Whether models are configured
-	modelConfigPath   string    // Path to model.conf
-	activeModelName   string    // Name of active model
+	activeModelID     int         // Current active model ID
+	hasModels         bool        // Whether models are configured
+	modelConfigPath   string      // Path to model.conf
+	activeModelName   string      // Name of active model
 	pendingQueueItems []QueueItem // Queue items from taskqueue_get_all
-	queueCount        int        // Number of items in the queue
-	currentStep       int        // Current step in agent loop (1-indexed)
-	maxSteps          int        // Maximum steps allowed
-	lastCurrentStep   int        // Last step reached in completed task
-	lastMaxSteps      int        // Last max steps from completed task
+	queueCount        int         // Number of items in the queue
+	currentStep       int         // Current step in agent loop (1-indexed)
+	maxSteps          int         // Maximum steps allowed
+	lastCurrentStep   int         // Last step reached in completed task
+	lastMaxSteps      int         // Last max steps from completed task
 }
 
 func NewTerminalOutput(styles *Styles) *outputWriter { //nolint:revive // tests need access to internal methods

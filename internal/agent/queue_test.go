@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,12 +13,12 @@ import (
 func TestQueueItemUniqueIDs(t *testing.T) {
 	// Create a minimal session
 	session := &Session{
-		taskQueue:     make([]QueueItem, 0),
-		taskAvailable: make(chan struct{}, 1),
-		done:          make(chan struct{}),
-		Input:         &stream.ChanInput{},
-		Output:        &MockOutput{},
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
 	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
 
 	// Submit multiple tasks and verify unique IDs
 	task1 := UserPrompt{Text: "test prompt 1"}
@@ -54,12 +56,12 @@ func TestQueueItemUniqueIDs(t *testing.T) {
 
 func TestDeleteQueueItem(t *testing.T) {
 	session := &Session{
-		taskQueue:     make([]QueueItem, 0),
-		taskAvailable: make(chan struct{}, 1),
-		done:          make(chan struct{}),
-		Input:         &stream.ChanInput{},
-		Output:        &MockOutput{},
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
 	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
 
 	// Submit tasks
 	session.submitTask(UserPrompt{Text: "prompt 1"})
@@ -95,12 +97,12 @@ func TestDeleteQueueItem(t *testing.T) {
 
 func TestQueueItemTypes(t *testing.T) {
 	session := &Session{
-		taskQueue:     make([]QueueItem, 0),
-		taskAvailable: make(chan struct{}, 1),
-		done:          make(chan struct{}),
-		Input:         &stream.ChanInput{},
-		Output:        &MockOutput{},
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
 	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
 
 	// Submit different task types
 	promptTask := UserPrompt{Text: "test prompt"}
@@ -129,12 +131,12 @@ func TestQueueItemTypes(t *testing.T) {
 
 func TestQueueTimestamps(t *testing.T) {
 	session := &Session{
-		taskQueue:     make([]QueueItem, 0),
-		taskAvailable: make(chan struct{}, 1),
-		done:          make(chan struct{}),
-		Input:         &stream.ChanInput{},
-		Output:        &MockOutput{},
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
 	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
 
 	before := time.Now()
 	session.submitTask(UserPrompt{Text: "test"})
@@ -194,27 +196,25 @@ func TestCancelAllTasks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			output := &MockOutput{}
 			session := &Session{
-				taskQueue:     make([]QueueItem, 0),
-				taskAvailable: make(chan struct{}, 1),
-				done:          make(chan struct{}),
-				runnerDone:    make(chan struct{}),
-				taskDone:      make(chan struct{}, 1),
-				Input:         &stream.ChanInput{},
-				Output:        output,
-				inProgress:    tt.inProgress,
+				taskQueue:  make([]QueueItem, 0),
+				runnerDone: make(chan struct{}),
+				Input:      &stream.ChanInput{},
+				Output:     output,
+				inProgress: tt.inProgress,
 			}
+			session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+			session.cond = sync.NewCond(&session.mu)
 
 			// Add mock cancel function if task is in progress
 			if tt.inProgress {
 				canceled := false
 				session.cancelCurrent = func() {
 					canceled = true
-					// Simulate runTask signaling taskDone on cancel
-					select {
-					case session.taskDone <- struct{}{}:
-					default:
-					}
+					// Simulate runTask's taskWg.Done() on cancel
+					session.taskWg.Done()
 				}
+				// Simulate runTask's taskWg.Add(1)
+				session.taskWg.Add(1)
 				defer func() {
 					if !canceled {
 						t.Error("Expected cancelCurrent to be called")

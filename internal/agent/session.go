@@ -146,11 +146,12 @@ type Session struct {
 	proxyURL             string
 
 	taskQueue     []QueueItem
-	taskAvailable chan struct{}
-	done          chan struct{}
-	runnerDone    chan struct{} // closed when taskRunner exits
+	cond          *sync.Cond         // signals when taskQueue becomes non-empty
+	sessionCtx    context.Context    // canceled when input is exhausted
+	sessionCancel context.CancelFunc // idempotent cancel
+	runnerDone    chan struct{}      // closed when taskRunner exits
 	inProgress    bool
-	taskDone      chan struct{} // signaled when runTask finishes
+	taskWg        sync.WaitGroup // tracks in-flight runTask
 	cancelCurrent func()
 	nextPromptID  uint64
 	nextQueueID   uint64
@@ -162,6 +163,13 @@ type Session struct {
 // and exited. This should be called after closing the input.
 func (s *Session) WaitDone() {
 	<-s.runnerDone
+}
+
+// isDone returns true if the session has been signaled to stop
+func (s *Session) isDone() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inProgress == false && len(s.taskQueue) == 0 && s.cancelCurrent == nil
 }
 
 // ============================================================================
@@ -181,6 +189,7 @@ func LoadOrNewSession(baseTools []llm.Tool, systemPrompt string, extraSystemProm
 
 // NewSession creates a fresh session.
 func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, proxyURL string) *Session {
+	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	s := &Session{
 		SessionFile:          sessionFile,
 		CreatedAt:            time.Now(),
@@ -197,12 +206,12 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 		proxyURL:             proxyURL,
 		maxSteps:             maxSteps,
 		taskQueue:            make([]QueueItem, 0),
-		taskAvailable:        make(chan struct{}, 1),
-		done:                 make(chan struct{}),
+		sessionCtx:           sessionCtx,
+		sessionCancel:        sessionCancel,
 		runnerDone:           make(chan struct{}),
-		taskDone:             make(chan struct{}, 1),
 	}
 	s.initModelManager()
+	s.cond = sync.NewCond(&s.mu)
 	s.sendSystemInfo()
 	go s.readFromInput()
 	go s.taskRunner()
@@ -211,6 +220,7 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 
 // RestoreFromSession creates a session from saved data.
 func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, data *SessionData, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, proxyURL string) *Session {
+	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	s := &Session{
 		Messages:             data.Messages,
 		SessionFile:          sessionFile,
@@ -228,12 +238,12 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 		proxyURL:             proxyURL,
 		maxSteps:             maxSteps,
 		taskQueue:            make([]QueueItem, 0),
-		taskAvailable:        make(chan struct{}, 1),
-		done:                 make(chan struct{}),
+		sessionCtx:           sessionCtx,
+		sessionCancel:        sessionCancel,
 		runnerDone:           make(chan struct{}),
-		taskDone:             make(chan struct{}, 1),
 	}
 	s.initModelManager()
+	s.cond = sync.NewCond(&s.mu)
 	s.sendSystemInfo()
 	go s.readFromInput()
 	go s.taskRunner()
@@ -387,14 +397,8 @@ func createProviderFromConfig(config *ModelConfig, debugAPI bool, proxyURL strin
 
 func (s *Session) readFromInput() {
 	defer func() {
-		s.mu.Lock()
-		select {
-		case <-s.done:
-		default:
-			close(s.done)
-		}
-		s.mu.Unlock()
-		s.signalTaskAvailable()
+		s.sessionCancel()
+		s.cond.Signal()
 	}()
 	for {
 		tag, value, err := stream.ReadTLV(s.Input)
@@ -444,16 +448,9 @@ func (s *Session) submitTask(task Task) {
 	}
 
 	s.taskQueue = append(s.taskQueue, item)
-	s.signalTaskAvailable()
+	s.cond.Signal()
 	s.mu.Unlock()
 	s.sendSystemInfo()
-}
-
-func (s *Session) signalTaskAvailable() {
-	select {
-	case s.taskAvailable <- struct{}{}:
-	default:
-	}
 }
 
 func (s *Session) taskRunner() {
@@ -471,22 +468,18 @@ func (s *Session) taskRunner() {
 }
 
 func (s *Session) waitForNextTask() (QueueItem, bool) {
-	for {
-		s.mu.Lock()
-		if len(s.taskQueue) > 0 {
-			item := s.taskQueue[0]
-			s.taskQueue = s.taskQueue[1:]
-			s.inProgress = true
-			s.mu.Unlock()
-			return item, true
-		}
-		s.mu.Unlock()
-		select {
-		case <-s.taskAvailable:
-		case <-s.done:
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for len(s.taskQueue) == 0 {
+		if s.sessionCtx.Err() != nil {
 			return QueueItem{}, false
 		}
+		s.cond.Wait()
 	}
+	item := s.taskQueue[0]
+	s.taskQueue = s.taskQueue[1:]
+	s.inProgress = true
+	return item, true
 }
 
 func (s *Session) hasQueuedTasks() bool {
@@ -506,6 +499,9 @@ func (s *Session) setInProgress(v bool) {
 }
 
 func (s *Session) runTask(item QueueItem) {
+	s.taskWg.Add(1)
+	defer s.taskWg.Done()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	s.cancelCurrent = cancel
@@ -515,12 +511,6 @@ func (s *Session) runTask(item QueueItem) {
 		s.mu.Lock()
 		s.cancelCurrent = nil
 		s.mu.Unlock()
-		// Signal that this task has finished, allowing cancelAllTasks
-		// to write its summary notification after all task output.
-		select {
-		case s.taskDone <- struct{}{}:
-		default:
-		}
 	}()
 
 	// Echo the task before any work so output ordering is correct even if
