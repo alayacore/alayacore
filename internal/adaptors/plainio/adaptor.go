@@ -5,7 +5,6 @@ package plainio
 // No terminal features are used — just plain IO.
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -33,7 +32,7 @@ func (a *Adaptor) Start() int {
 	output := newStdoutOutput(a.TextOnly)
 
 	// Load session
-	sess, _ := agentpkg.LoadOrNewSession(
+	_, _ = agentpkg.LoadOrNewSession(
 		a.Config.AgentTools,
 		a.Config.SystemPrompt,
 		a.Config.ExtraSystemPrompt,
@@ -49,8 +48,8 @@ func (a *Adaptor) Start() int {
 		a.Config.Cfg.Proxy,
 	)
 
-	// Channel to communicate the result from goroutines
-	resultCh := make(chan int, 2)
+	// Channel to communicate exit code from goroutines
+	resultCh := make(chan int, 1)
 
 	// Goroutine: read stdin and emit TLV messages
 	go func() {
@@ -58,32 +57,19 @@ func (a *Adaptor) Start() int {
 			resultCh <- -1
 			return
 		}
-		// EOF: close input so session finishes queued tasks
+		// EOF: close input so session finishes
 		input.Close()
 	}()
 
-	// Goroutine: handle SIGINT (Ctrl-C)
+	// Goroutine: handle SIGINT (Ctrl-C) - same as :q in terminal
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT)
 		<-sigCh
-		// Send cancel_all command
-		_ = input.EmitTLV(stream.TagTextUser, ":cancel_all") //nolint:errcheck // best effort on signal
 		input.Close()
 		resultCh <- 1
 	}()
 
-	// Wait for the session to finish processing all queued tasks
-	sess.WaitDone()
-
-	// Give the output a final flush
-	fmt.Fprintln(output.writer)
-
 	// Determine exit code
-	select {
-	case result := <-resultCh:
-		return result
-	default:
-		return 0
-	}
+	return <-resultCh
 }

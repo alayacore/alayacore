@@ -8,6 +8,7 @@ package stream
 import (
 	"encoding/binary"
 	"io"
+	"sync"
 )
 
 // Message tags for TLV protocol (2-byte tags).
@@ -30,8 +31,9 @@ const (
 
 // ChanInput implements Input using a channel of raw TLV-encoded messages.
 type ChanInput struct {
-	ch  chan []byte
-	buf []byte
+	ch        chan []byte
+	buf       []byte
+	closeOnce sync.Once
 }
 
 // NewChanInput creates a ChanInput with the given buffer size.
@@ -40,8 +42,9 @@ func NewChanInput(bufferSize int) *ChanInput {
 }
 
 // Close closes the input channel, causing Read to return EOF.
+// It is safe to call Close multiple times.
 func (i *ChanInput) Close() error {
-	close(i.ch)
+	i.closeOnce.Do(func() { close(i.ch) })
 	return nil
 }
 
