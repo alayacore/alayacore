@@ -55,6 +55,9 @@ func (s *Session) cancelAllTasks() {
 	if inProgress && cancelCurrent != nil {
 		cancelCurrent()
 		currentCanceled = true
+		// Wait for runTask to finish so its output (errors, etc.)
+		// appears before our summary notification.
+		<-s.taskDone
 	}
 
 	// Send notification

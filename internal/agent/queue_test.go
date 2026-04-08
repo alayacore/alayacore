@@ -197,6 +197,8 @@ func TestCancelAllTasks(t *testing.T) {
 				taskQueue:     make([]QueueItem, 0),
 				taskAvailable: make(chan struct{}, 1),
 				done:          make(chan struct{}),
+				runnerDone:    make(chan struct{}),
+				taskDone:      make(chan struct{}, 1),
 				Input:         &stream.ChanInput{},
 				Output:        output,
 				inProgress:    tt.inProgress,
@@ -207,6 +209,11 @@ func TestCancelAllTasks(t *testing.T) {
 				canceled := false
 				session.cancelCurrent = func() {
 					canceled = true
+					// Simulate runTask signaling taskDone on cancel
+					select {
+					case session.taskDone <- struct{}{}:
+					default:
+					}
 				}
 				defer func() {
 					if !canceled {

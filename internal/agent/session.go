@@ -150,6 +150,7 @@ type Session struct {
 	done          chan struct{}
 	runnerDone    chan struct{} // closed when taskRunner exits
 	inProgress    bool
+	taskDone      chan struct{} // signaled when runTask finishes
 	cancelCurrent func()
 	nextPromptID  uint64
 	nextQueueID   uint64
@@ -199,6 +200,7 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 		taskAvailable:        make(chan struct{}, 1),
 		done:                 make(chan struct{}),
 		runnerDone:           make(chan struct{}),
+		taskDone:             make(chan struct{}, 1),
 	}
 	s.initModelManager()
 	s.sendSystemInfo()
@@ -229,6 +231,7 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 		taskAvailable:        make(chan struct{}, 1),
 		done:                 make(chan struct{}),
 		runnerDone:           make(chan struct{}),
+		taskDone:             make(chan struct{}, 1),
 	}
 	s.initModelManager()
 	s.sendSystemInfo()
@@ -512,6 +515,12 @@ func (s *Session) runTask(item QueueItem) {
 		s.mu.Lock()
 		s.cancelCurrent = nil
 		s.mu.Unlock()
+		// Signal that this task has finished, allowing cancelAllTasks
+		// to write its summary notification after all task output.
+		select {
+		case s.taskDone <- struct{}{}:
+		default:
+		}
 	}()
 
 	// Echo the task before any work so output ordering is correct even if
