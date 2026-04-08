@@ -84,9 +84,9 @@ The adaptor layer handles user interaction and translates between user actions a
 - **Terminal**: Main Bubble Tea model composing all UI components
 - **DisplayModel**: Renders assistant output with virtual scrolling
 - **InputModel**: Handles user text input with external editor support
-- **StatusModel**: Shows session status (tokens, queue, steps, model info)
 - **ModelSelector**: Modal for switching between AI models
 - **QueueManager**: Modal for managing the task queue
+- **ThemeSelector**: Modal for switching between themes
 - **OutputWriter**: Parses TLV from session and renders styled content
 - **WindowBuffer**: Virtual scrolling buffer for display windows
 - **Theme**: Customizable color scheme (Catppuccin Mocha default)
@@ -224,11 +224,14 @@ context_limit: 32768
 
 ```
 active_model: "OpenAI GPT-4o"
+active_theme: "theme-dark"
 ```
 
 The active model is determined by:
 1. If `runtime.conf` has a saved `active_model`, that model is used
 2. Otherwise, the **first model** in `model.conf` becomes the active model
+
+The active theme is saved to `runtime.conf` when you select a theme in the theme selector (`Ctrl+P`).
 
 ### Theme Configuration (`~/.alayacore/themes/`)
 
@@ -340,7 +343,7 @@ Tool arguments arrive in chunks across multiple delta events:
 - First chunk: has `id` and `name`
 - Subsequent chunks: `id: ""` but correct `index`
 - **Must use `index` (not `id`) to associate chunks** - see `openAIStreamState.appendToolCallArgs()`
-- When sending back in history, arguments must be JSON-string (not raw JSON) - see `convertMessage()`
+- When sending back in history, arguments must be JSON-string (not raw JSON) - see `convertToolCalls()`
 
 ### Anthropic Prompt Caching
 - System message must be ≥1024 tokens for caching to activate
@@ -349,7 +352,7 @@ Tool arguments arrive in chunks across multiple delta events:
 - Best for multi-turn conversations where growing message history should be cached automatically
 
 ### Terminal Scroll Position
-`userMovedCursorAway` must be set for J/K (page scroll), not just j/k (line scroll), or scroll position is lost on focus switch.
+`userMovedCursorAway` must be set for J/K (line scroll) and Ctrl+D/Ctrl+U (half-page scroll), not just j/k (cursor move), or auto-follow is not properly disabled on manual scrolling.
 
 ### Incomplete Tool Calls on Cancel
 When user cancels mid-tool-call, messages may have `tool_use` without matching `tool_result`. `cleanIncompleteToolCalls()` removes these to prevent API errors on next request.

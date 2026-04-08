@@ -1,6 +1,6 @@
 # External Editor and WindowSizeMsg
 
-When the user opens an external editor (e.g. via `Ctrl+E`) and then exits back, Bubble Tea
+When the user opens an external editor (e.g. via `Ctrl+O`) and then exits back, Bubble Tea
 **always emits a `WindowSizeMsg`**, even if the terminal was never resized.
 
 ## How it works

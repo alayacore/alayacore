@@ -15,7 +15,7 @@ go install github.com/alayacore/alayacore@latest
 ## Flags
 
 - `--model-config string` - Model config file path (default: `~/.alayacore/model.conf`)
-- `--runtime-config string` - Runtime config file path (default: `~/.alayacore/runtime.conf`)
+- `--runtime-config string` - Runtime config file path (default: `<model-config-dir>/runtime.conf`, or `~/.alayacore/runtime.conf`)
 - `--system string` - Extra system prompt (can be specified multiple times)
 - `--skill strings` - Skill path (can be specified multiple times)
 - `--session string` - Session file path to load/save conversations
@@ -118,8 +118,8 @@ When running the Terminal version:
 | `Ctrl+Q` | Open task queue manager UI |
 | `j` | Move window cursor down (when display focused) |
 | `k` | Move window cursor up (when display focused) |
-| `J` | Move screen down (when display focused) |
-| `K` | Move screen up (when display focused) |
+| `J` | Scroll down one line (when display focused) |
+| `K` | Scroll up one line (when display focused) |
 | `g` | Go to first window and top of display (when display focused) |
 | `G` | Go to last window and bottom of display (when display focused) |
 | `H` | Move cursor to window at top of visible area (when display focused) |
@@ -148,7 +148,7 @@ prompt that spans two lines.
 
 - **Ctrl-D** (EOF): closes stdin. The program waits for queued tasks to finish, then exits with code `0`.
 - **Ctrl-C** (SIGINT): sends `:cancel_all` and exits with code `1`.
-- Errors cause exit with a negative return code.
+- Errors cause exit with code `1`.
 
 ### Output
 

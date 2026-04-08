@@ -46,7 +46,7 @@ Usage:
 
 Flags:
   --model-config string   Model config file path (default: ~/.alayacore/model.conf)
-  --runtime-config string Runtime config file path (default: ~/.alayacore/runtime.conf)
+  --runtime-config string Runtime config file path (default: <model-config-dir>/runtime.conf, or ~/.alayacore/runtime.conf)
   --system string         Extra system prompt (can be specified multiple times)
   --skill strings         Skill path (can be specified multiple times)
   --session string        Session file path to load/save conversations

@@ -34,7 +34,7 @@ alayacore --skill ~/playground/alayacore/misc/samples/skills/
 | Flag | Description |
 |------|-------------|
 | `--model-config string` | Model config file path (default: `~/.alayacore/model.conf`) |
-| `--runtime-config string` | Runtime config file path (default: `~/.alayacore/runtime.conf`) |
+| `--runtime-config string` | Runtime config file path (default: `<model-config-dir>/runtime.conf`, or `~/.alayacore/runtime.conf`) |
 | `--system string` | Extra system prompt (can be specified multiple times) |
 | `--skill strings` | Skill path (can be specified multiple times) |
 | `--session string` | Session file path to load/save conversations |
@@ -138,8 +138,8 @@ The first model in the file becomes the active model on startup (unless `runtime
 | `Tab` | Switch focus between display and input window |
 | `j` | Move window cursor down (when display focused) |
 | `k` | Move window cursor up (when display focused) |
-| `J` | Move screen down (when display focused) |
-| `K` | Move screen up (when display focused) |
+| `J` | Scroll down one line (when display focused) |
+| `K` | Scroll up one line (when display focused) |
 | `g` | Go to first window and top of display (when display focused) |
 | `G` | Go to last window and bottom of display (when display focused) |
 | `H` | Move cursor to window at top of visible area (when display focused) |
@@ -157,7 +157,7 @@ The first model in the file becomes the active model on startup (unless `runtime
 | `Ctrl+P` | Open theme selector UI |
 | `Ctrl+Q` | Open task queue manager UI |
 | `:` | Switch to input with ":" prefix (when display focused) |
-| `Space` | Toggle wrap mode for active window (when display focused) |
+| `Space` | Toggle window fold (expand/collapse) (when display focused) |
 | `Ctrl+C` | Clear input (when input focused) |
 | `Ctrl+G` | Cancel current request (with confirmation) |
 
@@ -190,7 +190,7 @@ The terminal organizes concurrent streams into separate windows with synchronize
 
 - **Window Cursor**: Use `j`/`k` to navigate between windows. The cursor defaults to the newest window.
 - **Auto-follow**: When new windows appear, cursor moves to them automatically. Pressing `k`, `g`, `H`, `L`, or `M` disables follow; returning to the last window re-enables it.
-- **Wrap mode**: Press `Space` to toggle wrap mode on the active window, showing only the last 3 lines.
+- **Fold mode**: Press `Space` to toggle fold mode on the active window, collapsing content to first line + indicator + last 3 lines.
 
 
 ## Plain IO Mode
