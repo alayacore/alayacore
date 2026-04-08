@@ -38,13 +38,17 @@ type stdoutOutput struct {
 	buf              []byte
 	inProgress       bool
 	textOnly         bool
-	lastStreamPrefix string // tracks last stream ID prefix for newline separation
+	hasError         bool
+	errorOnce        sync.Once
+	errorCh          chan struct{} // closed on first SE tag
+	lastStreamPrefix string        // tracks last stream ID prefix for newline separation
 }
 
 func newStdoutOutput(textOnly bool) *stdoutOutput {
 	return &stdoutOutput{
 		writer:   os.Stdout,
 		textOnly: textOnly,
+		errorCh:  make(chan struct{}),
 	}
 }
 
@@ -62,6 +66,19 @@ func (o *stdoutOutput) WriteString(s string) (int, error) {
 
 func (o *stdoutOutput) Flush() error {
 	return nil
+}
+
+// WaitForError blocks until an SE (system error) tag is received.
+// Returns immediately if an error has already been recorded.
+func (o *stdoutOutput) WaitForError() {
+	<-o.errorCh
+}
+
+// HasError returns true if any SE tag was ever received.
+func (o *stdoutOutput) HasError() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.hasError
 }
 
 // processBuffer parses and prints complete TLV frames from the buffer.
@@ -84,6 +101,10 @@ func (o *stdoutOutput) printMessage(tag string, value string) {
 	if o.textOnly && tag != stream.TagTextAssistant && tag != stream.TagTextUser {
 		if tag == stream.TagSystemData {
 			o.handleSystemData(value)
+		}
+		if tag == stream.TagSystemError {
+			o.hasError = true
+			o.errorOnce.Do(func() { close(o.errorCh) })
 		}
 		return
 	}
@@ -111,6 +132,8 @@ func (o *stdoutOutput) printMessage(tag string, value string) {
 
 	case stream.TagSystemError:
 		fmt.Fprintf(o.writer, "\nError: %s\n", value)
+		o.hasError = true
+		o.errorOnce.Do(func() { close(o.errorCh) })
 		o.lastStreamPrefix = ""
 
 	case stream.TagSystemNotify:

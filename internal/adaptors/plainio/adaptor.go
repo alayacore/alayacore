@@ -26,13 +26,17 @@ func NewAdaptor(cfg *app.Config, textOnly bool) *Adaptor {
 }
 
 // Start runs the plainio adaptor. It blocks until the session finishes.
-// Returns the exit code: 0 for graceful exit, 1 for Ctrl-C, negative for errors.
+// Returns the exit code: 0 for graceful exit, 1 for Ctrl-C or errors.
+//
+// plainio processes prompts one at a time. If a task produces an error
+// (SE tag), the remaining input is discarded and the process exits
+// with code 1 — queued tasks are NOT executed.
 func (a *Adaptor) Start() int {
 	input := stream.NewChanInput(100)
 	output := newStdoutOutput(a.TextOnly)
 
 	// Load session
-	_, _ = agentpkg.LoadOrNewSession(
+	session, _ := agentpkg.LoadOrNewSession(
 		a.Config.AgentTools,
 		a.Config.SystemPrompt,
 		a.Config.ExtraSystemPrompt,
@@ -48,28 +52,66 @@ func (a *Adaptor) Start() int {
 		a.Config.Cfg.Proxy,
 	)
 
-	// Channel to communicate exit code from goroutines
-	resultCh := make(chan int, 1)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT)
+	defer signal.Stop(sigCh)
 
-	// Goroutine: read stdin and emit TLV messages
+	exitCh := make(chan int, 1)
+
+	// Read stdin and emit TLV messages.
 	go func() {
 		if err := readPromptsFromStdin(input); err != nil {
-			resultCh <- -1
+			select {
+			case exitCh <- 1:
+			default:
+			}
 			return
 		}
-		// EOF: close input so session finishes
 		input.Close()
+		select {
+		case exitCh <- 0:
+		default:
+		}
 	}()
 
-	// Goroutine: handle SIGINT (Ctrl-C) - same as :q in terminal
+	// Watch for errors — close input so queued tasks are abandoned.
 	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT)
-		<-sigCh
+		output.WaitForError()
 		input.Close()
-		resultCh <- 1
+		select {
+		case exitCh <- 1:
+		default:
+		}
 	}()
 
-	// Determine exit code
-	return <-resultCh
+	// Main goroutine owns all signal handling. No SIGINT goroutine.
+	// First exit trigger wins: EOF (0), error (1), or Ctrl-C (1).
+	code := 0
+	select {
+	case code = <-exitCh:
+	case <-sigCh:
+		code = 1
+		input.Close()
+	}
+
+	// Let the current task finish, but a second Ctrl-C forces immediate exit.
+	done := make(chan struct{})
+	go func() {
+		session.WaitDone()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-sigCh:
+		code = 1
+	}
+
+	// Final check: even on a clean EOF path the session may have written
+	// errors (network failures, API errors, etc.) that arrived after the
+	// stdin goroutine closed input.  Override the exit code.
+	if code == 0 && output.HasError() {
+		code = 1
+	}
+
+	return code
 }

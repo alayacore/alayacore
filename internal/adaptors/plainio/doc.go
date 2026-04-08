@@ -10,9 +10,11 @@
 // Input rules:
 //   - Each line is treated as a separate prompt.
 //   - A trailing backslash (\) before newline continues the prompt on the next line.
-//   - Ctrl-D (EOF) closes input; the program exits after queued tasks finish (code 0).
+//   - Ctrl-D (EOF) closes input; the program exits after the current task finishes (code 0).
 //   - Ctrl-C sends a :cancel_all command and exits (code 1).
-//   - Errors cause exit with a negative return code.
+//   - Errors during the session cause an immediate exit with code 1.
+//     Remaining queued tasks are NOT executed.
+//   - A clean exit (EOF with no errors) returns code 0.
 //
 // Output format:
 //   - Assistant text/reasoning: printed directly (stream ID prefix stripped).
