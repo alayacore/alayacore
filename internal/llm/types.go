@@ -4,6 +4,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"iter"
 )
 
 // MessageRole represents the role of a message
@@ -134,13 +135,6 @@ type StepCompleteEvent struct {
 
 func (StepCompleteEvent) isStreamEvent() {}
 
-// StreamErrorEvent represents an error during streaming
-type StreamErrorEvent struct {
-	Error error
-}
-
-func (StreamErrorEvent) isStreamEvent() {}
-
 // Provider defines the interface for LLM providers
 type Provider interface {
 	// StreamMessages streams a conversation with tools
@@ -153,5 +147,5 @@ type Provider interface {
 		tools []ToolDefinition,
 		systemPrompt string,
 		extraSystemPrompt string,
-	) (<-chan StreamEvent, error)
+	) (iter.Seq2[StreamEvent, error], error)
 }

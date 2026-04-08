@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"strings"
 	"sync"
@@ -260,7 +261,7 @@ func (p *OpenAIProvider) StreamMessages(
 	tools []llm.ToolDefinition,
 	systemPrompt string,
 	extraSystemPrompt string,
-) (<-chan llm.StreamEvent, error) {
+) (iter.Seq2[llm.StreamEvent, error], error) {
 	// Convert messages to OpenAI format
 	apiMessages := make([]openAIMessage, 0, len(messages)+2)
 
@@ -336,13 +337,7 @@ func (p *OpenAIProvider) StreamMessages(
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Create event channel
-	eventChan := make(chan llm.StreamEvent, 100)
-
-	// Start streaming goroutine
-	go p.parseStream(resp.Body, eventChan)
-
-	return eventChan, nil
+	return p.parseStream(resp.Body), nil
 }
 
 // convertMessages converts our message to OpenAI format.
@@ -459,55 +454,58 @@ func (p *OpenAIProvider) convertRegularContent(apiMsg *openAIMessage, content []
 	}
 }
 
-// parseStream parses the SSE stream from OpenAI
-func (p *OpenAIProvider) parseStream(reader io.Reader, eventChan chan<- llm.StreamEvent) {
-	defer close(eventChan)
+// parseStream returns an iterator that yields SSE events from the OpenAI response.
+func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent, error] {
+	return func(yield func(llm.StreamEvent, error) bool) {
+		defer func() { _ = reader.(io.Closer).Close() }()
 
-	state := &openAIStreamState{}
-	scanner := bufio.NewScanner(reader)
+		state := &openAIStreamState{}
+		scanner := bufio.NewScanner(reader)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+		for scanner.Scan() {
+			line := scanner.Text()
 
-		if !strings.HasPrefix(line, "data: ") {
-			continue
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				break
+			}
+
+			if !p.handleEvent(data, yield, state) {
+				return
+			}
 		}
 
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
-		}
-
-		if err := p.handleEvent(data, eventChan, state); err != nil {
-			eventChan <- llm.StreamErrorEvent{Error: err}
+		if err := scanner.Err(); err != nil {
+			yield(nil, err)
 			return
 		}
-	}
 
-	if err := scanner.Err(); err != nil {
-		eventChan <- llm.StreamErrorEvent{Error: err}
-		return
-	}
-
-	// Finalize tool calls and emit events
-	state.finalizeToolCalls()
-	for _, tc := range state.getToolCalls() {
-		eventChan <- llm.ToolCallEvent{
-			ToolCallID: tc.ToolCallID,
-			ToolName:   tc.ToolName,
-			Input:      tc.Input,
+		// Finalize tool calls and emit events
+		state.finalizeToolCalls()
+		for _, tc := range state.getToolCalls() {
+			if !yield(llm.ToolCallEvent{
+				ToolCallID: tc.ToolCallID,
+				ToolName:   tc.ToolName,
+				Input:      tc.Input,
+			}, nil) {
+				return
+			}
 		}
-	}
 
-	// Send final StepCompleteEvent with accumulated message
-	eventChan <- llm.StepCompleteEvent{
-		Messages: []llm.Message{state.getMessage()},
-		Usage:    state.getUsage(),
+		// Send final StepCompleteEvent with accumulated message
+		yield(llm.StepCompleteEvent{
+			Messages: []llm.Message{state.getMessage()},
+			Usage:    state.getUsage(),
+		}, nil)
 	}
 }
 
-// handleEvent handles a single SSE event
-func (p *OpenAIProvider) handleEvent(data string, eventChan chan<- llm.StreamEvent, state *openAIStreamState) error {
+// handleEvent handles a single SSE event. Returns false if iteration should stop.
+func (p *OpenAIProvider) handleEvent(data string, yield func(llm.StreamEvent, error) bool, state *openAIStreamState) bool {
 	var streamResp struct {
 		Choices []struct {
 			Delta struct {
@@ -524,7 +522,8 @@ func (p *OpenAIProvider) handleEvent(data string, eventChan chan<- llm.StreamEve
 	}
 
 	if err := json.Unmarshal([]byte(data), &streamResp); err != nil {
-		return fmt.Errorf("failed to parse event: %w", err)
+		yield(nil, fmt.Errorf("failed to parse event: %w", err))
+		return false
 	}
 
 	for _, choice := range streamResp.Choices {
@@ -532,24 +531,30 @@ func (p *OpenAIProvider) handleEvent(data string, eventChan chan<- llm.StreamEve
 		// Valid: "stop" (normal), "length" (truncated), "tool_calls" (function calling)
 		// Error: "content_filter" (blocked by safety), anything else
 		if choice.FinishReason == "content_filter" {
-			return fmt.Errorf("content blocked by safety filter")
+			yield(nil, fmt.Errorf("content blocked by safety filter"))
+			return false
 		}
 		// Allow empty, "stop", "length", and "tool_calls"
 		if choice.FinishReason != "" && choice.FinishReason != "stop" &&
 			choice.FinishReason != "length" && choice.FinishReason != "tool_calls" {
-			return fmt.Errorf("stream finished with unexpected reason: %s", choice.FinishReason)
+			yield(nil, fmt.Errorf("stream finished with unexpected reason: %s", choice.FinishReason))
+			return false
 		}
 
 		// Handle reasoning content (DeepSeek, Qwen, etc.)
 		if choice.Delta.ReasoningContent != "" {
 			state.addReasoningDelta(choice.Delta.ReasoningContent)
-			eventChan <- llm.ReasoningDeltaEvent{Delta: choice.Delta.ReasoningContent}
+			if !yield(llm.ReasoningDeltaEvent{Delta: choice.Delta.ReasoningContent}, nil) {
+				return false
+			}
 		}
 
 		// Handle text content
 		if choice.Delta.Content != "" {
 			state.addTextDelta(choice.Delta.Content)
-			eventChan <- llm.TextDeltaEvent{Delta: choice.Delta.Content}
+			if !yield(llm.TextDeltaEvent{Delta: choice.Delta.Content}, nil) {
+				return false
+			}
 		}
 
 		// Handle tool calls - arguments may come in chunks
@@ -575,5 +580,5 @@ func (p *OpenAIProvider) handleEvent(data string, eventChan chan<- llm.StreamEve
 		})
 	}
 
-	return nil
+	return true
 }

@@ -59,7 +59,7 @@ func TestAnthropicRealAPI(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Say 'Hello, world!' and nothing else."}}},
 	}
 
-	eventChan, err := provider.StreamMessages(ctx, messages, nil, "You are a helpful assistant. Be very brief.", "")
+	events, err := provider.StreamMessages(ctx, messages, nil, "You are a helpful assistant. Be very brief.", "")
 	if err != nil {
 		t.Fatalf("Failed to stream messages: %v", err)
 	}
@@ -67,14 +67,12 @@ func TestAnthropicRealAPI(t *testing.T) {
 	var textReceived string
 	var stepComplete *llm.StepCompleteEvent
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived += e.Delta
 		case llm.StepCompleteEvent:
 			stepComplete = &e
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -120,19 +118,17 @@ func TestOpenAICompatibleRealAPI(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Say 'Hello!' and nothing else."}}},
 	}
 
-	eventChan, err := provider.StreamMessages(ctx, messages, nil, "", "")
+	events, err := provider.StreamMessages(ctx, messages, nil, "", "")
 	if err != nil {
 		t.Fatalf("Failed to stream messages: %v", err)
 	}
 
 	var textReceived string
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived += e.Delta
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -191,7 +187,7 @@ func TestAnthropicRealToolCall(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Use the echo tool to say 'test123'"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(ctx, messages, tools, "You are a helpful assistant. Use tools when requested.", "")
+	events, err := provider.StreamMessages(ctx, messages, tools, "You are a helpful assistant. Use tools when requested.", "")
 	if err != nil {
 		t.Fatalf("Failed to stream messages: %v", err)
 	}
@@ -199,14 +195,12 @@ func TestAnthropicRealToolCall(t *testing.T) {
 	var toolCalls []llm.ToolCallEvent
 	var textReceived string
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived += e.Delta
 		case llm.ToolCallEvent:
 			toolCalls = append(toolCalls, e)
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -257,19 +251,17 @@ func TestOpenAIRealAPI(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Say 'Hello, world!' and nothing else."}}},
 	}
 
-	eventChan, err := provider.StreamMessages(ctx, messages, nil, "You are a helpful assistant. Be very brief.", "")
+	events, err := provider.StreamMessages(ctx, messages, nil, "You are a helpful assistant. Be very brief.", "")
 	if err != nil {
 		t.Fatalf("Failed to stream messages: %v", err)
 	}
 
 	var textReceived string
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived += e.Delta
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 

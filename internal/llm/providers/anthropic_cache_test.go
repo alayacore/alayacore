@@ -41,7 +41,7 @@ func TestAnthropicPromptCacheFullFlow(t *testing.T) {
 	}
 
 	// Make streaming request
-	eventChan, err := provider.StreamMessages(
+	events, err := provider.StreamMessages(
 		context.Background(),
 		nil, // messages
 		nil, // tools
@@ -53,7 +53,7 @@ func TestAnthropicPromptCacheFullFlow(t *testing.T) {
 	}
 
 	// Drain the channel
-	for range eventChan {
+	for _, _ = range events {
 	}
 
 	// Parse the captured request
@@ -123,7 +123,7 @@ func TestAnthropicPromptCacheDisabled(t *testing.T) {
 	}
 
 	// Make streaming request
-	eventChan, err := provider.StreamMessages(
+	events, err := provider.StreamMessages(
 		context.Background(),
 		nil,
 		nil,
@@ -135,7 +135,7 @@ func TestAnthropicPromptCacheDisabled(t *testing.T) {
 	}
 
 	// Drain the channel
-	for range eventChan {
+	for _, _ = range events {
 	}
 
 	// Parse the captured request

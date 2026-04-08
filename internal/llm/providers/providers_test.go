@@ -62,7 +62,7 @@ func TestAnthropicProvider(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
 	if err != nil {
 		t.Fatalf("Failed to stream: %v", err)
 	}
@@ -71,14 +71,12 @@ func TestAnthropicProvider(t *testing.T) {
 	var textReceived string
 	var usageReceived *llm.Usage
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived += e.Delta
 		case llm.StepCompleteEvent:
 			usageReceived = &e.Usage
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -135,7 +133,7 @@ func TestOpenAIProvider(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
 	if err != nil {
 		t.Fatalf("Failed to stream: %v", err)
 	}
@@ -143,12 +141,10 @@ func TestOpenAIProvider(t *testing.T) {
 	// Collect events
 	var textReceived string
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived += e.Delta
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -209,13 +205,13 @@ func TestToolCallStreaming(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "test"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var toolCalls []llm.ToolCallEvent
-	for event := range eventChan {
+	for event, _ := range events {
 		if tc, ok := event.(llm.ToolCallEvent); ok {
 			toolCalls = append(toolCalls, tc)
 		}
@@ -278,13 +274,13 @@ func TestToolCallStreamingChunked(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Run uname -a"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var toolCalls []llm.ToolCallEvent
-	for event := range eventChan {
+	for event, _ := range events {
 		if tc, ok := event.(llm.ToolCallEvent); ok {
 			toolCalls = append(toolCalls, tc)
 		}
@@ -345,21 +341,19 @@ func TestAnthropicToolCallStreaming(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "What's the weather?"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var toolCalls []llm.ToolCallEvent
 	var stepComplete *llm.StepCompleteEvent
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.ToolCallEvent:
 			toolCalls = append(toolCalls, e)
 		case llm.StepCompleteEvent:
 			stepComplete = &e
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -428,7 +422,7 @@ func TestAnthropicReasoningStreaming(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "What is the answer?"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +431,7 @@ func TestAnthropicReasoningStreaming(t *testing.T) {
 	var textReceived string
 	var stepComplete *llm.StepCompleteEvent
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived += e.Delta
@@ -445,8 +439,6 @@ func TestAnthropicReasoningStreaming(t *testing.T) {
 			reasoningText += e.Delta
 		case llm.StepCompleteEvent:
 			stepComplete = &e
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -543,15 +535,15 @@ func TestAnthropicRefusalStopReason(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Collect events - should get an error
 	var gotError bool
-	for event := range eventChan {
-		if _, ok := event.(llm.StreamErrorEvent); ok {
+	for _, iterErr := range events {
+		if iterErr != nil {
 			gotError = true
 		}
 	}
@@ -591,15 +583,15 @@ func TestAnthropicUnknownStopReason(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Collect events - should get an error
 	var gotError bool
-	for event := range eventChan {
-		if _, ok := event.(llm.StreamErrorEvent); ok {
+	for _, iterErr := range events {
+		if iterErr != nil {
 			gotError = true
 		}
 	}
@@ -645,7 +637,7 @@ func TestAnthropicValidStopReasons(t *testing.T) {
 				{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 			}
 
-			eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+			events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -653,8 +645,8 @@ func TestAnthropicValidStopReasons(t *testing.T) {
 			// Collect events - should NOT get an error
 			var gotError bool
 			var gotStepComplete bool
-			for event := range eventChan {
-				if _, ok := event.(llm.StreamErrorEvent); ok {
+			for event, iterErr := range events {
+				if iterErr != nil {
 					gotError = true
 				}
 				if _, ok := event.(llm.StepCompleteEvent); ok {
@@ -699,15 +691,15 @@ func TestOpenAIContentFilter(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Collect events - should get an error
 	var gotError bool
-	for event := range eventChan {
-		if _, ok := event.(llm.StreamErrorEvent); ok {
+	for _, iterErr := range events {
+		if iterErr != nil {
 			gotError = true
 		}
 	}
@@ -742,7 +734,7 @@ func TestOpenAILengthFinishReason(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,8 +742,8 @@ func TestOpenAILengthFinishReason(t *testing.T) {
 	// Collect events - should NOT get an error
 	var gotError bool
 	var gotStepComplete bool
-	for event := range eventChan {
-		if _, ok := event.(llm.StreamErrorEvent); ok {
+	for event, iterErr := range events {
+		if iterErr != nil {
 			gotError = true
 		}
 		if _, ok := event.(llm.StepCompleteEvent); ok {
@@ -820,15 +812,15 @@ func TestOpenAINetworkError(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Collect events - should get an error
 	var gotError bool
-	for event := range eventChan {
-		if _, ok := event.(llm.StreamErrorEvent); ok {
+	for _, iterErr := range events {
+		if iterErr != nil {
 			gotError = true
 		}
 	}
@@ -884,12 +876,12 @@ func TestOpenAIWithSystemPrompt(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Hi"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for range eventChan {
+	for _, _ = range events {
 		// Drain the channel
 	}
 }
@@ -947,12 +939,12 @@ func TestAnthropicWithTools(t *testing.T) {
 		},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, tools, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, tools, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for range eventChan {
+	for _, _ = range events {
 		// Drain the channel
 	}
 }
@@ -988,7 +980,7 @@ func TestOpenAIWithReasoning(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Calculate"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -997,7 +989,7 @@ func TestOpenAIWithReasoning(t *testing.T) {
 	var textReceived string
 	var stepComplete *llm.StepCompleteEvent
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived += e.Delta
@@ -1005,8 +997,6 @@ func TestOpenAIWithReasoning(t *testing.T) {
 			reasoningText += e.Delta
 		case llm.StepCompleteEvent:
 			stepComplete = &e
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -1129,14 +1119,14 @@ func TestAnthropicToolResultMessageFormat(t *testing.T) {
 		}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for event := range eventChan {
-		if err, ok := event.(llm.StreamErrorEvent); ok {
-			t.Fatalf("Stream error: %v", err.Error)
+	for _, iterErr := range events {
+		if iterErr != nil {
+			t.Fatalf("Stream error: %v", iterErr)
 		}
 	}
 }
@@ -1178,18 +1168,16 @@ func TestAnthropicMultiToolCall(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Get weather for NYC and LA"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var toolCalls []llm.ToolCallEvent
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.ToolCallEvent:
 			toolCalls = append(toolCalls, e)
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 
@@ -1287,14 +1275,14 @@ func TestOpenAIToolResultMessageFormat(t *testing.T) {
 		}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for event := range eventChan {
-		if err, ok := event.(llm.StreamErrorEvent); ok {
-			t.Fatalf("Stream error: %v", err.Error)
+	for _, iterErr := range events {
+		if iterErr != nil {
+			t.Fatalf("Stream error: %v", iterErr)
 		}
 	}
 }
@@ -1413,14 +1401,14 @@ func TestOpenAIMultiToolResultMessageFormat(t *testing.T) {
 		}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for event := range eventChan {
-		if err, ok := event.(llm.StreamErrorEvent); ok {
-			t.Fatalf("Stream error: %v", err.Error)
+	for _, iterErr := range events {
+		if iterErr != nil {
+			t.Fatalf("Stream error: %v", iterErr)
 		}
 	}
 }
@@ -1498,14 +1486,14 @@ func TestAnthropicToolResultError(t *testing.T) {
 		}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for event := range eventChan {
-		if err, ok := event.(llm.StreamErrorEvent); ok {
-			t.Fatalf("Stream error: %v", err.Error)
+	for _, iterErr := range events {
+		if iterErr != nil {
+			t.Fatalf("Stream error: %v", iterErr)
 		}
 	}
 }

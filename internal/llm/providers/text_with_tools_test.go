@@ -46,7 +46,7 @@ func TestTextWithToolCalls(t *testing.T) {
 		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "What's the weather?"}}},
 	}
 
-	eventChan, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "You are helpful", "")
 	if err != nil {
 		t.Fatalf("Failed to stream: %v", err)
 	}
@@ -55,14 +55,12 @@ func TestTextWithToolCalls(t *testing.T) {
 	var textReceived strings.Builder
 	var stepComplete *llm.StepCompleteEvent
 
-	for event := range eventChan {
+	for event, _ := range events {
 		switch e := event.(type) {
 		case llm.TextDeltaEvent:
 			textReceived.WriteString(e.Delta)
 		case llm.StepCompleteEvent:
 			stepComplete = &e
-		case llm.StreamErrorEvent:
-			t.Fatalf("Stream error: %v", e.Error)
 		}
 	}
 

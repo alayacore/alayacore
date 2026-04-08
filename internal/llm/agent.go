@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"sync"
 )
 
@@ -94,7 +95,7 @@ func (a *Agent) Stream(ctx context.Context, messages []Message, callbacks Stream
 		}
 
 		// Stream from provider
-		eventChan, err := a.config.Provider.StreamMessages(
+		events, err := a.config.Provider.StreamMessages(
 			ctx,
 			allMessages,
 			toolDefs,
@@ -106,7 +107,7 @@ func (a *Agent) Stream(ctx context.Context, messages []Message, callbacks Stream
 		}
 
 		// Process events
-		stepMessages, stepUsage, toolCalls, err := a.processStreamEvents(eventChan, callbacks)
+		stepMessages, stepUsage, toolCalls, err := a.processStreamEvents(events, callbacks)
 		if err != nil {
 			return nil, err
 		}
@@ -164,14 +165,18 @@ func (a *Agent) Stream(ctx context.Context, messages []Message, callbacks Stream
 }
 
 // processStreamEvents handles streaming events from the provider
-func (a *Agent) processStreamEvents(eventChan <-chan StreamEvent, callbacks StreamCallbacks) ([]Message, Usage, []ToolCallPart, error) {
+func (a *Agent) processStreamEvents(events iter.Seq2[StreamEvent, error], callbacks StreamCallbacks) ([]Message, Usage, []ToolCallPart, error) {
 	var (
 		stepMessages []Message
 		stepUsage    Usage
 		toolCalls    []ToolCallPart
 	)
 
-	for event := range eventChan {
+	for event, err := range events {
+		if err != nil {
+			return nil, Usage{}, nil, err
+		}
+
 		switch e := event.(type) {
 		case TextDeltaEvent:
 			if callbacks.OnTextDelta != nil {
@@ -204,9 +209,6 @@ func (a *Agent) processStreamEvents(eventChan <-chan StreamEvent, callbacks Stre
 		case StepCompleteEvent:
 			stepMessages = e.Messages
 			stepUsage = e.Usage
-
-		case StreamErrorEvent:
-			return nil, Usage{}, nil, e.Error
 		}
 	}
 

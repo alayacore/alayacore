@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"iter"
 	"testing"
 )
 
@@ -109,26 +110,26 @@ type mockResponse struct {
 	toolCalls []ToolCallPart
 }
 
-func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Message, _ []ToolDefinition, _, _ string) (<-chan StreamEvent, error) {
-	eventChan := make(chan StreamEvent)
+func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Message, _ []ToolDefinition, _, _ string) (iter.Seq2[StreamEvent, error], error) {
+	resp := m.responses[m.callCount]
+	m.callCount++
 
-	go func() {
-		defer close(eventChan)
-
-		resp := m.responses[m.callCount]
-		m.callCount++
-
+	return func(yield func(StreamEvent, error) bool) {
 		// Send text delta
 		if resp.text != "" {
-			eventChan <- TextDeltaEvent{Delta: resp.text}
+			if !yield(TextDeltaEvent{Delta: resp.text}, nil) {
+				return
+			}
 		}
 
 		// Send tool call events
 		for _, tc := range resp.toolCalls {
-			eventChan <- ToolCallEvent{
+			if !yield(ToolCallEvent{
 				ToolCallID: tc.ToolCallID,
 				ToolName:   tc.ToolName,
 				Input:      tc.Input,
+			}, nil) {
+				return
 			}
 		}
 
@@ -141,7 +142,7 @@ func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Mes
 			content = append(content, tc)
 		}
 
-		eventChan <- StepCompleteEvent{
+		yield(StepCompleteEvent{
 			Messages: []Message{
 				{
 					Role:    RoleAssistant,
@@ -149,8 +150,6 @@ func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Mes
 				},
 			},
 			Usage: Usage{InputTokens: 10, OutputTokens: 20},
-		}
-	}()
-
-	return eventChan, nil
+		}, nil)
+	}, nil
 }

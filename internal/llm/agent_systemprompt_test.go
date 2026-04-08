@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"iter"
 	"testing"
 )
 
@@ -17,14 +18,12 @@ func (m *mockProvider) StreamMessages(
 	_ []ToolDefinition,
 	systemPrompt string,
 	extraSystemPrompt string,
-) (<-chan StreamEvent, error) {
+) (iter.Seq2[StreamEvent, error], error) {
 	m.lastSystemPrompt = systemPrompt
 	m.lastExtraSystemPrompt = extraSystemPrompt
 
-	// Return empty channel
-	eventChan := make(chan StreamEvent)
-	close(eventChan)
-	return eventChan, nil
+	// Return empty iterator
+	return func(func(StreamEvent, error) bool) {}, nil
 }
 
 func TestAgentSystemPromptSeparation(t *testing.T) {
