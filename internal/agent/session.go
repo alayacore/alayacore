@@ -506,13 +506,10 @@ func (s *Session) runTask(item QueueItem) {
 		s.mu.Unlock()
 	}()
 
-	// Echo the task before any work so output ordering is correct even if
+	// Echo user prompts before any work so output ordering is correct even if
 	// the task is canceled during initialization.
-	switch t := item.Task.(type) {
-	case UserPrompt:
-		s.signalPromptStart(t.Text)
-	case CommandPrompt:
-		s.signalCommandStart(t.Command)
+	if prompt, ok := item.Task.(UserPrompt); ok {
+		s.signalPromptStart(prompt.Text)
 	}
 
 	s.sendSystemInfo()
@@ -692,10 +689,6 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.Message) (int
 
 func (s *Session) signalPromptStart(prompt string) {
 	s.writeGapped(stream.TagTextUser, prompt)
-}
-
-func (s *Session) signalCommandStart(cmd string) {
-	s.writeGapped(stream.TagTextUser, ":"+cmd)
 }
 
 func (s *Session) writeError(msg string) {

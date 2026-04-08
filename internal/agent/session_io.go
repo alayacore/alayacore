@@ -255,6 +255,8 @@ func (s *Session) handleRetry(ctx context.Context) {
 		// cancel, or error mid-stream). Append a continuation prompt so the
 		// model resumes naturally.
 		s.Messages = append(s.Messages, llm.NewUserMessage("Please continue."))
+		// Echo the inserted message to the adaptor so it is visible.
+		s.signalPromptStart("Please continue.")
 	}
 
 	s.writeNotify("Retrying...")
