@@ -233,10 +233,13 @@ func (s *Session) handleTaskQueueDel(args []string) {
 // This is useful when the API provider returned a transient error (network,
 // rate-limit, server error) and the user wants to try again without retyping.
 //
-// Two cases:
+// Three cases:
 //  1. Latest message is a user prompt → re-send history as-is (the previous
 //     API call never produced a response).
-//  2. Latest message is an assistant/tool message → the API partially succeeded
+//  2. Latest message is a tool result → re-send history as-is. Tool results
+//     are functionally equivalent to a user turn, so the LLM can respond
+//     directly without an additional user message.
+//  3. Latest message is an assistant message → the API partially succeeded
 //     or was canceled. A "Please continue." user message is appended so the
 //     model picks up where it left off.
 func (s *Session) handleRetry(ctx context.Context) {
@@ -250,14 +253,16 @@ func (s *Session) handleRetry(ctx context.Context) {
 	}
 
 	lastMsg := s.Messages[msgCount-1]
-	if lastMsg.Role != llm.RoleUser {
-		// The last message is an assistant or tool response (partial success,
+	if lastMsg.Role == llm.RoleAssistant {
+		// The last message is an assistant response (partial success,
 		// cancel, or error mid-stream). Append a continuation prompt so the
 		// model resumes naturally.
 		s.Messages = append(s.Messages, llm.NewUserMessage("Please continue."))
 		// Echo the inserted message to the adaptor so it is visible.
 		s.signalPromptStart("Please continue.")
 	}
+	// If the last message is RoleUser or RoleTool, the conversation history
+	// is already at a valid point for the LLM to respond — just re-send as-is.
 
 	s.writeNotify("Retrying...")
 
