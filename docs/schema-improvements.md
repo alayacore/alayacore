@@ -1,30 +1,39 @@
-# Tool Definition Improvements
+# Tool Definition: Type-Safe Tools with Auto-Generated Schemas
 
-## Summary of Changes
+How AlayaCore defines tools using type-safe Go patterns with auto-generated JSON schemas, eliminating manual schema JSON and boilerplate.
 
-### 1. Merged `llmcompat` into `llm` package
-- Removed confusing `llmcompat` package
-- Created `/internal/llm/helpers.go` with message constructors and tool builder
-- All helpers now live in their logical home alongside the types they construct
+## Pattern Overview
 
-### 2. Auto-generate JSON schemas from struct tags
-Created `/internal/llm/schema.go` with `GenerateSchema()` that reads struct tags:
+Instead of writing raw JSON schemas and manual unmarshaling, each tool defines a Go struct with `jsonschema` tags. A generic `TypedExecute` wrapper handles unmarshaling automatically:
+
 ```go
-type ReadFileInput struct {
-	Path      string `json:"path" jsonschema:"required,description=The path of the file to read"`
-	StartLine string `json:"start_line" jsonschema:"description=Optional: The starting line number (1-indexed)"`
+type WriteFileInput struct {
+	Path    string `json:"path" jsonschema:"required,description=The path of the file to write"`
+	Content string `json:"content" jsonschema:"required,description=The content to write to the file"`
+}
+
+func NewWriteFileTool() llm.Tool {
+	return llm.NewTool("write_file", "Write content to a file").
+		WithSchema(llm.GenerateSchema(WriteFileInput{})).
+		WithExecute(llm.TypedExecute(executeWriteFile)).
+		Build()
+}
+
+func executeWriteFile(_ context.Context, args WriteFileInput) (llm.ToolResultOutput, error) {
+	if args.Path == "" {
+		return llm.NewTextErrorResponse("path is required"), nil
+	}
+	if err := os.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
+		return llm.NewTextErrorResponse(err.Error()), nil
+	}
+	return llm.NewTextResponse("File written successfully"), nil
 }
 ```
 
-### 3. Type-safe tool execution with `TypedExecute`
-Created `/internal/llm/typed.go` with generic helper that:
-- Handles JSON unmarshaling automatically
-- Provides type safety
-- Eliminates boilerplate
-
 ## Before vs After
 
-### Before (70+ lines)
+### Before (70+ lines with manual schema)
+
 ```go
 func NewWriteFileTool() llm.Tool {
 	schema := json.RawMessage(`{
@@ -64,39 +73,9 @@ func NewWriteFileTool() llm.Tool {
 }
 ```
 
-### After (30 lines - 57% reduction!)
-```go
-type WriteFileInput struct {
-	Path    string `json:"path" jsonschema:"required,description=The path of the file to write"`
-	Content string `json:"content" jsonschema:"required,description=The content to write to the file"`
-}
+### After (30 lines — 57% reduction)
 
-func NewWriteFileTool() llm.Tool {
-	return llm.NewTool("write_file", "...").
-		WithSchema(llm.GenerateSchema(WriteFileInput{})).
-		WithExecute(llm.TypedExecute(executeWriteFile)).
-		Build()
-}
-
-func executeWriteFile(_ context.Context, args WriteFileInput) (llm.ToolResultOutput, error) {
-	if args.Path == "" {
-		return llm.NewTextErrorResponse("path is required"), nil
-	}
-	if err := os.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
-		return llm.NewTextErrorResponse(err.Error()), nil
-	}
-	return llm.NewTextResponse("File written successfully"), nil
-}
-```
-
-## Benefits
-
-1. **Single source of truth**: Schema defined once via struct tags
-2. **Type-safe**: Compile-time checking of input types
-3. **Less boilerplate**: ~50-60% less code per tool
-4. **Easier to maintain**: Add field = add one line with tags
-5. **Better separation**: Tool definition vs. execution logic
-6. **Testable**: Execute functions can be tested independently
+See the Pattern Overview above.
 
 ## Schema Tag Syntax
 
@@ -108,33 +87,26 @@ type Example struct {
 }
 ```
 
-Supported tags:
-- `required`: Field is required in JSON
-- `description=...`: Field description
-- `type=...`: Override type (defaults to string)
-- `enum=...`: Pipe-separated allowed values
+| Tag | Description |
+|-----|-------------|
+| `required` | Field is required in the JSON schema |
+| `description=...` | Field description for the LLM |
+| `type=...` | Override the JSON type (defaults to `string`) |
+| `enum=...` | Pipe-separated allowed values |
 
-## Files Changed
+## Benefits
 
-### New Files
-- `/internal/llm/helpers.go` - Message constructors and tool builder
-- `/internal/llm/schema.go` - Schema generator
-- `/internal/llm/typed.go` - Type-safe execution helper
-- `/internal/llm/schema_test.go` - Tests for schema generator
-
-### Updated Tools
-- `internal/tools/write_file.go` - now 39 lines
-- `internal/tools/read_file.go` - now 100 lines
-- `internal/tools/edit_file.go` - now 88 lines
-- `internal/tools/shell.go` - now 84 lines
-- `internal/tools/activate_skill.go` - now 30 lines
-
-### Removed
-- `/internal/llm/llmcompat/` - Entire package deleted
+1. **Single source of truth** — Schema defined once via struct tags
+2. **Type-safe** — Compile-time checking of input types
+3. **Less boilerplate** — ~50-60% less code per tool
+4. **Easier to maintain** — Add a field = add one line with tags
+5. **Better separation** — Tool definition vs. execution logic
+6. **Testable** — Execute functions can be tested independently
 
 ## Pattern Guide
 
 For simple tools:
+
 ```go
 func NewMyTool() llm.Tool {
 	return llm.NewTool("name", "description").
@@ -149,6 +121,7 @@ func executeMyTool(_ context.Context, args MyInput) (llm.ToolResultOutput, error
 ```
 
 For tools needing closure variables:
+
 ```go
 func NewMyTool(dep *Dependency) llm.Tool {
 	return llm.NewTool("name", "description").
@@ -159,3 +132,22 @@ func NewMyTool(dep *Dependency) llm.Tool {
 		Build()
 }
 ```
+
+## Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `internal/llm/helpers.go` | Message constructors and tool builder |
+| `internal/llm/schema.go` | `GenerateSchema()` — reads struct tags, produces JSON schema |
+| `internal/llm/typed.go` | `TypedExecute[T]()` — generic unmarshaling + execution wrapper |
+| `internal/llm/schema_test.go` | Tests for schema generator |
+
+All five built-in tools use this pattern:
+
+| Tool | File | Lines |
+|------|------|-------|
+| `read_file` | `internal/tools/read_file.go` | ~100 |
+| `edit_file` | `internal/tools/edit_file.go` | ~88 |
+| `write_file` | `internal/tools/write_file.go` | ~39 |
+| `shell` | `internal/tools/shell.go` | ~84 |
+| `activate_skill` | `internal/tools/activate_skill.go` | ~30 |

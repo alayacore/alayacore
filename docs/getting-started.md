@@ -6,78 +6,89 @@
 go install github.com/alayacore/alayacore@latest
 ```
 
-## Quick Start
+Or build from source:
 
-Simply run:
+```sh
+git clone https://github.com/alayacore/alayacore.git
+cd alayacore
+make install
+```
+
+## Quick Start
 
 ```sh
 alayacore
 ```
 
-On first run, AlayaCore automatically creates a default model config at `~/.alayacore/model.conf` configured for Ollama:
+On first run, AlayaCore auto-creates a default model config at `~/.alayacore/model.conf` configured for Ollama:
 
 ```
----
 name: "Ollama (127.0.0.1) / GPT OSS 20B"
 protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
 model_name: "gpt-oss:20b"
 context_limit: 128000
----
 ```
 
 To use other providers, edit the config file — press `Ctrl+L` then `e` in the terminal, or edit it directly. See [configuration.md](configuration.md) for the full format.
 
-Running with skills:
+## First Steps
 
-```sh
-alayacore --skill ~/playground/alayacore/misc/samples/skills/
-```
+1. **Start a conversation** — Type a prompt and press `Enter`. The agent will stream a response.
+2. **Give it a task** — Try `"read main.go and explain what this project does"`. The agent will use the `read_file` tool, then answer.
+3. **Switch models** — Press `Ctrl+L` to open the model selector. Press `e` to edit your config, `r` to reload, `Enter` to select.
+4. **Save your session** — Type `:save my-session.md` or press `Ctrl+S`.
 
 ## CLI Flags
 
-| Flag | Description |
-|------|-------------|
-| `--model-config string` | Model config file path (default: `~/.alayacore/model.conf`) |
-| `--runtime-config string` | Runtime config file path (default: `<model-config-dir>/runtime.conf`, or `~/.alayacore/runtime.conf`) |
-| `--system string` | Extra system prompt (can be specified multiple times) |
-| `--skill strings` | Skill path (can be specified multiple times) |
-| `--session string` | Session file path to load/save conversations |
-| `--proxy string` | HTTP proxy URL (e.g., `http://127.0.0.1:7890` or `socks5://127.0.0.1:1080`) |
-| `--themes string` | Themes folder path (default: `~/.alayacore/themes`) |
-| `--max-steps int` | Maximum agent loop steps (default: 100) |
-| `--auto-summarize` | Automatically summarize conversation when context exceeds 80% of limit |
-| `--auto-save` | Automatically save session after each response when `--session` is specified (default: enabled) |
-| `--plainio` | Use plain stdin/stdout mode instead of terminal UI |
-| `--debug-api` | Write raw API requests and responses to log file |
-| `--version` | Show version information |
-| `--help` | Show help information |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--model-config` | `~/.alayacore/model.conf` | Path to model configuration file |
+| `--runtime-config` | `~/.alayacore/runtime.conf` | Path to runtime configuration file |
+| `--system` | *(none)* | Extra system prompt text. Repeatable: `--system "rule 1" --system "rule 2"` |
+| `--skill` | *(none)* | Path to a skill directory. Repeatable: `--skill ./skills1 --skill ./skills2` |
+| `--session` | *(none)* | Path to session file for loading/saving conversations |
+| `--proxy` | *(none)* | Proxy URL. Supports `http://`, `https://`, and `socks5://` schemes |
+| `--themes` | `~/.alayacore/themes/` | Path to themes directory |
+| `--max-steps` | `100` | Maximum number of agent loop iterations per prompt |
+| `--auto-summarize` | `false` | Automatically summarize when context exceeds 80% of `context_limit` |
+| `--auto-save` | `true` | Auto-save session after each response (requires `--session`) |
+| `--plainio` | `false` | Plain stdin/stdout mode — no TUI, for scripting and piping |
+| `--debug-api` | `false` | Write raw API requests and responses to a log file |
+| `--version` | — | Print version and exit |
+| `--help` | — | Print help and exit |
 
 ## Examples
 
 ```sh
-# Basic usage (loads models from ~/.alayacore/model.conf)
+# Interactive session with default config
 alayacore
 
-# With custom model config
+# Custom model config
 alayacore --model-config ./my-model.conf
 
-# With session persistence
-alayacore --session ~/my-session.md
+# Session persistence
+alayacore --session ~/sessions/refactor.md
 
-# With multiple skill directories
-alayacore --skill ./skills1 --skill ./skills2
+# Multiple skill directories
+alayacore --skill ./skills/weather --skill ./skills/pdf
 
-# With HTTP proxy
+# Behind a proxy
 alayacore --proxy http://127.0.0.1:7890
 
-# Plain IO mode (stdin/stdout, no terminal UI)
-alayacore --plainio
-
-# Piped input
+# Plain IO — pipe a question, get an answer
 echo "what is 2+2?" | alayacore --plainio
 
-# Show version
-alayacore --version
+# Multi-turn plain IO session
+alayacore --plainio
+> read the Makefile and explain the build targets
+> now add a target for cross-compiling to Windows
+> :quit
 ```
+
+## Next Steps
+
+- **[Configuration](configuration.md)** — Set up multiple models, API keys, and themes
+- **[Terminal UI](terminal-ui.md)** — Learn the keybindings and commands
+- **[Skills System](skills.md)** — Extend the agent with custom skill packages

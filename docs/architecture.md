@@ -1,6 +1,8 @@
 # Architecture
 
-AlayaCore follows a layered architecture with clear separation of concerns via the TLV protocol.
+AlayaCore follows a layered architecture with clear separation of concerns. The layers communicate via a lightweight TLV (Tag-Length-Value) binary protocol.
+
+## Layer Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -61,56 +63,62 @@ AlayaCore follows a layered architecture with clear separation of concerns via t
 
 The entry point wires together all components:
 
-1. **config.Parse()** - Parses CLI flags into `config.Settings`
-2. **app.Setup()** - Initializes shared components:
-   - Skills manager (loads skill metadata)
-   - Tools (read_file, edit_file, write_file, shell, activate_skill)
-   - System prompt (default + skills fragment + AGENTS.md + cwd)
-3. **Adaptor creation** - Terminal or PlainIO adaptor starts
+1. **`config.Parse()`** — Parses CLI flags into `config.Settings`
+2. **`app.Setup()`** — Initializes shared components:
+   - Skills manager (loads skill metadata from `--skill` directories)
+   - Tools (`read_file`, `edit_file`, `write_file`, `shell`, `activate_skill`)
+   - System prompt (default + skills fragment + AGENTS.md + current working directory)
+3. **Adaptor creation** — Starts either the terminal or PlainIO adaptor
 
-### Adaptors Layer
+### Adaptors Layer (`internal/adaptors/`)
 
 The adaptor layer handles user interaction and translates between user actions and the TLV protocol.
 
 #### Terminal Adaptor (`internal/adaptors/terminal/`)
-- **Terminal**: Main Bubble Tea model composing all UI components
-- **DisplayModel**: Renders assistant output with virtual scrolling
-- **InputModel**: Handles user text input with external editor support
-- **ModelSelector**: Modal for switching between AI models
-- **QueueManager**: Modal for managing the task queue
-- **ThemeSelector**: Modal for switching between themes
-- **OutputWriter**: Parses TLV from session and renders styled content
-- **WindowBuffer**: Virtual scrolling buffer for display windows
-- **Theme**: Customizable color scheme (Catppuccin Mocha default)
+
+| Component | Description |
+|-----------|-------------|
+| `Terminal` | Main Bubble Tea model composing all UI components |
+| `DisplayModel` | Renders assistant output with virtual scrolling |
+| `InputModel` | Handles user text input with external editor support |
+| `ModelSelector` | Modal for switching between AI models |
+| `QueueManager` | Modal for managing the task queue |
+| `ThemeSelector` | Modal for switching between color themes |
+| `OutputWriter` | Parses TLV from session and renders styled content |
+| `WindowBuffer` | Virtual scrolling buffer for display windows |
+| `Theme` | Customizable color scheme (Catppuccin Mocha default) |
 
 #### PlainIO Adaptor (`internal/adaptors/plainio/`)
-- Plain stdin/stdout mode, activated with `--plainio`
-- Shows assistant text, reasoning, tool call headers, user prompts
-- Suppresses tool result content
-- Reads prompts from stdin (one per line, backslash continuation)
-- Ctrl-D exits gracefully (code 0), Ctrl-C sends `:cancel_all` and exits (code 1)
+
+Plain stdin/stdout mode, activated with `--plainio`. Shows assistant text, reasoning, and tool call headers. Suppresses tool result content. Reads prompts from stdin (one per line, backslash continuation).
 
 ### Session Layer (`internal/agent/`)
 
 The session layer manages conversation state, task execution, and model interaction.
 
-- **Session**: Main session struct managing conversation state
-- **Task Queue**: FIFO queue for pending prompts/commands
-- **ModelManager**: Loads and manages AI model configurations (never writes to file)
-- **RuntimeManager**: Persists runtime settings (active model name)
+| Component | Description |
+|-----------|-------------|
+| `Session` | Main struct managing conversation state and message history |
+| `Task Queue` | FIFO queue for pending prompts and commands |
+| `ModelManager` | Loads and manages AI model configurations from `model.conf`. Never writes to the file. |
+| `RuntimeManager` | Persists runtime settings (active model, active theme) to `runtime.conf` |
+| `CommandRegistry` | Declarative registration of session commands (`:save`, `:cancel`, etc.) |
 
 ### Agent Layer (`internal/llm/`)
 
-The agent layer handles language model interaction and tool-calling orchestration.
+The agent layer handles LLM interaction and tool-calling orchestration.
 
-- **Agent**: Tool-calling loop orchestration with max steps limit
-- **Provider interface**: Streaming LLM abstraction
-- **Factory**: Creates providers based on protocol type
-- **Providers**: Anthropic, OpenAI implementations
-- **Types**: Message, ContentPart, StreamEvent definitions
-- **Typed helpers**: Type-safe tool execution via `TypedExecute`
+| Component | Description |
+|-----------|-------------|
+| `Agent` | Tool-calling loop orchestration with configurable max steps |
+| `Provider` interface | Streaming LLM abstraction with callback-based event handling |
+| `Factory` | Creates the correct provider based on `protocol_type` |
+| `Providers` | Anthropic and OpenAI implementations |
+| `TypedExecute` | Type-safe tool execution via Go generics |
+| `GenerateSchema` | Auto-generates JSON schemas from struct tags |
 
-**Key Pattern — Callback Streaming:**
+**Key pattern — Callback Streaming:**
+
 ```go
 Agent.Stream(ctx, messages, llm.StreamCallbacks{
 	OnTextDelta:      func(delta string) error { ... },
@@ -128,11 +136,13 @@ Messages are appended incrementally in `OnStepFinish` so they're preserved even 
 
 | Tool | Description | Safety |
 |------|-------------|--------|
-| `read_file` | Read file contents (supports line ranges) | Safe |
-| `edit_file` | Search/replace edits | Medium |
-| `write_file` | Create/overwrite files | Dangerous |
-| `activate_skill` | Load and execute skills | Medium |
-| `shell` | Execute shell commands | Most Dangerous |
+| `read_file` | Read file contents with optional line ranges | Safe |
+| `edit_file` | Search/replace edits on existing files | Medium |
+| `write_file` | Create or overwrite files | Dangerous |
+| `shell` | Execute shell commands (bash) | Most Dangerous |
+| `activate_skill` | Load and execute Agent Skills | Medium |
+
+Each tool is implemented with type-safe input structs and auto-generated JSON schemas. See [schema-improvements.md](schema-improvements.md) for the pattern.
 
 ## TLV Protocol
 
@@ -161,30 +171,27 @@ Communication between adaptors and session uses a simple Tag-Length-Value (TLV) 
 ### Example Flow
 
 ```
-1. User types "Hello" in terminal
-2. Terminal adaptor emits: TLV(TU, "Hello")
+1. User types "read main.go" in terminal
+2. Terminal adaptor emits: TLV(TU, "read main.go")
 3. Session reads TLV, creates UserPrompt task
-4. Session processes prompt with model
-5. Session writes: TLV(TA, "Hi! How can I help?")
-6. Terminal adaptor parses TLV, renders styled content
+4. Session processes prompt through the agent loop
+5. Agent calls read_file tool → Session emits: TLV(FS, pending) → TLV(FS, success)
+6. Agent generates response → Session emits: TLV(TA, "Here's what main.go does...")
+7. Terminal adaptor parses TLV, renders styled content in windows
 ```
 
 ## System Prompt Architecture
 
-AlayaCore uses a dual system prompt architecture:
-
-1. **Default System Prompt** (`app.DefaultSystemPrompt`): Base identity and rules
-2. **Extra System Prompt** (`--system` flag): User-provided additions
-
 The system prompt is built in layers:
+
 ```
-Default Prompt
+Default Prompt (identity + rules)
     ↓
-+ Skills Fragment (if skills configured)
++ Skills Fragment (if skills configured — XML format with name, description, location)
     ↓
 + Current working directory
     ↓
-+ Extra System Prompt (from --system flag)
++ Extra System Prompt (from --system flag, repeatable)
 ```
 
 For Anthropic APIs with `prompt_cache: true`, `cache_control` markers are applied to the default and extra system prompts separately for optimal caching.
@@ -202,67 +209,58 @@ main.go → config.Parse() → Settings
         ├── tools.NewReadFileTool(), etc.
         └── Build system prompt
                 ↓
-        terminal.NewAdaptor(appConfig)
+        terminal.NewAdaptor(appConfig)  or  plainio.NewAdaptor(appConfig)
                 ↓
-        Session created with tools, system prompt
+        Session created with tools and system prompt
 ```
 
 ### User Prompt Flow
 
 ```
-User Input → InputModel → ChanInput.EmitTLV(TU, prompt)
-                                    ↓
-Session.readFromInput() ← ReadTLV()
-                                    ↓
-submitTask(UserPrompt) → Task Queue
-                                    ↓
-taskRunner() → handleUserPrompt()
-                                    ↓
-processPrompt() → LLM Agent.Stream()
-                                    ↓
-Callbacks: OnTextDelta, OnToolCall, etc.
-                                    ↓
-writeColored(TA, response) → Output
-                                    ↓
-OutputWriter.Write() → parse TLV
-                                    ↓
-WindowBuffer.AppendOrUpdate() → Render
-                                    ↓
-DisplayModel.View() → Terminal UI
+User types prompt
+  → InputModel captures input
+    → Emit TLV(TU, prompt)
+      → Session.readFromInput()
+        → submitTask(UserPrompt)
+          → Task Queue
+            → taskRunner()
+              → handleUserPrompt()
+                → processPrompt()
+                  → Agent.Stream()
+                    → Callbacks emit TLV(TA), TLV(TR), TLV(FS), etc.
+                      → OutputWriter parses TLV
+                        → WindowBuffer.AppendOrUpdate()
+                          → DisplayModel.View()
+                            → Terminal renders output
 ```
 
 ### Tool Execution Flow
 
 ```
 Agent.Stream() receives tool_call event
-                ↓
-OnToolCall callback → TLV(FN, tool_info) → UI shows pending
-                ↓
-Agent executes tool: tool.Execute(ctx, input)
-                ↓
-OnToolResult callback → TLV(FS, result_status) → UI shows result
-                ↓
-Tool result added to messages
-                ↓
-Agent continues to next step (if under max_steps)
+  → OnToolCall callback → TLV(FS, pending) → UI shows tool indicator
+    → Agent executes tool: tool.Execute(ctx, input)
+      → OnToolResult callback → TLV(FS, result_status) → UI updates indicator
+        → Tool result added to messages
+          → Agent continues to next step (if under max_steps)
 ```
 
 ## Design Decisions
 
-1. **TLV Protocol** — Simple binary protocol for clean separation between adaptors and session
-2. **Task Queue** — Async task processing with cancellation support
-3. **Virtual Scrolling** — Handle large outputs efficiently without performance degradation
-4. **Domain Errors** — Structured error types with operation context for consistent error handling
-5. **Command Registry** — Declarative command registration for extensibility
-6. **Interface Abstraction** — OutputWriter interface for testability
-7. **Provider Factory** — Decoupled provider creation from session logic
-8. **Typed Tools** — `TypedExecute[T]` wrapper for type-safe tool implementations
-9. **Lazy Agent Init** — Agent/Provider created on first use, not at startup
-10. **Sequential Tool Execution** — Tools execute one at a time. See [sequential-tool-execution.md](sequential-tool-execution.md)
+1. **TLV Protocol** — Simple binary protocol for clean separation between adaptors and session. Both the TUI and plain-IO mode share all session/agent logic.
+2. **Task Queue** — Async task processing with cancellation support. Queued tasks execute sequentially.
+3. **Virtual Scrolling** — Only visible windows are rendered. 3.5x faster than naive rendering. See [virtual-rendering-performance.md](virtual-rendering-performance.md).
+4. **Domain Errors** — Structured error types with operation context for consistent error handling.
+5. **Command Registry** — Declarative command registration for extensibility.
+6. **Interface Abstraction** — OutputWriter interface for testability.
+7. **Provider Factory** — Decoupled provider creation from session logic.
+8. **Typed Tools** — `TypedExecute[T]` wrapper for type-safe tool implementations with auto-generated schemas.
+9. **Lazy Agent Init** — Agent and provider are created on first use, not at startup.
+10. **Sequential Tool Execution** — Tools execute one at a time. See [sequential-tool-execution.md](sequential-tool-execution.md).
 
 ## Gotchas
 
-Non-obvious patterns that have caused bugs. When modifying related code, read carefully.
+Non-obvious patterns that have caused bugs. Read carefully when modifying related code.
 
 ### Agent step messages must not be reconstructed
 
@@ -293,7 +291,7 @@ Tool arguments arrive in chunks across multiple delta events:
 
 - System message must be ≥1024 tokens for caching to activate
 - Uses **automatic caching**: single `cache_control: {"type": "ephemeral"}` applied to system prompts
-- Enabled per-model via `prompt_cache: true` in model.conf (other providers ignore)
+- Enabled per-model via `prompt_cache: true` in `model.conf` (other providers ignore)
 - Best for multi-turn conversations where growing message history should be cached automatically
 
 ### Terminal scroll position
@@ -312,3 +310,26 @@ When user cancels mid-tool-call, messages may have `tool_use` without matching `
 
 When styling text with lipgloss, each segment must be rendered individually before concatenation. You cannot render a string that already contains ANSI codes with a new style and expect it to work.
 
+## File Organization
+
+```
+alayacore/
+├── main.go                         # Entry point
+├── go.mod / go.sum                 # Go module
+├── Makefile                        # Build targets
+├── docs/                           # Documentation
+├── misc/samples/skills/            # Example skills
+└── internal/
+    ├── adaptors/
+    │   ├── terminal/               # Bubble Tea TUI (28 files)
+    │   └── plainio/                # Plain stdin/stdout mode (5 files)
+    ├── agent/                      # Session, task queue, model/runtime management (12 files)
+    ├── app/                        # Shared initialization and system prompt (1 file)
+    ├── config/                     # CLI flag parsing and config types (4 files)
+    ├── debug/                      # Debug HTTP server (1 file)
+    ├── errors/                     # Structured domain errors (3 files)
+    ├── llm/                        # Agent loop, providers, types, schemas (17 files)
+    ├── skills/                     # Skill loading and management (4 files)
+    ├── stream/                     # Stream utilities (4 files)
+    └── tools/                      # Built-in tool implementations (8 files)
+```

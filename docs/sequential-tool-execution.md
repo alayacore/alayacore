@@ -1,16 +1,16 @@
 # Tool Execution: Sequential vs Parallel
 
-This document explains why AlayaCore executes tool calls sequentially, even though LLM APIs support returning multiple tool calls in a single response.
+AlayaCore executes tool calls **sequentially** — one at a time, in order — even though LLM APIs support returning multiple tool calls in a single response. This is an intentional design decision.
 
-## How It Works Today
+## How It Works
 
-When the LLM returns multiple `tool_use` blocks in one response, the agent's `executeTools()` method processes them one by one in a simple `for` loop. All results are collected into a single tool result message and sent back to the LLM together. This is correct behavior — both Anthropic and OpenAI APIs expect all tool results for a step in a single response.
+When the LLM returns multiple `tool_use` blocks in one response, the agent's `executeTools()` method processes them one by one in a `for` loop. All results are collected into a single tool result message and sent back to the LLM together. This is correct behavior — both Anthropic and OpenAI APIs expect all tool results for a step in a single response.
 
 See `internal/llm/agent.go` → `executeTools()`.
 
 ## Why Sequential
 
-### LLM Inference Dominates Latency
+### 1. LLM Inference Dominates Latency
 
 In a typical agentic step, time is spent roughly like this:
 
@@ -20,30 +20,30 @@ Tool execution               ~50-500ms
 LLM inference (next step)    ~3-10s
 ```
 
-Tool execution — especially `read_file` (disk I/O) — is a small fraction of total latency. The bottleneck is always LLM API round-trips. Parallelizing tool execution doesn't address the dominant cost.
+Tool execution is a small fraction of total latency. The bottleneck is always LLM API round-trips. Parallelizing tool execution doesn't address the dominant cost.
 
-### Most Tools Mutate State
+### 2. Most Tools Mutate State
 
 3 out of 5 tools have side effects:
 
 | Tool | Side Effects | Parallelizable? |
-|---|---|---|
-| `read_file` | None | Safe |
-| `activate_skill` | Loads metadata | Mostly safe |
-| `edit_file` | Mutates files | Risky |
-| `write_file` | Creates/overwrites files | Risky |
-| `shell` | Anything can happen | Dangerous |
+|------|-------------|-----------------|
+| `read_file` | None | ✅ Safe |
+| `activate_skill` | Loads metadata | ✅ Mostly safe |
+| `edit_file` | Mutates files | ⚠️ Risky |
+| `write_file` | Creates/overwrites files | ⚠️ Risky |
+| `shell` | Anything can happen | ❌ Dangerous |
 
 The LLM frequently mixes reads and writes in the same response block. Running those in parallel creates subtle bugs — two `edit_file` calls on the same file, or a `shell` command that depends on a prior `write_file`, would produce unpredictable results.
 
-### Sequential Is Simpler to Reason About
+### 3. Sequential Is Simpler to Reason About
 
 - **No race conditions** — Tools that touch the filesystem or run shell commands can't interfere with each other.
 - **Deterministic errors** — When tool 3 of 5 fails, the error is unambiguous. No partial results, no goroutine cleanup.
 - **Clean cancellation** — The loop checks `ctx` between iterations naturally. Goroutines require `errgroup` or similar patterns.
 - **Testable** — Sequential behavior is deterministic. Tests don't flake due to scheduling order.
 
-### The LLM Doesn't Guarantee Independence
+### 4. The LLM Doesn't Guarantee Independence
 
 The LLM returns multiple tool calls because the API format supports it, not because it has verified they are truly independent. Treating them as parallel-safe by default would be an incorrect assumption.
 

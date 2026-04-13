@@ -1,84 +1,91 @@
 # Terminal UI
 
+AlayaCore's terminal UI is built with [Bubble Tea](https://charm.land/) and uses vim-like keybindings throughout.
+
 ## Navigation
 
 | Key | Action |
 |-----|--------|
 | `Tab` | Switch focus between display and input window |
-| `j` | Move window cursor down (when display focused) |
-| `k` | Move window cursor up (when display focused) |
-| `J` | Scroll down one line (when display focused) |
-| `K` | Scroll up one line (when display focused) |
-| `g` | Go to first window and top of display (when display focused) |
-| `G` | Go to last window and bottom of display (when display focused) |
-| `H` | Move cursor to window at top of visible area (when display focused) |
-| `L` | Move cursor to window at bottom of visible area (when display focused) |
-| `M` | Move cursor to window at center of visible area (when display focused) |
+| `j` | Move window cursor down |
+| `k` | Move window cursor up |
+| `J` | Scroll down one line |
+| `K` | Scroll up one line |
+| `g` | Go to first window, scroll to top |
+| `G` | Go to last window, scroll to bottom |
+| `H` | Move cursor to top window in visible area |
+| `M` | Move cursor to middle window in visible area |
+| `L` | Move cursor to bottom window in visible area |
 
 ## Input & Actions
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Submit prompt (when input focused) |
-| `Ctrl+S` | Save session to file |
-| `Ctrl+O` | Open external editor for multi-line input |
-| `Ctrl+L` | Open model selector UI |
-| `Ctrl+P` | Open theme selector UI |
-| `Ctrl+Q` | Open task queue manager UI |
-| `:` | Switch to input with ":" prefix (when display focused) |
-| `Space` | Toggle window fold (expand/collapse) (when display focused) |
-| `Ctrl+C` | Clear input (when input focused) |
+| `Enter` | Submit prompt |
+| `Ctrl+S` | Save session |
+| `Ctrl+O` | Open external editor (`$EDITOR`) for multi-line input |
+| `Ctrl+L` | Open model selector |
+| `Ctrl+P` | Open theme selector |
+| `Ctrl+Q` | Open task queue manager |
 | `Ctrl+G` | Cancel current request (with confirmation) |
+| `Ctrl+C` | Clear input |
+| `:` | Switch to input with `:` prefix (command mode) |
+| `Space` | Toggle window fold (expand/collapse) |
 
 ## Session Commands
 
 | Command | Action |
 |---------|--------|
-| `:save [filename]` | Save session to file (uses `--session` path if no filename) |
+| `:save [filename]` | Save session. Uses `--session` path if no filename given. |
 | `:cancel` | Cancel current request (with confirmation) |
 | `:cancel_all` | Cancel current request and clear the task queue |
-| `:retry` | Retry the last prompt (re-send history; appends "Please continue." if latest message is from the assistant) |
+| `:retry` | Retry the last prompt. Re-sends history; appends "Please continue." if latest message is from the assistant. |
 | `:summarize` | Summarize conversation to reduce token usage |
-| `:quit`, `:q` | Exit with confirmation (press y/n) |
-| `:model_set <id>` | Switch to a saved model configuration |
-| `:model_load` | Load model configurations from default config file |
+| `:model_set <id>` | Switch to a model by name |
+| `:model_load` | Reload model configs from the config file |
+| `:quit`, `:q` | Exit with confirmation (y/n) |
 
 ## Window Container
 
-The terminal organizes concurrent streams into separate windows with synchronized widths:
+The display area organizes content into separate windows — one per message or tool call. Windows have synchronized widths and can be navigated independently.
 
-- **Window Cursor**: Use `j`/`k` to navigate between windows. The cursor defaults to the newest window.
-- **Auto-follow**: When new windows appear, cursor moves to them automatically. Pressing `k`, `g`, `H`, `L`, or `M` disables follow; returning to the last window re-enables it.
-- **Fold mode**: Press `Space` to toggle fold mode on the active window, collapsing content to first line + indicator + last 3 lines.
+### Auto-Follow
+
+When new windows appear, the cursor automatically moves to the newest one. Pressing `k`, `g`, `H`, `L`, `M`, `J`, or `K` disables auto-follow. Returning to the last window re-enables it.
+
+### Fold Mode
+
+Press `Space` on any window to collapse it — the window shows the first line, a fold indicator, and the last 3 lines. Press `Space` again to expand.
+
+### Virtual Scrolling
+
+The display uses virtual scrolling to handle large outputs efficiently. Only visible windows are rendered, giving a 3.5x speedup over naive rendering. See [virtual-rendering-performance.md](virtual-rendering-performance.md) for details.
 
 ## Task Queue Manager
 
-When tasks (prompts or commands) are submitted while a previous task is still running, they are added to a queue. Press `Ctrl+Q` to open the task queue manager:
+When you submit prompts or commands while a previous task is running, they are queued. Press `Ctrl+Q` to manage the queue:
 
 | Key | Action |
 |-----|--------|
-| `q`, `esc` | Close queue manager |
+| `q`, `Esc` | Close queue manager |
 | `j`, `↓` | Move selection down |
 | `k`, `↑` | Move selection up |
 | `d` | Delete selected task |
 
-Each queued task displays:
-- Queue ID (Q1, Q2, etc.)
-- Type: `P` (prompt) or `C` (command)
-- Truncated content preview
+Each queued task shows its queue ID (Q1, Q2, …), type (`P` for prompt, `C` for command), and a truncated content preview.
 
 ## Session Persistence
 
-- **Manual-save**: Sessions are saved only when you use `:save [filename]` or press `Ctrl+S`
-- **Auto-save**: Enabled by default. When `--session` is specified, the session is automatically saved after each task completes. Use `--auto-save=false` to disable.
-- **Load**: On startup, AlayaCore creates a new empty session unless you specify `--session` to load an existing one
-- **Auto-summarize**: When `--auto-summarize` is enabled and `context_limit` is set, AlayaCore automatically triggers `:summarize` when context reaches 80% of the limit. Use `:summarize` to manually reduce context at any time.
+- **Auto-save** — Enabled by default when `--session` is specified. The session is saved after each task completes.
+- **Manual save** — `:save [file]` or `Ctrl+S` at any time.
+- **Load** — On startup, AlayaCore starts a new empty session unless you specify `--session` to load an existing one.
+- **Auto-summarize** — When `--auto-summarize` is enabled and `context_limit` is set, AlayaCore automatically triggers `:summarize` when context reaches 80% of the limit.
 
-Session files use TLV-encoded binary format with YAML frontmatter for metadata. See [architecture.md](architecture.md) for format details.
+Session files use TLV-encoded binary format with YAML frontmatter. See [architecture.md](architecture.md) for format details.
 
 ## Plain IO Mode
 
-Use `--plainio` to run AlayaCore as a plain stdin/stdout process with no terminal UI. This is useful for scripting, piping, or headless environments.
+`--plainio` runs AlayaCore as a plain stdin/stdout process with no terminal UI. Useful for scripting, piping, and headless environments.
 
 ### Input
 
@@ -92,11 +99,10 @@ prompt that spans two lines.
 
 - **Ctrl-D** (EOF): closes stdin, waits for queued tasks to finish, exits with code `0`
 - **Ctrl-C** (SIGINT): sends `:cancel_all`, exits with code `1`
-- Errors cause exit with a negative return code
 
 ### Output
 
-All output is plain text with no ANSI codes:
+All output is plain text with no ANSI escape codes:
 
 | Content | Format |
 |---------|--------|
@@ -110,8 +116,18 @@ All output is plain text with no ANSI codes:
 
 A blank line separates messages of different types.
 
-### Piped Example
+### Examples
 
 ```sh
+# Pipe a single question
 echo "what is 2+2?" | alayacore --plainio
+
+# Interactive plain session
+alayacore --plainio
+> read the Makefile and list the build targets
+> now explain the architecture
+> :quit
+
+# Use in scripts
+alayacore --plainio < questions.txt > answers.txt
 ```

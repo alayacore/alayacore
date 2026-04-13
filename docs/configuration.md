@@ -1,86 +1,122 @@
 # Configuration
 
-## Model Config File
+AlayaCore has three configuration files: model config, runtime config, and theme files. All live under `~/.alayacore/` by default.
+
+```
+~/.alayacore/
+├── model.conf        # LLM provider and model definitions
+├── runtime.conf      # Active model/theme selections (auto-managed)
+└── themes/
+    ├── theme-dark.conf
+    └── theme-light.conf
+```
+
+## Model Config
 
 **Default location**: `~/.alayacore/model.conf`
-**Custom location**: Use `--model-config /path/to/model.conf`
+**Override**: `--model-config /path/to/model.conf`
 
-The model config file uses a simple key-value format. If the file doesn't exist or is empty, AlayaCore automatically creates it with a default Ollama configuration.
-
-**Important**: After auto-initialization, the program NEVER writes to this file automatically. You must edit it manually with a text editor.
+This file defines one or more LLM models that AlayaCore can use. It is auto-created with a default Ollama configuration on first run. **AlayaCore never writes to this file after initialization** — you must edit it manually.
 
 ### Format
 
 ```
 name: "Display Name"
-protocol_type: "openai"        # or "anthropic"
+protocol_type: "openai"
 base_url: "https://api.example.com/v1"
 api_key: "your-api-key"
 model_name: "model-identifier"
-context_limit: 128000          # optional, 0 = unlimited
-prompt_cache: true             # optional, enables cache_control for Anthropic
+context_limit: 128000
+prompt_cache: true
 ```
 
-**Fields:**
-- `name`: Display name for the model
-- `protocol_type`: "openai" or "anthropic"
-- `base_url`: API server URL
-- `api_key`: Your API key
-- `model_name`: Model identifier
-- `context_limit`: Maximum context length (optional, 0 means unlimited)
-- `prompt_cache`: Enable prompt caching for Anthropic APIs (optional, adds `cache_control` markers)
+### Fields
 
-Separate multiple models with `---`:
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name shown in the model selector |
+| `protocol_type` | Yes | `openai` or `anthropic` — determines the API format |
+| `base_url` | Yes | API server base URL |
+| `api_key` | Yes | API key for authentication |
+| `model_name` | Yes | Model identifier sent to the API |
+| `context_limit` | No | Maximum context window in tokens. `0` means unlimited. Used for context display and auto-summarization. |
+| `prompt_cache` | No | Enable prompt caching for Anthropic APIs. Adds `cache_control` markers to system prompts for reduced latency and cost. Ignored by OpenAI providers. |
+
+### Multiple Models
+
+Separate models with `---`. The first model becomes active on startup (unless `runtime.conf` has a saved preference):
 
 ```
 name: "OpenAI GPT-4o"
 protocol_type: "openai"
 base_url: "https://api.openai.com/v1"
-api_key: "your-api-key"
+api_key: "sk-..."
 model_name: "gpt-4o"
 context_limit: 128000
 ---
-name: "Ollama Local"
+name: "Anthropic Claude Sonnet"
+protocol_type: "anthropic"
+base_url: "https://api.anthropic.com"
+api_key: "sk-ant-..."
+model_name: "claude-sonnet-4-20250514"
+context_limit: 200000
+prompt_cache: true
+---
+name: "Ollama / Qwen3 30B"
 protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
-model_name: "llama3"
-context_limit: 32768
+api_key: "no-key-by-default"
+model_name: "qwen3:30b-a3b"
+context_limit: 128000
 ```
 
-The first model in the file becomes the active model on startup (unless `runtime.conf` has a saved preference).
+### Provider Examples
 
-### Model Selection Logic
+| Provider | `protocol_type` | `base_url` | Notes |
+|----------|----------------|------------|-------|
+| OpenAI | `openai` | `https://api.openai.com/v1` | |
+| Anthropic | `anthropic` | `https://api.anthropic.com` | Supports `prompt_cache` |
+| DeepSeek | `openai` | `https://api.deepseek.com/v1` | OpenAI-compatible |
+| Qwen (DashScope) | `openai` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compatible |
+| Ollama | `anthropic` | `http://127.0.0.1:11434` | Anthropic-compatible mode |
+| LM Studio | `openai` | `http://127.0.0.1:1234/v1` | OpenAI-compatible |
 
-1. On startup, AlayaCore reads the model config file
-2. If the config file doesn't exist or is empty, it's auto-initialized with a default Ollama configuration
-3. The **first model** in the config file becomes the active model (unless `runtime.conf` has a saved preference)
+### Switching Models at Runtime
 
-### Editing Models
+Press `Ctrl+L` to open the model selector. From there:
 
-- Press `Ctrl+L` to open the model selector
-- Press `e` to open the config file in your editor ($EDITOR or vi)
-- Press `r` to reload models after editing
-- Press `enter` to select a model
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Navigate models |
+| `Enter` | Select model |
+| `e` | Open config file in `$EDITOR` (or `vi`) |
+| `r` | Reload models after editing |
 
-## Runtime Configuration
+## Runtime Config
 
 **Default location**: `~/.alayacore/runtime.conf`
-**Custom location**: Use `--runtime-config /path/to/runtime.conf`
+**Override**: `--runtime-config /path/to/runtime.conf`
+
+Auto-managed by AlayaCore. Persists your active model and theme selections across sessions.
 
 ```
 active_model: "OpenAI GPT-4o"
 active_theme: "theme-dark"
 ```
 
-The active model is determined by:
-1. If `runtime.conf` has a saved `active_model`, that model is used
-2. Otherwise, the **first model** in `model.conf` becomes the active model
+### Model Selection Priority
 
-The active theme is saved to `runtime.conf` when you select a theme in the theme selector (`Ctrl+P`).
+1. If `runtime.conf` has a saved `active_model`, that model is used
+2. Otherwise, the **first model** in `model.conf` is active
 
 ## Theme Configuration
 
-Themes are stored as `.conf` files in the themes folder. Each file defines a color scheme:
+**Default location**: `~/.alayacore/themes/`
+**Override**: `--themes /path/to/themes`
+
+Themes are `.conf` files that define the TUI color scheme. If the themes directory doesn't exist, AlayaCore creates it with `theme-dark.conf` and `theme-light.conf`.
+
+### Theme File Format
 
 ```
 # ~/.alayacore/themes/theme-dark.conf
@@ -97,7 +133,20 @@ added: #a6e3a1
 removed: #f38ba8
 ```
 
-- **Default location**: `~/.alayacore/themes/`
-- **Custom location**: Use `--themes /path/to/themes`
-- **Auto-initialization**: If the themes folder doesn't exist, AlayaCore creates it with default `theme-dark.conf` and `theme-light.conf`
-- **Switching themes**: Press `Ctrl+P` in the terminal to open the theme selector
+### Color Roles
+
+| Color | Used for |
+|-------|----------|
+| `primary` | Tool call headers, skill names, emphasis |
+| `dim` | Window borders, separators |
+| `muted` | Status bar, secondary text |
+| `text` | Body text |
+| `warning` | Warnings, pending states |
+| `error` | Errors |
+| `success` | Success messages, completed states |
+| `selection` | Selected items in lists |
+| `cursor` | Cursor indicator |
+| `added` | Diff additions |
+| `removed` | Diff removals |
+
+Switch themes at runtime with `Ctrl+P`.

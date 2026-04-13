@@ -1,15 +1,31 @@
 # Skills System
 
-AlayaCore supports the Agent Skills specification from [agentskills.io](https://agentskills.io). Skills are packages of instructions, scripts, and resources that agents can discover and use to perform specific tasks.
+AlayaCore supports the [Agent Skills](https://agentskills.io) specification. Skills are packages of instructions, scripts, and resources that extend the agent's capabilities — the LLM discovers them at startup and activates them on demand.
+
+## How It Works
+
+1. **Discovery** — At startup, AlayaCore scans the skill directories and loads each skill's name and description from its `SKILL.md` frontmatter.
+2. **Injection** — Skill metadata is injected into the system prompt so the LLM knows what's available:
+   ```xml
+   <available_skills>
+     <skill>
+       <name>weather</name>
+       <description>Use this skill whenever the user wants to get weather information...</description>
+       <location>/path/to/skills/weather/SKILL.md</location>
+     </skill>
+   </available_skills>
+   ```
+3. **Activation** — When a task matches a skill's description, the LLM calls the `activate_skill` tool to load the full instructions.
+4. **Execution** — The agent follows the loaded instructions, optionally running bundled scripts via the `shell` tool.
 
 ## Usage
 
 ```sh
-# With skills directory (uses models from config file)
-alayacore --skill ./skills "extract text from document.pdf"
+# Single skill directory
+alayacore --skill ./skills/weather
 
-# With multiple skill directories
-alayacore --skill ./skills1 --skill ./skills2
+# Multiple skill directories
+alayacore --skill ./skills/weather --skill ./skills/pdf
 
 # With custom model config
 alayacore --model-config ./my-model.conf --skill ./skills
@@ -18,16 +34,16 @@ alayacore --model-config ./my-model.conf --skill ./skills
 ## Skill Directory Structure
 
 ```
-skills/
+my-skill/
 ├── SKILL.md          # Required: instructions + metadata
-├── scripts/          # Optional: executable code
-├── references/      # Optional: documentation
-└── assets/          # Optional: templates, resources
+├── scripts/          # Optional: executable scripts
+├── references/       # Optional: reference documentation
+└── assets/           # Optional: templates, resources
 ```
 
 ## SKILL.md Format
 
-Skills use YAML frontmatter followed by Markdown content:
+A skill's `SKILL.md` file uses YAML frontmatter followed by Markdown instructions:
 
 ```yaml
 ---
@@ -39,32 +55,72 @@ license: Apache-2.0
 # PDF Processing Skill
 
 Instructions for the agent...
+
+## Available Scripts
+
+- `scripts/extract-text.sh <file>` — Extract text from a PDF
+- `scripts/merge.sh <input1> <input2> <output>` — Merge two PDFs
 ```
 
-## How Skills Work
+### Frontmatter Fields
 
-1. **Discovery**: At startup, AlayaCore scans the skills directory and loads only skill names and descriptions
-2. **Activation**: When a task matches a skill's description, the agent can activate it to load full instructions
-3. **Execution**: The agent follows the instructions, optionally running bundled scripts
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Skill identifier. 1-64 characters, lowercase letters, numbers, and hyphens only. |
+| `description` | Yes | Describes what the skill does **and when to use it**. 1-1024 characters. This is what the LLM uses to decide whether to activate the skill. |
+| `license` | No | License name or reference |
+| `compatibility` | No | Environment requirements |
+| `allowed-tools` | No | Space-delimited list of pre-approved tools |
 
-Skills metadata is injected into the system prompt using XML format:
+### Writing Good Descriptions
 
-```xml
-<available_skills>
-  <skill>
-    <name>pdf-processing</name>
-    <description>Extract text and tables from PDF files...</description>
-    <location>/path/to/skills/pdf/SKILL.md</location>
-  </skill>
-</available_skills>
+The description serves as the trigger for skill activation. Be specific about **when** the skill should be used:
+
+```yaml
+# Good — clear trigger conditions
+description: Use this skill whenever the user wants to get weather information. This includes current weather, forecasts, temperature, humidity, wind, and weather conditions for any city or region.
+
+# Bad — too vague
+description: Weather information.
 ```
+
+## Example: Weather Skill
+
+```
+skills/weather/
+├── SKILL.md
+└── scripts/
+    └── weather.sh
+```
+
+**SKILL.md:**
+
+```yaml
+---
+name: weather
+description: Use this skill whenever the user wants to get weather information. This includes current weather, forecasts, temperature, humidity, wind, and weather conditions for any city or region.
+---
+
+# Weather Skill
+
+Get weather information using the weather script.
+
+## Usage
+
+```sh
+./scripts/weather.sh "City name"
+```
+
+- **Note**: Use English city names (e.g., "New York" not "纽约")
+```
+
+When the user asks "what's the weather in Tokyo?", the LLM:
+1. Matches the query against the skill description
+2. Calls `activate_skill` with name "weather"
+3. Reads the full instructions from `SKILL.md`
+4. Runs `scripts/weather.sh "Tokyo"` via the `shell` tool
+5. Reports the results back to the user
 
 ## Skill Specification
 
-| Field | Description |
-|-------|-------------|
-| `name` | 1-64 characters, lowercase letters, numbers, and hyphens only |
-| `description` | 1-1024 characters, describes what the skill does AND when to use it |
-| `license` | Optional, license name or reference |
-| `compatibility` | Optional, environment requirements |
-| `allowed-tools` | Optional, space-delimited list of pre-approved tools |
+For the full specification, see [agentskills.io](https://agentskills.io).
