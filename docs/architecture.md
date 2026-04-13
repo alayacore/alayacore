@@ -323,6 +323,7 @@ Agent continues to next step (if under max_steps)
 7. **Provider Factory**: Decoupled provider creation from session logic
 8. **Typed Tools**: `TypedExecute[T]` wrapper for type-safe tool implementations
 9. **Lazy Agent Init**: Agent/Provider created on first use, not at startup
+10. **Sequential Tool Execution**: Tool calls execute one at a time even when the LLM returns multiple. See [Sequential Tool Execution](sequential-tool-execution.md) for the rationale.
 
 ## Critical Implementation Gotchas
 
