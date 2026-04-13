@@ -120,19 +120,38 @@ func (se *streamEditor) flushRemaining(tempFile *os.File) error {
 	return nil
 }
 
-func executeEditFile(_ context.Context, args EditFileInput) (llm.ToolResultOutput, error) {
+func validateEditFileInput(args EditFileInput) (string, error) {
 	if args.Path == "" {
-		return llm.NewTextErrorResponse("path is required"), nil
+		return "", fmt.Errorf("path is required")
 	}
 	if args.OldString == "" {
-		return llm.NewTextErrorResponse("old_string is required"), nil
+		return "", fmt.Errorf("old_string is required")
 	}
+	if args.OldString == args.NewString {
+		return "", fmt.Errorf("old_string and new_string are identical — no changes would be made. If you intended to modify the file, make sure new_string is different from old_string")
+	}
+	return args.Path, nil
+}
 
-	file, err := os.Open(args.Path)
+func openFileForEdit(path string) (*os.File, error) {
+	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return llm.NewTextErrorResponse(fmt.Sprintf("file not found: %s", args.Path)), nil
+			return nil, fmt.Errorf("file not found: %s", path)
 		}
+		return nil, err
+	}
+	return file, nil
+}
+
+func executeEditFile(_ context.Context, args EditFileInput) (llm.ToolResultOutput, error) {
+	path, err := validateEditFileInput(args)
+	if err != nil {
+		return llm.NewTextErrorResponse(err.Error()), nil
+	}
+
+	file, err := openFileForEdit(path)
+	if err != nil {
 		return llm.NewTextErrorResponse(err.Error()), nil
 	}
 	defer file.Close()

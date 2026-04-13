@@ -86,6 +86,15 @@ func TestEditFileTool(t *testing.T) {
 			expected:  "new content",
 		},
 		{
+			name:        "identical old_string and new_string",
+			initial:     "line 1\nline 2\nline 3",
+			oldString:   "line 2",
+			newString:   "line 2",
+			expected:    "",
+			expectError: true,
+			errorMsg:    "old_string and new_string are identical",
+		},
+		{
 			name:      "replace with indentation",
 			initial:   "func main() {\n    fmt.Println(\"hello\")\n}",
 			oldString: "    fmt.Println(\"hello\")",
