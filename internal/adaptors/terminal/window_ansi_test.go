@@ -8,7 +8,7 @@ import (
 )
 
 // TestWindow_WithANSIContent verifies that windows properly handle content
-// with ANSI escape sequences from any source (read_file, write_file, posix_shell, etc.)
+// with ANSI escape sequences from any source (read_file, write_file, shell, etc.)
 func TestWindow_WithANSIContent(t *testing.T) {
 	styles := DefaultStyles()
 
@@ -25,7 +25,7 @@ func TestWindow_WithANSIContent(t *testing.T) {
 			expected: "File content with red text",
 		},
 		{
-			name:     "posix_shell result with colors",
+			name:     "shell result with colors",
 			tag:      stream.TagFunctionResult,
 			content:  "Command output:\n\x1b[32mSuccess\x1b[0m\nDone",
 			expected: "Command output:\nSuccess\nDone",
@@ -39,8 +39,8 @@ func TestWindow_WithANSIContent(t *testing.T) {
 		{
 			name:     "tool call with ANSI in command",
 			tag:      stream.TagFunctionCall,
-			content:  "posix_shell: echo \x1b[31mtest\x1b[0m",
-			expected: "· posix_shell: echo test", // Note: includes status indicator
+			content:  "shell: echo \x1b[31mtest\x1b[0m",
+			expected: "· shell: echo test", // Note: includes status indicator
 		},
 		{
 			name:     "text with embedded ANSI",
@@ -91,7 +91,7 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 		{
 			name:            "tool call gets styled",
 			tag:             stream.TagFunctionCall,
-			content:         "posix_shell: echo test",
+			content:         "shell: echo test",
 			shouldHaveColor: true,
 		},
 		{

@@ -31,7 +31,7 @@ go install github.com/alayacore/alayacore@latest
 
 ## Features
 
-- Tools: read_file, edit_file, write_file, activate_skill, posix_shell
+- Tools: read_file, edit_file, write_file, activate_skill, shell
 - Multi-step conversations with tool calls
 - Token usage tracking
 - Error handling for command execution

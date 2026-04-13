@@ -60,14 +60,14 @@ func Setup(cfg *config.Settings) (*Config, error) {
 	readFileTool := tools.NewReadFileTool()
 	writeFileTool := tools.NewWriteFileTool()
 	activateSkillTool := tools.NewActivateSkillTool(skillsManager)
-	posixShellTool := tools.NewPosixShellTool()
+	shellTool := tools.NewShellTool()
 	editFileTool := tools.NewEditFileTool()
 
 	return &Config{
 		Cfg:               cfg,
 		Provider:          nil, // Provider will be created when model is set
 		SkillsMgr:         skillsManager,
-		AgentTools:        []llm.Tool{readFileTool, editFileTool, writeFileTool, activateSkillTool, posixShellTool},
+		AgentTools:        []llm.Tool{readFileTool, editFileTool, writeFileTool, activateSkillTool, shellTool},
 		SystemPrompt:      systemPrompt,
 		ExtraSystemPrompt: cfg.SystemPrompt, // User-provided extra system prompt (supplemental, not replacement)
 		MaxSteps:          cfg.MaxSteps,

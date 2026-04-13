@@ -250,7 +250,7 @@ func TestToolCallStreamingChunked(t *testing.T) {
 		flusher, _ := w.(http.Flusher)
 
 		// First chunk: name + id + index (arguments empty)
-		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-456\",\"type\":\"function\",\"function\":{\"name\":\"posix_shell\",\"arguments\":\"\"}}]}}]}\n\n")
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-456\",\"type\":\"function\",\"function\":{\"name\":\"shell\",\"arguments\":\"\"}}]}}]}\n\n")
 		// Subsequent chunks: arguments are raw JSON fragments (not quoted strings)
 		// The API sends the JSON object being built up piece by piece
 		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"\",\"function\":{\"arguments\":\"{\\\"command\\\": \\\"uname -a\\\"}\"}}]}}]}\n\n")
@@ -288,8 +288,8 @@ func TestToolCallStreamingChunked(t *testing.T) {
 		t.Fatalf("Expected 1 tool call, got %d", len(toolCalls))
 	}
 
-	if toolCalls[0].ToolName != "posix_shell" {
-		t.Errorf("Expected tool name 'posix_shell', got '%s'", toolCalls[0].ToolName)
+	if toolCalls[0].ToolName != "shell" {
+		t.Errorf("Expected tool name 'shell', got '%s'", toolCalls[0].ToolName)
 	}
 
 	// Verify arguments were accumulated and can be unmarshaled

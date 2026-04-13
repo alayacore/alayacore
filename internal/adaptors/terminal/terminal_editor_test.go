@@ -539,6 +539,7 @@ func TestWindowBufferDeltaRouting(t *testing.T) {
 	}
 	if win1 == nil {
 		t.Fatal("Window with ID stream1 not found")
+		return
 	}
 	// Content should have both deltas concatenated
 	// Note: content is styled with color codes; we just check containment

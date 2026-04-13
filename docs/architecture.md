@@ -28,17 +28,16 @@ AlayaCore follows a layered architecture with clear separation of concerns:
               │                                      │
 ┌─────────────┼──────────────────────────────────────┼────────────────────┐
 │             ▼                                      ▼                    │
-│  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │                      Session Layer                               │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐   │   │
-│  │  │ Task Queue  │  │   Model     │  │      Runtime            │   │   │
-│  │  │ (FIFO)      │  │  Manager    │  │      Manager            │   │   │
-│  │  └─────────────┘  └─────────────┘  └─────────────────────────┘   │   │
-│  └──────────────────────────┬───────────────────────────────────────┘   │
-│                             │                                           │
-└─────────────────────────────┼───────────────────────────────────────────┘
-                              │
-                              ▼
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                       Session Layer                               │  │
+│  │  ┌───────────────────┐  ┌───────────────┐  ┌────────────────────┐ │  │
+│  │  │ Task Queue (FIFO) │  │ Model Manager │  │ Runtime Manager    │ │  │
+│  │  └───────────────────┘  └───────────────┘  └────────────────────┘ │  │
+│  └───────────────────────────┬───────────────────────────────────────┘  │
+│                              │                                          │
+└──────────────────────────────┼──────────────────────────────────────────┘
+                               │
+                               ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         Agent Layer                                     │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
@@ -54,12 +53,9 @@ AlayaCore follows a layered architecture with clear separation of concerns:
                               ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         Tools Layer                                     │
-│  ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌────────────┐                 │
-│  │read_file │ │write_file │ │edit_file │ │posix_shell │                 │
-│  └──────────┘ └───────────┘ └──────────┘ └────────────┘                 │
-│  ┌───────────────┐                                                      │
-│  │activate_skill │                                                      │
-│  └───────────────┘                                                      │
+│ ┌───────────┐ ┌────────────┐ ┌───────────┐ ┌───────┐ ┌────────────────┐ │
+│ │ read_file │ │ write_file │ │ edit_file │ │ shell │ │ activate_skill │ │
+│ └───────────┘ └────────────┘ └───────────┘ └───────┘ └────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -72,7 +68,7 @@ The entry point wires together all components:
 1. **config.Parse()** - Parses CLI flags into `config.Settings`
 2. **app.Setup()** - Initializes shared components:
    - Skills manager (loads skill metadata)
-   - Tools (read_file, edit_file, write_file, posix_shell, activate_skill)
+   - Tools (read_file, edit_file, write_file, shell, activate_skill)
    - System prompt (default + skills fragment + AGENTS.md + cwd)
 3. **Adaptor creation** - Terminal or PlainIO adaptor starts
 
@@ -142,7 +138,7 @@ Tools are functions the AI can call to interact with the system.
 | `edit_file` | Search/replace edits | Medium |
 | `write_file` | Create/overwrite files | Dangerous |
 | `activate_skill` | Load and execute skills | Medium |
-| `posix_shell` | Execute shell commands | Most Dangerous |
+| `shell` | Execute shell commands | Most Dangerous |
 
 ## TLV Protocol
 
@@ -413,7 +409,7 @@ alayacore/
 │   │   ├── read_file.go
 │   │   ├── edit_file.go
 │   │   ├── write_file.go
-│   │   ├── posix_shell.go
+│   │   ├── shell.go
 │   │   └── activate_skill.go
 │   └── llm/
 │       ├── agent.go           # Tool-calling loop

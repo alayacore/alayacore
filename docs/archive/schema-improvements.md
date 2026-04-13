@@ -126,7 +126,7 @@ Supported tags:
 - `internal/tools/write_file.go` - now 39 lines
 - `internal/tools/read_file.go` - now 100 lines
 - `internal/tools/edit_file.go` - now 88 lines
-- `internal/tools/posix_shell.go` - now 84 lines
+- `internal/tools/shell.go` - now 84 lines
 - `internal/tools/activate_skill.go` - now 30 lines
 
 ### Removed

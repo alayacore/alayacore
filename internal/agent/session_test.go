@@ -80,7 +80,9 @@ func TestLoadOrNewSession(t *testing.T) {
 	session, sessionFile := LoadOrNewSession(baseTools, systemPrompt, extraSystemPrompt, 0, &stream.NopInput{}, &stream.NopOutput{}, "", "", "", false, false, false, "")
 	if session == nil {
 		t.Fatal("LoadOrNewSession returned nil session")
+		return
 	}
+
 	if sessionFile != "" {
 		t.Fatalf("LoadOrNewSession should return empty session file when not specified, got: %s", sessionFile)
 	}
@@ -459,7 +461,7 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 					llm.ToolCallPart{
 						Type:       "tool_use",
 						ToolCallID: "call_123",
-						ToolName:   "posix_shell",
+						ToolName:   "shell",
 						Input:      json.RawMessage(`{"command": "ls -la"}`),
 					},
 				},
@@ -529,7 +531,7 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 	}
 
 	// Tool call should be in TLV as FC tag
-	if !strings.Contains(outputStr, "posix_shell") {
+	if !strings.Contains(outputStr, "shell") {
 		t.Error("Tool call should be in TLV")
 	}
 }

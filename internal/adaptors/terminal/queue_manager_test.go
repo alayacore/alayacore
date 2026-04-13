@@ -106,6 +106,7 @@ func TestQueueManagerGetSelectedItem(t *testing.T) {
 	item = qm.GetSelectedItem()
 	if item == nil {
 		t.Fatal("Expected non-nil item")
+		return
 	}
 	if item.QueueID != "Q1" {
 		t.Errorf("Expected Q1, got %s", item.QueueID)
@@ -116,6 +117,7 @@ func TestQueueManagerGetSelectedItem(t *testing.T) {
 	item = qm.GetSelectedItem()
 	if item == nil {
 		t.Fatal("Expected non-nil item")
+		return
 	}
 	if item.QueueID != "Q2" {
 		t.Errorf("Expected Q2, got %s", item.QueueID)
@@ -174,6 +176,7 @@ func TestQueueManagerDeleteLastItem(t *testing.T) {
 	item := qm.GetSelectedItem()
 	if item == nil {
 		t.Fatal("Expected non-nil item")
+		return
 	}
 	if item.QueueID != "Q2" {
 		t.Errorf("Expected Q2, got %s", item.QueueID)

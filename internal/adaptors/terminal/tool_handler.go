@@ -51,21 +51,21 @@ func (h *GenericHandler) ShouldShowOutput() bool {
 	return h.showOutput
 }
 
-// PosixShellHandler handles posix_shell commands.
-type PosixShellHandler struct{}
+// ShellHandler handles shell commands.
+type ShellHandler struct{}
 
-func (h *PosixShellHandler) FormatCall(input json.RawMessage, _ *Styles) string {
+func (h *ShellHandler) FormatCall(input json.RawMessage, _ *Styles) string {
 	var args struct {
 		Command string `json:"command"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "posix_shell: <parse error>"
+		return "shell: <parse error>"
 	}
 	// Add newline at end so output starts on new line
-	return fmt.Sprintf("posix_shell: %s\n", escapeNewlines(args.Command))
+	return fmt.Sprintf("shell: %s\n", escapeNewlines(args.Command))
 }
 
-func (h *PosixShellHandler) ShouldShowOutput() bool {
+func (h *ShellHandler) ShouldShowOutput() bool {
 	return true
 }
 
@@ -188,7 +188,7 @@ func (h *ActivateSkillHandler) ShouldShowOutput() bool {
 
 // ToolHandlers maps tool names to their display handlers.
 var ToolHandlers = map[string]ToolDisplayHandler{
-	"posix_shell":    &PosixShellHandler{},
+	"shell":          &ShellHandler{},
 	"read_file":      &ReadFileHandler{},
 	"write_file":     &WriteFileHandler{},
 	"edit_file":      &EditFileHandler{},

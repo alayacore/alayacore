@@ -113,6 +113,7 @@ func TestNewStylesWithTheme(t *testing.T) {
 	styles := NewStyles(theme)
 	if styles == nil {
 		t.Fatal("NewStyles returned nil")
+		return
 	}
 
 	// Verify that styles are created (we can't easily test the actual color values

@@ -329,7 +329,7 @@ func TestWindowBufferDiff(t *testing.T) {
 func TestWindowBufferVisibility(t *testing.T) {
 	t.Run("tool windows are always visible", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendToolCall("tool-1", "posix_shell", "")
+		wb.AppendToolCall("tool-1", "shell", "")
 
 		if len(wb.Windows) != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", len(wb.Windows))

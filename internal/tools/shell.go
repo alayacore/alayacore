@@ -6,44 +6,68 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 )
 
-// PosixShellInput represents the input for the posix_shell tool
-type PosixShellInput struct {
+// shellInput represents the input for the shell tool
+type shellInput struct {
 	Command string `json:"command" jsonschema:"required,description=The shell command to execute"`
 }
 
-// NewPosixShellTool creates a new posix_shell tool for executing shell commands
-func NewPosixShellTool() llm.Tool {
+// shellPath is the resolved path to the shell binary (bash if available, sh otherwise).
+// Resolved once at init time.
+var shellPath string
+
+var shellOnce sync.Once
+
+func resolveShellPath() string {
+	shellOnce.Do(func() {
+		// Prefer bash — LLMs naturally write bash syntax (brace expansion,
+		// [[ ]], arrays, etc.) and this avoids compatibility surprises.
+		for _, candidate := range []string{"/bin/bash", "/usr/bin/bash", "/bin/sh"} {
+			if _, err := os.Stat(candidate); err == nil {
+				shellPath = candidate
+				return
+			}
+		}
+		// Last resort — the OS should always have /bin/sh, but if not,
+		// "sh" relies on $PATH which is better than nothing.
+		shellPath = "sh"
+	})
+	return shellPath
+}
+
+// NewShellTool creates a shell tool for executing commands via bash (or sh as fallback).
+func NewShellTool() llm.Tool {
 	return llm.NewTool(
-		"posix_shell",
+		"shell",
 		`Execute a shell command.
 
 Rules:
-- Use POSIX-compliant shell syntax only (no bash/zsh-specific features)
+- Bash syntax is available (brace expansion, [[ ]], arrays, etc.)
 - Prefer simple, standard commands over complex pipelines
 - Quote filenames with spaces or special characters
 - Check command output for errors before proceeding
 - Clean up temporary files when done
 - Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs (sudo, ssh, etc.) that require a TTY or terminal input will fail immediately.`,
 	).
-		WithSchema(llm.GenerateSchema(PosixShellInput{})).
-		WithExecute(llm.TypedExecute(executePosixShell)).
+		WithSchema(llm.GenerateSchema(shellInput{})).
+		WithExecute(llm.TypedExecute(executeShell)).
 		Build()
 }
 
-func executePosixShell(ctx context.Context, args PosixShellInput) (llm.ToolResultOutput, error) {
+func executeShell(ctx context.Context, args shellInput) (llm.ToolResultOutput, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "." // fallback to current directory
 	}
 
 	//nolint:gosec // G204: Command from user input is intentional for shell tool
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", args.Command)
+	cmd := exec.CommandContext(ctx, resolveShellPath(), "-c", args.Command)
 	cmd.Dir = cwd
 
 	// Close stdin so commands that read stdin see EOF immediately.

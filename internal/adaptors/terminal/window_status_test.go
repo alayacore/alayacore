@@ -8,7 +8,7 @@ func TestUpdateToolStatus(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
 	// Create a tool window
-	wb.AppendToolCall("tool123", "posix_shell", "posix_shell: git status")
+	wb.AppendToolCall("tool123", "shell", "shell: git status")
 
 	// Verify window was created
 	if wb.GetWindowCount() != 1 {
@@ -52,7 +52,7 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
 	// Create a tool window
-	wb.AppendToolCall("tool123", "posix_shell", "posix_shell: git status")
+	wb.AppendToolCall("tool123", "shell", "shell: git status")
 
 	// Test rendering without status (default for loaded sessions)
 	w := wb.GetWindow(0)

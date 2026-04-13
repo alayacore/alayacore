@@ -162,7 +162,7 @@ func (o *stdoutOutput) printFunctionCall(value string) {
 // formatToolCall formats a tool call header for display (name + key args, no content).
 func formatToolCall(name, input string) string {
 	switch name {
-	case "posix_shell":
+	case "shell":
 		var args struct {
 			Command string `json:"command"`
 		}
