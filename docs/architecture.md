@@ -92,6 +92,21 @@ The adaptor layer handles user interaction and translates between user actions a
 
 Plain stdin/stdout mode, activated with `--plainio`. Shows assistant text, reasoning, and tool call headers. Suppresses tool result content. Reads prompts from stdin (one per line, backslash continuation).
 
+#### File Naming Convention
+
+Files in the adaptor packages are named from the **session's perspective**:
+
+- **`input.go`** — builds the **input to the session**. Reads user data (keystrokes, stdin lines) and feeds it into the session's input channel.
+- **`output.go`** — handles the **output from the session**. Receives TLV messages from the session and renders them to the user (TUI windows, stdout).
+
+```
+User IO ──▶ input.go ──▶ input channel ──▶ Session ──▶ output.go ──▶ User IO
+             ("input to                       ("output from
+              the session")                    the session")
+```
+
+Both adaptors follow this convention. Each adaptor provides its own implementation of how user IO maps to and from the session's TLV channels.
+
 ### Session Layer (`internal/agent/`)
 
 The session layer manages conversation state, task execution, and model interaction.
@@ -310,26 +325,4 @@ When user cancels mid-tool-call, messages may have `tool_use` without matching `
 
 When styling text with lipgloss, each segment must be rendered individually before concatenation. You cannot render a string that already contains ANSI codes with a new style and expect it to work.
 
-## File Organization
 
-```
-alayacore/
-├── main.go                         # Entry point
-├── go.mod / go.sum                 # Go module
-├── Makefile                        # Build targets
-├── docs/                           # Documentation
-├── misc/samples/skills/            # Example skills
-└── internal/
-    ├── adaptors/
-    │   ├── terminal/               # Bubble Tea TUI (28 files)
-    │   └── plainio/                # Plain stdin/stdout mode (5 files)
-    ├── agent/                      # Session, task queue, model/runtime management (12 files)
-    ├── app/                        # Shared initialization and system prompt (1 file)
-    ├── config/                     # CLI flag parsing and config types (4 files)
-    ├── debug/                      # Debug HTTP server (1 file)
-    ├── errors/                     # Structured domain errors (3 files)
-    ├── llm/                        # Agent loop, providers, types, schemas (17 files)
-    ├── skills/                     # Skill loading and management (4 files)
-    ├── stream/                     # Stream utilities (4 files)
-    └── tools/                      # Built-in tool implementations (8 files)
-```
