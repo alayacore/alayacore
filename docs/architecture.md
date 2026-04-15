@@ -12,7 +12,7 @@ The entry point wires together all components:
 2. **`app.Setup()`** — Initializes shared components:
    - Skills manager (loads skill metadata from `--skill` directories)
    - Tools (`read_file`, `edit_file`, `write_file`, `execute_command`, `activate_skill`)
-   - System prompt (default + skills fragment + AGENTS.md + current working directory)
+   - System prompt (default + skills fragment + current working directory)
 3. **Adaptor creation** — Starts either the terminal or PlainIO adaptor
 
 ### Adaptors Layer (`internal/adaptors/`)
@@ -130,7 +130,7 @@ The `execute_command` tool uses a cross-platform shell detection system. On star
 The tool description (shown to the LLM) is dynamically generated based on the detected shell so the LLM uses the correct syntax. Platform-specific process isolation is handled per-OS:
 
 - **Unix**: `setsid` creates a new session; `SIGINT` → `SIGKILL` for cancellation
-- **Windows**: `CREATE_NEW_CONSOLE` isolates the child; `process.Kill()` for cancellation
+- **Windows**: `CREATE_NO_WINDOW` isolates the child; `process.Kill()` for cancellation
 
 The package uses Go build tags (`//go:build !windows` / `//go:build windows`) for all OS-specific code.
 
@@ -180,7 +180,7 @@ AlayaCore uses Go build tags for all OS-specific code. The only platform-depende
 | `shell_unix.go` | `!windows` | `osDefault()` → bash |
 | `shell_windows.go` | `windows` | `osDefault()` → pwsh |
 | `exec_unix.go` | `!windows` | `SetDetachFlags` (setsid), `OpenDevNull` (/dev/null) |
-| `exec_windows.go` | `windows` | `SetDetachFlags` (CREATE_NEW_CONSOLE), `OpenDevNull` (NUL) |
+| `exec_windows.go` | `windows` | `SetDetachFlags` (CREATE_NO_WINDOW), `OpenDevNull` (NUL) |
 | `terminate_unix.go` | `!windows` | `TerminateProcessGroup` (SIGINT → SIGKILL) |
 | `terminate_windows.go` | `windows` | `TerminateProcessGroup` (timeout → Kill) |
 
@@ -200,7 +200,7 @@ Default Prompt (identity + rules)
 + Extra System Prompt (from --system flag, repeatable)
 ```
 
-For Anthropic APIs with `prompt_cache: true`, `cache_control` markers are applied to the default and extra system prompts separately for optimal caching.
+For Anthropic APIs with `prompt_cache: true`, a top-level `cache_control: {"type": "ephemeral"}` is added to the request body for automatic prompt caching.
 
 ## Data Flow
 
@@ -274,7 +274,7 @@ The provider's `StepCompleteEvent.Messages` contains the complete assistant mess
 
 ### Sentinel values must never be overwritten
 
-`WindowBuffer.dirtyIndex` uses a sentinel (`fullRebuild = -2`) to signal that all windows need recalculation. State transitions must check whether the sentinel is already set before overwriting — an `else` branch that blindly assigns a new index can downgrade a full-rebuild to a single-window update, silently dropping windows from the display. See `window.go` → `markDirty`.
+`WindowBuffer.dirtyIndex` uses a sentinel (`dirtyFullRebuild = -2`) to signal that all windows need recalculation. State transitions must check whether the sentinel is already set before overwriting — an `else` branch that blindly assigns a new index can downgrade a full-rebuild to a single-window update, silently dropping windows from the display. See `window.go` → `markDirty`.
 
 ### Mutex deadlock in SwitchModel
 
@@ -296,7 +296,7 @@ Tool arguments arrive in chunks across multiple delta events:
 ### Anthropic prompt caching
 
 - System message must be ≥1024 tokens for caching to activate
-- Uses **automatic caching**: single `cache_control: {"type": "ephemeral"}` applied to system prompts
+- Uses **automatic caching**: top-level `cache_control: {"type": "ephemeral"}` on the request body
 - Enabled per-model via `prompt_cache: true` in `model.conf` (other providers ignore)
 - Best for multi-turn conversations where growing message history should be cached automatically
 

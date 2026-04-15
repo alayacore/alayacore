@@ -146,10 +146,10 @@ All five built-in tools use this pattern:
 
 | Tool | File | Lines |
 |------|------|-------|
-| `read_file` | `internal/tools/read_file.go` | ~100 |
-| `edit_file` | `internal/tools/edit_file.go` | ~88 |
+| `read_file` | `internal/tools/read_file.go` | ~206 |
+| `edit_file` | `internal/tools/edit_file.go` | ~208 |
 | `write_file` | `internal/tools/write_file.go` | ~39 |
-| `execute_command` | `internal/tools/execute_command.go` | ~84 |
+| `execute_command` | `internal/tools/execute_command.go` | ~126 |
 | `activate_skill` | `internal/tools/activate_skill.go` | ~30 |
 
 The `execute_command` tool delegates platform-specific logic to the `internal/tools/shell/` package, which handles shell detection and command execution across Unix and Windows. See [architecture.md](architecture.md) for details.

@@ -6,9 +6,9 @@ package providers
 // 1. PROMPT CACHING: System message must be ≥1024 tokens for caching to activate.
 //    Shorter prompts won't be cached even with cache_control set.
 //
-// 2. CACHE CONTROL PLACEMENT: Cache control is applied only to the first 2 system
-//    messages (default prompt + --system extra). Other system messages in conversation
-//    history are not modified.
+// 2. CACHE CONTROL PLACEMENT: Cache control is applied as a top-level field on the
+//    request body (Anthropic's automatic caching). It is NOT applied to individual
+//    system messages.
 //
 // 3. DUAL SYSTEM PROMPT: --system flag appends extra system prompt rather than
 //    replacing default. Both prompts become separate system messages, each with

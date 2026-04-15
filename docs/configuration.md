@@ -89,7 +89,7 @@ Press `Ctrl+L` to open the model selector. From there:
 |-----|--------|
 | `j` / `k` | Navigate models |
 | `Enter` | Select model |
-| `e` | Open config file in `$EDITOR` (or `vi`) |
+| `e` | Open config file in `$EDITOR` (or `vim`) |
 | `r` | Reload models after editing |
 
 ## Runtime Config

@@ -13,7 +13,7 @@ import (
 //   - required: marks the field as required
 //   - description=...: sets the field description
 //   - type=...: overrides the type (defaults to string)
-//   - enum=...: comma-separated list of allowed values
+//   - enum=...: pipe-separated list of allowed values
 type SchemaField struct {
 	Type        string   `json:"type,omitempty"`
 	Description string   `json:"description,omitempty"`

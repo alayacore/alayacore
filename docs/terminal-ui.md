@@ -11,11 +11,14 @@ AlayaCore's terminal UI is built with [Bubble Tea](https://charm.land/) and uses
 | `k` | Move window cursor up |
 | `J` | Scroll down one line |
 | `K` | Scroll up one line |
+| `Ctrl+D` | Scroll down half screen |
+| `Ctrl+U` | Scroll up half screen |
 | `g` | Go to first window, scroll to top |
 | `G` | Go to last window, scroll to bottom |
 | `H` | Move cursor to top window in visible area |
 | `M` | Move cursor to middle window in visible area |
 | `L` | Move cursor to bottom window in visible area |
+| `e` | Open window content in external editor |
 
 ## Input & Actions
 
@@ -41,7 +44,7 @@ AlayaCore's terminal UI is built with [Bubble Tea](https://charm.land/) and uses
 | `:cancel_all` | Cancel current request and clear the task queue |
 | `:retry` | Retry the last prompt. Re-sends history; appends "Please continue." if latest message is from the assistant. |
 | `:summarize` | Summarize conversation to reduce token usage |
-| `:model_set <id>` | Switch to a model by name |
+| `:model_set <id>` | Switch to a model by numeric ID |
 | `:model_load` | Reload model configs from the config file |
 | `:quit`, `:q` | Exit with confirmation (y/n) |
 
@@ -51,7 +54,7 @@ The display area organizes content into separate windows — one per message or 
 
 ### Auto-Follow
 
-When new windows appear, the cursor automatically moves to the newest one. Pressing `k`, `g`, `H`, `L`, `M`, `J`, or `K` disables auto-follow. Returning to the last window re-enables it.
+When new windows appear, the cursor automatically moves to the newest one. Pressing `j`, `k`, `g`, `H`, `L`, `M`, `J`, `K`, `Ctrl+D`, or `Ctrl+U` disables auto-follow. Returning to the last window re-enables it.
 
 ### Fold Mode
 
