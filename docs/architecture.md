@@ -111,10 +111,8 @@ The `execute_command` tool uses a cross-platform shell detection system. On star
 
 **Detection order:**
 
-1. `ALAYACORE_SHELL` environment variable (exact override)
-2. OS-specific preferred shell (bash on Unix, pwsh on Windows)
-3. All known shells tried in preference order (see table below)
-4. Fallback to `sh` (Unix) or `cmd` (Windows)
+1. `ALAYACORE_SHELL` environment variable (matched against known shells; unknown values are ignored)
+2. OS-specific `knownShells` list tried in preference order (guaranteed to succeed — `sh` on Unix, `cmd` on Windows)
 
 **Supported shells:**
 
@@ -122,10 +120,10 @@ The `execute_command` tool uses a cross-platform shell detection system. On star
 |-------|--------|----|------------|-------|
 | Bash | `bash` | Unix | `bash -c <cmd>` | Preferred on Unix; LLMs naturally write bash syntax |
 | Zsh | `zsh` | Unix | `zsh -c <cmd>` | Second choice on Unix |
-| POSIX sh | `sh` | Unix | `sh -c <cmd>` | Universal Unix fallback |
-| PowerShell Core | `pwsh` | Windows, Unix | `pwsh -NoLogo -NonInteractive -Command <cmd>` | Preferred on Windows |
+| POSIX sh | `sh` | Unix | `sh -c <cmd>` | Guaranteed on all POSIX systems |
+| PowerShell Core | `pwsh` | Windows | `pwsh -NoLogo -NonInteractive -Command <cmd>` | Preferred on Windows |
 | Windows PowerShell | `powershell` | Windows | `powershell -NoLogo -NonInteractive -Command <cmd>` | Ships with Windows |
-| cmd | `cmd` | Windows | `cmd /C <cmd>` | Guaranteed to exist on every Windows machine |
+| cmd | `cmd` | Windows | `cmd /C <cmd>` | Guaranteed on all Windows machines |
 
 The tool description (shown to the LLM) is dynamically generated based on the detected shell so the LLM uses the correct syntax. Platform-specific process isolation is handled per-OS:
 
@@ -176,9 +174,9 @@ AlayaCore uses Go build tags for all OS-specific code. The only platform-depende
 
 | File | Build tag | Provides |
 |------|-----------|----------|
-| `shell.go` | *(all)* | `Shell` type, `Detect()`, `knownShells` registry |
-| `shell_unix.go` | `!windows` | `osDefault()` → bash |
-| `shell_windows.go` | `windows` | `osDefault()` → pwsh |
+| `shell.go` | *(all)* | `Shell` type, `Detect()`, `detect()` |
+| `shell_unix.go` | `!windows` | Unix shell defs (`bash`, `zsh`, `sh`), `knownShells` |
+| `shell_windows.go` | `windows` | Windows shell defs (`pwsh`, `powershell`, `cmd`), `knownShells` |
 | `exec_unix.go` | `!windows` | `SetDetachFlags` (setsid), `OpenDevNull` (/dev/null) |
 | `exec_windows.go` | `windows` | `SetDetachFlags` (CREATE_NO_WINDOW), `OpenDevNull` (NUL) |
 | `terminate_unix.go` | `!windows` | `TerminateProcessGroup` (SIGINT → SIGKILL) |

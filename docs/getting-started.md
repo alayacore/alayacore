@@ -46,17 +46,17 @@ AlayaCore runs on Linux, macOS, and Windows. The `execute_command` tool automati
 
 | OS | Detection order |
 |----|----------------|
-| **Linux / macOS** | bash → zsh → sh → pwsh → powershell |
-| **Windows** | pwsh → powershell → cmd → bash → zsh → sh |
+| **Linux / macOS** | bash → zsh → sh |
+| **Windows** | pwsh → powershell → cmd |
 
 The tool description is dynamically adapted so the LLM knows which shell syntax to use. You can override the detection with the `ALAYACORE_SHELL` environment variable:
 
 ```sh
-# Force PowerShell Core on any OS
+# Force PowerShell Core (must be a known shell name)
 export ALAYACORE_SHELL=pwsh
 
-# Use a specific shell binary
-export ALAYACORE_SHELL=/bin/zsh
+# Use zsh
+export ALAYACORE_SHELL=zsh
 ```
 
 ## CLI Flags

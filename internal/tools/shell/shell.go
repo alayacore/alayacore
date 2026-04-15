@@ -15,10 +15,8 @@
 package shell
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 )
@@ -47,107 +45,6 @@ var detection struct {
 	shell *Shell
 }
 
-// knownShells lists shells in preference order. Detect() picks the first
-// one whose binary is found.
-var knownShells = []*Shell{
-	{
-		Name:   "bash",
-		Binary: "bash",
-		PromptFragment: `Execute a shell command.
-
-Rules:
-- Bash syntax is available (brace expansion, [[ ]], arrays, etc.)
-- Prefer simple, standard commands over complex pipelines
-- Quote filenames with spaces or special characters
-- Check command output for errors before proceeding
-- Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs (sudo, ssh, etc.) that require a TTY or terminal input will fail immediately.`,
-		BuildCmd: func(binary, command string) *exec.Cmd {
-			return exec.Command(binary, "-c", command)
-		},
-	},
-	{
-		Name:   "zsh",
-		Binary: "zsh",
-		PromptFragment: `Execute a shell command.
-
-Rules:
-- Zsh syntax is available (brace expansion, [[ ]], arrays, etc.)
-- Prefer simple, standard commands over complex pipelines
-- Quote filenames with spaces or special characters
-- Check command output for errors before proceeding
-- Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs (sudo, ssh, etc.) that require a TTY or terminal input will fail immediately.`,
-		BuildCmd: func(binary, command string) *exec.Cmd {
-			return exec.Command(binary, "-c", command)
-		},
-	},
-	{
-		Name:   "sh",
-		Binary: "sh",
-		PromptFragment: `Execute a shell command.
-
-Rules:
-- POSIX sh syntax is available
-- Prefer simple, standard commands over complex pipelines
-- Quote filenames with spaces or special characters
-- Check command output for errors before proceeding
-- Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs (sudo, ssh, etc.) that require a TTY or terminal input will fail immediately.`,
-		BuildCmd: func(binary, command string) *exec.Cmd {
-			return exec.Command(binary, "-c", command)
-		},
-	},
-	{
-		Name:   "PowerShell Core",
-		Binary: "pwsh",
-		PromptFragment: `Execute a PowerShell command.
-
-Rules:
-- PowerShell (pwsh) syntax is available
-- Prefer simple, standard commands over complex pipelines
-- Quote filenames with spaces or special characters
-- Check command output for errors before proceeding
-- Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs (sudo, ssh, etc.) that require a TTY or terminal input will fail immediately.`,
-		BuildCmd: func(binary, command string) *exec.Cmd {
-			return exec.Command(binary, "-NoLogo", "-NonInteractive", "-Command", command)
-		},
-	},
-	{
-		Name:   "Windows PowerShell",
-		Binary: "powershell",
-		PromptFragment: `Execute a PowerShell command.
-
-Rules:
-- Windows PowerShell syntax is available
-- Prefer simple, standard commands over complex pipelines
-- Quote filenames with spaces or special characters
-- Check command output for errors before proceeding
-- Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs (sudo, ssh, etc.) that require a TTY or terminal input will fail immediately.`,
-		BuildCmd: func(binary, command string) *exec.Cmd {
-			return exec.Command(binary, "-NoLogo", "-NonInteractive", "-Command", command)
-		},
-	},
-	{
-		Name:   "cmd",
-		Binary: "cmd",
-		PromptFragment: `Execute a cmd.exe command.
-
-Rules:
-- Windows cmd.exe syntax is available (batch scripting, %VAR% expansion, etc.)
-- Prefer simple, standard commands over complex pipelines
-- Quote filenames with spaces or special characters
-- Check command output for errors before proceeding
-- Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs that require a TTY or terminal input will fail immediately.`,
-		BuildCmd: func(binary, command string) *exec.Cmd {
-			return exec.Command(binary, "/C", command)
-		},
-	},
-}
-
 // lookPath reports whether binary can be found on PATH.
 func lookPath(binary string) bool {
 	_, err := exec.LookPath(binary)
@@ -167,7 +64,6 @@ func Detect() *Shell {
 func detect() *Shell {
 	// 1. Honor explicit override.
 	if env := os.Getenv("ALAYACORE_SHELL"); env != "" {
-		// If the user specified a known name (e.g. "bash"), look it up.
 		lower := strings.ToLower(env)
 		for _, s := range knownShells {
 			if strings.EqualFold(s.Name, lower) || s.Binary == env {
@@ -176,42 +72,19 @@ func detect() *Shell {
 				}
 			}
 		}
-		// Otherwise treat the value as an arbitrary shell binary.
-		if lookPath(env) {
-			return &Shell{
-				Name:           env,
-				Binary:         env,
-				PromptFragment: fmt.Sprintf("Execute a command using %s.", env),
-				BuildCmd: func(binary, command string) *exec.Cmd {
-					return exec.Command(binary, "-c", command)
-				},
-			}
-		}
 	}
 
-	// 2. OS-specific heuristic (implemented in shell_unix.go / shell_windows.go).
-	if s := osDefault(); s != nil {
-		if lookPath(s.Binary) {
-			return s
-		}
-	}
-
-	// 3. Try each known shell in preference order.
+	// 2. Try each known shell in preference order.
+	// The OS-specific knownShells list always ends with a guaranteed-present
+	// shell (sh on Unix, cmd on Windows), so this loop always succeeds.
 	for _, s := range knownShells {
 		if lookPath(s.Binary) {
 			return s
 		}
 	}
 
-	// 4. Absolute last resort — plain "sh".
-	return &Shell{
-		Name:           "sh",
-		Binary:         "sh",
-		PromptFragment: "Execute a command using sh.",
-		BuildCmd: func(binary, command string) *exec.Cmd {
-			return exec.Command(binary, "-c", command)
-		},
-	}
+	// Defensive fallback — should never be reached.
+	return knownShells[len(knownShells)-1]
 }
 
 // ResolvedBinary returns the absolute path to the shell binary after PATH
@@ -221,9 +94,4 @@ func (s *Shell) ResolvedBinary() string {
 		return path
 	}
 	return s.Binary
-}
-
-// IsWindows reports whether the current OS is Windows.
-func IsWindows() bool {
-	return runtime.GOOS == "windows"
 }
