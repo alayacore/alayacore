@@ -389,6 +389,17 @@ func createProviderFromConfig(config *ModelConfig, debugAPI bool, proxyURL strin
 // Input Processing
 // ============================================================================
 
+// isCommandImmediate returns true if the command should be handled immediately
+// without queuing. Immediate commands are those that control task execution
+// (cancel, continue) or query/modify session state (model_load, taskqueue operations).
+func isCommandImmediate(cmd string) bool {
+	switch cmd {
+	case commandNameCancel, commandNameCancelAll, commandNameContinue, commandNameModelLoad, commandNameTaskQueueGetAll:
+		return true
+	}
+	return strings.HasPrefix(cmd, commandNameTaskQueueDel+" ") || strings.HasPrefix(cmd, commandNameModelSet+" ")
+}
+
 func (s *Session) readFromInput() {
 	defer func() {
 		s.sessionCancel()
@@ -405,7 +416,7 @@ func (s *Session) readFromInput() {
 		}
 		if len(value) > 0 && value[0] == ':' {
 			cmd := value[1:]
-			if cmd == commandNameCancel || cmd == commandNameCancelAll || cmd == commandNameContinue || cmd == commandNameModelLoad || cmd == commandNameTaskQueueGetAll || strings.HasPrefix(cmd, commandNameTaskQueueDel+" ") || strings.HasPrefix(cmd, commandNameModelSet+" ") {
+			if isCommandImmediate(cmd) {
 				s.handleCommand(context.Background(), cmd)
 			} else {
 				s.submitDeferredCommand(cmd)
@@ -503,34 +514,31 @@ func (s *Session) waitForNextTask() (QueueItem, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for {
-		// Wait for queue to have items
-		for len(s.taskQueue) == 0 {
+		if !s.hasRunnableItemLocked() {
 			if s.sessionCtx.Err() != nil {
 				return QueueItem{}, false
 			}
 			s.cond.Wait()
+			continue
 		}
-		// Check if the front task is a command - commands can run even when paused
 		item := s.taskQueue[0]
-		if _, isCommand := item.Task.(CommandPrompt); isCommand {
-			// Command can run regardless of paused state
-			s.taskQueue = s.taskQueue[1:]
-			s.inProgress = true
-			return item, true
-		}
-		// Not a command - wait for pause to clear
-		if s.pausedOnError {
-			if s.sessionCtx.Err() != nil {
-				return QueueItem{}, false
-			}
-			s.cond.Wait()
-			continue // Re-check the queue front (a command may have been added)
-		}
-		// Not paused - dequeue and return
 		s.taskQueue = s.taskQueue[1:]
 		s.inProgress = true
 		return item, true
 	}
+}
+
+// hasRunnableItemLocked reports whether the front of the task queue can be
+// dequeued right now.  Commands are always runnable; other tasks require
+// pausedOnError to be clear.
+//
+// Must be called with s.mu held.
+func (s *Session) hasRunnableItemLocked() bool {
+	if len(s.taskQueue) == 0 {
+		return false
+	}
+	_, isCommand := s.taskQueue[0].Task.(CommandPrompt)
+	return isCommand || !s.pausedOnError
 }
 
 func (s *Session) hasQueuedTasks() bool {
