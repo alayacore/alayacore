@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -211,8 +210,8 @@ func (qm *QueueManager) updateScrollForHeight(height int) {
 
 func (qm *QueueManager) renderItem(item QueueItem, selected bool) string {
 	// Calculate available width for content
-	// Inner width is qm.width - 4, account for "> Q123 [P] " = ~12 characters overhead
-	maxWidth := qm.width - 20
+	// Inner width is qm.width - 4, account for "> Q123 " = ~8 characters overhead
+	maxWidth := qm.width - 16
 	if maxWidth < 10 {
 		maxWidth = 10
 	}
@@ -221,24 +220,20 @@ func (qm *QueueManager) renderItem(item QueueItem, selected bool) string {
 	// Escape newlines and tabs for single-line display
 	content = strings.ReplaceAll(content, "\n", "\\n")
 	content = strings.ReplaceAll(content, "\t", "\\t")
+
+	// Prefix commands with ":"
+	if item.Type == "command" || item.Type == "retry" {
+		content = ":" + content
+	}
+
 	if len(content) > maxWidth {
 		content = content[:maxWidth-3] + "..."
 	}
 
-	// Format: "ID | Type | Content"
-	typeStr := item.Type
-	if typeStr == "prompt" {
-		typeStr = "P"
-	} else {
-		typeStr = "C"
-	}
-
-	line := fmt.Sprintf("[%s] %s", typeStr, content)
-
 	if selected {
-		return qm.styles.Prompt.Render("> " + line)
+		return qm.styles.Prompt.Render("> " + content)
 	}
-	return "  " + qm.styles.System.Render(line)
+	return "  " + qm.styles.System.Render(content)
 }
 
 // RenderOverlay renders the queue manager as an overlay on top of base content
