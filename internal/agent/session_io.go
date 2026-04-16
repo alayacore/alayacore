@@ -73,6 +73,12 @@ func (s *Session) cancelAllTasks() {
 		return
 	}
 
+	// Clear paused-on-error state so the queue can resume if needed
+	s.mu.Lock()
+	s.pausedOnError = false
+	s.cond.Signal()
+	s.mu.Unlock()
+
 	s.sendSystemInfo()
 }
 
@@ -98,6 +104,10 @@ Rules:
 	outputTokens, err := s.processPrompt(ctx, s.Messages)
 	if err != nil {
 		s.writeError(err.Error())
+		s.mu.Lock()
+		s.pausedOnError = true
+		s.mu.Unlock()
+		s.sendSystemInfo()
 		return
 	}
 
@@ -229,9 +239,39 @@ func (s *Session) handleTaskQueueDel(args []string) {
 	}
 }
 
-// handleRetry retries sending the conversation history to the LLM.
-// This is useful when the API provider returned a transient error (network,
-// rate-limit, server error) and the user wants to try again without retyping.
+// handleRetry is the sync entry point for the :retry command (called from
+// readFromInput). It validates preconditions and enqueues a RetryPrompt at
+// the front of the task queue so it runs before any accumulated tasks.
+func (s *Session) handleRetry() {
+	s.mu.Lock()
+	inProgress := s.inProgress
+	paused := s.pausedOnError
+	s.mu.Unlock()
+
+	if inProgress && !paused {
+		s.writeError("Cannot retry while a task is running. Please wait or cancel first.")
+		return
+	}
+
+	if len(s.Messages) == 0 {
+		s.writeError("No messages to retry")
+		return
+	}
+
+	// Clear paused-on-error — retry is the user's recovery action.
+	s.mu.Lock()
+	s.pausedOnError = false
+	s.mu.Unlock()
+
+	s.writeNotify("Retrying...")
+
+	// Enqueue at the front so retry runs before any tasks that accumulated
+	// during the error-pause.
+	s.submitTaskFront(RetryPrompt{})
+}
+
+// executeRetry is the async entry point called by runTask when a RetryPrompt
+// is dequeued. It does the actual LLM call with a cancellable context.
 //
 // Three cases:
 //  1. Latest message is a user prompt → re-send history as-is (the previous
@@ -242,16 +282,8 @@ func (s *Session) handleTaskQueueDel(args []string) {
 //  3. Latest message is an assistant message → the API partially succeeded
 //     or was canceled. A "Please continue." user message is appended so the
 //     model picks up where it left off.
-func (s *Session) handleRetry(ctx context.Context) {
-	s.mu.Lock()
+func (s *Session) executeRetry(ctx context.Context) {
 	msgCount := len(s.Messages)
-	s.mu.Unlock()
-
-	if msgCount == 0 {
-		s.writeError("No messages to retry")
-		return
-	}
-
 	lastMsg := s.Messages[msgCount-1]
 	if lastMsg.Role == llm.RoleAssistant {
 		// The last message is an assistant response (partial success,
@@ -264,14 +296,16 @@ func (s *Session) handleRetry(ctx context.Context) {
 	// If the last message is RoleUser or RoleTool, the conversation history
 	// is already at a valid point for the LLM to respond — just re-send as-is.
 
-	s.writeNotify("Retrying...")
-
 	_, err := s.processPrompt(ctx, s.Messages)
 
 	s.Messages = cleanIncompleteToolCalls(s.Messages)
 
 	if err != nil {
 		s.writeError(err.Error())
+		s.mu.Lock()
+		s.pausedOnError = true
+		s.mu.Unlock()
+		s.sendSystemInfo()
 		return
 	}
 }

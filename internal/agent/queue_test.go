@@ -258,3 +258,138 @@ func TestCancelAllTasks(t *testing.T) {
 		})
 	}
 }
+
+func TestPausedOnError(t *testing.T) {
+	session := &Session{
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
+	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
+
+	// Initially not paused
+	session.mu.Lock()
+	paused := session.pausedOnError
+	session.mu.Unlock()
+	if paused {
+		t.Error("Session should not be paused initially")
+	}
+
+	// Set paused on error
+	session.mu.Lock()
+	session.pausedOnError = true
+	session.mu.Unlock()
+
+	// Submit a task — should clear the paused flag
+	session.submitTask(UserPrompt{Text: "recovery prompt"})
+
+	session.mu.Lock()
+	paused = session.pausedOnError
+	session.mu.Unlock()
+	if paused {
+		t.Error("submitTask should clear pausedOnError")
+	}
+
+	// Queue should contain the submitted task
+	items := session.GetQueueItems()
+	if len(items) != 1 {
+		t.Errorf("Expected 1 item after submit, got %d", len(items))
+	}
+}
+
+func TestSubmitTaskFront(t *testing.T) {
+	session := &Session{
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
+	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
+
+	// Submit regular tasks
+	session.submitTask(UserPrompt{Text: "first"})
+	session.submitTask(UserPrompt{Text: "second"})
+
+	// Submit at front (simulates :retry)
+	session.submitTaskFront(RetryPrompt{})
+
+	items := session.GetQueueItems()
+	if len(items) != 3 {
+		t.Fatalf("Expected 3 items, got %d", len(items))
+	}
+
+	// Front item should be the retry
+	if _, ok := items[0].Task.(RetryPrompt); !ok {
+		t.Errorf("Expected first item to be RetryPrompt, got %v", items[0].Task)
+	}
+	// Original tasks should follow in order
+	if p, ok := items[1].Task.(UserPrompt); !ok || p.Text != "first" {
+		t.Errorf("Expected second item to be 'first', got %v", items[1].Task)
+	}
+	if p, ok := items[2].Task.(UserPrompt); !ok || p.Text != "second" {
+		t.Errorf("Expected third item to be 'second', got %v", items[2].Task)
+	}
+
+	// Front task should also clear pausedOnError
+	session.mu.Lock()
+	session.pausedOnError = true
+	session.mu.Unlock()
+
+	session.submitTaskFront(RetryPrompt{})
+
+	session.mu.Lock()
+	paused := session.pausedOnError
+	session.mu.Unlock()
+	if paused {
+		t.Error("submitTaskFront should clear pausedOnError")
+	}
+}
+
+func TestPausedOnErrorBlocksDequeue(t *testing.T) {
+	session := &Session{
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
+	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
+
+	// Add a task to the queue
+	session.submitTask(UserPrompt{Text: "queued prompt"})
+
+	// Set paused — dequeue should block
+	session.mu.Lock()
+	session.pausedOnError = true
+	session.mu.Unlock()
+
+	// Try to dequeue in a goroutine — it should block
+	dequeued := make(chan QueueItem, 1)
+	go func() {
+		item, ok := session.waitForNextTask()
+		if ok {
+			dequeued <- item
+		}
+	}()
+
+	// Give it a moment — should NOT have dequeued
+	select {
+	case <-dequeued:
+		t.Error("waitForNextTask should block when pausedOnError is true")
+	case <-time.After(100 * time.Millisecond):
+		// expected — blocked
+	}
+
+	// Now clear the pause via submitTask
+	session.submitTask(UserPrompt{Text: "recovery prompt"})
+
+	// Should now dequeue (the first item)
+	select {
+	case item := <-dequeued:
+		if _, ok := item.Task.(UserPrompt); !ok {
+			t.Error("Expected UserPrompt task")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("waitForNextTask should unblock after pausedOnError is cleared")
+	}
+}

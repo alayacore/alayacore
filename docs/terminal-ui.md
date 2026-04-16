@@ -42,7 +42,7 @@ AlayaCore's terminal UI is built with [Bubble Tea](https://charm.land/) and uses
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. |
 | `:cancel` | Cancel current request (with confirmation) |
 | `:cancel_all` | Cancel current request and clear the task queue |
-| `:retry` | Retry the last prompt. Re-sends history; appends "Please continue." if latest message is from the assistant. |
+| `:retry` | Retry the last prompt. Enqueued at the front of the task queue so it runs before other queued tasks. Appends "Please continue." if latest message is from the assistant. Also clears the pause-on-error state. |
 | `:summarize` | Summarize conversation to reduce token usage |
 | `:model_set <id>` | Switch to a model by numeric ID |
 | `:model_load` | Reload model configs from the config file |

@@ -74,6 +74,16 @@ func (CommandPrompt) isTask() {}
 
 func (c CommandPrompt) GetQueueID() string { return c.queueID }
 
+// RetryPrompt is a retry task that re-sends the last conversation to the LLM.
+// It is always enqueued at the front of the task queue via submitTaskFront.
+type RetryPrompt struct {
+	queueID string
+}
+
+func (RetryPrompt) isTask() {}
+
+func (r RetryPrompt) GetQueueID() string { return r.queueID }
+
 // QueueItemInfo holds serializable queue item data for clients.
 type QueueItemInfo struct {
 	QueueID   string `json:"queue_id"`
@@ -146,11 +156,12 @@ type Session struct {
 	proxyURL             string
 
 	taskQueue     []QueueItem
-	cond          *sync.Cond         // signals when taskQueue becomes non-empty
+	cond          *sync.Cond         // signals when taskQueue becomes non-empty or pausedOnError clears
 	sessionCtx    context.Context    // canceled when input is exhausted
 	sessionCancel context.CancelFunc // idempotent cancel
 	runnerDone    chan struct{}      // closed when taskRunner exits
 	inProgress    bool
+	pausedOnError bool           // set when a provider/network error occurs; blocks taskRunner until user acts
 	taskWg        sync.WaitGroup // tracks in-flight runTask
 	cancelCurrent func()
 	nextPromptID  uint64
@@ -406,6 +417,8 @@ func (s *Session) readFromInput() {
 			cmd := value[1:]
 			if cmd == "cancel" || cmd == "cancel_all" || cmd == "model_load" || cmd == "taskqueue_get_all" || strings.HasPrefix(cmd, "taskqueue_del ") || strings.HasPrefix(cmd, "model_set ") {
 				s.handleCommandSync(context.Background(), cmd)
+			} else if cmd == "retry" {
+				s.handleRetry()
 			} else {
 				s.submitTask(CommandPrompt{Command: cmd})
 			}
@@ -432,6 +445,9 @@ func (s *Session) submitTask(task Task) {
 	case CommandPrompt:
 		t.queueID = queueID
 		task = t
+	case RetryPrompt:
+		t.queueID = queueID
+		task = t
 	}
 
 	item := QueueItem{
@@ -441,6 +457,42 @@ func (s *Session) submitTask(task Task) {
 	}
 
 	s.taskQueue = append(s.taskQueue, item)
+	s.pausedOnError = false // user acted — allow queue to resume
+	s.cond.Signal()
+	s.mu.Unlock()
+	s.sendSystemInfo()
+}
+
+// submitTaskFront enqueues a task at the front of the queue so it is
+// processed before any previously queued items.  Used by :retry so the
+// retried prompt runs ahead of any tasks that accumulated during the
+// error-pause.
+func (s *Session) submitTaskFront(task Task) {
+	s.mu.Lock()
+
+	s.nextQueueID++
+	queueID := fmt.Sprintf("Q%d", s.nextQueueID)
+
+	switch t := task.(type) {
+	case UserPrompt:
+		t.queueID = queueID
+		task = t
+	case CommandPrompt:
+		t.queueID = queueID
+		task = t
+	case RetryPrompt:
+		t.queueID = queueID
+		task = t
+	}
+
+	item := QueueItem{
+		Task:      task,
+		QueueID:   queueID,
+		CreatedAt: time.Now(),
+	}
+
+	s.taskQueue = append([]QueueItem{item}, s.taskQueue...)
+	s.pausedOnError = false // user acted — allow queue to resume
 	s.cond.Signal()
 	s.mu.Unlock()
 	s.sendSystemInfo()
@@ -463,7 +515,7 @@ func (s *Session) taskRunner() {
 func (s *Session) waitForNextTask() (QueueItem, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for len(s.taskQueue) == 0 {
+	for len(s.taskQueue) == 0 || s.pausedOnError {
 		if s.sessionCtx.Err() != nil {
 			return QueueItem{}, false
 		}
@@ -530,6 +582,8 @@ func (s *Session) runTask(item QueueItem) {
 		s.handleUserPrompt(ctx, t.Text)
 	case CommandPrompt:
 		s.handleCommandSync(ctx, t.Command)
+	case RetryPrompt:
+		s.executeRetry(ctx)
 	}
 
 	if ctx.Err() == context.Canceled {
@@ -601,6 +655,10 @@ func (s *Session) handleUserPrompt(ctx context.Context, prompt string) {
 
 	if err != nil {
 		s.writeError(err.Error())
+		s.mu.Lock()
+		s.pausedOnError = true
+		s.mu.Unlock()
+		s.sendSystemInfo()
 		return
 	}
 }
@@ -794,6 +852,9 @@ func (s *Session) sendSystemInfoInternal(activeModelConfig *ModelConfig) {
 		case CommandPrompt:
 			itemType = "command"
 			content = t.Command
+		case RetryPrompt:
+			itemType = "retry"
+			content = ":retry"
 		}
 		queueItems[i] = QueueItemInfo{
 			QueueID:   item.QueueID,

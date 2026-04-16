@@ -81,6 +81,43 @@ When an error finish reason is detected:
 4. The agent loop terminates and returns the error to the caller
 5. The UI displays the error message to the user
 
+## Queue Pause on Error
+
+When a provider error (network failure, API error, content filter, etc.) occurs during prompt processing, the task queue **pauses** instead of moving on to the next queued task. This prevents cascading failures and gives the user control over recovery.
+
+### Why pause instead of continue
+
+Without pausing, a network outage would cause every queued prompt to fail in sequence, each adding an orphaned user message (with no assistant reply) to the conversation history. This corrupts context for subsequent API calls.
+
+### How it works
+
+1. `handleUserPrompt` (or `handleRetry` / `summarize`) detects the error from `processPrompt`
+2. Sets `pausedOnError = true` on the session
+3. `waitForNextTask` blocks — it won't dequeue the next task while `pausedOnError` is true
+4. Remaining queued tasks stay in the queue (visible via Ctrl+Q)
+5. The user can now:
+   - `:retry` — enqueue a retry at the front of the task queue (clears the pause; runs before other queued tasks)
+   - `:model_set` — switch to a different model, then `:retry`
+   - Type a new prompt — submits a new task, clears the pause
+   - `:cancel_all` — clear the queue and the pause
+   - Inspect the queue with Ctrl+Q
+
+### Implementation
+
+`internal/agent/session.go`:
+- `pausedOnError` field on `Session`
+- `waitForNextTask` checks `s.pausedOnError` in its loop condition
+- `submitTask` / `submitTaskFront` clear `s.pausedOnError` and signal the condition variable
+- `readFromInput` intercepts `:retry` and calls `submitTaskFront(RetryPrompt{})` — enqueues at front, bypasses `dispatchCommand`
+
+`internal/agent/session_io.go`:
+- `handleUserPrompt` and `summarize` set `pausedOnError = true` on error
+- `executeRetry` (called by `runTask` when it dequeues a `RetryPrompt`) sets `pausedOnError = true` on error
+- `cancelAllTasks` clears `pausedOnError` and signals the condition variable
+
+`internal/agent/command_registry.go`:
+- `retry` is registered for help display but NOT dispatched via `dispatchCommand` — it is intercepted earlier in `readFromInput`
+
 ## Testing
 
 Error handling is tested in `internal/llm/providers/providers_test.go`:
