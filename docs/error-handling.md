@@ -91,7 +91,7 @@ Without pausing, a network outage would cause every queued prompt to fail in seq
 
 ### How it works
 
-1. `handleUserPrompt` (or `handleRetry` / `summarize`) detects the error from `processPrompt`
+1. `handleUserPrompt` (or `executeRetry` / `summarize`) detects the error from `processPrompt`
 2. Sets `pausedOnError = true` on the session
 3. `waitForNextTask` blocks — it won't dequeue the next task while `pausedOnError` is true
 4. Remaining queued tasks stay in the queue (visible via Ctrl+Q)
@@ -102,13 +102,25 @@ Without pausing, a network outage would cause every queued prompt to fail in seq
    - `:cancel_all` — clear the queue and the pause
    - Inspect the queue with Ctrl+Q
 
+### Command dispatch
+
+Commands are split into two paths:
+
+**Sync commands** — run immediately on the input goroutine, regardless of queue state:
+`:cancel`, `:cancel_all`, `:model_set`, `:model_load`, `:taskqueue_get_all`, `:taskqueue_del`
+
+**Async commands** — enqueued at the front of the task queue via `submitAsyncCommand`, which rejects if a task is already running (unless paused on error):
+`:retry`, `:summarize`, `:save`, `:quit`, and all others
+
+Async commands run on the `taskRunner` goroutine with a cancellable context, so `:cancel` can interrupt them at any time. They are placed at the front of the queue so they run ahead of any accumulated user prompts.
+
 ### Implementation
 
 `internal/agent/session.go`:
 - `pausedOnError` field on `Session`
 - `waitForNextTask` checks `s.pausedOnError` in its loop condition
+- `submitAsyncCommand` guards: rejects if `inProgress && !pausedOnError`, then calls `submitTaskFront`
 - `submitTask` / `submitTaskFront` clear `s.pausedOnError` and signal the condition variable
-- `readFromInput` sends async commands (including `:retry`) via `submitTaskFront(CommandPrompt{...})` — enqueued at front of queue
 
 `internal/agent/session_io.go`:
 - `handleUserPrompt`, `executeRetry`, and `summarize` set `pausedOnError = true` on error
