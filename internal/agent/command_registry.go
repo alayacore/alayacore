@@ -7,6 +7,20 @@ import (
 	domainerrors "github.com/alayacore/alayacore/internal/errors"
 )
 
+// Command name constants
+const (
+	commandNameSummarize       = "summarize"
+	commandNameCancel          = "cancel"
+	commandNameCancelAll       = "cancel_all"
+	commandNameContinue        = "continue"
+	commandNameSave            = "save"
+	commandNameModelSet        = "model_set"
+	commandNameModelLoad       = "model_load"
+	commandNameTaskQueueGetAll = "taskqueue_get_all"
+	commandNameTaskQueueDel    = "taskqueue_del"
+	commandNameRetry           = "retry"
+)
+
 // CommandHandler is the function signature for command handlers
 type CommandHandler func(ctx context.Context, args []string)
 
@@ -59,7 +73,7 @@ var commandRegistry = NewCommandRegistry()
 func init() {
 	// Session management commands
 	commandRegistry.Register(&Command{
-		Name:        "summarize",
+		Name:        commandNameSummarize,
 		Description: "Summarize the conversation to reduce context",
 		Usage:       "",
 		Handler: func(_ context.Context, _ []string) {
@@ -68,7 +82,7 @@ func init() {
 	})
 
 	commandRegistry.Register(&Command{
-		Name:        "cancel",
+		Name:        commandNameCancel,
 		Description: "Cancel the current task",
 		Usage:       "",
 		Handler: func(_ context.Context, _ []string) {
@@ -77,7 +91,7 @@ func init() {
 	})
 
 	commandRegistry.Register(&Command{
-		Name:        "cancel_all",
+		Name:        commandNameCancelAll,
 		Description: "Cancel current task and clear the task queue",
 		Usage:       "",
 		Handler: func(_ context.Context, _ []string) {
@@ -86,7 +100,7 @@ func init() {
 	})
 
 	commandRegistry.Register(&Command{
-		Name:        "continue",
+		Name:        commandNameContinue,
 		Description: "Resume the task queue after an error (skip the failed prompt)",
 		Usage:       "",
 		Handler: func(_ context.Context, _ []string) {
@@ -95,7 +109,7 @@ func init() {
 	})
 
 	commandRegistry.Register(&Command{
-		Name:        "save",
+		Name:        commandNameSave,
 		Description: "Save the current session",
 		Usage:       "[filename]",
 		Handler: func(_ context.Context, _ []string) {
@@ -105,7 +119,7 @@ func init() {
 
 	// Model commands
 	commandRegistry.Register(&Command{
-		Name:        "model_set",
+		Name:        commandNameModelSet,
 		Description: "Switch to a different model",
 		Usage:       "<id>",
 		Handler: func(_ context.Context, _ []string) {
@@ -114,7 +128,7 @@ func init() {
 	})
 
 	commandRegistry.Register(&Command{
-		Name:        "model_load",
+		Name:        commandNameModelLoad,
 		Description: "Reload models from configuration file",
 		Usage:       "",
 		Handler: func(_ context.Context, _ []string) {
@@ -124,7 +138,7 @@ func init() {
 
 	// Task queue commands
 	commandRegistry.Register(&Command{
-		Name:        "taskqueue_get_all",
+		Name:        commandNameTaskQueueGetAll,
 		Description: "List all queued tasks",
 		Usage:       "",
 		Handler: func(_ context.Context, _ []string) {
@@ -133,7 +147,7 @@ func init() {
 	})
 
 	commandRegistry.Register(&Command{
-		Name:        "taskqueue_del",
+		Name:        commandNameTaskQueueDel,
 		Description: "Delete a queued task",
 		Usage:       "<queue_id>",
 		Handler: func(_ context.Context, _ []string) {
@@ -143,7 +157,7 @@ func init() {
 
 	// Retry command
 	commandRegistry.Register(&Command{
-		Name:        "retry",
+		Name:        commandNameRetry,
 		Description: "Retry the last prompt (re-send if the latest message is from user)",
 		Usage:       "",
 		Handler: func(_ context.Context, _ []string) {
@@ -176,25 +190,25 @@ func (s *Session) dispatchCommand(ctx context.Context, cmd string) bool {
 
 	// Dispatch to the handler methods (defined in session.go)
 	switch commandName {
-	case "summarize":
+	case commandNameSummarize:
 		s.summarize(ctx)
-	case "cancel":
+	case commandNameCancel:
 		s.cancelTask()
-	case "cancel_all":
+	case commandNameCancelAll:
 		s.cancelAllTasks()
-	case "continue":
+	case commandNameContinue:
 		s.handleContinue()
-	case "save":
+	case commandNameSave:
 		s.saveSession(args)
-	case "model_set":
+	case commandNameModelSet:
 		s.handleModelSet(args)
-	case "model_load":
+	case commandNameModelLoad:
 		s.handleModelLoad()
-	case "taskqueue_get_all":
+	case commandNameTaskQueueGetAll:
 		s.handleTaskQueueGetAll()
-	case "taskqueue_del":
+	case commandNameTaskQueueDel:
 		s.handleTaskQueueDel(args)
-	case "retry":
+	case commandNameRetry:
 		s.executeRetry(ctx)
 	}
 

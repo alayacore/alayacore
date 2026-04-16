@@ -312,7 +312,7 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.submitTask(UserPrompt{Text: "second"})
 
 	// Submit at front (simulates a deferred command like :retry)
-	session.enqueueTask(CommandPrompt{Command: "retry"}, true)
+	session.enqueueTask(CommandPrompt{Command: commandNameRetry}, true)
 
 	items := session.GetQueueItems()
 	if len(items) != 3 {
@@ -320,8 +320,8 @@ func TestSubmitTaskFront(t *testing.T) {
 	}
 
 	// Front item should be the command
-	if cmd, ok := items[0].Task.(CommandPrompt); !ok || cmd.Command != "retry" {
-		t.Errorf("Expected first item to be CommandPrompt{retry}, got %v", items[0].Task)
+	if cmd, ok := items[0].Task.(CommandPrompt); !ok || cmd.Command != commandNameRetry {
+		t.Errorf("Expected first item to be CommandPrompt{%s}, got %v", commandNameRetry, items[0].Task)
 	}
 	// Original tasks should follow in order
 	if p, ok := items[1].Task.(UserPrompt); !ok || p.Text != "first" {
@@ -336,7 +336,7 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.pausedOnError = true
 	session.mu.Unlock()
 
-	session.enqueueTask(CommandPrompt{Command: "retry"}, true)
+	session.enqueueTask(CommandPrompt{Command: commandNameRetry}, true)
 
 	session.mu.Lock()
 	paused := session.pausedOnError
@@ -428,7 +428,7 @@ func TestCommandCanRunWhilePaused(t *testing.T) {
 	session.mu.Unlock()
 
 	// Add a command to the front of the queue (simulates submitDeferredCommand)
-	session.enqueueTask(CommandPrompt{Command: "save"}, true)
+	session.enqueueTask(CommandPrompt{Command: commandNameSave}, true)
 
 	// Try to dequeue in a goroutine — it should succeed even while paused
 	dequeued := make(chan QueueItem, 1)
@@ -442,8 +442,8 @@ func TestCommandCanRunWhilePaused(t *testing.T) {
 	// Should dequeue the command immediately
 	select {
 	case item := <-dequeued:
-		if cmd, ok := item.Task.(CommandPrompt); !ok || cmd.Command != "save" {
-			t.Errorf("Expected CommandPrompt{save}, got %v", item.Task)
+		if cmd, ok := item.Task.(CommandPrompt); !ok || cmd.Command != commandNameSave {
+			t.Errorf("Expected CommandPrompt{%s}, got %v", commandNameSave, item.Task)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("waitForNextTask should dequeue commands even when paused")
@@ -472,7 +472,7 @@ func TestCommandBehindUserPromptWhilePaused(t *testing.T) {
 	session.submitTask(UserPrompt{Text: "first prompt"})
 
 	// Add a command to the back of the queue (after user prompt)
-	session.enqueueTask(CommandPrompt{Command: "save"}, false)
+	session.enqueueTask(CommandPrompt{Command: commandNameSave}, false)
 
 	// Set paused — the user prompt at front should block dequeue
 	session.mu.Lock()
@@ -498,13 +498,13 @@ func TestCommandBehindUserPromptWhilePaused(t *testing.T) {
 	}
 
 	// Now add a command to the front
-	session.enqueueTask(CommandPrompt{Command: "retry"}, true)
+	session.enqueueTask(CommandPrompt{Command: commandNameRetry}, true)
 
 	// Should now dequeue the command at front
 	select {
 	case item := <-dequeued:
-		if cmd, ok := item.Task.(CommandPrompt); !ok || cmd.Command != "retry" {
-			t.Errorf("Expected CommandPrompt{retry}, got %v", item.Task)
+		if cmd, ok := item.Task.(CommandPrompt); !ok || cmd.Command != commandNameRetry {
+			t.Errorf("Expected CommandPrompt{%s}, got %v", commandNameRetry, item.Task)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("waitForNextTask should dequeue command at front")
