@@ -421,31 +421,7 @@ func (s *Session) readFromInput() {
 // ============================================================================
 
 func (s *Session) submitTask(task Task) {
-	s.mu.Lock()
-
-	s.nextQueueID++
-	queueID := fmt.Sprintf("Q%d", s.nextQueueID)
-
-	switch t := task.(type) {
-	case UserPrompt:
-		t.queueID = queueID
-		task = t
-	case CommandPrompt:
-		t.queueID = queueID
-		task = t
-	}
-
-	item := QueueItem{
-		Task:      task,
-		QueueID:   queueID,
-		CreatedAt: time.Now(),
-	}
-
-	s.taskQueue = append(s.taskQueue, item)
-	s.pausedOnError = false // user acted — allow queue to resume
-	s.cond.Signal()
-	s.mu.Unlock()
-	s.sendSystemInfo()
+	s.enqueueTask(task, false)
 }
 
 // submitAsyncCommand enqueues an async command at the front of the task queue.
@@ -461,13 +437,12 @@ func (s *Session) submitAsyncCommand(cmd string) {
 	}
 	s.mu.Unlock()
 
-	s.submitTaskFront(CommandPrompt{Command: cmd})
+	s.enqueueTask(CommandPrompt{Command: cmd}, true)
 }
 
-// submitTaskFront enqueues a task at the front of the queue so it is
-// processed before any previously queued items. Used by async commands
-// (e.g. :retry, :summarize) so they run ahead of accumulated user prompts.
-func (s *Session) submitTaskFront(task Task) {
+// enqueueTask adds a task to the queue. When front is true, the task is
+// placed at the front so it runs before previously queued items.
+func (s *Session) enqueueTask(task Task, front bool) {
 	s.mu.Lock()
 
 	s.nextQueueID++
@@ -488,7 +463,11 @@ func (s *Session) submitTaskFront(task Task) {
 		CreatedAt: time.Now(),
 	}
 
-	s.taskQueue = append([]QueueItem{item}, s.taskQueue...)
+	if front {
+		s.taskQueue = append([]QueueItem{item}, s.taskQueue...)
+	} else {
+		s.taskQueue = append(s.taskQueue, item)
+	}
 	s.pausedOnError = false // user acted — allow queue to resume
 	s.cond.Signal()
 	s.mu.Unlock()

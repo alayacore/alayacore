@@ -312,7 +312,7 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.submitTask(UserPrompt{Text: "second"})
 
 	// Submit at front (simulates an async command like :retry)
-	session.submitTaskFront(CommandPrompt{Command: "retry"})
+	session.enqueueTask(CommandPrompt{Command: "retry"}, true)
 
 	items := session.GetQueueItems()
 	if len(items) != 3 {
@@ -336,13 +336,13 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.pausedOnError = true
 	session.mu.Unlock()
 
-	session.submitTaskFront(CommandPrompt{Command: "retry"})
+	session.enqueueTask(CommandPrompt{Command: "retry"}, true)
 
 	session.mu.Lock()
 	paused := session.pausedOnError
 	session.mu.Unlock()
 	if paused {
-		t.Error("submitTaskFront should clear pausedOnError")
+		t.Error("enqueueTask with front=true should clear pausedOnError")
 	}
 }
 
