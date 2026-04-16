@@ -405,7 +405,7 @@ func (s *Session) readFromInput() {
 		}
 		if len(value) > 0 && value[0] == ':' {
 			cmd := value[1:]
-			if cmd == "cancel" || cmd == "cancel_all" || cmd == "model_load" || cmd == "taskqueue_get_all" || strings.HasPrefix(cmd, "taskqueue_del ") || strings.HasPrefix(cmd, "model_set ") {
+			if cmd == "cancel" || cmd == "cancel_all" || cmd == "continue" || cmd == "model_load" || cmd == "taskqueue_get_all" || strings.HasPrefix(cmd, "taskqueue_del ") || strings.HasPrefix(cmd, "model_set ") {
 				s.handleCommandSync(context.Background(), cmd)
 			} else {
 				s.submitAsyncCommand(cmd)

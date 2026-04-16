@@ -97,7 +97,8 @@ Without pausing, a network outage would cause every queued prompt to fail in seq
 4. Remaining queued tasks stay in the queue (visible via Ctrl+Q)
 5. The user can now:
    - `:retry` — enqueue a retry at the front of the task queue (clears the pause; runs before other queued tasks)
-   - `:model_set` — switch to a different model, then `:retry`
+   - `:continue` — skip the failed prompt and resume processing the remaining queue
+   - `:model_set` — switch to a different model, then `:retry` or `:continue`
    - Type a new prompt — submits a new task, clears the pause
    - `:cancel_all` — clear the queue and the pause
    - Inspect the queue with Ctrl+Q
@@ -107,7 +108,7 @@ Without pausing, a network outage would cause every queued prompt to fail in seq
 Commands are split into two paths:
 
 **Sync commands** — run immediately on the input goroutine, regardless of queue state:
-`:cancel`, `:cancel_all`, `:model_set`, `:model_load`, `:taskqueue_get_all`, `:taskqueue_del`
+`:cancel`, `:cancel_all`, `:continue`, `:model_set`, `:model_load`, `:taskqueue_get_all`, `:taskqueue_del`
 
 **Async commands** — enqueued at the front of the task queue via `submitAsyncCommand`, which rejects if a task is already running (unless paused on error):
 `:retry`, `:summarize`, `:save`, `:quit`, and all others

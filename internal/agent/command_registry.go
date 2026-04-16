@@ -86,6 +86,15 @@ func init() {
 	})
 
 	commandRegistry.Register(&Command{
+		Name:        "continue",
+		Description: "Resume the task queue after an error (skip the failed prompt)",
+		Usage:       "",
+		Handler: func(_ context.Context, _ []string) {
+			// Handler is resolved at runtime via Session method
+		},
+	})
+
+	commandRegistry.Register(&Command{
 		Name:        "save",
 		Description: "Save the current session",
 		Usage:       "[filename]",
@@ -173,6 +182,8 @@ func (s *Session) dispatchCommand(ctx context.Context, cmd string) bool {
 		s.cancelTask()
 	case "cancel_all":
 		s.cancelAllTasks()
+	case "continue":
+		s.handleContinue()
 	case "save":
 		s.saveSession(args)
 	case "model_set":

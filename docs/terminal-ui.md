@@ -44,6 +44,7 @@ Commands are split into two categories:
 |---------|--------|
 | `:cancel` | Cancel current request (with confirmation) |
 | `:cancel_all` | Cancel current request and clear the task queue |
+| `:continue` | Resume the task queue after an error (skip the failed prompt) |
 | `:model_set <id>` | Switch to a model by numeric ID |
 | `:model_load` | Reload model configs from the config file |
 

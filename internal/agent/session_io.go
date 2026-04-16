@@ -82,6 +82,21 @@ func (s *Session) cancelAllTasks() {
 	s.sendSystemInfo()
 }
 
+func (s *Session) handleContinue() {
+	s.mu.Lock()
+	if !s.pausedOnError {
+		s.mu.Unlock()
+		s.writeError("Queue is not paused on error")
+		return
+	}
+	s.pausedOnError = false
+	s.cond.Signal()
+	s.mu.Unlock()
+
+	s.writeNotify("Resuming queue...")
+	s.sendSystemInfo()
+}
+
 func (s *Session) summarize(ctx context.Context) {
 	prompt := `Summarize the conversation for continuation. The resuming instance has no prior context.
 
