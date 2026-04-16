@@ -421,7 +421,19 @@ func (s *Session) readFromInput() {
 // ============================================================================
 
 func (s *Session) submitTask(task Task) {
+	s.mu.Lock()
+	queueEmpty := len(s.taskQueue) == 0
+	s.mu.Unlock()
+
 	s.enqueueTask(task, false)
+
+	// Clear paused-on-error only if queue was empty (new task will run immediately)
+	if queueEmpty {
+		s.mu.Lock()
+		s.pausedOnError = false
+		s.cond.Signal()
+		s.mu.Unlock()
+	}
 }
 
 // submitDeferredCommand enqueues a deferred command at the front of the task queue.
@@ -468,7 +480,6 @@ func (s *Session) enqueueTask(task Task, front bool) {
 	} else {
 		s.taskQueue = append(s.taskQueue, item)
 	}
-	s.pausedOnError = false // user acted — allow queue to resume
 	s.cond.Signal()
 	s.mu.Unlock()
 	s.sendSystemInfo()
@@ -491,16 +502,35 @@ func (s *Session) taskRunner() {
 func (s *Session) waitForNextTask() (QueueItem, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for len(s.taskQueue) == 0 || s.pausedOnError {
-		if s.sessionCtx.Err() != nil {
-			return QueueItem{}, false
+	for {
+		// Wait for queue to have items
+		for len(s.taskQueue) == 0 {
+			if s.sessionCtx.Err() != nil {
+				return QueueItem{}, false
+			}
+			s.cond.Wait()
 		}
-		s.cond.Wait()
+		// Check if the front task is a command - commands can run even when paused
+		item := s.taskQueue[0]
+		if _, isCommand := item.Task.(CommandPrompt); isCommand {
+			// Command can run regardless of paused state
+			s.taskQueue = s.taskQueue[1:]
+			s.inProgress = true
+			return item, true
+		}
+		// Not a command - wait for pause to clear
+		if s.pausedOnError {
+			if s.sessionCtx.Err() != nil {
+				return QueueItem{}, false
+			}
+			s.cond.Wait()
+			continue // Re-check the queue front (a command may have been added)
+		}
+		// Not paused - dequeue and return
+		s.taskQueue = s.taskQueue[1:]
+		s.inProgress = true
+		return item, true
 	}
-	item := s.taskQueue[0]
-	s.taskQueue = s.taskQueue[1:]
-	s.inProgress = true
-	return item, true
 }
 
 func (s *Session) hasQueuedTasks() bool {

@@ -281,14 +281,14 @@ func TestPausedOnError(t *testing.T) {
 	session.pausedOnError = true
 	session.mu.Unlock()
 
-	// Submit a task — should clear the paused flag
+	// Submit a task with empty queue — should clear the paused flag
 	session.submitTask(UserPrompt{Text: "recovery prompt"})
 
 	session.mu.Lock()
 	paused = session.pausedOnError
 	session.mu.Unlock()
 	if paused {
-		t.Error("submitTask should clear pausedOnError")
+		t.Error("submitTask should clear pausedOnError when queue was empty")
 	}
 
 	// Queue should contain the submitted task
@@ -331,7 +331,7 @@ func TestSubmitTaskFront(t *testing.T) {
 		t.Errorf("Expected third item to be 'second', got %v", items[2].Task)
 	}
 
-	// Front task should also clear pausedOnError
+	// enqueueTask should NOT clear pausedOnError (that's handled by specific commands)
 	session.mu.Lock()
 	session.pausedOnError = true
 	session.mu.Unlock()
@@ -341,8 +341,8 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.mu.Lock()
 	paused := session.pausedOnError
 	session.mu.Unlock()
-	if paused {
-		t.Error("enqueueTask with front=true should clear pausedOnError")
+	if !paused {
+		t.Error("enqueueTask should NOT clear pausedOnError")
 	}
 }
 
@@ -380,8 +380,22 @@ func TestPausedOnErrorBlocksDequeue(t *testing.T) {
 		// expected — blocked
 	}
 
-	// Now clear the pause via submitTask
-	session.submitTask(UserPrompt{Text: "recovery prompt"})
+	// Submitting another task should NOT clear the pause (queue is not empty)
+	session.submitTask(UserPrompt{Text: "second prompt"})
+
+	// Should still be blocked
+	select {
+	case <-dequeued:
+		t.Error("waitForNextTask should still block when queue is not empty")
+	case <-time.After(100 * time.Millisecond):
+		// expected — still blocked
+	}
+
+	// Clear the pause manually (simulates :continue)
+	session.mu.Lock()
+	session.pausedOnError = false
+	session.cond.Signal()
+	session.mu.Unlock()
 
 	// Should now dequeue (the first item)
 	select {
@@ -391,5 +405,141 @@ func TestPausedOnErrorBlocksDequeue(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("waitForNextTask should unblock after pausedOnError is cleared")
+	}
+}
+
+func TestCommandCanRunWhilePaused(t *testing.T) {
+	session := &Session{
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
+	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
+
+	// Add a user prompt to the queue
+	session.submitTask(UserPrompt{Text: "queued prompt"})
+
+	// Set paused — user prompts should not dequeue
+	session.mu.Lock()
+	session.pausedOnError = true
+	// Simulate taskRunner state when paused (inProgress stays true)
+	session.inProgress = true
+	session.mu.Unlock()
+
+	// Add a command to the front of the queue (simulates submitDeferredCommand)
+	session.enqueueTask(CommandPrompt{Command: "save"}, true)
+
+	// Try to dequeue in a goroutine — it should succeed even while paused
+	dequeued := make(chan QueueItem, 1)
+	go func() {
+		item, ok := session.waitForNextTask()
+		if ok {
+			dequeued <- item
+		}
+	}()
+
+	// Should dequeue the command immediately
+	select {
+	case item := <-dequeued:
+		if cmd, ok := item.Task.(CommandPrompt); !ok || cmd.Command != "save" {
+			t.Errorf("Expected CommandPrompt{save}, got %v", item.Task)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("waitForNextTask should dequeue commands even when paused")
+	}
+
+	// Paused state should still be set
+	session.mu.Lock()
+	paused := session.pausedOnError
+	session.mu.Unlock()
+	if !paused {
+		t.Error("pausedOnError should still be true after command runs")
+	}
+}
+
+func TestCommandBehindUserPromptWhilePaused(t *testing.T) {
+	// Test that a command behind a user prompt cannot run while paused
+	session := &Session{
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
+	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
+
+	// Add a user prompt to the queue
+	session.submitTask(UserPrompt{Text: "first prompt"})
+
+	// Add a command to the back of the queue (after user prompt)
+	session.enqueueTask(CommandPrompt{Command: "save"}, false)
+
+	// Set paused — the user prompt at front should block dequeue
+	session.mu.Lock()
+	session.pausedOnError = true
+	session.inProgress = true
+	session.mu.Unlock()
+
+	// Try to dequeue in a goroutine — it should block
+	dequeued := make(chan QueueItem, 1)
+	go func() {
+		item, ok := session.waitForNextTask()
+		if ok {
+			dequeued <- item
+		}
+	}()
+
+	// Should NOT dequeue because user prompt is at front
+	select {
+	case <-dequeued:
+		t.Error("waitForNextTask should block when user prompt is at front and paused")
+	case <-time.After(100 * time.Millisecond):
+		// expected — blocked
+	}
+
+	// Now add a command to the front
+	session.enqueueTask(CommandPrompt{Command: "retry"}, true)
+
+	// Should now dequeue the command at front
+	select {
+	case item := <-dequeued:
+		if cmd, ok := item.Task.(CommandPrompt); !ok || cmd.Command != "retry" {
+			t.Errorf("Expected CommandPrompt{retry}, got %v", item.Task)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("waitForNextTask should dequeue command at front")
+	}
+}
+
+func TestSubmitTaskDoesNotClearPauseWhenQueueNotEmpty(t *testing.T) {
+	session := &Session{
+		taskQueue: make([]QueueItem, 0),
+		Input:     &stream.ChanInput{},
+		Output:    &MockOutput{},
+	}
+	session.sessionCtx, session.sessionCancel = context.WithCancel(context.Background())
+	session.cond = sync.NewCond(&session.mu)
+
+	// Add a task to the queue
+	session.submitTask(UserPrompt{Text: "first prompt"})
+
+	// Set paused on error
+	session.mu.Lock()
+	session.pausedOnError = true
+	session.mu.Unlock()
+
+	// Submit another task — should NOT clear the paused flag (queue not empty)
+	session.submitTask(UserPrompt{Text: "second prompt"})
+
+	session.mu.Lock()
+	paused := session.pausedOnError
+	queueLen := len(session.taskQueue)
+	session.mu.Unlock()
+
+	if !paused {
+		t.Error("submitTask should NOT clear pausedOnError when queue is not empty")
+	}
+	if queueLen != 2 {
+		t.Errorf("Expected 2 items in queue, got %d", queueLen)
 	}
 }
