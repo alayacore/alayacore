@@ -108,15 +108,14 @@ Without pausing, a network outage would cause every queued prompt to fail in seq
 - `pausedOnError` field on `Session`
 - `waitForNextTask` checks `s.pausedOnError` in its loop condition
 - `submitTask` / `submitTaskFront` clear `s.pausedOnError` and signal the condition variable
-- `readFromInput` intercepts `:retry` and calls `submitTaskFront(RetryPrompt{})` — enqueues at front, bypasses `dispatchCommand`
+- `readFromInput` sends async commands (including `:retry`) via `submitTaskFront(CommandPrompt{...})` — enqueued at front of queue
 
 `internal/agent/session_io.go`:
-- `handleUserPrompt` and `summarize` set `pausedOnError = true` on error
-- `executeRetry` (called by `runTask` when it dequeues a `RetryPrompt`) sets `pausedOnError = true` on error
+- `handleUserPrompt`, `executeRetry`, and `summarize` set `pausedOnError = true` on error
 - `cancelAllTasks` clears `pausedOnError` and signals the condition variable
 
 `internal/agent/command_registry.go`:
-- `retry` is registered for help display but NOT dispatched via `dispatchCommand` — it is intercepted earlier in `readFromInput`
+- `retry` is dispatched via `dispatchCommand` → `executeRetry`, same as other async commands
 
 ## Testing
 

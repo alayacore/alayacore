@@ -239,39 +239,9 @@ func (s *Session) handleTaskQueueDel(args []string) {
 	}
 }
 
-// handleRetry is the sync entry point for the :retry command (called from
-// readFromInput). It validates preconditions and enqueues a RetryPrompt at
-// the front of the task queue so it runs before any accumulated tasks.
-func (s *Session) handleRetry() {
-	s.mu.Lock()
-	inProgress := s.inProgress
-	paused := s.pausedOnError
-	s.mu.Unlock()
-
-	if inProgress && !paused {
-		s.writeError("Cannot retry while a task is running. Please wait or cancel first.")
-		return
-	}
-
-	if len(s.Messages) == 0 {
-		s.writeError("No messages to retry")
-		return
-	}
-
-	// Clear paused-on-error — retry is the user's recovery action.
-	s.mu.Lock()
-	s.pausedOnError = false
-	s.mu.Unlock()
-
-	s.writeNotify("Retrying...")
-
-	// Enqueue at the front so retry runs before any tasks that accumulated
-	// during the error-pause.
-	s.submitTaskFront(RetryPrompt{})
-}
-
-// executeRetry is the async entry point called by runTask when a RetryPrompt
-// is dequeued. It does the actual LLM call with a cancellable context.
+// executeRetry retries sending the conversation history to the LLM.
+// This is called by dispatchCommand when the :retry command is dequeued
+// from the front of the task queue.
 //
 // Three cases:
 //  1. Latest message is a user prompt → re-send history as-is (the previous
@@ -283,6 +253,11 @@ func (s *Session) handleRetry() {
 //     or was canceled. A "Please continue." user message is appended so the
 //     model picks up where it left off.
 func (s *Session) executeRetry(ctx context.Context) {
+	if len(s.Messages) == 0 {
+		s.writeError("No messages to retry")
+		return
+	}
+
 	msgCount := len(s.Messages)
 	lastMsg := s.Messages[msgCount-1]
 	if lastMsg.Role == llm.RoleAssistant {
@@ -295,6 +270,8 @@ func (s *Session) executeRetry(ctx context.Context) {
 	}
 	// If the last message is RoleUser or RoleTool, the conversation history
 	// is already at a valid point for the LLM to respond — just re-send as-is.
+
+	s.writeNotify("Retrying...")
 
 	_, err := s.processPrompt(ctx, s.Messages)
 

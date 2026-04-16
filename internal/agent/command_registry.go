@@ -166,8 +166,6 @@ func (s *Session) dispatchCommand(ctx context.Context, cmd string) bool {
 	}
 
 	// Dispatch to the handler methods (defined in session.go)
-	// NOTE: "retry" is NOT handled here — it is intercepted in readFromInput
-	// and dispatched as a RetryPrompt task via submitTaskFront.
 	switch commandName {
 	case "summarize":
 		s.summarize(ctx)
@@ -185,6 +183,8 @@ func (s *Session) dispatchCommand(ctx context.Context, cmd string) bool {
 		s.handleTaskQueueGetAll()
 	case "taskqueue_del":
 		s.handleTaskQueueDel(args)
+	case "retry":
+		s.executeRetry(ctx)
 	}
 
 	return true

@@ -311,17 +311,17 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.submitTask(UserPrompt{Text: "first"})
 	session.submitTask(UserPrompt{Text: "second"})
 
-	// Submit at front (simulates :retry)
-	session.submitTaskFront(RetryPrompt{})
+	// Submit at front (simulates an async command like :retry)
+	session.submitTaskFront(CommandPrompt{Command: "retry"})
 
 	items := session.GetQueueItems()
 	if len(items) != 3 {
 		t.Fatalf("Expected 3 items, got %d", len(items))
 	}
 
-	// Front item should be the retry
-	if _, ok := items[0].Task.(RetryPrompt); !ok {
-		t.Errorf("Expected first item to be RetryPrompt, got %v", items[0].Task)
+	// Front item should be the command
+	if cmd, ok := items[0].Task.(CommandPrompt); !ok || cmd.Command != "retry" {
+		t.Errorf("Expected first item to be CommandPrompt{retry}, got %v", items[0].Task)
 	}
 	// Original tasks should follow in order
 	if p, ok := items[1].Task.(UserPrompt); !ok || p.Text != "first" {
@@ -336,7 +336,7 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.pausedOnError = true
 	session.mu.Unlock()
 
-	session.submitTaskFront(RetryPrompt{})
+	session.submitTaskFront(CommandPrompt{Command: "retry"})
 
 	session.mu.Lock()
 	paused := session.pausedOnError

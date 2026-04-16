@@ -74,16 +74,6 @@ func (CommandPrompt) isTask() {}
 
 func (c CommandPrompt) GetQueueID() string { return c.queueID }
 
-// RetryPrompt is a retry task that re-sends the last conversation to the LLM.
-// It is always enqueued at the front of the task queue via submitTaskFront.
-type RetryPrompt struct {
-	queueID string
-}
-
-func (RetryPrompt) isTask() {}
-
-func (r RetryPrompt) GetQueueID() string { return r.queueID }
-
 // QueueItemInfo holds serializable queue item data for clients.
 type QueueItemInfo struct {
 	QueueID   string `json:"queue_id"`
@@ -417,10 +407,8 @@ func (s *Session) readFromInput() {
 			cmd := value[1:]
 			if cmd == "cancel" || cmd == "cancel_all" || cmd == "model_load" || cmd == "taskqueue_get_all" || strings.HasPrefix(cmd, "taskqueue_del ") || strings.HasPrefix(cmd, "model_set ") {
 				s.handleCommandSync(context.Background(), cmd)
-			} else if cmd == "retry" {
-				s.handleRetry()
 			} else {
-				s.submitTask(CommandPrompt{Command: cmd})
+				s.submitAsyncCommand(cmd)
 			}
 		} else {
 			s.submitTask(UserPrompt{Text: value})
@@ -445,9 +433,6 @@ func (s *Session) submitTask(task Task) {
 	case CommandPrompt:
 		t.queueID = queueID
 		task = t
-	case RetryPrompt:
-		t.queueID = queueID
-		task = t
 	}
 
 	item := QueueItem{
@@ -463,10 +448,25 @@ func (s *Session) submitTask(task Task) {
 	s.sendSystemInfo()
 }
 
+// submitAsyncCommand enqueues an async command at the front of the task queue.
+// Async commands (e.g. :retry, :summarize) can only run when no task is
+// currently in progress. They are placed at the front so they run ahead of
+// any accumulated user prompts.
+func (s *Session) submitAsyncCommand(cmd string) {
+	s.mu.Lock()
+	if s.inProgress && !s.pausedOnError {
+		s.mu.Unlock()
+		s.writeError("Cannot run command while a task is running. Please wait or cancel first.")
+		return
+	}
+	s.mu.Unlock()
+
+	s.submitTaskFront(CommandPrompt{Command: cmd})
+}
+
 // submitTaskFront enqueues a task at the front of the queue so it is
-// processed before any previously queued items.  Used by :retry so the
-// retried prompt runs ahead of any tasks that accumulated during the
-// error-pause.
+// processed before any previously queued items. Used by async commands
+// (e.g. :retry, :summarize) so they run ahead of accumulated user prompts.
 func (s *Session) submitTaskFront(task Task) {
 	s.mu.Lock()
 
@@ -478,9 +478,6 @@ func (s *Session) submitTaskFront(task Task) {
 		t.queueID = queueID
 		task = t
 	case CommandPrompt:
-		t.queueID = queueID
-		task = t
-	case RetryPrompt:
 		t.queueID = queueID
 		task = t
 	}
@@ -582,8 +579,6 @@ func (s *Session) runTask(item QueueItem) {
 		s.handleUserPrompt(ctx, t.Text)
 	case CommandPrompt:
 		s.handleCommandSync(ctx, t.Command)
-	case RetryPrompt:
-		s.executeRetry(ctx)
 	}
 
 	if ctx.Err() == context.Canceled {
@@ -852,9 +847,6 @@ func (s *Session) sendSystemInfoInternal(activeModelConfig *ModelConfig) {
 		case CommandPrompt:
 			itemType = "command"
 			content = t.Command
-		case RetryPrompt:
-			itemType = "retry"
-			content = ":retry"
 		}
 		queueItems[i] = QueueItemInfo{
 			QueueID:   item.QueueID,
