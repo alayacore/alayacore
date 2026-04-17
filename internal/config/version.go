@@ -6,4 +6,4 @@ package config
 //	go build -ldflags "-X github.com/alayacore/alayacore/internal/config.Version=$(git describe --tags --always)"
 //
 // Must be a var (not const) so the linker can patch it.
-var Version = "0.1.0"
+var Version = "(devel)"

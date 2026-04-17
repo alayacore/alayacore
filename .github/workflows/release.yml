@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: make test
+
+      - name: Build all release binaries
+        run: make release-all
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            alayacore-linux-amd64
+            alayacore-linux-arm64
+            alayacore-linux-arm
+            alayacore-linux-riscv64
+            alayacore-darwin-amd64
+            alayacore-darwin-arm64
+            alayacore-windows-amd64.exe
+            alayacore-windows-arm64.exe
