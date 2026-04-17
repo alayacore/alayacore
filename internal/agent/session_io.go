@@ -114,6 +114,8 @@ Rules:
 
 	s.Messages = append(s.Messages, llm.NewUserMessage(prompt))
 
+	s.writeNotify("Summarizing conversation...")
+
 	beforeCount := len(s.Messages)
 
 	outputTokens, err := s.processPrompt(ctx, s.Messages)
@@ -139,6 +141,7 @@ Rules:
 		s.ContextTokens = outputTokens
 		s.mu.Unlock()
 	}
+	s.writeNotify("Summarized conversation")
 	s.sendSystemInfo()
 }
 
@@ -300,4 +303,12 @@ func (s *Session) executeRetry(ctx context.Context) {
 		s.sendSystemInfo()
 		return
 	}
+
+	// Clear paused-on-error state so the queue can resume
+	s.mu.Lock()
+	s.pausedOnError = false
+	s.cond.Signal()
+	s.mu.Unlock()
+
+	s.sendSystemInfo()
 }

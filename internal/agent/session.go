@@ -434,17 +434,15 @@ func (s *Session) readFromInput() {
 func (s *Session) submitTask(task Task) {
 	s.mu.Lock()
 	queueEmpty := len(s.taskQueue) == 0
+	// Clear paused-on-error only if queue was empty (new task will run immediately).
+	// This must happen before enqueueTask signals the condition variable so
+	// taskRunner sees consistent state when it wakes.
+	if queueEmpty {
+		s.pausedOnError = false
+	}
 	s.mu.Unlock()
 
 	s.enqueueTask(task, false)
-
-	// Clear paused-on-error only if queue was empty (new task will run immediately)
-	if queueEmpty {
-		s.mu.Lock()
-		s.pausedOnError = false
-		s.cond.Signal()
-		s.mu.Unlock()
-	}
 }
 
 // submitDeferredCommand enqueues a deferred command at the front of the task queue.
