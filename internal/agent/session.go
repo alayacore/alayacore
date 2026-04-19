@@ -819,7 +819,15 @@ func (s *Session) trackUsage(usage llm.Usage) {
 	s.mu.Lock()
 	s.TotalSpent.InputTokens += usage.InputTokens
 	s.TotalSpent.OutputTokens += usage.OutputTokens
-	s.ContextTokens = usage.InputTokens + usage.CacheReadTokens + usage.CacheCreationTokens
+	// Only overwrite ContextTokens if the provider reported a non-zero value.
+	// OpenAI-compatible providers (e.g. GLM-5.1) may omit the usage field from
+	// SSE chunks entirely. Go's json.Unmarshal leaves absent fields at their
+	// zero values, so Usage arrives as {InputTokens: 0, OutputTokens: 0, ...}.
+	// Without this guard, ContextTokens would be reset to 0.
+	newContext := usage.InputTokens + usage.CacheReadTokens + usage.CacheCreationTokens
+	if newContext > 0 {
+		s.ContextTokens = newContext
+	}
 	s.mu.Unlock()
 	s.sendSystemInfo()
 }
