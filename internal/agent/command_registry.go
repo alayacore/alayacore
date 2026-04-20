@@ -18,7 +18,6 @@ const (
 	commandNameModelLoad       = "model_load"
 	commandNameTaskQueueGetAll = "taskqueue_get_all"
 	commandNameTaskQueueDel    = "taskqueue_del"
-	commandNameRetry           = "retry"
 )
 
 // CommandHandler is the function signature for command handlers
@@ -101,8 +100,8 @@ func init() {
 
 	commandRegistry.Register(&Command{
 		Name:        commandNameContinue,
-		Description: "Resume the task queue after an error (skip the failed prompt)",
-		Usage:       "",
+		Description: "Resume after an error; without args retries the prompt, with 'skip' skips it",
+		Usage:       "[skip]",
 		Handler: func(_ context.Context, _ []string) {
 			// Handler is resolved at runtime via Session method
 		},
@@ -154,16 +153,6 @@ func init() {
 			// Handler is resolved at runtime via Session method
 		},
 	})
-
-	// Retry command
-	commandRegistry.Register(&Command{
-		Name:        commandNameRetry,
-		Description: "Retry the last prompt (re-send if the latest message is from user)",
-		Usage:       "",
-		Handler: func(_ context.Context, _ []string) {
-			// Handler is resolved at runtime via Session method
-		},
-	})
 }
 
 // GetCommandRegistry returns the global command registry
@@ -197,7 +186,7 @@ func (s *Session) dispatchCommand(ctx context.Context, cmd string) bool {
 	case commandNameCancelAll:
 		s.cancelAllTasks()
 	case commandNameContinue:
-		s.handleContinue()
+		s.handleContinue(ctx, args)
 	case commandNameSave:
 		s.saveSession(args)
 	case commandNameModelSet:
@@ -208,8 +197,6 @@ func (s *Session) dispatchCommand(ctx context.Context, cmd string) bool {
 		s.handleTaskQueueGetAll()
 	case commandNameTaskQueueDel:
 		s.handleTaskQueueDel(args)
-	case commandNameRetry:
-		s.executeRetry(ctx)
 	}
 
 	return true

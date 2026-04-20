@@ -91,14 +91,13 @@ Without pausing, a network outage would cause every queued prompt to fail in seq
 
 ### How it works
 
-1. `handleUserPrompt` (or `executeRetry` / `summarize`) detects the error from `processPrompt`
+1. `handleUserPrompt` (or `resendPrompt` / `summarize`) detects the error from `processPrompt`
 2. Sets `pausedOnError = true` on the session
 3. `waitForNextTask` blocks — it won't dequeue the next task while `pausedOnError` is true
 4. Remaining queued tasks stay in the queue (visible via Ctrl+Q)
 5. The user can now:
-   - `:retry` — enqueue a retry at the front of the task queue; clears the pause on success (re-sets it if the retry also fails)
-   - `:continue` — skip the failed prompt and resume processing the remaining queue
-   - `:model_set` — switch to a different model, then `:retry` or `:continue`
+   - `:continue` — resend the failed prompt (or `:continue skip` to skip it and resume the queue)
+   - `:model_set` — switch to a different model, then `:continue`
    - Type a new prompt — submits a new task, clears the pause if the queue was empty
    - `:cancel_all` — clear the queue and the pause
    - Inspect the queue with Ctrl+Q
@@ -108,10 +107,10 @@ Without pausing, a network outage would cause every queued prompt to fail in seq
 Commands are split into two paths:
 
 **Immediate commands** — run immediately on the input goroutine, regardless of queue state:
-`:cancel`, `:cancel_all`, `:continue`, `:model_set`, `:model_load`, `:taskqueue_get_all`, `:taskqueue_del`
+`:cancel`, `:cancel_all`, `:model_set`, `:model_load`, `:taskqueue_get_all`, `:taskqueue_del`
 
 **Deferred commands** — enqueued at the front of the task queue via `submitDeferredCommand`, which rejects if a task is already running (unless paused on error):
-`:retry`, `:summarize`, `:save`, and all others
+`:continue`, `:summarize`, `:save`, and all others
 
 Note: `:quit` / `:q` is handled directly by each adaptor and never reaches the session.
 
@@ -126,13 +125,13 @@ Deferred commands run on the `taskRunner` goroutine with a cancellable context, 
 - `submitTask` clears `pausedOnError` when the queue was empty (before `enqueueTask` signals, so `taskRunner` sees consistent state)
 
 `internal/agent/session_io.go`:
-- `handleUserPrompt`, `executeRetry`, and `summarize` set `pausedOnError = true` on error
+- `handleUserPrompt`, `resendPrompt`, and `summarize` set `pausedOnError = true` on error
 - `cancelAllTasks` clears `pausedOnError` and signals the condition variable
-- `executeRetry` clears `pausedOnError` and signals the condition variable on success
-- `handleContinue` clears `pausedOnError` and signals the condition variable
+- `handleContinue` clears `pausedOnError`, then either calls `resendPrompt` (no args) or skips and resumes the queue (`skip`)
+- `resendPrompt` re-sets `pausedOnError` on failure
 
 `internal/agent/command_registry.go`:
-- `retry` is dispatched via `dispatchCommand` → `executeRetry`, same as other deferred commands
+- `:continue` is dispatched via `dispatchCommand` → `handleContinue`
 
 ## Testing
 

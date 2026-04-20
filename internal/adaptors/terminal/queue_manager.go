@@ -222,7 +222,7 @@ func (qm *QueueManager) renderItem(item QueueItem, selected bool) string {
 	content = strings.ReplaceAll(content, "\t", "\\t")
 
 	// Prefix commands with ":"
-	if item.Type == "command" || item.Type == "retry" {
+	if item.Type == "command" {
 		content = ":" + content
 	}
 

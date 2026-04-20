@@ -311,8 +311,8 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.submitTask(UserPrompt{Text: "first"})
 	session.submitTask(UserPrompt{Text: "second"})
 
-	// Submit at front (simulates a deferred command like :retry)
-	session.enqueueTask(CommandPrompt{Command: commandNameRetry}, true)
+	// Submit at front (simulates a deferred command like :continue)
+	session.enqueueTask(CommandPrompt{Command: commandNameContinue}, true)
 
 	items := session.GetQueueItems()
 	if len(items) != 3 {
@@ -320,8 +320,8 @@ func TestSubmitTaskFront(t *testing.T) {
 	}
 
 	// Front item should be the command
-	if cmd, ok := items[0].Task.(CommandPrompt); !ok || cmd.Command != commandNameRetry {
-		t.Errorf("Expected first item to be CommandPrompt{%s}, got %v", commandNameRetry, items[0].Task)
+	if cmd, ok := items[0].Task.(CommandPrompt); !ok || cmd.Command != commandNameContinue {
+		t.Errorf("Expected first item to be CommandPrompt{%s}, got %v", commandNameContinue, items[0].Task)
 	}
 	// Original tasks should follow in order
 	if p, ok := items[1].Task.(UserPrompt); !ok || p.Text != "first" {
@@ -336,7 +336,7 @@ func TestSubmitTaskFront(t *testing.T) {
 	session.pausedOnError = true
 	session.mu.Unlock()
 
-	session.enqueueTask(CommandPrompt{Command: commandNameRetry}, true)
+	session.enqueueTask(CommandPrompt{Command: commandNameContinue}, true)
 
 	session.mu.Lock()
 	paused := session.pausedOnError
@@ -498,13 +498,13 @@ func TestCommandBehindUserPromptWhilePaused(t *testing.T) {
 	}
 
 	// Now add a command to the front
-	session.enqueueTask(CommandPrompt{Command: commandNameRetry}, true)
+	session.enqueueTask(CommandPrompt{Command: commandNameContinue}, true)
 
 	// Should now dequeue the command at front
 	select {
 	case item := <-dequeued:
-		if cmd, ok := item.Task.(CommandPrompt); !ok || cmd.Command != commandNameRetry {
-			t.Errorf("Expected CommandPrompt{%s}, got %v", commandNameRetry, item.Task)
+		if cmd, ok := item.Task.(CommandPrompt); !ok || cmd.Command != commandNameContinue {
+			t.Errorf("Expected CommandPrompt{%s}, got %v", commandNameContinue, item.Task)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("waitForNextTask should dequeue command at front")

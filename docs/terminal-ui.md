@@ -44,14 +44,13 @@ Commands are split into two categories:
 |---------|--------|
 | `:cancel` | Cancel current request (with confirmation) |
 | `:cancel_all` | Cancel current request and clear the task queue |
-| `:continue` | Resume the task queue after an error (skip the failed prompt) |
 | `:model_set <id>` | Switch to a model by numeric ID |
 | `:model_load` | Reload model configs from the config file |
 
 **Deferred commands** — enqueued at the front of the task queue; require no task currently running:
 | Command | Action |
 |---------|--------|
-| `:retry` | Retry the last prompt. Appends "Please continue." if latest message is from the assistant. Also clears the pause-on-error state. |
+| `:continue [skip]` | Resend the last prompt, or skip it with `skip` and resume the queue |
 | `:summarize` | Summarize conversation to reduce token usage |
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. |
 

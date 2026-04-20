@@ -82,16 +82,32 @@ func (s *Session) cancelAllTasks() {
 	s.sendSystemInfo()
 }
 
-func (s *Session) handleContinue() {
-	s.mu.Lock()
-	if !s.pausedOnError {
-		s.mu.Unlock()
-		s.writeError("Queue is not paused on error")
+func (s *Session) handleContinue(ctx context.Context, args []string) {
+	// Validate arguments before doing anything.
+	if len(args) > 0 && args[0] != "skip" {
+		s.writeError("usage: :continue [skip]")
 		return
 	}
+
+	s.mu.Lock()
 	s.pausedOnError = false
 	s.cond.Signal()
 	s.mu.Unlock()
+
+	// With no arguments, resend the last prompt.
+	if len(args) == 0 {
+		s.resendPrompt(ctx)
+		return
+	}
+
+	// "skip" — skip the failed prompt and resume the remaining queue.
+	s.mu.Lock()
+	queueLen := len(s.taskQueue)
+	s.mu.Unlock()
+	if queueLen == 0 {
+		s.writeNotify("Queue is empty")
+		return
+	}
 
 	s.writeNotify("Resuming queue...")
 	s.sendSystemInfo()
@@ -257,9 +273,8 @@ func (s *Session) handleTaskQueueDel(args []string) {
 	}
 }
 
-// executeRetry retries sending the conversation history to the LLM.
-// This is called by dispatchCommand when the :retry command is dequeued
-// from the front of the task queue.
+// resendPrompt resends the conversation history to the LLM.
+// This is called by handleContinue (no args) to resend the failed prompt.
 //
 // Three cases:
 //  1. Latest message is a user prompt → re-send history as-is (the previous
@@ -270,9 +285,9 @@ func (s *Session) handleTaskQueueDel(args []string) {
 //  3. Latest message is an assistant message → the API partially succeeded
 //     or was canceled. A "Please continue." user message is appended so the
 //     model picks up where it left off.
-func (s *Session) executeRetry(ctx context.Context) {
+func (s *Session) resendPrompt(ctx context.Context) {
 	if len(s.Messages) == 0 {
-		s.writeError("No messages to retry")
+		s.writeError("No messages to resend")
 		return
 	}
 
@@ -289,7 +304,7 @@ func (s *Session) executeRetry(ctx context.Context) {
 	// If the last message is RoleUser or RoleTool, the conversation history
 	// is already at a valid point for the LLM to respond — just re-send as-is.
 
-	s.writeNotify("Retrying...")
+	s.writeNotify("Resending...")
 
 	_, err := s.processPrompt(ctx, s.Messages)
 
@@ -303,12 +318,6 @@ func (s *Session) executeRetry(ctx context.Context) {
 		s.sendSystemInfo()
 		return
 	}
-
-	// Clear paused-on-error state so the queue can resume
-	s.mu.Lock()
-	s.pausedOnError = false
-	s.cond.Signal()
-	s.mu.Unlock()
 
 	s.sendSystemInfo()
 }

@@ -393,8 +393,13 @@ func createProviderFromConfig(config *ModelConfig, debugAPI bool, proxyURL strin
 // without queuing. Immediate commands are those that control task execution
 // (cancel, continue) or query/modify session state (model_load, taskqueue operations).
 func isCommandImmediate(cmd string) bool {
-	switch cmd {
-	case commandNameCancel, commandNameCancelAll, commandNameContinue, commandNameModelLoad, commandNameTaskQueueGetAll:
+	// Extract the command name (first word) for commands that accept arguments.
+	name := cmd
+	if idx := strings.IndexByte(cmd, ' '); idx >= 0 {
+		name = cmd[:idx]
+	}
+	switch name {
+	case commandNameCancel, commandNameCancelAll, commandNameModelLoad, commandNameTaskQueueGetAll:
 		return true
 	}
 	return strings.HasPrefix(cmd, commandNameTaskQueueDel+" ") || strings.HasPrefix(cmd, commandNameModelSet+" ")
@@ -446,7 +451,7 @@ func (s *Session) submitTask(task Task) {
 }
 
 // submitDeferredCommand enqueues a deferred command at the front of the task queue.
-// Deferred commands (e.g. :retry, :summarize) can only run when no task is
+// Deferred commands (e.g. :continue, :summarize) can only run when no task is
 // currently in progress. They are placed at the front so they run ahead of
 // any accumulated user prompts.
 func (s *Session) submitDeferredCommand(cmd string) {
