@@ -17,7 +17,7 @@ var (
 - Quote filenames with spaces or special characters
 - Check command output for errors before proceeding
 - Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs that require a TTY or terminal input will fail immediately.`,
+- Commands run with no visible console and stdin closed. Interactive programs that require a TTY or terminal input will hang and be killed after a timeout.`,
 		BuildCmd: func(binary, command string) *exec.Cmd {
 			return exec.Command(binary, "-NoLogo", "-NonInteractive", "-Command", command)
 		},
@@ -33,7 +33,7 @@ var (
 - Quote filenames with spaces or special characters
 - Check command output for errors before proceeding
 - Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs that require a TTY or terminal input will fail immediately.`,
+- Commands run with no visible console and stdin closed. Interactive programs that require a TTY or terminal input will hang and be killed after a timeout.`,
 		BuildCmd: func(binary, command string) *exec.Cmd {
 			return exec.Command(binary, "-NoLogo", "-NonInteractive", "-Command", command)
 		},
@@ -49,7 +49,7 @@ var (
 - Quote filenames with spaces or special characters
 - Check command output for errors before proceeding
 - Clean up temporary files when done
-- Commands run in a detached session with no controlling terminal and stdin closed. Interactive programs that require a TTY or terminal input will fail immediately.`,
+- Commands run with no visible console and stdin closed. Interactive programs that require a TTY or terminal input will hang and be killed after a timeout.`,
 		BuildCmd: func(binary, command string) *exec.Cmd {
 			return exec.Command(binary, "/C", command)
 		},

@@ -6,10 +6,17 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/tools/shell"
 )
+
+// defaultCommandTimeout is the maximum time a command may run before being
+// terminated.  This prevents interactive programs (vim, nano, etc.) from
+// hanging indefinitely when run without a TTY — they start successfully but
+// never exit because they're waiting for terminal input that never arrives.
+const defaultCommandTimeout = 2 * time.Minute
 
 // executeCommandInput represents the input for the execute_command tool
 type executeCommandInput struct {
@@ -60,15 +67,26 @@ func executeCommand(ctx context.Context, args executeCommandInput) (llm.ToolResu
 		return llm.NewTextErrorResponse("failed to start command: " + err.Error()), nil
 	}
 
-	// Wait for command to complete, handling cancellation
+	// Apply a timeout so commands that hang (e.g. interactive programs like
+	// vim that start successfully but never exit without a TTY) are eventually
+	// killed.  The parent context cancellation is still honored.
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, defaultCommandTimeout)
+	defer timeoutCancel()
+
+	// Wait for command to complete, handling cancellation and timeout
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Wait()
 	}()
 
 	select {
-	case <-ctx.Done():
-		return handleCommandCancellation(cmd, done, &stdout, &stderr), nil
+	case <-timeoutCtx.Done():
+		if ctx.Err() != nil {
+			// Parent context was canceled (user sent :cancel)
+			return handleCommandCancellation(cmd, done, &stdout, &stderr), nil
+		}
+		// Timeout expired — kill the hung process
+		return handleCommandTimeout(cmd, done, &stdout, &stderr), nil
 	case execErr := <-done:
 		return handleCommandCompletion(execErr, &stdout, &stderr), nil
 	}
@@ -81,9 +99,21 @@ func handleCommandCancellation(cmd *exec.Cmd, done chan error, stdout, stderr *b
 	}
 	output := formatCommandOutput(stdout, stderr, -1) // canceled, always show labels
 	if output != "" {
-		return llm.NewTextErrorResponse("canceled: " + output)
+		return llm.NewTextErrorResponse("Canceled\n" + output)
 	}
-	return llm.NewTextErrorResponse("canceled")
+	return llm.NewTextErrorResponse("Canceled")
+}
+
+func handleCommandTimeout(cmd *exec.Cmd, done chan error, stdout, stderr *bytes.Buffer) llm.ToolResultOutput {
+	process := cmd.Process
+	if process != nil {
+		shell.TerminateProcessGroup(process, done)
+	}
+	output := formatCommandOutput(stdout, stderr, -1)
+	if output != "" {
+		return llm.NewTextErrorResponse("Timed out\n" + output)
+	}
+	return llm.NewTextErrorResponse("Timed out")
 }
 
 func handleCommandCompletion(execErr error, stdout, stderr *bytes.Buffer) llm.ToolResultOutput {
