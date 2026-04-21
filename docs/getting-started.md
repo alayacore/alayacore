@@ -36,7 +36,7 @@ To use other providers, edit the config file — press `Ctrl+L` then `e` in the 
 ## First Steps
 
 1. **Start a conversation** — Type a prompt and press `Enter`. The agent will stream a response.
-2. **Give it a task** — Try `"read main.go and explain what this project does"`. The agent will use the `read_file` tool, then answer.
+2. **Give it a task** — Try `"read main.go and explain what this project does"`. The agent will use the `read_file` tool (or `ripgrep` to find content first), then answer.
 3. **Switch models** — Press `Ctrl+L` to open the model selector. Press `e` to edit your config, `r` to reload, `Enter` to select.
 4. **Save your session** — Type `:save my-session.md` or press `Ctrl+S`.
 

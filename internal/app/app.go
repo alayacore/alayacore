@@ -20,6 +20,9 @@ const DefaultSystemPrompt = `IDENTITY:
 RULES:
 - Never assume - verify with tools
 
+SEARCH:
+- Prefer the ripgrep tool over reading file chunks by chunks to find content. Use ripgrep to locate code, definitions, usages, and patterns first, then read_file for detailed inspection
+
 SKILLS:
 - Check <available_skills> below; activate relevant ones using the activate_skill tool
 - Skill instructions may use relative paths - run them from the skill's directory (derived from <location>)`
@@ -63,11 +66,18 @@ func Setup(cfg *config.Settings) (*Config, error) {
 	executeCommandTool := tools.NewExecuteCommandTool()
 	editFileTool := tools.NewEditFileTool()
 
+	agentTools := []llm.Tool{readFileTool, editFileTool, writeFileTool, activateSkillTool, executeCommandTool}
+
+	// Conditionally register ripgrep tool if rg binary is available
+	if tools.RGAvailable() {
+		agentTools = append(agentTools, tools.NewRipgrepTool())
+	}
+
 	return &Config{
 		Cfg:               cfg,
 		Provider:          nil, // Provider will be created when model is set
 		SkillsMgr:         skillsManager,
-		AgentTools:        []llm.Tool{readFileTool, editFileTool, writeFileTool, activateSkillTool, executeCommandTool},
+		AgentTools:        agentTools,
 		SystemPrompt:      systemPrompt,
 		ExtraSystemPrompt: cfg.SystemPrompt, // User-provided extra system prompt (supplemental, not replacement)
 		MaxSteps:          cfg.MaxSteps,

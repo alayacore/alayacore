@@ -182,6 +182,39 @@ func (h *ActivateSkillHandler) ShouldShowOutput() bool {
 	return true
 }
 
+// RipgrepHandler handles ripgrep calls.
+type RipgrepHandler struct{}
+
+func (h *RipgrepHandler) FormatCall(input json.RawMessage, _ *Styles) string {
+	var args struct {
+		Pattern  string `json:"pattern"`
+		Path     string `json:"path"`
+		FileType string `json:"file_type"`
+		Glob     string `json:"glob"`
+		MaxLines string `json:"max_lines"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return "ripgrep: <parse error>"
+	}
+
+	label := args.Pattern
+	if args.Path != "" {
+		label += " in " + args.Path
+	}
+	if args.FileType != "" {
+		label += " (" + args.FileType + ")"
+	}
+	if args.Glob != "" {
+		label += " [" + args.Glob + "]"
+	}
+	// Add newline at end so output starts on new line
+	return fmt.Sprintf("ripgrep: %s\n", label)
+}
+
+func (h *RipgrepHandler) ShouldShowOutput() bool {
+	return true
+}
+
 // ============================================================================
 // Handler Registry
 // ============================================================================
@@ -193,6 +226,7 @@ var ToolHandlers = map[string]ToolDisplayHandler{
 	"write_file":      &WriteFileHandler{},
 	"edit_file":       &EditFileHandler{},
 	"activate_skill":  &ActivateSkillHandler{},
+	"ripgrep":         &RipgrepHandler{},
 }
 
 // GetHandler returns the handler for a tool, or a generic fallback.
