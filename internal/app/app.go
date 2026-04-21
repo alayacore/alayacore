@@ -10,20 +10,20 @@ import (
 	"github.com/alayacore/alayacore/internal/tools"
 )
 
-// This package provides shared initialization for both terminal and web adaptors.
+// This package provides shared initialization for all adaptors.
 // It builds the system prompt, initializes tools, and creates the app config.
 
-const DefaultSystemPrompt = `IDENTITY:
+const systemPromptIdentity = `IDENTITY:
 - Your name is AlayaCore
-- You are a helpful AI assistant with access to tools for reading/writing files, executing commands, and activating skills
+- You are a helpful AI assistant with access to tools for reading/writing files, executing commands, and activating skills`
 
-RULES:
-- Never assume - verify with tools
+const systemPromptRules = `RULES:
+- Never assume - verify with tools`
 
-SEARCH:
-- Prefer the ripgrep tool over reading file chunks by chunks to find content. Use ripgrep to locate code, definitions, usages, and patterns first, then read_file for detailed inspection
+const systemPromptSearch = `SEARCH:
+- Prefer the ripgrep tool over reading file chunks by chunks to find content. Use ripgrep to locate code, definitions, usages, and patterns first, then read_file for detailed inspection`
 
-SKILLS:
+const systemPromptSkills = `SKILLS:
 - Check <available_skills> below; activate relevant ones using the activate_skill tool
 - Skill instructions may use relative paths - run them from the skill's directory (derived from <location>)`
 
@@ -40,24 +40,9 @@ type Config struct {
 
 // Setup initializes the common app components
 func Setup(cfg *config.Settings) (*Config, error) {
-	// Build the default system prompt
-	systemPrompt := DefaultSystemPrompt
-
 	skillsManager, err := skills.NewManager(cfg.Skills)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize skills: %w", err)
-	}
-
-	// Generate skills fragment for system prompt
-	skillsFragment := skillsManager.GenerateSystemPromptFragment()
-	if skillsFragment != "" {
-		systemPrompt = systemPrompt + "\n\n" + skillsFragment
-	}
-
-	// Add current working directory to system prompt (at the end for better API cache reuse)
-	cwd, err := os.Getwd()
-	if err == nil && cwd != "" {
-		systemPrompt = systemPrompt + "\n\nCurrent working directory: " + cwd
 	}
 
 	readFileTool := tools.NewReadFileTool()
@@ -69,8 +54,29 @@ func Setup(cfg *config.Settings) (*Config, error) {
 	agentTools := []llm.Tool{readFileTool, editFileTool, writeFileTool, activateSkillTool, executeCommandTool}
 
 	// Conditionally register ripgrep tool if rg binary is available
-	if tools.RGAvailable() {
+	rgAvailable := tools.RGAvailable()
+	if rgAvailable {
 		agentTools = append(agentTools, tools.NewRipgrepTool())
+	}
+
+	// Build the default system prompt
+	var systemPrompt string
+	if rgAvailable {
+		systemPrompt = systemPromptIdentity + "\n\n" + systemPromptRules + "\n\n" + systemPromptSearch + "\n\n" + systemPromptSkills
+	} else {
+		systemPrompt = systemPromptIdentity + "\n\n" + systemPromptRules + "\n\n" + systemPromptSkills
+	}
+
+	// Generate skills fragment for system prompt (appended right after SKILLS section)
+	skillsFragment := skillsManager.GenerateSystemPromptFragment()
+	if skillsFragment != "" {
+		systemPrompt = systemPrompt + "\n\n" + skillsFragment
+	}
+
+	// Add current working directory to system prompt (at the end for better API cache reuse)
+	cwd, err := os.Getwd()
+	if err == nil && cwd != "" {
+		systemPrompt = systemPrompt + "\n\nCurrent working directory: " + cwd
 	}
 
 	return &Config{
