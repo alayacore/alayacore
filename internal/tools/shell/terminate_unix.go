@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+// Job is a no-op type on Unix, returned as nil by AssignJob.
+type Job struct{}
+
+// Close is a no-op on Unix.
+func (j *Job) Close() error { return nil }
+
 // TerminateProcessGroup sends SIGINT to the process group, waits briefly,
 // then sends SIGKILL if the group hasn't exited.
 // pid must be the session leader PID (same as process group ID when

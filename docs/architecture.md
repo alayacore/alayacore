@@ -180,10 +180,10 @@ AlayaCore uses Go build tags for all OS-specific code. The only platform-depende
 | `shell.go` | *(all)* | `Shell` type, `Detect()`, `detect()` |
 | `shell_unix.go` | `!windows` | Unix shell defs (`bash`, `zsh`, `sh`), `knownShells` |
 | `shell_windows.go` | `windows` | Windows shell defs (`pwsh`, `powershell`, `cmd`), `knownShells` |
-| `exec_unix.go` | `!windows` | `SetDetachFlags` (setsid), `OpenDevNull` (/dev/null) |
-| `exec_windows.go` | `windows` | `SetDetachFlags` (CREATE_NO_WINDOW), `OpenDevNull` (NUL) |
+| `exec_unix.go` | `!windows` | `SetDetachFlags` (setsid), `OpenDevNull` (/dev/null), `AssignJob` (no-op), `ClearJob` (no-op) |
+| `exec_windows.go` | `windows` | `SetDetachFlags` (CREATE_NO_WINDOW + CREATE_NEW_PROCESS_GROUP), `OpenDevNull` (NUL) |
 | `terminate_unix.go` | `!windows` | `TerminateProcessGroup` (SIGINT → SIGKILL) |
-| `terminate_windows.go` | `windows` | `TerminateProcessGroup` (timeout → Kill) |
+| `terminate_windows.go` | `windows` | `Job` type, `AssignJob`, `ClearJob`, `TerminateProcessGroup` (Job Object → taskkill /F /T → Kill) |
 
 All other packages (LLM providers, session management, TLV protocol, skills, schema generation) are pure Go with no OS-specific code.
 

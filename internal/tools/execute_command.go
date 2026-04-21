@@ -60,11 +60,22 @@ func executeCommand(ctx context.Context, args executeCommandInput) (llm.ToolResu
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	// Set OS-specific detach flags (setsid on Unix, CREATE_NEW_CONSOLE on Windows).
+	// Set OS-specific detach flags (setsid on Unix, Job Object on Windows).
 	shell.SetDetachFlags(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return llm.NewTextErrorResponse("failed to start command: " + err.Error()), nil
+	}
+
+	// Assign the child process to a Job Object (Windows) so that the
+	// entire process tree can be killed on cancellation or timeout.
+	// On Unix this is a no-op.
+	job := shell.AssignJob(cmd.Process)
+	if job != nil {
+		defer func() {
+			shell.ClearJob()
+			_ = job.Close()
+		}()
 	}
 
 	// Apply a timeout so commands that hang (e.g. interactive programs like
