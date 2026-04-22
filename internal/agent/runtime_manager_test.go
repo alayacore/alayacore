@@ -45,18 +45,10 @@ func TestRuntimeManager(t *testing.T) {
 }
 
 func TestRuntimeManagerDefaultPath(t *testing.T) {
-	// Create a temporary directory for testing
-	tmpDir, err := os.MkdirTemp("", "alayacore-runtime-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	modelConfigPath := filepath.Join(tmpDir, "model.conf")
-
-	// Test creating RuntimeManager with empty runtime path (should use default)
-	rm := NewRuntimeManager("", modelConfigPath)
-	expectedPath := filepath.Join(tmpDir, "runtime.conf")
+	// Test creating RuntimeManager with empty runtime path (should use default ~/.alayacore/runtime.conf)
+	rm := NewRuntimeManager("", "")
+	home, _ := os.UserHomeDir()
+	expectedPath := filepath.Join(home, ".alayacore", "runtime.conf")
 	if rm.GetPath() != expectedPath {
 		t.Errorf("Expected path %s, got: %s", expectedPath, rm.GetPath())
 	}

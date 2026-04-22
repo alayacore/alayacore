@@ -29,28 +29,19 @@ type RuntimeManager struct {
 }
 
 // NewRuntimeManager creates a new runtime manager
-// If runtimePath is empty, it defaults to the same directory as modelConfigPath with filename "runtime.conf"
-// If modelConfigPath is also empty, it uses the default ~/.alayacore/runtime.conf
-func NewRuntimeManager(runtimePath, modelConfigPath string) *RuntimeManager {
+// If runtimePath is empty, it defaults to ~/.alayacore/runtime.conf
+func NewRuntimeManager(runtimePath, _ string) *RuntimeManager {
 	rm := &RuntimeManager{}
 
 	if runtimePath != "" {
 		rm.path = runtimePath
 	} else {
-		// Determine the directory for runtime.conf
-		var dir string
-		if modelConfigPath != "" {
-			// Use same directory as model.conf
-			dir = filepath.Dir(modelConfigPath)
-		} else {
-			// Use default ~/.alayacore directory
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return rm
-			}
-			dir = filepath.Join(home, ".alayacore")
+		// Use default ~/.alayacore/runtime.conf
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return rm
 		}
-		rm.path = filepath.Join(dir, "runtime.conf")
+		rm.path = filepath.Join(home, ".alayacore", "runtime.conf")
 	}
 
 	// Load if path is set
