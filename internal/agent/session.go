@@ -996,7 +996,12 @@ func (s *Session) compactHistory() {
 	}
 
 	// Build a set of tool call IDs for read_file calls on skill files
-	skillReadIDs := s.collectSkillReadCallIDs(msgs)
+	// Only needed if there are skills configured
+	var skillReadIDs map[string]bool
+	if len(s.skillPaths) > 0 {
+		// Only scan messages that could have tool calls whose results are in truncation zone
+		skillReadIDs = s.collectSkillReadCallIDs(msgs[:len(msgs)-recentSteps])
+	}
 
 	for i := 0; i < len(msgs)-recentSteps; i++ {
 		if msgs[i].Role != llm.RoleTool {
@@ -1008,7 +1013,7 @@ func (s *Session) compactHistory() {
 				continue
 			}
 			// Never truncate read_file results for skill files
-			if skillReadIDs[tr.ToolCallID] {
+			if len(skillReadIDs) > 0 && skillReadIDs[tr.ToolCallID] {
 				continue
 			}
 			textOut, ok := tr.Output.(llm.ToolResultOutputText)
