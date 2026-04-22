@@ -1040,6 +1040,7 @@ func (s *Session) collectSkillReadsFromMessage(msg llm.Message, skillReadIDs map
 
 // truncateToolResultsInMessage truncates tool results in a message, preserving skill reads.
 func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, skillReadIDs map[string]bool, maxLen int) {
+	const truncationMarker = "\n... [truncated for context efficiency]"
 	for j, part := range msg.Content {
 		tr, ok := part.(llm.ToolResultPart)
 		if !ok {
@@ -1049,14 +1050,21 @@ func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, sk
 			continue // preserve skill file reads
 		}
 		textOut, ok := tr.Output.(llm.ToolResultOutputText)
-		if !ok || len(textOut.Text) <= maxLen {
+		if !ok {
+			continue
+		}
+		// Skip if already truncated (marker suffix present)
+		if strings.HasSuffix(textOut.Text, truncationMarker) {
+			continue
+		}
+		if len(textOut.Text) <= maxLen {
 			continue
 		}
 		truncated := textOut.Text[:maxLen]
 		if idx := strings.LastIndex(truncated, "\n"); idx > 0 {
 			truncated = truncated[:idx]
 		}
-		truncated += "\n... [truncated for context efficiency]"
+		truncated += truncationMarker
 		s.Messages[msgIndex].Content[j] = llm.ToolResultPart{
 			Type:       "tool_result",
 			ToolCallID: tr.ToolCallID,
