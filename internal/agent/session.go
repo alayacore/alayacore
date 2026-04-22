@@ -680,7 +680,7 @@ func (s *Session) handleUserPrompt(ctx context.Context, prompt string) {
 
 func (s *Session) shouldAutoSummarize() bool {
 	return s.autoSummarizeEnabled && s.ContextLimit > 0 && s.ContextTokens > 0 &&
-		s.ContextTokens >= s.ContextLimit*80/100
+		s.ContextTokens >= s.ContextLimit*65/100
 }
 
 func (s *Session) doAutoSummarize(ctx context.Context) {
