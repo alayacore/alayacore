@@ -11,7 +11,7 @@ The entry point wires together all components:
 1. **`config.Parse()`** — Parses CLI flags into `config.Settings`
 2. **`app.Setup()`** — Initializes shared components:
    - Skills manager (loads skill metadata from `--skill` directories)
-   - Tools (`read_file`, `edit_file`, `write_file`, `execute_command`, `activate_skill`, and conditionally `search_content`)
+   - Tools (`read_file`, `edit_file`, `write_file`, `execute_command`, and conditionally `search_content`)
    - System prompt (default + skills section/fragment when configured + current working directory)
 3. **Adaptor creation** — Starts either the terminal or PlainIO adaptor
 
@@ -102,7 +102,6 @@ Messages are appended incrementally in `OnStepFinish` so they're preserved even 
 | `edit_file` | Search/replace edits on existing files | Medium | — |
 | `write_file` | Create or overwrite files | Dangerous | — |
 | `execute_command` | Execute commands in the detected shell (cross-platform). Output truncated at 32KB. | Most Dangerous | — |
-| `activate_skill` | Load and execute Agent Skills | Medium | — |
 | `search_content` | Search file contents using ripgrep (`rg`). 50 matching lines by default. | Safe | Requires `rg` binary |
 
 Each tool is implemented with type-safe input structs and auto-generated JSON schemas. All tools accept a `context.Context` parameter and respect cancellation — `:cancel` will interrupt long-running tool execution. See [schema-improvements.md](schema-improvements.md) for the pattern.
@@ -202,7 +201,7 @@ System Message 2: Extra System Prompt (from --system flag, repeatable)
 
 When `rg` is available, the default prompt includes a `SEARCH:` section that instructs the LLM to prefer the `search_content` tool for locating content over reading files chunk by chunk. This section is omitted when `rg` is not installed.
 
-When skill paths are provided via `--skill` and skills are discovered, the prompt includes a `SKILLS:` section (with instructions for using `activate_skill`) followed by an `<available_skills>` XML fragment. Both are omitted entirely when no skills are configured.
+When skill paths are provided via `--skill` and skills are discovered, the prompt includes a `SKILLS:` section (with instructions for reading `<location>` files) followed by an `<available_skills>` XML fragment. Both are omitted entirely when no skills are configured.
 
 Both providers (`openai`, `anthropic`) send these as two independent system
 messages. The default prompt and extra prompt are kept separate so the LLM API

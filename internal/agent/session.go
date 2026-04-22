@@ -972,9 +972,6 @@ func cleanIncompleteToolCalls(messages []llm.Message) []llm.Message {
 // Only tool results from the most recent steps are kept in full; older ones
 // are truncated to a summary. This prevents unbounded context growth in
 // long agent sessions where each step's tool I/O accumulates.
-//
-// activate_skill results are never truncated — the LLM needs full skill
-// instructions to follow them correctly in subsequent steps.
 func (s *Session) compactHistory() {
 	if !s.compactEnabled {
 		return
@@ -987,9 +984,6 @@ func (s *Session) compactHistory() {
 	if len(msgs) <= recentSteps {
 		return
 	}
-	// Build a set of tool call IDs for activate_skill so their results are preserved.
-	skillCallIDs := s.collectSkillCallIDs(msgs)
-
 	for i := 0; i < len(msgs)-recentSteps; i++ {
 		if msgs[i].Role != llm.RoleTool {
 			continue
@@ -997,10 +991,6 @@ func (s *Session) compactHistory() {
 		for j, part := range msgs[i].Content {
 			tr, ok := part.(llm.ToolResultPart)
 			if !ok {
-				continue
-			}
-			// Never truncate activate_skill results — the LLM needs full instructions
-			if skillCallIDs[tr.ToolCallID] {
 				continue
 			}
 			textOut, ok := tr.Output.(llm.ToolResultOutputText)
@@ -1020,31 +1010,6 @@ func (s *Session) compactHistory() {
 			}
 		}
 	}
-}
-
-// collectSkillCallIDs scans messages for tool calls to activate_skill and returns
-// their tool call IDs. This allows compactHistory to preserve their results.
-func (s *Session) collectSkillCallIDs(msgs []llm.Message) map[string]bool {
-	ids := make(map[string]bool)
-	for _, msg := range msgs {
-		if msg.Role != llm.RoleAssistant {
-			continue
-		}
-		for _, part := range msg.Content {
-			tc, ok := part.(llm.ToolCallPart)
-			if !ok || tc.ToolName != "activate_skill" {
-				continue
-			}
-			// Parse the input to confirm it's a valid activate_skill call
-			var input struct {
-				Name string `json:"name"`
-			}
-			if err := json.Unmarshal(tc.Input, &input); err == nil && input.Name != "" {
-				ids[tc.ToolCallID] = true
-			}
-		}
-	}
-	return ids
 }
 
 // ============================================================================

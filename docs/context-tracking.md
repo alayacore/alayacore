@@ -151,8 +151,6 @@ After compaction:
 
 Old tool results are cut at 500 characters, then snapped back to the last newline boundary to avoid partial lines. A `[truncated for context efficiency]` marker is appended so the LLM knows content was omitted.
 
-**`activate_skill` results are never truncated.** Skill instructions must be preserved in full because the LLM needs to follow them correctly in subsequent steps. The compaction code scans for `activate_skill` tool calls and exempts their corresponding results from truncation.
-
 ### Controlling Compaction
 
 - **Default**: Compaction is **enabled** — no flag needed

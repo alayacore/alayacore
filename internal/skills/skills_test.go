@@ -136,7 +136,7 @@ This is a test skill.`
 	}
 }
 
-func TestSkillActivation(t *testing.T) {
+func TestSkillLocation(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	skillDir := filepath.Join(tmpDir, "test-skill")
@@ -161,20 +161,14 @@ description: A test skill
 		t.Fatalf("NewManager failed: %v", err)
 	}
 
-	// Test activation
-	content, err := m.ActivateSkill("test-skill")
-	if err != nil {
-		t.Fatalf("ActivateSkill failed: %v", err)
+	metadata := m.GetMetadata()
+	if len(metadata) != 1 {
+		t.Fatalf("Expected 1 skill, got %d", len(metadata))
 	}
 
-	if !contains(content, "Test Skill Body") {
-		t.Error("Expected activated content to contain skill body")
-	}
-
-	// Test non-existent skill
-	_, err = m.ActivateSkill("non-existent")
-	if err == nil {
-		t.Error("Expected error for non-existent skill")
+	// Verify the location points to the SKILL.md file
+	if metadata[0].Location != skillFile {
+		t.Errorf("Expected location %s, got %s", skillFile, metadata[0].Location)
 	}
 }
 
@@ -258,23 +252,6 @@ description: Second skill from directory 2
 	}
 	if !skillNames["skill-two"] {
 		t.Error("Expected to find skill-two")
-	}
-
-	// Test activation of skills from different paths
-	content1, err := m.ActivateSkill("skill-one")
-	if err != nil {
-		t.Fatalf("ActivateSkill failed for skill-one: %v", err)
-	}
-	if !contains(content1, "Skill One") {
-		t.Error("Expected activated content to contain Skill One")
-	}
-
-	content2, err := m.ActivateSkill("skill-two")
-	if err != nil {
-		t.Fatalf("ActivateSkill failed for skill-two: %v", err)
-	}
-	if !contains(content2, "Skill Two") {
-		t.Error("Expected activated content to contain Skill Two")
 	}
 
 	// Verify system prompt contains both skills

@@ -164,24 +164,6 @@ func (h *EditFileHandler) ShouldShowOutput() bool {
 	return false
 }
 
-// ActivateSkillHandler handles activate_skill calls.
-type ActivateSkillHandler struct{}
-
-func (h *ActivateSkillHandler) FormatCall(input json.RawMessage, _ *Styles) string {
-	var args struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(input, &args); err != nil {
-		return "activate_skill: <parse error>"
-	}
-	// Add newline at end so output starts on new line
-	return fmt.Sprintf("activate_skill: %s\n", args.Name)
-}
-
-func (h *ActivateSkillHandler) ShouldShowOutput() bool {
-	return true
-}
-
 // SearchContentHandler handles search_content calls.
 type SearchContentHandler struct{}
 
@@ -229,7 +211,6 @@ var ToolHandlers = map[string]ToolDisplayHandler{
 	"read_file":       &ReadFileHandler{},
 	"write_file":      &WriteFileHandler{},
 	"edit_file":       &EditFileHandler{},
-	"activate_skill":  &ActivateSkillHandler{},
 	"search_content":  &SearchContentHandler{},
 }
 

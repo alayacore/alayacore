@@ -19,7 +19,7 @@ const systemPromptRules = `Never assume - verify with tools.`
 
 const systemPromptSearch = `Use search_content to locate code and patterns before using read_file for detailed inspection.`
 
-const systemPromptSkills = `Check <available_skills> below; activate relevant ones using the activate_skill tool. Skill instructions may use relative paths - run them from the skill's directory (derived from <location>).`
+const systemPromptSkills = `Check <available_skills> below; read the <location> file to load relevant skill instructions. Skill instructions may use relative paths - run them from the skill's directory (derived from <location>).`
 
 // Config holds the common app configuration
 type Config struct {
@@ -41,11 +41,10 @@ func Setup(cfg *config.Settings) (*Config, error) {
 
 	readFileTool := tools.NewReadFileTool()
 	writeFileTool := tools.NewWriteFileTool()
-	activateSkillTool := tools.NewActivateSkillTool(skillsManager)
 	executeCommandTool := tools.NewExecuteCommandTool()
 	editFileTool := tools.NewEditFileTool()
 
-	agentTools := []llm.Tool{readFileTool, editFileTool, writeFileTool, activateSkillTool, executeCommandTool}
+	agentTools := []llm.Tool{readFileTool, editFileTool, writeFileTool, executeCommandTool}
 
 	// Conditionally register search_content tool if rg binary is available
 	rgAvailable := tools.RGAvailable()

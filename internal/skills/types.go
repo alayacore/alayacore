@@ -15,6 +15,5 @@ type Skill struct {
 	Name        string
 	Description string
 	Location    string
-	Content     string // Full SKILL.md content (loaded on activation)
 	Metadata    Metadata
 }

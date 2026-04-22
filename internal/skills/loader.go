@@ -109,19 +109,8 @@ func (m *Manager) loadSkillMetadata(skillFile, dirName string) (Skill, error) {
 		Name:        metadata.Name,
 		Description: metadata.Description,
 		Location:    skillFile,
-		Content:     string(content), // Store full content for activation
 		Metadata:    metadata,
 	}, nil
-}
-
-// ActivateSkill loads the full content of a skill
-func (m *Manager) ActivateSkill(name string) (string, error) {
-	for _, skill := range m.skills {
-		if skill.Name == name {
-			return skill.Content, nil
-		}
-	}
-	return "", fmt.Errorf("skill not found: %s", name)
 }
 
 // GetMetadata returns all skill metadata for system prompt injection

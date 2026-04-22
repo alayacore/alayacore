@@ -202,13 +202,6 @@ func formatToolCall(name, input string) string {
 		if err := json.Unmarshal([]byte(input), &args); err == nil {
 			return fmt.Sprintf("[%s: %s]", name, args.Path)
 		}
-	case "activate_skill":
-		var args struct {
-			Name string `json:"name"`
-		}
-		if err := json.Unmarshal([]byte(input), &args); err == nil {
-			return fmt.Sprintf("[%s: %s]", name, args.Name)
-		}
 	}
 	return fmt.Sprintf("[%s]", name)
 }
