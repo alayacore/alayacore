@@ -1003,58 +1003,64 @@ func (s *Session) compactHistory() {
 
 	for i := 0; i < truncateBoundary; i++ {
 		msg := msgs[i]
-
 		switch msg.Role {
 		case llm.RoleAssistant:
-			// Collect skill read IDs from tool calls in this message
-			if len(s.skillPaths) == 0 {
-				continue
-			}
-			for _, part := range msg.Content {
-				tc, ok := part.(llm.ToolCallPart)
-				if !ok || tc.ToolName != "read_file" {
-					continue
-				}
-				var input struct {
-					Path string `json:"path"`
-				}
-				if err := json.Unmarshal(tc.Input, &input); err != nil || input.Path == "" {
-					continue
-				}
-				readPath := filepath.Clean(input.Path)
-				if abs, err := filepath.Abs(input.Path); err == nil {
-					readPath = abs
-				}
-				if s.skillPaths[readPath] {
-					skillReadIDs[tc.ToolCallID] = true
-				}
-			}
-
+			s.collectSkillReadsFromMessage(msg, skillReadIDs)
 		case llm.RoleTool:
-			// Truncate tool results (unless they're skill file reads)
-			for j, part := range msg.Content {
-				tr, ok := part.(llm.ToolResultPart)
-				if !ok {
-					continue
-				}
-				if skillReadIDs[tr.ToolCallID] {
-					continue // preserve skill file reads
-				}
-				textOut, ok := tr.Output.(llm.ToolResultOutputText)
-				if !ok || len(textOut.Text) <= maxOldLen {
-					continue
-				}
-				truncated := textOut.Text[:maxOldLen]
-				if idx := strings.LastIndex(truncated, "\n"); idx > 0 {
-					truncated = truncated[:idx]
-				}
-				truncated += "\n... [truncated for context efficiency]"
-				msgs[i].Content[j] = llm.ToolResultPart{
-					Type:       "tool_result",
-					ToolCallID: tr.ToolCallID,
-					Output:     llm.ToolResultOutputText{Type: "text", Text: truncated},
-				}
-			}
+			s.truncateToolResultsInMessage(msg, i, skillReadIDs, maxOldLen)
+		}
+	}
+}
+
+// collectSkillReadsFromMessage extracts tool call IDs for read_file calls on skill files.
+func (s *Session) collectSkillReadsFromMessage(msg llm.Message, skillReadIDs map[string]bool) {
+	if len(s.skillPaths) == 0 {
+		return
+	}
+	for _, part := range msg.Content {
+		tc, ok := part.(llm.ToolCallPart)
+		if !ok || tc.ToolName != "read_file" {
+			continue
+		}
+		var input struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(tc.Input, &input); err != nil || input.Path == "" {
+			continue
+		}
+		readPath := filepath.Clean(input.Path)
+		if abs, err := filepath.Abs(input.Path); err == nil {
+			readPath = abs
+		}
+		if s.skillPaths[readPath] {
+			skillReadIDs[tc.ToolCallID] = true
+		}
+	}
+}
+
+// truncateToolResultsInMessage truncates tool results in a message, preserving skill reads.
+func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, skillReadIDs map[string]bool, maxLen int) {
+	for j, part := range msg.Content {
+		tr, ok := part.(llm.ToolResultPart)
+		if !ok {
+			continue
+		}
+		if skillReadIDs[tr.ToolCallID] {
+			continue // preserve skill file reads
+		}
+		textOut, ok := tr.Output.(llm.ToolResultOutputText)
+		if !ok || len(textOut.Text) <= maxLen {
+			continue
+		}
+		truncated := textOut.Text[:maxLen]
+		if idx := strings.LastIndex(truncated, "\n"); idx > 0 {
+			truncated = truncated[:idx]
+		}
+		truncated += "\n... [truncated for context efficiency]"
+		s.Messages[msgIndex].Content[j] = llm.ToolResultPart{
+			Type:       "tool_result",
+			ToolCallID: tr.ToolCallID,
+			Output:     llm.ToolResultOutputText{Type: "text", Text: truncated},
 		}
 	}
 }
