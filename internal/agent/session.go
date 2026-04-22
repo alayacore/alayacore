@@ -145,7 +145,6 @@ type Session struct {
 	autoSummarizeEnabled bool
 	compactEnabled       bool
 	autoSaveEnabled      bool
-	skillPaths           map[string]bool // Normalized skill file paths for compaction exemption
 	maxSteps             int
 	proxyURL             string
 
@@ -203,7 +202,6 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 		autoSummarizeEnabled: autoSummarize,
 		compactEnabled:       !noCompact,
 		autoSaveEnabled:      autoSave,
-		skillPaths:           buildSkillPathSet(skillsMgr),
 		proxyURL:             proxyURL,
 		maxSteps:             maxSteps,
 		taskQueue:            make([]QueueItem, 0),
@@ -238,7 +236,6 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 		autoSummarizeEnabled: autoSummarize,
 		compactEnabled:       !noCompact,
 		autoSaveEnabled:      autoSave,
-		skillPaths:           buildSkillPathSet(skillsMgr),
 		proxyURL:             proxyURL,
 		maxSteps:             maxSteps,
 		taskQueue:            make([]QueueItem, 0),
@@ -979,9 +976,6 @@ func cleanIncompleteToolCalls(messages []llm.Message) []llm.Message {
 // Only tool results from the most recent steps are kept in full; older ones
 // are truncated to a summary. This prevents unbounded context growth in
 // long agent sessions where each step's tool I/O accumulates.
-//
-// read_file results for skill files are never truncated — the LLM needs full
-// skill instructions to follow them correctly across multiple prompts.
 func (s *Session) compactHistory() {
 	if !s.compactEnabled {
 		return
@@ -996,58 +990,21 @@ func (s *Session) compactHistory() {
 		return
 	}
 
-	// Build skill read ID set on-the-fly as we iterate
-	// Messages are ordered chronologically, so tool calls (in assistant messages)
-	// appear before their corresponding tool results.
-	skillReadIDs := make(map[string]bool)
-
 	for i := 0; i < truncateBoundary; i++ {
 		msg := msgs[i]
-		switch msg.Role {
-		case llm.RoleAssistant:
-			s.collectSkillReadsFromMessage(msg, skillReadIDs)
-		case llm.RoleTool:
-			s.truncateToolResultsInMessage(msg, i, skillReadIDs, maxOldLen)
+		if msg.Role == llm.RoleTool {
+			s.truncateToolResultsInMessage(msg, i, maxOldLen)
 		}
 	}
 }
 
-// collectSkillReadsFromMessage extracts tool call IDs for read_file calls on skill files.
-func (s *Session) collectSkillReadsFromMessage(msg llm.Message, skillReadIDs map[string]bool) {
-	if len(s.skillPaths) == 0 {
-		return
-	}
-	for _, part := range msg.Content {
-		tc, ok := part.(llm.ToolCallPart)
-		if !ok || tc.ToolName != "read_file" {
-			continue
-		}
-		var input struct {
-			Path string `json:"path"`
-		}
-		if err := json.Unmarshal(tc.Input, &input); err != nil || input.Path == "" {
-			continue
-		}
-		readPath := filepath.Clean(input.Path)
-		if abs, err := filepath.Abs(input.Path); err == nil {
-			readPath = abs
-		}
-		if s.skillPaths[readPath] {
-			skillReadIDs[tc.ToolCallID] = true
-		}
-	}
-}
-
-// truncateToolResultsInMessage truncates tool results in a message, preserving skill reads.
-func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, skillReadIDs map[string]bool, maxLen int) {
+// truncateToolResultsInMessage truncates tool results in a message.
+func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, maxLen int) {
 	const truncationMarker = "\n... [truncated for context efficiency]"
 	for j, part := range msg.Content {
 		tr, ok := part.(llm.ToolResultPart)
 		if !ok {
 			continue
-		}
-		if skillReadIDs[tr.ToolCallID] {
-			continue // preserve skill file reads
 		}
 		textOut, ok := tr.Output.(llm.ToolResultOutputText)
 		if !ok {
@@ -1071,27 +1028,6 @@ func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, sk
 			Output:     llm.ToolResultOutputText{Type: "text", Text: truncated},
 		}
 	}
-}
-
-// buildSkillPathSet creates a normalized path set from skill locations.
-// Called once at session creation since skills are fixed during process lifetime.
-func buildSkillPathSet(skillsMgr *skills.Manager) map[string]bool {
-	if skillsMgr == nil {
-		return nil
-	}
-	skillPaths := skillsMgr.GetSkillPaths()
-	if len(skillPaths) == 0 {
-		return nil
-	}
-	pathSet := make(map[string]bool)
-	for _, p := range skillPaths {
-		absPath := filepath.Clean(p)
-		if abs, err := filepath.Abs(p); err == nil {
-			absPath = abs
-		}
-		pathSet[absPath] = true
-	}
-	return pathSet
 }
 
 // ============================================================================

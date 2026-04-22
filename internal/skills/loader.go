@@ -118,16 +118,6 @@ func (m *Manager) GetMetadata() []Skill {
 	return m.skills
 }
 
-// GetSkillPaths returns the file paths to all skill SKILL.md files.
-// Used by session.compactHistory to exempt skill file reads from truncation.
-func (m *Manager) GetSkillPaths() []string {
-	paths := make([]string, len(m.skills))
-	for i, skill := range m.skills {
-		paths[i] = skill.Location
-	}
-	return paths
-}
-
 // GenerateSystemPromptFragment generates the XML fragment for system prompt
 func (m *Manager) GenerateSystemPromptFragment() string {
 	if len(m.skills) == 0 {
