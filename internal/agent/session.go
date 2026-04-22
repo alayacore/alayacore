@@ -382,6 +382,7 @@ func createProviderFromConfig(config *ModelConfig, debugAPI bool, proxyURL strin
 		Model:       config.ModelName,
 		HTTPClient:  client,
 		PromptCache: config.PromptCache,
+		MaxTokens:   config.MaxTokens,
 	})
 }
 
@@ -970,8 +971,8 @@ func cleanIncompleteToolCalls(messages []llm.Message) []llm.Message {
 // long agent sessions where each step's tool I/O accumulates.
 func (s *Session) compactHistory() {
 	const (
-		recentSteps = 6        // Keep last N messages (3 steps: prompt/tool-call/tool-result) intact
-		maxOldLen   = 500      // Truncate old tool results to this many characters
+		recentSteps = 6   // Keep last N messages (3 steps: prompt/tool-call/tool-result) intact
+		maxOldLen   = 500 // Truncate old tool results to this many characters
 	)
 	msgs := s.Messages
 	if len(msgs) <= recentSteps {

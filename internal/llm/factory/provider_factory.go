@@ -17,6 +17,7 @@ type ProviderConfig struct {
 	Model       string
 	HTTPClient  *http.Client
 	PromptCache bool // Enable prompt caching (Anthropic only)
+	MaxTokens   int  // Maximum output tokens (0 = provider default)
 }
 
 // NewProvider creates a provider based on configuration
@@ -35,6 +36,9 @@ func NewProvider(config ProviderConfig) (llm.Provider, error) {
 		}
 		if config.Model != "" {
 			opts = append(opts, providers.WithAnthropicModel(config.Model))
+		}
+		if config.MaxTokens > 0 {
+			opts = append(opts, providers.WithMaxTokens(config.MaxTokens))
 		}
 		return providers.NewAnthropic(opts...)
 
