@@ -19,7 +19,7 @@ const systemPromptRules = `Never assume - verify with tools.`
 
 const systemPromptSearch = `Use search_content to locate code and patterns before using read_file for detailed inspection.`
 
-const systemPromptSkills = `Check <available_skills> below; read the <location> file to load relevant skill instructions. Skill instructions may use relative paths - run them from the skill's directory (derived from <location>).`
+const systemPromptSkills = `Check <available_skills> below; read the <location> file to load relevant skill instructions. Skill instructions may use relative paths - run them from the skill's directory (derived from <location>). If a skill file's content was truncated (indicated by a truncation marker), re-read it before using the skill.`
 
 // Config holds the common app configuration
 type Config struct {

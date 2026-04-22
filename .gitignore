@@ -7,3 +7,4 @@ alayacore-*.log
 *.swp
 *~
 .obsidian/
+.playwright-cli/
