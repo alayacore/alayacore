@@ -1,6 +1,6 @@
 # Context Token Tracking
 
-How AlayaCore tracks conversation context size across LLM API calls and providers.
+How AlayaCore tracks conversation context size across LLM API calls and providers, and how it manages context efficiency through history compaction.
 
 ## Overview
 
@@ -125,6 +125,43 @@ The apparent "drop" from 2118 to 2073 after model switch is the difference in to
 
 ## Related
 
-- `shouldAutoSummarize()` — triggers when `ContextTokens >= ContextLimit * 80%` (only when `--auto-summarize` is enabled)
+- `shouldAutoSummarize()` — triggers when `ContextTokens >= ContextLimit * 65%` (only when `--auto-summarize` is enabled)
 - `summarize()` — appends the summary prompt to Messages, calls `processPrompt`, then replaces conversation history with the summary and resets `ContextTokens` to the summary's output token count
 - `applyModelContextLimit()` — sets `ContextLimit` from the active model's config
+- `compactHistory()` — truncates old tool results (> 6 messages back) to 500 characters to save context tokens. Enabled by default; disabled with `--no-compact`.
+
+## History Compaction
+
+In long agent sessions, tool result outputs accumulate and consume increasing amounts of context. A 10-step session with file reads and command executions can easily contain 100K+ tokens of old tool I/O.
+
+### How It Works
+
+`compactHistory()` is called after each user prompt completes. It truncates tool result outputs that are older than the last 6 messages (roughly 3 agent steps) to 500 characters. The most recent results are kept intact.
+
+```
+Before compaction (9 messages):
+  [user] [assistant] [tool result: 15KB] [assistant] [tool result: 20KB] [assistant] [tool result: 8KB] [assistant] [assistant]
+                                        ^truncated to 500B              ^truncated to 500B             ^kept full    ^kept full
+
+After compaction:
+  [user] [assistant] [tool result: 500B] [assistant] [tool result: 500B] [assistant] [tool result: 8KB] [assistant] [assistant]
+```
+
+### Truncation Strategy
+
+Old tool results are cut at 500 characters, then snapped back to the last newline boundary to avoid partial lines. A `[truncated for context efficiency]` marker is appended so the LLM knows content was omitted.
+
+### Controlling Compaction
+
+- **Default**: Compaction is **enabled** — no flag needed
+- **Disable**: `alayacore --no-compact` keeps all tool results in full (useful for debugging or when context budget is not a concern)
+
+### Other Context-Saving Measures
+
+| Mechanism | Default | Description |
+|-----------|---------|-------------|
+| `read_file` size limit | 32KB | Full file reads capped at 32KB (~8K tokens); use `start_line`/`end_line` for larger files |
+| `search_content` max lines | 50 | Default result count capped at 50 lines; increase with `max_lines` parameter |
+| `execute_command` output truncation | 32KB | Command output truncated with head+tail preservation when exceeding 32KB |
+| Tool descriptions | Compressed | Minimal descriptions and schemas to reduce per-request overhead |
+| Auto-summarize threshold | 65% | Triggers summarization at 65% of context limit (lowered from 80% to prevent mid-step overflow) |

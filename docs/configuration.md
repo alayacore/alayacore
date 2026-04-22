@@ -40,6 +40,7 @@ prompt_cache: true
 | `api_key` | Yes | API key for authentication |
 | `model_name` | Yes | Model identifier sent to the API |
 | `context_limit` | No | Maximum context window in tokens. `0` means unlimited. Used for context display and auto-summarization. |
+| `max_tokens` | No | Maximum output tokens per response. `0` means use the provider default (4096 for Anthropic). |
 | `prompt_cache` | No | Enable prompt caching for Anthropic APIs. Adds `cache_control` markers to system prompts for reduced latency and cost. Ignored by OpenAI providers. |
 
 ### Multiple Models

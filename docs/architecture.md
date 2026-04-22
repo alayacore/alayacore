@@ -64,6 +64,7 @@ The session layer manages conversation state, task execution, and model interact
 | `RuntimeManager` | Persists runtime settings (active model, active theme) to `runtime.conf` |
 | `CommandRegistry` | Declarative registration of session commands (`:save`, `:cancel`, etc.) |
 | `ContextTokens` | Tracks conversation context size across API calls. See [context-tracking.md](context-tracking.md). |
+| `compactHistory()` | Truncates old tool results to save context. Enabled by default; disable with `--no-compact`. |
 
 ### Agent Layer (`internal/llm/`)
 
@@ -97,12 +98,12 @@ Messages are appended incrementally in `OnStepFinish` so they're preserved even 
 
 | Tool | Description | Safety | Dependency |
 |------|-------------|--------|------------|
-| `read_file` | Read file contents with optional line ranges | Safe | — |
+| `read_file` | Read file contents with optional line ranges. 32KB max for full reads. | Safe | — |
 | `edit_file` | Search/replace edits on existing files | Medium | — |
 | `write_file` | Create or overwrite files | Dangerous | — |
-| `execute_command` | Execute commands in the detected shell (cross-platform) | Most Dangerous | — |
+| `execute_command` | Execute commands in the detected shell (cross-platform). Output truncated at 32KB. | Most Dangerous | — |
 | `activate_skill` | Load and execute Agent Skills | Medium | — |
-| `search_content` | Search file contents using ripgrep (`rg`) | Safe | Requires `rg` binary |
+| `search_content` | Search file contents using ripgrep (`rg`). 50 matching lines by default. | Safe | Requires `rg` binary |
 
 Each tool is implemented with type-safe input structs and auto-generated JSON schemas. All tools accept a `context.Context` parameter and respect cancellation — `:cancel` will interrupt long-running tool execution. See [schema-improvements.md](schema-improvements.md) for the pattern.
 
@@ -271,6 +272,7 @@ Agent.Stream() receives tool_call event
 8. **Typed Tools** — `TypedExecute[T]` wrapper for type-safe tool implementations with auto-generated schemas.
 9. **Lazy Agent Init** — Agent and provider are created on first use, not at startup.
 10. **Sequential Tool Execution** — Tools execute one at a time. See [sequential-tool-execution.md](sequential-tool-execution.md).
+11. **Context Efficiency** — Tool descriptions are minimal, outputs are size-capped (32KB), search results limited (50 lines), and old tool results are compacted to save tokens. See [context-tracking.md](context-tracking.md).
 
 ## Gotchas
 

@@ -71,8 +71,9 @@ export ALAYACORE_SHELL=zsh
 | `--proxy` | *(none)* | Proxy URL. Supports `http://`, `https://`, and `socks5://` schemes |
 | `--themes` | `~/.alayacore/themes/` | Path to themes directory |
 | `--max-steps` | `100` | Maximum number of agent loop iterations per prompt |
-| `--auto-summarize` | `false` | Automatically summarize when context exceeds 80% of `context_limit` |
+| `--auto-summarize` | `false` | Automatically summarize when context exceeds 65% of `context_limit` |
 | `--auto-save` | `true` | Auto-save session after each response (requires `--session`) |
+| `--no-compact` | `false` | Disable automatic history compaction (old tool results are kept in full) |
 | `--plainio` | `false` | Plain stdin/stdout mode — no TUI, for scripting and piping |
 | `--debug-api` | `false` | Write raw API requests and responses to a log file |
 | `--version` | — | Print version and exit |
