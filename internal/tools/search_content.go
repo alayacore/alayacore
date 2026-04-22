@@ -31,19 +31,7 @@ func RGAvailable() bool {
 func NewSearchContentTool() llm.Tool {
 	return llm.NewTool(
 		"search_content",
-		`Search file contents using ripgrep (rg). This is the fastest way to find text patterns in files.
-
-PREFER this tool over reading files chunk by chunk when you need to:
-- Find where a specific string, function, variable, or pattern is defined or used
-- Locate files containing certain content
-- Search across a codebase
-
-Examples:
-- Find all Go files containing "func main": pattern="func main", file_type="go"
-- Find TODO comments in a directory: pattern="TODO", path="./src"
-- Find all imports of a package: pattern="import.*fmt"
-- Find a function definition: pattern="func MyFunction"
-- Case-insensitive search: pattern="error", ignore_case="true"`,
+		`Search file contents using ripgrep. Supports regex, file type filters, glob patterns, and case-insensitive search. Use this instead of reading files to locate code, definitions, and patterns.`,
 	).
 		WithSchema(llm.GenerateSchema(SearchContentInput{})).
 		WithExecute(llm.TypedExecute(executeSearchContent)).
