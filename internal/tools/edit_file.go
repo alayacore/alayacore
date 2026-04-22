@@ -20,27 +20,7 @@ type EditFileInput struct {
 func NewEditFileTool() llm.Tool {
 	return llm.NewTool(
 		"edit_file",
-		`Apply a search/replace edit to a file.
-
-If you already have the file's exact text from a prior read or write in this conversation, use it directly without re-reading.
-
-Parameters:
-- path: The file path to edit
-- old_string: The exact text to find (must match exactly including all whitespace, indentation, newlines)
-- new_string: The replacement text
-
-Requirements:
-- old_string must match EXACTLY (every space, tab, newline, character)
-- Include 3-5 lines of context to make old_string unique
-- If old_string appears multiple times, the edit fails
-- To replace multiple occurrences, make separate calls with unique context
-
-Example:
-{
-  "path": "test.go",
-  "old_string": "func old() {\n    doSomething()\n}",
-  "new_string": "func new() {\n    doSomethingElse()\n}"
-}`,
+		`Apply a search/replace edit to a file. old_string must match EXACTLY (every space, tab, newline). Use 3-5 lines of context to make it unique. If old_string appears multiple times, the edit fails.`,
 	).
 		WithSchema(llm.GenerateSchema(EditFileInput{})).
 		WithExecute(llm.TypedExecute(executeEditFile)).
