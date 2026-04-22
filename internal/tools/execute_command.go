@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
@@ -17,6 +18,11 @@ import (
 // hanging indefinitely when run without a TTY — they start successfully but
 // never exit because they're waiting for terminal input that never arrives.
 const defaultCommandTimeout = 2 * time.Minute
+
+// maxCommandOutput is the maximum size of command output returned to the LLM.
+// Large outputs (e.g. find /, verbose test runs) waste context tokens.
+// The agent can redirect to a file or use head/tail if more output is needed.
+const maxCommandOutput = 32 * 1024 // 32KB
 
 // executeCommandInput represents the input for the execute_command tool
 type executeCommandInput struct {
@@ -109,6 +115,7 @@ func handleCommandCancellation(cmd *exec.Cmd, done chan error, stdout, stderr *b
 		shell.TerminateProcessGroup(process, done)
 	}
 	output := formatCommandOutput(stdout, stderr, -1) // canceled, always show labels
+	output = truncateCommandOutput(output)
 	if output != "" {
 		return llm.NewTextErrorResponse("Canceled\n" + output)
 	}
@@ -121,6 +128,7 @@ func handleCommandTimeout(cmd *exec.Cmd, done chan error, stdout, stderr *bytes.
 		shell.TerminateProcessGroup(process, done)
 	}
 	output := formatCommandOutput(stdout, stderr, -1)
+	output = truncateCommandOutput(output)
 	if output != "" {
 		return llm.NewTextErrorResponse("Timed out\n" + output)
 	}
@@ -136,6 +144,7 @@ func handleCommandCompletion(execErr error, stdout, stderr *bytes.Buffer) llm.To
 	}
 
 	output := formatCommandOutput(stdout, stderr, exitCode)
+	output = truncateCommandOutput(output)
 
 	if execErr != nil {
 		if exitErr, ok := execErr.(*exec.ExitError); ok {
@@ -164,4 +173,26 @@ func formatCommandOutput(stdout, stderr *bytes.Buffer, exitCode int) string {
 		output += "STDERR:\n" + stderr.String()
 	}
 	return output
+}
+
+// truncateCommandOutput limits output size to prevent wasting context tokens.
+// When truncated, it keeps the head and tail so the LLM sees the beginning
+// (usually the command echo/header) and the end (usually the error/summary).
+func truncateCommandOutput(output string) string {
+	if len(output) <= maxCommandOutput {
+		return output
+	}
+
+	half := maxCommandOutput / 2
+	head := output[:half]
+
+	// Find a clean line boundary for the tail
+	tailStart := len(output) - half
+	if idx := strings.IndexByte(output[tailStart:], '\n'); idx >= 0 {
+		tailStart += idx + 1
+	}
+	tail := output[tailStart:]
+
+	truncatedBytes := len(output) - len(head) - len(tail)
+	return head + fmt.Sprintf("\n... [%d bytes truncated] ...\n", truncatedBytes) + tail
 }
