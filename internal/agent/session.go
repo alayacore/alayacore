@@ -991,88 +991,72 @@ func (s *Session) compactHistory() {
 		maxOldLen   = 500 // Truncate old tool results to this many characters
 	)
 	msgs := s.Messages
-	if len(msgs) <= recentSteps {
+	truncateBoundary := len(msgs) - recentSteps
+	if truncateBoundary <= 0 {
 		return
 	}
 
-	// Build a set of tool call IDs for read_file calls on skill files
-	// Only needed if there are skills configured
-	var skillReadIDs map[string]bool
-	if len(s.skillPaths) > 0 {
-		// Only scan messages that could have tool calls whose results are in truncation zone
-		skillReadIDs = s.collectSkillReadCallIDs(msgs[:len(msgs)-recentSteps])
-	}
+	// Build skill read ID set on-the-fly as we iterate
+	// Messages are ordered chronologically, so tool calls (in assistant messages)
+	// appear before their corresponding tool results.
+	skillReadIDs := make(map[string]bool)
 
-	for i := 0; i < len(msgs)-recentSteps; i++ {
-		if msgs[i].Role != llm.RoleTool {
-			continue
-		}
-		for j, part := range msgs[i].Content {
-			tr, ok := part.(llm.ToolResultPart)
-			if !ok {
-				continue
-			}
-			// Never truncate read_file results for skill files
-			if len(skillReadIDs) > 0 && skillReadIDs[tr.ToolCallID] {
-				continue
-			}
-			textOut, ok := tr.Output.(llm.ToolResultOutputText)
-			if !ok || len(textOut.Text) <= maxOldLen {
-				continue
-			}
-			truncated := textOut.Text[:maxOldLen]
-			// Cut at last newline to avoid partial lines
-			if idx := strings.LastIndex(truncated, "\n"); idx > 0 {
-				truncated = truncated[:idx]
-			}
-			truncated += "\n... [truncated for context efficiency]"
-			msgs[i].Content[j] = llm.ToolResultPart{
-				Type:       "tool_result",
-				ToolCallID: tr.ToolCallID,
-				Output:     llm.ToolResultOutputText{Type: "text", Text: truncated},
-			}
-		}
-	}
-}
+	for i := 0; i < truncateBoundary; i++ {
+		msg := msgs[i]
 
-// collectSkillReadCallIDs scans messages for read_file calls on skill files
-// and returns their tool call IDs. This allows compactHistory to preserve
-// skill instructions from truncation.
-func (s *Session) collectSkillReadCallIDs(msgs []llm.Message) map[string]bool {
-	ids := make(map[string]bool)
-
-	if len(s.skillPaths) == 0 {
-		return ids
-	}
-
-	for _, msg := range msgs {
-		if msg.Role != llm.RoleAssistant {
-			continue
-		}
-		for _, part := range msg.Content {
-			tc, ok := part.(llm.ToolCallPart)
-			if !ok || tc.ToolName != "read_file" {
+		switch msg.Role {
+		case llm.RoleAssistant:
+			// Collect skill read IDs from tool calls in this message
+			if len(s.skillPaths) == 0 {
 				continue
 			}
-			// Parse the input to get the path
-			var input struct {
-				Path string `json:"path"`
+			for _, part := range msg.Content {
+				tc, ok := part.(llm.ToolCallPart)
+				if !ok || tc.ToolName != "read_file" {
+					continue
+				}
+				var input struct {
+					Path string `json:"path"`
+				}
+				if err := json.Unmarshal(tc.Input, &input); err != nil || input.Path == "" {
+					continue
+				}
+				readPath := filepath.Clean(input.Path)
+				if abs, err := filepath.Abs(input.Path); err == nil {
+					readPath = abs
+				}
+				if s.skillPaths[readPath] {
+					skillReadIDs[tc.ToolCallID] = true
+				}
 			}
-			if err := json.Unmarshal(tc.Input, &input); err != nil || input.Path == "" {
-				continue
-			}
-			// Normalize the read path
-			readPath := filepath.Clean(input.Path)
-			if abs, err := filepath.Abs(input.Path); err == nil {
-				readPath = abs
-			}
-			// Check if it matches a skill file
-			if s.skillPaths[readPath] {
-				ids[tc.ToolCallID] = true
+
+		case llm.RoleTool:
+			// Truncate tool results (unless they're skill file reads)
+			for j, part := range msg.Content {
+				tr, ok := part.(llm.ToolResultPart)
+				if !ok {
+					continue
+				}
+				if skillReadIDs[tr.ToolCallID] {
+					continue // preserve skill file reads
+				}
+				textOut, ok := tr.Output.(llm.ToolResultOutputText)
+				if !ok || len(textOut.Text) <= maxOldLen {
+					continue
+				}
+				truncated := textOut.Text[:maxOldLen]
+				if idx := strings.LastIndex(truncated, "\n"); idx > 0 {
+					truncated = truncated[:idx]
+				}
+				truncated += "\n... [truncated for context efficiency]"
+				msgs[i].Content[j] = llm.ToolResultPart{
+					Type:       "tool_result",
+					ToolCallID: tr.ToolCallID,
+					Output:     llm.ToolResultOutputText{Type: "text", Text: truncated},
+				}
 			}
 		}
 	}
-	return ids
 }
 
 // buildSkillPathSet creates a normalized path set from skill locations.
