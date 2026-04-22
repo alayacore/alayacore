@@ -19,7 +19,7 @@ type SearchContentInput struct {
 	MaxLines   string `json:"max_lines" jsonschema:"description=Maximum number of matching lines to return (defaults to 200)"`
 }
 
-const defaultSearchContentMaxLines = "200"
+const defaultSearchContentMaxLines = "50"
 
 // RGAvailable checks if the rg binary is available on the system
 func RGAvailable() bool {
