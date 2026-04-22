@@ -33,6 +33,7 @@ import (
 	debugpkg "github.com/alayacore/alayacore/internal/debug"
 	domainerrors "github.com/alayacore/alayacore/internal/errors"
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/skills"
 	"github.com/alayacore/alayacore/internal/llm/factory"
 	"github.com/alayacore/alayacore/internal/stream"
 )
@@ -136,6 +137,7 @@ type Session struct {
 	Output               stream.Output
 	ModelManager         *ModelManager
 	RuntimeManager       *RuntimeManager
+	SkillsManager        *skills.Manager
 	baseTools            []llm.Tool
 	systemPrompt         string
 	extraSystemPrompt    string
@@ -172,18 +174,18 @@ func (s *Session) WaitDone() {
 // ============================================================================
 
 // LoadOrNewSession loads a session from file or creates a new one.
-func LoadOrNewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, noCompact bool, proxyURL string) (*Session, string) {
+func LoadOrNewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, noCompact bool, proxyURL string, skillsMgr *skills.Manager) (*Session, string) {
 	sessionFile = expandPath(sessionFile)
 	if sessionFile != "" {
 		if data, err := LoadSession(sessionFile); err == nil {
-			return RestoreFromSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, data, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, autoSummarize, autoSave, noCompact, proxyURL), sessionFile
+			return RestoreFromSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, data, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, autoSummarize, autoSave, noCompact, proxyURL, skillsMgr), sessionFile
 		}
 	}
-	return NewSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, autoSummarize, autoSave, noCompact, proxyURL), sessionFile
+	return NewSession(baseTools, systemPrompt, extraSystemPrompt, maxSteps, input, output, sessionFile, modelConfigPath, runtimeConfigPath, debugAPI, autoSummarize, autoSave, noCompact, proxyURL, skillsMgr), sessionFile
 }
 
 // NewSession creates a fresh session.
-func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, noCompact bool, proxyURL string) *Session {
+func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, noCompact bool, proxyURL string, skillsMgr *skills.Manager) *Session {
 	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	s := &Session{
 		SessionFile:          sessionFile,
@@ -192,6 +194,7 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 		Output:               output,
 		ModelManager:         NewModelManager(modelConfigPath),
 		RuntimeManager:       NewRuntimeManager(runtimeConfigPath, modelConfigPath),
+		SkillsManager:        skillsMgr,
 		baseTools:            baseTools,
 		systemPrompt:         systemPrompt,
 		extraSystemPrompt:    extraSystemPrompt,
@@ -215,7 +218,7 @@ func NewSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt str
 }
 
 // RestoreFromSession creates a session from saved data.
-func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, data *SessionData, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, noCompact bool, proxyURL string) *Session {
+func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPrompt string, maxSteps int, input stream.Input, output stream.Output, data *SessionData, sessionFile string, modelConfigPath, runtimeConfigPath string, debugAPI bool, autoSummarize bool, autoSave bool, noCompact bool, proxyURL string, skillsMgr *skills.Manager) *Session {
 	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	s := &Session{
 		Messages:             data.Messages,
@@ -225,6 +228,7 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 		Output:               output,
 		ModelManager:         NewModelManager(modelConfigPath),
 		RuntimeManager:       NewRuntimeManager(runtimeConfigPath, modelConfigPath),
+		SkillsManager:        skillsMgr,
 		baseTools:            baseTools,
 		systemPrompt:         systemPrompt,
 		extraSystemPrompt:    extraSystemPrompt,
@@ -972,6 +976,9 @@ func cleanIncompleteToolCalls(messages []llm.Message) []llm.Message {
 // Only tool results from the most recent steps are kept in full; older ones
 // are truncated to a summary. This prevents unbounded context growth in
 // long agent sessions where each step's tool I/O accumulates.
+//
+// read_file results for skill files are never truncated — the LLM needs full
+// skill instructions to follow them correctly across multiple prompts.
 func (s *Session) compactHistory() {
 	if !s.compactEnabled {
 		return
@@ -984,6 +991,10 @@ func (s *Session) compactHistory() {
 	if len(msgs) <= recentSteps {
 		return
 	}
+
+	// Build a set of tool call IDs for read_file calls on skill files
+	skillReadIDs := s.collectSkillReadCallIDs(msgs)
+
 	for i := 0; i < len(msgs)-recentSteps; i++ {
 		if msgs[i].Role != llm.RoleTool {
 			continue
@@ -991,6 +1002,10 @@ func (s *Session) compactHistory() {
 		for j, part := range msgs[i].Content {
 			tr, ok := part.(llm.ToolResultPart)
 			if !ok {
+				continue
+			}
+			// Never truncate read_file results for skill files
+			if skillReadIDs[tr.ToolCallID] {
 				continue
 			}
 			textOut, ok := tr.Output.(llm.ToolResultOutputText)
@@ -1010,6 +1025,59 @@ func (s *Session) compactHistory() {
 			}
 		}
 	}
+}
+
+// collectSkillReadCallIDs scans messages for read_file calls on skill files
+// and returns their tool call IDs. This allows compactHistory to preserve
+// skill instructions from truncation.
+func (s *Session) collectSkillReadCallIDs(msgs []llm.Message) map[string]bool {
+	ids := make(map[string]bool)
+
+	// Get known skill file paths
+	skillPaths := s.SkillsManager.GetSkillPaths()
+	if len(skillPaths) == 0 {
+		return ids
+	}
+
+	// Build normalized path set for matching
+	skillPathSet := make(map[string]bool)
+	for _, p := range skillPaths {
+		// Normalize path for comparison
+		absPath := filepath.Clean(p)
+		if abs, err := filepath.Abs(p); err == nil {
+			absPath = abs
+		}
+		skillPathSet[absPath] = true
+	}
+
+	for _, msg := range msgs {
+		if msg.Role != llm.RoleAssistant {
+			continue
+		}
+		for _, part := range msg.Content {
+			tc, ok := part.(llm.ToolCallPart)
+			if !ok || tc.ToolName != "read_file" {
+				continue
+			}
+			// Parse the input to get the path
+			var input struct {
+				Path string `json:"path"`
+			}
+			if err := json.Unmarshal(tc.Input, &input); err != nil || input.Path == "" {
+				continue
+			}
+			// Normalize the read path
+			readPath := filepath.Clean(input.Path)
+			if abs, err := filepath.Abs(input.Path); err == nil {
+				readPath = abs
+			}
+			// Check if it matches a skill file
+			if skillPathSet[readPath] {
+				ids[tc.ToolCallID] = true
+			}
+		}
+	}
+	return ids
 }
 
 // ============================================================================

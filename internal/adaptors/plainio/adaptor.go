@@ -50,6 +50,7 @@ func (a *Adaptor) Start() int {
 		a.Config.Cfg.AutoSave,
 		a.Config.Cfg.NoCompact,
 		a.Config.Cfg.Proxy,
+		a.Config.SkillsMgr,
 	)
 
 	sigCh := make(chan os.Signal, 1)

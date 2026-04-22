@@ -151,6 +151,8 @@ After compaction:
 
 Old tool results are cut at 500 characters, then snapped back to the last newline boundary to avoid partial lines. A `[truncated for context efficiency]` marker is appended so the LLM knows content was omitted.
 
+**`read_file` results for skill files are never truncated.** The LLM reads skill instructions from `<location>` paths shown in `<available_skills>`. These instructions must be preserved in full because the LLM needs to follow them correctly across multiple prompts in a long session. The compaction code uses `SkillsManager.GetSkillPaths()` to identify skill file locations and exempts matching `read_file` results from truncation.
+
 ### Controlling Compaction
 
 - **Default**: Compaction is **enabled** — no flag needed

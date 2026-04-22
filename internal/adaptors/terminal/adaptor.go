@@ -66,6 +66,7 @@ func (a *Adaptor) Start() {
 		a.Config.Cfg.AutoSave,
 		a.Config.Cfg.NoCompact,
 		a.Config.Cfg.Proxy,
+		a.Config.SkillsMgr,
 	)
 
 	// Load active theme from runtime.conf (default to default theme if not set)
