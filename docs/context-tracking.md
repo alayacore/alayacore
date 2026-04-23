@@ -7,7 +7,7 @@ How AlayaCore tracks conversation context size across LLM API calls and provider
 `ContextTokens` in `Session` tracks the current conversation's context size (input tokens) as reported by the LLM provider. It is used for:
 
 - Displaying context usage in the status bar (e.g. `context: 2118 / 128000`)
-- Triggering auto-summarization when context exceeds 80% of `context_limit`
+- Triggering auto-summarization when context exceeds 65% of `context_limit`
 
 ## Data Flow
 
@@ -136,28 +136,30 @@ In long agent sessions, tool result outputs accumulate and consume increasing am
 
 ### How It Works
 
-`compactHistory()` is called after each user prompt completes. It truncates tool result outputs that are older than the last N steps (default 3, configurable via `--compact-keep-steps`) to a configurable length (default 500 characters, via `--compact-truncate-len`). The most recent results are kept intact.
+`compactHistory()` is called after each user prompt completes. It truncates tool result outputs that are older than the last N steps (default 3, configurable via `--compact-keep-steps`) to a configurable length (default 500, via `--compact-truncate-len`). The most recent results are kept intact. The truncation length is byte-aware: CJK and other multi-byte text is scaled up proportionally so that the same byte budget is used regardless of script.
 
 ```
 Before compaction (9 messages):
-  [user] [assistant] [tool result: 15KB] [assistant] [tool result: 20KB] [assistant] [tool result: 8KB] [assistant] [assistant]
-                                        ^truncated to 500B              ^truncated to 500B             ^kept full    ^kept full
+  [user] [assistant] [tool result:  15KB] [assistant] [tool result:  20KB] [assistant] [tool result: 8KB] [assistant] [assistant]
+                      ^truncated                       ^truncated                       ^kept full
 
 After compaction:
-  [user] [assistant] [tool result: 500B] [assistant] [tool result: 500B] [assistant] [tool result: 8KB] [assistant] [assistant]
+  [user] [assistant] [tool result: ~500B] [assistant] [tool result: ~500B] [assistant] [tool result: 8KB] [assistant] [assistant]
 ```
 
 ### Truncation Strategy
 
-Old tool results are cut at the configured truncate length (default 500 characters), then snapped back to the last newline boundary to avoid partial lines. A `[truncated for context efficiency]` marker is appended so the LLM knows content was omitted. The LLM can re-read any truncated files if needed.
+Old tool results are cut at the configured truncate length (default 500) and a `[truncated for context efficiency]` marker is appended so the LLM knows content was omitted. The LLM can re-read any truncated files if needed.
+
+The truncation budget is byte-aware: the rune budget is scaled by the text's byte-to-rune ratio (`budget = maxLen × byteLen / runeLen`). For pure ASCII this is a no-op (ratio ≈ 1). For CJK text (ratio ≈ 3), the rune budget is tripled so the truncated output occupies roughly the same byte count — and therefore a similar token count — as an ASCII truncation at the same `maxLen`.
 
 **Skill directories are exempt from truncation.** Any `read_file` result for a file under a skill directory (SKILL.md, scripts, references, assets) is preserved in full. Skill instructions and their supporting files must remain intact for the LLM to follow correctly.
 
 ### Controlling Compaction
 
-- **Default**: Compaction is **enabled** — keeps last 3 steps intact, truncates older results to 500 characters
+- **Default**: Compaction is **enabled** — keeps last 3 steps intact, truncates older results to ~500 bytes equivalent
 - **Keep more steps**: `--compact-keep-steps=5` preserves 5 agent steps (10 messages)
-- **Shorter truncation**: `--compact-truncate-len=250` truncates to 250 characters for more aggressive savings
+- **Shorter truncation**: `--compact-truncate-len=250` truncates to ~250 bytes equivalent for more aggressive savings
 - **Disable**: `alayacore --no-compact` keeps all tool results in full (useful for debugging or when context budget is not a concern)
 
 ### Other Context-Saving Measures

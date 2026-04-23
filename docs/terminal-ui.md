@@ -92,7 +92,7 @@ Each queued task shows its queue ID (Q1, Q2, …), type (`P` for prompt, `C` for
 - **Auto-save** — Enabled by default when `--session` is specified. The session is saved after each task completes.
 - **Manual save** — `:save [file]` or `Ctrl+S` at any time.
 - **Load** — On startup, AlayaCore starts a new empty session unless you specify `--session` to load an existing one.
-- **Auto-summarize** — When `--auto-summarize` is enabled and `context_limit` is set, AlayaCore automatically triggers `:summarize` when context reaches 80% of the limit.
+- **Auto-summarize** — When `--auto-summarize` is enabled and `context_limit` is set, AlayaCore automatically triggers `:summarize` when context reaches 65% of the limit.
 
 Session files use TLV-encoded binary format with YAML frontmatter. See [architecture.md](architecture.md) for format details.
 

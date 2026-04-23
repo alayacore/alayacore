@@ -1063,14 +1063,20 @@ func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, sk
 		if strings.HasSuffix(textOut.Text, truncationMarker) {
 			continue
 		}
-		if len(textOut.Text) <= maxLen {
+		runes := []rune(textOut.Text)
+		if len(runes) <= maxLen {
 			continue
 		}
-		truncated := textOut.Text[:maxLen]
-		if idx := strings.LastIndex(truncated, "\n"); idx > 0 {
-			truncated = truncated[:idx]
+		// Scale rune budget by byte-to-rune ratio so CJK text (high
+		// bytes-per-rune) is not penalized.  Pure ASCII: ratio ≈ 1.
+		// Pure CJK: ratio ≈ 3, so rune budget ≈ maxLen*3 ≈ same byte
+		// budget as ASCII maxLen.
+		ratio := float64(len(textOut.Text)) / float64(len(runes))
+		budget := int(float64(maxLen) * ratio)
+		if budget > len(runes) {
+			budget = len(runes)
 		}
-		truncated += truncationMarker
+		truncated := string(runes[:budget]) + truncationMarker
 		s.Messages[msgIndex].Content[j] = llm.ToolResultPart{
 			Type:       "tool_result",
 			ToolCallID: tr.ToolCallID,
