@@ -163,47 +163,94 @@ func (o *stdoutOutput) printFunctionCall(value string) {
 func formatToolCall(name, input string) string {
 	switch name {
 	case "execute_command":
-		var args struct {
-			Command string `json:"command"`
-		}
-		if err := json.Unmarshal([]byte(input), &args); err == nil {
-			return fmt.Sprintf("[%s: %s]", name, args.Command)
-		}
+		return formatExecuteCommand(input)
 	case "read_file":
-		var args struct {
-			Path      string `json:"path"`
-			StartLine string `json:"start_line"`
-			EndLine   string `json:"end_line"`
-		}
-		if err := json.Unmarshal([]byte(input), &args); err == nil {
-			parts := []string{args.Path}
-			if args.StartLine != "" {
-				parts = append(parts, args.StartLine)
-			}
-			if args.EndLine != "" {
-				parts = append(parts, args.EndLine)
-			}
-			return fmt.Sprintf("[%s: %s]", name, strings.Join(parts, ", "))
-		}
+		return formatReadFile(input)
 	case "write_file":
-		var args struct {
-			Path    string `json:"path"`
-			Content string `json:"content"`
-		}
-		if err := json.Unmarshal([]byte(input), &args); err == nil {
-			return fmt.Sprintf("[%s: %s]", name, args.Path)
-		}
+		return formatWriteFile(input)
 	case "edit_file":
-		var args struct {
-			Path      string `json:"path"`
-			OldString string `json:"old_string"`
-			NewString string `json:"new_string"`
-		}
-		if err := json.Unmarshal([]byte(input), &args); err == nil {
-			return fmt.Sprintf("[%s: %s]", name, args.Path)
-		}
+		return formatEditFile(input)
+	case "search_content":
+		return formatSearchContent(input)
+	default:
+		return fmt.Sprintf("[%s]", name)
 	}
-	return fmt.Sprintf("[%s]", name)
+}
+
+func formatExecuteCommand(input string) string {
+	var args struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal([]byte(input), &args); err != nil {
+		return "[execute_command]"
+	}
+	return fmt.Sprintf("[execute_command: %s]", args.Command)
+}
+
+func formatReadFile(input string) string {
+	var args struct {
+		Path      string `json:"path"`
+		StartLine string `json:"start_line"`
+		EndLine   string `json:"end_line"`
+	}
+	if err := json.Unmarshal([]byte(input), &args); err != nil {
+		return "[read_file]"
+	}
+	parts := []string{args.Path}
+	if args.StartLine != "" {
+		parts = append(parts, args.StartLine)
+	}
+	if args.EndLine != "" {
+		parts = append(parts, args.EndLine)
+	}
+	return fmt.Sprintf("[read_file: %s]", strings.Join(parts, ", "))
+}
+
+func formatWriteFile(input string) string {
+	var args struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(input), &args); err != nil {
+		return "[write_file]"
+	}
+	return fmt.Sprintf("[write_file: %s]", args.Path)
+}
+
+func formatEditFile(input string) string {
+	var args struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(input), &args); err != nil {
+		return "[edit_file]"
+	}
+	return fmt.Sprintf("[edit_file: %s]", args.Path)
+}
+
+func formatSearchContent(input string) string {
+	var args struct {
+		Pattern    string `json:"pattern"`
+		Path       string `json:"path"`
+		FileType   string `json:"file_type"`
+		Glob       string `json:"glob"`
+		IgnoreCase string `json:"ignore_case"`
+	}
+	if err := json.Unmarshal([]byte(input), &args); err != nil {
+		return "[search_content]"
+	}
+	label := args.Pattern
+	if args.Path != "" {
+		label += " in " + args.Path
+	}
+	if args.FileType != "" {
+		label += " (" + args.FileType + ")"
+	}
+	if args.Glob != "" {
+		label += " [" + args.Glob + "]"
+	}
+	if args.IgnoreCase == "true" {
+		label += " -i"
+	}
+	return fmt.Sprintf("[search_content: %s]", label)
 }
 
 // handleSystemData detects task completion transitions and prints a trailing newline.
