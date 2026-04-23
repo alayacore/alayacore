@@ -18,11 +18,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	if cfg.ShowHelp {
-		printHelp()
-		os.Exit(0)
-	}
-
 	appCfg, err := app.Setup(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -36,31 +31,4 @@ func main() {
 
 	adaptor := terminal.NewAdaptorWithThemes(appCfg, cfg.ThemesFolder)
 	adaptor.Start()
-}
-
-func printHelp() {
-	fmt.Print(`AlayaCore - A minimal AI Agent
-
-Usage:
-  alayacore [flags]
-
-Flags:
-  --model-config string   Model config file path (default: ~/.alayacore/model.conf)
-  --runtime-config string Runtime config file path (default: ~/.alayacore/runtime.conf)
-  --system string         Extra system prompt (can be specified multiple times)
-  --skill strings         Skill path (can be specified multiple times)
-  --session string        Session file path to load/save conversations
-  --proxy string          HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)
-  --themes string         Themes folder path (default: ~/.alayacore/themes)
-  --max-steps int         Maximum agent loop steps (default: 100)
-  --auto-summarize        Automatically summarize conversation when context exceeds 65% of limit
-  --auto-save             Automatically save session after each response when --session is specified (default: enabled)
-  --no-compact            Disable automatic history compaction (old tool results are kept in full)
-  --compact-keep-steps    Number of recent agent steps to preserve during compaction (default: 3)
-  --compact-truncate-len  Byte-equivalent length to keep when truncating old tool results (default: 500)
-  --plainio               Use plain stdin/stdout mode instead of terminal UI
-  --debug-api             Write raw API requests and responses to log file
-  --version               Show version information
-  --help                  Show help information
-`)
 }
