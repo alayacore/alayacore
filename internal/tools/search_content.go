@@ -1,10 +1,12 @@
 package tools
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"os"
 	"os/exec"
+	"strconv"
 
 	"github.com/alayacore/alayacore/internal/llm"
 )
@@ -66,7 +68,7 @@ func buildSearchContentArgs(args SearchContentInput, maxLines string) []string {
 	return rgArgs
 }
 
-func handleSearchContentResult(execErr error, stdout, stderr *bytes.Buffer) llm.ToolResultOutput {
+func handleSearchContentResult(execErr error, stdout, stderr *bytes.Buffer, maxLines string) llm.ToolResultOutput {
 	if execErr != nil {
 		// rg exits with code 1 when no matches found — that's not an error for us
 		if exitErr, ok := execErr.(*exec.ExitError); ok {
@@ -82,12 +84,21 @@ func handleSearchContentResult(execErr error, stdout, stderr *bytes.Buffer) llm.
 		return llm.NewTextErrorResponse(errMsg)
 	}
 
+	// Truncate output to maxLines total matching lines.
+	// rg's --max-count limits per-file, not globally, so we enforce a global cap here.
+	maxLinesInt := parseMaxLines(maxLines)
+
 	output := stdout.String()
 	if output == "" {
 		return llm.NewTextResponse("No matches found")
 	}
 
-	return llm.NewTextResponse(output)
+	truncated, truncatedOutput := truncateLines(output, maxLinesInt)
+	if truncated {
+		truncatedOutput += "\n... (output truncated)"
+	}
+
+	return llm.NewTextResponse(truncatedOutput)
 }
 
 func executeSearchContent(ctx context.Context, args SearchContentInput) (llm.ToolResultOutput, error) {
@@ -136,7 +147,7 @@ func executeSearchContent(ctx context.Context, args SearchContentInput) (llm.Too
 		killSearchContentProcess(cmd, done)
 		return llm.NewTextErrorResponse("Canceled"), nil
 	case execErr := <-done:
-		return handleSearchContentResult(execErr, &stdout, &stderr), nil
+		return handleSearchContentResult(execErr, &stdout, &stderr, maxLines), nil
 	}
 }
 
@@ -145,4 +156,36 @@ func killSearchContentProcess(cmd *exec.Cmd, done chan error) {
 		_ = cmd.Process.Kill() //nolint:errcheck // best-effort kill on cancel path
 		<-done                 // wait for Process to release resources
 	}
+}
+
+// parseMaxLines converts the maxLines string to an int, falling back to the default on failure.
+func parseMaxLines(maxLines string) int {
+	n, err := strconv.Atoi(maxLines)
+	if err != nil || n <= 0 {
+		n = 50 // fallback to hardcoded default
+	}
+	return n
+}
+
+// truncateLines returns the first maxLines non-empty lines from input.
+// Returns (wasTruncated, result).
+func truncateLines(input string, maxLines int) (bool, string) {
+	scanner := bufio.NewScanner(bytes.NewBufferString(input))
+	var buf bytes.Buffer
+	count := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		count++
+		if count > maxLines {
+			return true, buf.String()
+		}
+		if count > 1 {
+			buf.WriteByte('\n')
+		}
+		buf.WriteString(line)
+	}
+	return false, buf.String()
 }
