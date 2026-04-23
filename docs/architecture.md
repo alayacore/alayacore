@@ -66,6 +66,17 @@ The session layer manages conversation state, task execution, and model interact
 | `ContextTokens` | Tracks conversation context size across API calls. See [context-tracking.md](context-tracking.md). |
 | `compactHistory()` | Truncates old tool results to save context. Configurable via `--compact-keep-steps` and `--compact-truncate-len`. |
 
+### Truncation (`internal/truncation/`)
+
+Shared text truncation utilities used by the tools and session layers. All functions guarantee valid UTF-8 output (no split multi-byte characters). Two strategies:
+
+| Function | Strategy | Used by |
+|----------|----------|---------|
+| `Lines` | Keeps first N non-empty lines | `search_content` (50 lines default) |
+| `Front` | Keeps front of text within byte budget | `execute_command` (32KB limit), `compactHistory` (configurable length) |
+
+All strategies use a unified `[truncated]` marker so the LLM can recognize truncated output regardless of source. `Front` uses a byte budget and counts each rune's actual byte cost, so any mix of ASCII and multi-byte characters (CJK, emoji) is handled fairly without approximation.
+
 ### Agent Layer (`internal/llm/`)
 
 The agent layer handles LLM interaction and tool-calling orchestration.

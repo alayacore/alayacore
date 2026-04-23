@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/truncation"
 )
 
 func TestRGAvailable(t *testing.T) {
@@ -194,7 +195,7 @@ func TestSearchContentIgnoreCase(t *testing.T) {
 
 func TestTruncateLines(t *testing.T) {
 	input := "line1\nline2\nline3\nline4\nline5\n"
-	truncated, output := truncateLines(input, 3)
+	truncated, output := truncation.Lines(input, 3)
 	if !truncated {
 		t.Error("expected truncation")
 	}
@@ -203,7 +204,7 @@ func TestTruncateLines(t *testing.T) {
 	}
 
 	// No truncation needed
-	truncated, output = truncateLines(input, 10)
+	truncated, output = truncation.Lines(input, 10)
 	if truncated {
 		t.Error("expected no truncation")
 	}
@@ -249,13 +250,13 @@ func TestSearchContentMaxLinesGlobal(t *testing.T) {
 	}
 
 	lineCount := strings.Count(text.Text, "\n") + 1
-	if strings.HasSuffix(text.Text, "... (output truncated)") {
+	if strings.HasSuffix(text.Text, truncation.Marker) {
 		lineCount-- // don't count the truncation indicator
 	}
 	if lineCount > 5 {
 		t.Errorf("expected at most 5 lines, got %d\nOutput:\n%s", lineCount, text.Text)
 	}
-	if !strings.Contains(text.Text, "... (output truncated)") {
+	if !strings.Contains(text.Text, truncation.Marker) {
 		t.Errorf("expected truncation indicator in output:\n%s", text.Text)
 	}
 }

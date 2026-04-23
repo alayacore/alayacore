@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/truncation"
 )
 
 // SearchContentInput represents the input for the search_content tool
@@ -93,9 +93,9 @@ func handleSearchContentResult(execErr error, stdout, stderr *bytes.Buffer, maxL
 		return llm.NewTextResponse("No matches found")
 	}
 
-	truncated, truncatedOutput := truncateLines(output, maxLinesInt)
-	if truncated {
-		truncatedOutput += "\n... (output truncated)"
+	wasTruncated, truncatedOutput := truncation.Lines(output, maxLinesInt)
+	if wasTruncated {
+		truncatedOutput += truncation.Marker
 	}
 
 	return llm.NewTextResponse(truncatedOutput)
@@ -165,27 +165,4 @@ func parseMaxLines(maxLines string) int {
 		n = 50 // fallback to hardcoded default
 	}
 	return n
-}
-
-// truncateLines returns the first maxLines non-empty lines from input.
-// Returns (wasTruncated, result).
-func truncateLines(input string, maxLines int) (bool, string) {
-	scanner := bufio.NewScanner(bytes.NewBufferString(input))
-	var buf bytes.Buffer
-	count := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-		count++
-		if count > maxLines {
-			return true, buf.String()
-		}
-		if count > 1 {
-			buf.WriteByte('\n')
-		}
-		buf.WriteString(line)
-	}
-	return false, buf.String()
 }

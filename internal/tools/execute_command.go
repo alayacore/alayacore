@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/tools/shell"
+	"github.com/alayacore/alayacore/internal/truncation"
 )
 
 // defaultCommandTimeout is the maximum time a command may run before being
@@ -176,23 +176,8 @@ func formatCommandOutput(stdout, stderr *bytes.Buffer, exitCode int) string {
 }
 
 // truncateCommandOutput limits output size to prevent wasting context tokens.
-// When truncated, it keeps the head and tail so the LLM sees the beginning
-// (usually the command echo/header) and the end (usually the error/summary).
+// When truncated, it keeps the front of the output. The LLM can re-run the
+// command with different flags (e.g. tail, head) if it needs more.
 func truncateCommandOutput(output string) string {
-	if len(output) <= maxCommandOutput {
-		return output
-	}
-
-	half := maxCommandOutput / 2
-	head := output[:half]
-
-	// Find a clean line boundary for the tail
-	tailStart := len(output) - half
-	if idx := strings.IndexByte(output[tailStart:], '\n'); idx >= 0 {
-		tailStart += idx + 1
-	}
-	tail := output[tailStart:]
-
-	truncatedBytes := len(output) - len(head) - len(tail)
-	return head + fmt.Sprintf("\n... [%d bytes truncated] ...\n", truncatedBytes) + tail
+	return truncation.Front(output, maxCommandOutput, truncation.Marker)
 }

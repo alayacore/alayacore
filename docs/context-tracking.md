@@ -136,7 +136,7 @@ In long agent sessions, tool result outputs accumulate and consume increasing am
 
 ### How It Works
 
-`compactHistory()` is called after each user prompt completes. It truncates tool result outputs that are older than the last N steps (default 3, configurable via `--compact-keep-steps`) to a configurable length (default 500, via `--compact-truncate-len`). The most recent results are kept intact. The truncation length is byte-aware: CJK and other multi-byte text is scaled up proportionally so that the same byte budget is used regardless of script.
+`compactHistory()` is called after each user prompt completes. It truncates tool result outputs that are older than the last N steps (default 3, configurable via `--compact-keep-steps`) to a configurable byte length (default 500, via `--compact-truncate-len`). The most recent results are kept intact.
 
 ```
 Before compaction (9 messages):
@@ -149,17 +149,17 @@ After compaction:
 
 ### Truncation Strategy
 
-Old tool results are cut at the configured truncate length (default 500) and a `[truncated for context efficiency]` marker is appended so the LLM knows content was omitted. The LLM can re-read any truncated files if needed.
+Old tool results are cut at the configured truncate length (default 500 bytes) and a `[truncated]` marker is appended so the LLM knows content was omitted. The LLM can re-read any truncated files if needed.
 
-The truncation budget is byte-aware: the rune budget is scaled by the text's byte-to-rune ratio (`budget = maxLen × byteLen / runeLen`). For pure ASCII this is a no-op (ratio ≈ 1). For CJK text (ratio ≈ 3), the rune budget is tripled so the truncated output occupies roughly the same byte count — and therefore a similar token count — as an ASCII truncation at the same `maxLen`.
+The truncation uses a byte budget: each rune counts its actual byte cost (`utf8.RuneLen`). For ASCII, each character is 1 byte. For CJK characters, each is 3 bytes. This ensures the truncated output stays within the byte budget regardless of script, keeping token usage consistent.
 
 **Skill directories are exempt from truncation.** Any `read_file` result for a file under a skill directory (SKILL.md, scripts, references, assets) is preserved in full. Skill instructions and their supporting files must remain intact for the LLM to follow correctly.
 
 ### Controlling Compaction
 
-- **Default**: Compaction is **enabled** — keeps last 3 steps intact, truncates older results to ~500 bytes equivalent
+- **Default**: Compaction is **enabled** — keeps last 3 steps intact, truncates older results to ~500 bytes
 - **Keep more steps**: `--compact-keep-steps=5` preserves 5 agent steps (10 messages)
-- **Shorter truncation**: `--compact-truncate-len=250` truncates to ~250 bytes equivalent for more aggressive savings
+- **Shorter truncation**: `--compact-truncate-len=250` truncates to 250 bytes for more aggressive savings
 - **Disable**: `alayacore --no-compact` keeps all tool results in full (useful for debugging or when context budget is not a concern)
 
 ### Other Context-Saving Measures
@@ -168,6 +168,6 @@ The truncation budget is byte-aware: the rune budget is scaled by the text's byt
 |-----------|---------|-------------|
 | `read_file` size limit | 32KB | Full file reads capped at 32KB (~8K tokens); use `start_line`/`end_line` for larger files |
 | `search_content` max lines | 50 | Default result count capped at 50 lines; increase with `max_lines` parameter |
-| `execute_command` output truncation | 32KB | Command output truncated with head+tail preservation when exceeding 32KB |
+| `execute_command` output truncation | 32KB | Command output truncated when exceeding 32KB (front preserved) |
 | Tool descriptions | Compressed | Minimal descriptions and schemas to reduce per-request overhead |
 | Auto-summarize threshold | 65% | Triggers summarization at 65% of context limit (lowered from 80% to prevent mid-step overflow) |

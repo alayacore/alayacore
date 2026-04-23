@@ -30,6 +30,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	debugpkg "github.com/alayacore/alayacore/internal/debug"
 	domainerrors "github.com/alayacore/alayacore/internal/errors"
@@ -37,6 +38,7 @@ import (
 	"github.com/alayacore/alayacore/internal/llm/factory"
 	"github.com/alayacore/alayacore/internal/skills"
 	"github.com/alayacore/alayacore/internal/stream"
+	"github.com/alayacore/alayacore/internal/truncation"
 )
 
 // ============================================================================
@@ -1046,7 +1048,6 @@ func (s *Session) collectSkillDirReads(msg llm.Message, skillReadIDs map[string]
 // truncateToolResultsInMessage truncates tool results in a message,
 // preserving reads from skill directories.
 func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, skillReadIDs map[string]bool, maxLen int) {
-	const truncationMarker = "\n... [truncated for context efficiency]"
 	for j, part := range msg.Content {
 		tr, ok := part.(llm.ToolResultPart)
 		if !ok {
@@ -1059,24 +1060,12 @@ func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, sk
 		if !ok {
 			continue
 		}
-		// Skip if already truncated (marker suffix present)
-		if strings.HasSuffix(textOut.Text, truncationMarker) {
+		// Skip if already within budget — comparing length is more reliable
+		// than marker matching, which could false-positive on real content.
+		if utf8.RuneCountInString(textOut.Text) <= maxLen {
 			continue
 		}
-		runes := []rune(textOut.Text)
-		if len(runes) <= maxLen {
-			continue
-		}
-		// Scale rune budget by byte-to-rune ratio so CJK text (high
-		// bytes-per-rune) is not penalized.  Pure ASCII: ratio ≈ 1.
-		// Pure CJK: ratio ≈ 3, so rune budget ≈ maxLen*3 ≈ same byte
-		// budget as ASCII maxLen.
-		ratio := float64(len(textOut.Text)) / float64(len(runes))
-		budget := int(float64(maxLen) * ratio)
-		if budget > len(runes) {
-			budget = len(runes)
-		}
-		truncated := string(runes[:budget]) + truncationMarker
+		truncated := truncation.Front(textOut.Text, maxLen, truncation.Marker)
 		s.Messages[msgIndex].Content[j] = llm.ToolResultPart{
 			Type:       "tool_result",
 			ToolCallID: tr.ToolCallID,
