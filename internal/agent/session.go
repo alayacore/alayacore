@@ -30,7 +30,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	debugpkg "github.com/alayacore/alayacore/internal/debug"
 	domainerrors "github.com/alayacore/alayacore/internal/errors"
@@ -1060,12 +1059,10 @@ func (s *Session) truncateToolResultsInMessage(msg llm.Message, msgIndex int, sk
 		if !ok {
 			continue
 		}
-		// Skip if already within budget — comparing length is more reliable
-		// than marker matching, which could false-positive on real content.
-		if utf8.RuneCountInString(textOut.Text) <= maxLen {
+		truncated := truncation.Front(textOut.Text, maxLen, truncation.Marker)
+		if truncated == textOut.Text {
 			continue
 		}
-		truncated := truncation.Front(textOut.Text, maxLen, truncation.Marker)
 		s.Messages[msgIndex].Content[j] = llm.ToolResultPart{
 			Type:       "tool_result",
 			ToolCallID: tr.ToolCallID,

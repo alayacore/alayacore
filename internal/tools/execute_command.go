@@ -115,7 +115,7 @@ func handleCommandCancellation(cmd *exec.Cmd, done chan error, stdout, stderr *b
 		shell.TerminateProcessGroup(process, done)
 	}
 	output := formatCommandOutput(stdout, stderr, -1) // canceled, always show labels
-	output = truncateCommandOutput(output)
+	output = truncation.Front(output, maxCommandOutput, truncation.Marker)
 	if output != "" {
 		return llm.NewTextErrorResponse("Canceled\n" + output)
 	}
@@ -128,7 +128,7 @@ func handleCommandTimeout(cmd *exec.Cmd, done chan error, stdout, stderr *bytes.
 		shell.TerminateProcessGroup(process, done)
 	}
 	output := formatCommandOutput(stdout, stderr, -1)
-	output = truncateCommandOutput(output)
+	output = truncation.Front(output, maxCommandOutput, truncation.Marker)
 	if output != "" {
 		return llm.NewTextErrorResponse("Timed out\n" + output)
 	}
@@ -144,7 +144,7 @@ func handleCommandCompletion(execErr error, stdout, stderr *bytes.Buffer) llm.To
 	}
 
 	output := formatCommandOutput(stdout, stderr, exitCode)
-	output = truncateCommandOutput(output)
+	output = truncation.Front(output, maxCommandOutput, truncation.Marker)
 
 	if execErr != nil {
 		if exitErr, ok := execErr.(*exec.ExitError); ok {
@@ -173,11 +173,4 @@ func formatCommandOutput(stdout, stderr *bytes.Buffer, exitCode int) string {
 		output += "STDERR:\n" + stderr.String()
 	}
 	return output
-}
-
-// truncateCommandOutput limits output size to prevent wasting context tokens.
-// When truncated, it keeps the front of the output. The LLM can re-run the
-// command with different flags (e.g. tail, head) if it needs more.
-func truncateCommandOutput(output string) string {
-	return truncation.Front(output, maxCommandOutput, truncation.Marker)
 }
