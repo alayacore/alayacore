@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/alayacore/alayacore/internal/tools"
 )
 
 // ToolCallData represents a tool call (FC tag payload).
@@ -73,21 +75,17 @@ func (h *ExecuteCommandHandler) ShouldShowOutput() bool {
 type ReadFileHandler struct{}
 
 func (h *ReadFileHandler) FormatCall(input json.RawMessage, _ *Styles) string {
-	var args struct {
-		Path      string `json:"path"`
-		StartLine string `json:"start_line"`
-		EndLine   string `json:"end_line"`
-	}
+	var args tools.ReadFileInput
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "read_file: <parse error>"
 	}
 
 	parts := []string{args.Path}
-	if args.StartLine != "" {
-		parts = append(parts, args.StartLine)
+	if args.StartLine > 0 {
+		parts = append(parts, fmt.Sprintf("%d", args.StartLine))
 	}
-	if args.EndLine != "" {
-		parts = append(parts, args.EndLine)
+	if args.EndLine > 0 {
+		parts = append(parts, fmt.Sprintf("%d", args.EndLine))
 	}
 	// Add newline at end so output starts on new line
 	return fmt.Sprintf("read_file: %s\n", strings.Join(parts, ", "))
@@ -101,10 +99,7 @@ func (h *ReadFileHandler) ShouldShowOutput() bool {
 type WriteFileHandler struct{}
 
 func (h *WriteFileHandler) FormatCall(input json.RawMessage, _ *Styles) string {
-	var args struct {
-		Path    string `json:"path"`
-		Content string `json:"content"`
-	}
+	var args tools.WriteFileInput
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "write_file: <parse error>"
 	}
@@ -119,11 +114,7 @@ func (h *WriteFileHandler) ShouldShowOutput() bool {
 type EditFileHandler struct{}
 
 func (h *EditFileHandler) FormatCall(input json.RawMessage, _ *Styles) string {
-	var args struct {
-		Path      string `json:"path"`
-		OldString string `json:"old_string"`
-		NewString string `json:"new_string"`
-	}
+	var args tools.EditFileInput
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "edit_file: <parse error>"
 	}
@@ -168,14 +159,7 @@ func (h *EditFileHandler) ShouldShowOutput() bool {
 type SearchContentHandler struct{}
 
 func (h *SearchContentHandler) FormatCall(input json.RawMessage, _ *Styles) string {
-	var args struct {
-		Pattern    string `json:"pattern"`
-		Path       string `json:"path"`
-		FileType   string `json:"file_type"`
-		Glob       string `json:"glob"`
-		IgnoreCase string `json:"ignore_case"`
-		MaxLines   string `json:"max_lines"`
-	}
+	var args tools.SearchContentInput
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "search_content: <parse error>"
 	}
@@ -192,6 +176,9 @@ func (h *SearchContentHandler) FormatCall(input json.RawMessage, _ *Styles) stri
 	}
 	if args.IgnoreCase == "true" {
 		label += " -i"
+	}
+	if args.MaxLines > 0 {
+		label += fmt.Sprintf(" (max: %d)", args.MaxLines)
 	}
 	// Add newline at end so output starts on new line
 	return fmt.Sprintf("search_content: %s\n", label)

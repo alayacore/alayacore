@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/alayacore/alayacore/internal/stream"
+	"github.com/alayacore/alayacore/internal/tools"
 )
 
 // systemInfo mirrors the SystemInfo JSON from the agent package.
@@ -178,6 +179,7 @@ func formatToolCall(name, input string) string {
 }
 
 func formatExecuteCommand(input string) string {
+	// Use anonymous struct since executeCommandInput is unexported
 	var args struct {
 		Command string `json:"command"`
 	}
@@ -188,28 +190,22 @@ func formatExecuteCommand(input string) string {
 }
 
 func formatReadFile(input string) string {
-	var args struct {
-		Path      string `json:"path"`
-		StartLine string `json:"start_line"`
-		EndLine   string `json:"end_line"`
-	}
+	var args tools.ReadFileInput
 	if err := json.Unmarshal([]byte(input), &args); err != nil {
 		return "[read_file]"
 	}
 	parts := []string{args.Path}
-	if args.StartLine != "" {
-		parts = append(parts, args.StartLine)
+	if args.StartLine > 0 {
+		parts = append(parts, fmt.Sprintf("%d", args.StartLine))
 	}
-	if args.EndLine != "" {
-		parts = append(parts, args.EndLine)
+	if args.EndLine > 0 {
+		parts = append(parts, fmt.Sprintf("%d", args.EndLine))
 	}
 	return fmt.Sprintf("[read_file: %s]", strings.Join(parts, ", "))
 }
 
 func formatWriteFile(input string) string {
-	var args struct {
-		Path string `json:"path"`
-	}
+	var args tools.WriteFileInput
 	if err := json.Unmarshal([]byte(input), &args); err != nil {
 		return "[write_file]"
 	}
@@ -217,9 +213,7 @@ func formatWriteFile(input string) string {
 }
 
 func formatEditFile(input string) string {
-	var args struct {
-		Path string `json:"path"`
-	}
+	var args tools.EditFileInput
 	if err := json.Unmarshal([]byte(input), &args); err != nil {
 		return "[edit_file]"
 	}
@@ -227,13 +221,7 @@ func formatEditFile(input string) string {
 }
 
 func formatSearchContent(input string) string {
-	var args struct {
-		Pattern    string `json:"pattern"`
-		Path       string `json:"path"`
-		FileType   string `json:"file_type"`
-		Glob       string `json:"glob"`
-		IgnoreCase string `json:"ignore_case"`
-	}
+	var args tools.SearchContentInput
 	if err := json.Unmarshal([]byte(input), &args); err != nil {
 		return "[search_content]"
 	}
@@ -249,6 +237,9 @@ func formatSearchContent(input string) string {
 	}
 	if args.IgnoreCase == "true" {
 		label += " -i"
+	}
+	if args.MaxLines > 0 {
+		label += fmt.Sprintf(" (max: %d)", args.MaxLines)
 	}
 	return fmt.Sprintf("[search_content: %s]", label)
 }
