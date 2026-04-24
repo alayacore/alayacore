@@ -162,6 +162,14 @@ type OpenAIProvider struct {
 	thinkingEnabled bool
 }
 
+// isDeepSeek returns true if the model is a DeepSeek model.
+// DeepSeek models have special requirements for reasoning_content:
+// they are always in thinking mode and require reasoning_content
+// to be passed back in tool call scenarios.
+func (p *OpenAIProvider) isDeepSeek() bool {
+	return strings.Contains(strings.ToLower(p.model), "deepseek")
+}
+
 // OpenAIOption configures the provider
 type OpenAIOption func(*OpenAIProvider)
 
@@ -317,8 +325,9 @@ func (p *OpenAIProvider) StreamMessages(
 		},
 	}
 
-	// Add reasoning effort when thinking mode is enabled
-	if p.thinkingEnabled {
+	// Add reasoning effort when thinking mode is enabled.
+	// DeepSeek models always require reasoning_effort (always in thinking mode).
+	if p.thinkingEnabled || p.isDeepSeek() {
 		reqBody.ReasoningEffort = "high"
 	}
 
@@ -460,11 +469,17 @@ func (p *OpenAIProvider) convertRegularContent(apiMsg *openAIMessage, content []
 		}
 	}
 
-	// Set reasoning_content only if there's actual reasoning content.
-	// DeepSeek docs: in non-tool-call scenarios, reasoning_content is
-	// optional and will be ignored if passed without tool calls.
-	// When thinking is off, omit the field entirely to avoid 400 errors.
-	if p.thinkingEnabled && reasoningText != "" {
+	// Set reasoning_content based on provider requirements.
+	// DeepSeek always requires reasoning_content for assistant messages
+	// when there's tool call history (model is always in thinking mode).
+	// Other providers only need it when thinking is enabled and content exists.
+	if p.isDeepSeek() {
+		// DeepSeek: always include reasoning_content (even empty string)
+		// The model is always in thinking mode and may require it for
+		// proper context handling in tool call scenarios.
+		apiMsg.ReasoningContent = &reasoningText // "" if no reasoning
+	} else if p.thinkingEnabled && reasoningText != "" {
+		// Other providers: only when thinking enabled and content exists
 		apiMsg.ReasoningContent = &reasoningText
 	}
 
