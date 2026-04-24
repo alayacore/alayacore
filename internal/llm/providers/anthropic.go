@@ -174,7 +174,7 @@ type anthropicContentBlock struct {
 	IsError   bool        `json:"is_error,omitempty"`
 
 	// For thinking (extended thinking)
-	Thinking string `json:"thinking,omitempty"`
+	Thinking string `json:"thinking"`
 
 	// Cache control
 	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
@@ -361,6 +361,16 @@ func anthropicConvertMessages(messages []llm.Message) []anthropicMessage {
 				})
 			}
 		}
+
+		// Anthropic requires a "thinking" block on every assistant message.
+		// If none was present in the content, add an empty one.
+		if msg.Role == llm.RoleAssistant {
+			apiMsg.Content = append(apiMsg.Content, anthropicContentBlock{
+				Type:     anthropicBlockTypeThinking,
+				Thinking: "",
+			})
+		}
+
 		apiMessages = append(apiMessages, apiMsg)
 	}
 	return apiMessages

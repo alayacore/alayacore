@@ -233,7 +233,7 @@ type openAIStreamOptions struct {
 type openAIMessage struct {
 	Role             string           `json:"role"`
 	Content          interface{}      `json:"content,omitempty"`
-	ReasoningContent *string          `json:"reasoning_content,omitempty"`
+	ReasoningContent string           `json:"reasoning_content"`
 	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string           `json:"tool_call_id,omitempty"`
 }
@@ -443,9 +443,7 @@ func openaiConvertToolCalls(apiMsg *openAIMessage, content []llm.ContentPart) {
 	// string) for assistant messages in tool-call scenarios.
 	// See: https://api-docs.deepseek.com/zh-cn/guides/reasoning
 	// Other providers ignore this field when present.
-	if reasoningText != "" || len(apiMsg.ToolCalls) > 0 {
-		apiMsg.ReasoningContent = &reasoningText
-	}
+	apiMsg.ReasoningContent = reasoningText
 	// Content can be nil for tool calls
 	apiMsg.Content = nil
 }
@@ -471,9 +469,7 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, content []llm.ContentPar
 	// Only set reasoning_content when there is actual reasoning content.
 	// Avoids sending "reasoning_content": "" to providers that may not expect it
 	// in regular (non-tool-call) message contexts.
-	if reasoningText != "" {
-		apiMsg.ReasoningContent = &reasoningText
-	}
+	apiMsg.ReasoningContent = reasoningText
 
 	switch len(contentParts) {
 	case 1:
