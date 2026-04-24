@@ -340,7 +340,7 @@ When styling text with lipgloss, each segment must be rendered individually befo
 ### Thinking mode and reasoning_content
 
 When thinking mode is enabled, provider-specific fields are added to API requests:
-- **Anthropic**: `"thinking": {"type": "adaptive"}` and `"output_config": {"effort": "high"}`
+- **Anthropic**: `"thinking": {"type": "enabled"}` and `"output_config": {"effort": "high"}` (or `"type": "disabled"` when thinking is off)
 - **OpenAI-compatible**: `"reasoning_effort": "high"`
 
 Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. This **must** be passed back in subsequent requests' assistant message history, even when the message also contains tool calls. Dropping it causes a 400 error from providers that require it.

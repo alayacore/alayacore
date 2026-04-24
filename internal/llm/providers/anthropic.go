@@ -139,7 +139,7 @@ type anthropicRequest struct {
 	Tools        []anthropicTool          `json:"tools,omitempty"`
 	Stream       bool                     `json:"stream"`
 	CacheControl *anthropicCacheControl   `json:"cache_control,omitempty"`
-	Thinking     *anthropicThinking       `json:"thinking,omitempty"`
+	Thinking     *anthropicThinking       `json:"thinking"`
 	OutputConfig *anthropicOutputConfig   `json:"output_config,omitempty"`
 }
 
@@ -181,7 +181,9 @@ type anthropicContentBlock struct {
 	IsError   bool        `json:"is_error,omitempty"`
 
 	// For thinking (extended thinking)
-	Thinking string `json:"thinking"`
+	// Pointer so we can emit `"thinking": ""` (DeepSeek workaround)
+	// vs. omitting the field on non-thinking blocks.
+	Thinking *string `json:"thinking,omitempty"`
 
 	// Cache control
 	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
@@ -335,9 +337,10 @@ func anthropicConvertMessages(messages []llm.Message, reasoningEnabled bool) []a
 				})
 			case llm.ReasoningPart:
 				// Domain "reasoning" maps to Anthropic wire format "thinking"
+				text := v.Text
 				apiMsg.Content = append(apiMsg.Content, anthropicContentBlock{
 					Type:     anthropicBlockTypeThinking,
-					Thinking: v.Text,
+					Thinking: &text,
 				})
 			case llm.ToolCallPart:
 				apiMsg.Content = append(apiMsg.Content, anthropicContentBlock{
@@ -384,7 +387,7 @@ func anthropicConvertMessages(messages []llm.Message, reasoningEnabled bool) []a
 			if !hasThinking {
 				apiMsg.Content = append(apiMsg.Content, anthropicContentBlock{
 					Type:     anthropicBlockTypeThinking,
-					Thinking: "",
+					Thinking: ptrTo(""),
 				})
 			}
 		}
@@ -451,10 +454,13 @@ func (p *AnthropicProvider) StreamMessages(
 		reqBody.CacheControl = &anthropicCacheControl{Type: "ephemeral"}
 	}
 
-	// Add thinking fields when enabled
+	// Always include thinking config. Use "enabled"/"disabled" explicitly
+	// rather than relying on provider defaults.
 	if p.reasoningEnabled {
-		reqBody.Thinking = &anthropicThinking{Type: "adaptive"}
+		reqBody.Thinking = &anthropicThinking{Type: "enabled"}
 		reqBody.OutputConfig = &anthropicOutputConfig{Effort: "high"}
+	} else {
+		reqBody.Thinking = &anthropicThinking{Type: "disabled"}
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -746,3 +752,6 @@ func (p *AnthropicProvider) handleMessageStop(payload map[string]interface{}, yi
 	}, nil)
 	return true
 }
+
+// ptrTo returns a pointer to the given string value.
+func ptrTo(s string) *string { return &s }
