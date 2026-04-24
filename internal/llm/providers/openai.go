@@ -233,7 +233,7 @@ type openAIStreamOptions struct {
 type openAIMessage struct {
 	Role             string           `json:"role"`
 	Content          interface{}      `json:"content,omitempty"`
-	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	ReasoningContent *string          `json:"reasoning_content,omitempty"`
 	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string           `json:"tool_call_id,omitempty"`
 }
@@ -433,11 +433,12 @@ func (p *OpenAIProvider) convertToolCalls(apiMsg *openAIMessage, content []llm.C
 			reasoningText += v.Text
 		}
 	}
-	// Preserve reasoning_content for providers that require it (DeepSeek, etc.)
-	// Only when thinking is enabled — otherwise reasoning from a previous
-	// provider would be sent without reasoning_effort, causing a 400 error.
-	if p.thinkingEnabled && reasoningText != "" {
-		apiMsg.ReasoningContent = reasoningText
+	// When thinking is enabled, always include reasoning_content field.
+	// Use empty string if no reasoning present — DeepSeek requires this for
+	// proper context handling in tool call scenarios.
+	// When thinking is off, omit the field entirely to avoid 400 errors.
+	if p.thinkingEnabled {
+		apiMsg.ReasoningContent = &reasoningText // pointer to "" or actual text
 	}
 	// Content can be nil for tool calls
 	apiMsg.Content = nil
@@ -460,11 +461,12 @@ func (p *OpenAIProvider) convertRegularContent(apiMsg *openAIMessage, content []
 		}
 	}
 
-	// Set reasoning_content if present and thinking is enabled.
-	// When thinking is off, reasoning from a previous provider must not
-	// be sent — it would reach the API without reasoning_effort, causing 400.
-	if p.thinkingEnabled && reasoningText != "" {
-		apiMsg.ReasoningContent = reasoningText
+	// Set reasoning_content when thinking is enabled.
+	// Use empty string if no reasoning present — DeepSeek requires this for
+	// proper context handling in multi-turn conversations.
+	// When thinking is off, omit the field entirely to avoid 400 errors.
+	if p.thinkingEnabled {
+		apiMsg.ReasoningContent = &reasoningText // pointer to "" or actual text
 	}
 
 	switch len(contentParts) {
