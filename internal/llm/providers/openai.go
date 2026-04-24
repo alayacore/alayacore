@@ -317,13 +317,9 @@ func (p *OpenAIProvider) StreamMessages(
 		},
 	}
 
-	// Explicitly set reasoning_effort for all providers.  Some (DeepSeek, Qwen)
-	// reject requests that omit it entirely when reasoning is present in history,
-	// and some (DeepSeek v4 Flash) require it even on fresh conversations.
+	// Add reasoning effort when thinking mode is enabled
 	if p.thinkingEnabled {
 		reqBody.ReasoningEffort = "high"
-	} else {
-		reqBody.ReasoningEffort = "none"
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
