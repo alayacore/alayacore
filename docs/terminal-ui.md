@@ -34,7 +34,7 @@ AlayaCore's terminal UI is built with [Bubble Tea](https://charm.land/) and uses
 | `Ctrl+Q` | Open task queue manager |
 | `Ctrl+T` | Toggle thinking mode |
 | `Ctrl+G` | Cancel current request (with confirmation) |
-| `Ctrl+C` | Clear input |
+| `Ctrl+C` | Clear input field (only when input is focused) |
 | `:` | Switch to input with `:` prefix (command mode) |
 | `Space` | Toggle window fold (expand/collapse) |
 
@@ -96,7 +96,7 @@ Each queued task shows its queue ID (Q1, Q2, …), type (`P` for prompt, `C` for
 - **Load** — On startup, AlayaCore starts a new empty session unless you specify `--session` to load an existing one.
 - **Auto-summarize** — When `--auto-summarize` is enabled and `context_limit` is set, AlayaCore automatically triggers `:summarize` when context reaches 65% of the limit.
 
-Session files use TLV-encoded binary format with YAML frontmatter. See [architecture.md](architecture.md) for format details.
+Session files use a Markdown-based format with YAML frontmatter. The body contains TLV-encoded conversation data (messages, tool calls, tool results) written directly as binary TLV records after the frontmatter. See [architecture.md](architecture.md) for format details.
 
 ## Plain IO Mode
 

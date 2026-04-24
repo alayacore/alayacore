@@ -75,10 +75,10 @@ if stopReason != "" && stopReason != "end_turn" && stopReason != "max_tokens" &&
 
 When an error finish reason is detected:
 
-1. The provider returns an error from the event handler
-2. The error is wrapped in a `StreamErrorEvent` and sent through the event channel
-3. The agent's `processStreamEvents` function receives the error event
-4. The agent loop terminates and returns the error to the caller
+1. The provider returns an error from the event handler via the streaming iterator's error parameter (`yield(nil, err)`)
+2. The agent's `processStreamEvents` function receives the error from the `iter.Seq2[StreamEvent, error]` iterator (`for event, err := range events`)
+3. The agent loop terminates and returns the error to the caller
+4. The session sets `pausedOnError = true` and notifies the user via a system error message
 5. The UI displays the error message to the user
 
 ## Queue Pause on Error
@@ -107,7 +107,7 @@ Without pausing, a network outage would cause every queued prompt to fail in seq
 Commands are split into two paths:
 
 **Immediate commands** — run immediately on the input goroutine, regardless of queue state:
-`:cancel`, `:cancel_all`, `:model_set`, `:model_load`, `:taskqueue_get_all`, `:taskqueue_del`
+`:cancel`, `:cancel_all`, `:model_set`, `:model_load`, `:taskqueue_get_all`, `:taskqueue_del`, `:thinking`
 
 **Deferred commands** — enqueued at the front of the task queue via `submitDeferredCommand`, which rejects if a task is already running (unless paused on error):
 `:continue`, `:summarize`, `:save`, and all others

@@ -66,7 +66,7 @@ Updates per second: 4494
 
 ## Why Rate Limiting Isn't Needed
 
-1. **Data ingestion is already throttled at 250ms** (`output.go`)
+1. **UI refresh is polled at 250ms intervals** (`terminal.go` → `TickInterval`) — data ingestion itself is not throttled
 2. **Render overhead is only 1%** of wall time during streaming
 3. **`updateContent()` skips unchanged content** efficiently
 4. **Virtual rendering provides 3.5x speedup** when viewport is not at bottom
