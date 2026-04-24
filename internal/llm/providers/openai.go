@@ -288,10 +288,7 @@ func (p *OpenAIProvider) StreamMessages(
 	}
 
 	// Convert conversation messages
-	for _, msg := range messages {
-		apiMsgs := p.convertMessages(msg)
-		apiMessages = append(apiMessages, apiMsgs...)
-	}
+	apiMessages = append(apiMessages, openaiConvertMessages(messages)...)
 
 	// Convert tools to OpenAI format
 	apiTools := make([]openAITool, 0, len(tools))
@@ -353,37 +350,38 @@ func (p *OpenAIProvider) StreamMessages(
 	return p.parseStream(resp.Body), nil
 }
 
-// convertMessages converts domain messages to OpenAI wire format.
-// For tool messages, returns multiple messages (one per tool result).
+// openaiConvertMessages converts domain messages to OpenAI wire format.
 //
 // Wire-format mappings:
 //   - llm.TextPart       → content (string or parts array)
 //   - llm.ReasoningPart  → reasoning_content field  (domain "reasoning" → wire "reasoning_content")
 //   - llm.ToolCallPart   → tool_calls array
-//   - llm.ToolResultPart → role="tool" message with tool_call_id
-func (p *OpenAIProvider) convertMessages(msg llm.Message) []openAIMessage {
-	// Handle tool results specially - return multiple messages, one per result
-	if msg.Role == llm.RoleTool {
-		return p.convertToolResults(msg.Content)
-	}
+//   - llm.ToolResultPart → role="tool" message with tool_call_id (1:N expansion)
+func openaiConvertMessages(messages []llm.Message) []openAIMessage {
+	apiMessages := make([]openAIMessage, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Role == llm.RoleTool {
+			apiMessages = append(apiMessages, openaiConvertToolResults(msg.Content)...)
+			continue
+		}
 
-	apiMsg := openAIMessage{
-		Role: string(msg.Role),
-	}
+		apiMsg := openAIMessage{
+			Role: string(msg.Role),
+		}
 
-	// Handle assistant messages with tool calls
-	if msg.Role == llm.RoleAssistant && p.hasToolCalls(msg.Content) {
-		p.convertToolCalls(&apiMsg, msg.Content)
-		return []openAIMessage{apiMsg}
-	}
+		if msg.Role == llm.RoleAssistant && openaiHasToolCalls(msg.Content) {
+			openaiConvertToolCalls(&apiMsg, msg.Content)
+		} else {
+			openaiConvertRegularContent(&apiMsg, msg.Content)
+		}
 
-	// Regular text/reasoning content
-	p.convertRegularContent(&apiMsg, msg.Content)
-	return []openAIMessage{apiMsg}
+		apiMessages = append(apiMessages, apiMsg)
+	}
+	return apiMessages
 }
 
-// convertToolResults converts tool result content to multiple OpenAI messages
-func (p *OpenAIProvider) convertToolResults(content []llm.ContentPart) []openAIMessage {
+// openaiConvertToolResults converts tool result content to multiple OpenAI messages
+func openaiConvertToolResults(content []llm.ContentPart) []openAIMessage {
 	results := make([]openAIMessage, 0, len(content))
 	for _, part := range content {
 		tr, ok := part.(llm.ToolResultPart)
@@ -405,8 +403,8 @@ func (p *OpenAIProvider) convertToolResults(content []llm.ContentPart) []openAIM
 	return results
 }
 
-// hasToolCalls checks if content contains tool calls
-func (p *OpenAIProvider) hasToolCalls(content []llm.ContentPart) bool {
+// openaiHasToolCalls checks if content contains tool calls
+func openaiHasToolCalls(content []llm.ContentPart) bool {
 	for _, part := range content {
 		if _, ok := part.(llm.ToolCallPart); ok {
 			return true
@@ -415,9 +413,9 @@ func (p *OpenAIProvider) hasToolCalls(content []llm.ContentPart) bool {
 	return false
 }
 
-// convertToolCalls handles conversion of assistant messages with tool calls.
+// openaiConvertToolCalls handles conversion of assistant messages with tool calls.
 // Accumulates ReasoningPart text into reasoning_content field.
-func (p *OpenAIProvider) convertToolCalls(apiMsg *openAIMessage, content []llm.ContentPart) {
+func openaiConvertToolCalls(apiMsg *openAIMessage, content []llm.ContentPart) {
 	apiMsg.ToolCalls = make([]openAIToolCall, 0)
 	var reasoningText string
 	for _, part := range content {
@@ -452,9 +450,9 @@ func (p *OpenAIProvider) convertToolCalls(apiMsg *openAIMessage, content []llm.C
 	apiMsg.Content = nil
 }
 
-// convertRegularContent handles conversion of regular text/reasoning content.
+// openaiConvertRegularContent handles conversion of regular text/reasoning content.
 // Accumulates ReasoningPart text into reasoning_content field.
-func (p *OpenAIProvider) convertRegularContent(apiMsg *openAIMessage, content []llm.ContentPart) {
+func openaiConvertRegularContent(apiMsg *openAIMessage, content []llm.ContentPart) {
 	var contentParts []map[string]interface{}
 	var reasoningText string
 	for _, part := range content {
