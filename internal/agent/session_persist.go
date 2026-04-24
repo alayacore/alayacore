@@ -78,9 +78,9 @@ func formatFrontmatter(meta *SessionMeta) string {
 	}
 
 	if meta.ActiveModel != "" {
-		buf.WriteString("active_model: ")
+		buf.WriteString("active_model: \"")
 		buf.WriteString(meta.ActiveModel)
-		buf.WriteString("\n")
+		buf.WriteString("\"\n")
 	}
 
 	buf.WriteString("---\n")
