@@ -334,7 +334,7 @@ func (p *OpenAIProvider) StreamMessages(
 	// rather than relying on provider defaults.
 	if p.reasoningEnabled {
 		reqBody.Thinking = &openAIThinking{Type: "enabled"}
-		reqBody.ReasoningEffort = "high"
+		reqBody.ReasoningEffort = "xhigh"
 	} else {
 		reqBody.Thinking = &openAIThinking{Type: "disabled"}
 	}

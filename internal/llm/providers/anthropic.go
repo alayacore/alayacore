@@ -461,7 +461,7 @@ func (p *AnthropicProvider) StreamMessages(
 	// rather than relying on provider defaults.
 	if p.reasoningEnabled {
 		reqBody.Thinking = &anthropicThinking{Type: "enabled"}
-		reqBody.OutputConfig = &anthropicOutputConfig{Effort: "high"}
+		reqBody.OutputConfig = &anthropicOutputConfig{Effort: "max"}
 	} else {
 		reqBody.Thinking = &anthropicThinking{Type: "disabled"}
 	}
