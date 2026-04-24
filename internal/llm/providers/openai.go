@@ -534,12 +534,8 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 func (p *OpenAIProvider) handleEvent(data string, yield func(llm.StreamEvent, error) bool, state *openAIStreamState) bool {
 	var streamResp struct {
 		Choices []struct {
-			Delta struct {
-				Content          string           `json:"content"`
-				ReasoningContent string           `json:"reasoning_content"`
-				ToolCalls        []openAIToolCall `json:"tool_calls"`
-			} `json:"delta"`
-			FinishReason string `json:"finish_reason"`
+			Delta        openAIDelta `json:"delta"`
+			FinishReason string      `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
@@ -591,13 +587,16 @@ func (p *OpenAIProvider) checkFinishReason(reason string) (bool, error) {
 	return true, nil
 }
 
-// handleDelta processes the delta content from a streaming chunk.
-// Returns false if iteration should stop.
-func (p *OpenAIProvider) handleDelta(delta struct {
+// openAIDelta represents the delta content from a streaming chunk.
+type openAIDelta struct {
 	Content          string           `json:"content"`
 	ReasoningContent string           `json:"reasoning_content"`
 	ToolCalls        []openAIToolCall `json:"tool_calls"`
-}, yield func(llm.StreamEvent, error) bool, state *openAIStreamState) bool {
+}
+
+// handleDelta processes the delta content from a streaming chunk.
+// Returns false if iteration should stop.
+func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEvent, error) bool, state *openAIStreamState) bool {
 	// Handle reasoning content (DeepSeek, Qwen, etc.)
 	if delta.ReasoningContent != "" {
 		state.addReasoningDelta(delta.ReasoningContent)
