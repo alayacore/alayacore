@@ -35,8 +35,9 @@ func (s *Session) saveSessionToFile(path string) error {
 
 	data := SessionData{
 		SessionMeta: SessionMeta{
-			CreatedAt: s.CreatedAt,
-			UpdatedAt: time.Now(),
+			CreatedAt:       s.CreatedAt,
+			UpdatedAt:       time.Now(),
+			ThinkingEnabled: s.thinkingEnabled,
 		},
 		Messages: s.Messages,
 	}
@@ -68,6 +69,12 @@ func formatFrontmatter(meta *SessionMeta) string {
 	buf.WriteString("updated_at: ")
 	buf.WriteString(meta.UpdatedAt.Format(time.RFC3339))
 	buf.WriteString("\n")
+
+	if meta.ThinkingEnabled {
+		buf.WriteString("thinking_enabled: true\n")
+	} else {
+		buf.WriteString("thinking_enabled: false\n")
+	}
 
 	buf.WriteString("---\n")
 	return buf.String()

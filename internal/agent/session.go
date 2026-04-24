@@ -105,8 +105,9 @@ type SystemInfo struct {
 
 // SessionMeta is the frontmatter metadata.
 type SessionMeta struct {
-	CreatedAt time.Time `config:"created_at"`
-	UpdatedAt time.Time `config:"updated_at"`
+	CreatedAt       time.Time `config:"created_at"`
+	UpdatedAt       time.Time `config:"updated_at"`
+	ThinkingEnabled bool      `config:"thinking_enabled"`
 }
 
 // SessionData is the persisted form of a Session.
@@ -252,7 +253,7 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 		skillDirs:            buildSkillDirSet(skillsMgr),
 		proxyURL:             proxyURL,
 		maxSteps:             maxSteps,
-		thinkingEnabled:      thinking,
+		thinkingEnabled:      data.ThinkingEnabled,
 		taskQueue:            make([]QueueItem, 0),
 		sessionCtx:           sessionCtx,
 		sessionCancel:        sessionCancel,
