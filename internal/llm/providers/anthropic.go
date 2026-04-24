@@ -16,6 +16,13 @@ package providers
 //
 // 4. PROMPT CACHE PER-MODEL: prompt_cache: true in model.conf enables cache_control
 //    markers for Anthropic. Other providers auto-cache and ignore this setting.
+//
+// 5. EMPTY THINKING BLOCK PADDING: When reasoning mode is enabled, every
+//    assistant message is padded with an empty "thinking" block if none is
+//    present. This works around a DeepSeek V4 (2026/04/24) bug. The padding
+//    is conditional on reasoning mode to avoid wasting tokens when thinking
+//    is disabled. Anthropic and other providers ignore the extra block.
+//    See docs/architecture.md → "Empty thinking block workaround".
 
 import (
 	"bufio"
@@ -306,7 +313,7 @@ func (s *streamState) lastToolCall() *llm.ToolCallPart {
 //   - llm.ReasoningPart  → anthropicContentBlock{Type: "thinking"}  (domain "reasoning" → wire "thinking")
 //   - llm.ToolCallPart   → anthropicContentBlock{Type: "tool_use"}
 //   - llm.ToolResultPart → anthropicContentBlock{Type: "tool_result"} (role remapped to "user")
-func anthropicConvertMessages(messages []llm.Message) []anthropicMessage {
+func anthropicConvertMessages(messages []llm.Message, reasoningEnabled bool) []anthropicMessage {
 	apiMessages := make([]anthropicMessage, 0, len(messages))
 	for _, msg := range messages {
 		apiMsg := anthropicMessage{
@@ -362,9 +369,11 @@ func anthropicConvertMessages(messages []llm.Message) []anthropicMessage {
 			}
 		}
 
-		// Anthropic requires a "thinking" block on every assistant message.
-		// If none was present in the content, add an empty one.
-		if msg.Role == llm.RoleAssistant {
+		// Pad assistant messages with an empty "thinking" block when reasoning
+		// mode is enabled and none is present. Needed for DeepSeek V4
+		// (2026/04/24) which requires it; other providers ignore the extra
+		// block. Only done when reasoning is enabled to avoid wasting tokens.
+		if reasoningEnabled && msg.Role == llm.RoleAssistant {
 			hasThinking := false
 			for _, block := range apiMsg.Content {
 				if block.Type == anthropicBlockTypeThinking {
@@ -396,7 +405,7 @@ func (p *AnthropicProvider) StreamMessages(
 	extraSystemPrompt string,
 ) (iter.Seq2[llm.StreamEvent, error], error) {
 	// Convert messages to Anthropic format
-	apiMessages := anthropicConvertMessages(messages)
+	apiMessages := anthropicConvertMessages(messages, p.reasoningEnabled)
 
 	// Convert tools to Anthropic format
 	apiTools := make([]anthropicTool, 0, len(tools))

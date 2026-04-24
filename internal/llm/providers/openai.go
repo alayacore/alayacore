@@ -13,6 +13,13 @@ package providers
 //
 // 3. REASONING SUPPORT: OpenAI-compatible APIs (DeepSeek, Qwen, etc.) use
 //    `reasoning_content` field for thinking tokens. Handled in `handleEvent()`.
+//
+// 4. EMPTY REASONING_CONTENT PADDING: When reasoning mode is enabled,
+//    reasoning_content is always set (even as empty string) on assistant
+//    messages. DeepSeek V4 (2026/04/24) requires it when thinking is enabled.
+//    Conditional on reasoning mode to avoid wasting tokens. The logic lives
+//    in openaiConvertMessages, not in the sub-converters.
+//    See docs/architecture.md → "Empty thinking block workaround".
 
 import (
 	"bufio"
@@ -231,9 +238,11 @@ type openAIStreamOptions struct {
 }
 
 type openAIMessage struct {
-	Role             string           `json:"role"`
-	Content          interface{}      `json:"content,omitempty"`
-	ReasoningContent string           `json:"reasoning_content"`
+	Role    string      `json:"role"`
+	Content interface{} `json:"content,omitempty"`
+	// Pointer so we can emit `"reasoning_content": ""` (DeepSeek workaround)
+	// vs. omitting the field entirely when reasoning is disabled.
+	ReasoningContent *string          `json:"reasoning_content,omitempty"`
 	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string           `json:"tool_call_id,omitempty"`
 }
@@ -288,7 +297,7 @@ func (p *OpenAIProvider) StreamMessages(
 	}
 
 	// Convert conversation messages
-	apiMessages = append(apiMessages, openaiConvertMessages(messages)...)
+	apiMessages = append(apiMessages, openaiConvertMessages(messages, p.reasoningEnabled)...)
 
 	// Convert tools to OpenAI format
 	apiTools := make([]openAITool, 0, len(tools))
@@ -357,7 +366,7 @@ func (p *OpenAIProvider) StreamMessages(
 //   - llm.ReasoningPart  → reasoning_content field  (domain "reasoning" → wire "reasoning_content")
 //   - llm.ToolCallPart   → tool_calls array
 //   - llm.ToolResultPart → role="tool" message with tool_call_id (1:N expansion)
-func openaiConvertMessages(messages []llm.Message) []openAIMessage {
+func openaiConvertMessages(messages []llm.Message, reasoningEnabled bool) []openAIMessage {
 	apiMessages := make([]openAIMessage, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Role == llm.RoleTool {
@@ -373,6 +382,16 @@ func openaiConvertMessages(messages []llm.Message) []openAIMessage {
 			openaiConvertToolCalls(&apiMsg, msg.Content)
 		} else {
 			openaiConvertRegularContent(&apiMsg, msg.Content)
+		}
+
+		// DeepSeek V4 (2026/04/24) requires reasoning_content on every
+		// assistant message when thinking is enabled — even as empty string.
+		// Only set it for assistant messages to avoid wasting tokens.
+		if msg.Role == llm.RoleAssistant {
+			reasoningText := openaiExtractReasoning(msg.Content)
+			if reasoningText != "" || reasoningEnabled {
+				apiMsg.ReasoningContent = &reasoningText
+			}
 		}
 
 		apiMessages = append(apiMessages, apiMsg)
@@ -413,63 +432,55 @@ func openaiHasToolCalls(content []llm.ContentPart) bool {
 	return false
 }
 
-// openaiConvertToolCalls handles conversion of assistant messages with tool calls.
-// Accumulates ReasoningPart text into reasoning_content field.
-func openaiConvertToolCalls(apiMsg *openAIMessage, content []llm.ContentPart) {
-	apiMsg.ToolCalls = make([]openAIToolCall, 0)
-	var reasoningText string
+// openaiExtractReasoning returns the concatenated text of all ReasoningParts.
+func openaiExtractReasoning(content []llm.ContentPart) string {
+	var text string
 	for _, part := range content {
-		switch v := part.(type) {
-		case llm.ToolCallPart:
-			// OpenAI expects arguments to be a JSON-encoded string
-			// We need to marshal the raw JSON to a string
-			argsStr, err := json.Marshal(string(v.Input))
-			if err != nil {
-				argsStr = []byte("{}")
-			}
-			apiMsg.ToolCalls = append(apiMsg.ToolCalls, openAIToolCall{
-				ID:   v.ToolCallID,
-				Type: "function",
-				Function: openAIFunction{
-					Name:      v.ToolName,
-					Arguments: argsStr,
-				},
-			})
-		case llm.ReasoningPart:
-			reasoningText += v.Text
+		if r, ok := part.(llm.ReasoningPart); ok {
+			text += r.Text
 		}
 	}
-	// DeepSeek compatibility: reasoning_content must be present (even as empty
-	// string) for assistant messages in tool-call scenarios.
-	// See: https://api-docs.deepseek.com/zh-cn/guides/reasoning
-	// Other providers ignore this field when present.
-	apiMsg.ReasoningContent = reasoningText
+	return text
+}
+
+// openaiConvertToolCalls handles conversion of assistant messages with tool calls.
+func openaiConvertToolCalls(apiMsg *openAIMessage, content []llm.ContentPart) {
+	apiMsg.ToolCalls = make([]openAIToolCall, 0)
+	for _, part := range content {
+		v, ok := part.(llm.ToolCallPart)
+		if !ok {
+			continue
+		}
+		// OpenAI expects arguments to be a JSON-encoded string
+		// We need to marshal the raw JSON to a string
+		argsStr, err := json.Marshal(string(v.Input))
+		if err != nil {
+			argsStr = []byte("{}")
+		}
+		apiMsg.ToolCalls = append(apiMsg.ToolCalls, openAIToolCall{
+			ID:   v.ToolCallID,
+			Type: "function",
+			Function: openAIFunction{
+				Name:      v.ToolName,
+				Arguments: argsStr,
+			},
+		})
+	}
 	// Content can be nil for tool calls
 	apiMsg.Content = nil
 }
 
-// openaiConvertRegularContent handles conversion of regular text/reasoning content.
-// Accumulates ReasoningPart text into reasoning_content field.
+// openaiConvertRegularContent handles conversion of regular text content.
 func openaiConvertRegularContent(apiMsg *openAIMessage, content []llm.ContentPart) {
 	var contentParts []map[string]interface{}
-	var reasoningText string
 	for _, part := range content {
-		switch v := part.(type) {
-		case llm.TextPart:
+		if v, ok := part.(llm.TextPart); ok {
 			contentParts = append(contentParts, map[string]interface{}{
 				"type": "text",
 				"text": v.Text,
 			})
-		case llm.ReasoningPart:
-			// Accumulate reasoning content
-			reasoningText += v.Text
 		}
 	}
-
-	// Only set reasoning_content when there is actual reasoning content.
-	// Avoids sending "reasoning_content": "" to providers that may not expect it
-	// in regular (non-tool-call) message contexts.
-	apiMsg.ReasoningContent = reasoningText
 
 	switch len(contentParts) {
 	case 1:

@@ -77,7 +77,7 @@ context_limit: 128000
 |----------|----------------|------------|-------|
 | OpenAI | `openai` | `https://api.openai.com/v1` | |
 | Anthropic | `anthropic` | `https://api.anthropic.com` | Supports `prompt_cache` |
-| DeepSeek | `openai` | `https://api.deepseek.com/v1` | OpenAI-compatible |
+| DeepSeek | `openai` | `https://api.deepseek.com/v1` | OpenAI-compatible. V4 has a thinking block bug, see docs/architecture.md |
 | Qwen (DashScope) | `openai` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compatible |
 | Ollama | `anthropic` | `http://127.0.0.1:11434` | Anthropic-compatible mode |
 | LM Studio | `openai` | `http://127.0.0.1:1234/v1` | OpenAI-compatible |

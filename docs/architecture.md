@@ -312,7 +312,7 @@ Tool arguments arrive in chunks across multiple delta events:
 - First chunk: has `id` and `name`
 - Subsequent chunks: `id: ""` but correct `index`
 - **Must use `index` (not `id`) to associate chunks** — see `openAIStreamState.appendToolCallArgs()`
-- When sending back in history, arguments must be JSON-string (not raw JSON) — see `convertToolCalls()`
+- When sending back in history, arguments must be JSON-string (not raw JSON) — see `openaiConvertToolCalls()`
 
 ### Anthropic prompt caching
 
@@ -343,6 +343,15 @@ When thinking mode is enabled, provider-specific fields are added to API request
 - **Anthropic**: `"thinking": {"type": "adaptive"}` and `"output_config": {"effort": "high"}`
 - **OpenAI-compatible**: `"reasoning_effort": "high"`
 
-Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. This **must** be passed back in subsequent requests' assistant message history, even when the message also contains tool calls. The `convertToolCalls()` method preserves `ReasoningPart` alongside `ToolCallPart` — dropping it causes a 400 error from providers that require it.
+Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. This **must** be passed back in subsequent requests' assistant message history, even when the message also contains tool calls. Dropping it causes a 400 error from providers that require it.
+
+### Empty thinking block workaround (DeepSeek V4)
+
+DeepSeek V4 (2026/04/24) has a server-side bug: when thinking mode is **enabled**, the API rejects assistant messages in the conversation history that do not contain a `thinking` block (or `reasoning_content` for OpenAI-protocol). To work around this, both providers pad assistant messages with empty reasoning data — but **only when reasoning/thinking mode is enabled** — to avoid wasting input tokens when the workaround isn't needed.
+
+- **Anthropic provider** (`anthropicConvertMessages`): pads every assistant message with an empty `{"type": "thinking", "thinking": ""}` block when none is present.
+- **OpenAI provider** (`openaiConvertMessages`): extracts reasoning text via `openaiExtractReasoning()` and sets `reasoning_content` on every assistant message — even as empty string when no reasoning text exists.
+
+Both are conditional on reasoning mode being enabled. When thinking is off, no padding is added — no provider needs it.
 
 
