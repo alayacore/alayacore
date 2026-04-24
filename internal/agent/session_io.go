@@ -313,11 +313,12 @@ func (s *Session) resendPrompt(ctx context.Context) {
 		s.Messages = append(s.Messages, llm.NewUserMessage("Please continue."))
 		// Echo the inserted message to the adaptor so it is visible.
 		s.signalPromptStart("Please continue.")
+	} else {
+		// If the last message is RoleUser or RoleTool, the conversation
+		// history is already at a valid point for the LLM to respond — just
+		// re-send as-is.
+		s.writeNotify("Resending...")
 	}
-	// If the last message is RoleUser or RoleTool, the conversation history
-	// is already at a valid point for the LLM to respond — just re-send as-is.
-
-	s.writeNotify("Resending...")
 
 	_, err := s.processPrompt(ctx, s.Messages)
 
