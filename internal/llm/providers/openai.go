@@ -231,6 +231,11 @@ type openAIRequest struct {
 	MaxTokens       int                  `json:"max_tokens,omitempty"`
 	Temperature     float64              `json:"temperature,omitempty"`
 	ReasoningEffort string               `json:"reasoning_effort,omitempty"`
+	Thinking        *openAIThinking      `json:"thinking"`
+}
+
+type openAIThinking struct {
+	Type string `json:"type"`
 }
 
 type openAIStreamOptions struct {
@@ -323,10 +328,13 @@ func (p *OpenAIProvider) StreamMessages(
 		},
 	}
 
-	// Add reasoning effort when thinking mode is enabled.
-	// Providers that don't support it will ignore this parameter.
+	// Always include thinking config. Use "enabled"/"disabled" explicitly
+	// rather than relying on provider defaults.
 	if p.reasoningEnabled {
+		reqBody.Thinking = &openAIThinking{Type: "enabled"}
 		reqBody.ReasoningEffort = "high"
+	} else {
+		reqBody.Thinking = &openAIThinking{Type: "disabled"}
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
