@@ -38,6 +38,7 @@ func (s *Session) saveSessionToFile(path string) error {
 			CreatedAt:       s.CreatedAt,
 			UpdatedAt:       time.Now(),
 			ThinkingEnabled: s.thinkingEnabled,
+			ActiveModel:     s.activeModelName(),
 		},
 		Messages: s.Messages,
 	}
@@ -74,6 +75,12 @@ func formatFrontmatter(meta *SessionMeta) string {
 		buf.WriteString("thinking_enabled: true\n")
 	} else {
 		buf.WriteString("thinking_enabled: false\n")
+	}
+
+	if meta.ActiveModel != "" {
+		buf.WriteString("active_model: ")
+		buf.WriteString(meta.ActiveModel)
+		buf.WriteString("\n")
 	}
 
 	buf.WriteString("---\n")

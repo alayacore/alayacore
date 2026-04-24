@@ -108,6 +108,7 @@ type SessionMeta struct {
 	CreatedAt       time.Time `config:"created_at"`
 	UpdatedAt       time.Time `config:"updated_at"`
 	ThinkingEnabled bool      `config:"thinking_enabled"`
+	ActiveModel     string    `config:"active_model"`
 }
 
 // SessionData is the persisted form of a Session.
@@ -260,6 +261,15 @@ func RestoreFromSession(baseTools []llm.Tool, systemPrompt string, extraSystemPr
 		runnerDone:           make(chan struct{}),
 	}
 	s.initModelManager()
+
+	// Override runtime config default with the model saved in the session file
+	if data.ActiveModel != "" {
+		if err := s.ModelManager.SetActiveByName(data.ActiveModel); err != nil {
+			// Model may have been removed from config since the session was saved;
+			// fall back to whatever initModelManager already set.
+		}
+	}
+
 	s.cond = sync.NewCond(&s.mu)
 	s.sendSystemInfo()
 	go s.readFromInput()
@@ -305,6 +315,17 @@ func (s *Session) initModelManager() {
 		}
 	}
 	s.ModelManager.SetActiveToFirst()
+}
+
+// activeModelName returns the display name of the currently active model.
+func (s *Session) activeModelName() string {
+	if s.ModelManager == nil {
+		return ""
+	}
+	if model := s.ModelManager.GetActive(); model != nil {
+		return model.Name
+	}
+	return ""
 }
 
 // GetRuntimeManager returns the runtime manager for the session
