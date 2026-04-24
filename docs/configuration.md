@@ -77,7 +77,9 @@ context_limit: 128000
 |----------|----------------|------------|-------|
 | OpenAI | `openai` | `https://api.openai.com/v1` | |
 | Anthropic | `anthropic` | `https://api.anthropic.com` | Supports `prompt_cache` |
-| DeepSeek | `openai` | `https://api.deepseek.com/v1` | OpenAI-compatible. V4 has a thinking block bug, see docs/architecture.md |
+| DeepSeek | `openai` | `https://api.deepseek.com/v1` | OpenAI-compatible. Thinking mode supported ([docs](https://api-docs.deepseek.com/guides/thinking_mode)). V4 has a thinking block bug, see docs/architecture.md |
+| GLM | `openai` | `https://open.bigmodel.cn/api/paas/v4` | OpenAI-compatible. Thinking mode supported |
+| MiniMax | `openai` | `https://api.minimax.chat/v1` | OpenAI-compatible. Thinking mode supported |
 | Qwen (DashScope) | `openai` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compatible |
 | Ollama | `anthropic` | `http://127.0.0.1:11434` | Anthropic-compatible mode |
 | LM Studio | `openai` | `http://127.0.0.1:1234/v1` | OpenAI-compatible |

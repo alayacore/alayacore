@@ -343,6 +343,8 @@ When thinking mode is enabled, provider-specific fields are added to API request
 - **Anthropic**: `"thinking": {"type": "enabled"}` and `"output_config": {"effort": "high"}` (or `"type": "disabled"` when thinking is off)
 - **OpenAI-compatible**: `"reasoning_effort": "high"` and `"thinking": {"type": "enabled"}` (or `"type": "disabled"` when thinking is off)
 
+> **Note:** The OpenAI-compatible thinking/reasoning parameters (`thinking`, `reasoning_effort`, `reasoning_content`) are not part of the official OpenAI API standard. They originate from [DeepSeek's thinking mode documentation](https://api-docs.deepseek.com/guides/thinking_mode) and are supported by several providers including **DeepSeek**, **GLM**, and **MiniMax**. Other OpenAI-compatible providers simply ignore these unknown fields.
+
 Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. This **must** be passed back in subsequent requests' assistant message history, even when the message also contains tool calls. Dropping it causes a 400 error from providers that require it.
 
 ### Empty thinking block workaround (DeepSeek V4)
