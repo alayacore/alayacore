@@ -433,10 +433,9 @@ func (p *OpenAIProvider) convertToolCalls(apiMsg *openAIMessage, content []llm.C
 			reasoningText += v.Text
 		}
 	}
-	// When thinking is enabled, always include reasoning_content field.
-	// Use empty string if no reasoning present — DeepSeek requires this for
-	// proper context handling in tool call scenarios.
-	// When thinking is off, omit the field entirely to avoid 400 errors.
+	// DeepSeek requires reasoning_content in tool call scenarios.
+	// Must always be present (even empty) when there are tool calls.
+	// See: https://api-docs.deepseek.com/zh-cn/guides/reasoning
 	if p.thinkingEnabled {
 		apiMsg.ReasoningContent = &reasoningText // pointer to "" or actual text
 	}
@@ -461,12 +460,12 @@ func (p *OpenAIProvider) convertRegularContent(apiMsg *openAIMessage, content []
 		}
 	}
 
-	// Set reasoning_content when thinking is enabled.
-	// Use empty string if no reasoning present — DeepSeek requires this for
-	// proper context handling in multi-turn conversations.
+	// Set reasoning_content only if there's actual reasoning content.
+	// DeepSeek docs: in non-tool-call scenarios, reasoning_content is
+	// optional and will be ignored if passed without tool calls.
 	// When thinking is off, omit the field entirely to avoid 400 errors.
-	if p.thinkingEnabled {
-		apiMsg.ReasoningContent = &reasoningText // pointer to "" or actual text
+	if p.thinkingEnabled && reasoningText != "" {
+		apiMsg.ReasoningContent = &reasoningText
 	}
 
 	switch len(contentParts) {
