@@ -441,11 +441,13 @@ func (p *OpenAIProvider) convertToolCalls(apiMsg *openAIMessage, content []llm.C
 			reasoningText += v.Text
 		}
 	}
-	// Always include reasoning_content for assistant messages.
-	// Providers that don't support it will ignore this field.
-	// DeepSeek requires it in tool call scenarios.
+	// DeepSeek compatibility: reasoning_content must be present (even as empty
+	// string) for assistant messages in tool-call scenarios.
 	// See: https://api-docs.deepseek.com/zh-cn/guides/reasoning
-	apiMsg.ReasoningContent = &reasoningText
+	// Other providers ignore this field when present.
+	if reasoningText != "" || len(apiMsg.ToolCalls) > 0 {
+		apiMsg.ReasoningContent = &reasoningText
+	}
 	// Content can be nil for tool calls
 	apiMsg.Content = nil
 }
@@ -468,9 +470,12 @@ func (p *OpenAIProvider) convertRegularContent(apiMsg *openAIMessage, content []
 		}
 	}
 
-	// Always include reasoning_content for assistant messages.
-	// Providers that don't support it will ignore this field.
-	apiMsg.ReasoningContent = &reasoningText
+	// Only set reasoning_content when there is actual reasoning content.
+	// Avoids sending "reasoning_content": "" to providers that may not expect it
+	// in regular (non-tool-call) message contexts.
+	if reasoningText != "" {
+		apiMsg.ReasoningContent = &reasoningText
+	}
 
 	switch len(contentParts) {
 	case 1:
