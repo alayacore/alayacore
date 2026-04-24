@@ -323,15 +323,13 @@ func (p *AnthropicProvider) StreamMessages(
 				})
 			case llm.ReasoningPart:
 				// Anthropic uses "thinking" type for extended thinking.
-				// Only include when thinking is enabled — otherwise reasoning
-				// from a previous provider would be sent to an API that may
-				// not support it (or expect the matching thinking config).
-				if p.thinkingEnabled {
-					apiMsg.Content = append(apiMsg.Content, anthropicContentBlock{
-						Type:     "thinking",
-						Thinking: v.Text,
-					})
-				}
+				// Always include if present - providers that don't support
+				// thinking will ignore this, and Anthropic requires it in
+				// thinking mode.
+				apiMsg.Content = append(apiMsg.Content, anthropicContentBlock{
+					Type:     "thinking",
+					Thinking: v.Text,
+				})
 			case llm.ToolCallPart:
 				apiMsg.Content = append(apiMsg.Content, anthropicContentBlock{
 					Type:  blockTypeToolUse,
