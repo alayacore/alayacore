@@ -34,10 +34,15 @@ import (
 )
 
 const (
-	blockTypeToolUse            = "tool_use"
-	anthropicBlockTypeText      = "text"
-	anthropicBlockTypeThinking  = "thinking"
-	anthropicBlockTypeToolResult = "tool_result"
+	blockTypeToolUse              = "tool_use"
+	anthropicBlockTypeText        = "text"
+	anthropicBlockTypeThinking    = "thinking"
+	anthropicBlockTypeToolResult  = "tool_result"
+
+	// Anthropic SSE delta types
+	anthropicDeltaTypeText       = "text_delta"
+	anthropicDeltaTypeThinking   = "thinking_delta"
+	anthropicDeltaTypeInputJSON  = "input_json_delta"
 )
 
 // AnthropicProvider implements the Anthropic API
@@ -225,12 +230,12 @@ func (s *streamState) finishBlock() {
 	defer s.mu.Unlock()
 
 	switch s.currentType {
-	case "text":
+	case anthropicBlockTypeText:
 		s.contentParts = append(s.contentParts, llm.TextPart{
 			Type: llm.ContentPartText,
 			Text: s.currentText.String(),
 		})
-	case "thinking":
+	case anthropicBlockTypeThinking:
 		s.contentParts = append(s.contentParts, llm.ReasoningPart{
 			Type: llm.ContentPartReasoning,
 			Text: s.currentText.String(),
@@ -616,7 +621,7 @@ func (p *AnthropicProvider) handleContentDelta(payload map[string]interface{}, y
 	deltaType, _ := delta["type"].(string) //nolint:errcheck // type assertion for optional field
 
 	switch deltaType {
-	case "text_delta":
+	case anthropicDeltaTypeText:
 		if text, ok := delta["text"].(string); ok {
 			state.appendText(text)
 			if !yield(llm.TextDeltaEvent{Delta: text}, nil) {
@@ -624,7 +629,7 @@ func (p *AnthropicProvider) handleContentDelta(payload map[string]interface{}, y
 			}
 		}
 
-	case "thinking_delta":
+	case anthropicDeltaTypeThinking:
 		if thinking, ok := delta["thinking"].(string); ok {
 			state.appendText(thinking)
 			if !yield(llm.ReasoningDeltaEvent{Delta: thinking}, nil) {
@@ -632,7 +637,7 @@ func (p *AnthropicProvider) handleContentDelta(payload map[string]interface{}, y
 			}
 		}
 
-	case "input_json_delta":
+	case anthropicDeltaTypeInputJSON:
 		if partialJSON, ok := delta["partial_json"].(string); ok {
 			state.appendInput(partialJSON)
 		}
