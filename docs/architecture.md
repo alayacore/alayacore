@@ -339,7 +339,10 @@ When styling text with lipgloss, each segment must be rendered individually befo
 
 ### Thinking mode and reasoning_content
 
-When thinking mode is toggled by the user (`Ctrl+T` or `:thinking`), each provider sends explicit thinking configuration in API requests:
+When thinking mode is toggled by the user (`Ctrl+T` or `:thinking`), each provider sends explicit thinking configuration in API requests. The key differences are:
+
+1. A top-level **`thinking`** field (`{"type": "enabled"}` or `{"type": "disabled"}`) controls whether reasoning is active.
+2. When thinking is on, assistant messages that only contain tool calls must still include an **empty reasoning block** (required by DeepSeek and similar providers).
 
 | Provider | Enabled | Disabled |
 |----------|---------|----------|
@@ -348,15 +351,162 @@ When thinking mode is toggled by the user (`Ctrl+T` or `:thinking`), each provid
 
 > **Note:** The OpenAI-compatible thinking/reasoning parameters (`thinking`, `reasoning_effort`, `reasoning_content`) are not part of the official OpenAI API standard. They originate from [DeepSeek's thinking mode documentation](https://api-docs.deepseek.com/guides/thinking_mode) and are supported by **DeepSeek**, **GLM**, and **MiniMax**. Other providers silently ignore unknown fields.
 
+#### OpenAI-compatible — request examples
+
+When thinking is **disabled**, assistant messages contain only the tool calls — no `reasoning_content` field:
+
+```json
+{
+	"messages": [
+
+		...
+
+		{
+			"role": "assistant",
+			"tool_calls": [{
+				"function": {
+					"arguments": "{\"path\":\"/home/wallace/playground/alayacore/go.mod\",\"end_line\":5}",
+					"name": "read_file"
+				},
+				"id": "call_ca6eef24512147a6a9dae7bd",
+				"index": 0,
+				"type": "function"
+			}]
+		},
+
+		...
+
+	],
+
+	"model": "deepseek-v4-flash",
+
+	"thinking": { "type": "disabled" },
+
+	...
+}
+```
+
+When thinking is **enabled**, every assistant message is padded with `"reasoning_content": ""` even when there is no actual reasoning text, and the request includes `reasoning_effort`:
+
+```json
+{
+	"messages": [
+
+		...
+
+		{
+			"role": "assistant",
+			"reasoning_content": "",
+			"tool_calls": [{
+				"function": {
+					"arguments": "{\"path\":\"/home/wallace/playground/alayacore/go.mod\",\"end_line\":5}",
+					"name": "read_file"
+				},
+				"id": "call_ca6eef24512147a6a9dae7bd",
+				"index": 0,
+				"type": "function"
+			}]
+		},
+
+		...
+
+	],
+
+	"model": "deepseek-v4-flash",
+
+	"reasoning_effort": "xhigh",
+	"thinking": { "type": "enabled" },
+
+	...
+}
+```
+
+#### Anthropic-compatible — request examples
+
+When thinking is **disabled**, assistant messages contain only the tool-use content block — no `thinking` block:
+
+```json
+{
+	"messages": [
+
+		...
+
+		{
+			"role": "assistant",
+			"content": [
+				{
+					"id": "call_ca6eef24512147a6a9dae7bd",
+					"input": {
+						"end_line": 5,
+						"path": "/home/wallace/playground/alayacore/go.mod"
+					},
+					"name": "read_file",
+					"type": "tool_use"
+				}
+			]
+		},
+
+		...
+
+	],
+
+	"model": "deepseek-v4-pro",
+
+	"thinking": { "type": "disabled" },
+
+	...
+}
+```
+
+When thinking is **enabled**, every assistant message is padded with an empty `{"type": "thinking", "thinking": ""}` block when none is present, and the request includes `output_config`:
+
+```json
+{
+	"messages": [
+
+		...
+
+		{
+			"role": "assistant",
+			"content": [
+				{
+					"id": "call_ca6eef24512147a6a9dae7bd",
+					"input": {
+						"end_line": 5,
+						"path": "/home/wallace/playground/alayacore/go.mod"
+					},
+					"name": "read_file",
+					"type": "tool_use"
+				},
+				{
+					"thinking": "",
+					"type": "thinking"
+				}
+			]
+		},
+
+		...
+
+	],
+
+	"model": "deepseek-v4-pro",
+
+	"thinking": { "type": "enabled" },
+	"output_config": { "effort": "max" },
+
+	...
+}
+```
+
 Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. Per [DeepSeek's documentation](https://api-docs.deepseek.com/guides/thinking_mode):
 
 > Between two user messages, if the model performed a tool call, the intermediate assistant's `reasoning_content` must participate in the context concatenation and must be passed back to the API in all subsequent user interaction turns.
 
 This means **all** intermediate assistant messages in a multi-turn tool call chain must include their `reasoning_content`. Dropping it causes a 400 error from providers that require it.
 
-### Empty thinking block padding
+#### Empty thinking block padding — implementation
 
-When reasoning mode is enabled and an assistant message has no `reasoning_content` (e.g. it only contains tool calls and never produced reasoning text), both providers still emit an empty value — but **only when reasoning mode is enabled** — to avoid wasting input tokens when it isn't needed.
+Both providers pad assistant messages with an empty reasoning value — but **only when reasoning mode is enabled** — to avoid wasting input tokens when it isn't needed.
 
 - **Anthropic provider** (`anthropicConvertMessages`): pads every assistant message with an empty `{"type": "thinking", "thinking": ""}` block when none is present.
 - **OpenAI provider** (`openaiConvertMessages`): extracts reasoning text via `openaiExtractReasoning()` and sets `reasoning_content` on every assistant message — even as empty string when no reasoning text exists.
