@@ -83,7 +83,11 @@ When an error finish reason is detected:
 
 ## Queue Pause on Error
 
-When a provider error (network failure, API error, content filter, etc.) occurs during prompt processing, the task queue **pauses** instead of moving on to the next queued task. This prevents cascading failures and gives the user control over recovery.
+When an error occurs during prompt processing, the task queue **pauses** instead of moving on to the next queued task. This prevents cascading failures and gives the user control over recovery.
+
+Errors that trigger pause include:
+- **Provider errors** — network failure, API error, content filter, refusal
+- **Max steps exceeded** — agent loop hit `--max-steps` limit without final response (error: `"agent loop exceeded maximum steps"`)
 
 ### Why pause instead of continue
 
@@ -145,3 +149,10 @@ Error handling is tested in `internal/llm/providers/providers_test.go`:
 | `TestAnthropicRefusalStopReason` | `refusal` triggers error |
 | `TestAnthropicUnknownStopReason` | Unknown stop reasons trigger error |
 | `TestAnthropicValidStopReasons` | All valid reasons (`end_turn`, `max_tokens`, `stop_sequence`, `tool_use`, `pause_turn`) don't trigger errors |
+
+Max steps behavior is tested in `internal/llm/agent_maxsteps_test.go`:
+
+| Test | Verifies |
+|------|----------|
+| `TestAgentMaxStepsExceeded` | Agent returns `ErrMaxStepsExceeded` after reaching limit, with accumulated messages |
+| `TestAgentCompletesWithinMaxSteps` | Agent completes normally when final response arrives before limit |
