@@ -314,6 +314,30 @@ Tool arguments arrive in chunks across multiple delta events:
 - **Must use `index` (not `id`) to associate chunks** — see `openAIStreamState.appendToolCallArgs()`
 - When sending back in history, arguments must be JSON-string (not raw JSON) — see `openaiConvertToolCalls()`
 
+### Null arguments in tool call chunks
+
+Some providers emit no-op deltas with `"arguments": null` (JSON literal null):
+
+```json
+{
+	"choices": [{
+		"delta": {
+			"tool_calls": [{
+				"function": {"arguments": null},
+				"id": "",
+				"index": 0,
+				"type": "function"
+			}]
+		},
+		"index": 0
+	}]
+}
+```
+
+After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`. Since `args[0]` is `'n'` (not `'"'`), it bypasses the unquote path and falls through to the raw append. Without a guard, the accumulated arguments become e.g. `{"path": "README.md"}null` — corrupting the JSON and causing tool execution to fail.
+
+**Fix:** skip chunks where `string(args) == "null"`. Safe because the `arguments` field is always a JSON string type in the OpenAI API spec, so the only time `args[0] != '"'` is for the null literal. See `openAIStreamState.appendToolCallArgs()`.
+
 ### Anthropic prompt caching
 
 - System message must be ≥1024 tokens for caching to activate

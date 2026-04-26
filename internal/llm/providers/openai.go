@@ -22,6 +22,12 @@ package providers
 //    Conditional on reasoning mode to avoid wasting tokens. The logic lives
 //    in openaiConvertMessages, not in the sub-converters.
 //    See docs/architecture.md → "Empty thinking block padding".
+//
+// 5. NULL ARGUMENTS IN TOOL CALL CHUNKS: Some providers emit no-op deltas
+//    with "arguments": null. Must be skipped to avoid corrupting the
+//    accumulated arguments string. See docs/architecture.md →
+//    "Null arguments in tool call chunks".
+//    See `appendToolCallArgs()`.
 
 import (
 	"bufio"
@@ -80,7 +86,11 @@ func (s *openAIStreamState) appendToolCallArgs(index int, args json.RawMessage) 
 		}
 	}
 	// Otherwise append as-is (building up JSON object)
-	s.toolCallArgs[index].WriteString(string(args))
+	// Some providers send "arguments": null as a no-op chunk; skip it to avoid
+	// corrupting the accumulated argument string.
+	if string(args) != "null" {
+		s.toolCallArgs[index].WriteString(string(args))
+	}
 }
 
 func (s *openAIStreamState) setToolCallName(index int, id, name string) {

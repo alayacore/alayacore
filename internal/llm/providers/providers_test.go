@@ -304,6 +304,67 @@ func TestToolCallStreamingChunked(t *testing.T) {
 	}
 }
 
+func TestToolCallStreamingWithNullArguments(t *testing.T) {
+	// Regression test: some providers send "arguments": null as a no-op chunk.
+	// This should be silently ignored, not appended to the accumulated arguments.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, _ := w.(http.Flusher)
+
+		// First chunk: name + id + index
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-789\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"\"}}]}}]}\n\n")
+		// Second chunk: valid arguments
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"\",\"function\":{\"arguments\":\"{\\\"path\\\": \\\"README.md\\\"}\"}}]}}]}\n\n")
+		// Third chunk: provider sends null as a no-op
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"\",\"function\":{\"arguments\":null}}]}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider, err := providers.NewOpenAI(
+		providers.WithOpenAIAPIKey("test"),
+		providers.WithOpenAIBaseURL(server.URL),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: []llm.ContentPart{llm.TextPart{Type: "text", Text: "Read README"}}},
+	}
+
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var toolCalls []llm.ToolCallEvent
+	for event := range events {
+		if tc, ok := event.(llm.ToolCallEvent); ok {
+			toolCalls = append(toolCalls, tc)
+		}
+	}
+
+	if len(toolCalls) != 1 {
+		t.Fatalf("Expected 1 tool call, got %d", len(toolCalls))
+	}
+
+	// Verify arguments are valid JSON without trailing "null"
+	var args struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(toolCalls[0].Input, &args); err != nil {
+		t.Fatalf("Failed to unmarshal tool call arguments: %v (input was: %s)", err, toolCalls[0].Input)
+	}
+	if args.Path != "README.md" {
+		t.Errorf("Expected path 'README.md', got '%s'", args.Path)
+	}
+}
+
 func TestAnthropicToolCallStreaming(t *testing.T) {
 	// Test that tool calls are properly streamed from Anthropic
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
