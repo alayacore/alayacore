@@ -21,111 +21,95 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// summarizeContents appends the summarize prompt, calls processPrompt,
-// and formats the response as a "Continue" + summary conversation.
-// On any failure, returns the original contents (without the prompt).
-func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
-	// Build and append the summarize prompt, assigning a history ID
-	// so the adapter can track it in the UI.
-	promptPart := &llm.TextPart{Text: summarizePrompt}
-	id := s.histIncAndGet()
-	promptPart.SetHistoryID(id)
-	promptPart.SetRole(llm.RoleUser)
-	if tag, val, err := contentPartToTLV(promptPart); err == nil && tag != "" {
-		s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
+// ============================================================================
+// Core: processPrompt
+//
+// The central function that sends a conversation to the LLM via the agent's
+// Stream method. All task goroutines (runTaskNormal, runTaskContinue,
+// runTaskSummarize) ultimately call this function.
+//
+// The deltaWriter, callback methods (handleTextComplete, handleToolConfirm,
+// etc.), and cleanIncompleteToolInputs below are its direct dependencies.
+// ============================================================================
+
+// processPrompt sends the conversation history to the LLM via the agent's
+// Stream method, using registered callbacks for streaming output, tool
+// execution, and step tracking. Returns the full response contents and
+// total output token usage.
+func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart) ([]llm.ContentPart, int64, error) {
+	var fullContents []llm.ContentPart
+	var outputTokens int64
+
+	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
+		fullContents = cleanIncompleteToolInputs(contents)
+		s.sendEvent(StepFinishEvent{
+			InputTokens:         usage.InputTokens,
+			OutputTokens:        usage.OutputTokens,
+			CacheReadTokens:     usage.CacheReadTokens,
+			CacheCreationTokens: usage.CacheCreationTokens,
+		})
+		outputTokens += usage.OutputTokens
+		return nil
 	}
 
-	// Send the conversation (with the prompt) to the LLM.
-	promptContents := append(contents, promptPart) //nolint:gocritic // intentional — keep contents unchanged
-	fullContents, outputTokens, err := s.processPrompt(ctx, promptContents)
+	dw := &deltaWriter{output: s.Output}
+
+	callbacks := llm.StreamCallbacks{
+		OnTextComplete:      s.handleTextComplete,
+		OnReasoningComplete: s.handleReasoningComplete,
+		OnToolInputStart:    s.handleToolInputStart,
+		OnToolInputComplete: s.handleToolInputComplete,
+		OnToolOutput:        s.handleToolOutput,
+		OnToolConfirm:       s.handleToolConfirm,
+		ToolNeedsConfirm:    s.needsToolConfirm,
+		OnStepStart:         s.handleStepStart,
+		OnStepFinish:        onStepFinish,
+		IDGen:               s.histIncAndGet,
+	}
+
+	if !s.NoDelta {
+		// Delta streaming enabled: register delta callbacks.
+		// AT/AR complete frames carry empty content (terminators only)
+		// since the content was already delivered via deltas.
+		callbacks.OnTextDelta = dw.handleTextDelta
+		callbacks.OnReasoningDelta = dw.handleReasoningDelta
+		callbacks.OnToolInputDelta = dw.handleToolInputDelta
+	}
+
+	_, err := s.Agent().Stream(ctx, history, callbacks)
+
 	if err != nil {
-		return contents, err
+		return fullContents, outputTokens, err
 	}
 
-	// The LLM response must end with assistant text. If it's empty, a tool
-	// call, reasoning, or empty text, summarization didn't produce a valid
-	// result — keep the original history.
-	response := fullContents[len(contents):]
-	if len(response) == 0 {
-		return contents, fmt.Errorf("summarization produced no content")
-	}
-	tp, ok := response[len(response)-1].(*llm.TextPart)
-	if !ok || tp.Role != llm.RoleAssistant || tp.Text == "" {
-		return contents, fmt.Errorf("summarization produced no text")
-	}
-
-	// Build the summarized conversation: a "Continue" user message
-	// followed by the summary text.
-	result := make([]llm.ContentPart, 0, 2)
-	continueID := s.histIncAndGet()
-	result = append(result, &llm.TextPart{
-		Text: "Continue",
-		ContentPartMeta: llm.ContentPartMeta{
-			HistoryID: continueID,
-			Role:      llm.RoleUser,
-		},
-	})
-	summaryID := s.histIncAndGet()
-	result = append(result, &llm.TextPart{
-		Text: tp.Text,
-		ContentPartMeta: llm.ContentPartMeta{
-			HistoryID: summaryID,
-			Role:      llm.RoleAssistant,
-		},
-	})
-	if outputTokens > 0 {
-		s.sendEvent(SetContextTokensEvent{Tokens: outputTokens})
-	}
-	s.writeNotify("Summarized conversation")
-	return result, nil
-}
-
-// shouldAutoSummarize returns true when auto-summarization is enabled and
-// the current context tokens exceed s.AutoSummarize of the configured limit.
-func (s *Session) shouldAutoSummarize() bool {
-	limit := s.ContextLimit
-	return s.AutoSummarize > 0 && limit > 0 && s.ContextTokens > 0 &&
-		s.ContextTokens >= limit*int64(s.AutoSummarize)/100
-}
-
-// summarizeBackup saves a timestamped backup of the current session contents
-// before summarization. Silently skips if no session file is configured.
-func (s *Session) summarizeBackup(contents []llm.ContentPart) {
-	if s.SessionFile == "" {
-		return
-	}
-	ext := filepath.Ext(s.SessionFile)
-	base := strings.TrimSuffix(s.SessionFile, ext)
-	backupPath := fmt.Sprintf("%s-%s%s", base, time.Now().Format("20060102150405"), ext)
-	if err := s.saveContentToFile(backupPath, contents); err != nil {
-		s.writeNotifyf("Failed to create pre-summarize backup: %v", err)
-	} else {
-		s.writeNotifyf("Pre-summarize backup saved to %s", backupPath)
-	}
-}
-
-// doAutoSummarize logs a notification and triggers summarization.
-// Called synchronously from runTaskNormal when the context is near
-// the token limit — must complete before the user's prompt is processed.
-func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPart) []llm.ContentPart {
-	limit := s.ContextLimit
-	usage := float64(s.ContextTokens) * 100 / float64(limit)
-	s.writeNotifyf("Context usage at %d/%d tokens (%.0f%%). Auto-summarizing...",
-		s.ContextTokens, limit, usage)
-
-	s.summarizeBackup(contents)
-	s.writeNotify("Summarizing conversation...")
-
-	result, err := s.summarizeContents(ctx, contents)
-	if err != nil {
-		s.writeNotify(err.Error())
-	}
-	return result
+	return fullContents, outputTokens, nil
 }
 
 // ============================================================================
-// Prompt Processing
+// processPrompt Dependencies: deltaWriter, TLV helpers, callbacks
 // ============================================================================
+
+// deltaWriter writes streaming delta frames directly to the TLV output,
+// bypassing the session layer. Delta frames are ephemeral and not persisted.
+type deltaWriter struct {
+	output io.Writer
+}
+
+func (dw *deltaWriter) handleTextDelta(delta string, historyID uint64) error {
+	return tlv.WriteTLV(dw.output, tlv.TagAssistantTDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), delta))
+}
+
+func (dw *deltaWriter) handleReasoningDelta(delta string, historyID uint64) error {
+	return tlv.WriteTLV(dw.output, tlv.TagAssistantRDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), delta))
+}
+
+func (dw *deltaWriter) handleToolInputDelta(toolCallID, delta string, historyID uint64) error {
+	data, err := json.Marshal(protocol.ToolInputDeltaData{ID: toolCallID, Delta: delta})
+	if err != nil {
+		return fmt.Errorf("failed to marshal tool input delta: %w", err)
+	}
+	return tlv.WriteTLV(dw.output, tlv.TagAssistantFDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), string(data)))
+}
 
 // writeTLVWithID formats the historyID and writes a TLV entry to the output stream.
 func (s *Session) writeTLVWithID(tag string, historyID uint64, data string) {
@@ -245,77 +229,6 @@ func (s *Session) handleStepStart(step int) error {
 	return nil
 }
 
-// deltaWriter writes streaming delta frames directly to the TLV output,
-// bypassing the session layer. Delta frames are ephemeral and not persisted.
-type deltaWriter struct {
-	output io.Writer
-}
-
-func (dw *deltaWriter) handleTextDelta(delta string, historyID uint64) error {
-	return tlv.WriteTLV(dw.output, tlv.TagAssistantTDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), delta))
-}
-
-func (dw *deltaWriter) handleReasoningDelta(delta string, historyID uint64) error {
-	return tlv.WriteTLV(dw.output, tlv.TagAssistantRDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), delta))
-}
-
-func (dw *deltaWriter) handleToolInputDelta(toolCallID, delta string, historyID uint64) error {
-	data, err := json.Marshal(protocol.ToolInputDeltaData{ID: toolCallID, Delta: delta})
-	if err != nil {
-		return fmt.Errorf("failed to marshal tool input delta: %w", err)
-	}
-	return tlv.WriteTLV(dw.output, tlv.TagAssistantFDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), string(data)))
-}
-
-func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart) ([]llm.ContentPart, int64, error) {
-	var fullContents []llm.ContentPart
-	var outputTokens int64
-
-	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
-		fullContents = cleanIncompleteToolInputs(contents)
-		s.sendEvent(StepFinishEvent{
-			InputTokens:         usage.InputTokens,
-			OutputTokens:        usage.OutputTokens,
-			CacheReadTokens:     usage.CacheReadTokens,
-			CacheCreationTokens: usage.CacheCreationTokens,
-		})
-		outputTokens += usage.OutputTokens
-		return nil
-	}
-
-	dw := &deltaWriter{output: s.Output}
-
-	callbacks := llm.StreamCallbacks{
-		OnTextComplete:      s.handleTextComplete,
-		OnReasoningComplete: s.handleReasoningComplete,
-		OnToolInputStart:    s.handleToolInputStart,
-		OnToolInputComplete: s.handleToolInputComplete,
-		OnToolOutput:        s.handleToolOutput,
-		OnToolConfirm:       s.handleToolConfirm,
-		ToolNeedsConfirm:    s.needsToolConfirm,
-		OnStepStart:         s.handleStepStart,
-		OnStepFinish:        onStepFinish,
-		IDGen:               s.histIncAndGet,
-	}
-
-	if !s.NoDelta {
-		// Delta streaming enabled: register delta callbacks.
-		// AT/AR complete frames carry empty content (terminators only)
-		// since the content was already delivered via deltas.
-		callbacks.OnTextDelta = dw.handleTextDelta
-		callbacks.OnReasoningDelta = dw.handleReasoningDelta
-		callbacks.OnToolInputDelta = dw.handleToolInputDelta
-	}
-
-	_, err := s.Agent().Stream(ctx, history, callbacks)
-
-	if err != nil {
-		return fullContents, outputTokens, err
-	}
-
-	return fullContents, outputTokens, nil
-}
-
 // cleanIncompleteToolInputs removes orphaned tool uses from the end of
 // the content slice. This happens when the user cancels mid-cycle: the model
 // emitted tool uses but the agent never executed them. Only the most recent
@@ -373,6 +286,112 @@ func cleanIncompleteToolInputs(contents []llm.ContentPart) []llm.ContentPart {
 	filtered = append(filtered, contents[lastIdx+1:]...)
 
 	return filtered
+}
+
+// ============================================================================
+// Summarization (built on processPrompt)
+// ============================================================================
+
+// summarizeContents appends the summarize prompt, calls processPrompt,
+// and formats the response as a "Continue" + summary conversation.
+// On any failure, returns the original contents (without the prompt).
+func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
+	// Build and append the summarize prompt, assigning a history ID
+	// so the adapter can track it in the UI.
+	promptPart := &llm.TextPart{Text: summarizePrompt}
+	id := s.histIncAndGet()
+	promptPart.SetHistoryID(id)
+	promptPart.SetRole(llm.RoleUser)
+	if tag, val, err := contentPartToTLV(promptPart); err == nil && tag != "" {
+		s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
+	}
+
+	// Send the conversation (with the prompt) to the LLM.
+	promptContents := append(contents, promptPart) //nolint:gocritic // intentional — keep contents unchanged
+	fullContents, outputTokens, err := s.processPrompt(ctx, promptContents)
+	if err != nil {
+		return contents, err
+	}
+
+	// The LLM response must end with assistant text. If it's empty, a tool
+	// call, reasoning, or empty text, summarization didn't produce a valid
+	// result — keep the original history.
+	response := fullContents[len(contents):]
+	if len(response) == 0 {
+		return contents, fmt.Errorf("summarization produced no content")
+	}
+	tp, ok := response[len(response)-1].(*llm.TextPart)
+	if !ok || tp.Role != llm.RoleAssistant || tp.Text == "" {
+		return contents, fmt.Errorf("summarization produced no text")
+	}
+
+	// Build the summarized conversation: a "Continue" user message
+	// followed by the summary text.
+	result := make([]llm.ContentPart, 0, 2)
+	continueID := s.histIncAndGet()
+	result = append(result, &llm.TextPart{
+		Text: "Continue",
+		ContentPartMeta: llm.ContentPartMeta{
+			HistoryID: continueID,
+			Role:      llm.RoleUser,
+		},
+	})
+	summaryID := s.histIncAndGet()
+	result = append(result, &llm.TextPart{
+		Text: tp.Text,
+		ContentPartMeta: llm.ContentPartMeta{
+			HistoryID: summaryID,
+			Role:      llm.RoleAssistant,
+		},
+	})
+	if outputTokens > 0 {
+		s.sendEvent(SetContextTokensEvent{Tokens: outputTokens})
+	}
+	s.writeNotify("Summarized conversation")
+	return result, nil
+}
+
+// shouldAutoSummarize returns true when auto-summarization is enabled and
+// the current context tokens exceed s.AutoSummarize of the configured limit.
+func (s *Session) shouldAutoSummarize() bool {
+	limit := s.ContextLimit
+	return s.AutoSummarize > 0 && limit > 0 && s.ContextTokens > 0 &&
+		s.ContextTokens >= limit*int64(s.AutoSummarize)/100
+}
+
+// summarizeBackup saves a timestamped backup of the current session contents
+// before summarization. Silently skips if no session file is configured.
+func (s *Session) summarizeBackup(contents []llm.ContentPart) {
+	if s.SessionFile == "" {
+		return
+	}
+	ext := filepath.Ext(s.SessionFile)
+	base := strings.TrimSuffix(s.SessionFile, ext)
+	backupPath := fmt.Sprintf("%s-%s%s", base, time.Now().Format("20060102150405"), ext)
+	if err := s.saveContentToFile(backupPath, contents); err != nil {
+		s.writeNotifyf("Failed to create pre-summarize backup: %v", err)
+	} else {
+		s.writeNotifyf("Pre-summarize backup saved to %s", backupPath)
+	}
+}
+
+// doAutoSummarize logs a notification and triggers summarization.
+// Called synchronously from runTaskNormal when the context is near
+// the token limit — must complete before the user's prompt is processed.
+func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPart) []llm.ContentPart {
+	limit := s.ContextLimit
+	usage := float64(s.ContextTokens) * 100 / float64(limit)
+	s.writeNotifyf("Context usage at %d/%d tokens (%.0f%%). Auto-summarizing...",
+		s.ContextTokens, limit, usage)
+
+	s.summarizeBackup(contents)
+	s.writeNotify("Summarizing conversation...")
+
+	result, err := s.summarizeContents(ctx, contents)
+	if err != nil {
+		s.writeNotify(err.Error())
+	}
+	return result
 }
 
 // ============================================================================

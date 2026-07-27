@@ -240,34 +240,34 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 		return
 	}
 
-	// Registry commands.
-	if cmdDef, ok := LookupCommand(name); ok {
-		switch cmdDef.Policy {
-		case CmdImmediate:
-			cmdDef.Handler(s, s.sessionCtx, args)
-		case CmdIdle:
-			if s.activeTask != nil {
-				s.writeError("Cannot run this command while a task is in progress. Please wait or cancel the current task.")
-				return
-			}
-			cmdDef.Handler(s, s.sessionCtx, args)
-		}
-		return
-	}
-
-	// Task commands — :continue and :summarize run in their own goroutine.
+	// Task commands — :continue and :summarize start a task goroutine,
+	// same as normal prompts. Check them first so they're grouped with
+	// the normal prompt path above (both use prepareTask).
 	switch name {
 	case CommandNameContinue:
 		if ctx, ok := s.prepareTask(); ok {
 			go s.runTaskContinue(ctx)
 		}
+		return
 	case CommandNameSummarize:
 		if ctx, ok := s.prepareTask(); ok {
 			go s.runTaskSummarize(ctx)
 		}
-	default:
-		s.writeError(fmt.Sprintf("unknown command: %s", name))
+		return
 	}
+
+	// Registry commands — synchronous dispatch in the run() goroutine.
+	cmdDef, ok := LookupCommand(name)
+	if !ok {
+		s.writeError(fmt.Sprintf("unknown command: %s", name))
+		return
+	}
+
+	if cmdDef.Policy == CmdIdle && s.activeTask != nil {
+		s.writeError("Cannot run this command while a task is in progress. Please wait or cancel the current task.")
+		return
+	}
+	cmdDef.Handler(s, s.sessionCtx, args)
 }
 
 // ============================================================================

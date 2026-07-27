@@ -105,7 +105,7 @@
 //   - session.go: Session struct, lifecycle, and cross-goroutine channels
 //   - session_task.go: Prompt processing, agent loop, task runners, summarization
 //   - session_loop.go: Main event loop, task start/done
-//   - session_io.go: TLV input/output, summarize, continue commands
+//   - session_io.go: Input pump, command dispatch (all colon-commands)
 //   - session_content.go: ContentPart helpers, tag mapping, ID lookup
 //   - session_persist.go: Session save/load functionality
 //   - session_types.go: Type definitions (SessionConfig, etc.)
