@@ -277,10 +277,20 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 // reloading from file, and syncing from an adapter editor session.
 // ============================================================================
 
-func (s *Session) handleModelSet(args string) {
+// checkModelManager is a shared preamble for model handlers. Returns the
+// model manager if initialized, or writes an error and returns nil.
+func (s *Session) checkModelManager() *ModelManager {
 	mm := s.modelService.manager
 	if mm == nil {
 		s.writeError("model manager not initialized")
+		return nil
+	}
+	return mm
+}
+
+func (s *Session) handleModelSet(args string) {
+	mm := s.checkModelManager()
+	if mm == nil {
 		return
 	}
 
@@ -323,9 +333,8 @@ func (s *Session) handleModelSet(args string) {
 }
 
 func (s *Session) handleModelLoad() {
-	mm := s.modelService.manager
+	mm := s.checkModelManager()
 	if mm == nil {
-		s.writeError("model manager not initialized")
 		return
 	}
 
@@ -364,9 +373,8 @@ func (s *Session) handleModelLoad() {
 // editor session. The JSON is received as a single string (cut on first
 // space), so string values with spaces (e.g. model names) are preserved.
 func (s *Session) handleModelSync(args string) {
-	mm := s.modelService.manager
+	mm := s.checkModelManager()
 	if mm == nil {
-		s.writeError("model manager not initialized")
 		return
 	}
 
@@ -403,10 +411,6 @@ func (s *Session) handleModelSync(args string) {
 // ============================================================================
 
 func (s *Session) handleReason(args string) {
-	if args == "" {
-		s.writeError("usage: :reason [0|1|2]  (0=off, 1=normal, 2=max)")
-		return
-	}
 	level, err := strconv.Atoi(args)
 	if err != nil || level < config.ReasoningLevelOff || level > config.ReasoningLevelMax {
 		s.writeError("usage: :reason [0|1|2]  (0=off, 1=normal, 2=max)")
@@ -421,19 +425,20 @@ func (s *Session) handleReason(args string) {
 //	fps:        frames per second (positive integer, e.g. 2)
 //	resolution: 0=default, 1=max
 func (s *Session) handleVideoConfig(args string) {
+	const usage = "usage: :video_config <fps> <resolution>  (fps: positive integer, resolution: 0=default, 1=max)"
 	fields := strings.Fields(args)
 	if len(fields) < 2 {
-		s.writeError("usage: :video_config <fps> <resolution>  (resolution: 0=default, 1=max)")
+		s.writeError(usage)
 		return
 	}
 	fps, err := strconv.Atoi(fields[0])
 	if err != nil || fps < 1 {
-		s.writeError("usage: :video_config <fps> <resolution>  (fps must be a positive integer)")
+		s.writeError(usage)
 		return
 	}
 	res, err := strconv.Atoi(fields[1])
 	if err != nil || res < 0 || res > 1 {
-		s.writeError("usage: :video_config <fps> <resolution>  (resolution: 0=default, 1=max)")
+		s.writeError(usage)
 		return
 	}
 	s.SetVideoConfig(fps, res)
@@ -480,14 +485,25 @@ func (s *Session) handleThemeSet(args string) {
 // Called when the user presses Ctrl+G (init overlay or globally) or types
 // the command directly. Cancels the entire MCP initialization.
 func (s *Session) handleMCPCancel() {
-	switch {
-	case !s.mcpService.HasInit():
-		s.writeError("No MCP servers configured.")
-	case s.mcpService.IsReady():
-		s.writeError("MCP initialization is not in progress.")
-	default:
-		s.mcpService.Cancel()
+	if !s.checkMCPReady() {
+		return
 	}
+	s.mcpService.Cancel()
+}
+
+// checkMCPReady is a shared preamble for MCP handlers that need to
+// verify MCP is configured and initializing. Returns false if either
+// check fails (the error has already been written).
+func (s *Session) checkMCPReady() bool {
+	if !s.mcpService.HasInit() {
+		s.writeError("No MCP servers configured.")
+		return false
+	}
+	if s.mcpService.IsReady() {
+		s.writeError("MCP initialization is not in progress.")
+		return false
+	}
+	return true
 }
 
 // handleMCPConfirm handles the :mcp_confirm command.
@@ -499,12 +515,7 @@ func (s *Session) handleMCPConfirm(_ context.Context, args string) {
 		s.writeError("usage: :mcp_confirm <server> <code> <redirect_uri>")
 		return
 	}
-	if !s.mcpService.HasInit() {
-		s.writeError("No MCP servers configured.")
-		return
-	}
-	if s.mcpService.IsReady() {
-		s.writeError("MCP initialization is not in progress.")
+	if !s.checkMCPReady() {
 		return
 	}
 
@@ -514,7 +525,7 @@ func (s *Session) handleMCPConfirm(_ context.Context, args string) {
 	if s.mcpService.SendAuthCodeResult(server, code, redirectURI) {
 		s.writeNotifyf("MCP auth code received for %q.", server)
 	} else {
-		s.writeError(fmt.Sprintf("No pending auth for MCP server %q.", server))
+		s.writeError(fmt.Sprintf("No pending authorization for MCP server %q.", server))
 	}
 }
 
@@ -527,12 +538,7 @@ func (s *Session) handleMCPDecline(args string) {
 		s.writeError("usage: :mcp_decline <server>")
 		return
 	}
-	if !s.mcpService.HasInit() {
-		s.writeError("No MCP servers configured.")
-		return
-	}
-	if s.mcpService.IsReady() {
-		s.writeError("MCP initialization is not in progress.")
+	if !s.checkMCPReady() {
 		return
 	}
 
