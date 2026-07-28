@@ -119,9 +119,6 @@ func (aw AttachmentWindow) readDir(dir string) []fileEntry {
 		return nil
 	}
 	result := []fileEntry{}
-	if dir != "/" {
-		result = append(result, fileEntry{name: "..", nameLower: "..", isDir: true})
-	}
 	for _, e := range entries {
 		name := e.Name()
 		result = append(result, fileEntry{
@@ -177,6 +174,14 @@ func (aw AttachmentWindow) updateForKeyMsg(msg tea.KeyMsg) (AttachmentWindow, te
 
 	if key == keyCtrlA {
 		return aw.toggleMode(), nil
+	}
+
+	// Backspace segment deletion: in local mode when filter input is focused,
+	// delete back to the previous path separator instead of a single character.
+	if key == "backspace" && aw.mode == modeLocal && aw.FilterInputFocused {
+		aw = aw.deletePathSegment()
+		aw = aw.updateFiltered()
+		return aw, nil
 	}
 
 	if aw.mode == modeURL && key == keyEnter {
@@ -429,6 +434,62 @@ func (aw AttachmentWindow) updateFiltered() AttachmentWindow {
 	aw.FilteredListCore = aw.FilteredListCore.ClampSelection(len(aw.filtered))
 	aw.FilteredListCore = aw.FilteredListCore.EnsureVisible()
 	aw.FilteredListCore = aw.FilteredListCore.ClampScroll(len(aw.filtered))
+	return aw
+}
+
+// deletePathSegment deletes the path segment before the cursor, going back to
+// (but not including) the previous '/' separator. If no separator is found,
+// deletes to the beginning.
+//
+// Examples:
+//
+//	"/abc/def/"  (cursor at end)  →  "/abc/"
+//	"/abc/def"   (cursor at end)  →  "/abc/"
+//	"/abc/"      (cursor at end)  →  "/"
+//	"abc/def/"   (cursor at end)  →  "abc/"
+func (aw AttachmentWindow) deletePathSegment() AttachmentWindow {
+	val := aw.FilterInput.Value()
+	pos := aw.FilterInput.CursorPos()
+
+	if pos <= 0 {
+		return aw
+	}
+
+	// Don't delete the root path.
+	if val == "/" {
+		return aw
+	}
+
+	runes := []rune(val)
+	// Find the previous '/' before cursor. We start from pos-2 to skip the
+	// character immediately before the cursor, ensuring we delete the entire
+	// current segment (including the trailing '/' if present).
+	slashIdx := -1
+	for i := pos - 2; i >= 0; i-- {
+		if runes[i] == '/' {
+			slashIdx = i
+			break
+		}
+	}
+
+	var deleteFrom int
+	if slashIdx >= 0 {
+		// Delete from right after the '/' (keeping the separator).
+		deleteFrom = slashIdx + 1
+	} else {
+		// No '/' found — delete everything before cursor.
+		deleteFrom = 0
+	}
+
+	if deleteFrom >= pos {
+		return aw
+	}
+
+	newRunes := make([]rune, 0, len(runes)-(pos-deleteFrom))
+	newRunes = append(newRunes, runes[:deleteFrom]...)
+	newRunes = append(newRunes, runes[pos:]...)
+	aw.FilterInput = aw.FilterInput.WithValue(string(newRunes))
+	aw.FilterInput = aw.FilterInput.WithCursorPos(deleteFrom)
 	return aw
 }
 

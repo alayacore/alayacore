@@ -555,6 +555,20 @@ func (m InputField) WithValue(s string) InputField {
 	return m.ensureCursorVisible()
 }
 
+// WithCursorPos sets the cursor position to pos (in runes) within the value.
+// Clamps to valid range [0, len(value)].
+func (m InputField) WithCursorPos(pos int) InputField {
+	if pos < 0 {
+		pos = 0
+	}
+	if pos > len(m.value) {
+		pos = len(m.value)
+	}
+	m.pos = pos
+	m.goalCol = -1
+	return m.ensureCursorVisible()
+}
+
 func (m InputField) WithWidth(w int) InputField {
 	m.width = max(0, w)
 	return m.ensureCursorVisible()
