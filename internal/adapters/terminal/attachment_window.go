@@ -37,6 +37,13 @@ type AttachmentWindow struct {
 	baseDir    string
 	mode       attachmentMode
 
+	// savedLocalPath preserves the local-mode input value when switching to URL
+	// mode, so it can be restored when switching back.
+	savedLocalPath string
+	// savedURLPath preserves the URL-mode input value when switching to local
+	// mode, so it can be restored when switching back.
+	savedURLPath string
+
 	// selectedPath stores the path selected by the user when Enter is pressed.
 	// It is set by handleEnter/handleSearchEnter/handleURLEntry before closing
 	// the window, and read by handleSelectorOverlayKeys to add the attachment
@@ -88,8 +95,6 @@ func (aw AttachmentWindow) SelectedPath() string { return aw.selectedPath }
 func (aw AttachmentWindow) Open() AttachmentWindow {
 	aw.State = FilteredListOpen
 	aw.mode = modeLocal
-	aw.FilterInput = aw.FilterInput.WithValue("")
-	aw.FilterInput.Prompt = "F "
 	aw.lastFilterValue = "\x00"
 	aw.FilterInputFocused = true
 	aw.FilterInput = aw.FilterInput.Focus()
@@ -99,6 +104,12 @@ func (aw AttachmentWindow) Open() AttachmentWindow {
 	aw.selectedPath = ""
 	aw.currentDir, _ = os.Getwd()
 	aw.baseDir = aw.currentDir
+	if aw.currentDir == "/" {
+		aw.FilterInput = aw.FilterInput.WithValue("/")
+	} else {
+		aw.FilterInput = aw.FilterInput.WithValue(aw.currentDir + "/")
+	}
+	aw.FilterInput.Prompt = "F "
 	return aw.loadDir(aw.currentDir)
 }
 
@@ -244,22 +255,53 @@ func (aw AttachmentWindow) handleLocalModeKeys(filterChanged bool, key string, i
 }
 
 func (aw AttachmentWindow) toggleMode() AttachmentWindow {
-	aw.FilterInput = aw.FilterInput.WithValue("")
 	aw.lastFilterValue = "\x00"
 	if aw.mode == modeLocal {
-		aw.mode = modeURL
-		aw.FilterInput.Prompt = "U "
-		aw.FilterInput = aw.FilterInput.Focus()
-		aw.FilterInputFocused = true
-		aw.FilteredListCore = aw.FilteredListCore.updateFilterInputStyles()
-	} else {
-		aw.mode = modeLocal
-		aw.FilterInput.Prompt = "F "
-		aw = aw.loadDir(aw.currentDir)
-		aw.FilterInput = aw.FilterInput.Focus()
-		aw.FilterInputFocused = true
-		aw.FilteredListCore = aw.FilteredListCore.updateFilterInputStyles()
+		return aw.switchToURL()
 	}
+	return aw.switchToLocal()
+}
+
+// switchToURL transitions from local mode to URL mode, saving the local path
+// for later restoration and restoring any previously saved URL.
+func (aw AttachmentWindow) switchToURL() AttachmentWindow {
+	aw.savedLocalPath = aw.FilterInput.Value()
+	aw.mode = modeURL
+	aw.FilterInput.Prompt = "U "
+	savedURL := aw.savedURLPath
+	aw.savedURLPath = ""
+	if savedURL != "" {
+		aw.FilterInput = aw.FilterInput.WithValue(savedURL)
+	} else {
+		aw.FilterInput = aw.FilterInput.WithValue("")
+	}
+	aw.FilterInput = aw.FilterInput.Focus()
+	aw.FilterInputFocused = true
+	aw.FilteredListCore = aw.FilteredListCore.updateFilterInputStyles()
+	return aw
+}
+
+// switchToLocal transitions from URL mode to local mode, saving the URL
+// for later restoration and restoring the previously saved local path.
+func (aw AttachmentWindow) switchToLocal() AttachmentWindow {
+	aw.savedURLPath = aw.FilterInput.Value()
+	aw.mode = modeLocal
+	aw.FilterInput.Prompt = "F "
+	saved := aw.savedLocalPath
+	aw.savedLocalPath = ""
+	if saved != "" {
+		aw.FilterInput = aw.FilterInput.WithValue(saved)
+	} else {
+		if aw.currentDir == "/" {
+			aw.FilterInput = aw.FilterInput.WithValue("/")
+		} else {
+			aw.FilterInput = aw.FilterInput.WithValue(aw.currentDir + "/")
+		}
+	}
+	aw = aw.updateFiltered()
+	aw.FilterInput = aw.FilterInput.Focus()
+	aw.FilterInputFocused = true
+	aw.FilteredListCore = aw.FilteredListCore.updateFilterInputStyles()
 	return aw
 }
 
@@ -344,19 +386,6 @@ func (aw AttachmentWindow) navigateByPath(search string) (AttachmentWindow, stri
 			filter = ""
 		} else {
 			absDir = filepath.Dir(search)
-			filter = filepath.Base(search)
-		}
-
-	case strings.Contains(search, "/") || search == "..":
-		switch {
-		case search == "..":
-			absDir = filepath.Join(aw.baseDir, "..")
-			filter = ""
-		case strings.HasSuffix(search, "/"):
-			absDir = filepath.Join(aw.baseDir, search)
-			filter = ""
-		default:
-			absDir = filepath.Join(aw.baseDir, filepath.Dir(search))
 			filter = filepath.Base(search)
 		}
 
@@ -515,12 +544,13 @@ func (aw AttachmentWindow) render() string {
 
 func (aw AttachmentWindow) renderURLBody(sb *strings.Builder, _ int) {
 	sb.WriteString(aw.Styles.System.Render("Enter a URL to attach (e.g. https://example.com/image.jpg)"))
-	// Pad to match local mode height (currentDir + file list box).
+	// Pad to match local mode height (file list box).
 	sb.WriteString(strings.Repeat("\n", 10))
 }
 
 func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
-	sb.WriteString(aw.Styles.System.Render(aw.currentDir))
+	countStr := fmt.Sprintf("%d items", len(aw.filtered))
+	sb.WriteString(aw.Styles.System.Render(countStr))
 	sb.WriteString("\n")
 
 	listBorderColor := aw.ListBorderColor()
