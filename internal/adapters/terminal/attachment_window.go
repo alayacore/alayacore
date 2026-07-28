@@ -374,6 +374,8 @@ func (aw AttachmentWindow) handleListKeys(key string) AttachmentWindow {
 			aw.SelectedIdx--
 		}
 	}
+	aw.FilteredListCore = aw.FilteredListCore.EnsureVisible()
+	aw.FilteredListCore = aw.FilteredListCore.ClampScroll(len(aw.filtered))
 	return aw
 }
 
