@@ -34,7 +34,6 @@ type AttachmentWindow struct {
 	entries    []fileEntry
 	filtered   []fileEntry
 	currentDir string
-	baseDir    string
 	mode       attachmentMode
 
 	// savedLocalPath preserves the local-mode input value when switching to URL
@@ -103,7 +102,6 @@ func (aw AttachmentWindow) Open() AttachmentWindow {
 	aw.SelectedIdx = 0
 	aw.selectedPath = ""
 	aw.currentDir, _ = os.Getwd()
-	aw.baseDir = aw.currentDir
 	if aw.currentDir == "/" {
 		aw.FilterInput = aw.FilterInput.WithValue("/")
 	} else {
