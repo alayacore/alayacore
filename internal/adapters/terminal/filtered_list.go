@@ -1,9 +1,10 @@
 package terminal
 
 // FilteredListCore provides shared filtering, navigation, and overlay rendering
-// for selector-style UI components (ModelSelector, HelpWindow, ThemeSelector).
+// for selector-style UI components (ModelSelector, HelpWindow, ThemeSelector,
+// AttachmentWindow).
 //
-// Both components follow the same pattern:
+// All components follow the same pattern:
 //   - Text input for filtering
 //   - Scrollable list of items below
 //   - Tab toggles focus between filter and list
