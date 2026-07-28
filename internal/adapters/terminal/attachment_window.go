@@ -279,8 +279,6 @@ func (aw AttachmentWindow) autocompleteDir(dirName string) AttachmentWindow {
 	case strings.Contains(search, "/"):
 		prefix := search[:strings.LastIndex(search, "/")+1]
 		aw.FilterInput = aw.FilterInput.WithValue(prefix + dirName + "/")
-	case strings.HasPrefix(search, "~"):
-		aw.FilterInput = aw.FilterInput.WithValue("~/" + dirName + "/")
 	default:
 		aw.FilterInput = aw.FilterInput.WithValue(dirName + "/")
 	}
@@ -340,26 +338,6 @@ func (aw AttachmentWindow) navigateByPath(search string) (AttachmentWindow, stri
 	var absDir, filter string
 
 	switch {
-	case strings.HasPrefix(search, "~"):
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return aw, search
-		}
-		if search == "~" {
-			aw.currentDir = home
-			aw = aw.loadDir(home)
-			aw.lastFilterValue = "\x00"
-			return aw, ""
-		}
-		rest := search[1:]
-		if strings.HasSuffix(rest, "/") {
-			absDir = filepath.Join(home, rest)
-			filter = ""
-		} else {
-			absDir = filepath.Join(home, filepath.Dir(rest))
-			filter = filepath.Base(rest)
-		}
-
 	case strings.HasPrefix(search, "/"):
 		if strings.HasSuffix(search, "/") {
 			absDir = search
