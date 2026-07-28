@@ -195,6 +195,11 @@ func (aw AttachmentWindow) updateForKeyMsg(msg tea.KeyMsg) (AttachmentWindow, te
 		return aw, nil
 	}
 
+	// Ctrl+C: do nothing in local mode (neither clear input nor reset directory).
+	if key == keyCtrlC && aw.mode == modeLocal && aw.FilterInputFocused {
+		return aw, nil
+	}
+
 	if aw.mode == modeURL && key == keyEnter {
 		aw = aw.handleURLEntry()
 		if aw.selectedPath != "" {
@@ -239,10 +244,6 @@ func (aw AttachmentWindow) updateForKeyMsg(msg tea.KeyMsg) (AttachmentWindow, te
 
 func (aw AttachmentWindow) handleLocalModeKeys(filterChanged bool, key string, inputWasFocused bool) AttachmentWindow {
 	if filterChanged && aw.FilterInputFocused {
-		if key == keyCtrlC {
-			aw.currentDir = aw.baseDir
-			aw = aw.loadDir(aw.baseDir)
-		}
 		aw = aw.updateFiltered()
 	}
 	if !aw.FilterInputFocused {
