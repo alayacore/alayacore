@@ -615,15 +615,15 @@ func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 			ToolCallID: tr.ID,
 		}
 		// Build combined text from all content parts.
-		// TextParts contribute their text directly; ImageParts contribute
-		// their URI so the model can still access the image data.
+		// OpenAI tool messages only support string content, so media
+		// parts (image, audio, video, document) are summarized as text.
 		var textParts []string
 		for _, cp := range tr.Output {
 			switch v := cp.(type) {
 			case *llm.TextPart:
 				textParts = append(textParts, v.Text)
-			case *llm.ImagePart:
-				textParts = append(textParts, v.URI)
+			default:
+				textParts = append(textParts, openaiMediaSummary(v))
 			}
 		}
 		combined := strings.Join(textParts, "\n")
@@ -636,6 +636,37 @@ func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 		results = append(results, apiMsg)
 	}
 	return results
+}
+
+// openaiMediaSummary returns a text summary of a media ContentPart for use
+// in contexts where the API only supports string content (e.g. tool results).
+// For DataURIs it returns a structured label like "[Image (image/jpeg)]";
+// for remote URLs it includes the URL.
+func openaiMediaSummary(part llm.ContentPart) string {
+	switch v := part.(type) {
+	case *llm.ImagePart:
+		if mediaType, _, ok := llm.ParseDataURI(v.URI); ok {
+			return fmt.Sprintf("[Image (%s)]", mediaType)
+		}
+		return fmt.Sprintf("[Image: %s]", v.URI)
+	case *llm.AudioPart:
+		if mediaType, _, ok := llm.ParseDataURI(v.URI); ok {
+			return fmt.Sprintf("[Audio (%s)]", mediaType)
+		}
+		return fmt.Sprintf("[Audio: %s]", v.URI)
+	case *llm.VideoPart:
+		if mediaType, _, ok := llm.ParseDataURI(v.URI); ok {
+			return fmt.Sprintf("[Video (%s)]", mediaType)
+		}
+		return fmt.Sprintf("[Video: %s]", v.URI)
+	case *llm.DocumentPart:
+		if mediaType, _, ok := llm.ParseDataURI(v.URI); ok {
+			return fmt.Sprintf("[Document (%s)]", mediaType)
+		}
+		return fmt.Sprintf("[Document: %s]", v.URI)
+	default:
+		return ""
+	}
 }
 
 func openaiHasToolInputs(contents []llm.ContentPart) bool {
