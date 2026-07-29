@@ -702,10 +702,24 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPa
 				"image_url": map[string]string{"url": v.URI},
 			})
 		case *llm.AudioPart:
-			contentParts = append(contentParts, map[string]any{
-				"type":        "input_audio",
-				"input_audio": map[string]string{"data": v.URI},
-			})
+			// Standard OpenAI format: parse DataURI into base64 + format.
+			// Remote URLs are not supported (OpenAI API has no URL audio input).
+			if mediaType, b64, ok := llm.ParseDataURI(v.URI); ok {
+				format := strings.TrimPrefix(mediaType, "audio/")
+				contentParts = append(contentParts, map[string]any{
+					"type": "input_audio",
+					"input_audio": map[string]string{
+						"data":   b64,
+						"format": format,
+					},
+				})
+			} else {
+				// Remote URL → text placeholder.
+				contentParts = append(contentParts, map[string]any{
+					"type": "text",
+					"text": fmt.Sprintf("[Audio file: %s (remote URL not supported)]", v.URI),
+				})
+			}
 		case *llm.VideoPart:
 			contentParts = append(contentParts, openAIVideoPart(v.URI, videoFPS, videoRes))
 		case *llm.DocumentPart:
