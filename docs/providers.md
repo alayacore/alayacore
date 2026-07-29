@@ -13,19 +13,47 @@ All media types (image, audio, video, document) are stored as a **URI** in the d
 | Content Part | OpenAI Wire Format |
 |---|---|
 | `ImagePart` | `{"type":"image_url","image_url":{"url":"data:image/...;base64,..."}}` |
-| `AudioPart` | `{"type":"input_audio","input_audio":{"data":"data:audio/...;base64,..."}}` |
+| `AudioPart` | `{"type":"input_audio","input_audio":{"data":"UklGRiQ...","format":"wav"}}` |
 | `VideoPart` | `{"type":"video_url","video_url":{"url":"data:video/...;base64,..."},"fps":2,"media_resolution":"default"}` |
 | `DocumentPart` | ❌ Not supported (skipped) |
 
-All media types accept either a **data URI** (`data:{mime};base64,...`) or a plain **URL** (`https://...`).
-
 Key points:
-- **Image** and **video** use the `url` field with the URI value.
-- **Audio** uses the `data` field — accepts both a full data URI and a URL, and does **not** include a separate `format` field.
+- **Image** and **video** use the `url` field with the URI value (accepts both data URIs and remote URLs).
+- **Audio** uses the `data` field with **raw base64 data** (not a data URI) plus a `format` field derived from the MIME type. **Remote URLs are not supported** for audio — if a plain URL is provided it is replaced with a text placeholder.
 - **Video** includes additional parameters `fps` and `media_resolution` (defaults to `2` and `"default"`, configurable via `:video_config`).
 - **Document** (e.g. PDF) is silently skipped as OpenAI Chat Completions API has no document content block.
 
-> **Note:** These wire formats are compatible with providers that extend the OpenAI-style API to support multimodal input (e.g. DeepSeek, Qwen, MiniMax, StepFun). Standard OpenAI Chat Completions API only supports `image_url` and `input_audio` natively; `video_url` is a non-standard extension.
+> **Note:** These wire formats are compatible with providers that extend the OpenAI-style API to support multimodal input (e.g. DeepSeek, Qwen, MiniMax, StepFun, Xiaomi MiMo). Standard OpenAI Chat Completions API only supports `image_url` and `input_audio` natively; `video_url` is a non-standard extension.
+
+## Multimodal support comparison
+
+The two providers have complementary multimodal capabilities — neither covers all scenarios.
+
+### User / assistant messages
+
+| Media type | OpenAI | Anthropic |
+|---|---|---|
+| **Image** | ✅ `image_url.url` (DataURI or URL) | ✅ `source.type="base64"` or `"url"` |
+| **Audio** | ✅ `input_audio.data` + `format` (DataURI only) | ❌ Not supported by the API |
+| **Video** | ✅ `video_url.url` + `fps` + `media_resolution` | ❌ Not supported by the API |
+| **Document (PDF)** | ❌ Falls back to text placeholder | ✅ `source.type="base64"` or `"url"` |
+
+### Tool results
+
+| Capability | OpenAI | Anthropic |
+|---|---|---|
+| **Nested media in tool result** | ❌ The `tool` role only accepts string content. All media parts are flattened to text summaries like `[Image (image/jpeg)]` — the model sees a label, not the actual media. | ✅ `tool_result.content` is an array that can contain text, image, document, etc. sub-blocks, recursively serialized via `anthropicPartToBlock`. |
+| **Implementation** | `openaiMediaSummary()` extracts the MIME type from DataURIs and produces a tag; remote URLs are included as-is. | `anthropicPartToBlock()` calls itself recursively for each sub-part in `ToolOutputPart.Output`, producing proper content blocks. |
+
+### Key trade-off
+
+```
+User message:   OpenAI can send audio/video natively,
+                Anthropic can only send image & document.
+
+Tool result:    Anthropic can return images inside tool results,
+                OpenAI can only describe them in text.
+```
 
 ## OpenAI tool call chunking
 

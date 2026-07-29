@@ -120,7 +120,7 @@ And on receive, both providers use the same pattern: accumulate content by `inde
 | `TextPart` | `content` (top-level field) | `content[]` array: `{type:"text", text:"..."}` |
 | `ReasoningPart` | `reasoning_content` (top-level field) | `content[]` array: `{type:"thinking", thinking:"..."}` |
 | `ImagePart` | `content[]` array: `{type:"image_url", image_url:{url:"data:image/...;base64,..."}}` | `content[]` array: `{type:"image", source:{type:"base64", media_type:"image/jpeg", data:"..."}}` |
-| `AudioPart` | `content[]` array: `{type:"input_audio", input_audio:{data:"data:audio/...;base64,..."}}` | `content[]` array: `{type:"audio", source:{type:"base64", media_type:"audio/mpeg", data:"..."}}` |
+| `AudioPart` | `content[]` array: `{type:"input_audio", input_audio:{data:"UklGRiQ...", format:"wav"}}` | `content[]` array: `{type:"audio", source:{type:"base64", media_type:"audio/mpeg", data:"..."}}` |
 | `VideoPart` | `content[]` array: `{type:"video_url", video_url:{url:"data:video/...;base64,..."}, fps:2, media_resolution:"default"}` | `content[]` array: `{type:"video", source:{type:"base64", media_type:"video/mp4", data:"..."}}` |
 | `DocumentPart` | ❌ Not supported | `content[]` array: `{type:"document", source:{type:"base64", media_type:"application/pdf", data:"..."}}` |
 | `ToolInputPart` | `tool_calls[]` (top-level array) | `content[]` array: `{type:"tool_use", id, name, input}` |
@@ -331,7 +331,7 @@ ToolInputPart{
     "content": [
         {"type": "text", "text": "Describe this multimedia"},
         {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ..."}},
-        {"type": "input_audio", "input_audio": {"data": "data:audio/wav;base64,UklGR..."}},
+        {"type": "input_audio", "input_audio": {"data": "UklGRiQ...", "format": "wav"}},
         {"type": "video_url", "video_url": {"url": "data:video/mp4;base64,AAAA..."},
          "fps": 2, "media_resolution": "default"}
     ]
@@ -353,7 +353,7 @@ ToolInputPart{
 
 > **Note:** All media content parts store a URI (`data:{mime};base64,...` or `https://...`) in the domain layer. Each provider extracts or passes through the format it needs:
 > - OpenAI `image_url` / `video_url`: passes the URI directly as the `url` field
-> - OpenAI `input_audio`: passes the URI directly as the `data` field
+> - OpenAI `input_audio`: parses the data URI to extract raw base64 `data` and `format` from the MIME type; remote URLs are not supported and replaced with a text placeholder
 > - Anthropic: parses data URIs to extract `media_type` and raw base64 `data`; plain URLs use the `url` source type
 
 ### Wire Format Differences (Anthropic vs OpenAI)
