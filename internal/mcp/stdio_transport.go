@@ -42,7 +42,7 @@ type StdioTransport struct {
 	pendingMu sync.Mutex
 	readerWg  sync.WaitGroup
 
-	debugWriter io.WriteCloser // non-nil when --debug-log is enabled; logs raw JSON-RCP
+	debugWriter io.WriteCloser // non-nil when --debug-log is enabled; logs raw JSON-RPC
 
 	// Notification handler for server-to-client notifications.
 	notificationHandler NotificationHandler

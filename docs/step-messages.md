@@ -17,6 +17,7 @@ A **step** is one LLM round trip. It produces 1 or 2 messages in the conversatio
 
 - **`StepCompleteEvent.Message`** is a single `Message` (the assistant message). Tool calls, text, and reasoning are all content parts within it.
 - **Tool execution** starts during streaming for all tools — tools needing no confirmation execute immediately via goroutines, while tools needing confirmation block on per-tool channels until the user responds. All results flow through a shared channel and are collected in a single loop. Results are matched to their tool call by ID.
+- **Result matching is strict**: `reorderToolResults` requires every tool call in the step to have exactly one result. A tool call whose result never arrived (e.g. a non-conforming provider that reuses an empty tool-call ID) is surfaced as an error — never a nil entry in the conversation history, which would panic later in `GroupByRole`.
 - **All tool results** go into one tool result message per step (required by both Anthropic and OpenAI).
 - **Incomplete tool calls on cancel:** When user cancels mid-tool-call, messages may have `tool_use` without matching `tool_result`. `cleanIncompleteToolInputs()` removes these to prevent API errors on next request.
 - **Tool result message ordering:** `OnStepFinish` receives complete step messages including both the assistant message (with tool calls) and the tool result message. `OnToolOutput` should only send UI notifications — the agent loop handles message assembly.

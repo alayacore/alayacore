@@ -11,6 +11,12 @@ package llm
 // 2. INCOMPLETE TOOL CALLS ON CANCEL: When user cancels mid-tool-call, content may have
 //    tool_use without matching tool_result. Clean up these orphaned tool uses before the
 //    next API request to prevent errors.
+//
+// 3. TOOL RESULTS MUST MATCH TOOL CALLS 1:1: reorderToolResults pairs each result
+//    with its tool call by ID. A tool call whose result never arrives (e.g. a
+//    non-conforming provider that reuses an empty tool-call ID) would leave a nil
+//    ContentPart in the step history, which panics later in GroupByRole. The function
+//    therefore returns an error for any unmatched slot instead of appending nil.
 
 import (
 	"context"

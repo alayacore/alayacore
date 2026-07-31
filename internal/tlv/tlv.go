@@ -62,7 +62,12 @@ const (
 	TagAssistantFDelta = "Af" // Assistant function / tool call delta (partial JSON argument)
 )
 
-const maxMessageSize = 1<<31 - 1 // Max int32 to fit in uint32
+// maxMessageSize is the largest frame length the wire format allows.
+// It fits in the 4-byte (uint32) length field and in a 32-bit int, so
+// EncodeTLV/ReadTLV never need to handle a value that overflows either.
+// EncodeTLV rejects longer values (never truncates) and ReadTLV rejects
+// longer peer-advertised lengths before allocating.
+const maxMessageSize = 1<<31 - 1
 
 // checkEncodeLength validates that a message length fits in the wire
 // format. Extracted as a pure function so the >maxMessageSize path can
