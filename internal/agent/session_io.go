@@ -10,6 +10,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -36,12 +38,16 @@ import (
 //   - contentParts holds the combined message (media parts + optional text part)
 //   - isCmd is false, cmd is empty
 //
-// For command messages:
-//   - cmd holds the command text (without ':' prefix)
+// For command messages (from CI frames):
+//   - cmd holds the command name (no ':' prefix)
+//   - cmdInput holds the command's argument string
+//   - cmdID holds the adapter-generated call ID, echoed in the CO result
 //   - contentParts is nil, isCmd is true
 type inputMsg struct {
 	contentParts []llm.ContentPart // combined user content (media + text)
-	cmd          string            // command text for commands, empty for prompts
+	cmd          string            // command name for commands, empty for prompts
+	cmdInput     string            // command argument string (from CI frame)
+	cmdID        string            // command call ID (from CI frame), echoed in CO
 	isCmd        bool              // true when cmd is set
 	err          error             // non-nil when the input pump hit a validation error
 }
@@ -69,8 +75,8 @@ func (s *Session) inputPump() {
 // handleInputFrame processes a single TLV frame from the input stream.
 // Returns the updated staged content (nil when staged content has been
 // consumed by UE or discarded by an error). Media tags (UI/UV/UA/UD)
-// and regular text (UT without ':') are staged until UE or EOF.
-// Command text (UT starting with ':') is sent immediately without staging.
+// and regular text (UT) are staged until UE or EOF. Command frames (CI)
+// are sent immediately without staging.
 func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) []llm.ContentPart {
 	switch tag {
 	case tlv.TagUserI:
@@ -82,17 +88,21 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 	case tlv.TagUserD:
 		return append(staged, &llm.DocumentPart{URI: value})
 	case tlv.TagUserT:
-		if len(value) > 0 && value[0] == ':' {
-			if len(staged) > 0 {
-				s.inputMsgCh <- inputMsg{err: fmt.Errorf("command can not be sent with staged content")}
-				return nil
-			}
-			s.inputMsgCh <- inputMsg{isCmd: true, cmd: value[1:]}
-			return staged
-		}
 		if value != "" {
 			return append(staged, &llm.TextPart{Text: value})
 		}
+		return staged
+	case tlv.TagCommandIn:
+		if len(staged) > 0 {
+			s.inputMsgCh <- inputMsg{err: fmt.Errorf("command can not be sent with staged content")}
+			return nil
+		}
+		var cmd protocol.CmdMsg
+		if err := json.Unmarshal([]byte(value), &cmd); err != nil {
+			s.inputMsgCh <- inputMsg{err: fmt.Errorf("invalid command frame: %v", err)}
+			return staged
+		}
+		s.inputMsgCh <- inputMsg{isCmd: true, cmd: cmd.Name, cmdInput: cmd.Input, cmdID: cmd.ID}
 		return staged
 	case tlv.TagUserEnd:
 		if len(staged) > 0 {
@@ -232,9 +242,11 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 		return
 	}
 
-	// Command dispatch: split on first space only.
-	// Each handler parses the args string as appropriate for its command.
-	name, args, _ := strings.Cut(msg.cmd, " ")
+	// Command dispatch. CI frames carry the command name and input
+	// separately; each handler parses the input string as appropriate
+	// for its command.
+	name := msg.cmd
+	args := msg.cmdInput
 	if name == "" {
 		s.writeError("empty command")
 		return

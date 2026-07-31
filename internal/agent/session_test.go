@@ -413,7 +413,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	// Dispatch through handleInputMsg (the real entry point) so the
 	// CmdIdle policy is enforced.
 	output.Messages = nil
-	session.handleInputMsg(inputMsg{cmd: "model_set 1", isCmd: true})
+	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true})
 
 	foundError := false
 	for _, msg := range output.Messages {
@@ -429,7 +429,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	// Test 2: model_set should fail when task is running.
 	output.Messages = nil
 	session.activeTask = &taskHandle{}
-	session.handleInputMsg(inputMsg{cmd: "model_set 1", isCmd: true})
+	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true})
 
 	foundError = false
 	for _, msg := range output.Messages {
@@ -445,7 +445,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	// Test 3: model_set should work again after task completes.
 	output.Messages = nil
 	session.activeTask = nil
-	session.handleInputMsg(inputMsg{cmd: "model_set 1", isCmd: true})
+	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true})
 
 	foundError = false
 	for _, msg := range output.Messages {
