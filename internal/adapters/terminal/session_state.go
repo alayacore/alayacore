@@ -175,12 +175,17 @@ func (s *sessionState) updateVideoConfig(fps, res int) {
 // or "auth_running".
 func (s *sessionState) updateMCPProgress(status, server string) {
 	s.mu.Lock()
+	// Capture the previous status BEFORE overwriting: the "new init cycle"
+	// reset check must see the status we are transitioning FROM. Checking
+	// s.mcpStatus after the assignment would always see the incoming status
+	// (e.g. "connecting"), making the reset branch dead code.
+	prevStatus := s.mcpStatus
 	s.mcpStatus = status
 	s.mcpServer = server
 	switch status {
 	case "connecting":
 		// New init cycle — reset list if coming from idle/done state.
-		if s.mcpStatus == "" || s.mcpStatus == "done" {
+		if prevStatus == "" || prevStatus == "done" {
 			s.mcpServers = nil
 		}
 		// Add to list if not already present.
