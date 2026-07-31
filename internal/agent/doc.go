@@ -116,7 +116,7 @@
 //   - model_service.go: ModelService (provider/agent lifecycle, model resolution)
 //   - mcp_service.go: MCPService (MCP init lifecycle, event handling)
 //   - persistence.go: PersistenceService (session serialization)
-//   - command_registry.go: CommandRegistry (colon-command dispatch)
+//   - command_registry.go: CommandRegistry (command dispatch)
 //
 // Usage:
 //

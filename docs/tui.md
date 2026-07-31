@@ -212,7 +212,7 @@ Press `Ctrl+H` or type `:help` to open a help window listing all keybindings and
 
 The help window is organized into three sections:
 
-- **Commands** — colon commands available in the input field (commands available in the input field)
+- **Commands** — colon commands available in the input field
 - **Global Shortcuts** — keybindings that work from any context
 - **Display Mode** — navigation and editing keys for the display area
 

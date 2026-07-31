@@ -89,7 +89,6 @@ In the TUI, you can also press `Ctrl+F` at a window to pre-fill the `:fork` comm
 
 ## :continue
 
-
 See [error-handling.md](error-handling.md) for details on error recovery with `:continue`.
 
 ## :summarize

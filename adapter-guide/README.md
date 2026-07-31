@@ -79,6 +79,11 @@ content) but appears on stdout. Similarly, UT/UI/UV/UA/UD on stdout are user
 message echoes — they carry user-role content sent from the agent back to the
 adapter.
 
+**Control-plane exception:** The `C` (Command) tags are the exception — they
+are control frames, not conversation content. `I`/`O` encode **direction**:
+`CI` is sent by the adapter on stdin, `CO` by the agent on stdout. Unlike
+user tags, command tags never appear on both sides.
+
 **Important:** User tags (UT, UI, UV, UA, UD) appear on **both** stdin and stdout:
 
 | Direction | Meaning |
