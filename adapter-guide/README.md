@@ -24,6 +24,7 @@ UV  → stdin   User video (data:video/...;base64,... or URL)
 UA  → stdin   User audio (data:audio/...;base64,... or URL)
 UD  → stdin   User document (data:application/...;base64,... or URL)
 UE  → stdin   User message end — flushes staged content as a single message
+CI  → stdin   Command input (JSON CmdMsg: {"id":"...","name":"...","input":"..."})
 At  ← stdout  Assistant text (streaming delta: \x00<id>\x00<content>)
 Ar  ← stdout  Assistant reasoning (streaming delta: \x00<id>\x00<content>)
 Af  ← stdout  Function/tool argument (streaming delta: \x00<id>\x00<JSON>)
@@ -31,6 +32,7 @@ AT  ← stdout  Assistant text (complete/authoritative: \x00<id>\x00[content]; c
 AR  ← stdout  Assistant reasoning (complete/authoritative: \x00<id>\x00[content]; content empty if deltas preceded it)
 AF  ← stdout  Function/tool lifecycle (\x00<id>\x00<JSON>)
 UF  ← stdout  Function/tool result (\x00<id>\x00<JSON>)
+CO  ← stdout  Command output (JSON CmdResultMsg: {"id":"...","output":...,"is_error":...})
 SM  ← stdout  System message, no history ID (JSON: {"type":"...","data":{...}})
 UT  ← stdout  User text echo (\x00<id>\x00<content>)
 UI  ← stdout  User image echo (\x00<id>\x00<data URI or URL>)
@@ -47,6 +49,7 @@ Each tag is two characters: **role** + **type**.
 |---|---|---|
 | `U` | **U**ser | UT (user text), UI (user image), UF (function result) |
 | `A` | **A**ssistant | AT (assistant text), AR (assistant reasoning), AF (function call) |
+| `C` | **C**ommand (control plane) | CI (command input), CO (command output) |
 | `S` | **S**ystem | SM (system message) |
 
 | Second letter | Type | Examples |
@@ -59,6 +62,8 @@ Each tag is two characters: **role** + **type**.
 | `R` | **R**easoning | AR, Ar |
 | `F` | **F**unction/tool | AF, UF, Af |
 | `E` | **E**nd (flush) | UE |
+| `I` | **I**nput (command request) | CI |
+| `O` | **O**utput (command result) | CO |
 | `M` | **M**essage | SM |
 
 **Case convention:** Uppercase tags carry complete/authoritative content.
@@ -320,16 +325,19 @@ The **semantics** of the history ID differ by tag type:
    The adapter should display the error and stop sending new prompts — no
    further frames will be processed.
 
-2. **Model config errors**: At startup and after `:model_load`, model
-   configuration errors (invalid fields, duplicate names, etc.) are sent to the
-   adapter as system error messages:
+2. **Model config errors**: At startup, model configuration errors (invalid
+   fields, duplicate names, etc.) are sent to the adapter as system error
+   messages:
    ```
    SM {"type":"error","data":{"text":"model \"Bad Model\": unknown protocol_type \"foobar\" — skipped"}}
    SM {"type":"error","data":{"text":"model block 3: duplicate name \"Model A\" — skipped"}}
    ```
    These are informational — the session continues with whatever valid models
    are available. The adapter should display them so the user can fix their
-   `model.conf`.
+   `model.conf`. After `:model_load` / `:model_sync`, the same validation
+   errors arrive differently: the command **fails** with a CO frame
+   (`code:"MODEL_VALIDATION"`, errors joined in `message`) — the user must
+   see them to fix the config.
 
 3. **MCP config errors**: At startup, MCP configuration errors (empty server
    name, duplicate server names, etc.) are sent to the adapter as system error
@@ -444,7 +452,9 @@ UV-video.bin                   UV data:video/mp4;base64,...
 UV-video-url.bin               UV https://...
 UD-document.bin                UD data:application/pdf;base64,...
 UE.bin                         UE "" (length 0)
-UT-model-sync.bin              UT ":model_sync [{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"
+CI-cancel.bin                  CI {"id":"1","name":"cancel"}
+CI-save.bin                    CI {"id":"2","name":"save","input":"/tmp/x.alaya"}
+CI-model-sync.bin              CI {"id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
 ```
 
 **stdout — delta/echo (with history ID `\x00<id>\x00`):**
@@ -489,6 +499,14 @@ UF-execute-command-success.bin UF \x00 15 \x00 {"id":"t5","output":[{"text":"tot
 UF-execute-command-failed.bin  UF \x00 15 \x00 {"id":"t5","output":[{"text":"command not found","type":"text"}],"is_error":true}
 ```
 
+**stdout — command output (CO, no history ID, JSON CmdResultMsg):**
+
+```
+CO-save-success.bin            CO {"id":"2","output":{"path":"/tmp/x.alaya"}}
+CO-command-error.bin           CO {"id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
+```
+
 **stdout — system messages (no history ID, JSON `{"type":"...","data":{...}}`):**
 
 | Type | JSON Schema (data fields) | Example `.bin` |
@@ -500,7 +518,7 @@ UF-execute-command-failed.bin  UF \x00 15 \x00 {"id":"t5","output":[{"text":"com
 | `theme_list` | `themes` (array of `{name:string, theme:{primary, dim, muted, text, warning, error, success, selection, cursor, added, removed, tool, fold_indicator: string}}`) | `SM-theme-list.bin` |
 | `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.bin` |
 | `video_config` | `fps` (int), `res` (int) | `SM-video-config.bin` |
-| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `task_error` (bool, opt) | `SM-task-start.bin`, `SM-task-end.bin` |
+| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `task_error` (bool, opt), `command_id` (string, opt — set when the task was started by `continue`/`summarize`) | `SM-task-start.bin`, `SM-task-end.bin` |
 | `error` | `text` (string) | `SM-error.bin` |
 | `notify` | `text` (string) | `SM-notify.bin` |
 | `tool_confirm` | `id` (string), `allowed` (bool, opt — present only in adapter→agent response) | `SM-tool-confirm.bin` |
@@ -509,7 +527,7 @@ UF-execute-command-failed.bin  UF \x00 15 \x00 {"id":"t5","output":[{"text":"com
 Complete wire values:
 
 ```
-SM-message-version.bin         {"type":"version","data":{"message_version":10,"core_version":"(set at build time)"}}
+SM-message-version.bin         {"type":"version","data":{"message_version":11,"core_version":"(set at build time)"}}
 SM-model.bin                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
 SM-model-list.bin              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0}]}}
 SM-theme.bin                   {"type":"theme","data":{"name":"theme-dark"}}
@@ -531,17 +549,70 @@ SM-mcp-done.bin                {"type":"mcp","data":{"status":"done"}}
 
 ## Adapter → Agent Commands
 
-The adapter sends **colon commands** to the agent via `UT` (user text) frames.
-These commands respond to system messages or implement user-initiated actions.
+Commands are sent as **CI** (Command Input) frames — a JSON envelope with an
+adapter-generated call ID, the command name, and an argument string:
+
+```
+CI {"id":"<call-id>","name":"<command>","input":"<args-string>"}
+```
+
+The `input` is an opaque string whose syntax is defined by each command
+(e.g. `"/tmp/x.alaya"` for `save`, `"3"` for `model_set`). The adapter does
+not need to understand command semantics — it only splits the human-facing
+text into name + input.
+
+Every CI frame receives exactly one **CO** (Command Output) frame, echoing
+the same `id`:
+
+```
+CO {"id":"<call-id>","output":<command result>}                    ← success
+CO {"id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
+```
+
+- `output` is structured JSON defined per command (may be `null` for
+  fire-and-forget commands like `cancel`).
+- On failure, `output` is a **uniform error object**: `{"code":"<machine-readable>","message":"<human-readable>"}`.
+  Machine clients key off `is_error`/`code`; the `message` is for display.
+
+**Important:** Command results travel exclusively via CO. SM `error`/`notify`
+messages are reserved for non-command events (task errors, MCP status, etc.).
+
+### Async task commands (`continue`, `summarize`)
+
+These commands start a long-running task. CO replies **immediately** —
+`{"status":"started"}` on acceptance, or an error if the task cannot start
+(e.g. another task is running → `code:"BUSY"`). Task completion is reported
+via an SM `task` message carrying the same `command_id`:
+
+```
+CI {"id":"9","name":"continue"}
+CO {"id":"9","output":{"status":"started"}}                          ← accepted
+SM {"type":"task","data":{"in_progress":true,"command_id":"9"}}      ← running
+SM {"type":"task","data":{"in_progress":false,"command_id":"9"}}     ← done
+```
+
+### Example: save command
+
+```
+stdin:  CI {"id":"1","name":"save","input":"/tmp/x.alaya"}
+stdout: CO {"id":"1","output":{"path":"/tmp/x.alaya"}}
+```
+
+### Example: failed command
+
+```
+stdin:  CI {"id":"2","name":"model_set","input":"99"}
+stdout: CO {"id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+```
 
 ### Tool Confirmation
 
 When the agent sends `SM-tool-confirm.bin`, the adapter **must** respond
-with either `:tool_confirm <id>` or `:tool_decline <id>`:
+with a `tool_confirm` or `tool_decline` CI frame:
 
-| SM Received | Adapter Action | UT Response |
+| SM Received | Adapter Action | CI Response |
 |-------------|----------------|-------------|
-| `{"type":"tool_confirm","data":{"id":"t1"}}` | Show prompt to user | `:tool_confirm t1` or `:tool_decline t1` |
+| `{"type":"tool_confirm","data":{"id":"t1"}}` | Show prompt to user | `{"id":"...","name":"tool_confirm","input":"t1"}` or `{"id":"...","name":"tool_decline","input":"t1"}` |
 
 ### MCP Initialization & OAuth
 
@@ -549,11 +620,11 @@ When the agent sends `SM-mcp-auth-required.bin`, the adapter must open the
 authorization URL in a browser, start a local callback server to capture
 the OAuth code, then respond with the code:
 
-| SM Received | Adapter Action | UT Response |
+| SM Received | Adapter Action | CI Response |
 |-------------|----------------|-------------|
-| `{"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://..."}}` | Open browser to `url` (with `{{redirect_uri}}`/`{{state}}` replaced), start callback server | `:mcp_confirm github <code> <redirect_uri>` |
-| User declines or flow fails | Send decline command | `:mcp_decline github` |
-| User cancels entire init | Send cancel command | `:mcp_cancel` |
+| `{"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://..."}}` | Open browser to `url` (with `{{redirect_uri}}`/`{{state}}` replaced), start callback server | `{"id":"...","name":"mcp_confirm","input":"github <code> <redirect_uri>"}` |
+| User declines or flow fails | Send decline command | `{"id":"...","name":"mcp_decline","input":"github"}` |
+| User cancels entire init | Send cancel command | `{"id":"...","name":"mcp_cancel"}` |
 
 The `url` field may contain `{{redirect_uri}}` and `{{state}}` placeholders
 that the adapter must replace with real values before opening the browser:
@@ -564,16 +635,36 @@ that the adapter must replace with real values before opening the browser:
 ### Model Sync
 
 When the user finishes editing model config in an external editor, the adapter
-sends the full model list JSON back to the agent via `:model_sync`:
+sends the full model list JSON back to the agent via `model_sync`:
 
-| Trigger | Adapter Action | UT Response |
+| Trigger | Adapter Action | CI Response |
 |---------|----------------|-------------|
-| `:model` command → editor session ends | Read edited file, send content as JSON array | `:model_sync [{...}, {...}]` |
+| `:model` command → editor session ends | Read edited file, send content as JSON array | `{"id":"...","name":"model_sync","input":"[{...}, {...}]"}` |
 
-The JSON is a serialized array of model config objects (same format as the
+The `input` is a serialized array of model config objects (same format as the
 `models` field in `SM-model-list.bin`). The agent replaces all models with
 the provided list, re-resolves the active model, and reinitializes the
-provider.
+provider. If any model block is rejected or persistence fails, the command
+fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
+
+### Full command list
+
+| Command | input | CO output (success) |
+|---------|-------|---------------------|
+| `cancel` | — | `null` |
+| `save` | `[filename]` | `{"path":...}` |
+| `fork` | `<id> <filename>` | `{"path":...,"count":...}` |
+| `theme_set` | `<name>` | `{"name":...}` |
+| `tool_confirm` / `tool_decline` | `<tool-id>` | `{"tool_id":...}` |
+| `model_set` | `<id>` | `{"active_id":...,"active_name":...}` |
+| `model_load` | — | `{"models":[...]}` |
+| `model_sync` | `<json>` | `{"models":[...]}` |
+| `reason` | `<0\|1\|2>` | `{"level":...}` |
+| `video_config` | `<fps> <0\|1>` | `{"fps":...,"res":...}` |
+| `mcp_confirm` | `<server> <code> <redirect_uri>` | `{"server":...}` |
+| `mcp_decline` | `<server>` | `{"server":...}` |
+| `mcp_cancel` | — | `null` |
+| `continue` / `summarize` | — | `{"status":"started"}` (async; completion via SM `task` with `command_id`) |
 
 ## Use
 

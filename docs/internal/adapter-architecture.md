@@ -63,7 +63,7 @@ The session persists the active theme via `RuntimeManager` and communicates it t
 
 Theme changes flow through the session to keep a single source of truth:
 
-1. `:theme_set <name>` (typed by user) or theme selector confirm both send the command to the session
+1. `:theme_set <name>` (typed by user) or theme selector confirm both send the command to the session (as a CI frame; the result arrives as a CO frame)
 2. Session persists the theme name via `RuntimeManager.SetActiveTheme()` and broadcasts the updated theme via a `TagSystemMsg` TLV message (`{"type":"theme","data":{"name":"...","theme":{...}}}`)
 3. The terminal detects the theme change in `updateStatus()` and calls `applyTheme()` with the full theme data from the TLV message, updating all UI component styles
 

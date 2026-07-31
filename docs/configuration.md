@@ -98,7 +98,7 @@ Models are validated at load time (startup and after `:model_load`). A model is 
 - `base_url` is missing or not a valid URL
 - `model_name` is missing
 
-Rejected models are skipped — they won't appear in the model selector. Errors are printed at startup and shown as errors after `:model_load`. Other valid models in the same file are unaffected.
+Rejected models are skipped — they won't appear in the model selector. Errors are printed at startup and shown after `:model_load` as a command failure (`CO` with `is_error:true`, code `MODEL_VALIDATION`). Other valid models in the same file are unaffected.
 
 If two or more models share the same `name`, the first occurrence is kept and subsequent duplicates are **rejected** with an error message. This prevents ambiguity in model selection.
 

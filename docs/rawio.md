@@ -23,6 +23,9 @@ See [TLV Protocol](internal/adapter-architecture.md#tlv-protocol) for full detai
 
 - Raw bytes from stdin are piped directly to the session. The session's
   `io.ReadFull` handles TLV frame boundary detection internally.
+- **Commands**: send a `CI` frame (`{"id":"...","name":"save","input":"..."}`)
+  and receive exactly one `CO` frame back with the matching `id`. See
+  [adapter-guide](../adapter-guide/README.md) for the full command table.
 - **Ctrl-D** (EOF): closes stdin, the session finishes pending tasks, and
   the process exits with code `0`.
 - **Ctrl-C** (SIGINT): terminates immediately with the default OS signal

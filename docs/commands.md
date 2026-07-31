@@ -2,6 +2,30 @@
 
 AlayaCore provides colon-prefixed commands (`:command`) that work across all adapters — TUI, Plain IO, and Raw IO.
 
+## Protocol
+
+Commands travel over a dedicated control plane, mirroring the tool control
+plane (AF/UF):
+
+```
+CI {"id":"<call-id>","name":"<command>","input":"<args-string>"}   adapter → agent
+CO {"id":"<call-id>","output":<result>}                            agent → adapter
+CO {"id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
+```
+
+- The adapter generates the call ID and echoes it back — every CI receives
+  exactly one CO.
+- `output` is structured JSON defined per command (see table below); on
+  failure it is a uniform error object `{code, message}`.
+- Adapters translate the human-facing `:command args` text into CI frames;
+  the agent never sees colon-text. The TUI and Plain IO adapters do this
+  translation automatically.
+- Async commands (`:continue`, `:summarize`) reply `{"status":"started"}`
+  immediately; completion is reported via the `task` SM message carrying
+  `command_id`.
+- Command results never travel as SM `error`/`notify` — those are reserved
+  for non-command events (task errors, MCP status, etc.).
+
 Commands fall into three categories:
 
 - **Immediate commands** (`CmdImmediate`) — run synchronously in the main loop, always allowed
@@ -10,38 +34,38 @@ Commands fall into three categories:
 
 ## Immediate Commands
 
-| Command | Action |
-|---------|--------|
-| `:cancel` | Cancel current task |
-| `:save [filename]` | Save session. Uses `--session` path if no filename given. |
-| `:reason [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 |
-| `:theme_set <name>` | Switch to a different theme |
-| `:fork <id> <filename>` | Fork session — save all content up to a history ID to a file |
-| `:tool_decline <id>` | Decline a pending tool execution |
-| `:mcp_cancel` | Cancel MCP server initialization |
+| Command | Action | CO result |
+|---------|--------|-----------|
+| `:cancel` | Cancel current task | `null` |
+| `:save [filename]` | Save session. Uses `--session` path if no filename given. | `{"path"}` |
+| `:reason [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 | `{"level"}` |
+| `:theme_set <name>` | Switch to a different theme | `{"name"}` |
+| `:fork <id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count"}` |
+| `:tool_decline <id>` | Decline a pending tool execution | `{"tool_id"}` |
+| `:mcp_cancel` | Cancel MCP server initialization | `null` |
 
 ## Idle Commands
 
 These commands are rejected with an error if a task is currently running:
 
-| Command | Action |
-|---------|--------|
-| `:tool_confirm <id>` | Confirm a pending tool execution |
-| `:mcp_confirm <server> <code> <redirect_uri>` | Confirm MCP OAuth authorization with auth code |
-| `:mcp_decline <server>` | Decline MCP OAuth authorization |
-| `:model_set <id>` | Switch to a model by numeric ID |
-| `:model_load` | Reload model configs from the config file |
-| `:model_sync` | Apply edited model config (sent by UI, not user-facing) |
-| `:video_config <fps> <0\|1>` | Set video FPS and resolution (0=default, 1=max) |
+| Command | Action | CO result |
+|---------|--------|-----------|
+| `:tool_confirm <id>` | Confirm a pending tool execution | `{"tool_id"}` |
+| `:mcp_confirm <server> <code> <redirect_uri>` | Confirm MCP OAuth authorization with auth code | `{"server"}` |
+| `:mcp_decline <server>` | Decline MCP OAuth authorization | `{"server"}` |
+| `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
+| `:model_load` | Reload model configs from the config file | `{"models"}` |
+| `:model_sync` | Apply edited model config (sent by UI, not user-facing) | `{"models"}` |
+| `:video_config <fps> <0\|1>` | Set video FPS and resolution (0=default, 1=max) | `{"fps","res"}` |
 
 ## Task Commands
 
 These commands require LLM calls and run in a separate goroutine:
 
-| Command | Action |
-|---------|--------|
-| `:continue` | Retry the last prompt |
-| `:summarize` | Summarize conversation to reduce token usage ⚠️ **Replaces entire conversation history with a summary** — see [context-tracking.md](context-tracking.md) |
+| Command | Action | CO result |
+|---------|--------|-----------|
+| `:continue` | Retry the last prompt | `{"status":"started"}` (async; completion via `task` SM with `command_id`) |
+| `:summarize` | Summarize conversation to reduce token usage ⚠️ **Replaces entire conversation history with a summary** — see [context-tracking.md](context-tracking.md) | `{"status":"started"}` (async; completion via `task` SM with `command_id`) |
 
 ## Adapter-Specific Commands
 
@@ -49,9 +73,9 @@ Some commands are handled directly by each adapter and never reach the session c
 
 | Command | TUI | Plain IO | Raw IO |
 |---------|-----|----------|--------|
-| `:quit` / `:q` | Shows confirmation dialog | Exits immediately | Passed to session (adapter doesn't interpret frame payloads) |
-| `:help` | Opens help window | Exits immediately (no TUI) | Passed to session |
-| `:suspend` | Suspends process (Ctrl+Z) | Not supported | Passed to session |
+| `:quit` / `:q` | Shows confirmation dialog | Exits immediately | Not interpreted — raw CI/CO pass-through |
+| `:help` | Opens help window | Exits immediately (no TUI) | Not interpreted — raw CI/CO pass-through |
+| `:suspend` | Suspends process (Ctrl+Z) | Not supported | Not interpreted — raw CI/CO pass-through |
 
 ## :fork Details
 

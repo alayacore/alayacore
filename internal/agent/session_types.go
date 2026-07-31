@@ -122,7 +122,11 @@ func (MessageVersionMsg) SystemMsgType() string { return "version" }
 // used in session files and TagSystemMsg broadcasts.
 // Increment when making backward-incompatible changes to the TLV
 // message format within the session body.
-const MessageVersion = 10
+//
+// v11: commands moved to the CI/CO control plane — text commands
+// (UT ':' sniffing) removed, command results now travel as CO frames,
+// TaskMsg gained command_id for async command correlation.
+const MessageVersion = 11
 
 // SessionMeta is the frontmatter metadata.
 type SessionMeta struct {
