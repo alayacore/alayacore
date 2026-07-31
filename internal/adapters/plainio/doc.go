@@ -29,7 +29,8 @@
 //   - Tool results: printed as raw JSON (id, output, is_error).
 //   - Command results (CO): failures as "[error: ...]" (does not affect the
 //     exit code), successes rendered from the structured result (e.g.
-//     "Session saved to <path>") or "[Command completed]" for unknown commands.
+//     "Session saved to <path>"); commands whose effect is self-evident
+//     (e.g. :cancel, :reason) are silent.
 //   - Errors: prefixed with "Error: ".
 //   - Notifications: prefixed with "[...]".
 //   - Tool confirmations: shown as "[tool_confirm: allow tool "id" to run?]".

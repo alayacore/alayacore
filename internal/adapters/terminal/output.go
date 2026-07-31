@@ -461,15 +461,24 @@ func (to *outputWriter) handleCommandOut(value string) {
 	}
 	name, _ := commandNames.LoadAndDelete(msg.ID)
 	nameStr, _ := name.(string)
+	text := renderCommandResult(nameStr, msg.Output)
+	if text == "" {
+		// No text feedback needed — the command's UI effect (task stop,
+		// theme switch, status change, overlay close) is itself the
+		// confirmation. Staying silent keeps the log free of noise for
+		// commands like :cancel, :theme_set, :reason.
+		return
+	}
 	id := to.generateWindowID()
-	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, renderCommandResult(nameStr, msg.Output))
+	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, text)
 	to.dirty.Store(true)
 }
 
 // renderCommandResult formats a successful command result for display.
-// Unknown commands fall back to a generic confirmation. The command name
-// comes from the adapter's own CI tracking; structured fields come from
-// the CO output (never display text — rendering is an adapter concern).
+// Commands whose effect is self-evident in the UI (cancel, theme_set,
+// reason, model_set, ...) return "" so nothing is rendered. The command
+// name comes from the adapter's own CI tracking; structured fields come
+// from the CO output (never display text — rendering is an adapter concern).
 func renderCommandResult(name string, output json.RawMessage) string {
 	var data struct {
 		Path      string `json:"path"`
@@ -487,7 +496,7 @@ func renderCommandResult(name string, output json.RawMessage) string {
 	case "mcp_decline":
 		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
 	}
-	return "Command completed"
+	return "" // no generic confirmation
 }
 
 func (to *outputWriter) handleSystemTask(data json.RawMessage) {

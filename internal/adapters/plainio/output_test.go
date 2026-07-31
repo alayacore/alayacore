@@ -68,7 +68,7 @@ func TestCommandOut_ErrorRenders(t *testing.T) {
 	}
 }
 
-func TestCommandOut_SuccessRenders(t *testing.T) {
+func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 	var buf bytes.Buffer
 	o := &stdoutOutput{
 		writer: &buf,
@@ -81,8 +81,8 @@ func TestCommandOut_SuccessRenders(t *testing.T) {
 	o.Write(encodeTestTLV(tlv.TagCommandOut, string(payload)))
 
 	got := buf.String()
-	if !strings.Contains(got, "Command completed") {
-		t.Errorf("output = %q, want confirmation", got)
+	if got != "" {
+		t.Errorf("output = %q, want empty (no generic confirmation)", got)
 	}
 	if o.HasError() {
 		t.Error("success should not set HasError")

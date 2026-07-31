@@ -173,15 +173,22 @@ func (o *stdoutOutput) handleCommandOut(value string) {
 	}
 	name, _ := commandNames.LoadAndDelete(msg.ID)
 	nameStr, _ := name.(string)
-	fmt.Fprintf(o.writer, "\n[%s]\n", renderCommandResult(nameStr, msg.Output))
 	o.lastTag = ""
 	o.lastHistoryID = ""
+	text := renderCommandResult(nameStr, msg.Output)
+	if text == "" {
+		// No text feedback needed — the command's effect (task stop,
+		// status change) is itself the confirmation. Stay silent.
+		return
+	}
+	fmt.Fprintf(o.writer, "\n[%s]\n", text)
 }
 
 // renderCommandResult formats a successful command result for display.
-// Unknown commands fall back to a generic confirmation. The command name
-// comes from the adapter's own CI tracking; structured fields come from
-// the CO output (never display text — rendering is an adapter concern).
+// Commands whose effect is self-evident (cancel, reason, model_set, ...)
+// return "" so nothing is printed. The command name comes from the
+// adapter's own CI tracking; structured fields come from the CO output
+// (never display text — rendering is an adapter concern).
 func renderCommandResult(name string, output json.RawMessage) string {
 	var data struct {
 		Path      string `json:"path"`
@@ -199,7 +206,7 @@ func renderCommandResult(name string, output json.RawMessage) string {
 	case "mcp_decline":
 		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
 	}
-	return "Command completed"
+	return "" // no generic confirmation
 }
 
 // handleTextDelta handles assistant text/reasoning tags (AT/AR/At/Ar).

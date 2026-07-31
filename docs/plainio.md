@@ -37,7 +37,7 @@ All output is plain text with no ANSI escape codes:
 | User prompts | `> prompt` |
 | Tool calls | Raw JSON (id, name, input) |
 | Tool results | Raw JSON (id, output, is_error) |
-| Command results | Success: rendered from the structured result (e.g. `Session saved to <path>`), or `[Command completed]` for unknown commands; failure: `[error: message]` (does not affect exit code) |
+| Command results | Success: rendered from the structured result (e.g. `Session saved to <path>`); commands whose effect is self-evident (e.g. `:cancel`, `:reason`) are silent; failure: `[error: message]` (does not affect exit code) |
 | Errors | `Error: message` |
 | Notifications | `[message]` |
 | Tool confirmations | `[tool_confirm: allow tool "id" to run?]` |

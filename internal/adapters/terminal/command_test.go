@@ -116,7 +116,7 @@ func TestCommandOut_ErrorRendersMessage(t *testing.T) {
 	}
 }
 
-func TestCommandOut_SuccessConfirmation(t *testing.T) {
+func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
@@ -128,17 +128,11 @@ func TestCommandOut_SuccessConfirmation(t *testing.T) {
 	}
 
 	windows := out.windowBuffer.AllWindows()
-	if len(windows) != 1 {
-		t.Fatalf("expected 1 window, got %d", len(windows))
+	if len(windows) != 0 {
+		t.Fatalf("expected no window for silent command, got %d", len(windows))
 	}
-	if windows[0].RawTag() != TagWindowSN {
-		t.Errorf("expected SN (notify) window, got %s", windows[0].RawTag())
-	}
-	if !strings.Contains(windows[0].RawContent(), "Command completed") {
-		t.Errorf("success window should show confirmation, got %q", windows[0].RawContent())
-	}
-	if !out.DrainDirty() {
-		t.Error("CO frame should set the dirty flag for immediate display refresh")
+	if out.DrainDirty() {
+		t.Error("silent CO should not mark the display dirty")
 	}
 }
 
@@ -171,7 +165,7 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 	}
 }
 
-func TestCommandOut_UnknownCommandFallsBack(t *testing.T) {
+func TestCommandOut_UnknownCommandSilent(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	commandNames.Store("t2", "some_new_command")
 	defer commandNames.Delete("t2")
@@ -185,11 +179,11 @@ func TestCommandOut_UnknownCommandFallsBack(t *testing.T) {
 	}
 
 	windows := out.windowBuffer.AllWindows()
-	if len(windows) != 1 {
-		t.Fatalf("expected 1 window, got %d", len(windows))
+	if len(windows) != 0 {
+		t.Fatalf("expected no window for silent command, got %d", len(windows))
 	}
-	if !strings.Contains(windows[0].RawContent(), "Command completed") {
-		t.Errorf("unknown command should fall back to generic confirmation, got %q", windows[0].RawContent())
+	if out.DrainDirty() {
+		t.Error("silent CO should not mark the display dirty")
 	}
 }
 
