@@ -14,7 +14,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/platform"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // ============================================================================
@@ -245,12 +244,12 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) tea.Cmd {
 			res := <-resultCh
 			cleanup()
 			if res.Err != nil {
-				_ = tlv.WriteTLV(streamInput, tlv.TagUserT, ":mcp_cancel")
+				writeCommand(streamInput, ":mcp_cancel")
 				return displayErrorMsg{
 					message: fmt.Sprintf("MCP auth callback error: %v", res.Err),
 				}
 			}
-			_ = tlv.WriteTLV(streamInput, tlv.TagUserT,
+			writeCommand(streamInput,
 				fmt.Sprintf(":mcp_confirm %s %s %s", serverName, res.Code, redirectURI))
 			return nil
 		},

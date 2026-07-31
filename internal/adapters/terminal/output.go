@@ -280,6 +280,11 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		to.handleSystemMsg(value)
 		return
 
+	// Command output (CO) — command result frames
+	case tlv.TagCommandOut:
+		to.handleCommandOut(value)
+		return
+
 	default:
 		id := to.generateWindowID()
 		to.windowBuffer.AppendOrUpdate(tag, id, value)
@@ -433,6 +438,29 @@ func (to *outputWriter) handleSystemNotify(data json.RawMessage) {
 	}
 	id := to.generateWindowID()
 	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, m.Text)
+}
+
+// handleCommandOut processes a CO (Command Output) frame.
+// Errors render in the error window using the uniform error message;
+// successes show a brief confirmation — state changes arrive separately
+// via SM broadcasts.
+func (to *outputWriter) handleCommandOut(value string) {
+	var msg protocol.CmdResultMsg
+	if err := json.Unmarshal([]byte(value), &msg); err != nil {
+		return
+	}
+	if msg.IsError {
+		var errObj protocol.CmdError
+		if json.Unmarshal(msg.Output, &errObj) == nil && errObj.Message != "" {
+			id := to.generateWindowID()
+			to.windowBuffer.AppendOrUpdate(TagWindowSE, id, errObj.Message)
+		}
+		to.dirty.Store(true)
+		return
+	}
+	id := to.generateWindowID()
+	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, "Command completed")
+	to.dirty.Store(true)
 }
 
 func (to *outputWriter) handleSystemTask(data json.RawMessage) {

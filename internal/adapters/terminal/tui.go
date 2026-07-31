@@ -9,18 +9,44 @@ package terminal
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/alayacore/alayacore/internal/app"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
+
+// ============================================================================
+// Command transmission — CI frames
+// ============================================================================
+
+// commandSeq generates unique command call IDs for CI frames.
+var commandSeq atomic.Uint64
+
+// writeCommand sends a colon-command (e.g. ":save /tmp/x") to the session as
+// a CI (Command Input) frame. The adapter translates the human-facing text
+// into {id, name, input}; the session never sees colon-text anymore.
+func writeCommand(w io.Writer, cmd string) {
+	name, args, _ := strings.Cut(strings.TrimPrefix(cmd, ":"), " ")
+	payload, err := json.Marshal(protocol.CmdMsg{
+		ID:    fmt.Sprintf("tui-%d", commandSeq.Add(1)),
+		Name:  name,
+		Input: args,
+	})
+	if err != nil {
+		return
+	}
+	_ = tlv.WriteTLV(w, tlv.TagCommandIn, string(payload))
+}
 
 // ============================================================================
 // Async Session Loading Messages
@@ -90,13 +116,13 @@ type openEditorForPromptMsg struct {
 	content string
 }
 
-// emitCommand returns a tea.Cmd that writes a user-level command to the
-// session via TLV when executed by Bubble Tea's runtime.
+// emitCommand returns a tea.Cmd that sends a user-level command to the
+// session as a CI frame when executed by Bubble Tea's runtime.
 // Errors are silently ignored — commands are best-effort and the
 // session may close the input stream at any time.
 func (m Terminal) emitCommand(cmd string) tea.Cmd {
 	return func() tea.Msg {
-		_ = tlv.WriteTLV(m.streamInput, tlv.TagUserT, cmd)
+		writeCommand(m.streamInput, cmd)
 		return nil
 	}
 }
