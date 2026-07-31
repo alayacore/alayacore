@@ -17,6 +17,12 @@ package llm
 //    non-conforming provider that reuses an empty tool-call ID) would leave a nil
 //    ContentPart in the step history, which panics later in GroupByRole. The function
 //    therefore returns an error for any unmatched slot instead of appending nil.
+//
+// 4. TOOL GOROUTINES NEVER OUTLIVE STREAM: tool goroutines run under a per-stream
+//    context tracked by a WaitGroup. On any error or early return the context is
+//    canceled and all goroutines are awaited before streamEvents returns, so no
+//    tool keeps executing (and no side effects happen) after the stream has
+//    errored, and no goroutine leaks. See streamEvents and sendToolResult.
 
 import (
 	"context"
