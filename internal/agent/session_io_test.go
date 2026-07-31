@@ -2,6 +2,10 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -159,5 +163,145 @@ func TestInputFrame_UserText_ThenEnd(t *testing.T) {
 	}
 	if len(msg.contentParts) != 1 {
 		t.Fatalf("expected 1 content part, got %d", len(msg.contentParts))
+	}
+}
+
+// ============================================================================
+// Command output (CO) tests
+// ============================================================================
+
+// newCmdOutputSession returns a Session whose Output captures raw TLV bytes.
+func newCmdOutputSession() (*Session, *MockOutput) {
+	output := &MockOutput{}
+	s := &Session{
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{Output: output},
+		},
+	}
+	return s, output
+}
+
+func TestWriteCmdResult_Success(t *testing.T) {
+	s, output := newCmdOutputSession()
+
+	s.writeCmdResult("a1b2", map[string]any{"path": "/tmp/x.alaya"}, nil)
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"id":"a1b2"`) {
+		t.Errorf("missing id in CO: %s", joined)
+	}
+	if !strings.Contains(joined, `"path":"/tmp/x.alaya"`) {
+		t.Errorf("missing result in CO: %s", joined)
+	}
+	if strings.Contains(joined, "is_error") {
+		t.Errorf("success CO should not carry is_error: %s", joined)
+	}
+}
+
+func TestWriteCmdResult_SuccessNoResult(t *testing.T) {
+	s, output := newCmdOutputSession()
+
+	s.writeCmdResult("zzz", nil, nil)
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"output":null`) {
+		t.Errorf("fire-and-forget success should have output:null: %s", joined)
+	}
+	if strings.Contains(joined, "is_error") {
+		t.Errorf("success CO should not carry is_error: %s", joined)
+	}
+}
+
+func TestWriteCmdResult_CmdErr(t *testing.T) {
+	s, output := newCmdOutputSession()
+
+	s.writeCmdResult("c3d4", nil, &CmdErr{Code: "MODEL_NOT_FOUND", Message: "model_set: model not found: 99"})
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"is_error":true`) {
+		t.Errorf("missing is_error in CO: %s", joined)
+	}
+	if !strings.Contains(joined, `"code":"MODEL_NOT_FOUND"`) {
+		t.Errorf("missing error code in CO: %s", joined)
+	}
+	if !strings.Contains(joined, `"message":"model_set: model not found: 99"`) {
+		t.Errorf("missing error message in CO: %s", joined)
+	}
+}
+
+func TestWriteCmdResult_PlainErrorDefaultsToERROR(t *testing.T) {
+	s, output := newCmdOutputSession()
+
+	s.writeCmdResult("e5f6", nil, fmt.Errorf("boom"))
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"code":"ERROR"`) {
+		t.Errorf("plain error should default to code ERROR: %s", joined)
+	}
+	if !strings.Contains(joined, `"is_error":true`) {
+		t.Errorf("missing is_error in CO: %s", joined)
+	}
+}
+
+func TestHandleInputMsg_UnknownCommand(t *testing.T) {
+	s, output := newCmdOutputSession()
+	s.inputMsgCh = make(chan inputMsg, 1) // not used here, keeps Session consistent
+
+	s.handleInputMsg(inputMsg{isCmd: true, cmd: "nope", cmdID: "x1"})
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"code":"UNKNOWN_COMMAND"`) {
+		t.Errorf("expected UNKNOWN_COMMAND in CO: %s", joined)
+	}
+	if !strings.Contains(joined, `"id":"x1"`) {
+		t.Errorf("expected echoed id in CO: %s", joined)
+	}
+}
+
+func TestHandleInputMsg_InputErrorUncorrelated(t *testing.T) {
+	s, output := newCmdOutputSession()
+
+	s.handleInputMsg(inputMsg{err: fmt.Errorf("invalid command frame: boom")})
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"code":"BAD_FRAME"`) {
+		t.Errorf("expected BAD_FRAME in CO: %s", joined)
+	}
+	if !strings.Contains(joined, `"id":""`) {
+		t.Errorf("input errors should carry empty id: %s", joined)
+	}
+}
+
+func TestHandleModelLoad_ValidationErrorFails(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "model.conf")
+	badConfig := `name: "Bad Model"
+protocol_type: "unknown_type"
+base_url: ":://invalid"
+model_name: ""
+`
+	if err := os.WriteFile(configPath, []byte(badConfig), 0600); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	s := &Session{
+		sessionConfig: sessionConfig{
+			modelService: NewModelService(NewModelManager(configPath), NewRuntimeManager("")),
+			SessionConfig: SessionConfig{
+				Output: &MockOutput{},
+			},
+		},
+	}
+
+	_, err := s.handleModelLoad()
+	if err == nil {
+		t.Fatal("model_load with rejected model blocks must fail")
+	}
+	var ce *CmdErr
+	if !errors.As(err, &ce) || ce.Code != "MODEL_VALIDATION" {
+		t.Errorf("expected MODEL_VALIDATION, got %+v", err)
+	}
+	if !strings.Contains(ce.Message, "unknown protocol_type") {
+		t.Errorf("validation error should mention the rejected model: %s", ce.Message)
 	}
 }

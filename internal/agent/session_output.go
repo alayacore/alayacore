@@ -19,6 +19,8 @@ package agent
 // or from atomic fields — no mutex needed.
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -88,6 +90,48 @@ func (s *Session) writeNotify(msg string) {
 
 func (s *Session) writeNotifyf(format string, args ...any) {
 	s.writeNotify(fmt.Sprintf(format, args...))
+}
+
+// writeCmdResult writes a CO (Command Output) frame for a command call.
+// On success, result is serialized into Output (nil → JSON null).
+// On error, Output carries a uniform CmdError object; CmdErr codes are
+// preserved, plain errors default to "ERROR". An empty id is legal and
+// means the error could not be correlated to a request.
+func (s *Session) writeCmdResult(id string, result any, err error) {
+	msg := protocol.CmdResultMsg{ID: id}
+
+	switch {
+	case err != nil:
+		msg.IsError = true
+		code := "ERROR"
+		var ce *CmdErr
+		if errors.As(err, &ce) {
+			code = ce.Code
+		}
+		data, marshalErr := json.Marshal(protocol.CmdError{Code: code, Message: err.Error()})
+		if marshalErr != nil {
+			data = json.RawMessage(`{"code":"ERROR","message":"failed to serialize command error"}`)
+		}
+		msg.Output = data
+	case result != nil:
+		data, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			// A serialization failure is itself a command error.
+			msg.IsError = true
+			msg.Output = json.RawMessage(`{"code":"ERROR","message":"failed to serialize command result"}`)
+		} else {
+			msg.Output = data
+		}
+	default:
+		msg.Output = json.RawMessage("null")
+	}
+
+	data, marshalErr := json.Marshal(msg)
+	if marshalErr != nil {
+		// Last resort: drop the frame entirely (writeTLV would corrupt).
+		return
+	}
+	s.writeTLV(tlv.TagCommandOut, string(data))
 }
 
 // ============================================================================

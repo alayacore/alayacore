@@ -413,50 +413,40 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	// Dispatch through handleInputMsg (the real entry point) so the
 	// CmdIdle policy is enforced.
 	output.Messages = nil
-	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true})
+	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true, cmdID: "t1"})
 
-	foundError := false
-	for _, msg := range output.Messages {
-		if strings.Contains(msg, `"type":"error"`) {
-			foundError = true
-			break
-		}
-	}
-	if foundError {
+	if hasCOError(output.Messages) {
 		t.Error("model_set should succeed when no task is running, but got error")
 	}
 
 	// Test 2: model_set should fail when task is running.
 	output.Messages = nil
 	session.activeTask = &taskHandle{}
-	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true})
+	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true, cmdID: "t2"})
 
-	foundError = false
-	for _, msg := range output.Messages {
-		if strings.Contains(msg, `"type":"error"`) {
-			foundError = true
-			break
-		}
-	}
-	if !foundError {
+	if !hasCOError(output.Messages) {
 		t.Error("model_set should fail when task is running, but no error was found")
 	}
 
 	// Test 3: model_set should work again after task completes.
 	output.Messages = nil
 	session.activeTask = nil
-	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true})
+	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true, cmdID: "t3"})
 
-	foundError = false
-	for _, msg := range output.Messages {
-		if strings.Contains(msg, `"type":"error"`) {
-			foundError = true
-			break
-		}
-	}
-	if foundError {
+	if hasCOError(output.Messages) {
 		t.Error("model_set should succeed after task completes, but got error")
 	}
+}
+
+// hasCOError reports whether any captured message contains a CO frame
+// with is_error=true (the command-result error marker).
+func hasCOError(msgs []string) bool {
+	for _, msg := range msgs {
+		if strings.Contains(msg, `"is_error":true`) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDisplayMessagesWithToolCalls(t *testing.T) {
