@@ -39,6 +39,8 @@
 
 AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（无 TUI 的交互式纯文本模式）、**Terse IO**（只输出最终答案的管道/脚本模式）和 **Raw IO**（原始 TLV 帧程序化控制模式）。
 
+**模式速查：** 交互 TUI → 运行 `alayacore` · 无 TUI 的交互 → `--plainio` · 脚本/管道 → `--terseio` · 程序化控制 → `--rawio`
+
 ## 快速开始
 
 **方式一：** 从 [GitHub Releases](https://github.com/alayacore/alayacore/releases) 下载对应平台的二进制文件，解压后将其添加到 `PATH` 环境变量中。
@@ -52,6 +54,12 @@ go install github.com/alayacore/alayacore@latest
 然后运行 `alayacore`。
 
 首次运行时，AlayaCore 会自动在 `~/.alayacore/model.conf` 创建默认模型配置，预配置为 Ollama。你可以编辑该文件以指向你偏好的提供商。
+
+脚本和管道用法——一个 prompt 进，只有最终答案出：
+
+```sh
+echo "what is 2+2?" | alayacore --terseio
+```
 
 > 查看[快速入门指南](docs/getting-started.md)了解 CLI 参数、示例和详细设置。
 
@@ -77,11 +85,11 @@ go install github.com/alayacore/alayacore@latest
 
 ### Plain IO（`--plainio`）
 
-- 📟 **无需 TUI 的交互** — 通过 stdin/stdout 输出完整纯文本记录（prompt 回显、推理、工具调用、结果），任何终端都可用。
+- 📟 **无需 TUI 的交互** — 通过 stdin/stdout 输出完整纯文本记录（prompt 回显、推理、工具调用、结果）。
 
 ### Terse IO（`--terseio`）
 
-- 🎯 **只要答案** — 把整个 stdin 作为一个 prompt，只输出最终答案。适合管道和脚本。
+- 🎯 **只要答案** — 把整个 stdin 作为一个 prompt，只输出最终答案（错误走 stderr，退出码反映成败）。适合管道和脚本。
 
 ### Raw IO（`--rawio`）
 

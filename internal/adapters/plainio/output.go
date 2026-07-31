@@ -18,7 +18,7 @@ import (
 //
 // Concurrency: the session writes from two goroutines (task and run),
 // so a mutex protects the buffer, tag/history-ID state, and the close-once
-// guard for errorCh. See stream/doc.go for the full contract.
+// guard for errorCh. See doc.go for the full contract.
 type stdoutOutput struct {
 	writer        io.Writer
 	mu            sync.Mutex // protects buf, lastTag, lastHistoryID, errorClosed, seenDelta
@@ -238,9 +238,6 @@ func (o *stdoutOutput) handleTextDelta(tag, value string) {
 	}
 }
 
-// emitSeparator prints a newline if the previous visible tag differs from the
-// new tag and the previous frame was streamed (had a non-empty history ID).
-// It updates lastTag to the new tag.
 // handleMediaTag prints a media label (image/video/audio/document).
 func (o *stdoutOutput) handleMediaTag(tag, value string) {
 	tlv.UnwrapID(value)
@@ -254,6 +251,9 @@ func (o *stdoutOutput) handleMediaTag(tag, value string) {
 	fmt.Fprintf(o.writer, "[%s]\n", label)
 }
 
+// emitSeparator prints a newline if the previous visible tag differs from the
+// new tag and the previous frame was streamed (had a non-empty history ID).
+// It updates lastTag to the new tag.
 func (o *stdoutOutput) emitSeparator(tag string) {
 	if o.lastHistoryID != "" && o.lastTag != "" && o.lastTag != tag {
 		fmt.Fprintln(o.writer)

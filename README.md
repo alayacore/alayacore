@@ -39,6 +39,8 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (interactive plain-text stdin/stdout without a TUI), **Terse IO** (answer-only for pipes and scripts), and **Raw IO** (raw TLV frames for programmatic control).
 
+**Choose a mode:** interactive TUI → run `alayacore` · interactive without a TUI → `--plainio` · scripts/pipes → `--terseio` · programmatic control → `--rawio`
+
 ## Quick Start
 
 **Option 1:** Download from [GitHub Releases](https://github.com/alayacore/alayacore/releases), extract, and add to `PATH`.
@@ -52,6 +54,12 @@ go install github.com/alayacore/alayacore@latest
 Then run `alayacore`.
 
 On first run, AlayaCore auto-creates a default model config at `~/.alayacore/model.conf` configured for Ollama. Edit it to point at your preferred provider.
+
+For scripts and pipes — one prompt in, only the final answer out:
+
+```sh
+echo "what is 2+2?" | alayacore --terseio
+```
 
 > See the [Getting Started Guide](docs/getting-started.md) for CLI flags, examples, and detailed setup.
 
@@ -77,11 +85,11 @@ On first run, AlayaCore auto-creates a default model config at `~/.alayacore/mod
 
 ### Plain IO (`--plainio`)
 
-- 📟 **TUI-free interactive** — Full plain-text transcript (echoed prompts, reasoning, tool calls, results) over stdin/stdout. Works on any terminal, including teletype.
+- 📟 **TUI-free interactive** — Full plain-text transcript (echoed prompts, reasoning, tool calls, results) over stdin/stdout.
 
 ### Terse IO (`--terseio`)
 
-- 🎯 **Answer-only** — Read all of stdin as one prompt, print only the final answer. Ideal for pipes and scripts.
+- 🎯 **Answer-only** — Read all of stdin as one prompt, print only the final answer (errors to stderr, exit codes signal failure). Ideal for pipes and scripts.
 
 ### Raw IO (`--rawio`)
 
@@ -124,7 +132,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Commands](docs/commands.md) | All session commands (`:save`, `:cancel`, `:fork`, etc.) |
 | [Configuration](docs/configuration.md) | Model config, runtime config, and themes |
 | [Terminal UI](docs/tui.md) | Keybindings, commands, windows, and navigation |
-| [Plain IO Mode](docs/plainio.md) | interactive plain-text stdin/stdout, no TUI |
+| [Plain IO Mode](docs/plainio.md) | Interactive plain-text stdin/stdout, no TUI |
 | [Terse IO Mode](docs/terseio.md) | Read all stdin as one prompt; print only the final answer |
 | [Raw IO Mode](docs/rawio.md) | Raw TLV frames on stdin/stdout for programmatic control |
 | [Adapter Guide](adapter-guide/README.md) | TLV protocol reference for Raw IO — frame format, tags, and adapter implementation guide |
