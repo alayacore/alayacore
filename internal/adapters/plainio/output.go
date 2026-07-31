@@ -110,6 +110,9 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 	case tlv.TagSystemMsg:
 		o.handleSystemMsg(value)
 
+	case tlv.TagCommandOut:
+		o.handleCommandOut(value)
+
 	case tlv.TagAssistantF:
 		_, payload, ok := tlv.UnwrapID(value)
 		if !ok {
@@ -147,6 +150,29 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		o.emitSeparator(tag)
 		fmt.Fprintf(o.writer, "[unknown-tag:%s %s]", tag, value)
 	}
+}
+
+// handleCommandOut processes a CO (Command Output) frame.
+// Errors print like system errors but do NOT affect the exit code (a
+// command failure is normal interaction, not a session error); successes
+// print a brief confirmation.
+func (o *stdoutOutput) handleCommandOut(value string) {
+	var msg protocol.CmdResultMsg
+	if err := json.Unmarshal([]byte(value), &msg); err != nil {
+		return
+	}
+	if msg.IsError {
+		var errObj protocol.CmdError
+		if json.Unmarshal(msg.Output, &errObj) == nil && errObj.Message != "" {
+			fmt.Fprintf(o.writer, "\n[error: %s]\n", errObj.Message)
+			o.lastTag = ""
+			o.lastHistoryID = ""
+		}
+		return
+	}
+	fmt.Fprintf(o.writer, "\n[Command completed]\n")
+	o.lastTag = ""
+	o.lastHistoryID = ""
 }
 
 // handleTextDelta handles assistant text/reasoning tags (AT/AR/At/Ar).

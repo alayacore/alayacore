@@ -2,8 +2,11 @@ package plainio
 
 import (
 	"bytes"
+	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -30,22 +33,65 @@ func TestNewlineBetweenDifferentStreamGroups(t *testing.T) {
 	}
 }
 
-func TestNoNewlineWithinSameStreamGroup(t *testing.T) {
+func TestCommandOut_ErrorRenders(t *testing.T) {
 	var buf bytes.Buffer
 	o := &stdoutOutput{
 		writer: &buf,
 	}
 
-	msg1 := tlv.EncodeTLV(tlv.TagAssistantT, tlv.WrapID("1", "hello "))
-	msg2 := tlv.EncodeTLV(tlv.TagAssistantT, tlv.WrapID("1", "world"))
-
-	o.Write(msg1)
-	o.Write(msg2)
+	payload, _ := json.Marshal(protocol.CmdResultMsg{
+		ID:      "x1",
+		IsError: true,
+		Output:  json.RawMessage(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
+	})
+	o.Write(tlv.EncodeTLV(tlv.TagCommandOut, string(payload)))
 
 	got := buf.String()
-	want := "hello world"
-	if got != want {
-		t.Errorf("output = %q, want %q", got, want)
+	if !strings.Contains(got, "model_set: model not found: 99") {
+		t.Errorf("output = %q, want error message", got)
+	}
+	// A command failure must not poison the exit code.
+	if o.HasError() {
+		t.Error("command error should not set HasError (exit code)")
+	}
+	select {
+	case <-o.ErrorChannel():
+		t.Error("command error should not close ErrorChannel")
+	default:
+	}
+}
+
+func TestCommandOut_SuccessRenders(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{
+		writer: &buf,
+	}
+
+	payload, _ := json.Marshal(protocol.CmdResultMsg{
+		ID:     "x2",
+		Output: json.RawMessage(`{"path":"/tmp/x.alaya"}`),
+	})
+	o.Write(tlv.EncodeTLV(tlv.TagCommandOut, string(payload)))
+
+	got := buf.String()
+	if !strings.Contains(got, "Command completed") {
+		t.Errorf("output = %q, want confirmation", got)
+	}
+	if o.HasError() {
+		t.Error("success should not set HasError")
+	}
+}
+
+func TestCommandOut_MalformedIgnored(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{
+		writer: &buf,
+	}
+
+	o.Write(tlv.EncodeTLV(tlv.TagCommandOut, "{not json"))
+
+	if buf.Len() != 0 {
+		t.Errorf("malformed CO should be ignored, got %q", buf.String())
 	}
 }
 

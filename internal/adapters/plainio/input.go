@@ -2,11 +2,33 @@ package plainio
 
 import (
 	"bufio"
+	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
+
+// commandSeq generates unique command call IDs for CI frames.
+var commandSeq atomic.Uint64
+
+// writeCommand sends a colon-command (e.g. ":save /tmp/x") as a CI frame.
+// The adapter translates the human-facing text into {id, name, input}.
+func writeCommand(input io.Writer, cmd string) error {
+	name, args, _ := strings.Cut(strings.TrimPrefix(cmd, ":"), " ")
+	payload, err := json.Marshal(protocol.CmdMsg{
+		ID:    fmt.Sprintf("plain-%d", commandSeq.Add(1)),
+		Name:  name,
+		Input: args,
+	})
+	if err != nil {
+		return err
+	}
+	return tlv.WriteTLV(input, tlv.TagCommandIn, string(payload))
+}
 
 // readPrompts reads lines from stdin and emits them as TLV messages.
 // Lines ending with `\` are continued on the next line (backslash-escaped newline).
@@ -74,16 +96,14 @@ func readPrompts(done <-chan struct{}, input io.Writer, reader io.Reader) error 
 }
 
 // sendPrompt writes a prompt to the TLV stream, followed by UE to flush.
-// Commands (starting with ':') are sent without UE. Returns the first
-// write error, if any.
+// Commands (starting with ':') are sent as CI frames without UE.
+// Returns the first write error, if any.
 func sendPrompt(input io.Writer, text string) error {
+	if strings.HasPrefix(text, ":") {
+		return writeCommand(input, text)
+	}
 	if err := tlv.WriteTLV(input, tlv.TagUserT, text); err != nil {
 		return err
 	}
-	if !strings.HasPrefix(text, ":") {
-		if err := tlv.WriteTLV(input, tlv.TagUserEnd, ""); err != nil {
-			return err
-		}
-	}
-	return nil
+	return tlv.WriteTLV(input, tlv.TagUserEnd, "")
 }

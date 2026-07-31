@@ -2,11 +2,13 @@ package plainio
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -210,22 +212,57 @@ func TestReadPrompts_Command(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Commands should emit UT without UE.
+	// Commands should emit a CI frame (not UT), with no UE after it.
 	tag, value, err := tlv.ReadTLV(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserT {
-		t.Errorf("expected tag UT, got %s", tag)
+	if tag != tlv.TagCommandIn {
+		t.Errorf("expected tag CI, got %s", tag)
 	}
-	if value != ":cancel" {
-		t.Errorf("expected ':cancel', got %q", value)
+	var cmd protocol.CmdMsg
+	if err := json.Unmarshal([]byte(value), &cmd); err != nil {
+		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
+	}
+	if cmd.Name != "cancel" {
+		t.Errorf("expected command 'cancel', got %q", cmd.Name)
+	}
+	if cmd.Input != "" {
+		t.Errorf("expected empty input, got %q", cmd.Input)
+	}
+	if cmd.ID == "" {
+		t.Error("CI frame should carry a generated call ID")
 	}
 
 	// Should be no UE after command
 	tag, _, err = tlv.ReadTLV(&buf)
 	if err == nil {
 		t.Errorf("expected EOF after command, got tag %s", tag)
+	}
+}
+
+func TestReadPrompts_CommandWithArgs(t *testing.T) {
+	var buf bytes.Buffer
+	input := strings.NewReader(":save /tmp/x.alaya\n")
+
+	err := readPrompts(nil, &buf, input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tag, value, err := tlv.ReadTLV(&buf)
+	if err != nil {
+		t.Fatalf("failed to read TLV: %v", err)
+	}
+	if tag != tlv.TagCommandIn {
+		t.Errorf("expected tag CI, got %s", tag)
+	}
+	var cmd protocol.CmdMsg
+	if err := json.Unmarshal([]byte(value), &cmd); err != nil {
+		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
+	}
+	if cmd.Name != "save" || cmd.Input != "/tmp/x.alaya" {
+		t.Errorf("unexpected cmd: name=%q input=%q", cmd.Name, cmd.Input)
 	}
 }
 
