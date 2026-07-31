@@ -57,11 +57,12 @@ export ALAYACORE_SHELL=zsh
 | `--proxy` | *(none)* | Proxy URL. Supports `http://`, `https://`, and `socks5://` schemes |
 | `--max-steps` | `0` (no limit) | Maximum number of agent loop iterations per prompt. When set to 0 (the default), the agent loops until the model produces a final response. Exceeding this limit raises an error and reports an error — use `:continue` to retry. |
 | `--auto-summarize` | `0` (disabled) | Enable auto-summarization at given threshold percentage (e.g. `--auto-summarize=65`, 0 = disabled) |
-| `--tool-confirm` | *(none)* | Comma-separated tool `names` that require user confirmation before execution (e.g. `--tool-confirm execute_command,search_content`) |
+| `--tool-confirm` | *(none)* | Comma-separated tool `names` that require user confirmation before execution (e.g. `--tool-confirm execute_command,search_content`). Not compatible with `--terseio` |
 | `--builtin-tools` | *(all)* | Comma-separated built-in tool `names` to enable. Empty (`--builtin-tools=`) disables all built-in tools. Unspecified means all tools enabled. |
 | `--no-delta` | `false` | Disable delta frames (At, Ar, Af); use complete frames only. Reduces wire overhead when the adapter does not need streaming previews. |
 | `--rawio` | `false` | Raw TLV stdin/stdout mode — pipe TLV frames directly between agent and controlling process |
 | `--plainio` | `false` | Plain stdin/stdout mode — no TUI, for scripting and piping |
+| `--terseio` | `false` | Read all of stdin as one prompt and print only the final answer (stdout stays clean; errors go to stderr). Incompatible with `--tool-confirm` |
 | `--debug-log` | `""` | Debug log directory (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging. |
 | `--version` | — | Print version and exit |
 | `--help` | — | Print help and exit |
@@ -89,6 +90,9 @@ alayacore --proxy http://127.0.0.1:7890
 
 # Plain IO — pipe a question, get an answer
 echo "what is 2+2?" | alayacore --plainio
+
+# Terse IO — pipe a whole prompt, get ONLY the final answer
+echo "what is 2+2?" | alayacore --terseio > answer.txt
 ```
 
 ## Next Steps
@@ -96,5 +100,6 @@ echo "what is 2+2?" | alayacore --plainio
 - **[Configuration](configuration.md)** — Set up multiple models, API keys, and themes
 - **[Terminal UI](tui.md)** — Learn the keybindings and commands
 - **[Plain IO Mode](plainio.md)** — Use AlayaCore without a terminal UI
+- **[Terse IO Mode](terseio.md)** — Read all stdin as one prompt; print only the final answer
 - **[Raw IO Mode](rawio.md)** — Control AlayaCore programmatically via raw TLV frames
 - **[Skills System](skills.md)** — Extend the agent with custom skill packages

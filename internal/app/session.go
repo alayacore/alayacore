@@ -1,7 +1,7 @@
 package app
 
 // Shared session loading for adapters.
-// Both terminal and plainio adapters follow the same bootstrap sequence:
+// Terminal, plainio, and terseio adapters follow the same bootstrap sequence:
 // load session, validate init errors, print config errors, check models,
 // then start the session goroutine.
 

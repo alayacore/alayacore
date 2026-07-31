@@ -17,7 +17,7 @@ The entry point wires together all components:
    - Skills manager (loads skill metadata from `--skill` directories)
    - Tools (`read_file`, `edit_file`, `write_file`, `execute_command`, `search_content` — controlled via `--builtin-tools` flag)
    - System prompt (default + skills section/fragment when configured + current working directory)
-3. **Adapter creation** — Starts the terminal, PlainIO, or RawIO adapter
+3. **Adapter creation** — Starts the terminal, PlainIO, TerseIO, or RawIO adapter
 
 ### Session Layer (`internal/agent/`)
 

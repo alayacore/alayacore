@@ -26,6 +26,10 @@ The adapter layer handles user interaction and translates between user actions a
 
 Plain stdin/stdout mode, activated with `--plainio`. Shows assistant text, reasoning, tool call JSON, and tool result JSON. Displays tool_confirm system messages as plain text prompts. Reads prompts from stdin (one per line, backslash continuation for multi-line prompts).
 
+### TerseIO Adapter (`internal/adapters/terseio/`)
+
+Minimal stdin/stdout mode, activated with `--terseio`. Reads **all of stdin as a single prompt** and prints **only the final assistant text** to stdout; errors and notifications go to stderr. Buffers the current AT/At message (dropping earlier text on new history IDs) and flushes it on the task-completion system message (`in_progress: false`) — but only if the final message actually contains text (reasoning-only or tool-call-only final messages produce empty stdout). `--tool-confirm` is rejected at startup (conflict), so no tool_confirm frames can arrive and no CI machinery is needed.
+
 ### RawIO Adapter (`internal/adapters/rawio/`)
 
 Raw TLV stdin/stdout mode, activated with `--rawio`. Reads and writes raw TLV-encoded frames directly, with no text parsing or formatting. Designed for parent programs that speak the TLV protocol to control AlayaCore programmatically.

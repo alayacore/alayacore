@@ -94,8 +94,9 @@ func (s *stringSlice) Get() []string {
 type Settings struct {
 	// Core
 	ShowVersion   bool
-	PlainIO       bool
 	RawIO         bool
+	TerseIO       bool // read all stdin as one prompt; print only the final answer
+	PlainIO       bool
 	DebugLogDir   string // "" = disabled (when flag not set), "." = write to CWD, or any path (set by --debug-log)
 	ModelConfig   string // derived from config-path + "model.conf"
 	RuntimeConfig string // derived from config-path + "runtime.conf"
@@ -137,8 +138,9 @@ func Parse() *Settings {
 
 	// Core
 	showVersion := flag.Bool("version", false, "Show version information")
-	plainIO := flag.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")
 	rawIO := flag.Bool("rawio", false, "Use raw TLV stdin/stdout mode instead of terminal UI (pipe TLV frames directly)")
+	terseIO := flag.Bool("terseio", false, "Read all of stdin as a single prompt and print only the final answer (stdout stays clean; errors go to stderr)")
+	plainIO := flag.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")
 	debugLog := flag.String("debug-log", "", "Debug log `directory` (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging.")
 	configPath := flag.String("config-path", defaultConfigPath, "Config directory `path` (contains model.conf, runtime.conf, themes/)")
 	modelName := flag.String("model", "", "Model `name` to activate (must exist in model config; overrides runtime config)")
@@ -185,8 +187,9 @@ func Parse() *Settings {
 	}
 	s := &Settings{
 		ShowVersion:    *showVersion,
-		PlainIO:        *plainIO,
 		RawIO:          *rawIO,
+		TerseIO:        *terseIO,
+		PlainIO:        *plainIO,
 		DebugLogDir:    *debugLog,
 		ModelConfig:    filepath.Join(cp, "model.conf"),
 		RuntimeConfig:  filepath.Join(cp, "runtime.conf"),

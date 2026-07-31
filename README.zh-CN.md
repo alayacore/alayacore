@@ -33,7 +33,9 @@
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
 
-AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有三种模式：**TUI**（交互式终端界面）、**Plain IO**（stdin/stdout 脚本模式）和 **Raw IO**（原始 TLV 帧程序化控制模式）。
+**Terse IO 模式** — 读取整个 stdin 作为一个 prompt，只输出最终答案（stdout 保持纯净，错误走 stderr）。
+
+AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（stdin/stdout 脚本模式）、**Raw IO**（原始 TLV 帧程序化控制模式）和 **Terse IO**（只输出最终答案的脚本模式）。
 
 ## 快速开始
 
@@ -74,6 +76,10 @@ go install github.com/alayacore/alayacore@latest
 ### Plain IO（`--plainio`）
 
 - 📟 **适合脚本使用** — 纯文本输入/输出，带 TLV 帧。无 TUI 依赖。
+
+### Terse IO（`--terseio`）
+
+- 🎯 **只要答案** — 把整个 stdin 作为一个 prompt，只输出最终答案。适合管道和脚本。
 
 ### Raw IO（`--rawio`）
 
@@ -117,6 +123,7 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [配置](docs/configuration.md) | 模型配置、运行时配置和主题 |
 | [终端 UI](docs/tui.md) | 快捷键、命令、窗口、任务队列 |
 | [Plain IO 模式](docs/plainio.md) | 用于脚本和管道的 stdin/stdout |
+| [Terse IO 模式](docs/terseio.md) | 将整个 stdin 作为一个 prompt，只输出最终答案 |
 | [Raw IO 模式](docs/rawio.md) | 用于程序化控制的原始 TLV 帧 |
 | [Adapter Guide](adapter-guide/README.md) | Raw IO 协议参考 — 帧格式、标签、adapter 实现指南 |
 | [技能系统](docs/skills.md) | Agent Skills 规范、目录结构、SKILL.md 格式 |

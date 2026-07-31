@@ -98,8 +98,10 @@ The adapter must be prepared to **receive** user tags on stdout in these scenari
 3. **Auto-summarize** — The auto-summarization prompt is echoed as UT on stdout.
 
 > **For adapter implementors:** You cannot assume user tags only appear on stdin.
-> Both the terminal adapter (`internal/adapters/terminal/output.go`) and the plainio
-> adapter (`internal/adapters/plainio/output.go`) handle user tags from stdout.
+> The terminal adapter (`internal/adapters/terminal/output.go`), the plainio
+> adapter (`internal/adapters/plainio/output.go`), and the terseio adapter
+> (`internal/adapters/terseio/output.go`, which suppresses them — its stdout
+> carries only the final answer) all receive user tags from stdout.
 
 ## Delta Messages (At, Ar)
 

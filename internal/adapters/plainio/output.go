@@ -48,9 +48,9 @@ func (o *stdoutOutput) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// ErrorChannel returns a channel that is closed when an SE (system error)
-// tag is received. It can be used in a select to react to errors without
-// a dedicated goroutine.
+// ErrorChannel returns a channel that is closed when a TagSystemMsg of
+// type "error" is received. It can be used in a select to react to errors
+// without a dedicated goroutine.
 func (o *stdoutOutput) ErrorChannel() <-chan struct{} {
 	return o.errorCh
 }

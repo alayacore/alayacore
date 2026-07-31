@@ -33,7 +33,9 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
 
-AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all three modes: **TUI** (interactive terminal interface), **Plain IO** (stdin/stdout for scripting), and **Raw IO** (raw TLV frames for programmatic control).
+**Terse IO Mode** — read all of stdin as one prompt, print only the final answer (stdout stays clean, errors go to stderr).
+
+AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (stdin/stdout for scripting), **Raw IO** (raw TLV frames for programmatic control), and **Terse IO** (answer-only for pipes and scripts).
 
 ## Quick Start
 
@@ -74,6 +76,10 @@ On first run, AlayaCore auto-creates a default model config at `~/.alayacore/mod
 ### Plain IO (`--plainio`)
 
 - 📟 **Scripting-friendly** — Plain text input/output with TLV framing. No TUI dependencies.
+
+### Terse IO (`--terseio`)
+
+- 🎯 **Answer-only** — Read all of stdin as one prompt, print only the final answer. Ideal for pipes and scripts.
 
 ### Raw IO (`--rawio`)
 
@@ -117,6 +123,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Configuration](docs/configuration.md) | Model config, runtime config, and themes |
 | [Terminal UI](docs/tui.md) | Keybindings, commands, windows, and navigation |
 | [Plain IO Mode](docs/plainio.md) | stdin/stdout for scripts and pipes |
+| [Terse IO Mode](docs/terseio.md) | Read all stdin as one prompt; print only the final answer |
 | [Raw IO Mode](docs/rawio.md) | Raw TLV frames on stdin/stdout for programmatic control |
 | [Adapter Guide](adapter-guide/README.md) | TLV protocol reference for Raw IO — frame format, tags, and adapter implementation guide |
 | [Skills System](docs/skills.md) | Agent Skills specification, directory structure, SKILL.md format |

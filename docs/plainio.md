@@ -46,6 +46,10 @@ Respond with `:tool_confirm <id>` to allow or `:tool_decline <id>` to deny.
 
 A blank line separates messages of different types.
 
+> 💡 **Just want the final answer?** Use `--terseio` instead — it reads all
+> of stdin as one prompt and prints only the final answer (errors to stderr).
+> See [Terse IO Mode](terseio.md).
+
 ## Session Persistence
 
 > ⚠️ Since plain IO only processes **one prompt per invocation**, saving
