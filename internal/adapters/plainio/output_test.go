@@ -82,6 +82,32 @@ func TestCommandOut_SuccessRenders(t *testing.T) {
 	}
 }
 
+func TestCommandOut_SuccessRendersByName(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{
+		writer: &buf,
+	}
+	commandNames.Store("p1", "save")
+	defer commandNames.Delete("p1")
+
+	payload, _ := json.Marshal(protocol.CmdResultMsg{
+		ID:     "p1",
+		Output: json.RawMessage(`{"path":"/tmp/x.alaya"}`),
+	})
+	o.Write(tlv.EncodeTLV(tlv.TagCommandOut, string(payload)))
+
+	got := buf.String()
+	if !strings.Contains(got, "Session saved to /tmp/x.alaya") {
+		t.Errorf("output = %q, want rendered save result", got)
+	}
+	if strings.Contains(got, "Command completed") {
+		t.Errorf("generic confirmation should not appear for a known command, got %q", got)
+	}
+	if _, ok := commandNames.Load("p1"); ok {
+		t.Error("command name mapping should be consumed after the CO arrives")
+	}
+}
+
 func TestCommandOut_MalformedIgnored(t *testing.T) {
 	var buf bytes.Buffer
 	o := &stdoutOutput{

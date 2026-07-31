@@ -155,7 +155,8 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 // handleCommandOut processes a CO (Command Output) frame.
 // Errors print like system errors but do NOT affect the exit code (a
 // command failure is normal interaction, not a session error); successes
-// print a brief confirmation.
+// render the structured result as human-readable text (the command name
+// is correlated from the CI the adapter sent).
 func (o *stdoutOutput) handleCommandOut(value string) {
 	var msg protocol.CmdResultMsg
 	if err := json.Unmarshal([]byte(value), &msg); err != nil {
@@ -170,9 +171,35 @@ func (o *stdoutOutput) handleCommandOut(value string) {
 		}
 		return
 	}
-	fmt.Fprintf(o.writer, "\n[Command completed]\n")
+	name, _ := commandNames.LoadAndDelete(msg.ID)
+	nameStr, _ := name.(string)
+	fmt.Fprintf(o.writer, "\n[%s]\n", renderCommandResult(nameStr, msg.Output))
 	o.lastTag = ""
 	o.lastHistoryID = ""
+}
+
+// renderCommandResult formats a successful command result for display.
+// Unknown commands fall back to a generic confirmation. The command name
+// comes from the adapter's own CI tracking; structured fields come from
+// the CO output (never display text — rendering is an adapter concern).
+func renderCommandResult(name string, output json.RawMessage) string {
+	var data struct {
+		Path      string `json:"path"`
+		HistoryID uint64 `json:"history_id"`
+		Server    string `json:"server"`
+	}
+	_ = json.Unmarshal(output, &data) // best-effort; zero fields render generically
+	switch name {
+	case "save":
+		return "Session saved to " + data.Path
+	case "fork":
+		return fmt.Sprintf("Session forked to %s (up to content ID %d)", data.Path, data.HistoryID)
+	case "mcp_confirm":
+		return fmt.Sprintf("MCP auth code received for %q.", data.Server)
+	case "mcp_decline":
+		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
+	}
+	return "Command completed"
 }
 
 // handleTextDelta handles assistant text/reasoning tags (AT/AR/At/Ar).

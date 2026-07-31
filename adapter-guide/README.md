@@ -579,6 +579,13 @@ CO {"id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  �
 - On failure, `output` is a **uniform error object**: `{"code":"<machine-readable>","message":"<human-readable>"}`.
   Machine clients key off `is_error`/`code`; the `message` is for display.
 
+**Rendering is the adapter's job:** CO carries only structured data, never
+display text. To render a result (e.g. show the file name after `save`), the
+adapter correlates the CO's `id` with the CI it sent (the request carries the
+`name`) — exactly like tool results: AF carries the tool name, UF carries
+only the `id`, and the adapter tracks the mapping. Commands unknown to the
+adapter render as a generic confirmation.
+
 **Important:** Command results travel exclusively via CO. SM `error`/`notify`
 messages are reserved for non-command events (task errors, MCP status, etc.).
 
@@ -658,7 +665,7 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 |---------|-------|---------------------|
 | `cancel` | — | `null` |
 | `save` | `[filename]` | `{"path":...}` |
-| `fork` | `<id> <filename>` | `{"path":...,"count":...}` |
+| `fork` | `<id> <filename>` | `{"path":...,"count":...,"history_id":...}` |
 | `theme_set` | `<name>` | `{"name":...}` |
 | `tool_confirm` / `tool_decline` | `<tool-id>` | `{"tool_id":...}` |
 | `model_set` | `<id>` | `{"active_id":...,"active_name":...}` |

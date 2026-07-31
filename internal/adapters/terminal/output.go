@@ -442,8 +442,9 @@ func (to *outputWriter) handleSystemNotify(data json.RawMessage) {
 
 // handleCommandOut processes a CO (Command Output) frame.
 // Errors render in the error window using the uniform error message;
-// successes show a brief confirmation — state changes arrive separately
-// via SM broadcasts.
+// successes render the structured result as human-readable text (the
+// command name is correlated from the CI the adapter sent). State
+// changes arrive separately via SM broadcasts.
 func (to *outputWriter) handleCommandOut(value string) {
 	var msg protocol.CmdResultMsg
 	if err := json.Unmarshal([]byte(value), &msg); err != nil {
@@ -458,9 +459,35 @@ func (to *outputWriter) handleCommandOut(value string) {
 		to.dirty.Store(true)
 		return
 	}
+	name, _ := commandNames.LoadAndDelete(msg.ID)
+	nameStr, _ := name.(string)
 	id := to.generateWindowID()
-	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, "Command completed")
+	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, renderCommandResult(nameStr, msg.Output))
 	to.dirty.Store(true)
+}
+
+// renderCommandResult formats a successful command result for display.
+// Unknown commands fall back to a generic confirmation. The command name
+// comes from the adapter's own CI tracking; structured fields come from
+// the CO output (never display text — rendering is an adapter concern).
+func renderCommandResult(name string, output json.RawMessage) string {
+	var data struct {
+		Path      string `json:"path"`
+		HistoryID uint64 `json:"history_id"`
+		Server    string `json:"server"`
+	}
+	_ = json.Unmarshal(output, &data) // best-effort; zero fields render generically
+	switch name {
+	case "save":
+		return "Session saved to " + data.Path
+	case "fork":
+		return fmt.Sprintf("Session forked to %s (up to content ID %d)", data.Path, data.HistoryID)
+	case "mcp_confirm":
+		return fmt.Sprintf("MCP auth code received for %q.", data.Server)
+	case "mcp_decline":
+		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
+	}
+	return "Command completed"
 }
 
 func (to *outputWriter) handleSystemTask(data json.RawMessage) {

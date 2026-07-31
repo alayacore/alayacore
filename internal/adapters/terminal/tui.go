@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,19 +33,26 @@ import (
 // commandSeq generates unique command call IDs for CI frames.
 var commandSeq atomic.Uint64
 
+// commandNames maps command call IDs to command names, mirroring how tool
+// names are tracked from AF frames: the request carries the name, the
+// result (CO) carries only the ID, and the adapter correlates them.
+var commandNames sync.Map // id → command name
+
 // writeCommand sends a colon-command (e.g. ":save /tmp/x") to the session as
 // a CI (Command Input) frame. The adapter translates the human-facing text
 // into {id, name, input}; the session never sees colon-text anymore.
 func writeCommand(w io.Writer, cmd string) {
 	name, args, _ := strings.Cut(strings.TrimPrefix(cmd, ":"), " ")
+	id := fmt.Sprintf("tui-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
-		ID:    fmt.Sprintf("tui-%d", commandSeq.Add(1)),
+		ID:    id,
 		Name:  name,
 		Input: args,
 	})
 	if err != nil {
 		return
 	}
+	commandNames.Store(id, name)
 	_ = tlv.WriteTLV(w, tlv.TagCommandIn, string(payload))
 }
 

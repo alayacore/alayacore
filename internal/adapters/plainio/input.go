@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -15,18 +16,25 @@ import (
 // commandSeq generates unique command call IDs for CI frames.
 var commandSeq atomic.Uint64
 
+// commandNames maps command call IDs to command names, mirroring how tool
+// names are tracked from AF frames: the request carries the name, the
+// result (CO) carries only the ID, and the adapter correlates them.
+var commandNames sync.Map // id → command name
+
 // writeCommand sends a colon-command (e.g. ":save /tmp/x") as a CI frame.
 // The adapter translates the human-facing text into {id, name, input}.
 func writeCommand(input io.Writer, cmd string) error {
 	name, args, _ := strings.Cut(strings.TrimPrefix(cmd, ":"), " ")
+	id := fmt.Sprintf("plain-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
-		ID:    fmt.Sprintf("plain-%d", commandSeq.Add(1)),
+		ID:    id,
 		Name:  name,
 		Input: args,
 	})
 	if err != nil {
 		return err
 	}
+	commandNames.Store(id, name)
 	return tlv.WriteTLV(input, tlv.TagCommandIn, string(payload))
 }
 

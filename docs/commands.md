@@ -16,7 +16,9 @@ CO {"id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  �
 - The adapter generates the call ID and echoes it back — every CI receives
   exactly one CO.
 - `output` is structured JSON defined per command (see table below); on
-  failure it is a uniform error object `{code, message}`.
+  failure it is a uniform error object `{code, message}`. Rendering is the
+  adapter's job: CO carries no display text — adapters correlate the CO `id`
+  with the CI they sent (which carries the `name`) to render results.
 - Adapters translate the human-facing `:command args` text into CI frames;
   the agent never sees colon-text. The TUI and Plain IO adapters do this
   translation automatically.
@@ -40,7 +42,7 @@ Commands fall into three categories:
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. | `{"path"}` |
 | `:reason [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 | `{"level"}` |
 | `:theme_set <name>` | Switch to a different theme | `{"name"}` |
-| `:fork <id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count"}` |
+| `:fork <id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count","history_id"}` |
 | `:tool_decline <id>` | Decline a pending tool execution | `{"tool_id"}` |
 | `:mcp_cancel` | Cancel MCP server initialization | `null` |
 

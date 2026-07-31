@@ -142,6 +142,57 @@ func TestCommandOut_SuccessConfirmation(t *testing.T) {
 	}
 }
 
+func TestCommandOut_SuccessRendersByName(t *testing.T) {
+	out := NewTerminalOutput(DefaultStyles())
+	commandNames.Store("t1", "save")
+	defer commandNames.Delete("t1")
+
+	payload, _ := json.Marshal(protocol.CmdResultMsg{
+		ID:     "t1",
+		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
+	})
+	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {
+		t.Fatalf("WriteTLV failed: %v", err)
+	}
+
+	windows := out.windowBuffer.AllWindows()
+	if len(windows) != 1 {
+		t.Fatalf("expected 1 window, got %d", len(windows))
+	}
+	if !strings.Contains(windows[0].RawContent(), "Session saved to /tmp/x.alaya") {
+		t.Errorf("success window should render the save result, got %q", windows[0].RawContent())
+	}
+	if strings.Contains(windows[0].RawContent(), "Command completed") {
+		t.Errorf("generic confirmation should not appear for a known command, got %q", windows[0].RawContent())
+	}
+	// The id → name mapping is consumed by the CO.
+	if _, ok := commandNames.Load("t1"); ok {
+		t.Error("command name mapping should be consumed after the CO arrives")
+	}
+}
+
+func TestCommandOut_UnknownCommandFallsBack(t *testing.T) {
+	out := NewTerminalOutput(DefaultStyles())
+	commandNames.Store("t2", "some_new_command")
+	defer commandNames.Delete("t2")
+
+	payload, _ := json.Marshal(protocol.CmdResultMsg{
+		ID:     "t2",
+		Output: mustRaw(`{"foo":"bar"}`),
+	})
+	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {
+		t.Fatalf("WriteTLV failed: %v", err)
+	}
+
+	windows := out.windowBuffer.AllWindows()
+	if len(windows) != 1 {
+		t.Fatalf("expected 1 window, got %d", len(windows))
+	}
+	if !strings.Contains(windows[0].RawContent(), "Command completed") {
+		t.Errorf("unknown command should fall back to generic confirmation, got %q", windows[0].RawContent())
+	}
+}
+
 func TestCommandOut_MalformedIgnored(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 

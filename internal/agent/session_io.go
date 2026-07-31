@@ -154,7 +154,7 @@ func (s *Session) handleFork(args string) (any, error) {
 	if err := s.saveContentToFile(path, s.Contents[:endIdx+1]); err != nil {
 		return nil, &CmdErr{Code: "IO_ERROR", Message: fmt.Sprintf("failed to fork: %v", err)}
 	}
-	return map[string]any{"path": path, "count": endIdx + 1}, nil
+	return map[string]any{"path": path, "count": endIdx + 1, "history_id": id}, nil
 }
 
 // handleToolConfirmCmd processes a `:tool_confirm <id>` command.
