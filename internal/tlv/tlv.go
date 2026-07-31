@@ -14,6 +14,8 @@
 //   - AR: Assistant reasoning (complete/authoritative; empty if deltas preceded it)
 //   - AF: Assistant function / tool call (complete/authoritative)
 //   - UF: User function / tool result
+//   - CI: Command input (adapter → agent, JSON CmdMsg)
+//   - CO: Command output (agent → adapter, JSON CmdResultMsg)
 //   - SM: System message
 //
 // Lowercase tags carry streaming delta / incremental content:
@@ -45,6 +47,11 @@ const (
 	TagUserD      = "UD" // User document — data:application/...;base64,... or URL
 
 	TagUserEnd = "UE" // User message end — flushes staged content as one window
+
+	// Command control plane — ID-correlated request/response, mirroring
+	// the tool control plane (AF/UF). Payloads are plain JSON, no envelope.
+	TagCommandIn  = "CI" // Command input: CmdMsg JSON (adapter → agent)
+	TagCommandOut = "CO" // Command output: CmdResultMsg JSON (agent → adapter)
 
 	TagSystemMsg = "SM" // System message JSON: {"type":"...","data":{...}}
 
