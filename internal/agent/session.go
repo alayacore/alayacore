@@ -164,8 +164,9 @@ func (s *Session) HasRejected() bool { return s.modelService.HasRejected() }
 // LoadOrNewSession loads a session from file or creates a new one.
 // Returns an error if the session file exists but has an incompatible version
 // (version must match MessageVersion exactly).
-// If the session file fails to load for other reasons (corrupt data, permissions),
-// an error is printed to stderr and a new session is created.
+// A missing session file is the normal first-run case and is silent.
+// If the session file exists but fails to load for other reasons (corrupt data,
+// permissions), an error is printed to stderr and a new session is created.
 // The returned session is ready to use but NOT yet started —
 // call Start() to begin processing input.
 func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
@@ -187,11 +188,13 @@ func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 		return nil, "", loadErr
 	}
 
-	// Session file exists but can't be loaded (corrupt data,
-	// permission error, etc.). Log an error and start fresh
-	// rather than failing entirely.
-	fmt.Fprintf(os.Stderr, "Error: could not load session file %q: %v\n", cfg.SessionFile, loadErr)
-	fmt.Fprintf(os.Stderr, "Starting new session.\n")
+	// A missing session file is the normal "start fresh" case — silent.
+	// Only warn when the file EXISTS but cannot be loaded (corrupt data,
+	// permission error, etc.) and start fresh rather than failing entirely.
+	if !errors.Is(loadErr, os.ErrNotExist) {
+		fmt.Fprintf(os.Stderr, "Error: could not load session file %q: %v\n", cfg.SessionFile, loadErr)
+		fmt.Fprintf(os.Stderr, "Starting new session.\n")
+	}
 	return NewSession(cfg), cfg.SessionFile, nil
 }
 

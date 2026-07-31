@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -102,6 +103,89 @@ func TestLoadOrNewSession(t *testing.T) {
 	// Agent is lazily initialized, so it should be nil at startup
 	if session.Agent() != nil {
 		t.Error("Session agent should be nil at startup (lazy initialization)")
+	}
+}
+
+// captureStderr redirects os.Stderr to a pipe for the duration of fn and
+// returns whatever was written to it.
+func captureStderr(fn func()) string {
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		panic(err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = oldStderr }()
+	fn()
+	w.Close()
+	data, _ := io.ReadAll(r)
+	r.Close()
+	return string(data)
+}
+
+func TestLoadOrNewSession_MissingFileIsSilent(t *testing.T) {
+	// A non-existent session file is the normal "start fresh" case:
+	// it must NOT print an error to stderr.
+	path := filepath.Join(t.TempDir(), "missing.alaya")
+
+	var session *Session
+	var sessionFile string
+	var err error
+	stderr := captureStderr(func() {
+		session, sessionFile, err = LoadOrNewSession(SessionConfig{
+			SessionFile:  path,
+			BaseTools:    []llm.Tool{},
+			SystemPrompt: "test system prompt",
+			Input:        &nopInput{},
+			Output:       &nopOutput{},
+		})
+	})
+
+	if err != nil {
+		t.Fatalf("LoadOrNewSession returned error: %v", err)
+	}
+	if session == nil {
+		t.Fatal("LoadOrNewSession returned nil session")
+	}
+	if sessionFile != path {
+		t.Fatalf("sessionFile = %q, want %q", sessionFile, path)
+	}
+	if strings.Contains(stderr, "could not load session file") {
+		t.Errorf("missing session file printed an error to stderr: %q", stderr)
+	}
+}
+
+func TestLoadOrNewSession_CorruptFileWarns(t *testing.T) {
+	// A session file that EXISTS but is corrupt is a real problem:
+	// it must warn on stderr but still start a fresh session.
+	path := filepath.Join(t.TempDir(), "corrupt.alaya")
+	if err := os.WriteFile(path, []byte("not a session file"), 0600); err != nil {
+		t.Fatalf("write corrupt file: %v", err)
+	}
+
+	var session *Session
+	stderr := captureStderr(func() {
+		var err error
+		session, _, err = LoadOrNewSession(SessionConfig{
+			SessionFile:  path,
+			BaseTools:    []llm.Tool{},
+			SystemPrompt: "test system prompt",
+			Input:        &nopInput{},
+			Output:       &nopOutput{},
+		})
+		if err != nil {
+			t.Fatalf("LoadOrNewSession returned error: %v", err)
+		}
+	})
+
+	if session == nil {
+		t.Fatal("LoadOrNewSession returned nil session")
+	}
+	if !strings.Contains(stderr, "could not load session file") {
+		t.Errorf("corrupt session file did not warn on stderr: %q", stderr)
+	}
+	if !strings.Contains(stderr, "Starting new session") {
+		t.Errorf("corrupt session file did not print fallback notice: %q", stderr)
 	}
 }
 
