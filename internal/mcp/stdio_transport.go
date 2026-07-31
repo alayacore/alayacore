@@ -26,9 +26,16 @@ type StdioTransport struct {
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
 	scanner   *bufio.Scanner
-	closeOnce sync.Once
+	closeOnce sync.Once // guards the Close() cleanup sequence
+	doneOnce  sync.Once // guards close(done) — shared with the monitor goroutine
 	done      chan struct{}
 	mu        sync.Mutex // protects send serialization
+
+	// processExited is closed by the monitor goroutine when the child
+	// process exits (cmd.Wait returns). Close() waits on it instead of
+	// calling cmd.Wait() itself — os/exec.Cmd.Wait is NOT safe to call
+	// concurrently from multiple goroutines (it mutates internal state).
+	processExited chan struct{}
 
 	// readLoop dispatches responses here by request ID.
 	pending   map[requestID]chan<- jsonrpcResponse
@@ -76,11 +83,12 @@ func NewStdioTransport(command string, args []string, env map[string]string, deb
 	}
 
 	t := &StdioTransport{
-		cmd:     cmd,
-		stdin:   stdin,
-		scanner: bufio.NewScanner(stdout),
-		done:    make(chan struct{}),
-		pending: make(map[requestID]chan<- jsonrpcResponse),
+		cmd:           cmd,
+		stdin:         stdin,
+		scanner:       bufio.NewScanner(stdout),
+		done:          make(chan struct{}),
+		processExited: make(chan struct{}),
+		pending:       make(map[requestID]chan<- jsonrpcResponse),
 	}
 
 	// Initialize debug writer if requested.
@@ -95,10 +103,16 @@ func NewStdioTransport(command string, args []string, env map[string]string, deb
 	t.readerWg.Add(1)
 	go t.readLoop()
 
-	// Monitor for process exit.
+	// Monitor goroutine — the SOLE owner of cmd.Wait().
+	// os/exec.Cmd.Wait is not safe to call concurrently: Close() waits on
+	// processExited instead of calling Wait itself. On unexpected process
+	// exit (Close() never called), doneOnce also closes done so callers
+	// waiting on Done() are unblocked. doneOnce makes this race-free with
+	// Close()'s own close(done).
 	go func() {
-		_ = cmd.Wait() // process exit detected via close(t.done) by closeOnce
-		t.closeOnce.Do(func() { close(t.done) })
+		_ = cmd.Wait() // process exit detected via close(processExited)
+		close(t.processExited)
+		t.doneOnce.Do(func() { close(t.done) })
 	}()
 
 	return t, nil
@@ -271,20 +285,18 @@ func (t *StdioTransport) SendReceive(ctx context.Context, req jsonrpcRequest) (j
 //  2. Wait for the server to exit (with timeout)
 //  3. SIGTERM if still running
 //  4. SIGKILL if still running after another timeout
+//
+// cmd.Wait() is owned exclusively by the monitor goroutine (see
+// NewStdioTransport) — this method waits on processExited instead of
+// calling Wait itself, avoiding the concurrent-Wait data race.
 func (t *StdioTransport) Close() error {
 	t.closeOnce.Do(func() {
 		// Step 1: Close stdin to signal EOF.
 		t.stdin.Close()
 
 		// Step 2: Wait for the process to exit on its own.
-		done := make(chan struct{})
-		go func() {
-			_ = t.cmd.Wait() // exit status captured in done signal
-			close(done)
-		}()
-
 		select {
-		case <-done:
+		case <-t.processExited:
 			// Process exited cleanly.
 		case <-time.After(2 * time.Second):
 			// Step 3: SIGTERM.
@@ -292,14 +304,14 @@ func (t *StdioTransport) Close() error {
 				_ = t.cmd.Process.Signal(os.Signal(syscall.SIGTERM)) // best-effort
 			}
 			select {
-			case <-done:
+			case <-t.processExited:
 				// Process exited after SIGTERM.
 			case <-time.After(3 * time.Second):
 				// Step 4: SIGKILL.
 				if t.cmd != nil && t.cmd.Process != nil {
 					_ = t.cmd.Process.Kill() // SIGKILL always succeeds on Unix
 				}
-				<-done
+				<-t.processExited
 			}
 		}
 
@@ -311,8 +323,9 @@ func (t *StdioTransport) Close() error {
 			t.debugWriter.Close()
 		}
 
-		// Signal that transport is done.
-		close(t.done)
+		// Signal that transport is done. If the process died unexpectedly
+		// (monitor closed done first), this is a no-op.
+		t.doneOnce.Do(func() { close(t.done) })
 	})
 	return nil
 }
