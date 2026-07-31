@@ -29,11 +29,13 @@
 
 ![AlayaCore plainio demo](misc/alayacore-demo-plainio.gif)
 
+**Terse IO 模式** — 读取整个 stdin 作为一个 prompt，只输出最终答案（stdout 保持纯净，错误走 stderr）。
+
+![AlayaCore terseio demo](misc/alayacore-demo-terseio.gif)
+
 **Raw IO 模式** — 完整的控制权，通过原始 TLV 帧与其他程序集成（stdin/stdout）。
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
-
-**Terse IO 模式** — 读取整个 stdin 作为一个 prompt，只输出最终答案（stdout 保持纯净，错误走 stderr）。
 
 AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（stdin/stdout 脚本模式）、**Raw IO**（原始 TLV 帧程序化控制模式）和 **Terse IO**（只输出最终答案的脚本模式）。
 

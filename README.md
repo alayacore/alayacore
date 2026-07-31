@@ -29,11 +29,13 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ![AlayaCore plainio demo](misc/alayacore-demo-plainio.gif)
 
+**Terse IO Mode** — read all of stdin as one prompt, print only the final answer (stdout stays clean, errors go to stderr).
+
+![AlayaCore terseio demo](misc/alayacore-demo-terseio.gif)
+
 **Raw IO Mode** — full control and integration with other programs via raw TLV frames on stdin/stdout.
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
-
-**Terse IO Mode** — read all of stdin as one prompt, print only the final answer (stdout stays clean, errors go to stderr).
 
 AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (stdin/stdout for scripting), **Raw IO** (raw TLV frames for programmatic control), and **Terse IO** (answer-only for pipes and scripts).
 
