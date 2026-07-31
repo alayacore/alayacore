@@ -28,7 +28,10 @@ func NewAdapter(cfg *app.Config) *Adapter {
 // Returns 0 on success, 1 on any error (startup or task failure).
 // The controlling process reads stdout and handles TLV itself.
 func (a *Adapter) Start() int {
-	session, _, err := app.StartSession(a.Config, os.Stdout, os.Stdin)
+	// Serialize concurrent session writes (run + task goroutines) so TLV
+	// frames larger than PIPE_BUF cannot interleave on stdout.
+	out := &lockedWriter{w: os.Stdout}
+	session, _, err := app.StartSession(a.Config, out, os.Stdin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
