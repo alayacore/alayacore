@@ -37,7 +37,11 @@ Files in the adapter packages are named from the **session's perspective**:
 - **`input.go`** — builds the **input to the session**. Reads user data (keystrokes, stdin lines) and feeds it into the session's input channel via TLV-encoded messages.
 - **`output.go`** — handles the **output from the session**. Receives TLV messages from the session and renders them to the user (TUI windows, stdout).
 
-The rawio adapter is an exception — it's a single `adapter.go` since both directions are trivial: `os.Stdin` is passed directly to the session, and output writes to `os.Stdout`.
+The rawio adapter is a thin exception — `adapter.go` passes `os.Stdin`
+directly to the session, and `writer.go` wraps `os.Stdout` in a
+`lockedWriter` that serializes the session's concurrent writes (run +
+task goroutines) so TLV frames larger than PIPE_BUF cannot interleave
+mid-frame and corrupt the protocol.
 
 ```
 User IO ──▶ input.go ──▶ TLV (stdin) ──▶ Session ──▶ TLV (stdout) ──▶ output.go ──▶ User IO

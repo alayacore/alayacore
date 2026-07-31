@@ -38,3 +38,22 @@ stepContents = reorderToolResults(stepContents, results)
 ```
 
 `reorderToolResults` matches each `ToolOutputPart` to its `ToolInputPart` by ID and places results in the original SSE index order so they match the assistant message's content order.
+
+## Error Handling
+
+Tool goroutines run under a **per-stream context** and are tracked with a
+`WaitGroup`. If the stream fails mid-execution (provider error, callback
+failure, reorder failure), `streamEvents` cancels that context and **waits
+for all in-flight tool goroutines to terminate before returning**:
+
+- A tool that is still executing (e.g. `execute_command`) is canceled via
+  its context — no tool keeps running and no side effects happen after the
+  stream has errored.
+- A tool awaiting user confirmation is unblocked by the cancellation — a
+  late `:tool_confirm` response can no longer execute the tool against a
+  stale context.
+- Results that would have been delivered after the error are dropped; the
+  error path does not collect them.
+
+This guarantees `Stream()` never returns while a tool goroutine is still
+alive, preventing goroutine leaks and post-error side effects.

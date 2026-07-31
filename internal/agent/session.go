@@ -153,7 +153,8 @@ func (s *Session) ModelConfigPath() string {
 // GetLoadErrors returns model config parse/validation errors.
 func (s *Session) GetLoadErrors() []string { return s.modelService.GetLoadErrors() }
 
-// HasRejected returns true if any model configs were rejected.
+// HasRejected returns true if model configs were present but ALL were
+// rejected (no usable models remain).
 func (s *Session) HasRejected() bool { return s.modelService.HasRejected() }
 
 // ============================================================================

@@ -106,7 +106,8 @@ func (ms *ModelService) GetLoadErrors() []string {
 	return ms.manager.GetLoadErrors()
 }
 
-// HasRejected returns true if any model configs were rejected.
+// HasRejected returns true if model configs were present but ALL were
+// rejected (no usable models remain).
 func (ms *ModelService) HasRejected() bool {
 	return ms.manager != nil && ms.manager.HasRejected()
 }
