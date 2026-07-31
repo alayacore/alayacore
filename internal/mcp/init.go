@@ -212,14 +212,24 @@ func (init *Init) Cancel() {
 }
 
 // registerAuthCodeCh creates a buffered auth code channel for a server
-// and registers it in the map. The channel is created BEFORE sending
-// the "auth_required" event to avoid races with SendAuthCodeResult().
+// and registers it in the map. The channel must be created BEFORE sending
+// the "auth_required" event so that SendAuthCodeResult() can never race
+// with registration — the channel is findable the instant the adapter
+// sees the event.
 func (init *Init) registerAuthCodeCh(server string) chan authCodeResult {
 	ch := make(chan authCodeResult, 1)
 	init.mu.Lock()
 	init.authCodeChs[server] = ch
 	init.mu.Unlock()
 	return ch
+}
+
+// unregisterAuthCodeCh removes the auth code channel for a server from
+// the map. Idempotent — safe to call after the entry was already removed.
+func (init *Init) unregisterAuthCodeCh(server string) {
+	init.mu.Lock()
+	delete(init.authCodeChs, server)
+	init.mu.Unlock()
 }
 
 // SendAuthCodeResult delivers the authorization code from the adapter's
@@ -367,24 +377,29 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 		return fmt.Errorf("%q: build auth URL: %w", c.Name(), err)
 	}
 
+	// Register the auth code channel BEFORE sending the auth_required
+	// event. Otherwise SendAuthCodeResult() could arrive before the
+	// channel exists (adapter confirms instantly) and be rejected with
+	// NOT_FOUND, while this goroutine blocks forever waiting for a
+	// code that was already delivered.
+	authCodeCh := init.registerAuthCodeCh(c.Name())
+
 	// Send URL template to adapter and wait for result.
 	init.sendEvent(InitEvent{
 		Type:   InitAuthConfirm,
 		Server: c.Name(),
 		URL:    authURL,
 	})
-	authCodeCh := init.registerAuthCodeCh(c.Name())
 
 	var acr authCodeResult
 	select {
 	case acr = <-authCodeCh:
 	case <-ctx.Done():
+		init.unregisterAuthCodeCh(c.Name())
 		return fmt.Errorf("%q: %w", c.Name(), ctx.Err())
 	}
 
-	init.mu.Lock()
-	delete(init.authCodeChs, c.Name())
-	init.mu.Unlock()
+	init.unregisterAuthCodeCh(c.Name())
 
 	if acr.code == "" {
 		return errSkipped
