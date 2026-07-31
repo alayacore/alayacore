@@ -82,9 +82,10 @@
 // Communication Protocol:
 //
 //	Adapters communicate with Session via TLV (Tag-Length-Value) streams:
-//	  - Input: TagUserT for prompts and commands, TagUserI for images,
-//	    TagUserV for videos, TagUserA for audio, TagUserD for documents
-//	  - Output: TagAssistantT, TagAssistantR, TagAssistantF, etc.
+//	  - Input: TagUserT for prompts, TagCommandIn (CI) for commands,
+//	    TagUserI for images, TagUserV for videos, TagUserA for audio,
+//	    TagUserD for documents
+//	  - Output: TagAssistantT, TagAssistantR, TagAssistantF, TagCommandOut (CO), etc.
 //
 //	Each TLV frame carries a NUL-delimited history ID prefix that the
 //	adapter uses to route content to display windows. These IDs correspond
@@ -105,7 +106,7 @@
 //   - session.go: Session struct, lifecycle, and cross-goroutine channels
 //   - session_task.go: Prompt processing, agent loop, task runners, summarization
 //   - session_loop.go: Main event loop, task start/done
-//   - session_io.go: Input pump, command dispatch (all colon-commands)
+//   - session_io.go: Input pump, command dispatch (all commands)
 //   - session_content.go: ContentPart helpers, tag mapping, ID lookup
 //   - session_persist.go: Session save/load functionality
 //   - session_types.go: Type definitions (SessionConfig, etc.)

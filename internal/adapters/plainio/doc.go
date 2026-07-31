@@ -27,6 +27,8 @@
 //   - User prompts: prefixed with "> ".
 //   - Tool calls: printed as raw JSON (id, name, input).
 //   - Tool results: printed as raw JSON (id, output, is_error).
+//   - Command results (CO): failures as "[error: ...]" (does not affect the
+//     exit code), successes as "[Command completed]".
 //   - Errors: prefixed with "Error: ".
 //   - Notifications: prefixed with "[...]".
 //   - Tool confirmations: shown as "[tool_confirm: allow tool "id" to run?]".

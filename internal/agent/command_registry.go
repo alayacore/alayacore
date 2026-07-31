@@ -1,6 +1,6 @@
 package agent
 
-// Command registry: define, register, and dispatch colon-commands.
+// Command registry: define, register, and dispatch commands.
 //
 // Previously a flat package-level slice + LookupCommand function,
 // now wrapped in a CommandRegistry struct for cleaner encapsulation.
@@ -43,7 +43,7 @@ const (
 	CmdIdle
 )
 
-// CommandHandler is a function that handles a colon-command.
+// CommandHandler is a function that handles a command.
 // args is everything after the first space (empty string if no args).
 // It returns the structured result (serialized into CO output on success)
 // and an error (serialized into a CmdError object on failure). The command
@@ -59,7 +59,7 @@ type CmdErr struct {
 
 func (e CmdErr) Error() string { return e.Message }
 
-// Command describes a user-facing colon-command with its handler and metadata.
+// Command describes a user-facing command with its handler and metadata.
 type Command struct {
 	Name        string
 	Description string
@@ -68,7 +68,7 @@ type Command struct {
 	Handler     CommandHandler
 }
 
-// CommandRegistry manages the set of available colon-commands.
+// CommandRegistry manages the set of available commands.
 type CommandRegistry struct {
 	commands map[string]Command
 }

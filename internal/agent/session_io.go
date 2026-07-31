@@ -3,8 +3,10 @@ package agent
 // Session I/O: input pump, command handling, prompt processing.
 //
 // All command dispatching happens in the run() goroutine via
-// handleInputMsg.  The input pump is a pure TLV parser — it has no
-// knowledge of command names and never touches session state.
+// handleInputMsg. Commands arrive as CI (Command Input) frames — the
+// input pump parses them into inputMsg but has no knowledge of command
+// names and never touches session state. Results are written as CO
+// (Command Output) frames.
 // This keeps the design simple: one goroutine owns everything,
 // no split-path exceptions for :cancel / :tool_confirm / etc.
 
