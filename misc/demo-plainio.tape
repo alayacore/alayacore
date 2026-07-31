@@ -38,7 +38,7 @@ Enter
 Sleep 500ms
 Type "My kernel version"
 Enter
-Sleep 4s
+Sleep 5s
 
 # ── Exit ────────────────────────────────────────────────────────────
 

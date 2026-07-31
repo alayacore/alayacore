@@ -12,10 +12,19 @@ This is a single \
 prompt that spans two lines.
 ```
 
-- **Ctrl-D** (EOF): closes stdin. After EOF, the program waits for the
-  current task to finish, then exits with code `0`.
-- **Ctrl-C** (SIGINT): terminates immediately with default signal handling
+- **`Ctrl-D`** (EOF): closes stdin. After EOF, the program waits for the
+  current task to finish, then exits with code `0` — like `:quit`,
+  regardless of whether any task errored during the session.
+- **`Ctrl-C`** (SIGINT): terminates immediately with default signal handling
   (exit code 130).
+- **`:quit` / `:q`**: stops reading input; the program waits for any running
+  task, then exits with code `0`.
+
+> Task errors (API failures, max steps, ...) are reported as `[error: ...]`
+> and the session **continues** — plainio is interactive, so you can keep
+> typing prompts after an error. Errors never terminate the session and
+> never affect the exit code. Scripts that need a failure signal on task
+> errors should use [`--terseio`](terseio.md).
 
 > **⚠️ One task at a time.** Plain IO processes prompts **one at a time**
 > and has no task queue. If you pipe multiple prompts into stdin, only the
@@ -35,11 +44,11 @@ All output is plain text with no ANSI escape codes:
 |---------|--------|
 | Assistant text | Printed directly |
 | Reasoning | Printed directly |
-| User prompts | `> prompt` |
+| User prompts | `User: prompt` (own line; blank line after, blank line before when the previous message ended with a newline) |
 | Tool calls | Raw JSON (id, name, input) |
 | Tool results | Raw JSON (id, output, is_error) |
 | Command results | Success: rendered from the structured result (e.g. `Session saved to <path>`); commands whose effect is self-evident (e.g. `:cancel`, `:reason`) are silent; failure: `[error: message]` (does not affect exit code) |
-| Errors | `Error: message` |
+| Errors | `[error: message]` |
 | Notifications | `[message]` |
 | Tool confirmations | `[tool_confirm: allow tool "id" to run?]` |
 

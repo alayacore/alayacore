@@ -9,6 +9,7 @@ package plainio
 // subsequent prompts are rejected while a task is running.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -29,15 +30,23 @@ func NewAdapter(cfg *app.Config) *Adapter {
 }
 
 // Start runs the plainio adapter. It blocks until the session finishes.
-// Returns 0 on success, 1 on errors. Ctrl-C (SIGINT) terminates immediately
-// with default signal handling (exit code 130).
+// Returns 0 on clean exit (:quit/:q or EOF), 1 on startup failure or a
+// stdin read error. Ctrl-C (SIGINT) terminates the process with exit code
+// 130 (default signal handling).
+//
+// plainio is an interactive mode: task errors are reported and the session
+// continues — the user can keep typing prompts. The exit code reflects
+// process-level state only, never session content:
+//   - 0: the user typed :quit / :q, or stdin reached EOF (Ctrl-D) and all
+//     tasks have finished — regardless of whether any task errored.
+//   - 1: startup failure or a stdin read error.
+//   - 130: SIGINT.
+//
+// Scripts that need a failure signal (0/1 on task errors) should use
+// --terseio instead.
 //
 // MCP initialization runs asynchronously — the session manages it
 // internally via MCPInit. No adapter-side goroutine is needed.
-//
-// plainio processes prompts one at a time. If a task produces an error
-// (TagSystemMsg with type "error"), the remaining input is discarded and the process exits
-// with code 1 - errors are reported immediately.
 func (a *Adapter) Start() int {
 	output := newStdoutOutput()
 
@@ -48,54 +57,37 @@ func (a *Adapter) Start() int {
 		return 1
 	}
 
-	// done is closed on error to discard any buffered stdin lines.
-	done := make(chan struct{})
-
 	exitCh := make(chan int, 1)
 
 	// readStdin reads prompts from stdin and emits TLV messages.
 	// Only this goroutine touches inputWriter.
 	readStdin := func() {
-		err := readPrompts(done, inputWriter, os.Stdin)
+		err := readPrompts(inputWriter, os.Stdin)
 		// Close signals EOF regardless, unblocking the session.
 		inputWriter.Close()
-		if err != nil {
-			select {
-			case exitCh <- 1:
-			default:
-			}
-			return
+		code := 0
+		// :quit/:q and EOF are both clean exits (code 0); only a stdin
+		// read error is a process-level failure.
+		if err != nil && !errors.Is(err, errQuitPrompt) {
+			code = 1
 		}
 		select {
-		case exitCh <- 0:
+		case exitCh <- code:
 		default:
 		}
 	}
 	go readStdin()
 
-	// Wait for EOF (Ctrl-D), error, or session completion.
+	// Wait for EOF (Ctrl-D), :quit, or session completion. Task errors
+	// are reported by the output and never terminate the session.
 	code := 0
 	select {
 	case code = <-exitCh:
-	case <-output.ErrorChannel():
-		code = 1
-		// Close done first so the next line read from bufio.Reader's
-		// internal buffer is discarded rather than processed.
-		close(done)
-		// Then close stdin to unblock the pending ReadString.
-		os.Stdin.Close()
 	case <-session.Done():
 	}
 
 	// Wait for the session to finish processing.
 	<-session.Done()
-
-	// Final check: even on a clean EOF path the session may have written
-	// errors (network failures, API errors, etc.) that arrived after the
-	// stdin goroutine closed input.  Override the exit code.
-	if code == 0 && output.HasError() {
-		code = 1
-	}
 
 	return code
 }

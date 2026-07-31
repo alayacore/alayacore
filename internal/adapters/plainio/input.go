@@ -3,6 +3,7 @@ package plainio
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,6 +13,11 @@ import (
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
+
+// errQuitPrompt is returned by readPrompts when the user types :quit or :q.
+// The adapter treats it as a clean exit request (code 0), like EOF — task
+// errors never affect the exit code — unlike a stdin read error (code 1).
+var errQuitPrompt = errors.New("quit")
 
 // commandSeq generates unique command call IDs for CI frames.
 var commandSeq atomic.Uint64
@@ -40,24 +46,13 @@ func writeCommand(input io.Writer, cmd string) error {
 
 // readPrompts reads lines from stdin and emits them as TLV messages.
 // Lines ending with `\` are continued on the next line (backslash-escaped newline).
-// Returns nil on EOF (Ctrl-D), a read error, or when done is closed.
-// When done is closed, any line already buffered in bufio.Reader is discarded.
-func readPrompts(done <-chan struct{}, input io.Writer, reader io.Reader) error {
+// Returns nil on EOF (Ctrl-D), errQuitPrompt on :quit/:q, or a read/write error.
+func readPrompts(input io.Writer, reader io.Reader) error {
 	scanner := bufio.NewReader(reader)
 	var prompt strings.Builder
 
 	for {
 		line, err := scanner.ReadString('\n')
-
-		// Check for cancellation before processing any data.
-		// This ensures buffered lines (bufio.Reader internal buffer)
-		// are discarded when done is closed, even if the underlying
-		// file descriptor was already closed.
-		select {
-		case <-done:
-			return nil
-		default:
-		}
 
 		if err != nil {
 			if err == io.EOF {
@@ -94,7 +89,7 @@ func readPrompts(done <-chan struct{}, input io.Writer, reader io.Reader) error 
 
 		// Intercept :quit/:q — handled locally, not by the session
 		if text == ":quit" || text == ":q" {
-			return nil
+			return errQuitPrompt
 		}
 
 		if err := sendPrompt(input, text); err != nil {

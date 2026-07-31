@@ -218,16 +218,39 @@ func TestUserPromptResetsStreamPrefix(t *testing.T) {
 	}
 
 	msg1 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("1", "response"))
-	msg2 := encodeTestTLV(tlv.TagUserT, "next prompt")
+	// Echoed user prompts carry a NUL-delimited history ID (the agent
+	// assigns one before echoing back).
+	msg2 := encodeTestTLV(tlv.TagUserT, tlv.WrapID("9", "next prompt"))
 	msg3 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("2", "new response"))
 
 	o.Write(msg1)
 	o.Write(msg2)
 	o.Write(msg3)
 
-	got := buf.String()
-	if !contains(got, "response") || !contains(got, "new response") {
-		t.Errorf("output = %q", got)
+	// The User block is its own line with a blank line after it; the
+	// prompt resets the stream prefix so the next assistant message gets
+	// no extra separator.
+	want := "response\nUser: next prompt\n\nnew response"
+	if got := buf.String(); got != want {
+		t.Errorf("output = %q, want %q", got, want)
+	}
+}
+
+func TestUserPromptBlockFormat(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{
+		writer: &buf,
+	}
+
+	// Tool result ends with a newline → the User block gets a blank line
+	// before it.
+	o.Write(encodeTestTLV(tlv.TagUserF, tlv.WrapID("3", `{"id":"c1","output":[],"is_error":false}`)))
+	o.Write(encodeTestTLV(tlv.TagUserT, tlv.WrapID("1", "hello world")))
+	o.Write(encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("2", "answer")))
+
+	want := "{\"id\":\"c1\",\"output\":[],\"is_error\":false}\n\nUser: hello world\n\nanswer"
+	if got := buf.String(); got != want {
+		t.Errorf("output = %q, want %q", got, want)
 	}
 }
 

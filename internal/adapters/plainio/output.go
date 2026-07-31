@@ -104,8 +104,15 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		if !ok {
 			return
 		}
-		o.emitSeparator(tag)
-		fmt.Fprintf(o.writer, "> %s\n", content)
+		// Render the echoed user prompt as its own block so it stands out
+		// from the assistant stream. The fixed format replaces the old
+		// conditional emitSeparator logic: the leading newline separates
+		// it from the previous message (a blank line when the previous
+		// output already ended with a newline), the two trailing newlines
+		// guarantee a blank line before the assistant response.
+		fmt.Fprintf(o.writer, "\nUser: %s\n\n", content)
+		o.lastTag = tag
+		o.lastHistoryID = ""
 
 	case tlv.TagSystemMsg:
 		o.handleSystemMsg(value)
