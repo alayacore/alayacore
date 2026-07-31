@@ -284,7 +284,11 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	// Re-order results by tool call ID to match the LLM's intended order.
 	// toolInputs are extracted from stepContents, which preserves the
 	// SSE index order (0, 1, 2...) from the streaming response.
-	stepContents = reorderToolResults(stepContents, results)
+	reordered, reorderErr := reorderToolResults(stepContents, results)
+	if reorderErr != nil {
+		return nil, Usage{}, false, reorderErr
+	}
+	stepContents = reordered
 
 	return stepContents, stepUsage, truncated, nil
 }
@@ -294,7 +298,13 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 // SSE index order from the streaming response). Each result carries its
 // tool call ID, so we place them at the correct position regardless of
 // execution or collection order.
-func reorderToolResults(stepContents, results []ContentPart) []ContentPart {
+//
+// Before returning, the slots are checked: any tool call without a
+// matching result (e.g. a non-conforming provider that reuses an empty
+// tool-call ID) is reported as an error instead of leaving a nil
+// ContentPart in the conversation history — a nil entry would panic
+// later in GroupByRole/GetRole (method call on nil interface).
+func reorderToolResults(stepContents, results []ContentPart) ([]ContentPart, error) {
 	toolInputs := extractToolInputs(stepContents)
 	finalResults := make([]ContentPart, len(toolInputs))
 	idToTool := make(map[string]int, len(toolInputs))
@@ -308,7 +318,15 @@ func reorderToolResults(stepContents, results []ContentPart) []ContentPart {
 			}
 		}
 	}
-	return append(stepContents, finalResults...)
+
+	// Check for unmatched slots before returning.
+	for i, p := range finalResults {
+		if p == nil {
+			return nil, fmt.Errorf("tool result missing for tool call %q", toolInputs[i].ID)
+		}
+	}
+
+	return append(stepContents, finalResults...), nil
 }
 
 // handleStreamedToolInput processes a completed tool use during streaming.
