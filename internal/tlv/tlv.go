@@ -30,6 +30,7 @@ package tlv
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"strings"
 )
@@ -89,6 +90,12 @@ func WriteTLV(output io.Writer, tag string, value string) error {
 
 // ReadTLV reads a single TLV-framed message from input.
 // It blocks until a full frame has been read or an error occurs.
+//
+// The length field is peer-controlled, so frames longer than
+// maxMessageSize are rejected BEFORE any allocation. Without this
+// guard a corrupt or malicious peer could advertise a length of up to
+// 4GB (uint32), causing an oversized allocation (OOM on 64-bit,
+// make([]byte, ...) panic on 32-bit platforms).
 func ReadTLV(input io.Reader) (string, string, error) {
 	header := make([]byte, 6)
 	if _, err := io.ReadFull(input, header); err != nil {
@@ -99,6 +106,10 @@ func ReadTLV(input io.Reader) (string, string, error) {
 
 	if length == 0 {
 		return tag, "", nil
+	}
+
+	if length > maxMessageSize {
+		return "", "", fmt.Errorf("tlv: frame length %d exceeds maximum %d", length, maxMessageSize)
 	}
 
 	valueBuf := make([]byte, length)
