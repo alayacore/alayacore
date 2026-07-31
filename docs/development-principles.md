@@ -10,6 +10,7 @@ The adapter (UI layer) and agent (core AI logic) **must be completely isolated**
 │ Adapter  │  UT/UE/UI/UV/UA/UD (input)  │  Agent   │
 │ (TUI/    │                             │ (session │
 │  plainio/│ ◀────────────────────────── │  + llm)  │
+│  terseio/│                             │          │
 │  rawio)  │  AT/AR/AF/UF/UT/UI/UV/UA/UD │          │
 │          │     + SM  (stdout)          │          │
 └──────────┘                             └──────────┘

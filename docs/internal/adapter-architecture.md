@@ -67,7 +67,7 @@ for the full isolation rules.
 
 ### Theme Persistence
 
-The session persists the active theme via `RuntimeManager` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The plainio and rawio adapters ignore it since they have no visual rendering. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
+The session persists the active theme via `RuntimeManager` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The plainio, terseio, and rawio adapters ignore it since they have no visual rendering. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
 
 Theme changes flow through the session to keep a single source of truth:
 
@@ -100,7 +100,7 @@ main.go → config.Parse() → Settings
         │   (controlled by --builtin-tools flag; empty = no builtin tools)
         └── Build system prompt
                 ↓
-        terminal.NewAdapter(appConfig)  or  plainio.NewAdapter(appConfig)  or  rawio.NewAdapter(appConfig)
+        terminal.NewAdapter(appConfig)  or  plainio.NewAdapter(appConfig)  or  terseio.NewAdapter(appConfig)  or  rawio.NewAdapter(appConfig)
                 ↓
         Session created with tools and system prompt
 ```

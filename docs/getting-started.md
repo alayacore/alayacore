@@ -60,9 +60,9 @@ export ALAYACORE_SHELL=zsh
 | `--tool-confirm` | *(none)* | Comma-separated tool `names` that require user confirmation before execution (e.g. `--tool-confirm execute_command,search_content`). Not compatible with `--terseio` |
 | `--builtin-tools` | *(all)* | Comma-separated built-in tool `names` to enable. Empty (`--builtin-tools=`) disables all built-in tools. Unspecified means all tools enabled. |
 | `--no-delta` | `false` | Disable delta frames (At, Ar, Af); use complete frames only. Reduces wire overhead when the adapter does not need streaming previews. |
-| `--rawio` | `false` | Raw TLV stdin/stdout mode — pipe TLV frames directly between agent and controlling process |
 | `--plainio` | `false` | Plain stdin/stdout mode — no TUI, for scripting and piping |
 | `--terseio` | `false` | Read all of stdin as one prompt and print only the final answer (stdout stays clean; errors go to stderr). Incompatible with `--tool-confirm` |
+| `--rawio` | `false` | Raw TLV stdin/stdout mode — pipe TLV frames directly between agent and controlling process |
 | `--debug-log` | `""` | Debug log directory (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging. |
 | `--version` | — | Print version and exit |
 | `--help` | — | Print help and exit |

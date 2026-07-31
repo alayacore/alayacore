@@ -37,7 +37,7 @@
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
 
-AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（stdin/stdout 脚本模式）、**Raw IO**（原始 TLV 帧程序化控制模式）和 **Terse IO**（只输出最终答案的脚本模式）。
+AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（stdin/stdout 脚本模式）、**Terse IO**（只输出最终答案的脚本模式）和 **Raw IO**（原始 TLV 帧程序化控制模式）。
 
 ## 快速开始
 

@@ -37,7 +37,7 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
 
-AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (stdin/stdout for scripting), **Raw IO** (raw TLV frames for programmatic control), and **Terse IO** (answer-only for pipes and scripts).
+AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (stdin/stdout for scripting), **Terse IO** (answer-only for pipes and scripts), and **Raw IO** (raw TLV frames for programmatic control).
 
 ## Quick Start
 
