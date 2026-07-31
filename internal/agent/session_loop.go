@@ -133,6 +133,11 @@ func (s *Session) handleMCPEvent(evt *mcp.InitEvent) {
 // handleTaskDone processes a task completion signal from the task goroutine.
 func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 	s.flushPendingEvents()
+	if s.activeTask != nil {
+		// Preserve the command ID for the final TaskMsg — activeTask is
+		// cleared below, before the completion broadcast.
+		s.taskCommandID = s.activeTask.commandID
+	}
 	s.activeTask = nil
 
 	if len(contents) > 0 {

@@ -68,8 +68,9 @@ type sessionConfig struct {
 // out-of-order method calls on individual fields (e.g. setting inProgress
 // without a cancel func, or clearing them separately).
 type taskHandle struct {
-	cancel context.CancelFunc // cancels the task's per-task context
-	step   int                // current agent step (set via StepStartEvent)
+	cancel    context.CancelFunc // cancels the task's per-task context
+	step      int                // current agent step (set via StepStartEvent)
+	commandID string             // CI command ID when started by :continue/:summarize
 }
 
 // runState groups fields owned exclusively by the run() goroutine.
@@ -78,6 +79,11 @@ type runState struct {
 	Contents []llm.ContentPart // flat, ordered, 1:1 with TLV — set from task result
 
 	activeTask *taskHandle // non-nil when a task is running; nil when idle
+
+	// taskCommandID holds the command ID of the task that just finished.
+	// sendTaskMsg uses it for the completion TaskMsg, since activeTask is
+	// cleared before the final broadcast.
+	taskCommandID string
 
 	inputMsgCh   chan inputMsg // inputPump → run: parsed TLV messages
 	taskEventCh  chan TaskEvent

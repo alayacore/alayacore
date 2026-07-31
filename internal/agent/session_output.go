@@ -173,12 +173,19 @@ func (s *Session) sendMessageVersionMsg() {
 }
 
 func (s *Session) sendTaskMsg() {
+	// Command ID: prefer the running task's; fall back to the just-finished
+	// task's (activeTask is nil during the completion broadcast).
+	cmdID := s.taskCommandID
+	if s.activeTask != nil {
+		cmdID = s.activeTask.commandID
+	}
 	s.writeSystemMsg(TaskMsg{
 		InProgress:  s.activeTask != nil,
 		CurrentStep: s.activeTaskStep(),
 		MaxSteps:    s.MaxSteps,
 		Context:     s.ContextTokens,
 		TaskError:   false,
+		CommandID:   cmdID,
 	})
 }
 

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -303,5 +305,119 @@ model_name: ""
 	}
 	if !strings.Contains(ce.Message, "unknown protocol_type") {
 		t.Errorf("validation error should mention the rejected model: %s", ce.Message)
+	}
+}
+
+// ============================================================================
+// Async task commands (continue/summarize) — CO started + TaskMsg command_id
+// ============================================================================
+
+func TestStartTaskCommand_Success(t *testing.T) {
+	output := &MockOutput{}
+	ms := NewModelService(NewModelManager(""), NewRuntimeManager(""))
+	ms.agent = &llm.Agent{}
+	ms.provider = &mockProviderStepFail{}
+
+	sessionCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := &Session{
+		sessionConfig: sessionConfig{
+			modelService: ms,
+			SessionConfig: SessionConfig{
+				Output: output,
+			},
+		},
+		sharedState: sharedState{sessionCtx: sessionCtx},
+	}
+
+	started := make(chan struct{})
+	s.startTaskCommand("x1", func(context.Context) { close(started) })
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"status":"started"`) {
+		t.Errorf("expected CO started response: %s", joined)
+	}
+	if s.activeTask == nil || s.activeTask.commandID != "x1" {
+		t.Errorf("activeTask should carry commandID x1, got %+v", s.activeTask)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Error("task goroutine should have started")
+	}
+}
+
+func TestStartTaskCommand_Busy(t *testing.T) {
+	output := &MockOutput{}
+	s := &Session{
+		runState: runState{
+			activeTask: &taskHandle{},
+		},
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{
+				Output: output,
+			},
+		},
+	}
+
+	s.startTaskCommand("x2", func(context.Context) {})
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"code":"BUSY"`) {
+		t.Errorf("expected BUSY error in CO: %s", joined)
+	}
+	if !strings.Contains(joined, `"id":"x2"`) {
+		t.Errorf("expected echoed id in CO: %s", joined)
+	}
+}
+
+func TestSendTaskMsg_RunningTaskCarriesCommandID(t *testing.T) {
+	output := &MockOutput{}
+	s := &Session{
+		runState: runState{
+			activeTask: &taskHandle{commandID: "x1", step: 2},
+		},
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{
+				Output: output,
+			},
+		},
+	}
+
+	s.sendTaskMsg()
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"command_id":"x1"`) {
+		t.Errorf("running TaskMsg should carry command_id: %s", joined)
+	}
+	if !strings.Contains(joined, `"in_progress":true`) {
+		t.Errorf("running TaskMsg should show in_progress:true: %s", joined)
+	}
+}
+
+func TestHandleTaskDone_CompletionTaskMsgCarriesCommandID(t *testing.T) {
+	output := &MockOutput{}
+	s := &Session{
+		runState: runState{
+			activeTask: &taskHandle{commandID: "x1"},
+		},
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{
+				Output: output,
+			},
+		},
+	}
+
+	s.handleTaskDone(nil)
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"command_id":"x1"`) {
+		t.Errorf("completion TaskMsg should carry command_id: %s", joined)
+	}
+	if !strings.Contains(joined, `"in_progress":false`) {
+		t.Errorf("completion TaskMsg should show in_progress:false: %s", joined)
+	}
+	if s.activeTask != nil {
+		t.Error("activeTask should be cleared after task done")
 	}
 }

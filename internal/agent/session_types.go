@@ -19,12 +19,15 @@ import (
 // ============================================================================
 
 // TaskMsg carries task progress info (type "task").
+// CommandID is non-empty when the task was started by a CI command
+// (continue/summarize), correlating the async completion to its request.
 type TaskMsg struct {
-	InProgress  bool  `json:"in_progress"`
-	CurrentStep int   `json:"current_step,omitempty"`
-	MaxSteps    int   `json:"max_steps,omitempty"`
-	Context     int64 `json:"context"`
-	TaskError   bool  `json:"task_error,omitempty"`
+	InProgress  bool   `json:"in_progress"`
+	CurrentStep int    `json:"current_step,omitempty"`
+	MaxSteps    int    `json:"max_steps,omitempty"`
+	Context     int64  `json:"context"`
+	TaskError   bool   `json:"task_error,omitempty"`
+	CommandID   string `json:"command_id,omitempty"`
 }
 
 func (TaskMsg) SystemMsgType() string { return "task" }

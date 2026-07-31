@@ -199,27 +199,45 @@ func (s *Session) resolveToolConfirm(id string, allowed bool) (any, error) {
 // ============================================================================
 
 // prepareTask checks preconditions and creates a cancellable context for
-// a new task. Returns ok=false if setup failed (caller should return immediately).
-func (s *Session) prepareTask() (ctx context.Context, ok bool) {
+// a new task. Returns an error (wrapped as CmdErr where meaningful) if
+// the task cannot start; callers decide how to report it (CO for task
+// commands, SM error for normal prompts).
+func (s *Session) prepareTask() (context.Context, error) {
 	// Before MCP is ready, the tool list is incomplete. Sending an LLM
 	// request would produce a response without MCP tools, and the
 	// subsequent agent reset (when MCP init completes) would invalidate provider's cache
 	if s.mcpService != nil && !s.mcpService.IsReady() {
-		s.writeError("MCP servers are still initializing or OAuth authorization is pending. " +
-			"Please wait for initialization to complete.")
-		return nil, false
+		return nil, &CmdErr{Code: "MCP_NOT_READY",
+			Message: "MCP servers are still initializing or OAuth authorization is pending. " +
+				"Please wait for initialization to complete."}
 	}
 	if s.activeTask != nil {
-		s.writeError("A task is already running. Wait for it to complete or cancel it.")
-		return nil, false
+		return nil, &CmdErr{Code: "BUSY",
+			Message: "A task is already running. Wait for it to complete or cancel it."}
 	}
 	if err := s.ensureAgentInitialized(); err != nil {
-		s.writeError(err.Error())
-		return nil, false
+		return nil, err
 	}
 	taskCtx, taskCancel := context.WithCancel(s.sessionCtx)
 	s.activeTask = &taskHandle{cancel: taskCancel, step: 0}
-	return taskCtx, true
+	return taskCtx, nil
+}
+
+// startTaskCommand starts an async task command (:continue/:summarize).
+// It replies CO immediately — {"status":"started"} on acceptance, or an
+// error if the task cannot start. Task completion is reported via TaskMsg
+// carrying the command ID (see sendTaskMsg).
+func (s *Session) startTaskCommand(id string, run func(context.Context)) {
+	ctx, err := s.prepareTask()
+	if err != nil {
+		s.writeCmdResult(id, nil, err)
+		return
+	}
+	if id != "" {
+		s.activeTask.commandID = id
+	}
+	s.writeCmdResult(id, map[string]any{"status": "started"}, nil)
+	go run(ctx)
 }
 
 // handleInputMsg processes a parsed input message. Called from run() goroutine.
@@ -233,7 +251,10 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	}
 
 	if !msg.isCmd {
-		if ctx, ok := s.prepareTask(); ok {
+		if ctx, err := s.prepareTask(); err != nil {
+			// Non-command failure — reported as an SM error.
+			s.writeError(err.Error())
+		} else {
 			go s.runTaskNormal(ctx, msg.contentParts)
 		}
 		return
@@ -249,19 +270,15 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 		return
 	}
 
-	// Task commands — :continue and :summarize start a task goroutine,
-	// same as normal prompts. Check them first so they're grouped with
-	// the normal prompt path above (both use prepareTask).
+	// Task commands — :continue and :summarize start a task goroutine.
+	// CO replies immediately ({"status":"started"} or an error); task
+	// completion is correlated via TaskMsg.command_id.
 	switch name {
 	case CommandNameContinue:
-		if ctx, ok := s.prepareTask(); ok {
-			go s.runTaskContinue(ctx)
-		}
+		s.startTaskCommand(msg.cmdID, s.runTaskContinue)
 		return
 	case CommandNameSummarize:
-		if ctx, ok := s.prepareTask(); ok {
-			go s.runTaskSummarize(ctx)
-		}
+		s.startTaskCommand(msg.cmdID, s.runTaskSummarize)
 		return
 	}
 
