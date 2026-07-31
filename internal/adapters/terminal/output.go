@@ -442,9 +442,11 @@ func (to *outputWriter) handleSystemNotify(data json.RawMessage) {
 
 // handleCommandOut processes a CO (Command Output) frame.
 // Errors render in the error window using the uniform error message;
-// successes render the structured result as human-readable text (the
-// command name is correlated from the CI the adapter sent). State
-// changes arrive separately via SM broadcasts.
+// successes render the structured result as human-readable text for
+// commands that carry informative data (save, fork, ...), and stay
+// silent for commands whose UI effect is the feedback itself (cancel,
+// theme_set, ...). The command name is correlated from the CI the
+// adapter sent; state changes arrive separately via SM broadcasts.
 func (to *outputWriter) handleCommandOut(value string) {
 	var msg protocol.CmdResultMsg
 	if err := json.Unmarshal([]byte(value), &msg); err != nil {

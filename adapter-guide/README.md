@@ -583,8 +583,10 @@ CO {"id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  �
 display text. To render a result (e.g. show the file name after `save`), the
 adapter correlates the CO's `id` with the CI it sent (the request carries the
 `name`) — exactly like tool results: AF carries the tool name, UF carries
-only the `id`, and the adapter tracks the mapping. Commands unknown to the
-adapter render as a generic confirmation.
+only the `id`, and the adapter tracks the mapping. Commands whose effect is
+self-evident in the UI (e.g. `cancel`, `theme_set`) render nothing — the
+state change itself is the confirmation. (`save`/`fork` render their path,
+`mcp_confirm`/`mcp_decline` render a status line.)
 
 **Important:** Command results travel exclusively via CO. SM `error`/`notify`
 messages are reserved for non-command events (task errors, MCP status, etc.).

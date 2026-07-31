@@ -155,8 +155,10 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 // handleCommandOut processes a CO (Command Output) frame.
 // Errors print like system errors but do NOT affect the exit code (a
 // command failure is normal interaction, not a session error); successes
-// render the structured result as human-readable text (the command name
-// is correlated from the CI the adapter sent).
+// render the structured result as human-readable text for commands that
+// carry informative data (save, fork, ...), and stay silent for commands
+// whose effect is self-evident (cancel, reason, ...). The command name
+// is correlated from the CI the adapter sent.
 func (o *stdoutOutput) handleCommandOut(value string) {
 	var msg protocol.CmdResultMsg
 	if err := json.Unmarshal([]byte(value), &msg); err != nil {
