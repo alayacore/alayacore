@@ -421,3 +421,90 @@ func TestHandleTaskDone_CompletionTaskMsgCarriesCommandID(t *testing.T) {
 		t.Error("activeTask should be cleared after task done")
 	}
 }
+
+// newSessionWithConfirmChannels returns a Session with a pre-populated
+// confirmChs map, simulating pending tool confirmations from a task.
+func newSessionWithConfirmChannels() *Session {
+	s := &Session{
+		sharedState: sharedState{
+			confirmChs: make(map[string]chan bool),
+		},
+	}
+	s.confirmMu.Lock()
+	s.confirmChs["call_1"] = make(chan bool, 1)
+	s.confirmChs["call_2"] = make(chan bool, 1)
+	s.confirmMu.Unlock()
+	return s
+}
+
+// TestCleanupConfirmChannels_RemovesAll verifies that leftover
+// confirmation channels (from a canceled task the user never answered)
+// are removed after the task finishes.
+func TestCleanupConfirmChannels_RemovesAll(t *testing.T) {
+	s := newSessionWithConfirmChannels()
+
+	s.cleanupConfirmChannels()
+
+	s.confirmMu.Lock()
+	defer s.confirmMu.Unlock()
+	if len(s.confirmChs) != 0 {
+		t.Fatalf("confirmChs has %d entries after cleanup, want 0", len(s.confirmChs))
+	}
+}
+
+// TestCleanupConfirmChannels_AfterResolved verifies cleanup only removes
+// leftovers: channels already answered via :tool_confirm/:tool_decline
+// are gone before cleanup runs, and nothing is double-deleted.
+func TestCleanupConfirmChannels_AfterResolved(t *testing.T) {
+	s := newSessionWithConfirmChannels()
+
+	// User responds to one confirmation — resolveToolConfirm removes it.
+	if _, err := s.resolveToolConfirm("call_1", true); err != nil {
+		t.Fatalf("resolveToolConfirm() error = %v", err)
+	}
+
+	s.cleanupConfirmChannels()
+
+	s.confirmMu.Lock()
+	defer s.confirmMu.Unlock()
+	if len(s.confirmChs) != 0 {
+		t.Fatalf("confirmChs has %d entries after cleanup, want 0", len(s.confirmChs))
+	}
+}
+
+// TestCleanupConfirmChannels_EmptyMapSafe verifies cleanup is a no-op
+// when there are no pending confirmations.
+func TestCleanupConfirmChannels_EmptyMapSafe(t *testing.T) {
+	s := &Session{
+		sharedState: sharedState{
+			confirmChs: make(map[string]chan bool),
+		},
+	}
+
+	s.cleanupConfirmChannels() // must not panic
+
+	s.confirmMu.Lock()
+	defer s.confirmMu.Unlock()
+	if len(s.confirmChs) != 0 {
+		t.Fatalf("confirmChs has %d entries, want 0", len(s.confirmChs))
+	}
+}
+
+// TestHandleTaskDone_CleansUpConfirmChannels verifies the integration
+// path: handleTaskDone drops leftover confirmation channels.
+func TestHandleTaskDone_CleansUpConfirmChannels(t *testing.T) {
+	s := newSessionWithConfirmChannels()
+	s.sessionConfig = sessionConfig{
+		SessionConfig: SessionConfig{
+			Output: &MockOutput{},
+		},
+	}
+
+	s.handleTaskDone(nil)
+
+	s.confirmMu.Lock()
+	defer s.confirmMu.Unlock()
+	if len(s.confirmChs) != 0 {
+		t.Fatalf("confirmChs has %d entries after handleTaskDone, want 0", len(s.confirmChs))
+	}
+}

@@ -140,6 +140,11 @@ func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 	}
 	s.activeTask = nil
 
+	// The task is over: no confirmation prompt can be answered anymore.
+	// Drop any channels left behind by canceled tasks (the user never
+	// responded, so resolveToolConfirm never removed them).
+	s.cleanupConfirmChannels()
+
 	if len(contents) > 0 {
 		s.Contents = contents
 	}

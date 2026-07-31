@@ -192,6 +192,29 @@ func (s *Session) resolveToolConfirm(id string, allowed bool) (any, error) {
 	return map[string]any{"tool_id": id}, nil
 }
 
+// cleanupConfirmChannels removes any leftover tool-confirmation channels
+// after a task finishes. Entries remain in the map when the user never
+// responds and the task is canceled: the agent's confirmation goroutine
+// exits via ctx.Done without going through resolveToolConfirm, so nothing
+// ever deletes the entry — leaking the buffered channel (and preventing
+// GC of anything it references).
+//
+// Must be called from the run() goroutine after the task has completed.
+// By then every confirmation goroutine has already sent its result (the
+// agent's result-collection loop blocks until then), so no live goroutine
+// can be waiting on a removed channel — entries are simply dropped, never
+// signaled.
+func (s *Session) cleanupConfirmChannels() {
+	s.confirmMu.Lock()
+	defer s.confirmMu.Unlock()
+	if len(s.confirmChs) == 0 {
+		return
+	}
+	for id := range s.confirmChs {
+		delete(s.confirmChs, id)
+	}
+}
+
 // ============================================================================
 // Command dispatch — handleInputMsg
 //
