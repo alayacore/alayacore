@@ -26,7 +26,7 @@ type ModelManager struct {
 	nextID      int
 	filePath    string
 	loadErrors  []string // config parse/validation errors from last load
-	hasRejected bool     // true if any model blocks were rejected during last load
+	hasRejected bool     // true when model blocks were present but ALL were rejected (no usable models remain)
 }
 
 // DefaultModelConfig is the default model configuration written when config file is empty
@@ -213,7 +213,10 @@ func (mm *ModelManager) HasModels() bool {
 	return len(mm.models) > 0
 }
 
-// HasRejected returns true if any model blocks were rejected during the last load.
+// HasRejected returns true if model blocks were present but ALL were
+// rejected during the last load/sync — i.e. the config produced no usable
+// models. Used to distinguish "no models configured" from "models present
+// but all invalid" in error messages.
 func (mm *ModelManager) HasRejected() bool {
 	return mm.hasRejected
 }
@@ -246,8 +249,14 @@ func (mm *ModelManager) SyncFromContent(content string) []string {
 		valid = append(valid, m)
 	}
 
-	// If all models were rejected, don't touch current state
+	// If all models were rejected, don't touch current state.
 	if len(valid) == 0 && len(models) > 0 {
+		// Still reflect the outcome in the flag: after this sync there are
+		// no usable models (the previous models are kept, but the rejection
+		// must be visible). Mirrors LoadFromFile's all-rejected semantics —
+		// otherwise HasRejected stays stale and the error message would
+		// claim "no models configured" instead of "all models rejected".
+		mm.hasRejected = true
 		return msgs
 	}
 
@@ -260,6 +269,7 @@ func (mm *ModelManager) SyncFromContent(content string) []string {
 
 	mm.models = valid
 	mm.loadErrors = msgs
+	// At least one model is valid (or the sync was empty) — no rejection flag.
 	mm.hasRejected = false
 
 	// Persist to config file in key-value format

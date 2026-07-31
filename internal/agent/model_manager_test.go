@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/config"
@@ -281,5 +283,120 @@ model_name: "model-b"
 	}
 	if models[1].ID != 2 {
 		t.Errorf("expected second model ID to be 2 after reload, got %d", models[1].ID)
+	}
+}
+
+// validModelJSON builds a model_sync JSON payload from the given models.
+func validModelJSON(t *testing.T, models ...config.ModelConfig) string {
+	t.Helper()
+	data, err := json.Marshal(models)
+	if err != nil {
+		t.Fatalf("marshal models: %v", err)
+	}
+	return string(data)
+}
+
+// TestSyncFromContentRejectionFlag verifies HasRejected is kept consistent
+// across :model_sync outcomes:
+//   - an all-rejected sync sets HasRejected (regression: it was left stale,
+//     so the error message would claim "no models configured" instead of
+//     "all models rejected");
+//   - a later valid sync clears it;
+//   - an empty sync clears it;
+//   - a mixed sync keeps the valid models and does not flag rejection.
+func TestSyncFromContentRejectionFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "model.conf")
+	if err := os.WriteFile(configPath, []byte(
+		`name: "Model A"
+protocol_type: "openai"
+base_url: "https://api.example.com"
+api_key: "key1"
+model_name: "model-a"
+`), 0600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	mm := NewModelManager(configPath)
+	if !mm.HasModels() {
+		t.Fatal("expected model A to load")
+	}
+	if mm.HasRejected() {
+		t.Fatal("expected HasRejected=false after clean load")
+	}
+
+	invalid := config.ModelConfig{Name: "Broken"} // missing required fields
+
+	// 1. All-rejected sync: flag must become true, current models untouched.
+	msgs := mm.SyncFromContent(validModelJSON(t, invalid))
+	if len(msgs) == 0 {
+		t.Fatal("expected validation messages for all-rejected sync")
+	}
+	if !mm.HasRejected() {
+		t.Fatal("HasRejected must be true after an all-rejected sync")
+	}
+	if !mm.HasModels() {
+		t.Fatal("all-rejected sync must not wipe the current models")
+	}
+
+	// 2. Valid sync clears the flag.
+	msgs = mm.SyncFromContent(validModelJSON(t, config.ModelConfig{
+		Name:         "Model B",
+		ProtocolType: "openai",
+		BaseURL:      "https://api.example.com",
+		APIKey:       "key2",
+		ModelName:    "model-b",
+	}))
+	if len(msgs) != 0 {
+		t.Fatalf("expected no validation messages, got %v", msgs)
+	}
+	if mm.HasRejected() {
+		t.Fatal("HasRejected must be false after a valid sync")
+	}
+	if got := len(mm.GetModels()); got != 1 {
+		t.Fatalf("expected 1 model after valid sync, got %d", got)
+	}
+
+	// 3. Empty sync clears the flag and leaves no models.
+	msgs = mm.SyncFromContent(validModelJSON(t))
+	if len(msgs) != 0 {
+		t.Fatalf("expected no messages for empty sync, got %v", msgs)
+	}
+	if mm.HasRejected() {
+		t.Fatal("HasRejected must be false after an empty sync")
+	}
+	if mm.HasModels() {
+		t.Fatal("expected no models after empty sync")
+	}
+
+	// 4. All-rejected again from empty state — flag true, still no models.
+	msgs = mm.SyncFromContent(validModelJSON(t, invalid))
+	if len(msgs) == 0 {
+		t.Fatal("expected validation messages for all-rejected sync from empty state")
+	}
+	if !mm.HasRejected() {
+		t.Fatal("HasRejected must be true after all-rejected sync from empty state")
+	}
+
+	// 5. Mixed sync: valid models kept, flag cleared.
+	msgs = mm.SyncFromContent(validModelJSON(t, invalid, config.ModelConfig{
+		Name:         "Model C",
+		ProtocolType: "anthropic",
+		BaseURL:      "https://api.example.com",
+		APIKey:       "key3",
+		ModelName:    "model-c",
+	}))
+	if len(msgs) == 0 {
+		t.Fatal("expected validation messages for the rejected model in mixed sync")
+	}
+	if mm.HasRejected() {
+		t.Fatal("HasRejected must be false when at least one model is valid")
+	}
+	models := mm.GetModels()
+	if len(models) != 1 || models[0].Name != "Model C" {
+		t.Fatalf("expected only Model C, got %v", models)
+	}
+	if !strings.Contains(msgs[0], "Broken") && !strings.Contains(msgs[0], "missing") {
+		t.Fatalf("expected rejection message mentioning the broken model, got %v", msgs)
 	}
 }
