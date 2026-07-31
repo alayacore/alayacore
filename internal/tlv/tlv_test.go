@@ -8,7 +8,10 @@ import (
 )
 
 func TestReadTLV_RoundTrip(t *testing.T) {
-	msg := EncodeTLV(TagUserT, "hello world")
+	msg, err := EncodeTLV(TagUserT, "hello world")
+	if err != nil {
+		t.Fatalf("EncodeTLV() error = %v", err)
+	}
 	tag, value, err := ReadTLV(bytes.NewReader(msg))
 	if err != nil {
 		t.Fatalf("ReadTLV() error = %v", err)
@@ -22,7 +25,11 @@ func TestReadTLV_RoundTrip(t *testing.T) {
 }
 
 func TestReadTLV_EmptyValue(t *testing.T) {
-	tag, value, err := ReadTLV(bytes.NewReader(EncodeTLV(TagUserEnd, "")))
+	msg, err := EncodeTLV(TagUserEnd, "")
+	if err != nil {
+		t.Fatalf("EncodeTLV() error = %v", err)
+	}
+	tag, value, err := ReadTLV(bytes.NewReader(msg))
 	if err != nil {
 		t.Fatalf("ReadTLV() error = %v", err)
 	}
@@ -76,5 +83,34 @@ func TestReadTLV_TruncatedHeader(t *testing.T) {
 	_, _, err := ReadTLV(bytes.NewReader([]byte{TagUserT[0]}))
 	if err == nil {
 		t.Fatal("expected error for truncated header, got nil")
+	}
+}
+
+// TestCheckEncodeLength verifies the encode-side size guard without
+// allocating a multi-GB string (maxMessageSize ≈ 2GB).
+func TestCheckEncodeLength(t *testing.T) {
+	if err := checkEncodeLength(0); err != nil {
+		t.Errorf("zero length should pass, got: %v", err)
+	}
+	if err := checkEncodeLength(maxMessageSize); err != nil {
+		t.Errorf("boundary length %d should pass, got: %v", maxMessageSize, err)
+	}
+	if err := checkEncodeLength(maxMessageSize + 1); err == nil {
+		t.Error("expected error for length maxMessageSize+1, got nil")
+	}
+	if err := checkEncodeLength(1<<32 - 1); err == nil {
+		t.Error("expected error for max uint32 length, got nil")
+	}
+}
+
+// TestEncodeTLV_NormalValue verifies the two-value return of the new
+// signature (success path).
+func TestEncodeTLV_NormalValue(t *testing.T) {
+	msg, err := EncodeTLV(TagUserT, "hello")
+	if err != nil {
+		t.Fatalf("EncodeTLV() error = %v", err)
+	}
+	if len(msg) != 6+len("hello") {
+		t.Errorf("encoded length = %d, want %d", len(msg), 6+len("hello"))
 	}
 }

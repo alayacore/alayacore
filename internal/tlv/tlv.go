@@ -64,27 +64,45 @@ const (
 
 const maxMessageSize = 1<<31 - 1 // Max int32 to fit in uint32
 
+// checkEncodeLength validates that a message length fits in the wire
+// format. Extracted as a pure function so the >maxMessageSize path can
+// be tested without allocating a multi-GB string.
+func checkEncodeLength(length int64) error {
+	if length > maxMessageSize {
+		return fmt.Errorf("tlv: message length %d exceeds maximum %d", length, maxMessageSize)
+	}
+	return nil
+}
+
 // EncodeTLV creates a TLV-encoded byte slice.
 // Format: [2-byte tag][4-byte length][value]
-func EncodeTLV(tag string, value string) []byte {
-	length := len(value)
-	if length > maxMessageSize {
-		length = maxMessageSize
-		value = value[:maxMessageSize]
+//
+// Returns an error if value exceeds maxMessageSize. The caller must
+// surface this rather than silently truncating — a truncated frame
+// would be delivered as if it were the complete message.
+func EncodeTLV(tag string, value string) ([]byte, error) {
+	if err := checkEncodeLength(int64(len(value))); err != nil {
+		return nil, err
 	}
 
-	msg := make([]byte, 6+length)
+	msg := make([]byte, 6+len(value))
 	msg[0] = tag[0]
 	msg[1] = tag[1]
-	binary.BigEndian.PutUint32(msg[2:], uint32(length)) //nolint:gosec // G115: length is bounded by maxMessageSize
+	binary.BigEndian.PutUint32(msg[2:], uint32(len(value))) //nolint:gosec // G115: length is bounded by maxMessageSize
 	copy(msg[6:], value)
 
-	return msg
+	return msg, nil
 }
 
 // WriteTLV writes a TLV-encoded message to the writer.
+// Returns an error if the message exceeds maxMessageSize (never
+// truncated) or if the underlying write fails.
 func WriteTLV(output io.Writer, tag string, value string) error {
-	_, err := output.Write(EncodeTLV(tag, value))
+	msg, err := EncodeTLV(tag, value)
+	if err != nil {
+		return err
+	}
+	_, err = output.Write(msg)
 	return err
 }
 

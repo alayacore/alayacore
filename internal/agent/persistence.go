@@ -86,8 +86,12 @@ func formatSessionMarkdown(data *SessionData) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("save: %w", err)
 		}
+		encoded, err := tlv.EncodeTLV(tag, content)
+		if err != nil {
+			return nil, fmt.Errorf("save: %w", err)
+		}
 		tlvBuf.WriteString("\n\n")
-		tlvBuf.Write(tlv.EncodeTLV(tag, content))
+		tlvBuf.Write(encoded)
 	}
 
 	buf.WriteString(tlvBuf.String())

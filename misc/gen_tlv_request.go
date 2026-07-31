@@ -40,19 +40,34 @@ func main() {
 			os.Exit(1)
 		}
 
-		if _, err := os.Stdout.Write(tlv.EncodeTLV(tag, dataURI)); err != nil {
+		data, err := tlv.EncodeTLV(tag, dataURI)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "encode: %v\n", err)
+			os.Exit(1)
+		}
+		if _, err := os.Stdout.Write(data); err != nil {
 			fmt.Fprintf(os.Stderr, "write: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
-	if _, err := os.Stdout.Write(tlv.EncodeTLV(tlv.TagUserT, prompt)); err != nil {
+	promptData, err := tlv.EncodeTLV(tlv.TagUserT, prompt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "encode: %v\n", err)
+		os.Exit(1)
+	}
+	if _, err := os.Stdout.Write(promptData); err != nil {
 		fmt.Fprintf(os.Stderr, "write: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Flush with TagUserEnd to commit the user message.
-	if _, err := os.Stdout.Write(tlv.EncodeTLV(tlv.TagUserEnd, "")); err != nil {
+	endData, err := tlv.EncodeTLV(tlv.TagUserEnd, "")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "encode: %v\n", err)
+		os.Exit(1)
+	}
+	if _, err := os.Stdout.Write(endData); err != nil {
 		fmt.Fprintf(os.Stderr, "write: %v\n", err)
 		os.Exit(1)
 	}

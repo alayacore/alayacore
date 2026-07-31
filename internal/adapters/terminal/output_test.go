@@ -10,6 +10,13 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
+// encodeTestTLV encodes a TLV frame for test input. Test payloads are
+// tiny and never exceed maxMessageSize, so the encode error is ignored.
+func encodeTestTLV(tag, value string) []byte {
+	msg, _ := tlv.EncodeTLV(tag, value)
+	return msg
+}
+
 // ============================================================================
 // Text Delta Coalescing
 // ============================================================================
@@ -415,7 +422,7 @@ func TestDrainDirtyIsPureQuery(t *testing.T) {
 
 	// Write a non-delta frame to set dirty.
 	var buf strings.Builder
-	buf.Write(tlv.EncodeTLV(tlv.TagUserF, tlv.WrapID("1", `{"id":"call_1","content":[],"is_error":false}`)))
+	buf.Write(encodeTestTLV(tlv.TagUserF, tlv.WrapID("1", `{"id":"call_1","content":[],"is_error":false}`)))
 	_, err := out.Write([]byte(buf.String()))
 	if err != nil {
 		t.Fatalf("Write failed: %v", err)
@@ -461,11 +468,11 @@ func TestDeltaCoalescingThroughWrite(t *testing.T) {
 
 	// Single write with multiple TLV frames.
 	var buf strings.Builder
-	buf.Write(tlv.EncodeTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "A")))
-	buf.Write(tlv.EncodeTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "B")))
-	buf.Write(tlv.EncodeTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "C")))
-	buf.Write(tlv.EncodeTLV(tlv.TagAssistantRDelta, tlv.WrapID("2", "think")))
-	buf.Write(tlv.EncodeTLV(tlv.TagAssistantRDelta, tlv.WrapID("2", "ing")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "A")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "B")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "C")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantRDelta, tlv.WrapID("2", "think")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantRDelta, tlv.WrapID("2", "ing")))
 
 	_, err := out.Write([]byte(buf.String()))
 	if err != nil {
@@ -507,8 +514,8 @@ func TestDeltaFlushViaNonDeltaTag(t *testing.T) {
 	out.SetWindowWidth(80)
 
 	var buf strings.Builder
-	buf.Write(tlv.EncodeTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "some text")))
-	buf.Write(tlv.EncodeTLV(tlv.TagUserF, tlv.WrapID("1", `{"id":"call_1","content":[],"is_error":false}`)))
+	buf.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "some text")))
+	buf.Write(encodeTestTLV(tlv.TagUserF, tlv.WrapID("1", `{"id":"call_1","content":[],"is_error":false}`)))
 
 	_, err := out.Write([]byte(buf.String()))
 	if err != nil {
@@ -531,32 +538,32 @@ func TestDeltaFlushViaNonDeltaTag(t *testing.T) {
 
 // writeAt writes a TagAssistantTDelta frame through the output pipeline.
 func writeAt(out *outputWriter, id, content string) {
-	data := tlv.EncodeTLV(tlv.TagAssistantTDelta, tlv.WrapID(id, content))
+	data := encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID(id, content))
 	_, _ = out.Write(data)
 }
 
 // writeAr writes a TagAssistantRDelta frame through the output pipeline.
 func writeAr(out *outputWriter, id, content string) {
-	data := tlv.EncodeTLV(tlv.TagAssistantRDelta, tlv.WrapID(id, content))
+	data := encodeTestTLV(tlv.TagAssistantRDelta, tlv.WrapID(id, content))
 	_, _ = out.Write(data)
 }
 
 // writeAT writes a TagAssistantT (authoritative) frame through the output pipeline.
 func writeAT(out *outputWriter, id, content string) {
-	data := tlv.EncodeTLV(tlv.TagAssistantT, tlv.WrapID(id, content))
+	data := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID(id, content))
 	_, _ = out.Write(data)
 }
 
 // writeAf writes a TagAssistantFDelta (tool delta) frame through the output pipeline.
 func writeAf(out *outputWriter, historyID, toolID, delta string) {
 	fd, _ := json.Marshal(protocol.ToolInputDeltaData{ID: toolID, Delta: delta})
-	data := tlv.EncodeTLV(tlv.TagAssistantFDelta, tlv.WrapID(historyID, string(fd)))
+	data := encodeTestTLV(tlv.TagAssistantFDelta, tlv.WrapID(historyID, string(fd)))
 	_, _ = out.Write(data)
 }
 
 // writeAFStart writes a TagAssistantF (tool start) frame with tool name.
 func writeAFStart(out *outputWriter, historyID, toolID, toolName string) {
 	fd, _ := json.Marshal(protocol.ToolInputData{ID: toolID, Name: toolName})
-	data := tlv.EncodeTLV(tlv.TagAssistantF, tlv.WrapID(historyID, string(fd)))
+	data := encodeTestTLV(tlv.TagAssistantF, tlv.WrapID(historyID, string(fd)))
 	_, _ = out.Write(data)
 }
