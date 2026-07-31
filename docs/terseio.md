@@ -80,5 +80,5 @@ fi
   need interactive confirmation.
 - **Ctrl-D / EOF** ends the prompt; the process exits after the task
   finishes. **Ctrl-C** exits immediately (exit code 130).
-- **Not a TUI** — no terminal features are used, so it works on any teletype
+- **Not a TUI** — no terminal features are used, so it works on any terminal, including teletype,
   or in pipelines, just like `--plainio`.

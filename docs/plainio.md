@@ -1,6 +1,6 @@
 # Plain IO Mode
 
-`--plainio` runs AlayaCore as a plain stdin/stdout process with no terminal UI. Useful for scripting, piping, and headless environments.
+`--plainio` runs AlayaCore as a plain stdin/stdout process with no terminal UI — no ANSI codes, no TTY detection, so it works on any terminal, including teletype. It is designed for **interactive use without a TUI**: it shows the full conversation (echoed prompts, reasoning, tool calls, results). For scripts and pipes that only need the final answer, use [`--terseio`](terseio.md) instead.
 
 ## Input
 
@@ -23,8 +23,9 @@ prompt that spans two lines.
 > ```
 > Error: A task is already running. Wait for it to complete or cancel it.
 > ```
-> For scripting multiple questions, launch `alayacore --plainio` once per
-> prompt (the process spawn cost is negligible).
+> For scripting multiple questions, use `--terseio` (one prompt per
+> invocation) or launch `alayacore --plainio` once per prompt (the process
+> spawn cost is negligible).
 
 ## Output
 
@@ -88,13 +89,15 @@ Since the session file contains binary TLV data after the key-value frontmatter,
 ## Examples
 
 ```sh
-# Pipe a single question
+# Interactive session on any terminal (type a prompt, Ctrl-D to end)
+alayacore --plainio
+
+# Interactive session with a saved conversation
+alayacore --plainio --session my-convo.alaya
+
+# Pipe a single question (works, but --terseio is cleaner for scripts)
 echo "what is 2+2?" | alayacore --plainio
-
-# Use in scripts — one prompt per invocation
-echo "what is 2+2?" | alayacore --plainio > answer.txt
-echo "explain gravity" | alayacore --plainio >> answers.txt
-
-# Read a single prompt from a file
-alayacore --plainio < question.txt > answer.txt
 ```
+
+> 💡 **Scripting or piping?** Use [`--terseio`](terseio.md) — it reads all of
+> stdin as one prompt and prints only the final answer (errors to stderr).

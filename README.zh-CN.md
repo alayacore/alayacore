@@ -25,7 +25,7 @@
 
 ![AlayaCore demo](misc/alayacore-demo.gif)
 
-**Plain IO 模式** — 通过 stdin/stdout 支持脚本、管道和非交互式使用。
+**Plain IO 模式** — 无 TUI 的纯文本交互模式，通过 stdin/stdout 工作（任何终端都可用）。
 
 ![AlayaCore plainio demo](misc/alayacore-demo-plainio.gif)
 
@@ -37,7 +37,7 @@
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
 
-AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（stdin/stdout 脚本模式）、**Terse IO**（只输出最终答案的脚本模式）和 **Raw IO**（原始 TLV 帧程序化控制模式）。
+AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（无 TUI 的交互式纯文本模式）、**Terse IO**（只输出最终答案的管道/脚本模式）和 **Raw IO**（原始 TLV 帧程序化控制模式）。
 
 ## 快速开始
 
@@ -77,7 +77,7 @@ go install github.com/alayacore/alayacore@latest
 
 ### Plain IO（`--plainio`）
 
-- 📟 **适合脚本使用** — 纯文本输入/输出，带 TLV 帧。无 TUI 依赖。
+- 📟 **无需 TUI 的交互** — 通过 stdin/stdout 输出完整纯文本记录（prompt 回显、推理、工具调用、结果），任何终端都可用。
 
 ### Terse IO（`--terseio`）
 
@@ -124,7 +124,7 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [命令](docs/commands.md) | 所有会话命令（`:save`、`:cancel`、`:fork` 等） |
 | [配置](docs/configuration.md) | 模型配置、运行时配置和主题 |
 | [终端 UI](docs/tui.md) | 快捷键、命令、窗口、任务队列 |
-| [Plain IO 模式](docs/plainio.md) | 用于脚本和管道的 stdin/stdout |
+| [Plain IO 模式](docs/plainio.md) | 无 TUI 的交互式纯文本 stdin/stdout |
 | [Terse IO 模式](docs/terseio.md) | 将整个 stdin 作为一个 prompt，只输出最终答案 |
 | [Raw IO 模式](docs/rawio.md) | 用于程序化控制的原始 TLV 帧 |
 | [Adapter Guide](adapter-guide/README.md) | Raw IO 协议参考 — 帧格式、标签、adapter 实现指南 |

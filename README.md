@@ -25,7 +25,7 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ![AlayaCore demo](misc/alayacore-demo.gif)
 
-**Plain IO Mode** — stdin/stdout for scripts, pipes, and non-interactive use.
+**Plain IO Mode** — plain stdin/stdout for interactive use without a TUI (works on any terminal, including teletype).
 
 ![AlayaCore plainio demo](misc/alayacore-demo-plainio.gif)
 
@@ -37,7 +37,7 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
 
-AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (stdin/stdout for scripting), **Terse IO** (answer-only for pipes and scripts), and **Raw IO** (raw TLV frames for programmatic control).
+AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (interactive plain-text stdin/stdout without a TUI), **Terse IO** (answer-only for pipes and scripts), and **Raw IO** (raw TLV frames for programmatic control).
 
 ## Quick Start
 
@@ -77,7 +77,7 @@ On first run, AlayaCore auto-creates a default model config at `~/.alayacore/mod
 
 ### Plain IO (`--plainio`)
 
-- 📟 **Scripting-friendly** — Plain text input/output with TLV framing. No TUI dependencies.
+- 📟 **TUI-free interactive** — Full plain-text transcript (echoed prompts, reasoning, tool calls, results) over stdin/stdout. Works on any terminal, including teletype.
 
 ### Terse IO (`--terseio`)
 
@@ -124,7 +124,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Commands](docs/commands.md) | All session commands (`:save`, `:cancel`, `:fork`, etc.) |
 | [Configuration](docs/configuration.md) | Model config, runtime config, and themes |
 | [Terminal UI](docs/tui.md) | Keybindings, commands, windows, and navigation |
-| [Plain IO Mode](docs/plainio.md) | stdin/stdout for scripts and pipes |
+| [Plain IO Mode](docs/plainio.md) | interactive plain-text stdin/stdout, no TUI |
 | [Terse IO Mode](docs/terseio.md) | Read all stdin as one prompt; print only the final answer |
 | [Raw IO Mode](docs/rawio.md) | Raw TLV frames on stdin/stdout for programmatic control |
 | [Adapter Guide](adapter-guide/README.md) | TLV protocol reference for Raw IO — frame format, tags, and adapter implementation guide |

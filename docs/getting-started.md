@@ -60,7 +60,7 @@ export ALAYACORE_SHELL=zsh
 | `--tool-confirm` | *(none)* | Comma-separated tool `names` that require user confirmation before execution (e.g. `--tool-confirm execute_command,search_content`). Not compatible with `--terseio` |
 | `--builtin-tools` | *(all)* | Comma-separated built-in tool `names` to enable. Empty (`--builtin-tools=`) disables all built-in tools. Unspecified means all tools enabled. |
 | `--no-delta` | `false` | Disable delta frames (At, Ar, Af); use complete frames only. Reduces wire overhead when the adapter does not need streaming previews. |
-| `--plainio` | `false` | Plain stdin/stdout mode — no TUI, for scripting and piping |
+| `--plainio` | `false` | Plain stdin/stdout mode — interactive use without a TUI (full transcript output) |
 | `--terseio` | `false` | Read all of stdin as one prompt and print only the final answer (stdout stays clean; errors go to stderr). Incompatible with `--tool-confirm` |
 | `--rawio` | `false` | Raw TLV stdin/stdout mode — pipe TLV frames directly between agent and controlling process |
 | `--debug-log` | `""` | Debug log directory (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging. |
@@ -88,8 +88,8 @@ alayacore --skill ./skills/weather --skill ./skills/pdf
 # Behind a proxy
 alayacore --proxy http://127.0.0.1:7890
 
-# Plain IO — pipe a question, get an answer
-echo "what is 2+2?" | alayacore --plainio
+# Plain IO — interactive plain-text session on any terminal (no TUI)
+alayacore --plainio
 
 # Terse IO — pipe a whole prompt, get ONLY the final answer
 echo "what is 2+2?" | alayacore --terseio > answer.txt
