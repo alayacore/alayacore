@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"sync"
 )
 
 // ErrMaxStepsExceeded is returned when the agent loop reaches the configured maximum number of steps
@@ -176,6 +177,12 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 // Assigns unique history IDs via IDGen on first touch of each content block,
 // passes them to callbacks, and stores them on ContentParts.
 //
+// Tool goroutines (started per ToolInputCompleteEvent) are tracked with a
+// WaitGroup and run under a per-stream context. On ANY exit path — stream
+// error, callback failure, reorder failure — the context is canceled first
+// and all tool goroutines are waited on before returning, so no tool keeps
+// executing (and no goroutine leaks) after the stream has errored.
+//
 //nolint:gocyclo // switch dispatch over 8 event types with callback guards
 func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, error], callbacks StreamCallbacks) ([]ContentPart, Usage, bool, error) {
 	var (
@@ -184,6 +191,18 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 		truncated    bool
 		results      []ContentPart
 	)
+
+	// Per-stream context, canceled on every exit path (defer below).
+	// Deriving from the caller's ctx keeps task cancellation working:
+	// when the caller cancels, this ctx is canceled too, and vice versa.
+	streamCtx, cancelStream := context.WithCancel(ctx)
+
+	// Tracks in-flight tool goroutines. Deferred cleanup order matters:
+	// cancelStream must run BEFORE toolWg.Wait (defers run LIFO, so
+	// register Wait first).
+	var toolWg sync.WaitGroup
+	defer toolWg.Wait()
+	defer cancelStream()
 
 	// Channel for collecting all tool execution results.
 	// Buffered so sender goroutines exit immediately after execution.
@@ -258,7 +277,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			}
 			execCount++
 			tc := e.ToPart(id, nameByIndex[e.Index])
-			a.handleStreamedToolInput(ctx, tc, callbacks, resultCh)
+			a.handleStreamedToolInput(streamCtx, tc, callbacks, resultCh, &toolWg)
 
 		case StepCompleteEvent:
 			stepContents = e.Contents
@@ -282,9 +301,19 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 	// All tools (confirm and no-confirm) execute in goroutines started
 	// during streaming. Collect all results.
-
+	//
+	// The select on streamCtx.Done prevents a deadlock if the caller
+	// cancels during collection: a sender's sendToolResult may drop its
+	// result once the context is canceled, so a bare receive would block
+	// forever. In that case we bail out and the deferred cancel+wait
+	// cleans up the remaining goroutines.
 	for i := 0; i < execCount; i++ {
-		results = append(results, <-resultCh)
+		select {
+		case r := <-resultCh:
+			results = append(results, r)
+		case <-streamCtx.Done():
+			return nil, Usage{}, false, streamCtx.Err()
+		}
 	}
 
 	// Re-order results by tool call ID to match the LLM's intended order.
@@ -339,30 +368,46 @@ func reorderToolResults(stepContents, results []ContentPart) ([]ContentPart, err
 // If the tool requires confirmation (per ToolNeedsConfirm), it starts a
 // goroutine that obtains a per-tool confirm channel and blocks until the
 // user responds. Otherwise it executes immediately in a goroutine.
-// All tools send exactly one result through resultCh.
-func (a *Agent) handleStreamedToolInput(ctx context.Context, tc *ToolInputPart, callbacks StreamCallbacks, resultCh chan<- ContentPart) {
+// All tools send exactly one result through resultCh, then call wg.Done().
+func (a *Agent) handleStreamedToolInput(ctx context.Context, tc *ToolInputPart, callbacks StreamCallbacks, resultCh chan<- ContentPart, wg *sync.WaitGroup) {
 	if callbacks.ToolNeedsConfirm != nil && callbacks.ToolNeedsConfirm(tc.Name) {
 		// Start goroutine that waits for confirmation before executing.
 		historyID := genHistoryID(callbacks)
+		wg.Add(1)
 		go func(ctx context.Context, tc *ToolInputPart, historyID uint64) {
+			defer wg.Done()
 			select {
 			case allowed := <-callbacks.OnToolConfirm(tc.ToConfirmRequest()):
 				if !allowed {
-					resultCh <- newToolOutput(callbacks, tc.ID, nil, fmt.Errorf("Tool execution denied by user"), historyID)
+					sendToolResult(ctx, resultCh, newToolOutput(callbacks, tc.ID, nil, fmt.Errorf("Tool execution denied by user"), historyID))
 					return
 				}
-				resultCh <- a.executeTool(ctx, tc, callbacks, historyID)
+				sendToolResult(ctx, resultCh, a.executeTool(ctx, tc, callbacks, historyID))
 			case <-ctx.Done():
-				resultCh <- newToolOutput(callbacks, tc.ID, nil, ctx.Err(), historyID)
+				sendToolResult(ctx, resultCh, newToolOutput(callbacks, tc.ID, nil, ctx.Err(), historyID))
 			}
 		}(ctx, tc, historyID)
 		return
 	}
 
 	historyID := genHistoryID(callbacks)
+	wg.Add(1)
 	go func(tc *ToolInputPart, historyID uint64) {
-		resultCh <- a.executeTool(ctx, tc, callbacks, historyID)
+		defer wg.Done()
+		sendToolResult(ctx, resultCh, a.executeTool(ctx, tc, callbacks, historyID))
 	}(tc, historyID)
+}
+
+// sendToolResult delivers a tool result to the collector, or drops it when
+// the stream context has been canceled (error path: the collector is gone
+// and nobody will drain resultCh). Dropping instead of blocking prevents
+// goroutine leaks when more tools than resultCh's capacity were started
+// before the stream failed.
+func sendToolResult(ctx context.Context, resultCh chan<- ContentPart, result ContentPart) {
+	select {
+	case resultCh <- result:
+	case <-ctx.Done():
+	}
 }
 
 func (a *Agent) toolDefinitions() []ToolDefinition {
