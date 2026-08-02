@@ -24,7 +24,7 @@ The adapter layer handles user interaction and translates between user actions a
 
 ### PlainIO Adapter (`internal/adapters/plainio/`)
 
-Plain stdin/stdout mode, activated with `--plainio`. Shows assistant text, reasoning, tool call JSON, and tool result JSON. Displays tool_confirm system messages as plain text prompts. Reads prompts from stdin (one per line, backslash continuation for multi-line prompts).
+Plain stdin/stdout mode, activated with `--plainio`. Shows assistant text, reasoning, tool call JSON, and tool result JSON. Displays tool_confirm system messages as plain text prompts. Reads prompts from stdin (one per line, backslash continuation for multi-line prompts). Supports the full MCP flow: renders init progress (`[mcp: ...]` lines) and runs OAuth authorization automatically (callback server + browser, one flow per server) with manual `:mcp_confirm`/`:mcp_decline` fallback — see `mcp.go`. Hooks fired by MCP system messages are deferred (registered under the output lock, executed after unlock) so they may safely print.
 
 ### TerseIO Adapter (`internal/adapters/terseio/`)
 

@@ -41,7 +41,20 @@
 //   - Errors: rendered as "[error: ...]".
 //   - Notifications: prefixed with "[...]".
 //   - Tool confirmations: shown as "[tool_confirm: allow tool "id" to run?]".
+//   - MCP init progress: "[mcp: connecting/connected/failed/server X requires
+//     authorization/waiting for authorization...]".
 //   - A blank line is printed after each task completes.
+//
+// MCP support:
+//   - MCP servers connect at startup and their tools behave like built-in
+//     tools (including tool_confirm prompts).
+//   - When a server requires OAuth authorization, plainio prints the URL,
+//     starts a local callback server (internal/platform), opens the
+//     browser, and sends ":mcp_confirm <server> <code> <redirect_uri>"
+//     automatically once the code arrives — one concurrent flow per
+//     server, since MCP servers initialize in parallel. Manual fallback
+//     (:mcp_confirm/:mcp_decline/:mcp_cancel) always works; the callback
+//     wait times out after 5 minutes. See docs/oauth.md for the full flow.
 //
 // Communication with the session layer uses the same TLV protocol as the
 // terminal, terseio, and rawio adapters.
@@ -50,4 +63,5 @@
 //   - adapter.go: Adapter struct, Start() entry point
 //   - input.go: Stdin line reader with backslash continuation
 //   - output.go: TLV parser and plain-text renderer
+//   - mcp.go: MCP OAuth authorization flows
 package plainio

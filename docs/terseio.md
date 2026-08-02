@@ -44,6 +44,7 @@ session file to diagnose such cases.
 | stdout | full transcript: prompts, reasoning, tool JSON, results | final answer only |
 | errors | printed to stdout | printed to stderr (stdout stays clean) |
 | tool confirmations | interactive (`:tool_confirm <id>` / `:tool_decline <id>`) | rejected at startup (`--tool-confirm` conflict) |
+| MCP OAuth authorization | automatic (callback server + browser) with manual fallback | not supported — prompts are rejected (`MCP_NOT_READY`) while authorization is pending; use `--plainio` for OAuth-protected servers |
 | commands (`:save`, `:cancel`, ...) | supported | not supported (stdin is prompt text) |
 
 ## Examples
