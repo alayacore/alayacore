@@ -348,3 +348,18 @@ func TestSystemMsg_MCPDoneInvokesHook(t *testing.T) {
 		t.Error("onMCPDone hook not invoked on done")
 	}
 }
+
+func TestSystemMsg_MCPConnectedInvokesHook(t *testing.T) {
+	var buf bytes.Buffer
+	var gotServer string
+	o := &stdoutOutput{
+		writer: &buf,
+		onMCPConnected: func(server string) {
+			gotServer = server
+		},
+	}
+	o.Write(mcpSMTLV("connected", "github", "", ""))
+	if gotServer != "github" {
+		t.Errorf("onMCPConnected = %q, want github", gotServer)
+	}
+}

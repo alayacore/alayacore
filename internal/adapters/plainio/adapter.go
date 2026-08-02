@@ -55,6 +55,7 @@ func (a *Adapter) Start() int {
 	// attached after StartSession returns it (flow.setInput below).
 	flow := newMCPAuthFlow(output)
 	output.mcpAuthRequired = flow.start
+	output.onMCPConnected = flow.connected
 	output.onMCPDone = flow.abort
 
 	// Load session

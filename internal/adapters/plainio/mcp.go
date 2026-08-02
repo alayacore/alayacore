@@ -34,7 +34,9 @@ const mcpAuthTimeout = 5 * time.Minute
 // mcpAuthFlow runs MCP OAuth authorization flows — one goroutine per
 // server. MCP servers initialize concurrently, so several servers may
 // demand authorization at the same time; each gets its own callback
-// server and browser window, and all share one abort broadcast.
+// server and browser window. A flow ends when its server connects (via
+// any path), when MCP init completes or is canceled (broadcast abort),
+// or on timeout.
 type mcpAuthFlow struct {
 	out         *stdoutOutput
 	inputMu     sync.Mutex // guards input (set after StartSession returns)
@@ -43,10 +45,21 @@ type mcpAuthFlow struct {
 	openURL     func(string) error
 	authTimeout time.Duration
 
-	mu        sync.Mutex
-	runs      map[string]struct{} // server names with a flow in flight
-	abortCh   chan struct{}       // closed by abort() — broadcast to all flows
-	abortOnce sync.Once
+	mu   sync.Mutex
+	runs map[string]*mcpAuthRun // server names → in-flight flow
+}
+
+// mcpAuthRun is the per-server cancel state of one flow. cancelFlow is
+// idempotent: it may be triggered by the server's "connected" event
+// (authorization completed via manual :mcp_confirm/:mcp_decline) and by
+// the broadcast abort (MCP init done/canceled).
+type mcpAuthRun struct {
+	cancel     chan struct{}
+	cancelOnce sync.Once
+}
+
+func (r *mcpAuthRun) cancelFlow() {
+	r.cancelOnce.Do(func() { close(r.cancel) })
 }
 
 // newMCPAuthFlow creates a flow bound to out. The TLV input writer is
@@ -57,8 +70,7 @@ func newMCPAuthFlow(out *stdoutOutput) *mcpAuthFlow {
 		startServer: platform.StartCallbackServer,
 		openURL:     platform.OpenURL,
 		authTimeout: mcpAuthTimeout,
-		runs:        make(map[string]struct{}),
-		abortCh:     make(chan struct{}),
+		runs:        make(map[string]*mcpAuthRun),
 	}
 }
 
@@ -80,7 +92,8 @@ func (f *mcpAuthFlow) start(serverName, authURL string) {
 		f.mu.Unlock()
 		return
 	}
-	f.runs[serverName] = struct{}{}
+	run := &mcpAuthRun{cancel: make(chan struct{})}
+	f.runs[serverName] = run
 	f.mu.Unlock()
 
 	f.inputMu.Lock()
@@ -94,11 +107,11 @@ func (f *mcpAuthFlow) start(serverName, authURL string) {
 		f.mu.Unlock()
 		return
 	}
-	go f.run(serverName, authURL, input)
+	go f.run(serverName, authURL, input, run)
 }
 
 // run executes one server's flow: callback server, browser, CI frame.
-func (f *mcpAuthFlow) run(serverName, authURL string, input io.Writer) {
+func (f *mcpAuthFlow) run(serverName, authURL string, input io.Writer, run *mcpAuthRun) {
 	defer func() {
 		f.mu.Lock()
 		delete(f.runs, serverName)
@@ -124,22 +137,42 @@ func (f *mcpAuthFlow) run(serverName, authURL string, input io.Writer) {
 	select {
 	case res := <-resultCh:
 		if res.Err != nil {
+			// Only skip this server — declining keeps the rest of MCP
+			// init (and any other servers' authorizations) intact.
 			f.out.printLine("[mcp: authorization callback error: %v]\n", res.Err)
-			f.sendCommand(input, ":mcp_cancel")
+			f.sendCommand(input, fmt.Sprintf(":mcp_decline %s", serverName))
 			return
 		}
 		f.sendCommand(input, fmt.Sprintf(":mcp_confirm %s %s %s", serverName, res.Code, redirectURI))
-	case <-f.abortCh:
-		// MCP init finished or was canceled — cleanup() stops the server.
+	case <-run.cancel:
+		// Server connected via another path (manual :mcp_confirm /
+		// :mcp_decline) or MCP init finished/canceled — cleanup() stops
+		// the callback server.
 	case <-time.After(f.authTimeout):
 		f.out.printLine("[mcp: authorization for %q timed out — continue manually]\n", serverName)
 	}
 }
 
-// abort releases every running flow. Called when MCP init completes
+// connected cancels the flow for one server: its authorization was
+// completed by another path (manual :mcp_confirm/:mcp_decline), so the
+// callback server is no longer needed.
+func (f *mcpAuthFlow) connected(server string) {
+	f.mu.Lock()
+	run := f.runs[server]
+	f.mu.Unlock()
+	if run != nil {
+		run.cancelFlow()
+	}
+}
+
+// abort cancels every running flow. Called when MCP init completes
 // ("done"), covering both natural completion and :mcp_cancel.
 func (f *mcpAuthFlow) abort() {
-	f.abortOnce.Do(func() { close(f.abortCh) })
+	f.mu.Lock()
+	for _, run := range f.runs {
+		run.cancelFlow()
+	}
+	f.mu.Unlock()
 }
 
 // sendCommand writes a colon-command as a CI frame to the TLV input.

@@ -32,9 +32,12 @@ type stdoutOutput struct {
 	seenDelta     map[string]bool // history IDs already printed via At/Ar deltas
 
 	// MCP hooks, injected by the adapter. mcpAuthRequired is invoked when
-	// a server needs OAuth authorization; onMCPDone fires when MCP init
-	// completes (or is canceled) so any running auth flow can clean up.
+	// a server needs OAuth authorization; onMCPConnected fires when a
+	// server connects (so its auth flow can stop waiting); onMCPDone fires
+	// when MCP init completes (or is canceled) so any running auth flow
+	// can clean up.
 	mcpAuthRequired func(server, url string)
+	onMCPConnected  func(server string)
 	onMCPDone       func()
 }
 
@@ -346,6 +349,9 @@ func (o *stdoutOutput) handleSystemMCP(data json.RawMessage) {
 		o.printMCPStatus("connecting %q", m.Server)
 	case "connected":
 		o.printMCPStatus("connected %q", m.Server)
+		if o.onMCPConnected != nil {
+			o.onMCPConnected(m.Server)
+		}
 	case "failed":
 		o.printMCPStatus("failed %q: %s", m.Server, m.Error)
 	case "auth_required":

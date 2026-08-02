@@ -89,15 +89,15 @@ func TestMCPAuthFlow_SendsConfirmOnCallback(t *testing.T) {
 	}
 }
 
-func TestMCPAuthFlow_CallbackErrorSendsCancel(t *testing.T) {
+func TestMCPAuthFlow_CallbackErrorDeclinesServer(t *testing.T) {
 	env := newTestFlow()
 	env.flow.startServer = env.fake.start(platform.CallbackResult{Err: errors.New("state mismatch")})
 
 	env.flow.start("github", "https://example.com/authorize")
 
 	frame := <-env.ci.ch
-	if !strings.Contains(frame, `"name":"mcp_cancel"`) {
-		t.Errorf("CI frame = %q, want :mcp_cancel", frame)
+	if !strings.Contains(frame, `"name":"mcp_decline","input":"github"`) {
+		t.Errorf("CI frame = %q, want :mcp_decline github", frame)
 	}
 	<-env.fake.cleanupCh
 
@@ -159,6 +159,39 @@ func TestMCPAuthFlow_AbortIsIdempotent(t *testing.T) {
 	env := newTestFlow()
 	env.flow.abort()
 	env.flow.abort() // must not panic
+}
+
+func TestMCPAuthFlow_ConnectedCancelsFlow(t *testing.T) {
+	env := newTestFlow()
+	env.flow.startServer = func(_, _, _ string) (<-chan platform.CallbackResult, string, func()) {
+		return make(chan platform.CallbackResult), "http://127.0.0.1:4242/callback", func() {
+			select {
+			case env.fake.cleanupCh <- struct{}{}:
+			default:
+			}
+		}
+	}
+
+	env.flow.start("github", "https://example.com/authorize")
+	env.flow.connected("github") // authorization completed via manual :mcp_confirm
+
+	select {
+	case <-env.fake.cleanupCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("flow did not stop after server connected")
+	}
+	if len(env.ci.ch) != 0 {
+		t.Error("connected must not send any CI frame")
+	}
+
+	// A later abort must not double-close the run's cancel channel.
+	env.flow.abort()
+}
+
+func TestMCPAuthFlow_ConnectedUnknownServerIsNoop(t *testing.T) {
+	env := newTestFlow()
+	env.flow.connected("nonexistent") // must not panic
+	env.flow.abort()
 }
 
 func TestMCPAuthFlow_TwoServersRunConcurrently(t *testing.T) {
