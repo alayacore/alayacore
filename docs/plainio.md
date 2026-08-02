@@ -51,10 +51,23 @@ All output is plain text with no ANSI escape codes:
 | Errors | `[error: message]` |
 | Notifications | `[message]` |
 | Tool confirmations | `[tool_confirm: allow tool "id" to run?]` |
+| MCP init progress | `[mcp: connecting "server"]`, `[mcp: connected "server"]`, `[mcp: failed "server": error]`, `[mcp: waiting for authorization for "server"…]` |
 
 Respond with `:tool_confirm <id>` to allow or `:tool_decline <id>` to deny.
 
 A blank line separates messages of different types.
+
+### MCP Support
+
+MCP servers work the same as in the TUI: configured servers connect at
+startup and their tools (and `tool_confirm` prompts) behave identically.
+When a server requires OAuth authorization, plainio prints the
+authorization URL, starts a local callback server, and opens the browser
+automatically — once you authorize, the code is submitted for you. If
+the browser doesn't open, visit the printed URL and type
+`:mcp_confirm <server> <code> <redirect_uri>`; use `:mcp_decline
+<server>` to skip a server or `:mcp_cancel` to abort MCP init. See
+[OAuth](oauth.md) for the full flow.
 
 > 💡 **Just want the final answer?** Use `--terseio` instead — it reads all
 > of stdin as one prompt and prints only the final answer (errors to stderr).

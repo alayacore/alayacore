@@ -30,6 +30,12 @@ type stdoutOutput struct {
 	lastTag       string
 	lastHistoryID string
 	seenDelta     map[string]bool // history IDs already printed via At/Ar deltas
+
+	// MCP hooks, injected by the adapter. mcpAuthRequired is invoked when
+	// a server needs OAuth authorization; onMCPDone fires when MCP init
+	// completes (or is canceled) so any running auth flow can clean up.
+	mcpAuthRequired func(server, url string)
+	onMCPDone       func()
 }
 
 func newStdoutOutput() *stdoutOutput {
@@ -315,5 +321,67 @@ func (o *stdoutOutput) handleSystemMsg(value string) {
 		fmt.Fprintf(o.writer, "\n[tool_confirm: allow tool %q to run?]\n", m.ID)
 		o.lastTag = ""
 		o.lastHistoryID = ""
+
+	case protocol.MsgTypeMCP:
+		o.handleSystemMCP(env.Data)
 	}
+}
+
+// handleSystemMCP processes an "mcp" system message — MCP init progress.
+// Each status renders as a plain-text line; "auth_required" additionally
+// hands off to the adapter-injected OAuth flow (async), and "done" signals
+// the flow to clean up any running callback server.
+func (o *stdoutOutput) handleSystemMCP(data json.RawMessage) {
+	var m struct {
+		Status string `json:"status"`
+		Server string `json:"server,omitempty"`
+		URL    string `json:"url,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}
+	if json.Unmarshal(data, &m) != nil {
+		return
+	}
+	switch m.Status {
+	case "connecting":
+		o.printMCPStatus("connecting %q", m.Server)
+	case "connected":
+		o.printMCPStatus("connected %q", m.Server)
+	case "failed":
+		o.printMCPStatus("failed %q: %s", m.Server, m.Error)
+	case "auth_required":
+		if m.Server == "" {
+			return
+		}
+		o.printMCPStatus("server %q requires authorization", m.Server)
+		if o.mcpAuthRequired != nil {
+			o.mcpAuthRequired(m.Server, m.URL)
+		}
+	case "auth_running":
+		o.printMCPStatus("waiting for authorization for %q…", m.Server)
+	case "done":
+		// Completion is already announced by the session's notify
+		// ("MCP servers initialized: ..."). Just release any running
+		// auth flow — this covers both natural completion and :mcp_cancel.
+		if o.onMCPDone != nil {
+			o.onMCPDone()
+		}
+	}
+}
+
+// printMCPStatus renders one MCP progress line and resets streaming state.
+// Must be called with o.mu held (from handleSystemMsg).
+func (o *stdoutOutput) printMCPStatus(format string, args ...any) {
+	fmt.Fprintf(o.writer, "\n[mcp: "+format+"]\n", args...)
+	o.lastTag = ""
+	o.lastHistoryID = ""
+}
+
+// printLine writes a raw line to stdout under the output lock and resets
+// streaming state. Safe for concurrent use (e.g. the MCP auth goroutine).
+func (o *stdoutOutput) printLine(format string, args ...any) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	fmt.Fprintf(o.writer, format, args...)
+	o.lastTag = ""
+	o.lastHistoryID = ""
 }

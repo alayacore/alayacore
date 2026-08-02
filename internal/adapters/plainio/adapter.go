@@ -50,12 +50,20 @@ func NewAdapter(cfg *app.Config) *Adapter {
 func (a *Adapter) Start() int {
 	output := newStdoutOutput()
 
+	// Wire the MCP OAuth flow before the session starts so no
+	// "auth_required" event can slip through. The TLV input writer is
+	// attached after StartSession returns it (flow.setInput below).
+	flow := newMCPAuthFlow(output)
+	output.mcpAuthRequired = flow.start
+	output.onMCPDone = flow.abort
+
 	// Load session
 	session, inputWriter, err := app.StartSession(a.Config, output, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
+	flow.setInput(inputWriter)
 
 	exitCh := make(chan int, 1)
 

@@ -291,18 +291,34 @@ authorization, a confirmation dialog is displayed. The user can:
 - **Manual**: Type `:mcp_confirm <server> <code> <redirect_uri>` to
   provide an authorization code obtained out-of-band
 
-In the **PlainIO** adapter, the authorization URL is printed to
-stdout. The user must manually open the URL in a browser, copy the
-authorization code from the redirect, and type:
+In the **PlainIO** adapter, when a server requires OAuth authorization,
+the adapter prints the authorization URL to stdout, starts a local
+callback server on `127.0.0.1` (replacing the `{{redirect_uri}}` and
+`{{state}}` placeholders), and tries to open the browser automatically.
+Once the code arrives, the adapter sends `:mcp_confirm` itself — no
+typing needed, so the flow also works with piped stdin. The output shows
+the filled-in URL plus the manual fallback commands:
+
+```
+[mcp: server "github" requires authorization]
+[mcp: opening browser for "github"…]
+[mcp: if the browser doesn't open, visit:]
+https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A45231%2Fcallback&state=...
+[mcp: manual: :mcp_confirm github <code> <redirect_uri> · :mcp_decline github]
+```
+
+If the browser fails to open (or the user prefers), the flow can be
+completed manually: open the printed URL, copy the authorization code
+from the redirect (the browser shows a connection error — the code is in
+the address bar), and type:
 
 ```
 :mcp_confirm github <code> <redirect_uri>
 ```
 
-If the URL contains `{{redirect_uri}}` and `{{state}}` placeholders,
-the adapter needs to replace them with a real redirect URI and state
-before opening the browser. The **Terminal** adapter does this
-automatically by starting a local callback server.
+Or decline with `:mcp_decline <server>` and cancel the whole init with
+`:mcp_cancel`. The callback wait times out after 5 minutes, after which
+the user can still finish manually.
 
 ## External URLs Summary
 

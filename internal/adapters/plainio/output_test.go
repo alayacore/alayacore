@@ -3,6 +3,7 @@ package plainio
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -266,4 +267,84 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// mcpSMTLV encodes an "mcp" system message as a TagSystemMsg TLV frame.
+func mcpSMTLV(status, server, url, errMsg string) []byte {
+	env := protocol.SystemMsgEnvelope{
+		Type: "mcp",
+		Data: json.RawMessage(fmt.Sprintf(`{"status":%q,"server":%q,"url":%q,"error":%q}`,
+			status, server, url, errMsg)),
+	}
+	v, err := json.Marshal(env)
+	if err != nil {
+		panic(err)
+	}
+	return encodeTestTLV(tlv.TagSystemMsg, string(v))
+}
+
+func TestSystemMsg_MCPStatusRendering(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{writer: &buf}
+
+	cases := []struct {
+		name   string
+		status string
+		want   string
+	}{
+		{"connecting", "connecting", `[mcp: connecting "db"]`},
+		{"connected", "connected", `[mcp: connected "db"]`},
+		{"failed", "failed", `[mcp: failed "db": connection timeout]`},
+		{"auth_running", "auth_running", `[mcp: waiting for authorization for "db"…]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf.Reset()
+			o.Write(mcpSMTLV(tc.status, "db", "", "connection timeout"))
+			if got := buf.String(); !strings.Contains(got, tc.want) {
+				t.Errorf("output = %q, want substring %q", got, tc.want)
+			}
+		})
+	}
+
+	// "done" renders nothing — completion is announced via the session's
+	// notify ("MCP servers initialized: ...").
+	buf.Reset()
+	o.Write(mcpSMTLV("done", "", "", ""))
+	if got := buf.String(); got != "" {
+		t.Errorf("done output = %q, want empty", got)
+	}
+}
+
+func TestSystemMsg_MCPAuthRequiredInvokesHook(t *testing.T) {
+	var buf bytes.Buffer
+	var gotServer, gotURL string
+	o := &stdoutOutput{
+		writer: &buf,
+		mcpAuthRequired: func(server, url string) {
+			gotServer, gotURL = server, url
+		},
+	}
+
+	o.Write(mcpSMTLV("auth_required", "github", "https://example.com/authorize", ""))
+
+	if got := buf.String(); !strings.Contains(got, `[mcp: server "github" requires authorization]`) {
+		t.Errorf("output = %q, want auth_required status line", got)
+	}
+	if gotServer != "github" || gotURL != "https://example.com/authorize" {
+		t.Errorf("hook = (%q, %q), want (github, https://example.com/authorize)", gotServer, gotURL)
+	}
+}
+
+func TestSystemMsg_MCPDoneInvokesHook(t *testing.T) {
+	var buf bytes.Buffer
+	called := false
+	o := &stdoutOutput{
+		writer:    &buf,
+		onMCPDone: func() { called = true },
+	}
+	o.Write(mcpSMTLV("done", "", "", ""))
+	if !called {
+		t.Error("onMCPDone hook not invoked on done")
+	}
 }
