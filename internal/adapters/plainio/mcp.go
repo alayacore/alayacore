@@ -83,8 +83,9 @@ func (f *mcpAuthFlow) setInput(input io.Writer) {
 }
 
 // start begins the OAuth flow for one MCP server. It is invoked from the
-// output goroutine (with the output lock held), so it must not block or
-// print — all work happens in the spawned goroutine. A duplicate
+// output's deferred-hook queue — outside the output lock (see deferHook)
+// — so it must not block; all work happens in the spawned goroutine.
+// Printing is done in run to keep output ordering. A duplicate
 // auth_required for a server that already has a flow in flight is ignored.
 func (f *mcpAuthFlow) start(serverName, authURL string) {
 	f.mu.Lock()
