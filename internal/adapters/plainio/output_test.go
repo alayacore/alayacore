@@ -351,3 +351,19 @@ func TestSystemMsg_MCPConnectedInvokesHook(t *testing.T) {
 		t.Errorf("onMCPConnected = %q, want github", gotServer)
 	}
 }
+
+// TestSystemMsg_MCPHookCanPrint verifies the deferred-hook contract:
+// hooks run AFTER Write releases the output lock, so a hook may safely
+// call printLine (which re-acquires o.mu) without deadlocking. Under the
+// old lock-inline implementation this test hangs.
+func TestSystemMsg_MCPHookCanPrint(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{writer: &buf}
+	o.mcpAuthRequired = func(server, url string) {
+		o.printLine("[hook printed for %s]\n", server)
+	}
+	o.Write(mcpSMTLV("auth_required", "github", "https://example.com", ""))
+	if !strings.Contains(buf.String(), "[hook printed for github]") {
+		t.Errorf("output = %q, want hook print inside deferred hook", buf.String())
+	}
+}

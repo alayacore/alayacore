@@ -19,14 +19,22 @@ import (
 // Concurrency: the session writes from two goroutines (task and run),
 // so a mutex protects the buffer and the tag/history-ID state.
 // See doc.go for the full contract.
+//
+// Hooks: MCP auth events (mcpAuthRequired/onMCPConnected/onMCPDone) are
+// NOT executed while o.mu is held. handleSystemMCP registers them via
+// deferHook and Write runs them after unlocking — the same
+// register-then-consume pattern the terminal adapter implements with its
+// bubbletea message loop. This keeps hooks free to call printLine (which
+// takes o.mu) without deadlocking.
 type stdoutOutput struct {
 	writer        io.Writer
-	mu            sync.Mutex // protects buf, lastTag, lastHistoryID, seenDelta
+	mu            sync.Mutex // protects buf, lastTag, lastHistoryID, seenDelta, pendingHooks
 	buf           []byte
 	inProgress    atomic.Bool
 	lastTag       string
 	lastHistoryID string
 	seenDelta     map[string]bool // history IDs already printed via At/Ar deltas
+	pendingHooks  []func()        // hooks collected under mu, executed by Write after unlock
 
 	// MCP hooks, injected by the adapter. mcpAuthRequired is invoked when
 	// a server needs OAuth authorization; onMCPConnected fires when a
@@ -49,8 +57,21 @@ func (o *stdoutOutput) Write(p []byte) (int, error) {
 	o.mu.Lock()
 	o.buf = append(o.buf, p...)
 	o.processBuffer()
+	hooks := o.pendingHooks
+	o.pendingHooks = nil
 	o.mu.Unlock()
+	for _, h := range hooks {
+		h() // outside the lock, in FIFO order
+	}
 	return len(p), nil
+}
+
+// deferHook registers a callback to run after Write releases the output
+// lock. Must be called with o.mu held (from the processBuffer call
+// chain). Hooks run in registration order; each Write drains the queue.
+// Hooks must not block for long — they run inline in Write.
+func (o *stdoutOutput) deferHook(hook func()) {
+	o.pendingHooks = append(o.pendingHooks, hook)
 }
 
 // processBuffer parses and prints complete TLV frames from the buffer.
@@ -330,7 +351,7 @@ func (o *stdoutOutput) handleSystemMCP(data json.RawMessage) {
 	case "connected":
 		o.printMCPStatus("connected %q", m.Server)
 		if o.onMCPConnected != nil {
-			o.onMCPConnected(m.Server)
+			o.deferHook(func() { o.onMCPConnected(m.Server) })
 		}
 	case "failed":
 		o.printMCPStatus("failed %q: %s", m.Server, m.Error)
@@ -340,7 +361,7 @@ func (o *stdoutOutput) handleSystemMCP(data json.RawMessage) {
 		}
 		o.printMCPStatus("server %q requires authorization", m.Server)
 		if o.mcpAuthRequired != nil {
-			o.mcpAuthRequired(m.Server, m.URL)
+			o.deferHook(func() { o.mcpAuthRequired(m.Server, m.URL) })
 		}
 	case "auth_running":
 		o.printMCPStatus("waiting for authorization for %q…", m.Server)
@@ -349,7 +370,7 @@ func (o *stdoutOutput) handleSystemMCP(data json.RawMessage) {
 		// ("MCP servers initialized: ..."). Just release any running
 		// auth flow — this covers both natural completion and :mcp_cancel.
 		if o.onMCPDone != nil {
-			o.onMCPDone()
+			o.deferHook(o.onMCPDone)
 		}
 	}
 }
