@@ -69,7 +69,10 @@ func (o *stdoutOutput) Write(p []byte) (int, error) {
 // deferHook registers a callback to run after Write releases the output
 // lock. Must be called with o.mu held (from the processBuffer call
 // chain). Hooks run in registration order; each Write drains the queue.
-// Hooks must not block for long — they run inline in Write.
+// Ordering across Writes is preserved because MCP frames are written
+// sequentially by the session's run goroutine (task goroutines never
+// emit them), so hooks can never be registered concurrently out of
+// order. Hooks must not block for long — they run inline in Write.
 func (o *stdoutOutput) deferHook(hook func()) {
 	o.pendingHooks = append(o.pendingHooks, hook)
 }
