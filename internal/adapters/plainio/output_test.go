@@ -58,15 +58,6 @@ func TestCommandOut_ErrorRenders(t *testing.T) {
 	if !strings.Contains(got, "model_set: model not found: 99") {
 		t.Errorf("output = %q, want error message", got)
 	}
-	// A command failure must not poison the exit code.
-	if o.HasError() {
-		t.Error("command error should not set HasError (exit code)")
-	}
-	select {
-	case <-o.ErrorChannel():
-		t.Error("command error should not close ErrorChannel")
-	default:
-	}
 }
 
 func TestCommandOut_NoNameMappingSilent(t *testing.T) {
@@ -84,9 +75,6 @@ func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 	got := buf.String()
 	if got != "" {
 		t.Errorf("output = %q, want empty (no generic confirmation)", got)
-	}
-	if o.HasError() {
-		t.Error("success should not set HasError")
 	}
 }
 

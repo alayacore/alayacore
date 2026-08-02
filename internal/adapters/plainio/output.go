@@ -17,16 +17,13 @@ import (
 // It parses TLV messages and prints human-readable text to stdout.
 //
 // Concurrency: the session writes from two goroutines (task and run),
-// so a mutex protects the buffer, tag/history-ID state, and the close-once
-// guard for errorCh. See doc.go for the full contract.
+// so a mutex protects the buffer and the tag/history-ID state.
+// See doc.go for the full contract.
 type stdoutOutput struct {
 	writer        io.Writer
-	mu            sync.Mutex // protects buf, lastTag, lastHistoryID, errorClosed, seenDelta
+	mu            sync.Mutex // protects buf, lastTag, lastHistoryID, seenDelta
 	buf           []byte
 	inProgress    atomic.Bool
-	hasError      atomic.Bool
-	errorClosed   atomic.Bool // true once errorCh has been closed
-	errorCh       chan struct{}
 	lastTag       string
 	lastHistoryID string
 	seenDelta     map[string]bool // history IDs already printed via At/Ar deltas
@@ -44,7 +41,6 @@ type stdoutOutput struct {
 func newStdoutOutput() *stdoutOutput {
 	return &stdoutOutput{
 		writer:    os.Stdout,
-		errorCh:   make(chan struct{}),
 		seenDelta: make(map[string]bool),
 	}
 }
@@ -55,18 +51,6 @@ func (o *stdoutOutput) Write(p []byte) (int, error) {
 	o.processBuffer()
 	o.mu.Unlock()
 	return len(p), nil
-}
-
-// ErrorChannel returns a channel that is closed when a TagSystemMsg of
-// type "error" is received. It can be used in a select to react to errors
-// without a dedicated goroutine.
-func (o *stdoutOutput) ErrorChannel() <-chan struct{} {
-	return o.errorCh
-}
-
-// HasError returns true if any TagSystemMsg with type "error" was ever received.
-func (o *stdoutOutput) HasError() bool {
-	return o.hasError.Load()
 }
 
 // processBuffer parses and prints complete TLV frames from the buffer.
@@ -288,10 +272,6 @@ func (o *stdoutOutput) handleSystemMsg(value string) {
 			fmt.Fprintf(o.writer, "\n[error: %s]\n", m.Text)
 			o.lastTag = ""
 			o.lastHistoryID = ""
-			o.hasError.Store(true)
-			if o.errorClosed.CompareAndSwap(false, true) {
-				close(o.errorCh)
-			}
 		}
 	case protocol.MsgTypeNotify:
 		var m struct {
