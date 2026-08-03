@@ -88,7 +88,7 @@ func TestRunTaskPreservesPartialResultsOnError(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &ModelService{agent: agent},
+			modelService:  &modelService{agent: agent},
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{
@@ -96,7 +96,7 @@ func TestRunTaskPreservesPartialResultsOnError(t *testing.T) {
 			outputBroken: atomic.Bool{},
 		},
 		runState: runState{
-			taskEventCh: make(chan TaskEvent, 20),
+			taskEventCh: make(chan taskEvent, 20),
 		},
 	}
 	// runTaskNormal sends results to taskResultCh — read it.
@@ -141,7 +141,7 @@ func TestDoAutoSummarizePreservesContentsOnError(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &ModelService{agent: agent},
+			modelService:  &modelService{agent: agent},
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{
@@ -149,7 +149,7 @@ func TestDoAutoSummarizePreservesContentsOnError(t *testing.T) {
 			outputBroken: atomic.Bool{},
 		},
 		runState: runState{
-			taskEventCh: make(chan TaskEvent, 20),
+			taskEventCh: make(chan taskEvent, 20),
 		},
 	}
 	contents := []llm.ContentPart{
@@ -185,7 +185,7 @@ func TestDoAutoSummarizeBuildSummaryFails(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &ModelService{agent: agent},
+			modelService:  &modelService{agent: agent},
 			SessionConfig: SessionConfig{NoDelta: true},
 		},
 		sharedState: sharedState{
@@ -193,7 +193,7 @@ func TestDoAutoSummarizeBuildSummaryFails(t *testing.T) {
 			outputBroken: atomic.Bool{},
 		},
 		runState: runState{
-			taskEventCh: make(chan TaskEvent, 20),
+			taskEventCh: make(chan taskEvent, 20),
 		},
 	}
 	contents := []llm.ContentPart{

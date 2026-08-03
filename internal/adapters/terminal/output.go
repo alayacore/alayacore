@@ -39,7 +39,6 @@ import (
 	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/commands"
-	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -530,7 +529,7 @@ func (to *outputWriter) handleSystemModel(data json.RawMessage) {
 
 func (to *outputWriter) handleSystemModelList(data json.RawMessage) {
 	var m struct {
-		Models []config.ModelConfig `json:"models"`
+		Models []protocol.ModelInfo `json:"models"`
 	}
 	if json.Unmarshal(data, &m) != nil {
 		return

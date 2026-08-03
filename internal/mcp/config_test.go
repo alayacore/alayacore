@@ -322,7 +322,7 @@ server: vercel
 url: https://mcp.vercel.com
 ---
 `
-	configs, errs := ParseServerConfigs(content)
+	configs, errs := parseServerConfigs(content, "mcp.conf")
 
 	if len(configs) != 2 {
 		t.Fatalf("expected 2 configs (exa + vercel), got %d: %v", len(configs), configs)

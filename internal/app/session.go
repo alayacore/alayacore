@@ -78,10 +78,8 @@ func StartSession(cfg *Config, output io.Writer, input io.Reader) (*agentpkg.Ses
 	}
 
 	// Collect runtime config parse errors (typos in runtime.conf).
-	if rm := session.RuntimeManager(); rm != nil {
-		for _, w := range rm.GetLoadErrors() {
-			_ = protocol.WriteSystemMsg(output, protocol.ErrorMsg{Text: w})
-		}
+	for _, w := range session.GetRuntimeLoadErrors() {
+		_ = protocol.WriteSystemMsg(output, protocol.ErrorMsg{Text: w})
 	}
 
 	// Display startup errors (theme, runtime config, MCP config) as system messages.

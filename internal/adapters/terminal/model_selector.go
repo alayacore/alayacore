@@ -10,12 +10,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/alayacore/alayacore/internal/config"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 type searchableModel struct {
-	config.ModelConfig
+	protocol.ModelInfo
 	searchStr string
 }
 
@@ -57,11 +56,11 @@ func newFilterInput(placeholder string) InputField {
 
 // --- Model Management ---
 
-func (ms ModelSelector) GetActiveModel() *config.ModelConfig {
+func (ms ModelSelector) GetActiveModel() *protocol.ModelInfo {
 	if ms.activeModel == nil {
 		return nil
 	}
-	return &ms.activeModel.ModelConfig
+	return &ms.activeModel.ModelInfo
 }
 
 func (ms ModelSelector) WithActiveModel(m *searchableModel) ModelSelector {
@@ -69,10 +68,10 @@ func (ms ModelSelector) WithActiveModel(m *searchableModel) ModelSelector {
 	return ms
 }
 
-func (ms ModelSelector) GetModels() []config.ModelConfig {
-	result := make([]config.ModelConfig, len(ms.models))
+func (ms ModelSelector) GetModels() []protocol.ModelInfo {
+	result := make([]protocol.ModelInfo, len(ms.models))
 	for i := range ms.models {
-		result[i] = ms.models[i].ModelConfig
+		result[i] = ms.models[i].ModelInfo
 	}
 	return result
 }
@@ -86,7 +85,7 @@ func (ms ModelSelector) WithModels(models []searchableModel) ModelSelector {
 	return ms.updateFilteredModels()
 }
 
-func (ms ModelSelector) LoadModels(models []config.ModelConfig, activeID int) (ModelSelector, tea.Cmd) {
+func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (ModelSelector, tea.Cmd) {
 	if ms.modelsUnchangedSinceLastLoad(models) {
 		for i := range ms.models {
 			if ms.models[i].ID == activeID {
@@ -107,8 +106,8 @@ func (ms ModelSelector) LoadModels(models []config.ModelConfig, activeID int) (M
 
 	for i, m := range models {
 		ms.models[i] = searchableModel{
-			ModelConfig: m,
-			searchStr:   buildSearchStr(&searchableModel{ModelConfig: m}),
+			ModelInfo: m,
+			searchStr: buildSearchStr(&searchableModel{ModelInfo: m}),
 		}
 		if m.ID == activeID {
 			ms.activeModel = &ms.models[i]
@@ -125,7 +124,7 @@ func (ms ModelSelector) LoadModels(models []config.ModelConfig, activeID int) (M
 	return ms, func() tea.Msg { return nil }
 }
 
-func (ms ModelSelector) modelsUnchangedSinceLastLoad(models []config.ModelConfig) bool {
+func (ms ModelSelector) modelsUnchangedSinceLastLoad(models []protocol.ModelInfo) bool {
 	if len(models) != len(ms.models) || len(models) != ms.lastModelCount {
 		return false
 	}

@@ -69,6 +69,21 @@ func WriteSystemMsg(w io.Writer, msg SystemMsg) error {
 	return tlv.WriteTLV(w, tlv.TagSystemMsg, string(env))
 }
 
+// ModelInfo is the wire format for a model in system messages (model_list).
+// It mirrors the agent's ModelConfig JSON tags exactly (including the
+// absence of omitempty) so the wire bytes stay identical to the previous
+// format.
+type ModelInfo struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	ProtocolType string `json:"protocol_type"`
+	BaseURL      string `json:"base_url"`
+	APIKey       string `json:"api_key"`
+	ModelName    string `json:"model_name"`
+	ContextLimit int    `json:"context_limit"`
+	MaxTokens    int    `json:"max_tokens"`
+}
+
 // ToolInputData is the JSON payload for TagAssistantF (AF).
 // A frame with a non-empty Name and empty Input is a preliminary
 // "start" frame that announces the tool name. All other frames

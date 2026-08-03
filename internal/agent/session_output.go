@@ -6,14 +6,14 @@ package agent
 // Broadcasting overview:
 //
 //   Guaranteed broadcasts (critical state transitions):
-//     handleTaskEvent(StepStartEvent)  → sendSystemInfo(SystemInfoTask)  — step counter
-//     handleTaskEvent(StepFinishEvent) → sendSystemInfo(SystemInfoTask)  — token count update
-//     handleTaskEvent(SetContextTokensEvent) → sendSystemInfo(SystemInfoTask) — summary correction
-//     handleTaskDone()                 → sendSystemInfo(SystemInfoTask)  — task completion
-//     handleModelSet/ModelLoad         → sendSystemInfo(SystemInfoModel) — model switch
-//     SetReasoningLevel()              → sendSystemInfo(SystemInfoReasoning)
-//     SetVideoConfig()                 → sendSystemInfo(SystemInfoVideoConfig)
-//     handleThemeSet()                 → sendSystemInfo(SystemInfoTheme)
+//     handleTaskEvent(stepStartEvent)  → sendSystemInfo(systemInfoTask)  — step counter
+//     handleTaskEvent(stepFinishEvent) → sendSystemInfo(systemInfoTask)  — token count update
+//     handleTaskEvent(setContextTokensEvent) → sendSystemInfo(systemInfoTask) — summary correction
+//     handleTaskDone()                 → sendSystemInfo(systemInfoTask)  — task completion
+//     handleModelSet/ModelLoad         → sendSystemInfo(systemInfoModel) — model switch
+//     SetReasoningLevel()              → sendSystemInfo(systemInfoReasoning)
+//     SetVideoConfig()                 → sendSystemInfo(systemInfoVideoConfig)
+//     handleThemeSet()                 → sendSystemInfo(systemInfoTheme)
 //
 // All state reads in sendSystemInfo are from fields owned by run()
 // or from atomic fields — no mutex needed.
@@ -31,17 +31,17 @@ import (
 	"github.com/alayacore/alayacore/internal/version"
 )
 
-// SystemInfoKind selects which state to broadcast to the adapter.
+// systemInfoKind selects which state to broadcast to the adapter.
 // Used instead of string literals to avoid silent typos.
-type SystemInfoKind int
+type systemInfoKind int
 
 const (
-	SystemInfoAll         SystemInfoKind = iota // all state
-	SystemInfoTask                              // task progress (step, in_progress)
-	SystemInfoModel                             // active model
-	SystemInfoTheme                             // active theme
-	SystemInfoReasoning                         // reasoning level
-	SystemInfoVideoConfig                       // video FPS/resolution
+	systemInfoAll         systemInfoKind = iota // all state
+	systemInfoTask                              // task progress (step, in_progress)
+	systemInfoModel                             // active model
+	systemInfoTheme                             // active theme
+	systemInfoReasoning                         // reasoning level
+	systemInfoVideoConfig                       // video FPS/resolution
 )
 
 // ============================================================================
@@ -92,9 +92,9 @@ func (s *Session) writeNotifyf(format string, args ...any) {
 	s.writeNotify(fmt.Sprintf(format, args...))
 }
 
-// writeCmdResult writes a CO (Command Output) frame for a command call.
+// writeCmdResult writes a CO (command Output) frame for a command call.
 // On success, result is serialized into Output (nil → JSON null).
-// On error, Output carries a uniform CmdError object; CmdErr codes are
+// On error, Output carries a uniform CmdError object; cmdErr codes are
 // preserved, plain errors default to "ERROR". An empty id is legal and
 // means the error could not be correlated to a request.
 func (s *Session) writeCmdResult(id string, result any, err error) {
@@ -104,7 +104,7 @@ func (s *Session) writeCmdResult(id string, result any, err error) {
 	case err != nil:
 		msg.IsError = true
 		code := "ERROR"
-		var ce *CmdErr
+		var ce *cmdErr
 		if errors.As(err, &ce) {
 			code = ce.Code
 		}
@@ -140,9 +140,9 @@ func (s *Session) writeCmdResult(id string, result any, err error) {
 
 // sendSystemInfo sends one or more TagSystemMsg frames to the adapter.
 // Must only be called from the run() goroutine.
-func (s *Session) sendSystemInfo(kind SystemInfoKind) {
+func (s *Session) sendSystemInfo(kind systemInfoKind) {
 	switch kind {
-	case SystemInfoAll:
+	case systemInfoAll:
 		s.sendMessageVersionMsg()
 		s.sendTaskMsg()
 		s.sendModelListMsg()
@@ -153,33 +153,33 @@ func (s *Session) sendSystemInfo(kind SystemInfoKind) {
 		}
 		s.sendReasoningMsg()
 		s.sendVideoConfigMsg()
-	case SystemInfoTask:
+	case systemInfoTask:
 		s.sendTaskMsg()
-	case SystemInfoModel:
+	case systemInfoModel:
 		s.sendModelMsg()
-	case SystemInfoTheme:
+	case systemInfoTheme:
 		if !s.NoTheme {
 			s.sendThemeMsg()
 		}
-	case SystemInfoReasoning:
+	case systemInfoReasoning:
 		s.sendReasoningMsg()
-	case SystemInfoVideoConfig:
+	case systemInfoVideoConfig:
 		s.sendVideoConfigMsg()
 	}
 }
 
 func (s *Session) sendMessageVersionMsg() {
-	s.writeSystemMsg(MessageVersionMsg{MessageVersion: MessageVersion, CoreVersion: version.Version})
+	s.writeSystemMsg(messageVersionMsg{MessageVersion: messageVersion, CoreVersion: version.Version})
 }
 
 func (s *Session) sendTaskMsg() {
-	// Command ID: prefer the running task's; fall back to the just-finished
+	// command ID: prefer the running task's; fall back to the just-finished
 	// task's (activeTask is nil during the completion broadcast).
 	cmdID := s.taskCommandID
 	if s.activeTask != nil {
 		cmdID = s.activeTask.commandID
 	}
-	s.writeSystemMsg(TaskMsg{
+	s.writeSystemMsg(taskMsg{
 		InProgress:  s.activeTask != nil,
 		CurrentStep: s.activeTaskStep(),
 		MaxSteps:    s.MaxSteps,
@@ -191,7 +191,7 @@ func (s *Session) sendTaskMsg() {
 
 func (s *Session) sendModelMsg() {
 	ms := s.modelService
-	s.writeSystemMsg(ModelMsg{
+	s.writeSystemMsg(modelMsg{
 		ActiveModelID:   ms.ActiveModelID(),
 		ActiveModelName: ms.ActiveModelName(),
 		ContextLimit:    ms.contextLimit,
@@ -204,8 +204,8 @@ func (s *Session) sendModelListMsg() {
 	if !ms.HasModels() {
 		return
 	}
-	s.writeSystemMsg(ModelListMsg{
-		Models: ms.GetModels(),
+	s.writeSystemMsg(modelListMsg{
+		Models: toModelInfos(ms.GetModels()),
 	})
 }
 
@@ -215,18 +215,18 @@ func (s *Session) sendThemeMsg() {
 		return
 	}
 	name := rm.GetActiveTheme()
-	s.writeSystemMsg(ThemeMsg{Name: name})
+	s.writeSystemMsg(themeMsg{Name: name})
 }
 
 // loadThemeFromFile loads a theme from a file path and returns its info.
 // Returns parse errors from theme loading (unknown fields, type mismatches).
-func loadThemeFromFile(path string) (ThemeInfo, []string, bool) {
+func loadThemeFromFile(path string) (themeInfo, []string, bool) {
 	name := strings.TrimSuffix(filepath.Base(path), ".conf")
 	t, errs, err := theme.LoadTheme(path)
 	if err != nil {
-		return ThemeInfo{}, nil, false
+		return themeInfo{}, nil, false
 	}
-	return ThemeInfo{Name: name, Theme: t}, errs, true
+	return themeInfo{Name: name, Theme: t}, errs, true
 }
 
 // sendThemeListMsg sends the full list of available themes with content.
@@ -241,7 +241,7 @@ func (s *Session) sendThemeListMsg() {
 	if err != nil {
 		return
 	}
-	infos := make([]ThemeInfo, 0, len(confs))
+	infos := make([]themeInfo, 0, len(confs))
 	for _, path := range confs {
 		if info, errs, ok := loadThemeFromFile(path); ok {
 			infos = append(infos, info)
@@ -251,14 +251,14 @@ func (s *Session) sendThemeListMsg() {
 		}
 	}
 	if len(infos) > 0 {
-		s.writeSystemMsg(ThemeListMsg{Themes: infos})
+		s.writeSystemMsg(themeListMsg{Themes: infos})
 	}
 }
 
 func (s *Session) sendReasoningMsg() {
-	s.writeSystemMsg(ReasoningMsg{Level: s.modelService.reasoningLevel})
+	s.writeSystemMsg(reasoningMsg{Level: s.modelService.reasoningLevel})
 }
 
 func (s *Session) sendVideoConfigMsg() {
-	s.writeSystemMsg(VideoConfigMsg{FPS: s.modelService.videoFPS, Res: s.modelService.videoRes})
+	s.writeSystemMsg(videoConfigMsg{FPS: s.modelService.videoFPS, Res: s.modelService.videoRes})
 }

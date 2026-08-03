@@ -3,7 +3,7 @@ package terminal
 import (
 	"io"
 
-	"github.com/alayacore/alayacore/internal/config"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
@@ -47,7 +47,7 @@ type StatusSnapshot struct {
 
 // ModelSnapshot holds a consistent point-in-time view of model state.
 type ModelSnapshot struct {
-	Models     []config.ModelConfig
+	Models     []protocol.ModelInfo
 	ActiveID   int
 	ActiveName string
 }

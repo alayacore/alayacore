@@ -69,12 +69,12 @@ func DefaultTheme() *Theme {
 	return &cpy
 }
 
-// ParseTheme parses theme content into a Theme, starting from the
+// parseTheme parses theme content into a Theme, starting from the
 // defaults and overriding with config values. Returns any parse errors
 // (unknown fields, type mismatches) — the theme is still usable with
 // default values for the unrecognized fields. Errors are bare (no file
 // prefix); callers that know the source file should prefix them.
-func ParseTheme(content string) (*Theme, []string) {
+func parseTheme(content string) (*Theme, []string) {
 	var errs []string
 	theme := DefaultTheme()
 	if parseErrs := config.ParseKeyValue(content, theme); len(parseErrs) > 0 {
@@ -95,7 +95,7 @@ func LoadTheme(path string) (*Theme, []string, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open theme file: %w", err)
 	}
-	th, errs := ParseTheme(string(data))
+	th, errs := parseTheme(string(data))
 	for i := range errs {
 		errs[i] = fmt.Sprintf("%s: %s", filepath.Base(path), errs[i])
 	}

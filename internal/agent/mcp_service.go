@@ -16,9 +16,9 @@ import (
 	"github.com/alayacore/alayacore/internal/protocol"
 )
 
-// MCPService manages MCP server initialization lifecycle.
+// mcpService manages MCP server initialization lifecycle.
 // Thread-safe: all public methods are safe to call from any goroutine.
-type MCPService struct {
+type mcpService struct {
 	init  *mcp.Init
 	ready atomic.Bool
 
@@ -27,10 +27,10 @@ type MCPService struct {
 	output io.Writer
 }
 
-// NewMCPService creates an MCPService. If init is nil, MCP is not configured
+// newMCPService creates an mcpService. If init is nil, MCP is not configured
 // and IsReady() always returns true.
-func NewMCPService(init *mcp.Init, output io.Writer) *MCPService {
-	s := &MCPService{
+func newMCPService(init *mcp.Init, output io.Writer) *mcpService {
+	s := &mcpService{
 		init:   init,
 		output: output,
 	}
@@ -41,7 +41,7 @@ func NewMCPService(init *mcp.Init, output io.Writer) *MCPService {
 }
 
 // Start begins MCP initialization. No-op if MCP is not configured.
-func (m *MCPService) Start(ctx context.Context) {
+func (m *mcpService) Start(ctx context.Context) {
 	if m.init != nil {
 		m.init.Start(ctx)
 	}
@@ -49,7 +49,7 @@ func (m *MCPService) Start(ctx context.Context) {
 
 // Events returns the channel of MCP initialization events.
 // Returns nil if MCP is not configured.
-func (m *MCPService) Events() <-chan mcp.InitEvent {
+func (m *mcpService) Events() <-chan mcp.InitEvent {
 	if m.init == nil {
 		return nil
 	}
@@ -57,17 +57,17 @@ func (m *MCPService) Events() <-chan mcp.InitEvent {
 }
 
 // IsReady returns true if MCP initialization has completed (or was not configured).
-func (m *MCPService) IsReady() bool {
+func (m *mcpService) IsReady() bool {
 	return m.ready.Load()
 }
 
 // HasInit returns true if MCP servers are configured.
-func (m *MCPService) HasInit() bool {
+func (m *mcpService) HasInit() bool {
 	return m.init != nil
 }
 
 // Cancel aborts the entire MCP initialization.
-func (m *MCPService) Cancel() {
+func (m *mcpService) Cancel() {
 	if m.init != nil {
 		m.init.Cancel()
 	}
@@ -78,7 +78,7 @@ func (m *MCPService) Cancel() {
 // code == "" means user declined; code != "" means confirmed + here's the code.
 // iss is the RFC 9207 issuer parameter from the authorization response,
 // if the callback carried one (empty on the manual path).
-func (m *MCPService) SendAuthCodeResult(server, code, redirectURI, iss string) bool {
+func (m *mcpService) SendAuthCodeResult(server, code, redirectURI, iss string) bool {
 	if m.init == nil {
 		return false
 	}
@@ -89,9 +89,9 @@ func (m *MCPService) SendAuthCodeResult(server, code, redirectURI, iss string) b
 // Event Handling
 // ============================================================================
 
-// MCPEventResult describes what the Session should do after processing an event.
-type MCPEventResult struct {
-	SystemMsg *MCPMsgData
+// mcpEventResult describes what the Session should do after processing an event.
+type mcpEventResult struct {
+	SystemMsg *mcpMsgData
 
 	ApplyResult bool
 	Tools       []llm.Tool
@@ -101,8 +101,8 @@ type MCPEventResult struct {
 	Aborted bool
 }
 
-// MCPMsgData carries the data for an MCP system message.
-type MCPMsgData struct {
+// mcpMsgData carries the data for an MCP system message.
+type mcpMsgData struct {
 	Status string
 	Server string
 	URL    string
@@ -112,7 +112,7 @@ type MCPMsgData struct {
 // HandleEvent processes a single MCP initialization event.
 // It updates internal state (mcpReady) and returns the actions the Session
 // should take (send system messages, apply tools, etc.).
-func (m *MCPService) HandleEvent(evt *mcp.InitEvent) *MCPEventResult {
+func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 	if m.ready.Load() {
 		// Already done — ignore stale events.
 		return nil
@@ -120,16 +120,16 @@ func (m *MCPService) HandleEvent(evt *mcp.InitEvent) *MCPEventResult {
 
 	switch evt.Type {
 	case mcp.InitConnecting, mcp.InitConnected:
-		return &MCPEventResult{
-			SystemMsg: &MCPMsgData{
+		return &mcpEventResult{
+			SystemMsg: &mcpMsgData{
 				Status: string(evt.Type),
 				Server: evt.Server,
 			},
 		}
 
 	case mcp.InitFailed:
-		return &MCPEventResult{
-			SystemMsg: &MCPMsgData{
+		return &mcpEventResult{
+			SystemMsg: &mcpMsgData{
 				Status: string(evt.Type),
 				Server: evt.Server,
 				Error:  evt.Error,
@@ -137,8 +137,8 @@ func (m *MCPService) HandleEvent(evt *mcp.InitEvent) *MCPEventResult {
 		}
 
 	case mcp.InitAuthConfirm:
-		return &MCPEventResult{
-			SystemMsg: &MCPMsgData{
+		return &mcpEventResult{
+			SystemMsg: &mcpMsgData{
 				Status: "auth_required",
 				Server: evt.Server,
 				URL:    evt.URL,
@@ -146,8 +146,8 @@ func (m *MCPService) HandleEvent(evt *mcp.InitEvent) *MCPEventResult {
 		}
 
 	case mcp.InitAuthRunning:
-		return &MCPEventResult{
-			SystemMsg: &MCPMsgData{
+		return &mcpEventResult{
+			SystemMsg: &mcpMsgData{
 				Status: string(evt.Type),
 				Server: evt.Server,
 				Error:  evt.Error,
@@ -156,8 +156,8 @@ func (m *MCPService) HandleEvent(evt *mcp.InitEvent) *MCPEventResult {
 
 	case mcp.InitDone:
 		m.ready.Store(true)
-		return &MCPEventResult{
-			SystemMsg:   &MCPMsgData{Status: "done"},
+		return &mcpEventResult{
+			SystemMsg:   &mcpMsgData{Status: "done"},
 			ApplyResult: true,
 			Tools:       evt.Tools,
 			SysFragment: evt.SysFragment,
@@ -166,8 +166,8 @@ func (m *MCPService) HandleEvent(evt *mcp.InitEvent) *MCPEventResult {
 
 	case "canceled":
 		m.ready.Store(true)
-		return &MCPEventResult{
-			SystemMsg: &MCPMsgData{Status: "done"},
+		return &mcpEventResult{
+			SystemMsg: &mcpMsgData{Status: "done"},
 			Aborted:   true,
 		}
 	}
@@ -178,18 +178,18 @@ func (m *MCPService) HandleEvent(evt *mcp.InitEvent) *MCPEventResult {
 // MarkAborted is called when the MCP events channel closes unexpectedly
 // (without a clean "done" or "canceled" event). Sets mcpReady to true
 // so the user can proceed even if MCP init was incomplete.
-func (m *MCPService) MarkAborted() {
+func (m *mcpService) MarkAborted() {
 	if !m.ready.Load() {
 		m.ready.Store(true)
 	}
 }
 
 // sendSystemMsg writes an MCP system message to the output writer.
-func (m *MCPService) sendSystemMsg(data *MCPMsgData) {
+func (m *mcpService) sendSystemMsg(data *mcpMsgData) {
 	if m.output == nil {
 		return
 	}
-	_ = protocol.WriteSystemMsg(m.output, MCPMsg{
+	_ = protocol.WriteSystemMsg(m.output, mcpMsg{
 		Status: data.Status,
 		Server: data.Server,
 		URL:    data.URL,

@@ -42,7 +42,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart) 
 
 	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
 		fullContents = cleanIncompleteToolInputs(contents)
-		s.sendEvent(StepFinishEvent{
+		s.sendEvent(stepFinishEvent{
 			InputTokens:         usage.InputTokens,
 			OutputTokens:        usage.OutputTokens,
 			CacheReadTokens:     usage.CacheReadTokens,
@@ -225,7 +225,7 @@ func (s *Session) needsToolConfirm(name string) bool {
 
 // handleStepStart handles the start of a new agent step.
 func (s *Session) handleStepStart(step int) error {
-	s.sendEvent(StepStartEvent{Step: step})
+	s.sendEvent(stepStartEvent{Step: step})
 	return nil
 }
 
@@ -345,7 +345,7 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 		},
 	})
 	if outputTokens > 0 {
-		s.sendEvent(SetContextTokensEvent{Tokens: outputTokens})
+		s.sendEvent(setContextTokensEvent{Tokens: outputTokens})
 	}
 	s.writeNotify("Summarized conversation")
 	return result, nil

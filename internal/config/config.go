@@ -24,7 +24,7 @@ const (
 
 // Agent behavior defaults.
 const (
-	DefaultMaxSteps = 0 // 0 means no limit; only bounded when user passes --max-steps
+	defaultMaxSteps = 0 // 0 means no limit; only bounded when user passes --max-steps
 
 	// boolFalse is used for flag default comparison in printDefaults.
 	boolFalse = "false"
@@ -154,7 +154,7 @@ func Parse() *Settings {
 	// Agent behavior
 	systemPrompt := &stringSlice{}
 	flag.Var(systemPrompt, "system", "Extra `system-prompt` (can be specified multiple times, will be appended to default)")
-	maxSteps := flag.Int("max-steps", DefaultMaxSteps, "Maximum agent loop steps (0 = no limit)")
+	maxSteps := flag.Int("max-steps", defaultMaxSteps, "Maximum agent loop steps (0 = no limit)")
 	autoSummarize := flag.Int("auto-summarize", 0, "Enable auto-summarization at given threshold percentage (e.g. --auto-summarize=65, 0 = disabled)")
 	toolConfirm := flag.String("tool-confirm", "", "Comma-separated tool `names` requiring user confirmation (e.g. execute_command,search_content)")
 	noDelta := flag.Bool("no-delta", false, "Disable delta frames (At, Ar, Af); use complete frames only")

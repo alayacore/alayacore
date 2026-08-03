@@ -17,10 +17,10 @@ import (
 // Load / Save — Session wrappers
 // ============================================================================
 
-// LoadSession loads a session from a file.
-// Delegates to PersistenceService for parsing.
-func LoadSession(path string) (*SessionData, error) {
-	return defaultPersistence.LoadSession(path)
+// loadSession loads a session from a file.
+// Delegates to persistenceService for parsing.
+func loadSession(path string) (*sessionData, error) {
+	return defaultPersistence.loadSession(path)
 }
 
 // saveContentToFile saves the current session's contents with its metadata.
@@ -33,11 +33,11 @@ func (s *Session) saveContentToFile(path string, contents []llm.ContentPart) err
 		videoFPS = s.modelService.videoFPS
 		videoRes = s.modelService.videoRes
 	}
-	meta := SessionMeta{
+	meta := sessionMeta{
 		CreatedAt:      s.CreatedAt,
 		UpdatedAt:      time.Now(),
 		ActiveModel:    s.activeModelName(),
-		MessageVersion: MessageVersion,
+		MessageVersion: messageVersion,
 		ReasoningLevel: reasoningLevel,
 		ContextTokens:  s.ContextTokens,
 		VideoFPS:       videoFPS,

@@ -36,13 +36,13 @@ func TestEscapeQuoted(t *testing.T) {
 // --- formatRuntimeConfig round-trip test ---
 
 func TestFormatRuntimeConfig_RoundTrip(t *testing.T) {
-	cfg := RuntimeConfig{
+	cfg := runtimeConfig{
 		ActiveModel: `model with "quotes" and \backslash\`,
 		ActiveTheme: "theme\nwith\nnewlines",
 	}
 
 	formatted := formatRuntimeConfig(cfg)
-	parsed, _ := parseRuntimeConfig(formatted)
+	parsed, _ := parseRuntimeConfig(formatted, "runtime.conf")
 
 	if parsed.ActiveModel != cfg.ActiveModel {
 		t.Errorf("ActiveModel round-trip failed: got %q, want %q", parsed.ActiveModel, cfg.ActiveModel)
@@ -55,8 +55,8 @@ func TestFormatRuntimeConfig_RoundTrip(t *testing.T) {
 // --- formatFrontmatter round-trip test ---
 
 func TestFormatFrontmatter_RoundTrip(t *testing.T) {
-	meta := SessionMeta{
-		MessageVersion: MessageVersion,
+	meta := sessionMeta{
+		MessageVersion: messageVersion,
 		ActiveModel:    `model "name" \\ thing`,
 		ReasoningLevel: 1,
 		ContextTokens:  12345,
@@ -86,7 +86,7 @@ func TestRuntimeManager_SpecialChars_RoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	runtimePath := tmpDir + "/runtime.conf"
 
-	rm := NewRuntimeManager(runtimePath)
+	rm := newRuntimeManager(runtimePath)
 
 	specialName := `model "quoted" \slash\`
 	if err := rm.SetActiveModel(specialName); err != nil {
@@ -94,7 +94,7 @@ func TestRuntimeManager_SpecialChars_RoundTrip(t *testing.T) {
 	}
 
 	// Create a fresh manager and load from the same file
-	rm2 := NewRuntimeManager(runtimePath)
+	rm2 := newRuntimeManager(runtimePath)
 	got := rm2.GetActiveModel()
 	if got != specialName {
 		t.Errorf("round-trip failed: got %q, want %q", got, specialName)
@@ -106,14 +106,14 @@ func TestRuntimeManager_NewlineInModel_RoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	runtimePath := tmpDir + "/runtime.conf"
 
-	rm := NewRuntimeManager(runtimePath)
+	rm := newRuntimeManager(runtimePath)
 
 	nameWithNewline := "line1\nline2"
 	if err := rm.SetActiveModel(nameWithNewline); err != nil {
 		t.Fatalf("SetActiveModel failed: %v", err)
 	}
 
-	rm2 := NewRuntimeManager(runtimePath)
+	rm2 := newRuntimeManager(runtimePath)
 	got := rm2.GetActiveModel()
 	if got != nameWithNewline {
 		t.Errorf("round-trip failed: got %q, want %q", got, nameWithNewline)
@@ -125,8 +125,8 @@ func TestRuntimeManager_NewlineInModel_RoundTrip(t *testing.T) {
 
 // Verify formatFrontmatter doesn't produce broken output for special chars
 func TestFormatFrontmatter_NoBrokenOutput(t *testing.T) {
-	meta := SessionMeta{
-		MessageVersion: MessageVersion,
+	meta := sessionMeta{
+		MessageVersion: messageVersion,
 		ActiveModel:    "has\nnewlines",
 		ReasoningLevel: 1,
 	}

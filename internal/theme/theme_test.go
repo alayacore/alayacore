@@ -14,7 +14,7 @@ primary: #ffffff
 error: #ff0000
 unknown_field: ignored
 `
-	th, errs := ParseTheme(content)
+	th, errs := parseTheme(content)
 
 	if th.Primary != "#ffffff" {
 		t.Errorf("Expected Primary #ffffff, got %s", th.Primary)
@@ -31,7 +31,7 @@ unknown_field: ignored
 	}
 	// Pure-content parser: errors are bare, no file prefix.
 	if strings.Contains(errs[0], "theme.conf:") {
-		t.Errorf("ParseTheme errors must be bare (no file prefix), got: %s", errs[0])
+		t.Errorf("parseTheme errors must be bare (no file prefix), got: %s", errs[0])
 	}
 	if !strings.Contains(errs[0], "unknown_field") {
 		t.Errorf("expected error mentioning unknown_field, got: %s", errs[0])
@@ -97,7 +97,7 @@ primary: #333333
 		t.Error("expected parse errors for unknown fields, got none")
 	}
 	// Errors must be prefixed with the actual theme file name so the
-	// offending file can be identified (ParseTheme returns bare errors).
+	// offending file can be identified (parseTheme returns bare errors).
 	for _, e := range errs {
 		if !strings.HasPrefix(e, "unknown-fields.conf: ") {
 			t.Errorf("expected error prefixed with theme file name, got: %s", e)

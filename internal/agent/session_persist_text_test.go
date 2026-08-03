@@ -39,9 +39,9 @@ func TestSessionSavePreservesTextWithToolCalls(t *testing.T) {
 		},
 	}
 
-	data := &SessionData{
-		SessionMeta: SessionMeta{
-			MessageVersion: MessageVersion,
+	data := &sessionData{
+		sessionMeta: sessionMeta{
+			MessageVersion: messageVersion,
 		},
 		Contents: contents,
 	}

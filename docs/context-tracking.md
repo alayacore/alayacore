@@ -17,22 +17,22 @@ Provider API response
     → Provider emits StreamEvent{Usage: ...}
       → Agent.streamEvents merges partial usage into stepUsage
         → Agent fires OnStepFinish(messages, stepUsage) callback
-          → Session.sendEvent(StepFinishEvent{...})
+          → session.sendEvent(stepFinishEvent{...})
             → handleTaskEvent in run() goroutine
               → ContextTokens = InputTokens + OutputTokens + CacheReadTokens + CacheCreationTokens (overwrite, only if non-zero)
 ```
 
-Context tracking is handled by the `handleTaskEvent` method in `session_loop.go`, which processes `StepFinishEvent` events from the task goroutine:
+Context tracking is handled by the `handleTaskEvent` method in `session_loop.go`, which processes `stepFinishEvent` events from the task goroutine:
 
 ```go
-case StepFinishEvent:
+case stepFinishEvent:
 	newContext := e.InputTokens + e.OutputTokens + e.CacheReadTokens + e.CacheCreationTokens
 	if newContext > 0 {
 		s.ContextTokens = newContext
 	}
 ```
 
-Note: `StepFinishEvent` carries only token usage metadata. The final message
+Note: `stepFinishEvent` carries only token usage metadata. The final message
 state is returned separately via `taskResultCh` on task completion.
 
 - **Overwrite (`Store`), not accumulate (`Add`).** Each API call's `InputTokens` already represents the *entire conversation history* sent in that request. Accumulating would double-count. `OutputTokens` is included because the model's `ContextLimit` is a combined input+output window, and the latest output is part of the conversation that will be sent in the next request.
@@ -43,7 +43,7 @@ state is returned separately via `taskResultCh` on task completion.
 
 ## Multi-Step Tool Calls
 
-When the agent loop runs multiple steps (tool call → tool result → next step), `handleTaskEvent` is called once per step via `StepFinishEvent`. Each call overwrites `ContextTokens` with that step's full-context measurement (input + output + cache):
+When the agent loop runs multiple steps (tool call → tool result → next step), `handleTaskEvent` is called once per step via `stepFinishEvent`. Each call overwrites `ContextTokens` with that step's full-context measurement (input + output + cache):
 
 ```
 Step 1 (tool call):     InputTokens=500, OutputTokens=100, CacheRead=8000 → ContextTokens = 8600
@@ -98,13 +98,13 @@ The `:summarize` command is a **task command** — it runs in a task goroutine a
    - **Next** — Ordered actions to resume
 2. Calls the LLM to generate the summary
 3. **Replaces the entire conversation history** with the summary (a "Continue" user message followed by the assistant's summary response)
-4. Resets `ContextTokens` to the summary's output token count via `SetContextTokensEvent` (a dedicated event that corrects the value after the `StepFinishEvent` from `processPrompt` has been processed)
+4. Resets `ContextTokens` to the summary's output token count via `setContextTokensEvent` (a dedicated event that corrects the value after the `stepFinishEvent` from `processPrompt` has been processed)
 
 ### ⚠️ Event ordering
 
 During summarization, two task events are sent to the `run()` goroutine:
-1. `StepFinishEvent` from `processPrompt` — sets `ContextTokens` to the full old-context token count
-2. `SetContextTokensEvent` from `summarize` — corrects `ContextTokens` to the summary size
+1. `stepFinishEvent` from `processPrompt` — sets `ContextTokens` to the full old-context token count
+2. `setContextTokensEvent` from `summarize` — corrects `ContextTokens` to the summary size
 
 Both are sent by the same goroutine sequentially, and the FIFO channel guarantees the correction is processed last, so `ContextTokens` ends up at the correct value.
 
@@ -122,7 +122,7 @@ Both are sent by the same goroutine sequentially, and the FIFO channel guarantee
 ## Related
 
 - `shouldAutoSummarize()` — triggers when `ContextTokens >= ContextLimit * threshold / 100` (threshold set via `--auto-summarize`, e.g. `--auto-summarize=65`; 0 = disabled)
-- `runSummarize()` (in `session_task.go`) — sends the summarize prompt via `summarizeContents` → `processPrompt`, then replaces conversation history with the summary and resets `ContextTokens` to the summary's output token count via `SetContextTokensEvent`
-- `SetContextTokensEvent` — a dedicated task event that sets `ContextTokens` to the correct value after summarization, overriding the stale value from the preceding `StepFinishEvent`
+- `runSummarize()` (in `session_task.go`) — sends the summarize prompt via `summarizeContents` → `processPrompt`, then replaces conversation history with the summary and resets `ContextTokens` to the summary's output token count via `setContextTokensEvent`
+- `setContextTokensEvent` — a dedicated task event that sets `ContextTokens` to the correct value after summarization, overriding the stale value from the preceding `stepFinishEvent`
 - `applyModelContextLimit()` — sets `ContextLimit` from the active model's config
-- `SessionMeta.ContextTokens` — persisted to session file frontmatter so the status bar shows the correct context usage immediately after loading a session
+- `sessionMeta.ContextTokens` — persisted to session file frontmatter so the status bar shows the correct context usage immediately after loading a session

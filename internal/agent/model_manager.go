@@ -1,6 +1,6 @@
 package agent
 
-// ModelManager is responsible for loading model definitions from a
+// modelManager is responsible for loading model definitions from a
 // key-value config file (model.conf) and managing them in memory.
 // All persistence is handled internally; adapters interact via TLV messages.
 //
@@ -18,10 +18,10 @@ import (
 	"github.com/alayacore/alayacore/internal/config"
 )
 
-// ModelManager manages model configurations.
+// modelManager manages model configurations.
 // It owns both the in-memory model list and the config file on disk.
-type ModelManager struct {
-	models      []config.ModelConfig
+type modelManager struct {
+	models      []modelConfig
 	activeID    int
 	nextID      int
 	filePath    string
@@ -29,8 +29,8 @@ type ModelManager struct {
 	hasRejected bool     // true when model blocks were present but ALL were rejected (no usable models remain)
 }
 
-// DefaultModelConfig is the default model configuration written when config file is empty
-const DefaultModelConfig = `name: "Ollama (127.0.0.1) / GPT OSS 20B"
+// defaultModelConfig is the default model configuration written when config file is empty
+const defaultModelConfig = `name: "Ollama (127.0.0.1) / GPT OSS 20B"
 protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
@@ -38,8 +38,8 @@ model_name: "gpt-oss:20b"
 context_limit: 128000
 `
 
-// KnownProtocolTypes are the protocol types accepted by the provider factory.
-var KnownProtocolTypes = map[string]bool{
+// knownProtocolTypes are the protocol types accepted by the provider factory.
+var knownProtocolTypes = map[string]bool{
 	"openai":    true,
 	"anthropic": true,
 }
@@ -55,13 +55,13 @@ func NoModelsErrorMessage(configPath string, hasRejected bool) string {
 	}
 	fmt.Fprintf(&b, "Please edit the model config file: %s\n", configPath)
 	b.WriteString("\nExample:\n")
-	b.WriteString(DefaultModelConfig)
+	b.WriteString(defaultModelConfig)
 	b.WriteString("\n")
 	return b.String()
 }
 
-func NewModelManager(configPath string) *ModelManager {
-	mm := &ModelManager{
+func newModelManager(configPath string) *modelManager {
+	mm := &modelManager{
 		filePath: configPath,
 		nextID:   1, // IDs start from 1; 0 is reserved as "no model"
 	}
@@ -74,7 +74,7 @@ func NewModelManager(configPath string) *ModelManager {
 // GetLoadErrors returns validation messages from the last LoadFromFile call.
 // These include both parse errors (e.g. non-numeric value for an int field)
 // and model errors (e.g. unknown protocol_type, missing required fields).
-func (mm *ModelManager) GetLoadErrors() []string {
+func (mm *modelManager) GetLoadErrors() []string {
 	return mm.loadErrors
 }
 
@@ -91,7 +91,7 @@ func (mm *ModelManager) GetLoadErrors() []string {
 //	---
 //	name: "Another Model"
 //	...
-func (mm *ModelManager) LoadFromFile(path string) error {
+func (mm *modelManager) LoadFromFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -99,7 +99,7 @@ func (mm *ModelManager) LoadFromFile(path string) error {
 			if createErr := mm.createDefaultConfig(path); createErr != nil {
 				return createErr
 			}
-			data = []byte(DefaultModelConfig)
+			data = []byte(defaultModelConfig)
 		} else {
 			return err
 		}
@@ -110,10 +110,10 @@ func (mm *ModelManager) LoadFromFile(path string) error {
 		if err := mm.createDefaultConfig(path); err != nil {
 			return err
 		}
-		data = []byte(DefaultModelConfig)
+		data = []byte(defaultModelConfig)
 	}
 
-	models, msgs := parseModelConfig(string(data))
+	models, msgs := parseModelConfig(string(data), filepath.Base(path))
 
 	// Reset ID counter and generate IDs for models (start from 1; 0 is reserved as "no model")
 	mm.nextID = 1
@@ -137,27 +137,28 @@ func (mm *ModelManager) LoadFromFile(path string) error {
 }
 
 // createDefaultConfig creates a default model config file
-func (mm *ModelManager) createDefaultConfig(path string) error {
+func (mm *modelManager) createDefaultConfig(path string) error {
 	// Ensure parent directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, []byte(DefaultModelConfig), 0600)
+	return os.WriteFile(path, []byte(defaultModelConfig), 0600)
 }
 
 // parseModelConfig parses the key-value model config format.
+// file is the source file name used in error messages (e.g. "model.conf").
 // Returns valid models and a list of validation messages (parse errors and model errors).
-func parseModelConfig(content string) ([]config.ModelConfig, []string) {
+func parseModelConfig(content string, file string) ([]modelConfig, []string) {
 	var msgs []string
 
-	models, errs := config.ParseModelList(content)
+	models, errs := parseModelList(content, file)
 	msgs = append(msgs, errs...)
 
 	// First pass: validate all models and collect names.
 	type candidate struct {
-		model config.ModelConfig
+		model modelConfig
 		index int // original block index (1-based for reporting)
 	}
 	var validCands = make([]candidate, 0, len(models))
@@ -172,10 +173,10 @@ func parseModelConfig(content string) ([]config.ModelConfig, []string) {
 	// Second pass: check for duplicate names among valid models.
 	// Keep the first occurrence; report and skip subsequent duplicates.
 	seenNames := make(map[string]bool)
-	result := make([]config.ModelConfig, 0, len(validCands))
+	result := make([]modelConfig, 0, len(validCands))
 	for _, c := range validCands {
 		if c.model.Name != "" && seenNames[c.model.Name] {
-			msgs = append(msgs, fmt.Sprintf("model.conf block %d: duplicate name %q — skipped", c.index, c.model.Name))
+			msgs = append(msgs, fmt.Sprintf("%s block %d: duplicate name %q — skipped", file, c.index, c.model.Name))
 			continue
 		}
 		seenNames[c.model.Name] = true
@@ -187,12 +188,12 @@ func parseModelConfig(content string) ([]config.ModelConfig, []string) {
 
 // validateModel checks required fields and returns errors for any issues found.
 // A model with errors is unusable and should not be added to the model list.
-func validateModel(m config.ModelConfig) []string {
+func validateModel(m modelConfig) []string {
 	var errs []string
 
 	if m.ProtocolType == "" {
 		errs = append(errs, fmt.Sprintf("model %q: missing required field protocol_type — skipped", m.Name))
-	} else if !KnownProtocolTypes[strings.ToLower(m.ProtocolType)] {
+	} else if !knownProtocolTypes[strings.ToLower(m.ProtocolType)] {
 		errs = append(errs, fmt.Sprintf("model %q: unknown protocol_type %q (expected \"openai\" or \"anthropic\") — skipped", m.Name, m.ProtocolType))
 	}
 
@@ -209,7 +210,7 @@ func validateModel(m config.ModelConfig) []string {
 	return errs
 }
 
-func (mm *ModelManager) HasModels() bool {
+func (mm *modelManager) HasModels() bool {
 	return len(mm.models) > 0
 }
 
@@ -217,27 +218,27 @@ func (mm *ModelManager) HasModels() bool {
 // rejected during the last load/sync — i.e. the config produced no usable
 // models. Used to distinguish "no models configured" from "models present
 // but all invalid" in error messages.
-func (mm *ModelManager) HasRejected() bool {
+func (mm *modelManager) HasRejected() bool {
 	return mm.hasRejected
 }
 
 // GetModels returns all models with full details (including API keys).
-func (mm *ModelManager) GetModels() []config.ModelConfig {
-	result := make([]config.ModelConfig, len(mm.models))
+func (mm *modelManager) GetModels() []modelConfig {
+	result := make([]modelConfig, len(mm.models))
 	copy(result, mm.models)
 	return result
 }
 
 // SyncFromContent replaces all models with parsed JSON content, persists to the
 // config file, and returns validation messages.  The JSON format matches the
-// ModelListMsg wire format ([]config.ModelConfig).
-func (mm *ModelManager) SyncFromContent(content string) []string {
-	var models []config.ModelConfig
+// modelListMsg wire format ([]modelConfig).
+func (mm *modelManager) SyncFromContent(content string) []string {
+	var models []modelConfig
 	if err := json.Unmarshal([]byte(content), &models); err != nil {
 		return []string{fmt.Sprintf("model_sync: invalid JSON: %v", err)}
 	}
 
-	valid := make([]config.ModelConfig, 0, len(models))
+	valid := make([]modelConfig, 0, len(models))
 	var msgs []string
 	for i, m := range models {
 		if errs := validateModel(m); len(errs) > 0 {
@@ -283,13 +284,13 @@ func (mm *ModelManager) SyncFromContent(content string) []string {
 }
 
 // writeConfigFile persists the current models to the config file in key-value format.
-func (mm *ModelManager) writeConfigFile() error {
-	data := config.FormatModelList(mm.models)
+func (mm *modelManager) writeConfigFile() error {
+	data := formatModelList(mm.models)
 	return os.WriteFile(mm.filePath, []byte(data), 0600)
 }
 
 // GetModel returns a model by ID (includes API key for internal use)
-func (mm *ModelManager) GetModel(id int) *config.ModelConfig {
+func (mm *modelManager) GetModel(id int) *modelConfig {
 	for i := range mm.models {
 		if mm.models[i].ID == id {
 			return &mm.models[i]
@@ -299,7 +300,7 @@ func (mm *ModelManager) GetModel(id int) *config.ModelConfig {
 }
 
 // SetActive sets the active model by ID (does NOT persist to file)
-func (mm *ModelManager) SetActive(id int) error {
+func (mm *modelManager) SetActive(id int) error {
 	// Verify the model exists
 	for _, m := range mm.models {
 		if m.ID == id {
@@ -311,7 +312,7 @@ func (mm *ModelManager) SetActive(id int) error {
 }
 
 // Returns false if there are no models.
-func (mm *ModelManager) SetActiveToFirst() bool {
+func (mm *modelManager) SetActiveToFirst() bool {
 	if len(mm.models) == 0 {
 		return false
 	}
@@ -320,7 +321,7 @@ func (mm *ModelManager) SetActiveToFirst() bool {
 }
 
 // GetActive returns the active model (includes API key)
-func (mm *ModelManager) GetActive() *config.ModelConfig {
+func (mm *modelManager) GetActive() *modelConfig {
 	for _, m := range mm.models {
 		if m.ID == mm.activeID {
 			return &m
@@ -329,15 +330,15 @@ func (mm *ModelManager) GetActive() *config.ModelConfig {
 	return nil
 }
 
-func (mm *ModelManager) GetActiveID() int {
+func (mm *modelManager) GetActiveID() int {
 	return mm.activeID
 }
 
-func (mm *ModelManager) GetFilePath() string {
+func (mm *modelManager) GetFilePath() string {
 	return mm.filePath
 }
 
-func (mm *ModelManager) FindModelByName(name string) int {
+func (mm *modelManager) FindModelByName(name string) int {
 	for _, m := range mm.models {
 		if m.Name == name {
 			return m.ID
@@ -347,7 +348,7 @@ func (mm *ModelManager) FindModelByName(name string) int {
 }
 
 // SetActiveByName sets the active model by name (does NOT persist to file)
-func (mm *ModelManager) SetActiveByName(name string) error {
+func (mm *modelManager) SetActiveByName(name string) error {
 	id := mm.FindModelByName(name)
 	if id == 0 {
 		return fmt.Errorf("model_set: model not found: %q", name)

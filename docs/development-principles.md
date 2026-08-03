@@ -26,11 +26,8 @@ Adapters may reference agent **types** (struct definitions) for convenience, but
 // ❌ FORBIDDEN: adapter calls an agent function
 blocks = append(blocks, agentpkg.SerializeModelConfig(m))
 
-// ✅ OK: adapter uses an agent type (type sharing)
-models := make([]agentpkg.ModelConfig, ...)
-
-// ✅ BETTER: shared types live in a neutral package
-models := make([]config.ModelConfig, ...)
+// ✅ OK: adapter uses wire types from the protocol layer
+models := make([]protocol.ModelInfo, ...)
 ```
 
 **Rationale:** A function call bypasses the TLV boundary and creates hidden runtime coupling. An external adapter written in Python or Rust could never make that call — so built-in adapters shouldn't either.
@@ -58,32 +55,34 @@ Every capability available to built-in adapters must be achievable through TLV f
 
 **Test:** If you can't do it through raw TLV frames, don't add it to the built-in adapter either. First extend the protocol.
 
-#### Rule 3: Shared types belong in neutral packages
+#### Rule 3: Wire types live in protocol; domain types live in domain packages
 
-Types used by both adapter and agent (e.g. `ModelConfig`) must live in a shared package that neither layer owns:
+Types that cross the adapter/agent boundary in TLV frames are **wire types**:
+they live in `internal/protocol` (e.g. `ModelInfo` for the `model_list`
+message). Domain types used only inside the agent (e.g. `modelConfig`) stay
+in their domain package (`internal/agent`). Adapters decode wire types; they
+never import the agent package.
 
 ```
-internal/config/    ← ModelConfig, key-value parsing/formatting
+internal/protocol/  ← System message types, tool data structures, ModelInfo
 internal/tlv/       ← TLV tag constants, frame encoding/decoding
-internal/protocol/  ← System message types, tool data structures
-internal/theme/     ← Theme data structures
+internal/theme/     ← Theme data structures (shared with adapters)
 internal/commands/  ← Command name constants (CI/CO vocabulary)
+internal/config/    ← Key-value parsing primitives, CLI Settings (no domain types)
+internal/agent/     ← Domain types: modelConfig, runtimeConfig, ...
 ```
 
-This prevents circular dependencies and keeps the boundary clean. When moving a type out of the agent package, use a temporary type alias for transition:
-
-```go
-type ModelConfig = config.ModelConfig  // transitional, remove eventually
-```
+This prevents circular dependencies and keeps the boundary clean. When a
+type moves between packages, keep the wire JSON tags unchanged so the TLV
+protocol stays byte-compatible.
 
 ### When Exceptions Apply
 
 | Scenario | Allowed? | Reason |
 |----------|----------|--------|
 | `internal/app/session.go` imports agent | ✅ Yes | Bootstrap layer, not an adapter |
-| Adapter references agent's struct type | ✅ Yes | Compile-time convenience, no runtime coupling |
+| Adapter imports agent (types, constants, functions) | ❌ **No** | Use wire types from `internal/protocol` — importing agent bypasses the TLV boundary |
 | Adapter uses command-name string literals (`"cancel"`) | ⚠️ Avoid | Use `commands.CommandNameCancel` — the shared `internal/commands` package is the single source of truth for CI/CO names |
-| Adapter imports agent for constants (`CommandNameCancel`) | ❌ **No** | Use `internal/commands` instead — importing agent bypasses the neutral-package rule |
 | Adapter calls agent's functions | ❌ **No** | Bypasses the TLV boundary |
 | Agent imports adapter | ❌ **Never** | One-way dependency — agent must not know adapters exist |
 
@@ -94,4 +93,4 @@ When reviewing a change, ask:
 1. **Does this call an agent function from an adapter?** → Move the function to a neutral package or find a TLV-based approach.
 2. **Can a rawio client do this?** → If not, the TLV protocol needs a new message type.
 3. **Does this create a reverse dependency (agent → adapter)?** → Restructure immediately; this is never acceptable.
-4. **Is this type used by both sides?** → Put it in `internal/config`, `internal/tlv`, `internal/protocol`, `internal/commands`, or another shared package.
+4. **Does this type cross the adapter/agent boundary?** → Define the wire type in `internal/protocol` (e.g. `ModelInfo`); domain-only types stay in the agent package.

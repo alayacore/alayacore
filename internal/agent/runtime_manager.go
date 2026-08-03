@@ -1,8 +1,8 @@
 package agent
 
-// RuntimeManager owns the small, writable runtime.conf file that stores
+// runtimeManager owns the small, writable runtime.conf file that stores
 // state which can change while the program is running (currently only
-// the active model name). Unlike ModelManager, it is allowed to write
+// the active model name). Unlike modelManager, it is allowed to write
 // its file and is used by the session layer to remember the last active
 // model across process restarts.
 //
@@ -17,21 +17,21 @@ import (
 	"github.com/alayacore/alayacore/internal/config"
 )
 
-// RuntimeConfig holds runtime configuration that can change during execution
-type RuntimeConfig struct {
+// runtimeConfig holds runtime configuration that can change during execution
+type runtimeConfig struct {
 	ActiveModel string `json:"active_model" config:"active_model"` // Model name (from model.conf)
 	ActiveTheme string `json:"active_theme" config:"active_theme"` // Theme name (without .conf extension)
 }
 
-// RuntimeManager manages runtime configuration
-type RuntimeManager struct {
-	config   RuntimeConfig
+// runtimeManager manages runtime configuration
+type runtimeManager struct {
+	config   runtimeConfig
 	path     string
 	loadErrs []string // parse errors from last Load()
 }
 
-func NewRuntimeManager(runtimePath string) *RuntimeManager {
-	rm := &RuntimeManager{}
+func newRuntimeManager(runtimePath string) *runtimeManager {
+	rm := &runtimeManager{}
 	rm.path = runtimePath
 
 	// Load if path is set
@@ -43,7 +43,7 @@ func NewRuntimeManager(runtimePath string) *RuntimeManager {
 }
 
 // Load reads the runtime config from file
-func (rm *RuntimeManager) Load() error {
+func (rm *runtimeManager) Load() error {
 	if rm.path == "" {
 		return nil
 	}
@@ -57,12 +57,12 @@ func (rm *RuntimeManager) Load() error {
 		return err
 	}
 
-	rm.config, rm.loadErrs = parseRuntimeConfig(string(data))
+	rm.config, rm.loadErrs = parseRuntimeConfig(string(data), filepath.Base(rm.path))
 	return nil
 }
 
 // save writes the runtime config to file
-func (rm *RuntimeManager) save() error {
+func (rm *runtimeManager) save() error {
 	if rm.path == "" {
 		return nil
 	}
@@ -77,13 +77,14 @@ func (rm *RuntimeManager) save() error {
 	return os.WriteFile(rm.path, []byte(content), 0600)
 }
 
-// parseRuntimeConfig parses the key-value runtime config format
-func parseRuntimeConfig(content string) (RuntimeConfig, []string) {
-	var cfg RuntimeConfig
+// parseRuntimeConfig parses the key-value runtime config format.
+// file is the source file name used in error messages (e.g. "runtime.conf").
+func parseRuntimeConfig(content string, file string) (runtimeConfig, []string) {
+	var cfg runtimeConfig
 	if errs := config.ParseKeyValue(content, &cfg); len(errs) > 0 {
 		msgs := make([]string, len(errs))
 		for i, e := range errs {
-			msgs[i] = fmt.Sprintf("runtime.conf: %s", e.String())
+			msgs[i] = fmt.Sprintf("%s: %s", file, e.String())
 		}
 		return cfg, msgs
 	}
@@ -91,31 +92,31 @@ func parseRuntimeConfig(content string) (RuntimeConfig, []string) {
 }
 
 // formatRuntimeConfig formats the runtime config as key-value text
-func formatRuntimeConfig(cfg RuntimeConfig) string {
+func formatRuntimeConfig(cfg runtimeConfig) string {
 	return config.FormatKeyValue(cfg)
 }
 
 // GetLoadErrors returns any parse errors from the last Load() call.
-func (rm *RuntimeManager) GetLoadErrors() []string {
+func (rm *runtimeManager) GetLoadErrors() []string {
 	return rm.loadErrs
 }
 
-func (rm *RuntimeManager) GetActiveModel() string {
+func (rm *runtimeManager) GetActiveModel() string {
 	return rm.config.ActiveModel
 }
 
 // SetActiveModel sets the active model name and saves to file
-func (rm *RuntimeManager) SetActiveModel(name string) error {
+func (rm *runtimeManager) SetActiveModel(name string) error {
 	rm.config.ActiveModel = name
 	return rm.save()
 }
 
-func (rm *RuntimeManager) GetActiveTheme() string {
+func (rm *runtimeManager) GetActiveTheme() string {
 	return rm.config.ActiveTheme
 }
 
 // SetActiveTheme sets the active theme name and saves to file
-func (rm *RuntimeManager) SetActiveTheme(name string) error {
+func (rm *runtimeManager) SetActiveTheme(name string) error {
 	rm.config.ActiveTheme = name
 	return rm.save()
 }

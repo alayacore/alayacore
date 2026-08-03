@@ -14,7 +14,7 @@ base_url: "https://api.example.com"
 api_key: "key"
 model_name: "model"`
 
-	models, msgs := parseModelConfig(input)
+	models, msgs := parseModelConfig(input, "model.conf")
 	if len(models) != 0 {
 		t.Fatalf("expected 0 models (broken model should be skipped), got %d", len(models))
 	}
@@ -73,7 +73,7 @@ model_name: "model"`,
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			models, msgs := parseModelConfig(tt.input)
+			models, msgs := parseModelConfig(tt.input, "model.conf")
 			if len(models) != tt.wantModels {
 				t.Errorf("expected %d models, got %d", tt.wantModels, len(models))
 			}
@@ -108,7 +108,7 @@ base_url: ":://bad"
 api_key: "key"
 model_name: "model"`
 
-	models, msgs := parseModelConfig(input)
+	models, msgs := parseModelConfig(input, "model.conf")
 	if len(models) != 0 {
 		t.Fatalf("expected 0 models (broken model should be skipped), got %d", len(models))
 	}
@@ -130,7 +130,7 @@ base_url: "https://api.example.com"
 model_name: "model"
 context_limit: abc`
 
-	_, msgs := parseModelConfig(input)
+	_, msgs := parseModelConfig(input, "model.conf")
 	found := false
 	for _, m := range msgs {
 		if strings.Contains(m, "context_limit") && strings.Contains(m, "invalid integer") {
@@ -153,7 +153,7 @@ protocol_type: "openai"
 base_url: "https://api.example.com"
 model_name: "gpt-4"
 `
-	models, msgs := parseModelConfig(input)
+	models, msgs := parseModelConfig(input, "model.conf")
 	if len(models) != 1 {
 		t.Fatalf("expected 1 model (bad one skipped), got %d", len(models))
 	}
@@ -182,7 +182,7 @@ model_name: ""
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	mm := NewModelManager(configPath)
+	mm := newModelManager(configPath)
 	msgs := mm.GetLoadErrors()
 
 	if len(msgs) == 0 {
@@ -232,7 +232,7 @@ model_name: "gpt-4"
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	mm := NewModelManager(configPath)
+	mm := newModelManager(configPath)
 	msgs := mm.GetLoadErrors()
 
 	if len(msgs) != 0 {

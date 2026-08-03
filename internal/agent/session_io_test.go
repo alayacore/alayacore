@@ -217,7 +217,7 @@ func TestWriteCmdResult_SuccessNoResult(t *testing.T) {
 func TestWriteCmdResult_CmdErr(t *testing.T) {
 	s, output := newCmdOutputSession()
 
-	s.writeCmdResult("c3d4", nil, &CmdErr{Code: "MODEL_NOT_FOUND", Message: "model_set: model not found: 99"})
+	s.writeCmdResult("c3d4", nil, &cmdErr{Code: "MODEL_NOT_FOUND", Message: "model_set: model not found: 99"})
 
 	joined := strings.Join(output.Messages, "")
 	if !strings.Contains(joined, `"is_error":true`) {
@@ -288,7 +288,7 @@ model_name: ""
 
 	s := &Session{
 		sessionConfig: sessionConfig{
-			modelService: NewModelService(NewModelManager(configPath), NewRuntimeManager("")),
+			modelService: newModelService(newModelManager(configPath), newRuntimeManager("")),
 			SessionConfig: SessionConfig{
 				Output: &MockOutput{},
 			},
@@ -299,7 +299,7 @@ model_name: ""
 	if err == nil {
 		t.Fatal("model_load with rejected model blocks must fail")
 	}
-	var ce *CmdErr
+	var ce *cmdErr
 	if !errors.As(err, &ce) || ce.Code != "MODEL_VALIDATION" {
 		t.Errorf("expected MODEL_VALIDATION, got %+v", err)
 	}
@@ -309,12 +309,12 @@ model_name: ""
 }
 
 // ============================================================================
-// Async task commands (continue/summarize) — CO started + TaskMsg command_id
+// Async task commands (continue/summarize) — CO started + taskMsg command_id
 // ============================================================================
 
 func TestStartTaskCommand_Success(t *testing.T) {
 	output := &MockOutput{}
-	ms := NewModelService(NewModelManager(""), NewRuntimeManager(""))
+	ms := newModelService(newModelManager(""), newRuntimeManager(""))
 	ms.agent = &llm.Agent{}
 	ms.provider = &mockProviderStepFail{}
 
@@ -388,10 +388,10 @@ func TestSendTaskMsg_RunningTaskCarriesCommandID(t *testing.T) {
 
 	joined := strings.Join(output.Messages, "")
 	if !strings.Contains(joined, `"command_id":"x1"`) {
-		t.Errorf("running TaskMsg should carry command_id: %s", joined)
+		t.Errorf("running taskMsg should carry command_id: %s", joined)
 	}
 	if !strings.Contains(joined, `"in_progress":true`) {
-		t.Errorf("running TaskMsg should show in_progress:true: %s", joined)
+		t.Errorf("running taskMsg should show in_progress:true: %s", joined)
 	}
 }
 
@@ -412,10 +412,10 @@ func TestHandleTaskDone_CompletionTaskMsgCarriesCommandID(t *testing.T) {
 
 	joined := strings.Join(output.Messages, "")
 	if !strings.Contains(joined, `"command_id":"x1"`) {
-		t.Errorf("completion TaskMsg should carry command_id: %s", joined)
+		t.Errorf("completion taskMsg should carry command_id: %s", joined)
 	}
 	if !strings.Contains(joined, `"in_progress":false`) {
-		t.Errorf("completion TaskMsg should show in_progress:false: %s", joined)
+		t.Errorf("completion taskMsg should show in_progress:false: %s", joined)
 	}
 	if s.activeTask != nil {
 		t.Error("activeTask should be cleared after task done")

@@ -7,9 +7,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/mcp"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/skills"
 	"github.com/alayacore/alayacore/internal/theme"
 )
@@ -18,10 +18,10 @@ import (
 // TagSystemMsg (SM) payload types
 // ============================================================================
 
-// TaskMsg carries task progress info (type "task").
+// taskMsg carries task progress info (type "task").
 // CommandID is non-empty when the task was started by a CI command
 // (continue/summarize), correlating the async completion to its request.
-type TaskMsg struct {
+type taskMsg struct {
 	InProgress  bool   `json:"in_progress"`
 	CurrentStep int    `json:"current_step,omitempty"`
 	MaxSteps    int    `json:"max_steps,omitempty"`
@@ -30,64 +30,64 @@ type TaskMsg struct {
 	CommandID   string `json:"command_id,omitempty"`
 }
 
-func (TaskMsg) SystemMsgType() string { return "task" }
+func (taskMsg) SystemMsgType() string { return "task" }
 
-// ModelMsg carries active model info (type "model").
-type ModelMsg struct {
+// modelMsg carries active model info (type "model").
+type modelMsg struct {
 	ActiveModelID   int    `json:"active_id"`
 	ActiveModelName string `json:"active_name"`
 	ContextLimit    int64  `json:"context_limit"`
 }
 
-func (ModelMsg) SystemMsgType() string { return "model" }
+func (modelMsg) SystemMsgType() string { return "model" }
 
-// ModelListMsg carries the full model list (type "model_list").
+// modelListMsg carries the full model list (type "model_list").
 // Only sent when models change.
-type ModelListMsg struct {
-	Models []config.ModelConfig `json:"models"`
+type modelListMsg struct {
+	Models []protocol.ModelInfo `json:"models"`
 }
 
-func (ModelListMsg) SystemMsgType() string { return "model_list" }
+func (modelListMsg) SystemMsgType() string { return "model_list" }
 
-// ThemeInfo carries a theme's name and full content for adapters.
-type ThemeInfo struct {
+// themeInfo carries a theme's name and full content for adapters.
+type themeInfo struct {
 	Name  string       `json:"name"`
 	Theme *theme.Theme `json:"theme"`
 }
 
-// ThemeListMsg carries all available themes (type "theme_list").
+// themeListMsg carries all available themes (type "theme_list").
 // Sent once on startup so adapters can cache theme content locally.
-type ThemeListMsg struct {
-	Themes []ThemeInfo `json:"themes"`
+type themeListMsg struct {
+	Themes []themeInfo `json:"themes"`
 }
 
-func (ThemeListMsg) SystemMsgType() string { return "theme_list" }
+func (themeListMsg) SystemMsgType() string { return "theme_list" }
 
-// ThemeMsg carries the active theme name (type "theme").
+// themeMsg carries the active theme name (type "theme").
 // On startup the full Theme is included; on theme changes only the name is sent.
-type ThemeMsg struct {
+type themeMsg struct {
 	Name  string       `json:"name"`
 	Theme *theme.Theme `json:"theme,omitempty"`
 }
 
-func (ThemeMsg) SystemMsgType() string { return "theme" }
+func (themeMsg) SystemMsgType() string { return "theme" }
 
-// ReasoningMsg carries the reasoning level (type "reasoning").
-type ReasoningMsg struct {
+// reasoningMsg carries the reasoning level (type "reasoning").
+type reasoningMsg struct {
 	Level int `json:"level"`
 }
 
-func (ReasoningMsg) SystemMsgType() string { return "reasoning" }
+func (reasoningMsg) SystemMsgType() string { return "reasoning" }
 
-// VideoConfigMsg carries the video FPS and resolution (type "video_config").
-type VideoConfigMsg struct {
+// videoConfigMsg carries the video FPS and resolution (type "video_config").
+type videoConfigMsg struct {
 	FPS int `json:"fps"`
 	Res int `json:"res"`
 }
 
-func (VideoConfigMsg) SystemMsgType() string { return "video_config" }
+func (videoConfigMsg) SystemMsgType() string { return "video_config" }
 
-// MCPMsg communicates MCP initialization progress (type "mcp").
+// mcpMsg communicates MCP initialization progress (type "mcp").
 // The adapter uses these messages to show/hide init overlays.
 //
 // Status values (from InitEvent.Type):
@@ -97,39 +97,39 @@ func (VideoConfigMsg) SystemMsgType() string { return "video_config" }
 //   - "auth_required":  session needs user to authorize this server
 //   - "auth_running":  OAuth flow is running for this server
 //   - "done":          all MCP initialization complete
-type MCPMsg struct {
+type mcpMsg struct {
 	Status string `json:"status"`
 	Server string `json:"server,omitempty"`
 	URL    string `json:"url,omitempty"`   // set for "auth_required"
 	Error  string `json:"error,omitempty"` // set for "failed"
 }
 
-func (MCPMsg) SystemMsgType() string { return "mcp" }
+func (mcpMsg) SystemMsgType() string { return "mcp" }
 
-// MessageVersionMsg carries the TLV message format version and the
+// messageVersionMsg carries the TLV message format version and the
 // alayacore application version (type "version").
 // Sent as the first TagSystemMsg frame so adapters can validate format
 // compatibility and identify the core version before processing
 // subsequent messages.
-type MessageVersionMsg struct {
+type messageVersionMsg struct {
 	MessageVersion int    `json:"message_version"`
 	CoreVersion    string `json:"core_version"`
 }
 
-func (MessageVersionMsg) SystemMsgType() string { return "version" }
+func (messageVersionMsg) SystemMsgType() string { return "version" }
 
-// MessageVersion is the current version of the message encoding
+// messageVersion is the current version of the message encoding
 // used in session files and TagSystemMsg broadcasts.
 // Increment when making backward-incompatible changes to the TLV
 // message format within the session body.
 //
 // v11: commands moved to the CI/CO control plane — text commands
 // (UT ':' sniffing) removed, command results now travel as CO frames,
-// TaskMsg gained command_id for async command correlation.
-const MessageVersion = 11
+// taskMsg gained command_id for async command correlation.
+const messageVersion = 11
 
-// SessionMeta is the frontmatter metadata.
-type SessionMeta struct {
+// sessionMeta is the frontmatter metadata.
+type sessionMeta struct {
 	CreatedAt      time.Time `config:"created_at"`
 	UpdatedAt      time.Time `config:"updated_at"`
 	ActiveModel    string    `config:"active_model,omitempty"`
@@ -142,14 +142,14 @@ type SessionMeta struct {
 
 // taskResultCh carries the final content list from the task goroutine to run().
 
-// SessionData is the persisted form of a Session.
-type SessionData struct {
-	SessionMeta
+// sessionData is the persisted form of a Session.
+type sessionData struct {
+	sessionMeta
 	Contents []llm.ContentPart // source of truth on reload
 }
 
 // SessionConfig bundles all configuration for creating or restoring a session.
-// This avoids passing 16+ positional parameters to NewSession / RestoreFromSession.
+// This avoids passing 16+ positional parameters to newSession / RestoreFromSession.
 type SessionConfig struct {
 	// IO — required, provided by the adapter.
 	Input  io.Reader

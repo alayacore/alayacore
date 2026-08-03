@@ -12,8 +12,8 @@ func TestRuntimeManager(t *testing.T) {
 
 	runtimePath := filepath.Join(tmpDir, "runtime.conf")
 
-	// Test creating a new RuntimeManager with empty path
-	rm := NewRuntimeManager(runtimePath)
+	// Test creating a new runtimeManager with empty path
+	rm := newRuntimeManager(runtimePath)
 	if rm.GetActiveModel() != "" {
 		t.Errorf("Expected empty active model, got: %s", rm.GetActiveModel())
 	}
@@ -33,7 +33,7 @@ func TestRuntimeManager(t *testing.T) {
 	}
 
 	// Test loading from existing file
-	rm2 := NewRuntimeManager(runtimePath)
+	rm2 := newRuntimeManager(runtimePath)
 	if rm2.GetActiveModel() != "Test Model" {
 		t.Errorf("Expected 'Test Model' after reload, got: %s", rm2.GetActiveModel())
 	}
@@ -79,7 +79,7 @@ func TestParseRuntimeConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config, _ := parseRuntimeConfig(tt.content)
+			config, _ := parseRuntimeConfig(tt.content, "runtime.conf")
 			if config.ActiveModel != tt.expected {
 				t.Errorf("Expected %q, got %q", tt.expected, config.ActiveModel)
 			}
@@ -88,7 +88,7 @@ func TestParseRuntimeConfig(t *testing.T) {
 }
 
 func TestFormatRuntimeConfig(t *testing.T) {
-	config := RuntimeConfig{ActiveModel: "Test Model"}
+	config := runtimeConfig{ActiveModel: "Test Model"}
 	result := formatRuntimeConfig(config)
 
 	// Check that it contains the expected content
@@ -108,8 +108,8 @@ func TestRuntimeManagerCreatesFileOnLoad(t *testing.T) {
 		t.Fatal("Runtime file should not exist initially")
 	}
 
-	// Create RuntimeManager - this should create the file
-	rm := NewRuntimeManager(runtimePath)
+	// Create runtimeManager - this should create the file
+	rm := newRuntimeManager(runtimePath)
 
 	// Verify file was created
 	if _, err := os.Stat(runtimePath); os.IsNotExist(err) {

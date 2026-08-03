@@ -3,12 +3,11 @@ package agent
 // Session model management: switching models, creating providers,
 // syncing reasoning levels.
 //
-// These are thin wrappers over ModelService. The model service
-// owns the ModelManager, RuntimeManager, provider/agent instances,
+// These are thin wrappers over modelService. The model service
+// owns the modelManager, runtimeManager, provider/agent instances,
 // and model resolution logic.
 
 import (
-	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 )
 
@@ -17,13 +16,13 @@ import (
 // ============================================================================
 
 // SwitchModel switches the session to use a new model.
-func (s *Session) SwitchModel(modelConfig *config.ModelConfig) error {
+func (s *Session) SwitchModel(modelConfig *modelConfig) error {
 	if err := s.modelService.SwitchModel(modelConfig, s.BaseTools, s.SystemPrompt, s.ExtraSystemPrompt, s.MaxSteps); err != nil {
 		return err
 	}
 	// Sync back context limit from the service.
 	s.ContextLimit = s.modelService.contextLimit
-	s.sendSystemInfo(SystemInfoModel)
+	s.sendSystemInfo(systemInfoModel)
 	return nil
 }
 
@@ -40,12 +39,13 @@ func (s *Session) activeModelName() string {
 	return s.modelService.ActiveModelName()
 }
 
-// RuntimeManager returns the runtime manager, or nil.
-func (s *Session) RuntimeManager() *RuntimeManager {
-	if s.modelService == nil {
+// GetRuntimeLoadErrors returns parse errors collected while loading
+// runtime.conf (typos, unknown keys, etc.).
+func (s *Session) GetRuntimeLoadErrors() []string {
+	if s.modelService == nil || s.modelService.runtimeMgr == nil {
 		return nil
 	}
-	return s.modelService.runtimeMgr
+	return s.modelService.runtimeMgr.GetLoadErrors()
 }
 
 func (s *Session) ensureAgentInitialized() error {
@@ -59,13 +59,13 @@ func (s *Session) ensureAgentInitialized() error {
 // SetReasoningLevel sets the reasoning level.
 func (s *Session) SetReasoningLevel(level int) {
 	s.modelService.SetReasoningLevel(level)
-	s.sendSystemInfo(SystemInfoReasoning)
+	s.sendSystemInfo(systemInfoReasoning)
 }
 
 // SetVideoConfig sets the default video FPS and resolution.
 func (s *Session) SetVideoConfig(fps int, resolution int) {
 	s.modelService.SetVideoConfig(fps, resolution)
-	s.sendSystemInfo(SystemInfoVideoConfig)
+	s.sendSystemInfo(systemInfoVideoConfig)
 }
 
 // ============================================================================

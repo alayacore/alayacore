@@ -11,7 +11,7 @@ package terminal
 import (
 	"sync"
 
-	"github.com/alayacore/alayacore/internal/config"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
@@ -57,7 +57,7 @@ type sessionState struct {
 	pendingToolConfirms []toolConfirmPending
 
 	// Model fields
-	models          []config.ModelConfig
+	models          []protocol.ModelInfo
 	activeModelID   int
 	activeModelName string
 
@@ -114,7 +114,7 @@ func (s *sessionState) updateModel(activeID int, activeName string, contextLimit
 }
 
 // updateModelList atomically replaces the full model list.
-func (s *sessionState) updateModelList(models []config.ModelConfig) {
+func (s *sessionState) updateModelList(models []protocol.ModelInfo) {
 	s.mu.Lock()
 	s.models = models
 	// Also sync active name if models list provides it

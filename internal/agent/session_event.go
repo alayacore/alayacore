@@ -10,43 +10,43 @@ package agent
 // This keeps all cross-goroutine communication explicit and auditable
 // — the entire package uses channels and atomics for synchronization.
 
-// TaskEvent is a state mutation sent from the task goroutine to run().
+// taskEvent is a state mutation sent from the task goroutine to run().
 // Each concrete type carries only its own fields — no shared struct.
-type TaskEvent interface {
+type taskEvent interface {
 	taskEvent()
 }
 
-// StepStartEvent signals that a new agent step has started.
-type StepStartEvent struct {
+// stepStartEvent signals that a new agent step has started.
+type stepStartEvent struct {
 	Step int
 }
 
-func (StepStartEvent) taskEvent() {}
+func (stepStartEvent) taskEvent() {}
 
-// StepFinishEvent signals that an agent step has completed.
+// stepFinishEvent signals that an agent step has completed.
 // Carries only token usage metadata. The final message state and
 // ContentParts are returned together via taskResultCh on task completion.
-type StepFinishEvent struct {
+type stepFinishEvent struct {
 	InputTokens         int64
 	OutputTokens        int64
 	CacheReadTokens     int64
 	CacheCreationTokens int64
 }
 
-func (StepFinishEvent) taskEvent() {}
+func (stepFinishEvent) taskEvent() {}
 
-// SetContextTokensEvent sets ContextTokens on the run() goroutine.
-// Used by summarize() to correct the value after the StepFinishEvent
+// setContextTokensEvent sets ContextTokens on the run() goroutine.
+// Used by summarize() to correct the value after the stepFinishEvent
 // from processPrompt overwrites it with the full old-context token count.
-type SetContextTokensEvent struct {
+type setContextTokensEvent struct {
 	Tokens int64
 }
 
-func (SetContextTokensEvent) taskEvent() {}
+func (setContextTokensEvent) taskEvent() {}
 
 // sendEvent sends a task event to the run() goroutine.
 // Blocks until the event is received. The buffered channel (capacity 64)
 // means this only blocks when run() is seriously backed up.
-func (s *Session) sendEvent(ev TaskEvent) {
+func (s *Session) sendEvent(ev taskEvent) {
 	s.taskEventCh <- ev
 }

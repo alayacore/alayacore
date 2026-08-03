@@ -4,7 +4,7 @@ package agent
 //
 // Extracted from session_persist.go to separate concerns.
 // Stateless parsing/serialization utilities remain package-level functions.
-// PersistenceService wraps Load/Save with optional future state (e.g. config).
+// persistenceService wraps Load/Save with optional future state (e.g. config).
 
 import (
 	"encoding/binary"
@@ -23,25 +23,25 @@ import (
 // maxTLVContentSize is the safety limit for a single TLV record's content.
 const maxTLVContentSize = 10 * 1024 * 1024
 
-// ErrSessionVersionMismatch is returned when a session file has a version
-// that does not match MessageVersion and cannot be loaded.
-var ErrSessionVersionMismatch = errors.New("session file version mismatch")
+// errSessionVersionMismatch is returned when a session file has a version
+// that does not match messageVersion and cannot be loaded.
+var errSessionVersionMismatch = errors.New("session file version mismatch")
 
-// PersistenceService handles session file I/O and serialization.
+// persistenceService handles session file I/O and serialization.
 // It is stateless and thread-safe.
-type PersistenceService struct{}
+type persistenceService struct{}
 
-// NewPersistenceService creates a new PersistenceService.
-func NewPersistenceService() *PersistenceService {
-	return &PersistenceService{}
+// newPersistenceService creates a new persistenceService.
+func newPersistenceService() *persistenceService {
+	return &persistenceService{}
 }
 
 // defaultPersistence is the package-level persistence service instance.
 // Used by session_persist.go wrappers to maintain backward compatibility.
-var defaultPersistence = NewPersistenceService()
+var defaultPersistence = newPersistenceService()
 
-// LoadSession loads a session from a file.
-func (ps *PersistenceService) LoadSession(path string) (*SessionData, error) {
+// loadSession loads a session from a file.
+func (ps *persistenceService) loadSession(path string) (*sessionData, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("load: %w", err)
@@ -50,10 +50,10 @@ func (ps *PersistenceService) LoadSession(path string) (*SessionData, error) {
 }
 
 // SaveContentToFile saves session contents to a file in markdown format.
-func (ps *PersistenceService) SaveContentToFile(path string, meta SessionMeta, contents []llm.ContentPart) error {
+func (ps *persistenceService) SaveContentToFile(path string, meta sessionMeta, contents []llm.ContentPart) error {
 	meta.UpdatedAt = time.Now()
-	data := SessionData{
-		SessionMeta: meta,
+	data := sessionData{
+		sessionMeta: meta,
 		Contents:    contents,
 	}
 
@@ -72,14 +72,14 @@ func (ps *PersistenceService) SaveContentToFile(path string, meta SessionMeta, c
 // ============================================================================
 
 // formatFrontmatter writes the frontmatter using config.FormatKeyValue.
-func formatFrontmatter(meta *SessionMeta) string {
+func formatFrontmatter(meta *sessionMeta) string {
 	return "---\n" + config.FormatKeyValue(meta) + "---\n"
 }
 
 // formatSessionMarkdown serializes Content to TLV (without history IDs).
-func formatSessionMarkdown(data *SessionData) ([]byte, error) {
+func formatSessionMarkdown(data *sessionData) ([]byte, error) {
 	var buf, tlvBuf strings.Builder
-	buf.WriteString(formatFrontmatter(&data.SessionMeta))
+	buf.WriteString(formatFrontmatter(&data.sessionMeta))
 
 	for _, part := range data.Contents {
 		tag, content, err := contentPartToTLV(part)
@@ -114,9 +114,9 @@ func parseFrontmatter(content string) (frontmatter, body string, err error) {
 	return frontmatter, body, nil
 }
 
-// parseSessionMeta parses key-value pairs from frontmatter into SessionMeta using struct tags.
-func parseSessionMeta(frontmatter string) (SessionMeta, error) {
-	var meta SessionMeta
+// parseSessionMeta parses key-value pairs from frontmatter into sessionMeta using struct tags.
+func parseSessionMeta(frontmatter string) (sessionMeta, error) {
+	var meta sessionMeta
 	if errs := config.ParseKeyValue(frontmatter, &meta); len(errs) > 0 {
 		// Surface parse errors (unknown keys, type conversion failures) so they
 		// are not silently lost when loading session files.
@@ -124,9 +124,9 @@ func parseSessionMeta(frontmatter string) (SessionMeta, error) {
 	}
 
 	// Check message format version — must match exactly.
-	if meta.MessageVersion != MessageVersion {
+	if meta.MessageVersion != messageVersion {
 		return meta, fmt.Errorf("%w: got %d, expected %d",
-			ErrSessionVersionMismatch, meta.MessageVersion, MessageVersion)
+			errSessionVersionMismatch, meta.MessageVersion, messageVersion)
 	}
 
 	// Default reasoning_level to 1 (normal) when the key is absent.
@@ -142,8 +142,8 @@ func parseSessionMeta(frontmatter string) (SessionMeta, error) {
 	return meta, nil
 }
 
-// parseSessionData parses a session file (frontmatter + TLV body) into SessionData.
-func parseSessionData(data []byte) (*SessionData, error) {
+// parseSessionData parses a session file (frontmatter + TLV body) into sessionData.
+func parseSessionData(data []byte) (*sessionData, error) {
 	frontmatter, body, err := parseFrontmatter(string(data))
 	if err != nil {
 		return nil, err
@@ -154,8 +154,8 @@ func parseSessionData(data []byte) (*SessionData, error) {
 		return nil, err
 	}
 
-	sd := &SessionData{
-		SessionMeta: meta,
+	sd := &sessionData{
+		sessionMeta: meta,
 	}
 
 	if len(body) > 0 {

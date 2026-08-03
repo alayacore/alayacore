@@ -38,9 +38,9 @@
 //	  - A few buffered channels for cancellation, completion signaling,
 //	    and system-info refresh.
 //
-//	MCP initialization is managed by MCPService (internal/agent/mcp_service.go),
+//	MCP initialization is managed by mcpService (internal/agent/mcp_service.go),
 //	which wraps mcp.Init and owns the ready flag. The session reads events
-//	from MCPService.Events() in its main loop and reacts accordingly —
+//	from mcpService.Events() in its main loop and reacts accordingly —
 //	showing confirm dialogs for OAuth, applying tools on completion.
 //	Adapter communication goes through TLV frames.
 //
@@ -54,7 +54,7 @@
 // Architecture Overview:
 //
 //	Session wires together the model service, tools, IO streams, and MCP.
-//	Sub-services (ModelService, MCPService, PersistenceService, CommandRegistry)
+//	Sub-services (modelService, mcpService, persistenceService, commandRegistry)
 //	own distinct concerns and are composed by the Session struct.
 //
 //	The active model is resolved by priority (highest first):
@@ -70,14 +70,14 @@
 //
 //	  --model flag ──────────────────────┐
 //	                                     │
-//	  session file ──▶ SessionMeta ──────┤ ModelService.ResolveActiveModel()
+//	  session file ──▶ sessionMeta ──────┤ modelService.ResolveActiveModel()
 //	                                     │
-//	  runtime.conf ──▶ RuntimeManager ───┤
+//	  runtime.conf ──▶ runtimeManager ───┤
 //	                                     │
-//	  model.conf ────▶ ModelManager ─────┤
+//	  model.conf ────▶ modelManager ─────┤
 //	                                     │
 //	                                     ▼
-//	                               ModelService.ActiveModel()
+//	                               modelService.ActiveModel()
 //
 // Communication Protocol:
 //
@@ -95,10 +95,10 @@
 //
 //   - Session: Main session struct managing conversation state
 //   - ContentPart: Atomic unit of conversation content with stable ID
-//   - ModelManager: Loads and manages AI model configurations.
+//   - modelManager: Loads and manages AI model configurations.
 //     Rejects models with invalid protocol_type, base_url, or model_name.
 //     Use GetLoadErrors() to retrieve validation messages.
-//   - RuntimeManager: Persists runtime settings (active model)
+//   - runtimeManager: Persists runtime settings (active model)
 //   - Command Registry: Declarative command registration
 //     (command names from internal/commands — the shared CI/CO vocabulary)
 //
@@ -114,14 +114,14 @@
 //   - command_registry.go: Declarative command registration
 //   - model_manager.go: Model configuration management
 //   - runtime_manager.go: Runtime persistence
-//   - model_service.go: ModelService (provider/agent lifecycle, model resolution)
-//   - mcp_service.go: MCPService (MCP init lifecycle, event handling)
-//   - persistence.go: PersistenceService (session serialization)
+//   - model_service.go: modelService (provider/agent lifecycle, model resolution)
+//   - mcp_service.go: mcpService (MCP init lifecycle, event handling)
+//   - persistence.go: persistenceService (session serialization)
 //
 // Usage:
 //
 //	pr, pw := io.Pipe()
 //	cfg := agent.SessionConfig{Input: pr, Output: output, ...}
-//	session := agent.NewSession(cfg)
+//	session, _, err := agent.LoadOrNewSession(cfg)
 //	session.Start()
 package agent

@@ -2,9 +2,9 @@ package agent
 
 // Model service: model management, provider/agent creation, reasoning level.
 //
-// Extracted from session_model.go. Owns ModelManager, RuntimeManager, and
+// Extracted from session_model.go. Owns modelManager, runtimeManager, and
 // the agent/provider pair. The run() goroutine owns the service; the task
-// goroutine reads agent/provider via accessors. Model switching is CmdIdle
+// goroutine reads agent/provider via accessors. Model switching is cmdIdle
 // (rejected during a task), so no mutex is needed for agent/provider access.
 
 import (
@@ -16,11 +16,11 @@ import (
 	"github.com/alayacore/alayacore/internal/llm/providers"
 )
 
-// ModelService manages model configuration, provider/agent lifecycle, and
+// modelService manages model configuration, provider/agent lifecycle, and
 // reasoning/video settings. All owned by the run() goroutine.
-type ModelService struct {
-	manager    *ModelManager
-	runtimeMgr *RuntimeManager
+type modelService struct {
+	manager    *modelManager
+	runtimeMgr *runtimeManager
 
 	// Model resolution state
 	sessionMetaModel string // model name from session file frontmatter
@@ -28,7 +28,7 @@ type ModelService struct {
 	initError        error  // set if --model refers to a non-existent model
 
 	// Provider/Agent — written by run(), read by task goroutine.
-	// Safe because model switching (CmdIdle) is rejected during tasks.
+	// Safe because model switching (cmdIdle) is rejected during tasks.
 	provider llm.Provider
 	agent    *llm.Agent
 
@@ -45,9 +45,9 @@ type ModelService struct {
 	proxyURL string
 }
 
-// NewModelService creates a ModelService with the given managers.
-func NewModelService(manager *ModelManager, runtimeMgr *RuntimeManager) *ModelService {
-	return &ModelService{
+// newModelService creates a modelService with the given managers.
+func newModelService(manager *modelManager, runtimeMgr *runtimeManager) *modelService {
+	return &modelService{
 		manager:        manager,
 		runtimeMgr:     runtimeMgr,
 		reasoningLevel: config.DefaultReasoningLevel,
@@ -59,7 +59,7 @@ func NewModelService(manager *ModelManager, runtimeMgr *RuntimeManager) *ModelSe
 // ============================================================================
 
 // ActiveModelName returns the active model's display name, or "".
-func (ms *ModelService) ActiveModelName() string {
+func (ms *modelService) ActiveModelName() string {
 	if ms.manager == nil {
 		return ""
 	}
@@ -70,7 +70,7 @@ func (ms *ModelService) ActiveModelName() string {
 }
 
 // ActiveModel returns the active model config, or nil.
-func (ms *ModelService) ActiveModel() *config.ModelConfig {
+func (ms *modelService) ActiveModel() *modelConfig {
 	if ms.manager == nil {
 		return nil
 	}
@@ -78,7 +78,7 @@ func (ms *ModelService) ActiveModel() *config.ModelConfig {
 }
 
 // ActiveModelID returns the active model's ID.
-func (ms *ModelService) ActiveModelID() int {
+func (ms *modelService) ActiveModelID() int {
 	if ms.manager == nil {
 		return 0
 	}
@@ -86,12 +86,12 @@ func (ms *ModelService) ActiveModelID() int {
 }
 
 // HasModels returns true if at least one model is configured.
-func (ms *ModelService) HasModels() bool {
+func (ms *modelService) HasModels() bool {
 	return ms.manager != nil && ms.manager.HasModels()
 }
 
 // ModelConfigPath returns the path to the model config file.
-func (ms *ModelService) ModelConfigPath() string {
+func (ms *modelService) ModelConfigPath() string {
 	if ms.manager == nil {
 		return ""
 	}
@@ -99,7 +99,7 @@ func (ms *ModelService) ModelConfigPath() string {
 }
 
 // GetLoadErrors returns model config parse/validation errors.
-func (ms *ModelService) GetLoadErrors() []string {
+func (ms *modelService) GetLoadErrors() []string {
 	if ms.manager == nil {
 		return nil
 	}
@@ -108,12 +108,12 @@ func (ms *ModelService) GetLoadErrors() []string {
 
 // HasRejected returns true if model configs were present but ALL were
 // rejected (no usable models remain).
-func (ms *ModelService) HasRejected() bool {
+func (ms *modelService) HasRejected() bool {
 	return ms.manager != nil && ms.manager.HasRejected()
 }
 
 // GetModels returns all configured models.
-func (ms *ModelService) GetModels() []config.ModelConfig {
+func (ms *modelService) GetModels() []modelConfig {
 	if ms.manager == nil {
 		return nil
 	}
@@ -126,13 +126,13 @@ func (ms *ModelService) GetModels() []config.ModelConfig {
 
 // ResolveActiveModel applies the standard priority chain:
 // runtime.conf → session file frontmatter → --model CLI flag.
-func (ms *ModelService) ResolveActiveModel() {
+func (ms *modelService) ResolveActiveModel() {
 	ms.setActiveFromRuntimeConfig()
 	ms.setActiveFromSessionMeta()
 	ms.setActiveFromCliFlag()
 }
 
-func (ms *ModelService) setActiveFromRuntimeConfig() {
+func (ms *modelService) setActiveFromRuntimeConfig() {
 	if ms.manager == nil || ms.runtimeMgr == nil {
 		return
 	}
@@ -145,14 +145,14 @@ func (ms *ModelService) setActiveFromRuntimeConfig() {
 	ms.manager.SetActiveToFirst()
 }
 
-func (ms *ModelService) setActiveFromSessionMeta() {
+func (ms *modelService) setActiveFromSessionMeta() {
 	if ms.sessionMetaModel == "" || ms.manager == nil {
 		return
 	}
 	_ = ms.manager.SetActiveByName(ms.sessionMetaModel)
 }
 
-func (ms *ModelService) setActiveFromCliFlag() {
+func (ms *modelService) setActiveFromCliFlag() {
 	if ms.overrideModel == "" || ms.manager == nil {
 		return
 	}
@@ -166,7 +166,7 @@ func (ms *ModelService) setActiveFromCliFlag() {
 // ============================================================================
 
 // SwitchModel creates a new provider and agent for the given model config.
-func (ms *ModelService) SwitchModel(modelConfig *config.ModelConfig, baseTools []llm.Tool, systemPrompt, extraSystemPrompt string, maxSteps int) error {
+func (ms *modelService) SwitchModel(modelConfig *modelConfig, baseTools []llm.Tool, systemPrompt, extraSystemPrompt string, maxSteps int) error {
 	provider, agent, err := ms.createProviderAndAgent(modelConfig, baseTools, systemPrompt, extraSystemPrompt, maxSteps)
 	if err != nil {
 		return err
@@ -183,7 +183,7 @@ func (ms *ModelService) SwitchModel(modelConfig *config.ModelConfig, baseTools [
 
 // EnsureInitialized checks if agent/provider are ready; if not, creates them
 // from the active model. Safe to call multiple times — fast path when ready.
-func (ms *ModelService) EnsureInitialized(baseTools []llm.Tool, systemPrompt, extraSystemPrompt string, maxSteps int) error {
+func (ms *modelService) EnsureInitialized(baseTools []llm.Tool, systemPrompt, extraSystemPrompt string, maxSteps int) error {
 	if ms.agent != nil && ms.provider != nil {
 		return nil
 	}
@@ -198,7 +198,7 @@ func (ms *ModelService) EnsureInitialized(baseTools []llm.Tool, systemPrompt, ex
 }
 
 // Reset clears the agent and provider (e.g. after MCP init updates tools/prompt).
-func (ms *ModelService) Reset() {
+func (ms *modelService) Reset() {
 	ms.agent = nil
 	ms.provider = nil
 }
@@ -208,7 +208,7 @@ func (ms *ModelService) Reset() {
 // ============================================================================
 
 // SetReasoningLevel sets the reasoning level and syncs to the provider.
-func (ms *ModelService) SetReasoningLevel(level int) {
+func (ms *modelService) SetReasoningLevel(level int) {
 	ms.reasoningLevel = level
 	if ms.provider != nil {
 		ms.provider.SetReasoningLevel(level)
@@ -216,7 +216,7 @@ func (ms *ModelService) SetReasoningLevel(level int) {
 }
 
 // SetVideoConfig sets the default video FPS and resolution, and syncs to the provider.
-func (ms *ModelService) SetVideoConfig(fps int, resolution int) {
+func (ms *modelService) SetVideoConfig(fps int, resolution int) {
 	ms.videoFPS = fps
 	ms.videoRes = resolution
 	if ms.provider != nil {
@@ -228,8 +228,8 @@ func (ms *ModelService) SetVideoConfig(fps int, resolution int) {
 // Provider/Agent Creation
 // ============================================================================
 
-func (ms *ModelService) createProviderAndAgent(
-	modelConfig *config.ModelConfig,
+func (ms *modelService) createProviderAndAgent(
+	modelConfig *modelConfig,
 	baseTools []llm.Tool,
 	systemPrompt, extraSystemPrompt string,
 	maxSteps int,
@@ -252,7 +252,7 @@ func (ms *ModelService) createProviderAndAgent(
 // Package-level helper
 // ============================================================================
 
-func createProviderFromConfig(modelCfg *config.ModelConfig, debugDir, proxyURL string) (llm.Provider, error) {
+func createProviderFromConfig(modelCfg *modelConfig, debugDir, proxyURL string) (llm.Provider, error) {
 	client, err := providers.NewHTTPClient(proxyURL, debugDir)
 	if err != nil {
 		return nil, fmt.Errorf("provider: failed to create HTTP client: %w", err)

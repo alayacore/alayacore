@@ -24,11 +24,11 @@ package agent
 //     taskEventCh (taskEvent)        — task → run()
 //     taskCancel (func call)         — run() → task (cancellation via cancelRunningTask)
 //     taskResultCh                   — task → run (full ContentParts list)
-//     mcpService.Events()            — MCPService → run() (MCP init events: connect/OAuth/discover)
+//     mcpService.Events()            — mcpService → run() (MCP init events: connect/OAuth/discover)
 //
 // Related files:
 //   - session_types.go — type definitions (Task, SessionConfig, etc.)
-//   - session_event.go — TaskEvent types for actor model communication
+//   - session_event.go — taskEvent types for actor model communication
 //   - session_model.go — model management, provider creation, reasoning level
 //   - session_task.go  — input processing, prompt execution, agent loop
 //   - session_io.go    — command handling, summarize, save
@@ -55,7 +55,7 @@ import (
 // sessionConfig groups fields that are set once at construction and
 // never modified thereafter.
 type sessionConfig struct {
-	modelService  *ModelService
+	modelService  *modelService
 	SkillsManager *skills.Manager
 
 	SessionConfig
@@ -70,7 +70,7 @@ type sessionConfig struct {
 // without a cancel func, or clearing them separately).
 type taskHandle struct {
 	cancel    context.CancelFunc // cancels the task's per-task context
-	step      int                // current agent step (set via StepStartEvent)
+	step      int                // current agent step (set via stepStartEvent)
 	commandID string             // CI command ID when started by :continue/:summarize
 }
 
@@ -82,19 +82,19 @@ type runState struct {
 	activeTask *taskHandle // non-nil when a task is running; nil when idle
 
 	// taskCommandID holds the command ID of the task that just finished.
-	// sendTaskMsg uses it for the completion TaskMsg, since activeTask is
+	// sendTaskMsg uses it for the completion taskMsg, since activeTask is
 	// cleared before the final broadcast.
 	taskCommandID string
 
 	inputMsgCh   chan inputMsg // inputPump → run: parsed TLV messages
-	taskEventCh  chan TaskEvent
+	taskEventCh  chan taskEvent
 	taskResultCh chan []llm.ContentPart
 
 	// mcpService drives the entire MCP initialization lifecycle.
 	// The run() goroutine reads from its Events() channel and reacts:
 	//   "auth_required" → shows dialog, sends :mcp_confirm <code> <redirect_uri>
 	//   "done"         → applies tools, marks MCP ready
-	mcpService *MCPService
+	mcpService *mcpService
 }
 
 // activeTaskStep returns the current step of the active task, or 0 if idle.
@@ -164,7 +164,7 @@ func (s *Session) HasRejected() bool { return s.modelService.HasRejected() }
 
 // LoadOrNewSession loads a session from file or creates a new one.
 // Returns an error if the session file exists but has an incompatible version
-// (version must match MessageVersion exactly).
+// (version must match messageVersion exactly).
 // A missing session file is the normal first-run case and is silent.
 // If the session file exists but fails to load for other reasons (corrupt data,
 // permissions), an error is printed to stderr and a new session is created.
@@ -173,10 +173,10 @@ func (s *Session) HasRejected() bool { return s.modelService.HasRejected() }
 func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 	cfg.SessionFile = config.ExpandPath(cfg.SessionFile)
 	if cfg.SessionFile == "" {
-		return NewSession(cfg), cfg.SessionFile, nil
+		return newSession(cfg), cfg.SessionFile, nil
 	}
 
-	data, loadErr := LoadSession(cfg.SessionFile)
+	data, loadErr := loadSession(cfg.SessionFile)
 	if loadErr == nil {
 		s := RestoreFromSession(cfg, data)
 		if replayErr := s.replayContentsToAdapter(); replayErr != nil {
@@ -185,7 +185,7 @@ func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 		return s, cfg.SessionFile, nil
 	}
 
-	if errors.Is(loadErr, ErrSessionVersionMismatch) {
+	if errors.Is(loadErr, errSessionVersionMismatch) {
 		return nil, "", loadErr
 	}
 
@@ -197,15 +197,15 @@ func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 		_ = protocol.WriteSystemMsg(cfg.Output, protocol.ErrorMsg{Text: fmt.Sprintf("could not load session file %q: %v", cfg.SessionFile, loadErr)})
 		_ = protocol.WriteSystemMsg(cfg.Output, protocol.ErrorMsg{Text: "starting new session"})
 	}
-	return NewSession(cfg), cfg.SessionFile, nil
+	return newSession(cfg), cfg.SessionFile, nil
 }
 
-// NewSession creates a fresh session. Does NOT start goroutines —
+// newSession creates a fresh session. Does NOT start goroutines —
 // call Start() to begin processing input.
-func NewSession(cfg SessionConfig) *Session {
+func newSession(cfg SessionConfig) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	modelService := NewModelService(NewModelManager(cfg.ModelConfigPath), NewRuntimeManager(cfg.RuntimeConfigPath))
+	modelService := newModelService(newModelManager(cfg.ModelConfigPath), newRuntimeManager(cfg.RuntimeConfigPath))
 	modelService.overrideModel = cfg.OverrideActiveModel
 	modelService.proxyURL = cfg.ProxyURL
 	modelService.debugDir = cfg.DebugLogDir
@@ -218,7 +218,7 @@ func NewSession(cfg SessionConfig) *Session {
 		},
 		runState: runState{
 			Contents:     make([]llm.ContentPart, 0),
-			taskEventCh:  make(chan TaskEvent, 64),
+			taskEventCh:  make(chan taskEvent, 64),
 			taskResultCh: make(chan []llm.ContentPart, 1),
 		},
 		sharedState: sharedState{
@@ -237,18 +237,18 @@ func NewSession(cfg SessionConfig) *Session {
 	}
 
 	// Set up MCP service (manages init lifecycle).
-	s.mcpService = NewMCPService(cfg.MCPInit, s.Output)
+	s.mcpService = newMCPService(cfg.MCPInit, s.Output)
 
-	s.sendSystemInfo(SystemInfoAll)
+	s.sendSystemInfo(systemInfoAll)
 	return s
 }
 
 // RestoreFromSession creates a session from saved data.
 // Does NOT start goroutines — call Start() to begin processing input.
-func RestoreFromSession(cfg SessionConfig, data *SessionData) *Session {
+func RestoreFromSession(cfg SessionConfig, data *sessionData) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	modelService := NewModelService(NewModelManager(cfg.ModelConfigPath), NewRuntimeManager(cfg.RuntimeConfigPath))
+	modelService := newModelService(newModelManager(cfg.ModelConfigPath), newRuntimeManager(cfg.RuntimeConfigPath))
 	modelService.sessionMetaModel = data.ActiveModel
 	modelService.overrideModel = cfg.OverrideActiveModel
 	modelService.proxyURL = cfg.ProxyURL
@@ -262,7 +262,7 @@ func RestoreFromSession(cfg SessionConfig, data *SessionData) *Session {
 		},
 		runState: runState{
 			Contents:     data.Contents,
-			taskEventCh:  make(chan TaskEvent, 64),
+			taskEventCh:  make(chan taskEvent, 64),
 			taskResultCh: make(chan []llm.ContentPart, 1),
 		},
 		sharedState: sharedState{
@@ -281,7 +281,7 @@ func RestoreFromSession(cfg SessionConfig, data *SessionData) *Session {
 	s.modelService.SetReasoningLevel(data.ReasoningLevel)
 
 	// Set up MCP service (manages init lifecycle).
-	s.mcpService = NewMCPService(cfg.MCPInit, s.Output)
+	s.mcpService = newMCPService(cfg.MCPInit, s.Output)
 
 	// Apply context limit from the resolved model so the status bar
 	// can show "tokens/limit (pct%)" immediately, before any API call.
@@ -289,7 +289,7 @@ func RestoreFromSession(cfg SessionConfig, data *SessionData) *Session {
 		s.ContextLimit = s.modelService.contextLimit
 	}
 
-	s.sendSystemInfo(SystemInfoAll)
+	s.sendSystemInfo(systemInfoAll)
 	return s
 }
 

@@ -6,15 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/config"
 )
 
 func TestParseModelConfig(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []config.ModelConfig
+		expected []modelConfig
 	}{
 		{
 			name: "single model",
@@ -24,7 +22,7 @@ base_url: "https://api.openai.com/v1"
 api_key: "test-key"
 model_name: "gpt-4o"
 context_limit: 128000`,
-			expected: []config.ModelConfig{
+			expected: []modelConfig{
 				{
 					Name:         "OpenAI GPT-4o",
 					ProtocolType: "openai",
@@ -48,7 +46,7 @@ protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "key2"
 model_name: "gpt-oss:20b"`,
-			expected: []config.ModelConfig{
+			expected: []modelConfig{
 				{
 					Name:         "OpenAI GPT-4o",
 					ProtocolType: "openai",
@@ -74,7 +72,7 @@ protocol_type: "openai"
 base_url: "https://api.example.com"
 api_key: "secret"
 model_name: "test"`,
-			expected: []config.ModelConfig{
+			expected: []modelConfig{
 				{
 					Name:         "Test Model",
 					ProtocolType: "openai",
@@ -91,7 +89,7 @@ protocol_type: 'anthropic'
 base_url: 'https://api.example.com'
 api_key: 'secret'
 model_name: 'claude'`,
-			expected: []config.ModelConfig{
+			expected: []modelConfig{
 				{
 					Name:         "Test Model",
 					ProtocolType: "anthropic",
@@ -117,7 +115,7 @@ model_name: 'claude'`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, msgs := parseModelConfig(tt.input)
+			result, msgs := parseModelConfig(tt.input, "model.conf")
 			_ = msgs
 
 			if len(result) != len(tt.expected) {
@@ -152,7 +150,7 @@ func TestParseModelBlock(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected config.ModelConfig
+		expected modelConfig
 	}{
 		{
 			name: "complete model block",
@@ -162,7 +160,7 @@ base_url: "https://api.example.com"
 api_key: "secret-key"
 model_name: "gpt-4"
 context_limit: 64000`,
-			expected: config.ModelConfig{
+			expected: modelConfig{
 				Name:         "Test Model",
 				ProtocolType: "openai",
 				BaseURL:      "https://api.example.com",
@@ -177,7 +175,7 @@ context_limit: 64000`,
 protocol_type: "openai"
 base_url: "https://api.example.com"
 model_name: "mini"`,
-			expected: config.ModelConfig{
+			expected: modelConfig{
 				Name:         "Minimal Model",
 				ProtocolType: "openai",
 				BaseURL:      "https://api.example.com",
@@ -187,15 +185,15 @@ model_name: "mini"`,
 		{
 			name:     "empty block",
 			input:    "",
-			expected: config.ModelConfig{},
+			expected: modelConfig{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			models, msgs := parseModelConfig(tt.input)
+			models, msgs := parseModelConfig(tt.input, "model.conf")
 			_ = msgs
-			var result config.ModelConfig
+			var result modelConfig
 			if len(models) > 0 {
 				result = models[0]
 			}
@@ -243,7 +241,7 @@ model_name: "model-b"
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
-	mm := NewModelManager(configPath)
+	mm := newModelManager(configPath)
 
 	// Check initial IDs (IDs start from 1; 0 is reserved as "no model")
 	models := mm.GetModels()
@@ -258,7 +256,7 @@ model_name: "model-b"
 	}
 
 	// Add a model to bump the nextID counter
-	newID := mm.AddModel(config.ModelConfig{
+	newID := mm.AddModel(modelConfig{
 		Name:         "Model C",
 		ProtocolType: "openai",
 		BaseURL:      "https://api.example.com",
@@ -287,7 +285,7 @@ model_name: "model-b"
 }
 
 // validModelJSON builds a model_sync JSON payload from the given models.
-func validModelJSON(t *testing.T, models ...config.ModelConfig) string {
+func validModelJSON(t *testing.T, models ...modelConfig) string {
 	t.Helper()
 	data, err := json.Marshal(models)
 	if err != nil {
@@ -317,7 +315,7 @@ model_name: "model-a"
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
-	mm := NewModelManager(configPath)
+	mm := newModelManager(configPath)
 	if !mm.HasModels() {
 		t.Fatal("expected model A to load")
 	}
@@ -325,7 +323,7 @@ model_name: "model-a"
 		t.Fatal("expected HasRejected=false after clean load")
 	}
 
-	invalid := config.ModelConfig{Name: "Broken"} // missing required fields
+	invalid := modelConfig{Name: "Broken"} // missing required fields
 
 	// 1. All-rejected sync: flag must become true, current models untouched.
 	msgs := mm.SyncFromContent(validModelJSON(t, invalid))
@@ -340,7 +338,7 @@ model_name: "model-a"
 	}
 
 	// 2. Valid sync clears the flag.
-	msgs = mm.SyncFromContent(validModelJSON(t, config.ModelConfig{
+	msgs = mm.SyncFromContent(validModelJSON(t, modelConfig{
 		Name:         "Model B",
 		ProtocolType: "openai",
 		BaseURL:      "https://api.example.com",
@@ -379,7 +377,7 @@ model_name: "model-a"
 	}
 
 	// 5. Mixed sync: valid models kept, flag cleared.
-	msgs = mm.SyncFromContent(validModelJSON(t, invalid, config.ModelConfig{
+	msgs = mm.SyncFromContent(validModelJSON(t, invalid, modelConfig{
 		Name:         "Model C",
 		ProtocolType: "anthropic",
 		BaseURL:      "https://api.example.com",

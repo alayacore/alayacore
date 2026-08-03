@@ -67,12 +67,12 @@ for the full isolation rules.
 
 ### Theme Persistence
 
-The session persists the active theme via `RuntimeManager` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The plainio, terseio, and rawio adapters ignore it since they have no visual rendering. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
+The session persists the active theme to `runtime.conf` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The plainio, terseio, and rawio adapters ignore it since they have no visual rendering. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
 
 Theme changes flow through the session to keep a single source of truth:
 
 1. `:theme_set <name>` (typed by user) or theme selector confirm both send the command to the session (as a CI frame; the result arrives as a CO frame)
-2. Session persists the theme name via `RuntimeManager.SetActiveTheme()` and broadcasts the updated theme via a `TagSystemMsg` TLV message (`{"type":"theme","data":{"name":"...","theme":{...}}}`)
+2. Session persists the theme name to `runtime.conf` and broadcasts the updated theme via a `TagSystemMsg` TLV message (`{"type":"theme","data":{"name":"...","theme":{...}}}`)
 3. The terminal detects the theme change in `updateStatus()` and calls `applyTheme()` with the full theme data from the TLV message, updating all UI component styles
 
 This ensures both paths converge: the theme selector's live preview applies
@@ -143,7 +143,8 @@ The `StartSession()` function in `app/session.go` handles shared initialization 
 
 - Creates an `io.Pipe()` internally, returning the `PipeWriter` to the adapter so it can feed TLV messages to the session
 - `session.InitError()` — fatal initialization check (--model flag validation)
-- `session.ModelManager.GetLoadErrors()` — emit config errors as system messages
+- `session.GetLoadErrors()` — emit model config errors as system messages
+- `session.GetRuntimeLoadErrors()` — emit runtime.conf parse errors as system messages
 - `session.HasModels()` — abort if no models configured
 
 This is setup code, not runtime coupling. Once the program starts, the adapter only interacts with the session via TLV.

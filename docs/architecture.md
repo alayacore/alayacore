@@ -26,12 +26,12 @@ The session layer manages conversation state, task execution, and model interact
 | Component | Description |
 |-----------|-------------|
 | `Session` | Main struct managing conversation state, message history, and task execution |
-| `ModelService` | Owns ModelManager, RuntimeManager, provider/agent creation, reasoning level, and model resolution |
-| `MCPService` | Owns MCP initialization lifecycle (connect, OAuth, discover, ready flag) |
-| `PersistenceService` | Handles session file I/O and markdown/TLV serialization |
-| `CommandRegistry` | Declarative command registration and dispatch for `:save`, `:cancel`, etc. |
-| `ModelManager` | Loads and manages AI model configurations from `model.conf`. Persists edits from `:model_sync` back to the file. |
-| `RuntimeManager` | Persists runtime settings (active model, active theme) to `runtime.conf` |
+| Model management | Owns model config loading, runtime settings, provider/agent creation, reasoning level, and model resolution |
+| MCP lifecycle | Owns MCP initialization (connect, OAuth, discover, ready flag) |
+| Session persistence | Handles session file I/O and markdown/TLV serialization |
+| Command dispatch | Declarative command registration and dispatch for `:save`, `:cancel`, etc. |
+| Model config loading | Loads and manages AI model configurations from `model.conf`. Persists edits from `:model_sync` back to the file. |
+| Runtime settings | Persists runtime settings (active model, active theme) to `runtime.conf` |
 | `ContextTokens` | Tracks conversation context size across API calls. See [context-tracking.md](context-tracking.md). |
 
 #### Concurrency Model
@@ -94,7 +94,7 @@ stdin EOF ──▶ inputPump closes inputMsgCh ──▶ run() detects closed c
 
 Session files use a key-value frontmatter + binary TLV body format. The frontmatter uses `---` delimiters with simple `key: value` lines (parsed by `config.ParseKeyValue`). The body contains TLV-encoded conversation data (messages, tool calls, tool results) written directly as binary TLV records after the frontmatter.
 
-The frontmatter includes a `message_version` field that tracks the TLV message encoding format. When loading a session, it must match `MessageVersion` exactly — any mismatch is rejected. The version is also broadcast to adapters as the first `TagSystemMsg` frame on startup (`{"type":"version","data":{"message_version":11,"core_version":"<build-time version>"}}`), so they can validate format compatibility before processing subsequent messages.
+The frontmatter includes a `message_version` field that tracks the TLV message encoding format. When loading a session, it must match the current `messageVersion` constant exactly — any mismatch is rejected. The version is also broadcast to adapters as the first `TagSystemMsg` frame on startup (`{"type":"version","data":{"message_version":11,"core_version":"<build-time version>"}}`), so they can validate format compatibility before processing subsequent messages.
 
 **Message grouping on load:** The session format stores a flat sequence of TLV chunks with no explicit message boundaries. On load, chunks are grouped into messages by role: consecutive chunks with the same role are merged into a single message's `Content` array. This correctly handles multi-part user messages (e.g., when a user adds context after a failed prompt) and assistant messages containing reasoning + text + tool calls.
 

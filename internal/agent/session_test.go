@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -53,9 +52,9 @@ func TestSaveAndLoadSession(t *testing.T) {
 	}
 
 	// Load session
-	loadedData, err := LoadSession(sessionPath)
+	loadedData, err := loadSession(sessionPath)
 	if err != nil {
-		t.Fatalf("LoadSession failed: %v", err)
+		t.Fatalf("loadSession failed: %v", err)
 	}
 
 	// Verify data was loaded
@@ -220,9 +219,9 @@ func TestSaveAndLoadSession_WithMessages(t *testing.T) {
 	}
 
 	// Load
-	loaded, err := LoadSession(sessionPath)
+	loaded, err := loadSession(sessionPath)
 	if err != nil {
-		t.Fatalf("LoadSession failed: %v", err)
+		t.Fatalf("loadSession failed: %v", err)
 	}
 
 	// Verify content parts are preserved
@@ -347,9 +346,9 @@ func TestReasoningOnlyMessage(t *testing.T) {
 	}
 
 	// Load and verify
-	loaded, err := LoadSession(sessionPath)
+	loaded, err := loadSession(sessionPath)
 	if err != nil {
-		t.Fatalf("LoadSession failed: %v", err)
+		t.Fatalf("loadSession failed: %v", err)
 	}
 
 	if len(loaded.Contents) != 2 {
@@ -401,9 +400,9 @@ func TestTextAndReasoningInSameMessage(t *testing.T) {
 	}
 
 	// Load and verify
-	loaded, err := LoadSession(sessionPath)
+	loaded, err := loadSession(sessionPath)
 	if err != nil {
-		t.Fatalf("LoadSession failed: %v", err)
+		t.Fatalf("loadSession failed: %v", err)
 	}
 
 	// All 3 content parts must be preserved
@@ -447,7 +446,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	session := &Session{
 		runState: runState{},
 		sessionConfig: sessionConfig{
-			modelService: NewModelService(NewModelManager(""), NewRuntimeManager("")),
+			modelService: newModelService(newModelManager(""), newRuntimeManager("")),
 			SessionConfig: SessionConfig{
 				Input:  &nopInput{},
 				Output: output,
@@ -459,7 +458,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	}
 
 	// Add a test model to the manager
-	testModel := config.ModelConfig{
+	testModel := modelConfig{
 		ID:           1,
 		Name:         "Test Model",
 		ProtocolType: "openai",
@@ -471,7 +470,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 
 	// Test 1: model_set should work when no task is running.
 	// Dispatch through handleInputMsg (the real entry point) so the
-	// CmdIdle policy is enforced.
+	// cmdIdle policy is enforced.
 	output.Messages = nil
 	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true, cmdID: "t1"})
 
@@ -528,10 +527,10 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 	}
 
 	// Create session data with flat ContentParts
-	sessionData := &SessionData{
+	sessionData := &sessionData{
 		Contents: contents,
-		SessionMeta: SessionMeta{
-			MessageVersion: MessageVersion,
+		sessionMeta: sessionMeta{
+			MessageVersion: messageVersion,
 			UpdatedAt:      time.Now(),
 		},
 	}
@@ -591,7 +590,7 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 }
 
 // LoadSessionFromBytes loads a session from raw bytes (for testing)
-func LoadSessionFromBytes(data []byte) (*SessionData, error) {
+func LoadSessionFromBytes(data []byte) (*sessionData, error) {
 	sd, err := parseSessionData(data)
 	if err != nil {
 		return nil, err
@@ -721,9 +720,9 @@ func TestTLVFormatRecursionProtection(t *testing.T) {
 	}
 
 	// Load
-	loaded, err := LoadSession(sessionPath)
+	loaded, err := loadSession(sessionPath)
 	if err != nil {
-		t.Fatalf("LoadSession failed: %v", err)
+		t.Fatalf("loadSession failed: %v", err)
 	}
 
 	// Verify we still have 4 content parts (not more due to false parsing)
@@ -821,7 +820,7 @@ func TestLoadSessionInvalidReasoningLevel(t *testing.T) {
 }
 
 // TestLoadSessionVersionMismatch verifies that a session file with a missing or
-// non-matching version is rejected with ErrSessionVersionMismatch.
+// non-matching version is rejected with errSessionVersionMismatch.
 func TestLoadSessionVersionMismatch(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -831,12 +830,12 @@ func TestLoadSessionVersionMismatch(t *testing.T) {
 		{
 			name:    "missing version",
 			raw:     "---\ncreated_at: 2024-01-15T10:30:00Z\nupdated_at: 2024-01-15T10:30:00Z\n---\n",
-			wantErr: ErrSessionVersionMismatch,
+			wantErr: errSessionVersionMismatch,
 		},
 		{
 			name:    "version zero",
 			raw:     "---\nmessage_version: 0\ncreated_at: 2024-01-15T10:30:00Z\nupdated_at: 2024-01-15T10:30:00Z\n---\n",
-			wantErr: ErrSessionVersionMismatch,
+			wantErr: errSessionVersionMismatch,
 		},
 	}
 
@@ -863,8 +862,8 @@ func TestLoadSessionVersionValid(t *testing.T) {
 		t.Fatalf("parseSessionData failed: %v", err)
 	}
 
-	if data.MessageVersion != MessageVersion {
-		t.Errorf("expected MessageVersion=%d, got %d", MessageVersion, data.MessageVersion)
+	if data.MessageVersion != messageVersion {
+		t.Errorf("expected messageVersion=%d, got %d", messageVersion, data.MessageVersion)
 	}
 }
 
@@ -887,7 +886,7 @@ func TestLoadOrNewSessionVersionMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for old session file, got nil")
 	}
-	if !errors.Is(err, ErrSessionVersionMismatch) {
-		t.Errorf("expected ErrSessionVersionMismatch, got %v", err)
+	if !errors.Is(err, errSessionVersionMismatch) {
+		t.Errorf("expected errSessionVersionMismatch, got %v", err)
 	}
 }

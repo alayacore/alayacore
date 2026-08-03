@@ -5,8 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/alayacore/alayacore/internal/config"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 func TestFuzzyMatch(t *testing.T) {
@@ -125,8 +124,8 @@ func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
 
 	// Set up some test models
 	models := []searchableModel{
-		{ModelConfig: config.ModelConfig{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
-		{ModelConfig: config.ModelConfig{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"}},
+		{ModelInfo: protocol.ModelInfo{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
+		{ModelInfo: protocol.ModelInfo{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"}},
 	}
 	ms = ms.WithModels(models)
 	ms = ms.Open()
@@ -170,8 +169,8 @@ func TestModelSelectorSetModelsUpdatesFilteredModels(t *testing.T) {
 
 	// Set up initial models
 	models := []searchableModel{
-		{ModelConfig: config.ModelConfig{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
-		{ModelConfig: config.ModelConfig{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"}},
+		{ModelInfo: protocol.ModelInfo{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
+		{ModelInfo: protocol.ModelInfo{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"}},
 	}
 	ms = ms.WithModels(models)
 	ms = ms.Open()
@@ -196,9 +195,9 @@ func TestModelSelectorSetModelsUpdatesFilteredModels(t *testing.T) {
 	// Now set new models (simulating reload after editing config file)
 	// The search value is still "gpt", so without the fix, filteredModels wouldn't update
 	newModels := []searchableModel{
-		{ModelConfig: config.ModelConfig{Name: "OpenAI GPT-4o", ProtocolType: "openai", ModelName: "gpt-4o"}},
-		{ModelConfig: config.ModelConfig{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
-		{ModelConfig: config.ModelConfig{Name: "Claude 3.5", ProtocolType: "anthropic", ModelName: "claude-3.5"}},
+		{ModelInfo: protocol.ModelInfo{Name: "OpenAI GPT-4o", ProtocolType: "openai", ModelName: "gpt-4o"}},
+		{ModelInfo: protocol.ModelInfo{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
+		{ModelInfo: protocol.ModelInfo{Name: "Claude 3.5", ProtocolType: "anthropic", ModelName: "claude-3.5"}},
 	}
 	ms = ms.WithModels(newModels)
 
@@ -221,7 +220,7 @@ func TestModelSelectorLoadModelsPreservesSelection(t *testing.T) {
 	ms := NewModelSelector(styles)
 
 	// Set up initial models via LoadModels
-	models := []config.ModelConfig{
+	models := []protocol.ModelInfo{
 		{ID: 1, Name: "Model A", ProtocolType: "openai", ModelName: "model-a"},
 		{ID: 2, Name: "Model B", ProtocolType: "anthropic", ModelName: "model-b"},
 	}
@@ -239,7 +238,7 @@ func TestModelSelectorLoadModelsPreservesSelection(t *testing.T) {
 
 	// Reload models (simulating Ctrl+R — user-triggered reload)
 	// The selection should be preserved when selector is open and models already existed
-	newModels := []config.ModelConfig{
+	newModels := []protocol.ModelInfo{
 		{ID: 1, Name: "Model A", ProtocolType: "openai", ModelName: "model-a"},
 		{ID: 2, Name: "Model B", ProtocolType: "anthropic", ModelName: "model-b"},
 		{ID: 3, Name: "Model C", ProtocolType: "anthropic", ModelName: "model-c"},

@@ -74,7 +74,7 @@ func (s *Session) run() {
 				if !s.mcpService.IsReady() {
 					s.mcpService.MarkAborted()
 					s.writeError("MCP initialization canceled.")
-					s.mcpService.sendSystemMsg(&MCPMsgData{Status: "done"})
+					s.mcpService.sendSystemMsg(&mcpMsgData{Status: "done"})
 				}
 				break
 			}
@@ -134,7 +134,7 @@ func (s *Session) handleMCPEvent(evt *mcp.InitEvent) {
 func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 	s.flushPendingEvents()
 	if s.activeTask != nil {
-		// Preserve the command ID for the final TaskMsg — activeTask is
+		// Preserve the command ID for the final taskMsg — activeTask is
 		// cleared below, before the completion broadcast.
 		s.taskCommandID = s.activeTask.commandID
 	}
@@ -155,7 +155,7 @@ func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 		}
 	}
 
-	s.sendSystemInfo(SystemInfoTask)
+	s.sendSystemInfo(systemInfoTask)
 }
 
 // flushPendingEvents drains remaining taskEventCh events from the
@@ -201,25 +201,25 @@ func (s *Session) drainUntilTaskDone() {
 }
 
 // handleTaskEvent processes a state change event from the task goroutine.
-func (s *Session) handleTaskEvent(ev TaskEvent) {
+func (s *Session) handleTaskEvent(ev taskEvent) {
 	switch e := ev.(type) {
-	case StepStartEvent:
+	case stepStartEvent:
 		if s.activeTask != nil {
 			s.activeTask.step = e.Step
 		}
-		s.sendSystemInfo(SystemInfoTask)
+		s.sendSystemInfo(systemInfoTask)
 
-	case StepFinishEvent:
+	case stepFinishEvent:
 		newContext := e.InputTokens + e.OutputTokens + e.CacheReadTokens + e.CacheCreationTokens
 		if newContext > 0 {
 			s.ContextTokens = newContext
 		}
-		s.sendSystemInfo(SystemInfoTask)
+		s.sendSystemInfo(systemInfoTask)
 
-	case SetContextTokensEvent:
+	case setContextTokensEvent:
 		if e.Tokens > 0 {
 			s.ContextTokens = e.Tokens
 		}
-		s.sendSystemInfo(SystemInfoTask)
+		s.sendSystemInfo(systemInfoTask)
 	}
 }

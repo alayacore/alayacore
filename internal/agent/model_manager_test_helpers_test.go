@@ -2,12 +2,10 @@ package agent
 
 import (
 	"fmt"
-
-	"github.com/alayacore/alayacore/internal/config"
 )
 
 // Reload reloads models from the config file (test helper).
-func (mm *ModelManager) Reload() error {
+func (mm *modelManager) Reload() error {
 	if mm.filePath == "" {
 		return fmt.Errorf("model: no config file path set")
 	}
@@ -15,7 +13,7 @@ func (mm *ModelManager) Reload() error {
 }
 
 // AddModel adds a new model to the runtime list (test helper).
-func (mm *ModelManager) AddModel(m config.ModelConfig) int {
+func (mm *modelManager) AddModel(m modelConfig) int {
 	m.ID = mm.nextID
 	mm.nextID++
 	mm.models = append(mm.models, m)
@@ -23,6 +21,6 @@ func (mm *ModelManager) AddModel(m config.ModelConfig) int {
 }
 
 // ModelCount returns the number of models (test helper).
-func (mm *ModelManager) ModelCount() int {
+func (mm *modelManager) ModelCount() int {
 	return len(mm.models)
 }

@@ -1,23 +1,68 @@
-package config
+package agent
 
 import (
+	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
 
+func TestToModelInfosWireCompatible(t *testing.T) {
+	// The wire format for model_list must serialize to exactly the same
+	// JSON bytes as modelConfig, so the TLV protocol stays compatible.
+	m := modelConfig{
+		ID:           3,
+		Name:         "Test",
+		ProtocolType: "openai",
+		BaseURL:      "http://x",
+		APIKey:       "k",
+		ModelName:    "model-a",
+		ContextLimit: 200000,
+		MaxTokens:    0, // zero value must still appear in the wire bytes
+	}
+
+	domainJSON, err := json.Marshal([]modelConfig{m})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wireJSON, err := json.Marshal(toModelInfos([]modelConfig{m}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(domainJSON, wireJSON) {
+		t.Errorf("wire JSON differs from domain JSON:\ndomain: %s\nwire:   %s", domainJSON, wireJSON)
+	}
+
+	var wire []map[string]any
+	if err := json.Unmarshal(wireJSON, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire) != 1 {
+		t.Fatalf("expected 1 model info, got %d", len(wire))
+	}
+	// Zero-value fields must be present (no omitempty drift).
+	if _, ok := wire[0]["max_tokens"]; !ok {
+		t.Errorf("max_tokens missing from wire JSON: %s", wireJSON)
+	}
+	if _, ok := wire[0]["context_limit"]; !ok {
+		t.Errorf("context_limit missing from wire JSON: %s", wireJSON)
+	}
+}
+
 func TestFormatModelList_Empty(t *testing.T) {
-	out := FormatModelList(nil)
+	out := formatModelList(nil)
 	if out != "" {
 		t.Errorf("expected empty string, got %q", out)
 	}
-	out = FormatModelList([]ModelConfig{})
+	out = formatModelList([]modelConfig{})
 	if out != "" {
 		t.Errorf("expected empty string, got %q", out)
 	}
 }
 
 func TestFormatModelList_Single(t *testing.T) {
-	models := []ModelConfig{
+	models := []modelConfig{
 		{
 			Name:         "test-model",
 			ProtocolType: "anthropic",
@@ -27,7 +72,7 @@ func TestFormatModelList_Single(t *testing.T) {
 			ContextLimit: 64000,
 		},
 	}
-	out := FormatModelList(models)
+	out := formatModelList(models)
 
 	if !strings.Contains(out, `name: "test-model"`) {
 		t.Errorf("missing name, got: %s", out)
@@ -66,11 +111,11 @@ func TestFormatModelList_Single(t *testing.T) {
 }
 
 func TestFormatModelList_Multiple(t *testing.T) {
-	models := []ModelConfig{
+	models := []modelConfig{
 		{Name: "model-a", ProtocolType: "openai", BaseURL: "http://a", APIKey: "k", ModelName: "m-a"},
 		{Name: "model-b", ProtocolType: "anthropic", BaseURL: "http://b", APIKey: "k", ModelName: "m-b"},
 	}
-	out := FormatModelList(models)
+	out := formatModelList(models)
 
 	if !strings.Contains(out, `name: "model-a"`) {
 		t.Errorf("missing model-a, got: %s", out)
@@ -96,7 +141,7 @@ func TestFormatModelList_Multiple(t *testing.T) {
 }
 
 func TestFormatModelList_OmitsZeroValues(t *testing.T) {
-	models := []ModelConfig{
+	models := []modelConfig{
 		{
 			Name:         "test",
 			ProtocolType: "openai",
@@ -106,7 +151,7 @@ func TestFormatModelList_OmitsZeroValues(t *testing.T) {
 			// ContextLimit and MaxTokens are 0 (zero) → omitempty → not written
 		},
 	}
-	out := FormatModelList(models)
+	out := formatModelList(models)
 
 	if strings.Contains(out, "context_limit:") {
 		t.Errorf("expected context_limit to be omitted (0 value), got: %s", out)
@@ -117,7 +162,7 @@ func TestFormatModelList_OmitsZeroValues(t *testing.T) {
 }
 
 func TestFormatModelList_OmitsID(t *testing.T) {
-	models := []ModelConfig{
+	models := []modelConfig{
 		{
 			ID:           42,
 			Name:         "test",
@@ -127,7 +172,7 @@ func TestFormatModelList_OmitsID(t *testing.T) {
 			ModelName:    "m",
 		},
 	}
-	out := FormatModelList(models)
+	out := formatModelList(models)
 
 	// ID has config:"-" tag, should never appear in output
 	if strings.Contains(out, "id:") {
@@ -136,7 +181,7 @@ func TestFormatModelList_OmitsID(t *testing.T) {
 }
 
 func TestParseModelList_Empty(t *testing.T) {
-	models, errs := ParseModelList("")
+	models, errs := parseModelList("", "model.conf")
 	if len(models) != 0 {
 		t.Errorf("expected 0 models, got %d", len(models))
 	}
@@ -144,7 +189,7 @@ func TestParseModelList_Empty(t *testing.T) {
 		t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
 	}
 
-	models, _ = ParseModelList("  \n  \n  ")
+	models, _ = parseModelList("  \n  \n  ", "model.conf")
 	if len(models) != 0 {
 		t.Errorf("expected 0 models for whitespace, got %d", len(models))
 	}
@@ -158,7 +203,7 @@ api_key: "nokey"
 model_name: "test"
 context_limit: 64000
 `
-	models, errs := ParseModelList(content)
+	models, errs := parseModelList(content, "model.conf")
 	if len(errs) != 0 {
 		t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
 	}
@@ -196,7 +241,7 @@ base_url: "http://b"
 api_key: "k"
 model_name: "m-b"
 `
-	models, errs := ParseModelList(content)
+	models, errs := parseModelList(content, "model.conf")
 	if len(errs) != 0 {
 		t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
 	}
@@ -227,7 +272,7 @@ base_url: "http://b"
 api_key: "k"
 model_name: "s"
 `
-	models, errs := ParseModelList(content)
+	models, errs := parseModelList(content, "model.conf")
 	if len(errs) != 0 {
 		t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
 	}
@@ -251,7 +296,7 @@ model_name: "active"
 #api_key: "k"
 #model_name: "commented"
 `
-	models, _ := ParseModelList(content)
+	models, _ := parseModelList(content, "model.conf")
 	if len(models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(models))
 	}
@@ -272,7 +317,7 @@ protocol_type: "anthropic"
 base_url: "http://b"
 api_key: "k"
 `
-	models, _ := ParseModelList(content)
+	models, _ := parseModelList(content, "model.conf")
 	if len(models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(models))
 	}
@@ -282,12 +327,12 @@ api_key: "k"
 }
 
 func TestParseModelList_RoundTrip(t *testing.T) {
-	original := []ModelConfig{
+	original := []modelConfig{
 		{Name: "m1", ProtocolType: "openai", BaseURL: "http://a", APIKey: "k1", ModelName: "m1", ContextLimit: 1000},
 		{Name: "m2", ProtocolType: "anthropic", BaseURL: "http://b", APIKey: "k2", ModelName: "m2", MaxTokens: 500},
 	}
-	formatted := FormatModelList(original)
-	parsed, errs := ParseModelList(formatted)
+	formatted := formatModelList(original)
+	parsed, errs := parseModelList(formatted, "model.conf")
 	if len(errs) != 0 {
 		t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
 	}
@@ -318,11 +363,11 @@ func TestParseModelList_RoundTrip(t *testing.T) {
 
 func TestFormatThenParse_WithID(t *testing.T) {
 	// ID (config:"-") should never survive a format+parse cycle.
-	original := []ModelConfig{
+	original := []modelConfig{
 		{ID: 99, Name: "test", ProtocolType: "openai", BaseURL: "http://a", APIKey: "k", ModelName: "m"},
 	}
-	formatted := FormatModelList(original)
-	parsed, _ := ParseModelList(formatted)
+	formatted := formatModelList(original)
+	parsed, _ := parseModelList(formatted, "model.conf")
 	if len(parsed) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(parsed))
 	}
