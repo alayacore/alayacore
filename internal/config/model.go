@@ -1,6 +1,9 @@
 package config
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // ModelConfig represents a model configuration.
 // JSON tags are used for TLV serialization to adapters.
@@ -26,4 +29,43 @@ func FormatModelList(models []ModelConfig) string {
 		blocks = append(blocks, strings.TrimSuffix(FormatKeyValue(m), "\n"))
 	}
 	return strings.Join(blocks, "\n---\n") + "\n"
+}
+
+// ParseModelList parses key-value block format into a slice of ModelConfig.
+// Returns models with a non-empty Name or ModelName, and any parse errors.
+// Does NOT validate model fields — callers should validate after this.
+func ParseModelList(content string) ([]ModelConfig, []string) {
+	blocks := ParseKeyValueBlocks(content)
+	models := make([]ModelConfig, 0, len(blocks))
+	var errs []string
+
+	for blockIdx, block := range blocks {
+		blockModels, blockErrs := parseModelBlock(block, blockIdx)
+		models = append(models, blockModels...)
+		errs = append(errs, blockErrs...)
+	}
+
+	return models, errs
+}
+
+// parseModelBlock parses a single model block. Returns the models the
+// block yields (at most one; nil for blank or nameless blocks) and any
+// parse errors with the block index baked into the messages.
+func parseModelBlock(block string, blockIdx int) ([]ModelConfig, []string) {
+	block = strings.TrimSpace(block)
+	if block == "" {
+		return nil, nil
+	}
+
+	var m ModelConfig
+	parseErrs := ParseKeyValue(block, &m)
+	errs := make([]string, 0, len(parseErrs))
+	for _, e := range parseErrs {
+		errs = append(errs, fmt.Sprintf("model block %d: %s", blockIdx+1, e.String()))
+	}
+
+	if m.Name == "" && m.ModelName == "" {
+		return nil, errs
+	}
+	return []ModelConfig{m}, errs
 }

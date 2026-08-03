@@ -21,46 +21,69 @@ func LoadConfigs(cfg *config.Settings) ([]ServerConfig, []string) {
 
 	blocks := config.ParseKeyValueBlocks(string(data))
 	configs := make([]ServerConfig, 0, len(blocks))
-	var errs []string
+	errs := make([]string, 0)
 
 	for _, block := range blocks {
-		block = strings.TrimSpace(block)
-		if block == "" {
+		cleaned, ok := stripComments(block)
+		if !ok {
 			continue
 		}
-
-		// "#" is a line-level comment (ParseKeyValue skips # lines).
-		// Strip comment lines first, then check whether any real content
-		// remains — a block that starts with a comment must still be parsed.
-		var kept []string
-		for _, line := range strings.Split(block, "\n") {
-			t := strings.TrimSpace(line)
-			if t == "" || strings.HasPrefix(t, "#") {
-				continue
-			}
-			kept = append(kept, line)
+		srv, blockErrs, ok := parseServerBlock(cleaned)
+		errs = append(errs, blockErrs...)
+		if ok {
+			configs = append(configs, srv)
 		}
-		block = strings.Join(kept, "\n")
-		if strings.TrimSpace(block) == "" {
-			continue
-		}
-
-		var fileCfg ServerConfigFile
-		parseErrors := config.ParseKeyValue(block, &fileCfg)
-		for _, e := range parseErrors {
-			errs = append(errs, fmt.Sprintf("mcp.conf: %s", e.String()))
-		}
-
-		if fileCfg.Server == "" {
-			errs = append(errs, "mcp.conf: skipping block with empty server name")
-			continue
-		}
-
-		configs = append(configs, fileCfg.ToServerConfig())
 	}
 
-	// Check for duplicate server names.
-	// First occurrence is kept; subsequent duplicates are reported as errors.
+	return dedupeServers(configs, errs)
+}
+
+// stripComments removes blank and comment lines from a config block and
+// reports whether any real content remains. "#" is a line-level comment
+// (ParseKeyValue skips such lines), but a block whose first line is a
+// comment must still be parsed — only fully commented/blank blocks are
+// dropped.
+func stripComments(block string) (string, bool) {
+	block = strings.TrimSpace(block)
+	if block == "" {
+		return "", false
+	}
+
+	kept := make([]string, 0)
+	for _, line := range strings.Split(block, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if len(kept) == 0 {
+		return "", false
+	}
+	return strings.Join(kept, "\n"), true
+}
+
+// parseServerBlock parses a single mcp.conf block into a ServerConfig.
+// Returns ok=false when the block has no server name (reported via errs).
+func parseServerBlock(block string) (ServerConfig, []string, bool) {
+	var fileCfg ServerConfigFile
+	parseErrors := config.ParseKeyValue(block, &fileCfg)
+
+	errs := make([]string, 0, len(parseErrors))
+	for _, e := range parseErrors {
+		errs = append(errs, fmt.Sprintf("mcp.conf: %s", e.String()))
+	}
+
+	if fileCfg.Server == "" {
+		errs = append(errs, "mcp.conf: skipping block with empty server name")
+		return ServerConfig{}, errs, false
+	}
+	return fileCfg.ToServerConfig(), errs, true
+}
+
+// dedupeServers keeps the first occurrence of each server name and
+// reports subsequent duplicates as errors.
+func dedupeServers(configs []ServerConfig, errs []string) ([]ServerConfig, []string) {
 	seenNames := make(map[string]bool)
 	deduped := make([]ServerConfig, 0, len(configs))
 	for _, cfg := range configs {
@@ -71,6 +94,5 @@ func LoadConfigs(cfg *config.Settings) ([]ServerConfig, []string) {
 		seenNames[cfg.Name] = true
 		deduped = append(deduped, cfg)
 	}
-
 	return deduped, errs
 }

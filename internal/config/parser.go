@@ -43,33 +43,6 @@ func ParseKeyValueBlocks(content string) []string {
 	return strings.Split(content, "\n---\n")
 }
 
-// ParseModelList parses key-value block format into a slice of ModelConfig.
-// Returns models with a non-empty Name or ModelName, and any parse errors.
-// Does NOT validate model fields — callers should validate after this.
-func ParseModelList(content string) ([]ModelConfig, []string) {
-	blocks := ParseKeyValueBlocks(content)
-	models := make([]ModelConfig, 0, len(blocks))
-	var errs []string
-
-	for blockIdx, block := range blocks {
-		block = strings.TrimSpace(block)
-		if block == "" {
-			continue
-		}
-
-		var m ModelConfig
-		for _, e := range ParseKeyValue(block, &m) {
-			errs = append(errs, fmt.Sprintf("model block %d: %s", blockIdx+1, e.String()))
-		}
-
-		if m.Name != "" || m.ModelName != "" {
-			models = append(models, m)
-		}
-	}
-
-	return models, errs
-}
-
 // ParseKeyValue parses key-value config content into a struct using `config` tags.
 // The content format is:
 //
@@ -95,51 +68,9 @@ func ParseKeyValue(content string, target any) []ParseError {
 		return nil
 	}
 	v = v.Elem()
+	t := v.Type()
 
-	tagToField := buildTagToField(v.Type())
-
-	var errs []ParseError
-	// seenKeys tracks keys already set in this block so duplicates can be
-	// reported instead of silently overwriting the first occurrence.
-	seenKeys := make(map[string]bool)
-
-	// Parse lines
-	for line := range strings.SplitSeq(content, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || line == "---" || strings.HasPrefix(line, "#") {
-			continue // empty, block separator, or comment
-		}
-
-		key, value, perr := parseKeyValueLine(line)
-		if perr != nil {
-			errs = append(errs, *perr)
-			continue
-		}
-
-		// Look up field by tag
-		fieldIdx, ok := tagToField[key]
-		if !ok {
-			errs = append(errs, ParseError{Key: key, Value: value, Err: "unknown config key"})
-			continue
-		}
-
-		// Duplicate keys in one block are a configuration error: report
-		// them and keep the first occurrence (later values are ignored).
-		if ok, dupErr := claimKey(seenKeys, key, value); !ok {
-			errs = append(errs, *dupErr)
-			continue
-		}
-
-		if e := setField(fieldIdx, v, value, key); e != nil {
-			errs = append(errs, *e)
-		}
-	}
-
-	return errs
-}
-
-// buildTagToField maps config tag names to struct field indices.
-func buildTagToField(t reflect.Type) map[string]int {
+	// Build map from config tag names to field indices
 	tagToField := make(map[string]int)
 	for i := 0; i < t.NumField(); i++ {
 		tag := t.Field(i).Tag.Get("config")
@@ -151,7 +82,52 @@ func buildTagToField(t reflect.Type) map[string]int {
 			tagToField[key] = i
 		}
 	}
-	return tagToField
+
+	var errs []ParseError
+	// seenKeys tracks keys already set in this block so duplicates can be
+	// reported instead of silently overwriting the first occurrence.
+	seenKeys := make(map[string]bool)
+
+	// Parse lines
+	for line := range strings.SplitSeq(content, "\n") {
+		if lineErrs := parseLine(line, tagToField, seenKeys, v); len(lineErrs) > 0 {
+			errs = append(errs, lineErrs...)
+		}
+	}
+
+	return errs
+}
+
+// parseLine processes one config line: skips blank, block-separator, and
+// comment lines, parses "key: value", and applies the value to the target
+// struct. Returns nil (no action) or one ParseError to report.
+func parseLine(line string, tagToField map[string]int, seenKeys map[string]bool, v reflect.Value) []ParseError {
+	line = strings.TrimSpace(line)
+	if line == "" || line == "---" || strings.HasPrefix(line, "#") {
+		return nil // empty, block separator, or comment
+	}
+
+	key, value, perr := parseKeyValueLine(line)
+	if perr != nil {
+		return []ParseError{*perr}
+	}
+
+	// Look up field by tag
+	fieldIdx, ok := tagToField[key]
+	if !ok {
+		return []ParseError{{Key: key, Value: value, Err: "unknown config key"}}
+	}
+
+	// Duplicate keys in one block are a configuration error: report
+	// them and keep the first occurrence (later values are ignored).
+	if ok, dupErr := claimKey(seenKeys, key, value); !ok {
+		return []ParseError{*dupErr}
+	}
+
+	if e := setField(fieldIdx, v, value, key); e != nil {
+		return []ParseError{*e}
+	}
+	return nil
 }
 
 // parseKeyValueLine splits a config line into a key and value. The key
