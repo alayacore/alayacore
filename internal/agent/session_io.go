@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -299,10 +300,10 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	// CO replies immediately ({"status":"started"} or an error); task
 	// completion is correlated via TaskMsg.command_id.
 	switch name {
-	case CommandNameContinue:
+	case commands.CommandNameContinue:
 		s.startTaskCommand(msg.cmdID, s.runTaskContinue)
 		return
-	case CommandNameSummarize:
+	case commands.CommandNameSummarize:
 		s.startTaskCommand(msg.cmdID, s.runTaskSummarize)
 		return
 	}

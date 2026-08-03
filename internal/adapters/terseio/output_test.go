@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -171,8 +172,8 @@ func TestTerseOutput_CommandError_GoesToStderrAndSetsExitCode(t *testing.T) {
 func TestTerseOutput_CommandSuccess_SaveRendered(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
-	// Correlate the CI the adapter sent: id → commandSave.
-	commandNames.Store("terse-7", commandSave)
+	// Correlate the CI the adapter sent: id → CommandNameSave.
+	commandNames.Store("terse-7", commands.CommandNameSave)
 	o.Write(cmdResultMsg("terse-7", map[string]any{"path": "/tmp/x.alaya"}, false))
 
 	if out.String() != "" {
@@ -190,7 +191,7 @@ func TestTerseOutput_CommandSuccess_SelfEvidentSilent(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
 	// :continue — the final answer on stdout is the feedback, not the CO.
-	commandNames.Store("terse-8", "continue")
+	commandNames.Store("terse-8", commands.CommandNameContinue)
 	o.Write(cmdResultMsg("terse-8", map[string]any{"status": "started"}, false))
 
 	if out.String() != "" {

@@ -95,7 +95,7 @@ type Settings struct {
 	// Core
 	ShowVersion   bool
 	RawIO         bool
-	TerseIO       bool // read all stdin as one prompt; print only the final answer
+	TerseIO       bool // read all stdin as one prompt or command; print only the final answer
 	PlainIO       bool
 	DebugLogDir   string // "" = disabled (when flag not set), "." = write to CWD, or any path (set by --debug-log)
 	ModelConfig   string // derived from config-path + "model.conf"

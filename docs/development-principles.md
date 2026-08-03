@@ -67,6 +67,7 @@ internal/config/    ← ModelConfig, key-value parsing/formatting
 internal/tlv/       ← TLV tag constants, frame encoding/decoding
 internal/protocol/  ← System message types, tool data structures
 internal/theme/     ← Theme data structures
+internal/commands/  ← Command name constants (CI/CO vocabulary)
 ```
 
 This prevents circular dependencies and keeps the boundary clean. When moving a type out of the agent package, use a temporary type alias for transition:
@@ -81,7 +82,8 @@ type ModelConfig = config.ModelConfig  // transitional, remove eventually
 |----------|----------|--------|
 | `internal/app/session.go` imports agent | ✅ Yes | Bootstrap layer, not an adapter |
 | Adapter references agent's struct type | ✅ Yes | Compile-time convenience, no runtime coupling |
-| Adapter references agent's string constants (`CommandNameCancel`) | ⚠️ Avoid | Plain string `"cancel"` works fine and removes the dependency |
+| Adapter uses command-name string literals (`"cancel"`) | ⚠️ Avoid | Use `commands.CommandNameCancel` — the shared `internal/commands` package is the single source of truth for CI/CO names |
+| Adapter imports agent for constants (`CommandNameCancel`) | ❌ **No** | Use `internal/commands` instead — importing agent bypasses the neutral-package rule |
 | Adapter calls agent's functions | ❌ **No** | Bypasses the TLV boundary |
 | Agent imports adapter | ❌ **Never** | One-way dependency — agent must not know adapters exist |
 
@@ -92,4 +94,4 @@ When reviewing a change, ask:
 1. **Does this call an agent function from an adapter?** → Move the function to a neutral package or find a TLV-based approach.
 2. **Can a rawio client do this?** → If not, the TLV protocol needs a new message type.
 3. **Does this create a reverse dependency (agent → adapter)?** → Restructure immediately; this is never acceptable.
-4. **Is this type used by both sides?** → Put it in `internal/config`, `internal/tlv`, `internal/protocol`, or another shared package.
+4. **Is this type used by both sides?** → Put it in `internal/config`, `internal/tlv`, `internal/protocol`, `internal/commands`, or another shared package.

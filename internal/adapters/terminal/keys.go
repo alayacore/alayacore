@@ -4,6 +4,8 @@ package terminal
 // All raw key strings used in key handling should be defined here.
 // This ensures a single source of truth for key bindings.
 
+import "github.com/alayacore/alayacore/internal/commands"
+
 const (
 	// Navigation keys
 	keyUp     = "up"
@@ -66,10 +68,12 @@ const (
 	keyCtrlU = "ctrl+u"
 	keyCtrlZ = "ctrl+z"
 
-	// Command names (used with ":" prefix in input)
+	// Command names (used with ":" prefix in input). cmdCancel is the
+	// session command (shared constant); quit/q/suspend/help are
+	// adapter-local controls with no session command behind them.
 	cmdQuit    = "quit"
 	cmdQShort  = "q"
-	cmdCancel  = "cancel"
+	cmdCancel  = commands.CommandNameCancel
 	cmdSuspend = "suspend"
 	cmdHelp    = "help"
 )

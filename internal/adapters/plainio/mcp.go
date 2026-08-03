@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/platform"
 )
 
@@ -141,10 +142,10 @@ func (f *mcpAuthFlow) run(serverName, authURL string, input io.Writer, run *mcpA
 			// Only skip this server — declining keeps the rest of MCP
 			// init (and any other servers' authorizations) intact.
 			f.out.printLine("[mcp: authorization callback error: %v]\n", res.Err)
-			f.sendCommand(input, fmt.Sprintf(":mcp_decline %s", serverName))
+			f.sendCommand(input, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
 			return
 		}
-		cmd := fmt.Sprintf(":mcp_confirm %s %s %s", serverName, res.Code, redirectURI)
+		cmd := fmt.Sprintf(":%s %s %s %s", commands.CommandNameMCPConfirm, serverName, res.Code, redirectURI)
 		if res.Iss != "" {
 			cmd += " " + res.Iss
 		}

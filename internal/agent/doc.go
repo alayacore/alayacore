@@ -100,6 +100,7 @@
 //     Use GetLoadErrors() to retrieve validation messages.
 //   - RuntimeManager: Persists runtime settings (active model)
 //   - Command Registry: Declarative command registration
+//     (command names from internal/commands — the shared CI/CO vocabulary)
 //
 // Key Files:
 //
@@ -116,7 +117,6 @@
 //   - model_service.go: ModelService (provider/agent lifecycle, model resolution)
 //   - mcp_service.go: MCPService (MCP init lifecycle, event handling)
 //   - persistence.go: PersistenceService (session serialization)
-//   - command_registry.go: CommandRegistry (command dispatch)
 //
 // Usage:
 //

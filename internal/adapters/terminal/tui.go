@@ -21,6 +21,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/alayacore/alayacore/internal/app"
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -443,13 +444,13 @@ func (m Terminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleTick()
 
 	case ThemeSelectedMsg:
-		return m, m.emitCommand(":theme_set " + msg.Name)
+		return m, m.emitCommand(":" + commands.CommandNameThemeSet + " " + msg.Name)
 
 	case ModelSelectedMsg:
-		return m, m.emitCommand(fmt.Sprintf(":model_set %d", msg.ID))
+		return m, m.emitCommand(fmt.Sprintf(":%s %d", commands.CommandNameModelSet, msg.ID))
 
 	case ReloadModelsMsg:
-		return m, m.emitCommand(":model_load")
+		return m, m.emitCommand(":" + commands.CommandNameModelLoad)
 
 	case ConfirmResultMsg:
 		return m.handleConfirmResult(msg.Result)

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -223,13 +224,13 @@ func renderCommandResult(name string, output json.RawMessage) string {
 	}
 	_ = json.Unmarshal(output, &data) // best-effort; zero fields render generically
 	switch name {
-	case "save":
+	case commands.CommandNameSave:
 		return "Session saved to " + data.Path
-	case "fork":
+	case commands.CommandNameFork:
 		return fmt.Sprintf("Session forked to %s (up to content ID %d)", data.Path, data.HistoryID)
-	case "mcp_confirm":
+	case commands.CommandNameMCPConfirm:
 		return fmt.Sprintf("MCP auth code received for %q.", data.Server)
-	case "mcp_decline":
+	case commands.CommandNameMCPDecline:
 		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
 	}
 	return "" // no generic confirmation

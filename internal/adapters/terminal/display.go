@@ -12,6 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -147,7 +148,7 @@ func (m DisplayModel) Update(msg tea.Msg) (DisplayModel, tea.Cmd) {
 	case keyCtrlF:
 		if historyID := m.GetCursorWindowHistoryID(); historyID > 0 {
 			return m, func() tea.Msg {
-				return focusInputWithValueMsg{value: fmt.Sprintf(":fork %d ", historyID)}
+				return focusInputWithValueMsg{value: fmt.Sprintf(":%s %d ", commands.CommandNameFork, historyID)}
 			}
 		}
 		return m, nil

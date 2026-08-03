@@ -164,7 +164,7 @@ func encodeHeaderValue(value any, paramType string) (string, bool) {
 // representation. Returns "" (header omitted) for values outside the
 // IEEE-754 safe integer range, which would lose precision.
 func formatSafeInteger(v float64) string {
-	if v < minSafeInteger || v > maxSafeInteger {
+	if v < float64(minSafeInteger) || v > float64(maxSafeInteger) {
 		return ""
 	}
 	return fmt.Sprintf("%.0f", v)
@@ -231,9 +231,12 @@ func resolveNestedValue(m map[string]any, path []string) (any, bool) {
 
 // minSafeInteger / maxSafeInteger bound the IEEE-754 double-precision
 // safe integer range required for x-mcp-header integer parameters.
+// Typed int64 (not untyped): the constants exceed the 32-bit int range,
+// and release-all builds 32-bit targets (linux/386, linux/arm), where an
+// untyped constant passed to fmt would overflow.
 const (
-	minSafeInteger = -(1<<53 - 1) // -2^53+1
-	maxSafeInteger = 1<<53 - 1    // 2^53-1
+	minSafeInteger int64 = -(1<<53 - 1) // -2^53+1
+	maxSafeInteger int64 = 1<<53 - 1    // 2^53-1
 )
 
 // xMcpHeaderAnnotation is a raw x-mcp-header annotation found anywhere in
@@ -272,11 +275,11 @@ func validateXMcpHeaderAnnotations(schema json.RawMessage) error {
 		case schemaTypeString, schemaTypeBoolean:
 			// Always valid.
 		case schemaTypeInteger:
-			if a.minimum != nil && *a.minimum < minSafeInteger {
+			if a.minimum != nil && *a.minimum < float64(minSafeInteger) {
 				return fmt.Errorf("x-mcp-header integer parameter %q: minimum %v below safe range %d",
 					a.headerName, *a.minimum, minSafeInteger)
 			}
-			if a.maximum != nil && *a.maximum > maxSafeInteger {
+			if a.maximum != nil && *a.maximum > float64(maxSafeInteger) {
 				return fmt.Errorf("x-mcp-header integer parameter %q: maximum %v above safe range %d",
 					a.headerName, *a.maximum, maxSafeInteger)
 			}

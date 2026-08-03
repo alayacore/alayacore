@@ -12,6 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/platform"
 	"github.com/alayacore/alayacore/internal/theme"
 )
@@ -154,7 +155,7 @@ func (m Terminal) handleConfirmCancel(r *ConfirmResult, fromCmd bool) (Terminal,
 	}
 	m = m.restoreFocusAfterConfirm()
 	if r.Confirmed {
-		return m.submitCommand("cancel", fromCmd)
+		return m.submitCommand(commands.CommandNameCancel, fromCmd)
 	}
 	return m, nil
 }
@@ -166,9 +167,9 @@ func (m Terminal) handleConfirmTool(r *ConfirmResult, fromCmd bool) (Terminal, t
 
 	var cmd tea.Cmd
 	if r.Confirmed {
-		cmd = m.emitCommand(":tool_confirm " + r.ToolID)
+		cmd = m.emitCommand(":" + commands.CommandNameToolConfirm + " " + r.ToolID)
 	} else {
-		cmd = m.emitCommand(":tool_decline " + r.ToolID)
+		cmd = m.emitCommand(":" + commands.CommandNameToolDecline + " " + r.ToolID)
 	}
 
 	m = m.restoreFocusAfterConfirm()
@@ -189,9 +190,9 @@ func (m Terminal) handleConfirmMCPAuth(r *ConfirmResult, fromCmd bool) (Terminal
 		cmd = m.startMCPAuthFlow(r.ToolID, r.ToolInput)
 	case r.CtrlGCanceled:
 		m.out.ClearMCPAuths()
-		cmd = m.emitCommand(":mcp_cancel")
+		cmd = m.emitCommand(":" + commands.CommandNameMCPSkip)
 	default:
-		cmd = m.emitCommand(":mcp_decline " + r.ToolID)
+		cmd = m.emitCommand(":" + commands.CommandNameMCPDecline + " " + r.ToolID)
 	}
 
 	m = m.restoreFocusAfterConfirm()
@@ -244,12 +245,12 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) tea.Cmd {
 			res := <-resultCh
 			cleanup()
 			if res.Err != nil {
-				writeCommand(streamInput, ":mcp_cancel")
+				writeCommand(streamInput, ":"+commands.CommandNameMCPSkip)
 				return displayErrorMsg{
 					message: fmt.Sprintf("MCP auth callback error: %v", res.Err),
 				}
 			}
-			cmd := fmt.Sprintf(":mcp_confirm %s %s %s", serverName, res.Code, redirectURI)
+			cmd := fmt.Sprintf(":%s %s %s %s", commands.CommandNameMCPConfirm, serverName, res.Code, redirectURI)
 			if res.Iss != "" {
 				cmd += " " + res.Iss
 			}
@@ -289,7 +290,7 @@ func (m Terminal) handleOverlayModelSelector(msg tea.KeyMsg) (Terminal, tea.Cmd)
 func (m Terminal) handleMCPInitKeys(msg tea.KeyMsg) (Terminal, tea.Cmd) {
 	if msg.String() == keyCtrlG {
 		return m, tea.Batch(
-			m.emitCommand(":mcp_cancel"),
+			m.emitCommand(":"+commands.CommandNameMCPSkip),
 			scheduleTick(),
 		)
 	}
@@ -464,12 +465,12 @@ func (m Terminal) handleGlobalKeys(msg tea.KeyMsg) (Terminal, tea.Cmd, bool) {
 func (m Terminal) handleSaveKey() (Terminal, tea.Cmd) {
 	if m.appConfig.Cfg.Session == "" {
 		m = m.focusInput()
-		m.input = m.input.WithValue(":save ")
+		m.input = m.input.WithValue(":" + commands.CommandNameSave + " ")
 		m.input = m.input.CursorEnd()
 		m.display = m.display.updateContent()
 		return m, nil
 	}
-	return m.submitCommand("save", false)
+	return m.submitCommand(commands.CommandNameSave, false)
 }
 
 // handleRedraw handles the Ctrl+R force-redraw shortcut.

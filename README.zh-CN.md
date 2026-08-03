@@ -29,7 +29,7 @@
 
 ![AlayaCore plainio demo](misc/alayacore-demo-plainio.gif)
 
-**Terse IO 模式** — 读取整个 stdin 作为一个 prompt，只输出最终答案（stdout 保持纯净，错误走 stderr）。
+**Terse IO 模式** — 读取整个 stdin 作为一个 prompt 或命令，只输出最终答案（stdout 保持纯净，错误走 stderr）。
 
 ![AlayaCore terseio demo](misc/alayacore-demo-terseio.gif)
 

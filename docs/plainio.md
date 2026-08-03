@@ -32,7 +32,7 @@ prompt that spans two lines.
 > ```
 > Error: A task is already running. Wait for it to complete or cancel it.
 > ```
-> For scripting multiple questions, use `--terseio` (one prompt per
+> For scripting multiple questions, use `--terseio` (one message per
 > invocation) or launch `alayacore --plainio` once per prompt (the process
 > spawn cost is negligible).
 

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -207,16 +208,6 @@ func (o *answerOutput) handleCommandOut(value string) {
 	}
 }
 
-// Command name constants for renderCommandResult. Kept local to the
-// adapter — the session registry in internal/agent owns the canonical
-// command names; these are only for CO result rendering.
-const (
-	commandSave       = "save"
-	commandFork       = "fork"
-	commandMCPConfirm = "mcp_confirm"
-	commandMCPDecline = "mcp_decline"
-)
-
 // renderCommandResult formats a successful command result for stderr.
 // Commands whose effect is self-evident or async (cancel, continue,
 // summarize, model_set, ...) return "" so nothing is printed. The command
@@ -230,13 +221,13 @@ func renderCommandResult(name string, output json.RawMessage) string {
 	}
 	_ = json.Unmarshal(output, &data) // best-effort; zero fields render generically
 	switch name {
-	case commandSave:
+	case commands.CommandNameSave:
 		return "Session saved to " + data.Path
-	case commandFork:
+	case commands.CommandNameFork:
 		return fmt.Sprintf("Session forked to %s (up to content ID %d)", data.Path, data.HistoryID)
-	case commandMCPConfirm:
+	case commands.CommandNameMCPConfirm:
 		return fmt.Sprintf("MCP auth code received for %q.", data.Server)
-	case commandMCPDecline:
+	case commands.CommandNameMCPDecline:
 		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
 	}
 	return "" // no generic confirmation

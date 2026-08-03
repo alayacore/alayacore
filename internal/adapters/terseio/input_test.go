@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -75,8 +76,8 @@ func TestReadAllPrompt_Command(t *testing.T) {
 	if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
 		t.Fatalf("CI payload not JSON: %v", err)
 	}
-	if cmd.Name != commandSave {
-		t.Errorf("cmd.Name = %q, want %q", cmd.Name, commandSave)
+	if cmd.Name != commands.CommandNameSave {
+		t.Errorf("cmd.Name = %q, want %q", cmd.Name, commands.CommandNameSave)
 	}
 	if cmd.Input != "/tmp/x.alaya" {
 		t.Errorf("cmd.Input = %q, want %q", cmd.Input, "/tmp/x.alaya")
@@ -85,8 +86,8 @@ func TestReadAllPrompt_Command(t *testing.T) {
 		t.Errorf("cmd.ID = %q, want terse- prefix", cmd.ID)
 	}
 	// The adapter must track the id → name mapping for CO correlation.
-	if name, ok := commandNames.Load(cmd.ID); !ok || name != commandSave {
-		t.Errorf("commandNames[%q] = %v, %v; want %q, true", cmd.ID, name, ok, commandSave)
+	if name, ok := commandNames.Load(cmd.ID); !ok || name != commands.CommandNameSave {
+		t.Errorf("commandNames[%q] = %v, %v; want %q, true", cmd.ID, name, ok, commands.CommandNameSave)
 	}
 }
 
@@ -107,8 +108,8 @@ func TestReadAllPrompt_CommandMultiLine(t *testing.T) {
 	if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
 		t.Fatalf("CI payload not JSON: %v", err)
 	}
-	if cmd.Name != commandSave {
-		t.Errorf("cmd.Name = %q, want %q", cmd.Name, commandSave)
+	if cmd.Name != commands.CommandNameSave {
+		t.Errorf("cmd.Name = %q, want %q", cmd.Name, commands.CommandNameSave)
 	}
 	if cmd.Input != "/tmp/x.alaya" {
 		t.Errorf("cmd.Input = %q, want %q", cmd.Input, "/tmp/x.alaya")
@@ -130,8 +131,8 @@ func TestReadAllPrompt_CommandNoArgs(t *testing.T) {
 	if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
 		t.Fatalf("CI payload not JSON: %v", err)
 	}
-	if cmd.Name != "continue" || cmd.Input != "" {
-		t.Errorf("cmd = %+v, want name %q with empty input", cmd, "continue")
+	if cmd.Name != commands.CommandNameContinue || cmd.Input != "" {
+		t.Errorf("cmd = %+v, want name %q with empty input", cmd, commands.CommandNameContinue)
 	}
 }
 

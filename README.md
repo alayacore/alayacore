@@ -29,7 +29,7 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ![AlayaCore plainio demo](misc/alayacore-demo-plainio.gif)
 
-**Terse IO Mode** — read all of stdin as one prompt, print only the final answer (stdout stays clean, errors go to stderr).
+**Terse IO Mode** — read all of stdin as one prompt or command, print only the final answer (stdout stays clean, errors go to stderr).
 
 ![AlayaCore terseio demo](misc/alayacore-demo-terseio.gif)
 
