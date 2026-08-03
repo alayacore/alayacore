@@ -267,3 +267,34 @@ url: "https://other.example.com/mcp"
 		t.Errorf("expected error about duplicate server name 'my-db', got: %v", errs)
 	}
 }
+
+func TestLoadConfigs_CRLF(t *testing.T) {
+	// A CRLF-saved mcp.conf must be parsed the same as LF: duplicate
+	// server names are detected and reported (before CRLF normalization
+	// the whole file collapsed into one block and duplicates were hidden).
+	content := "---\r\nserver: my-db\r\ncommand: npx\r\nargs: [\"x\"]\r\n---\r\nserver: my-db\r\nurl: \"https://example.com/mcp\"\r\n---\r\n"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mcp.conf")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Settings{MCPConfigPath: path}
+	configs, errs := LoadConfigs(cfg)
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config (first my-db kept), got %d", len(configs))
+	}
+	if configs[0].Command != "npx" {
+		t.Errorf("expected first my-db (stdio), got command=%q url=%q", configs[0].Command, configs[0].URL)
+	}
+	found := false
+	for _, w := range errs {
+		if strings.Contains(w, "duplicate server name") && strings.Contains(w, "my-db") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected duplicate error for 'my-db' in CRLF file, got: %v", errs)
+	}
+}

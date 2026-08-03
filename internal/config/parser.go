@@ -30,6 +30,11 @@ func (e ParseError) String() string {
 
 // ParseKeyValueBlocks parses multiple config blocks separated by "---"
 func ParseKeyValueBlocks(content string) []string {
+	// Normalize CRLF to LF first: block splitting relies on the exact
+	// "\n---\n" separator, so a CRLF-saved file (e.g. from a Windows
+	// editor) would otherwise merge all blocks into one, silently
+	// overwriting duplicate keys with the last occurrence.
+	content = strings.ReplaceAll(content, "\r\n", "\n")
 	// Split by "\n---\n" to get individual blocks
 	return strings.Split(content, "\n---\n")
 }

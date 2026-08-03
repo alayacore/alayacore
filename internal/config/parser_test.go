@@ -226,6 +226,33 @@ name: third`
 	}
 }
 
+func TestParseKeyValueBlocks_CRLF(t *testing.T) {
+	// CRLF line endings (e.g. Windows editors) must split identically
+	// to LF. Before normalization, "\r\n---\r\n" never matched the
+	// "\n---\n" separator and the whole file became a single block.
+	content := "name: first\r\n---\r\nname: second\r\n---\r\nname: third\r\n"
+	blocks := ParseKeyValueBlocks(content)
+
+	if len(blocks) != 3 {
+		t.Fatalf("Expected 3 blocks, got %d", len(blocks))
+	}
+
+	var cfg1, cfg2, cfg3 TestConfig
+	ParseKeyValue(blocks[0], &cfg1)
+	ParseKeyValue(blocks[1], &cfg2)
+	ParseKeyValue(blocks[2], &cfg3)
+
+	if cfg1.Name != "first" {
+		t.Errorf("Expected cfg1.Name 'first', got %q", cfg1.Name)
+	}
+	if cfg2.Name != "second" {
+		t.Errorf("Expected cfg2.Name 'second', got %q", cfg2.Name)
+	}
+	if cfg3.Name != "third" {
+		t.Errorf("Expected cfg3.Name 'third', got %q", cfg3.Name)
+	}
+}
+
 func TestParseKeyValueBoolVariants(t *testing.T) {
 	tests := []struct {
 		input    string
