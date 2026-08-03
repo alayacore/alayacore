@@ -282,3 +282,122 @@ func TestBuildToolHeaders_NestedPath(t *testing.T) {
 		t.Errorf("got %v, want Mcp-Param-Region=eu-west", h)
 	}
 }
+
+// ============================================================================
+// x-mcp-header constraint validation (2026-07-28 spec)
+// ============================================================================
+
+func TestValidateXMcpHeaderAnnotations_Valid(t *testing.T) {
+	valid := []string{
+		// Plain string annotation.
+		`{"type":"object","properties":{"region":{"type":"string","x-mcp-header":"Region"}}}`,
+		// Boolean and integer annotations.
+		`{"type":"object","properties":{
+			"flag":{"type":"boolean","x-mcp-header":"Flag"},
+			"count":{"type":"integer","x-mcp-header":"Count"}}}`,
+		// Nested statically-reachable property.
+		`{"type":"object","properties":{"location":{"type":"object","properties":{
+			"region":{"type":"string","x-mcp-header":"Region"}}}}}`,
+		// Integer with in-range minimum/maximum.
+		`{"type":"object","properties":{"count":{"type":"integer","minimum":0,"maximum":9007199254740991,"x-mcp-header":"Count"}}}`,
+		// No annotations at all.
+		`{"type":"object","properties":{"a":{"type":"string"}}}`,
+	}
+	for i, schema := range valid {
+		if err := validateXMcpHeaderAnnotations(json.RawMessage(schema)); err != nil {
+			t.Errorf("case %d: unexpected error: %v", i, err)
+		}
+	}
+}
+
+func TestValidateXMcpHeaderAnnotations_Invalid(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema string
+	}{
+		{
+			name:   "header name with space",
+			schema: `{"type":"object","properties":{"a":{"type":"string","x-mcp-header":"Bad Name"}}}`,
+		},
+		{
+			name:   "header name with colon",
+			schema: `{"type":"object","properties":{"a":{"type":"string","x-mcp-header":"Bad:Name"}}}`,
+		},
+		{
+			name:   "empty header name",
+			schema: `{"type":"object","properties":{"a":{"type":"string","x-mcp-header":""}}}`,
+		},
+		{
+			name: "case-insensitive duplicate header names",
+			schema: `{"type":"object","properties":{
+				"a":{"type":"string","x-mcp-header":"Region"},
+				"b":{"type":"string","x-mcp-header":"region"}}}`,
+		},
+		{
+			name:   "number type annotation",
+			schema: `{"type":"object","properties":{"a":{"type":"number","x-mcp-header":"Num"}}}`,
+		},
+		{
+			name: "annotation under items",
+			schema: `{"type":"object","properties":{"list":{"type":"array","items":{
+				"type":"object","properties":{"a":{"type":"string","x-mcp-header":"A"}}}}}}`,
+		},
+		{
+			name: "annotation under oneOf",
+			schema: `{"type":"object","properties":{"choice":{"oneOf":[
+				{"type":"object","properties":{"a":{"type":"string","x-mcp-header":"A"}}}]}}}`,
+		},
+		{
+			name: "annotation under $defs referenced by $ref",
+			schema: `{"type":"object","properties":{"a":{"$ref":"#/$defs/x"}},
+				"$defs":{"x":{"type":"object","properties":{"b":{"type":"string","x-mcp-header":"B"}}}}}`,
+		},
+		{
+			name:   "integer minimum below safe range",
+			schema: `{"type":"object","properties":{"a":{"type":"integer","minimum":-9007199254740992,"x-mcp-header":"A"}}}`,
+		},
+		{
+			name:   "integer maximum above safe range",
+			schema: `{"type":"object","properties":{"a":{"type":"integer","maximum":9007199254740992,"x-mcp-header":"A"}}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := validateXMcpHeaderAnnotations(json.RawMessage(tt.schema)); err == nil {
+				t.Errorf("expected error for schema, got nil")
+			}
+		})
+	}
+}
+
+func TestIsValidHeaderName(t *testing.T) {
+	valid := []string{"Region", "X-Custom-Header", "a1", "!"}
+	for _, s := range valid {
+		if !isValidHeaderName(s) {
+			t.Errorf("isValidHeaderName(%q) = false, want true", s)
+		}
+	}
+	invalid := []string{"", "Bad Name", "Bad:Name", "line\nbreak", "汉字"}
+	for _, s := range invalid {
+		if isValidHeaderName(s) {
+			t.Errorf("isValidHeaderName(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestEncodeHeaderValue_IntegerOutOfSafeRange(t *testing.T) {
+	// float64 values beyond ±2^53 would lose precision — header must be omitted.
+	tests := []float64{9007199254740992, -9007199254740992, 1e20}
+	for _, v := range tests {
+		encoded, _ := encodeHeaderValue(v, schemaTypeInteger)
+		if encoded != "" {
+			t.Errorf("encodeHeaderValue(%v, integer) = %q, want omitted (empty)", v, encoded)
+		}
+	}
+
+	// In-range values still encode unchanged.
+	s, isBase64 := encodeHeaderValue(float64(42), schemaTypeInteger)
+	if isBase64 || s != "42" {
+		t.Errorf("encodeHeaderValue(42) = (%q, base64=%v), want (\"42\", false)", s, isBase64)
+	}
+}

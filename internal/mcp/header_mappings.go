@@ -127,14 +127,16 @@ func encodeHeaderValue(value any, paramType string) (string, bool) {
 		}
 		raw = s
 	case schemaTypeInteger:
-		// JSON numbers decode as float64 by default.
+		// JSON numbers decode as float64 by default. Values outside the
+		// IEEE-754 safe integer range would lose precision when formatted;
+		// per spec they are not permitted, so omit the header.
 		switch v := value.(type) {
 		case float64:
-			raw = fmt.Sprintf("%.0f", v)
+			raw = formatSafeInteger(v)
 		case int:
-			raw = fmt.Sprintf("%d", v)
+			raw = formatSafeInteger(float64(v))
 		case int64:
-			raw = fmt.Sprintf("%d", v)
+			raw = formatSafeInteger(float64(v))
 		default:
 			return "", false
 		}
@@ -156,6 +158,16 @@ func encodeHeaderValue(value any, paramType string) (string, bool) {
 		return "=?base64?" + base64.StdEncoding.EncodeToString([]byte(raw)) + "?=", true
 	}
 	return raw, false
+}
+
+// formatSafeInteger formats an integer value as its decimal string
+// representation. Returns "" (header omitted) for values outside the
+// IEEE-754 safe integer range, which would lose precision.
+func formatSafeInteger(v float64) string {
+	if v < minSafeInteger || v > maxSafeInteger {
+		return ""
+	}
+	return fmt.Sprintf("%.0f", v)
 }
 
 // needsBase64Encoding returns true if the value must be Base64-encoded
@@ -203,4 +215,183 @@ func resolveNestedValue(m map[string]any, path []string) (any, bool) {
 		current = next
 	}
 	return nil, false
+}
+
+// ============================================================================
+// x-mcp-header Constraint Validation
+// ============================================================================
+//
+// Per the 2026-07-28 spec, clients using the Streamable HTTP transport
+// MUST reject tool definitions where any x-mcp-header value violates the
+// constraints: header names must be RFC 9110 field-name tokens, unique
+// case-insensitively, applied only to primitive types (string, integer,
+// boolean — not number), and only to properties statically reachable via
+// `properties` chains. Integer parameters must stay within the IEEE-754
+// safe range (−2^53+1 .. 2^53−1).
+
+// minSafeInteger / maxSafeInteger bound the IEEE-754 double-precision
+// safe integer range required for x-mcp-header integer parameters.
+const (
+	minSafeInteger = -(1<<53 - 1) // -2^53+1
+	maxSafeInteger = 1<<53 - 1    // 2^53-1
+)
+
+// xMcpHeaderAnnotation is a raw x-mcp-header annotation found anywhere in
+// an inputSchema, used for validity checking.
+type xMcpHeaderAnnotation struct {
+	headerName string
+	propType   string // JSON Schema type of the annotated property
+	minimum    *float64
+	maximum    *float64
+}
+
+// validateXMcpHeaderAnnotations checks a tool's inputSchema against the
+// 2026-07-28 x-mcp-header constraints. Per the spec, a tool definition
+// with any violating annotation MUST be rejected (excluded from
+// tools/list).
+func validateXMcpHeaderAnnotations(schema json.RawMessage) error {
+	all := collectAllXMcpHeaderAnnotations(schema)
+	if len(all) == 0 {
+		return nil
+	}
+
+	// Per-annotation checks: header name syntax, case-insensitive
+	// uniqueness, supported property type, and integer safe range.
+	seen := make(map[string]struct{}, len(all))
+	for _, a := range all {
+		if !isValidHeaderName(a.headerName) {
+			return fmt.Errorf("x-mcp-header %q is not a valid HTTP field-name token", a.headerName)
+		}
+		key := strings.ToLower(a.headerName)
+		if _, dup := seen[key]; dup {
+			return fmt.Errorf("x-mcp-header %q is not case-insensitively unique", a.headerName)
+		}
+		seen[key] = struct{}{}
+
+		switch a.propType {
+		case schemaTypeString, schemaTypeBoolean:
+			// Always valid.
+		case schemaTypeInteger:
+			if a.minimum != nil && *a.minimum < minSafeInteger {
+				return fmt.Errorf("x-mcp-header integer parameter %q: minimum %v below safe range %d",
+					a.headerName, *a.minimum, minSafeInteger)
+			}
+			if a.maximum != nil && *a.maximum > maxSafeInteger {
+				return fmt.Errorf("x-mcp-header integer parameter %q: maximum %v above safe range %d",
+					a.headerName, *a.maximum, maxSafeInteger)
+			}
+		default:
+			return fmt.Errorf("x-mcp-header %q applied to unsupported type %q (only string, integer, boolean)",
+				a.headerName, a.propType)
+		}
+	}
+
+	// Reachability check: every annotation must sit on a property
+	// statically reachable via `properties` chains only. parseHeaderMappings
+	// collects exactly those; any difference means an annotation lives
+	// under items, composition keywords, conditionals, or $ref.
+	if len(all) != len(parseHeaderMappings(schema)) {
+		return fmt.Errorf("x-mcp-header annotation on a property that is not statically reachable " +
+			"via `properties` chains (through items, composition keywords, conditionals, or $ref)")
+	}
+
+	return nil
+}
+
+// collectAllXMcpHeaderAnnotations walks the entire inputSchema tree —
+// including arrays (items), composition keywords (oneOf/anyOf/allOf/not),
+// conditionals (if/then/else), and $defs — and returns every x-mcp-header
+// annotation found, regardless of reachability.
+func collectAllXMcpHeaderAnnotations(schema json.RawMessage) []xMcpHeaderAnnotation {
+	var root map[string]any
+	if err := json.Unmarshal(schema, &root); err != nil {
+		return nil
+	}
+
+	var out []xMcpHeaderAnnotation
+	var walk func(node map[string]any)
+	walk = func(node map[string]any) {
+		for k, v := range node {
+			if k == "properties" {
+				props, ok := v.(map[string]any)
+				if !ok {
+					continue
+				}
+				for _, propRaw := range props {
+					propSchema, ok := propRaw.(map[string]any)
+					if !ok {
+						continue
+					}
+					if h, ok := propSchema["x-mcp-header"].(string); ok {
+						out = append(out, xMcpHeaderAnnotation{
+							headerName: h,
+							propType:   schemaTypeOf(propSchema),
+							minimum:    schemaNumber(propSchema["minimum"]),
+							maximum:    schemaNumber(propSchema["maximum"]),
+						})
+					}
+					walk(propSchema)
+				}
+				continue
+			}
+			// Recurse into any other schema containers (items,
+			// composition keywords, conditionals, $defs, etc.).
+			switch t := v.(type) {
+			case map[string]any:
+				walk(t)
+			case []any:
+				for _, item := range t {
+					if itemMap, ok := item.(map[string]any); ok {
+						walk(itemMap)
+					}
+				}
+			}
+		}
+	}
+	walk(root)
+	return out
+}
+
+// schemaTypeOf returns the "type" of a JSON Schema node, or "" if absent.
+func schemaTypeOf(schema map[string]any) string {
+	if t, ok := schema["type"].(string); ok {
+		return t
+	}
+	return ""
+}
+
+// schemaNumber extracts a JSON number from a schema keyword, or nil.
+func schemaNumber(v any) *float64 {
+	if f, ok := v.(float64); ok {
+		return &f
+	}
+	return nil
+}
+
+// isValidHeaderName reports whether s is a valid HTTP field-name token
+// (RFC 9110 Section 5.6.2: 1*tchar). Token syntax also excludes control
+// characters such as CR/LF.
+func isValidHeaderName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if !isTokenChar(s[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// isTokenChar reports whether b is a valid RFC 9110 tchar.
+func isTokenChar(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
+		return true
+	}
+	switch b {
+	case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+		return true
+	}
+	return false
 }

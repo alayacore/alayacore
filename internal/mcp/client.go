@@ -243,12 +243,39 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 		return nil, err
 	}
 
-	// Update tools cache with parsed header mappings for x-mcp-header support.
-	c.toolsCache = make(map[string]*Tool, len(tools))
+	// Per the 2026-07-28 spec, clients using Streamable HTTP MUST reject
+	// tool definitions with invalid x-mcp-header annotations (exclude
+	// them from tools/list). Other transports and protocol versions MAY
+	// ignore the annotations entirely.
+	rejectInvalid := c.adapter != nil && c.adapter.ProtocolVersion() == protocolVersion20260728
+	if rejectInvalid {
+		if _, ok := c.loadTransport().(*HTTPTransport); !ok {
+			rejectInvalid = false
+		}
+	}
+
+	// Parse header mappings and filter out invalid tool definitions.
+	valid := make([]Tool, 0, len(tools))
 	for i := range tools {
 		t := &tools[i]
 		t.HeaderMappings = parseHeaderMappings(t.InputSchema)
-		c.toolsCache[t.Name] = t
+		if rejectInvalid {
+			if verr := validateXMcpHeaderAnnotations(t.InputSchema); verr != nil {
+				if ht, ok := c.loadTransport().(*HTTPTransport); ok && ht.DebugWriter() != nil {
+					fmt.Fprintf(ht.DebugWriter(), "MCP: rejecting tool %q: %v\n", t.Name, verr)
+				}
+				continue
+			}
+		}
+		valid = append(valid, *t)
+	}
+	tools = valid
+
+	// Update tools cache with parsed header mappings for x-mcp-header
+	// support. Rebuilt against the filtered slice so pointers stay valid.
+	c.toolsCache = make(map[string]*Tool, len(tools))
+	for i := range tools {
+		c.toolsCache[tools[i].Name] = &tools[i]
 	}
 
 	// Push tool header mappings to the adapter for Mcp-Param-{Name}
