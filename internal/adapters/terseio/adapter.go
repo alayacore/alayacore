@@ -1,7 +1,8 @@
 package terseio
 
 // Package terseio provides a minimal stdin/stdout adapter for AlayaCore:
-// read ALL of stdin as a single prompt, print ONLY the final answer.
+// read ALL of stdin as a single prompt (or command, if it starts with ":"),
+// print ONLY the final answer.
 
 import (
 	"errors"
@@ -14,8 +15,9 @@ import (
 // Compile-time check: Adapter satisfies app.Adapter.
 var _ app.Adapter = (*Adapter)(nil)
 
-// Adapter reads all of stdin as a single prompt and prints only the
-// final assistant text answer to stdout.
+// Adapter reads all of stdin as a single prompt — or a single command
+// (":continue", ":save /tmp/x", ...) — and prints only the final
+// assistant text answer to stdout.
 type Adapter struct {
 	Config *app.Config
 }

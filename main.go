@@ -17,9 +17,9 @@ import (
 func main() {
 	cfg := config.Parse()
 
-	// --terseio consumes all of stdin as the prompt, so tool confirmations
-	// (answered via subsequent stdin lines) can never be resolved. Fail
-	// fast instead of silently declining tools mid-task.
+	// --terseio consumes all of stdin as the prompt or command, so tool
+	// confirmations (answered via subsequent stdin lines) can never be
+	// resolved. Fail fast instead of silently declining tools mid-task.
 	if cfg.TerseIO && len(cfg.ToolConfirm) > 0 {
 		fmt.Fprintln(os.Stderr, "Error: --terseio and --tool-confirm are mutually exclusive: terseio consumes stdin, so tool confirmations cannot be answered. Use --plainio for interactive confirmation.")
 		os.Exit(2)

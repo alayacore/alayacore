@@ -100,6 +100,6 @@ echo "what is 2+2?" | alayacore --terseio > answer.txt
 - **[Configuration](configuration.md)** — Set up multiple models, API keys, and themes
 - **[Terminal UI](tui.md)** — Learn the keybindings and commands
 - **[Plain IO Mode](plainio.md)** — Use AlayaCore without a terminal UI
-- **[Terse IO Mode](terseio.md)** — Read all stdin as one prompt; print only the final answer
+- **[Terse IO Mode](terseio.md)** — Read all stdin as one prompt or command; print only the final answer
 - **[Raw IO Mode](rawio.md)** — Control AlayaCore programmatically via raw TLV frames
 - **[Skills System](skills.md)** — Extend the agent with custom skill packages

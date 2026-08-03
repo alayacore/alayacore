@@ -1,6 +1,6 @@
 # Commands
 
-AlayaCore provides colon-prefixed commands (`:command`) that work across all adapters — TUI, Plain IO, and Raw IO.
+AlayaCore provides colon-prefixed commands (`:command`) that work across all adapters — TUI, Plain IO, Terse IO, and Raw IO.
 
 ## Protocol
 
@@ -20,8 +20,9 @@ CO {"id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  �
   adapter's job: CO carries no display text — adapters correlate the CO `id`
   with the CI they sent (which carries the `name`) to render results.
 - Adapters translate the human-facing `:command args` text into CI frames;
-  the agent never sees colon-text. The TUI and Plain IO adapters do this
-  translation automatically.
+  the agent never sees colon-text. The TUI, Plain IO, and Terse IO adapters
+  do this translation automatically (terseio: the whole stdin starting
+  with `:` is one command; see [terseio.md](terseio.md)).
 - Async commands (`:continue`, `:summarize`) reply `{"status":"started"}`
   immediately; completion is reported via the `task` SM message carrying
   `command_id`.
@@ -73,11 +74,11 @@ These commands require LLM calls and run in a separate goroutine:
 
 Some commands are handled directly by each adapter and never reach the session command dispatch:
 
-| Command | TUI | Plain IO | Raw IO |
-|---------|-----|----------|--------|
-| `:quit` / `:q` | Shows confirmation dialog | Exits immediately | Not interpreted — raw CI/CO pass-through |
-| `:help` | Opens help window | Exits immediately (no TUI) | Not interpreted — raw CI/CO pass-through |
-| `:suspend` | Suspends process (Ctrl+Z) | Not supported | Not interpreted — raw CI/CO pass-through |
+| Command | TUI | Plain IO | Terse IO | Raw IO |
+|---------|-----|----------|----------|--------|
+| `:quit` / `:q` | Shows confirmation dialog | Exits immediately | Exits cleanly (code 0) | Not interpreted — raw CI/CO pass-through |
+| `:help` | Opens help window | Sent to session (unknown command) | Sent to session (unknown command) | Not interpreted — raw CI/CO pass-through |
+| `:suspend` | Suspends process (Ctrl+Z) | Not supported | Not supported | Not interpreted — raw CI/CO pass-through |
 
 ## :fork Details
 

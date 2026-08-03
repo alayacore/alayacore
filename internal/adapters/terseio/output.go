@@ -19,8 +19,8 @@ import (
 // task completes — but only if the final message actually contains text
 // (reasoning-only or tool-call-only final messages produce empty stdout).
 // Everything else — reasoning, tool calls/results, prompts, media — is
-// suppressed; errors and notifications go to stderr so stdout stays a pure
-// answer channel.
+// suppressed; errors, notifications, and informative command results go
+// to stderr so stdout stays a pure answer channel.
 //
 // Concurrency: the session writes from two goroutines (task and run), so a
 // mutex protects the buffer and final-text state.

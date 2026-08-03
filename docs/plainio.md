@@ -70,7 +70,8 @@ the browser doesn't open, visit the printed URL and type
 [OAuth](oauth.md) for the full flow.
 
 > 💡 **Just want the final answer?** Use `--terseio` instead — it reads all
-> of stdin as one prompt and prints only the final answer (errors to stderr).
+> of stdin as one prompt (or one command if it starts with `:`) and prints
+> only the final answer (errors to stderr).
 > See [Terse IO Mode](terseio.md).
 
 ## Session Persistence
@@ -122,4 +123,5 @@ echo "what is 2+2?" | alayacore --plainio
 ```
 
 > 💡 **Scripting or piping?** Use [`--terseio`](terseio.md) — it reads all of
-> stdin as one prompt and prints only the final answer (errors to stderr).
+> stdin as one prompt (or one command if it starts with `:`) and prints only
+> the final answer (errors to stderr).
