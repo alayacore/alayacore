@@ -90,6 +90,8 @@ Server configurations are validated at load time. A server block is **rejected**
 
 Rejected servers are skipped and an error is reported to the adapter. Other valid servers in the same file are unaffected.
 
+Comments (`#`) are **line-level**: a comment line may appear anywhere inside a block — including the first line — and the remaining lines of the block are still parsed. A block containing only comments or blank lines is skipped entirely.
+
 ### Quick Start
 
 Create `~/.alayacore/mcp.conf` with your server definitions:

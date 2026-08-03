@@ -61,7 +61,7 @@ func parseModelBlock(block string, blockIdx int) ([]ModelConfig, []string) {
 	parseErrs := ParseKeyValue(block, &m)
 	errs := make([]string, 0, len(parseErrs))
 	for _, e := range parseErrs {
-		errs = append(errs, fmt.Sprintf("model block %d: %s", blockIdx+1, e.String()))
+		errs = append(errs, fmt.Sprintf("model.conf block %d: %s", blockIdx+1, e.String()))
 	}
 
 	if m.Name == "" && m.ModelName == "" {

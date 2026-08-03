@@ -337,7 +337,7 @@ The **semantics** of the history ID differ by tag type:
    messages:
    ```
    SM {"type":"error","data":{"text":"model \"Bad Model\": unknown protocol_type \"foobar\" — skipped"}}
-   SM {"type":"error","data":{"text":"model block 3: duplicate name \"Model A\" — skipped"}}
+   SM {"type":"error","data":{"text":"model.conf block 3: duplicate name \"Model A\" — skipped"}}
    ```
    These are informational — the session continues with whatever valid models
    are available. The adapter should display them so the user can fix their
@@ -350,8 +350,8 @@ The **semantics** of the history ID differ by tag type:
    name, duplicate server names, etc.) are sent to the adapter as system error
    messages:
    ```
-   SM {"type":"error","data":{"text":"mcp.conf: skipping block with empty server name"}}
-   SM {"type":"error","data":{"text":"mcp.conf: duplicate server name \"my-db\" — skipped"}}
+   SM {"type":"error","data":{"text":"mcp.conf block 1: skipping block with empty server name"}}
+   SM {"type":"error","data":{"text":"mcp.conf block 2: duplicate server name \"my-db\" — skipped"}}
    ```
    These are informational — the session continues with whatever valid MCP
    servers are available. The adapter should display them so the user can fix

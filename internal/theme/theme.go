@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/alayacore/alayacore/internal/config"
@@ -68,24 +69,35 @@ func DefaultTheme() *Theme {
 	return &cpy
 }
 
+// ParseTheme parses theme content into a Theme, starting from the
+// defaults and overriding with config values. Returns any parse errors
+// (unknown fields, type mismatches) — the theme is still usable with
+// default values for the unrecognized fields. Errors are bare (no file
+// prefix); callers that know the source file should prefix them.
+func ParseTheme(content string) (*Theme, []string) {
+	var errs []string
+	theme := DefaultTheme()
+	if parseErrs := config.ParseKeyValue(content, theme); len(parseErrs) > 0 {
+		for _, e := range parseErrs {
+			errs = append(errs, e.String())
+		}
+	}
+	return theme, errs
+}
+
 // LoadTheme loads a theme from a configuration file.
 // Returns the loaded theme, any parse errors, or an error
-// if the file cannot be read. Parse errors are for unknown fields
-// or type mismatches in the theme file — the theme is still usable
-// with default values for the unrecognized fields.
+// if the file cannot be read. Parse errors are prefixed with the theme
+// file name and are for unknown fields or type mismatches — the theme
+// is still usable with default values for the unrecognized fields.
 func LoadTheme(path string) (*Theme, []string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open theme file: %w", err)
 	}
-
-	// Start with defaults, then override with config values
-	var errs []string
-	theme := DefaultTheme()
-	if parseErrs := config.ParseKeyValue(string(data), theme); len(parseErrs) > 0 {
-		for _, e := range parseErrs {
-			errs = append(errs, e.String())
-		}
+	th, errs := ParseTheme(string(data))
+	for i := range errs {
+		errs[i] = fmt.Sprintf("%s: %s", filepath.Base(path), errs[i])
 	}
-	return theme, errs, nil
+	return th, errs, nil
 }

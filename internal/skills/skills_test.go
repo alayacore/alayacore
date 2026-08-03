@@ -1,9 +1,9 @@
 package skills
 
 import (
-	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -297,11 +297,6 @@ description: Second skill from directory 2
 }
 
 func TestMultipleSkillPathsFirstMissing(t *testing.T) {
-	// Suppress errors during this test
-	original := errWriter
-	errWriter = io.Discard
-	defer func() { errWriter = original }()
-
 	missingDir := filepath.Join(t.TempDir(), "nonexistent")
 
 	// Create a real skill directory
@@ -338,11 +333,6 @@ description: Skill from second directory
 }
 
 func TestDuplicateSkillNames(t *testing.T) {
-	// Suppress errors during this test
-	original := errWriter
-	errWriter = io.Discard
-	defer func() { errWriter = original }()
-
 	// Create first temp skill directory
 	tmpDir1 := t.TempDir()
 
@@ -391,6 +381,18 @@ description: Second occurrence
 	// Both skills should be in the list
 	if len(metadata) != 2 {
 		t.Errorf("Expected 2 skills (with duplicate names), got %d", len(metadata))
+	}
+
+	// The duplicate must be reported via GetLoadErrors.
+	found := false
+	for _, e := range m.GetLoadErrors() {
+		if strings.Contains(e, "duplicate skill name") && strings.Contains(e, "duplicate-skill") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected duplicate skill name error, got: %v", m.GetLoadErrors())
 	}
 }
 

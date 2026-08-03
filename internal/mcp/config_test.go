@@ -255,16 +255,16 @@ url: "https://other.example.com/mcp"
 		t.Errorf("expected first my-db to be stdio (npx), got command=%q url=%q", configs[0].Command, configs[0].URL)
 	}
 
-	// Check duplicate error
+	// Check duplicate error — must point at the offending block (block 2)
 	found := false
 	for _, w := range errs {
-		if strings.Contains(w, "duplicate server name") && strings.Contains(w, "my-db") {
+		if strings.Contains(w, "mcp.conf block 2") && strings.Contains(w, "duplicate server name") && strings.Contains(w, "my-db") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected error about duplicate server name 'my-db', got: %v", errs)
+		t.Errorf("expected error about duplicate server name 'my-db' in block 2, got: %v", errs)
 	}
 }
 
@@ -304,6 +304,42 @@ url: "https://example.com/mcp"
 	}
 	if !found {
 		t.Errorf("expected duplicate-key error, got: %v", errs)
+	}
+}
+
+func TestParseServerConfigs(t *testing.T) {
+	// Pure-content variant: no file IO. Covers comment-prefixed blocks
+	// (line-level "#") and duplicate server names.
+	content := `---
+server: exa
+url: https://mcp.exa.ai/mcp
+---
+#server: exa-deep
+server: exa
+url: https://mcp.exa.ai/mcp?tools=deep_search_exa
+---
+server: vercel
+url: https://mcp.vercel.com
+---
+`
+	configs, errs := ParseServerConfigs(content)
+
+	if len(configs) != 2 {
+		t.Fatalf("expected 2 configs (exa + vercel), got %d: %v", len(configs), configs)
+	}
+	if configs[0].Name != "exa" || configs[1].Name != "vercel" {
+		t.Errorf("unexpected configs: %+v", configs)
+	}
+
+	found := false
+	for _, w := range errs {
+		if strings.Contains(w, "duplicate server name") && strings.Contains(w, "exa") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected duplicate error for 'exa', got: %v", errs)
 	}
 }
 

@@ -3,8 +3,40 @@ package theme
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestParseTheme(t *testing.T) {
+	// Pure-content variant: overrides defaults, reports parse errors.
+	content := `# Test theme
+primary: #ffffff
+error: #ff0000
+unknown_field: ignored
+`
+	th, errs := ParseTheme(content)
+
+	if th.Primary != "#ffffff" {
+		t.Errorf("Expected Primary #ffffff, got %s", th.Primary)
+	}
+	if th.Error != "#ff0000" {
+		t.Errorf("Expected Error #ff0000, got %s", th.Error)
+	}
+	if th.Warning != "#f77923" {
+		t.Errorf("Expected Warning #f77923 (default), got %s", th.Warning)
+	}
+
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 parse error for unknown field, got %d: %v", len(errs), errs)
+	}
+	// Pure-content parser: errors are bare, no file prefix.
+	if strings.Contains(errs[0], "theme.conf:") {
+		t.Errorf("ParseTheme errors must be bare (no file prefix), got: %s", errs[0])
+	}
+	if !strings.Contains(errs[0], "unknown_field") {
+		t.Errorf("expected error mentioning unknown_field, got: %s", errs[0])
+	}
+}
 
 func TestDefaultTheme(t *testing.T) {
 	th := DefaultTheme()
@@ -63,6 +95,13 @@ primary: #333333
 	}
 	if len(errs) == 0 {
 		t.Error("expected parse errors for unknown fields, got none")
+	}
+	// Errors must be prefixed with the actual theme file name so the
+	// offending file can be identified (ParseTheme returns bare errors).
+	for _, e := range errs {
+		if !strings.HasPrefix(e, "unknown-fields.conf: ") {
+			t.Errorf("expected error prefixed with theme file name, got: %s", e)
+		}
 	}
 
 	if th.Primary != "#333333" {

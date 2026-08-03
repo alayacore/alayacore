@@ -2,13 +2,12 @@ package app
 
 // Shared session loading for adapters.
 // Terminal, plainio, and terseio adapters follow the same bootstrap sequence:
-// load session, validate init errors, print config errors, check models,
-// then start the session goroutine.
+// load session, validate init errors, emit config errors as system messages,
+// check models, then start the session goroutine.
 
 import (
 	"fmt"
 	"io"
-	"os"
 
 	agentpkg "github.com/alayacore/alayacore/internal/agent"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -73,7 +72,6 @@ func StartSession(cfg *Config, output io.Writer, input io.Reader) (*agentpkg.Ses
 	// all models are rejected.
 	if msgs := session.GetLoadErrors(); len(msgs) > 0 {
 		for _, m := range msgs {
-			fmt.Fprintf(os.Stderr, "%s\n", m)
 			// Send to adapter as system error messages for TUI/plainio display
 			_ = protocol.WriteSystemMsg(output, protocol.ErrorMsg{Text: m})
 		}

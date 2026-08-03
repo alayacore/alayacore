@@ -57,7 +57,10 @@ func ParseKeyValueBlocks(content string) []string {
 //
 // Keys must match the pattern `^[a-zA-Z_][a-zA-Z0-9_-]*$` — this ensures reliable
 // key-value separation and allows values to contain colons without ambiguity.
-// Lines that don't match this pattern are treated as comments or malformed input.
+// Lines that don't match this pattern are reported as parse errors.
+//
+// A key appearing more than once in one block is a parse error: the first
+// occurrence is kept and later values are ignored.
 //
 // Parse errors (e.g. non-numeric value for an int field) and unknown keys
 // are collected and returned. Parsing continues after each error so all

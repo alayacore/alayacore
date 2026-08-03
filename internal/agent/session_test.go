@@ -1,10 +1,10 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -106,39 +106,18 @@ func TestLoadOrNewSession(t *testing.T) {
 	}
 }
 
-// captureStderr redirects os.Stderr to a pipe for the duration of fn and
-// returns whatever was written to it.
-func captureStderr(fn func()) string {
-	oldStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		panic(err)
-	}
-	os.Stderr = w
-	defer func() { os.Stderr = oldStderr }()
-	fn()
-	w.Close()
-	data, _ := io.ReadAll(r)
-	r.Close()
-	return string(data)
-}
-
 func TestLoadOrNewSession_MissingFileIsSilent(t *testing.T) {
 	// A non-existent session file is the normal "start fresh" case:
-	// it must NOT print an error to stderr.
+	// it must NOT emit an error system message.
 	path := filepath.Join(t.TempDir(), "missing.alaya")
+	var out bytes.Buffer
 
-	var session *Session
-	var sessionFile string
-	var err error
-	stderr := captureStderr(func() {
-		session, sessionFile, err = LoadOrNewSession(SessionConfig{
-			SessionFile:  path,
-			BaseTools:    []llm.Tool{},
-			SystemPrompt: "test system prompt",
-			Input:        &nopInput{},
-			Output:       &nopOutput{},
-		})
+	session, sessionFile, err := LoadOrNewSession(SessionConfig{
+		SessionFile:  path,
+		BaseTools:    []llm.Tool{},
+		SystemPrompt: "test system prompt",
+		Input:        &nopInput{},
+		Output:       &out,
 	})
 
 	if err != nil {
@@ -150,42 +129,39 @@ func TestLoadOrNewSession_MissingFileIsSilent(t *testing.T) {
 	if sessionFile != path {
 		t.Fatalf("sessionFile = %q, want %q", sessionFile, path)
 	}
-	if strings.Contains(stderr, "could not load session file") {
-		t.Errorf("missing session file printed an error to stderr: %q", stderr)
+	if strings.Contains(out.String(), "could not load session file") {
+		t.Errorf("missing session file emitted an error message: %q", out.String())
 	}
 }
 
 func TestLoadOrNewSession_CorruptFileWarns(t *testing.T) {
 	// A session file that EXISTS but is corrupt is a real problem:
-	// it must warn on stderr but still start a fresh session.
+	// it must emit an error system message but still start a fresh session.
 	path := filepath.Join(t.TempDir(), "corrupt.alaya")
 	if err := os.WriteFile(path, []byte("not a session file"), 0600); err != nil {
 		t.Fatalf("write corrupt file: %v", err)
 	}
+	var out bytes.Buffer
 
-	var session *Session
-	stderr := captureStderr(func() {
-		var err error
-		session, _, err = LoadOrNewSession(SessionConfig{
-			SessionFile:  path,
-			BaseTools:    []llm.Tool{},
-			SystemPrompt: "test system prompt",
-			Input:        &nopInput{},
-			Output:       &nopOutput{},
-		})
-		if err != nil {
-			t.Fatalf("LoadOrNewSession returned error: %v", err)
-		}
+	session, _, err := LoadOrNewSession(SessionConfig{
+		SessionFile:  path,
+		BaseTools:    []llm.Tool{},
+		SystemPrompt: "test system prompt",
+		Input:        &nopInput{},
+		Output:       &out,
 	})
+	if err != nil {
+		t.Fatalf("LoadOrNewSession returned error: %v", err)
+	}
 
 	if session == nil {
 		t.Fatal("LoadOrNewSession returned nil session")
 	}
-	if !strings.Contains(stderr, "could not load session file") {
-		t.Errorf("corrupt session file did not warn on stderr: %q", stderr)
+	if !strings.Contains(out.String(), "could not load session file") {
+		t.Errorf("corrupt session file did not emit error message: %q", out.String())
 	}
-	if !strings.Contains(stderr, "Starting new session") {
-		t.Errorf("corrupt session file did not print fallback notice: %q", stderr)
+	if !strings.Contains(out.String(), "starting new session") {
+		t.Errorf("corrupt session file did not emit fallback notice: %q", out.String())
 	}
 }
 

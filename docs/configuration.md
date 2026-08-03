@@ -104,6 +104,8 @@ If two or more models share the same `name`, the first occurrence is kept and su
 
 If a field value has the wrong type (e.g. `context_limit: abc`), an error is printed but the model is still loaded with the zero value for that field.
 
+Comments (`#`) are **line-level**: a comment line may appear anywhere inside a model block — including the first line — and the rest of the block is still parsed. A block containing only comments or blank lines is skipped entirely.
+
 ### Switching Models at Runtime
 
 Press `Ctrl+L` to open the model selector. From there:

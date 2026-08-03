@@ -73,6 +73,7 @@ func Setup(cfg *config.Settings) (*Config, error) {
 
 	// Collect startup errors from all sources.
 	var startupErrors []string
+	startupErrors = append(startupErrors, skillsManager.GetLoadErrors()...)
 
 	// ========================================================================
 	// MCP (Model Context Protocol) — async initialization

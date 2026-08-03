@@ -2,19 +2,22 @@ package skills
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// errWriter is where errors are written. Can be set to io.Discard in tests.
-var errWriter io.Writer = os.Stderr
-
 // Manager handles skill discovery and loading
 type Manager struct {
-	skills    []Skill
-	skillDirs []string
+	skills     []Skill
+	skillDirs  []string
+	loadErrors []string // non-fatal errors (failed skills, duplicate names)
+}
+
+// GetLoadErrors returns non-fatal errors collected during loading:
+// skills that failed to load and duplicate skill names.
+func (m *Manager) GetLoadErrors() []string {
+	return m.loadErrors
 }
 
 // NewManager creates a new skill manager
@@ -64,15 +67,15 @@ func (m *Manager) discoverSkills() error {
 			// Load only metadata at startup
 			skill, err := m.loadSkillMetadata(skillFile, entry.Name())
 			if err != nil {
-				// Skip invalid skills but log error
-				fmt.Fprintf(errWriter, "Error: failed to load skill %s from %s: %v\n", entry.Name(), skillDir, err)
+				// Skip invalid skills but record the error
+				m.loadErrors = append(m.loadErrors, fmt.Sprintf("failed to load skill %s from %s: %v", entry.Name(), skillDir, err))
 				continue
 			}
 
 			// Check for duplicate skill names
 			for _, existing := range m.skills {
 				if existing.Name == skill.Name {
-					fmt.Fprintf(errWriter, "Error: duplicate skill name '%s' found in %s\n", skill.Name, skillDir)
+					m.loadErrors = append(m.loadErrors, fmt.Sprintf("duplicate skill name '%s' found in %s", skill.Name, skillDir))
 				}
 			}
 

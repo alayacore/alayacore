@@ -175,7 +175,7 @@ func parseModelConfig(content string) ([]config.ModelConfig, []string) {
 	result := make([]config.ModelConfig, 0, len(validCands))
 	for _, c := range validCands {
 		if c.model.Name != "" && seenNames[c.model.Name] {
-			msgs = append(msgs, fmt.Sprintf("model block %d: duplicate name %q — skipped", c.index, c.model.Name))
+			msgs = append(msgs, fmt.Sprintf("model.conf block %d: duplicate name %q — skipped", c.index, c.model.Name))
 			continue
 		}
 		seenNames[c.model.Name] = true

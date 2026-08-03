@@ -47,6 +47,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/skills"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -189,11 +190,12 @@ func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 	}
 
 	// A missing session file is the normal "start fresh" case — silent.
-	// Only warn when the file EXISTS but cannot be loaded (corrupt data,
-	// permission error, etc.) and start fresh rather than failing entirely.
+	// Only report when the file EXISTS but cannot be loaded (corrupt data,
+	// permission error, etc.): emit system error messages and start fresh
+	// rather than failing entirely.
 	if !errors.Is(loadErr, os.ErrNotExist) {
-		fmt.Fprintf(os.Stderr, "Error: could not load session file %q: %v\n", cfg.SessionFile, loadErr)
-		fmt.Fprintf(os.Stderr, "Starting new session.\n")
+		_ = protocol.WriteSystemMsg(cfg.Output, protocol.ErrorMsg{Text: fmt.Sprintf("could not load session file %q: %v", cfg.SessionFile, loadErr)})
+		_ = protocol.WriteSystemMsg(cfg.Output, protocol.ErrorMsg{Text: "starting new session"})
 	}
 	return NewSession(cfg), cfg.SessionFile, nil
 }
