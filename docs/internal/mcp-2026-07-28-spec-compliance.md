@@ -74,6 +74,29 @@ behavior is gated as follows so legacy servers are never affected:
 - `ping`: kept in the stdio transport and legacy adapters (still valid in
   `2024-11-05` … `2025-11-25`); removed only from the 2026-07-28 client path
 
+## Known observations (accepted, no code change)
+
+Reviewed after the fixes above; all three are intentional non-issues
+documented for future maintainers:
+
+1. **RFC 9207 `iss` not validated on callback error responses.** The
+   `error`/`error_description` callback path does not parse `iss`. RFC 9207
+   also covers error responses, but AlayaCore never redeems a code on that
+   path — the error is only displayed — so the attack surface is limited to
+   cosmetic error text. If error handling is ever extended, `iss` should be
+   validated there too (`auth.ValidateIssParam`).
+2. **`collectAllXMcpHeaderAnnotations` recurses into data containers.**
+   The whole-schema walk also descends into data keywords (`enum`, `const`,
+   `default`, …). In the pathological case where a data value contains an
+   `x-mcp-header` key, the tool would be conservatively rejected. This is
+   extremely unlikely and the direction is safe (reject, never allow);
+   a future cleanup could skip known data keywords.
+3. **`ListTools` parses the input schema twice.** `validateXMcpHeaderAnnotations`
+   re-runs `parseHeaderMappings` for the reachability count. `ListTools` is
+   called once per server at init (no refresh path), so the cost is
+   negligible; the duplicate call could be eliminated by passing the parsed
+   mappings in, but it is not worth the signature churn.
+
 ## Verification
 
 Each change was verified with `go build ./...`, `go test ./...`,
