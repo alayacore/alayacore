@@ -237,3 +237,42 @@ func TestMCPAuthFlow_IgnoresDuplicateStartForSameServer(t *testing.T) {
 		t.Error("duplicate start must not spawn a second flow")
 	}
 }
+
+// TestMCPAuthFlow_SendsConfirmWithIss verifies that the RFC 9207 iss
+// parameter from the callback is forwarded as the 4th :mcp_confirm
+// argument.
+func TestMCPAuthFlow_SendsConfirmWithIss(t *testing.T) {
+	env := newTestFlow()
+	env.flow.startServer = env.fake.start(platform.CallbackResult{
+		Code: "auth-code-123",
+		Iss:  "https://auth.example.com",
+	})
+
+	env.flow.start("github", "https://example.com/authorize?redirect_uri={{redirect_uri}}&state={{state}}")
+
+	frame := <-env.ci.ch
+	want := `"name":"mcp_confirm","input":"github auth-code-123 http://127.0.0.1:4242/callback https://auth.example.com"`
+	if !strings.Contains(frame, want) {
+		t.Errorf("CI frame = %q, want substring %q", frame, want)
+	}
+	<-env.fake.cleanupCh
+}
+
+// TestMCPAuthFlow_SendsConfirmWithoutIss verifies that no trailing iss
+// argument is appended when the callback carried none.
+func TestMCPAuthFlow_SendsConfirmWithoutIss(t *testing.T) {
+	env := newTestFlow()
+	env.flow.startServer = env.fake.start(platform.CallbackResult{Code: "auth-code-123"})
+
+	env.flow.start("github", "https://example.com/authorize")
+
+	frame := <-env.ci.ch
+	want := `"name":"mcp_confirm","input":"github auth-code-123 http://127.0.0.1:4242/callback"`
+	if !strings.Contains(frame, want) {
+		t.Errorf("CI frame = %q, want substring %q", frame, want)
+	}
+	if strings.Contains(frame, "callback  ") || strings.HasSuffix(frame, "callback ") {
+		t.Errorf("CI frame = %q, want no trailing iss argument", frame)
+	}
+	<-env.fake.cleanupCh
+}

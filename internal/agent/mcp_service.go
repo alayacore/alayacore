@@ -76,11 +76,13 @@ func (m *MCPService) Cancel() {
 // SendAuthCodeResult forwards the adapter's response (confirm + optional auth code)
 // to the MCP init goroutine waiting in runOAuthForServer.
 // code == "" means user declined; code != "" means confirmed + here's the code.
-func (m *MCPService) SendAuthCodeResult(server, code, redirectURI string) bool {
+// iss is the RFC 9207 issuer parameter from the authorization response,
+// if the callback carried one (empty on the manual path).
+func (m *MCPService) SendAuthCodeResult(server, code, redirectURI, iss string) bool {
 	if m.init == nil {
 		return false
 	}
-	return m.init.SendAuthCodeResult(server, code, redirectURI)
+	return m.init.SendAuthCodeResult(server, code, redirectURI, iss)
 }
 
 // ============================================================================

@@ -144,7 +144,11 @@ func (f *mcpAuthFlow) run(serverName, authURL string, input io.Writer, run *mcpA
 			f.sendCommand(input, fmt.Sprintf(":mcp_decline %s", serverName))
 			return
 		}
-		f.sendCommand(input, fmt.Sprintf(":mcp_confirm %s %s %s", serverName, res.Code, redirectURI))
+		cmd := fmt.Sprintf(":mcp_confirm %s %s %s", serverName, res.Code, redirectURI)
+		if res.Iss != "" {
+			cmd += " " + res.Iss
+		}
+		f.sendCommand(input, cmd)
 	case <-run.cancel:
 		// Server connected via another path (manual :mcp_confirm /
 		// :mcp_decline) or MCP init finished/canceled — cleanup() stops

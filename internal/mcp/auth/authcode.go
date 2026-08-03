@@ -206,3 +206,36 @@ func doTokenRequest(req *http.Request) (*Token, error) {
 
 	return token, nil
 }
+
+// ValidateIssParam validates the RFC 9207 `iss` parameter from an
+// authorization response against the recorded authorization server
+// issuer, per RFC 9207 Section 2.4. It MUST be called before the
+// authorization code is transmitted to any token endpoint.
+//
+// Rules:
+//   - If the authorization server advertises
+//     `authorization_response_iss_parameter_supported: true` and `iss` is
+//     absent, the response MUST be rejected.
+//   - A present `iss` MUST exactly match the recorded issuer. No scheme or
+//     host case folding, default-port elision, trailing-slash, or
+//     percent-encoding normalization (RFC 3986 Sections 6.2.2-6.2.3) is
+//     applied before comparison.
+//
+// Legacy protocol versions do not define RFC 9207; when the metadata does
+// not advertise support and no `iss` is present, validation passes.
+func ValidateIssParam(meta *ASMetadata, iss string) error {
+	if meta == nil {
+		return nil
+	}
+	if iss == "" {
+		if meta.AuthorizationResponseIssParameter != nil && *meta.AuthorizationResponseIssParameter {
+			return fmt.Errorf("authorization response missing required iss parameter (RFC 9207)")
+		}
+		return nil
+	}
+	if iss != meta.Issuer {
+		return fmt.Errorf("authorization response iss %q does not match recorded issuer %q (RFC 9207)",
+			iss, meta.Issuer)
+	}
+	return nil
+}

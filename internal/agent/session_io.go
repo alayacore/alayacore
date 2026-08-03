@@ -553,11 +553,17 @@ func (s *Session) checkMCPReady() error {
 
 // handleMCPConfirm handles the :mcp_confirm command.
 //
-// Usage: :mcp_confirm <server> <code> <redirect_uri>
+// Usage: :mcp_confirm <server> <code> <redirect_uri> [iss]
+//
+// The optional 4th argument is the RFC 9207 `iss` parameter from the
+// authorization response. It is only available on the automatic callback
+// path; manual confirmation (pasting a code from the browser) omits it,
+// in which case issuer validation is skipped unless the authorization
+// server advertises mandatory support.
 func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) {
 	fields := strings.Fields(args)
 	if len(fields) < 3 {
-		return nil, &CmdErr{Code: "INVALID_ARGS", Message: "usage: :mcp_confirm <server> <code> <redirect_uri>"}
+		return nil, &CmdErr{Code: "INVALID_ARGS", Message: "usage: :mcp_confirm <server> <code> <redirect_uri> [iss]"}
 	}
 	if err := s.checkMCPReady(); err != nil {
 		return nil, err
@@ -566,7 +572,11 @@ func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) 
 	server := fields[0]
 	code := fields[1]
 	redirectURI := fields[2]
-	if !s.mcpService.SendAuthCodeResult(server, code, redirectURI) {
+	iss := ""
+	if len(fields) >= 4 {
+		iss = fields[3]
+	}
+	if !s.mcpService.SendAuthCodeResult(server, code, redirectURI, iss) {
 		return nil, &CmdErr{Code: "NOT_FOUND", Message: fmt.Sprintf("No pending authorization for MCP server %q.", server)}
 	}
 	return map[string]any{"server": server}, nil
@@ -585,7 +595,7 @@ func (s *Session) handleMCPDecline(args string) (any, error) {
 	}
 
 	server := fields[0]
-	if !s.mcpService.SendAuthCodeResult(server, "", "") {
+	if !s.mcpService.SendAuthCodeResult(server, "", "", "") {
 		return nil, &CmdErr{Code: "NOT_FOUND", Message: fmt.Sprintf("No pending authorization for MCP server %q.", server)}
 	}
 	return map[string]any{"server": server}, nil

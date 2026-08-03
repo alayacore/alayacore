@@ -143,11 +143,13 @@ type serverResult struct {
 	instrs    string
 }
 
-// authCodeResult carries the authorization code and redirect URI
-// from the adapter's callback server back to the init goroutine.
+// authCodeResult carries the authorization code, redirect URI, and the
+// RFC 9207 issuer parameter from the adapter's callback server back to
+// the init goroutine.
 type authCodeResult struct {
 	code        string
 	redirectURI string
+	iss         string
 }
 
 // Init orchestrates MCP initialization from start to finish.
@@ -234,15 +236,17 @@ func (init *Init) unregisterAuthCodeCh(server string) {
 
 // SendAuthCodeResult delivers the authorization code from the adapter's
 // callback server to the init goroutine waiting in runOAuthForServer.
+// iss is the RFC 9207 issuer parameter from the authorization response,
+// if the callback carried one (empty on the manual path).
 // Returns false if no init goroutine is waiting for this server.
-func (init *Init) SendAuthCodeResult(server string, code string, redirectURI string) bool {
+func (init *Init) SendAuthCodeResult(server string, code string, redirectURI string, iss string) bool {
 	init.mu.Lock()
 	ch, ok := init.authCodeChs[server]
 	init.mu.Unlock()
 	if !ok {
 		return false
 	}
-	ch <- authCodeResult{code: code, redirectURI: redirectURI}
+	ch <- authCodeResult{code: code, redirectURI: redirectURI, iss: iss}
 	return true
 }
 
@@ -412,6 +416,14 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 
 	if acr.code == "" {
 		return errSkipped
+	}
+
+	// RFC 9207: validate the issuer before redeeming the authorization
+	// code. A present `iss` must exactly match the recorded issuer; if the
+	// AS advertises `authorization_response_iss_parameter_supported` and
+	// `iss` is absent, the response is rejected.
+	if issErr := auth.ValidateIssParam(meta, acr.iss); issErr != nil {
+		return fmt.Errorf("%q: %w", c.Name(), issErr)
 	}
 
 	init.sendEvent(InitEvent{Type: InitAuthRunning, Server: c.Name()})

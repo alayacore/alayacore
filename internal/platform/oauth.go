@@ -16,7 +16,10 @@ import (
 // CallbackResult holds the result of the OAuth callback HTTP request.
 type CallbackResult struct {
 	Code string
-	Err  error
+	// Iss is the RFC 9207 `iss` parameter from the authorization response,
+	// used to validate the issuer before redeeming the code.
+	Iss string
+	Err error
 }
 
 // RandomState generates a random hex string suitable for OAuth state
@@ -88,6 +91,7 @@ func StartCallbackServer(listenAddr, state, serverName string) (<-chan CallbackR
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		returnedState := r.URL.Query().Get("state")
+		iss := r.URL.Query().Get("iss")
 		errStr := r.URL.Query().Get("error")
 		errDesc := r.URL.Query().Get("error_description")
 
@@ -119,7 +123,7 @@ func StartCallbackServer(listenAddr, state, serverName string) (<-chan CallbackR
 			return
 		}
 		select {
-		case resultCh <- CallbackResult{Code: code}:
+		case resultCh <- CallbackResult{Code: code, Iss: iss}:
 		default:
 		}
 		writePage(w, "Authorization Successful",

@@ -249,8 +249,11 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) tea.Cmd {
 					message: fmt.Sprintf("MCP auth callback error: %v", res.Err),
 				}
 			}
-			writeCommand(streamInput,
-				fmt.Sprintf(":mcp_confirm %s %s %s", serverName, res.Code, redirectURI))
+			cmd := fmt.Sprintf(":mcp_confirm %s %s %s", serverName, res.Code, redirectURI)
+			if res.Iss != "" {
+				cmd += " " + res.Iss
+			}
+			writeCommand(streamInput, cmd)
 			return nil
 		},
 	)
