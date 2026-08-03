@@ -40,7 +40,13 @@ import (
 //	✅ audio content type (handled by adapter.go convertToolContent)
 //	✅ resource_link content type (handled by adapter.go convertToolContent)
 //	✅ tool annotations (handled by adapter.go formatAnnotations)
-//	✅ ping response on stdio (handled by StdioTransport internally)
+//
+// FEATURES NOT IMPLEMENTED (relative to 2026-07-28 spec)
+//
+//	❌ ping — removed from the 2026-07-28 spec entirely. alayacore keeps
+//	   the stdio transport's ping responder for legacy protocol versions
+//	   (2024-11-05 … 2025-11-25) where ping is still a valid method; it is
+//	   never used for 2026-07-28 connections.
 //
 // FEATURES NOT IMPLEMENTED (relative to 2026-07-28-RC spec)
 //
@@ -106,8 +112,19 @@ func (a *AdapterV20260728) Handshake(ctx context.Context, c *Client) (string, er
 	}
 
 	c.capabilities = discover.Capabilities
-	c.serverInfo = discover.ServerInfo
 	c.instructions = discover.Instructions
+
+	// Per the 2026-07-28 spec, the server identity is carried in
+	// result._meta.io.modelcontextprotocol/serverInfo (SHOULD) — there is
+	// no top-level serverInfo field in DiscoverResult. Parse it when
+	// present.
+	c.serverInfo = discover.ServerInfo // legacy servers may still send it top-level
+	if raw, ok := discover.Meta["io.modelcontextprotocol/serverInfo"]; ok {
+		var si ImplementationInfo
+		if err := json.Unmarshal(raw, &si); err == nil {
+			c.serverInfo = si
+		}
+	}
 
 	preferred := a.ProtocolVersion()
 	for _, v := range discover.SupportedVersions {

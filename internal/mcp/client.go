@@ -519,15 +519,6 @@ func (c *Client) handleNotification(method string) {
 	}
 }
 
-// Ping sends a ping request to check server health.
-func (c *Client) Ping(ctx context.Context) error {
-	if c.State() != StateReady {
-		return fmt.Errorf("%q: ping: %w", c.config.Name, c.stateError("ping"))
-	}
-	_, err := c.sendRequest(ctx, methodPing, nil)
-	return err
-}
-
 // resetState resets the client to StateDisconnected for reconnection.
 func (c *Client) resetState() {
 	if tp := c.loadTransport(); tp != nil {

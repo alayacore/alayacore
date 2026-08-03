@@ -212,6 +212,10 @@ type ServerPromptCapabilities struct {
 
 // ServerResourceCapabilities describes the server's resource capabilities.
 type ServerResourceCapabilities struct {
+	// Subscribe indicates whether the server supports subscribing to
+	// updates of individual resources (2026-07-28 resources/subscribe
+	// capability; delivered via subscriptions/listen streams).
+	Subscribe bool `json:"subscribe,omitempty"`
 	// ListChanged indicates whether the server supports notifications for
 	// changes to the resource list.
 	ListChanged bool `json:"listChanged,omitempty"`
@@ -254,8 +258,11 @@ type DiscoverResult struct {
 	SupportedVersions []string `json:"supportedVersions"`
 	// Capabilities describes the server's capabilities.
 	Capabilities ServerCapabilities `json:"capabilities"`
-	// ServerInfo identifies the server implementation.
-	ServerInfo ImplementationInfo `json:"serverInfo"`
+	// ServerInfo identifies the server implementation. The 2026-07-28 spec
+	// carries this in _meta.io.modelcontextprotocol/serverInfo (no
+	// top-level field); the top-level field is tolerated for legacy
+	// servers. Handshake parses both.
+	ServerInfo ImplementationInfo `json:"serverInfo,omitempty"`
 	// Instructions provides natural-language guidance about using the server.
 	Instructions string `json:"instructions,omitempty"`
 	Meta         Meta   `json:"_meta,omitempty"`
@@ -280,13 +287,6 @@ type Icon struct {
 	MIMEType string   `json:"mimeType,omitempty"`
 	Sizes    []string `json:"sizes,omitempty"`
 	Theme    string   `json:"theme,omitempty"`
-}
-
-// ToolExecution describes execution options for a tool.
-type ToolExecution struct {
-	// TaskSupport indicates whether this tool supports task-augmented execution.
-	// "forbidden" (default), "optional", or "required".
-	TaskSupport string `json:"taskSupport,omitempty"`
 }
 
 // HeaderMapping describes a single x-mcp-header annotation on a tool
@@ -318,8 +318,6 @@ type Tool struct {
 	Annotations *ToolAnnotations `json:"annotations,omitempty"`
 	// Icon metadata for the tool.
 	Icons []Icon `json:"icons,omitempty"`
-	// Execution options.
-	Execution *ToolExecution `json:"execution,omitempty"`
 	// Optional output schema for structured content.
 	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
 	// Meta is an optional metadata object for experimental features.
