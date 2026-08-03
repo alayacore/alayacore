@@ -70,6 +70,10 @@ type AuthCodeConfig struct {
 	ClientID     string
 	ClientSecret string // optional, for confidential clients
 	Scopes       []string
+	// Resource is the RFC 8707 resource indicator (the canonical MCP
+	// server URL). Required by the 2026-07-28 protocol (MUST be included
+	// in authorization and token requests); empty for legacy versions.
+	Resource string
 }
 
 // BuildAuthorizationURL constructs the authorization URL with all required parameters.
@@ -82,6 +86,10 @@ func BuildAuthorizationURL(meta *ASMetadata, cfg *AuthCodeConfig, pkce *PKCEPara
 
 	if len(cfg.Scopes) > 0 {
 		params.Set("scope", strings.Join(cfg.Scopes, " "))
+	}
+
+	if cfg.Resource != "" {
+		params.Set("resource", cfg.Resource)
 	}
 
 	u, err := url.Parse(meta.AuthorizationEndpoint)
@@ -104,6 +112,10 @@ func ExchangeCode(ctx context.Context, meta *ASMetadata, cfg *AuthCodeConfig, pk
 	data.Set("redirect_uri", redirectURI)
 	data.Set("code_verifier", pkce.CodeVerifier)
 	data.Set("client_id", cfg.ClientID)
+
+	if cfg.Resource != "" {
+		data.Set("resource", cfg.Resource)
+	}
 
 	authMethod, err := SelectAuthMethod(meta)
 	if err != nil {

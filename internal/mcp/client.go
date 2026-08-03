@@ -420,7 +420,14 @@ func (c *Client) setupAuth(transport Transport) {
 		return
 	}
 
-	provider := newAuthProvider(c.config.Auth, c.tokenStore, c.config.Name)
+	// RFC 8707 resource indicator for token refresh — required by the
+	// 2026-07-28 spec only; empty for legacy protocol versions.
+	resource := ""
+	if c.config.ProtoVersion == "2026-07-28" {
+		resource = c.config.URL
+	}
+
+	provider := newAuthProvider(c.config.Auth, c.tokenStore, c.config.Name, resource)
 	if provider == nil {
 		return
 	}
@@ -718,7 +725,9 @@ func (c *Client) sendNotification(ctx context.Context, method string, params any
 var _ error = (*RPCError)(nil)
 
 // newAuthProvider creates an auth.TokenProvider from the given AuthConfig.
-func newAuthProvider(cfg *AuthConfig, tokenStore auth.TokenStore, serverName string) auth.TokenProvider {
+// resource is the RFC 8707 resource indicator (MCP server URL) sent on
+// token refresh; empty for protocol versions that do not require it.
+func newAuthProvider(cfg *AuthConfig, tokenStore auth.TokenStore, serverName, resource string) auth.TokenProvider {
 	if cfg == nil {
 		return nil
 	}
@@ -748,6 +757,7 @@ func newAuthProvider(cfg *AuthConfig, tokenStore auth.TokenStore, serverName str
 				ClientID:         cfg.ClientID,
 				ClientSecret:     cfg.ClientSecret,
 				ClientAuthMethod: cfg.ClientAuthMethod,
+				Resource:         resource,
 			}
 			return auth.NewPersistentTokenProvider(base, tokenStore, serverName, refreshCfg)
 		}
@@ -757,6 +767,7 @@ func newAuthProvider(cfg *AuthConfig, tokenStore auth.TokenStore, serverName str
 				ClientID:         cfg.ClientID,
 				ClientSecret:     cfg.ClientSecret,
 				ClientAuthMethod: cfg.ClientAuthMethod,
+				Resource:         resource,
 			}
 			return auth.NewPersistentTokenProvider(nil, tokenStore, serverName, refreshCfg)
 		}

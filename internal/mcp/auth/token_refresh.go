@@ -29,6 +29,11 @@ type RefreshConfig struct {
 	// "none" means public client (no client authentication).
 	// If empty, defaults to "client_secret_basic".
 	ClientAuthMethod string
+
+	// Resource is the RFC 8707 resource indicator (the canonical MCP
+	// server URL). Required by the 2026-07-28 protocol (MUST be included
+	// in token requests); empty for legacy versions.
+	Resource string
 }
 
 // PersistentTokenProvider wraps a TokenProvider with on-disk persistence
@@ -205,6 +210,10 @@ func (p *PersistentTokenProvider) refreshToken(ctx context.Context, refreshToken
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
 	data.Set("client_id", p.refresh.ClientID)
+
+	if p.refresh.Resource != "" {
+		data.Set("resource", p.refresh.Resource)
+	}
 
 	authMethod := p.refresh.ClientAuthMethod
 	if authMethod == "" {

@@ -368,10 +368,19 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 	placeholderURI := "{{redirect_uri}}"
 	placeholderState := "{{state}}"
 
+	// RFC 8707 resource indicator — the canonical MCP server URL.
+	// Required by the 2026-07-28 spec (MUST be in authorization and token
+	// requests); older protocol versions do not define it, so leave empty.
+	resource := ""
+	if c.config.ProtoVersion == "2026-07-28" {
+		resource = c.config.URL
+	}
+
 	authURL, err := auth.BuildAuthorizationURL(meta, &auth.AuthCodeConfig{
 		ClientID:     clientID,
 		ClientSecret: cfg.ClientSecret,
 		Scopes:       cfg.Scopes,
+		Resource:     resource,
 	}, pkce, placeholderURI, placeholderState)
 	if err != nil {
 		return fmt.Errorf("%q: build auth URL: %w", c.Name(), err)
@@ -411,6 +420,7 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 		ClientID:     clientID,
 		ClientSecret: cfg.ClientSecret,
 		Scopes:       cfg.Scopes,
+		Resource:     resource,
 	}, pkce, acr.redirectURI, acr.code)
 	if err != nil {
 		return fmt.Errorf("%q: exchange code: %w", c.Name(), err)

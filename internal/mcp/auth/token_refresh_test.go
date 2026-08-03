@@ -305,3 +305,92 @@ func TestPersistentTokenProvider_RefreshWithoutRotation(t *testing.T) {
 		t.Errorf("RefreshToken = %q, want %q (unchanged)", tok.RefreshToken, "original-refresh-token")
 	}
 }
+
+// Test that refresh requests include the RFC 8707 resource parameter
+// when configured (2026-07-28 protocol).
+func TestPersistentTokenProvider_Refresh_ResourceParam(t *testing.T) {
+	var gotResource string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err == nil {
+			gotResource = r.PostForm.Get("resource")
+		}
+		resp := map[string]interface{}{
+			"access_token":  "refreshed-access-token",
+			"token_type":    "Bearer",
+			"expires_in":    3600,
+			"refresh_token": "new-refresh-token",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	store := NewFileTokenStore(t.TempDir())
+
+	// Seed an expired token with a refresh token on disk.
+	if err := store.SaveToken("test-server", &Token{
+		AccessToken:  "expired-token",
+		TokenType:    "Bearer",
+		RefreshToken: "old-refresh-token",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	pp := NewPersistentTokenProvider(nil, store, "test-server", &RefreshConfig{
+		TokenEndpoint: ts.URL + "/token",
+		ClientID:      "test-client",
+		ClientSecret:  "test-secret",
+		Resource:      "https://mcp.example.com/mcp",
+	})
+
+	if _, err := pp.Token(context.Background()); err != nil {
+		t.Fatalf("Token() error = %v", err)
+	}
+	if gotResource != "https://mcp.example.com/mcp" {
+		t.Errorf("resource param = %q, want %q", gotResource, "https://mcp.example.com/mcp")
+	}
+}
+
+// Test that refresh requests omit the resource parameter when not
+// configured (legacy protocol versions).
+func TestPersistentTokenProvider_Refresh_NoResourceParam(t *testing.T) {
+	var gotResource string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err == nil {
+			gotResource = r.PostForm.Get("resource")
+		}
+		resp := map[string]interface{}{
+			"access_token":  "refreshed-access-token",
+			"token_type":    "Bearer",
+			"expires_in":    3600,
+			"refresh_token": "new-refresh-token",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	store := NewFileTokenStore(t.TempDir())
+	if err := store.SaveToken("test-server", &Token{
+		AccessToken:  "expired-token",
+		TokenType:    "Bearer",
+		RefreshToken: "old-refresh-token",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	pp := NewPersistentTokenProvider(nil, store, "test-server", &RefreshConfig{
+		TokenEndpoint: ts.URL + "/token",
+		ClientID:      "test-client",
+		ClientSecret:  "test-secret",
+	})
+
+	if _, err := pp.Token(context.Background()); err != nil {
+		t.Fatalf("Token() error = %v", err)
+	}
+	if gotResource != "" {
+		t.Errorf("resource param = %q, want empty (legacy versions omit it)", gotResource)
+	}
+}
