@@ -95,20 +95,8 @@ func ParseKeyValue(content string, target any) []ParseError {
 		return nil
 	}
 	v = v.Elem()
-	t := v.Type()
 
-	// Build map from config tag names to field indices
-	tagToField := make(map[string]int)
-	for i := 0; i < t.NumField(); i++ {
-		tag := t.Field(i).Tag.Get("config")
-		if tag != "" {
-			key, _, _ := strings.Cut(tag, ",")
-			if key == "-" {
-				continue // skip internal fields
-			}
-			tagToField[key] = i
-		}
-	}
+	tagToField := buildTagToField(v.Type())
 
 	var errs []ParseError
 	// seenKeys tracks keys already set in this block so duplicates can be
@@ -118,41 +106,15 @@ func ParseKeyValue(content string, target any) []ParseError {
 	// Parse lines
 	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || line == "---" {
-			continue
+		if line == "" || line == "---" || strings.HasPrefix(line, "#") {
+			continue // empty, block separator, or comment
 		}
 
-		// Explicitly skip comment lines
-		if strings.HasPrefix(line, "#") {
+		key, value, perr := parseKeyValueLine(line)
+		if perr != nil {
+			errs = append(errs, *perr)
 			continue
 		}
-
-		// Find the first colon to separate key and value
-		colonIdx := strings.IndexByte(line, ':')
-		if colonIdx == -1 {
-			errs = append(errs, ParseError{
-				Key:   line,
-				Value: "",
-				Err:   "line without ':' separator (missing colon?)",
-			})
-			continue
-		}
-
-		key := strings.TrimSpace(line[:colonIdx])
-		value := line[colonIdx+1:]
-
-		// Validate key format
-		if !validKeyPattern.MatchString(key) {
-			errs = append(errs, ParseError{
-				Key:   key,
-				Value: strings.TrimSpace(value),
-				Err:   fmt.Sprintf("invalid key format (must match %s)", validKeyPattern.String()),
-			})
-			continue
-		}
-
-		value = strings.TrimSpace(value)
-		value = unquoteValue(value)
 
 		// Look up field by tag
 		fieldIdx, ok := tagToField[key]
@@ -174,6 +136,52 @@ func ParseKeyValue(content string, target any) []ParseError {
 	}
 
 	return errs
+}
+
+// buildTagToField maps config tag names to struct field indices.
+func buildTagToField(t reflect.Type) map[string]int {
+	tagToField := make(map[string]int)
+	for i := 0; i < t.NumField(); i++ {
+		tag := t.Field(i).Tag.Get("config")
+		if tag != "" {
+			key, _, _ := strings.Cut(tag, ",")
+			if key == "-" {
+				continue // skip internal fields
+			}
+			tagToField[key] = i
+		}
+	}
+	return tagToField
+}
+
+// parseKeyValueLine splits a config line into a key and value. The key
+// must match validKeyPattern; the value is trimmed and unquoted.
+func parseKeyValueLine(line string) (key, value string, perr *ParseError) {
+	// Find the first colon to separate key and value
+	colonIdx := strings.IndexByte(line, ':')
+	if colonIdx == -1 {
+		return "", "", &ParseError{
+			Key:   line,
+			Value: "",
+			Err:   "line without ':' separator (missing colon?)",
+		}
+	}
+
+	key = strings.TrimSpace(line[:colonIdx])
+	value = line[colonIdx+1:]
+
+	// Validate key format
+	if !validKeyPattern.MatchString(key) {
+		return "", "", &ParseError{
+			Key:   key,
+			Value: strings.TrimSpace(value),
+			Err:   fmt.Sprintf("invalid key format (must match %s)", validKeyPattern.String()),
+		}
+	}
+
+	value = strings.TrimSpace(value)
+	value = unquoteValue(value)
+	return key, value, nil
 }
 
 // claimKey marks a key as seen in the current block. Empty values are
