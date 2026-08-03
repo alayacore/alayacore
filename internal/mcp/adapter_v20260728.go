@@ -191,12 +191,15 @@ func (a *AdapterV20260728) EnrichRequest(req *http.Request, method string, param
 	req.Header.Set("Mcp-Method", method)
 
 	// Mcp-Name: mirror the resource/tool/prompt name for specific methods.
+	// Values that cannot be safely represented as a plain ASCII header
+	// value MUST use the Base64 sentinel format (=?base64?...?=).
 	if name := extractMcpName(method, params); name != "" {
-		req.Header.Set("Mcp-Name", name)
+		encoded, _ := encodeHeaderValue(name, schemaTypeString)
+		req.Header.Set("Mcp-Name", encoded)
 	}
 
 	// Mcp-Param-{Name}: mirror x-mcp-header annotated parameters.
-	if method == "tools/call" && len(a.toolHeaderMappings) > 0 {
+	if method == methodCallTool && len(a.toolHeaderMappings) > 0 {
 		a.injectParamHeaders(req, params)
 	}
 }
@@ -229,7 +232,7 @@ func (a *AdapterV20260728) injectParamHeaders(req *http.Request, params json.Raw
 // and prompts/get methods.
 func extractMcpName(method string, params json.RawMessage) string {
 	switch method {
-	case "tools/call", "resources/read", "prompts/get":
+	case methodCallTool, methodReadResource, methodGetPrompt:
 	default:
 		return ""
 	}
