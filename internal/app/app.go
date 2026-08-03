@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/config"
@@ -15,57 +14,6 @@ import (
 	"github.com/alayacore/alayacore/internal/tools"
 	"github.com/alayacore/alayacore/internal/tools/shell"
 )
-
-// loadMCPConfigs reads mcp.conf from the config directory and parses it
-// into a slice of ServerConfig. Returns any parse errors.
-func loadMCPConfigs(cfg *config.Settings) ([]mcp.ServerConfig, []string) {
-	data, err := os.ReadFile(cfg.MCPConfigPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil // mcp.conf is optional
-		}
-		return nil, []string{fmt.Sprintf("reading mcp.conf: %v", err)}
-	}
-
-	blocks := config.ParseKeyValueBlocks(string(data))
-	configs := make([]mcp.ServerConfig, 0, len(blocks))
-	var errs []string
-
-	for _, block := range blocks {
-		block = strings.TrimSpace(block)
-		if block == "" || strings.HasPrefix(block, "#") {
-			continue
-		}
-
-		var fileCfg mcp.ServerConfigFile
-		parseErrors := config.ParseKeyValue(block, &fileCfg)
-		for _, e := range parseErrors {
-			errs = append(errs, fmt.Sprintf("mcp.conf: %s", e.String()))
-		}
-
-		if fileCfg.Server == "" {
-			errs = append(errs, "mcp.conf: skipping block with empty server name")
-			continue
-		}
-
-		configs = append(configs, fileCfg.ToServerConfig())
-	}
-
-	// Check for duplicate server names.
-	// First occurrence is kept; subsequent duplicates are reported as errors.
-	seenNames := make(map[string]bool)
-	deduped := make([]mcp.ServerConfig, 0, len(configs))
-	for _, cfg := range configs {
-		if seenNames[cfg.Name] {
-			errs = append(errs, fmt.Sprintf("mcp.conf: duplicate server name %q — skipped", cfg.Name))
-			continue
-		}
-		seenNames[cfg.Name] = true
-		deduped = append(deduped, cfg)
-	}
-
-	return deduped, errs
-}
 
 // This package provides shared initialization for all adapters.
 // It builds the system prompt, initializes tools, and creates the app config.
@@ -177,7 +125,7 @@ func Setup(cfg *config.Settings) (*Config, error) {
 // it when the main event loop begins.
 func initMCPAsync(cfg *config.Settings) (*mcp.Init, []string) {
 	// Load MCP configurations from mcp.conf
-	mcpConfigs, startupErrors := loadMCPConfigs(cfg)
+	mcpConfigs, startupErrors := mcp.LoadConfigs(cfg)
 	if len(mcpConfigs) == 0 {
 		return nil, startupErrors
 	}

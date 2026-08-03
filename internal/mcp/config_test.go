@@ -1,4 +1,4 @@
-package app
+package mcp
 
 import (
 	"os"
@@ -9,9 +9,9 @@ import (
 	"github.com/alayacore/alayacore/internal/config"
 )
 
-func TestLoadMCPConfigs_FileNotFound(t *testing.T) {
+func TestLoadConfigs_FileNotFound(t *testing.T) {
 	cfg := &config.Settings{MCPConfigPath: "/nonexistent/mcp.conf"}
-	configs, errs := loadMCPConfigs(cfg)
+	configs, errs := LoadConfigs(cfg)
 	if configs != nil {
 		t.Errorf("expected nil configs, got %v", configs)
 	}
@@ -20,7 +20,7 @@ func TestLoadMCPConfigs_FileNotFound(t *testing.T) {
 	}
 }
 
-func TestLoadMCPConfigs_ValidFile(t *testing.T) {
+func TestLoadConfigs_ValidFile(t *testing.T) {
 	content := `---
 server: myapi
 url: "https://mcp.example.com"
@@ -45,7 +45,7 @@ url: "https://public.example.com/mcp"
 	}
 
 	cfg := &config.Settings{MCPConfigPath: path}
-	configs, errs := loadMCPConfigs(cfg)
+	configs, errs := LoadConfigs(cfg)
 	if len(errs) > 0 {
 		t.Errorf("unexpected errors: %v", errs)
 	}
@@ -105,7 +105,7 @@ url: "https://public.example.com/mcp"
 	}
 }
 
-func TestLoadMCPConfigs_EmptyFile(t *testing.T) {
+func TestLoadConfigs_EmptyFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mcp.conf")
 	if err := os.WriteFile(path, []byte(""), 0644); err != nil {
@@ -113,7 +113,7 @@ func TestLoadMCPConfigs_EmptyFile(t *testing.T) {
 	}
 
 	cfg := &config.Settings{MCPConfigPath: path}
-	configs, errs := loadMCPConfigs(cfg)
+	configs, errs := LoadConfigs(cfg)
 	if len(configs) != 0 {
 		t.Errorf("expected 0 configs, got %d", len(configs))
 	}
@@ -122,7 +122,7 @@ func TestLoadMCPConfigs_EmptyFile(t *testing.T) {
 	}
 }
 
-func TestLoadMCPConfigs_CommentsOnly(t *testing.T) {
+func TestLoadConfigs_CommentsOnly(t *testing.T) {
 	content := `# This is a comment
 # Another comment
 `
@@ -133,7 +133,7 @@ func TestLoadMCPConfigs_CommentsOnly(t *testing.T) {
 	}
 
 	cfg := &config.Settings{MCPConfigPath: path}
-	configs, errs := loadMCPConfigs(cfg)
+	configs, errs := LoadConfigs(cfg)
 	if len(configs) != 0 {
 		t.Errorf("expected 0 configs, got %d", len(configs))
 	}
@@ -142,7 +142,7 @@ func TestLoadMCPConfigs_CommentsOnly(t *testing.T) {
 	}
 }
 
-func TestLoadMCPConfigs_EmptyServerName(t *testing.T) {
+func TestLoadConfigs_EmptyServerName(t *testing.T) {
 	content := `---
 url: "https://example.com"
 ---
@@ -157,7 +157,7 @@ url: "https://valid.example.com"
 	}
 
 	cfg := &config.Settings{MCPConfigPath: path}
-	configs, errs := loadMCPConfigs(cfg)
+	configs, errs := LoadConfigs(cfg)
 	if len(configs) != 1 {
 		t.Errorf("expected 1 config, got %d", len(configs))
 	}
@@ -166,7 +166,60 @@ url: "https://valid.example.com"
 	}
 }
 
-func TestLoadMCPConfigs_DuplicateServerName(t *testing.T) {
+func TestLoadConfigs_BlockWithLeadingComment(t *testing.T) {
+	// A "#" comment is line-level: a block that starts with a comment line
+	// but contains real config must still be parsed (not discarded whole).
+	content := `---
+server: my-db
+command: npx
+args: ["@anthropic/mcp-db-server"]
+---
+#server: my-db-deep
+server: my-db
+url: "https://example.com/mcp/deep"
+---
+#server: github
+#url: "https://api.githubcopilot.com/mcp/"
+---
+server: other
+url: "https://other.example.com/mcp"
+---
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mcp.conf")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Settings{MCPConfigPath: path}
+	configs, errs := LoadConfigs(cfg)
+
+	// The leading-comment block must be parsed: 2 configs (my-db, other).
+	if len(configs) != 2 {
+		t.Fatalf("expected 2 configs (comment-prefixed block must be parsed), got %d: %v", len(configs), configs)
+	}
+
+	// ...which means the duplicate my-db is now detected.
+	found := false
+	for _, w := range errs {
+		if strings.Contains(w, "duplicate server name") && strings.Contains(w, "my-db") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected duplicate error for 'my-db' (comment-prefixed block dropped before fix), got: %v", errs)
+	}
+
+	// Pure-comment blocks are still skipped entirely.
+	for _, c := range configs {
+		if c.Name == "github" {
+			t.Errorf("pure-comment block 'github' should be skipped, got config: %+v", c)
+		}
+	}
+}
+
+func TestLoadConfigs_DuplicateServerName(t *testing.T) {
 	content := `---
 server: my-db
 command: npx
@@ -186,7 +239,7 @@ url: "https://other.example.com/mcp"
 	}
 
 	cfg := &config.Settings{MCPConfigPath: path}
-	configs, errs := loadMCPConfigs(cfg)
+	configs, errs := LoadConfigs(cfg)
 	if len(configs) != 2 {
 		t.Fatalf("expected 2 configs (first occurrence of my-db + other), got %d", len(configs))
 	}
