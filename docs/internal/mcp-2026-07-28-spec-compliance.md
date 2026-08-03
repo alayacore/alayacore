@@ -96,6 +96,12 @@ documented for future maintainers:
    called once per server at init (no refresh path), so the cost is
    negligible; the duplicate call could be eliminated by passing the parsed
    mappings in, but it is not worth the signature churn.
+4. **No auto-recovery on `HeaderMismatch` (`-32020`).** The transport spec
+   says a client that receives `HeaderMismatch` because `Mcp-Param-*`
+   headers are missing/mismatched SHOULD re-fetch `tools/list` and retry.
+   AlayaCore surfaces the error as a plain `RPCError` without retrying.
+   The trigger is an edge case (the server changed its tool schema after
+   our last `tools/list`), so this is recorded rather than implemented.
 
 ## Verification
 
