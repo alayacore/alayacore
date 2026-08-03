@@ -120,18 +120,18 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// proto-version is required — no default.
 	switch c.config.ProtoVersion {
-	case "2024-11-05":
+	case protocolVersion20241105:
 		c.adapter = NewAdapterV20241105()
 		if c.config.URL != "" {
 			return fmt.Errorf("proto-version 2024-11-05 only supports stdio transport")
 		}
-	case "2025-03-26":
+	case protocolVersion20250326:
 		c.adapter = NewAdapterV20250326()
-	case "2025-06-18":
+	case protocolVersion20250618:
 		c.adapter = NewAdapterV20250618()
-	case "2025-11-25":
+	case protocolVersion20251125:
 		c.adapter = NewAdapterV20251125()
-	case "2026-07-28":
+	case protocolVersion20260728:
 		c.adapter = NewAdapterV20260728()
 	case "":
 		return fmt.Errorf("proto-version is required (e.g. proto-version=2025-11-25)")
@@ -423,7 +423,7 @@ func (c *Client) setupAuth(transport Transport) {
 	// RFC 8707 resource indicator for token refresh — required by the
 	// 2026-07-28 spec only; empty for legacy protocol versions.
 	resource := ""
-	if c.config.ProtoVersion == "2026-07-28" {
+	if c.config.ProtoVersion == protocolVersion20260728 {
 		resource = c.config.URL
 	}
 

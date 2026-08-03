@@ -372,7 +372,7 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 	// Required by the 2026-07-28 spec (MUST be in authorization and token
 	// requests); older protocol versions do not define it, so leave empty.
 	resource := ""
-	if c.config.ProtoVersion == "2026-07-28" {
+	if c.config.ProtoVersion == protocolVersion20260728 {
 		resource = c.config.URL
 	}
 

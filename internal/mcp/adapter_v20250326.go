@@ -90,7 +90,7 @@ func NewAdapterV20250326() *AdapterV20250326 {
 
 // ProtocolVersion returns "2025-03-26".
 func (a *AdapterV20250326) ProtocolVersion() string {
-	return "2025-03-26"
+	return protocolVersion20250326
 }
 
 // Handshake performs the 2025-03-26 initialize/initialized handshake.

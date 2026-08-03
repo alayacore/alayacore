@@ -533,6 +533,15 @@ type ResourceContents struct {
 	Blob string `json:"blob,omitempty"`
 }
 
+// Protocol version strings.
+const (
+	protocolVersion20241105 = "2024-11-05"
+	protocolVersion20250326 = "2025-03-26"
+	protocolVersion20250618 = "2025-06-18"
+	protocolVersion20251125 = "2025-11-25"
+	protocolVersion20260728 = "2026-07-28"
+)
+
 // Method names.
 const (
 	methodInitialize                        = "initialize"
