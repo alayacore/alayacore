@@ -89,7 +89,7 @@ echo "what is 2+2?" | alayacore --terseio
 
 ### Terse IO (`--terseio`)
 
-- 🎯 **Answer-only** — Read all of stdin as one prompt, print only the final answer (errors to stderr, exit codes signal failure). Ideal for pipes and scripts.
+- 🎯 **Answer-only** — Read all of stdin as one prompt (or one command if it starts with `:`), print only the final answer (errors to stderr, exit codes signal failure). Ideal for pipes and scripts.
 
 ### Raw IO (`--rawio`)
 
@@ -133,7 +133,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Configuration](docs/configuration.md) | Model config, runtime config, and themes |
 | [Terminal UI](docs/tui.md) | Keybindings, commands, windows, and navigation |
 | [Plain IO Mode](docs/plainio.md) | Interactive plain-text stdin/stdout, no TUI |
-| [Terse IO Mode](docs/terseio.md) | Read all stdin as one prompt; print only the final answer |
+| [Terse IO Mode](docs/terseio.md) | Read all stdin as one prompt or command; print only the final answer |
 | [Raw IO Mode](docs/rawio.md) | Raw TLV frames on stdin/stdout for programmatic control |
 | [Adapter Guide](adapter-guide/README.md) | TLV protocol reference for Raw IO — frame format, tags, and adapter implementation guide |
 | [Skills System](docs/skills.md) | Agent Skills specification, directory structure, SKILL.md format |

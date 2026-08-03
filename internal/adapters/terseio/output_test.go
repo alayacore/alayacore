@@ -28,6 +28,18 @@ func taskMsg(inProgress bool) []byte {
 	return encodeTestTLV(tlv.TagSystemMsg, string(payload))
 }
 
+// cmdResultMsg builds a CO frame. output is the structured result (or the
+// CmdError object when isError is true).
+func cmdResultMsg(id string, output any, isError bool) []byte {
+	raw, _ := json.Marshal(output)
+	payload, _ := json.Marshal(protocol.CmdResultMsg{
+		ID:      id,
+		Output:  raw,
+		IsError: isError,
+	})
+	return encodeTestTLV(tlv.TagCommandOut, string(payload))
+}
+
 // errorMsg builds an SM error frame.
 func errorMsg(text string) []byte {
 	payload, _ := json.Marshal(protocol.SystemMsgEnvelope{
@@ -132,6 +144,74 @@ func TestTerseOutput_ErrorGoesToStderrAndDiscardsAnswer(t *testing.T) {
 	o.Write(taskMsg(false))
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty after error + task done", out.String())
+	}
+}
+
+func TestTerseOutput_CommandError_GoesToStderrAndSetsExitCode(t *testing.T) {
+	o, out, errBuf := newTestOutput()
+
+	o.Write(cmdResultMsg("terse-1", protocol.CmdError{Code: "UNKNOWN_COMMAND", Message: "unknown command: foo"}, true))
+
+	if out.String() != "" {
+		t.Errorf("stdout = %q, want empty", out.String())
+	}
+	if !strings.Contains(errBuf.String(), "[error: unknown command: foo]") {
+		t.Errorf("stderr = %q, want command error", errBuf.String())
+	}
+	if !o.HasError() {
+		t.Error("HasError = false, want true (command error drives exit code 1)")
+	}
+	select {
+	case <-o.ErrorChannel():
+	default:
+		t.Error("ErrorChannel not closed")
+	}
+}
+
+func TestTerseOutput_CommandSuccess_SaveRendered(t *testing.T) {
+	o, out, errBuf := newTestOutput()
+
+	// Correlate the CI the adapter sent: id → commandSave.
+	commandNames.Store("terse-7", commandSave)
+	o.Write(cmdResultMsg("terse-7", map[string]any{"path": "/tmp/x.alaya"}, false))
+
+	if out.String() != "" {
+		t.Errorf("stdout = %q, want empty", out.String())
+	}
+	if !strings.Contains(errBuf.String(), "[Session saved to /tmp/x.alaya]") {
+		t.Errorf("stderr = %q, want save result", errBuf.String())
+	}
+	if o.HasError() {
+		t.Error("HasError = true, want false")
+	}
+}
+
+func TestTerseOutput_CommandSuccess_SelfEvidentSilent(t *testing.T) {
+	o, out, errBuf := newTestOutput()
+
+	// :continue — the final answer on stdout is the feedback, not the CO.
+	commandNames.Store("terse-8", "continue")
+	o.Write(cmdResultMsg("terse-8", map[string]any{"status": "started"}, false))
+
+	if out.String() != "" {
+		t.Errorf("stdout = %q, want empty", out.String())
+	}
+	if errBuf.String() != "" {
+		t.Errorf("stderr = %q, want empty", errBuf.String())
+	}
+}
+
+func TestTerseOutput_CommandSuccess_UnknownNameSilent(t *testing.T) {
+	o, out, errBuf := newTestOutput()
+
+	// No CI correlation (or unknown command name) — stay silent.
+	o.Write(cmdResultMsg("terse-9", map[string]any{"ok": true}, false))
+
+	if out.String() != "" {
+		t.Errorf("stdout = %q, want empty", out.String())
+	}
+	if errBuf.String() != "" {
+		t.Errorf("stderr = %q, want empty", errBuf.String())
 	}
 }
 

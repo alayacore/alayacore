@@ -162,11 +162,84 @@ func (o *answerOutput) handleTag(tag, value string) {
 	case tlv.TagSystemMsg:
 		o.handleSystemMsg(value)
 
+	case tlv.TagCommandOut:
+		o.handleCommandOut(value)
+
 	default:
-		// Command results (CO), tool_confirm, and anything else: suppressed.
-		// tool_confirm can never arrive: --tool-confirm is rejected at
-		// startup (main.go).
+		// tool_confirm and anything else: suppressed. tool_confirm can
+		// never arrive: --tool-confirm is rejected at startup (main.go).
 	}
+}
+
+// handleCommandOut processes a CO (Command Output) frame — the reply to a
+// CI the adapter sent (stdin starting with ":").
+//
+// Errors are rendered to stderr and drive the exit code: a failed command
+// IS a failure signal in scripting mode (unlike plainio, where command
+// errors are normal interaction and never affect the exit code).
+//
+// Successful results render human-readable feedback for informative
+// commands (save, fork, ...) and stay silent for self-evident or async
+// ones (cancel, continue, summarize, ...) — for async task commands the
+// real feedback is the final answer flushed on the task SM. The command
+// name is correlated from the CI the adapter sent (CO carries only the ID).
+func (o *answerOutput) handleCommandOut(value string) {
+	var msg protocol.CmdResultMsg
+	if err := json.Unmarshal([]byte(value), &msg); err != nil {
+		return
+	}
+	if msg.IsError {
+		var errObj protocol.CmdError
+		if json.Unmarshal(msg.Output, &errObj) == nil && errObj.Message != "" {
+			fmt.Fprintf(o.stderr, "[error: %s]\n", errObj.Message)
+			o.hasError.Store(true)
+			if o.errorClosed.CompareAndSwap(false, true) {
+				close(o.errorCh)
+			}
+		}
+		return
+	}
+	name, _ := commandNames.LoadAndDelete(msg.ID)
+	nameStr, _ := name.(string)
+	text := renderCommandResult(nameStr, msg.Output)
+	if text != "" {
+		fmt.Fprintf(o.stderr, "[%s]\n", text)
+	}
+}
+
+// Command name constants for renderCommandResult. Kept local to the
+// adapter — the session registry in internal/agent owns the canonical
+// command names; these are only for CO result rendering.
+const (
+	commandSave       = "save"
+	commandFork       = "fork"
+	commandMCPConfirm = "mcp_confirm"
+	commandMCPDecline = "mcp_decline"
+)
+
+// renderCommandResult formats a successful command result for stderr.
+// Commands whose effect is self-evident or async (cancel, continue,
+// summarize, model_set, ...) return "" so nothing is printed. The command
+// name comes from the adapter's own CI tracking; structured fields come
+// from the CO output (never display text — rendering is an adapter concern).
+func renderCommandResult(name string, output json.RawMessage) string {
+	var data struct {
+		Path      string `json:"path"`
+		HistoryID uint64 `json:"history_id"`
+		Server    string `json:"server"`
+	}
+	_ = json.Unmarshal(output, &data) // best-effort; zero fields render generically
+	switch name {
+	case commandSave:
+		return "Session saved to " + data.Path
+	case commandFork:
+		return fmt.Sprintf("Session forked to %s (up to content ID %d)", data.Path, data.HistoryID)
+	case commandMCPConfirm:
+		return fmt.Sprintf("MCP auth code received for %q.", data.Server)
+	case commandMCPDecline:
+		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
+	}
+	return "" // no generic confirmation
 }
 
 // bufferFinalText accumulates the current assistant text message. A new

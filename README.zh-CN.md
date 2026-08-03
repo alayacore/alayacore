@@ -89,7 +89,7 @@ echo "what is 2+2?" | alayacore --terseio
 
 ### Terse IO（`--terseio`）
 
-- 🎯 **只要答案** — 把整个 stdin 作为一个 prompt，只输出最终答案（错误走 stderr，退出码反映成败）。适合管道和脚本。
+- 🎯 **只要答案** — 把整个 stdin 作为一个 prompt（若以 `:` 开头则作为一条命令），只输出最终答案（错误走 stderr，退出码反映成败）。适合管道和脚本。
 
 ### Raw IO（`--rawio`）
 
@@ -133,7 +133,7 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [配置](docs/configuration.md) | 模型配置、运行时配置和主题 |
 | [终端 UI](docs/tui.md) | 快捷键、命令、窗口、任务队列 |
 | [Plain IO 模式](docs/plainio.md) | 无 TUI 的交互式纯文本 stdin/stdout |
-| [Terse IO 模式](docs/terseio.md) | 将整个 stdin 作为一个 prompt，只输出最终答案 |
+| [Terse IO 模式](docs/terseio.md) | 将整个 stdin 作为一个 prompt 或命令，只输出最终答案 |
 | [Raw IO 模式](docs/rawio.md) | 用于程序化控制的原始 TLV 帧 |
 | [Adapter Guide](adapter-guide/README.md) | Raw IO 协议参考 — 帧格式、标签、adapter 实现指南 |
 | [技能系统](docs/skills.md) | Agent Skills 规范、目录结构、SKILL.md 格式 |

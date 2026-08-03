@@ -4,6 +4,7 @@ package terseio
 // read ALL of stdin as a single prompt, print ONLY the final answer.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -28,7 +29,10 @@ func NewAdapter(cfg *app.Config) *Adapter {
 // Returns 0 on success, 1 on errors. Ctrl-C (SIGINT) terminates immediately
 // with default signal handling (exit code 130).
 //
-// stdin is read in full (until EOF) and treated as a single prompt.
+// stdin is read in full (until EOF) and treated as a single prompt — or,
+// if it starts with ":", as a single command (":continue", ":save", ...;
+// see input.go). Command errors go to stderr and set exit code 1, just
+// like session errors.
 // stdout receives ONLY the final assistant text; errors and notifications
 // go to stderr. --tool-confirm is rejected at startup (see main.go), so no
 // tool_confirm frames can arrive and no interactive channel is needed.
@@ -44,22 +48,19 @@ func (a *Adapter) Start() int {
 
 	exitCh := make(chan int, 1)
 
-	// Read all of stdin as one prompt, then close input (EOF). terseio
-	// never sends CI frames — tool confirmations are impossible (the
-	// --tool-confirm conflict is rejected in main.go) — so closing early
-	// is safe and lets the session's run() loop finish.
+	// Read all of stdin as one prompt or one command, then close input
+	// (EOF). terseio never needs further input — tool confirmations are
+	// impossible (the --tool-confirm conflict is rejected in main.go) —
+	// so closing early is safe and lets the session's run() loop finish.
 	go func() {
 		err := readAllPrompt(inputWriter, os.Stdin)
 		inputWriter.Close()
-		if err != nil {
-			select {
-			case exitCh <- 1:
-			default:
-			}
-			return
+		code := 0
+		if err != nil && !errors.Is(err, errQuitPrompt) {
+			code = 1
 		}
 		select {
-		case exitCh <- 0:
+		case exitCh <- code:
 		default:
 		}
 	}()

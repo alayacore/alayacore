@@ -117,7 +117,7 @@ Attachments are cleared after sending. Use `Ctrl+C` to discard both text and pen
 
 See [commands.md](commands.md) for the full list of session commands (`:save`, `:cancel`, `:fork`, etc.).
 
-Note: `:quit` / `:q`, `:help`, and `:suspend` are handled directly by each adapter where supported and never reach the session command dispatch (terminal shows a confirmation dialog for quit, opens help window for help, suspends the process for suspend; plainio intercepts `:quit`/`:q` locally — it waits for any running task, then exits with code 0 — while `:help` and `:suspend` are not adapter-handled, so `:help` is sent to the session as a regular command; terseio treats all stdin as prompt text — commands are never parsed; rawio passes all commands through as raw CI frames since it doesn't interpret frame payloads).
+Note: `:quit` / `:q`, `:help`, and `:suspend` are handled directly by each adapter where supported and never reach the session command dispatch (terminal shows a confirmation dialog for quit, opens help window for help, suspends the process for suspend; plainio intercepts `:quit`/`:q` locally — it waits for any running task, then exits with code 0 — while `:help` and `:suspend` are not adapter-handled, so `:help` is sent to the session as a regular command; terseio treats stdin as prompt text unless it starts with `:` — then the whole input is sent as a single command (and `:quit`/`:q` are intercepted locally for a clean exit); rawio passes all commands through as raw CI frames since it doesn't interpret frame payloads).
 
 ## Window Container
 
