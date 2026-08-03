@@ -166,7 +166,9 @@ name: test
 
 func TestParseKeyValueDashSeparatorSkipped(t *testing.T) {
 	// "---" lines are block separators and should be silently skipped
-	// in parseConfig (they are handled by ParseKeyValueBlocks).
+	// in parseConfig (they are handled by ParseKeyValueBlocks). The two
+	// name keys therefore live in the same block: the duplicate is
+	// reported and the first occurrence is kept.
 	content := `name: first
 ---
 name: second
@@ -174,11 +176,14 @@ name: second
 	var cfg TestConfig
 	errors := ParseKeyValue(content, &cfg)
 
-	if cfg.Name != "second" {
-		t.Errorf("Expected Name 'second' (last value wins), got %q", cfg.Name)
+	if cfg.Name != "first" {
+		t.Errorf("Expected Name 'first' (first occurrence kept), got %q", cfg.Name)
 	}
-	if len(errors) != 0 {
-		t.Errorf("Expected 0 errors, got %d: %v", len(errors), errors)
+	if len(errors) != 1 {
+		t.Fatalf("Expected 1 duplicate-key error, got %d: %v", len(errors), errors)
+	}
+	if !strings.Contains(errors[0].String(), "duplicate key") {
+		t.Errorf("expected duplicate-key error, got: %s", errors[0].String())
 	}
 }
 
@@ -250,6 +255,45 @@ func TestParseKeyValueBlocks_CRLF(t *testing.T) {
 	}
 	if cfg3.Name != "third" {
 		t.Errorf("Expected cfg3.Name 'third', got %q", cfg3.Name)
+	}
+}
+
+func TestParseKeyValue_DuplicateKey(t *testing.T) {
+	// Duplicate keys in one block are reported and the first occurrence
+	// is kept (later values are ignored).
+	content := `name: first
+name: second
+name: third
+`
+	var cfg TestConfig
+	errs := ParseKeyValue(content, &cfg)
+
+	if len(errs) != 2 {
+		t.Fatalf("expected 2 duplicate-key errors, got %d: %v", len(errs), errs)
+	}
+	for i, e := range errs {
+		if !strings.Contains(e.String(), "duplicate key") {
+			t.Errorf("error %d should mention duplicate key, got: %s", i, e.String())
+		}
+	}
+	if cfg.Name != "first" {
+		t.Errorf("expected first occurrence kept, got %q", cfg.Name)
+	}
+}
+
+func TestParseKeyValue_EmptyValueDoesNotClaimKey(t *testing.T) {
+	// An empty value is "unset" and must not count as a duplicate for a
+	// later real value.
+	content := `name:
+name: real
+`
+	var cfg TestConfig
+	errs := ParseKeyValue(content, &cfg)
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got %v", errs)
+	}
+	if cfg.Name != "real" {
+		t.Errorf("expected name 'real', got %q", cfg.Name)
 	}
 }
 

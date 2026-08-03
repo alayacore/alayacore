@@ -268,6 +268,45 @@ url: "https://other.example.com/mcp"
 	}
 }
 
+func TestLoadConfigs_DuplicateKeyInBlock(t *testing.T) {
+	// Two server: keys in the SAME block: reported as duplicate-key
+	// errors, first occurrence kept. (Block-level dedupe is tested in
+	// TestLoadConfigs_DuplicateServerName.)
+	content := `---
+server: first
+command: npx
+server: second
+url: "https://example.com/mcp"
+---
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mcp.conf")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Settings{MCPConfigPath: path}
+	configs, errs := LoadConfigs(cfg)
+
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d: %v", len(configs), configs)
+	}
+	if configs[0].Name != "first" {
+		t.Errorf("expected first server name kept, got %q", configs[0].Name)
+	}
+
+	found := false
+	for _, w := range errs {
+		if strings.Contains(w, "duplicate key") && strings.Contains(w, "server") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected duplicate-key error, got: %v", errs)
+	}
+}
+
 func TestLoadConfigs_CRLF(t *testing.T) {
 	// A CRLF-saved mcp.conf must be parsed the same as LF: duplicate
 	// server names are detected and reported (before CRLF normalization

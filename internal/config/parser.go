@@ -22,9 +22,13 @@ type ParseError struct {
 	Key   string // config key
 	Value string // raw value string
 	Err   string // description of the problem
+	Msg   string // optional custom message; when set, replaces the default formatting
 }
 
 func (e ParseError) String() string {
+	if e.Msg != "" {
+		return e.Msg
+	}
 	return fmt.Sprintf("key %q: cannot parse value %q: %s", e.Key, e.Value, e.Err)
 }
 
@@ -107,6 +111,9 @@ func ParseKeyValue(content string, target any) []ParseError {
 	}
 
 	var errs []ParseError
+	// seenKeys tracks keys already set in this block so duplicates can be
+	// reported instead of silently overwriting the first occurrence.
+	seenKeys := make(map[string]bool)
 
 	// Parse lines
 	for line := range strings.SplitSeq(content, "\n") {
@@ -154,12 +161,38 @@ func ParseKeyValue(content string, target any) []ParseError {
 			continue
 		}
 
+		// Duplicate keys in one block are a configuration error: report
+		// them and keep the first occurrence (later values are ignored).
+		if ok, dupErr := claimKey(seenKeys, key, value); !ok {
+			errs = append(errs, *dupErr)
+			continue
+		}
+
 		if e := setField(fieldIdx, v, value, key); e != nil {
 			errs = append(errs, *e)
 		}
 	}
 
 	return errs
+}
+
+// claimKey marks a key as seen in the current block. Empty values are
+// "unset" and do not claim the key. Returns false with a ParseError when
+// the key was already claimed — duplicate keys are a config error and the
+// first occurrence is kept.
+func claimKey(seen map[string]bool, key, value string) (bool, *ParseError) {
+	if value == "" {
+		return true, nil
+	}
+	if seen[key] {
+		return false, &ParseError{
+			Key:   key,
+			Value: value,
+			Msg:   fmt.Sprintf("duplicate key %q: value %q ignored (first occurrence kept)", key, value),
+		}
+	}
+	seen[key] = true
+	return true, nil
 }
 
 // setField sets a struct field from a string value.
