@@ -217,3 +217,116 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 		})
 	}
 }
+
+// ============================================================================
+// Uf preview truncation (like Af)
+// ============================================================================
+
+func TestToolRendererUfPreviewTruncated(t *testing.T) {
+	// Pending + over-long output (Uf preview) → truncated to a single line.
+	styles := NewStyles(theme.DefaultTheme())
+	tr := &toolRenderer{
+		name:   "execute_command",
+		input:  "command: ls -la",
+		output: strings.Repeat("x", 200),
+		status: ToolStatusPending,
+	}
+
+	result, lineCount := tr.BuildInner(80, false, styles)
+	if lineCount != 3 {
+		t.Errorf("lineCount = %d, want 3 (single content line + border)", lineCount)
+	}
+	if strings.Contains(result, strings.Repeat("x", 200)) {
+		t.Error("preview should be truncated, full 200-char output leaked")
+	}
+	if !strings.Contains(result, "…") {
+		t.Errorf("expected truncation ellipsis, got %q", result)
+	}
+}
+
+func TestToolRendererUfPreviewShort(t *testing.T) {
+	// Pending + short output (Uf preview) → single line, no truncation.
+	styles := NewStyles(theme.DefaultTheme())
+	tr := &toolRenderer{
+		name:   "execute_command",
+		input:  "command: ls -la",
+		output: " 42%",
+		status: ToolStatusPending,
+	}
+
+	result, lineCount := tr.BuildInner(80, false, styles)
+	if lineCount != 3 {
+		t.Errorf("lineCount = %d, want 3 (single content line + border)", lineCount)
+	}
+	if !strings.Contains(result, " 42%") {
+		t.Errorf("preview should contain %q, got %q", " 42%", result)
+	}
+	if strings.Contains(result, "…") {
+		t.Errorf("short preview should not be truncated, got %q", result)
+	}
+}
+
+func TestToolRendererUfPreviewAuthoritative(t *testing.T) {
+	// Success (UF arrived) + long output → full multiline rendering,
+	// no flatten/truncate applied.
+	styles := NewStyles(theme.DefaultTheme())
+	long := strings.Repeat("line content that wraps\n", 3)
+	tr := &toolRenderer{
+		name:   "execute_command",
+		input:  "command: ls -la",
+		output: long,
+		status: ToolStatusSuccess,
+	}
+
+	_, lineCount := tr.BuildInner(80, false, styles)
+	if lineCount <= 3 {
+		t.Errorf("lineCount = %d, want > 3 (multiline authoritative output)", lineCount)
+	}
+	if !strings.Contains(tr.output, "line content that wraps\n") {
+		t.Error("authoritative output should be untouched")
+	}
+}
+
+func TestToolRendererUfPreviewFlattensNewlines(t *testing.T) {
+	// Defensive: Uf text with newlines (should not happen with the
+	// current single-line producer) is still flattened to one line.
+	styles := NewStyles(theme.DefaultTheme())
+	tr := &toolRenderer{
+		name:   "execute_command",
+		input:  "command: ls -la",
+		output: "line one\nline two",
+		status: ToolStatusPending,
+	}
+
+	result, lineCount := tr.BuildInner(80, false, styles)
+	if lineCount != 3 {
+		t.Errorf("lineCount = %d, want 3 (flattened to single line)", lineCount)
+	}
+	if !strings.Contains(result, "line one line two") {
+		t.Errorf("expected flattened content, got %q", result)
+	}
+}
+
+func TestToolRendererUfPreviewFillsRemainingWidth(t *testing.T) {
+	// Short input + longer Uf preview: the preview fills the room left
+	// on the input line (not a fixed name-based budget) and stays single
+	// line — like Af's "fill the window" behavior.
+	styles := NewStyles(theme.DefaultTheme())
+	tr := &toolRenderer{
+		name:   "execute_command",
+		input:  "ls",
+		output: strings.Repeat("y", 60),
+		status: ToolStatusPending,
+	}
+
+	result, lineCount := tr.BuildInner(80, false, styles)
+	if lineCount != 3 {
+		t.Errorf("lineCount = %d, want 3 (single content line + border)", lineCount)
+	}
+	if !strings.Contains(result, strings.Repeat("y", 60)) {
+		t.Errorf("preview should fill remaining width without truncation, got %q", result)
+	}
+	if strings.Contains(result, "…") {
+		t.Errorf("preview should not be truncated when it fits, got %q", result)
+	}
+}

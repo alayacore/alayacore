@@ -279,7 +279,12 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 
 	// UF-only windows (no tool name, created from UF tag) render as plain text.
 	if r.isUF {
-		styled := styleMultiline(prepareContent(r.output), styles.Text)
+		output := r.output
+		if p := r.previewOutput(innerWidth, 0); p != "" {
+			// Uf preview snapshot — single line, truncated (like Af).
+			output = p
+		}
+		styled := styleMultiline(prepareContent(output), styles.Text)
 		if innerWidth > 0 {
 			styled = wrapContent(styled, innerWidth)
 		}
@@ -336,7 +341,21 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 
 	// No separator — append output directly after input
 	if r.output != "" {
-		styled := styleMultiline(prepareContent(r.output), styles.Text)
+		output := r.output
+		// Uf preview is appended after the input line, so its width budget
+		// is the remaining room on the input's last line — mirroring Af's
+		// "fill the window, ellipsis when it does not fit" behavior.
+		used := 0
+		if i := strings.LastIndex(call, "\n"); i >= 0 {
+			used = lipgloss.Width(call[i+1:])
+		} else {
+			used = lipgloss.Width(call)
+		}
+		if p := r.previewOutput(innerWidth, used); p != "" {
+			// Uf preview snapshot — single line, truncated (like Af).
+			output = p
+		}
+		styled := styleMultiline(prepareContent(output), styles.Text)
 		if innerWidth > 0 {
 			styled = wrapContent(styled, innerWidth)
 		}
@@ -345,6 +364,24 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 	}
 
 	return call, strings.Count(call, "\n") + 1 + 2
+}
+
+// previewOutput renders the Uf preview snapshot (Pending status) as a
+// single line truncated to the room remaining after already-rendered
+// content (usedWidth), mirroring how Af previews fill the window width
+// and fall back to an ellipsis. Returns "" when the output is
+// authoritative (UF has arrived) or empty, so callers fall through to
+// full multiline rendering.
+func (r *toolRenderer) previewOutput(innerWidth, usedWidth int) string {
+	if r.status != ToolStatusPending || r.output == "" {
+		return ""
+	}
+	// Flatten to a single line.
+	out := strings.ReplaceAll(r.output, "\n", " ")
+	out = strings.ReplaceAll(out, "\r", "")
+	// Fill the remaining width; ellipsis when it does not fit.
+	maxLen := max(0, innerWidth-usedWidth)
+	return truncateWithSuffix(out, maxLen)
 }
 
 // defaultToolRender renders a tool call with status indicator and coloring.
