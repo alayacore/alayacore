@@ -181,7 +181,7 @@ type SessionConfig struct {
 	// MCPInit handles MCP initialization lifecycle (connect, OAuth, discover).
 	// When non-nil, the session reads from its Events() channel in the main
 	// loop and applies results (tools, system prompt, manager) internally.
-	MCPInit *mcp.Init
+	MCPInit *mcp.Initializer
 
 	// Override
 	OverrideActiveModel string // If set, overrides the active model (must exist in model config)

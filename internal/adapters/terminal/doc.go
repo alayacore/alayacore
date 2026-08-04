@@ -50,7 +50,7 @@
 //   - overlay.go: Overlay rendering for selectors
 //   - help_window.go: Keybinding and command help overlay
 //   - confirm_dialog.go: Confirmation dialogs (quit, cancel, tool, MCP auth, MCP init)
-//   - tool.go, tool_handler.go: Tool execution display
+//   - tool_render.go, tool_handler.go: Tool execution display
 //
 // Theme data types (Theme struct, DefaultTheme, LoadTheme) and the core
 // Manager live in internal/theme — shared with future GUI adapters.

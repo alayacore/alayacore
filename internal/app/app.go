@@ -40,7 +40,7 @@ type Config struct {
 	// If non-nil, MCP servers are configured and initialization is
 	// running in the background. The session manages init results
 	// internally — the adapter receives progress via system messages.
-	MCPInit *mcp.Init
+	MCPInit *mcp.Initializer
 
 	// StartupErrors contains errors from theme loading,
 	// runtime config parsing, and MCP config parsing. These are
@@ -124,7 +124,7 @@ func Setup(cfg *config.Settings) (*Config, error) {
 // Returns an Init (nil if no MCP servers configured) and any config
 // parsing errors. The Init is NOT started yet — the session starts
 // it when the main event loop begins.
-func initMCPAsync(cfg *config.Settings) (*mcp.Init, []string) {
+func initMCPAsync(cfg *config.Settings) (*mcp.Initializer, []string) {
 	// Load MCP configurations from mcp.conf
 	mcpConfigs, startupErrors := mcp.LoadConfigs(cfg)
 	if len(mcpConfigs) == 0 {
@@ -143,7 +143,7 @@ func initMCPAsync(cfg *config.Settings) (*mcp.Init, []string) {
 		}
 	}
 
-	mcpInit := mcp.NewInit(mcpConfigs)
+	mcpInit := mcp.NewInitializer(mcpConfigs)
 	return mcpInit, startupErrors
 }
 

@@ -114,7 +114,8 @@ func NewMyTool(dep *Dependency) llm.Tool {
 
 | File | Purpose |
 |------|---------|
-| `internal/llm/helpers.go` | Message constructors and tool builder |
+| `internal/llm/toolbuilder.go` | `ToolBuilder` — fluent tool definition construction (`NewTool`, `WithSchema`, `WithExecute`, `Build`) |
+| `internal/llm/provider_helpers.go` | `GroupByRole`, `ParseDataURI` — shared helpers used by both providers |
 | `internal/llm/schema.go` | `MustGenerateSchema()` — reads struct tags, produces JSON schema |
 | `internal/llm/typed.go` | `TypedExecute[T]()` — generic unmarshaling + execution wrapper |
 | `internal/llm/schema_test.go` | Tests for schema generator |

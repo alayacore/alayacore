@@ -3,7 +3,7 @@ package agent
 // MCP service: manages the MCP initialization lifecycle.
 //
 // Extracted from session_loop.go and session_io.go. Owns the MCP init
-// state machine (mcp.Init) and the ready flag. Session delegates MCP
+// state machine (mcp.Initializer) and the ready flag. Session delegates MCP
 // operations (start, cancel, confirm, event handling) to this service.
 
 import (
@@ -19,22 +19,22 @@ import (
 // mcpService manages MCP server initialization lifecycle.
 // Thread-safe: all public methods are safe to call from any goroutine.
 type mcpService struct {
-	init  *mcp.Init
-	ready atomic.Bool
+	initializer *mcp.Initializer
+	ready       atomic.Bool
 
 	// Output writer for system messages.
 	// Set by Session during construction; must not be nil if MCP is configured.
 	output io.Writer
 }
 
-// newMCPService creates an mcpService. If init is nil, MCP is not configured
-// and IsReady() always returns true.
-func newMCPService(init *mcp.Init, output io.Writer) *mcpService {
+// newMCPService creates an mcpService. If initializer is nil, MCP is not
+// configured and IsReady() always returns true.
+func newMCPService(initializer *mcp.Initializer, output io.Writer) *mcpService {
 	s := &mcpService{
-		init:   init,
-		output: output,
+		initializer: initializer,
+		output:      output,
 	}
-	if init == nil {
+	if initializer == nil {
 		s.ready.Store(true)
 	}
 	return s
@@ -42,18 +42,18 @@ func newMCPService(init *mcp.Init, output io.Writer) *mcpService {
 
 // Start begins MCP initialization. No-op if MCP is not configured.
 func (m *mcpService) Start(ctx context.Context) {
-	if m.init != nil {
-		m.init.Start(ctx)
+	if m.initializer != nil {
+		m.initializer.Start(ctx)
 	}
 }
 
 // Events returns the channel of MCP initialization events.
 // Returns nil if MCP is not configured.
 func (m *mcpService) Events() <-chan mcp.InitEvent {
-	if m.init == nil {
+	if m.initializer == nil {
 		return nil
 	}
-	return m.init.Events()
+	return m.initializer.Events()
 }
 
 // IsReady returns true if MCP initialization has completed (or was not configured).
@@ -63,13 +63,13 @@ func (m *mcpService) IsReady() bool {
 
 // HasInit returns true if MCP servers are configured.
 func (m *mcpService) HasInit() bool {
-	return m.init != nil
+	return m.initializer != nil
 }
 
 // Cancel aborts the entire MCP initialization.
 func (m *mcpService) Cancel() {
-	if m.init != nil {
-		m.init.Cancel()
+	if m.initializer != nil {
+		m.initializer.Cancel()
 	}
 }
 
@@ -79,10 +79,10 @@ func (m *mcpService) Cancel() {
 // iss is the RFC 9207 issuer parameter from the authorization response,
 // if the callback carried one (empty on the manual path).
 func (m *mcpService) SendAuthCodeResult(server, code, redirectURI, iss string) bool {
-	if m.init == nil {
+	if m.initializer == nil {
 		return false
 	}
-	return m.init.SendAuthCodeResult(server, code, redirectURI, iss)
+	return m.initializer.SendAuthCodeResult(server, code, redirectURI, iss)
 }
 
 // ============================================================================

@@ -39,7 +39,7 @@
 //	    and system-info refresh.
 //
 //	MCP initialization is managed by mcpService (internal/agent/mcp_service.go),
-//	which wraps mcp.Init and owns the ready flag. The session reads events
+//	which wraps mcp.Initializer and owns the ready flag. The session reads events
 //	from mcpService.Events() in its main loop and reacts accordingly —
 //	showing confirm dialogs for OAuth, applying tools on completion.
 //	Adapter communication goes through TLV frames.

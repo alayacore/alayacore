@@ -37,9 +37,9 @@ import (
 //	✅ Mcp-Param-{Name} headers (from x-mcp-header tool annotations)
 //	✅ request cancel via cancel notification — fallback for stdio;
 //	   HTTP uses transport-level cancellation
-//	✅ audio content type (handled by adapter.go convertToolContent)
-//	✅ resource_link content type (handled by adapter.go convertToolContent)
-//	✅ tool annotations (handled by adapter.go formatAnnotations)
+//	✅ audio content type (handled by tool_adapter.go convertToolContent)
+//	✅ resource_link content type (handled by tool_adapter.go convertToolContent)
+//	✅ tool annotations (handled by tool_adapter.go formatAnnotations)
 //
 // FEATURES NOT IMPLEMENTED (relative to 2026-07-28 spec)
 //

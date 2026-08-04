@@ -37,9 +37,9 @@ import (
 //	✅ ping response on SSE stream
 //	✅ session termination via HTTP DELETE on close
 //	✅ request cancel via cancel notification
-//	✅ audio content type (handled by adapter.go convertToolContent)
-//	✅ resource_link content type (handled by adapter.go convertToolContent)
-//	✅ tool annotations (handled by adapter.go formatAnnotations)
+//	✅ audio content type (handled by tool_adapter.go convertToolContent)
+//	✅ resource_link content type (handled by tool_adapter.go convertToolContent)
+//	✅ tool annotations (handled by tool_adapter.go formatAnnotations)
 //	✅ ping response on stdio (handled by StdioTransport internally)
 //
 // FEATURES NOT IMPLEMENTED (relative to 2025-11-25 spec)

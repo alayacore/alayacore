@@ -63,7 +63,7 @@ supported protocol versions (`2024-11-05` … `2026-07-28`). Version-specific
 behavior is gated as follows so legacy servers are never affected:
 
 - RFC 8707 `resource`: sent only when `proto-version=2026-07-28`
-  (`init.go`, `client.go`); empty for legacy → parameter omitted entirely
+  (`initializer.go`, `client.go`); empty for legacy → parameter omitted entirely
 - RFC 9207 `iss`: validated only when present in the callback; legacy
   authorization servers do not send `iss`, so validation is skipped
 - `x-mcp-header` tool rejection: enabled only for 2026-07-28 over the HTTP

@@ -1,18 +1,18 @@
 package mcp
 
-// Init manages the entire MCP initialization lifecycle end-to-end.
+// Initializer manages the entire MCP initialization lifecycle end-to-end.
 //
 // Usage:
 //
-//	init := mcp.NewInit(configs)
-//	init.Start(ctx)
-//	for evt := range init.Events() { … }
-//	<-init.Done()
+//	initializer := mcp.NewInitializer(configs)
+//	initializer.Start(ctx)
+//	for evt := range initializer.Events() { … }
+//	<-initializer.Done()
 //
 // The session drives the flow by:
 //  1. Reading events from Events() channel
 //  2. For "auth_required" events: showing a dialog, sending result via mcp_confirm
-//  3. For Ctrl+G: calling init.Cancel()
+//  3. For Ctrl+G: calling initializer.Cancel()
 //  4. For "done"/"canceled" event: applying final results or cleaning up
 //
 // Each server runs in its own goroutine. After connecting, each server
@@ -152,9 +152,9 @@ type authCodeResult struct {
 	iss         string
 }
 
-// Init orchestrates MCP initialization from start to finish.
+// Initializer orchestrates MCP initialization from start to finish.
 // Thread-safe: all public methods are safe to call from any goroutine.
-type Init struct {
+type Initializer struct {
 	manager *Manager
 	configs []ServerConfig
 
@@ -171,10 +171,10 @@ type Init struct {
 	cancel context.CancelFunc // set by Start(), cancels the init context
 }
 
-// NewInit creates an Init from server configurations.
+// NewInitializer creates an Initializer from server configurations.
 // Call Start() to begin initialization.
-func NewInit(configs []ServerConfig) *Init {
-	return &Init{
+func NewInitializer(configs []ServerConfig) *Initializer {
+	return &Initializer{
 		manager:     NewManager(configs),
 		configs:     configs,
 		events:      make(chan InitEvent, 64),
@@ -185,31 +185,31 @@ func NewInit(configs []ServerConfig) *Init {
 
 // Events returns a channel of initialization events.
 // The session must read from this channel until it's closed.
-func (init *Init) Events() <-chan InitEvent { return init.events }
+func (in *Initializer) Events() <-chan InitEvent { return in.events }
 
 // Done returns a channel that's closed when initialization is complete.
-func (init *Init) Done() <-chan struct{} { return init.done }
+func (in *Initializer) Done() <-chan struct{} { return in.done }
 
 // Manager returns the underlying MCP Manager.
 // Valid before Done() — it holds the client objects even before connections.
-func (init *Init) Manager() *Manager { return init.manager }
+func (in *Initializer) Manager() *Manager { return in.manager }
 
 // Start begins initialization in a background goroutine.
 // Idempotent — subsequent calls are no-ops.
-func (init *Init) Start(ctx context.Context) {
-	init.started.Do(func() {
+func (in *Initializer) Start(ctx context.Context) {
+	in.started.Do(func() {
 		runCtx, cancel := context.WithCancel(ctx)
-		init.cancel = cancel
-		go init.run(runCtx)
+		in.cancel = cancel
+		go in.run(runCtx)
 	})
 }
 
 // Cancel aborts the entire initialization.
 // Safe to call concurrently — cancels the init context, causing run()
 // to exit cleanly. Idempotent.
-func (init *Init) Cancel() {
-	if init.cancel != nil {
-		init.cancel()
+func (in *Initializer) Cancel() {
+	if in.cancel != nil {
+		in.cancel()
 	}
 }
 
@@ -218,20 +218,20 @@ func (init *Init) Cancel() {
 // the "auth_required" event so that SendAuthCodeResult() can never race
 // with registration — the channel is findable the instant the adapter
 // sees the event.
-func (init *Init) registerAuthCodeCh(server string) chan authCodeResult {
+func (in *Initializer) registerAuthCodeCh(server string) chan authCodeResult {
 	ch := make(chan authCodeResult, 1)
-	init.mu.Lock()
-	init.authCodeChs[server] = ch
-	init.mu.Unlock()
+	in.mu.Lock()
+	in.authCodeChs[server] = ch
+	in.mu.Unlock()
 	return ch
 }
 
 // unregisterAuthCodeCh removes the auth code channel for a server from
 // the map. Idempotent — safe to call after the entry was already removed.
-func (init *Init) unregisterAuthCodeCh(server string) {
-	init.mu.Lock()
-	delete(init.authCodeChs, server)
-	init.mu.Unlock()
+func (in *Initializer) unregisterAuthCodeCh(server string) {
+	in.mu.Lock()
+	delete(in.authCodeChs, server)
+	in.mu.Unlock()
 }
 
 // SendAuthCodeResult delivers the authorization code from the adapter's
@@ -239,10 +239,10 @@ func (init *Init) unregisterAuthCodeCh(server string) {
 // iss is the RFC 9207 issuer parameter from the authorization response,
 // if the callback carried one (empty on the manual path).
 // Returns false if no init goroutine is waiting for this server.
-func (init *Init) SendAuthCodeResult(server string, code string, redirectURI string, iss string) bool {
-	init.mu.Lock()
-	ch, ok := init.authCodeChs[server]
-	init.mu.Unlock()
+func (in *Initializer) SendAuthCodeResult(server string, code string, redirectURI string, iss string) bool {
+	in.mu.Lock()
+	ch, ok := in.authCodeChs[server]
+	in.mu.Unlock()
 	if !ok {
 		return false
 	}
@@ -254,25 +254,25 @@ func (init *Init) SendAuthCodeResult(server string, code string, redirectURI str
 // Internal: run() — launches per-server goroutines, collects results via channel
 // ============================================================================
 
-func (init *Init) run(ctx context.Context) {
-	defer close(init.done)
+func (in *Initializer) run(ctx context.Context) {
+	defer close(in.done)
 	defer func() {
 		if ctx.Err() != nil {
-			init.sendEvent(InitEvent{Type: InitCanceled})
+			in.sendEvent(InitEvent{Type: InitCanceled})
 		}
-		init.mu.Lock()
-		init.eventsClosed = true
-		close(init.events)
-		init.mu.Unlock()
+		in.mu.Lock()
+		in.eventsClosed = true
+		close(in.events)
+		in.mu.Unlock()
 	}()
 
-	clients := init.manager.Clients()
+	clients := in.manager.Clients()
 	n := len(clients)
 	resultCh := make(chan serverResult, n)
 
 	for _, c := range clients {
 		go func(client *Client) {
-			resultCh <- init.collectServerResult(ctx, client)
+			resultCh <- in.collectServerResult(ctx, client)
 		}(c)
 	}
 
@@ -292,42 +292,42 @@ func (init *Init) run(ctx context.Context) {
 	}
 
 	var evt InitEvent
-	init.buildFinalResults(results, &evt)
-	init.sendEvent(evt)
+	in.buildFinalResults(results, &evt)
+	in.sendEvent(evt)
 }
 
 // collectServerResult handles the full lifecycle of a single server:
 // connect (with OAuth if needed), discover capabilities, and return results.
-func (init *Init) collectServerResult(ctx context.Context, c *Client) serverResult {
+func (in *Initializer) collectServerResult(ctx context.Context, c *Client) serverResult {
 	var r serverResult
 	r.name = c.Name()
 
-	init.sendEvent(InitEvent{Type: InitConnecting, Server: c.Name()})
+	in.sendEvent(InitEvent{Type: InitConnecting, Server: c.Name()})
 
-	if err := init.connectServer(ctx, c); err != nil {
-		init.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
+	if err := in.connectServer(ctx, c); err != nil {
+		in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
 		return r
 	}
 
-	init.discoverCapabilities(ctx, c, &r)
-	init.sendEvent(InitEvent{Type: InitConnected, Server: c.Name()})
+	in.discoverCapabilities(ctx, c, &r)
+	in.sendEvent(InitEvent{Type: InitConnected, Server: c.Name()})
 	return r
 }
 
 // connectServer connects to the server, running the OAuth authorization
 // flow first if the server requires it.
-func (init *Init) connectServer(ctx context.Context, c *Client) error {
+func (in *Initializer) connectServer(ctx context.Context, c *Client) error {
 	if !c.needsPersistedAuth() {
 		if err := c.Connect(ctx); err != nil {
 			return fmt.Errorf("%q: %w", c.Name(), err)
 		}
 		return nil
 	}
-	return init.connectOAuth(ctx, c)
+	return in.connectOAuth(ctx, c)
 }
 
 // connectOAuth runs the OAuth authorization code flow and then connects.
-func (init *Init) connectOAuth(ctx context.Context, c *Client) error {
+func (in *Initializer) connectOAuth(ctx context.Context, c *Client) error {
 	cfg := c.config.Auth
 
 	// 1. Discover authorization server metadata.
@@ -345,7 +345,7 @@ func (init *Init) connectOAuth(ctx context.Context, c *Client) error {
 	cfg.ClientAuthMethod = authMethod
 
 	// 2. Run the interactive OAuth flow.
-	if err := init.runOAuthForServer(ctx, c, meta, clientID); err != nil {
+	if err := in.runOAuthForServer(ctx, c, meta, clientID); err != nil {
 		if errors.Is(err, errSkipped) {
 			return fmt.Errorf("%q: skipped", c.Name())
 		}
@@ -361,7 +361,7 @@ func (init *Init) connectOAuth(ctx context.Context, c *Client) error {
 // and sends it to the adapter. The adapter starts a local callback server,
 // fills in the placeholders, opens the browser, and sends the authorization
 // code back via SendAuthCodeResult().
-func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.ASMetadata, clientID string) error {
+func (in *Initializer) runOAuthForServer(ctx context.Context, c *Client, meta *auth.ASMetadata, clientID string) error {
 	cfg := c.config.Auth
 
 	pkce, err := auth.NewPKCE()
@@ -395,10 +395,10 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 	// channel exists (adapter confirms instantly) and be rejected with
 	// NOT_FOUND, while this goroutine blocks forever waiting for a
 	// code that was already delivered.
-	authCodeCh := init.registerAuthCodeCh(c.Name())
+	authCodeCh := in.registerAuthCodeCh(c.Name())
 
 	// Send URL template to adapter and wait for result.
-	init.sendEvent(InitEvent{
+	in.sendEvent(InitEvent{
 		Type:   InitAuthConfirm,
 		Server: c.Name(),
 		URL:    authURL,
@@ -408,11 +408,11 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 	select {
 	case acr = <-authCodeCh:
 	case <-ctx.Done():
-		init.unregisterAuthCodeCh(c.Name())
+		in.unregisterAuthCodeCh(c.Name())
 		return fmt.Errorf("%q: %w", c.Name(), ctx.Err())
 	}
 
-	init.unregisterAuthCodeCh(c.Name())
+	in.unregisterAuthCodeCh(c.Name())
 
 	if acr.code == "" {
 		return errSkipped
@@ -426,7 +426,7 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 		return fmt.Errorf("%q: %w", c.Name(), issErr)
 	}
 
-	init.sendEvent(InitEvent{Type: InitAuthRunning, Server: c.Name()})
+	in.sendEvent(InitEvent{Type: InitAuthRunning, Server: c.Name()})
 
 	oauthToken, err := auth.ExchangeCode(ctx, meta, &auth.AuthCodeConfig{
 		ClientID:     clientID,
@@ -457,24 +457,24 @@ func (init *Init) runOAuthForServer(ctx context.Context, c *Client, meta *auth.A
 
 // discoverCapabilities discovers tools, resources,
 // and prompts for a connected server.
-func (init *Init) discoverCapabilities(ctx context.Context, c *Client, r *serverResult) {
+func (in *Initializer) discoverCapabilities(ctx context.Context, c *Client, r *serverResult) {
 	if c.HasTools() {
 		if tools, err := c.ListTools(ctx); err != nil {
-			init.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
+			in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
 		} else {
 			r.tools = tools
 		}
 	}
 	if c.HasResources() {
 		if resources, err := c.ListResources(ctx); err != nil {
-			init.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
+			in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
 		} else {
 			r.resources = resources
 		}
 	}
 	if c.HasPrompts() {
 		if prompts, err := c.ListPrompts(ctx); err != nil {
-			init.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
+			in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
 		} else {
 			r.prompts = prompts
 		}
@@ -487,28 +487,28 @@ func (init *Init) discoverCapabilities(ctx context.Context, c *Client, r *server
 // buildFinalResults builds the tools list, system prompt fragment,
 // and error list in config order (deterministic for provider caching),
 // then writes them into evt.
-func (init *Init) buildFinalResults(results map[string]serverResult, evt *InitEvent) {
+func (in *Initializer) buildFinalResults(results map[string]serverResult, evt *InitEvent) {
 	var allTools []llm.Tool
 	var frag strings.Builder
 
-	for _, cfg := range init.configs {
+	for _, cfg := range in.configs {
 		r, ok := results[cfg.Name]
 		if !ok {
 			continue
 		}
 
 		if len(r.tools) > 0 {
-			serverTools := ToolsToAgentTools(map[string][]Tool{cfg.Name: r.tools}, init.manager)
+			serverTools := ToolsToAgentTools(map[string][]Tool{cfg.Name: r.tools}, in.manager)
 			allTools = append(allTools, serverTools...)
 		}
 
 		if len(r.resources) > 0 {
-			allTools = append(allTools, newReadResourceTool(cfg.Name, init.manager))
+			allTools = append(allTools, newReadResourceTool(cfg.Name, in.manager))
 			formatResourceContext(&frag, cfg.Name, r.resources)
 		}
 
 		if len(r.prompts) > 0 {
-			allTools = append(allTools, newGetPromptTool(cfg.Name, init.manager))
+			allTools = append(allTools, newGetPromptTool(cfg.Name, in.manager))
 			formatPromptContext(&frag, cfg.Name, r.prompts)
 		}
 
@@ -520,7 +520,7 @@ func (init *Init) buildFinalResults(results map[string]serverResult, evt *InitEv
 	evt.Type = InitDone
 	evt.Tools = allTools
 	evt.SysFragment = frag.String()
-	evt.Manager = init.manager
+	evt.Manager = in.manager
 }
 
 func formatResourceContext(frag *strings.Builder, name string, resources []Resource) {
@@ -566,15 +566,15 @@ func formatPromptContext(frag *strings.Builder, name string, prompts []Prompt) {
 // Helper
 // ============================================================================
 
-func (init *Init) sendEvent(evt InitEvent) {
-	init.mu.Lock()
-	defer init.mu.Unlock()
+func (in *Initializer) sendEvent(evt InitEvent) {
+	in.mu.Lock()
+	defer in.mu.Unlock()
 
-	if init.eventsClosed {
+	if in.eventsClosed {
 		return
 	}
 	select {
-	case init.events <- evt:
+	case in.events <- evt:
 	default:
 	}
 }
