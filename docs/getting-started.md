@@ -59,7 +59,7 @@ export ALAYACORE_SHELL=zsh
 | `--auto-summarize` | `0` (disabled) | Enable auto-summarization at given threshold percentage (e.g. `--auto-summarize=65`, 0 = disabled) |
 | `--tool-confirm` | *(none)* | Comma-separated tool `names` that require user confirmation before execution (e.g. `--tool-confirm execute_command,search_content`). Not compatible with `--terseio` |
 | `--builtin-tools` | *(all)* | Comma-separated built-in tool `names` to enable. Empty (`--builtin-tools=`) disables all built-in tools. Unspecified means all tools enabled. |
-| `--no-delta` | `false` | Disable delta frames (At, Ar, Af); use complete frames only. Reduces wire overhead when the adapter does not need streaming previews. |
+| `--no-delta` | `false` | Disable delta frames (At, Ar, Af, Uf); use complete frames only. Reduces wire overhead when the adapter does not need streaming previews. |
 | `--plainio` | `false` | Plain stdin/stdout mode — interactive use without a TUI (full transcript output) |
 | `--terseio` | `false` | Read all of stdin as one prompt (or one command if it starts with `:`) and print only the final answer (stdout stays clean; errors go to stderr). Incompatible with `--tool-confirm` |
 | `--rawio` | `false` | Raw TLV stdin/stdout mode — pipe TLV frames directly between agent and controlling process |

@@ -101,6 +101,15 @@ type ToolInputDeltaData struct {
 	Delta string `json:"delta"`
 }
 
+// ToolOutputDeltaData is the JSON payload for TagUserFDelta (Uf).
+// Carries a tool result preview snapshot for display only. Ephemeral:
+// frames may be dropped, coalesced, or ignored by adapters. The
+// authoritative tool result always arrives via TagUserF (UF).
+type ToolOutputDeltaData struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
 // ToolOutputData is the JSON payload for TagUserF (UF).
 // Output is a JSON array of content blocks (text, image, etc.).
 // IsError indicates whether the tool completed with an error.

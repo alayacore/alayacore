@@ -118,6 +118,7 @@ User types prompt
               → Delta callbacks emit TLV(At), TLV(Ar), TLV(Af) (streaming deltas)
               → Complete callbacks emit TLV(AT), TLV(AR), TLV(AF) (authoritative)
               → Tool output callbacks emit TLV(UF)
+              → Tool preview callbacks emit TLV(Uf) (ephemeral snapshots; ignored by non-TUI adapters)
                 → OutputWriter parses TLV
                   → WindowBuffer.AppendOrUpdate()
                     → DisplayModel.View()
@@ -131,8 +132,9 @@ Agent.Stream() receives tool_call event
   → OnToolInputStart callback → TLV(AF, {"id":"<id>","name":"<tool>"}) → UI shows tool name immediately
     → OnToolInputDelta callback → TLV(Af, {"id":"<id>","delta":"..."}) → UI shows truncated one-line preview
     → OnToolInputComplete callback → TLV(AF, {"id":"<id>","input":{...}}) → UI fills in full arguments
-      → Agent executes tool: tool.Execute(ctx, input)
-        → OnToolOutput callback → TLV(UF, {"id":"<id>","output":[{"type":"text","text":"..."}]}) → UI shows output and indicator
+      → Agent executes tool: tool.ExecuteStreaming(ctx, input, onDelta) when available
+        → OnToolOutputDelta callback → TLV(Uf, {"id":"<id>","text":"..."}) → UI shows live result preview snapshot
+        → OnToolOutput callback → TLV(UF, {"id":"<id>","output":[{"type":"text","text":"..."}]}) → UI replaces preview with authoritative output
           → Tool result added to messages
             → Agent continues to next step (if under max_steps)
 ```

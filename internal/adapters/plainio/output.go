@@ -155,6 +155,10 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 	case tlv.TagAssistantFDelta:
 		// Ignore.
 
+	// Tool result preview snapshots are ephemeral — printed via UF frame.
+	case tlv.TagUserFDelta:
+		// Ignore.
+
 	case tlv.TagUserF:
 		_, payload, ok := tlv.UnwrapID(value)
 		if !ok {

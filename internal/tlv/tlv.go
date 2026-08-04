@@ -60,6 +60,7 @@ const (
 	TagAssistantTDelta = "At" // Assistant text delta (streaming fragment)
 	TagAssistantRDelta = "Ar" // Assistant reasoning delta (streaming fragment)
 	TagAssistantFDelta = "Af" // Assistant function / tool call delta (partial JSON argument)
+	TagUserFDelta      = "Uf" // Tool result preview snapshot (ephemeral, non-authoritative)
 )
 
 // maxMessageSize is the largest frame length the wire format allows.

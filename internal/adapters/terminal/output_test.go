@@ -561,9 +561,82 @@ func writeAf(out *outputWriter, historyID, toolID, delta string) {
 	_, _ = out.Write(data)
 }
 
+// writeUf writes a TagUserFDelta (tool result preview) frame through the output pipeline.
+func writeUf(out *outputWriter, historyID, toolID, text string) {
+	od, _ := json.Marshal(protocol.ToolOutputDeltaData{ID: toolID, Text: text})
+	data := encodeTestTLV(tlv.TagUserFDelta, tlv.WrapID(historyID, string(od)))
+	_, _ = out.Write(data)
+}
+
 // writeAFStart writes a TagAssistantF (tool start) frame with tool name.
 func writeAFStart(out *outputWriter, historyID, toolID, toolName string) {
 	fd, _ := json.Marshal(protocol.ToolInputData{ID: toolID, Name: toolName})
 	data := encodeTestTLV(tlv.TagAssistantF, tlv.WrapID(historyID, string(fd)))
 	_, _ = out.Write(data)
+}
+
+// ============================================================================
+// Tool Output Delta (Uf) Preview
+// ============================================================================
+
+func TestToolOutputDeltaPreview(t *testing.T) {
+	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
+	out.SetWindowWidth(80)
+
+	// Tool call starts (AF), then preview snapshots arrive (Uf).
+	writeAFStart(out, "1", "call_1", "execute_command")
+	writeUf(out, "1", "call_1", " 42%")
+	writeUf(out, "1", "call_1", " 99%")
+
+	wb := out.WindowBuffer()
+	if wb.WindowCount() != 1 {
+		t.Fatalf("expected 1 window, got %d", wb.WindowCount())
+	}
+	tr, ok := wb.WindowAt(0).renderer.(*toolRenderer)
+	if !ok {
+		t.Fatal("expected toolRenderer")
+	}
+	// Latest snapshot wins (last-write-wins, no accumulation).
+	if tr.output != " 99%" {
+		t.Errorf("preview = %q, want %q", tr.output, " 99%")
+	}
+	if tr.status != ToolStatusPending {
+		t.Errorf("status = %v, want Pending", tr.status)
+	}
+
+	// Authoritative UF overwrites the preview.
+	buf := encodeTestTLV(tlv.TagUserF, tlv.WrapID("1",
+		`{"id":"call_1","output":[{"type":"text","text":"done\n"}],"is_error":false}`))
+	_, _ = out.Write(buf)
+
+	tr2, _ := wb.WindowAt(0).renderer.(*toolRenderer)
+	if tr2.output != "done\n" {
+		t.Errorf("authoritative output = %q, want %q", tr2.output, "done\n")
+	}
+	if tr2.status != ToolStatusSuccess {
+		t.Errorf("status = %v, want Success", tr2.status)
+	}
+}
+
+func TestToolOutputDeltaNoPriorAF(t *testing.T) {
+	// Uf arriving without a prior AF frame creates a placeholder window.
+	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
+	out.SetWindowWidth(80)
+
+	writeUf(out, "1", "call_9", "running...")
+
+	wb := out.WindowBuffer()
+	if wb.WindowCount() != 1 {
+		t.Fatalf("expected 1 window, got %d", wb.WindowCount())
+	}
+	tr, ok := wb.WindowAt(0).renderer.(*toolRenderer)
+	if !ok {
+		t.Fatal("expected toolRenderer")
+	}
+	if tr.output != "running..." {
+		t.Errorf("preview = %q, want %q", tr.output, "running...")
+	}
+	if tr.status != ToolStatusPending {
+		t.Errorf("status = %v, want Pending", tr.status)
+	}
 }

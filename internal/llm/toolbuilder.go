@@ -32,6 +32,14 @@ func (b *ToolBuilder) WithExecute(fn func(ctx context.Context, input json.RawMes
 	return b
 }
 
+// WithExecuteStreaming registers an optional streaming executor.
+// The onDelta callback delivers ephemeral result preview snapshots
+// for display only; the returned []ContentPart is always authoritative.
+func (b *ToolBuilder) WithExecuteStreaming(fn func(ctx context.Context, input json.RawMessage, onDelta func(text string)) ([]ContentPart, error)) *ToolBuilder {
+	b.tool.ExecuteStreaming = fn
+	return b
+}
+
 func (b *ToolBuilder) Build() Tool {
 	return b.tool
 }

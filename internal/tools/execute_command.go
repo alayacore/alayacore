@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -27,10 +28,14 @@ func NewExecuteCommandTool() llm.Tool {
 	).
 		WithSchema(llm.MustGenerateSchema(executeCommandInput{})).
 		WithExecute(llm.TypedExecute(executeCommand)).
+		WithExecuteStreaming(llm.TypedExecuteStreaming(executeCommandStreaming)).
 		Build()
 }
 
-func executeCommand(ctx context.Context, args executeCommandInput) ([]llm.ContentPart, error) {
+// runCommand builds and runs the shell command, writing stdout to the
+// provided writer and stderr to the provided buffer. It returns the exit
+// code and the error from cmd.Wait (nil on clean exit).
+func runCommand(ctx context.Context, args executeCommandInput, stdout io.Writer, stderr *bytes.Buffer) (int, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "."
@@ -47,14 +52,13 @@ func executeCommand(ctx context.Context, args executeCommandInput) ([]llm.Conten
 
 	devNull, err := shell.OpenDevNull()
 	if err != nil {
-		return nil, fmt.Errorf("failed to open null device: %w", err)
+		return 0, fmt.Errorf("failed to open null device: %w", err)
 	}
 	defer devNull.Close()
 	cmd.Stdin = devNull
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	shell.SetDetachFlags(cmd)
 
 	cmd.Cancel = func() error {
@@ -66,7 +70,7 @@ func executeCommand(ctx context.Context, args executeCommandInput) ([]llm.Conten
 	cmd.WaitDelay = 2 * time.Second
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start command: %w", err)
+		return 0, fmt.Errorf("failed to start command: %w", err)
 	}
 
 	job := shell.AssignJob(cmd.Process)
@@ -84,14 +88,132 @@ func executeCommand(ctx context.Context, args executeCommandInput) ([]llm.Conten
 		exitCode = shell.ExitCodeFromProcessState(cmd.ProcessState)
 	}
 
+	return exitCode, execErr
+}
+
+func executeCommand(ctx context.Context, args executeCommandInput) ([]llm.ContentPart, error) {
+	var stdout, stderr bytes.Buffer
+	exitCode, execErr := runCommand(ctx, args, &stdout, &stderr)
+
 	if ctx.Err() != nil {
 		return handleCommandOutput(&stdout, &stderr, exitCode, fmt.Errorf("canceled"))
 	}
-	if errors.Is(execErr, context.DeadlineExceeded) || timeoutCtx.Err() != nil {
+	if errors.Is(execErr, context.DeadlineExceeded) {
 		return handleCommandOutput(&stdout, &stderr, exitCode, fmt.Errorf("timed out"))
 	}
 
 	return handleCommandOutput(&stdout, &stderr, exitCode, execErr)
+}
+
+// ============================================================================
+// Streaming execution (ephemeral Uf preview snapshots)
+// ============================================================================
+
+const (
+	// previewTickInterval is the minimum interval between preview frames.
+	previewTickInterval = 100 * time.Millisecond
+	// maxPreviewLen caps the current-line preview snapshot length.
+	maxPreviewLen = 4096
+)
+
+// streamingWriter captures command stdout for the authoritative result
+// (UF) while emitting ephemeral preview snapshots via onDelta (Uf).
+// Snapshot semantics: the preview is the current line, or the most
+// recently completed line when the current line is empty. '\r' rewrites
+// collapse to their latest state. All Write calls come from exec's
+// stdout-copy goroutine and complete before cmd.Wait() returns, so no
+// locking is needed.
+type streamingWriter struct {
+	buf       bytes.Buffer    // authoritative full output (UF)
+	onDelta   func(string)    // preview callback (Uf); may be nil
+	tail      strings.Builder // current line (reset on '\n' and on rewrite after '\r')
+	lastLine  string          // most recently completed line (from '\n')
+	crPending bool            // last byte was '\r': next printable byte starts a rewrite
+	lastSent  string
+	lastTick  time.Time
+	dirty     bool
+}
+
+func newStreamingWriter(onDelta func(string)) *streamingWriter {
+	return &streamingWriter{onDelta: onDelta}
+}
+
+func (w *streamingWriter) Write(p []byte) (int, error) {
+	n, err := w.buf.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	// Maintain the line snapshot state machine:
+	//   '\n'            — line completed; snapshot falls back to lastLine
+	//   '\r'            — defer reset: a following '\n' means CRLF (line
+	//                     end), otherwise the next printable byte starts
+	//                     a progress-bar rewrite (old content discarded)
+	for _, b := range p {
+		switch b {
+		case '\n':
+			w.lastLine = w.tail.String()
+			if len(w.lastLine) > maxPreviewLen {
+				w.lastLine = w.lastLine[len(w.lastLine)-maxPreviewLen:]
+			}
+			w.tail.Reset()
+			w.crPending = false
+		case '\r':
+			w.crPending = true
+		default:
+			if w.crPending {
+				w.tail.Reset()
+				w.crPending = false
+			}
+			w.tail.WriteByte(b)
+		}
+	}
+	if w.tail.Len() > maxPreviewLen {
+		s := w.tail.String()
+		w.tail.Reset()
+		w.tail.WriteString(s[len(s)-maxPreviewLen:])
+	}
+	w.dirty = true
+
+	if w.onDelta != nil && time.Since(w.lastTick) >= previewTickInterval {
+		w.flushPreview()
+	}
+	return n, nil
+}
+
+// flushPreview emits the latest snapshot if it changed since the last
+// emission. Safe to call from the exec goroutine and after cmd.Wait().
+func (w *streamingWriter) flushPreview() {
+	if !w.dirty || w.onDelta == nil {
+		return
+	}
+	w.dirty = false
+	w.lastTick = time.Now()
+	text := w.tail.String()
+	if text == "" {
+		text = w.lastLine
+	}
+	if text == w.lastSent {
+		return
+	}
+	w.lastSent = text
+	w.onDelta(text)
+}
+
+func executeCommandStreaming(ctx context.Context, args executeCommandInput, onDelta func(string)) ([]llm.ContentPart, error) {
+	var stderr bytes.Buffer
+	sw := newStreamingWriter(onDelta)
+	exitCode, execErr := runCommand(ctx, args, sw, &stderr)
+	sw.flushPreview() // command finished — emit the final snapshot
+
+	if ctx.Err() != nil {
+		return handleCommandOutput(&sw.buf, &stderr, exitCode, fmt.Errorf("canceled"))
+	}
+	if errors.Is(execErr, context.DeadlineExceeded) {
+		return handleCommandOutput(&sw.buf, &stderr, exitCode, fmt.Errorf("timed out"))
+	}
+
+	return handleCommandOutput(&sw.buf, &stderr, exitCode, execErr)
 }
 
 func handleCommandOutput(stdout, stderr *bytes.Buffer, exitCode int, execErr error) ([]llm.ContentPart, error) {

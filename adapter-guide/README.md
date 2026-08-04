@@ -32,6 +32,7 @@ AT  ← stdout  Assistant text (complete/authoritative: \x00<id>\x00[content]; c
 AR  ← stdout  Assistant reasoning (complete/authoritative: \x00<id>\x00[content]; content empty if deltas preceded it)
 AF  ← stdout  Function/tool lifecycle (\x00<id>\x00<JSON>)
 UF  ← stdout  Function/tool result (\x00<id>\x00<JSON>)
+Uf  ← stdout  Function/tool result preview (ephemeral, display-only: \x00<id>\x00<JSON>; never authoritative — UF overwrites)
 CO  ← stdout  Command output (JSON CmdResultMsg: {"id":"...","output":...,"is_error":...})
 SM  ← stdout  System message, no history ID (JSON: {"type":"...","data":{...}})
 UT  ← stdout  User text echo (\x00<id>\x00<content>)
@@ -47,7 +48,7 @@ Each tag is two characters: **role** + **type**.
 
 | First letter | Role | Examples |
 |---|---|---|
-| `U` | **U**ser | UT (user text), UI (user image), UF (function result) |
+| `U` | **U**ser | UT (user text), UI (user image), UF (function result), Uf (result preview) |
 | `A` | **A**ssistant | AT (assistant text), AR (assistant reasoning), AF (function call) |
 | `C` | **C**ommand (control plane) | CI (command input), CO (command output) |
 | `S` | **S**ystem | SM (system message) |
@@ -60,7 +61,7 @@ Each tag is two characters: **role** + **type**.
 | `A` | **A**udio | UA |
 | `D` | **D**ocument | UD |
 | `R` | **R**easoning | AR, Ar |
-| `F` | **F**unction/tool | AF, UF, Af |
+| `F` | **F**unction/tool | AF, UF, Af, Uf |
 | `E` | **E**nd (flush) | UE |
 | `I` | **I**nput (command request) | CI |
 | `O` | **O**utput (command result) | CO |
@@ -71,6 +72,9 @@ Lowercase tags carry streaming delta (incremental) content:
 - `At`/`Ar` — text/reasoning deltas, appended to the window per chunk
 - `AT`/`AR` — complete text/reasoning, sent after all deltas for that block (content is empty when deltas preceded it; carries full text during replay or `--no-delta` mode)
 - `Af` — tool argument delta, partial JSON chunk during streaming
+- `Uf` — tool result preview snapshot (ephemeral, display-only; the
+  authoritative result always arrives via `UF`, which overwrites any
+  preview content)
 - `AF` — complete tool call (start + input frames)
 
 The role indicates who the content belongs to in the conversation, **not** the
@@ -114,6 +118,10 @@ Streaming content uses **lowercase** tags (`At`, `Ar`) with NUL-delimited histor
 The same history ID can appear multiple times — each subsequent frame is a
 continuation (delta) of that content block. The adapter concatenates them.
 
+> **Uf is lowercase but not a continuation:** the tool result preview
+> (`Uf`) is a **snapshot**, not a delta — each frame replaces the previous
+> preview and frames are never concatenated. See [Function Lifecycle](#function-lifecycle-af-uf).
+
 **Complete/authoritative frames** use **uppercase** tags (`AT`, `AR`). These are
 sent after all deltas for a content block have been received. The adapter may
 choose either approach:
@@ -126,15 +134,15 @@ During replay (session load) only the uppercase frames are sent; no deltas
 precede them — the adapter must use the uppercase frame to display the content.
 
 **`--no-delta` mode:** When the `--no-delta` flag is set, no lowercase delta
-frames (At, Ar, Af) are sent. Instead, the uppercase frames (AT, AR, AF)
+frames (At, Ar, Af, Uf) are sent. Instead, the uppercase frames (AT, AR, AF)
 carry the complete content directly. This mode is useful for adapters that
 prefer batch delivery over streaming, or for environments where the overhead
 of many small frames is undesirable.
 
-| Mode | At/Ar | Af | AT/AR content | AF content |
-|------|-------|----|---------------|------------|
-| Default (deltas on) | Sent | Sent | Empty (terminator only) | Repaired JSON (always complete) |
-| `--no-delta` | Not sent | Not sent | Full text | Repaired JSON (always complete) |
+| Mode | At/Ar | Af | Uf | AT/AR content | AF content |
+|------|-------|----|----|---------------|------------|
+| Default (deltas on) | Sent | Sent | Sent (ephemeral preview) | Empty (terminator only) | Repaired JSON (always complete) |
+| `--no-delta` | Not sent | Not sent | Not sent | Full text | Repaired JSON (always complete) |
 
 **History ID format:** a flat monotonic history counter (e.g. `1`, `2`, `3`).
 Each content block (text, reasoning, tool call, user content part) receives a
@@ -162,6 +170,7 @@ into a single user message. Other tag types use different grouping mechanisms:
 | Af | **JSON `"id"`** — partial JSON chunk for the named tool call |
 | AF | **History ID** (start+input share same ID) + **JSON `"id"`** — start announces name, input carries arguments |
 | UF | **JSON `"id"`** — matches the corresponding AF (history ID is present but not used for matching) |
+| Uf | **JSON `"id"`** — snapshot preview for the named tool call (not concatenated; UF overwrites) |
 | SM | **None** — each frame is standalone |
 
 Each user content part gets its own **unique** history ID (monotonic counter).
@@ -196,6 +205,12 @@ During session replay the tool call is a single AF frame with both `name` and `i
 - `\x00<id>\x00{"id":"t1","output":[...]}` — succeeded (`is_error` omitted when `false`)
 - `\x00<id>\x00{"id":"t1","output":[...],"is_error":true}` — failed
 
+**Uf** — ephemeral result preview (display only, optional):
+- `\x00<id>\x00{"id":"t1","text":" 42%"}` — live snapshot of the tool result while it runs
+- Sent only when the tool supports streaming (e.g. `execute_command`); zero or more
+  frames, coalesced at ~100ms. **Never authoritative**: adapters may drop or ignore
+  it, and the final `UF` frame always overwrites any preview content.
+
 A tool call (AF) without a matching UF is still in progress. Each `.bin` sample below shows one frame in this lifecycle.
 
 ## Example: Text Prompt Flow (with streaming deltas)
@@ -208,6 +223,7 @@ Session writes → stdout:       UT \x00 1 \x00 Read the file main.go        ←
                                Af \x00 2 \x00 {"id":"t1","delta":"{\\"path\\":"} ← partial arg delta
                                Af \x00 2 \x00 {"id":"t1","delta":"\\"main.go\\"}"}  ← more args
                                AF \x00 2 \x00 {"id":"t1","input":{"path":"main.go"}}  ← complete args
+                               Uf \x00 2 \x00 {"id":"t1","text":"reading main.go..."}  ← ephemeral result preview (optional)
                                UF \x00 3 \x00 {"id":"t1","output":[{"text":"package main...","type":"text"}]}
                                At \x00 4 \x00 Here's what main.go does...    ← streaming text delta
                                AT \x00 4 \x00                                 ← authoritative complete (empty terminator)
@@ -312,6 +328,7 @@ The **semantics** of the history ID differ by tag type:
 | AT, AR | **Content continuation** (delta) — concatenate frames with the same ID into one block | History ID |
 | AF (start + input) | **Same tool call** — start frame announces the name, input frame carries arguments (not concatenated) | JSON `"id"` field + history ID |
 | UF | **Same tool result** (matched to AF by JSON `"id"`, not by history ID) | JSON `"id"` field |
+| Uf | **Same tool result preview** (matched to AF by JSON `"id"`; snapshot, not concatenated) | JSON `"id"` field |
 | UT/UI/UA/UV/UD (stdout) | **N/A** — each echo has a unique history ID | **Position** (consecutive user tags → one message) |
 
 **Key rules:**
@@ -437,6 +454,7 @@ stdin:  UT-execute-command.bin         UT "Run: ls -la"
 stdout: (echo)                         UT \x00 13 \x00 Run: ls -la
         AF-execute-command-start.bin   AF \x00 14 \x00 {"id":"t5","name":"execute_command"}
         AF-execute-command-input.bin   AF \x00 14 \x00 {"id":"t5","input":{"command":"ls -la"}}
+        Uf-execute-command-preview.bin Uf \x00 14 \x00 {"id":"t5","text":"total 42..."}   ← ephemeral preview (optional)
         UF-execute-command-success.bin UF \x00 15 \x00 {"id":"t5","output":[{"text":"total 42...","type":"text"}]}
         UF-execute-command-failed.bin  UF \x00 15 \x00 {"id":"t5","output":[{"text":"command not found","type":"text"}],"is_error":true}
 ```
@@ -502,6 +520,7 @@ UF-search-content-success.bin  UF \x00 13 \x00 {"id":"t4","output":[{"text":"mai
 UF-search-content-failed.bin   UF \x00 13 \x00 {"id":"t4","output":[{"text":"invalid regex","type":"text"}],"is_error":true}
 AF-execute-command-start.bin   AF \x00 14 \x00 {"id":"t5","name":"execute_command"}
 AF-execute-command-input.bin   AF \x00 14 \x00 {"id":"t5","input":{"command":"ls -la"}}
+Uf-execute-command-preview.bin Uf \x00 14 \x00 {"id":"t5","text":"total 42..."}   ← ephemeral preview (optional)
 UF-execute-command-success.bin UF \x00 15 \x00 {"id":"t5","output":[{"text":"total 42...","type":"text"}]}
 UF-execute-command-failed.bin  UF \x00 15 \x00 {"id":"t5","output":[{"text":"command not found","type":"text"}],"is_error":true}
 ```

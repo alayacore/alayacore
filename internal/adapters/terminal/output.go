@@ -260,6 +260,20 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		}
 		to.pendToolDelta(fd.ID, name, fd.Delta, parseHistoryID(id))
 
+	// Tool result preview snapshot (JSON: id, text)
+	// Ephemeral display-only frame; authoritative result arrives via UF.
+	// Carries NUL-delimited historyID prefix
+	case tlv.TagUserFDelta:
+		id, payload, ok := tlv.UnwrapID(value)
+		if !ok {
+			return
+		}
+		var od protocol.ToolOutputDeltaData
+		if err := json.Unmarshal([]byte(payload), &od); err != nil {
+			return
+		}
+		to.windowBuffer.HandleToolOutputDelta(od.ID, od.Text, parseHistoryID(id))
+
 	// Function result (JSON: id, content, is_error)
 	// Carries NUL-delimited historyID prefix
 	case tlv.TagUserF:
@@ -293,23 +307,30 @@ func (to *outputWriter) writeColored(tag string, value string) {
 
 // triggerUpdateForTag marks the display as dirty for tags that modify the display.
 //
-// Delta tags (At, Ar, Af) are NOT included — they only accumulate pending data
-// without modifying WindowBuffer. The dirty flag is set by flushPendingDeltas()
-// when accumulated deltas are actually written to WindowBuffer.
+// Most delta tags (At, Ar, Af) are NOT included — they only accumulate pending
+// data without modifying WindowBuffer; the dirty flag is set by
+// flushPendingDeltas() when accumulated deltas are written to WindowBuffer.
+// Uf is the exception: it updates the window directly (snapshot semantics),
+// so it must set dirty immediately.
 //
 // TagSystemMsg is NOT listed here because handleSystemMsg() calls dirty.Store(true)
 // after processing, so it doesn't need the early dirty flag from this function.
 func (to *outputWriter) triggerUpdateForTag(tag string) {
 	switch tag {
 	case tlv.TagAssistantT, tlv.TagAssistantR, tlv.TagAssistantF,
-		tlv.TagUserT, tlv.TagUserF, tlv.TagUserI, tlv.TagUserV, tlv.TagUserA, tlv.TagUserD:
+		tlv.TagUserT, tlv.TagUserF, tlv.TagUserI, tlv.TagUserV, tlv.TagUserA, tlv.TagUserD,
+		tlv.TagUserFDelta: // Uf updates the window directly (no pending coalescing)
 		to.dirty.Store(true)
 	}
 }
 
-// isDeltaTag returns true for streaming delta TLV tags that should be coalesced.
+// isDeltaTag reports whether a frame is a streaming delta tag.
+// Delta tags do not trigger flushPendingDeltas() when they arrive (they
+// either accumulate in the pending maps — At/Ar/Af — or, for Uf, update
+// the window directly and must not interleave with a pending flush).
 func isDeltaTag(tag string) bool {
-	return tag == tlv.TagAssistantTDelta || tag == tlv.TagAssistantRDelta || tag == tlv.TagAssistantFDelta
+	return tag == tlv.TagAssistantTDelta || tag == tlv.TagAssistantRDelta ||
+		tag == tlv.TagAssistantFDelta || tag == tlv.TagUserFDelta
 }
 
 // pendTextDelta accumulates a text delta ("At" / "Ar") for coalescing.

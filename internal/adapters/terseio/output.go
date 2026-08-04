@@ -149,6 +149,7 @@ func (o *answerOutput) handleTag(tag, value string) {
 
 	case tlv.TagAssistantRDelta, tlv.TagAssistantR,
 		tlv.TagAssistantFDelta, tlv.TagAssistantF,
+		tlv.TagUserFDelta, // tool result preview — ephemeral, UF is authoritative
 		tlv.TagUserT, tlv.TagUserI, tlv.TagUserV, tlv.TagUserA, tlv.TagUserD:
 		// Reasoning, tool calls, and user content are never part of the
 		// final answer. Suppressed.

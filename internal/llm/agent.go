@@ -46,6 +46,13 @@ var ErrResponseTruncated = errors.New("response truncated: hit output token limi
 type Tool struct {
 	Definition ToolDefinition
 	Execute    func(ctx context.Context, input json.RawMessage) ([]ContentPart, error)
+
+	// ExecuteStreaming is an optional streaming variant of Execute.
+	// When set, the agent calls it instead of Execute. The onDelta
+	// callback delivers ephemeral tool result preview snapshots for
+	// display only (TagUserFDelta/Uf frames) — never used to assemble
+	// the authoritative result, which is the returned []ContentPart.
+	ExecuteStreaming func(ctx context.Context, input json.RawMessage, onDelta func(text string)) ([]ContentPart, error)
 }
 
 // AgentConfig configures the agent
@@ -80,6 +87,7 @@ type StreamCallbacks struct {
 	OnToolInputDelta    func(toolCallID, delta string, historyID uint64) error
 	OnToolInputComplete func(toolCallID string, input json.RawMessage, historyID uint64) error
 	OnToolOutput        func(toolCallID string, contents []ContentPart, err error, historyID uint64) error
+	OnToolOutputDelta   func(toolCallID, text string, historyID uint64) error
 
 	// OnToolConfirm is called for each tool that requires user confirmation.
 	// It returns a channel that receives the user's decision (true = allowed).
@@ -494,7 +502,23 @@ func (a *Agent) executeTool(ctx context.Context, tc *ToolInputPart, callbacks St
 		return newToolOutput(callbacks, tc.ID, nil, fmt.Errorf("unknown tool: %s", tc.Name), historyID)
 	}
 
-	content, err := tool.Execute(ctx, tc.Input)
+	var content []ContentPart
+	var err error
+	if tool.ExecuteStreaming != nil {
+		// Streaming variant: deliver ephemeral preview snapshots via
+		// onDelta while the tool runs. The authoritative result is still
+		// the returned []ContentPart — deltas are display-only.
+		onDelta := func(text string) {
+			if callbacks.OnToolOutputDelta != nil {
+				// Preview frames are best-effort: a write failure must
+				// not abort the tool execution.
+				_ = callbacks.OnToolOutputDelta(tc.ID, text, historyID)
+			}
+		}
+		content, err = tool.ExecuteStreaming(ctx, tc.Input, onDelta)
+	} else {
+		content, err = tool.Execute(ctx, tc.Input)
+	}
 	return newToolOutput(callbacks, tc.ID, content, err, historyID)
 }
 

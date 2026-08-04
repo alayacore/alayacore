@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"iter"
@@ -9,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
+	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 type stepResponse struct {
@@ -207,5 +211,41 @@ func TestDoAutoSummarizeBuildSummaryFails(t *testing.T) {
 	}
 	if tp, ok := result[0].(*llm.TextPart); !ok || tp.Text != "original" {
 		t.Errorf("expected original content preserved, got %v", result[0])
+	}
+}
+
+func TestDeltaWriterHandleToolOutputDelta(t *testing.T) {
+	var buf bytes.Buffer
+	dw := &deltaWriter{output: &buf}
+
+	if err := dw.handleToolOutputDelta("call_1", " 99%", 42); err != nil {
+		t.Fatalf("handleToolOutputDelta: %v", err)
+	}
+
+	// Verify the emitted frame is a Uf frame with the expected payload.
+	raw := buf.Bytes()
+	if len(raw) < 6 {
+		t.Fatalf("frame too short: %d bytes", len(raw))
+	}
+	tag := string(raw[0:2])
+	if tag != tlv.TagUserFDelta {
+		t.Fatalf("tag = %q, want %q", tag, tlv.TagUserFDelta)
+	}
+	length := int(binary.BigEndian.Uint32(raw[2:6]))
+	value := string(raw[6 : 6+length])
+
+	id, payload, ok := tlv.UnwrapID(value)
+	if !ok {
+		t.Fatalf("failed to unwrap frame value %q", value)
+	}
+	if id != "42" {
+		t.Errorf("historyID = %q, want %q", id, "42")
+	}
+	var od protocol.ToolOutputDeltaData
+	if err := json.Unmarshal([]byte(payload), &od); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if od.ID != "call_1" || od.Text != " 99%" {
+		t.Errorf("payload = %+v, want id=call_1 text=\" 99%%\"", od)
 	}
 }

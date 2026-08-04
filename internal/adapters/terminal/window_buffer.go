@@ -203,6 +203,44 @@ func (wb *WindowBuffer) HandleToolInputDelta(id, name, delta string, historyID u
 	wb.markDirty(idx)
 }
 
+// HandleToolOutputDelta processes a TagUserFDelta (Uf) frame.
+// Updates the tool result preview with an ephemeral snapshot. The
+// authoritative result arrives later via HandleToolOutput (UF), which
+// overwrites the preview — Uf frames are display-only and may be dropped.
+func (wb *WindowBuffer) HandleToolOutputDelta(id, text string, historyID uint64) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+
+	idx, ok := wb.idIndex[id]
+	if !ok {
+		// No window yet — create a placeholder (e.g. Uf arrived first).
+		w := NewWindow(id, tlv.TagUserF, wb.styles)
+		w.HistoryID = historyID
+		w.Folded = true
+		w.Visible = true
+		w.SetRendererForTool("", "")
+		if tr, ok := w.renderer.(*toolRenderer); ok {
+			tr.status = ToolStatusPending
+		}
+		wb.windows = append(wb.windows, w)
+		wb.idIndex[id] = len(wb.windows) - 1
+		idx = len(wb.windows) - 1
+	}
+
+	w := wb.windows[idx]
+	if tr, ok := w.renderer.(*toolRenderer); ok {
+		tr.output = text
+		if tr.status == ToolStatusNone {
+			tr.status = ToolStatusPending
+		}
+	}
+	if historyID > w.HistoryID {
+		w.HistoryID = historyID
+	}
+	w.Invalidate()
+	wb.markDirty(idx)
+}
+
 // HandleToolOutput processes a TagUserF (UF) frame.
 func (wb *WindowBuffer) HandleToolOutput(id, output string, isError bool, historyID uint64) {
 	wb.mu.Lock()

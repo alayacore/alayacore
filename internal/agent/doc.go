@@ -85,7 +85,8 @@
 //	  - Input: TagUserT for prompts, TagCommandIn (CI) for commands,
 //	    TagUserI for images, TagUserV for videos, TagUserA for audio,
 //	    TagUserD for documents
-//	  - Output: TagAssistantT, TagAssistantR, TagAssistantF, TagCommandOut (CO), etc.
+//	  - Output: TagAssistantT, TagAssistantR, TagAssistantF, TagUserF,
+//	    TagUserFDelta (Uf, ephemeral tool previews), TagCommandOut (CO), etc.
 //
 //	Each TLV frame carries a NUL-delimited history ID prefix that the
 //	adapter uses to route content to display windows. These IDs correspond

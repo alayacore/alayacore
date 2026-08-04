@@ -74,6 +74,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart) 
 		callbacks.OnTextDelta = dw.handleTextDelta
 		callbacks.OnReasoningDelta = dw.handleReasoningDelta
 		callbacks.OnToolInputDelta = dw.handleToolInputDelta
+		callbacks.OnToolOutputDelta = dw.handleToolOutputDelta
 	}
 
 	_, err := s.Agent().Stream(ctx, history, callbacks)
@@ -109,6 +110,17 @@ func (dw *deltaWriter) handleToolInputDelta(toolCallID, delta string, historyID 
 		return fmt.Errorf("failed to marshal tool input delta: %w", err)
 	}
 	return tlv.WriteTLV(dw.output, tlv.TagAssistantFDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), string(data)))
+}
+
+// handleToolOutputDelta writes a TagUserFDelta (Uf) frame carrying an
+// ephemeral tool result preview snapshot. Display-only: frames may be
+// dropped or coalesced; the authoritative result arrives via UF.
+func (dw *deltaWriter) handleToolOutputDelta(toolCallID, text string, historyID uint64) error {
+	data, err := json.Marshal(protocol.ToolOutputDeltaData{ID: toolCallID, Text: text})
+	if err != nil {
+		return fmt.Errorf("failed to marshal tool output delta: %w", err)
+	}
+	return tlv.WriteTLV(dw.output, tlv.TagUserFDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), string(data)))
 }
 
 // writeTLVWithID formats the historyID and writes a TLV entry to the output stream.
