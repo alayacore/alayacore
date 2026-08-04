@@ -207,6 +207,8 @@ During session replay the tool call is a single AF frame with both `name` and `i
 
 **Uf** — ephemeral result preview (display only, optional):
 - `\x00<id>\x00{"id":"t1","text":" 42%"}` — live snapshot of the tool result while it runs
+- `text` is a single line: the current line of the most recently written
+  stream (stdout or stderr), with the other stream as fallback
 - Sent only when the tool supports streaming (e.g. `execute_command`); zero or more
   frames, coalesced at ~100ms. **Never authoritative**: adapters may drop or ignore
   it, and the final `UF` frame always overwrites any preview content.
