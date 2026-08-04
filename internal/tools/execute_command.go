@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/tools/shell"
@@ -132,7 +133,7 @@ func (ls *lineSnapshot) write(p []byte) {
 		case '\n':
 			ls.lastLine = ls.tail.String()
 			if len(ls.lastLine) > maxPreviewLen {
-				ls.lastLine = ls.lastLine[len(ls.lastLine)-maxPreviewLen:]
+				ls.lastLine = truncateAtRuneBoundary(ls.lastLine, maxPreviewLen)
 			}
 			ls.tail.Reset()
 			ls.crPending = false
@@ -149,8 +150,19 @@ func (ls *lineSnapshot) write(p []byte) {
 	if ls.tail.Len() > maxPreviewLen {
 		s := ls.tail.String()
 		ls.tail.Reset()
-		ls.tail.WriteString(s[len(s)-maxPreviewLen:])
+		ls.tail.WriteString(truncateAtRuneBoundary(s, maxPreviewLen))
 	}
+}
+
+// truncateAtRuneBoundary keeps the last maxLen bytes of s, adjusted to a
+// UTF-8 rune boundary so the preview never ends on a broken character
+// (e.g. progress-bar block glyphs █ split across the cut).
+func truncateAtRuneBoundary(s string, maxLen int) string {
+	cut := len(s) - maxLen
+	for cut < len(s) && !utf8.RuneStart(s[cut]) {
+		cut++
+	}
+	return s[cut:]
 }
 
 // text returns the snapshot: the current line, or the most recently

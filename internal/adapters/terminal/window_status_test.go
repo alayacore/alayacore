@@ -330,3 +330,27 @@ func TestToolRendererUfPreviewFillsRemainingWidth(t *testing.T) {
 		t.Errorf("preview should not be truncated when it fits, got %q", result)
 	}
 }
+
+func TestToolRendererUfPreviewBlockGlyphs(t *testing.T) {
+	// Progress-bar block glyphs (█) render intact, single line, and are
+	// counted as 1 display column each (no broken characters or wraps).
+	styles := NewStyles(theme.DefaultTheme())
+	bar := " 42% [████████░░░░░░░░] 3.2MB/s"
+	tr := &toolRenderer{
+		name:   "execute_command",
+		input:  "wget",
+		output: bar,
+		status: ToolStatusPending,
+	}
+
+	result, lineCount := tr.BuildInner(80, false, styles)
+	if lineCount != 3 {
+		t.Errorf("lineCount = %d, want 3 (single line + border)", lineCount)
+	}
+	if !strings.Contains(result, "████████░░░░░░░░") {
+		t.Errorf("block glyphs should render intact, got %q", result)
+	}
+	if strings.Contains(result, "\uFFFD") {
+		t.Error("replacement character found — broken UTF-8")
+	}
+}

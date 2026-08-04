@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestStreamingWriterSnapshot(t *testing.T) {
@@ -337,5 +338,45 @@ func TestStreamingWriterConcurrent(t *testing.T) {
 	}
 	if got := w.errBuf.String(); got != strings.Repeat("stderr line\n", 200) {
 		t.Errorf("errBuf len = %d, want %d", len(got), len("stderr line\n")*200)
+	}
+}
+
+func TestStreamingWriterRuneBoundaryTruncation(t *testing.T) {
+	// Block glyphs (█, 3 bytes each in UTF-8) must never be split by the
+	// byte-cap truncation: the preview must end on a valid rune.
+	block := "█" // U+2588, 3 bytes
+	long := strings.Repeat(block, maxPreviewLen+10)
+
+	w := newStreamingWriter(nil)
+	w.Write([]byte(long))
+
+	out := w.out.text()
+	if !utf8.ValidString(out) {
+		t.Fatalf("preview is not valid UTF-8: %q", out)
+	}
+	if len(out) > maxPreviewLen {
+		t.Errorf("preview len = %d, want <= %d", len(out), maxPreviewLen)
+	}
+	// The preview must end with a complete block glyph (or be all blocks).
+	if !strings.HasSuffix(out, block) {
+		t.Errorf("preview should end with a complete block glyph, got tail %q", out[len(out)-6:])
+	}
+}
+
+func TestStreamingWriterRuneBoundaryLastLine(t *testing.T) {
+	// Same guarantee for the lastLine fallback path.
+	long := strings.Repeat("界", maxPreviewLen+10) // CJK, 3 bytes each
+
+	w := newStreamingWriter(nil)
+	w.Write([]byte(long + "\n"))
+
+	if !utf8.ValidString(w.out.lastLine) {
+		t.Fatalf("lastLine is not valid UTF-8: %q", w.out.lastLine)
+	}
+	if len(w.out.lastLine) > maxPreviewLen {
+		t.Errorf("lastLine len = %d, want <= %d", len(w.out.lastLine), maxPreviewLen)
+	}
+	if !strings.HasSuffix(w.out.lastLine, "界") {
+		t.Errorf("lastLine should end with a complete CJK char, got tail %q", w.out.lastLine[len(w.out.lastLine)-6:])
 	}
 }
