@@ -84,6 +84,10 @@ func (s *Session) writeError(msg string) {
 	s.writeSystemMsg(protocol.ErrorMsg{Text: msg})
 }
 
+func (s *Session) writeErrorf(format string, args ...any) {
+	s.writeError(fmt.Sprintf(format, args...))
+}
+
 func (s *Session) writeNotify(msg string) {
 	s.writeSystemMsg(protocol.NotifyMsg{Text: msg})
 }

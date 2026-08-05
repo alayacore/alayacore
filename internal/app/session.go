@@ -55,7 +55,7 @@ func StartSession(cfg *Config, output io.Writer, input io.Reader) (*agentpkg.Ses
 		OverrideActiveModel: cfg.Cfg.ModelName,
 		ToolConfirmTools:    cfg.ToolConfirmTools,
 		MCPInit:             cfg.MCPInit,
-		NoTheme:             cfg.Cfg.RawIO || cfg.Cfg.PlainIO,
+		NoTheme:             cfg.Cfg.RawIO || cfg.Cfg.TerseIO || cfg.Cfg.PlainIO,
 		NoDelta:             cfg.Cfg.NoDelta,
 	})
 	if err != nil {

@@ -14,8 +14,6 @@ package agent
 //   - session_io.go:          input pump, command dispatch
 
 import (
-	"fmt"
-
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/mcp"
 )
@@ -101,7 +99,7 @@ func (s *Session) handleMCPEvent(evt *mcp.InitEvent) {
 
 	// Display InitFailed errors in the chat window.
 	if evt.Type == mcp.InitFailed && evt.Error != "" {
-		s.writeError(fmt.Sprintf("MCP: %v", evt.Error))
+		s.writeErrorf("MCP: %v", evt.Error)
 	}
 
 	// Apply InitDone results.
@@ -151,7 +149,7 @@ func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 
 	if s.SessionFile != "" {
 		if err := s.saveContentToFile(s.SessionFile, s.Contents); err != nil {
-			s.writeNotifyf("Auto-save failed: %v", err)
+			s.writeErrorf("Auto-save failed: %v", err)
 		}
 	}
 

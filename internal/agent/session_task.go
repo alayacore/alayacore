@@ -381,7 +381,7 @@ func (s *Session) summarizeBackup(contents []llm.ContentPart) {
 	base := strings.TrimSuffix(s.SessionFile, ext)
 	backupPath := fmt.Sprintf("%s-%s%s", base, time.Now().Format("20060102150405"), ext)
 	if err := s.saveContentToFile(backupPath, contents); err != nil {
-		s.writeNotifyf("Failed to create pre-summarize backup: %v", err)
+		s.writeErrorf("Failed to create pre-summarize backup: %v", err)
 	} else {
 		s.writeNotifyf("Pre-summarize backup saved to %s", backupPath)
 	}
@@ -401,7 +401,7 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 
 	result, err := s.summarizeContents(ctx, contents)
 	if err != nil {
-		s.writeNotify(err.Error())
+		s.writeErrorf("Auto-summarization failed: %v", err)
 	}
 	return result
 }
