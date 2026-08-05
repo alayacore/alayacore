@@ -11,9 +11,9 @@ package plainio
 // with piped stdin) can complete the flow by hand.
 //
 // Concurrency: the flow writes CI frames to the same TLV input writer as
-// readPrompts. That writer is the io.Pipe created by StartSession, whose
-// Write calls are serialized and atomic per call — WriteTLV issues a
-// single Write per frame, so concurrent writes cannot interleave frames.
+// readPrompts and the SIGINT handler. The adapter wraps that writer in a
+// lockedWriter (adapter.go), so every frame is written atomically and
+// concurrent writes cannot interleave.
 
 import (
 	"fmt"

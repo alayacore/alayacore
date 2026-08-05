@@ -11,7 +11,10 @@ package plainio
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
+	"sync"
 
 	"github.com/alayacore/alayacore/internal/app"
 )
@@ -31,8 +34,9 @@ func NewAdapter(cfg *app.Config) *Adapter {
 
 // Start runs the plainio adapter. It blocks until the session finishes.
 // Returns 0 on clean exit (:quit/:q or EOF), 1 on startup failure or a
-// stdin read error. Ctrl-C (SIGINT) terminates the process with exit code
-// 130 (default signal handling).
+// stdin read error. Ctrl-C (SIGINT) sends a :cancel command (the session
+// aborts any running task and continues) — it never terminates the
+// process.
 //
 // plainio is an interactive mode: task errors are reported and the session
 // continues — the user can keep typing prompts. The exit code reflects
@@ -40,7 +44,6 @@ func NewAdapter(cfg *app.Config) *Adapter {
 //   - 0: the user typed :quit / :q, or stdin reached EOF (Ctrl-D) and all
 //     tasks have finished — regardless of whether any task errored.
 //   - 1: startup failure or a stdin read error.
-//   - 130: SIGINT.
 //
 // Scripts that need a failure signal (0/1 on task errors) should use
 // --terseio instead.
@@ -64,14 +67,41 @@ func (a *Adapter) Start() int {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
-	flow.setInput(inputWriter)
+
+	// input serializes writes to the session's TLV input stream: the
+	// stdin goroutine, the SIGINT handler, and the MCP OAuth flow all
+	// write to the same pipe, so TLV frames must never interleave.
+	var inputMu sync.Mutex
+	input := &lockedWriter{w: inputWriter, mu: &inputMu}
+	flow.setInput(input)
+
+	// Ctrl-C (SIGINT) cancels the current task instead of killing the
+	// process. Killing would orphan running tool processes: shell tools
+	// start with setsid (own session, no controlling terminal), so they
+	// never receive the terminal's SIGINT — only :cancel propagates the
+	// abort through the session's cancel machinery. The cancel command is
+	// always sent (matching the terminal adapter's Ctrl-G/:cancel): when
+	// idle, the session replies "nothing to cancel" and the session
+	// continues. The process exits only via :quit/:q or EOF (Ctrl-D).
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	defer func() {
+		signal.Stop(sigCh)
+		close(sigCh)
+	}()
+	go func() {
+		for range sigCh {
+			handleInterrupt(input)
+		}
+	}()
 
 	exitCh := make(chan int, 1)
 
 	// readStdin reads prompts from stdin and emits TLV messages.
-	// Only this goroutine touches inputWriter.
+	// Only this goroutine touches the input stream after the SIGINT
+	// handler (both go through the lockedWriter, so writes are safe).
 	readStdin := func() {
-		err := readPrompts(inputWriter, os.Stdin)
+		err := readPrompts(input, os.Stdin)
 		// Close signals EOF regardless, unblocking the session.
 		inputWriter.Close()
 		code := 0
@@ -99,4 +129,28 @@ func (a *Adapter) Start() int {
 	<-session.Done()
 
 	return code
+}
+
+// handleInterrupt reacts to a SIGINT (Ctrl-C): it sends a :cancel command
+// so the session aborts the running task (and its tool processes) cleanly
+// while staying alive. The cancel is always sent, matching the terminal
+// adapter's Ctrl-G/:cancel — when no task is running, the session replies
+// "nothing to cancel" and the session continues. Returns true if a cancel
+// frame was written.
+func handleInterrupt(input io.Writer) bool {
+	return sendCancel(input) == nil
+}
+
+// lockedWriter serializes writes to the session's TLV input stream. The
+// stdin goroutine, the SIGINT handler, and the MCP OAuth flow all write to
+// the same io.Pipe, so TLV frames must be written atomically.
+type lockedWriter struct {
+	mu *sync.Mutex
+	w  io.Writer
+}
+
+func (lw *lockedWriter) Write(p []byte) (int, error) {
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
+	return lw.w.Write(p)
 }

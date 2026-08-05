@@ -15,8 +15,11 @@ prompt that spans two lines.
 - **`Ctrl-D`** (EOF): closes stdin. After EOF, the program waits for the
   current task to finish, then exits with code `0` — like `:quit`,
   regardless of whether any task errored during the session.
-- **`Ctrl-C`** (SIGINT): terminates immediately with default signal handling
-  (exit code 130).
+- **`Ctrl-C`** (SIGINT): sends `:cancel` (same as typing it) — a running
+  task is aborted cleanly (including its tool processes) and the session
+  **continues**, so you can keep typing prompts. When no task is running,
+  the session reports `[error: nothing to cancel]`. The process exits only
+  via `:quit`/`:q` or Ctrl-D; it never exits via Ctrl-C.
 - **`:quit` / `:q`**: stops reading input; the program waits for any running
   task, then exits with code `0`.
 

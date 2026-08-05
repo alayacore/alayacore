@@ -17,8 +17,13 @@
 //   - Ctrl-D (EOF) closes input; the program waits for the current task to
 //     finish, then exits with code 0 — like :quit, regardless of whether
 //     any task errored during the session.
-//   - Ctrl-C (SIGINT): terminates immediately with default signal handling
-//     (exit code 130).
+//   - Ctrl-C (SIGINT): sends a :cancel command — the same as typing
+//     ":cancel". A running task is aborted (its tool processes too, which
+//     are started detached (setsid) and never receive the terminal's
+//     SIGINT) and the session continues; when idle, the session reports
+//     "nothing to cancel" (same as the terminal adapter's idle Ctrl-G).
+//     The process exits only via :quit/:q or EOF (Ctrl-D) — never via
+//     Ctrl-C.
 //   - Task errors are reported and the session CONTINUES — plainio is an
 //     interactive mode, errors never terminate the session and the user
 //     can keep typing prompts. The exit code reflects process-level state

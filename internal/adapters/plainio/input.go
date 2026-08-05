@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -96,6 +97,14 @@ func readPrompts(input io.Writer, reader io.Reader) error {
 			return err
 		}
 	}
+}
+
+// sendCancel writes a CI cancel command frame — the same command a user
+// would type as ":cancel". It is used by the SIGINT handler (adapter.go)
+// so Ctrl-C cancels the running task (and its tool processes) instead of
+// killing the process.
+func sendCancel(input io.Writer) error {
+	return writeCommand(input, ":"+commands.CommandNameCancel)
 }
 
 // sendPrompt writes a prompt to the TLV stream, followed by UE to flush.
