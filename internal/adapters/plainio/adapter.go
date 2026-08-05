@@ -14,7 +14,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"sync"
 
 	"github.com/alayacore/alayacore/internal/app"
 )
@@ -71,8 +70,7 @@ func (a *Adapter) Start() int {
 	// input serializes writes to the session's TLV input stream: the
 	// stdin goroutine, the SIGINT handler, and the MCP OAuth flow all
 	// write to the same pipe, so TLV frames must never interleave.
-	var inputMu sync.Mutex
-	input := &lockedWriter{w: inputWriter, mu: &inputMu}
+	input := app.NewLockedWriter(inputWriter)
 	flow.setInput(input)
 
 	// Ctrl-C (SIGINT) cancels the current task instead of killing the
@@ -139,18 +137,4 @@ func (a *Adapter) Start() int {
 // frame was written.
 func handleInterrupt(input io.Writer) bool {
 	return sendCancel(input) == nil
-}
-
-// lockedWriter serializes writes to the session's TLV input stream. The
-// stdin goroutine, the SIGINT handler, and the MCP OAuth flow all write to
-// the same io.Pipe, so TLV frames must be written atomically.
-type lockedWriter struct {
-	mu *sync.Mutex
-	w  io.Writer
-}
-
-func (lw *lockedWriter) Write(p []byte) (int, error) {
-	lw.mu.Lock()
-	defer lw.mu.Unlock()
-	return lw.w.Write(p)
 }
