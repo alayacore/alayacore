@@ -376,16 +376,31 @@ The **semantics** of the history ID differ by tag type:
    servers are available. The adapter should display them so the user can fix
    their `mcp.conf`.
 
-4. **Output stream broken**: On the first write error to stdout, the agent
+4. **Session-level errors (persistence, summarization)**: Failures that put
+   the conversation at risk are sent as system error messages during or
+   after task execution:
+   ```
+   SM {"type":"error","data":{"text":"Auto-save failed: <error>"}}
+   SM {"type":"error","data":{"text":"Failed to create pre-summarize backup: <error>"}}
+   SM {"type":"error","data":{"text":"Auto-summarization failed: <error>"}}
+   ```
+   - **Auto-save** arrives after the task completes (before the final `task`
+     message with `in_progress:false`) — the conversation is unaffected, but
+     the session file is stale and may be lost.
+   - **Pre-summarize backup / auto-summarization** arrive during the task;
+     the prompt continues (possibly over the context threshold). Display
+     them so the user knows the session is at risk.
+
+5. **Output stream broken**: On the first write error to stdout, the agent
    cancels the session context and stops processing. No further frames are
    sent. The adapter will see EOF on stdout and should handle it gracefully
    (e.g. close the connection, show a notification).
 
-5. **Missing UF**: A tool call (AF) without a matching UF is still in progress.
+6. **Missing UF**: A tool call (AF) without a matching UF is still in progress.
    If the session ends before all tool calls complete, pending tool calls are
    abandoned — no UF will arrive for them.
 
-5. **History ID collision**: History IDs are assigned monotonically. During
+7. **History ID collision**: History IDs are assigned monotonically. During
    live streaming they come from a single counter; during replay they are
    rebuilt from `seqID++`. Collisions cannot occur under normal operation.
    If a corrupt session causes duplicate IDs, the adapter should treat each
@@ -542,8 +557,8 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 | `version` | `message_version` (int), `core_version` (string) | `SM-message-version.bin` |
 | `model` | `active_id` (int), `active_name` (string), `context_limit` (int) | `SM-model.bin` |
 | `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int}`) | `SM-model-list.bin` |
-| `theme` | `name` (string), `theme` (object, optional — full palette sent on startup, omitted on theme switch) | `SM-theme.bin` |
-| `theme_list` | `themes` (array of `{name:string, theme:{primary, dim, muted, text, warning, error, success, selection, cursor, added, removed, tool, fold_indicator: string}}`) | `SM-theme-list.bin` |
+| `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string), `theme` (object, optional — full palette sent on startup, omitted on theme switch) | `SM-theme.bin` |
+| `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, text, warning, error, success, selection, cursor, added, removed, tool, fold_indicator: string}}`) | `SM-theme-list.bin` |
 | `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.bin` |
 | `video_config` | `fps` (int), `res` (int) | `SM-video-config.bin` |
 | `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `task_error` (bool, opt), `command_id` (string, opt — set when the task was started by `continue`/`summarize`) | `SM-task-start.bin`, `SM-task-end.bin` |
@@ -701,7 +716,7 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 | `cancel` | — | `null` |
 | `save` | `[filename]` | `{"path":...}` |
 | `fork` | `<id> <filename>` | `{"path":...,"count":...,"history_id":...}` |
-| `theme_set` | `<name>` | `{"name":...}` |
+| `theme_set` | `<name>` (TUI only — `UNAVAILABLE` in NoTheme modes: plainio/terseio/rawio) | `{"name":...}` |
 | `tool_confirm` / `tool_decline` | `<tool-id>` | `{"tool_id":...}` |
 | `model_set` | `<id>` | `{"active_id":...,"active_name":...}` |
 | `model_load` | — | `{"models":[...]}` |

@@ -42,7 +42,7 @@ Commands fall into three categories:
 | `:cancel` | Cancel current task | `null` |
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. | `{"path"}` |
 | `:reason [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 | `{"level"}` |
-| `:theme_set <name>` | Switch to a different theme | `{"name"}` |
+| `:theme_set <name>` | Switch to a different theme. TUI only — rejected with `UNAVAILABLE` in Plain IO, Terse IO, and Raw IO (`NoTheme`) | `{"name"}` |
 | `:fork <id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count","history_id"}` |
 | `:tool_decline <id>` | Decline a pending tool execution | `{"tool_id"}` |
 | `:mcp_cancel` | Cancel MCP server initialization | `null` |

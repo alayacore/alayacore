@@ -494,6 +494,7 @@ func (s *Session) handleVideoConfig(args string) (any, error) {
 
 // handleThemeSet sets the active theme, persists it to runtime config,
 // and sends updated system info so adapters receive the full theme data.
+// Rejected with UNAVAILABLE when NoTheme is set (non-TUI modes).
 func (s *Session) handleThemeSet(args string) (any, error) {
 	if s.NoTheme {
 		return nil, &cmdErr{Code: "UNAVAILABLE", Message: "theme management is not available in this mode"}

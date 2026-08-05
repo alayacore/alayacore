@@ -24,6 +24,8 @@ alayacore --terseio < question.txt > answer.txt
 | stderr | Errors (`[error: ...]`), notifications (`[...]`), informative command results (e.g. `[Session saved to ...]`) |
 | exit code | `0` success, `1` session or command error, `2` flag conflict (`--tool-confirm`), `130` SIGINT |
 
+Any SM error sets exit code `1` — including failed persistence (auto-save, pre-summarize backup) and failed auto-summarization, since these put the session at risk. Such errors also discard the buffered final answer: a script should retry or inspect the session file.
+
 Empty stdin produces no prompt and exits `0` with empty output.
 
 If the final assistant message contains **no text** (e.g. reasoning-only or

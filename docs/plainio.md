@@ -88,6 +88,7 @@ tool calls, tool results) in key-value frontmatter + binary TLV format.
 
 1. **Auto-save** — After each prompt completes, the conversation is
    automatically saved to the session file. The file is always up to date.
+   A failed save is reported as `[error: Auto-save failed: ...]`.
 2. **Auto-restore** — When you start with the same session file, the
    previous conversation is loaded and replayed so the assistant sees
    the full history.

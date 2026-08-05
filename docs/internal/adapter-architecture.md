@@ -28,7 +28,7 @@ Plain stdin/stdout mode, activated with `--plainio`. Shows assistant text, reaso
 
 ### TerseIO Adapter (`internal/adapters/terseio/`)
 
-Minimal stdin/stdout mode, activated with `--terseio`. Reads **all of stdin as a single prompt** — or, if it starts with `:`, as a **single command** (the whole input is sent as one CI frame; `:quit`/`:q` exit cleanly) — and prints **only the final assistant text** to stdout; errors, notifications, and informative command results go to stderr. Buffers the current AT/At message (dropping earlier text on new history IDs) and flushes it on the task-completion system message (`in_progress: false`) — but only if the final message actually contains text (reasoning-only or tool-call-only final messages produce empty stdout). CO frames are parsed: command errors go to stderr and set exit code 1; successful results render human-readable feedback for informative commands (`:save`, `:fork`) and stay silent for self-evident or async ones (`:cancel`, `:continue`, ...) whose feedback is the final answer. `--tool-confirm` is rejected at startup (conflict), so no tool_confirm frames can arrive and no confirmation machinery is needed.
+Minimal stdin/stdout mode, activated with `--terseio`. Reads **all of stdin as a single prompt** — or, if it starts with `:`, as a **single command** (the whole input is sent as one CI frame; `:quit`/`:q` exit cleanly) — and prints **only the final assistant text** to stdout; errors, notifications, and informative command results go to stderr. Buffers the current AT/At message (dropping earlier text on new history IDs) and flushes it on the task-completion system message (`in_progress: false`) — but only if the final message actually contains text (reasoning-only or tool-call-only final messages produce empty stdout). CO frames are parsed: command errors go to stderr and set exit code 1; successful results render human-readable feedback for informative commands (`:save`, `:fork`) and stay silent for self-evident or async ones (`:cancel`, `:continue`, ...) whose feedback is the final answer. SM errors — task failures and session-level failures (auto-save, pre-summarize backup, auto-summarization) — likewise go to stderr, set exit code 1, and discard the buffered final answer. `--tool-confirm` is rejected at startup (conflict), so no tool_confirm frames can arrive and no confirmation machinery is needed.
 
 ### RawIO Adapter (`internal/adapters/rawio/`)
 
@@ -67,7 +67,7 @@ for the full isolation rules.
 
 ### Theme Persistence
 
-The session persists the active theme to `runtime.conf` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The plainio, terseio, and rawio adapters ignore it since they have no visual rendering. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
+The session persists the active theme to `runtime.conf` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The session skips theme broadcasting entirely for plainio, terseio, and rawio modes (`NoTheme` — they have no visual rendering): no `theme`/`theme_list` messages are sent, theme parse errors are never emitted, and `:theme_set` is rejected as unavailable. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
 
 Theme changes flow through the session to keep a single source of truth:
 

@@ -234,9 +234,9 @@ func loadThemeFromFile(path string) (themeInfo, []string, bool) {
 }
 
 // sendThemeListMsg sends the full list of available themes with content.
-// Called once on startup so adapters can cache theme data.
-// Parse errors from theme files are sent as TLV error messages so all
-// adapters see them.
+// Called once on startup so the TUI can cache theme data; skipped entirely
+// for non-TUI modes (NoTheme). Parse errors from theme files are sent as
+// TLV error messages so the TUI sees them.
 func (s *Session) sendThemeListMsg() {
 	if s.ThemesFolder == "" {
 		return

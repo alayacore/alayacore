@@ -56,7 +56,8 @@ type themeInfo struct {
 }
 
 // themeListMsg carries all available themes (type "theme_list").
-// Sent once on startup so adapters can cache theme content locally.
+// Sent once on startup (TUI only — skipped under NoTheme) so the
+// terminal can cache theme content locally.
 type themeListMsg struct {
 	Themes []themeInfo `json:"themes"`
 }

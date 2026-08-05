@@ -42,10 +42,9 @@ type Config struct {
 	// internally — the adapter receives progress via system messages.
 	MCPInit *mcp.Initializer
 
-	// StartupErrors contains errors from theme loading,
-	// runtime config parsing, and MCP config parsing. These are
-	// emitted as TLV system messages during session startup so the
-	// user sees them even in TUI mode.
+	// StartupErrors contains errors from skills loading and MCP config
+	// parsing. These are emitted as TLV system messages during session
+	// startup so the user sees them even in TUI mode.
 	StartupErrors []string
 }
 

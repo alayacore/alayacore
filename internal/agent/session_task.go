@@ -373,6 +373,8 @@ func (s *Session) shouldAutoSummarize() bool {
 
 // summarizeBackup saves a timestamped backup of the current session contents
 // before summarization. Silently skips if no session file is configured.
+// Failures are reported as system errors — without the backup the original
+// conversation is unrecoverable after summarization.
 func (s *Session) summarizeBackup(contents []llm.ContentPart) {
 	if s.SessionFile == "" {
 		return
@@ -387,7 +389,8 @@ func (s *Session) summarizeBackup(contents []llm.ContentPart) {
 	}
 }
 
-// doAutoSummarize logs a notification and triggers summarization.
+// doAutoSummarize logs progress notifications, triggers summarization,
+// and reports failures as system errors.
 // Called synchronously from runTaskNormal when the context is near
 // the token limit — must complete before the user's prompt is processed.
 func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPart) []llm.ContentPart {
