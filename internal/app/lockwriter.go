@@ -5,10 +5,10 @@ import (
 	"sync"
 )
 
-// LockedWriter serializes writes to a shared io.Writer. UI adapters
-// (plainio, terseio) write to the session's TLV input pipe from several
-// goroutines (stdin reader, SIGINT handler, MCP OAuth flow); wrapping the
-// pipe writer in a LockedWriter keeps TLV frames from interleaving.
+// LockedWriter serializes writes to a shared io.Writer. The plainio
+// adapter writes to the session's TLV input pipe from two goroutines (the
+// stdin reader and the MCP OAuth flow); wrapping the pipe writer in a
+// LockedWriter keeps TLV frames from interleaving.
 type LockedWriter struct {
 	mu sync.Mutex
 	w  io.Writer

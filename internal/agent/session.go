@@ -90,6 +90,13 @@ type runState struct {
 	taskEventCh  chan taskEvent
 	taskResultCh chan []llm.ContentPart
 
+	// cancelReqCh lets adapters request a task cancellation from any
+	// goroutine. The request carries a channel for the outcome (true if a
+	// task was running and was canceled); run() processes the request so
+	// activeTask stays single-threaded. Buffered so the sender never
+	// blocks when run() is between select iterations.
+	cancelReqCh chan chan bool
+
 	// mcpService drives the entire MCP initialization lifecycle.
 	// The run() goroutine reads from its Events() channel and reacts:
 	//   "auth_required" → shows dialog, sends :mcp_confirm <code> <redirect_uri>
@@ -220,6 +227,7 @@ func newSession(cfg SessionConfig) *Session {
 			Contents:     make([]llm.ContentPart, 0),
 			taskEventCh:  make(chan taskEvent, 64),
 			taskResultCh: make(chan []llm.ContentPart, 1),
+			cancelReqCh:  make(chan chan bool, 1),
 		},
 		sharedState: sharedState{
 			sessionCtx:    ctx,
@@ -264,6 +272,7 @@ func RestoreFromSession(cfg SessionConfig, data *sessionData) *Session {
 			Contents:     data.Contents,
 			taskEventCh:  make(chan taskEvent, 64),
 			taskResultCh: make(chan []llm.ContentPart, 1),
+			cancelReqCh:  make(chan chan bool, 1),
 		},
 		sharedState: sharedState{
 			sessionCtx:    ctx,

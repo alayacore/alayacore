@@ -24,13 +24,13 @@ alayacore --terseio < question.txt > answer.txt
 | stderr | Errors (`[error: ...]`), notifications (`[...]`), informative command results (e.g. `[Session saved to ...]`) |
 | exit code | `0` success, `1` session or command error, `2` flag conflict (`--tool-confirm`), `130` SIGINT |
 
-**`Ctrl-C`** (SIGINT) sends a `:cancel` command instead of killing the
-process: the running task (and its tool processes) is aborted cleanly, the
-buffered final answer is **discarded** (no partial output on stdout), and
-the process exits `130` (128+SIGINT) — scripts still detect the
-interruption by exit code. Ctrl-C during the stdin read phase (interactive
-use without EOF) aborts the read; Ctrl-C after the task finished only
-forces the exit code.
+**`Ctrl-C`** (SIGINT) cancels the running task through the session
+instead of killing the process: the task (and its tool processes) is
+aborted cleanly, the buffered final answer is **discarded** (no partial
+output on stdout), and the process exits `130` (128+SIGINT) — scripts
+still detect the interruption by exit code. Ctrl-C during the stdin read
+phase (interactive use without EOF) aborts the read; Ctrl-C after the
+task finished only forces the exit code.
 
 Any SM error sets exit code `1` — including failed persistence (auto-save, pre-summarize backup) and failed auto-summarization, since these put the session at risk. Such errors also discard the buffered final answer: a script should retry or inspect the session file.
 

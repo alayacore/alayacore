@@ -635,3 +635,25 @@ func (s *Session) cancelTask() (any, error) {
 	}
 	return nil, &cmdErr{Code: "NOTHING_TO_CANCEL", Message: "nothing to cancel"}
 }
+
+// CancelTask aborts the currently running task, if any. Safe to call from
+// any goroutine: the request is processed by the run() goroutine (which
+// owns activeTask) via cancelReqCh. Returns true if a task was running
+// and was canceled, false if there was nothing to cancel or the session
+// has already exited. Used by the plainio/terseio SIGINT handlers — the
+// TLV input pipe cannot carry a CI frame after the adapter closed it at
+// EOF, so cancellation must not depend on the pipe.
+func (s *Session) CancelTask() bool {
+	done := make(chan bool, 1)
+	select {
+	case s.cancelReqCh <- done:
+	case <-s.sessionCtx.Done():
+		return false
+	}
+	select {
+	case ok := <-done:
+		return ok
+	case <-s.sessionCtx.Done():
+		return false
+	}
+}

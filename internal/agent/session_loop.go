@@ -59,6 +59,10 @@ func (s *Session) run() {
 			}
 			s.handleInputMsg(msg)
 
+		case done := <-s.cancelReqCh:
+			_, err := s.cancelTask()
+			done <- err == nil
+
 		case ev := <-s.taskEventCh:
 			s.handleTaskEvent(ev)
 
@@ -171,7 +175,8 @@ func (s *Session) flushPendingEvents() {
 
 // drainUntilTaskDone processes task completion signals until the currently
 // running task finishes. Used during shutdown (input EOF) to let the active
-// task complete before the session exits.
+// task complete before the session exits. Cancel requests are still served
+// so SIGINT can abort the drained task instead of waiting for it.
 //
 // Priority: taskResultCh is checked first to avoid processing redundant
 // events when the task has already finished.
@@ -192,6 +197,9 @@ func (s *Session) drainUntilTaskDone() {
 		case contents := <-s.taskResultCh:
 			s.handleTaskDone(contents)
 			return
+		case done := <-s.cancelReqCh:
+			_, err := s.cancelTask()
+			done <- err == nil
 		case <-s.sessionCtx.Done():
 			return
 		}

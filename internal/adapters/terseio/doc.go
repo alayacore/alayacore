@@ -26,11 +26,11 @@
 //     interactive channel is needed.
 //   - Exit codes: 0 on success, 1 on session or command errors, 2 on the
 //     --tool-confirm conflict (usage error), 130 on SIGINT.
-//   - Ctrl-C (SIGINT) sends a :cancel command instead of killing the
-//     process: the running task (and its detached tool processes, which
-//     never receive the terminal's SIGINT) is aborted cleanly, the
-//     buffered answer is discarded, and the process exits 130
-//     (128+SIGINT) so scripts still detect the interruption. SIGINT
+//   - Ctrl-C (SIGINT) cancels the running task through the session
+//     instead of killing the process: the task (and its detached tool
+//     processes, which never receive the terminal's SIGINT) is aborted
+//     cleanly, the buffered answer is discarded, and the process exits
+//     130 (128+SIGINT) so scripts still detect the interruption. SIGINT
 //     during the stdin read phase aborts the read; SIGINT after the task
 //     finished only forces the exit code.
 //   - --session works: the conversation is persisted; intermediate content

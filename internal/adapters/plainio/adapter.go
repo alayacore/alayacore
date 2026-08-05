@@ -11,7 +11,6 @@ package plainio
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 
@@ -33,9 +32,9 @@ func NewAdapter(cfg *app.Config) *Adapter {
 
 // Start runs the plainio adapter. It blocks until the session finishes.
 // Returns 0 on clean exit (:quit/:q or EOF), 1 on startup failure or a
-// stdin read error. Ctrl-C (SIGINT) sends a :cancel command (the session
-// aborts any running task and continues) — it never terminates the
-// process.
+// stdin read error. Ctrl-C (SIGINT) cancels the current task through the
+// session (the session aborts any running task and continues) — it never
+// terminates the process.
 //
 // plainio is an interactive mode: task errors are reported and the session
 // continues — the user can keep typing prompts. The exit code reflects
@@ -68,19 +67,22 @@ func (a *Adapter) Start() int {
 	}
 
 	// input serializes writes to the session's TLV input stream: the
-	// stdin goroutine, the SIGINT handler, and the MCP OAuth flow all
-	// write to the same pipe, so TLV frames must never interleave.
+	// stdin goroutine and the MCP OAuth flow both write to the same
+	// pipe, so TLV frames must never interleave. (The SIGINT handler
+	// cancels through the session directly — see below.)
 	input := app.NewLockedWriter(inputWriter)
 	flow.setInput(input)
 
 	// Ctrl-C (SIGINT) cancels the current task instead of killing the
 	// process. Killing would orphan running tool processes: shell tools
 	// start with setsid (own session, no controlling terminal), so they
-	// never receive the terminal's SIGINT — only :cancel propagates the
-	// abort through the session's cancel machinery. The cancel command is
-	// always sent (matching the terminal adapter's Ctrl-G/:cancel): when
-	// idle, the session replies "nothing to cancel" and the session
-	// continues. The process exits only via :quit/:q or EOF (Ctrl-D).
+	// never receive the terminal's SIGINT. Cancellation goes through the
+	// session's CancelTask (not a :cancel CI frame on the TLV pipe): the
+	// pipe may already be closed at EOF, after which a frame could never
+	// reach the session. The cancel is always attempted, matching the
+	// terminal adapter's Ctrl-G/:cancel — when idle, the session reports
+	// "nothing to cancel" and the session continues. The process exits
+	// only via :quit/:q or EOF (Ctrl-D).
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
 	defer func() {
@@ -94,10 +96,13 @@ func (a *Adapter) Start() int {
 				if !ok {
 					return
 				}
-				handleInterrupt(input)
+				if !session.CancelTask() {
+					// Nothing was running — keep the same feedback the
+					// :cancel CI frame used to produce via its CO error.
+					output.printLine("\n[error: nothing to cancel]\n")
+				}
 			case <-session.Done():
-				// Session is gone: the input pipe has no reader, so
-				// writing a cancel frame would block forever.
+				// Session is gone; nothing left to cancel.
 				return
 			}
 		}
@@ -106,8 +111,8 @@ func (a *Adapter) Start() int {
 	exitCh := make(chan int, 1)
 
 	// readStdin reads prompts from stdin and emits TLV messages.
-	// Only this goroutine touches the input stream after the SIGINT
-	// handler (both go through the lockedWriter, so writes are safe).
+	// Only this goroutine and the MCP OAuth flow write to the input
+	// stream (both through the lockedWriter, so writes are safe).
 	readStdin := func() {
 		err := readPrompts(input, os.Stdin)
 		// Close signals EOF regardless, unblocking the session.
@@ -137,14 +142,4 @@ func (a *Adapter) Start() int {
 	<-session.Done()
 
 	return code
-}
-
-// handleInterrupt reacts to a SIGINT (Ctrl-C): it sends a :cancel command
-// so the session aborts the running task (and its tool processes) cleanly
-// while staying alive. The cancel is always sent, matching the terminal
-// adapter's Ctrl-G/:cancel — when no task is running, the session replies
-// "nothing to cancel" and the session continues. Returns true if a cancel
-// frame was written.
-func handleInterrupt(input io.Writer) bool {
-	return sendCancel(input) == nil
 }
