@@ -88,8 +88,18 @@ func (a *Adapter) Start() int {
 		close(sigCh)
 	}()
 	go func() {
-		for range sigCh {
-			handleInterrupt(input)
+		for {
+			select {
+			case _, ok := <-sigCh:
+				if !ok {
+					return
+				}
+				handleInterrupt(input)
+			case <-session.Done():
+				// Session is gone: the input pipe has no reader, so
+				// writing a cancel frame would block forever.
+				return
+			}
 		}
 	}()
 

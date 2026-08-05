@@ -76,11 +76,21 @@ func (a *Adapter) Start() int {
 		close(sigCh)
 	}()
 	go func() {
-		for range sigCh {
-			sigint.Store(true)
-			handleInterrupt(input)
-			// Unblock a pending io.ReadAll on stdin.
-			os.Stdin.Close()
+		for {
+			select {
+			case _, ok := <-sigCh:
+				if !ok {
+					return
+				}
+				sigint.Store(true)
+				handleInterrupt(input)
+				// Unblock a pending io.ReadAll on stdin.
+				os.Stdin.Close()
+			case <-session.Done():
+				// Session is gone: the input pipe has no reader, so
+				// writing a cancel frame would block forever.
+				return
+			}
 		}
 	}()
 
