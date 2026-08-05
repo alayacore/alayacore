@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -49,6 +50,15 @@ func writeCommand(input io.Writer, cmd string) error {
 	}
 	commandNames.Store(id, name)
 	return tlv.WriteTLV(input, tlv.TagCommandIn, string(payload))
+}
+
+// sendCancel writes a CI cancel command frame — the same command a user
+// would type as ":cancel". It is used by the SIGINT handler (adapter.go)
+// so Ctrl-C cancels the running task (and its tool processes) instead of
+// killing the process. Unlike plainio's writeCommand, terseio's expects
+// the name without the ":" prefix (the caller strips it).
+func sendCancel(input io.Writer) error {
+	return writeCommand(input, commands.CommandNameCancel)
 }
 
 // readAllPrompt reads the entire reader and emits it as ONE TLV message:
