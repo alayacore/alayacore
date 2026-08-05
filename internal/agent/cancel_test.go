@@ -3,10 +3,14 @@ package agent
 import (
 	"context"
 	"io"
+	"iter"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // newCancelTestSession builds a minimal started Session whose run() loop
@@ -109,5 +113,131 @@ func TestCancelTask_SessionExited(t *testing.T) {
 
 	if s.CancelTask() {
 		t.Fatal("CancelTask should report false after the session exited")
+	}
+}
+
+// blockingProvider blocks until ctx is canceled and then fails with
+// ctx.Err — like a real provider whose HTTP stream is aborted when the
+// request context is canceled. started is closed when StreamMessages is
+// first called, signaling that the task is running.
+type blockingProvider struct {
+	started chan struct{}
+	once    sync.Once
+}
+
+func (m *blockingProvider) StreamMessages(ctx context.Context, _ []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
+	m.once.Do(func() { close(m.started) })
+	return func(yield func(llm.StreamEvent, error) bool) {
+		<-ctx.Done()
+		yield(nil, ctx.Err())
+	}, nil
+}
+
+func (m *blockingProvider) SetReasoningLevel(_ int)     {}
+func (m *blockingProvider) SetVideoConfig(_ int, _ int) {}
+
+// syncOutput is a concurrency-safe output capture for tests where the
+// session writes from task goroutines while the test reads.
+type syncOutput struct {
+	mu       sync.Mutex
+	messages []string
+}
+
+func (m *syncOutput) Write(p []byte) (int, error) {
+	m.mu.Lock()
+	m.messages = append(m.messages, string(p))
+	m.mu.Unlock()
+	return len(p), nil
+}
+
+func (m *syncOutput) String() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return strings.Join(m.messages, "")
+}
+
+// TestCancelTask_EndToEnd verifies the full terseio-style path: a prompt
+// arrives over the TLV input pipe, the task blocks in the provider,
+// CancelTask aborts it, and the session emits an SM error — the signal
+// the terseio output uses to discard the buffered answer.
+func TestCancelTask_EndToEnd(t *testing.T) {
+	output := &syncOutput{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r, w := io.Pipe()
+	defer w.Close()
+
+	provider := &blockingProvider{started: make(chan struct{})}
+	agent := llm.NewAgent(llm.AgentConfig{
+		Provider: provider,
+		MaxSteps: 10,
+	})
+
+	s := &Session{
+		sessionConfig: sessionConfig{
+			modelService: &modelService{agent: agent, provider: provider},
+			SessionConfig: SessionConfig{
+				Input:   r,
+				Output:  output,
+				NoDelta: true,
+			},
+		},
+		runState: runState{
+			Contents:     make([]llm.ContentPart, 0),
+			taskEventCh:  make(chan taskEvent, 64),
+			taskResultCh: make(chan []llm.ContentPart, 1),
+			cancelReqCh:  make(chan chan bool, 1),
+		},
+		sharedState: sharedState{
+			sessionCtx:    ctx,
+			sessionCancel: cancel,
+			confirmChs:    make(map[string]chan bool),
+		},
+		runDoneCh: make(chan struct{}),
+	}
+	s.mcpService = newMCPService(nil, output)
+	s.Start()
+
+	// Deliver a prompt over the TLV input pipe (what terseio does after
+	// reading stdin to EOF).
+	if err := tlv.WriteTLV(w, tlv.TagUserT, tlv.WrapID("1", "hello")); err != nil {
+		t.Fatalf("write UT: %v", err)
+	}
+	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
+		t.Fatalf("write UE: %v", err)
+	}
+
+	// Wait until the task is running inside the provider.
+	select {
+	case <-provider.started:
+	case <-time.After(time.Second):
+		t.Fatal("task never started")
+	}
+
+	if !s.CancelTask() {
+		t.Fatal("CancelTask should report the running task was canceled")
+	}
+
+	// The canceled task fails with context.Canceled → SM error. This is
+	// what makes terseio discard the buffered answer and what plainio
+	// prints as the cancellation feedback.
+	deadline := time.After(2 * time.Second)
+	for {
+		if strings.Contains(output.String(), "context canceled") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("no SM error emitted after cancel; output: %q", output.String())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	// Close the input pipe so run() sees EOF and exits.
+	_ = w.Close()
+	select {
+	case <-s.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("session did not finish after cancel")
 	}
 }
