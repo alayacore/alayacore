@@ -59,3 +59,21 @@ func TestMCPDoneDoesNotCloseOverlay(t *testing.T) {
 		t.Fatal("ConsumeSessionReady should be true after the session-ready frame")
 	}
 }
+
+// TestConsumeSessionReadyClearsStaleAuths verifies that consuming the
+// session-ready frame also discards MCP auth confirmations queued before
+// the cancellation took effect (stale dialogs must not outlive init).
+func TestConsumeSessionReadyClearsStaleAuths(t *testing.T) {
+	w := NewTerminalOutput(DefaultStyles())
+
+	// An auth prompt was pending when init settled.
+	w.handleSystemMsg(`{"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://example.com/auth"}}`)
+	w.handleSystemMsg(`{"type":"session","data":{"state":"ready"}}`)
+
+	if !w.ConsumeSessionReady() {
+		t.Fatal("ConsumeSessionReady should report ready")
+	}
+	if _, _, ok := w.GetPendingMCPAuth(); ok {
+		t.Fatal("stale MCP auth confirmation should be cleared on session ready")
+	}
+}

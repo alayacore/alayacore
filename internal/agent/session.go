@@ -158,7 +158,7 @@ func (s *Session) Done() <-chan struct{} {
 // State returns the session's startup lifecycle phase.
 // Safe to call from any goroutine; the value is published atomically.
 // External callers may observe SessionStarting until run() has processed
-// the first events — see syncState for the exact transition points.
+// the first events — see setState/syncState for the exact transition points.
 func (s *Session) State() SessionState {
 	return SessionState(s.state.Load())
 }

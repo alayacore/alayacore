@@ -336,7 +336,7 @@ exactly once, regardless of how MCP initialization ends:
 | Not configured | Broadcast at the start of the session loop |
 | Initialized (`done`) | After the final `mcp` `done` frame |
 | User canceled (`:mcp_cancel`) | After the `mcp` `done` frame that follows cancellation |
-| Server failure (`failed`) | After the MCP event stream closes |
+| Server failure (`failed`) | After the final `mcp` `done` frame — init always ends with a `done` event, even when some or all servers failed |
 | Event stream closed abnormally | After the "MCP initialization canceled" error frame |
 
 This is guaranteed by three layers in the core:

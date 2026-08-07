@@ -23,8 +23,10 @@ import (
 //
 // Initialization consists of exactly one synchronous phase (session file
 // load + replay, guaranteed complete by construction) and one asynchronous
-// phase (MCP init, when MCP servers are configured). The state transitions
-// are owned by the run() goroutine — see syncState() in session.go.
+// phase (MCP init, when MCP servers are configured). State transitions are
+// owned by the run() goroutine: constructors store SessionStarting,
+// run() sets the initial phase, and setState()/syncState() (session.go)
+// advance it once MCP init settles.
 //
 // IMPORTANT: agent/provider creation is deliberately lazy (happens on the
 // first task, and MCP init completion resets an already-created agent so it
@@ -136,7 +138,9 @@ type videoConfigMsg struct {
 func (videoConfigMsg) SystemMsgType() string { return "video_config" }
 
 // mcpMsg communicates MCP initialization progress (type "mcp").
-// The adapter uses these messages to show/hide init overlays.
+// The adapter uses these messages to show init progress; overlay closure
+// is driven by the authoritative "session" ready frame, not by mcp
+// status "done" (see sessionMsg).
 //
 // Status values (from InitEvent.Type):
 //   - "connecting":    starting to connect a server (non-OAuth) or begins processing an OAuth server
@@ -144,7 +148,7 @@ func (videoConfigMsg) SystemMsgType() string { return "video_config" }
 //   - "failed":        connection or OAuth failed
 //   - "auth_required":  session needs user to authorize this server
 //   - "auth_running":  OAuth flow is running for this server
-//   - "done":          all MCP initialization complete
+//   - "done":          MCP initialization process has ended (completed, canceled, or aborted)
 type mcpMsg struct {
 	Status string `json:"status"`
 	Server string `json:"server,omitempty"`

@@ -111,7 +111,7 @@
 //   - session_io.go: Input pump, command dispatch (all commands)
 //   - session_content.go: ContentPart helpers, tag mapping, ID lookup
 //   - session_persist.go: Session save/load functionality
-//   - session_types.go: Type definitions (SessionConfig, etc.)
+//   - session_types.go: Type definitions (SessionConfig, SessionState, SM payloads)
 //   - command_registry.go: Declarative command registration
 //   - model_manager.go: Model configuration management
 //   - runtime_manager.go: Runtime persistence

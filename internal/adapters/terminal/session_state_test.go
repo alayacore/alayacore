@@ -70,7 +70,7 @@ func TestUpdateMCPProgressResetsListOnNewCycle(t *testing.T) {
 	// First cycle: alpha starts but the cycle is interrupted (never connects).
 	st.updateMCPProgress("connecting", "alpha")
 	st.updateMCPProgress("done", "")
-	// No takeMCPDone — mcpStatus stays "done" (display-only); the new-cycle
+	// mcpStatus stays "done" (display-only terminal state); the new-cycle
 	// reset below checks prevStatus == "done", so no stale entries survive.
 
 	// Second cycle: beta starts. The stale "alpha" entry must be cleared.

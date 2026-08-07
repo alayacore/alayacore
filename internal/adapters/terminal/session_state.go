@@ -178,9 +178,10 @@ func (s *sessionState) updateVideoConfig(fps, res int) {
 }
 
 // updateMCPProgress atomically updates MCP init progress.
-// Called when the session sends an "mcp" system message with
-// status "connecting", "connected", "failed", "auth_required",
-// or "auth_running".
+// Called when the session sends an "mcp" system message with status
+// "connecting", "connected", "failed", "auth_required", "auth_running",
+// or "done" (the display terminal state — overlay closure is driven by
+// the SM "session" ready frame, see takeSessionReady).
 func (s *sessionState) updateMCPProgress(status, server string) {
 	s.mu.Lock()
 	// Capture the previous status BEFORE overwriting: the "new init cycle"
