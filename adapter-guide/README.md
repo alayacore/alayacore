@@ -326,6 +326,36 @@ SM {"type":"session","data":{"state":"ready"}}
 - Adapters that don't recognize the `session` type ignore it (unknown SM
   types are skipped), so older adapters are unaffected.
 
+#### Delivery guarantee
+
+While the session is alive, the ready frame is **always** delivered,
+exactly once, regardless of how MCP initialization ends:
+
+| MCP outcome | Path to the ready frame |
+|-------------|------------------------|
+| Not configured | Broadcast at the start of the session loop |
+| Initialized (`done`) | After the final `mcp` `done` frame |
+| User canceled (`:mcp_cancel`) | After the `mcp` `done` frame that follows cancellation |
+| Server failure (`failed`) | After the MCP event stream closes |
+| Event stream closed abnormally | After the "MCP initialization canceled" error frame |
+
+This is guaranteed by three layers in the core:
+
+1. The MCP initializer **always closes** its event stream on exit (success,
+   failure, cancellation, or context cancellation — via `defer`).
+2. A closed stream still delivers already-queued events (buffered channel
+   semantics), so a final `done`/`canceled` event is never lost.
+3. If the stream closes without a clean event, the session falls back to
+   `aborted` — which still transitions to `ready`, so the adapter is never
+   left waiting.
+
+The only case in which the frame is not sent is when the session itself
+has terminated (input stream closed or session canceled) **before** MCP
+init settles. In that case the session is no longer processing any input —
+no prompt can be accepted anyway — and the adapter should treat session
+termination (EOF / shutdown) as the end of the protocol, not wait for a
+ready frame that will never arrive.
+
 ## Adapter Implementation Notes
 
 ### Handling user tags on stdout

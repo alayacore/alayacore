@@ -32,8 +32,31 @@ func TestUpdateMCPProgressTracksServersAcrossCycle(t *testing.T) {
 	if len(snap.MCPServers) != 0 {
 		t.Fatalf("MCPServers after done = %v, want empty", snap.MCPServers)
 	}
-	if !st.takeMCPDone() {
-		t.Fatal("takeMCPDone should report done")
+
+	// The init overlay is closed by the authoritative session-ready
+	// signal, not by the MCP "done" progress status.
+	st.markSessionReady()
+	if !st.takeSessionReady() {
+		t.Fatal("takeSessionReady should report ready after markSessionReady")
+	}
+}
+
+// TestSessionReadyOneShot verifies the session-ready flag is consumed
+// exactly once — the Terminal closes the init overlay a single time even
+// if the tick handler runs again before any new frame arrives.
+func TestSessionReadyOneShot(t *testing.T) {
+	st := newTestSessionState()
+
+	if st.takeSessionReady() {
+		t.Fatal("takeSessionReady should be false before markSessionReady")
+	}
+
+	st.markSessionReady()
+	if !st.takeSessionReady() {
+		t.Fatal("takeSessionReady should report ready once")
+	}
+	if st.takeSessionReady() {
+		t.Fatal("takeSessionReady should be one-shot (false after consumption)")
 	}
 }
 
@@ -47,7 +70,8 @@ func TestUpdateMCPProgressResetsListOnNewCycle(t *testing.T) {
 	// First cycle: alpha starts but the cycle is interrupted (never connects).
 	st.updateMCPProgress("connecting", "alpha")
 	st.updateMCPProgress("done", "")
-	st.takeMCPDone() // Terminal consumes "done" → status back to ""
+	// No takeMCPDone — mcpStatus stays "done" (display-only); the new-cycle
+	// reset below checks prevStatus == "done", so no stale entries survive.
 
 	// Second cycle: beta starts. The stale "alpha" entry must be cleared.
 	st.updateMCPProgress("connecting", "beta")

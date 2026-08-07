@@ -847,7 +847,7 @@ func (m Terminal) isBlocked() bool {
 // Extracted from the former OverlayManager.
 func (m Terminal) handleMCPProgress() (Terminal, OverlayAction) {
 	out := m.out
-	if out.ConsumeMCPDone() {
+	if out.ConsumeSessionReady() {
 		if m.mcpInitOverlay.IsOpen() {
 			m.mcpInitOverlay = m.mcpInitOverlay.Close()
 			return m, OverlayAction{CloseInitOverlay: true}

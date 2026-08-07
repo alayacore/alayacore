@@ -48,7 +48,7 @@ Every capability available to built-in adapters must be achievable through TLV f
 | agent → adapter (stdout) | `Af` | Tool call arguments (streaming delta, partial JSON; absent with `--no-delta`) |
 | agent → adapter (stdout) | `Uf` | Tool result preview snapshot (ephemeral, display-only; authoritative result arrives via `UF`; absent with `--no-delta`) |
 | agent → adapter (stdout) | `CO` | Command results (JSON `{id, output, is_error}` — one per CI) |
-| agent → adapter (stdout) | `SM` | System state — task, model, theme, reasoning, mcp, error, notify, tool_confirm, version |
+| agent → adapter (stdout) | `SM` | System state — task, model, theme, reasoning, mcp, session, error, notify, tool_confirm, version |
 
 > **Note:** User tags (UT, UI, UV, UA, UD) flow in **both** directions.
 > On **stdin** they carry new user input; on **stdout** they carry the agent's

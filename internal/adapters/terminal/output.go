@@ -435,6 +435,8 @@ func (to *outputWriter) handleSystemMsg(value string) {
 		to.handleSystemToolConfirm(env.Data)
 	case protocol.MsgTypeMCP:
 		to.handleSystemMCP(env.Data)
+	case protocol.MsgTypeSession:
+		to.handleSystemSession(env.Data)
 	}
 	to.dirty.Store(true)
 }
@@ -633,9 +635,24 @@ func (to *outputWriter) handleSystemMCP(data json.RawMessage) {
 		to.status.updateMCPProgress(msg.Status, msg.Server)
 	case "done":
 		to.status.updateMCPProgress("done", "")
-		// Note: takeMCPDone() is consumed by the Terminal tick handler
-		// via outputWriter.ConsumeMCPDone().
+		// Display-only terminal state: the init overlay is closed by the
+		// authoritative SM "session" ready frame (ConsumeSessionReady).
 	}
+}
+
+// handleSystemSession processes a "session" system message — the
+// authoritative lifecycle signal. state "ready" means initialization
+// completed (replay + MCP settle, including canceled/aborted MCP init
+// and the no-MCP case). The Terminal consumes it to close the init
+// overlay; see outputWriter.ConsumeSessionReady().
+func (to *outputWriter) handleSystemSession(data json.RawMessage) {
+	var m struct {
+		State string `json:"state"`
+	}
+	if json.Unmarshal(data, &m) != nil || m.State != "ready" {
+		return
+	}
+	to.status.markSessionReady()
 }
 
 // handleSystemToolConfirm processes a tool_confirm system message.
@@ -674,12 +691,13 @@ func (to *outputWriter) ClearMCPAuths() {
 	to.status.clearMCPAuths()
 }
 
-// ConsumeMCPDone returns true if MCP init just completed,
-// and resets the flag. The Terminal uses this to close the progress overlay.
+// ConsumeSessionReady returns true if initialization just completed
+// (SM "session" ready frame received), and resets the flag. The Terminal
+// uses this to close the init overlay.
 // Also clears any stale MCP auth confirmations that may have been queued
 // before the cancellation took effect.
-func (to *outputWriter) ConsumeMCPDone() bool {
-	done := to.status.takeMCPDone()
+func (to *outputWriter) ConsumeSessionReady() bool {
+	done := to.status.takeSessionReady()
 	if done {
 		to.status.clearMCPAuths()
 	}

@@ -38,10 +38,18 @@ type sessionState struct {
 	videoFPS int
 	videoRes int
 
-	// MCP init status — tracks the initialization phase.
-	// Values: "" (no MCP), "connecting", "connected", "failed",
+	// MCP init status — tracks the initialization phase for progress
+	// display. Values: "" (no MCP), "connecting", "connected", "failed",
 	// "auth_required", "auth_running", "done".
+	// NOTE: this is display-only progress. The authoritative "initialization
+	// complete" signal is sessionReady, driven by the SM "session" frame.
 	mcpStatus string
+
+	// sessionReady is set by the SM "session" frame (state "ready") — the
+	// authoritative signal that the session finished initialization
+	// (replay + MCP settle). Consumed one-shot by takeSessionReady to
+	// close the init overlay exactly once.
+	sessionReady bool
 
 	// Per-server init progress.
 	mcpServer  string   // current server being connected/authorized
@@ -241,16 +249,27 @@ func (s *sessionState) clearMCPAuths() {
 	s.pendingMCPAuths = s.pendingMCPAuths[:0]
 }
 
-// takeMCPDone returns true if initialization is complete (mcpStatus is "done")
-// and resets mcpStatus to "". One-shot — the Terminal uses this to close
-// the init overlay exactly once.
-func (s *sessionState) takeMCPDone() bool {
+// markSessionReady records the SM "session" ready frame — the
+// authoritative signal that initialization completed (replay + MCP
+// settle). Unlike the MCP progress "done" status (which is display-only
+// and also sent for canceled/aborted init, never sent without MCP), this
+// flag is set for every session exactly once.
+func (s *sessionState) markSessionReady() {
+	s.mu.Lock()
+	s.sessionReady = true
+	s.mu.Unlock()
+}
+
+// takeSessionReady returns true if initialization completed (session
+// ready frame received) and resets the flag. One-shot — the Terminal
+// uses this to close the init overlay exactly once.
+func (s *sessionState) takeSessionReady() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.mcpStatus != "done" {
+	if !s.sessionReady {
 		return false
 	}
-	s.mcpStatus = ""
+	s.sessionReady = false
 	return true
 }
 
