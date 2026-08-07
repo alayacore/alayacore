@@ -34,6 +34,14 @@ func RandomState() string {
 // authorization code callback. It validates the state parameter to prevent
 // CSRF attacks.
 //
+// Only requests that carry this flow's state may conclude the flow: a valid
+// authorization code (code + matching state) or a provider-reported error
+// (error + matching state). Stray or stale requests to /callback (no
+// parameters, wrong state, spoofed error without state) are answered with a
+// notice page but never consume the result slot, so an unrelated first
+// request cannot abort the real authorization. The first genuine outcome
+// wins; later requests are dropped.
+//
 // listenAddr is the TCP address to bind to (e.g., "127.0.0.1:0" for
 // loopback with random port, "0.0.0.0:0" for all interfaces).
 // serverName is the human-readable name of the server being authorized
@@ -89,13 +97,26 @@ func StartCallbackServer(listenAddr, state, serverName string) (<-chan CallbackR
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		code := r.URL.Query().Get("code")
-		returnedState := r.URL.Query().Get("state")
-		iss := r.URL.Query().Get("iss")
-		errStr := r.URL.Query().Get("error")
-		errDesc := r.URL.Query().Get("error_description")
+		q := r.URL.Query()
+		code := q.Get("code")
+		returnedState := q.Get("state")
+		errStr := q.Get("error")
 
+		// Only a request carrying this flow's state may conclude the flow.
+		// Stray requests (no parameters), stale callbacks (wrong state) and
+		// spoofed error parameters (no state) are answered with a notice
+		// page but never consume the result slot — otherwise the first such
+		// request would abort the authorization before the real callback
+		// arrives. Real callbacks always carry the flow's state, and
+		// provider error responses echo it too.
+		if returnedState != state || (code == "" && errStr == "") {
+			writePage(w, "Not an Authorization Callback",
+				fmt.Sprintf("This request is not the authorization callback for <strong>%s</strong>.", html.EscapeString(serverName)))
+			return
+		}
 		if errStr != "" {
+			// Provider-reported error (e.g. access_denied) with valid state.
+			errDesc := q.Get("error_description")
 			select {
 			case resultCh <- CallbackResult{Err: fmt.Errorf("authorization error: %s: %s", errStr, errDesc)}:
 			default:
@@ -104,26 +125,9 @@ func StartCallbackServer(listenAddr, state, serverName string) (<-chan CallbackR
 				fmt.Sprintf("Authorization failed for <strong>%s</strong>.", html.EscapeString(serverName)))
 			return
 		}
-		if returnedState != state {
-			select {
-			case resultCh <- CallbackResult{Err: fmt.Errorf("state mismatch: got %q, expected %q", returnedState, state)}:
-			default:
-			}
-			writePage(w, "Authorization Failed",
-				fmt.Sprintf("Authorization failed for <strong>%s</strong>.", html.EscapeString(serverName)))
-			return
-		}
-		if code == "" {
-			select {
-			case resultCh <- CallbackResult{Err: fmt.Errorf("no authorization code in callback")}:
-			default:
-			}
-			writePage(w, "Authorization Failed",
-				fmt.Sprintf("Authorization failed for <strong>%s</strong>.", html.EscapeString(serverName)))
-			return
-		}
+		// Valid authorization code with matching state.
 		select {
-		case resultCh <- CallbackResult{Code: code, Iss: iss}:
+		case resultCh <- CallbackResult{Code: code, Iss: q.Get("iss")}:
 		default:
 		}
 		writePage(w, "Authorization Successful",

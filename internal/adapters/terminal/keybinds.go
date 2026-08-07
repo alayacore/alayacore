@@ -17,6 +17,11 @@ import (
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
+// mcpAuthTimeout bounds the Phase 3 wait for the OAuth callback, mirroring
+// the plainio adapter. On expiry the flow stops the callback server and
+// tells the user to continue manually with :mcp_confirm.
+const mcpAuthTimeout = 5 * time.Minute
+
 // ============================================================================
 // Key Bindings
 // ============================================================================
@@ -242,20 +247,31 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) tea.Cmd {
 		},
 		// Phase 3: Wait for OAuth callback
 		func() tea.Msg {
-			res := <-resultCh
-			cleanup()
-			if res.Err != nil {
-				writeCommand(streamInput, ":"+commands.CommandNameMCPSkip)
+			select {
+			case res := <-resultCh:
+				cleanup()
+				if res.Err != nil {
+					// Decline only this server — keeps the rest of MCP
+					// init (and any other servers' authorizations) intact,
+					// mirroring the plainio adapter.
+					writeCommand(streamInput, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
+					return displayErrorMsg{
+						message: fmt.Sprintf("MCP auth callback error: %v", res.Err),
+					}
+				}
+				cmd := fmt.Sprintf(":%s %s %s %s", commands.CommandNameMCPConfirm, serverName, res.Code, redirectURI)
+				if res.Iss != "" {
+					cmd += " " + res.Iss
+				}
+				writeCommand(streamInput, cmd)
+				return nil
+			case <-time.After(mcpAuthTimeout):
+				cleanup()
 				return displayErrorMsg{
-					message: fmt.Sprintf("MCP auth callback error: %v", res.Err),
+					message: fmt.Sprintf("MCP authorization for %q timed out — continue manually with :mcp_confirm %s <code> <redirect_uri>",
+						serverName, serverName),
 				}
 			}
-			cmd := fmt.Sprintf(":%s %s %s %s", commands.CommandNameMCPConfirm, serverName, res.Code, redirectURI)
-			if res.Iss != "" {
-				cmd += " " + res.Iss
-			}
-			writeCommand(streamInput, cmd)
-			return nil
 		},
 	)
 }
