@@ -30,7 +30,7 @@ import (
 // first task, and MCP init completion resets an already-created agent so it
 // is rebuilt with MCP tools). It is therefore NOT part of SessionState —
 // SessionReady does not imply an agent exists.
-type SessionState int
+type SessionState int32
 
 const (
 	// SessionStarting: the Session has been constructed; session file load
@@ -153,6 +153,17 @@ type mcpMsg struct {
 }
 
 func (mcpMsg) SystemMsgType() string { return "mcp" }
+
+// sessionMsg carries the session startup lifecycle state (type "session").
+// Sent exactly once, on the transition to SessionReady — after replay and
+// after MCP init has settled (done/canceled/aborted, or never configured).
+// Adapters can treat this frame as the authoritative "ready to accept
+// prompts" signal; the state value mirrors SessionState.String().
+type sessionMsg struct {
+	State string `json:"state"`
+}
+
+func (sessionMsg) SystemMsgType() string { return "session" }
 
 // messageVersionMsg carries the TLV message format version and the
 // alayacore application version (type "version").

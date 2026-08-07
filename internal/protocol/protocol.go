@@ -32,6 +32,7 @@ const (
 	MsgTypeVideoConfig SystemMsgType = "video_config"
 	MsgTypeToolConfirm SystemMsgType = "tool_confirm"
 	MsgTypeMCP         SystemMsgType = "mcp"
+	MsgTypeSession     SystemMsgType = "session"
 	MsgTypeVersion     SystemMsgType = "version"
 )
 

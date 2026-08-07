@@ -45,11 +45,12 @@ func (s *Session) run() {
 
 	// Initial lifecycle state: with MCP configured, the session stays
 	// Initializing until the init events settle; without MCP, it is
-	// Ready from the start (mcpService.IsReady() is true by construction).
+	// Ready from the start (mcpService.IsReady() is true by construction)
+	// and setState broadcasts the session-ready frame here.
 	if s.mcpService.IsReady() {
-		s.state.Store(int32(SessionReady))
+		s.setState(SessionReady)
 	} else {
-		s.state.Store(int32(SessionInitializing))
+		s.setState(SessionInitializing)
 	}
 
 	for {

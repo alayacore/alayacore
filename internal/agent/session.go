@@ -172,13 +172,28 @@ func (s *Session) IsInitialized() bool {
 	return s.State() == SessionReady
 }
 
+// setState writes a new lifecycle phase. Transitions to SessionReady
+// broadcast exactly one SM "session" frame so adapters have an
+// authoritative "ready" signal. No-op when the phase is unchanged.
+// Must only be called from the run() goroutine (constructors store the
+// initial SessionStarting directly — it is never broadcast).
+func (s *Session) setState(phase SessionState) {
+	if s.State() == phase {
+		return
+	}
+	s.state.Store(int32(phase))
+	if phase == SessionReady {
+		s.writeSystemMsg(sessionMsg{State: SessionReady.String()})
+	}
+}
+
 // syncState advances the lifecycle state after MCP init progress.
 // Idempotent: only transitions SessionInitializing → SessionReady once
 // mcpService reports ready. Must only be called from the run() goroutine
 // (or run()'s own setup); readers use the atomic publish in State().
 func (s *Session) syncState() {
 	if s.State() == SessionInitializing && s.mcpService.IsReady() {
-		s.state.Store(int32(SessionReady))
+		s.setState(SessionReady)
 	}
 }
 

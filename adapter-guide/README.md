@@ -282,22 +282,49 @@ non-user tag.
 ## Example: Session Replay Flow
 
 When a saved session is loaded, all previous content is replayed on stdout.
-Each content part gets a sequential history ID (rebuilt from `seqID++`):
+Each content part gets a sequential history ID (rebuilt from `seqID++`).
+Startup system-info frames (version, task, model, theme, reasoning,
+video_config) are broadcast first, then the replayed content, and finally —
+once initialization completes — the session-ready frame:
 
 ```
-Session writes → stdout:       UT \x00 1 \x00 Hello                        ← user
+Session writes → stdout:       SM {"type":"task","data":{"in_progress":false,"context":1500}}  ← startup broadcast (before replay)
+                               UT \x00 1 \x00 Hello                        ← user
                                AT \x00 2 \x00 Hi! How can I help?          ← assistant
                                UT \x00 3 \x00 Read main.go                 ← user
                                AF \x00 4 \x00 {"id":"t1","name":"read_file","input":{"path":"main.go"}}
                                UF \x00 5 \x00 {"id":"t1","output":[...]}
                                AT \x00 6 \x00 Here's the content...        ← assistant
-                               SM {"type":"task","data":{"in_progress":false,"context":1500}}
+                               SM {"type":"session","data":{"state":"ready"}}  ← init complete
 ```
 
 Note: During replay, a tool call is a single AF frame with both `name` and
 `input` together (one `ToolInputPart`). The two-frame split (start then input)
 only happens during live streaming. User and assistant frames are interleaved
 as they were in the original conversation.
+
+### Session-ready signal
+
+When initialization completes, the agent broadcasts exactly **one**
+`session` system message:
+
+```
+SM {"type":"session","data":{"state":"ready"}}
+```
+
+- Sent **once per session**, when the session becomes ready to accept
+  prompts — i.e. after session load + replay (always synchronous, before
+  startup) and after MCP init has settled (done / canceled / aborted, or
+  never configured).
+- Ordering: with MCP configured it arrives after the final `mcp` frame
+  (`done` or `canceled`); without MCP it arrives immediately after the
+  replayed content / startup broadcast.
+- This is the **authoritative** readiness signal. Adapters that gate input
+  on initialization (spinner, blocked input box, "waiting for MCP" states)
+  should wait for this frame instead of inferring readiness from `mcp`
+  frames or the startup `task` frame.
+- Adapters that don't recognize the `session` type ignore it (unknown SM
+  types are skipped), so older adapters are unaffected.
 
 ## Adapter Implementation Notes
 
@@ -566,6 +593,7 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 | `notify` | `text` (string) | `SM-notify.bin` |
 | `tool_confirm` | `id` (string), `allowed` (bool, opt — present only in adapter→agent response) | `SM-tool-confirm.bin` |
 | `mcp` | `status` (string: one of `connecting`, `auth_required`, `auth_running`, `connected`, `failed`, `done`), `server` (string, opt), `url` (string, opt — set for `auth_required`; may contain `{{redirect_uri}}` and `{{state}}` placeholders), `error` (string, opt — set for `failed`) | `SM-mcp-connecting.bin`, `SM-mcp-auth-required.bin`, `SM-mcp-auth-running.bin`, `SM-mcp-connected.bin`, `SM-mcp-failed.bin`, `SM-mcp-done.bin` |
+| `session` | `state` (string: `ready` — sent **exactly once**, when initialization completes) | `SM-session-ready.bin` |
 
 Complete wire values:
 
@@ -588,6 +616,7 @@ SM-mcp-auth-running.bin        {"type":"mcp","data":{"status":"auth_running","se
 SM-mcp-connected.bin           {"type":"mcp","data":{"status":"connected","server":"github"}}
 SM-mcp-failed.bin              {"type":"mcp","data":{"status":"failed","server":"github","error":"connection timeout"}}
 SM-mcp-done.bin                {"type":"mcp","data":{"status":"done"}}
+SM-session-ready.bin           {"type":"session","data":{"state":"ready"}}
 ```
 
 ## Adapter → Agent Commands
