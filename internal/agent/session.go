@@ -128,6 +128,11 @@ type sharedState struct {
 	confirmMu  sync.Mutex
 
 	outputBroken atomic.Bool
+
+	// state is the startup lifecycle phase (SessionState), published
+	// atomically so adapters can query it from any goroutine. Written
+	// only by the run() goroutine (and constructors); see syncState().
+	state atomic.Int32
 }
 
 // Session manages conversation state and task execution.
@@ -135,6 +140,7 @@ type sharedState struct {
 //   - sessionConfig — immutable after construction
 //   - runState      — owned by the run() goroutine
 //   - sharedState   — cross-goroutine, synchronized via atomics/channels
+//     (incl. the startup lifecycle state, SessionState)
 type Session struct {
 	sessionConfig
 	runState
@@ -147,6 +153,33 @@ type Session struct {
 // Done returns a channel that is closed when run() has exited.
 func (s *Session) Done() <-chan struct{} {
 	return s.runDoneCh
+}
+
+// State returns the session's startup lifecycle phase.
+// Safe to call from any goroutine; the value is published atomically.
+// External callers may observe SessionStarting until run() has processed
+// the first events — see syncState for the exact transition points.
+func (s *Session) State() SessionState {
+	return SessionState(s.state.Load())
+}
+
+// IsInitialized reports whether initialization is complete: the session
+// has been loaded (replay done — guaranteed by construction) and MCP init
+// has settled (done/canceled/aborted, or never configured).
+// It does NOT imply that an LLM agent has been created — agent creation
+// is lazy (first task) by design.
+func (s *Session) IsInitialized() bool {
+	return s.State() == SessionReady
+}
+
+// syncState advances the lifecycle state after MCP init progress.
+// Idempotent: only transitions SessionInitializing → SessionReady once
+// mcpService reports ready. Must only be called from the run() goroutine
+// (or run()'s own setup); readers use the atomic publish in State().
+func (s *Session) syncState() {
+	if s.State() == SessionInitializing && s.mcpService.IsReady() {
+		s.state.Store(int32(SessionReady))
+	}
 }
 
 // HasModels returns true if the model manager has at least one model.
@@ -247,6 +280,10 @@ func newSession(cfg SessionConfig) *Session {
 	// Set up MCP service (manages init lifecycle).
 	s.mcpService = newMCPService(cfg.MCPInit, s.Output)
 
+	// Session load + replay are synchronous and complete by construction
+	// (LoadOrNewSession), so the initial lifecycle state is Starting.
+	s.state.Store(int32(SessionStarting))
+
 	s.sendSystemInfo(systemInfoAll)
 	return s
 }
@@ -297,6 +334,10 @@ func RestoreFromSession(cfg SessionConfig, data *sessionData) *Session {
 	if model := s.modelService.ActiveModel(); model != nil {
 		s.ContextLimit = s.modelService.contextLimit
 	}
+
+	// Session load + replay are synchronous and complete by construction
+	// (LoadOrNewSession), so the initial lifecycle state is Starting.
+	s.state.Store(int32(SessionStarting))
 
 	s.sendSystemInfo(systemInfoAll)
 	return s

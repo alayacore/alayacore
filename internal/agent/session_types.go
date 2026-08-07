@@ -4,6 +4,7 @@ package agent
 // Kept separate for readability — no logic, just data structures.
 
 import (
+	"fmt"
 	"io"
 	"time"
 
@@ -13,6 +14,52 @@ import (
 	"github.com/alayacore/alayacore/internal/skills"
 	"github.com/alayacore/alayacore/internal/theme"
 )
+
+// ============================================================================
+// SessionState — startup lifecycle
+// ============================================================================
+
+// SessionState represents the startup lifecycle phase of a Session.
+//
+// Initialization consists of exactly one synchronous phase (session file
+// load + replay, guaranteed complete by construction) and one asynchronous
+// phase (MCP init, when MCP servers are configured). The state transitions
+// are owned by the run() goroutine — see syncState() in session.go.
+//
+// IMPORTANT: agent/provider creation is deliberately lazy (happens on the
+// first task, and MCP init completion resets an already-created agent so it
+// is rebuilt with MCP tools). It is therefore NOT part of SessionState —
+// SessionReady does not imply an agent exists.
+type SessionState int
+
+const (
+	// SessionStarting: the Session has been constructed; session file load
+	// and replay (if any) are complete. Fatal load errors abort startup
+	// before Start(), so this phase implies a usable, replayed session.
+	SessionStarting SessionState = iota
+
+	// SessionInitializing: Start() has been called and MCP initialization
+	// is in progress (only reached when MCP servers are configured).
+	SessionInitializing
+
+	// SessionReady: MCP initialization has settled (done, canceled, or
+	// aborted) — or was never configured. Prompts are accepted.
+	SessionReady
+)
+
+// String returns a stable, human-readable name for the state.
+func (s SessionState) String() string {
+	switch s {
+	case SessionStarting:
+		return "starting"
+	case SessionInitializing:
+		return "initializing"
+	case SessionReady:
+		return "ready"
+	default:
+		return fmt.Sprintf("SessionState(%d)", int(s))
+	}
+}
 
 // ============================================================================
 // TagSystemMsg (SM) payload types

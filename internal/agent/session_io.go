@@ -229,10 +229,13 @@ func (s *Session) cleanupConfirmChannels() {
 // the task cannot start; callers decide how to report it (CO for task
 // commands, SM error for normal prompts).
 func (s *Session) prepareTask() (context.Context, error) {
-	// Before MCP is ready, the tool list is incomplete. Sending an LLM
-	// request would produce a response without MCP tools, and the
-	// subsequent agent reset (when MCP init completes) would invalidate provider's cache
-	if s.mcpService != nil && !s.mcpService.IsReady() {
+	// Before the session is ready (MCP init pending), the tool list is
+	// incomplete. Sending an LLM request would produce a response without
+	// MCP tools, and the subsequent agent reset (when MCP init completes)
+	// would invalidate the provider's cache. prepareTask only runs after
+	// run() has started, so State() is Initializing or Ready here — the
+	// error code is kept as MCP_NOT_READY for wire compatibility.
+	if s.State() != SessionReady {
 		return nil, &cmdErr{Code: "MCP_NOT_READY",
 			Message: "MCP servers are still initializing or OAuth authorization is pending. " +
 				"Please wait for initialization to complete."}

@@ -43,6 +43,15 @@ func (s *Session) run() {
 	// (init complete), we set mcpEvents to nil to disable the select case.
 	mcpEvents := s.mcpService.Events()
 
+	// Initial lifecycle state: with MCP configured, the session stays
+	// Initializing until the init events settle; without MCP, it is
+	// Ready from the start (mcpService.IsReady() is true by construction).
+	if s.mcpService.IsReady() {
+		s.state.Store(int32(SessionReady))
+	} else {
+		s.state.Store(int32(SessionInitializing))
+	}
+
 	for {
 		if s.sessionCtx.Err() != nil {
 			return
@@ -78,6 +87,9 @@ func (s *Session) run() {
 					s.writeError("MCP initialization canceled.")
 					s.mcpService.sendSystemMsg(&mcpMsgData{Status: "done"})
 				}
+				// MCP init has settled (done, canceled, or aborted) —
+				// advance the lifecycle state.
+				s.syncState()
 				break
 			}
 			s.handleMCPEvent(&evt)
@@ -130,6 +142,10 @@ func (s *Session) handleMCPEvent(evt *mcp.InitEvent) {
 	if action.Aborted {
 		s.writeError("MCP initialization canceled.")
 	}
+
+	// MCP init may have settled (InitDone/canceled) — advance the
+	// lifecycle state. Idempotent; safe after every event.
+	s.syncState()
 }
 
 // handleTaskDone processes a task completion signal from the task goroutine.

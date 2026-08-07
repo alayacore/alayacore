@@ -327,8 +327,13 @@ func TestStartTaskCommand_Success(t *testing.T) {
 				Output: output,
 			},
 		},
-		sharedState: sharedState{sessionCtx: sessionCtx},
+		sharedState: sharedState{
+			sessionCtx: sessionCtx,
+		},
 	}
+	// startTaskCommand goes through prepareTask, which gates on the
+	// lifecycle state — simulate a session whose init has completed.
+	s.state.Store(int32(SessionReady))
 
 	started := make(chan struct{})
 	s.startTaskCommand("x1", func(context.Context) { close(started) })
@@ -359,6 +364,9 @@ func TestStartTaskCommand_Busy(t *testing.T) {
 			},
 		},
 	}
+	// startTaskCommand goes through prepareTask, which gates on the
+	// lifecycle state — simulate a session whose init has completed.
+	s.state.Store(int32(SessionReady))
 
 	s.startTaskCommand("x2", func(context.Context) {})
 
