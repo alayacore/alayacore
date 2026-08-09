@@ -35,6 +35,12 @@ func NewPromptInput(styles *Styles) PromptInput {
 	input.Placeholder = "Enter your prompt..."
 	input = input.Focus()
 	input.Prompt = ""
+	// The main prompt input uses the real terminal cursor (positioned by
+	// Terminal.View via tea.View.Cursor) instead of the painted block cursor.
+	// A visible real cursor is required for IME on-the-spot preedit rendering
+	// and stable candidate-window anchoring. Overlay filter inputs keep the
+	// painted cursor for now (fake cursor stays enabled).
+	input = input.WithFakeCursor(false)
 	input = input.WithWidth(max(0, DefaultWidth-BorderInnerPadding))
 
 	return PromptInput{
@@ -217,4 +223,24 @@ func (m PromptInput) CursorEnd() PromptInput {
 // CursorPos returns the cursor position (in runes) within the input field.
 func (m PromptInput) CursorPos() int {
 	return m.input.CursorPos()
+}
+
+// CursorCell returns the cursor's line index within the input text area
+// (0-based, input text lines only — excludes attachments and the separator
+// line above the text) and its cell offset within that line (0 = leftmost
+// visible cell). Used by Terminal.View to position the real terminal cursor.
+func (m PromptInput) CursorCell() (line, cell int) {
+	return m.input.CursorCell()
+}
+
+// AttachmentsOffset returns the number of content lines above the input
+// text inside the bordered box (attachment lines + separator line),
+// or 0 when there are no pending attachments.
+func (m PromptInput) AttachmentsOffset() int {
+	if len(m.attachments) == 0 {
+		return 0
+	}
+	innerWidth := max(0, m.width-BorderInnerPadding)
+	styledMedia := wrapLabels(m.attachments, innerWidth, m.styles.Attachment)
+	return lipgloss.Height(styledMedia) + 1 // + separator line
 }

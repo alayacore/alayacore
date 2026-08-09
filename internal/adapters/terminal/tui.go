@@ -765,18 +765,39 @@ func (m Terminal) View() tea.View {
 	baseContent := sb.String()
 
 	// Render all overlay layers through the overlay manager.
-	overlayContent, hasConfirm := m.renderOverlays(baseContent, m.windowWidth, m.windowHeight, m.forceRedraw&1 == 1)
-
-	if hasConfirm {
-		v := tea.NewView(overlayContent)
-		v.AltScreen = true
-		v.ReportFocus = true
-		return v
-	}
+	overlayContent, _ := m.renderOverlays(baseContent, m.windowWidth, m.windowHeight, m.forceRedraw&1 == 1)
 
 	v := tea.NewView(overlayContent)
 	v.AltScreen = true
 	v.ReportFocus = true
+
+	// Position the real terminal cursor at the prompt input's logical cursor
+	// when the input has focus and no overlay is open. The main input renders
+	// without a painted block cursor (fake cursor off), and a visible real
+	// cursor is required for IME on-the-spot preedit rendering and stable
+	// candidate-window anchoring. The real cursor stays hidden while an
+	// overlay is open or the display pane has focus — mirroring the painted
+	// cursor's absence in those states.
+	if m.input.IsFocused() && !m.isBlocked() {
+		if line, cell := m.input.CursorCell(); line >= 0 {
+			// y: display area occupies [0, displayH); the input box's top
+			// border sits at displayH; content starts after the border; then
+			// attachment lines (+ separator) and the cursor's line offset.
+			y := max(0, m.windowHeight-m.input.Height()-1) // display height
+			y++                                            // input box top border
+			y += m.input.AttachmentsOffset()
+			y += line
+			// x: left border (1) + left padding (1) + prompt (empty for the
+			// main input) + cell offset.
+			x := 2 + cell
+			cur := tea.NewCursor(x, y)
+			cur.Shape = tea.CursorBlock
+			cur.Blink = false
+			cur.Color = m.styles.CursorColor
+			v.Cursor = cur
+		}
+	}
+
 	return v
 }
 

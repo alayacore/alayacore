@@ -28,6 +28,12 @@ type InputField struct {
 	Placeholder string
 	focused     bool
 
+	// fakeCursor renders the painted block cursor (background-colored cell).
+	// When false, no cursor cell is painted and the caller is expected to
+	// position the real terminal cursor via tea.View.Cursor (used by the
+	// main prompt input; overlays keep the painted cursor for now).
+	fakeCursor bool
+
 	styleFocused inputFieldStyle
 	styleBlurred inputFieldStyle
 	cursorColor  color.Color
@@ -42,10 +48,11 @@ type inputFieldStyle struct {
 // NewInputField creates a new InputField with default settings.
 func NewInputField() InputField {
 	return InputField{
-		width:   20,
-		Prompt:  "> ",
-		focused: true,
-		goalCol: -1,
+		width:      20,
+		Prompt:     "> ",
+		focused:    true,
+		goalCol:    -1,
+		fakeCursor: true,
 	}
 }
 
@@ -248,21 +255,7 @@ func (m InputField) View() string {
 	visible, cursorIdx := m.buildVisibleText()
 
 	var v string
-	switch {
-	case m.focused && cursorIdx < len(visible):
-		pre := string(visible[:cursorIdx])
-		at := string(visible[cursorIdx])
-		post := string(visible[cursorIdx+1:])
-		v += styleText(pre)
-		v += m.cursorRender(at)
-		v += styleText(post)
-	case m.focused:
-		v += styleText(string(visible))
-		v += m.cursorRender(" ")
-	default:
-		// Blurred: render text without cursor
-		v += styleText(string(visible))
-	}
+	v += m.renderText(styleText, visible, cursorIdx)
 
 	if !m.focused {
 		return m.promptRender() + v
@@ -275,7 +268,7 @@ func (m InputField) View() string {
 		return m.promptRender() + v
 	}
 	padding := m.width - valWidth
-	if cursorIdx >= len(visible) {
+	if cursorIdx >= len(visible) && m.fakeCursor {
 		padding-- // cursor(" ") already occupies 1 cell
 	}
 	if padding < 0 {
@@ -284,6 +277,35 @@ func (m InputField) View() string {
 	v += styleText(strings.Repeat(" ", padding))
 
 	return m.promptRender() + v
+}
+
+// renderText renders the visible text, optionally painting the fake block
+// cursor at cursorIdx (when fakeCursor is enabled). With fakeCursor off the
+// text renders plain and the caller positions the real terminal cursor.
+func (m InputField) renderText(styleText func(strs ...string) string, visible []rune, cursorIdx int) string {
+	var v string
+	switch {
+	case m.focused && cursorIdx < len(visible):
+		pre := string(visible[:cursorIdx])
+		at := string(visible[cursorIdx])
+		post := string(visible[cursorIdx+1:])
+		v += styleText(pre)
+		if m.fakeCursor {
+			v += m.cursorRender(at)
+		} else {
+			v += styleText(at)
+		}
+		v += styleText(post)
+	case m.focused:
+		v += styleText(string(visible))
+		if m.fakeCursor {
+			v += m.cursorRender(" ")
+		}
+	default:
+		// Blurred: render text without cursor
+		v += styleText(string(visible))
+	}
+	return v
 }
 
 // cursorRender renders a character with the cursor background color.
@@ -347,7 +369,7 @@ func (m InputField) buildVisibleText() (visible []rune, cursorIdx int) {
 func (m InputField) placeholderView() string {
 	styles := m.activeStyle()
 	var v string
-	if m.focused {
+	if m.focused && m.fakeCursor {
 		v = m.cursorRender(" ")
 	} else {
 		v = " "
@@ -391,6 +413,38 @@ func (m InputField) Value() string { return string(m.value) }
 
 // CursorPos returns the cursor position (in runes) within the current value.
 func (m InputField) CursorPos() int { return m.pos }
+
+// WithFakeCursor toggles the painted block cursor. When false, the component
+// renders no cursor cell; the caller positions the real terminal cursor via
+// tea.View.Cursor (used by the main prompt input).
+func (m InputField) WithFakeCursor(fake bool) InputField {
+	m.fakeCursor = fake
+	return m
+}
+
+// CursorCell returns the cursor's line index within the value (0-based) and
+// its cell offset within that line after horizontal scrolling (0 = leftmost
+// visible cell of the line). The cell offset is the position where the
+// cursor block should be rendered — i.e. the first cell of the character
+// under the cursor (or the cell after the last character at end-of-line).
+func (m InputField) CursorCell() (line, cell int) {
+	if len(m.value) == 0 {
+		return 0, 0
+	}
+	lineStart, _ := m.currentLine(m.pos)
+	line = 0
+	for _, r := range m.value[:lineStart] {
+		if r == '\n' {
+			line++
+		}
+	}
+	relPos := m.pos - lineStart // cursor position within the line
+	cell = runesWidth(m.value[lineStart:lineStart+relPos]) - m.offset
+	if cell < 0 {
+		cell = 0
+	}
+	return line, cell
+}
 
 // currentLine returns the start and end indices (exclusive) of the line
 // containing the given position. An empty line (just \n) has start == end.
