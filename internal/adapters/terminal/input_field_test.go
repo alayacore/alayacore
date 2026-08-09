@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 )
 
 func TestInputFieldInsertion(t *testing.T) {
@@ -162,43 +161,15 @@ func TestInputFieldCursorCell(t *testing.T) {
 	}
 }
 
-// TestInputFieldFakeCursorToggle verifies WithFakeCursor toggles the painted
-// block cursor: on by default (overlays), off for the main prompt input.
-func TestInputFieldFakeCursorToggle(t *testing.T) {
-	f := NewInputField()
-	f = f.WithStyles(
-		inputFieldStyle{Prompt: lipgloss.NewStyle()},
-		inputFieldStyle{},
-		lipgloss.Color("#00ff00"),
-	)
-	f = f.WithValue("hi").CursorEnd()
-
-	withFake := f.View()
-	if !strings.Contains(withFake, "\x1b[48") {
-		t.Error("default view should paint the fake cursor (background color)")
-	}
-
-	withoutFake := f.WithFakeCursor(false).View()
-	if strings.Contains(withoutFake, "\x1b[48") {
-		t.Error("view with fake cursor disabled should not paint a background cursor")
-	}
-	if withFake == withoutFake {
-		t.Error("fake cursor on/off should produce different views")
-	}
-
-	// Blurred rendering never paints the fake cursor, with or without the flag.
-	if strings.Contains(f.Blur().View(), "\x1b[48") {
-		t.Error("blurred view should not paint a cursor")
-	}
-}
-
-// TestInputFieldViewCursorPosition verifies that View renders the cursor
-// at the correct position. This test caught a bug where buildVisibleText
-// was returning cursorIdx=0 because the second loop corrupted startIdx.
+// TestInputFieldViewCursorPosition verifies that buildVisibleText returns the
+// correct visible portion of the line. This test caught a bug where
+// buildVisibleText was returning cursorIdx=0 because the second loop
+// corrupted startIdx (cursorIdx is gone now, but the visible-text logic
+// remains).
 func TestInputFieldViewCursorPosition(t *testing.T) {
 	f := NewInputField()
 	f.WithWidth(20)
-	f.Focus() // needed to initialize cursorRender
+	f.Focus()
 
 	// Type "hello" through Update calls
 	keys := []string{"h", "e", "l", "l", "o"}
@@ -212,15 +183,19 @@ func TestInputFieldViewCursorPosition(t *testing.T) {
 		t.Fatalf("setup failed: value=%q pos=%d", f.Value(), f.pos)
 	}
 
-	// buildVisibleText should return cursorIdx=5 (not 0!)
-	vis, cursorIdx := f.buildVisibleText()
-	if cursorIdx != 5 {
-		t.Errorf("buildVisibleText cursorIdx=%d, want 5", cursorIdx)
-	}
+	vis := f.buildVisibleText()
 	if string(vis) != "hello" {
 		t.Errorf("buildVisibleText visible=%q, want 'hello'", string(vis))
 	}
 
-	// View() should render correctly
-	_ = f.View()
+	// View() should render the text without any painted cursor cell.
+	view := f.View()
+	if strings.Contains(view, "\x1b[48") {
+		t.Error("input view must not paint a cursor cell (background color)")
+	}
+
+	// Blurred rendering must also be cursor-free.
+	if strings.Contains(f.Blur().View(), "\x1b[48") {
+		t.Error("blurred view must not paint a cursor cell")
+	}
 }

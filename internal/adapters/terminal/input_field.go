@@ -5,7 +5,6 @@ package terminal
 // visible area shows only the line containing the cursor.
 
 import (
-	"image/color"
 	"slices"
 	"strings"
 	"unicode"
@@ -28,15 +27,8 @@ type InputField struct {
 	Placeholder string
 	focused     bool
 
-	// fakeCursor renders the painted block cursor (background-colored cell).
-	// When false, no cursor cell is painted and the caller is expected to
-	// position the real terminal cursor via tea.View.Cursor (used by the
-	// main prompt input; overlays keep the painted cursor for now).
-	fakeCursor bool
-
 	styleFocused inputFieldStyle
 	styleBlurred inputFieldStyle
-	cursorColor  color.Color
 }
 
 type inputFieldStyle struct {
@@ -48,11 +40,10 @@ type inputFieldStyle struct {
 // NewInputField creates a new InputField with default settings.
 func NewInputField() InputField {
 	return InputField{
-		width:      20,
-		Prompt:     "> ",
-		focused:    true,
-		goalCol:    -1,
-		fakeCursor: true,
+		width:   20,
+		Prompt:  "> ",
+		focused: true,
+		goalCol: -1,
 	}
 }
 
@@ -252,10 +243,10 @@ func (m InputField) View() string {
 	styles := m.activeStyle()
 	styleText := styles.Text.Inline(true).Render
 
-	visible, cursorIdx := m.buildVisibleText()
+	visible := m.buildVisibleText()
 
 	var v string
-	v += m.renderText(styleText, visible, cursorIdx)
+	v += styleText(string(visible))
 
 	if !m.focused {
 		return m.promptRender() + v
@@ -268,9 +259,6 @@ func (m InputField) View() string {
 		return m.promptRender() + v
 	}
 	padding := m.width - valWidth
-	if cursorIdx >= len(visible) && m.fakeCursor {
-		padding-- // cursor(" ") already occupies 1 cell
-	}
 	if padding < 0 {
 		padding = 0
 	}
@@ -279,58 +267,23 @@ func (m InputField) View() string {
 	return m.promptRender() + v
 }
 
-// renderText renders the visible text, optionally painting the fake block
-// cursor at cursorIdx (when fakeCursor is enabled). With fakeCursor off the
-// text renders plain and the caller positions the real terminal cursor.
-func (m InputField) renderText(styleText func(strs ...string) string, visible []rune, cursorIdx int) string {
-	var v string
-	switch {
-	case m.focused && cursorIdx < len(visible):
-		pre := string(visible[:cursorIdx])
-		at := string(visible[cursorIdx])
-		post := string(visible[cursorIdx+1:])
-		v += styleText(pre)
-		if m.fakeCursor {
-			v += m.cursorRender(at)
-		} else {
-			v += styleText(at)
-		}
-		v += styleText(post)
-	case m.focused:
-		v += styleText(string(visible))
-		if m.fakeCursor {
-			v += m.cursorRender(" ")
-		}
-	default:
-		// Blurred: render text without cursor
-		v += styleText(string(visible))
-	}
-	return v
-}
-
-// cursorRender renders a character with the cursor background color.
-func (m InputField) cursorRender(s string) string {
-	return lipgloss.NewStyle().Background(m.cursorColor).Render(s)
-}
-
 // promptRender renders the prompt string.
 func (m InputField) promptRender() string {
 	styles := m.activeStyle()
 	return styles.Prompt.Inline(true).Render(m.Prompt)
 }
 
-// buildVisibleText returns the visible portion of the current line as runes
-// and the cursor's character index within them.
-func (m InputField) buildVisibleText() (visible []rune, cursorIdx int) {
+// buildVisibleText returns the visible portion of the current line as runes,
+// respecting the horizontal scroll offset and the field width.
+func (m InputField) buildVisibleText() []rune {
 	if len(m.value) == 0 {
-		return nil, 0
+		return nil
 	}
 	lineStart, lineEnd := m.currentLine(m.pos)
 	line := m.value[lineStart:lineEnd]
-	relPos := m.pos - lineStart // cursor position within the line
 
 	if len(line) == 0 {
-		return nil, 0
+		return nil
 	}
 	// Find start index by cell offset within the line.
 	startIdx := 0
@@ -358,22 +311,12 @@ func (m InputField) buildVisibleText() (visible []rune, cursorIdx int) {
 		vis = append(vis, line[i])
 		cells += w
 	}
-	// Compute cursor character index within visible.
-	cursorChars := 0
-	for i := visibleStart; i < len(line) && i < relPos; i++ {
-		cursorChars++
-	}
-	return vis, cursorChars
+	return vis
 }
 
 func (m InputField) placeholderView() string {
 	styles := m.activeStyle()
-	var v string
-	if m.focused && m.fakeCursor {
-		v = m.cursorRender(" ")
-	} else {
-		v = " "
-	}
+	v := " "
 	placeholder := m.Placeholder
 	if m.width > 0 && ansi.StringWidth(placeholder) > m.width-1 {
 		placeholder = truncatePlaceholder(placeholder, m.width-1)
@@ -413,14 +356,6 @@ func (m InputField) Value() string { return string(m.value) }
 
 // CursorPos returns the cursor position (in runes) within the current value.
 func (m InputField) CursorPos() int { return m.pos }
-
-// WithFakeCursor toggles the painted block cursor. When false, the component
-// renders no cursor cell; the caller positions the real terminal cursor via
-// tea.View.Cursor (used by the main prompt input).
-func (m InputField) WithFakeCursor(fake bool) InputField {
-	m.fakeCursor = fake
-	return m
-}
 
 // CursorCell returns the cursor's line index within the value (0-based) and
 // its cell offset within that line after horizontal scrolling (0 = leftmost
@@ -628,10 +563,9 @@ func (m InputField) WithWidth(w int) InputField {
 	return m.ensureCursorVisible()
 }
 
-func (m InputField) WithStyles(focused, blurred inputFieldStyle, cursorColor color.Color) InputField {
+func (m InputField) WithStyles(focused, blurred inputFieldStyle) InputField {
 	m.styleFocused = focused
 	m.styleBlurred = blurred
-	m.cursorColor = cursorColor
 	return m
 }
 

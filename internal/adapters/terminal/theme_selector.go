@@ -333,3 +333,9 @@ func (ts ThemeSelector) RenderOverlay(baseContent string, screenWidth, screenHei
 	}
 	return renderOverlay(baseContent, ts.View().Content, screenWidth, screenHeight, 0)
 }
+
+// CursorPosition returns the screen position of the filter input's real
+// terminal cursor when the overlay is open and the filter has focus.
+func (ts ThemeSelector) CursorPosition(screenWidth, screenHeight int) (x, y int, ok bool) {
+	return ts.FilteredListCore.CursorPosition(ts.View().Content, screenWidth, screenHeight)
+}

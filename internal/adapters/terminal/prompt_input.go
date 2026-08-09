@@ -35,12 +35,6 @@ func NewPromptInput(styles *Styles) PromptInput {
 	input.Placeholder = "Enter your prompt..."
 	input = input.Focus()
 	input.Prompt = ""
-	// The main prompt input uses the real terminal cursor (positioned by
-	// Terminal.View via tea.View.Cursor) instead of the painted block cursor.
-	// A visible real cursor is required for IME on-the-spot preedit rendering
-	// and stable candidate-window anchoring. Overlay filter inputs keep the
-	// painted cursor for now (fake cursor stays enabled).
-	input = input.WithFakeCursor(false)
 	input = input.WithWidth(max(0, DefaultWidth-BorderInnerPadding))
 
 	return PromptInput{
@@ -128,7 +122,6 @@ func (m PromptInput) updateInputStyles() InputField {
 			Text:        lipgloss.NewStyle().Foreground(m.styles.ColorDim).Bold(true),
 			Placeholder: lipgloss.NewStyle().Foreground(m.styles.ColorDim),
 		},
-		m.styles.CursorColor,
 	)
 }
 

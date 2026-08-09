@@ -455,6 +455,12 @@ func (ms ModelSelector) RenderOverlay(baseContent string, screenWidth, screenHei
 	return renderOverlay(baseContent, ms.View().Content, screenWidth, screenHeight, 0)
 }
 
+// CursorPosition returns the screen position of the filter input's real
+// terminal cursor when the overlay is open and the filter has focus.
+func (ms ModelSelector) CursorPosition(screenWidth, screenHeight int) (x, y int, ok bool) {
+	return ms.FilteredListCore.CursorPosition(ms.View().Content, screenWidth, screenHeight)
+}
+
 func (ms ModelSelector) updateFilteredModels() ModelSelector {
 	search := ms.FilterInput.Value()
 	if search == ms.lastFilterValue {

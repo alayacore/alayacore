@@ -456,3 +456,9 @@ func (hw HelpWindow) RenderOverlay(baseContent string, screenWidth, screenHeight
 	}
 	return renderOverlay(baseContent, hw.View().Content, screenWidth, screenHeight, 0)
 }
+
+// CursorPosition returns the screen position of the filter input's real
+// terminal cursor when the overlay is open and the filter has focus.
+func (hw HelpWindow) CursorPosition(screenWidth, screenHeight int) (x, y int, ok bool) {
+	return hw.FilteredListCore.CursorPosition(hw.View().Content, screenWidth, screenHeight)
+}

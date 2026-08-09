@@ -34,8 +34,7 @@ func newTestTerminal() Terminal {
 }
 
 // TestTerminalViewRealCursor verifies View positions the real terminal cursor
-// at the prompt input's logical cursor when the input has focus, and hides it
-// when an overlay is open or the display pane has focus.
+// at the prompt input's logical cursor when the input has focus.
 func TestTerminalViewRealCursor(t *testing.T) {
 	m := newTestTerminal()
 
@@ -73,7 +72,7 @@ func TestTerminalViewRealCursor(t *testing.T) {
 }
 
 // TestTerminalViewRealCursorHiddenStates verifies the real cursor is hidden
-// when the input is not the active focus target.
+// when no text input has focus.
 func TestTerminalViewRealCursorHiddenStates(t *testing.T) {
 	// Display pane focused: input blurred → no cursor.
 	m := newTestTerminal()
@@ -82,10 +81,57 @@ func TestTerminalViewRealCursorHiddenStates(t *testing.T) {
 		t.Fatal("expected no cursor when display pane is focused")
 	}
 
-	// Overlay open: input blurred → no cursor.
+	// Overlay open with list (not filter) focused → no cursor.
 	m = newTestTerminal()
 	m = m.openModelSelector()
+	m.modelSelector.FilteredListCore = m.modelSelector.HandleTabKey() // focus moves to the list
 	if v := m.View(); v.Cursor != nil {
-		t.Fatal("expected no cursor when an overlay is open")
+		t.Fatal("expected no cursor when overlay list is focused")
+	}
+}
+
+// TestTerminalViewOverlayCursor verifies the real cursor moves into the
+// focused overlay filter box and follows the filter text.
+func TestTerminalViewOverlayCursor(t *testing.T) {
+	m := newTestTerminal()
+	m = m.openModelSelector() // filter input focused by default
+
+	// Expected: box origin (renderOverlay formula) + left border/padding (2)
+	// + prompt "/ " (2) + cell (0) horizontally; + title/border (2) vertically.
+	box := m.modelSelector.View().Content
+	x0, y0 := overlayOrigin(box, 80, 24)
+	v := m.View()
+	if v.Cursor == nil {
+		t.Fatal("expected real cursor in overlay filter when filter is focused")
+	}
+	if v.Cursor.X != x0+4 || v.Cursor.Y != y0+2 {
+		t.Fatalf("overlay cursor: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0+4, y0+2)
+	}
+
+	// Typing in the filter moves the cursor right by the text width.
+	m.modelSelector.FilterInput = m.modelSelector.FilterInput.WithValue("gpt4").CursorEnd()
+	v = m.View()
+	if v.Cursor.X != x0+4+4 || v.Cursor.Y != y0+2 {
+		t.Fatalf("overlay cursor with text: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0+4+4, y0+2)
+	}
+}
+
+// TestTerminalViewThemeOverlayCursor smoke-tests the same wiring through the
+// theme selector (each overlay delegates to FilteredListCore.CursorPosition).
+func TestTerminalViewThemeOverlayCursor(t *testing.T) {
+	m := newTestTerminal()
+	// Open the theme selector directly: openThemeSelector requires a
+	// themeManager, which newTestTerminal doesn't set up.
+	m.themeSelector = m.themeSelector.Open(nil, "")
+	m.input = m.input.Blur()
+
+	box := m.themeSelector.View().Content
+	x0, y0 := overlayOrigin(box, 80, 24)
+	v := m.View()
+	if v.Cursor == nil {
+		t.Fatal("expected real cursor in theme selector filter")
+	}
+	if v.Cursor.X != x0+4 || v.Cursor.Y != y0+2 {
+		t.Fatalf("theme overlay cursor: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0+4, y0+2)
 	}
 }

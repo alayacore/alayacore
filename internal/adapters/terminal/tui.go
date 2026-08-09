@@ -771,14 +771,15 @@ func (m Terminal) View() tea.View {
 	v.AltScreen = true
 	v.ReportFocus = true
 
-	// Position the real terminal cursor at the prompt input's logical cursor
-	// when the input has focus and no overlay is open. The main input renders
-	// without a painted block cursor (fake cursor off), and a visible real
-	// cursor is required for IME on-the-spot preedit rendering and stable
-	// candidate-window anchoring. The real cursor stays hidden while an
-	// overlay is open or the display pane has focus — mirroring the painted
-	// cursor's absence in those states.
-	if m.input.IsFocused() && !m.isBlocked() {
+	// Position the real terminal cursor at the active text input: the focused
+	// overlay filter box when one is open, otherwise the prompt input. A
+	// visible real cursor is required for IME on-the-spot preedit rendering
+	// and stable candidate-window anchoring. The real cursor stays hidden
+	// when neither input has focus (display pane focused, app blurred, or
+	// overlays without a text input).
+	if x, y, ok := m.overlayCursorPosition(); ok {
+		v.Cursor = m.newCursor(x, y)
+	} else if m.input.IsFocused() && !m.isBlocked() {
 		if line, cell := m.input.CursorCell(); line >= 0 {
 			// y: display area occupies [0, displayH); the input box's top
 			// border sits at displayH; content starts after the border; then
@@ -790,15 +791,38 @@ func (m Terminal) View() tea.View {
 			// x: left border (1) + left padding (1) + prompt (empty for the
 			// main input) + cell offset.
 			x := 2 + cell
-			cur := tea.NewCursor(x, y)
-			cur.Shape = tea.CursorBlock
-			cur.Blink = false
-			cur.Color = m.styles.CursorColor
-			v.Cursor = cur
+			v.Cursor = m.newCursor(x, y)
 		}
 	}
 
 	return v
+}
+
+// newCursor returns a steady block cursor in the theme's cursor color at the
+// given screen position (cells relative to the frame's top-left corner).
+func (m Terminal) newCursor(x, y int) *tea.Cursor {
+	cur := tea.NewCursor(x, y)
+	cur.Shape = tea.CursorBlock
+	cur.Blink = false
+	cur.Color = m.styles.CursorColor
+	return cur
+}
+
+// overlayCursorPosition returns the screen position of the active overlay's
+// filter input cursor. ok is true only when an overlay with a text input is
+// open and its filter box has focus (see FilteredListCore.CursorPosition).
+func (m Terminal) overlayCursorPosition() (x, y int, ok bool) {
+	switch {
+	case m.modelSelector.IsOpen():
+		return m.modelSelector.CursorPosition(m.windowWidth, m.windowHeight)
+	case m.themeSelector.IsOpen():
+		return m.themeSelector.CursorPosition(m.windowWidth, m.windowHeight)
+	case m.helpWindow.IsOpen():
+		return m.helpWindow.CursorPosition(m.windowWidth, m.windowHeight)
+	case m.attachmentWindow.IsOpen():
+		return m.attachmentWindow.CursorPosition(m.windowWidth, m.windowHeight)
+	}
+	return 0, 0, false
 }
 
 // renderLoadingView renders the loading screen shown while the session is

@@ -22,6 +22,7 @@ import (
 	"image/color"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // FilteredListState represents the current state of a filtered list.
@@ -77,6 +78,25 @@ func (fl FilteredListCore) WithFocus(hasFocus bool) FilteredListCore {
 	return fl.updateFilterInputStyles()
 }
 
+// CursorPosition returns the screen position of the filter input's real
+// terminal cursor for an overlay rendered via renderOverlay with the given
+// box content. ok is false when the list is closed, the app is unfocused,
+// or the list (not the filter) has focus — the real cursor should be hidden
+// in those states.
+//
+// Box layout: title (line 0), filter box top border (line 1), filter input
+// content (line 2); content starts after left border + left padding (2 cells).
+func (fl FilteredListCore) CursorPosition(box string, screenWidth, screenHeight int) (x, y int, ok bool) {
+	if fl.State == FilteredListClosed || !fl.HasFocus || !fl.FilterInputFocused {
+		return 0, 0, false
+	}
+	x0, y0 := overlayOrigin(box, screenWidth, screenHeight)
+	_, cell := fl.FilterInput.CursorCell()
+	x = x0 + 2 + ansi.StringWidth(fl.FilterInput.Prompt) + cell
+	y = y0 + 2
+	return x, y, true
+}
+
 // updateFilterInputStyles applies current styles to the filter input.
 func (fl FilteredListCore) updateFilterInputStyles() FilteredListCore {
 	fl.FilterInput = fl.FilterInput.WithStyles(
@@ -90,7 +110,6 @@ func (fl FilteredListCore) updateFilterInputStyles() FilteredListCore {
 			Text:        fl.Styles.System,
 			Placeholder: fl.Styles.System,
 		},
-		fl.Styles.CursorColor,
 	)
 	return fl
 }
