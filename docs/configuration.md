@@ -179,7 +179,7 @@ fold_indicator: "⁝"
 | `error` | Errors |
 | `success` | Success messages, completed states |
 | `selection` | Selected items in lists, cursor border highlight |
-| `cursor` | Cursor indicator |
+| `cursor` | Input cursor color — rendered as the real terminal cursor in input fields (also anchors IME preedit/candidate windows) |
 | `tool` | Tool call headers/labels |
 | `added` | Diff additions |
 | `removed` | Diff removals |

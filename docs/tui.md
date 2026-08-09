@@ -41,6 +41,15 @@ AlayaCore's terminal UI is built with [Bubble Tea](https://github.com/charmbrace
 | `:` | Switch to input with `:` prefix (command mode) |
 | `Space` | Toggle window fold (expand/collapse) |
 
+### Input Cursor & IME
+
+The prompt input (and overlay filter boxes) render the **real terminal cursor**
+(steady block in the theme's `cursor` color) instead of a painted block. This
+keeps input behavior identical to a shell prompt: Chinese/Japanese IME
+composition draws its inline preedit directly in the input field and the
+candidate window anchors to the input line, so it does not jump around while
+streaming output is being rendered.
+
 ## Multi-Modal Attachments
 
 AlayaCore supports multi-modal input — attaching images, audio, video, or documents alongside text. Attachments are sent as TLV frames **before** the text frame, all within a single `TagUserEnd`-delimited message:

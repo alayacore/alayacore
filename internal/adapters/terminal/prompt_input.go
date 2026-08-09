@@ -218,11 +218,11 @@ func (m PromptInput) CursorPos() int {
 	return m.input.CursorPos()
 }
 
-// CursorCell returns the cursor's line index within the input text area
-// (0-based, input text lines only — excludes attachments and the separator
-// line above the text) and its cell offset within that line (0 = leftmost
-// visible cell). Used by Terminal.View to position the real terminal cursor.
-func (m PromptInput) CursorCell() (line, cell int) {
+// CursorCell returns the cursor's cell offset within the input text area
+// (0 = leftmost visible cell of the current line). Used by Terminal.View to
+// position the real terminal cursor. The input renders a single line, so the
+// cursor's vertical position is independent of the value's line index.
+func (m PromptInput) CursorCell() int {
 	return m.input.CursorCell()
 }
 

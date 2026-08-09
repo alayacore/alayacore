@@ -89,48 +89,49 @@ func TestInputFieldCJKInsertion(t *testing.T) {
 	}
 }
 
-// TestInputFieldCursorCell verifies CursorCell returns the correct line and
-// cell offset for empty values, ASCII, CJK wide characters, multiline values,
+// TestInputFieldCursorCell verifies CursorCell returns the correct cell
+// offset for empty values, ASCII, CJK wide characters, multiline values,
 // and horizontally scrolled lines.
 func TestInputFieldCursorCell(t *testing.T) {
-	// Empty value: cursor at (0, 0).
+	// Empty value: cursor at cell 0.
 	f := NewInputField()
-	if line, cell := f.CursorCell(); line != 0 || cell != 0 {
-		t.Fatalf("empty: got (%d,%d), want (0,0)", line, cell)
+	if cell := f.CursorCell(); cell != 0 {
+		t.Fatalf("empty: got cell %d, want 0", cell)
 	}
 
 	// ASCII text, cursor at end.
 	f = NewInputField()
 	f = f.WithValue("hello").CursorEnd()
-	if line, cell := f.CursorCell(); line != 0 || cell != 5 {
-		t.Fatalf("hello end: got (%d,%d), want (0,5)", line, cell)
+	if cell := f.CursorCell(); cell != 5 {
+		t.Fatalf("hello end: got cell %d, want 5", cell)
 	}
 
 	// CJK wide characters occupy 2 cells each.
 	f = NewInputField()
 	f = f.WithValue("你好").CursorEnd()
-	if line, cell := f.CursorCell(); line != 0 || cell != 4 {
-		t.Fatalf("你好 end: got (%d,%d), want (0,4)", line, cell)
+	if cell := f.CursorCell(); cell != 4 {
+		t.Fatalf("你好 end: got cell %d, want 4", cell)
 	}
 
 	// Cursor in the middle of mixed ASCII/CJK content (before the wide rune).
 	f = NewInputField()
 	f = f.WithValue("a你b")
 	f = f.WithCursorPos(1) // between 'a' (cell 1) and '你' (cells 1-2)
-	if line, cell := f.CursorCell(); line != 0 || cell != 1 {
-		t.Fatalf("a你b pos1: got (%d,%d), want (0,1)", line, cell)
+	if cell := f.CursorCell(); cell != 1 {
+		t.Fatalf("a你b pos1: got cell %d, want 1", cell)
 	}
 	// After the wide rune: cell = 1 + 2 = 3.
 	f = f.WithCursorPos(2)
-	if line, cell := f.CursorCell(); line != 0 || cell != 3 {
-		t.Fatalf("a你b pos2: got (%d,%d), want (0,3)", line, cell)
+	if cell := f.CursorCell(); cell != 3 {
+		t.Fatalf("a你b pos2: got cell %d, want 3", cell)
 	}
 
-	// Multiline: cursor on the second line.
+	// Multiline: cursor on the second line — the displayed line is the
+	// current line, so the cell offset is relative to that line only.
 	f = NewInputField()
 	f = f.WithValue("first\nsecond").CursorEnd()
-	if line, cell := f.CursorCell(); line != 1 || cell != 6 {
-		t.Fatalf("multiline end: got (%d,%d), want (1,6)", line, cell)
+	if cell := f.CursorCell(); cell != 6 {
+		t.Fatalf("multiline end: got cell %d, want 6", cell)
 	}
 
 	// Horizontal scroll: long line in a narrow viewport, cursor at end.
@@ -143,21 +144,19 @@ func TestInputFieldCursorCell(t *testing.T) {
 		t.Fatal("setup failed: expected horizontal scroll offset > 0")
 	}
 	wantCell := 10 - f.offset
-	line, cell := f.CursorCell()
-	if line != 0 || cell != wantCell {
-		t.Fatalf("scrolled end: got (%d,%d), want (0,%d)", line, cell, wantCell)
+	if cell := f.CursorCell(); cell != wantCell {
+		t.Fatalf("scrolled end: got cell %d, want %d", cell, wantCell)
 	}
 
 	// Horizontal scroll with a wide char before the cursor.
 	f = NewInputField()
 	f = f.WithWidth(4)
 	f = f.WithValue("abcdefgh").CursorEnd()
-	f = f.WithCursorPos(2) // after 'a','b' — but cursor visible? ensureCursorVisible adjusts
+	f = f.WithCursorPos(2) // after 'a','b' — ensureCursorVisible adjusts
 	f = f.ensureCursorVisible()
-	line, cell = f.CursorCell()
 	wantCell = runesWidth([]rune("ab")) - f.offset
-	if cell != wantCell {
-		t.Fatalf("scrolled mid: got (%d,%d), want (0,%d)", line, cell, wantCell)
+	if cell := f.CursorCell(); cell != wantCell {
+		t.Fatalf("scrolled mid: got cell %d, want %d", cell, wantCell)
 	}
 }
 

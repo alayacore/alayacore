@@ -91,7 +91,7 @@ func (fl FilteredListCore) CursorPosition(box string, screenWidth, screenHeight 
 		return 0, 0, false
 	}
 	x0, y0 := overlayOrigin(box, screenWidth, screenHeight)
-	_, cell := fl.FilterInput.CursorCell()
+	cell := fl.FilterInput.CursorCell()
 	x = x0 + 2 + ansi.StringWidth(fl.FilterInput.Prompt) + cell
 	y = y0 + 2
 	return x, y, true

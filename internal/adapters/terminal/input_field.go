@@ -357,28 +357,23 @@ func (m InputField) Value() string { return string(m.value) }
 // CursorPos returns the cursor position (in runes) within the current value.
 func (m InputField) CursorPos() int { return m.pos }
 
-// CursorCell returns the cursor's line index within the value (0-based) and
-// its cell offset within that line after horizontal scrolling (0 = leftmost
-// visible cell of the line). The cell offset is the position where the
-// cursor block should be rendered — i.e. the first cell of the character
+// CursorCell returns the cursor's cell offset within the currently displayed
+// line after horizontal scrolling (0 = leftmost visible cell of the line).
+// The input field renders only the current line, so the screen y of the
+// cursor never depends on the value's line index. The cell offset is where
+// the cursor block should be rendered — i.e. the first cell of the character
 // under the cursor (or the cell after the last character at end-of-line).
-func (m InputField) CursorCell() (line, cell int) {
+func (m InputField) CursorCell() int {
 	if len(m.value) == 0 {
-		return 0, 0
+		return 0
 	}
 	lineStart, _ := m.currentLine(m.pos)
-	line = 0
-	for _, r := range m.value[:lineStart] {
-		if r == '\n' {
-			line++
-		}
-	}
 	relPos := m.pos - lineStart // cursor position within the line
-	cell = runesWidth(m.value[lineStart:lineStart+relPos]) - m.offset
+	cell := runesWidth(m.value[lineStart:lineStart+relPos]) - m.offset
 	if cell < 0 {
 		cell = 0
 	}
-	return line, cell
+	return cell
 }
 
 // currentLine returns the start and end indices (exclusive) of the line
