@@ -11,7 +11,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 	rw "github.com/mattn/go-runewidth"
 )
 
@@ -305,8 +304,9 @@ func (m InputField) View() string {
 	}
 
 	// When focused, pad with spaces to fill the input width.
-	visibleStr := string(visible)
-	valWidth := ansi.StringWidth(visibleStr)
+	// Width comes from the same source as the truncation/cursor math
+	// (runesWidth), so padding never disagrees with the rendered text.
+	valWidth := runesWidth(visible)
 	if m.width <= 0 || valWidth >= m.width {
 		return m.promptRender() + v
 	}
@@ -354,14 +354,17 @@ func (m InputField) placeholderView() string {
 	styles := m.activeStyle()
 	v := " "
 	placeholder := m.Placeholder
-	if m.width > 0 && ansi.StringWidth(placeholder) > m.width-1 {
+	// Width from the same source as truncatePlaceholder (runesWidth).
+	if m.width > 0 && runesWidth([]rune(placeholder)) > m.width-1 {
 		placeholder = truncatePlaceholder(placeholder, m.width-1)
 	}
 	v += styles.Placeholder.Inline(true).Render(placeholder)
 	if !m.focused {
 		return m.promptRender() + v
 	}
-	valWidth := ansi.StringWidth(v)
+	// v contains styled (ANSI) text; measure the plain pieces instead:
+	// the leading space plus the (already truncated) placeholder.
+	valWidth := 1 + runesWidth([]rune(placeholder))
 	if m.width <= 0 || valWidth >= m.width {
 		return m.promptRender() + v
 	}

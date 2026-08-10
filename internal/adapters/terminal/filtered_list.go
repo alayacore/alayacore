@@ -22,7 +22,6 @@ import (
 	"image/color"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // FilteredListState represents the current state of a filtered list.
@@ -92,7 +91,9 @@ func (fl FilteredListCore) CursorPosition(box string, screenWidth, screenHeight 
 	}
 	x0, y0 := overlayOrigin(box, screenWidth, screenHeight)
 	cell := fl.FilterInput.CursorCell()
-	x = x0 + 2 + ansi.StringWidth(fl.FilterInput.Prompt) + cell
+	// Prompt width from the same source as CursorCell (runesWidth), so the
+	// real cursor lands exactly after the rendered prompt + filter text.
+	x = x0 + 2 + runesWidth([]rune(fl.FilterInput.Prompt)) + cell
 	y = y0 + 2
 	return x, y, true
 }

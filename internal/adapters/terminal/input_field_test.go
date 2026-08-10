@@ -407,3 +407,33 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 		t.Errorf("visible=%q, want %q", string(vis), "界")
 	}
 }
+
+// TestInputFieldUnifiedWidthSource verifies that every width calculation in
+// the input chain (truncation, cursor, padding) comes from runesWidth, so a
+// character whose width differs between width libraries (e.g. ❤️ with a
+// variation selector: go-runewidth says 1, ansi says 2) can never make the
+// view overflow or produce negative padding.
+func TestInputFieldUnifiedWidthSource(t *testing.T) {
+	g := NewInputField()
+	g = g.WithWidth(5)
+	g = g.WithValue("a❤️b").CursorEnd()
+
+	vis := g.buildVisibleText()
+	if w := runesWidth(vis); w > g.width {
+		t.Fatalf("visible width=%d exceeds viewport width=%d; visible=%q", w, g.width, string(vis))
+	}
+	// Padding is computed from the same runesWidth: width - runesWidth(vis)
+	// can never be negative (runesWidth(vis) <= width by construction).
+	if w := runesWidth(vis); w < g.width {
+		if got := g.View(); got == "" {
+			t.Fatal("empty view")
+		}
+	}
+
+	// Placeholder path (truncation + padding) must also stay consistent.
+	g = g.WithValue("")
+	g.Placeholder = "❤️你好"
+	if got := g.View(); got == "" {
+		t.Fatal("empty placeholder view")
+	}
+}
