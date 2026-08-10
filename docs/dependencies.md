@@ -106,7 +106,7 @@ Also used indirectly by Lip Gloss v2 for correct emoji/combining width handling;
 
 ### `github.com/mattn/go-runewidth` — transitive dependency only
 
-Previously the per-rune width source of the input field; the input chain has moved to `uniseg` (grapheme-cluster aware, single width source). `go-runewidth` still exists in the dependency graph as a transitive dependency of `x/ansi` (used by the wrap/confirm-dialog subsystems), but no project code imports it directly anymore.
+Per-rune width lookup (O(1) table query, fast). It was the input chain's original width source, but it measures **one rune at a time** and has no knowledge of grapheme clusters: multi-rune display units are measured wrong — `❤️` (heart + variation selector) is 1 cell instead of 2, a ZWJ family emoji is 8 cells instead of 2. Wrong widths break truncation (overflow), cursor placement (off by a cell), and horizontal scrolling. The input chain therefore uses `uniseg` (grapheme-cluster aware) as its single width source; `go-runewidth` remains only as a transitive dependency of `x/ansi` (wrap/confirm-dialog subsystems) and no project code imports it directly anymore.
 
 ---
 
