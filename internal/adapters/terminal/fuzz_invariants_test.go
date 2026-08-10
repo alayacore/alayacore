@@ -18,25 +18,27 @@ import (
 //     fit in the viewport at all).
 //  4. At end of line, the cursor sits exactly after the last visible rune.
 //  5. The rendered visible text is exactly the contiguous slice of the
-//     current line starting at visibleStartCell (no drift between
+//     current line starting at the visible start (no drift between
 //     buildVisibleText and CursorCell).
+//  6. visStart is a rune index within the current line and belongs to that
+//     line (visLine): the visible start is inherently a rune boundary, so
+//     a wide character can never be split at the left edge.
 func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 	t.Helper()
 	check := func(format string, args ...any) {
-		t.Fatalf("%s\n  state: value=%q pos=%d width=%d offset=%d startCell=%d CursorCell=%d visible=%q visCells=%d\n  "+format,
-			append([]any{ctx, string(g.value), g.pos, g.width, g.offset, g.visibleStartCell(), g.CursorCell(), string(g.buildVisibleText()), runesWidth(g.buildVisibleText())}, args...)...)
-	}
-	if g.offset < 0 {
-		check("negative offset=%d", g.offset)
+		t.Fatalf("%s\n  state: value=%q pos=%d width=%d visLine=%d visStart=%d CursorCell=%d visible=%q visCells=%d\n  "+format,
+			append([]any{ctx, string(g.value), g.pos, g.width, g.visLine, g.visStart, g.CursorCell(), string(g.buildVisibleText()), runesWidth(g.buildVisibleText())}, args...)...)
 	}
 	if g.pos < 0 || g.pos > len(g.value) {
 		check("pos=%d out of range [0,%d]", g.pos, len(g.value))
 	}
-	// The scroll offset must always be a rune boundary of the current line
-	// (or past its end): a mid-rune offset would split a wide character at
-	// the left edge of the viewport.
-	if g.visibleStartCell() != g.offset {
-		check("offset=%d is not a rune boundary (visibleStartCell=%d)", g.offset, g.visibleStartCell())
+	lineStart, lineEnd := g.currentLine(g.pos)
+	lineLen := lineEnd - lineStart
+	if g.visLine != lineStart {
+		check("visLine=%d != lineStart=%d (stale visible start)", g.visLine, lineStart)
+	}
+	if g.visStart < 0 || g.visStart > lineLen {
+		check("visStart=%d out of range [0,%d] for line %q", g.visStart, lineLen, string(g.value[lineStart:lineEnd]))
 	}
 
 	vis := g.buildVisibleText()
@@ -66,37 +68,15 @@ func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 		check("end of line: CursorCell=%d != visible width=%d", cell, visCells)
 	}
 
-	// Invariant 5: visible text must be the exact slice starting at
-	// visibleStartCell.
-	lineStart, lineEnd := g.currentLine(g.pos)
+	// Invariant 5: visible text must be the exact slice starting at the
+	// visible start (visStart is a rune index, so it is directly usable).
+	lineStart, lineEnd = g.currentLine(g.pos)
 	line := g.value[lineStart:lineEnd]
-	startCell := g.visibleStartCell()
-	if len(line) == 0 || startCell >= runesWidth(line) {
-		if len(vis) != 0 {
-			check("startCell=%d at/past end of line %q but visible=%q", startCell, string(line), string(vis))
-		}
-		return
-	}
-	idx := -1
-	for cells, i := 0, 0; i < len(line); i++ {
-		w := rw.RuneWidth(line[i])
-		if cells == startCell {
-			idx = i
-			break
-		}
-		if cells+w > startCell {
-			idx = i
-			break
-		}
-		cells += w
-	}
-	if idx < 0 {
-		check("could not locate startCell=%d in line %q", startCell, string(line))
-	}
+	start := min(g.visStart, len(line))
 	got := string(vis)
-	want := string(line[idx : idx+len(vis)])
+	want := string(line[start : start+len(vis)])
 	if got != want {
-		check("visible text drift: got %q, want %q (slice from startCell=%d)", got, want, startCell)
+		check("visible text drift: got %q, want %q (slice from visStart=%d)", got, want, start)
 	}
 }
 
@@ -153,6 +133,17 @@ func TestInputFieldFuzzInvariants(t *testing.T) {
 					}
 					desc = fmt.Sprintf("reset %q", s)
 					g = g.WithValue(s).CursorEnd()
+					// Reference-implementation check: after replacing the
+					// value, the visible start must equal what a fresh
+					// InputField with the same width and value computes.
+					// (Without this, a stale visStart could survive when the
+					// new value coincidentally shares the old lineStart —
+					// all internal invariants would still pass.)
+					fresh := NewInputField().WithWidth(g.width).WithValue(s).CursorEnd()
+					if fresh.visStart != g.visStart || fresh.visLine != g.visLine {
+						t.Fatalf("seed=%d iter=%d: reset leaked visible start: g.visLine=%d visStart=%d, fresh visLine=%d visStart=%d (value=%q width=%d)",
+							seed, iter, g.visLine, g.visStart, fresh.visLine, fresh.visStart, s, g.width)
+					}
 				case 9: // resize
 					desc = "resize"
 					g = g.WithWidth(1 + rng.Intn(15))

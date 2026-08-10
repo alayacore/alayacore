@@ -136,15 +136,15 @@ func TestInputFieldCursorCell(t *testing.T) {
 	}
 
 	// Horizontal scroll: long line in a narrow viewport, cursor at end.
-	// CursorEnd runs ensureCursorVisible, so offset > 0 and the cell is
+	// CursorEnd runs ensureCursorVisible, so visStart > 0 and the cell is
 	// measured relative to the visible window.
 	f = NewInputField()
 	f = f.WithWidth(5)
 	f = f.WithValue("abcdefghij").CursorEnd()
-	if f.offset == 0 {
-		t.Fatal("setup failed: expected horizontal scroll offset > 0")
+	if f.visStart == 0 {
+		t.Fatal("setup failed: expected horizontal scroll (visStart > 0)")
 	}
-	wantCell := 10 - f.offset
+	wantCell := 10 - runesWidth([]rune("abcdefghij")[:f.visStart])
 	if cell := f.CursorCell(); cell != wantCell {
 		t.Fatalf("scrolled end: got cell %d, want %d", cell, wantCell)
 	}
@@ -155,7 +155,7 @@ func TestInputFieldCursorCell(t *testing.T) {
 	f = f.WithValue("abcdefgh").CursorEnd()
 	f = f.WithCursorPos(2) // after 'a','b' — ensureCursorVisible adjusts
 	f = f.ensureCursorVisible()
-	wantCell = runesWidth([]rune("ab")) - f.offset
+	wantCell = runesWidth([]rune("ab")) - runesWidth([]rune("abcdefgh")[:f.visStart])
 	if cell := f.CursorCell(); cell != wantCell {
 		t.Fatalf("scrolled mid: got cell %d, want %d", cell, wantCell)
 	}
@@ -186,8 +186,8 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 
 	vis := f.buildVisibleText()
 	if cell, want := f.CursorCell(), runesWidth(vis); cell != want {
-		t.Fatalf("cursor at end of line: CursorCell=%d but visible text width=%d — cursor is drawn %d cell(s) too early (on the last char); value=%q offset=%d visible=%q",
-			cell, want, want-cell, f.Value(), f.offset, string(vis))
+		t.Fatalf("cursor at end of line: CursorCell=%d but visible text width=%d — cursor is drawn %d cell(s) too early (on the last char); value=%q visStart=%d visible=%q",
+			cell, want, want-cell, f.Value(), f.visStart, string(vis))
 	}
 
 	// Sweep: for a range of widths and mixed ASCII/CJK sequences, the cursor
@@ -205,8 +205,8 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 			}
 			vis := g.buildVisibleText()
 			if cell, want := g.CursorCell(), runesWidth(vis); cell != want {
-				t.Fatalf("width=%d chars=%q: CursorCell=%d but visible text width=%d — cursor drawn %d cell(s) too early (on the last char); offset=%d visible=%q",
-					width, string(chars[:n]), cell, want, want-cell, g.offset, string(vis))
+				t.Fatalf("width=%d chars=%q: CursorCell=%d but visible text width=%d — cursor drawn %d cell(s) too early (on the last char); visStart=%d visible=%q",
+					width, string(chars[:n]), cell, want, want-cell, g.visStart, string(vis))
 			}
 		}
 	}
@@ -222,8 +222,8 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 		}
 		vis := g.buildVisibleText()
 		if cell, want := g.CursorCell(), runesWidth(vis); cell != want {
-			t.Fatalf("width=%d CJK: CursorCell=%d but visible text width=%d — cursor drawn %d cell(s) off; offset=%d startCell=%d visible=%q",
-				width, cell, want, want-cell, g.offset, g.visibleStartCell(), string(vis))
+			t.Fatalf("width=%d CJK: CursorCell=%d but visible text width=%d — cursor drawn %d cell(s) off; visStart=%d visible=%q",
+				width, cell, want, want-cell, g.visStart, string(vis))
 		}
 	}
 }
@@ -248,8 +248,8 @@ func TestInputFieldWideRuneAtRightEdgeVisible(t *testing.T) {
 	vis := g.buildVisibleText()
 	cell := g.CursorCell()
 	if cell+2 > runesWidth(vis) {
-		t.Fatalf("wide rune at cursor clipped: CursorCell=%d, rune width=2, visible width=%d; offset=%d visible=%q",
-			cell, runesWidth(vis), g.offset, string(vis))
+		t.Fatalf("wide rune at cursor clipped: CursorCell=%d, rune width=2, visible width=%d; visStart=%d visible=%q",
+			cell, runesWidth(vis), g.visStart, string(vis))
 	}
 	// The rune starting at the cursor cell must be the wide rune itself.
 	cells, idx := 0, -1
@@ -274,7 +274,7 @@ func assertCursorRuneVisible(t *testing.T, g InputField) {
 	vis := g.buildVisibleText()
 	cell := g.CursorCell()
 	if cell > runesWidth(vis) {
-		t.Fatalf("CursorCell=%d beyond rendered width=%d; offset=%d visible=%q", cell, runesWidth(vis), g.offset, string(vis))
+		t.Fatalf("CursorCell=%d beyond rendered width=%d; visStart=%d visible=%q", cell, runesWidth(vis), g.visStart, string(vis))
 	}
 	val := []rune(g.Value())
 	if g.pos >= len(val) {
@@ -282,8 +282,8 @@ func assertCursorRuneVisible(t *testing.T, g InputField) {
 	}
 	w := rw.RuneWidth(val[g.pos])
 	if w <= g.width && cell+w > runesWidth(vis) {
-		t.Fatalf("rune %q at cursor clipped: CursorCell=%d + w=%d > visible width=%d; offset=%d visible=%q",
-			string(val[g.pos]), cell, w, runesWidth(vis), g.offset, string(vis))
+		t.Fatalf("rune %q at cursor clipped: CursorCell=%d + w=%d > visible width=%d; visStart=%d visible=%q",
+			string(val[g.pos]), cell, w, runesWidth(vis), g.visStart, string(vis))
 	}
 }
 
@@ -362,5 +362,48 @@ func TestInputFieldViewCursorPosition(t *testing.T) {
 	// Blurred rendering must also be cursor-free.
 	if strings.Contains(f.Blur().View(), "\x1b[48") {
 		t.Error("blurred view must not paint a cursor cell")
+	}
+}
+
+// TestInputFieldWithValueResetsVisibleStart is a regression test: WithValue
+// replaces the whole value, so the visible start must be recomputed from the
+// new value. The old and new values can coincidentally share a lineStart
+// (e.g. both single-line values start at 0), which the line-change detection
+// alone cannot distinguish — the invalidation must be explicit.
+func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
+	// Scrolled single-line value...
+	g := NewInputField()
+	g = g.WithWidth(5)
+	g = g.WithValue("abcdefghij").CursorEnd()
+	if g.visStart == 0 {
+		t.Fatal("setup failed: expected scrolled state (visStart > 0)")
+	}
+	stale := g.visStart
+
+	// ...replaced by another single-line value (same lineStart 0).
+	g = g.WithValue("ABCDEFGHIJK")
+	vis := g.buildVisibleText()
+	// The view must be recomputed from the new value: scrolling to the end
+	// of "ABCDEFGHIJK" (11 cells, width 5) yields visStart = 8 ("IJK",
+	// cursor at rel 3), independent of the old value's state.
+	newLine := []rune("ABCDEFGHIJK")
+	wantStart := firstRuneStartAtLeast(newLine, runesWidth(newLine)-5+2)
+	if g.visStart != wantStart {
+		t.Errorf("visStart=%d leaked from old value (was %d); want recomputed %d", g.visStart, stale, wantStart)
+	}
+	if string(vis) != "IJK" {
+		t.Errorf("visible=%q, want %q (stale scroll position applied to new value)", string(vis), "IJK")
+	}
+	if cell := g.CursorCell(); cell != 3 {
+		t.Errorf("CursorCell=%d, want 3", cell)
+	}
+
+	// Short replacement must also reset (no stale visStart).
+	g = g.WithValue("界")
+	if g.visStart != 0 {
+		t.Errorf("visStart=%d, want 0 after short replacement", g.visStart)
+	}
+	if vis := g.buildVisibleText(); string(vis) != "界" {
+		t.Errorf("visible=%q, want %q", string(vis), "界")
 	}
 }

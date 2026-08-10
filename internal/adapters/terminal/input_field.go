@@ -17,11 +17,18 @@ import (
 
 // InputField is the Bubble Tea model for a text input with multi-line support
 // but single-line display. Cursor up/down navigates between lines.
+//
+// Horizontal scrolling is modelled with a rune-index visible start
+// (visStart), never a raw cell offset: a rune index is inherently a rune
+// boundary, so a wide (CJK) character can never be split by the left edge of
+// the viewport — no alignment/rounding helpers are needed. visLine tracks
+// which line visStart belongs to so that a line change resets the view.
 type InputField struct {
 	value       []rune
 	pos         int // cursor position in value
 	goalCol     int // remembered column position for up/down navigation (-1 = none)
-	offset      int // horizontal scroll offset (cells)
+	visLine     int // line start index of the current visible start
+	visStart    int // visible start: rune index within the current line
 	width       int // visible width (cells)
 	Prompt      string
 	Placeholder string
@@ -105,7 +112,7 @@ func (m InputField) handleMovement(key string) (InputField, bool) {
 		}
 	case key == "home":
 		m.pos = m.lineStart(m.pos)
-		m.offset = 0
+		m.visStart = 0
 		m.goalCol = -1
 		return m.ensureCursorVisible(), true
 	case key == "end":
@@ -203,93 +210,73 @@ func (m InputField) ensureCursorVisible() InputField {
 	if m.width <= 0 {
 		return m
 	}
-	// Clean up any stale mid-rune scroll offset inherited from a previous
-	// line/width state (a resize or value change that did not trigger a
-	// scroll would otherwise keep it). After this, the offset is always a
-	// rune boundary, so startCell == offset and the window math below is
-	// unambiguous.
-	m.offset = m.visibleStartCell()
 	lineStart, lineEnd := m.currentLine(m.pos)
-	lineWidth := runesWidth(m.value[lineStart:lineEnd])
+	line := m.value[lineStart:lineEnd]
 
-	// If the entire line fits within the viewport, no scrolling needed.
-	if lineWidth <= m.width {
-		m.offset = 0
+	// A new line resets the visible start: display from the beginning.
+	// Predictable, and no stale state can be carried across lines.
+	if lineStart != m.visLine {
+		m.visLine = lineStart
+		m.visStart = 0
+	}
+	// The value is mutable: inserts/deletes can shrink the current line, so
+	// a previously valid visStart may now point past its end. Clamp it; the
+	// scroll logic below then pulls the view back to the cursor.
+	if m.visStart > len(line) {
+		m.visStart = len(line)
+	}
+	if len(line) == 0 || runesWidth(line) <= m.width {
+		m.visStart = 0
 		return m
 	}
 
-	relPos := m.pos - lineStart // cursor position within current line
-	cursorCell := runesWidth(m.value[lineStart : lineStart+relPos])
+	relPos := m.pos - lineStart // cursor position within the line
+	cursorCell := runesWidth(line[:relPos])
 	// The rune under the cursor must stay fully visible: a wide (CJK) rune
 	// straddling the right edge of the viewport would be clipped in half.
 	// At end-of-line there is no rune, but the cursor block itself still
 	// needs one cell, so the threshold degrades to the plain cursor check.
 	need := 1
-	if m.pos < lineEnd {
-		need = rw.RuneWidth(m.value[m.pos])
+	if relPos < len(line) {
+		need = rw.RuneWidth(line[relPos])
 	}
-	// The text is rendered from the character boundary that contains the
-	// scroll offset (see visibleStartCell), so the *actual* viewport window
-	// is [startCell, startCell+width) — never [offset, offset+width) when
-	// the offset falls inside a wide rune. Scroll decisions must use the
-	// actual window, otherwise a rune at the cursor can still end up
-	// clipped even though it appears inside the nominal window.
-	startCell := m.visibleStartCell()
-	visibleEnd := startCell + m.width
+	startCell := runesWidth(line[:m.visStart])
+
 	switch {
 	case cursorCell < startCell:
-		m.offset = cursorCell
-	case cursorCell+need > visibleEnd:
-		m.offset = cursorCell - m.width + 2
-		if m.offset < 0 {
-			m.offset = 0
-		}
-		if need > 1 {
-			// The rune under the cursor is wide (CJK): round the offset UP
-			// to the next character boundary so the cursor sits at
-			// rel <= width-2 and the wide rune is never clipped by the right
-			// edge of the viewport (rounding down would push it to rel =
-			// width-1, cutting the rune in half).
-			m.offset = m.ceilToRuneStart(m.offset)
-		} else {
-			// Round down to the character boundary so the visible window
-			// never splits a wide character; otherwise buildVisibleText
-			// (which starts at the character boundary) and CursorCell (which
-			// is measured from the raw offset) drift apart, placing the real
-			// terminal cursor on top of the last character.
-			m.offset = m.visibleStartCell()
-		}
-		// Extremely narrow viewports (width <= 2) can push the computed
-		// offset past the cursor itself (e.g. width=1 gives offset =
-		// cursorCell+1). Fall back to the cursor cell so the cursor block —
-		// and any rune that can fit in the viewport — stays visible.
-		if cursorCell < m.visibleStartCell() {
-			m.offset = cursorCell
+		// Cursor left of the window: show it at the left edge.
+		m.visStart = relPos
+	case cursorCell+need > startCell+m.width:
+		// Scroll so the cursor sits at rel = width-2. Rounding the target
+		// up to a rune boundary (firstRuneStartAtLeast) yields
+		// rel ∈ {width-2, width-3}, so the rune at the cursor is fully
+		// visible and never clipped by the right edge.
+		m.visStart = firstRuneStartAtLeast(line, cursorCell-m.width+2)
+		// Physical limit: when the viewport cannot fit the rune at the
+		// cursor (need > width), keep at least the cursor block visible.
+		if runesWidth(line[:m.visStart]) > cursorCell {
+			m.visStart = relPos
 		}
 	}
 	return m
 }
 
-// ceilToRuneStart returns the smallest rune start cell >= offset within the
-// current line (or the line end when offset is past the last rune). Used when
-// the wide rune under the cursor must stay fully visible: rounding the scroll
-// offset up to the next character boundary guarantees the cursor sits at
-// rel <= width-2, so the rune is never clipped by the right edge.
-func (m InputField) ceilToRuneStart(offset int) int {
-	if offset <= 0 {
+// firstRuneStartAtLeast returns the index of the first rune whose start cell
+// is >= target, rounding up to a rune boundary so a wide (CJK) character is
+// never split at the left edge of the viewport. Returns 0 for target <= 0 and
+// len(line) when target is past the end of the line.
+func firstRuneStartAtLeast(line []rune, target int) int {
+	if target <= 0 {
 		return 0
 	}
-	lineStart, lineEnd := m.currentLine(m.pos)
-	line := m.value[lineStart:lineEnd]
 	cells := 0
-	for _, r := range line {
-		w := rw.RuneWidth(r)
-		if cells >= offset {
-			return cells
+	for i, r := range line {
+		if cells >= target {
+			return i
 		}
-		cells += w
+		cells += rw.RuneWidth(r)
 	}
-	return cells // past the end of the line
+	return len(line)
 }
 
 // View implements tea.Model.
@@ -339,7 +326,9 @@ func (m InputField) promptRender() string {
 }
 
 // buildVisibleText returns the visible portion of the current line as runes,
-// respecting the horizontal scroll offset and the field width.
+// starting at the visible start (visStart) and extending up to the field
+// width. Wide characters are never half-rendered: a rune that would exceed
+// the width is excluded entirely.
 func (m InputField) buildVisibleText() []rune {
 	if len(m.value) == 0 {
 		return nil
@@ -347,37 +336,10 @@ func (m InputField) buildVisibleText() []rune {
 	lineStart, lineEnd := m.currentLine(m.pos)
 	line := m.value[lineStart:lineEnd]
 
-	if len(line) == 0 {
-		return nil
-	}
-	// Find the first rune whose start cell is the visible start. The visible
-	// start is the scroll offset rounded down to a character boundary (see
-	// visibleStartCell), so a wide character is never split at the left edge.
-	startIdx := 0
-	startCell := m.visibleStartCell()
-	found := false
-	for cells, i := 0, 0; i < len(line); i++ {
-		w := rw.RuneWidth(line[i])
-		if cells >= startCell {
-			startIdx = i
-			found = true
-			break
-		}
-		if cells+w > startCell {
-			startIdx = i // startCell falls inside this rune: keep it whole
-			found = true
-			break
-		}
-		cells += w
-	}
-	if !found {
-		// startCell is at or past the end of the line: nothing is visible.
-		startIdx = len(line)
-	}
-	// Build visible runes up to width.
+	start := min(m.visStart, len(line))
 	var vis []rune
 	cells := 0
-	for i := startIdx; i < len(line); i++ {
+	for i := start; i < len(line); i++ {
 		w := rw.RuneWidth(line[i])
 		if cells+w > m.width {
 			break
@@ -386,33 +348,6 @@ func (m InputField) buildVisibleText() []rune {
 		cells += w
 	}
 	return vis
-}
-
-// visibleStartCell returns the cell offset (within the current line) where
-// the visible text actually begins rendering. The requested scroll offset is
-// rounded down to the start of the rune that contains it, so a wide (CJK)
-// character is never split at the left edge of the viewport. CursorCell and
-// buildVisibleText both derive from this value, keeping the real terminal
-// cursor aligned with the rendered text.
-func (m InputField) visibleStartCell() int {
-	if m.offset <= 0 {
-		return 0
-	}
-	lineStart, lineEnd := m.currentLine(m.pos)
-	line := m.value[lineStart:lineEnd]
-	cells := 0
-	for _, r := range line {
-		w := rw.RuneWidth(r)
-		if cells == m.offset {
-			return m.offset
-		}
-		if cells+w > m.offset {
-			return cells // offset falls inside this rune: align to its start
-		}
-		cells += w
-	}
-	// Offset beyond the end of the line: keep it as-is (empty visible text).
-	return m.offset
 }
 
 func (m InputField) placeholderView() string {
@@ -468,9 +403,11 @@ func (m InputField) CursorCell() int {
 	if len(m.value) == 0 {
 		return 0
 	}
-	lineStart, _ := m.currentLine(m.pos)
+	lineStart, lineEnd := m.currentLine(m.pos)
+	line := m.value[lineStart:lineEnd]
 	relPos := m.pos - lineStart // cursor position within the line
-	cell := runesWidth(m.value[lineStart:lineStart+relPos]) - m.visibleStartCell()
+	start := min(m.visStart, len(line))
+	cell := runesWidth(line[:relPos]) - runesWidth(line[:start])
 	if cell < 0 {
 		cell = 0
 	}
@@ -641,6 +578,10 @@ func (m InputField) WithValue(s string) InputField {
 	m.value = []rune(s)
 	m.pos = len(m.value)
 	m.goalCol = -1
+	// Explicitly invalidate the visible start: the new value's lineStart can
+	// coincidentally equal the old visLine (e.g. both single-line values
+	// start at 0), which the line-change detection alone cannot distinguish.
+	m.visLine = -1
 	return m.ensureCursorVisible()
 }
 
