@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	rw "github.com/mattn/go-runewidth"
 )
 
 func TestInputFieldInsertion(t *testing.T) {
@@ -253,12 +252,12 @@ func TestInputFieldWideRuneAtRightEdgeVisible(t *testing.T) {
 	}
 	// The rune starting at the cursor cell must be the wide rune itself.
 	cells, idx := 0, -1
-	for i, r := range vis {
+	for i := range vis {
 		if cells == cell {
 			idx = i
 			break
 		}
-		cells += rw.RuneWidth(r)
+		cells = runesWidth(vis[:i+1])
 	}
 	if idx < 0 || vis[idx] != '世' {
 		t.Fatalf("rune at cursor cell %d is not 世; visible=%q", cell, string(vis))
@@ -280,7 +279,18 @@ func assertCursorRuneVisible(t *testing.T, g InputField) {
 	if g.pos >= len(val) {
 		return // end of line
 	}
-	w := rw.RuneWidth(val[g.pos])
+	// Width of the grapheme cluster at the cursor (same single width source
+	// as the implementation).
+	w := 1
+	if g.pos < len(val) && val[g.pos] != '\n' {
+		ls, le := g.currentLine(g.pos)
+		for _, c := range graphemeClusters(val[ls:le]) {
+			if g.pos-ls >= c.start && g.pos-ls < c.end {
+				w = c.width
+				break
+			}
+		}
+	}
 	if w <= g.width && cell+w > runesWidth(vis) {
 		t.Fatalf("rune %q at cursor clipped: CursorCell=%d + w=%d > visible width=%d; visStart=%d visible=%q",
 			string(val[g.pos]), cell, w, runesWidth(vis), g.visStart, string(vis))
@@ -384,18 +394,19 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 	g = g.WithValue("ABCDEFGHIJK")
 	vis := g.buildVisibleText()
 	// The view must be recomputed from the new value: scrolling to the end
-	// of "ABCDEFGHIJK" (11 cells, width 5) yields visStart = 8 ("IJK",
-	// cursor at rel 3), independent of the old value's state.
+	// of "ABCDEFGHIJK" (11 cells, width 5, need=1 at end of line) yields
+	// target = 11+1-5 = 7, so visStart = 7 ("HIJK", cursor at rel 4 =
+	// width-1), independent of the old value's state.
 	newLine := []rune("ABCDEFGHIJK")
-	wantStart := firstRuneStartAtLeast(newLine, runesWidth(newLine)-5+2)
+	wantStart := firstRuneStartAtLeast(newLine, runesWidth(newLine)+1-5)
 	if g.visStart != wantStart {
 		t.Errorf("visStart=%d leaked from old value (was %d); want recomputed %d", g.visStart, stale, wantStart)
 	}
-	if string(vis) != "IJK" {
-		t.Errorf("visible=%q, want %q (stale scroll position applied to new value)", string(vis), "IJK")
+	if string(vis) != "HIJK" {
+		t.Errorf("visible=%q, want %q (stale scroll position applied to new value)", string(vis), "HIJK")
 	}
-	if cell := g.CursorCell(); cell != 3 {
-		t.Errorf("CursorCell=%d, want 3", cell)
+	if cell := g.CursorCell(); cell != 4 {
+		t.Errorf("CursorCell=%d, want 4", cell)
 	}
 
 	// Short replacement must also reset (no stale visStart).
@@ -408,11 +419,10 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 	}
 }
 
-// TestInputFieldUnifiedWidthSource verifies that every width calculation in
-// the input chain (truncation, cursor, padding) comes from runesWidth, so a
-// character whose width differs between width libraries (e.g. ❤️ with a
-// variation selector: go-runewidth says 1, ansi says 2) can never make the
-// view overflow or produce negative padding.
+// TestInputFieldUnifiedWidthSource verifies the full View rendering path
+// with a multi-rune cluster: every width calculation (truncation, cursor,
+// padding) comes from the single uniseg width source, so ❤️ (a 2-cell
+// cluster) can never make the view overflow or produce negative padding.
 func TestInputFieldUnifiedWidthSource(t *testing.T) {
 	g := NewInputField()
 	g = g.WithWidth(5)
@@ -435,5 +445,105 @@ func TestInputFieldUnifiedWidthSource(t *testing.T) {
 	g.Placeholder = "❤️你好"
 	if got := g.View(); got == "" {
 		t.Fatal("empty placeholder view")
+	}
+}
+
+// TestInputFieldGraphemeWidth verifies the grapheme-aware width model: a
+// cluster (❤️, ZWJ family emoji, e + combining acute) is measured and
+// truncated as one unit with its terminal display width, never split.
+func TestInputFieldGraphemeWidth(t *testing.T) {
+	// 1. Truncation never splits a cluster: with the cursor before ❤️ the
+	// whole 2-cell cluster fits and b is excluded entirely.
+	g := NewInputField()
+	g = g.WithWidth(2)
+	g = g.WithValue("❤️b").WithCursorPos(0) // before ❤️
+	vis := g.buildVisibleText()
+	if got := string(vis); got != "❤️" {
+		t.Fatalf("visible=%q, want %q (b must be excluded, ❤️ kept whole)", got, "❤️")
+	}
+	if w := runesWidth(vis); w != 2 {
+		t.Fatalf("visible width=%d, want 2", w)
+	}
+
+	// 2. A wide cluster at the cursor must be kept fully visible: cursor
+	// before ❤️ scrolls so the whole 2-cell cluster fits.
+	g = NewInputField()
+	g = g.WithWidth(2)
+	g = g.WithValue("a❤️b").WithCursorPos(1) // before ❤️
+	vis = g.buildVisibleText()
+	if got := string(vis); got != "❤️" {
+		t.Fatalf("visible=%q, want %q (❤️ at cursor must be fully visible)", got, "❤️")
+	}
+	if cell := g.CursorCell(); cell != 0 {
+		t.Fatalf("CursorCell=%d, want 0 (cursor before ❤️)", cell)
+	}
+
+	// 3. With a 1-cell cluster at the cursor the view may keep the cursor at
+	// rel = width-1, so content before it stays visible (no over-scroll).
+	g = NewInputField()
+	g = g.WithWidth(3)
+	g = g.WithValue("a❤️b").WithCursorPos(1) // before ❤️
+	g = g.WithCursorPos(3)                   // after ❤️, before b (in-window move)
+	vis = g.buildVisibleText()
+	if got := string(vis); got != "❤️b" {
+		t.Fatalf("visible=%q, want %q (cursor at rel 2, ❤️ still visible)", got, "❤️b")
+	}
+	if cell := g.CursorCell(); cell != 2 {
+		t.Fatalf("CursorCell=%d, want 2", cell)
+	}
+
+	// 4. ZWJ family emoji is one 2-cell cluster.
+	g = NewInputField()
+	g = g.WithWidth(3)
+	g = g.WithValue("👨‍👩‍👧‍👦x").CursorEnd()
+	vis = g.buildVisibleText()
+	if got := string(vis); got != "👨‍👩‍👧‍👦x" {
+		t.Fatalf("visible=%q, want the family emoji plus x (both fit in 3 cells)", got)
+	}
+	if w := runesWidth(vis); w != 3 {
+		t.Fatalf("visible width=%d, want 3", w)
+	}
+
+	// 5. e + combining acute is one 1-cell cluster.
+	g = NewInputField()
+	g = g.WithWidth(2)
+	g = g.WithValue("e\u0301x").CursorEnd()
+	vis = g.buildVisibleText()
+	if w := runesWidth(vis); w != 2 {
+		t.Fatalf("visible %q width=%d, want 2 (e\u0301 is one 1-cell cluster)", string(vis), w)
+	}
+
+	// 6. Placeholder truncation must not split a cluster either.
+	trunc := truncatePlaceholder("❤️你好", 2)
+	if got := runesWidth([]rune(trunc)); got != 2 {
+		t.Fatalf("truncated placeholder %q width=%d, want 2", trunc, got)
+	}
+}
+
+// TestInputFieldGraphemeWidths verifies the grapheme-aware width model for
+// multi-rune clusters. Widths follow the uniseg model (the single width
+// source): emoji clusters and combining sequences are measured as one unit.
+// A few edge characters (Devanagari vowel signs, keycaps, Arabic prepend)
+// differ between width libraries; the values below pin the uniseg model.
+func TestInputFieldGraphemeWidths(t *testing.T) {
+	cases := []struct {
+		s    string
+		want int // cluster width in cells (uniseg model)
+	}{
+		{"👧\U0001F3FB", 2},            // skin tone
+		{"\u05D1\u0591", 1},           // Hebrew cantillation
+		{"a\u2060b", 2},               // word joiner
+		{"\u1100\u1161", 2},           // Hangul Jamo
+		{"❤️", 2},                     // VS16 emoji
+		{"👨\u200d👩\u200d👧\u200d👦", 2}, // ZWJ family
+		{"e\u0301", 1},                // combining acute
+		{"\u0915\u093F", 2},           // Devanagari Mc (uniseg model)
+		{"1\uFE0F\u20E3", 1},          // keycap (uniseg model)
+		{"a你", 3},                     // plain text
+	}
+	for _, c := range cases {
+		if got := runesWidth([]rune(c.s)); got != c.want {
+			t.Errorf("runesWidth(%q)=%d, want %d (uniseg cluster width)", c.s, got, c.want)
+		}
 	}
 }

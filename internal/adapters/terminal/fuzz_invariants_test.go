@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	rw "github.com/mattn/go-runewidth"
 )
 
 // assertInputFieldInvariants checks the rendering/cursor invariants after
@@ -48,16 +47,47 @@ func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 	}
 
 	cell := g.CursorCell()
-	if cell > visCells {
+
+	val := g.value
+	// Visible-start cell of the current line (shared by the cluster checks).
+	lineStart, lineEnd = g.currentLine(g.pos)
+	line := g.value[lineStart:lineEnd]
+	startCell := runesWidth(line[:min(g.visStart, len(line))])
+	// Width of the grapheme cluster at the cursor; 0 means the cursor is at
+	// end of line. When it exceeds the viewport width the cluster cannot
+	// physically fit, so cursor/cluster visibility are best-effort.
+	cursorClusterW := 0
+	if g.pos < len(val) && val[g.pos] != '\n' {
+		for _, c := range graphemeClusters(line) {
+			if g.pos-lineStart >= c.start && g.pos-lineStart < c.end {
+				cursorClusterW = c.width
+				break
+			}
+		}
+	}
+	physicallyUnfit := cursorClusterW > g.width
+
+	if cell > visCells && !physicallyUnfit {
 		check("CursorCell=%d beyond visible width=%d", cell, visCells)
 	}
 
-	val := g.value
 	if g.pos < len(val) {
 		if val[g.pos] != '\n' { // mid-line rune (line end points at \n or EOF)
-			w := rw.RuneWidth(val[g.pos])
-			if w <= g.width && cell+w > visCells {
-				check("rune %q at cursor clipped: CursorCell=%d + w=%d > visible width=%d", string(val[g.pos]), cell, w, visCells)
+			// The grapheme cluster at the cursor must be fully visible (when
+			// it can fit in the viewport), even when the cursor sits inside
+			// it (e.g. between ❤ and its variation selector). Measure from
+			// the cluster start, not from the cursor itself.
+			if cursorClusterW > 0 {
+				cs := 0
+				for _, c := range graphemeClusters(line) {
+					if g.pos-lineStart >= c.start && g.pos-lineStart < c.end {
+						cs = runesWidth(line[:c.start]) - startCell
+						break
+					}
+				}
+				if !physicallyUnfit && cs+cursorClusterW > visCells {
+					check("cluster %q at cursor clipped: clusterStart=%d + w=%d > visible width=%d", string(val[g.pos]), cs, cursorClusterW, visCells)
+				}
 			}
 		} else if cell != visCells {
 			// Cursor sits at end of line (before the newline): it must hug
@@ -70,13 +100,26 @@ func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 
 	// Invariant 5: visible text must be the exact slice starting at the
 	// visible start (visStart is a rune index, so it is directly usable).
-	lineStart, lineEnd = g.currentLine(g.pos)
-	line := g.value[lineStart:lineEnd]
 	start := min(g.visStart, len(line))
 	got := string(vis)
 	want := string(line[start : start+len(vis)])
 	if got != want {
 		check("visible text drift: got %q, want %q (slice from visStart=%d)", got, want, start)
+	}
+
+	// Invariant 7: truncation never splits a grapheme cluster — the right
+	// edge of the visible text must be a cluster boundary (or the line end).
+	if end := start + len(vis); end < len(line) {
+		onBoundary := false
+		for _, c := range graphemeClusters(line) {
+			if c.start == end {
+				onBoundary = true
+				break
+			}
+		}
+		if !onBoundary {
+			check("visible text right edge %d splits a cluster (line %q, visible %q)", end, string(line), string(vis))
+		}
 	}
 }
 
@@ -112,8 +155,13 @@ func TestInputFieldFuzzInvariants(t *testing.T) {
 					k := keys[rng.Intn(6)]
 					desc = k
 					g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: k, Code: 0})
-				case 6: // paste with newlines
-					content := string(chars[rng.Intn(len(chars))]) + "\n" + string(chars[rng.Intn(len(chars))])
+				case 6: // paste with newlines (and multi-rune grapheme clusters)
+					// Multi-rune clusters exercise the grapheme-aware width
+					// model: ❤️ (VS16), family emoji (ZWJ), ✔️ (VS16),
+					// e + combining acute, skin tone, Devanagari Mc mark,
+					// Hangul Jamo, keycap.
+					clusters := []string{"❤️", "👨‍👩‍👧‍👦", "✔️", "e\u0301", "👧\U0001F3FB", "कि", "\u1100\u1161", "1\uFE0F\u20E3", "\u05D1\u0591", "\u0600", "a", "你"}
+					content := clusters[rng.Intn(len(clusters))] + "\n" + clusters[rng.Intn(len(clusters))]
 					if rng.Intn(4) == 0 {
 						content = "\n" + content // leading newline edge case
 					}

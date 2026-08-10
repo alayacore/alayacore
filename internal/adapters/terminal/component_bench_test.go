@@ -4,36 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
 )
-
-// BenchmarkInputFieldInsert benchmarks inserting characters into InputField.
-func BenchmarkInputFieldInsert(b *testing.B) {
-	f := NewInputField()
-	f.WithWidth(80)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		f, _ = f.Update(tea.KeyPressMsg{Text: "a", Code: 'a'})
-	}
-}
-
-// BenchmarkInputFieldView benchmarks rendering the input field view.
-func BenchmarkInputFieldView(b *testing.B) {
-	f := NewInputField()
-	f.WithWidth(80)
-	f.Focus()
-
-	for i := 0; i < 50; i++ {
-		f, _ = f.Update(tea.KeyPressMsg{Text: "a", Code: 'a'})
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = f.View()
-	}
-}
 
 // BenchmarkScrollViewSetContent benchmarks ScrollView.SetContent at various sizes.
 func BenchmarkScrollViewWithContent(b *testing.B) {

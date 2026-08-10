@@ -11,13 +11,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	rw "github.com/mattn/go-runewidth"
+	"github.com/rivo/uniseg"
 )
 
 // InputField is the Bubble Tea model for a text input with multi-line support
 // but single-line display. Cursor up/down navigates between lines.
 //
-// Horizontal scrolling is modelled with a rune-index visible start
+// Horizontal scrolling is modeled with a rune-index visible start
 // (visStart), never a raw cell offset: a rune index is inherently a rune
 // boundary, so a wide (CJK) character can never be split by the left edge of
 // the viewport — no alignment/rounding helpers are needed. visLine tracks
@@ -224,6 +224,12 @@ func (m InputField) ensureCursorVisible() InputField {
 	if m.visStart > len(line) {
 		m.visStart = len(line)
 	}
+	// Inserts/deletes can also shift grapheme cluster boundaries within the
+	// line (e.g. inserting a character before "a" + combining acute), so a
+	// previously valid visStart may no longer be a cluster boundary.
+	// Re-anchor it to the containing cluster to keep the invariant
+	// "visStart is always a cluster boundary".
+	m.visStart = clusterStartAt(line, m.visStart)
 	if len(line) == 0 || runesWidth(line) <= m.width {
 		m.visStart = 0
 		return m
@@ -237,43 +243,72 @@ func (m InputField) ensureCursorVisible() InputField {
 	// needs one cell, so the threshold degrades to the plain cursor check.
 	need := 1
 	if relPos < len(line) {
-		need = rw.RuneWidth(line[relPos])
+		// Width of the cluster at the cursor: the whole cluster must stay
+		// visible so it is never split at the right edge of the viewport.
+		for _, c := range graphemeClusters(line) {
+			if relPos >= c.start && relPos < c.end {
+				need = c.width
+				break
+			}
+		}
 	}
 	startCell := runesWidth(line[:m.visStart])
 
 	switch {
 	case cursorCell < startCell:
-		// Cursor left of the window: show it at the left edge.
-		m.visStart = relPos
+		// Cursor left of the window: show the cluster containing the cursor
+		// at the left edge. Anchor at the cluster start so visStart stays a
+		// cluster boundary even when the cursor sits inside a cluster (e.g.
+		// between an emoji and its variation selector).
+		m.visStart = clusterStartAt(line, relPos)
 	case cursorCell+need > startCell+m.width:
-		// Scroll so the cursor sits at rel = width-2. Rounding the target
-		// up to a rune boundary (firstRuneStartAtLeast) yields
-		// rel ∈ {width-2, width-3}, so the rune at the cursor is fully
-		// visible and never clipped by the right edge.
-		m.visStart = firstRuneStartAtLeast(line, cursorCell-m.width+2)
-		// Physical limit: when the viewport cannot fit the rune at the
+		// Scroll so the cluster at the cursor is fully visible: the visible
+		// start must be a cluster boundary with
+		// startCell >= cursorCell + need - width. Rounding that target up
+		// to a cluster boundary (firstRuneStartAtLeast) yields rel <=
+		// width-need, so the cluster is never clipped by the right edge —
+		// and for 1-cell clusters the cursor can sit at rel = width-1
+		// instead of being pushed further left than necessary.
+		m.visStart = firstRuneStartAtLeast(line, cursorCell+need-m.width)
+		// Physical limit: when the viewport cannot fit the cluster at the
 		// cursor (need > width), keep at least the cursor block visible.
 		if runesWidth(line[:m.visStart]) > cursorCell {
-			m.visStart = relPos
+			m.visStart = clusterStartAt(line, relPos)
 		}
 	}
 	return m
 }
 
-// firstRuneStartAtLeast returns the index of the first rune whose start cell
-// is >= target, rounding up to a rune boundary so a wide (CJK) character is
-// never split at the left edge of the viewport. Returns 0 for target <= 0 and
-// len(line) when target is past the end of the line.
+// clusterStartAt returns the start index of the grapheme cluster containing
+// pos within line (or pos itself when it lies on a cluster boundary or past
+// the end of the line).
+func clusterStartAt(line []rune, pos int) int {
+	if pos <= 0 || pos >= len(line) {
+		return pos
+	}
+	for _, c := range graphemeClusters(line) {
+		if pos >= c.start && pos < c.end {
+			return c.start
+		}
+	}
+	return pos
+}
+
+// firstRuneStartAtLeast returns the index of the first grapheme cluster whose
+// start cell is >= target, rounding up to a cluster boundary so a wide
+// character (e.g. an emoji) is never split at the left edge of the viewport.
+// Returns 0 for target <= 0 and len(line) when target is past the end of the
+// line.
 func firstRuneStartAtLeast(line []rune, target int) int {
 	if target <= 0 {
 		return 0
 	}
 	cells := 0
-	for i, r := range line {
+	for _, c := range graphemeClusters(line) {
 		if cells >= target {
-			return i
+			return c.start
 		}
-		cells += rw.RuneWidth(r)
+		cells += c.width
 	}
 	return len(line)
 }
@@ -327,8 +362,8 @@ func (m InputField) promptRender() string {
 
 // buildVisibleText returns the visible portion of the current line as runes,
 // starting at the visible start (visStart) and extending up to the field
-// width. Wide characters are never half-rendered: a rune that would exceed
-// the width is excluded entirely.
+// width. Grapheme clusters are never split: a cluster that would exceed the
+// width is excluded entirely.
 func (m InputField) buildVisibleText() []rune {
 	if len(m.value) == 0 {
 		return nil
@@ -339,13 +374,15 @@ func (m InputField) buildVisibleText() []rune {
 	start := min(m.visStart, len(line))
 	var vis []rune
 	cells := 0
-	for i := start; i < len(line); i++ {
-		w := rw.RuneWidth(line[i])
-		if cells+w > m.width {
-			break
+	for _, c := range graphemeClusters(line) {
+		if c.end <= start {
+			continue // cluster fully before the visible start
 		}
-		vis = append(vis, line[i])
-		cells += w
+		if cells+c.width > m.width {
+			break // do not split a cluster at the right edge
+		}
+		vis = append(vis, line[c.start:c.end]...)
+		cells += c.width
 	}
 	return vis
 }
@@ -617,25 +654,59 @@ func (m InputField) WithStyles(focused, blurred inputFieldStyle) InputField {
 // Helpers
 // ============================================================================
 
-func runesWidth(runes []rune) int {
-	w := 0
-	for _, r := range runes {
-		w += rw.RuneWidth(r)
+// clusterInfo describes one grapheme cluster: its rune range within a line
+// and its terminal display width in cells.
+type clusterInfo struct {
+	start, end int // rune indices, end exclusive
+	width      int // display width in cells
+}
+
+// graphemeClusters splits line into grapheme clusters and returns each
+// cluster's rune range and terminal display width. This is the single width
+// source for the whole input chain: uniseg performs the Unicode text
+// segmentation (UAX #29) and measures each cluster itself, so a cluster
+// renders as one unit — ❤️ (heart + variation selector) is one cluster of
+// width 2, a ZWJ family emoji is one cluster of width 2, "e" + combining
+// acute is one cluster of width 1 — and truncation, cursor placement,
+// scrolling, and padding always agree and never split a cluster.
+func graphemeClusters(line []rune) []clusterInfo {
+	if len(line) == 0 {
+		return nil
 	}
-	return w
+	var clusters []clusterInfo
+	s := string(line)
+	state := -1
+	idx := 0
+	for s != "" {
+		cluster, rest, width, nextState := uniseg.FirstGraphemeClusterInString(s, state)
+		n := len([]rune(cluster))
+		clusters = append(clusters, clusterInfo{start: idx, end: idx + n, width: width})
+		idx += n
+		s = rest
+		state = nextState
+	}
+	return clusters
+}
+
+func runesWidth(runes []rune) int {
+	total := 0
+	for _, c := range graphemeClusters(runes) {
+		total += c.width
+	}
+	return total
 }
 
 // runeIndexAtWidth returns the rune index into runes where the accumulated
-// cell width first meets or exceeds targetWidth. If targetWidth exceeds the
+// cluster width first meets or exceeds targetWidth, stopping at a grapheme
+// cluster boundary (a cluster is never split). If targetWidth exceeds the
 // total width, returns len(runes).
 func runeIndexAtWidth(runes []rune, targetWidth int) int {
 	cells := 0
-	for i, r := range runes {
-		w := rw.RuneWidth(r)
-		if cells+w > targetWidth {
-			return i
+	for _, c := range graphemeClusters(runes) {
+		if cells+c.width > targetWidth {
+			return c.start
 		}
-		cells += w
+		cells += c.width
 	}
 	return len(runes)
 }
@@ -656,15 +727,15 @@ func printableRune(key string) (rune, bool) {
 }
 
 func truncatePlaceholder(s string, maxWidth int) string {
+	runes := []rune(s)
 	var result strings.Builder
 	cells := 0
-	for _, r := range s {
-		w := rw.RuneWidth(r)
-		if cells+w > maxWidth {
+	for _, c := range graphemeClusters(runes) {
+		if cells+c.width > maxWidth {
 			break
 		}
-		result.WriteRune(r)
-		cells += w
+		result.WriteString(string(runes[c.start:c.end]))
+		cells += c.width
 	}
 	return result.String()
 }

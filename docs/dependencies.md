@@ -73,10 +73,13 @@ Same scenario — text with ANSI styles.
 **③ Input field (`input_field.go`)**
 
 ```go
-valWidth := ansi.StringWidth(visible)  // display width of visible text
+// input_field.go — padding from the same uniseg width source as truncation
+valWidth := runesWidth(visible)
 ```
 
-The text here is **plain text** (user input, no ANSI codes). It reuses the project's existing `ansi.StringWidth` rather than adding a new dependency.
+The text here is **plain text** (user input, no ANSI codes) — the one case where `ansi` is *not* involved. Its width comes from the `uniseg` grapheme-cluster width source (the single width model shared by truncation, cursor placement, and scrolling).
+
+So `ansi` is needed for the ANSI-bearing text paths (①② above); the input field is the plain-text exception.
 
 **Why can't `go-runewidth` replace it?**
 
@@ -90,49 +93,20 @@ Since the project processes large amounts of Lip Gloss-rendered text (containing
 
 ---
 
-### `github.com/mattn/go-runewidth` — Per-rune Display Width
+### `github.com/rivo/uniseg` — Unicode Text Segmentation (direct dependency)
 
-Provides `RuneWidth(r rune) int`: returns the number of terminal columns a single character occupies.
-
-| Character | `RuneWidth` | Note |
-|-----------|-------------|------|
-| `'a'` | 1 | ASCII |
-| `'中'` | 2 | CJK ideograph |
-| `'😀'` | 2 | Emoji |
-| `'\t'` | -1 | Tab (special) |
-
-**Why is it needed?** Horizontal scrolling requires knowing each character's width to determine "which character is visible at offset N":
+The **single width source of the input chain** (`input_field.go`). `FirstGraphemeClusterInString` streams grapheme clusters and returns each cluster's terminal display width in one step. It internally applies the UAX #29 properties (Grapheme_Extend, SpacingMark, ZWJ, regional indicators, Prepend, …), so a cluster renders as one unit — `❤️` (heart + variation selector) is one 2-cell cluster, a ZWJ family emoji is one 2-cell cluster, `e` + combining acute is one 1-cell cluster — and truncation, cursor placement, scrolling, and padding always agree and never split a cluster:
 
 ```go
-// input_field.go — buildVisibleText
-for cells, i := 0, 0; i < len(m.value); i++ {
-	w := rw.RuneWidth(m.value[i])  // ← per-rune width needed
-	if cells >= m.offset {
-		startIdx = i
-		break
-	}
-	cells += w
-}
+// input_field.go — graphemeClusters: segmentation + width in one source
+cluster, rest, width, nextState := uniseg.FirstGraphemeClusterInString(s, state)
 ```
 
-**Why can't `ansi.StringWidth` replace it?** `ansi.StringWidth` processes full strings (ANSI parser + grapheme cluster segmentation). Calling it per-rune would be expensive. `runewidth.RuneWidth` is a simple table lookup — zero allocation.
+Also used indirectly by Lip Gloss v2 for correct emoji/combining width handling; now a direct dependency of the input chain.
 
-**Why can't `lipgloss.Width` replace it?** `lipgloss.Width(s)` only accepts full strings, not individual runes in a loop.
+### `github.com/mattn/go-runewidth` — transitive dependency only
 
-`runewidth` is already an indirect dependency of `ansi` (`ansi` uses `runewidth` internally for width calculations), so making it a direct dependency doesn't expand the dependency tree.
-
----
-
-### `github.com/rivo/uniseg` — Unicode Text Segmentation (indirect dependency)
-
-Provides Unicode boundary detection (grapheme clusters, word boundaries, sentence boundaries). It is an **indirect dependency** — used internally by Lip Gloss v2 for correct emoji and combining character width handling.
-
-No direct import needed; it stays in `go.sum` automatically.
-
-```
-// Indirect chain:
-// lipgloss/v2 → github.com/charmbracelet/x/ansi → github.com/rivo/uniseg
-```
+Previously the per-rune width source of the input field; the input chain has moved to `uniseg` (grapheme-cluster aware, single width source). `go-runewidth` still exists in the dependency graph as a transitive dependency of `x/ansi` (used by the wrap/confirm-dialog subsystems), but no project code imports it directly anymore.
 
 ---
 
