@@ -203,6 +203,12 @@ func (m InputField) ensureCursorVisible() InputField {
 	if m.width <= 0 {
 		return m
 	}
+	// Clean up any stale mid-rune scroll offset inherited from a previous
+	// line/width state (a resize or value change that did not trigger a
+	// scroll would otherwise keep it). After this, the offset is always a
+	// rune boundary, so startCell == offset and the window math below is
+	// unambiguous.
+	m.offset = m.visibleStartCell()
 	lineStart, lineEnd := m.currentLine(m.pos)
 	lineWidth := runesWidth(m.value[lineStart:lineEnd])
 
@@ -214,17 +220,76 @@ func (m InputField) ensureCursorVisible() InputField {
 
 	relPos := m.pos - lineStart // cursor position within current line
 	cursorCell := runesWidth(m.value[lineStart : lineStart+relPos])
-	visibleEnd := m.offset + m.width
+	// The rune under the cursor must stay fully visible: a wide (CJK) rune
+	// straddling the right edge of the viewport would be clipped in half.
+	// At end-of-line there is no rune, but the cursor block itself still
+	// needs one cell, so the threshold degrades to the plain cursor check.
+	need := 1
+	if m.pos < lineEnd {
+		need = rw.RuneWidth(m.value[m.pos])
+	}
+	// The text is rendered from the character boundary that contains the
+	// scroll offset (see visibleStartCell), so the *actual* viewport window
+	// is [startCell, startCell+width) — never [offset, offset+width) when
+	// the offset falls inside a wide rune. Scroll decisions must use the
+	// actual window, otherwise a rune at the cursor can still end up
+	// clipped even though it appears inside the nominal window.
+	startCell := m.visibleStartCell()
+	visibleEnd := startCell + m.width
 	switch {
-	case cursorCell < m.offset:
+	case cursorCell < startCell:
 		m.offset = cursorCell
-	case cursorCell >= visibleEnd:
+	case cursorCell+need > visibleEnd:
 		m.offset = cursorCell - m.width + 2
 		if m.offset < 0 {
 			m.offset = 0
 		}
+		if need > 1 {
+			// The rune under the cursor is wide (CJK): round the offset UP
+			// to the next character boundary so the cursor sits at
+			// rel <= width-2 and the wide rune is never clipped by the right
+			// edge of the viewport (rounding down would push it to rel =
+			// width-1, cutting the rune in half).
+			m.offset = m.ceilToRuneStart(m.offset)
+		} else {
+			// Round down to the character boundary so the visible window
+			// never splits a wide character; otherwise buildVisibleText
+			// (which starts at the character boundary) and CursorCell (which
+			// is measured from the raw offset) drift apart, placing the real
+			// terminal cursor on top of the last character.
+			m.offset = m.visibleStartCell()
+		}
+		// Extremely narrow viewports (width <= 2) can push the computed
+		// offset past the cursor itself (e.g. width=1 gives offset =
+		// cursorCell+1). Fall back to the cursor cell so the cursor block —
+		// and any rune that can fit in the viewport — stays visible.
+		if cursorCell < m.visibleStartCell() {
+			m.offset = cursorCell
+		}
 	}
 	return m
+}
+
+// ceilToRuneStart returns the smallest rune start cell >= offset within the
+// current line (or the line end when offset is past the last rune). Used when
+// the wide rune under the cursor must stay fully visible: rounding the scroll
+// offset up to the next character boundary guarantees the cursor sits at
+// rel <= width-2, so the rune is never clipped by the right edge.
+func (m InputField) ceilToRuneStart(offset int) int {
+	if offset <= 0 {
+		return 0
+	}
+	lineStart, lineEnd := m.currentLine(m.pos)
+	line := m.value[lineStart:lineEnd]
+	cells := 0
+	for _, r := range line {
+		w := rw.RuneWidth(r)
+		if cells >= offset {
+			return cells
+		}
+		cells += w
+	}
+	return cells // past the end of the line
 }
 
 // View implements tea.Model.
@@ -285,25 +350,34 @@ func (m InputField) buildVisibleText() []rune {
 	if len(line) == 0 {
 		return nil
 	}
-	// Find start index by cell offset within the line.
+	// Find the first rune whose start cell is the visible start. The visible
+	// start is the scroll offset rounded down to a character boundary (see
+	// visibleStartCell), so a wide character is never split at the left edge.
 	startIdx := 0
+	startCell := m.visibleStartCell()
+	found := false
 	for cells, i := 0, 0; i < len(line); i++ {
 		w := rw.RuneWidth(line[i])
-		if cells >= m.offset {
+		if cells >= startCell {
 			startIdx = i
+			found = true
 			break
 		}
-		if cells+w > m.offset {
-			startIdx = i
+		if cells+w > startCell {
+			startIdx = i // startCell falls inside this rune: keep it whole
+			found = true
 			break
 		}
 		cells += w
 	}
+	if !found {
+		// startCell is at or past the end of the line: nothing is visible.
+		startIdx = len(line)
+	}
 	// Build visible runes up to width.
 	var vis []rune
-	visibleStart := startIdx
 	cells := 0
-	for i := visibleStart; i < len(line); i++ {
+	for i := startIdx; i < len(line); i++ {
 		w := rw.RuneWidth(line[i])
 		if cells+w > m.width {
 			break
@@ -312,6 +386,33 @@ func (m InputField) buildVisibleText() []rune {
 		cells += w
 	}
 	return vis
+}
+
+// visibleStartCell returns the cell offset (within the current line) where
+// the visible text actually begins rendering. The requested scroll offset is
+// rounded down to the start of the rune that contains it, so a wide (CJK)
+// character is never split at the left edge of the viewport. CursorCell and
+// buildVisibleText both derive from this value, keeping the real terminal
+// cursor aligned with the rendered text.
+func (m InputField) visibleStartCell() int {
+	if m.offset <= 0 {
+		return 0
+	}
+	lineStart, lineEnd := m.currentLine(m.pos)
+	line := m.value[lineStart:lineEnd]
+	cells := 0
+	for _, r := range line {
+		w := rw.RuneWidth(r)
+		if cells == m.offset {
+			return m.offset
+		}
+		if cells+w > m.offset {
+			return cells // offset falls inside this rune: align to its start
+		}
+		cells += w
+	}
+	// Offset beyond the end of the line: keep it as-is (empty visible text).
+	return m.offset
 }
 
 func (m InputField) placeholderView() string {
@@ -369,7 +470,7 @@ func (m InputField) CursorCell() int {
 	}
 	lineStart, _ := m.currentLine(m.pos)
 	relPos := m.pos - lineStart // cursor position within the line
-	cell := runesWidth(m.value[lineStart:lineStart+relPos]) - m.offset
+	cell := runesWidth(m.value[lineStart:lineStart+relPos]) - m.visibleStartCell()
 	if cell < 0 {
 		cell = 0
 	}
@@ -505,8 +606,12 @@ func (m InputField) deleteBackward() InputField {
 	}
 	if m.value[m.pos-1] == '\n' {
 		ls := m.lineStart(m.pos)
-		m.pos = ls                                       // go to start of current line
 		m.value = slices.Delete(m.value, m.pos-1, m.pos) // delete the \n
+		// The following line shifts left by one rune, so the cursor (which
+		// stays at the start of the joined line) moves back one position.
+		// Without this, pos could end up past the end of the value when the
+		// joined line is empty.
+		m.pos = ls - 1
 	} else {
 		m.value = slices.Delete(m.value, m.pos-1, m.pos)
 		m.pos--

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	rw "github.com/mattn/go-runewidth"
 )
 
 func TestInputFieldInsertion(t *testing.T) {
@@ -157,6 +158,171 @@ func TestInputFieldCursorCell(t *testing.T) {
 	wantCell = runesWidth([]rune("ab")) - f.offset
 	if cell := f.CursorCell(); cell != wantCell {
 		t.Fatalf("scrolled mid: got cell %d, want %d", cell, wantCell)
+	}
+}
+
+// TestInputFieldCursorCellAlignedWithVisibleText is a regression test for a
+// bug where the real terminal cursor drifted onto the last character when a
+// mixed CJK/ASCII line overflowed the input width.
+//
+// The scroll offset (in cells) could land in the middle of a wide CJK
+// character: buildVisibleText rounded the start down to the character
+// boundary (rendering one extra cell), while CursorCell subtracted the raw
+// offset — placing the cursor one cell too early, on top of the last
+// character. Typing then appeared to replace the last character (display
+// error only).
+func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
+	// Exact user flow: type CJK until the line overflows, type an ASCII char,
+	// then type more CJK. The scroll offset becomes odd (mid-wide-char), which
+	// used to desync CursorCell from the rendered text.
+	f := NewInputField()
+	f = f.WithWidth(20)
+
+	for _, r := range "你好世界你好世界你好世" {
+		f, _ = f.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+	}
+	f, _ = f.Update(tea.KeyPressMsg{Text: "a", Code: 'a'})
+	f, _ = f.Update(tea.KeyPressMsg{Text: "你", Code: '你'})
+
+	vis := f.buildVisibleText()
+	if cell, want := f.CursorCell(), runesWidth(vis); cell != want {
+		t.Fatalf("cursor at end of line: CursorCell=%d but visible text width=%d — cursor is drawn %d cell(s) too early (on the last char); value=%q offset=%d visible=%q",
+			cell, want, want-cell, f.Value(), f.offset, string(vis))
+	}
+
+	// Sweep: for a range of widths and mixed ASCII/CJK sequences, the cursor
+	// must always sit exactly after the last visible character when at the end
+	// of the line, and never drift onto it. (WithWidth is a value-type
+	// method — the result must be assigned back, or the width silently stays
+	// at the default and the sweep never exercises narrow viewports.)
+	chars := []rune("a你b好c世d界e你f好g世h界")
+	for width := 1; width <= 12; width++ {
+		for n := 1; n <= len(chars); n++ {
+			g := NewInputField()
+			g = g.WithWidth(width)
+			for _, r := range chars[:n] {
+				g, _ = g.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+			}
+			vis := g.buildVisibleText()
+			if cell, want := g.CursorCell(), runesWidth(vis); cell != want {
+				t.Fatalf("width=%d chars=%q: CursorCell=%d but visible text width=%d — cursor drawn %d cell(s) too early (on the last char); offset=%d visible=%q",
+					width, string(chars[:n]), cell, want, want-cell, g.offset, string(vis))
+			}
+		}
+	}
+
+	// Degenerate viewports (width 1 and 2) can push the scroll offset to the
+	// end of the line; the cursor must still sit after the last visible
+	// character instead of on it.
+	for width := 1; width <= 2; width++ {
+		g := NewInputField()
+		g = g.WithWidth(width)
+		for _, r := range "你好世界" {
+			g, _ = g.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+		}
+		vis := g.buildVisibleText()
+		if cell, want := g.CursorCell(), runesWidth(vis); cell != want {
+			t.Fatalf("width=%d CJK: CursorCell=%d but visible text width=%d — cursor drawn %d cell(s) off; offset=%d startCell=%d visible=%q",
+				width, cell, want, want-cell, g.offset, g.visibleStartCell(), string(vis))
+		}
+	}
+}
+
+// TestInputFieldWideRuneAtRightEdgeVisible is a regression test for wide (CJK)
+// runes being clipped by the right edge of the viewport. When the cursor sits
+// right before a wide rune whose second cell falls outside the viewport, the
+// viewport must scroll so the rune is fully visible.
+func TestInputFieldWideRuneAtRightEdgeVisible(t *testing.T) {
+	// "abcd你fg世": a0 b1 c2 d3 你4-5 f6 g7 世8-9, width=5.
+	// CursorEnd -> offset=7; WithCursorPos(3) pulls the offset back to 3;
+	// WithCursorPos(7) (before 世, cursorCell=8) fires a scroll whose raw
+	// offset (8-5+2=5) falls mid-你. Rounding it DOWN used to yield offset=4
+	// (rel=4), clipping 世 at the right edge; rounding UP to the next rune
+	// boundary (6) keeps 世 fully visible.
+	g := NewInputField()
+	g = g.WithWidth(5)
+	g = g.WithValue("abcd你fg世").CursorEnd()
+	g = g.WithCursorPos(3)
+	g = g.WithCursorPos(7) // before 世
+
+	vis := g.buildVisibleText()
+	cell := g.CursorCell()
+	if cell+2 > runesWidth(vis) {
+		t.Fatalf("wide rune at cursor clipped: CursorCell=%d, rune width=2, visible width=%d; offset=%d visible=%q",
+			cell, runesWidth(vis), g.offset, string(vis))
+	}
+	// The rune starting at the cursor cell must be the wide rune itself.
+	cells, idx := 0, -1
+	for i, r := range vis {
+		if cells == cell {
+			idx = i
+			break
+		}
+		cells += rw.RuneWidth(r)
+	}
+	if idx < 0 || vis[idx] != '世' {
+		t.Fatalf("rune at cursor cell %d is not 世; visible=%q", cell, string(vis))
+	}
+}
+
+// assertCursorRuneVisible checks the two cursor/rendering invariants against
+// an InputField: the cursor never sits beyond the rendered visible text, and
+// the rune at the cursor (when there is one and it could fit in the viewport)
+// is never clipped by the right edge.
+func assertCursorRuneVisible(t *testing.T, g InputField) {
+	t.Helper()
+	vis := g.buildVisibleText()
+	cell := g.CursorCell()
+	if cell > runesWidth(vis) {
+		t.Fatalf("CursorCell=%d beyond rendered width=%d; offset=%d visible=%q", cell, runesWidth(vis), g.offset, string(vis))
+	}
+	val := []rune(g.Value())
+	if g.pos >= len(val) {
+		return // end of line
+	}
+	w := rw.RuneWidth(val[g.pos])
+	if w <= g.width && cell+w > runesWidth(vis) {
+		t.Fatalf("rune %q at cursor clipped: CursorCell=%d + w=%d > visible width=%d; offset=%d visible=%q",
+			string(val[g.pos]), cell, w, runesWidth(vis), g.offset, string(vis))
+	}
+}
+
+// TestInputFieldCursorNeverClipsWideRune sweeps every viewport width, prefix
+// length, and cursor position over mixed ASCII/CJK content, asserting that the
+// cursor never sits beyond the rendered text and a rune at the cursor is never
+// clipped by the right edge. Cursor positions are reached both directly (via
+// WithCursorPos) and through real movement sequences (CursorEnd -> move left
+// to the start -> move right to the target), which exercises the path where a
+// scroll offset is first pulled back and then advanced again.
+func TestInputFieldCursorNeverClipsWideRune(t *testing.T) {
+	chars := []rune("a你b好c世d界e你f好g世h界")
+	for width := 1; width <= 12; width++ {
+		for n := 1; n <= len(chars); n++ {
+			val := string(chars[:n])
+
+			// Direct cursor placement.
+			for pos := 0; pos <= n; pos++ {
+				g := NewInputField()
+				g = g.WithWidth(width)
+				g = g.WithValue(val).WithCursorPos(pos)
+				assertCursorRuneVisible(t, g)
+			}
+
+			// Movement walk: CursorEnd -> left to start -> right to end,
+			// asserting at every step.
+			g := NewInputField()
+			g = g.WithWidth(width)
+			g = g.WithValue(val).CursorEnd()
+			assertCursorRuneVisible(t, g)
+			for p := n - 1; p >= 0; p-- {
+				g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: "left", Code: 0})
+				assertCursorRuneVisible(t, g)
+			}
+			for p := 1; p <= n; p++ {
+				g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: "right", Code: 0})
+				assertCursorRuneVisible(t, g)
+			}
+		}
 	}
 }
 
