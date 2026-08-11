@@ -516,6 +516,7 @@ stdin:  UT-search-content.bin          UT "Search for TODO in Go files"
 stdout: (echo)                         UT \x00 11 \x00 Search for TODO in Go files
         AF-search-content-start.bin    AF \x00 12 \x00 {"id":"t4","name":"search_content"}
         AF-search-content-input.bin    AF \x00 12 \x00 {"id":"t4","input":{"pattern":"TODO"}}
+        Uf-search-content-preview.bin  Uf \x00 12 \x00 {"id":"t4","text":"main.go:3:// TODO: fix"}   ← ephemeral preview (optional)
         UF-search-content-success.bin  UF \x00 13 \x00 {"id":"t4","output":[{"text":"main.go:1:package main","type":"text"}]}
         UF-search-content-failed.bin   UF \x00 13 \x00 {"id":"t4","output":[{"text":"invalid regex","type":"text"}],"is_error":true}
 ```

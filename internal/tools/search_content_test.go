@@ -209,3 +209,113 @@ func TestSearchContentPatternLooksLikeFlag(t *testing.T) {
 		t.Errorf("expected output to contain '--skill', got %q", text)
 	}
 }
+
+func TestSearchContentStreaming(t *testing.T) {
+	if !rgAvailable() {
+		t.Skip("rg not available on system")
+	}
+
+	tmpDir := t.TempDir()
+
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello world\nfoo bar\nhello again\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var previews []string
+	result, err := executeSearchContentStreaming(context.Background(), SearchContentInput{
+		Pattern: "hello",
+		Path:    tmpDir,
+	}, func(text string) {
+		previews = append(previews, text)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := extractFirstText(result)
+	if text == "" {
+		t.Error("expected non-empty output")
+	}
+	// flushPreview emits the final snapshot after completion, so a search
+	// with output must deliver at least one preview frame.
+	if len(previews) == 0 {
+		t.Error("expected at least one preview snapshot")
+	}
+}
+
+func TestSearchContentStreamingNoMatches(t *testing.T) {
+	if !rgAvailable() {
+		t.Skip("rg not available on system")
+	}
+
+	tmpDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "test.txt"), []byte("hello world\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	previewCount := 0
+	result, err := executeSearchContentStreaming(context.Background(), SearchContentInput{
+		Pattern: "nonexistent_pattern_xyz",
+		Path:    tmpDir,
+	}, func(string) {
+		previewCount++
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := extractFirstText(result)
+	if text != "No matches found" {
+		t.Errorf("expected 'No matches found', got %q", text)
+	}
+	// No output → no dirty state → no preview frames.
+	if previewCount != 0 {
+		t.Errorf("expected no previews for empty result, got %d", previewCount)
+	}
+}
+
+func TestSearchContentStreamingEmptyPattern(t *testing.T) {
+	_, err := executeSearchContentStreaming(context.Background(), SearchContentInput{
+		Pattern: "",
+	}, func(string) {})
+	if err == nil {
+		t.Fatal("expected error for empty pattern")
+	}
+	if err.Error() != "pattern is required" {
+		t.Errorf("expected 'pattern is required', got %q", err.Error())
+	}
+}
+
+func TestSearchContentStreamingMaxLines(t *testing.T) {
+	if !rgAvailable() {
+		t.Skip("rg not available on system")
+	}
+
+	tmpDir := t.TempDir()
+
+	for f := 0; f < 5; f++ {
+		var content string
+		for i := 0; i < 20; i++ {
+			content += "match line\n"
+		}
+		if err := os.WriteFile(filepath.Join(tmpDir, "file"+strconv.Itoa(f)+".txt"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := executeSearchContentStreaming(context.Background(), SearchContentInput{
+		Pattern:  "match",
+		Path:     tmpDir,
+		MaxLines: 5,
+	}, func(string) {})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := extractFirstText(result)
+	if !strings.Contains(text, "matching lines") {
+		t.Errorf("expected 'matching lines' in output, got:\n%s", text)
+	}
+	if !strings.Contains(text, "Results saved to:") {
+		t.Errorf("expected 'Results saved to:' in output, got:\n%s", text)
+	}
+}

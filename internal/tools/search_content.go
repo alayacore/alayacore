@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/tools/shell"
 )
 
 // SearchContentInput represents the input for the search_content tool.
@@ -31,6 +33,7 @@ func NewSearchContentTool() llm.Tool {
 	).
 		WithSchema(llm.MustGenerateSchema(SearchContentInput{})).
 		WithExecute(llm.TypedExecute(executeSearchContent)).
+		WithExecuteStreaming(llm.TypedExecuteStreaming(executeSearchContentStreaming)).
 		Build()
 }
 
@@ -70,11 +73,13 @@ func buildSearchContentArgs(args SearchContentInput) []string {
 	return rgArgs
 }
 
-// runSearch executes ripgrep and returns a structured result.
-// The caller must ensure rg is available before calling this function.
-func runSearch(ctx context.Context, args SearchContentInput) (searchResult, error) {
+// runSearch executes ripgrep, writing stdout/stderr to the provided
+// writers. It returns the rg exit code and a non-exit error (e.g. binary
+// not found). rg exit codes signal status: 0 = matches found, 1 = no
+// matches, 2+ = error (bad regex, permission denied, etc.).
+func runSearch(ctx context.Context, args SearchContentInput, stdout, stderr io.Writer) (int, error) {
 	if args.Pattern == "" {
-		return searchResult{}, fmt.Errorf("pattern is required")
+		return 0, fmt.Errorf("pattern is required")
 	}
 
 	rgArgs := buildSearchContentArgs(args)
@@ -84,39 +89,37 @@ func runSearch(ctx context.Context, args SearchContentInput) (searchResult, erro
 		cwd = "."
 	}
 
-	//nolint:gosec // G204: args are from user input, rg is a trusted binary
-	cmd := exec.CommandContext(ctx, "rg", rgArgs...)
-	cmd.Dir = cwd
+	// Search runs under the same global timeout as execute_command, so a
+	// pathological scan (giant tree, slow filesystem) cannot hang forever.
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, shell.DefaultCommandTimeout)
+	defer timeoutCancel()
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	//nolint:gosec // G204: args are from user input, rg is a trusted binary
+	cmd := exec.CommandContext(timeoutCtx, "rg", rgArgs...)
+	cmd.Dir = cwd
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	execErr := cmd.Run()
 
-	result := searchResult{
-		stdout: stdout.String(),
-		stderr: stderr.String(),
-	}
-
 	if execErr != nil {
-		if ctx.Err() != nil {
-			return searchResult{}, fmt.Errorf("canceled")
+		if timeoutCtx.Err() != nil {
+			if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+				return 0, fmt.Errorf("timed out")
+			}
+			return 0, fmt.Errorf("canceled")
 		}
 
-		// rg uses exit codes to signal status: 0 = matches found,
-		// 1 = no matches, 2+ = error (bad regex, permission denied, etc.).
 		var exitErr *exec.ExitError
 		if errors.As(execErr, &exitErr) {
-			result.exitCode = exitErr.ExitCode()
-			return result, nil
+			return exitErr.ExitCode(), nil
 		}
 
 		// Non-exit error (e.g. binary doesn't exist).
-		return searchResult{}, execErr
+		return 0, execErr
 	}
 
-	return result, nil
+	return 0, nil
 }
 
 // formatSearchResult converts a structured search result into ContentParts.
@@ -176,9 +179,33 @@ func handleLargeSearchResult(output string, totalLines int) ([]llm.ContentPart, 
 // executeSearchContent is the typed entry point for the search_content tool.
 // It runs ripgrep and formats the results.
 func executeSearchContent(ctx context.Context, args SearchContentInput) ([]llm.ContentPart, error) {
-	result, err := runSearch(ctx, args)
+	var stdout, stderr bytes.Buffer
+	exitCode, err := runSearch(ctx, args, &stdout, &stderr)
 	if err != nil {
 		return nil, err
 	}
-	return formatSearchResult(result, args.MaxLines)
+	return formatSearchResult(searchResult{
+		stdout:   stdout.String(),
+		stderr:   stderr.String(),
+		exitCode: exitCode,
+	}, args.MaxLines)
+}
+
+// executeSearchContentStreaming is the streaming variant of
+// executeSearchContent: it emits ephemeral preview snapshots (Uf) of the
+// ripgrep output while the search runs, then returns the authoritative
+// result exactly as the non-streaming path does.
+func executeSearchContentStreaming(ctx context.Context, args SearchContentInput, onDelta func(string)) ([]llm.ContentPart, error) {
+	sw := newStreamingWriter(onDelta)
+	exitCode, err := runSearch(ctx, args, sw, errWriter{sw})
+	sw.flushPreview() // search finished — emit the final snapshot
+
+	if err != nil {
+		return nil, err
+	}
+	return formatSearchResult(searchResult{
+		stdout:   sw.buf.String(),
+		stderr:   sw.errBuf.String(),
+		exitCode: exitCode,
+	}, args.MaxLines)
 }
