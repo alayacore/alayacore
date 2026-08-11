@@ -175,8 +175,9 @@ func (ls *lineSnapshot) text() string {
 	return text
 }
 
-// streamingWriter captures command output for the authoritative result
+// streamingWriter captures tool output for the authoritative result
 // (UF) while emitting ephemeral preview snapshots via onDelta (Uf).
+// Shared by execute_command and search_content.
 // The preview is a single line: the current line of the most recently
 // written stream (stdout or stderr), falling back to the other stream.
 // Write/WriteErr are called concurrently from exec's stdout/stderr copy

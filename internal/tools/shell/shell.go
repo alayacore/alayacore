@@ -9,10 +9,11 @@
 //     description so the LLM knows what features are available)
 //   - an invocation builder (how to run "<shell> <flags> <command>")
 //
-// [DefaultCommandTimeout] defines a global limit on command execution time;
-// it is referenced both by the execute_command implementation and by
-// [Shell.Description], which composes the prompt fragment with the timeout
-// information into the LLM-facing tool description.
+// [DefaultCommandTimeout] defines a global limit on tool execution time;
+// it is referenced by the execute_command and search_content
+// implementations and by [Shell.Description], which composes the prompt
+// fragment with the timeout information into the LLM-facing tool
+// description.
 //
 // On startup the package probes the OS environment for available shells and
 // selects the best candidate via [Detect].  The caller can override the
@@ -29,8 +30,8 @@ import (
 )
 
 // DefaultCommandTimeout is the maximum duration a shell command may run
-// before being killed. Both execute_command and the LLM-facing description
-// reference this value.
+// before being killed. execute_command, search_content, and the
+// LLM-facing description all reference this value.
 //
 // This is a package-level var so that main() / app.Setup can override it
 // from the --command-timeout CLI flag or the ALAYACORE_COMMAND_TIMEOUT

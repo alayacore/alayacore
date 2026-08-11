@@ -127,7 +127,7 @@ All five built-in tools use this pattern:
 | `read_file` | `internal/tools/read_file.go` | ~180 |
 | `edit_file` | `internal/tools/edit_file.go` | ~195 |
 | `write_file` | `internal/tools/write_file.go` | ~39 |
-| `execute_command` | `internal/tools/execute_command.go` | ~239 |
-| `search_content` | `internal/tools/search_content.go` | ~199 |
+| `execute_command` | `internal/tools/execute_command.go` | ~364 |
+| `search_content` | `internal/tools/search_content.go` | ~211 |
 
 The `execute_command` tool delegates platform-specific logic to the `internal/tools/shell/` package, which handles shell detection and command execution across Unix and Windows. See [architecture.md](architecture.md) for details.

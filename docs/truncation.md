@@ -53,6 +53,7 @@ Use read_file to access specific matches.
 ```
 
 - Agent uses `read_file` to access the full results from the saved file
+- Searches run under the same global timeout as `execute_command` (`shell.DefaultCommandTimeout`); timed-out and canceled searches are distinguished
 
 ## Temp File Location
 

@@ -46,9 +46,9 @@ Tool goroutines run under a **per-stream context** and are tracked with a
 failure, reorder failure), `streamEvents` cancels that context and **waits
 for all in-flight tool goroutines to terminate before returning**:
 
-- A tool that is still executing (e.g. `execute_command`) is canceled via
-  its context — no tool keeps running and no side effects happen after the
-  stream has errored.
+- A tool that is still executing (e.g. `execute_command`, `search_content`)
+  is canceled via its context — no tool keeps running and no side effects
+  happen after the stream has errored.
 - A tool awaiting user confirmation is unblocked by the cancellation — a
   late `:tool_confirm` response can no longer execute the tool against a
   stale context.

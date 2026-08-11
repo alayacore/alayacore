@@ -37,9 +37,9 @@ func NewSearchContentTool() llm.Tool {
 		Build()
 }
 
-// searchResult captures the exit status and output streams of a ripgrep search.
-// Using a structured result instead of nullable error + buffer parameters
-// makes the execution/formatting separation explicit and testable.
+// searchResult carries the exit status and output streams of a ripgrep
+// search between runSearch and formatSearchResult, keeping execution and
+// formatting independently testable.
 type searchResult struct {
 	stdout   string
 	stderr   string
