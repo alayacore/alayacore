@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	ansi "github.com/charmbracelet/x/ansi"
+
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -284,6 +286,39 @@ func TestToolRendererUfPreviewAuthoritative(t *testing.T) {
 	}
 	if !strings.Contains(tr.output, "line content that wraps\n") {
 		t.Error("authoritative output should be untouched")
+	}
+}
+
+func TestToolRendererUfPreviewTabs(t *testing.T) {
+	// Uf preview containing tabs: tabs must be expanded before truncation
+	// so width accounting matches the final render (expandTabs = 8 cols).
+	// ansi.Hardwrap counts a tab as 0 width, so truncating raw tabs lets
+	// the expanded preview overflow the window and soft-wrap at the
+	// terminal (invisible to lineCount, which only counts '\n').
+	styles := NewStyles(theme.DefaultTheme())
+	tr := &toolRenderer{
+		name:   "execute_command",
+		input:  "command: ls -la",
+		output: "\t" + strings.Repeat("x", 100),
+		status: ToolStatusPending,
+	}
+
+	result, lineCount := tr.BuildInner(80, false, styles)
+	if lineCount != 3 {
+		t.Errorf("lineCount = %d, want 3 (single content line + border)", lineCount)
+	}
+	if strings.Contains(result, "\t") {
+		t.Error("preview should not contain raw tabs")
+	}
+	// The rendered first line must fit the inner width (80-4=76);
+	// otherwise the terminal soft-wraps it to a second line.
+	plain := stripANSI(result)
+	firstLine := plain
+	if i := strings.IndexByte(firstLine, '\n'); i >= 0 {
+		firstLine = firstLine[:i]
+	}
+	if w := ansi.StringWidth(firstLine); w > 76 {
+		t.Errorf("first line width = %d, want <= 76 (inner width)", w)
 	}
 }
 

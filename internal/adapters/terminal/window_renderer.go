@@ -300,6 +300,9 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 		// Flatten delta to single line.
 		deltaContent = strings.ReplaceAll(deltaContent, "\n", " ")
 		deltaContent = strings.ReplaceAll(deltaContent, "\r", "")
+		// Expand tabs before truncation so width accounting matches the
+		// final render (see previewOutput).
+		deltaContent = expandTabs(deltaContent)
 		// Truncate to fit available width (indicator + ": " + tool name).
 		maxDelta := max(0, innerWidth-lipgloss.Width(r.name)-4)
 		deltaContent = truncateWithSuffix(deltaContent, maxDelta)
@@ -379,6 +382,11 @@ func (r *toolRenderer) previewOutput(innerWidth, usedWidth int) string {
 	// Flatten to a single line.
 	out := strings.ReplaceAll(r.output, "\n", " ")
 	out = strings.ReplaceAll(out, "\r", "")
+	// Expand tabs BEFORE truncation so width accounting matches the final
+	// render (expandTabs → TabWidth columns): ansi.Hardwrap counts a tab
+	// as 0 width, so truncating raw tabs would let the expanded preview
+	// overflow the window and soft-wrap at the terminal.
+	out = expandTabs(out)
 	// Fill the remaining width; ellipsis when it does not fit.
 	maxLen := max(0, innerWidth-usedWidth)
 	return truncateWithSuffix(out, maxLen)
