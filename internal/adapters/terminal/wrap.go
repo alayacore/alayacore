@@ -133,7 +133,10 @@ func wrapLabels(labels []string, width int, style lipgloss.Style) string {
 
 // truncateWithSuffix truncates content to fit within maxWidth, appending "…"
 // to indicate content has been cut. The result is guaranteed to be at most
-// maxWidth display columns wide.
+// maxWidth display columns wide, provided the input contains no unexpanded
+// tabs — ansi.Hardwrap counts a tab as 0 width while terminals render it as
+// TabWidth columns. Callers must expandTabs (see tool_render.go) before
+// truncating content that may contain tabs.
 func truncateWithSuffix(content string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""

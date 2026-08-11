@@ -202,6 +202,10 @@ Width calculation is **Unicode-aware**:
 - CJK characters (中文、日本語、한국어) occupy **2 cells**
 - Emoji occupy **2 cells** (grapheme clusters per Unicode UAX #29)
 - ANSI escape codes (colors, bold, etc.) occupy **0 cells**
+- Tabs are expanded to **8 cells** (`TabWidth`) via `expandTabs` **before** any
+  width-sensitive operation (truncation, wrapping). This matters because the
+  underlying `x/ansi` width model counts a tab as 0 cells — expanding first
+  keeps truncation budgets and the final render consistent.
 
 When a newline is inserted by the wrapper, ANSI styles are automatically carried forward to the next line — a red-styled sentence stays red on continuation lines.
 
