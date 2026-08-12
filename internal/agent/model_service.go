@@ -126,10 +126,18 @@ func (ms *modelService) GetModels() []modelConfig {
 
 // ResolveActiveModel applies the standard priority chain:
 // runtime.conf → session file frontmatter → --model CLI flag.
+// It also syncs the derived context limit from the resolved model so
+// the startup model broadcast (sendSystemInfo(systemInfoAll)) carries
+// the correct limit before SwitchModel runs — agent creation is lazy
+// (first task), so SwitchModel alone would leave the limit at 0 for the
+// entire startup broadcast and break the status bar's "tokens/limit".
 func (ms *modelService) ResolveActiveModel() {
 	ms.setActiveFromRuntimeConfig()
 	ms.setActiveFromSessionMeta()
 	ms.setActiveFromCliFlag()
+	if model := ms.ActiveModel(); model != nil {
+		ms.contextLimit = int64(model.ContextLimit)
+	}
 }
 
 func (ms *modelService) setActiveFromRuntimeConfig() {

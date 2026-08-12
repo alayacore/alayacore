@@ -49,7 +49,14 @@ func (s *Session) GetRuntimeLoadErrors() []string {
 }
 
 func (s *Session) ensureAgentInitialized() error {
-	return s.modelService.EnsureInitialized(s.BaseTools, s.SystemPrompt, s.ExtraSystemPrompt, s.MaxSteps)
+	if err := s.modelService.EnsureInitialized(s.BaseTools, s.SystemPrompt, s.ExtraSystemPrompt, s.MaxSteps); err != nil {
+		return err
+	}
+	// Lazy init switches the modelService's context limit but does not go
+	// through Session.SwitchModel, so sync the session field here to keep
+	// auto-summarize thresholds consistent with the initialized model.
+	s.ContextLimit = s.modelService.contextLimit
+	return nil
 }
 
 // ============================================================================
