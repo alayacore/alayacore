@@ -51,6 +51,8 @@ func StartSession(cfg *Config, output io.Writer, input io.Reader) (*agentpkg.Ses
 		DebugLogDir:         cfg.Cfg.DebugLogDir,
 		AutoSummarize:       cfg.Cfg.AutoSummarize,
 		ProxyURL:            cfg.Cfg.Proxy,
+		ReasoningLevel:      cfg.Cfg.ReasoningLevel,
+		ReasoningLevelSet:   cfg.Cfg.ReasoningLevelSet,
 		SkillsMgr:           cfg.SkillsMgr,
 		OverrideActiveModel: cfg.Cfg.ModelName,
 		ToolConfirmTools:    cfg.ToolConfirmTools,

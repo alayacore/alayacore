@@ -230,6 +230,8 @@ type SessionConfig struct {
 	ExtraSystemPrompt string
 	MaxSteps          int
 	ToolConfirmTools  []string // tool names requiring user confirmation (empty = no confirmation)
+	ReasoningLevel    int      // startup reasoning level (0=off, 1=normal, 2=max)
+	ReasoningLevelSet bool     // true when set explicitly (CLI flag wins over the session file's saved level)
 
 	// Feature flags
 	DebugLogDir   string // "" = disabled (when flag not set), "." = write to CWD, or any path

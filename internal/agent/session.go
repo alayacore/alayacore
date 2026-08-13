@@ -288,6 +288,13 @@ func newSession(cfg SessionConfig) *Session {
 	s.initToolConfirmSet(cfg.ToolConfirmTools)
 	s.modelService.ResolveActiveModel()
 
+	// --reasoning-level CLI flag overrides the hardcoded default for fresh
+	// sessions. modelService.SetReasoningLevel (not Session.SetReasoningLevel)
+	// is used so no SM reasoning frame is emitted before the startup broadcast.
+	if cfg.ReasoningLevelSet {
+		s.modelService.SetReasoningLevel(cfg.ReasoningLevel)
+	}
+
 	if model := s.modelService.ActiveModel(); model != nil {
 		s.ContextLimit = s.modelService.contextLimit
 	}
@@ -339,7 +346,15 @@ func RestoreFromSession(cfg SessionConfig, data *sessionData) *Session {
 
 	s.initToolConfirmSet(cfg.ToolConfirmTools)
 	s.modelService.ResolveActiveModel()
-	s.modelService.SetReasoningLevel(data.ReasoningLevel)
+
+	// Precedence: an explicit --reasoning-level CLI flag wins over the
+	// session file's saved reasoning_level; without it, the saved value
+	// (or the package default for files missing the key) is restored.
+	reasoningLevel := data.ReasoningLevel
+	if cfg.ReasoningLevelSet {
+		reasoningLevel = cfg.ReasoningLevel
+	}
+	s.modelService.SetReasoningLevel(reasoningLevel)
 
 	// Set up MCP service (manages init lifecycle).
 	s.mcpService = newMCPService(cfg.MCPInit, s.Output)

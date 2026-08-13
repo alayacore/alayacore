@@ -239,7 +239,7 @@ correct base directory for the current session.
 4. **Lazy Agent Init** — Agent and provider are created on first use, not at startup.
 5. **Tool Execution** — Tools execute concurrently during streaming. Tools needing confirmation block on per-tool channels until the user responds (MCP-style). See [tool-execution.md](tool-execution.md).
 6. **Context Efficiency** — Large outputs (>64KB) saved to `os.TempDir()/alayacore-<suffix>/` instead of inline. See [truncation.md](truncation.md).
-7. **Reasoning Mode** — Provider-specific thinking fields added to API requests. Three levels: 0=off, 1=normal, 2=max. Toggled via `:reason [0|1|2]`.
+7. **Reasoning Mode** — Provider-specific thinking fields added to API requests. Three levels: 0=off, 1=normal, 2=max. Toggled via `:reason [0|1|2]`; the startup level is set via `--reasoning-level <0|1|2>`, which wins over the session file's saved `reasoning_level` (an absent flag restores the saved value).
 8. **Concurrent Task Execution** — Each task runs in its own goroutine so the main loop stays responsive during LLM streaming. Communication via typed channels and atomic fields.
 9. **Filter-What-You-See** — Searchable list components (ModelSelector, HelpWindow, AttachmentWindow) build a pre-computed, lowercased search key for each item at load time. Filtering is a single `FuzzyMatch(term, key)` against this pre-computed string, ensuring zero per-filter allocations and consistent matching with what the user sees on screen (e.g. typing "quitexit" matches `:quit` + `Exit application`).
 

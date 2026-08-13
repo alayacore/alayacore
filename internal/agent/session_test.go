@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -821,6 +822,59 @@ func TestLoadSessionInvalidReasoningLevel(t *testing.T) {
 
 // TestLoadSessionVersionMismatch verifies that a session file with a missing or
 // non-matching version is rejected with errSessionVersionMismatch.
+// TestNewSessionReasoningLevelFlag verifies that --reasoning-level is
+// applied as the startup reasoning level for fresh sessions, and that an
+// absent flag leaves the package default in place.
+func TestNewSessionReasoningLevelFlag(t *testing.T) {
+	s := newSession(SessionConfig{
+		Input:             &nopInput{},
+		Output:            &nopOutput{},
+		ReasoningLevel:    0,
+		ReasoningLevelSet: true,
+	})
+	if got := s.modelService.reasoningLevel; got != config.ReasoningLevelOff {
+		t.Errorf("reasoningLevel = %d, want %d (from --reasoning-level)", got, config.ReasoningLevelOff)
+	}
+
+	// Without the flag, the hardcoded package default applies.
+	s2 := newSession(SessionConfig{
+		Input:  &nopInput{},
+		Output: &nopOutput{},
+	})
+	if got := s2.modelService.reasoningLevel; got != config.DefaultReasoningLevel {
+		t.Errorf("reasoningLevel = %d, want default %d", got, config.DefaultReasoningLevel)
+	}
+}
+
+// TestRestoreSessionReasoningLevelFlagPrecedence guards the precedence
+// rule: an explicit --reasoning-level flag wins over the session file's
+// saved reasoning_level, while an absent flag restores the saved value.
+// Regression guard: before the flag existed, a naive unconditional apply
+// would have clobbered a saved reasoning_level: 0 on every launch.
+func TestRestoreSessionReasoningLevelFlagPrecedence(t *testing.T) {
+	data := &sessionData{sessionMeta: sessionMeta{ReasoningLevel: 0}}
+
+	// Flag set → CLI wins (saved 0, requested 2).
+	s := RestoreFromSession(SessionConfig{
+		Input:             &nopInput{},
+		Output:            &nopOutput{},
+		ReasoningLevel:    2,
+		ReasoningLevelSet: true,
+	}, data)
+	if got := s.modelService.reasoningLevel; got != config.ReasoningLevelMax {
+		t.Errorf("reasoningLevel = %d, want %d (CLI flag must override session file)", got, config.ReasoningLevelMax)
+	}
+
+	// Flag absent → saved value restored unchanged.
+	s2 := RestoreFromSession(SessionConfig{
+		Input:  &nopInput{},
+		Output: &nopOutput{},
+	}, data)
+	if got := s2.modelService.reasoningLevel; got != config.ReasoningLevelOff {
+		t.Errorf("reasoningLevel = %d, want %d (session file value preserved)", got, config.ReasoningLevelOff)
+	}
+}
+
 func TestLoadSessionVersionMismatch(t *testing.T) {
 	tests := []struct {
 		name    string

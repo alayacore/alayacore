@@ -118,6 +118,10 @@ type Settings struct {
 	ToolConfirm   []string         // tool names requiring user confirmation
 	BuiltinTools  tools.ToolFilter // built-in tools to enable
 
+	// Reasoning
+	ReasoningLevel    int  // startup reasoning level (0=off, 1=normal, 2=max)
+	ReasoningLevelSet bool // true when --reasoning-level was explicitly provided (CLI wins over session file)
+
 	// Command execution
 	CommandTimeout int // max duration for execute_command in seconds (default 120)
 
@@ -161,6 +165,8 @@ func Parse() *Settings {
 	flag.String("builtin-tools", "", "Comma-separated built-in tool `names` to enable (empty = no builtin tools, unspecified = all tools)")
 	commandTimeout := flag.Int("command-timeout", 120,
 		"Maximum duration in seconds for shell command execution (default 120)")
+	reasoningLevel := flag.Int("reasoning-level", DefaultReasoningLevel,
+		"Startup reasoning `level` (0=off, 1=normal, 2=max); explicit values override the session file's saved reasoning_level")
 
 	flag.Parse()
 
@@ -206,6 +212,10 @@ func Parse() *Settings {
 		BuiltinTools:   builtinToolsFilter,
 		CommandTimeout: resolveCommandTimeout(*commandTimeout),
 		NoDelta:        *noDelta,
+		ReasoningLevel: *reasoningLevel,
+		// Only apply --reasoning-level when explicitly provided: an absent
+		// flag must not override a session file's saved reasoning_level.
+		ReasoningLevelSet: flagHasBeenVisited("reasoning-level"),
 	}
 
 	return s

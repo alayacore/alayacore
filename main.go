@@ -25,6 +25,13 @@ func main() {
 		os.Exit(2)
 	}
 
+	// --reasoning-level must be in [0, 2]. Fail fast instead of silently
+	// ignoring an explicit but out-of-range value.
+	if cfg.ReasoningLevelSet && (cfg.ReasoningLevel < config.ReasoningLevelOff || cfg.ReasoningLevel > config.ReasoningLevelMax) {
+		fmt.Fprintln(os.Stderr, "Error: --reasoning-level must be 0, 1, or 2 (0=off, 1=normal, 2=max)")
+		os.Exit(2)
+	}
+
 	if cfg.ShowVersion {
 		fmt.Printf("alayacore version %s\n", version.Version)
 		os.Exit(0)
