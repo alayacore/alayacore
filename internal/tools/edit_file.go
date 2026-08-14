@@ -164,13 +164,24 @@ type streamEditor struct {
 	occurrences int
 }
 
+// maxEditBufferCapacity caps the stream editor's initial buffer
+// pre-allocation. The capacity is only a hint — append grows the buffer as
+// needed, so correctness is unaffected by the cap — but without it a huge
+// LLM-supplied old_string would allocate 2× its length up front (a
+// proportional allocation, a minor DoS surface).
+const maxEditBufferCapacity = 1 << 20 // 1MB
+
 func newStreamEditor(oldString, newString string) *streamEditor {
 	const chunkSize = 4096
 	oldBytes := []byte(oldString)
+	capacity := len(oldBytes)*2 + chunkSize
+	if capacity > maxEditBufferCapacity {
+		capacity = maxEditBufferCapacity
+	}
 	return &streamEditor{
 		oldBytes: oldBytes,
 		newBytes: []byte(newString),
-		buffer:   make([]byte, 0, len(oldBytes)*2+chunkSize),
+		buffer:   make([]byte, 0, capacity),
 		chunk:    make([]byte, chunkSize),
 	}
 }

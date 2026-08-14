@@ -126,6 +126,25 @@ func TestEditFile(t *testing.T) {
 	}
 }
 
+// TestStreamEditorBufferCapacity verifies the initial buffer pre-allocation
+// is capped: normal old_strings keep the 2× + chunk hint, but a huge
+// LLM-supplied old_string cannot trigger a proportional allocation.
+func TestStreamEditorBufferCapacity(t *testing.T) {
+	// Normal old_string — the 2× + chunk hint applies (no cap hit).
+	small := newStreamEditor("abc", "x")
+	want := 2*len("abc") + 4096
+	if cap(small.buffer) != want {
+		t.Errorf("small buffer capacity = %d, want %d", cap(small.buffer), want)
+	}
+
+	// Huge old_string — the pre-allocation is capped, not proportional.
+	huge := strings.Repeat("a", 2*maxEditBufferCapacity)
+	big := newStreamEditor(huge, "x")
+	if cap(big.buffer) > maxEditBufferCapacity {
+		t.Errorf("huge buffer capacity = %d, want <= %d", cap(big.buffer), maxEditBufferCapacity)
+	}
+}
+
 func TestEditFileEdgeCases(t *testing.T) {
 	tests := []struct {
 		name        string
