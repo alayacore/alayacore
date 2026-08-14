@@ -25,6 +25,12 @@ type SearchContentInput struct {
 
 const defaultSearchContentMaxLines = 100
 
+// maxSearchContentSize caps the number of bytes of search output returned
+// inline, mirroring execute_command and read_file (64KB). A line-count cap
+// alone is not enough: a single matching line (e.g. minified JS or base64
+// data) can be arbitrarily large and would blow the context window.
+const maxSearchContentSize = 64 * 1024 // 64KB
+
 // NewSearchContentTool creates the search_content tool for use by the agent.
 func NewSearchContentTool() llm.Tool {
 	return llm.NewTool(
@@ -154,8 +160,9 @@ func formatSearchResult(result searchResult, maxLines int) ([]llm.ContentPart, e
 	// Count total lines in output
 	totalLines := countLines(output)
 
-	// If output exceeds maxLines, save full results to file and return metadata
-	if totalLines > maxLines {
+	// If output exceeds maxLines or maxSearchContentSize, save full results
+	// to file and return metadata.
+	if totalLines > maxLines || len(output) > maxSearchContentSize {
 		return handleLargeSearchResult(output, totalLines)
 	}
 
@@ -170,9 +177,10 @@ func handleLargeSearchResult(output string, totalLines int) ([]llm.ContentPart, 
 		return nil, fmt.Errorf("failed to save large search results: %w", err)
 	}
 
+	totalKB := float64(len(output)) / 1024
 	return []llm.ContentPart{&llm.TextPart{Text: fmt.Sprintf(
-		"Search found %d matching lines. Results saved to: %s\nUse read_file to access specific matches.",
-		totalLines, filePath,
+		"Search found %d matching lines (%.1fKB). Results saved to: %s\nUse read_file to access specific matches.",
+		totalLines, totalKB, filePath,
 	)}}, nil
 }
 

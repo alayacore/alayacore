@@ -182,6 +182,43 @@ func TestSearchContentMaxLinesGlobal(t *testing.T) {
 	}
 }
 
+func TestFormatSearchResultByteCap(t *testing.T) {
+	// A single matching line can be arbitrarily large (minified JS,
+	// base64 blobs) — the line-count cap alone would return it inline and
+	// blow the context window. Output above maxSearchContentSize must be
+	// saved to a temp file with a pointer message instead.
+	hugeLine := strings.Repeat("x", maxSearchContentSize+1)
+	parts, err := formatSearchResult(searchResult{
+		stdout:   hugeLine,
+		stderr:   "",
+		exitCode: 0,
+	}, defaultSearchContentMaxLines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := extractFirstText(parts)
+	if strings.Contains(text, "xxxxxxxxxx") {
+		t.Errorf("oversized single-line output was returned inline: %.60q…", text)
+	}
+	if !strings.Contains(text, "Results saved to:") {
+		t.Errorf("expected temp-file pointer message, got:\n%s", text)
+	}
+
+	// At exactly the cap the output is still returned inline.
+	atCap := strings.Repeat("y", maxSearchContentSize)
+	parts, err = formatSearchResult(searchResult{
+		stdout:   atCap,
+		stderr:   "",
+		exitCode: 0,
+	}, defaultSearchContentMaxLines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := extractFirstText(parts); len(text) != maxSearchContentSize {
+		t.Errorf("output at the cap should be inline, got %d bytes", len(text))
+	}
+}
+
 func TestSearchContentPatternLooksLikeFlag(t *testing.T) {
 	if !rgAvailable() {
 		t.Skip("rg not available on system")
