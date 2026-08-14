@@ -169,6 +169,7 @@ type Initializer struct {
 	eventsClosed bool
 
 	cancel context.CancelFunc // set by Start(), cancels the init context
+	ctx    context.Context    // set by Start(); aborts a blocking deliverEvent send
 }
 
 // NewInitializer creates an Initializer from server configurations.
@@ -200,6 +201,7 @@ func (in *Initializer) Start(ctx context.Context) {
 	in.started.Do(func() {
 		runCtx, cancel := context.WithCancel(ctx)
 		in.cancel = cancel
+		in.ctx = runCtx
 		go in.run(runCtx)
 	})
 }
@@ -293,7 +295,10 @@ func (in *Initializer) run(ctx context.Context) {
 
 	var evt InitEvent
 	in.buildFinalResults(results, &evt)
-	in.sendEvent(evt)
+	// Deliver InitDone with guaranteed delivery: dropping it (as the lossy
+	// sendEvent would when the channel is full) makes the session treat a
+	// successful init as aborted — MCP tools never load.
+	in.deliverEvent(evt)
 }
 
 // collectServerResult handles the full lifecycle of a single server:
@@ -576,5 +581,27 @@ func (in *Initializer) sendEvent(evt InitEvent) {
 	select {
 	case in.events <- evt:
 	default:
+	}
+}
+
+// deliverEvent sends a terminal event (InitDone) to the session, blocking
+// until it is received or the init context is canceled. Unlike sendEvent,
+// it never drops the event: the lossy path is fine for progress updates
+// but a dropped InitDone would leave the session in the wrong lifecycle
+// state. Blocking is safe — the session's main loop reads events
+// continuously, and if the session has exited, its cancellation has
+// already propagated to the init context, so the send cannot block
+// forever. Must only be called from run() after all per-server goroutines
+// have finished, so holding mu across the send cannot stall them.
+func (in *Initializer) deliverEvent(evt InitEvent) {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+
+	if in.eventsClosed {
+		return
+	}
+	select {
+	case in.events <- evt:
+	case <-in.ctx.Done():
 	}
 }
