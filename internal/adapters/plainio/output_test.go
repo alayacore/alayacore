@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -38,6 +39,56 @@ func TestNewlineBetweenDifferentStreamGroups(t *testing.T) {
 	want := "hello world\nnew step"
 	if got != want {
 		t.Errorf("output = %q, want %q", got, want)
+	}
+}
+
+func TestDeltaCompleteFrameSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{
+		writer:    &buf,
+		seenDelta: make(map[string]bool),
+	}
+
+	// Delta mode: At carries the content, AT is an empty terminator. The
+	// terminator must be skipped — processing it would print a spurious
+	// separator (delta tag "At" vs complete tag "AT") and an empty line.
+	o.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "hello")))
+	o.Write(encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("1", "")))
+
+	if got := buf.String(); got != "hello" {
+		t.Errorf("output = %q, want %q (empty AT terminator must not add a separator)", got, "hello")
+	}
+}
+
+func TestSeenDeltaBounded(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{
+		writer:    &buf,
+		seenDelta: make(map[string]bool),
+	}
+
+	// Stream more distinct delta IDs than the cap: the map must stay
+	// bounded and the oldest (smallest) IDs must be evicted.
+	total := maxSeenDeltaEntries + 50
+	for i := 0; i < total; i++ {
+		o.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID(strconv.Itoa(i), "x")))
+	}
+
+	if len(o.seenDelta) > maxSeenDeltaEntries {
+		t.Fatalf("seenDelta grew to %d entries, cap is %d", len(o.seenDelta), maxSeenDeltaEntries)
+	}
+	if _, ok := o.seenDelta["0"]; ok {
+		t.Error("oldest delta ID was not evicted")
+	}
+	if _, ok := o.seenDelta[strconv.Itoa(total-1)]; !ok {
+		t.Error("newest delta ID should be retained")
+	}
+
+	// The complete-frame skip must still work for a retained ID.
+	buf.Reset()
+	o.Write(encodeTestTLV(tlv.TagAssistantT, tlv.WrapID(strconv.Itoa(total-1), "")))
+	if got := buf.String(); got != "" {
+		t.Errorf("output = %q, want empty (retained ID terminator must be skipped)", got)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -13,6 +14,13 @@ import (
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
+
+// maxSeenDeltaEntries caps the seenDelta map. History IDs are never
+// reused and an AT/AR complete frame always arrives right after its
+// At/Ar deltas, so entries older than the cap are never consulted again —
+// evicting the smallest (oldest) ID keeps memory bounded for long
+// sessions without changing visible output.
+const maxSeenDeltaEntries = 512
 
 // stdoutOutput implements io.Writer.
 // It parses TLV messages and prints human-readable text to stdout.
@@ -34,7 +42,7 @@ type stdoutOutput struct {
 	inProgress    atomic.Bool
 	lastTag       string
 	lastHistoryID string
-	seenDelta     map[string]bool // history IDs already printed via At/Ar deltas
+	seenDelta     map[string]bool // bounded set of IDs already printed via At/Ar deltas (see markDeltaSeen)
 	pendingHooks  []func()        // hooks collected under mu, executed by Write after unlock
 
 	// MCP hooks, injected by the adapter. mcpAuthRequired is invoked when
@@ -104,7 +112,7 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		if !ok {
 			return
 		}
-		o.seenDelta[id] = true
+		o.markDeltaSeen(id)
 		o.handleTextDelta(tag, value)
 
 	case tlv.TagAssistantT, tlv.TagAssistantR:
@@ -238,6 +246,38 @@ func renderCommandResult(name string, output json.RawMessage) string {
 		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
 	}
 	return "" // no generic confirmation
+}
+
+// markDeltaSeen records a history ID whose At/Ar deltas were printed, so
+// the matching AT/AR complete frame (empty in delta mode, a terminator
+// only) can be skipped instead of injecting a spurious separator.
+//
+// The map is capped to keep memory bounded for long sessions: history IDs
+// are monotonic and never reused, and a complete frame always arrives
+// immediately after its deltas, so when the cap is reached the smallest
+// (oldest) entry is safe to evict. Must be called with o.mu held.
+func (o *stdoutOutput) markDeltaSeen(id string) {
+	if o.seenDelta[id] {
+		return
+	}
+	if len(o.seenDelta) >= maxSeenDeltaEntries {
+		// Evict the smallest numeric history ID. If no entry parses as a
+		// number, evict an arbitrary entry to bound memory regardless.
+		minID, minVal := "", ^uint64(0)
+		for existing := range o.seenDelta {
+			if v, err := strconv.ParseUint(existing, 10, 64); err == nil && v < minVal {
+				minVal, minID = v, existing
+			}
+		}
+		if minID == "" {
+			for existing := range o.seenDelta {
+				minID = existing
+				break
+			}
+		}
+		delete(o.seenDelta, minID)
+	}
+	o.seenDelta[id] = true
 }
 
 // handleTextDelta handles assistant text/reasoning tags (AT/AR/At/Ar).
