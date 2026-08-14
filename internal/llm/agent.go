@@ -160,6 +160,18 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 
 		stepContents, stepUsage, truncated, err := a.streamEvents(ctx, events, callbacks)
 		if err != nil {
+			// A failed step may still have executed tools whose side
+			// effects already happened (file writes, commands). Fold their
+			// salvaged input+result pairs into the history so a retry or
+			// :continue sees a state consistent with reality.
+			if len(stepContents) > 0 {
+				allContents = append(allContents, stepContents...)
+				if callbacks.OnStepFinish != nil {
+					if cbErr := callbacks.OnStepFinish(allContents, stepUsage); cbErr != nil {
+						return nil, cbErr
+					}
+				}
+			}
 			return nil, err
 		}
 
@@ -195,15 +207,21 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 // WaitGroup and run under a per-stream context. On ANY exit path — stream
 // error, callback failure, reorder failure — the context is canceled first
 // and all tool goroutines are waited on before returning, so no tool keeps
-// executing (and no goroutine leaks) after the stream has errored.
+// executing (and no goroutine leaks) after the stream has errored. After
+// the goroutines settle, the results of tools that already executed are
+// salvaged into the returned contents (see salvageExecutedTools), so their
+// side effects stay visible in history.
 //
 //nolint:gocyclo // switch dispatch over 8 event types with callback guards
-func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, error], callbacks StreamCallbacks) ([]ContentPart, Usage, bool, error) {
+func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, error], callbacks StreamCallbacks) (stepContents []ContentPart, stepUsage Usage, truncated bool, err error) {
 	var (
-		stepContents []ContentPart
-		stepUsage    Usage
-		truncated    bool
-		results      []ContentPart
+		results []ContentPart
+
+		// executedToolCalls tracks every tool input whose goroutine was
+		// started, in emission order. On an error path the deferred
+		// salvage pairs them with whatever results already arrived, so
+		// tools whose side effects happened are recorded in history.
+		executedToolCalls []*ToolInputPart
 	)
 
 	// Per-stream context, canceled on every exit path (defer below).
@@ -211,17 +229,32 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	// when the caller cancels, this ctx is canceled too, and vice versa.
 	streamCtx, cancelStream := context.WithCancel(ctx)
 
-	// Tracks in-flight tool goroutines. Deferred cleanup order matters:
-	// cancelStream must run BEFORE toolWg.Wait (defers run LIFO, so
-	// register Wait first).
-	var toolWg sync.WaitGroup
-	defer toolWg.Wait()
-	defer cancelStream()
-
 	// Channel for collecting all tool execution results.
 	// Buffered so sender goroutines exit immediately after execution.
 	// Capacity 16 covers all tool results in practice.
 	resultCh := make(chan ContentPart, 16)
+
+	// Tracks in-flight tool goroutines. Deferred cleanup order (LIFO):
+	//   cancelStream → toolWg.Wait → salvage
+	// cancelStream must run before toolWg.Wait so canceled tools terminate;
+	// salvage runs LAST, after every tool goroutine has finished, so all
+	// surviving sends are already in resultCh and the drain is
+	// deterministic (no race with in-flight senders).
+	//
+	// Note: when the step already completed (StepCompleteEvent arrived)
+	// before the error, its text/reasoning is dropped — only the tool
+	// pairs are kept. Treating the step as failed and discarding its text
+	// is consistent with cancel semantics, and the tool pairs (reality)
+	// are what matter for retry.
+	var toolWg sync.WaitGroup
+	defer func() {
+		if err != nil && len(executedToolCalls) > 0 {
+			stepContents = salvageExecutedTools(executedToolCalls, results, resultCh)
+		}
+	}()
+	defer toolWg.Wait()
+	defer cancelStream()
+
 	execCount := 0
 
 	// Track history IDs for content blocks (keyed by index for AT/AR/AF).
@@ -291,6 +324,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			}
 			execCount++
 			tc := e.ToPart(id, nameByIndex[e.Index])
+			executedToolCalls = append(executedToolCalls, tc)
 			a.handleStreamedToolInput(streamCtx, tc, callbacks, resultCh, &toolWg)
 
 		case StepCompleteEvent:
@@ -316,11 +350,12 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	// All tools (confirm and no-confirm) execute in goroutines started
 	// during streaming. Collect all results.
 	//
-	// The select on streamCtx.Done prevents a deadlock if the caller
-	// cancels during collection: a sender's sendToolResult may drop its
-	// result once the context is canceled, so a bare receive would block
-	// forever. In that case we bail out and the deferred cancel+wait
-	// cleans up the remaining goroutines.
+	// The select on streamCtx.Done prevents a deadlock: a result may never
+	// arrive for a tool that was awaiting confirmation when the task was
+	// canceled (its goroutine returns without sending), so a bare receive
+	// would block forever. In that case we bail out; the deferred
+	// cancel+wait settles the goroutines, then salvage recovers whatever
+	// results did arrive.
 	for i := 0; i < execCount; i++ {
 		select {
 		case r := <-resultCh:
@@ -398,7 +433,11 @@ func (a *Agent) handleStreamedToolInput(ctx context.Context, tc *ToolInputPart, 
 				}
 				sendToolResult(ctx, resultCh, a.executeTool(ctx, tc, callbacks, historyID))
 			case <-ctx.Done():
-				sendToolResult(ctx, resultCh, newToolOutput(callbacks, tc.ID, nil, ctx.Err(), historyID))
+				// Canceled while waiting for confirmation — the tool never
+				// executed, so no result is produced. The collector bails on
+				// the same cancellation, so the missing result cannot
+				// deadlock it, and omitting it keeps the tool out of the
+				// salvaged history (it must not appear as if it ran).
 			}
 		}(ctx, tc, historyID)
 		return
@@ -412,15 +451,96 @@ func (a *Agent) handleStreamedToolInput(ctx context.Context, tc *ToolInputPart, 
 	}(tc, historyID)
 }
 
-// sendToolResult delivers a tool result to the collector, or drops it when
-// the stream context has been canceled (error path: the collector is gone
-// and nobody will drain resultCh). Dropping instead of blocking prevents
-// goroutine leaks when more tools than resultCh's capacity were started
-// before the stream failed.
+// sendToolResult delivers a tool result to the collector. It is designed
+// around two channel states, each with a distinct guarantee:
+//
+//  1. Room available (common case, ≤16 in-flight results): the first
+//     non-blocking send delivers immediately — even if the stream context
+//     is already canceled. This is what makes the salvage drain
+//     deterministic: salvage runs after all tool goroutines settle, so
+//     every result that had room lands in resultCh and is recovered. A
+//     single select between send and ctx.Done here would randomly drop
+//     results when cancellation raced a just-completed tool — the bug
+//     this two-step design replaces.
+//
+//  2. Channel full (more in-flight results than the 16-slot buffer): the
+//     sender must WAIT rather than drop. On the normal path the collector
+//     is actively draining and needs exactly execCount results — dropping
+//     would starve it and deadlock the step. The ctx.Done case is the
+//     escape hatch for the error path: once the collector has bailed,
+//     nobody drains, so a blocked send would hang this goroutine — and
+//     with it toolWg.Wait and Stream — forever; cancellation releases it.
+//
+// Net effect: never blocks when delivery is possible, never leaks when it
+// isn't, and the salvage drain always sees whatever could be delivered.
 func sendToolResult(ctx context.Context, resultCh chan<- ContentPart, result ContentPart) {
+	// Room available — deliver unconditionally (cancel or not). On error
+	// paths the salvage drain, which runs after all tool goroutines
+	// settle, picks the result up; on the normal path the collector does.
+	select {
+	case resultCh <- result:
+		return
+	default:
+	}
+
+	// Channel full — block until the collector drains (normal path), or
+	// the stream is canceled (error path: nobody will drain, so drop
+	// rather than hang toolWg.Wait forever).
 	select {
 	case resultCh <- result:
 	case <-ctx.Done():
+	}
+}
+
+// salvageExecutedTools collects the results of tools that already executed
+// — from both the collector's local results and whatever is still queued in
+// resultCh — and emits each as a [tool_use, tool_result] pair in tool-call
+// emission order. Called on error paths (cancel, provider failure, callback
+// error): tools whose side effects happened must stay visible in history so
+// a retry or :continue sees a state consistent with reality.
+//
+// A tool call without a result (still running when the stream died, dropped
+// by a racing sendToolResult, or never confirmed) is omitted entirely — an
+// assistant tool_use must never appear without its matching tool_result.
+// The caller runs this after waiting for all tool goroutines (toolWg.Wait),
+// so the drain is deterministic and non-blocking.
+func salvageExecutedTools(toolCalls []*ToolInputPart, collected []ContentPart, resultCh <-chan ContentPart) []ContentPart {
+	// A tool-call ID appearing more than once is ambiguous: a non-conforming
+	// provider reused the ID, so we cannot tell which result belongs to
+	// which call. Those calls are omitted entirely — guessing a pairing
+	// would put wrong results in history and mislead the model on retry.
+	occurrences := make(map[string]int, len(toolCalls))
+	for _, tc := range toolCalls {
+		occurrences[tc.ID]++
+	}
+
+	// Index results by tool call ID (collected first, then drained).
+	byID := make(map[string]ContentPart, len(toolCalls))
+	for _, r := range collected {
+		if tr, ok := r.(*ToolOutputPart); ok && tr.ID != "" {
+			byID[tr.ID] = r
+		}
+	}
+	for {
+		select {
+		case r := <-resultCh:
+			if tr, ok := r.(*ToolOutputPart); ok && tr.ID != "" {
+				byID[tr.ID] = r
+			}
+		default:
+			// Emit pairs in tool-call emission order; skip unmatched and
+			// ambiguous (duplicate-ID) calls.
+			var salvaged []ContentPart
+			for _, tc := range toolCalls {
+				r, ok := byID[tc.ID]
+				if !ok || occurrences[tc.ID] > 1 {
+					continue
+				}
+				tc.SetRole(RoleAssistant)
+				salvaged = append(salvaged, tc, r)
+			}
+			return salvaged
+		}
 	}
 }
 

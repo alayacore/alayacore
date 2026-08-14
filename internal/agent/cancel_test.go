@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"iter"
 	"strings"
@@ -239,5 +240,145 @@ func TestCancelTask_EndToEnd(t *testing.T) {
 	case <-s.Done():
 	case <-time.After(2 * time.Second):
 		t.Fatal("session did not finish after cancel")
+	}
+}
+
+// toolThenBlockProvider emits one tool call, then blocks until ctx is
+// canceled and fails with ctx.Err — like a provider whose stream is
+// aborted after the model emitted a tool call. started closes when
+// StreamMessages is called; toolExecuted closes when the tool's Execute
+// runs.
+type toolThenBlockProvider struct {
+	started      chan struct{}
+	toolExecuted chan struct{}
+	once         sync.Once
+}
+
+func (m *toolThenBlockProvider) StreamMessages(ctx context.Context, _ []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
+	m.once.Do(func() { close(m.started) })
+	return func(yield func(llm.StreamEvent, error) bool) {
+		yield(llm.ToolInputStartEvent{ID: "c1", Name: "exec", Index: 0}, nil)
+		yield(llm.ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Index: 0}, nil)
+		<-ctx.Done()
+		yield(nil, ctx.Err())
+	}, nil
+}
+
+func (m *toolThenBlockProvider) SetReasoningLevel(_ int)     {}
+func (m *toolThenBlockProvider) SetVideoConfig(_ int, _ int) {}
+
+// TestCancelTask_KeepsExecutedToolResult verifies the end-to-end salvage
+// chain: a tool executes before the task is canceled, and the session
+// history keeps the [tool_use, tool_result] pair plus the "Canceled"
+// marker — so a later :continue resubmits a history consistent with the
+// side effects that already happened.
+func TestCancelTask_KeepsExecutedToolResult(t *testing.T) {
+	output := &syncOutput{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r, w := io.Pipe()
+	defer w.Close()
+
+	provider := &toolThenBlockProvider{
+		started:      make(chan struct{}),
+		toolExecuted: make(chan struct{}),
+	}
+	agent := llm.NewAgent(llm.AgentConfig{
+		Provider: provider,
+		MaxSteps: 10,
+		Tools: []llm.Tool{
+			{
+				Definition: llm.ToolDefinition{Name: "exec"},
+				Execute: func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) {
+					close(provider.toolExecuted)
+					return []llm.ContentPart{&llm.TextPart{Text: "done"}}, nil
+				},
+			},
+		},
+	})
+
+	s := &Session{
+		sessionConfig: sessionConfig{
+			modelService: &modelService{agent: agent, provider: provider},
+			SessionConfig: SessionConfig{
+				Input:   r,
+				Output:  output,
+				NoDelta: true,
+			},
+		},
+		runState: runState{
+			Contents:     make([]llm.ContentPart, 0),
+			taskEventCh:  make(chan taskEvent, 64),
+			taskResultCh: make(chan []llm.ContentPart, 1),
+			cancelReqCh:  make(chan chan bool, 1),
+		},
+		sharedState: sharedState{
+			sessionCtx:    ctx,
+			sessionCancel: cancel,
+			confirmChs:    make(map[string]chan bool),
+		},
+		runDoneCh: make(chan struct{}),
+	}
+	s.mcpService = newMCPService(nil, output)
+	s.Start()
+
+	// Deliver a prompt.
+	if err := tlv.WriteTLV(w, tlv.TagUserT, tlv.WrapID("1", "hello")); err != nil {
+		t.Fatalf("write UT: %v", err)
+	}
+	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
+		t.Fatalf("write UE: %v", err)
+	}
+
+	// Wait until the tool has executed (its result is in flight), then
+	// cancel the task.
+	select {
+	case <-provider.started:
+	case <-time.After(time.Second):
+		t.Fatal("task never started")
+	}
+	select {
+	case <-provider.toolExecuted:
+	case <-time.After(time.Second):
+		t.Fatal("tool never executed")
+	}
+	if !s.CancelTask() {
+		t.Fatal("CancelTask should report the running task was canceled")
+	}
+
+	// Wait for the SM error, then EOF so run() exits.
+	deadline := time.After(2 * time.Second)
+	for {
+		if strings.Contains(output.String(), "context canceled") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("no SM error emitted after cancel; output: %q", output.String())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	_ = w.Close()
+	select {
+	case <-s.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("session did not finish after cancel")
+	}
+
+	// After run() exits, s.Contents is stable: user prompt + salvaged
+	// [tool_use, tool_result] pair + "Canceled" marker.
+	if len(s.Contents) != 4 {
+		t.Fatalf("Contents has %d parts, want 4 (prompt, tool_use, tool_result, Canceled): %#v", len(s.Contents), s.Contents)
+	}
+	tc, ok := s.Contents[1].(*llm.ToolInputPart)
+	if !ok || tc.ID != "c1" || tc.GetRole() != llm.RoleAssistant {
+		t.Errorf("Contents[1] = %#v, want ToolInputPart c1 with assistant role", s.Contents[1])
+	}
+	tr, ok := s.Contents[2].(*llm.ToolOutputPart)
+	if !ok || tr.ID != "c1" || tr.GetRole() != llm.RoleTool {
+		t.Errorf("Contents[2] = %#v, want ToolOutputPart c1 with tool role", s.Contents[2])
+	}
+	if tp, ok := s.Contents[3].(*llm.TextPart); !ok || tp.Text != "Canceled" {
+		t.Errorf("Contents[3] = %#v, want TextPart %q", s.Contents[3], "Canceled")
 	}
 }
