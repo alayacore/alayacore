@@ -23,9 +23,11 @@ func TestWriteFileValidation(t *testing.T) {
 	}
 }
 
-// TestWriteFileCreatesNewFileWithSecureMode verifies that a brand-new file
-// is created with 0600 permissions (owner-only, before umask).
-func TestWriteFileCreatesNewFileWithSecureMode(t *testing.T) {
+// TestWriteFileCreatesNewFile verifies that a brand-new file is created
+// and its content is readable back. The exact permission bits are
+// asserted in write_file_mode_unix_test.go (0644 narrowed by umask) —
+// they differ on Windows.
+func TestWriteFileCreatesNewFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.txt")
 
 	parts, err := executeWriteFile(context.Background(), WriteFileInput{Path: path, Content: "hello"})
@@ -43,20 +45,9 @@ func TestWriteFileCreatesNewFileWithSecureMode(t *testing.T) {
 	if string(data) != "hello" {
 		t.Fatalf("content = %q, want %q", string(data), "hello")
 	}
-
-	if runtime.GOOS != "windows" {
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("stat: %v", err)
-		}
-		if perm := info.Mode().Perm(); perm != 0600 {
-			t.Fatalf("new file mode = %o, want 600", perm)
-		}
-	}
 }
 
-// TestWriteFileOverwritePreservesMode locks in the intended overwrite
-// semantics: os.WriteFile's perm argument only applies at creation, so
+// TestWriteFileOverwritePreservesMode locks in the overwrite semantics:
 // replacing an existing file must NOT reset its permissions (a 0755
 // script stays executable). This matches edit_file's mode preservation.
 func TestWriteFileOverwritePreservesMode(t *testing.T) {

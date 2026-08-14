@@ -32,7 +32,17 @@ func executeWriteFile(_ context.Context, args WriteFileInput) ([]llm.ContentPart
 		return nil, fmt.Errorf("content is required")
 	}
 
-	if err := os.WriteFile(args.Path, []byte(args.Content), 0600); err != nil {
+	// Preserve an existing file's permission bits: overwriting a file must
+	// not clobber its mode (an executable script would lose its +x). New
+	// files default to 0644, narrowed by the process umask as usual — a
+	// fixed 0600 made every new file unreadable to other users and never
+	// executable.
+	perm := os.FileMode(0644)
+	if info, err := os.Stat(args.Path); err == nil {
+		perm = info.Mode().Perm()
+	}
+
+	if err := os.WriteFile(args.Path, []byte(args.Content), perm); err != nil {
 		return nil, err
 	}
 	return []llm.ContentPart{&llm.TextPart{Text: "File written successfully"}}, nil
