@@ -56,7 +56,7 @@ func TestLastStepsNotCapturedWithoutRun(t *testing.T) {
 
 // TestLastStepsZeroWhenTaskFailsBeforeFirstStep verifies an instant failure
 // (no step broadcasts before completion) leaves the last-step summary empty
-// so the status bar does not show a meaningless "last 0/N".
+// so the status bar does not show a meaningless "0/N".
 func TestLastStepsZeroWhenTaskFailsBeforeFirstStep(t *testing.T) {
 	w := NewTerminalOutput(DefaultStyles())
 

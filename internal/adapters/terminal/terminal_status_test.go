@@ -75,7 +75,7 @@ func TestStatusBarShowsLastStepsAfterCompletion(t *testing.T) {
 	*terminal = terminal.updateStatus()
 
 	// Check that the status shows the last run's summary
-	expectedSubstring := "last 5/10"
+	expectedSubstring := "5/10"
 	plain := stripANSI(terminal.statusText)
 	if !containsSubstring(plain, expectedSubstring) {
 		t.Errorf("Expected status to contain %q, got %q", expectedSubstring, plain)
@@ -110,7 +110,7 @@ func TestStatusBarShowsLastStepsUnlimited(t *testing.T) {
 
 	*terminal = terminal.updateStatus()
 
-	expectedSubstring := "last 3/INF"
+	expectedSubstring := "3/INF"
 	plain := stripANSI(terminal.statusText)
 	if !containsSubstring(plain, expectedSubstring) {
 		t.Errorf("Expected status to contain %q, got %q", expectedSubstring, plain)

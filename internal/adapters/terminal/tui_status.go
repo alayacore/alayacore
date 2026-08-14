@@ -15,8 +15,9 @@ import (
 
 // statusStepsSegment returns the steps status string, or "" if no activity.
 // During a run it shows live progress ("3/5", "3/INF"); after completion it
-// shows the last run's summary ("last 3/5", "last 3/INF") until the next
-// task starts.
+// shows the last run's frozen summary ("3/5", "3/INF") until the next task
+// starts. The leading dot in the status bar (• live vs · idle) tells the two
+// apart, so the summary renders without a "last" prefix.
 func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurrentStep int, lastMaxSteps int) string {
 	if inProgress && currentStep > 0 {
 		if maxSteps > 0 {
@@ -26,9 +27,9 @@ func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurr
 	}
 	if lastCurrentStep > 0 {
 		if lastMaxSteps > 0 {
-			return fmt.Sprintf("last %d/%d", lastCurrentStep, lastMaxSteps)
+			return fmt.Sprintf("%d/%d", lastCurrentStep, lastMaxSteps)
 		}
-		return fmt.Sprintf("last %d/INF", lastCurrentStep)
+		return fmt.Sprintf("%d/INF", lastCurrentStep)
 	}
 	return ""
 }
