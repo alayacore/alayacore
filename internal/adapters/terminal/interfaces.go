@@ -25,6 +25,8 @@ type StatusSnapshot struct {
 	InProgress      bool
 	CurrentStep     int
 	MaxSteps        int
+	LastCurrentStep int // final step of the last completed task (0 = none)
+	LastMaxSteps    int // max steps of the last completed task (0 = unlimited)
 	ReasoningLevel  int
 	ActiveTheme     string
 	ActiveThemeData *theme.Theme

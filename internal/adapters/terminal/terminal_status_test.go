@@ -43,6 +43,80 @@ func TestStatusBarShowsCurrentStepsDuringProgress(t *testing.T) {
 	}
 }
 
+func TestStatusBarShowsLastStepsAfterCompletion(t *testing.T) {
+	// Create output writer and simulate a task that ran 5 of 10 steps
+	out := NewTerminalOutput(DefaultStyles())
+
+	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":5,"max_steps":10,"context":0,"context_limit":0}}`)
+	// Completion broadcast carries current_step zeroed.
+	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":10,"context":0,"context_limit":0}}`)
+
+	// Create terminal with the output writer
+	styles := DefaultStyles()
+	terminal := &Terminal{
+		out:              out,
+		display:          NewDisplayModel(out.WindowBuffer(), styles),
+		input:            NewPromptInput(styles),
+		editor:           NewEditor(),
+		modelSelector:    NewModelSelector(styles),
+		themeSelector:    NewThemeSelector(styles),
+		helpWindow:       NewHelpWindow(styles),
+		confirmOverlay:   NewConfirmDialog(styles),
+		mcpInitOverlay:   NewConfirmDialog(styles),
+		attachmentWindow: NewAttachmentWindow(styles),
+		focusedWindow:    focusInput,
+		windowWidth:      80,
+		windowHeight:     24,
+		styles:           styles,
+		hasFocus:         true,
+	}
+
+	// Update status
+	*terminal = terminal.updateStatus()
+
+	// Check that the status shows the last run's summary
+	expectedSubstring := "last 5/10"
+	plain := stripANSI(terminal.statusText)
+	if !containsSubstring(plain, expectedSubstring) {
+		t.Errorf("Expected status to contain %q, got %q", expectedSubstring, plain)
+	}
+}
+
+func TestStatusBarShowsLastStepsUnlimited(t *testing.T) {
+	// Simulate a task with unlimited max steps (default --max-steps=0)
+	out := NewTerminalOutput(DefaultStyles())
+
+	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":0,"context":0,"context_limit":0}}`)
+	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":0,"context_limit":0}}`)
+
+	styles := DefaultStyles()
+	terminal := &Terminal{
+		out:              out,
+		display:          NewDisplayModel(out.WindowBuffer(), styles),
+		input:            NewPromptInput(styles),
+		editor:           NewEditor(),
+		modelSelector:    NewModelSelector(styles),
+		themeSelector:    NewThemeSelector(styles),
+		helpWindow:       NewHelpWindow(styles),
+		confirmOverlay:   NewConfirmDialog(styles),
+		mcpInitOverlay:   NewConfirmDialog(styles),
+		attachmentWindow: NewAttachmentWindow(styles),
+		focusedWindow:    focusInput,
+		windowWidth:      80,
+		windowHeight:     24,
+		styles:           styles,
+		hasFocus:         true,
+	}
+
+	*terminal = terminal.updateStatus()
+
+	expectedSubstring := "last 3/INF"
+	plain := stripANSI(terminal.statusText)
+	if !containsSubstring(plain, expectedSubstring) {
+		t.Errorf("Expected status to contain %q, got %q", expectedSubstring, plain)
+	}
+}
+
 // Helper function to check if a string contains a substring
 func containsSubstring(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {

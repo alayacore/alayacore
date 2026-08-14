@@ -14,12 +14,21 @@ import (
 )
 
 // statusStepsSegment returns the steps status string, or "" if no activity.
-func statusStepsSegment(inProgress bool, currentStep int, maxSteps int) string {
+// During a run it shows live progress ("3/5", "3/INF"); after completion it
+// shows the last run's summary ("last 3/5", "last 3/INF") until the next
+// task starts.
+func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurrentStep int, lastMaxSteps int) string {
 	if inProgress && currentStep > 0 {
 		if maxSteps > 0 {
 			return fmt.Sprintf("%d/%d", currentStep, maxSteps)
 		}
 		return fmt.Sprintf("%d/INF", currentStep)
+	}
+	if lastCurrentStep > 0 {
+		if lastMaxSteps > 0 {
+			return fmt.Sprintf("last %d/%d", lastCurrentStep, lastMaxSteps)
+		}
+		return fmt.Sprintf("last %d/INF", lastCurrentStep)
 	}
 	return ""
 }
@@ -113,7 +122,8 @@ func (m Terminal) updateStatus() Terminal {
 	}
 
 	// Steps segment (rightmost — show only when there's step activity)
-	if stepVal := statusStepsSegment(snap.InProgress, snap.CurrentStep, snap.MaxSteps); stepVal != "" {
+	if stepVal := statusStepsSegment(snap.InProgress, snap.CurrentStep, snap.MaxSteps,
+		snap.LastCurrentStep, snap.LastMaxSteps); stepVal != "" {
 		segments = append(segments, valStyle.Render(stepVal))
 		dimSegments = append(dimSegments, dimValStyle.Render(stepVal))
 	}

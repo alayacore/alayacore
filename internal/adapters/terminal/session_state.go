@@ -31,6 +31,13 @@ type sessionState struct {
 	maxSteps       int
 	reasoningLevel int
 
+	// Last completed task's step summary, shown in the status bar until the
+	// next task starts. Captured on the completion edge before the
+	// completion broadcast overwrites currentStep with 0; 0 = no completed
+	// run (e.g. startup or an instant failure before step 1).
+	lastCurrentStep int
+	lastMaxSteps    int // 0 = unlimited (--max-steps not set)
+
 	// Video config
 	videoFPS int
 	videoRes int
@@ -88,8 +95,20 @@ type mcpAuthPending struct {
 }
 
 // updateTask atomically updates task progress fields.
+// On the completion edge (in-progress → done) the last known step values
+// are snapshotted before the completion broadcast overwrites currentStep
+// with 0; on the start edge (done → in-progress) they are reset so the
+// next run shows live progress rather than the previous run's summary.
 func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, context int64) {
 	s.mu.Lock()
+	if s.inProgress && !inProgress {
+		s.lastCurrentStep = s.currentStep
+		s.lastMaxSteps = s.maxSteps
+	}
+	if !s.inProgress && inProgress {
+		s.lastCurrentStep = 0
+		s.lastMaxSteps = 0
+	}
 	s.inProgress = inProgress
 	s.currentStep = currentStep
 	s.maxSteps = maxSteps
@@ -291,6 +310,8 @@ func (s *sessionState) snapshotStatus() StatusSnapshot {
 		InProgress:      s.inProgress,
 		CurrentStep:     s.currentStep,
 		MaxSteps:        s.maxSteps,
+		LastCurrentStep: s.lastCurrentStep,
+		LastMaxSteps:    s.lastMaxSteps,
 		ReasoningLevel:  s.reasoningLevel,
 		ActiveTheme:     s.activeTheme,
 		ActiveThemeData: s.activeThemeData,
