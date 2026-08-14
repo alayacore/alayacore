@@ -95,21 +95,43 @@ func TestFileTokenStore_Delete(t *testing.T) {
 func TestFileTokenStore_SanitizeTokenName(t *testing.T) {
 	tests := []struct {
 		input string
-		want  string // prefix match, exact match not needed due to encoding
+		want  string
 	}{
 		{"simple", "simple"},
 		{"with-dashes", "with-dashes"},
 		{"with_underscores", "with_underscores"},
-		{"path/with/slashes", "path_with_slashes"},
-		{"dots.are.ok", "dots.are.ok"},
+		{"path/with/slashes", "path~2fwith~2fslashes"},
+		{"dots.are.ok", "dots~2eare~2eok"},
+		{"a b", "a~20b"},
+		{"tilde~here", "tilde~7ehere"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := sanitizeFileTokenName(tt.input)
-			if len(got) < len(tt.want) || got[:len(tt.want)] != tt.want {
-				t.Errorf("sanitizeFileTokenName(%q) = %q, want prefix %q", tt.input, got, tt.want)
+			if got := sanitizeFileTokenName(tt.input); got != tt.want {
+				t.Errorf("sanitizeFileTokenName(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestFileTokenStore_SanitizeTokenNameUnique verifies the encoding is
+// injective: server names that collided under the old mapping (e.g. "a/b"
+// vs "a_b" both became "a_b") must map to distinct token files, so two
+// servers' tokens can never cross-contaminate.
+func TestFileTokenStore_SanitizeTokenNameUnique(t *testing.T) {
+	pairs := [][2]string{
+		{"a/b", "a_b"},
+		{"a.b", "a_b"},
+		{"a\\b", "a_b"},
+		{"a_2f", "a/"},
+		{"a~2fb", "a/b"},
+		{"my server", "my_server"},
+	}
+	for _, p := range pairs {
+		x, y := sanitizeFileTokenName(p[0]), sanitizeFileTokenName(p[1])
+		if x == y {
+			t.Errorf("sanitizeFileTokenName(%q) == sanitizeFileTokenName(%q) == %q", p[0], p[1], x)
+		}
 	}
 }
 

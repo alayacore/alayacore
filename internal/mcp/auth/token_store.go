@@ -46,18 +46,23 @@ func (s *FileTokenStore) tokenFilePath(serverID string) string {
 	return filepath.Join(s.dir, sanitizeFileTokenName(serverID)+".conf")
 }
 
-// sanitizeFileTokenName replaces characters problematic for file names.
+// sanitizeFileTokenName encodes a server name into a safe, unique file
+// name. The encoding is injective: bytes from [A-Za-z0-9_-] are kept
+// as-is, and every other byte is escaped as "~hh" (tilde + 2 hex digits).
+// A literal '~' is itself escaped, so the mapping is reversible — two
+// different server names can never map to the same file (e.g. "a/b" and
+// "a_b" produce "a~2fb" and "a_b"; the old mapping collapsed both to
+// "a_b", cross-contaminating their tokens).
 func sanitizeFileTokenName(name string) string {
+	const hex = "0123456789abcdef"
 	result := make([]byte, 0, len(name))
 	for i := 0; i < len(name); i++ {
 		c := name[i]
 		switch {
-		case c == '/' || c == '\\' || c == '\x00':
-			result = append(result, '_')
-		case c == '.' || c == '-' || c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'):
+		case (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_':
 			result = append(result, c)
 		default:
-			result = append(result, fmt.Sprintf("_%02x", c)...)
+			result = append(result, '~', hex[c>>4], hex[c&0xf])
 		}
 	}
 	return string(result)
