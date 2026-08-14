@@ -168,10 +168,10 @@ func TestWindowBufferDiff(t *testing.T) {
 		rendered := wb.GetAll(-1, false)
 		renderedLines := strings.Split(rendered, "\n")
 
-		// Should fold to ~5 lines of content (header + first + separator + last 3)
-		// Plus border lines, so approximately 7-8 lines total
+		// Should fold to ~3 lines of content (header + separator + last line)
+		// Plus border lines, so approximately 5-6 lines total
 		if len(renderedLines) > 10 {
-			t.Errorf("Rendered diff has %d lines, should be folded to ~7-8", len(renderedLines))
+			t.Errorf("Rendered diff has %d lines, should be folded to ~5-6", len(renderedLines))
 		}
 
 		// Verify it contains the fold indicator (horizontal rule)

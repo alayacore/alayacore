@@ -11,7 +11,8 @@ import (
 func TestFoldIndicator(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
-	// Create a tool window with VERY long content that will definitely wrap to more than 5 lines
+	// Create a tool window with VERY long content that will definitely wrap
+	// to more than 3 lines (the fold threshold) and produce a wide fold row
 	// At 76 chars inner width, we need more than 380 characters to get 6+ lines
 	longContent := strings.Repeat("This is a test sentence that will wrap. ", 12)
 	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "tool123", Name: "test_tool", Input: json.RawMessage(longContent)}, 0)
@@ -60,6 +61,6 @@ func TestFoldIndicatorColor(t *testing.T) {
 	// Verify it folds to fewer lines than the full diff
 	renderedLines := strings.Split(rendered, "\n")
 	if len(renderedLines) > 10 {
-		t.Errorf("Folded diff should fold to ~7-8 lines, got %d", len(renderedLines))
+		t.Errorf("Folded diff should fold to ~5 lines, got %d", len(renderedLines))
 	}
 }

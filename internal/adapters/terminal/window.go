@@ -338,11 +338,11 @@ func (w *Window) UpdateLineCountFast(width int) (int, bool) {
 		return 0, false
 	}
 	lc, ok := w.renderLineCountFromCache(width)
-	if ok && w.Folded && lc > 5+2 {
-		// Folded windows show at most 5 content lines + 2 border lines.
+	if ok && w.Folded && lc > 3+2 {
+		// Folded windows show at most 3 content lines + 2 border lines.
 		// The +2 accounts for the top and bottom border lines added by
 		// borderStyle.Width(width).Render(inner). See ensureLineHeights.
-		return 7, true
+		return 5, true
 	}
 	return lc, ok
 }
@@ -359,10 +359,12 @@ func (w *Window) renderLineCountFromCache(width int) (int, bool) {
 	return 0, false
 }
 
-// applyFolding collapses content to first 2 lines + indicator + last 2 lines.
+// applyFolding collapses content to first line + indicator + last line.
+// The first line is typically the header (tool name + args), so the fold
+// keeps enough context to identify the window; unfold for details.
 func (w *Window) applyFolding(content string, width int, styles *Styles) string {
 	lines := splitLines(content)
-	if len(lines) <= 5 {
+	if len(lines) <= 3 {
 		return content
 	}
 
@@ -370,7 +372,7 @@ func (w *Window) applyFolding(content string, width int, styles *Styles) string 
 		Foreground(styles.ColorDim).
 		Render(strings.Repeat(styles.FoldIndicator, width-BorderInnerPadding))
 
-	return lines[0] + "\n" + lines[1] + "\n" + indicator + "\n" + strings.Join(lines[len(lines)-2:], "\n")
+	return lines[0] + "\n" + indicator + "\n" + lines[len(lines)-1]
 }
 
 // splitLines splits a string into lines.

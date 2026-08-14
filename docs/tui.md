@@ -165,7 +165,7 @@ scrolls the viewport. While auto-follow is active:
 
 ### Fold Mode
 
-Press `Space` on any window to collapse it — the window shows the first 2 lines, a centered fold indicator, and the last 2 lines. Press `Space` again to expand.
+Press `Space` on any window to collapse it — the window shows the first line, a fold indicator, and the last line. The first line is the header (e.g. `edit_file: test.txt`) for tool/diff windows, so the fold still identifies the window; press `Space` again to expand for details.
 
 ### Virtual Scrolling
 
