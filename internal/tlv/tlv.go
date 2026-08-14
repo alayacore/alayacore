@@ -83,10 +83,15 @@ func checkEncodeLength(length int64) error {
 // EncodeTLV creates a TLV-encoded byte slice.
 // Format: [2-byte tag][4-byte length][value]
 //
-// Returns an error if value exceeds maxMessageSize. The caller must
-// surface this rather than silently truncating — a truncated frame
-// would be delivered as if it were the complete message.
+// The tag must be exactly 2 characters (the wire format has a fixed 2-byte
+// tag field) — anything else returns an error instead of panicking on the
+// tag byte indexing. Returns an error if value exceeds maxMessageSize. The
+// caller must surface this rather than silently truncating — a truncated
+// frame would be delivered as if it were the complete message.
 func EncodeTLV(tag string, value string) ([]byte, error) {
+	if len(tag) != 2 {
+		return nil, fmt.Errorf("tlv: tag must be exactly 2 characters, got %q (len %d)", tag, len(tag))
+	}
 	if err := checkEncodeLength(int64(len(value))); err != nil {
 		return nil, err
 	}

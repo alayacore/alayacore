@@ -3,6 +3,7 @@ package tlv
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -112,5 +113,19 @@ func TestEncodeTLV_NormalValue(t *testing.T) {
 	}
 	if len(msg) != 6+len("hello") {
 		t.Errorf("encoded length = %d, want %d", len(msg), 6+len("hello"))
+	}
+}
+
+// TestEncodeTLV_InvalidTag verifies EncodeTLV rejects tags that are not
+// exactly 2 characters with an error instead of panicking on the tag byte
+// indexing — a user-supplied or malformed tag (e.g. from a misc tool or an
+// external adapter) must fail cleanly.
+func TestEncodeTLV_InvalidTag(t *testing.T) {
+	for _, tag := range []string{"", "A", "ABC"} {
+		t.Run(fmt.Sprintf("tag=%q", tag), func(t *testing.T) {
+			if _, err := EncodeTLV(tag, "x"); err == nil {
+				t.Fatalf("EncodeTLV(%q) succeeded, want an error", tag)
+			}
+		})
 	}
 }
