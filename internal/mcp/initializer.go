@@ -523,7 +523,7 @@ func (in *Initializer) buildFinalResults(results map[string]serverResult, evt *I
 	}
 
 	evt.Type = InitDone
-	evt.Tools = allTools
+	evt.Tools = dedupeToolNames(allTools)
 	evt.SysFragment = frag.String()
 	evt.Manager = in.manager
 }

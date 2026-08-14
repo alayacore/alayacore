@@ -2,7 +2,10 @@ package mcp
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/llm"
 )
 
 func TestBuildToolName(t *testing.T) {
@@ -10,6 +13,53 @@ func TestBuildToolName(t *testing.T) {
 	want := "my_server_do_something"
 	if got != want {
 		t.Errorf("buildToolName() = %q, want %q", got, want)
+	}
+}
+
+func TestDedupeToolNames(t *testing.T) {
+	mk := func(name string) llm.Tool {
+		return llm.NewTool(name, "desc").Build()
+	}
+
+	// Collision sources: sanitized server names mapping to one prefix
+	// ("a/b" and "a_b"), and a server's own tool colliding with the
+	// generated resource tool of the same name.
+	tools := dedupeToolNames([]llm.Tool{
+		mk("a_b_query"),         // server "a/b", tool "query"
+		mk("a_b_query"),         // server "a_b", tool "query" → collides
+		mk("git_read_resource"), // server "git" real tool
+		mk("git_read_resource"), // generated resource tool → collides
+		mk("unique"),
+	})
+
+	got := make([]string, len(tools))
+	for i := range tools {
+		got[i] = tools[i].Definition.Name
+	}
+	want := []string{"a_b_query", "a_b_query_2", "git_read_resource", "git_read_resource_2", "unique"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("dedupeToolNames() = %v, want %v", got, want)
+	}
+}
+
+func TestDedupeToolNamesTripleCollision(t *testing.T) {
+	mk := func(name string) llm.Tool {
+		return llm.NewTool(name, "desc").Build()
+	}
+
+	tools := dedupeToolNames([]llm.Tool{
+		mk("x_t"),
+		mk("x_t"),
+		mk("x_t"),
+	})
+
+	got := make([]string, len(tools))
+	for i := range tools {
+		got[i] = tools[i].Definition.Name
+	}
+	want := []string{"x_t", "x_t_2", "x_t_3"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("dedupeToolNames() = %v, want %v", got, want)
 	}
 }
 

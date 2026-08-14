@@ -32,6 +32,34 @@ func ToolsToAgentTools(serverTools map[string][]Tool, manager *Manager) []llm.To
 	return result
 }
 
+// dedupeToolNames ensures every tool name in the list is unique. The first
+// occurrence keeps its plain name; later duplicates get a stable numeric
+// suffix ("_2", "_3", ...). Collisions arise when sanitizeName maps
+// distinct server names to the same prefix ("a/b" vs "a_b"), or when a
+// server's own "read_resource"/"get_prompt" tool collides with the
+// generated capability tool of the same name. Order in the input slice
+// decides who keeps the plain name, and the mapping is deterministic
+// across runs — important for saved sessions that reference tool names.
+func dedupeToolNames(tools []llm.Tool) []llm.Tool {
+	seen := make(map[string]bool, len(tools))
+	for i := range tools {
+		name := tools[i].Definition.Name
+		if !seen[name] {
+			seen[name] = true
+			continue
+		}
+		for n := 2; ; n++ {
+			candidate := fmt.Sprintf("%s_%d", name, n)
+			if !seen[candidate] {
+				tools[i].Definition.Name = candidate
+				seen[candidate] = true
+				break
+			}
+		}
+	}
+	return tools
+}
+
 // adaptTool converts a single MCP tool to an llm.Tool.
 // Returns a zero-value Tool and an error if the tool has an invalid schema.
 func adaptTool(serverName string, tool Tool, manager *Manager) (llm.Tool, error) {
