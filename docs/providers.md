@@ -83,9 +83,9 @@ Some providers emit no-op deltas with `"arguments": null` (JSON literal null):
 }
 ```
 
-After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`. Since `args[0]` is `'n'` (not `'"'`), it bypasses the unquote path and falls through to the raw append. Without a guard, the accumulated arguments become e.g. `{"path": "README.md"}null` — corrupting the JSON and causing tool execution to fail.
+After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`. `unquoteToolArg` unmarshals it into a string, which succeeds with an empty string — so the chunk contributes nothing to the accumulated arguments. Without that, a null chunk would corrupt the accumulated JSON (e.g. `{"path": "README.md"}null`), causing tool execution to fail.
 
-**Fix:** skip chunks where `string(args) == "null"`. Safe because the `arguments` field is always a JSON string type in the OpenAI API spec, so the only time `args[0] != '"'` is for the null literal. See `openAIStreamState.appendToolCallArgs()`.
+`unquoteToolArg` handles three shapes: a JSON-string-encoded fragment (`"{\"path\":...}"` → the inner text, the standard OpenAI form), a raw JSON fragment (`{"path":...}` → passed through as-is, used by some compatible providers), and `null` (→ empty string). See `openAIStreamState.appendToolCallArgs()`.
 
 ## Reasoning mode and reasoning_content
 

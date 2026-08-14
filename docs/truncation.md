@@ -6,9 +6,9 @@ How AlayaCore handles large outputs from tools to stay within context budgets.
 
 | Tool | Behavior | File Pattern |
 |------|----------|--------------|
-| `read_file` | Truncates at 64KB with metadata header | N/A (in-memory) |
+| `read_file` | Truncates at 64KB with metadata header; media files above 16MB are reported instead of read | N/A (in-memory) |
 | `execute_command` | Saves to file | `cmd-*.txt` |
-| `search_content` | Saves to file | `search-*.txt` |
+| `search_content` | Saves to file when over 64KB or `max_lines` | `search-*.txt` |
 
 ## read_file
 
@@ -22,6 +22,9 @@ Files larger than 64KB are truncated at a line boundary with metadata:
 
 - Agent can use `start_line`/`num_lines` to read specific ranges
 - No file is created; truncation happens in-memory
+- Media files (image/video/audio/document) are embedded as base64 and
+  cannot be truncated: files above 16MB are reported with a size-limit
+  message instead of being read
 
 ## execute_command
 
@@ -45,10 +48,10 @@ Use read_file to access specific sections.
 
 ## search_content
 
-Search results exceeding `max_lines` (default 100) are saved to a temp file:
+Search results exceeding `max_lines` (default 100) **or 64KB** (whichever comes first) are saved to a temp file:
 
 ```
-Search found 500 matching lines. Results saved to: /tmp/alayacore-1234567890/search-12345.txt
+Search found 500 matching lines (194.2KB). Results saved to: /tmp/alayacore-1234567890/search-12345.txt
 Use read_file to access specific matches.
 ```
 

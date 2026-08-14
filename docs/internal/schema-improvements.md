@@ -26,7 +26,7 @@ func executeWriteFile(_ context.Context, args WriteFileInput) ([]llm.ContentPart
 	if args.Content == "" {
 		return nil, fmt.Errorf("content is required")
 	}
-	if err := os.WriteFile(args.Path, []byte(args.Content), 0600); err != nil {
+	if err := os.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
 		return nil, err
 	}
 	return []llm.ContentPart{llm.TextPart{Text: "File written successfully"}}, nil

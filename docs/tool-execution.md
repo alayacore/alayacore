@@ -51,9 +51,16 @@ for all in-flight tool goroutines to terminate before returning**:
   happen after the stream has errored.
 - A tool awaiting user confirmation is unblocked by the cancellation — a
   late `:tool_confirm` response can no longer execute the tool against a
-  stale context.
-- Results that would have been delivered after the error are dropped; the
-  error path does not collect them.
+  stale context, and the tool produces no result (it never executed).
+- Results of tools that already **executed** are **salvaged**: `streamEvents`
+  pairs each delivered result with its tool call and folds the
+  `[tool_use, tool_result]` pairs into the conversation history (via
+  `OnStepFinish`) before returning the error, so a retry or `:continue`
+  sees a state consistent with the side effects that happened. A tool
+  that never completed (still running when the stream died, dropped by a
+  racing result send, or never confirmed) produces no history entry — an
+  assistant `tool_use` never appears without its `tool_result`. See
+  `salvageExecutedTools()`.
 
 This guarantees `Stream()` never returns while a tool goroutine is still
 alive, preventing goroutine leaks and post-error side effects.
