@@ -29,7 +29,7 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ![AlayaCore plainio demo](misc/alayacore-demo-plainio.gif)
 
-**Terse IO Mode** — read all of stdin as one prompt or command, print only the final answer (stdout stays clean, errors go to stderr).
+**Terse IO Mode** — read all of stdin as one prompt or command, print only the final answer (stdout stays clean, errors go to stderr). Note: `--tool-confirm` is rejected in this mode — stdin is consumed as the prompt, so tool confirmations could never be answered.
 
 ![AlayaCore terseio demo](misc/alayacore-demo-terseio.gif)
 
@@ -73,6 +73,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 🧠 **Any LLM provider** — OpenAI, Anthropic, DeepSeek, Qwen, Ollama, LM Studio. Multiple models in one config, switch at runtime.
 - 🔗 **MCP support** — Connect to external [Model Context Protocol](https://modelcontextprotocol.io) servers for database queries, API access, code analysis, and more via `mcp.conf`.
 - 💾 **Session persistence** — Save and resume conversations automatically when `--session` is specified.
+- ✂️ **Auto-summarization** — When the context approaches the model's limit, older turns are compressed automatically so long sessions stay within the window (`--auto-summarize <percent>`).
 - 🎯 **Skills system** — Extend the agent with instruction packages following the [Agent Skills](https://agentskills.io) spec.
 - ✅ **Configurable tool confirmation** — Require manual approval for specific tools via `--tool-confirm`.
 
@@ -138,13 +139,18 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Adapter Guide](adapter-guide/README.md) | TLV protocol reference for Raw IO — frame format, tags, and adapter implementation guide |
 | [Skills System](docs/skills.md) | Agent Skills specification, directory structure, SKILL.md format |
 | [MCP](docs/mcp.md) | Model Context Protocol — connect to external MCP servers |
+| [MCP OAuth](docs/oauth.md) | OAuth 2.1 authorization_code flow for MCP servers |
 | [Architecture](docs/architecture.md) | Layered architecture, TLV protocol, data flow, design decisions |
 | [Step Messages](docs/step-messages.md) | Message structure within an agentic step (assistant + tool results) |
 | [Providers](docs/providers.md) | Provider-specific gotchas (tool call chunking, null args, reasoning mode) |
+| [Tool Input Repair](docs/tool-input-repair.md) | How malformed LLM tool inputs are repaired against their JSON schemas |
 | [Context Tracking](docs/context-tracking.md) | How context tokens are tracked and displayed |
 | [Error Handling](docs/error-handling.md) | Error detection and propagation from LLM APIs |
 | [Tool Execution](docs/tool-execution.md) | Concurrent tool execution with per-tool MCP-style confirmation |
 | [Output Truncation](docs/truncation.md) | How large tool outputs are handled within context budgets |
+| [Dependencies](docs/dependencies.md) | Third-party dependencies and why each is needed |
+| [TUI Architecture](docs/tui-architecture.md) | Elm architecture, Bubble Tea, and the TUI's internal design |
+| [Development Principles](docs/development-principles.md) | Project conventions — adapter/agent isolation, actor model, testing |
 
 **Internal design docs**: [docs/internal/](docs/internal/)
 

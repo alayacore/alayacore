@@ -29,7 +29,7 @@
 
 ![AlayaCore plainio demo](misc/alayacore-demo-plainio.gif)
 
-**Terse IO 模式** — 读取整个 stdin 作为一个 prompt 或命令，只输出最终答案（stdout 保持纯净，错误走 stderr）。
+**Terse IO 模式** — 读取整个 stdin 作为一个 prompt 或命令，只输出最终答案（stdout 保持纯净，错误走 stderr）。注意：此模式拒绝 `--tool-confirm` —— stdin 被当作提示消耗，工具确认无法应答。
 
 ![AlayaCore terseio demo](misc/alayacore-demo-terseio.gif)
 
@@ -73,6 +73,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 🧠 **支持任何 LLM 提供商** — OpenAI、Anthropic、DeepSeek、Qwen、Ollama、LM Studio。一个配置文件支持多个模型，运行时可切换。
 - 🔗 **MCP 支持** — 通过 `mcp.conf` 连接外部 [Model Context Protocol](https://modelcontextprotocol.io) 服务器，扩展数据库查询、API 访问、代码分析等能力。
 - 💾 **会话持久化** — 支持保存和恢复对话，使用 `--session` 时自动保存。
+- ✂️ **自动摘要** — 当上下文接近模型上限时，自动压缩较早的对话轮次，让长会话保持在上下文窗口内（`--auto-summarize <百分比>`）。
 - 🎯 **技能系统** — 可按照 [Agent Skills](https://agentskills.io) 规范扩展指令包来增强 Agent 能力。
 - ✅ **可配置的工具确认** — 通过 `--tool-confirm` 对指定工具要求手动批准。
 
@@ -138,13 +139,18 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [Adapter Guide](adapter-guide/README.md) | Raw IO 协议参考 — 帧格式、标签、adapter 实现指南 |
 | [技能系统](docs/skills.md) | Agent Skills 规范、目录结构、SKILL.md 格式 |
 | [MCP](docs/mcp.md) | Model Context Protocol — 连接外部 MCP 服务器扩展工具集 |
+| [MCP OAuth](docs/oauth.md) | MCP 服务器的 OAuth 2.1 authorization_code 授权流程 |
 | [架构](docs/architecture.md) | 分层架构、TLV 协议、数据流、设计决策 |
 | [步骤消息](docs/step-messages.md) | 智能体步骤中的消息结构（assistant + tool 结果） |
 | [提供商](docs/providers.md) | 提供商特定的注意事项（tool call 分块、null 参数、推理模式） |
+| [工具输入修复](docs/tool-input-repair.md) | 如何根据 JSON Schema 修复 LLM 的错误工具输入 |
 | [上下文跟踪](docs/context-tracking.md) | 上下文令牌的跟踪与显示方式 |
 | [错误处理](docs/error-handling.md) | LLM API 错误检测与传播 |
 | [工具执行](docs/tool-execution.md) | 并发的工具执行，每个工具独立等待用户确认（MCP 风格） |
 | [输出截断](docs/truncation.md) | 大型工具输出的上下文预算处理方式 |
+| [依赖](docs/dependencies.md) | 第三方依赖及其必要性说明 |
+| [TUI 架构](docs/tui-architecture.md) | Elm 架构、Bubble Tea 与 TUI 内部设计 |
+| [开发原则](docs/development-principles.md) | 项目约定 — adapter/agent 隔离、actor 模型、测试 |
 
 **内部设计文档**：[docs/internal/](docs/internal/)
 
