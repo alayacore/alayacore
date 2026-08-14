@@ -158,6 +158,78 @@ func TestReadFileTooLarge(t *testing.T) {
 	}
 }
 
+func TestReadFileMediaTooLarge(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "big.jpg")
+	// JPEG SOI magic bytes at the start so both extension and content
+	// sniffing agree the file is media; the rest is binary filler.
+	largeContent := make([]byte, maxMediaReadSize+1)
+	copy(largeContent, []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10})
+	for i := 6; i < len(largeContent); i++ {
+		largeContent[i] = 0xFF
+	}
+	if err := os.WriteFile(tmpFile, largeContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewReadFileTool()
+	input := ReadFileInput{Path: tmpFile}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := tool.Execute(context.Background(), inputJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The oversized media file must not be loaded into memory; the caller
+	// gets an informative text message instead.
+	text := extractFirstText(result)
+	if !strings.Contains(text, "media read limit") {
+		t.Errorf("expected media size-limit message, got %q", text)
+	}
+	if len(result) != 1 {
+		t.Errorf("expected a single text part, got %d parts", len(result))
+	}
+}
+
+func TestReadFileMediaSmall(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "small.jpg")
+	// JPEG-ish signature bytes; small enough to embed as a data URI.
+	content := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F'}
+	if err := os.WriteFile(tmpFile, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewReadFileTool()
+	input := ReadFileInput{Path: tmpFile}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := tool.Execute(context.Background(), inputJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := extractFirstText(result)
+	if !strings.Contains(text, "Read small.jpg") {
+		t.Errorf("expected read confirmation, got %q", text)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected text + media parts, got %d parts", len(result))
+	}
+	img, ok := result[1].(*llm.ImagePart)
+	if !ok {
+		t.Fatalf("expected ImagePart, got %T", result[1])
+	}
+	if !strings.HasPrefix(img.URI, "data:image/jpeg;base64,") {
+		t.Errorf("expected JPEG data URI, got %q", img.URI)
+	}
+}
+
 func TestReadFileLargeWithLineRange(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "large.txt")

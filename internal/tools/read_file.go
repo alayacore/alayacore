@@ -155,9 +155,30 @@ func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart
 	return []llm.ContentPart{&llm.TextPart{Text: strings.Join(lines, "\n")}}, nil
 }
 
+// maxMediaReadSize caps the size of media files (image/video/audio/document)
+// read fully into memory and embedded as base64 data URIs. Unlike text files
+// (capped at maxTextReadSize), media cannot be meaningfully truncated — the
+// whole file is loaded and then base64-encoded (×1.33), so a multi-GB video
+// would OOM the process. Files above the cap are reported instead of read.
+const maxMediaReadSize = 16 * 1024 * 1024 // 16MB
+
 // readMediaFile reads a media file and returns a ContentPart with base64-encoded data.
 // Supported types: image, video, audio, document (PDF, etc.).
+// Files larger than maxMediaReadSize are not loaded; the caller receives a
+// text message pointing at the limit so it can pick a smaller file instead.
 func readMediaFile(path, mimeType string) ([]llm.ContentPart, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxMediaReadSize {
+		mb := float64(info.Size()) / (1024 * 1024)
+		return []llm.ContentPart{&llm.TextPart{Text: fmt.Sprintf(
+			"File %s is %.1fMB — larger than the %dMB media read limit. Media is embedded as base64 and cannot be truncated; use a smaller file or process it with execute_command instead.",
+			filepath.Base(path), mb, maxMediaReadSize/(1024*1024),
+		)}}, nil
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
