@@ -51,7 +51,7 @@ type answerOutput struct {
 	// group, so the next AT/AR/AF frame starts a new message. On flush,
 	// an empty value means the final message had no text (e.g. reasoning-
 	// only) and the stale buffer from an earlier message must NOT print.
-	// Protected by mu (read lock-free in FlushFinal like finalText).
+	// Protected by mu.
 	lastMsgHasText bool
 }
 
@@ -85,14 +85,21 @@ func (o *answerOutput) HasError() bool {
 }
 
 // FlushFinal prints the buffered final answer to stdout, at most once.
-//
-// Callable from processBuffer (under the mutex, on task completion) or from
-// the adapter after session.Done() (no concurrent writers by then), so it
-// deliberately does not take the mutex — the atomic guard makes it safe.
-// No-op after an error (the buffer is discarded), if already flushed, or if
-// the final message contained no text (the buffer then holds stale text
-// from an earlier intermediate message — printing it would be wrong).
+// Thread-safe: takes the mutex, so it is safe from the adapter goroutine
+// after session.Done() and from any other caller. No-op after an error
+// (the buffer is discarded), if already flushed, or if the final message
+// contained no text (the buffer then holds stale text from an earlier
+// intermediate message — printing it would be wrong).
 func (o *answerOutput) FlushFinal() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.flushFinalLocked()
+}
+
+// flushFinalLocked is the mutex-free core of FlushFinal. Must be called
+// with o.mu held — e.g. from handleSystemMsg, which runs inside
+// processBuffer under the mutex (taking the mutex there would deadlock).
+func (o *answerOutput) flushFinalLocked() {
 	if !o.finalFlushed.CompareAndSwap(false, true) {
 		return
 	}
@@ -286,8 +293,9 @@ func (o *answerOutput) handleSystemMsg(value string) {
 		}
 		if json.Unmarshal(env.Data, &m) == nil {
 			if o.inProgress.Load() && !m.InProgress {
-				// Task finished: print the final answer.
-				o.FlushFinal()
+				// Task finished: print the final answer. Called under o.mu
+				// (inside processBuffer), so use the locked core directly.
+				o.flushFinalLocked()
 			}
 			o.inProgress.Store(m.InProgress)
 		}
