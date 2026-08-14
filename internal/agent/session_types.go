@@ -75,7 +75,6 @@ type taskMsg struct {
 	CurrentStep int    `json:"current_step,omitempty"`
 	MaxSteps    int    `json:"max_steps,omitempty"`
 	Context     int64  `json:"context"`
-	TaskError   bool   `json:"task_error,omitempty"`
 	CommandID   string `json:"command_id,omitempty"`
 }
 

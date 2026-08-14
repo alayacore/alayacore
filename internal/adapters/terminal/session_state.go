@@ -24,15 +24,12 @@ type sessionState struct {
 	mu *sync.Mutex
 
 	// Status fields
-	contextTokens   int64
-	contextLimit    int64
-	inProgress      bool
-	currentStep     int
-	maxSteps        int
-	lastCurrentStep int
-	lastMaxSteps    int
-	lastTaskError   bool
-	reasoningLevel  int
+	contextTokens  int64
+	contextLimit   int64
+	inProgress     bool
+	currentStep    int
+	maxSteps       int
+	reasoningLevel int
 
 	// Video config
 	videoFPS int
@@ -91,20 +88,8 @@ type mcpAuthPending struct {
 }
 
 // updateTask atomically updates task progress fields.
-func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, context int64, taskError bool) {
+func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, context int64) {
 	s.mu.Lock()
-	// Save step info when task completes (transition from in-progress to done)
-	if s.inProgress && !inProgress && s.maxSteps > 0 {
-		s.lastCurrentStep = s.currentStep
-		s.lastMaxSteps = s.maxSteps
-		s.lastTaskError = taskError
-	}
-	// Reset last step info when new task starts (transition from not-in-progress to in-progress)
-	if !s.inProgress && inProgress {
-		s.lastCurrentStep = 0
-		s.lastMaxSteps = 0
-		s.lastTaskError = false
-	}
 	s.inProgress = inProgress
 	s.currentStep = currentStep
 	s.maxSteps = maxSteps
@@ -306,9 +291,6 @@ func (s *sessionState) snapshotStatus() StatusSnapshot {
 		InProgress:      s.inProgress,
 		CurrentStep:     s.currentStep,
 		MaxSteps:        s.maxSteps,
-		LastCurrentStep: s.lastCurrentStep,
-		LastMaxSteps:    s.lastMaxSteps,
-		TaskError:       s.lastTaskError,
 		ReasoningLevel:  s.reasoningLevel,
 		ActiveTheme:     s.activeTheme,
 		ActiveThemeData: s.activeThemeData,

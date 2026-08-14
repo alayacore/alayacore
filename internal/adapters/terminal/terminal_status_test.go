@@ -5,53 +5,12 @@ import (
 	"testing"
 )
 
-func TestStatusBarShowsLastMaxStepsOnError(t *testing.T) {
-	// Create output writer and simulate task ending with error
-	out := NewTerminalOutput(DefaultStyles())
-
-	// Simulate task in progress with max steps = 50, current step = 2
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":50,"context":0,"context_limit":0,"task_error":false}}`)
-
-	// Simulate task ending with error
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":50,"max_steps":50,"context":0,"context_limit":0,"task_error":true}}`)
-
-	// Create terminal with the output writer
-	styles := DefaultStyles()
-	terminal := &Terminal{
-		out:              out,
-		display:          NewDisplayModel(out.WindowBuffer(), styles),
-		input:            NewPromptInput(styles),
-		editor:           NewEditor(),
-		modelSelector:    NewModelSelector(styles),
-		themeSelector:    NewThemeSelector(styles),
-		helpWindow:       NewHelpWindow(styles),
-		confirmOverlay:   NewConfirmDialog(styles),
-		mcpInitOverlay:   NewConfirmDialog(styles),
-		attachmentWindow: NewAttachmentWindow(styles),
-		focusedWindow:    focusInput,
-		windowWidth:      80,
-		windowHeight:     24,
-		styles:           styles,
-		hasFocus:         true,
-	}
-
-	// Update status
-	*terminal = terminal.updateStatus()
-
-	// Check that status shows last step info (2/50) after completion
-	expectedSubstring := "2/50"
-	plain := stripANSI(terminal.statusText)
-	if !containsSubstring(plain, expectedSubstring) {
-		t.Errorf("Expected status to contain %q, got %q", expectedSubstring, plain)
-	}
-}
-
 func TestStatusBarShowsCurrentStepsDuringProgress(t *testing.T) {
 	// Create output writer and simulate task in progress
 	out := NewTerminalOutput(DefaultStyles())
 
 	// Simulate task in progress
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":7,"max_steps":20,"context":0,"context_limit":0,"task_error":false}}`)
+	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":7,"max_steps":20,"context":0,"context_limit":0}}`)
 
 	// Create terminal with the output writer
 	styles := DefaultStyles()

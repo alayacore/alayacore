@@ -25,9 +25,6 @@ type StatusSnapshot struct {
 	InProgress      bool
 	CurrentStep     int
 	MaxSteps        int
-	LastCurrentStep int
-	LastMaxSteps    int
-	TaskError       bool
 	ReasoningLevel  int
 	ActiveTheme     string
 	ActiveThemeData *theme.Theme

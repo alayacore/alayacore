@@ -620,7 +620,7 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 | `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, text, warning, error, success, selection, cursor, added, removed, tool, fold_indicator: string}}`) | `SM-theme-list.bin` |
 | `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.bin` |
 | `video_config` | `fps` (int), `res` (int) | `SM-video-config.bin` |
-| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `task_error` (bool, opt), `command_id` (string, opt — set when the task was started by `continue`/`summarize`) | `SM-task-start.bin`, `SM-task-end.bin` |
+| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`) | `SM-task-start.bin`, `SM-task-end.bin` |
 | `error` | `text` (string) | `SM-error.bin` |
 | `notify` | `text` (string) | `SM-notify.bin` |
 | `tool_confirm` | `id` (string), `allowed` (bool, opt — present only in adapter→agent response) | `SM-tool-confirm.bin` |

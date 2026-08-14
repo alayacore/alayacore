@@ -530,12 +530,11 @@ func (to *outputWriter) handleSystemTask(data json.RawMessage) {
 		CurrentStep int   `json:"current_step"`
 		MaxSteps    int   `json:"max_steps"`
 		Context     int64 `json:"context"`
-		TaskError   bool  `json:"task_error"`
 	}
 	if json.Unmarshal(data, &m) != nil {
 		return
 	}
-	to.status.updateTask(m.InProgress, m.CurrentStep, m.MaxSteps, m.Context, m.TaskError)
+	to.status.updateTask(m.InProgress, m.CurrentStep, m.MaxSteps, m.Context)
 }
 
 func (to *outputWriter) handleSystemModel(data json.RawMessage) {

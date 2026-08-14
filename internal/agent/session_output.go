@@ -188,7 +188,6 @@ func (s *Session) sendTaskMsg() {
 		CurrentStep: s.activeTaskStep(),
 		MaxSteps:    s.MaxSteps,
 		Context:     s.ContextTokens,
-		TaskError:   false,
 		CommandID:   cmdID,
 	})
 }
