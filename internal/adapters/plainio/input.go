@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -30,7 +31,7 @@ var commandNames sync.Map // id → command name
 // writeCommand sends a colon-command (e.g. ":save /tmp/x") as a CI frame.
 // The adapter translates the human-facing text into {id, name, input}.
 func writeCommand(input io.Writer, cmd string) error {
-	name, args, _ := strings.Cut(strings.TrimPrefix(cmd, ":"), " ")
+	name, args := commands.SplitCommand(strings.TrimPrefix(cmd, ":"))
 	id := fmt.Sprintf("plain-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
 		ID:    id,

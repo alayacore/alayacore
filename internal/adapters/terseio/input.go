@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -33,11 +34,7 @@ var commandNames sync.Map // id → command name
 // can span multiple lines, so the whole stdin after ":" is the command
 // and a newline is just another separator.
 func writeCommand(input io.Writer, cmd string) error {
-	name, args := cmd, ""
-	if i := strings.IndexAny(cmd, " \t\r\n"); i >= 0 {
-		name = cmd[:i]
-		args = strings.TrimLeft(cmd[i:], " \t\r\n")
-	}
+	name, args := commands.SplitCommand(cmd)
 	id := fmt.Sprintf("terse-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
 		ID:    id,

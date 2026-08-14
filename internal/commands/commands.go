@@ -11,6 +11,8 @@
 // names are valid.
 package commands
 
+import "strings"
+
 // Command name constants. These are the canonical values for the
 // protocol.CmdMsg.Name field and the human-facing ":name" text (minus
 // the colon). They are the single source of truth for both the agent
@@ -33,3 +35,17 @@ const (
 	CommandNameMCPDecline  = "mcp_decline"
 	CommandNameMCPSkip     = "mcp_cancel"
 )
+
+// SplitCommand splits a command string into its name and argument tail at
+// the FIRST whitespace (space, tab, CR, LF), trimming the separator from
+// the args. "save" → ("save", ""); "save\t/tmp/x" → ("save", "/tmp/x").
+// Whitespace INSIDE the arguments (e.g. a multi-line command argument in
+// terseio) is preserved — only the first separator matters.
+func SplitCommand(cmd string) (name, args string) {
+	name = cmd
+	if i := strings.IndexAny(cmd, " \t\r\n"); i >= 0 {
+		name = cmd[:i]
+		args = strings.TrimLeft(cmd[i:], " \t\r\n")
+	}
+	return name, args
+}

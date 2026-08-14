@@ -43,7 +43,7 @@ var commandNames sync.Map // id → command name
 // a CI (Command Input) frame. The adapter translates the human-facing text
 // into {id, name, input}; the session never sees colon-text anymore.
 func writeCommand(w io.Writer, cmd string) {
-	name, args, _ := strings.Cut(strings.TrimPrefix(cmd, ":"), " ")
+	name, args := commands.SplitCommand(strings.TrimPrefix(cmd, ":"))
 	id := fmt.Sprintf("tui-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
 		ID:    id,
