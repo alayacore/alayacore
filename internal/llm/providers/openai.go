@@ -214,10 +214,13 @@ func (p *OpenAIProvider) StreamMessages(
 // SSE Stream Parsing (OpenAI data-only format)
 // ============================================================================
 
-// openaiScanner reads data-only SSE (OpenAI format).
+// openaiScanner reads SSE events in the OpenAI "data-only" format.
 //
-// Each line with "data:" prefix is a complete event. Lines without this
-// prefix are ignored. The caller receives the trimmed data string via Data().
+// An event's data is one or more consecutive "data:" lines joined with
+// "\n" (multi-line data is legal per the SSE spec and used by some
+// providers that pretty-print JSON), terminated by a blank line or EOF.
+// Lines without the "data:" prefix (event:, comments, blank lines) are
+// ignored, matching the Anthropic scanner's accumulation model.
 type openaiScanner struct {
 	scanner     *bufio.Scanner
 	currentData string
@@ -231,22 +234,49 @@ func newOpenAIScanner(reader io.Reader) *openaiScanner {
 	return &openaiScanner{scanner: scanner}
 }
 
-// Next advances to the next data event.
+// Next advances to the next complete SSE event.
 // Returns false when the stream is exhausted or an error occurs.
 func (s *openaiScanner) Next() bool {
+	var data strings.Builder
+	hasData := false
+
 	for s.scanner.Scan() {
-		line := s.scanner.Text()
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "data:") {
-			if len(trimmed) > 5 && trimmed[5] == ' ' {
-				s.currentData = trimmed[6:] // "data: hello" → "hello"
-			} else {
-				s.currentData = trimmed[5:] // "data:hello" → "hello", "data:" → ""
+		line := strings.TrimSpace(s.scanner.Text()) // also tolerates CRLF
+
+		// Empty line — terminate the current event if we have one
+		// (per the SSE spec).
+		if line == "" {
+			if hasData {
+				s.currentData = data.String()
+				return true
 			}
-			return true
+			continue
 		}
-		// Ignore event: lines, comments, blank lines, etc.
+
+		if strings.HasPrefix(line, "data:") {
+			if hasData {
+				data.WriteString("\n")
+			}
+			if len(line) > 5 && line[5] == ' ' {
+				data.WriteString(line[6:]) // "data: hello" → "hello"
+			} else {
+				data.WriteString(line[5:]) // "data:hello" → "hello", "data:" → ""
+			}
+			hasData = true
+			continue
+		}
+
+		// Other SSE fields (event:, comments) are ignored and do not
+		// terminate the current data event.
 	}
+
+	// EOF reached. Drain any pending event that wasn't terminated by a
+	// blank line (handles truncated streams gracefully).
+	if hasData {
+		s.currentData = data.String()
+		return true
+	}
+
 	if err := s.scanner.Err(); err != nil {
 		s.err = err
 	}

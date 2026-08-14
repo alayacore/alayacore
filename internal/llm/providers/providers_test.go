@@ -172,6 +172,42 @@ func TestOpenAIProvider(t *testing.T) {
 	}
 }
 
+func TestOpenAIProviderMultiLineData(t *testing.T) {
+	// Regression test: some providers split a JSON event's data across
+	// multiple "data:" lines (legal per the SSE spec). The scanner must
+	// join them into a single event — the previous per-line emission
+	// parsed each fragment as its own event, failing JSON parsing.
+	server := newMockSSEServer(t, func(w io.Writer) {
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Hello there\"},\n")
+		fmt.Fprint(w, "data: \"finish_reason\":null}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	})
+
+	provider, err := providers.NewOpenAI(providers.BaseConfig{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	events, err := provider.StreamMessages(context.Background(), testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"}), nil, "", "")
+	if err != nil {
+		t.Fatalf("Failed to stream: %v", err)
+	}
+
+	var textReceived string
+	for event := range events {
+		if e, ok := event.(llm.TextDeltaEvent); ok {
+			textReceived += e.Delta
+		}
+	}
+
+	if textReceived != "Hello there" {
+		t.Errorf("Expected 'Hello there', got '%s'", textReceived)
+	}
+}
+
 func TestToolCallStreaming(t *testing.T) {
 	// Test that tool calls are properly streamed
 	server := newMockSSEServer(t, func(w io.Writer) {
