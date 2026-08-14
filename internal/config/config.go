@@ -54,9 +54,23 @@ func ExpandPath(path string) string {
 	return filepath.Join(usr.HomeDir, path[1:])
 }
 
-// printDefaults prints all command-line flags with -- prefix instead of the default -
-func printDefaults() {
-	flag.CommandLine.VisitAll(func(f *flag.Flag) {
+// newFlagSet creates the private FlagSet for alayacore's CLI flags. A
+// private set — instead of the package-global flag.CommandLine — keeps
+// Parse from touching, or being polluted by, flags registered by other
+// packages or test runners, and makes repeated Parse calls safe (each
+// call builds a fresh set, so no "flag redefined" panics).
+func newFlagSet() *flag.FlagSet {
+	fs := flag.NewFlagSet("alayacore", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(fs.Output(), "AlayaCore - A minimal AI Agent\n\nUsage:\n\talayacore [flags]\n\nFlags:\n")
+		printFlagDefaults(fs)
+	}
+	return fs
+}
+
+// printFlagDefaults prints all flags on fs with -- prefix instead of the default -.
+func printFlagDefaults(fs *flag.FlagSet) {
+	fs.VisitAll(func(f *flag.Flag) {
 		var placeholder string
 		usage := f.Usage
 		if s, _ := flag.UnquoteUsage(f); s != "" {
@@ -64,11 +78,11 @@ func printDefaults() {
 		}
 		usage = strings.ReplaceAll(usage, "`", "")
 		if f.DefValue != "" && f.DefValue != boolFalse {
-			fmt.Fprintf(flag.CommandLine.Output(), "\t--%s%s (default: %s)\n", f.Name, placeholder, f.DefValue)
+			fmt.Fprintf(fs.Output(), "\t--%s%s (default: %s)\n", f.Name, placeholder, f.DefValue)
 		} else {
-			fmt.Fprintf(flag.CommandLine.Output(), "\t--%s%s\n", f.Name, placeholder)
+			fmt.Fprintf(fs.Output(), "\t--%s%s\n", f.Name, placeholder)
 		}
-		fmt.Fprintf(flag.CommandLine.Output(), "\t\t%s\n", usage)
+		fmt.Fprintf(fs.Output(), "\t\t%s\n", usage)
 	})
 }
 
@@ -131,51 +145,49 @@ type Settings struct {
 
 // Parse parses CLI flags and returns settings
 func Parse() *Settings {
-	// Set custom usage function before any flag definitions
-	flag.Usage = func() {
-		fmt.Fprint(flag.CommandLine.Output(), "AlayaCore - A minimal AI Agent\n\nUsage:\n\talayacore [flags]\n\nFlags:\n")
-		printDefaults()
-	}
+	fs := newFlagSet()
 
 	// Pre-compute default paths so they appear in --help output
 	defaultConfigPath := defaultConfigDir()
 
 	// Core
-	showVersion := flag.Bool("version", false, "Show version information")
-	rawIO := flag.Bool("rawio", false, "Use raw TLV stdin/stdout mode instead of terminal UI (pipe TLV frames directly)")
-	terseIO := flag.Bool("terseio", false, "Read all stdin as one prompt or command; print only the final answer")
-	plainIO := flag.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")
-	debugLog := flag.String("debug-log", "", "Debug log `directory` (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging.")
-	configPath := flag.String("config-path", defaultConfigPath, "Config directory `path` (contains model.conf, runtime.conf, themes/)")
-	modelName := flag.String("model", "", "Model `name` to activate (must exist in model config; overrides runtime config)")
+	showVersion := fs.Bool("version", false, "Show version information")
+	rawIO := fs.Bool("rawio", false, "Use raw TLV stdin/stdout mode instead of terminal UI (pipe TLV frames directly)")
+	terseIO := fs.Bool("terseio", false, "Read all stdin as one prompt or command; print only the final answer")
+	plainIO := fs.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")
+	debugLog := fs.String("debug-log", "", "Debug log `directory` (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging.")
+	configPath := fs.String("config-path", defaultConfigPath, "Config directory `path` (contains model.conf, runtime.conf, themes/)")
+	modelName := fs.String("model", "", "Model `name` to activate (must exist in model config; overrides runtime config)")
 	skill := &stringSlice{}
-	flag.Var(skill, "skill", "Skill `path` (can be specified multiple times)")
-	session := flag.String("session", "", "Session file `path` to load/save conversations")
+	fs.Var(skill, "skill", "Skill `path` (can be specified multiple times)")
+	session := fs.String("session", "", "Session file `path` to load/save conversations")
 
 	// I/O
-	proxy := flag.String("proxy", "", "HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)")
+	proxy := fs.String("proxy", "", "HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)")
 
 	// Agent behavior
 	systemPrompt := &stringSlice{}
-	flag.Var(systemPrompt, "system", "Extra `system-prompt` (can be specified multiple times, will be appended to default)")
-	maxSteps := flag.Int("max-steps", defaultMaxSteps, "Maximum agent loop steps (0 = no limit)")
-	autoSummarize := flag.Int("auto-summarize", 0, "Enable auto-summarization at given threshold percentage (e.g. --auto-summarize=65, 0 = disabled)")
-	toolConfirm := flag.String("tool-confirm", "", "Comma-separated tool `names` requiring user confirmation (e.g. execute_command,search_content)")
-	noDelta := flag.Bool("no-delta", false, "Disable delta frames (At, Ar, Af); use complete frames only")
-	flag.String("builtin-tools", "", "Comma-separated built-in tool `names` to enable (empty = no builtin tools, unspecified = all tools)")
-	commandTimeout := flag.Int("command-timeout", 120,
+	fs.Var(systemPrompt, "system", "Extra `system-prompt` (can be specified multiple times, will be appended to default)")
+	maxSteps := fs.Int("max-steps", defaultMaxSteps, "Maximum agent loop steps (0 = no limit)")
+	autoSummarize := fs.Int("auto-summarize", 0, "Enable auto-summarization at given threshold percentage (e.g. --auto-summarize=65, 0 = disabled)")
+	toolConfirm := fs.String("tool-confirm", "", "Comma-separated tool `names` requiring user confirmation (e.g. execute_command,search_content)")
+	noDelta := fs.Bool("no-delta", false, "Disable delta frames (At, Ar, Af); use complete frames only")
+	fs.String("builtin-tools", "", "Comma-separated built-in tool `names` to enable (empty = no builtin tools, unspecified = all tools)")
+	commandTimeout := fs.Int("command-timeout", 120,
 		"Maximum duration in seconds for shell command execution (default 120)")
-	reasoningLevel := flag.Int("reasoning-level", DefaultReasoningLevel,
+	reasoningLevel := fs.Int("reasoning-level", DefaultReasoningLevel,
 		"Startup reasoning `level` (0=off, 1=normal, 2=max); explicit values override the session file's saved reasoning_level")
 
-	flag.Parse()
+	// ExitOnError handling: parse errors (and --help) exit inside Parse,
+	// so the returned error is never non-nil.
+	_ = fs.Parse(os.Args[1:])
 
 	// Derive config file paths from config directory
 	cp := *configPath
 
 	// Detect if --builtin-tools was explicitly provided (even if empty).
 	var builtinToolsFilter tools.ToolFilter
-	flag.Visit(func(f *flag.Flag) {
+	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "builtin-tools" {
 			raw := f.Value.String()
 			if raw != "" {
@@ -188,7 +200,7 @@ func Parse() *Settings {
 		}
 	})
 	// If --builtin-tools was never visited, AllBuiltins remains true.
-	if !flagHasBeenVisited("builtin-tools") {
+	if !flagSetHasBeenVisited(fs, "builtin-tools") {
 		builtinToolsFilter = tools.ToolFilter{AllBuiltins: true}
 	}
 	s := &Settings{
@@ -210,12 +222,12 @@ func Parse() *Settings {
 		AutoSummarize:  *autoSummarize,
 		ToolConfirm:    parseToolConfirm(*toolConfirm),
 		BuiltinTools:   builtinToolsFilter,
-		CommandTimeout: resolveCommandTimeout(*commandTimeout),
+		CommandTimeout: resolveCommandTimeout(fs, *commandTimeout),
 		NoDelta:        *noDelta,
 		ReasoningLevel: *reasoningLevel,
 		// Only apply --reasoning-level when explicitly provided: an absent
 		// flag must not override a session file's saved reasoning_level.
-		ReasoningLevelSet: flagHasBeenVisited("reasoning-level"),
+		ReasoningLevelSet: flagSetHasBeenVisited(fs, "reasoning-level"),
 	}
 
 	return s
@@ -253,8 +265,8 @@ func parseToolConfirm(raw string) []string {
 //
 // This allows users to set a persistent default via their shell profile
 // while still overriding per-invocation via --command-timeout.
-func resolveCommandTimeout(flagSec int) int {
-	if flagHasBeenVisited("command-timeout") {
+func resolveCommandTimeout(fs *flag.FlagSet, flagSec int) int {
+	if flagSetHasBeenVisited(fs, "command-timeout") {
 		return flagSec
 	}
 	if env := os.Getenv("ALAYACORE_COMMAND_TIMEOUT"); env != "" {
@@ -266,11 +278,11 @@ func resolveCommandTimeout(flagSec int) int {
 	return flagSec
 }
 
-// flagHasBeenVisited returns true if the named flag was explicitly set
-// on the command line (including with an empty value).
-func flagHasBeenVisited(name string) bool {
+// flagSetHasBeenVisited returns true if the named flag on fs was explicitly
+// set on the command line (including with an empty value).
+func flagSetHasBeenVisited(fs *flag.FlagSet, name string) bool {
 	var found bool
-	flag.Visit(func(f *flag.Flag) {
+	fs.Visit(func(f *flag.Flag) {
 		if f.Name == name {
 			found = true
 		}

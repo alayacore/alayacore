@@ -1,24 +1,9 @@
 package config
 
 import (
-	"flag"
 	"os"
 	"testing"
 )
-
-// resetFlags replaces the global flag.CommandLine with a fresh FlagSet so
-// Parse() can be called repeatedly within tests without "flag redefined"
-// panics. The previous set (and os.Args) are restored on cleanup.
-func resetFlags(t *testing.T) {
-	t.Helper()
-	oldCommandLine := flag.CommandLine
-	oldArgs := os.Args
-	flag.CommandLine = flag.NewFlagSet("alayacore", flag.ExitOnError)
-	t.Cleanup(func() {
-		flag.CommandLine = oldCommandLine
-		os.Args = oldArgs
-	})
-}
 
 func TestParseReasoningLevelFlag(t *testing.T) {
 	tests := []struct {
@@ -34,7 +19,6 @@ func TestParseReasoningLevelFlag(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resetFlags(t)
 			os.Args = append([]string{"alayacore"}, tt.args...)
 			s := Parse()
 			if s.ReasoningLevel != tt.want {
