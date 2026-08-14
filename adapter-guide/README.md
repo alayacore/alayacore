@@ -623,7 +623,7 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 | `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`) | `SM-task-start.bin`, `SM-task-end.bin` |
 | `error` | `text` (string) | `SM-error.bin` |
 | `notify` | `text` (string) | `SM-notify.bin` |
-| `tool_confirm` | `id` (string), `allowed` (bool, opt — present only in adapter→agent response) | `SM-tool-confirm.bin` |
+| `tool_confirm` | `id` (string) — one-way notification; the user's decision is returned via the `tool_confirm` / `tool_decline` commands (CI frames), not via an SM response | `SM-tool-confirm.bin` |
 | `mcp` | `status` (string: one of `connecting`, `auth_required`, `auth_running`, `connected`, `failed`, `done`), `server` (string, opt), `url` (string, opt — set for `auth_required`; may contain `{{redirect_uri}}` and `{{state}}` placeholders), `error` (string, opt — set for `failed`) | `SM-mcp-connecting.bin`, `SM-mcp-auth-required.bin`, `SM-mcp-auth-running.bin`, `SM-mcp-connected.bin`, `SM-mcp-failed.bin`, `SM-mcp-done.bin` |
 | `session` | `state` (string: `ready` — sent **exactly once**, when initialization completes) | `SM-session-ready.bin` |
 

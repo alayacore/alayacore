@@ -167,18 +167,11 @@ type NotifyMsg struct {
 func (NotifyMsg) SystemMsgType() string { return "notify" }
 
 // ToolConfirmMsg is sent when a tool call needs user confirmation
-// (type "tool_confirm").
-//
-// Request (agent -> adapter):
-//
-//	SM {"type":"tool_confirm","data":{"id":"<toolUseID>"}}
-//
-// Response (adapter -> agent):
-//
-//	SM {"type":"tool_confirm","data":{"id":"<toolUseID>","allowed":true|false}}
+// (type "tool_confirm"). It is a one-way notification: the user's
+// decision is returned via the :tool_confirm / :tool_decline commands
+// (CI frames), not via an SM response.
 type ToolConfirmMsg struct {
-	ID      string `json:"id"`
-	Allowed *bool  `json:"allowed,omitempty"`
+	ID string `json:"id"`
 }
 
 func (ToolConfirmMsg) SystemMsgType() string { return "tool_confirm" }
