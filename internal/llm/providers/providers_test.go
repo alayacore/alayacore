@@ -253,6 +253,59 @@ func TestToolCallStreaming(t *testing.T) {
 	}
 }
 
+func TestToolCallStreamingRawJSONArguments(t *testing.T) {
+	// Regression test: some OpenAI-compatible providers send tool call
+	// arguments as raw JSON objects (not JSON-string-encoded literals).
+	// unquoteToolArg must fall back to the raw bytes instead of dropping
+	// the fragment — otherwise every tool call from such providers would
+	// complete with an empty input.
+	server := newMockSSEServer(t, func(w io.Writer) {
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-raw\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"\"}}]}}]}\n\n")
+		// Raw JSON object chunk (no surrounding quotes).
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"\",\"function\":{\"arguments\":{\"path\":\"/tmp/f.txt\"}}}]}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	})
+
+	provider, err := providers.NewOpenAI(providers.BaseConfig{
+		APIKey:  "test",
+		BaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := provider.StreamMessages(context.Background(), testMsg(llm.RoleUser, &llm.TextPart{Text: "read /tmp/f.txt"}), nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var toolCalls []llm.ToolInputPart
+	toolNames := make(map[string]string)
+	for event := range events {
+		if e, ok := event.(llm.ToolInputStartEvent); ok {
+			toolNames[e.ID] = e.Name
+		}
+		if tc, ok := event.(llm.ToolInputCompleteEvent); ok {
+			toolCalls = append(toolCalls, llm.ToolInputPart{ID: tc.ID, Name: toolNames[tc.ID], Input: tc.Input})
+		}
+	}
+
+	if len(toolCalls) != 1 {
+		t.Fatalf("Expected 1 tool call, got %d", len(toolCalls))
+	}
+
+	// The raw-JSON fragment must be preserved, not dropped.
+	var args struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(toolCalls[0].Input, &args); err != nil {
+		t.Fatalf("Failed to unmarshal tool call arguments: %v (input was: %s)", err, toolCalls[0].Input)
+	}
+	if args.Path != "/tmp/f.txt" {
+		t.Errorf("Expected path '/tmp/f.txt', got %q (input was: %s)", args.Path, toolCalls[0].Input)
+	}
+}
+
 func TestToolCallStreamingChunked(t *testing.T) {
 	// Test that tool calls with chunked arguments are properly accumulated
 	// This simulates Qwen and other providers that split arguments across multiple deltas

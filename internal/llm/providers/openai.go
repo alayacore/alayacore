@@ -376,12 +376,18 @@ func (s *openAIStreamState) toolAccumulator(index int) *openAIToolAccumulator {
 // OpenAI sends arguments as a JSON-string-encoded value (with surrounding
 // quotes and escaped inner quotes). This extracts the inner string.
 // Returns empty string for null/no-op arguments.
+//
+// Some OpenAI-compatible providers send arguments as raw JSON (a JSON
+// object, not a string-encoded literal). json.Unmarshal into a string
+// fails for those, so fall back to the raw bytes — returning "" would
+// silently drop the fragment and corrupt every tool call from such
+// providers (arguments would accumulate to an empty input).
 func unquoteToolArg(args json.RawMessage) string {
 	var s string
 	if err := json.Unmarshal(args, &s); err == nil {
 		return s
 	}
-	return ""
+	return string(args)
 }
 
 func (s *openAIStreamState) appendToolCallArgs(index int, args json.RawMessage) {
