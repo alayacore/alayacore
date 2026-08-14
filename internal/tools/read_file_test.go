@@ -36,6 +36,42 @@ func TestReadFileFull(t *testing.T) {
 	}
 }
 
+// TestReadFileFullLargerThanSniffBuffer verifies the full-read path on a
+// text file larger than the 512-byte media sniff window: sniffMedia reads
+// the first 512 bytes and must rewind the shared handle before the full
+// read — otherwise the output would start at byte 512.
+func TestReadFileFullLargerThanSniffBuffer(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "big.txt")
+	var content string
+	for i := 0; i < 2000; i++ {
+		content += "x"
+	}
+	content += "\nEND\n"
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewReadFileTool()
+	input := ReadFileInput{Path: tmpFile}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := tool.Execute(context.Background(), inputJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := extractFirstText(result)
+	if text != content {
+		t.Fatalf("full read of a >512-byte file = %d bytes, want %d — the handle was not rewound after sniffing", len(text), len(content))
+	}
+	if !strings.HasPrefix(text, "x") || !strings.HasSuffix(text, "END\n") {
+		t.Fatalf("output does not span the whole file: %.60q…", text)
+	}
+}
+
 func TestReadFileWithLineRange(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.txt")

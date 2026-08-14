@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"os"
@@ -33,13 +34,15 @@ func NewReadFileTool() llm.Tool {
 		Build()
 }
 
-// isMediaFile checks whether the file at path is a supported media type
-// (image, video, audio, document) by examining both the extension and content.
-// Content sniffing is used to catch false positives where the extension-based
-// MIME type is misleading (e.g., .mod → audio/x-mod for a go.mod text file).
-// Only overrides extension-based detection when content explicitly says text.
+// sniffMedia checks whether the file at path is a supported media type
+// (image, video, audio, document) by examining both the extension and the
+// open file's content. Content sniffing is used to catch false positives
+// where the extension-based MIME type is misleading (e.g., .mod →
+// audio/x-mod for a go.mod text file); it only overrides the extension
+// when the content explicitly says text. The handle is rewound to offset 0
+// before returning, so the caller reads the full content from the start.
 // Returns the MIME type and true if it's a media file.
-func isMediaFile(path string) (mimeType string, ok bool) {
+func sniffMedia(file *os.File, path string) (mimeType string, ok bool) {
 	ext := strings.ToLower(filepath.Ext(path))
 
 	// Get extension-based MIME
@@ -48,15 +51,14 @@ func isMediaFile(path string) (mimeType string, ok bool) {
 		extMime = mime.TypeByExtension(ext)
 	}
 
-	// Open and sniff content (first 512 bytes) for verification
-	f, err := os.Open(path)
-	if err != nil {
-		return knownMediaType(extMime)
-	}
-	defer f.Close()
+	// Sniff content (first 512 bytes) for verification, then rewind so the
+	// caller's subsequent read starts at offset 0 on the same handle.
+	// Seek failure is not propagated: sniffing is best-effort, and a seek
+	// on a regular file opened read-only does not fail in practice.
+	defer func() { _, _ = file.Seek(0, io.SeekStart) }()
 
 	buf := make([]byte, 512)
-	n, _ := f.Read(buf) // partial read is fine for sniffing
+	n, _ := file.Read(buf) // partial read is fine for sniffing
 
 	var contentMime string
 	if n > 0 {
@@ -104,7 +106,17 @@ func knownMediaType(mimeType string) (string, bool) {
 }
 
 func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart, error) {
-	info, err := os.Stat(args.Path)
+	// Open once and operate on the same handle for every check (size,
+	// media sniffing) and every read. Statting the open file instead of
+	// the path means the size decision and the content read are the same
+	// snapshot — the file cannot change between check and use (TOCTOU).
+	file, err := os.Open(args.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
@@ -116,32 +128,26 @@ func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart
 
 	// Detect media files — return content directly (only when reading full file)
 	if args.StartLine == 0 && args.NumLines == 0 {
-		if mimeType, ok := isMediaFile(args.Path); ok {
-			return readMediaFile(args.Path, mimeType)
+		if mimeType, ok := sniffMedia(file, args.Path); ok {
+			return readMediaFile(file, args.Path, info, mimeType)
 		}
 	}
 
 	// Full file read case
 	if args.StartLine == 0 && args.NumLines == 0 {
 		if info.Size() > maxTextReadSize {
-			return readLargeFileTruncated(args.Path, info.Size())
+			return readLargeFileTruncated(file, info.Size())
 		}
 		var content []byte
-		content, err = os.ReadFile(args.Path)
+		content, err = io.ReadAll(file)
 		if err != nil {
 			return nil, err
 		}
 		return []llm.ContentPart{&llm.TextPart{Text: string(content)}}, nil
 	}
 
-	// Line range case: stream from file to avoid loading entire file into memory
-	file, err := os.Open(args.Path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	// Normalize: start_line=0 means start at line 1
+	// Line range case: stream from file to avoid loading entire file into memory.
+	// Normalize: start_line=0 means start at line 1.
 	startLine := args.StartLine
 	if startLine == 0 {
 		startLine = 1
@@ -162,15 +168,13 @@ func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart
 // would OOM the process. Files above the cap are reported instead of read.
 const maxMediaReadSize = 16 * 1024 * 1024 // 16MB
 
-// readMediaFile reads a media file and returns a ContentPart with base64-encoded data.
-// Supported types: image, video, audio, document (PDF, etc.).
+// readMediaFile reads a media file from the already-open handle and returns
+// a ContentPart with base64-encoded data. Supported types: image, video,
+// audio, document (PDF, etc.). info comes from the same handle (file.Stat),
+// so the size check and the read are one consistent snapshot.
 // Files larger than maxMediaReadSize are not loaded; the caller receives a
 // text message pointing at the limit so it can pick a smaller file instead.
-func readMediaFile(path, mimeType string) ([]llm.ContentPart, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
+func readMediaFile(file *os.File, path string, info os.FileInfo, mimeType string) ([]llm.ContentPart, error) {
 	if info.Size() > maxMediaReadSize {
 		mb := float64(info.Size()) / (1024 * 1024)
 		return []llm.ContentPart{&llm.TextPart{Text: fmt.Sprintf(
@@ -179,7 +183,7 @@ func readMediaFile(path, mimeType string) ([]llm.ContentPart, error) {
 		)}}, nil
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return nil, err
 	}
@@ -194,25 +198,24 @@ func readMediaFile(path, mimeType string) ([]llm.ContentPart, error) {
 	}, nil
 }
 
+// newLineScanner creates a bufio.Scanner for a file with a 1MB buffer.
+// The buffer is much larger than the truncation limit (maxTextReadSize,
+// 64KB) because the scanner must hold individual lines that may exceed
+// 64KB — the truncation limit applies to total output, not individual
+// lines, and a single line can be arbitrarily long (e.g. minified JS,
+// base64-encoded data). 1MB covers the vast majority of real-world cases
+// while preventing memory exhaustion from pathological input.
+func newLineScanner(file *os.File) *bufio.Scanner {
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	return scanner
+}
+
 // readLargeFileTruncated reads a large file and returns up to maxTextReadSize
 // bytes of content with a metadata header showing total line count and size.
 // Single-pass: collects lines until the byte limit, then continues counting.
-func readLargeFileTruncated(path string, totalSize int64) ([]llm.ContentPart, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	// Scanner buffer (1MB) is much larger than the truncation limit
-	// (maxTextReadSize, 64KB) because the scanner needs to hold individual
-	// lines that may exceed 64KB. The truncation limit applies to total
-	// output, not individual lines — a single line can be arbitrarily long
-	// (e.g. minified JS, base64-encoded data). The 1MB buffer covers the
-	// vast majority of real-world cases while preventing memory exhaustion
-	// from pathological input.
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+func readLargeFileTruncated(file *os.File, totalSize int64) ([]llm.ContentPart, error) {
+	scanner := newLineScanner(file)
 
 	var lines []string
 	var bytesRead int64
@@ -261,15 +264,7 @@ func validateLineParams(startLine, numLines int) error {
 }
 
 func readLinesRange(ctx context.Context, file *os.File, startLine, numLines int) ([]string, error) {
-	scanner := bufio.NewScanner(file)
-	// Scanner buffer (1MB) is much larger than the truncation limit
-	// (maxTextReadSize, 64KB) because the scanner needs to hold individual
-	// lines that may exceed 64KB. The truncation limit applies to total
-	// output, not individual lines — a single line can be arbitrarily long
-	// (e.g. minified JS, base64-encoded data). The 1MB buffer covers the
-	// vast majority of real-world cases while preventing memory exhaustion
-	// from pathological input.
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	scanner := newLineScanner(file)
 
 	var lines []string
 	currentLine := 1
