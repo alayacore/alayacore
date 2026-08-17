@@ -43,7 +43,9 @@ func (m Terminal) renderStatusBar() string {
 	var indicator string
 	if m.inProgress {
 		if active {
-			indicator = m.styles.Status.Foreground(m.styles.ColorSuccess).Render("•")
+			// Running dot uses the theme's primary color — the same
+			// convention as tool windows; green is reserved for success.
+			indicator = m.styles.Status.Foreground(m.styles.ColorAccent).Render("•")
 		} else {
 			indicator = m.styles.Status.Foreground(m.styles.ColorDim).Render("•")
 		}

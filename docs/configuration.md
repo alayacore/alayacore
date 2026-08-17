@@ -171,7 +171,7 @@ fold_indicator: "⁝"
 
 | Color | Used for |
 |-------|----------|
-| `primary` | User input text, prompt display, emphasis, focused borders |
+| `primary` | User input text, prompt display, emphasis, focused borders, running status dots (status bar and tool windows) |
 | `dim` | Window borders, separators, status bar |
 | `muted` | Secondary text, system messages, reasoning, tool content |
 | `text` | Body text |

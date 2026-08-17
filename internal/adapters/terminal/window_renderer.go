@@ -298,8 +298,9 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 	// live; the solid dot (•) appears once the complete input arrives and
 	// execution begins.
 	if r.deltaBuffer != "" {
-		// Hollow dot uses its normal color, tool name uses Tool style (golden),
-		// colon and delta content use ToolContent style (muted), truncated to one line.
+		// Hollow dot stays dimmed (not yet live), tool name uses Tool style
+		// (golden), colon and delta content use ToolContent style (muted),
+		// truncated to one line.
 		deltaContent := r.deltaBuffer
 		// Flatten delta to single line.
 		deltaContent = strings.ReplaceAll(deltaContent, "\n", " ")

@@ -20,7 +20,7 @@ const (
 	ToolStatusNone    ToolStatus = iota // Not yet executing — args still streaming in (dimmed hollow dot)
 	ToolStatusSuccess                   // Tool completed successfully (green solid dot)
 	ToolStatusError                     // Tool failed (red solid dot)
-	ToolStatusPending                   // Executing, awaiting result (dimmed solid dot)
+	ToolStatusPending                   // Executing, awaiting result (primary solid dot)
 )
 
 // Indicator returns the styled status indicator string.
@@ -31,7 +31,7 @@ func (s ToolStatus) Indicator(styles *Styles) string {
 	case ToolStatusError:
 		return lipgloss.NewStyle().Foreground(styles.ColorError).Render("• ")
 	case ToolStatusPending:
-		return lipgloss.NewStyle().Foreground(styles.ColorDim).Render("• ")
+		return lipgloss.NewStyle().Foreground(styles.ColorAccent).Render("• ")
 	case ToolStatusNone:
 		return lipgloss.NewStyle().Foreground(styles.ColorDim).Render("· ")
 	}

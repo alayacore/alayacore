@@ -134,7 +134,7 @@ The display area organizes content into separate windows — one per message or 
 
 ### Tool Status Dot
 
-Every tool window is prefixed by a status dot, mirroring the status bar's `•` live / `·` idle convention. A hollow dot (`·`) marks a window whose arguments are still streaming in — the tool has not started executing yet (a large `write_file` payload can take a while to arrive). The dot turns solid (`•`) once the complete input has arrived and the tool is executing, and takes the result color (green on success, red on error) when it finishes.
+Every tool window is prefixed by a status dot, mirroring the status bar's `•` live / `·` idle convention. A hollow dot (`·`) marks a window whose arguments are still streaming in — the tool has not started executing yet (a large `write_file` payload can take a while to arrive). The dot turns solid (`•`) in the theme's primary color once the complete input has arrived and the tool is executing — the same color the status bar uses while a run is in progress — and takes the result color (green on success, red on error) when it finishes.
 
 ### Tool Result Separator
 
