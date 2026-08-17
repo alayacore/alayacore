@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -83,15 +84,24 @@ type WindowRendering interface {
 // viewport clips against for soft-wrap fragment output (REFACTOR.md);
 // inner/rendered are the '\n'-joined projections kept for the current
 // line-based output path.
+//
+// widths and arrowWidth cache display widths (ansi.StringWidth) computed
+// once at render time, so renderVirtual can pad lines for soft-wrap
+// fragment output without re-measuring every line on every view.
+// arrow caches the dim (non-cursor) arrow glyph so the fragment output
+// path never re-renders it per view (lipgloss.Style.Render is hot).
 type borderCache struct {
-	valid     bool
-	width     int
-	folded    bool
-	blocked   bool     // cached blocked state (different → cache miss)
-	rendered  string   // full output with dim arrow (non-cursor)
-	inner     string   // content after the arrow (for cursor arrow swap)
-	lines     []string // visual lines, content after the arrow (line 0 = header/collapsed line, no arrow)
-	lineCount int
+	valid      bool
+	width      int
+	folded     bool
+	blocked    bool     // cached blocked state (different → cache miss)
+	rendered   string   // full output with dim arrow (non-cursor)
+	inner      string   // content after the arrow (for cursor arrow swap)
+	lines      []string // visual lines, content after the arrow (line 0 = header/collapsed line, no arrow)
+	widths     []int    // display width per line (parallel to lines)
+	arrow      string   // dim arrow glyph, pre-rendered (non-cursor)
+	arrowWidth int      // display width of the fold-state arrow glyph
+	lineCount  int
 }
 
 // Window represents a single display window.
@@ -339,14 +349,17 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _
 	}
 
 	arrow := w.arrowChar()
+	arrowWidth := ansi.StringWidth(arrow)
+	w.border.arrow = arrowStyle(styles, false).Render(arrow)
 	if w.Folded {
 		// Collapsed: single line — arrow + label + first line, truncated.
 		// BuildCollapsed skips full wrapping: only the first content line
 		// is read and truncated, so folding a large window is O(1).
 		inner, _ := w.renderer.BuildCollapsed(width, styles)
 		w.border.lines = []string{" " + inner}
+		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
 		w.border.inner = w.border.lines[0]
-		w.border.rendered = arrowStyle(styles, false).Render(arrow) + w.border.inner
+		w.border.rendered = w.border.arrow + w.border.inner
 		w.border.lineCount = 1
 	} else {
 		// Expanded: header line (expand arrow + label) above the open box.
@@ -360,10 +373,13 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _
 		lines = append(lines, header)
 		lines = append(lines, boxLines...)
 		w.border.lines = lines
+		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
 		w.border.inner = strings.Join(lines, "\n")
-		w.border.rendered = arrowStyle(styles, false).Render(arrow) + w.border.inner
+		w.border.rendered = w.border.arrow + w.border.inner
 		w.border.lineCount = len(lines)
 	}
+
+	w.border.arrowWidth = arrowWidth
 
 	w.border.width = width
 	w.border.folded = w.Folded

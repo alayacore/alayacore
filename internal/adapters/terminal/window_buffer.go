@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"charm.land/lipgloss/v2"
+	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -742,52 +743,124 @@ func (wb *WindowBuffer) GetAll(cursorIndex int, blocked bool) string {
 	return wb.renderAll(cursorIndex, blocked)
 }
 
-// renderVirtual renders only visible windows (with buffer)
+// renderVirtual renders only the windows overlapping the viewport
+// [viewportYOffset, viewportYOffset+viewportHeight), clipped to VISUAL
+// lines, and returns the soft-wrap fragment output:
+//
+//   - within a window, the visual lines are joined WITHOUT '\n'
+//     (continuous text the terminal soft-wraps — copying a selection
+//     keeps the original line structure, no fake newlines);
+//   - between windows a single '\n' separates (prevents windows from
+//     merging into one soft-wrap run);
+//   - every visual line except the last of a window's fragment is padded
+//     with trailing spaces to the full window width, so the terminal's
+//     soft-wrap falls exactly at the simulated breakpoints (REFACTOR.md).
+//
+// The viewport is the final clip — no buffer windows or blank
+// placeholders are emitted; ScrollView pads to the viewport height.
 func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
-	// Calculate visible range with buffer
-	bufferLines := wb.viewportHeight
-	if bufferLines < 10 {
-		bufferLines = 10
+	if len(wb.windows) == 0 {
+		return ""
 	}
 
-	startLine := max(0, wb.viewportYOffset-bufferLines)
-	endLine := wb.viewportYOffset + wb.viewportHeight + bufferLines
+	startLine := wb.viewportYOffset
+	endLine := wb.viewportYOffset + wb.viewportHeight
 
 	startWindow := wb.findWindowAtLine(startLine)
-	endWindow := wb.findWindowAtLine(endLine)
-
-	// Add extra buffer windows
-	bufferWindows := 5
-	startWindow = max(0, startWindow-bufferWindows)
-	endWindow = min(len(wb.windows)-1, endWindow+bufferWindows)
+	endWindow := wb.findWindowAtLine(max(0, endLine-1))
 
 	var sb strings.Builder
 	firstWritten := false
+	pos := 0 // running line position across windows
 	for i := range wb.windows {
-		// Skip non-visible windows entirely
-		if !wb.windows[i].Visible {
+		winStart := pos
+		winEnd := pos + wb.lineHeights[i]
+		pos = winEnd
+
+		if i < startWindow || i > endWindow {
 			continue
 		}
+		w := wb.windows[i]
+		if !w.Visible {
+			continue
+		}
+
+		// Clip the window's visual lines to the visible range.
+		from := max(startLine, winStart) - winStart
+		to := min(endLine, winEnd) - winStart
+		if from >= to {
+			continue
+		}
+
+		lines, widths := wb.windowFragment(w, from, to, cursorIndex == i, blocked)
 
 		if firstWritten {
 			sb.WriteString("\n")
 		}
-
-		if i >= startWindow && i <= endWindow {
-			// Render actual content
-			sb.WriteString(wb.windows[i].Render(wb.width, cursorIndex == i, wb.styles, wb.borderStyle, wb.cursorStyle, blocked))
-		} else {
-			// Render placeholder (blank lines)
-			for j := 0; j < wb.lineHeights[i]; j++ {
-				if j > 0 {
-					sb.WriteString("\n")
-				}
-				sb.WriteString(" ")
+		// Join the fragment continuously; pad every line except the last
+		// to the full width so the terminal soft-wraps exactly at the
+		// simulated breakpoints. Display widths are cached at render time
+		// (no per-line measurement on the hot path).
+		for j, ln := range lines {
+			if j == len(lines)-1 {
+				sb.WriteString(ln)
+				break
+			}
+			if wdt := widths[j]; wdt < wb.width {
+				sb.WriteString(ln)
+				sb.WriteString(strings.Repeat(" ", wb.width-wdt))
+			} else {
+				sb.WriteString(ln)
 			}
 		}
 		firstWritten = true
 	}
 	return sb.String()
+}
+
+// windowFragment renders window w if needed and returns its clipped
+// visual lines [from,to) plus their display widths. The fold arrow is
+// prepended to the first line when the fragment starts at the window's
+// first line; isCursor selects the selection color (mirroring
+// renderCursorArrow), otherwise the cached dim arrow is reused.
+func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) ([]string, []int) {
+	// Ensure the border cache is populated (lineHeights alone don't
+	// render folded windows — the fast path skips rendering).
+	w.Render(wb.width, false, wb.styles, wb.borderStyle, wb.cursorStyle, blocked)
+	lines := w.border.lines[from:to]
+
+	// Display widths are computed lazily and cached: Render fills them
+	// only when the fragment output needs padding, so the line-counting
+	// paths (ensureLineHeights) never pay the per-line measurement cost.
+	widths := w.border.widths
+	if len(widths) != len(w.border.lines) {
+		widths = make([]int, len(w.border.lines))
+		for li, ln := range w.border.lines {
+			widths[li] = ansi.StringWidth(ln)
+		}
+		w.border.widths = widths
+	}
+	widths = widths[from:to]
+
+	// Cursor highlight: recolor the arrow on the window's first visible
+	// line (the header), mirroring renderCursorArrow. The dim arrow is
+	// cached at render time; the cursor arrow (rare — one window) is
+	// rendered on demand.
+	if from == 0 {
+		var arrowStr string
+		if isCursor {
+			color := wb.styles.BorderCursor
+			if blocked {
+				color = wb.styles.ColorDim
+			}
+			arrowStr = lipgloss.NewStyle().Foreground(color).Render(w.arrowChar())
+		} else {
+			arrowStr = w.border.arrow
+		}
+		lines = append([]string{arrowStr + lines[0]}, lines[1:]...)
+		widths = append([]int{w.border.arrowWidth + widths[0]}, widths[1:]...)
+	}
+	return lines, widths
 }
 
 // renderAll renders all visible windows

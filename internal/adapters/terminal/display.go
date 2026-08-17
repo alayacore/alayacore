@@ -218,6 +218,11 @@ func (m DisplayModel) updateContent() DisplayModel {
 	totalLines := m.windowBuffer.GetTotalLines()
 	viewportHeight := m.scrollView.Height()
 
+	// ScrollView's content is the pre-clipped visible region, so it can
+	// no longer clamp yOffset against its own content length — the full
+	// document visual line count is the clamping basis.
+	m.scrollView = m.scrollView.WithTotalLines(totalLines)
+
 	targetYOffset := m.scrollView.YOffset()
 	if m.autoFollow && totalLines > viewportHeight {
 		targetYOffset = max(0, totalLines-viewportHeight)
@@ -227,6 +232,13 @@ func (m DisplayModel) updateContent() DisplayModel {
 
 	newContent := m.windowBuffer.GetAll(cursorIndex, m.blocked)
 	if newContent == m.lastContent {
+		// Content unchanged — but auto-follow may still need to move the
+		// viewport to the new bottom. With soft-wrap fragments the clip
+		// can be byte-identical after appended content (e.g. all rows are
+		// the same text), so the position update must not be skipped.
+		if m.autoFollow {
+			m.scrollView = m.scrollView.GotoBottom()
+		}
 		return m
 	}
 	m.lastContent = newContent
