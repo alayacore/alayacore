@@ -81,12 +81,13 @@ func (r *textRenderer) plainContent() bool {
 	return r.tag == tlv.TagAssistantT || r.tag == tlv.TagAssistantR
 }
 
-// BuildInner returns the inner content.
+// BuildInner returns the inner content as visual lines.
 // For AT/AR this is PLAIN TEXT (no styling — markdown rendering is a
 // future concern), so only wrapping is applied. System messages (SN/SE)
-// keep their Error/System colors. lineCount includes the 2 box rules;
-// Window.Render adds the header.
-func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) (string, int) {
+// keep their Error/System colors. Each returned line is one terminal
+// row (no '\n' inside) — the soft-wrap breakpoints. lineCount includes
+// the 2 box rules (len(lines) + 2); Window.Render adds the header.
+func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, int) {
 	innerWidth := max(0, width)
 
 	// Fast path: use cached wrapped lines if width matches.
@@ -103,7 +104,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 			r.content = buf.String()
 			r.contentParts = nil
 		}
-		return strings.Join(r.wrappedLines, "\n"), len(r.wrappedLines) + 2
+		return r.wrappedLines, len(r.wrappedLines) + 2
 	}
 
 	// Full render: prepare, style (system messages only), and wrap
@@ -129,8 +130,8 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 	}
 
 	if innerWidth <= 0 {
-		lineCount := strings.Count(content, "\n") + 1
-		return content, lineCount + 2
+		lines := strings.Split(content, "\n")
+		return lines, len(lines) + 2
 	}
 
 	wrapped := wrapContent(content, innerWidth)
@@ -138,7 +139,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 	r.cacheWidth = innerWidth
 	r.cacheValid = true
 
-	return wrapped, len(r.wrappedLines) + 2
+	return r.wrappedLines, len(r.wrappedLines) + 2
 }
 
 // BuildCollapsed returns the single-line collapsed form:
@@ -325,10 +326,12 @@ func (r *userRenderer) AppendFromTLV(tag string, value string) {
 
 func (r *userRenderer) Invalidate() {}
 
-// BuildInner renders the user message: media section first (on top), then text below.
-// This matches the natural content order: media parts precede the text part.
-// Multiple text parts are separated with "---" in System color.
-func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) (string, int) {
+// BuildInner renders the user message as visual lines: media section
+// first (on top), then text below. This matches the natural content
+// order: media parts precede the text part. Multiple text parts are
+// separated with "---" in System color. Each returned line is one
+// terminal row (no '\n' inside); lineCount includes the 2 box rules.
+func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, int) {
 	innerWidth := max(0, width)
 
 	var parts []string
@@ -375,9 +378,10 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 
 	result := strings.Join(parts, "\n")
 
+	lines := strings.Split(result, "\n")
+
 	// Count lines (add 2 for border)
-	lineCount := strings.Count(result, "\n") + 1 + 2
-	return result, lineCount
+	return lines, len(lines) + 2
 }
 
 // BuildCollapsed returns the single-line collapsed form:
@@ -444,7 +448,10 @@ func (r *toolRenderer) AppendDelta(delta string) {
 	r.deltaBuffer = delta
 }
 
-func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, int) {
+// BuildInner renders the tool window content as visual lines. Each
+// returned line is one terminal row (no '\n' inside); lineCount
+// includes the 2 box rules.
+func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, int) {
 	innerWidth := max(0, width)
 
 	// UF-only windows (no tool name, created from UF tag) render as plain text.
@@ -458,7 +465,8 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 		if innerWidth > 0 {
 			styled = wrapContent(styled, innerWidth)
 		}
-		return styled, strings.Count(styled, "\n") + 1 + 2
+		lines := strings.Split(styled, "\n")
+		return lines, len(lines) + 2
 	}
 
 	// Input: streaming delta preview (truncated JSON) or the full input.
@@ -496,7 +504,8 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 		call = call + "\n" + sep + "\n" + styled
 	}
 
-	return call, strings.Count(call, "\n") + 1 + 2
+	lines := strings.Split(call, "\n")
+	return lines, len(lines) + 2
 }
 
 // BuildCollapsed returns the single-line collapsed form for tool windows:

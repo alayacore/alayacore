@@ -826,9 +826,9 @@ func (wb *WindowBuffer) RenderWindowContent(w *Window, innerWidth int) string {
 	if w.renderer == nil {
 		return ""
 	}
-	// Use BuildInner to get the rendered content (without border)
-	inner, _ := w.renderer.BuildInner(innerWidth, false, wb.styles)
-	return inner
+	// Use BuildInner to get the rendered content lines (without border)
+	lines, _ := w.renderer.BuildInner(innerWidth, false, wb.styles)
+	return strings.Join(lines, "\n")
 }
 
 // parseHistoryID parses a history ID string (from the wire format) to uint64.

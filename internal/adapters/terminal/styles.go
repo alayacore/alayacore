@@ -64,6 +64,27 @@ type Styles struct {
 	UnfoldArrow string // expanded-window arrow
 }
 
+// RenderOpenBoxLines renders an open box from VISUAL content lines (each
+// element one terminal row, no '\n' inside) and returns the box as a
+// visual line array: [top rule, ...content lines, bottom rule]. The
+// window pipeline uses this form — the viewport clips windows by visual
+// lines, so the box must expose its rows as an array (REFACTOR.md).
+// Callers must wrap (wrapContent) and truncate (truncateWithSuffix) every
+// content line themselves, and the content's wrap width is the FULL box
+// width. Trailing padding is unnecessary: terminals ignore trailing
+// whitespace, so content lines may be shorter than the box.
+func (s *Styles) RenderOpenBoxLines(lines []string, width int, borderColor color.Color) []string {
+	rule := strings.Repeat("─", max(0, width))
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	rule = borderStyle.Render(rule)
+
+	out := make([]string, 0, len(lines)+2)
+	out = append(out, rule)
+	out = append(out, lines...)
+	out = append(out, rule)
+	return out
+}
+
 // RenderOpenBox renders a box with only top/bottom rules and NO side
 // borders ("open" style) — the collapsed-window design language:
 //
@@ -83,28 +104,13 @@ type Styles struct {
 // trailing whitespace, so content lines may be shorter than the box.
 // height, when given, pads the content area to a fixed number of rows.
 func (s *Styles) RenderOpenBox(content string, width int, borderColor color.Color, height ...int) string {
-	rule := strings.Repeat("─", max(0, width))
-	bottom := strings.Repeat("─", max(0, width))
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
-	rule = borderStyle.Render(rule)
-	bottom = borderStyle.Render(bottom)
-
 	lines := strings.Split(content, "\n")
-	var sb strings.Builder
-	sb.Grow(len(content) + 2*width + 8)
-	sb.WriteString(rule)
-	for _, ln := range lines {
-		sb.WriteString("\n")
-		sb.WriteString(ln)
-	}
 	if len(height) > 0 {
-		for i := len(lines); i < height[0]; i++ {
-			sb.WriteString("\n")
+		for len(lines) < height[0] {
+			lines = append(lines, "")
 		}
 	}
-	sb.WriteString("\n")
-	sb.WriteString(bottom)
-	return sb.String()
+	return strings.Join(s.RenderOpenBoxLines(lines, width, borderColor), "\n")
 }
 
 // NewStyles creates a Styles instance from a Theme

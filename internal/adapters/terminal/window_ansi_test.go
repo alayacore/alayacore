@@ -67,8 +67,8 @@ func TestWindow_WithANSIContent(t *testing.T) {
 			w.AppendContent(tt.content)
 
 			// Render the window inner content (without border)
-			inner, _ := w.renderer.BuildInner(80, false, styles)
-			result := inner
+			lines, _ := w.renderer.BuildInner(80, false, styles)
+			result := strings.Join(lines, "\n")
 
 			// Strip lipgloss ANSI to check the actual text content
 			resultStripped := stripANSI(result)
@@ -129,8 +129,8 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 			w.AppendContent(tt.content)
 
 			// Render the window inner content (without border)
-			inner, _ := w.renderer.BuildInner(80, false, styles)
-			result := inner
+			lines, _ := w.renderer.BuildInner(80, false, styles)
+			result := strings.Join(lines, "\n")
 
 			// Check if result contains ANSI codes
 			hasColor := containsANSI(result)

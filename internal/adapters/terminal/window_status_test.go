@@ -208,7 +208,8 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 				deltaBuffer: tt.delta,
 				status:      ToolStatusPending,
 			}
-			result, lineCount := tr.BuildInner(tt.innerW, false, styles)
+			lines, lineCount := tr.BuildInner(tt.innerW, false, styles)
+			result := strings.Join(lines, "\n")
 
 			if lineCount != tt.wantLines {
 				t.Errorf("Expected %d lines, got %d", tt.wantLines, lineCount)
@@ -241,7 +242,8 @@ func TestToolRendererUfPreviewTruncated(t *testing.T) {
 		status: ToolStatusPending,
 	}
 
-	result, lineCount := tr.BuildInner(80, false, styles)
+	lines, lineCount := tr.BuildInner(80, false, styles)
+	result := strings.Join(lines, "\n")
 	if lineCount != 5 {
 		t.Errorf("lineCount = %d, want 5 (input + --- + preview + box rules)", lineCount)
 	}
@@ -263,7 +265,8 @@ func TestToolRendererUfPreviewShort(t *testing.T) {
 		status: ToolStatusPending,
 	}
 
-	result, lineCount := tr.BuildInner(80, false, styles)
+	lines, lineCount := tr.BuildInner(80, false, styles)
+	result := strings.Join(lines, "\n")
 	if lineCount != 5 {
 		t.Errorf("lineCount = %d, want 5 (input + --- + preview + box rules)", lineCount)
 	}
@@ -310,7 +313,8 @@ func TestToolRendererUfPreviewTabs(t *testing.T) {
 		status: ToolStatusPending,
 	}
 
-	result, lineCount := tr.BuildInner(80, false, styles)
+	lines, lineCount := tr.BuildInner(80, false, styles)
+	result := strings.Join(lines, "\n")
 	if lineCount != 5 {
 		t.Errorf("lineCount = %d, want 5 (input + --- + preview + box rules)", lineCount)
 	}
@@ -341,7 +345,8 @@ func TestToolRendererUfPreviewFlattensNewlines(t *testing.T) {
 		status: ToolStatusPending,
 	}
 
-	result, lineCount := tr.BuildInner(80, false, styles)
+	lines, lineCount := tr.BuildInner(80, false, styles)
+	result := strings.Join(lines, "\n")
 	if lineCount != 5 {
 		t.Errorf("lineCount = %d, want 3 (flattened to single line)", lineCount)
 	}
@@ -362,7 +367,8 @@ func TestToolRendererUfPreviewFillsRemainingWidth(t *testing.T) {
 		status: ToolStatusPending,
 	}
 
-	result, lineCount := tr.BuildInner(80, false, styles)
+	lines, lineCount := tr.BuildInner(80, false, styles)
+	result := strings.Join(lines, "\n")
 	if lineCount != 5 {
 		t.Errorf("lineCount = %d, want 5 (input + --- + preview + box rules)", lineCount)
 	}
@@ -386,7 +392,8 @@ func TestToolRendererUfPreviewBlockGlyphs(t *testing.T) {
 		status: ToolStatusPending,
 	}
 
-	result, lineCount := tr.BuildInner(80, false, styles)
+	lines, lineCount := tr.BuildInner(80, false, styles)
+	result := strings.Join(lines, "\n")
 	if lineCount != 5 {
 		t.Errorf("lineCount = %d, want 3 (single line + border)", lineCount)
 	}

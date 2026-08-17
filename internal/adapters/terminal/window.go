@@ -48,12 +48,17 @@ type WindowRendering interface {
 	// AppendFromTLV processes one incoming TLV frame.
 	AppendFromTLV(tag string, value string)
 
-	// BuildInner returns the styled inner content and line count.
+	// BuildInner returns the styled inner content lines and line count.
 	// width is the full window width (content wraps at the full width —
 	// open boxes have no side borders or padding).
 	// The folded parameter is legacy (folded windows now render via
 	// BuildCollapsed); it is always false.
-	BuildInner(width int, folded bool, styles *Styles) (inner string, lineCount int)
+	//
+	// The returned lines are the VISUAL content lines (each element is one
+	// terminal row, no '\n' inside) — the soft-wrap breakpoints that the
+	// viewport clips against (see REFACTOR.md). lineCount includes the 2
+	// box rules (len(lines) + 2).
+	BuildInner(width int, folded bool, styles *Styles) (lines []string, lineCount int)
 
 	// BuildCollapsed returns the single-line collapsed representation of
 	// the window (label + first line, truncated to fit width), WITHOUT the
@@ -72,13 +77,20 @@ type WindowRendering interface {
 // rendered is the full output with a dim arrow; inner is the content
 // after the arrow. The cursor highlight only recolors the arrow, so a
 // cursor render is arrow + inner — no border re-render needed.
+//
+// lines is the same content as inner, but as a VISUAL line array (one
+// element per terminal row, no '\n' inside). It is the structure the
+// viewport clips against for soft-wrap fragment output (REFACTOR.md);
+// inner/rendered are the '\n'-joined projections kept for the current
+// line-based output path.
 type borderCache struct {
 	valid     bool
 	width     int
 	folded    bool
-	blocked   bool   // cached blocked state (different → cache miss)
-	rendered  string // full output with dim arrow (non-cursor)
-	inner     string // content after the arrow (for cursor arrow swap)
+	blocked   bool     // cached blocked state (different → cache miss)
+	rendered  string   // full output with dim arrow (non-cursor)
+	inner     string   // content after the arrow (for cursor arrow swap)
+	lines     []string // visual lines, content after the arrow (line 0 = header/collapsed line, no arrow)
 	lineCount int
 }
 
@@ -332,17 +344,25 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _
 		// BuildCollapsed skips full wrapping: only the first content line
 		// is read and truncated, so folding a large window is O(1).
 		inner, _ := w.renderer.BuildCollapsed(width, styles)
-		w.border.inner = " " + inner
+		w.border.lines = []string{" " + inner}
+		w.border.inner = w.border.lines[0]
 		w.border.rendered = arrowStyle(styles, false).Render(arrow) + w.border.inner
 		w.border.lineCount = 1
 	} else {
 		// Expanded: header line (expand arrow + label) above the open box.
-		inner, lineCount := w.renderer.BuildInner(width, false, styles)
+		// BuildInner returns the visual content lines (soft-wrap
+		// breakpoints); the box rules and the header are separate visual
+		// lines, so the whole window is one flat visual line array.
+		contentLines, _ := w.renderer.BuildInner(width, false, styles)
 		header := w.buildExpandHeader(styles)
-		box := styles.RenderOpenBox(inner, width, borderStyle.GetForeground())
-		w.border.inner = header + "\n" + box
+		boxLines := styles.RenderOpenBoxLines(contentLines, width, borderStyle.GetForeground())
+		lines := make([]string, 0, len(boxLines)+1)
+		lines = append(lines, header)
+		lines = append(lines, boxLines...)
+		w.border.lines = lines
+		w.border.inner = strings.Join(lines, "\n")
 		w.border.rendered = arrowStyle(styles, false).Render(arrow) + w.border.inner
-		w.border.lineCount = lineCount + 1 // header line
+		w.border.lineCount = len(lines)
 	}
 
 	w.border.width = width
