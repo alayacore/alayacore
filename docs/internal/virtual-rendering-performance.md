@@ -12,7 +12,14 @@ All optimizations are working correctly:
 - ✅ **Incremental content append** — O(delta) per frame via `appendDeltaToLines`, avoids O(n) full re-wrap (~511x speedup on 5000-line content)
 - ✅ **Incremental line height tracking** — `TryLineCount` from `wrappedLines` in ~7.5μs (full `ensureLineHeights` with 1 dirty window), no full render needed
 - ✅ **Streaming stays under 1ms** — average 24.8μs per full cycle (append + line tracking + GetAll), well within 250ms tick budget
-- ✅ **Custom ScrollView** (<1KB) replaces Bubbles viewport — View() is **~540–560ns** (down from ~10μs), 6 allocs per call
+- ✅ **Custom ScrollView** (<1KB) replaces Bubbles viewport — stores the
+  pre-clipped visible region; `View()` pads to the viewport height
+  (~500–850ns including split+padding, ~1 alloc). `WithContent` is ~0.7ns
+  (no re-split)
+- ✅ **Soft-wrap fragment viewport** — `renderVirtual` clips to visual lines
+  and emits continuous per-window fragments (`\n` only between windows);
+  display widths cached per render, so `GetAll` is ~68% faster than the old
+  buffered render (see [Soft-Wrap Fragment Rendering](#soft-wrap-fragment-rendering))
 
 ## How Streaming Works
 
@@ -169,11 +176,47 @@ wins in real sessions.
 
 ### ScrollView Component
 
+ScrollView holds the **pre-clipped visible region** (produced by
+`renderVirtual`) plus the document total line count for clamping — it no
+longer re-splits or slices content.
+
 | Metric | Value |
 |--------|-------|
-| `View()` (n=10 to n=10000) | **540–562ns**, 6 allocs |
-| `ScrollDown(1)` | **8.6ns**, 0 allocs |
-| `WithContent(n=10000)` | **93.6μs**, 1 alloc |
+| `WithContent` (any size) | **~0.7ns**, 0 allocs (stores the pre-clipped string) |
+| `View()` (n=10 to n=10000) | **~480–850ns**, split + padding |
+| `ScrollDown(1)` | **~14ns**, 0 allocs |
+
+### Soft-Wrap Fragment Rendering
+
+The soft-wrap refactor (REFACTOR.md) changed `renderVirtual` from
+"render a buffered window range, `\n`-join everything, let ScrollView
+slice" to **exact viewport clipping**:
+
+- only the windows overlapping `[yOffset, yOffset+height)` are rendered
+  (typically 1–3 instead of a ±5-window buffer);
+- each window's visual lines are joined **without `\n`** and padded to the
+  full width (except the last row), so the terminal soft-wraps at the
+  simulated breakpoints — copy restores the original text;
+- display widths are measured once per render (`border.widths`) and reused
+  for padding, so fragment output performs no per-line measurement;
+- the dim fold arrow is pre-rendered (`border.arrow`) — no lipgloss render
+  per window per view.
+
+Measured (120-window folded session / 100-window conversation, viewport
+30–40, vs pre-refactor):
+
+| Benchmark | Before | After | Δ |
+|-----------|-------:|------:|--:|
+| `WindowBufferGetAll` | 13.7μs | 2.4μs | **-68%** |
+| `FoldedSessionGetAll` | 31.7μs | 13.9μs | **-37%** |
+| `WindowBufferDeltaWithGetAll` | 13.7μs | 3.7μs | **-73%** |
+| `VirtualRenderingCursorMovement` | 449μs | 93μs | **-79%** |
+| `VirtualRenderingScroll` | 324μs | 108μs | **-67%** |
+| `StreamingUpdateWithVirtualRendering` | 19.9μs | 6.2μs | **-69%** |
+
+The render path (full wrap, resize, theme switch) is unchanged: display
+widths are computed **lazily** — only when fragment output needs padding —
+so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 
 ### wrapContent vs lipgloss.Wrap
 
@@ -218,7 +261,7 @@ commit `1021326`.
 | Cache | Location | Contents | Invalidated by |
 |-------|----------|----------|---------------|
 | Renderer lines | `textRenderer.wrappedLines` | Wrapped plain-text lines (AT/AR) | Resize, theme change |
-| Border output | `Window.border` | Rendered output + lineCount | Content append, resize, theme |
+| Border output | `Window.border` | Visual lines (`lines`), display widths (`widths`, lazy), dim arrow, rendered string + lineCount | Content append, resize, theme |
 
 Renderer lines are **updated incrementally** during streaming (not invalidated).
 Border cache is marked invalid on every content change but rebuilt on next render.

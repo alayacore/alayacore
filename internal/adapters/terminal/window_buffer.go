@@ -771,6 +771,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 
 	var sb strings.Builder
 	firstWritten := false
+	emittedRows := 0
 	pos := 0 // running line position across windows
 	for i := range wb.windows {
 		winStart := pos
@@ -793,6 +794,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 		}
 
 		lines, widths := wb.windowFragment(w, from, to, cursorIndex == i, blocked)
+		emittedRows += len(lines)
 
 		if firstWritten {
 			sb.WriteString("\n")
@@ -814,6 +816,17 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			}
 		}
 		firstWritten = true
+	}
+
+	// Pad to the viewport height with blank rows. This must happen here —
+	// ScrollView cannot count terminal rows (a fragment soft-wraps to
+	// several rows), so the padding needs the visual row count.
+	if pad := wb.viewportHeight - emittedRows; pad > 0 {
+		if emittedRows == 0 {
+			sb.WriteString(strings.Repeat("\n", max(0, pad-1)))
+		} else {
+			sb.WriteString(strings.Repeat("\n", pad))
+		}
 	}
 	return sb.String()
 }

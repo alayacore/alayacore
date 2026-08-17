@@ -51,8 +51,9 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 		t.Fatalf("expected a multi-row tool window, got %d lines", len(allLines))
 	}
 
-	// Scrolled into the middle: viewport [3, 3+height) inside the window.
-	height := 12
+	// Scrolled into the middle: viewport [3, len) — the remaining rows,
+	// exactly the viewport height, so no blank padding is appended.
+	height := len(allLines) - 3
 	wb.SetViewportPosition(3, height)
 	frag := wb.GetAll(-1, false)
 	if strings.Contains(frag, "\n") {

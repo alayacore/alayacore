@@ -171,11 +171,17 @@ scrolls the viewport. While auto-follow is active:
 
 Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOL•`, `REASONING`, `ASSISTANT`, `USER`, `NOTIFY` for system notifications, or `ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOL•` followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
 
-An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrow glyphs themselves are theme-configurable (`fold_arrow` / `unfold_arrow`). See [window rendering](internal/rendering-performance.md) for the performance rationale (collapsed windows are O(1) to render and track).
+An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrow glyphs themselves are theme-configurable (`fold_arrow` / `unfold_arrow`). See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
 
 ### Virtual Scrolling
 
-The display uses virtual scrolling to handle large outputs efficiently. Only visible windows are rendered, giving a 3.7x speedup over naive rendering (see [performance analysis](internal/virtual-rendering-performance.md) for details).
+The display uses virtual scrolling to handle large outputs efficiently. The
+viewport clips the window buffer to the visible **visual lines** and renders
+only the windows that overlap them — typically 1-3 windows per frame, down
+from the buffered window range of the old model. Cached display widths make
+fragment output cheap: `GetAll` (viewport render) measured **~68% faster**
+after the soft-wrap refactor (`BenchmarkWindowBufferGetAll`). See
+[performance analysis](internal/virtual-rendering-performance.md) for details.
 
 ### Sentinel values
 
@@ -200,7 +206,29 @@ The dialog shows the tool name in the title and a 2-line preview of the tool's i
 
 ## Line Wrapping
 
-Content in each window is soft-wrapped to fit the available width. The wrapping is **character-boundary** — it breaks mid-word when a word exceeds the line width, matching how a typical terminal behaves.
+Content in each window is wrapped to the available width using the
+**terminal's own soft-wrap** (REFACTOR.md). The viewport renders each
+window as a **continuous fragment** — the visual rows are joined without
+hard newlines, and every row except the last is padded with trailing
+spaces to the full window width, so the terminal soft-wraps exactly at
+the simulated breakpoints. Newlines appear only **between** windows
+(preventing windows from merging into one soft-wrap run).
+
+Consequences:
+
+- **Copy fidelity**: selecting a window's content and pasting restores the
+  original text — the layout newlines are soft wraps, not `\n` characters.
+  (Layout padding — trailing spaces per row — is the visible trade-off of
+  terminal soft-wrap; terminal selection includes them.)
+- **Terminal continuation works**: soft-wrapped rows are one logical line,
+  so features like cross-row URL recognition behave normally.
+- **ANSI styles survive clipping**: every visual row is styled
+  self-contained (styles re-applied per row), so scrolling into the middle
+  of a colored diff keeps `-`/`+` colors correct.
+
+The wrapping breakpoints are **character-boundary** — a word wider than
+the line width is broken mid-word, matching how a typical terminal
+behaves.
 
 Width calculation is **Unicode-aware**:
 
@@ -213,7 +241,12 @@ Width calculation is **Unicode-aware**:
   underlying `x/ansi` width model counts a tab as 0 cells — expanding first
   keeps truncation budgets and the final render consistent.
 
-When a newline is inserted by the wrapper, ANSI styles are automatically carried forward to the next line — a red-styled sentence stays red on continuation lines.
+Window rendering produces **visual line arrays** (`border.lines`) — one
+element per terminal row. Display widths are measured once per render
+(`border.widths`) and reused by the viewport for padding, so fragment
+output never re-measures lines. `lineHeights` are the visual line counts,
+so cursor navigation (j/k/H/M/L) and `EnsureCursorVisible` operate on
+terminal rows exactly as before.
 
 Incremental updates avoid re-wrapping the entire content on every token. Only the last line is combined with the new delta and re-wrapped, keeping per-token cost proportional to the delta size rather than total content.
 

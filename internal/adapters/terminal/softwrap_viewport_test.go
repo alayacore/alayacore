@@ -37,7 +37,8 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 	// Folded reasoning window: 1 visual line.
 	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
 
-	wb.SetViewportPosition(0, 30)
+	// Viewport exactly the document height (8 rows) → no blank padding.
+	wb.SetViewportPosition(0, 8)
 	out := wb.GetAll(-1, false)
 
 	frags := strings.Split(out, "\n")
@@ -117,7 +118,7 @@ func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 	original := strings.Repeat("word ", 25)
 	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", original)
 
-	wb.SetViewportPosition(0, 30)
+	wb.SetViewportPosition(0, 7)
 	out := stripANSI(wb.GetAll(-1, false))
 	if strings.Contains(out, "\n") {
 		t.Fatalf("single-window output must not contain newlines: %q", out)
@@ -178,8 +179,10 @@ func TestRenderVirtualWindowBoundary(t *testing.T) {
 
 // TestScrollViewSoftWrap verifies ScrollView's new role: it holds the
 // pre-clipped visible region and the document total line count; View
-// returns the region padded to the viewport height; yOffset clamping and
-// AtBottom use the document total, not the clipped content length.
+// returns the region as-is (renderVirtual already pads to the viewport
+// height with blank rows — it knows the visual row count); yOffset
+// clamping and AtBottom use the document total, not the clipped content
+// length.
 func TestScrollViewSoftWrap(t *testing.T) {
 	sv := NewScrollView(40, 5).WithTotalLines(100).WithYOffset(90)
 	if sv.YOffset() != 90 {
@@ -194,25 +197,67 @@ func TestScrollViewSoftWrap(t *testing.T) {
 		t.Error("AtBottom should be true at maxYOffset")
 	}
 
-	// Content is pre-clipped: 2 fragments + padding to height.
+	// Content is the pre-clipped region — returned verbatim (padding is
+	// renderVirtual's job, since fragments occupy several terminal rows).
 	sv = sv.WithContent("fragment-one\nfragment-two")
-	v := sv.View()
-	lines := strings.Split(v, "\n")
-	if len(lines) != 5 {
-		t.Fatalf("View() = %d lines, want 5 (2 fragments + 3 padded)", len(lines))
+	if v := sv.View(); v != "fragment-one\nfragment-two" {
+		t.Errorf("View() = %q, want the pre-clipped content verbatim", v)
 	}
-	if lines[0] != "fragment-one" || lines[1] != "fragment-two" {
-		t.Errorf("View() fragments = %q | %q", lines[0], lines[1])
-	}
-	if lines[2] != "" || lines[3] != "" || lines[4] != "" {
-		t.Errorf("View() padding = %q, want empty lines", lines[2:])
+
+	// Empty buffer: blank rows to fill the viewport.
+	sv = NewScrollView(40, 5).WithContent("")
+	if v := sv.View(); v != "\n\n\n\n" {
+		t.Errorf("View() with empty content = %q, want 5 blank rows", v)
 	}
 
 	// Content length is unrelated to the document total — yOffset must
 	// survive WithContent (it is the scroll state, not a slice index).
-	sv = sv.WithContent("clipped").WithYOffset(50)
+	sv = sv.WithContent("clipped").WithTotalLines(100).WithYOffset(50)
 	if sv.YOffset() != 50 {
 		t.Errorf("YOffset = %d, want 50 (not clamped to clipped content)", sv.YOffset())
+	}
+}
+
+// TestDisplayViewSoftWrapRows simulates the terminal on DisplayModel's
+// final View output: soft-wrapping each fragment at the display width
+// must reproduce exactly the viewport-height rows — the acceptance
+// criterion that the screen looks identical to the old hard-wrapped
+// layout while the bytes carry no fake newlines inside windows.
+func TestDisplayViewSoftWrapRows(t *testing.T) {
+	wb := NewWindowBuffer(40, DefaultStyles())
+	// AT window: header + rule + 4 content + rule = 7 visual lines.
+	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
+	// Folded windows: 1 visual line each.
+	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
+	wb.AppendOrUpdate(tlv.TagUserT, "ut-1", "hello user")
+
+	dm := NewDisplayModel(wb, DefaultStyles()).WithHeight(5).updateContent()
+	// Auto-follow: viewport at bottom — lines 4..9 (AT rows 4-6, AR, UT).
+	if dm.scrollView.YOffset() != 4 {
+		t.Fatalf("YOffset = %d, want 4 (document 9 lines - viewport 5)", dm.scrollView.YOffset())
+	}
+	v := dm.View().Content
+	// Simulate the terminal soft-wrap at the display width.
+	wrapped := ansi.Hardwrap(v, 40, true)
+	rows := strings.Count(wrapped, "\n") + 1
+	if rows != 5 {
+		t.Errorf("terminal soft-wrap of View() = %d rows, want 5 (viewport height)", rows)
+	}
+	plain := stripANSI(wrapped)
+	if !strings.Contains(plain, "word") {
+		t.Errorf("terminal render should contain assistant content: %q", plain)
+	}
+	// The viewport shows the TAIL of the AT window (rows 4-6: content
+	// rows 3-4 + bottom rule) — the header/rule are scrolled off.
+	if strings.Contains(plain, "ASSISTANT") {
+		t.Errorf("viewport is mid-window — the AT header must not be visible: %q", plain)
+	}
+	if !strings.Contains(plain, "REASONING") || !strings.Contains(plain, "USER") {
+		t.Errorf("viewport should include the folded windows: %q", plain)
+	}
+	// And the bottom row is the bottom rule, not the top rule.
+	if strings.Contains(plain, "REASONING") && !strings.Contains(plain, "─") {
+		t.Errorf("viewport should include the AT bottom rule: %q", plain)
 	}
 }
 

@@ -10,10 +10,11 @@ package terminal
 // SOFT-WRAP MODEL (REFACTOR.md): WindowBuffer.renderVirtual clips the
 // window buffer to the viewport and produces the visible region as
 // soft-wrap fragments — continuous text within a window ('\n' only
-// between windows). ScrollView therefore does NOT re-split or slice
-// content; it stores the pre-clipped region and returns it padded to
-// the viewport height. Scroll clamping is based on the full document
-// visual line count (WithTotalLines), not the clipped content length.
+// between windows), already padded to the viewport height with blank
+// rows. ScrollView therefore does NOT re-split or slice content; it
+// stores the pre-clipped region and returns it verbatim. Scroll
+// clamping is based on the full document visual line count
+// (WithTotalLines), not the clipped content length.
 //
 // It does NOT support soft wrapping, gutters, highlights, or
 // horizontal scrolling — features AlayaCore doesn't use.
@@ -122,21 +123,20 @@ func (m ScrollView) PastBottom() bool {
 	return m.yOffset > m.maxYOffset()
 }
 
-// View returns the rendered content (the pre-clipped visible region),
-// padded with empty lines to fill the viewport height.
+// View returns the rendered content — the pre-clipped visible region
+// produced by WindowBuffer.renderVirtual, which already pads to the
+// viewport height with blank rows (it knows the visual row count; a
+// soft-wrap fragment occupies several terminal rows, so ScrollView
+// cannot count them from the string). The empty-buffer case is padded
+// here as blank rows.
 func (m ScrollView) View() string {
 	if m.height <= 0 {
 		return ""
 	}
-
-	lines := strings.Split(m.content, "\n")
-	if len(lines) > m.height {
-		lines = lines[:m.height] // defensive: content is pre-clipped
+	if m.content == "" {
+		return strings.Repeat("\n", max(0, m.height-1))
 	}
-	for len(lines) < m.height {
-		lines = append(lines, "")
-	}
-	return strings.Join(lines, "\n")
+	return m.content
 }
 
 // maxYOffset returns the maximum valid Y offset.
