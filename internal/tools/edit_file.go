@@ -15,7 +15,7 @@ import (
 // EditFileInput represents the input for the edit_file tool
 type EditFileInput struct {
 	Path      string `json:"path" jsonschema:"required" jsonschema_desc:"File path to edit"`
-	OldString string `json:"old_string" jsonschema:"required" jsonschema_desc:"Exact text to find and replace"`
+	OldString string `json:"old_string" jsonschema:"required" jsonschema_desc:"Text to find and replace. Exact match preferred; whitespace-only differences (indentation, tabs, line endings, extra spaces) are tolerated automatically."`
 	NewString string `json:"new_string" jsonschema:"required" jsonschema_desc:"Replacement text"`
 }
 
@@ -23,7 +23,7 @@ type EditFileInput struct {
 func NewEditFileTool() llm.Tool {
 	return llm.NewTool(
 		"edit_file",
-		`Apply an exact string replacement to a file (not regex). old_string must match EXACTLY (every space, tab, newline). If old_string appears multiple times, the edit fails.`,
+		`Apply a string replacement to a file (not regex). old_string is matched exactly first; if no exact match exists, whitespace differences (indentation, tabs, spaces, CRLF vs LF, trailing spaces) are tolerated automatically. Non-whitespace content must match exactly. If old_string appears multiple times, the edit fails.`,
 	).
 		WithSchema(llm.MustGenerateSchema(EditFileInput{})).
 		WithExecute(llm.TypedExecute(executeEditFile)).
@@ -296,8 +296,7 @@ func executeEditFile(ctx context.Context, args EditFileInput) ([]llm.ContentPart
 	}
 
 	if !editor.hasOccurrences() {
-		return nil, fmt.Errorf(
-			"old_string not found in file. Make sure to copy the exact text including all whitespace and indentation.\n\nSearched for:\n%q", args.OldString)
+		return executeEditFileTolerant(ctx, session, args)
 	}
 
 	if err := session.Commit(); err != nil {
@@ -305,4 +304,353 @@ func executeEditFile(ctx context.Context, args EditFileInput) ([]llm.ContentPart
 	}
 
 	return []llm.ContentPart{&llm.TextPart{Text: "File edited successfully"}}, nil
+}
+
+// ============================================================================
+// Whitespace-tolerant fallback matching
+// ============================================================================
+//
+// When exact matching fails, a second strategy is tried: ASCII whitespace
+// runs (spaces, tabs, CR, LF) are collapsed to a single space in both the
+// file and old_string, and the normalized old_string is searched for there.
+// This tolerates the whitespace mistakes small models commonly make
+// (indentation counts, tabs vs spaces, CRLF vs LF, trailing spaces) while
+// still requiring non-whitespace content to match exactly.
+//
+// Matching is deliberately one-directional: a whitespace RUN in the file can
+// match a single space in old_string, but old_string cannot contain MORE
+// whitespace than the file. This preserves the existence of whitespace —
+// collapsing to nothing would make "foo bar" match "foobar", which is
+// unsafe. Multi-byte UTF-8 is untouched (only ASCII whitespace bytes are
+// normalized).
+
+// errNormalizedNotFound is returned by findNormalizedMatch when the
+// whitespace-normalized old_string does not appear in the file.
+var errNormalizedNotFound = errors.New("normalized old_string not found")
+
+// isASCIIWhitespace reports whether b is a normalized whitespace byte.
+func isASCIIWhitespace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\r' || b == '\n'
+}
+
+// normalizeWhitespace collapses every run of ASCII whitespace bytes in src
+// to a single space, preserving all non-whitespace bytes (including
+// multi-byte UTF-8 sequences). Used to build the normalized old_string.
+func normalizeWhitespace(src []byte) []byte {
+	dst := make([]byte, 0, len(src))
+	pendingSpace := false
+	for _, c := range src {
+		if isASCIIWhitespace(c) {
+			pendingSpace = true
+			continue
+		}
+		if pendingSpace {
+			dst = append(dst, ' ')
+			pendingSpace = false
+		}
+		dst = append(dst, c)
+	}
+	if pendingSpace {
+		dst = append(dst, ' ')
+	}
+	return dst
+}
+
+// findNormalizedMatch streams src once, normalizing ASCII whitespace runs to
+// single spaces, and searches for the normalized old_string.
+//
+// It returns the normalized (whitespace-collapsed) start index of the match.
+// Errors: errNormalizedNotFound if absent, a descriptive error if present
+// multiple times, or an I/O error. Memory stays bounded by the search window
+// appendNormalized appends the normalized form of chunk to dst, collapsing
+// ASCII whitespace runs to single spaces. pendingSpace carries a trailing
+// whitespace run across chunk boundaries (it becomes a single space before
+// the next non-whitespace byte, or at EOF).
+func appendNormalized(dst, chunk []byte, pendingSpace *bool) []byte {
+	for i := 0; i < len(chunk); i++ {
+		c := chunk[i]
+		if isASCIIWhitespace(c) {
+			*pendingSpace = true
+			continue
+		}
+		if *pendingSpace {
+			dst = append(dst, ' ')
+			*pendingSpace = false
+		}
+		dst = append(dst, c)
+	}
+	return dst
+}
+
+// (≈ len(old_string) + chunk), independent of file size.
+func findNormalizedMatch(ctx context.Context, src io.Reader, oldString string) (int64, error) {
+	normOld := normalizeWhitespace([]byte(oldString))
+	const chunkSize = 4096
+
+	buffer := make([]byte, 0, min(2*len(normOld)+chunkSize, maxEditBufferCapacity))
+	chunk := make([]byte, chunkSize)
+
+	var (
+		pendingSpace bool
+		released     int64 // normalized chars already discarded from buffer
+		occurrences  int
+		matchStart   int64
+	)
+
+	search := func() error {
+		for {
+			idx := bytes.Index(buffer, normOld)
+			if idx == -1 {
+				return nil
+			}
+			occurrences++
+			if occurrences > 1 {
+				return fmt.Errorf("old_string found multiple times in file after whitespace normalization. Include more surrounding context to make it unique, or use a different portion of text")
+			}
+			matchStart = released + int64(idx)
+			buffer = buffer[idx+len(normOld):]
+			released += int64(idx + len(normOld))
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return 0, fmt.Errorf("Canceled")
+		default:
+		}
+
+		n, err := src.Read(chunk)
+		buffer = appendNormalized(buffer, chunk[:n], &pendingSpace)
+
+		if serr := search(); serr != nil {
+			return 0, serr
+		}
+
+		// Keep enough of the tail to catch matches spanning chunk boundaries.
+		if len(buffer) > len(normOld) {
+			keep := len(buffer) - len(normOld)
+			released += int64(keep)
+			buffer = buffer[keep:]
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return 0, fmt.Errorf("failed to read file: %w", err)
+		}
+	}
+
+	// Flush a trailing whitespace run at EOF so the file's final normalized
+	// char (if any) participates in matching.
+	if pendingSpace {
+		buffer = append(buffer, ' ')
+		if serr := search(); serr != nil {
+			return 0, serr
+		}
+	}
+
+	if occurrences == 0 {
+		return 0, errNormalizedNotFound
+	}
+	return matchStart, nil
+}
+
+// locateAndWrite streams src a second time, normalizing whitespace on the
+// fly, and writes dst = file[0:start) + newString + file[end:), where start
+// and end are the original byte offsets of the normalized span
+// [startNorm, endNorm) found by findNormalizedMatch.
+//
+// The source is read exactly once: prefix bytes are written as they stream
+// past, the matched span is skipped, and newString plus the suffix are
+// written once the span's end is located. Memory is O(chunk) regardless of
+// file size. Fails with an internal error if the span cannot be located,
+// which indicates the two passes disagreed (an implementation bug).
+func locateAndWrite(ctx context.Context, src io.Reader, dst io.Writer, startNorm, endNorm int64, newString string) error {
+	if startNorm < 0 || endNorm <= startNorm {
+		return fmt.Errorf("internal error: invalid normalized span [%d,%d)", startNorm, endNorm)
+	}
+
+	const chunkSize = 4096
+	chunk := make([]byte, chunkSize)
+
+	var (
+		pendingSpace bool
+		count        int64 // normalized chars generated so far
+		state        int   // 0 = prefix, 1 = matched span, 2 = suffix
+		newWritten   bool
+	)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("Canceled")
+		default:
+		}
+
+		n, rerr := src.Read(chunk)
+		startIdx, endIdx := scanNormalizedSpan(chunk[:n], &pendingSpace, &count, state, startNorm, endNorm)
+
+		var werr error
+		state, werr = writeChunkByState(dst, state, chunk[:n], startIdx, endIdx, newString, &newWritten)
+		if werr != nil {
+			return werr
+		}
+
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return fmt.Errorf("failed to read file: %w", rerr)
+		}
+	}
+
+	switch state {
+	case 0:
+		return fmt.Errorf("internal error: normalized match start not located")
+	case 1:
+		// Match spans to end of file.
+		if werr := writeNewString(dst, newString, &newWritten); werr != nil {
+			return werr
+		}
+	}
+	if count < endNorm {
+		return fmt.Errorf("internal error: normalized char count %d < endNorm %d", count, endNorm)
+	}
+	return nil
+}
+
+// scanNormalizedSpan scans one chunk, normalizing whitespace and counting
+// normalized chars, and reports the first index (if any) at which the chunk
+// crosses the match start and end. A normalized char is generated per
+// non-whitespace byte and per whitespace run (at its first byte); char index
+// equals count before incrementing, so startNorm/endNorm are compared
+// against count BEFORE the increment.
+func scanNormalizedSpan(buf []byte, pendingSpace *bool, count *int64, state int, startNorm, endNorm int64) (startIdx, endIdx int) {
+	startIdx, endIdx = -1, -1
+	for i := 0; i < len(buf); i++ {
+		c := buf[i]
+		if isASCIIWhitespace(c) {
+			if !*pendingSpace {
+				*pendingSpace = true
+				if state == 0 && *count == startNorm {
+					startIdx = i
+				}
+				if state < 2 && *count == endNorm {
+					endIdx = i
+				}
+				*count++
+			}
+			continue
+		}
+		if *pendingSpace {
+			*pendingSpace = false
+		}
+		if state == 0 && *count == startNorm {
+			startIdx = i
+		}
+		if state < 2 && *count == endNorm {
+			endIdx = i
+		}
+		*count++
+	}
+	return startIdx, endIdx
+}
+
+// writeChunkByState writes the appropriate slice of buf for the current
+// state (0 = prefix before the match, 1 = inside the match, 2 = suffix after
+// it), inserts newString when the match end is crossed, and returns the
+// updated state.
+func writeChunkByState(dst io.Writer, state int, buf []byte, startIdx, endIdx int, newString string, newWritten *bool) (int, error) {
+	switch state {
+	case 0:
+		if startIdx < 0 {
+			return state, writeBuf(dst, buf)
+		}
+		if werr := writeBuf(dst, buf[:startIdx]); werr != nil {
+			return state, werr
+		}
+		if endIdx < 0 {
+			return 1, nil
+		}
+		if werr := writeNewString(dst, newString, newWritten); werr != nil {
+			return state, werr
+		}
+		return 2, writeBuf(dst, buf[endIdx:])
+	case 1:
+		if endIdx < 0 {
+			return state, nil
+		}
+		if werr := writeNewString(dst, newString, newWritten); werr != nil {
+			return state, werr
+		}
+		return 2, writeBuf(dst, buf[endIdx:])
+	default:
+		return state, writeBuf(dst, buf)
+	}
+}
+
+// writeNewString writes newString to dst once, guarded by newWritten.
+func writeNewString(dst io.Writer, newString string, newWritten *bool) error {
+	if *newWritten {
+		return nil
+	}
+	if _, err := dst.Write([]byte(newString)); err != nil {
+		return fmt.Errorf("failed to write to temp file: %v", err)
+	}
+	*newWritten = true
+	return nil
+}
+
+// writeBuf writes buf to dst with a uniform error message.
+func writeBuf(dst io.Writer, buf []byte) error {
+	if _, err := dst.Write(buf); err != nil {
+		return fmt.Errorf("failed to write to temp file: %v", err)
+	}
+	return nil
+}
+
+// executeEditFileTolerant is the whitespace-tolerant fallback path: it runs
+// only when exact matching failed. It rewinds the source file, searches the
+// normalized stream, then performs a second streaming pass that writes the
+// replacement. Returns a success message that explicitly marks the edit as
+// whitespace-insensitive so the model knows its old_string was not exact.
+func executeEditFileTolerant(ctx context.Context, session *editSession, args EditFileInput) ([]llm.ContentPart, error) {
+	if _, err := session.srcFile.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to seek source file: %v", err)
+	}
+
+	startNorm, err := findNormalizedMatch(ctx, session.srcFile, args.OldString)
+	if err != nil {
+		if errors.Is(err, errNormalizedNotFound) {
+			return nil, fmt.Errorf(
+				"old_string not found in file. Both exact matching and whitespace-tolerant matching (indentation, tabs, line endings, extra spaces) failed, so the content differs beyond whitespace.\n\nSearched for:\n%q",
+				args.OldString)
+		}
+		return nil, err
+	}
+
+	normOld := normalizeWhitespace([]byte(args.OldString))
+	if _, err := session.srcFile.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to seek source file: %v", err)
+	}
+	// The exact-matching pass already streamed the whole file into the temp
+	// file (it only failed to find a match). Rewind and truncate it so
+	// locateAndWrite replaces the content instead of appending.
+	if err := session.tempFile.Truncate(0); err != nil {
+		return nil, fmt.Errorf("failed to truncate temp file: %v", err)
+	}
+	if _, err := session.tempFile.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to seek temp file: %v", err)
+	}
+	if err := locateAndWrite(ctx, session.srcFile, session, startNorm, startNorm+int64(len(normOld)), args.NewString); err != nil {
+		return nil, err
+	}
+
+	if err := session.Commit(); err != nil {
+		return nil, err
+	}
+
+	return []llm.ContentPart{&llm.TextPart{Text: "File edited successfully (whitespace-insensitive match)"}}, nil
 }
