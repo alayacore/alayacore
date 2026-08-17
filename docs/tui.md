@@ -226,6 +226,15 @@ Consequences:
   self-contained (styles re-applied per row), so scrolling into the middle
   of a colored diff keeps `-`/`+` colors correct.
 
+This requires a **raw passthrough renderer**: the stock bubbletea v2
+cell-buffer renderer truncates lines wider than the screen and
+re-materializes wrapped rows as hard rows, which breaks both the display
+and copy fidelity. AlayaCore runs a small fork of bubbletea v2
+(`third_party/bubbletea`, via a `replace` directive) that adds a raw mode
+to `tea.View`: the view content is written verbatim to the terminal and
+left for the terminal to soft-wrap. Overlays are drawn with absolute
+cursor-position sequences instead of line compositing (see REFACTOR.md).
+
 The wrapping breakpoints are **character-boundary** — a word wider than
 the line width is broken mid-word, matching how a typical terminal
 behaves.

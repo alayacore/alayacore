@@ -769,6 +769,13 @@ func (m Terminal) View() tea.View {
 
 	v := tea.NewView(overlayContent)
 	v.AltScreen = true
+	// Raw passthrough mode (forked bubbletea): the content is written
+	// verbatim to the terminal so it soft-wraps natively — window
+	// fragments (continuous text padded to the terminal width) wrap
+	// exactly at the visual lines, preserving copy fidelity (no fake
+	// newlines) and terminal continuation features. The stock
+	// cell-buffer renderer truncates wide lines and cannot do this.
+	v.Raw = true
 	v.ReportFocus = true
 
 	// Position the real terminal cursor at the active text input: the focused

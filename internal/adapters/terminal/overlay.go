@@ -5,7 +5,11 @@ package terminal
 // a consistent bottom alignment, plus trackOverlay for managing open/close state.
 
 import (
+	"fmt"
+	"strings"
+
 	"charm.land/lipgloss/v2"
+	ansi "github.com/charmbracelet/x/ansi"
 )
 
 // overlayCloseTracker tracks whether an overlay was open before key handling,
@@ -26,15 +30,38 @@ func (t overlayCloseTracker) JustClosed(ov interface{ IsOpen() bool }) bool {
 
 // renderOverlay positions a content box centered horizontally, with its bottom
 // edge aligned at a consistent vertical position, plus a yOffset adjustment.
+//
+// RAW (soft-wrap) mode: the base content is written verbatim to the terminal
+// and soft-wrapped, so an overlay cannot be composited by line (the base
+// "lines" are continuous fragments, not rows). Instead each box row is
+// written at its absolute screen position with a CUP sequence, padded to
+// the box width so it fully covers the base content beneath.
 func renderOverlay(baseContent string, box string, screenWidth, screenHeight int, yOffset int) string {
 	x, y := overlayOrigin(box, screenWidth, screenHeight)
 	y = max(0, y+yOffset)
 
-	c := lipgloss.NewCompositor(
-		lipgloss.NewLayer(baseContent),
-		lipgloss.NewLayer(box).X(x).Y(y).Z(0),
-	)
-	return c.Render()
+	boxWidth := lipgloss.Width(box)
+	boxHeight := lipgloss.Height(box)
+
+	var sb strings.Builder
+	sb.Grow(len(baseContent) + len(box) + boxHeight*12)
+	sb.WriteString(baseContent)
+
+	rows := strings.Split(box, "\n")
+	for i, row := range rows {
+		rowY := y + i
+		if rowY >= screenHeight {
+			break
+		}
+		// Pad to the box width so the row fully covers the base content.
+		if w := ansi.StringWidth(row); w < boxWidth {
+			row += strings.Repeat(" ", boxWidth-w)
+		}
+		// Absolute cursor position (1-based rows/cols).
+		fmt.Fprintf(&sb, "\x1b[%d;%dH", rowY+1, x+1)
+		sb.WriteString(row)
+	}
+	return sb.String()
 }
 
 // overlayOrigin returns the top-left screen position of an overlay box:

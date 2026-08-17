@@ -13,6 +13,13 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+// Fork of bubbletea v2.0.8 with a raw passthrough renderer mode
+// (tea.View.Raw): the view content is written verbatim to the terminal so
+// it soft-wraps natively — the stock cell-buffer renderer truncates lines
+// wider than the screen and re-materializes wrapped rows as hard rows,
+// which breaks soft-wrap display and copy fidelity (REFACTOR.md).
+replace charm.land/bubbletea/v2 => ./third_party/bubbletea
+
 require (
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260808192814-d38ea0f8aa5c // indirect
