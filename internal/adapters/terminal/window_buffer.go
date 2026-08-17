@@ -56,8 +56,8 @@ func NewWindowBuffer(width int, styles *Styles) *WindowBuffer {
 		idIndex:     make(map[string]int),
 		width:       width,
 		styles:      styles,
-		borderStyle: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorDim).Padding(0, 1),
-		cursorStyle: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.BorderCursor).Padding(0, 1),
+		borderStyle: lipgloss.NewStyle().Foreground(styles.ColorDim),
+		cursorStyle: lipgloss.NewStyle().Foreground(styles.BorderCursor),
 		lineHeights: []int{},
 		dirtyIndex:  dirtyClean,
 	}
@@ -89,8 +89,8 @@ func (wb *WindowBuffer) WithStyles(styles *Styles) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 	wb.styles = styles
-	wb.borderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorDim).Padding(0, 1)
-	wb.cursorStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.BorderCursor).Padding(0, 1)
+	wb.borderStyle = lipgloss.NewStyle().Foreground(styles.ColorDim)
+	wb.cursorStyle = lipgloss.NewStyle().Foreground(styles.BorderCursor)
 	// Invalidate all windows to pick up new styles
 	for _, w := range wb.windows {
 		w.styles = styles // Update window's styles reference
@@ -116,8 +116,10 @@ func (wb *WindowBuffer) AppendOrUpdate(tag string, id string, content string) in
 		return idx
 	}
 
-	// Create new window
-	folded := tag != tlv.TagUserT && tag != tlv.TagAssistantT
+	// Create new window. Assistant text (AT) starts expanded; everything
+	// else — user text (UT), tools (AF/UF), reasoning (AR), system
+	// messages (SN/SE) — starts collapsed.
+	folded := tag != tlv.TagAssistantT
 	historyID := parseHistoryID(id)
 	w := NewWindow(id, tag, wb.styles)
 	w.HistoryID = historyID
@@ -508,6 +510,14 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 		for i, w := range wb.windows {
 			// Only render and count lines for visible windows
 			if w.Visible {
+				if w.Folded {
+					// Folded windows are always a single line; no rendering
+					// needed for line tracking (renderVirtual renders the
+					// collapsed line on demand for viewport windows).
+					wb.lineHeights[i] = 1
+					wb.totalLines++
+					continue
+				}
 				w.Render(wb.width, false, wb.styles, wb.borderStyle, wb.cursorStyle, blocked)
 				wb.lineHeights[i] = w.LineCount()
 				wb.totalLines += wb.lineHeights[i]
@@ -817,7 +827,7 @@ func (wb *WindowBuffer) RenderWindowContent(w *Window, innerWidth int) string {
 		return ""
 	}
 	// Use BuildInner to get the rendered content (without border)
-	inner, _ := w.renderer.BuildInner(innerWidth+BorderInnerPadding, false, wb.styles)
+	inner, _ := w.renderer.BuildInner(innerWidth, false, wb.styles)
 	return inner
 }
 

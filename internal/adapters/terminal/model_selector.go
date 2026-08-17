@@ -49,7 +49,8 @@ func NewModelSelector(styles *Styles) ModelSelector {
 func newFilterInput(placeholder string) InputField {
 	input := NewInputField()
 	input.Placeholder = placeholder
-	input.Prompt = "/ "
+	// No decorative prompt prefix — the filter box is a bare input.
+	input.Prompt = ""
 	input = input.WithWidth(50)
 	return input
 }
@@ -247,10 +248,10 @@ func (ms ModelSelector) renderList() string {
 	var sb strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Background(ms.Styles.ColorDim).Foreground(ms.Styles.ColorAccent).Bold(true)
-	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", ms.Width, "  Model Selector")))
+	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", ms.Width, "Model Selector")))
 	sb.WriteString("\n")
 
-	searchBox := ms.Styles.RenderBorderedBox(ms.FilterInput.View(), ms.Width, ms.FilterBorderColor())
+	searchBox := ms.Styles.RenderOpenBox(ms.FilterInput.View(), ms.Width, ms.FilterBorderColor())
 	sb.WriteString(searchBox)
 	sb.WriteString("\n")
 
@@ -280,7 +281,7 @@ func (ms ModelSelector) renderList() string {
 func (ms ModelSelector) renderModelList(width int, borderColor color.Color) string {
 	var content strings.Builder
 	listHeight := SelectorListRows
-	innerWidth := max(0, width-BorderInnerPadding)
+	innerWidth := max(0, width)
 
 	switch {
 	case len(ms.filteredModels) == 0:
@@ -299,7 +300,7 @@ func (ms ModelSelector) renderModelList(width int, borderColor color.Color) stri
 		}
 	}
 
-	return ms.Styles.RenderBorderedBox(content.String(), width, borderColor, listHeight)
+	return ms.Styles.RenderOpenBox(content.String(), width, borderColor, listHeight)
 }
 
 func (ms ModelSelector) maxIDWidth() int {
@@ -366,10 +367,7 @@ func (ms ModelSelector) renderModelRow(i, idWidth, nameMaxWidth, ctxColWidth, pr
 	isSelected := i == ms.SelectedIdx
 
 	idxStr := fmt.Sprintf("%0*d", idWidth, m.ID)
-	leftRaw := "  " + idxStr
-	if isSelected {
-		leftRaw = "> " + idxStr
-	}
+	leftRaw := idxStr // flush left — no indent, no "> " marker
 
 	ctx := formatContextLimit(int64(m.ContextLimit))
 	if ctxColWidth > 0 {
@@ -399,7 +397,7 @@ func (ms ModelSelector) renderModelRow(i, idWidth, nameMaxWidth, ctxColWidth, pr
 	}
 
 	if isSelected {
-		return ms.Styles.Prompt.Render("> ") + ms.Styles.Text.Render(line[2:])
+		return ms.Styles.Text.Render(line)
 	}
 	return ms.Styles.System.Render(line)
 }

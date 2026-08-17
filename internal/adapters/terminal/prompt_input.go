@@ -35,7 +35,7 @@ func NewPromptInput(styles *Styles) PromptInput {
 	input.Placeholder = "Enter your prompt..."
 	input = input.Focus()
 	input.Prompt = ""
-	input = input.WithWidth(max(0, DefaultWidth-BorderInnerPadding))
+	input = input.WithWidth(max(0, DefaultWidth))
 
 	return PromptInput{
 		input:   input,
@@ -53,7 +53,7 @@ func (m PromptInput) Update(msg tea.Msg) (PromptInput, tea.Cmd) {
 	var cmd tea.Cmd
 	if msg, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = msg.Width
-		m.input = m.input.WithWidth(max(0, msg.Width-BorderInnerPadding))
+		m.input = m.input.WithWidth(max(0, msg.Width))
 	}
 	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == keyCtrlO {
 		return m, func() tea.Msg {
@@ -81,7 +81,7 @@ func (m PromptInput) View() tea.View {
 	input := m.updateInputStyles()
 	content := input.View()
 	if len(m.attachments) > 0 {
-		innerWidth := max(0, m.width-BorderInnerPadding)
+		innerWidth := max(0, m.width)
 		attachmentStyle := m.styles.Attachment
 		systemStyle := m.styles.System
 		if m.blocked {
@@ -96,12 +96,12 @@ func (m PromptInput) View() tea.View {
 		sb.WriteString(separator)
 		sb.WriteString("\n")
 		sb.WriteString(content)
-		return tea.NewView(m.styles.RenderBorderedBox(sb.String(), m.width, borderColor))
+		return tea.NewView(m.styles.RenderOpenBox(sb.String(), m.width, borderColor))
 	}
 	if m.blocked {
 		content = m.styles.Input.Foreground(m.styles.ColorDim).Render(content)
 	}
-	return tea.NewView(m.styles.RenderBorderedBox(content, m.width, borderColor))
+	return tea.NewView(m.styles.RenderOpenBox(content, m.width, borderColor))
 }
 
 // updateInputStyles updates the text input styles based on current theme.
@@ -176,7 +176,7 @@ func (m PromptInput) Height() int {
 	// Base: border (2) + input field (1) = 3
 	lines := 3
 	if len(m.attachments) > 0 {
-		innerWidth := max(0, m.width-BorderInnerPadding)
+		innerWidth := max(0, m.width)
 		styledMedia := wrapLabels(m.attachments, innerWidth, m.styles.Attachment)
 		lines += lipgloss.Height(styledMedia) + 1 // attachment lines + separator
 	}
@@ -197,7 +197,7 @@ func (m PromptInput) WithBlocked(blocked bool) PromptInput {
 
 func (m PromptInput) WithWidth(width int) PromptInput {
 	m.width = width
-	m.input = m.input.WithWidth(max(0, width-BorderInnerPadding))
+	m.input = m.input.WithWidth(max(0, width))
 	return m
 }
 
@@ -233,7 +233,7 @@ func (m PromptInput) AttachmentsOffset() int {
 	if len(m.attachments) == 0 {
 		return 0
 	}
-	innerWidth := max(0, m.width-BorderInnerPadding)
+	innerWidth := max(0, m.width)
 	styledMedia := wrapLabels(m.attachments, innerWidth, m.styles.Attachment)
 	return lipgloss.Height(styledMedia) + 1 // + separator line
 }

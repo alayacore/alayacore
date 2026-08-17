@@ -512,10 +512,10 @@ func (aw AttachmentWindow) render() string {
 	var sb strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Background(aw.Styles.ColorDim).Foreground(aw.Styles.ColorAccent).Bold(true)
-	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", aw.Width, "  Attachments")))
+	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", aw.Width, "Attachments")))
 	sb.WriteString("\n")
 
-	searchBox := aw.Styles.RenderBorderedBox(aw.FilterInput.View(), aw.Width, aw.FilterBorderColor())
+	searchBox := aw.Styles.RenderOpenBox(aw.FilterInput.View(), aw.Width, aw.FilterBorderColor())
 	sb.WriteString(searchBox)
 	sb.WriteString("\n")
 
@@ -556,7 +556,7 @@ func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
 
 	listBorderColor := aw.ListBorderColor()
 	listHeight := SelectorListRows
-	innerWidth := max(0, boxWidth-BorderInnerPadding)
+	innerWidth := max(0, boxWidth)
 
 	var content strings.Builder
 	for i := aw.ScrollIdx; i < min(aw.ScrollIdx+listHeight, len(aw.filtered)); i++ {
@@ -579,7 +579,7 @@ func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
 		}
 	}
 
-	fileBox := aw.Styles.RenderBorderedBox(content.String(), boxWidth, listBorderColor, listHeight)
+	fileBox := aw.Styles.RenderOpenBox(content.String(), boxWidth, listBorderColor, listHeight)
 	sb.WriteString(fileBox)
 }
 

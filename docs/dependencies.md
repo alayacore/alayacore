@@ -36,7 +36,7 @@ Lip Gloss is Charm's styling library, providing CSS-like style definitions for t
 Provides:
 
 - **Style definitions**: foreground, background, bold, italic, underline, etc.
-- **Border system**: rounded/thick/hidden borders, used by `RenderBorderedBox` for consistent panel styling
+- **Border system**: rounded/thick/hidden borders, plus the custom `RenderOpenBox` helper for the "open" panel style (top/bottom rules only, no side borders)
 - **Width/height constraints**: `Width()` / `Height()` / `MaxWidth()` for controlling render area
 - **Text wrapping**: `WrapWriter` carries ANSI styles across line breaks
 

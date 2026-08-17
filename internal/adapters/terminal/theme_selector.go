@@ -262,10 +262,10 @@ func (ts ThemeSelector) renderList() string {
 	var sb strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Background(ts.Styles.ColorDim).Foreground(ts.Styles.ColorAccent).Bold(true)
-	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", ts.Width, "  Theme Selector")))
+	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", ts.Width, "Theme Selector")))
 	sb.WriteString("\n")
 
-	filterBox := ts.Styles.RenderBorderedBox(ts.FilterInput.View(), ts.Width, ts.FilterBorderColor())
+	filterBox := ts.Styles.RenderOpenBox(ts.FilterInput.View(), ts.Width, ts.FilterBorderColor())
 	sb.WriteString(filterBox)
 	sb.WriteString("\n")
 
@@ -292,7 +292,7 @@ func (ts ThemeSelector) renderList() string {
 func (ts ThemeSelector) renderThemeList(width int, borderColor color.Color) string {
 	var content strings.Builder
 	listHeight := SelectorListRows
-	innerWidth := max(0, width-BorderInnerPadding)
+	innerWidth := max(0, width)
 
 	switch {
 	case len(ts.filteredThemes) == 0:
@@ -312,10 +312,11 @@ func (ts ThemeSelector) renderThemeList(width int, borderColor color.Color) stri
 				themeName = truncateWithSuffix(themeName, nameMaxWidth)
 			}
 			if i == ts.SelectedIdx {
-				content.WriteString(ts.Styles.Prompt.Render("> "))
+				// Selection is highlighted via the Text style; rows are
+				// flush left with no indent.
 				content.WriteString(ts.Styles.Text.Render(themeName))
 			} else {
-				content.WriteString(ts.Styles.System.Render("  " + themeName))
+				content.WriteString(ts.Styles.System.Render(themeName))
 			}
 			if i < min(ts.ScrollIdx+listHeight, len(ts.filteredThemes))-1 {
 				content.WriteString("\n")
@@ -323,7 +324,7 @@ func (ts ThemeSelector) renderThemeList(width int, borderColor color.Color) stri
 		}
 	}
 
-	return ts.Styles.RenderBorderedBox(content.String(), width, borderColor, listHeight)
+	return ts.Styles.RenderOpenBox(content.String(), width, borderColor, listHeight)
 }
 
 // RenderOverlay renders the theme selector as an overlay on top of base content.

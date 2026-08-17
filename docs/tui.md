@@ -134,11 +134,11 @@ The display area organizes content into separate windows — one per message or 
 
 ### Tool Status Dot
 
-Every tool window is prefixed by a status dot, mirroring the status bar's `•` live / `·` idle convention. A hollow dot (`·`) marks a window whose arguments are still streaming in — the tool has not started executing yet (a large `write_file` payload can take a while to arrive). The dot turns solid (`•`) in the theme's primary color once the complete input has arrived and the tool is executing — the same color the status bar uses while a run is in progress — and takes the result color (green on success, red on error) when it finishes.
+Every tool window's header line carries a status dot right after the `TOOL` label (`TOOL•`), mirroring the status bar's `•` live / `·` idle convention. A hollow dot (`·`) marks a window whose arguments are still streaming in — the tool has not started executing yet (a large `write_file` payload can take a while to arrive). The dot turns solid (`•`) in the theme's primary color once the complete input has arrived and the tool is executing — the same color the status bar uses while a run is in progress — and takes the result color (green on success, red on error) when it finishes.
 
 ### Tool Result Separator
 
-`write_file` and `edit_file` windows insert a dimmed `OUTPUT:` label line between the tool call (showing the file path) and the tool result. This visually separates the content-heavy input from the output. Other tool windows (e.g. `read_file`, `execute_command`) don't use a separator — their call header is short and the result follows directly.
+Tool windows separate the tool call's arguments from its result with a dimmed `---` line. The arguments are shown without the status dot or the `name: ` prefix (both live in the header line), so a window reads: header (`▼ TOOL• execute_command`), argument line (`lscpu | grep …`), `---`, result. `write_file` and `edit_file` follow the same layout — their diff content (the `-`/`+` lines) is the argument block, followed by `---` and the result.
 
 ### Auto-Follow
 
@@ -169,7 +169,9 @@ scrolls the viewport. While auto-follow is active:
 
 ### Fold Mode
 
-Press `Space` on any window to collapse it — the window shows the first line, a fold indicator, and the last line. The first line is the header (e.g. `edit_file: test.txt`) for tool/diff windows, so the fold still identifies the window; press `Space` again to expand for details.
+Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOL•`, `REASONING`, `ASSISTANT`, `USER`, `NOTIFY` for system notifications, or `ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOL•` followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
+
+An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrow glyphs themselves are theme-configurable (`fold_arrow` / `unfold_arrow`). See [window rendering](internal/rendering-performance.md) for the performance rationale (collapsed windows are O(1) to render and track).
 
 ### Virtual Scrolling
 

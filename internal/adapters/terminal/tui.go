@@ -780,16 +780,17 @@ func (m Terminal) View() tea.View {
 	if x, y, ok := m.overlayCursorPosition(); ok {
 		v.Cursor = m.newCursor(x, y)
 	} else if m.input.IsFocused() && !m.isBlocked() {
-		// y: display area occupies [0, displayH); the input box's top border
-		// sits at displayH; content starts after the border; then attachment
+		// y: display area occupies [0, displayH); the input box's top rule
+		// sits at displayH; content starts after the rule; then attachment
 		// lines (+ separator). The input renders a single content line, so
 		// the cursor's line index within the value does not affect y.
 		y := max(0, m.windowHeight-m.input.Height()-1) // display height
-		y++                                            // input box top border
+		y++                                            // input box top rule
 		y += m.input.AttachmentsOffset()
-		// x: left border (1) + left padding (1) + prompt (empty for the
-		// main input) + cell offset.
-		x := 2 + m.input.CursorCell()
+		// x: open boxes have no side border or padding, so the cursor cell
+		// is the horizontal position directly (prompt is empty for the
+		// main input).
+		x := m.input.CursorCell()
 		v.Cursor = m.newCursor(x, y)
 	}
 

@@ -131,8 +131,8 @@ func TestWindowRenderCaching(t *testing.T) {
 
 	// First render - should populate cache
 	styles := DefaultStyles()
-	borderStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorDim).Padding(0, 1)
-	cursorStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.BorderCursor).Padding(0, 1)
+	borderStyle := lipgloss.NewStyle().Foreground(styles.ColorDim)
+	cursorStyle := lipgloss.NewStyle().Foreground(styles.BorderCursor)
 
 	_ = w.Render(80, false, styles, borderStyle, cursorStyle, false)
 
@@ -158,8 +158,8 @@ func TestWindowRenderCacheInvalidation(t *testing.T) {
 	w := wb.WindowAt(0)
 
 	styles := DefaultStyles()
-	borderStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.ColorDim).Padding(0, 1)
-	cursorStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.BorderCursor).Padding(0, 1)
+	borderStyle := lipgloss.NewStyle().Foreground(styles.ColorDim)
+	cursorStyle := lipgloss.NewStyle().Foreground(styles.BorderCursor)
 
 	_ = w.Render(80, false, styles, borderStyle, cursorStyle, false)
 

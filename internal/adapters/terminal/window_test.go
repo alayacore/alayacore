@@ -168,16 +168,17 @@ func TestWindowBufferDiff(t *testing.T) {
 		rendered := wb.GetAll(-1, false)
 		renderedLines := strings.Split(rendered, "\n")
 
-		// Should fold to ~3 lines of content (header + separator + last line)
-		// Plus border lines, so approximately 5-6 lines total
-		if len(renderedLines) > 10 {
-			t.Errorf("Rendered diff has %d lines, should be folded to ~5-6", len(renderedLines))
+		// New collapsed design: folded windows are a single header line
+		// (collapse arrow + "TOOL edit_file • …") with no border and no
+		// fold-indicator row.
+		if len(renderedLines) != 1 {
+			t.Errorf("Rendered diff has %d lines, should collapse to 1", len(renderedLines))
 		}
-
-		// Verify it contains the fold indicator (horizontal rule)
-		hasIndicator := strings.Contains(rendered, DefaultStyles().FoldIndicator)
-		if !hasIndicator {
-			t.Error("Folded diff should contain fold indicator", DefaultStyles().FoldIndicator, "separator")
+		if strings.Contains(rendered, "⁝") {
+			t.Error("Collapsed window should not contain the old fold indicator")
+		}
+		if !strings.Contains(stripANSI(rendered), "TOOL•") || !strings.Contains(stripANSI(rendered), "edit_file") {
+			t.Errorf("Collapsed diff should show TOOL• + tool name, got %q", stripANSI(rendered))
 		}
 	})
 
@@ -300,7 +301,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		}
 	})
 
-	t.Run("user and assistant messages not folded by default", func(t *testing.T) {
+	t.Run("user and assistant messages fold defaults", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 
 		// Create windows for different tag types
@@ -309,10 +310,11 @@ func TestWindowBufferDiff(t *testing.T) {
 		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "tool-1", Name: "test_tool", Input: json.RawMessage("Tool output")}, 0)
 		wb.AppendOrUpdate(tlv.TagAssistantR, "reasoning-1", "Reasoning content")
 
-		// User and Assistant should NOT be folded (show full content)
-		if wb.WindowAt(0).Folded {
-			t.Error("User window should NOT be folded by default")
+		// User text is collapsed by default (like tools/reasoning).
+		if !wb.WindowAt(0).Folded {
+			t.Error("User window should be folded by default")
 		}
+		// Assistant text is the only window type expanded by default.
 		if wb.WindowAt(1).Folded {
 			t.Error("Assistant window should NOT be folded by default")
 		}

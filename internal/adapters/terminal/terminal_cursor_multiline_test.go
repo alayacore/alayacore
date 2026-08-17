@@ -16,20 +16,20 @@ func TestTerminalViewRealCursorMultiline(t *testing.T) {
 	if v.Cursor == nil {
 		t.Fatal("expected real cursor when input is focused")
 	}
-	// Input box content is always a single line: y = displayH(20) + border(1).
+	// Input box content is always a single line: y = displayH(20) + rule(1).
 	if v.Cursor.Y != 21 {
 		t.Fatalf("multiline cursor: got y=%d, want 21 (input box content line)", v.Cursor.Y)
 	}
-	// x = left border/padding (2) + cells of "line2" (5).
-	if v.Cursor.X != 2+5 {
-		t.Fatalf("multiline cursor: got x=%d, want %d", v.Cursor.X, 2+5)
+	// x = cells of "line2" (5) — open boxes have no left border/padding.
+	if v.Cursor.X != 5 {
+		t.Fatalf("multiline cursor: got x=%d, want %d", v.Cursor.X, 5)
 	}
 
 	// Cursor on the first line of a multiline value.
 	m.input = m.input.WithValue("line1\nline2")
 	m.input.input = m.input.input.WithCursorPos(0) // same-package access to the inner field
 	v = m.View()
-	if v.Cursor.X != 2 || v.Cursor.Y != 21 {
-		t.Fatalf("multiline first line: got cursor (%d,%d), want (2,21)", v.Cursor.X, v.Cursor.Y)
+	if v.Cursor.X != 0 || v.Cursor.Y != 21 {
+		t.Fatalf("multiline first line: got cursor (%d,%d), want (0,21)", v.Cursor.X, v.Cursor.Y)
 	}
 }

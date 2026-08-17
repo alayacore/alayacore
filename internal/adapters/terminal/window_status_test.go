@@ -68,22 +68,22 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	if content == "" {
 		t.Error("Expected non-empty content")
 	}
-	// Should contain dimmed filled dot (•) for pending status
-	if !contains(content, "•") {
-		t.Errorf("Expected content to contain filled dot (•), got: %s", content)
+	// The status dot lives in the header line (TOOL•), not the content —
+	// content shows the bare argument without the tool-name prefix.
+	if contains(content, "•") {
+		t.Errorf("Content should not contain a status dot, got: %s", content)
+	}
+	if !contains(stripANSI(content), "git status") {
+		t.Errorf("Expected bare argument in content, got: %s", stripANSI(content))
 	}
 
 	// Send result with success
 	wb.HandleToolOutput("tool123", "output", false, 0)
 
-	// Test rendering with success status
+	// Test rendering with success status: input + "---" + output
 	content = wb.RenderWindowContent(w, 76)
-	if content == "" {
-		t.Error("Expected non-empty content")
-	}
-	// Should contain filled dot (•)
-	if !contains(content, "•") {
-		t.Errorf("Expected content to contain filled dot (•), got: %s", content)
+	if !contains(stripANSI(content), "git status\n---\noutput") {
+		t.Errorf("Expected input --- output, got: %s", stripANSI(content))
 	}
 
 	// Send result with error
@@ -91,12 +91,8 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 
 	// Test rendering with error status
 	content = wb.RenderWindowContent(w, 76)
-	if content == "" {
-		t.Error("Expected non-empty content")
-	}
-	// Should contain filled dot (•)
-	if !contains(content, "•") {
-		t.Errorf("Expected content to contain filled dot (•), got: %s", content)
+	if !contains(stripANSI(content), "git status\n---\nerror output") {
+		t.Errorf("Expected input --- error output, got: %s", stripANSI(content))
 	}
 }
 
@@ -195,16 +191,18 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 			toolName:  "cat",
 			delta:     `{"path":"/tmp/foo"}`,
 			wantLines: 3,
-			wantTrim:  false, // no room for delta after "· cat: " (7 cols) in innerWidth=6
+			// Bare delta preview gets the full width (10) — still truncated
+			// because the delta is longer than 10 columns.
+			wantTrim: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Status is Pending here on purpose: while arguments are still
-			// streaming in, the tool has not started executing, so the
-			// preview must show the hollow idle dot (·) even though the
-			// window status is already Pending.
+			// streaming in, the tool has not started executing. The delta
+			// preview is bare JSON — no dot, no tool-name prefix (both live
+			// in the header line).
 			tr := &toolRenderer{
 				name:        tt.toolName,
 				deltaBuffer: tt.delta,
@@ -216,12 +214,9 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 				t.Errorf("Expected %d lines, got %d", tt.wantLines, lineCount)
 			}
 
-			// Streaming preview: hollow idle dot, never the solid dot.
-			if !strings.Contains(result, "·") {
-				t.Errorf("Streaming preview should show the hollow idle dot (·), got: %q", result)
-			}
-			if strings.Contains(result, "•") {
-				t.Errorf("Streaming preview must not show the solid dot (•), got: %q", result)
+			// Streaming preview: bare delta, no status dots at all.
+			if strings.Contains(result, "·") || strings.Contains(result, "•") {
+				t.Errorf("Streaming preview should not contain status dots, got: %q", result)
 			}
 
 			hasTrim := strings.Contains(result, "…")
@@ -247,8 +242,8 @@ func TestToolRendererUfPreviewTruncated(t *testing.T) {
 	}
 
 	result, lineCount := tr.BuildInner(80, false, styles)
-	if lineCount != 3 {
-		t.Errorf("lineCount = %d, want 3 (single content line + border)", lineCount)
+	if lineCount != 5 {
+		t.Errorf("lineCount = %d, want 5 (input + --- + preview + box rules)", lineCount)
 	}
 	if strings.Contains(result, strings.Repeat("x", 200)) {
 		t.Error("preview should be truncated, full 200-char output leaked")
@@ -269,8 +264,8 @@ func TestToolRendererUfPreviewShort(t *testing.T) {
 	}
 
 	result, lineCount := tr.BuildInner(80, false, styles)
-	if lineCount != 3 {
-		t.Errorf("lineCount = %d, want 3 (single content line + border)", lineCount)
+	if lineCount != 5 {
+		t.Errorf("lineCount = %d, want 5 (input + --- + preview + box rules)", lineCount)
 	}
 	if !strings.Contains(result, " 42%") {
 		t.Errorf("preview should contain %q, got %q", " 42%", result)
@@ -316,21 +311,22 @@ func TestToolRendererUfPreviewTabs(t *testing.T) {
 	}
 
 	result, lineCount := tr.BuildInner(80, false, styles)
-	if lineCount != 3 {
-		t.Errorf("lineCount = %d, want 3 (single content line + border)", lineCount)
+	if lineCount != 5 {
+		t.Errorf("lineCount = %d, want 5 (input + --- + preview + box rules)", lineCount)
 	}
 	if strings.Contains(result, "\t") {
 		t.Error("preview should not contain raw tabs")
 	}
-	// The rendered first line must fit the inner width (80-4=76);
-	// otherwise the terminal soft-wraps it to a second line.
+	// The rendered first line must fit the full window width (80) —
+	// open boxes have no side borders or padding; otherwise the terminal
+	// soft-wraps it to a second line.
 	plain := stripANSI(result)
 	firstLine := plain
 	if i := strings.IndexByte(firstLine, '\n'); i >= 0 {
 		firstLine = firstLine[:i]
 	}
-	if w := ansi.StringWidth(firstLine); w > 76 {
-		t.Errorf("first line width = %d, want <= 76 (inner width)", w)
+	if w := ansi.StringWidth(firstLine); w > 80 {
+		t.Errorf("first line width = %d, want <= 80 (inner width)", w)
 	}
 }
 
@@ -346,7 +342,7 @@ func TestToolRendererUfPreviewFlattensNewlines(t *testing.T) {
 	}
 
 	result, lineCount := tr.BuildInner(80, false, styles)
-	if lineCount != 3 {
+	if lineCount != 5 {
 		t.Errorf("lineCount = %d, want 3 (flattened to single line)", lineCount)
 	}
 	if !strings.Contains(result, "line one line two") {
@@ -367,8 +363,8 @@ func TestToolRendererUfPreviewFillsRemainingWidth(t *testing.T) {
 	}
 
 	result, lineCount := tr.BuildInner(80, false, styles)
-	if lineCount != 3 {
-		t.Errorf("lineCount = %d, want 3 (single content line + border)", lineCount)
+	if lineCount != 5 {
+		t.Errorf("lineCount = %d, want 5 (input + --- + preview + box rules)", lineCount)
 	}
 	if !strings.Contains(result, strings.Repeat("y", 60)) {
 		t.Errorf("preview should fill remaining width without truncation, got %q", result)
@@ -391,7 +387,7 @@ func TestToolRendererUfPreviewBlockGlyphs(t *testing.T) {
 	}
 
 	result, lineCount := tr.BuildInner(80, false, styles)
-	if lineCount != 3 {
+	if lineCount != 5 {
 		t.Errorf("lineCount = %d, want 3 (single line + border)", lineCount)
 	}
 	if !strings.Contains(result, "████████░░░░░░░░") {

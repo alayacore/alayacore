@@ -29,7 +29,7 @@ func TestPromptInputAttachmentsOffset(t *testing.T) {
 	// A long label wraps to multiple lines, increasing the offset.
 	long := "very-long-attachment-name-0123456789-abcdefghijklmnopqrstuvwxyz.txt"
 	p = p.WithAttachments([]string{long})
-	innerWidth := max(0, p.width-BorderInnerPadding)
+	innerWidth := max(0, p.width)
 	styledMedia := wrapLabels(p.Attachments(), innerWidth, p.styles.Attachment)
 	want := lipgloss.Height(styledMedia) + 1 // + separator line
 	if off := p.AttachmentsOffset(); off != want {

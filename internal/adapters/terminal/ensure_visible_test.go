@@ -413,13 +413,16 @@ func TestScrollCursorToTop_PartiallyVisibleWindowMovesToTop(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
-	// Create windows
+	// Create windows (user text — folded by default, 1 line each)
 	for i := range 10 {
 		wb.AppendOrUpdate(tlv.TagUserT, "window-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
 	}
 
-	display = display.WithHeight(20)
+	// Viewport of 5 rows: 10 folded windows (10 lines) overflow it, so
+	// scrolling/offsets are meaningful (with a taller viewport the content
+	// would fit and YOffset would be clamped to 0).
+	display = display.WithHeight(5)
 	display = display.updateContent()
 
 	// Set cursor to a window and ensure it's visible (but not at top)

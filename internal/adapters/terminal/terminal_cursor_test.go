@@ -39,14 +39,14 @@ func TestTerminalViewRealCursor(t *testing.T) {
 	m := newTestTerminal()
 
 	// Empty input: cursor at the first content cell of the input line.
-	// Layout: display 20 lines + input box top border at y=20, content at y=21.
-	// x = left border (1) + left padding (1) + cell (0) = 2.
+	// Layout: display 20 lines + input box top rule at y=20, content at y=21.
+	// x = cell (0) — open boxes have no left border or padding.
 	v := m.View()
 	if v.Cursor == nil {
 		t.Fatal("expected real cursor when input is focused")
 	}
-	if v.Cursor.X != 2 || v.Cursor.Y != 21 {
-		t.Fatalf("empty input: got cursor (%d,%d), want (2,21)", v.Cursor.X, v.Cursor.Y)
+	if v.Cursor.X != 0 || v.Cursor.Y != 21 {
+		t.Fatalf("empty input: got cursor (%d,%d), want (0,21)", v.Cursor.X, v.Cursor.Y)
 	}
 	if v.Cursor.Shape != tea.CursorBlock {
 		t.Errorf("expected block cursor shape, got %v", v.Cursor.Shape)
@@ -55,19 +55,19 @@ func TestTerminalViewRealCursor(t *testing.T) {
 		t.Error("expected steady (non-blinking) cursor")
 	}
 
-	// Typed text moves the cursor right: x = 2 + 2 cells = 4.
+	// Typed text moves the cursor right: x = 0 + 2 cells = 2.
 	m.input = m.input.WithValue("hi").CursorEnd()
 	v = m.View()
-	if v.Cursor.X != 4 || v.Cursor.Y != 21 {
-		t.Fatalf("with text: got cursor (%d,%d), want (4,21)", v.Cursor.X, v.Cursor.Y)
+	if v.Cursor.X != 2 || v.Cursor.Y != 21 {
+		t.Fatalf("with text: got cursor (%d,%d), want (2,21)", v.Cursor.X, v.Cursor.Y)
 	}
 
 	// Attachments push the input text down: display height shrinks to
-	// 24-5-1 = 18, content line = 18 + 1 (border) + 2 (media+separator) = 21.
+	// 24-5-1 = 18, content line = 18 + 1 (rule) + 2 (media+separator) = 21.
 	m = m.addAttachment("/tmp/a.txt")
 	v = m.View()
-	if v.Cursor.X != 4 || v.Cursor.Y != 21 {
-		t.Fatalf("with attachment: got cursor (%d,%d), want (4,21)", v.Cursor.X, v.Cursor.Y)
+	if v.Cursor.X != 2 || v.Cursor.Y != 21 {
+		t.Fatalf("with attachment: got cursor (%d,%d), want (2,21)", v.Cursor.X, v.Cursor.Y)
 	}
 }
 
@@ -96,23 +96,24 @@ func TestTerminalViewOverlayCursor(t *testing.T) {
 	m := newTestTerminal()
 	m = m.openModelSelector() // filter input focused by default
 
-	// Expected: box origin (renderOverlay formula) + left border/padding (2)
-	// + prompt "/ " (2) + cell (0) horizontally; + title/border (2) vertically.
+	// Expected: box origin (renderOverlay formula) + prompt (empty — no
+	// "/" prefix anymore) + cell (0) horizontally; + title/rule (2)
+	// vertically. Open boxes have no left border or padding.
 	box := m.modelSelector.View().Content
 	x0, y0 := overlayOrigin(box, 80, 24)
 	v := m.View()
 	if v.Cursor == nil {
 		t.Fatal("expected real cursor in overlay filter when filter is focused")
 	}
-	if v.Cursor.X != x0+4 || v.Cursor.Y != y0+2 {
-		t.Fatalf("overlay cursor: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0+4, y0+2)
+	if v.Cursor.X != x0 || v.Cursor.Y != y0+2 {
+		t.Fatalf("overlay cursor: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0, y0+2)
 	}
 
 	// Typing in the filter moves the cursor right by the text width.
 	m.modelSelector.FilterInput = m.modelSelector.FilterInput.WithValue("gpt4").CursorEnd()
 	v = m.View()
-	if v.Cursor.X != x0+4+4 || v.Cursor.Y != y0+2 {
-		t.Fatalf("overlay cursor with text: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0+4+4, y0+2)
+	if v.Cursor.X != x0+4 || v.Cursor.Y != y0+2 {
+		t.Fatalf("overlay cursor with text: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0+4, y0+2)
 	}
 }
 
@@ -131,7 +132,7 @@ func TestTerminalViewThemeOverlayCursor(t *testing.T) {
 	if v.Cursor == nil {
 		t.Fatal("expected real cursor in theme selector filter")
 	}
-	if v.Cursor.X != x0+4 || v.Cursor.Y != y0+2 {
-		t.Fatalf("theme overlay cursor: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0+4, y0+2)
+	if v.Cursor.X != x0 || v.Cursor.Y != y0+2 {
+		t.Fatalf("theme overlay cursor: got (%d,%d), want (%d,%d)", v.Cursor.X, v.Cursor.Y, x0, y0+2)
 	}
 }

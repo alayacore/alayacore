@@ -54,14 +54,13 @@ func (m Terminal) renderStatusBar() string {
 	}
 
 	if m.statusText != "" {
-		padding := m.styles.Status.Padding(0, 2)
 		text := m.statusText
 		if !active {
 			text = m.statusTextDim
 		}
-		return padding.Render(indicator + " " + text)
+		return m.styles.Status.Render(indicator + " " + text)
 	}
-	return m.styles.Status.Padding(0, 2).Render(indicator)
+	return m.styles.Status.Render(indicator)
 }
 
 // formatTokenCount returns a compact human-readable representation of a

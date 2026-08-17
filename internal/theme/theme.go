@@ -43,8 +43,9 @@ type Theme struct {
 	// Tool color
 	Tool string `config:"tool" json:"tool"` // Tool name — tool call labels in conversation
 
-	// Fold indicator character (repeated to form the fold splitter row)
-	FoldIndicator string `config:"fold_indicator" json:"fold_indicator"`
+	// Fold-state arrow glyphs (single codepoint, configurable per theme).
+	FoldArrow   string `config:"fold_arrow" json:"fold_arrow"`     // collapsed-window arrow
+	UnfoldArrow string `config:"unfold_arrow" json:"unfold_arrow"` // expanded-window arrow
 }
 
 var (

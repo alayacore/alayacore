@@ -49,24 +49,36 @@ type WindowRendering interface {
 	AppendFromTLV(tag string, value string)
 
 	// BuildInner returns the styled inner content and line count.
-	// width is the full window width (renderer subtracts BorderInnerPadding).
-	// Called only when the cache is invalid and the window is in the viewport.
+	// width is the full window width (content wraps at the full width —
+	// open boxes have no side borders or padding).
+	// The folded parameter is legacy (folded windows now render via
+	// BuildCollapsed); it is always false.
 	BuildInner(width int, folded bool, styles *Styles) (inner string, lineCount int)
+
+	// BuildCollapsed returns the single-line collapsed representation of
+	// the window (label + first line, truncated to fit width), WITHOUT the
+	// leading collapse arrow — Window.Render adds the arrow. lineCount is
+	// always 1.
+	BuildCollapsed(width int, styles *Styles) (inner string, lineCount int)
 
 	// Invalidate clears any cached rendering state.
 	Invalidate()
 }
 
-// borderCache caches the border-wrapped render output for a Window.
+// borderCache caches the rendered output for a Window.
 // This is separate from any internal cache inside the renderer
 // (e.g. textRenderer.wrappedLines for streaming optimization).
+//
+// rendered is the full output with a dim arrow; inner is the content
+// after the arrow. The cursor highlight only recolors the arrow, so a
+// cursor render is arrow + inner — no border re-render needed.
 type borderCache struct {
 	valid     bool
 	width     int
 	folded    bool
 	blocked   bool   // cached blocked state (different → cache miss)
-	rendered  string // full output with border
-	inner     string // inner content (for cursor border swap)
+	rendered  string // full output with dim arrow (non-cursor)
+	inner     string // content after the arrow (for cursor arrow swap)
 	lineCount int
 }
 
@@ -270,18 +282,34 @@ func (w *Window) RawDelta() string {
 	return ""
 }
 
-// Render returns the window with border, using cache if valid.
+// Render returns the window, using cache if valid.
 // When blocked is true, the content is rendered with dimmed colors.
-func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, cursorStyle lipgloss.Style, blocked bool) string {
+//
+// Two visual states:
+//   - Folded: a single line — collapse arrow + label + first line (no box).
+//   - Expanded: a header line — expand arrow + label — above an open box
+//     (top/bottom rules only, no side borders).
+//
+// The cursor highlight colors the fold-state arrow with the selection
+// color; the arrow glyph itself comes from the theme; borders never
+// change color on navigation.
+//
+// cursorStyle is retained for API compatibility (callers still pass the
+// cursor border style); the cursor color now comes from styles.BorderCursor.
+func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _ lipgloss.Style, blocked bool) string {
+	if w.renderer == nil {
+		return ""
+	}
+
 	// User messages use the same border color as focused input box
 	if _, ok := w.renderer.(*userRenderer); ok {
-		borderStyle = borderStyle.BorderForeground(styles.BorderFocused)
+		borderStyle = borderStyle.Foreground(styles.BorderFocused)
 	}
 
 	// Validate cache
 	if w.border.valid && w.border.width == width && w.border.folded == w.Folded && w.border.blocked == blocked {
 		if isCursor {
-			return cursorStyle.Width(width).Render(w.border.inner)
+			return w.renderCursorArrow(blocked)
 		}
 		return w.border.rendered
 	}
@@ -295,31 +323,156 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, c
 	// Use dimmed styles and border when blocked
 	if blocked {
 		styles = styles.Dimmed()
-		borderStyle = borderStyle.BorderForeground(styles.ColorDim)
-		cursorStyle = cursorStyle.BorderForeground(styles.ColorDim)
+		borderStyle = borderStyle.Foreground(styles.ColorDim)
 	}
 
-	// Cache miss — rebuild from renderer
-	inner, lineCount := w.renderer.BuildInner(width, w.Folded, styles)
-
-	// Apply folding if needed, then recalculate line count from folded output.
+	arrow := w.arrowChar()
 	if w.Folded {
-		inner = w.applyFolding(inner, width, styles)
-		lineCount = strings.Count(inner, "\n") + 1 + 2 // add 2 for border
+		// Collapsed: single line — arrow + label + first line, truncated.
+		// BuildCollapsed skips full wrapping: only the first content line
+		// is read and truncated, so folding a large window is O(1).
+		inner, _ := w.renderer.BuildCollapsed(width, styles)
+		w.border.inner = " " + inner
+		w.border.rendered = arrowStyle(styles, false).Render(arrow) + w.border.inner
+		w.border.lineCount = 1
+	} else {
+		// Expanded: header line (expand arrow + label) above the open box.
+		inner, lineCount := w.renderer.BuildInner(width, false, styles)
+		header := w.buildExpandHeader(styles)
+		box := styles.RenderOpenBox(inner, width, borderStyle.GetForeground())
+		w.border.inner = header + "\n" + box
+		w.border.rendered = arrowStyle(styles, false).Render(arrow) + w.border.inner
+		w.border.lineCount = lineCount + 1 // header line
 	}
 
-	w.border.inner = inner
-	w.border.rendered = borderStyle.Width(width).Render(inner)
-	w.border.lineCount = lineCount
 	w.border.width = width
 	w.border.folded = w.Folded
 	w.border.blocked = blocked
 	w.border.valid = true
 
 	if isCursor {
-		return cursorStyle.Width(width).Render(inner)
+		return w.renderCursorArrow(blocked)
 	}
 	return w.border.rendered
+}
+
+// renderCursorArrow recolors only the collapse/expand arrow with the
+// selection color; the rest of the cached output is reused as-is.
+func (w *Window) renderCursorArrow(blocked bool) string {
+	// When blocked (overlay active), the selection color is replaced by
+	// the dim color so the highlight disappears under the overlay.
+	color := lipgloss.Color("")
+	if w.styles != nil {
+		color = w.styles.BorderCursor
+		if blocked {
+			color = w.styles.ColorDim
+		}
+	}
+	return lipgloss.NewStyle().Foreground(color).Render(w.arrowChar()) + w.border.inner
+}
+
+// arrowChar returns the fold-state arrow glyph, configured by the theme
+// (falling back to conventional defaults if no theme is attached).
+func (w *Window) arrowChar() string {
+	if w.styles != nil {
+		if w.Folded {
+			if w.styles.FoldArrow != "" {
+				return w.styles.FoldArrow
+			}
+		} else if w.styles.UnfoldArrow != "" {
+			return w.styles.UnfoldArrow
+		}
+	}
+	if w.Folded {
+		return "▶"
+	}
+	return "▼"
+}
+
+// arrowStyle returns the style for the collapse/expand arrow.
+// Selected (cursor) windows use the selection color; others use dim.
+func arrowStyle(styles *Styles, isCursor bool) lipgloss.Style {
+	if styles == nil {
+		return lipgloss.NewStyle()
+	}
+	color := styles.ColorDim
+	if isCursor {
+		color = styles.BorderCursor
+	}
+	return lipgloss.NewStyle().Foreground(color)
+}
+
+// windowLabel returns the header label for the window type, e.g.
+// "TOOL edit_file", "REASONING", "ASSISTANT", "USER", "NOTIFY", "ERROR".
+func (w *Window) windowLabel() string {
+	switch w.Tag() {
+	case tlv.TagAssistantF, tlv.TagUserF:
+		if ti := w.ToolInfo(); ti != nil && ti.Name != "" {
+			return "TOOL " + ti.Name
+		}
+		return "TOOL"
+	case tlv.TagAssistantR:
+		return "REASONING"
+	case tlv.TagAssistantT:
+		return "ASSISTANT"
+	case tlv.TagUserT:
+		return "USER"
+	case TagWindowSN:
+		return "NOTIFY"
+	case TagWindowSE:
+		return "ERROR"
+	default:
+		return ""
+	}
+}
+
+// buildExpandHeader returns the expanded header line content (the part
+// after the arrow). Tool windows use the collapsed-style layout — bold
+// "TOOL" + status dot in the fixed label column, then the muted tool
+// name: "TOOL•      execute_command". Other windows use their plain
+// label ("ASSISTANT", "NOTIFY", …).
+func (w *Window) buildExpandHeader(styles *Styles) string {
+	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
+		dot, dotStyle := tr.status.statusDot(styles)
+		label := padLabel("TOOL" + dot)
+		var sb strings.Builder
+		sb.WriteString(" ")
+		sb.WriteString(labelStyleForTag(w.Tag(), styles).Render(label[:len("TOOL")]))
+		sb.WriteString(dotStyle.Render(dot))
+		// Label-column padding — dot is multi-byte UTF-8, so skip len(dot)
+		// bytes (not 1) after "TOOL".
+		sb.WriteString(label[len("TOOL")+len(dot):])
+		sb.WriteString(styles.ToolContent.Render(tr.name))
+		return sb.String()
+	}
+	label := w.windowLabel()
+	if label == "" {
+		return ""
+	}
+	return " " + w.labelStyle(styles).Render(label)
+}
+
+// labelStyle returns the style used for the window's header label.
+func (w *Window) labelStyle(styles *Styles) lipgloss.Style {
+	return labelStyleForTag(w.Tag(), styles)
+}
+
+// labelStyleForTag returns the style used for a window type's header label
+// (e.g. "REASONING", "TOOL", "ERROR"). All labels are bold + muted — bright
+// default-foreground labels distract the eye in the collapsed list; only
+// ERROR keeps its red semantic color. Shared by the expanded header line
+// and the collapsed label segment.
+func labelStyleForTag(tag string, styles *Styles) lipgloss.Style {
+	if styles == nil {
+		return lipgloss.NewStyle().Bold(true)
+	}
+	switch tag {
+	case TagWindowSE:
+		return styles.Error
+	default:
+		// All other labels: bold + muted.
+		return styles.System.Bold(true)
+	}
 }
 
 // LineCount returns the cached line count (valid after Render).
@@ -329,22 +482,25 @@ func (w *Window) LineCount() int {
 
 // UpdateLineCountFast attempts to compute the line count without a full render.
 // Returns (lineCount, ok). If ok is false, the caller must call Render().
-// This fast path (~58μs) only applies when the renderer's internal cache is
-// still valid (e.g. after resize or theme change, not after content append).
-// During streaming, every append invalidates the cache, so this returns false
-// and ensureLineHeights falls through to the full Render (~100-200μs).
+//
+// Folded windows are always a single line, so this returns immediately
+// without touching the renderer — during streaming, deltas to folded
+// windows no longer trigger any wrapping or rendering for line tracking.
+// This is the main performance win of the collapsed-line design.
 func (w *Window) UpdateLineCountFast(width int) (int, bool) {
 	if w.renderer == nil {
 		return 0, false
 	}
-	lc, ok := w.renderLineCountFromCache(width)
-	if ok && w.Folded && lc > 3+2 {
-		// Folded windows show at most 3 content lines + 2 border lines.
-		// The +2 accounts for the top and bottom border lines added by
-		// borderStyle.Width(width).Render(inner). See ensureLineHeights.
-		return 5, true
+	if w.Folded {
+		return 1, true
 	}
-	return lc, ok
+	// Unfolded: try the renderer's internal cache. This fast path
+	// (~58μs) only applies when the renderer's internal cache is still
+	// valid (e.g. after resize or theme change, not after content append).
+	// During streaming, every append invalidates the cache, so this
+	// returns false and ensureLineHeights falls through to the full
+	// Render (~100-200μs).
+	return w.renderLineCountFromCache(width)
 }
 
 // renderLineCountFromCache tries to get line count from the renderer's cache.
@@ -357,45 +513,6 @@ func (w *Window) renderLineCountFromCache(width int) (int, bool) {
 		return lc.TryLineCount(width)
 	}
 	return 0, false
-}
-
-// applyFolding collapses content to first line + indicator + last line.
-// The first line is typically the header (tool name + args), so the fold
-// keeps enough context to identify the window; unfold for details.
-func (w *Window) applyFolding(content string, width int, styles *Styles) string {
-	lines := splitLines(content)
-	if len(lines) <= 3 {
-		return content
-	}
-
-	indicator := lipgloss.NewStyle().
-		Foreground(styles.ColorDim).
-		Render(strings.Repeat(styles.FoldIndicator, width-BorderInnerPadding))
-
-	return lines[0] + "\n" + indicator + "\n" + lines[len(lines)-1]
-}
-
-// splitLines splits a string into lines.
-func splitLines(s string) []string {
-	if s == "" {
-		return nil
-	}
-	n := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			n++
-		}
-	}
-	lines := make([]string, 0, n+1)
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	lines = append(lines, s[start:])
-	return lines
 }
 
 // hasVisibleContent returns true if content has at least one non-whitespace character.

@@ -193,15 +193,15 @@ func TestColorizeTool_WithANSI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Prepare content first (as renderGenericContent does)
+			// Prepare content first, then render through the tool input path.
 			prepared := prepareContent(tt.input)
-			result := ColorizeTool(prepared, styles)
+			result := defaultToolRender(prepared, "execute_command", styles, 0)
 			// Check that the result contains the expected text
 			// Result will have lipgloss ANSI styling, which is intentional
 			// Strip all ANSI from result to check plain text
 			stripped := stripANSI(result)
 			if !strings.Contains(stripped, tt.contains) {
-				t.Errorf("ColorizeTool(%q) = %q, should contain %q", tt.input, result, tt.contains)
+				t.Errorf("defaultToolRender(%q) = %q, should contain %q", tt.input, result, tt.contains)
 			}
 		})
 	}

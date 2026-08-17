@@ -23,73 +23,32 @@ const (
 	ToolStatusPending                   // Executing, awaiting result (primary solid dot)
 )
 
-// Indicator returns the styled status indicator string.
-func (s ToolStatus) Indicator(styles *Styles) string {
+// statusDot returns the plain status dot character and its style, shown
+// right after "TOOL" in the header line ("TOOL•").
+func (s ToolStatus) statusDot(styles *Styles) (string, lipgloss.Style) {
 	switch s {
 	case ToolStatusSuccess:
-		return lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("• ")
+		return "•", lipgloss.NewStyle().Foreground(styles.ColorSuccess)
 	case ToolStatusError:
-		return lipgloss.NewStyle().Foreground(styles.ColorError).Render("• ")
+		return "•", lipgloss.NewStyle().Foreground(styles.ColorError)
 	case ToolStatusPending:
-		return lipgloss.NewStyle().Foreground(styles.ColorAccent).Render("• ")
-	case ToolStatusNone:
-		return lipgloss.NewStyle().Foreground(styles.ColorDim).Render("· ")
+		return "•", lipgloss.NewStyle().Foreground(styles.ColorAccent)
+	default:
+		return "·", lipgloss.NewStyle().Foreground(styles.ColorDim)
 	}
-	return ""
 }
 
 // ============================================================================
 // Rendering
 // ============================================================================
 
-// ColorizeTool applies tool-specific styling to tool output.
-// Assumes content has already been prepared (ANSI stripped, tabs expanded).
-func ColorizeTool(value string, styles *Styles) string {
-	lines := strings.Split(value, "\n")
-	if len(lines) == 1 {
-		return colorizeSingleLineTool(value, styles)
-	}
-	return colorizeMultiLineTool(lines, styles)
-}
-
-func colorizeSingleLineTool(value string, styles *Styles) string {
-	colonIdx := strings.Index(value, ":")
-	if colonIdx > 0 {
-		toolName := value[:colonIdx]
-		rest := value[colonIdx:]
-		return styles.Tool.Render(toolName) + styles.ToolContent.Render(rest)
-	}
-	return styles.Tool.Render(value)
-}
-
-func colorizeMultiLineTool(lines []string, styles *Styles) string {
-	var result strings.Builder
-	firstLine := lines[0]
-	colonIdx := strings.Index(firstLine, ":")
-
-	if colonIdx > 0 {
-		toolName := firstLine[:colonIdx]
-		restFirst := firstLine[colonIdx:]
-		result.WriteString(styles.Tool.Render(toolName))
-		result.WriteString(styles.ToolContent.Render(restFirst))
-	} else {
-		result.WriteString(styles.Tool.Render(firstLine))
-	}
-
-	for _, line := range lines[1:] {
-		result.WriteString("\n")
-		// Content lines use Text style for readability
-		// Note: Diff coloring is handled by RenderDiffContent for edit_file windows
-		result.WriteString(styles.Text.Render(line))
-	}
-	return result.String()
-}
-
 // RenderDiffContent renders a diff window from its raw Content.
 // The Content already has `- `, `+ `, `  ` prefixes - we just apply colors.
-// innerWidth controls line wrapping; pass 0 to disable wrapping.
+// The first line ("tool_name: args") is rendered as the bare argument
+// line (no status indicator, no tool-name prefix — both live in the
+// header line). innerWidth controls line wrapping; pass 0 to disable.
 // Wraps per-line to preserve diff coloring on wrapped continuations.
-func RenderDiffContent(content string, status ToolStatus, styles *Styles, innerWidth int) string {
+func RenderDiffContent(content string, styles *Styles, innerWidth int) string {
 	// Prepare content: strip ANSI and expand tabs before processing
 	content = prepareContent(content)
 
@@ -101,9 +60,11 @@ func RenderDiffContent(content string, status ToolStatus, styles *Styles, innerW
 	result := make([]string, 0, len(lines))
 	for i, line := range lines {
 		if i == 0 {
-			// Header line: "tool_name: args"
-			// Re-render with status indicator prefix
-			header := status.Indicator(styles) + colorizeSingleLineTool(line, styles)
+			// Header line: "tool_name: args" → show args only, muted.
+			if colon := strings.Index(line, ":"); colon >= 0 {
+				line = strings.TrimSpace(line[colon+1:])
+			}
+			header := styles.ToolContent.Render(line)
 			if innerWidth > 0 {
 				header = wrapContent(header, innerWidth)
 			}

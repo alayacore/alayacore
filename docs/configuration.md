@@ -164,25 +164,32 @@ cursor: #cdd6f4
 added: #a6e3a1
 removed: #f38ba8
 tool: #f9e2af
-fold_indicator: "⁝"
+fold_arrow: "▶"
+unfold_arrow: "▼"
 ```
 
 ### Color Roles
 
 | Color | Used for |
 |-------|----------|
-| `primary` | User input text, prompt display, emphasis, focused borders, running status dots (status bar and tool windows) |
-| `dim` | Window borders, separators, status bar |
-| `muted` | Secondary text, system messages, reasoning, tool content |
+| `primary` | User input text, prompt display, emphasis, focused box rules, running status dots (status bar and tool windows) |
+| `dim` | Window rules, separators, status bar |
+| `muted` | Secondary text, system messages, tool content |
 | `text` | Body text |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors |
 | `success` | Success messages, completed states |
-| `selection` | Selected items in lists, cursor border highlight |
+| `selection` | Selected items in lists, cursor arrow highlight |
 | `cursor` | Input cursor color — rendered as the real terminal cursor in input fields (also anchors IME preedit/candidate windows) |
 | `tool` | Tool call headers/labels |
 | `added` | Diff additions |
 | `removed` | Diff removals |
-| `fold_indicator` | Character repeated to form the fold splitter row (e.g. `⁝`) |
+
+### Glyphs
+
+| Key | Used for |
+|-----|----------|
+| `fold_arrow` | Arrow prefix on collapsed (folded) window header lines. Single codepoint |
+| `unfold_arrow` | Arrow prefix on expanded window header lines. Single codepoint |
 
 Switch themes at runtime with `Ctrl+P`.

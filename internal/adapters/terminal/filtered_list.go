@@ -83,8 +83,9 @@ func (fl FilteredListCore) WithFocus(hasFocus bool) FilteredListCore {
 // or the list (not the filter) has focus — the real cursor should be hidden
 // in those states.
 //
-// Box layout: title (line 0), filter box top border (line 1), filter input
-// content (line 2); content starts after left border + left padding (2 cells).
+// Box layout: title (line 0), filter box top rule (line 1), filter input
+// content (line 2); open boxes have no left border or padding, so content
+// starts at column 0.
 func (fl FilteredListCore) CursorPosition(box string, screenWidth, screenHeight int) (x, y int, ok bool) {
 	if fl.State == FilteredListClosed || !fl.HasFocus || !fl.FilterInputFocused {
 		return 0, 0, false
@@ -93,7 +94,7 @@ func (fl FilteredListCore) CursorPosition(box string, screenWidth, screenHeight 
 	cell := fl.FilterInput.CursorCell()
 	// Prompt width from the same source as CursorCell (runesWidth), so the
 	// real cursor lands exactly after the rendered prompt + filter text.
-	x = x0 + 2 + runesWidth([]rune(fl.FilterInput.Prompt)) + cell
+	x = x0 + runesWidth([]rune(fl.FilterInput.Prompt)) + cell
 	y = y0 + 2
 	return x, y, true
 }

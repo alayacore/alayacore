@@ -116,8 +116,8 @@ func (to *outputWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// WriteError adds an error message to the display buffer with error styling.
-// Styling is stored raw — it's applied during render by styleByTag.
+// WriteError adds an error message to the display buffer with error styling
+// (applied during render by the window renderer).
 func (to *outputWriter) WriteError(msg string) {
 	id := to.generateWindowID()
 	to.windowBuffer.AppendOrUpdate(TagWindowSE, id, msg)
@@ -125,7 +125,7 @@ func (to *outputWriter) WriteError(msg string) {
 }
 
 // WriteNotify writes a notification message to the display.
-// Styling is stored raw — it's applied during render by styleByTag.
+// Styling is stored raw — it's applied during render by the window renderer.
 func (to *outputWriter) WriteNotify(msg string) {
 	id := to.generateWindowID()
 	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, msg)

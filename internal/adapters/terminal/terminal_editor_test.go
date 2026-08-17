@@ -240,21 +240,21 @@ func TestColorizeToolMultiline(t *testing.T) {
 	styles := DefaultStyles()
 	// Test multiline tool output with colon on first line
 	value := "tool_name: first line\nsecond line\nthird line"
-	result := ColorizeTool(value, styles)
+	result := defaultToolRender(value, "tool_name", styles, 0)
 	lines := strings.Split(result, "\n")
 	if len(lines) != 3 {
 		t.Errorf("Expected 3 lines, got %d", len(lines))
 	}
-	// First line should have toolStyle for tool_name and toolContentStyle for rest
-	// Check that each line contains ANSI codes
+	// The name prefix is stripped; every line keeps ANSI styling (muted).
 	for i, line := range lines {
 		if !strings.Contains(line, "\x1b[") {
 			t.Errorf("Line %d missing ANSI escape sequence: %q", i, line)
 		}
 	}
-	// Additional checks: first line should contain toolStyle color
-	// We can check that the line includes the specific ANSI codes for toolStyle and toolContentStyle
-	// but for simplicity we just ensure styling per line.
+	// The tool-name prefix must be stripped from the first line.
+	if !strings.Contains(stripANSI(lines[0]), "first line") || strings.Contains(stripANSI(lines[0]), "tool_name:") {
+		t.Errorf("First line should show bare args, got %q", stripANSI(lines[0]))
+	}
 }
 
 func TestWrapContentPreservesANSI(t *testing.T) {
@@ -481,10 +481,10 @@ func TestWindowBufferRendering(t *testing.T) {
 	wb.AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello world")
 	// Get rendered output
 	rendered := wb.GetAll(-1, false)
-	// Check that border characters appear (rounded border)
-	if !strings.Contains(rendered, "╭") || !strings.Contains(rendered, "╮") ||
-		!strings.Contains(rendered, "╰") || !strings.Contains(rendered, "╯") {
-		t.Errorf("Rendered output missing border characters: %q", rendered)
+	// Check that top/bottom rule lines appear (plain horizontal rules,
+	// full window width — open box with no side borders)
+	if !strings.Contains(rendered, strings.Repeat("─", 30)) {
+		t.Errorf("Rendered output missing rule line: %q", rendered)
 	}
 	// Check that content appears inside
 	if !strings.Contains(rendered, "Hello world") {
@@ -579,15 +579,20 @@ func TestWindowBufferWidth(t *testing.T) {
 	wb := NewWindowBuffer(totalWidth, DefaultStyles())
 	wb.AppendOrUpdate(tlv.TagAssistantT, "test", "Hello")
 	rendered := wb.GetAll(-1, false)
-	// Find first line (top border)
 	lines := strings.Split(rendered, "\n")
-	if len(lines) == 0 {
+	if len(lines) < 3 {
 		t.Fatal("No lines rendered")
 	}
-	topLine := lines[0]
-	// Top line should contain "╭" and "╮" border characters
-	if !strings.Contains(topLine, "╭") || !strings.Contains(topLine, "╮") {
-		t.Errorf("Top border missing: %q", topLine)
+	// Line 0 is the header (expand arrow + "ASSISTANT"); line 1 is the box
+	// top rule.
+	headerLine := lines[0]
+	if !strings.Contains(headerLine, "▼") || !strings.Contains(headerLine, "ASSISTANT") {
+		t.Errorf("Header line missing: %q", headerLine)
+	}
+	topLine := lines[1]
+	// Top line should be a full-width horizontal rule (no side borders)
+	if !strings.Contains(topLine, strings.Repeat("─", totalWidth)) {
+		t.Errorf("Top rule missing: %q", topLine)
 	}
 	// Count visible characters between borders
 	visibleLen := visibleLength(topLine)
@@ -616,14 +621,15 @@ func TestWindowBufferWidthMatchesInput(t *testing.T) {
 			// Create a window
 			wb.AppendOrUpdate(tlv.TagAssistantT, "test", "Content")
 			rendered := wb.GetAll(-1, false)
-			// Extract top border line
+			// Extract top border line (line 1 — line 0 is the header)
 			lines := strings.Split(rendered, "\n")
-			if len(lines) == 0 {
+			if len(lines) < 3 {
 				t.Fatal("No lines rendered")
 			}
-			topLine := lines[0]
+			topLine := lines[1]
 			// The top line visible length should equal inputTotalWidth (including border chars)
 			visibleLen := visibleLength(topLine)
+			t.Logf("Window header line: %q", lines[0])
 			t.Logf("Window top line: %q", topLine)
 			t.Logf("Visible length: %d, expected: %d", visibleLen, inputTotalWidth)
 			// Allow small deviation due to padding? lipgloss may add spaces.

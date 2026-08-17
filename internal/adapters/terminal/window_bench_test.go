@@ -484,7 +484,7 @@ func BenchmarkDirectAppend(b *testing.B) {
 
 	// Initial render to populate cache
 	w.Render(80, false, styles,
-		lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+		lipgloss.NewStyle(),
 		lipgloss.NewStyle(), false)
 
 	fmt.Printf("Initial: wrappedLines=%d, contentLen=%d, styles=%v\n",
@@ -494,7 +494,7 @@ func BenchmarkDirectAppend(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w.AppendContent(" more")
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+			lipgloss.NewStyle(),
 			lipgloss.NewStyle(), false)
 	}
 }
@@ -506,7 +506,7 @@ func BenchmarkDirectAppendNoStyles(b *testing.B) {
 
 	styles := NewStyles(theme.DefaultTheme())
 	w.Render(80, false, styles,
-		lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+		lipgloss.NewStyle(),
 		lipgloss.NewStyle(), false)
 
 	fmt.Printf("Initial (no styles): wrappedLines=%d\n", 0)
@@ -515,7 +515,7 @@ func BenchmarkDirectAppendNoStyles(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w.AppendContent(" more")
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+			lipgloss.NewStyle(),
 			lipgloss.NewStyle(), false)
 	}
 }
@@ -528,7 +528,7 @@ func BenchmarkDirectAppendDebug(_ *testing.B) {
 
 	// Initial render
 	w.Render(80, false, styles,
-		lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+		lipgloss.NewStyle(),
 		lipgloss.NewStyle(), false)
 
 	fmt.Printf("Initial: wrappedLines=%d, cache.width=%d, width-4=%d\n",
@@ -544,7 +544,7 @@ func BenchmarkDirectAppendDebug(_ *testing.B) {
 			0, 0-4)
 
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+			lipgloss.NewStyle(),
 			lipgloss.NewStyle(), false)
 		fmt.Printf("After Render %d: wrappedLines=%d, cache.valid=%v\n",
 			i+1, 0, false)
@@ -559,7 +559,7 @@ func BenchmarkRenderAfterAppend(b *testing.B) {
 
 	// Initial render to populate cache
 	w.Render(80, false, styles,
-		lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+		lipgloss.NewStyle(),
 		lipgloss.NewStyle(), false)
 
 	fmt.Printf("Initial: wrappedLines=%d, cache.valid=%v, cache.width=%d\n",
@@ -572,7 +572,7 @@ func BenchmarkRenderAfterAppend(b *testing.B) {
 		b.StartTimer()
 
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+			lipgloss.NewStyle(),
 			lipgloss.NewStyle(), false)
 	}
 }
@@ -585,7 +585,7 @@ func BenchmarkFullRebuildAfterAppend(b *testing.B) {
 
 	// Initial render
 	w.Render(80, false, styles,
-		lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+		lipgloss.NewStyle(),
 		lipgloss.NewStyle(), false)
 
 	b.ResetTimer()
@@ -596,7 +596,7 @@ func BenchmarkFullRebuildAfterAppend(b *testing.B) {
 		b.StartTimer()
 
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+			lipgloss.NewStyle(),
 			lipgloss.NewStyle(), false)
 	}
 }

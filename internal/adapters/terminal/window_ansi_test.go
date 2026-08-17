@@ -40,7 +40,7 @@ func TestWindow_WithANSIContent(t *testing.T) {
 			name:     "tool call with ANSI in command",
 			tag:      tlv.TagAssistantF,
 			content:  "execute_command: echo \x1b[31mtest\x1b[0m",
-			expected: "· execute_command: echo test", // Note: includes status indicator
+			expected: "echo test", // status dot and tool name live in the header line
 		},
 		{
 			name:     "text with embedded ANSI",
@@ -59,6 +59,11 @@ func TestWindow_WithANSIContent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := NewWindow("test-window", tt.tag, styles)
+			if tt.tag == tlv.TagAssistantF {
+				// Real tool windows carry a name — the renderer needs it to
+				// strip the "name: " prefix from the input.
+				w.SetRendererForTool("execute_command", "")
+			}
 			w.AppendContent(tt.content)
 
 			// Render the window inner content (without border)
@@ -99,16 +104,16 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 			shouldHaveColor: true,
 		},
 		{
-			name:            "text assistant gets styled",
+			name:            "text assistant is plain text",
 			tag:             tlv.TagAssistantT,
 			content:         "Hello world",
-			shouldHaveColor: true,
+			shouldHaveColor: false, // streaming content carries no styling (markdown is a future concern)
 		},
 		{
-			name:            "reasoning gets styled",
+			name:            "reasoning is plain text",
 			tag:             tlv.TagAssistantR,
 			content:         "Thinking...",
-			shouldHaveColor: true,
+			shouldHaveColor: false, // streaming content carries no styling
 		},
 		{
 			name:            "system error gets styled",
@@ -154,14 +159,15 @@ func TestWindow_DiffContentWithANSI(t *testing.T) {
 	newLine := "\x1b[32mnew line\x1b[0m"
 	content := "edit_file: /tmp/test.txt\n- " + oldLine + "\n+ " + newLine + "\n  unchanged"
 
-	result := RenderDiffContent(content, ToolStatusSuccess, styles, 0)
+	result := RenderDiffContent(content, styles, 0)
 
 	// Strip lipgloss ANSI to check the actual text
 	resultStripped := stripANSI(result)
 
 	// Should contain the text without the embedded ANSI from input
-	// (lipgloss will add its own diff colors)
-	expected := "• edit_file: /tmp/test.txt\n- old line\n+ new line\n  unchanged"
+	// (lipgloss will add its own diff colors); the first line shows the
+	// bare argument (no status dot, no tool-name prefix).
+	expected := "/tmp/test.txt\n- old line\n+ new line\n  unchanged"
 
 	if resultStripped != expected {
 		t.Errorf("DiffContent:\n  got:  %q\n  want: %q", resultStripped, expected)

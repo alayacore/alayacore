@@ -5,7 +5,7 @@ package terminal
 //
 // The dialog uses the same rendering pattern as ModelSelector and ModelSelector:
 //   - SetSize stores the terminal dimensions
-//   - View renders with RenderBorderedBox
+//   - View renders with RenderOpenBox
 //   - RenderOverlay delegates to the shared overlay renderer
 //
 // Key handling: y/Y = confirm, n/N/esc = cancel.
@@ -304,13 +304,13 @@ func (cd ConfirmDialog) View() tea.View {
 		msgLines = append(msgLines, "")
 	}
 	content := strings.Join(msgLines, "\n")
-	box := cd.styles.RenderBorderedBox(content, cd.Width, cd.styles.ColorWarning, ConfirmContentRows)
+	box := cd.styles.RenderOpenBox(content, cd.Width, cd.styles.ColorWarning, ConfirmContentRows)
 	return tea.NewView(box)
 }
 
 // buildContentLines returns the display lines for the dialog content.
 func (cd ConfirmDialog) buildContentLines() []string {
-	innerWidth := max(0, cd.Width-BorderInnerPadding)
+	innerWidth := max(0, cd.Width)
 	maxBodyLines := max(0, ConfirmContentRows-2)
 
 	titleText := cd.buildTitleText()

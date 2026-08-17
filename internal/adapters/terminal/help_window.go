@@ -134,7 +134,7 @@ func (hw HelpWindow) recalculateColumnWidths() HelpWindow {
 			}
 		}
 	}
-	innerWidth := max(0, hw.Width-BorderInnerPadding)
+	innerWidth := max(0, hw.Width)
 	idealKeyWidth := innerWidth - 3 - maxDescLen
 	hw.keyColumnWidth = min(
 		max(maxKeyLen, idealKeyWidth),
@@ -372,7 +372,7 @@ func (hw HelpWindow) View() tea.View {
 	listHeight := SelectorListRows
 	hw.FilteredListCore = hw.FilteredListCore.ClampScroll(hw.filteredLen())
 
-	filterBox := hw.Styles.RenderBorderedBox(hw.FilterInput.View(), hw.Width, hw.FilterBorderColor())
+	filterBox := hw.Styles.RenderOpenBox(hw.FilterInput.View(), hw.Width, hw.FilterBorderColor())
 
 	var lines []string
 	if hw.filteredLen() == 0 {
@@ -390,10 +390,10 @@ func (hw HelpWindow) View() tea.View {
 
 	listBorderColor := hw.ListBorderColor()
 	content := strings.Join(lines, "\n")
-	listBox := hw.Styles.RenderBorderedBox(content, hw.Width, listBorderColor, listHeight)
+	listBox := hw.Styles.RenderOpenBox(content, hw.Width, listBorderColor, listHeight)
 
 	titleStyle := lipgloss.NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorAccent).Bold(true)
-	title := titleStyle.Render(fmt.Sprintf("%-*s", hw.Width, "  Help"))
+	title := titleStyle.Render(fmt.Sprintf("%-*s", hw.Width, "Help"))
 
 	helpStyle := lipgloss.NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorMuted)
 	var help string
@@ -417,7 +417,7 @@ func (hw HelpWindow) View() tea.View {
 }
 
 func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {
-	innerWidth := max(0, hw.Width-BorderInnerPadding)
+	innerWidth := max(0, hw.Width)
 
 	if item.IsSection {
 		content := "── " + item.Description
@@ -445,9 +445,11 @@ func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {
 	}
 
 	if selected {
-		return hw.Styles.Prompt.Render("> ") + hw.Styles.Text.Render(line)
+		// Selection is highlighted via the Text style; rows are flush
+		// left with no indent.
+		return hw.Styles.Text.Render(line)
 	}
-	return hw.Styles.System.Render("  " + line)
+	return hw.Styles.System.Render(line)
 }
 
 func (hw HelpWindow) RenderOverlay(baseContent string, screenWidth, screenHeight int) string {
