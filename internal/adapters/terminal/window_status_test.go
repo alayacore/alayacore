@@ -195,12 +195,16 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 			toolName:  "cat",
 			delta:     `{"path":"/tmp/foo"}`,
 			wantLines: 3,
-			wantTrim:  false, // no room for delta after "• cat: " (7 cols) in innerWidth=6
+			wantTrim:  false, // no room for delta after "· cat: " (7 cols) in innerWidth=6
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Status is Pending here on purpose: while arguments are still
+			// streaming in, the tool has not started executing, so the
+			// preview must show the hollow idle dot (·) even though the
+			// window status is already Pending.
 			tr := &toolRenderer{
 				name:        tt.toolName,
 				deltaBuffer: tt.delta,
@@ -210,6 +214,14 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 
 			if lineCount != tt.wantLines {
 				t.Errorf("Expected %d lines, got %d", tt.wantLines, lineCount)
+			}
+
+			// Streaming preview: hollow idle dot, never the solid dot.
+			if !strings.Contains(result, "·") {
+				t.Errorf("Streaming preview should show the hollow idle dot (·), got: %q", result)
+			}
+			if strings.Contains(result, "•") {
+				t.Errorf("Streaming preview must not show the solid dot (•), got: %q", result)
 			}
 
 			hasTrim := strings.Contains(result, "…")

@@ -292,9 +292,13 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 	}
 
 	// Input still streaming via Af deltas — show truncated one-line preview
-	// of accumulated arguments alongside the tool name.
+	// of accumulated arguments alongside the tool name. The tool has not
+	// started executing yet (arguments are still arriving — e.g. a large
+	// write_file content), so the hollow idle dot (·) marks it as not yet
+	// live; the solid dot (•) appears once the complete input arrives and
+	// execution begins.
 	if r.deltaBuffer != "" {
-		// Status dot uses its normal color, tool name uses Tool style (golden),
+		// Hollow dot uses its normal color, tool name uses Tool style (golden),
 		// colon and delta content use ToolContent style (muted), truncated to one line.
 		deltaContent := r.deltaBuffer
 		// Flatten delta to single line.
@@ -306,7 +310,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) (string, in
 		// Truncate to fit available width (indicator + ": " + tool name).
 		maxDelta := max(0, innerWidth-lipgloss.Width(r.name)-4)
 		deltaContent = truncateWithSuffix(deltaContent, maxDelta)
-		display := r.status.Indicator(styles) + styles.Tool.Render(r.name) + styles.ToolContent.Render(": "+deltaContent)
+		display := ToolStatusNone.Indicator(styles) + styles.Tool.Render(r.name) + styles.ToolContent.Render(": "+deltaContent)
 		return display, strings.Count(display, "\n") + 1 + 2
 	}
 
