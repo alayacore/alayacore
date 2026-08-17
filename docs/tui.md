@@ -132,6 +132,10 @@ Note: `:quit` / `:q`, `:help`, and `:suspend` are handled directly by each adapt
 
 The display area organizes content into separate windows — one per message or tool call. Windows have synchronized widths and can be navigated independently.
 
+### Tool Status Dot
+
+Every tool window is prefixed by a status dot, mirroring the status bar's `•` live / `·` idle convention. A hollow dot (`·`) marks a window whose arguments are still streaming in — the tool has not started executing yet (a large `write_file` payload can take a while to arrive). The dot turns solid (`•`) once the complete input has arrived and the tool is executing, and takes the result color (green on success, red on error) when it finishes.
+
 ### Tool Result Separator
 
 `write_file` and `edit_file` windows insert a dimmed `OUTPUT:` label line between the tool call (showing the file path) and the tool result. This visually separates the content-heavy input from the output. Other tool windows (e.g. `read_file`, `execute_command`) don't use a separator — their call header is short and the result follows directly.

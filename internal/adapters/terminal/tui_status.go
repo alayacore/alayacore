@@ -17,7 +17,8 @@ import (
 // During a run it shows live progress ("3/5", "3/INF"); after completion it
 // shows the last run's frozen summary ("3/5", "3/INF") until the next task
 // starts. The leading dot in the status bar (• live vs · idle) tells the two
-// apart, so the summary renders without a "last" prefix.
+// apart, so the summary renders without a "last" prefix. Tool windows follow
+// the same •/· convention: hollow while args stream in, solid while running.
 func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurrentStep int, lastMaxSteps int) string {
 	if inProgress && currentStep > 0 {
 		if maxSteps > 0 {
