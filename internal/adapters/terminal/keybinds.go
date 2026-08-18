@@ -502,24 +502,20 @@ func (m Terminal) handleSaveKey() (Terminal, Cmd) {
 // from the last rendered frame.  This guarantees the next flush won't
 // early-return.
 //
-// Layer 2 & 3 (best-effort, arm full repaint): ClearScreen sets
-// s.clear=true on the renderer; the synthetic WindowSizeMsg does the same
-// via resize() and also resets Touched=nil.  If either command arrives the
-// flush becomes a full clear+repaint instead of a diff.  If both are
-// dropped (rare), the view change from layer 1 still ensures a diff-based
-// redraw that covers every content cell.
+// Layer 2 (best-effort, arm full repaint): the synthetic WindowSizeMsg
+// lands in Screen.Resize, which clears the frame caches so the next
+// render is a full clear+repaint instead of a diff.  If it is dropped
+// (rare), the view change from layer 1 still ensures a diff-based redraw
+// that covers every content cell.
 func (m Terminal) handleRedraw() (Terminal, Cmd) {
 	m.forceRedraw++
 	m.display = m.display.ForceContentDirty()
 	m.display = m.display.updateContent()
 
 	m.pendingForceRedraw = true
-	return m, Batch(
-		ClearScreen,
-		func() Msg {
-			return WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight}
-		},
-	)
+	return m, func() Msg {
+		return WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight}
+	}
 }
 
 // handleInputKeys handles keys when the input field is focused.

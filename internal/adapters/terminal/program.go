@@ -7,7 +7,7 @@ package terminal
 // The loop mirrors bubbletea's (third_party/bubbletea/tea.go) minus the
 // cell-buffer renderer: messages arrive from the input reader and from
 // commands, special messages (QuitMsg/SuspendMsg/BatchMsg/sequenceMsg/
-// ClearScreenMsg/WindowSizeMsg) are handled internally, everything else goes
+// WindowSizeMsg) are handled internally, everything else goes
 // to model.Update. After every Update the view is rendered through
 // Screen.Render (raw passthrough; skipped when content and cursor are
 // unchanged). Terminal cleanup (alt screen exit + raw mode restore) happens
@@ -112,19 +112,13 @@ func Quit() Msg { return QuitMsg{} }
 type QuitMsg struct{}
 
 // Suspend is a special command that tells the program to suspend.
-// NOTE: suspension (editor handoff, Ctrl-Z) is module 5 (S2); the message
-// is currently ignored by the loop.
+// The loop releases the terminal (exit alt screen, restore cooked mode),
+// suspends the process group (Ctrl-Z), and re-acquires the terminal on
+// SIGCONT — see exec.go / exec_unix.go.
 func Suspend() Msg { return SuspendMsg{} }
 
 // SuspendMsg signals the program should suspend.
 type SuspendMsg struct{}
-
-// ClearScreen is a special command that forces a full clear+redraw. In raw
-// passthrough mode every render already clears the whole screen, so this is
-// effectively a no-op (kept for API compatibility).
-func ClearScreen() Msg { return clearScreenMsg{} }
-
-type clearScreenMsg struct{}
 
 // BatchMsg is a message used to perform a bunch of commands concurrently.
 type BatchMsg []Cmd
@@ -276,8 +270,6 @@ func (p *Program) run(model Model) (Model, error) {
 			// terminal released, then re-acquire and repaint.
 			p.exec(msg)
 			p.render(model)
-			continue
-		case clearScreenMsg:
 			continue
 		case BatchMsg:
 			go p.execBatch(msg, ctxDone)
