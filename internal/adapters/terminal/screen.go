@@ -460,6 +460,15 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 		if oldText, ok := oldMap[key(r.frameRow)]; !ok || oldText != r.frameRow.text {
 			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, r.frameRow.row+1)...)
 			buf = append(buf, r.frameRow.text...)
+			if !r.base {
+				// CUP-anchored rows (input box, status bar, overlay boxes)
+				// are often shorter than the terminal width and do not
+				// pad/erase themselves — a shrunk row would leave the old
+				// frame's tail on screen. Erase to end of line after
+				// every repainted overlay row; a trailing EL is harmless
+				// when the row already carries one.
+				buf = append(buf, ansi.EraseLine(0)...)
+			}
 		}
 	}
 	// Rows the old frame drew that the new frame no longer draws: clear
