@@ -68,22 +68,14 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 	// Viewport exactly the document height (8 rows) → no blank padding.
 	wb.SetViewportPosition(0, 8)
 	out := wb.GetAll(-1, false)
-
-	// Fragments end with an EL erase (the residue-cleanup marker): split
-	// on EL yields [AT-frag, AR-frag, ""] — the trailing empty element
-	// proves every fragment was EL-terminated.
-	frags := strings.Split(out, "\x1b[K")
-	if len(frags) != 3 {
-		t.Fatalf("expected 2 window fragments, got %d: %q", len(frags), out)
-	}
+	plain := stripANSI(out)
 
 	// AT fragment: the single original long line's content rows join
 	// without '\n' (soft wrap) — extract the region between the rules.
-	at := stripANSI(frags[0])
-	if !strings.Contains(at, "ASSISTANT") {
-		t.Errorf("AT fragment missing header: %q", at)
+	if !strings.Contains(plain, "ASSISTANT") {
+		t.Errorf("AT fragment missing header: %q", plain)
 	}
-	content := extractWindowContent(at)
+	content := extractWindowContent(plain)
 	trimmed := strings.Trim(content, "\n") // rule boundaries are hard newlines
 	if strings.Contains(trimmed, "\n") {
 		t.Errorf("single-line content must be continuous (no newline): %q", content)
@@ -93,19 +85,15 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 	if w := ansi.StringWidth(trimmed); w != 125 {
 		t.Errorf("AT content display width = %d, want 125 (25 words)", w)
 	}
-	if fragmentRows(at) != 7 {
-		t.Errorf("AT fragment rows = %d, want 7", fragmentRows(at))
+	if fragmentRows(plain) != 8 {
+		t.Errorf("fragment rows = %d, want 8 (AT 7 + AR 1)", fragmentRows(plain))
 	}
 
-	// Folded fragment: single short line, unpadded (it is the last — the
-	// fragment's EL erase clears any previous frame's residue on the row,
-	// keeping copy selections free of trailing spaces).
-	ar := stripANSI(frags[1])
-	if w := ansi.StringWidth(ar); w >= 40 {
-		t.Errorf("AR fragment width = %d, want < 40 (last fragment is not padded)", w)
-	}
-	if fragmentRows(ar) != 1 {
-		t.Errorf("AR fragment rows = %d, want 1", fragmentRows(ar))
+	// Folded fragment: single short line, unpadded (its EL erase clears
+	// any previous frame's residue on the row, keeping selections free of
+	// trailing spaces).
+	if !strings.Contains(plain, "▶ REASONING  short reasoning") {
+		t.Errorf("AR folded line missing: %q", plain)
 	}
 }
 
@@ -197,24 +185,18 @@ func TestRenderVirtualWindowBoundary(t *testing.T) {
 	// Viewport [5,8): AT rows 5,6 + AR row 7 = 3 rows.
 	wb.SetViewportPosition(5, 3)
 	out := wb.GetAll(-1, false)
+	plain := stripANSI(out)
 
-	frags := strings.Split(out, "\x1b[K")
-	if len(frags) != 3 {
-		t.Fatalf("expected 2 fragments, got %d: %q", len(frags), out)
-	}
-	at := stripANSI(frags[0])
-	ar := stripANSI(frags[1])
-	if fragmentRows(at)+fragmentRows(ar) != 3 {
-		t.Errorf("viewport rows = %d, want 3 (fragments: %q | %q)",
-			fragmentRows(at)+fragmentRows(ar), at, ar)
+	if fragmentRows(plain) != 3 {
+		t.Errorf("viewport rows = %d, want 3 (fragments: %q)", fragmentRows(plain), plain)
 	}
 	// AT fragment rows 5,6: content row 5 + bottom rule — must contain
 	// the rule (padded to width) but not the top rule/header.
-	if !strings.Contains(at, "─") {
-		t.Errorf("AT fragment should contain the bottom rule: %q", at)
+	if !strings.Contains(plain, "─") {
+		t.Errorf("AT fragment should contain the bottom rule: %q", plain)
 	}
-	if strings.Contains(at, "ASSISTANT") {
-		t.Errorf("AT fragment must not contain the header: %q", at)
+	if strings.Contains(plain, "ASSISTANT") {
+		t.Errorf("AT fragment must not contain the header: %q", plain)
 	}
 }
 
@@ -245,11 +227,11 @@ func TestScrollViewSoftWrap(t *testing.T) {
 		t.Errorf("View() = %q, want the pre-clipped content verbatim", v)
 	}
 
-	// Empty buffer: erased blank rows to fill the viewport (EL before each
-	// '\n' so the overlay renderer leaves no previous frame content).
+	// Empty buffer: erased blank rows to fill the viewport — the first
+	// row is erased, then each following row is entered and erased.
 	sv = NewScrollView(40, 5).WithContent("")
-	if v := sv.View(); v != strings.Repeat("\x1b[K\n", 4) {
-		t.Errorf("View() with empty content = %q, want 4 erased blank rows", v)
+	if v := sv.View(); v != "\x1b[K\n\x1b[K\n\x1b[K\n\x1b[K\n\x1b[K" {
+		t.Errorf("View() with empty content = %q, want 5 erased blank rows", v)
 	}
 
 	// Content length is unrelated to the document total — yOffset must

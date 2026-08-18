@@ -130,14 +130,15 @@ func (m ScrollView) PastBottom() bool {
 // viewport height with blank rows (it knows the visual row count; a
 // soft-wrap fragment occupies several terminal rows, so ScrollView
 // cannot count them from the string). The empty-buffer case is padded
-// here as erased blank rows (EL before each '\n') so the overlay renderer
+// here as erased blank rows: the first row is erased, then each
+// following row is entered with '\n' and erased — the overlay renderer
 // leaves no previous frame content on those rows.
 func (m ScrollView) View() string {
 	if m.height <= 0 {
 		return ""
 	}
 	if m.content == "" {
-		return strings.Repeat(ansi.EraseLine(0)+"\n", max(0, m.height-1))
+		return ansi.EraseLine(0) + strings.Repeat("\n"+ansi.EraseLine(0), max(0, m.height-1))
 	}
 	return m.content
 }

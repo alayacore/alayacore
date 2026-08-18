@@ -60,8 +60,9 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 	// Reconstruct the expected fragment from the full render's rows:
 	// rows joined per continuation marks (Cont rows follow without '\n',
 	// new original lines are separated by '\n'), rows followed by a
-	// continuation padded to the width, with an EL erase at the tail
-	// (the overlay renderer's residue cleanup for the unpadded last row).
+	// continuation padded to the width, and rows ending an original line
+	// (or the fragment's last row) get an EL erase (row-tail residue
+	// cleanup under the overlay renderer).
 	want := ""
 	for i := 3; i < len(allLines); i++ {
 		if i > 3 && !allLines[i].Cont {
@@ -70,9 +71,10 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 		want += allLines[i].Text
 		if i < len(allLines)-1 && allLines[i+1].Cont {
 			want += strings.Repeat(" ", 40-ansi.StringWidth(allLines[i].Text))
+		} else {
+			want += "\x1b[K"
 		}
 	}
-	want += "\x1b[K"
 	if frag != want {
 		t.Errorf("fragment styles differ from full render:\n  got:  %q\n  want: %q", frag, want)
 	}

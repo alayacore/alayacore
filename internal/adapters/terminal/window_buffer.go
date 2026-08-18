@@ -815,9 +815,17 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			}
 			sb.WriteString(vl.Text)
 			if j < len(lines)-1 && lines[j+1].Cont {
+				// Row followed by a continuation: pad to the full width so
+				// the soft-wrap break lands exactly at the visual boundary.
 				if wdt := widths[j]; wdt < wb.width {
 					sb.WriteString(strings.Repeat(" ", wb.width-wdt))
 				}
+			} else if j < len(lines)-1 {
+				// Row ending an original line: not padded (copy stays free
+				// of trailing spaces), but erase the row tail — a shorter
+				// row overwriting a longer one from the previous frame
+				// would otherwise leave residue.
+				sb.WriteString(ansi.EraseLine(0))
 			}
 		}
 		// Clear the fragment's last row to the end of the line: it is not
@@ -831,15 +839,16 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 
 	// Pad to the viewport height with blank rows. This must happen here —
 	// ScrollView cannot count terminal rows (a fragment soft-wraps to
-	// several rows), so the padding needs the visual row count. Each row
-	// is erased first (EL) so no previous frame content survives on those
-	// rows (a bare '\n' would keep the old characters).
+	// several rows), so the padding needs the visual row count. Each blank
+	// row is entered with '\n' and then ERASED (EL clears the row we just
+	// moved to — an EL before the '\n' would clear the PREVIOUS row and
+	// leave the blank row carrying old frame content).
 	if pad := wb.viewportHeight - emittedRows; pad > 0 {
-		blank := ansi.EraseLine(0) + "\n"
 		if emittedRows == 0 {
-			sb.WriteString(strings.Repeat(blank, max(0, pad-1)))
+			sb.WriteString(ansi.EraseLine(0))
+			sb.WriteString(strings.Repeat("\n"+ansi.EraseLine(0), max(0, pad-1)))
 		} else {
-			sb.WriteString(strings.Repeat(blank, pad))
+			sb.WriteString(strings.Repeat("\n"+ansi.EraseLine(0), pad))
 		}
 	}
 	return sb.String()
