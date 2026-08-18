@@ -328,10 +328,11 @@ func lastBaseRow(rows []frameRow) (frameRow, bool) {
 // new, and clears (EL) overlay rows that disappeared. Base rows that
 // disappeared are handled by the caller's tail erase.
 //
-// Overlap rule: a base row that an overlay row covers in the new frame is
-// NEVER rewritten — the overlay is the top layer, and rewriting the base
-// underneath would wipe the overlay (this happens when the box is at
-// column 1, e.g. a full-width box or a terminal narrower than the box).
+// Overlap rule: overlay boxes span the FULL terminal width by design (they
+// start at column 1), so overlay rows share row coordinates with the base
+// rows. A base row that an overlay row covers in the new frame is NEVER
+// rewritten — the overlay is the top layer, and rewriting the base
+// underneath would wipe the overlay.
 func diffFrameRows(oldContent, newContent string) []byte {
 	oldRows := parseFrameRows(oldContent)
 	newRows := parseFrameRows(newContent)

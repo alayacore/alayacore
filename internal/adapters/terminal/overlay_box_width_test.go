@@ -1,19 +1,12 @@
 package terminal
 
-// Regression tests for the two overlay box bugs found after the row-diff
-// renderer landed:
-//
-//  1. FilteredListCore.WithSize overrode the component's FIXED box width
-//     (60/72) with the full terminal width — the overlay box spanned the
-//     whole screen from column 1, and its rows shared row coordinates
-//     with the base rows.
-//  2. The row-diff renderer then treated those colliding base rows as
-//     "changed" and rewrote them over the overlay on Tab — the overlay
-//     content vanished, showing the windows behind.
-//
-// The fixes: WithSize never touches the box width (only the list height
-// adapts), and diffFrameRows distinguishes base rows from CUP overlay
-// rows and never rewrites a base row that an overlay row covers.
+// Regression tests for the overlay row-diff wipe: overlay boxes span the
+// FULL terminal width by design (all overlay input boxes are as wide as
+// the terminal), so their CUP rows share row coordinates with the base
+// rows at column 1. The row diff must distinguish base rows from overlay
+// rows and never rewrite a base row that an overlay row covers — on Tab
+// (or any steady-frame change) the overlay would otherwise be wiped,
+// showing the windows behind.
 
 import (
 	"bytes"
@@ -23,34 +16,35 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// TestOverlayBoxWidthNotOverriddenByWithSize locks the fixed box width:
-// a terminal resize must not change the overlay box width (60 for the
-// selectors/attachment, 72 for help).
-func TestOverlayBoxWidthNotOverriddenByWithSize(t *testing.T) {
+// TestOverlayBoxSpansTerminalWidth locks the design: overlay boxes span
+// the FULL terminal width (all overlay input boxes are as wide as the
+// terminal), so WithSize sizes the box width — and the filter input — to
+// the terminal width, and the box starts at column 1.
+func TestOverlayBoxSpansTerminalWidth(t *testing.T) {
 	styles := DefaultStyles()
 
 	ms := NewModelSelector(styles).WithSize(137, 50)
-	if ms.Width != 60 {
-		t.Errorf("model selector width = %d, want fixed 60", ms.Width)
+	if ms.Width != 137 {
+		t.Errorf("model selector width = %d, want terminal width 137", ms.Width)
 	}
 	ts := NewThemeSelector(styles).WithSize(137, 50)
-	if ts.Width != 60 {
-		t.Errorf("theme selector width = %d, want fixed 60", ts.Width)
+	if ts.Width != 137 {
+		t.Errorf("theme selector width = %d, want terminal width 137", ts.Width)
 	}
 	hw := NewHelpWindow(styles).WithSize(137, 50)
-	if hw.Width != 72 {
-		t.Errorf("help window width = %d, want fixed 72", hw.Width)
+	if hw.Width != 137 {
+		t.Errorf("help window width = %d, want terminal width 137", hw.Width)
 	}
 	aw := NewAttachmentWindow(styles).WithSize(137, 50)
-	if aw.Width != 60 {
-		t.Errorf("attachment window width = %d, want fixed 60", aw.Width)
+	if aw.Width != 137 {
+		t.Errorf("attachment window width = %d, want terminal width 137", aw.Width)
 	}
-	// The box must stay centered: at width 137 a 60-col box starts at col 38.
+	// The full-width box starts at column 1 (origin x = 0).
 	m := newTestTerminal()
 	m.modelSelector = m.modelSelector.Open().WithSize(137, 50)
 	box := m.modelSelector.View().Content
-	if x, _ := overlayOrigin(box, 137, 50); x != 38 {
-		t.Errorf("overlay origin x = %d, want 38 (centered 60-col box)", x)
+	if x, _ := overlayOrigin(box, 137, 50); x != 0 {
+		t.Errorf("overlay origin x = %d, want 0 (full-width box)", x)
 	}
 }
 

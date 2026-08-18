@@ -25,13 +25,17 @@ func TestOverlayBoxStableAcrossTabFocus(t *testing.T) {
 	}{
 		{
 			name: "model selector",
-			open: func(m Terminal) Terminal { return m.openModelSelector() },
+			open: func(m Terminal) Terminal {
+				m.modelSelector = m.modelSelector.Open().WithSize(80, 24)
+				m.input = m.input.Blur()
+				return m
+			},
 			view: func(m Terminal) string { return m.modelSelector.View().Content },
 		},
 		{
 			name: "theme selector",
 			open: func(m Terminal) Terminal {
-				m.themeSelector = m.themeSelector.Open(nil, "")
+				m.themeSelector = m.themeSelector.Open(nil, "").WithSize(80, 24)
 				m.input = m.input.Blur()
 				return m
 			},
@@ -40,7 +44,7 @@ func TestOverlayBoxStableAcrossTabFocus(t *testing.T) {
 		{
 			name: "attachment picker",
 			open: func(m Terminal) Terminal {
-				m.attachmentWindow = m.attachmentWindow.Open()
+				m.attachmentWindow = m.attachmentWindow.Open().WithSize(80, 24)
 				m.input = m.input.Blur()
 				return m
 			},
@@ -65,8 +69,9 @@ func TestOverlayBoxStableAcrossTabFocus(t *testing.T) {
 					widths[0], widths[1], widths[2])
 			}
 
-			// No row may overflow the intended box width — the help bar is
-			// the usual culprit (it differs between focus states).
+			// No row may overflow the terminal width — the help bar is the
+			// usual culprit (it differs between focus states and must be
+			// truncated to the box width).
 			for i := 0; i < 3; i++ {
 				for _, row := range strings.Split(tt.view(m), "\n") {
 					if w := ansi.StringWidth(row); w > widths[0] {
