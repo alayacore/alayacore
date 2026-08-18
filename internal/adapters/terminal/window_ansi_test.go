@@ -1,9 +1,11 @@
 package terminal
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -185,5 +187,30 @@ func TestWindow_DiffContentWithANSI(t *testing.T) {
 	// Context rows stay plain (no SGR wrapping around them).
 	if !strings.Contains(result, "\n  unchanged") {
 		t.Errorf("context row should be plain text, got %q", result)
+	}
+}
+
+// TestWindow_WriteFileContentStaysPlain: write_file's input is the RAW
+// file content being written — not a diff. Lines starting with "- " or
+// "+ " (markdown lists, script args, …) are literal content and must NOT
+// be colored as diff rows. Only edit_file's model-generated diff carries
+// the -/+ colors.
+func TestWindow_WriteFileContentStaysPlain(t *testing.T) {
+	styles := DefaultStyles()
+	wb := NewWindowBuffer(80, styles)
+	content := "write_file: /tmp/notes.md\n- item one\n+ item two\n  plain line"
+	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t1", Name: "write_file", Input: json.RawMessage(content)}, 0)
+	wb.ToggleFold(0)
+
+	rendered := wb.GetAll(-1, false)
+	if strings.Contains(rendered, styles.DiffRemove.Render("- item one")) {
+		t.Errorf("write_file '- ' row must not carry the diff color: %q", rendered)
+	}
+	if strings.Contains(rendered, styles.DiffAdd.Render("+ item two")) {
+		t.Errorf("write_file '+ ' row must not carry the diff color: %q", rendered)
+	}
+	plain := stripANSI(rendered)
+	if !strings.Contains(plain, "- item one") || !strings.Contains(plain, "+ item two") {
+		t.Errorf("write_file content should be visible: %q", plain)
 	}
 }

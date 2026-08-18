@@ -488,9 +488,14 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		call = deltaContent
 	} else {
 		switch r.name {
-		case "edit_file", "write_file":
+		case "edit_file":
+			// edit_file's input is a real diff (the model emits -/+
+			// prefixed rows) — colored per row by RenderDiffContent.
 			call = RenderDiffContent(r.input, r.name, styles)
 		default:
+			// Everything else — including write_file, whose input is the
+			// RAW file content being written (not a diff; - / + prefixed
+			// lines there are literal content and must stay plain).
 			call = defaultToolRender(r.input, r.name)
 		}
 	}
