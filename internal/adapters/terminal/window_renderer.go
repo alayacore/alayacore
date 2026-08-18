@@ -387,7 +387,9 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 }
 
 // BuildCollapsed returns the single-line collapsed form:
-// "USER PROMPT first-text-line…", truncated to fit width minus the arrow.
+// "USER PROMPT …first-text-line-tail", truncated to fit width minus the
+// arrow. Like every other collapsed summary, an over-long first line
+// keeps its LATEST part with a leading "…" — never a trailing ellipsis.
 func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	first := ""
 	if len(r.textParts) > 0 {
@@ -399,8 +401,10 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if first == "" {
 		return "", 1
 	}
-	line := padLabel("USER PROMPT") + first
-	line = truncateWithSuffix(line, max(0, width-2))
+	label := padLabel("USER PROMPT")
+	room := max(0, width-2-ansi.StringWidth(label))
+	line := label + tailSummary(first, room)
+	line = truncateWithSuffix(line, max(0, width-2)) // safety net
 	return renderCollapsedLine(line, padLabel("USER PROMPT"), labelStyleForTag(tlv.TagUserT, styles), styles.System), 1
 }
 
@@ -459,7 +463,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// UF-only windows (no tool name, created from UF tag) render as plain text.
 	if r.isUF {
 		output := r.output
-		if p := r.previewOutput(innerWidth, 0); p != "" {
+		if p := r.previewOutput(innerWidth); p != "" {
 			// Uf preview snapshot — single line, truncated.
 			output = p
 		}
@@ -496,7 +500,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// Output is plain text; the separator keeps its muted color.
 	if r.output != "" {
 		output := r.output
-		if p := r.previewOutput(innerWidth, 0); p != "" {
+		if p := r.previewOutput(innerWidth); p != "" {
 			// Uf preview snapshot — single line, truncated.
 			output = p
 		}
@@ -521,10 +525,11 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		return "", 1
 	}
 	// UF-only windows (no tool name) render like plain text: no label,
-	// so the whole summary uses the muted color.
+	// so the whole summary uses the muted color. An over-long first line
+	// keeps its tail with a leading "…" like every other summary.
 	if r.isUF && r.name == "" {
 		first := firstLine(prepareContent(r.output))
-		first = truncateWithSuffix(first, max(0, width-2))
+		first = tailSummary(first, max(0, width-2))
 		return styles.System.Render(first), 1
 	}
 
@@ -601,12 +606,13 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 }
 
 // previewOutput renders the Uf preview snapshot (Pending status) as a
-// single line truncated to the room remaining after already-rendered
-// content (usedWidth), mirroring how Af previews fill the window width
-// and fall back to an ellipsis. Returns "" when the output is
+// single line filling the window width, mirroring how Af previews fill
+// the window. When the snapshot does not fit, the LATEST part of the
+// output is kept with a leading "…" (never a trailing ellipsis) —
+// consistent with the delta previews. Returns "" when the output is
 // authoritative (UF has arrived) or empty, so callers fall through to
 // full multiline rendering.
-func (r *toolRenderer) previewOutput(innerWidth, usedWidth int) string {
+func (r *toolRenderer) previewOutput(innerWidth int) string {
 	if r.status != ToolStatusPending || r.output == "" {
 		return ""
 	}
@@ -618,9 +624,9 @@ func (r *toolRenderer) previewOutput(innerWidth, usedWidth int) string {
 	// as 0 width, so truncating raw tabs would let the expanded preview
 	// overflow the window and soft-wrap at the terminal.
 	out = expandTabs(out)
-	// Fill the remaining width; ellipsis when it does not fit.
-	maxLen := max(0, innerWidth-usedWidth)
-	return truncateWithSuffix(out, maxLen)
+	// Fill the width; tail kept with a leading ellipsis when it does not
+	// fit.
+	return tailSummary(out, max(0, innerWidth))
 }
 
 // defaultToolRender renders a tool call's input as a muted argument block:

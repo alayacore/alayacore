@@ -191,3 +191,88 @@ func TestUserPromptLabel(t *testing.T) {
 		t.Errorf("expanded header should contain ▼ USER PROMPT, got %q", plain)
 	}
 }
+
+// TestUserPromptCollapsedTailEllipsis: an over-long USER folded summary
+// keeps the tail of the first line with the ellipsis at the line START —
+// never a trailing "…".
+func TestUserPromptCollapsedTailEllipsis(t *testing.T) {
+	wb := NewWindowBuffer(30, DefaultStyles())
+	long := "请把 /home/user/project/src/main.go 第 100 行的函数重构，注意保持接口兼容性并添加单元测试"
+	wb.AppendOrUpdate(tlv.TagUserT, "u1", long)
+
+	plain := stripANSI(wb.GetAll(-1, false))
+	if strings.Contains(plain, "\n") {
+		t.Fatalf("collapsed user line must be a single line, got %q", plain)
+	}
+	if !strings.Contains(plain, "…") {
+		t.Fatalf("long user summary should be truncated with an ellipsis, got %q", plain)
+	}
+	trimmed := strings.TrimRight(plain, " ")
+	if strings.HasSuffix(trimmed, "…") {
+		t.Errorf("ellipsis must be at the line START, not the end: %q", plain)
+	}
+	// The line ends with the tail (latest characters) of the first line.
+	if !strings.HasSuffix(trimmed, "单元测试") {
+		t.Errorf("collapsed user line should end with the first-line tail, got %q", plain)
+	}
+	if w := ansi.StringWidth(plain); w > 30 {
+		t.Errorf("collapsed line width = %d, want <= 30: %q", w, plain)
+	}
+}
+
+// TestUFOnlyCollapsedTailEllipsis: a UF-only tool window (no AF frame, no
+// tool name — created via replayed UF content) summarizes its output with
+// the tail and a leading ellipsis.
+func TestUFOnlyCollapsedTailEllipsis(t *testing.T) {
+	wb := NewWindowBuffer(30, DefaultStyles())
+	long := strings.Repeat("0123456789", 6) // 60 chars
+	wb.AppendOrUpdate(tlv.TagUserF, "uf-1", long)
+
+	plain := stripANSI(wb.GetAll(-1, false))
+	if strings.Contains(plain, "\n") {
+		t.Fatalf("collapsed UF-only line must be a single line, got %q", plain)
+	}
+	if !strings.Contains(plain, "…") {
+		t.Fatalf("long UF-only summary should be truncated with an ellipsis, got %q", plain)
+	}
+	trimmed := strings.TrimRight(plain, " ")
+	if strings.HasSuffix(trimmed, "…") {
+		t.Errorf("ellipsis must be at the line START, not the end: %q", plain)
+	}
+	if !strings.HasSuffix(trimmed, "0123456789") {
+		t.Errorf("collapsed UF-only line should end with the output tail, got %q", plain)
+	}
+	if w := ansi.StringWidth(plain); w > 30 {
+		t.Errorf("collapsed line width = %d, want <= 30: %q", w, plain)
+	}
+}
+
+// TestUfPreviewTailEllipsis: the Uf output preview shown while a tool is
+// executing follows the same rule as the Af delta preview — the latest
+// output tail is kept with a leading "…".
+func TestUfPreviewTailEllipsis(t *testing.T) {
+	long := strings.Repeat("progress line ", 10) // > 80 columns
+	tr := &toolRenderer{
+		name:   "execute_command",
+		input:  "ls",
+		output: long,
+		status: ToolStatusPending,
+	}
+
+	p := tr.previewOutput(80)
+	if !strings.HasPrefix(p, "…") {
+		t.Errorf("Uf preview should start with the ellipsis, got %q", p)
+	}
+	if !strings.HasSuffix(p, "line ") {
+		t.Errorf("Uf preview should end with the output tail, got %q", p)
+	}
+	if w := ansi.StringWidth(p); w > 80 {
+		t.Errorf("preview width = %d, want <= 80: %q", w, p)
+	}
+
+	// Short preview: unchanged, no ellipsis.
+	tr.output = " 42%"
+	if p := tr.previewOutput(80); p != " 42%" {
+		t.Errorf("short preview = %q, want %q", p, " 42%")
+	}
+}
