@@ -33,7 +33,7 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 
 	width := 40
 	rendered := w.Render(width, false, styles,
-		NewStyle().Foreground(styles.ColorDim), NewStyle(), false)
+		NewStyle().Foreground(styles.ColorDim), false)
 
 	lines := w.border.lines
 	if len(lines) != w.LineCount() {
@@ -76,7 +76,7 @@ func TestWindowVisualLinesFolded(t *testing.T) {
 	w.AppendContent("hello world")
 
 	w.Render(40, false, styles,
-		NewStyle().Foreground(styles.ColorDim), NewStyle(), false)
+		NewStyle().Foreground(styles.ColorDim), false)
 
 	if len(w.border.lines) != 1 {
 		t.Fatalf("folded window should be 1 visual line, got %d: %q", len(w.border.lines), joinVisualLines(w.border.lines))
@@ -107,7 +107,7 @@ func TestWindowBufferLineHeightsAreVisual(t *testing.T) {
 		t.Fatal("AT window not found")
 	}
 	// Force a full render so border.lines is populated.
-	at.Render(40, false, wb.styles, wb.borderStyle, wb.cursorStyle, false)
+	at.Render(40, false, wb.styles, wb.borderStyle, false)
 	if got, want := wb.lineHeights[atIdx], len(at.border.lines); got != want {
 		t.Errorf("AT lineHeight = %d, border.lines = %d, want equal", got, want)
 	}

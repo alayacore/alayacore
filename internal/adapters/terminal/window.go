@@ -319,10 +319,7 @@ func (w *Window) RawDelta() string {
 // The cursor highlight colors the fold-state arrow with the selection
 // color; the arrow glyph itself comes from the theme; borders never
 // change color on navigation.
-//
-// cursorStyle is retained for API compatibility (callers still pass the
-// cursor border style); the cursor color now comes from styles.BorderCursor.
-func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _ Style, blocked bool) string {
+func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle Style, blocked bool) string {
 	if w.renderer == nil {
 		return ""
 	}

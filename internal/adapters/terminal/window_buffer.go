@@ -30,7 +30,6 @@ type WindowBuffer struct {
 	width       int
 	styles      *Styles
 	borderStyle Style
-	cursorStyle Style
 
 	// Line height tracking (for cursor navigation)
 	lineHeights []int
@@ -57,7 +56,6 @@ func NewWindowBuffer(width int, styles *Styles) *WindowBuffer {
 		width:       width,
 		styles:      styles,
 		borderStyle: NewStyle().Foreground(styles.ColorDim),
-		cursorStyle: NewStyle().Foreground(styles.BorderCursor),
 		lineHeights: []int{},
 		dirtyIndex:  dirtyClean,
 	}
@@ -90,7 +88,6 @@ func (wb *WindowBuffer) WithStyles(styles *Styles) {
 	defer wb.mu.Unlock()
 	wb.styles = styles
 	wb.borderStyle = NewStyle().Foreground(styles.ColorDim)
-	wb.cursorStyle = NewStyle().Foreground(styles.BorderCursor)
 	// Invalidate all windows to pick up new styles
 	for _, w := range wb.windows {
 		w.styles = styles // Update window's styles reference
@@ -492,7 +489,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 				wb.lineHeights[wb.dirtyIndex] = lc
 				wb.totalLines += lc - oldHeight
 			} else {
-				w.Render(wb.width, false, wb.styles, wb.borderStyle, wb.cursorStyle, blocked)
+				w.Render(wb.width, false, wb.styles, wb.borderStyle, blocked)
 				oldHeight := wb.lineHeights[wb.dirtyIndex]
 				newHeight := w.LineCount()
 				wb.lineHeights[wb.dirtyIndex] = newHeight
@@ -518,7 +515,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 					wb.totalLines++
 					continue
 				}
-				w.Render(wb.width, false, wb.styles, wb.borderStyle, wb.cursorStyle, blocked)
+				w.Render(wb.width, false, wb.styles, wb.borderStyle, blocked)
 				wb.lineHeights[i] = w.LineCount()
 				wb.totalLines += wb.lineHeights[i]
 			} else {
@@ -862,7 +859,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) ([]visualLine, []int) {
 	// Ensure the border cache is populated (lineHeights alone don't
 	// render folded windows — the fast path skips rendering).
-	w.Render(wb.width, false, wb.styles, wb.borderStyle, wb.cursorStyle, blocked)
+	w.Render(wb.width, false, wb.styles, wb.borderStyle, blocked)
 	lines := w.border.lines[from:to]
 
 	// Display widths are computed lazily and cached: Render fills them
@@ -915,7 +912,7 @@ func (wb *WindowBuffer) renderAll(cursorIndex int, blocked bool) string {
 		if firstWritten {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(w.Render(wb.width, cursorIndex == i, wb.styles, wb.borderStyle, wb.cursorStyle, blocked))
+		sb.WriteString(w.Render(wb.width, cursorIndex == i, wb.styles, wb.borderStyle, blocked))
 		firstWritten = true
 	}
 	return sb.String()
