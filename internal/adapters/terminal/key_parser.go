@@ -6,7 +6,8 @@ package terminal
 // The parser is a streaming state machine: incomplete escape sequences are
 // retained across reads, UTF-8 is decoded rune-wise, and bracketed paste
 // content (`\x1b[200~` ... `\x1b[201~`) is passed through verbatim as a
-// PasteMsg instead of being parsed as keys.
+// PasteMsg instead of being parsed as keys. Focus-reporting events
+// (`\x1b[I` / `\x1b[O`, enabled by Screen.Start) become FocusMsg/BlurMsg.
 //
 // Key string compatibility: KeyMsg.String() must produce exactly the same
 // strings bubbletea/ultraviolet produced, because the whole application
@@ -257,6 +258,19 @@ func (p *InputParser) Parse(data []byte) []any {
 		if seq == pasteStart {
 			p.inPaste = true
 			p.paste.Reset()
+			continue
+		}
+		// Focus reporting events (the terminal sends them because
+		// Screen.Start enables focus reporting): "\x1b[I" on focus gain,
+		// "\x1b[O" on focus loss. They are not keys — emit dedicated
+		// messages so Terminal can dim/blur the UI when the app loses
+		// OS-level focus.
+		if seq == "\x1b[I" {
+			msgs = append(msgs, FocusMsg{})
+			continue
+		}
+		if seq == "\x1b[O" {
+			msgs = append(msgs, BlurMsg{})
 			continue
 		}
 		k, ok := escapeKey(seq)

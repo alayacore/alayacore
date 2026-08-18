@@ -251,6 +251,49 @@ func TestKeyParserUnknownDropped(t *testing.T) {
 	}
 }
 
+// TestKeyParserFocusEvents verifies focus-reporting sequences (enabled by
+// Screen.Start) become FocusMsg/BlurMsg instead of being dropped — a
+// regression from the self-built parser (S1.1), which discarded them as
+// unknown CSI sequences and left the focus machinery dead.
+func TestKeyParserFocusEvents(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want Msg
+	}{
+		{"focus in", "\x1b[I", FocusMsg{}},
+		{"focus out", "\x1b[O", BlurMsg{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var p InputParser
+			msgs := p.Parse([]byte(tt.in))
+			if len(msgs) != 1 {
+				t.Fatalf("expected 1 msg, got %d: %#v", len(msgs), msgs)
+			}
+			if msgs[0] != tt.want {
+				t.Errorf("msg = %#v, want %#v", msgs[0], tt.want)
+			}
+		})
+	}
+}
+
+// TestKeyParserFocusEventsSplit verifies a focus sequence split across
+// reads is retained and resolved (pending handling).
+func TestKeyParserFocusEventsSplit(t *testing.T) {
+	var p InputParser
+	if msgs := p.Parse([]byte("\x1b[")); len(msgs) != 0 || !p.HasPending() {
+		t.Fatalf("expected pending state, got msgs=%#v pending=%v", msgs, p.HasPending())
+	}
+	msgs := p.Parse([]byte("I"))
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 msg, got %d: %#v", len(msgs), msgs)
+	}
+	if _, ok := msgs[0].(FocusMsg); !ok {
+		t.Errorf("msg = %T, want FocusMsg", msgs[0])
+	}
+}
+
 // TestKeyString verifies String()/Keystroke() parity with bubbletea formats.
 func TestKeyString(t *testing.T) {
 	tests := []struct {
