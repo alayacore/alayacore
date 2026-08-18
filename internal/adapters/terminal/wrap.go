@@ -55,6 +55,12 @@ func Wrap(s string, width int, breakpoints string) string {
 // pipeline relies on. It is a faithful port of lipgloss v2's WrapWriter
 // (which used ultraviolet's Style); the pen parsing and canonical SGR
 // re-emission are byte-compatible.
+//
+// The ansi.Parser is allocated once per WrapWriter (via ansi.GetParser
+// in NewWrapWriter, returned to the pool in Close). wrapContent and
+// Wrap call NewWrapWriter once per invocation, so the pool does see
+// reuse across consecutive renders — it is not allocated per line as
+// the audit suggested.
 type WrapWriter struct {
 	w     io.Writer
 	p     *ansi.Parser
