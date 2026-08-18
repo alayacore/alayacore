@@ -239,6 +239,13 @@ to the terminal (`ED2` + home + content + absolute CUP) and leaves it to
 the terminal to soft-wrap. Overlays are drawn with absolute cursor-position
 sequences instead of line compositing (see REFACTOR.md).
 
+The program runs the terminal in **raw mode** (`x/term` MakeRaw clears
+OPOST/ONLCR), so the renderer emits `\r\n` for every `\n` in the view
+content: a bare LF would only move the cursor down without returning it
+to column 0, spiraling every line after the first. The conversion is
+output-only — the view content itself keeps plain `\n`, so terminal
+selection still copies the original text.
+
 The wrapping breakpoints are **character-boundary** — a word wider than
 the line width is broken mid-word, matching how a typical terminal
 behaves.

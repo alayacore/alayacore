@@ -17,6 +17,7 @@ import (
 	"image/color"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/charmbracelet/x/ansi"
@@ -85,6 +86,14 @@ func (s *Screen) Stop() error {
 // Render clears the screen, homes the cursor, writes the content verbatim,
 // and positions the real cursor at the given position (or hides it). It is
 // a no-op when the content and cursor are unchanged since the last render.
+//
+// The content's '\n' characters are emitted as "\r\n": the program runs the
+// terminal in raw mode (x/term MakeRaw clears OPOST/ONLCR), so a bare '\n'
+// would only move the cursor down WITHOUT returning it to column 0 — every
+// line after the first would start at the column where the previous line
+// ended, spiraling the frame. The conversion is output-only; the view
+// content itself keeps plain '\n' (copy fidelity is unaffected — terminal
+// selection copies the rendered screen, not the emitted bytes).
 func (s *Screen) Render(content string, cur *Cursor) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -98,7 +107,11 @@ func (s *Screen) Render(content string, cur *Cursor) error {
 	var buf []byte
 	buf = append(buf, ansi.EraseDisplay(2)...)
 	buf = append(buf, ansi.CursorHomePosition...)
-	buf = append(buf, content...)
+	if strings.ContainsRune(content, '\n') {
+		buf = append(buf, strings.ReplaceAll(content, "\n", "\r\n")...)
+	} else {
+		buf = append(buf, content...)
+	}
 	if cur != nil {
 		// Absolute CUP: the terminal soft-wraps the content, so absolute
 		// positioning is the only reliable way to land on a cell. The

@@ -23,14 +23,33 @@ func TestScreenRenderRaw(t *testing.T) {
 	if !strings.HasPrefix(out, "\x1b[2J\x1b[H") {
 		t.Errorf("render should start with ED2+home, got %q", out[:min(len(out), 20)])
 	}
-	if !strings.Contains(out, "line1\nline2") {
-		t.Errorf("render should contain content verbatim, got %q", out)
+	if !strings.Contains(out, "line1\r\nline2") {
+		t.Errorf("render should emit CRLF for newlines (raw mode has no ONLCR), got %q", out)
+	}
+	if strings.Contains(out, "line1\nline2") {
+		t.Errorf("render must not emit bare LF newlines in raw mode, got %q", out)
 	}
 	if !strings.Contains(out, "\x1b[6;4H") {
 		t.Errorf("render should position cursor with absolute CUP (row 6, col 4), got %q", out)
 	}
 	if !strings.Contains(out, "\x1b[?25h") {
 		t.Errorf("render should show cursor, got %q", out)
+	}
+}
+
+// TestScreenRenderNoNewlinePassthrough verifies content without newlines is
+// written verbatim (no spurious CR).
+func TestScreenRenderNoNewlinePassthrough(t *testing.T) {
+	var buf bytes.Buffer
+	s := &Screen{out: &buf}
+	if err := s.Render("plain content", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "plain content") {
+		t.Errorf("content should be written verbatim, got %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "\r") {
+		t.Errorf("no-newline content should not gain CR, got %q", buf.String())
 	}
 }
 
