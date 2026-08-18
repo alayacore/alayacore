@@ -276,8 +276,6 @@ func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
 		}
 		if !hw.FilterInputFocused {
 			switch {
-			case key == keyTab:
-				hw = hw.handleTabToList()
 			case key == keyJ || key == keyDown:
 				hw = hw.moveDown()
 			case key == keyK || key == keyUp:
@@ -291,8 +289,6 @@ func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
 	}
 	return hw, nil
 }
-
-func (hw HelpWindow) handleTabToList() HelpWindow { return hw }
 
 func (hw HelpWindow) moveDown() HelpWindow {
 	for i := hw.SelectedIdx + 1; i < hw.filteredLen(); i++ {
