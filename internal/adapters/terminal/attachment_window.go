@@ -104,7 +104,6 @@ func (aw AttachmentWindow) Open() AttachmentWindow {
 	} else {
 		aw.FilterInput = aw.FilterInput.WithValue(aw.currentDir + "/")
 	}
-	aw.FilterInput.Prompt = "F "
 	return aw.loadDir(aw.currentDir)
 }
 
@@ -263,7 +262,6 @@ func (aw AttachmentWindow) toggleMode() AttachmentWindow {
 func (aw AttachmentWindow) switchToURL() AttachmentWindow {
 	aw.savedLocalPath = aw.FilterInput.Value()
 	aw.mode = modeURL
-	aw.FilterInput.Prompt = "U "
 	savedURL := aw.savedURLPath
 	aw.savedURLPath = ""
 	if savedURL != "" {
@@ -282,7 +280,6 @@ func (aw AttachmentWindow) switchToURL() AttachmentWindow {
 func (aw AttachmentWindow) switchToLocal() AttachmentWindow {
 	aw.savedURLPath = aw.FilterInput.Value()
 	aw.mode = modeLocal
-	aw.FilterInput.Prompt = "F "
 	saved := aw.savedLocalPath
 	aw.savedLocalPath = ""
 	if saved != "" {
@@ -566,10 +563,12 @@ func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
 		}
 
 		truncated := truncateWithSuffix(name, max(1, innerWidth-2))
+		// Rows are flush left like every other overlay list — no "> "
+		// marker, no indent. Selection is highlighted via the Text style.
 		if isSelected {
-			content.WriteString(aw.Styles.Prompt.Render("> ") + aw.Styles.Text.Render(truncated))
+			content.WriteString(aw.Styles.Text.Render(truncated))
 		} else {
-			content.WriteString(aw.Styles.System.Render("  " + truncated))
+			content.WriteString(aw.Styles.System.Render(truncated))
 		}
 		if i < min(aw.ScrollIdx+listHeight, len(aw.filtered))-1 {
 			content.WriteString("\n")

@@ -90,7 +90,7 @@ Enter a remote URL to attach as an attachment.
 | `Ctrl+A` | Switch to local mode |
 | `Esc` | Close picker without adding |
 
-The prompt prefix indicates the current mode: `F` for local, `U` for URL.
+The path input is a bare input like every other overlay filter — no prompt prefix (the old `F`/`U` markers were removed). The current mode is discoverable from the help bar (`ctrl+a: switch to URL` / `switch to local`). File list rows render flush left, no `> ` marker; the selection is highlighted by the text color.
 
 ### Attachment Types
 
