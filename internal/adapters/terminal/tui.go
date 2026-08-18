@@ -977,6 +977,3 @@ type OverlayAction struct {
 	OpenedConfirm     bool
 	InitOverlayActive bool
 }
-
-// ensure Terminal implements Model
-var _ Model = Terminal{}
