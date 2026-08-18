@@ -174,13 +174,13 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 		// in. With the cursor hidden first and only changed rows written,
 		// small changes repaint a few rows in place.
 		buf = append(buf, ansi.ResetModeTextCursorEnable...)
-		buf = append(buf, diffFrameRows(s.lastContent, content)...)
+		buf = append(buf, diffFrameRows(s.lastContent, content, s.width)...)
 		// Non-overlay frames: the last row (status bar) is short; when the
 		// frame shrank or the last row changed, clear from its end so no
 		// tail residue survives.
 		if !hadOverlay {
-			if lr, ok := lastBaseRow(parseFrameRows(content)); ok {
-				if needTailErase(s.lastContent, content) {
+			if lr, ok := lastBaseTerminalRow(content, s.width); ok {
+				if needTailErase(s.lastContent, content, s.width) {
 					buf = append(buf, ansi.CursorPosition(ansi.StringWidth(lr.text)+1, lr.row+1)...)
 					buf = append(buf, ansi.EraseDisplay(0)...)
 				}
@@ -333,14 +333,81 @@ func parseCUP(seq string) (row, col int, ok bool) {
 	return row, col, true
 }
 
-// lastBaseRow returns the last sequential base row (the base content's
-// final row — the status bar in full-screen frames).
-func lastBaseRow(rows []frameRow) (frameRow, bool) {
+// positionedRow is a parsed frame row with its terminal position. Base
+// rows are positioned at their soft-wrapped terminal row (the accumulated
+// wrap count from (0,0)); overlay rows keep their absolute CUP
+// coordinates. terminalRows is the soft-wrap count of a base row: 1 for
+// rows that fit the terminal width, >1 for over-long rows the terminal
+// soft-wraps to several terminal rows.
+type positionedRow struct {
+	frameRow
+	terminalRows int
+}
+
+// positionedRows parses a frame and assigns every base row its TERMINAL
+// row — the row where the terminal actually renders it after soft-wrap.
+// Base rows flow sequentially from (0,0), and a logical row whose display
+// width exceeds the terminal width occupies several terminal rows, so the
+// position is the accumulated wrap count, not the newline index.
+// Overlay rows (CUP-positioned — input box, status bar, overlay boxes)
+// keep their absolute coordinates: they are anchored with absolute CUP by
+// design, so their position does not depend on how many terminal rows the
+// base content wrapped to, and they are padded to the full terminal width
+// so they never wrap themselves.
+func positionedRows(content string, width int) []positionedRow {
+	rows := parseFrameRows(content)
+	out := make([]positionedRow, 0, len(rows))
+	term := 0
+	for _, r := range rows {
+		pr := positionedRow{frameRow: r, terminalRows: 1}
+		if r.base {
+			pr.frameRow.row = term
+			pr.terminalRows = baseTerminalRows(r.text, width)
+			term += pr.terminalRows
+		}
+		out = append(out, pr)
+	}
+	return out
+}
+
+// baseTerminalRows returns the number of terminal rows a base logical row
+// occupies at the given width (its soft-wrap count). A blank row still
+// occupies one row; a row whose display width exceeds the width wraps to
+// ceil(width/terminalWidth) rows. With an unknown width (0) every row
+// counts as one — the pre-soft-wrap behavior (rows that fit are 1:1).
+func baseTerminalRows(text string, width int) int {
+	if width <= 0 {
+		return 1
+	}
+	w := ansi.StringWidth(text)
+	if w <= 0 {
+		return 1
+	}
+	return (w + width - 1) / width
+}
+
+// baseCovered reports whether any terminal row a base row occupies is
+// covered by an overlay row in the same frame (the overlay is the top
+// layer — the base must not be rewritten underneath it).
+func baseCovered(r positionedRow, covered map[int]bool) bool {
+	for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
+		if covered[row] {
+			return true
+		}
+	}
+	return false
+}
+
+// lastBaseTerminalRow returns the last sequential base row with its
+// TERMINAL row position (soft-wrap aware — base rows may wrap to several
+// terminal rows, so the newline index is not the row it renders on).
+func lastBaseTerminalRow(content string, width int) (frameRow, bool) {
+	rows := positionedRows(content, width)
 	var last frameRow
 	found := false
 	for _, r := range rows {
 		if r.base {
-			last = r
+			last = r.frameRow
 			found = true
 		}
 	}
@@ -351,47 +418,56 @@ func lastBaseRow(rows []frameRow) (frameRow, bool) {
 // new, and clears (EL) overlay rows that disappeared. Base rows that
 // disappeared are handled by the caller's tail erase.
 //
+// Positions are TERMINAL rows: base rows are keyed and positioned by
+// their soft-wrapped position (positionedRows), so a logical row that
+// wraps to several terminal rows does not shift the CUP coordinates of
+// the rows below it — the starting position is the accumulated wrap
+// count, not the newline index. Without this, any frame containing a row
+// wider than the terminal (soft-wrapped assistant content, tool output)
+// would paint every changed row below it at the wrong screen row,
+// overwriting content and misaligning the display.
+//
 // Overlap rule: overlay boxes span the FULL terminal width by design (they
 // start at column 1), so overlay rows share row coordinates with the base
 // rows. A base row that an overlay row covers in the new frame is NEVER
 // rewritten — the overlay is the top layer, and rewriting the base
 // underneath would wipe the overlay.
-func diffFrameRows(oldContent, newContent string) []byte {
-	oldRows := parseFrameRows(oldContent)
-	newRows := parseFrameRows(newContent)
+func diffFrameRows(oldContent, newContent string, width int) []byte {
+	oldRows := positionedRows(oldContent, width)
+	newRows := positionedRows(newContent, width)
 
 	key := func(r frameRow) [3]int { return [3]int{r.row, r.col, boolInt(r.base)} }
 	oldMap := make(map[[3]int]string, len(oldRows))
 	for _, r := range oldRows {
-		oldMap[key(r)] = r.text
+		oldMap[key(r.frameRow)] = r.frameRow.text
 	}
 	newMap := make(map[[3]int]bool, len(newRows))
 	coveredByOverlay := make(map[int]bool)
 	for _, r := range newRows {
-		newMap[key(r)] = true
+		newMap[key(r.frameRow)] = true
 		if !r.base {
-			coveredByOverlay[r.row] = true
+			coveredByOverlay[r.frameRow.row] = true
 		}
 	}
 
 	var buf []byte
 	for _, r := range newRows {
-		if r.base && coveredByOverlay[r.row] {
-			// Overlay covers this row in the new frame — do not rewrite
-			// the base underneath.
+		if r.base && baseCovered(r, coveredByOverlay) {
+			// Overlay covers part of this row in the new frame — do not
+			// rewrite the base underneath.
 			continue
 		}
-		if oldText, ok := oldMap[key(r)]; !ok || oldText != r.text {
-			buf = append(buf, ansi.CursorPosition(r.col+1, r.row+1)...)
-			buf = append(buf, r.text...)
+		if oldText, ok := oldMap[key(r.frameRow)]; !ok || oldText != r.frameRow.text {
+			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, r.frameRow.row+1)...)
+			buf = append(buf, r.frameRow.text...)
 		}
 	}
 	// Rows the old frame drew that the new frame no longer draws: clear
 	// absolute (overlay) rows in place; base rows are handled by the tail
 	// erase (they are sequential from the top).
 	for _, r := range oldRows {
-		if !r.base && !newMap[key(r)] {
-			buf = append(buf, ansi.CursorPosition(r.col+1, r.row+1)...)
+		if !r.base && !newMap[key(r.frameRow)] {
+			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, r.frameRow.row+1)...)
 			buf = append(buf, ansi.EraseLine(0)...)
 		}
 	}
@@ -409,10 +485,11 @@ func boolInt(b bool) int {
 // needTailErase reports whether a steady non-overlay frame needs the
 // trailing ED0: the new frame is shorter than the old one (rows below
 // would survive), or the last base row changed (its short tail — the
-// status bar is not padded — must be wiped).
-func needTailErase(oldContent, newContent string) bool {
-	oldLast, oldOK := lastBaseRow(parseFrameRows(oldContent))
-	newLast, newOK := lastBaseRow(parseFrameRows(newContent))
+// status bar is not padded — must be wiped). Positions are TERMINAL rows
+// (soft-wrap aware), not newline indices.
+func needTailErase(oldContent, newContent string, width int) bool {
+	oldLast, oldOK := lastBaseTerminalRow(oldContent, width)
+	newLast, newOK := lastBaseTerminalRow(newContent, width)
 	if !oldOK || !newOK {
 		return newOK
 	}
