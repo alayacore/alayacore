@@ -19,9 +19,6 @@ var darkThemeContent string
 //go:embed light.conf
 var lightThemeContent string
 
-//go:embed redpanda.conf
-var redpandaThemeContent string
-
 // Theme holds all color values for the UI.
 // Each field maps to a key in the .conf theme files.
 type Theme struct {

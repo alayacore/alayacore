@@ -46,16 +46,13 @@ func (tm *Manager) initializeThemesFolder() {
 	}
 }
 
-// createDefaultThemes writes the three built-in themes from embedded content.
+// createDefaultThemes writes the built-in themes from embedded content.
 func (tm *Manager) createDefaultThemes() {
 	darkPath := filepath.Join(tm.themesFolder, "theme-dark.conf")
 	_ = os.WriteFile(darkPath, []byte(darkThemeContent), 0600)
 
 	lightPath := filepath.Join(tm.themesFolder, "theme-light.conf")
 	_ = os.WriteFile(lightPath, []byte(lightThemeContent), 0600)
-
-	redpandaPath := filepath.Join(tm.themesFolder, "theme-redpanda.conf")
-	_ = os.WriteFile(redpandaPath, []byte(redpandaThemeContent), 0600)
 }
 
 // ReloadThemes reloads the list of available themes from the themes folder.

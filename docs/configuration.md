@@ -8,8 +8,7 @@ AlayaCore has three configuration files: model config, runtime config, and theme
 ├── runtime.conf      # Active model/theme selections (auto-managed)
 └── themes/
     ├── theme-dark.conf
-    ├── theme-light.conf
-    └── theme-redpanda.conf
+    └── theme-light.conf
 ```
 
 ## Config Directory
@@ -146,7 +145,7 @@ When a session starts (or reloads via `:model_load`), the active model is resolv
 
 **Location**: `<config-path>/themes/`
 
-Themes are `.conf` files that define the TUI color scheme. If the themes directory doesn't exist, AlayaCore creates it with three defaults: `theme-dark.conf` (Catppuccin Mocha, the default), `theme-light.conf` (Catppuccin Latte), and `theme-redpanda.conf` (warm reddish-brown palette from [Redpanda](https://github.com/redpanda-data/redpanda-terminal-themes)).
+Themes are `.conf` files that define the TUI color scheme. If the themes directory doesn't exist, AlayaCore creates it with two defaults: `theme-dark.conf` (Catppuccin Mocha, the default) and `theme-light.conf` (Catppuccin Latte).
 
 ### Theme File Format
 
