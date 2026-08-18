@@ -154,8 +154,10 @@ func (to *outputWriter) writeColored(tag string, value string) {
 
 	// Flush any pending deltas before processing a non-delta frame.
 	// This ensures the WindowBuffer reflects the latest accumulated content
-	// before authoritative frames (AT, AR, AF, UF, etc.) arrive.
-	if !isDeltaTag(tag) {
+	// before authoritative frames (AT, AR, AF, UF, etc.) arrive. Both
+	// accumulating and write-through deltas skip the flush — flushing
+	// mid-stream would corrupt pending state.
+	if !isAccumulatingDelta(tag) && !isWriteThroughDelta(tag) {
 		to.flushPendingDeltas()
 	}
 
@@ -305,30 +307,53 @@ func (to *outputWriter) writeColored(tag string, value string) {
 
 // triggerUpdateForTag marks the display as dirty for tags that modify the display.
 //
-// Most delta tags (At, Ar, Af) are NOT included — they only accumulate pending
-// data without modifying WindowBuffer; the dirty flag is set by
-// flushPendingDeltas() when accumulated deltas are written to WindowBuffer.
-// Uf is the exception: it updates the window directly (snapshot semantics),
-// so it must set dirty immediately.
-//
-// TagSystemMsg is NOT listed here because handleSystemMsg() calls dirty.Store(true)
-// after processing, so it doesn't need the early dirty flag from this function.
+// All tags that mutate the WindowBuffer (authoritative + accumulating +
+// write-through deltas) set dirty. The split between isAccumulatingDelta
+// and isWriteThroughDelta captures the *flush* semantics (whether flush-
+// PendingDeltas should fire on arrival); triggerUpdateForTag captures the
+// *redraw* semantics independently.
 func (to *outputWriter) triggerUpdateForTag(tag string) {
-	switch tag {
-	case tlv.TagAssistantT, tlv.TagAssistantR, tlv.TagAssistantF,
-		tlv.TagUserT, tlv.TagUserF, tlv.TagUserI, tlv.TagUserV, tlv.TagUserA, tlv.TagUserD,
-		tlv.TagUserFDelta: // Uf updates the window directly (no pending coalescing)
+	if tagsThatSetDirty[tag] {
 		to.dirty.Store(true)
 	}
 }
 
-// isDeltaTag reports whether a frame is a streaming delta tag.
-// Delta tags do not trigger flushPendingDeltas() when they arrive (they
-// either accumulate in the pending maps — At/Ar/Af — or, for Uf, update
-// the window directly and must not interleave with a pending flush).
-func isDeltaTag(tag string) bool {
-	return tag == tlv.TagAssistantTDelta || tag == tlv.TagAssistantRDelta ||
-		tag == tlv.TagAssistantFDelta || tag == tlv.TagUserFDelta
+// isAccumulatingDelta reports whether a frame is an accumulating delta
+// (At/Ar/Af). These tags accumulate content in pending maps instead of
+// touching the window directly, so they do not trigger flushPendingDeltas
+// on arrival — flushing mid-stream would interleave authoritative frames
+// incorrectly.
+func isAccumulatingDelta(tag string) bool {
+	switch tag {
+	case tlv.TagAssistantTDelta, tlv.TagAssistantRDelta, tlv.TagAssistantFDelta:
+		return true
+	}
+	return false
+}
+
+// isWriteThroughDelta reports whether a frame is a write-through delta
+// (Uf). It updates the window directly (snapshot semantics, no coalescing)
+// and also does not trigger flushPendingDeltas on arrival.
+func isWriteThroughDelta(tag string) bool {
+	return tag == tlv.TagUserFDelta
+}
+
+// tagsThatSetDirty marks tags whose arrival requires a redraw. At/Ar/Af
+// are NOT in this set: they accumulate pending data without modifying
+// WindowBuffer, and the dirty flag is set by flushPendingDeltas() when
+// those pending deltas are eventually written out. Uf IS in the set
+// because it updates the window directly (snapshot semantics).
+var tagsThatSetDirty = map[string]bool{
+	tlv.TagAssistantT: true,
+	tlv.TagAssistantR: true,
+	tlv.TagAssistantF: true,
+	tlv.TagUserT:      true,
+	tlv.TagUserF:      true,
+	tlv.TagUserI:      true,
+	tlv.TagUserV:      true,
+	tlv.TagUserA:      true,
+	tlv.TagUserD:      true,
+	tlv.TagUserFDelta: true,
 }
 
 // pendTextDelta accumulates a text delta ("At" / "Ar") for coalescing.
