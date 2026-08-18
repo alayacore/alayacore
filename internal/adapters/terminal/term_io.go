@@ -16,10 +16,9 @@ import (
 
 // TTY wraps the terminal's input/output files and raw-mode state.
 type TTY struct {
-	in     *os.File
-	out    *os.File
-	state  *term.State
-	buffer []byte // internal buffer for reads that produced more than asked
+	in    *os.File
+	out   *os.File
+	state *term.State
 }
 
 // OpenTTY opens the terminal's input and output files (see file comment).
@@ -57,20 +56,9 @@ func (t *TTY) Restore() error {
 	return err
 }
 
-// Read reads bytes from the terminal. Bytes buffered by a previous read
-// (when the caller's buffer was smaller than the available input) are
-// returned first.
+// Read reads bytes from the terminal.
 func (t *TTY) Read(p []byte) (int, error) {
-	if len(t.buffer) > 0 {
-		n := copy(p, t.buffer)
-		t.buffer = t.buffer[n:]
-		return n, nil
-	}
-	n, err := t.in.Read(p)
-	if err != nil {
-		return n, err
-	}
-	return n, nil
+	return t.in.Read(p)
 }
 
 // Close closes the underlying input and output files.

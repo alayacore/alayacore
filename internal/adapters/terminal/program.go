@@ -229,10 +229,13 @@ func Run(model Model) (Model, error) {
 		return model, err
 	}
 
-	// Restore the terminal on every exit path (including panics).
+	// Restore the terminal on every exit path (including panics), then
+	// release the file handles (they may be /dev/tty or CONIN$/CONOUT$
+	// opened by OpenTTY, not the process's own stdin/stdout).
 	defer func() {
 		_ = p.screen.Stop()
 		_ = tty.Restore()
+		_ = tty.Close()
 	}()
 
 	return p.run(model)
