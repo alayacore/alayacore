@@ -1,6 +1,9 @@
 package terminal
 
-// Focus management: input/display focus switching, blur/focus handling, paste.
+// Focus management: input/display focus switching, blur/focus handling,
+// and the Terminal-level paste dispatcher that routes PasteMsg into the
+// focused input field. Per-input-field paste handling lives in
+// input_field.go's InputField.handlePaste.
 //
 // Extracted from tui.go.
 
