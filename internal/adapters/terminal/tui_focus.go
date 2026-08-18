@@ -4,8 +4,6 @@ package terminal
 //
 // Extracted from tui.go.
 
-import tea "charm.land/bubbletea/v2"
-
 // toggleFocus switches between display and input windows.
 func (m Terminal) toggleFocus() Terminal {
 	if m.focusedWindow == focusDisplay {
@@ -186,13 +184,13 @@ func (m Terminal) handleFocus() Terminal {
 }
 
 // handlePaste handles clipboard paste events.
-func (m Terminal) handlePaste(msg tea.PasteMsg) (Terminal, tea.Cmd) {
+func (m Terminal) handlePaste(msg PasteMsg) (Terminal, Cmd) {
 	if m.attachmentWindow.IsOpen() {
 		aw, cmd := m.attachmentWindow.Update(msg)
 		m.attachmentWindow = aw
 		return m, cmd
 	}
-	var cmd tea.Cmd
+	var cmd Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
 }

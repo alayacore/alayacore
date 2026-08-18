@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -156,11 +155,11 @@ func isDirEntry(dir string, e os.DirEntry) bool {
 }
 
 // Update handles all messages for the attachment window: key events and paste.
-func (aw AttachmentWindow) Update(msg tea.Msg) (AttachmentWindow, tea.Cmd) {
+func (aw AttachmentWindow) Update(msg Msg) (AttachmentWindow, Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case KeyMsg:
 		return aw.updateForKeyMsg(msg)
-	case tea.PasteMsg:
+	case PasteMsg:
 		if !aw.FilterInputFocused {
 			return aw, nil
 		}
@@ -174,7 +173,7 @@ func (aw AttachmentWindow) Update(msg tea.Msg) (AttachmentWindow, tea.Cmd) {
 }
 
 //nolint:gocyclo
-func (aw AttachmentWindow) updateForKeyMsg(msg tea.KeyMsg) (AttachmentWindow, tea.Cmd) {
+func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
 	if aw.State == FilteredListClosed {
 		return aw, nil
 	}
@@ -202,7 +201,7 @@ func (aw AttachmentWindow) updateForKeyMsg(msg tea.KeyMsg) (AttachmentWindow, te
 		aw = aw.handleURLEntry()
 		if aw.selectedPath != "" {
 			path := aw.selectedPath
-			return aw, func() tea.Msg { return AttachmentSelectedMsg{Path: path} }
+			return aw, func() Msg { return AttachmentSelectedMsg{Path: path} }
 		}
 		return aw, nil
 	}
@@ -228,7 +227,7 @@ func (aw AttachmentWindow) updateForKeyMsg(msg tea.KeyMsg) (AttachmentWindow, te
 		// If a path was selected, send it as a message
 		if aw.selectedPath != "" {
 			path := aw.selectedPath
-			return aw, func() tea.Msg { return AttachmentSelectedMsg{Path: path} }
+			return aw, func() Msg { return AttachmentSelectedMsg{Path: path} }
 		}
 		return aw, result.Cmd
 	}
@@ -501,11 +500,11 @@ func (aw AttachmentWindow) deletePathSegment() AttachmentWindow {
 	return aw
 }
 
-func (aw AttachmentWindow) View() tea.View {
+func (aw AttachmentWindow) View() View {
 	if aw.State == FilteredListClosed {
-		return tea.NewView("")
+		return NewView("")
 	}
-	return tea.NewView(aw.render())
+	return NewView(aw.render())
 }
 
 func (aw AttachmentWindow) render() string {

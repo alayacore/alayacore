@@ -3,7 +3,6 @@ package terminal
 import (
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -28,7 +27,7 @@ func TestSpaceKeyTogglesFold(t *testing.T) {
 	}
 
 	// Press Space key to fold
-	msg := tea.KeyPressMsg(tea.Key{Code: ' '})
+	msg := KeyPressMsg(Key{Code: ' '})
 
 	model, cmd := terminal.Update(msg)
 
@@ -47,7 +46,7 @@ func TestSpaceKeyTogglesFold(t *testing.T) {
 	}
 
 	// Press Space again to unfold
-	msg = tea.KeyPressMsg(tea.Key{Code: ' '})
+	msg = KeyPressMsg(Key{Code: ' '})
 	terminal.Update(msg)
 
 	// Window should be unfolded again
@@ -64,7 +63,7 @@ func TestSpaceKeyDoesNothingInInputWindow(t *testing.T) {
 	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello world")
 
 	// Press Space key while in input window
-	msg := tea.KeyPressMsg(tea.Key{Code: ' '})
+	msg := KeyPressMsg(Key{Code: ' '})
 
 	model, cmd := terminal.Update(msg)
 
@@ -89,7 +88,7 @@ func TestSpaceKeyDoesNothingWithNoWindow(t *testing.T) {
 	terminal.display = terminal.display.WithWindowCursor(-1)
 
 	// Press Space key
-	msg := tea.KeyPressMsg(tea.Key{Code: ' '})
+	msg := KeyPressMsg(Key{Code: ' '})
 
 	model, cmd := terminal.Update(msg)
 

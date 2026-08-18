@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -29,7 +28,7 @@ func TestTerminalResizeCursorValidation(t *testing.T) {
 	}
 
 	// Simulate a resize event
-	resizeMsg := tea.WindowSizeMsg{
+	resizeMsg := WindowSizeMsg{
 		Width:  120, // Wider terminal
 		Height: 40,  // Taller terminal
 	}
@@ -62,7 +61,7 @@ func TestTerminalResizeClampsCursor(t *testing.T) {
 	terminal.display.windowCursor = 10
 
 	// Simulate resize
-	resizeMsg := tea.WindowSizeMsg{
+	resizeMsg := WindowSizeMsg{
 		Width:  100,
 		Height: 30,
 	}
@@ -103,7 +102,7 @@ func TestTerminalResizeUpdatesDisplayContent(t *testing.T) {
 	initialContent := initialView.Content
 
 	// Simulate a resize to a narrower width
-	resizeMsg := tea.WindowSizeMsg{
+	resizeMsg := WindowSizeMsg{
 		Width:  40, // Narrower terminal
 		Height: 24,
 	}

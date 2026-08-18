@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
 )
 
 // assertInputFieldInvariants checks the rendering/cursor invariants after
@@ -146,15 +144,15 @@ func TestInputFieldFuzzInvariants(t *testing.T) {
 				case 0, 1, 2: // insert printable rune
 					r := chars[rng.Intn(len(chars))]
 					desc = fmt.Sprintf("insert %q", string(r))
-					g, _ = g.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+					g, _ = g.Update(KeyPressMsg{Text: string(r), Code: r})
 				case 3: // backspace / delete
 					k := keys[6+rng.Intn(2)]
 					desc = k
-					g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: k, Code: 0})
+					g, _ = g.handleKeyMsg(KeyPressMsg{Text: k, Code: 0})
 				case 4, 5: // movement
 					k := keys[rng.Intn(6)]
 					desc = k
-					g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: k, Code: 0})
+					g, _ = g.handleKeyMsg(KeyPressMsg{Text: k, Code: 0})
 				case 6: // paste with newlines (and multi-rune grapheme clusters)
 					// Multi-rune clusters exercise the grapheme-aware width
 					// model: ❤️ (VS16), family emoji (ZWJ), ✔️ (VS16),
@@ -166,7 +164,7 @@ func TestInputFieldFuzzInvariants(t *testing.T) {
 						content = "\n" + content // leading newline edge case
 					}
 					desc = fmt.Sprintf("paste %q", content)
-					g, _ = g.Update(tea.PasteMsg{Content: content})
+					g, _ = g.Update(PasteMsg{Content: content})
 				case 7: // cursor jump
 					desc = "setpos"
 					g = g.WithCursorPos(rng.Intn(len(g.value) + 1))

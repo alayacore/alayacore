@@ -3,17 +3,15 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
 )
 
 func TestInputFieldInsertion(t *testing.T) {
 	f := NewInputField()
 	f.WithWidth(20)
 
-	// Simulate real app flow: call Update with tea.KeyPressMsg
-	// passed as tea.Msg interface, the way updateFromMsg does it.
-	var msg tea.Msg = tea.KeyPressMsg{Text: "h", Code: 'h'}
+	// Simulate real app flow: call Update with KeyPressMsg
+	// passed as Msg interface, the way updateFromMsg does it.
+	var msg Msg = KeyPressMsg{Text: "h", Code: 'h'}
 	f, _ = f.Update(msg)
 	if f.Value() != "h" {
 		t.Errorf("expected value 'h', got %q", f.Value())
@@ -22,7 +20,7 @@ func TestInputFieldInsertion(t *testing.T) {
 		t.Errorf("expected pos=1, got %d", f.pos)
 	}
 
-	msg = tea.KeyPressMsg{Text: "e", Code: 'e'}
+	msg = KeyPressMsg{Text: "e", Code: 'e'}
 	f, _ = f.Update(msg)
 	if f.Value() != "he" {
 		t.Errorf("expected value 'he', got %q", f.Value())
@@ -32,10 +30,10 @@ func TestInputFieldInsertion(t *testing.T) {
 	}
 
 	// Type "l", "l", "o"
-	msg = tea.KeyPressMsg{Text: "l", Code: 'l'}
+	msg = KeyPressMsg{Text: "l", Code: 'l'}
 	f, _ = f.Update(msg)
 	f, _ = f.Update(msg)
-	msg = tea.KeyPressMsg{Text: "o", Code: 'o'}
+	msg = KeyPressMsg{Text: "o", Code: 'o'}
 	f, _ = f.Update(msg)
 
 	if f.Value() != "hello" {
@@ -50,14 +48,14 @@ func TestInputFieldBackspace(t *testing.T) {
 	f := NewInputField()
 	f.WithWidth(20)
 
-	f, _ = f.Update(tea.KeyPressMsg{Text: "a", Code: 'a'})
-	f, _ = f.Update(tea.KeyPressMsg{Text: "b", Code: 'b'})
+	f, _ = f.Update(KeyPressMsg{Text: "a", Code: 'a'})
+	f, _ = f.Update(KeyPressMsg{Text: "b", Code: 'b'})
 
 	if f.Value() != "ab" || f.pos != 2 {
 		t.Fatalf("expected 'ab' pos=2, got %q pos=%d", f.Value(), f.pos)
 	}
 
-	f, _ = f.Update(tea.KeyPressMsg{Text: "backspace", Code: tea.KeyBackspace})
+	f, _ = f.Update(KeyPressMsg{Text: "backspace", Code: KeyBackspace})
 	if f.Value() != "a" {
 		t.Errorf("expected value 'a', got %q", f.Value())
 	}
@@ -70,7 +68,7 @@ func TestInputFieldCJKInsertion(t *testing.T) {
 	f := NewInputField()
 	f.WithWidth(20)
 
-	var msg tea.Msg = tea.KeyPressMsg{Text: "你", Code: '你'}
+	var msg Msg = KeyPressMsg{Text: "你", Code: '你'}
 	f, _ = f.Update(msg)
 	if f.Value() != "你" {
 		t.Errorf("expected value '你', got %q", f.Value())
@@ -79,7 +77,7 @@ func TestInputFieldCJKInsertion(t *testing.T) {
 		t.Errorf("expected pos=1, got %d", f.pos)
 	}
 
-	msg = tea.KeyPressMsg{Text: "好", Code: '好'}
+	msg = KeyPressMsg{Text: "好", Code: '好'}
 	f, _ = f.Update(msg)
 	if f.Value() != "你好" {
 		t.Errorf("expected value '你好', got %q", f.Value())
@@ -178,10 +176,10 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 	f = f.WithWidth(20)
 
 	for _, r := range "你好世界你好世界你好世" {
-		f, _ = f.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+		f, _ = f.Update(KeyPressMsg{Text: string(r), Code: r})
 	}
-	f, _ = f.Update(tea.KeyPressMsg{Text: "a", Code: 'a'})
-	f, _ = f.Update(tea.KeyPressMsg{Text: "你", Code: '你'})
+	f, _ = f.Update(KeyPressMsg{Text: "a", Code: 'a'})
+	f, _ = f.Update(KeyPressMsg{Text: "你", Code: '你'})
 
 	vis := f.buildVisibleText()
 	if cell, want := f.CursorCell(), runesWidth(vis); cell != want {
@@ -200,7 +198,7 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 			g := NewInputField()
 			g = g.WithWidth(width)
 			for _, r := range chars[:n] {
-				g, _ = g.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+				g, _ = g.Update(KeyPressMsg{Text: string(r), Code: r})
 			}
 			vis := g.buildVisibleText()
 			if cell, want := g.CursorCell(), runesWidth(vis); cell != want {
@@ -217,7 +215,7 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 		g := NewInputField()
 		g = g.WithWidth(width)
 		for _, r := range "你好世界" {
-			g, _ = g.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+			g, _ = g.Update(KeyPressMsg{Text: string(r), Code: r})
 		}
 		vis := g.buildVisibleText()
 		if cell, want := g.CursorCell(), runesWidth(vis); cell != want {
@@ -325,11 +323,11 @@ func TestInputFieldCursorNeverClipsWideRune(t *testing.T) {
 			g = g.WithValue(val).CursorEnd()
 			assertCursorRuneVisible(t, g)
 			for p := n - 1; p >= 0; p-- {
-				g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: "left", Code: 0})
+				g, _ = g.handleKeyMsg(KeyPressMsg{Text: "left", Code: 0})
 				assertCursorRuneVisible(t, g)
 			}
 			for p := 1; p <= n; p++ {
-				g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: "right", Code: 0})
+				g, _ = g.handleKeyMsg(KeyPressMsg{Text: "right", Code: 0})
 				assertCursorRuneVisible(t, g)
 			}
 		}
@@ -348,9 +346,9 @@ func TestInputFieldViewCursorPosition(t *testing.T) {
 
 	// Type "hello" through Update calls
 	keys := []string{"h", "e", "l", "l", "o"}
-	var msg tea.Msg
+	var msg Msg
 	for _, k := range keys {
-		msg = tea.KeyPressMsg{Text: k, Code: rune(k[0])}
+		msg = KeyPressMsg{Text: k, Code: rune(k[0])}
 		f, _ = f.Update(msg)
 	}
 

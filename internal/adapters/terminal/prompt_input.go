@@ -6,7 +6,6 @@ package terminal
 import (
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -44,19 +43,19 @@ func NewPromptInput(styles *Styles) PromptInput {
 		width:   DefaultWidth,
 	}
 }
-func (m PromptInput) Init() tea.Cmd {
+func (m PromptInput) Init() Cmd {
 	return nil
 }
 
 // Update handles messages for the prompt input.
-func (m PromptInput) Update(msg tea.Msg) (PromptInput, tea.Cmd) {
-	var cmd tea.Cmd
-	if msg, ok := msg.(tea.WindowSizeMsg); ok {
+func (m PromptInput) Update(msg Msg) (PromptInput, Cmd) {
+	var cmd Cmd
+	if msg, ok := msg.(WindowSizeMsg); ok {
 		m.width = msg.Width
 		m.input = m.input.WithWidth(max(0, msg.Width))
 	}
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == keyCtrlO {
-		return m, func() tea.Msg {
+	if keyMsg, ok := msg.(KeyMsg); ok && keyMsg.String() == keyCtrlO {
+		return m, func() Msg {
 			return openEditorForPromptMsg{content: m.input.Value()}
 		}
 	}
@@ -66,7 +65,7 @@ func (m PromptInput) Update(msg tea.Msg) (PromptInput, tea.Cmd) {
 
 // View renders the input field with border, attachments above if present.
 // When blocked is true, content is dimmed (overlay active).
-func (m PromptInput) View() tea.View {
+func (m PromptInput) View() View {
 	borderColor := m.styles.BorderFocused
 	if !m.focused {
 		borderColor = m.styles.BorderBlurred
@@ -96,12 +95,12 @@ func (m PromptInput) View() tea.View {
 		sb.WriteString(separator)
 		sb.WriteString("\n")
 		sb.WriteString(content)
-		return tea.NewView(m.styles.RenderOpenBox(sb.String(), m.width, borderColor))
+		return NewView(m.styles.RenderOpenBox(sb.String(), m.width, borderColor))
 	}
 	if m.blocked {
 		content = m.styles.Input.Foreground(m.styles.ColorDim).Render(content)
 	}
-	return tea.NewView(m.styles.RenderOpenBox(content, m.width, borderColor))
+	return NewView(m.styles.RenderOpenBox(content, m.width, borderColor))
 }
 
 // updateInputStyles updates the text input styles based on current theme.
@@ -184,7 +183,7 @@ func (m PromptInput) Height() int {
 }
 
 // OpenEditor opens the external editor for multi-line input.
-func (m Terminal) OpenEditor() tea.Cmd {
+func (m Terminal) OpenEditor() Cmd {
 	return m.editor.Open(m.input.Value())
 }
 

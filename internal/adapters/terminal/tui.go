@@ -18,8 +18,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -125,23 +123,23 @@ type openEditorForPromptMsg struct {
 	content string
 }
 
-// emitCommand returns a tea.Cmd that sends a user-level command to the
+// emitCommand returns a Cmd that sends a user-level command to the
 // session as a CI frame when executed by Bubble Tea's runtime.
 // Errors are silently ignored — commands are best-effort and the
 // session may close the input stream at any time.
-func (m Terminal) emitCommand(cmd string) tea.Cmd {
-	return func() tea.Msg {
+func (m Terminal) emitCommand(cmd string) Cmd {
+	return func() Msg {
 		writeCommand(m.streamInput, cmd)
 		return nil
 	}
 }
 
-// submitCmd returns a tea.Cmd that sends staged content (attachments + text)
+// submitCmd returns a Cmd that sends staged content (attachments + text)
 // as a complete user message via TLV. Runs outside Update when executed by
 // Bubble Tea's runtime. Errors reading attachments are returned as
 // displayErrorMsg so the event loop handles the display write.
-func submitCmd(w io.WriteCloser, attachments []attachment, prompt string) tea.Cmd {
-	return func() tea.Msg {
+func submitCmd(w io.WriteCloser, attachments []attachment, prompt string) Cmd {
+	return func() Msg {
 		var errs []string
 		for _, a := range attachments {
 			var value string
@@ -366,8 +364,8 @@ func NewTerminalWithTheme(
 
 // Init starts the periodic tick loop for processing session updates.
 // When loading is true, it also kicks off async session loading.
-func (m Terminal) Init() tea.Cmd {
-	var cmds []tea.Cmd
+func (m Terminal) Init() Cmd {
+	var cmds []Cmd
 
 	// Display any buffered init errors via messages so OutputWriter
 	// mutations go through Terminal.Update like all other display writes.
@@ -375,7 +373,7 @@ func (m Terminal) Init() tea.Cmd {
 		if errs := m.themeManager.GetInitErrors(); len(errs) > 0 {
 			for _, e := range errs {
 				err := e // capture
-				cmds = append(cmds, func() tea.Msg {
+				cmds = append(cmds, func() Msg {
 					return displayErrorMsg{
 						message: err.Message,
 					}
@@ -385,7 +383,7 @@ func (m Terminal) Init() tea.Cmd {
 	}
 
 	cmds = append(cmds,
-		tea.Tick(TickInterval, func(_ time.Time) tea.Msg {
+		Tick(TickInterval, func(_ time.Time) Msg {
 			return tickMsg{}
 		}),
 	)
@@ -395,13 +393,13 @@ func (m Terminal) Init() tea.Cmd {
 		cmds = append(cmds, m.loadSessionCmd())
 	}
 
-	return tea.Batch(cmds...)
+	return Batch(cmds...)
 }
 
-// loadSessionCmd returns a tea.Cmd that runs app.StartSession in a goroutine.
+// loadSessionCmd returns a Cmd that runs app.StartSession in a goroutine.
 // It is only used when the TUI starts in loading mode (m.loading == true).
-func (m Terminal) loadSessionCmd() tea.Cmd {
-	return func() tea.Msg {
+func (m Terminal) loadSessionCmd() Cmd {
+	return func() Msg {
 		_, _, err := app.StartSession(m.appConfig, m.out, m.pipeReader)
 		if err != nil {
 			return sessionLoadingErrorMsg{err: err}
@@ -420,7 +418,7 @@ func (m Terminal) loadSessionCmd() tea.Cmd {
 //  6. Paste - clipboard paste
 //
 //nolint:gocyclo
-func (m Terminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	// Sync display dim state at the start of every update cycle.
 	m.display = m.display.WithBlocked(m.isBlocked())
 
@@ -434,10 +432,10 @@ func (m Terminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case KeyMsg:
 		return m.handleKeyMsg(msg)
 
-	case tea.WindowSizeMsg:
+	case WindowSizeMsg:
 		return m.handleWindowSize(msg), nil
 
 	case tickMsg:
@@ -484,13 +482,13 @@ func (m Terminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case EditorFinishedMsg:
 		return m.handleEditorFinished(msg)
 
-	case tea.BlurMsg:
+	case BlurMsg:
 		return m.handleBlur(), nil
 
-	case tea.FocusMsg:
+	case FocusMsg:
 		return m.handleFocus(), nil
 
-	case tea.PasteMsg:
+	case PasteMsg:
 		return m.handlePaste(msg)
 
 	default:
@@ -502,7 +500,7 @@ func (m Terminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 type tickMsg struct{}
 
 // handleWindowSize handles terminal resize events.
-func (m Terminal) handleWindowSize(msg tea.WindowSizeMsg) Terminal {
+func (m Terminal) handleWindowSize(msg WindowSizeMsg) Terminal {
 	m.windowWidth = msg.Width
 	m.windowHeight = msg.Height
 
@@ -533,11 +531,11 @@ func (m Terminal) handleWindowSize(msg tea.WindowSizeMsg) Terminal {
 }
 
 // handleTick processes periodic updates for display and model switching.
-func (m Terminal) handleTick() (Terminal, tea.Cmd) {
+func (m Terminal) handleTick() (Terminal, Cmd) {
 	// During async loading, the only periodic task is to re-render the
 	// loading screen (spinner animation). Skip all session-driven updates.
 	if m.loading {
-		return m, tea.Tick(TickInterval, func(_ time.Time) tea.Msg {
+		return m, Tick(TickInterval, func(_ time.Time) Msg {
 			return tickMsg{}
 		})
 	}
@@ -553,10 +551,10 @@ func (m Terminal) handleTick() (Terminal, tea.Cmd) {
 		}
 	}
 
-	var cmd tea.Cmd
+	var cmd Cmd
 	m, cmd = m.handleDisplayRefresh()
-	return m, tea.Batch(
-		tea.Tick(TickInterval, func(_ time.Time) tea.Msg {
+	return m, Batch(
+		Tick(TickInterval, func(_ time.Time) Msg {
 			return tickMsg{}
 		}),
 		cmd,
@@ -592,7 +590,7 @@ func (m Terminal) handleMCPOverlays() Terminal {
 // It transitions the UI from the loading spinner to the normal TUI view,
 // applying the loaded theme, populating the model selector, and preparing
 // for MCP initialization if needed.
-func (m Terminal) handleSessionLoadedMsg() (Terminal, tea.Cmd) {
+func (m Terminal) handleSessionLoadedMsg() (Terminal, Cmd) {
 	m.loading = false
 	m.postLoading = true
 
@@ -637,16 +635,16 @@ func (m Terminal) handleSessionLoadedMsg() (Terminal, tea.Cmd) {
 
 // handleSessionLoadingError is called when the async session loading fails.
 // It transitions the UI to a quitting state with the error recorded.
-func (m Terminal) handleSessionLoadingError(err error) (Terminal, tea.Cmd) {
+func (m Terminal) handleSessionLoadingError(err error) (Terminal, Cmd) {
 	m.loading = false
 	m.loadingError = err
 	m.quitting = true
-	return m, tea.Quit
+	return m, Quit
 }
 
 // handleDisplayRefresh checks if the display needs updating and returns
-// a tea.Cmd for model selector updates if models changed.
-func (m Terminal) handleDisplayRefresh() (Terminal, tea.Cmd) {
+// a Cmd for model selector updates if models changed.
+func (m Terminal) handleDisplayRefresh() (Terminal, Cmd) {
 	// Flush pending deltas first so the WindowBuffer has the latest content
 	// before we check the dirty flag.
 	m.out.FlushPendingDeltas()
@@ -676,9 +674,9 @@ func (m Terminal) handleDisplayRefresh() (Terminal, tea.Cmd) {
 //
 //   - EditorActionNone:          view-only (display), no side effects
 //   - EditorActionUpdateInput:  update input field with editor content
-func (m Terminal) handleEditorFinished(msg EditorFinishedMsg) (Terminal, tea.Cmd) {
+func (m Terminal) handleEditorFinished(msg EditorFinishedMsg) (Terminal, Cmd) {
 	if msg.Err != nil {
-		return m, func() tea.Msg {
+		return m, func() Msg {
 			return displayErrorMsg{
 				message: fmt.Sprintf("Editor error: %v", msg.Err),
 			}
@@ -735,7 +733,7 @@ func (m Terminal) syncThemeFromSession(sessionTheme string, themeData *theme.The
 }
 
 // View renders the complete terminal UI.
-func (m Terminal) View() tea.View {
+func (m Terminal) View() View {
 	// Loading screen: shown while the session is being loaded asynchronously.
 	if m.loading {
 		return m.renderLoadingView()
@@ -743,7 +741,7 @@ func (m Terminal) View() tea.View {
 	if m.loadingError != nil {
 		// Should not normally be reached since we quit on error,
 		// but provide a fallback view just in case.
-		v := tea.NewView(fmt.Sprintf("Session loading failed: %v\n", m.loadingError))
+		v := NewView(fmt.Sprintf("Session loading failed: %v\n", m.loadingError))
 		v.AltScreen = true
 		return v
 	}
@@ -767,7 +765,7 @@ func (m Terminal) View() tea.View {
 	// Render all overlay layers through the overlay manager.
 	overlayContent, _ := m.renderOverlays(baseContent, m.windowWidth, m.windowHeight, m.forceRedraw&1 == 1)
 
-	v := tea.NewView(overlayContent)
+	v := NewView(overlayContent)
 	v.AltScreen = true
 	// Raw passthrough mode (forked bubbletea): the content is written
 	// verbatim to the terminal so it soft-wraps natively — window
@@ -806,9 +804,9 @@ func (m Terminal) View() tea.View {
 
 // newCursor returns a steady block cursor in the theme's cursor color at the
 // given screen position (cells relative to the frame's top-left corner).
-func (m Terminal) newCursor(x, y int) *tea.Cursor {
-	cur := tea.NewCursor(x, y)
-	cur.Shape = tea.CursorBlock
+func (m Terminal) newCursor(x, y int) *Cursor {
+	cur := NewCursor(x, y)
+	cur.Shape = CursorBlock
 	cur.Blink = false
 	cur.Color = m.styles.CursorColor
 	return cur
@@ -835,7 +833,7 @@ func (m Terminal) overlayCursorPosition() (x, y int, ok bool) {
 // being loaded asynchronously. It displays a centered message with a simple
 // spinner animation (updated by tickMsg) so the user gets instant feedback
 // even on slow machines.
-func (m Terminal) renderLoadingView() tea.View {
+func (m Terminal) renderLoadingView() View {
 	// Simple spinner frames.
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	frame := int(time.Now().UnixMilli()/150) % len(spinner)
@@ -853,13 +851,13 @@ func (m Terminal) renderLoadingView() tea.View {
 	sb.WriteString(msg)
 	sb.WriteString("\n")
 
-	v := tea.NewView(sb.String())
+	v := NewView(sb.String())
 	v.AltScreen = true
 	return v
 }
 
-// ensure Terminal implements tea.Model
-var _ tea.Model = Terminal{}
+// ensure Terminal implements Model
+var _ Model = Terminal{}
 
 func (m Terminal) applyTheme(theme *theme.Theme) Terminal {
 	m.styles = NewStyles(theme)
@@ -975,5 +973,5 @@ type OverlayAction struct {
 	InitOverlayActive bool
 }
 
-// ensure Terminal implements tea.Model
-var _ tea.Model = Terminal{}
+// ensure Terminal implements Model
+var _ Model = Terminal{}

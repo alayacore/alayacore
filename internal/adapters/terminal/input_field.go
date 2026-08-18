@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/rivo/uniseg"
 )
@@ -53,24 +52,24 @@ func NewInputField() InputField {
 	}
 }
 
-// Init implements tea.Model.
-func (m InputField) Init() tea.Cmd { return nil }
+// Init implements Model.
+func (m InputField) Init() Cmd { return nil }
 
-// Update implements tea.Model.
-func (m InputField) Update(msg tea.Msg) (InputField, tea.Cmd) {
+// Update implements Model.
+func (m InputField) Update(msg Msg) (InputField, Cmd) {
 	if !m.focused {
 		return m, nil
 	}
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case KeyMsg:
 		return m.handleKeyMsg(msg)
-	case tea.PasteMsg:
+	case PasteMsg:
 		return m.handlePaste(msg), nil
 	}
 	return m, nil
 }
 
-func (m InputField) handleKeyMsg(msg tea.KeyMsg) (InputField, tea.Cmd) {
+func (m InputField) handleKeyMsg(msg KeyMsg) (InputField, Cmd) {
 	key := msg.String()
 
 	var handled bool
@@ -161,7 +160,7 @@ func (m InputField) handleInsertion(key string) (InputField, bool) {
 // handlePaste inserts pasted text at the cursor position.
 // Control characters are filtered out, except for newlines which are
 // allowed to support multi-line paste.
-func (m InputField) handlePaste(msg tea.PasteMsg) InputField {
+func (m InputField) handlePaste(msg PasteMsg) InputField {
 	runes := []rune(msg.Content)
 	if len(runes) == 0 {
 		return m
@@ -313,7 +312,7 @@ func firstRuneStartAtLeast(line []rune, target int) int {
 	return len(line)
 }
 
-// View implements tea.Model.
+// View implements Model.
 func (m InputField) View() string {
 	// Clamp pos to valid range as a safety measure.
 	if m.pos < 0 {

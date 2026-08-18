@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 
-	tea "charm.land/bubbletea/v2"
 	"golang.org/x/term"
 
 	"github.com/alayacore/alayacore/internal/app"
@@ -68,10 +67,9 @@ func (a *Adapter) Start() int {
 	t.pipeReader = pipeReader
 
 	// Create and run the program.
-	// Bubbletea automatically opens the real TTY when stdin is piped
+	// Run automatically opens the real TTY when stdin is piped
 	// (Unix: /dev/tty, Windows: CONIN$ + CONOUT$).
-	p := tea.NewProgram(t)
-	finalModel, err := p.Run()
+	finalModel, err := Run(t)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running terminal UI: %v\n", err)
 		return 1

@@ -250,9 +250,8 @@ func (p *InputParser) Parse(data []byte) []any {
 		if data[0] != 0x1b {
 			// Fast path: C0 control or printable rune.
 			if data[0] < 0x20 || data[0] == 0x7f {
-				k, n := decodeC0(data[0])
-				msgs = append(msgs, KeyPressMsg(k))
-				data = data[n:]
+				msgs = append(msgs, KeyPressMsg(decodeC0(data[0])))
+				data = data[1:]
 				continue
 			}
 			r, n := utf8.DecodeRune(data)
@@ -301,33 +300,33 @@ func indexSeq(data []byte, seq string) int {
 }
 
 // decodeC0 decodes a single C0/C1 control byte (not ESC).
-func decodeC0(b byte) (Key, int) {
+func decodeC0(b byte) Key {
 	switch b {
 	case 0x00:
-		return Key{Code: KeySpace, Mod: ModCtrl}, 1 // ctrl+space (ctrl+@)
+		return Key{Code: KeySpace, Mod: ModCtrl} // ctrl+space (ctrl+@)
 	case 0x09:
-		return Key{Code: KeyTab}, 1 // ctrl+i or tab → tab (default flags)
+		return Key{Code: KeyTab} // ctrl+i or tab → tab (default flags)
 	case 0x0d:
-		return Key{Code: KeyEnter}, 1 // ctrl+m or enter → enter (default flags)
+		return Key{Code: KeyEnter} // ctrl+m or enter → enter (default flags)
 	case 0x20:
-		return Key{Code: KeySpace, Text: " "}, 1
+		return Key{Code: KeySpace, Text: " "}
 	case 0x7f:
-		return Key{Code: KeyBackspace}, 1
+		return Key{Code: KeyBackspace}
 	}
 	if b >= 0x01 && b <= 0x1a {
-		return Key{Code: rune('a' + b - 0x01), Mod: ModCtrl}, 1
+		return Key{Code: rune('a' + b - 0x01), Mod: ModCtrl}
 	}
 	switch b {
 	case 0x1c:
-		return Key{Code: '\\', Mod: ModCtrl}, 1
+		return Key{Code: '\\', Mod: ModCtrl}
 	case 0x1d:
-		return Key{Code: ']', Mod: ModCtrl}, 1
+		return Key{Code: ']', Mod: ModCtrl}
 	case 0x1e:
-		return Key{Code: '^', Mod: ModCtrl}, 1
+		return Key{Code: '^', Mod: ModCtrl}
 	case 0x1f:
-		return Key{Code: '_', Mod: ModCtrl}, 1
+		return Key{Code: '_', Mod: ModCtrl}
 	}
-	return Key{Code: rune(b)}, 1
+	return Key{Code: rune(b)}
 }
 
 // consumeEscape parses an escape sequence starting at data[0] (which must be
@@ -429,8 +428,7 @@ func escapeKeyInner(seq string) (Key, bool) {
 			if b == 0x1b {
 				return Key{Code: KeyEscape}, true
 			}
-			k, _ := decodeC0(b)
-			return k, true
+			return decodeC0(b), true
 		}
 		r, _ := utf8.DecodeRuneInString(seq)
 		return Key{Code: r}, true
@@ -452,6 +450,8 @@ func escapeKeyInner(seq string) (Key, bool) {
 }
 
 // parseCSI parses "[...<final>" sequences (no ESC prefix) into keys.
+//
+//nolint:gocyclo // CSI final-byte dispatch covers VT100/SS3/URxvt/XTerm variants
 func parseCSI(seq string) (Key, bool) {
 	final := seq[len(seq)-1]
 	params := seq[1 : len(seq)-1] // between '[' and final

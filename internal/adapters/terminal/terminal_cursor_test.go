@@ -2,8 +2,6 @@ package terminal
 
 import (
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
 )
 
 // newTestTerminal returns a minimal Terminal with the input focused,
@@ -48,7 +46,7 @@ func TestTerminalViewRealCursor(t *testing.T) {
 	if v.Cursor.X != 0 || v.Cursor.Y != 21 {
 		t.Fatalf("empty input: got cursor (%d,%d), want (0,21)", v.Cursor.X, v.Cursor.Y)
 	}
-	if v.Cursor.Shape != tea.CursorBlock {
+	if v.Cursor.Shape != CursorBlock {
 		t.Errorf("expected block cursor shape, got %v", v.Cursor.Shape)
 	}
 	if v.Cursor.Blink {

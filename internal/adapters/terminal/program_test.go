@@ -197,7 +197,7 @@ func TestProgramBatchSequence(t *testing.T) {
 }
 
 type batchResult struct{ name string }
-type seqResult struct{ name string }
+type seqResult struct{}
 type seqTrigger struct{}
 
 // cmdMapModel dispatches commands by trigger type.

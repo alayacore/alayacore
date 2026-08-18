@@ -10,8 +10,6 @@ package terminal
 import (
 	"fmt"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -48,15 +46,15 @@ func NewDisplayModel(windowBuffer *WindowBuffer, styles *Styles) DisplayModel {
 }
 
 // Init initializes the display
-func (m DisplayModel) Init() tea.Cmd { return nil }
+func (m DisplayModel) Init() Cmd { return nil }
 
 // Update handles key messages for display navigation and cursor movement.
 // Only pure display operations are handled here; cross-component actions
 // (e.g. switching focus, opening editor) are handled by Terminal.
 //
 //nolint:gocyclo
-func (m DisplayModel) Update(msg tea.Msg) (DisplayModel, tea.Cmd) {
-	keyMsg, ok := msg.(tea.KeyMsg)
+func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
+	keyMsg, ok := msg.(KeyMsg)
 	if !ok {
 		return m, nil
 	}
@@ -134,20 +132,20 @@ func (m DisplayModel) Update(msg tea.Msg) (DisplayModel, tea.Cmd) {
 		content := m.GetCursorWindowContent()
 		if content != "" {
 			m = m.MarkUserScrolled()
-			return m, func() tea.Msg {
+			return m, func() Msg {
 				return openEditorForDisplayMsg{content: content}
 			}
 		}
 		return m, nil
 
 	case keyColon:
-		return m, func() tea.Msg {
+		return m, func() Msg {
 			return focusInputWithValueMsg{value: ":"}
 		}
 
 	case keyCtrlF:
 		if historyID := m.GetCursorWindowHistoryID(); historyID > 0 {
-			return m, func() tea.Msg {
+			return m, func() Msg {
 				return focusInputWithValueMsg{value: fmt.Sprintf(":%s %d ", commands.CommandNameFork, historyID)}
 			}
 		}
@@ -159,8 +157,8 @@ func (m DisplayModel) Update(msg tea.Msg) (DisplayModel, tea.Cmd) {
 }
 
 // View renders the display
-func (m DisplayModel) View() tea.View {
-	return tea.NewView(m.scrollView.View())
+func (m DisplayModel) View() View {
+	return NewView(m.scrollView.View())
 }
 
 func (m DisplayModel) WithHeight(height int) DisplayModel {

@@ -58,6 +58,5 @@
 // Usage:
 //
 //	terminal := NewTerminal(output, input, config, width, height)
-//	p := tea.NewProgram(terminal)
-//	p.Run()
+//	finalModel, err := Run(terminal)
 package terminal

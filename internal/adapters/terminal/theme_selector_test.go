@@ -3,7 +3,6 @@ package terminal
 import (
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
@@ -24,15 +23,15 @@ func TestThemeSelectorCancelRestoresOriginalTheme(t *testing.T) {
 	}
 
 	// Tab to switch focus from filter to list, then navigate down.
-	ts, _ = ts.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
-	ts, _ = ts.Update(tea.KeyPressMsg(tea.Key{Code: 'j'}))
+	ts, _ = ts.Update(KeyPressMsg(Key{Code: KeyTab}))
+	ts, _ = ts.Update(KeyPressMsg(Key{Code: 'j'}))
 
 	selected := ts.GetSelectedTheme()
 	if selected == nil || selected.Name != "theme-light" {
 		t.Errorf("Expected selected theme 'theme-light', got '%v'", selected)
 	}
 
-	ts, _ = ts.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
+	ts, _ = ts.Update(KeyPressMsg(Key{Code: KeyEsc}))
 
 	if ts.IsOpen() {
 		t.Errorf("Expected theme selector to be closed after ESC")
@@ -54,10 +53,10 @@ func TestThemeSelectorEnterSavesTheme(t *testing.T) {
 	ts = ts.Open(themes, "theme-dark")
 
 	// Tab to switch focus from filter to list, then navigate down.
-	ts, _ = ts.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
-	ts, _ = ts.Update(tea.KeyPressMsg(tea.Key{Code: 'j'}))
+	ts, _ = ts.Update(KeyPressMsg(Key{Code: KeyTab}))
+	ts, _ = ts.Update(KeyPressMsg(Key{Code: 'j'}))
 
-	ts, _ = ts.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	ts, _ = ts.Update(KeyPressMsg(Key{Code: KeyEnter}))
 
 	if ts.IsOpen() {
 		t.Errorf("Expected theme selector to be closed after Enter")

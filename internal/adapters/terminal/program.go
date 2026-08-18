@@ -239,47 +239,45 @@ func (p *Program) run(model Model) (Model, error) {
 	}
 	p.render(model)
 
-	for {
-		select {
-		case msg := <-p.msgs:
-			switch msg := msg.(type) {
-			case QuitMsg:
-				return model, nil
-			case SuspendMsg:
-				// Module 5 (S2): suspend + editor handoff.
-				continue
-			case clearScreenMsg:
-				continue
-			case BatchMsg:
-				go p.execBatch(msg, ctxDone)
-				continue
-			case sequenceMsg:
-				go p.execSequence(msg, ctxDone)
-				continue
-			case WindowSizeMsg:
-				p.width, p.height = msg.Width, msg.Height
-				p.screen.Resize(msg.Width, msg.Height)
-			}
-
-			var cmd Cmd
-			var err error
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						err = fmt.Errorf("terminal: panic in Update: %v", r)
-					}
-				}()
-				model, cmd = model.Update(msg)
-			}()
-			if err != nil {
-				return model, err
-			}
-			if cmd != nil {
-				go p.dispatch(cmd, ctxDone)
-			}
-			p.render(model)
+	for msg := range p.msgs {
+		switch msg := msg.(type) {
+		case QuitMsg:
+			return model, nil
+		case SuspendMsg:
+			// Module 5 (S2): suspend + editor handoff.
+			continue
+		case clearScreenMsg:
+			continue
+		case BatchMsg:
+			go p.execBatch(msg, ctxDone)
+			continue
+		case sequenceMsg:
+			go p.execSequence(msg, ctxDone)
+			continue
+		case WindowSizeMsg:
+			p.width, p.height = msg.Width, msg.Height
+			p.screen.Resize(msg.Width, msg.Height)
 		}
+
+		var cmd Cmd
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("terminal: panic in Update: %v", r)
+				}
+			}()
+			model, cmd = model.Update(msg)
+		}()
+		if err != nil {
+			return model, err
+		}
+		if cmd != nil {
+			go p.dispatch(cmd, ctxDone)
+		}
+		p.render(model)
 	}
+	return model, nil // unreachable: msgs never closes
 }
 
 // dispatch runs a command in a goroutine and delivers its result message.

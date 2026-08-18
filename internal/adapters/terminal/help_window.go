@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -227,8 +226,8 @@ func (hw HelpWindow) filteredLen() int {
 // HelpWindowUpdate removed — use HelpCmdMsg instead {
 
 //nolint:gocyclo
-func (hw HelpWindow) Update(msg tea.Msg) (HelpWindow, tea.Cmd) {
-	keyMsg, ok := msg.(tea.KeyMsg)
+func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
+	keyMsg, ok := msg.(KeyMsg)
 	if !ok {
 		return hw, nil
 	}
@@ -288,7 +287,7 @@ func (hw HelpWindow) Update(msg tea.Msg) (HelpWindow, tea.Cmd) {
 			}
 		}
 		if pendingCmd != "" {
-			return hw, func() tea.Msg { return HelpCmdMsg{Command: pendingCmd} }
+			return hw, func() Msg { return HelpCmdMsg{Command: pendingCmd} }
 		}
 		return hw, result.Cmd
 	}
@@ -364,9 +363,9 @@ func (hw HelpWindow) ensureVisible() HelpWindow {
 	return hw
 }
 
-func (hw HelpWindow) View() tea.View {
+func (hw HelpWindow) View() View {
 	if hw.State == FilteredListClosed {
-		return tea.NewView("")
+		return NewView("")
 	}
 
 	listHeight := SelectorListRows
@@ -413,7 +412,7 @@ func (hw HelpWindow) View() tea.View {
 	countStr := fmt.Sprintf("%d items", hw.filteredLen())
 	infoLine := hw.Styles.System.Render(countStr)
 
-	return tea.NewView(title + "\n" + filterBox + "\n" + infoLine + "\n" + listBox + "\n" + helpBar)
+	return NewView(title + "\n" + filterBox + "\n" + infoLine + "\n" + listBox + "\n" + helpBar)
 }
 
 func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {

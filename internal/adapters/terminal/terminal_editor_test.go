@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
@@ -20,9 +19,9 @@ func visibleLength(s string) int {
 func TestCtrlOOpensEditor(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
 
-	msg := tea.KeyPressMsg(tea.Key{
+	msg := KeyPressMsg(Key{
 		Code: 'o',
-		Mod:  tea.ModCtrl,
+		Mod:  ModCtrl,
 	})
 
 	model, cmd := terminal.Update(msg)
@@ -40,9 +39,9 @@ func TestCtrlOWithExistingContent(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
 	terminal.input = terminal.input.WithValue("existing input text")
 
-	msg := tea.KeyPressMsg(tea.Key{
+	msg := KeyPressMsg(Key{
 		Code: 'o',
-		Mod:  tea.ModCtrl,
+		Mod:  ModCtrl,
 	})
 
 	model, cmd := terminal.Update(msg)
@@ -296,7 +295,7 @@ func TestCtrlCClearsInput(t *testing.T) {
 
 	// Press Ctrl+C while in input window
 	terminal = terminal.focusInput()
-	msg := tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})
+	msg := KeyPressMsg(Key{Code: 'c', Mod: ModCtrl})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -323,7 +322,7 @@ func TestCtrlCInDisplayWindow(t *testing.T) {
 
 	// Press Ctrl+C while in display window
 	terminal = terminal.focusDisplay()
-	msg := tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})
+	msg := KeyPressMsg(Key{Code: 'c', Mod: ModCtrl})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -350,7 +349,7 @@ func TestCtrlGTriggersCancel(t *testing.T) {
 
 	// Press Ctrl+G (should work regardless of focus)
 	terminal = terminal.focusInput()
-	msg := tea.KeyPressMsg(tea.Key{Code: 'g', Mod: tea.ModCtrl})
+	msg := KeyPressMsg(Key{Code: 'g', Mod: ModCtrl})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -378,7 +377,7 @@ func TestCtrlGTriggersCancel(t *testing.T) {
 	}
 
 	// Test confirming the dialog by pressing 'y'
-	msg = tea.KeyPressMsg(tea.Key{Code: 'y'})
+	msg = KeyPressMsg(Key{Code: 'y'})
 	model, cmd = terminal.Update(msg)
 	terminal = model.(Terminal)
 
@@ -399,7 +398,7 @@ func TestCtrlUClearsInput(t *testing.T) {
 
 	// Press Ctrl+U while in input window
 	terminal = terminal.focusInput()
-	msg := tea.KeyPressMsg(tea.Key{Code: 'u', Mod: tea.ModCtrl})
+	msg := KeyPressMsg(Key{Code: 'u', Mod: ModCtrl})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -651,7 +650,7 @@ func TestEKeyOpensDisplayWindowInEditor(t *testing.T) {
 	terminal.display = terminal.display.WithWindowCursor(0)
 
 	// Press 'e' key in display window
-	msg := tea.KeyPressMsg(tea.Key{Code: 'e'})
+	msg := KeyPressMsg(Key{Code: 'e'})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -674,7 +673,7 @@ func TestEKeyDoesNothingWithNoWindow(t *testing.T) {
 	terminal.display = terminal.display.WithWindowCursor(-1)
 
 	// Press 'e' key in display window
-	msg := tea.KeyPressMsg(tea.Key{Code: 'e'})
+	msg := KeyPressMsg(Key{Code: 'e'})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -697,7 +696,7 @@ func TestEKeyDoesNothingInInputWindow(t *testing.T) {
 	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello from display")
 
 	// Press 'e' key while in input window (should be passed to input, not open editor)
-	msg := tea.KeyPressMsg(tea.Key{Code: 'e'})
+	msg := KeyPressMsg(Key{Code: 'e'})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)

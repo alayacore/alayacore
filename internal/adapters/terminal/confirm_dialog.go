@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	ansi "github.com/charmbracelet/x/ansi"
 )
@@ -206,12 +205,12 @@ func (cd ConfirmDialog) Close() ConfirmDialog {
 
 // HandleKeyMsg processes a key press and updates state.
 // Returns the updated dialog and a result struct describing what happened.
-func (cd ConfirmDialog) Update(msg tea.Msg) (ConfirmDialog, tea.Cmd) {
+func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, Cmd) {
 	if !cd.IsOpen() {
 		return cd, nil
 	}
 
-	keyMsg, ok := msg.(tea.KeyMsg)
+	keyMsg, ok := msg.(KeyMsg)
 	if !ok {
 		return cd, nil
 	}
@@ -223,7 +222,7 @@ func (cd ConfirmDialog) Update(msg tea.Msg) (ConfirmDialog, tea.Cmd) {
 			r.CtrlGCanceled = true
 			result.canceled = true
 			result.state = FilteredListClosed
-			return result, func() tea.Msg { return ConfirmResultMsg{Result: r} }
+			return result, func() Msg { return ConfirmResultMsg{Result: r} }
 		}
 		return cd, nil // handled but no result
 	}
@@ -251,7 +250,7 @@ func (cd ConfirmDialog) Update(msg tea.Msg) (ConfirmDialog, tea.Cmd) {
 			if cd.toolName != "" && strings.HasPrefix(content, cd.toolName+": ") {
 				content = content[len(cd.toolName)+2:]
 			}
-			return cd, func() tea.Msg {
+			return cd, func() Msg {
 				return openEditorForDisplayMsg{content: content}
 			}
 		}
@@ -276,10 +275,10 @@ func (cd ConfirmDialog) buildResult() (ConfirmDialog, *ConfirmResult) {
 
 // closeWithResult closes the dialog and returns a Command that emits a ConfirmResultMsg.
 // The caller should set flags (confirmed, canceled, etc.) on cd before calling this.
-func (cd ConfirmDialog) closeWithResult() (ConfirmDialog, tea.Cmd) {
+func (cd ConfirmDialog) closeWithResult() (ConfirmDialog, Cmd) {
 	cd.state = FilteredListClosed
 	_, r := cd.buildResult()
-	return cd, func() tea.Msg { return ConfirmResultMsg{Result: r} }
+	return cd, func() Msg { return ConfirmResultMsg{Result: r} }
 }
 
 // ConfirmResult captures the complete result of a confirm dialog interaction.
@@ -294,9 +293,9 @@ type ConfirmResult struct {
 
 // ---- Rendering ----
 
-func (cd ConfirmDialog) View() tea.View {
+func (cd ConfirmDialog) View() View {
 	if !cd.IsOpen() {
-		return tea.NewView("")
+		return NewView("")
 	}
 
 	msgLines := cd.buildContentLines()
@@ -305,7 +304,7 @@ func (cd ConfirmDialog) View() tea.View {
 	}
 	content := strings.Join(msgLines, "\n")
 	box := cd.styles.RenderOpenBox(content, cd.Width, cd.styles.ColorWarning, ConfirmContentRows)
-	return tea.NewView(box)
+	return NewView(box)
 }
 
 // buildContentLines returns the display lines for the dialog content.

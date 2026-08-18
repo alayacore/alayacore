@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/alayacore/alayacore/internal/protocol"
 )
 
@@ -144,7 +143,7 @@ func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
 	}
 
 	// Press Ctrl+C
-	msg := tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})
+	msg := KeyPressMsg(Key{Code: 'c', Mod: ModCtrl})
 	ms, cmd := ms.Update(msg)
 
 	// Check that search input is cleared

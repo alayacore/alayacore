@@ -3,8 +3,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
 )
 
 func benchLine(n int) string {
@@ -28,7 +26,7 @@ func BenchmarkInputFieldInsertLongLine(b *testing.B) {
 		g = g.WithWidth(60)
 		g = g.WithValue(benchLine(4000)).CursorEnd()
 		for j := 0; j < 20; j++ {
-			g, _ = g.Update(tea.KeyPressMsg{Text: "你", Code: '你'})
+			g, _ = g.Update(KeyPressMsg{Text: "你", Code: '你'})
 		}
 	}
 }
@@ -40,10 +38,10 @@ func BenchmarkInputFieldMoveLongLine(b *testing.B) {
 		g = g.WithWidth(60)
 		g = g.WithValue(benchLine(4000)).CursorEnd()
 		for j := 0; j < 100; j++ {
-			g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: "left", Code: 0})
+			g, _ = g.handleKeyMsg(KeyPressMsg{Text: "left", Code: 0})
 		}
 		for j := 0; j < 100; j++ {
-			g, _ = g.handleKeyMsg(tea.KeyPressMsg{Text: "right", Code: 0})
+			g, _ = g.handleKeyMsg(KeyPressMsg{Text: "right", Code: 0})
 		}
 	}
 }

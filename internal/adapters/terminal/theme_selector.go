@@ -9,7 +9,6 @@ import (
 	"image/color"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/alayacore/alayacore/internal/theme"
@@ -127,24 +126,24 @@ func (ts ThemeSelector) GetOriginalThemeName() string {
 
 // --- Init (unused, kept for interface compatibility) ---
 
-func (ts ThemeSelector) Init() tea.Cmd { return nil }
+func (ts ThemeSelector) Init() Cmd { return nil }
 
-func (ts ThemeSelector) View() tea.View {
+func (ts ThemeSelector) View() View {
 	if ts.State == FilteredListClosed {
-		return tea.NewView("")
+		return NewView("")
 	}
-	return tea.NewView(ts.renderList())
+	return NewView(ts.renderList())
 }
 
 // --- Key Handling ---
 
 //nolint:gocyclo
-func (ts ThemeSelector) Update(msg tea.Msg) (ThemeSelector, tea.Cmd) {
+func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
 	if ts.State == FilteredListClosed {
 		return ts, nil
 	}
 
-	keyMsg, ok := msg.(tea.KeyMsg)
+	keyMsg, ok := msg.(KeyMsg)
 	if !ok {
 		return ts, nil
 	}
@@ -156,7 +155,7 @@ func (ts ThemeSelector) Update(msg tea.Msg) (ThemeSelector, tea.Cmd) {
 	if result.Handled {
 		// Close overlay.
 		if !fl.FilterInputFocused && (key == keyQ || key == keyEsc) {
-			return ts.Close(), func() tea.Msg { return OverlayClosedMsg{} }
+			return ts.Close(), func() Msg { return OverlayClosedMsg{} }
 		}
 
 		// Enter on list: select theme.
@@ -164,7 +163,7 @@ func (ts ThemeSelector) Update(msg tea.Msg) (ThemeSelector, tea.Cmd) {
 			if sel := ts.GetSelectedTheme(); sel != nil {
 				ts = ts.loadPreviewTheme()
 				ts.State = FilteredListClosed
-				return ts, func() tea.Msg { return ThemeSelectedMsg{Name: sel.Name} }
+				return ts, func() Msg { return ThemeSelectedMsg{Name: sel.Name} }
 			}
 		}
 
@@ -174,7 +173,7 @@ func (ts ThemeSelector) Update(msg tea.Msg) (ThemeSelector, tea.Cmd) {
 			sel := ts.filteredThemes[0]
 			ts = ts.loadPreviewTheme()
 			ts.State = FilteredListClosed
-			return ts, func() tea.Msg { return ThemeSelectedMsg{Name: sel.Name} }
+			return ts, func() Msg { return ThemeSelectedMsg{Name: sel.Name} }
 		}
 
 		// Filter changed: update filtered list and load preview for first result.

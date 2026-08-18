@@ -3,7 +3,6 @@ package terminal
 import (
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
@@ -13,7 +12,7 @@ func TestQuitCommandRequiresConfirm(t *testing.T) {
 
 	// Press Enter to submit the command
 	terminal = terminal.focusInput()
-	msg := tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	msg := KeyPressMsg(Key{Code: KeyEnter})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -47,7 +46,7 @@ func TestQuitCommandCanceledClearsInput(t *testing.T) {
 
 	// Press Enter to submit the command
 	terminal = terminal.focusInput()
-	msg := tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	msg := KeyPressMsg(Key{Code: KeyEnter})
 	model, _ := terminal.Update(msg)
 	terminal = model.(Terminal)
 
@@ -60,7 +59,7 @@ func TestQuitCommandCanceledClearsInput(t *testing.T) {
 	}
 
 	// Press 'n' to cancel
-	msg = tea.KeyPressMsg(tea.Key{Code: 'n'})
+	msg = KeyPressMsg(Key{Code: 'n'})
 	model, _ = terminal.Update(msg)
 	terminal = model.(Terminal)
 
@@ -81,7 +80,7 @@ func TestQuitCommandEscapeCancels(t *testing.T) {
 
 	// Press Enter to submit the command
 	terminal = terminal.focusInput()
-	msg := tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	msg := KeyPressMsg(Key{Code: KeyEnter})
 	model, _ := terminal.Update(msg)
 	terminal = model.(Terminal)
 
@@ -94,7 +93,7 @@ func TestQuitCommandEscapeCancels(t *testing.T) {
 	}
 
 	// Press Escape to cancel
-	msg = tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})
+	msg = KeyPressMsg(Key{Code: KeyEscape})
 	model, _ = terminal.Update(msg)
 	terminal = model.(Terminal)
 
@@ -115,7 +114,7 @@ func TestQuitCommandConfirmed(t *testing.T) {
 
 	// Press Enter to submit the command
 	terminal = terminal.focusInput()
-	msg := tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	msg := KeyPressMsg(Key{Code: KeyEnter})
 	model, _ := terminal.Update(msg)
 	terminal = model.(Terminal)
 
@@ -128,7 +127,7 @@ func TestQuitCommandConfirmed(t *testing.T) {
 	}
 
 	// Press 'y' to confirm
-	msg = tea.KeyPressMsg(tea.Key{Code: 'y'})
+	msg = KeyPressMsg(Key{Code: 'y'})
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)
 
@@ -153,7 +152,7 @@ func TestFullQuitCommandRequiresConfirm(t *testing.T) {
 
 	// Press Enter to submit the command
 	terminal = terminal.focusInput()
-	msg := tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	msg := KeyPressMsg(Key{Code: KeyEnter})
 
 	model, cmd := terminal.Update(msg)
 	terminal = model.(Terminal)

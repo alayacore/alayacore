@@ -20,8 +20,6 @@ package terminal
 
 import (
 	"image/color"
-
-	tea "charm.land/bubbletea/v2"
 )
 
 // FilteredListState represents the current state of a filtered list.
@@ -139,12 +137,12 @@ type FilteredListResult struct {
 	Handled bool
 	// FilterChanged is true if the filter value changed.
 	FilterChanged bool
-	// Cmd is a tea.Cmd from the inner InputField (cursor blink, etc.).
-	Cmd tea.Cmd
+	// Cmd is a Cmd from the inner InputField (cursor blink, etc.).
+	Cmd Cmd
 }
 
 // HandleKey processes a key event for the filtered list.
-func (fl FilteredListCore) HandleKey(msg tea.KeyMsg) (FilteredListCore, FilteredListResult) {
+func (fl FilteredListCore) HandleKey(msg KeyMsg) (FilteredListCore, FilteredListResult) {
 	keyStr := msg.String()
 
 	if keyStr == keyTab {
@@ -159,7 +157,7 @@ func (fl FilteredListCore) HandleKey(msg tea.KeyMsg) (FilteredListCore, Filtered
 }
 
 // handleFilterFocusedKey handles keys when the filter input is focused.
-func (fl FilteredListCore) handleFilterFocusedKey(msg tea.KeyMsg, key string) (FilteredListCore, FilteredListResult) {
+func (fl FilteredListCore) handleFilterFocusedKey(msg KeyMsg, key string) (FilteredListCore, FilteredListResult) {
 	if key == keyEsc {
 		fl.State = FilteredListClosed
 		return fl, FilteredListResult{Handled: true}
@@ -175,7 +173,7 @@ func (fl FilteredListCore) handleFilterFocusedKey(msg tea.KeyMsg, key string) (F
 	}
 
 	oldValue := fl.FilterInput.Value()
-	var cmd tea.Cmd
+	var cmd Cmd
 	fl.FilterInput, cmd = fl.FilterInput.Update(msg)
 	return fl, FilteredListResult{Handled: true, FilterChanged: oldValue != fl.FilterInput.Value(), Cmd: cmd}
 }

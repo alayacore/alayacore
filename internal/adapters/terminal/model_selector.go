@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/alayacore/alayacore/internal/protocol"
 )
@@ -86,7 +85,7 @@ func (ms ModelSelector) WithModels(models []searchableModel) ModelSelector {
 	return ms.updateFilteredModels()
 }
 
-func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (ModelSelector, tea.Cmd) {
+func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (ModelSelector, Cmd) {
 	if ms.modelsUnchangedSinceLastLoad(models) {
 		for i := range ms.models {
 			if ms.models[i].ID == activeID {
@@ -122,7 +121,7 @@ func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (M
 		ms.ScrollIdx = savedScrollIdx
 		ms.FilteredListCore = ms.FilteredListCore.ClampSelection(len(ms.filteredModels))
 	}
-	return ms, func() tea.Msg { return nil }
+	return ms, func() Msg { return nil }
 }
 
 func (ms ModelSelector) modelsUnchangedSinceLastLoad(models []protocol.ModelInfo) bool {
@@ -171,12 +170,12 @@ func (ms ModelSelector) Open() ModelSelector {
 // --- Key Handling ---
 
 //nolint:gocyclo
-func (ms ModelSelector) Update(msg tea.Msg) (ModelSelector, tea.Cmd) {
+func (ms ModelSelector) Update(msg Msg) (ModelSelector, Cmd) {
 	if ms.State == FilteredListClosed {
 		return ms, nil
 	}
 
-	keyMsg, ok := msg.(tea.KeyMsg)
+	keyMsg, ok := msg.(KeyMsg)
 	if !ok {
 		return ms, nil
 	}
@@ -187,7 +186,7 @@ func (ms ModelSelector) Update(msg tea.Msg) (ModelSelector, tea.Cmd) {
 
 	// Handle Ctrl+R reload regardless of focus
 	if key == keyCtrlR {
-		return ms, func() tea.Msg { return ReloadModelsMsg{} }
+		return ms, func() Msg { return ReloadModelsMsg{} }
 	}
 
 	// Handle Enter selection in the list.
@@ -196,7 +195,7 @@ func (ms ModelSelector) Update(msg tea.Msg) (ModelSelector, tea.Cmd) {
 			ms.activeModel = &ms.filteredModels[fl.SelectedIdx]
 			fl = fl.Close()
 			ms.FilteredListCore = fl
-			return ms, func() tea.Msg { return ModelSelectedMsg{ID: ms.activeModel.ID} }
+			return ms, func() Msg { return ModelSelectedMsg{ID: ms.activeModel.ID} }
 		}
 	}
 
@@ -210,7 +209,7 @@ func (ms ModelSelector) Update(msg tea.Msg) (ModelSelector, tea.Cmd) {
 		if ms.FilterInputFocused && key == keyEnter && len(ms.filteredModels) > 0 {
 			ms = ms.handleSearchEnter()
 			ms.FilteredListCore = fl.Close()
-			return ms, func() tea.Msg { return ModelSelectedMsg{ID: ms.activeModel.ID} }
+			return ms, func() Msg { return ModelSelectedMsg{ID: ms.activeModel.ID} }
 		}
 		return ms, nil
 	}
@@ -439,11 +438,11 @@ func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-func (ms ModelSelector) View() tea.View {
+func (ms ModelSelector) View() View {
 	if ms.State == FilteredListClosed {
-		return tea.NewView("")
+		return NewView("")
 	}
-	return tea.NewView(ms.renderList())
+	return NewView(ms.renderList())
 }
 
 func (ms ModelSelector) RenderOverlay(baseContent string, screenWidth, screenHeight int) string {
