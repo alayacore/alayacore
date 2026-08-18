@@ -333,7 +333,7 @@ func (s *sessionState) snapshotModels() ModelSnapshot {
 		ActiveName: s.activeModelName,
 	}
 	if s.models != nil {
-		snap.Models = s.models
+		snap.Models = append([]protocol.ModelInfo(nil), s.models...)
 	}
 	return snap
 }
