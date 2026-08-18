@@ -235,7 +235,7 @@ func TestRenderMultiline(t *testing.T) {
 func TestColorizeToolMultiline(t *testing.T) {
 	// Tool args render as plain text (no ANSI styling).
 	value := "tool_name: first line\nsecond line\nthird line"
-	result := defaultToolRender(value, "tool_name", 0)
+	result := defaultToolRender(value, "tool_name")
 	lines := strings.Split(result, "\n")
 	if len(lines) != 3 {
 		t.Errorf("Expected 3 lines, got %d", len(lines))

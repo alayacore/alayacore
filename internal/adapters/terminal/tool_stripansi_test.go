@@ -193,7 +193,7 @@ func TestColorizeTool_WithANSI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Prepare content first, then render through the tool input path.
 			prepared := prepareContent(tt.input)
-			result := defaultToolRender(prepared, "execute_command", 0)
+			result := defaultToolRender(prepared, "execute_command")
 			// Check that the result contains the expected text. Tool
 			// content renders as plain text (no ANSI styling).
 			stripped := stripANSI(result)
