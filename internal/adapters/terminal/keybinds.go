@@ -457,9 +457,6 @@ func (m Terminal) handleGlobalKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 		m = m.openThemeSelector()
 		return m, nil, true
 
-	case keyCtrlQ:
-		return m, nil, true
-
 	case keyCtrlR:
 		tm, cmd := m.handleRedraw()
 		return tm, cmd, true

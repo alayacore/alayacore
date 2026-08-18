@@ -62,7 +62,6 @@ const (
 	keyCtrlL = "ctrl+l"
 	keyCtrlO = "ctrl+o"
 	keyCtrlP = "ctrl+p"
-	keyCtrlQ = "ctrl+q"
 	keyCtrlR = "ctrl+r"
 	keyCtrlS = "ctrl+s"
 	keyCtrlU = "ctrl+u"
