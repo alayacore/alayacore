@@ -8,8 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	tea "charm.land/bubbletea/v2" // only ExecProcess until S2 (module 5)
 )
 
 // ============================================================================
@@ -144,40 +142,37 @@ func (m Terminal) handleEditorStart(msg editorStartMsg) (Terminal, Cmd) {
 	//nolint:gosec // G204: Editor command from user config is intentional
 	cmd := exec.Command(msg.editorCmd, cmdArgs...)
 
-	// Bridge to the forked bubbletea ExecProcess until module 5 (S2)
-	// replaces it with the self-built suspend/handoff. The wrapped Cmd is
-	// a plain function returning a Msg, so it works with the self-built
-	// program; the editor itself will only run once S2 handles the
-	// exec message.
-	return m, func() Msg {
-		return tea.ExecProcess(cmd, func(err error) tea.Msg {
-			defer os.Remove(tmpFileName)
+	// ExecProcess (module 5) suspends the TUI — exit alt screen, restore
+	// cooked mode — while the editor runs in the foreground, then re-enters
+	// raw mode + alt screen and repaints. The result message is delivered
+	// after re-acquisition.
+	return m, ExecProcess(cmd, func(err error) Msg {
+		defer os.Remove(tmpFileName)
 
-			// Build the result message
-			result := EditorFinishedMsg{
-				Err:    err,
-				Action: msg.action,
-			}
+		// Build the result message
+		result := EditorFinishedMsg{
+			Err:    err,
+			Action: msg.action,
+		}
 
-			if err != nil {
-				return result
-			}
-
-			// For view-only (display), don't read content back
-			if msg.action == EditorActionNone {
-				return result
-			}
-
-			content, readErr := os.ReadFile(tmpFileName)
-			if readErr != nil {
-				result.Err = readErr
-				return result
-			}
-
-			result.Content = string(content)
+		if err != nil {
 			return result
-		})()
-	}
+		}
+
+		// For view-only (display), don't read content back
+		if msg.action == EditorActionNone {
+			return result
+		}
+
+		content, readErr := os.ReadFile(tmpFileName)
+		if readErr != nil {
+			result.Err = readErr
+			return result
+		}
+
+		result.Content = string(content)
+		return result
+	})
 }
 
 func getEditorCommand(editorCmd string) string {

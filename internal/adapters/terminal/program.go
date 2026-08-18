@@ -16,10 +16,9 @@ package terminal
 import (
 	"fmt"
 	"image/color"
-	"os"
 	"os/signal"
 	"sync"
-	"syscall"
+	"sync/atomic"
 	"time"
 )
 
@@ -183,6 +182,14 @@ type Program struct {
 
 	mu       sync.Mutex
 	lastView *View // content/cursor of the last rendered frame
+
+	// Input-parking protocol (exec_unix.go): while suspended (editor
+	// handoff, Ctrl-Z) the input loop parks so a foreground child gets
+	// every keystroke. inputPaused is the request flag; parkedCh is the
+	// input loop's acknowledgement; resumeCh wakes it up again.
+	inputPaused atomic.Bool
+	parkedCh    chan struct{}
+	resumeCh    chan struct{}
 }
 
 // Run starts the TUI program: opens the TTY, enters raw mode and the alt
@@ -197,11 +204,13 @@ func Run(model Model) (Model, error) {
 	}
 
 	p := &Program{
-		tty:    tty,
-		parser: &InputParser{},
-		screen: NewScreen(tty.Out()),
-		msgs:   make(chan Msg, 64),
-		cmds:   make(chan Cmd),
+		tty:      tty,
+		parser:   &InputParser{},
+		screen:   NewScreen(tty.Out()),
+		msgs:     make(chan Msg, 64),
+		cmds:     make(chan Cmd),
+		parkedCh: make(chan struct{}, 1),
+		resumeCh: make(chan struct{}, 1),
 	}
 	p.width, p.height = p.screen.Size()
 
@@ -244,7 +253,16 @@ func (p *Program) run(model Model) (Model, error) {
 		case QuitMsg:
 			return model, nil
 		case SuspendMsg:
-			// Module 5 (S2): suspend + editor handoff.
+			// Ctrl-Z: release the terminal, stop the process group, and
+			// re-acquire on SIGCONT (no-op without a real TTY).
+			p.suspend()
+			p.render(model)
+			continue
+		case execMsg:
+			// Editor handoff: run the command in the foreground with the
+			// terminal released, then re-acquire and repaint.
+			p.exec(msg)
+			p.render(model)
 			continue
 		case clearScreenMsg:
 			continue
@@ -344,71 +362,44 @@ func (p *Program) execOne(cmd Cmd, ctxDone <-chan struct{}) {
 	}
 }
 
-// readInput reads bytes from the TTY and feeds them to the parser. When a
-// read ends with an incomplete escape sequence, it waits briefly for more
-// bytes before resolving it (so a lone ESC becomes the Escape key).
-func (p *Program) readInput(ctxDone <-chan struct{}) {
-	buf := make([]byte, 256)
-	for {
-		n, err := p.tty.Read(buf)
-		if n > 0 {
-			if msgs := p.parser.Parse(buf[:n]); len(msgs) > 0 {
-				for _, msg := range msgs {
-					select {
-					case p.msgs <- msg:
-					case <-ctxDone:
-						return
-					}
-				}
-			}
-			if p.parser.HasPending() {
-				// Wait briefly for the rest of a split sequence.
-				select {
-				case <-time.After(escSequenceTimeout):
-					if msgs := p.parser.Flush(); len(msgs) > 0 {
-						for _, msg := range msgs {
-							select {
-							case p.msgs <- msg:
-							case <-ctxDone:
-								return
-							}
-						}
-					}
-				case <-ctxDone:
-					return
-				}
-			}
-		}
-		if err != nil {
-			return
-		}
+// suspend suspends the program (Ctrl-Z): release the terminal, stop the
+// process group, and re-acquire on SIGCONT. Without a real TTY (tests) it
+// is a no-op — there is nothing to release and SIGTSTP would stop the test
+// runner.
+func (p *Program) suspend() {
+	if p.tty == nil {
+		return
 	}
+	if err := p.releaseTerminal(); err != nil {
+		return
+	}
+	suspendProcess()
+	_ = p.acquireTerminal()
 }
 
-// watchSignals handles SIGINT/SIGTERM (quit) and SIGWINCH (resize).
+// watchSignals handles SIGINT/SIGTERM (quit) and SIGWINCH (resize) — the
+// platform signal sets live in signals_unix.go / signals_windows.go.
 func (p *Program) watchSignals(ctxDone <-chan struct{}) {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
+	sig := p.signalChannel()
 	defer signal.Stop(sig)
 	for {
 		select {
 		case <-ctxDone:
 			return
 		case s := <-sig:
-			switch s {
-			case syscall.SIGWINCH:
+			if s == p.resizeSignal() {
 				p.width, p.height = p.screen.Size()
 				select {
 				case p.msgs <- WindowSizeMsg{Width: p.width, Height: p.height}:
 				case <-ctxDone:
 					return
 				}
-			default:
-				select {
-				case p.msgs <- QuitMsg{}:
-				case <-ctxDone:
-					return
-				}
+				continue
+			}
+			select {
+			case p.msgs <- QuitMsg{}:
+			case <-ctxDone:
+				return
 			}
 		}
 	}

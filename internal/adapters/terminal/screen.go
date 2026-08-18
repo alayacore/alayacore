@@ -132,6 +132,16 @@ func (s *Screen) Render(content string, cur *Cursor) error {
 	return nil
 }
 
+// Reset clears the frame caches so the next Render is a full repaint even
+// when the content is unchanged since the last frame (used after a terminal
+// suspend/resume, where the screen was handed to another process).
+func (s *Screen) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastContent = ""
+	s.lastCursor = nil
+}
+
 // Resize records a new terminal size. Rendering does not depend on the
 // size (the terminal soft-wraps), but the program tracks it for layout.
 func (s *Screen) Resize(width, height int) {

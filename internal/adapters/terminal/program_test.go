@@ -87,15 +87,17 @@ func TestProgramCmdResult(t *testing.T) {
 	go func() { _, err := p.run(m); done <- err }()
 
 	msgs <- cmdTrigger{}
-	if err := waitFor(t, func() bool { return m.result != 0 }); err != nil {
-		t.Fatal(err)
+	select {
+	case result := <-m.resultCh:
+		if result != 42 {
+			t.Errorf("cmd result = %d, want 42", result)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("cmd result not delivered within 2s")
 	}
 	msgs <- QuitMsg{}
 	if err := <-done; err != nil {
 		t.Fatal(err)
-	}
-	if m.result != 42 {
-		t.Errorf("cmd result = %d, want 42", m.result)
 	}
 }
 
@@ -336,9 +338,11 @@ func TestProgramPanicRecovery(t *testing.T) {
 	}
 }
 
-// TestProgramSuspendIgnored verifies SuspendMsg does not end the loop
-// (module 5 will implement it).
-func TestProgramSuspendIgnored(t *testing.T) {
+// TestProgramSuspendNoTTYIsNoop verifies SuspendMsg does not end the loop
+// and is handled internally (never delivered to Update). Without a real TTY
+// the suspend is a no-op — releaseTerminal would otherwise stop the test
+// runner with SIGTSTP.
+func TestProgramSuspendNoTTYIsNoop(t *testing.T) {
 	msgs := make(chan Msg, 4)
 	p, _ := newTestProgram(msgs)
 	m := &fakeModel{}
