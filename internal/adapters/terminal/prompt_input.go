@@ -180,11 +180,6 @@ func (m PromptInput) Height() int {
 	return lines
 }
 
-// OpenEditor opens the external editor for multi-line input.
-func (m Terminal) OpenEditor() Cmd {
-	return m.editor.Open(m.input.Value())
-}
-
 // WithBlocked marks the input as blocked (covered by an overlay).
 // When blocked, View() dims the content instead of showing it at full brightness.
 func (m PromptInput) WithBlocked(blocked bool) PromptInput {
