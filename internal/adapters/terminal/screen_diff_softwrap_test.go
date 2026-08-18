@@ -1,69 +1,104 @@
 package terminal
 
 import (
+	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
+	"github.com/alayacore/alayacore/internal/theme"
+	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// TestDiffFrameRowsWrappedLineWholeRewrite: when a soft-wrapped base line
-// changes, the diff must repaint the WHOLE logical line at its start row
-// as one continuous write — the terminal auto-wraps it and keeps it ONE
-// logical line. Per-terminal-row CUP rewrites would split the terminal's
-// logical line, so copying the wrapped line afterwards yields hard
-// newlines at the row boundaries (mid-word, since the wrapping is
-// character-based).
-func TestDiffFrameRowsWrappedLineWholeRewrite(t *testing.T) {
-	const width = 40
+func tlvFrame(tag, id, payload string) []byte {
+	value := "\x00" + id + "\x00" + payload
+	b := make([]byte, 6+len(value))
+	copy(b[0:2], tag)
+	binary.BigEndian.PutUint32(b[2:6], uint32(len(value)))
+	copy(b[6:], value)
+	return b
+}
 
-	mkContent := func(n int) string {
-		// One soft-wrapped base line (n chars → ceil(n/40) terminal rows)
-		// followed by a full-width rule (a separate logical line).
-		return strings.Repeat("a", n) + ansi.EraseLine(0) + "\n" +
-			strings.Repeat("─", width) + ansi.EraseLine(0)
+// TestRealAppWrappedLineContinuity drives the real Terminal with a tool
+// AF frame whose parameter is long enough to wrap a word across two
+// terminal rows, then a streaming update that changes the line. It
+// verifies (1) the frame content keeps the wrapped line as ONE continuous
+// base row, and (2) the Screen diff repaints it whole (one continuous
+// write at the line's start row, no per-row CUP to the continuation rows)
+// so the terminal's logical line — and the copy — stay intact.
+func TestRealAppWrappedLineContinuity(t *testing.T) {
+	const width = 60
+
+	out := NewTerminalOutput(DefaultStyles())
+	terminal := NewTerminalWithTheme(out, nopWriteCloser{}, nil, width, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal.out.SetWindowWidth(width)
+
+	writeTool := func(command string, expand bool) string {
+		payload := fmt.Sprintf(`{"id":"t1","name":"execute_command","input":{"command":%q}}`, command)
+		terminal.out.Write(append(tlvFrame(tlv.TagAssistantF, "t1", payload), tlvFrame(tlv.TagUserF, "t1", `{"id":"t1","content":[],"is_error":false}`)...))
+		terminal.out.FlushPendingDeltas()
+		if expand {
+			if wb := terminal.out.WindowBuffer(); wb.WindowCount() > 0 {
+				wb.ToggleFold(0) // expand: window starts folded
+			}
+		}
+		var cmd Cmd
+		terminal, cmd = terminal.handleDisplayRefresh()
+		_ = cmd
+		return terminal.View().Content
 	}
 
-	oldContent := mkContent(100) // terminal rows: [40, 40, 20]
-	newContent := mkContent(105) // tail changed → rows [40, 40, 25]
+	// A command long enough that the wrap splits a word across 2 rows.
+	cmd := "cd /home/wallace/playground/alayacore && go test ./internal/adapters/terminal/ -run TestGenericHandler -v && gofmt -l internal/adapters/terminal/"
+	frame1 := writeTool(cmd+" && echo short", true)
+	frame2 := writeTool(cmd+" && echo done && staticcheck ./internal/adapters/terminal/...", false)
 
-	out := string(diffFrameRows(oldContent, newContent, width))
-
-	// The whole new line must be written at its start row (row 1) in one
-	// continuous write.
-	if !strings.HasPrefix(out, ansi.CursorPosition(1, 1)) {
-		t.Fatalf("diff should start with CUP to row 1, got %q", out[:min(len(out), 20)])
-	}
-	line := strings.Repeat("a", 105)
-	if !strings.Contains(out, line) {
-		t.Fatalf("diff must contain the full new line text (105 chars), got %q", out)
-	}
-	// The continuation rows must NOT be repainted with their own CUP
-	// writes — that would split the terminal's logical line.
-	for _, row := range []int{2, 3} {
-		if strings.Contains(out, ansi.CursorPosition(1, row)) {
-			t.Errorf("diff must not CUP-rewrite continuation row %d separately (splits the logical line): %q", row, out)
+	// (1) In both frames the wrapped parameter must be ONE base row whose
+	// terminal span > 1 — the fragment joins the wrapped rows without '\n'.
+	for name, f := range map[string]string{"frame1": frame1, "frame2": frame2} {
+		found := false
+		for _, r := range positionedRows(f, width) {
+			if r.base && strings.Contains(r.frameRow.text, "internal/adapters/terminal/") {
+				found = true
+				if r.terminalRows <= 1 {
+					t.Errorf("%s: wrapped line is a single-terminal-row base row (len %d), want >1", name, len(r.frameRow.text))
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: wrapped line not found as a base row", name)
 		}
 	}
-	// The unchanged rule (row 4) must not be repainted at all.
-	if strings.Contains(out, ansi.CursorPosition(1, 4)) {
-		t.Errorf("diff must not repaint the unchanged rule row: %q", out)
+
+	// (2) The diff must repaint the wrapped line whole: one CUP to its
+	// start row followed by the full line text — and NO CUP to any of its
+	// continuation rows (that would split the terminal's logical line).
+	diff := string(diffFrameRows(frame1, frame2, width))
+	var line positionedRow
+	for _, r := range positionedRows(frame2, width) {
+		if r.base && strings.Contains(r.frameRow.text, "internal/adapters/terminal/") {
+			line = r
+			break
+		}
+	}
+	if line.terminalRows <= 1 {
+		t.Fatalf("test setup: wrapped line must span >1 terminal rows")
+	}
+	start := ansiCursorPosition(1, line.frameRow.row+1)
+	if !strings.HasPrefix(diff, start) {
+		t.Fatalf("diff should start with CUP to the wrapped line's start row %d, got %q", line.frameRow.row+1, diff[:min(len(diff), 40)])
+	}
+	if !strings.HasPrefix(diff, start+line.frameRow.text) {
+		t.Errorf("diff must write the full wrapped line immediately after the start CUP (no per-row CUP between segments): %q", diff)
+	}
+	for r := line.frameRow.row + 1; r < line.frameRow.row+line.terminalRows; r++ {
+		if strings.Contains(diff, ansiCursorPosition(1, r+1)) {
+			t.Errorf("diff must not CUP-write wrapped continuation row %d separately (splits the logical line): %q", r+1, diff)
+		}
 	}
 }
 
-// TestDiffFrameRowsSingleLineStillPerRow: single-terminal-row base rows
-// keep the per-row composite repaint (no behavior change there).
-func TestDiffFrameRowsSingleLineStillPerRow(t *testing.T) {
-	const width = 40
-
-	oldContent := "old text" + ansi.EraseLine(0) + "\n" + strings.Repeat("─", width) + ansi.EraseLine(0)
-	newContent := "new text" + ansi.EraseLine(0) + "\n" + strings.Repeat("─", width) + ansi.EraseLine(0)
-
-	out := string(diffFrameRows(oldContent, newContent, width))
-	if !strings.Contains(out, "new text") {
-		t.Fatalf("diff must contain the new single-line text, got %q", out)
-	}
-	if strings.Contains(out, strings.Repeat("─", width)) {
-		t.Errorf("diff must not repaint the unchanged rule, got %q", out)
-	}
+// ansiCursorPosition builds the escape sequence for a 1-based (col,row).
+func ansiCursorPosition(col, row int) string {
+	return fmt.Sprintf("\x1b[%d;%dH", row, col)
 }
