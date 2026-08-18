@@ -52,10 +52,8 @@ const (
 	KeyRight
 	KeyLeft
 	KeyBegin
-	KeyFind
 	KeyInsert
 	KeyDelete
-	KeySelect
 	KeyPgUp
 	KeyPgDown
 	KeyHome
@@ -77,7 +75,6 @@ const (
 	KeyBackspace = rune(0x7f) // DEL
 	KeyTab       = rune(0x09) // HT
 	KeyEnter     = rune(0x0d) // CR
-	KeyReturn    = KeyEnter
 	KeyEscape    = rune(0x1b) // ESC
 	KeyEsc       = KeyEscape
 	KeySpace     = rune(0x20) // SP
@@ -114,15 +111,6 @@ func (k Key) Keystroke() string {
 	}
 	if k.Mod.Contains(ModShift) {
 		sb.WriteString("shift+")
-	}
-	if k.Mod.Contains(ModMeta) {
-		sb.WriteString("meta+")
-	}
-	if k.Mod.Contains(ModHyper) {
-		sb.WriteString("hyper+")
-	}
-	if k.Mod.Contains(ModSuper) {
-		sb.WriteString("super+")
 	}
 
 	if kt, ok := keyTypeString[k.Code]; ok {
