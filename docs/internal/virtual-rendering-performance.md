@@ -154,7 +154,9 @@ Measured via `BenchmarkVirtualRenderingCursorMovementSingle` (100 windows, viewp
 ### Collapsed-Window Design (single-line fold headers)
 
 The collapsed-window design replaces the bordered fold (3 content lines +
-2 border lines) with a single collapse-arrow header line (`LABEL first-line`).
+2 border lines) with a single collapse-arrow header line (`LABEL summary`:
+text windows show the escaped tail of the content, tool windows the first
+input line).
 Measured via `BenchmarkFoldedSession*` (120 windows — 110 folded
 tools/reasoning + 10 unfolded user/assistant, width 120, viewport 40):
 
@@ -169,9 +171,11 @@ Why it's fast:
 - **Folded windows are O(1)**: `UpdateLineCountFast` returns `1` immediately for
   folded windows — no wrapping, no border render, no renderer access. During
   streaming, deltas to folded windows cost nothing for line tracking (the
-  collapsed header shows the first input line, which appends never change).
-- **No full-content wrap on fold**: `BuildCollapsed` only reads and truncates
-  the first line instead of wrapping the entire content.
+  folded line count stays `1`; the tool window's summary shows the first
+  input line, which appends never change, and a folded text window only
+  re-renders its single summary line).
+- **No full-content wrap on fold**: `BuildCollapsed` only reads and
+  tail-truncates the content instead of wrapping the entire content.
 - **Cursor moves don't re-render borders**: only the arrow glyph is recolored
   (`renderCursorArrow`), reusing the cached content.
 - **Fewer total lines**: 1 line per folded window, shrinking

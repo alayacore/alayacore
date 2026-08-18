@@ -64,9 +64,10 @@ type WindowRendering interface {
 	BuildInner(width int, folded bool, styles *Styles) (lines []visualLine, lineCount int)
 
 	// BuildCollapsed returns the single-line collapsed representation of
-	// the window (label + first line, truncated to fit width), WITHOUT the
-	// leading collapse arrow — Window.Render adds the arrow. lineCount is
-	// always 1.
+	// the window (label + content summary, truncated to fit width), WITHOUT
+	// the leading collapse arrow — Window.Render adds the arrow. lineCount
+	// is always 1. Text windows summarize the ESCAPED TAIL of the content
+	// (see tailSummary); tool windows summarize the first input line.
 	BuildCollapsed(width int, styles *Styles) (inner string, lineCount int)
 
 	// Invalidate clears any cached rendering state.
@@ -351,7 +352,7 @@ func (w *Window) RawDelta() string {
 // When blocked is true, the content is rendered with dimmed colors.
 //
 // Two visual states:
-//   - Folded: a single line — collapse arrow + label + first line (no box).
+//   - Folded: a single line — collapse arrow + label + content summary (no box).
 //   - Expanded: a header line — expand arrow + label — above an open box
 //     (top/bottom rules only, no side borders).
 //
@@ -392,9 +393,10 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle St
 	arrowWidth := ansi.StringWidth(arrow)
 	w.border.arrow = arrowStyle(styles).Render(arrow)
 	if w.Folded {
-		// Collapsed: single line — arrow + label + first line, truncated.
-		// BuildCollapsed skips full wrapping: only the first content line
-		// is read and truncated, so folding a large window is O(1).
+		// Collapsed: single line — arrow + label + content summary, truncated.
+		// BuildCollapsed skips full wrapping: only the summary (escaped tail
+		// for text windows, first line for tool windows) is read and
+		// truncated, so folding a large window is O(1).
 		inner, _ := w.renderer.BuildCollapsed(width, styles)
 		w.border.lines = []visualLine{{Text: " " + inner}}
 		w.border.widths = nil // computed lazily by renderVirtual (fragment output)

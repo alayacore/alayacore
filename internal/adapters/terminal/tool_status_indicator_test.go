@@ -166,6 +166,51 @@ func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	}
 }
 
+// TestUserPromptCollapsedTail: the user prompt collapsed summary is
+// consistent with assistant text — the escaped LATEST tail of the whole
+// content (all text parts), never just the first line.
+func TestUserPromptCollapsedTail(t *testing.T) {
+	styles := DefaultStyles()
+
+	// Multi-line content fits entirely: newlines escaped as literal "\n".
+	ur := &userRenderer{textParts: []string{"first line\nsecond line\nthird line"}}
+	line, count := ur.BuildCollapsed(100, styles)
+	if count != 1 {
+		t.Fatalf("collapsed lineCount = %d, want 1", count)
+	}
+	if want := "USER PROMPT first line\\nsecond line\\nthird line"; stripANSI(line) != want {
+		t.Errorf("BuildCollapsed = %q, want %q", stripANSI(line), want)
+	}
+
+	// Narrow width: tail shown with leading "…", first line dropped,
+	// newlines escaped — same rule as assistant text.
+	ur = &userRenderer{textParts: []string{"first line\nsecond line\nthird line"}}
+	line, _ = ur.BuildCollapsed(30, styles)
+	plain := stripANSI(line)
+	if !strings.HasPrefix(plain, "USER PROMPT …") {
+		t.Errorf("collapsed should keep the label + leading ellipsis, got %q", plain)
+	}
+	if !strings.HasSuffix(plain, "\\nthird line") {
+		t.Errorf("collapsed should show the escaped tail, got %q", plain)
+	}
+	if strings.Contains(plain, "first") {
+		t.Errorf("collapsed tail should drop the first line, got %q", plain)
+	}
+	if strings.Contains(plain, "\n") {
+		t.Errorf("collapsed must not contain raw newlines: %q", plain)
+	}
+	if w := ansi.StringWidth(plain); w > 30 {
+		t.Errorf("collapsed width = %d, want <= 30: %q", w, plain)
+	}
+
+	// Multiple text parts: summary covers ALL parts, not just the first.
+	ur = &userRenderer{textParts: []string{"part one", "part two"}}
+	line, _ = ur.BuildCollapsed(100, styles)
+	if want := "USER PROMPT part one\\npart two"; stripANSI(line) != want {
+		t.Errorf("multi-part BuildCollapsed = %q, want %q", stripANSI(line), want)
+	}
+}
+
 // TestUserPromptLabel: the user window label is "USER PROMPT" in both the
 // collapsed line and the expanded header, and its content stays aligned at
 // the fixed label column like every other window type.
@@ -191,7 +236,7 @@ func TestUserPromptLabel(t *testing.T) {
 }
 
 // TestUserPromptCollapsedTailEllipsis: an over-long USER folded summary
-// keeps the tail of the first line with the ellipsis at the line START —
+// keeps the tail of the content with the ellipsis at the line START —
 // never a trailing "…".
 func TestUserPromptCollapsedTailEllipsis(t *testing.T) {
 	wb := NewWindowBuffer(30, DefaultStyles())
@@ -209,7 +254,7 @@ func TestUserPromptCollapsedTailEllipsis(t *testing.T) {
 	if strings.HasSuffix(trimmed, "…") {
 		t.Errorf("ellipsis must be at the line START, not the end: %q", plain)
 	}
-	// The line ends with the tail (latest characters) of the first line.
+	// The line ends with the tail (latest characters) of the content.
 	if !strings.HasSuffix(trimmed, "单元测试") {
 		t.Errorf("collapsed user line should end with the first-line tail, got %q", plain)
 	}

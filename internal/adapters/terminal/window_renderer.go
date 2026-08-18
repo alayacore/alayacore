@@ -464,23 +464,23 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 }
 
 // BuildCollapsed returns the single-line collapsed form:
-// "USER PROMPT …first-text-line-tail", truncated to fit width minus the
-// arrow. Like every other collapsed summary, an over-long first line
-// keeps its LATEST part with a leading "…" — never a trailing ellipsis.
+// "USER PROMPT …content-tail", truncated to fit width minus the arrow.
+// Consistent with assistant text / reasoning: the summary shows the
+// escaped latest tail of the WHOLE content (all text parts), so a
+// multi-frame user message's newest content stays visible in the
+// collapsed list — not just the first line of the first part.
 func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
-	first := ""
-	if len(r.textParts) > 0 {
-		first = firstLine(strings.TrimSpace(r.textParts[0]))
+	content := prepareContent(strings.Join(r.textParts, "\n"))
+	content = strings.TrimSpace(content)
+	if content == "" && len(r.mediaParts) > 0 {
+		content = r.mediaParts[0]
 	}
-	if first == "" && len(r.mediaParts) > 0 {
-		first = r.mediaParts[0]
-	}
-	if first == "" {
+	if content == "" {
 		return "", 1
 	}
 	label := padLabel("USER PROMPT")
 	room := max(0, width-2-ansi.StringWidth(label))
-	line := label + tailSummary(first, room)
+	line := label + tailSummary(content, room)
 	line = truncateWithSuffix(line, max(0, width-2)) // safety net
 	return renderCollapsedLine(line, padLabel("USER PROMPT"), labelStyleForTag(tlv.TagUserT, styles), styles.System), 1
 }
