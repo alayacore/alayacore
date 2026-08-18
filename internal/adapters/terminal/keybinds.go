@@ -213,6 +213,11 @@ func (m Terminal) handleConfirmMCPAuth(r *ConfirmResult, fromCmd bool) (Terminal
 // Uses Sequence to split into phases so all display output (notify/error)
 // flows through messages handled by Terminal.Update rather than direct calls
 // to m.out from inside a goroutine.
+//
+// Phase 3 blocks on resultCh for up to mcpAuthTimeout. Because the
+// sequence runs in its own goroutine (Program.execSequence is dispatched
+// with `go ...`), the wait only stalls that goroutine — the main loop
+// continues to drain p.msgs, so the input loop is unaffected.
 func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 	state := platform.RandomState()
 
