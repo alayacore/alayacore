@@ -187,12 +187,6 @@ type PasteMsg struct {
 	Content string
 }
 
-// PasteStartMsg is emitted when bracketed paste starts.
-type PasteStartMsg struct{}
-
-// PasteEndMsg is emitted when bracketed paste ends.
-type PasteEndMsg struct{}
-
 // WindowSizeMsg is emitted when the terminal size changes.
 type WindowSizeMsg struct {
 	Width, Height int
@@ -226,7 +220,7 @@ func (p *InputParser) Parse(data []byte) []any {
 			if i := indexSeq(data, pasteEnd); i >= 0 {
 				p.paste.Write(data[:i])
 				p.inPaste = false
-				msgs = append(msgs, PasteMsg{Content: p.paste.String()}, PasteEndMsg{})
+				msgs = append(msgs, PasteMsg{Content: p.paste.String()})
 				p.paste.Reset()
 				data = data[i+len(pasteEnd):]
 				continue
@@ -263,7 +257,6 @@ func (p *InputParser) Parse(data []byte) []any {
 		if seq == pasteStart {
 			p.inPaste = true
 			p.paste.Reset()
-			msgs = append(msgs, PasteStartMsg{})
 			continue
 		}
 		k, ok := escapeKey(seq)

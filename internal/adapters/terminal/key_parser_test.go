@@ -205,22 +205,16 @@ func TestKeyParserFlushEsc(t *testing.T) {
 func TestKeyParserPaste(t *testing.T) {
 	var p InputParser
 	msgs := p.Parse([]byte("\x1b[200~hello \x1b[A world\x1b[201~"))
-	if len(msgs) != 3 {
-		t.Fatalf("expected 3 msgs (start, paste, end), got %d: %#v", len(msgs), msgs)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 msg (paste), got %d: %#v", len(msgs), msgs)
 	}
-	if _, ok := msgs[0].(PasteStartMsg); !ok {
-		t.Errorf("msg[0] = %T, want PasteStartMsg", msgs[0])
-	}
-	pm, ok := msgs[1].(PasteMsg)
+	pm, ok := msgs[0].(PasteMsg)
 	if !ok {
-		t.Fatalf("msg[1] = %T, want PasteMsg", msgs[1])
+		t.Fatalf("msg[0] = %T, want PasteMsg", msgs[0])
 	}
 	// Escape sequences inside paste content must pass through verbatim.
 	if pm.Content != "hello \x1b[A world" {
 		t.Errorf("paste content = %q, want verbatim bytes", pm.Content)
-	}
-	if _, ok := msgs[2].(PasteEndMsg); !ok {
-		t.Errorf("msg[2] = %T, want PasteEndMsg", msgs[2])
 	}
 }
 
@@ -228,21 +222,18 @@ func TestKeyParserPaste(t *testing.T) {
 func TestKeyParserPasteSplit(t *testing.T) {
 	var p InputParser
 	msgs := p.Parse([]byte("\x1b[200~part1"))
-	if len(msgs) != 1 {
-		t.Fatalf("expected PasteStartMsg, got %#v", msgs)
+	if len(msgs) != 0 {
+		t.Fatalf("expected 0 msgs from start-only input, got %d: %#v", len(msgs), msgs)
 	}
 	msgs = p.Parse([]byte(" part2\x1b[201~after"))
-	if len(msgs) != 7 {
-		t.Fatalf("expected paste+end+5 runes, got %d: %#v", len(msgs), msgs)
+	if len(msgs) != 6 {
+		t.Fatalf("expected paste+5 runes, got %d: %#v", len(msgs), msgs)
 	}
 	pm := msgs[0].(PasteMsg)
 	if pm.Content != "part1 part2" {
 		t.Errorf("paste content = %q", pm.Content)
 	}
-	if _, ok := msgs[1].(PasteEndMsg); !ok {
-		t.Fatalf("msgs[1] = %T, want PasteEndMsg", msgs[1])
-	}
-	km := msgs[2].(KeyPressMsg)
+	km := msgs[1].(KeyPressMsg)
 	if km.String() != "a" {
 		t.Errorf("after paste: %q, want a", km.String())
 	}
