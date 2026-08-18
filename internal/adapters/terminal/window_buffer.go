@@ -872,7 +872,9 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 	// Cursor highlight: recolor the arrow on the window's first visible
 	// line (the header), mirroring renderCursorArrow. The dim arrow is
 	// cached at render time; the cursor arrow (rare — one window) is
-	// rendered on demand.
+	// rendered on demand. The first row is REPLACED (not mutated in
+	// place): lines aliases w.border.lines, so mutating it would prepend
+	// another arrow on every render.
 	if from == 0 {
 		var arrowStr string
 		if isCursor {
@@ -884,8 +886,9 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 		} else {
 			arrowStr = w.border.arrow
 		}
-		lines[0].Text = arrowStr + lines[0].Text
-		widths[0] = w.border.arrowWidth + widths[0]
+		first := lines[0]
+		lines = append([]visualLine{{Text: arrowStr + first.Text, Cont: first.Cont}}, lines[1:]...)
+		widths = append([]int{w.border.arrowWidth + widths[0]}, widths[1:]...)
 	}
 	return lines, widths
 }
