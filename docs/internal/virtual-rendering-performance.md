@@ -2,24 +2,24 @@
 
 Performance analysis of AlayaCore's virtual scrolling system for the terminal display.
 
-Benchmarks run on: Intel(R) Core(TM) Ultra 9 285K, Linux amd64.
+Benchmarks run on: Intel(R) Core(TM) Ultra 9 285K, Linux amd64, Go 1.26.1.
+Verified 2026-08-18 against the current self-built TUI stack (no Bubbles/lipgloss).
 
 ## Summary
 
 All optimizations are working correctly:
 
-- ✅ **Virtual rendering** — 3.7x faster than naive rendering
-- ✅ **Incremental content append** — O(delta) per frame via `appendDeltaToLines`, avoids O(n) full re-wrap (~511x speedup on 5000-line content)
-- ✅ **Incremental line height tracking** — `TryLineCount` from `wrappedLines` in ~7.5μs (full `ensureLineHeights` with 1 dirty window), no full render needed
-- ✅ **Streaming stays under 1ms** — average 24.8μs per full cycle (append + line tracking + GetAll), well within 250ms tick budget
-- ✅ **Custom ScrollView** (<1KB) replaces Bubbles viewport — stores the
-  pre-clipped visible region; `View()` pads to the viewport height
-  (~500–850ns including split+padding, ~1 alloc). `WithContent` is ~0.7ns
-  (no re-split)
+- ✅ **Virtual rendering** — 16.6x faster than naive full render (3.0μs vs 50.2μs, 100 windows)
+- ✅ **Incremental content append** — O(delta) per frame via `appendDeltaToLines`, avoids O(n) full re-wrap (~553x speedup on 5000-line content)
+- ✅ **Incremental line height tracking** — `TryLineCount` from `wrappedLines` in ~1.1μs (full `ensureLineHeights` with 1 dirty window), no full render needed
+- ✅ **Streaming stays under 1ms** — average 4.1μs per full cycle (append + line tracking + GetAll), well within 250ms tick budget
+- ✅ **Custom ScrollView** (<1KB) — stores the pre-clipped visible region;
+  `View()` pads to the viewport height (~138ns, 4 allocs). `WithContent` is
+  ~0.1ns (no re-split)
 - ✅ **Soft-wrap fragment viewport** — `renderVirtual` clips to visual lines
   and emits continuous per-window fragments (`\n` only between windows);
-  display widths cached per render, so `GetAll` is ~68% faster than the old
-  buffered render (see [Soft-Wrap Fragment Rendering](#soft-wrap-fragment-rendering))
+  display widths cached per render, so `GetAll` renders 100 windows in 2.6μs
+  (see [Soft-Wrap Fragment Rendering](#soft-wrap-fragment-rendering))
 
 ## How Streaming Works
 
@@ -37,7 +37,7 @@ This means line tracking during streaming is **always fast**, not just on cache 
 
 ```
 Streaming frame arrives → appendDeltaToLines (O(delta), plain text)
-TryLineCount → len(wrappedLines) + 3  (~8.5μs via ensureLineHeights, no full render)
+TryLineCount → len(wrappedLines) + 3  (~1.1μs via ensureLineHeights, no full render)
 ```
 
 A dedicated assertion test (`TestIncrementalPathIsUsed`) verifies that
@@ -63,10 +63,10 @@ exclusively.
 
 | Metric | Value |
 |--------|-------|
-| Average full cycle (append + line tracking + GetAll) | **24.8μs** |
-| Incremental append only (AppendOrUpdate) | **58ns** |
-| Small delta streaming (append + line tracking) | **6.4μs** |
-| Long content incremental append (5000-line content) | **6.4μs** |
+| Average full cycle (append + line tracking + GetAll) | **4.1μs** |
+| Incremental append only (AppendOrUpdate) | **52ns** |
+| Small delta streaming (append + line tracking) | **1.2μs** |
+| Long content incremental append (5000-line content) | **1.3μs** |
 | Budget | < 1ms (target), 250ms (actual tick) |
 
 ### Incremental Append vs Full Re-wrap (5000-line content)
@@ -75,23 +75,29 @@ Measured via `BenchmarkAppendVsFullWrap_LongContent` (500 lines of wrapped conte
 
 | Operation | Time | Memory | Allocs |
 |-----------|------|--------|--------|
-| **Incremental append** | **6.4μs** | **3.2KB** | **268** |
-| Full re-wrap | 3.27ms | 1.97MB | 69,996 |
-| **Speedup** | **511x** | **608x** | **261x** |
+| **Incremental append** | **1.3μs** | **865B** | **62** |
+| Full re-wrap | 0.73ms | 796KB | 32,085 |
+| **Speedup** | **553x** | **920x** | **518x** |
 
 Without the incremental path, every streaming frame on a long LLM response
-would trigger a full O(n) re-wrap of the entire accumulated content — 3.27ms
+would trigger a full O(n) re-wrap of the entire accumulated content — 0.73ms
 per frame. At the 250ms tick interval this is still manageable, but burst
 scenarios (multiple frames arriving between ticks) would accumulate latency.
 
-### Streaming Update End-to-End (100 windows, 50 history + 1 streaming)
+### Streaming Update End-to-End (51 windows, 50 history + 1 streaming)
 
-Measured via `BenchmarkStreamingUpdateWithIncremental` vs `BenchmarkStreamingUpdateWithoutIncremental`.
+Measured via `BenchmarkStreamingUpdateWithIncremental` vs `BenchmarkStreamingUpdateWithoutIncremental`
+(viewport=30; the non-incremental side is 100 windows with no viewport, i.e. full render).
 
 | Scenario | Time | Memory | Allocs | Speedup |
 |----------|------|--------|--------|:-------:|
-| **Incremental (1 dirty window)** | **24.8μs** | 101KB | 308 | **baseline** |
-| Full rebuild (all dirty, no incremental) | 2.95ms | 1.87MB | 64,570 | **119x slower** |
+| **Incremental (1 dirty window)** | **4.1μs** | 11.7KB | 121 | **baseline** |
+| Full rebuild (all dirty, no incremental) | 0.60ms | 631KB | 25,480 | **146x slower** |
+
+Window count does not change the incremental cost: a probe with the documented
+101-window scenario (100 history + 1 streaming, viewport 30) measures **4.0μs**
+— the same as 51 windows. Incremental path is O(delta), independent of history
+length.
 
 ### Virtual Rendering
 
@@ -99,8 +105,8 @@ Measured via `BenchmarkGetAllWithVirtual` vs `BenchmarkGetAllWithoutVirtual` (10
 
 | Scenario | Time | Memory | Speedup |
 |----------|------|--------|:-------:|
-| `GetAll` with virtual rendering (100 windows) | **25μs** | 151KB | **3.7x** |
-| `GetAll` without virtual rendering (100 windows) | **92μs** | 510KB | baseline |
+| `GetAll` with virtual rendering (100 windows) | **3.0μs** | 10.5KB | **16.6x** |
+| `GetAll` without virtual rendering (100 windows) | **50.2μs** | 285KB | baseline |
 
 ### Line Height Tracking
 
@@ -108,11 +114,11 @@ Measured via `BenchmarkJustEnsureLineHeights` (20 windows, 1 dirty window, cache
 
 | Scenario | Time | Notes |
 |----------|------|-------|
-| Incremental (1 dirty window, cached) | **7.5μs** | `ensureLineHeights` via `TryLineCount` from `wrappedLines` |
+| Incremental (1 dirty window, cached) | **1.1μs** | `ensureLineHeights` via `TryLineCount` from `wrappedLines` |
 | Incremental (1 dirty window, uncached) | ~150μs* | Falls through to full `Render()` |
 | Full rebuild (all 100 windows) | ~7.1ms* | All windows rendered from scratch |
 
-\* Historical estimates — measured on earlier hardware/configuration.
+\* Historical estimates — fallback path, not exercised during normal streaming.
 
 ### Full Update Cycle (Delta + GetAll)
 
@@ -120,10 +126,11 @@ Measured via `BenchmarkWindowBufferDeltaWithGetAll` (100 windows, delta to last 
 
 | Metric | Value |
 |--------|-------|
-| Delta + GetTotalLines + GetAll (incremental) | **31.2μs** |
-| Delta + GetTotalLines + GetAll (full rebuild) | **5.3ms*** |
+| Delta + GetTotalLines + GetAll (incremental) | **4.1μs** |
+| Delta + GetTotalLines + GetAll (full rebuild) | **1.7ms*** |
 
-\* Historical comparison — incremental is ~170x faster.
+\* Measured via `BenchmarkFullRebuildAfterAppend` (all windows invalidated) —
+incremental is ~425x faster.
 
 ### Cursor Movement
 
@@ -131,47 +138,44 @@ Measured via `BenchmarkVirtualRenderingCursorMovementSingle` (100 windows, viewp
 
 | Metric | Value |
 |--------|-------|
-| Single cursor move (EnsureCursorVisible + updateContent) | **77μs** |
-| Scroll 20 steps down + 20 steps up | **611μs** |
+| Single cursor move (EnsureCursorVisible + updateContent) | **3.2μs** |
+| Scroll 20 steps down + 20 steps up | **113μs** |
 
-### Collapsed-Window Redesign (single-line fold headers)
+### Collapsed-Window Design (single-line fold headers)
 
-The collapsed-window redesign replaced the bordered fold (3 content lines +
+The collapsed-window design replaces the bordered fold (3 content lines +
 2 border lines) with a single collapse-arrow header line (`LABEL first-line`).
 Measured via `BenchmarkFoldedSession*` (120 windows — 110 folded
 tools/reasoning + 10 unfolded user/assistant, width 120, viewport 40):
 
-| Scenario | Before | After | Speedup |
-|----------|-------:|------:|:-------:|
-| `GetAll` viewport render | 45.0μs | 21.0μs | **2.1x** |
-| 20 cursor moves (j/k) | 2.14ms | 0.39ms | **5.5x** |
-| Delta into a folded tool window (Uf preview) | 53.7μs | 0.09μs | **~600x** |
+| Scenario | Value |
+|----------|------:|
+| `GetAll` viewport render | **7.9μs** |
+| 20 cursor moves (j/k) | **0.17ms** |
+| Delta into a folded tool window (Uf preview) | **0.11μs** |
 
-Why the wins:
+Why it's fast:
 
 - **Folded windows are O(1)**: `UpdateLineCountFast` returns `1` immediately for
   folded windows — no wrapping, no border render, no renderer access. During
   streaming, deltas to folded windows cost nothing for line tracking (the
   collapsed header shows the first input line, which appends never change).
-- **No full-content wrap on fold**: previously `BuildInner` wrapped the entire
-  content before `applyFolding` kept 3 lines; now `BuildCollapsed` only reads
-  and truncates the first line.
-- **Cursor moves don't re-render borders**: previously each cursor change
-  re-rendered the whole border with the cursor color; now only the arrow glyph
-  is recolored (`renderCursorArrow`), reusing the cached content.
-- **Fewer total lines**: 5 lines per folded window → 1, shrinking
+- **No full-content wrap on fold**: `BuildCollapsed` only reads and truncates
+  the first line instead of wrapping the entire content.
+- **Cursor moves don't re-render borders**: only the arrow glyph is recolored
+  (`renderCursorArrow`), reusing the cached content.
+- **Fewer total lines**: 1 line per folded window, shrinking
   `lineHeights`/scrolling math proportionally.
 
-Unfolded windows pay a small cost for the new expand-arrow header line
-(`LABEL` above the open box — a few µs per render —
-`BenchmarkWindowBufferDelta` +~23%), which is dwarfed by the folded-window
-wins in real sessions.
+Unfolded windows pay a small cost for the expand-arrow header line
+(`LABEL` above the open box — ~1.4μs per delta via `BenchmarkWindowBufferDelta`),
+which is dwarfed by the folded-window wins in real sessions.
 
 ### GetWindowLineRange
 
 | Scenario | Time |
 |----------|------|
-| Single lookup (windowIndex=50, 100 windows) | **23ns** |
+| Single lookup (windowIndex=50, 100 windows) | **21ns** |
 | Cached (3 lookups) | **56ns total** |
 
 ### ScrollView Component
@@ -182,18 +186,16 @@ longer re-splits or slices content.
 
 | Metric | Value |
 |--------|-------|
-| `WithContent` (any size) | **~0.7ns**, 0 allocs (stores the pre-clipped string) |
-| `View()` (n=10 to n=10000) | **~480–850ns**, split + padding |
-| `ScrollDown(1)` | **~14ns**, 0 allocs |
+| `WithContent` (any size) | **~0.1ns**, 0 allocs (stores the pre-clipped string) |
+| `View()` (n=10 to n=10000) | **~138ns**, split + padding (326B, 4 allocs) |
+| `ScrollDown(1)` | **~7ns**, 0 allocs |
 
 ### Soft-Wrap Fragment Rendering
 
-The soft-wrap refactor changed `renderVirtual` from
-"render a buffered window range, `\n`-join everything, let ScrollView
-slice" to **exact viewport clipping**:
+`renderVirtual` performs **exact viewport clipping**:
 
 - only the windows overlapping `[yOffset, yOffset+height)` are rendered
-  (typically 1–3 instead of a ±5-window buffer);
+  (typically 1–3 windows);
 - each window's visual lines are joined **without `\n`** and padded to the
   full width (except the last row), so the terminal soft-wraps at the
   simulated breakpoints — copy restores the original text;
@@ -203,16 +205,16 @@ slice" to **exact viewport clipping**:
   render per window per view.
 
 Measured (120-window folded session / 100-window conversation, viewport
-30–40, vs pre-refactor):
+30–40):
 
-| Benchmark | Before | After | Δ |
-|-----------|-------:|------:|--:|
-| `WindowBufferGetAll` | 13.7μs | 2.4μs | **-68%** |
-| `FoldedSessionGetAll` | 31.7μs | 13.9μs | **-37%** |
-| `WindowBufferDeltaWithGetAll` | 13.7μs | 3.7μs | **-73%** |
-| `VirtualRenderingCursorMovement` | 449μs | 93μs | **-79%** |
-| `VirtualRenderingScroll` | 324μs | 108μs | **-67%** |
-| `StreamingUpdateWithVirtualRendering` | 19.9μs | 6.2μs | **-69%** |
+| Benchmark | Value |
+|-----------|------:|
+| `WindowBufferGetAll` | **2.6μs** |
+| `FoldedSessionGetAll` | **7.9μs** |
+| `WindowBufferDeltaWithGetAll` | **4.1μs** |
+| `VirtualRenderingCursorMovement` | **60μs** |
+| `VirtualRenderingScroll` | **113μs** |
+| `StreamingUpdateWithVirtualRendering` | **4.1μs** |
 
 The render path (full wrap, resize, theme switch) is unchanged: display
 widths are computed **lazily** — only when fragment output needs padding —
@@ -222,20 +224,20 @@ so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 
 | Algorithm | Time | Memory | Allocs |
 |-----------|------|--------|--------|
-| **wrapContent** (character-boundary) | **28.4μs** | 17.3KB | 1,780 |
-| Wrap (word-boundary) | 36.0μs | 15.7KB | 1,781 |
+| **wrapContent** (character-boundary) | **27.7μs** | 17.3KB | 1,780 |
+| Wrap (word-boundary) | 35.4μs | 15.7KB | 1,781 |
 | **Speedup** | **1.27x** | — | — |
 
 ### Resize Performance
 
 | Scenario | Time |
 |----------|------|
-| Resize 50 windows (80↔120 cols) | **2.75ms** |
+| Resize 50 windows (80↔120 cols) | **0.21ms** |
 
 ## Why Rate Limiting Isn't Needed
 
 1. **UI refresh is polled at 250ms intervals** — data ingestion itself is not throttled
-2. **Render overhead is well under 0.01%** of wall time during streaming (24.8μs per 250ms tick = 0.01%)
+2. **Render overhead is well under 0.01%** of wall time during streaming (4.1μs per 250ms tick ≈ 0.002%)
 3. **`updateContent()` skips unchanged content** efficiently
 4. **Incremental append is O(delta)** — no quadratic accumulation for long responses
 
@@ -272,7 +274,7 @@ access (no interface dispatch on the hot path).
 ### Why `ensureLineHeights` Defers Full Render
 
 During streaming, `ensureLineHeights` first tries `UpdateLineCountFast` → `TryLineCount`.
-If the renderer's `wrappedLines` is populated, this returns the line count in ~7.5μs
+If the renderer's `wrappedLines` is populated, this returns the line count in ~1.1μs
 without rendering. The actual `w.Render()` — which joins wrapped lines, applies borders,
 and renders the style layer — is deferred to `GetAll` → `renderVirtual`, which needs
 the rendered output for the viewport anyway.
