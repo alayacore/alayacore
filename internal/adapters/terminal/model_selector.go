@@ -143,8 +143,6 @@ func (ms ModelSelector) Open() ModelSelector {
 	return ms
 }
 
-// ModelSelectorUpdate captures the outcome of a HandleKeyMsg call.
-
 // --- Key Handling ---
 
 //nolint:gocyclo

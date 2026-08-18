@@ -204,6 +204,3 @@ func escapeNewlines(s string) string {
 // Tool Renderer — per-tool rendering of tool call input
 // ============================================================================
 
-// (Tool rendering moved to window_renderer.go → toolRenderer.)
-// The old ToolRenderer interface and its implementations (defaultRenderer,
-// diffRenderer, outputSeparatorRenderer) were removed.

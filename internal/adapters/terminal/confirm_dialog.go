@@ -200,8 +200,6 @@ func (cd ConfirmDialog) Close() ConfirmDialog {
 
 // ---- Key Handling ----
 
-// ConfirmDialogUpdate captures the outcome of a HandleKeyMsg call.
-
 // HandleKeyMsg processes a key press and updates state.
 // Returns the updated dialog and a result struct describing what happened.
 func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, Cmd) {

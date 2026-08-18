@@ -221,8 +221,6 @@ func (hw HelpWindow) filteredLen() int {
 	return len(hw.filteredItems)
 }
 
-// HelpWindowUpdate removed — use HelpCmdMsg instead {
-
 //nolint:gocyclo
 func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
 	keyMsg, ok := msg.(KeyMsg)
