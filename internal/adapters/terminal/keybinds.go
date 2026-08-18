@@ -622,5 +622,3 @@ func scheduleTick() Cmd {
 		return tickMsg{}
 	})
 }
-
-// switchToSelectedModel sends a model_set command to switch to the selected model.
