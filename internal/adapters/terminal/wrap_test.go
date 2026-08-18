@@ -30,6 +30,26 @@ func TestWrapLines(t *testing.T) {
 	}
 }
 
+// TestWrapLabelsTrailingEmpty verifies a trailing empty label does not
+// drop the last non-empty line (the flush must run after the loop, not on
+// the last-iteration check).
+func TestWrapLabelsTrailingEmpty(t *testing.T) {
+	labels := []string{"a.pdf", "b.png", ""}
+	got := wrapLabels(labels, 20, NewStyle())
+	lines := strings.Split(got, "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d: %q", len(lines), got)
+	}
+	if !strings.Contains(got, "a.pdf") || !strings.Contains(got, "b.png") {
+		t.Errorf("expected both labels on the line, got %q", got)
+	}
+
+	// All-empty input still yields nothing.
+	if got := wrapLabels([]string{"", ""}, 20, NewStyle()); got != "" {
+		t.Errorf("all-empty labels = %q, want empty", got)
+	}
+}
+
 func TestTruncateWithSuffix(t *testing.T) {
 	tests := []struct {
 		name     string

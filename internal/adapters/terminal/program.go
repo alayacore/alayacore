@@ -242,8 +242,7 @@ func (p *Program) run(model Model) (Model, error) {
 	defer close(ctxDone)
 
 	if p.tty != nil {
-		// Initial window size, input reader, and signal watcher.
-		p.msgs <- WindowSizeMsg{Width: p.width, Height: p.height}
+		// Input reader and signal watcher.
 		go p.readInput(ctxDone)
 		go p.watchSignals(ctxDone)
 	}
@@ -252,6 +251,18 @@ func (p *Program) run(model Model) (Model, error) {
 	cmd := model.Init()
 	if cmd != nil {
 		go p.dispatch(cmd, ctxDone)
+	}
+
+	// Apply the initial window size BEFORE the first render: the first
+	// frame (loading screen) is then sized to the real terminal instead of
+	// the adapter's pre-TTY guess (adapter.go measures stdout, which may
+	// not be the TTY Run opened).
+	if p.tty != nil {
+		var sizeCmd Cmd
+		model, sizeCmd = model.Update(WindowSizeMsg{Width: p.width, Height: p.height})
+		if sizeCmd != nil {
+			go p.dispatch(sizeCmd, ctxDone)
+		}
 	}
 	p.render(model)
 
@@ -268,7 +279,7 @@ func (p *Program) run(model Model) (Model, error) {
 		case execMsg:
 			// Editor handoff: run the command in the foreground with the
 			// terminal released, then re-acquire and repaint.
-			p.exec(msg)
+			p.exec(msg, ctxDone)
 			p.render(model)
 			continue
 		case BatchMsg:

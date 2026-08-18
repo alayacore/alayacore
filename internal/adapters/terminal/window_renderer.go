@@ -46,10 +46,12 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	r.contentLen += len(value)
 
 	// Incremental update: append the delta to wrappedLines as PLAIN TEXT.
-	// Streaming content deliberately carries no styling (markdown rendering
-	// is a future concern), which keeps the incremental path simple:
-	// pure-text hardwrap, no ANSI handling, no style state to maintain.
-	if len(r.wrappedLines) > 0 && r.cacheWidth > 0 {
+	// This is only valid for windows that render plain (AT/AR — streaming
+	// content deliberately carries no styling; markdown rendering is a
+	// future concern). Styled windows (SN/SE) must fall through to a full
+	// re-style: appending plain text to styled wrappedLines would leave
+	// the delta tail without its System/Error color.
+	if r.plainContent() && len(r.wrappedLines) > 0 && r.cacheWidth > 0 {
 		r.wrappedLines = appendDeltaToVisualLines(r.wrappedLines, prepareContent(value), r.cacheWidth)
 		// cacheValid stays false — border cache needs rebuild,
 		// but wrappedLines is current for TryLineCount.

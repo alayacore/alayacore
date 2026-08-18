@@ -548,7 +548,7 @@ func wrapLabels(labels []string, width int, style Style) string {
 		}
 	}
 
-	for i, label := range labels {
+	for _, label := range labels {
 		if label == "" {
 			continue
 		}
@@ -584,11 +584,11 @@ func wrapLabels(labels []string, width int, style Style) string {
 		} else {
 			currentLine.WriteString(label)
 		}
-		// Flush last label
-		if i == len(labels)-1 && currentLine.Len() > 0 {
-			flushCurrent()
-		}
 	}
+	// Flush the last line. The flush must run after the loop, not inside
+	// it: a trailing empty label would otherwise skip the per-item flush
+	// and drop the last non-empty line.
+	flushCurrent()
 
 	return strings.Join(lines, "\n")
 }

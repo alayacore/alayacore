@@ -42,7 +42,7 @@ func ExecProcess(c *exec.Cmd, fn func(error) Msg) Cmd {
 // callback message. It blocks the loop for the whole command duration;
 // messages arriving meanwhile (tickers, signals) queue up and are processed
 // after it returns.
-func (p *Program) exec(msg execMsg) {
+func (p *Program) exec(msg execMsg, ctxDone <-chan struct{}) {
 	if msg.cmd != nil && p.tty != nil {
 		// The child runs in the same process group on the same terminal:
 		// give it the TTY directly.
@@ -57,7 +57,18 @@ func (p *Program) exec(msg execMsg) {
 	}
 
 	if msg.fn != nil {
-		p.msgs <- msg.fn(runErr)
+		// The loop is blocked inside p.exec and cannot drain p.msgs, so a
+		// blocking send here could deadlock on a full channel (long editor
+		// session + queued input). Evaluate the callback inline (it may do
+		// I/O — e.g. the editor reads the temp file) and deliver the result
+		// from a goroutine, exactly like dispatch does.
+		result := msg.fn(runErr)
+		go func() {
+			select {
+			case p.msgs <- result:
+			case <-ctxDone:
+			}
+		}()
 	}
 }
 
