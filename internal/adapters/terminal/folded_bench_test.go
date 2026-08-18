@@ -89,7 +89,6 @@ func BenchmarkFoldedSessionCursorMovement(b *testing.B) {
 
 	dm := NewDisplayModel(wb, NewStyles(theme.DefaultTheme()))
 	dm = dm.WithHeight(40)
-	dm = dm.WithWidth(120)
 	dm = dm.WithDisplayFocused(true)
 	dm = dm.updateContent()
 

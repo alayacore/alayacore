@@ -37,7 +37,7 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 
 	// Viewport of 4 rows: only the top part of the session is visible.
 	dm := NewDisplayModel(wb, styles)
-	dm = dm.WithHeight(4).WithWidth(80).WithDisplayFocused(true)
+	dm = dm.WithHeight(4).WithDisplayFocused(true)
 	dm = dm.MarkUserScrolled() // H/M/L require auto-follow off
 	dm = dm.updateContent()
 
@@ -105,7 +105,7 @@ func TestHMLLineRangeConsistency(t *testing.T) {
 	_ = wb.GetTotalLines()
 
 	dm := NewDisplayModel(wb, styles)
-	dm = dm.WithHeight(30).WithWidth(80).WithDisplayFocused(true)
+	dm = dm.WithHeight(30).WithDisplayFocused(true)
 	dm = dm.MarkUserScrolled()
 	dm = dm.updateContent()
 
@@ -166,7 +166,7 @@ func TestHMLFoldedScrollClamp(t *testing.T) {
 	_ = wb.GetTotalLines()
 
 	dm := NewDisplayModel(wb, styles)
-	dm = dm.WithHeight(4).WithWidth(80).WithDisplayFocused(true)
+	dm = dm.WithHeight(4).WithDisplayFocused(true)
 	dm = dm.MarkUserScrolled()
 	dm = dm.updateContent()
 	dm = dm.GotoBottom()

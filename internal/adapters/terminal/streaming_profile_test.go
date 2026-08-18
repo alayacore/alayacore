@@ -77,7 +77,6 @@ func TestStreamingProfile(t *testing.T) {
 	wb.SetViewportPosition(0, 30)
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.WithDisplayFocused(true)
 
 	// Create streaming window
@@ -148,7 +147,6 @@ func TestStreamingProfileLongContent(t *testing.T) {
 	wb.SetViewportPosition(0, 30)
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.WithDisplayFocused(true)
 
 	// Start with long content
@@ -203,7 +201,6 @@ func TestCursorMovementProfile(t *testing.T) {
 	wb.SetViewportPosition(0, 30)
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.WithDisplayFocused(true)
 	dm = dm.updateContent()
 
@@ -255,7 +252,6 @@ func TestUpdateContentSkipRate(t *testing.T) {
 	wb.AppendOrUpdate("AT", "msg0", "Content")
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.updateContent()
 
 	skipped := 0
@@ -294,7 +290,6 @@ func TestRealisticStreamingWithTiming(t *testing.T) {
 	wb.SetViewportPosition(0, 30)
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.WithDisplayFocused(true)
 
 	historyID := "stream"
@@ -360,7 +355,6 @@ func TestVeryLongContentStreaming(t *testing.T) {
 	wb.SetViewportPosition(0, 30)
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.WithDisplayFocused(true)
 
 	historyID := "stream"
@@ -425,7 +419,6 @@ func TestWorstCaseStreaming(t *testing.T) {
 	wb.SetViewportPosition(0, 30)
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.WithDisplayFocused(true)
 
 	historyID := "stream"

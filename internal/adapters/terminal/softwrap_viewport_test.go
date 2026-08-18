@@ -207,7 +207,7 @@ func TestRenderVirtualWindowBoundary(t *testing.T) {
 // clamping and AtBottom use the document total, not the clipped content
 // length.
 func TestScrollViewSoftWrap(t *testing.T) {
-	sv := NewScrollView(40, 5).WithTotalLines(100).WithYOffset(90)
+	sv := NewScrollView(5).WithTotalLines(100).WithYOffset(90)
 	if sv.YOffset() != 90 {
 		t.Errorf("YOffset = %d, want 90 (within document)", sv.YOffset())
 	}
@@ -229,7 +229,7 @@ func TestScrollViewSoftWrap(t *testing.T) {
 
 	// Empty buffer: erased blank rows to fill the viewport — the first
 	// row is erased, then each following row is entered and erased.
-	sv = NewScrollView(40, 5).WithContent("")
+	sv = NewScrollView(5).WithContent("")
 	if v := sv.View(); v != "\x1b[K\n\x1b[K\n\x1b[K\n\x1b[K\n\x1b[K" {
 		t.Errorf("View() with empty content = %q, want 5 erased blank rows", v)
 	}

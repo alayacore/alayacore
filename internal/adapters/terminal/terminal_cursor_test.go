@@ -26,7 +26,7 @@ func newTestTerminal() Terminal {
 		styles:           styles,
 		hasFocus:         true,
 	}
-	m.display = m.display.WithWidth(80).WithHeight(20)
+	m.display = m.display.WithHeight(20)
 	m.input = m.input.WithWidth(80)
 	return m
 }

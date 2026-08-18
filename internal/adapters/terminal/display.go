@@ -17,7 +17,6 @@ import (
 type DisplayModel struct {
 	// ── Elm UI state (value types, copied on every WithXxx) ─
 	scrollView     ScrollView // viewport into the window buffer content
-	width          int        // display area width
 	height         int        // display area height (viewport height)
 	windowCursor   int        // currently selected window index (-1 = none)
 	autoFollow     bool       // true on init and after G; disabled by navigation
@@ -33,10 +32,9 @@ type DisplayModel struct {
 // NewDisplayModel creates a new display model
 func NewDisplayModel(windowBuffer *WindowBuffer, styles *Styles) DisplayModel {
 	return DisplayModel{
-		scrollView:     NewScrollView(DefaultWidth, DefaultHeight),
+		scrollView:     NewScrollView(DefaultHeight),
 		windowBuffer:   windowBuffer,
 		styles:         styles,
-		width:          DefaultWidth,
 		height:         DefaultHeight,
 		windowCursor:   -1,
 		autoFollow:     true,
@@ -169,12 +167,6 @@ func (m DisplayModel) WithHeight(height int) DisplayModel {
 
 func (m DisplayModel) GetHeight() int {
 	return m.scrollView.Height()
-}
-
-func (m DisplayModel) WithWidth(width int) DisplayModel {
-	m.width = width
-	m.scrollView = m.scrollView.WithWidth(max(0, width))
-	return m
 }
 
 func (m DisplayModel) WithDisplayFocused(focused bool) DisplayModel {

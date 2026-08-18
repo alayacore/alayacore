@@ -185,7 +185,6 @@ func BenchmarkVirtualRenderingCursorMovement(b *testing.B) {
 
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.WithDisplayFocused(true)
 	dm = dm.updateContent()
 
@@ -218,7 +217,6 @@ func BenchmarkVirtualRenderingCursorMovementSingle(b *testing.B) {
 
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.WithDisplayFocused(true)
 	dm = dm.updateContent()
 
@@ -755,7 +753,6 @@ func BenchmarkVirtualRenderingScroll(b *testing.B) {
 
 	dm := NewDisplayModel(wb, styles)
 	dm = dm.WithHeight(30)
-	dm = dm.WithWidth(80)
 	dm = dm.updateContent()
 
 	b.ResetTimer()

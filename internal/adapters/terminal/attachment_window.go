@@ -83,11 +83,6 @@ func (aw AttachmentWindow) WithFocus(focused bool) AttachmentWindow {
 	return aw
 }
 
-// SelectedPath returns the path that was selected when Enter was pressed,
-// or empty string if no selection was made. Used by handleSelectorOverlayKeys
-// to add the attachment to the current Terminal.
-func (aw AttachmentWindow) SelectedPath() string { return aw.selectedPath }
-
 func (aw AttachmentWindow) Open() AttachmentWindow {
 	aw.State = FilteredListOpen
 	aw.mode = modeLocal

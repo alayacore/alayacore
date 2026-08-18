@@ -55,14 +55,6 @@ func newFilterInput(placeholder string) InputField {
 
 // --- Model Management ---
 
-func (ms ModelSelector) GetModels() []protocol.ModelInfo {
-	result := make([]protocol.ModelInfo, len(ms.models))
-	for i := range ms.models {
-		result[i] = ms.models[i].ModelInfo
-	}
-	return result
-}
-
 func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (ModelSelector, Cmd) {
 	if ms.modelsUnchangedSinceLastLoad(models) {
 		for i := range ms.models {

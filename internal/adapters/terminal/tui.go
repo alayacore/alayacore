@@ -351,8 +351,7 @@ func NewTerminalWithTheme(
 		appliedTheme:     themeName,
 	}
 
-	// Initialize component widths
-	m.display = m.display.WithWidth(initialWidth)
+	// Initialize component sizes
 	m.input = m.input.WithWidth(initialWidth)
 	m = m.updateComponentSizes(initialWidth, initialHeight)
 	m = m.updateDisplayHeight()
@@ -504,7 +503,6 @@ func (m Terminal) handleWindowSize(msg WindowSizeMsg) Terminal {
 
 	// Update all components
 	m.out.SetWindowWidth(max(0, msg.Width))
-	m.display = m.display.WithWidth(max(0, msg.Width))
 	m.input = m.input.WithWidth(max(0, msg.Width))
 	m = m.updateComponentSizes(msg.Width, msg.Height)
 	m = m.updateDisplayHeight()

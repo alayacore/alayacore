@@ -12,7 +12,7 @@ func BenchmarkScrollViewWithContent(b *testing.B) {
 	for _, n := range sizes {
 		content := strings.Repeat("line of text for testing\n", n)
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
-			sv := NewScrollView(80, 40)
+			sv := NewScrollView(40)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				sv.WithContent(content)
@@ -27,7 +27,7 @@ func BenchmarkScrollViewView(b *testing.B) {
 	for _, n := range sizes {
 		content := strings.Repeat("line of text for testing\n", n)
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
-			sv := NewScrollView(80, 40)
+			sv := NewScrollView(40)
 			sv.WithContent(content)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -39,7 +39,7 @@ func BenchmarkScrollViewView(b *testing.B) {
 
 // BenchmarkScrollViewScroll benchmarks scrolling through content.
 func BenchmarkScrollViewScroll(b *testing.B) {
-	sv := NewScrollView(80, 40)
+	sv := NewScrollView(40)
 	sv.WithContent(strings.Repeat("line of text for testing\n", 1000))
 
 	b.ResetTimer()

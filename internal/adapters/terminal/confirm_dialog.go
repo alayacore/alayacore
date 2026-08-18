@@ -98,9 +98,6 @@ func (cd ConfirmDialog) ToolName() string { return cd.toolName }
 // ToolInput returns the tool input for tool confirmations.
 func (cd ConfirmDialog) ToolInput() string { return cd.toolInput }
 
-// IsCtrlGCanceled returns true if the dialog was closed via Ctrl+G.
-func (cd ConfirmDialog) IsCtrlGCanceled() bool { return cd.ctrlGCanceled }
-
 // ToolID returns the tool call ID for tool confirmations.
 func (cd ConfirmDialog) ToolID() string { return cd.toolID }
 

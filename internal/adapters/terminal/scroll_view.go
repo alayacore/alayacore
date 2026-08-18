@@ -5,7 +5,7 @@ package terminal
 //   - Content management (pre-clipped visible region)
 //   - Vertical scrolling (scroll up/down, goto top/bottom)
 //   - YOffset management
-//   - Height/width control
+//   - Height control
 //
 // SOFT-WRAP MODEL (REFACTOR.md): WindowBuffer.renderVirtual clips the
 // window buffer to the viewport and produces the visible region as
@@ -27,25 +27,17 @@ import (
 
 // ScrollView is a simple scrollable viewport.
 type ScrollView struct {
-	width      int
 	height     int
 	yOffset    int
 	content    string // pre-clipped visible region (soft-wrap fragments)
 	totalLines int    // full document visual line count (clamping basis)
 }
 
-// NewScrollView creates a new ScrollView with the given dimensions.
-func NewScrollView(width, height int) ScrollView {
+// NewScrollView creates a new ScrollView with the given height.
+func NewScrollView(height int) ScrollView {
 	return ScrollView{
-		width:  max(0, width),
 		height: max(0, height),
 	}
-}
-
-// SetWidth sets the viewport width (unused in rendering, kept for API compat).
-func (m ScrollView) WithWidth(w int) ScrollView {
-	m.width = max(0, w)
-	return m
 }
 
 // SetHeight sets the viewport height.
@@ -113,16 +105,6 @@ func (m ScrollView) GotoTop() ScrollView {
 // AtBottom returns whether the viewport is at the bottom.
 func (m ScrollView) AtBottom() bool {
 	return m.yOffset >= m.maxYOffset()
-}
-
-// AtTop returns whether the viewport is at the top.
-func (m ScrollView) AtTop() bool {
-	return m.yOffset <= 0
-}
-
-// PastBottom returns whether the viewport is scrolled past the last line.
-func (m ScrollView) PastBottom() bool {
-	return m.yOffset > m.maxYOffset()
 }
 
 // View returns the rendered content — the pre-clipped visible region
