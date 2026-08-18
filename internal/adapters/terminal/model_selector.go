@@ -99,7 +99,7 @@ func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (M
 		ms.ScrollIdx = savedScrollIdx
 		ms.FilteredListCore = ms.FilteredListCore.ClampSelection(len(ms.filteredModels))
 	}
-	return ms, func() Msg { return nil }
+	return ms, nil
 }
 
 func (ms ModelSelector) modelsUnchangedSinceLastLoad(models []protocol.ModelInfo) bool {
