@@ -5,6 +5,7 @@ package terminal
 
 import (
 	"strings"
+	"time"
 )
 
 // ============================================================================
@@ -15,24 +16,41 @@ import (
 type ToolStatus int
 
 const (
-	ToolStatusNone    ToolStatus = iota // Not yet executing — args still streaming in (dimmed hollow dot)
-	ToolStatusSuccess                   // Tool completed successfully (green solid dot)
-	ToolStatusError                     // Tool failed (red solid dot)
-	ToolStatusPending                   // Executing, awaiting result (primary solid dot)
+	ToolStatusNone    ToolStatus = iota // Arguments still streaming in (spinner)
+	ToolStatusSuccess                   // Tool completed successfully (plain ✓)
+	ToolStatusError                     // Tool failed (plain ✗)
+	ToolStatusPending                   // Executing, awaiting result (spinner)
 )
 
-// statusDot returns the plain status dot character and its style, shown
-// right after "TOOL" in the header line ("TOOL•").
-func (s ToolStatus) statusDot(styles *Styles) (string, Style) {
+// toolSpinnerFrames is the braille dot-segment rotation also used by the
+// session-loading screen. While arguments stream in or the tool executes,
+// the header shows the current frame in place of a static dot.
+var toolSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// toolSpinnerFrame returns the spinner frame for the current moment. The
+// frame advances with each re-render: the tool window's border cache is
+// rebuilt on every delta append and status change, so the indicator
+// rotates together with the delta refresh (no separate timer).
+func toolSpinnerFrame() string {
+	return toolSpinnerFrames[int(time.Now().UnixMilli()/150)%len(toolSpinnerFrames)]
+}
+
+// statusDot returns the tool status indicator character and its style,
+// shown right after "TOOL" in the header line ("TOOL⠋", "TOOL✓"). The
+// indicator is deliberately colorless — the spinner replaces the old
+// colored dots while the tool is running, and the result glyphs (✓/✗)
+// render in the default foreground instead of green/red. The styles
+// argument is retained for API stability; the indicator never uses it.
+func (s ToolStatus) statusDot(_ *Styles) (string, Style) {
 	switch s {
 	case ToolStatusSuccess:
-		return "•", NewStyle().Foreground(styles.ColorSuccess)
+		return "✓", NewStyle()
 	case ToolStatusError:
-		return "•", NewStyle().Foreground(styles.ColorError)
+		return "✗", NewStyle()
 	case ToolStatusPending:
-		return "•", NewStyle().Foreground(styles.ColorAccent)
-	default:
-		return "·", NewStyle().Foreground(styles.ColorDim)
+		return toolSpinnerFrame(), NewStyle()
+	default: // ToolStatusNone — arguments still streaming in
+		return toolSpinnerFrame(), NewStyle()
 	}
 }
 

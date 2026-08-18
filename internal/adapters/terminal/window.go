@@ -443,7 +443,8 @@ func arrowStyle(styles *Styles, isCursor bool) Style {
 }
 
 // windowLabel returns the header label for the window type, e.g.
-// "TOOL edit_file", "REASONING", "ASSISTANT", "USER", "NOTIFY", "ERROR".
+// "TOOL edit_file", "REASONING", "ASSISTANT", "USER PROMPT", "NOTIFY",
+// "ERROR".
 func (w *Window) windowLabel() string {
 	switch w.Tag() {
 	case tlv.TagAssistantF, tlv.TagUserF:
@@ -456,7 +457,7 @@ func (w *Window) windowLabel() string {
 	case tlv.TagAssistantT:
 		return "ASSISTANT"
 	case tlv.TagUserT:
-		return "USER"
+		return "USER PROMPT"
 	case TagWindowSN:
 		return "NOTIFY"
 	case TagWindowSE:
@@ -468,8 +469,8 @@ func (w *Window) windowLabel() string {
 
 // buildExpandHeader returns the expanded header line content (the part
 // after the arrow). Tool windows use the collapsed-style layout — bold
-// "TOOL" + status dot in the fixed label column, then the muted tool
-// name: "TOOL•      execute_command". Other windows use their plain
+// "TOOL" + status indicator in the fixed label column, then the muted tool
+// name: "TOOL⠋       execute_command". Other windows use their plain
 // label ("ASSISTANT", "NOTIFY", …).
 func (w *Window) buildExpandHeader(styles *Styles) string {
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {

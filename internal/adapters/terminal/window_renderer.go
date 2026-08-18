@@ -208,7 +208,7 @@ func labelForTag(tag string) string {
 	case tlv.TagAssistantT:
 		return "ASSISTANT"
 	case tlv.TagUserT:
-		return "USER"
+		return "USER PROMPT"
 	case TagWindowSN:
 		return "NOTIFY"
 	case TagWindowSE:
@@ -387,7 +387,7 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 }
 
 // BuildCollapsed returns the single-line collapsed form:
-// "USER first-text-line…", truncated to fit width minus the arrow.
+// "USER PROMPT first-text-line…", truncated to fit width minus the arrow.
 func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	first := ""
 	if len(r.textParts) > 0 {
@@ -399,9 +399,9 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if first == "" {
 		return "", 1
 	}
-	line := padLabel("USER") + first
+	line := padLabel("USER PROMPT") + first
 	line = truncateWithSuffix(line, max(0, width-2))
-	return renderCollapsedLine(line, padLabel("USER"), labelStyleForTag(tlv.TagUserT, styles), styles.System), 1
+	return renderCollapsedLine(line, padLabel("USER PROMPT"), labelStyleForTag(tlv.TagUserT, styles), styles.System), 1
 }
 
 // ============================================================================
@@ -470,14 +470,17 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 
 	// Input: streaming delta preview (truncated JSON) or the full input.
 	// Neither carries the status indicator nor the "name: " prefix — the
-	// status dot lives in the header line (TOOL•) and the tool name is
+	// indicator lives in the header line (TOOL⠋) and the tool name is
 	// shown there too. Content is plain (no color, no bold); only the
 	// "---" separator keeps its muted color.
 	var call string
 	if r.deltaBuffer != "" {
-		// Arguments still streaming in — one-line truncated preview.
+		// Arguments still streaming in — one-line preview showing the
+		// LATEST chunk: like every other collapsed/delta summary, keep the
+		// tail of the delta (new JSON arrives at the tail) and mark the
+		// truncated head with a leading "…" — never a trailing ellipsis.
 		deltaContent := flattenDelta(r.deltaBuffer)
-		deltaContent = truncateWithSuffix(deltaContent, max(0, innerWidth))
+		deltaContent = tailSummary(deltaContent, max(0, innerWidth))
 		call = deltaContent
 	} else {
 		switch r.name {
@@ -507,10 +510,12 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 }
 
 // BuildCollapsed returns the single-line collapsed form for tool windows:
-// "TOOL•      execute_command lscpu…" — bold TOOL + status dot in the
-// fixed label column, then the tool name + first input line (or streaming
-// delta preview), truncated to fit width minus arrow. No wrapping is
-// performed — only the first input line is read.
+// "TOOL⠋       execute_command lscpu…" — bold TOOL + status indicator
+// (rotating spinner while streaming/executing, plain ✓/✗ when done) in
+// the fixed label column, then the tool name + first input line (or the
+// streaming delta preview tail, ellipsis at the line start), truncated to
+// fit width minus arrow. No wrapping is performed — only the first input
+// line is read.
 func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if styles == nil {
 		return "", 1
@@ -527,12 +532,22 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 
 	var inputFirst string
 	if r.deltaBuffer != "" {
-		inputFirst = flattenDelta(r.deltaBuffer)
+		// Streaming delta preview: keep the LATEST chunk's tail (new JSON
+		// arrives at the tail) with the ellipsis at the line START, exactly
+		// like the collapsed text windows — the tail shows what just
+		// arrived, "…" marks the truncated head. Room is everything after
+		// the label column + tool name + separator space.
+		prefix := padLabel("TOOL" + dot)
+		if r.name != "" {
+			prefix += r.name + " "
+		}
+		room := max(0, width-2-ansi.StringWidth(prefix))
+		inputFirst = tailSummary(flattenDelta(r.deltaBuffer), room)
 	} else if r.input != "" {
 		inputFirst = firstLine(prepareContent(r.input))
 		// The input's first line is usually "name: args". The tool name is
 		// shown right after the label column, so strip the repeated prefix
-		// ("TOOL• execute_command lscpu", not "execute_command:
+		// ("TOOL⠋ execute_command lscpu", not "execute_command:
 		// execute_command: lscpu").
 		if r.name != "" {
 			if stripped, ok := strings.CutPrefix(inputFirst, r.name+":"); ok {
@@ -552,9 +567,11 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	line = truncateWithSuffix(line, max(0, width-2))
 
 	// Re-style the truncated plain line: "TOOL" in bold (no color), the
-	// status dot in its status color, then name + input in muted.
-	// NOTE: dot is multi-byte UTF-8 — slice by len(dot), never by byte 1,
-	// and labelPart length is in bytes (padLabel pads to display columns).
+	// status indicator (spinner or ✓/✗) unstyled — deliberately colorless —
+	// then name + input in muted.
+	// NOTE: the indicator is multi-byte UTF-8 — slice by len(dot), never by
+	// byte 1, and labelPart length is in bytes (padLabel pads to display
+	// columns).
 	labelStyle := labelStyleForTag(r.Tag(), styles)
 	toolLen := len("TOOL")
 	dotLen := len(dot)

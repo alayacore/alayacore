@@ -45,7 +45,7 @@ func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	frame2 := m.View().Content
 
 	// The terminal applies frame2 over frame1. Without EL erases, the row
-	// "▶ USER       my os?" would trail "el's Core Ultra..."; with them,
+	// "▶ USER PROMPT my os?" would trail "el's Core Ultra..."; with them,
 	// the row is cleared at its end.
 	plain2 := stripANSI(frame2)
 	// Check the USER folded row specifically: its content must be exactly
@@ -53,7 +53,7 @@ func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	for _, row := range splitTerminalRows(plain2, W) {
 		if strings.HasPrefix(row, "▶ USER") {
 			trimmed := strings.TrimRight(row, " ")
-			if trimmed != "▶ USER       my os?" {
+			if trimmed != "▶ USER PROMPT my os?" {
 				t.Errorf("USER folded row polluted by residue: %q (trimmed %q)", row, trimmed)
 			}
 		}

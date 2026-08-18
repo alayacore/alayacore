@@ -32,8 +32,8 @@ func TestFoldedToolCollapsedLine(t *testing.T) {
 	if !strings.HasPrefix(plain, "▶") {
 		t.Errorf("Collapsed line should start with ▶ arrow, got %q", plain)
 	}
-	if !strings.Contains(plain, "TOOL•") || !strings.Contains(plain, "test_tool") {
-		t.Errorf("Collapsed line should contain TOOL• + tool name, got %q", plain)
+	if !strings.Contains(plain, "TOOL") || !strings.Contains(plain, "test_tool") {
+		t.Errorf("Collapsed line should contain TOOL + tool name, got %q", plain)
 	}
 	// Long content is truncated to a single line.
 	if strings.Contains(plain, "\n") {
@@ -87,8 +87,8 @@ func TestFoldedDiffCollapsedLine(t *testing.T) {
 	if !strings.HasPrefix(stripANSI(rendered), "▶") {
 		t.Error("Collapsed line must not contain box borders")
 	}
-	if !strings.Contains(stripANSI(rendered), "TOOL•") || !strings.Contains(stripANSI(rendered), "edit_file") {
-		t.Errorf("Collapsed diff should show TOOL• + tool name, got %q", stripANSI(rendered))
+	if !strings.Contains(stripANSI(rendered), "TOOL") || !strings.Contains(stripANSI(rendered), "edit_file") {
+		t.Errorf("Collapsed diff should show TOOL + tool name, got %q", stripANSI(rendered))
 	}
 }
 
@@ -324,9 +324,9 @@ func contentColumn(plain string) int {
 	return col
 }
 
-func TestFoldedToolStatusDotNoReplacementChar(t *testing.T) {
-	// Regression: the status dot (•) is multi-byte UTF-8 — byte-slicing it
-	// produced a broken first byte rendered as U+FFFD (�).
+func TestFoldedToolStatusIndicatorNoReplacementChar(t *testing.T) {
+	// Regression: the status indicator (✓, spinner) is multi-byte UTF-8 —
+	// byte-slicing it produced a broken first byte rendered as U+FFFD (�).
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
@@ -337,16 +337,16 @@ func TestFoldedToolStatusDotNoReplacementChar(t *testing.T) {
 	}, 1)
 	wb.HandleToolOutput("t1", "x86_64", false, 1)
 
-	// Collapsed (default for tools).
+	// Collapsed (default for tools) — success shows the plain ✓.
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
 	if strings.Contains(rendered, "\uFFFD") {
 		t.Errorf("collapsed line contains replacement char: %q", rendered)
 	}
-	if !strings.Contains(plain, "TOOL•") {
-		t.Errorf("collapsed line should contain TOOL + status dot, got %q", plain)
+	if !strings.Contains(plain, "TOOL✓") {
+		t.Errorf("collapsed line should contain TOOL + success check, got %q", plain)
 	}
-	// Content column must be exactly "▶ " + label column (11).
+	// Content column must be exactly "▶ " + label column.
 	if c := contentColumn(plain); c != 2+CollapsedLabelWidth {
 		t.Errorf("collapsed TOOL content column = %d, want %d: %q", c, 2+CollapsedLabelWidth, plain)
 	}
@@ -357,8 +357,8 @@ func TestFoldedToolStatusDotNoReplacementChar(t *testing.T) {
 	if strings.Contains(rendered, "\uFFFD") {
 		t.Errorf("expanded header contains replacement char: %q", rendered)
 	}
-	if !strings.Contains(stripANSI(rendered), "TOOL•") {
-		t.Errorf("expanded header should contain TOOL + status dot, got %q", stripANSI(rendered))
+	if !strings.Contains(stripANSI(rendered), "TOOL✓") {
+		t.Errorf("expanded header should contain TOOL + success check, got %q", stripANSI(rendered))
 	}
 }
 
@@ -471,7 +471,7 @@ func TestFoldedTextWindowTailUpdatesOnDelta(t *testing.T) {
 		t.Errorf("collapsed summary should reflect the latest delta, got %q", plain)
 	}
 	// The start was truncated away — the summary begins with "…".
-	if !strings.HasPrefix(plain, "▶ ASSISTANT  …") {
+	if !strings.HasPrefix(plain, "▶ ASSISTANT   …") {
 		t.Errorf("collapsed summary should be truncated with a leading ellipsis: %q", plain)
 	}
 }

@@ -169,16 +169,16 @@ func TestWindowBufferDiff(t *testing.T) {
 		renderedLines := strings.Split(rendered, "\n")
 
 		// New collapsed design: folded windows are a single header line
-		// (collapse arrow + "TOOL edit_file • …") with no border and no
-		// fold-indicator row.
+		// (collapse arrow + "TOOL indicator edit_file …") with no border
+		// and no fold-indicator row.
 		if len(renderedLines) != 1 {
 			t.Errorf("Rendered diff has %d lines, should collapse to 1", len(renderedLines))
 		}
 		if strings.Contains(rendered, "⁝") {
 			t.Error("Collapsed window should not contain the old fold indicator")
 		}
-		if !strings.Contains(stripANSI(rendered), "TOOL•") || !strings.Contains(stripANSI(rendered), "edit_file") {
-			t.Errorf("Collapsed diff should show TOOL• + tool name, got %q", stripANSI(rendered))
+		if !strings.Contains(stripANSI(rendered), "TOOL") || !strings.Contains(stripANSI(rendered), "edit_file") {
+			t.Errorf("Collapsed diff should show TOOL + tool name, got %q", stripANSI(rendered))
 		}
 	})
 

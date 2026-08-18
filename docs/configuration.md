@@ -172,7 +172,7 @@ unfold_arrow: "▼"
 
 | Color | Used for |
 |-------|----------|
-| `primary` | User input text, prompt display, emphasis, focused box rules, running status dots (status bar and tool windows) |
+| `primary` | User input text, prompt display, emphasis, focused box rules, running status dot (status bar only — tool windows use the colorless spinner while running) |
 | `dim` | Window rules, separators, status bar |
 | `muted` | Secondary text, system messages, tool content |
 | `text` | Body text |

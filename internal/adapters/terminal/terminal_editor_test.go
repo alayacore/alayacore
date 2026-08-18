@@ -487,16 +487,16 @@ func TestWindowBufferRendering(t *testing.T) {
 	}
 	// Check width constraint: count lines? Not needed.
 	// Add another window and ensure ordering
-	wb.AppendOrUpdate(tlv.TagAssistantR, "test2", "Reasoning content")
+	wb.AppendOrUpdate(tlv.TagAssistantR, "test2", "Reasoning")
 	rendered2 := wb.GetAll(-1, false)
 	// Should have two windows separated by newline
 	// Count border top lines? Simpler: ensure both contents appear
-	if !strings.Contains(rendered2, "Hello world") || !strings.Contains(rendered2, "Reasoning content") {
+	if !strings.Contains(rendered2, "Hello world") || !strings.Contains(rendered2, "Reasoning") {
 		t.Errorf("Both window contents not found: %q", rendered2)
 	}
 	// Ensure ordering: first window appears before second
 	idx1 := strings.Index(rendered2, "Hello world")
-	idx2 := strings.Index(rendered2, "Reasoning content")
+	idx2 := strings.Index(rendered2, "Reasoning")
 	if idx1 == -1 || idx2 == -1 || idx1 >= idx2 {
 		t.Errorf("Window ordering incorrect: idx1=%d, idx2=%d", idx1, idx2)
 	}
