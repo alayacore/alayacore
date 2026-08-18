@@ -814,17 +814,26 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 				sb.WriteString(ln)
 			}
 		}
+		// Clear the fragment's last row to the end of the line: it is not
+		// padded (copy fidelity — no trailing spaces in selections), so
+		// without this erase the overlay renderer would leave the previous
+		// frame's characters on that row's tail (e.g. a short folded line
+		// overwriting a longer row from the frame before).
+		sb.WriteString(ansi.EraseLine(0))
 		firstWritten = true
 	}
 
 	// Pad to the viewport height with blank rows. This must happen here —
 	// ScrollView cannot count terminal rows (a fragment soft-wraps to
-	// several rows), so the padding needs the visual row count.
+	// several rows), so the padding needs the visual row count. Each row
+	// is erased first (EL) so no previous frame content survives on those
+	// rows (a bare '\n' would keep the old characters).
 	if pad := wb.viewportHeight - emittedRows; pad > 0 {
+		blank := ansi.EraseLine(0) + "\n"
 		if emittedRows == 0 {
-			sb.WriteString(strings.Repeat("\n", max(0, pad-1)))
+			sb.WriteString(strings.Repeat(blank, max(0, pad-1)))
 		} else {
-			sb.WriteString(strings.Repeat("\n", pad))
+			sb.WriteString(strings.Repeat(blank, pad))
 		}
 	}
 	return sb.String()

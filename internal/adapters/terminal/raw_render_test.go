@@ -35,8 +35,13 @@ func TestRawViewSoftWrapEndToEnd(t *testing.T) {
 	t.Logf("VIEW (string rows=%d):\n%s", len(strings.Split(stripANSI(content), "\n")), stripANSI(content))
 
 	// Simulate the terminal: soft-wrap the raw content at the screen width.
+	// The renderer emits \r\n (raw mode has no ONLCR): '\r' returns to
+	// column 0 before the line feed, so a full-width row followed by a
+	// window separator is ONE row — Hardwrap on bare '\n' would insert a
+	// spurious blank row at that boundary. Hardwrap is still used below
+	// for the content assertions (row count comes from terminalRows).
 	wrapped := ansi.Hardwrap(stripANSI(content), 80, true)
-	rows := strings.Count(wrapped, "\n") + 1
+	rows := terminalRows(stripANSI(content), 80)
 	t.Logf("TERMINAL ROWS=%d", rows)
 	if rows != 24 {
 		t.Errorf("terminal soft-wrap of View() = %d rows, want 24 (screen height)", rows)
@@ -119,4 +124,23 @@ func TestRawOverlayCUPPositioning(t *testing.T) {
 	if strings.Contains(out, "item") == false {
 		t.Errorf("raw overlay must contain the box rows: %q", out)
 	}
+}
+
+// terminalRows simulates a terminal soft-wrapping content at the given
+// width: '\r' returns to column 0, '\n' moves to the next line, and runs
+// longer than the width wrap. This matches the real terminal behavior for
+// the renderer's \r\n output — a full-width row followed by \r\n is one
+// row, not two.
+func terminalRows(s string, width int) int {
+	if width <= 0 {
+		return 1
+	}
+	rows := 0
+	for _, line := range strings.Split(s, "\n") {
+		// '\r' has no display width; remaining runes occupy 1 column each
+		// (the test content is ASCII + box-drawing rules).
+		w := ansi.StringWidth(line)
+		rows += max(1, (w+width-1)/width)
+	}
+	return rows
 }

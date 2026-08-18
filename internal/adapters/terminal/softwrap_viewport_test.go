@@ -59,13 +59,18 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 		t.Errorf("AT fragment rows = %d, want 7", fragmentRows(at))
 	}
 
-	// Folded fragment: single short line, unpadded (it is the last).
+	// Folded fragment: single short line, unpadded (it is the last — the
+	// fragment tail carries an EL erase that clears any previous frame's
+	// residue on the row, keeping copy selections free of trailing spaces).
 	ar := stripANSI(frags[1])
 	if strings.Contains(ar, "\n") {
 		t.Errorf("AR fragment contains a hard newline: %q", ar)
 	}
 	if w := ansi.StringWidth(ar); w >= 40 {
 		t.Errorf("AR fragment width = %d, want < 40 (last fragment is not padded)", w)
+	}
+	if !strings.HasSuffix(frags[1], "\x1b[K") {
+		t.Errorf("AR fragment must end with an EL erase, got %q", frags[1])
 	}
 	if fragmentRows(ar) != 1 {
 		t.Errorf("AR fragment rows = %d, want 1", fragmentRows(ar))
@@ -82,7 +87,8 @@ func TestRenderVirtualScrollToMiddle(t *testing.T) {
 	// Window visual lines: [0]=header, [1]=rule, [2..5]=content, [6]=rule.
 	// Viewport [2,5): content rows 2,3,4 only.
 	wb.SetViewportPosition(2, 3)
-	out := stripANSI(wb.GetAll(-1, false))
+	raw := wb.GetAll(-1, false)
+	out := stripANSI(raw)
 
 	if strings.Contains(out, "ASSISTANT") {
 		t.Errorf("scrolled-into-window fragment must not contain the header: %q", out)
@@ -96,9 +102,14 @@ func TestRenderVirtualScrollToMiddle(t *testing.T) {
 	if strings.Contains(out, "\n") {
 		t.Errorf("fragment must be continuous text: %q", out)
 	}
-	// 3 visual lines: 2 padded to 40 + 1 unpadded.
+	// 3 visual lines of 40 cells each (the content rows happen to fill
+	// the width exactly); the fragment tail carries an EL erase for the
+	// last row.
 	if w := ansi.StringWidth(out); w != 3*40 {
 		t.Errorf("fragment display width = %d, want %d (3 lines × 40)", w, 3*40)
+	}
+	if !strings.HasSuffix(raw, "\x1b[K") {
+		t.Errorf("fragment must end with an EL erase, got %q", raw)
 	}
 	// Content rows are word-runs; the fragment must contain the 3rd
 	// through 5th rows' text in order (rows of 8 words each).
@@ -204,10 +215,11 @@ func TestScrollViewSoftWrap(t *testing.T) {
 		t.Errorf("View() = %q, want the pre-clipped content verbatim", v)
 	}
 
-	// Empty buffer: blank rows to fill the viewport.
+	// Empty buffer: erased blank rows to fill the viewport (EL before each
+	// '\n' so the overlay renderer leaves no previous frame content).
 	sv = NewScrollView(40, 5).WithContent("")
-	if v := sv.View(); v != "\n\n\n\n" {
-		t.Errorf("View() with empty content = %q, want 5 blank rows", v)
+	if v := sv.View(); v != strings.Repeat("\x1b[K\n", 4) {
+		t.Errorf("View() with empty content = %q, want 4 erased blank rows", v)
 	}
 
 	// Content length is unrelated to the document total — yOffset must

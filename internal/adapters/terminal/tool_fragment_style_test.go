@@ -61,7 +61,9 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 	}
 
 	// Reconstruct the expected fragment from the full render's lines:
-	// lines[3:] joined continuously, padded to width except the last.
+	// lines[3:] joined continuously, padded to width except the last,
+	// with an EL erase at the tail (the overlay renderer's residue
+	// cleanup for the unpadded last row).
 	want := ""
 	for i, ln := range allLines[3:] {
 		want += ln
@@ -69,6 +71,7 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 			want += strings.Repeat(" ", 40-ansi.StringWidth(ln))
 		}
 	}
+	want += "\x1b[K"
 	if frag != want {
 		t.Errorf("fragment styles differ from full render:\n  got:  %q\n  want: %q", frag, want)
 	}

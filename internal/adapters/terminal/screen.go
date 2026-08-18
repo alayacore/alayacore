@@ -146,6 +146,17 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	} else {
 		buf = append(buf, content...)
 	}
+	// Overlay frames draw CUP rows over the base content; those rows are
+	// padded to the box width but may be shorter than the screen width.
+	// For non-overlay full-screen frames, clear from the end of the
+	// content (the status bar is the last, short row) to the bottom of the
+	// screen — the status row's tail and any row below the frame (when a
+	// transition temporarily leaves fewer rows) get wiped, so no residue
+	// from a previous frame survives. The cursor is positioned AFTER this
+	// erase (absolute CUP below).
+	if fullScreen && !hadOverlay {
+		buf = append(buf, ansi.EraseDisplay(0)...)
+	}
 	if cur != nil {
 		// Absolute CUP: the terminal soft-wraps the content, so absolute
 		// positioning is the only reliable way to land on a cell. The
