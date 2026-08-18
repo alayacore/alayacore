@@ -489,7 +489,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	} else {
 		switch r.name {
 		case "edit_file", "write_file":
-			call = RenderDiffContent(r.input, r.name)
+			call = RenderDiffContent(r.input, r.name, styles)
 		default:
 			call = defaultToolRender(r.input, r.name)
 		}

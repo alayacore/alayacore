@@ -98,14 +98,15 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 }
 
 // TestToolFragmentMidColorWrap verifies that a long diff line wrapping
-// across visual rows keeps its content when scrolled into the middle.
-// Tool content is plain (no colors), so the continuation must carry no
-// ANSI either.
+// across visual rows keeps its content AND its diff color when scrolled
+// into the middle: every wrapped continuation row is self-contained —
+// the WrapWriter re-applies the DiffRemove color at each hard-wrap break.
 func TestToolFragmentMidColorWrap(t *testing.T) {
-	wb := NewWindowBuffer(40, DefaultStyles())
+	styles := DefaultStyles()
+	wb := NewWindowBuffer(40, styles)
 
 	// A single long diff line (- prefix) far wider than the window: its
-	// wrapped continuations stay plain (no diff colors).
+	// wrapped continuations keep the DiffRemove color.
 	input := "edit_file: /tmp/x\n- " + strings.Repeat("X", 120)
 	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t1", Name: "edit_file", Input: json.RawMessage(input)}, 1)
 	wb.ToggleFold(0)
@@ -113,21 +114,15 @@ func TestToolFragmentMidColorWrap(t *testing.T) {
 	wb.SetViewportPosition(4, 10) // inside the wrapped diff input
 	frag := wb.GetAll(-1, false)
 
-	// Tool content is plain: the wrapped diff rows carry no SGR codes.
-	// The box rule and EL erase at the fragment tail are UI chrome (the
-	// only ANSI present), so check the content region before them.
+	// The content region holds the wrapped diff rows with their color.
 	plain := stripANSI(frag)
 	if !strings.Contains(plain, strings.Repeat("X", 40)) {
 		t.Errorf("scrolled fragment should contain wrapped diff content, got %q", plain)
 	}
-	head := frag
-	if i := strings.Index(frag, "\x1b["); i >= 0 {
-		head = frag[:i]
-	}
-	if strings.Contains(head, "\x1b") {
-		t.Errorf("wrapped diff rows must be plain text, got %q", frag)
-	}
-	if !strings.Contains(stripANSI(head), strings.Repeat("X", 40)) {
-		t.Errorf("content region should hold the wrapped diff rows, got %q", head)
+	// Every wrapped row carries the DiffRemove color (self-contained):
+	// the styled 40-X continuation row appears with its SGR prefix + reset.
+	styledRow := styles.DiffRemove.Render(strings.Repeat("X", 40))
+	if !strings.Contains(frag, styledRow) {
+		t.Errorf("wrapped diff rows should carry the DiffRemove color, got %q", frag)
 	}
 }

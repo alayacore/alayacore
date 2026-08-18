@@ -75,13 +75,17 @@ func (s ToolStatus) statusDot(_ *Styles) (string, Style) {
 // ============================================================================
 
 // RenderDiffContent prepares a diff window's raw Content: the Content
-// already has `- `, `+ `, `  ` prefixes; content is plain (no color, no
-// bold) and the first line ("tool_name: args") is rendered as the bare
-// argument line (no status indicator, no tool-name prefix — both live in
-// the header line). No wrapping is performed here — the caller wraps the
-// combined window content once (wrapVisualLines) so original-line
-// boundaries stay hard newlines and only over-long single lines soft-wrap.
-func RenderDiffContent(content, name string) string {
+// already has `- `, `+ `, `  ` prefixes. Removed rows (`- `) are colored
+// with styles.DiffRemove, added rows (`+ `) with styles.DiffAdd; context
+// rows and the first line stay plain. The first line ("tool_name: args")
+// is rendered as the bare argument line (no status indicator, no
+// tool-name prefix — both live in the header line). styles may be nil —
+// the diff then renders plain. No wrapping is performed here — the caller
+// wraps the combined window content once (wrapVisualLines) so
+// original-line boundaries stay hard newlines and only over-long single
+// lines soft-wrap (wrapContent re-applies the per-line color on wrapped
+// continuations).
+func RenderDiffContent(content, name string, styles *Styles) string {
 	// Prepare content: strip ANSI and expand tabs before processing
 	content = prepareContent(content)
 	if name != "" {
@@ -107,8 +111,16 @@ func RenderDiffContent(content, name string) string {
 		if line == "" {
 			continue
 		}
-		// Diff rows stay plain (the -/+ markers remain as text).
-		lines[i] = line
+		// Diff rows keep their -/+ markers; changed rows carry their diff
+		// colors (removed red, added green), context rows stay plain.
+		switch {
+		case styles != nil && strings.HasPrefix(line, "- "):
+			lines[i] = styles.DiffRemove.Render(line)
+		case styles != nil && strings.HasPrefix(line, "+ "):
+			lines[i] = styles.DiffAdd.Render(line)
+		default:
+			lines[i] = line
+		}
 	}
 
 	return strings.Join(lines, "\n")

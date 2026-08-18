@@ -157,21 +157,33 @@ func TestWindow_DiffContentWithANSI(t *testing.T) {
 	newLine := "\x1b[32mnew line\x1b[0m"
 	content := "edit_file: /tmp/test.txt\n- " + oldLine + "\n+ " + newLine + "\n  unchanged"
 
-	result := RenderDiffContent(content, "edit_file")
+	styles := DefaultStyles()
+	result := RenderDiffContent(content, "edit_file", styles)
 
 	// Strip the output's ANSI (input ANSI is stripped by prepareContent;
-	// the rendered content is plain) to check the actual text.
+	// the rendered rows carry their own diff colors) to check the text.
 	resultStripped := stripANSI(result)
 
 	// Should contain the text without the embedded ANSI from input; the
 	// first line shows the bare argument (no status dot, no tool-name
-	// prefix). No diff colors are applied — content is plain.
+	// prefix). Context rows stay plain.
 	expected := "/tmp/test.txt\n- old line\n+ new line\n  unchanged"
 
 	if resultStripped != expected {
 		t.Errorf("DiffContent:\n  got:  %q\n  want: %q", resultStripped, expected)
 	}
-	if strings.Contains(result, "\x1b[") {
-		t.Errorf("DiffContent must be plain text (no colors), got %q", result)
+	// Removed rows are red, added rows are green — the diff keeps colors.
+	if !strings.Contains(result, "\x1b[") {
+		t.Errorf("diff rows should carry colors, got %q", result)
+	}
+	if !strings.Contains(result, styles.DiffRemove.Render("- old line")) {
+		t.Errorf("removed row should carry the DiffRemove color, got %q", result)
+	}
+	if !strings.Contains(result, styles.DiffAdd.Render("+ new line")) {
+		t.Errorf("added row should carry the DiffAdd color, got %q", result)
+	}
+	// Context rows stay plain (no SGR wrapping around them).
+	if !strings.Contains(result, "\n  unchanged") {
+		t.Errorf("context row should be plain text, got %q", result)
 	}
 }
