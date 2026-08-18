@@ -493,6 +493,8 @@ func parseCSI(seq string) (Key, bool) {
 }
 
 // parseSS3 parses "O<final>" / "O1;<mod><final>" sequences (no ESC prefix).
+// Per xterm, anything past the second numeric parameter is metadata and
+// is ignored here — the modifier is always nums[1] when present.
 func parseSS3(seq string) (Key, bool) {
 	final := seq[len(seq)-1]
 	params := seq[1 : len(seq)-1]
