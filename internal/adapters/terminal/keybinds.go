@@ -354,7 +354,13 @@ func (m Terminal) handleSelectorOverlayKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 		aw, cmd := aw.Update(msg)
 		m.attachmentWindow = aw
 		if t.JustClosed(aw) {
-			// Check if a file/URL was selected (via AttachmentSelectedMsg)
+			// Consume the selection message synchronously so the attachment
+			// is added with the current Terminal state — and do NOT return
+			// the same Cmd: it would be dispatched a second time and its
+			// AttachmentSelectedMsg dropped by Terminal.Update's default
+			// case. Non-selection messages (none today) are re-wrapped so
+			// they still reach Update exactly once.
+			var pending Cmd
 			if cmd != nil {
 				if resultMsg := cmd(); resultMsg != nil {
 					if ac, ok := resultMsg.(AttachmentSelectedMsg); ok {
@@ -363,10 +369,13 @@ func (m Terminal) handleSelectorOverlayKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 						} else {
 							m = m.addAttachment(ac.Path)
 						}
+					} else {
+						pending = func() Msg { return resultMsg }
 					}
 				}
 			}
 			m = m.restoreFocus()
+			return m, pending, true
 		}
 		return m, cmd, true
 	}
