@@ -275,30 +275,21 @@ func parseFrameRows(content string) []frameRow {
 		case 0x1b:
 			if i+1 < len(content) && content[i+1] == '[' {
 				j := i + 2
-				hasSemi := false
-				for j < len(content) && (content[j] == ';' || content[j] == '?' ||
+				for j < len(content) && (content[j] == ';' ||
 					(content[j] >= '0' && content[j] <= '9')) {
-					if content[j] == ';' {
-						hasSemi = true
-					}
 					j++
 				}
-				if j < len(content) && content[j] == 'H' && (hasSemi || j == i+2) {
-					// CUP (or home): flush the current row, jump.
-					flush(i)
-					start = j + 1
-					if j == i+2 {
-						row, col = 0, 0
-					} else {
-						parts := strings.SplitN(content[i+2:j], ";", 2)
-						r, _ := strconv.Atoi(parts[0])
-						c, _ := strconv.Atoi(parts[1])
-						row, col = r-1, c-1
+				if j < len(content) && content[j] == 'H' {
+					if r, c, ok := parseCUP(content[i+1 : j+1]); ok {
+						// CUP (or home): flush the current row, jump.
+						flush(i)
+						start = j + 1
+						row, col = r, c
+						sawCUP = true
+						base = false
+						i = j + 1
+						continue
 					}
-					sawCUP = true
-					base = false
-					i = j + 1
-					continue
 				}
 			}
 			i++
@@ -308,6 +299,38 @@ func parseFrameRows(content string) []frameRow {
 	}
 	flush(i)
 	return rows
+}
+
+// parseCUP parses a CSI absolute-cursor-positioning sequence of the form
+// "[" inner "H" (e.g. "[5;10H") and returns 0-indexed (row, col).
+// The bare "[H" form returns (0, 0, true) (home position). A single
+// argument ("[5H") defaults col to 1 (xterm convention), so it returns
+// (row-1, 0, true). Anything else returns (0, 0, false).
+func parseCUP(seq string) (row, col int, ok bool) {
+	if len(seq) < 2 || seq[0] != '[' || seq[len(seq)-1] != 'H' {
+		return 0, 0, false
+	}
+	inner := seq[1 : len(seq)-1]
+	if inner == "" {
+		return 0, 0, true
+	}
+	parts := strings.SplitN(inner, ";", 2)
+	if parts[0] != "" {
+		r, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return 0, 0, false
+		}
+		row = r - 1
+	}
+	col = 0 // default column
+	if len(parts) == 2 && parts[1] != "" {
+		c, err2 := strconv.Atoi(parts[1])
+		if err2 != nil {
+			return 0, 0, false
+		}
+		col = c - 1
+	}
+	return row, col, true
 }
 
 // lastBaseRow returns the last sequential base row (the base content's
@@ -406,24 +429,19 @@ func needTailErase(oldContent, newContent string) bool {
 // positioning (`ESC [ <digits> ; <digits> H`) — the overlay row idiom.
 func containsCUP(s string) bool {
 	for i := 0; i+1 < len(s); i++ {
-		if s[i] != 0x1b || i+1 >= len(s) || s[i+1] != '[' {
+		if s[i] != 0x1b || s[i+1] != '[' {
 			continue
 		}
 		j := i + 2
-		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
-			j++
-		}
-		if j >= len(s) || s[j] != ';' {
-			continue
-		}
-		j++
-		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+		for j < len(s) && (s[j] == ';' || (s[j] >= '0' && s[j] <= '9')) {
 			j++
 		}
 		if j < len(s) && s[j] == 'H' {
-			return true
+			if _, _, ok := parseCUP(s[i+1 : j+1]); ok {
+				return true
+			}
+			i = j
 		}
-		i = j
 	}
 	return false
 }
