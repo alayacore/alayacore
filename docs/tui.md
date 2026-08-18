@@ -1,6 +1,9 @@
 # Terminal UI
 
-AlayaCore's terminal UI is built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss) and uses vim-like keybindings throughout.
+AlayaCore's terminal UI is built on a self-hosted minimal TUI stack (own
+event loop, key parser, terminal management, and style layer) and uses
+vim-like keybindings throughout. See `docs/tui-architecture.md` and
+REFACTOR.md §8 for the architecture.
 
 ## Navigation
 
@@ -189,7 +192,9 @@ after the soft-wrap refactor (`BenchmarkWindowBufferGetAll`). See
 
 ### ANSI escape sequences are not recursive
 
-When styling text with lipgloss, each segment must be rendered individually before concatenation. You cannot render a string that already contains ANSI codes with a new style and expect it to work.
+When styling text with the style layer, each segment must be rendered
+individually before concatenation. You cannot render a string that already
+contains ANSI codes with a new style and expect it to work.
 
 
 ## Tool Confirm Dialog
@@ -226,14 +231,13 @@ Consequences:
   self-contained (styles re-applied per row), so scrolling into the middle
   of a colored diff keeps `-`/`+` colors correct.
 
-This requires a **raw passthrough renderer**: the stock bubbletea v2
-cell-buffer renderer truncates lines wider than the screen and
-re-materializes wrapped rows as hard rows, which breaks both the display
-and copy fidelity. AlayaCore runs a small fork of bubbletea v2
-(`third_party/bubbletea`, via a `replace` directive) that adds a raw mode
-to `tea.View`: the view content is written verbatim to the terminal and
-left for the terminal to soft-wrap. Overlays are drawn with absolute
-cursor-position sequences instead of line compositing (see REFACTOR.md).
+This requires a **raw passthrough renderer**: cell-buffer renderers
+truncate lines wider than the screen and re-materialize wrapped rows as
+hard rows, which breaks both the display and copy fidelity. The self-built
+TUI stack renders directly — `screen.go` writes the view content verbatim
+to the terminal (`ED2` + home + content + absolute CUP) and leaves it to
+the terminal to soft-wrap. Overlays are drawn with absolute cursor-position
+sequences instead of line compositing (see REFACTOR.md).
 
 The wrapping breakpoints are **character-boundary** — a word wider than
 the line width is broken mid-word, matching how a typical terminal

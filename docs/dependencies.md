@@ -13,34 +13,45 @@ This document explains AlayaCore's key dependencies and why each is needed.
 
 ## TUI Framework
 
-### `charm.land/bubbletea/v2` — Terminal UI Framework
+### Self-built TUI stack (`internal/adapters/terminal`) — Terminal UI
 
-The entire terminal adapter (~50 Go files) is built on top of it. Provides:
+The terminal adapter runs on a self-hosted minimal TUI stack (REFACTOR.md
+§8), replacing the former Bubble Tea + Lip Gloss dependency:
 
-- **Event loop**: handles keyboard input, window resize, timers, etc.
-- **Component model**: `tea.Model` interface (`Init`/`Update`/`View`) implemented by all UI components
-- **Message passing**: `tea.Msg` for communication between components
-- **Command system**: `tea.Cmd` for side effects (opening editor, async reads, etc.)
-- **Terminal management**: automatic TTY switching, CDC mode, signal forwarding
+- **`program.go`** — event loop: `Update`/`Cmd`/`Msg` dispatch, batches and
+  sequences, timers (`Tick`), quit, panic recovery (terminal always
+  restored)
+- **`key_parser.go`** — byte stream → key messages; streaming escape
+  sequence state machine; bracketed paste passthrough; UTF-8
+- **`term_io.go`** — TTY opening (`/dev/tty` fallback), raw mode via
+  `golang.org/x/term`, byte reading
+- **`screen.go`** — alternate screen, cursor management, raw passthrough
+  rendering (`ED2` + home + content verbatim + absolute CUP)
+- **`exec.go`** — external editor handoff (`ExecProcess`) and Ctrl-Z
+  suspend: release the terminal (exit alt screen, restore cooked mode),
+  run the child in the foreground, then re-acquire and repaint
+- **`style.go` / `wrap.go`** — the styling layer (below)
 
-**Irreplaceable.** Replacing it means rewriting the entire terminal adapter.
+The stack keeps the external interface (`adapter.go`, `OutputWriter`,
+protocol layer) unchanged; the app's `Terminal.Update` message types are
+mechanical renames of the former `tea.*` types.
 
 ---
 
 ## Styling
 
-### `charm.land/lipgloss/v2` — Style Rendering
+### Self-built style layer (`style.go`, `wrap.go`) — Style Rendering
 
-Lip Gloss is Charm's styling library, providing CSS-like style definitions for terminal text. Referenced in 150+ places across the project.
+CSS-like style definitions for terminal text, byte-compatible with the
+former Lip Gloss output (locked by `style_test.go`):
 
-Provides:
-
-- **Style definitions**: foreground, background, bold, italic, underline, etc.
-- **Border system**: rounded/thick/hidden borders, plus the custom `RenderOpenBox` helper for the "open" panel style (top/bottom rules only, no side borders)
-- **Width/height constraints**: `Width()` / `Height()` / `MaxWidth()` for controlling render area
-- **Text wrapping**: `WrapWriter` carries ANSI styles across line breaks
-
-**Irreplaceable.** Deeply coupled with Bubble Tea; high replacement cost.
+- **Style definitions**: foreground, background, bold, italic, underline,
+  strikethrough; SGR generation via `github.com/charmbracelet/x/ansi`
+- **Width/height helpers**: `Width()` / `Height()` for measuring rendered
+  text
+- **Text wrapping**: `WrapWriter` re-applies the active ANSI style after
+  every newline, so every visual line is self-contained (the soft-wrap
+  fragment pipeline depends on this)
 
 ---
 

@@ -199,8 +199,8 @@ slice" to **exact viewport clipping**:
   simulated breakpoints — copy restores the original text;
 - display widths are measured once per render (`border.widths`) and reused
   for padding, so fragment output performs no per-line measurement;
-- the dim fold arrow is pre-rendered (`border.arrow`) — no lipgloss render
-  per window per view.
+- the dim fold arrow is pre-rendered (`border.arrow`) — no style-layer
+  render per window per view.
 
 Measured (120-window folded session / 100-window conversation, viewport
 30–40, vs pre-refactor):
@@ -218,12 +218,12 @@ The render path (full wrap, resize, theme switch) is unchanged: display
 widths are computed **lazily** — only when fragment output needs padding —
 so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 
-### wrapContent vs lipgloss.Wrap
+### wrapContent vs word-boundary Wrap
 
 | Algorithm | Time | Memory | Allocs |
 |-----------|------|--------|--------|
 | **wrapContent** (character-boundary) | **28.4μs** | 17.3KB | 1,780 |
-| lipgloss.Wrap (word-boundary) | 36.0μs | 15.7KB | 1,781 |
+| Wrap (word-boundary) | 36.0μs | 15.7KB | 1,781 |
 | **Speedup** | **1.27x** | — | — |
 
 ### Resize Performance
@@ -274,5 +274,5 @@ access (no interface dispatch on the hot path).
 During streaming, `ensureLineHeights` first tries `UpdateLineCountFast` → `TryLineCount`.
 If the renderer's `wrappedLines` is populated, this returns the line count in ~7.5μs
 without rendering. The actual `w.Render()` — which joins wrapped lines, applies borders,
-and renders lipgloss styles — is deferred to `GetAll` → `renderVirtual`, which needs
+and renders the style layer — is deferred to `GetAll` → `renderVirtual`, which needs
 the rendered output for the viewport anyway.
