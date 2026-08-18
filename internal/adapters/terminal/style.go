@@ -21,14 +21,12 @@ import (
 // "#RRGGBB"/"#RGB" hex, or a decimal ANSI value (0-15 basic colors,
 // 16-255 extended colors, >255 packed RGB). Mirrors lipgloss.Color.
 func Color(s string) color.Color {
-	if strings.HasPrefix(s, "#") {
-		c, err := parseHexColor(s)
-		if err != nil {
-			return nil
+	if len(s) == 7 || len(s) == 4 {
+		if strings.HasPrefix(s, "#") {
+			return parseHexColor(s)
 		}
-		return c
 	}
-
+	// Numeric ANSI color or invalid input: fall through.
 	i, err := strconv.Atoi(s)
 	if err != nil {
 		return nil
@@ -51,15 +49,16 @@ func Color(s string) color.Color {
 	}
 }
 
-// parseHexColor parses "#RRGGBB" or "#RGB" into a color.RGBA.
+// parseHexColor parses "#RRGGBB" or "#RGB" into a color.RGBA. Returns the
+// zero value (with A=0xff) for malformed input.
 //
 //nolint:gocyclo // hex nibble dispatch
-func parseHexColor(s string) (color.RGBA, error) {
+func parseHexColor(s string) color.RGBA {
 	var c color.RGBA
 	c.A = 0xff
 
 	if len(s) == 0 || s[0] != '#' {
-		return c, errInvalidHex
+		return c
 	}
 
 	hexToByte := func(b byte) (byte, bool) {
@@ -79,7 +78,7 @@ func parseHexColor(s string) (color.RGBA, error) {
 		for i := 1; i < 4; i++ {
 			v, ok := hexToByte(s[i])
 			if !ok {
-				return c, errInvalidHex
+				return c
 			}
 			v |= v << 4 // expand 4-bit to 8-bit
 			switch i {
@@ -96,7 +95,7 @@ func parseHexColor(s string) (color.RGBA, error) {
 			hi, ok1 := hexToByte(s[i])
 			lo, ok2 := hexToByte(s[i+1])
 			if !ok1 || !ok2 {
-				return c, errInvalidHex
+				return c
 			}
 			v := hi<<4 | lo
 			switch i {
@@ -109,17 +108,10 @@ func parseHexColor(s string) (color.RGBA, error) {
 			}
 		}
 	default:
-		return c, errInvalidHex
+		return c
 	}
-	return c, nil
+	return c
 }
-
-// errInvalidHex is returned when a color string is not valid hex.
-var errInvalidHex = errString("invalid hex color")
-
-type errString string
-
-func (e errString) Error() string { return string(e) }
 
 // Style is an immutable, chainable text style. It renders ANSI SGR
 // sequences byte-compatible with lipgloss v2.
