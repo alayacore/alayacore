@@ -66,3 +66,70 @@ func TestThemeSelectorEnterSavesTheme(t *testing.T) {
 		t.Errorf("Expected selected theme 'theme-light', got '%v'", selected)
 	}
 }
+
+// TestThemePreviewStaleTickIgnoredAfterCancel is a Terminal-level regression
+// test for the preview debounce race: navigating in the theme selector
+// schedules a 150ms preview tick, and canceling before it fires must not
+// apply the preview after the overlay closed (the cancel path restores the
+// original theme, then the stale tick would re-apply the preview).
+func TestThemePreviewStaleTickIgnoredAfterCancel(t *testing.T) {
+	original := theme.DefaultTheme()
+	preview := *original
+	preview.Text = "#123456"
+	previewData := &preview
+
+	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, original, NewThemeManager(""), "theme-dark")
+	ow := terminal.out.(*outputWriter)
+	ow.status.updateThemeList([]ThemeEntry{
+		{Name: "theme-dark", Theme: original},
+		{Name: "theme-preview", Theme: previewData},
+	})
+	ow.status.updateTheme("theme-dark", original)
+
+	// Open the selector (Ctrl+P).
+	m, cmd := terminal.Update(KeyPressMsg(Key{Code: 'p', Mod: ModCtrl}))
+	if cmd != nil {
+		t.Fatalf("open selector returned a Cmd: %T", cmd)
+	}
+	terminal = m.(Terminal)
+
+	// Tab to the list, then navigate to the preview theme — this schedules
+	// the debounce tick.
+	m, cmd = terminal.Update(KeyPressMsg(Key{Code: KeyTab}))
+	terminal = m.(Terminal)
+	m, cmd = terminal.Update(KeyPressMsg(Key{Code: 'j'}))
+	terminal = m.(Terminal)
+	if cmd == nil {
+		t.Fatal("expected a preview debounce Cmd after navigation")
+	}
+	pending := cmd
+
+	// Cancel before the debounce fires.
+	m, cmd = terminal.Update(KeyPressMsg(Key{Code: KeyEsc}))
+	terminal = m.(Terminal)
+
+	// The stale tick fires late (fires the 150ms timer) — it must be
+	// ignored: handleThemePreview only applies when the tick's ID still
+	// matches, and the close bumped it.
+	msg := pending() // Batch collapses to the single Tick when the inner Cmd is nil
+	if batch, ok := msg.(BatchMsg); ok {
+		msg = nil
+		for _, c := range batch {
+			if c == nil {
+				continue
+			}
+			if r := c(); r != nil {
+				msg = r
+			}
+		}
+	}
+	pm, ok := msg.(themePreviewMsg)
+	if !ok {
+		t.Fatalf("pending Cmd produced %T, want themePreviewMsg", msg)
+	}
+	m, _ = terminal.Update(pm)
+	terminal = m.(Terminal)
+	if terminal.previewAppliedTheme != nil {
+		t.Errorf("stale preview applied after cancel: %v", terminal.previewAppliedTheme)
+	}
+}

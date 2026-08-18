@@ -83,6 +83,13 @@ func (m Terminal) handleThemeSelectorKeys(msg KeyMsg) (Terminal, Cmd) {
 
 	// If closed — restore original theme on cancel, or apply selected theme.
 	if wasOpen && !ts.IsOpen() {
+		// Invalidate any pending preview debounce: a tick scheduled by the
+		// last navigation may not have fired yet, and applying it after the
+		// overlay closed would leave the wrong theme on screen (cancel
+		// restores the original, then the stale tick re-applies the
+		// preview). handleThemePreview only applies when the tick's ID
+		// still matches, so bump the counter.
+		m.themePreviewID++
 		key := msg.String()
 		if key == keyQ || key == keyEsc {
 			// Cancel: restore original theme if a different theme was previewed.
