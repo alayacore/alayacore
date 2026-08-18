@@ -153,7 +153,7 @@ func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
 	if result.Handled {
 		// Close overlay.
 		if !fl.FilterInputFocused && (key == keyQ || key == keyEsc) {
-			return ts.Close(), func() Msg { return OverlayClosedMsg{} }
+			return ts.Close(), nil
 		}
 
 		// Enter on list: select theme.

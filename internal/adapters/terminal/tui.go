@@ -89,9 +89,6 @@ type AttachmentSelectedMsg struct{ Path string }
 // ConfirmResultMsg is sent when a confirm dialog produces a result.
 type ConfirmResultMsg struct{ Result *ConfirmResult }
 
-// OverlayClosedMsg is sent when any overlay is dismissed without a result.
-type OverlayClosedMsg struct{}
-
 // displayErrorMsg carries an error message to be written to the display output
 // via Terminal.Update, ensuring all OutputWriter mutations happen on the event loop.
 type displayErrorMsg struct {
