@@ -23,6 +23,7 @@ import (
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
+	ansi "github.com/charmbracelet/x/ansi"
 )
 
 // ============================================================================
@@ -745,17 +746,47 @@ func (m Terminal) View() View {
 
 	var sb strings.Builder
 
-	// Display area
+	// Display area — base row sequence. We pad to viewportHeight rows
+	// inside m.display so its content fills the display region exactly.
 	sb.WriteString(m.display.View().Content)
-	sb.WriteString("\n")
 
-	// Input area — dimmed when blocked by overlays (border is already dimmed via Blur()).
+	// Input area — drawn at an ABSOLUTE screen position with a CUP so
+	// its location does not depend on the display area's actual row
+	// count (which can drift from viewportHeight when soft-wrap or
+	// scroll-induced fragment count changes happen). Top rule sits at
+	// (m.windowHeight - inputHeight - 1) (0-indexed); the box content
+	// (attachments, separator, input field) follows, then the bottom rule.
+	//
+	// The status bar sits at the last row (m.windowHeight - 1, 0-indexed)
+	// and is also positioned with a CUP — guarantees the status bar is
+	// always visible, even if the input box's rendered content overshoots
+	// its computed height (e.g. a misbehaving renderer or an attachment
+	// line that the terminal soft-wraps despite wrapLabels pre-wrapping it).
+	//
+	// '\n' separators before each CUP:
+	//   - input box strings have no trailing '\n', so without a separator
+	//     before its CUP, the status bar would land on the same row as
+	//     the input box's bottom rule (and look glued to it);
+	//   - m.display.View().Content also has no trailing '\n', so without
+	//     a separator before the input-box CUP, the display's last row
+	//     and the input top rule would merge into one segment under
+	//     soft-wrap, losing a row and breaking the FullScreen invariant
+	//     (View content must soft-wrap to exactly screen height).
+	// The CUPs are absolute, so the '\n' does not change where the
+	// subsequent content lands — only what the soft-wrap row counter
+	// sees, which is what we need.
 	m.input = m.input.WithBlocked(m.isBlocked() || m.postLoading)
-	sb.WriteString(m.input.View().Content)
-	sb.WriteString("\n")
-
-	// Status bar (simplified - just render directly)
-	sb.WriteString(m.renderStatusBar())
+	inputBoxHeight := m.input.Height()
+	inputBoxY := max(0, m.windowHeight-inputBoxHeight-1) // 0-indexed row of the top rule
+	if m.windowHeight > 0 {
+		sb.WriteString("\n")
+		sb.WriteString(ansi.CursorPosition(1, inputBoxY+1))
+		sb.WriteString(m.input.View().Content)
+		sb.WriteString("\n")
+		// Status bar: hard anchor to the last row.
+		sb.WriteString(ansi.CursorPosition(1, m.windowHeight))
+		sb.WriteString(m.renderStatusBar())
+	}
 
 	baseContent := sb.String()
 

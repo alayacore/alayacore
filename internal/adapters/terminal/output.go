@@ -58,8 +58,8 @@ type outputWriter struct {
 	// Active user window — set on first user frame (UT/UI/UV/UA/UD),
 	// cleared on next non-user tag. Each new frame updates the
 	// window incrementally and marks dirty for immediate render.
-	activeUserWindowID  string // window ID; "" = none
-	pendingUserMaxID    uint64 // max history ID across all parts
+	activeUserWindowID string // window ID; "" = none
+	pendingUserMaxID   uint64 // max history ID across all parts
 
 	// Pending delta coalescing — accumulates "At"/"Ar" and "Af" frames
 	// and flushes them to WindowBuffer in batches, reducing lock contention
@@ -89,7 +89,7 @@ func NewTerminalOutput(styles *Styles) *outputWriter { //nolint:revive // tests 
 		windowBuffer:      NewWindowBuffer(DefaultWidth, styles),
 		status:            sessionState{mu: &sync.Mutex{}},
 		pendingTextDeltas: make(map[string]*pendingTextDelta),
-		pendingToolDeltas:   make(map[string]*pendingToolDelta),
+		pendingToolDeltas: make(map[string]*pendingToolDelta),
 	}
 	to.styles.Store(styles)
 	return to

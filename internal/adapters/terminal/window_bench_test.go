@@ -491,7 +491,7 @@ func BenchmarkDirectAppend(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w.AppendContent(" more")
 		_ = w.Render(80, false, styles,
-		NewStyle(), false)
+			NewStyle(), false)
 	}
 }
 
@@ -510,7 +510,7 @@ func BenchmarkDirectAppendNoStyles(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w.AppendContent(" more")
 		_ = w.Render(80, false, styles,
-		NewStyle(), false)
+			NewStyle(), false)
 	}
 }
 
@@ -537,7 +537,7 @@ func BenchmarkDirectAppendDebug(_ *testing.B) {
 			0, 0-4)
 
 		_ = w.Render(80, false, styles,
-		NewStyle(), false)
+			NewStyle(), false)
 		fmt.Printf("After Render %d: wrappedLines=%d, cache.valid=%v\n",
 			i+1, 0, false)
 	}
@@ -563,7 +563,7 @@ func BenchmarkRenderAfterAppend(b *testing.B) {
 		b.StartTimer()
 
 		_ = w.Render(80, false, styles,
-		NewStyle(), false)
+			NewStyle(), false)
 	}
 }
 
@@ -585,7 +585,7 @@ func BenchmarkFullRebuildAfterAppend(b *testing.B) {
 		b.StartTimer()
 
 		_ = w.Render(80, false, styles,
-		NewStyle(), false)
+			NewStyle(), false)
 	}
 }
 

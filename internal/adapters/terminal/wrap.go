@@ -512,25 +512,70 @@ func styleMultiline(content string, style Style) string {
 }
 
 // wrapLabels wraps a list of labels at word boundaries (separator "  "),
-// keeping each label intact. Each resulting line is styled with the given style.
+// keeping each label intact unless it is wider than the given width —
+// such labels are hard-wrapped into multiple lines so the returned
+// string's visual line count matches what the terminal will actually
+// render after soft-wrap. Each resulting line is styled with the given
+// style.
+//
+// Layout invariant: every line in the output has display width ≤ width,
+// so callers computing line counts (PromptInput.Height,
+// PromptInput.AttachmentsOffset) match the terminal's actual row usage.
 func wrapLabels(labels []string, width int, style Style) string {
 	if len(labels) == 0 {
 		return ""
 	}
+	if width < 1 {
+		// No usable width — cannot wrap. Join labels with separator and
+		// render so we still produce some output (callers that measure
+		// Height() are unaffected because none of them pass width < 1).
+		var parts []string
+		for _, l := range labels {
+			if l != "" {
+				parts = append(parts, style.Render(l))
+			}
+		}
+		return strings.Join(parts, "  ")
+	}
+
 	var lines []string
 	var currentLine strings.Builder
+
+	flushCurrent := func() {
+		if currentLine.Len() > 0 {
+			lines = append(lines, style.Render(currentLine.String()))
+			currentLine.Reset()
+		}
+	}
 
 	for i, label := range labels {
 		if label == "" {
 			continue
 		}
 		labelWidth := ansi.StringWidth(label)
+
+		// Single label wider than width: hard-wrap it into multiple lines
+		// first. Without this, the label would land on one line wider
+		// than width and the terminal's soft-wrap would push every
+		// subsequent row down — but Height() / AttachmentsOffset() would
+		// still count just one line, so the input box cursor position
+		// would land on the wrong row (raw passthrough mode relies on
+		// the displayed rows matching the computed row count exactly).
+		if labelWidth > width {
+			flushCurrent()
+			for _, part := range strings.Split(ansi.Hardwrap(label, width, true), "\n") {
+				if part != "" {
+					lines = append(lines, style.Render(part))
+				}
+			}
+			continue
+		}
+
 		if currentLine.Len() > 0 {
 			currentWidth := ansi.StringWidth(currentLine.String())
 			sepWidth := 2 // "  "
 			if currentWidth+sepWidth+labelWidth > width {
-				lines = append(lines, style.Render(currentLine.String()))
-				currentLine.Reset()
+				flushCurrent()
 				currentLine.WriteString(label)
 			} else {
 				currentLine.WriteString("  ")
@@ -541,7 +586,7 @@ func wrapLabels(labels []string, width int, style Style) string {
 		}
 		// Flush last label
 		if i == len(labels)-1 && currentLine.Len() > 0 {
-			lines = append(lines, style.Render(currentLine.String()))
+			flushCurrent()
 		}
 	}
 

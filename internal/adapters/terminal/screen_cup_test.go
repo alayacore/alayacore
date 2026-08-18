@@ -6,11 +6,11 @@ import "testing"
 
 func TestParseCUP(t *testing.T) {
 	cases := []struct {
-		name     string
-		seq      string
-		wantRow  int
-		wantCol  int
-		wantOK   bool
+		name    string
+		seq     string
+		wantRow int
+		wantCol int
+		wantOK  bool
 	}{
 		{"bare home", "[H", 0, 0, true},
 		{"two-arg CUP", "[5;10H", 4, 9, true},

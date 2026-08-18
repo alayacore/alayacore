@@ -37,6 +37,15 @@ func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurr
 
 // renderStatusBar renders the status bar line.
 // Status bar is dimmed when an overlay is active.
+//
+// The result is truncated to the terminal width (minus one cell for the
+// status indicator gap) so a runaway status string — e.g. a session with
+// every switch + a long token count + many steps + video config — does
+// not soft-wrap onto a second row in raw passthrough mode. Two status
+// rows would push the input box's rendered content against the bottom
+// rule and overlap the prompt area, even though the input box is now
+// drawn with an absolute CUP (the status bar itself is anchored to the
+// last row, so it would visibly wrap onto the second-to-last row).
 func (m Terminal) renderStatusBar() string {
 	active := !m.isBlocked()
 
@@ -53,14 +62,21 @@ func (m Terminal) renderStatusBar() string {
 		indicator = m.styles.Status.Foreground(m.styles.ColorDim).Render("·")
 	}
 
+	// Indicator takes 1 cell; reserve 1 more cell so the rendered status
+	// does not run flush against the screen edge.
+	budget := max(0, m.windowWidth-2)
+
+	var content string
 	if m.statusText != "" {
 		text := m.statusText
 		if !active {
 			text = m.statusTextDim
 		}
-		return m.styles.Status.Render(indicator + " " + text)
+		content = truncateWithSuffix(indicator+" "+text, budget)
+	} else {
+		content = truncateWithSuffix(indicator, budget)
 	}
-	return m.styles.Status.Render(indicator)
+	return m.styles.Status.Render(content)
 }
 
 // formatTokenCount returns a compact human-readable representation of a
