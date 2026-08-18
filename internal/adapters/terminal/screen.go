@@ -496,7 +496,36 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 		rows = append(rows, row)
 	}
 	sort.Ints(rows)
-	for _, row := range rows {
+	for i := 0; i < len(rows); i++ {
+		row := rows[i]
+		if base, ok := baseRowAt(newRows, row); ok && base.terminalRows > 1 {
+			// A changed row of a SOFT-WRAPPED base line: repaint the WHOLE
+			// logical line at its start row as one continuous write. The
+			// terminal auto-wraps it, so it stays ONE logical line — a
+			// per-terminal-row CUP rewrite would split it, and copying the
+			// wrapped line would then yield hard newlines at the row
+			// boundaries (mid-word, since the wrapping is character-based).
+			// The line's own text already carries the continuation
+			// padding, so the terminal wraps at exactly the visual row
+			// boundaries, like the full-render path does.
+			buf = append(buf, ansi.CursorPosition(1, base.frameRow.row+1)...)
+			buf = append(buf, base.frameRow.text...)
+			buf = append(buf, ansi.EraseLine(0)...)
+			// Draw the line's overlay layers (frame order, later on top).
+			for r := base.frameRow.row; r < base.frameRow.row+base.terminalRows; r++ {
+				for _, ov := range overlaysByRow[r] {
+					buf = append(buf, ansi.CursorPosition(ov.frameRow.col+1, r+1)...)
+					buf = append(buf, ov.frameRow.text...)
+				}
+			}
+			// Skip every terminal row of this line.
+			end := base.frameRow.row + base.terminalRows
+			for i < len(rows) && rows[i] < end {
+				i++
+			}
+			i--
+			continue
+		}
 		// Restore the base segment (or clear the row when no base covers
 		// it) — this also erases any shrunk layer's old tail.
 		buf = append(buf, ansi.CursorPosition(1, row+1)...)
@@ -513,11 +542,10 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 	return buf
 }
 
-// baseRowTextAt returns the text that renders on the given terminal row
-// from the frame's base rows — the covering base row's segment at that
-// soft-wrapped row (ANSI preserved). ok is false when no base row covers
-// the terminal row (the vanished overlay row is simply erased).
-func baseRowTextAt(rows []positionedRow, width, termRow int) (string, bool) {
+// baseRowAt returns the base positionedRow whose terminal-row span covers
+// termRow (the soft-wrapped logical line rendered there). ok is false when
+// no base row covers the terminal row (a pure overlay/blank row).
+func baseRowAt(rows []positionedRow, termRow int) (positionedRow, bool) {
 	for _, r := range rows {
 		if !r.base {
 			continue
@@ -525,13 +553,25 @@ func baseRowTextAt(rows []positionedRow, width, termRow int) (string, bool) {
 		if termRow < r.frameRow.row || termRow >= r.frameRow.row+r.terminalRows {
 			continue
 		}
-		if r.terminalRows <= 1 {
-			return r.frameRow.text, true
-		}
-		start := (termRow - r.frameRow.row) * width
-		return ansi.Cut(r.frameRow.text, start, start+width), true
+		return r, true
 	}
-	return "", false
+	return positionedRow{}, false
+}
+
+// baseRowTextAt returns the text that renders on the given terminal row
+// from the frame's base rows — the covering base row's segment at that
+// soft-wrapped row (ANSI preserved). ok is false when no base row covers
+// the terminal row (the vanished overlay row is simply erased).
+func baseRowTextAt(rows []positionedRow, width, termRow int) (string, bool) {
+	r, ok := baseRowAt(rows, termRow)
+	if !ok {
+		return "", false
+	}
+	if r.terminalRows <= 1 {
+		return r.frameRow.text, true
+	}
+	start := (termRow - r.frameRow.row) * width
+	return ansi.Cut(r.frameRow.text, start, start+width), true
 }
 
 // boolInt converts a bool to an int (0/1) for use in map keys.
