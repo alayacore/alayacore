@@ -12,6 +12,7 @@ package terminal
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	ansi "github.com/charmbracelet/x/ansi"
@@ -65,6 +66,10 @@ type ConfirmDialog struct {
 
 	// ── Dependencies (pointer to shared data) ─
 	styles *Styles
+
+	// ── View cache ── invalidated whenever (Width, Description) changes.
+	lastViewKey string
+	lastViewBox string
 }
 
 // NewConfirmDialog creates a new confirm dialog.
@@ -290,9 +295,18 @@ type ConfirmResult struct {
 
 // ---- Rendering ----
 
+// View returns the rendered dialog.
 func (cd ConfirmDialog) View() View {
 	if !cd.IsOpen() {
 		return NewView("")
+	}
+
+	// Cache the rendered content when neither the description nor the
+	// width has changed since the last View() call. UpdateMCPInitProgress
+	// fires ~4×/sec during MCP init; without this cache the wrap/center
+	// pipeline runs every tick even when nothing changed.
+	if cd.lastViewKey == cd.viewCacheKey() {
+		return NewView(cd.lastViewBox)
 	}
 
 	msgLines := cd.buildContentLines()
@@ -301,7 +315,15 @@ func (cd ConfirmDialog) View() View {
 	}
 	content := strings.Join(msgLines, "\n")
 	box := cd.styles.RenderOpenBox(content, cd.Width, cd.styles.ColorWarning, ConfirmContentRows)
+	cd.lastViewKey = cd.viewCacheKey()
+	cd.lastViewBox = box
 	return NewView(box)
+}
+
+// viewCacheKey produces a key that changes whenever the rendered output
+// would. Description drives the body; Width drives the wrap.
+func (cd ConfirmDialog) viewCacheKey() string {
+	return cd.Description + "|" + strconv.Itoa(cd.Width)
 }
 
 // buildContentLines returns the display lines for the dialog content.
