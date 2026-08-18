@@ -284,7 +284,7 @@ func (w *Window) RawContent() string {
 	return ""
 }
 
-// ToggleMarkdownMode toggles markdown table rendering for plain-text
+// ToggleMarkdownMode toggles markdown rendering for plain-text
 // windows (assistant text AT / reasoning AR). Returns false for windows
 // that never render markdown (user prompts, tools, system messages).
 func (w *Window) ToggleMarkdownMode() bool {
@@ -297,7 +297,7 @@ func (w *Window) ToggleMarkdownMode() bool {
 	return true
 }
 
-// MarkdownMode reports whether the window renders markdown tables.
+// MarkdownMode reports whether the window renders markdown.
 func (w *Window) MarkdownMode() bool {
 	tr, ok := w.renderer.(*textRenderer)
 	if !ok || !tr.plainContent() {

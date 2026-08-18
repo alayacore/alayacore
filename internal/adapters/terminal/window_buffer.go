@@ -64,7 +64,7 @@ func NewWindowBuffer(width int, styles *Styles) *WindowBuffer {
 		borderStyle:     NewStyle().Foreground(styles.ColorDim),
 		lineHeights:     []int{},
 		dirtyIndex:      dirtyClean,
-		markdownDefault: true, // markdown table rendering on by default
+		markdownDefault: true, // markdown rendering on by default
 	}
 }
 
@@ -414,7 +414,7 @@ func (wb *WindowBuffer) ToggleFold(windowIndex int) bool {
 	return true
 }
 
-// ToggleMarkdownMode toggles markdown table rendering for the window at
+// ToggleMarkdownMode toggles markdown rendering for the window at
 // the given index. No-op for windows that don't render markdown
 // (user prompts, tools, system messages). Returns true when toggled.
 func (wb *WindowBuffer) ToggleMarkdownMode(windowIndex int) bool {

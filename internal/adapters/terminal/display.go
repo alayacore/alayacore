@@ -119,7 +119,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
 		return m.EnsureCursorVisible().updateContent(), nil
 
 	case keyR:
-		// Toggle markdown table rendering — only effective on an
+		// Toggle markdown rendering — only effective on an
 		// UNFOLDED plain-text window (assistant text / reasoning).
 		w := m.windowBuffer.WindowAt(m.windowCursor)
 		if w == nil || w.Folded {

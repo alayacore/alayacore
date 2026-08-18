@@ -43,7 +43,7 @@ architecture.
 | `Ctrl+A` | Open attachment picker for multi-modal input |
 | `:` | Switch to input with `:` prefix (command mode) |
 | `Space` | Toggle window fold (expand/collapse) |
-| `r` | Toggle markdown table rendering (unfolded assistant text/reasoning) |
+| `r` | Toggle markdown rendering (unfolded assistant text/reasoning) |
 
 ### Input Cursor & IME
 
@@ -169,7 +169,7 @@ scrolls the viewport. While auto-follow is active:
 | `Ctrl+U` | Scroll up half screen | ✅ Always |
 | `e` | Open in editor | ✅ Always |
 | `Space` | Toggle window fold | ❌ Never |
-| `r` | Toggle markdown table rendering | ❌ Never |
+| `r` | Toggle markdown rendering | ❌ Never |
 | `Tab` | Toggle focus | ❌ Never |
 
 ### Fold Mode
@@ -178,9 +178,9 @@ Press `Space` on any window to collapse it — the window becomes a single heade
 
 An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrow glyphs themselves are theme-configurable (`fold_arrow` / `unfold_arrow`). See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
 
-### Markdown Tables
+### Markdown Rendering
 
-Markdown table rendering is **on by default** for assistant text (`ASSISTANT`) and reasoning (`REASONING`) windows; `--no-markdown` turns the default off (new windows start raw). Press `r` on an **unfolded** window to toggle between rendered and raw per window; the setting is independent per window and applies only when expanded — folded windows keep their raw one-line summary.
+Markdown rendering is **on by default** for assistant text (`ASSISTANT`) and reasoning (`REASONING`) windows; `--no-markdown` turns the default off (new windows start raw). Press `r` on an **unfolded** window to toggle between rendered and raw per window; the setting is independent per window and applies only when expanded — folded windows keep their raw one-line summary.
 
 When enabled, GFM-style tables (a `|`-delimited header row followed by a delimiter row of dashes) are re-rendered as aligned, padded columns — e.g. `| name | gender | age |` becomes `| name            | gender | age |`. Tables inside fenced code blocks are never transformed. Column alignment markers (`:---`, `---:`, `:---:`) are honored.
 

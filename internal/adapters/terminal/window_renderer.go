@@ -25,7 +25,7 @@ type textRenderer struct {
 	content      string   // full content (built from parts on demand)
 	contentLen   int      // cumulative length of all deltas
 	contentParts []string // streaming deltas (avoids O(n²) string concat)
-	mdMode       bool     // render markdown tables (toggled with 'r'; AT/AR only)
+	mdMode       bool     // render markdown (toggled with 'r'; AT/AR only)
 
 	// mdTailInTable reports whether the accumulated content ends inside a
 	// table block (last line starts with '|' and no closing blank/text
@@ -113,7 +113,7 @@ func (r *textRenderer) updateMDTail(value string) {
 	r.mdTailInTable = hasPipePrefix(lastLine(value))
 }
 
-// ToggleMarkdownMode flips markdown table rendering and invalidates the
+// ToggleMarkdownMode flips markdown rendering and invalidates the
 // wrapped-line cache so the next BuildInner re-renders from scratch.
 // Returns the new state.
 func (r *textRenderer) ToggleMarkdownMode() bool {

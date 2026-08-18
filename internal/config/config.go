@@ -175,7 +175,7 @@ func Parse() *Settings {
 	autoSummarize := fs.Int("auto-summarize", 0, "Enable auto-summarization at given threshold percentage (e.g. --auto-summarize=65, 0 = disabled)")
 	toolConfirm := fs.String("tool-confirm", "", "Comma-separated tool `names` requiring user confirmation (e.g. execute_command,search_content)")
 	noDelta := fs.Bool("no-delta", false, "Disable delta frames (At, Ar, Af); use complete frames only")
-	noMarkdown := fs.Bool("no-markdown", false, "Disable markdown table rendering by default (new assistant text windows start raw; 'r' still toggles per window)")
+	noMarkdown := fs.Bool("no-markdown", false, "Disable markdown rendering by default (new assistant text windows start raw; 'r' still toggles per window)")
 	fs.String("builtin-tools", "", "Comma-separated built-in tool `names` to enable (empty = no builtin tools, unspecified = all tools)")
 	commandTimeout := fs.Int("command-timeout", 120,
 		"Maximum duration in seconds for shell command execution (default 120)")

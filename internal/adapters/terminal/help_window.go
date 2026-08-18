@@ -108,7 +108,7 @@ func buildHelpItems() []HelpItem {
 		{ID: nextID(), Key: "f/b", Description: "Next/prev prompt", Type: HelpItemKey},
 		{ID: nextID(), Key: ":", Description: "Enter command mode", Type: HelpItemKey},
 		{ID: nextID(), Key: "Space", Description: "Toggle window fold", Type: HelpItemKey},
-		{ID: nextID(), Key: "r", Description: "Toggle markdown table rendering (unfolded)", Type: HelpItemKey},
+		{ID: nextID(), Key: "r", Description: "Toggle markdown rendering (unfolded)", Type: HelpItemKey},
 		{ID: nextID(), Key: "Ctrl+F", Description: "Fork session from cursor", Type: HelpItemKey},
 	}
 	for i := range items {

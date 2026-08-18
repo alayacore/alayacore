@@ -80,7 +80,7 @@ echo "what is 2+2?" | alayacore --terseio
 ### TUI (terminal interface)
 
 - 🖥️ **Streaming output** — Real-time display with virtual scrolling, foldable windows, and vim-like keybindings.
-- 📊 **Markdown tables** — Assistant tables render as aligned columns by default; press `r` on an unfolded window to toggle raw/rendered (`--no-markdown` disables the default).
+- 📊 **Markdown rendering** — Assistant markdown output (currently tables) renders by default; press `r` on an unfolded window to toggle raw/rendered (`--no-markdown` disables the default).
 - 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`.
 - 🎨 **Theme system** — Customizable color schemes with live switching.
 - ⌨️ **Model selector, theme selector, help window** — Overlay-based UI components for runtime configuration.
