@@ -26,9 +26,13 @@ type textRenderer struct {
 	contentLen   int      // cumulative length of all deltas
 	contentParts []string // streaming deltas (avoids O(n²) string concat)
 
-	// Cached wrapped lines for fast incremental update via appendDeltaToLines.
-	// Populated by BuildInner, updated incrementally by AppendFromTLV.
-	wrappedLines []string
+	// Cached wrapped lines for fast incremental update via
+	// appendDeltaToVisualLines. Populated by BuildInner, updated
+	// incrementally by AppendFromTLV. Each row carries a continuation
+	// mark (visualLine.Cont) — rows of the same original line join
+	// without '\n' (terminal soft-wrap); different original lines are
+	// separated by hard '\n'.
+	wrappedLines []visualLine
 	cacheWidth   int  // inner width used for wrapping (0 = unknown)
 	cacheValid   bool // true = BuildInner can skip full re-wrap
 }
@@ -46,7 +50,7 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	// is a future concern), which keeps the incremental path simple:
 	// pure-text hardwrap, no ANSI handling, no style state to maintain.
 	if len(r.wrappedLines) > 0 && r.cacheWidth > 0 {
-		r.wrappedLines = appendDeltaToLines(r.wrappedLines, prepareContent(value), r.cacheWidth)
+		r.wrappedLines = appendDeltaToVisualLines(r.wrappedLines, prepareContent(value), r.cacheWidth)
 		// cacheValid stays false — border cache needs rebuild,
 		// but wrappedLines is current for TryLineCount.
 	} else {
@@ -84,9 +88,11 @@ func (r *textRenderer) plainContent() bool {
 // For AT/AR this is PLAIN TEXT (no styling — markdown rendering is a
 // future concern), so only wrapping is applied. System messages (SN/SE)
 // keep their Error/System colors. Each returned line is one terminal
-// row (no '\n' inside) — the soft-wrap breakpoints. lineCount includes
-// the 2 box rules (len(lines) + 2); Window.Render adds the header.
-func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, int) {
+// row (no '\n' inside) with a continuation mark: rows of the same
+// original line join without '\n' (soft wrap); rows starting a new
+// original line are separated by hard '\n'. lineCount includes the 2
+// box rules (len(lines) + 2); Window.Render adds the header.
+func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 
 	// Fast path: use cached wrapped lines if width matches.
@@ -128,13 +134,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 		}
 	}
 
-	if innerWidth <= 0 {
-		lines := strings.Split(content, "\n")
-		return lines, len(lines) + 2
-	}
-
-	wrapped := wrapContent(content, innerWidth)
-	r.wrappedLines = strings.Split(wrapped, "\n")
+	r.wrappedLines = wrapVisualLines(content, innerWidth)
 	r.cacheWidth = innerWidth
 	r.cacheValid = true
 
@@ -330,7 +330,7 @@ func (r *userRenderer) Invalidate() {}
 // order: media parts precede the text part. Multiple text parts are
 // separated with "---" in System color. Each returned line is one
 // terminal row (no '\n' inside); lineCount includes the 2 box rules.
-func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, int) {
+func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 
 	var parts []string
@@ -377,7 +377,10 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 
 	result := strings.Join(parts, "\n")
 
-	lines := strings.Split(result, "\n")
+	// Wrap into visual rows with continuation marks: rows of the same
+	// original line join without '\n' (soft wrap); rows starting a new
+	// original line are separated by hard '\n'.
+	lines := wrapVisualLines(result, innerWidth)
 
 	// Count lines (add 2 for border)
 	return lines, len(lines) + 2
@@ -450,7 +453,7 @@ func (r *toolRenderer) AppendDelta(delta string) {
 // BuildInner renders the tool window content as visual lines. Each
 // returned line is one terminal row (no '\n' inside); lineCount
 // includes the 2 box rules.
-func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, int) {
+func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 
 	// UF-only windows (no tool name, created from UF tag) render as plain text.
@@ -461,10 +464,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 			output = p
 		}
 		styled := prepareContent(output)
-		if innerWidth > 0 {
-			styled = wrapContent(styled, innerWidth)
-		}
-		lines := strings.Split(styled, "\n")
+		lines := wrapVisualLines(styled, innerWidth)
 		return lines, len(lines) + 2
 	}
 
@@ -482,9 +482,9 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 	} else {
 		switch r.name {
 		case "edit_file", "write_file":
-			call = RenderDiffContent(r.input, r.name, innerWidth)
+			call = RenderDiffContent(r.input, r.name)
 		default:
-			call = defaultToolRender(r.input, r.name, innerWidth)
+			call = defaultToolRender(r.input, r.name)
 		}
 	}
 
@@ -499,13 +499,10 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 		}
 		sep := styles.System.Render(Separator)
 		styled := prepareContent(output)
-		if innerWidth > 0 {
-			styled = wrapContent(styled, innerWidth)
-		}
 		call = call + "\n" + sep + "\n" + styled
 	}
 
-	lines := strings.Split(call, "\n")
+	lines := wrapVisualLines(call, innerWidth)
 	return lines, len(lines) + 2
 }
 
@@ -605,15 +602,12 @@ func (r *toolRenderer) previewOutput(innerWidth, usedWidth int) string {
 // defaultToolRender renders a tool call's input as a muted argument block:
 // no status indicator (it lives in the header line's TOOL•) and no
 // "name: " prefix (the tool name lives in the header line too).
-func defaultToolRender(input, name string, innerWidth int) string {
+func defaultToolRender(input, name string) string {
 	content := prepareContent(input)
 	if name != "" {
 		if stripped, ok := strings.CutPrefix(content, name+":"); ok {
 			content = strings.TrimSpace(stripped)
 		}
-	}
-	if innerWidth > 0 {
-		content = wrapContent(content, innerWidth)
 	}
 	return content
 }

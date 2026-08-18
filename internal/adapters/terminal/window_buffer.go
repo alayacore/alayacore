@@ -757,6 +757,8 @@ func (wb *WindowBuffer) GetAll(cursorIndex int, blocked bool) string {
 //
 // The viewport is the final clip — no buffer windows or blank
 // placeholders are emitted; ScrollView pads to the viewport height.
+//
+//nolint:gocyclo // fragment assembly branches
 func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 	if len(wb.windows) == 0 {
 		return ""
@@ -798,20 +800,24 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 		if firstWritten {
 			sb.WriteString("\n")
 		}
-		// Join the fragment continuously; pad every line except the last
-		// to the full width so the terminal soft-wraps exactly at the
-		// simulated breakpoints. Display widths are cached at render time
-		// (no per-line measurement on the hot path).
-		for j, ln := range lines {
-			if j == len(lines)-1 {
-				sb.WriteString(ln)
-				break
+		// Join the fragment according to continuation marks: rows of the
+		// SAME original line (Cont) join without '\n' — the terminal
+		// soft-wraps them, so an over-long single line stays one logical
+		// line (copy restores it). Rows starting a NEW original line are
+		// separated by a hard '\n' — multi-line content copies back as
+		// multi-line. Rows followed by a continuation are padded to the
+		// full width so the soft-wrap break lands exactly at the visual
+		// row boundary; rows ending an original line are NOT padded (no
+		// trailing spaces in selections).
+		for j, vl := range lines {
+			if j > 0 && !vl.Cont {
+				sb.WriteString("\n")
 			}
-			if wdt := widths[j]; wdt < wb.width {
-				sb.WriteString(ln)
-				sb.WriteString(strings.Repeat(" ", wb.width-wdt))
-			} else {
-				sb.WriteString(ln)
+			sb.WriteString(vl.Text)
+			if j < len(lines)-1 && lines[j+1].Cont {
+				if wdt := widths[j]; wdt < wb.width {
+					sb.WriteString(strings.Repeat(" ", wb.width-wdt))
+				}
 			}
 		}
 		// Clear the fragment's last row to the end of the line: it is not
@@ -844,7 +850,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 // prepended to the first line when the fragment starts at the window's
 // first line; isCursor selects the selection color (mirroring
 // renderCursorArrow), otherwise the cached dim arrow is reused.
-func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) ([]string, []int) {
+func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) ([]visualLine, []int) {
 	// Ensure the border cache is populated (lineHeights alone don't
 	// render folded windows — the fast path skips rendering).
 	w.Render(wb.width, false, wb.styles, wb.borderStyle, wb.cursorStyle, blocked)
@@ -857,7 +863,7 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 	if len(widths) != len(w.border.lines) {
 		widths = make([]int, len(w.border.lines))
 		for li, ln := range w.border.lines {
-			widths[li] = ansi.StringWidth(ln)
+			widths[li] = ansi.StringWidth(ln.Text)
 		}
 		w.border.widths = widths
 	}
@@ -878,8 +884,8 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 		} else {
 			arrowStr = w.border.arrow
 		}
-		lines = append([]string{arrowStr + lines[0]}, lines[1:]...)
-		widths = append([]int{w.border.arrowWidth + widths[0]}, widths[1:]...)
+		lines[0].Text = arrowStr + lines[0].Text
+		widths[0] = w.border.arrowWidth + widths[0]
 	}
 	return lines, widths
 }
@@ -922,7 +928,7 @@ func (wb *WindowBuffer) RenderWindowContent(w *Window, innerWidth int) string {
 	}
 	// Use BuildInner to get the rendered content lines (without border)
 	lines, _ := w.renderer.BuildInner(innerWidth, false, wb.styles)
-	return strings.Join(lines, "\n")
+	return joinVisualLines(lines)
 }
 
 // parseHistoryID parses a history ID string (from the wire format) to uint64.

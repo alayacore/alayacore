@@ -72,15 +72,17 @@ type Styles struct {
 // content line themselves, and the content's wrap width is the FULL box
 // width. Trailing padding is unnecessary: terminals ignore trailing
 // whitespace, so content lines may be shorter than the box.
-func (s *Styles) RenderOpenBoxLines(lines []string, width int, borderColor color.Color) []string {
+//
+//nolint:revive // visualLine is an internal render type
+func (s *Styles) RenderOpenBoxLines(lines []visualLine, width int, borderColor color.Color) []visualLine {
 	rule := strings.Repeat("─", max(0, width))
 	borderStyle := NewStyle().Foreground(borderColor)
 	rule = borderStyle.Render(rule)
 
-	out := make([]string, 0, len(lines)+2)
-	out = append(out, rule)
+	out := make([]visualLine, 0, len(lines)+2)
+	out = append(out, visualLine{Text: rule})
 	out = append(out, lines...)
-	out = append(out, rule)
+	out = append(out, visualLine{Text: rule})
 	return out
 }
 
@@ -109,7 +111,18 @@ func (s *Styles) RenderOpenBox(content string, width int, borderColor color.Colo
 			lines = append(lines, "")
 		}
 	}
-	return strings.Join(s.RenderOpenBoxLines(lines, width, borderColor), "\n")
+	// Overlay boxes render every row as a hard line (no soft-wrap runs):
+	// each original line becomes a standalone row.
+	vl := make([]visualLine, 0, len(lines))
+	for _, l := range lines {
+		vl = append(vl, visualLine{Text: l})
+	}
+	box := s.RenderOpenBoxLines(vl, width, borderColor)
+	out := make([]string, 0, len(box))
+	for _, b := range box {
+		out = append(out, b.Text)
+	}
+	return strings.Join(out, "\n")
 }
 
 // NewStyles creates a Styles instance from a Theme

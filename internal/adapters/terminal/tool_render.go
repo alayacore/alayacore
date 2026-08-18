@@ -40,13 +40,14 @@ func (s ToolStatus) statusDot(styles *Styles) (string, Style) {
 // Rendering
 // ============================================================================
 
-// RenderDiffContent renders a diff window from its raw Content.
-// The Content already has `- `, `+ `, `  ` prefixes. Content is plain
-// (no color, no bold); the first line ("tool_name: args") is rendered as
-// the bare argument line (no status indicator, no tool-name prefix — both
-// live in the header line). innerWidth controls line wrapping; pass 0 to
-// disable. Wraps per-line.
-func RenderDiffContent(content, name string, innerWidth int) string {
+// RenderDiffContent prepares a diff window's raw Content: the Content
+// already has `- `, `+ `, `  ` prefixes; content is plain (no color, no
+// bold) and the first line ("tool_name: args") is rendered as the bare
+// argument line (no status indicator, no tool-name prefix — both live in
+// the header line). No wrapping is performed here — the caller wraps the
+// combined window content once (wrapVisualLines) so original-line
+// boundaries stay hard newlines and only over-long single lines soft-wrap.
+func RenderDiffContent(content, name string) string {
 	// Prepare content: strip ANSI and expand tabs before processing
 	content = prepareContent(content)
 	if name != "" {
@@ -60,31 +61,23 @@ func RenderDiffContent(content, name string, innerWidth int) string {
 		return ""
 	}
 
-	result := make([]string, 0, len(lines))
 	for i, line := range lines {
 		if i == 0 {
 			// Header line: "tool_name: args" → show args only, plain.
 			if colon := strings.Index(line, ":"); colon >= 0 {
 				line = strings.TrimSpace(line[colon+1:])
 			}
-			if innerWidth > 0 {
-				line = wrapContent(line, innerWidth)
-			}
-			result = append(result, line)
+			lines[i] = line
 			continue
 		}
 		if line == "" {
 			continue
 		}
-
-		// Plain text (diff +/- markers stay as-is, no color).
-		if innerWidth > 0 {
-			line = wrapContent(line, innerWidth)
-		}
-		result = append(result, line)
+		// Diff rows stay plain (the -/+ markers remain as text).
+		lines[i] = line
 	}
 
-	return strings.Join(result, "\n")
+	return strings.Join(lines, "\n")
 }
 
 // prepareContent normalizes content for rendering by stripping ANSI escape

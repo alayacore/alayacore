@@ -46,7 +46,7 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 	if w == nil {
 		t.Fatal("tool window not found")
 	}
-	allLines := append([]string(nil), w.border.lines...)
+	allLines := append([]visualLine(nil), w.border.lines...)
 	if len(allLines) < 6 {
 		t.Fatalf("expected a multi-row tool window, got %d lines", len(allLines))
 	}
@@ -56,19 +56,20 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 	height := len(allLines) - 3
 	wb.SetViewportPosition(3, height)
 	frag := wb.GetAll(-1, false)
-	if strings.Contains(frag, "\n") {
-		t.Fatalf("single-window fragment must be continuous text: %q", frag)
-	}
 
-	// Reconstruct the expected fragment from the full render's lines:
-	// lines[3:] joined continuously, padded to width except the last,
-	// with an EL erase at the tail (the overlay renderer's residue
-	// cleanup for the unpadded last row).
+	// Reconstruct the expected fragment from the full render's rows:
+	// rows joined per continuation marks (Cont rows follow without '\n',
+	// new original lines are separated by '\n'), rows followed by a
+	// continuation padded to the width, with an EL erase at the tail
+	// (the overlay renderer's residue cleanup for the unpadded last row).
 	want := ""
-	for i, ln := range allLines[3:] {
-		want += ln
-		if i < len(allLines)-4 { // pad all but the last line
-			want += strings.Repeat(" ", 40-ansi.StringWidth(ln))
+	for i := 3; i < len(allLines); i++ {
+		if i > 3 && !allLines[i].Cont {
+			want += "\n"
+		}
+		want += allLines[i].Text
+		if i < len(allLines)-1 && allLines[i+1].Cont {
+			want += strings.Repeat(" ", 40-ansi.StringWidth(allLines[i].Text))
 		}
 	}
 	want += "\x1b[K"
@@ -77,13 +78,16 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 	}
 
 	// Sanity: the fragment equals the reconstruction (already asserted) and
-	// contains the same plain text as the corresponding full-render lines.
+	// contains the same plain text as the corresponding full-render rows.
 	gotPlain := stripANSI(frag)
 	wantPlain := ""
-	for i, ln := range allLines[3:] {
-		wantPlain += stripANSI(ln)
-		if i < len(allLines)-4 {
-			wantPlain += strings.Repeat(" ", 40-ansi.StringWidth(ln))
+	for i := 3; i < len(allLines); i++ {
+		if i > 3 && !allLines[i].Cont {
+			wantPlain += "\n"
+		}
+		wantPlain += stripANSI(allLines[i].Text)
+		if i < len(allLines)-1 && allLines[i+1].Cont {
+			wantPlain += strings.Repeat(" ", 40-ansi.StringWidth(allLines[i].Text))
 		}
 	}
 	if gotPlain != wantPlain {

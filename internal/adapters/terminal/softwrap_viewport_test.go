@@ -22,14 +22,42 @@ import (
 // invariant that keeps the viewport exactly `height` rows tall.
 func fragmentRows(fragment string) int {
 	const width = 40
-	w := ansi.StringWidth(fragment)
-	return (w + width - 1) / width
+	rows := 0
+	for _, line := range strings.Split(fragment, "\n") {
+		if line == "" {
+			continue // fragment boundary newline, not a row
+		}
+		w := ansi.StringWidth(line)
+		rows += max(1, (w+width-1)/width)
+	}
+	return rows
 }
 
-// TestRenderVirtualFragmentOutput verifies the viewport output is one
-// continuous fragment per window (no '\n' inside a window), windows
-// separated by '\n', and every line except a fragment's last is padded
-// to the full width so soft-wrap reproduces the visual rows exactly.
+// extractWindowContent returns the plain text between a window's two box
+// rules (the content region), or "" when the rules are not found. The
+// test content contains no '─', so the first '─' run is the top rule.
+func extractWindowContent(plain string) string {
+	i := strings.Index(plain, "─")
+	if i < 0 {
+		return ""
+	}
+	// Top rule = the run of '─' (3-byte UTF-8 each) starting at i.
+	j := i
+	for j+3 <= len(plain) && plain[j:j+3] == "─" {
+		j += 3
+	}
+	k := strings.Index(plain[j:], "─")
+	if k < 0 {
+		return ""
+	}
+	return plain[j : j+k]
+}
+
+// TestRenderVirtualFragmentOutput verifies the viewport output shape:
+// each window is one fragment ending in an EL erase; within a fragment,
+// rows of the SAME original line (soft-wrap continuations) join without
+// '\n' and are padded to the full width, while UI rows (header, rules)
+// and different original lines are hard '\n' separated.
 func TestRenderVirtualFragmentOutput(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	// AT window: header + rule + 4 content rows + rule = 7 visual lines.
@@ -41,36 +69,40 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 	wb.SetViewportPosition(0, 8)
 	out := wb.GetAll(-1, false)
 
-	frags := strings.Split(out, "\n")
-	if len(frags) != 2 {
+	// Fragments end with an EL erase (the residue-cleanup marker): split
+	// on EL yields [AT-frag, AR-frag, ""] — the trailing empty element
+	// proves every fragment was EL-terminated.
+	frags := strings.Split(out, "\x1b[K")
+	if len(frags) != 3 {
 		t.Fatalf("expected 2 window fragments, got %d: %q", len(frags), out)
 	}
 
-	// AT fragment: 7 visual lines × 40 cols = 280 display columns,
-	// no hard newline inside.
+	// AT fragment: the single original long line's content rows join
+	// without '\n' (soft wrap) — extract the region between the rules.
 	at := stripANSI(frags[0])
-	if strings.Contains(at, "\n") {
-		t.Errorf("AT fragment contains a hard newline: %q", at)
+	if !strings.Contains(at, "ASSISTANT") {
+		t.Errorf("AT fragment missing header: %q", at)
 	}
-	if w := ansi.StringWidth(at); w != 7*40 {
-		t.Errorf("AT fragment display width = %d, want %d (7 lines × 40)", w, 7*40)
+	content := extractWindowContent(at)
+	trimmed := strings.Trim(content, "\n") // rule boundaries are hard newlines
+	if strings.Contains(trimmed, "\n") {
+		t.Errorf("single-line content must be continuous (no newline): %q", content)
+	}
+	// 25 words = 125 cells: rows of 40 + 40 + 40 + 5 (the last row is not
+	// padded — it ends the original line before the bottom rule).
+	if w := ansi.StringWidth(trimmed); w != 125 {
+		t.Errorf("AT content display width = %d, want 125 (25 words)", w)
 	}
 	if fragmentRows(at) != 7 {
 		t.Errorf("AT fragment rows = %d, want 7", fragmentRows(at))
 	}
 
 	// Folded fragment: single short line, unpadded (it is the last — the
-	// fragment tail carries an EL erase that clears any previous frame's
-	// residue on the row, keeping copy selections free of trailing spaces).
+	// fragment's EL erase clears any previous frame's residue on the row,
+	// keeping copy selections free of trailing spaces).
 	ar := stripANSI(frags[1])
-	if strings.Contains(ar, "\n") {
-		t.Errorf("AR fragment contains a hard newline: %q", ar)
-	}
 	if w := ansi.StringWidth(ar); w >= 40 {
 		t.Errorf("AR fragment width = %d, want < 40 (last fragment is not padded)", w)
-	}
-	if !strings.HasSuffix(frags[1], "\x1b[K") {
-		t.Errorf("AR fragment must end with an EL erase, got %q", frags[1])
 	}
 	if fragmentRows(ar) != 1 {
 		t.Errorf("AR fragment rows = %d, want 1", fragmentRows(ar))
@@ -121,30 +153,30 @@ func TestRenderVirtualScrollToMiddle(t *testing.T) {
 }
 
 // TestRenderVirtualCopyRestoresOriginal verifies the copy-fidelity goal:
-// the plain text of a fully visible window fragment, after stripping the
-// layout padding, equals the original content with NO newlines — the
-// terminal selection yields the original logical line.
+// the plain text of an over-long SINGLE original line (its soft-wrap
+// continuations inside the window), after stripping the layout padding,
+// equals the original content with NO newlines — the terminal selection
+// yields the original logical line.
 func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	original := strings.Repeat("word ", 25)
 	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", original)
 
 	wb.SetViewportPosition(0, 7)
-	out := stripANSI(wb.GetAll(-1, false))
-	if strings.Contains(out, "\n") {
-		t.Fatalf("single-window output must not contain newlines: %q", out)
-	}
+	raw := wb.GetAll(-1, false)
+	out := stripANSI(raw)
 
-	// Remove the arrow + header + box rules (UI chrome), then trailing
-	// layout padding; the remainder must be the original text.
-	body := out
-	// The header is "▼ ASSISTANT" (or theme arrow) at the fragment start;
-	// drop everything up to the first '─' (rule), then remove the rules
-	// (multi-byte rune — replace, never slice by byte index).
-	if i := strings.Index(body, "─"); i >= 0 {
-		body = body[i:]
+	// The content region sits between the window's two box rules and must
+	// be continuous (no hard newline) — the single line's soft wraps.
+	body := extractWindowContent(out)
+	if body == "" {
+		t.Fatal("content region not found")
 	}
-	body = strings.ReplaceAll(body, "─", "")
+	body = strings.Trim(body, "\n") // rule boundaries are hard newlines
+	if strings.Contains(body, "\n") {
+		t.Fatalf("single-line content must not contain newlines: %q", body)
+	}
+	// Remove trailing layout padding; the remainder must be the original.
 	body = strings.TrimRight(body, " ")
 	if body != strings.TrimRight(original, " ") {
 		t.Errorf("copy restoration failed:\n  got:  %q\n  want: %q", body, strings.TrimRight(original, " "))
@@ -153,7 +185,8 @@ func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 
 // TestRenderVirtualWindowBoundary verifies a viewport spanning the end of
 // one window and the start of the next produces exactly two fragments
-// separated by '\n', whose terminal rows sum to the viewport height.
+// (each ending in an EL erase), whose terminal rows sum to the viewport
+// height.
 func TestRenderVirtualWindowBoundary(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	// AT window: 7 visual lines (0..6).
@@ -165,8 +198,8 @@ func TestRenderVirtualWindowBoundary(t *testing.T) {
 	wb.SetViewportPosition(5, 3)
 	out := wb.GetAll(-1, false)
 
-	frags := strings.Split(out, "\n")
-	if len(frags) != 2 {
+	frags := strings.Split(out, "\x1b[K")
+	if len(frags) != 3 {
 		t.Fatalf("expected 2 fragments, got %d: %q", len(frags), out)
 	}
 	at := stripANSI(frags[0])
@@ -182,9 +215,6 @@ func TestRenderVirtualWindowBoundary(t *testing.T) {
 	}
 	if strings.Contains(at, "ASSISTANT") {
 		t.Errorf("AT fragment must not contain the header: %q", at)
-	}
-	if strings.Contains(ar, "\n") {
-		t.Errorf("AR fragment must be continuous: %q", ar)
 	}
 }
 

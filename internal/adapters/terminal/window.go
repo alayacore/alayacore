@@ -55,10 +55,13 @@ type WindowRendering interface {
 	// BuildCollapsed); it is always false.
 	//
 	// The returned lines are the VISUAL content lines (each element is one
-	// terminal row, no '\n' inside) — the soft-wrap breakpoints that the
-	// viewport clips against (see REFACTOR.md). lineCount includes the 2
-	// box rules (len(lines) + 2).
-	BuildInner(width int, folded bool, styles *Styles) (lines []string, lineCount int)
+	// terminal row, no '\n' inside) with continuation marks (visualLine
+	// Cont): rows of the same original line join without '\n' (terminal
+	// soft-wrap), rows starting a new original line are separated by hard
+	// '\n' — the soft-wrap breakpoints that the viewport clips against
+	// (see REFACTOR.md). lineCount includes the 2 box rules
+	// (len(lines) + 2).
+	BuildInner(width int, folded bool, styles *Styles) (lines []visualLine, lineCount int)
 
 	// BuildCollapsed returns the single-line collapsed representation of
 	// the window (label + first line, truncated to fit width), WITHOUT the
@@ -79,8 +82,10 @@ type WindowRendering interface {
 // cursor render is arrow + inner — no border re-render needed.
 //
 // lines is the same content as inner, but as a VISUAL line array (one
-// element per terminal row, no '\n' inside). It is the structure the
-// viewport clips against for soft-wrap fragment output (REFACTOR.md);
+// element per terminal row, no '\n' inside; visualLine.Cont marks rows
+// that continue the same original line — soft-wrap — while rows starting
+// a new original line are separated by hard '\n'). It is the structure
+// the viewport clips against for soft-wrap fragment output (REFACTOR.md);
 // inner/rendered are the '\n'-joined projections kept for the current
 // line-based output path.
 //
@@ -93,13 +98,13 @@ type borderCache struct {
 	valid      bool
 	width      int
 	folded     bool
-	blocked    bool     // cached blocked state (different → cache miss)
-	rendered   string   // full output with dim arrow (non-cursor)
-	inner      string   // content after the arrow (for cursor arrow swap)
-	lines      []string // visual lines, content after the arrow (line 0 = header/collapsed line, no arrow)
-	widths     []int    // display width per line (parallel to lines)
-	arrow      string   // dim arrow glyph, pre-rendered (non-cursor)
-	arrowWidth int      // display width of the fold-state arrow glyph
+	blocked    bool         // cached blocked state (different → cache miss)
+	rendered   string       // full output with dim arrow (non-cursor)
+	inner      string       // content after the arrow (for cursor arrow swap)
+	lines      []visualLine // visual rows, content after the arrow (line 0 = header/collapsed line, no arrow)
+	widths     []int        // display width per line (parallel to lines)
+	arrow      string       // dim arrow glyph, pre-rendered (non-cursor)
+	arrowWidth int          // display width of the fold-state arrow glyph
 	lineCount  int
 }
 
@@ -355,9 +360,9 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _
 		// BuildCollapsed skips full wrapping: only the first content line
 		// is read and truncated, so folding a large window is O(1).
 		inner, _ := w.renderer.BuildCollapsed(width, styles)
-		w.border.lines = []string{" " + inner}
+		w.border.lines = []visualLine{{Text: " " + inner}}
 		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
-		w.border.inner = w.border.lines[0]
+		w.border.inner = w.border.lines[0].Text
 		w.border.rendered = w.border.arrow + w.border.inner
 		w.border.lineCount = 1
 	} else {
@@ -368,12 +373,12 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _
 		contentLines, _ := w.renderer.BuildInner(width, false, styles)
 		header := w.buildExpandHeader(styles)
 		boxLines := styles.RenderOpenBoxLines(contentLines, width, borderStyle.GetForeground())
-		lines := make([]string, 0, len(boxLines)+1)
-		lines = append(lines, header)
+		lines := make([]visualLine, 0, len(boxLines)+1)
+		lines = append(lines, visualLine{Text: header})
 		lines = append(lines, boxLines...)
 		w.border.lines = lines
 		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
-		w.border.inner = strings.Join(lines, "\n")
+		w.border.inner = joinVisualLines(lines)
 		w.border.rendered = w.border.arrow + w.border.inner
 		w.border.lineCount = len(lines)
 	}

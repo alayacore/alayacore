@@ -337,6 +337,35 @@ func readLink(p []byte, l *link) {
 	l.URL = string(parts[2])
 }
 
+// visualLine is one rendered visual row of a window.
+//
+// Text is the row content (one terminal row's worth, no '\n' inside).
+// Cont marks rows that are a soft-wrap CONTINUATION of the previous row's
+// ORIGINAL line — e.g. a very long single line broken at the window
+// width. Cont rows join their predecessor without a newline (the terminal
+// soft-wraps them); rows where Cont is false are the start of a new
+// original line and are separated from the previous row by a hard '\n'.
+// This is what keeps copy-fidelity: only genuinely-long single lines
+// become soft-wrap runs — ordinary multi-line content stays multi-line.
+type visualLine struct {
+	Text string
+	Cont bool
+}
+
+// joinVisualLines joins visual rows the way they render: continuation
+// rows (Cont) follow their predecessor without a newline; rows starting
+// a new original line are separated by '\n'.
+func joinVisualLines(lines []visualLine) string {
+	var sb strings.Builder
+	for i, l := range lines {
+		if i > 0 && !l.Cont {
+			sb.WriteByte('\n')
+		}
+		sb.WriteString(l.Text)
+	}
+	return sb.String()
+}
+
 // wrapLines wraps content into lines at the given width.
 func wrapLines(content string, width int) []string {
 	if width <= 0 {
@@ -344,6 +373,86 @@ func wrapLines(content string, width int) []string {
 	}
 	wrapped := wrapContent(content, width)
 	return strings.Split(wrapped, "\n")
+}
+
+// wrapVisualLines wraps content into visual rows carrying continuation
+// marks: each ORIGINAL line's first row has Cont=false, and rows produced
+// by hard-wrapping an over-long single line have Cont=true. Cont=false
+// rows must be separated by hard '\n'; Cont=true rows must join their
+// predecessor (soft wrap).
+func wrapVisualLines(s string, width int) []visualLine {
+	var out []visualLine
+	for _, part := range strings.Split(s, "\n") {
+		var rows []string
+		switch {
+		case width >= 1:
+			rows = strings.Split(wrapContent(part, width), "\n")
+		case part != "":
+			rows = []string{part}
+		default:
+			rows = []string{""}
+		}
+		for i, r := range rows {
+			out = append(out, visualLine{Text: r, Cont: i > 0})
+		}
+	}
+	return out
+}
+
+// appendDeltaToVisualLines incrementally wraps a delta onto existing
+// visual lines, preserving continuation marks.
+func appendDeltaToVisualLines(lines []visualLine, delta string, width int) []visualLine {
+	if len(lines) == 0 {
+		return wrapVisualLines(delta, width)
+	}
+	if width <= 0 {
+		last := lines[len(lines)-1]
+		last.Text += delta
+		lines[len(lines)-1] = last
+		return lines
+	}
+
+	if strings.Contains(delta, "\n") {
+		return appendDeltaWithNewlinesVisual(lines, delta, width)
+	}
+
+	// Append to last line and rewrap: the combined row keeps the last
+	// row's continuation state (it is the tail of the same original line).
+	last := lines[len(lines)-1]
+	combined := last.Text + delta
+	newRows := wrapVisualLines(combined, width)
+	// The first rewrapped row inherits the original row's Cont state
+	// (it may itself be a continuation of an earlier row); wrapVisualLines
+	// marks the combined single line's first row Cont=false, so fix it.
+	if len(newRows) > 0 {
+		newRows[0].Cont = last.Cont
+	}
+	return append(lines[:len(lines)-1], newRows...)
+}
+
+// appendDeltaWithNewlinesVisual handles a delta that contains newlines.
+func appendDeltaWithNewlinesVisual(lines []visualLine, delta string, width int) []visualLine {
+	parts := strings.Split(delta, "\n")
+	for i, part := range parts {
+		if i == 0 {
+			if len(lines) == 0 {
+				lines = wrapVisualLines(part, width)
+			} else {
+				// Merge the first part onto the last row, keeping its
+				// continuation state.
+				lastIdx := len(lines) - 1
+				combined := lines[lastIdx].Text + part
+				newRows := wrapVisualLines(combined, width)
+				if len(newRows) > 0 {
+					newRows[0].Cont = lines[lastIdx].Cont
+				}
+				lines = append(lines[:lastIdx], newRows...)
+			}
+		} else {
+			lines = append(lines, wrapVisualLines(part, width)...)
+		}
+	}
+	return lines
 }
 
 // appendDeltaToLines incrementally wraps a delta onto existing lines.

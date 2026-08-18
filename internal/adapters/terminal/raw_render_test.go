@@ -63,38 +63,31 @@ func TestRawViewSoftWrapEndToEnd(t *testing.T) {
 }
 
 // TestRawViewNoFakeNewlines verifies the copy-fidelity property at the
-// end-to-end View level: the display content contains no hard newlines
-// inside a window's content (the fragment is continuous text), so a
-// terminal selection of a window copies the original text.
+// end-to-end View level: an over-long SINGLE original line soft-wraps —
+// its continuation rows are joined without hard '\n', so a terminal
+// selection of the window copies the original text. Header, rules, and
+// other original lines are separate rows (hard '\n').
 func TestRawViewNoFakeNewlines(t *testing.T) {
 	m := newTestTerminal()
 	wb := m.out.WindowBuffer()
-	original := strings.Repeat("word ", 40)
+	original := strings.Repeat("word ", 40) // single long line
 	wb.AppendOrUpdate(tlv.TagAssistantT, "1", original)
 
 	m = m.updateDisplayHeight()
 	m = m.updateDisplayHeight()
 
 	content := stripANSI(m.View().Content)
-	// The AT fragment runs from the header until the next hard newline
-	// (the window separator). Within it there must be no '\n'.
-	idx := strings.Index(content, "ASSISTANT")
-	if idx < 0 {
-		t.Fatal("AT header not found")
+	// The content region sits between the window's two box rules.
+	frag := extractWindowContent(content)
+	if frag == "" {
+		t.Fatal("content region not found")
 	}
-	frag := content[idx:]
-	if i := strings.Index(frag, "\n"); i >= 0 {
-		frag = frag[:i]
-	}
+	frag = strings.Trim(frag, "\n") // rule boundaries are hard newlines
 	if strings.Contains(frag, "\n") {
-		t.Fatal("fragment must be continuous")
+		t.Fatalf("single-line content must not contain newlines: %q", frag)
 	}
-	// Strip the UI chrome (header + rules) and layout padding; the
-	// remainder is the original text, no fake newlines.
-	frag = strings.ReplaceAll(frag, "─", "")
-	if i := strings.Index(frag, "ASSISTANT"); i >= 0 {
-		frag = frag[i+len("ASSISTANT"):]
-	}
+	// Strip the layout padding; the remainder is the original text, no
+	// fake newlines.
 	frag = strings.TrimSpace(frag)
 	if frag != strings.TrimSpace(original) {
 		t.Errorf("copy fidelity broken:\n  got:  %q\n  want: %q", frag, strings.TrimSpace(original))

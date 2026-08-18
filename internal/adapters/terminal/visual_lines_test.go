@@ -40,27 +40,27 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 		t.Errorf("border.lines len = %d, LineCount() = %d, want equal", len(lines), w.LineCount())
 	}
 	if len(lines) < 4 {
-		t.Fatalf("expected header + rule + content + rule (>= 4 lines), got %d: %q", len(lines), lines)
+		t.Fatalf("expected header + rule + content + rule (>= 4 lines), got %d: %q", len(lines), joinVisualLines(lines))
 	}
-	if !strings.Contains(stripANSI(lines[0]), "ASSISTANT") {
-		t.Errorf("line 0 should be the header, got %q", lines[0])
+	if !strings.Contains(stripANSI(lines[0].Text), "ASSISTANT") {
+		t.Errorf("line 0 should be the header, got %q", lines[0].Text)
 	}
 	// Top and bottom rules: plain '─' runs (strip ANSI).
-	if plain := stripANSI(lines[1]); plain != strings.Repeat("─", width) {
+	if plain := stripANSI(lines[1].Text); plain != strings.Repeat("─", width) {
 		t.Errorf("line 1 should be the top rule of %d '─', got %q", width, plain)
 	}
-	if plain := stripANSI(lines[len(lines)-1]); plain != strings.Repeat("─", width) {
+	if plain := stripANSI(lines[len(lines)-1].Text); plain != strings.Repeat("─", width) {
 		t.Errorf("last line should be the bottom rule of %d '─', got %q", width, plain)
 	}
 	// Every visual line is exactly one terminal row (no hard newline).
 	for i, ln := range lines {
-		if strings.Contains(ln, "\n") {
-			t.Errorf("visual line %d contains a hard newline: %q", i, ln)
+		if strings.Contains(ln.Text, "\n") {
+			t.Errorf("visual line %d contains a hard newline: %q", i, ln.Text)
 		}
 	}
-	// The '\n'-joined projection is exactly what Render returns after the
-	// dim arrow — the current line-based output path stays consistent.
-	want := arrowStyle(styles, false).Render(w.arrowChar()) + strings.Join(lines, "\n")
+	// The rendered output is exactly arrow + the joined visual lines (the
+	// current line-based output path stays consistent).
+	want := arrowStyle(styles, false).Render(w.arrowChar()) + joinVisualLines(lines)
 	if rendered != want {
 		t.Errorf("rendered mismatch:\n  got:  %q\n  want: %q", rendered, want)
 	}
@@ -79,13 +79,13 @@ func TestWindowVisualLinesFolded(t *testing.T) {
 		NewStyle().Foreground(styles.ColorDim), NewStyle(), false)
 
 	if len(w.border.lines) != 1 {
-		t.Fatalf("folded window should be 1 visual line, got %d: %q", len(w.border.lines), w.border.lines)
+		t.Fatalf("folded window should be 1 visual line, got %d: %q", len(w.border.lines), joinVisualLines(w.border.lines))
 	}
 	if w.LineCount() != 1 {
 		t.Errorf("LineCount() = %d, want 1", w.LineCount())
 	}
-	if strings.Contains(w.border.lines[0], "\n") {
-		t.Errorf("folded visual line contains hard newline: %q", w.border.lines[0])
+	if strings.Contains(w.border.lines[0].Text, "\n") {
+		t.Errorf("folded visual line contains hard newline: %q", w.border.lines[0].Text)
 	}
 }
 

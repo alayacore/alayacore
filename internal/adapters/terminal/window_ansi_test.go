@@ -68,7 +68,7 @@ func TestWindow_WithANSIContent(t *testing.T) {
 
 			// Render the window inner content (without border)
 			lines, _ := w.renderer.BuildInner(80, false, styles)
-			result := strings.Join(lines, "\n")
+			result := joinVisualLines(lines)
 
 			// Strip lipgloss ANSI to check the actual text content
 			resultStripped := stripANSI(result)
@@ -130,7 +130,7 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 
 			// Render the window inner content (without border)
 			lines, _ := w.renderer.BuildInner(80, false, styles)
-			result := strings.Join(lines, "\n")
+			result := joinVisualLines(lines)
 
 			// Check if result contains ANSI codes
 			hasColor := containsANSI(result)
@@ -157,7 +157,7 @@ func TestWindow_DiffContentWithANSI(t *testing.T) {
 	newLine := "\x1b[32mnew line\x1b[0m"
 	content := "edit_file: /tmp/test.txt\n- " + oldLine + "\n+ " + newLine + "\n  unchanged"
 
-	result := RenderDiffContent(content, "edit_file", 0)
+	result := RenderDiffContent(content, "edit_file")
 
 	// Strip the output's ANSI (input ANSI is stripped by prepareContent;
 	// the rendered content is plain) to check the actual text.
