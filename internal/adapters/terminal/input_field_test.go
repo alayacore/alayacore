@@ -417,6 +417,27 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 	}
 }
 
+// TestInputFieldWithValuePreservesAllContent locks down the audit §D-3
+// scenario: setting a short value after a longer one must NOT lose the
+// leading characters just because the previous visStart was non-zero.
+func TestInputFieldWithValuePreservesAllContent(t *testing.T) {
+	g := NewInputField()
+	g = g.WithWidth(80)
+	g = g.WithValue("abcdef").WithCursorPos(2) // cursor in middle, visStart=0
+
+	// Without the fix, visStart from prior state could survive. With the
+	// fix it's explicitly reset to 0 in WithValue, so the whole new value
+	// is visible.
+	g = g.WithValue("xyz")
+	view := g.View()
+	if !strings.Contains(view, "xyz") {
+		t.Errorf("View() = %q, must contain %q (stale visStart would drop leading chars)", view, "xyz")
+	}
+	if g.visStart != 0 {
+		t.Errorf("visStart=%d after WithValue, want 0", g.visStart)
+	}
+}
+
 // TestInputFieldUnifiedWidthSource verifies the full View rendering path
 // with a multi-rune cluster: every width calculation (truncation, cursor,
 // padding) comes from the single uniseg width source, so ❤️ (a 2-cell

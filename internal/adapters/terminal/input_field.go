@@ -620,6 +620,7 @@ func (m InputField) WithValue(s string) InputField {
 	// coincidentally equal the old visLine (e.g. both single-line values
 	// start at 0), which the line-change detection alone cannot distinguish.
 	m.visLine = -1
+	m.visStart = 0
 	return m.ensureCursorVisible()
 }
 
