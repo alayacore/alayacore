@@ -224,6 +224,11 @@ func (w *Window) HandleToolInput(data protocol.ToolInputData, historyID uint64) 
 		} else {
 			if data.Name != "" {
 				tr.name = data.Name
+			} else if tr.name == "" {
+				// AF frame arrived with empty name. Without a fallback
+				// the tool window's BuildCollapsed path treats name=="" as
+				// a UF-only window and renders nothing useful.
+				tr.name = "_"
 			}
 			tr.input = string(data.Input)
 			// Complete input arrived, clear delta preview.
