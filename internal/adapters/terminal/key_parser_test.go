@@ -109,6 +109,8 @@ func TestKeyParserSequences(t *testing.T) {
 		{"home ~7", "\x1b[7~", "home"},
 		{"end ~8", "\x1b[8~", "end"},
 		{"shift+tab", "\x1b[Z", "shift+tab"},
+		{"shift+tab param", "\x1b[1;2Z", "shift+tab"},
+		{"shift+alt+tab", "\x1b[1;4Z", "alt+shift+tab"},
 		{"f1", "\x1bOP", "f1"},
 		{"f2", "\x1bOQ", "f2"},
 		{"f3", "\x1bOR", "f3"},

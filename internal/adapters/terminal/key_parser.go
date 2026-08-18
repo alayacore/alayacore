@@ -451,11 +451,6 @@ func parseCSI(seq string) (Key, bool) {
 	final := seq[len(seq)-1]
 	params := seq[1 : len(seq)-1] // between '[' and final
 
-	// Shift+Tab.
-	if seq == "[Z" {
-		return Key{Code: KeyTab, Mod: ModShift}, true
-	}
-
 	// URxvt shifted arrows: ESC [ a/b/c/d → shift+up/down/right/left.
 	if len(seq) == 2 {
 		switch seq[1] {
@@ -472,6 +467,18 @@ func parseCSI(seq string) (Key, bool) {
 
 	// Split params into the main param and a modifier param ("1;2" → 1, 2).
 	nums := parseParams(params)
+
+	// Shift+Tab: bare "[Z" (most terminals) or parameterized "[1;2Z"
+	// (some terminals emit the explicit form). Any extra modifier bits
+	// (e.g. "[1;4Z" = shift+alt+tab) are combined.
+	if final == 'Z' {
+		k := Key{Code: KeyTab, Mod: ModShift}
+		if len(nums) > 1 {
+			k.Mod |= xtermMod(nums[1])
+		}
+		return k, true
+	}
+
 	switch final {
 	case '~':
 		if len(nums) == 0 {
