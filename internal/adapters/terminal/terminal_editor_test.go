@@ -3,6 +3,7 @@ package terminal
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -195,6 +196,57 @@ func TestEditorSelectionOrder(t *testing.T) {
 	// Or use EDITOR environment variable if set
 	if editor != "vim" && editor != "vi" {
 		t.Logf("Editor is: %s (may be set by EDITOR env var)", editor)
+	}
+}
+
+// TestEditorContentCarriedInMessage verifies the editor content travels in
+// the editorStartMsg (not on the shared *Editor): two opens in a row must
+// each carry their own content — a regression guard for the shared-mutable
+// e.content field, which could be clobbered by a second open before the
+// first temp file was created.
+func TestEditorContentCarriedInMessage(t *testing.T) {
+	t.Setenv("EDITOR", "vim")
+	e := NewEditor()
+
+	msgA := e.Open("content A")()
+	startA, ok := msgA.(editorStartMsg)
+	if !ok {
+		t.Fatalf("open A produced %T, want editorStartMsg", msgA)
+	}
+	if startA.content != "content A" {
+		t.Errorf("open A content = %q, want %q", startA.content, "content A")
+	}
+
+	msgB := e.Open("content B")()
+	startB, ok := msgB.(editorStartMsg)
+	if !ok {
+		t.Fatalf("open B produced %T, want editorStartMsg", msgB)
+	}
+	if startB.content != "content B" {
+		t.Errorf("open B content = %q, want %q", startB.content, "content B")
+	}
+	// The first message must not have been clobbered by the second open.
+	if startA.content != "content A" {
+		t.Errorf("first message content clobbered: %q", startA.content)
+	}
+}
+
+// TestEditorCreateTempFileContent verifies the temp file is written with
+// exactly the content passed at open time.
+func TestEditorCreateTempFileContent(t *testing.T) {
+	e := NewEditor()
+	name, err := e.createTempFile("hello editor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(name) //nolint:errcheck // cleanup-only
+
+	data, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "hello editor" {
+		t.Errorf("temp file content = %q, want %q", data, "hello editor")
 	}
 }
 

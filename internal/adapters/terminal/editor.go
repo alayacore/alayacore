@@ -37,6 +37,7 @@ type editorStartMsg struct {
 	editorCmd  string
 	editorArgs []string
 	action     EditorAction
+	content    string // content to write to the temp file (captured at open time)
 }
 
 // ============================================================================
@@ -55,7 +56,6 @@ func errEditorNotFound() error {
 // Editor handles external editor operations
 type Editor struct {
 	tempFilePrefix string
-	content        string
 }
 
 // NewEditor creates a new editor handler
@@ -89,29 +89,30 @@ func (e *Editor) openWithAction(content string, action EditorAction) Cmd {
 
 	cmd, args := splitEditorCmd(editorCmd)
 
-	// Store content for lazy temp file creation
-	e.content = content
-
+	// The content travels in the message (not on the shared Editor): the
+	// temp file is created later in handleEditorStart, and a value message
+	// cannot be clobbered by a second editor request.
 	return func() Msg {
 		return editorStartMsg{
 			editorCmd:  cmd,
 			editorArgs: args,
 			action:     action,
+			content:    content,
 		}
 	}
 }
 
-// createTempFile creates a temp file with the editor content.
+// createTempFile creates a temp file with the given content.
 // This is called lazily when the editor is actually executed.
-func (e *Editor) createTempFile() (string, error) {
+func (e *Editor) createTempFile(content string) (string, error) {
 	tmpFile, err := os.CreateTemp("", e.tempFilePrefix)
 	if err != nil {
 		return "", err
 	}
 	tmpFileName := tmpFile.Name()
 
-	if e.content != "" {
-		if _, err := tmpFile.WriteString(e.content); err != nil {
+	if content != "" {
+		if _, err := tmpFile.WriteString(content); err != nil {
 			tmpFile.Close()
 			os.Remove(tmpFileName)
 			return "", err
@@ -129,7 +130,7 @@ func (e *Editor) createTempFile() (string, error) {
 // handleEditorStart handles the lazy start of the external editor.
 // Temp file is created here, ensuring cleanup happens properly.
 func (m Terminal) handleEditorStart(msg editorStartMsg) (Terminal, Cmd) {
-	tmpFileName, err := m.editor.createTempFile()
+	tmpFileName, err := m.editor.createTempFile(msg.content)
 	if err != nil {
 		return m, func() Msg {
 			return displayErrorMsg{
