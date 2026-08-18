@@ -465,13 +465,49 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 	// Rows the old frame drew that the new frame no longer draws: clear
 	// absolute (overlay) rows in place; base rows are handled by the tail
 	// erase (they are sequential from the top).
+	//
+	// A vanished overlay row must ALSO be restored with the base content
+	// that renders underneath it: real TUI frames always contain CUP rows
+	// (input box, status bar), so the caller's "overlay disappeared → full
+	// repaint" fallback never fires — without the repaint the erased row
+	// stays blank (a "black block") until a manual full redraw.
 	for _, r := range oldRows {
 		if !r.base && !newMap[key(r.frameRow)] {
 			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, r.frameRow.row+1)...)
 			buf = append(buf, ansi.EraseLine(0)...)
+			// Repaint the base row that renders on this terminal row (if
+			// the new frame has one), restoring the content the overlay
+			// covered. The base text is skipped by the changed-row loop
+			// (it equals the old frame's text), so it must be written here.
+			if text, ok := baseRowTextAt(newRows, width, r.frameRow.row); ok {
+				buf = append(buf, ansi.CursorPosition(1, r.frameRow.row+1)...)
+				buf = append(buf, text...)
+				buf = append(buf, ansi.EraseLine(0)...)
+			}
 		}
 	}
 	return buf
+}
+
+// baseRowTextAt returns the text that renders on the given terminal row
+// from the frame's base rows — the covering base row's segment at that
+// soft-wrapped row (ANSI preserved). ok is false when no base row covers
+// the terminal row (the vanished overlay row is simply erased).
+func baseRowTextAt(rows []positionedRow, width, termRow int) (string, bool) {
+	for _, r := range rows {
+		if !r.base {
+			continue
+		}
+		if termRow < r.frameRow.row || termRow >= r.frameRow.row+r.terminalRows {
+			continue
+		}
+		if r.terminalRows <= 1 {
+			return r.frameRow.text, true
+		}
+		start := (termRow - r.frameRow.row) * width
+		return ansi.Cut(r.frameRow.text, start, start+width), true
+	}
+	return "", false
 }
 
 // boolInt converts a bool to an int (0/1) for use in map keys.
