@@ -389,6 +389,12 @@ func wrapLines(content string, width int) []string {
 func wrapVisualLines(s string, width int) []visualLine {
 	var out []visualLine
 	for _, part := range strings.Split(s, "\n") {
+		// Expand tabs per ORIGINAL line (column resets at '\n'): this is
+		// done here — not on the whole content — so the incremental
+		// streaming path and the full re-wrap path agree on tab columns
+		// (a delta starting with '\t' must expand from the line's actual
+		// column, not from 0).
+		part = expandTabs(part)
 		var rows []string
 		switch {
 		case width >= 1:

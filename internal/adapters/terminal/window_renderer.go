@@ -52,7 +52,10 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	// re-style: appending plain text to styled wrappedLines would leave
 	// the delta tail without its System/Error color.
 	if r.plainContent() && len(r.wrappedLines) > 0 && r.cacheWidth > 0 {
-		r.wrappedLines = appendDeltaToVisualLines(r.wrappedLines, prepareContent(value), r.cacheWidth)
+		// stripANSI only (no expandTabs here): tabs are expanded per
+		// original line inside wrapVisualLines, so incremental and full
+		// re-wrap agree on tab columns even when a delta starts with '\t'.
+		r.wrappedLines = appendDeltaToVisualLines(r.wrappedLines, stripANSI(value), r.cacheWidth)
 		// cacheValid stays false — border cache needs rebuild,
 		// but wrappedLines is current for TryLineCount.
 	} else {
@@ -126,7 +129,9 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		r.contentParts = nil
 	}
 
-	content := prepareContent(r.content)
+	// stripANSI only — tabs are expanded per original line inside
+	// wrapVisualLines so the full path matches the incremental path.
+	content := stripANSI(r.content)
 	if !r.plainContent() && styles != nil {
 		switch r.tag {
 		case TagWindowSE:
