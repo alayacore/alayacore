@@ -17,6 +17,7 @@ import (
 	"image/color"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -386,21 +387,10 @@ func baseTerminalRows(text string, width int) int {
 	return (w + width - 1) / width
 }
 
-// baseCovered reports whether any terminal row a base row occupies is
-// covered by an overlay row in the same frame (the overlay is the top
-// layer — the base must not be rewritten underneath it).
-func baseCovered(r positionedRow, covered map[int]bool) bool {
-	for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
-		if covered[row] {
-			return true
-		}
-	}
-	return false
-}
-
-// lastBaseTerminalRow returns the last sequential base row with its
-// TERMINAL row position (soft-wrap aware — base rows may wrap to several
-// terminal rows, so the newline index is not the row it renders on).
+// lastBaseTerminalRow returns the last sequential base row positioned at
+// its LAST terminal row (soft-wrap aware — a logical row may wrap to
+// several terminal rows, so the tail erase must start at the row it
+// actually ends on, not the newline index or the wrap start).
 func lastBaseTerminalRow(content string, width int) (frameRow, bool) {
 	rows := positionedRows(content, width)
 	var last frameRow
@@ -408,6 +398,7 @@ func lastBaseTerminalRow(content string, width int) (frameRow, bool) {
 	for _, r := range rows {
 		if r.base {
 			last = r.frameRow
+			last.row = r.frameRow.row + r.terminalRows - 1
 			found = true
 		}
 	}
@@ -427,11 +418,17 @@ func lastBaseTerminalRow(content string, width int) (frameRow, bool) {
 // would paint every changed row below it at the wrong screen row,
 // overwriting content and misaligning the display.
 //
-// Overlap rule: overlay boxes span the FULL terminal width by design (they
-// start at column 1), so overlay rows share row coordinates with the base
-// rows. A base row that an overlay row covers in the new frame is NEVER
-// rewritten — the overlay is the top layer, and rewriting the base
-// underneath would wipe the overlay.
+// Overlap rule: overlay boxes may span only PART of a terminal row
+// (they are centered — the column depends on the box width), so a row
+// can carry several layers: the base fragment plus multiple CUP-anchored
+// overlay rows at different columns (input box, status bar, centered
+// boxes). A single layer can never be repainted independently — an EL
+// would wipe the other layers on the row, and a shrunk layer would leave
+// its old tail behind. Changed rows are therefore repainted as a
+// COMPOSITE: restore the base segment (or clear the row), then draw
+// every overlay row of that row in frame order.
+//
+//nolint:gocyclo // changed-row collection + composite repaint branches
 func diffFrameRows(oldContent, newContent string, width int) []byte {
 	oldRows := positionedRows(oldContent, width)
 	newRows := positionedRows(newContent, width)
@@ -442,66 +439,75 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 		oldMap[key(r.frameRow)] = r.frameRow.text
 	}
 	newMap := make(map[[3]int]bool, len(newRows))
-	coveredByOverlay := make(map[int]bool)
 	for _, r := range newRows {
 		newMap[key(r.frameRow)] = true
-		if !r.base {
-			coveredByOverlay[r.frameRow.row] = true
-		}
 	}
 
 	var buf []byte
-	// Phase 1 — rows the old frame drew that the new frame no longer
-	// draws: clear absolute (overlay) rows in place; base rows are
-	// handled by the tail erase (they are sequential from the top).
+	// Composite repaint of every terminal row whose screen content must
+	// change:
+	//   - an overlay row vanished (the old frame drew it, the new one
+	//     does not) — erase it and restore what it covered;
+	//   - a layer changed (a base row whose text differs, or an overlay
+	//     row that is new or whose text differs).
 	//
-	// A vanished overlay row must ALSO be restored with the base content
-	// that renders underneath it: real TUI frames always contain CUP rows
-	// (input box, status bar), so the caller's "overlay disappeared → full
-	// repaint" fallback never fires — without the repaint the erased row
-	// stays blank (a "black block") until a manual full redraw.
-	//
-	// This runs BEFORE the changed-row repaint: the EL (from the old row's
-	// column to end of line) and the base repaint may overlap a NEW
-	// overlay row occupying the same terminal row at a different column
-	// (overlays are centered boxes — the column depends on the box width,
-	// which changes between overlays or when their content changes). The
-	// new overlay row is repainted afterwards in phase 2, on top.
+	// A terminal row may carry several layers: the base fragment plus
+	// multiple CUP-anchored overlay rows at different columns (the input
+	// box, the status bar, and centered overlay boxes — the column
+	// depends on the box width). A single layer can never be repainted
+	// independently: an EL would wipe the other layers on the row, and a
+	// shrunk layer would leave its old tail behind. Every changed row is
+	// therefore repainted as a COMPOSITE — restore the base segment (or
+	// clear the row), then draw all of the row's overlay layers in frame
+	// order (later ones on top). This also covers the vanished-overlay
+	// case: real TUI frames always contain CUP rows (input box, status
+	// bar), so the caller's "overlay disappeared → full repaint" fallback
+	// never fires — without the composite the erased row stays blank (a
+	// "black block") until a manual full redraw.
+	changed := make(map[int]bool)
 	for _, r := range oldRows {
 		if !r.base && !newMap[key(r.frameRow)] {
-			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, r.frameRow.row+1)...)
-			buf = append(buf, ansi.EraseLine(0)...)
-			// Repaint the base row that renders on this terminal row (if
-			// the new frame has one), restoring the content the overlay
-			// covered. The base text is skipped by the changed-row loop
-			// (it equals the old frame's text), so it must be written here.
-			if text, ok := baseRowTextAt(newRows, width, r.frameRow.row); ok {
-				buf = append(buf, ansi.CursorPosition(1, r.frameRow.row+1)...)
-				buf = append(buf, text...)
-				buf = append(buf, ansi.EraseLine(0)...)
+			changed[r.frameRow.row] = true
+		}
+	}
+	for _, r := range newRows {
+		if oldText, ok := oldMap[key(r.frameRow)]; !ok || oldText != r.frameRow.text {
+			if r.base {
+				// A changed base row may soft-wrap to several terminal
+				// rows — every one of them must be repainted, not just
+				// the row the logical line starts on (the continuation
+				// rows would keep the old frame's text).
+				for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
+					changed[row] = true
+				}
+			} else {
+				changed[r.frameRow.row] = true
 			}
 		}
 	}
-	// Phase 2 — repaint changed rows (base first, overlay rows last, so
-	// the overlay always draws on top of the restored base).
+	overlaysByRow := make(map[int][]positionedRow)
 	for _, r := range newRows {
-		if r.base && baseCovered(r, coveredByOverlay) {
-			// Overlay covers part of this row in the new frame — do not
-			// rewrite the base underneath.
-			continue
+		if !r.base {
+			overlaysByRow[r.frameRow.row] = append(overlaysByRow[r.frameRow.row], r)
 		}
-		if oldText, ok := oldMap[key(r.frameRow)]; !ok || oldText != r.frameRow.text {
-			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, r.frameRow.row+1)...)
+	}
+	rows := make([]int, 0, len(changed))
+	for row := range changed {
+		rows = append(rows, row)
+	}
+	sort.Ints(rows)
+	for _, row := range rows {
+		// Restore the base segment (or clear the row when no base covers
+		// it) — this also erases any shrunk layer's old tail.
+		buf = append(buf, ansi.CursorPosition(1, row+1)...)
+		if text, ok := baseRowTextAt(newRows, width, row); ok {
+			buf = append(buf, text...)
+		}
+		buf = append(buf, ansi.EraseLine(0)...)
+		// Draw the row's overlay layers in frame order (later on top).
+		for _, r := range overlaysByRow[row] {
+			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, row+1)...)
 			buf = append(buf, r.frameRow.text...)
-			if !r.base {
-				// CUP-anchored rows (input box, status bar, overlay boxes)
-				// are often shorter than the terminal width and do not
-				// pad/erase themselves — a shrunk row would leave the old
-				// frame's tail on screen. Erase to end of line after
-				// every repainted overlay row; a trailing EL is harmless
-				// when the row already carries one.
-				buf = append(buf, ansi.EraseLine(0)...)
-			}
 		}
 	}
 	return buf
