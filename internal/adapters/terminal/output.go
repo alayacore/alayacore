@@ -58,8 +58,7 @@ type outputWriter struct {
 	// Active user window — set on first user frame (UT/UI/UV/UA/UD),
 	// cleared on next non-user tag. Each new frame updates the
 	// window incrementally and marks dirty for immediate render.
-	activeUserWindowIdx int    // index into windowBuffer.windows, -1 = none
-	activeUserWindowID  string // window ID (for LookupID fallback)
+	activeUserWindowID  string // window ID; "" = none
 	pendingUserMaxID    uint64 // max history ID across all parts
 
 	// Pending delta coalescing — accumulates "At"/"Ar" and "Af" frames
@@ -87,10 +86,9 @@ type pendingToolDelta struct {
 
 func NewTerminalOutput(styles *Styles) *outputWriter { //nolint:revive // tests need access to internal methods
 	to := &outputWriter{
-		windowBuffer:        NewWindowBuffer(DefaultWidth, styles),
-		status:              sessionState{mu: &sync.Mutex{}},
-		activeUserWindowIdx: -1,
-		pendingTextDeltas:   make(map[string]*pendingTextDelta),
+		windowBuffer:      NewWindowBuffer(DefaultWidth, styles),
+		status:            sessionState{mu: &sync.Mutex{}},
+		pendingTextDeltas: make(map[string]*pendingTextDelta),
 		pendingToolDeltas:   make(map[string]*pendingToolDelta),
 	}
 	to.styles.Store(styles)
@@ -162,7 +160,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 	}
 
 	// Flush pending user content before any non-user tag.
-	if to.activeUserWindowIdx >= 0 && !userTag(tag) {
+	if to.activeUserWindowID != "" && !userTag(tag) {
 		to.flushUserContent()
 	}
 
@@ -729,10 +727,10 @@ func userTag(tag string) bool {
 // updates the existing window incrementally via AppendFromTLV.
 // Always marks dirty so the next tick renders the latest state.
 func (to *outputWriter) bufferUserContent(id, content string, tag string) {
-	if to.activeUserWindowIdx < 0 {
+	if to.activeUserWindowID == "" {
 		// First frame — create the window
 		to.activeUserWindowID = id
-		to.activeUserWindowIdx = to.windowBuffer.AppendOrUpdate(tlv.TagUserT, id, "")
+		to.windowBuffer.AppendOrUpdate(tlv.TagUserT, id, "")
 		to.windowBuffer.SetWindowVisible(id)
 	}
 
@@ -749,11 +747,10 @@ func (to *outputWriter) bufferUserContent(id, content string, tag string) {
 // flushUserContent finalizes the active user window (sets HistoryID)
 // and resets the active window tracking.
 func (to *outputWriter) flushUserContent() {
-	if to.activeUserWindowIdx < 0 {
+	if to.activeUserWindowID == "" {
 		return
 	}
-	to.windowBuffer.SetHistoryID(to.activeUserWindowIdx, to.pendingUserMaxID)
-	to.activeUserWindowIdx = -1
+	to.windowBuffer.SetHistoryID(to.activeUserWindowID, to.pendingUserMaxID)
 	to.activeUserWindowID = ""
 	to.pendingUserMaxID = 0
 }

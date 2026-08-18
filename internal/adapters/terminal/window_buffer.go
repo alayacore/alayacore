@@ -353,12 +353,13 @@ func (wb *WindowBuffer) LookupID(id string) (int, bool) {
 	return idx, ok
 }
 
-// SetHistoryID sets the HistoryID of the window at the given index.
-func (wb *WindowBuffer) SetHistoryID(index int, historyID uint64) {
+// SetHistoryID sets the HistoryID of the window with the given ID.
+// No-op if the ID is not registered.
+func (wb *WindowBuffer) SetHistoryID(id string, historyID uint64) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
-	if index >= 0 && index < len(wb.windows) {
-		wb.windows[index].HistoryID = historyID
+	if idx, ok := wb.idIndex[id]; ok {
+		wb.windows[idx].HistoryID = historyID
 	}
 }
 
