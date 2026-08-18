@@ -1,6 +1,6 @@
 # External Editor and WindowSizeMsg
 
-When the user opens an external editor (e.g. via `Ctrl+O`) and then exits back, Bubble Tea **always emits a `WindowSizeMsg`**, even if the terminal was never resized.
+When the user opens an external editor (e.g. via `Ctrl+O`) and then exits back, the TUI runtime **always emits a `WindowSizeMsg`**, even if the terminal was never resized.
 
 ## How It Works
 
@@ -10,7 +10,7 @@ When the user opens an external editor (e.g. via `Ctrl+O`) and then exits back, 
 
 ### 2. Editor runs — SIGWINCH may be missed
 
-While the editor has control of the terminal, the Bubble Tea program's `listenForResize` goroutine is still running and listening for `SIGWINCH`. However, as the `RestoreTerminal()` comment explains:
+While the editor has control of the terminal, the TUI runtime's resize-listener goroutine is still running and listening for `SIGWINCH`. However, as the `RestoreTerminal()` comment explains:
 
 ```go
 // If the output is a terminal, it may have been resized while another

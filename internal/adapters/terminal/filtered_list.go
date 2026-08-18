@@ -16,7 +16,7 @@ package terminal
 // filtering, rendering, and key handling.
 //
 // SINGLE-GOROUTINE: All methods of FilteredListCore are called exclusively
-// from the Bubble Tea event loop. No mutex is needed.
+// from the event loop. No mutex is needed.
 
 import (
 	"image/color"

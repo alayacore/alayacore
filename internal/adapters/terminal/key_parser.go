@@ -1,7 +1,7 @@
 package terminal
 
 // Key parser: byte stream → message sequence.
-// This is module 2 of the self-built TUI stack (see REFACTOR.md §8.3).
+// This is module 2 of the self-built TUI stack (see docs/tui-architecture.md).
 //
 // The parser is a streaming state machine: incomplete escape sequences are
 // retained across reads, UTF-8 is decoded rune-wise, and bracketed paste

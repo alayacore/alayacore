@@ -188,7 +188,7 @@ longer re-splits or slices content.
 
 ### Soft-Wrap Fragment Rendering
 
-The soft-wrap refactor (REFACTOR.md) changed `renderVirtual` from
+The soft-wrap refactor changed `renderVirtual` from
 "render a buffered window range, `\n`-join everything, let ScrollView
 slice" to **exact viewport clipping**:
 

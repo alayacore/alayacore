@@ -1,11 +1,12 @@
 package terminal
 
 // ANSI STYLING GOTCHA:
-// ANSI escape sequences are NOT recursive. When styling text with lipgloss (or any
-// ANSI styling), each segment must be rendered individually before concatenation.
-// You cannot render a string that already contains ANSI codes with a new style and
-// expect it to work - the outer styling will not wrap the inner styled segments.
-// Always render segments separately, then join them.
+// ANSI escape sequences are NOT recursive. When styling text (with the
+// self-built style layer or any ANSI styling), each segment must be
+// rendered individually before concatenation. You cannot render a string
+// that already contains ANSI codes with a new style and expect it to work
+// - the outer styling will not wrap the inner styled segments. Always
+// render segments separately, then join them.
 
 // LOCK ORDERING:
 //
@@ -19,7 +20,7 @@ package terminal
 //   outputWriter.mu → WindowBuffer.mu      (content tags, exclusive with sessionState)
 //   outputWriter.mu → sessionState.mu      (TagSystemMsg, exclusive with WindowBuffer)
 //
-// Bubble Tea goroutine call paths:
+// UI (event loop) goroutine call paths:
 //   outputWriter.mu → WindowBuffer.mu      (FlushPendingDeltas, exclusive with sessionState)
 //   WindowBuffer.mu  (via display update, tick — never nested with sessionState)
 //   sessionState.mu  (via snapshot methods — never nested with WindowBuffer)
@@ -27,7 +28,7 @@ package terminal
 // WindowBuffer.mu and sessionState.mu are NEVER held simultaneously — they
 // are acquired and released in separate, sequential calls. No deadlock is
 // possible since each goroutine only nests one additional lock under its
-// "root" lock (or no nesting at all for the Bubble Tea goroutine).
+// "root" lock (or no nesting at all for the UI goroutine).
 
 import (
 	"encoding/binary"

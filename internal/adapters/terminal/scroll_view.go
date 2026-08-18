@@ -7,7 +7,7 @@ package terminal
 //   - YOffset management
 //   - Height control
 //
-// SOFT-WRAP MODEL (REFACTOR.md): WindowBuffer.renderVirtual clips the
+// SOFT-WRAP MODEL (docs/internal/virtual-rendering-performance.md): WindowBuffer.renderVirtual clips the
 // window buffer to the viewport and produces the visible region as
 // soft-wrap fragments — continuous text within a window ('\n' only
 // between windows), already padded to the viewport height with blank

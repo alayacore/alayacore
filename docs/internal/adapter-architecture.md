@@ -8,7 +8,7 @@ The adapter layer handles user interaction and translates between user actions a
 
 | Component | Description |
 |-----------|-------------|
-| `Terminal` | Main Bubble Tea model composing all UI components |
+| `Terminal` | Main TUI model composing all UI components |
 | `DisplayModel` | Renders assistant output with virtual scrolling |
 | `PromptInput` | Handles user text input with attachment display |
 | `InputField` | Reusable text input component (filter, search, command entry) |

@@ -12,7 +12,7 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// InputField is the Bubble Tea model for a text input with multi-line support
+// InputField is the Elm-style model for a text input with multi-line support
 // but single-line display. Cursor up/down navigates between lines.
 //
 // Horizontal scrolling is modeled with a rune-index visible start

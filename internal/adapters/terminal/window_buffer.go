@@ -751,7 +751,7 @@ func (wb *WindowBuffer) GetAll(cursorIndex int, blocked bool) string {
 //     merging into one soft-wrap run);
 //   - every visual line except the last of a window's fragment is padded
 //     with trailing spaces to the full window width, so the terminal's
-//     soft-wrap falls exactly at the simulated breakpoints (REFACTOR.md).
+//     soft-wrap falls exactly at the simulated breakpoints (docs/internal/virtual-rendering-performance.md).
 //
 // The viewport is the final clip — no buffer windows or blank
 // placeholders are emitted; ScrollView pads to the viewport height.

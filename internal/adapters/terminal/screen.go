@@ -2,7 +2,7 @@ package terminal
 
 // Terminal screen management: alt screen, cursor, and the raw passthrough
 // renderer. This is module 4 of the self-built TUI stack (see
-// REFACTOR.md §8.3).
+// docs/tui-architecture.md).
 //
 // Render writes the view content VERBATIM after clearing the screen and
 // homing the cursor: `ED2` + home + content + absolute CUP. This is the

@@ -2,7 +2,7 @@ package terminal
 
 // Theme and styling for the terminal UI.
 // The Theme struct, DefaultTheme(), and LoadTheme() now live in
-// internal/theme — this file only keeps lipgloss-specific style derivation.
+// internal/theme — this file derives the Styles set used by the UI.
 
 import (
 	"image/color"
@@ -12,10 +12,10 @@ import (
 )
 
 // ============================================================================
-// Styles - Derived Lipgloss Styles
+// Styles - Derived Style Set
 // ============================================================================
 
-// Styles holds all lipgloss styles for the terminal UI.
+// Styles holds all derived styles for the terminal UI.
 //
 // IMMUTABILITY: Styles is created by NewStyles and never modified after
 // construction. When the theme changes, a new Styles instance is created
@@ -67,7 +67,7 @@ type Styles struct {
 // element one terminal row, no '\n' inside) and returns the box as a
 // visual line array: [top rule, ...content lines, bottom rule]. The
 // window pipeline uses this form — the viewport clips windows by visual
-// lines, so the box must expose its rows as an array (REFACTOR.md).
+// lines, so the box must expose its rows as an array (docs/internal/virtual-rendering-performance.md).
 // Callers must wrap (wrapContent) and truncate (truncateWithSuffix) every
 // content line themselves, and the content's wrap width is the FULL box
 // width. Trailing padding is unnecessary: terminals ignore trailing
@@ -97,8 +97,8 @@ func (s *Styles) RenderOpenBoxLines(lines []visualLine, width int, borderColor c
 // content — the most minimal form. With no side borders, corners would
 // only emphasize the missing sides; a bare rule avoids that entirely.
 //
-// Because there are no side borders, lipgloss's border renderer can no
-// longer pad/truncate content to the box width — callers must wrap
+// Because there are no side borders, the box renderer can no longer
+// pad/truncate content to the box width — callers must wrap
 // (wrapContent) and truncate (truncateWithSuffix) every content line
 // themselves, and the content's wrap width is the FULL box width.
 // Trailing padding is unnecessary: terminals ignore

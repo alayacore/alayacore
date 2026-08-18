@@ -1,7 +1,7 @@
 package terminal
 
 // External process execution and terminal suspension. This is module 5 of
-// the self-built TUI stack (see REFACTOR.md §8.3): the editor handoff
+// the self-built TUI stack (see docs/tui-architecture.md): the editor handoff
 // (ExecProcess) and Ctrl-Z suspend both release the terminal (exit alt
 // screen, restore cooked mode), run something in the foreground, then
 // re-acquire the terminal (raw mode + alt screen) and repaint.

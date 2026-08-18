@@ -17,8 +17,8 @@ Properties:
 
 ## The Runtime: Key Differences from Elm
 
-AlayaCore runs its own minimal TUI runtime (`program.go`, REFACTOR.md §8)
-that keeps the Elm/Bubble Tea model — `Model`/`Update`/`View`/`Cmd`/`Msg` —
+AlayaCore runs its own minimal TUI runtime (`program.go`) that keeps the
+Elm/Bubble Tea model — `Model`/`Update`/`View`/`Cmd`/`Msg` —
 without the framework:
 
 ```go

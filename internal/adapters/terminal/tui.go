@@ -1,7 +1,7 @@
 package terminal
 
 // This package implements the terminal UI adapter for AlayaCore.
-// It uses Bubble Tea for the TUI framework and handles:
+// It runs on the self-built TUI runtime (program.go) and handles:
 //   - Display of assistant output with virtual scrolling
 //   - User input with external editor support
 //   - Model selection and theme switching
@@ -122,7 +122,7 @@ type openEditorForPromptMsg struct {
 }
 
 // emitCommand returns a Cmd that sends a user-level command to the
-// session as a CI frame when executed by Bubble Tea's runtime.
+// session as a CI frame when executed by the event loop.
 // Errors are silently ignored — commands are best-effort and the
 // session may close the input stream at any time.
 func (m Terminal) emitCommand(cmd string) Cmd {
@@ -134,7 +134,7 @@ func (m Terminal) emitCommand(cmd string) Cmd {
 
 // submitCmd returns a Cmd that sends staged content (attachments + text)
 // as a complete user message via TLV. Runs outside Update when executed by
-// Bubble Tea's runtime. Errors reading attachments are returned as
+// the event loop. Errors reading attachments are returned as
 // displayErrorMsg so the event loop handles the display write.
 func submitCmd(w io.WriteCloser, attachments []attachment, prompt string) Cmd {
 	return func() Msg {
@@ -235,7 +235,7 @@ const (
 // Terminal Model
 // ============================================================================
 
-// Terminal is the main Bubble Tea model that composes display, input, and status components.
+// Terminal is the main model that composes display, input, and status components.
 // It serves as the central coordinator for the terminal UI, managing:
 //   - User input and keyboard shortcuts (delegated to keybinds.go)
 //   - Display updates from the agent session
@@ -243,7 +243,7 @@ const (
 //   - Theme selection and switching
 //   - Window focus management
 //
-// Terminal is the root Bubble Tea model.
+// Terminal is the root model.
 //
 // Field groups are separated by blank lines:
 //
@@ -291,7 +291,7 @@ type Terminal struct {
 	appConfig    *app.Config    // application configuration (read-only)
 	editor       *Editor        // external editor process helper (stateless service)
 	themeManager *ThemeManager  // theme loader (reads from disk, read-only after init)
-	styles       *Styles        // derived lipgloss styles (computed once, replaced on theme switch)
+	styles       *Styles        // derived styles (computed once, replaced on theme switch)
 
 	// ── Async session loading (transient, set once in Init / first tick) ─
 	loading      bool

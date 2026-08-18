@@ -26,7 +26,7 @@ type DisplayModel struct {
 
 	// ── Dependencies (pointers to shared data, not copied semantically) ─
 	windowBuffer *WindowBuffer // windowed content storage (shared with OutputWriter)
-	styles       *Styles       // derived lipgloss styles (replaced on theme switch)
+	styles       *Styles       // derived styles (replaced on theme switch)
 }
 
 // NewDisplayModel creates a new display model

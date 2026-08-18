@@ -1,7 +1,7 @@
 package terminal
 
 // Session state cache: status and models written by the session
-// goroutine and read by the Bubble Tea goroutine for display updates.
+// goroutine and read by the UI goroutine for display updates.
 //
 // All access is protected by the embedded sync.Mutex. The two goroutines
 // never hold this lock simultaneously with WindowBuffer.mu — snapshot
@@ -16,7 +16,7 @@ import (
 )
 
 // sessionState caches the session's status, model, and queue item state
-// for race-free access between the session and Bubble Tea goroutines.
+// for race-free access between the session and UI goroutines.
 //
 // mu is a pointer to prevent copying when sessionState is embedded in
 // outputWriter by value.

@@ -59,7 +59,7 @@ type WindowRendering interface {
 	// Cont): rows of the same original line join without '\n' (terminal
 	// soft-wrap), rows starting a new original line are separated by hard
 	// '\n' — the soft-wrap breakpoints that the viewport clips against
-	// (see REFACTOR.md). lineCount includes the 2 box rules
+	// (see docs/internal/virtual-rendering-performance.md). lineCount includes the 2 box rules
 	// (len(lines) + 2).
 	BuildInner(width int, folded bool, styles *Styles) (lines []visualLine, lineCount int)
 
@@ -85,7 +85,7 @@ type WindowRendering interface {
 // element per terminal row, no '\n' inside; visualLine.Cont marks rows
 // that continue the same original line — soft-wrap — while rows starting
 // a new original line are separated by hard '\n'). It is the structure
-// the viewport clips against for soft-wrap fragment output (REFACTOR.md);
+// the viewport clips against for soft-wrap fragment output (docs/internal/virtual-rendering-performance.md);
 // inner/rendered are the '\n'-joined projections kept for the current
 // line-based output path.
 //

@@ -2,7 +2,7 @@ package terminal
 
 // Program: the event loop that drives the TUI — Update/Cmd dispatch, ticks,
 // rendering, and terminal lifecycle. This is module 3 of the self-built TUI
-// stack (see REFACTOR.md §8.3).
+// stack (see docs/tui-architecture.md).
 //
 // The loop mirrors bubbletea's (third_party/bubbletea/tea.go) minus the
 // cell-buffer renderer: messages arrive from the input reader and from

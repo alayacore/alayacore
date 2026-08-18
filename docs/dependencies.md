@@ -15,8 +15,9 @@ This document explains AlayaCore's key dependencies and why each is needed.
 
 ### Self-built TUI stack (`internal/adapters/terminal`) — Terminal UI
 
-The terminal adapter runs on a self-hosted minimal TUI stack (REFACTOR.md
-§8), replacing the former Bubble Tea + Lip Gloss dependency:
+The terminal adapter runs on a self-hosted minimal TUI stack (see
+`docs/tui-architecture.md`), replacing the former Bubble Tea + Lip Gloss
+dependency:
 
 - **`program.go`** — event loop: `Update`/`Cmd`/`Msg` dispatch, batches and
   sequences, timers (`Tick`), quit, panic recovery (terminal always
@@ -70,7 +71,7 @@ func wrapContent(s string, width int) string {
 }
 ```
 
-The input to `wrapContent` is Lip Gloss **rendered** output containing `\033[32m...\033[0m` sequences. Line breaking must **ignore ANSI code bytes** and measure only visible characters.
+The input to `wrapContent` is **styled** output containing `\033[32m...\033[0m` sequences. Line breaking must **ignore ANSI code bytes** and measure only visible characters.
 
 **② Confirmation dialog (`confirm_dialog.go`)**
 
@@ -100,7 +101,7 @@ So `ansi` is needed for the ANSI-bearing text paths (①② above); the input fi
 | `Truncate("\033[32mHello\033[0m", 3, "")` | `"\033[32mHel\033[0m"` ✅ | `"\033[32mH"` ❌ (truncates mid-ANSI) |
 | `StringWidth("\033[32mHello\033[0m")` | `5` ✅ | `16` ❌ (counts ANSI bytes) |
 
-Since the project processes large amounts of Lip Gloss-rendered text (containing ANSI codes), `ansi` is essential.
+Since the project processes large amounts of styled text (containing ANSI codes), `ansi` is essential.
 
 ---
 
@@ -113,7 +114,7 @@ The **single width source of the input chain** (`input_field.go`). `FirstGraphem
 cluster, rest, width, nextState := uniseg.FirstGraphemeClusterInString(s, state)
 ```
 
-Also used indirectly by Lip Gloss v2 for correct emoji/combining width handling; now a direct dependency of the input chain.
+Direct dependency of the input chain for grapheme segmentation and width.
 
 ### `github.com/mattn/go-runewidth` — transitive dependency only
 
@@ -134,7 +135,7 @@ Gets terminal dimensions at startup for initial layout.
 
 ### `golang.org/x/sys` — System Calls
 
-Unix signal handling and terminal mode settings. Required by Bubble Tea.
+Unix signal handling and terminal mode settings. Required by the TUI runtime (`program.go`).
 
 ### `golang.org/x/net` — Networking
 

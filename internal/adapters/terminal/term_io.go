@@ -1,7 +1,7 @@
 package terminal
 
 // Terminal I/O layer: TTY opening, raw mode, and byte reading.
-// This is module 1 of the self-built TUI stack (see REFACTOR.md §8.3).
+// This is module 1 of the self-built TUI stack (see docs/tui-architecture.md).
 //
 // OpenTTY prefers the real stdin/stdout when they are terminals and falls
 // back to the controlling TTY (/dev/tty on Unix, CONIN$/CONOUT$ on Windows)

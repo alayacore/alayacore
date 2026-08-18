@@ -2,8 +2,8 @@
 
 AlayaCore's terminal UI is built on a self-hosted minimal TUI stack (own
 event loop, key parser, terminal management, and style layer) and uses
-vim-like keybindings throughout. See `docs/tui-architecture.md` and
-REFACTOR.md §8 for the architecture.
+vim-like keybindings throughout. See `docs/tui-architecture.md` for the
+architecture.
 
 ## Navigation
 
@@ -212,7 +212,8 @@ The dialog shows the tool name in the title and a 2-line preview of the tool's i
 ## Line Wrapping
 
 Content in each window is wrapped to the available width using the
-**terminal's own soft-wrap** (REFACTOR.md). The viewport renders each
+**terminal's own soft-wrap** (see
+`docs/internal/virtual-rendering-performance.md`). The viewport renders each
 window as a **continuous fragment** — the visual rows are joined without
 hard newlines, and every row except the last is padded with trailing
 spaces to the full window width, so the terminal soft-wraps exactly at
@@ -237,7 +238,7 @@ hard rows, which breaks both the display and copy fidelity. The self-built
 TUI stack renders directly — `screen.go` writes the view content verbatim
 to the terminal (`ED2` + home + content + absolute CUP) and leaves it to
 the terminal to soft-wrap. Overlays are drawn with absolute cursor-position
-sequences instead of line compositing (see REFACTOR.md).
+sequences instead of line compositing (see `docs/tui-architecture.md`).
 
 The program runs the terminal in **raw mode** (`x/term` MakeRaw clears
 OPOST/ONLCR), so the renderer emits `\r\n` for every `\n` in the view
