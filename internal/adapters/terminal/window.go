@@ -443,15 +443,15 @@ func arrowStyle(styles *Styles, isCursor bool) Style {
 }
 
 // windowLabel returns the header label for the window type, e.g.
-// "TOOL edit_file", "REASONING", "ASSISTANT", "USER PROMPT", "NOTIFY",
+// "TOOLUSE edit_file", "REASONING", "ASSISTANT", "USER PROMPT", "NOTIFY",
 // "ERROR".
 func (w *Window) windowLabel() string {
 	switch w.Tag() {
 	case tlv.TagAssistantF, tlv.TagUserF:
 		if ti := w.ToolInfo(); ti != nil && ti.Name != "" {
-			return "TOOL " + ti.Name
+			return toolHeaderLabel + " " + ti.Name
 		}
-		return "TOOL"
+		return toolHeaderLabel
 	case tlv.TagAssistantR:
 		return "REASONING"
 	case tlv.TagAssistantT:
@@ -469,20 +469,22 @@ func (w *Window) windowLabel() string {
 
 // buildExpandHeader returns the expanded header line content (the part
 // after the arrow). Tool windows use the collapsed-style layout — bold
-// "TOOL" + status indicator in the fixed label column, then the muted tool
-// name: "TOOL⠋       execute_command". Other windows use their plain
-// label ("ASSISTANT", "NOTIFY", …).
+// "TOOLUSE" + a space + the status indicator in the fixed label column,
+// then the muted tool name: "TOOLUSE ⠋    execute_command". Other windows
+// use their plain label ("ASSISTANT", "NOTIFY", …).
 func (w *Window) buildExpandHeader(styles *Styles) string {
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
 		dot, dotStyle := tr.status.statusDot(styles)
-		label := padLabel("TOOL" + dot)
+		label := padLabel(toolLabelWithIndicator(dot))
 		var sb strings.Builder
 		sb.WriteString(" ")
-		sb.WriteString(labelStyleForTag(w.Tag(), styles).Render(label[:len("TOOL")]))
+		sb.WriteString(labelStyleForTag(w.Tag(), styles).Render(label[:len(toolHeaderLabel)]))
+		// Separator space between the label and the status indicator.
+		sb.WriteString(label[len(toolHeaderLabel) : len(toolHeaderLabel)+len(toolLabelSep)])
 		sb.WriteString(dotStyle.Render(dot))
-		// Label-column padding — dot is multi-byte UTF-8, so skip len(dot)
-		// bytes (not 1) after "TOOL".
-		sb.WriteString(label[len("TOOL")+len(dot):])
+		// Label-column padding — the indicator is multi-byte UTF-8, so skip
+		// len(dot) bytes (not 1) after the label + separator.
+		sb.WriteString(label[len(toolHeaderLabel)+len(toolLabelSep)+len(dot):])
 		sb.WriteString(styles.ToolContent.Render(tr.name))
 		return sb.String()
 	}
@@ -499,7 +501,7 @@ func (w *Window) labelStyle(styles *Styles) Style {
 }
 
 // labelStyleForTag returns the style used for a window type's header label
-// (e.g. "REASONING", "TOOL", "ERROR"). All labels are bold + muted — bright
+// (e.g. "REASONING", "TOOLUSE", "ERROR"). All labels are bold + muted — bright
 // default-foreground labels distract the eye in the collapsed list; only
 // ERROR keeps its red semantic color. Shared by the expanded header line
 // and the collapsed label segment.

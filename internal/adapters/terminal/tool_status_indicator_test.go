@@ -64,8 +64,8 @@ func TestToolRunningShowsSpinner(t *testing.T) {
 }
 
 // TestToolStatusIndicatorHeaderStates drives the WindowBuffer through the
-// full lifecycle: pending header shows TOOL + spinner, success shows
-// TOOL✓, error shows TOOL✗.
+// full lifecycle: pending header shows TOOLUSE + spinner, success shows
+// TOOLUSE ✓, error shows TOOLUSE ✗.
 func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.HandleToolInputEvent(protocol.ToolInputData{
@@ -74,14 +74,15 @@ func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 		Input: json.RawMessage("execute_command: lscpu"),
 	}, 0)
 
-	// Pending (executing): header is "▶ TOOL⠋ …" — spinner right after TOOL.
+	// Pending (executing): header is "▶ TOOLUSE ⠋ …" — a separator space
+	// and a spinner frame right after the label.
 	plain := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(plain, "▶ TOOL") {
-		t.Fatalf("pending header should start with ▶ TOOL, got %q", plain)
+	if !strings.HasPrefix(plain, "▶ TOOLUSE ") {
+		t.Fatalf("pending header should start with ▶ TOOLUSE + space, got %q", plain)
 	}
-	rest := []rune(plain[len("▶ TOOL"):])
+	rest := []rune(strings.TrimPrefix(plain, "▶ TOOLUSE "))
 	if len(rest) == 0 {
-		t.Fatal("pending header has nothing after TOOL")
+		t.Fatal("pending header has nothing after the label")
 	}
 	inSet := false
 	for _, f := range toolSpinnerFrames {
@@ -91,21 +92,21 @@ func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 		}
 	}
 	if !inSet {
-		t.Errorf("pending header should show a spinner frame after TOOL, got %q", plain)
+		t.Errorf("pending header should show a spinner frame after the label, got %q", plain)
 	}
 
-	// Success: plain ✓.
+	// Success: plain ✓ after the separator space.
 	wb.HandleToolOutput("t1", "x86_64", false, 0)
 	plain = stripANSI(wb.GetAll(-1, false))
-	if !strings.Contains(plain, "TOOL✓") {
-		t.Errorf("success header should contain TOOL✓, got %q", plain)
+	if !strings.Contains(plain, "TOOLUSE ✓") {
+		t.Errorf("success header should contain TOOLUSE ✓, got %q", plain)
 	}
 
-	// Error: plain ✗.
+	// Error: plain ✗ after the separator space.
 	wb.HandleToolOutput("t1", "boom", true, 0)
 	plain = stripANSI(wb.GetAll(-1, false))
-	if !strings.Contains(plain, "TOOL✗") {
-		t.Errorf("error header should contain TOOL✗, got %q", plain)
+	if !strings.Contains(plain, "TOOLUSE ✗") {
+		t.Errorf("error header should contain TOOLUSE ✗, got %q", plain)
 	}
 }
 

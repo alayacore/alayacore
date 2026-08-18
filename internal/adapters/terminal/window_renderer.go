@@ -470,7 +470,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 
 	// Input: streaming delta preview (truncated JSON) or the full input.
 	// Neither carries the status indicator nor the "name: " prefix — the
-	// indicator lives in the header line (TOOL⠋) and the tool name is
+	// indicator lives in the header line (TOOLUSE ⠋) and the tool name is
 	// shown there too. Content is plain (no color, no bold); only the
 	// "---" separator keeps its muted color.
 	var call string
@@ -510,7 +510,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 }
 
 // BuildCollapsed returns the single-line collapsed form for tool windows:
-// "TOOL⠋       execute_command lscpu…" — bold TOOL + status indicator
+// "TOOLUSE ⠋    execute_command lscpu…" — bold TOOLUSE + status indicator
 // (rotating spinner while streaming/executing, plain ✓/✗ when done) in
 // the fixed label column, then the tool name + first input line (or the
 // streaming delta preview tail, ellipsis at the line start), truncated to
@@ -537,7 +537,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		// like the collapsed text windows — the tail shows what just
 		// arrived, "…" marks the truncated head. Room is everything after
 		// the label column + tool name + separator space.
-		prefix := padLabel("TOOL" + dot)
+		prefix := padLabel(toolLabelWithIndicator(dot))
 		if r.name != "" {
 			prefix += r.name + " "
 		}
@@ -547,7 +547,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		inputFirst = firstLine(prepareContent(r.input))
 		// The input's first line is usually "name: args". The tool name is
 		// shown right after the label column, so strip the repeated prefix
-		// ("TOOL⠋ execute_command lscpu", not "execute_command:
+		// ("TOOLUSE ⠋ execute_command lscpu", not "execute_command:
 		// execute_command: lscpu").
 		if r.name != "" {
 			if stripped, ok := strings.CutPrefix(inputFirst, r.name+":"); ok {
@@ -556,7 +556,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		}
 	}
 
-	labelPart := padLabel("TOOL" + dot)
+	labelPart := padLabel(toolLabelWithIndicator(dot))
 	line := labelPart
 	if r.name != "" {
 		line += r.name
@@ -566,14 +566,15 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 	line = truncateWithSuffix(line, max(0, width-2))
 
-	// Re-style the truncated plain line: "TOOL" in bold (no color), the
-	// status indicator (spinner or ✓/✗) unstyled — deliberately colorless —
-	// then name + input in muted.
+	// Re-style the truncated plain line: "TOOLUSE" in bold (no color), the
+	// separator space plain, the status indicator (spinner or ✓/✗)
+	// unstyled — deliberately colorless — then name + input in muted.
 	// NOTE: the indicator is multi-byte UTF-8 — slice by len(dot), never by
 	// byte 1, and labelPart length is in bytes (padLabel pads to display
 	// columns).
 	labelStyle := labelStyleForTag(r.Tag(), styles)
-	toolLen := len("TOOL")
+	toolLen := len(toolHeaderLabel)
+	sepLen := len(toolLabelSep)
 	dotLen := len(dot)
 	contentStart := len(labelPart)
 	if len(line) <= toolLen {
@@ -581,13 +582,19 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 	var sb strings.Builder
 	sb.WriteString(labelStyle.Render(line[:toolLen]))
+	// Separator space between the label and the indicator (plain, part of
+	// the fixed label column) — only when it survived truncation.
 	if len(line) > toolLen {
-		sb.WriteString(dotStyle.Render(line[toolLen : toolLen+dotLen]))
+		sb.WriteString(line[toolLen:min(len(line), toolLen+sepLen)])
 	}
-	if len(line) > toolLen+dotLen {
+	// Status indicator — unstyled (colorless), multi-byte safe.
+	if len(line) > toolLen+sepLen {
+		sb.WriteString(dotStyle.Render(line[toolLen+sepLen : min(len(line), toolLen+sepLen+dotLen)]))
+	}
+	if len(line) > toolLen+sepLen+dotLen {
 		// Label column padding (plain spaces) + content (muted).
 		paddingEnd := min(len(line), contentStart)
-		sb.WriteString(line[toolLen+dotLen : paddingEnd])
+		sb.WriteString(line[toolLen+sepLen+dotLen : paddingEnd])
 		sb.WriteString(styles.ToolContent.Render(line[paddingEnd:]))
 	}
 	return sb.String(), 1
@@ -617,7 +624,7 @@ func (r *toolRenderer) previewOutput(innerWidth, usedWidth int) string {
 }
 
 // defaultToolRender renders a tool call's input as a muted argument block:
-// no status indicator (it lives in the header line's TOOL•) and no
+// no status indicator (it lives in the header line's TOOLUSE ⠋) and no
 // "name: " prefix (the tool name lives in the header line too).
 func defaultToolRender(input, name string) string {
 	content := prepareContent(input)

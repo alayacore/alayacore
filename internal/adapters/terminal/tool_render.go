@@ -35,12 +35,28 @@ func toolSpinnerFrame() string {
 	return toolSpinnerFrames[int(time.Now().UnixMilli()/150)%len(toolSpinnerFrames)]
 }
 
+// toolHeaderLabel is the fixed tool-window label shown in the header line.
+// The status indicator (spinner while running, ✓/✗ when done) follows
+// after one separating space: "TOOLUSE ⠋ execute_command".
+const toolHeaderLabel = "TOOLUSE"
+
+// toolLabelSep is the single space between the tool label and its status
+// indicator ("TOOLUSE ⠋", "TOOLUSE ✓").
+const toolLabelSep = " "
+
+// toolLabelWithIndicator returns the fixed label-column text for a tool
+// window: the label + separator space + the indicator glyph.
+func toolLabelWithIndicator(dot string) string {
+	return toolHeaderLabel + toolLabelSep + dot
+}
+
 // statusDot returns the tool status indicator character and its style,
-// shown right after "TOOL" in the header line ("TOOL⠋", "TOOL✓"). The
-// indicator is deliberately colorless — the spinner replaces the old
-// colored dots while the tool is running, and the result glyphs (✓/✗)
-// render in the default foreground instead of green/red. The styles
-// argument is retained for API stability; the indicator never uses it.
+// shown right after the "TOOLUSE" label in the header line
+// ("TOOLUSE ⠋", "TOOLUSE ✓"). The indicator is deliberately colorless —
+// the spinner replaces the old colored dots while the tool is running,
+// and the result glyphs (✓/✗) render in the default foreground instead of
+// green/red. The styles argument is retained for API stability; the
+// indicator never uses it.
 func (s ToolStatus) statusDot(_ *Styles) (string, Style) {
 	switch s {
 	case ToolStatusSuccess:

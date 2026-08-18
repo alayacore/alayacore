@@ -261,16 +261,16 @@ func TestFoldedToolCollapsedLabelColor(t *testing.T) {
 
 	rendered := wb.GetAll(-1, false)
 
-	// "TOOL" is plain bold, the status dot uses the status color, and the
+	// "TOOLUSE" is plain bold, the status indicator is colorless, and the
 	// content (tool name + arguments) is muted.
-	if !strings.Contains(rendered, styles.System.Bold(true).Render("TOOL")) {
-		t.Errorf("TOOL label should be plain bold (no color): %q", rendered)
+	if !strings.Contains(rendered, styles.System.Bold(true).Render("TOOLUSE")) {
+		t.Errorf("TOOLUSE label should be plain bold (no color): %q", rendered)
 	}
-	if strings.Contains(rendered, styles.Tool.Render("TOOL")) {
-		t.Errorf("TOOL label should not use the Tool color: %q", rendered)
+	if strings.Contains(rendered, styles.Tool.Render("TOOLUSE")) {
+		t.Errorf("TOOLUSE label should not use the Tool color: %q", rendered)
 	}
 	if !strings.Contains(rendered, styles.ToolContent.Render("edit_file /tmp/style.css")) {
-		t.Errorf("TOOL content (name + args) should use muted ToolContent style: %q", rendered)
+		t.Errorf("TOOLUSE content (name + args) should use muted ToolContent style: %q", rendered)
 	}
 }
 
@@ -343,8 +343,8 @@ func TestFoldedToolStatusIndicatorNoReplacementChar(t *testing.T) {
 	if strings.Contains(rendered, "\uFFFD") {
 		t.Errorf("collapsed line contains replacement char: %q", rendered)
 	}
-	if !strings.Contains(plain, "TOOL✓") {
-		t.Errorf("collapsed line should contain TOOL + success check, got %q", plain)
+	if !strings.Contains(plain, "TOOLUSE ✓") {
+		t.Errorf("collapsed line should contain TOOLUSE + success check, got %q", plain)
 	}
 	// Content column must be exactly "▶ " + label column.
 	if c := contentColumn(plain); c != 2+CollapsedLabelWidth {
@@ -357,8 +357,8 @@ func TestFoldedToolStatusIndicatorNoReplacementChar(t *testing.T) {
 	if strings.Contains(rendered, "\uFFFD") {
 		t.Errorf("expanded header contains replacement char: %q", rendered)
 	}
-	if !strings.Contains(stripANSI(rendered), "TOOL✓") {
-		t.Errorf("expanded header should contain TOOL + success check, got %q", stripANSI(rendered))
+	if !strings.Contains(stripANSI(rendered), "TOOLUSE ✓") {
+		t.Errorf("expanded header should contain TOOLUSE + success check, got %q", stripANSI(rendered))
 	}
 }
 

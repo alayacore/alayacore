@@ -137,11 +137,11 @@ The display area organizes content into separate windows — one per message or 
 
 ### Tool Status Indicator
 
-Every tool window's header line carries a status indicator right after the `TOOL` label (`TOOL⠋`, `TOOL✓`, `TOOL✗`). While arguments are still streaming in and while the tool is executing, the indicator is the same braille dot-segment spinner used by the session-loading screen — it rotates together with each delta refresh (the header re-renders on every incoming delta, so the spinner advances with the streaming progress, no separate timer). When the tool finishes, the spinner is replaced by a colorless check mark (`✓` on success) or cross (`✗` on error) — no colored dots.
+Every tool window's header line carries a status indicator right after the `TOOLUSE` label (`TOOLUSE ⠋`, `TOOLUSE ✓`, `TOOLUSE ✗`), separated by one space. While arguments are still streaming in and while the tool is executing, the indicator is the same braille dot-segment spinner used by the session-loading screen — it rotates together with each delta refresh (the header re-renders on every incoming delta, so the spinner advances with the streaming progress, no separate timer). When the tool finishes, the spinner is replaced by a colorless check mark (`✓` on success) or cross (`✗` on error) — no colored dots.
 
 ### Tool Result Separator
 
-Tool windows separate the tool call's arguments from its result with a dimmed `---` line. The arguments are shown without the status indicator or the `name: ` prefix (both live in the header line), so a window reads: header (`▼ TOOL⠋ execute_command`), argument line (`lscpu | grep …`), `---`, result. `write_file` and `edit_file` follow the same layout — their diff content (the `-`/`+` lines) is the argument block, followed by `---` and the result.
+Tool windows separate the tool call's arguments from its result with a dimmed `---` line. The arguments are shown without the status indicator or the `name: ` prefix (both live in the header line), so a window reads: header (`▼ TOOLUSE ⠋ execute_command`), argument line (`lscpu | grep …`), `---`, result. `write_file` and `edit_file` follow the same layout — their diff content (the `-`/`+` lines) is the argument block, followed by `---` and the result.
 
 ### Auto-Follow
 
@@ -172,7 +172,7 @@ scrolls the viewport. While auto-follow is active:
 
 ### Fold Mode
 
-Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOL` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `NOTIFY` for system notifications, or `ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOL` + indicator followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
+Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOLUSE` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `NOTIFY` for system notifications, or `ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOLUSE` + indicator followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
 
 An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrow glyphs themselves are theme-configurable (`fold_arrow` / `unfold_arrow`). See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
 
