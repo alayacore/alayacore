@@ -205,9 +205,6 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 	if !strings.Contains(line, mutedBold.Render(padLabel("REASONING"))) {
 		t.Errorf("REASONING label should be plain bold (no color): %q", line)
 	}
-	if strings.Contains(line, styles.Reasoning.Render("REASONING")) {
-		t.Errorf("REASONING label should not use the Reasoning color: %q", line)
-	}
 	if !strings.Contains(stripANSI(line), "thinking about the plan") {
 		t.Errorf("REASONING content summary should be present: %q", line)
 	}
@@ -486,7 +483,6 @@ func TestFoldArrowThemeConfigurable(t *testing.T) {
 		Text:        "#cdd6f4",
 		Warning:     "#f77923",
 		Error:       "#f38ba8",
-		Success:     "#a6e3a1",
 		Selection:   "#fab387",
 		Cursor:      "#cdd6f4",
 		Added:       "#a6e3a1",

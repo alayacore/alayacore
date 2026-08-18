@@ -26,10 +26,8 @@ import (
 type Styles struct {
 	// Output text styles
 	Text        Style
-	UserInput   Style
 	Tool        Style
 	ToolContent Style
-	Reasoning   Style
 	Error       Style
 	System      Style
 	Prompt      Style
@@ -38,10 +36,9 @@ type Styles struct {
 	DiffAdd     Style
 
 	// Display styles
-	Input     Style
-	Status    Style
-	Separator Style
-	Confirm   Style
+	Input   Style
+	Status  Style
+	Confirm Style
 
 	// Component-specific colors (exposed as color.Color for dynamic use)
 	// Border colors
@@ -55,7 +52,6 @@ type Styles struct {
 	ColorMuted   color.Color
 	ColorWarning color.Color
 	ColorError   color.Color
-	ColorSuccess color.Color
 	CursorColor  color.Color
 
 	// Fold-state arrow glyphs (from the theme; single codepoint).
@@ -131,10 +127,8 @@ func NewStyles(t *theme.Theme) *Styles {
 	return &Styles{
 		// Output text styles
 		Text:        baseStyle.Foreground(Color(t.Text)).Bold(true),
-		UserInput:   baseStyle,
 		Tool:        baseStyle.Foreground(Color(t.Tool)),
 		ToolContent: baseStyle.Foreground(Color(t.Muted)),
-		Reasoning:   baseStyle.Foreground(Color(t.Muted)).Italic(true),
 		Error:       baseStyle.Foreground(Color(t.Error)),
 		System:      baseStyle.Foreground(Color(t.Muted)),
 		Prompt:      baseStyle.Foreground(Color(t.Primary)).Bold(true),
@@ -143,10 +137,9 @@ func NewStyles(t *theme.Theme) *Styles {
 		DiffAdd:     baseStyle.Foreground(Color(t.Added)),
 
 		// Display styles
-		Input:     baseStyle,
-		Status:    baseStyle.Foreground(Color(t.Dim)),
-		Separator: baseStyle.Foreground(Color(t.Dim)),
-		Confirm:   baseStyle.Foreground(Color(t.Warning)).Bold(true),
+		Input:   baseStyle,
+		Status:  baseStyle.Foreground(Color(t.Dim)),
+		Confirm: baseStyle.Foreground(Color(t.Warning)).Bold(true),
 
 		// Component-specific colors
 		BorderFocused: Color(t.Primary),
@@ -158,7 +151,6 @@ func NewStyles(t *theme.Theme) *Styles {
 		ColorMuted:   Color(t.Muted),
 		ColorWarning: Color(t.Warning),
 		ColorError:   Color(t.Error),
-		ColorSuccess: Color(t.Success),
 		CursorColor:  Color(t.Cursor),
 
 		FoldArrow:   t.FoldArrow,
@@ -176,10 +168,8 @@ func (s *Styles) Dimmed() *Styles {
 	return &Styles{
 		// Output text styles — all foreground → ColorDim
 		Text:        s.Text.Foreground(s.ColorDim),
-		UserInput:   s.UserInput.Foreground(s.ColorDim),
 		Tool:        s.Tool.Foreground(s.ColorDim),
 		ToolContent: s.ToolContent.Foreground(s.ColorDim),
-		Reasoning:   s.Reasoning.Foreground(s.ColorDim),
 		Error:       s.Error.Foreground(s.ColorDim),
 		System:      s.System.Foreground(s.ColorDim),
 		Prompt:      s.Prompt.Foreground(s.ColorDim),
@@ -188,10 +178,9 @@ func (s *Styles) Dimmed() *Styles {
 		DiffAdd:     s.DiffAdd.Foreground(s.ColorDim),
 
 		// Display styles
-		Input:     s.Input.Foreground(s.ColorDim),
-		Status:    s.Status.Foreground(s.ColorDim),
-		Separator: s.Separator.Foreground(s.ColorDim),
-		Confirm:   s.Confirm.Foreground(s.ColorDim),
+		Input:   s.Input.Foreground(s.ColorDim),
+		Status:  s.Status.Foreground(s.ColorDim),
+		Confirm: s.Confirm.Foreground(s.ColorDim),
 
 		// Colors — unchanged (used as dynamic color references)
 		BorderFocused: s.ColorDim,
@@ -203,7 +192,6 @@ func (s *Styles) Dimmed() *Styles {
 		ColorMuted:   s.ColorDim,
 		ColorWarning: s.ColorDim,
 		ColorError:   s.ColorDim,
-		ColorSuccess: s.ColorDim,
 		CursorColor:  s.ColorDim,
 
 		// Glyphs — unchanged (dimming affects color, not characters)

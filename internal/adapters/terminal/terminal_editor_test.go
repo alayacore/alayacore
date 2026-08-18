@@ -202,8 +202,8 @@ func TestRenderMultiline(t *testing.T) {
 	// Note: SetColorProfile is no longer needed in v2
 
 	styles := DefaultStyles()
-	// Use existing reasoning style which should produce ANSI codes
-	style := styles.Reasoning
+	// Use an existing style which should produce ANSI codes
+	style := styles.System
 	// First test direct rendering
 	direct := style.Render("test")
 	t.Logf("Direct render: %q, bytes: %v", direct, []byte(direct))

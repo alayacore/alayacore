@@ -14,7 +14,6 @@ func TestNewStylesWithTheme(t *testing.T) {
 		Text:      "#custom4",
 		Warning:   "#custom5",
 		Error:     "#custom6",
-		Success:   "#custom7",
 		Selection: "#custom8",
 		Cursor:    "#custom9",
 	}
@@ -30,7 +29,5 @@ func TestNewStylesWithTheme(t *testing.T) {
 
 	_ = styles.ColorAccent
 	_ = styles.ColorDim
-	_ = styles.ColorError
-	_ = styles.ColorSuccess
 	_ = styles.CursorColor
 }

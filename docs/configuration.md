@@ -158,7 +158,6 @@ muted: #6c7086
 text: #cdd6f4
 warning: #f77923
 error: #f38ba8
-success: #a6e3a1
 selection: #fab387
 cursor: #cdd6f4
 added: #a6e3a1
@@ -178,7 +177,6 @@ unfold_arrow: "▼"
 | `text` | Body text |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors |
-| `success` | Success messages, completed states |
 | `selection` | Selected items in lists, cursor arrow highlight |
 | `cursor` | Input cursor color — rendered as the real terminal cursor in input fields (also anchors IME preedit/candidate windows) |
 | `tool` | Tool call headers/labels |

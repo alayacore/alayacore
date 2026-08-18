@@ -32,7 +32,6 @@ type Theme struct {
 	Text      string `config:"text" json:"text"`           // Primary text color
 	Warning   string `config:"warning" json:"warning"`     // Warning color — alerts, caution, confirmations
 	Error     string `config:"error" json:"error"`         // Error color — errors, failures
-	Success   string `config:"success" json:"success"`     // Success color — success messages, completion status
 	Selection string `config:"selection" json:"selection"` // Selection highlight — selected list item, search match
 	Cursor    string `config:"cursor" json:"cursor"`       // Cursor color — text input cursor
 
