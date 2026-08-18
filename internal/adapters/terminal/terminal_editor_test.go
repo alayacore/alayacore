@@ -233,20 +233,17 @@ func TestRenderMultiline(t *testing.T) {
 }
 
 func TestColorizeToolMultiline(t *testing.T) {
-	// Note: SetColorProfile is no longer needed in v2
-
-	styles := DefaultStyles()
-	// Test multiline tool output with colon on first line
+	// Tool args render as plain text (no ANSI styling).
 	value := "tool_name: first line\nsecond line\nthird line"
-	result := defaultToolRender(value, "tool_name", styles, 0)
+	result := defaultToolRender(value, "tool_name", 0)
 	lines := strings.Split(result, "\n")
 	if len(lines) != 3 {
 		t.Errorf("Expected 3 lines, got %d", len(lines))
 	}
-	// The name prefix is stripped; every line keeps ANSI styling (muted).
+	// Plain output: no ANSI styling on any line.
 	for i, line := range lines {
-		if !strings.Contains(line, "\x1b[") {
-			t.Errorf("Line %d missing ANSI escape sequence: %q", i, line)
+		if strings.Contains(line, "\x1b[") {
+			t.Errorf("Line %d should be plain text, got %q", i, line)
 		}
 	}
 	// The tool-name prefix must be stripped from the first line.

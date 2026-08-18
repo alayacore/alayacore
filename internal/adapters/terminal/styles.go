@@ -118,7 +118,7 @@ func NewStyles(t *theme.Theme) *Styles {
 	return &Styles{
 		// Output text styles
 		Text:        baseStyle.Foreground(Color(t.Text)).Bold(true),
-		UserInput:   baseStyle.Bold(true),
+		UserInput:   baseStyle,
 		Tool:        baseStyle.Foreground(Color(t.Tool)),
 		ToolContent: baseStyle.Foreground(Color(t.Muted)),
 		Reasoning:   baseStyle.Foreground(Color(t.Muted)).Italic(true),

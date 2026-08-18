@@ -91,15 +91,15 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 	}
 }
 
-// TestToolFragmentMidColorWrap verifies that a long colored line wrapping
-// across visual rows keeps its color on continuation rows when scrolled
-// into the middle — the wrap continuation carries the style, so the
-// fragment start needs no explicit style replay.
+// TestToolFragmentMidColorWrap verifies that a long diff line wrapping
+// across visual rows keeps its content when scrolled into the middle.
+// Tool content is plain (no colors), so the continuation must carry no
+// ANSI either.
 func TestToolFragmentMidColorWrap(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 
 	// A single long diff line (- prefix) far wider than the window: its
-	// wrapped continuations must stay DiffRemove-colored.
+	// wrapped continuations stay plain (no diff colors).
 	input := "edit_file: /tmp/x\n- " + strings.Repeat("X", 120)
 	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t1", Name: "edit_file", Input: json.RawMessage(input)}, 1)
 	wb.ToggleFold(0)
@@ -107,25 +107,21 @@ func TestToolFragmentMidColorWrap(t *testing.T) {
 	wb.SetViewportPosition(4, 10) // inside the wrapped diff input
 	frag := wb.GetAll(-1, false)
 
-	// The continuation rows must carry DiffRemove color — the exact SGR
-	// code from a DiffRemove-styled glyph must appear in the fragment.
-	removeCode := sgrCode(DefaultStyles().DiffRemove.Render("X"))
-	if !strings.Contains(frag, removeCode) {
-		t.Errorf("scrolled fragment lost the diff color code %q: %q", removeCode, frag)
-	}
+	// Tool content is plain: the wrapped diff rows carry no SGR codes.
+	// The box rule and EL erase at the fragment tail are UI chrome (the
+	// only ANSI present), so check the content region before them.
 	plain := stripANSI(frag)
 	if !strings.Contains(plain, strings.Repeat("X", 40)) {
 		t.Errorf("scrolled fragment should contain wrapped diff content, got %q", plain)
 	}
-}
-
-// sgrCode extracts the first SGR escape sequence ("\x1b[...m") from a
-// styled string.
-func sgrCode(styled string) string {
-	if i := strings.Index(styled, "\x1b["); i >= 0 {
-		if j := strings.Index(styled[i:], "m"); j >= 0 {
-			return styled[i : i+j+1]
-		}
+	head := frag
+	if i := strings.Index(frag, "\x1b["); i >= 0 {
+		head = frag[:i]
 	}
-	return ""
+	if strings.Contains(head, "\x1b") {
+		t.Errorf("wrapped diff rows must be plain text, got %q", frag)
+	}
+	if !strings.Contains(stripANSI(head), strings.Repeat("X", 40)) {
+		t.Errorf("content region should hold the wrapped diff rows, got %q", head)
+	}
 }

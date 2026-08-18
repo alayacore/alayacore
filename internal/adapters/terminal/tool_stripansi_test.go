@@ -171,8 +171,6 @@ func TestPrepareContent_WithANSI(t *testing.T) {
 }
 
 func TestColorizeTool_WithANSI(t *testing.T) {
-	styles := DefaultStyles()
-
 	tests := []struct {
 		name  string
 		input string
@@ -195,10 +193,9 @@ func TestColorizeTool_WithANSI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Prepare content first, then render through the tool input path.
 			prepared := prepareContent(tt.input)
-			result := defaultToolRender(prepared, "execute_command", styles, 0)
-			// Check that the result contains the expected text
-			// Result will have lipgloss ANSI styling, which is intentional
-			// Strip all ANSI from result to check plain text
+			result := defaultToolRender(prepared, "execute_command", 0)
+			// Check that the result contains the expected text. Tool
+			// content renders as plain text (no ANSI styling).
 			stripped := stripANSI(result)
 			if !strings.Contains(stripped, tt.contains) {
 				t.Errorf("defaultToolRender(%q) = %q, should contain %q", tt.input, result, tt.contains)

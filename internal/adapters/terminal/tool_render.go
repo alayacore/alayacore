@@ -41,14 +41,19 @@ func (s ToolStatus) statusDot(styles *Styles) (string, Style) {
 // ============================================================================
 
 // RenderDiffContent renders a diff window from its raw Content.
-// The Content already has `- `, `+ `, `  ` prefixes - we just apply colors.
-// The first line ("tool_name: args") is rendered as the bare argument
-// line (no status indicator, no tool-name prefix — both live in the
-// header line). innerWidth controls line wrapping; pass 0 to disable.
-// Wraps per-line to preserve diff coloring on wrapped continuations.
-func RenderDiffContent(content string, styles *Styles, innerWidth int) string {
+// The Content already has `- `, `+ `, `  ` prefixes. Content is plain
+// (no color, no bold); the first line ("tool_name: args") is rendered as
+// the bare argument line (no status indicator, no tool-name prefix — both
+// live in the header line). innerWidth controls line wrapping; pass 0 to
+// disable. Wraps per-line.
+func RenderDiffContent(content, name string, innerWidth int) string {
 	// Prepare content: strip ANSI and expand tabs before processing
 	content = prepareContent(content)
+	if name != "" {
+		if stripped, ok := strings.CutPrefix(content, name+":"); ok {
+			content = strings.TrimSpace(stripped)
+		}
+	}
 
 	lines := strings.Split(content, "\n")
 	if len(lines) == 0 {
@@ -58,36 +63,25 @@ func RenderDiffContent(content string, styles *Styles, innerWidth int) string {
 	result := make([]string, 0, len(lines))
 	for i, line := range lines {
 		if i == 0 {
-			// Header line: "tool_name: args" → show args only, muted.
+			// Header line: "tool_name: args" → show args only, plain.
 			if colon := strings.Index(line, ":"); colon >= 0 {
 				line = strings.TrimSpace(line[colon+1:])
 			}
-			header := styles.ToolContent.Render(line)
 			if innerWidth > 0 {
-				header = wrapContent(header, innerWidth)
+				line = wrapContent(line, innerWidth)
 			}
-			result = append(result, header)
+			result = append(result, line)
 			continue
 		}
 		if line == "" {
 			continue
 		}
 
-		// Apply color based on prefix
-		var styled string
-		switch {
-		case strings.HasPrefix(line, "- "):
-			styled = styles.DiffRemove.Render(line)
-		case strings.HasPrefix(line, "+ "):
-			styled = styles.DiffAdd.Render(line)
-		default:
-			// Unchanged line (starts with "  ") or anything else
-			styled = styles.Text.Render(line)
-		}
+		// Plain text (diff +/- markers stay as-is, no color).
 		if innerWidth > 0 {
-			styled = wrapContent(styled, innerWidth)
+			line = wrapContent(line, innerWidth)
 		}
-		result = append(result, styled)
+		result = append(result, line)
 	}
 
 	return strings.Join(result, "\n")

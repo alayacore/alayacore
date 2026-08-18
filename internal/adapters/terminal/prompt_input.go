@@ -111,12 +111,12 @@ func (m PromptInput) updateInputStyles() InputField {
 	return m.input.WithStyles(
 		inputFieldStyle{
 			Prompt:      NewStyle().Foreground(promptColor).Bold(true),
-			Text:        NewStyle().Bold(true),
+			Text:        NewStyle(),
 			Placeholder: NewStyle().Foreground(m.styles.ColorMuted),
 		},
 		inputFieldStyle{
 			Prompt:      NewStyle().Foreground(m.styles.ColorDim).Bold(true),
-			Text:        NewStyle().Foreground(m.styles.ColorDim).Bold(true),
+			Text:        NewStyle().Foreground(m.styles.ColorDim),
 			Placeholder: NewStyle().Foreground(m.styles.ColorDim),
 		},
 	)

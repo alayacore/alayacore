@@ -362,7 +362,7 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 				textBlock.WriteString(styles.System.Render(Separator))
 				textBlock.WriteString("\n")
 			}
-			textBlock.WriteString(styleMultiline(trimmed, styles.UserInput))
+			textBlock.WriteString(trimmed) // user text is plain (no bold/color)
 			firstText = false
 		}
 
@@ -460,7 +460,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 			// Uf preview snapshot — single line, truncated.
 			output = p
 		}
-		styled := styleMultiline(prepareContent(output), styles.Text)
+		styled := prepareContent(output)
 		if innerWidth > 0 {
 			styled = wrapContent(styled, innerWidth)
 		}
@@ -471,24 +471,26 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 	// Input: streaming delta preview (truncated JSON) or the full input.
 	// Neither carries the status indicator nor the "name: " prefix — the
 	// status dot lives in the header line (TOOL•) and the tool name is
-	// shown there too.
+	// shown there too. Content is plain (no color, no bold); only the
+	// "---" separator keeps its muted color.
 	var call string
 	if r.deltaBuffer != "" {
 		// Arguments still streaming in — one-line truncated preview.
 		deltaContent := flattenDelta(r.deltaBuffer)
 		deltaContent = truncateWithSuffix(deltaContent, max(0, innerWidth))
-		call = styles.ToolContent.Render(deltaContent)
+		call = deltaContent
 	} else {
 		switch r.name {
 		case "edit_file", "write_file":
-			call = RenderDiffContent(r.input, styles, innerWidth)
+			call = RenderDiffContent(r.input, r.name, innerWidth)
 		default:
-			call = defaultToolRender(r.input, r.name, styles, innerWidth)
+			call = defaultToolRender(r.input, r.name, innerWidth)
 		}
 	}
 
 	// Append output with a "---" separator — uniform across all tools
 	// (parameters/results divider; edit_file and write_file included).
+	// Output is plain text; the separator keeps its muted color.
 	if r.output != "" {
 		output := r.output
 		if p := r.previewOutput(innerWidth, 0); p != "" {
@@ -496,7 +498,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]string, 
 			output = p
 		}
 		sep := styles.System.Render(Separator)
-		styled := styleMultiline(prepareContent(output), styles.Text)
+		styled := prepareContent(output)
 		if innerWidth > 0 {
 			styled = wrapContent(styled, innerWidth)
 		}
@@ -603,14 +605,13 @@ func (r *toolRenderer) previewOutput(innerWidth, usedWidth int) string {
 // defaultToolRender renders a tool call's input as a muted argument block:
 // no status indicator (it lives in the header line's TOOL•) and no
 // "name: " prefix (the tool name lives in the header line too).
-func defaultToolRender(input, name string, styles *Styles, innerWidth int) string {
+func defaultToolRender(input, name string, innerWidth int) string {
 	content := prepareContent(input)
 	if name != "" {
 		if stripped, ok := strings.CutPrefix(content, name+":"); ok {
 			content = strings.TrimSpace(stripped)
 		}
 	}
-	content = styleMultiline(content, styles.ToolContent)
 	if innerWidth > 0 {
 		content = wrapContent(content, innerWidth)
 	}

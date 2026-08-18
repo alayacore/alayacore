@@ -92,16 +92,16 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 		shouldHaveColor bool // Should the rendered output contain ANSI codes?
 	}{
 		{
-			name:            "tool call gets styled",
+			name:            "tool call is plain text",
 			tag:             tlv.TagAssistantF,
 			content:         "execute_command: echo test",
-			shouldHaveColor: true,
+			shouldHaveColor: false, // tool args render as plain text
 		},
 		{
-			name:            "tool result gets styled",
+			name:            "tool result is plain text",
 			tag:             tlv.TagUserF,
 			content:         "output text",
-			shouldHaveColor: true,
+			shouldHaveColor: false, // tool output renders as plain text
 		},
 		{
 			name:            "text assistant is plain text",
@@ -152,24 +152,26 @@ func containsANSI(s string) bool {
 
 // TestWindow_DiffContentWithANSI verifies that edit_file windows handle ANSI
 func TestWindow_DiffContentWithANSI(t *testing.T) {
-	styles := DefaultStyles()
-
 	// Use actual escape characters (not literal \x1b)
 	oldLine := "\x1b[31mold line\x1b[0m"
 	newLine := "\x1b[32mnew line\x1b[0m"
 	content := "edit_file: /tmp/test.txt\n- " + oldLine + "\n+ " + newLine + "\n  unchanged"
 
-	result := RenderDiffContent(content, styles, 0)
+	result := RenderDiffContent(content, "edit_file", 0)
 
-	// Strip lipgloss ANSI to check the actual text
+	// Strip the output's ANSI (input ANSI is stripped by prepareContent;
+	// the rendered content is plain) to check the actual text.
 	resultStripped := stripANSI(result)
 
-	// Should contain the text without the embedded ANSI from input
-	// (lipgloss will add its own diff colors); the first line shows the
-	// bare argument (no status dot, no tool-name prefix).
+	// Should contain the text without the embedded ANSI from input; the
+	// first line shows the bare argument (no status dot, no tool-name
+	// prefix). No diff colors are applied — content is plain.
 	expected := "/tmp/test.txt\n- old line\n+ new line\n  unchanged"
 
 	if resultStripped != expected {
 		t.Errorf("DiffContent:\n  got:  %q\n  want: %q", resultStripped, expected)
+	}
+	if strings.Contains(result, "\x1b[") {
+		t.Errorf("DiffContent must be plain text (no colors), got %q", result)
 	}
 }
