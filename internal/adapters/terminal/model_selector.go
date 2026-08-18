@@ -255,7 +255,8 @@ func (ms ModelSelector) renderList() string {
 
 	if ms.activeModel != nil {
 		sb.WriteString(ms.Styles.System.Render("Current: "))
-		sb.WriteString(ms.Styles.Text.Render(ms.activeModel.Name))
+		name := truncateWithSuffix(ms.activeModel.Name, max(0, ms.Width-Width("Current: ")))
+		sb.WriteString(ms.Styles.Text.Render(name))
 		sb.WriteString("\n")
 	}
 
@@ -271,7 +272,7 @@ func (ms ModelSelector) renderList() string {
 		help = "  tab: search │ j/k: navigate │ ctrl+r: reload │ enter: select │ q/esc: close"
 	}
 	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render(fmt.Sprintf("%-*s", boxWidth, help)))
+	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))
 
 	return sb.String()
 }

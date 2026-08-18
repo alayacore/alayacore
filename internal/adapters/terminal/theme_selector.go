@@ -267,7 +267,8 @@ func (ts ThemeSelector) renderList() string {
 	sb.WriteString("\n")
 
 	sb.WriteString(ts.Styles.System.Render("Current: "))
-	sb.WriteString(ts.Styles.Text.Render(ts.originalThemeName))
+	themeName := truncateWithSuffix(ts.originalThemeName, max(0, ts.Width-Width("Current: ")))
+	sb.WriteString(ts.Styles.Text.Render(themeName))
 	sb.WriteString("\n")
 
 	listBorderColor := ts.ListBorderColor()
@@ -281,7 +282,7 @@ func (ts ThemeSelector) renderList() string {
 		help = "  tab: search │ j/k: navigate │ enter: select │ q/esc: close"
 	}
 	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render(fmt.Sprintf("%-*s", ts.Width, help)))
+	sb.WriteString(renderHelpBar(helpStyle, help, ts.Width))
 
 	return sb.String()
 }

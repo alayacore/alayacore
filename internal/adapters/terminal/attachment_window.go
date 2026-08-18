@@ -532,7 +532,7 @@ func (aw AttachmentWindow) render() string {
 		help = "  tab: search | j/k: navigate | enter: add file | enter on dir: browse | ctrl+a: switch to URL | esc: close"
 	}
 	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render(fmt.Sprintf("%-*s", boxWidth, help)))
+	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))
 
 	return sb.String()
 }

@@ -405,7 +405,7 @@ func (hw HelpWindow) View() View {
 		base += " │ q/esc: close"
 		help = "  " + base
 	}
-	helpBar := helpStyle.Render(fmt.Sprintf("%-*s", hw.Width, help))
+	helpBar := renderHelpBar(helpStyle, help, hw.Width)
 
 	countStr := fmt.Sprintf("%d items", hw.filteredLen())
 	infoLine := hw.Styles.System.Render(countStr)

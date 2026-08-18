@@ -63,6 +63,21 @@ func renderOverlay(baseContent string, box string, screenWidth, screenHeight int
 	return sb.String()
 }
 
+// renderHelpBar renders an overlay's bottom help bar: the text is
+// truncated to the box width and padded by DISPLAY width so the bar
+// fills the box exactly. An overflowing help row would widen the
+// measured box (renderOverlay derives the box width from the widest
+// row) and shift the whole overlay horizontally — which is exactly what
+// happened when Tab toggled between the short input help and the longer
+// list help (the Tab-focus flicker).
+func renderHelpBar(helpStyle Style, help string, boxWidth int) string {
+	help = truncateWithSuffix(help, max(0, boxWidth))
+	if w := ansi.StringWidth(help); w < boxWidth {
+		help += strings.Repeat(" ", boxWidth-w)
+	}
+	return helpStyle.Render(help)
+}
+
 // overlayOrigin returns the top-left screen position of an overlay box:
 // centered horizontally, bottom edge aligned at 60% down the terminal.
 // Mirrors renderOverlay's geometry so cursor positioning stays in sync with
