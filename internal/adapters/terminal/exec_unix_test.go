@@ -17,8 +17,8 @@ func TestProgramInputParksWhileSuspended(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pr.Close() //nolint:errcheck
-	defer pw.Close() //nolint:errcheck
+	defer pr.Close() //nolint:errcheck // cleanup-only close on a pipe
+	defer pw.Close() //nolint:errcheck // cleanup-only close on a pipe
 
 	p := &Program{
 		tty:      &TTY{in: pr, out: pr},
@@ -52,7 +52,7 @@ func TestProgramInputParksWhileSuspended(t *testing.T) {
 	select {
 	case msg := <-p.msgs:
 		t.Fatalf("msg delivered while parked: %#v", msg)
-	case <-time.After(200 * time.Millisecond): //nolint:mnd
+	case <-time.After(200 * time.Millisecond):
 	}
 
 	// After resume the buffered byte is delivered.

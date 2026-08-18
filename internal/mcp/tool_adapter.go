@@ -179,8 +179,6 @@ func executeMCPTool(ctx context.Context, manager *Manager, serverName, toolName 
 
 // convertToolContent converts a single MCP ToolContent to an AlayaCore ContentPart.
 // Returns nil if the content cannot be converted.
-//
-//nolint:gocyclo // content type dispatch is inherently a switch; each case is simple.
 func convertToolContent(content ToolContent, serverName string) llm.ContentPart {
 	switch content.Type {
 	case "text":

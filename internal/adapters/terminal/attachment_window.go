@@ -164,7 +164,7 @@ func (aw AttachmentWindow) Update(msg Msg) (AttachmentWindow, Cmd) {
 	return aw, nil
 }
 
-//nolint:gocyclo
+//nolint:gocyclo // key dispatch over local/URL/autocomplete modes; each case is simple
 func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
 	if aw.State == FilteredListClosed {
 		return aw, nil

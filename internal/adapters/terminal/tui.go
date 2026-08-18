@@ -414,7 +414,7 @@ func (m Terminal) loadSessionCmd() Cmd {
 //  5. Focus/Blur - application focus changes
 //  6. Paste - clipboard paste
 //
-//nolint:gocyclo
+//nolint:gocyclo // message dispatch over many Msg types; each case is a simple handler call
 func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	// Sync display dim state at the start of every update cycle.
 	m.display = m.display.WithBlocked(m.isBlocked())

@@ -135,7 +135,7 @@ func (ts ThemeSelector) View() View {
 
 // --- Key Handling ---
 
-//nolint:gocyclo
+//nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
 func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
 	if ts.State == FilteredListClosed {
 		return ts, nil

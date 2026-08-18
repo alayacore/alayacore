@@ -108,7 +108,7 @@ func (c *Client) MarkStale(reason string) {
 
 // Connect establishes the transport and performs MCP initialization.
 //
-//nolint:gocyclo
+//nolint:gocyclo // transport setup branches over adapter versions and init status
 func (c *Client) Connect(ctx context.Context) error {
 	if !c.state.CompareAndSwap(int32(StateDisconnected), int32(StateConnecting)) {
 		return fmt.Errorf("already connecting")

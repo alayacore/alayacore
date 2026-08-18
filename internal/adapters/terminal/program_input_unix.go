@@ -28,7 +28,7 @@ func (p *Program) readInput(ctxDone <-chan struct{}) {
 
 		// Poll with a short timeout: lets the loop re-check the pause flag
 		// (and ctxDone) without blocking in a read for long.
-		n, err := unix.Poll(fds, 100) //nolint:mnd // poll timeout in ms
+		n, err := unix.Poll(fds, 100) // poll timeout in ms
 		if err != nil {
 			if err == unix.EINTR {
 				continue

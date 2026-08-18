@@ -647,7 +647,8 @@ func colorHex(c color.Color) (string, bool) {
 // encodeCursorStyle returns the DECSCUSR parameter for the given cursor
 // shape and blink state (same mapping as bubbletea's renderer).
 func encodeCursorStyle(shape CursorShape, blink bool) int {
-	style := (int(shape) * 2) + 1 //nolint:mnd
+	// DECSCUSR parameter: (shape*2)+1, +1 more when steady (non-blink).
+	style := (int(shape) * 2) + 1
 	if !blink {
 		style++
 	}

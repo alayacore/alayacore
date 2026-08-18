@@ -67,7 +67,7 @@ func TestDetectEnvOverride(t *testing.T) {
 
 // detectForTest is a test helper that calls Detect() and guarantees a non-nil
 // result, satisfying staticcheck's SA5011 analysis.
-func detectForTest(t *testing.T) *Shell { //nolint:thelper // used only in this package
+func detectForTest(t *testing.T) *Shell {
 	t.Helper()
 	s := Detect()
 	if s == nil {

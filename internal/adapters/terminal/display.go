@@ -50,7 +50,7 @@ func (m DisplayModel) Init() Cmd { return nil }
 // Only pure display operations are handled here; cross-component actions
 // (e.g. switching focus, opening editor) are handled by Terminal.
 //
-//nolint:gocyclo
+//nolint:gocyclo // key dispatch over many shortcuts; each case is a simple navigation call
 func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
 	keyMsg, ok := msg.(KeyMsg)
 	if !ok {

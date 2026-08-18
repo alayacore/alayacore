@@ -435,7 +435,6 @@ func (m Terminal) handleConfirmResult(r *ConfirmResult) (Terminal, Cmd) {
 	return m, nil
 }
 
-//nolint:gocyclo
 func (m Terminal) handleDisplayKeys(msg KeyMsg) (Terminal, Cmd) {
 	var cmd Cmd
 	m.display, cmd = m.display.Update(msg)

@@ -221,7 +221,7 @@ func (hw HelpWindow) filteredLen() int {
 	return len(hw.filteredItems)
 }
 
-//nolint:gocyclo
+//nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
 func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
 	keyMsg, ok := msg.(KeyMsg)
 	if !ok {

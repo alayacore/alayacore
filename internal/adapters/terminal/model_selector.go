@@ -137,7 +137,7 @@ func (ms ModelSelector) Open() ModelSelector {
 
 // --- Key Handling ---
 
-//nolint:gocyclo
+//nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
 func (ms ModelSelector) Update(msg Msg) (ModelSelector, Cmd) {
 	if ms.State == FilteredListClosed {
 		return ms, nil

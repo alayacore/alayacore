@@ -41,7 +41,7 @@ func Wrap(s string, width int, breakpoints string) string {
 	var buf bytes.Buffer
 	s = ansi.Wrap(s, width, breakpoints)
 	w := NewWrapWriter(&buf)
-	defer w.Close() //nolint:errcheck
+	defer w.Close() //nolint:errcheck // Close only flushes the style reset; errors are impossible for a bytes.Buffer
 	_, _ = io.WriteString(w, s)
 	return buf.String()
 }
@@ -177,7 +177,7 @@ func (s penStyle) String() string {
 	}
 
 	var b ansi.Style
-	if s.Attrs != 0 { //nolint:nestif
+	if s.Attrs != 0 {
 		if s.Attrs&penBold != 0 {
 			b = b.Bold()
 		}

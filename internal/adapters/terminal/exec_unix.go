@@ -37,7 +37,7 @@ func (p *Program) pauseInput() {
 	p.inputPaused.Store(true)
 	select {
 	case <-p.parkedCh:
-	case <-time.After(500 * time.Millisecond): //nolint:mnd // read-loop ack timeout
+	case <-time.After(500 * time.Millisecond): // read-loop ack timeout
 	}
 }
 
