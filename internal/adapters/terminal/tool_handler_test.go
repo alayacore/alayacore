@@ -16,6 +16,29 @@ func TestGenericHandler_FormatCall_WithArgs(t *testing.T) {
 	}
 }
 
+// TestGenericHandlerCompactsPrettyJSON verifies pretty-printed JSON
+// arguments (hard newlines inside the payload) are compacted to a single
+// line — otherwise the parameter shows hard line breaks mid-parameter and
+// copying yields newlines in the middle of the tool call.
+func TestGenericHandlerCompactsPrettyJSON(t *testing.T) {
+	h := &GenericHandler{name: "custom_tool"}
+
+	pretty := []byte("{\n  \"command\": \"ls\",\n  \"path\": \"/tmp\"\n}")
+	got := h.FormatCall(pretty)
+	want := "custom_tool: {\"command\":\"ls\",\"path\":\"/tmp\"}\n"
+	if got != want {
+		t.Errorf("FormatCall(pretty) = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "\n") && got != want {
+		t.Errorf("FormatCall output contains unexpected newlines: %q", got)
+	}
+
+	// Non-JSON input (defensive fallback) passes through unchanged.
+	if got := h.FormatCall([]byte("plain text")); got != "custom_tool: plain text\n" {
+		t.Errorf("FormatCall(non-JSON) = %q", got)
+	}
+}
+
 // TestComputeDiff verifies the LCS diff marks insertions, deletions, and
 // unchanged lines correctly.
 func TestComputeDiff(t *testing.T) {

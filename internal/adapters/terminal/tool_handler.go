@@ -4,6 +4,7 @@ package terminal
 // Each tool has a handler that knows how to format its display.
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -28,6 +29,14 @@ type GenericHandler struct {
 }
 
 func (h *GenericHandler) FormatCall(input json.RawMessage) string {
+	// The model's arguments are JSON; compact them to a single line so a
+	// pretty-printed payload (hard newlines inside the JSON) does not show
+	// line breaks mid-parameter and soft-wrap copy stays clean. Non-JSON
+	// input (defensive fallback) passes through unchanged.
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, input); err == nil {
+		input = buf.Bytes()
+	}
 	// Add newline at end so output starts on new line
 	return fmt.Sprintf("%s: %s\n", h.name, string(input))
 }
