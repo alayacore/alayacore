@@ -31,6 +31,12 @@ type WindowBuffer struct {
 	styles      *Styles
 	borderStyle Style
 
+	// markdownDefault is the initial markdown rendering state for new
+	// assistant text windows (AT/AR). Defaults to on (markdown rendered);
+	// --no-markdown sets it false. Per-window toggling with 'r' is
+	// unaffected.
+	markdownDefault bool
+
 	// Line height tracking (for cursor navigation)
 	lineHeights []int
 	totalLines  int
@@ -51,14 +57,23 @@ const (
 // NewWindowBuffer creates a new window buffer with given width and styles.
 func NewWindowBuffer(width int, styles *Styles) *WindowBuffer {
 	return &WindowBuffer{
-		windows:     []*Window{},
-		idIndex:     make(map[string]int),
-		width:       width,
-		styles:      styles,
-		borderStyle: NewStyle().Foreground(styles.ColorDim),
-		lineHeights: []int{},
-		dirtyIndex:  dirtyClean,
+		windows:         []*Window{},
+		idIndex:         make(map[string]int),
+		width:           width,
+		styles:          styles,
+		borderStyle:     NewStyle().Foreground(styles.ColorDim),
+		lineHeights:     []int{},
+		dirtyIndex:      dirtyClean,
+		markdownDefault: true, // markdown table rendering on by default
 	}
+}
+
+// SetMarkdownDefault sets the initial markdown rendering state for new
+// assistant text windows (AT/AR). Existing windows are unaffected.
+func (wb *WindowBuffer) SetMarkdownDefault(on bool) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	wb.markdownDefault = on
 }
 
 // SetWidth updates the window width (called on terminal resize).
@@ -122,7 +137,8 @@ func (wb *WindowBuffer) AppendOrUpdate(tag string, id string, content string) in
 	w.HistoryID = historyID
 	w.Folded = folded
 	w.Visible = hasVisibleContent(content)
-	w.AppendContent(content) // set initial content via renderer
+	w.SetMarkdownDefault(wb.markdownDefault) // AT/AR: default rendering mode
+	w.AppendContent(content)                 // set initial content via renderer
 
 	wb.windows = append(wb.windows, w)
 	idx := len(wb.windows) - 1
@@ -394,6 +410,23 @@ func (wb *WindowBuffer) ToggleFold(windowIndex int) bool {
 		return false
 	}
 	wb.windows[windowIndex].Folded = !wb.windows[windowIndex].Folded
+	wb.markDirty(windowIndex)
+	return true
+}
+
+// ToggleMarkdownMode toggles markdown table rendering for the window at
+// the given index. No-op for windows that don't render markdown
+// (user prompts, tools, system messages). Returns true when toggled.
+func (wb *WindowBuffer) ToggleMarkdownMode(windowIndex int) bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+
+	if windowIndex < 0 || windowIndex >= len(wb.windows) {
+		return false
+	}
+	if !wb.windows[windowIndex].ToggleMarkdownMode() {
+		return false
+	}
 	wb.markDirty(windowIndex)
 	return true
 }

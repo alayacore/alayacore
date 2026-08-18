@@ -356,6 +356,13 @@ func NewTerminalWithTheme(
 	m = m.updateComponentSizes(initialWidth, initialHeight)
 	m = m.updateDisplayHeight()
 
+	// Apply the CLI default for markdown table rendering to new assistant
+	// text windows (--no-markdown turns it off; per-window 'r' toggling
+	// is unaffected). Tests pass a nil appCfg — keep the built-in default.
+	if appCfg != nil && appCfg.Cfg != nil {
+		out.WindowBuffer().SetMarkdownDefault(!appCfg.Cfg.NoMarkdown)
+	}
+
 	return m
 }
 

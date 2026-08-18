@@ -43,6 +43,7 @@ architecture.
 | `Ctrl+A` | Open attachment picker for multi-modal input |
 | `:` | Switch to input with `:` prefix (command mode) |
 | `Space` | Toggle window fold (expand/collapse) |
+| `r` | Toggle markdown table rendering (unfolded assistant text/reasoning) |
 
 ### Input Cursor & IME
 
@@ -168,6 +169,7 @@ scrolls the viewport. While auto-follow is active:
 | `Ctrl+U` | Scroll up half screen | ✅ Always |
 | `e` | Open in editor | ✅ Always |
 | `Space` | Toggle window fold | ❌ Never |
+| `r` | Toggle markdown table rendering | ❌ Never |
 | `Tab` | Toggle focus | ❌ Never |
 
 ### Fold Mode
@@ -175,6 +177,16 @@ scrolls the viewport. While auto-follow is active:
 Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOLUSE` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `NOTIFY` for system notifications, or `ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOLUSE` + indicator followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
 
 An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrow glyphs themselves are theme-configurable (`fold_arrow` / `unfold_arrow`). See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
+
+### Markdown Tables
+
+Markdown table rendering is **on by default** for assistant text (`ASSISTANT`) and reasoning (`REASONING`) windows; `--no-markdown` turns the default off (new windows start raw). Press `r` on an **unfolded** window to toggle between rendered and raw per window; the setting is independent per window and applies only when expanded — folded windows keep their raw one-line summary.
+
+When enabled, GFM-style tables (a `|`-delimited header row followed by a delimiter row of dashes) are re-rendered as aligned, padded columns — e.g. `| name | gender | age |` becomes `| name            | gender | age |`. Tables inside fenced code blocks are never transformed. Column alignment markers (`:---`, `---:`, `:---:`) are honored.
+
+When a table is wider than the terminal, the widest columns are shrunk first and over-long cells are truncated with `…` so the table keeps its structure.
+
+Streaming stays incremental: deltas without table rows append through the same O(delta) wrap path as raw mode (benchmarked at raw-mode speed with identical allocations), and only deltas that touch a table — a `|` line, or any delta while the content tail is still inside an open table — trigger a full re-render of that window (one per tick, cost O(window) only for table-bearing windows).
 
 ### Virtual Scrolling
 

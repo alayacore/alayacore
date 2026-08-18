@@ -118,6 +118,18 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
 		m, _ = m.ToggleWindowFold()
 		return m.EnsureCursorVisible().updateContent(), nil
 
+	case keyR:
+		// Toggle markdown table rendering — only effective on an
+		// UNFOLDED plain-text window (assistant text / reasoning).
+		w := m.windowBuffer.WindowAt(m.windowCursor)
+		if w == nil || w.Folded {
+			return m, nil
+		}
+		if m.windowBuffer.ToggleMarkdownMode(m.windowCursor) {
+			return m.EnsureCursorVisible().updateContent(), nil
+		}
+		return m, nil
+
 	case keyF:
 		m, _ = m.MoveWindowCursorToNextUserPrompt()
 		return m.ScrollCursorToTop().updateContent(), nil

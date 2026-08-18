@@ -26,11 +26,16 @@ All optimizations are working correctly:
 During streaming, every `AppendFromTLV` call on a `textRenderer`:
 
 1. Appends the delta to `contentParts` (O(1) for eventual consistency)
-2. Wraps the delta as **plain text** via `appendDeltaToLines` — streaming
-   content deliberately carries no styling (markdown rendering is a future
-   concern), so the incremental path has no ANSI handling and no style state
-3. Updates `wrappedLines` **incrementally** — only the new text is wrapped and appended
-4. `TryLineCount` returns `len(wrappedLines) + 3` immediately — no render needed
+2. In **markdown mode** (the default for AT/AR), plain deltas — no `|`
+   line and content tail not inside an open table — take the same
+   incremental path; deltas that touch a table invalidate the cache and
+   fall back to a full re-render (the table transform re-pads columns)
+3. Wraps the delta as **plain text** via `appendDeltaToLines` — streaming
+   content deliberately carries no styling (markdown table rendering is
+   plain text too), so the incremental path has no ANSI handling and no
+   style state
+4. Updates `wrappedLines` **incrementally** — only the new text is wrapped and appended
+5. `TryLineCount` returns `len(wrappedLines) + 3` immediately — no render needed
    (+2 box rules, +1 header line of the expanded form)
 
 This means line tracking during streaming is **always fast**, not just on cache hits:
@@ -43,6 +48,11 @@ TryLineCount → len(wrappedLines) + 3  (~1.1μs via ensureLineHeights, no full 
 A dedicated assertion test (`TestIncrementalPathIsUsed`) verifies that
 `TryLineCount` returns a valid count after every delta append. If the
 incremental path breaks, this test fails immediately.
+
+Markdown mode keeps this property for ordinary text: only table-touching
+deltas re-render, and benchmarks show mdMode plain-text streaming within
+noise of raw mode (`BenchmarkMarkdownStreaming_PlainDeltas` vs
+`BenchmarkMarkdownStreaming_RawMode`; identical alloc counts).
 
 ### When Full Re-wrap Happens
 
@@ -248,11 +258,16 @@ so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 `textRenderer.AppendFromTLV` appends each delta as **plain text** to
 `appendDeltaToLines`, which only wraps the delta and appends it to the existing
 `wrappedLines` slice. This avoids re-wrapping the entire accumulated content,
-and because streaming content carries no styling (markdown rendering is a
-future concern), the incremental path never touches ANSI — no `styleByTag`,
+and because streaming content carries no styling (markdown table rendering is
+plain text too), the incremental path never touches ANSI — no `styleByTag`,
 no `WrapWriter` style reapplication, no style state to maintain. System
 messages (SN/SE) keep their colors via a full styled render, which is fine
 since they are single-frame, non-streaming windows.
+
+Markdown mode (default for AT/AR) gates this path: deltas with a `|` line,
+or arriving while the content tail is inside an open table, invalidate the
+wrapped-line cache and trigger a full re-render — column widths are a
+whole-table property, so only the table transform needs the full content.
 
 The old approach (before the `WindowRendering` interface refactoring) used the same
 optimization. It was accidentally dropped during the refactoring and restored in

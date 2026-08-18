@@ -109,7 +109,7 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 			name:            "text assistant is plain text",
 			tag:             tlv.TagAssistantT,
 			content:         "Hello world",
-			shouldHaveColor: false, // streaming content carries no styling (markdown is a future concern)
+			shouldHaveColor: false, // streaming content carries no styling (markdown tables are plain text too)
 		},
 		{
 			name:            "reasoning is plain text",

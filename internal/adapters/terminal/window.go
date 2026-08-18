@@ -283,6 +283,40 @@ func (w *Window) RawContent() string {
 	return ""
 }
 
+// ToggleMarkdownMode toggles markdown table rendering for plain-text
+// windows (assistant text AT / reasoning AR). Returns false for windows
+// that never render markdown (user prompts, tools, system messages).
+func (w *Window) ToggleMarkdownMode() bool {
+	tr, ok := w.renderer.(*textRenderer)
+	if !ok || !tr.plainContent() {
+		return false
+	}
+	tr.ToggleMarkdownMode()
+	w.border.valid = false
+	return true
+}
+
+// MarkdownMode reports whether the window renders markdown tables.
+func (w *Window) MarkdownMode() bool {
+	tr, ok := w.renderer.(*textRenderer)
+	if !ok || !tr.plainContent() {
+		return false
+	}
+	return tr.mdMode
+}
+
+// SetMarkdownDefault sets the initial markdown rendering state for
+// plain-text windows (assistant text AT / reasoning AR). No-op for other
+// window types. Existing state is overwritten (used at window creation).
+func (w *Window) SetMarkdownDefault(on bool) {
+	tr, ok := w.renderer.(*textRenderer)
+	if !ok || !tr.plainContent() {
+		return
+	}
+	tr.mdMode = on
+	w.border.valid = false
+}
+
 // RawStatus returns the tool status for testing.
 func (w *Window) RawStatus() ToolStatus {
 	if tr, ok := w.renderer.(*toolRenderer); ok {

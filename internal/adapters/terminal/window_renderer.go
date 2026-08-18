@@ -25,6 +25,13 @@ type textRenderer struct {
 	content      string   // full content (built from parts on demand)
 	contentLen   int      // cumulative length of all deltas
 	contentParts []string // streaming deltas (avoids O(n²) string concat)
+	mdMode       bool     // render markdown tables (toggled with 'r'; AT/AR only)
+
+	// mdTailInTable reports whether the accumulated content ends inside a
+	// table block (last line starts with '|' and no closing blank/text
+	// line yet). While true, any delta may re-pad already-rendered table
+	// rows, so the incremental path is unsafe. Only meaningful in mdMode.
+	mdTailInTable bool
 
 	// Cached wrapped lines for fast incremental update via
 	// appendDeltaToVisualLines. Populated by BuildInner, updated
@@ -45,12 +52,34 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	r.contentParts = append(r.contentParts, value)
 	r.contentLen += len(value)
 
+	// Markdown mode: plain deltas — no '|'-prefixed line and the content
+	// tail not inside an open table — go through the incremental wrap
+	// path, exactly like raw mode. Anything that could form, extend, or
+	// re-pad a table (a '|'-prefixed line, or any delta while the tail is
+	// still inside a table) falls back to a full re-render: column widths
+	// are a whole-table property, so the incremental path cannot re-pad
+	// already-rendered rows.
+	if r.mdMode {
+		switch {
+		case r.mdTailInTable || deltaHasPipeLine(value):
+			r.cacheValid = false
+			r.wrappedLines = nil
+		case len(r.wrappedLines) > 0 && r.cacheWidth > 0:
+			r.wrappedLines = appendDeltaToVisualLines(r.wrappedLines, stripANSI(value), r.cacheWidth)
+		default:
+			r.cacheValid = false
+		}
+		r.updateMDTail(value)
+		return
+	}
+
 	// Incremental update: append the delta to wrappedLines as PLAIN TEXT.
 	// This is only valid for windows that render plain (AT/AR — streaming
-	// content deliberately carries no styling; markdown rendering is a
-	// future concern). Styled windows (SN/SE) must fall through to a full
-	// re-style: appending plain text to styled wrappedLines would leave
-	// the delta tail without its System/Error color.
+	// content deliberately carries no styling; markdown table rendering
+	// is handled above and produces plain text too). Styled windows
+	// (SN/SE) must fall through to a full re-style: appending plain text
+	// to styled wrappedLines would leave the delta tail without its
+	// System/Error color.
 	if r.plainContent() && len(r.wrappedLines) > 0 && r.cacheWidth > 0 {
 		// stripANSI only (no expandTabs here): tabs are expanded per
 		// original line inside wrapVisualLines, so incremental and full
@@ -68,6 +97,36 @@ func (r *textRenderer) Invalidate() {
 	r.wrappedLines = nil
 }
 
+// updateMDTail updates the open-table tail state after appending a delta.
+// A delta WITHOUT '\n' merges into the last line: when that line is a
+// table row (mdTailInTable), the MERGED line still starts with '|' — e.g.
+// "| … | /run/user/" + "1 |" = "| … | /run/user/1 |" — so the tail stays
+// inside the table even though the delta's own text ("1 |") does not
+// start with '|'. Judging the delta in isolation here was the cause of
+// the df-output bug: a mid-cell token split ("/run/user/" + "1 |" +
+// "001 |") reset the state to false and the final delta was appended
+// incrementally onto the rendered table row.
+func (r *textRenderer) updateMDTail(value string) {
+	if r.mdTailInTable && !strings.Contains(value, "\n") {
+		return // merged into the table row; tail stays inside the table
+	}
+	r.mdTailInTable = hasPipePrefix(lastLine(value))
+}
+
+// ToggleMarkdownMode flips markdown table rendering and invalidates the
+// wrapped-line cache so the next BuildInner re-renders from scratch.
+// Returns the new state.
+func (r *textRenderer) ToggleMarkdownMode() bool {
+	r.mdMode = !r.mdMode
+	if r.mdMode {
+		// Re-derive the open-table tail state from the accumulated content
+		// so the first delta after toggling uses the right path.
+		r.mdTailInTable = hasPipePrefix(lastLine(r.rawContent()))
+	}
+	r.Invalidate()
+	return r.mdMode
+}
+
 // rawContent returns the full accumulated content for testing.
 func (r *textRenderer) rawContent() string {
 	if len(r.contentParts) > 0 {
@@ -83,19 +142,20 @@ func (r *textRenderer) rawContent() string {
 
 // plainContent returns true when this text window's content must render
 // without styling: assistant text and reasoning are streaming content and
-// deliberately carry no color/weight (markdown rendering is a future
-// concern). System messages (SN/SE) keep their System/Error colors.
+// deliberately carry no color/weight — markdown table rendering (mdMode)
+// also emits plain text, only re-arranging columns. System messages
+// (SN/SE) keep their System/Error colors.
 func (r *textRenderer) plainContent() bool {
 	return r.tag == tlv.TagAssistantT || r.tag == tlv.TagAssistantR
 }
 
 // BuildInner returns the inner content as visual lines.
-// For AT/AR this is PLAIN TEXT (no styling — markdown rendering is a
-// future concern), so only wrapping is applied. System messages (SN/SE)
-// keep their Error/System colors. Each returned line is one terminal
-// row (no '\n' inside) with a continuation mark: rows of the same
-// original line join without '\n' (soft wrap); rows starting a new
-// original line are separated by hard '\n'. lineCount includes the 2
+// For AT/AR this is PLAIN TEXT (no styling — markdown tables are padded
+// plain text when mdMode is on), so only wrapping is applied. System
+// messages (SN/SE) keep their Error/System colors. Each returned line is
+// one terminal row (no '\n' inside) with a continuation mark: rows of
+// the same original line join without '\n' (soft wrap); rows starting a
+// new original line are separated by hard '\n'. lineCount includes the 2
 // box rules (len(lines) + 2); Window.Render adds the header.
 func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
@@ -132,6 +192,14 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// stripANSI only — tabs are expanded per original line inside
 	// wrapVisualLines so the full path matches the incremental path.
 	content := stripANSI(r.content)
+	if r.mdMode {
+		// Markdown table transform (toggled with 'r'). Tabs inside table
+		// lines are expanded per original line by the parser itself, so
+		// column widths match what the terminal will render; the padded
+		// output contains no tabs, leaving wrapVisualLines' expandTabs a
+		// no-op. Fitted to innerWidth so rows never mid-cell soft-wrap.
+		content = renderMarkdownTables(content, innerWidth)
+	}
 	if !r.plainContent() && styles != nil {
 		switch r.tag {
 		case TagWindowSE:
@@ -160,8 +228,10 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 //
 // AT/AR: the label is styled (bold + muted) and the content summary is
 // muted — the collapsed header is UI chrome, while the expanded body
-// stays plain text (markdown rendering is a future concern). SN/SE:
-// label and content keep their System/Error colors.
+// stays plain text. The collapsed preview always shows the RAW content
+// tail (never the markdown table transform — the preview is one line and
+// markdown state only affects expanded rendering). SN/SE: label and
+// content keep their System/Error colors.
 func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	content := prepareContent(r.rawContent())
 	label := labelForTag(r.tag)
