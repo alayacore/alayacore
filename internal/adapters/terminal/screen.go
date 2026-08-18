@@ -586,8 +586,14 @@ func (s *Screen) Resize(width, height int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.width, s.height = width, height
-	// Content may be stale at the new size — force a full redraw.
+	// Content may be stale at the new size — force a full redraw. Reset
+	// the fill-mode flags too: the terminal still shows the pre-resize
+	// frame (rows reflowed/cut at the new size), so the next render must
+	// clear (ED2) rather than repaint over it without clearing — leaving
+	// the old bottom rows / row tails behind.
 	s.lastContent = ""
+	s.lastFullScreen = false
+	s.lastHadOverlay = false
 }
 
 // Size returns the terminal size in cells.
