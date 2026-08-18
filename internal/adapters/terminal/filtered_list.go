@@ -53,9 +53,19 @@ func (fl FilteredListCore) Close() FilteredListCore {
 	return fl
 }
 
-// WithSize updates the width and height of the filtered list.
+// WithSize updates the height of the filtered list. The box WIDTH is
+// FIXED per component (60/72, set in the constructor) — the terminal
+// width must never override it: a full-terminal-width box starts at
+// column 1, and its overlay rows then share row coordinates with the
+// base rows, which breaks the row-diff renderer (a base-row rewrite
+// wipes the overlay) and the centered layout. Only the list height
+// adapts to the terminal height; the filter input is sized to the box.
 func (fl FilteredListCore) WithSize(width, height int) FilteredListCore {
-	if width > 0 {
+	if fl.Width > 0 {
+		fl.FilterInput = fl.FilterInput.WithWidth(max(0, fl.Width-InputPaddingH))
+	} else if width > 0 {
+		// Constructor did not size the box (defensive): fall back to the
+		// terminal width.
 		fl.Width = width
 		fl.FilterInput = fl.FilterInput.WithWidth(max(0, width-InputPaddingH))
 	}

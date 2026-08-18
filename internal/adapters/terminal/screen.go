@@ -231,26 +231,30 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 }
 
 // frameRow is one row of a rendered frame at an absolute screen position:
-// the base rows are sequential from (0,0); overlay rows carry explicit CUP
-// coordinates. text is the row content verbatim (SGR and EL codes intact).
+// the base rows are sequential from (0,0) (base=true); overlay rows carry
+// explicit CUP coordinates (base=false). text is the row content verbatim
+// (SGR and EL codes intact).
 type frameRow struct {
 	row, col int
+	base     bool // true = sequential base row, false = CUP-positioned overlay row
 	text     string
 }
 
 // parseFrameRows splits raw frame content into positioned rows. Base rows
 // are the '\n'-separated lines drawn sequentially; CUP sequences
-// (ESC [ row ; col H) start a new row at an absolute position. All other
-// escape sequences (SGR, EL, …) are part of the row text.
+// (ESC [ row ; col H) start a new row at an absolute position (overlay).
+// All other escape sequences (SGR, EL, …) are part of the row text.
 //
 //nolint:gocyclo // byte-level CSI scanner (position jumps + text flushing)
 func parseFrameRows(content string) []frameRow {
 	var rows []frameRow
 	row, col := 0, 0
+	base := true
+	sawCUP := false
 	start := 0
 	flush := func(end int) {
 		if end > start {
-			rows = append(rows, frameRow{row: row, col: col, text: content[start:end]})
+			rows = append(rows, frameRow{row: row, col: col, base: base, text: content[start:end]})
 		}
 	}
 	i := 0
@@ -261,6 +265,9 @@ func parseFrameRows(content string) []frameRow {
 			start = i + 1
 			row++
 			col = 0
+			if sawCUP {
+				base = false
+			}
 			i++
 		case '\r':
 			col = 0
@@ -288,6 +295,8 @@ func parseFrameRows(content string) []frameRow {
 						c, _ := strconv.Atoi(parts[1])
 						row, col = r-1, c-1
 					}
+					sawCUP = true
+					base = false
 					i = j + 1
 					continue
 				}
@@ -301,13 +310,13 @@ func parseFrameRows(content string) []frameRow {
 	return rows
 }
 
-// lastBaseRow returns the last row drawn at column 0 (the base content's
+// lastBaseRow returns the last sequential base row (the base content's
 // final row — the status bar in full-screen frames).
 func lastBaseRow(rows []frameRow) (frameRow, bool) {
 	var last frameRow
 	found := false
 	for _, r := range rows {
-		if r.col == 0 {
+		if r.base {
 			last = r
 			found = true
 		}
@@ -318,22 +327,37 @@ func lastBaseRow(rows []frameRow) (frameRow, bool) {
 // diffFrameRows emits CUP + row for every row whose text changed or is
 // new, and clears (EL) overlay rows that disappeared. Base rows that
 // disappeared are handled by the caller's tail erase.
+//
+// Overlap rule: a base row that an overlay row covers in the new frame is
+// NEVER rewritten — the overlay is the top layer, and rewriting the base
+// underneath would wipe the overlay (this happens when the box is at
+// column 1, e.g. a full-width box or a terminal narrower than the box).
 func diffFrameRows(oldContent, newContent string) []byte {
 	oldRows := parseFrameRows(oldContent)
 	newRows := parseFrameRows(newContent)
 
-	oldMap := make(map[[2]int]string, len(oldRows))
+	key := func(r frameRow) [3]int { return [3]int{r.row, r.col, boolInt(r.base)} }
+	oldMap := make(map[[3]int]string, len(oldRows))
 	for _, r := range oldRows {
-		oldMap[[2]int{r.row, r.col}] = r.text
+		oldMap[key(r)] = r.text
 	}
-	newMap := make(map[[2]int]bool, len(newRows))
+	newMap := make(map[[3]int]bool, len(newRows))
+	coveredByOverlay := make(map[int]bool)
 	for _, r := range newRows {
-		newMap[[2]int{r.row, r.col}] = true
+		newMap[key(r)] = true
+		if !r.base {
+			coveredByOverlay[r.row] = true
+		}
 	}
 
 	var buf []byte
 	for _, r := range newRows {
-		if oldText, ok := oldMap[[2]int{r.row, r.col}]; !ok || oldText != r.text {
+		if r.base && coveredByOverlay[r.row] {
+			// Overlay covers this row in the new frame — do not rewrite
+			// the base underneath.
+			continue
+		}
+		if oldText, ok := oldMap[key(r)]; !ok || oldText != r.text {
 			buf = append(buf, ansi.CursorPosition(r.col+1, r.row+1)...)
 			buf = append(buf, r.text...)
 		}
@@ -342,12 +366,20 @@ func diffFrameRows(oldContent, newContent string) []byte {
 	// absolute (overlay) rows in place; base rows are handled by the tail
 	// erase (they are sequential from the top).
 	for _, r := range oldRows {
-		if r.col > 0 && !newMap[[2]int{r.row, r.col}] {
+		if !r.base && !newMap[key(r)] {
 			buf = append(buf, ansi.CursorPosition(r.col+1, r.row+1)...)
 			buf = append(buf, ansi.EraseLine(0)...)
 		}
 	}
 	return buf
+}
+
+// boolInt converts a bool to an int (0/1) for use in map keys.
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // needTailErase reports whether a steady non-overlay frame needs the

@@ -199,8 +199,12 @@ func TestHelpWindowWithSize(t *testing.T) {
 	hw := NewHelpWindow(styles)
 
 	hw = hw.WithSize(80, 30)
-	if hw.Width != 80 {
-		t.Errorf("Expected width 80, got %d", hw.Width)
+	// The overlay box width is FIXED per component (72 for the help
+	// window) — the terminal width must never override it (a full-width
+	// box starts at column 1 and breaks the centered layout and the
+	// row-diff renderer).
+	if hw.Width != 72 {
+		t.Errorf("Expected fixed width 72, got %d", hw.Width)
 	}
 	// SetSize clamps height to min(height-LayoutGap, SelectorMaxHeight)
 	if hw.Height != 30-4 {
