@@ -55,33 +55,12 @@ func newFilterInput(placeholder string) InputField {
 
 // --- Model Management ---
 
-func (ms ModelSelector) GetActiveModel() *protocol.ModelInfo {
-	if ms.activeModel == nil {
-		return nil
-	}
-	return &ms.activeModel.ModelInfo
-}
-
-func (ms ModelSelector) WithActiveModel(m *searchableModel) ModelSelector {
-	ms.activeModel = m
-	return ms
-}
-
 func (ms ModelSelector) GetModels() []protocol.ModelInfo {
 	result := make([]protocol.ModelInfo, len(ms.models))
 	for i := range ms.models {
 		result[i] = ms.models[i].ModelInfo
 	}
 	return result
-}
-
-func (ms ModelSelector) WithModels(models []searchableModel) ModelSelector {
-	ms.models = models
-	for i := range ms.models {
-		ms.models[i].searchStr = buildSearchStr(&ms.models[i])
-	}
-	ms.lastFilterValue = "\x00"
-	return ms.updateFilteredModels()
 }
 
 func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (ModelSelector, Cmd) {

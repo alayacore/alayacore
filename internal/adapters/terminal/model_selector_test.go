@@ -122,11 +122,11 @@ func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
 	ms := NewModelSelector(styles)
 
 	// Set up some test models
-	models := []searchableModel{
-		{ModelInfo: protocol.ModelInfo{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
-		{ModelInfo: protocol.ModelInfo{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"}},
+	models := []protocol.ModelInfo{
+		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
+		{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"},
 	}
-	ms = ms.WithModels(models)
+	ms, _ = ms.LoadModels(models, 0)
 	ms = ms.Open()
 
 	// Focus the search input first (simulates user pressing Tab to focus search)
@@ -167,11 +167,11 @@ func TestModelSelectorSetModelsUpdatesFilteredModels(t *testing.T) {
 	ms := NewModelSelector(styles)
 
 	// Set up initial models
-	models := []searchableModel{
-		{ModelInfo: protocol.ModelInfo{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
-		{ModelInfo: protocol.ModelInfo{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"}},
+	models := []protocol.ModelInfo{
+		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
+		{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"},
 	}
-	ms = ms.WithModels(models)
+	ms, _ = ms.LoadModels(models, 0)
 	ms = ms.Open()
 
 	// Verify filteredModels is set
@@ -193,12 +193,12 @@ func TestModelSelectorSetModelsUpdatesFilteredModels(t *testing.T) {
 
 	// Now set new models (simulating reload after editing config file)
 	// The search value is still "gpt", so without the fix, filteredModels wouldn't update
-	newModels := []searchableModel{
-		{ModelInfo: protocol.ModelInfo{Name: "OpenAI GPT-4o", ProtocolType: "openai", ModelName: "gpt-4o"}},
-		{ModelInfo: protocol.ModelInfo{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"}},
-		{ModelInfo: protocol.ModelInfo{Name: "Claude 3.5", ProtocolType: "anthropic", ModelName: "claude-3.5"}},
+	newModels := []protocol.ModelInfo{
+		{Name: "OpenAI GPT-4o", ProtocolType: "openai", ModelName: "gpt-4o"},
+		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
+		{Name: "Claude 3.5", ProtocolType: "anthropic", ModelName: "claude-3.5"},
 	}
-	ms = ms.WithModels(newModels)
+	ms, _ = ms.LoadModels(newModels, 0)
 
 	// After SetModels, filteredModels should be updated with the new models
 	// The search "gpt" should now match both GPT-4o and GPT-4
