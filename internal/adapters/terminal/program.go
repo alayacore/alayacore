@@ -62,6 +62,16 @@ type View struct {
 	// written verbatim so the terminal soft-wraps it natively.
 	Raw bool
 
+	// FullScreen marks content that soft-wraps to exactly the screen
+	// height (every row is padded to the terminal width, the viewport is
+	// padded with blank rows, and the input box + status bar fill the
+	// remaining rows). Such frames can be rendered by overwriting without
+	// clearing the screen first (ED2) — the full-width rows cover any
+	// previous content, eliminating the clear-then-redraw flicker. Views
+	// that do not fill the screen (loading, errors) leave it false and
+	// keep the clearing render path.
+	FullScreen bool
+
 	// ReportFocus enables focus reporting (FocusMsg/BlurMsg).
 	ReportFocus bool
 }
@@ -415,10 +425,11 @@ func (p *Program) render(model Model) {
 		p.lastView.Content == v.Content &&
 		cursorsEqual(p.lastView.Cursor, v.Cursor) &&
 		p.lastView.AltScreen == v.AltScreen &&
-		p.lastView.Raw == v.Raw {
+		p.lastView.Raw == v.Raw &&
+		p.lastView.FullScreen == v.FullScreen {
 		return
 	}
-	_ = p.screen.Render(v.Content, v.Cursor)
+	_ = p.screen.Render(v.Content, v.Cursor, v.FullScreen)
 	last := v
 	p.lastView = &last
 }

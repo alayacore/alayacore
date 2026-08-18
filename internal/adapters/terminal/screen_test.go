@@ -14,14 +14,14 @@ func TestScreenRenderRaw(t *testing.T) {
 	s := &Screen{out: &buf}
 
 	cur := NewCursor(3, 5)
-	err := s.Render("line1\nline2", cur)
+	err := s.Render("line1\nline2", cur, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	out := buf.String()
 	if !strings.HasPrefix(out, "\x1b[2J\x1b[H") {
-		t.Errorf("render should start with ED2+home, got %q", out[:min(len(out), 20)])
+		t.Errorf("non-full-screen render should start with ED2+home, got %q", out[:min(len(out), 20)])
 	}
 	if !strings.Contains(out, "line1\r\nline2") {
 		t.Errorf("render should emit CRLF for newlines (raw mode has no ONLCR), got %q", out)
@@ -37,12 +37,69 @@ func TestScreenRenderRaw(t *testing.T) {
 	}
 }
 
+// TestScreenRenderFullScreenNoClear locks the flicker-free overlay render
+// path: full-screen frames overwrite without ED2.
+func TestScreenRenderFullScreenNoClear(t *testing.T) {
+	var buf bytes.Buffer
+	s := &Screen{out: &buf}
+
+	if err := s.Render("row1\r\nrow2\r\n", nil, true); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "\x1b[2J") {
+		t.Errorf("full-screen render must not clear the screen (flicker), got %q", out)
+	}
+	if !strings.HasPrefix(out, "\x1b[H") {
+		t.Errorf("full-screen render should start at home, got %q", out)
+	}
+}
+
+// TestScreenRenderOverlayResidueCleanup locks the one-frame ED2 fallback:
+// a frame that previously drew CUP overlay rows but no longer does must
+// clear the residue.
+func TestScreenRenderOverlayResidueCleanup(t *testing.T) {
+	var buf bytes.Buffer
+	s := &Screen{out: &buf}
+
+	// Overlay frame: base + CUP-positioned rows.
+	overlayFrame := "base row\n\x1b[10;20Hoverlay row"
+	if err := s.Render(overlayFrame, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "\x1b[10;20H") {
+		t.Fatalf("overlay frame should contain CUP rows, got %q", buf.String())
+	}
+	first := buf.String()
+	if strings.Contains(first, "\x1b[2J") {
+		t.Fatalf("overlay frame itself should render without clearing, got %q", first)
+	}
+
+	// Next frame has no overlay rows — must clear once (ED2) to erase residue.
+	buf.Reset()
+	if err := s.Render("base row\n", nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "\x1b[2J") {
+		t.Errorf("frame after overlay must clear once for residue, got %q", buf.String())
+	}
+
+	// Subsequent frames without overlays go back to clear-free rendering.
+	buf.Reset()
+	if err := s.Render("base row\n", nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "\x1b[2J") {
+		t.Errorf("steady full-screen frames must not clear, got %q", buf.String())
+	}
+}
+
 // TestScreenRenderNoNewlinePassthrough verifies content without newlines is
 // written verbatim (no spurious CR).
 func TestScreenRenderNoNewlinePassthrough(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}
-	if err := s.Render("plain content", nil); err != nil {
+	if err := s.Render("plain content", nil, true); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buf.String(), "plain content") {
@@ -57,7 +114,7 @@ func TestScreenRenderNoNewlinePassthrough(t *testing.T) {
 func TestScreenRenderNoCursor(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}
-	if err := s.Render("content", nil); err != nil {
+	if err := s.Render("content", nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buf.String(), "\x1b[?25l") {
@@ -71,11 +128,11 @@ func TestScreenRenderSkipIdentical(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}
 	cur := NewCursor(0, 0)
-	if err := s.Render("same", cur); err != nil {
+	if err := s.Render("same", cur, true); err != nil {
 		t.Fatal(err)
 	}
 	first := buf.String()
-	if err := s.Render("same", cur); err != nil {
+	if err := s.Render("same", cur, true); err != nil {
 		t.Fatal(err)
 	}
 	if buf.String() != first {
@@ -83,11 +140,18 @@ func TestScreenRenderSkipIdentical(t *testing.T) {
 	}
 	// Cursor position change must re-render.
 	cur2 := NewCursor(1, 0)
-	if err := s.Render("same", cur2); err != nil {
+	if err := s.Render("same", cur2, true); err != nil {
 		t.Fatal(err)
 	}
 	if buf.String() == first {
 		t.Error("cursor position change should re-render")
+	}
+	// FullScreen mode change must re-render.
+	if err := s.Render("same", cur2, false); err != nil {
+		t.Fatal(err)
+	}
+	if buf.String() == first {
+		t.Error("FullScreen change should re-render")
 	}
 }
 
@@ -101,7 +165,7 @@ func TestScreenRenderCursorStyle(t *testing.T) {
 	cur.Blink = false
 	cur.Color = color.RGBA{R: 0x12, G: 0x34, B: 0x56, A: 0xff}
 
-	if err := s.Render("x", cur); err != nil {
+	if err := s.Render("x", cur, true); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
@@ -152,12 +216,12 @@ func TestScreenStartStop(t *testing.T) {
 func TestScreenResizeForcesRedraw(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}
-	if err := s.Render("same", nil); err != nil {
+	if err := s.Render("same", nil, true); err != nil {
 		t.Fatal(err)
 	}
 	first := buf.String()
 	s.Resize(100, 50)
-	if err := s.Render("same", nil); err != nil {
+	if err := s.Render("same", nil, true); err != nil {
 		t.Fatal(err)
 	}
 	if buf.String() == first {

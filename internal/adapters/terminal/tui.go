@@ -767,6 +767,11 @@ func (m Terminal) View() View {
 
 	v := NewView(overlayContent)
 	v.AltScreen = true
+	// The frame soft-wraps to exactly the screen height (viewport padded,
+	// every row padded to the terminal width, input box + status fill the
+	// rest), so it can be rendered by overwriting without clearing first
+	// — no ED2 flicker during streaming (see Screen.Render).
+	v.FullScreen = true
 	// Raw passthrough mode (forked bubbletea): the content is written
 	// verbatim to the terminal so it soft-wraps natively — window
 	// fragments (continuous text padded to the terminal width) wrap

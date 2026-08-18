@@ -36,6 +36,14 @@ type Screen struct {
 	started     bool
 	lastContent string
 	lastCursor  *Cursor
+
+	// Frame-state tracking for the overlay-free render path:
+	// lastFullScreen records the previous frame's fill mode (a change must
+	// re-render); lastHadOverlay records whether the previous frame drew
+	// CUP-positioned overlay rows, so a frame that no longer draws them can
+	// clear any residue (e.g. overlay rows overlapping the short status bar).
+	lastFullScreen bool
+	lastHadOverlay bool
 }
 
 // NewScreen creates a Screen writing to out.
@@ -83,9 +91,22 @@ func (s *Screen) Stop() error {
 	return nil
 }
 
-// Render clears the screen, homes the cursor, writes the content verbatim,
-// and positions the real cursor at the given position (or hides it). It is
-// a no-op when the content and cursor are unchanged since the last render.
+// Render writes the frame to the terminal. It is a no-op when the content
+// and cursor are unchanged since the last render.
+//
+// Two output paths:
+//
+//   - Full-screen frames (fullScreen=true): the content soft-wraps to
+//     exactly the screen height and every row is padded to the full width,
+//     so it can overwrite any previous frame without clearing first —
+//     `\x1b[H` + content. This eliminates the clear-then-redraw flicker of
+//     ED2 during streaming. If the previous frame drew overlay rows (CUP
+//     sequences at arbitrary rows — e.g. an overlay row overlapping the
+//     short status bar that the new frame cannot cover), the residue is
+//     cleared with a one-frame ED2 fallback.
+//
+//   - Non-full-screen frames (loading, errors): keep `ED2` + home + content,
+//     clearing whatever the previous frame left below.
 //
 // The content's '\n' characters are emitted as "\r\n": the program runs the
 // terminal in raw mode (x/term MakeRaw clears OPOST/ONLCR), so a bare '\n'
@@ -94,18 +115,23 @@ func (s *Screen) Stop() error {
 // ended, spiraling the frame. The conversion is output-only; the view
 // content itself keeps plain '\n' (copy fidelity is unaffected — terminal
 // selection copies the rendered screen, not the emitted bytes).
-func (s *Screen) Render(content string, cur *Cursor) error {
+func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	sameContent := content == s.lastContent
 	sameCursor := cursorsEqual(s.lastCursor, cur)
-	if sameContent && sameCursor {
+	if sameContent && sameCursor && s.lastFullScreen == fullScreen {
 		return nil
 	}
 
+	hadOverlay := containsCUP(content)
+	clearFirst := !fullScreen || (s.lastHadOverlay && !hadOverlay)
+
 	var buf []byte
-	buf = append(buf, ansi.EraseDisplay(2)...)
+	if clearFirst {
+		buf = append(buf, ansi.EraseDisplay(2)...)
+	}
 	buf = append(buf, ansi.CursorHomePosition...)
 	if strings.ContainsRune(content, '\n') {
 		buf = append(buf, strings.ReplaceAll(content, "\n", "\r\n")...)
@@ -136,6 +162,8 @@ func (s *Screen) Render(content string, cur *Cursor) error {
 	}
 
 	s.lastContent = content
+	s.lastFullScreen = fullScreen
+	s.lastHadOverlay = hadOverlay
 	if cur != nil {
 		cc := *cur
 		s.lastCursor = &cc
@@ -143,6 +171,32 @@ func (s *Screen) Render(content string, cur *Cursor) error {
 		s.lastCursor = nil
 	}
 	return nil
+}
+
+// containsCUP reports whether content draws rows with absolute cursor
+// positioning (`ESC [ <digits> ; <digits> H`) — the overlay row idiom.
+func containsCUP(s string) bool {
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] != 0x1b || i+1 >= len(s) || s[i+1] != '[' {
+			continue
+		}
+		j := i + 2
+		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+			j++
+		}
+		if j >= len(s) || s[j] != ';' {
+			continue
+		}
+		j++
+		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+			j++
+		}
+		if j < len(s) && s[j] == 'H' {
+			return true
+		}
+		i = j
+	}
+	return false
 }
 
 // Reset clears the frame caches so the next Render is a full repaint even
@@ -153,6 +207,8 @@ func (s *Screen) Reset() {
 	defer s.mu.Unlock()
 	s.lastContent = ""
 	s.lastCursor = nil
+	s.lastFullScreen = false
+	s.lastHadOverlay = false
 }
 
 // Resize records a new terminal size. Rendering does not depend on the
