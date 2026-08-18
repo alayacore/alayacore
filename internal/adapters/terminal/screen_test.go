@@ -54,7 +54,8 @@ func TestScreenRenderFullScreenNoClear(t *testing.T) {
 		t.Errorf("first full-screen render should clear (mode change), got %q", out)
 	}
 
-	// Subsequent full-screen frames: no clearing (flicker-free).
+	// Subsequent full-screen frames: no clearing (flicker-free) and only
+	// the CHANGED row is repainted (row diff), not the whole frame.
 	buf.Reset()
 	if err := s.Render("row1\r\nrow2\r\nCHANGED", nil, true); err != nil {
 		t.Fatal(err)
@@ -63,8 +64,14 @@ func TestScreenRenderFullScreenNoClear(t *testing.T) {
 	if strings.Contains(out, "\x1b[2J") {
 		t.Errorf("steady full-screen render must not clear the screen, got %q", out)
 	}
-	if !strings.HasPrefix(out, "\x1b[H") {
-		t.Errorf("full-screen render should start at home, got %q", out)
+	if !strings.HasPrefix(out, "\x1b[?25l") {
+		t.Errorf("steady frame must hide the cursor before painting, got %q", out)
+	}
+	if !strings.Contains(out, "\x1b[3;1HCHANGED") {
+		t.Errorf("steady frame should repaint only the changed row, got %q", out)
+	}
+	if strings.Contains(out, "row1") || strings.Contains(out, "row2") {
+		t.Errorf("unchanged rows must not be rewritten, got %q", out)
 	}
 }
 
@@ -88,7 +95,8 @@ func TestScreenRenderOverlayResidueCleanup(t *testing.T) {
 		t.Fatalf("first full-screen frame should clear once (mode change), got %q", first)
 	}
 
-	// Second overlay frame: same mode, no clearing.
+	// Second overlay frame: same mode, no clearing, and only the NEW base
+	// row is repainted — the unchanged overlay CUP row is not rewritten.
 	buf.Reset()
 	if err := s.Render(overlayFrame+"\nmore", nil, true); err != nil {
 		t.Fatal(err)
@@ -96,8 +104,11 @@ func TestScreenRenderOverlayResidueCleanup(t *testing.T) {
 	if strings.Contains(buf.String(), "\x1b[2J") {
 		t.Fatalf("steady full-screen frame should not clear, got %q", buf.String())
 	}
-	if !strings.Contains(buf.String(), "\x1b[10;20H") {
-		t.Fatalf("overlay frame should contain CUP rows, got %q", buf.String())
+	if strings.Contains(buf.String(), "\x1b[10;20H") {
+		t.Fatalf("unchanged overlay row must not be rewritten (row diff), got %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "\x1b[11;1Hmore") {
+		t.Fatalf("new base row should be repainted in place, got %q", buf.String())
 	}
 
 	// Next frame has no overlay rows — must clear once (ED2) to erase residue.
@@ -119,8 +130,52 @@ func TestScreenRenderOverlayResidueCleanup(t *testing.T) {
 	}
 }
 
+// TestScreenTabRepaintsOnlyChangedRows locks the Tab-focus flicker fix at
+// the Screen level: when only the overlay's focus-dependent rows change,
+// the steady frame repaints exactly those rows (row diff) — never the
+// whole frame — and the cursor is hidden before any painting (so an
+// incrementally painting terminal never shows it traveling with the text).
+func TestScreenTabRepaintsOnlyChangedRows(t *testing.T) {
+	m := newTestTerminal()
+	m = m.openModelSelector()
+	tab := KeyPressMsg(Key{Code: KeyTab})
+
+	v1 := m.View()
+	buf := &bytes.Buffer{}
+	s := &Screen{out: buf}
+	if err := s.Render(v1.Content, v1.Cursor, true); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+
+	mm, _ := m.Update(tab)
+	m = mm.(Terminal)
+	v2 := m.View()
+	if err := s.Render(v2.Content, v2.Cursor, true); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+
+	if strings.Contains(out, "\x1b[2J") {
+		t.Errorf("steady Tab frame must not clear the screen, got %q", out)
+	}
+	if !strings.HasPrefix(out, "\x1b[?25l") {
+		t.Errorf("cursor must be hidden before painting, got %q", out)
+	}
+	// Unchanged rows must not be rewritten: the overlay title row and the
+	// base content stay untouched on Tab.
+	if strings.Contains(out, "Model Selector") {
+		t.Errorf("unchanged overlay title row must not be rewritten, got %q", out)
+	}
+	// Only the focus-dependent rows change: the help bar swaps to the
+	// list-focus text.
+	if !strings.Contains(out, "tab: search │") {
+		t.Errorf("changed help row should be repainted, got %q", out)
+	}
+}
+
 // TestScreenRenderNoNewlinePassthrough verifies content without newlines is
-// written verbatim (no spurious CR).
+// written verbatim (no CRLF conversion needed).
 func TestScreenRenderNoNewlinePassthrough(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}

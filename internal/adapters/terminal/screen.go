@@ -17,6 +17,7 @@ import (
 	"image/color"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -137,25 +138,63 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	clearFirst := !fullScreen || (s.lastHadOverlay && !hadOverlay) || s.lastFullScreen != fullScreen
 
 	var buf []byte
-	if clearFirst {
+	switch {
+	case clearFirst:
 		buf = append(buf, ansi.EraseDisplay(2)...)
-	}
-	buf = append(buf, ansi.CursorHomePosition...)
-	if strings.ContainsRune(content, '\n') {
-		buf = append(buf, strings.ReplaceAll(content, "\n", "\r\n")...)
-	} else {
-		buf = append(buf, content...)
-	}
-	// Overlay frames draw CUP rows over the base content; those rows are
-	// padded to the box width but may be shorter than the screen width.
-	// For non-overlay full-screen frames, clear from the end of the
-	// content (the status bar is the last, short row) to the bottom of the
-	// screen — the status row's tail and any row below the frame (when a
-	// transition temporarily leaves fewer rows) get wiped, so no residue
-	// from a previous frame survives. The cursor is positioned AFTER this
-	// erase (absolute CUP below).
-	if fullScreen && !hadOverlay {
-		buf = append(buf, ansi.EraseDisplay(0)...)
+		buf = append(buf, ansi.CursorHomePosition...)
+		// Hide the real cursor BEFORE painting: with the cursor visible,
+		// an incrementally-painting terminal would show it traveling with
+		// the frame's text (down the base rows, around the overlay rows)
+		// before the final position/show — a visible flicker on every
+		// changed frame. The cursor is re-shown at its final position
+		// below.
+		buf = append(buf, ansi.ResetModeTextCursorEnable...)
+		if strings.ContainsRune(content, '\n') {
+			buf = append(buf, strings.ReplaceAll(content, "\n", "\r\n")...)
+		} else {
+			buf = append(buf, content...)
+		}
+		// Overlay frames draw CUP rows over the base content; those rows are
+		// padded to the box width but may be shorter than the screen width.
+		// For non-overlay full-screen frames, clear from the end of the
+		// content (the status bar is the last, short row) to the bottom of the
+		// screen — the status row's tail and any row below the frame (when a
+		// transition temporarily leaves fewer rows) get wiped, so no residue
+		// from a previous frame survives. The cursor is positioned AFTER this
+		// erase (absolute CUP below).
+		if fullScreen && !hadOverlay {
+			buf = append(buf, ansi.EraseDisplay(0)...)
+		}
+	case s.lastContent != "":
+		// Steady frame: repaint only the rows that actually changed (row
+		// diff). A full-frame rewrite on every small change (a Tab focus
+		// toggle, a border color, a status segment) makes incrementally
+		// painting terminals visibly repaint the whole screen — the base
+		// repaints without the overlay rows, then the overlay pops back
+		// in. With the cursor hidden first and only changed rows written,
+		// small changes repaint a few rows in place.
+		buf = append(buf, ansi.ResetModeTextCursorEnable...)
+		buf = append(buf, diffFrameRows(s.lastContent, content)...)
+		// Non-overlay frames: the last row (status bar) is short; when the
+		// frame shrank or the last row changed, clear from its end so no
+		// tail residue survives.
+		if !hadOverlay {
+			if lr, ok := lastBaseRow(parseFrameRows(content)); ok {
+				if needTailErase(s.lastContent, content) {
+					buf = append(buf, ansi.CursorPosition(ansi.StringWidth(lr.text)+1, lr.row+1)...)
+					buf = append(buf, ansi.EraseDisplay(0)...)
+				}
+			}
+		}
+	default:
+		// First frame without a clear: hide the cursor, paint from home.
+		buf = append(buf, ansi.ResetModeTextCursorEnable...)
+		buf = append(buf, ansi.CursorHomePosition...)
+		if strings.ContainsRune(content, '\n') {
+			buf = append(buf, strings.ReplaceAll(content, "\n", "\r\n")...)
+		} else {
+			buf = append(buf, content...)
+		}
 	}
 	if cur != nil {
 		// Absolute CUP: the terminal soft-wraps the content, so absolute
@@ -172,9 +211,8 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 		if style := encodeCursorStyle(cur.Shape, cur.Blink); style != 0 && style != 1 {
 			buf = append(buf, ansi.SetCursorStyle(style)...)
 		}
-	} else {
-		buf = append(buf, ansi.ResetModeTextCursorEnable...)
 	}
+	// cur == nil: the cursor stays hidden (already hidden at frame start).
 
 	if _, err := s.out.Write(buf); err != nil {
 		return fmt.Errorf("terminal: render: %w", err)
@@ -190,6 +228,145 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 		s.lastCursor = nil
 	}
 	return nil
+}
+
+// frameRow is one row of a rendered frame at an absolute screen position:
+// the base rows are sequential from (0,0); overlay rows carry explicit CUP
+// coordinates. text is the row content verbatim (SGR and EL codes intact).
+type frameRow struct {
+	row, col int
+	text     string
+}
+
+// parseFrameRows splits raw frame content into positioned rows. Base rows
+// are the '\n'-separated lines drawn sequentially; CUP sequences
+// (ESC [ row ; col H) start a new row at an absolute position. All other
+// escape sequences (SGR, EL, …) are part of the row text.
+//
+//nolint:gocyclo // byte-level CSI scanner (position jumps + text flushing)
+func parseFrameRows(content string) []frameRow {
+	var rows []frameRow
+	row, col := 0, 0
+	start := 0
+	flush := func(end int) {
+		if end > start {
+			rows = append(rows, frameRow{row: row, col: col, text: content[start:end]})
+		}
+	}
+	i := 0
+	for i < len(content) {
+		switch content[i] {
+		case '\n':
+			flush(i)
+			start = i + 1
+			row++
+			col = 0
+			i++
+		case '\r':
+			col = 0
+			i++
+		case 0x1b:
+			if i+1 < len(content) && content[i+1] == '[' {
+				j := i + 2
+				hasSemi := false
+				for j < len(content) && (content[j] == ';' || content[j] == '?' ||
+					(content[j] >= '0' && content[j] <= '9')) {
+					if content[j] == ';' {
+						hasSemi = true
+					}
+					j++
+				}
+				if j < len(content) && content[j] == 'H' && (hasSemi || j == i+2) {
+					// CUP (or home): flush the current row, jump.
+					flush(i)
+					start = j + 1
+					if j == i+2 {
+						row, col = 0, 0
+					} else {
+						parts := strings.SplitN(content[i+2:j], ";", 2)
+						r, _ := strconv.Atoi(parts[0])
+						c, _ := strconv.Atoi(parts[1])
+						row, col = r-1, c-1
+					}
+					i = j + 1
+					continue
+				}
+			}
+			i++
+		default:
+			i++
+		}
+	}
+	flush(i)
+	return rows
+}
+
+// lastBaseRow returns the last row drawn at column 0 (the base content's
+// final row — the status bar in full-screen frames).
+func lastBaseRow(rows []frameRow) (frameRow, bool) {
+	var last frameRow
+	found := false
+	for _, r := range rows {
+		if r.col == 0 {
+			last = r
+			found = true
+		}
+	}
+	return last, found
+}
+
+// diffFrameRows emits CUP + row for every row whose text changed or is
+// new, and clears (EL) overlay rows that disappeared. Base rows that
+// disappeared are handled by the caller's tail erase.
+func diffFrameRows(oldContent, newContent string) []byte {
+	oldRows := parseFrameRows(oldContent)
+	newRows := parseFrameRows(newContent)
+
+	oldMap := make(map[[2]int]string, len(oldRows))
+	for _, r := range oldRows {
+		oldMap[[2]int{r.row, r.col}] = r.text
+	}
+	newMap := make(map[[2]int]bool, len(newRows))
+	for _, r := range newRows {
+		newMap[[2]int{r.row, r.col}] = true
+	}
+
+	var buf []byte
+	for _, r := range newRows {
+		if oldText, ok := oldMap[[2]int{r.row, r.col}]; !ok || oldText != r.text {
+			buf = append(buf, ansi.CursorPosition(r.col+1, r.row+1)...)
+			buf = append(buf, r.text...)
+		}
+	}
+	// Rows the old frame drew that the new frame no longer draws: clear
+	// absolute (overlay) rows in place; base rows are handled by the tail
+	// erase (they are sequential from the top).
+	for _, r := range oldRows {
+		if r.col > 0 && !newMap[[2]int{r.row, r.col}] {
+			buf = append(buf, ansi.CursorPosition(r.col+1, r.row+1)...)
+			buf = append(buf, ansi.EraseLine(0)...)
+		}
+	}
+	return buf
+}
+
+// needTailErase reports whether a steady non-overlay frame needs the
+// trailing ED0: the new frame is shorter than the old one (rows below
+// would survive), or the last base row changed (its short tail — the
+// status bar is not padded — must be wiped).
+func needTailErase(oldContent, newContent string) bool {
+	oldLast, oldOK := lastBaseRow(parseFrameRows(oldContent))
+	newLast, newOK := lastBaseRow(parseFrameRows(newContent))
+	if !oldOK || !newOK {
+		return newOK
+	}
+	if newLast.row < oldLast.row {
+		return true
+	}
+	if newLast.row == oldLast.row && newLast.text != oldLast.text {
+		return true
+	}
+	return false
 }
 
 // containsCUP reports whether content draws rows with absolute cursor
