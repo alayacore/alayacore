@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"charm.land/lipgloss/v2"
 	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -30,8 +29,8 @@ type WindowBuffer struct {
 	idIndex     map[string]int
 	width       int
 	styles      *Styles
-	borderStyle lipgloss.Style
-	cursorStyle lipgloss.Style
+	borderStyle Style
+	cursorStyle Style
 
 	// Line height tracking (for cursor navigation)
 	lineHeights []int
@@ -57,8 +56,8 @@ func NewWindowBuffer(width int, styles *Styles) *WindowBuffer {
 		idIndex:     make(map[string]int),
 		width:       width,
 		styles:      styles,
-		borderStyle: lipgloss.NewStyle().Foreground(styles.ColorDim),
-		cursorStyle: lipgloss.NewStyle().Foreground(styles.BorderCursor),
+		borderStyle: NewStyle().Foreground(styles.ColorDim),
+		cursorStyle: NewStyle().Foreground(styles.BorderCursor),
 		lineHeights: []int{},
 		dirtyIndex:  dirtyClean,
 	}
@@ -90,8 +89,8 @@ func (wb *WindowBuffer) WithStyles(styles *Styles) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 	wb.styles = styles
-	wb.borderStyle = lipgloss.NewStyle().Foreground(styles.ColorDim)
-	wb.cursorStyle = lipgloss.NewStyle().Foreground(styles.BorderCursor)
+	wb.borderStyle = NewStyle().Foreground(styles.ColorDim)
+	wb.cursorStyle = NewStyle().Foreground(styles.BorderCursor)
 	// Invalidate all windows to pick up new styles
 	for _, w := range wb.windows {
 		w.styles = styles // Update window's styles reference
@@ -866,7 +865,7 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 			if blocked {
 				color = wb.styles.ColorDim
 			}
-			arrowStr = lipgloss.NewStyle().Foreground(color).Render(w.arrowChar())
+			arrowStr = NewStyle().Foreground(color).Render(w.arrowChar())
 		} else {
 			arrowStr = w.border.arrow
 		}

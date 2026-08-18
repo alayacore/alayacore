@@ -9,7 +9,6 @@ package terminal
 import (
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -191,7 +190,7 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 // renderers that still style their content (e.g. user messages). If the
 // line was truncated inside the label (very narrow terminal) the whole
 // line uses the label style; without a label the whole line is muted.
-func renderCollapsedLine(line, label string, labelStyle, mutedStyle lipgloss.Style) string {
+func renderCollapsedLine(line, label string, labelStyle, mutedStyle Style) string {
 	if label == "" {
 		return mutedStyle.Render(line)
 	}

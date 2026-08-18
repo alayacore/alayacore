@@ -2,8 +2,6 @@ package terminal
 
 import (
 	"testing"
-
-	"charm.land/lipgloss/v2"
 )
 
 // TestPromptInputAttachmentsOffset verifies AttachmentsOffset reports the
@@ -31,7 +29,7 @@ func TestPromptInputAttachmentsOffset(t *testing.T) {
 	p = p.WithAttachments([]string{long})
 	innerWidth := max(0, p.width)
 	styledMedia := wrapLabels(p.Attachments(), innerWidth, p.styles.Attachment)
-	want := lipgloss.Height(styledMedia) + 1 // + separator line
+	want := Height(styledMedia) + 1 // + separator line
 	if off := p.AttachmentsOffset(); off != want {
 		t.Fatalf("long attachment: got %d, want %d", off, want)
 	}

@@ -7,8 +7,6 @@ package terminal
 import (
 	"fmt"
 	"strings"
-
-	"charm.land/lipgloss/v2"
 )
 
 // HelpItemType classifies a HelpItem as either a command or a key binding.
@@ -125,10 +123,10 @@ func (hw HelpWindow) recalculateColumnWidths() HelpWindow {
 	maxDescLen := 0
 	for _, item := range hw.items {
 		if !item.IsSection {
-			if w := lipgloss.Width(item.Key); w > maxKeyLen {
+			if w := Width(item.Key); w > maxKeyLen {
 				maxKeyLen = w
 			}
-			if w := lipgloss.Width(item.Description); w > maxDescLen {
+			if w := Width(item.Description); w > maxDescLen {
 				maxDescLen = w
 			}
 		}
@@ -391,10 +389,10 @@ func (hw HelpWindow) View() View {
 	content := strings.Join(lines, "\n")
 	listBox := hw.Styles.RenderOpenBox(content, hw.Width, listBorderColor, listHeight)
 
-	titleStyle := lipgloss.NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorAccent).Bold(true)
+	titleStyle := NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorAccent).Bold(true)
 	title := titleStyle.Render(fmt.Sprintf("%-*s", hw.Width, "Help"))
 
-	helpStyle := lipgloss.NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorMuted)
+	helpStyle := NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorMuted)
 	var help string
 	if hw.FilterInputFocused {
 		help = "  tab: list │ esc: close"
@@ -437,7 +435,7 @@ func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {
 		desc = truncateWithSuffix(desc, descMaxWidth)
 	}
 
-	padding := max(0, keyMaxWidth-lipgloss.Width(key))
+	padding := max(0, keyMaxWidth-Width(key))
 	line := key + strings.Repeat(" ", padding)
 	if descMaxWidth > 0 {
 		line += " " + desc

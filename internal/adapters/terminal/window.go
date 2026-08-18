@@ -23,7 +23,6 @@ package terminal
 import (
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -89,7 +88,7 @@ type WindowRendering interface {
 // once at render time, so renderVirtual can pad lines for soft-wrap
 // fragment output without re-measuring every line on every view.
 // arrow caches the dim (non-cursor) arrow glyph so the fragment output
-// path never re-renders it per view (lipgloss.Style.Render is hot).
+// path never re-renders it per view (Style.Render is hot).
 type borderCache struct {
 	valid      bool
 	width      int
@@ -318,7 +317,7 @@ func (w *Window) RawDelta() string {
 //
 // cursorStyle is retained for API compatibility (callers still pass the
 // cursor border style); the cursor color now comes from styles.BorderCursor.
-func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _ lipgloss.Style, blocked bool) string {
+func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _ Style, blocked bool) string {
 	if w.renderer == nil {
 		return ""
 	}
@@ -397,14 +396,14 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _
 func (w *Window) renderCursorArrow(blocked bool) string {
 	// When blocked (overlay active), the selection color is replaced by
 	// the dim color so the highlight disappears under the overlay.
-	color := lipgloss.Color("")
+	color := Color("")
 	if w.styles != nil {
 		color = w.styles.BorderCursor
 		if blocked {
 			color = w.styles.ColorDim
 		}
 	}
-	return lipgloss.NewStyle().Foreground(color).Render(w.arrowChar()) + w.border.inner
+	return NewStyle().Foreground(color).Render(w.arrowChar()) + w.border.inner
 }
 
 // arrowChar returns the fold-state arrow glyph, configured by the theme
@@ -427,15 +426,15 @@ func (w *Window) arrowChar() string {
 
 // arrowStyle returns the style for the collapse/expand arrow.
 // Selected (cursor) windows use the selection color; others use dim.
-func arrowStyle(styles *Styles, isCursor bool) lipgloss.Style {
+func arrowStyle(styles *Styles, isCursor bool) Style {
 	if styles == nil {
-		return lipgloss.NewStyle()
+		return NewStyle()
 	}
 	color := styles.ColorDim
 	if isCursor {
 		color = styles.BorderCursor
 	}
-	return lipgloss.NewStyle().Foreground(color)
+	return NewStyle().Foreground(color)
 }
 
 // windowLabel returns the header label for the window type, e.g.
@@ -489,7 +488,7 @@ func (w *Window) buildExpandHeader(styles *Styles) string {
 }
 
 // labelStyle returns the style used for the window's header label.
-func (w *Window) labelStyle(styles *Styles) lipgloss.Style {
+func (w *Window) labelStyle(styles *Styles) Style {
 	return labelStyleForTag(w.Tag(), styles)
 }
 
@@ -498,9 +497,9 @@ func (w *Window) labelStyle(styles *Styles) lipgloss.Style {
 // default-foreground labels distract the eye in the collapsed list; only
 // ERROR keeps its red semantic color. Shared by the expanded header line
 // and the collapsed label segment.
-func labelStyleForTag(tag string, styles *Styles) lipgloss.Style {
+func labelStyleForTag(tag string, styles *Styles) Style {
 	if styles == nil {
-		return lipgloss.NewStyle().Bold(true)
+		return NewStyle().Bold(true)
 	}
 	switch tag {
 	case TagWindowSE:

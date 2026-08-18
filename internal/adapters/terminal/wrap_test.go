@@ -3,8 +3,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"charm.land/lipgloss/v2"
 )
 
 func TestWrapLines(t *testing.T) {
@@ -131,8 +129,8 @@ func TestWindowRenderCaching(t *testing.T) {
 
 	// First render - should populate cache
 	styles := DefaultStyles()
-	borderStyle := lipgloss.NewStyle().Foreground(styles.ColorDim)
-	cursorStyle := lipgloss.NewStyle().Foreground(styles.BorderCursor)
+	borderStyle := NewStyle().Foreground(styles.ColorDim)
+	cursorStyle := NewStyle().Foreground(styles.BorderCursor)
 
 	_ = w.Render(80, false, styles, borderStyle, cursorStyle, false)
 
@@ -158,8 +156,8 @@ func TestWindowRenderCacheInvalidation(t *testing.T) {
 	w := wb.WindowAt(0)
 
 	styles := DefaultStyles()
-	borderStyle := lipgloss.NewStyle().Foreground(styles.ColorDim)
-	cursorStyle := lipgloss.NewStyle().Foreground(styles.BorderCursor)
+	borderStyle := NewStyle().Foreground(styles.ColorDim)
+	cursorStyle := NewStyle().Foreground(styles.BorderCursor)
 
 	_ = w.Render(80, false, styles, borderStyle, cursorStyle, false)
 

@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	ansi "github.com/charmbracelet/x/ansi"
 )
 
@@ -385,7 +384,7 @@ func (cd ConfirmDialog) renderTitleLine(titleText string, innerWidth int) string
 	if len(lines) > 1 {
 		line = truncateWithSuffix(line, innerWidth)
 	}
-	w := lipgloss.Width(line)
+	w := Width(line)
 	pad := max(0, (innerWidth-w)/2)
 	return strings.Repeat(" ", pad) + line + strings.Repeat(" ", innerWidth-w-pad)
 }
@@ -407,26 +406,26 @@ func (cd ConfirmDialog) renderDescriptionRows(innerWidth int) []string {
 	}
 	maxW := 0
 	for _, line := range styled {
-		if w := lipgloss.Width(line); w > maxW {
+		if w := Width(line); w > maxW {
 			maxW = w
 		}
 	}
 	pad := max(0, (innerWidth-maxW)/2)
 	rows := make([]string, 2)
 	for i, line := range styled {
-		w := lipgloss.Width(line)
+		w := Width(line)
 		rows[i] = strings.Repeat(" ", pad) + line + strings.Repeat(" ", maxW-w)
 	}
 	return rows
 }
 
-func (cd ConfirmDialog) wrapAndCenter(text string, style lipgloss.Style, width int) []string {
+func (cd ConfirmDialog) wrapAndCenter(text string, style Style, width int) []string {
 	styled := style.Render(text)
 	wrapped := wrapContent(styled, width)
 	rawLines := strings.Split(wrapped, "\n")
 	maxLineWidth := 0
 	for _, line := range rawLines {
-		w := lipgloss.Width(line)
+		w := Width(line)
 		if w > maxLineWidth {
 			maxLineWidth = w
 		}
@@ -434,7 +433,7 @@ func (cd ConfirmDialog) wrapAndCenter(text string, style lipgloss.Style, width i
 	blockPadding := max(0, (width-maxLineWidth)/2)
 	lines := make([]string, 0, len(rawLines))
 	for _, line := range rawLines {
-		w := lipgloss.Width(line)
+		w := Width(line)
 		rightPad := maxLineWidth - w
 		lines = append(lines, strings.Repeat(" ", blockPadding)+line+strings.Repeat(" ", rightPad))
 	}

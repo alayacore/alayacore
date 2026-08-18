@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/lipgloss/v2"
-
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 )
@@ -484,8 +482,8 @@ func BenchmarkDirectAppend(b *testing.B) {
 
 	// Initial render to populate cache
 	w.Render(80, false, styles,
-		lipgloss.NewStyle(),
-		lipgloss.NewStyle(), false)
+		NewStyle(),
+		NewStyle(), false)
 
 	fmt.Printf("Initial: wrappedLines=%d, contentLen=%d, styles=%v\n",
 		0, len(w.RawContent()), w.styles != nil)
@@ -494,8 +492,8 @@ func BenchmarkDirectAppend(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w.AppendContent(" more")
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle(),
-			lipgloss.NewStyle(), false)
+			NewStyle(),
+			NewStyle(), false)
 	}
 }
 
@@ -506,8 +504,8 @@ func BenchmarkDirectAppendNoStyles(b *testing.B) {
 
 	styles := NewStyles(theme.DefaultTheme())
 	w.Render(80, false, styles,
-		lipgloss.NewStyle(),
-		lipgloss.NewStyle(), false)
+		NewStyle(),
+		NewStyle(), false)
 
 	fmt.Printf("Initial (no styles): wrappedLines=%d\n", 0)
 
@@ -515,8 +513,8 @@ func BenchmarkDirectAppendNoStyles(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w.AppendContent(" more")
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle(),
-			lipgloss.NewStyle(), false)
+			NewStyle(),
+			NewStyle(), false)
 	}
 }
 
@@ -528,8 +526,8 @@ func BenchmarkDirectAppendDebug(_ *testing.B) {
 
 	// Initial render
 	w.Render(80, false, styles,
-		lipgloss.NewStyle(),
-		lipgloss.NewStyle(), false)
+		NewStyle(),
+		NewStyle(), false)
 
 	fmt.Printf("Initial: wrappedLines=%d, cache.width=%d, width-4=%d\n",
 		0, 0, 0-4)
@@ -544,8 +542,8 @@ func BenchmarkDirectAppendDebug(_ *testing.B) {
 			0, 0-4)
 
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle(),
-			lipgloss.NewStyle(), false)
+			NewStyle(),
+			NewStyle(), false)
 		fmt.Printf("After Render %d: wrappedLines=%d, cache.valid=%v\n",
 			i+1, 0, false)
 	}
@@ -559,8 +557,8 @@ func BenchmarkRenderAfterAppend(b *testing.B) {
 
 	// Initial render to populate cache
 	w.Render(80, false, styles,
-		lipgloss.NewStyle(),
-		lipgloss.NewStyle(), false)
+		NewStyle(),
+		NewStyle(), false)
 
 	fmt.Printf("Initial: wrappedLines=%d, cache.valid=%v, cache.width=%d\n",
 		0, false, 0)
@@ -572,8 +570,8 @@ func BenchmarkRenderAfterAppend(b *testing.B) {
 		b.StartTimer()
 
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle(),
-			lipgloss.NewStyle(), false)
+			NewStyle(),
+			NewStyle(), false)
 	}
 }
 
@@ -585,8 +583,8 @@ func BenchmarkFullRebuildAfterAppend(b *testing.B) {
 
 	// Initial render
 	w.Render(80, false, styles,
-		lipgloss.NewStyle(),
-		lipgloss.NewStyle(), false)
+		NewStyle(),
+		NewStyle(), false)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -596,8 +594,8 @@ func BenchmarkFullRebuildAfterAppend(b *testing.B) {
 		b.StartTimer()
 
 		_ = w.Render(80, false, styles,
-			lipgloss.NewStyle(),
-			lipgloss.NewStyle(), false)
+			NewStyle(),
+			NewStyle(), false)
 	}
 }
 
@@ -887,9 +885,9 @@ func BenchmarkFullWrappingPath(b *testing.B) {
 	}
 }
 
-// BenchmarkWrapContentVsLipglossWrap compares wrapContent (character-boundary)
-// vs lipgloss.Wrap (word-boundary) on code-like content.
-func BenchmarkWrapContentVsLipglossWrap(b *testing.B) {
+// BenchmarkWrapContentVsWordBoundaryWrap compares wrapContent
+// (character-boundary) vs Wrap (word-boundary) on code-like content.
+func BenchmarkWrapContentVsWordBoundaryWrap(b *testing.B) {
 	code := strings.Repeat(`func prepareContent(s string) string {
 	s = stripANSI(s)
 	s = expandTabs(s)
@@ -903,9 +901,9 @@ func BenchmarkWrapContentVsLipglossWrap(b *testing.B) {
 		}
 	})
 
-	b.Run("lipglossWrap", func(b *testing.B) {
+	b.Run("wordBoundaryWrap", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			lipgloss.Wrap(code, 60, " ")
+			Wrap(code, 60, " ")
 		}
 	})
 }

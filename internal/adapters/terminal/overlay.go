@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	ansi "github.com/charmbracelet/x/ansi"
 )
 
@@ -40,8 +39,8 @@ func renderOverlay(baseContent string, box string, screenWidth, screenHeight int
 	x, y := overlayOrigin(box, screenWidth, screenHeight)
 	y = max(0, y+yOffset)
 
-	boxWidth := lipgloss.Width(box)
-	boxHeight := lipgloss.Height(box)
+	boxWidth := Width(box)
+	boxHeight := Height(box)
 
 	var sb strings.Builder
 	sb.Grow(len(baseContent) + len(box) + boxHeight*12)
@@ -69,8 +68,8 @@ func renderOverlay(baseContent string, box string, screenWidth, screenHeight int
 // Mirrors renderOverlay's geometry so cursor positioning stays in sync with
 // where the overlay content is actually drawn.
 func overlayOrigin(box string, screenWidth, screenHeight int) (x, y int) {
-	boxWidth := lipgloss.Width(box)
-	boxHeight := lipgloss.Height(box)
+	boxWidth := Width(box)
+	boxHeight := Height(box)
 
 	// Center horizontally
 	x = max(0, (screenWidth-boxWidth)/2)

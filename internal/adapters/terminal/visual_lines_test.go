@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/lipgloss/v2"
-
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -35,7 +33,7 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 
 	width := 40
 	rendered := w.Render(width, false, styles,
-		lipgloss.NewStyle().Foreground(styles.ColorDim), lipgloss.NewStyle(), false)
+		NewStyle().Foreground(styles.ColorDim), NewStyle(), false)
 
 	lines := w.border.lines
 	if len(lines) != w.LineCount() {
@@ -78,7 +76,7 @@ func TestWindowVisualLinesFolded(t *testing.T) {
 	w.AppendContent("hello world")
 
 	w.Render(40, false, styles,
-		lipgloss.NewStyle().Foreground(styles.ColorDim), lipgloss.NewStyle(), false)
+		NewStyle().Foreground(styles.ColorDim), NewStyle(), false)
 
 	if len(w.border.lines) != 1 {
 		t.Fatalf("folded window should be 1 visual line, got %d: %q", len(w.border.lines), w.border.lines)

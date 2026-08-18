@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode"
 
-	"charm.land/lipgloss/v2"
 	"github.com/rivo/uniseg"
 )
 
@@ -37,9 +36,9 @@ type InputField struct {
 }
 
 type inputFieldStyle struct {
-	Prompt      lipgloss.Style
-	Text        lipgloss.Style
-	Placeholder lipgloss.Style
+	Prompt      Style
+	Text        Style
+	Placeholder Style
 }
 
 // NewInputField creates a new InputField with default settings.

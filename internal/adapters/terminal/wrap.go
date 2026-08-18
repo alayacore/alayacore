@@ -11,10 +11,10 @@ package terminal
 
 import (
 	"bytes"
+	"image/color"
 	"io"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	ansi "github.com/charmbracelet/x/ansi"
 )
 
@@ -29,10 +29,312 @@ func wrapContent(s string, width int) string {
 	s = ansi.Hardwrap(s, width, true)
 	// Step 2: re-apply ANSI styles after each inserted newline
 	var buf bytes.Buffer
-	w := lipgloss.NewWrapWriter(&buf)
+	w := NewWrapWriter(&buf)
 	defer w.Close()
 	_, _ = io.WriteString(w, s) // bytes.Buffer.Write never fails
 	return buf.String()
+}
+
+// Wrap wraps the given string to the given width at word boundaries,
+// preserving ANSI styles across lines (mirrors lipgloss.Wrap).
+func Wrap(s string, width int, breakpoints string) string {
+	var buf bytes.Buffer
+	s = ansi.Wrap(s, width, breakpoints)
+	w := NewWrapWriter(&buf)
+	defer w.Close() //nolint:errcheck
+	_, _ = io.WriteString(w, s)
+	return buf.String()
+}
+
+// WrapWriter is a writer that writes to a buffer and keeps track of the
+// current pen style for the purpose of wrapping with newlines.
+//
+// When it encounters a newline, it resets the style, writes the newline,
+// and then reapplies the style to the next line — so every visual line is
+// self-contained (SGR prefix + reset), which the soft-wrap fragment
+// pipeline relies on. It is a faithful port of lipgloss v2's WrapWriter
+// (which used ultraviolet's Style); the pen parsing and canonical SGR
+// re-emission are byte-compatible.
+type WrapWriter struct {
+	w     io.Writer
+	p     *ansi.Parser
+	style penStyle
+	link  link
+}
+
+// NewWrapWriter returns a new WrapWriter.
+func NewWrapWriter(w io.Writer) *WrapWriter {
+	pw := &WrapWriter{w: w}
+	pw.p = ansi.GetParser()
+	handleCsi := func(cmd ansi.Cmd, params ansi.Params) {
+		if cmd == 'm' {
+			readStyle(params, &pw.style)
+		}
+	}
+	handleOsc := func(cmd int, data []byte) {
+		if cmd == 8 {
+			readLink(data, &pw.link)
+		}
+	}
+	pw.p.SetHandler(ansi.Handler{
+		HandleCsi: handleCsi,
+		HandleOsc: handleOsc,
+	})
+	return pw
+}
+
+// Write writes to the buffer.
+func (w *WrapWriter) Write(p []byte) (int, error) {
+	if w.p == nil {
+		// The writer has been closed and its parser returned to the pool.
+		// Writing after close can happen during out-of-order teardown of
+		// nested writer chains; treat it as a no-op rather than panicking.
+		return len(p), nil
+	}
+	for i := range p {
+		b := p[i]
+		w.p.Advance(b)
+		if b == '\n' {
+			if !w.style.IsZero() {
+				_, _ = w.w.Write([]byte(ansi.ResetStyle))
+			}
+			if !w.link.IsZero() {
+				_, _ = w.w.Write([]byte(ansi.ResetHyperlink()))
+			}
+		}
+
+		_, _ = w.w.Write([]byte{b})
+		if b == '\n' {
+			if !w.link.IsZero() {
+				_, _ = w.w.Write([]byte(ansi.SetHyperlink(w.link.URL, w.link.Params)))
+			}
+			if !w.style.IsZero() {
+				_, _ = w.w.Write([]byte(w.style.String()))
+			}
+		}
+	}
+
+	return len(p), nil
+}
+
+// Close closes the writer, resets the style and link if necessary, and
+// releases its parser. Calling it is performance critical, but forgetting
+// it does not cause safety issues or leaks.
+func (w *WrapWriter) Close() error {
+	if !w.style.IsZero() {
+		_, _ = w.w.Write([]byte(ansi.ResetStyle))
+	}
+	if !w.link.IsZero() {
+		_, _ = w.w.Write([]byte(ansi.ResetHyperlink()))
+	}
+	if w.p != nil {
+		ansi.PutParser(w.p)
+		w.p = nil
+	}
+	return nil
+}
+
+// penStyle is the current SGR pen state (port of ultraviolet's Style).
+type penStyle struct {
+	Fg             color.Color
+	Bg             color.Color
+	UnderlineColor color.Color
+	Underline      ansi.Underline
+	Attrs          uint8
+}
+
+// Pen attributes (bit flags, mirroring ultraviolet's Attr constants).
+const (
+	penBold uint8 = 1 << iota
+	penFaint
+	penItalic
+	penBlink
+	penRapidBlink
+	penReverse
+	penConceal
+	penStrikethrough
+)
+
+// IsZero reports whether the style is empty.
+func (s penStyle) IsZero() bool {
+	return s.Fg == nil && s.Bg == nil && s.UnderlineColor == nil &&
+		s.Underline == ansi.UnderlineNone && s.Attrs == 0
+}
+
+// String returns the ANSI SGR sequence for the style in the canonical
+// attribute order (identical to ultraviolet's Style.String()).
+//
+//nolint:gocyclo // canonical attribute dispatch
+func (s penStyle) String() string {
+	if s.IsZero() {
+		return ansi.ResetStyle
+	}
+
+	var b ansi.Style
+	if s.Attrs != 0 { //nolint:nestif
+		if s.Attrs&penBold != 0 {
+			b = b.Bold()
+		}
+		if s.Attrs&penFaint != 0 {
+			b = b.Faint()
+		}
+		if s.Attrs&penItalic != 0 {
+			b = b.Italic(true)
+		}
+		if s.Attrs&penBlink != 0 {
+			b = b.Blink(true)
+		}
+		if s.Attrs&penRapidBlink != 0 {
+			b = b.RapidBlink(true)
+		}
+		if s.Attrs&penReverse != 0 {
+			b = b.Reverse(true)
+		}
+		if s.Attrs&penConceal != 0 {
+			b = b.Conceal(true)
+		}
+		if s.Attrs&penStrikethrough != 0 {
+			b = b.Strikethrough(true)
+		}
+	}
+	switch s.Underline {
+	case ansi.UnderlineSingle:
+		b = b.Underline(true)
+	case ansi.UnderlineDouble:
+		b = b.UnderlineStyle(ansi.UnderlineDouble)
+	case ansi.UnderlineCurly:
+		b = b.UnderlineStyle(ansi.UnderlineCurly)
+	case ansi.UnderlineDotted:
+		b = b.UnderlineStyle(ansi.UnderlineDotted)
+	case ansi.UnderlineDashed:
+		b = b.UnderlineStyle(ansi.UnderlineDashed)
+	}
+	if s.Fg != nil {
+		b = b.ForegroundColor(s.Fg)
+	}
+	if s.Bg != nil {
+		b = b.BackgroundColor(s.Bg)
+	}
+	if s.UnderlineColor != nil {
+		b = b.UnderlineColor(s.UnderlineColor)
+	}
+
+	return b.String()
+}
+
+// readStyle reads a Select Graphic Rendition (SGR) escape sequence from a
+// list of parameters into pen (port of ultraviolet's ReadStyle).
+//
+//nolint:gocyclo // SGR parameter dispatch
+func readStyle(params ansi.Params, pen *penStyle) {
+	if len(params) == 0 {
+		*pen = penStyle{}
+		return
+	}
+
+	for i := 0; i < len(params); i++ {
+		param, hasMore, _ := params.Param(i, 0)
+		switch param {
+		case 0: // Reset
+			*pen = penStyle{}
+		case 1: // Bold
+			pen.Attrs |= penBold
+		case 2: // Dim/Faint
+			pen.Attrs |= penFaint
+		case 3: // Italic
+			pen.Attrs |= penItalic
+		case 4: // Underline
+			nextParam, _, ok := params.Param(i+1, 0)
+			if hasMore && ok { // Only accept subparameters i.e. separated by ":"
+				switch nextParam {
+				case 0, 1, 2, 3, 4, 5:
+					i++
+					pen.Underline = ansi.Underline(nextParam)
+				}
+			} else {
+				// Single Underline
+				pen.Underline = ansi.UnderlineSingle
+			}
+		case 5: // Slow Blink
+			pen.Attrs |= penBlink
+		case 6: // Rapid Blink
+			pen.Attrs |= penRapidBlink
+		case 7: // Reverse
+			pen.Attrs |= penReverse
+		case 8: // Conceal
+			pen.Attrs |= penConceal
+		case 9: // Crossed-out/Strikethrough
+			pen.Attrs |= penStrikethrough
+		case 22: // Normal Intensity (not bold or faint)
+			pen.Attrs &^= penBold | penFaint
+		case 23: // Not italic, not Fraktur
+			pen.Attrs &^= penItalic
+		case 24: // Not underlined
+			pen.Underline = ansi.UnderlineNone
+		case 25: // Blink off
+			pen.Attrs &^= penBlink | penRapidBlink
+		case 27: // Positive (not reverse)
+			pen.Attrs &^= penReverse
+		case 28: // Reveal
+			pen.Attrs &^= penConceal
+		case 29: // Not crossed out
+			pen.Attrs &^= penStrikethrough
+		case 30, 31, 32, 33, 34, 35, 36, 37: // Set foreground
+			pen.Fg = ansi.Black + ansi.BasicColor(param-30) //nolint:gosec // G115: bounded
+		case 38: // Set foreground 256 or truecolor
+			var c color.Color
+			n := ansi.ReadStyleColor(params[i:], &c)
+			if n > 0 {
+				pen.Fg = c
+				i += n - 1
+			}
+		case 39: // Default foreground
+			pen.Fg = nil
+		case 40, 41, 42, 43, 44, 45, 46, 47: // Set background
+			pen.Bg = ansi.Black + ansi.BasicColor(param-40) //nolint:gosec // G115: bounded
+		case 48: // Set background 256 or truecolor
+			var c color.Color
+			n := ansi.ReadStyleColor(params[i:], &c)
+			if n > 0 {
+				pen.Bg = c
+				i += n - 1
+			}
+		case 49: // Default Background
+			pen.Bg = nil
+		case 58: // Set underline color
+			var c color.Color
+			n := ansi.ReadStyleColor(params[i:], &c)
+			if n > 0 {
+				pen.UnderlineColor = c
+				i += n - 1
+			}
+		case 59: // Default underline color
+			pen.UnderlineColor = nil
+		case 90, 91, 92, 93, 94, 95, 96, 97: // Set bright foreground
+			pen.Fg = ansi.BrightBlack + ansi.BasicColor(param-90) //nolint:gosec // G115: bounded
+		case 100, 101, 102, 103, 104, 105, 106, 107: // Set bright background
+			pen.Bg = ansi.BrightBlack + ansi.BasicColor(param-100) //nolint:gosec // G115: bounded
+		}
+	}
+}
+
+// link is an OSC 8 hyperlink (port of ultraviolet's Link).
+type link struct {
+	URL    string
+	Params string
+}
+
+// IsZero reports whether the link is unset.
+func (l link) IsZero() bool { return l.URL == "" && l.Params == "" }
+
+// readLink reads an OSC 8 hyperlink sequence from a data buffer into link.
+func readLink(p []byte, l *link) {
+	parts := bytes.Split(p, []byte{';'})
+	if len(parts) != 3 {
+		return
+	}
+	l.Params = string(parts[1])
+	l.URL = string(parts[2])
 }
 
 // wrapLines wraps content into lines at the given width.
@@ -86,7 +388,7 @@ func appendDeltaWithNewlines(lines []string, delta string, width int) []string {
 }
 
 // styleMultiline applies a style to each line of text.
-func styleMultiline(content string, style lipgloss.Style) string {
+func styleMultiline(content string, style Style) string {
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
 		lines[i] = style.Render(line)
@@ -96,7 +398,7 @@ func styleMultiline(content string, style lipgloss.Style) string {
 
 // wrapLabels wraps a list of labels at word boundaries (separator "  "),
 // keeping each label intact. Each resulting line is styled with the given style.
-func wrapLabels(labels []string, width int, style lipgloss.Style) string {
+func wrapLabels(labels []string, width int, style Style) string {
 	if len(labels) == 0 {
 		return ""
 	}

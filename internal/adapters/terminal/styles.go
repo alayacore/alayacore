@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
@@ -26,23 +25,23 @@ import (
 // always replaces the entire instance.
 type Styles struct {
 	// Output text styles
-	Text        lipgloss.Style
-	UserInput   lipgloss.Style
-	Tool        lipgloss.Style
-	ToolContent lipgloss.Style
-	Reasoning   lipgloss.Style
-	Error       lipgloss.Style
-	System      lipgloss.Style
-	Prompt      lipgloss.Style
-	Attachment  lipgloss.Style
-	DiffRemove  lipgloss.Style
-	DiffAdd     lipgloss.Style
+	Text        Style
+	UserInput   Style
+	Tool        Style
+	ToolContent Style
+	Reasoning   Style
+	Error       Style
+	System      Style
+	Prompt      Style
+	Attachment  Style
+	DiffRemove  Style
+	DiffAdd     Style
 
 	// Display styles
-	Input     lipgloss.Style
-	Status    lipgloss.Style
-	Separator lipgloss.Style
-	Confirm   lipgloss.Style
+	Input     Style
+	Status    Style
+	Separator Style
+	Confirm   Style
 
 	// Component-specific colors (exposed as color.Color for dynamic use)
 	// Border colors
@@ -75,7 +74,7 @@ type Styles struct {
 // whitespace, so content lines may be shorter than the box.
 func (s *Styles) RenderOpenBoxLines(lines []string, width int, borderColor color.Color) []string {
 	rule := strings.Repeat("─", max(0, width))
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	borderStyle := NewStyle().Foreground(borderColor)
 	rule = borderStyle.Render(rule)
 
 	out := make([]string, 0, len(lines)+2)
@@ -115,39 +114,39 @@ func (s *Styles) RenderOpenBox(content string, width int, borderColor color.Colo
 
 // NewStyles creates a Styles instance from a Theme
 func NewStyles(t *theme.Theme) *Styles {
-	baseStyle := lipgloss.NewStyle()
+	baseStyle := NewStyle()
 	return &Styles{
 		// Output text styles
-		Text:        baseStyle.Foreground(lipgloss.Color(t.Text)).Bold(true),
+		Text:        baseStyle.Foreground(Color(t.Text)).Bold(true),
 		UserInput:   baseStyle.Bold(true),
-		Tool:        baseStyle.Foreground(lipgloss.Color(t.Tool)),
-		ToolContent: baseStyle.Foreground(lipgloss.Color(t.Muted)),
-		Reasoning:   baseStyle.Foreground(lipgloss.Color(t.Muted)).Italic(true),
-		Error:       baseStyle.Foreground(lipgloss.Color(t.Error)),
-		System:      baseStyle.Foreground(lipgloss.Color(t.Muted)),
-		Prompt:      baseStyle.Foreground(lipgloss.Color(t.Primary)).Bold(true),
-		Attachment:  baseStyle.Foreground(lipgloss.Color(t.Warning)).Bold(true),
-		DiffRemove:  baseStyle.Foreground(lipgloss.Color(t.Removed)),
-		DiffAdd:     baseStyle.Foreground(lipgloss.Color(t.Added)),
+		Tool:        baseStyle.Foreground(Color(t.Tool)),
+		ToolContent: baseStyle.Foreground(Color(t.Muted)),
+		Reasoning:   baseStyle.Foreground(Color(t.Muted)).Italic(true),
+		Error:       baseStyle.Foreground(Color(t.Error)),
+		System:      baseStyle.Foreground(Color(t.Muted)),
+		Prompt:      baseStyle.Foreground(Color(t.Primary)).Bold(true),
+		Attachment:  baseStyle.Foreground(Color(t.Warning)).Bold(true),
+		DiffRemove:  baseStyle.Foreground(Color(t.Removed)),
+		DiffAdd:     baseStyle.Foreground(Color(t.Added)),
 
 		// Display styles
 		Input:     baseStyle,
-		Status:    baseStyle.Foreground(lipgloss.Color(t.Dim)),
-		Separator: baseStyle.Foreground(lipgloss.Color(t.Dim)),
-		Confirm:   baseStyle.Foreground(lipgloss.Color(t.Warning)).Bold(true),
+		Status:    baseStyle.Foreground(Color(t.Dim)),
+		Separator: baseStyle.Foreground(Color(t.Dim)),
+		Confirm:   baseStyle.Foreground(Color(t.Warning)).Bold(true),
 
 		// Component-specific colors
-		BorderFocused: lipgloss.Color(t.Primary),
-		BorderBlurred: lipgloss.Color(t.Dim),
-		BorderCursor:  lipgloss.Color(t.Selection),
+		BorderFocused: Color(t.Primary),
+		BorderBlurred: Color(t.Dim),
+		BorderCursor:  Color(t.Selection),
 
-		ColorAccent:  lipgloss.Color(t.Primary),
-		ColorDim:     lipgloss.Color(t.Dim),
-		ColorMuted:   lipgloss.Color(t.Muted),
-		ColorWarning: lipgloss.Color(t.Warning),
-		ColorError:   lipgloss.Color(t.Error),
-		ColorSuccess: lipgloss.Color(t.Success),
-		CursorColor:  lipgloss.Color(t.Cursor),
+		ColorAccent:  Color(t.Primary),
+		ColorDim:     Color(t.Dim),
+		ColorMuted:   Color(t.Muted),
+		ColorWarning: Color(t.Warning),
+		ColorError:   Color(t.Error),
+		ColorSuccess: Color(t.Success),
+		CursorColor:  Color(t.Cursor),
 
 		FoldArrow:   t.FoldArrow,
 		UnfoldArrow: t.UnfoldArrow,

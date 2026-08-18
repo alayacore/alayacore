@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	"github.com/alayacore/alayacore/internal/protocol"
 )
 
@@ -246,7 +245,7 @@ func (ms ModelSelector) handleListKeys(key string) ModelSelector {
 func (ms ModelSelector) renderList() string {
 	var sb strings.Builder
 
-	titleStyle := lipgloss.NewStyle().Background(ms.Styles.ColorDim).Foreground(ms.Styles.ColorAccent).Bold(true)
+	titleStyle := NewStyle().Background(ms.Styles.ColorDim).Foreground(ms.Styles.ColorAccent).Bold(true)
 	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", ms.Width, "Model Selector")))
 	sb.WriteString("\n")
 
@@ -261,10 +260,10 @@ func (ms ModelSelector) renderList() string {
 	}
 
 	listBorderColor := ms.ListBorderColor()
-	boxWidth := lipgloss.Width(searchBox)
+	boxWidth := Width(searchBox)
 	sb.WriteString(ms.renderModelList(boxWidth, listBorderColor))
 
-	helpStyle := lipgloss.NewStyle().Background(ms.Styles.ColorDim).Foreground(ms.Styles.ColorMuted)
+	helpStyle := NewStyle().Background(ms.Styles.ColorDim).Foreground(ms.Styles.ColorMuted)
 	var help string
 	if ms.FilterInputFocused {
 		help = "  tab: list │ ctrl+r: reload │ enter: select │ esc: close"
@@ -318,15 +317,15 @@ func (ms ModelSelector) measureColumns(listHeight, innerWidth, idWidth int) (nam
 	naturalProv := 0
 	for i := ms.ScrollIdx; i < min(ms.ScrollIdx+listHeight, len(ms.filteredModels)); i++ {
 		m := ms.filteredModels[i]
-		if w := lipgloss.Width(m.Name); w > longestName {
+		if w := Width(m.Name); w > longestName {
 			longestName = w
 		}
 		ctx := formatContextLimit(int64(m.ContextLimit))
-		if w := lipgloss.Width(ctx); w > naturalCtx {
+		if w := Width(ctx); w > naturalCtx {
 			naturalCtx = w
 		}
 		provider := capitalize(m.ProtocolType)
-		if w := lipgloss.Width(provider); w > naturalProv {
+		if w := Width(provider); w > naturalProv {
 			naturalProv = w
 		}
 	}
@@ -385,7 +384,7 @@ func (ms ModelSelector) renderModelRow(i, idWidth, nameMaxWidth, ctxColWidth, pr
 		name = truncateWithSuffix(name, nameMaxWidth)
 	}
 
-	padding := max(0, nameMaxWidth-lipgloss.Width(name))
+	padding := max(0, nameMaxWidth-Width(name))
 	namePadded := name + strings.Repeat(" ", padding)
 	line := leftRaw + "  " + namePadded
 	if ctxColWidth > 0 {

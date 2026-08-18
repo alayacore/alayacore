@@ -6,14 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/lipgloss/v2"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 func visibleLength(s string) int {
-	return lipgloss.Width(s)
+	return Width(s)
 }
 
 func TestCtrlOOpensEditor(t *testing.T) {
@@ -200,7 +199,7 @@ func TestEditorSelectionOrder(t *testing.T) {
 }
 
 func TestRenderMultiline(t *testing.T) {
-	// Note: lipgloss.SetColorProfile is no longer needed in v2
+	// Note: SetColorProfile is no longer needed in v2
 
 	styles := DefaultStyles()
 	// Use existing reasoning style which should produce ANSI codes
@@ -234,7 +233,7 @@ func TestRenderMultiline(t *testing.T) {
 }
 
 func TestColorizeToolMultiline(t *testing.T) {
-	// Note: lipgloss.SetColorProfile is no longer needed in v2
+	// Note: SetColorProfile is no longer needed in v2
 
 	styles := DefaultStyles()
 	// Test multiline tool output with colon on first line
@@ -258,7 +257,7 @@ func TestColorizeToolMultiline(t *testing.T) {
 
 func TestWrapContentPreservesANSI(t *testing.T) {
 	// Create a styled line with ANSI escape sequences (dimmed reasoning style)
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("#585b70")).Italic(true)
+	style := NewStyle().Foreground(Color("#585b70")).Italic(true)
 	styledText := style.Render("This is a long line of reasoning text that should wrap when width is limited.")
 
 	// Test wrapping at various widths

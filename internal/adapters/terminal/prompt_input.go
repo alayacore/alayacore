@@ -5,8 +5,6 @@ package terminal
 
 import (
 	"strings"
-
-	"charm.land/lipgloss/v2"
 )
 
 // PromptInput handles text input.
@@ -112,14 +110,14 @@ func (m PromptInput) updateInputStyles() InputField {
 	}
 	return m.input.WithStyles(
 		inputFieldStyle{
-			Prompt:      lipgloss.NewStyle().Foreground(promptColor).Bold(true),
-			Text:        lipgloss.NewStyle().Bold(true),
-			Placeholder: lipgloss.NewStyle().Foreground(m.styles.ColorMuted),
+			Prompt:      NewStyle().Foreground(promptColor).Bold(true),
+			Text:        NewStyle().Bold(true),
+			Placeholder: NewStyle().Foreground(m.styles.ColorMuted),
 		},
 		inputFieldStyle{
-			Prompt:      lipgloss.NewStyle().Foreground(m.styles.ColorDim).Bold(true),
-			Text:        lipgloss.NewStyle().Foreground(m.styles.ColorDim).Bold(true),
-			Placeholder: lipgloss.NewStyle().Foreground(m.styles.ColorDim),
+			Prompt:      NewStyle().Foreground(m.styles.ColorDim).Bold(true),
+			Text:        NewStyle().Foreground(m.styles.ColorDim).Bold(true),
+			Placeholder: NewStyle().Foreground(m.styles.ColorDim),
 		},
 	)
 }
@@ -177,7 +175,7 @@ func (m PromptInput) Height() int {
 	if len(m.attachments) > 0 {
 		innerWidth := max(0, m.width)
 		styledMedia := wrapLabels(m.attachments, innerWidth, m.styles.Attachment)
-		lines += lipgloss.Height(styledMedia) + 1 // attachment lines + separator
+		lines += Height(styledMedia) + 1 // attachment lines + separator
 	}
 	return lines
 }
@@ -234,5 +232,5 @@ func (m PromptInput) AttachmentsOffset() int {
 	}
 	innerWidth := max(0, m.width)
 	styledMedia := wrapLabels(m.attachments, innerWidth, m.styles.Attachment)
-	return lipgloss.Height(styledMedia) + 1 // + separator line
+	return Height(styledMedia) + 1 // + separator line
 }

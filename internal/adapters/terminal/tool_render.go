@@ -5,8 +5,6 @@ package terminal
 
 import (
 	"strings"
-
-	"charm.land/lipgloss/v2"
 )
 
 // ============================================================================
@@ -25,16 +23,16 @@ const (
 
 // statusDot returns the plain status dot character and its style, shown
 // right after "TOOL" in the header line ("TOOL•").
-func (s ToolStatus) statusDot(styles *Styles) (string, lipgloss.Style) {
+func (s ToolStatus) statusDot(styles *Styles) (string, Style) {
 	switch s {
 	case ToolStatusSuccess:
-		return "•", lipgloss.NewStyle().Foreground(styles.ColorSuccess)
+		return "•", NewStyle().Foreground(styles.ColorSuccess)
 	case ToolStatusError:
-		return "•", lipgloss.NewStyle().Foreground(styles.ColorError)
+		return "•", NewStyle().Foreground(styles.ColorError)
 	case ToolStatusPending:
-		return "•", lipgloss.NewStyle().Foreground(styles.ColorAccent)
+		return "•", NewStyle().Foreground(styles.ColorAccent)
 	default:
-		return "·", lipgloss.NewStyle().Foreground(styles.ColorDim)
+		return "·", NewStyle().Foreground(styles.ColorDim)
 	}
 }
 

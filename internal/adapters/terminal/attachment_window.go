@@ -11,8 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"charm.land/lipgloss/v2"
 )
 
 type attachmentMode int
@@ -510,7 +508,7 @@ func (aw AttachmentWindow) View() View {
 func (aw AttachmentWindow) render() string {
 	var sb strings.Builder
 
-	titleStyle := lipgloss.NewStyle().Background(aw.Styles.ColorDim).Foreground(aw.Styles.ColorAccent).Bold(true)
+	titleStyle := NewStyle().Background(aw.Styles.ColorDim).Foreground(aw.Styles.ColorAccent).Bold(true)
 	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", aw.Width, "Attachments")))
 	sb.WriteString("\n")
 
@@ -518,7 +516,7 @@ func (aw AttachmentWindow) render() string {
 	sb.WriteString(searchBox)
 	sb.WriteString("\n")
 
-	boxWidth := lipgloss.Width(searchBox)
+	boxWidth := Width(searchBox)
 
 	if aw.mode == modeURL {
 		aw.renderURLBody(&sb, boxWidth)
@@ -526,7 +524,7 @@ func (aw AttachmentWindow) render() string {
 		aw.renderLocalBody(&sb, boxWidth)
 	}
 
-	helpStyle := lipgloss.NewStyle().Background(aw.Styles.ColorDim).Foreground(aw.Styles.ColorMuted)
+	helpStyle := NewStyle().Background(aw.Styles.ColorDim).Foreground(aw.Styles.ColorMuted)
 	var help string
 	switch {
 	case aw.mode == modeURL:

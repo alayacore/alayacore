@@ -9,8 +9,6 @@ import (
 	"image/color"
 	"strings"
 
-	"charm.land/lipgloss/v2"
-
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
@@ -260,7 +258,7 @@ func (ts ThemeSelector) updateFilteredThemes() ThemeSelector {
 func (ts ThemeSelector) renderList() string {
 	var sb strings.Builder
 
-	titleStyle := lipgloss.NewStyle().Background(ts.Styles.ColorDim).Foreground(ts.Styles.ColorAccent).Bold(true)
+	titleStyle := NewStyle().Background(ts.Styles.ColorDim).Foreground(ts.Styles.ColorAccent).Bold(true)
 	sb.WriteString(titleStyle.Render(fmt.Sprintf("%-*s", ts.Width, "Theme Selector")))
 	sb.WriteString("\n")
 
@@ -273,9 +271,9 @@ func (ts ThemeSelector) renderList() string {
 	sb.WriteString("\n")
 
 	listBorderColor := ts.ListBorderColor()
-	sb.WriteString(ts.renderThemeList(lipgloss.Width(filterBox), listBorderColor))
+	sb.WriteString(ts.renderThemeList(Width(filterBox), listBorderColor))
 
-	helpStyle := lipgloss.NewStyle().Background(ts.Styles.ColorDim).Foreground(ts.Styles.ColorMuted)
+	helpStyle := NewStyle().Background(ts.Styles.ColorDim).Foreground(ts.Styles.ColorMuted)
 	var help string
 	if ts.FilterInputFocused {
 		help = "  tab: list │ enter: select │ esc: close"
