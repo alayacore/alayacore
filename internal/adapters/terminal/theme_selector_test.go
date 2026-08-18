@@ -94,8 +94,9 @@ func TestThemePreviewStaleTickIgnoredAfterCancel(t *testing.T) {
 	terminal = m.(Terminal)
 
 	// Tab to the list, then navigate to the preview theme — this schedules
-	// the debounce tick.
-	m, cmd = terminal.Update(KeyPressMsg(Key{Code: KeyTab}))
+	// the debounce tick. (Tab itself also schedules a preview tick for the
+	// initial selection; it is irrelevant here.)
+	m, _ = terminal.Update(KeyPressMsg(Key{Code: KeyTab}))
 	terminal = m.(Terminal)
 	m, cmd = terminal.Update(KeyPressMsg(Key{Code: 'j'}))
 	terminal = m.(Terminal)
@@ -105,7 +106,7 @@ func TestThemePreviewStaleTickIgnoredAfterCancel(t *testing.T) {
 	pending := cmd
 
 	// Cancel before the debounce fires.
-	m, cmd = terminal.Update(KeyPressMsg(Key{Code: KeyEsc}))
+	m, _ = terminal.Update(KeyPressMsg(Key{Code: KeyEsc}))
 	terminal = m.(Terminal)
 
 	// The stale tick fires late (fires the 150ms timer) — it must be

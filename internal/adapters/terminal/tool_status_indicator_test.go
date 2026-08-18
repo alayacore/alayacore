@@ -20,9 +20,8 @@ import (
 // dots) and stays exactly 1 display column wide so the label column
 // alignment holds.
 func TestToolStatusIndicatorColorless(t *testing.T) {
-	styles := DefaultStyles()
 	for _, st := range []ToolStatus{ToolStatusNone, ToolStatusPending, ToolStatusSuccess, ToolStatusError} {
-		glyph, stl := st.statusDot(styles)
+		glyph, stl := st.statusDot()
 		if glyph == "" {
 			t.Errorf("status %d: empty glyph", st)
 			continue
@@ -41,9 +40,8 @@ func TestToolStatusIndicatorColorless(t *testing.T) {
 // executing) show one of the session-loading spinner frames, and the
 // terminal states show the plain check/cross.
 func TestToolRunningShowsSpinner(t *testing.T) {
-	styles := DefaultStyles()
 	for _, st := range []ToolStatus{ToolStatusNone, ToolStatusPending} {
-		glyph, _ := st.statusDot(styles)
+		glyph, _ := st.statusDot()
 		inSet := false
 		for _, f := range toolSpinnerFrames {
 			if glyph == f {
@@ -55,10 +53,10 @@ func TestToolRunningShowsSpinner(t *testing.T) {
 			t.Errorf("status %d: glyph %q is not one of the spinner frames", st, glyph)
 		}
 	}
-	if g, _ := ToolStatusSuccess.statusDot(styles); g != "✓" {
+	if g, _ := ToolStatusSuccess.statusDot(); g != "✓" {
 		t.Errorf("success glyph = %q, want ✓", g)
 	}
-	if g, _ := ToolStatusError.statusDot(styles); g != "✗" {
+	if g, _ := ToolStatusError.statusDot(); g != "✗" {
 		t.Errorf("error glyph = %q, want ✗", g)
 	}
 }

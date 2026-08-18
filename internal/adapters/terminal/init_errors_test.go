@@ -38,21 +38,3 @@ func TestInitErrorCollector(t *testing.T) {
 		t.Errorf("Expected 0 errors after GetAndClear, got %d", len(errs))
 	}
 }
-
-func TestInitErrorCollectorHasInitErrors(t *testing.T) {
-	ec := &InitErrorCollector{}
-
-	if ec.HasInitErrors() {
-		t.Error("Expected no errors initially")
-	}
-
-	ec.Addf("test")
-	if !ec.HasInitErrors() {
-		t.Error("Expected errors after Addf")
-	}
-
-	ec.GetAndClear()
-	if ec.HasInitErrors() {
-		t.Error("Expected no errors after GetAndClear")
-	}
-}

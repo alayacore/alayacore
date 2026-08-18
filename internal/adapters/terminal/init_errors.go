@@ -32,8 +32,3 @@ func (ec *InitErrorCollector) GetAndClear() []InitError {
 	ec.errors = nil
 	return errs
 }
-
-// HasInitErrors checks if there are any errors.
-func (ec *InitErrorCollector) HasInitErrors() bool {
-	return len(ec.errors) > 0
-}

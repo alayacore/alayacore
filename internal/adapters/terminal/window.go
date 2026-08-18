@@ -472,7 +472,7 @@ func (w *Window) windowLabel() string {
 // use their plain label ("ASSISTANT", "NOTIFY", …).
 func (w *Window) buildExpandHeader(styles *Styles) string {
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
-		dot, dotStyle := tr.status.statusDot(styles)
+		dot, dotStyle := tr.status.statusDot()
 		label := padLabel(toolLabelWithIndicator(dot))
 		var sb strings.Builder
 		sb.WriteString(" ")

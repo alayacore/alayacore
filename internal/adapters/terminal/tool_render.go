@@ -55,9 +55,8 @@ func toolLabelWithIndicator(dot string) string {
 // ("TOOLUSE ⠋", "TOOLUSE ✓"). The indicator is deliberately colorless —
 // the spinner replaces the old colored dots while the tool is running,
 // and the result glyphs (✓/✗) render in the default foreground instead of
-// green/red. The styles argument is retained for API stability; the
-// indicator never uses it.
-func (s ToolStatus) statusDot(_ *Styles) (string, Style) {
+// green/red.
+func (s ToolStatus) statusDot() (string, Style) {
 	switch s {
 	case ToolStatusSuccess:
 		return "✓", NewStyle()

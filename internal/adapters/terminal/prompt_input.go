@@ -155,13 +155,6 @@ func (m PromptInput) WithAttachments(paths []string) PromptInput {
 	return m
 }
 
-// Clear clears the input and attachments.
-func (m PromptInput) Clear() PromptInput {
-	m.input = m.input.WithValue("")
-	m.attachments = nil
-	return m
-}
-
 // Attachments returns the current attachment paths.
 func (m PromptInput) Attachments() []string {
 	return m.attachments

@@ -538,7 +538,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		return styles.System.Render(first), 1
 	}
 
-	dot, dotStyle := r.status.statusDot(styles)
+	dot, dotStyle := r.status.statusDot()
 
 	var inputFirst string
 	if r.deltaBuffer != "" {

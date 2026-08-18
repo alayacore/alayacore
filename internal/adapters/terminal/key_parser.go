@@ -52,7 +52,6 @@ const (
 	KeyDown
 	KeyRight
 	KeyLeft
-	KeyBegin
 	KeyInsert
 	KeyDelete
 	KeyPgUp
@@ -118,9 +117,6 @@ func (k Key) Keystroke() string {
 		sb.WriteString(kt)
 	} else {
 		switch k.Code {
-		case KeySpace:
-			// Space is the only invisible printable character.
-			sb.WriteString("space")
 		case KeyExtended:
 			// Multiple runes: use the text.
 			sb.WriteString(k.Text)
@@ -163,21 +159,14 @@ var keyTypeString = map[rune]string{
 
 // KeyMsg represents a key event (a key press).
 type KeyMsg interface {
-	fmtStringer
-	Key() Key
+	String() string
 }
-
-// fmtStringer is a minimal Stringer so KeyMsg can be embedded anywhere.
-type fmtStringer interface{ String() string }
 
 // KeyPressMsg is a message that represents a key press.
 type KeyPressMsg Key
 
 // String implements fmt.Stringer.
 func (k KeyPressMsg) String() string { return Key(k).String() }
-
-// Key returns the underlying key event.
-func (k KeyPressMsg) Key() Key { return Key(k) }
 
 // compile-time check: KeyPressMsg implements KeyMsg.
 var _ KeyMsg = KeyPressMsg{}
@@ -303,8 +292,6 @@ func decodeC0(b byte) Key {
 		return Key{Code: KeyTab} // ctrl+i or tab → tab (default flags)
 	case 0x0d:
 		return Key{Code: KeyEnter} // ctrl+m or enter → enter (default flags)
-	case 0x20:
-		return Key{Code: KeySpace, Text: " "}
 	case 0x7f:
 		return Key{Code: KeyBackspace}
 	}
@@ -593,7 +580,6 @@ var csiFuncKeys = map[byte]Key{
 	'B': {Code: KeyDown},
 	'C': {Code: KeyRight},
 	'D': {Code: KeyLeft},
-	'E': {Code: KeyBegin},
 	'F': {Code: KeyEnd},
 	'H': {Code: KeyHome},
 	'P': {Code: KeyF1},
@@ -632,7 +618,6 @@ var ss3Keys = map[byte]Key{
 	'B': {Code: KeyDown},
 	'C': {Code: KeyRight},
 	'D': {Code: KeyLeft},
-	'E': {Code: KeyBegin},
 	'F': {Code: KeyEnd},
 	'H': {Code: KeyHome},
 	'P': {Code: KeyF1},
