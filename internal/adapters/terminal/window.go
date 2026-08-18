@@ -354,7 +354,7 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle, _
 
 	arrow := w.arrowChar()
 	arrowWidth := ansi.StringWidth(arrow)
-	w.border.arrow = arrowStyle(styles, false).Render(arrow)
+	w.border.arrow = arrowStyle(styles).Render(arrow)
 	if w.Folded {
 		// Collapsed: single line — arrow + label + first line, truncated.
 		// BuildCollapsed skips full wrapping: only the first content line
@@ -430,16 +430,12 @@ func (w *Window) arrowChar() string {
 }
 
 // arrowStyle returns the style for the collapse/expand arrow.
-// Selected (cursor) windows use the selection color; others use dim.
-func arrowStyle(styles *Styles, isCursor bool) Style {
+// Cursor highlighting is handled separately by renderCursorArrow.
+func arrowStyle(styles *Styles) Style {
 	if styles == nil {
 		return NewStyle()
 	}
-	color := styles.ColorDim
-	if isCursor {
-		color = styles.BorderCursor
-	}
-	return NewStyle().Foreground(color)
+	return NewStyle().Foreground(styles.ColorDim)
 }
 
 // windowLabel returns the header label for the window type, e.g.

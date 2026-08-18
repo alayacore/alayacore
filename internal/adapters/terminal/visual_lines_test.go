@@ -60,7 +60,7 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 	}
 	// The rendered output is exactly arrow + the joined visual lines (the
 	// current line-based output path stays consistent).
-	want := arrowStyle(styles, false).Render(w.arrowChar()) + joinVisualLines(lines)
+	want := arrowStyle(styles).Render(w.arrowChar()) + joinVisualLines(lines)
 	if rendered != want {
 		t.Errorf("rendered mismatch:\n  got:  %q\n  want: %q", rendered, want)
 	}
