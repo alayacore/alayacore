@@ -9,6 +9,13 @@ type diffPair struct {
 	new string
 }
 
+// maxDiffLines caps the LCS matrix size for edit_file diffs. The
+// old/new strings come from the model's tool-call arguments and can be
+// arbitrarily large — an unbounded m×n DP would exhaust memory on huge
+// inputs (10k × 10k lines = 800MB of matrix cells). FormatCall falls
+// back to a degenerate "every line changed" diff above this cap.
+const maxDiffLines = 2000
+
 // computeDiff computes the LCS-based diff between old and new lines
 func computeDiff(oldLines, newLines []string) []diffPair {
 	lcs := computeLCS(oldLines, newLines)
@@ -57,7 +64,6 @@ func computeLCS(a, b []string) []string {
 	for i := range dp {
 		dp[i] = make([]int, n+1)
 	}
-
 	for i := 1; i <= m; i++ {
 		for j := 1; j <= n; j++ {
 			if a[i-1] == b[j-1] {
@@ -68,12 +74,14 @@ func computeLCS(a, b []string) []string {
 		}
 	}
 
+	// Walk the table backward collecting the LCS, then reverse: appending
+	// is O(n) total, whereas prepending each element would be O(n²).
 	var lcs []string
 	i, j := m, n
 	for i > 0 && j > 0 {
 		switch {
 		case a[i-1] == b[j-1]:
-			lcs = append([]string{a[i-1]}, lcs...)
+			lcs = append(lcs, a[i-1])
 			i--
 			j--
 		case dp[i-1][j] > dp[i][j-1]:
@@ -81,6 +89,9 @@ func computeLCS(a, b []string) []string {
 		default:
 			j--
 		}
+	}
+	for l, r := 0, len(lcs)-1; l < r; l, r = l+1, r-1 {
+		lcs[l], lcs[r] = lcs[r], lcs[l]
 	}
 
 	return lcs

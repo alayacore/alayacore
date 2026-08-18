@@ -102,7 +102,20 @@ func (h *EditFileHandler) FormatCall(input json.RawMessage) string {
 	oldLines := strings.Split(args.OldString, "\n")
 	newLines := strings.Split(args.NewString, "\n")
 
-	diffPairs := computeDiff(oldLines, newLines)
+	// Guard the LCS: old/new strings come from the model and can be huge;
+	// an m×n DP matrix on unbounded input would exhaust memory. Above the
+	// cap, render a degenerate all-changed diff — faithful, and O(n) time.
+	var diffPairs []diffPair
+	if len(oldLines) <= maxDiffLines && len(newLines) <= maxDiffLines {
+		diffPairs = computeDiff(oldLines, newLines)
+	} else {
+		for _, l := range oldLines {
+			diffPairs = append(diffPairs, diffPair{old: l, new: ""})
+		}
+		for _, l := range newLines {
+			diffPairs = append(diffPairs, diffPair{old: "", new: l})
+		}
+	}
 
 	for _, pair := range diffPairs {
 		old := strings.ReplaceAll(pair.old, "\n", "\\n")
