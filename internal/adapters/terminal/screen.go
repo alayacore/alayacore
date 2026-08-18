@@ -451,6 +451,39 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 	}
 
 	var buf []byte
+	// Phase 1 — rows the old frame drew that the new frame no longer
+	// draws: clear absolute (overlay) rows in place; base rows are
+	// handled by the tail erase (they are sequential from the top).
+	//
+	// A vanished overlay row must ALSO be restored with the base content
+	// that renders underneath it: real TUI frames always contain CUP rows
+	// (input box, status bar), so the caller's "overlay disappeared → full
+	// repaint" fallback never fires — without the repaint the erased row
+	// stays blank (a "black block") until a manual full redraw.
+	//
+	// This runs BEFORE the changed-row repaint: the EL (from the old row's
+	// column to end of line) and the base repaint may overlap a NEW
+	// overlay row occupying the same terminal row at a different column
+	// (overlays are centered boxes — the column depends on the box width,
+	// which changes between overlays or when their content changes). The
+	// new overlay row is repainted afterwards in phase 2, on top.
+	for _, r := range oldRows {
+		if !r.base && !newMap[key(r.frameRow)] {
+			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, r.frameRow.row+1)...)
+			buf = append(buf, ansi.EraseLine(0)...)
+			// Repaint the base row that renders on this terminal row (if
+			// the new frame has one), restoring the content the overlay
+			// covered. The base text is skipped by the changed-row loop
+			// (it equals the old frame's text), so it must be written here.
+			if text, ok := baseRowTextAt(newRows, width, r.frameRow.row); ok {
+				buf = append(buf, ansi.CursorPosition(1, r.frameRow.row+1)...)
+				buf = append(buf, text...)
+				buf = append(buf, ansi.EraseLine(0)...)
+			}
+		}
+	}
+	// Phase 2 — repaint changed rows (base first, overlay rows last, so
+	// the overlay always draws on top of the restored base).
 	for _, r := range newRows {
 		if r.base && baseCovered(r, coveredByOverlay) {
 			// Overlay covers part of this row in the new frame — do not
@@ -467,30 +500,6 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 				// frame's tail on screen. Erase to end of line after
 				// every repainted overlay row; a trailing EL is harmless
 				// when the row already carries one.
-				buf = append(buf, ansi.EraseLine(0)...)
-			}
-		}
-	}
-	// Rows the old frame drew that the new frame no longer draws: clear
-	// absolute (overlay) rows in place; base rows are handled by the tail
-	// erase (they are sequential from the top).
-	//
-	// A vanished overlay row must ALSO be restored with the base content
-	// that renders underneath it: real TUI frames always contain CUP rows
-	// (input box, status bar), so the caller's "overlay disappeared → full
-	// repaint" fallback never fires — without the repaint the erased row
-	// stays blank (a "black block") until a manual full redraw.
-	for _, r := range oldRows {
-		if !r.base && !newMap[key(r.frameRow)] {
-			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, r.frameRow.row+1)...)
-			buf = append(buf, ansi.EraseLine(0)...)
-			// Repaint the base row that renders on this terminal row (if
-			// the new frame has one), restoring the content the overlay
-			// covered. The base text is skipped by the changed-row loop
-			// (it equals the old frame's text), so it must be written here.
-			if text, ok := baseRowTextAt(newRows, width, r.frameRow.row); ok {
-				buf = append(buf, ansi.CursorPosition(1, r.frameRow.row+1)...)
-				buf = append(buf, text...)
 				buf = append(buf, ansi.EraseLine(0)...)
 			}
 		}
