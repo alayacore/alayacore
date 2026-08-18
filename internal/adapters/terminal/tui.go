@@ -870,6 +870,7 @@ func (m Terminal) applyTheme(theme *theme.Theme) Terminal {
 	m.themeSelector = m.themeSelector.WithStyles(m.styles)
 	m.helpWindow = m.helpWindow.WithStyles(m.styles)
 	m.confirmOverlay = m.confirmOverlay.WithStyles(m.styles)
+	m.mcpInitOverlay = m.mcpInitOverlay.WithStyles(m.styles)
 	m.attachmentWindow = m.attachmentWindow.WithStyles(m.styles)
 	m.display = m.display.updateContent()
 	return m

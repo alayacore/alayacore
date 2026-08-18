@@ -152,6 +152,7 @@ func (m Terminal) handleBlur() Terminal {
 	m.themeSelector = m.themeSelector.WithFocus(false)
 	m.helpWindow = m.helpWindow.WithFocus(false)
 	m.confirmOverlay = m.confirmOverlay.WithFocus(false)
+	m.mcpInitOverlay = m.mcpInitOverlay.WithFocus(false)
 	m.attachmentWindow = m.attachmentWindow.WithFocus(false)
 	m.display = m.display.updateContent()
 	return m
@@ -165,6 +166,7 @@ func (m Terminal) handleFocus() Terminal {
 	m.themeSelector = m.themeSelector.WithFocus(true)
 	m.helpWindow = m.helpWindow.WithFocus(true)
 	m.confirmOverlay = m.confirmOverlay.WithFocus(true)
+	m.mcpInitOverlay = m.mcpInitOverlay.WithFocus(true)
 	m.attachmentWindow = m.attachmentWindow.WithFocus(true)
 
 	if m.modelSelector.IsOpen() ||
