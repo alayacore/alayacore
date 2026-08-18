@@ -38,17 +38,30 @@ func TestScreenRenderRaw(t *testing.T) {
 }
 
 // TestScreenRenderFullScreenNoClear locks the flicker-free overlay render
-// path: full-screen frames overwrite without ED2.
+// path: consecutive full-screen frames overwrite without ED2, but the
+// first frame (fill-mode change) clears once so no previous content can
+// leak through.
 func TestScreenRenderFullScreenNoClear(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}
 
+	// First full-screen frame: mode change from unknown → clears once.
 	if err := s.Render("row1\r\nrow2\r\n", nil, true); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
+	if !strings.HasPrefix(out, "\x1b[2J\x1b[H") {
+		t.Errorf("first full-screen render should clear (mode change), got %q", out)
+	}
+
+	// Subsequent full-screen frames: no clearing (flicker-free).
+	buf.Reset()
+	if err := s.Render("row1\r\nrow2\r\nCHANGED", nil, true); err != nil {
+		t.Fatal(err)
+	}
+	out = buf.String()
 	if strings.Contains(out, "\x1b[2J") {
-		t.Errorf("full-screen render must not clear the screen (flicker), got %q", out)
+		t.Errorf("steady full-screen render must not clear the screen, got %q", out)
 	}
 	if !strings.HasPrefix(out, "\x1b[H") {
 		t.Errorf("full-screen render should start at home, got %q", out)
@@ -71,8 +84,20 @@ func TestScreenRenderOverlayResidueCleanup(t *testing.T) {
 		t.Fatalf("overlay frame should contain CUP rows, got %q", buf.String())
 	}
 	first := buf.String()
-	if strings.Contains(first, "\x1b[2J") {
-		t.Fatalf("overlay frame itself should render without clearing, got %q", first)
+	if !strings.HasPrefix(first, "\x1b[2J") {
+		t.Fatalf("first full-screen frame should clear once (mode change), got %q", first)
+	}
+
+	// Second overlay frame: same mode, no clearing.
+	buf.Reset()
+	if err := s.Render(overlayFrame+"\nmore", nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "\x1b[2J") {
+		t.Fatalf("steady full-screen frame should not clear, got %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "\x1b[10;20H") {
+		t.Fatalf("overlay frame should contain CUP rows, got %q", buf.String())
 	}
 
 	// Next frame has no overlay rows — must clear once (ED2) to erase residue.

@@ -115,6 +115,8 @@ func (s *Screen) Stop() error {
 // ended, spiraling the frame. The conversion is output-only; the view
 // content itself keeps plain '\n' (copy fidelity is unaffected — terminal
 // selection copies the rendered screen, not the emitted bytes).
+//
+//nolint:gocyclo // clear-mode decision + cursor encoding branches
 func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -126,7 +128,13 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	}
 
 	hadOverlay := containsCUP(content)
-	clearFirst := !fullScreen || (s.lastHadOverlay && !hadOverlay)
+	// Clear before writing when: the frame does not fill the screen
+	// (loading/errors), the previous frame drew overlay rows that this one
+	// no longer draws (residue beyond full-width rows), or the fill mode
+	// changed (e.g. loading -> normal) — a fresh clear guarantees no
+	// residue from the previous mode even if the new frame's row count is
+	// temporarily short (viewport sizing edge cases).
+	clearFirst := !fullScreen || (s.lastHadOverlay && !hadOverlay) || s.lastFullScreen != fullScreen
 
 	var buf []byte
 	if clearFirst {
