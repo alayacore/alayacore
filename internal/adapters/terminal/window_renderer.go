@@ -456,6 +456,13 @@ func (r *userRenderer) Invalidate() {}
 // order: media parts precede the text part. Multiple text parts are
 // separated with "---" in System color. Each returned line is one
 // terminal row (no '\n' inside); lineCount includes the 2 box rules.
+//
+// Wrapping is performed by wrapVisualLines (NOT by a pre-pass of
+// wrapContent): a pre-pass would insert hard '\n' at wrap points and
+// wrapVisualLines would then mistake them for original-line breaks,
+// collapsing soft-wrap semantics. Only genuinely-long SINGLE lines
+// use soft-wrap (their continuation rows join without '\n'); ordinary
+// multi-line content stays multi-line.
 func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 
@@ -493,11 +500,7 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		}
 
 		if textBlock.Len() > 0 {
-			styledText := textBlock.String()
-			if innerWidth > 0 {
-				styledText = wrapContent(styledText, innerWidth)
-			}
-			parts = append(parts, styledText)
+			parts = append(parts, textBlock.String())
 		}
 	}
 
