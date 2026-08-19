@@ -31,7 +31,7 @@ const (
 	ContentPartAudio      = "audio"
 	ContentPartDocument   = "document"
 	ContentPartReasoning  = "reasoning"
-	ContentPartToolUse    = "tool_use"
+	ContentPartToolCall   = "tool_use"
 	ContentPartToolResult = "tool_result"
 )
 
@@ -190,7 +190,7 @@ type ReasoningCompleteEvent struct {
 
 func (ReasoningCompleteEvent) isStreamEvent() {}
 
-// ToolInputStartEvent signals that a tool use has started
+// ToolInputStartEvent signals that a tool call has started
 type ToolInputStartEvent struct {
 	ID    string
 	Name  string
@@ -208,7 +208,7 @@ type ToolInputDeltaEvent struct {
 
 func (ToolInputDeltaEvent) isStreamEvent() {}
 
-// ToolInputCompleteEvent signals that a tool use's arguments have finished streaming
+// ToolInputCompleteEvent signals that a tool call's arguments have finished streaming
 type ToolInputCompleteEvent struct {
 	ID    string
 	Input json.RawMessage

@@ -92,7 +92,7 @@ for _, part := range msg.Contents {
 	case llm.ToolInputPart:
 		→ {Type:"tool_use", ID: v.ID, Name: v.Name, Input: v.Input}
 	case llm.ToolOutputPart:
-		→ {Type:"tool_result", ToolUseID: v.ID, Output: [...], IsError: v.IsError}
+		→ {Type:"tool_result", ToolCallID: v.ID, Output: [...], IsError: v.IsError}
 	// Output is an array of content blocks (text, image, etc.)
 	// Single text block uses string shorthand for backward compat
 	}

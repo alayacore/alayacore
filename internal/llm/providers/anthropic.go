@@ -42,7 +42,7 @@ const (
 	anthropicBlockTypeDocument   = "document"
 	anthropicBlockTypeThinking   = "thinking"
 	anthropicBlockTypeToolResult = "tool_result"
-	anthropicBlockTypeToolUse    = "tool_use"
+	anthropicBlockTypeToolCall   = "tool_use"
 
 	// Anthropic SSE delta types
 	anthropicDeltaTypeText      = "text_delta"
@@ -70,15 +70,15 @@ type anthropicContentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
 
-	// For tool use
+	// For tool calls
 	ID    string          `json:"id,omitempty"`
 	Name  string          `json:"name,omitempty"`
 	Input json.RawMessage `json:"input,omitempty"`
 
 	// For tool result
-	ToolUseID string `json:"tool_use_id,omitempty"`
-	Content   any    `json:"content,omitempty"`
-	IsError   bool   `json:"is_error,omitempty"`
+	ToolCallID string `json:"tool_use_id,omitempty"`
+	Content    any    `json:"content,omitempty"`
+	IsError    bool   `json:"is_error,omitempty"`
 
 	// For thinking (extended thinking)
 	// Pointer so we can emit `"thinking": ""` (DeepSeek requires empty thinking block)
@@ -465,7 +465,7 @@ func (s *anthropicStreamState) finishBlock(index int) {
 			Text:            block.buffer.String(),
 			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
 		}
-	case anthropicBlockTypeToolUse:
+	case anthropicBlockTypeToolCall:
 		s.contentParts[index] = &llm.ToolInputPart{
 			ID:              block.id,
 			Input:           json.RawMessage(block.buffer.String()),
@@ -513,7 +513,7 @@ func (s *anthropicStreamState) getContents() []llm.ContentPart {
 // toolInputPart returns a complete ToolInputPart if the block at the given index is a tool_use.
 func (s *anthropicStreamState) toolInputPart(index int) *llm.ToolInputPart {
 	block, ok := s.blocks[index]
-	if !ok || block.blockType != anthropicBlockTypeToolUse {
+	if !ok || block.blockType != anthropicBlockTypeToolCall {
 		return nil
 	}
 	return &llm.ToolInputPart{
@@ -586,7 +586,7 @@ func (p *AnthropicProvider) handleContentBlockStart(data string, yield func(llm.
 		return false
 	}
 	state.createBlock(event.Index, event.ContentBlock.Type, event.ContentBlock.ID, event.ContentBlock.Name)
-	if event.ContentBlock.Type == anthropicBlockTypeToolUse {
+	if event.ContentBlock.Type == anthropicBlockTypeToolCall {
 		if !yield(llm.ToolInputStartEvent{
 			ID:    event.ContentBlock.ID,
 			Name:  event.ContentBlock.Name,
@@ -835,16 +835,16 @@ func anthropicPartToBlock(part llm.ContentPart) *anthropicContentBlock {
 		}
 	case *llm.ToolInputPart:
 		return &anthropicContentBlock{
-			Type:  anthropicBlockTypeToolUse,
+			Type:  anthropicBlockTypeToolCall,
 			ID:    v.ID,
 			Name:  v.Name,
 			Input: v.Input,
 		}
 	case *llm.ToolOutputPart:
 		block := &anthropicContentBlock{
-			Type:      anthropicBlockTypeToolResult,
-			ToolUseID: v.ID,
-			IsError:   v.IsError,
+			Type:       anthropicBlockTypeToolResult,
+			ToolCallID: v.ID,
+			IsError:    v.IsError,
 		}
 		// Recursively convert each sub-part to an Anthropic content block.
 		// This handles TextPart → text block, ImagePart → image block, etc.

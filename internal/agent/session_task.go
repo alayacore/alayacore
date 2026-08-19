@@ -241,10 +241,10 @@ func (s *Session) handleStepStart(step int) error {
 	return nil
 }
 
-// cleanIncompleteToolInputs removes orphaned tool uses from the end of
+// cleanIncompleteToolInputs removes orphaned tool calls from the end of
 // the content slice. This happens when the user cancels mid-cycle: the model
-// emitted tool uses but the agent never executed them. Only the most recent
-// assistant content parts can have orphaned uses — earlier steps are already
+// emitted tool calls but the agent never executed them. Only the most recent
+// assistant content parts can have orphaned calls — earlier steps are already
 // complete.
 func cleanIncompleteToolInputs(contents []llm.ContentPart) []llm.ContentPart {
 	if len(contents) == 0 {

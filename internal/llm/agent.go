@@ -9,7 +9,7 @@ package llm
 //    send UI notifications, not append to session contents.
 //
 // 2. INCOMPLETE TOOL CALLS ON CANCEL: When user cancels mid-tool-call, content may have
-//    tool_use without matching tool_result. Clean up these orphaned tool uses before the
+//    tool_use without matching tool_result. Clean up these orphaned tool calls before the
 //    next API request to prevent errors.
 //
 // 3. TOOL RESULTS MUST MATCH TOOL CALLS 1:1: reorderToolResults pairs each result
@@ -413,7 +413,7 @@ func reorderToolResults(stepContents, results []ContentPart) ([]ContentPart, err
 	return append(stepContents, finalResults...), nil
 }
 
-// handleStreamedToolInput processes a completed tool use during streaming.
+// handleStreamedToolInput processes a completed tool call during streaming.
 // If the tool requires confirmation (per ToolNeedsConfirm), it starts a
 // goroutine that obtains a per-tool confirm channel and blocks until the
 // user responds. Otherwise it executes immediately in a goroutine.

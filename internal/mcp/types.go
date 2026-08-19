@@ -172,7 +172,7 @@ type ClientSamplingCapabilities struct {
 	// Context indicates whether the client supports context inclusion
 	// via includeContext parameter.
 	Context *struct{} `json:"context,omitempty"`
-	// Tools indicates whether the client supports tool use via tools and
+	// Tools indicates whether the client supports tool calls via tools and
 	// toolChoice parameters.
 	Tools *struct{} `json:"tools,omitempty"`
 }
