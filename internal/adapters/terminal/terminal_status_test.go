@@ -2,8 +2,83 @@ package terminal
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
+
+// TestStatusBarReasoningAlwaysShownWithoutHighlight verifies the status
+// bar always renders the reasoning indicator ("R0✦".."R2✦") with the
+// ✦ glyph retained but without the accent (highlight) color or bold
+// weight. The status dot is the only element in the status bar that
+// uses the accent.
+func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
+	for _, level := range []int{0, 1, 2} {
+		t.Run(fmt.Sprintf("level=%d", level), func(t *testing.T) {
+			out := NewTerminalOutput(DefaultStyles())
+			out.handleSystemMsg(fmt.Sprintf(`{"type":"reasoning","data":{"level":%d}}`, level))
+
+			styles := DefaultStyles()
+			terminal := &Terminal{
+				out:              out,
+				display:          NewDisplayModel(out.WindowBuffer(), styles),
+				input:            NewPromptInput(styles),
+				editor:           NewEditor(),
+				modelSelector:    NewModelSelector(styles),
+				themeSelector:    NewThemeSelector(styles),
+				helpWindow:       NewHelpWindow(styles),
+				confirmOverlay:   NewConfirmDialog(styles),
+				mcpInitOverlay:   NewConfirmDialog(styles),
+				attachmentWindow: NewAttachmentWindow(styles),
+				focusedWindow:    focusInput,
+				windowWidth:      80,
+				windowHeight:     24,
+				styles:           styles,
+				hasFocus:         true,
+			}
+
+			*terminal = terminal.updateStatus()
+
+			plain := stripANSI(terminal.statusText)
+
+			// 1. Reasoning level is always shown with the ✦ glyph, even
+			//    when 0 ("R0✦").
+			want := fmt.Sprintf("R%d✦", level)
+			if !containsSubstring(plain, want) {
+				t.Errorf("expected status to contain %q, got %q", want, plain)
+			}
+			// 2. No bold SGR — bold was tied to the accent color and is
+			//    no longer applied to the reasoning indicator.
+			if strings.Contains(terminal.statusText, "\x1b[1m") {
+				t.Errorf("reasoning indicator should not be bold, got %q", terminal.statusText)
+			}
+			// 3. The accent color must not be applied to the reasoning
+			//    indicator. Render a reference string with the accent
+			//    style, capture its exact ANSI signature, and confirm
+			//    that signature never appears adjacent to the "R{n}✦".
+			accentSignature := styles.Status.Foreground(styles.ColorAccent).Render("X")
+			// Style.Render wraps text in SGR escapes; pull out the
+			// opening escape prefix so we can scan for it.
+			accentOpen := accentSignature
+			if end := strings.Index(accentSignature, "X"); end > 0 {
+				accentOpen = accentSignature[:end]
+			}
+			if accentOpen != "" && strings.Contains(accentOpen, "\x1b[") {
+				// Locate "R{n}" in the raw (ANSI-bearing) status and
+				// confirm the accent signature is not adjacent to it.
+				rawIdx := strings.Index(terminal.statusText, want)
+				if rawIdx >= 0 {
+					window := terminal.statusText
+					if rawIdx-len(accentOpen) >= 0 {
+						window = terminal.statusText[rawIdx-len(accentOpen) : rawIdx+len(want)]
+					}
+					if strings.Contains(window, accentOpen) {
+						t.Errorf("accent SGR %q wraps R{n} text: %q", accentOpen, terminal.statusText)
+					}
+				}
+			}
+		})
+	}
+}
 
 func TestStatusBarShowsCurrentStepsDuringProgress(t *testing.T) {
 	// Create output writer and simulate task in progress

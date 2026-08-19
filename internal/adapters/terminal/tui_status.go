@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-
-	"github.com/alayacore/alayacore/internal/config"
 )
 
 // statusStepsSegment returns the steps status string, or "" if no activity.
@@ -110,14 +108,15 @@ func (m Terminal) updateStatus() Terminal {
 	var segments []string
 	var dimSegments []string
 
-	// Switch indicators segment (compact: "R1✦ F↓" in one segment)
+	// Switch indicators segment (compact: "R1✦ F↓" in one segment).
+	// Reasoning level is always rendered ("R0✦".."R2✦") using the muted
+	// style — the accent color and bold are reserved for the status dot,
+	// which remains the only highlighted element in the status bar.
 	var switches []string
 	var dimSwitches []string
-	if snap.ReasoningLevel > config.ReasoningLevelOff {
-		reasonStyle := m.styles.Status.Foreground(m.styles.ColorAccent).Bold(true)
-		switches = append(switches, reasonStyle.Render(fmt.Sprintf("R%d✦", snap.ReasoningLevel)))
-		dimSwitches = append(dimSwitches, dimValStyle.Render(fmt.Sprintf("R%d✦", snap.ReasoningLevel)))
-	}
+	reasonLabel := fmt.Sprintf("R%d✦", snap.ReasoningLevel)
+	switches = append(switches, valStyle.Render(reasonLabel))
+	dimSwitches = append(dimSwitches, dimValStyle.Render(reasonLabel))
 	if m.display.shouldFollow() {
 		switches = append(switches, valStyle.Render("F↓"))
 		dimSwitches = append(dimSwitches, dimValStyle.Render("F↓"))
