@@ -27,7 +27,8 @@ const (
 
 // CollapsedLabelWidth is the width of the label column in collapsed window
 // header lines ("▶ LABEL content…"), so content starts at the same column
-// for every window type (USER PROMPT, REASONING, ASSISTANT, NOTIFY, ERROR,
-// TOOL). The widest label is "USER PROMPT" (11 columns) — the column is 12
-// so it keeps a separating space before the content, like every other label.
-const CollapsedLabelWidth = 12
+// for every window type (USER PROMPT, REASONING, ASSISTANT, SYSTEM NOTIFY,
+// SYSTEM ERROR, TOOL). The widest label is "SYSTEM NOTIFY" (13 columns); the column is 16
+// to keep a separating space before content and leave headroom for longer
+// labels (e.g. "SYSTEM ERROR", "TOOL CALL") without re-tuning.
+const CollapsedLabelWidth = 16

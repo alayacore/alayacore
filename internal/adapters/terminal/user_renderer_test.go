@@ -165,7 +165,7 @@ func TestUserPromptCollapsedMediaSummary(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("collapsed lineCount = %d, want 1", count)
 	}
-	want := "USER PROMPT 📷2 🎵1 analyze this"
+	want := "USER PROMPT     📷2 🎵1 analyze this"
 	if got := stripANSI(line); got != want {
 		t.Errorf("BuildCollapsed() = %q, want %q", got, want)
 	}
@@ -182,7 +182,7 @@ func TestUserPromptCollapsedMediaOnlySummary(t *testing.T) {
 	}
 
 	line, _ := ur.BuildCollapsed(30, DefaultStyles())
-	want := "USER PROMPT 📷2 🎵1 🎬1"
+	want := "USER PROMPT     📷2 🎵1 🎬1"
 	if got := stripANSI(line); got != want {
 		t.Errorf("BuildCollapsed() = %q, want %q", got, want)
 	}
@@ -202,13 +202,13 @@ func TestUserPromptCollapsedMediaSummaryFitsAndPrioritizesMedia(t *testing.T) {
 		},
 	}
 
-	line, _ := ur.BuildCollapsed(30, DefaultStyles())
+	line, _ := ur.BuildCollapsed(34, DefaultStyles())
 	plain := stripANSI(line)
 	if !strings.Contains(plain, "📷1") {
 		t.Errorf("collapsed media summary should retain the image badge, got %q", plain)
 	}
-	if width := ansi.StringWidth(plain); width > 28 {
-		t.Errorf("collapsed media summary width = %d, want <= 28", width)
+	if width := ansi.StringWidth(plain); width > 32 {
+		t.Errorf("collapsed media summary width = %d, want <= 32", width)
 	}
 	if strings.Contains(plain, "\n") {
 		t.Errorf("collapsed media summary must remain one line, got %q", plain)

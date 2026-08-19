@@ -178,16 +178,16 @@ func TestUserPromptCollapsedTail(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("collapsed lineCount = %d, want 1", count)
 	}
-	if want := "USER PROMPT first line\\nsecond line\\nthird line"; stripANSI(line) != want {
+	if want := "USER PROMPT     first line\\nsecond line\\nthird line"; stripANSI(line) != want {
 		t.Errorf("BuildCollapsed = %q, want %q", stripANSI(line), want)
 	}
 
 	// Narrow width: tail shown with leading "…", first line dropped,
 	// newlines escaped — same rule as assistant text.
 	ur = &userRenderer{textParts: []string{"first line\nsecond line\nthird line"}}
-	line, _ = ur.BuildCollapsed(30, styles)
+	line, _ = ur.BuildCollapsed(34, styles)
 	plain := stripANSI(line)
-	if !strings.HasPrefix(plain, "USER PROMPT …") {
+	if !strings.HasPrefix(plain, "USER PROMPT     …") {
 		t.Errorf("collapsed should keep the label + leading ellipsis, got %q", plain)
 	}
 	if !strings.HasSuffix(plain, "\\nthird line") {
@@ -199,14 +199,14 @@ func TestUserPromptCollapsedTail(t *testing.T) {
 	if strings.Contains(plain, "\n") {
 		t.Errorf("collapsed must not contain raw newlines: %q", plain)
 	}
-	if w := ansi.StringWidth(plain); w > 30 {
-		t.Errorf("collapsed width = %d, want <= 30: %q", w, plain)
+	if w := ansi.StringWidth(plain); w > 34 {
+		t.Errorf("collapsed width = %d, want <= 34: %q", w, plain)
 	}
 
 	// Multiple text parts: summary covers ALL parts, not just the first.
 	ur = &userRenderer{textParts: []string{"part one", "part two"}}
 	line, _ = ur.BuildCollapsed(100, styles)
-	if want := "USER PROMPT part one\\npart two"; stripANSI(line) != want {
+	if want := "USER PROMPT     part one\\npart two"; stripANSI(line) != want {
 		t.Errorf("multi-part BuildCollapsed = %q, want %q", stripANSI(line), want)
 	}
 }
@@ -220,7 +220,7 @@ func TestUserPromptLabel(t *testing.T) {
 
 	// Collapsed (user windows start folded): "▶ USER PROMPT what is lisp?".
 	plain := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(plain, "▶ USER PROMPT what is lisp?") {
+	if !strings.HasPrefix(plain, "▶ USER PROMPT     what is lisp?") {
 		t.Errorf("collapsed user line should start with ▶ USER PROMPT, got %q", plain)
 	}
 	if c := contentColumn(plain); c != 2+CollapsedLabelWidth {

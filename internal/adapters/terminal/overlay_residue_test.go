@@ -53,7 +53,7 @@ func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	for _, row := range splitTerminalRows(plain2, W) {
 		if strings.HasPrefix(row, "▶ USER") {
 			trimmed := strings.TrimRight(row, " ")
-			if trimmed != "▶ USER PROMPT my os?" {
+			if trimmed != "▶ USER PROMPT     my os?" {
 				t.Errorf("USER folded row polluted by residue: %q (trimmed %q)", row, trimmed)
 			}
 		}

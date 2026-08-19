@@ -288,9 +288,9 @@ func labelForTag(tag string) string {
 	case tlv.TagUserT:
 		return "USER PROMPT"
 	case TagWindowSN:
-		return "NOTIFY"
+		return "SYSTEM NOTIFY"
 	case TagWindowSE:
-		return "ERROR"
+		return "SYSTEM ERROR"
 	default:
 		return ""
 	}

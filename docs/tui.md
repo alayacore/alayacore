@@ -173,7 +173,7 @@ scrolls the viewport. While auto-follow is active:
 
 ### Fold Mode
 
-Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOLUSE` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `NOTIFY` for system notifications, or `ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOLUSE` + indicator followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
+Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOLUSE` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `SYSTEM NOTIFY` for system notifications, or `SYSTEM ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOLUSE` + indicator followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
 
 An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrow glyphs themselves are theme-configurable (`fold_arrow` / `unfold_arrow`). See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
 

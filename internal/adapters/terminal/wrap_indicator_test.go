@@ -126,24 +126,24 @@ func TestUnfoldedWindowHasHeaderAndBox(t *testing.T) {
 func TestFoldedSystemWindowLabels(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
-	// System notify (SN) — folded by default, shows NOTIFY label.
+	// System notify (SN) — folded by default, shows SYSTEM NOTIFY label.
 	wb.AppendOrUpdate("SN", "sys-1", "nothing to cancel")
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
-	if !strings.HasPrefix(plain, "▶ NOTIFY") {
-		t.Errorf("System notify window should start with '▶ NOTIFY', got %q", plain)
+	if !strings.HasPrefix(plain, "▶ SYSTEM NOTIFY") {
+		t.Errorf("System notify window should start with '▶ SYSTEM NOTIFY', got %q", plain)
 	}
 	if !strings.Contains(plain, "nothing to cancel") {
 		t.Errorf("System notify window should show content after label, got %q", plain)
 	}
 
-	// System error (SE) — folded by default, shows ERROR label.
+	// System error (SE) — folded by default, shows SYSTEM ERROR label.
 	wb.AppendOrUpdate("SE", "sys-2", "something failed")
 	rendered = wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 	plain = stripANSI(lines[len(lines)-1])
-	if !strings.HasPrefix(plain, "▶ ERROR") {
-		t.Errorf("System error window should start with '▶ ERROR', got %q", plain)
+	if !strings.HasPrefix(plain, "▶ SYSTEM ERROR") {
+		t.Errorf("System error window should start with '▶ SYSTEM ERROR', got %q", plain)
 	}
 	if !strings.Contains(plain, "something failed") {
 		t.Errorf("System error window should show content after label, got %q", plain)
@@ -153,7 +153,7 @@ func TestFoldedSystemWindowLabels(t *testing.T) {
 func TestExpandedSystemWindowHeaderLabels(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
-	// Unfold both system windows: headers must show NOTIFY / ERROR labels.
+	// Unfold both system windows: headers must show SYSTEM NOTIFY / SYSTEM ERROR labels.
 	wb.AppendOrUpdate("SN", "sys-1", "nothing to cancel")
 	wb.AppendOrUpdate("SE", "sys-2", "something failed")
 	wb.ToggleFold(0)
@@ -162,12 +162,12 @@ func TestExpandedSystemWindowHeaderLabels(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 
-	if !strings.Contains(stripANSI(lines[0]), "▼ NOTIFY") {
-		t.Errorf("Expanded notify header should be '▼ NOTIFY', got %q", stripANSI(lines[0]))
+	if !strings.Contains(stripANSI(lines[0]), "▼ SYSTEM NOTIFY") {
+		t.Errorf("Expanded notify header should be '▼ SYSTEM NOTIFY', got %q", stripANSI(lines[0]))
 	}
 	// SE window: header + box = 4 lines, so its header is at index 4.
-	if !strings.Contains(stripANSI(lines[4]), "▼ ERROR") {
-		t.Errorf("Expanded error header should be '▼ ERROR', got %q", stripANSI(lines[4]))
+	if !strings.Contains(stripANSI(lines[4]), "▼ SYSTEM ERROR") {
+		t.Errorf("Expanded error header should be '▼ SYSTEM ERROR', got %q", stripANSI(lines[4]))
 	}
 }
 
@@ -186,7 +186,7 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 
-	// Labels other than ERROR are bold + muted (no bright default color).
+	// Labels other than SYSTEM ERROR are bold + muted (no bright default color).
 	mutedBold := styles.System.Bold(true)
 
 	findLine := func(label string) string {
@@ -224,22 +224,22 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 		t.Errorf("ASSISTANT content summary should be muted: %q", line)
 	}
 
-	// NOTIFY: label keeps its System (muted) color.
-	line = findLine("NOTIFY")
-	if !strings.Contains(line, styles.System.Bold(true).Render(padLabel("NOTIFY"))) {
-		t.Errorf("NOTIFY label should keep the System (muted) color: %q", line)
+	// SYSTEM NOTIFY: label keeps its System (muted) color.
+	line = findLine("SYSTEM NOTIFY")
+	if !strings.Contains(line, styles.System.Bold(true).Render(padLabel("SYSTEM NOTIFY"))) {
+		t.Errorf("SYSTEM NOTIFY label should keep the System (muted) color: %q", line)
 	}
 	if !strings.Contains(line, styles.System.Render("nothing to cancel")) {
-		t.Errorf("NOTIFY content summary should be muted: %q", line)
+		t.Errorf("SYSTEM NOTIFY content summary should be muted: %q", line)
 	}
 
-	// ERROR: label keeps its Error (red) color, content muted.
-	line = findLine("ERROR")
-	if !strings.Contains(line, styles.Error.Render(padLabel("ERROR"))) {
-		t.Errorf("ERROR label should keep the Error (red) color: %q", line)
+	// SYSTEM ERROR: label keeps its Error (red) color, content muted.
+	line = findLine("SYSTEM ERROR")
+	if !strings.Contains(line, styles.Error.Render(padLabel("SYSTEM ERROR"))) {
+		t.Errorf("SYSTEM ERROR label should keep the Error (red) color: %q", line)
 	}
 	if !strings.Contains(line, styles.System.Render("session failed")) {
-		t.Errorf("ERROR content summary should be muted: %q", line)
+		t.Errorf("SYSTEM ERROR content summary should be muted: %q", line)
 	}
 }
 
@@ -465,7 +465,7 @@ func TestFoldedTextWindowTailUpdatesOnDelta(t *testing.T) {
 		t.Errorf("collapsed summary should reflect the latest delta, got %q", plain)
 	}
 	// The start was truncated away — the summary begins with "…".
-	if !strings.HasPrefix(plain, "▶ ASSISTANT   …") {
+	if !strings.HasPrefix(plain, "▶ ASSISTANT       …") {
 		t.Errorf("collapsed summary should be truncated with a leading ellipsis: %q", plain)
 	}
 }

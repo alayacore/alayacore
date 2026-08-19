@@ -92,7 +92,7 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 	// Folded fragment: single short line, unpadded (its EL erase clears
 	// any previous frame's residue on the row, keeping selections free of
 	// trailing spaces).
-	if !strings.Contains(plain, "▶ REASONING   short reasoning") {
+	if !strings.Contains(plain, "▶ REASONING       short reasoning") {
 		t.Errorf("AR folded line missing: %q", plain)
 	}
 }

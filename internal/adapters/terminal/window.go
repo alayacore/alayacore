@@ -477,8 +477,8 @@ func arrowStyle(styles *Styles) Style {
 }
 
 // windowLabel returns the header label for the window type, e.g.
-// "TOOLUSE edit_file", "REASONING", "ASSISTANT", "USER PROMPT", "NOTIFY",
-// "ERROR".
+// "TOOLUSE edit_file", "REASONING", "ASSISTANT", "USER PROMPT",
+// "SYSTEM NOTIFY", "SYSTEM ERROR".
 func (w *Window) windowLabel() string {
 	switch w.Tag() {
 	case tlv.TagAssistantF, tlv.TagUserF:
@@ -493,9 +493,9 @@ func (w *Window) windowLabel() string {
 	case tlv.TagUserT:
 		return "USER PROMPT"
 	case TagWindowSN:
-		return "NOTIFY"
+		return "SYSTEM NOTIFY"
 	case TagWindowSE:
-		return "ERROR"
+		return "SYSTEM ERROR"
 	default:
 		return ""
 	}
@@ -505,7 +505,7 @@ func (w *Window) windowLabel() string {
 // after the arrow). Tool windows use the collapsed-style layout — bold
 // "TOOLUSE" + a space + the status indicator in the fixed label column,
 // then the muted tool name: "TOOLUSE ⠋    execute_command". Other windows
-// use their plain label ("ASSISTANT", "NOTIFY", …).
+// use their plain label ("ASSISTANT", "SYSTEM NOTIFY", …).
 func (w *Window) buildExpandHeader(styles *Styles) string {
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
 		dot, dotStyle := tr.status.statusDot()
@@ -535,9 +535,9 @@ func (w *Window) labelStyle(styles *Styles) Style {
 }
 
 // labelStyleForTag returns the style used for a window type's header label
-// (e.g. "REASONING", "TOOLUSE", "ERROR"). All labels are bold + muted — bright
+// (e.g. "REASONING", "TOOLUSE", "SYSTEM ERROR"). All labels are bold + muted — bright
 // default-foreground labels distract the eye in the collapsed list; only
-// ERROR keeps its red semantic color. Shared by the expanded header line
+// SYSTEM ERROR keeps its red semantic color. Shared by the expanded header line
 // and the collapsed label segment.
 func labelStyleForTag(tag string, styles *Styles) Style {
 	if styles == nil {
