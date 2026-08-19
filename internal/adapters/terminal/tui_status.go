@@ -170,10 +170,21 @@ func formatTokenCount(n int64) string {
 // statusTextDim / inProgress / appliedTheme.
 func (m Terminal) updateStatus() Terminal {
 	snap := m.out.SnapshotStatus()
-	if m.lastStatusVersion != 0 && m.lastStatusVersion == snap.Version {
+	autoFollow := m.display.shouldFollow()
+	// The cached m.statusText embeds the auto-follow indicator ("F↓").
+	// updateStatus only rebuilds when the status snapshot version changes
+	// (task progress, model change, MCP phase, theme, video config). The
+	// auto-follow state lives on the DisplayModel and flips when the user
+	// navigates with j/k/h/l/G/space — none of those bump the version, so
+	// without this second check the F↓ indicator would stay stale until
+	// the next status-affecting session event.
+	autoFollowChanged := m.lastStatusAutoFollow == nil || *m.lastStatusAutoFollow != autoFollow
+	if m.lastStatusVersion != 0 && m.lastStatusVersion == snap.Version && !autoFollowChanged {
 		return m
 	}
 	m.lastStatusVersion = snap.Version
+	seen := autoFollow
+	m.lastStatusAutoFollow = &seen
 
 	valStyle := m.styles.Status.Foreground(m.styles.ColorMuted)
 	dimValStyle := m.styles.Status.Foreground(m.styles.ColorDim)

@@ -274,6 +274,8 @@ type Terminal struct {
 	appliedTheme       string           // last theme name that was visually applied
 	pendingAttachments []attachment     // pending file attachments for multi-modal input
 	lastStatusVersion  uint64           // last StatusSnapshot.Version seen by updateStatus
+	lastStatusAutoFollow *bool         // display.shouldFollow() baked into m.statusText; used to detect local flips (e.g. via navigation) that don't bump the snapshot version
+
 	lastModelVersion   uint64           // last ModelSnapshot.Version seen by the selector rebuild
 
 	// renderedStatusBarCache memoizes the status-bar render output keyed
