@@ -77,10 +77,8 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	// Incremental update: append the delta to wrappedLines as PLAIN TEXT.
 	// This is only valid for windows that render plain (AT/AR — streaming
 	// content deliberately carries no styling; markdown table rendering
-	// is handled above and produces plain text too). Styled windows
-	// (SN/SE) must fall through to a full re-style: appending plain text
-	// to styled wrappedLines would leave the delta tail without its
-	// System/Error color.
+	// is handled above and produces plain text too). Every text window
+	// (AT/AR/SN/SE) is plain, so the incremental append is always safe.
 	if r.plainContent() && len(r.wrappedLines) > 0 && r.cacheWidth > 0 {
 		// stripANSI only (no expandTabs here): tabs are expanded per
 		// original line inside wrapVisualLines, so incremental and full
@@ -158,7 +156,7 @@ func (r *textRenderer) plainContent() bool {
 // the same original line join without '\n' (soft wrap); rows starting a
 // new original line are separated by hard '\n'. lineCount includes the 2
 // box rules (len(lines) + 2); Window.Render adds the header.
-func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
+func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 
 	// Fast path: use cached wrapped lines if width matches.
@@ -201,15 +199,6 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		// no-op. Fitted to innerWidth so rows never mid-cell soft-wrap.
 		content = renderMarkdownTables(content, innerWidth)
 	}
-	if !r.plainContent() && styles != nil {
-		switch r.tag {
-		case TagWindowSE:
-			content = styleMultiline(content, styles.Error)
-		case TagWindowSN:
-			content = styleMultiline(content, styles.System)
-		}
-	}
-
 	r.wrappedLines = wrapVisualLines(content, innerWidth)
 	r.cacheWidth = innerWidth
 	r.cacheValid = true

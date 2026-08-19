@@ -535,17 +535,19 @@ func (w *Window) labelStyle(styles *Styles) Style {
 }
 
 // labelStyleForTag returns the style used for a window type's header label
-// (e.g. "REASONING", "TOOLUSE", "SYSTEM ERROR"). All labels are bold + muted — bright
-// default-foreground labels distract the eye in the collapsed list; only
-// SYSTEM ERROR keeps its red semantic color. Shared by the expanded header line
-// and the collapsed label segment.
+// (e.g. "REASONING", "TOOLUSE", "SYSTEM ERROR"). All labels are bold —
+// default-foreground labels would distract the eye in the collapsed list.
+// SYSTEM NOTIFY and non-system labels use the muted System color; SYSTEM
+// ERROR keeps its red semantic color so the error is instantly
+// recognizable. Shared by the expanded header line and the collapsed
+// label segment.
 func labelStyleForTag(tag string, styles *Styles) Style {
 	if styles == nil {
 		return NewStyle().Bold(true)
 	}
 	switch tag {
 	case TagWindowSE:
-		return styles.Error
+		return styles.Error.Bold(true)
 	default:
 		// All other labels: bold + muted.
 		return styles.System.Bold(true)

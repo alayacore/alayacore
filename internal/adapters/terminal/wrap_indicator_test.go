@@ -233,9 +233,10 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 		t.Errorf("SYSTEM NOTIFY content summary should be muted: %q", line)
 	}
 
-	// SYSTEM ERROR: label keeps its Error (red) color, content muted.
+	// SYSTEM ERROR: label keeps its Error (red) color + bold (uniform with
+	// every other label), content muted.
 	line = findLine("SYSTEM ERROR")
-	if !strings.Contains(line, styles.Error.Render(padLabel("SYSTEM ERROR"))) {
+	if !strings.Contains(line, styles.Error.Bold(true).Render(padLabel("SYSTEM ERROR"))) {
 		t.Errorf("SYSTEM ERROR label should keep the Error (red) color: %q", line)
 	}
 	if !strings.Contains(line, styles.System.Render("session failed")) {

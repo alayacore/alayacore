@@ -118,10 +118,10 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 			shouldHaveColor: false, // streaming content carries no styling
 		},
 		{
-			name:            "system error gets styled",
+			name:            "system error is plain text",
 			tag:             TagWindowSE,
 			content:         "Error occurred",
-			shouldHaveColor: true,
+			shouldHaveColor: false, // unfolded system windows render as plain text
 		},
 	}
 
