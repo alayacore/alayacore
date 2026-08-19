@@ -50,8 +50,6 @@ type Styles struct {
 	ColorDim     color.Color
 	ColorMuted   color.Color
 	ColorWarning color.Color
-	ColorError   color.Color
-	CursorColor  color.Color
 
 	// Fold-state arrow glyphs (from the theme; single codepoint).
 	FoldArrow   string // collapsed-window arrow
@@ -148,7 +146,6 @@ func NewStyles(t *theme.Theme) *Styles {
 		ColorDim:     Color(t.Dim),
 		ColorMuted:   Color(t.Muted),
 		ColorWarning: Color(t.Warning),
-		ColorError:   Color(t.Error),
 
 		FoldArrow:   t.FoldArrow,
 		UnfoldArrow: t.UnfoldArrow,
@@ -187,7 +184,6 @@ func (s *Styles) Dimmed() *Styles {
 		ColorDim:     s.ColorDim,
 		ColorMuted:   s.ColorDim,
 		ColorWarning: s.ColorDim,
-		ColorError:   s.ColorDim,
 
 		// Glyphs — unchanged (dimming affects color, not characters)
 		FoldArrow:   s.FoldArrow,

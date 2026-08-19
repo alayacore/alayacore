@@ -96,10 +96,6 @@ func (tm *Manager) GetThemes() []Info {
 	return result
 }
 
-func (tm *Manager) GetThemesFolder() string {
-	return tm.themesFolder
-}
-
 // LoadTheme loads a theme by name.
 // If the theme doesn't exist or name is empty, returns the default theme.
 func (tm *Manager) LoadTheme(name string) *Theme {
@@ -119,16 +115,6 @@ func (tm *Manager) LoadTheme(name string) *Theme {
 		}
 	}
 	return DefaultTheme()
-}
-
-// ThemeExists checks if a theme with the given name exists.
-func (tm *Manager) ThemeExists(name string) bool {
-	for _, t := range tm.themes {
-		if t.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 // GetLoadErrors returns any parse errors collected during
