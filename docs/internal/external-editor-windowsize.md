@@ -36,17 +36,17 @@ current terminal size, and **always sends a `WindowSizeMsg`**:
 
 ```go
 func (p *Program) acquireTerminal() error {
-    if err := p.tty.MakeRaw(); err != nil {
-        return err
-    }
-    if err := p.screen.Start(); err != nil {
-        return err
-    }
-    p.resumeInput()
-    p.forceRedraw()
-    p.width, p.height = p.screen.Size()
-    p.msgs <- WindowSizeMsg{Width: p.width, Height: p.height}
-    return nil
+	if err := p.tty.MakeRaw(); err != nil {
+		return err
+	}
+	if err := p.screen.Start(); err != nil {
+		return err
+	}
+	p.resumeInput()
+	p.forceRedraw()
+	p.width, p.height = p.screen.Size()
+	p.msgs <- WindowSizeMsg{Width: p.width, Height: p.height}
+	return nil
 }
 ```
 
