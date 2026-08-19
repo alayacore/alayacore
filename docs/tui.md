@@ -108,6 +108,10 @@ The attachment type is determined by file extension (or URL path extension):
 
 Attachments appear above the text input, separated by `---`, matching the rendering of user messages in the conversation history:
 
+When a user message is collapsed, attachments remain visible as a compact badge
+summary (for example, `📷1 🎵1`) before the text tail. Expand the window to
+see the full attachment labels and content.
+
 ```
 ┌───────────────────────────────┐
 │ 📷 Image  🎵 Audio            │

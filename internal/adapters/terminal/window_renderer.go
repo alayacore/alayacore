@@ -7,6 +7,7 @@ package terminal
 // that varies by window type.
 
 import (
+	"strconv"
 	"strings"
 
 	ansi "github.com/charmbracelet/x/ansi"
@@ -372,6 +373,54 @@ func flattenDelta(delta string) string {
 	return expandTabs(d)
 }
 
+// compactMediaSummary renders attachment labels as a compact single-line
+// summary. Duplicate media types are counted (for example, "📷1 🎵1") so a
+// collapsed window does not hide the fact that more than one attachment is
+// present.
+func compactMediaSummary(mediaParts []string) string {
+	counts := make(map[string]int, len(mediaParts))
+	order := make([]string, 0, len(mediaParts))
+	seen := make(map[string]struct{}, len(mediaParts))
+
+	for _, label := range mediaParts {
+		if label == "" {
+			continue
+		}
+		if _, ok := seen[label]; ok {
+			counts[label]++
+			continue
+		}
+		seen[label] = struct{}{}
+		counts[label] = 1
+		order = append(order, label)
+	}
+
+	parts := make([]string, 0, len(order))
+	for _, label := range order {
+		parts = append(parts, compactMediaIcon(label)+strconv.Itoa(counts[label]))
+	}
+	return strings.Join(parts, " ")
+}
+
+// compactMediaIcon returns the compact icon used by compactMediaSummary.
+// Known labels are explicit; unknown labels use their first token.
+func compactMediaIcon(label string) string {
+	switch label {
+	case tlv.MediaLabel(tlv.TagUserI):
+		return "📷"
+	case tlv.MediaLabel(tlv.TagUserV):
+		return "🎬"
+	case tlv.MediaLabel(tlv.TagUserA):
+		return "🎵"
+	case tlv.MediaLabel(tlv.TagUserD):
+		return "📄"
+	}
+	if i := strings.IndexByte(label, ' '); i >= 0 {
+		return label[:i]
+	}
+	return label
+}
+
 // ============================================================================
 // userRenderer — User messages with optional media attachments (UT)
 // ============================================================================
@@ -464,23 +513,34 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 }
 
 // BuildCollapsed returns the single-line collapsed form:
-// "USER PROMPT …content-tail", truncated to fit width minus the arrow.
-// Consistent with assistant text / reasoning: the summary shows the
-// escaped latest tail of the WHOLE content (all text parts), so a
-// multi-frame user message's newest content stays visible in the
-// collapsed list — not just the first line of the first part.
+// "USER PROMPT media-summary …content-tail", truncated to fit width minus
+// the arrow. Media badges always come first and therefore remain visible
+// even when the text is long. A media-only message shows all attachment
+// types and their counts in the available width.
 func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	content := prepareContent(strings.Join(r.textParts, "\n"))
 	content = strings.TrimSpace(content)
-	if content == "" && len(r.mediaParts) > 0 {
-		content = r.mediaParts[0]
-	}
-	if content == "" {
+	mediaSummary := compactMediaSummary(r.mediaParts)
+	if content == "" && mediaSummary == "" {
 		return "", 1
 	}
+
 	label := padLabel("USER PROMPT")
 	room := max(0, width-2-ansi.StringWidth(label))
-	line := label + tailSummary(content, room)
+	summary := ""
+	if mediaSummary != "" {
+		summary = tailSummary(mediaSummary, room)
+		if content != "" && summary != "" {
+			textRoom := max(0, room-ansi.StringWidth(summary)-1)
+			if textRoom > 0 {
+				summary += " " + tailSummary(content, textRoom)
+			}
+		}
+	} else {
+		summary = tailSummary(content, room)
+	}
+
+	line := label + summary
 	line = truncateWithSuffix(line, max(0, width-2)) // safety net
 	return renderCollapsedLine(line, padLabel("USER PROMPT"), labelStyleForTag(tlv.TagUserT, styles), styles.System), 1
 }
