@@ -43,7 +43,7 @@ func (p *Program) acquireTerminal() error {
 		return err
 	}
 	p.resumeInput()
-	p.forceRedraw()
+	p.forceRepaint()
 	p.width, p.height = p.screen.Size()
 	p.msgs <- WindowSizeMsg{Width: p.width, Height: p.height}
 	return nil

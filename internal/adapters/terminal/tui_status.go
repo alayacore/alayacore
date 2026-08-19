@@ -161,23 +161,15 @@ func formatTokenCount(n int64) string {
 // the version check, updateStatus would rebuild every segment from
 // scratch on every tick, allocating strings the renderer then drops on
 // the same-content identity check.
+//
+// The early-exit fires when lastStatusVersion matches the current
+// snapshot version AND we have already processed at least one version
+// (lastStatusVersion != 0). The non-zero guard handles the initial call:
+// before any status-affecting event has fired, both sides are 0, but
+// running the first rebuild is still required to populate statusText /
+// statusTextDim / inProgress / appliedTheme.
 func (m Terminal) updateStatus() Terminal {
 	snap := m.out.SnapshotStatus()
-
-	// Skip the rebuild when nothing changed. Note that we still run
-	// syncThemeFromSession unconditionally on the first call (when
-	// lastStatusVersion is 0 and snap.Version is also 0, before any
-	// status-affecting event has fired) — no, in that case the version
-	// would be 0 == 0 and we'd skip. That breaks the initial theme
-	// sync. So the check is for `m.lastStatusVersion == snap.Version
-	// && m.lastStatusVersion != 0`: a non-zero lastSeen equal to the
-	// current version means we've already processed this exact state.
-	//
-	// Actually simpler: when lastStatusVersion != 0 AND it matches the
-	// current snapshot, we have already rendered this exact status. When
-	// lastStatusVersion is 0 (first call), we must run to populate the
-	// initial state. This also covers the case where the underlying state
-	// happens to be at version 0 (no updates yet).
 	if m.lastStatusVersion != 0 && m.lastStatusVersion == snap.Version {
 		return m
 	}

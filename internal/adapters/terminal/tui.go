@@ -881,9 +881,9 @@ func (m Terminal) overlayCursorPosition() (x, y int, ok bool) {
 }
 
 // renderLoadingView renders the loading screen shown while the session is
-// being loaded asynchronously. It displays a centered message with a simple
-// spinner animation (updated by tickMsg) so the user gets instant feedback
-// even on slow machines.
+// being loaded asynchronously. It displays a centered message with a
+// simple spinner animation (updated by tickMsg) so the user gets instant
+// feedback even on slow machines.
 //
 // The view pads to the full viewport height with erased blank rows and
 // sets v.FullScreen = true so Screen.Render uses the row-diff path
@@ -891,11 +891,14 @@ func (m Terminal) overlayCursorPosition() (x, y int, ok bool) {
 // spinner advances, eliminating the full-screen flicker that ED2 would
 // otherwise produce on every tick. The first paint (empty lastContent)
 // still clears; later repaints diff only the changed row.
+//
+// The spinner frames are the same braille dot-segment rotation used by
+// tool windows (see toolSpinnerFrames in tool_render.go). They advance
+// based on wall clock, so any re-render — the 250ms tick, a content
+// arrival, an overlay open — picks up the current frame without a
+// separate timer.
 func (m Terminal) renderLoadingView() View {
-	// Simple spinner frames.
-	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	frame := int(time.Now().UnixMilli()/150) % len(spinner)
-	spinnerChar := spinner[frame]
+	spinnerChar := toolSpinnerFrame()
 
 	msg := fmt.Sprintf(" %s Loading session...", spinnerChar)
 	// Center the message vertically and horizontally (ASCII width ~= len).
