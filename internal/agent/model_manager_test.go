@@ -244,7 +244,7 @@ model_name: "model-b"
 	mm := newModelManager(configPath)
 
 	// Check initial IDs (IDs start from 1; 0 is reserved as "no model")
-	models := mm.GetModels()
+	models := mm.getModels()
 	if len(models) != 2 {
 		t.Fatalf("expected 2 models, got %d", len(models))
 	}
@@ -272,7 +272,7 @@ model_name: "model-b"
 		t.Fatalf("failed to reload: %v", err)
 	}
 
-	models = mm.GetModels()
+	models = mm.getModels()
 	if len(models) != 2 {
 		t.Fatalf("expected 2 models after reload, got %d", len(models))
 	}
@@ -316,29 +316,29 @@ model_name: "model-a"
 	}
 
 	mm := newModelManager(configPath)
-	if !mm.HasModels() {
+	if !mm.hasModels() {
 		t.Fatal("expected model A to load")
 	}
-	if mm.HasRejected() {
+	if mm.hasRejected() {
 		t.Fatal("expected HasRejected=false after clean load")
 	}
 
 	invalid := modelConfig{Name: "Broken"} // missing required fields
 
 	// 1. All-rejected sync: flag must become true, current models untouched.
-	msgs := mm.SyncFromContent(validModelJSON(t, invalid))
+	msgs := mm.syncFromContent(validModelJSON(t, invalid))
 	if len(msgs) == 0 {
 		t.Fatal("expected validation messages for all-rejected sync")
 	}
-	if !mm.HasRejected() {
+	if !mm.hasRejected() {
 		t.Fatal("HasRejected must be true after an all-rejected sync")
 	}
-	if !mm.HasModels() {
+	if !mm.hasModels() {
 		t.Fatal("all-rejected sync must not wipe the current models")
 	}
 
 	// 2. Valid sync clears the flag.
-	msgs = mm.SyncFromContent(validModelJSON(t, modelConfig{
+	msgs = mm.syncFromContent(validModelJSON(t, modelConfig{
 		Name:         "Model B",
 		ProtocolType: "openai",
 		BaseURL:      "https://api.example.com",
@@ -348,36 +348,36 @@ model_name: "model-a"
 	if len(msgs) != 0 {
 		t.Fatalf("expected no validation messages, got %v", msgs)
 	}
-	if mm.HasRejected() {
+	if mm.hasRejected() {
 		t.Fatal("HasRejected must be false after a valid sync")
 	}
-	if got := len(mm.GetModels()); got != 1 {
+	if got := len(mm.getModels()); got != 1 {
 		t.Fatalf("expected 1 model after valid sync, got %d", got)
 	}
 
 	// 3. Empty sync clears the flag and leaves no models.
-	msgs = mm.SyncFromContent(validModelJSON(t))
+	msgs = mm.syncFromContent(validModelJSON(t))
 	if len(msgs) != 0 {
 		t.Fatalf("expected no messages for empty sync, got %v", msgs)
 	}
-	if mm.HasRejected() {
+	if mm.hasRejected() {
 		t.Fatal("HasRejected must be false after an empty sync")
 	}
-	if mm.HasModels() {
+	if mm.hasModels() {
 		t.Fatal("expected no models after empty sync")
 	}
 
 	// 4. All-rejected again from empty state — flag true, still no models.
-	msgs = mm.SyncFromContent(validModelJSON(t, invalid))
+	msgs = mm.syncFromContent(validModelJSON(t, invalid))
 	if len(msgs) == 0 {
 		t.Fatal("expected validation messages for all-rejected sync from empty state")
 	}
-	if !mm.HasRejected() {
+	if !mm.hasRejected() {
 		t.Fatal("HasRejected must be true after all-rejected sync from empty state")
 	}
 
 	// 5. Mixed sync: valid models kept, flag cleared.
-	msgs = mm.SyncFromContent(validModelJSON(t, invalid, modelConfig{
+	msgs = mm.syncFromContent(validModelJSON(t, invalid, modelConfig{
 		Name:         "Model C",
 		ProtocolType: "anthropic",
 		BaseURL:      "https://api.example.com",
@@ -387,10 +387,10 @@ model_name: "model-a"
 	if len(msgs) == 0 {
 		t.Fatal("expected validation messages for the rejected model in mixed sync")
 	}
-	if mm.HasRejected() {
+	if mm.hasRejected() {
 		t.Fatal("HasRejected must be false when at least one model is valid")
 	}
-	models := mm.GetModels()
+	models := mm.getModels()
 	if len(models) != 1 || models[0].Name != "Model C" {
 		t.Fatalf("expected only Model C, got %v", models)
 	}

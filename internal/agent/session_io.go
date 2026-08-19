@@ -365,12 +365,12 @@ func (s *Session) handleModelSet(args string) (any, error) {
 	if err != nil {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: fmt.Sprintf("model_set: invalid model ID: %s", args)}
 	}
-	model := mm.GetModel(modelID)
+	model := mm.getModel(modelID)
 	if model == nil {
 		return nil, &cmdErr{Code: "MODEL_NOT_FOUND", Message: fmt.Sprintf("model_set: model not found: %d", modelID)}
 	}
 
-	if err := mm.SetActive(modelID); err != nil {
+	if err := mm.setActive(modelID); err != nil {
 		return nil, &cmdErr{Code: "MODEL_ERROR", Message: err.Error()}
 	}
 
@@ -381,7 +381,7 @@ func (s *Session) handleModelSet(args string) (any, error) {
 	if s.SessionFile != "" {
 		s.modelService.sessionMetaModel = model.Name
 	} else if rm := s.modelService.runtimeMgr; rm != nil {
-		persistErr = rm.SetActiveModel(model.Name)
+		persistErr = rm.setActiveModel(model.Name)
 	}
 
 	if err := s.SwitchModel(model); err != nil {
@@ -399,12 +399,12 @@ func (s *Session) handleModelLoad() (any, error) {
 		return nil, err
 	}
 
-	path := mm.GetFilePath()
+	path := mm.getFilePath()
 	if path == "" {
 		return nil, &cmdErr{Code: "NOT_CONFIGURED", Message: "no model file path configured"}
 	}
 
-	if err := mm.LoadFromFile(path); err != nil {
+	if err := mm.loadFromFile(path); err != nil {
 		return nil, &cmdErr{Code: "LOAD_FAILED", Message: fmt.Sprintf("model_load: failed to load models: %v", err)}
 	}
 
@@ -412,17 +412,17 @@ func (s *Session) handleModelLoad() (any, error) {
 	// outcome — then fail the command if any model block was rejected.
 	// The user must see these errors to fix their config.
 	s.modelService.ResolveActiveModel()
-	if model := mm.GetActive(); model != nil {
+	if model := mm.getActive(); model != nil {
 		if err := s.SwitchModel(model); err != nil {
 			return nil, &cmdErr{Code: "MODEL_ERROR", Message: "Failed to reinitialize model after reload: " + err.Error()}
 		}
 	}
 	s.sendModelListMsg()
 
-	if msgs := mm.GetLoadErrors(); len(msgs) > 0 {
+	if msgs := mm.getLoadErrors(); len(msgs) > 0 {
 		return nil, &cmdErr{Code: "MODEL_VALIDATION", Message: strings.Join(msgs, "; ")}
 	}
-	return map[string]any{"models": mm.GetModels()}, nil
+	return map[string]any{"models": mm.getModels()}, nil
 }
 
 // handleModelSync replaces all models with JSON content from an adapter
@@ -438,12 +438,12 @@ func (s *Session) handleModelSync(args string) (any, error) {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :model_sync <json>"}
 	}
 
-	msgs := mm.SyncFromContent(args)
+	msgs := mm.syncFromContent(args)
 
 	// Apply the successfully synced models, then fail the command if any
 	// model was rejected or persistence failed.
 	s.modelService.ResolveActiveModel()
-	if model := mm.GetActive(); model != nil {
+	if model := mm.getActive(); model != nil {
 		if err := s.SwitchModel(model); err != nil {
 			return nil, &cmdErr{Code: "MODEL_ERROR", Message: "Failed to reinitialize model after sync: " + err.Error()}
 		}
@@ -453,7 +453,7 @@ func (s *Session) handleModelSync(args string) (any, error) {
 	if len(msgs) > 0 {
 		return nil, &cmdErr{Code: "MODEL_VALIDATION", Message: strings.Join(msgs, "; ")}
 	}
-	return map[string]any{"models": mm.GetModels()}, nil
+	return map[string]any{"models": mm.getModels()}, nil
 }
 
 // ============================================================================
@@ -517,7 +517,7 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 
 	var persistErr error
 	if s.modelService.runtimeMgr != nil {
-		persistErr = s.modelService.runtimeMgr.SetActiveTheme(name)
+		persistErr = s.modelService.runtimeMgr.setActiveTheme(name)
 	}
 	s.sendSystemInfo(systemInfoTheme)
 	if persistErr != nil {

@@ -217,7 +217,7 @@ func (s *Session) sendThemeMsg() {
 	if rm == nil {
 		return
 	}
-	name := rm.GetActiveTheme()
+	name := rm.getActiveTheme()
 	s.writeSystemMsg(themeMsg{Name: name})
 }
 

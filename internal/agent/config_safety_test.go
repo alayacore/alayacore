@@ -89,13 +89,13 @@ func TestRuntimeManager_SpecialChars_RoundTrip(t *testing.T) {
 	rm := newRuntimeManager(runtimePath)
 
 	specialName := `model "quoted" \slash\`
-	if err := rm.SetActiveModel(specialName); err != nil {
+	if err := rm.setActiveModel(specialName); err != nil {
 		t.Fatalf("SetActiveModel failed: %v", err)
 	}
 
 	// Create a fresh manager and load from the same file
 	rm2 := newRuntimeManager(runtimePath)
-	got := rm2.GetActiveModel()
+	got := rm2.getActiveModel()
 	if got != specialName {
 		t.Errorf("round-trip failed: got %q, want %q", got, specialName)
 	}
@@ -109,12 +109,12 @@ func TestRuntimeManager_NewlineInModel_RoundTrip(t *testing.T) {
 	rm := newRuntimeManager(runtimePath)
 
 	nameWithNewline := "line1\nline2"
-	if err := rm.SetActiveModel(nameWithNewline); err != nil {
+	if err := rm.setActiveModel(nameWithNewline); err != nil {
 		t.Fatalf("SetActiveModel failed: %v", err)
 	}
 
 	rm2 := newRuntimeManager(runtimePath)
-	got := rm2.GetActiveModel()
+	got := rm2.getActiveModel()
 	if got != nameWithNewline {
 		t.Errorf("round-trip failed: got %q, want %q", got, nameWithNewline)
 	}

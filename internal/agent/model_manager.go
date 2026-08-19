@@ -26,7 +26,7 @@ type modelManager struct {
 	nextID      int
 	filePath    string
 	loadErrors  []string // config parse/validation errors from last load
-	hasRejected bool     // true when model blocks were present but ALL were rejected (no usable models remain)
+	allRejected bool     // true when model blocks were present but ALL were rejected (no usable models remain)
 }
 
 // defaultModelConfig is the default model configuration written when config file is empty
@@ -46,9 +46,9 @@ var knownProtocolTypes = map[string]bool{
 
 // NoModelsErrorMessage returns a formatted error message for when no usable models
 // are available. If models were found but all rejected, the message reflects that.
-func NoModelsErrorMessage(configPath string, hasRejected bool) string {
+func NoModelsErrorMessage(configPath string, allRejected bool) string {
 	var b strings.Builder
-	if hasRejected {
+	if allRejected {
 		b.WriteString("Error: All models were rejected due to configuration errors.\n")
 	} else {
 		b.WriteString("Error: No models configured.\n")
@@ -66,19 +66,19 @@ func newModelManager(configPath string) *modelManager {
 		nextID:   1, // IDs start from 1; 0 is reserved as "no model"
 	}
 	if configPath != "" {
-		_ = mm.LoadFromFile(configPath) // best-effort load on init
+		_ = mm.loadFromFile(configPath) // best-effort load on init
 	}
 	return mm
 }
 
-// GetLoadErrors returns validation messages from the last LoadFromFile call.
+// getLoadErrors returns validation messages from the last loadFromFile call.
 // These include both parse errors (e.g. non-numeric value for an int field)
 // and model errors (e.g. unknown protocol_type, missing required fields).
-func (mm *modelManager) GetLoadErrors() []string {
+func (mm *modelManager) getLoadErrors() []string {
 	return mm.loadErrors
 }
 
-// LoadFromFile loads models from a config file in key-value format
+// loadFromFile loads models from a config file in key-value format
 // If the file doesn't exist or is empty, it creates the file with default config.
 //
 // File format:
@@ -91,7 +91,7 @@ func (mm *modelManager) GetLoadErrors() []string {
 //	---
 //	name: "Another Model"
 //	...
-func (mm *modelManager) LoadFromFile(path string) error {
+func (mm *modelManager) loadFromFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -124,7 +124,7 @@ func (mm *modelManager) LoadFromFile(path string) error {
 
 	// Track whether any model blocks were present but rejected
 	totalBlocks := len(config.ParseKeyValueBlocks(string(data)))
-	mm.hasRejected = totalBlocks > 0 && len(models) == 0 && len(msgs) > 0
+	mm.allRejected = totalBlocks > 0 && len(models) == 0 && len(msgs) > 0
 
 	mm.models = models
 	mm.loadErrors = msgs
@@ -210,29 +210,29 @@ func validateModel(m modelConfig) []string {
 	return errs
 }
 
-func (mm *modelManager) HasModels() bool {
+func (mm *modelManager) hasModels() bool {
 	return len(mm.models) > 0
 }
 
-// HasRejected returns true if model blocks were present but ALL were
+// hasRejected returns true if model blocks were present but ALL were
 // rejected during the last load/sync — i.e. the config produced no usable
 // models. Used to distinguish "no models configured" from "models present
 // but all invalid" in error messages.
-func (mm *modelManager) HasRejected() bool {
-	return mm.hasRejected
+func (mm *modelManager) hasRejected() bool {
+	return mm.allRejected
 }
 
-// GetModels returns all models with full details (including API keys).
-func (mm *modelManager) GetModels() []modelConfig {
+// getModels returns all models with full details (including API keys).
+func (mm *modelManager) getModels() []modelConfig {
 	result := make([]modelConfig, len(mm.models))
 	copy(result, mm.models)
 	return result
 }
 
-// SyncFromContent replaces all models with parsed JSON content, persists to the
+// syncFromContent replaces all models with parsed JSON content, persists to the
 // config file, and returns validation messages.  The JSON format matches the
 // modelListMsg wire format ([]modelConfig).
-func (mm *modelManager) SyncFromContent(content string) []string {
+func (mm *modelManager) syncFromContent(content string) []string {
 	var models []modelConfig
 	if err := json.Unmarshal([]byte(content), &models); err != nil {
 		return []string{fmt.Sprintf("model_sync: invalid JSON: %v", err)}
@@ -255,9 +255,9 @@ func (mm *modelManager) SyncFromContent(content string) []string {
 		// Still reflect the outcome in the flag: after this sync there are
 		// no usable models (the previous models are kept, but the rejection
 		// must be visible). Mirrors LoadFromFile's all-rejected semantics —
-		// otherwise HasRejected stays stale and the error message would
+		// otherwise hasRejected stays stale and the error message would
 		// claim "no models configured" instead of "all models rejected".
-		mm.hasRejected = true
+		mm.allRejected = true
 		return msgs
 	}
 
@@ -271,7 +271,7 @@ func (mm *modelManager) SyncFromContent(content string) []string {
 	mm.models = valid
 	mm.loadErrors = msgs
 	// At least one model is valid (or the sync was empty) — no rejection flag.
-	mm.hasRejected = false
+	mm.allRejected = false
 
 	// Persist to config file in key-value format
 	if mm.filePath != "" {
@@ -289,8 +289,8 @@ func (mm *modelManager) writeConfigFile() error {
 	return os.WriteFile(mm.filePath, []byte(data), 0600)
 }
 
-// GetModel returns a model by ID (includes API key for internal use)
-func (mm *modelManager) GetModel(id int) *modelConfig {
+// getModel returns a model by ID (includes API key for internal use)
+func (mm *modelManager) getModel(id int) *modelConfig {
 	for i := range mm.models {
 		if mm.models[i].ID == id {
 			return &mm.models[i]
@@ -299,8 +299,8 @@ func (mm *modelManager) GetModel(id int) *modelConfig {
 	return nil
 }
 
-// SetActive sets the active model by ID (does NOT persist to file)
-func (mm *modelManager) SetActive(id int) error {
+// setActive sets the active model by ID (does NOT persist to file)
+func (mm *modelManager) setActive(id int) error {
 	// Verify the model exists
 	for _, m := range mm.models {
 		if m.ID == id {
@@ -312,7 +312,7 @@ func (mm *modelManager) SetActive(id int) error {
 }
 
 // Returns false if there are no models.
-func (mm *modelManager) SetActiveToFirst() bool {
+func (mm *modelManager) setActiveToFirst() bool {
 	if len(mm.models) == 0 {
 		return false
 	}
@@ -320,8 +320,8 @@ func (mm *modelManager) SetActiveToFirst() bool {
 	return true
 }
 
-// GetActive returns the active model (includes API key)
-func (mm *modelManager) GetActive() *modelConfig {
+// getActive returns the active model (includes API key)
+func (mm *modelManager) getActive() *modelConfig {
 	for _, m := range mm.models {
 		if m.ID == mm.activeID {
 			return &m
@@ -330,15 +330,15 @@ func (mm *modelManager) GetActive() *modelConfig {
 	return nil
 }
 
-func (mm *modelManager) GetActiveID() int {
+func (mm *modelManager) getActiveID() int {
 	return mm.activeID
 }
 
-func (mm *modelManager) GetFilePath() string {
+func (mm *modelManager) getFilePath() string {
 	return mm.filePath
 }
 
-func (mm *modelManager) FindModelByName(name string) int {
+func (mm *modelManager) findModelByName(name string) int {
 	for _, m := range mm.models {
 		if m.Name == name {
 			return m.ID
@@ -347,11 +347,11 @@ func (mm *modelManager) FindModelByName(name string) int {
 	return 0
 }
 
-// SetActiveByName sets the active model by name (does NOT persist to file)
-func (mm *modelManager) SetActiveByName(name string) error {
-	id := mm.FindModelByName(name)
+// setActiveByName sets the active model by name (does NOT persist to file)
+func (mm *modelManager) setActiveByName(name string) error {
+	id := mm.findModelByName(name)
 	if id == 0 {
 		return fmt.Errorf("model_set: model not found: %q", name)
 	}
-	return mm.SetActive(id)
+	return mm.setActive(id)
 }

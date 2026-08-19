@@ -48,7 +48,7 @@ func NewEditFileTool() llm.Tool {
 //	for { _, err := editor.processChunk(session, session); err != nil { ... } }
 //	if err = editor.flushRemaining(session); err != nil { ... }
 //
-//	return session.Commit()  // renames temp → source; Close() skips removal
+//	return session.commit()  // renames temp → source; Close() skips removal
 type editSession struct {
 	srcPath   string
 	srcFile   *os.File
@@ -120,10 +120,10 @@ func (s *editSession) Write(p []byte) (int, error) {
 	return s.tempFile.Write(p)
 }
 
-// Commit finalizes the edit by atomically renaming the temp file over the
-// source. After a successful Commit, Close() will not remove the temp file
+// commit finalizes the edit by atomically renaming the temp file over the
+// source. After a successful commit, Close() will not remove the temp file
 // (it no longer exists at its original path).
-func (s *editSession) Commit() error {
+func (s *editSession) commit() error {
 	// Close both files before rename to release all OS handles.
 	if err := s.tempFile.Close(); err != nil {
 		return fmt.Errorf("failed to close temp file: %v", err)
@@ -299,7 +299,7 @@ func executeEditFile(ctx context.Context, args EditFileInput) ([]llm.ContentPart
 		return executeEditFileTolerant(ctx, session, args)
 	}
 
-	if err := session.Commit(); err != nil {
+	if err := session.commit(); err != nil {
 		return nil, err
 	}
 
@@ -648,7 +648,7 @@ func executeEditFileTolerant(ctx context.Context, session *editSession, args Edi
 		return nil, err
 	}
 
-	if err := session.Commit(); err != nil {
+	if err := session.commit(); err != nil {
 		return nil, err
 	}
 

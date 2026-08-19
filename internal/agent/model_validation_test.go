@@ -183,7 +183,7 @@ model_name: ""
 	}
 
 	mm := newModelManager(configPath)
-	msgs := mm.GetLoadErrors()
+	msgs := mm.getLoadErrors()
 
 	if len(msgs) == 0 {
 		t.Fatal("expected errors from invalid config, got none")
@@ -233,7 +233,7 @@ model_name: "gpt-4"
 	}
 
 	mm := newModelManager(configPath)
-	msgs := mm.GetLoadErrors()
+	msgs := mm.getLoadErrors()
 
 	if len(msgs) != 0 {
 		t.Errorf("expected no errors from valid config, got: %v", msgs)

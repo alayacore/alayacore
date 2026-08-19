@@ -9,7 +9,7 @@ func (mm *modelManager) Reload() error {
 	if mm.filePath == "" {
 		return fmt.Errorf("model: no config file path set")
 	}
-	return mm.LoadFromFile(mm.filePath)
+	return mm.loadFromFile(mm.filePath)
 }
 
 // AddModel adds a new model to the runtime list (test helper).

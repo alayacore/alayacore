@@ -36,14 +36,14 @@ func newRuntimeManager(runtimePath string) *runtimeManager {
 
 	// Load if path is set
 	if rm.path != "" {
-		_ = rm.Load() // best-effort load on init
+		_ = rm.load() // best-effort load on init
 	}
 
 	return rm
 }
 
 // Load reads the runtime config from file
-func (rm *runtimeManager) Load() error {
+func (rm *runtimeManager) load() error {
 	if rm.path == "" {
 		return nil
 	}
@@ -97,26 +97,26 @@ func formatRuntimeConfig(cfg runtimeConfig) string {
 }
 
 // GetLoadErrors returns any parse errors from the last Load() call.
-func (rm *runtimeManager) GetLoadErrors() []string {
+func (rm *runtimeManager) getLoadErrors() []string {
 	return rm.loadErrs
 }
 
-func (rm *runtimeManager) GetActiveModel() string {
+func (rm *runtimeManager) getActiveModel() string {
 	return rm.config.ActiveModel
 }
 
 // SetActiveModel sets the active model name and saves to file
-func (rm *runtimeManager) SetActiveModel(name string) error {
+func (rm *runtimeManager) setActiveModel(name string) error {
 	rm.config.ActiveModel = name
 	return rm.save()
 }
 
-func (rm *runtimeManager) GetActiveTheme() string {
+func (rm *runtimeManager) getActiveTheme() string {
 	return rm.config.ActiveTheme
 }
 
 // SetActiveTheme sets the active theme name and saves to file
-func (rm *runtimeManager) SetActiveTheme(name string) error {
+func (rm *runtimeManager) setActiveTheme(name string) error {
 	rm.config.ActiveTheme = name
 	return rm.save()
 }

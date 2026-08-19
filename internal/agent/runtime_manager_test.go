@@ -14,17 +14,17 @@ func TestRuntimeManager(t *testing.T) {
 
 	// Test creating a new runtimeManager with empty path
 	rm := newRuntimeManager(runtimePath)
-	if rm.GetActiveModel() != "" {
-		t.Errorf("Expected empty active model, got: %s", rm.GetActiveModel())
+	if rm.getActiveModel() != "" {
+		t.Errorf("Expected empty active model, got: %s", rm.getActiveModel())
 	}
 
 	// Test setting active model
-	err := rm.SetActiveModel("Test Model")
+	err := rm.setActiveModel("Test Model")
 	if err != nil {
 		t.Errorf("Failed to set active model: %v", err)
 	}
-	if rm.GetActiveModel() != "Test Model" {
-		t.Errorf("Expected 'Test Model', got: %s", rm.GetActiveModel())
+	if rm.getActiveModel() != "Test Model" {
+		t.Errorf("Expected 'Test Model', got: %s", rm.getActiveModel())
 	}
 
 	// Test that file was created
@@ -34,8 +34,8 @@ func TestRuntimeManager(t *testing.T) {
 
 	// Test loading from existing file
 	rm2 := newRuntimeManager(runtimePath)
-	if rm2.GetActiveModel() != "Test Model" {
-		t.Errorf("Expected 'Test Model' after reload, got: %s", rm2.GetActiveModel())
+	if rm2.getActiveModel() != "Test Model" {
+		t.Errorf("Expected 'Test Model' after reload, got: %s", rm2.getActiveModel())
 	}
 }
 
@@ -117,8 +117,8 @@ func TestRuntimeManagerCreatesFileOnLoad(t *testing.T) {
 	}
 
 	// Verify the manager has correct default state
-	if rm.GetActiveModel() != "" {
-		t.Errorf("Expected empty active model, got: %s", rm.GetActiveModel())
+	if rm.getActiveModel() != "" {
+		t.Errorf("Expected empty active model, got: %s", rm.getActiveModel())
 	}
 }
 

@@ -63,7 +63,7 @@ func (ms *modelService) ActiveModelName() string {
 	if ms.manager == nil {
 		return ""
 	}
-	if model := ms.manager.GetActive(); model != nil {
+	if model := ms.manager.getActive(); model != nil {
 		return model.Name
 	}
 	return ""
@@ -74,7 +74,7 @@ func (ms *modelService) ActiveModel() *modelConfig {
 	if ms.manager == nil {
 		return nil
 	}
-	return ms.manager.GetActive()
+	return ms.manager.getActive()
 }
 
 // ActiveModelID returns the active model's ID.
@@ -82,12 +82,12 @@ func (ms *modelService) ActiveModelID() int {
 	if ms.manager == nil {
 		return 0
 	}
-	return ms.manager.GetActiveID()
+	return ms.manager.getActiveID()
 }
 
 // HasModels returns true if at least one model is configured.
 func (ms *modelService) HasModels() bool {
-	return ms.manager != nil && ms.manager.HasModels()
+	return ms.manager != nil && ms.manager.hasModels()
 }
 
 // ModelConfigPath returns the path to the model config file.
@@ -95,7 +95,7 @@ func (ms *modelService) ModelConfigPath() string {
 	if ms.manager == nil {
 		return ""
 	}
-	return ms.manager.GetFilePath()
+	return ms.manager.getFilePath()
 }
 
 // GetLoadErrors returns model config parse/validation errors.
@@ -103,13 +103,13 @@ func (ms *modelService) GetLoadErrors() []string {
 	if ms.manager == nil {
 		return nil
 	}
-	return ms.manager.GetLoadErrors()
+	return ms.manager.getLoadErrors()
 }
 
 // HasRejected returns true if model configs were present but ALL were
 // rejected (no usable models remain).
 func (ms *modelService) HasRejected() bool {
-	return ms.manager != nil && ms.manager.HasRejected()
+	return ms.manager != nil && ms.manager.hasRejected()
 }
 
 // GetModels returns all configured models.
@@ -117,7 +117,7 @@ func (ms *modelService) GetModels() []modelConfig {
 	if ms.manager == nil {
 		return nil
 	}
-	return ms.manager.GetModels()
+	return ms.manager.getModels()
 }
 
 // ============================================================================
@@ -144,27 +144,27 @@ func (ms *modelService) setActiveFromRuntimeConfig() {
 	if ms.manager == nil || ms.runtimeMgr == nil {
 		return
 	}
-	activeModelName := ms.runtimeMgr.GetActiveModel()
+	activeModelName := ms.runtimeMgr.getActiveModel()
 	if activeModelName != "" {
-		if err := ms.manager.SetActiveByName(activeModelName); err == nil {
+		if err := ms.manager.setActiveByName(activeModelName); err == nil {
 			return
 		}
 	}
-	ms.manager.SetActiveToFirst()
+	ms.manager.setActiveToFirst()
 }
 
 func (ms *modelService) setActiveFromSessionMeta() {
 	if ms.sessionMetaModel == "" || ms.manager == nil {
 		return
 	}
-	_ = ms.manager.SetActiveByName(ms.sessionMetaModel)
+	_ = ms.manager.setActiveByName(ms.sessionMetaModel)
 }
 
 func (ms *modelService) setActiveFromCliFlag() {
 	if ms.overrideModel == "" || ms.manager == nil {
 		return
 	}
-	if err := ms.manager.SetActiveByName(ms.overrideModel); err != nil {
+	if err := ms.manager.setActiveByName(ms.overrideModel); err != nil {
 		ms.initError = err
 	}
 }
@@ -199,7 +199,7 @@ func (ms *modelService) EnsureInitialized(baseTools []llm.Tool, systemPrompt, ex
 	if ms.manager == nil {
 		return fmt.Errorf("model manager not initialized")
 	}
-	activeModel := ms.manager.GetActive()
+	activeModel := ms.manager.getActive()
 	if activeModel == nil {
 		return fmt.Errorf("no model configured; please add a model to model.conf")
 	}

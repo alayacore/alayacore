@@ -45,7 +45,7 @@ func (s *Session) GetRuntimeLoadErrors() []string {
 	if s.modelService == nil || s.modelService.runtimeMgr == nil {
 		return nil
 	}
-	return s.modelService.runtimeMgr.GetLoadErrors()
+	return s.modelService.runtimeMgr.getLoadErrors()
 }
 
 func (s *Session) ensureAgentInitialized() error {
