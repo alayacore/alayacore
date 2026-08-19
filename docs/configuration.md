@@ -154,11 +154,9 @@ Themes are `.conf` files that define the TUI color scheme. If the themes directo
 primary: #89d4fa
 dim: #313244
 muted: #6c7086
-text: #cdd6f4
 warning: #f77923
 error: #f38ba8
 selection: #fab387
-cursor: #cdd6f4
 added: #a6e3a1
 removed: #f38ba8
 tool: #f9e2af
@@ -173,14 +171,14 @@ unfold_arrow: "▼"
 | `primary` | User input text, prompt display, emphasis, focused box rules, running status dot (status bar only — tool windows use the colorless spinner while running) |
 | `dim` | Window rules, separators, status bar |
 | `muted` | Secondary text, system messages, tool content |
-| `text` | Body text |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors |
 | `selection` | Selected items in lists, cursor arrow highlight |
-| `cursor` | Input cursor color — rendered as the real terminal cursor in input fields (also anchors IME preedit/candidate windows) |
 | `tool` | Tool call headers/labels |
 | `added` | Diff additions |
 | `removed` | Diff removals |
+
+Body text (assistant messages, reasoning, user input) is rendered without an explicit foreground color — it uses the terminal's default. Selected/active items in overlay lists are emphasized with **bold** weight only, not color. The terminal cursor uses the emulator's default color (the theme does not control it).
 
 ### Glyphs
 

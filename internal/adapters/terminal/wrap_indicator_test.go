@@ -217,9 +217,6 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 	if !strings.Contains(line, mutedBold.Render(padLabel("ASSISTANT"))) {
 		t.Errorf("ASSISTANT label should be plain bold (no color): %q", line)
 	}
-	if strings.Contains(line, styles.Text.Render("ASSISTANT")) {
-		t.Errorf("ASSISTANT label should not use the Text color: %q", line)
-	}
 	if !strings.Contains(stripANSI(line), "all edits are in place") {
 		t.Errorf("ASSISTANT content summary should be present: %q", line)
 	}
@@ -480,11 +477,9 @@ func TestFoldArrowThemeConfigurable(t *testing.T) {
 		Primary:     "#89d4fa",
 		Dim:         "#313244",
 		Muted:       "#6c7086",
-		Text:        "#cdd6f4",
 		Warning:     "#f77923",
 		Error:       "#f38ba8",
 		Selection:   "#fab387",
-		Cursor:      "#cdd6f4",
 		Added:       "#a6e3a1",
 		Removed:     "#f38ba8",
 		Tool:        "#f9e2af",

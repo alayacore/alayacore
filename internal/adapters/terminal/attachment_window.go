@@ -559,9 +559,9 @@ func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
 
 		truncated := truncateWithSuffix(name, max(1, innerWidth-2))
 		// Rows are flush left like every other overlay list — no "> "
-		// marker, no indent. Selection is highlighted via the Text style.
+		// marker, no indent. Selected row is bold.
 		if isSelected {
-			content.WriteString(aw.Styles.Text.Render(truncated))
+			content.WriteString(NewStyle().Bold(true).Render(truncated))
 		} else {
 			content.WriteString(aw.Styles.System.Render(truncated))
 		}

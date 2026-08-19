@@ -75,7 +75,7 @@ func TestThemeSelectorEnterSavesTheme(t *testing.T) {
 func TestThemePreviewStaleTickIgnoredAfterCancel(t *testing.T) {
 	original := theme.DefaultTheme()
 	preview := *original
-	preview.Text = "#123456"
+	preview.Warning = "#123456" // arbitrary field just to mutate a copy
 	previewData := &preview
 
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, original, NewThemeManager(""), "theme-dark")

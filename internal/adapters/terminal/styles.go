@@ -25,7 +25,6 @@ import (
 // always replaces the entire instance.
 type Styles struct {
 	// Output text styles
-	Text        Style
 	Tool        Style
 	ToolContent Style
 	Error       Style
@@ -126,7 +125,6 @@ func NewStyles(t *theme.Theme) *Styles {
 	baseStyle := NewStyle()
 	return &Styles{
 		// Output text styles
-		Text:        baseStyle.Foreground(Color(t.Text)).Bold(true),
 		Tool:        baseStyle.Foreground(Color(t.Tool)),
 		ToolContent: baseStyle.Foreground(Color(t.Muted)),
 		Error:       baseStyle.Foreground(Color(t.Error)),
@@ -151,7 +149,6 @@ func NewStyles(t *theme.Theme) *Styles {
 		ColorMuted:   Color(t.Muted),
 		ColorWarning: Color(t.Warning),
 		ColorError:   Color(t.Error),
-		CursorColor:  Color(t.Cursor),
 
 		FoldArrow:   t.FoldArrow,
 		UnfoldArrow: t.UnfoldArrow,
@@ -167,7 +164,6 @@ func (s *Styles) Dimmed() *Styles {
 	}
 	return &Styles{
 		// Output text styles — all foreground → ColorDim
-		Text:        s.Text.Foreground(s.ColorDim),
 		Tool:        s.Tool.Foreground(s.ColorDim),
 		ToolContent: s.ToolContent.Foreground(s.ColorDim),
 		Error:       s.Error.Foreground(s.ColorDim),
@@ -192,7 +188,6 @@ func (s *Styles) Dimmed() *Styles {
 		ColorMuted:   s.ColorDim,
 		ColorWarning: s.ColorDim,
 		ColorError:   s.ColorDim,
-		CursorColor:  s.ColorDim,
 
 		// Glyphs — unchanged (dimming affects color, not characters)
 		FoldArrow:   s.FoldArrow,

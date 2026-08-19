@@ -225,7 +225,7 @@ func (ms ModelSelector) renderList() string {
 	if ms.activeModel != nil {
 		sb.WriteString(ms.Styles.System.Render("Current: "))
 		name := truncateWithSuffix(ms.activeModel.Name, max(0, ms.Width-Width("Current: ")))
-		sb.WriteString(ms.Styles.Text.Render(name))
+		sb.WriteString(NewStyle().Bold(true).Render(name))
 		sb.WriteString("\n")
 	}
 
@@ -365,7 +365,7 @@ func (ms ModelSelector) renderModelRow(i, idWidth, nameMaxWidth, ctxColWidth, pr
 	}
 
 	if isSelected {
-		return ms.Styles.Text.Render(line)
+		return NewStyle().Bold(true).Render(line)
 	}
 	return ms.Styles.System.Render(line)
 }

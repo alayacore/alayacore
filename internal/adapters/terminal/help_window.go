@@ -437,9 +437,8 @@ func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {
 	}
 
 	if selected {
-		// Selection is highlighted via the Text style; rows are flush
-		// left with no indent.
-		return hw.Styles.Text.Render(line)
+		// Selected row is bold; rows are flush left with no indent.
+		return NewStyle().Bold(true).Render(line)
 	}
 	return hw.Styles.System.Render(line)
 }

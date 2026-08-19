@@ -26,11 +26,9 @@ type Theme struct {
 	Primary   string `config:"primary" json:"primary"`     // Accent color — selected items, focused borders, highlights
 	Dim       string `config:"dim" json:"dim"`             // Dimmed color — unfocused borders, muted text
 	Muted     string `config:"muted" json:"muted"`         // Muted color — placeholders, secondary labels
-	Text      string `config:"text" json:"text"`           // Primary text color
 	Warning   string `config:"warning" json:"warning"`     // Warning color — alerts, caution, confirmations
 	Error     string `config:"error" json:"error"`         // Error color — errors, failures
 	Selection string `config:"selection" json:"selection"` // Selection highlight — selected list item, search match
-	Cursor    string `config:"cursor" json:"cursor"`       // Cursor color — text input cursor
 
 	// Diff colors
 	Added   string `config:"added" json:"added"`     // Added lines in diff

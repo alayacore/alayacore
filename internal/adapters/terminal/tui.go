@@ -840,13 +840,15 @@ func (m Terminal) View() View {
 	return v
 }
 
-// newCursor returns a steady block cursor in the theme's cursor color at the
-// given screen position (cells relative to the frame's top-left corner).
+// newCursor returns a steady block cursor at the given screen position
+// (cells relative to the frame's top-left corner). The cursor color is
+// left unset — the terminal emulator renders the OS-level cursor in its
+// default color. Set cur.Color to a color.Color to override via OSC 12
+// (Change Text Cursor Color) when supported.
 func (m Terminal) newCursor(x, y int) *Cursor {
 	cur := NewCursor(x, y)
 	cur.Shape = CursorBlock
 	cur.Blink = false
-	cur.Color = m.styles.CursorColor
 	return cur
 }
 

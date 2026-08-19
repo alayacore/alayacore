@@ -105,7 +105,7 @@ func (fl FilteredListCore) updateFilterInputStyles() FilteredListCore {
 	fl.FilterInput = fl.FilterInput.WithStyles(
 		inputFieldStyle{
 			Prompt:      fl.Styles.Input.Foreground(fl.Styles.BorderFocused),
-			Text:        fl.Styles.Text,
+			Text:        NewStyle().Bold(true),
 			Placeholder: fl.Styles.System,
 		},
 		inputFieldStyle{

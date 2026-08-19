@@ -11,11 +11,9 @@ func TestNewStylesWithTheme(t *testing.T) {
 		Primary:   "#custom1",
 		Dim:       "#custom2",
 		Muted:     "#custom3",
-		Text:      "#custom4",
 		Warning:   "#custom5",
 		Error:     "#custom6",
 		Selection: "#custom8",
-		Cursor:    "#custom9",
 	}
 
 	styles := NewStyles(customTheme)
@@ -24,10 +22,8 @@ func TestNewStylesWithTheme(t *testing.T) {
 		return
 	}
 
-	_ = styles.Text.Render("test")
 	_ = styles.Error.Render("test")
 
 	_ = styles.ColorAccent
 	_ = styles.ColorDim
-	_ = styles.CursorColor
 }

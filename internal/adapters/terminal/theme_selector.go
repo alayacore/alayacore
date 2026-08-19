@@ -268,7 +268,7 @@ func (ts ThemeSelector) renderList() string {
 
 	sb.WriteString(ts.Styles.System.Render("Current: "))
 	themeName := truncateWithSuffix(ts.originalThemeName, max(0, ts.Width-Width("Current: ")))
-	sb.WriteString(ts.Styles.Text.Render(themeName))
+	sb.WriteString(NewStyle().Bold(true).Render(themeName))
 	sb.WriteString("\n")
 
 	listBorderColor := ts.ListBorderColor()
@@ -310,9 +310,8 @@ func (ts ThemeSelector) renderThemeList(width int, borderColor color.Color) stri
 				themeName = truncateWithSuffix(themeName, nameMaxWidth)
 			}
 			if i == ts.SelectedIdx {
-				// Selection is highlighted via the Text style; rows are
-				// flush left with no indent.
-				content.WriteString(ts.Styles.Text.Render(themeName))
+				// Selected row is bold (plain text + bold weight).
+				content.WriteString(NewStyle().Bold(true).Render(themeName))
 			} else {
 				content.WriteString(ts.Styles.System.Render(themeName))
 			}
