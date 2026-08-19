@@ -133,7 +133,7 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [快速入门](docs/getting-started.md) | 安装、CLI 参数和使用示例 |
 | [命令](docs/commands.md) | 所有会话命令（`:save`、`:cancel`、`:fork` 等） |
 | [配置](docs/configuration.md) | 模型配置、运行时配置和主题 |
-| [终端 UI](docs/tui.md) | 快捷键、命令、窗口、任务队列 |
+| [终端 UI](docs/tui.md) | 快捷键、命令、窗口和导航 |
 | [Plain IO 模式](docs/plainio.md) | 无 TUI 的交互式纯文本 stdin/stdout |
 | [Terse IO 模式](docs/terseio.md) | 将整个 stdin 作为一个 prompt 或命令，只输出最终答案 |
 | [Raw IO 模式](docs/rawio.md) | 用于程序化控制的原始 TLV 帧 |
@@ -150,8 +150,8 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [工具执行](docs/tool-execution.md) | 并发的工具执行，每个工具独立等待用户确认（MCP 风格） |
 | [输出截断](docs/truncation.md) | 大型工具输出的上下文预算处理方式 |
 | [依赖](docs/dependencies.md) | 第三方依赖及其必要性说明 |
-| [TUI 架构](docs/tui-architecture.md) | Elm 架构、Bubble Tea 与 TUI 内部设计 |
-| [开发原则](docs/development-principles.md) | 项目约定 — adapter/agent 隔离、actor 模型、测试 |
+| [TUI 架构](docs/tui-architecture.md) | Elm 架构与 TUI 内部设计 |
+| [开发原则](docs/development-principles.md) | 项目约定 — adapter/agent 隔离与测试 |
 
 **内部设计文档**：[docs/internal/](docs/internal/)
 

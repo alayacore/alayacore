@@ -122,8 +122,9 @@ func (ts ThemeSelector) GetOriginalThemeName() string {
 	return ts.originalThemeName
 }
 
-// --- Init (unused, kept for interface compatibility) ---
-
+// Init is a no-op — ThemeSelector is a sub-component of Terminal, not a
+// root Model, so the runtime never calls it. Kept for API symmetry with
+// the other sub-components (PromptInput, ConfirmDialog, ...).
 func (ts ThemeSelector) Init() Cmd { return nil }
 
 func (ts ThemeSelector) View() View {

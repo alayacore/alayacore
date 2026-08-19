@@ -31,8 +31,8 @@ CO {"id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  �
 
 Commands fall into three categories:
 
-- **Immediate commands** (`CmdImmediate`) — run synchronously in the main loop, always allowed
-- **Idle commands** (`CmdIdle`) — run synchronously, but rejected while a task is in progress
+- **Immediate commands** (`cmdImmediate`) — run synchronously in the main loop, always allowed
+- **Idle commands** (`cmdIdle`) — run synchronously, but rejected while a task is in progress
 - **Task commands** — require LLM calls, run in a separate goroutine
 
 ## Immediate Commands
@@ -41,9 +41,9 @@ Commands fall into three categories:
 |---------|--------|-----------|
 | `:cancel` | Cancel current task | `null` |
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. | `{"path"}` |
-| `:reason [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 — set the startup level with `--reasoning-level <0\|1\|2>` (CLI flag wins over the session file's saved `reasoning_level`) | `{"level"}` |
 | `:theme_set <name>` | Switch to a different theme. TUI only — rejected with `UNAVAILABLE` in Plain IO, Terse IO, and Raw IO (`NoTheme`) | `{"name"}` |
 | `:fork <id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count","history_id"}` |
+| `:tool_confirm <id>` | Confirm a pending tool execution | `{"tool_id"}` |
 | `:tool_decline <id>` | Decline a pending tool execution | `{"tool_id"}` |
 | `:mcp_cancel` | Cancel MCP server initialization | `null` |
 
@@ -53,12 +53,12 @@ These commands are rejected with an error if a task is currently running:
 
 | Command | Action | CO result |
 |---------|--------|-----------|
-| `:tool_confirm <id>` | Confirm a pending tool execution | `{"tool_id"}` |
 | `:mcp_confirm <server> <code> <redirect_uri>` | Confirm MCP OAuth authorization with auth code | `{"server"}` |
 | `:mcp_decline <server>` | Decline MCP OAuth authorization | `{"server"}` |
 | `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
 | `:model_load` | Reload model configs from the config file | `{"models"}` |
 | `:model_sync` | Apply edited model config (sent by UI, not user-facing) | `{"models"}` |
+| `:reason [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 — set the startup level with `--reasoning-level <0\|1\|2>` (CLI flag wins over the session file's saved `reasoning_level`) | `{"level"}` |
 | `:video_config <fps> <0\|1>` | Set video FPS and resolution (0=default, 1=max) | `{"fps","res"}` |
 
 ## Task Commands

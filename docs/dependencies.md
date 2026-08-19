@@ -35,7 +35,8 @@ dependency:
 
 The stack keeps the external interface (`adapter.go`, `OutputWriter`,
 protocol layer) unchanged; the app's `Terminal.Update` message types are
-mechanical renames of the former `tea.*` types.
+self-defined (`Update`, `Cmd`, `Msg`, `WindowSizeMsg`, ...) — see
+`docs/tui-architecture.md` for the design rationale.
 
 ---
 

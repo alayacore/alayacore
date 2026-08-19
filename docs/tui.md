@@ -47,12 +47,7 @@ architecture.
 
 ### Input Cursor & IME
 
-The prompt input (and overlay filter boxes) render the **real terminal cursor**
-(steady block in the theme's `cursor` color) instead of a painted block. This
-keeps input behavior identical to a shell prompt: Chinese/Japanese IME
-composition draws its inline preedit directly in the input field and the
-candidate window anchors to the input line, so it does not jump around while
-streaming output is being rendered.
+The prompt input (and overlay filter boxes) render the **real terminal cursor** (the emulator's default steady block — themes do not configure cursor color, since the `cursor` field was dropped from `Theme` when body content rendering stopped carrying an explicit foreground color). This keeps input behavior identical to a shell prompt: Chinese/Japanese IME composition draws its inline preedit directly in the input field and the candidate window anchors to the input line, so it does not jump around while streaming output is being rendered.
 
 ## Multi-Modal Attachments
 

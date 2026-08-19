@@ -1,16 +1,24 @@
 # External Editor and WindowSizeMsg
 
-When the user opens an external editor (e.g. via `Ctrl+O`) and then exits back, the TUI runtime **always emits a `WindowSizeMsg`**, even if the terminal was never resized.
+When the user opens an external editor (e.g. via `Ctrl+O`) and then exits
+back, the TUI runtime **always emits a `WindowSizeMsg`**, even if the
+terminal was never resized. This file documents why.
 
 ## How It Works
 
 ### 1. Editor starts — terminal is released
 
-`tea.ExecProcess` triggers `p.exec()`, which calls `p.releaseTerminal(false)`. This stops the renderer, cancels the input reader, and restores the original terminal state. The external editor then takes over the terminal (blocking).
+`ExecProcess` (`internal/adapters/terminal/exec.go`) returns a `Cmd` that
+the runtime dispatches via `Program.exec`. `exec` calls
+`p.releaseTerminal()` (no arguments), which parks the input loop, leaves
+the alt screen, and restores the terminal to its pre-program state. The
+external editor then takes over the terminal (blocking).
 
 ### 2. Editor runs — SIGWINCH may be missed
 
-While the editor has control of the terminal, the TUI runtime's resize-listener goroutine is still running and listening for `SIGWINCH`. However, as the `RestoreTerminal()` comment explains:
+While the editor has control of the terminal, the TUI runtime's
+resize-listener goroutine is still running and listening for `SIGWINCH`.
+However, as the `RestoreTerminal()` comment in the upstream code explains:
 
 ```go
 // If the output is a terminal, it may have been resized while another
@@ -19,34 +27,37 @@ While the editor has control of the terminal, the TUI runtime's resize-listener 
 // needed.
 ```
 
-### 3. Editor exits — terminal is restored — `checkResize()` is called
+### 3. Editor exits — terminal is restored — `WindowSizeMsg` is sent
 
-After the editor process finishes, `p.exec()` calls `p.RestoreTerminal()`, which reinitializes the terminal and then calls:
-
-```go
-go p.checkResize()
-```
-
-This queries the current terminal size and **always sends a `WindowSizeMsg`**:
+After the editor process finishes, `exec` calls `p.acquireTerminal()`
+(`internal/adapters/terminal/exec.go`), which re-enters raw mode and the
+alt screen, resumes the input loop, forces a full repaint, queries the
+current terminal size, and **always sends a `WindowSizeMsg`**:
 
 ```go
-func (p *Program) checkResize() {
-	if p.ttyOutput == nil {
-		return
-	}
-
-	w, h, err := term.GetSize(p.ttyOutput.Fd())
-	if err != nil {
-		return
-	}
-
-	p.width, p.height = w, h
-	p.Send(WindowSizeMsg{Width: w, Height: h})
+func (p *Program) acquireTerminal() error {
+    if err := p.tty.MakeRaw(); err != nil {
+        return err
+    }
+    if err := p.screen.Start(); err != nil {
+        return err
+    }
+    p.resumeInput()
+    p.forceRedraw()
+    p.width, p.height = p.screen.Size()
+    p.msgs <- WindowSizeMsg{Width: p.width, Height: p.height}
+    return nil
 }
 ```
 
-Note that there is **no comparison against the previous size** — the message is sent unconditionally every time `checkResize()` runs.
+There is **no comparison against the previous size** — the message is sent
+unconditionally every time `acquireTerminal()` runs after an external
+editor (or any other foreground child) returns.
 
 ## Implications for AlayaCore
 
-Since `Terminal.handleWindowSize()` re-renders the display on every `WindowSizeMsg`, the display will be re-rendered after every external editor session, even when no resize occurred. This is a harmless no-op (same width → same output) but worth being aware of when debugging or tracing message flow.
+Since `Terminal.handleWindowSize()` re-renders the display on every
+`WindowSizeMsg`, the display will be re-rendered after every external
+editor session, even when no resize occurred. This is a harmless no-op
+(same width → same output) but worth being aware of when debugging or
+tracing message flow.

@@ -151,7 +151,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Output Truncation](docs/truncation.md) | How large tool outputs are handled within context budgets |
 | [Dependencies](docs/dependencies.md) | Third-party dependencies and why each is needed |
 | [TUI Architecture](docs/tui-architecture.md) | Elm architecture and the TUI's internal design |
-| [Development Principles](docs/development-principles.md) | Project conventions — adapter/agent isolation, actor model, testing |
+| [Development Principles](docs/development-principles.md) | Project conventions — adapter/agent isolation and testing |
 
 **Internal design docs**: [docs/internal/](docs/internal/)
 

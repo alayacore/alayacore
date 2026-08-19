@@ -55,7 +55,7 @@ export ALAYACORE_SHELL=zsh
 | `--skill` | *(none)* | Path to a skill directory. Repeatable: `--skill ./skills1 --skill ./skills2` |
 | `--session` | *(none)* | Path to session file for loading/saving conversations |
 | `--proxy` | *(none)* | Proxy URL. Supports `http://`, `https://`, and `socks5://` schemes |
-| `--max-steps` | `0` (no limit) | Maximum number of agent loop iterations per prompt. When set to 0 (the default), the agent loops until the model produces a final response. Exceeding this limit raises an error and reports an error — use `:continue` to retry. |
+| `--max-steps` | `0` (no limit) | Maximum number of agent loop iterations per prompt. When set to 0 (the default), the agent loops until the model produces a final response. Exceeding this limit raises an error — use `:continue` to retry. |
 | `--auto-summarize` | `0` (disabled) | Enable auto-summarization at given threshold percentage (e.g. `--auto-summarize=65`, 0 = disabled) |
 | `--reasoning-level` | `1` (normal) | Startup reasoning level: `0`=off, `1`=normal, `2`=max. Explicitly provided values win over the session file's saved `reasoning_level`; without the flag the saved value (or default) is used. Equivalent to running `:reason <level>` at startup. |
 | `--tool-confirm` | *(none)* | Comma-separated tool `names` that require user confirmation before execution (e.g. `--tool-confirm execute_command,search_content`). Not compatible with `--terseio` |
