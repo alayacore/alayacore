@@ -91,6 +91,34 @@ func (wb *WindowBuffer) WithWidth(width int) {
 	}
 }
 
+// IsDirty returns true when the window buffer has unrendered changes
+// (new content appended, windows invalidated by resize/theme) and the
+// caller should re-run ensureLineHeights / GetAll before reading line
+// counts or rendered content. Does NOT reset the flag — callers that
+// want a "consume" semantics should use DrainDirty.
+//
+// Used by DisplayModel.updateContent to short-circuit the render path
+// when the tick handler fires but no buffer-level changes occurred:
+// the tick runs 4×/sec, but windows typically change a handful of
+// times per task.
+func (wb *WindowBuffer) IsDirty() bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	return wb.dirty
+}
+
+// DrainDirty returns true if the buffer is dirty and resets the flag.
+// Distinct from IsDirty so the renderer can keep a stable view of
+// dirty-ness while the rest of the system updates.
+func (wb *WindowBuffer) DrainDirty() bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	dirty := wb.dirty
+	wb.dirty = false
+	wb.dirtyIndex = dirtyClean
+	return dirty
+}
+
 func (wb *WindowBuffer) Width() int {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()

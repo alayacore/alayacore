@@ -102,8 +102,17 @@ func (m PromptInput) View() View {
 }
 
 // updateInputStyles updates the text input styles based on current theme.
+//
+// View() invokes this on every render; the resulting Style allocations
+// are not memoized — PromptInput is a value type whose mutations don't
+// persist across the value-copy that View()'s caller sees, so a cache
+// keyed on this receiver would never hit. The allocations are cheap
+// (a handful of NewStyle() calls) and the downstream same-content
+// identity check in Program.render skips the terminal write anyway.
+//
+// The line count still drives the prompt color (warning for multi-line
+// inputs as a brighter visual cue).
 func (m PromptInput) updateInputStyles() InputField {
-	// Use warning color when there are multiple lines as a brighter visual cue.
 	promptColor := m.styles.ColorAccent
 	if m.input.LineCount() > 1 {
 		promptColor = m.styles.ColorWarning
@@ -175,7 +184,15 @@ func (m PromptInput) Height() int {
 
 // WithBlocked marks the input as blocked (covered by an overlay).
 // When blocked, View() dims the content instead of showing it at full brightness.
+//
+// Idempotent: returns the receiver unchanged when the blocked state is
+// already set to the requested value. View() invokes this on every frame
+// (with the live overlay state) — without the early-return, every render
+// would replace the PromptInput value type even when nothing changed.
 func (m PromptInput) WithBlocked(blocked bool) PromptInput {
+	if m.blocked == blocked {
+		return m
+	}
 	m.blocked = blocked
 	return m
 }

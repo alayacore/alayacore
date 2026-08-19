@@ -24,6 +24,16 @@ type DisplayModel struct {
 	blocked        bool       // true when an overlay is active (dim rendering)
 	lastContent    string     // cached last rendered output for change detection
 
+	// contentDirty is true when the next updateContent call must rebuild
+	// the rendered output. It is cleared after a successful render. The
+	// tick handler invokes updateContent 4×/sec regardless of input; without
+	// this flag, every tick would lock the window buffer, walk every
+	// visible window's cache, allocate a strings.Builder, and join lines
+	// even when nothing rendering-relevant has changed — producing the
+	// exact same content the screen renderer's same-content check then
+	// discards. With the flag, an idle tick returns immediately.
+	contentDirty bool
+
 	// ── Dependencies (pointers to shared data, not copied semantically) ─
 	windowBuffer *WindowBuffer // windowed content storage (shared with OutputWriter)
 	styles       *Styles       // derived styles (replaced on theme switch)
@@ -40,6 +50,8 @@ func NewDisplayModel(windowBuffer *WindowBuffer, styles *Styles) DisplayModel {
 		autoFollow:     true,
 		displayFocused: false,
 		blocked:        false,
+		// The first render must run so lastContent is populated.
+		contentDirty: true,
 	}
 }
 
@@ -172,8 +184,12 @@ func (m DisplayModel) View() View {
 }
 
 func (m DisplayModel) WithHeight(height int) DisplayModel {
+	if m.height == height {
+		return m
+	}
 	m.height = height
 	m.scrollView = m.scrollView.WithHeight(max(0, height))
+	m.contentDirty = true
 	return m
 }
 
@@ -182,19 +198,28 @@ func (m DisplayModel) GetHeight() int {
 }
 
 func (m DisplayModel) WithDisplayFocused(focused bool) DisplayModel {
+	if m.displayFocused == focused {
+		return m
+	}
 	m.displayFocused = focused
+	m.contentDirty = true
 	return m
 }
 
 // WithBlocked marks the display as blocked (covered by an overlay).
 // When blocked, subsequent updateContent calls render with dimmed colors.
 func (m DisplayModel) WithBlocked(blocked bool) DisplayModel {
+	if m.blocked == blocked {
+		return m
+	}
 	m.blocked = blocked
+	m.contentDirty = true
 	return m
 }
 
 func (m DisplayModel) WithStyles(styles *Styles) DisplayModel {
 	m.styles = styles
+	m.contentDirty = true
 	return m
 }
 
@@ -202,6 +227,7 @@ func (m DisplayModel) WithStyles(styles *Styles) DisplayModel {
 // regenerates and sets the scroll content even if nothing changed.
 func (m DisplayModel) ForceContentDirty() DisplayModel {
 	m.lastContent = ""
+	m.contentDirty = true
 	return m
 }
 
@@ -211,7 +237,29 @@ func (m DisplayModel) YOffset() int {
 
 // updateContent updates the viewport content from the window buffer.
 // Uses m.blocked to determine whether to render with dimmed colors.
+//
+// Early-exits when contentDirty is false: navigation/scroll/style
+// mutations set the flag (see With* / Move* / Scroll* methods), and the
+// tick handler that runs 4×/sec is the primary caller. Without the
+// early-exit, an idle tick would lock the window buffer, walk every
+// visible window's cache, allocate a strings.Builder, and join lines
+// even when nothing rendering-relevant has changed — producing the
+// exact same content the screen renderer's same-content check then
+// discards.
+//
+// contentDirty is also forced on when the underlying window buffer is
+// dirty (content appended, window invalidated by resize/theme): the
+// Tick handler may not have called the DisplayModel mutators that set
+// the flag, but the buffer itself reports new content.
 func (m DisplayModel) updateContent() DisplayModel {
+	if m.windowBuffer != nil && m.windowBuffer.IsDirty() {
+		m.contentDirty = true
+	}
+	if !m.contentDirty {
+		return m
+	}
+	m.contentDirty = false
+
 	cursorIndex := -1
 	if m.displayFocused {
 		cursorIndex = m.windowCursor
@@ -256,6 +304,7 @@ func (m DisplayModel) updateContent() DisplayModel {
 // ScrollDown scrolls down by lines
 func (m DisplayModel) ScrollDown(lines int) DisplayModel {
 	m.scrollView = m.scrollView.ScrollDown(lines)
+	m.contentDirty = true
 	return m
 }
 
@@ -267,18 +316,21 @@ func (m DisplayModel) AtBottom() bool {
 // ScrollUp scrolls up by lines
 func (m DisplayModel) ScrollUp(lines int) DisplayModel {
 	m.scrollView = m.scrollView.ScrollUp(lines)
+	m.contentDirty = true
 	return m
 }
 
 // GotoBottom goes to bottom
 func (m DisplayModel) GotoBottom() DisplayModel {
 	m.scrollView = m.scrollView.GotoBottom()
+	m.contentDirty = true
 	return m
 }
 
 // GotoTop goes to top
 func (m DisplayModel) GotoTop() DisplayModel {
 	m.scrollView = m.scrollView.GotoTop()
+	m.contentDirty = true
 	return m
 }
 
@@ -313,15 +365,23 @@ func (m DisplayModel) GetCursorWindowHistoryID() uint64 {
 // setCursor sets the window cursor and disables auto-follow.
 // Only SetCursorToLastWindow re-enables auto-follow afterwards.
 func (m DisplayModel) setCursor(i int) DisplayModel {
+	if m.windowCursor == i && !m.autoFollow {
+		return m
+	}
 	m.windowCursor = i
 	m.autoFollow = false
+	m.contentDirty = true
 	return m
 }
 
 // clearCursor unsets the window cursor and disables auto-follow.
 func (m DisplayModel) clearCursor() DisplayModel {
+	if m.windowCursor == -1 && !m.autoFollow {
+		return m
+	}
 	m.windowCursor = -1
 	m.autoFollow = false
+	m.contentDirty = true
 	return m
 }
 
@@ -412,7 +472,11 @@ func (m DisplayModel) MarkUserScrolled() DisplayModel {
 // This is the single method that scroll key handlers should call to
 // disable auto-follow, ensuring the state transition is clear.
 func (m DisplayModel) DisableAutoFollow() DisplayModel {
+	if !m.autoFollow {
+		return m
+	}
 	m.autoFollow = false
+	m.contentDirty = true
 	return m
 }
 
@@ -435,9 +499,11 @@ func (m DisplayModel) EnsureCursorVisible() DisplayModel {
 	if endLine <= viewportTop {
 		// Entirely above — show the bottom edge
 		m.scrollView = m.scrollView.WithYOffset(max(0, endLine-m.scrollView.Height()))
+		m.contentDirty = true
 	} else if startLine >= viewportBottom {
 		// Entirely below — show the top edge
 		m.scrollView = m.scrollView.WithYOffset(startLine)
+		m.contentDirty = true
 	}
 	return m
 }
@@ -452,6 +518,7 @@ func (m DisplayModel) ScrollCursorToTop() DisplayModel {
 	}
 	startLine, _ := m.windowBuffer.GetWindowLineRange(m.windowCursor)
 	m.scrollView = m.scrollView.WithYOffset(startLine)
+	m.contentDirty = true
 	return m
 }
 
@@ -495,6 +562,7 @@ func (m DisplayModel) WithCursorToLastWindow() DisplayModel {
 		m.windowCursor = -1
 	}
 	m.autoFollow = true
+	m.contentDirty = true
 	return m
 }
 
@@ -503,6 +571,9 @@ func (m DisplayModel) ToggleWindowFold() (DisplayModel, bool) {
 		return m, false
 	}
 	ok := m.windowBuffer.ToggleFold(m.windowCursor)
+	if ok {
+		m.contentDirty = true
+	}
 	return m, ok
 }
 

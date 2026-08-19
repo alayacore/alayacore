@@ -116,15 +116,15 @@ func (p *Program) acquireTerminal() error {
 		return err
 	}
 	p.resumeInput()
-	p.forceRedraw()
+	p.forceRepaint()
 	p.width, p.height = p.screen.Size()
 	p.msgs <- WindowSizeMsg{Width: p.width, Height: p.height}
 	return nil
 }
 
-// forceRedraw clears the frame caches so the next render is a full repaint
+// forceRepaint clears the frame caches so the next render is a full repaint
 // even when the view content is unchanged since before the suspend.
-func (p *Program) forceRedraw() {
+func (p *Program) forceRepaint() {
 	p.mu.Lock()
 	p.lastView = nil
 	p.mu.Unlock()

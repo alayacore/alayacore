@@ -272,8 +272,20 @@ type Terminal struct {
 	windowHeight       int              // terminal height in cells
 	activeTheme        string           // last theme name from system info updates
 	appliedTheme       string           // last theme name that was visually applied
-	forceRedraw        uint64           // odd → append invisible SGR reset so renderer repaints
 	pendingAttachments []attachment     // pending file attachments for multi-modal input
+	lastStatusVersion  uint64           // last StatusSnapshot.Version seen by updateStatus
+	lastModelVersion   uint64           // last ModelSnapshot.Version seen by the selector rebuild
+
+	// renderedStatusBarCache memoizes the status-bar render output keyed
+	// by the inputs that affect it. View() is called on every frame and
+	// would otherwise re-run the indicator + truncate + Style.Render
+	// pipeline every 250ms tick, only for Program.render to discard
+	// the byte-identical result on its same-content identity check.
+	//
+	// Pointer-typed so the cache survives value copies of Terminal —
+	// the Elm-style Update copies the value, but the cache must persist
+	// across Updates and Views.
+	renderedStatusBarCache *map[renderStatusBarCacheKey]string
 
 	// ── Transient state (set once or infrequently, not Elm-copied semantically) ─
 	quitting              bool         // terminal is shutting down
@@ -282,7 +294,6 @@ type Terminal struct {
 	themePreviewID        int          // debounce ID for pending theme preview
 	previewAppliedTheme   *theme.Theme // last theme data applied by a preview (nil = none)
 	selectorOriginalTheme *theme.Theme // theme data active when selector opened
-	pendingForceRedraw    bool         // Ctrl-R sets this; handleWindowSize consumes it
 
 	// ── Dependencies (pointer types, shared, not copied semantically) ──
 	out          OutputWriter   // TLV output writer (shared, thread-safe)
@@ -519,14 +530,6 @@ func (m Terminal) handleWindowSize(msg WindowSizeMsg) Terminal {
 	// preserved across resizes and suspend/resume cycles.
 	m.display = m.display.ClampCursor()
 
-	// If this is a synthetic resize triggered by Ctrl-R, consume the flag.
-	// The view toggle already happened in handleRedraw, and resize() just
-	// armed the renderer's clear flag — the next flush will do a full
-	// clear+repaint.
-	if m.pendingForceRedraw {
-		m.pendingForceRedraw = false
-	}
-
 	// Re-render display content with new width (windowBuffer was marked dirty by SetWindowWidth)
 	m.display = m.display.updateContent()
 
@@ -666,10 +669,18 @@ func (m Terminal) handleDisplayRefresh() (Terminal, Cmd) {
 		m.display = m.display.updateContent()
 	}
 
+	// Rebuild the model selector only when the model list or active ID has
+	// actually changed — LoadModels iterates the list, applies filters,
+	// and recomputes scroll, all of which would be wasted work on every
+	// tick (4×/sec) when nothing changed.
 	modelSnap := m.out.SnapshotModels()
-	ms, cmd := m.modelSelector.LoadModels(modelSnap.Models, modelSnap.ActiveID)
-	m.modelSelector = ms
-	return m, cmd
+	if m.lastModelVersion != modelSnap.Version || m.lastModelVersion == 0 {
+		m.lastModelVersion = modelSnap.Version
+		ms, cmd := m.modelSelector.LoadModels(modelSnap.Models, modelSnap.ActiveID)
+		m.modelSelector = ms
+		return m, cmd
+	}
+	return m, nil
 }
 
 // handleEditorFinished handles completion of the external editor.
@@ -796,7 +807,7 @@ func (m Terminal) View() View {
 	baseContent := sb.String()
 
 	// Render all overlay layers through the overlay manager.
-	overlayContent, _ := m.renderOverlays(baseContent, m.windowWidth, m.windowHeight, m.forceRedraw&1 == 1)
+	overlayContent, _ := m.renderOverlays(baseContent, m.windowWidth, m.windowHeight)
 
 	v := NewView(overlayContent)
 	v.AltScreen = true
@@ -873,6 +884,13 @@ func (m Terminal) overlayCursorPosition() (x, y int, ok bool) {
 // being loaded asynchronously. It displays a centered message with a simple
 // spinner animation (updated by tickMsg) so the user gets instant feedback
 // even on slow machines.
+//
+// The view pads to the full viewport height with erased blank rows and
+// sets v.FullScreen = true so Screen.Render uses the row-diff path
+// instead of ED2-clear: only the spinner row is repainted when the
+// spinner advances, eliminating the full-screen flicker that ED2 would
+// otherwise produce on every tick. The first paint (empty lastContent)
+// still clears; later repaints diff only the changed row.
 func (m Terminal) renderLoadingView() View {
 	// Simple spinner frames.
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -884,15 +902,27 @@ func (m Terminal) renderLoadingView() View {
 	contentWidth := len(msg)
 	padX := max(0, (m.windowWidth-contentWidth)/2)
 	padY := max(0, m.windowHeight/2-1)
+	bottomRows := max(0, m.windowHeight-padY-1)
 
-	var sb strings.Builder
-	sb.WriteString(strings.Repeat("\n", padY))
-	sb.WriteString(strings.Repeat(" ", padX))
-	sb.WriteString(msg)
-	sb.WriteString("\n")
+	// Build rows top-to-bottom: padY erased blank rows, the centered
+	// message row, bottomRows erased blank rows. Total rows = windowHeight
+	// so the view fills the screen exactly and Screen.Render can take the
+	// diff path. The rows are joined with '\n' (not a trailing '\n') so the
+	// string has exactly windowHeight-1 newlines — Hardwrap reports
+	// windowHeight rows from it, matching the FullScreen invariant.
+	blankRow := ansi.EraseLine(0)
+	lines := make([]string, 0, m.windowHeight)
+	for i := 0; i < padY; i++ {
+		lines = append(lines, blankRow)
+	}
+	lines = append(lines, strings.Repeat(" ", padX)+msg)
+	for i := 0; i < bottomRows; i++ {
+		lines = append(lines, blankRow)
+	}
 
-	v := NewView(sb.String())
+	v := NewView(strings.Join(lines, "\n"))
 	v.AltScreen = true
+	v.FullScreen = true
 	return v
 }
 
@@ -975,7 +1005,7 @@ func (m Terminal) handleMCPProgress() (Terminal, OverlayAction) {
 
 // renderOverlays applies all overlay layers to the base content and returns
 // the final view string.
-func (m Terminal) renderOverlays(baseContent string, width, height int, forceRedraw bool) (string, bool) {
+func (m Terminal) renderOverlays(baseContent string, width, height int) (string, bool) {
 	overlayContent := baseContent
 
 	switch {
@@ -994,15 +1024,7 @@ func (m Terminal) renderOverlays(baseContent string, width, height int, forceRed
 	}
 
 	if m.confirmOverlay.IsOpen() {
-		fullContent := m.confirmOverlay.RenderOverlay(overlayContent, width, height)
-		if forceRedraw {
-			fullContent += "\x1b[0m"
-		}
-		return fullContent, true
-	}
-
-	if forceRedraw {
-		overlayContent += "\x1b[0m"
+		return m.confirmOverlay.RenderOverlay(overlayContent, width, height), true
 	}
 	return overlayContent, false
 }

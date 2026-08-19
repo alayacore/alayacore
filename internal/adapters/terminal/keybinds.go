@@ -506,25 +506,27 @@ func (m Terminal) handleSaveKey() (Terminal, Cmd) {
 
 // handleRedraw handles the Ctrl+R force-redraw shortcut.
 //
-// Layer 1 (synchronous, always works): toggle forceRedraw so View()
-// appends/removes an invisible SGR reset, making the view content differ
-// from the last rendered frame.  This guarantees the next flush won't
-// early-return.
+// Returns a Cmd that delivers a forceRepaintMsg: when the event loop
+// processes it, the Program clears both Program.lastView and the Screen
+// frame caches, then re-renders the current view synchronously. This
+// guarantees a full clear+repaint on the next terminal write — even
+// when the view content is byte-identical to the previous frame (e.g.
+// garbage on screen, terminal out of sync, emulator quirk).
 //
-// Layer 2 (best-effort, arm full repaint): the synthetic WindowSizeMsg
-// lands in Screen.Resize, which clears the frame caches so the next
-// render is a full clear+repaint instead of a diff.  If it is dropped
-// (rare), the view change from layer 1 still ensures a diff-based redraw
-// that covers every content cell.
+// Replaces the previous two-layer approach:
+//   - the old `\x1b[0m` content-suffix trick made the view bytes differ
+//     to defeat the same-content check, which forced two diff renders
+//     per Ctrl-R (one for adding the suffix, one for removing it on
+//     the next toggle); and
+//   - the synthetic WindowSizeMsg trick relied on Screen.Resize clearing
+//     lastContent, which worked but coupled redraw to resize handling.
+//
+// The single-message approach clears caches directly and produces
+// exactly one full repaint per Ctrl-R.
 func (m Terminal) handleRedraw() (Terminal, Cmd) {
-	m.forceRedraw++
 	m.display = m.display.ForceContentDirty()
 	m.display = m.display.updateContent()
-
-	m.pendingForceRedraw = true
-	return m, func() Msg {
-		return WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight}
-	}
+	return m, ForceRepaintCmd()
 }
 
 // handleInputKeys handles keys when the input field is focused.

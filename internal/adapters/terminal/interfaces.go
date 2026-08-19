@@ -42,6 +42,11 @@ type StatusSnapshot struct {
 
 	// CachedThemes holds the full list of themes received from the session.
 	CachedThemes []ThemeEntry
+
+	// Version is a monotonic counter that increments on every
+	// status-affecting update. The Terminal uses it to skip status-bar
+	// rebuilds when nothing has changed since the last snapshot.
+	Version uint64
 }
 
 // ModelSnapshot holds a consistent point-in-time view of model state.
@@ -49,6 +54,12 @@ type ModelSnapshot struct {
 	Models     []protocol.ModelInfo
 	ActiveID   int
 	ActiveName string
+
+	// Version is a monotonic counter that increments on every
+	// model-affecting update (active model, model list). The Terminal
+	// uses it to skip the model-selector rebuild when nothing has
+	// changed since the last snapshot.
+	Version uint64
 }
 
 // ============================================================================

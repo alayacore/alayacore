@@ -42,6 +42,19 @@ type sessionState struct {
 	videoFPS int
 	videoRes int
 
+	// statusVersion increments on every status-affecting update. The
+	// Terminal caches the last-seen version and skips the status-bar
+	// rebuild when nothing has changed since the last snapshot — the
+	// status bar (steps, tokens, MCP, theme, video) only changes a few
+	// times per task, but the tick handler rebuilds it 4×/sec regardless.
+	statusVersion uint64
+
+	// modelVersion increments only on model-list / active-model updates
+	// (not on task / status / theme changes). The Terminal caches the
+	// last-seen version and skips the model-selector rebuild when the
+	// list and active ID are unchanged.
+	modelVersion uint64
+
 	// MCP init status — tracks the initialization phase for progress
 	// display. Values: "" (no MCP), "connecting", "connected", "failed",
 	// "auth_required", "auth_running", "done".
@@ -113,6 +126,7 @@ func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, co
 	s.currentStep = currentStep
 	s.maxSteps = maxSteps
 	s.contextTokens = context
+	s.statusVersion++
 	s.mu.Unlock()
 }
 
@@ -122,6 +136,8 @@ func (s *sessionState) updateModel(activeID int, activeName string, contextLimit
 	s.activeModelID = activeID
 	s.activeModelName = activeName
 	s.contextLimit = contextLimit
+	s.statusVersion++
+	s.modelVersion++
 	s.mu.Unlock()
 }
 
@@ -136,6 +152,8 @@ func (s *sessionState) updateModelList(models []protocol.ModelInfo) {
 			break
 		}
 	}
+	s.statusVersion++
+	s.modelVersion++
 	s.mu.Unlock()
 }
 
@@ -156,6 +174,7 @@ func (s *sessionState) updateTheme(name string, themeData *theme.Theme) {
 			}
 		}
 	}
+	s.statusVersion++
 	s.mu.Unlock()
 }
 
@@ -163,6 +182,7 @@ func (s *sessionState) updateTheme(name string, themeData *theme.Theme) {
 func (s *sessionState) updateThemeList(themes []ThemeEntry) {
 	s.mu.Lock()
 	s.cachedThemeList = themes
+	s.statusVersion++
 	s.mu.Unlock()
 }
 
@@ -170,6 +190,7 @@ func (s *sessionState) updateThemeList(themes []ThemeEntry) {
 func (s *sessionState) updateReasoning(level int) {
 	s.mu.Lock()
 	s.reasoningLevel = level
+	s.statusVersion++
 	s.mu.Unlock()
 }
 
@@ -178,6 +199,7 @@ func (s *sessionState) updateVideoConfig(fps, res int) {
 	s.mu.Lock()
 	s.videoFPS = fps
 	s.videoRes = res
+	s.statusVersion++
 	s.mu.Unlock()
 }
 
@@ -221,6 +243,7 @@ func (s *sessionState) updateMCPProgress(status, server string) {
 			}
 		}
 	}
+	s.statusVersion++
 	s.mu.Unlock()
 }
 
@@ -304,7 +327,7 @@ func (s *sessionState) takeToolConfirmPending() (id, toolName, toolInput string,
 func (s *sessionState) snapshotStatus() StatusSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return StatusSnapshot{
+	snap := StatusSnapshot{
 		ContextTokens:   s.contextTokens,
 		ContextLimit:    s.contextLimit,
 		InProgress:      s.inProgress,
@@ -319,9 +342,18 @@ func (s *sessionState) snapshotStatus() StatusSnapshot {
 		VideoRes:        s.videoRes,
 		MCPStatus:       s.mcpStatus,
 		MCPServer:       s.mcpServer,
-		MCPServers:      append([]string(nil), s.mcpServers...),
-		CachedThemes:    append([]ThemeEntry(nil), s.cachedThemeList...),
+		Version:         s.statusVersion,
 	}
+	// Copy slices only when populated — `append([]T(nil), nil...)` allocates
+	// an empty non-nil slice, which is wasted work every tick when no MCP
+	// servers / themes are configured.
+	if s.mcpServers != nil {
+		snap.MCPServers = append([]string(nil), s.mcpServers...)
+	}
+	if s.cachedThemeList != nil {
+		snap.CachedThemes = append([]ThemeEntry(nil), s.cachedThemeList...)
+	}
+	return snap
 }
 
 // snapshotModels returns a consistent point-in-time view of model state.
@@ -331,7 +363,11 @@ func (s *sessionState) snapshotModels() ModelSnapshot {
 	snap := ModelSnapshot{
 		ActiveID:   s.activeModelID,
 		ActiveName: s.activeModelName,
+		Version:    s.modelVersion,
 	}
+	// Copy the slice only when populated — `append([]T(nil), nil...)`
+	// allocates an empty non-nil slice every tick when no models are
+	// configured.
 	if s.models != nil {
 		snap.Models = append([]protocol.ModelInfo(nil), s.models...)
 	}

@@ -44,8 +44,32 @@ func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurr
 // rule and overlap the prompt area, even though the input box is now
 // drawn with an absolute CUP (the status bar itself is anchored to the
 // last row, so it would visibly wrap onto the second-to-last row).
-func (m Terminal) renderStatusBar() string {
+//
+// View() invokes this on every render; the cache short-circuits when
+// the inputs that affect the rendered string are unchanged since the
+// last call (status text, in-progress flag, overlay-blocked state,
+// width, theme styles). The indicator + truncation + style.Render
+// pipeline otherwise rebuilds a fresh ANSI-encoded string every
+// 250ms tick, only to be discarded by Program.render's identity check.
+//
+// Uses a pointer receiver so the cache map (initialized lazily and
+// mutated on first call) persists across calls — value-receiver methods
+// get a copy of Terminal and any cache field they mutate is discarded.
+func (m *Terminal) renderStatusBar() string {
 	active := !m.isBlocked()
+	cacheKey := renderStatusBarCacheKey{
+		active:     active,
+		inProgress: m.inProgress,
+		width:      m.windowWidth,
+		styles:     m.styles,
+		status:     m.statusText,
+		statusDim:  m.statusTextDim,
+	}
+	if m.renderedStatusBarCache != nil {
+		if cached, ok := (*m.renderedStatusBarCache)[cacheKey]; ok {
+			return cached
+		}
+	}
 
 	var indicator string
 	if m.inProgress {
@@ -74,7 +98,38 @@ func (m Terminal) renderStatusBar() string {
 	} else {
 		content = truncateWithSuffix(indicator, budget)
 	}
-	return m.styles.Status.Render(content)
+	rendered := m.styles.Status.Render(content)
+
+	if m.renderedStatusBarCache == nil {
+		cache := make(map[renderStatusBarCacheKey]string, 4)
+		m.renderedStatusBarCache = &cache
+	}
+	(*m.renderedStatusBarCache)[cacheKey] = rendered
+	// Bound the cache: small bounded map, drop the oldest entry when it
+	// grows. Status bar inputs only flip between two states per task
+	// (active/idle × blocked/unblocked) so this never grows past a
+	// handful of entries in practice.
+	if len(*m.renderedStatusBarCache) > 8 {
+		for k := range *m.renderedStatusBarCache {
+			if k != cacheKey {
+				delete(*m.renderedStatusBarCache, k)
+				break
+			}
+		}
+	}
+	return rendered
+}
+
+// renderStatusBarCacheKey is the input set to the status-bar render
+// pipeline. Two Terminal values with the same key produce the same
+// rendered status string.
+type renderStatusBarCacheKey struct {
+	active     bool
+	inProgress bool
+	width      int
+	styles     *Styles
+	status     string
+	statusDim  string
 }
 
 // formatTokenCount returns a compact human-readable representation of a
@@ -98,8 +153,35 @@ func formatTokenCount(n int64) string {
 }
 
 // updateStatus updates the status bar state from the output writer.
+//
+// The status snapshot carries a monotonic Version that increments on every
+// status-affecting session update (task progress, model change, MCP phase,
+// theme, video config). The tick handler invokes updateStatus 4×/sec, but
+// the underlying data only changes a handful of times per task — without
+// the version check, updateStatus would rebuild every segment from
+// scratch on every tick, allocating strings the renderer then drops on
+// the same-content identity check.
 func (m Terminal) updateStatus() Terminal {
 	snap := m.out.SnapshotStatus()
+
+	// Skip the rebuild when nothing changed. Note that we still run
+	// syncThemeFromSession unconditionally on the first call (when
+	// lastStatusVersion is 0 and snap.Version is also 0, before any
+	// status-affecting event has fired) — no, in that case the version
+	// would be 0 == 0 and we'd skip. That breaks the initial theme
+	// sync. So the check is for `m.lastStatusVersion == snap.Version
+	// && m.lastStatusVersion != 0`: a non-zero lastSeen equal to the
+	// current version means we've already processed this exact state.
+	//
+	// Actually simpler: when lastStatusVersion != 0 AND it matches the
+	// current snapshot, we have already rendered this exact status. When
+	// lastStatusVersion is 0 (first call), we must run to populate the
+	// initial state. This also covers the case where the underlying state
+	// happens to be at version 0 (no updates yet).
+	if m.lastStatusVersion != 0 && m.lastStatusVersion == snap.Version {
+		return m
+	}
+	m.lastStatusVersion = snap.Version
 
 	valStyle := m.styles.Status.Foreground(m.styles.ColorMuted)
 	dimValStyle := m.styles.Status.Foreground(m.styles.ColorDim)

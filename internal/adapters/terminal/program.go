@@ -120,6 +120,27 @@ func Suspend() Msg { return SuspendMsg{} }
 // SuspendMsg signals the program should suspend.
 type SuspendMsg struct{}
 
+// forceRepaintMsg is an internal message that asks the program to clear
+// its frame caches (Program.lastView and Screen caches) and immediately
+// repaint the current model. It is the modern equivalent of the old
+// `\x1b[0m` content-suffix trick — that approach appended an "invisible"
+// SGR reset to the frame content to force the Program/Screen identity
+// checks to fail, which worked but caused two diff renders per Ctrl-R
+// (one for adding the suffix, one for removing it on the next toggle).
+//
+// ForceRepaintCmd returns this message from a Cmd dispatched by the event
+// loop, so the Program can clear caches and call render synchronously.
+type forceRepaintMsg struct{}
+
+// ForceRepaintCmd returns a Cmd that, when dispatched by the event loop,
+// clears the frame caches and forces a full repaint of the current view.
+// Use it from a model when the view content has not changed but the
+// underlying terminal state requires a redraw (Ctrl-R, terminal reset,
+// garbage on screen, etc.).
+func ForceRepaintCmd() Cmd {
+	return func() Msg { return forceRepaintMsg{} }
+}
+
 // BatchMsg is a message used to perform a bunch of commands concurrently.
 type BatchMsg []Cmd
 
@@ -237,6 +258,8 @@ func Run(model Model) (Model, error) {
 
 // run is the main loop, factored out so tests can drive the program with an
 // injected message channel (Program{msgs: ch}).
+//
+//nolint:gocyclo // message dispatch over many Msg types; each case is a simple handler call
 func (p *Program) run(model Model) (Model, error) {
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
@@ -287,6 +310,17 @@ func (p *Program) run(model Model) (Model, error) {
 			continue
 		case sequenceMsg:
 			go p.execSequence(msg, ctxDone)
+			continue
+		case forceRepaintMsg:
+			// Clear the frame caches so the next render is a full
+			// clear+repaint instead of a no-op identity-skip. Replaces
+			// the old `\x1b[0m` content-suffix trick — that approach
+			// made the view bytes differ to defeat the same-content
+			// check, which forced two diff renders per toggle. The
+			// synchronous cache clear here triggers exactly one
+			// clear+repaint and leaves the view content untouched.
+			p.forceRepaint()
+			p.render(model)
 			continue
 		case WindowSizeMsg:
 			p.width, p.height = msg.Width, msg.Height

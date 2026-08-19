@@ -57,13 +57,23 @@ func TestViewAlwaysFillsScreen(t *testing.T) {
 	}
 }
 
-// TestViewLoadingNotFullScreen verifies the loading view is NOT full-screen,
-// so the renderer keeps the clearing (ED2) path for it.
-func TestViewLoadingNotFullScreen(t *testing.T) {
+// TestViewLoadingFullScreen verifies the loading view IS marked full-screen
+// (padded with erased blank rows), so Screen.Render takes the row-diff path
+// instead of ED2-clear — only the spinner row is repainted when the spinner
+// advances, eliminating the flicker that ED2 would otherwise produce on every
+// tick. The diff parser relies on the view soft-wrapping to exactly the
+// screen height, so the test also locks the row count.
+func TestViewLoadingFullScreen(t *testing.T) {
 	m := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, &app.Config{}, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
 	m.loading = true
 	v := m.View()
-	if v.FullScreen {
-		t.Error("loading view must not be marked FullScreen (it does not fill the screen)")
+	if !v.FullScreen {
+		t.Error("loading view must be marked FullScreen so Screen.Render uses the row-diff path")
+	}
+	// Must soft-wrap to exactly the screen height (no trailing empty
+	// rows that the diff parser would not cover).
+	rows := strings.Count(ansi.Hardwrap(stripANSI(v.Content), 80, true), "\n") + 1
+	if rows != 24 {
+		t.Errorf("soft-wrap rows = %d, want screen height 24", rows)
 	}
 }
