@@ -133,12 +133,19 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
 	case keyR:
 		// Toggle markdown rendering — only effective on an
 		// UNFOLDED plain-text window (assistant text / reasoning).
+		//
+		// Order matters: call updateContent BEFORE EnsureCursorVisible.
+		// EnsureCursorVisible → GetWindowLineRange → ensureLineHeights,
+		// which clears wb.dirty as a side effect. If we checked dirty
+		// (via IsDirty) after that, updateContent would early-return and
+		// the viewport would not pick up the new markdown/raw rendering,
+		// forcing the user to press Ctrl+R to force a repaint.
 		w := m.windowBuffer.WindowAt(m.windowCursor)
 		if w == nil || w.Folded {
 			return m, nil
 		}
 		if m.windowBuffer.ToggleMarkdownMode(m.windowCursor) {
-			return m.EnsureCursorVisible().updateContent(), nil
+			return m.updateContent().EnsureCursorVisible(), nil
 		}
 		return m, nil
 
