@@ -68,7 +68,7 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	if content == "" {
 		t.Error("Expected non-empty content")
 	}
-	// The status dot lives in the header line (TOOLUSE ⠋), not the content —
+	// The status dot lives in the header line (TOOL CALL ⠋), not the content —
 	// content shows the bare argument without the tool-name prefix.
 	if contains(content, "•") {
 		t.Errorf("Content should not contain a status dot, got: %s", content)

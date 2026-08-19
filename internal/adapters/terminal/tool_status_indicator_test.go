@@ -62,8 +62,8 @@ func TestToolRunningShowsSpinner(t *testing.T) {
 }
 
 // TestToolStatusIndicatorHeaderStates drives the WindowBuffer through the
-// full lifecycle: pending header shows TOOLUSE + spinner, success shows
-// TOOLUSE ✓, error shows TOOLUSE ✗.
+// full lifecycle: pending header shows TOOL CALL + spinner, success shows
+// TOOL CALL ✓, error shows TOOL CALL ✗.
 func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.HandleToolInputEvent(protocol.ToolInputData{
@@ -72,13 +72,13 @@ func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 		Input: json.RawMessage("execute_command: lscpu"),
 	}, 0)
 
-	// Pending (executing): header is "▶ TOOLUSE ⠋ …" — a separator space
+	// Pending (executing): header is "▶ TOOL CALL ⠋ …" — a separator space
 	// and a spinner frame right after the label.
 	plain := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(plain, "▶ TOOLUSE ") {
-		t.Fatalf("pending header should start with ▶ TOOLUSE + space, got %q", plain)
+	if !strings.HasPrefix(plain, "▶ TOOL CALL ") {
+		t.Fatalf("pending header should start with ▶ TOOL CALL + space, got %q", plain)
 	}
-	rest := []rune(strings.TrimPrefix(plain, "▶ TOOLUSE "))
+	rest := []rune(strings.TrimPrefix(plain, "▶ TOOL CALL "))
 	if len(rest) == 0 {
 		t.Fatal("pending header has nothing after the label")
 	}
@@ -96,15 +96,15 @@ func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 	// Success: plain ✓ after the separator space.
 	wb.HandleToolOutput("t1", "x86_64", false, 0)
 	plain = stripANSI(wb.GetAll(-1, false))
-	if !strings.Contains(plain, "TOOLUSE ✓") {
-		t.Errorf("success header should contain TOOLUSE ✓, got %q", plain)
+	if !strings.Contains(plain, "TOOL CALL ✓") {
+		t.Errorf("success header should contain TOOL CALL ✓, got %q", plain)
 	}
 
 	// Error: plain ✗ after the separator space.
 	wb.HandleToolOutput("t1", "boom", true, 0)
 	plain = stripANSI(wb.GetAll(-1, false))
-	if !strings.Contains(plain, "TOOLUSE ✗") {
-		t.Errorf("error header should contain TOOLUSE ✗, got %q", plain)
+	if !strings.Contains(plain, "TOOL CALL ✗") {
+		t.Errorf("error header should contain TOOL CALL ✗, got %q", plain)
 	}
 }
 

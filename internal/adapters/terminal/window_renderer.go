@@ -603,7 +603,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 
 	// Input: streaming delta preview (truncated JSON) or the full input.
 	// Neither carries the status indicator nor the "name: " prefix — the
-	// indicator lives in the header line (TOOLUSE ⠋) and the tool name is
+	// indicator lives in the header line (TOOL CALL ⠋) and the tool name is
 	// shown there too. Content is plain (no color, no bold); only the
 	// "---" separator keeps its muted color.
 	var call string
@@ -648,7 +648,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 }
 
 // BuildCollapsed returns the single-line collapsed form for tool windows:
-// "TOOLUSE ⠋    execute_command lscpu…" — bold TOOLUSE + status indicator
+// "TOOL CALL ⠋    execute_command lscpu…" — bold TOOL CALL + status indicator
 // (rotating spinner while streaming/executing, plain ✓/✗ when done) in
 // the fixed label column, then the tool name + first input line (or the
 // streaming delta preview tail, ellipsis at the line start), truncated to
@@ -686,7 +686,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		inputFirst = firstLine(prepareContent(r.input))
 		// The input's first line is usually "name: args". The tool name is
 		// shown right after the label column, so strip the repeated prefix
-		// ("TOOLUSE ⠋ execute_command lscpu", not "execute_command:
+		// ("TOOL CALL ⠋ execute_command lscpu", not "execute_command:
 		// execute_command: lscpu").
 		if r.name != "" {
 			if stripped, ok := strings.CutPrefix(inputFirst, r.name+":"); ok {
@@ -705,7 +705,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 	line = truncateWithSuffix(line, max(0, width-2))
 
-	// Re-style the truncated plain line: "TOOLUSE" in bold (no color), the
+	// Re-style the truncated plain line: "TOOL CALL" in bold (no color), the
 	// separator space plain, the status indicator (spinner or ✓/✗)
 	// unstyled — deliberately colorless — then name + input in muted.
 	// NOTE: the indicator is multi-byte UTF-8 — slice by len(dot), never by
@@ -764,7 +764,7 @@ func (r *toolRenderer) previewOutput(innerWidth int) string {
 }
 
 // defaultToolRender renders a tool call's input as a muted argument block:
-// no status indicator (it lives in the header line's TOOLUSE ⠋) and no
+// no status indicator (it lives in the header line's TOOL CALL ⠋) and no
 // "name: " prefix (the tool name lives in the header line too).
 func defaultToolRender(input, name string) string {
 	content := prepareContent(input)

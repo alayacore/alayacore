@@ -177,8 +177,8 @@ func TestWindowBufferDiff(t *testing.T) {
 		if strings.Contains(rendered, "⁝") {
 			t.Error("Collapsed window should not contain the old fold indicator")
 		}
-		if !strings.Contains(stripANSI(rendered), "TOOL") || !strings.Contains(stripANSI(rendered), "edit_file") {
-			t.Errorf("Collapsed diff should show TOOL + tool name, got %q", stripANSI(rendered))
+		if !strings.Contains(stripANSI(rendered), "TOOL CALL") || !strings.Contains(stripANSI(rendered), "edit_file") {
+			t.Errorf("Collapsed diff should show TOOL CALL + tool name, got %q", stripANSI(rendered))
 		}
 	})
 
