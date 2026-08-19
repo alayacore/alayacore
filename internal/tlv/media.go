@@ -21,10 +21,21 @@ var mimeMap = map[string]string{
 	".txt": "text/plain", ".md": "text/plain",
 }
 
+// extOf returns the lowercase file extension of a local path or URL.
+// URL query strings and fragments are stripped first, so that
+// "https://example.com/a.jpg?x=1" yields ".jpg" instead of ".jpg?x=1" —
+// the latter would not match mimeMap and misclassify the attachment as a
+// document (UD) instead of an image (UI). Harmless for local paths.
+func extOf(pathOrURL string) string {
+	if q := strings.IndexAny(pathOrURL, "?#"); q >= 0 {
+		pathOrURL = pathOrURL[:q]
+	}
+	return strings.ToLower(filepath.Ext(pathOrURL))
+}
+
 // MimeTypeForPath returns the MIME type for a file based on its extension.
 func MimeTypeForPath(path string) string {
-	ext := strings.ToLower(filepath.Ext(path))
-	if mime, ok := mimeMap[ext]; ok {
+	if mime, ok := mimeMap[extOf(path)]; ok {
 		return mime
 	}
 	return "application/octet-stream"
@@ -32,7 +43,7 @@ func MimeTypeForPath(path string) string {
 
 // TagForPath returns the TLV tag (UI, UV, UA, or UD) for a file based on its extension.
 func TagForPath(path string) string {
-	switch strings.ToLower(filepath.Ext(path)) {
+	switch extOf(path) {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg":
 		return TagUserI
 	case ".mp4", ".mpeg", ".mpg", ".avi", ".mov", ".webm", ".mkv":

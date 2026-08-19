@@ -37,7 +37,7 @@ Sleep 1s
 
 Ctrl+L
 Sleep 1s
-Type "deepflash"
+Type "localanth"
 Sleep 1s
 Enter
 
@@ -50,7 +50,7 @@ Sleep 5s
 # ── Choose Theme ────────────────────────────────────────────────────
 Ctrl+P
 Sleep 1s
-Type "panda"
+Type "light"
 Sleep 1s
 Enter
 
@@ -58,6 +58,10 @@ Tab
 Type "k"
 Sleep 200ms
 Type "k"
+Sleep 200ms
+Type "k"
+Sleep 500ms
+Type "j"
 Sleep 500ms
 Space
 Sleep 1s
