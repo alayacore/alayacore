@@ -72,17 +72,27 @@ func WriteSystemMsg(w io.Writer, msg SystemMsg) error {
 
 // ModelInfo is the wire format for a model in system messages (model_list).
 // It mirrors the agent's ModelConfig JSON tags exactly (including the
-// absence of omitempty) so the wire bytes stay identical to the previous
-// format.
+// absence of omitempty on core fields) so the wire bytes stay identical
+// to the previous format for backward compatibility.
+//
+// Reasoning0/1/2 carry raw provider-level JSON (e.g. {"thinking":{...},
+// "output_config":{...}} for Anthropic or {"thinking":{...},
+// "reasoning_effort":"..."} for OpenAI) that the provider merges into
+// the request body at the corresponding reasoning level (0=off, 1=normal,
+// 2=max). They are user-controlled because each provider family has its
+// own thinking/effort vocabulary.
 type ModelInfo struct {
-	ID           int    `json:"id"`
-	Name         string `json:"name"`
-	ProtocolType string `json:"protocol_type"`
-	BaseURL      string `json:"base_url"`
-	APIKey       string `json:"api_key"`
-	ModelName    string `json:"model_name"`
-	ContextLimit int    `json:"context_limit"`
-	MaxTokens    int    `json:"max_tokens"`
+	ID           int             `json:"id"`
+	Name         string          `json:"name"`
+	ProtocolType string          `json:"protocol_type"`
+	BaseURL      string          `json:"base_url"`
+	APIKey       string          `json:"api_key"`
+	ModelName    string          `json:"model_name"`
+	ContextLimit int             `json:"context_limit"`
+	MaxTokens    int             `json:"max_tokens"`
+	Reasoning0   json.RawMessage `json:"reasoning_0,omitempty"`
+	Reasoning1   json.RawMessage `json:"reasoning_1,omitempty"`
+	Reasoning2   json.RawMessage `json:"reasoning_2,omitempty"`
 }
 
 // ToolInputData is the JSON payload for TagAssistantF (AF).

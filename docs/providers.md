@@ -89,21 +89,34 @@ After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`
 
 ## Reasoning mode and reasoning_content
 
-When reasoning mode is set via `:reason [0|1|2]` (or at startup via `--reasoning-level <0|1|2>`), each provider sends explicit thinking configuration in API requests. The key differences are:
+When reasoning mode is set via `:reason [0|1|2]` (or at startup via `--reasoning-level <0|1|2>`), the provider looks up `reasoning_<level>` from the active model in `model.conf` and **merges that JSON verbatim into the request body**. Top-level keys in the JSON become top-level keys of the request.
 
-1. A top-level **`thinking`** field (`{"type": "enabled"}` or `{"type": "disabled"}`) controls whether reasoning is active. This is always set explicitly — even when reasoning is off — because some providers (e.g. DeepSeek V4) default to thinking enabled. Omitting the field would leave thinking on at the API level, contradicting the UI state.
-2. When reasoning mode is on (level 1 or 2), assistant messages that only contain tool calls must still include an **empty reasoning block** (required by DeepSeek and similar providers).
+This is data-driven: each model carries its own `reasoning_0`, `reasoning_1`, `reasoning_2` blocks describing exactly what thinking-related fields the provider should send. Different provider families have different vocabularies (Anthropic uses `output_config.effort`; OpenAI/DeepSeek use `reasoning_effort`; Qwen3 might use yet another scheme) — the per-model config captures that, so alayacore itself stays provider-agnostic.
 
-| Provider | Level 1 (normal) | Level 2 (max) | Disabled |
-|----------|------------------|---------------|----------|
-| **Anthropic** | `"thinking": {"type": "enabled"}`, `"output_config": {"effort": "high"}` | `"thinking": {"type": "enabled"}`, `"output_config": {"effort": "max"}` | `"thinking": {"type": "disabled"}` |
-| **OpenAI-compatible** | `"thinking": {"type": "enabled"}`, `"reasoning_effort": "high"` | `"thinking": {"type": "enabled"}`, `"reasoning_effort": "xhigh"` | `"thinking": {"type": "disabled"}` |
+When **all** `reasoning_*` blocks are absent from a model entry, **no thinking-related fields appear in the request body** — the server picks its own defaults. This makes the fields purely additive: existing model.conf files keep working.
 
-> **Note:** The OpenAI-compatible thinking/reasoning parameters (`thinking`, `reasoning_effort`, `reasoning_content`) are not part of the official OpenAI API standard. They originate from [DeepSeek's thinking mode documentation](https://api-docs.deepseek.com/guides/thinking_mode) and are supported by **DeepSeek**, **GLM**, and **MiniMax**. Other providers silently ignore unknown fields.
+1. The provider reads `reasoning_<level>` from the active model.
+2. It `json.Unmarshal`s the value into `map[string]any` and copies each top-level key into the request body map.
+3. Empty/whitespace-only entries are silently skipped — so configuring only some levels is fine; the others fall through to the server default.
+
+Reasoning level itself (`0`/`1`/`2`) drives:
+- which `reasoning_*` block is merged into the request body,
+- the empty-thinking-block padding in assistant messages (provider-specific message-layer behavior, not configurable),
+- the `R0✦`/`R1✦`/`R2✦` status indicator.
+
+### Common shapes
+
+| Provider family | `reasoning_1` example | `reasoning_2` example |
+|-----------------|-----------------------|-----------------------|
+| Anthropic | `{"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}` | `{"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}` |
+| OpenAI / DeepSeek | `{"thinking":{"type":"enabled"},"reasoning_effort":"high"}` | `{"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}` |
+| Any OpenAI-compatible | the keys documented by that provider | the keys documented by that provider |
+
+> **Note:** The OpenAI-compatible thinking/reasoning parameters (`thinking`, `reasoning_effort`, `reasoning_content`) are not part of the official OpenAI API standard. They originate from [DeepSeek's thinking mode documentation](https://api-docs.deepseek.com/guides/thinking_mode) and are supported by **DeepSeek**, **GLM**, and **MiniMax**. Other providers silently ignore unknown fields — so a custom `reasoning_*` block for one provider is no harm to another.
 
 ### OpenAI-compatible — request examples
 
-When reasoning mode is **disabled**, assistant messages contain only the tool calls — no `reasoning_content` field:
+When **no `reasoning_*` block is configured for the current level**, the request body contains no thinking-related fields and the server falls back to its own defaults:
 
 ```json
 {
@@ -122,21 +135,18 @@ When reasoning mode is **disabled**, assistant messages contain only the tool ca
 				"index": 0,
 				"type": "function"
 			}]
-		},
+		}
 
 		...
 
 	],
 
-	"model": "deepseek-v4-flash",
+	"model": "deepseek-v4-flash"
 
-	"thinking": { "type": "disabled" },
-
-	...
 }
 ```
 
-When reasoning mode is **enabled**, every assistant message is padded with `"reasoning_content": ""` even when there is no actual reasoning text, and the request includes `reasoning_effort`:
+When the user configures `reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}` and reasoning level is 2, those keys are merged into the request body:
 
 ```json
 {
@@ -156,7 +166,7 @@ When reasoning mode is **enabled**, every assistant message is padded with `"rea
 				"index": 0,
 				"type": "function"
 			}]
-		},
+		}
 
 		...
 
@@ -165,50 +175,14 @@ When reasoning mode is **enabled**, every assistant message is padded with `"rea
 	"model": "deepseek-v4-flash",
 
 	"thinking": { "type": "enabled" },
-	"reasoning_effort": "xhigh",
+	"reasoning_effort": "xhigh"
 
-	...
 }
 ```
 
 ### Anthropic-compatible — request examples
 
-When reasoning mode is **disabled**, assistant messages contain only the tool-use content block — no `thinking` block:
-
-```json
-{
-	"messages": [
-
-		...
-
-		{
-			"role": "assistant",
-			"content": [
-				{
-					"id": "call_ca6eef24512147a6a9dae7bd",
-					"input": {
-						"num_lines": 5,
-						"path": "/home/wallace/playground/alayacore/go.mod"
-					},
-					"name": "read_file",
-					"type": "tool_use"
-				}
-			]
-		},
-
-		...
-
-	],
-
-	"model": "deepseek-v4-pro",
-
-	"thinking": { "type": "disabled" },
-
-	...
-}
-```
-
-When reasoning mode is **enabled**, every assistant message is prepended with an empty `{"type": "thinking", "thinking": ""}` block when none is present, and the request includes `output_config`:
+With `reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}` and reasoning level 2:
 
 ```json
 {
@@ -233,7 +207,7 @@ When reasoning mode is **enabled**, every assistant message is prepended with an
 					"type": "tool_use"
 				}
 			]
-		},
+		}
 
 		...
 
@@ -242,9 +216,8 @@ When reasoning mode is **enabled**, every assistant message is prepended with an
 	"model": "deepseek-v4-pro",
 
 	"thinking": { "type": "enabled" },
-	"output_config": { "effort": "max" },
+	"output_config": { "effort": "max" }
 
-	...
 }
 ```
 
@@ -258,7 +231,9 @@ This means **all** intermediate assistant messages in a multi-turn tool call cha
 
 Both providers pad assistant messages with an empty reasoning value — but **only when reasoning mode is enabled** — to avoid wasting input tokens when it isn't needed.
 
-- **Anthropic provider** (`anthropicConvertMessages`): prepends an empty `{"type": "thinking", "thinking": ""}` block to every assistant message that lacks one. The thinking block must come first per Anthropic's API.
+This behavior is independent of the `reasoning_*` JSON blocks — it is a hardcoded message-layer convention that DeepSeek and similar providers require. Configuring `reasoning_0: {"thinking":{"type":"disabled"}}` does NOT turn off empty padding; the padding is gated solely on the reasoning level being > 0.
+
+- **Anthropic provider** (`anthropicConvertMessages`): prepends an empty `{"type":"thinking","thinking":""}` block to every assistant message that lacks one. The thinking block must come first per Anthropic's API.
 - **OpenAI provider** (`openaiConvertMessages`): extracts reasoning text via `openaiExtractReasoning()` and sets `reasoning_content` on every assistant message — even as empty string when no reasoning text exists.
 
 Both are conditional on reasoning mode being enabled. When reasoning mode is off, no padding is added.

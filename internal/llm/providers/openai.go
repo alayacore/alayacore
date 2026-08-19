@@ -51,28 +51,11 @@ import (
 // OpenAI Wire Format Types
 // ============================================================================
 
-type openAIRequest struct {
-	Model               string               `json:"model"`
-	Messages            []openAIMessage      `json:"messages"`
-	Tools               []openAITool         `json:"tools,omitempty"`
-	Stream              bool                 `json:"stream"`
-	StreamOptions       *openAIStreamOptions `json:"stream_options,omitempty"`
-	MaxCompletionTokens int                  `json:"max_completion_tokens,omitempty"`
-	Temperature         float64              `json:"temperature,omitempty"`
-	ReasoningEffort     string               `json:"reasoning_effort,omitempty"`
-	Thinking            *openAIThinkingField `json:"thinking"`
-}
-
-// openAIThinkingField maps to the OpenAI/DeepSeek `thinking` API field.
-// The wire name is "thinking" (provider API convention), while the
-// codebase uses "reasoning" for the domain-level concept.
-type openAIThinkingField struct {
-	Type string `json:"type"`
-}
-
-type openAIStreamOptions struct {
-	IncludeUsage bool `json:"include_usage"`
-}
+// openAIRequest and openAIStreamOptions were removed when thinking
+// configuration moved out of typed fields into user-controlled
+// reasoning_N JSON in model.conf. The request body is now assembled
+// as map[string]any in StreamMessages, with reasoning-specific keys
+// merged in via baseProvider.mergeReasoningConfig.
 
 type openAIMessage struct {
 	Role             string           `json:"role"`
@@ -179,35 +162,54 @@ func (p *OpenAIProvider) StreamMessages(
 		})
 	}
 
-	// Build request body with thinking config
-	reqBody := openAIRequest{
-		Model:    p.model,
-		Messages: apiMessages,
-		Tools:    apiTools,
-		Stream:   true,
-		StreamOptions: &openAIStreamOptions{
-			IncludeUsage: true,
-		},
-		Thinking:        computeOpenAIThinking(p.reasoningLevel),
-		ReasoningEffort: computeOpenAIReasoningEffort(p.reasoningLevel),
+	// Build request body. The typed struct only covers stable fields;
+	// thinking/reasoning_effort come from user-configured reasoning_N
+	// JSON merged in via baseProvider.mergeReasoningConfig. With no
+	// reasoning_N configured, neither field appears in the body — the
+	// server falls back to its own defaults.
+	body := p.mergeReasoningConfig(map[string]any{
+		"model":          p.model,
+		"messages":       apiMessages,
+		"stream":         true,
+		"stream_options": map[string]any{"include_usage": true},
+	})
+	if len(apiTools) > 0 {
+		body["tools"] = apiTools
 	}
 	if p.maxTokens > 0 {
-		reqBody.MaxCompletionTokens = p.maxTokens
+		body["max_completion_tokens"] = p.maxTokens
 	}
 
 	// Build and send HTTP request
-	req, err := p.buildRequest(ctx, "/chat/completions", reqBody)
+	req, err := p.buildRequest(ctx, "/chat/completions", body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	body, err := p.doRequest(req)
+	bodyReader, err := p.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
-	return p.parseStream(body), nil
+	return p.parseStream(bodyReader), nil
+}
+
+// SetReasoningConfigs stores per-level provider wire-format JSON that
+// is merged into the request body at the level returned by
+// SetReasoningLevel. nil/empty entries are dropped so an unset level
+// produces no fields in the body.
+func (p *OpenAIProvider) SetReasoningConfigs(configs map[int]json.RawMessage) {
+	p.reasoningConfigs = nil
+	if len(configs) == 0 {
+		return
+	}
+	p.reasoningConfigs = make(map[int]json.RawMessage, len(configs))
+	for k, v := range configs {
+		if len(v) > 0 {
+			p.reasoningConfigs[k] = v
+		}
+	}
 }
 
 // ============================================================================
@@ -803,28 +805,6 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPa
 	} else {
 		apiMsg.Content = contentParts
 	}
-}
-
-// computeOpenAIThinking returns the thinking field for an OpenAI request.
-// Returns "enabled" when reasoning is on, "disabled" when off.
-func computeOpenAIThinking(level int) *openAIThinkingField {
-	if level > config.ReasoningLevelOff {
-		return &openAIThinkingField{Type: "enabled"}
-	}
-	return &openAIThinkingField{Type: "disabled"}
-}
-
-// computeOpenAIReasoningEffort returns the reasoning_effort value.
-// Returns "high" for level 1, "xhigh" for level 2, empty string for off.
-// Empty string is dropped by omitempty in the JSON request.
-func computeOpenAIReasoningEffort(level int) string {
-	if level <= config.ReasoningLevelOff {
-		return ""
-	}
-	if level >= config.ReasoningLevelMax {
-		return "xhigh"
-	}
-	return "high"
 }
 
 func openAIVideoPart(uri string, fps int, resolution int) map[string]any {

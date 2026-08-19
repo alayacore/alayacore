@@ -8,21 +8,27 @@ import (
 )
 
 func TestAnthropicSystemMessageArray(t *testing.T) {
-	// Test that Anthropic API request structure supports system message array
-	req := anthropicRequest{
-		Model:    "claude-3-5-sonnet-20241022",
-		Messages: []anthropicMessage{},
-		System: []anthropicSystemMessage{
-			{Type: "text", Text: "Default system prompt"},
-			{Type: "text", Text: "Extra system prompt 1\n\nExtra system prompt 2"},
-		},
-		MaxTokens: llm.DefaultMaxTokens,
-		Stream:    true,
+	// Test that the Anthropic request body supports the system message
+	// array shape. The body is now built as map[string]any in
+	// StreamMessages, with thinking-related keys merged in from
+	// reasoning_N. This test exercises the system-message assembly
+	// without going through StreamMessages so the assertion is on the
+	// structural shape alone.
+	system := []anthropicSystemMessage{
+		{Type: "text", Text: "Default system prompt"},
+		{Type: "text", Text: "Extra system prompt 1\n\nExtra system prompt 2"},
+	}
+	body := map[string]any{
+		"model":      "claude-3-5-sonnet-20241022",
+		"messages":   []anthropicMessage{},
+		"system":     system,
+		"max_tokens": llm.DefaultMaxTokens,
+		"stream":     true,
 	}
 
-	data, err := json.MarshalIndent(req, "", "  ")
+	data, err := json.MarshalIndent(body, "", "  ")
 	if err != nil {
-		t.Fatalf("Failed to marshal request: %v", err)
+		t.Fatalf("Failed to marshal body: %v", err)
 	}
 
 	t.Logf("Anthropic request:\n%s", string(data))
@@ -33,17 +39,17 @@ func TestAnthropicSystemMessageArray(t *testing.T) {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
 
-	system, ok := parsed["system"].([]any)
+	parsedSystem, ok := parsed["system"].([]any)
 	if !ok {
 		t.Fatal("Expected system to be an array")
 	}
 
-	if len(system) != 2 {
-		t.Fatalf("Expected 2 system messages, got %d", len(system))
+	if len(parsedSystem) != 2 {
+		t.Fatalf("Expected 2 system messages, got %d", len(parsedSystem))
 	}
 
 	// Verify first message
-	first, ok := system[0].(map[string]any)
+	first, ok := parsedSystem[0].(map[string]any)
 	if !ok {
 		t.Fatal("Expected system[0] to be a map")
 	}
@@ -55,7 +61,7 @@ func TestAnthropicSystemMessageArray(t *testing.T) {
 	}
 
 	// Verify second message
-	second, ok := system[1].(map[string]any)
+	second, ok := parsedSystem[1].(map[string]any)
 	if !ok {
 		t.Fatal("Expected system[1] to be a map")
 	}
@@ -66,19 +72,21 @@ func TestAnthropicSystemMessageArray(t *testing.T) {
 
 func TestAnthropicEmptyExtraPrompt(t *testing.T) {
 	// Test that empty extra prompt results in only one system message
-	req := anthropicRequest{
-		Model:    "claude-3-5-sonnet-20241022",
-		Messages: []anthropicMessage{},
-		System: []anthropicSystemMessage{
+	// in the request body. Mirrors the conditional in StreamMessages
+	// that only adds the "system" key when systemMessages is non-empty.
+	body := map[string]any{
+		"model":    "claude-3-5-sonnet-20241022",
+		"messages": []anthropicMessage{},
+		"system": []anthropicSystemMessage{
 			{Text: "Default system prompt"},
 		},
-		MaxTokens: llm.DefaultMaxTokens,
-		Stream:    true,
+		"max_tokens": llm.DefaultMaxTokens,
+		"stream":     true,
 	}
 
-	data, err := json.Marshal(req)
+	data, err := json.Marshal(body)
 	if err != nil {
-		t.Fatalf("Failed to marshal request: %v", err)
+		t.Fatalf("Failed to marshal body: %v", err)
 	}
 
 	var parsed map[string]any
@@ -86,11 +94,11 @@ func TestAnthropicEmptyExtraPrompt(t *testing.T) {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
 
-	system, ok := parsed["system"].([]any)
+	parsedSystem, ok := parsed["system"].([]any)
 	if !ok {
 		t.Fatal("Expected system to be an array")
 	}
-	if len(system) != 1 {
-		t.Errorf("Expected 1 system message when extra is empty, got %d", len(system))
+	if len(parsedSystem) != 1 {
+		t.Errorf("Expected 1 system message when extra is empty, got %d", len(parsedSystem))
 	}
 }

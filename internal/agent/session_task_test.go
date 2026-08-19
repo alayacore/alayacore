@@ -71,8 +71,9 @@ func (m *mockProviderStepFail) StreamMessages(_ context.Context, _ []llm.Content
 	}, nil
 }
 
-func (m *mockProviderStepFail) SetReasoningLevel(_ int)     {}
-func (m *mockProviderStepFail) SetVideoConfig(_ int, _ int) {}
+func (m *mockProviderStepFail) SetReasoningLevel(_ int)                       {}
+func (m *mockProviderStepFail) SetReasoningConfigs(_ map[int]json.RawMessage) {}
+func (m *mockProviderStepFail) SetVideoConfig(_ int, _ int)                   {}
 
 func TestRunTaskPreservesPartialResultsOnError(t *testing.T) {
 	provider := &mockProviderStepFail{

@@ -34,19 +34,26 @@ type BaseConfig struct {
 	Model      string
 	HTTPClient *http.Client
 	MaxTokens  int // 0 means use provider default
+
+	// ReasoningConfigs is the user-supplied per-level provider wire-format
+	// JSON merged into the request body. Keyed by reasoning level (0=off,
+	// 1=normal, 2=max). Nil/empty entries mean "no fields added for this
+	// level" so providers can short-circuit when nothing is configured.
+	ReasoningConfigs map[int]json.RawMessage
 }
 
 // baseProvider holds the common fields shared by all LLM providers.
 // Embedded by AnthropicProvider and OpenAIProvider.
 type baseProvider struct {
-	apiKey         string
-	baseURL        string
-	client         *http.Client
-	model          string
-	maxTokens      int
-	reasoningLevel int // 0=off, 1=normal, 2=max
-	videoFPS       int // frames per second for video attachments; 0 means default (2)
-	videoRes       int // video resolution mode: 0 or 1
+	apiKey           string
+	baseURL          string
+	client           *http.Client
+	model            string
+	maxTokens        int
+	reasoningLevel   int                     // 0=off, 1=normal, 2=max — UI display, session persistence, and message-layer empty-padding switch
+	reasoningConfigs map[int]json.RawMessage // per-level raw provider JSON merged into request body; nil entries omitted
+	videoFPS         int                     // frames per second for video attachments; 0 means default (2)
+	videoRes         int                     // video resolution mode: 0 or 1
 }
 
 // setBaseConfig applies the common config to a baseProvider.
@@ -65,6 +72,53 @@ func (b *baseProvider) setBaseConfig(cfg BaseConfig, defaultModel string) {
 	if b.maxTokens == 0 {
 		b.maxTokens = llm.DefaultMaxTokens
 	}
+	if len(cfg.ReasoningConfigs) > 0 {
+		b.reasoningConfigs = make(map[int]json.RawMessage, len(cfg.ReasoningConfigs))
+		for k, v := range cfg.ReasoningConfigs {
+			if len(v) > 0 {
+				b.reasoningConfigs[k] = v
+			}
+		}
+	}
+}
+
+// mergeReasoningConfig copies the top-level keys from the configured
+// per-level reasoning JSON into body. Returns body unchanged when no
+// reasoning config is registered for the current reasoning level.
+//
+// The user's JSON must be a flat object whose top-level keys are
+// top-level request-body keys (e.g. {"thinking":{...},"output_config":{...}}
+// for Anthropic). Keys are merged as parsed values, so nested objects
+// become map[string]any — matching the rest of the body shape built by
+// the provider. Unknown top-level keys pass through unchanged, so
+// non-standard provider extensions don't need provider changes.
+//
+// Empty/whitespace-only JSON is treated as "no config for this level"
+// and yields no merge — keeping model.conf backward compatible: missing
+// reasoning_N fields never inject any wire fields.
+func (b *baseProvider) mergeReasoningConfig(body map[string]any) map[string]any {
+	raw, ok := b.reasoningConfigs[b.reasoningLevel]
+	if !ok || len(raw) == 0 {
+		return body
+	}
+	var overrides map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &overrides); err != nil {
+		// Malformed JSON — leave body untouched. Providers don't
+		// have a clean error channel during body construction, so
+		// silent skip is safer than aborting the request. The
+		// config parser should have caught obvious errors at
+		// load time; this only triggers on genuinely invalid
+		// JSON bytes (rare/impossible via config parser).
+		return body
+	}
+	for k, v := range overrides {
+		var parsed any
+		if err := json.Unmarshal(v, &parsed); err != nil {
+			continue
+		}
+		body[k] = parsed
+	}
+	return body
 }
 
 // buildRequest creates an HTTP POST request with common headers.

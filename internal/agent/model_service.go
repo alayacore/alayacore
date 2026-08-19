@@ -184,6 +184,7 @@ func (ms *modelService) SwitchModel(modelConfig *modelConfig, baseTools []llm.To
 	ms.contextLimit = int64(modelConfig.ContextLimit)
 	if ms.provider != nil {
 		ms.provider.SetReasoningLevel(ms.reasoningLevel)
+		ms.provider.SetReasoningConfigs(modelConfig.ReasoningConfigs())
 		ms.provider.SetVideoConfig(ms.videoFPS, ms.videoRes)
 	}
 	return nil
@@ -267,11 +268,12 @@ func createProviderFromConfig(modelCfg *modelConfig, debugDir, proxyURL string) 
 	}
 
 	return factory.NewProvider(factory.ProviderConfig{
-		Type:       modelCfg.ProtocolType,
-		APIKey:     modelCfg.APIKey,
-		BaseURL:    modelCfg.BaseURL,
-		Model:      modelCfg.ModelName,
-		HTTPClient: client,
-		MaxTokens:  modelCfg.MaxTokens,
+		Type:             modelCfg.ProtocolType,
+		APIKey:           modelCfg.APIKey,
+		BaseURL:          modelCfg.BaseURL,
+		Model:            modelCfg.ModelName,
+		HTTPClient:       client,
+		MaxTokens:        modelCfg.MaxTokens,
+		ReasoningConfigs: modelCfg.ReasoningConfigs(),
 	})
 }

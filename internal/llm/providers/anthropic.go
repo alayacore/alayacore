@@ -50,28 +50,11 @@ const (
 	anthropicDeltaTypeInputJSON = "input_json_delta"
 )
 
-// anthropicRequest represents the Anthropic API request
-type anthropicRequest struct {
-	Model        string                   `json:"model"`
-	Messages     []anthropicMessage       `json:"messages"`
-	MaxTokens    int                      `json:"max_tokens"`
-	System       []anthropicSystemMessage `json:"system,omitempty"`
-	Tools        []anthropicTool          `json:"tools,omitempty"`
-	Stream       bool                     `json:"stream"`
-	Thinking     *anthropicThinkingField  `json:"thinking"`
-	OutputConfig *anthropicOutputConfig   `json:"output_config,omitempty"`
-}
-
-// anthropicThinkingField maps to the Anthropic `thinking` API field.
-// The wire name is "thinking" (Anthropic API convention), while the
-// codebase uses "reasoning" for the domain-level concept.
-type anthropicThinkingField struct {
-	Type string `json:"type"`
-}
-
-type anthropicOutputConfig struct {
-	Effort string `json:"effort"`
-}
+// anthropicRequest was removed when thinking configuration moved out
+// of typed fields into user-controlled reasoning_N JSON in model.conf.
+// The request body is now assembled as map[string]any in StreamMessages,
+// with reasoning-specific keys merged in via
+// baseProvider.mergeReasoningConfig.
 
 type anthropicSystemMessage struct {
 	Type string `json:"type"`
@@ -253,52 +236,55 @@ func (p *AnthropicProvider) StreamMessages(
 		systemMessages = append(systemMessages, anthropicSystemMessage{Type: anthropicBlockTypeText, Text: extraSystemPrompt})
 	}
 
-	// Build request body
-	reqBody := anthropicRequest{
-		Model:        p.model,
-		Messages:     apiMessages,
-		MaxTokens:    p.maxTokens,
-		System:       systemMessages,
-		Tools:        apiTools,
-		Stream:       true,
-		Thinking:     computeAnthropicReasoning(p.reasoningLevel),
-		OutputConfig: computeAnthropicOutputConfig(p.reasoningLevel),
+	// Build request body. The typed struct only covers stable fields;
+	// thinking/output_config come from user-configured reasoning_N JSON
+	// merged in via baseProvider.mergeReasoningConfig. With no
+	// reasoning_N configured, neither field appears in the body — the
+	// server falls back to its own defaults.
+	body := p.mergeReasoningConfig(map[string]any{
+		"model":      p.model,
+		"messages":   apiMessages,
+		"max_tokens": p.maxTokens,
+		"stream":     true,
+	})
+	if len(systemMessages) > 0 {
+		body["system"] = systemMessages
+	}
+	if len(apiTools) > 0 {
+		body["tools"] = apiTools
 	}
 
 	// Build and send HTTP request
-	req, err := p.buildRequest(ctx, "/v1/messages", reqBody)
+	req, err := p.buildRequest(ctx, "/v1/messages", body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("x-api-key", p.apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	body, err := p.doRequest(req)
+	bodyReader, err := p.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
-	return p.parseStream(body), nil
+	return p.parseStream(bodyReader), nil
 }
 
-func computeAnthropicReasoning(level int) *anthropicThinkingField {
-	if level > config.ReasoningLevelOff {
-		return &anthropicThinkingField{Type: "enabled"}
+// SetReasoningConfigs stores per-level provider wire-format JSON that
+// is merged into the request body at the level returned by
+// SetReasoningLevel. nil/empty entries are dropped so an unset level
+// produces no fields in the body.
+func (p *AnthropicProvider) SetReasoningConfigs(configs map[int]json.RawMessage) {
+	p.reasoningConfigs = nil
+	if len(configs) == 0 {
+		return
 	}
-	return &anthropicThinkingField{Type: "disabled"}
-}
-
-// computeAnthropicOutputConfig returns the output_config for the given reasoning level.
-// Returns nil when reasoning is off (level 0), so omitempty drops the field.
-func computeAnthropicOutputConfig(level int) *anthropicOutputConfig {
-	if level <= config.ReasoningLevelOff {
-		return nil
+	p.reasoningConfigs = make(map[int]json.RawMessage, len(configs))
+	for k, v := range configs {
+		if len(v) > 0 {
+			p.reasoningConfigs[k] = v
+		}
 	}
-	effort := "high"
-	if level >= config.ReasoningLevelMax {
-		effort = "max"
-	}
-	return &anthropicOutputConfig{Effort: effort}
 }
 
 // ============================================================================

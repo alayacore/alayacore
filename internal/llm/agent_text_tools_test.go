@@ -150,5 +150,6 @@ func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Con
 	}, nil
 }
 
-func (m *mockProviderWithTextAndTools) SetReasoningLevel(_ int)     {}
-func (m *mockProviderWithTextAndTools) SetVideoConfig(_ int, _ int) {}
+func (m *mockProviderWithTextAndTools) SetReasoningLevel(_ int)                       {}
+func (m *mockProviderWithTextAndTools) SetReasoningConfigs(_ map[int]json.RawMessage) {}
+func (m *mockProviderWithTextAndTools) SetVideoConfig(_ int, _ int)                   {}

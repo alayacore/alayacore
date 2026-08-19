@@ -48,6 +48,9 @@ base_url: "https://api.example.com/v1"
 api_key: "your-api-key"
 model_name: "model-identifier"
 context_limit: 128000
+reasoning_0: {"thinking":{"type":"disabled"}}
+reasoning_1: {"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}
+reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}
 ```
 
 ### Fields
@@ -61,6 +64,35 @@ context_limit: 128000
 | `model_name` | Yes | Model identifier sent to the API |
 | `context_limit` | No | Maximum context window in tokens. `0` means unlimited. Used for context display and auto-summarization. |
 | `max_tokens` | No | Maximum output tokens per response. `0` means use the default (131072). Sent as `max_tokens` for Anthropic, `max_completion_tokens` for OpenAI. Set explicitly for models with lower output limits. |
+| `reasoning_0` | No | Raw provider-level JSON merged into the request body when reasoning level is **0** (off). Top-level keys must match the provider's wire format. Omitted (or empty) → no reasoning-related fields are sent for that level. |
+| `reasoning_1` | No | Same as `reasoning_0` but for reasoning level **1** (normal). |
+| `reasoning_2` | No | Same as `reasoning_0` but for reasoning level **2** (max). |
+
+### Reasoning configuration (`reasoning_0` / `reasoning_1` / `reasoning_2`)
+
+These three fields let the model decide exactly what thinking/reasoning
+wire fields the provider sends for each reasoning level. Their values are
+**raw provider wire-format JSON** — top-level keys become top-level keys
+of the request body. The provider merges them in verbatim, so any field
+the provider accepts can be expressed here without alayacore code
+changes. Common shapes:
+
+| Provider family | `reasoning_1` example | `reasoning_2` example |
+|-----------------|-----------------------|-----------------------|
+| Anthropic | `{"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}` | `{"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}` |
+| OpenAI / DeepSeek | `{"thinking":{"type":"enabled"},"reasoning_effort":"high"}` | `{"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}` |
+| Any OpenAI-compatible | the keys documented by that provider | the keys documented by that provider |
+
+If all three `reasoning_*` fields are omitted, **no thinking-related
+fields appear in the request body** — the server falls back to its own
+defaults. This makes the fields purely additive: existing model.conf
+files without them keep working exactly as before.
+
+Reasoning level is independent of provider configuration. The level
+(`0`/`1`/`2`) is controlled by `:reason <level>` at runtime or
+`--reasoning-level <level>` at startup, and is also persisted in the
+session file. Switching levels picks a different `reasoning_*` block at
+request time.
 
 ### Multiple Models
 
@@ -73,6 +105,8 @@ base_url: "https://api.openai.com/v1"
 api_key: "sk-..."
 model_name: "gpt-4o"
 context_limit: 128000
+reasoning_1: {"thinking":{"type":"enabled"},"reasoning_effort":"high"}
+reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}
 ---
 name: "Anthropic Claude Sonnet"
 protocol_type: "anthropic"
@@ -80,6 +114,8 @@ base_url: "https://api.anthropic.com"
 api_key: "sk-ant-..."
 model_name: "claude-sonnet-4-20250514"
 context_limit: 200000
+reasoning_1: {"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}
+reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}
 ---
 name: "Ollama / Qwen3 30B"
 protocol_type: "anthropic"

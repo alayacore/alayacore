@@ -1794,82 +1794,91 @@ func TestAnthropicToolResultError(t *testing.T) {
 }
 
 // ============================================================================
-// Anthropic output_config tests
+// Reasoning config merge tests — data-driven via model.conf reasoning_N
 // ============================================================================
+//
+// These tests replace the previous hardcoded thinking/output_config/
+// reasoning_effort behavior. Now thinking-related wire fields are NOT
+// emitted unless the user supplies a reasoning_N JSON block for the
+// current level. The provider merges those blocks into the request
+// body verbatim, so a provider's specific vocabulary lives in
+// model.conf rather than in the binary.
+//
+// Anthropic uses output_config.effort; OpenAI uses reasoning_effort.
+// The tests below exercise both shapes to confirm the merge is
+// protocol-agnostic.
 
-// TestAnthropicOutputConfigOff verifies that output_config is NOT sent
-// when reasoning is disabled (level 0).
-func TestAnthropicOutputConfigOff(t *testing.T) {
-	var requestBody map[string]any
+// newReasoningCaptureServer returns an httptest.Server that decodes the
+// JSON request body into the provided map. Tests assert on this map
+// after running the provider.
+func newReasoningCaptureServer(t *testing.T, target *map[string]any, sseEvents string) *httptest.Server {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-			t.Error(err)
+		if err := json.NewDecoder(r.Body).Decode(target); err != nil {
+			t.Errorf("decode request body: %v", err)
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, _ := w.(http.Flusher)
-		fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[]}}\n\n")
-		fmt.Fprint(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n")
-		fmt.Fprint(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+		fmt.Fprint(w, sseEvents)
 		flusher.Flush()
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
+	return server
+}
 
-	provider, err := providers.NewAnthropic(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider.SetReasoningLevel(0)
+// TestAnthropicNoReasoningConfig verifies that with no reasoning_N
+// configured, the request body has neither thinking nor output_config.
+// This is the new default behavior — letting the server pick its own
+// defaults instead of always sending a synthetic {"type":"disabled"}.
+func TestAnthropicNoReasoningConfig(t *testing.T) {
+	var requestBody map[string]any
+	server := newReasoningCaptureServer(t, &requestBody,
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[]}}\n\n"+
+			"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n"+
+			"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+	)
 
-	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
-	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range events {
-	}
+	for _, level := range []int{0, 1, 2} {
+		provider, err := providers.NewAnthropic(providers.BaseConfig{
+			APIKey:  "test-key",
+			BaseURL: server.URL,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		provider.SetReasoningLevel(level)
+		// Intentionally no SetReasoningConfigs.
 
-	if requestBody == nil {
-		t.Fatal("No request body captured")
-	}
+		messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
+		events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range events {
+		}
 
-	// Should NOT have output_config when reasoning is off
-	if _, ok := requestBody["output_config"]; ok {
-		t.Error("output_config should NOT be present when reasoning is disabled (level 0)")
-	}
-
-	// thinking should be disabled
-	thinking, ok := requestBody["thinking"].(map[string]any)
-	if !ok {
-		t.Fatal("thinking field should be present")
-	}
-	if thinking["type"] != "disabled" {
-		t.Errorf("expected thinking.type=disabled, got %v", thinking["type"])
+		if _, ok := requestBody["thinking"]; ok {
+			t.Errorf("level %d: thinking should NOT appear when reasoning_N is unset", level)
+		}
+		if _, ok := requestBody["output_config"]; ok {
+			t.Errorf("level %d: output_config should NOT appear when reasoning_N is unset", level)
+		}
 	}
 }
 
-// TestAnthropicOutputConfigNormal verifies output_config.effort is "high"
-// when reasoning is set to level 1 (normal).
-func TestAnthropicOutputConfigNormal(t *testing.T) {
+// TestAnthropicReasoningConfigMerged verifies that the user's
+// reasoning_N JSON is merged into the request body at the matching
+// reasoning level. Level 1 in the test uses output_config.effort="high"
+// — the canonical Anthropic shape.
+func TestAnthropicReasoningConfigMerged(t *testing.T) {
 	var requestBody map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-			t.Error(err)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		flusher, _ := w.(http.Flusher)
-		fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[]}}\n\n")
-		fmt.Fprint(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n")
-		fmt.Fprint(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
-		flusher.Flush()
-	}))
-	defer server.Close()
+	server := newReasoningCaptureServer(t, &requestBody,
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[]}}\n\n"+
+			"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n"+
+			"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+	)
 
 	provider, err := providers.NewAnthropic(providers.BaseConfig{
 		APIKey:  "test-key",
@@ -1878,6 +1887,11 @@ func TestAnthropicOutputConfigNormal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	provider.SetReasoningConfigs(map[int]json.RawMessage{
+		0: json.RawMessage(`{"thinking":{"type":"disabled"}}`),
+		1: json.RawMessage(`{"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}`),
+		2: json.RawMessage(`{"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}`),
+	})
 	provider.SetReasoningLevel(1)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
@@ -1888,45 +1902,31 @@ func TestAnthropicOutputConfigNormal(t *testing.T) {
 	for range events {
 	}
 
-	if requestBody == nil {
-		t.Fatal("No request body captured")
+	thinking, ok := requestBody["thinking"].(map[string]any)
+	if !ok {
+		t.Fatal("thinking should be present from reasoning_1 config")
 	}
-
+	if thinking["type"] != "enabled" {
+		t.Errorf("thinking.type = %v, want enabled", thinking["type"])
+	}
 	oc, ok := requestBody["output_config"].(map[string]any)
 	if !ok {
-		t.Fatal("output_config should be present when reasoning is enabled (level 1)")
+		t.Fatal("output_config should be present from reasoning_1 config")
 	}
 	if oc["effort"] != "high" {
-		t.Errorf("expected output_config.effort='high', got %v", oc["effort"])
-	}
-
-	thinking, ok := requestBody["thinking"].(map[string]any)
-	if !ok {
-		t.Fatal("thinking field should be present")
-	}
-	if thinking["type"] != "enabled" {
-		t.Errorf("expected thinking.type=enabled, got %v", thinking["type"])
+		t.Errorf("output_config.effort = %v, want high", oc["effort"])
 	}
 }
 
-// TestAnthropicOutputConfigMax verifies output_config.effort is "max"
-// when reasoning is set to level 2 (max).
-func TestAnthropicOutputConfigMax(t *testing.T) {
+// TestAnthropicReasoningConfigMax verifies reasoning level 2 picks up
+// reasoning_2's effort="max" payload.
+func TestAnthropicReasoningConfigMax(t *testing.T) {
 	var requestBody map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-			t.Error(err)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		flusher, _ := w.(http.Flusher)
-		fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[]}}\n\n")
-		fmt.Fprint(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n")
-		fmt.Fprint(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
-		flusher.Flush()
-	}))
-	defer server.Close()
+	server := newReasoningCaptureServer(t, &requestBody,
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[]}}\n\n"+
+			"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n"+
+			"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+	)
 
 	provider, err := providers.NewAnthropic(providers.BaseConfig{
 		APIKey:  "test-key",
@@ -1935,6 +1935,9 @@ func TestAnthropicOutputConfigMax(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	provider.SetReasoningConfigs(map[int]json.RawMessage{
+		2: json.RawMessage(`{"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}`),
+	})
 	provider.SetReasoningLevel(2)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
@@ -1945,46 +1948,61 @@ func TestAnthropicOutputConfigMax(t *testing.T) {
 	for range events {
 	}
 
-	if requestBody == nil {
-		t.Fatal("No request body captured")
-	}
-
 	oc, ok := requestBody["output_config"].(map[string]any)
 	if !ok {
-		t.Fatal("output_config should be present when reasoning is enabled (level 2)")
+		t.Fatal("output_config should be present from reasoning_2 config")
 	}
 	if oc["effort"] != "max" {
-		t.Errorf("expected output_config.effort='max', got %v", oc["effort"])
-	}
-
-	thinking, ok := requestBody["thinking"].(map[string]any)
-	if !ok {
-		t.Fatal("thinking field should be present")
-	}
-	if thinking["type"] != "enabled" {
-		t.Errorf("expected thinking.type=enabled, got %v", thinking["type"])
+		t.Errorf("output_config.effort = %v, want max", oc["effort"])
 	}
 }
 
-// ============================================================================
-// OpenAI reasoning_effort tests
-// ============================================================================
-
-// TestOpenAIReasoningEffortOff verifies that reasoning_effort is absent
-// and thinking.type=disabled when reasoning is disabled (level 0).
-func TestOpenAIReasoningEffortOff(t *testing.T) {
+// TestOpenAINoReasoningConfig verifies that with no reasoning_N
+// configured, the OpenAI request body has neither thinking nor
+// reasoning_effort — letting the server pick its own defaults.
+func TestOpenAINoReasoningConfig(t *testing.T) {
 	var requestBody map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-			t.Error(err)
-			return
+	server := newReasoningCaptureServer(t, &requestBody,
+		"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+			"data: [DONE]\n\n",
+	)
+
+	for _, level := range []int{0, 1, 2} {
+		provider, err := providers.NewOpenAI(providers.BaseConfig{
+			APIKey:  "test-key",
+			BaseURL: server.URL,
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n")
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-	defer server.Close()
+		provider.SetReasoningLevel(level)
+
+		messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
+		events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range events {
+		}
+
+		if _, ok := requestBody["thinking"]; ok {
+			t.Errorf("level %d: thinking should NOT appear when reasoning_N is unset", level)
+		}
+		if _, ok := requestBody["reasoning_effort"]; ok {
+			t.Errorf("level %d: reasoning_effort should NOT appear when reasoning_N is unset", level)
+		}
+	}
+}
+
+// TestOpenAIReasoningConfigMerged verifies that the user's reasoning_N
+// JSON is merged into the OpenAI request body — the canonical DeepSeek
+// shape with reasoning_effort.
+func TestOpenAIReasoningConfigMerged(t *testing.T) {
+	var requestBody map[string]any
+	server := newReasoningCaptureServer(t, &requestBody,
+		"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+			"data: [DONE]\n\n",
+	)
 
 	provider, err := providers.NewOpenAI(providers.BaseConfig{
 		APIKey:  "test-key",
@@ -1993,58 +2011,11 @@ func TestOpenAIReasoningEffortOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider.SetReasoningLevel(0)
-
-	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
-	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range events {
-	}
-
-	if requestBody == nil {
-		t.Fatal("No request body captured")
-	}
-
-	// Should NOT have reasoning_effort when reasoning is off
-	if _, ok := requestBody["reasoning_effort"]; ok {
-		t.Error("reasoning_effort should NOT be present when reasoning is disabled (level 0)")
-	}
-
-	// thinking should be disabled
-	thinking, ok := requestBody["thinking"].(map[string]any)
-	if !ok {
-		t.Fatal("thinking field should be present")
-	}
-	if thinking["type"] != "disabled" {
-		t.Errorf("expected thinking.type=disabled, got %v", thinking["type"])
-	}
-}
-
-// TestOpenAIReasoningEffortNormal verifies reasoning_effort="high"
-// when reasoning is set to level 1 (normal).
-func TestOpenAIReasoningEffortNormal(t *testing.T) {
-	var requestBody map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-			t.Error(err)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n")
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-	defer server.Close()
-
-	provider, err := providers.NewOpenAI(providers.BaseConfig{
-		APIKey:  "test-key",
-		BaseURL: server.URL,
+	provider.SetReasoningConfigs(map[int]json.RawMessage{
+		0: json.RawMessage(`{"thinking":{"type":"disabled"}}`),
+		1: json.RawMessage(`{"thinking":{"type":"enabled"},"reasoning_effort":"high"}`),
+		2: json.RawMessage(`{"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}`),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	provider.SetReasoningLevel(1)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
@@ -2055,43 +2026,26 @@ func TestOpenAIReasoningEffortNormal(t *testing.T) {
 	for range events {
 	}
 
-	if requestBody == nil {
-		t.Fatal("No request body captured")
+	if got := requestBody["reasoning_effort"]; got != "high" {
+		t.Errorf("reasoning_effort = %v, want high", got)
 	}
-
-	re, ok := requestBody["reasoning_effort"].(string)
-	if !ok {
-		t.Fatal("reasoning_effort should be present when reasoning is enabled (level 1)")
-	}
-	if re != "high" {
-		t.Errorf("expected reasoning_effort='high', got %q", re)
-	}
-
 	thinking, ok := requestBody["thinking"].(map[string]any)
 	if !ok {
-		t.Fatal("thinking field should be present")
+		t.Fatal("thinking should be present from reasoning_1 config")
 	}
 	if thinking["type"] != "enabled" {
-		t.Errorf("expected thinking.type=enabled, got %v", thinking["type"])
+		t.Errorf("thinking.type = %v, want enabled", thinking["type"])
 	}
 }
 
-// TestOpenAIReasoningEffortMax verifies reasoning_effort="xhigh"
-// when reasoning is set to level 2 (max). OpenAI uses "xhigh" for max
-// (unlike Anthropic which uses "max").
-func TestOpenAIReasoningEffortMax(t *testing.T) {
+// TestOpenAIReasoningConfigXHigh verifies level 2 picks up the
+// reasoning_2 "xhigh" payload — the OpenAI-specific max spelling.
+func TestOpenAIReasoningConfigXHigh(t *testing.T) {
 	var requestBody map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-			t.Error(err)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n")
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-	defer server.Close()
+	server := newReasoningCaptureServer(t, &requestBody,
+		"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+			"data: [DONE]\n\n",
+	)
 
 	provider, err := providers.NewOpenAI(providers.BaseConfig{
 		APIKey:  "test-key",
@@ -2100,6 +2054,9 @@ func TestOpenAIReasoningEffortMax(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	provider.SetReasoningConfigs(map[int]json.RawMessage{
+		2: json.RawMessage(`{"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}`),
+	})
 	provider.SetReasoningLevel(2)
 
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
@@ -2110,23 +2067,125 @@ func TestOpenAIReasoningEffortMax(t *testing.T) {
 	for range events {
 	}
 
-	if requestBody == nil {
-		t.Fatal("No request body captured")
+	if got := requestBody["reasoning_effort"]; got != "xhigh" {
+		t.Errorf("reasoning_effort = %v, want xhigh", got)
+	}
+}
+
+// TestReasoningConfigPassesThroughUnknownFields verifies that the
+// merge is transparent to provider-specific fields. A user can supply
+// keys the provider code has never seen and they reach the wire
+// unchanged — that's the whole point of moving reasoning config out of
+// the typed struct.
+func TestReasoningConfigPassesThroughUnknownFields(t *testing.T) {
+	var requestBody map[string]any
+	server := newReasoningCaptureServer(t, &requestBody,
+		"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+			"data: [DONE]\n\n",
+	)
+
+	provider, err := providers.NewOpenAI(providers.BaseConfig{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.SetReasoningConfigs(map[int]json.RawMessage{
+		1: json.RawMessage(`{"thinking":{"type":"enabled"},"reasoning_effort":"high","custom_provider_field":{"foo":"bar"}}`),
+	})
+	provider.SetReasoningLevel(1)
+
+	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
 	}
 
-	re, ok := requestBody["reasoning_effort"].(string)
+	custom, ok := requestBody["custom_provider_field"].(map[string]any)
 	if !ok {
-		t.Fatal("reasoning_effort should be present when reasoning is enabled (level 2)")
+		t.Fatalf("custom_provider_field should pass through, got %T (%v)", requestBody["custom_provider_field"], requestBody["custom_provider_field"])
 	}
-	if re != "xhigh" {
-		t.Errorf("expected reasoning_effort='xhigh', got %q", re)
+	if custom["foo"] != "bar" {
+		t.Errorf("custom_provider_field.foo = %v, want bar", custom["foo"])
+	}
+}
+
+// TestSetReasoningConfigsClearsPrior verifies SetReasoningConfigs
+// replaces (not appends to) the previous configuration, so a model
+// switch updates the wire payload cleanly.
+func TestSetReasoningConfigsClearsPrior(t *testing.T) {
+	var requestBody map[string]any
+	server := newReasoningCaptureServer(t, &requestBody,
+		"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+			"data: [DONE]\n\n",
+	)
+
+	provider, err := providers.NewOpenAI(providers.BaseConfig{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// First config: reasoning_1 = high.
+	provider.SetReasoningConfigs(map[int]json.RawMessage{
+		1: json.RawMessage(`{"reasoning_effort":"high"}`),
+	})
+	// Replace with: reasoning_1 = medium (different value, no high).
+	provider.SetReasoningConfigs(map[int]json.RawMessage{
+		1: json.RawMessage(`{"reasoning_effort":"medium"}`),
+	})
+	provider.SetReasoningLevel(1)
+
+	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
 	}
 
-	thinking, ok := requestBody["thinking"].(map[string]any)
-	if !ok {
-		t.Fatal("thinking field should be present")
+	if got := requestBody["reasoning_effort"]; got != "medium" {
+		t.Errorf("reasoning_effort = %v, want medium (latest SetReasoningConfigs call must win)", got)
 	}
-	if thinking["type"] != "enabled" {
-		t.Errorf("expected thinking.type=enabled, got %v", thinking["type"])
+}
+
+// TestSetReasoningConfigsDropsEmptyEntries verifies that nil/empty
+// per-level entries are silently dropped so they don't poison the
+// merge with invalid JSON.
+func TestSetReasoningConfigsDropsEmptyEntries(t *testing.T) {
+	var requestBody map[string]any
+	server := newReasoningCaptureServer(t, &requestBody,
+		"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+			"data: [DONE]\n\n",
+	)
+
+	provider, err := providers.NewOpenAI(providers.BaseConfig{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.SetReasoningConfigs(map[int]json.RawMessage{
+		0: nil,                   // dropped
+		1: json.RawMessage(`{}`), // present-but-empty: also skipped via len() check
+		2: json.RawMessage(`{"reasoning_effort":"xhigh"}`),
+	})
+	provider.SetReasoningLevel(1)
+
+	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Hi"})
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
+	}
+
+	if _, ok := requestBody["reasoning_effort"]; ok {
+		t.Errorf("level 1 has empty config, must not emit reasoning_effort: %v", requestBody["reasoning_effort"])
 	}
 }
