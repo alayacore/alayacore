@@ -66,8 +66,10 @@ type WindowRendering interface {
 	// BuildCollapsed returns the single-line collapsed representation of
 	// the window (label + content summary, truncated to fit width), WITHOUT
 	// the leading collapse arrow — Window.Render adds the arrow. lineCount
-	// is always 1. Text windows summarize the ESCAPED TAIL of the content
-	// (see tailSummary); tool windows summarize the first input line.
+	// is always 1. Long-form text windows summarize the escaped HEAD + "…"
+	// + TAIL of the content (see collapsedSummary / headAndTailParts);
+	// short system messages use TAIL-only (see tailParts). Tool windows
+	// summarize the first input line. Truncation markers are rendered dim.
 	BuildCollapsed(width int, styles *Styles) (inner string, lineCount int)
 
 	// Invalidate clears any cached rendering state.

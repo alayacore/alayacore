@@ -222,10 +222,10 @@ func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, i
 // stays plain text. The collapsed preview always shows the RAW content
 // tail (never the markdown table transform — the preview is one line and
 // markdown state only affects expanded rendering). REASONING/ASSISTANT/
-// USER PROMPT use headAndTailSummary so the user sees both the topic
-// (head) and the latest content (tail); SN/SE keep tailSummary since
-// system messages are usually short. SN/SE: label and content keep
-// their System/Error colors.
+// USER PROMPT use head+tail (so the user sees both the topic — head —
+// and the latest content — tail); SN/SE keep tail-only since system
+// messages are usually short. SN/SE: label and content keep their
+// System/Error colors.
 //
 // Truncation markers ("…") are rendered with styles.Status (the dim
 // color) to visually separate them from the actual content — content
@@ -921,12 +921,13 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 }
 
 // BuildCollapsed returns the single-line collapsed form for tool windows:
-// "TOOL CALL ⠋    execute_command lscpu…" — bold TOOL CALL + status indicator
-// (rotating spinner while streaming/executing, plain ✓/✗ when done) in
-// the fixed label column, then the tool name + first input line (or the
-// streaming delta preview tail, ellipsis at the line start), truncated to
-// fit width minus arrow. No wrapping is performed — only the first input
-// line is read.
+// "TOOL CALL ⠋    execute_command lscpu…" — bold TOOL CALL + status
+// indicator (rotating spinner while streaming/executing, ✓/✗ when done,
+// all in the muted + bold label color) in the fixed label column, then
+// the tool name (bold + muted) + first input line (or the streaming
+// delta preview tail, ellipsis at the line start in dim), truncated to
+// fit width minus arrow. No wrapping is performed — only the first
+// input line is read.
 func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if styles == nil {
 		return "", 1
