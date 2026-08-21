@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -521,6 +522,60 @@ func TestMarkdownTableColumnShrinkingWithWideChars(t *testing.T) {
 	for _, line := range lines {
 		if w := ansi.StringWidth(line.Text); w > 20 {
 			t.Errorf("line width %d exceeds budget 20: %q", w, line.Text)
+		}
+	}
+}
+
+// TestMarkdownTableRowAlignment verifies that all rows in a rendered
+// markdown table have the same display width — a basic correctness
+// invariant the table renderer must preserve (even when individual
+// cells contain wide chars / unicode clusters that affect display
+// width differently from byte length). Tested at multiple widths
+// because the shrink-to-fit path can introduce alignment bugs that
+// don't show up when the table fits naturally.
+func TestMarkdownTableRowAlignment(t *testing.T) {
+	styles := NewStyles(theme.DefaultTheme())
+
+	// Content with mixed CJK, ZWJ, combining, and VS-16 cells in the
+	// same column to stress column-width calculations.
+	content := "| input | display | issue |\n" +
+		"|---|---|---|\n" +
+		"| `é` (e + combining acute) | 1 cell | []rune gives 2 runes; iterating backward could include just the accent and drop th |\n" +
+		"| family ZWJ emoji | 2 cells | []rune gives 7 runes; iterating backward could cut mid-cluster |\n" +
+		"| ☺ VS-16 | 1 or 2 cells | VS-16 changes width; per-rune check may be wrong |"
+
+	// Also test with a ZWJ family emoji and explicit VS-16 — the actual
+	// unicode constructs from the docs comment about wide-char handling.
+	content2 := "| input | display | issue |\n" +
+		"|---|---|---|\n" +
+		"| `é` (e + combining acute) | 1 cell | content A |\n" +
+		"| 👨‍👩‍👧‍👦 (family ZWJ) | 2 cells | content B |\n" +
+		"| ☺\uFE0F (text vs emoji style) | 1 or 2 cells | content C |"
+
+	for i, content := range []string{content, content2} {
+		r := &textRenderer{tag: tlv.TagAssistantT}
+		r.AppendFromTLV(tlv.TagAssistantT, content)
+		r.ToggleMarkdownMode()
+
+		for _, width := range []int{200, 100, 80, 60, 40} {
+			t.Run(fmt.Sprintf("case=%d/width=%d", i, width), func(t *testing.T) {
+				lines, _ := r.BuildInner(width, false, styles)
+				if len(lines) < 3 {
+					t.Fatalf("expected at least 3 rows (header, delim, body), got %d", len(lines))
+				}
+				var expectedWidth int
+				for i, line := range lines {
+					w := ansi.StringWidth(line.Text)
+					if i == 0 {
+						expectedWidth = w
+						continue
+					}
+					if w != expectedWidth {
+						t.Errorf("row %d width %d != row 0 width %d\nrow 0: %q\nrow %d: %q",
+							i, w, expectedWidth, lines[0].Text, i, line.Text)
+					}
+				}
+			})
 		}
 	}
 }
