@@ -240,35 +240,7 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		line = padLabel(label)
 	}
 	summaryWidth := max(0, width-2-CollapsedLabelWidth)
-	// Track whether the "…" marker is present and its byte offset
-	// within `line` (after the label part) so the rendering step can
-	// style it dim instead of muted. ellipsisOffset = -1 means no
-	// marker (content fit, or narrow head-only fallback).
-	ellipsisOffset := -1
-	var summary string
-	switch r.tag {
-	case tlv.TagAssistantT, tlv.TagAssistantR, tlv.TagUserT:
-		head, tail, truncated := headAndTailParts(content, summaryWidth)
-		switch {
-		case !truncated:
-			summary = head
-		case tail == "":
-			// Narrow widths: head only, no "…".
-			summary = head
-		default:
-			summary = head + "…" + tail
-			ellipsisOffset = len(head)
-		}
-	default:
-		// System messages (SN/SE): usually short, tail-only is enough.
-		tail, truncated := tailParts(content, summaryWidth-1)
-		if !truncated {
-			summary = tail
-		} else {
-			summary = "…" + tail
-			ellipsisOffset = 0
-		}
-	}
+	summary, ellipsisOffset := r.collapsedSummary(content, summaryWidth)
 	line += summary
 	line = truncateWithSuffix(line, max(0, width-2)) // safety net
 
@@ -278,45 +250,57 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		}
 		return styles.System.Render(line), 1
 	}
-	// Style only the label (its full padded width); the content summary
-	// is muted (uniform with every other collapsed window type), and the
-	// truncation marker (if present) is rendered with the dim color to
-	// visually separate it from the actual content.
+	return renderCollapsedLineWithEllipsis(line, label, ellipsisOffset, r.tag, styles), 1
+}
+
+// collapsedSummary returns the summary text for the collapsed view and
+// the byte offset of the "…" truncation marker within that summary (or
+// -1 if no marker is present). REASONING / ASSISTANT / USER PROMPT use
+// head+tail (so the user sees both topic and latest content); SN/SE
+// use tail-only (system messages are usually short).
+func (r *textRenderer) collapsedSummary(content string, summaryWidth int) (string, int) {
+	switch r.tag {
+	case tlv.TagAssistantT, tlv.TagAssistantR, tlv.TagUserT:
+		head, tail, truncated := headAndTailParts(content, summaryWidth)
+		switch {
+		case !truncated, tail == "":
+			return head, -1
+		default:
+			return head + "…" + tail, len(head)
+		}
+	default:
+		tail, truncated := tailParts(content, summaryWidth-1)
+		if !truncated {
+			return tail, -1
+		}
+		return "…" + tail, 0
+	}
+}
+
+// renderCollapsedLineWithEllipsis styles a collapsed line: the label
+// portion in its type style, the content portion in muted, and the "…"
+// truncation marker (if present at ellipsisOffset within the line) in
+// dim. If styles is nil, the line is returned unstyled beyond the label.
+func renderCollapsedLineWithEllipsis(line, label string, ellipsisOffset int, tag string, styles *Styles) string {
 	labelPart := padLabel(label)
-	styledLabel := labelStyleForTag(r.tag, styles).Render(line[:min(len(labelPart), len(line))])
+	styledLabel := labelStyleForTag(tag, styles).Render(line[:min(len(labelPart), len(line))])
 	if len(line) <= len(labelPart) {
-		return styledLabel, 1
+		return styledLabel
 	}
 	rest := line[len(labelPart):]
 	if styles == nil {
-		return styledLabel + rest, 1
+		return styledLabel + rest
 	}
-	// Split `rest` at the "…" marker (if any) and render it dim.
-	if ellipsisOffset < 0 || styles == nil {
-		return styledLabel + styles.System.Render(rest), 1
+	if ellipsisOffset < 0 {
+		return styledLabel + styles.System.Render(rest)
 	}
 	ellipsisAbs := len(labelPart) + ellipsisOffset
 	before := line[:ellipsisAbs]
 	marker := line[ellipsisAbs : ellipsisAbs+len("…")]
 	after := line[ellipsisAbs+len("…"):]
-	return labelStyleForTag(r.tag, styles).Render(before) +
+	return labelStyleForTag(tag, styles).Render(before) +
 		styles.Status.Render(marker) +
-		styles.System.Render(after), 1
-}
-
-// renderCollapsedLine styles a truncated collapsed line: the label part
-// in its type style, the content summary in the muted color. Used by
-// renderers that still style their content (e.g. user messages). If the
-// line was truncated inside the label (very narrow terminal) the whole
-// line uses the label style; without a label the whole line is muted.
-func renderCollapsedLine(line, label string, labelStyle, mutedStyle Style) string {
-	if label == "" {
-		return mutedStyle.Render(line)
-	}
-	if len(line) <= len(label) {
-		return labelStyle.Render(line)
-	}
-	return labelStyle.Render(line[:len(label)]) + mutedStyle.Render(line[len(label):])
+		styles.System.Render(after)
 }
 
 // labelForTag returns the header label for text-type windows.
@@ -750,8 +734,8 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	// Build summary as a sequence of (text, hasLeadingEllipsis) pairs so
 	// each piece can be styled individually — ellipses dim, content muted.
 	type part struct {
-		text             string
-		leadingEllipsis  bool
+		text            string
+		leadingEllipsis bool
 	}
 	var parts []part
 	if mediaSummary != "" {
@@ -951,51 +935,13 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	// so the whole summary uses the muted color. An over-long first line
 	// keeps its tail with a leading "…" (dim) like every other summary.
 	if r.isUF && r.name == "" {
-		first := firstLine(prepareContent(r.output))
-		tail, truncated := tailParts(first, max(0, width-2-1))
-		var sb strings.Builder
-		if truncated {
-			sb.WriteString(styles.Status.Render("…"))
-		}
-		sb.WriteString(styles.System.Render(tail))
-		return sb.String(), 1
+		return renderUFOnlyCollapsed(r, width, styles), 1
 	}
 
 	labelStyle := labelStyleForTag(r.Tag(), styles)
 	dot, dotStyle := r.status.statusDot(labelStyle)
 
-	var inputFirst string
-	inputFirstHasEllipsis := false
-	if r.deltaBuffer != "" {
-		// Streaming delta preview: keep the LATEST chunk's tail (new JSON
-		// arrives at the tail) with the ellipsis at the line START, exactly
-		// like the collapsed text windows — the tail shows what just
-		// arrived, "…" marks the truncated head (rendered dim). Room is
-		// everything after the label column + tool name + separator space.
-		prefix := padLabel(toolLabelWithIndicator(dot))
-		if r.name != "" {
-			prefix += r.name + " "
-		}
-		room := max(0, width-2-ansi.StringWidth(prefix))
-		var tail string
-		tail, inputFirstHasEllipsis = tailParts(flattenDelta(r.deltaBuffer), room-1)
-		if inputFirstHasEllipsis {
-			inputFirst = "…" + tail
-		} else {
-			inputFirst = tail
-		}
-	} else if r.input != "" {
-		inputFirst = firstLine(prepareContent(r.input))
-		// The input's first line is usually "name: args". The tool name is
-		// shown right after the label column, so strip the repeated prefix
-		// ("TOOL CALL ⠋ execute_command lscpu", not "execute_command:
-		// execute_command: lscpu").
-		if r.name != "" {
-			if stripped, ok := strings.CutPrefix(inputFirst, r.name+":"); ok {
-				inputFirst = strings.TrimSpace(stripped)
-			}
-		}
-	}
+	inputFirst, inputFirstHasEllipsis := r.toolCollapsedInput(width, dot)
 
 	labelPart := padLabel(toolLabelWithIndicator(dot))
 	line := labelPart
@@ -1007,26 +953,86 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 	line = truncateWithSuffix(line, max(0, width-2))
 
-	// Re-style the truncated plain line: "TOOL CALL" + the status indicator
-	// (spinner or ✓/✗) in the label color (muted + bold), the separator
-	// space plain, then the tool name in muted + bold (so the name stands
-	// out from the arguments that follow), and the arguments in muted.
-	// The indicator shares the label color so they read as a single
-	// colored unit.
-	// NOTE: the indicator is multi-byte UTF-8 — slice by len(dot), never by
-	// byte 1, and labelPart length is in bytes (padLabel pads to display
-	// columns).
+	return renderToolCollapsedLine(line, labelStyle, dotStyle, dot, r.name, inputFirstHasEllipsis, styles), 1
+}
+
+// renderUFOnlyCollapsed renders the collapsed view for UF-only tool
+// windows (no tool name, no AF frame): plain muted text with a leading
+// dim "…" if the first line was truncated.
+func renderUFOnlyCollapsed(r *toolRenderer, width int, styles *Styles) string {
+	first := firstLine(prepareContent(r.output))
+	tail, truncated := tailParts(first, max(0, width-2-1))
+	var sb strings.Builder
+	if truncated {
+		sb.WriteString(styles.Status.Render("…"))
+	}
+	sb.WriteString(styles.System.Render(tail))
+	return sb.String()
+}
+
+// toolCollapsedInput returns the input portion that follows the tool
+// name in the collapsed view (either the streaming delta preview tail
+// or the first line of the completed input). The second return value
+// is true when the input was truncated and has a leading "…" marker.
+func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) {
+	if r.deltaBuffer != "" {
+		// Streaming delta preview: keep the LATEST chunk's tail (new JSON
+		// arrives at the tail) with the ellipsis at the line START, exactly
+		// like the collapsed text windows — the tail shows what just
+		// arrived, "…" marks the truncated head (rendered dim). Room is
+		// everything after the label column + tool name + separator space.
+		prefix := padLabel(toolLabelWithIndicator(dot))
+		if r.name != "" {
+			prefix += r.name + " "
+		}
+		room := max(0, width-2-ansi.StringWidth(prefix))
+		tail, hasEllipsis := tailParts(flattenDelta(r.deltaBuffer), room-1)
+		if hasEllipsis {
+			return "…" + tail, true
+		}
+		return tail, false
+	}
+	if r.input == "" {
+		return "", false
+	}
+	inputFirst := firstLine(prepareContent(r.input))
+	// The input's first line is usually "name: args". The tool name is
+	// shown right after the label column, so strip the repeated prefix
+	// ("TOOL CALL ⠋ execute_command lscpu", not "execute_command:
+	// execute_command: lscpu").
+	if r.name != "" {
+		if stripped, ok := strings.CutPrefix(inputFirst, r.name+":"); ok {
+			inputFirst = strings.TrimSpace(stripped)
+		}
+	}
+	return inputFirst, false
+}
+
+// renderToolCollapsedLine applies per-segment styling to a tool window's
+// collapsed line: label + status indicator in the label color (muted +
+// bold), separator plain, label-column padding plain, tool name bold +
+// muted, and the input tail muted (with the "…" marker dim when
+// inputFirstHasEllipsis is true).
+//
+// The indicator is multi-byte UTF-8 — slice by len(dot), never by byte 1.
+func renderToolCollapsedLine(
+	line string,
+	labelStyle, dotStyle Style,
+	dot, name string,
+	inputFirstHasEllipsis bool,
+	styles *Styles,
+) string {
 	toolLen := len(toolHeaderLabel)
 	sepLen := len(toolLabelSep)
 	dotLen := len(dot)
-	contentStart := len(labelPart)
+	contentStart := len(padLabel(toolLabelWithIndicator(dot)))
 	if len(line) <= toolLen {
-		return labelStyle.Render(line), 1
+		return labelStyle.Render(line)
 	}
 	var sb strings.Builder
 	sb.WriteString(labelStyle.Render(line[:toolLen]))
-	// Separator space between the label and the indicator (plain, part of
-	// the fixed label column) — only when it survived truncation.
+	// Separator space between the label and the indicator (plain, part
+	// of the fixed label column) — only when it survived truncation.
 	if len(line) > toolLen {
 		sb.WriteString(line[toolLen:min(len(line), toolLen+sepLen)])
 	}
@@ -1036,29 +1042,32 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if len(line) > toolLen+sepLen {
 		sb.WriteString(dotStyle.Render(line[toolLen+sepLen : min(len(line), toolLen+sepLen+dotLen)]))
 	}
-	if len(line) > toolLen+sepLen+dotLen {
-		// Label column padding (plain spaces) + content: tool name in
-		// bold + muted, arguments in muted. The name's byte length is
-		// bounded by what survived truncation.
-		paddingEnd := min(len(line), contentStart)
-		sb.WriteString(line[toolLen+sepLen+dotLen : paddingEnd])
-		nameByteLen := min(len(r.name), max(0, len(line)-contentStart))
-		nameEnd := contentStart + nameByteLen
-		if nameByteLen > 0 {
-			sb.WriteString(styles.ToolContent.Bold(true).Render(line[contentStart:nameEnd]))
-		}
-		// When the inputFirst delta was truncated, the leading "…" in the
-		// content area gets the dim color (styles.Status) instead of the
-		// muted ToolContent. Position: right after the name + space.
-		if inputFirstHasEllipsis && len(line) > nameEnd+1+len("…") {
-			sb.WriteString(line[nameEnd : nameEnd+1]) // space
-			sb.WriteString(styles.Status.Render(line[nameEnd+1 : nameEnd+1+len("…")]))
-			sb.WriteString(styles.ToolContent.Render(line[nameEnd+1+len("…"):]))
-		} else if len(line) > nameEnd {
-			sb.WriteString(styles.ToolContent.Render(line[nameEnd:]))
-		}
+	if len(line) <= toolLen+sepLen+dotLen {
+		return sb.String()
 	}
-	return sb.String(), 1
+	// Label column padding (plain spaces) + content: tool name in
+	// bold + muted, arguments in muted. The name's byte length is
+	// bounded by what survived truncation.
+	paddingEnd := min(len(line), contentStart)
+	sb.WriteString(line[toolLen+sepLen+dotLen : paddingEnd])
+	nameByteLen := min(len(name), max(0, len(line)-contentStart))
+	nameEnd := contentStart + nameByteLen
+	if nameByteLen > 0 {
+		sb.WriteString(styles.ToolContent.Bold(true).Render(line[contentStart:nameEnd]))
+	}
+	// When the inputFirst delta was truncated, the leading "…" in the
+	// content area gets the dim color (styles.Status) instead of the
+	// muted ToolContent. Position: right after the name + space.
+	if inputFirstHasEllipsis && len(line) > nameEnd+1+len("…") {
+		sb.WriteString(line[nameEnd : nameEnd+1]) // space
+		sb.WriteString(styles.Status.Render(line[nameEnd+1 : nameEnd+1+len("…")]))
+		sb.WriteString(styles.ToolContent.Render(line[nameEnd+1+len("…"):]))
+		return sb.String()
+	}
+	if len(line) > nameEnd {
+		sb.WriteString(styles.ToolContent.Render(line[nameEnd:]))
+	}
+	return sb.String()
 }
 
 // previewOutput renders the Uf preview snapshot (Pending status) as a

@@ -574,7 +574,7 @@ func TestTakeHeadAndTakeTailClusterAware(t *testing.T) {
 			input: "e\u0301o", // é (e + combining acute U+0301) then o
 			width: 1,
 			head:  "e\u0301", // é is 1 col (combining), fits; drop "o"
-			tail:  "o",      // tail: "o" (1 col) fits, "é" would push to 2
+			tail:  "o",       // tail: "o" (1 col) fits, "é" would push to 2
 		},
 	}
 
@@ -610,11 +610,11 @@ func TestTailParts(t *testing.T) {
 	// portion (no leading "…") and a truncated flag. Used by callers
 	// that want to style the marker themselves (e.g. dim vs muted).
 	tests := []struct {
-		name       string
-		content    string
-		maxWidth   int
-		wantTail   string
-		wantTrunc  bool
+		name      string
+		content   string
+		maxWidth  int
+		wantTail  string
+		wantTrunc bool
 	}{
 		{name: "fits entirely", content: "hello", maxWidth: 20, wantTail: "hello", wantTrunc: false},
 		{name: "needs truncation", content: "aaaaaaaaaa bbbbbbbbbb cccccccccc", maxWidth: 15, wantTail: "bbbb cccccccccc", wantTrunc: true},
@@ -641,41 +641,41 @@ func TestHeadAndTailParts(t *testing.T) {
 	// Returns head and tail separately plus a truncated flag. When not
 	// truncated, head is the full content and tail is empty.
 	tests := []struct {
-		name       string
-		content    string
-		maxWidth   int
-		wantHead   string
-		wantTail   string
-		wantTrunc  bool
+		name      string
+		content   string
+		maxWidth  int
+		wantHead  string
+		wantTail  string
+		wantTrunc bool
 	}{
 		{
-			name: "fits entirely",
-			content: "hello",
+			name:     "fits entirely",
+			content:  "hello",
 			maxWidth: 20,
 			wantHead: "hello", wantTail: "", wantTrunc: false,
 		},
 		{
-			name: "needs head+tail",
-			content: "aaaaaaaaaa bbbbbbbbbb cccccccccc",
+			name:     "needs head+tail",
+			content:  "aaaaaaaaaa bbbbbbbbbb cccccccccc",
 			maxWidth: 15,
 			// headWidth = 6, tailWidth = 8
 			wantHead: "aaaaaa", wantTail: "cccccccc", wantTrunc: true,
 		},
 		{
-			name: "single column: head only",
-			content: "hello",
+			name:     "single column: head only",
+			content:  "hello",
 			maxWidth: 1,
 			wantHead: "h", wantTail: "", wantTrunc: true,
 		},
 		{
-			name: "two columns: head only (no room for ellipsis)",
-			content: "hello",
+			name:     "two columns: head only (no room for ellipsis)",
+			content:  "hello",
 			maxWidth: 2,
 			wantHead: "he", wantTail: "", wantTrunc: true,
 		},
 		{
-			name: "zero width",
-			content: "hello",
+			name:     "zero width",
+			content:  "hello",
 			maxWidth: 0,
 			wantHead: "", wantTail: "", wantTrunc: false,
 		},
