@@ -220,12 +220,11 @@ func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, i
 // AT/AR: the label is styled (bold + muted) and the content summary is
 // muted — the collapsed header is UI chrome, while the expanded body
 // stays plain text. The collapsed preview always shows the RAW content
-// tail (never the markdown table transform — the preview is one line and
-// markdown state only affects expanded rendering). REASONING/ASSISTANT/
-// USER PROMPT use head+tail (so the user sees both the topic — head —
-// and the latest content — tail); SN/SE keep tail-only since system
-// messages are usually short. SN/SE: label and content keep their
-// System/Error colors.
+// (never the markdown table transform — the preview is one line and
+// markdown state only affects expanded rendering). All non-delta text
+// uses head+tail (so the user sees both the topic and the latest
+// content); the only leading "…" is reserved for streaming delta
+// content, which lives in toolRenderer.
 //
 // Truncation markers ("…") are rendered with styles.Status (the dim
 // color) to visually separate them from the actual content — content
@@ -255,25 +254,16 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 
 // collapsedSummary returns the summary text for the collapsed view and
 // the byte offset of the "…" truncation marker within that summary (or
-// -1 if no marker is present). REASONING / ASSISTANT / USER PROMPT use
-// head+tail (so the user sees both topic and latest content); SN/SE
-// use tail-only (system messages are usually short).
+// -1 if no marker is present). All non-delta text uses head+tail (so
+// the user sees both topic and latest content); the only leading "…"
+// is reserved for streaming delta content, which lives in toolRenderer.
 func (r *textRenderer) collapsedSummary(content string, summaryWidth int) (string, int) {
-	switch r.tag {
-	case tlv.TagAssistantT, tlv.TagAssistantR, tlv.TagUserT:
-		head, tail, truncated := headAndTailParts(content, summaryWidth)
-		switch {
-		case !truncated, tail == "":
-			return head, -1
-		default:
-			return head + "…" + tail, len(head)
-		}
+	head, tail, truncated := headAndTailParts(content, summaryWidth)
+	switch {
+	case !truncated, tail == "":
+		return head, -1
 	default:
-		tail, truncated := tailParts(content, summaryWidth-1)
-		if !truncated {
-			return tail, -1
-		}
-		return "…" + tail, 0
+		return head + "…" + tail, len(head)
 	}
 }
 
@@ -721,85 +711,66 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 // Truncation markers ("…") are rendered with styles.Status to visually
 // separate them from the actual content (muted).
 func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
-	content := prepareContent(strings.Join(r.textParts, "\n"))
-	content = strings.TrimSpace(content)
+	textContent := prepareContent(strings.Join(r.textParts, "\n"))
+	textContent = strings.TrimSpace(textContent)
 	mediaSummary := compactMediaSummary(r.mediaParts)
-	if content == "" && mediaSummary == "" {
+	if textContent == "" && mediaSummary == "" {
 		return "", 1
 	}
 
 	label := padLabel("USER PROMPT")
 	room := max(0, width-2-ansi.StringWidth(label))
 
-	// Build summary as a sequence of (text, hasLeadingEllipsis) pairs so
-	// each piece can be styled individually — ellipses dim, content muted.
-	type part struct {
-		text            string
-		leadingEllipsis bool
+	// Combine media + text into a single content string and run head+tail
+	// truncation on it (same rule as all other non-delta text windows).
+	// The "…" naturally falls between media and text when truncation cuts
+	// there, and never appears at the line start — only streaming delta
+	// content uses leading "…".
+	var content string
+	switch {
+	case mediaSummary != "" && textContent != "":
+		content = mediaSummary + " " + textContent
+	case mediaSummary != "":
+		content = mediaSummary
+	default:
+		content = textContent
 	}
-	var parts []part
-	if mediaSummary != "" {
-		tail, trunc := tailParts(mediaSummary, max(0, room-1))
-		parts = append(parts, part{text: tail, leadingEllipsis: trunc})
-		if content != "" {
-			// Room for the text tail after the media tail + separator.
-			textRoom := max(0, room-ansi.StringWidth(tail)-1)
-			if trunc {
-				textRoom-- // also subtract 1 for the media "…" marker
-			}
-			if textRoom > 1 {
-				tail2, trunc2 := tailParts(content, textRoom-1)
-				parts = append(parts, part{text: " " + tail2, leadingEllipsis: trunc2})
-			}
-		}
-	} else {
-		tail, trunc := tailParts(content, max(0, room-1))
-		parts = append(parts, part{text: tail, leadingEllipsis: trunc})
-	}
+	head, tail, truncated := headAndTailParts(content, room)
 
-	// Compose the unstyled line (for the safety net truncation), then
-	// render each part with its own style.
-	var plainLine strings.Builder
-	plainLine.WriteString(label)
-	for _, p := range parts {
-		if p.leadingEllipsis {
-			plainLine.WriteString("…")
-		}
-		plainLine.WriteString(p.text)
+	plainLine := label + head
+	if tail != "" {
+		plainLine += "…" + tail
 	}
-	line := truncateWithSuffix(plainLine.String(), max(0, width-2)) // safety net
+	line := truncateWithSuffix(plainLine, max(0, width-2)) // safety net
 
-	// Render with styling: label via labelStyle, ellipses via Status
-	// (dim), content via System (muted). We split the line at the label
-	// boundary; the ellipses fall inside the content portion.
+	// Render with styling: label muted+bold, "…" dim, content muted.
 	labelStyle := labelStyleForTag(tlv.TagUserT, styles)
-	var rendered strings.Builder
 	if len(line) <= len(label) {
 		return labelStyle.Render(line), 1
 	}
-	// Render up to the first content char with label style, then iterate
-	// through the parts.
+	var rendered strings.Builder
 	rendered.WriteString(labelStyle.Render(line[:len(label)]))
-	cursor := len(label)
-	for _, p := range parts {
-		if p.leadingEllipsis {
-			// The "…" may have been cut by truncateWithSuffix — only
-			// render if it's still in the line.
-			if cursor+len("…") <= len(line) {
-				rendered.WriteString(styles.Status.Render(line[cursor : cursor+len("…")]))
-			}
-			cursor += len("…")
+	rest := line[len(label):]
+	if !truncated || tail == "" {
+		rendered.WriteString(styles.System.Render(rest))
+		return rendered.String(), 1
+	}
+	// head + "…" + tail. The "…" might have been cut by truncateWithSuffix.
+	headEnd := len(label) + len(head)
+	if headEnd > len(line) {
+		// head was truncated mid-way — fall back to muted
+		rendered.WriteString(styles.System.Render(rest))
+		return rendered.String(), 1
+	}
+	rendered.WriteString(styles.System.Render(line[len(label):headEnd]))
+	if headEnd+len("…") <= len(line) {
+		rendered.WriteString(styles.Status.Render(line[headEnd : headEnd+len("…")]))
+		if headEnd+len("…") < len(line) {
+			rendered.WriteString(styles.System.Render(line[headEnd+len("…"):]))
 		}
-		// Render the part's text. It might have been truncated; only
-		// take what's left in the line.
-		end := cursor + len(p.text)
-		if end > len(line) {
-			end = len(line)
-		}
-		if cursor < end {
-			rendered.WriteString(styles.System.Render(line[cursor:end]))
-		}
-		cursor += len(p.text)
+	} else {
+		// "…" was cut — render the rest as muted
+		rendered.WriteString(styles.System.Render(line[headEnd:]))
 	}
 	return rendered.String(), 1
 }
@@ -958,16 +929,20 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 }
 
 // renderUFOnlyCollapsed renders the collapsed view for UF-only tool
-// windows (no tool name, no AF frame): plain muted text with a leading
-// dim "…" if the first line was truncated.
+// windows (no tool name, no AF frame): plain muted text with head+tail
+// truncation (same as text windows) so the user sees both the topic and
+// the latest content.
 func renderUFOnlyCollapsed(r *toolRenderer, width int, styles *Styles) string {
 	first := firstLine(prepareContent(r.output))
-	tail, truncated := tailParts(first, max(0, width-2-1))
+	head, tail, truncated := headAndTailParts(first, max(0, width-2))
 	var sb strings.Builder
-	if truncated {
+	if truncated && tail != "" {
+		sb.WriteString(styles.System.Render(head))
 		sb.WriteString(styles.Status.Render("…"))
+		sb.WriteString(styles.System.Render(tail))
+		return sb.String()
 	}
-	sb.WriteString(styles.System.Render(tail))
+	sb.WriteString(styles.System.Render(head))
 	return sb.String()
 }
 

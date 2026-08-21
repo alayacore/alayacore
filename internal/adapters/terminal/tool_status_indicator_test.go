@@ -192,19 +192,28 @@ func TestUserPromptCollapsedTail(t *testing.T) {
 		t.Errorf("BuildCollapsed = %q, want %q", stripANSI(line), want)
 	}
 
-	// Narrow width: tail shown with leading "…", first line dropped,
-	// newlines escaped — same rule as assistant text.
+	// Narrow width: head + "…" + tail. Same rule as assistant text.
+	// The user sees both the topic (head) and the latest content (tail).
 	ur = &userRenderer{textParts: []string{"first line\nsecond line\nthird line"}}
 	line, _ = ur.BuildCollapsed(34, styles)
 	plain := stripANSI(line)
-	if !strings.HasPrefix(plain, "USER PROMPT     …") {
-		t.Errorf("collapsed should keep the label + leading ellipsis, got %q", plain)
+	if !strings.HasPrefix(plain, "USER PROMPT     ") {
+		t.Errorf("collapsed should keep the label, got %q", plain)
 	}
-	if !strings.HasSuffix(plain, "\\nthird line") {
-		t.Errorf("collapsed should show the escaped tail, got %q", plain)
+	// The "…" sits between head and tail — never at the line start
+	// (only streaming delta content uses leading "…").
+	if strings.HasPrefix(strings.TrimPrefix(plain, "USER PROMPT     "), "…") {
+		t.Errorf("collapsed must not start with a leading ellipsis: %q", plain)
 	}
-	if strings.Contains(plain, "first") {
-		t.Errorf("collapsed tail should drop the first line, got %q", plain)
+	if !strings.Contains(plain, "…") {
+		t.Errorf("collapsed should contain the middle ellipsis, got %q", plain)
+	}
+	if !strings.HasSuffix(plain, "line") {
+		t.Errorf("collapsed should show the tail (ends with line content), got %q", plain)
+	}
+	// The head should contain the first line so the user sees the topic.
+	if !strings.Contains(plain, "first") {
+		t.Errorf("collapsed should keep the head (first line), got %q", plain)
 	}
 	if strings.Contains(plain, "\n") {
 		t.Errorf("collapsed must not contain raw newlines: %q", plain)
@@ -245,10 +254,10 @@ func TestUserPromptLabel(t *testing.T) {
 	}
 }
 
-// TestUserPromptCollapsedTailEllipsis: an over-long USER folded summary
-// keeps the tail of the content with the ellipsis at the line START —
-// never a trailing "…".
-func TestUserPromptCollapsedTailEllipsis(t *testing.T) {
+// TestUserPromptCollapsedHeadAndTailEllipsis: an over-long USER folded
+// summary uses head+tail (NOT leading "…"), keeping both the topic and
+// the latest content. Same rule as assistant text.
+func TestUserPromptCollapsedHeadAndTailEllipsis(t *testing.T) {
 	wb := NewWindowBuffer(30, DefaultStyles())
 	long := "请把 /home/user/project/src/main.go 第 100 行的函数重构，注意保持接口兼容性并添加单元测试"
 	wb.AppendOrUpdate(tlv.TagUserT, "u1", long)
@@ -260,23 +269,28 @@ func TestUserPromptCollapsedTailEllipsis(t *testing.T) {
 	if !strings.Contains(plain, "…") {
 		t.Fatalf("long user summary should be truncated with an ellipsis, got %q", plain)
 	}
-	trimmed := strings.TrimRight(plain, " ")
-	if strings.HasSuffix(trimmed, "…") {
-		t.Errorf("ellipsis must be at the line START, not the end: %q", plain)
+	// The ellipsis sits between head and tail — never at the line start
+	// (only streaming delta content uses leading "…").
+	if strings.HasPrefix(strings.TrimPrefix(plain, "▶ USER PROMPT"), "…") {
+		t.Errorf("ellipsis must NOT be at the line START: %q", plain)
 	}
-	// The line ends with the tail (latest characters) of the content.
-	if !strings.HasSuffix(trimmed, "单元测试") {
-		t.Errorf("collapsed user line should end with the first-line tail, got %q", plain)
+	// The line ends with some tail portion (latest characters).
+	if !strings.HasSuffix(strings.TrimRight(plain, " "), "测试") {
+		t.Errorf("collapsed user line should end with the content tail, got %q", plain)
+	}
+	// The head should contain the topic phrase.
+	if !strings.Contains(plain, "请把") {
+		t.Errorf("collapsed user line should keep the head (topic), got %q", plain)
 	}
 	if w := ansi.StringWidth(plain); w > 30 {
 		t.Errorf("collapsed line width = %d, want <= 30: %q", w, plain)
 	}
 }
 
-// TestUFOnlyCollapsedTailEllipsis: a UF-only tool window (no AF frame, no
-// tool name — created via replayed UF content) summarizes its output with
-// the tail and a leading ellipsis.
-func TestUFOnlyCollapsedTailEllipsis(t *testing.T) {
+// TestUFOnlyCollapsedHeadAndTailEllipsis: a UF-only tool window (no AF
+// frame, no tool name — created via replayed UF content) summarizes its
+// output with head+tail (NOT leading "…"), same rule as text windows.
+func TestUFOnlyCollapsedHeadAndTailEllipsis(t *testing.T) {
 	wb := NewWindowBuffer(30, DefaultStyles())
 	long := strings.Repeat("0123456789", 6) // 60 chars
 	wb.AppendOrUpdate(tlv.TagUserF, "uf-1", long)
@@ -288,11 +302,12 @@ func TestUFOnlyCollapsedTailEllipsis(t *testing.T) {
 	if !strings.Contains(plain, "…") {
 		t.Fatalf("long UF-only summary should be truncated with an ellipsis, got %q", plain)
 	}
-	trimmed := strings.TrimRight(plain, " ")
-	if strings.HasSuffix(trimmed, "…") {
-		t.Errorf("ellipsis must be at the line START, not the end: %q", plain)
+	// The ellipsis sits between head and tail — never at the line start
+	// (only streaming delta content uses leading "…").
+	if strings.HasPrefix(plain, "…") {
+		t.Errorf("ellipsis must NOT be at the line START: %q", plain)
 	}
-	if !strings.HasSuffix(trimmed, "0123456789") {
+	if !strings.HasSuffix(strings.TrimRight(plain, " "), "0123456789") {
 		t.Errorf("collapsed UF-only line should end with the output tail, got %q", plain)
 	}
 	if w := ansi.StringWidth(plain); w > 30 {

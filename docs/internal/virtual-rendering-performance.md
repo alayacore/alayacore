@@ -155,8 +155,9 @@ Measured via `BenchmarkVirtualRenderingCursorMovementSingle` (100 windows, viewp
 
 The collapsed-window design replaces the bordered fold (3 content lines +
 2 border lines) with a single collapse-arrow header line (`LABEL summary`:
-text windows show the escaped head + "…" + tail of the content, tool
-windows the first input line).
+text windows show the escaped head + "…" + tail of the content (40/60
+split), tool windows the first input line; only streaming delta windows
+use leading "…" since the user only cares about the latest chunk).
 Measured via `BenchmarkFoldedSession*` (120 windows — 110 folded
 tools/reasoning + 10 unfolded user/assistant, width 120, viewport 40):
 

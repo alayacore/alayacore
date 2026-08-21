@@ -179,9 +179,13 @@ An expanded window shows a header line (expand arrow + label) above its content 
 
 ### Collapsed Summary Truncation
 
-Long-form text windows (`REASONING`, `ASSISTANT`, `USER PROMPT`) truncate their collapsed summary with **head + "…" + tail** (40/60 split of the available width), so the user sees both the topic phrase and the latest content — e.g. a long assistant message becomes `beginning of answer begi…er  and then some more content ending` rather than just the tail. Other windows (tool deltas, UF output snapshots, attachments, system messages) use **tail-only** truncation (`…tail`) — the latest content is the only signal that matters for streaming-tail data.
+Collapsed window summaries use **head + "…" + tail** (40/60 split of the available width) for all one-shot content, so the user sees both the topic phrase and the latest content — e.g. a long ASSISTANT message becomes `beginning of answer begi…er  and then some more content ending` rather than just the tail.
 
-Truncation markers (`…`) are rendered with the **dim** color (`t.Dim`) in both forms, while the surrounding content uses the muted color (`t.Muted`). This creates a clear visual hierarchy: actual content vs. truncation marker. The dim color is lighter than muted on a light background, so the `…` recedes — appropriate because it's metadata, not content. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster.
+**The only exception is streaming delta content** — tool argument deltas (`Af`) and the UF execution preview (`Uf` while `ToolStatusPending`). For these, the head is "what already happened" and the tail is "what just arrived", so a **leading `…`** is more useful: `…"content":"hello"}`. The user just wants to see the latest chunk, not the start of the stream.
+
+This gives a clean rule: **only delta → leading `…`; everything else → head+tail.**
+
+The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in both forms, while the surrounding content uses the muted color (`t.Muted`). This creates a clear visual hierarchy: actual content vs. truncation marker. The dim color is lighter than muted on a light background, so the `…` recedes — appropriate because it's metadata, not content. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster.
 
 ### Markdown Rendering
 
