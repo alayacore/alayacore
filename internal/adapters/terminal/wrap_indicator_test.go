@@ -257,16 +257,20 @@ func TestFoldedToolCollapsedLabelColor(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 
 	// "TOOL CALL" is plain bold (muted color), the status indicator shares
-	// the label color so they read as a single colored unit, and the
-	// content (tool name + arguments) is muted.
+	// the label color so they read as a single colored unit, the tool name
+	// is bold + muted (so it stands out from the arguments), and the
+	// arguments after the name stay muted (no bold).
 	if !strings.Contains(rendered, styles.System.Bold(true).Render("TOOL CALL")) {
 		t.Errorf("TOOL CALL label should be plain bold (no color): %q", rendered)
 	}
 	if strings.Contains(rendered, styles.Tool.Render("TOOL CALL")) {
 		t.Errorf("TOOL CALL label should not use the Tool color: %q", rendered)
 	}
-	if !strings.Contains(rendered, styles.ToolContent.Render("edit_file /tmp/style.css")) {
-		t.Errorf("TOOL CALL content (name + args) should use muted ToolContent style: %q", rendered)
+	if !strings.Contains(rendered, styles.ToolContent.Bold(true).Render("edit_file")) {
+		t.Errorf("tool name should be bold + muted: %q", rendered)
+	}
+	if !strings.Contains(rendered, styles.ToolContent.Render(" /tmp/style.css")) {
+		t.Errorf("arguments (with leading space) should be muted (not bold): %q", rendered)
 	}
 }
 

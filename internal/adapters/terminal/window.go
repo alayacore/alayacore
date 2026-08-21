@@ -506,7 +506,10 @@ func (w *Window) windowLabel() string {
 // "TOOL CALL" + a space + the status indicator in the fixed label column,
 // then the muted tool name: "TOOL CALL ⠋    execute_command". The label
 // and indicator share the same color (labelStyle) so they read as one
-// unit. Other windows use their plain label ("ASSISTANT", "SYSTEM NOTIFY", …).
+// unit. The tool name itself is rendered bold + muted, so the reader
+// can scan "TOOL CALL ✓ <read_file>" at a glance — the bold name is the
+// semantic payload, the rest of the header is chrome. Other windows use
+// their plain label ("ASSISTANT", "SYSTEM NOTIFY", …).
 func (w *Window) buildExpandHeader(styles *Styles) string {
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
 		labelStyle := labelStyleForTag(w.Tag(), styles)
@@ -521,7 +524,7 @@ func (w *Window) buildExpandHeader(styles *Styles) string {
 		// Label-column padding — the indicator is multi-byte UTF-8, so skip
 		// len(dot) bytes (not 1) after the label + separator.
 		sb.WriteString(label[len(toolHeaderLabel)+len(toolLabelSep)+len(dot):])
-		sb.WriteString(styles.ToolContent.Render(tr.name))
+		sb.WriteString(styles.ToolContent.Bold(true).Render(tr.name))
 		return sb.String()
 	}
 	label := w.windowLabel()

@@ -708,8 +708,10 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 
 	// Re-style the truncated plain line: "TOOL CALL" + the status indicator
 	// (spinner or ✓/✗) in the label color (muted + bold), the separator
-	// space plain, then name + input in muted. The indicator shares the
-	// label color so they read as a single colored unit.
+	// space plain, then the tool name in muted + bold (so the name stands
+	// out from the arguments that follow), and the arguments in muted.
+	// The indicator shares the label color so they read as a single
+	// colored unit.
 	// NOTE: the indicator is multi-byte UTF-8 — slice by len(dot), never by
 	// byte 1, and labelPart length is in bytes (padLabel pads to display
 	// columns).
@@ -734,10 +736,17 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		sb.WriteString(dotStyle.Render(line[toolLen+sepLen : min(len(line), toolLen+sepLen+dotLen)]))
 	}
 	if len(line) > toolLen+sepLen+dotLen {
-		// Label column padding (plain spaces) + content (muted).
+		// Label column padding (plain spaces) + content: tool name in
+		// bold + muted, arguments in muted. The name's byte length is
+		// bounded by what survived truncation.
 		paddingEnd := min(len(line), contentStart)
 		sb.WriteString(line[toolLen+sepLen+dotLen : paddingEnd])
-		sb.WriteString(styles.ToolContent.Render(line[paddingEnd:]))
+		nameByteLen := min(len(r.name), max(0, len(line)-contentStart))
+		nameEnd := contentStart + nameByteLen
+		if nameByteLen > 0 {
+			sb.WriteString(styles.ToolContent.Bold(true).Render(line[contentStart:nameEnd]))
+		}
+		sb.WriteString(styles.ToolContent.Render(line[nameEnd:]))
 	}
 	return sb.String(), 1
 }
