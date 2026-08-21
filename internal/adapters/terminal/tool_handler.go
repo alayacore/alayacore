@@ -182,12 +182,8 @@ func (h *SearchContentHandler) FormatCall(input json.RawMessage) string {
 	if args.IgnoreCase {
 		parts = append(parts, "ignoring case")
 	}
-	if args.MaxLines != nil {
-		if *args.MaxLines > 0 {
-			parts = append(parts, fmt.Sprintf("limit %d", *args.MaxLines))
-		} else {
-			parts = append(parts, "no line limit")
-		}
+	if args.MaxLines > 0 {
+		parts = append(parts, fmt.Sprintf("limit %d", args.MaxLines))
 	}
 
 	// Add newline at end so output starts on new line

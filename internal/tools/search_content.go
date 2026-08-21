@@ -20,10 +20,8 @@ type SearchContentInput struct {
 	FileType   string `json:"file_type" jsonschema_desc:"File type filter (e.g. go, python, rust)"`
 	Glob       string `json:"glob" jsonschema_desc:"Glob pattern (e.g. *.go, *.{ts,tsx})"`
 	IgnoreCase bool   `json:"ignore_case" jsonschema_desc:"Enable case-insensitive search"`
-	MaxLines   *int   `json:"max_lines" jsonschema_desc:"Max matching lines (0 = no line limit; default 100)"`
+	MaxLines   int    `json:"max_lines" jsonschema_desc:"Max matching lines (0 = no limit)"`
 }
-
-const defaultSearchContentMaxLines = 100
 
 // maxSearchContentSize caps the number of bytes of search output returned
 // inline, mirroring execute_command and read_file (64KB). A line-count cap
@@ -35,7 +33,7 @@ const maxSearchContentSize = 64 * 1024 // 64KB
 func NewSearchContentTool() llm.Tool {
 	return llm.NewTool(
 		"search_content",
-		`Search file contents using ripgrep. Supports regex, file type filters, glob patterns, and case-insensitive search. Use this instead of reading files to locate code, definitions, and patterns. Results exceeding max_lines (default 100) or 64KB are saved to a temp file; only a summary with the file path is returned — use read_file to access specific matches.`,
+		`Search file contents using ripgrep. Supports regex, file type filters, glob patterns, and case-insensitive search. Use this instead of reading files to locate code, definitions, and patterns. Results exceeding max_lines (0 = no limit) or 64KB are saved to a temp file; only a summary with the file path is returned — use read_file to access specific matches.`,
 	).
 		WithSchema(llm.MustGenerateSchema(SearchContentInput{})).
 		WithExecute(llm.TypedExecute(executeSearchContent)).
@@ -136,7 +134,7 @@ func runSearch(ctx context.Context, args SearchContentInput, stdout, stderr io.W
 // formatSearchResult converts a structured search result into ContentParts.
 // It is separated from runSearch so that each concern (execution vs. formatting)
 // can be tested and reasoned about independently.
-func formatSearchResult(result searchResult, maxLines *int) ([]llm.ContentPart, error) {
+func formatSearchResult(result searchResult, maxLines int) ([]llm.ContentPart, error) {
 	// rg exits with code 1 when no matches found — that's not an error for us.
 	if result.exitCode == 1 && result.stderr == "" {
 		return []llm.ContentPart{&llm.TextPart{Text: "No matches found"}}, nil
@@ -157,20 +155,14 @@ func formatSearchResult(result searchResult, maxLines *int) ([]llm.ContentPart, 
 		return []llm.ContentPart{&llm.TextPart{Text: "No matches found"}}, nil
 	}
 
-	// nil = not specified → use default; 0 = explicit "no line limit"
-	// (the 64KB byte cap still applies and saves oversized results to a file).
-	limit := defaultSearchContentMaxLines
-	if maxLines != nil {
-		limit = *maxLines
-	}
-
 	// Count total lines in output
 	totalLines := countLines(output)
 
-	// If output exceeds the line limit or maxSearchContentSize, save full
-	// results to file and return metadata. A line limit of 0 disables the
-	// line check; the byte cap remains as a context-window safety net.
-	if (limit > 0 && totalLines > limit) || len(output) > maxSearchContentSize {
+	// If output exceeds maxLines or maxSearchContentSize, save full results
+	// to file and return metadata. maxLines of 0 (the default when omitted)
+	// means no line limit; the 64KB byte cap always applies as a
+	// context-window safety net.
+	if (maxLines > 0 && totalLines > maxLines) || len(output) > maxSearchContentSize {
 		return handleLargeSearchResult(output, totalLines)
 	}
 

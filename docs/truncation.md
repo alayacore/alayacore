@@ -48,7 +48,7 @@ Use read_file to access specific sections.
 
 ## search_content
 
-Search results exceeding `max_lines` (default 100) **or 64KB** (whichever comes first) are saved to a temp file. `max_lines` follows the "0 = no limit" convention: an explicit `max_lines: 0` disables the line cap (only the 64KB byte cap remains); omitting `max_lines` keeps the default of 100.
+Search results exceeding `max_lines` **or 64KB** (whichever comes first) are saved to a temp file. `max_lines` follows the same "0 = no limit" convention as `--command-timeout` / `--max-steps`: omitted or `0` means no line cap (only the 64KB byte cap remains); a positive value caps how many matching lines are returned inline.
 
 ```
 Search found 500 matching lines (194.2KB). Results saved to: /tmp/alayacore-1234567890/search-12345.txt
