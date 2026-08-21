@@ -268,29 +268,41 @@ func (r *textRenderer) collapsedSummary(content string, summaryWidth int) (strin
 }
 
 // renderCollapsedLineWithEllipsis styles a collapsed line: the label
-// portion in its type style, the content portion in muted, and the "…"
-// truncation marker (if present at ellipsisOffset within the line) in
-// dim. If styles is nil, the line is returned unstyled beyond the label.
+// portion in its type style, the content portion (padding + head) in
+// muted (NOT bold — only the label is bold), the "…" truncation marker
+// in dim, and the tail in muted. If styles is nil, the line is returned
+// unstyled beyond the label.
+//
+// Note: labelStyleForTag is applied ONLY to the label portion. Earlier
+// revisions applied it to line[:ellipsisAbs], which included the head
+// content — that accidentally bolded the head while the tail stayed
+// muted-only, producing inconsistent visual weight between head and
+// tail. The label is bold by design (it's the "chrome"); the head is
+// content and should match the tail's muted weight.
 func renderCollapsedLineWithEllipsis(line, label string, ellipsisOffset int, tag string, styles *Styles) string {
 	labelPart := padLabel(label)
-	styledLabel := labelStyleForTag(tag, styles).Render(line[:min(len(labelPart), len(line))])
-	if len(line) <= len(labelPart) {
+	labelEnd := min(len(labelPart), len(line))
+	styledLabel := labelStyleForTag(tag, styles).Render(line[:labelEnd])
+	if len(line) <= labelEnd {
 		return styledLabel
 	}
-	rest := line[len(labelPart):]
 	if styles == nil {
-		return styledLabel + rest
+		return styledLabel + line[labelEnd:]
 	}
+	content := line[labelEnd:]
 	if ellipsisOffset < 0 {
-		return styledLabel + styles.System.Render(rest)
+		return styledLabel + styles.System.Render(content)
 	}
-	ellipsisAbs := len(labelPart) + ellipsisOffset
-	before := line[:ellipsisAbs]
-	marker := line[ellipsisAbs : ellipsisAbs+len("…")]
-	after := line[ellipsisAbs+len("…"):]
-	return labelStyleForTag(tag, styles).Render(before) +
+	// Content = padding + head + "…" + tail. Re-split at the marker
+	// (which sits at byte offset ellipsisOffset within content, since the
+	// summary's ellipsisOffset was computed against the post-label string).
+	head := content[:ellipsisOffset]
+	marker := content[ellipsisOffset : ellipsisOffset+len("…")]
+	tail := content[ellipsisOffset+len("…"):]
+	return styledLabel +
+		styles.System.Render(head) +
 		styles.Status.Render(marker) +
-		styles.System.Render(after)
+		styles.System.Render(tail)
 }
 
 // labelForTag returns the header label for text-type windows.

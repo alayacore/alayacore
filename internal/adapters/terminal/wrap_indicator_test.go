@@ -883,3 +883,70 @@ func TestCursorArrowColor(t *testing.T) {
 func displayWidth(s string) int {
 	return ansi.StringWidth(s)
 }
+
+// TestFoldedTextHeadAndTailEqualWeight: regression test for a bug where
+// the head of a collapsed text window (REASONING / ASSISTANT / SN / SE)
+// was rendered with bold+muted styling while the tail was rendered with
+// muted-only styling — inconsistent visual weight between the two halves
+// of "head + … + tail". The label is bold by design; the head and tail
+// must match each other.
+func TestFoldedTextHeadAndTailEqualWeight(t *testing.T) {
+	styles := DefaultStyles()
+	wb := NewWindowBuffer(80, styles)
+
+	longText := "this is the start of a very long reasoning that exceeds the available width for sure"
+	wb.AppendOrUpdate(tlv.TagAssistantR, "r1", longText)
+
+	rendered := wb.GetAll(-1, false)
+	plain := stripANSI(rendered)
+	idx := strings.Index(plain, "…")
+	if idx < 0 {
+		t.Fatalf("expected head + … + tail, got %q", plain)
+	}
+	// Find the byte positions of "this is" (start of head) and "for sure"
+	// (end of tail) in the RAW rendered string — that's where the styled
+	// segments begin/end. ANSI codes count as bytes; we work on the raw
+	// string, not the stripped plain.
+	headStart := strings.Index(rendered, "this is")
+	tailEnd := strings.Index(rendered, "for sure") + len("for sure")
+	if headStart < 0 || tailEnd <= headStart {
+		t.Fatalf("could not locate head/tail in rendered output: %q", rendered)
+	}
+
+	// Extract the SGR (if any) right before the head and right before the
+	// tail. They must be identical (both muted-only — no bold attribute).
+	headPrefix := ansiSGRBefore(rendered, headStart)
+	tailPrefix := ansiSGRBefore(rendered, tailEnd)
+	if headPrefix != tailPrefix {
+		t.Errorf("head and tail must have the same styling\n"+
+			"head SGR before: %q\n"+
+			"tail SGR before: %q\n"+
+			"rendered: %q", headPrefix, tailPrefix, rendered)
+	}
+	// And neither should carry the bold attribute (1).
+	if strings.Contains(headPrefix, ";1;") || strings.HasPrefix(headPrefix, "1;") ||
+		strings.Contains(headPrefix, "[1") || headPrefix == "[1m" {
+		t.Errorf("head must NOT be bold (label bold should not bleed into content); SGR=%q", headPrefix)
+	}
+}
+
+// ansiSGRBefore returns the SGR parameter sequence that immediately
+// precedes the given byte position in the rendered output (i.e., the
+// most recent "\x1b[...m" before pos). Returns "" if none.
+func ansiSGRBefore(rendered string, pos int) string {
+	// Find the last SGR ending at or before pos.
+	for i := pos - 1; i >= 0; i-- {
+		if rendered[i] != 'm' {
+			continue
+		}
+		// Walk back to the matching ESC.
+		j := i - 1
+		for j >= 1 && !(rendered[j-1] == 0x1b && rendered[j] == '[') {
+			j--
+		}
+		if j >= 1 && rendered[j-1] == 0x1b && rendered[j] == '[' {
+			return rendered[j+1 : i]
+		}
+	}
+	return ""
+}
