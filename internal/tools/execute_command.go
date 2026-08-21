@@ -44,12 +44,20 @@ func runCommand(ctx context.Context, args executeCommandInput, stdout, stderr io
 	}
 
 	detectedShell := shell.Detect()
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, shell.DefaultCommandTimeout)
-	defer timeoutCancel()
+
+	// Only wrap the context with a deadline when a timeout is configured;
+	// 0 = no limit (commands run until they finish or the surrounding
+	// context is canceled).
+	execCtx := ctx
+	if shell.DefaultCommandTimeout > 0 {
+		var cancel context.CancelFunc
+		execCtx, cancel = context.WithTimeout(ctx, shell.DefaultCommandTimeout)
+		defer cancel()
+	}
 
 	baseCmd := detectedShell.BuildCmd(detectedShell.ResolvedBinary(), args.Command)
 	//nolint:gosec // G204: Command from user input is intentional
-	cmd := exec.CommandContext(timeoutCtx, baseCmd.Path, baseCmd.Args[1:]...)
+	cmd := exec.CommandContext(execCtx, baseCmd.Path, baseCmd.Args[1:]...)
 	cmd.Dir = cwd
 
 	devNull, err := shell.OpenDevNull()

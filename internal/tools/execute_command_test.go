@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/tools/shell"
 )
 
 func TestExecuteCommandNormalCompletion(t *testing.T) {
@@ -87,6 +88,25 @@ func TestExecuteCommandTimeout(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("command was not terminated within timeout")
+	}
+}
+
+func TestExecuteCommandNoTimeoutByDefault(t *testing.T) {
+	// DefaultCommandTimeout = 0 (no limit) must not impose a zero-duration
+	// deadline; a 1s command should complete normally.
+	orig := shell.DefaultCommandTimeout
+	defer func() { shell.DefaultCommandTimeout = orig }()
+	shell.DefaultCommandTimeout = 0
+
+	content, err := executeCommand(context.Background(), executeCommandInput{
+		Command: "sleep 1 && echo done",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error with no timeout: %v", err)
+	}
+	text := extractText(content)
+	if text != "done\n" {
+		t.Errorf("expected %q, got %q", "done\n", text)
 	}
 }
 

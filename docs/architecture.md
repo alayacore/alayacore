@@ -138,7 +138,7 @@ Messages are appended incrementally in `OnStepFinish` so they're preserved even 
 | `edit_file` | Search/replace edits on existing files | Medium | — |
 | `write_file` | Create or overwrite files | Dangerous | — |
 | `execute_command` | Execute commands in the detected shell (cross-platform). Large output (>64KB) saved to a temp file under `os.TempDir()/alayacore-<suffix>/cmd-*.txt`; only file path and metadata returned. Streams live output previews (`Uf`) while running. | Most Dangerous | — |
-| `search_content` | Search file contents using ripgrep (`rg`). Results exceeding `max_lines` (default 100) saved to a temp file under `os.TempDir()/alayacore-<suffix>/search-*.txt`; only match count and file path returned. Streams live match previews (`Uf`) while searching; runs under the same global timeout as `execute_command`. | Safe | Requires `rg` binary on system |
+| `search_content` | Search file contents using ripgrep (`rg`). Results exceeding `max_lines` (default 100; `max_lines: 0` disables the line cap) or 64KB saved to a temp file under `os.TempDir()/alayacore-<suffix>/search-*.txt`; only match count and file path returned. Streams live match previews (`Uf`) while searching; runs under the same global timeout as `execute_command`. | Safe | Requires `rg` binary on system |
 
 Each tool is implemented with type-safe input structs and auto-generated JSON schemas. All tools accept a `context.Context` parameter and respect cancellation — `:cancel` will interrupt long-running tool execution. See [schema-improvements.md](internal/schema-improvements.md) for the pattern.
 

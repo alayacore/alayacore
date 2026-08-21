@@ -3,8 +3,10 @@ package shell
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestDetectReturnsNonNil(t *testing.T) {
@@ -101,5 +103,24 @@ func TestBuildCmdProducesValidCmd(t *testing.T) {
 	cmd := s.BuildCmd(s.ResolvedBinary(), "echo hello")
 	if cmd == nil {
 		t.Fatal("BuildCmd returned nil")
+	}
+}
+
+func TestDescriptionTimeoutHandling(t *testing.T) {
+	orig := DefaultCommandTimeout
+	defer func() { DefaultCommandTimeout = orig }()
+
+	s := detectForTest(t)
+
+	// 0 (the default) means no limit — the description must say so.
+	DefaultCommandTimeout = 0
+	if d := s.Description(); !strings.Contains(d, "without a timeout") {
+		t.Errorf("unlimited description should mention no timeout, got %q", d)
+	}
+
+	// A configured timeout is surfaced in the description.
+	DefaultCommandTimeout = 5 * time.Second
+	if d := s.Description(); !strings.Contains(d, "5 seconds") {
+		t.Errorf("timed description should mention 5 seconds, got %q", d)
 	}
 }

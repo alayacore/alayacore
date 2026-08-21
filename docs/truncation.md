@@ -8,7 +8,7 @@ How AlayaCore handles large outputs from tools to stay within context budgets.
 |------|----------|--------------|
 | `read_file` | Truncates at 64KB with metadata header; media files above 16MB are reported instead of read | N/A (in-memory) |
 | `execute_command` | Saves to file | `cmd-*.txt` |
-| `search_content` | Saves to file when over 64KB or `max_lines` | `search-*.txt` |
+| `search_content` | Saves to file when over 64KB or `max_lines` (`0` = no line limit) | `search-*.txt` |
 
 ## read_file
 
@@ -48,7 +48,7 @@ Use read_file to access specific sections.
 
 ## search_content
 
-Search results exceeding `max_lines` (default 100) **or 64KB** (whichever comes first) are saved to a temp file:
+Search results exceeding `max_lines` (default 100) **or 64KB** (whichever comes first) are saved to a temp file. `max_lines` follows the "0 = no limit" convention: an explicit `max_lines: 0` disables the line cap (only the 64KB byte cap remains); omitting `max_lines` keeps the default of 100.
 
 ```
 Search found 500 matching lines (194.2KB). Results saved to: /tmp/alayacore-1234567890/search-12345.txt
@@ -56,7 +56,7 @@ Use read_file to access specific matches.
 ```
 
 - Agent uses `read_file` to access the full results from the saved file
-- Searches run under the same global timeout as `execute_command` (`shell.DefaultCommandTimeout`); timed-out and canceled searches are distinguished
+- Searches run under the same global timeout as `execute_command` (`shell.DefaultCommandTimeout`, default: no limit); timed-out and canceled searches are distinguished
 
 ## Temp File Location
 

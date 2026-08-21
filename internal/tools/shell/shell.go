@@ -9,8 +9,8 @@
 //     description so the LLM knows what features are available)
 //   - an invocation builder (how to run "<shell> <flags> <command>")
 //
-// [DefaultCommandTimeout] defines a global limit on tool execution time;
-// it is referenced by the execute_command and search_content
+// [DefaultCommandTimeout] defines a global limit on tool execution time
+// (0 = no limit); it is referenced by the execute_command and search_content
 // implementations and by [Shell.Description], which composes the prompt
 // fragment with the timeout information into the LLM-facing tool
 // description.
@@ -30,13 +30,14 @@ import (
 )
 
 // DefaultCommandTimeout is the maximum duration a shell command may run
-// before being killed. execute_command, search_content, and the
-// LLM-facing description all reference this value.
+// before being killed. A value of 0 (the default) means no limit — commands
+// run until they finish or are canceled. execute_command, search_content,
+// and the LLM-facing description all reference this value.
 //
 // This is a package-level var so that main() / app.Setup can override it
 // from the --command-timeout CLI flag or the ALAYACORE_COMMAND_TIMEOUT
 // environment variable before tools are created.
-var DefaultCommandTimeout = 2 * time.Minute
+var DefaultCommandTimeout time.Duration // 0 = no limit
 
 type Shell struct {
 	// Name is a human-readable identifier (e.g. "bash", "PowerShell").
@@ -58,6 +59,12 @@ type Shell struct {
 // Description returns the full tool description, combining the syntax
 // fragment with the command timeout information.
 func (s *Shell) Description() string {
+	if DefaultCommandTimeout <= 0 {
+		return fmt.Sprintf(
+			"%s Commands run without a timeout; they are only killed when canceled.",
+			s.PromptFragment,
+		)
+	}
 	return fmt.Sprintf(
 		"%s All commands are killed after %s.",
 		s.PromptFragment,

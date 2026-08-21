@@ -137,7 +137,7 @@ type Settings struct {
 	ReasoningLevelSet bool // true when --reasoning-level was explicitly provided (CLI wins over session file)
 
 	// Command execution
-	CommandTimeout int // max duration for execute_command in seconds (default 120)
+	CommandTimeout int // max duration for execute_command in seconds (0 = no limit)
 
 	// Delta streaming
 	NoDelta bool // If true, suppress delta frames (At, Ar, Af); use complete frames only
@@ -177,8 +177,8 @@ func Parse() *Settings {
 	noDelta := fs.Bool("no-delta", false, "Disable delta frames (At, Ar, Af); use complete frames only")
 	noMarkdown := fs.Bool("no-markdown", false, "Disable markdown rendering by default (new assistant text windows start raw; 'r' still toggles per window)")
 	fs.String("builtin-tools", "", "Comma-separated built-in tool `names` to enable (empty = no builtin tools, unspecified = all tools)")
-	commandTimeout := fs.Int("command-timeout", 120,
-		"Maximum duration in seconds for shell command execution (default 120)")
+	commandTimeout := fs.Int("command-timeout", 0,
+		"Maximum duration in seconds for shell command execution (0 = no limit)")
 	reasoningLevel := fs.Int("reasoning-level", DefaultReasoningLevel,
 		"Startup reasoning `level` (0=off, 1=normal, 2=max); explicit values override the session file's saved reasoning_level")
 
@@ -266,7 +266,10 @@ func parseToolConfirm(raw string) []string {
 // following precedence (highest first):
 //  1. --command-timeout CLI flag (if explicitly provided)
 //  2. ALAYACORE_COMMAND_TIMEOUT environment variable (integer seconds)
-//  3. The flag's default value (120 seconds)
+//  3. The flag's default value (0 seconds = no limit)
+//
+// A value of 0 means no limit: shell commands run until they finish or are
+// canceled, matching --max-steps' "unset = unlimited" behavior.
 //
 // This allows users to set a persistent default via their shell profile
 // while still overriding per-invocation via --command-timeout.
@@ -275,10 +278,10 @@ func resolveCommandTimeout(fs *flag.FlagSet, flagSec int) int {
 		return flagSec
 	}
 	if env := os.Getenv("ALAYACORE_COMMAND_TIMEOUT"); env != "" {
-		if sec, err := strconv.Atoi(env); err == nil && sec > 0 {
+		if sec, err := strconv.Atoi(env); err == nil && sec >= 0 {
 			return sec
 		}
-		fmt.Fprintf(os.Stderr, "warning: invalid ALAYACORE_COMMAND_TIMEOUT=%q, using default\n", env)
+		fmt.Fprintf(os.Stderr, "warning: invalid ALAYACORE_COMMAND_TIMEOUT=%q, using default (no limit)\n", env)
 	}
 	return flagSec
 }

@@ -16,6 +16,9 @@ func rgAvailable() bool {
 	return err == nil
 }
 
+// intPtr returns a pointer to v for *int tool arguments.
+func intPtr(v int) *int { return &v }
+
 func TestSearchContentBasicSearch(t *testing.T) {
 	if !rgAvailable() {
 		t.Skip("rg not available on system")
@@ -168,7 +171,7 @@ func TestSearchContentMaxLinesGlobal(t *testing.T) {
 	result, err := executeSearchContent(context.Background(), SearchContentInput{
 		Pattern:  "match",
 		Path:     tmpDir,
-		MaxLines: 5,
+		MaxLines: intPtr(5),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -182,6 +185,58 @@ func TestSearchContentMaxLinesGlobal(t *testing.T) {
 	}
 }
 
+func TestFormatSearchResultNoLineLimit(t *testing.T) {
+	// max_lines = 0 explicitly disables the line cap: 200 lines (well
+	// under the 64KB byte cap) must be returned inline instead of being
+	// saved to a temp file.
+	output := strings.Repeat("match line\n", 200)
+	parts, err := formatSearchResult(searchResult{
+		stdout:   output,
+		stderr:   "",
+		exitCode: 0,
+	}, intPtr(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := extractFirstText(parts)
+	if text != output {
+		t.Errorf("expected full %d-line output inline, got %d bytes", 200, len(text))
+	}
+
+	// Without max_lines (nil) the default cap still applies: 200 lines
+	// exceed the 100-line default and must be saved to a temp file.
+	parts, err = formatSearchResult(searchResult{
+		stdout:   output,
+		stderr:   "",
+		exitCode: 0,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text = extractFirstText(parts)
+	if !strings.Contains(text, "Results saved to:") {
+		t.Errorf("expected temp-file pointer message without max_lines, got:\n%s", text)
+	}
+
+	// Even with max_lines = 0 the 64KB byte cap still applies.
+	hugeLine := strings.Repeat("x", maxSearchContentSize+1)
+	parts, err = formatSearchResult(searchResult{
+		stdout:   hugeLine,
+		stderr:   "",
+		exitCode: 0,
+	}, intPtr(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text = extractFirstText(parts)
+	if strings.Contains(text, "xxxxxxxxxx") {
+		t.Errorf("oversized single-line output was returned inline: %.60q…", text)
+	}
+	if !strings.Contains(text, "Results saved to:") {
+		t.Errorf("expected temp-file pointer message for oversized output, got:\n%s", text)
+	}
+}
+
 func TestFormatSearchResultByteCap(t *testing.T) {
 	// A single matching line can be arbitrarily large (minified JS,
 	// base64 blobs) — the line-count cap alone would return it inline and
@@ -192,7 +247,7 @@ func TestFormatSearchResultByteCap(t *testing.T) {
 		stdout:   hugeLine,
 		stderr:   "",
 		exitCode: 0,
-	}, defaultSearchContentMaxLines)
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +265,7 @@ func TestFormatSearchResultByteCap(t *testing.T) {
 		stdout:   atCap,
 		stderr:   "",
 		exitCode: 0,
-	}, defaultSearchContentMaxLines)
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +398,7 @@ func TestSearchContentStreamingMaxLines(t *testing.T) {
 	result, err := executeSearchContentStreaming(context.Background(), SearchContentInput{
 		Pattern:  "match",
 		Path:     tmpDir,
-		MaxLines: 5,
+		MaxLines: intPtr(5),
 	}, func(string) {})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
