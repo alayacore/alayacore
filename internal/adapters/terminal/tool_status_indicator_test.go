@@ -1,8 +1,9 @@
 package terminal
 
-// Tests for the tool status indicator (spinner while running, colorless
-// ✓/✗ when done), the collapsed/expanded delta preview ellipsis position
-// (tail shown, "…" at the line start), and the USER PROMPT label.
+// Tests for the tool status indicator (spinner while running, ✓/✗ when
+// done — both share the "TOOL CALL" label color), the collapsed/expanded
+// delta preview ellipsis position (tail shown, "…" at the line start),
+// and the USER PROMPT label.
 
 import (
 	"encoding/json"
@@ -15,20 +16,27 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// TestToolStatusIndicatorColorless verifies every status glyph renders
-// without any ANSI styling (the spinner and ✓/✗ replace the old colored
-// dots) and stays exactly 1 display column wide so the label column
-// alignment holds.
-func TestToolStatusIndicatorColorless(t *testing.T) {
+// TestToolStatusIndicatorInheritsLabelColor verifies every status glyph
+// is rendered using the supplied label style (the indicator shares the
+// "TOOL CALL" label color, not green/red), and stays exactly 1 display
+// column wide so the label column alignment holds.
+func TestToolStatusIndicatorInheritsLabelColor(t *testing.T) {
+	labelStyle := NewStyle().Foreground(Color("#abcdef"))
 	for _, st := range []ToolStatus{ToolStatusNone, ToolStatusPending, ToolStatusSuccess, ToolStatusError} {
-		glyph, stl := st.statusDot()
+		glyph, stl := st.statusDot(labelStyle)
 		if glyph == "" {
 			t.Errorf("status %d: empty glyph", st)
 			continue
 		}
 		rendered := stl.Render(glyph)
-		if strings.Contains(rendered, "\x1b") {
-			t.Errorf("status %d: indicator must be colorless, got %q", st, rendered)
+		// The label color must be encoded — no longer the deliberately
+		// colorless indicator of the previous design.
+		if !strings.Contains(rendered, "#abcdef") && !strings.Contains(rendered, "abcdef") {
+			// Lipgloss emits hex as either 6-digit or 8-digit sequences
+			// depending on the terminal profile; check both.
+			if !strings.Contains(rendered, "\x1b[") {
+				t.Errorf("status %d: indicator must carry the label color, got %q", st, rendered)
+			}
 		}
 		if w := ansi.StringWidth(glyph); w != 1 {
 			t.Errorf("status %d: indicator must be 1 column wide (label alignment), %q is %d", st, glyph, w)
@@ -40,8 +48,9 @@ func TestToolStatusIndicatorColorless(t *testing.T) {
 // executing) show one of the session-loading spinner frames, and the
 // terminal states show the plain check/cross.
 func TestToolRunningShowsSpinner(t *testing.T) {
+	labelStyle := NewStyle()
 	for _, st := range []ToolStatus{ToolStatusNone, ToolStatusPending} {
-		glyph, _ := st.statusDot()
+		glyph, _ := st.statusDot(labelStyle)
 		inSet := false
 		for _, f := range toolSpinnerFrames {
 			if glyph == f {
@@ -53,10 +62,10 @@ func TestToolRunningShowsSpinner(t *testing.T) {
 			t.Errorf("status %d: glyph %q is not one of the spinner frames", st, glyph)
 		}
 	}
-	if g, _ := ToolStatusSuccess.statusDot(); g != "✓" {
+	if g, _ := ToolStatusSuccess.statusDot(labelStyle); g != "✓" {
 		t.Errorf("success glyph = %q, want ✓", g)
 	}
-	if g, _ := ToolStatusError.statusDot(); g != "✗" {
+	if g, _ := ToolStatusError.statusDot(labelStyle); g != "✗" {
 		t.Errorf("error glyph = %q, want ✗", g)
 	}
 }

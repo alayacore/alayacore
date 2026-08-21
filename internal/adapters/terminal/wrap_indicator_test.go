@@ -256,7 +256,8 @@ func TestFoldedToolCollapsedLabelColor(t *testing.T) {
 
 	rendered := wb.GetAll(-1, false)
 
-	// "TOOL CALL" is plain bold, the status indicator is colorless, and the
+	// "TOOL CALL" is plain bold (muted color), the status indicator shares
+	// the label color so they read as a single colored unit, and the
 	// content (tool name + arguments) is muted.
 	if !strings.Contains(rendered, styles.System.Bold(true).Render("TOOL CALL")) {
 		t.Errorf("TOOL CALL label should be plain bold (no color): %q", rendered)

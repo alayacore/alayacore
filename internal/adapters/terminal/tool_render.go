@@ -52,20 +52,20 @@ func toolLabelWithIndicator(dot string) string {
 
 // statusDot returns the tool status indicator character and its style,
 // shown right after the "TOOL CALL" label in the header line
-// ("TOOL CALL ⠋", "TOOL CALL ✓"). The indicator is deliberately colorless —
-// the spinner replaces the old colored dots while the tool is running,
-// and the result glyphs (✓/✗) render in the default foreground instead of
-// green/red.
-func (s ToolStatus) statusDot() (string, Style) {
+// ("TOOL CALL ⠋", "TOOL CALL ✓"). The indicator is rendered in the same
+// color as the label (labelStyle), so "TOOL CALL" + indicator + tool name
+// read as a single colored unit. labelStyle is also bold — the indicator
+// inherits the bold weight. Pass labelStyleForTag(tag, styles) here.
+func (s ToolStatus) statusDot(labelStyle Style) (string, Style) {
 	switch s {
 	case ToolStatusSuccess:
-		return "✓", NewStyle()
+		return "✓", labelStyle
 	case ToolStatusError:
-		return "✗", NewStyle()
+		return "✗", labelStyle
 	case ToolStatusPending:
-		return toolSpinnerFrame(), NewStyle()
+		return toolSpinnerFrame(), labelStyle
 	default: // ToolStatusNone — arguments still streaming in
-		return toolSpinnerFrame(), NewStyle()
+		return toolSpinnerFrame(), labelStyle
 	}
 }
 

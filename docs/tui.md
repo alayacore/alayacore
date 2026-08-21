@@ -137,7 +137,7 @@ The display area organizes content into separate windows — one per message or 
 
 ### Tool Status Indicator
 
-Every tool window's header line carries a status indicator right after the `TOOL CALL` label (`TOOL CALL ⠋`, `TOOL CALL ✓`, `TOOL CALL ✗`), separated by one space. While arguments are still streaming in and while the tool is executing, the indicator is the same braille dot-segment spinner used by the session-loading screen — it rotates together with each delta refresh (the header re-renders on every incoming delta, so the spinner advances with the streaming progress, no separate timer). When the tool finishes, the spinner is replaced by a colorless check mark (`✓` on success) or cross (`✗` on error) — no colored dots.
+Every tool window's header line carries a status indicator right after the `TOOL CALL` label (`TOOL CALL ⠋`, `TOOL CALL ✓`, `TOOL CALL ✗`), separated by one space. While arguments are still streaming in and while the tool is executing, the indicator is the same braille dot-segment spinner used by the session-loading screen — it rotates together with each delta refresh (the header re-renders on every incoming delta, so the spinner advances with the streaming progress, no separate timer). When the tool finishes, the spinner is replaced by a check mark (`✓` on success) or cross (`✗` on error). The indicator shares the `TOOL CALL` label color (muted + bold) so `TOOL CALL` + indicator + tool name read as a single colored unit — the indicator carries no semantic color of its own.
 
 ### Tool Result Separator
 

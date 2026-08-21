@@ -504,15 +504,17 @@ func (w *Window) windowLabel() string {
 // buildExpandHeader returns the expanded header line content (the part
 // after the arrow). Tool windows use the collapsed-style layout — bold
 // "TOOL CALL" + a space + the status indicator in the fixed label column,
-// then the muted tool name: "TOOL CALL ⠋    execute_command". Other windows
-// use their plain label ("ASSISTANT", "SYSTEM NOTIFY", …).
+// then the muted tool name: "TOOL CALL ⠋    execute_command". The label
+// and indicator share the same color (labelStyle) so they read as one
+// unit. Other windows use their plain label ("ASSISTANT", "SYSTEM NOTIFY", …).
 func (w *Window) buildExpandHeader(styles *Styles) string {
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
-		dot, dotStyle := tr.status.statusDot()
+		labelStyle := labelStyleForTag(w.Tag(), styles)
+		dot, dotStyle := tr.status.statusDot(labelStyle)
 		label := padLabel(toolLabelWithIndicator(dot))
 		var sb strings.Builder
 		sb.WriteString(" ")
-		sb.WriteString(labelStyleForTag(w.Tag(), styles).Render(label[:len(toolHeaderLabel)]))
+		sb.WriteString(labelStyle.Render(label[:len(toolHeaderLabel)]))
 		// Separator space between the label and the status indicator.
 		sb.WriteString(label[len(toolHeaderLabel) : len(toolHeaderLabel)+len(toolLabelSep)])
 		sb.WriteString(dotStyle.Render(dot))

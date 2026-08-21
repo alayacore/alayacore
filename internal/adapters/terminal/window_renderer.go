@@ -667,7 +667,8 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		return styles.System.Render(first), 1
 	}
 
-	dot, dotStyle := r.status.statusDot()
+	labelStyle := labelStyleForTag(r.Tag(), styles)
+	dot, dotStyle := r.status.statusDot(labelStyle)
 
 	var inputFirst string
 	if r.deltaBuffer != "" {
@@ -705,13 +706,13 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 	line = truncateWithSuffix(line, max(0, width-2))
 
-	// Re-style the truncated plain line: "TOOL CALL" in bold (no color), the
-	// separator space plain, the status indicator (spinner or ✓/✗)
-	// unstyled — deliberately colorless — then name + input in muted.
+	// Re-style the truncated plain line: "TOOL CALL" + the status indicator
+	// (spinner or ✓/✗) in the label color (muted + bold), the separator
+	// space plain, then name + input in muted. The indicator shares the
+	// label color so they read as a single colored unit.
 	// NOTE: the indicator is multi-byte UTF-8 — slice by len(dot), never by
 	// byte 1, and labelPart length is in bytes (padLabel pads to display
 	// columns).
-	labelStyle := labelStyleForTag(r.Tag(), styles)
 	toolLen := len(toolHeaderLabel)
 	sepLen := len(toolLabelSep)
 	dotLen := len(dot)
@@ -726,7 +727,9 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if len(line) > toolLen {
 		sb.WriteString(line[toolLen:min(len(line), toolLen+sepLen)])
 	}
-	// Status indicator — unstyled (colorless), multi-byte safe.
+	// Status indicator — uses the label color (muted + bold), so it
+	// visually joins the "TOOL CALL" label. Multi-byte safe (slice by
+	// len(dot), never by byte 1).
 	if len(line) > toolLen+sepLen {
 		sb.WriteString(dotStyle.Render(line[toolLen+sepLen : min(len(line), toolLen+sepLen+dotLen)]))
 	}
