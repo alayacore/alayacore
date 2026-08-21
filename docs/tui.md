@@ -177,6 +177,10 @@ Press `Space` on any window to collapse it — the window becomes a single heade
 
 An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrow glyphs themselves are theme-configurable (`fold_arrow` / `unfold_arrow`). See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
 
+### Collapsed Summary Truncation
+
+Long-form text windows (`REASONING`, `ASSISTANT`, `USER PROMPT`) truncate their collapsed summary with **head + "…" + tail** (40/60 split of the available width), so the user sees both the topic phrase and the latest content — e.g. a long assistant message becomes `beginning of answer begi…er  and then some more content ending` rather than just the tail. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster. Other windows (tool deltas, UF output snapshots, attachments) keep **tail-only** truncation (`…tail`) — the latest content is the only signal that matters for streaming-tail data.
+
 ### Markdown Rendering
 
 Markdown rendering is **on by default** for assistant text (`ASSISTANT`) and reasoning (`REASONING`) windows; `--no-markdown` turns the default off (new windows start raw). Press `r` on an **unfolded** window to toggle between rendered and raw per window; the setting is independent per window and applies only when expanded — folded windows keep their raw one-line summary.

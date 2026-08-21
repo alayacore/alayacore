@@ -12,6 +12,11 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
+// familyEmoji is the ZWJ family sequence 👨‍👩‍👧‍👦 — a multi-codepoint
+// grapheme cluster used to verify takeHead / takeTail never split it
+// mid-cluster. 7 codepoints (4 emoji + 3 ZWJ), 1 grapheme, 2 display cols.
+const familyEmoji = "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466"
+
 func TestFoldedToolCollapsedLine(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
@@ -429,6 +434,177 @@ func TestTailSummary(t *testing.T) {
 	}
 }
 
+func TestHeadAndTailSummary(t *testing.T) {
+	// REASONING / ASSISTANT / USER PROMPT collapsed summaries show the
+	// head (topic) + "…" + tail (latest content), 40/60 split, with
+	// edge cases for narrow widths and wide-char handling.
+	tests := []struct {
+		name     string
+		content  string
+		maxWidth int
+		want     string
+	}{
+		{
+			name:     "short content fits entirely",
+			content:  "hello",
+			maxWidth: 20,
+			want:     "hello",
+		},
+		{
+			name:     "long content shows head and tail with middle ellipsis",
+			content:  "aaaaaaaaaa bbbbbbbbbb cccccccccc",
+			maxWidth: 15,
+			// 40/60 split: headWidth = 15*40/100 = 6, tailWidth = 15-6-1 = 8.
+			// head: "aaaaaa" (6 cols); tail: walk backward with budget 8
+			// — " cccccccc" (9) too big, drop the space → "cccccccc" (8).
+			want: "aaaaaa…cccccccc",
+		},
+		{
+			name:     "newlines escaped as literal backslash-n",
+			content:  "line one\nline two",
+			maxWidth: 50,
+			want:     "line one\\nline two",
+		},
+		{
+			name:     "head and tail both keep partial lines after escape",
+			content:  "first line\nsecond line\nthird line",
+			maxWidth: 20,
+			// 40/60 split: headWidth = 20*40/100 = 8, tailWidth = 20-8-1 = 11.
+			// head: "first li" (8); tail: walk backward with budget 11 —
+			// "\\nthird line" (12) too big, drop "\\" → "nthird line" (11).
+			want: "first li…nthird line",
+		},
+		{
+			name:     "zero width",
+			content:  "hello",
+			maxWidth: 0,
+			want:     "",
+		},
+		{
+			name:     "single column renders head only (no room for ellipsis)",
+			content:  "hello",
+			maxWidth: 1,
+			want:     "h",
+		},
+		{
+			name:     "two columns render head only (no room for ellipsis+tail)",
+			content:  "hello",
+			maxWidth: 2,
+			want:     "he",
+		},
+		{
+			name:     "CJK: head and tail never split mid-cluster",
+			content:  "中文内容测试尾部结束",
+			maxWidth: 10,
+			// 40/60 split: headWidth = 10*40/100 = 4, tailWidth = 10-4-1 = 5.
+			// Each CJK char is 2 cols. head fits "中文" (4 cols); tail
+			// fits 5 cols walking back: "部结束" (6) too big, drop "部"
+			// → "结束" (4 cols). head + … + tail = "中文…结束" (9 cols).
+			want: "中文…结束",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := headAndTailSummary(tt.content, tt.maxWidth)
+			if got != tt.want {
+				t.Errorf("headAndTailSummary(%q, %d) = %q, want %q", tt.content, tt.maxWidth, got, tt.want)
+			}
+			// The result must be a single logical line (no raw newlines).
+			if strings.Contains(got, "\n") {
+				t.Errorf("headAndTailSummary must not contain raw newlines: %q", got)
+			}
+			// And must fit the width (or be empty).
+			if w := ansi.StringWidth(got); w > tt.maxWidth {
+				t.Errorf("headAndTailSummary width = %d, want <= %d: %q", w, tt.maxWidth, got)
+			}
+		})
+	}
+}
+
+func TestTakeHeadAndTakeTailClusterAware(t *testing.T) {
+	// takeHead and takeTail must drop whole grapheme clusters rather
+	// than splitting individual runes — multi-codepoint glyphs like ZWJ
+	// emoji, combining marks, and variation selectors would render as
+	// U+FFFD if cut mid-cluster.
+	tests := []struct {
+		name  string
+		input string
+		width int
+		head  string
+		tail  string
+	}{
+		{
+			name:  "single-width ascii",
+			input: "abcdefgh",
+			width: 3,
+			head:  "abc",
+			tail:  "fgh",
+		},
+		{
+			name:  "CJK: each char is 2 cols, never split mid-rune",
+			input: "中文内容",
+			width: 3,
+			head:  "中", // "中"=2 cols fits, "中"+"文"=4 > 3 → drop "文"
+			tail:  "容", // drop "文"+"中" → "容" (2 cols fits 3)
+		},
+		{
+			name:  "CJK with too-narrow width: cluster dropped, not split",
+			input: "中文",
+			width: 1,
+			head:  "", // neither CJK char fits in 1 col
+			tail:  "",
+		},
+		{
+			name:  "ZWJ family cluster: kept whole or dropped whole",
+			input: "a" + familyEmoji + "b", // "a" + 👨‍👩‍👧‍👦 + "b" — 3 clusters: 1, 2, 1 cols
+			width: 1,
+			head:  "a", // family cluster is 2 cols, doesn't fit in 1 → dropped
+			tail:  "b", // family cluster dropped
+		},
+		{
+			name:  "ZWJ family cluster fits when width allows",
+			input: "a" + familyEmoji + "b",
+			width: 3,
+			head:  "a" + familyEmoji, // 1+2=3 cols, "b" would be 4 → drop
+			tail:  familyEmoji + "b", // 2+1=3 cols, "a" would be 4 → drop
+		},
+		{
+			name:  "combining acute: e + combining mark kept together",
+			input: "e\u0301o", // é (e + combining acute U+0301) then o
+			width: 1,
+			head:  "e\u0301", // é is 1 col (combining), fits; drop "o"
+			tail:  "o",      // tail: "o" (1 col) fits, "é" would push to 2
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := takeHead(tt.input, tt.width)
+			if h != tt.head {
+				t.Errorf("takeHead(%q, %d) = %q, want %q", tt.input, tt.width, h, tt.head)
+			}
+			if w := ansi.StringWidth(h); w > tt.width {
+				t.Errorf("takeHead width = %d, want <= %d: %q", w, tt.width, h)
+			}
+			tl := takeTail(tt.input, tt.width)
+			if tl != tt.tail {
+				t.Errorf("takeTail(%q, %d) = %q, want %q", tt.input, tt.width, tl, tt.tail)
+			}
+			if w := ansi.StringWidth(tl); w > tt.width {
+				t.Errorf("takeTail width = %d, want <= %d: %q", w, tt.width, tl)
+			}
+			// Critical: no replacement characters (U+FFFD) from cluster splits.
+			if strings.Contains(h, "\uFFFD") {
+				t.Errorf("takeHead produced replacement char (cluster split): %q", h)
+			}
+			if strings.Contains(tl, "\uFFFD") {
+				t.Errorf("takeTail produced replacement char (cluster split): %q", tl)
+			}
+		})
+	}
+}
+
 func TestFoldedTextWindowShowsTail(t *testing.T) {
 	// Streaming content: the collapsed summary shows the LATEST text so
 	// the user sees new deltas arriving.
@@ -454,13 +630,16 @@ func TestFoldedTextWindowShowsTail(t *testing.T) {
 	}
 }
 
-func TestFoldedTextWindowTailUpdatesOnDelta(t *testing.T) {
-	// The whole point: as deltas arrive, the collapsed summary moves.
+func TestFoldedTextWindowHeadAndTailUpdatesOnDelta(t *testing.T) {
+	// The whole point: as deltas arrive, the collapsed summary keeps the
+	// head (topic) stable and updates the tail (latest content). The
+	// truncation marker sits in the MIDDLE — never at the line start
+	// (that's tailSummary's behavior, used for streaming-tail content).
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
 	// Simulate a streaming assistant window: long content so the collapsed
-	// summary truncates and shows only the tail.
+	// summary truncates and shows head + "…" + tail.
 	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", strings.Repeat("beginning of answer ", 3))
 	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", " and then some more content ending")
 	wb.ToggleFold(0) // AT is expanded by default; fold it for the summary test
@@ -470,9 +649,16 @@ func TestFoldedTextWindowTailUpdatesOnDelta(t *testing.T) {
 	if !strings.Contains(plain, "some more content ending") {
 		t.Errorf("collapsed summary should reflect the latest delta, got %q", plain)
 	}
-	// The start was truncated away — the summary begins with "…".
-	if !strings.HasPrefix(plain, "▶ ASSISTANT       …") {
-		t.Errorf("collapsed summary should be truncated with a leading ellipsis: %q", plain)
+	if !strings.Contains(plain, "beginning of answer") {
+		t.Errorf("collapsed summary should keep the head (topic), got %q", plain)
+	}
+	// The middle ellipsis sits between head and tail — the line does NOT
+	// begin with "…" (that's tailSummary's behavior).
+	if strings.HasPrefix(plain, "▶ ASSISTANT       …") {
+		t.Errorf("collapsed summary must not start with a leading ellipsis: %q", plain)
+	}
+	if !strings.Contains(plain, "…") {
+		t.Errorf("collapsed summary should contain the middle ellipsis, got %q", plain)
 	}
 }
 

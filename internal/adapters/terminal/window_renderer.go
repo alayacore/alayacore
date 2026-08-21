@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	ansi "github.com/charmbracelet/x/ansi"
+	"github.com/rivo/uniseg"
 
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -220,8 +221,11 @@ func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, i
 // muted — the collapsed header is UI chrome, while the expanded body
 // stays plain text. The collapsed preview always shows the RAW content
 // tail (never the markdown table transform — the preview is one line and
-// markdown state only affects expanded rendering). SN/SE: label and
-// content keep their System/Error colors.
+// markdown state only affects expanded rendering). REASONING/ASSISTANT/
+// USER PROMPT use headAndTailSummary so the user sees both the topic
+// (head) and the latest content (tail); SN/SE keep tailSummary since
+// system messages are usually short. SN/SE: label and content keep
+// their System/Error colors.
 func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	content := prepareContent(r.rawContent())
 	label := labelForTag(r.tag)
@@ -229,7 +233,18 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if label != "" {
 		line = padLabel(label)
 	}
-	line += tailSummary(content, max(0, width-2-CollapsedLabelWidth))
+	summaryWidth := max(0, width-2-CollapsedLabelWidth)
+	var summary string
+	switch r.tag {
+	case tlv.TagAssistantT, tlv.TagAssistantR, tlv.TagUserT:
+		// Long-form text: show both the topic (head) and the latest
+		// content (tail) so the reader can scan either signal.
+		summary = headAndTailSummary(content, summaryWidth)
+	default:
+		// System messages (SN/SE): usually short, tail-only is enough.
+		summary = tailSummary(content, summaryWidth)
+	}
+	line += summary
 	line = truncateWithSuffix(line, max(0, width-2)) // safety net
 
 	if label == "" {
@@ -327,6 +342,129 @@ func tailSummary(content string, maxWidth int) string {
 		start = i
 	}
 	return "…" + string(runes[start:])
+}
+
+// headAndTailSummary renders the leading AND trailing parts of content for
+// a collapsed text window (REASONING / ASSISTANT / USER PROMPT):
+//
+//	first ~40% of maxWidth cols  +  "…"  +  last ~60% of maxWidth cols
+//
+// Split rationale: the head conveys the topic of the message
+// ("Here's how to…", "The user is asking about…"), the tail conveys the
+// actual content / punchline. For long completed text both halves are
+// useful; for streaming-tail content (tool deltas, UF snapshots,
+// attachments) use tailSummary instead — there the latest content is the
+// only signal that matters.
+//
+// Layout (maxWidth cols total):
+//   - maxWidth <= 0  : return ""
+//   - maxWidth <= 2  : render the head only (no room for "…" + tail)
+//   - maxWidth >= 3  : head + "…" + tail, ~40% / ~60% (integer math),
+//     with a hard floor of 1 col on head so we always emit something,
+//     and a floor of 1 col on tail (if head already claims the width,
+//     fall back to "head only").
+//   - if the full content already fits maxWidth cols, return as-is.
+//
+// Grapheme-cluster-aware: head and tail are bounded by grapheme cluster
+// boundaries (not runes) via uniseg.FirstGraphemeClusterInString, so
+// multi-codepoint clusters like ZWJ emoji, combining marks, and
+// variation selectors are never split mid-cluster — unlike the per-rune
+// tailSummary above, which is fine for CJK and BMP but can chop
+// multi-rune clusters.
+func headAndTailSummary(content string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	escaped := strings.ReplaceAll(content, "\n", "\\n")
+	escaped = strings.ReplaceAll(escaped, "\r", "")
+
+	if ansi.StringWidth(escaped) <= maxWidth {
+		return escaped
+	}
+	if maxWidth <= 2 {
+		return takeHead(escaped, maxWidth)
+	}
+
+	// 40/60 split. Integer math: headWidth = maxWidth * 40 / 100.
+	// For typical widths (>= 5) this rounds close to 40%; very narrow
+	// widths (3-4) end up head=1, which is the floor.
+	headWidth := maxWidth * 40 / 100
+	if headWidth < 1 {
+		headWidth = 1
+	}
+	tailWidth := maxWidth - headWidth - 1
+	if tailWidth < 1 {
+		// Very narrow widths where head already claims most of the room.
+		return takeHead(escaped, maxWidth)
+	}
+	return takeHead(escaped, headWidth) + "…" + takeTail(escaped, tailWidth)
+}
+
+// takeHead returns the leading grapheme clusters of s whose total display
+// width is at most width. Clusters that would overflow are dropped from
+// the end (so the head stays left-anchored). Multi-cluster glyphs (ZWJ
+// emoji, combining marks, variation selectors) are never split.
+func takeHead(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	var result strings.Builder
+	state := -1
+	w := 0
+	for s != "" {
+		cluster, rest, cw, nextState := uniseg.FirstGraphemeClusterInString(s, state)
+		if w+cw > width {
+			break
+		}
+		result.WriteString(cluster)
+		w += cw
+		s = rest
+		state = nextState
+	}
+	return result.String()
+}
+
+// takeTail returns the trailing grapheme clusters of s whose total display
+// width is at most width. Clusters that would overflow are dropped from
+// the front (so the tail stays right-anchored). Multi-cluster glyphs are
+// never split — the function drops entire clusters rather than slicing
+// individual runes.
+func takeTail(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	// Two-pass: collect all clusters, then walk forward dropping leading
+	// clusters until the remaining suffix fits in width.
+	type entry struct {
+		s     string
+		width int
+	}
+	var entries []entry
+	state := -1
+	cur := s
+	for cur != "" {
+		cluster, rest, cw, nextState := uniseg.FirstGraphemeClusterInString(cur, state)
+		entries = append(entries, entry{s: cluster, width: cw})
+		cur = rest
+		state = nextState
+	}
+	if len(entries) == 0 {
+		return ""
+	}
+	total := 0
+	for _, e := range entries {
+		total += e.width
+	}
+	start := 0
+	for start < len(entries) && total > width {
+		total -= entries[start].width
+		start++
+	}
+	var result strings.Builder
+	for i := start; i < len(entries); i++ {
+		result.WriteString(entries[i].s)
+	}
+	return result.String()
 }
 
 // firstLine returns the first line of s (up to the first '\n').
