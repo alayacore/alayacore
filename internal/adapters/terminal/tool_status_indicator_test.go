@@ -177,57 +177,119 @@ func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
 }
 
 // TestUserPromptCollapsedTail: the user prompt collapsed summary is
-// consistent with assistant text — the escaped LATEST tail of the whole
-// content (all text parts), never just the first line.
-func TestUserPromptCollapsedTail(t *testing.T) {
+// TestUserPromptCollapsed covers the user-prompt collapsed-view summary
+// across the cases that matter: short content that fits, multi-part
+// content with newlines, narrow-width ASCII truncation, and narrow-width
+// CJK truncation. All cases share the same invariant: the summary is a
+// single line, the "…" sits between head and tail (never at the line
+// start — that's reserved for streaming delta content), the topic
+// survives in the head, and the line fits the width budget.
+func TestUserPromptCollapsed(t *testing.T) {
 	styles := DefaultStyles()
 
-	// Multi-line content fits entirely: newlines escaped as literal "\n".
-	ur := &userRenderer{textParts: []string{"first line\nsecond line\nthird line"}}
-	line, count := ur.BuildCollapsed(100, styles)
-	if count != 1 {
-		t.Fatalf("collapsed lineCount = %d, want 1", count)
-	}
-	if want := "USER PROMPT     first line\\nsecond line\\nthird line"; stripANSI(line) != want {
-		t.Errorf("BuildCollapsed = %q, want %q", stripANSI(line), want)
-	}
+	// Direct-renderer cases — verify the exact rendering output. These
+	// cases use BuildCollapsed directly because they assert byte-exact
+	// output (escaping, multi-part concatenation).
+	t.Run("direct", func(t *testing.T) {
+		cases := []struct {
+			name      string
+			textParts []string
+			width     int
+			wantExact string // expected stripANSI(line)
+		}{
+			{
+				name:      "multi-line fits entirely: newlines escaped as \\n",
+				textParts: []string{"first line\nsecond line\nthird line"},
+				width:     100,
+				wantExact: "USER PROMPT     first line\\nsecond line\\nthird line",
+			},
+			{
+				name:      "multiple text parts: summary covers all parts",
+				textParts: []string{"part one", "part two"},
+				width:     100,
+				wantExact: "USER PROMPT     part one\\npart two",
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				ur := &userRenderer{textParts: tc.textParts}
+				line, count := ur.BuildCollapsed(tc.width, styles)
+				if count != 1 {
+					t.Fatalf("lineCount = %d, want 1", count)
+				}
+				if got := stripANSI(line); got != tc.wantExact {
+					t.Errorf("got %q, want %q", got, tc.wantExact)
+				}
+			})
+		}
+	})
 
-	// Narrow width: head + "…" + tail. Same rule as assistant text.
-	// The user sees both the topic (head) and the latest content (tail).
-	ur = &userRenderer{textParts: []string{"first line\nsecond line\nthird line"}}
-	line, _ = ur.BuildCollapsed(34, styles)
-	plain := stripANSI(line)
-	if !strings.HasPrefix(plain, "USER PROMPT     ") {
-		t.Errorf("collapsed should keep the label, got %q", plain)
-	}
-	// The "…" sits between head and tail — never at the line start
-	// (only streaming delta content uses leading "…").
-	if strings.HasPrefix(strings.TrimPrefix(plain, "USER PROMPT     "), "…") {
-		t.Errorf("collapsed must not start with a leading ellipsis: %q", plain)
-	}
-	if !strings.Contains(plain, "…") {
-		t.Errorf("collapsed should contain the middle ellipsis, got %q", plain)
-	}
-	if !strings.HasSuffix(plain, "line") {
-		t.Errorf("collapsed should show the tail (ends with line content), got %q", plain)
-	}
-	// The head should contain the first line so the user sees the topic.
-	if !strings.Contains(plain, "first") {
-		t.Errorf("collapsed should keep the head (first line), got %q", plain)
-	}
-	if strings.Contains(plain, "\n") {
-		t.Errorf("collapsed must not contain raw newlines: %q", plain)
-	}
-	if w := ansi.StringWidth(plain); w > 34 {
-		t.Errorf("collapsed width = %d, want <= 34: %q", w, plain)
-	}
+	// Invariant cases — verify the head/tail/width invariants that
+	// hold for every truncation scenario. These use WindowBuffer so the
+	// full rendering pipeline (label + arrow + styling) is exercised.
+	t.Run("invariants", func(t *testing.T) {
+		type check struct {
+			name        string
+			content     string
+			width       int
+			headContain string // substring expected in the head (before the "…")
+			tailSuffix  string // substring expected at the tail (after the "…")
+			ellipsisMid bool   // true → "…" must sit between head and tail (not at line start)
+		}
+		cases := []check{
+			{
+				name:        "narrow ASCII: head + … + tail",
+				content:     "first line\nsecond line\nthird line",
+				width:       34,
+				headContain: "first",
+				tailSuffix:  "line",
+				ellipsisMid: true,
+			},
+			{
+				name:        "narrow CJK: head + … + tail (cluster-safe)",
+				content:     "请把 /home/user/project/src/main.go 第 100 行的函数重构，注意保持接口兼容性并添加单元测试",
+				width:       30,
+				headContain: "请把",
+				tailSuffix:  "测试",
+				ellipsisMid: true,
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				wb := NewWindowBuffer(tc.width, styles)
+				wb.AppendOrUpdate(tlv.TagUserT, "u1", tc.content)
 
-	// Multiple text parts: summary covers ALL parts, not just the first.
-	ur = &userRenderer{textParts: []string{"part one", "part two"}}
-	line, _ = ur.BuildCollapsed(100, styles)
-	if want := "USER PROMPT     part one\\npart two"; stripANSI(line) != want {
-		t.Errorf("multi-part BuildCollapsed = %q, want %q", stripANSI(line), want)
-	}
+				plain := stripANSI(wb.GetAll(-1, false))
+
+				// Single visual line.
+				if strings.Contains(plain, "\n") {
+					t.Fatalf("collapsed user line must be a single line, got %q", plain)
+				}
+				// Width budget.
+				if w := ansi.StringWidth(plain); w > tc.width {
+					t.Errorf("line width %d > budget %d: %q", w, tc.width, plain)
+				}
+				if tc.ellipsisMid {
+					// "…" sits between head and tail (never leading).
+					if !strings.Contains(plain, "…") {
+						t.Fatalf("expected middle ellipsis: %q", plain)
+					}
+					rest := strings.TrimPrefix(plain, "▶ USER PROMPT")
+					if strings.HasPrefix(rest, "…") {
+						t.Errorf("ellipsis must NOT be at line START: %q", plain)
+					}
+				}
+				// Head carries the topic.
+				if !strings.Contains(plain, tc.headContain) {
+					t.Errorf("head should contain %q: %q", tc.headContain, plain)
+				}
+				// Tail carries the latest characters.
+				if !strings.HasSuffix(strings.TrimRight(plain, " "), tc.tailSuffix) {
+					t.Errorf("tail should end with %q: %q", tc.tailSuffix, plain)
+				}
+			})
+		}
+	})
 }
 
 // TestUserPromptLabel: the user window label is "USER PROMPT" in both the
@@ -251,39 +313,6 @@ func TestUserPromptLabel(t *testing.T) {
 	plain = stripANSI(wb.GetAll(-1, false))
 	if !strings.Contains(plain, "▼ USER PROMPT") {
 		t.Errorf("expanded header should contain ▼ USER PROMPT, got %q", plain)
-	}
-}
-
-// TestUserPromptCollapsedHeadAndTailEllipsis: an over-long USER folded
-// summary uses head+tail (NOT leading "…"), keeping both the topic and
-// the latest content. Same rule as assistant text.
-func TestUserPromptCollapsedHeadAndTailEllipsis(t *testing.T) {
-	wb := NewWindowBuffer(30, DefaultStyles())
-	long := "请把 /home/user/project/src/main.go 第 100 行的函数重构，注意保持接口兼容性并添加单元测试"
-	wb.AppendOrUpdate(tlv.TagUserT, "u1", long)
-
-	plain := stripANSI(wb.GetAll(-1, false))
-	if strings.Contains(plain, "\n") {
-		t.Fatalf("collapsed user line must be a single line, got %q", plain)
-	}
-	if !strings.Contains(plain, "…") {
-		t.Fatalf("long user summary should be truncated with an ellipsis, got %q", plain)
-	}
-	// The ellipsis sits between head and tail — never at the line start
-	// (only streaming delta content uses leading "…").
-	if strings.HasPrefix(strings.TrimPrefix(plain, "▶ USER PROMPT"), "…") {
-		t.Errorf("ellipsis must NOT be at the line START: %q", plain)
-	}
-	// The line ends with some tail portion (latest characters).
-	if !strings.HasSuffix(strings.TrimRight(plain, " "), "测试") {
-		t.Errorf("collapsed user line should end with the content tail, got %q", plain)
-	}
-	// The head should contain the topic phrase.
-	if !strings.Contains(plain, "请把") {
-		t.Errorf("collapsed user line should keep the head (topic), got %q", plain)
-	}
-	if w := ansi.StringWidth(plain); w > 30 {
-		t.Errorf("collapsed line width = %d, want <= 30: %q", w, plain)
 	}
 }
 
