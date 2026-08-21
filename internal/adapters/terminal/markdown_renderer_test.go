@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	ansi "github.com/charmbracelet/x/ansi"
+
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -380,5 +382,145 @@ func TestMarkdownModeTableCellSplitAcrossDeltas(t *testing.T) {
 	// The last row must be a proper 6-column row ending with " |".
 	if !strings.Contains(rendered, "/run/user/1001 |") {
 		t.Fatalf("last row must end with the closing pipe:\n%s", rendered)
+	}
+}
+
+// TestMarkdownTableWideChars covers unicode handling in markdown table
+// cells: CJK (width 2), ZWJ emoji clusters (👨‍👩‍👧‍👦), and combining
+// marks (é). The rendering pipeline uses ansi.StringWidth for column
+// sizing and ansi.Hardwrap (cluster-aware) for truncation, so we expect:
+//   - column widths sized by display columns (not byte length)
+//   - cell truncation cuts whole clusters, never splitting mid-rune or
+//     mid-cluster (no U+FFFD artifacts)
+//   - padding spaces compensate for wide chars
+func TestMarkdownTableWideChars(t *testing.T) {
+	styles := NewStyles(theme.DefaultTheme())
+
+	// familyEmoji is the ZWJ family 👨‍👩‍👧‍👦 — 7 codepoints, 1 grapheme
+	// cluster, 2 display cols. Used to verify cluster integrity in cells.
+	familyEmoji := "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466"
+
+	cases := []struct {
+		name        string
+		content     string
+		width       int
+		mustContain []string // substrings (post-stripANSI) the output must contain
+		mustNotHave []string // substrings the output must NOT contain (e.g. U+FFFD)
+	}{
+		{
+			name:    "CJK fits without truncation",
+			content: "| col1 | col2 |\n|---|---|\n| 中文 | 内容 |\n| 日本語 | データ |",
+			width:   40,
+			mustContain: []string{
+				"中文", "内容", "日本語", "データ",
+			},
+			mustNotHave: []string{"…", "\uFFFD"},
+		},
+		{
+			name:    "CJK cell truncated cleanly",
+			content: "| a | b |\n|---|---|\n| 中文内容测试更多内容 | x |",
+			width:   20,
+			mustContain: []string{
+				"…", // truncation marker present
+			},
+			mustNotHave: []string{
+				"\uFFFD", // no cluster-split artifacts
+			},
+		},
+		{
+			name:    "ZWJ family cluster survives intact in cell",
+			content: "| a | b |\n|---|---|\n| " + familyEmoji + " | x |",
+			width:   40,
+			mustContain: []string{
+				familyEmoji, // cluster preserved as a whole
+			},
+			mustNotHave: []string{"\uFFFD"}, // no broken cluster (U+FFFD only appears when a cluster is split)
+		},
+		{
+			name:    "ZWJ family truncated (dropped whole, not split)",
+			content: "| a | b |\n|---|---|\n| " + familyEmoji + "rest | x |",
+			width:   10, // very narrow — forces truncation
+			mustNotHave: []string{
+				"\uFFFD", // never a broken cluster
+				// The full family emoji would survive intact if it fits
+				// — we only verify it's not broken when it gets cut.
+			},
+		},
+		{
+			name:    "combining mark stays attached",
+			content: "| a | b |\n|---|---|\n| café résumé | x |",
+			width:   20,
+			mustContain: []string{
+				"café", // combining acute preserved
+			},
+			mustNotHave: []string{"\uFFFD"},
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &textRenderer{tag: tlv.TagAssistantT}
+			r.AppendFromTLV(tlv.TagAssistantT, tt.content)
+			r.ToggleMarkdownMode() // enable table formatting
+			lines, _ := r.BuildInner(tt.width, false, styles)
+			rendered := joinVisualLines(lines)
+			plain := stripANSI(rendered)
+
+			for _, want := range tt.mustContain {
+				if !strings.Contains(plain, want) {
+					t.Errorf("rendered output must contain %q:\n%s", want, rendered)
+				}
+			}
+			for _, bad := range tt.mustNotHave {
+				if strings.Contains(plain, bad) {
+					t.Errorf("rendered output must NOT contain %q:\n%s", bad, rendered)
+				}
+			}
+			// Every rendered line must respect the width budget.
+			for _, line := range lines {
+				if w := ansi.StringWidth(line.Text); w > tt.width {
+					t.Errorf("line width %d exceeds budget %d: %q", w, tt.width, line.Text)
+				}
+			}
+		})
+	}
+}
+
+// TestMarkdownTableColumnShrinkingWithWideChars verifies the shrink-to-fit
+// path produces valid output when the widest cell contains CJK content.
+// The shrink step reduces width by 1 column at a time — for CJK cells
+// that means we may shrink to a width that doesn't fit any single CJK
+// char, but fitCell/truncateWithSuffix must produce a valid (possibly
+// truncated) cell rather than leaving the table misaligned.
+func TestMarkdownTableColumnShrinkingWithWideChars(t *testing.T) {
+	styles := NewStyles(theme.DefaultTheme())
+
+	// 3-col table where the first column is much wider than the others
+	// and contains CJK content. Narrow window forces shrinking.
+	content := "| 名前 | age | city |\n|---|---|---|\n| 山田太郎さん | 30 | 東京 |"
+	r := &textRenderer{tag: tlv.TagAssistantT}
+	r.AppendFromTLV(tlv.TagAssistantT, content)
+	r.ToggleMarkdownMode() // enable table formatting
+	lines, _ := r.BuildInner(20, false, styles)
+	rendered := joinVisualLines(lines)
+	plain := stripANSI(rendered)
+
+	// Header column should be visible (possibly truncated).
+	if !strings.Contains(plain, "名") {
+		t.Errorf("header column 名 should be visible (possibly truncated):\n%s", rendered)
+	}
+	// Truncation marker should be present (both rows truncated).
+	if !strings.Contains(plain, "…") {
+		t.Errorf("expected truncation marker:\n%s", rendered)
+	}
+	// No broken clusters.
+	if strings.Contains(plain, "\uFFFD") {
+		t.Errorf("rendered output must not contain U+FFFD:\n%s", rendered)
+	}
+	// Every line respects the width budget.
+	for _, line := range lines {
+		if w := ansi.StringWidth(line.Text); w > 20 {
+			t.Errorf("line width %d exceeds budget 20: %q", w, line.Text)
+		}
 	}
 }
