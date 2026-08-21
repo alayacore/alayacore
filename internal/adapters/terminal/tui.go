@@ -213,7 +213,6 @@ const (
 	DefaultHeight = 20
 
 	// Component sizing
-	InputPaddingH     = 8  // horizontal padding for input fields (border + padding both sides)
 	SelectorMaxHeight = 30 // maximum height for model selector and similar overlays
 	SelectorListRows  = 8  // content rows inside selector borders
 	LayoutGap         = 4  // non-content rows subtracted for selector/list sizing
@@ -256,27 +255,27 @@ const (
 // pointers.  See docs/tui-architecture.md for the rationale.
 type Terminal struct {
 	// ── Elm UI state (value types, copied on every Update) ──────────────
-	display            DisplayModel     // conversation display with virtual scrolling
-	input              PromptInput      // text input, attachments, focus
-	modelSelector      ModelSelector    // model switching overlay
-	themeSelector      ThemeSelector    // theme switching overlay
-	helpWindow         HelpWindow       // keybinding help overlay
-	confirmOverlay     ConfirmDialog    // quit/cancel/tool confirm dialogs
-	mcpInitOverlay     ConfirmDialog    // MCP initialization progress overlay
-	attachmentWindow   AttachmentWindow // file/URL attachment picker
-	focusedWindow      string           // which pane has focus: "input" or "display"
-	statusText         string           // status bar text (active)
-	statusTextDim      string           // status bar text (dimmed, out of focus)
-	inProgress         bool             // whether a task is currently running
-	windowWidth        int              // terminal width in cells
-	windowHeight       int              // terminal height in cells
-	activeTheme        string           // last theme name from system info updates
-	appliedTheme       string           // last theme name that was visually applied
-	pendingAttachments []attachment     // pending file attachments for multi-modal input
-	lastStatusVersion  uint64           // last StatusSnapshot.Version seen by updateStatus
-	lastStatusAutoFollow *bool         // display.shouldFollow() baked into m.statusText; used to detect local flips (e.g. via navigation) that don't bump the snapshot version
+	display              DisplayModel     // conversation display with virtual scrolling
+	input                PromptInput      // text input, attachments, focus
+	modelSelector        ModelSelector    // model switching overlay
+	themeSelector        ThemeSelector    // theme switching overlay
+	helpWindow           HelpWindow       // keybinding help overlay
+	confirmOverlay       ConfirmDialog    // quit/cancel/tool confirm dialogs
+	mcpInitOverlay       ConfirmDialog    // MCP initialization progress overlay
+	attachmentWindow     AttachmentWindow // file/URL attachment picker
+	focusedWindow        string           // which pane has focus: "input" or "display"
+	statusText           string           // status bar text (active)
+	statusTextDim        string           // status bar text (dimmed, out of focus)
+	inProgress           bool             // whether a task is currently running
+	windowWidth          int              // terminal width in cells
+	windowHeight         int              // terminal height in cells
+	activeTheme          string           // last theme name from system info updates
+	appliedTheme         string           // last theme name that was visually applied
+	pendingAttachments   []attachment     // pending file attachments for multi-modal input
+	lastStatusVersion    uint64           // last StatusSnapshot.Version seen by updateStatus
+	lastStatusAutoFollow *bool            // display.shouldFollow() baked into m.statusText; used to detect local flips (e.g. via navigation) that don't bump the snapshot version
 
-	lastModelVersion   uint64           // last ModelSnapshot.Version seen by the selector rebuild
+	lastModelVersion uint64 // last ModelSnapshot.Version seen by the selector rebuild
 
 	// renderedStatusBarCache memoizes the status-bar render output keyed
 	// by the inputs that affect it. View() is called on every frame and

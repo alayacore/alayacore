@@ -302,7 +302,7 @@ func (ms ModelSelector) measureColumns(listHeight, innerWidth, idWidth int) (nam
 	naturalCtx = max(1, naturalCtx)
 	naturalProv = max(1, naturalProv)
 
-	prefixWidth := 4 + idWidth
+	prefixWidth := 2 + idWidth
 	minName := max(10, longestName)
 	nameMaxWidth = innerWidth - prefixWidth
 

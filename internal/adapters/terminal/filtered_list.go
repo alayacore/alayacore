@@ -60,7 +60,7 @@ func (fl FilteredListCore) Close() FilteredListCore {
 func (fl FilteredListCore) WithSize(width, height int) FilteredListCore {
 	if width > 0 {
 		fl.Width = width
-		fl.FilterInput = fl.FilterInput.WithWidth(max(0, width-InputPaddingH))
+		fl.FilterInput = fl.FilterInput.WithWidth(max(0, width))
 	}
 	fl.Height = min(height-LayoutGap, SelectorMaxHeight)
 	return fl

@@ -557,7 +557,7 @@ func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
 			name += "/"
 		}
 
-		truncated := truncateWithSuffix(name, max(1, innerWidth-2))
+		truncated := truncateWithSuffix(name, max(1, innerWidth))
 		// Rows are flush left like every other overlay list — no "> "
 		// marker, no indent. Selected row is bold.
 		if isSelected {

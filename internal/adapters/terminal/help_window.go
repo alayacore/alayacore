@@ -108,7 +108,7 @@ func buildHelpItems() []HelpItem {
 		{ID: nextID(), Key: "f/b", Description: "Next/prev prompt", Type: HelpItemKey},
 		{ID: nextID(), Key: ":", Description: "Enter command mode", Type: HelpItemKey},
 		{ID: nextID(), Key: "Space", Description: "Toggle window fold", Type: HelpItemKey},
-		{ID: nextID(), Key: "r", Description: "Toggle markdown rendering (unfolded)", Type: HelpItemKey},
+		{ID: nextID(), Key: "r", Description: "Toggle markdown rendering", Type: HelpItemKey},
 		{ID: nextID(), Key: "Ctrl+F", Description: "Fork session from cursor", Type: HelpItemKey},
 	}
 	for i := range items {
@@ -133,10 +133,10 @@ func (hw HelpWindow) recalculateColumnWidths() HelpWindow {
 		}
 	}
 	innerWidth := max(0, hw.Width)
-	idealKeyWidth := innerWidth - 3 - maxDescLen
+	idealKeyWidth := innerWidth - 1 - maxDescLen
 	hw.keyColumnWidth = min(
 		max(maxKeyLen, idealKeyWidth),
-		max(1, innerWidth-2),
+		max(1, innerWidth-1),
 	)
 	return hw
 }
@@ -418,7 +418,7 @@ func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {
 	}
 
 	keyMaxWidth := hw.keyColumnWidth
-	descMaxWidth := max(0, innerWidth-3-keyMaxWidth)
+	descMaxWidth := max(0, innerWidth-1-keyMaxWidth)
 
 	key := item.Key
 	if keyMaxWidth > 0 {

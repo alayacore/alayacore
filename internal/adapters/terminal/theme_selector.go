@@ -305,7 +305,7 @@ func (ts ThemeSelector) renderThemeList(width int, borderColor color.Color) stri
 		}
 		for i := ts.ScrollIdx; i < min(ts.ScrollIdx+listHeight, len(ts.filteredThemes)); i++ {
 			t := ts.filteredThemes[i]
-			nameMaxWidth := max(0, innerWidth-2)
+			nameMaxWidth := max(0, innerWidth)
 			themeName := t.Name
 			if nameMaxWidth > 0 {
 				themeName = truncateWithSuffix(themeName, nameMaxWidth)
