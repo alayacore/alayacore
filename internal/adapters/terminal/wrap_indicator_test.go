@@ -605,6 +605,165 @@ func TestTakeHeadAndTakeTailClusterAware(t *testing.T) {
 	}
 }
 
+func TestTailParts(t *testing.T) {
+	// tailParts is the structured form of tailSummary: returns the tail
+	// portion (no leading "…") and a truncated flag. Used by callers
+	// that want to style the marker themselves (e.g. dim vs muted).
+	tests := []struct {
+		name       string
+		content    string
+		maxWidth   int
+		wantTail   string
+		wantTrunc  bool
+	}{
+		{name: "fits entirely", content: "hello", maxWidth: 20, wantTail: "hello", wantTrunc: false},
+		{name: "needs truncation", content: "aaaaaaaaaa bbbbbbbbbb cccccccccc", maxWidth: 15, wantTail: "bbbb cccccccccc", wantTrunc: true},
+		{name: "zero width", content: "hello", maxWidth: 0, wantTail: "", wantTrunc: false},
+		{name: "single column", content: "hello", maxWidth: 1, wantTail: "", wantTrunc: false},
+		{name: "CJK multibyte safe", content: "中文内容测试尾部", maxWidth: 8, wantTail: "测试尾部", wantTrunc: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tail, trunc := tailParts(tt.content, tt.maxWidth)
+			if tail != tt.wantTail {
+				t.Errorf("tailParts(%q, %d) tail = %q, want %q", tt.content, tt.maxWidth, tail, tt.wantTail)
+			}
+			if trunc != tt.wantTrunc {
+				t.Errorf("tailParts(%q, %d) truncated = %v, want %v", tt.content, tt.maxWidth, trunc, tt.wantTrunc)
+			}
+		})
+	}
+}
+
+func TestHeadAndTailParts(t *testing.T) {
+	// headAndTailParts is the structured form of headAndTailSummary.
+	// Returns head and tail separately plus a truncated flag. When not
+	// truncated, head is the full content and tail is empty.
+	tests := []struct {
+		name       string
+		content    string
+		maxWidth   int
+		wantHead   string
+		wantTail   string
+		wantTrunc  bool
+	}{
+		{
+			name: "fits entirely",
+			content: "hello",
+			maxWidth: 20,
+			wantHead: "hello", wantTail: "", wantTrunc: false,
+		},
+		{
+			name: "needs head+tail",
+			content: "aaaaaaaaaa bbbbbbbbbb cccccccccc",
+			maxWidth: 15,
+			// headWidth = 6, tailWidth = 8
+			wantHead: "aaaaaa", wantTail: "cccccccc", wantTrunc: true,
+		},
+		{
+			name: "single column: head only",
+			content: "hello",
+			maxWidth: 1,
+			wantHead: "h", wantTail: "", wantTrunc: true,
+		},
+		{
+			name: "two columns: head only (no room for ellipsis)",
+			content: "hello",
+			maxWidth: 2,
+			wantHead: "he", wantTail: "", wantTrunc: true,
+		},
+		{
+			name: "zero width",
+			content: "hello",
+			maxWidth: 0,
+			wantHead: "", wantTail: "", wantTrunc: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			head, tail, trunc := headAndTailParts(tt.content, tt.maxWidth)
+			if head != tt.wantHead {
+				t.Errorf("headAndTailParts(%q, %d) head = %q, want %q", tt.content, tt.maxWidth, head, tt.wantHead)
+			}
+			if tail != tt.wantTail {
+				t.Errorf("headAndTailParts(%q, %d) tail = %q, want %q", tt.content, tt.maxWidth, tail, tt.wantTail)
+			}
+			if trunc != tt.wantTrunc {
+				t.Errorf("headAndTailParts(%q, %d) truncated = %v, want %v", tt.content, tt.maxWidth, trunc, tt.wantTrunc)
+			}
+		})
+	}
+}
+
+func TestFoldedTextWindowEllipsisIsDimmed(t *testing.T) {
+	// The truncation marker ("…") in collapsed text summaries is rendered
+	// with the dim color (styles.Status), not muted (styles.System).
+	// This visually separates the marker from the actual content. Applies
+	// to both head+tail ("…middle…") and tail-only ("…tail") summaries.
+	styles := DefaultStyles()
+	wb := NewWindowBuffer(80, styles)
+
+	// AT (assistant) — uses headAndTailSummary, middle "…" is dimmed.
+	longText := strings.Repeat("beginning of answer ", 3) + " and then some more content ending"
+	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", longText)
+	wb.ToggleFold(0)
+	atRendered := wb.GetAll(-1, false)
+	atPlain := stripANSI(atRendered)
+	if !strings.Contains(atPlain, "…") {
+		t.Fatalf("AT collapsed summary should contain the middle ellipsis: %q", atPlain)
+	}
+	// Find the "…" in the rendered output and verify it carries the dim
+	// color codes (status style), not the muted ones.
+	if !containsDimEllipsis(atRendered, styles) {
+		t.Errorf("AT middle ellipsis should carry the dim (Status) color, got %q", atRendered)
+	}
+
+	// SN (system notify) — uses tailSummary, leading "…" is dimmed.
+	wb2 := NewWindowBuffer(40, styles)
+	wb2.AppendOrUpdate("SN", "n1", strings.Repeat("very long system notification that will need truncation ", 3))
+	snRendered := wb2.GetAll(-1, false)
+	snPlain := stripANSI(snRendered)
+	if !strings.HasPrefix(snPlain, "▶ SYSTEM NOTIFY") || !strings.Contains(snPlain, "…") {
+		t.Fatalf("SN collapsed summary should start with the leading ellipsis: %q", snPlain)
+	}
+	if !containsDimEllipsis(snRendered, styles) {
+		t.Errorf("SN leading ellipsis should carry the dim (Status) color, got %q", snRendered)
+	}
+}
+
+// containsDimEllipsis checks that the first "…" character in the
+// rendered ANSI string is wrapped in the Status (dim) color — not the
+// System (muted) color used by the surrounding content. We do this by
+// rendering "…" with each style and seeing which escape codes appear
+// before it in the actual output.
+func containsDimEllipsis(rendered string, styles *Styles) bool {
+	dimStyled := styles.Status.Render("…")
+
+	// Find the position of the first "…" character (3 UTF-8 bytes).
+	idx := strings.Index(rendered, "…")
+	if idx < 0 {
+		return false
+	}
+
+	// Look for the SGR sequence that styles this "…": the last "\x1b["
+	// that opens a sequence ending with 'm' before idx.
+	escStart := strings.LastIndex(rendered[:idx], "\x1b[")
+	if escStart < 0 {
+		return false
+	}
+	mIdx := strings.IndexByte(rendered[escStart:], 'm')
+	if mIdx < 0 {
+		return false
+	}
+	prefix := rendered[escStart : escStart+mIdx+1]
+
+	// Does this prefix match the dim style's prefix? If yes, the "…" is
+	// dim — the desired behavior.
+	return strings.HasPrefix(dimStyled, prefix)
+}
+
 func TestFoldedTextWindowShowsTail(t *testing.T) {
 	// Streaming content: the collapsed summary shows the LATEST text so
 	// the user sees new deltas arriving.

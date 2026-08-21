@@ -164,7 +164,8 @@ func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
 		t.Fatalf("lineCount = %d, want 3 (delta preview + box rules)", lineCount)
 	}
 	preview := lines[0].Text
-	if !strings.HasPrefix(preview, "…") {
+	plain := stripANSI(preview)
+	if !strings.HasPrefix(plain, "…") {
 		t.Errorf("expanded delta preview should start with the ellipsis, got %q", preview)
 	}
 	if !strings.HasSuffix(preview, `hello"}`) {
@@ -301,7 +302,8 @@ func TestUFOnlyCollapsedTailEllipsis(t *testing.T) {
 
 // TestUfPreviewTailEllipsis: the Uf output preview shown while a tool is
 // executing follows the same rule as the Af delta preview — the latest
-// output tail is kept with a leading "…".
+// output tail is kept with a leading "…" (rendered dim). The "…" is
+// style-wrapped, so callers reading the unstyled text use stripANSI.
 func TestUfPreviewTailEllipsis(t *testing.T) {
 	long := strings.Repeat("progress line ", 10) // > 80 columns
 	tr := &toolRenderer{
@@ -311,11 +313,13 @@ func TestUfPreviewTailEllipsis(t *testing.T) {
 		status: ToolStatusPending,
 	}
 
-	p := tr.previewOutput(80)
-	if !strings.HasPrefix(p, "…") {
+	styles := DefaultStyles()
+	p := tr.previewOutput(80, styles)
+	plain := stripANSI(p)
+	if !strings.HasPrefix(plain, "…") {
 		t.Errorf("Uf preview should start with the ellipsis, got %q", p)
 	}
-	if !strings.HasSuffix(p, "line ") {
+	if !strings.HasSuffix(plain, "line ") {
 		t.Errorf("Uf preview should end with the output tail, got %q", p)
 	}
 	if w := ansi.StringWidth(p); w > 80 {
@@ -324,7 +328,7 @@ func TestUfPreviewTailEllipsis(t *testing.T) {
 
 	// Short preview: unchanged, no ellipsis.
 	tr.output = " 42%"
-	if p := tr.previewOutput(80); p != " 42%" {
-		t.Errorf("short preview = %q, want %q", p, " 42%")
+	if p := tr.previewOutput(80, styles); stripANSI(p) != " 42%" {
+		t.Errorf("short preview = %q, want %q", stripANSI(p), " 42%")
 	}
 }

@@ -226,6 +226,12 @@ func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, i
 // (head) and the latest content (tail); SN/SE keep tailSummary since
 // system messages are usually short. SN/SE: label and content keep
 // their System/Error colors.
+//
+// Truncation markers ("…") are rendered with styles.Status (the dim
+// color) to visually separate them from the actual content — content
+// uses the muted foreground, the marker uses the lighter dim
+// foreground. This applies to both the middle "…" in head+tail and
+// the leading "…" in tail-only summaries.
 func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	content := prepareContent(r.rawContent())
 	label := labelForTag(r.tag)
@@ -234,15 +240,34 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		line = padLabel(label)
 	}
 	summaryWidth := max(0, width-2-CollapsedLabelWidth)
+	// Track whether the "…" marker is present and its byte offset
+	// within `line` (after the label part) so the rendering step can
+	// style it dim instead of muted. ellipsisOffset = -1 means no
+	// marker (content fit, or narrow head-only fallback).
+	ellipsisOffset := -1
 	var summary string
 	switch r.tag {
 	case tlv.TagAssistantT, tlv.TagAssistantR, tlv.TagUserT:
-		// Long-form text: show both the topic (head) and the latest
-		// content (tail) so the reader can scan either signal.
-		summary = headAndTailSummary(content, summaryWidth)
+		head, tail, truncated := headAndTailParts(content, summaryWidth)
+		switch {
+		case !truncated:
+			summary = head
+		case tail == "":
+			// Narrow widths: head only, no "…".
+			summary = head
+		default:
+			summary = head + "…" + tail
+			ellipsisOffset = len(head)
+		}
 	default:
 		// System messages (SN/SE): usually short, tail-only is enough.
-		summary = tailSummary(content, summaryWidth)
+		tail, truncated := tailParts(content, summaryWidth-1)
+		if !truncated {
+			summary = tail
+		} else {
+			summary = "…" + tail
+			ellipsisOffset = 0
+		}
 	}
 	line += summary
 	line = truncateWithSuffix(line, max(0, width-2)) // safety net
@@ -254,7 +279,9 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		return styles.System.Render(line), 1
 	}
 	// Style only the label (its full padded width); the content summary
-	// is muted (uniform with every other collapsed window type).
+	// is muted (uniform with every other collapsed window type), and the
+	// truncation marker (if present) is rendered with the dim color to
+	// visually separate it from the actual content.
 	labelPart := padLabel(label)
 	styledLabel := labelStyleForTag(r.tag, styles).Render(line[:min(len(labelPart), len(line))])
 	if len(line) <= len(labelPart) {
@@ -264,7 +291,17 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if styles == nil {
 		return styledLabel + rest, 1
 	}
-	return styledLabel + styles.System.Render(rest), 1
+	// Split `rest` at the "…" marker (if any) and render it dim.
+	if ellipsisOffset < 0 || styles == nil {
+		return styledLabel + styles.System.Render(rest), 1
+	}
+	ellipsisAbs := len(labelPart) + ellipsisOffset
+	before := line[:ellipsisAbs]
+	marker := line[ellipsisAbs : ellipsisAbs+len("…")]
+	after := line[ellipsisAbs+len("…"):]
+	return labelStyleForTag(r.tag, styles).Render(before) +
+		styles.Status.Render(marker) +
+		styles.System.Render(after), 1
 }
 
 // renderCollapsedLine styles a truncated collapsed line: the label part
@@ -317,19 +354,43 @@ func (r *textRenderer) TryLineCount(width int) (int, bool) {
 // two-character "\n" (a collapsed line must stay one visual line — line
 // heights are counted by '\n'). When the content is wider than maxWidth a
 // leading "…" marks the truncation. Multi-byte safe (rune + display width).
+//
+// The truncation marker ("…") is *not* part of the returned string when
+// styled — callers that want to dim the marker should use tailParts and
+// render the marker themselves.
 func tailSummary(content string, maxWidth int) string {
-	if maxWidth <= 0 {
-		return ""
+	// Reserve 1 column for the leading "…" when truncated.
+	tail, truncated := tailParts(content, maxWidth-1)
+	if !truncated {
+		return tail
+	}
+	return "…" + tail
+}
+
+// tailParts is the structured form of tailSummary: returns the tail
+// content (no leading "…") and a flag indicating whether truncation
+// occurred. Callers that need to style the "…" marker differently from
+// the content (e.g. dim vs muted) should use this so they can render
+// each piece with its own Style.
+//
+// When maxWidth <= 1, returns ("", false) — there's no room for content
+// even without a marker.
+func tailParts(content string, maxWidth int) (string, bool) {
+	if maxWidth <= 1 {
+		return "", false
 	}
 	// Escape newlines first so the result is a single logical line.
 	escaped := strings.ReplaceAll(content, "\n", "\\n")
 	escaped = strings.ReplaceAll(escaped, "\r", "")
 
 	if ansi.StringWidth(escaped) <= maxWidth {
-		return escaped
+		return escaped, false
 	}
-	// Take the tail that fits, leaving 1 column for the leading "…".
-	room := maxWidth - 1
+	// Take the tail that fits. We deliberately use the FULL maxWidth
+	// here (not maxWidth-1) — callers that prepend a "…" marker should
+	// subtract 1 from their own budget before calling, since we don't
+	// know if they want a marker at all. tailSummary does that adjustment.
+	room := maxWidth
 	runes := []rune(escaped)
 	width := 0
 	start := len(runes)
@@ -341,7 +402,7 @@ func tailSummary(content string, maxWidth int) string {
 		width += w
 		start = i
 	}
-	return "…" + string(runes[start:])
+	return string(runes[start:]), true
 }
 
 // headAndTailSummary renders the leading AND trailing parts of content for
@@ -371,18 +432,43 @@ func tailSummary(content string, maxWidth int) string {
 // variation selectors are never split mid-cluster — unlike the per-rune
 // tailSummary above, which is fine for CJK and BMP but can chop
 // multi-rune clusters.
+//
+// The "…" marker is *not* part of the returned string when styled —
+// callers that want to dim the marker should use headAndTailParts and
+// render the marker themselves.
 func headAndTailSummary(content string, maxWidth int) string {
+	head, tail, truncated := headAndTailParts(content, maxWidth)
+	switch {
+	case !truncated:
+		return head
+	case tail == "":
+		// Narrow widths: head only (no room for ellipsis + tail).
+		return head
+	default:
+		return head + "…" + tail
+	}
+}
+
+// headAndTailParts is the structured form of headAndTailSummary: returns
+// the head and tail portions separately, and a flag indicating whether
+// the content was truncated. The middle "…" marker is *not* included in
+// either — callers render it themselves with their own Style.
+//
+// When truncated is false, head is the full content and tail is "".
+// When truncated is true and tail is "", the function fell back to head-
+// only (very narrow widths where there's no room for ellipsis + tail).
+func headAndTailParts(content string, maxWidth int) (head, tail string, truncated bool) {
 	if maxWidth <= 0 {
-		return ""
+		return "", "", false
 	}
 	escaped := strings.ReplaceAll(content, "\n", "\\n")
 	escaped = strings.ReplaceAll(escaped, "\r", "")
 
 	if ansi.StringWidth(escaped) <= maxWidth {
-		return escaped
+		return escaped, "", false
 	}
 	if maxWidth <= 2 {
-		return takeHead(escaped, maxWidth)
+		return takeHead(escaped, maxWidth), "", true
 	}
 
 	// 40/60 split. Integer math: headWidth = maxWidth * 40 / 100.
@@ -395,9 +481,9 @@ func headAndTailSummary(content string, maxWidth int) string {
 	tailWidth := maxWidth - headWidth - 1
 	if tailWidth < 1 {
 		// Very narrow widths where head already claims most of the room.
-		return takeHead(escaped, maxWidth)
+		return takeHead(escaped, maxWidth), "", true
 	}
-	return takeHead(escaped, headWidth) + "…" + takeTail(escaped, tailWidth)
+	return takeHead(escaped, headWidth), takeTail(escaped, tailWidth), true
 }
 
 // takeHead returns the leading grapheme clusters of s whose total display
@@ -647,6 +733,9 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 // the arrow. Media badges always come first and therefore remain visible
 // even when the text is long. A media-only message shows all attachment
 // types and their counts in the available width.
+//
+// Truncation markers ("…") are rendered with styles.Status to visually
+// separate them from the actual content (muted).
 func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	content := prepareContent(strings.Join(r.textParts, "\n"))
 	content = strings.TrimSpace(content)
@@ -657,22 +746,78 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 
 	label := padLabel("USER PROMPT")
 	room := max(0, width-2-ansi.StringWidth(label))
-	summary := ""
+
+	// Build summary as a sequence of (text, hasLeadingEllipsis) pairs so
+	// each piece can be styled individually — ellipses dim, content muted.
+	type part struct {
+		text             string
+		leadingEllipsis  bool
+	}
+	var parts []part
 	if mediaSummary != "" {
-		summary = tailSummary(mediaSummary, room)
-		if content != "" && summary != "" {
-			textRoom := max(0, room-ansi.StringWidth(summary)-1)
-			if textRoom > 0 {
-				summary += " " + tailSummary(content, textRoom)
+		tail, trunc := tailParts(mediaSummary, max(0, room-1))
+		parts = append(parts, part{text: tail, leadingEllipsis: trunc})
+		if content != "" {
+			// Room for the text tail after the media tail + separator.
+			textRoom := max(0, room-ansi.StringWidth(tail)-1)
+			if trunc {
+				textRoom-- // also subtract 1 for the media "…" marker
+			}
+			if textRoom > 1 {
+				tail2, trunc2 := tailParts(content, textRoom-1)
+				parts = append(parts, part{text: " " + tail2, leadingEllipsis: trunc2})
 			}
 		}
 	} else {
-		summary = tailSummary(content, room)
+		tail, trunc := tailParts(content, max(0, room-1))
+		parts = append(parts, part{text: tail, leadingEllipsis: trunc})
 	}
 
-	line := label + summary
-	line = truncateWithSuffix(line, max(0, width-2)) // safety net
-	return renderCollapsedLine(line, padLabel("USER PROMPT"), labelStyleForTag(tlv.TagUserT, styles), styles.System), 1
+	// Compose the unstyled line (for the safety net truncation), then
+	// render each part with its own style.
+	var plainLine strings.Builder
+	plainLine.WriteString(label)
+	for _, p := range parts {
+		if p.leadingEllipsis {
+			plainLine.WriteString("…")
+		}
+		plainLine.WriteString(p.text)
+	}
+	line := truncateWithSuffix(plainLine.String(), max(0, width-2)) // safety net
+
+	// Render with styling: label via labelStyle, ellipses via Status
+	// (dim), content via System (muted). We split the line at the label
+	// boundary; the ellipses fall inside the content portion.
+	labelStyle := labelStyleForTag(tlv.TagUserT, styles)
+	var rendered strings.Builder
+	if len(line) <= len(label) {
+		return labelStyle.Render(line), 1
+	}
+	// Render up to the first content char with label style, then iterate
+	// through the parts.
+	rendered.WriteString(labelStyle.Render(line[:len(label)]))
+	cursor := len(label)
+	for _, p := range parts {
+		if p.leadingEllipsis {
+			// The "…" may have been cut by truncateWithSuffix — only
+			// render if it's still in the line.
+			if cursor+len("…") <= len(line) {
+				rendered.WriteString(styles.Status.Render(line[cursor : cursor+len("…")]))
+			}
+			cursor += len("…")
+		}
+		// Render the part's text. It might have been truncated; only
+		// take what's left in the line.
+		end := cursor + len(p.text)
+		if end > len(line) {
+			end = len(line)
+		}
+		if cursor < end {
+			rendered.WriteString(styles.System.Render(line[cursor:end]))
+		}
+		cursor += len(p.text)
+	}
+	return rendered.String(), 1
 }
 
 // ============================================================================
@@ -730,7 +875,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// UF-only windows (no tool name, created from UF tag) render as plain text.
 	if r.isUF {
 		output := r.output
-		if p := r.previewOutput(innerWidth); p != "" {
+		if p := r.previewOutput(innerWidth, styles); p != "" {
 			// Uf preview snapshot — single line, truncated.
 			output = p
 		}
@@ -743,16 +888,22 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// Neither carries the status indicator nor the "name: " prefix — the
 	// indicator lives in the header line (TOOL CALL ⠋) and the tool name is
 	// shown there too. Content is plain (no color, no bold); only the
-	// "---" separator keeps its muted color.
+	// "---" separator and any leading "…" truncation marker keep their
+	// styled colors (muted / dim).
 	var call string
 	if r.deltaBuffer != "" {
 		// Arguments still streaming in — one-line preview showing the
 		// LATEST chunk: like every other collapsed/delta summary, keep the
 		// tail of the delta (new JSON arrives at the tail) and mark the
-		// truncated head with a leading "…" — never a trailing ellipsis.
+		// truncated head with a leading "…" (never a trailing ellipsis).
 		deltaContent := flattenDelta(r.deltaBuffer)
-		deltaContent = tailSummary(deltaContent, max(0, innerWidth))
-		call = deltaContent
+		tail, truncated := tailParts(deltaContent, max(0, innerWidth-1))
+		var sb strings.Builder
+		if truncated {
+			sb.WriteString(styles.Status.Render("…"))
+		}
+		sb.WriteString(tail)
+		call = sb.String()
 	} else {
 		switch r.name {
 		case "edit_file":
@@ -772,7 +923,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// Output is plain text; the separator keeps its muted color.
 	if r.output != "" {
 		output := r.output
-		if p := r.previewOutput(innerWidth); p != "" {
+		if p := r.previewOutput(innerWidth, styles); p != "" {
 			// Uf preview snapshot — single line, truncated.
 			output = p
 		}
@@ -798,29 +949,41 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 	// UF-only windows (no tool name) render like plain text: no label,
 	// so the whole summary uses the muted color. An over-long first line
-	// keeps its tail with a leading "…" like every other summary.
+	// keeps its tail with a leading "…" (dim) like every other summary.
 	if r.isUF && r.name == "" {
 		first := firstLine(prepareContent(r.output))
-		first = tailSummary(first, max(0, width-2))
-		return styles.System.Render(first), 1
+		tail, truncated := tailParts(first, max(0, width-2-1))
+		var sb strings.Builder
+		if truncated {
+			sb.WriteString(styles.Status.Render("…"))
+		}
+		sb.WriteString(styles.System.Render(tail))
+		return sb.String(), 1
 	}
 
 	labelStyle := labelStyleForTag(r.Tag(), styles)
 	dot, dotStyle := r.status.statusDot(labelStyle)
 
 	var inputFirst string
+	inputFirstHasEllipsis := false
 	if r.deltaBuffer != "" {
 		// Streaming delta preview: keep the LATEST chunk's tail (new JSON
 		// arrives at the tail) with the ellipsis at the line START, exactly
 		// like the collapsed text windows — the tail shows what just
-		// arrived, "…" marks the truncated head. Room is everything after
-		// the label column + tool name + separator space.
+		// arrived, "…" marks the truncated head (rendered dim). Room is
+		// everything after the label column + tool name + separator space.
 		prefix := padLabel(toolLabelWithIndicator(dot))
 		if r.name != "" {
 			prefix += r.name + " "
 		}
 		room := max(0, width-2-ansi.StringWidth(prefix))
-		inputFirst = tailSummary(flattenDelta(r.deltaBuffer), room)
+		var tail string
+		tail, inputFirstHasEllipsis = tailParts(flattenDelta(r.deltaBuffer), room-1)
+		if inputFirstHasEllipsis {
+			inputFirst = "…" + tail
+		} else {
+			inputFirst = tail
+		}
 	} else if r.input != "" {
 		inputFirst = firstLine(prepareContent(r.input))
 		// The input's first line is usually "name: args". The tool name is
@@ -884,7 +1047,16 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		if nameByteLen > 0 {
 			sb.WriteString(styles.ToolContent.Bold(true).Render(line[contentStart:nameEnd]))
 		}
-		sb.WriteString(styles.ToolContent.Render(line[nameEnd:]))
+		// When the inputFirst delta was truncated, the leading "…" in the
+		// content area gets the dim color (styles.Status) instead of the
+		// muted ToolContent. Position: right after the name + space.
+		if inputFirstHasEllipsis && len(line) > nameEnd+1+len("…") {
+			sb.WriteString(line[nameEnd : nameEnd+1]) // space
+			sb.WriteString(styles.Status.Render(line[nameEnd+1 : nameEnd+1+len("…")]))
+			sb.WriteString(styles.ToolContent.Render(line[nameEnd+1+len("…"):]))
+		} else if len(line) > nameEnd {
+			sb.WriteString(styles.ToolContent.Render(line[nameEnd:]))
+		}
 	}
 	return sb.String(), 1
 }
@@ -893,10 +1065,12 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 // single line filling the window width, mirroring how Af previews fill
 // the window. When the snapshot does not fit, the LATEST part of the
 // output is kept with a leading "…" (never a trailing ellipsis) —
-// consistent with the delta previews. Returns "" when the output is
-// authoritative (UF has arrived) or empty, so callers fall through to
-// full multiline rendering.
-func (r *toolRenderer) previewOutput(innerWidth int) string {
+// consistent with the delta previews. The truncation marker is
+// rendered dim (styles.Status) so it's visually distinct from the
+// actual content. Returns "" when the output is authoritative (UF has
+// arrived) or empty, so callers fall through to full multiline
+// rendering.
+func (r *toolRenderer) previewOutput(innerWidth int, styles *Styles) string {
 	if r.status != ToolStatusPending || r.output == "" {
 		return ""
 	}
@@ -908,9 +1082,12 @@ func (r *toolRenderer) previewOutput(innerWidth int) string {
 	// as 0 width, so truncating raw tabs would let the expanded preview
 	// overflow the window and soft-wrap at the terminal.
 	out = expandTabs(out)
-	// Fill the width; tail kept with a leading ellipsis when it does not
-	// fit.
-	return tailSummary(out, max(0, innerWidth))
+	// Tail kept with a leading ellipsis (dim) when it does not fit.
+	tail, truncated := tailParts(out, max(0, innerWidth-1))
+	if !truncated {
+		return tail
+	}
+	return styles.Status.Render("…") + tail
 }
 
 // defaultToolRender renders a tool call's input as a muted argument block:
