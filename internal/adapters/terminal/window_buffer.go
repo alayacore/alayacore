@@ -339,6 +339,44 @@ func (wb *WindowBuffer) markDirty(idx int) {
 	wb.dirty = true
 }
 
+// InvalidateRunningToolSpinners marks every executing tool window (status
+// ToolStatusPending) for re-render so its header rebuilds with the current
+// wall-clock spinner frame on the next GetAll. The tick handler calls this
+// when the display is otherwise idle: the spinner glyph is baked into the
+// window's border cache at the last render, so a long-running silent tool
+// (no Uf/Af frames → no delta-driven invalidation) would freeze the
+// spinner without it.
+//
+// Returns true when at least one window was invalidated, so callers can
+// skip the render path entirely when no tool is executing (idle tick
+// stays zero-cost).
+//
+// The invalidation sets wb.dirty (consumed by DisplayModel.updateContent
+// via IsDirty), NOT the outputWriter's drain flag — a DrainDirty() ==
+// false result does not reflect this invalidation, so the caller must
+// merge the return value into its own render decision.
+//
+// Lock discipline: takes wb.mu alone, never nested with outputWriter.mu
+// (see the ordering documented in output.go). Tool status lives on the
+// renderer inside each window, so the model exposes this invalidation
+// rather than handing windows out for the presentation layer to mutate
+// under the buffer lock.
+func (wb *WindowBuffer) InvalidateRunningToolSpinners() bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	refreshed := false
+	for i, w := range wb.windows {
+		tr, ok := w.renderer.(*toolRenderer)
+		if !ok || tr.status != ToolStatusPending {
+			continue
+		}
+		w.Invalidate() // border cache stale → rebuilt with current frame
+		wb.markDirty(i)
+		refreshed = true
+	}
+	return refreshed
+}
+
 // Clear removes all windows.
 func (wb *WindowBuffer) Clear() {
 	wb.mu.Lock()

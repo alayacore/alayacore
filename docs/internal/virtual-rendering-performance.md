@@ -253,7 +253,7 @@ so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 
 1. **UI refresh is polled at 250ms intervals** — data ingestion itself is not throttled
 2. **Render overhead is well under 0.01%** of wall time during streaming (4.1μs per 250ms tick ≈ 0.002%)
-3. **`updateContent()` skips unchanged content** efficiently
+3. **`updateContent()` skips unchanged content** efficiently — the one deliberate exception is the executing-tool spinner refresh (`InvalidateRunningToolSpinners`), which invalidates pending tool windows per tick so the header spinner keeps rotating during silent commands; it costs a ~100ns scan plus one window render, only while a tool executes (see [tool-spinner-refresh.md](tool-spinner-refresh.md))
 4. **Incremental append is O(delta)** — no quadratic accumulation for long responses
 
 ## Key Design Decisions

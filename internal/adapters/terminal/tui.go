@@ -656,7 +656,19 @@ func (m Terminal) handleDisplayRefresh() (Terminal, Cmd) {
 	// before we check the dirty flag.
 	m.out.FlushPendingDeltas()
 
-	if !m.out.DrainDirty() {
+	// While a tool executes, its spinner must keep rotating even when the
+	// tool produces no output (no Uf/Af deltas arrive, so nothing
+	// invalidates the window's border cache — the glyph is baked in at the
+	// last render). Invalidate executing tool windows on every tick; the
+	// call is a no-op when no tool is executing, so idle ticks keep the
+	// 100% skip behavior. Checked BEFORE DrainDirty so a stream of
+	// unrelated deltas cannot starve the spinner: the invalidation is
+	// additive to whatever the drain reports. Note it sets WindowBuffer's
+	// own dirty flag (consumed by updateContent via IsDirty), not the
+	// outputWriter's drain flag — hence the explicit merge below.
+	spinnerRefresh := m.out.WindowBuffer().InvalidateRunningToolSpinners()
+
+	if !m.out.DrainDirty() && !spinnerRefresh {
 		m = m.updateStatus()
 		return m, nil
 	}

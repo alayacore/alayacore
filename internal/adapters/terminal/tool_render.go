@@ -27,12 +27,20 @@ const (
 // the header shows the current frame in place of a static dot.
 var toolSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// toolSpinnerFrame returns the spinner frame for the current moment. The
+// toolSpinnerFrameAt returns the spinner frame for the given moment. The
 // frame advances with each re-render: the tool window's border cache is
-// rebuilt on every delta append and status change, so the indicator
-// rotates together with the delta refresh (no separate timer).
+// rebuilt on every delta append, status change, and (for executing tools)
+// the tick-driven spinner refresh (see
+// WindowBuffer.InvalidateRunningToolSpinners) — so the indicator rotates
+// with the refresh cadence, no separate timer. Extracted from
+// toolSpinnerFrame so tests can inject a fixed moment.
+func toolSpinnerFrameAt(t time.Time) string {
+	return toolSpinnerFrames[int(t.UnixMilli()/150)%len(toolSpinnerFrames)]
+}
+
+// toolSpinnerFrame returns the spinner frame for the current moment.
 func toolSpinnerFrame() string {
-	return toolSpinnerFrames[int(time.Now().UnixMilli()/150)%len(toolSpinnerFrames)]
+	return toolSpinnerFrameAt(time.Now())
 }
 
 // toolHeaderLabel is the fixed tool-window label shown in the header line.
