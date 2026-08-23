@@ -20,6 +20,13 @@ import (
 // Shared Marshal Helpers
 // ============================================================================
 
+// malformedToolInputPrefix marks a tool-input field whose raw bytes are
+// not valid JSON. The prefix is fixed ASCII so it can never collide with a
+// real argument, and the raw bytes are preserved after it for diagnosis.
+// It marks the RAW BYTES (the ToolInputData.Input field content) as
+// damaged — not a parsed argument, which never came into existence.
+const malformedToolInputPrefix = "malformed tool input: "
+
 // marshalToolInputData marshals a tool call (ToolInputData) to JSON bytes.
 // Each field is included only when non-zero, matching the TLV protocol's
 // start-vs-complete frame distinction:
@@ -27,19 +34,21 @@ import (
 //   - Complete frame: id + input (name is empty)
 //   - Full (persistence): id + name + input
 //
-// A malformed tool input (truncated/non-JSON bytes from the provider) is
-// string-encoded rather than rejected: json.RawMessage.MarshalJSON
-// validates the raw bytes, so marshaling it directly would abort the whole
-// step inside handleToolInputComplete — before the tool goroutine starts —
-// leaving the tool window stuck in its pending/spinner state with no UF
-// frame to settle it. With the fallback the frame still carries the input;
-// the tool then fails to parse it and reports a normal error result
-// (UF isError → ✗). nil input (start frames) is left untouched so it stays
-// JSON null. json.Marshal(string) (not %q) generates standard JSON string
-// escapes — %q's \xff form is not valid JSON.
+// A malformed tool input (truncated/non-JSON bytes that survive the
+// tool-input repair layer, which needs the input to unmarshal at all) is
+// marked with malformedToolInputPrefix rather than rejected:
+// json.RawMessage.MarshalJSON validates the raw bytes, so marshaling it
+// directly would abort the whole step inside handleToolInputComplete —
+// before the tool goroutine starts — leaving the tool window stuck in its
+// pending/spinner state with no UF frame to settle it. With the fallback
+// the frame still carries the bytes (prefix + raw, a valid JSON string);
+// the tool then fails to parse them and reports a normal error result
+// (UF isError → ✗). nil input (start frames) is left untouched so it
+// stays JSON null. json.Marshal(string) (not %q) generates standard JSON
+// string escapes — %q's \xff form is not valid JSON.
 func marshalToolInputData(id, name string, input json.RawMessage) ([]byte, error) {
 	if len(input) > 0 && !json.Valid(input) {
-		encoded, _ := json.Marshal(string(input)) // strings always marshal
+		encoded, _ := json.Marshal(malformedToolInputPrefix + string(input))
 		input = encoded
 	}
 	data, err := json.Marshal(protocol.ToolInputData{

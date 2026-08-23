@@ -2,13 +2,15 @@ package agent
 
 // Tests for marshalToolInputData's malformed-input fallback.
 //
-// A provider can stream a truncated/non-JSON tool input. json.RawMessage's
-// MarshalJSON validates the raw bytes, so marshaling it directly would
-// abort the whole step inside handleToolInputComplete — before the tool
-// goroutine starts — leaving the tool window stuck in its pending/spinner
-// state with no UF frame to settle it. The fallback string-encodes the
-// bytes so the frame still carries the input; the tool then fails to parse
-// it and reports a normal error result (UF isError → ✗).
+// A provider can stream a truncated/non-JSON tool input that survives the
+// tool-input repair layer (repair needs the input to unmarshal at all).
+// json.RawMessage's MarshalJSON validates the raw bytes, so marshaling it
+// directly would abort the whole step inside handleToolInputComplete —
+// before the tool goroutine starts — leaving the tool window stuck in its
+// pending/spinner state with no UF frame to settle it. The fallback
+// prefix-marks the raw bytes (malformedToolInputPrefix + raw, a valid
+// JSON string); the tool then fails to parse them and reports a normal
+// error result (UF isError → ✗).
 
 import (
 	"encoding/json"
@@ -47,13 +49,15 @@ func TestMarshalToolInputDataMalformedFallback(t *testing.T) {
 	if err := json.Unmarshal(data, &td); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	// Fallback: input arrives as a JSON string (quoted) instead of raw bytes.
+	// Fallback: input arrives as a JSON string carrying the malformed
+	// marker prefix followed by the raw bytes (diagnosis preserved).
 	var round string
 	if err := json.Unmarshal(td.Input, &round); err != nil {
 		t.Fatalf("fallback input must be a valid JSON string: %v", err)
 	}
-	if round != string(input) {
-		t.Errorf("round-trip mismatch: %q != %q", round, input)
+	want := malformedToolInputPrefix + string(input)
+	if round != want {
+		t.Errorf("round-trip mismatch: %q != %q", round, want)
 	}
 }
 
@@ -90,6 +94,10 @@ func TestMarshalToolInputDataValidPrimitives(t *testing.T) {
 		json.RawMessage(`[1,2,3]`), // array
 		json.RawMessage(`true`),    // bool
 		json.RawMessage(`{"a":1}`), // object
+		// A VALID string that happens to start with the marker prefix is a
+		// real argument — it must pass through unmarked (only genuinely
+		// malformed JSON gets the prefix).
+		json.RawMessage(`"malformed tool input: just a string"`),
 	}
 	for _, input := range cases {
 		data, err := marshalToolInputData("call_1", "write_file", input)
@@ -126,9 +134,10 @@ func TestMarshalToolInputDataInvalidUTF8Fallback(t *testing.T) {
 	if !json.Valid(td.Input) {
 		t.Errorf("fallback must produce valid JSON, got %q", td.Input)
 	}
-	// Go json replaces invalid UTF-8 with U+FFFD, so the round trip is not
-	// byte-identical — just assert the original ASCII prefix survives.
-	if !strings.HasPrefix(round, `{"path":"/tmp/x","bad":`) {
+	// Go json replaces invalid UTF-8 with U+FFFD, so the raw tail is not
+	// byte-identical — just assert the marker prefix and the ASCII head
+	// survive.
+	if !strings.HasPrefix(round, malformedToolInputPrefix+`{"path":"/tmp/x","bad":`) {
 		t.Errorf("fallback content mismatch: %q", round)
 	}
 }

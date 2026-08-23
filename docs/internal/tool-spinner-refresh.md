@@ -88,9 +88,10 @@ demands it.
 `InvalidateRunningToolSpinners` keeps the spinner alive, but nothing in
 the tick path can settle a window whose result frame never arrives. The
 known abnormal paths were fixed individually (malformed tool input →
-string-encoded AF frame, tool then fails parsing; canceled confirmation
-→ display-only UF error frame), but any future path that creates a tool
-window without a UF frame would leave it spinning forever.
+AF frame with the raw bytes prefix-marked as `malformed tool input: …`,
+the tool then fails parsing; canceled confirmation → display-only UF
+error frame), but any future path that creates a tool window without a
+UF frame would leave it spinning forever.
 
 `WindowBuffer.SettleUnfinishedTools()` is the systematic backstop: when
 the task completion frame arrives (`in_progress` true→false, detected by

@@ -210,3 +210,4 @@ scattered fixes in the provider code:
 | `openAIStreamState.appendToolCallArgs` string unquoting | Streaming transport | Same — different abstraction level |
 | `stripEmptyPlaceholders` | Content array structure | Removes empty reasoning/text slots, unrelated to tool input JSON |
 | `openaiConvertToolInputs` JSON-string wrapping | API compatibility | OpenAI wire format requirement, not a model-error fix |
+| `marshalToolInputData` prefix-marked fallback | Serialization | Catches input repair cannot touch — bytes that fail to unmarshal at all (truncated/malformed JSON). Marks the raw bytes with `malformed tool input: …` so the AF frame still carries them; the tool then fails parsing and reports UF ✗ (see `internal/agent/serialization.go`) |
