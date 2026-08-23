@@ -558,7 +558,14 @@ func (to *outputWriter) handleSystemTask(data json.RawMessage) {
 	if json.Unmarshal(data, &m) != nil {
 		return
 	}
-	to.status.updateTask(m.InProgress, m.CurrentStep, m.MaxSteps, m.Context)
+	if to.status.updateTask(m.InProgress, m.CurrentStep, m.MaxSteps, m.Context) {
+		// Task completion edge: settle tool windows left pending by
+		// abnormal paths (canceled confirmation, malformed/dropped frames).
+		// Normal tools already settled via their UF frames before this
+		// frame arrived (toolWg.Wait precedes handleTaskDone), so only
+		// genuine stragglers are affected.
+		to.windowBuffer.SettleUnfinishedTools()
+	}
 }
 
 func (to *outputWriter) handleSystemModel(data json.RawMessage) {

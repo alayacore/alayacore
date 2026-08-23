@@ -377,6 +377,41 @@ func (wb *WindowBuffer) InvalidateRunningToolSpinners() bool {
 	return refreshed
 }
 
+// SettleUnfinishedTools marks tool windows that never received a result
+// frame (UF) as errors. Called when the task completion frame arrives:
+// on normal paths every tool settles via its UF frame before the task
+// frame (toolWg.Wait precedes handleTaskDone), so any window still
+// pending/none here was left behind by an abnormal path — a canceled
+// confirmation, a malformed frame, a dropped UF — and would otherwise
+// spin forever (see docs/internal/tool-spinner-refresh.md).
+//
+// The window's status becomes ToolStatusError (✗) and, when it has no
+// output yet, a short explanation is shown so the user knows the tool
+// never ran to completion rather than failed with real output. Returns
+// the number of windows settled.
+func (wb *WindowBuffer) SettleUnfinishedTools() int {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	settled := 0
+	for i, w := range wb.windows {
+		tr, ok := w.renderer.(*toolRenderer)
+		if !ok {
+			continue
+		}
+		if tr.status != ToolStatusNone && tr.status != ToolStatusPending {
+			continue
+		}
+		tr.status = ToolStatusError
+		if tr.output == "" {
+			tr.output = "tool did not complete before the task ended"
+		}
+		w.Invalidate()
+		wb.markDirty(i)
+		settled++
+	}
+	return settled
+}
+
 // Clear removes all windows.
 func (wb *WindowBuffer) Clear() {
 	wb.mu.Lock()

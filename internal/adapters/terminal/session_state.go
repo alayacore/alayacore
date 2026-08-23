@@ -112,11 +112,16 @@ type mcpAuthPending struct {
 // are snapshotted before the completion broadcast overwrites currentStep
 // with 0; on the start edge (done → in-progress) they are reset so the
 // next run shows live progress rather than the previous run's summary.
-func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, context int64) {
+// The completion edge is also returned to the caller so it can settle
+// tool windows left pending by abnormal paths (see
+// outputWriter.handleSystemTask / WindowBuffer.SettleUnfinishedTools).
+func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, context int64) (completed bool) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.inProgress && !inProgress {
 		s.lastCurrentStep = s.currentStep
 		s.lastMaxSteps = s.maxSteps
+		completed = true
 	}
 	if !s.inProgress && inProgress {
 		s.lastCurrentStep = 0
@@ -127,7 +132,7 @@ func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, co
 	s.maxSteps = maxSteps
 	s.contextTokens = context
 	s.statusVersion++
-	s.mu.Unlock()
+	return completed
 }
 
 // updateModel atomically updates active model info.

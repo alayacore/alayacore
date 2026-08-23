@@ -79,5 +79,28 @@ no such driver.
 ### Future direction
 
 If the idle scan (76ns/tick) ever matters, replace it with an
-`atomic.Int32` running-tool counter maintained at the ~5 status
-transition sites — not before profile data demands it.
+`atomic.Int32` running-tool counter maintained at the status transition
+sites in `window.go` / `window_buffer.go` — not before profile data
+demands it.
+
+## Safety net: task-completion settlement
+
+`InvalidateRunningToolSpinners` keeps the spinner alive, but nothing in
+the tick path can settle a window whose result frame never arrives. The
+known abnormal paths were fixed individually (malformed tool input →
+string-encoded AF frame, tool then fails parsing; canceled confirmation
+→ display-only UF error frame), but any future path that creates a tool
+window without a UF frame would leave it spinning forever.
+
+`WindowBuffer.SettleUnfinishedTools()` is the systematic backstop: when
+the task completion frame arrives (`in_progress` true→false, detected by
+`sessionState.updateTask`'s completion edge and handled in
+`outputWriter.handleSystemTask`), every tool window still in the running
+states (`ToolStatusNone`/`ToolStatusPending`) is settled to
+`ToolStatusError` (✗) with an explanation when it has no output.
+
+This is safe by construction: on normal paths every tool settles via its
+UF frame before the task frame is written (`toolWg.Wait` precedes
+`handleTaskDone`), so the settlement only ever touches genuine
+stragglers. It is also the single place to fix if a new abnormal path
+appears — no per-path "remember to emit a settling frame" discipline.
