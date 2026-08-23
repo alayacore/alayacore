@@ -434,10 +434,17 @@ func (a *Agent) handleStreamedToolInput(ctx context.Context, tc *ToolInputPart, 
 				sendToolResult(ctx, resultCh, a.executeTool(ctx, tc, callbacks, historyID))
 			case <-ctx.Done():
 				// Canceled while waiting for confirmation — the tool never
-				// executed, so no result is produced. The collector bails on
-				// the same cancellation, so the missing result cannot
-				// deadlock it, and omitting it keeps the tool out of the
-				// salvaged history (it must not appear as if it ran).
+				// executed, so it must NOT enter the salvaged history (it
+				// would look as if it ran and failed; the collector bails
+				// on the same cancellation, so no result can deadlock it).
+				// But the AF start frame already created the tool window in
+				// the UI, which would otherwise stay stuck spinning with no
+				// UF frame to settle it. newToolOutput fires the
+				// OnToolOutput callback (UF isError → ✗) as a display-only
+				// frame; the returned part is deliberately discarded so the
+				// tool stays out of history.
+				_ = newToolOutput(callbacks, tc.ID, nil,
+					fmt.Errorf("tool execution canceled while awaiting confirmation"), historyID)
 			}
 		}(ctx, tc, historyID)
 		return

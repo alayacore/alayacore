@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"iter"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -54,11 +56,29 @@ func TestStreamSalvagesExecutedToolsOnCancel(t *testing.T) {
 	confirmRequested := make(chan struct{})
 	var gotContents []ContentPart
 	finishCalled := 0
+	// outputEvents records the display frames fired via OnToolOutput: the
+	// canceled confirmation tool (c2) must still settle its UI window
+	// with a UF error frame, even though it never ran and stays out of
+	// the salvaged history.
+	var outputEvents []struct {
+		id  string
+		err error
+	}
+	var outputMu sync.Mutex
 	callbacks := StreamCallbacks{
 		ToolNeedsConfirm: func(name string) bool { return name == "confirm_tool" },
 		OnToolConfirm: func(_ ToolConfirmRequest) <-chan bool {
 			close(confirmRequested)
 			return make(chan bool) // never answered
+		},
+		OnToolOutput: func(id string, _ []ContentPart, err error, _ uint64) error {
+			outputMu.Lock()
+			defer outputMu.Unlock()
+			outputEvents = append(outputEvents, struct {
+				id  string
+				err error
+			}{id: id, err: err})
+			return nil
 		},
 		OnStepFinish: func(contents []ContentPart, _ Usage) error {
 			finishCalled++
@@ -116,6 +136,33 @@ func TestStreamSalvagesExecutedToolsOnCancel(t *testing.T) {
 	tr, ok := gotContents[1].(*ToolOutputPart)
 	if !ok || tr.ID != "c1" || tr.GetRole() != RoleTool {
 		t.Errorf("gotContents[1] = %#v, want ToolOutputPart c1 with tool role", gotContents[1])
+	}
+
+	// The canceled confirmation tool must fire a display-only UF error
+	// frame (so its UI window settles instead of spinning forever), while
+	// staying out of the salvaged history (asserted above: 2 parts, c1
+	// pair only). c1's normal result frame is also recorded.
+	if len(outputEvents) != 2 {
+		t.Fatalf("OnToolOutput fired %d times, want 2 (c1 result + c2 cancel frame)", len(outputEvents))
+	}
+	var c2Event *struct {
+		id  string
+		err error
+	}
+	for i := range outputEvents {
+		e := &outputEvents[i]
+		if e.id == "c1" && e.err != nil {
+			t.Errorf("c1 result frame must carry no error, got %v", e.err)
+		}
+		if e.id == "c2" {
+			c2Event = e
+		}
+	}
+	if c2Event == nil {
+		t.Fatal("no OnToolOutput frame for the canceled confirmation tool c2")
+	}
+	if c2Event.err == nil || !strings.Contains(c2Event.err.Error(), "canceled") {
+		t.Errorf("c2 OnToolOutput error = %v, want a cancellation error", c2Event.err)
 	}
 }
 
