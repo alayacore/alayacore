@@ -26,7 +26,22 @@ import (
 //   - Start frame: id + name (input is nil/empty)
 //   - Complete frame: id + input (name is empty)
 //   - Full (persistence): id + name + input
+//
+// A malformed tool input (truncated/non-JSON bytes from the provider) is
+// string-encoded rather than rejected: json.RawMessage.MarshalJSON
+// validates the raw bytes, so marshaling it directly would abort the whole
+// step inside handleToolInputComplete — before the tool goroutine starts —
+// leaving the tool window stuck in its pending/spinner state with no UF
+// frame to settle it. With the fallback the frame still carries the input;
+// the tool then fails to parse it and reports a normal error result
+// (UF isError → ✗). nil input (start frames) is left untouched so it stays
+// JSON null. json.Marshal(string) (not %q) generates standard JSON string
+// escapes — %q's \xff form is not valid JSON.
 func marshalToolInputData(id, name string, input json.RawMessage) ([]byte, error) {
+	if len(input) > 0 && !json.Valid(input) {
+		encoded, _ := json.Marshal(string(input)) // strings always marshal
+		input = encoded
+	}
 	data, err := json.Marshal(protocol.ToolInputData{
 		ID:    id,
 		Name:  name,
