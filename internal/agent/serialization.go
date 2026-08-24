@@ -34,20 +34,16 @@ const malformedToolInputPrefix = "malformed tool input: "
 //   - Complete frame: id + input (name is empty)
 //   - Full (persistence): id + name + input
 //
-// A malformed tool input (truncated/non-JSON bytes that survive the
-// tool-input repair layer, which needs the input to unmarshal at all) is
-// marked with malformedToolInputPrefix rather than rejected:
-// json.RawMessage.MarshalJSON validates the raw bytes, so marshaling it
-// directly would abort the whole step inside handleToolInputComplete —
-// before the tool goroutine starts — leaving the tool window stuck in its
-// pending/spinner state with no UF frame to settle it. With the fallback
-// the frame still carries the bytes (prefix + raw, a valid JSON string);
-// the tool then fails to parse them and reports a normal error result
-// (UF isError → ✗). nil input (start frames) is left untouched so it
-// stays JSON null. json.Marshal(string) (not %q) generates standard JSON
-// string escapes — %q's \xff form is not valid JSON.
+// Non-JSON input bytes (truncated from the model stream, surviving the
+// repair layer) are prefix-marked with malformedToolInputPrefix rather
+// than rejected — RawMessage marshal would fail, the AF frame would never
+// be sent, and the tool window would stay stuck pending with no UF frame
+// to settle it. The marked bytes are a valid JSON string, so the frame is
+// delivered and the tool fails parsing normally (UF isError → ✗). nil
+// input (start frames) stays JSON null.
 func marshalToolInputData(id, name string, input json.RawMessage) ([]byte, error) {
 	if len(input) > 0 && !json.Valid(input) {
+		// json.Marshal(string), not %q: \xff is not valid JSON.
 		encoded, _ := json.Marshal(malformedToolInputPrefix + string(input))
 		input = encoded
 	}

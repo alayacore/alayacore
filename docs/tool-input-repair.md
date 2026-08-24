@@ -134,17 +134,18 @@ ToolInputCompleteEvent
     │       ├── repairObject(input, schema) → recursively fix
     │       └── return fixed JSON
     │
-    ├── handleStreamedToolInput()       → tool receives clean input
+    ├── handleStreamedToolInput()       → tool receives repaired input
+    │                                     (unfixable bytes fail parse → UF ✗)
     │
-    └── OnToolInputComplete()           → streaming callback with clean input
+    └── OnToolInputComplete()           → streaming callback with repaired input
     │
     ▼
 StepCompleteEvent (e.Contents)
     │  independent ToolInputParts from provider
     │
-    └── repairToolInputsInContents()    → history gets clean input
+    └── repairToolInputsInContents()    → history gets repaired input
         ↓
-    OnStepFinish()                      → persisted with repaired JSON
+    OnStepFinish()                      → persisted (unfixable bytes kept as-is)
 ```
 
 Repair is applied at **two points** in the streaming pipeline, because the
@@ -210,4 +211,4 @@ scattered fixes in the provider code:
 | `openAIStreamState.appendToolCallArgs` string unquoting | Streaming transport | Same — different abstraction level |
 | `stripEmptyPlaceholders` | Content array structure | Removes empty reasoning/text slots, unrelated to tool input JSON |
 | `openaiConvertToolInputs` JSON-string wrapping | API compatibility | OpenAI wire format requirement, not a model-error fix |
-| `marshalToolInputData` prefix-marked fallback | Serialization | Catches input repair cannot touch — bytes that fail to unmarshal at all (truncated/malformed JSON). Marks the raw bytes with `malformed tool input: …` so the AF frame still carries them; the tool then fails parsing and reports UF ✗ (see `internal/agent/serialization.go`) |
+| `marshalToolInputData` prefix-marked fallback | Serialization | Catches what repair cannot touch — bytes that fail to unmarshal at all. Prefix-marks them so the AF frame is still delivered and the tool fails parsing (UF ✗) instead of the frame never being sent; see `internal/agent/serialization.go` |
