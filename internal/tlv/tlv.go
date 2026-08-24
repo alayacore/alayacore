@@ -22,6 +22,8 @@
 //   - At: Assistant text delta (streaming fragment)
 //   - Ar: Assistant reasoning delta (streaming fragment)
 //   - Af: Assistant function / tool call delta (partial JSON argument)
+//   - Uf: Tool result preview snapshot (ephemeral, display-only; the
+//     authoritative result always arrives via UF)
 //
 // AT/AR behavior varies by mode:
 //   - Default (deltas enabled): At/Ar carry content; AT/AR are empty terminators.
@@ -39,9 +41,9 @@ import (
 const (
 	TagAssistantR = "AR" // Reasoning/thinking content (complete)
 	TagAssistantT = "AT" // Assistant text output (complete)
-	TagAssistantF = "AF" // JSON: id, type, name, input, status (function arguments, complete)
+	TagAssistantF = "AF" // JSON: id, name, input (function arguments, complete)
 	TagUserT      = "UT" // User text input
-	TagUserF      = "UF" // JSON: id, output, status (function result)
+	TagUserF      = "UF" // JSON: id, output, is_error (function result)
 	TagUserI      = "UI" // User image — data:image/...;base64,... or URL
 	TagUserV      = "UV" // User video — data:video/...;base64,... or URL
 	TagUserA      = "UA" // User audio — data:audio/...;base64,... or URL

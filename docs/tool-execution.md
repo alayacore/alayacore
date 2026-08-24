@@ -9,7 +9,7 @@ When a `ToolInputPart` event arrives during streaming, the agent calls `ToolNeed
 1. **No confirmation needed** — The tool executes immediately in a goroutine. Results flow back through a channel and are appended in receive order.
 2. **Confirmation needed** — A goroutine is started that obtains a per-tool confirm channel and blocks until the user responds. Once confirmed, the tool executes in the same goroutine.
 
-All results are collected and then re-ordered by tool call ID to match the original `stepMessage.Contents` order.
+All results are collected and then re-ordered by tool call ID to match the original `stepContents` order.
 
 See `internal/llm/agent.go` → `Stream()`, `streamEvents()`, and `handleStreamedToolInput()`.
 

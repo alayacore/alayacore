@@ -234,7 +234,7 @@ The dialog shows the tool name in the title and a 2-line preview of the tool's i
 
 Content in each window is wrapped to the available width using the
 **terminal's own soft-wrap** (see
-`docs/internal/virtual-rendering-performance.md`). The viewport renders each
+`internal/virtual-rendering-performance.md`). The viewport renders each
 window as a **continuous fragment** — the visual rows are joined without
 hard newlines, and every row except the last is padded with trailing
 spaces to the full window width, so the terminal soft-wraps exactly at

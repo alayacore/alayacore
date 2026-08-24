@@ -16,7 +16,7 @@ Provider API response
   → Provider extracts usage (InputTokens, OutputTokens, CacheReadTokens, CacheCreationTokens)
     → Provider emits StreamEvent{Usage: ...}
       → Agent.streamEvents merges partial usage into stepUsage
-        → Agent fires OnStepFinish(messages, stepUsage) callback
+        → Agent fires OnStepFinish(allContents, stepUsage) callback
           → session.sendEvent(stepFinishEvent{...})
             → handleTaskEvent in run() goroutine
               → ContextTokens = InputTokens + OutputTokens + CacheReadTokens + CacheCreationTokens (overwrite, only if non-zero)

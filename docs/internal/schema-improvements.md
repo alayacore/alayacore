@@ -130,4 +130,4 @@ All five built-in tools use this pattern:
 | `execute_command` | `internal/tools/execute_command.go` | ~364 |
 | `search_content` | `internal/tools/search_content.go` | ~211 |
 
-The `execute_command` tool delegates platform-specific logic to the `internal/tools/shell/` package, which handles shell detection and command execution across Unix and Windows. See [architecture.md](architecture.md) for details.
+The `execute_command` tool delegates platform-specific logic to the `internal/tools/shell/` package, which handles shell detection and command execution across Unix and Windows. See [architecture.md](../architecture.md) for details.

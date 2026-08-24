@@ -78,7 +78,7 @@ if stopReason != "" && stopReason != "end_turn" && stopReason != "max_tokens" &&
 1. The provider returns an error from the event handler via the streaming iterator's error parameter (`yield(nil, err)`)
 2. The agent's event loop in `streamEvents` receives the error from the `iter.Seq2[StreamEvent, error]` iterator (`for event, err := range events`)
 3. The agent loop terminates and returns the error to the caller
-5. The UI displays the error message to the user
+4. The UI displays the error message to the user
 
 ### Agent-level errors (truncation, max steps)
 
@@ -89,7 +89,7 @@ The agent detects truncation in `streamEvents` and checks for it in `Stream()`. 
 ```go
 // In streamEvents:
 case StepCompleteEvent:
-	stepMessage = e.Message
+	stepContents = e.Contents
 	stepUsage = e.Usage
 	if e.StopReason == "max_tokens" || e.StopReason == "length" {
 		truncated = true

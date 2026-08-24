@@ -129,7 +129,7 @@ And on receive, both providers use the same pattern: accumulate content by `inde
 > **Note on OpenAI tool result content format:** OpenAI's API has no native `is_error` field for tool results (unlike Anthropic). To prevent ambiguity — e.g., a tool returning `"no such file"` as an error vs. a file containing the literal text `"no such file"` — the OpenAI provider wraps tool results as JSON:
 >
 > - Success: `{"status":"success","data":"<plain text output>"}`
-> - Error:   `{"status":"error","reason":"<error message>"}`
+> - Error:   `{"status":"error","data":"<error message>"}`
 >
 > This ensures the model can distinguish success from failure structurally rather than guessing from the content string. The Anthropic provider uses the native `is_error: true` flag instead, so results remain unwrapped plain text.
 
@@ -157,14 +157,10 @@ event: content_block_stop
 ReasoningDeltaEvent{Delta: "Let me think..."}
 ReasoningDeltaEvent{Delta: " about this"}
 
-// Final message:
-Message{
-	Role: "assistant",
-	Content: []ContentPart{
-		ReasoningPart{
-			Type: "reasoning",
-			Text: "Let me think... about this",
-		},
+// Final content (flat []ContentPart — no Message wrapper):
+[]ContentPart{
+	&ReasoningPart{
+		Text: "Let me think... about this",
 	},
 }
 ```

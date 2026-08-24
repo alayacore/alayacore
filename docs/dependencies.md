@@ -144,4 +144,7 @@ Used by the project's LLM communication layer.
 
 ### `gopkg.in/yaml.v3` — YAML Parsing
 
-Used to load model configuration files and theme definitions.
+Used to parse the YAML frontmatter of skill `SKILL.md` files
+(`internal/skills/manifest.go`). Model configs (`model.conf`), runtime
+config, themes, and MCP config use the key-value format
+(`config.ParseKeyValue`), not YAML.

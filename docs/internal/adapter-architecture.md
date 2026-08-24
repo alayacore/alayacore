@@ -81,7 +81,7 @@ always goes through the session.
 
 ## TLV Protocol
 
-See [`adapter-guide/README.md`](../adapter-guide/README.md) for the full TLV
+See [`adapter-guide/README.md`](../../adapter-guide/README.md) for the full TLV
 protocol spec — wire format, tags, delta messages, function lifecycle,
 and binary samples for every message type.
 

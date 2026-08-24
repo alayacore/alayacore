@@ -49,7 +49,7 @@ The session uses three goroutines for concurrent operation:
 | Mechanism | From | To | Purpose |
 |-----------|------|----|---------|
 | `inputMsgCh` (buffered, cap 100) | inputPump | run() | Parsed user input messages |
-| `taskCancel` (atomic.Value) | run() | task worker | Cancel the running task |
+| `cancelReqCh` (buffered, cap 1) | any goroutine | run() | Request task cancellation; run() replies with whether a task was canceled |
 | `taskResultCh` (buffered, cap 1) | task worker | run() | Return final messages and signal task completion |
 | `taskEventCh` (buffered, cap 64) | task worker | run() | Step progress, token counts |
 | `outputBroken` (atomic.Bool) | both | — | Output stream failure flag (any goroutine can set) |
@@ -114,7 +114,7 @@ The agent layer handles LLM interaction and tool-calling orchestration.
 **Key pattern — Callback Streaming:**
 
 ```go
-Agent.Stream(ctx, messages, llm.StreamCallbacks{
+Agent.Stream(ctx, contents, llm.StreamCallbacks{
 	OnTextDelta:         func(delta string, historyID uint64) error { ... },
 	OnReasoningDelta:    func(delta string, historyID uint64) error { ... },
 	OnToolInputStart:    func(toolCallID, name string, historyID uint64) error { ... },
