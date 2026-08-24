@@ -28,6 +28,7 @@ type StatusSnapshot struct {
 	LastCurrentStep int // final step of the last completed task (0 = none)
 	LastMaxSteps    int // max steps of the last completed task (0 = unlimited)
 	ReasoningLevel  int
+	ActiveModel     string // active model name, shown right-aligned in the status bar
 	ActiveTheme     string
 	ActiveThemeData *theme.Theme
 	VideoFPS        int

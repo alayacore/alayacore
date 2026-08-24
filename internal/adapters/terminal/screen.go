@@ -585,8 +585,10 @@ func boolInt(b bool) int {
 // needTailErase reports whether a steady non-overlay frame needs the
 // trailing ED0: the new frame is shorter than the old one (rows below
 // would survive), or the last base row changed (its short tail — the
-// status bar is not padded — must be wiped). Positions are TERMINAL rows
-// (soft-wrap aware), not newline indices.
+// status bar may be shorter than the screen width when no model is
+// shown, and is only padded when the right-aligned model fills the row
+// — must be wiped). Positions are TERMINAL rows (soft-wrap aware), not
+// newline indices.
 func needTailErase(oldContent, newContent string, width int) bool {
 	oldLast, oldOK := lastBaseTerminalRow(oldContent, width)
 	newLast, newOK := lastBaseTerminalRow(newContent, width)

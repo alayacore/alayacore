@@ -36,21 +36,29 @@ func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurr
 // renderStatusBar renders the status bar line.
 // Status bar is dimmed when an overlay is active.
 //
-// The result is truncated to the terminal width (minus one cell for the
-// status indicator gap) so a runaway status string — e.g. a session with
-// every switch + a long token count + many steps + video config — does
-// not soft-wrap onto a second row in raw passthrough mode. Two status
-// rows would push the input box's rendered content against the bottom
-// rule and overlap the prompt area, even though the input box is now
-// drawn with an absolute CUP (the status bar itself is anchored to the
-// last row, so it would visibly wrap onto the second-to-last row).
+// Layout: the status segments (reasoning, context, steps, video) start at
+// the left after the status dot; the active model name is right-aligned
+// flush against the right screen edge in the remaining flexible space
+// between them, truncated with "…" when it cannot fit and dropped when
+// there is no room. Without a model the left-aligned segments may also
+// run up to the right edge — the TUI's flush-to-edge design language.
+//
+// The result is truncated to at most the terminal width so a runaway
+// status string — e.g. a session with every switch + a long token count
+// + many steps + video config + a long model name — does not soft-wrap
+// onto a second row in raw passthrough mode. Two status rows would push
+// the input box's rendered content against the bottom rule and overlap
+// the prompt area, even though the input box is now drawn with an
+// absolute CUP (the status bar itself is anchored to the last row, so it
+// would visibly wrap onto the second-to-last row).
 //
 // View() invokes this on every render; the cache short-circuits when
 // the inputs that affect the rendered string are unchanged since the
-// last call (status text, in-progress flag, overlay-blocked state,
-// width, theme styles). The indicator + truncation + style.Render
-// pipeline otherwise rebuilds a fresh ANSI-encoded string every
-// 250ms tick, only to be discarded by Program.render's identity check.
+// last call (status text, model segment, in-progress flag,
+// overlay-blocked state, width, theme styles). The indicator +
+// truncation + style.Render pipeline otherwise rebuilds a fresh
+// ANSI-encoded string every 250ms tick, only to be discarded by
+// Program.render's identity check.
 //
 // Uses a pointer receiver so the cache map (initialized lazily and
 // mutated on first call) persists across calls — value-receiver methods
@@ -64,6 +72,8 @@ func (m *Terminal) renderStatusBar() string {
 		styles:     m.styles,
 		status:     m.statusText,
 		statusDim:  m.statusTextDim,
+		model:      m.statusModel,
+		modelDim:   m.statusModelDim,
 	}
 	if m.renderedStatusBarCache != nil {
 		if cached, ok := (*m.renderedStatusBarCache)[cacheKey]; ok {
@@ -84,9 +94,16 @@ func (m *Terminal) renderStatusBar() string {
 		indicator = m.styles.Status.Foreground(m.styles.ColorDim).Render("·")
 	}
 
-	// Indicator takes 1 cell; reserve 1 more cell so the rendered status
-	// does not run flush against the screen edge.
-	budget := max(0, m.windowWidth-2)
+	// Hard cap: the status bar row may occupy at most the full terminal
+	// width — anything wider would soft-wrap onto a second row. The cap
+	// is the full width (not width-2): the TUI's design language is
+	// flush-to-edge (input box rules, window separators all span the
+	// full width), and the status content is assembled from program-
+	// controlled segments (indicator, reasoning, tokens, steps, video,
+	// model name) that contain no tabs — the one case the width model
+	// documents as unreliable (ansi.Hardwrap counts a tab as 0 cells).
+	// So the rendered line may legitimately run right up to the edge.
+	lineBudget := max(0, m.windowWidth)
 
 	var content string
 	if m.statusText != "" {
@@ -94,10 +111,30 @@ func (m *Terminal) renderStatusBar() string {
 		if !active {
 			text = m.statusTextDim
 		}
-		content = truncateWithSuffix(indicator+" "+text, budget)
+		content = indicator + " " + text
 	} else {
-		content = truncateWithSuffix(indicator, budget)
+		content = indicator
 	}
+
+	// Model segment: right-aligned FLUSH against the right screen edge in
+	// the remaining flexible space after the status segments. The left
+	// segments keep priority — the model is squeezed into whatever space
+	// is left (always keeping a 1-cell separator so it reads as a
+	// distinct right-aligned element), truncated with "…" when it cannot
+	// fit fully, and dropped entirely when there is not even room for
+	// the separator.
+	model := m.statusModel
+	if !active {
+		model = m.statusModelDim
+	}
+	if model != "" {
+		leftWidth := Width(content)
+		model = truncateWithSuffix(model, max(0, lineBudget-leftWidth-1))
+		if model != "" {
+			content += strings.Repeat(" ", max(0, lineBudget-leftWidth-Width(model))) + model
+		}
+	}
+	content = truncateWithSuffix(content, lineBudget)
 	rendered := m.styles.Status.Render(content)
 
 	if m.renderedStatusBarCache == nil {
@@ -130,6 +167,19 @@ type renderStatusBarCacheKey struct {
 	styles     *Styles
 	status     string
 	statusDim  string
+	model      string
+	modelDim   string
+}
+
+// statusModelSegment renders the active model segment for the status bar
+// in both active and dimmed variants (returned in that order). An empty
+// model yields two empty strings — renderStatusBar then omits the
+// right-aligned element entirely.
+func statusModelSegment(model string, valStyle, dimValStyle Style) (string, string) {
+	if model == "" {
+		return "", ""
+	}
+	return valStyle.Render(model), dimValStyle.Render(model)
 }
 
 // formatTokenCount returns a compact human-readable representation of a
@@ -236,6 +286,11 @@ func (m Terminal) updateStatus() Terminal {
 		segments = append(segments, valStyle.Render(fmt.Sprintf("V:%d,%d", fps, snap.VideoRes)))
 		dimSegments = append(dimSegments, dimValStyle.Render(fmt.Sprintf("V:%d,%d", fps, snap.VideoRes)))
 	}
+
+	// Model segment — not joined with the left segments; renderStatusBar
+	// right-aligns it in the remaining flexible space and truncates it
+	// with "…" when the left segments leave no room.
+	m.statusModel, m.statusModelDim = statusModelSegment(snap.ActiveModel, valStyle, dimValStyle)
 
 	// Join segments with dimmed separator
 	var status string
