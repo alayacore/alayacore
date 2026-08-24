@@ -105,6 +105,15 @@ type ToolInputData struct {
 	Input json.RawMessage `json:"input,omitempty"`
 }
 
+// ToolOutputData is the JSON payload for TagUserF (UF).
+// Output is a JSON array of content blocks (text, image, etc.).
+// IsError indicates whether the tool completed with an error.
+type ToolOutputData struct {
+	ID      string          `json:"id"`
+	Output  json.RawMessage `json:"output"`
+	IsError bool            `json:"is_error,omitempty"`
+}
+
 // ToolInputDeltaData is the JSON payload for TagAssistantFDelta (Af).
 // Carries a partial JSON chunk of tool arguments during streaming.
 type ToolInputDeltaData struct {
@@ -119,15 +128,6 @@ type ToolInputDeltaData struct {
 type ToolOutputDeltaData struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
-}
-
-// ToolOutputData is the JSON payload for TagUserF (UF).
-// Output is a JSON array of content blocks (text, image, etc.).
-// IsError indicates whether the tool completed with an error.
-type ToolOutputData struct {
-	ID      string          `json:"id"`
-	Output  json.RawMessage `json:"output"`
-	IsError bool            `json:"is_error,omitempty"`
 }
 
 // CmdMsg is the JSON payload for TagCommandIn (CI) — a command request

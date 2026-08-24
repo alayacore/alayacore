@@ -104,14 +104,6 @@ type runState struct {
 	mcpService *mcpService
 }
 
-// activeTaskStep returns the current step of the active task, or 0 if idle.
-func (s *Session) activeTaskStep() int {
-	if s.activeTask != nil {
-		return s.activeTask.step
-	}
-	return 0
-}
-
 // sharedState groups fields that are either genuinely cross-goroutine
 // (synchronized via atomics) or owned by a single goroutine with
 // design guarantees that prevent concurrent access.
@@ -148,6 +140,14 @@ type Session struct {
 
 	runDoneCh chan struct{} // closed when run() exits
 	CreatedAt time.Time
+}
+
+// activeTaskStep returns the current step of the active task, or 0 if idle.
+func (s *Session) activeTaskStep() int {
+	if s.activeTask != nil {
+		return s.activeTask.step
+	}
+	return 0
 }
 
 // Done returns a channel that is closed when run() has exited.

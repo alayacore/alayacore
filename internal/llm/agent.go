@@ -116,15 +116,6 @@ type ToolConfirmRequest struct {
 	Input json.RawMessage
 }
 
-// ToConfirmRequest builds a ToolConfirmRequest from a ToolInputPart.
-func (tc *ToolInputPart) ToConfirmRequest() ToolConfirmRequest {
-	return ToolConfirmRequest{
-		ID:    tc.ID,
-		Name:  tc.Name,
-		Input: tc.Input,
-	}
-}
-
 // StreamResult is the final result of streaming.
 // Contents is the full conversation history (allContents).
 // Usage is the total token usage summed across all steps.

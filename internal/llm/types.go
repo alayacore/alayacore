@@ -128,6 +128,15 @@ type ToolInputPart struct {
 	Name  string
 }
 
+// ToConfirmRequest builds a ToolConfirmRequest from a ToolInputPart.
+func (tc *ToolInputPart) ToConfirmRequest() ToolConfirmRequest {
+	return ToolConfirmRequest{
+		ID:    tc.ID,
+		Name:  tc.Name,
+		Input: tc.Input,
+	}
+}
+
 // ToolOutputPart represents a tool execution result.
 type ToolOutputPart struct {
 	ContentPartMeta

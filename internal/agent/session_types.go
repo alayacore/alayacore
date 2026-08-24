@@ -97,6 +97,15 @@ type modelListMsg struct {
 
 func (modelListMsg) SystemMsgType() string { return "model_list" }
 
+// themeMsg carries the active theme name (type "theme").
+// On startup the full Theme is included; on theme changes only the name is sent.
+type themeMsg struct {
+	Name  string       `json:"name"`
+	Theme *theme.Theme `json:"theme,omitempty"`
+}
+
+func (themeMsg) SystemMsgType() string { return "theme" }
+
 // themeInfo carries a theme's name and full content for adapters.
 type themeInfo struct {
 	Name  string       `json:"name"`
@@ -111,15 +120,6 @@ type themeListMsg struct {
 }
 
 func (themeListMsg) SystemMsgType() string { return "theme_list" }
-
-// themeMsg carries the active theme name (type "theme").
-// On startup the full Theme is included; on theme changes only the name is sent.
-type themeMsg struct {
-	Name  string       `json:"name"`
-	Theme *theme.Theme `json:"theme,omitempty"`
-}
-
-func (themeMsg) SystemMsgType() string { return "theme" }
 
 // reasoningMsg carries the reasoning level (type "reasoning").
 type reasoningMsg struct {
