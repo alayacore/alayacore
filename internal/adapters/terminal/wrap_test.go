@@ -164,8 +164,9 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 // TestStatusBarModelSeparatorGap locks the gap rule between the left
 // segments and the right-aligned model — a 1-2 cell gap never renders:
 //
-//   - gap exactly 3 → " | " (the same separator used between segments)
-//   - gap > 3 → blank padding, model flush right
+//   - the model is always preceded by " | " (the same separator used
+//     between segments); a gap larger than 3 pads blank after the
+//     separator so the model stays flush right
 //   - gap < 3 with the full model → model truncated until the gap is
 //     exactly 3
 //   - no room for " | " + a 1-column model → model dropped
@@ -185,9 +186,10 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 		t.Errorf("gap==3: got %q, want %q", got, "· R0✦ | 12.3K/128K | gpt-4o")
 	}
 
-	// Gap > 3: blank padding, no separator before the model.
-	if got := render(30); got != "· R0✦ | 12.3K/128K      gpt-4o" {
-		t.Errorf("gap>3: got %q, want %q", got, "· R0✦ | 12.3K/128K      gpt-4o")
+	// Gap > 3: " | " always present, blank padding after it keeps the
+	// model flush right (separator space + 3 padding cells).
+	if got := render(30); got != "· R0✦ | 12.3K/128K |    gpt-4o" {
+		t.Errorf("gap>3: got %q, want %q", got, "· R0✦ | 12.3K/128K |    gpt-4o")
 	}
 
 	// Full model would leave a 1-cell gap (W=25): truncate to reach 3.
@@ -198,6 +200,32 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 	// No room for the separator + one model column (W=20): model dropped.
 	if got := render(20); got != "· R0✦ | 12.3K/128K" {
 		t.Errorf("no room for model: got %q, want %q", got, "· R0✦ | 12.3K/128K")
+	}
+}
+
+// TestStatusBarTruncatedSeparatorKeepsDimPipe covers the "|…" case: when
+// truncation replaces the space after a "|" with "…", the "|" must still
+// render dim (sepStyle) — a " | "-based split would miss the separator
+// and paint it with the muted segment color.
+func TestStatusBarTruncatedSeparatorKeepsDimPipe(t *testing.T) {
+	styles := DefaultStyles()
+	sepSig := styles.Status.Render("X")
+	if i := strings.Index(sepSig, "X"); i > 0 {
+		sepSig = sepSig[:i] // dim SGR open prefix
+	}
+
+	m := newTerminalForUpdateStatusTest(NewTerminalOutput(styles))
+	m.statusLeft = "R0✦ | 123/128"
+	m.statusRight = "gpt-4o"
+	m.inProgress = false
+	m.windowWidth = 8 // left truncates to "· R0✦ |…" (the space after "|" is cut)
+
+	rendered := m.renderStatusBar()
+	if !strings.Contains(rendered, sepSig+"|") {
+		t.Errorf("'|' before '…' not rendered dim: %q", rendered)
+	}
+	if got := stripANSI(rendered); got != "· R0✦ |…" {
+		t.Errorf("text = %q, want %q", got, "· R0✦ |…")
 	}
 }
 

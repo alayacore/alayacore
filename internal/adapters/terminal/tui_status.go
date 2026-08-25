@@ -58,9 +58,8 @@ func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
 // flush against the right screen edge in the remaining flexible space
 // between them, truncated with "…" when it cannot fit and dropped when
 // there is no room for the 3-cell " | " separator plus at least one
-// column of its own. The model's gap follows a discrete rule (see
-// assembleStatusLeft): exactly 3 cells renders as " | " (the same token
-// used between segments), larger gaps stay blank padding, and a 1-2 cell
+// column of its own. The model is always preceded by the " | " token
+// used between segments (larger gaps pad blank after it), and a 1-2 cell
 // gap never renders — the model is truncated until the gap is 3. Without
 // a model the left-aligned segments may also run up to the right edge —
 // the TUI's flush-to-edge design language.
@@ -180,11 +179,11 @@ func (m *Terminal) renderStatusBar() string {
 // budget (always keeping a 1-cell separator after the indicator), and
 // the model right-aligned flush against the right screen edge.
 //
-// The model is separated from the segments by the same " | " token used
-// between segments: the gap is either exactly 3 cells — rendered as
-// " | " — or larger (blank padding, model flush right). A gap of 1-2
-// cells never renders: the model is truncated until the gap is exactly
-// 3, and dropped when even one column cannot fit next to the separator.
+// The model is always separated from the segments by the same " | " token
+// used between segments — larger gaps pad blank after the separator so
+// the model stays flush right. A gap of 1-2 cells never renders: the
+// model is truncated until the gap is exactly 3, and dropped when even
+// one column cannot fit next to the separator.
 func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudget int) string {
 	left := indicatorGlyph
 	if statusLeft != "" {
@@ -205,41 +204,54 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudg
 		return left
 	}
 	model := truncateWithSuffix(statusRight, modelWidth)
-	if gap := remaining - Width(model); gap == 3 {
-		// Gap exactly the separator width: " | " keeps the model
-		// flush right while reading like any other segment.
-		left += " | " + model
-	} else {
-		// Larger gap: blank padding, model flush right.
-		left += strings.Repeat(" ", gap) + model
-	}
+	gap := remaining - Width(model)
+	left += " | " + strings.Repeat(" ", max(0, gap-3)) + model
 	return left
 }
 
 // renderStatusSegments renders the plain joined status text ("seg | seg")
-// with per-segment styles: segments in segStyle, " | " separators in
+// with per-segment styles: segments in segStyle, "|" separators in
 // sepStyle. The input carries no ANSI, so any "…" a truncation inserted
 // inside a segment inherits segStyle from the render call — the ellipsis
 // color falls out of the styling pipeline instead of needing
-// escape-sequence handling. Empty segments (e.g. a cut that left a bare
-// separator) are dropped.
+// escape-sequence handling.
+//
+// Splitting is on the bare "|", not " | ": truncation can replace the
+// space after a separator with "…" (e.g. "R0✦ |…"), which would hide the
+// separator from a " | "-based split and paint the "|" with the segment
+// color. The separator's own spaces (one trailing on the left part, one
+// leading on the right part) are re-emitted exactly as the plain text
+// has them — a space truncated away is not restored, so the rendered
+// width always matches the plain width (lineBudget). Extra spaces (the
+// blank gap before the right-aligned model) stay inside their part.
+// Empty parts (dangling separators from a cut) are dropped.
 func renderStatusSegments(plain string, segStyle, sepStyle Style) string {
 	if plain == "" {
 		return ""
 	}
+	parts := strings.Split(plain, "|")
 	var b strings.Builder
-	first := true
-	for _, seg := range strings.Split(plain, " | ") {
-		if seg == "" {
+	for i, part := range parts {
+		if i > 0 && strings.HasPrefix(part, " ") {
+			part = part[1:] // separator's trailing space — emitted by the previous part
+		}
+		sepTrail := i < len(parts)-1 && strings.HasSuffix(part, " ")
+		if sepTrail {
+			part = part[:len(part)-1]
+		}
+		if part == "" {
 			continue
 		}
-		if !first {
-			b.WriteString(" ")
-			b.WriteString(sepStyle.Render("|"))
+		b.WriteString(segStyle.Render(part))
+		if sepTrail {
 			b.WriteString(" ")
 		}
-		first = false
-		b.WriteString(segStyle.Render(seg))
+		if i < len(parts)-1 {
+			b.WriteString(sepStyle.Render("|"))
+			if strings.HasPrefix(parts[i+1], " ") {
+				b.WriteString(" ")
+			}
+		}
 	}
 	return b.String()
 }
