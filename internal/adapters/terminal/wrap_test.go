@@ -132,9 +132,9 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 		return !strings.Contains(head[open+len(segSig):], "\x1b[m")
 	}
 
-	// Model shown at a single column (separated by " | "): "…" must be
-	// muted, not bare. W=9: left "• R0✦" (5) leaves 4 cells — the 3-cell
-	// " | " separator plus a 1-column truncated model.
+	// Model merged into the left (gap ≤ 3) and truncated to a single
+	// column: "…" must be muted, not bare. W=9: the merged "R0✦ | gpt-4o"
+	// truncates to "R0✦ | …".
 	m := newTerm(9, "R0✦", "gpt-4o")
 	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
 		t.Errorf("model at 1 column: ellipsis not in segment style, got %q", rendered)
