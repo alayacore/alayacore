@@ -54,15 +54,13 @@ func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
 // Status bar is dimmed when an overlay is active.
 //
 // Layout: the status segments (reasoning, context, steps, video) start at
-// the left after the status dot; the active model name is right-aligned
-// flush against the right screen edge in the remaining flexible space
-// between them, truncated with "…" when it cannot fit and dropped when
-// there is no room for the 3-cell " | " separator plus at least one
-// column of its own. The model is always preceded by the " | " token
-// used between segments (larger gaps pad blank after it), and a 1-2 cell
-// gap never renders — the model is truncated until the gap is 3. Without
-// a model the left-aligned segments may also run up to the right edge —
-// the TUI's flush-to-edge design language.
+// the left after the status dot. The active model name is placed by a
+// single threshold (see assembleStatusLeft): with ample space it floats
+// right-aligned after blank padding; when the gap would be ≤ 3 cells it
+// merges into the left segments (joined by " | ", truncated together) —
+// the bar never shows a squeezed right-aligned model or a 1-3 cell gap.
+// Without a model the left-aligned segments may also run up to the right
+// edge — the TUI's flush-to-edge design language.
 //
 // The result is truncated to at most the terminal width so a runaway
 // status string — e.g. a session with every switch + a long token count
@@ -179,11 +177,12 @@ func (m *Terminal) renderStatusBar() string {
 // budget (always keeping a 1-cell separator after the indicator), and
 // the model right-aligned flush against the right screen edge.
 //
-// The model is always separated from the segments by the same " | " token
-// used between segments — larger gaps pad blank after the separator so
-// the model stays flush right. A gap of 1-2 cells never renders: the
-// model is truncated until the gap is exactly 3, and dropped when even
-// one column cannot fit next to the separator.
+// The model is placed by a single threshold: it floats right-aligned
+// (blank padding, flush right) only when the gap exceeds 3 cells. A gap
+// of ≤ 3 cells is too cramped — the model merges into the left segments
+// instead, joined by " | " and truncated together (the model is last, so
+// truncation cuts it first). The bar never shows a squeezed right-aligned
+// model or a 1-3 cell gap.
 func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudget int) string {
 	left := indicatorGlyph
 	if statusLeft != "" {
@@ -196,17 +195,22 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudg
 		return left
 	}
 
-	// The model needs the 3-cell " | " separator plus at least one
-	// column of its own; gaps of 1-2 cells are never rendered.
-	remaining := lineBudget - Width(left)
-	modelWidth := min(Width(statusRight), remaining-3)
-	if modelWidth < 1 {
-		return left
+	// Ample space (gap > 3): model floats flush right.
+	if gap := lineBudget - Width(left) - Width(statusRight); gap > 3 {
+		return left + strings.Repeat(" ", gap) + statusRight
 	}
-	model := truncateWithSuffix(statusRight, modelWidth)
-	gap := remaining - Width(model)
-	left += " | " + strings.Repeat(" ", max(0, gap-3)) + model
-	return left
+
+	// Tight space (gap ≤ 3): no right-aligned element — the model joins
+	// the left segments, truncated together.
+	merged := statusLeft
+	if merged != "" {
+		merged += " | "
+	}
+	merged += statusRight
+	if merged = truncateWithSuffix(merged, max(0, lineBudget-Width(indicatorGlyph)-1)); merged != "" {
+		return indicatorGlyph + " " + merged
+	}
+	return indicatorGlyph
 }
 
 // renderStatusSegments renders the plain joined status text ("seg | seg")

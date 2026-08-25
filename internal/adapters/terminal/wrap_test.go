@@ -161,15 +161,15 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 	}
 }
 
-// TestStatusBarModelSeparatorGap locks the gap rule between the left
-// segments and the right-aligned model — a 1-2 cell gap never renders:
+// TestStatusBarModelSeparatorGap locks the single-threshold placement
+// rule between the left segments and the model:
 //
-//   - the model is always preceded by " | " (the same separator used
-//     between segments); a gap larger than 3 pads blank after the
-//     separator so the model stays flush right
-//   - gap < 3 with the full model → model truncated until the gap is
-//     exactly 3
-//   - no room for " | " + a 1-column model → model dropped
+//   - ample space (gap > 3) → model floats right-aligned after blank
+//     padding, flush right
+//   - tight space (gap ≤ 3) → no right-aligned element: the model
+//     merges into the left segments (joined by " | "), truncated
+//     together — a squeezed right-aligned model or a 1-3 cell gap never
+//     renders
 func TestStatusBarModelSeparatorGap(t *testing.T) {
 	m := newTerminalForUpdateStatusTest(NewTerminalOutput(DefaultStyles()))
 	m.statusLeft = "R0✦ | 12.3K/128K" // indicator + space + left = 18 cols
@@ -181,25 +181,26 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 		return stripANSI(m.renderStatusBar())
 	}
 
-	// Gap exactly 3: the model reads like another segment.
+	// Ample space (W=30, gap 6): model floats, blank padding.
+	if got := render(30); got != "· R0✦ | 12.3K/128K      gpt-4o" {
+		t.Errorf("gap>3: got %q, want %q", got, "· R0✦ | 12.3K/128K      gpt-4o")
+	}
+
+	// Gap exactly 3 (W=27): merges into the left — reads like another
+	// segment, model stays flush right.
 	if got := render(27); got != "· R0✦ | 12.3K/128K | gpt-4o" {
 		t.Errorf("gap==3: got %q, want %q", got, "· R0✦ | 12.3K/128K | gpt-4o")
 	}
 
-	// Gap > 3: " | " always present, blank padding after it keeps the
-	// model flush right (separator space + 3 padding cells).
-	if got := render(30); got != "· R0✦ | 12.3K/128K |    gpt-4o" {
-		t.Errorf("gap>3: got %q, want %q", got, "· R0✦ | 12.3K/128K |    gpt-4o")
-	}
-
-	// Full model would leave a 1-cell gap (W=25): truncate to reach 3.
+	// Tight space (W=25, gap 1): merged; the model is truncated first.
 	if got := render(25); got != "· R0✦ | 12.3K/128K | gpt…" {
 		t.Errorf("gap<3 with full model: got %q, want %q", got, "· R0✦ | 12.3K/128K | gpt…")
 	}
 
-	// No room for the separator + one model column (W=20): model dropped.
-	if got := render(20); got != "· R0✦ | 12.3K/128K" {
-		t.Errorf("no room for model: got %q, want %q", got, "· R0✦ | 12.3K/128K")
+	// No room even merged (W=20): the combined left is truncated, the
+	// model is cut away and "…" marks the truncation.
+	if got := render(20); got != "· R0✦ | 12.3K/128K …" {
+		t.Errorf("no room for model: got %q, want %q", got, "· R0✦ | 12.3K/128K …")
 	}
 }
 
