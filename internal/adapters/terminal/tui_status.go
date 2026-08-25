@@ -188,23 +188,25 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudg
 			left += " " + seg
 		}
 	}
-	if statusRight != "" {
-		remaining := lineBudget - Width(left)
-		// The model needs the 3-cell " | " separator plus at least one
-		// column of its own; gaps of 1-2 cells are never rendered.
-		modelWidth := min(Width(statusRight), remaining-3)
-		if modelWidth < 1 {
-			return left
-		}
-		model := truncateWithSuffix(statusRight, modelWidth)
-		if gap := remaining - Width(model); gap == 3 {
-			// Gap exactly the separator width: " | " keeps the model
-			// flush right while reading like any other segment.
-			left += " | " + model
-		} else {
-			// Larger gap: blank padding, model flush right.
-			left += strings.Repeat(" ", gap) + model
-		}
+	if statusRight == "" {
+		return left
+	}
+
+	// The model needs the 3-cell " | " separator plus at least one
+	// column of its own; gaps of 1-2 cells are never rendered.
+	remaining := lineBudget - Width(left)
+	modelWidth := min(Width(statusRight), remaining-3)
+	if modelWidth < 1 {
+		return left
+	}
+	model := truncateWithSuffix(statusRight, modelWidth)
+	if gap := remaining - Width(model); gap == 3 {
+		// Gap exactly the separator width: " | " keeps the model
+		// flush right while reading like any other segment.
+		left += " | " + model
+	} else {
+		// Larger gap: blank padding, model flush right.
+		left += strings.Repeat(" ", gap) + model
 	}
 	return left
 }
