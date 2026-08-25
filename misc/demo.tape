@@ -37,7 +37,7 @@ Sleep 1s
 
 Ctrl+L
 Sleep 1s
-Type "localanth"
+Type "deflash"
 Sleep 1s
 Enter
 
@@ -47,12 +47,7 @@ Type "what Go version does this project use?"
 Enter
 Sleep 5s
 
-# ── Choose Theme ────────────────────────────────────────────────────
-Ctrl+P
-Sleep 1s
-Type "light"
-Sleep 1s
-Enter
+# ── Unfold, Fold ────────────────────────────────────────────────────
 
 Tab
 Type "k"
@@ -68,13 +63,6 @@ Sleep 1s
 Space
 Sleep 500ms
 
-
-# ── Restore Theme ────────────────────────────────────────────────────
-Ctrl+P
-Sleep 500ms
-Type "dark"
-Sleep 500ms
-Enter
 
 # ── Exit ────────────────────────────────────────────────────────────
 
