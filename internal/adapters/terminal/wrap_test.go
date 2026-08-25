@@ -110,8 +110,8 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 	newTerm := func(width int, status, model string) Terminal {
 		m := newTerminalForUpdateStatusTest(NewTerminalOutput(styles))
 		m.windowWidth = width
-		m.statusText = status
-		m.statusModel = model
+		m.statusLeft = status
+		m.statusRight = model
 		m.inProgress = true
 		return m
 	}

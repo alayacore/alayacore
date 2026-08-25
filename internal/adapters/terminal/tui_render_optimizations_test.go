@@ -47,10 +47,10 @@ func TestUpdateStatusSkipsWhenVersionUnchanged(t *testing.T) {
 
 	// Second call with no new updates should be a no-op for the
 	// status-text fields (version match → early exit).
-	before := m1.statusText
+	before := m1.statusLeft
 	after := m1.updateStatus()
-	if after.statusText != before {
-		t.Errorf("status text changed without a session update: %q → %q", before, after.statusText)
+	if after.statusLeft != before {
+		t.Errorf("status text changed without a session update: %q → %q", before, after.statusLeft)
 	}
 }
 
@@ -62,13 +62,13 @@ func TestUpdateStatusRebuildsAfterSessionUpdate(t *testing.T) {
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
-	first := m.statusText
+	first := m.statusLeft
 
 	// Token count changes — version should bump and rebuild.
 	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":5,"context":9999}}`)
 	m = m.updateStatus()
-	if m.statusText == first {
-		t.Errorf("status text should change when context tokens change: %q == %q", first, m.statusText)
+	if m.statusLeft == first {
+		t.Errorf("status text should change when context tokens change: %q == %q", first, m.statusLeft)
 	}
 }
 

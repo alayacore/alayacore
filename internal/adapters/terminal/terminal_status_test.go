@@ -38,7 +38,7 @@ func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
 
 			*terminal = terminal.updateStatus()
 
-			plain := stripANSI(terminal.statusText)
+			plain := stripANSI(terminal.statusLeft)
 
 			// 1. Reasoning level is always shown with the ✦ glyph, even
 			//    when 0 ("R0✦").
@@ -48,8 +48,8 @@ func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
 			}
 			// 2. No bold SGR — bold was tied to the accent color and is
 			//    no longer applied to the reasoning indicator.
-			if strings.Contains(terminal.statusText, "\x1b[1m") {
-				t.Errorf("reasoning indicator should not be bold, got %q", terminal.statusText)
+			if strings.Contains(terminal.statusLeft, "\x1b[1m") {
+				t.Errorf("reasoning indicator should not be bold, got %q", terminal.statusLeft)
 			}
 			// 3. The accent color must not be applied to the reasoning
 			//    indicator. Render a reference string with the accent
@@ -65,14 +65,14 @@ func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
 			if accentOpen != "" && strings.Contains(accentOpen, "\x1b[") {
 				// Locate "R{n}" in the raw (ANSI-bearing) status and
 				// confirm the accent signature is not adjacent to it.
-				rawIdx := strings.Index(terminal.statusText, want)
+				rawIdx := strings.Index(terminal.statusLeft, want)
 				if rawIdx >= 0 {
-					window := terminal.statusText
+					window := terminal.statusLeft
 					if rawIdx-len(accentOpen) >= 0 {
-						window = terminal.statusText[rawIdx-len(accentOpen) : rawIdx+len(want)]
+						window = terminal.statusLeft[rawIdx-len(accentOpen) : rawIdx+len(want)]
 					}
 					if strings.Contains(window, accentOpen) {
-						t.Errorf("accent SGR %q wraps R{n} text: %q", accentOpen, terminal.statusText)
+						t.Errorf("accent SGR %q wraps R{n} text: %q", accentOpen, terminal.statusLeft)
 					}
 				}
 			}
@@ -112,7 +112,7 @@ func TestStatusBarShowsCurrentStepsDuringProgress(t *testing.T) {
 
 	// Check that status shows current step progress
 	expectedSubstring := "7/20"
-	plain := stripANSI(terminal.statusText)
+	plain := stripANSI(terminal.statusLeft)
 	if !containsSubstring(plain, expectedSubstring) {
 		t.Errorf("Expected status to contain %q, got %q", expectedSubstring, plain)
 	}
@@ -151,7 +151,7 @@ func TestStatusBarShowsLastStepsAfterCompletion(t *testing.T) {
 
 	// Check that the status shows the last run's summary
 	expectedSubstring := "5/10"
-	plain := stripANSI(terminal.statusText)
+	plain := stripANSI(terminal.statusLeft)
 	if !containsSubstring(plain, expectedSubstring) {
 		t.Errorf("Expected status to contain %q, got %q", expectedSubstring, plain)
 	}
@@ -186,7 +186,7 @@ func TestStatusBarShowsLastStepsUnlimited(t *testing.T) {
 	*terminal = terminal.updateStatus()
 
 	expectedSubstring := "3/INF"
-	plain := stripANSI(terminal.statusText)
+	plain := stripANSI(terminal.statusLeft)
 	if !containsSubstring(plain, expectedSubstring) {
 		t.Errorf("Expected status to contain %q, got %q", expectedSubstring, plain)
 	}

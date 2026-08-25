@@ -2,7 +2,7 @@ package terminal
 
 // Status bar: session state display (steps, tokens, switches).
 //
-// Extracted from tui.go. Owns statusText and inProgress state,
+// Extracted from tui.go. Owns statusLeft and inProgress state,
 // and provides rendering helpers.
 
 import (
@@ -77,7 +77,7 @@ func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
 // ANSI-encoded string every 250ms tick, only to be discarded by
 // Program.render's identity check.
 //
-// Styling model: statusText/statusModel are PLAIN strings (no ANSI).
+// Styling model: statusLeft/statusRight are PLAIN strings (no ANSI).
 // Truncation happens on the plain text, then each segment is rendered
 // with its Style — the "…" inserted by truncation is inside a segment
 // and inherits that segment's color from the render call, so the
@@ -93,8 +93,8 @@ func (m *Terminal) renderStatusBar() string {
 		inProgress: m.inProgress,
 		width:      m.windowWidth,
 		styles:     m.styles,
-		status:     m.statusText,
-		model:      m.statusModel,
+		left:       m.statusLeft,
+		right:      m.statusRight,
 	}
 	if m.renderedStatusBarCache != nil {
 		if cached, ok := (*m.renderedStatusBarCache)[cacheKey]; ok {
@@ -135,7 +135,7 @@ func (m *Terminal) renderStatusBar() string {
 
 	// Assemble the plain line: indicator + truncated segments +
 	// right-aligned truncated model (see assembleStatusLeft).
-	leftPlain := assembleStatusLeft(m.statusText, m.statusModel, indicatorGlyph, lineBudget)
+	leftPlain := assembleStatusLeft(m.statusLeft, m.statusRight, indicatorGlyph, lineBudget)
 
 	// Render: indicator with its own style, the rest per segment
 	// (segments muted, " | " separators dim — all dim when blocked).
@@ -177,16 +177,16 @@ func (m *Terminal) renderStatusBar() string {
 // remaining flexible space — squeezed, truncated with "…", or dropped
 // when there is no room. Truncation happens on plain text only; styling
 // is applied later by the caller.
-func assembleStatusLeft(statusText, statusModel, indicatorGlyph string, lineBudget int) string {
+func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudget int) string {
 	left := indicatorGlyph
-	if statusText != "" {
+	if statusLeft != "" {
 		segBudget := max(0, lineBudget-Width(left)-1) // indicator + separator space
-		if seg := truncateWithSuffix(statusText, segBudget); seg != "" {
+		if seg := truncateWithSuffix(statusLeft, segBudget); seg != "" {
 			left += " " + seg
 		}
 	}
-	if statusModel != "" {
-		model := truncateWithSuffix(statusModel, max(0, lineBudget-Width(left)-1))
+	if statusRight != "" {
+		model := truncateWithSuffix(statusRight, max(0, lineBudget-Width(left)-1))
 		if model != "" {
 			left += strings.Repeat(" ", max(0, lineBudget-Width(left)-Width(model))) + model
 		}
@@ -230,8 +230,8 @@ type renderStatusBarCacheKey struct {
 	inProgress bool
 	width      int
 	styles     *Styles
-	status     string
-	model      string
+	left       string
+	right      string
 }
 
 // formatTokenCount returns a compact human-readable representation of a
@@ -268,12 +268,12 @@ func formatTokenCount(n int64) string {
 // snapshot version AND we have already processed at least one version
 // (lastStatusVersion != 0). The non-zero guard handles the initial call:
 // before any status-affecting event has fired, both sides are 0, but
-// running the first rebuild is still required to populate statusText /
+// running the first rebuild is still required to populate statusLeft /
 // inProgress / appliedTheme.
 func (m Terminal) updateStatus() Terminal {
 	snap := m.out.SnapshotStatus()
 	autoFollow := m.display.shouldFollow()
-	// The cached m.statusText embeds the auto-follow indicator ("F↓").
+	// The cached m.statusLeft embeds the auto-follow indicator ("F↓").
 	// updateStatus only rebuilds when the status snapshot version changes
 	// (task progress, model change, MCP phase, theme, video config). The
 	// auto-follow state lives on the DisplayModel and flips when the user
@@ -333,11 +333,11 @@ func (m Terminal) updateStatus() Terminal {
 		segments = append(segments, fmt.Sprintf("V:%d,%d", fps, snap.VideoRes))
 	}
 
-	m.statusText = strings.Join(segments, " | ")
+	m.statusLeft = strings.Join(segments, " | ")
 	// Model segment — not joined with the left segments; renderStatusBar
 	// right-aligns it in the remaining flexible space and truncates it
 	// with "…" when the left segments leave no room.
-	m.statusModel = snap.ActiveModel
+	m.statusRight = snap.ActiveModel
 	m.inProgress = snap.InProgress
 
 	m = m.syncThemeFromSession(snap.ActiveTheme, snap.ActiveThemeData)

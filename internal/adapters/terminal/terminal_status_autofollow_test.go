@@ -13,7 +13,7 @@ import (
 // auto-follow state lives on the DisplayModel and changes when the
 // user navigates with j/k/h/l/G/space — none of which bump the
 // session version. As a result, updateStatus() early-exited on the
-// version match and the cached m.statusText (with or without "F↓")
+// version match and the cached m.statusLeft (with or without "F↓")
 // was left stale until the next status-affecting session event.
 //
 // Fix: updateStatus() must also rebuild when autoFollow has flipped
@@ -64,9 +64,9 @@ func TestStatusBarAutoFollowIndicatorUpdatesOnNavigation(t *testing.T) {
 	}
 	*tm = tm.updateStatus()
 
-	if strings.Contains(stripANSI(tm.statusText), "F↓") {
-		t.Errorf("after moving cursor up, F↓ must be hidden (autoFollow=false), got statusText=%q",
-			stripANSI(tm.statusText))
+	if strings.Contains(stripANSI(tm.statusLeft), "F↓") {
+		t.Errorf("after moving cursor up, F↓ must be hidden (autoFollow=false), got statusLeft=%q",
+			stripANSI(tm.statusLeft))
 	}
 
 	// Move back to the bottom — auto-follow should flip ON, F↓ should reappear.
@@ -78,8 +78,8 @@ func TestStatusBarAutoFollowIndicatorUpdatesOnNavigation(t *testing.T) {
 	}
 	*tm = tm.updateStatus()
 
-	if !strings.Contains(stripANSI(tm.statusText), "F↓") {
-		t.Errorf("after moving to bottom, F↓ must be shown (autoFollow=true), got statusText=%q",
-			stripANSI(tm.statusText))
+	if !strings.Contains(stripANSI(tm.statusLeft), "F↓") {
+		t.Errorf("after moving to bottom, F↓ must be shown (autoFollow=true), got statusLeft=%q",
+			stripANSI(tm.statusLeft))
 	}
 }

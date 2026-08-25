@@ -163,7 +163,7 @@ func TestStatusBarSingleRow(t *testing.T) {
 	m := newTestTerminal()
 
 	// Force a long status text that would overflow without truncation.
-	m.statusText = strings.Repeat("X", 200)
+	m.statusLeft = strings.Repeat("X", 200)
 	m.inProgress = true
 
 	v := m.View()

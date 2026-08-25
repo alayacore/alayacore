@@ -88,7 +88,7 @@ func TestStatusBarShowsSpeed(t *testing.T) {
 
 	*terminal = terminal.updateStatus()
 
-	plain := stripANSI(terminal.statusText)
+	plain := stripANSI(terminal.statusLeft)
 	if !containsSubstring(plain, "12.5 tok/s · ttft 1.2s") {
 		t.Errorf("status bar missing speed segment, got %q", plain)
 	}
@@ -134,7 +134,7 @@ func TestStatusBarKeepsSpeedAfterCompletion(t *testing.T) {
 
 	*terminal = terminal.updateStatus()
 
-	plain := stripANSI(terminal.statusText)
+	plain := stripANSI(terminal.statusLeft)
 	if !containsSubstring(plain, "12.5 tok/s · ttft 1.2s") {
 		t.Errorf("status bar lost speed after completion, want it kept, got %q", plain)
 	}

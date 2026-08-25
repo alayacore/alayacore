@@ -264,8 +264,8 @@ type Terminal struct {
 	mcpInitOverlay       ConfirmDialog    // MCP initialization progress overlay
 	attachmentWindow     AttachmentWindow // file/URL attachment picker
 	focusedWindow        string           // which pane has focus: "input" or "display"
-	statusText           string           // status bar left segments, PLAIN text joined with " | " (no ANSI — styles applied at render time)
-	statusModel          string           // active model name, PLAIN (styled at render time, right-aligned)
+	statusLeft           string           // status bar left segments, PLAIN text joined with " | " (no ANSI — styles applied at render time)
+	statusRight          string           // active model name, PLAIN (styled at render time, right-aligned)
 	inProgress           bool             // whether a task is currently running
 	windowWidth          int              // terminal width in cells
 	windowHeight         int              // terminal height in cells
@@ -273,7 +273,7 @@ type Terminal struct {
 	appliedTheme         string           // last theme name that was visually applied
 	pendingAttachments   []attachment     // pending file attachments for multi-modal input
 	lastStatusVersion    uint64           // last StatusSnapshot.Version seen by updateStatus
-	lastStatusAutoFollow *bool            // display.shouldFollow() baked into m.statusText; used to detect local flips (e.g. via navigation) that don't bump the snapshot version
+	lastStatusAutoFollow *bool            // display.shouldFollow() baked into m.statusLeft; used to detect local flips (e.g. via navigation) that don't bump the snapshot version
 
 	lastModelVersion uint64 // last ModelSnapshot.Version seen by the selector rebuild
 
