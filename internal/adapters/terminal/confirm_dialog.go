@@ -394,13 +394,16 @@ func (cd ConfirmDialog) buildTitleText() string {
 }
 
 func (cd ConfirmDialog) renderTitleLine(titleText string, innerWidth int) string {
-	styled := cd.styles.Confirm.Render(titleText)
-	wrapped := wrapContent(styled, innerWidth)
-	lines := strings.Split(wrapped, "\n")
+	// Truncate the plain title first, then render with the Confirm style —
+	// the "…" inserted by truncation inherits the style from the render
+	// call (no escape-sequence handling needed).
+	plainWrapped := ansi.Hardwrap(titleText, innerWidth, true)
+	lines := strings.Split(plainWrapped, "\n")
 	line := lines[0]
 	if len(lines) > 1 {
 		line = truncateWithSuffix(line, innerWidth)
 	}
+	line = cd.styles.Confirm.Render(line)
 	w := Width(line)
 	pad := max(0, (innerWidth-w)/2)
 	return strings.Repeat(" ", pad) + line + strings.Repeat(" ", innerWidth-w-pad)

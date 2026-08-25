@@ -90,55 +90,72 @@ func TestTruncateWithSuffix(t *testing.T) {
 	}
 }
 
-// TestTruncateWithSuffixPreservesStyle guards the styling contract of
-// truncateWithSuffix: the ellipsis must inherit the SGR state active at
-// the truncation point, never render as a bare "…" in the terminal
-// default color — including when the whole segment collapses to a single
-// column (maxWidth 1), the case that previously returned an unstyled
-// ellipsis.
-func TestTruncateWithSuffixPreservesStyle(t *testing.T) {
+// TestStatusBarTruncatedEllipsisStyled locks the status bar's styling
+// contract at the rendering level: a "…" inserted by truncation is
+// always inside a styled run — never a bare ellipsis in the terminal
+// default color. The status bar stores PLAIN text and styles each
+// segment at render time, so the ellipsis color falls out of the render
+// pipeline. This covers the cases that used to fail with raw ANSI
+// handling: a segment squeezed to one column, and truncation landing on
+// either side of the " | " separator.
+func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 	styles := DefaultStyles()
-	muted := styles.Status.Foreground(styles.ColorMuted)
-	dim := styles.Status.Foreground(styles.ColorDim)
-
-	// Segment collapsed to a single column: "…" keeps the segment's SGR.
-	got := truncateWithSuffix(muted.Render("gpt-4o"), 1)
-	if got == "\u2026" {
-		t.Fatalf("truncateWithSuffix(styled, 1) = bare %q, want styled ellipsis", got)
-	}
-	if !strings.HasPrefix(got, "\x1b[") || !strings.Contains(got, "\u2026") {
-		t.Errorf("truncateWithSuffix(styled, 1) = %q, want SGR prefix + ellipsis", got)
-	}
-	if Width(got) != 1 {
-		t.Errorf("Width(styled ellipsis) = %d, want 1", Width(got))
+	segStyle := styles.Status.Foreground(styles.ColorMuted)
+	// SGR open prefix of the segment style, e.g. "\x1b[38;2;108;112;134m".
+	segSig := segStyle.Render("X")
+	if i := strings.Index(segSig, "X"); i > 0 {
+		segSig = segSig[:i]
 	}
 
-	// Truncation mid-segment: the ellipsis inherits the open SGR.
-	got = truncateWithSuffix(muted.Render("gpt-4o"), 3)
-	if w := stripANSI(got); w != "gp\u2026" {
-		t.Errorf("stripANSI = %q, want %q", w, "gp\u2026")
-	}
-	if !strings.HasPrefix(got, "\x1b[") {
-		t.Errorf("mid-segment truncation lost styling: %q", got)
+	newTerm := func(width int, status, model string) Terminal {
+		m := newTerminalForUpdateStatusTest(NewTerminalOutput(styles))
+		m.windowWidth = width
+		m.statusText = status
+		m.statusModel = model
+		m.inProgress = true
+		return m
 	}
 
-	// Truncation at a segment boundary (right after a completed styled
-	// segment + reset): the ellipsis must still carry a style — it would
-	// otherwise fall back to the terminal default color.
-	multi := muted.Render("a") + " " + dim.Render("|") + " " + muted.Render("bb")
-	got = truncateWithSuffix(multi, 3)
-	if w := stripANSI(got); w != "a \u2026" {
-		t.Errorf("stripANSI = %q, want %q", w, "a \u2026")
-	}
-	// The byte right before "…" must be an active SGR open (escape + "m"),
-	// not a reset — otherwise the ellipsis renders default-colored.
-	if idx := strings.Index(got, "\u2026"); idx > 0 {
-		before := got[:idx]
-		if !strings.HasSuffix(before, "m") || strings.HasSuffix(before, "\x1b[m") {
-			t.Errorf("ellipsis not preceded by an active SGR open: %q", got)
+	// ellipsisStyled reports whether a "…" in the rendered bar sits
+	// inside a segStyle run: a segSig open before it with no reset in
+	// between (a bare ellipsis has no open, or is preceded by a reset).
+	ellipsisStyled := func(rendered string) bool {
+		i := strings.Index(rendered, "\u2026")
+		if i < 0 {
+			return true // no ellipsis — nothing to check
 		}
-	} else {
-		t.Fatalf("no ellipsis in result: %q", got)
+		head := rendered[:i]
+		open := strings.LastIndex(head, segSig)
+		if open < 0 {
+			return false
+		}
+		return !strings.Contains(head[open+len(segSig):], "\x1b[m")
+	}
+
+	// Model squeezed to a single column: "…" must be muted, not bare.
+	m := newTerm(7, "R0✦", "gpt-4o")
+	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
+		t.Errorf("model at 1 column: ellipsis not in segment style, got %q", rendered)
+	}
+
+	// Truncation landing just left of the " | " separator.
+	m = newTerm(6, "R0✦ | 123/128", "gpt-4o")
+	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
+		t.Errorf("truncation left of separator: ellipsis not in segment style, got %q", rendered)
+	}
+
+	// Truncation landing just right of the " | " separator.
+	m = newTerm(8, "R0✦ | 123/128", "gpt-4o")
+	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
+		t.Errorf("truncation right of separator: ellipsis not in segment style, got %q", rendered)
+	}
+
+	// Sweep: no width may produce a bare (unstyled) ellipsis.
+	for _, width := range []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10} {
+		m = newTerm(width, "R0✦ | 123/128", "gpt-4o")
+		if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
+			t.Errorf("width %d: bare ellipsis without segment style: %q", width, rendered)
+		}
 	}
 }
 

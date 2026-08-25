@@ -599,19 +599,19 @@ func wrapLabels(labels []string, width int, style Style) string {
 	return strings.Join(lines, "\n")
 }
 
-// truncateWithSuffix truncates content to fit within maxWidth, appending "…"
-// to indicate content has been cut. The result is guaranteed to be at most
-// maxWidth display columns wide, provided the input contains no unexpanded
-// tabs — ansi.StringWidth counts a tab as 0 width while terminals render it
-// as TabWidth columns. Callers must expandTabs (see tool_render.go) before
-// truncating content that may contain tabs.
+// truncateWithSuffix truncates a PLAIN (ANSI-free) string to fit within
+// maxWidth display columns, appending "…" to mark the cut. The result is
+// guaranteed to be at most maxWidth display columns wide, provided the
+// input contains no unexpanded tabs — ansi.StringWidth counts a tab as 0
+// width while terminals render it as TabWidth columns. Callers must
+// expandTabs (see tool_render.go) before truncating content that may
+// contain tabs.
 //
-// ANSI styling is preserved: escape sequences are never broken, and the
-// ellipsis is inserted at the truncation point while the SGR state active
-// there is still open — so a truncated styled segment (including a segment
-// reduced to a single column) keeps its color instead of falling back to
-// the terminal default. Trailing escapes of the cut-off remainder are
-// carried along inertly and closed by their original resets.
+// Styling is the caller's job: truncate the plain text first, then render
+// with the caller's Style — the ellipsis then inherits the style
+// naturally (e.g. the status bar truncates its plain segments and styles
+// each segment afterwards). Do NOT pass already-rendered ANSI strings
+// here; strip and re-render instead.
 func truncateWithSuffix(content string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""

@@ -264,10 +264,8 @@ type Terminal struct {
 	mcpInitOverlay       ConfirmDialog    // MCP initialization progress overlay
 	attachmentWindow     AttachmentWindow // file/URL attachment picker
 	focusedWindow        string           // which pane has focus: "input" or "display"
-	statusText           string           // status bar text (active)
-	statusTextDim        string           // status bar text (dimmed, out of focus)
-	statusModel          string           // active model segment (active, right-aligned)
-	statusModelDim       string           // active model segment (dimmed, right-aligned)
+	statusText           string           // status bar left segments, PLAIN text joined with " | " (no ANSI — styles applied at render time)
+	statusModel          string           // active model name, PLAIN (styled at render time, right-aligned)
 	inProgress           bool             // whether a task is currently running
 	windowWidth          int              // terminal width in cells
 	windowHeight         int              // terminal height in cells

@@ -50,16 +50,6 @@ func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
 	return fmt.Sprintf("%.1f tok/s", stepTPS)
 }
 
-// appendStatusSegment appends a rendered status segment to both the
-// active and dimmed segment lists. Empty values are skipped entirely —
-// the common "segment absent" case.
-func appendStatusSegment(segments, dimSegments []string, val string, valStyle, dimValStyle Style) ([]string, []string) {
-	if val == "" {
-		return segments, dimSegments
-	}
-	return append(segments, valStyle.Render(val)), append(dimSegments, dimValStyle.Render(val))
-}
-
 // renderStatusBar renders the status bar line.
 // Status bar is dimmed when an overlay is active.
 //
@@ -87,6 +77,12 @@ func appendStatusSegment(segments, dimSegments []string, val string, valStyle, d
 // ANSI-encoded string every 250ms tick, only to be discarded by
 // Program.render's identity check.
 //
+// Styling model: statusText/statusModel are PLAIN strings (no ANSI).
+// Truncation happens on the plain text, then each segment is rendered
+// with its Style — the "…" inserted by truncation is inside a segment
+// and inherits that segment's color from the render call, so the
+// ellipsis can never fall back to the terminal default.
+//
 // Uses a pointer receiver so the cache map (initialized lazily and
 // mutated on first call) persists across calls — value-receiver methods
 // get a copy of Terminal and any cache field they mutate is discarded.
@@ -98,9 +94,7 @@ func (m *Terminal) renderStatusBar() string {
 		width:      m.windowWidth,
 		styles:     m.styles,
 		status:     m.statusText,
-		statusDim:  m.statusTextDim,
 		model:      m.statusModel,
-		modelDim:   m.statusModelDim,
 	}
 	if m.renderedStatusBarCache != nil {
 		if cached, ok := (*m.renderedStatusBarCache)[cacheKey]; ok {
@@ -108,17 +102,24 @@ func (m *Terminal) renderStatusBar() string {
 		}
 	}
 
-	var indicator string
+	// Indicator dot: accent while a task runs (same convention as tool
+	// windows; green is reserved for success), dim otherwise.
+	indicatorGlyph := "·"
+	indicatorStyle := m.styles.Status.Foreground(m.styles.ColorDim)
 	if m.inProgress {
+		indicatorGlyph = "•"
 		if active {
-			// Running dot uses the theme's primary color — the same
-			// convention as tool windows; green is reserved for success.
-			indicator = m.styles.Status.Foreground(m.styles.ColorAccent).Render("•")
-		} else {
-			indicator = m.styles.Status.Foreground(m.styles.ColorDim).Render("•")
+			indicatorStyle = m.styles.Status.Foreground(m.styles.ColorAccent)
 		}
-	} else {
-		indicator = m.styles.Status.Foreground(m.styles.ColorDim).Render("·")
+	}
+
+	// Segment styles: muted segments with dim " | " separators when
+	// active; everything dim when the bar is blocked.
+	segStyle := m.styles.Status.Foreground(m.styles.ColorMuted)
+	sepStyle := m.styles.Status // dim
+	if !active {
+		segStyle = m.styles.Status.Foreground(m.styles.ColorDim)
+		sepStyle = segStyle
 	}
 
 	// Hard cap: the status bar row may occupy at most the full terminal
@@ -132,36 +133,21 @@ func (m *Terminal) renderStatusBar() string {
 	// So the rendered line may legitimately run right up to the edge.
 	lineBudget := max(0, m.windowWidth)
 
-	var content string
-	if m.statusText != "" {
-		text := m.statusText
-		if !active {
-			text = m.statusTextDim
-		}
-		content = indicator + " " + text
-	} else {
-		content = indicator
-	}
+	// Assemble the plain line: indicator + truncated segments +
+	// right-aligned truncated model (see assembleStatusLeft).
+	leftPlain := assembleStatusLeft(m.statusText, m.statusModel, indicatorGlyph, lineBudget)
 
-	// Model segment: right-aligned FLUSH against the right screen edge in
-	// the remaining flexible space after the status segments. The left
-	// segments keep priority — the model is squeezed into whatever space
-	// is left (always keeping a 1-cell separator so it reads as a
-	// distinct right-aligned element), truncated with "…" when it cannot
-	// fit fully, and dropped entirely when there is not even room for
-	// the separator.
-	model := m.statusModel
-	if !active {
-		model = m.statusModelDim
-	}
-	if model != "" {
-		leftWidth := Width(content)
-		model = truncateWithSuffix(model, max(0, lineBudget-leftWidth-1))
-		if model != "" {
-			content += strings.Repeat(" ", max(0, lineBudget-leftWidth-Width(model))) + model
+	// Render: indicator with its own style, the rest per segment
+	// (segments muted, " | " separators dim — all dim when blocked).
+	// Sliced by indicatorGlyph's byte length, not [:1]: "•" is 3 bytes.
+	content := indicatorStyle.Render(leftPlain[:len(indicatorGlyph)])
+	if rest := leftPlain[len(indicatorGlyph):]; rest != "" {
+		if strings.HasPrefix(rest, " ") {
+			rest = rest[1:]
+			content += " "
 		}
+		content += renderStatusSegments(rest, segStyle, sepStyle)
 	}
-	content = truncateWithSuffix(content, lineBudget)
 	rendered := m.styles.Status.Render(content)
 
 	if m.renderedStatusBarCache == nil {
@@ -184,6 +170,58 @@ func (m *Terminal) renderStatusBar() string {
 	return rendered
 }
 
+// assembleStatusLeft builds the PLAIN left part of the status bar:
+// the indicator glyph, the status segments truncated to the remaining
+// budget (always keeping a 1-cell separator after the indicator), and
+// the model right-aligned flush against the right screen edge in the
+// remaining flexible space — squeezed, truncated with "…", or dropped
+// when there is no room. Truncation happens on plain text only; styling
+// is applied later by the caller.
+func assembleStatusLeft(statusText, statusModel, indicatorGlyph string, lineBudget int) string {
+	left := indicatorGlyph
+	if statusText != "" {
+		segBudget := max(0, lineBudget-Width(left)-1) // indicator + separator space
+		if seg := truncateWithSuffix(statusText, segBudget); seg != "" {
+			left += " " + seg
+		}
+	}
+	if statusModel != "" {
+		model := truncateWithSuffix(statusModel, max(0, lineBudget-Width(left)-1))
+		if model != "" {
+			left += strings.Repeat(" ", max(0, lineBudget-Width(left)-Width(model))) + model
+		}
+	}
+	return left
+}
+
+// renderStatusSegments renders the plain joined status text ("seg | seg")
+// with per-segment styles: segments in segStyle, " | " separators in
+// sepStyle. The input carries no ANSI, so any "…" a truncation inserted
+// inside a segment inherits segStyle from the render call — the ellipsis
+// color falls out of the styling pipeline instead of needing
+// escape-sequence handling. Empty segments (e.g. a cut that left a bare
+// separator) are dropped.
+func renderStatusSegments(plain string, segStyle, sepStyle Style) string {
+	if plain == "" {
+		return ""
+	}
+	var b strings.Builder
+	first := true
+	for _, seg := range strings.Split(plain, " | ") {
+		if seg == "" {
+			continue
+		}
+		if !first {
+			b.WriteString(" ")
+			b.WriteString(sepStyle.Render("|"))
+			b.WriteString(" ")
+		}
+		first = false
+		b.WriteString(segStyle.Render(seg))
+	}
+	return b.String()
+}
+
 // renderStatusBarCacheKey is the input set to the status-bar render
 // pipeline. Two Terminal values with the same key produce the same
 // rendered status string.
@@ -193,20 +231,7 @@ type renderStatusBarCacheKey struct {
 	width      int
 	styles     *Styles
 	status     string
-	statusDim  string
 	model      string
-	modelDim   string
-}
-
-// statusModelSegment renders the active model segment for the status bar
-// in both active and dimmed variants (returned in that order). An empty
-// model yields two empty strings — renderStatusBar then omits the
-// right-aligned element entirely.
-func statusModelSegment(model string, valStyle, dimValStyle Style) (string, string) {
-	if model == "" {
-		return "", ""
-	}
-	return valStyle.Render(model), dimValStyle.Render(model)
 }
 
 // formatTokenCount returns a compact human-readable representation of a
@@ -244,7 +269,7 @@ func formatTokenCount(n int64) string {
 // (lastStatusVersion != 0). The non-zero guard handles the initial call:
 // before any status-affecting event has fired, both sides are 0, but
 // running the first rebuild is still required to populate statusText /
-// statusTextDim / inProgress / appliedTheme.
+// inProgress / appliedTheme.
 func (m Terminal) updateStatus() Terminal {
 	snap := m.out.SnapshotStatus()
 	autoFollow := m.display.shouldFollow()
@@ -263,30 +288,20 @@ func (m Terminal) updateStatus() Terminal {
 	seen := autoFollow
 	m.lastStatusAutoFollow = &seen
 
-	valStyle := m.styles.Status.Foreground(m.styles.ColorMuted)
-	dimValStyle := m.styles.Status.Foreground(m.styles.ColorDim)
-
-	// Build status segments - each rendered separately with appropriate colors
+	// Build PLAIN status segments, joined with " | " (styles are applied
+	// at render time in renderStatusBar — truncation happens on the
+	// plain text, so the "…" inherits the segment style naturally).
 	var segments []string
-	var dimSegments []string
 
 	// Switch indicators segment (compact: "R1✦ F↓" in one segment).
 	// Reasoning level is always rendered ("R0✦".."R2✦") using the muted
 	// style — the accent color and bold are reserved for the status dot,
 	// which remains the only highlighted element in the status bar.
-	var switches []string
-	var dimSwitches []string
-	reasonLabel := fmt.Sprintf("R%d✦", snap.ReasoningLevel)
-	switches = append(switches, valStyle.Render(reasonLabel))
-	dimSwitches = append(dimSwitches, dimValStyle.Render(reasonLabel))
+	switches := fmt.Sprintf("R%d✦", snap.ReasoningLevel)
 	if m.display.shouldFollow() {
-		switches = append(switches, valStyle.Render("F↓"))
-		dimSwitches = append(dimSwitches, dimValStyle.Render("F↓"))
+		switches += " F↓"
 	}
-	if len(switches) > 0 {
-		segments = append(segments, strings.Join(switches, " "))
-		dimSegments = append(dimSegments, strings.Join(dimSwitches, " "))
-	}
+	segments = append(segments, switches)
 
 	// Context segment
 	if snap.ContextTokens > 0 {
@@ -297,56 +312,32 @@ func (m Terminal) updateStatus() Terminal {
 		} else {
 			ctxVal = formatTokenCount(snap.ContextTokens)
 		}
-		segments = append(segments, valStyle.Render(ctxVal))
-		dimSegments = append(dimSegments, dimValStyle.Render(ctxVal))
+		segments = append(segments, ctxVal)
 	}
 
 	// Speed segment — right after the context segment: the latest step's
 	// end-to-end tok/s (+ TTFT). Kept visible after the task ends (final
 	// step speed) until the next task starts.
-	segments, dimSegments = appendStatusSegment(segments, dimSegments,
-		statusSpeedSegment(snap.StepTPS, snap.TTFTMS),
-		valStyle, dimValStyle)
+	if v := statusSpeedSegment(snap.StepTPS, snap.TTFTMS); v != "" {
+		segments = append(segments, v)
+	}
 
 	// Steps segment (rightmost — show only when there's step activity)
 	if stepVal := statusStepsSegment(snap.InProgress, snap.CurrentStep, snap.MaxSteps,
 		snap.LastCurrentStep, snap.LastMaxSteps); stepVal != "" {
-		segments = append(segments, valStyle.Render(stepVal))
-		dimSegments = append(dimSegments, dimValStyle.Render(stepVal))
+		segments = append(segments, stepVal)
 	}
 
 	// Video config segment (last)
 	if fps := snap.VideoFPS; fps > 0 {
-		segments = append(segments, valStyle.Render(fmt.Sprintf("V:%d,%d", fps, snap.VideoRes)))
-		dimSegments = append(dimSegments, dimValStyle.Render(fmt.Sprintf("V:%d,%d", fps, snap.VideoRes)))
+		segments = append(segments, fmt.Sprintf("V:%d,%d", fps, snap.VideoRes))
 	}
 
+	m.statusText = strings.Join(segments, " | ")
 	// Model segment — not joined with the left segments; renderStatusBar
 	// right-aligns it in the remaining flexible space and truncates it
 	// with "…" when the left segments leave no room.
-	m.statusModel, m.statusModelDim = statusModelSegment(snap.ActiveModel, valStyle, dimValStyle)
-
-	// Join segments with dimmed separator
-	var status string
-	if len(segments) > 0 {
-		separator := m.styles.Status.Render("|")
-		status = segments[0]
-		for i := 1; i < len(segments); i++ {
-			status += " " + separator + " " + segments[i]
-		}
-	}
-
-	var dimStatus string
-	if len(dimSegments) > 0 {
-		dimSeparator := m.styles.Status.Foreground(m.styles.ColorDim).Render("|")
-		dimStatus = dimSegments[0]
-		for i := 1; i < len(dimSegments); i++ {
-			dimStatus += " " + dimSeparator + " " + dimSegments[i]
-		}
-	}
-
-	m.statusText = status
-	m.statusTextDim = dimStatus
+	m.statusModel = snap.ActiveModel
 	m.inProgress = snap.InProgress
 
 	m = m.syncThemeFromSession(snap.ActiveTheme, snap.ActiveThemeData)
