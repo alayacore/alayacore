@@ -31,6 +31,12 @@ type sessionState struct {
 	maxSteps       int
 	reasoningLevel int
 
+	// Provider speed metrics from the "task" system message.
+	// stepTPS/ttftMS are the latest step's values. Zero until a step with
+	// output tokens completes; no task-level averaging is displayed.
+	stepTPS float64
+	ttftMS  int64
+
 	// Last completed task's step summary, shown in the status bar until the
 	// next task starts. Captured on the completion edge before the
 	// completion broadcast overwrites currentStep with 0; 0 = no completed
@@ -116,7 +122,10 @@ type mcpAuthPending struct {
 // The completion edge is also returned to the caller so it can settle
 // tool windows left pending by abnormal paths (see
 // outputWriter.handleSystemTask / WindowBuffer.SettleUnfinishedTools).
-func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, context int64) (completed bool) {
+//
+// stepTPS/ttftMS come from the "task" message's speed fields (additive,
+// 0 when no step with output tokens has completed yet).
+func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, context int64, stepTPS float64, ttftMS int64) (completed bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.inProgress && !inProgress {
@@ -127,11 +136,17 @@ func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, co
 	if !s.inProgress && inProgress {
 		s.lastCurrentStep = 0
 		s.lastMaxSteps = 0
+		// New task — clear the previous run's speed so step 1 streaming
+		// doesn't show stale values.
+		s.stepTPS = 0
+		s.ttftMS = 0
 	}
 	s.inProgress = inProgress
 	s.currentStep = currentStep
 	s.maxSteps = maxSteps
 	s.contextTokens = context
+	s.stepTPS = stepTPS
+	s.ttftMS = ttftMS
 	s.statusVersion++
 	return completed
 }
@@ -347,6 +362,8 @@ func (s *sessionState) snapshotStatus() StatusSnapshot {
 		ActiveThemeData: s.activeThemeData,
 		VideoFPS:        s.videoFPS,
 		VideoRes:        s.videoRes,
+		StepTPS:         s.stepTPS,
+		TTFTMS:          s.ttftMS,
 		MCPStatus:       s.mcpStatus,
 		MCPServer:       s.mcpServer,
 		Version:         s.statusVersion,

@@ -230,7 +230,27 @@ func (s *Session) handleTaskEvent(ev taskEvent) {
 		if s.activeTask != nil {
 			s.activeTask.step = e.Step
 		}
+		// A new task starts at step 1: clear the previous task's speed
+		// values so the step-1 broadcast (sent below) never carries
+		// stale data — visible to rawio and other consumers beyond the
+		// TUI.
+		if e.Step == 1 {
+			s.lastStepTPS = 0
+			s.lastTTFTMS = 0
+		}
 		s.sendSystemInfo(systemInfoTask)
+
+	case stepStatsEvent:
+		// Speed metrics for the just-finished step. Totals were reset by
+		// the stepStartEvent(Step==1) of this task; the values are read
+		// by the stepFinishEvent broadcast that follows (FIFO).
+		//
+		// TokensPerSec is the simple end-to-end throughput of the step
+		// (output tokens / round-trip duration). Steps with no output
+		// tokens carry 0, which clears the displayed speed — nothing
+		// to measure.
+		s.lastStepTPS = e.TokensPerSec
+		s.lastTTFTMS = e.TimeToFirstToken.Milliseconds()
 
 	case stepFinishEvent:
 		if len(e.NewParts) > 0 {

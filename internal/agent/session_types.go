@@ -70,12 +70,21 @@ func (s SessionState) String() string {
 // taskMsg carries task progress info (type "task").
 // CommandID is non-empty when the task was started by a CI command
 // (continue/summarize), correlating the async completion to its request.
+//
+// Speed fields (step_tps/ttft_ms) are additive and omitempty: they are
+// absent until the first step completes, so older adapters that ignore
+// unknown JSON fields keep working unchanged. They reflect the LATEST
+// step only — a simple end-to-end throughput (output tokens / round-trip
+// duration, latency included); no task-level averaging is reported.
 type taskMsg struct {
 	InProgress  bool   `json:"in_progress"`
 	CurrentStep int    `json:"current_step,omitempty"`
 	MaxSteps    int    `json:"max_steps,omitempty"`
 	Context     int64  `json:"context"`
 	CommandID   string `json:"command_id,omitempty"`
+
+	StepTPS float64 `json:"step_tps,omitempty"` // latest step's end-to-end tok/s
+	TTFTMS  int64   `json:"ttft_ms,omitempty"`  // latest step's TTFT in ms
 }
 
 func (taskMsg) SystemMsgType() string { return "task" }

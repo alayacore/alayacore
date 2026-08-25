@@ -34,6 +34,13 @@ type StatusSnapshot struct {
 	VideoFPS        int
 	VideoRes        int
 
+	// Provider speed metrics (0 until the first step completes): the
+	// latest step's simple end-to-end throughput (output tokens /
+	// round-trip duration, latency included) and time-to-first-token.
+	// No task-level averaging is displayed.
+	StepTPS float64
+	TTFTMS  int64
+
 	// MCP init status — reflects the current phase of MCP initialization.
 	// Values: "" (no MCP), "connecting", "connected", "failed",
 	// "auth_required", "auth_running", "done".

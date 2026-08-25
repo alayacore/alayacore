@@ -87,6 +87,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		ToolNeedsConfirm:    s.needsToolConfirm,
 		OnStepStart:         s.handleStepStart,
 		OnStepFinish:        onStepFinish,
+		OnStepStats:         s.handleStepStats,
 		IDGen:               s.histIncAndGet,
 	}
 
@@ -261,6 +262,18 @@ func (s *Session) needsToolConfirm(name string) bool {
 // handleStepStart handles the start of a new agent step.
 func (s *Session) handleStepStart(step int) error {
 	s.sendEvent(stepStartEvent{Step: step})
+	return nil
+}
+
+// handleStepStats forwards the just-finished step's speed metrics to the
+// run() goroutine via stepStatsEvent. Called from the task goroutine
+// after the step's stream completes. Steps with no output tokens carry
+// TokensPerSec 0, which clears the displayed speed — nothing to measure.
+func (s *Session) handleStepStats(stats llm.StepStats) error {
+	s.sendEvent(stepStatsEvent{
+		TokensPerSec:     stats.TokensPerSec,
+		TimeToFirstToken: stats.TimeToFirstToken,
+	})
 	return nil
 }
 

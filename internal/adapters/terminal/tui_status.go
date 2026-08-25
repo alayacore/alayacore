@@ -33,6 +33,33 @@ func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurr
 	return ""
 }
 
+// statusSpeedSegment renders the provider speed segment: the latest
+// step's end-to-end tok/s (with TTFT when known). Shown whenever a step
+// has completed with output tokens — during a run it reflects the latest
+// completed step, and after the task ends it stays visible as the task's
+// final step speed until the next task starts (whose stepStartEvent
+// clears it). Returns "" when no step has produced output yet (e.g. a
+// tool-only step with zero output tokens).
+func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
+	if stepTPS <= 0 {
+		return ""
+	}
+	if ttftMS > 0 {
+		return fmt.Sprintf("%.1f tok/s · ttft %.1fs", stepTPS, float64(ttftMS)/1000)
+	}
+	return fmt.Sprintf("%.1f tok/s", stepTPS)
+}
+
+// appendStatusSegment appends a rendered status segment to both the
+// active and dimmed segment lists. Empty values are skipped entirely —
+// the common "segment absent" case.
+func appendStatusSegment(segments, dimSegments []string, val string, valStyle, dimValStyle Style) ([]string, []string) {
+	if val == "" {
+		return segments, dimSegments
+	}
+	return append(segments, valStyle.Render(val)), append(dimSegments, dimValStyle.Render(val))
+}
+
 // renderStatusBar renders the status bar line.
 // Status bar is dimmed when an overlay is active.
 //
@@ -273,6 +300,13 @@ func (m Terminal) updateStatus() Terminal {
 		segments = append(segments, valStyle.Render(ctxVal))
 		dimSegments = append(dimSegments, dimValStyle.Render(ctxVal))
 	}
+
+	// Speed segment — right after the context segment: the latest step's
+	// end-to-end tok/s (+ TTFT). Kept visible after the task ends (final
+	// step speed) until the next task starts.
+	segments, dimSegments = appendStatusSegment(segments, dimSegments,
+		statusSpeedSegment(snap.StepTPS, snap.TTFTMS),
+		valStyle, dimValStyle)
 
 	// Steps segment (rightmost — show only when there's step activity)
 	if stepVal := statusStepsSegment(snap.InProgress, snap.CurrentStep, snap.MaxSteps,

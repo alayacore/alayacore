@@ -3,6 +3,8 @@
 package agent
 
 import (
+	"time"
+
 	"github.com/alayacore/alayacore/internal/llm"
 )
 
@@ -50,6 +52,21 @@ type stepFinishEvent struct {
 }
 
 func (stepFinishEvent) taskEvent() {}
+
+// stepStatsEvent carries the just-finished step's speed metrics from the
+// task goroutine to run(), which stores them for the status bar broadcast
+// (lastStepTPS/lastTTFTMS). Totals are reset by the task's
+// stepStartEvent(Step==1); no averaging is performed — the reported value
+// is the latest step's simple end-to-end throughput (output tokens /
+// round-trip duration). It is sent before the matching stepFinishEvent,
+// so the finish broadcast always sees the updated values (single-sender
+// FIFO on taskEventCh).
+type stepStatsEvent struct {
+	TokensPerSec     float64
+	TimeToFirstToken time.Duration
+}
+
+func (stepStatsEvent) taskEvent() {}
 
 // promptPartsEvent publishes finalized content parts that entered the
 // task's working copy outside the agent loop (user prompt parts, the

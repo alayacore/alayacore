@@ -620,7 +620,7 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 | `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, selection, added, removed, tool, fold_arrow, unfold_arrow: string}}`) | `SM-theme-list.bin` |
 | `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.bin` |
 | `video_config` | `fps` (int), `res` (int) | `SM-video-config.bin` |
-| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`) | `SM-task-start.bin`, `SM-task-end.bin` |
+| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`), `step_tps` (float, opt — latest step's end-to-end throughput in tokens/sec: output tokens ÷ round-trip duration, latency included; absent until a step with output tokens completes; 0 for a step with no output tokens), `ttft_ms` (int, opt — latest step's time-to-first-token in ms) | `SM-task-start.bin`, `SM-task-step.bin`, `SM-task-end.bin` |
 | `error` | `text` (string) | `SM-error.bin` |
 | `notify` | `text` (string) | `SM-notify.bin` |
 | `tool_confirm` | `id` (string) — one-way notification; the user's decision is returned via the `tool_confirm` / `tool_decline` commands (CI frames), not via an SM response | `SM-tool-confirm.bin` |
@@ -638,7 +638,8 @@ SM-theme-list.bin              {"type":"theme_list","data":{"themes":[{"name":"t
 SM-reasoning.bin               {"type":"reasoning","data":{"level":2}}
 SM-video-config.bin            {"type":"video_config","data":{"fps":5,"res":1}}
 SM-task-start.bin              {"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":10,"context":0}}
-SM-task-end.bin                {"type":"task","data":{"in_progress":false,"context":1500}}
+SM-task-step.bin               {"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":10,"context":8600,"step_tps":12.5,"ttft_ms":1200}}
+SM-task-end.bin                {"type":"task","data":{"in_progress":false,"context":1500,"step_tps":12.5,"ttft_ms":1200}}
 SM-error.bin                   {"type":"error","data":{"text":"something broke"}}
 SM-notify.bin                  {"type":"notify","data":{"text":"all good"}}
 SM-tool-confirm.bin            {"type":"tool_confirm","data":{"id":"t1"}}

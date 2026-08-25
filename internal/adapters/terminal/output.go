@@ -550,15 +550,17 @@ func renderCommandResult(name string, output json.RawMessage) string {
 
 func (to *outputWriter) handleSystemTask(data json.RawMessage) {
 	var m struct {
-		InProgress  bool  `json:"in_progress"`
-		CurrentStep int   `json:"current_step"`
-		MaxSteps    int   `json:"max_steps"`
-		Context     int64 `json:"context"`
+		InProgress  bool    `json:"in_progress"`
+		CurrentStep int     `json:"current_step"`
+		MaxSteps    int     `json:"max_steps"`
+		Context     int64   `json:"context"`
+		StepTPS     float64 `json:"step_tps"`
+		TTFTMS      int64   `json:"ttft_ms"`
 	}
 	if json.Unmarshal(data, &m) != nil {
 		return
 	}
-	if to.status.updateTask(m.InProgress, m.CurrentStep, m.MaxSteps, m.Context) {
+	if to.status.updateTask(m.InProgress, m.CurrentStep, m.MaxSteps, m.Context, m.StepTPS, m.TTFTMS) {
 		// Task completion edge: settle tool windows left pending by
 		// abnormal paths (canceled confirmation, malformed/dropped frames).
 		// Normal tools already settled via their UF frames before this

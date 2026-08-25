@@ -35,6 +35,7 @@ import (
 	"iter"
 	"math"
 	"sync"
+	"time"
 )
 
 // ErrMaxStepsExceeded is returned when the agent loop reaches the configured maximum number of steps
@@ -106,6 +107,12 @@ type StreamCallbacks struct {
 	OnStepStart  func(step int) error
 	OnStepFinish func(contents []ContentPart, usage Usage) error
 
+	// OnStepStats reports per-step speed metrics (TTFT, duration, tok/s)
+	// computed from the provider's authoritative usage. Fired after the
+	// step's stream completes and before OnStepFinish. Not fired for
+	// failed/canceled steps that never produced a StepCompleteEvent.
+	OnStepStats func(StepStats) error
+
 	// IDGen provides unique history IDs. Called once per content block
 	// (first delta for AT/AR, once for each AF/UF). The returned ID is
 	// passed to callbacks and stored on the ContentPart.
@@ -147,12 +154,21 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 			}
 		}
 
+		// stepStart is recorded before StreamMessages because the HTTP
+		// request happens synchronously inside it — starting here makes
+		// TTFT and Duration include request/network latency.
+		stepStart := time.Now()
+
 		events, err := a.config.Provider.StreamMessages(ctx, allContents, a.toolDefinitions(), a.config.SystemPrompt, a.config.ExtraSystemPrompt)
 		if err != nil {
 			return nil, fmt.Errorf("provider stream failed: %w", err)
 		}
 
-		stepContents, stepUsage, truncated, err := a.streamEvents(ctx, events, callbacks)
+		// streamEvents fills stats.TimeToFirstToken (first delta) and
+		// stats.Duration (StepCompleteEvent). Step/OutputTokens/TPS are
+		// completed below after the authoritative usage is known.
+		var stepStats StepStats
+		stepContents, stepUsage, truncated, err := a.streamEvents(ctx, events, callbacks, stepStart, &stepStats)
 		if err != nil {
 			// A failed step may still have executed tools whose side
 			// effects already happened (file writes, commands). Fold their
@@ -170,6 +186,14 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 		}
 
 		allContents = append(allContents, stepContents...)
+
+		// Complete the step stats: authoritative output tokens from the
+		// provider usage; TPS is 0 for tool-only steps or degenerate
+		// durations. Fired before OnStepFinish so consumers can publish
+		// the stats ahead of the step-finish broadcast.
+		if err := a.completeStepStats(callbacks, step, stepUsage, &stepStats); err != nil {
+			return nil, err
+		}
 
 		if callbacks.OnStepFinish != nil {
 			if err := callbacks.OnStepFinish(allContents, stepUsage); err != nil {
@@ -191,6 +215,29 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 	return &StreamResult{Contents: allContents, Usage: totalUsage}, ErrMaxStepsExceeded
 }
 
+// completeStepStats fills the authoritative fields of a step's stats
+// (step number, output tokens from provider usage, tok/s) and fires
+// OnStepStats.
+//
+// TokensPerSec is the end-to-end throughput — OutputTokens over
+// the whole round-trip Duration (request/network latency and TTFT
+// included). Deliberately simple and gate-free: any completed step with
+// output tokens gets a speed, so the display never blanks out. It is NOT
+// the server-side decode rate (that cannot be observed exactly from the
+// client; subtracting TTFT would inflate short/burst outputs). Returns
+// the callback error, if any.
+func (a *Agent) completeStepStats(callbacks StreamCallbacks, step int, stepUsage Usage, stepStats *StepStats) error {
+	stepStats.Step = step
+	stepStats.OutputTokens = stepUsage.OutputTokens
+	if stepStats.Duration > 0 && stepStats.OutputTokens > 0 {
+		stepStats.TokensPerSec = float64(stepStats.OutputTokens) / stepStats.Duration.Seconds()
+	}
+	if callbacks.OnStepStats != nil {
+		return callbacks.OnStepStats(*stepStats)
+	}
+	return nil
+}
+
 // streamEvents iterates streaming events, firing callbacks and collecting
 // tool calls. Returns the assembled content parts (assistant response +
 // tool results), usage, and whether the response was truncated.
@@ -207,7 +254,7 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 // side effects stay visible in history.
 //
 //nolint:gocyclo // switch dispatch over 8 event types with callback guards
-func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, error], callbacks StreamCallbacks) (stepContents []ContentPart, stepUsage Usage, truncated bool, err error) {
+func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, error], callbacks StreamCallbacks, stepStart time.Time, stats *StepStats) (stepContents []ContentPart, stepUsage Usage, truncated bool, err error) {
 	var (
 		results []ContentPart
 
@@ -264,6 +311,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 		switch e := event.(type) {
 		case TextDeltaEvent:
+			stats.setFirstToken(stepStart)
 			if callbacks.OnTextDelta != nil {
 				if err := callbacks.OnTextDelta(e.Delta, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
 					return nil, Usage{}, false, err
@@ -278,6 +326,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			}
 
 		case ReasoningDeltaEvent:
+			stats.setFirstToken(stepStart)
 			if callbacks.OnReasoningDelta != nil {
 				if err := callbacks.OnReasoningDelta(e.Delta, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
 					return nil, Usage{}, false, err
@@ -300,6 +349,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			nameByIndex[e.Index] = e.Name
 
 		case ToolInputDeltaEvent:
+			stats.setFirstToken(stepStart)
 			if callbacks.OnToolInputDelta != nil {
 				if err := callbacks.OnToolInputDelta(e.ID, e.Delta, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
 					return nil, Usage{}, false, err
@@ -338,6 +388,11 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			if e.StopReason == "max_tokens" || e.StopReason == "length" {
 				truncated = true
 			}
+			// Stream ended: capture the round-trip duration (request →
+			// stream end, TTFT included). Tool execution happens after
+			// this event (parallel goroutines collected below), so tool
+			// time is excluded from the speed measurement.
+			stats.Duration = time.Since(stepStart)
 		}
 	}
 

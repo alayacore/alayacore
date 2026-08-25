@@ -88,6 +88,13 @@ type runState struct {
 	// cleared before the final broadcast.
 	taskCommandID string
 
+	// Latest step's speed metrics, set from stepStatsEvent handling and
+	// read by sendTaskMsg for the status bar. Reset when a task starts
+	// (stepStartEvent Step==1) so the step-1 broadcast never carries the
+	// previous task's values.
+	lastStepTPS float64 // latest step's end-to-end tok/s (0 = none/no output)
+	lastTTFTMS  int64   // latest step's time-to-first-token (ms)
+
 	inputMsgCh   chan inputMsg // inputPump → run: parsed TLV messages
 	taskEventCh  chan taskEvent
 	taskResultCh chan []llm.ContentPart

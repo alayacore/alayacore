@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"iter"
 	"strings"
+	"time"
 )
 
 // DefaultMaxTokens is the default maximum output tokens when the user
@@ -158,6 +159,42 @@ type Usage struct {
 	CacheReadTokens     int64
 	InputTokens         int64
 	OutputTokens        int64
+}
+
+// StepStats captures speed metrics for a single LLM round trip (step).
+//
+//   - Duration is measured from step start (recorded before
+//     Provider.StreamMessages, so request/network latency is included)
+//     to the provider stream end (StepCompleteEvent). Tool execution
+//     time — which happens in parallel after the stream ends — is
+//     excluded.
+//   - TokensPerSec is the END-TO-END throughput: output tokens per
+//     second of the whole round trip, latency (TimeToFirstToken)
+//     included. It is deliberately simple and always computable for any
+//     completed step with output tokens — no reliability gates. It is
+//     NOT the server-side decode speed (e.g. llama.cpp's eval time): the
+//     client cannot observe that exactly, and any attempt to estimate it
+//     (subtracting TTFT) is systematically inflated for short or burst
+//     outputs. Expect this value to be <= the server's decode rate.
+//   - OutputTokens comes from the provider's authoritative usage.
+//
+// A zero-value StepStats (Duration == 0) means the step never completed
+// (canceled or failed) and carries no speed information.
+type StepStats struct {
+	Step             int
+	OutputTokens     int64
+	Duration         time.Duration // end-to-end: request → stream end (incl. TTFT)
+	TokensPerSec     float64       // OutputTokens / Duration (end-to-end throughput)
+	TimeToFirstToken time.Duration
+}
+
+// setFirstToken records the time-to-first-token on the step's first output
+// delta (text, reasoning, or tool-call arguments). Idempotent — the first
+// delta wins, later ones leave it untouched.
+func (s *StepStats) setFirstToken(stepStart time.Time) {
+	if s.TimeToFirstToken == 0 {
+		s.TimeToFirstToken = time.Since(stepStart)
+	}
 }
 
 // StreamEvent represents a streaming event

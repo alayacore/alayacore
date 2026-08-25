@@ -33,6 +33,7 @@ The session layer manages conversation state, task execution, and model interact
 | Model config loading | Loads and manages AI model configurations from `model.conf`. Persists edits from `:model_sync` back to the file. |
 | Runtime settings | Persists runtime settings (active model, active theme) to `runtime.conf` |
 | `ContextTokens` | Tracks conversation context size across API calls. See [context-tracking.md](context-tracking.md). |
+| `StepStats` | Measures per-step provider speed (end-to-end tok/s) and time-to-first-token, broadcast via the `task` system message for the status bar. See [speed-tracking.md](speed-tracking.md). |
 
 #### Concurrency Model
 

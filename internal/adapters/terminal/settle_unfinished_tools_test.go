@@ -23,19 +23,19 @@ func TestUpdateTaskCompletionEdge(t *testing.T) {
 	st := &sessionState{mu: &sync.Mutex{}}
 
 	// Start edge: false→true — not a completion.
-	if st.updateTask(true, 1, 5, 0) {
+	if st.updateTask(true, 1, 5, 0, 0, 0) {
 		t.Error("start edge must not report completion")
 	}
 	// In-progress update: true→true — not a completion.
-	if st.updateTask(true, 2, 5, 10) {
+	if st.updateTask(true, 2, 5, 10, 12.5, 800) {
 		t.Error("in-progress update must not report completion")
 	}
 	// Completion edge: true→false.
-	if !st.updateTask(false, 0, 5, 10) {
+	if !st.updateTask(false, 0, 5, 10, 12.5, 800) {
 		t.Error("completion edge must report completion")
 	}
 	// Idle update: false→false — not a completion.
-	if st.updateTask(false, 0, 5, 0) {
+	if st.updateTask(false, 0, 5, 0, 0, 0) {
 		t.Error("idle update must not report completion")
 	}
 }
