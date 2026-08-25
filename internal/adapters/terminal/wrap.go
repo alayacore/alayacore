@@ -602,23 +602,19 @@ func wrapLabels(labels []string, width int, style Style) string {
 // truncateWithSuffix truncates content to fit within maxWidth, appending "…"
 // to indicate content has been cut. The result is guaranteed to be at most
 // maxWidth display columns wide, provided the input contains no unexpanded
-// tabs — ansi.Hardwrap counts a tab as 0 width while terminals render it as
-// TabWidth columns. Callers must expandTabs (see tool_render.go) before
+// tabs — ansi.StringWidth counts a tab as 0 width while terminals render it
+// as TabWidth columns. Callers must expandTabs (see tool_render.go) before
 // truncating content that may contain tabs.
+//
+// ANSI styling is preserved: escape sequences are never broken, and the
+// ellipsis is inserted at the truncation point while the SGR state active
+// there is still open — so a truncated styled segment (including a segment
+// reduced to a single column) keeps its color instead of falling back to
+// the terminal default. Trailing escapes of the cut-off remainder are
+// carried along inertly and closed by their original resets.
 func truncateWithSuffix(content string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-
-	truncated := ansi.Hardwrap(content, maxWidth, true)
-	if truncated == content {
-		return content
-	}
-
-	if maxWidth == 1 {
-		return "…"
-	}
-
-	inner := ansi.Hardwrap(content, maxWidth-1, true)
-	return strings.SplitN(inner, "\n", 2)[0] + "…"
+	return ansi.Truncate(content, maxWidth, "…")
 }

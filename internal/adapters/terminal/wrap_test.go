@@ -90,6 +90,58 @@ func TestTruncateWithSuffix(t *testing.T) {
 	}
 }
 
+// TestTruncateWithSuffixPreservesStyle guards the styling contract of
+// truncateWithSuffix: the ellipsis must inherit the SGR state active at
+// the truncation point, never render as a bare "…" in the terminal
+// default color — including when the whole segment collapses to a single
+// column (maxWidth 1), the case that previously returned an unstyled
+// ellipsis.
+func TestTruncateWithSuffixPreservesStyle(t *testing.T) {
+	styles := DefaultStyles()
+	muted := styles.Status.Foreground(styles.ColorMuted)
+	dim := styles.Status.Foreground(styles.ColorDim)
+
+	// Segment collapsed to a single column: "…" keeps the segment's SGR.
+	got := truncateWithSuffix(muted.Render("gpt-4o"), 1)
+	if got == "\u2026" {
+		t.Fatalf("truncateWithSuffix(styled, 1) = bare %q, want styled ellipsis", got)
+	}
+	if !strings.HasPrefix(got, "\x1b[") || !strings.Contains(got, "\u2026") {
+		t.Errorf("truncateWithSuffix(styled, 1) = %q, want SGR prefix + ellipsis", got)
+	}
+	if Width(got) != 1 {
+		t.Errorf("Width(styled ellipsis) = %d, want 1", Width(got))
+	}
+
+	// Truncation mid-segment: the ellipsis inherits the open SGR.
+	got = truncateWithSuffix(muted.Render("gpt-4o"), 3)
+	if w := stripANSI(got); w != "gp\u2026" {
+		t.Errorf("stripANSI = %q, want %q", w, "gp\u2026")
+	}
+	if !strings.HasPrefix(got, "\x1b[") {
+		t.Errorf("mid-segment truncation lost styling: %q", got)
+	}
+
+	// Truncation at a segment boundary (right after a completed styled
+	// segment + reset): the ellipsis must still carry a style — it would
+	// otherwise fall back to the terminal default color.
+	multi := muted.Render("a") + " " + dim.Render("|") + " " + muted.Render("bb")
+	got = truncateWithSuffix(multi, 3)
+	if w := stripANSI(got); w != "a \u2026" {
+		t.Errorf("stripANSI = %q, want %q", w, "a \u2026")
+	}
+	// The byte right before "…" must be an active SGR open (escape + "m"),
+	// not a reset — otherwise the ellipsis renders default-colored.
+	if idx := strings.Index(got, "\u2026"); idx > 0 {
+		before := got[:idx]
+		if !strings.HasSuffix(before, "m") || strings.HasSuffix(before, "\x1b[m") {
+			t.Errorf("ellipsis not preceded by an active SGR open: %q", got)
+		}
+	} else {
+		t.Fatalf("no ellipsis in result: %q", got)
+	}
+}
+
 func TestIncrementalWrap(t *testing.T) {
 	width := 80
 
