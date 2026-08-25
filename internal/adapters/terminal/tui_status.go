@@ -173,10 +173,13 @@ func (m *Terminal) renderStatusBar() string {
 // assembleStatusLeft builds the PLAIN left part of the status bar:
 // the indicator glyph, the status segments truncated to the remaining
 // budget (always keeping a 1-cell separator after the indicator), and
-// the model right-aligned flush against the right screen edge in the
-// remaining flexible space — squeezed, truncated with "…", or dropped
-// when there is no room. Truncation happens on plain text only; styling
-// is applied later by the caller.
+// the model right-aligned flush against the right screen edge.
+//
+// The model is separated from the segments by the same " | " token used
+// between segments: the gap is either exactly 3 cells — rendered as
+// " | " — or larger (blank padding, model flush right). A gap of 1-2
+// cells never renders: the model is truncated until the gap is exactly
+// 3, and dropped when even one column cannot fit next to the separator.
 func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudget int) string {
 	left := indicatorGlyph
 	if statusLeft != "" {
@@ -186,9 +189,21 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudg
 		}
 	}
 	if statusRight != "" {
-		model := truncateWithSuffix(statusRight, max(0, lineBudget-Width(left)-1))
-		if model != "" {
-			left += strings.Repeat(" ", max(0, lineBudget-Width(left)-Width(model))) + model
+		remaining := lineBudget - Width(left)
+		// The model needs the 3-cell " | " separator plus at least one
+		// column of its own; gaps of 1-2 cells are never rendered.
+		modelWidth := min(Width(statusRight), remaining-3)
+		if modelWidth < 1 {
+			return left
+		}
+		model := truncateWithSuffix(statusRight, modelWidth)
+		if gap := remaining - Width(model); gap == 3 {
+			// Gap exactly the separator width: " | " keeps the model
+			// flush right while reading like any other segment.
+			left += " | " + model
+		} else {
+			// Larger gap: blank padding, model flush right.
+			left += strings.Repeat(" ", gap) + model
 		}
 	}
 	return left
