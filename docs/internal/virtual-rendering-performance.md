@@ -31,9 +31,12 @@ During streaming, every `AppendFromTLV` call on a `textRenderer`:
    incremental path; deltas that touch a table invalidate the cache and
    fall back to a full re-render (the table transform re-pads columns)
 3. Wraps the delta as **plain text** via `appendDeltaToLines` — streaming
-   content deliberately carries no styling (markdown table rendering is
-   plain text too), so the incremental path has no ANSI handling and no
-   style state
+   content deliberately carries no styling in normal mode (markdown
+   table rendering is plain text too), so the incremental path has no
+   ANSI handling and no style state. The dim Body color shown while an
+   overlay is open is layered on later, when `BuildInner` returns
+   (`bodyStyled`), backed by a `colored` cache so steady frames don't
+   recolor
 4. Updates `wrappedLines` **incrementally** — only the new text is wrapped and appended
 5. `TryLineCount` returns `len(wrappedLines) + 3` immediately — no render needed
    (+2 box rules, +1 header line of the expanded form)
@@ -263,11 +266,14 @@ so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 `textRenderer.AppendFromTLV` appends each delta as **plain text** to
 `appendDeltaToLines`, which only wraps the delta and appends it to the existing
 `wrappedLines` slice. This avoids re-wrapping the entire accumulated content,
-and because streaming content carries no styling (markdown table rendering is
-plain text too), the incremental path never touches ANSI — no `styleByTag`,
-no `WrapWriter` style reapplication, no style state to maintain. System
-messages (SN/SE) keep their colors via a full styled render, which is fine
-since they are single-frame, non-streaming windows.
+and because streaming content carries no styling in normal mode (markdown
+table rendering is plain text too), the incremental path never touches ANSI —
+no `styleByTag`, no `WrapWriter` style reapplication, no style state to
+maintain. The only styling exception is the overlay state: when an overlay is
+open, `BuildInner` wraps the plain rows in the dim `Body` color at return time
+(`bodyStyled` / `styleBodyLines`), caching the colored copy so steady frames
+reuse it instead of recoloring every render. All text windows (AT/AR/SN/SE)
+are plain, so this layered coloring stays out of the incremental path.
 
 Markdown mode (default for AT/AR) gates this path: deltas with a `|` line,
 or arriving while the content tail is inside an open table, invalidate the
@@ -283,6 +289,7 @@ commit `1021326`.
 | Cache | Location | Contents | Invalidated by |
 |-------|----------|----------|---------------|
 | Renderer lines | `textRenderer.wrappedLines` | Wrapped plain-text lines (AT/AR) | Resize, theme change |
+| Body-colored lines | `textRenderer.colored` | Dim-colored copy of `wrappedLines`, materialized only while an overlay is active (`styles.Body` carries a foreground) | Content append (`coloredDirty`), resize, theme change, blocked switch |
 | Border output | `Window.border` | Visual lines (`lines`), display widths (`widths`, lazy), dim arrow, rendered string + lineCount | Content append, resize, theme |
 
 Renderer lines are **updated incrementally** during streaming (not invalidated).

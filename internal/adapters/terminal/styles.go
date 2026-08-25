@@ -38,6 +38,13 @@ type Styles struct {
 	Input   Style
 	Status  Style
 	Confirm Style
+	// Body is the style for plain body text (assistant messages,
+	// reasoning, user message text, tool input/output). It carries NO
+	// foreground color in normal mode — body text renders in the
+	// terminal's default color, exactly like a shell. Styles.Dimmed()
+	// (overlay active) gives it the dim color so expanded window bodies
+	// dim together with the chrome.
+	Body Style
 
 	// Component-specific colors (exposed as color.Color for dynamic use)
 	// Border colors
@@ -136,6 +143,8 @@ func NewStyles(t *theme.Theme) *Styles {
 		Input:   baseStyle,
 		Status:  baseStyle.Foreground(Color(t.Dim)),
 		Confirm: baseStyle.Foreground(Color(t.Warning)).Bold(true),
+		// Body stays colorless (terminal default) — see Styles.Body.
+		Body: baseStyle,
 
 		// Component-specific colors
 		BorderFocused: Color(t.Primary),
@@ -174,6 +183,9 @@ func (s *Styles) Dimmed() *Styles {
 		Input:   s.Input.Foreground(s.ColorDim),
 		Status:  s.Status.Foreground(s.ColorDim),
 		Confirm: s.Confirm.Foreground(s.ColorDim),
+		// Body gains the dim foreground under an overlay so plain body
+		// text (which is colorless by default) dims with everything else.
+		Body: s.Body.Foreground(s.ColorDim),
 
 		// Colors — unchanged (used as dynamic color references)
 		BorderFocused: s.ColorDim,

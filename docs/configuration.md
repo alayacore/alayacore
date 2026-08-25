@@ -214,7 +214,7 @@ unfold_arrow: "▼"
 | `added` | Diff additions |
 | `removed` | Diff removals |
 
-Body text (assistant messages, reasoning, user input) is rendered without an explicit foreground color — it uses the terminal's default. Selected/active items in overlay lists are emphasized with **bold** weight only, not color. The terminal cursor uses the emulator's default color (the theme does not control it).
+Body text (assistant messages, reasoning, user input, tool input/output) is rendered without an explicit foreground color — it uses the terminal's default. When an overlay (model selector, help window, confirm dialog, …) is open, the body dims to the theme's `dim` color together with the rest of the background content. Selected/active items in overlay lists are emphasized with **bold** weight only, not color. The terminal cursor uses the emulator's default color (the theme does not control it).
 
 ### Glyphs
 

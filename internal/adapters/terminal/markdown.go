@@ -3,7 +3,9 @@ package terminal
 // Markdown table rendering: transforms GFM-style markdown table blocks
 // into aligned tables with padded columns. Only tables are handled —
 // all other markdown (bold, inline code, …) passes through unchanged,
-// matching the "streaming content carries no styling" convention.
+// matching the "streaming content carries no styling" convention (the
+// dim Body color applied under overlays is layered on by the renderer's
+// bodyStyled/styleBodyLines, never here).
 //
 // The transform is line-based and fence-aware: tables inside fenced code
 // blocks are never transformed. Rows wider than the terminal are fitted

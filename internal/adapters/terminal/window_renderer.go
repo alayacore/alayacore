@@ -44,6 +44,13 @@ type textRenderer struct {
 	wrappedLines []visualLine
 	cacheWidth   int  // inner width used for wrapping (0 = unknown)
 	cacheValid   bool // true = BuildInner can skip full re-wrap
+
+	// Body-colored copy of wrappedLines, materialized only while an
+	// overlay is active (styles.Body carries a foreground). coloredDirty
+	// is set whenever the plain cache changes (incremental append), so
+	// the next BuildInner recolors once instead of on every frame.
+	colored      []visualLine
+	coloredDirty bool
 }
 
 func (r *textRenderer) Tag() string { return r.tag }
@@ -53,6 +60,9 @@ func (r *textRenderer) ToolInfo() *ToolInfo { return nil }
 func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	r.contentParts = append(r.contentParts, value)
 	r.contentLen += len(value)
+	// The plain wrappedLines cache may change on any of the paths below,
+	// so the body-colored copy must be rebuilt on the next BuildInner.
+	r.coloredDirty = true
 
 	// Markdown mode: plain deltas — no '|'-prefixed line and the content
 	// tail not inside an open table — go through the incremental wrap
@@ -77,9 +87,12 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 
 	// Incremental update: append the delta to wrappedLines as PLAIN TEXT.
 	// This is only valid for windows that render plain (AT/AR — streaming
-	// content deliberately carries no styling; markdown table rendering
-	// is handled above and produces plain text too). Every text window
-	// (AT/AR/SN/SE) is plain, so the incremental append is always safe.
+	// content deliberately carries no styling in normal mode; markdown
+	// table rendering is handled above and produces plain text too).
+	// Every text window (AT/AR/SN/SE) is plain, so the incremental append
+	// is always safe. Under an overlay the dim Body color is applied on
+	// top later, when BuildInner returns (bodyStyled) — never here — so
+	// the incremental path stays ANSI-free and O(delta).
 	if r.plainContent() && len(r.wrappedLines) > 0 && r.cacheWidth > 0 {
 		// stripANSI only (no expandTabs here): tabs are expanded per
 		// original line inside wrapVisualLines, so incremental and full
@@ -95,6 +108,54 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 func (r *textRenderer) Invalidate() {
 	r.cacheValid = false
 	r.wrappedLines = nil
+	r.colored = nil
+	r.coloredDirty = true
+}
+
+// bodyStyled returns the visual lines with styles.Body applied. In
+// normal mode Body carries no foreground, so the plain lines are
+// returned unchanged (body text stays in the terminal's default color,
+// no ANSI emitted — zero allocation). Under an overlay (Dimmed styles)
+// Body carries ColorDim, and the colored copy is cached so incremental
+// streaming recolors only once per delta, not on every frame.
+func (r *textRenderer) bodyStyled(lines []visualLine, styles *Styles) []visualLine {
+	if styles == nil || styles.Body.GetForeground() == nil {
+		r.colored = nil
+		r.coloredDirty = false
+		return lines
+	}
+	if !r.coloredDirty && len(r.colored) == len(lines) {
+		return r.colored
+	}
+	colored := make([]visualLine, len(lines))
+	for i, l := range lines {
+		colored[i] = visualLine{Text: styles.Body.Render(l.Text), Cont: l.Cont}
+	}
+	r.colored = colored
+	r.coloredDirty = false
+	return colored
+}
+
+// styleBodyLines applies styles.Body to the plain (ANSI-free) rows of a
+// window's inner content. Rows already carrying SGR styling (separators,
+// diff rows, media badges) are left untouched — under an overlay those
+// styles already resolve to ColorDim via Styles.Dimmed, so applying Body
+// again would only nest redundant sequences. When styles.Body has no
+// foreground (normal mode) the lines are returned unchanged, keeping
+// body text in the terminal's default color.
+func styleBodyLines(lines []visualLine, styles *Styles) []visualLine {
+	if styles == nil || styles.Body.GetForeground() == nil {
+		return lines
+	}
+	out := make([]visualLine, len(lines))
+	for i, l := range lines {
+		if strings.Contains(l.Text, "\x1b[") {
+			out[i] = l
+			continue
+		}
+		out[i] = visualLine{Text: styles.Body.Render(l.Text), Cont: l.Cont}
+	}
+	return out
 }
 
 // updateMDTail updates the open-table tail state after appending a delta.
@@ -141,23 +202,26 @@ func (r *textRenderer) rawContent() string {
 }
 
 // plainContent returns true when this text window's content must render
-// without styling: assistant text and reasoning are streaming content and
-// deliberately carry no color/weight — markdown table rendering (mdMode)
-// also emits plain text, only re-arranging columns. System messages
-// (SN/SE) keep their System/Error colors.
+// as plain body text: assistant text and reasoning are streaming content
+// and deliberately carry no color/weight in normal mode — markdown table
+// rendering (mdMode) also emits plain text, only re-arranging columns.
+// The returned lines gain the dim Body color only under an overlay
+// (see bodyStyled / styles.Body).
 func (r *textRenderer) plainContent() bool {
 	return r.tag == tlv.TagAssistantT || r.tag == tlv.TagAssistantR
 }
 
 // BuildInner returns the inner content as visual lines.
-// For AT/AR this is PLAIN TEXT (no styling — markdown tables are padded
-// plain text when mdMode is on), so only wrapping is applied. System
-// messages (SN/SE) keep their Error/System colors. Each returned line is
-// one terminal row (no '\n' inside) with a continuation mark: rows of
-// the same original line join without '\n' (soft wrap); rows starting a
-// new original line are separated by hard '\n'. lineCount includes the 2
-// box rules (len(lines) + 2); Window.Render adds the header.
-func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, int) {
+// In normal mode the content is PLAIN TEXT (no styling — markdown tables
+// are padded plain text when mdMode is on), so only wrapping is applied
+// and body text renders in the terminal's default color. Under an
+// overlay (styles from Styles.Dimmed) bodyStyled wraps the rows in the
+// dim Body color. Each returned line is one terminal row (no '\n'
+// inside) with a continuation mark: rows of the same original line join
+// without '\n' (soft wrap); rows starting a new original line are
+// separated by hard '\n'. lineCount includes the 2 box rules
+// (len(lines) + 2); Window.Render adds the header.
+func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 
 	// Fast path: use cached wrapped lines if width matches.
@@ -174,7 +238,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, i
 			r.content = buf.String()
 			r.contentParts = nil
 		}
-		return r.wrappedLines, len(r.wrappedLines) + 2
+		return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 2
 	}
 
 	// Full render: prepare, style (system messages only), and wrap
@@ -204,7 +268,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, i
 	r.cacheWidth = innerWidth
 	r.cacheValid = true
 
-	return r.wrappedLines, len(r.wrappedLines) + 2
+	return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 2
 }
 
 // BuildCollapsed returns the single-line collapsed form:
@@ -219,7 +283,8 @@ func (r *textRenderer) BuildInner(width int, _ bool, _ *Styles) ([]visualLine, i
 //
 // AT/AR: the label is styled (bold + muted) and the content summary is
 // muted — the collapsed header is UI chrome, while the expanded body
-// stays plain text. The collapsed preview always shows the RAW content
+// stays plain text in normal mode (dimmed Body color under overlays).
+// The collapsed preview always shows the RAW content
 // (never the markdown table transform — the preview is one line and
 // markdown state only affects expanded rendering). All non-delta text
 // uses head+tail (so the user sees both the topic and the latest
@@ -694,7 +759,7 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 				textBlock.WriteString(styles.System.Render(Separator))
 				textBlock.WriteString("\n")
 			}
-			textBlock.WriteString(trimmed) // user text is plain (no bold/color)
+			textBlock.WriteString(trimmed) // user text is plain (no bold/color); overlay dimming is applied later via styleBodyLines
 			firstText = false
 		}
 
@@ -710,8 +775,9 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// original line are separated by hard '\n'.
 	lines := wrapVisualLines(result, innerWidth)
 
-	// Count lines (add 2 for border)
-	return lines, len(lines) + 2
+	// Body color for the plain text rows (overlay dimming); styled rows
+	// (media badges, separators) keep their own styles.
+	return styleBodyLines(lines, styles), len(lines) + 2
 }
 
 // BuildCollapsed returns the single-line collapsed form:
@@ -848,7 +914,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		}
 		styled := prepareContent(output)
 		lines := wrapVisualLines(styled, innerWidth)
-		return lines, len(lines) + 2
+		return styleBodyLines(lines, styles), len(lines) + 2
 	}
 
 	// Input: streaming delta preview (truncated JSON) or the full input.
@@ -856,7 +922,8 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// indicator lives in the header line (TOOL CALL ⠋) and the tool name is
 	// shown there too. Content is plain (no color, no bold); only the
 	// "---" separator and any leading "…" truncation marker keep their
-	// styled colors (muted / dim).
+	// styled colors (muted / dim). The plain rows gain the dim Body color
+	// under an overlay, via styleBodyLines on the wrapped result below.
 	var call string
 	if r.deltaBuffer != "" {
 		// Arguments still streaming in — one-line preview showing the
@@ -880,14 +947,16 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		default:
 			// Everything else — including write_file, whose input is the
 			// RAW file content being written (not a diff; - / + prefixed
-			// lines there are literal content and must stay plain).
+			// lines there are literal content and must stay plain in
+			// normal mode; dimmed under overlays by styleBodyLines).
 			call = defaultToolRender(r.input, r.name)
 		}
 	}
 
 	// Append output with a "---" separator — uniform across all tools
 	// (parameters/results divider; edit_file and write_file included).
-	// Output is plain text; the separator keeps its muted color.
+	// Output rows are plain text (dim Body color under overlays); the
+	// separator keeps its muted color.
 	if r.output != "" {
 		output := r.output
 		if p := r.previewOutput(innerWidth, styles); p != "" {
@@ -900,7 +969,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	}
 
 	lines := wrapVisualLines(call, innerWidth)
-	return lines, len(lines) + 2
+	return styleBodyLines(lines, styles), len(lines) + 2
 }
 
 // BuildCollapsed returns the single-line collapsed form for tool windows:
