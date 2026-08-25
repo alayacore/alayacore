@@ -72,7 +72,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 🌐 **Cross-platform** — Runs on Linux, macOS, and Windows. The `execute_command` tool auto-detects the shell (bash/zsh/sh on Unix, PowerShell/cmd on Windows).
 - 🧠 **Any LLM provider** — OpenAI, Anthropic, DeepSeek, Qwen, Ollama, LM Studio. Multiple models in one config, switch at runtime.
 - 🔗 **MCP support** — Connect to external [Model Context Protocol](https://modelcontextprotocol.io) servers for database queries, API access, code analysis, and more via `mcp.conf`.
-- 💾 **Session persistence** — Save and resume conversations automatically when `--session` is specified.
+- 💾 **Session persistence** — Save and resume conversations automatically when `--session` is specified; `:save` at any time — even mid-task — snapshots all completed steps.
 - ✂️ **Auto-summarization** — When the context approaches the model's limit, older turns are compressed automatically so long sessions stay within the window (`--auto-summarize <percent>`).
 - 🎯 **Skills system** — Extend the agent with instruction packages following the [Agent Skills](https://agentskills.io) spec.
 - ✅ **Configurable tool confirmation** — Require manual approval for specific tools via `--tool-confirm`.

@@ -4,9 +4,12 @@ package llm
 //
 // 1. ONSTEPFINISH RECEIVES FULL HISTORY: OnStepFinish callback receives
 //    the complete allContents slice (full conversation history), not just
-//    the current step's content parts. The session layer replaces its state
-//    from this rather than appending increments. OnToolOutput should only
-//    send UI notifications, not append to session contents.
+//    the current step's content parts. The session layer derives the
+//    step's new parts from this (the suffix after the previous step's
+//    offset) and accumulates them into its Contents incrementally; the
+//    authoritative final state is committed on task completion.
+//    OnToolOutput should only send UI notifications, not append to
+//    session contents.
 //
 // 2. INCOMPLETE TOOL CALLS ON CANCEL: When user cancels mid-tool-call, content may have
 //    tool_use without matching tool_result. Clean up these orphaned tool calls before the

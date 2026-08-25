@@ -72,7 +72,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 🌐 **跨平台** — 支持 Linux、macOS 和 Windows。`execute_command` 工具可自动检测 shell（Unix 上为 bash/zsh/sh，Windows 上为 PowerShell/cmd）。
 - 🧠 **支持任何 LLM 提供商** — OpenAI、Anthropic、DeepSeek、Qwen、Ollama、LM Studio。一个配置文件支持多个模型，运行时可切换。
 - 🔗 **MCP 支持** — 通过 `mcp.conf` 连接外部 [Model Context Protocol](https://modelcontextprotocol.io) 服务器，扩展数据库查询、API 访问、代码分析等能力。
-- 💾 **会话持久化** — 支持保存和恢复对话，使用 `--session` 时自动保存。
+- 💾 **会话持久化** — 使用 `--session` 时自动保存和恢复对话；随时 `:save`（任务进行中也行）都会快照所有已完成的步骤。
 - ✂️ **自动摘要** — 当上下文接近模型上限时，自动压缩较早的对话轮次，让长会话保持在上下文窗口内（`--auto-summarize <百分比>`）。
 - 🎯 **技能系统** — 可按照 [Agent Skills](https://agentskills.io) 规范扩展指令包来增强 Agent 能力。
 - ✅ **可配置的工具确认** — 通过 `--tool-confirm` 对指定工具要求手动批准。
