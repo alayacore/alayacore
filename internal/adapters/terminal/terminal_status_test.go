@@ -261,7 +261,7 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 
 	// Extremely narrow window: no room for the model at all — it is
 	// dropped (only the left segments remain, themselves truncated).
-	m.windowWidth = 6 // lineBudget = 6 < left "· R0✦ F↓" (8) + separator (1) + 1-cell model
+	m.windowWidth = 6 // lineBudget = 6: no room for the 3-cell " | " separator + a 1-column model
 	m = m.updateStatus()
 	plain = stripANSI(m.renderStatusBar())
 	if strings.Contains(plain, modelName) {

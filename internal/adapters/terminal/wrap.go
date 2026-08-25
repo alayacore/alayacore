@@ -3,11 +3,14 @@ package terminal
 // Line wrapping and truncation utilities for window content rendering.
 // These functions handle wrapping styled content at display width
 // boundaries while preserving ANSI styles across line breaks, and
-// display-width-aware truncation with a "…" suffix.
+// display-width-aware truncation of PLAIN text with a "…" suffix
+// (callers apply their own Style after truncating — see
+// truncateWithSuffix).
 //
 // Used by Window.renderer.BuildInner, tool_render.go
-// (RenderDiffContent), model_selector.go, help_window.go,
-// theme_selector.go, prompt_input.go, and tests.
+// (RenderDiffContent), tui_status.go, model_selector.go,
+// theme_selector.go, help_window.go, confirm_dialog.go,
+// attachment_window.go, overlay.go, prompt_input.go, and tests.
 
 import (
 	"bytes"

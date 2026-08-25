@@ -57,8 +57,13 @@ func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
 // the left after the status dot; the active model name is right-aligned
 // flush against the right screen edge in the remaining flexible space
 // between them, truncated with "…" when it cannot fit and dropped when
-// there is no room. Without a model the left-aligned segments may also
-// run up to the right edge — the TUI's flush-to-edge design language.
+// there is no room for the 3-cell " | " separator plus at least one
+// column of its own. The model's gap follows a discrete rule (see
+// assembleStatusLeft): exactly 3 cells renders as " | " (the same token
+// used between segments), larger gaps stay blank padding, and a 1-2 cell
+// gap never renders — the model is truncated until the gap is 3. Without
+// a model the left-aligned segments may also run up to the right edge —
+// the TUI's flush-to-edge design language.
 //
 // The result is truncated to at most the terminal width so a runaway
 // status string — e.g. a session with every switch + a long token count
