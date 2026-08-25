@@ -90,8 +90,12 @@ tool calls, tool results) in key-value frontmatter + binary TLV format.
 **How it works:**
 
 1. **Auto-save** — After each prompt completes, the conversation is
-   automatically saved to the session file. The file is always up to date.
-   A failed save is reported as `[error: Auto-save failed: ...]`.
+   automatically saved to the session file (a failed save is reported as
+   `[error: Auto-save failed: ...]`). The file is up to date at every
+   prompt boundary. During a multi-step prompt, completed steps are
+   synced into the in-memory conversation and captured by a mid-task
+   `:save`, but the file itself is only written at completion / on
+   `:save` — not per step.
 2. **Auto-restore** — When you start with the same session file, the
    previous conversation is loaded and replayed so the assistant sees
    the full history.

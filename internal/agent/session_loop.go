@@ -233,11 +233,20 @@ func (s *Session) handleTaskEvent(ev taskEvent) {
 		s.sendSystemInfo(systemInfoTask)
 
 	case stepFinishEvent:
+		if len(e.NewParts) > 0 {
+			s.Contents = append(s.Contents, e.NewParts...)
+		}
 		newContext := e.InputTokens + e.OutputTokens + e.CacheReadTokens + e.CacheCreationTokens
 		if newContext > 0 {
 			s.ContextTokens = newContext
 		}
 		s.sendSystemInfo(systemInfoTask)
+
+	case promptPartsEvent:
+		s.Contents = append(s.Contents, e.Parts...)
+
+	case contentsReplacedEvent:
+		s.Contents = e.Contents
 
 	case setContextTokensEvent:
 		if e.Tokens > 0 {

@@ -87,7 +87,7 @@ stdin EOF ──▶ inputPump closes inputMsgCh ──▶ run() detects closed c
 
 ### Session Persistence
 
-- **Auto-save** — Always enabled when `--session` is specified. The session is saved after each step completes. Redundant writes are skipped when message count and content are unchanged. A failed save is reported to the adapter as a system error message — the user must know the session may be lost.
+- **Auto-save** — Always enabled when `--session` is specified. The session file is written after each task completes (and on `:save`). During a running task, completed steps are synced into the in-memory `Contents` via task events, so a `:save` mid-task captures all steps finished so far — but no disk write happens per step (each write is a full-file rewrite). A failed save is reported to the adapter as a system error message — the user must know the session may be lost.
 - **Manual save** — `:save [file]` or `Ctrl+S` at any time (TUI mode).
 - **Load** — On startup, AlayaCore starts a new empty session unless you specify `--session` to load an existing one. A missing session file is the normal first-run case (silent). If the file exists but is corrupt or unreadable, an error message is emitted (system error message, shown by the active adapter) and a fresh session is started; an incompatible `message_version` is rejected outright (see below).
 - **Auto-summarize** — When `--auto-summarize` is set to a positive threshold percentage (e.g. `--auto-summarize=65`), AlayaCore automatically triggers `:summarize` when context reaches that percentage of the limit. A failed summarization is reported to the adapter as a system error message — the context stays over the threshold and the prompt continues at risk.

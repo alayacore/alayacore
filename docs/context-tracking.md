@@ -17,8 +17,9 @@ Provider API response
     → Provider emits StreamEvent{Usage: ...}
       → Agent.streamEvents merges partial usage into stepUsage
         → Agent fires OnStepFinish(allContents, stepUsage) callback
-          → session.sendEvent(stepFinishEvent{...})
+          → session.sendEvent(stepFinishEvent{NewParts, ...tokens})
             → handleTaskEvent in run() goroutine
+              → Contents = append(Contents, NewParts...)  (per-step delta)
               → ContextTokens = InputTokens + OutputTokens + CacheReadTokens + CacheCreationTokens (overwrite, only if non-zero)
 ```
 
@@ -26,14 +27,20 @@ Context tracking is handled by the `handleTaskEvent` method in `session_loop.go`
 
 ```go
 case stepFinishEvent:
+	if len(e.NewParts) > 0 {
+		s.Contents = append(s.Contents, e.NewParts...)
+	}
 	newContext := e.InputTokens + e.OutputTokens + e.CacheReadTokens + e.CacheCreationTokens
 	if newContext > 0 {
 		s.ContextTokens = newContext
 	}
 ```
 
-Note: `stepFinishEvent` carries only token usage metadata. The final message
-state is returned separately via `taskResultCh` on task completion.
+`stepFinishEvent` carries the step's newly produced content parts (`NewParts`)
+plus token usage metadata, so `:save` during a running task sees all steps
+completed so far. The authoritative final message state is still returned
+separately via `taskResultCh` on task completion, which replaces `Contents`
+wholesale (per-step deltas are self-corrected by that final replacement).
 
 - **Overwrite (`Store`), not accumulate (`Add`).** Each API call's `InputTokens` already represents the *entire conversation history* sent in that request. Accumulating would double-count. `OutputTokens` is included because the model's `ContextLimit` is a combined input+output window, and the latest output is part of the conversation that will be sent in the next request.
 - **Guard against zero reports.** Some OpenAI-compatible providers (e.g. GLM-5.1) may omit the `usage` field from SSE chunks entirely — they simply never send a chunk containing `"usage": {"prompt_tokens": N, ...}`. Go's `json.Unmarshal` leaves absent fields at their zero values, so the parsed `Usage` struct arrives as all zeros. Without the guard, this would reset `ContextTokens` to 0, breaking auto-summarization and the status bar display. The `if newContext > 0` check preserves the last known good value.

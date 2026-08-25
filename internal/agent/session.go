@@ -16,8 +16,10 @@ package agent
 //        cancellation.
 //     3. task goroutine — spawned by run() to execute each task. It
 //        receives a copy of s.Contents, accumulates new content parts,
-//        and sends the final state back to run() via taskResultCh on
-//        completion.
+//        publishes finalized parts to run() as they are produced
+//        (prompt parts, per-step deltas via stepFinishEvent.NewParts,
+//        auto-summarize replacements), and sends the final state back
+//        to run() via taskResultCh on completion.
 //
 //   Cross-goroutine communication:
 //     inputMsgCh (inputMsg channel)  — inputPump → run()

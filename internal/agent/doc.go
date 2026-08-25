@@ -28,7 +28,10 @@
 //	     exiting (see drainUntilTaskDone).
 //	  2. task goroutine — spawned per task, runs in background, sends
 //	     state mutations via typed channel events (taskEventCh) to run().
-//	     On completion it sends the full ContentParts list back via taskResultCh.
+//	     It publishes finalized content parts as they are produced
+//	     (prompt parts, per-step deltas, auto-summarize replacements —
+//	     see session_event.go), and on completion sends the full
+//	     ContentParts list back via taskResultCh.
 //	  3. inputPump — reads TLV frames from input, forwards to run()
 //	     via a message channel.
 //
@@ -46,7 +49,11 @@
 //
 //	All other session state (Contents, ContextTokens, ContextLimit,
 //	histCounter) is owned by a single goroutine and accessed without
-//	synchronization.
+//	synchronization. Contents is updated by run() from task events
+//	(per-step deltas, prompt parts, replacements) and replaced wholesale
+//	from taskResultCh on completion — the task goroutine never mutates
+//	it directly; it only publishes finalized ContentParts (see
+//	session_event.go for the ownership rules).
 //
 //	Cross-goroutine
 //	communication is exclusively through channels and atomics.

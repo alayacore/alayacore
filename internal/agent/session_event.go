@@ -2,6 +2,10 @@
 
 package agent
 
+import (
+	"github.com/alayacore/alayacore/internal/llm"
+)
+
 // Session actor model: channel-based state communication between the
 // task goroutine and the run() goroutine.
 //
@@ -23,10 +27,22 @@ type stepStartEvent struct {
 
 func (stepStartEvent) taskEvent() {}
 
-// stepFinishEvent signals that an agent step has completed.
-// Carries only token usage metadata. The final message state and
-// ContentParts are returned together via taskResultCh on task completion.
+// stepFinishEvent signals that an agent step has completed. It carries the
+// step's newly produced content parts (NewParts) plus token usage metadata.
+//
+// Ownership: NewParts is a view into the agent's internal accumulation.
+// The run() goroutine copies the element pointers into its own Contents
+// slice and never retains the view — the agent may keep appending to the
+// underlying array afterwards. Every part in NewParts is finalized
+// (history ID, role, repaired tool input) and MUST NOT be mutated after
+// publication; immutability-after-publish is the contract that makes the
+// shared part objects race-free.
+//
+// The authoritative final contents still arrive via taskResultCh on task
+// completion — these per-step deltas only give :save/:fork mid-task
+// visibility and are self-corrected by the final replacement.
 type stepFinishEvent struct {
+	NewParts            []llm.ContentPart
 	InputTokens         int64
 	OutputTokens        int64
 	CacheReadTokens     int64
@@ -34,6 +50,35 @@ type stepFinishEvent struct {
 }
 
 func (stepFinishEvent) taskEvent() {}
+
+// promptPartsEvent publishes finalized content parts that entered the
+// task's working copy outside the agent loop (user prompt parts, the
+// "Continue" marker). run() appends them to Contents. Parts must be
+// finalized (IDs assigned) and immutable after publication.
+type promptPartsEvent struct {
+	Parts []llm.ContentPart
+}
+
+func (promptPartsEvent) taskEvent() {}
+
+// contentsReplacedEvent publishes a mid-task wholesale replacement of the
+// conversation (the auto-summarize result). Unlike append events, the
+// replacement slice is copied before publication: the task goroutine keeps
+// appending to its own copy afterwards, while run() takes full ownership of
+// the published one. Sent only when auto-summarization succeeds.
+type contentsReplacedEvent struct {
+	Contents []llm.ContentPart
+}
+
+func (contentsReplacedEvent) taskEvent() {}
+
+// cloneParts returns a shallow copy of parts (pointer array only — the
+// ContentPart objects themselves are shared and immutable after publish).
+// Used for ownership transfer on replacement events: the published slice
+// must not alias a slice the task goroutine keeps mutating.
+func cloneParts(parts []llm.ContentPart) []llm.ContentPart {
+	return append([]llm.ContentPart(nil), parts...)
+}
 
 // setContextTokensEvent sets ContextTokens on the run() goroutine.
 // Used by summarize() to correct the value after the stepFinishEvent

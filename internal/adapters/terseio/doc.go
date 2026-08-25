@@ -34,7 +34,8 @@
 //     during the stdin read phase aborts the read; SIGINT after the task
 //     finished only forces the exit code.
 //   - --session works: the conversation is persisted; intermediate content
-//     lives in the session file even though it is never printed.
+//     (tool calls, reasoning) is saved to the session file once the task
+//     completes even though it is never printed.
 //
 // Communication with the session layer uses the same TLV protocol as the
 // terminal, plainio, and rawio adapters.

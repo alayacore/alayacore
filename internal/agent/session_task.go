@@ -36,18 +36,41 @@ import (
 // Stream method, using registered callbacks for streaming output, tool
 // execution, and step tracking. Returns the full response contents and
 // total output token usage.
-func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart) ([]llm.ContentPart, int64, error) {
+//
+// publishSteps controls per-step publication: when true, each
+// OnStepFinish delta (the new parts produced since the previous step) is
+// sent to the run() goroutine via stepFinishEvent so :save/:fork can see
+// in-progress task content. Summarization calls pass false — summarize is
+// a conversation-replacement operation whose internals (prompt + response)
+// must not transiently pollute Contents; the replacement itself is
+// published separately (contentsReplacedEvent / taskResultCh).
+func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, publishSteps bool) ([]llm.ContentPart, int64, error) {
 	var fullContents []llm.ContentPart
 	var outputTokens int64
 
+	// Baseline for per-step deltas: everything at or before this offset
+	// was already published (prompt parts via promptPartsEvent), so each
+	// step only publishes the parts after it. cleanIncompleteToolInputs
+	// strips only orphaned calls from the current step's tail (never
+	// parts before prevLen), so len(fullContents) >= prevLen always holds.
+	prevLen := len(history)
+
 	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
 		fullContents = cleanIncompleteToolInputs(contents)
-		s.sendEvent(stepFinishEvent{
+		ev := stepFinishEvent{
 			InputTokens:         usage.InputTokens,
 			OutputTokens:        usage.OutputTokens,
 			CacheReadTokens:     usage.CacheReadTokens,
 			CacheCreationTokens: usage.CacheCreationTokens,
-		})
+		}
+		if publishSteps {
+			// NewParts is a view into the agent's accumulation; run()
+			// copies the pointers out immediately and never retains the
+			// view (see stepFinishEvent docs).
+			ev.NewParts = fullContents[prevLen:]
+		}
+		s.sendEvent(ev)
+		prevLen = len(fullContents)
 		outputTokens += usage.OutputTokens
 		return nil
 	}
@@ -320,7 +343,7 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 
 	// Send the conversation (with the prompt) to the LLM.
 	promptContents := append(contents, promptPart) //nolint:gocritic // intentional — keep contents unchanged
-	fullContents, outputTokens, err := s.processPrompt(ctx, promptContents)
+	fullContents, outputTokens, err := s.processPrompt(ctx, promptContents, false)
 	if err != nil {
 		return contents, err
 	}
@@ -405,7 +428,14 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 	result, err := s.summarizeContents(ctx, contents)
 	if err != nil {
 		s.writeErrorf("Auto-summarization failed: %v", err)
+		return result // == contents on failure: no replacement event, no copy
 	}
+
+	// Success: the conversation was replaced by the summary. Publish the
+	// replacement so :save during the task sees the compressed form. The
+	// clone transfers ownership: run() keeps this slice, while the task
+	// goroutine keeps appending to its own copy below.
+	s.sendEvent(contentsReplacedEvent{Contents: cloneParts(result)})
 	return result
 }
 
@@ -461,8 +491,11 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 			s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
 		}
 	}
+	// Parts are finalized (IDs/roles assigned) — publish them so :save
+	// during the task includes the just-submitted prompt.
+	s.sendEvent(promptPartsEvent{Parts: parts})
 
-	fullContents, _, err := s.processPrompt(ctx, contents)
+	fullContents, _, err := s.processPrompt(ctx, contents, true)
 	if err != nil {
 		s.writeError(err.Error())
 	}
@@ -503,9 +536,11 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 		if tag, val, err := contentPartToTLV(part); err == nil && tag != "" {
 			s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
 		}
+		// Finalized — publish so :save during the task sees it.
+		s.sendEvent(promptPartsEvent{Parts: []llm.ContentPart{part}})
 	}
 
-	fullContents, _, err := s.processPrompt(ctx, contents)
+	fullContents, _, err := s.processPrompt(ctx, contents, true)
 	if err != nil {
 		s.writeError(err.Error())
 	}

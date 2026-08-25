@@ -10,7 +10,11 @@ A **step** is one LLM round trip. It produces 1 or 2 messages in the conversatio
 1. `Stream()` calls the provider and processes streaming events via `streamEvents()`
 2. `streamEvents()` handles all tools concurrently — tools needing no confirmation execute immediately in goroutines, while tools needing confirmation block on per-tool channels until the user responds. All results are collected into one slice. It then re-orders tool results by ID to match the assistant message's content order and returns 1–2 pre-assembled messages (`[assistantMsg]` or `[assistantMsg, toolResultMsg]`).
 3. `Stream()` appends the returned step contents to `allContents`, fires `OnStepFinish(allContents, stepUsage)`, and checks whether the task is done.
-4. The session receives the *full* history and replaces its own copy. `Stream()` also returns the final messages as a convenience.
+4. The session publishes the *new* parts of this step to run() as a delta
+   (`stepFinishEvent.NewParts`), so `:save` mid-task sees all completed
+   steps. The full history is only replaced wholesale at task completion
+   via `taskResultCh`. `Stream()` also returns the final messages as a
+   convenience.
 5. Loop repeats until the model responds with text only (no tool calls) or the response is truncated.
 
 ## Key details

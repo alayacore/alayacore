@@ -7,9 +7,11 @@ package agent
 //
 //   Guaranteed broadcasts (critical state transitions):
 //     handleTaskEvent(stepStartEvent)  → sendSystemInfo(systemInfoTask)  — step counter
-//     handleTaskEvent(stepFinishEvent) → sendSystemInfo(systemInfoTask)  — token count update
+//     handleTaskEvent(stepFinishEvent) → Contents append (NewParts) + sendSystemInfo(systemInfoTask) — token count update
+//     handleTaskEvent(promptPartsEvent)      → Contents append (user/Continue parts)
+//     handleTaskEvent(contentsReplacedEvent) → Contents wholesale replacement (auto-summarize)
 //     handleTaskEvent(setContextTokensEvent) → sendSystemInfo(systemInfoTask) — summary correction
-//     handleTaskDone()                 → sendSystemInfo(systemInfoTask)  — task completion
+//     handleTaskDone()                 → Contents final replacement + auto-save + sendSystemInfo(systemInfoTask) — task completion
 //     handleModelSet/ModelLoad         → sendSystemInfo(systemInfoModel) — model switch
 //     SetReasoningLevel()              → sendSystemInfo(systemInfoReasoning)
 //     SetVideoConfig()                 → sendSystemInfo(systemInfoVideoConfig)

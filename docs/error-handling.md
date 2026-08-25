@@ -102,7 +102,7 @@ Failures that put the conversation at risk are reported to the adapter as
 SM system errors (`type: "error"`) — the same channel as task failures,
 so adapters treat them consistently (e.g. terseio sets exit code 1):
 
-- **Auto-save** — writing the session file after a step failed (`Auto-save failed: ...`)
+- **Auto-save** — writing the session file when a task ends (success or failure — including after a failed step) failed (`Auto-save failed: ...`)
 - **Pre-summarize backup** — the timestamped backup written before auto-summarization failed (`Failed to create pre-summarize backup: ...`); without it the original conversation is unrecoverable after summarization
 - **Auto-summarization** — the summarization LLM call failed (`Auto-summarization failed: ...`); the context stays over the threshold and the prompt continues at risk
 

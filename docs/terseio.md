@@ -123,8 +123,8 @@ fi
 ## Notes
 
 - **`--session`** — intermediate content (tool calls, reasoning) is saved to
-  the session file, so a follow-up invocation sees the full history even
-  though it was never printed.
+  the session file once the task completes (auto-save), so a follow-up
+  invocation sees the full history even though it was never printed.
 - **Error recovery** — after a task error (`--max-steps`, API failure, ...)
   the script can retry without re-sending the prompt: `alayacore --terseio
   --session my-convo.alaya <<< ":continue"`. The error itself is never
