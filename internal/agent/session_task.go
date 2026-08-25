@@ -470,6 +470,12 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 //                       (canceled mid-stream), appends "Continue" and resends.
 //                       Otherwise (user/tool message), resends the history as-is.
 //
+// Cancellation: a canceled task simply ends with whatever completed — the
+// salvaged [tool_use, tool_result] pairs, or the previous history if no
+// step finished. No "Canceled" marker is inserted: the tail shape (user /
+// assistant / tool) is already exactly what :continue expects, and a fake
+// assistant utterance would pollute the history and the UI.
+//
 //   runTaskSummarize  — :summarize command. Calls summarizeContents which appends
 //                       the summarize prompt, calls processPrompt, then replaces
 //                       the conversation with a summary.
@@ -515,10 +521,6 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 	if len(fullContents) > 0 {
 		contents = fullContents
 	}
-
-	if ctx.Err() == context.Canceled {
-		contents = s.appendCancelMessage(contents)
-	}
 }
 
 // runTaskContinue constructs a "Continue" user prompt and processes it as
@@ -560,10 +562,6 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 	if len(fullContents) > 0 {
 		contents = fullContents
 	}
-
-	if ctx.Err() == context.Canceled {
-		contents = s.appendCancelMessage(contents)
-	}
 }
 
 // runTaskSummarize constructs a summarization prompt and processes it.
@@ -584,25 +582,4 @@ func (s *Session) runTaskSummarize(ctx context.Context) {
 		s.writeError(err.Error())
 		return
 	}
-
-	if ctx.Err() == context.Canceled {
-		contents = s.appendCancelMessage(contents)
-	}
-}
-
-// cancelMessage is inserted into the conversation history when a task
-// is canceled by the user.
-const cancelMessage = "Canceled"
-
-func (s *Session) appendCancelMessage(contents []llm.ContentPart) []llm.ContentPart {
-	id := s.histIncAndGet()
-	contents = append(contents, &llm.TextPart{
-		Text: cancelMessage,
-		ContentPartMeta: llm.ContentPartMeta{
-			HistoryID: id,
-			Role:      llm.RoleAssistant,
-		},
-	})
-	s.writeTLV(tlv.TagAssistantT, tlv.WrapID(strconv.FormatUint(id, 10), cancelMessage))
-	return contents
 }

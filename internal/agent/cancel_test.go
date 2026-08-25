@@ -271,9 +271,11 @@ func (m *toolThenBlockProvider) SetVideoConfig(_ int, _ int)                   {
 
 // TestCancelTask_KeepsExecutedToolResult verifies the end-to-end salvage
 // chain: a tool executes before the task is canceled, and the session
-// history keeps the [tool_use, tool_result] pair plus the "Canceled"
-// marker — so a later :continue resubmits a history consistent with the
-// side effects that already happened.
+// history keeps the [tool_use, tool_result] pair — so a later :continue
+// resubmits a history consistent with the side effects that already
+// happened. No "Canceled" marker is appended: the tool-result tail is a
+// complete request shape (:continue resends it as-is, exactly like the
+// agent's own step loop sends tool-result tails to the provider).
 func TestCancelTask_KeepsExecutedToolResult(t *testing.T) {
 	output := &syncOutput{}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -368,9 +370,9 @@ func TestCancelTask_KeepsExecutedToolResult(t *testing.T) {
 	}
 
 	// After run() exits, s.Contents is stable: user prompt + salvaged
-	// [tool_use, tool_result] pair + "Canceled" marker.
-	if len(s.Contents) != 4 {
-		t.Fatalf("Contents has %d parts, want 4 (prompt, tool_use, tool_result, Canceled): %#v", len(s.Contents), s.Contents)
+	// [tool_use, tool_result] pair — no "Canceled" marker.
+	if len(s.Contents) != 3 {
+		t.Fatalf("Contents has %d parts, want 3 (prompt, tool_use, tool_result): %#v", len(s.Contents), s.Contents)
 	}
 	tc, ok := s.Contents[1].(*llm.ToolInputPart)
 	if !ok || tc.ID != "c1" || tc.GetRole() != llm.RoleAssistant {
@@ -379,8 +381,5 @@ func TestCancelTask_KeepsExecutedToolResult(t *testing.T) {
 	tr, ok := s.Contents[2].(*llm.ToolOutputPart)
 	if !ok || tr.ID != "c1" || tr.GetRole() != llm.RoleTool {
 		t.Errorf("Contents[2] = %#v, want ToolOutputPart c1 with tool role", s.Contents[2])
-	}
-	if tp, ok := s.Contents[3].(*llm.TextPart); !ok || tp.Text != "Canceled" {
-		t.Errorf("Contents[3] = %#v, want TextPart %q", s.Contents[3], "Canceled")
 	}
 }
