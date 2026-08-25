@@ -80,6 +80,7 @@ echo "what is 2+2?" | alayacore --terseio
 ### TUI（终端界面）
 
 - 🖥️ **流式输出** — 实时显示，支持虚拟滚动、可折叠窗口和类 Vim 快捷键。
+- ⚡ **提供商速度跟踪** — 状态栏实时显示最近一步的端到端 tok/s 与首令牌时间（TTFT）（见 [速度跟踪](docs/speed-tracking.md)）。
 - 📊 **Markdown 渲染** — 助手输出的 Markdown（当前为表格）默认渲染；在展开窗口上按 `r` 切换原始/渲染视图（`--no-markdown` 可关闭默认渲染）。
 - 📷 **多模态输入** — 通过 `Ctrl+A` 附加图片、音频、视频或文档。
 - 🎨 **主题系统** — 可自定义配色方案，支持实时切换。
@@ -146,6 +147,7 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [提供商](docs/providers.md) | 提供商特定的注意事项（tool call 分块、null 参数、推理模式） |
 | [工具输入修复](docs/tool-input-repair.md) | 如何根据 JSON Schema 修复 LLM 的错误工具输入 |
 | [上下文跟踪](docs/context-tracking.md) | 上下文令牌的跟踪与显示方式 |
+| [速度跟踪](docs/speed-tracking.md) | 提供商速度（tok/s、TTFT）的测量与显示方式 |
 | [错误处理](docs/error-handling.md) | LLM API 错误检测与传播 |
 | [工具执行](docs/tool-execution.md) | 并发的工具执行，每个工具独立等待用户确认（MCP 风格） |
 | [输出截断](docs/truncation.md) | 大型工具输出的上下文预算处理方式 |

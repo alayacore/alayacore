@@ -80,6 +80,7 @@ echo "what is 2+2?" | alayacore --terseio
 ### TUI (terminal interface)
 
 - 🖥️ **Streaming output** — Real-time display with virtual scrolling, foldable windows, and vim-like keybindings.
+- ⚡ **Provider speed tracking** — Live end-to-end tok/s and time-to-first-token (TTFT) for the latest step in the status bar (see [speed-tracking.md](docs/speed-tracking.md)).
 - 📊 **Markdown rendering** — Assistant markdown output (currently tables) renders by default; press `r` on an unfolded window to toggle raw/rendered (`--no-markdown` disables the default).
 - 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`.
 - 🎨 **Theme system** — Customizable color schemes with live switching.
@@ -146,6 +147,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Providers](docs/providers.md) | Provider-specific gotchas (tool call chunking, null args, reasoning mode) |
 | [Tool Input Repair](docs/tool-input-repair.md) | How malformed LLM tool inputs are repaired against their JSON schemas |
 | [Context Tracking](docs/context-tracking.md) | How context tokens are tracked and displayed |
+| [Speed Tracking](docs/speed-tracking.md) | How provider speed (tok/s, TTFT) is measured and displayed |
 | [Error Handling](docs/error-handling.md) | Error detection and propagation from LLM APIs |
 | [Tool Execution](docs/tool-execution.md) | Concurrent tool execution with per-tool MCP-style confirmation |
 | [Output Truncation](docs/truncation.md) | How large tool outputs are handled within context budgets |
