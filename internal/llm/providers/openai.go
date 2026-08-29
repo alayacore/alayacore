@@ -46,6 +46,12 @@ package providers
 //    data URI is standard, but `video_url` is a non-standard extension —
 //    promoting video to a strict Chat Completions endpoint can turn a request
 //    that used to succeed (media flattened to text) into a 400.
+//
+//    Promotion is also URI-gated (openaiPromotableURI): only `data:` and
+//    `http(s)://` are forwarded. A media part carrying a bare path, a `file:`
+//    URI or an empty string keeps its text label instead, because an
+//    unfetchable url fails the entire request — strictly worse than the missing
+//    media it would have stood for.
 
 import (
 	"bufio"
@@ -695,7 +701,7 @@ func openaiConvertToolOutputs(contents []llm.ContentPart, videoFPS int, videoRes
 				textParts = append(textParts, v.Text)
 			default:
 				block, native := openaiMediaBlock(cp, videoFPS, videoRes)
-				if !native {
+				if !native || !openaiPromotableURI(cp) {
 					textParts = append(textParts, openaiMediaSummary(v))
 					continue
 				}
@@ -738,6 +744,40 @@ func openaiPromotedMediaMessage(ids []string, blocks []map[string]any) openAIMes
 	content = append(content, openaiTextBlock(intro))
 	content = append(content, blocks...)
 	return openAIMessage{Role: string(llm.RoleUser), Content: content}
+}
+
+// openaiPromotableURI reports whether a media part's URI can actually be handed
+// to the server inside a content block.
+//
+// Promotion originally trusted any URI it was given. That trust is misplaced:
+// a bare filesystem path, a file:// URI, or an empty string becomes
+// image_url.url "/tmp/x.png" on the wire, and an unfetchable value there does
+// not fail one block quietly — it fails the whole request. The cost is
+// asymmetric, so rejecting is strictly better than forwarding: before
+// promotion such a part cost a harmless text label, and forwarding it would
+// instead take the entire turn down with it.
+//
+// Only two shapes are safe to forward. A data: URI carries its own bytes, so
+// the server needs nothing else. http/https are the only remote schemes a
+// server will retrieve; audio additionally never reaches here as a remote URL
+// (openaiMediaBlock already rejects that as non-native).
+func openaiPromotableURI(part llm.ContentPart) bool {
+	var uri string
+	switch v := part.(type) {
+	case *llm.ImagePart:
+		uri = v.URI
+	case *llm.VideoPart:
+		uri = v.URI
+	case *llm.AudioPart:
+		uri = v.URI
+	case *llm.DocumentPart:
+		uri = v.URI
+	default:
+		return false
+	}
+	return strings.HasPrefix(uri, "data:") ||
+		strings.HasPrefix(uri, "http://") ||
+		strings.HasPrefix(uri, "https://")
 }
 
 // openaiPromotedMediaLabel is the tool-message text for media delivered on the

@@ -351,3 +351,65 @@ func TestOpenAIUserAttachedMediaUnchanged(t *testing.T) {
 		t.Errorf("video defaults = %v/%v, want 2/default", v["fps"], v["media_resolution"])
 	}
 }
+
+// TestOpenAIToolMediaWithUnfetchableURINotPromoted covers the trust boundary.
+// Promotion forwards the URI verbatim, so a value the server cannot retrieve
+// (bare filesystem path, file:// URI, empty string) would fail the whole
+// request rather than one block. These must fall back to the text label.
+func TestOpenAIToolMediaWithUnfetchableURINotPromoted(t *testing.T) {
+	cases := []struct {
+		name string
+		part llm.ContentPart
+	}{
+		{"bare image path", &llm.ImagePart{URI: "/tmp/diagram.png"}},
+		{"file uri", &llm.ImagePart{URI: "file:///tmp/diagram.png"}},
+		{"empty uri", &llm.ImagePart{URI: ""}},
+		{"bare video path", &llm.VideoPart{URI: "clip.mp4"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
+				ID:     "call-1",
+				Output: []llm.ContentPart{tc.part},
+			}), nil)
+
+			if len(msgs) != 3 {
+				t.Fatalf("got %d messages %v, want 3 — unfetchable URI must not spawn a promoted message", len(msgs), roles(msgs))
+			}
+			content, ok := msgs[2]["content"].(string)
+			if !ok {
+				t.Fatalf("tool content = %T, want string", msgs[2]["content"])
+			}
+			if strings.Contains(content, "attached to the next message") {
+				t.Errorf("unfetchable URI pointed forward: %s", content)
+			}
+			// Nothing on the wire may reference a media block.
+			body, _ := json.Marshal(msgs)
+			for _, bad := range []string{"image_url", "video_url", "input_audio"} {
+				if strings.Contains(string(body), bad) {
+					t.Errorf("request carries %s for unfetchable uri: %s", bad, content)
+				}
+			}
+		})
+	}
+}
+
+// TestOpenAIRemoteImageURLStillPromoted is the other side of the boundary: a
+// remote http(s) URL is the server's to fetch, and promoting it is the feature.
+func TestOpenAIRemoteImageURLStillPromoted(t *testing.T) {
+	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
+		ID:     "call-1",
+		Output: []llm.ContentPart{&llm.ImagePart{URI: "https://example.com/a.png"}},
+	}), nil)
+
+	if len(msgs) != 4 {
+		t.Fatalf("got %d messages %v, want 4 (remote URL is promotable)", len(msgs), roles(msgs))
+	}
+	blocks := contentBlocks(t, msgs[3])
+	if blocks[1]["type"] != "image_url" {
+		t.Fatalf("promoted block type = %v, want image_url", blocks[1]["type"])
+	}
+	if url := blocks[1]["image_url"].(map[string]any)["url"]; url != "https://example.com/a.png" {
+		t.Errorf("url = %v, want the remote URL unchanged", url)
+	}
+}
