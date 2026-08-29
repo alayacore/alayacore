@@ -60,7 +60,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"slices"
 	"sort"
 	"strings"
 
@@ -674,12 +673,16 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, video
 // Order matters: every tool_call of the preceding assistant message must be
 // answered before any other role appears, so all tool messages are emitted
 // first and their media is aggregated into exactly one user message after
-// them. Media that Chat Completions cannot express as a block at all
-// (documents, audio given as a remote URL) stays flattened to a text summary.
+// them. Within that message each media-carrying result opens its own text
+// heading, so a result returning several items (an MCP server may) stays
+// attributable without the model having to count items per id.
+//
+// Media stays flattened to a text summary when this protocol cannot express it
+// as a block at all (documents, audio given as a remote URL) or when the server
+// could not fetch the URI (see openaiPromotableURI).
 func openaiConvertToolOutputs(contents []llm.ContentPart, videoFPS int, videoRes int) []openAIMessage {
 	results := make([]openAIMessage, 0, len(contents)+1)
-	var promoted []map[string]any // native media blocks for the follow-up user message
-	var promotedIDs []string      // tool_call ids that contributed media, for the linkage text
+	var promoted []map[string]any // blocks for the follow-up user message
 
 	for _, part := range contents {
 		tr, ok := part.(*llm.ToolOutputPart)
@@ -705,13 +708,20 @@ func openaiConvertToolOutputs(contents []llm.ContentPart, videoFPS int, videoRes
 					textParts = append(textParts, openaiMediaSummary(v))
 					continue
 				}
+				// Every media-carrying result opens its own section inside the
+				// promoted message. Provenance has to travel as text (a media
+				// block has nowhere to carry it), and a heading above a group
+				// needs no arithmetic to read — a single header listing ids
+				// would make the model count items per result to find the
+				// boundaries, and a miscount misattributes media silently.
+				if !mediaHere {
+					promoted = append(promoted, openaiTextBlock(fmt.Sprintf(
+						"Media returned by tool result %s:", tr.ID)))
+					mediaHere = true
+				}
 				promoted = append(promoted, block)
-				mediaHere = true
 				textParts = append(textParts, openaiPromotedMediaLabel(v))
 			}
-		}
-		if mediaHere && !slices.Contains(promotedIDs, tr.ID) {
-			promotedIDs = append(promotedIDs, tr.ID)
 		}
 		combined := strings.Join(textParts, "\n")
 		data, _ := json.Marshal(combined) // string can't fail marshal
@@ -724,26 +734,9 @@ func openaiConvertToolOutputs(contents []llm.ContentPart, videoFPS int, videoRes
 	}
 
 	if len(promoted) > 0 {
-		results = append(results, openaiPromotedMediaMessage(promotedIDs, promoted))
+		results = append(results, openAIMessage{Role: string(llm.RoleUser), Content: promoted})
 	}
 	return results
-}
-
-// openaiPromotedMediaMessage wraps promoted media blocks in a user message.
-//
-// The intro text supplies provenance: media blocks carry none of their own, so
-// without it a parallel batch of tool results arrives as an unlabeled pile of
-// pixels the model cannot attribute. IDs are enough to resolve the owner — the
-// tool_call_id is already visible in the preceding assistant message.
-func openaiPromotedMediaMessage(ids []string, blocks []map[string]any) openAIMessage {
-	intro := fmt.Sprintf(
-		"The media returned by tool result(s) %s is attached below, in the order it was returned. "+
-			"A tool message can only carry a string, so these are the real contents behind the labels in that result.",
-		strings.Join(ids, ", "))
-	content := make([]map[string]any, 0, len(blocks)+1)
-	content = append(content, openaiTextBlock(intro))
-	content = append(content, blocks...)
-	return openAIMessage{Role: string(llm.RoleUser), Content: content}
 }
 
 // openaiPromotableURI reports whether a media part's URI can actually be handed

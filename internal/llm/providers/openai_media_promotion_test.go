@@ -151,7 +151,7 @@ func TestOpenAIToolResultImageIsPromoted(t *testing.T) {
 		t.Fatalf("promoted block types = %v, want %v", got, want)
 	}
 	if !strings.Contains(promoted[0]["text"].(string), "call-1") {
-		t.Errorf("promoted intro missing tool_call id: %s", promoted[0]["text"])
+		t.Errorf("promoted heading missing tool_call id: %s", promoted[0]["text"])
 	}
 	img, ok := promoted[1]["image_url"].(map[string]any)
 	if !ok || img["url"] != testImageURI {
@@ -160,8 +160,8 @@ func TestOpenAIToolResultImageIsPromoted(t *testing.T) {
 }
 
 // TestOpenAIToolMediaAggregatedIntoOneMessage checks that a parallel batch
-// produces exactly one promoted message, and that it names only the calls that
-// actually returned media.
+// produces exactly one promoted message, that each media-carrying result opens
+// its own heading, and that a text-only result contributes nothing at all.
 func TestOpenAIToolMediaAggregatedIntoOneMessage(t *testing.T) {
 	msgs := captureMessages(t, toolRound(
 		&llm.ToolOutputPart{ID: "call-1", Output: []llm.ContentPart{&llm.ImagePart{URI: testImageURI}}},
@@ -174,15 +174,68 @@ func TestOpenAIToolMediaAggregatedIntoOneMessage(t *testing.T) {
 	}
 
 	promoted := contentBlocks(t, msgs[5])
-	if got, want := blockTypes(promoted), []string{"text", "image_url", "video_url"}; strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("promoted block types = %v, want %v (order follows return order)", got, want)
+	if got, want := blockTypes(promoted), []string{"text", "image_url", "text", "video_url"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("promoted block types = %v, want %v (each result opens a section)", got, want)
 	}
-	intro := promoted[0]["text"].(string)
-	if !strings.Contains(intro, "call-1") || !strings.Contains(intro, "call-3") {
-		t.Errorf("intro should name call-1 and call-3: %s", intro)
+	if h := promoted[0]["text"].(string); !strings.Contains(h, "call-1") {
+		t.Errorf("first heading should name call-1: %s", h)
 	}
-	if strings.Contains(intro, "call-2") {
-		t.Errorf("call-2 returned no media, intro should not name it: %s", intro)
+	if h := promoted[2]["text"].(string); !strings.Contains(h, "call-3") {
+		t.Errorf("second heading should name call-3: %s", h)
+	}
+	body, _ := json.Marshal(promoted)
+	if strings.Contains(string(body), "call-2") {
+		t.Errorf("call-2 returned no media and must not appear in the promoted message: %s", body)
+	}
+}
+
+// TestOpenAIToolMediaGroupedPerResult locks the case a single global header
+// could not express: one MCP call may return several items, so when call-1
+// yields two visually identical PNGs and call-3 yields a third, the only thing
+// that tells them apart is which heading they sit under. A header listing ids
+// would leave the model to count items per id to find the boundary — and a
+// miscount misattributes media without any error to show for it.
+func TestOpenAIToolMediaGroupedPerResult(t *testing.T) {
+	msgs := captureMessages(t, toolRound(
+		&llm.ToolOutputPart{ID: "call-1", Output: []llm.ContentPart{
+			&llm.ImagePart{URI: "data:image/png;base64,AAAA"},
+			&llm.ImagePart{URI: "data:image/png;base64,BBBB"},
+		}},
+		&llm.ToolOutputPart{ID: "call-3", Output: []llm.ContentPart{
+			&llm.ImagePart{URI: "data:image/png;base64,CCCC"},
+		}},
+	), nil)
+
+	promoted := contentBlocks(t, msgs[4])
+	want := []string{"text", "image_url", "image_url", "text", "image_url"}
+	if got := blockTypes(promoted); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("promoted block types = %v, want %v", got, want)
+	}
+	// The second heading must land after call-1's two items, not before them.
+	if h := promoted[0]["text"].(string); !strings.Contains(h, "call-1") {
+		t.Errorf("heading 0 should name call-1: %s", h)
+	}
+	if h := promoted[3]["text"].(string); !strings.Contains(h, "call-3") {
+		t.Errorf("heading 3 should name call-3: %s", h)
+	}
+	// One heading per result, not one per item.
+	headings := 0
+	for _, b := range promoted {
+		if b["type"] == "text" {
+			headings++
+		}
+	}
+	if headings != 2 {
+		t.Errorf("got %d headings, want 2 (one per media-carrying result)", headings)
+	}
+	// The tool message still reports both items as attached, so the counts agree
+	// with the number of blocks delivered.
+	content, ok := msgs[2]["content"].(string)
+	if !ok {
+		t.Fatalf("tool content = %T, want string", msgs[2]["content"])
+	}
+	if n := strings.Count(content, "attached to the next message"); n != 2 {
+		t.Errorf("call-1 reported %d attached items, want 2: %s", n, content)
 	}
 }
 
