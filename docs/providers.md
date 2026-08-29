@@ -15,13 +15,13 @@ All media types (image, audio, video, document) are stored as a **URI** in the d
 | `ImagePart` | `{"type":"image_url","image_url":{"url":"data:image/...;base64,..."}}` |
 | `AudioPart` | `{"type":"input_audio","input_audio":{"data":"UklGRiQ...","format":"wav"}}` |
 | `VideoPart` | `{"type":"video_url","video_url":{"url":"data:video/...;base64,..."},"fps":2,"media_resolution":"default"}` |
-| `DocumentPart` | ❌ Not supported (skipped) |
+| `DocumentPart` | ❌ No document block — serialized as a text placeholder naming the file |
 
 Key points:
 - **Image** and **video** use the `url` field with the URI value (accepts both data URIs and remote URLs).
 - **Audio** uses the `data` field with **raw base64 data** (not a data URI) plus a `format` field derived from the MIME type. **Remote URLs are not supported** for audio — if a plain URL is provided it is replaced with a text placeholder.
 - **Video** includes additional parameters `fps` and `media_resolution` (defaults to `2` and `"default"`, configurable via `:video_config`).
-- **Document** (e.g. PDF) is silently skipped as OpenAI Chat Completions API has no document content block.
+- **Document** (e.g. PDF) becomes a text placeholder naming the file and MIME type, because OpenAI Chat Completions API has no document content block. It is the one media type that cannot be promoted out of a tool result either — there is no block to attach.
 
 > **Note:** These wire formats are compatible with providers that extend the OpenAI-style API to support multimodal input (e.g. DeepSeek, Qwen, MiniMax, StepFun, Xiaomi MiMo). Standard OpenAI Chat Completions API only supports `image_url` and `input_audio` natively; `video_url` is a non-standard extension.
 
@@ -40,10 +40,28 @@ The two providers have complementary multimodal capabilities — neither covers 
 
 ### Tool results
 
+A `tool` message can only carry a string — that is a hard rule of the Chat
+Completions wire format, and it still holds. What changed is that media is no
+longer merely described: OpenAI **promotes** it to a follow-up `user` message,
+which does accept a content array.
+
 | Capability | OpenAI | Anthropic |
 |---|---|---|
-| **Nested media in tool result** | ❌ The `tool` role only accepts string content. All media parts are flattened to text summaries like `[Image (image/jpeg)]` — the model sees a label, not the actual media. | ✅ `tool_result.content` is an array that can contain text, image, document, etc. sub-blocks, recursively serialized via `anthropicPartToBlock`. |
-| **Implementation** | `openaiMediaSummary()` extracts the MIME type from DataURIs and produces a tag; remote URLs are included as-is. | `anthropicPartToBlock()` calls itself recursively for each sub-part in `ToolOutputPart.Output`, producing proper content blocks. |
+| **Nested media in tool result** | ✅ Media is promoted onto one follow-up `user` message, so the model sees the actual pixels/frames/audio rather than a label. Promotable: image (data URI or URL), audio (data URI only), video (data URI or URL). Not promotable → stays a text summary: document/PDF (no block type exists), audio behind a remote URL. | ✅ `tool_result.content` is an array that can contain text, image, document, etc. sub-blocks, recursively serialized via `anthropicPartToBlock`. |
+| **Implementation** | `openaiConvertToolOutputs()` collects native blocks via `openaiMediaBlock()`, emits all tool messages first, then appends exactly one `user` message (`openaiPromotedMediaMessage()`) whose intro text names the contributing `tool_call_id`s. The tool message keeps a forward-pointing label (`openaiPromotedMediaLabel()`) so the model does not read `[Image (image/png)]` as "pixels unavailable". | `anthropicPartToBlock()` calls itself recursively for each sub-part in `ToolOutputPart.Output`, producing proper content blocks. |
+
+Two consequences of promotion worth knowing:
+
+- **Emission order is load-bearing.** Every `tool_call` of the preceding
+  assistant message must be answered before any other role appears, so all tool
+  messages go out first and their media is aggregated into a *single* trailing
+  user message. Per-round promotion keeps each promoted message adjacent to the
+  round that produced it.
+- **Promoted media is re-sent on every later turn**, exactly like user-attached
+  media — it counts toward prompt tokens for the rest of the session. And
+  because `video_url` is a non-standard extension, promoting video to a strict
+  OpenAI endpoint can turn a request that previously succeeded (media flattened
+  to text) into a 400.
 
 ### Key trade-off
 
@@ -51,8 +69,13 @@ The two providers have complementary multimodal capabilities — neither covers 
 User message:   OpenAI can send audio/video natively,
                 Anthropic can only send image & document.
 
-Tool result:    Anthropic can return images inside tool results,
-                OpenAI can only describe them in text.
+Tool result:    Both can now deliver media to the model —
+                Anthropic nests it in tool_result natively,
+                OpenAI promotes it to a follow-up user message.
+
+                The remaining asymmetry is *which* media:
+                OpenAI promotes image/audio/video but not PDF;
+                Anthropic nests image/PDF but has no audio/video block.
 ```
 
 ## OpenAI tool call chunking

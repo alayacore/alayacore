@@ -124,7 +124,7 @@ And on receive, both providers use the same pattern: accumulate content by `inde
 | `VideoPart` | `content[]` array: `{type:"video_url", video_url:{url:"data:video/...;base64,..."}, fps:2, media_resolution:"default"}` | `content[]` array: `{type:"video", source:{type:"base64", media_type:"video/mp4", data:"..."}}` |
 | `DocumentPart` | ❌ Not supported | `content[]` array: `{type:"document", source:{type:"base64", media_type:"application/pdf", data:"..."}}` |
 | `ToolInputPart` | `tool_calls[]` (top-level array) | `content[]` array: `{type:"tool_use", id, name, input}` |
-| `ToolOutputPart` | Separate message: `{role:"tool", tool_call_id, content}` (content is JSON-wrapped with `"status"` field — see note below) | `content[]` array: `{type:"tool_result", tool_use_id, content, is_error}`, **role remapped to "user"**. `content` can be a string or an array of content blocks (text, image, etc.) |
+| `ToolOutputPart` | Separate message: `{role:"tool", tool_call_id, content}` (content is JSON-wrapped with `"status"` field — see note below). Media inside the result cannot live on this message; it is **promoted** to one follow-up `user` message carrying native media blocks (see note below) | `content[]` array: `{type:"tool_result", tool_use_id, content, is_error}`, **role remapped to "user"**. `content` can be a string or an array of content blocks (text, image, etc.) |
 
 > **Note on OpenAI tool result content format:** OpenAI's API has no native `is_error` field for tool results (unlike Anthropic). To prevent ambiguity — e.g., a tool returning `"no such file"` as an error vs. a file containing the literal text `"no such file"` — the OpenAI provider wraps tool results as JSON:
 >
@@ -132,6 +132,10 @@ And on receive, both providers use the same pattern: accumulate content by `inde
 > - Error:   `{"status":"error","data":"<error message>"}`
 >
 > This ensures the model can distinguish success from failure structurally rather than guessing from the content string. The Anthropic provider uses the native `is_error: true` flag instead, so results remain unwrapped plain text.
+
+> **Note on media inside OpenAI tool results (promotion):** `role:"tool"` accepts only a string, so an `ImagePart`/`AudioPart`/`VideoPart` nested in a `ToolOutputPart` cannot be serialized on its own message. `openaiConvertToolOutputs()` therefore *promotes* it: all tool messages are emitted first, then a single `user` message carries the media as native content blocks (built by the same `openaiMediaBlock()` used for regular messages). The tool message itself keeps a text label that points forward — `"[Image (image/png)] — attached to the next message"` — so the model correlates the label with the attachment instead of concluding the media is unavailable.
+>
+> Promotion covers image, video, and audio-as-data-URI. Document/PDF and audio-behind-a-remote URL have no Chat Completions block at all, so they remain flattened to a text summary and spawn no promoted message. `openaiMediaBlock()` reports which case applies via its boolean return.
 
 ## Receiving (Wire → Domain)
 

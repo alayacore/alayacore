@@ -32,6 +32,19 @@ package providers
 //    content array positions. The agent strips empty placeholders in
 //    StepCompleteEvent after assigning history IDs. This avoids the need for
 //    dynamic index computation and works regardless of streaming order.
+//
+// 6. MEDIA PROMOTION: A `tool` message can only carry a string, so media
+//    returned by a tool cannot ride on its own result. It is instead promoted
+//    to one follow-up `user` message that does accept a content array — that
+//    is what lets a model actually see the image it asked read_file to load.
+//    All tool messages are emitted before the promoted one, because every
+//    tool_call of the preceding assistant message must be answered before any
+//    other role appears. See `openaiConvertToolOutputs()`.
+//
+//    Promotion inherits the block-shape risks noted in the docs below: an
+//    image or audio data URI is standard, but `video_url` is a non-standard
+//    extension — promoting video to a strict Chat Completions endpoint can
+//    turn a request that used to succeed (media flattened to text) into a 400.
 
 import (
 	"bufio"
@@ -40,6 +53,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"slices"
 	"sort"
 	"strings"
 
@@ -608,7 +622,7 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, video
 		role := chunk[0].GetRole()
 
 		if role == llm.RoleTool {
-			apiMessages = append(apiMessages, openaiConvertToolOutputs(chunk)...)
+			apiMessages = append(apiMessages, openaiConvertToolOutputs(chunk, videoFPS, videoRes)...)
 			continue
 		}
 
@@ -636,13 +650,30 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, video
 	return apiMessages
 }
 
-// openaiConvertToolOutputs converts tool result content to multiple OpenAI messages.
+// openaiConvertToolOutputs converts tool result content to OpenAI messages.
 //
-// Since OpenAI's API has no native is_error field (unlike Anthropic), tool
-// results are JSON-wrapped with a "status" field so the model can distinguish
-// success from failure structurally rather than guessing from text content.
-func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
-	results := make([]openAIMessage, 0, len(contents))
+// Two protocol constraints shape this function:
+//
+//  1. OpenAI has no native is_error field (unlike Anthropic), so results are
+//     JSON-wrapped with a "status" field — the model distinguishes success
+//     from failure structurally rather than by guessing from text.
+//  2. A `tool` message carries only a string, so media inside a tool result
+//     (read_file on an image, an MCP screenshot) cannot ride on its own
+//     result. It is promoted to a single follow-up `user` message, which does
+//     accept a content array. Without promotion the model sees a label like
+//     "[Image (image/png)]" and can never actually look at a file it chose to
+//     read — so tool-driven multimodal reading is impossible on this protocol.
+//
+// Order matters: every tool_call of the preceding assistant message must be
+// answered before any other role appears, so all tool messages are emitted
+// first and their media is aggregated into exactly one user message after
+// them. Media that Chat Completions cannot express as a block at all
+// (documents, audio given as a remote URL) stays flattened to a text summary.
+func openaiConvertToolOutputs(contents []llm.ContentPart, videoFPS int, videoRes int) []openAIMessage {
+	results := make([]openAIMessage, 0, len(contents)+1)
+	var promoted []map[string]any // native media blocks for the follow-up user message
+	var promotedIDs []string      // tool_call ids that contributed media, for the linkage text
+
 	for _, part := range contents {
 		tr, ok := part.(*llm.ToolOutputPart)
 		if !ok {
@@ -652,17 +683,28 @@ func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 			Role:       string(llm.RoleTool),
 			ToolCallID: tr.ID,
 		}
-		// Build combined text from all content parts.
-		// OpenAI tool messages only support string content, so media
-		// parts (image, audio, video, document) are summarized as text.
+		// Build the combined string content. A media part becomes either a
+		// pointer to the promoted copy (native types) or a summary (the rest),
+		// because this message itself can only hold text.
 		var textParts []string
+		mediaHere := false
 		for _, cp := range tr.Output {
 			switch v := cp.(type) {
 			case *llm.TextPart:
 				textParts = append(textParts, v.Text)
 			default:
-				textParts = append(textParts, openaiMediaSummary(v))
+				block, native := openaiMediaBlock(cp, videoFPS, videoRes)
+				if !native {
+					textParts = append(textParts, openaiMediaSummary(v))
+					continue
+				}
+				promoted = append(promoted, block)
+				mediaHere = true
+				textParts = append(textParts, openaiPromotedMediaLabel(v))
 			}
+		}
+		if mediaHere && !slices.Contains(promotedIDs, tr.ID) {
+			promotedIDs = append(promotedIDs, tr.ID)
 		}
 		combined := strings.Join(textParts, "\n")
 		data, _ := json.Marshal(combined) // string can't fail marshal
@@ -673,7 +715,37 @@ func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 		}
 		results = append(results, apiMsg)
 	}
+
+	if len(promoted) > 0 {
+		results = append(results, openaiPromotedMediaMessage(promotedIDs, promoted))
+	}
 	return results
+}
+
+// openaiPromotedMediaMessage wraps promoted media blocks in a user message.
+//
+// The intro text supplies provenance: media blocks carry none of their own, so
+// without it a parallel batch of tool results arrives as an unlabeled pile of
+// pixels the model cannot attribute. IDs are enough to resolve the owner — the
+// tool_call_id is already visible in the preceding assistant message.
+func openaiPromotedMediaMessage(ids []string, blocks []map[string]any) openAIMessage {
+	intro := fmt.Sprintf(
+		"The media returned by tool result(s) %s is attached below, in the order it was returned. "+
+			"A tool message can only carry a string, so these are the real contents behind the labels in that result.",
+		strings.Join(ids, ", "))
+	content := make([]map[string]any, 0, len(blocks)+1)
+	content = append(content, openaiTextBlock(intro))
+	content = append(content, blocks...)
+	return openAIMessage{Role: string(llm.RoleUser), Content: content}
+}
+
+// openaiPromotedMediaLabel is the tool-message text for media delivered on the
+// following user message. Unlike openaiMediaSummary it must point forward: a
+// bare "[Image (image/png)]" reads as "the pixels are missing", and a model
+// that believes that re-reads the file or asks the user instead of looking at
+// the image already in context.
+func openaiPromotedMediaLabel(part llm.ContentPart) string {
+	return openaiMediaSummary(part) + " — attached to the next message"
 }
 
 // openaiMediaSummary returns a text summary of a media ContentPart for use
@@ -756,48 +828,20 @@ func openaiConvertToolInputs(apiMsg *openAIMessage, contents []llm.ContentPart) 
 }
 
 // openaiConvertRegularContent handles conversion of regular text content.
+// Media shapes are delegated to openaiMediaBlock so that user/assistant
+// messages and promoted tool media cannot drift apart.
 func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPart, videoFPS int, videoRes int) {
 	var contentParts []map[string]any
 	for _, part := range contents {
-		switch v := part.(type) {
-		case *llm.TextPart:
-			contentParts = append(contentParts, map[string]any{
-				"type": "text",
-				"text": v.Text,
-			})
-		case *llm.ImagePart:
-			contentParts = append(contentParts, map[string]any{
-				"type":      "image_url",
-				"image_url": map[string]string{"url": v.URI},
-			})
-		case *llm.AudioPart:
-			// Standard OpenAI format: parse DataURI into base64 + format.
-			// Remote URLs are not supported (OpenAI API has no URL audio input).
-			if mediaType, b64, ok := llm.ParseDataURI(v.URI); ok {
-				format := strings.TrimPrefix(mediaType, "audio/")
-				contentParts = append(contentParts, map[string]any{
-					"type": "input_audio",
-					"input_audio": map[string]string{
-						"data":   b64,
-						"format": format,
-					},
-				})
-			} else {
-				// Remote URL → text placeholder.
-				contentParts = append(contentParts, map[string]any{
-					"type": "text",
-					"text": fmt.Sprintf("[Audio file: %s (remote URL not supported)]", v.URI),
-				})
-			}
-		case *llm.VideoPart:
-			contentParts = append(contentParts, openAIVideoPart(v.URI, videoFPS, videoRes))
-		case *llm.DocumentPart:
-			// Document (PDF) is not natively supported by OpenAI Chat Completions API.
-			// Include a text placeholder so the model knows a document was attached.
-			contentParts = append(contentParts, map[string]any{
-				"type": "text",
-				"text": fmt.Sprintf("[Document attached: %s (PDF not supported by this API, only filename available)]", v.URI),
-			})
+		if v, ok := part.(*llm.TextPart); ok {
+			contentParts = append(contentParts, openaiTextBlock(v.Text))
+			continue
+		}
+		// nil means "not a media part" (tool/reasoning parts, which this
+		// converter does not own — see openaiConvertToolInputs and
+		// openaiExtractReasoning), so nothing is appended.
+		if block, _ := openaiMediaBlock(part, videoFPS, videoRes); block != nil {
+			contentParts = append(contentParts, block)
 		}
 	}
 	if len(contentParts) == 0 {
@@ -805,6 +849,53 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPa
 	} else {
 		apiMsg.Content = contentParts
 	}
+}
+
+// openaiMediaBlock builds the wire block for a media ContentPart. The bool
+// reports whether the part was expressed as a native media block; when it is
+// false the returned block is a text placeholder, meaning Chat Completions has
+// no way to carry this media (documents have no block type at all, and
+// input_audio takes raw base64 — the server will not fetch a remote audio
+// URL). Callers that can move media elsewhere (see openaiConvertToolOutputs)
+// use the bool to decide between promoting and summarizing.
+//
+// A nil block means the part is not media; callers must check for it.
+func openaiMediaBlock(part llm.ContentPart, videoFPS int, videoRes int) (map[string]any, bool) {
+	switch v := part.(type) {
+	case *llm.ImagePart:
+		// Accepts both data URIs and remote URLs via the url field.
+		return map[string]any{
+			"type":      "image_url",
+			"image_url": map[string]string{"url": v.URI},
+		}, true
+	case *llm.AudioPart:
+		// Standard OpenAI format: parse DataURI into base64 + format.
+		// Remote URLs are not supported (OpenAI API has no URL audio input).
+		if mediaType, b64, ok := llm.ParseDataURI(v.URI); ok {
+			return map[string]any{
+				"type": "input_audio",
+				"input_audio": map[string]string{
+					"data":   b64,
+					"format": strings.TrimPrefix(mediaType, "audio/"),
+				},
+			}, true
+		}
+		return openaiTextBlock(fmt.Sprintf("[Audio file: %s (remote URL not supported)]", v.URI)), false
+	case *llm.VideoPart:
+		return openAIVideoPart(v.URI, videoFPS, videoRes), true
+	case *llm.DocumentPart:
+		// Document (PDF) is not natively supported by OpenAI Chat Completions
+		// API. Include a text placeholder so the model knows a document was
+		// attached.
+		return openaiTextBlock(fmt.Sprintf(
+			"[Document attached: %s (PDF not supported by this API, only filename available)]", v.URI)), false
+	}
+	return nil, false
+}
+
+// openaiTextBlock builds a text content block.
+func openaiTextBlock(text string) map[string]any {
+	return map[string]any{"type": "text", "text": text}
 }
 
 func openAIVideoPart(uri string, fps int, resolution int) map[string]any {
