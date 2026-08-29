@@ -69,18 +69,37 @@ which does accept a content array.
 > `anthropic.go` gotcha 3 was introduced. Verify against a live API before
 > relying on a tool that returns a PDF.
 
-Two consequences of promotion worth knowing:
+Three consequences of promotion worth knowing:
 
 - **Emission order is load-bearing.** Every `tool_call` of the preceding
   assistant message must be answered before any other role appears, so all tool
   messages go out first and their media is aggregated into a *single* trailing
   user message. Per-round promotion keeps each promoted message adjacent to the
   round that produced it.
-- **Promoted media is re-sent on every later turn**, exactly like user-attached
-  media — it counts toward prompt tokens for the rest of the session. And
-  because `video_url` is a non-standard extension, promoting video to a strict
-  OpenAI endpoint can turn a request that previously succeeded (media flattened
-  to text) into a 400.
+- **Attribution travels as text, per result.** A media block has nowhere to
+  carry provenance, so each media-carrying result opens its own text heading
+  above its blocks. A single global header listing `tool_call_id`s would be
+  ambiguous as soon as one result returns several items (an MCP server may) —
+  resolving it needs the model to count items per id across messages, and a
+  miscount misattributes media silently, with no error to reveal it.
+- **Recomputed every turn, but prefix-stable — which is what keeps prompt
+  caching intact.** Promotion is a pure function of history, so unlike a
+  cached/synthesized message it cannot drift between turns: the same history
+  serializes to the same bytes, and the message sequence of a shorter history
+  stays an exact prefix of a longer one, with new content appended after it
+  (locked by `TestOpenAIPromotionIsDeterministicAndPrefixStable` — a property
+  that no failure mode would reveal, since only cache hit rates change).
+  The promoted media therefore sits inside the cached prefix and is typically
+  accounted as cache reads rather than fresh input tokens on caching endpoints
+  (provider-dependent; alayacore sets no explicit `cache_control` breakpoint,
+  while still parsing `cache_read_input_tokens` into usage). The costs that are
+  genuinely repeated are upload bytes and server-side tokenization, plus full
+  input pricing on endpoints that do not cache. It also means anything that
+  rewrites an *earlier* block invalidates the prefix from that point:
+  `:video_config` changes `fps`/`media_resolution` embedded in every video
+  block, and `video_url` itself is a non-standard extension — so promoting
+  video to a strict Chat Completions endpoint can turn a request that
+  previously succeeded (media flattened to text) into a 400.
 
 ### Key trade-off
 

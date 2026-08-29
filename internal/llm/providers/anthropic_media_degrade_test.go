@@ -199,3 +199,21 @@ func TestAnthropicImageDocumentStillNative(t *testing.T) {
 		t.Fatalf("document must stay a native block, got %v", types)
 	}
 }
+
+// TestAnthropicPlaceholderTextMatchesDocs pins the full placeholder sentence.
+// docs/internal/data-mapping.md Example 5 quotes this string verbatim as wire
+// format documentation; without a pin, rewording the message would leave the
+// docs describing bytes no code ever produces. If this fails, fix both.
+func TestAnthropicPlaceholderTextMatchesDocs(t *testing.T) {
+	contents := testMsg(llm.RoleUser, &llm.AudioPart{URI: "data:audio/wav;base64,UklGRiQ="})
+	msgs := captureAnthropicMessages(t, contents)
+	got := contentBlocks(t, msgs[0])[0]["text"]
+
+	const documented = "[Unreadable audio (audio/wav): this API has no audio input block, " +
+		"so the content was NOT delivered to you and you have not perceived it. " +
+		"Do not describe or quote it. To inspect it, transcribe it to text " +
+		"(e.g. an available CLI via execute_command).]"
+	if got != documented {
+		t.Errorf("placeholder drifted from the text quoted in data-mapping.md:\n got: %v\nwant: %s", got, documented)
+	}
+}
