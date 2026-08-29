@@ -14,6 +14,16 @@ package providers
 //    The thinking block must come first per Anthropic's API.
 //    Conditional on reasoning mode to avoid wasting tokens when thinking is off.
 //    See docs/architecture.md → "Empty thinking block padding".
+//
+// 3. AUDIO/VIDEO DEGRADATION: The Messages API defines content blocks for image
+//    and document, but none for audio or video — and an unknown block type
+//    fails the whole request, not just the attachment. So those parts are
+//    serialized as text by anthropicUnsupportedMediaBlock. This is a workaround
+//    to delete, not a policy to maintain: the moment the API gains the blocks,
+//    the two cases move back onto anthropicMediaBlock and nothing else changes.
+//    Contrast with the OpenAI provider, where media is *promoted* to a
+//    follow-up user message instead (see openai.go gotcha 6) — that protocol has
+//    native audio/video blocks, it just cannot put them on a tool message.
 
 import (
 	"bufio"
@@ -37,8 +47,6 @@ import (
 const (
 	anthropicBlockTypeText       = "text"
 	anthropicBlockTypeImage      = "image"
-	anthropicBlockTypeVideo      = "video"
-	anthropicBlockTypeAudio      = "audio"
 	anthropicBlockTypeDocument   = "document"
 	anthropicBlockTypeThinking   = "thinking"
 	anthropicBlockTypeToolResult = "tool_result"
@@ -821,10 +829,9 @@ func anthropicPartToBlock(part llm.ContentPart) *anthropicContentBlock {
 		}
 	case *llm.ImagePart:
 		return anthropicMediaBlock(anthropicBlockTypeImage, v.URI)
-	case *llm.VideoPart:
-		return anthropicMediaBlock(anthropicBlockTypeVideo, v.URI)
-	case *llm.AudioPart:
-		return anthropicMediaBlock(anthropicBlockTypeAudio, v.URI)
+	case *llm.VideoPart, *llm.AudioPart:
+		// No native block exists for these — see anthropicUnsupportedMediaBlock.
+		return anthropicUnsupportedMediaBlock(part)
 	case *llm.DocumentPart:
 		return anthropicMediaBlock(anthropicBlockTypeDocument, v.URI)
 	case *llm.ReasoningPart:
@@ -868,8 +875,9 @@ func anthropicPartToBlock(part llm.ContentPart) *anthropicContentBlock {
 	return nil
 }
 
-// anthropicMediaBlock builds an anthropicContentBlock for media types
-// (image, video, audio, document). Accepts both data URIs and plain URLs.
+// anthropicMediaBlock builds an anthropicContentBlock for the media types this
+// API accepts as blocks: image and document. Accepts both data URIs and plain
+// URLs. Video and audio never reach here — see anthropicUnsupportedMediaBlock.
 func anthropicMediaBlock(blockType, uri string) *anthropicContentBlock {
 	if mediaType, b64, ok := llm.ParseDataURI(uri); ok {
 		return &anthropicContentBlock{
@@ -888,5 +896,50 @@ func anthropicMediaBlock(blockType, uri string) *anthropicContentBlock {
 			Type: "url",
 			URL:  uri,
 		},
+	}
+}
+
+// anthropicUnsupportedMediaBlock degrades media that has no content block in
+// the Messages API (video, audio) into a text block.
+//
+// Sending the native block is not a partial failure — the API rejects the
+// entire request — so before this existed, a model that called read_file on a
+// clip broke its own next turn rather than merely losing an attachment. And
+// read_file advertises that it handles video and audio, so the model is
+// actively invited to do this.
+//
+// The wording is the load-bearing part. A terse "[video unsupported]" note
+// reads to a model as "I asked for the file and a result came back", so it
+// will happily describe media it never received. The text therefore states
+// flatly that nothing was delivered, and names the workaround that does work
+// on this protocol.
+//
+// The base64 payload is deliberately excluded: it is usually the largest thing
+// in the conversation, and echoing it into a text block would bill every
+// following turn for bytes no model can use.
+func anthropicUnsupportedMediaBlock(part llm.ContentPart) *anthropicContentBlock {
+	var kind, uri, remedy string
+	switch v := part.(type) {
+	case *llm.VideoPart:
+		kind, uri = "video", v.URI
+		remedy = "To inspect it, extract a frame as an image (e.g. ffmpeg via execute_command)."
+	case *llm.AudioPart:
+		kind, uri = "audio", v.URI
+		remedy = "To inspect it, transcribe it to text (e.g. an available CLI via execute_command)."
+	default:
+		return nil
+	}
+
+	desc := kind
+	if mediaType, _, ok := llm.ParseDataURI(uri); ok {
+		desc += " (" + mediaType + ")"
+	} else {
+		desc += " at " + uri
+	}
+	return &anthropicContentBlock{
+		Type: anthropicBlockTypeText,
+		Text: fmt.Sprintf(
+			"[Unreadable %s: this API has no %s input block, so the content was NOT delivered to you and you have not perceived it. Do not describe or quote it. %s]",
+			desc, kind, remedy),
 	}
 }

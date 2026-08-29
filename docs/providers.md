@@ -34,9 +34,20 @@ The two providers have complementary multimodal capabilities — neither covers 
 | Media type | OpenAI | Anthropic |
 |---|---|---|
 | **Image** | ✅ `image_url.url` (DataURI or URL) | ✅ `source.type="base64"` or `"url"` |
-| **Audio** | ✅ `input_audio.data` + `format` (DataURI only) | ❌ Not supported by the API |
-| **Video** | ✅ `video_url.url` + `fps` + `media_resolution` | ❌ Not supported by the API |
+| **Audio** | ✅ `input_audio.data` + `format` (DataURI only) | ❌ No such block in the API → degraded to a text placeholder that tells the model it did not hear anything (`anthropicUnsupportedMediaBlock`) |
+| **Video** | ✅ `video_url.url` + `fps` + `media_resolution` | ❌ No such block in the API → degraded to a text placeholder, same as audio |
 | **Document (PDF)** | ❌ Falls back to text placeholder | ✅ `source.type="base64"` or `"url"` |
+
+> **Why audio/video degrade instead of failing loudly:** sending an
+> `{type:"audio"}` or `{type:"video"}` block is not a partial failure — the API
+> rejects the *whole* request. The realistic trigger is not a user attaching a
+> clip but a model calling `read_file` on one, because the tool description
+> advertises video and audio support; before this degradation, that model broke
+> its own next turn. The placeholder text is deliberately explicit that nothing
+> was delivered: a bare "[video unsupported]" reads to a model as an ordinary
+> tool result, after which it will describe frames it never received. This is a
+> workaround to delete, not a policy to maintain — if the API gains the blocks,
+> the two cases move back onto `anthropicMediaBlock`.
 
 ### Tool results
 

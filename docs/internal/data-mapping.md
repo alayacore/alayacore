@@ -120,9 +120,9 @@ And on receive, both providers use the same pattern: accumulate content by `inde
 | `TextPart` | `content` (top-level field) | `content[]` array: `{type:"text", text:"..."}` |
 | `ReasoningPart` | `reasoning_content` (top-level field) | `content[]` array: `{type:"thinking", thinking:"..."}` |
 | `ImagePart` | `content[]` array: `{type:"image_url", image_url:{url:"data:image/...;base64,..."}}` | `content[]` array: `{type:"image", source:{type:"base64", media_type:"image/jpeg", data:"..."}}` |
-| `AudioPart` | `content[]` array: `{type:"input_audio", input_audio:{data:"UklGRiQ...", format:"wav"}}` | `content[]` array: `{type:"audio", source:{type:"base64", media_type:"audio/mpeg", data:"..."}}` |
-| `VideoPart` | `content[]` array: `{type:"video_url", video_url:{url:"data:video/...;base64,..."}, fps:2, media_resolution:"default"}` | `content[]` array: `{type:"video", source:{type:"base64", media_type:"video/mp4", data:"..."}}` |
-| `DocumentPart` | ❌ Not supported | `content[]` array: `{type:"document", source:{type:"base64", media_type:"application/pdf", data:"..."}}` |
+| `AudioPart` | `content[]` array: `{type:"input_audio", input_audio:{data:"UklGRiQ...", format:"wav"}}` | ❌ No audio block exists → `{type:"text"}` placeholder (payload not echoed) |
+| `VideoPart` | `content[]` array: `{type:"video_url", video_url:{url:"data:video/...;base64,..."}, fps:2, media_resolution:"default"}` | ❌ No video block exists → `{type:"text"}` placeholder (payload not echoed) |
+| `DocumentPart` | ❌ No document block → `{type:"text"}` placeholder naming the file | `content[]` array: `{type:"document", source:{type:"base64", media_type:"application/pdf", data:"..."}}` |
 | `ToolInputPart` | `tool_calls[]` (top-level array) | `content[]` array: `{type:"tool_use", id, name, input}` |
 | `ToolOutputPart` | Separate message: `{role:"tool", tool_call_id, content}` (content is JSON-wrapped with `"status"` field — see note below). Media inside the result cannot live on this message; it is **promoted** to one follow-up `user` message carrying native media blocks (see note below) | `content[]` array: `{type:"tool_result", tool_use_id, content, is_error}`, **role remapped to "user"**. `content` can be a string or an array of content blocks (text, image, etc.) |
 
@@ -338,23 +338,29 @@ ToolInputPart{
 }
 ```
 
-**Anthropic wire output** (content array with source blocks):
+**Anthropic wire output** (only image survives as a media block):
 ```json
 {
     "role": "user",
     "content": [
         {"type": "text", "text": "Describe this multimedia"},
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "/9j/4AAQ..."}},
-        {"type": "audio", "source": {"type": "base64", "media_type": "audio/wav", "data": "UklGR..."}},
-        {"type": "video", "source": {"type": "base64", "media_type": "video/mp4", "data": "AAAA..."}}
+        {"type": "text", "text": "[Unreadable audio (audio/wav): this API has no audio input block, so the content was NOT delivered to you and you have not perceived it. Do not describe or quote it. To inspect it, transcribe it to text (e.g. an available CLI via execute_command).]"},
+        {"type": "text", "text": "[Unreadable video (video/mp4): this API has no video input block, so the content was NOT delivered to you and you have not perceived it. Do not describe or quote it. To inspect it, extract a frame as an image (e.g. ffmpeg via execute_command).]"}
     ]
 }
 ```
 
+> **Why degrading beats a native block:** an unrecognized block type makes the
+> API reject the *whole* request, and the realistic trigger is a model calling
+> `read_file` on a video or audio file (the tool description advertises both),
+> not a user attaching media. See docs/providers.md → "Multimodal support
+> comparison" for the placeholder wording rationale.
+
 > **Note:** All media content parts store a URI (`data:{mime};base64,...` or `https://...`) in the domain layer. Each provider extracts or passes through the format it needs:
 > - OpenAI `image_url` / `video_url`: passes the URI directly as the `url` field
 > - OpenAI `input_audio`: parses the data URI to extract raw base64 `data` and `format` from the MIME type; remote URLs are not supported and replaced with a text placeholder
-> - Anthropic: parses data URIs to extract `media_type` and raw base64 `data`; plain URLs use the `url` source type
+> - Anthropic (image and document only): parses data URIs to extract `media_type` and raw base64 `data`; plain URLs use the `url` source type
 
 ### Wire Format Differences (Anthropic vs OpenAI)
 
