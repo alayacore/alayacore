@@ -82,7 +82,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 🖥️ **Streaming output** — Real-time display with virtual scrolling, foldable windows, and vim-like keybindings.
 - ⚡ **Provider speed tracking** — Live end-to-end tok/s and time-to-first-token (TTFT) for the latest step in the status bar (see [speed-tracking.md](docs/speed-tracking.md)).
 - 📊 **Markdown rendering** — Assistant markdown output (currently tables) renders by default; press `r` on an unfolded window to toggle raw/rendered (`--no-markdown` disables the default).
-- 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`.
+- 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`; a model can also read media itself via `read_file`. Which types actually reach it is protocol-dependent — image works on both, audio/video need an OpenAI-style endpoint, documents need Anthropic (see [providers.md](docs/providers.md)).
 - 🎨 **Theme system** — Customizable color schemes with live switching.
 - ⌨️ **Model selector, theme selector, help window** — Overlay-based UI components for runtime configuration.
 
@@ -144,7 +144,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [MCP OAuth](docs/oauth.md) | OAuth 2.1 authorization_code flow for MCP servers |
 | [Architecture](docs/architecture.md) | Layered architecture, TLV protocol, data flow, design decisions |
 | [Step Messages](docs/step-messages.md) | Message structure within an agentic step (assistant + tool results) |
-| [Providers](docs/providers.md) | Provider-specific gotchas (tool call chunking, null args, reasoning mode) |
+| [Providers](docs/providers.md) | Provider-specific gotchas (multimodal media matrix, tool call chunking, null args, reasoning mode) |
 | [Tool Input Repair](docs/tool-input-repair.md) | How malformed LLM tool inputs are repaired against their JSON schemas |
 | [Context Tracking](docs/context-tracking.md) | How context tokens are tracked and displayed |
 | [Speed Tracking](docs/speed-tracking.md) | How provider speed (tok/s, TTFT) is measured and displayed |

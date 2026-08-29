@@ -179,9 +179,11 @@ func TestAnthropicPlaceholderDeniesPerception(t *testing.T) {
 }
 
 // TestAnthropicImageDocumentStillNative is the regression guard: degrading
-// audio/video must not disturb the two media types the API really does accept,
-// including inside a tool result (the path that makes tool-driven multimodal
-// reading work on this protocol at all).
+// audio/video must not disturb the two media types this provider serializes as
+// native blocks, including inside a tool result (the path that makes
+// tool-driven multimodal reading possible here at all). Note this locks *our
+// serialization*; server acceptance of a document block nested in
+// tool_result is not verified by this test — see docs/providers.md.
 func TestAnthropicImageDocumentStillNative(t *testing.T) {
 	contents := testMsg(llm.RoleTool,
 		&llm.ToolOutputPart{ID: "call-i", Output: []llm.ContentPart{&llm.ImagePart{URI: "data:image/png;base64,iVBOR"}}, IsError: false},

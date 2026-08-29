@@ -103,10 +103,13 @@ The OpenAI adapter must **split** a single `[]ContentPart` across three independ
 
 ```go
 // OpenAI — must distribute ContentParts into separate wire fields
-apiMsg.Content = ...          // only TextParts go here
+apiMsg.Content = ...          // TextParts — plus media blocks on user messages
+                              // (content array; see openaiConvertRegularContent)
 apiMsg.ReasoningContent = ... // only ReasoningParts go here
 apiMsg.ToolCalls = ...        // only ToolInputParts go here
-// ToolOutputParts become entirely separate messages with role="tool"
+// ToolOutputParts become entirely separate messages with role="tool", whose
+// content is always a plain string — media inside a tool result is therefore
+// promoted onto a follow-up user message (see docs/providers.md → "Tool results").
 ```
 
 And on receive, both providers use the same pattern: accumulate content by `index` across streaming chunks, then assemble into a single `[]ContentPart` at step completion. OpenAI accumulates three parallel fields (reasoning, text, tool arguments) by index; Anthropic accumulates content blocks by index — structurally the same approach.

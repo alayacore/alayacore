@@ -61,6 +61,14 @@ which does accept a content array.
 | **Nested media in tool result** | ✅ Media is promoted onto one follow-up `user` message, so the model sees the actual pixels/frames/audio rather than a label. Promotable: image (data URI or URL), audio (data URI only), video (data URI or URL). Not promotable → stays a text summary: document/PDF (no block type exists), audio behind a remote URL. | ✅ `tool_result.content` is an array that can contain text, image, document, etc. sub-blocks, recursively serialized via `anthropicPartToBlock`. |
 | **Implementation** | `openaiConvertToolOutputs()` collects native blocks via `openaiMediaBlock()`, emits all tool messages first, then appends exactly one `user` message (`openaiPromotedMediaMessage()`) whose intro text names the contributing `tool_call_id`s. The tool message keeps a forward-pointing label (`openaiPromotedMediaLabel()`) so the model does not read `[Image (image/png)]` as "pixels unavailable". | `anthropicPartToBlock()` calls itself recursively for each sub-part in `ToolOutputPart.Output`, producing proper content blocks. |
 
+> ⚠️ **What the Anthropic column describes is what our serializer emits, not
+> confirmed server acceptance.** `image` nested in `tool_result` is
+> long-standing and exercised in practice; `document` nested in `tool_result`
+> is **not verified here**. An unrecognized block type anywhere in the request
+> fails the whole request — the exact failure mode audio and video had until
+> `anthropic.go` gotcha 3 was introduced. Verify against a live API before
+> relying on a tool that returns a PDF.
+
 Two consequences of promotion worth knowing:
 
 - **Emission order is load-bearing.** Every `tool_call` of the preceding

@@ -82,7 +82,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 🖥️ **流式输出** — 实时显示，支持虚拟滚动、可折叠窗口和类 Vim 快捷键。
 - ⚡ **提供商速度跟踪** — 状态栏实时显示最近一步的端到端 tok/s 与首令牌时间（TTFT）（见 [速度跟踪](docs/speed-tracking.md)）。
 - 📊 **Markdown 渲染** — 助手输出的 Markdown（当前为表格）默认渲染；在展开窗口上按 `r` 切换原始/渲染视图（`--no-markdown` 可关闭默认渲染）。
-- 📷 **多模态输入** — 通过 `Ctrl+A` 附加图片、音频、视频或文档。
+- 📷 **多模态输入** — 通过 `Ctrl+A` 附加图片、音频、视频或文档；模型也能自己用 `read_file` 读取媒体。实际可达的类型取决于协议——图片两者皆可，音频/视频需要 OpenAI 风格端点，文档需要 Anthropic（详见 [providers.md](docs/providers.md)）。
 - 🎨 **主题系统** — 可自定义配色方案，支持实时切换。
 - ⌨️ **模型选择器、主题选择器、帮助窗口** — 基于覆盖层的 UI 组件，运行时配置。
 
@@ -144,7 +144,7 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [MCP OAuth](docs/oauth.md) | MCP 服务器的 OAuth 2.1 authorization_code 授权流程 |
 | [架构](docs/architecture.md) | 分层架构、TLV 协议、数据流、设计决策 |
 | [步骤消息](docs/step-messages.md) | 智能体步骤中的消息结构（assistant + tool 结果） |
-| [提供商](docs/providers.md) | 提供商特定的注意事项（tool call 分块、null 参数、推理模式） |
+| [提供商](docs/providers.md) | 提供商特定的注意事项（多模态媒体能力矩阵、tool call 分块、null 参数、推理模式） |
 | [工具输入修复](docs/tool-input-repair.md) | 如何根据 JSON Schema 修复 LLM 的错误工具输入 |
 | [上下文跟踪](docs/context-tracking.md) | 上下文令牌的跟踪与显示方式 |
 | [速度跟踪](docs/speed-tracking.md) | 提供商速度（tok/s、TTFT）的测量与显示方式 |

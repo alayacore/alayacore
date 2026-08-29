@@ -41,10 +41,11 @@ package providers
 //    tool_call of the preceding assistant message must be answered before any
 //    other role appears. See `openaiConvertToolOutputs()`.
 //
-//    Promotion inherits the block-shape risks noted in the docs below: an
-//    image or audio data URI is standard, but `video_url` is a non-standard
-//    extension — promoting video to a strict Chat Completions endpoint can
-//    turn a request that used to succeed (media flattened to text) into a 400.
+//    Promotion inherits the block-shape asymmetry described in
+//    docs/providers.md → "Multimodal support comparison": an image or audio
+//    data URI is standard, but `video_url` is a non-standard extension —
+//    promoting video to a strict Chat Completions endpoint can turn a request
+//    that used to succeed (media flattened to text) into a 400.
 
 import (
 	"bufio"
@@ -748,10 +749,12 @@ func openaiPromotedMediaLabel(part llm.ContentPart) string {
 	return openaiMediaSummary(part) + " — attached to the next message"
 }
 
-// openaiMediaSummary returns a text summary of a media ContentPart for use
-// in contexts where the API only supports string content (e.g. tool results).
-// For DataURIs it returns a structured label like "[Image (image/jpeg)]";
-// for remote URLs it includes the URL.
+// openaiMediaSummary returns a text label for a media ContentPart: a
+// structured "[Image (image/jpeg)]" form for a data URI, or the URL itself for
+// a remote one. After media promotion (gotcha 6) it reaches the model in only
+// two situations: media this protocol cannot express as a block at all
+// (documents, audio behind a remote URL), which stays flattened; and as the
+// base text that openaiPromotedMediaLabel turns into a forward pointer.
 func openaiMediaSummary(part llm.ContentPart) string {
 	switch v := part.(type) {
 	case *llm.ImagePart:
