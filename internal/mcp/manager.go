@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 )
 
@@ -70,14 +71,28 @@ func (m *Manager) GetPrompt(ctx context.Context, serverName, name string, args m
 }
 
 // CloseAll shuts down all MCP client connections.
+//
+// Closes concurrently: each stdio transport escalates stdin-EOF → SIGTERM →
+// SIGKILL with 2s + 3s of patience, so a server that ignores SIGTERM costs
+// 5 seconds. Serializing those waits made quitting alayacore hang for 5s per
+// misbehaving server (20s observed with four); in parallel the budget is 5s
+// regardless of how many servers are configured.
 func (m *Manager) CloseAll() {
 	if !m.closed.CompareAndSwap(false, true) {
 		return
 	}
 
-	for _, c := range m.loadClients() {
-		c.Close()
+	clients := m.loadClients()
+	var wg sync.WaitGroup
+	for _, c := range clients {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.Close()
+		}()
 	}
+	wg.Wait()
+
 	m.clients.Store([]*Client(nil))
 }
 
