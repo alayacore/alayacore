@@ -3,6 +3,7 @@
 package shell
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -220,7 +221,10 @@ func ExitCodeFromError(err error) int {
 	if err == nil {
 		return 0
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	// errors.As rather than a type assertion: a wrapped *exec.ExitError must
+	// still report the child's exit code instead of falling through to -1.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		return exitErr.ExitCode()
 	}
 	return -1
