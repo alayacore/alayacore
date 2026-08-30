@@ -135,11 +135,11 @@ Messages are appended incrementally in `OnStepFinish` so they're preserved even 
 
 | Tool | Description | Safety | Dependency |
 |------|-------------|--------|------------|
-| `read_file` | Read file contents with optional line ranges. 64KB max for full reads (truncates at line boundary with metadata). | Safe | — |
-| `edit_file` | Search/replace edits on existing files | Medium | — |
-| `write_file` | Create or overwrite files | Dangerous | — |
-| `execute_command` | Execute commands in the detected shell (cross-platform). Large output (>64KB) saved to a temp file under `os.TempDir()/alayacore-<suffix>/cmd-*.txt`; only file path and metadata returned. Streams live output previews (`Uf`) while running. | Most Dangerous | — |
-| `search_content` | Search file contents using ripgrep (`rg`). Results exceeding `max_lines` (0 = no limit) or 64KB saved to a temp file under `os.TempDir()/alayacore-<suffix>/search-*.txt`; only match count and file path returned. Streams live match previews (`Uf`) while searching; runs under the same global timeout as `execute_command`. | Safe | Requires `rg` binary on system |
+| `read_file` | Read file contents with optional line ranges. 64KB max for full reads (truncates at line boundary with metadata; the cap also holds when the first line alone is larger). Individual lines are capped at 1MB and marked truncated, so files made of very long lines stay readable. An empty range says why (past EOF vs. empty file). | Safe | — |
+| `edit_file` | Search/replace edits on existing files. Atomic (temp file + rename), writing through a symlink to the real file and preserving its mode. Needs write permission on the containing directory (the rename requires the sibling temp file); unlike `write_file` it has no in-place fallback, because truncating the target would destroy the source it is still reading. | Medium | — |
+| `write_file` | Create or replace files. Atomic (temp file + rename), so an interrupted write cannot leave a half-written target; writing empty content truncates. Preserves an existing file's mode. | Dangerous | — |
+| `execute_command` | Execute commands in the detected shell (cross-platform). Large output (>64KB) saved to a temp file under `os.TempDir()/alayacore-<suffix>/cmd-*.txt`; only file path and metadata returned. Streams are spilled to disk past the 64KB in-memory budget, so unbounded output cannot grow the process. Streams live output previews (`Uf`) while running. | Most Dangerous | — |
+| `search_content` | Search file contents using ripgrep (`rg`). Results exceeding `max_lines` (0 = no limit) or 64KB saved to a temp file under `os.TempDir()/alayacore-<suffix>/search-*.txt`; only match count and file path returned. Streams live match previews (`Uf`) while searching; runs under the same global timeout as `execute_command`. | Safe | Requires `rg` binary on system (a missing binary is reported with an actionable message) |
 
 Each tool is implemented with type-safe input structs and auto-generated JSON schemas. All tools accept a `context.Context` parameter and respect cancellation — `:cancel` will interrupt long-running tool execution. See [schema-improvements.md](internal/schema-improvements.md) for the pattern.
 

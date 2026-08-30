@@ -23,15 +23,21 @@ func executeWriteFile(_ context.Context, args WriteFileInput) ([]llm.ContentPart
 	if args.Path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
-	if args.Content == "" {
-		return nil, fmt.Errorf("content is required")
-	}
-	if err := os.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
+	// Empty content is valid: it truncates the file. (Rejecting it left the
+	// model with no way to empty a file.) The write itself is atomic —
+	// resolveWriteTarget, os.CreateTemp beside the target, writeAndClose, then
+	// rename — so an interrupted write cannot truncate the original, and the
+	// mode is preserved (or, for a new file, newFilePerm(umask)).
+	if err := writeAtomically(args.Path, args.Content); err != nil {
 		return nil, err
 	}
-	return []llm.ContentPart{llm.TextPart{Text: "File written successfully"}}, nil
+	return []llm.ContentPart{&llm.TextPart{Text: "File written successfully"}}, nil
 }
 ```
+
+> The body above is condensed: the real `write_file.go` inlines the
+> create/write/rename sequence in `executeWriteFile`. This document is about
+> the schema + `TypedExecute` pattern, not the write strategy.
 
 ## Before vs After
 

@@ -6,9 +6,17 @@ How AlayaCore handles large outputs from tools to stay within context budgets.
 
 | Tool | Behavior | File Pattern |
 |------|----------|--------------|
-| `read_file` | Truncates at 64KB with metadata header; media files above 16MB are reported instead of read | N/A (in-memory) |
+| `read_file` | Truncates at 64KB with metadata header; lines above 1MB are truncated and marked; media files above 16MB are reported instead of read | N/A (in-memory) |
 | `execute_command` | Saves to file | `cmd-*.txt` |
 | `search_content` | Saves to file when over 64KB or `max_lines` (`0` = no line limit) | `search-*.txt` |
+
+Output size is bounded in **memory** as well as in what the model sees. A tool
+stream is kept in RAM only up to the 64KB budget; beyond that it spills to a
+scratch file and the remainder streams to disk, so a command that prints
+gigabytes cannot grow the process — previously the cap decided what the model
+saw but not what alayacore allocated, and a non-terminating producer (with the
+default unlimited `--command-timeout`) would run until the OOM killer ended the
+session.
 
 ## read_file
 
@@ -22,6 +30,19 @@ Files larger than 64KB are truncated at a line boundary with metadata:
 
 - Agent can use `start_line`/`num_lines` to read specific ranges
 - No file is created; truncation happens in-memory
+- **Individual lines are capped at 1MB.** A longer line is returned cut to the
+  cap with a `[…line truncated: exceeds 1MB per line…]` marker, and the rest of
+  it is skipped while still counting as one line. Files built from very long
+  single lines (minified bundles, single-line JSON, base64 blobs) are therefore
+  readable at all — they used to fail the whole read, in `start_line`/
+  `num_lines` ranges too, because the line had to be tokenized just to be
+  counted
+- The 64KB budget is enforced even when the *first* line is larger: it is cut
+  to the budget rather than emitted whole
+- An empty result is explained rather than left ambiguous, so the agent cannot
+  mistake a bad index for an empty file and overwrite it:
+  `[start_line 99 is past the end of the file (3 lines); no content to read]`
+  or `[file is empty — 0 lines]`
 - Media files (image/video/audio/document) are embedded as base64 and
   cannot be truncated: files above 16MB are reported with a size-limit
   message instead of being read
@@ -68,6 +89,12 @@ Each process gets its own directory under the system temp directory, created ato
 ```
 
 The random suffix guarantees no collisions between concurrently running `alayacore` instances. The returned path is absolute, so `read_file` can access it regardless of the current working directory.
+
+Oversized streams also use a scratch file in the same directory while they are
+being read (`tool-output-*.tmp`). It holds the part of the stream beyond the
+64KB in-memory budget and is **deleted when the tool call finishes** — only the
+`cmd-*.txt` / `search-*.txt` result file, which the agent was pointed at, is
+left behind.
 
 **Cleanup:**
 - Automatic on normal exit (`tools.Cleanup()` in `main.go`)

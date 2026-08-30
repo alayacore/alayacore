@@ -237,11 +237,30 @@ MCP debug log started for: npx @anthropic/mcp-db-server
 Notifications (like `notifications/initialized`) have no response.
 JSON is pretty-printed for readability.
 
+If the directory cannot be created or is not writable, alayacore rejects the
+flag at startup (exit code 2) rather than falling back to stderr — stderr is
+part of the protocol surface in the plain/terse adapters and would corrupt the
+TUI. The check runs once, before any server connects, so a bad path is one
+clear error instead of a repeated per-server failure. Log files are never
+reused: an existing `alayacore-debug-mcp-N.log` is skipped and the next free
+slot taken.
+
 ## Error Handling
 
 - **Connection failures**: If an MCP server cannot be started or
   initialized, an error message is displayed via the adapter and the
   server is skipped. Other servers are unaffected.
+
+  For stdio servers the message also carries the server's own stderr, so
+  the actual cause is visible instead of a bare `EOF`:
+
+  ```
+  handshake: EOF (server stderr: Error: Cannot find module '@acme/mcp-db-server')
+  ```
+
+  Only the last 8KB of stderr is kept, and it is not passed through to the
+  terminal (that would scribble over the TUI). With `--debug-log` the
+  server's stderr is also written to the transport's log.
 
 - **Tool call failures**: If a tool call returns an error (JSON-RPC
   error or `isError: true`), the error message is included in the
@@ -255,6 +274,11 @@ JSON is pretty-printed for readability.
   (`notifications/tools/list_changed`), the server is marked stale
   and tool calls return: `"name": server tool list changed,
   restart required`.
+
+- **Shutdown**: All server connections are closed in parallel. Each stdio
+  transport waits up to 5s for its process to exit (stdin EOF → SIGTERM →
+  SIGKILL), so a server that ignores termination costs 5s of exit latency —
+  but only once, not once per server.
 
 ## Protocol Support
 
