@@ -67,7 +67,17 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			// NewParts is a view into the agent's accumulation; run()
 			// copies the pointers out immediately and never retains the
 			// view (see stepFinishEvent docs).
-			ev.NewParts = fullContents[prevLen:]
+			//
+			// cleanIncompleteToolInputs is documented to strip only from the
+			// current step's tail, which keeps len(fullContents) >= prevLen.
+			// Slicing on that faith turned a broken assumption into a panic
+			// ("slice bounds out of range") inside the task goroutine, so the
+			// bound is checked. When it does not hold the suffix is no longer
+			// well-defined and nothing is published for this step; run() still
+			// receives the complete history from taskResultCh at task end.
+			if prevLen <= len(fullContents) {
+				ev.NewParts = fullContents[prevLen:]
+			}
 		}
 		s.sendEvent(ev)
 		prevLen = len(fullContents)
