@@ -2,8 +2,10 @@ package tools
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/alayacore/alayacore/internal/llm"
 )
@@ -153,12 +156,36 @@ func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart
 		startLine = 1
 	}
 
-	lines, err := readLinesRange(ctx, file, startLine, args.NumLines)
+	lines, totalSeen, err := readLinesRange(ctx, file, startLine, args.NumLines)
 	if err != nil {
 		return nil, err
 	}
 
+	// An empty range used to come back as "" — indistinguishable from an
+	// empty file, which invites a model to "restore" content by overwriting a
+	// file it merely mis-indexed. Say which it was.
+	if msg, ok := rangeDiagnostic(lines, startLine, totalSeen); ok {
+		return []llm.ContentPart{&llm.TextPart{Text: msg}}, nil
+	}
+
 	return []llm.ContentPart{&llm.TextPart{Text: strings.Join(lines, "\n")}}, nil
+}
+
+// rangeDiagnostic explains an empty line-range result, returning ok=false when
+// there is nothing to explain (the range produced content).
+func rangeDiagnostic(lines []string, startLine, totalSeen int) (string, bool) {
+	if len(lines) > 0 {
+		return "", false
+	}
+	switch {
+	case totalSeen == 0:
+		return "[file is empty — 0 lines]", true
+	case startLine > totalSeen:
+		return fmt.Sprintf(
+			"[start_line %d is past the end of the file (%d lines); no content to read]",
+			startLine, totalSeen), true
+	}
+	return "", false
 }
 
 // maxMediaReadSize caps the size of media files (image/video/audio/document)
@@ -198,46 +225,139 @@ func readMediaFile(file *os.File, path string, info os.FileInfo, mimeType string
 	}, nil
 }
 
-// newLineScanner creates a bufio.Scanner for a file with a 1MB buffer.
-// The buffer is much larger than the truncation limit (maxTextReadSize,
-// 64KB) because the scanner must hold individual lines that may exceed
-// 64KB — the truncation limit applies to total output, not individual
-// lines, and a single line can be arbitrarily long (e.g. minified JS,
-// base64-encoded data). 1MB covers the vast majority of real-world cases
-// while preventing memory exhaustion from pathological input.
-func newLineScanner(file *os.File) *bufio.Scanner {
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-	return scanner
+// newLineReader wraps a file for logical-line reading with bounded memory.
+//
+// bufio.Scanner was used here with a 1MB buffer, which meant any file
+// containing a single longer line failed the read outright with
+// "bufio.Scanner: token too long" — and because the range path had to
+// tokenize those lines just to count past them, start_line/num_lines could
+// not recover either. Real files hit this constantly (minified bundles,
+// single-line JSON, base64 blobs, notebooks), and the message the model got
+// pointed it at the one workaround that also failed.
+//
+// lineReader never fails on a long line: it keeps at most maxLineBytes of each
+// line, marks it truncated, and discards the remainder while still counting it
+// as one line. Memory is O(maxLineBytes) per line regardless of the file.
+func newLineReader(file *os.File) *lineReader {
+	return &lineReader{r: bufio.NewReaderSize(file, 64*1024)}
+}
+
+// maxLineBytes bounds how much of a single logical line is kept. Larger lines
+// are truncated and marked, so a file made entirely of one enormous line still
+// yields useful content instead of an error.
+const maxLineBytes = 1 << 20 // 1MB
+
+// truncatedLineMarker is appended to a line that exceeded maxLineBytes.
+const truncatedLineMarker = " […line truncated: exceeds 1MB per line…]"
+
+// lineReader yields logical lines (newline-terminated, without the newline)
+// from a bufio.Reader, capping each line's length.
+type lineReader struct {
+	r         *bufio.Reader
+	buf       []byte // assembled bytes of the line being read
+	truncated bool   // current line exceeded the cap
+}
+
+// nextLine returns the next line. Truncation is reported inside the line
+// itself (truncatedLineMarker), so no separate flag is needed. A final line
+// without a trailing newline is still returned with a nil error; io.EOF means
+// no bytes remain.
+func (lr *lineReader) nextLine() (string, error) {
+	lr.buf = lr.buf[:0]
+	lr.truncated = false
+
+	for {
+		// ReadSlice returns the buffered bytes with ErrBufferFull when no
+		// newline is found, so the loop keeps draining until the terminator.
+		part, err := lr.r.ReadSlice('\n')
+		if len(part) > 0 {
+			if nl := bytes.IndexByte(part, '\n'); nl >= 0 {
+				lr.collect(part[:nl])
+				return lr.finish(), nil
+			}
+			lr.collect(part)
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				if len(lr.buf) == 0 && !lr.truncated {
+					return "", io.EOF
+				}
+				return lr.finish(), nil
+			}
+			if errors.Is(err, bufio.ErrBufferFull) {
+				continue
+			}
+			return "", err
+		}
+	}
+}
+
+// collect appends line bytes while the cap allows, marking the line truncated
+// once it does not. Excess bytes are dropped, not buffered.
+func (lr *lineReader) collect(body []byte) {
+	room := maxLineBytes - len(lr.buf)
+	switch {
+	case room <= 0:
+		lr.truncated = true
+	case len(body) > room:
+		lr.buf = append(lr.buf, body[:room]...)
+		lr.truncated = true
+	default:
+		lr.buf = append(lr.buf, body...)
+	}
+}
+
+// finish renders the assembled line, matching bufio.Scanner's ScanLines
+// behavior of dropping a carriage return before the newline. A truncated line
+// cannot have lost a '\r' that mattered, so the drop is skipped there.
+func (lr *lineReader) finish() string {
+	s := string(lr.buf)
+	if lr.truncated {
+		return s + truncatedLineMarker
+	}
+	return strings.TrimSuffix(s, "\r")
 }
 
 // readLargeFileTruncated reads a large file and returns up to maxTextReadSize
 // bytes of content with a metadata header showing total line count and size.
 // Single-pass: collects lines until the byte limit, then continues counting.
 func readLargeFileTruncated(file *os.File, totalSize int64) ([]llm.ContentPart, error) {
-	scanner := newLineScanner(file)
+	lr := newLineReader(file)
 
 	var lines []string
 	var bytesRead int64
 	totalLines := 0
 	collecting := true
 
-	for scanner.Scan() {
-		totalLines++
-		if collecting {
-			line := scanner.Text()
-			lineBytes := int64(len(line)) + 1 // +1 for newline
-
-			if bytesRead+lineBytes > maxTextReadSize && len(lines) > 0 {
-				collecting = false
-				continue
+	for {
+		line, err := lr.nextLine()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
 			}
+			return nil, err
+		}
+		totalLines++
+		if !collecting {
+			continue
+		}
+
+		lineBytes := int64(len(line)) + 1 // +1 for newline
+		if bytesRead+lineBytes > maxTextReadSize {
+			if len(lines) == 0 {
+				// The first line alone overflows the whole budget. It used to
+				// be emitted in full (a 700KB line against a documented 64KB
+				// limit) because the "always keep one line" rule bypassed the
+				// cap; cut it to the budget instead.
+				shown := cutToBudget(line, maxTextReadSize-bytesRead)
+				lines = append(lines, shown)
+				bytesRead += int64(len(shown))
+			}
+			collecting = false
+		} else {
 			lines = append(lines, line)
 			bytesRead += lineBytes
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
 	}
 
 	shownLines := len(lines)
@@ -249,6 +369,25 @@ func readLargeFileTruncated(file *os.File, totalSize int64) ([]llm.ContentPart, 
 	)
 
 	return []llm.ContentPart{&llm.TextPart{Text: header + "\n" + content}}, nil
+}
+
+// budgetTruncationMarker is appended when the read budget cuts into a line.
+const budgetTruncationMarker = " […truncated at the 64KB read limit; read a line range for more…]"
+
+// cutToBudget keeps the first room bytes of s, stepping back to a UTF-8 rune
+// boundary so the result never ends on a split multi-byte character.
+func cutToBudget(s string, room int64) string {
+	if room <= 0 {
+		return ""
+	}
+	if int64(len(s)) <= room {
+		return s
+	}
+	cut := int(room)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + budgetTruncationMarker
 }
 
 func validateLineParams(startLine, numLines int) error {
@@ -263,35 +402,40 @@ func validateLineParams(startLine, numLines int) error {
 	return nil
 }
 
-func readLinesRange(ctx context.Context, file *os.File, startLine, numLines int) ([]string, error) {
-	scanner := newLineScanner(file)
+// readLinesRange streams from the file to avoid loading it whole into memory,
+// collecting at most numLines lines starting at startLine (1-indexed; 0 means
+// from the beginning when numLines is also 0 it is the full-file case handled
+// elsewhere). It also reports how many lines the file actually holds, so the
+// caller can tell "out of range" apart from "empty result".
+func readLinesRange(ctx context.Context, file *os.File, startLine, numLines int) ([]string, int, error) {
+	lr := newLineReader(file)
 
 	var lines []string
 	currentLine := 1
 
-	for scanner.Scan() {
+	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, currentLine - 1, ctx.Err()
 		default:
 		}
 
-		if currentLine < startLine {
-			currentLine++
-			continue
+		line, err := lr.nextLine()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, currentLine - 1, err
 		}
 
-		if numLines > 0 && len(lines) >= numLines {
-			break
+		if currentLine >= startLine {
+			if numLines > 0 && len(lines) >= numLines {
+				break
+			}
+			lines = append(lines, line)
 		}
-
-		lines = append(lines, scanner.Text())
 		currentLine++
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return lines, nil
+	return lines, currentLine - 1, nil
 }
