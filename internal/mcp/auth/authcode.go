@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -160,13 +159,13 @@ func doTokenRequest(req *http.Request) (*Token, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readCapped(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read token response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token endpoint returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("token endpoint returned %d: %s", resp.StatusCode, snippet(body))
 	}
 
 	var tokenResp struct {
@@ -179,7 +178,7 @@ func doTokenRequest(req *http.Request) (*Token, error) {
 		ErrorDesc    string `json:"error_description,omitempty"`
 	}
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return nil, fmt.Errorf("parse token response: %w (body: %s)", err, string(body))
+		return nil, fmt.Errorf("parse token response: %w (body: %s)", err, snippet(body))
 	}
 
 	if tokenResp.Error != "" {
@@ -187,7 +186,7 @@ func doTokenRequest(req *http.Request) (*Token, error) {
 	}
 
 	if tokenResp.AccessToken == "" {
-		return nil, fmt.Errorf("token endpoint returned no access_token (body: %s)", string(body))
+		return nil, fmt.Errorf("token endpoint returned no access_token (body: %s)", snippet(body))
 	}
 
 	token := &Token{

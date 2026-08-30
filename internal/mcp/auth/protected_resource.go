@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -63,7 +62,7 @@ func fetchProtectedResourceWellKnown(ctx context.Context, client *http.Client, s
 			continue
 		}
 
-		body, err := io.ReadAll(resp.Body)
+		body, err := readCapped(resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			continue
@@ -130,7 +129,7 @@ func fetchProtectedResourceFrom401(ctx context.Context, client *http.Client, ser
 		return nil, fmt.Errorf("resource metadata endpoint returned %d", metaResp.StatusCode)
 	}
 
-	metaBody, err := io.ReadAll(metaResp.Body)
+	metaBody, err := readCapped(metaResp.Body)
 	if err != nil {
 		return nil, err
 	}

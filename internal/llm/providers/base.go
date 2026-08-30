@@ -137,6 +137,25 @@ func (b *baseProvider) buildRequest(ctx context.Context, urlSuffix string, body 
 	return req, nil
 }
 
+// maxErrorBodyBytes bounds how much of a non-200 response body is read;
+// errorSnippetMaxBytes bounds how much of it is shown. Provider error bodies
+// are a few hundred bytes, so both are invisible in normal use — they exist so
+// that a misbehaving endpoint (or a proxy returning an HTML error page) cannot
+// allocate unbounded memory or flood the model's context through an error
+// message.
+const (
+	maxErrorBodyBytes    = 1 << 20 // 1MB
+	errorSnippetMaxBytes = 2048
+)
+
+// errorBodySnippet renders a bounded, single-line-ish excerpt of an error body.
+func errorBodySnippet(body []byte) string {
+	if len(body) <= errorSnippetMaxBytes {
+		return string(body)
+	}
+	return string(body[:errorSnippetMaxBytes]) + "…[error body truncated]"
+}
+
 // doRequest sends the request and handles non-200 responses.
 // Returns the response body reader (caller must close).
 func (b *baseProvider) doRequest(req *http.Request) (io.ReadCloser, error) {
@@ -146,12 +165,16 @@ func (b *baseProvider) doRequest(req *http.Request) (io.ReadCloser, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, readErr := io.ReadAll(resp.Body)
+		// Bound the read: a proxy, captive portal, or compromised endpoint
+		// returning a giant body used to be allocated in full and then
+		// interpolated verbatim into an error string that reaches both the
+		// terminal and the model's context.
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		resp.Body.Close()
 		if readErr != nil {
 			return nil, fmt.Errorf("API error (status %d): failed to read error body: %w", resp.StatusCode, readErr)
 		}
-		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, errorBodySnippet(body))
 	}
 
 	return resp.Body, nil

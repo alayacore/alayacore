@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -265,14 +264,14 @@ func (p *PersistentTokenProvider) doRefreshRequest(req *http.Request, oldRefresh
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readCapped(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read refresh response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("token endpoint returned %d on refresh: %s",
-			resp.StatusCode, string(body))
+			resp.StatusCode, snippet(body))
 	}
 
 	var tokenResp struct {
@@ -283,11 +282,11 @@ func (p *PersistentTokenProvider) doRefreshRequest(req *http.Request, oldRefresh
 		RefreshToken string `json:"refresh_token,omitempty"`
 	}
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return nil, fmt.Errorf("parse refresh response: %w (body: %s)", err, string(body))
+		return nil, fmt.Errorf("parse refresh response: %w (body: %s)", err, snippet(body))
 	}
 
 	if tokenResp.AccessToken == "" {
-		return nil, fmt.Errorf("refresh returned no access_token (body: %s)", string(body))
+		return nil, fmt.Errorf("refresh returned no access_token (body: %s)", snippet(body))
 	}
 
 	token := &Token{

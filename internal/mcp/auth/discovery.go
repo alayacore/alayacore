@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -78,7 +77,7 @@ func fetchMetadata(ctx context.Context, client *http.Client, url string) (*ASMet
 		return nil, fmt.Errorf("GET %s returned %d", url, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readCapped(resp.Body)
 	if err != nil {
 		return nil, err
 	}
