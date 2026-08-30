@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"iter"
+	"math"
 	"testing"
 )
 
@@ -206,4 +207,51 @@ func TestAgentNoTruncationOnEndTurn(t *testing.T) {
 	}
 
 	t.Log("PASS: Agent does not return ErrResponseTruncated for end_turn")
+}
+
+// TestAgentNonPositiveMaxStepsMeansNoLimit covers the gap between the CLI
+// (which now rejects a negative --max-steps at startup) and the agent itself:
+// NewAgent normalized only 0 to "unlimited", so a negative bound — reachable
+// through a hand-edited session file's max_steps — left the loop body
+// unreachable. The agent then did no work at all and still returned
+// ErrMaxStepsExceeded, reporting a bad setting as a runaway model.
+func TestAgentNonPositiveMaxStepsMeansNoLimit(t *testing.T) {
+	for _, maxSteps := range []int{0, -1, -100, math.MinInt} {
+		agent := NewAgent(AgentConfig{
+			Provider: &mockProviderAlwaysToolCalls{},
+			MaxSteps: maxSteps,
+		})
+
+		if agent.config.MaxSteps != math.MaxInt {
+			t.Errorf("MaxSteps=%d: effective limit = %d, want math.MaxInt (no limit)",
+				maxSteps, agent.config.MaxSteps)
+		}
+	}
+}
+
+// A positive bound is still honored exactly — the guard above must not turn
+// every invalid value into "unlimited" in a way that breaks the real feature.
+func TestAgentPositiveMaxStepsIsHonoured(t *testing.T) {
+	provider := &mockProviderAlwaysToolCalls{}
+	agent := NewAgent(AgentConfig{
+		Provider: provider,
+		Tools: []Tool{{
+			Definition: ToolDefinition{Name: "repeat", Schema: json.RawMessage(`{"type":"object"}`)},
+			Execute: func(_ context.Context, _ json.RawMessage) ([]ContentPart, error) {
+				return []ContentPart{&TextPart{Text: "repeated"}}, nil
+			},
+		}},
+		MaxSteps: 2,
+	})
+
+	_, err := agent.Stream(context.Background(), []ContentPart{
+		&TextPart{Text: "Hello", ContentPartMeta: ContentPartMeta{Role: RoleUser}},
+	}, StreamCallbacks{})
+
+	if !errors.Is(err, ErrMaxStepsExceeded) {
+		t.Fatalf("Stream() error = %v, want ErrMaxStepsExceeded", err)
+	}
+	if provider.callCount != 2 {
+		t.Errorf("provider called %d times, want exactly the 2-step limit", provider.callCount)
+	}
 }

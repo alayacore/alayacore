@@ -17,18 +17,12 @@ import (
 func main() {
 	cfg := config.Parse()
 
-	// --terseio consumes all of stdin as the prompt or command, so tool
-	// confirmations (answered via subsequent stdin lines) can never be
-	// resolved. Fail fast instead of silently declining tools mid-task.
-	if cfg.TerseIO && len(cfg.ToolConfirm) > 0 {
-		fmt.Fprintln(os.Stderr, "Error: --terseio and --tool-confirm are mutually exclusive: terseio consumes stdin, so tool confirmations cannot be answered. Use --plainio for interactive confirmation.")
-		os.Exit(2)
-	}
-
-	// --reasoning-level must be in [0, 2]. Fail fast instead of silently
-	// ignoring an explicit but out-of-range value.
-	if cfg.ReasoningLevelSet && (cfg.ReasoningLevel < config.ReasoningLevelOff || cfg.ReasoningLevel > config.ReasoningLevelMax) {
-		fmt.Fprintln(os.Stderr, "Error: --reasoning-level must be 0, 1, or 2 (0=off, 1=normal, 2=max)")
+	// Cross-flag consistency and value ranges. Every failure here is a
+	// settings combination that cannot do what the user meant, so it is
+	// reported and aborts startup rather than being silently ignored —
+	// see config.Validate for the individual cases.
+	if err := config.Validate(cfg); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(2)
 	}
 

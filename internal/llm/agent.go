@@ -75,7 +75,10 @@ type Agent struct {
 
 // NewAgent creates a new agent
 func NewAgent(config AgentConfig) *Agent {
-	if config.MaxSteps == 0 {
+	// <= 0 means "no limit". Treating only 0 as unlimited left a negative
+	// bound (from a hand-edited session file, say) to disable the loop
+	// entirely while still reporting ErrMaxStepsExceeded.
+	if config.MaxSteps <= 0 {
 		config.MaxSteps = math.MaxInt
 	}
 	return &Agent{config: config}
