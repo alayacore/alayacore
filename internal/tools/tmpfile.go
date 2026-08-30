@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bufio"
 	"os"
 	"sync"
 )
@@ -27,28 +26,14 @@ func procTmpDirInit() {
 	procTmpDirCreated = true
 }
 
-// saveToTmpFile saves output to a temporary file in this process's
-// directory under the system temp directory (e.g. /tmp/alayacore-1234567890/).
-// The returned absolute path can be read back with read_file.
-func saveToTmpFile(output, prefix string) (string, error) {
+// createProcTmpFile creates a uniquely-named file under this process's
+// temporary directory (e.g. /tmp/alayacore-1234567890/) and returns it open
+// for writing. Callers stream into it instead of accumulating large content in
+// memory; the returned file's Name() is the absolute path reported to the
+// model, which can read it back with read_file.
+func createProcTmpFile(prefix string) (*os.File, error) {
 	procTmpDirOnce.Do(procTmpDirInit)
-
-	file, err := os.CreateTemp(procTmpDir, prefix)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	writer := bufio.NewWriter(file)
-	if _, err = writer.WriteString(output); err != nil {
-		return "", err
-	}
-
-	if err = writer.Flush(); err != nil {
-		return "", err
-	}
-
-	return file.Name(), nil
+	return os.CreateTemp(procTmpDir, prefix)
 }
 
 // Cleanup removes this process's temporary directory.

@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +22,11 @@ type SearchContentInput struct {
 	MaxLines   int    `json:"max_lines" jsonschema_desc:"Max matching lines (0 = no limit)"`
 }
 
+// ripgrepBinary is the external executable search_content shells out to. It is
+// a documented system requirement (see README); the name is a single constant
+// so the "not installed" error and the exec call cannot drift.
+const ripgrepBinary = "rg"
+
 // maxSearchContentSize caps the number of bytes of search output returned
 // inline, mirroring execute_command and read_file (64KB). A line-count cap
 // alone is not enough: a single matching line (e.g. minified JS or base64
@@ -43,10 +47,12 @@ func NewSearchContentTool() llm.Tool {
 
 // searchResult carries the exit status and output streams of a ripgrep
 // search between runSearch and formatSearchResult, keeping execution and
-// formatting independently testable.
+// formatting independently testable. The streams are captures rather than
+// strings so a search matching hundreds of megabytes costs memory only up to
+// maxSearchContentSize, with the remainder already on disk.
 type searchResult struct {
-	stdout   string
-	stderr   string
+	stdout   *capture
+	stderr   *capture
 	exitCode int
 }
 
@@ -104,7 +110,7 @@ func runSearch(ctx context.Context, args SearchContentInput, stdout, stderr io.W
 	}
 
 	//nolint:gosec // G204: args are from user input, rg is a trusted binary
-	cmd := exec.CommandContext(timeoutCtx, "rg", rgArgs...)
+	cmd := exec.CommandContext(timeoutCtx, ripgrepBinary, rgArgs...)
 	cmd.Dir = cwd
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
@@ -114,9 +120,9 @@ func runSearch(ctx context.Context, args SearchContentInput, stdout, stderr io.W
 	if execErr != nil {
 		if timeoutCtx.Err() != nil {
 			if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
-				return 0, fmt.Errorf("timed out")
+				return 0, fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded)
 			}
-			return 0, fmt.Errorf("canceled")
+			return 0, fmt.Errorf("%w: %w", ErrCanceled, timeoutCtx.Err())
 		}
 
 		var exitErr *exec.ExitError
@@ -124,7 +130,13 @@ func runSearch(ctx context.Context, args SearchContentInput, stdout, stderr io.W
 			return exitErr.ExitCode(), nil
 		}
 
-		// Non-exit error (e.g. binary doesn't exist).
+		// Non-exit error (e.g. binary doesn't exist). ripgrep is an external
+		// requirement documented in the README, and the raw exec error
+		// ("exec: \"rg\": executable file not found in $PATH") tells the model
+		// nothing actionable — say what is missing and what to use instead.
+		if errors.Is(execErr, exec.ErrNotFound) {
+			return 0, fmt.Errorf("search_content needs ripgrep (%s) on PATH, which was not found: %w. Install ripgrep, or search with execute_command (e.g. grep/find) instead", ripgrepBinary, execErr)
+		}
 		return 0, execErr
 	}
 
@@ -136,13 +148,13 @@ func runSearch(ctx context.Context, args SearchContentInput, stdout, stderr io.W
 // can be tested and reasoned about independently.
 func formatSearchResult(result searchResult, maxLines int) ([]llm.ContentPart, error) {
 	// rg exits with code 1 when no matches found — that's not an error for us.
-	if result.exitCode == 1 && result.stderr == "" {
+	if result.exitCode == 1 && result.stderr.size() == 0 {
 		return []llm.ContentPart{&llm.TextPart{Text: "No matches found"}}, nil
 	}
 
 	// Real error (bad regex, permission denied, etc.)
 	if result.exitCode != 0 {
-		errMsg := result.stderr
+		errMsg := result.stderr.prefix()
 		if errMsg == "" {
 			errMsg = fmt.Sprintf("ripgrep exited with code %d", result.exitCode)
 		}
@@ -150,51 +162,69 @@ func formatSearchResult(result searchResult, maxLines int) ([]llm.ContentPart, e
 	}
 
 	// Success path
-	output := result.stdout
-	if output == "" {
+	if result.stdout.size() == 0 {
 		return []llm.ContentPart{&llm.TextPart{Text: "No matches found"}}, nil
 	}
 
-	// Count total lines in output
-	totalLines := countLines(output)
+	totalLines := result.stdout.lineTotal()
 
 	// If output exceeds maxLines or maxSearchContentSize, save full results
 	// to file and return metadata. maxLines of 0 (the default when omitted)
 	// means no line limit; the 64KB byte cap always applies as a
-	// context-window safety net.
-	if (maxLines > 0 && totalLines > maxLines) || len(output) > maxSearchContentSize {
-		return handleLargeSearchResult(output, totalLines)
+	// context-window safety net. A spilled capture is by definition over the
+	// byte cap.
+	if (maxLines > 0 && totalLines > int64(maxLines)) || result.stdout.spilled() ||
+		result.stdout.size() > maxSearchContentSize {
+		return handleLargeSearchResult(result.stdout, totalLines)
 	}
 
-	return []llm.ContentPart{&llm.TextPart{Text: output}}, nil
+	return []llm.ContentPart{&llm.TextPart{Text: result.stdout.String()}}, nil
 }
 
 // handleLargeSearchResult saves large search output to a temp file and
-// returns a summary message with the file path.
-func handleLargeSearchResult(output string, totalLines int) ([]llm.ContentPart, error) {
-	filePath, err := saveToTmpFile(output, "search-*.txt")
+// returns a summary message with the file path. The capture is streamed to the
+// file, so the full result set is preserved without ever being held in memory.
+func handleLargeSearchResult(stdout *capture, totalLines int64) ([]llm.ContentPart, error) {
+	f, err := createProcTmpFile("search-*.txt")
 	if err != nil {
 		return nil, fmt.Errorf("failed to save large search results: %w", err)
 	}
+	path := f.Name()
 
-	totalKB := float64(len(output)) / 1024
-	return []llm.ContentPart{&llm.TextPart{Text: fmt.Sprintf(
-		"Search found %d matching lines (%.1fKB). Results saved to: %s\nUse read_file to access specific matches.",
-		totalLines, totalKB, filePath,
-	)}}, nil
+	if werr := stdout.writeOut(f); werr != nil {
+		f.Close()
+		os.Remove(path)
+		return nil, fmt.Errorf("failed to save large search results: %w", werr)
+	}
+	if cerr := f.Close(); cerr != nil {
+		os.Remove(path)
+		return nil, fmt.Errorf("failed to save large search results: %w", cerr)
+	}
+
+	text := fmt.Sprintf(
+		"Search found %d matching lines (%s). Results saved to: %s\nUse read_file to access specific matches.",
+		totalLines, describeSize(stdout.size()), path,
+	)
+	if stdout.truncated() {
+		text += "\n[Warning: part of the output could not be written to disk and was dropped.]"
+	}
+	return []llm.ContentPart{&llm.TextPart{Text: text}}, nil
 }
 
 // executeSearchContent is the typed entry point for the search_content tool.
 // It runs ripgrep and formats the results.
 func executeSearchContent(ctx context.Context, args SearchContentInput) ([]llm.ContentPart, error) {
-	var stdout, stderr bytes.Buffer
-	exitCode, err := runSearch(ctx, args, &stdout, &stderr)
+	stdout, stderr := newCapture(maxSearchContentSize), newCapture(maxSearchContentSize)
+	defer stdout.Close()
+	defer stderr.Close()
+
+	exitCode, err := runSearch(ctx, args, stdout, stderr)
 	if err != nil {
 		return nil, err
 	}
 	return formatSearchResult(searchResult{
-		stdout:   stdout.String(),
-		stderr:   stderr.String(),
+		stdout:   stdout,
+		stderr:   stderr,
 		exitCode: exitCode,
 	}, args.MaxLines)
 }
@@ -204,7 +234,8 @@ func executeSearchContent(ctx context.Context, args SearchContentInput) ([]llm.C
 // ripgrep output while the search runs, then returns the authoritative
 // result exactly as the non-streaming path does.
 func executeSearchContentStreaming(ctx context.Context, args SearchContentInput, onDelta func(string)) ([]llm.ContentPart, error) {
-	sw := newStreamingWriter(onDelta)
+	sw := newStreamingWriterWith(onDelta, maxSearchContentSize)
+	defer sw.Close()
 	exitCode, err := runSearch(ctx, args, sw, errWriter{sw})
 	sw.flushPreview() // search finished — emit the final snapshot
 
@@ -212,8 +243,8 @@ func executeSearchContentStreaming(ctx context.Context, args SearchContentInput,
 		return nil, err
 	}
 	return formatSearchResult(searchResult{
-		stdout:   sw.buf.String(),
-		stderr:   sw.errBuf.String(),
+		stdout:   sw.buf,
+		stderr:   sw.errBuf,
 		exitCode: exitCode,
 	}, args.MaxLines)
 }

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -188,8 +189,8 @@ func TestFormatSearchResultNoLineLimit(t *testing.T) {
 	// instead of being saved to a temp file.
 	output := strings.Repeat("match line\n", 200)
 	parts, err := formatSearchResult(searchResult{
-		stdout:   output,
-		stderr:   "",
+		stdout:   newTestCapture(t, output),
+		stderr:   newTestCapture(t, ""),
 		exitCode: 0,
 	}, 0)
 	if err != nil {
@@ -203,8 +204,8 @@ func TestFormatSearchResultNoLineLimit(t *testing.T) {
 	// A positive max_lines caps inline results: 200 lines with a limit of
 	// 50 must be saved to a temp file.
 	parts, err = formatSearchResult(searchResult{
-		stdout:   output,
-		stderr:   "",
+		stdout:   newTestCapture(t, output),
+		stderr:   newTestCapture(t, ""),
 		exitCode: 0,
 	}, 50)
 	if err != nil {
@@ -218,8 +219,8 @@ func TestFormatSearchResultNoLineLimit(t *testing.T) {
 	// Even with max_lines = 0 the 64KB byte cap still applies.
 	hugeLine := strings.Repeat("x", maxSearchContentSize+1)
 	parts, err = formatSearchResult(searchResult{
-		stdout:   hugeLine,
-		stderr:   "",
+		stdout:   newTestCapture(t, hugeLine),
+		stderr:   newTestCapture(t, ""),
 		exitCode: 0,
 	}, 0)
 	if err != nil {
@@ -241,8 +242,8 @@ func TestFormatSearchResultByteCap(t *testing.T) {
 	// saved to a temp file with a reference message instead.
 	hugeLine := strings.Repeat("x", maxSearchContentSize+1)
 	parts, err := formatSearchResult(searchResult{
-		stdout:   hugeLine,
-		stderr:   "",
+		stdout:   newTestCapture(t, hugeLine),
+		stderr:   newTestCapture(t, ""),
 		exitCode: 0,
 	}, 0)
 	if err != nil {
@@ -259,8 +260,8 @@ func TestFormatSearchResultByteCap(t *testing.T) {
 	// At exactly the cap the output is still returned inline.
 	atCap := strings.Repeat("y", maxSearchContentSize)
 	parts, err = formatSearchResult(searchResult{
-		stdout:   atCap,
-		stderr:   "",
+		stdout:   newTestCapture(t, atCap),
+		stderr:   newTestCapture(t, ""),
 		exitCode: 0,
 	}, 0)
 	if err != nil {
@@ -406,5 +407,69 @@ func TestSearchContentStreamingMaxLines(t *testing.T) {
 	}
 	if !strings.Contains(text, "Results saved to:") {
 		t.Errorf("expected 'Results saved to:' in output, got:\n%s", text)
+	}
+}
+
+// ripgrep is an external dependency, and when it is missing the tool used to
+// hand the model `exec: "rg": executable file not found in $PATH` — an error
+// that names neither the fix nor an alternative. Hiding PATH (rather than
+// requiring rg to be absent) makes this test independent of the host.
+func TestSearchContentMissingRipgrepIsActionable(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // an empty directory: nothing is on PATH
+
+	_, err := executeSearchContent(context.Background(), SearchContentInput{
+		Pattern: "anything",
+		Path:    t.TempDir(),
+	})
+	if err == nil {
+		t.Fatal("expected an error when ripgrep is not on PATH")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "ripgrep") || !strings.Contains(msg, "PATH") {
+		t.Errorf("error should name the missing dependency, got %q", msg)
+	}
+	if !strings.Contains(msg, "execute_command") {
+		t.Errorf("error should point at a workable alternative, got %q", msg)
+	}
+	// The underlying exec failure must remain inspectable.
+	if !errors.Is(err, exec.ErrNotFound) {
+		t.Errorf("error should wrap the exec failure, got %q", msg)
+	}
+}
+
+// The reported match count must be the number of matches, not one more. The
+// previous counter assumed the stream might lack a trailing newline and added
+// 1 unconditionally, so every ripgrep result (which always ends with "\n") was
+// over-reported by one line: 7 matches announced themselves as 8.
+func TestSearchContentReportsExactLineCount(t *testing.T) {
+	if !rgAvailable() {
+		t.Skip("rg not available on system")
+	}
+	dir := t.TempDir()
+
+	const wantMatches = 7
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"),
+		[]byte(strings.Repeat("needle here\n", wantMatches)), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Force the "save to file" path with max_lines below the match count,
+	// since that is the message that carries the number.
+	parts, err := executeSearchContent(context.Background(), SearchContentInput{
+		Pattern:  "needle",
+		Path:     dir,
+		MaxLines: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := extractFirstText(parts)
+
+	want := "Search found 7 matching lines"
+	if !strings.Contains(text, want) {
+		t.Errorf("count line = %q, want it to contain %q (off-by-one regression)", text, want)
+	}
+	if strings.Contains(text, "8 matching lines") {
+		t.Errorf("match count over-reported by one: %q", text)
 	}
 }

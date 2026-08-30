@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -102,17 +101,12 @@ func runCommand(ctx context.Context, args executeCommandInput, stdout, stderr io
 }
 
 func executeCommand(ctx context.Context, args executeCommandInput) ([]llm.ContentPart, error) {
-	var stdout, stderr bytes.Buffer
-	exitCode, execErr := runCommand(ctx, args, &stdout, &stderr)
+	stdout, stderr := newCapture(maxCommandOutput), newCapture(maxCommandOutput)
+	defer stdout.Close()
+	defer stderr.Close()
 
-	if ctx.Err() != nil {
-		return handleCommandOutput(&stdout, &stderr, exitCode, fmt.Errorf("canceled"))
-	}
-	if errors.Is(execErr, context.DeadlineExceeded) {
-		return handleCommandOutput(&stdout, &stderr, exitCode, fmt.Errorf("timed out"))
-	}
-
-	return handleCommandOutput(&stdout, &stderr, exitCode, execErr)
+	exitCode, execErr := runCommand(ctx, args, stdout, stderr)
+	return commandResult(ctx, stdout, stderr, exitCode, execErr)
 }
 
 // ============================================================================
@@ -190,23 +184,44 @@ func (ls *lineSnapshot) text() string {
 // written stream (stdout or stderr), falling back to the other stream.
 // Write/WriteErr are called concurrently from exec's stdout/stderr copy
 // goroutines — the shared flush state (dirty, lastTick, lastSent,
-// lastWriter, onDelta) is protected by mu. The authoritative buffers are
-// single-writer and need no lock.
+// lastWriter, onDelta) is protected by mu. Each authoritative capture is
+// written by exactly one of those goroutines, so it needs no lock of its
+// own (capture is not safe against two concurrent writers).
 type streamingWriter struct {
-	mu         sync.Mutex   // guards dirty, lastTick, lastSent, lastWriter, onDelta calls
-	buf        bytes.Buffer // authoritative stdout (UF)
-	errBuf     bytes.Buffer // authoritative stderr (UF)
-	onDelta    func(string) // preview callback (Uf); may be nil
-	out        lineSnapshot // stdout preview snapshot
-	err        lineSnapshot // stderr preview snapshot
-	lastWriter byte         // 0 = none, 1 = stdout, 2 = stderr (most recent)
+	mu      sync.Mutex   // guards dirty, lastTick, lastSent, lastWriter, onDelta calls
+	buf     *capture     // authoritative stdout (UF), bounded memory
+	errBuf  *capture     // authoritative stderr (UF), bounded memory
+	onDelta func(string) // preview callback (Uf); may be nil
+	out     lineSnapshot // stdout preview snapshot
+	err     lineSnapshot // stderr preview snapshot
+
+	lastWriter byte // 0 = none, 1 = stdout, 2 = stderr (most recent)
 	lastSent   string
 	lastTick   time.Time
 	dirty      bool
 }
 
 func newStreamingWriter(onDelta func(string)) *streamingWriter {
-	return &streamingWriter{onDelta: onDelta}
+	return newStreamingWriterWith(onDelta, maxCommandOutput)
+}
+
+// newStreamingWriterWith takes the memory budget explicitly. execute_command
+// and search_content share this writer but own separate caps
+// (maxCommandOutput / maxSearchContentSize); hardcoding one here would let the
+// capture spill at a different threshold than the formatter later compares
+// against the moment either constant changes.
+func newStreamingWriterWith(onDelta func(string), maxBytes int) *streamingWriter {
+	return &streamingWriter{
+		onDelta: onDelta,
+		buf:     newCapture(maxBytes),
+		errBuf:  newCapture(maxBytes),
+	}
+}
+
+// Close releases any spill files the captures created.
+func (w *streamingWriter) Close() {
+	w.buf.Close()
+	w.errBuf.Close()
 }
 
 func (w *streamingWriter) Write(p []byte) (int, error) {
@@ -290,56 +305,86 @@ func (w *streamingWriter) combinedPreview() string {
 
 func executeCommandStreaming(ctx context.Context, args executeCommandInput, onDelta func(string)) ([]llm.ContentPart, error) {
 	sw := newStreamingWriter(onDelta)
+	defer sw.Close()
 	exitCode, execErr := runCommand(ctx, args, sw, errWriter{sw})
 	sw.flushPreview() // command finished — emit the final snapshot
 
-	if ctx.Err() != nil {
-		return handleCommandOutput(&sw.buf, &sw.errBuf, exitCode, fmt.Errorf("canceled"))
-	}
-	if errors.Is(execErr, context.DeadlineExceeded) {
-		return handleCommandOutput(&sw.buf, &sw.errBuf, exitCode, fmt.Errorf("timed out"))
-	}
-
-	return handleCommandOutput(&sw.buf, &sw.errBuf, exitCode, execErr)
+	return commandResult(ctx, sw.buf, sw.errBuf, exitCode, execErr)
 }
 
-func handleCommandOutput(stdout, stderr *bytes.Buffer, exitCode int, execErr error) ([]llm.ContentPart, error) {
-	output := formatCommandOutput(stdout, stderr, exitCode)
+// ErrCanceled and ErrTimeout classify why a tool stopped early. Tools used to
+// return bare prose ("Canceled", "timed out"), which callers could only match
+// with string comparison — and the capitalized variant was already dead
+// weight, kept only because history once keyed off it. Sentinels let the agent
+// layer branch with errors.Is.
+var (
+	ErrCanceled = errors.New("canceled")
+	ErrTimeout  = errors.New("timed out")
+)
 
-	if len(output) > maxCommandOutput {
-		return handleLargeCommandOutput(output, exitCode, execErr)
+// commandResult is the shared tail of the buffered and streaming command
+// paths: it classifies a cancellation/timeout, then renders the output.
+func commandResult(ctx context.Context, stdout, stderr *capture, exitCode int, execErr error) ([]llm.ContentPart, error) {
+	switch {
+	case ctx.Err() != nil:
+		execErr = fmt.Errorf("%w: %w", ErrCanceled, ctx.Err())
+	case errors.Is(execErr, context.DeadlineExceeded):
+		execErr = fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded)
 	}
+	return handleCommandOutput(stdout, stderr, exitCode, execErr)
+}
 
+func handleCommandOutput(stdout, stderr *capture, exitCode int, execErr error) ([]llm.ContentPart, error) {
+	// The common case: nothing spilled to disk and the formatted output still
+	// fits the budget, so it goes back inline.
+	if !stdout.spilled() && !stderr.spilled() {
+		if output := formatCommandOutput(stdout, stderr, exitCode); len(output) <= maxCommandOutput {
+			return inlineCommandOutput(output, execErr)
+		}
+	}
+	return handleLargeCommandOutput(stdout, stderr, exitCode, execErr)
+}
+
+func inlineCommandOutput(output string, execErr error) ([]llm.ContentPart, error) {
 	if execErr != nil {
 		if output == "" {
 			output = execErr.Error()
 		}
 		return []llm.ContentPart{&llm.TextPart{Text: output}}, execErr
 	}
-
 	if output == "" {
 		return []llm.ContentPart{&llm.TextPart{Text: "Command completed successfully (no output)"}}, nil
 	}
 	return []llm.ContentPart{&llm.TextPart{Text: output}}, nil
 }
 
-func handleLargeCommandOutput(output string, exitCode int, execErr error) ([]llm.ContentPart, error) {
-	filePath, err := saveToTmpFile(output, "cmd-*.txt")
+// handleLargeCommandOutput saves the full output to a file and reports the
+// path. Unlike the previous implementation it never materializes the whole
+// output: sizes and line counts come from the captures, and the file is
+// written by streaming the in-memory prefix followed by the spill.
+func handleLargeCommandOutput(stdout, stderr *capture, exitCode int, execErr error) ([]llm.ContentPart, error) {
+	filePath, err := saveCommandOutput(stdout, stderr, exitCode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save large output: %w", err)
+		// No file: fall back to the in-memory prefix rather than discarding a
+		// whole command's output because the temp directory is unusable.
+		note := fmt.Sprintf("\n\n[Output was %s and could not be saved to a file (%v); the text above is only its first %s.]",
+			describeSize(stdout.size()+stderr.size()), err, describeSize(int64(maxCommandOutput)))
+		return inlineCommandOutput(formatCommandOutput(stdout, stderr, exitCode)+note, execErr)
 	}
 
-	totalLines := countLines(output)
-	totalKB := float64(len(output)) / 1024
+	totalLines := stdout.lineTotal() + stderr.lineTotal()
 
 	var msg string
 	if execErr != nil && exitCode > 0 {
 		msg = fmt.Sprintf("Exit Code: %d\n", exitCode)
 	}
 	msg += fmt.Sprintf(
-		"Output (%d lines, %.1fKB) saved to: %s\nUse read_file to access specific sections.",
-		totalLines, totalKB, filePath,
+		"Output (%d lines, %s) saved to: %s\nUse read_file to access specific sections.",
+		totalLines, describeSize(stdout.size()+stderr.size()), filePath,
 	)
+	if stdout.truncated() || stderr.truncated() {
+		msg += "\n[Warning: part of the output could not be written to disk and was dropped.]"
+	}
 
 	if execErr != nil {
 		return []llm.ContentPart{&llm.TextPart{Text: msg}}, execErr
@@ -347,27 +392,78 @@ func handleLargeCommandOutput(output string, exitCode int, execErr error) ([]llm
 	return []llm.ContentPart{&llm.TextPart{Text: msg}}, nil
 }
 
-func countLines(s string) int {
-	if s == "" {
-		return 0
+// writeCommandOutput is the single definition of the command output layout.
+// formatCommandOutput and the saved file must never disagree, so both go
+// through here.
+//
+// includeSpill selects the full stream (for the file) or the in-memory part
+// only (for an inline string). Rendering the inline form straight from
+// writeOut would copy a spilled stream back into a strings.Builder — on the
+// path where saving to disk just failed, which is exactly the disk-full case
+// where the spill is largest. That would reintroduce the unbounded allocation
+// this code exists to prevent.
+func writeCommandOutput(w io.Writer, stdout, stderr *capture, exitCode int, includeSpill bool) error {
+	if exitCode == 0 && stderr.size() == 0 {
+		return stdout.emit(w, includeSpill)
 	}
-	return strings.Count(s, "\n") + 1
+
+	if exitCode > 0 {
+		if _, err := fmt.Fprintf(w, "Exit Code: %d\n", exitCode); err != nil {
+			return err
+		}
+	}
+	if stdout.size() > 0 {
+		if _, err := io.WriteString(w, "STDOUT:\n"); err != nil {
+			return err
+		}
+		if err := stdout.emit(w, includeSpill); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(w, "\n"); err != nil {
+			return err
+		}
+	}
+	if stderr.size() > 0 {
+		if _, err := io.WriteString(w, "STDERR:\n"); err != nil {
+			return err
+		}
+		return stderr.emit(w, includeSpill)
+	}
+	return nil
 }
 
-func formatCommandOutput(stdout, stderr *bytes.Buffer, exitCode int) string {
-	if exitCode == 0 && stderr.Len() == 0 {
-		return stdout.String()
+// saveCommandOutput streams the formatted command output to a file in this
+// process's temp directory and returns its path.
+func saveCommandOutput(stdout, stderr *capture, exitCode int) (string, error) {
+	f, err := createProcTmpFile("cmd-*.txt")
+	if err != nil {
+		return "", err
 	}
+	path := f.Name()
 
-	var output string
-	if exitCode > 0 {
-		output = fmt.Sprintf("Exit Code: %d\n", exitCode)
+	if werr := writeCommandOutput(f, stdout, stderr, exitCode, true); werr != nil {
+		f.Close()
+		os.Remove(path)
+		return "", werr
 	}
-	if stdout.Len() > 0 {
-		output += "STDOUT:\n" + stdout.String() + "\n"
+	if cerr := f.Close(); cerr != nil {
+		os.Remove(path)
+		return "", cerr
 	}
-	if stderr.Len() > 0 {
-		output += "STDERR:\n" + stderr.String()
+	return path, nil
+}
+
+// formatCommandOutput renders the inline (memory-bounded) form of the output.
+func formatCommandOutput(stdout, stderr *capture, exitCode int) string {
+	var b strings.Builder
+	_ = writeCommandOutput(&b, stdout, stderr, exitCode, false) // strings.Builder never fails
+	return b.String()
+}
+
+// describeSize renders a byte count for tool messages.
+func describeSize(b int64) string {
+	if b >= 1024*1024 {
+		return fmt.Sprintf("%.1fMB", float64(b)/(1024*1024))
 	}
-	return output
+	return fmt.Sprintf("%.1fKB", float64(b)/1024)
 }

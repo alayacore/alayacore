@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -245,8 +244,8 @@ func TestHandleCommandOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stdout := bytes.NewBufferString(tt.stdout)
-			stderr := bytes.NewBufferString(tt.stderr)
+			stdout := newTestCapture(t, tt.stdout)
+			stderr := newTestCapture(t, tt.stderr)
 
 			content, err := handleCommandOutput(stdout, stderr, tt.exitCode, tt.execErr)
 
@@ -330,8 +329,8 @@ func TestFormatCommandOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stdout := bytes.NewBufferString(tt.stdout)
-			stderr := bytes.NewBufferString(tt.stderr)
+			stdout := newTestCapture(t, tt.stdout)
+			stderr := newTestCapture(t, tt.stderr)
 			got := formatCommandOutput(stdout, stderr, tt.exitCode)
 			if got != tt.want {
 				t.Errorf("formatCommandOutput:\n  expected: %q\n  got:      %q", tt.want, got)
