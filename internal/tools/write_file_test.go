@@ -16,10 +16,104 @@ func TestWriteFileValidation(t *testing.T) {
 		t.Fatalf("expected 'path is required' error, got: %v", err)
 	}
 
-	// Missing content.
-	_, err = executeWriteFile(context.Background(), WriteFileInput{Path: "somefile", Content: ""})
-	if err == nil || !strings.Contains(err.Error(), "content is required") {
-		t.Fatalf("expected 'content is required' error, got: %v", err)
+	// A directory is rejected with a clear message instead of a rename error.
+	if _, err := executeWriteFile(context.Background(), WriteFileInput{Path: t.TempDir(), Content: "x"}); err == nil ||
+		!strings.Contains(err.Error(), "it is a directory") {
+		t.Fatalf("expected 'it is a directory' error, got: %v", err)
+	}
+}
+
+// Empty content used to be rejected with "content is required", which left the
+// model no way to truncate a file to zero length — a legitimate request it
+// could only satisfy by running a shell command.
+func TestWriteFileEmptyContentTruncates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "log.txt")
+	if _, err := executeWriteFile(context.Background(), WriteFileInput{Path: path, Content: "prior content"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := executeWriteFile(context.Background(), WriteFileInput{Path: path, Content: ""}); err != nil {
+		t.Fatalf("empty content should truncate the file, got error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 0 {
+		t.Errorf("file still holds %q, want empty", data)
+	}
+}
+
+// Creating a file with empty content must work too, not just truncating.
+func TestWriteFileCreatesEmptyFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "blank.txt")
+
+	if _, err := executeWriteFile(context.Background(), WriteFileInput{Path: path, Content: ""}); err != nil {
+		t.Fatalf("creating an empty file failed: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("file was not created: %v", err)
+	}
+	if info.Size() != 0 {
+		t.Errorf("size = %d, want 0", info.Size())
+	}
+}
+
+// The write is atomic: the target is replaced by a rename, so an interrupted
+// write can never leave a truncated file where a complete one was.
+func TestWriteFileLeavesNoTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.txt")
+	if _, err := executeWriteFile(context.Background(), WriteFileInput{Path: path, Content: "a"}); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "out.txt" {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("temp file left behind: %v", names)
+	}
+}
+
+// A symlinked target (the dotfiles-in-a-repo layout) must keep working as a
+// link: renaming a temp file over the link would silently destroy it.
+func TestWriteFileFollowsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.txt")
+	link := filepath.Join(dir, "link.txt")
+
+	if err := os.WriteFile(real, []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := executeWriteFile(context.Background(), WriteFileInput{Path: link, Content: "updated"}); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("the symlink was replaced by a regular file")
+	}
+	data, err := os.ReadFile(real)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "updated" {
+		t.Errorf("real file holds %q, want %q", data, "updated")
 	}
 }
 

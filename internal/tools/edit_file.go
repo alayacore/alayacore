@@ -59,9 +59,13 @@ type editSession struct {
 }
 
 // newEditSession opens the source file and creates a temp file in the same
-// directory (to avoid cross-device rename errors).
+// directory (to avoid cross-device rename errors). The rename target is the
+// resolved path, so editing a symlinked file updates the file rather than
+// replacing the link (see resolveWriteTarget).
 func newEditSession(path string) (*editSession, error) {
-	srcFile, err := os.Open(path)
+	target := resolveWriteTarget(path)
+
+	srcFile, err := os.Open(target)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("file not found: %s", path)
@@ -72,18 +76,18 @@ func newEditSession(path string) (*editSession, error) {
 	fileInfo, err := srcFile.Stat()
 	if err != nil {
 		srcFile.Close()
-		return nil, fmt.Errorf("failed to get file info: %v", err)
+		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	dir := filepath.Dir(path)
-	tempFile, err := os.CreateTemp(dir, "edit_file_*.tmp")
+	dir := filepath.Dir(target)
+	tempFile, err := os.CreateTemp(dir, tempFilePattern(filepath.Base(target), "edit"))
 	if err != nil {
 		srcFile.Close()
-		return nil, fmt.Errorf("failed to create temp file: %v", err)
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 
 	return &editSession{
-		srcPath:  path,
+		srcPath:  target,
 		srcFile:  srcFile,
 		tempFile: tempFile,
 		tempPath: tempFile.Name(),
@@ -126,24 +130,24 @@ func (s *editSession) Write(p []byte) (int, error) {
 func (s *editSession) commit() error {
 	// Close both files before rename to release all OS handles.
 	if err := s.tempFile.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %v", err)
+		return fmt.Errorf("failed to close temp file: %w", err)
 	}
 	s.tempFile = nil
 
 	if err := s.srcFile.Close(); err != nil {
-		return fmt.Errorf("failed to close source file: %v", err)
+		return fmt.Errorf("failed to close source file: %w", err)
 	}
 	s.srcFile = nil
 
 	// On Windows, os.Rename fails with "Access is denied" if the target
 	// file still has an open handle — all handles are closed above.
 	if err := os.Rename(s.tempPath, s.srcPath); err != nil {
-		return fmt.Errorf("failed to replace file: %v", err)
+		return fmt.Errorf("failed to replace file: %w", err)
 	}
 	s.committed = true
 
 	if err := os.Chmod(s.srcPath, s.fileInfo.Mode()); err != nil {
-		return fmt.Errorf("failed to restore file permissions: %v", err)
+		return fmt.Errorf("failed to restore file permissions: %w", err)
 	}
 
 	return nil
@@ -209,10 +213,10 @@ func (se *streamEditor) processChunk(src io.Reader, dst io.Writer) (bool, error)
 		}
 
 		if _, err = dst.Write(se.buffer[:idx]); err != nil {
-			return false, fmt.Errorf("failed to write to temp file: %v", err)
+			return false, fmt.Errorf("failed to write to temp file: %w", err)
 		}
 		if _, err = dst.Write(se.newBytes); err != nil {
-			return false, fmt.Errorf("failed to write to temp file: %v", err)
+			return false, fmt.Errorf("failed to write to temp file: %w", err)
 		}
 		se.buffer = se.buffer[idx+len(se.oldBytes):]
 	}
@@ -221,7 +225,7 @@ func (se *streamEditor) processChunk(src io.Reader, dst io.Writer) (bool, error)
 	if len(se.buffer) > len(se.oldBytes) {
 		writeLen := len(se.buffer) - len(se.oldBytes)
 		if _, err = dst.Write(se.buffer[:writeLen]); err != nil {
-			return false, fmt.Errorf("failed to write to temp file: %v", err)
+			return false, fmt.Errorf("failed to write to temp file: %w", err)
 		}
 		se.buffer = se.buffer[writeLen:]
 	}
@@ -233,7 +237,7 @@ func (se *streamEditor) processChunk(src io.Reader, dst io.Writer) (bool, error)
 func (se *streamEditor) flushRemaining(dst io.Writer) error {
 	if len(se.buffer) > 0 {
 		if _, err := dst.Write(se.buffer); err != nil {
-			return fmt.Errorf("failed to write to temp file: %v", err)
+			return fmt.Errorf("failed to write to temp file: %w", err)
 		}
 	}
 	return nil
@@ -278,7 +282,7 @@ func executeEditFile(ctx context.Context, args EditFileInput) ([]llm.ContentPart
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("Canceled")
+			return nil, fmt.Errorf("%w: %w", ErrCanceled, ctx.Err())
 		default:
 		}
 
@@ -416,7 +420,7 @@ func findNormalizedMatch(ctx context.Context, src io.Reader, oldString string) (
 	for {
 		select {
 		case <-ctx.Done():
-			return 0, fmt.Errorf("Canceled")
+			return 0, fmt.Errorf("%w: %w", ErrCanceled, ctx.Err())
 		default:
 		}
 
@@ -485,7 +489,7 @@ func locateAndWrite(ctx context.Context, src io.Reader, dst io.Writer, startNorm
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("Canceled")
+			return fmt.Errorf("%w: %w", ErrCanceled, ctx.Err())
 		default:
 		}
 
@@ -597,7 +601,7 @@ func writeNewString(dst io.Writer, newString string, newWritten *bool) error {
 		return nil
 	}
 	if _, err := dst.Write([]byte(newString)); err != nil {
-		return fmt.Errorf("failed to write to temp file: %v", err)
+		return fmt.Errorf("failed to write to temp file: %w", err)
 	}
 	*newWritten = true
 	return nil
@@ -606,7 +610,7 @@ func writeNewString(dst io.Writer, newString string, newWritten *bool) error {
 // writeBuf writes buf to dst with a uniform error message.
 func writeBuf(dst io.Writer, buf []byte) error {
 	if _, err := dst.Write(buf); err != nil {
-		return fmt.Errorf("failed to write to temp file: %v", err)
+		return fmt.Errorf("failed to write to temp file: %w", err)
 	}
 	return nil
 }
@@ -618,7 +622,7 @@ func writeBuf(dst io.Writer, buf []byte) error {
 // whitespace-insensitive so the model knows its old_string was not exact.
 func executeEditFileTolerant(ctx context.Context, session *editSession, args EditFileInput) ([]llm.ContentPart, error) {
 	if _, err := session.srcFile.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek source file: %v", err)
+		return nil, fmt.Errorf("failed to seek source file: %w", err)
 	}
 
 	startNorm, err := findNormalizedMatch(ctx, session.srcFile, args.OldString)
@@ -633,16 +637,16 @@ func executeEditFileTolerant(ctx context.Context, session *editSession, args Edi
 
 	normOld := normalizeWhitespace([]byte(args.OldString))
 	if _, err := session.srcFile.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek source file: %v", err)
+		return nil, fmt.Errorf("failed to seek source file: %w", err)
 	}
 	// The exact-matching pass already streamed the whole file into the temp
 	// file (it only failed to find a match). Rewind and truncate it so
 	// locateAndWrite replaces the content instead of appending.
 	if err := session.tempFile.Truncate(0); err != nil {
-		return nil, fmt.Errorf("failed to truncate temp file: %v", err)
+		return nil, fmt.Errorf("failed to truncate temp file: %w", err)
 	}
 	if _, err := session.tempFile.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek temp file: %v", err)
+		return nil, fmt.Errorf("failed to seek temp file: %w", err)
 	}
 	if err := locateAndWrite(ctx, session.srcFile, session, startNorm, startNorm+int64(len(normOld)), args.NewString); err != nil {
 		return nil, err
