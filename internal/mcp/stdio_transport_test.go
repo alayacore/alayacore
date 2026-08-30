@@ -63,6 +63,15 @@ func runMCPServer() {
 	echoRaw := os.Getenv("MCP_TEST_SERVER_ECHO_RAW") != ""
 	waitEOF := os.Getenv("MCP_TEST_SERVER_WAIT_EOF") != ""
 
+	// Die-with-diagnostic mode: print to stderr and exit nonzero without ever
+	// speaking the protocol. Models a real-world MCP server that fails at
+	// startup ("Cannot find module …"), which is what the transport's stderr
+	// tail exists to surface.
+	if diag := os.Getenv("MCP_TEST_SERVER_DIE_WITH"); diag != "" {
+		fmt.Fprintln(os.Stderr, diag)
+		os.Exit(1)
+	}
+
 	for scanner.Scan() {
 		data := scanner.Bytes()
 
@@ -101,6 +110,26 @@ func runMCPServer() {
 		// ------------------------------------------------------------------
 		// Special behavior based on method prefix
 		// ------------------------------------------------------------------
+
+		// Initialize: answer the handshake with the requested protocol version
+		// so a full Client can connect to the test server and its transport can
+		// be exercised end to end.
+		if msg.Method == methodInitialize {
+			var req struct {
+				ProtocolVersion string `json:"protocolVersion"`
+			}
+			_ = json.Unmarshal(msg.Params, &req)
+			result, _ := json.Marshal(map[string]any{
+				"protocolVersion": req.ProtocolVersion,
+				"capabilities":    map[string]any{},
+				"serverInfo":      map[string]any{"name": "test-server", "version": "0"},
+			})
+			resp := jsonrpcResponse{JSONRPC: "2.0", ID: msg.ID, Result: result}
+			data, _ := json.Marshal(resp)
+			os.Stdout.Write(data)
+			os.Stdout.Write([]byte("\n"))
+			continue
+		}
 
 		// Error mode: method starting with "error/" triggers an error response.
 		if strings.HasPrefix(msg.Method, "error/") {
@@ -191,6 +220,16 @@ func runMCPServer() {
 				break
 			}
 		}
+	}
+
+	// Slow-exit mode: linger this long before exiting so that transport
+	// shutdown duration is observable. Reached only after stdin closes (the
+	// read loop above) or the scan loop breaks, so it never delays the server
+	// from serving requests.
+	if s := os.Getenv("MCP_TEST_SERVER_EXIT_DELAY_MS"); s != "" {
+		var ms int
+		fmt.Sscanf(s, "%d", &ms)
+		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
 }
 

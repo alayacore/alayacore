@@ -168,8 +168,12 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	_, err = c.negotiateAndHandshake(ctx)
 	if err != nil {
+		// Close before reading the stderr tail: Close waits for the process
+		// to exit, and cmd.Wait only returns once the child's stderr has
+		// been fully copied, so the diagnostic is complete by then. Without
+		// this a server that dies at startup reports only "EOF".
 		transport.Close()
-		return fmt.Errorf("%w", err)
+		return withStderrDetail(err, transport)
 	}
 
 	c.state.Store(int32(StateReady))
@@ -416,7 +420,7 @@ func (c *Client) createTransport() (Transport, error) {
 		}
 		return t, nil
 	case c.config.URL != "":
-		return NewHTTPTransport(c.config.URL, c.config.DebugDir), nil
+		return NewHTTPTransport(c.config.URL, c.config.DebugDir)
 	default:
 		return nil, fmt.Errorf("no command or URL specified")
 	}

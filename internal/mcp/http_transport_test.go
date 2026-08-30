@@ -226,7 +226,7 @@ func TestHTTPTransport_SendReceive_JSON(t *testing.T) {
 	srv := newHTTPServer(t)
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 
 	ctx := context.Background()
@@ -252,7 +252,7 @@ func TestHTTPTransport_SendReceive_SSE(t *testing.T) {
 	srv := newHTTPServer(t, withResponseMode("sse"))
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 
 	ctx := context.Background()
@@ -278,7 +278,7 @@ func TestHTTPTransport_Send_Notification(t *testing.T) {
 	srv := newHTTPServer(t)
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 
 	err := tr.Send(context.Background(), jsonrpcRequest{
@@ -294,7 +294,7 @@ func TestHTTPTransport_Send_Notification(t *testing.T) {
 
 func TestHTTPTransport_SendReceive_Error(t *testing.T) {
 	srv := newHTTPServer(t)
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 
 	srv.Close()
@@ -313,7 +313,7 @@ func TestHTTPTransport_Close(t *testing.T) {
 	srv := newHTTPServer(t)
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 
 	if err := tr.Close(); err != nil {
 		t.Errorf("Close: %v", err)
@@ -333,7 +333,7 @@ func TestHTTPTransport_ContextCancellation(t *testing.T) {
 	srv := newHTTPServer(t, withResponseDelay(5*time.Second))
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -356,7 +356,7 @@ func TestHTTPTransport_GETStream(t *testing.T) {
 	srv := newHTTPServer(t)
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 
 	ctx := context.Background()
@@ -410,7 +410,7 @@ func TestHTTPTransport_GETStreamMethodNotAllowed(t *testing.T) {
 	}()
 
 	serverURL := "http://" + listener.Addr().String()
-	tr := NewHTTPTransport(serverURL, "")
+	tr, _ := NewHTTPTransport(serverURL, "")
 	defer tr.Close()
 
 	_, err = tr.StartGETStream(context.Background())
@@ -429,7 +429,7 @@ func TestHTTPTransport_DebugLogging(t *testing.T) {
 	srv := newHTTPServer(t)
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), t.TempDir())
+	tr, _ := NewHTTPTransport(srv.URL(), t.TempDir())
 	defer tr.Close()
 	t.Cleanup(func() { tr.debugWriter.Close() })
 
@@ -462,7 +462,7 @@ func TestV2025_11_25_SessionManagement(t *testing.T) {
 	defer srv.Close()
 
 	adapter := NewAdapterV20251125()
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 
 	// Attach adapter to transport.
@@ -505,7 +505,7 @@ func TestV2026_07_28_NoSession(t *testing.T) {
 	defer srv.Close()
 
 	adapter := NewAdapterV20260728()
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 	tr.SetHTTPAdapter(adapter)
 
@@ -529,7 +529,7 @@ func TestMultipleConcurrentRequests(t *testing.T) {
 	srv := newHTTPServer(t)
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 	defer tr.Close()
 
 	const numRequests = 5
@@ -562,7 +562,7 @@ func TestNoDoubleClose(t *testing.T) {
 	srv := newHTTPServer(t)
 	defer srv.Close()
 
-	tr := NewHTTPTransport(srv.URL(), "")
+	tr, _ := NewHTTPTransport(srv.URL(), "")
 
 	var wg sync.WaitGroup
 	for range 10 {

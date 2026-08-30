@@ -231,9 +231,15 @@ func NewHTTPClient(proxyURL, debugDir string) (*http.Client, error) {
 		if transport == nil {
 			transport = http.DefaultTransport
 		}
+		// A debug log the user asked for but cannot be opened is reported,
+		// not silently downgraded to stderr (see debug.NewDebugWriter).
+		dw, err := debug.NewDebugWriter(debugDir, "alayacore-debug-api")
+		if err != nil {
+			return nil, err
+		}
 		transport = &DebugTransport{
 			Transport: transport,
-			Writer:    debug.NewDebugWriter(debugDir, "alayacore-debug-api"),
+			Writer:    dw,
 		}
 	}
 

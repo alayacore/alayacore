@@ -44,6 +44,10 @@ type StdioTransport struct {
 
 	debugWriter io.WriteCloser // non-nil when --debug-log is enabled; logs raw JSON-RPC
 
+	// stderrTail holds the last bytes the server wrote to stderr, so a
+	// connection failure can report the real cause instead of a bare EOF.
+	stderrTail *boundedTail
+
 	// Notification handler for server-to-client notifications.
 	notificationHandler NotificationHandler
 }
@@ -64,21 +68,49 @@ func NewStdioTransport(command string, args []string, env map[string]string, deb
 		return nil, fmt.Errorf("create stdout pipe: %w", err)
 	}
 
-	// MCP servers may write diagnostics to stderr, but these are internal
-	// logs, not protocol errors. Protocol-level errors (failed tool calls,
-	// connection issues, etc.) are already surfaced to the user through
-	// JSON-RPC error responses. Leave stderr unmanaged so it flows to
-	// the parent process's stderr naturally.
-	cmd.Stderr = nil
-
 	// Set environment variables.
 	if len(env) > 0 {
 		cmd.Env = append(cmd.Environ(), mapToEnvSlice(env)...)
 	}
 
+	// Initialize the debug writer before spawning anything: a debug log the
+	// user asked for but cannot be opened is a startup configuration error,
+	// reported rather than silently connecting without logs. Creating it here
+	// also means the failure path needs no process cleanup.
+	var debugWriter io.WriteCloser
+	if debugDir != "" {
+		dw, err := debug.NewDebugWriter(debugDir, "alayacore-debug-mcp")
+		if err != nil {
+			stdin.Close()
+			stdout.Close()
+			return nil, err
+		}
+		debugWriter = dw
+	}
+
+	// Capture the server's stderr. With cmd.Stderr left nil, os/exec connects
+	// the child's stderr to the null device, so every startup diagnostic
+	// (missing module, unhandled rejection, Python ImportError) is discarded
+	// and the user is left with a bare EOF/timeout error. Keep a bounded tail
+	// of it to append to connection failures; do NOT pass it through to
+	// os.Stderr, which would scribble over the TUI. When --debug-log is on,
+	// also tee it to the transport log so a post-mortem has the full stream
+	// rather than only the surviving tail.
+	stderrTail := &boundedTail{max: maxStderrTail}
+	var stderrSink io.Writer = stderrTail
+	if debugWriter != nil {
+		// No lock needed: os/exec copies a given stream from one goroutine,
+		// so the two destinations are never written concurrently.
+		stderrSink = io.MultiWriter(stderrTail, debugWriter)
+	}
+	cmd.Stderr = stderrSink
+
 	if err := cmd.Start(); err != nil {
 		stdin.Close()
 		stdout.Close()
+		if debugWriter != nil {
+			debugWriter.Close()
+		}
 		return nil, fmt.Errorf("start command: %w", err)
 	}
 
@@ -89,14 +121,12 @@ func NewStdioTransport(command string, args []string, env map[string]string, deb
 		done:          make(chan struct{}),
 		processExited: make(chan struct{}),
 		pending:       make(map[requestID]chan<- jsonrpcResponse),
+		stderrTail:    stderrTail,
+		debugWriter:   debugWriter,
 	}
 
-	// Initialize debug writer if requested.
-	if debugDir != "" {
-		t.debugWriter = debug.NewDebugWriter(debugDir, "alayacore-debug-mcp")
-		if t.debugWriter != nil {
-			fmt.Fprintf(t.debugWriter, "MCP debug log started for: %s %v\n", command, args)
-		}
+	if debugWriter != nil {
+		fmt.Fprintf(debugWriter, "MCP debug log started for: %s %v\n", command, args)
 	}
 
 	// Start dedicated reader goroutine.
@@ -333,4 +363,14 @@ func (t *StdioTransport) Close() error {
 // Done returns a channel that closes when the process exits.
 func (t *StdioTransport) Done() <-chan struct{} {
 	return t.done
+}
+
+// StderrTail returns the last bytes the server wrote to stderr, satisfying
+// stderrDiagnostician so connection failures can name their real cause.
+// Returns "" when the server printed nothing.
+func (t *StdioTransport) StderrTail() string {
+	if t.stderrTail == nil {
+		return ""
+	}
+	return t.stderrTail.tail()
 }

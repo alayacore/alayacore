@@ -41,7 +41,7 @@ func newListToolsClient(t *testing.T, serverURL string, adapter Adapter) *Client
 	t.Helper()
 	client := NewClient(ServerConfig{Name: "test", URL: serverURL})
 	client.adapter = adapter
-	tr := NewHTTPTransport(serverURL, "")
+	tr, _ := NewHTTPTransport(serverURL, "")
 	tr.SetHTTPAdapter(adapter.(HTTPAdapter))
 	client.storeTransport(tr)
 	client.state.Store(int32(StateReady))

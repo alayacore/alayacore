@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -33,6 +34,73 @@ type Transport interface {
 // ============================================================================
 // Shared Helpers
 // ============================================================================
+
+// maxStderrTail bounds how many bytes of an MCP server's stderr are kept for
+// inclusion in connection error messages. A chatty or runaway server cannot
+// grow this, and the tail is the useful part (the last thing it printed
+// before dying).
+const maxStderrTail = 8 * 1024
+
+// maxTextResponseBytes bounds a non-JSON response body that MCP turns into an
+// error message. Such a message is shown to the user and fed to the model, so
+// the remote server must not get to decide its size.
+const maxTextResponseBytes = 1 << 20 // 1MB
+
+// boundedTail is a goroutine-safe ring buffer keeping the last max bytes
+// written to it. It implements io.Writer, which makes it suitable as
+// exec.Cmd.Stderr: the child's output is copied by an exec-internal
+// goroutine while the parent may read the tail at any time.
+type boundedTail struct {
+	mu  sync.Mutex
+	max int
+	buf []byte
+}
+
+func (b *boundedTail) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.buf = append(b.buf, p...)
+	if over := len(b.buf) - b.max; over > 0 {
+		b.buf = append(b.buf[:0], b.buf[over:]...)
+	}
+	return len(p), nil
+}
+
+// tail returns the last max bytes captured, trimmed of surrounding
+// whitespace. Empty when the process wrote nothing.
+func (b *boundedTail) tail() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(bytes.TrimSpace(b.buf))
+}
+
+// stderrDiagnostician is implemented by transports whose remote process can
+// report diagnostic output (a stdio MCP server writes to stderr). It is an
+// optional capability rather than part of Transport because HTTP transports
+// have no such stream.
+type stderrDiagnostician interface {
+	StderrTail() string
+}
+
+// withStderrDetail enriches a transport error with the server's captured
+// stderr, so a failed connection reports the cause ("Cannot find module
+// '@modelcontextprotocol/server-x'") instead of a bare EOF or timeout.
+// Returns err unchanged when there is nothing to add.
+func withStderrDetail(err error, tp Transport) error {
+	if err == nil {
+		return nil
+	}
+	sd, ok := tp.(stderrDiagnostician)
+	if !ok {
+		return err
+	}
+	tail := sd.StderrTail()
+	if tail == "" {
+		return err
+	}
+	return fmt.Errorf("%w (server stderr: %s)", err, tail)
+}
 
 // mapToEnvSlice converts a map[string]string to "KEY=VALUE" strings.
 func mapToEnvSlice(env map[string]string) []string {

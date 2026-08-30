@@ -126,7 +126,7 @@ func (s *sseReadCloser) Close() error {
 // debugDir "" = no debug logging; "." = write to CWD.
 // It does NOT connect immediately; the first Send/SendReceive will POST
 // to the endpoint.
-func NewHTTPTransport(endpointURL string, debugDir string) *HTTPTransport {
+func NewHTTPTransport(endpointURL string, debugDir string) (*HTTPTransport, error) {
 	t := &HTTPTransport{
 		endpointURL: endpointURL,
 		httpClient: &http.Client{
@@ -137,13 +137,18 @@ func NewHTTPTransport(endpointURL string, debugDir string) *HTTPTransport {
 	}
 
 	if debugDir != "" {
-		t.debugWriter = debug.NewDebugWriter(debugDir, "alayacore-debug-mcp")
-		if t.debugWriter != nil {
-			fmt.Fprintf(t.debugWriter, "MCP HTTP debug log started for: %s\n", endpointURL)
+		// Never fall back to os.Stderr (see debug.NewDebugWriter): this
+		// transport closes the writer, which would kill the process's
+		// stderr. A debug log that cannot be opened is reported instead.
+		dw, err := debug.NewDebugWriter(debugDir, "alayacore-debug-mcp")
+		if err != nil {
+			return nil, err
 		}
+		t.debugWriter = dw
+		fmt.Fprintf(dw, "MCP HTTP debug log started for: %s\n", endpointURL)
 	}
 
-	return t
+	return t, nil
 }
 
 // SetHTTPAdapter attaches the HTTP adapter for version-specific request/response
@@ -422,7 +427,9 @@ func (t *HTTPTransport) readJSONResponse(body io.ReadCloser) (json.RawMessage, e
 //
 //nolint:unparam // signature matches readJSONResponse for switch consistency
 func (t *HTTPTransport) readTextResponse(body io.ReadCloser) (json.RawMessage, error) {
-	data, err := io.ReadAll(body)
+	// Capped: the body becomes an error message shown to the user and fed to
+	// the model, so a server cannot decide its size.
+	data, err := io.ReadAll(io.LimitReader(body, maxTextResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read text response: %w", err)
 	}

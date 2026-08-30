@@ -227,7 +227,10 @@ func (m *mockRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
 }
 
 func TestNewDebugWriter_NotNil(t *testing.T) {
-	w := debug.NewDebugWriter(t.TempDir(), "alayacore-debug-api-test")
+	w, err := debug.NewDebugWriter(t.TempDir(), "alayacore-debug-api-test")
+	if err != nil {
+		t.Fatalf("NewDebugWriter: %v", err)
+	}
 	if w == nil {
 		t.Fatal("NewDebugWriter returned nil")
 	}
