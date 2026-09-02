@@ -2,6 +2,7 @@ package providers_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"testing"
@@ -83,5 +84,62 @@ func TestOpenAIHistoryIDsMonotonicWithContentPositions(t *testing.T) {
 	if reasonID >= textID {
 		t.Errorf("historyIDs invert record order: reasoning=%d text=%d (reasoning is at position %d, text at %d) — "+
 			"a consumer cannot recover record order from ID order", reasonID, textID, reasonPos, textPos)
+	}
+}
+
+// A server that numbers its tool calls non-contiguously used to lose an ID
+// outright: the second tool sat at array position 3 while its synthetic index
+// was 2+2=4, so the positional lookup found nothing and the part was persisted
+// with a zero HistoryID, silently. Identity is bound by block key now, so the
+// array position is irrelevant and every part claims its own ID.
+func TestOpenAINonContiguousToolIndicesAllGetIDs(t *testing.T) {
+	server := newMockSSEServer(t, func(w io.Writer) {
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Answer.\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_a\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{}\"}}]}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":2,\"id\":\"call_b\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{}\"}}]}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	})
+	provider, err := providers.NewOpenAI(providers.BaseConfig{APIKey: "test", BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	next := uint64(100)
+	var got []llm.ContentPart
+	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 2})
+	_, err = agent.Stream(context.Background(),
+		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}),
+		llm.StreamCallbacks{
+			IDGen:               func() uint64 { n := next; next++; return n },
+			OnTextComplete:      func(string, uint64) error { return nil },
+			OnToolInputStart:    func(_, _ string, _ uint64) error { return nil },
+			OnToolInputComplete: func(string, json.RawMessage, uint64) error { return nil },
+			OnStepFinish: func(contents []llm.ContentPart, _ llm.Usage) error {
+				got = contents
+				return fmt.Errorf("stop after first step")
+			},
+		})
+	if err == nil {
+		t.Fatal("probe expected the loop to stop via OnStepFinish")
+	}
+
+	seen := map[uint64]string{}
+	tools := 0
+	for _, p := range got {
+		tp, ok := p.(*llm.ToolInputPart)
+		if !ok {
+			continue
+		}
+		tools++
+		if id := p.GetHistoryID(); id == 0 {
+			t.Errorf("tool %s persisted with no history ID — the binding is positional again", tp.ID)
+		} else if prior, dup := seen[id]; dup {
+			t.Errorf("tools %s and %s share history ID %d", prior, tp.ID, id)
+		} else {
+			seen[id] = tp.ID
+		}
+	}
+	if tools != 2 {
+		t.Fatalf("expected 2 tool parts, got %d", tools)
 	}
 }

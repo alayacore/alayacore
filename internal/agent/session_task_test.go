@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"iter"
 	"sync/atomic"
 	"testing"
@@ -37,15 +38,16 @@ func (m *mockProviderStepFail) StreamMessages(_ context.Context, _ []llm.Content
 	}
 	return func(yield func(llm.StreamEvent, error) bool) {
 		if resp.text != "" {
-			if !yield(llm.TextDeltaEvent{Delta: resp.text, Index: 0}, nil) {
+			if !yield(llm.TextDeltaEvent{Delta: resp.text, Key: "block:0"}, nil) {
 				return
 			}
 		}
-		for _, tc := range resp.toolCalls {
-			if !yield(llm.ToolInputStartEvent{ID: tc.ID, Name: tc.Name, Index: 0}, nil) {
+		for i, tc := range resp.toolCalls {
+			key := fmt.Sprintf("block:%d", i+1) // 0 is the text block
+			if !yield(llm.ToolInputStartEvent{ID: tc.ID, Name: tc.Name, Key: key}, nil) {
 				return
 			}
-			if !yield(llm.ToolInputCompleteEvent{ID: tc.ID, Input: tc.Input, Index: 0}, nil) {
+			if !yield(llm.ToolInputCompleteEvent{ID: tc.ID, Input: tc.Input, Key: key}, nil) {
 				return
 			}
 		}
@@ -53,15 +55,15 @@ func (m *mockProviderStepFail) StreamMessages(_ context.Context, _ []llm.Content
 		if resp.text != "" {
 			content = append(content, &llm.TextPart{
 				Text:            resp.text,
-				ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+				ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: "block:0"},
 			})
 		}
-		for _, tc := range resp.toolCalls {
+		for i, tc := range resp.toolCalls {
 			content = append(content, &llm.ToolInputPart{
 				ID:              tc.ID,
 				Name:            tc.Name,
 				Input:           tc.Input,
-				ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+				ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: fmt.Sprintf("block:%d", i+1)},
 			})
 		}
 		yield(llm.StepCompleteEvent{

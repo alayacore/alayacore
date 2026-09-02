@@ -470,19 +470,19 @@ func (s *anthropicStreamState) finishBlock(index int) {
 	case anthropicBlockTypeText:
 		s.contentParts[index] = &llm.TextPart{
 			Text:            block.buffer.String(),
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: anthropicBlockKey(index)},
 		}
 	case anthropicBlockTypeThinking:
 		s.contentParts[index] = &llm.ReasoningPart{
 			Text:            block.buffer.String(),
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: anthropicBlockKey(index)},
 		}
 	case anthropicBlockTypeToolCall:
 		s.contentParts[index] = &llm.ToolInputPart{
 			ID:              block.id,
 			Input:           json.RawMessage(block.buffer.String()),
 			Name:            block.name,
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: anthropicBlockKey(index)},
 		}
 	}
 	delete(s.blocks, index)
@@ -504,6 +504,15 @@ func (s *anthropicStreamState) getUsage() llm.Usage {
 func (s *anthropicStreamState) setStopReason(reason string) {
 	s.stopReason = reason
 }
+
+// anthropicBlockKey names a content block by the index the server declared for
+// it in content_block_start. Unlike OpenAI, Anthropic numbers every block in
+// one shared index space, so this number is given rather than invented here:
+// it is unique within the message, known before any delta arrives, and stable
+// for the block's whole life — the properties an identity key needs. A message
+// may hold several thinking or text blocks, so a per-kind string would collide;
+// the declared index is what keeps them apart.
+func anthropicBlockKey(index int) string { return fmt.Sprintf("block:%d", index) }
 
 // getContents returns the accumulated ContentParts sorted by index.
 // finishBlock() already converted each block to the correct ContentPart type
@@ -529,9 +538,10 @@ func (s *anthropicStreamState) toolInputPart(index int) *llm.ToolInputPart {
 		return nil
 	}
 	return &llm.ToolInputPart{
-		ID:    block.id,
-		Name:  block.name,
-		Input: json.RawMessage(block.buffer.String()),
+		ID:              block.id,
+		Name:            block.name,
+		Input:           json.RawMessage(block.buffer.String()),
+		ContentPartMeta: llm.ContentPartMeta{BlockKey: anthropicBlockKey(index)},
 	}
 }
 
@@ -600,9 +610,9 @@ func (p *AnthropicProvider) handleContentBlockStart(data string, yield func(llm.
 	state.createBlock(event.Index, event.ContentBlock.Type, event.ContentBlock.ID, event.ContentBlock.Name)
 	if event.ContentBlock.Type == anthropicBlockTypeToolCall {
 		if !yield(llm.ToolInputStartEvent{
-			ID:    event.ContentBlock.ID,
-			Name:  event.ContentBlock.Name,
-			Index: event.Index,
+			ID:   event.ContentBlock.ID,
+			Name: event.ContentBlock.Name,
+			Key:  anthropicBlockKey(event.Index),
 		}, nil) {
 			return false
 		}
@@ -624,17 +634,17 @@ func (p *AnthropicProvider) handleContentDelta(index int, delta anthropicSSEDelt
 	switch delta.Type {
 	case anthropicDeltaTypeText:
 		block.buffer.WriteString(delta.Text)
-		if !yield(llm.TextDeltaEvent{Delta: delta.Text, Index: index}, nil) {
+		if !yield(llm.TextDeltaEvent{Delta: delta.Text, Key: anthropicBlockKey(index)}, nil) {
 			return false
 		}
 	case anthropicDeltaTypeThinking:
 		block.buffer.WriteString(delta.Thinking)
-		if !yield(llm.ReasoningDeltaEvent{Delta: delta.Thinking, Index: index}, nil) {
+		if !yield(llm.ReasoningDeltaEvent{Delta: delta.Thinking, Key: anthropicBlockKey(index)}, nil) {
 			return false
 		}
 	case anthropicDeltaTypeInputJSON:
 		block.buffer.WriteString(delta.PartialJSON)
-		if !yield(llm.ToolInputDeltaEvent{ID: block.id, Delta: delta.PartialJSON, Index: index}, nil) {
+		if !yield(llm.ToolInputDeltaEvent{ID: block.id, Delta: delta.PartialJSON, Key: anthropicBlockKey(index)}, nil) {
 			return false
 		}
 	}
@@ -653,7 +663,7 @@ func (p *AnthropicProvider) handleContentBlockStop(index int, yield func(llm.Str
 		return yield(llm.ToolInputCompleteEvent{
 			ID:    tc.ID,
 			Input: tc.Input,
-			Index: index,
+			Key:   anthropicBlockKey(index),
 		}, nil)
 	}
 
@@ -661,11 +671,11 @@ func (p *AnthropicProvider) handleContentBlockStop(index int, yield func(llm.Str
 	if blockExists {
 		switch block.blockType {
 		case anthropicBlockTypeText:
-			if !yield(llm.TextCompleteEvent{Text: block.buffer.String(), Index: index}, nil) {
+			if !yield(llm.TextCompleteEvent{Text: block.buffer.String(), Key: anthropicBlockKey(index)}, nil) {
 				return false
 			}
 		case anthropicBlockTypeThinking:
-			if !yield(llm.ReasoningCompleteEvent{Text: block.buffer.String(), Index: index}, nil) {
+			if !yield(llm.ReasoningCompleteEvent{Text: block.buffer.String(), Key: anthropicBlockKey(index)}, nil) {
 				return false
 			}
 		}

@@ -412,7 +412,7 @@ func (to *outputWriter) flushPendingDeltas() {
 	// rest of the session. Flushing sorted by historyID removes the coin flip.
 	//
 	// Note what this does and does not decide. historyIDs are handed out on
-	// first touch of each content index, so in delta mode numbering follows
+	// first touch of each block key, so in delta mode numbering follows
 	// delta arrival order and the sort merely emits, deterministically, the
 	// order the stream already established. It is not an independent source of
 	// ordering, and it must not be read as "reasoning always renders above

@@ -42,6 +42,11 @@ type ContentPart interface {
 	SetHistoryID(uint64)
 	GetRole() MessageRole
 	SetRole(MessageRole)
+	// GetBlockKey returns the provider-assigned identity of the stream block
+	// this part was assembled from. It is how llm.Agent binds a history ID onto
+	// the right part; see the BlockKey docs on ContentPartMeta.
+	GetBlockKey() string
+	SetBlockKey(string)
 	UpdateContentPartMeta(historyID uint64, role MessageRole)
 }
 
@@ -51,12 +56,26 @@ type ContentPart interface {
 type ContentPartMeta struct {
 	HistoryID uint64      `json:"-"`
 	Role      MessageRole `json:"-"`
+
+	// BlockKey is the identity of the streaming block this part came from, as
+	// handed out by the provider. A history ID is issued when that block first
+	// appears in the stream and later claimed by the part carrying the same
+	// key — an identity lookup, never a positional one.
+	//
+	// The key is opaque by contract: it is only ever compared for equality.
+	// It must be stable from the block's first event to the part's assembly,
+	// and it must not be derived from, or interpreted as, a position in the
+	// content array. Providers own the naming; see the Key field on the
+	// streaming events below, which carries the same value.
+	BlockKey string `json:"-"`
 }
 
 func (m *ContentPartMeta) GetHistoryID() uint64   { return m.HistoryID }
 func (m *ContentPartMeta) SetHistoryID(id uint64) { m.HistoryID = id }
 func (m *ContentPartMeta) GetRole() MessageRole   { return m.Role }
 func (m *ContentPartMeta) SetRole(r MessageRole)  { m.Role = r }
+func (m *ContentPartMeta) GetBlockKey() string    { return m.BlockKey }
+func (m *ContentPartMeta) SetBlockKey(k string)   { m.BlockKey = k }
 func (m *ContentPartMeta) UpdateContentPartMeta(id uint64, r MessageRole) {
 	m.HistoryID = id
 	m.Role = r
@@ -205,7 +224,14 @@ type StreamEvent interface {
 // TextDeltaEvent represents text content streaming
 type TextDeltaEvent struct {
 	Delta string
-	Index int
+
+	// Key identifies which content block this fragment belongs to. Every
+	// streaming event carries it and every persisted part carries the same
+	// value, so a history ID issued during streaming can be claimed by the
+	// right part at step completion without any positional assumption. Opaque:
+	// only ever compared for equality, never ordered, added to, or used as an
+	// array index. Providers choose the naming (see internal/llm/providers).
+	Key string
 }
 
 func (TextDeltaEvent) isStreamEvent() {}
@@ -213,8 +239,9 @@ func (TextDeltaEvent) isStreamEvent() {}
 // TextCompleteEvent signals that a text content block is fully received.
 // Carries the complete authoritative text.
 type TextCompleteEvent struct {
-	Text  string
-	Index int
+	Text string
+	// Key identifies the content block; see TextDeltaEvent.Key.
+	Key string
 }
 
 func (TextCompleteEvent) isStreamEvent() {}
@@ -222,7 +249,8 @@ func (TextCompleteEvent) isStreamEvent() {}
 // ReasoningDeltaEvent represents reasoning content streaming
 type ReasoningDeltaEvent struct {
 	Delta string
-	Index int
+	// Key identifies the content block; see TextDeltaEvent.Key.
+	Key string
 }
 
 func (ReasoningDeltaEvent) isStreamEvent() {}
@@ -230,17 +258,19 @@ func (ReasoningDeltaEvent) isStreamEvent() {}
 // ReasoningCompleteEvent signals that a reasoning content block is fully received.
 // Carries the complete authoritative reasoning text.
 type ReasoningCompleteEvent struct {
-	Text  string
-	Index int
+	Text string
+	// Key identifies the content block; see TextDeltaEvent.Key.
+	Key string
 }
 
 func (ReasoningCompleteEvent) isStreamEvent() {}
 
 // ToolInputStartEvent signals that a tool call has started
 type ToolInputStartEvent struct {
-	ID    string
-	Name  string
-	Index int
+	ID   string
+	Name string
+	// Key identifies the content block; see TextDeltaEvent.Key.
+	Key string
 }
 
 func (ToolInputStartEvent) isStreamEvent() {}
@@ -249,7 +279,8 @@ func (ToolInputStartEvent) isStreamEvent() {}
 type ToolInputDeltaEvent struct {
 	ID    string
 	Delta string
-	Index int
+	// Key identifies the content block; see TextDeltaEvent.Key.
+	Key string
 }
 
 func (ToolInputDeltaEvent) isStreamEvent() {}
@@ -258,7 +289,8 @@ func (ToolInputDeltaEvent) isStreamEvent() {}
 type ToolInputCompleteEvent struct {
 	ID    string
 	Input json.RawMessage
-	Index int
+	// Key identifies the content block; see TextDeltaEvent.Key.
+	Key string
 }
 
 func (ToolInputCompleteEvent) isStreamEvent() {}

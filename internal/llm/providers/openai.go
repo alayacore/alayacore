@@ -466,12 +466,12 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		//
 		// ORDER MATTERS: this must run in the same [reasoning, text, tools]
 		// order that getContents() persists. historyIDs are handed out by
-		// getOrAssignID on first touch of each index, and under --no-delta
-		// there are no delta callbacks, so these complete events are the only
-		// touch — emitting a block first numbers it lower. Emitted out of
-		// array order, the numbers then disagree with the record order the
-		// session writes, and adapters (which create windows in frame order)
-		// render the blocks out of order too.
+		// blockID on first touch of each block key, and under --no-delta there
+		// are no delta callbacks, so these complete events are the only touch —
+		// emitting a block first numbers it lower. Emitted out of array order,
+		// the numbers then disagree with the record order the session writes,
+		// and adapters (which create windows in frame order) render the blocks
+		// out of order too.
 		//
 		// This fixes reasoning/text and tools for --no-delta. It cannot fix
 		// a provider that *streams* its tool_calls delta before its
@@ -481,12 +481,12 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		// array-order conflict in getContents(), not a bug fixable here — see
 		// docs/providers.md → "Complete-event order".
 		if reasoning := state.reasoningBuilder.String(); reasoning != "" {
-			if !yield(llm.ReasoningCompleteEvent{Text: reasoning, Index: 0}, nil) {
+			if !yield(llm.ReasoningCompleteEvent{Text: reasoning, Key: openaiReasoningKey}, nil) {
 				return
 			}
 		}
 		if text := state.textBuilder.String(); text != "" {
-			if !yield(llm.TextCompleteEvent{Text: text, Index: 1}, nil) {
+			if !yield(llm.TextCompleteEvent{Text: text, Key: openaiTextKey}, nil) {
 				return
 			}
 		}
@@ -609,11 +609,32 @@ func (s *openAIStreamState) getToolCompleteEvents() []llm.ToolInputCompleteEvent
 		result[pos] = llm.ToolInputCompleteEvent{
 			ID:    acc.id,
 			Input: json.RawMessage(acc.args.String()),
-			Index: 2 + i, // content block: 0=reasoning, 1=text, 2+=tools
+			Key:   openaiToolKey(i),
 		}
 	}
 	return result
 }
+
+// Block identity keys for this provider's content blocks. OpenAI's delta
+// schema has no notion of a content block: reasoning and content are two flat
+// fields, each accumulating into exactly one builder, so their keys are fixed
+// strings. Tool calls do carry a per-response index — but it is a chunk
+// correlation handle, and the call ID it pairs with is frequently empty on
+// continuation chunks, so the same handle is reused as the identity key: it is
+// present from the block's first event and never changes mid-stream. A call
+// ID would not be: a server that has not sent one yet, or never sends one,
+// would make the key shift (or collide) while the block is streaming.
+//
+// These are opaque. Nothing may order, increment, or index into them —
+// which is what the previous `2 + index` "content block index" scheme invited,
+// and how a server with non-contiguous tool indices produced a persisted part
+// with no history ID at all.
+const (
+	openaiReasoningKey = "reasoning"
+	openaiTextKey      = "text"
+)
+
+func openaiToolKey(rawIndex int) string { return fmt.Sprintf("tool:%d", rawIndex) }
 
 // getContents assembles a []ContentPart from the three parallel OpenAI stream accumulators.
 // OpenAI delivers reasoning, text, and tool calls as separate flat delta fields.
@@ -629,12 +650,12 @@ func (s *openAIStreamState) getContents() []llm.ContentPart {
 	// Always add reasoning slot (index 0), may be empty placeholder.
 	contents = append(contents, &llm.ReasoningPart{
 		Text:            s.reasoningBuilder.String(),
-		ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+		ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: openaiReasoningKey},
 	})
 	// Always add text slot (index 1), may be empty placeholder.
 	contents = append(contents, &llm.TextPart{
 		Text:            s.textBuilder.String(),
-		ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+		ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: openaiTextKey},
 	})
 	for _, i := range indices {
 		acc := s.toolAccumulators[i]
@@ -642,7 +663,7 @@ func (s *openAIStreamState) getContents() []llm.ContentPart {
 			ID:              acc.id,
 			Input:           json.RawMessage(acc.args.String()),
 			Name:            acc.name,
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant},
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: openaiToolKey(i)},
 		})
 	}
 	return contents
@@ -708,14 +729,14 @@ func (p *OpenAIProvider) checkFinishReason(reason string) (bool, error) {
 func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEvent, error) bool, state *openAIStreamState) bool {
 	if reasoning := delta.reasoningText(p.reasoningField); reasoning != "" {
 		state.addReasoningDelta(reasoning)
-		if !yield(llm.ReasoningDeltaEvent{Delta: reasoning, Index: 0}, nil) {
+		if !yield(llm.ReasoningDeltaEvent{Delta: reasoning, Key: openaiReasoningKey}, nil) {
 			return false
 		}
 	}
 
 	if delta.Content != "" {
 		state.addTextDelta(delta.Content)
-		if !yield(llm.TextDeltaEvent{Delta: delta.Content, Index: 1}, nil) {
+		if !yield(llm.TextDeltaEvent{Delta: delta.Content, Key: openaiTextKey}, nil) {
 			return false
 		}
 	}
@@ -725,9 +746,9 @@ func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEve
 		if tc.Function.Name != "" {
 			state.setToolCallName(tc.Index, tc.ID, tc.Function.Name)
 			if !yield(llm.ToolInputStartEvent{
-				ID:    tc.ID,
-				Name:  tc.Function.Name,
-				Index: 2 + tc.Index, // content block: 0=reasoning, 1=text, 2+=tools
+				ID:   tc.ID,
+				Name: tc.Function.Name,
+				Key:  openaiToolKey(tc.Index),
 			}, nil) {
 				return false
 			}
@@ -738,7 +759,7 @@ func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEve
 			if !yield(llm.ToolInputDeltaEvent{
 				ID:    acc.id,
 				Delta: unquoteToolArg(tc.Function.Arguments),
-				Index: 2 + tc.Index, // content block: 0=reasoning, 1=text, 2+=tools
+				Key:   openaiToolKey(tc.Index),
 			}, nil) {
 				return false
 			}

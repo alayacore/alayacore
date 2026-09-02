@@ -20,11 +20,11 @@ func (m *mockProviderAlwaysToolCalls) StreamMessages(_ context.Context, _ []Cont
 	return func(yield func(StreamEvent, error) bool) {
 		// Always emit a tool call, never a text-only response.
 		// Must emit ToolInputStartEvent first so the agent can track the name by index.
-		yield(ToolInputStartEvent{ID: "call_1", Name: "repeat", Index: 0}, nil)
+		yield(ToolInputStartEvent{ID: "call_1", Name: "repeat", Key: "block:0"}, nil)
 		yield(ToolInputCompleteEvent{
 			ID:    "call_1",
 			Input: []byte(`{}`),
-			Index: 0,
+			Key:   "block:0",
 		}, nil)
 		yield(StepCompleteEvent{
 			Contents: []ContentPart{
@@ -32,7 +32,7 @@ func (m *mockProviderAlwaysToolCalls) StreamMessages(_ context.Context, _ []Cont
 					ID:              "call_1",
 					Name:            "repeat",
 					Input:           []byte(`{}`),
-					ContentPartMeta: ContentPartMeta{Role: RoleAssistant},
+					ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"},
 				},
 			},
 			Usage: Usage{InputTokens: 10, OutputTokens: 5},
@@ -127,9 +127,9 @@ type mockProviderTruncated struct {
 
 func (m *mockProviderTruncated) StreamMessages(_ context.Context, _ []ContentPart, _ []ToolDefinition, _, _ string) (iter.Seq2[StreamEvent, error], error) {
 	return func(yield func(StreamEvent, error) bool) {
-		yield(TextDeltaEvent{Delta: "Partial response...", Index: 0}, nil)
+		yield(TextDeltaEvent{Delta: "Partial response...", Key: "block:0"}, nil)
 		yield(StepCompleteEvent{
-			Contents:   []ContentPart{&TextPart{Text: "Partial response...", ContentPartMeta: ContentPartMeta{Role: RoleAssistant}}},
+			Contents:   []ContentPart{&TextPart{Text: "Partial response...", ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"}}},
 			Usage:      Usage{InputTokens: 10, OutputTokens: 5},
 			StopReason: m.stopReason,
 		}, nil)

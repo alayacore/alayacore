@@ -301,68 +301,83 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 	execCount := 0
 
-	// Track history IDs for content blocks (keyed by index for AT/AR/AF).
-	idByIndex := make(map[int]uint64)
-	// Track tool names by index so ToolInputCompleteEvent can look up the name
-	// it received earlier from ToolInputStartEvent.
-	nameByIndex := make(map[int]string)
+	// History IDs keyed by stream block identity. The key, not a position, is
+	// what links a block streamed earlier to the content part assembled at
+	// step completion — see assignHistoryIDs and TextDeltaEvent.Key.
+	idByKey := make(map[string]uint64)
+	// Tool names by block identity, so ToolInputCompleteEvent can recover the
+	// name it received earlier from ToolInputStartEvent.
+	nameByKey := make(map[string]string)
 
 	for event, err := range events {
 		if err != nil {
 			return nil, Usage{}, false, err
 		}
 
+		// A note on every case below: the history ID is issued by blockID
+		// before the callback guard, never inside it. Whether the caller wants
+		// to *display* a block must not decide whether that block *has an ID* —
+		// a missing callback used to leave the persisted part holding the zero
+		// value, indistinguishable from "never numbered". blockID is called
+		// exactly once per event, so the first block to appear still takes the
+		// lowest ID.
 		switch e := event.(type) {
 		case TextDeltaEvent:
 			stats.setFirstToken(stepStart)
+			id := blockID(callbacks, idByKey, e.Key)
 			if callbacks.OnTextDelta != nil {
-				if err := callbacks.OnTextDelta(e.Delta, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
+				if err := callbacks.OnTextDelta(e.Delta, id); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case TextCompleteEvent:
+			id := blockID(callbacks, idByKey, e.Key)
 			if callbacks.OnTextComplete != nil {
-				if err := callbacks.OnTextComplete(e.Text, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
+				if err := callbacks.OnTextComplete(e.Text, id); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case ReasoningDeltaEvent:
 			stats.setFirstToken(stepStart)
+			id := blockID(callbacks, idByKey, e.Key)
 			if callbacks.OnReasoningDelta != nil {
-				if err := callbacks.OnReasoningDelta(e.Delta, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
+				if err := callbacks.OnReasoningDelta(e.Delta, id); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case ReasoningCompleteEvent:
+			id := blockID(callbacks, idByKey, e.Key)
 			if callbacks.OnReasoningComplete != nil {
-				if err := callbacks.OnReasoningComplete(e.Text, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
+				if err := callbacks.OnReasoningComplete(e.Text, id); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case ToolInputStartEvent:
+			id := blockID(callbacks, idByKey, e.Key)
 			if callbacks.OnToolInputStart != nil {
-				if err := callbacks.OnToolInputStart(e.ID, e.Name, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
+				if err := callbacks.OnToolInputStart(e.ID, e.Name, id); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
-			nameByIndex[e.Index] = e.Name
+			nameByKey[e.Key] = e.Name
 
 		case ToolInputDeltaEvent:
 			stats.setFirstToken(stepStart)
+			id := blockID(callbacks, idByKey, e.Key)
 			if callbacks.OnToolInputDelta != nil {
-				if err := callbacks.OnToolInputDelta(e.ID, e.Delta, getOrAssignID(callbacks, idByIndex, e.Index)); err != nil {
+				if err := callbacks.OnToolInputDelta(e.ID, e.Delta, id); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case ToolInputCompleteEvent:
-			id := getOrAssignID(callbacks, idByIndex, e.Index)
+			id := blockID(callbacks, idByKey, e.Key)
 			// Repair tool input before processing (Patterns 1-4).
-			repairToolInput(&e.Input, nameByIndex[e.Index], a.config.Tools)
+			repairToolInput(&e.Input, nameByKey[e.Key], a.config.Tools)
 
 			if callbacks.OnToolInputComplete != nil {
 				if err := callbacks.OnToolInputComplete(e.ID, e.Input, id); err != nil {
@@ -370,22 +385,22 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 				}
 			}
 			execCount++
-			tc := e.ToPart(id, nameByIndex[e.Index])
+			tc := e.ToPart(id, nameByKey[e.Key])
 			executedToolCalls = append(executedToolCalls, tc)
 			a.handleStreamedToolInput(streamCtx, tc, callbacks, resultCh, &toolWg)
 
 		case StepCompleteEvent:
 			stepContents = e.Contents
 			stepUsage = e.Usage
-			// Set IDs on final content parts from tracked values.
-			for i := range stepContents {
-				if id, ok := idByIndex[i]; ok {
-					stepContents[i].UpdateContentPartMeta(id, RoleAssistant)
-				}
-			}
-			// Strip empty placeholders that providers may have inserted
-			// to keep delta indices aligned with content positions.
+			// Strip empty placeholders before binding IDs. OpenAI always emits
+			// a reasoning slot and a text slot, and the absent one never
+			// produces an event, so it never holds a block key to bind — and it
+			// must not be mistaken for the real defect below (a part that
+			// carries content the provider never streamed).
 			stepContents = stripEmptyPlaceholders(stepContents)
+			if err := assignHistoryIDs(stepContents, idByKey, callbacks.IDGen != nil); err != nil {
+				return nil, Usage{}, false, err
+			}
 			// Repair tool inputs in step contents for history consistency.
 			repairToolInputsInContents(stepContents, a.config.Tools)
 			if e.StopReason == "max_tokens" || e.StopReason == "length" {
@@ -611,17 +626,58 @@ func (a *Agent) toolDefinitions() []ToolDefinition {
 	return defs
 }
 
-// getOrAssignID returns the history ID for the given content block index.
-// If no ID has been assigned yet and IDGen is available, it generates one.
-func getOrAssignID(callbacks StreamCallbacks, idByIndex map[int]uint64, index int) uint64 {
-	if id, ok := idByIndex[index]; ok && id != 0 {
+// blockID returns the history ID of the content block identified by key,
+// issuing one on first sight. Called once per streaming event, outside the
+// callbacks.On* guards, so that display wiring cannot influence whether a
+// persisted part carries an ID at all.
+//
+// IDs therefore number blocks in the order the provider streamed them, which
+// is a stable but *arrival*-based ordering: it matches the order the step is
+// persisted in only while the provider streams in that order. Nothing in the
+// tree may treat ID magnitude as record order except where that is stated
+// (see docs/providers.md, "Complete-event order").
+func blockID(callbacks StreamCallbacks, idByKey map[string]uint64, key string) uint64 {
+	if id, ok := idByKey[key]; ok && id != 0 {
 		return id
 	}
 	id := genHistoryID(callbacks)
 	if id != 0 {
-		idByIndex[index] = id
+		idByKey[key] = id
 	}
 	return id
+}
+
+// assignHistoryIDs binds each streamed block's ID onto the content part that
+// came from that block, by identity.
+//
+// This used to be positional — idByIndex[i] read onto contents[i] — which
+// quietly required a provider's block index to equal the part's position in
+// the assembled array. Nothing enforced that, and it broke silently: a server
+// whose tool-call indices skipped a number left the part at that position
+// unclaimed, and it was persisted with a zero HistoryID, the same value as
+// "never numbered".
+//
+// When numbering is on, an unclaimed part is an error rather than a zero, so a
+// provider that mislabels its blocks surfaces at the point of the mistake
+// instead of corrupting the conversation history. When numbering is off (no
+// IDGen — the caller never asked for history IDs), parts are left exactly as
+// they were before: nothing to bind, nothing to complain about.
+func assignHistoryIDs(contents []ContentPart, idByKey map[string]uint64, numbering bool) error {
+	for _, part := range contents {
+		key := part.GetBlockKey()
+		id, ok := idByKey[key]
+		if !ok {
+			if !numbering {
+				continue
+			}
+			if key == "" {
+				return fmt.Errorf("content part of type %T carries no block key; the provider assembled a part it never streamed", part)
+			}
+			return fmt.Errorf("content part %q (%T) has no history ID: the provider named a block it never streamed", key, part)
+		}
+		part.UpdateContentPartMeta(id, RoleAssistant)
+	}
+	return nil
 }
 
 // genHistoryID generates a new history ID using the callback's IDGen if available.
@@ -663,6 +719,7 @@ func (e ToolInputCompleteEvent) ToPart(historyID uint64, name string) *ToolInput
 		Input: e.Input,
 		ContentPartMeta: ContentPartMeta{
 			HistoryID: historyID,
+			BlockKey:  e.Key,
 		},
 	}
 }

@@ -10,12 +10,14 @@ All providers eat different wire formats and emit the same domain types:
 // llm/types.go — the domain types
 
 // ContentPart is implemented by all content block types.
-// Each implementation embeds ContentPartMeta for HistoryID and Role.
+// Each implementation embeds ContentPartMeta for HistoryID, Role and BlockKey.
 type ContentPart interface {
 	GetHistoryID() uint64
 	SetHistoryID(uint64)
 	GetRole() MessageRole
 	SetRole(MessageRole)
+	GetBlockKey() string     // identity of the stream block this part came from
+	SetBlockKey(string)
 	UpdateContentPartMeta(historyID uint64, role MessageRole)
 }
 
@@ -31,7 +33,10 @@ type ToolOutputPart struct { ContentPartMeta; ID string; Output []ContentPart; I
 
 // Messages are represented as flat []ContentPart slices.
 // There is no Message wrapper struct — role and history ID are stored
-// on each ContentPart via ContentPartMeta.
+// on each ContentPart via ContentPartMeta. These are in-memory fields
+// (all three are `json:"-"`): the session file stores no history ID, and
+// loading re-issues IDs sequentially in file order. See architecture.md,
+// "History IDs are not in the file".
 
 type StreamEvent interface {
 	isStreamEvent()
@@ -420,3 +425,29 @@ anthropicStreamState {
 ```
 
 Every wire event carries an `index` (start, delta, stop), just like OpenAI's `tool_calls[index]`. Blocks may arrive interleaved — block 1 can start before block 0 finishes. Each block is independently accumulated by index. `content_block_stop(i)` stores the result in `contentParts[i]`, and `getContents()` sorts by index to produce the final ordered slice.
+
+### Block keys: how a history ID finds its part
+
+A block's protocol `index` is a chunk-correlation handle: it says which accumulator a fragment belongs to. It is **not** an identity, and it must never be used as one — binding a history ID onto content by position in the assembled array (which is what this used to do) requires `event index == array position`, an assumption no provider guarantees. A server whose tool-call indices skipped a number left that tool holding `HistoryID = 0` for the rest of the session, the same value as "never numbered".
+
+Providers therefore name each block, and the name is what carries the ID across:
+
+```
+streaming event   ...  Key: "tool:0"        ─┐
+                                             ├─ same string → ID binds correctly
+persisted part    ContentPartMeta.BlockKey   ─┘
+```
+
+| Provider | Naming | Why |
+|----------|--------|-----|
+| OpenAI reasoning / text | `"reasoning"` / `"text"` | Flat fields, exactly one builder each, so a per-kind name is unique by construction. |
+| OpenAI tool calls | `"tool:<raw SSE index>"` | Same handle the accumulator map uses: present on the first chunk and immutable for the block's life. The call ID is **not** usable — continuation chunks send `id: ""` and some servers reuse one ID across calls, which would move or merge the key mid-stream. |
+| Anthropic | `"block:<index>"` | The server declares one shared index space, so the number is given, not invented. A message can hold several thinking or text blocks, so a per-kind string would collide. |
+
+Three rules follow for anyone implementing a provider:
+
+1. `Key` is opaque. It is compared for equality and never ordered, incremented, or used to index a slice. The old `2 + index` arithmetic existed only to fake a position, and faking a position is what broke.
+2. A block's key must not change between its first event and the part it becomes. OpenAI's `"tool:<index>"` is stable precisely because it is fixed before the call ID arrives.
+3. Every part returned in `StepCompleteEvent.Contents` must carry the key of a block that was actually streamed. One that wasn't is rejected with an error naming the key — deliberate, because the alternative is a silently unaddressable entry in the conversation. (Parts legitimately absent from the stream are the empty reasoning/text placeholders, which are stripped before binding; and when `IDGen` is nil there is no numbering to bind, so keyless parts pass.)
+
+IDs are issued in first-touch order, so they number blocks by arrival, not by record position. See [providers.md](../providers.md) → "Complete-event order" for the obligation that puts on providers, and [tui.md](../tui.md) → "Window Order" for the one place that reads ID magnitude as an order.

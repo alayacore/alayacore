@@ -98,6 +98,9 @@
 //	Each TLV frame carries a NUL-delimited history ID prefix that the
 //	adapter uses to route content to display windows. These IDs correspond
 //	directly to ContentPart.GetHistoryID() in the session's content store.
+//	They live on the stream and in memory only: the session file stores no
+//	history ID, and loading re-issues them sequentially in file order (see
+//	docs/architecture.md and persistence.go).
 //
 // Key Components:
 //

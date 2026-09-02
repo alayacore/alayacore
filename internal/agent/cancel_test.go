@@ -258,8 +258,8 @@ type toolThenBlockProvider struct {
 func (m *toolThenBlockProvider) StreamMessages(ctx context.Context, _ []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
 	m.once.Do(func() { close(m.started) })
 	return func(yield func(llm.StreamEvent, error) bool) {
-		yield(llm.ToolInputStartEvent{ID: "c1", Name: "exec", Index: 0}, nil)
-		yield(llm.ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Index: 0}, nil)
+		yield(llm.ToolInputStartEvent{ID: "c1", Name: "exec", Key: "block:0"}, nil)
+		yield(llm.ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "block:0"}, nil)
 		<-ctx.Done()
 		yield(nil, ctx.Err())
 	}, nil

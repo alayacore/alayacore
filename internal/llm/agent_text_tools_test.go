@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"iter"
 	"testing"
 )
@@ -112,7 +113,7 @@ func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Con
 	return func(yield func(StreamEvent, error) bool) {
 		// Send text delta
 		if resp.text != "" {
-			if !yield(TextDeltaEvent{Delta: resp.text, Index: 0}, nil) {
+			if !yield(TextDeltaEvent{Delta: resp.text, Key: "block:0"}, nil) {
 				return
 			}
 		}
@@ -120,11 +121,12 @@ func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Con
 		// Send tool call events — emit start event first, then complete.
 		// Real providers send ToolInputStartEvent with the name, then
 		// ToolInputCompleteEvent without the name (looked up by index).
-		for _, tc := range resp.toolCalls {
-			if !yield(ToolInputStartEvent{ID: tc.ID, Name: tc.Name, Index: 0}, nil) {
+		for i, tc := range resp.toolCalls {
+			key := fmt.Sprintf("block:%d", i+1) // 0 is the text block
+			if !yield(ToolInputStartEvent{ID: tc.ID, Name: tc.Name, Key: key}, nil) {
 				return
 			}
-			if !yield(ToolInputCompleteEvent{ID: tc.ID, Input: tc.Input, Index: 0}, nil) {
+			if !yield(ToolInputCompleteEvent{ID: tc.ID, Input: tc.Input, Key: key}, nil) {
 				return
 			}
 		}
@@ -132,14 +134,14 @@ func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Con
 		// Send step complete with content containing BOTH text and tool calls
 		content := []ContentPart{}
 		if resp.text != "" {
-			content = append(content, &TextPart{Text: resp.text, ContentPartMeta: ContentPartMeta{Role: RoleAssistant}})
+			content = append(content, &TextPart{Text: resp.text, ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"}})
 		}
-		for _, tc := range resp.toolCalls {
+		for i, tc := range resp.toolCalls {
 			content = append(content, &ToolInputPart{
 				ID:              tc.ID,
 				Name:            tc.Name,
 				Input:           tc.Input,
-				ContentPartMeta: ContentPartMeta{Role: RoleAssistant},
+				ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: fmt.Sprintf("block:%d", i+1)},
 			})
 		}
 
