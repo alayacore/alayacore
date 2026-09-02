@@ -124,6 +124,28 @@ Tool arguments arrive in chunks across multiple delta events:
 - **Must use `index` (not `id`) to associate chunks** — see `openAIStreamState.appendToolCallArgs()`
 - When sending back in history, arguments must be JSON-string (not raw JSON) — see `openaiConvertToolInputs()`
 
+## Who accumulates streamed content
+
+One step's text is held in three places at once. That looks like an accident; it is not, and the way to read it is the question each buffer answers.
+
+| Layer | Where | Answers | Can it be deleted |
+|-------|-------|---------|-------------------|
+| Provider | `openai.go` `textBuilder` / `reasoningBuilder` / `toolAccumulators`; `anthropic.go` `blockAccumulator.buffer` | "what is the assembled turn?" — builds `StepCompleteEvent.Contents` via `getContents()`, and the authoritative text each `*CompleteEvent` carries | No: it is the record's source |
+| `llm.Agent` | `agent.go` `stepTextBlocks` | "what did this step produce if the stream is cut?" — the failed-step path contributes these parts to history | No: see the second constraint below |
+| Adapter | `terminal/output.go` `pendingTextDeltas`; `terseio` final-answer buffer | "how do I redraw without taking `WindowBuffer.mu` once per token?" | Only by regressing to per-token renders |
+
+Two constraints force the split:
+
+- **Only the parser knows where a block ends.** Anthropic says so (`content_block_stop`); OpenAI never does — `reasoning_content`, `content` and `tool_calls` are three flat fields on a chunk with no per-field terminator, and tool arguments arrive as JSON fragments under a wire index whose continuation chunks carry `id: ""`. Reassembling that is protocol knowledge, so it lives with the protocol. Moving it outward means the agent learns each wire format, which is one copy of the same logic per provider instead of one.
+- **`iter.Seq2` gives a producer nothing to say after the consumer stops pulling.** When `streamEvents` returns on a stream error, the provider's pending `yield` returns `false`; its tail never runs, and calling `yield` again is a runtime error (pinned by `TestYieldAfterAbandonmentPanics` and `TestProviderCannotHandBackItsBufferAfterAbandonment`). So "let the provider salvage itself" has no transport: the buffer that already holds the text is unreachable exactly when it is needed. `stepTextBlocks` is what closes that hole, not a re-implementation of the provider's job.
+
+The accepted cost is a second copy of one step's text inside the agent's stack frame, released when the step ends. On a step that finishes normally the copy is discarded unused, because `StepCompleteEvent.Contents` wins.
+
+Two things this does *not* mean:
+
+- `--no-delta` does not stop the response streaming. It selects which frames the session sends to its adapter (`session_task.go` registers no delta callbacks), so the provider still streams and still numbers blocks by delta arrival. Pin: `TestStreamNumbersBlocksAtDeltasEvenWithNoDeltaCallbacks`.
+- Adapters must not read any of this as an ordering source. Only the provider's record and the agent's ID assignment carry order; see below.
+
 ## Complete-event order
 
 `parseStream()` emits the step's trailing complete events after the stream ends, from the accumulators. Their order is load-bearing, not cosmetic: it has to agree with the order `getContents()` persists the step's parts in (`reasoning`, `text`, `tools`), for two reasons.
