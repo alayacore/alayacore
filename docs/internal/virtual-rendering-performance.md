@@ -309,9 +309,23 @@ now span several visual lines and each column's grapheme widths are measured.
 
 The headline property still holds exactly: **plain-text streaming in markdown
 mode costs the same as raw mode** — the table path is only entered by deltas
-that actually touch a table. Even at the top of the observed band (1.8ms), a
-table re-render is under 1% of the 250ms tick budget, so tables re-rendering on
-every tick remain comfortably cheap.
+that actually touch a table.
+
+Mind the unit when reading `MarkdownStreaming_TableDeltas`: one iteration is a
+whole 22-delta stream (header, delimiter, 20 rows), and every one of those
+deltas touches a table, so an iteration performs 22 full re-renders. Its
+1.5–1.8ms is therefore the cost of **streaming an entire table**, not of one
+re-render. Measured separately on the same 20-row table at 120 columns:
+
+| | |
+|---|---|
+| one re-render of the finished table | ~44µs (567 allocs) |
+| one delta during the stream (whole stream ÷ 22) | ~70µs |
+| the 250ms tick budget | 0.02–0.03% of it |
+
+Both figures are best-of-3 at `-benchtime=2000x`, and their spread across
+rounds was under 10%. So a window whose table re-renders on every single tick
+still spends well under a tenth of one percent of its budget on layout.
 
 
 The old approach (before the `WindowRendering` interface refactoring) used the same
