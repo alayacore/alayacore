@@ -422,7 +422,7 @@ anthropicStreamState {
 }
 ```
 
-Every wire event carries an `index` (start, delta, stop), just like OpenAI's `tool_calls[index]`. Blocks may arrive interleaved — block 1 can start before block 0 finishes. Each block is independently accumulated by index. `content_block_stop(i)` emits a boundary event for that index and nothing else; because blocks close in declared index order, the assembler's record follows it.
+Every wire event carries an `index` (start, delta, stop), just like OpenAI's `tool_calls[index]`. Blocks may arrive interleaved — block 1 can start before block 0 finishes. Each block is independently accumulated by index. `content_block_stop(i)` records that block `i` closed and emits no content; closures are delivered in declared index order (a stop arriving early waits for the blocks before it, and `message_stop` releases whatever is left), so the assembler's record follows the index the server named rather than the order its stop events happened to arrive in.
 
 ### Block keys: how a history ID finds its content
 

@@ -143,7 +143,7 @@ The adapter's `pendingTextDeltas` is a third buffer and unrelated to any of this
 
 ## Complete-event order
 
-`parseStream()` closes the step's blocks after the stream ends. Their order is load-bearing, not cosmetic: it *is* the order the step is persisted in, because the assembler lays the record out by close order — and it is also the order these frames reach the adapters.
+`parseStream()` closes the step's blocks after the stream ends (OpenAI has no per-block terminator, so all of them arrive here; Anthropic delivers each as its block closes, in declared index order). Their order is load-bearing, not cosmetic: it *is* the order the step is persisted in, because the assembler lays the record out by close order — and it is also the order these frames reach the adapters.
 
 - **historyID numbering.** The assembler hands out a historyID when a block first appears, independent of what the caller registers callbacks for — so IDs number blocks by stream arrival in every mode, `--no-delta` included (measured: identical numbering with and without delta callbacks). Closing a later block first does not reorder the numbering, because numbering was settled while the response streamed.
 - **Adapter output.** Adapters render in frame order. The terminal creates a window per block the moment its frame arrives (positions are fixed at creation; `WindowBuffer` only ever appends), and `--plainio` prints content as it streams — measured: `[AT, AR]` → `"Hello!\nuser said hello"`, `[AR, AT]` → `"user said hello\nHello!"`. Emitting out of array order puts the answer above the reasoning it came from.

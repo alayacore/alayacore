@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"sort"
 	"strings"
 
 	"github.com/alayacore/alayacore/internal/config"
@@ -459,11 +460,30 @@ type blockAccumulator struct {
 }
 
 // anthropicStreamState tracks accumulation state during streaming
+// pendingClose is the fact that a block closed, before it is delivered: index,
+// kind and call identity, never content.
+type pendingClose struct {
+	blockType string
+	id        string
+}
+
 type anthropicStreamState struct {
 	usage      llm.Usage
 	stopReason string
 
 	blocks map[int]*blockAccumulator // index → block still open
+
+	// The server declares each block's index at content_block_start, and that
+	// index order is the record's order. Closures are therefore delivered in
+	// index order rather than in the order content_block_stop happens to
+	// arrive: a boundary event decides both where a block sits in the persisted
+	// record and, under --no-delta, where its window is created. Emitting on
+	// arrival let a server that stopped block 1 before block 0 record the answer
+	// ahead of the thinking that produced it — the ordering bug this protocol
+	// layer exists to prevent, reintroduced from inside.
+	pendingCloses  map[int]pendingClose
+	started        []int
+	closureEmitted map[int]bool
 
 	// sawMessageStop records whether the terminal message_stop event arrived.
 	// It is the only thing that ends an Anthropic message, and parseStream uses
@@ -480,7 +500,70 @@ func (s *anthropicStreamState) createBlock(index int, blockType, id, name string
 		id:        id,
 		name:      name,
 	}
+	if s.started == nil || !s.hasStarted(index) {
+		s.started = append(s.started, index)
+	}
 	return s.blocks[index]
+}
+
+func (s *anthropicStreamState) hasStarted(index int) bool {
+	for _, i := range s.started {
+		if i == index {
+			return true
+		}
+	}
+	return false
+}
+
+// queueCloseReturn records that a block closed and delivers whatever can now be
+// delivered without cutting ahead of an earlier index. A block whose predecessor
+// is still open waits; its content is already with llm.Agent, so nothing is
+// buffered here but the fact of closure.
+func (s *anthropicStreamState) queueCloseReturn(index int, c pendingClose, yield func(llm.StreamEvent, error) bool) bool {
+	if s.pendingCloses == nil {
+		s.pendingCloses = map[int]pendingClose{}
+		s.closureEmitted = map[int]bool{}
+	}
+	s.pendingCloses[index] = c
+	return s.deliverCloses(false, yield)
+}
+
+// deliverCloses emits queued closures in the order the server declared. With
+// flushAll set (at message_stop) it delivers everything still pending, ascending:
+// a server that never closes an early block must not strand the ones behind it.
+func (s *anthropicStreamState) deliverCloses(flushAll bool, yield func(llm.StreamEvent, error) bool) bool {
+	order := append([]int(nil), s.started...)
+	sort.Ints(order)
+	for _, i := range order {
+		if s.closureEmitted[i] {
+			continue
+		}
+		c, queued := s.pendingCloses[i]
+		if !queued {
+			if flushAll {
+				continue // a block that never closed; nothing to deliver for it
+			}
+			return true // an earlier block is still open; stop to keep the order
+		}
+		key := anthropicBlockKey(i)
+		var event llm.StreamEvent
+		switch c.blockType {
+		case anthropicBlockTypeToolCall:
+			event = llm.ToolInputCompleteEvent{ID: c.id, Key: key}
+		case anthropicBlockTypeText:
+			event = llm.TextCompleteEvent{Key: key}
+		case anthropicBlockTypeThinking:
+			event = llm.ReasoningCompleteEvent{Key: key}
+		default:
+			s.closureEmitted[i] = true
+			continue
+		}
+		s.closureEmitted[i] = true
+		if !yield(event, nil) {
+			return false
+		}
+	}
+	return true
 }
 
 // closeBlock retires an open block and reports what it was, which is all the
@@ -562,6 +645,10 @@ func (p *AnthropicProvider) handleEvent(eventType, data string, yield func(llm.S
 		}
 		p.mergeUsage(event.Usage, state)
 		state.sawMessageStop = true
+		// Release any closure still held back by a block that never closed.
+		if !state.deliverCloses(true, yield) {
+			return true
+		}
 		yield(llm.StepCompleteEvent{
 			Usage:      state.getUsage(),
 			StopReason: state.stopReason,
@@ -632,20 +719,9 @@ func (p *AnthropicProvider) handleContentBlockStop(index int, yield func(llm.Str
 		// nothing; llm.Agent has no such block and would ignore it anyway.
 		return true
 	}
-	key := anthropicBlockKey(index)
-
-	// Which event to emit is protocol knowledge — only this parser knows what
-	// kind of block the index held — but the content is already with llm.Agent,
-	// streamed as deltas. So this says only where a block ended.
-	switch blockType {
-	case anthropicBlockTypeToolCall:
-		return yield(llm.ToolInputCompleteEvent{ID: id, Key: key}, nil)
-	case anthropicBlockTypeText:
-		return yield(llm.TextCompleteEvent{Key: key}, nil)
-	case anthropicBlockTypeThinking:
-		return yield(llm.ReasoningCompleteEvent{Key: key}, nil)
-	}
-	return true
+	// Queued rather than emitted: the closure's position in the sequence is the
+	// server's declared index, not the accident of when its stop event arrived.
+	return state.queueCloseReturn(index, pendingClose{blockType: blockType, id: id}, yield)
 }
 
 // handleMessageDeltaEvent handles "message_delta" SSE events.
