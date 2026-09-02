@@ -207,9 +207,42 @@ without relaxing that test would let real table rows take the incremental append
 and render half-reflowed. `TestTableDetectionPredicatesAgree` fails if the two
 predicates ever drift apart.
 
-**A `│` inside content reads as a border.** Because the separator is a box glyph,
-a cell that contains `│` — or an escaped `\|`, which renders as a literal `|` —
-looks like an extra column boundary even though every width is computed correctly.
+**Data can contain the border glyphs.** A grid drawn with characters has this
+problem whenever the data may also contain those characters, and the content is
+never altered to avoid it — substituting a different glyph would be editing the
+model's text. The two cases are not symmetric:
+
+An escaped `\|` is a literal `|` in the cell, and it now sits inside a frame made
+of `│`, so the two are distinguishable. This actually *improved* with the grid:
+under the previous ASCII framing the border was `|` too, so data and structure
+were the same character.
+
+<!-- @example src=pipes_ascii width=40 -->
+```
+┌─────┬─────┐
+│ cmd │ out │
+├─────┼─────┤
+│ a|b │ ok  │
+└─────┴─────┘
+```
+
+A cell containing `│` is the reverse — it is exactly the border glyph, so that row
+shows four verticals where its neighbours show three and reads as an extra
+column. Every width is still computed correctly; only the reading is ambiguous:
+
+<!-- @example src=pipes_box width=40 -->
+```
+┌─────┬─────┐
+│ cmd │ out │
+├─────┼─────┤
+│ a│b │ ok  │
+└─────┴─────┘
+```
+
+Both cases are pinned by `TestRenderMarkdownTables_ContentGlyphsSurvive`, which
+asserts the exact rendered rows. That test exists because the "nothing is lost"
+multiset check *cannot* see this content: box glyphs are stripped as framing
+noise on both sides, so a dropped `│` would pass it silently.
 
 ## Related
 

@@ -300,3 +300,79 @@ func TestRecordLayoutHasNoBlankLines(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderMarkdownTables_ContentGlyphsSurvives locks what the no-loss
+// multiset check structurally cannot see: the box-drawing glyphs are also the
+// framing glyphs, so dropLayoutNoise strips them from both sides and a lost
+// "│" inside a cell would go unnoticed there. Exact rendered lines close that
+// gap, and they double as the executable statement of the ambiguity documented
+// in docs/markdown-rendering.md.
+func TestRenderMarkdownTables_ContentGlyphsSurvive(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{
+			// "\|" is an escaped pipe: the cell's content is a|b. The frame is
+			// "│", so an ASCII pipe in data is now distinguishable from a
+			// border — under the previous ASCII framing it was the same glyph.
+			name: "escaped ASCII pipe in content",
+			in:   "| cmd | out |\n|---|---|\n| a\\|b | ok |",
+			want: []string{
+				"┌─────┬─────┐",
+				"│ cmd │ out │",
+				"├─────┼─────┤",
+				"│ a|b │ ok  │",
+				"└─────┴─────┘",
+			},
+		},
+		{
+			// A real box-drawing vertical in the data. Widths stay correct, but
+			// the row now shows four verticals where the header shows three, so
+			// it reads as an extra column. Inherent to framing with glyphs that
+			// data may also contain: the character must not be altered.
+			name: "box-drawing vertical in content",
+			in:   "| cmd | out |\n|---|---|\n| a│b | ok |",
+			want: []string{
+				"┌─────┬─────┐",
+				"│ cmd │ out │",
+				"├─────┼─────┤",
+				"│ a│b │ ok  │",
+				"└─────┴─────┘",
+			},
+		},
+		{
+			// Same for the horizontal rule glyph, which appears in the
+			// separator rows.
+			name: "box-drawing rule glyph in content",
+			in:   "| a | b |\n|---|---|\n| x─y | z |",
+			want: []string{
+				"┌─────┬───┐",
+				"│ a   │ b │",
+				"├─────┼───┤",
+				"│ x─y │ z │",
+				"└─────┴───┘",
+			},
+		},
+	}
+	for _, tc := range cases {
+		got := strings.Split(renderMarkdownTables(tc.in, 40), "\n")
+		if len(got) != len(tc.want) {
+			t.Fatalf("%s: got %d rows, want %d:\n%s", tc.name, len(got), len(tc.want), strings.Join(got, "\n"))
+		}
+		for i := range tc.want {
+			if got[i] != tc.want[i] {
+				t.Errorf("%s: row %d\n got %q\nwant %q", tc.name, i, got[i], tc.want[i])
+			}
+		}
+		// The ambiguity is perceptual only: every row is still exactly as
+		// wide as every other, so alignment and line heights are unaffected.
+		w0 := ansi.StringWidth(got[0])
+		for i, l := range got {
+			if w := ansi.StringWidth(l); w != w0 {
+				t.Errorf("%s: row %d is %d cells, row 0 is %d:\n%s", tc.name, i, w, w0, strings.Join(got, "\n"))
+			}
+		}
+	}
+}

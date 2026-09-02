@@ -18,12 +18,25 @@ var docExampleSources = map[string]string{
 		"| tmpfs | /run/user/1000/doc | tmpfs | 16G | 2.1G |",
 	"cjk": "| 模型 | 上下文 | 说明 |\n|---|---:|---|\n" +
 		"| qwen3:32b | 128K | 本地跑，需要 20G 显存，工具调用稳定 |\n| llama3.1 | 8K | 只适合短任务 |",
+	"pipes_ascii": `| cmd | out |
+|---|---|
+| a\|b | ok |`,
+	"pipes_box": "| cmd | out |\n|---|---|\n| a│b | ok |",
 	"ps": "| PID | USER | %CPU | %MEM | VSZ | RSS | TTY | STAT | START | TIME |\n|---|---|---|---|---|---|---|---|---|---|\n" +
 		"| 1 | root | 0.0 | 0.1 | 169444 | 13204 | ? | Ss | Jan12 | 0:12 |\n" +
 		"| 2888 | wallace | 3.2 | 4.8 | 1248320 | 312880 | pts/3 | Rl+ | 09:14 | 4:31 |",
 }
 
 const docPath = "../../../docs/markdown-rendering.md"
+
+// docExampleCounts is the census each source must appear with; wantExampleMarkers
+// is their sum. Deliberately explicit: an assertion derived from len(map) let a
+// deleted marker and an added source cancel each other out.
+var docExampleCounts = map[string]int{
+	"models": 1, "df": 2, "cjk": 1, "ps": 1, "pipes_ascii": 1, "pipes_box": 1,
+}
+
+const wantExampleMarkers = 7
 
 // TestDocsMarkdownExamplesMatchRenderer re-renders every example the document
 // shows and requires it to appear verbatim. Rendered examples go stale the
@@ -41,6 +54,7 @@ func TestDocsMarkdownExamplesMatchRenderer(t *testing.T) {
 	const marker = "<!-- @example "
 
 	seen := 0
+	docMarkerCounts := map[string]int{}
 	for lineNo, line := range strings.Split(text, "\n") {
 		i := strings.Index(line, marker)
 		if i < 0 {
@@ -57,6 +71,7 @@ func TestDocsMarkdownExamplesMatchRenderer(t *testing.T) {
 			}
 		}
 		src := fields["src"]
+		docMarkerCounts[src]++
 		in, ok := docExampleSources[src]
 		if !ok {
 			t.Errorf("line %d: unknown src %q — add it to docExampleSources or drop the marker", lineNo+1, src)
@@ -77,9 +92,14 @@ func TestDocsMarkdownExamplesMatchRenderer(t *testing.T) {
 			t.Errorf("line %d: marker is not immediately followed by a fenced block", lineNo+1)
 		}
 	}
-	if want := len(docExampleSources) + 1; seen != want { // df appears twice
-		t.Errorf("%d example markers found, expected %d — a marker was deleted, so an example lost its provenance",
-			seen, want)
+	if seen != wantExampleMarkers {
+		t.Errorf("%d example markers found, expected %d — a marker was deleted or added without updating docExampleCounts",
+			seen, wantExampleMarkers)
+	}
+	for src, want := range docExampleCounts {
+		if got := docMarkerCounts[src]; got != want {
+			t.Errorf("src %q appears %d times, expected %d", src, got, want)
+		}
 	}
 }
 
