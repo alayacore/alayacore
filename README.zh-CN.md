@@ -151,6 +151,7 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [错误处理](docs/error-handling.md) | LLM API 错误检测与传播 |
 | [工具执行](docs/tool-execution.md) | 并发的工具执行，每个工具独立等待用户确认（MCP 风格） |
 | [输出截断](docs/truncation.md) | 大型工具输出的上下文预算处理方式 |
+| [Markdown 渲染](docs/markdown-rendering.md) | 助手窗口中表格的排版、重排与边框处理 |
 | [依赖](docs/dependencies.md) | 第三方依赖及其必要性说明 |
 | [TUI 架构](docs/tui-architecture.md) | Elm 架构与 TUI 内部设计 |
 | [开发原则](docs/development-principles.md) | 项目约定 — adapter/agent 隔离与测试 |

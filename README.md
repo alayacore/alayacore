@@ -151,6 +151,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Error Handling](docs/error-handling.md) | Error detection and propagation from LLM APIs |
 | [Tool Execution](docs/tool-execution.md) | Concurrent tool execution with per-tool MCP-style confirmation |
 | [Output Truncation](docs/truncation.md) | How large tool outputs are handled within context budgets |
+| [Markdown Rendering](docs/markdown-rendering.md) | How tables are laid out, re-flowed and framed in assistant windows |
 | [Dependencies](docs/dependencies.md) | Third-party dependencies and why each is needed |
 | [TUI Architecture](docs/tui-architecture.md) | Elm architecture and the TUI's internal design |
 | [Development Principles](docs/development-principles.md) | Project conventions — adapter/agent isolation and testing |

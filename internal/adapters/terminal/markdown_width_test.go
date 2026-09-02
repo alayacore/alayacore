@@ -261,8 +261,10 @@ func TestMarkdownTablesEmitNoANSI(t *testing.T) {
 // TestGridImpossibilityBound locks the arithmetic the docs quote. The framed
 // table is given up only at the point where a column could not hold its widest
 // unbreakable cluster — 3n+1 of framing plus each column's irreducible width —
-// and never because of a tuned legibility number. Since docs/tui.md quotes
-// these values, changing the gate must change them here and in the doc.
+// and never because of a tuned legibility number. docs/markdown-rendering.md
+// quotes these values too, and TestDocsMarkdownBoundsAreMeasured fails if the
+// two ever disagree — changing the gate means changing the doc, deliberately.
+// These numbers are also the ONLY ones the doc's prose relies on.
 func TestGridImpossibilityBound(t *testing.T) {
 	cases := []struct {
 		name string
@@ -286,8 +288,9 @@ func TestGridImpossibilityBound(t *testing.T) {
 	}
 }
 
-// TestRecordSeparatorPerRecord guards what docs/tui.md promises: in the record
-// layout, records are separated by a plain rule. Without it consecutive records
+// TestRecordSeparatorPerRecord guards a promise in docs/markdown-rendering.md:
+// in the record layout, records are separated by a plain rule. Without it,
+// consecutive records
 // run together and the reader cannot tell where one ends.
 func TestRecordSeparatorPerRecord(t *testing.T) {
 	three := "| Filesystem | Mounted on |\n|---|---|\n| /dev/nvme0n1p2 | /mnt/a |\n| tmpfs | /mnt/b |\n| overlay | /mnt/c |"

@@ -189,15 +189,20 @@ The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in bo
 
 ### Markdown Rendering
 
-Markdown rendering is **on by default** for assistant text (`ASSISTANT`) and reasoning (`REASONING`) windows; `--no-markdown` turns the default off (new windows start raw). Press `r` on an **unfolded** window to toggle between rendered and raw per window; the setting is independent per window and applies only when expanded — folded windows keep their raw one-line summary.
+Rendering is **on by default** for assistant text (`ASSISTANT`) and reasoning
+(`REASONING`) windows; `--no-markdown` starts new windows raw instead. Press `r`
+on an **unfolded** window to toggle raw ↔ rendered per window; folded windows
+always show their raw one-line summary.
 
-When enabled, tables are re-rendered as a unicode grid — e.g. `| name | gender | age |` becomes a `│ name │ gender │ age │` block framed by `─`/`┌`/`┼` rules, with a rule between every pair of rows. Tables inside fenced code blocks are never transformed. Column alignment markers (`:---`, `---:`, `:---:`) are honored via cell padding (the rules themselves stay uniform).
+When enabled, GFM-style tables are re-laid out as an aligned unicode grid. A
+table wider than the window is re-flowed rather than truncated — cells hard-wrap
+and a record may span several rows — and where a frame can no longer be drawn
+the layout falls back to a record form. No content character is ever cut. Tables
+inside fenced code blocks are never transformed.
 
-Two limitations, both deliberate: **every row of the table must start with `|`** — GFM also allows omitting the leading/trailing pipe, but the streaming path detects table-touching deltas by that leading pipe, so the parser and that test have to relax together or tables would half-reflow (see `deltaHasPipeLine`). And because the column separator is now a box glyph, **content that itself contains `│` is visually ambiguous** — it reads as an extra column boundary even though the geometry stays correct. An escaped `\|` still renders as a literal `|`, which has the same effect one level down.
-
-When a table is wider than the terminal it is **never truncated**: columns are allocated by marginal benefit and an over-long cell hard-wraps across rows with the same primitive used for ordinary body text (`wrapContent`), so a record may occupy several terminal rows and the horizontal rules mark where each one ends. The frame is kept however cramped the columns become — a table never trades its border for tidiness. It gives way to a vertical record form (`Field  value` per line, records separated by a plain rule) only at the arithmetic limit where the frame cannot hold every column's widest unbreakable character: a column needs at least one cell, and one cell means one cell for a CJK ideograph, which is 2 columns wide and cannot be split. Concretely, the same 3-column table becomes a record list below 13 cells in ASCII and below 16 in Chinese (framing `3n+1` plus each column's irreducible width). There is no tunable threshold in this decision. There is no label column, so there is nothing to budget and no second variant of this form: a field shares one line as `Field  value` only when the whole field fits, and otherwise the label takes its own line with the value starting beneath it, indented. Breaking the text at an arbitrary character instead would chop the label and glue the value onto its tail, destroying the very boundary this form exists to make obvious. Indentation is chrome and is dropped entirely rather than let a line overflow.
-
-Streaming stays incremental: deltas without table rows append through the same O(delta) wrap path as raw mode (benchmarked at raw-mode speed with identical allocations), and only deltas that touch a table — a `|` line, or any delta while the content tail is still inside an open table — trigger a full re-render of that window (one per tick, cost O(window) only for table-bearing windows).
+The layouts, the exact widths where each applies (with rendered examples), what
+was deliberately not done, and the guarantees tests hold:
+[markdown-rendering.md](markdown-rendering.md).
 
 ### Virtual Scrolling
 
