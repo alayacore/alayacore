@@ -59,6 +59,17 @@ func streamAnthropic(t *testing.T, body func(io.Writer)) ([]llm.ContentPart, err
 	return published, streamErr
 }
 
+// mustStreamAnthropic streams a complete message and returns its record, failing
+// the test if the step did not run clean.
+func mustStreamAnthropic(t *testing.T, withStop bool) []llm.ContentPart {
+	t.Helper()
+	parts, err := streamAnthropic(t, anthropicEvents(withStop))
+	if err != nil {
+		t.Fatalf("terminated stream failed: %v", err)
+	}
+	return parts
+}
+
 func describe(parts []llm.ContentPart) []string {
 	var out []string
 	for _, p := range parts {
@@ -113,5 +124,45 @@ func TestAnthropicStreamWithMessageStopUnaffected(t *testing.T) {
 	want := "reasoning:a long reasoning,text:Answer."
 	if got != want {
 		t.Errorf("history = [%s], want [%s]", got, want)
+	}
+}
+
+// The point of one assembler is that a step cannot be described two ways. Run
+// the same message once whole and once cut off before message_stop, and require
+// the histories to match part for part, ID for ID: the cut turn keeps its content
+// and is simply known, by the error, to be unfinished.
+//
+// This is the property the previous design hoped for and could not enforce, since
+// each path assembled the record with its own code.
+func TestAnthropicCutStepMatchesFinishedStep(t *testing.T) {
+	summarize := func(parts []llm.ContentPart) []string {
+		var out []string
+		for _, p := range parts {
+			if p.GetRole() == llm.RoleUser {
+				continue // the echoed prompt, identical on both paths
+			}
+			switch v := p.(type) {
+			case *llm.ReasoningPart:
+				out = append(out, fmt.Sprintf("reasoning(%q,id=%d)", v.Text, p.GetHistoryID()))
+			case *llm.TextPart:
+				out = append(out, fmt.Sprintf("text(%q,id=%d)", v.Text, p.GetHistoryID()))
+			}
+		}
+		return out
+	}
+
+	whole := summarize(mustStreamAnthropic(t, true))
+	cut, err := streamAnthropic(t, anthropicEvents(false))
+	if err == nil {
+		t.Fatal("a stream without message_stop must report an error")
+	}
+	cutSum := summarize(cut)
+
+	if strings.Join(cutSum, " ") != strings.Join(whole, " ") {
+		t.Errorf("cut step recorded [%s], finished step recorded [%s]",
+			strings.Join(cutSum, " "), strings.Join(whole, " "))
+	}
+	if len(whole) != 2 {
+		t.Fatalf("expected 2 parts in the finished record, got %d: %v", len(whole), whole)
 	}
 }
