@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -241,20 +242,23 @@ func (a *Agent) completeStepStats(callbacks StreamCallbacks, step int, stepUsage
 	return nil
 }
 
-// streamEvents iterates streaming events, firing callbacks and collecting
-// tool calls. Returns the assembled content parts (assistant response +
-// tool results), usage, and whether the response was truncated.
-// Assigns unique history IDs via IDGen on first touch of each content block,
-// passes them to callbacks, and stores them on ContentParts.
+// streamEvents iterates streaming events, firing callbacks and assembling the
+// step's record. Returns the assembled content parts (assistant response +
+// tool results), usage, and whether the response was truncated. History IDs are
+// minted by the assembler on each block's first appearance and passed to
+// callbacks, so a window on screen and the part that gets persisted are the same
+// block.
 //
 // Tool goroutines (started per ToolInputCompleteEvent) are tracked with a
-// WaitGroup and run under a per-stream context. On ANY exit path — stream
-// error, callback failure, reorder failure — the context is canceled first
-// and all tool goroutines are waited on before returning, so no tool keeps
-// executing (and no goroutine leaks) after the stream has errored. After
-// the goroutines settle, the results of tools that already executed are
-// salvaged into the returned contents (see salvageExecutedTools), so their
-// side effects stay visible in history.
+// WaitGroup and run under a per-stream context. On ANY exit path — stream error,
+// callback failure, pairing failure, or a panic inside the loop — the context is
+// canceled first and all tool goroutines are waited on before returning, so no
+// tool keeps executing (and no goroutine leaks) after the stream has errored.
+// Once they settle, the deferred salvage builds the step's record from whatever
+// streamed: reasoning and text as received, plus every tool call whose result
+// arrived. A panic is converted into the step's error rather than allowed to
+// unwind, because the task goroutine has no recover and a crash would discard
+// content the user already watched.
 //
 //nolint:gocyclo // switch dispatch over 8 event types with callback guards
 func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, error], callbacks StreamCallbacks, stepStart time.Time, stats *StepStats) (stepContents []ContentPart, stepUsage Usage, truncated bool, err error) {
@@ -300,7 +304,23 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 	var toolWg sync.WaitGroup
 	defer func() {
-		if err == nil {
+		// A panic in the loop below is a bug, and a bug is not a reason to take
+		// the user's content with it: what they watched stream in is already in
+		// the assembler, so convert the panic into the step's error and let the
+		// salvage run. The caller then handles it as it handles any failed step —
+		// record saved, error reported, session still alive. Without this the
+		// named err stays nil, the salvage below skips itself, and the unwinding
+		// reaches the task goroutine, which has no recover: the process dies
+		// holding nothing.
+		//
+		// The stack goes into the error because recovering is what hides it, and
+		// a swallowed panic nobody can diagnose is worse than a crash.
+		panicked := false
+		if r := recover(); r != nil {
+			panicked = true
+			err = fmt.Errorf("agent: panic while streaming the step: %v\n%s", r, debug.Stack())
+		}
+		if err == nil && !panicked {
 			return
 		}
 		// A cut step keeps what it streamed. Calls whose results never arrived

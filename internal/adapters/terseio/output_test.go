@@ -119,6 +119,12 @@ func TestTerseOutput_ReasoningAndNoiseSuppressed(t *testing.T) {
 	}
 }
 
+// The discard is the contract, not an oversight: a script must never mistake a
+// half-streamed answer for a finished one, so an error buys it nothing on stdout
+// and exit code 1 instead. The content is not lost — llm.Agent's failed-step path
+// keeps the step's reasoning and text in the session file, which is what
+// terseio.md tells the caller to inspect after a failure. Do not "fix" this by
+// flushing the buffer here.
 func TestTerseOutput_ErrorGoesToStderrAndDiscardsAnswer(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 

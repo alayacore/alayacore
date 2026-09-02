@@ -53,7 +53,13 @@ func TestProviderCannotHandBackItsBufferAfterAbandonment(t *testing.T) {
 // stops pulling, so "let the provider salvage itself" is not an option that
 // exists. Pinning the runtime's rule here, because the alternative — reading the
 // spec and guessing — is how the duplicate buffer gets deleted someday.
-func TestYieldAfterAbandonmentPanics(t *testing.T) {
+//
+// What the misuse does to the process is TestStreamSalvagesContentOnPanic's
+// business (streamEvents now recovers it into a step error). What this test
+// pins is the part that decides history: the late event is never delivered, so an
+// abandoned provider cannot smuggle content into a step nobody is reading.
+func TestYieldAfterAbandonmentDeliversNothing(t *testing.T) {
+	delivered := ""
 	provider := &salvageProvider{seq: func(yield func(StreamEvent, error) bool) {
 		yield(ReasoningDeltaEvent{Delta: "thinking", Key: "reasoning"}, nil) // true: still pulling
 		yield(nil, errors.New("boom"))                                       // false: caller returns
@@ -62,20 +68,23 @@ func TestYieldAfterAbandonmentPanics(t *testing.T) {
 	}}
 
 	agent := NewAgent(AgentConfig{Provider: provider, MaxSteps: 2})
-	panicked := ""
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				panicked = "runtime error"
-			}
-		}()
-		_, _ = agent.Stream(context.Background(), nil, StreamCallbacks{
-			IDGen:            func() uint64 { return 1 },
-			OnReasoningDelta: func(string, uint64) error { return nil },
-		})
-	}()
+	_, err := agent.Stream(context.Background(), nil, StreamCallbacks{
+		IDGen:               func() uint64 { return 1 },
+		OnReasoningDelta:    func(string, uint64) error { return nil },
+		OnTextDelta:         func(string, uint64) error { return nil },
+		OnTextComplete:      func(text string, _ uint64) error { delivered = text; return nil },
+		OnReasoningComplete: func(string, uint64) error { return nil },
+	})
 
-	if !strings.Contains(panicked, "runtime error") {
-		t.Fatal("yield after abandonment returned normally; a provider could still deliver content")
+	if err == nil {
+		t.Fatal("the stream error must still reach the caller")
+	}
+	if delivered != "" {
+		t.Errorf("content reached the caller after abandonment: %q", delivered)
+	}
+	// The runtime complaint is real, so it must not be mistaken for a normal
+	// provider failure: it surfaces as the recovered panic.
+	if !strings.Contains(err.Error(), "panic") {
+		t.Errorf("error = %v, want it to report the provider's misuse", err)
 	}
 }

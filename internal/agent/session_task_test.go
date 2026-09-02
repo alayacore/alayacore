@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -243,5 +244,63 @@ func TestDeltaWriterHandleToolOutputDelta(t *testing.T) {
 	}
 	if od.ID != "call_1" || od.Text != " 99%" {
 		t.Errorf("payload = %+v, want id=call_1 text=\" 99%%\"", od)
+	}
+}
+
+// panicProvider streams a reasoning block and an answer, then panics mid-flight
+// — the shape of a bug in a provider's parser or in llm.Agent's own dispatch.
+type panicProvider struct{}
+
+func (panicProvider) StreamMessages(_ context.Context, _ []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
+	return func(yield func(llm.StreamEvent, error) bool) {
+		yield(llm.ReasoningDeltaEvent{Delta: "a thought", Key: "reasoning"}, nil)
+		yield(llm.TextDeltaEvent{Delta: "half an answ", Key: "text"}, nil)
+		panic("provider parser exploded")
+	}, nil
+}
+
+func (panicProvider) SetReasoningLevel(_ int)                       {}
+func (panicProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
+func (panicProvider) SetVideoConfig(_ int, _ int)                   {}
+
+// The content a user watched stream in must survive a panic all the way to the
+// session's history, not just to llm.Agent's return value. llm.Agent converts the
+// panic into the step's error (see TestStreamSalvagesContentOnPanic); this covers
+// the other half — that the failed step's parts still travel out through the task
+// result, which is what handleTaskDone assigns to Contents and writes to the
+// session file.
+func TestRunTaskKeepsStreamedContentOnPanic(t *testing.T) {
+	agent := llm.NewAgent(llm.AgentConfig{Provider: panicProvider{}, MaxSteps: 3})
+	session := &Session{
+		sessionConfig: sessionConfig{
+			modelService:  &modelService{agent: agent},
+			SessionConfig: SessionConfig{NoDelta: true},
+		},
+		sharedState: sharedState{histCounter: 100},
+		runState:    runState{taskEventCh: make(chan taskEvent, 20)},
+	}
+	session.taskResultCh = make(chan []llm.ContentPart, 1)
+	session.Contents = []llm.ContentPart{
+		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	}
+
+	session.runTaskNormal(context.Background(), []llm.ContentPart{
+		&llm.TextPart{Text: "do it", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	})
+
+	var got []string
+	for _, p := range <-session.taskResultCh {
+		switch v := p.(type) {
+		case *llm.ReasoningPart:
+			got = append(got, "reasoning:"+v.Text)
+		case *llm.TextPart:
+			if p.GetRole() == llm.RoleAssistant {
+				got = append(got, "text:"+v.Text)
+			}
+		}
+	}
+	want := "reasoning:a thought,text:half an answ"
+	if joined := strings.Join(got, ","); joined != want {
+		t.Errorf("history after the panic = [%s], want [%s]", joined, want)
 	}
 }

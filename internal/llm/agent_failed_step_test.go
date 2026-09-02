@@ -158,3 +158,57 @@ func TestFailedStepWithNoContentAddsNothing(t *testing.T) {
 		t.Errorf("OnStepFinish fired with %d parts for a step that produced nothing", published)
 	}
 }
+
+// A panic in the stream loop used to be the one exit that lost content: the
+// named err stayed nil, the salvage deferred above skipped itself, and the
+// unwinding reached a task goroutine with no recover, killing the process with
+// the reasoning and text unreachable in a dead frame.
+//
+// Now the panic becomes the step's error, so it takes the same path as every
+// other failure: content saved, error surfaced, session alive. The stack rides
+// along in the error because recovering is what hides it.
+func TestStreamSalvagesContentOnPanic(t *testing.T) {
+	provider := &salvageProvider{seq: func(yield func(StreamEvent, error) bool) {
+		yield(ReasoningDeltaEvent{Delta: "a thought", Key: "reasoning"}, nil)
+		yield(TextDeltaEvent{Delta: "half an answ", Key: "text"}, nil)
+		panic("provider iterator exploded")
+	}}
+
+	next := uint64(1)
+	var published []ContentPart
+	agent := NewAgent(AgentConfig{Provider: provider, MaxSteps: 2})
+	_, err := agent.Stream(context.Background(), nil, StreamCallbacks{
+		IDGen:            func() uint64 { n := next; next++; return n },
+		OnReasoningDelta: func(string, uint64) error { return nil },
+		OnTextDelta:      func(string, uint64) error { return nil },
+		OnStepFinish: func(contents []ContentPart, _ Usage) error {
+			published = append([]ContentPart{}, contents...)
+			return nil
+		},
+	})
+
+	if err == nil {
+		t.Fatal("a panicking stream loop must report an error, not return success")
+	}
+	if !strings.Contains(err.Error(), "provider iterator exploded") {
+		t.Errorf("error must carry the panic value, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "goroutine") {
+		t.Errorf("error must carry the stack (recovering hides it), got: %v", err)
+	}
+
+	var kinds []string
+	for _, p := range published {
+		switch v := p.(type) {
+		case *ReasoningPart:
+			kinds = append(kinds, "reasoning:"+v.Text)
+		case *TextPart:
+			kinds = append(kinds, "text:"+v.Text)
+		}
+	}
+	got := strings.Join(kinds, ",")
+	want := "reasoning:a thought,text:half an answ"
+	if got != want {
+		t.Errorf("history after the panic = [%s], want [%s]", got, want)
+	}
+}
