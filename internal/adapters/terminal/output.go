@@ -412,19 +412,24 @@ func (to *outputWriter) flushPendingDeltas() {
 	// rest of the session. Flushing sorted by historyID removes the coin flip.
 	//
 	// Note what this does and does not decide. historyIDs are handed out on
-	// first touch of each block key, so in delta mode numbering follows
-	// delta arrival order and the sort merely emits, deterministically, the
-	// order the stream already established. It is not an independent source of
-	// ordering, and it must not be read as "reasoning always renders above
-	// text": a provider that really streams its answer before its reasoning
-	// numbers the answer lower and renders it first. Providers must still emit
-	// their complete events in content-array order — under --no-delta those
-	// events are the first touch for the text and reasoning blocks, so
-	// emitting them out of order numbers them against the record order the
-	// session writes. Pinned by openai_event_order_test.go and
-	// openai_history_id_order_test.go; the reasoning/text pair honors it, the
-	// tool blocks do not yet (known gap, docs/providers.md →
-	// "Complete-event order").
+	// first touch of each block key, and the first touch is always a delta:
+	// --no-delta only suppresses the frames sent to *this* adapter, the
+	// response still streams, so numbering follows delta arrival in every mode
+	// and this sort merely emits, deterministically, the order the stream
+	// already established. It is not an independent source of ordering, and it
+	// must not be read as "reasoning always renders above text": a provider
+	// that really streams its answer before its reasoning numbers the answer
+	// lower and renders it first.
+	//
+	// Providers must still emit their complete events in content-array order,
+	// but for what those events are here for — display, not numbering. In
+	// --no-delta no At/Ar frame ever reaches this writer, so nothing is pending
+	// and flushPendingDeltas does not run: the authoritative AT/AR frames
+	// create the windows themselves, in the order they arrive. Out of
+	// array order, that put ASSISTANT above its own REASONING. Pinned by
+	// openai_event_order_test.go, openai_history_id_order_test.go, and
+	// TestStreamNumbersBlocksAtDeltasEvenWithNoDeltaCallbacks for the
+	// numbering half (docs/providers.md → "Complete-event order").
 	type pendingFlush struct {
 		id        string
 		historyID uint64
