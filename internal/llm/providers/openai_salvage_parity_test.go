@@ -91,21 +91,22 @@ func runOpenAIStep(t *testing.T, body func(io.Writer)) (record []string, ranTool
 	return record, atomic.LoadInt32(&ranTool), streamErr
 }
 
-// One step's record is assembled twice by two pieces of code that never call
-// each other: the provider's accumulators (getContents, delivered inside
-// StepCompleteEvent) on the path that finishes, and llm.Agent's own copy
-// (stepTextBlocks, salvageExecutedTools) on the path that is cut. Neither can
-// guarantee on its own that the two agree, so the agreement is pinned here
-// rather than left as a convention: the same stream, run twice, must land the
-// same history — same parts, same order, same IDs — and must run the tool in
-// both cases.
+// One step's record used to be assembled twice by code that never called each
+// other: the provider's accumulators (getContents, delivered inside
+// StepCompleteEvent) on the path that finished, and llm.Agent's own copy
+// (stepTextBlocks, salvageExecutedTools) on the path that was cut. That design is
+// gone — llm.Agent's assembler now serves every path — but this test stays,
+// because it asserts the property the refactor exists to buy rather than its
+// mechanism: the same stream, run finished and run cut, must land the same
+// history — same parts, same order, same IDs — and must run the tool both times.
 //
-// The tool half is not decoration. When the missing-terminator rule first landed
-// it was implemented as an early return, which silently meant that a call whose
-// arguments had fully streamed was never executed and never recorded, while the
-// adapter had already drawn it from its deltas — the same shape as the ordering
-// bug that opened this whole line of work. Records matching is the fix's real
-// contract; the error is what makes the difference visible.
+// The tool half is not decoration. It is where the old design measurably failed:
+// when the missing-terminator rule first landed as an early return, a call whose
+// arguments had fully streamed was neither executed nor recorded (tool ran=0,
+// history empty) while the adapter had already drawn it from its deltas — the same
+// shape as the ordering bug that opened this whole line of work, reached from the
+// other side. Records matching is the contract; the error is what makes the
+// difference visible.
 func TestCutStepRecordsWhatAFinishedStepWouldHave(t *testing.T) {
 	tests := []struct {
 		name     string

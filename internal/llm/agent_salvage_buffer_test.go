@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-// Why llm.Agent keeps a second copy of the step's text at all (stepTextBlocks):
-// the provider's own accumulator is unreachable once the step ends early.
-// streamEvents stops pulling when the stream errors, so a provider written the
-// way both of them are — checking yield's result and returning — never gets to
-// the tail that would hand its buffer over.
+// Why the step's content is held by llm.Agent rather than by the provider that
+// already accumulated it: the provider's own buffer is unreachable once the step
+// ends early. streamEvents stops pulling when the stream errors, so a provider
+// written the way both of them are — checking yield's result and returning —
+// never gets to the tail that would hand its content over.
 func TestProviderCannotHandBackItsBufferAfterAbandonment(t *testing.T) {
 	reachedTail := false
 	sawComplete := ""

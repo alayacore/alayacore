@@ -16,8 +16,8 @@ import (
 // calls, and it is what the request must be rebuilt in (openaiConvertToolInputs
 // emits tool_calls in array order, and openaiConvertToolOutputs emits one
 // role:"tool" message per input in array order), so the array keeps index order
-// regardless of arrival: toolIndices() sorts, and reorderToolResults()
-// sequences results by input order.
+// regardless of arrival: closedToolCalls() sorts by it, and attachToolResults()
+// sequences results by that same call order.
 //
 // Block keys are "tool:<index>", i.e. taken from the same protocol value, so
 // identity and order agree by construction. Do not switch either to

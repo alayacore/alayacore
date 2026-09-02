@@ -171,9 +171,10 @@ func TestStreamSalvagesExecutedToolsOnCancel(t *testing.T) {
 // TestStreamSalvageOmitsAmbiguousToolIDs verifies that a provider reusing
 // a tool-call ID does not produce guessed pairings in the salvaged
 // history: when two tool calls share an ID, the result-to-call assignment
-// is unknowable, so both calls are omitted entirely (the normal path
-// already rejects duplicate IDs via reorderToolResults; the salvage must
-// not paper over the ambiguity with a wrong pairing).
+// is unknowable, so both calls are omitted entirely (attachToolResults in
+// strict mode already fails on a duplicate ID on the path that finished; the
+// forgiving mode drops both rather than paper over the ambiguity with a wrong
+// pairing).
 func TestStreamSalvageOmitsAmbiguousToolIDs(t *testing.T) {
 	executed := make(chan struct{}, 2)
 	mkTool := func(name string) Tool {

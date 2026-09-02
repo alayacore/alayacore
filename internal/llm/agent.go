@@ -15,11 +15,14 @@ package llm
 //    tool_use without matching tool_result. Clean up these orphaned tool calls before the
 //    next API request to prevent errors.
 //
-// 3. TOOL RESULTS MUST MATCH TOOL CALLS 1:1: reorderToolResults pairs each result
-//    with its tool call by ID. A tool call whose result never arrives (e.g. a
+// 3. TOOL RESULTS MUST MATCH TOOL CALLS 1:1: attachToolResults pairs each result
+//    with its tool call by ID. A call whose result never arrives (e.g. a
 //    non-conforming provider that reuses an empty tool-call ID) would leave a nil
-//    ContentPart in the step history, which panics later in GroupByRole. The function
-//    therefore returns an error for any unmatched slot instead of appending nil.
+//    ContentPart in the step history, which panics later in GroupByRole. So the
+//    strict mode used by a finished step returns an error for any unmatched slot
+//    instead of appending nil, and the forgiving mode used by a cut step drops the
+//    call entirely — an assistant tool_use must never be recorded without the
+//    tool_result that answers it.
 //
 // 4. TOOL GOROUTINES NEVER OUTLIVE STREAM: tool goroutines run under a per-stream
 //    context tracked by a WaitGroup. On any error or early return the context is

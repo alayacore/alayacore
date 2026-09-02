@@ -10,15 +10,13 @@ import (
 	"github.com/alayacore/alayacore/internal/llm/providers"
 )
 
-// The OpenAI provider builds the persisted content array as
-// [reasoning, text, tools] unconditionally (openai.go getContents), but it
-// used to emit the *complete* events as text-then-reasoning. Both orders feed
-// the same step, and the mismatch is what the --no-delta run renders: with no
-// deltas pending, the authoritative AR/AT frames create the TUI windows in
-// arrival order, so emitting text first put ASSISTANT above the REASONING the
-// session file lists first.
+// An OpenAI assistant turn has one shape — reasoning, content, tool calls — and
+// this provider closes its blocks in it. The closures are what place blocks in
+// the persisted record (llm.Agent's assembler lays out by close order), so when
+// the tail emitted the boundary events text-then-reasoning the record and the
+// display inverted against the shape the protocol defines.
 //
-// Pin complete-event order to content-array order.
+// Pin closure order to the protocol's assistant-turn shape.
 func TestOpenAICompleteEventsFollowContentPositions(t *testing.T) {
 	server := newMockSSEServer(t, func(w io.Writer) {
 		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"reasoning\":\"thinking hard\"}}]}\n\n")
@@ -76,11 +74,11 @@ func TestOpenAICompleteEventsFollowContentPositions(t *testing.T) {
 	}
 }
 
-// A step that also calls a tool must emit tool-complete *last*, because
-// getContents() persists tools after reasoning and text. Before the tool loop
-// was moved below this pair, a --no-delta run emitted AF first: the tool block
-// took the step's lowest historyID while sitting last in the record, and the
-// terminal rendered TOOL CALL above the REASONING that produced it.
+// A step that also calls a tool must close the tool *last*, because tools sit
+// after reasoning and text in an assistant turn. Before the tool loop moved below
+// this pair, a --no-delta run closed the tool first: the record followed that
+// order while the window for TOOL CALL was created above the REASONING that
+// produced it.
 func TestOpenAICompleteEventsIncludeToolsLast(t *testing.T) {
 	server := newMockSSEServer(t, func(w io.Writer) {
 		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"reasoning\":\"think\"}}]}\n\n")

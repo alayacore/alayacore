@@ -9,7 +9,7 @@ import (
 )
 
 // A live session numbers history IDs by stream arrival (see llm.Agent
-// blockID), while the record lays parts out by kind. The file stores no IDs at
+// assembler), while the record lays parts out by protocol shape. The file stores no IDs at
 // all, so loading re-issues them sequentially in record order. This pins that,
 // because docs/architecture.md states it as the reason histCounter may resume
 // at len(Contents) -- a resume point that is only safe if a loaded session's
@@ -24,8 +24,8 @@ func TestSaveAndLoadReissuesHistoryIDsInRecordOrder(t *testing.T) {
 	}{
 		{
 			// A provider that streams tool_calls before reasoning/text: the tool
-			// touches IDGen first and takes 2, but getContents persists it after
-			// reasoning and text, so the record reads 1, 3, 4, 2.
+			// touches IDGen first and takes 2, but the record closes it after
+			// reasoning and text, so the stored order reads 1, 3, 4, 2.
 			name: "numbering against record order",
 			contents: []llm.ContentPart{
 				&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 1}},
