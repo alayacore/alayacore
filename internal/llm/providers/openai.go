@@ -474,18 +474,23 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		// the body after the final chunk. Both rejections were measured against
 		// this repo's own suite — 12 tests for the first. A body carrying
 		// *neither* is the one case that cannot be a completed turn, and
-		// rebuilding the step from the accumulators anyway presented a cut-off
-		// sentence as a concluded answer, so a retry believed the assistant had
-		// finished thinking.
+		// synthesizing one there presented a cut-off sentence as a concluded
+		// answer, so a retry believed the assistant had finished thinking.
 		//
 		// Same rule Anthropic applies to `message_stop`, for the same reason:
 		// the error is what lets llm.Agent's failed-step path keep the streamed
 		// blocks in history as partial, rather than the stream claiming they
 		// were the whole answer. See docs/providers.md → "Stream termination".
-		if !sawDone && state.getStopReason() == "" {
-			yield(nil, fmt.Errorf("openai stream ended before its terminating signal"))
-			return
-		}
+		//
+		// The missing terminator forbids concluding the *step*, not delivering
+		// blocks that completed individually — so it is reported here, after
+		// the per-block events below and instead of StepCompleteEvent. Returning
+		// early instead would drop the tool calls whose arguments had already
+		// fully streamed: they were never executed, never recorded, yet the
+		// adapter had already drawn them from their deltas — the same
+		// display-holds-what-history-lacks shape as the original ordering bug.
+		// llm.Agent's failed-step path records them paired with their results.
+		incomplete := !sawDone && state.getStopReason() == ""
 
 		// Emit complete events for the step's blocks.
 		//
@@ -522,6 +527,11 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 			if !yield(tc, nil) {
 				return
 			}
+		}
+
+		if incomplete {
+			yield(nil, fmt.Errorf("openai stream ended before its terminating signal"))
+			return
 		}
 
 		yield(llm.StepCompleteEvent{

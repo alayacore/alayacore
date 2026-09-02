@@ -141,6 +141,10 @@ Two constraints force the split:
 
 The accepted cost is a second copy of one step's text inside the agent's stack frame, released when the step ends. On a step that finishes normally the copy is discarded unused, because `StepCompleteEvent.Contents` wins.
 
+**That framing understates it, so state the real smell plainly: what is duplicated is not memory, it is logic.** Two pieces of code that never call each other turn a stream into `[]ContentPart` — `getContents()` in each provider, `stepTextBlocks` plus `salvageExecutedTools` in the agent — and neither can guarantee the other agrees. The agent's copy is also narrower than the provider's: it covers blocks that arrived *as events*, so anything a provider assembles only in its tail has no counterpart there. That is not hypothetical — the first version of the termination rule below dropped an already-complete tool call from a cut stream (`tool ran=0`, history empty) while the adapter had drawn it from its deltas. So the arrangement is fragile in a way the buffers above do not show, and it is currently contained by a test rather than by design: `openai_salvage_parity_test.go` requires both assemblers to land the same history for the same stream.
+
+Design that removes it: keep exactly one assembler. Providers emit per-block events and nothing else, `llm.Agent` builds the record from the stream on every path, and `StepCompleteEvent` carries only `Usage` and `StopReason`. The salvage path then stops being a second implementation; the check that rejects a provider persisting a part it never streamed has nothing left to check, because there is no second source to disagree with; and ID order and record order become the same fact rather than two that happen to coincide, which would also close the arrival-order residue under "Complete-event order". Not done: it rewrites both providers, the agent's history binding, and every test that reads `StepCompleteEvent.Contents`.
+
 Two things this does *not* mean:
 
 - `--no-delta` does not stop the response streaming. It selects which frames the session sends to its adapter (`session_task.go` registers no delta callbacks), so the provider still streams and still numbers blocks by delta arrival. Pin: `TestStreamNumbersBlocksAtDeltasEvenWithNoDeltaCallbacks`.
@@ -187,9 +191,11 @@ The two protocols end a stream differently, and the difference is load-bearing f
 
 `parseStream` now requires **either** signal and errors on a body carrying neither, which puts both providers under one rule: a premature end is an error, and the streamed content still reaches history through the failed-step path (see [step-messages.md](step-messages.md)), kept *and* known to be partial.
 
+**Where the error is raised matters as much as raising it.** It replaces the step's *conclusion* only — the per-block complete events are still emitted first, because a block whose arguments arrived in full did complete individually regardless of how the message ended. Reporting the error before them (the first version of this rule) made a cut stream drop the tool call entirely: never executed, never recorded, while the adapter had already drawn it from its deltas. Measured, that version gave `tool ran=0 history=[]` where the terminated stream gave `tool ran=1 history=[call result]` — the same "display holds what history lacks" shape as the ordering bug above, reached from the opposite direction.
+
 Why *either*, not both: each signal alone is a legitimate ending for real endpoints, and demanding the pair would reject them. Measured against this repo's own suite — requiring `finish_reason` specifically fails 12 tests whose bodies close with `[DONE]` and never name a reason (including every tool-call streaming test); requiring `[DONE]` on top of a `finish_reason` fails the ones that end the body after the final chunk. A body with neither is the only shape that cannot be a finished turn.
 
-Pinned by `anthropic_stream_termination_test.go` and `openai_stream_termination_test.go` (each terminal signal accepted on its own, no signal rejected, and the rejected stream's content verified to land in history anyway).
+Pinned by `anthropic_stream_termination_test.go` and `openai_stream_termination_test.go` (each terminal signal accepted on its own, no signal rejected, and the rejected stream's content verified to land in history anyway). `openai_salvage_parity_test.go` pins the stronger property, which is the one that keeps the two independent assemblers honest: the same body run terminated and run cut must land the *same* history — same parts, same order, same IDs — and must execute the tool both times.
 
 ## Null arguments in tool call chunks
 
