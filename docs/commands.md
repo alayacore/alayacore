@@ -90,6 +90,12 @@ The `:fork` command saves all session content from the beginning up to (and incl
 
 In the TUI, you can also press `Ctrl+F` at a window to pre-fill the `:fork` command with that window's history ID.
 
+**The cut never separates a tool call from its result.** A file ending in a `tool_use` with no matching `tool_result` loads without complaint and is rejected by the provider on the *next* prompt, so `forkEndIndex` extends the cut forward until every tool call inside the prefix has its result inside it too. Because a step's results follow all of its calls (`call1, call2, result1, result2`), forking a two-call step at the first call writes both calls and both results — the whole group moves, rather than the named entry being quietly dropped. Forking at anything that carries no tool call (a prompt, reasoning, text) cuts exactly there.
+
+The reported `count` is the number of parts written, so a group extension is visible in the command result. When a call's result does not exist anywhere in the session, widening cannot help. A trailing one — what a cancel leaves behind — is dropped, reusing the same guard the task path applies. A dangling call in the **middle** of the history cannot be dropped without inventing a rule about whose content disappears, and writing it would ship a file that only fails later, so `:fork` refuses with `INVALID_STATE` naming the call and writes nothing; fork at a point before that call instead.
+
+Note that a forked file stores no history IDs (see [architecture.md](architecture.md): IDs are re-issued sequentially on load), so the new file's IDs start from 1 regardless of where the fork landed.
+
 ## :continue
 
 See [error-handling.md](error-handling.md) for details on error recovery with `:continue`.

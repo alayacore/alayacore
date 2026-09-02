@@ -127,6 +127,9 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 
 // handleFork saves all content from the start of the session up to (and
 // including) the content identified by history ID to a session file.
+// The cut is then extended to keep every kept tool call's result with it, and a
+// history whose pairing cannot be repaired is refused rather than written —
+// see forkEndIndex.
 // Usage: :fork <history_id> <filename>
 func (s *Session) handleFork(args string) (any, error) {
 	fields := strings.Fields(args)
@@ -139,23 +142,102 @@ func (s *Session) handleFork(args string) (any, error) {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: fmt.Sprintf("invalid history ID: %s", fields[0])}
 	}
 
-	// Find the index of the content with this history ID.
-	var endIdx = -1
-	for i, part := range s.Contents {
-		if part.GetHistoryID() == id {
-			endIdx = i
-			break
-		}
-	}
+	endIdx := forkEndIndex(s.Contents, id)
 	if endIdx < 0 {
 		return nil, &cmdErr{Code: "NOT_FOUND", Message: fmt.Sprintf("no content found with history ID %d", id)}
 	}
 
+	// A call whose result exists nowhere cannot be completed by widening the
+	// cut. When it trails the prefix (the shape a cancel leaves behind) the
+	// existing cleaner removes it; when it sits mid-history the only honest
+	// answer is to write nothing, because a file with an orphaned tool_use
+	// loads fine and fails on the next prompt.
+	prefix := cleanIncompleteToolInputs(s.Contents[:endIdx+1])
+	if dangling := unpairedToolUse(prefix); dangling != "" {
+		return nil, &cmdErr{Code: "INVALID_STATE",
+			Message: fmt.Sprintf("cannot fork: tool call %q has no result in this session; fork at a point before it", dangling)}
+	}
+
 	path := config.ExpandPath(fields[1])
-	if err := s.saveContentToFile(path, s.Contents[:endIdx+1]); err != nil {
+	if err := s.saveContentToFile(path, prefix); err != nil {
 		return nil, &cmdErr{Code: "IO_ERROR", Message: fmt.Sprintf("failed to fork: %v", err)}
 	}
-	return map[string]any{"path": path, "count": endIdx + 1, "history_id": id}, nil
+	return map[string]any{"path": path, "count": len(prefix), "history_id": id}, nil
+}
+
+// unpairedToolUse returns the ID of the first tool call in parts that has no
+// matching tool result, or "" when every call is paired.
+func unpairedToolUse(parts []llm.ContentPart) string {
+	calls, results := map[string]bool{}, map[string]bool{}
+	var order []string
+	for _, p := range parts {
+		switch v := p.(type) {
+		case *llm.ToolInputPart:
+			if !calls[v.ID] {
+				calls[v.ID] = true
+				order = append(order, v.ID)
+			}
+		case *llm.ToolOutputPart:
+			results[v.ID] = true
+		}
+	}
+	for _, id := range order {
+		if !results[id] {
+			return id
+		}
+	}
+	return ""
+}
+
+// forkEndIndex returns the index of the last content part that a fork at id
+// must write, or -1 when no part carries that id.
+//
+// The requested entry is located by equality on the history ID and the prefix
+// ends there, which can cut a tool call away from its result: a file ending in
+// a tool_use with no tool_result loads without complaint and is rejected by the
+// API on the *next* prompt — far from the action that caused it. llm's
+// cleanIncompleteToolInputs guards that shape on the task path only.
+//
+// So the cut is extended forward until every tool call inside the prefix also
+// has its result inside it. This writes whole groups rather than halves of one:
+// a step with two calls forked at the first yields both calls and both results,
+// because the results of a message are emitted after all of its calls
+// (call1, call2, result1, result2), so no earlier cut can pair the first call
+// without reaching past the second. That is the "up to and including" promise
+// kept rather than quietly narrowed — the named entry is always in the output.
+func forkEndIndex(contents []llm.ContentPart, id uint64) int {
+	end := -1
+	for i, part := range contents {
+		if part.GetHistoryID() == id {
+			end = i
+			break
+		}
+	}
+	if end < 0 {
+		return -1
+	}
+
+	for {
+		calls, results := map[string]bool{}, map[string]bool{}
+		for _, part := range contents[:end+1] {
+			switch v := part.(type) {
+			case *llm.ToolInputPart:
+				calls[v.ID] = true
+			case *llm.ToolOutputPart:
+				results[v.ID] = true
+			}
+		}
+
+		extended := false
+		for i := end + 1; i < len(contents); i++ {
+			if v, ok := contents[i].(*llm.ToolOutputPart); ok && calls[v.ID] && !results[v.ID] {
+				end, extended = i, true
+			}
+		}
+		if !extended {
+			return end // every kept call has its kept result
+		}
+	}
 }
 
 // handleToolConfirmCmd processes a `:tool_confirm <id>` command.
