@@ -34,6 +34,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -399,14 +400,65 @@ func (to *outputWriter) flushPendingDeltas() {
 		return
 	}
 
-	// Flush text deltas — one AppendOrUpdate per window.
-	for id, pd := range to.pendingTextDeltas {
-		to.windowBuffer.AppendOrUpdate(pd.displayTag, id, pd.content.String())
+	// Flush in historyID order, not map order.
+	//
+	// A window's display position is fixed at creation: AppendOrUpdate only
+	// ever appends, and HistoryID is stored for navigation, never consulted
+	// for ordering. Text/reasoning deltas accumulate in pendingTextDeltas
+	// keyed by historyID and are written out together, so when a reasoning
+	// window and an assistant text window are pending in the same flush their
+	// relative order used to be decided by Go's randomized map iteration —
+	// REASONING could land below the ASSISTANT window it preceded, for the
+	// rest of the session. Flushing sorted by historyID removes the coin flip.
+	//
+	// Note what this does and does not decide. historyIDs are handed out on
+	// first touch of each content index, so in delta mode numbering follows
+	// delta arrival order and the sort merely emits, deterministically, the
+	// order the stream already established. It is not an independent source of
+	// ordering, and it must not be read as "reasoning always renders above
+	// text": a provider that really streams its answer before its reasoning
+	// numbers the answer lower and renders it first. Providers must still emit
+	// their complete events in content-array order — under --no-delta those
+	// events are the first touch for the text and reasoning blocks, so
+	// emitting them out of order numbers them against the record order the
+	// session writes. Pinned by openai_event_order_test.go and
+	// openai_history_id_order_test.go; the reasoning/text pair honors it, the
+	// tool blocks do not yet (known gap, docs/providers.md →
+	// "Complete-event order").
+	type pendingFlush struct {
+		id        string
+		historyID uint64
+		isTool    bool
 	}
 
-	// Flush tool deltas — one HandleToolInputDelta per tool call.
-	for toolID, pd := range to.pendingToolDeltas {
-		to.windowBuffer.HandleToolInputDelta(toolID, pd.toolName, pd.content.String(), pd.historyID)
+	flushed := make([]pendingFlush, 0, len(to.pendingTextDeltas)+len(to.pendingToolDeltas))
+	for id, pd := range to.pendingTextDeltas {
+		flushed = append(flushed, pendingFlush{id: id, historyID: pd.historyID})
+	}
+	for id, pd := range to.pendingToolDeltas {
+		flushed = append(flushed, pendingFlush{id: id, historyID: pd.historyID, isTool: true})
+	}
+	sort.SliceStable(flushed, func(i, j int) bool {
+		if flushed[i].historyID != flushed[j].historyID {
+			return flushed[i].historyID < flushed[j].historyID
+		}
+		// Same historyID: tool windows carry a call ID rather than a
+		// numeric history ID, so break ties by kind, then by ID, so the
+		// order is deterministic even in that case.
+		if flushed[i].isTool != flushed[j].isTool {
+			return !flushed[i].isTool
+		}
+		return flushed[i].id < flushed[j].id
+	})
+
+	for _, f := range flushed {
+		if f.isTool {
+			pd := to.pendingToolDeltas[f.id]
+			to.windowBuffer.HandleToolInputDelta(f.id, pd.toolName, pd.content.String(), pd.historyID)
+			continue
+		}
+		pd := to.pendingTextDeltas[f.id]
+		to.windowBuffer.AppendOrUpdate(pd.displayTag, f.id, pd.content.String())
 	}
 
 	// Allocate fresh maps to avoid retaining references and

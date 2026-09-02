@@ -462,21 +462,39 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 			return
 		}
 
-		// Emit tool call events from accumulators
-		for _, tc := range state.getToolCompleteEvents() {
-			if !yield(tc, nil) {
+		// Emit complete events for the step's blocks.
+		//
+		// ORDER MATTERS: this must run in the same [reasoning, text, tools]
+		// order that getContents() persists. historyIDs are handed out by
+		// getOrAssignID on first touch of each index, and under --no-delta
+		// there are no delta callbacks, so these complete events are the only
+		// touch — emitting a block first numbers it lower. Emitted out of
+		// array order, the numbers then disagree with the record order the
+		// session writes, and adapters (which create windows in frame order)
+		// render the blocks out of order too.
+		//
+		// This fixes reasoning/text and tools for --no-delta. It cannot fix
+		// a provider that *streams* its tool_calls delta before its
+		// reasoning/text deltas: in delta mode the tool takes its ID at that
+		// first delta, long before this block runs, so its ID stays below
+		// blocks persisted before it. That residue is an arrival-order vs
+		// array-order conflict in getContents(), not a bug fixable here — see
+		// docs/providers.md → "Complete-event order".
+		if reasoning := state.reasoningBuilder.String(); reasoning != "" {
+			if !yield(llm.ReasoningCompleteEvent{Text: reasoning, Index: 0}, nil) {
 				return
 			}
 		}
-
-		// Emit complete events for text and reasoning blocks.
 		if text := state.textBuilder.String(); text != "" {
 			if !yield(llm.TextCompleteEvent{Text: text, Index: 1}, nil) {
 				return
 			}
 		}
-		if reasoning := state.reasoningBuilder.String(); reasoning != "" {
-			if !yield(llm.ReasoningCompleteEvent{Text: reasoning, Index: 0}, nil) {
+
+		// Emit tool call events from accumulators, after reasoning and text,
+		// matching the [reasoning, text, tools] order getContents() persists.
+		for _, tc := range state.getToolCompleteEvents() {
+			if !yield(tc, nil) {
 				return
 			}
 		}

@@ -124,6 +124,29 @@ Tool arguments arrive in chunks across multiple delta events:
 - **Must use `index` (not `id`) to associate chunks** — see `openAIStreamState.appendToolCallArgs()`
 - When sending back in history, arguments must be JSON-string (not raw JSON) — see `openaiConvertToolInputs()`
 
+## Complete-event order
+
+`parseStream()` emits the step's trailing complete events after the stream ends, from the accumulators. Their order is load-bearing, not cosmetic: it has to agree with the order `getContents()` persists the step's parts in (`reasoning`, `text`, `tools`), for two reasons.
+
+- **historyID numbering.** `llm.Agent` hands out historyIDs on *first touch* of each content index (`getOrAssignID`). Under `--no-delta` no text/reasoning delta callbacks are registered (`session_task.go` — the tool ones are, always), so for those two blocks these complete events are the first and only touch: emitting a later block first numbers it *below* an earlier one, and nothing downstream can recover record order from ID order.
+- **Adapter output.** Adapters render in frame order. The terminal creates a window per block the moment its frame arrives (positions are fixed at creation; `WindowBuffer` only ever appends), and `--plainio` prints content as it streams — measured: `[AT, AR]` → `"Hello!\nuser said hello"`, `[AR, AT]` → `"user said hello\nHello!"`. Emitting out of array order puts the answer above the reasoning it came from.
+
+Both swaps are applied: `ReasoningCompleteEvent` precedes `TextCompleteEvent`, and the tool loop moved below that pair. Measured IDs per block for a `reasoning + text + one tool call` step:
+
+| streamed order | mode | before | after |
+|----------------|------|--------|-------|
+| reasoning, text, tool | delta (default) | 100 / 101 / 102 ✅ | 100 / 101 / 102 ✅ |
+| reasoning, text, tool | `--no-delta` | 102 / 103 / **100** ❌ | 100 / 101 / 102 ✅ |
+| tool_calls first | delta | 101 / 102 / **100** ❌ | 101 / 102 / **100** ❌ |
+
+**What the move fixes** (`--no-delta`): no deltas are ever pending in that mode, so `flushPendingDeltas` is a no-op and the TUI creates windows purely in frame order. With tools emitted first, `TOOL CALL` landed *above* the `REASONING` that produced it while the record listed reasoning, text, tool — and reopening the saved session re-laid the same conversation as reasoning, text, tool, so live and reopened disagreed. `--plainio` printed in the same inverted order. Emission now equals array order, so all three agree.
+
+**What it cannot fix** (row 3): a provider that *streams* its `tool_calls` delta before its reasoning/text deltas takes the tool's ID at that first delta, long before the trailing block runs — reordering the trailing block doesn't reach it. That residue is not an emission-order bug: `getContents()` assigns array positions by *kind* (reasoning 0, text 1, tools 2+) regardless of arrival, so whenever arrival order differs from that fixed layout, ID numbering and record order diverge by construction. Closing it means choosing an authority — persist in arrival order (changing what the model sees next turn) or assign IDs by position (impossible before the indices are known) — which is a design call, not a display fix. No real provider has been observed streaming this way; the code path is confirmed with a synthetic stream.
+
+The practical consequence to keep in mind: the terminal's historyID-ordered flush reproduces *arrival* order, never the persisted array order, and the two coincide only while the provider streams in its array order.
+
+Pinned by `openai_event_order_test.go` (emission order, tools last) and `openai_history_id_order_test.go` (ID numbering monotonic with content position).
+
 ## Null arguments in tool call chunks
 
 Some providers emit no-op deltas with `"arguments": null` (JSON literal null):
