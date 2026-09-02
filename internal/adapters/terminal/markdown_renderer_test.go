@@ -39,10 +39,12 @@ func TestTextRendererMarkdownModeToggle(t *testing.T) {
 	md, _ := r.BuildInner(120, false, styles)
 	mdText := joinVisualLines(md)
 	for _, want := range []string{
-		"| name            | gender | age |",
-		"|-----------------|--------|-----|",
-		"| Walllace Gibbon | male   | 100 |",
-		"| Harry Potter    | male   | 10  |",
+		"┌─────────────────┬────────┬─────┐",
+		"│ name            │ gender │ age │",
+		"├─────────────────┼────────┼─────┤",
+		"│ Walllace Gibbon │ male   │ 100 │",
+		"│ Harry Potter    │ male   │ 10  │",
+		"└─────────────────┴────────┴─────┘",
 	} {
 		if !strings.Contains(mdText, want) {
 			t.Errorf("markdown render missing %q in:\n%s", want, mdText)
@@ -63,7 +65,7 @@ func TestTextRendererMarkdownModeToggle(t *testing.T) {
 // TestTextRendererMarkdownModeStreaming feeds deltas in markdown mode:
 // every delta invalidates the cache, and the full re-render must equal a
 // transform+wrap of the complete accumulated content. A later long name
-// must re-pad the entire first column.
+// must re-flow the entire first column.
 func TestTextRendererMarkdownModeStreaming(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 	r := &textRenderer{tag: tlv.TagAssistantT}
@@ -89,7 +91,7 @@ func TestTextRendererMarkdownModeStreaming(t *testing.T) {
 		}
 	}
 
-	// A very long name arrives: the whole first column must be re-padded.
+	// A very long name arrives: the whole first column must be re-flowed.
 	longName := "A Very Very Long Name Indeed"
 	r.AppendFromTLV(tlv.TagAssistantT, "\n| "+longName+" | male | 1 |")
 	lines, _ := r.BuildInner(120, false, styles)
@@ -98,9 +100,9 @@ func TestTextRendererMarkdownModeStreaming(t *testing.T) {
 		t.Fatalf("long name missing from rendered table:\n%s", rendered)
 	}
 	// Header cell "name" must now be padded to the long name's width.
-	wantHeader := "| " + "name" + strings.Repeat(" ", len(longName)-len("name")) + " |"
+	wantHeader := "│ name" + strings.Repeat(" ", len(longName)-len("name")) + " │"
 	if !strings.Contains(rendered, wantHeader) {
-		t.Errorf("first column not re-padded for the long name:\n%s", rendered)
+		t.Errorf("first column not re-flowed for the long name:\n%s", rendered)
 	}
 }
 
@@ -188,7 +190,7 @@ func TestMarkdownModeIncrementalPlainDelta(t *testing.T) {
 
 // TestMarkdownModeIncrementalPipeDelta verifies deltas that can form or
 // extend a table invalidate the cache (full re-render path), so the
-// re-padded table is visible immediately.
+// re-flowed table is visible immediately.
 func TestMarkdownModeIncrementalPipeDelta(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 	r := &textRenderer{tag: tlv.TagAssistantT, mdMode: true}
@@ -208,8 +210,8 @@ func TestMarkdownModeIncrementalPipeDelta(t *testing.T) {
 	// Delimiter arrives: full path, table now padded.
 	r.AppendFromTLV(tlv.TagAssistantT, "|---|---|")
 	lines, _ = r.BuildInner(80, false, styles)
-	if !strings.Contains(joinVisualLines(lines), "| name | age |\n|------|-----|") {
-		t.Fatalf("table not padded after delimiter: %q", joinVisualLines(lines))
+	if !strings.Contains(joinVisualLines(lines), "┌──────┬─────┐\n│ name │ age │") {
+		t.Fatalf("table not rendered as a grid after the header: %q", joinVisualLines(lines))
 	}
 }
 
@@ -229,8 +231,9 @@ func TestMarkdownModeTailTransition(t *testing.T) {
 		t.Fatal("delta after an open table tail must re-render")
 	}
 	lines, _ := r.BuildInner(80, false, styles)
-	// The merged line is no longer a valid table row → raw passthrough.
-	if !strings.Contains(joinVisualLines(lines), "| 1 | 2 | tail") {
+	// " tail" merged onto the last row adds a third cell: the row is still
+	// a table row, so it re-renders as a 3-column grid (empty header/delimiter).
+	if !strings.Contains(joinVisualLines(lines), "│ 1 │ 2 │ tail │") {
 		t.Errorf("merged tail row missing: %q", joinVisualLines(lines))
 	}
 
@@ -281,8 +284,8 @@ func TestRKeyTogglesMarkdownMode(t *testing.T) {
 		t.Fatal("assistant text windows should start in markdown mode by default")
 	}
 	rendered := w.Render(120, false, terminal.display.styles, NewStyle().Foreground(terminal.display.styles.ColorDim), false)
-	if !strings.Contains(rendered, "| name            | gender | age |") {
-		t.Errorf("default render should show the padded table:\n%s", rendered)
+	if !strings.Contains(rendered, "│ name            │ gender │ age │") {
+		t.Errorf("default render should show the grid:\n%s", rendered)
 	}
 
 	// r → markdown off (raw)
@@ -380,19 +383,19 @@ func TestMarkdownModeTableCellSplitAcrossDeltas(t *testing.T) {
 	if strings.Contains(rendered, "|001") {
 		t.Fatalf("incremental concatenation leak: '|001' found in render:\n%s", rendered)
 	}
-	// The last row must be a proper 6-column row ending with " |".
-	if !strings.Contains(rendered, "/run/user/1001 |") {
-		t.Fatalf("last row must end with the closing pipe:\n%s", rendered)
+	// The last row must be a proper 6-column record ending with the closing rule.
+	if !strings.Contains(rendered, "│ /run/user/1001 │") {
+		t.Fatalf("last row must end with the closing rule:\n%s", rendered)
 	}
 }
 
 // TestMarkdownTableWideChars covers unicode handling in markdown table
 // cells: CJK (width 2), ZWJ emoji clusters (👨‍👩‍👧‍👦), and combining
 // marks (é). The rendering pipeline uses ansi.StringWidth for column
-// sizing and ansi.Hardwrap (cluster-aware) for truncation, so we expect:
+// sizing and ansi.Hardwrap (cluster-aware) for wrapping, so we expect:
 //   - column widths sized by display columns (not byte length)
-//   - cell truncation cuts whole clusters, never splitting mid-rune or
-//     mid-cluster (no U+FFFD artifacts)
+//   - overflow hard-wrapped, never truncated (no "…" at all)
+//   - wrapping never splits mid-rune or mid-cluster (no U+FFFD artifacts)
 //   - padding spaces compensate for wide chars
 func TestMarkdownTableWideChars(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
@@ -418,13 +421,22 @@ func TestMarkdownTableWideChars(t *testing.T) {
 			mustNotHave: []string{"…", "\uFFFD"},
 		},
 		{
-			name:    "CJK cell truncated cleanly",
+			// Was "CJK cell truncated cleanly": truncation is gone. The
+			// cell now wraps across rows of the record, cluster-intact.
+			name:    "CJK cell wraps cleanly instead of truncating",
 			content: "| a | b |\n|---|---|\n| 中文内容测试更多内容 | x |",
 			width:   20,
+			// At width 20 the label column (1 cell) still leaves room, so the
+			// record renders inline and the cell wraps across rows; it survives
+			// as fragments. Full-content integrity is checked by
+			// TestMarkdownTablesNeverTruncate.
 			mustContain: []string{
-				"…", // truncation marker present
+				"中文内容测试", // label + value are one wrapped run
+				"更多内容",
+				"x",
 			},
 			mustNotHave: []string{
+				"…",      // never truncated
 				"\uFFFD", // no cluster-split artifacts
 			},
 		},
@@ -484,45 +496,6 @@ func TestMarkdownTableWideChars(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestMarkdownTableColumnShrinkingWithWideChars verifies the shrink-to-fit
-// path produces valid output when the widest cell contains CJK content.
-// The shrink step reduces width by 1 column at a time — for CJK cells
-// that means we may shrink to a width that doesn't fit any single CJK
-// char, but fitCell/truncateWithSuffix must produce a valid (possibly
-// truncated) cell rather than leaving the table misaligned.
-func TestMarkdownTableColumnShrinkingWithWideChars(t *testing.T) {
-	styles := NewStyles(theme.DefaultTheme())
-
-	// 3-col table where the first column is much wider than the others
-	// and contains CJK content. Narrow window forces shrinking.
-	content := "| 名前 | age | city |\n|---|---|---|\n| 山田太郎さん | 30 | 東京 |"
-	r := &textRenderer{tag: tlv.TagAssistantT}
-	r.AppendFromTLV(tlv.TagAssistantT, content)
-	r.ToggleMarkdownMode() // enable table formatting
-	lines, _ := r.BuildInner(20, false, styles)
-	rendered := joinVisualLines(lines)
-	plain := stripANSI(rendered)
-
-	// Header column should be visible (possibly truncated).
-	if !strings.Contains(plain, "名") {
-		t.Errorf("header column 名 should be visible (possibly truncated):\n%s", rendered)
-	}
-	// Truncation marker should be present (both rows truncated).
-	if !strings.Contains(plain, "…") {
-		t.Errorf("expected truncation marker:\n%s", rendered)
-	}
-	// No broken clusters.
-	if strings.Contains(plain, "\uFFFD") {
-		t.Errorf("rendered output must not contain U+FFFD:\n%s", rendered)
-	}
-	// Every line respects the width budget.
-	for _, line := range lines {
-		if w := ansi.StringWidth(line.Text); w > 20 {
-			t.Errorf("line width %d exceeds budget 20: %q", w, line.Text)
-		}
 	}
 }
 

@@ -191,9 +191,11 @@ The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in bo
 
 Markdown rendering is **on by default** for assistant text (`ASSISTANT`) and reasoning (`REASONING`) windows; `--no-markdown` turns the default off (new windows start raw). Press `r` on an **unfolded** window to toggle between rendered and raw per window; the setting is independent per window and applies only when expanded — folded windows keep their raw one-line summary.
 
-When enabled, GFM-style tables (a `|`-delimited header row followed by a delimiter row of dashes) are re-rendered as aligned, padded columns — e.g. `| name | gender | age |` becomes `| name            | gender | age |`. Tables inside fenced code blocks are never transformed. Column alignment markers (`:---`, `---:`, `:---:`) are honored.
+When enabled, tables are re-rendered as a unicode grid — e.g. `| name | gender | age |` becomes a `│ name │ gender │ age │` block framed by `─`/`┌`/`┼` rules, with a rule between every pair of rows. Tables inside fenced code blocks are never transformed. Column alignment markers (`:---`, `---:`, `:---:`) are honored via cell padding (the rules themselves stay uniform).
 
-When a table is wider than the terminal, the widest columns are shrunk first and over-long cells are truncated with `…` so the table keeps its structure.
+Two limitations, both deliberate: **every row of the table must start with `|`** — GFM also allows omitting the leading/trailing pipe, but the streaming path detects table-touching deltas by that leading pipe, so the parser and that test have to relax together or tables would half-reflow (see `deltaHasPipeLine`). And because the column separator is now a box glyph, **content that itself contains `│` is visually ambiguous** — it reads as an extra column boundary even though the geometry stays correct. An escaped `\|` still renders as a literal `|`, which has the same effect one level down.
+
+When a table is wider than the terminal it is **never truncated**: columns are allocated by marginal benefit and an over-long cell hard-wraps across rows with the same primitive used for ordinary body text (`wrapContent`), so a record may occupy several terminal rows and the horizontal rules mark where each one ends. The frame is kept however cramped the columns become — a table never trades its border for tidiness. It gives way to a vertical record form (`Field  value` per line, records separated by a plain rule) only at the arithmetic limit where the frame cannot hold every column's widest unbreakable character: a column needs at least one cell, and one cell means one cell for a CJK ideograph, which is 2 columns wide and cannot be split. Concretely, the same 3-column table becomes a record list below 13 cells in ASCII and below 16 in Chinese (framing `3n+1` plus each column's irreducible width). There is no tunable threshold in this decision. There is no label column, so there is nothing to budget and no second variant of this form: a field shares one line as `Field  value` only when the whole field fits, and otherwise the label takes its own line with the value starting beneath it, indented. Breaking the text at an arbitrary character instead would chop the label and glue the value onto its tail, destroying the very boundary this form exists to make obvious. Indentation is chrome and is dropped entirely rather than let a line overflow.
 
 Streaming stays incremental: deltas without table rows append through the same O(delta) wrap path as raw mode (benchmarked at raw-mode speed with identical allocations), and only deltas that touch a table — a `|` line, or any delta while the content tail is still inside an open table — trigger a full re-render of that window (one per tick, cost O(window) only for table-bearing windows).
 
@@ -275,6 +277,12 @@ behaves.
 Width calculation is **Unicode-aware**:
 
 - ASCII / Latin characters occupy **1 cell**
+- Box-drawing and other East-Asian Ambiguous glyphs (`─ │ ├ ┼ ✓ ⠋ →`) occupy
+  **1 cell** — the app-wide assumption behind every width calculation: window
+  borders are literally `strings.Repeat("─", width)`, and the status dots,
+  spinners and table rules all charge one cell per glyph. A terminal forced
+  into double-width Ambiguous mode (e.g. `RUNEWIDTH_EASTASIAN=1`) breaks that
+  assumption for the whole UI, not just tables.
 - CJK characters (中文、日本語、한국어) occupy **2 cells**
 - Emoji occupy **2 cells** (grapheme clusters per Unicode UAX #29)
 - ANSI escape codes (colors, bold, etc.) occupy **0 cells**

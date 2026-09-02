@@ -31,7 +31,7 @@ type textRenderer struct {
 
 	// mdTailInTable reports whether the accumulated content ends inside a
 	// table block (last line starts with '|' and no closing blank/text
-	// line yet). While true, any delta may re-pad already-rendered table
+	// line yet). While true, any delta may re-flow already-rendered table
 	// rows, so the incremental path is unsafe. Only meaningful in mdMode.
 	mdTailInTable bool
 
@@ -67,10 +67,10 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	// Markdown mode: plain deltas — no '|'-prefixed line and the content
 	// tail not inside an open table — go through the incremental wrap
 	// path, exactly like raw mode. Anything that could form, extend, or
-	// re-pad a table (a '|'-prefixed line, or any delta while the tail is
-	// still inside a table) falls back to a full re-render: column widths
-	// are a whole-table property, so the incremental path cannot re-pad
-	// already-rendered rows.
+	// re-flow a table (a '|'-prefixed line, or any delta while the tail is
+	// still inside a table) falls back to a full re-render: column widths and
+	// cell wrap points are a whole-table property, so the incremental path
+	// cannot re-flow already-rendered rows.
 	if r.mdMode {
 		switch {
 		case r.mdTailInTable || deltaHasPipeLine(value):
@@ -261,7 +261,8 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		// lines are expanded per original line by the parser itself, so
 		// column widths match what the terminal will render; the padded
 		// output contains no tabs, leaving wrapVisualLines' expandTabs a
-		// no-op. Fitted to innerWidth so rows never mid-cell soft-wrap.
+		// no-op. Cells are wrapped by the transform itself, so no row ever
+		// exceeds innerWidth and the terminal never has to soft-wrap one.
 		content = renderMarkdownTables(content, innerWidth)
 	}
 	r.wrappedLines = wrapVisualLines(content, innerWidth)

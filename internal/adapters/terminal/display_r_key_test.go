@@ -39,8 +39,8 @@ func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 	display = display.updateContent()
 
 	before := display.scrollView.content
-	if !strings.Contains(before, "| name     | gender | age |") {
-		t.Fatalf("priming failed: expected markdown-padded header in 'before', got:\n%s", stripANSI(before))
+	if !strings.Contains(before, "│ name     │ gender │ age │") {
+		t.Fatalf("priming failed: expected the rendered grid header in 'before', got:\n%s", stripANSI(before))
 	}
 
 	// Press 'r' — should toggle markdown OFF (default is ON for AT) and
@@ -70,7 +70,7 @@ func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 	if back == after {
 		t.Fatal("second 'r' did NOT change scroll content")
 	}
-	if !strings.Contains(back, "| name     | gender | age |") {
-		t.Errorf("second 'r' should restore padded markdown, got:\n%s", stripANSI(back))
+	if !strings.Contains(back, "│ name     │ gender │ age │") {
+		t.Errorf("second 'r' should restore the rendered grid, got:\n%s", stripANSI(back))
 	}
 }

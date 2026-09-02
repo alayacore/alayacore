@@ -29,7 +29,8 @@ During streaming, every `AppendFromTLV` call on a `textRenderer`:
 2. In **markdown mode** (the default for AT/AR), plain deltas — no `|`
    line and content tail not inside an open table — take the same
    incremental path; deltas that touch a table invalidate the cache and
-   fall back to a full re-render (the table transform re-pads columns)
+   fall back to a full re-render (the table transform re-flows columns and
+   wraps cells, so column widths and wrap points are whole-table properties)
 3. Wraps the delta as **plain text** via `appendDeltaToLines` — streaming
    content deliberately carries no styling in normal mode (markdown
    table rendering is plain text too), so the incremental path has no
@@ -277,8 +278,41 @@ are plain, so this layered coloring stays out of the incremental path.
 
 Markdown mode (default for AT/AR) gates this path: deltas with a `|` line,
 or arriving while the content tail is inside an open table, invalidate the
-wrapped-line cache and trigger a full re-render — column widths are a
-whole-table property, so only the table transform needs the full content.
+wrapped-line cache and trigger a full re-render — column widths and cell wrap
+points are a whole-table property, so only the table transform needs the full
+content.
+
+Because cells now wrap instead of being truncated, a table-bearing window emits
+more visual rows, and its per-delta re-render is correspondingly more
+expensive than the old single-line-per-row transform. Measured on the 20-row
+benchmark (`-benchtime=200x`, best of 3):
+
+| Benchmark | Before | After | Change |
+|---|---|---|---|
+| `MarkdownStreaming_PlainDeltas` | 1195 allocs | 1195 allocs | **identical** |
+| `MarkdownStreaming_RawMode` | 1194 allocs | 1194 allocs | baseline for the row above |
+| `MarkdownStreaming_TableDeltas` | 17.0k allocs | 52.8k allocs | ~3x |
+| `RenderMarkdownTables_Large` | 2.0k allocs | 3.5k allocs | ~1.7x |
+
+**The allocation counts are the load-bearing claim; the timings are not
+quoted deliberately.** Repeated `-benchtime=200x -count=7` runs put these
+figures anywhere in a ±30% band (observed: `RawMode` 20.4–28.3μs, `TableDeltas`
+1.52–1.81ms, `Large` 0.27–0.36ms) — an earlier revision of this table quoted
+single-run microsecond figures and had to be "corrected" twice against pure
+noise. Ratios are stable, point estimates are not.
+
+What the allocations prove: markdown-mode streaming of non-table deltas costs
+**exactly** what raw mode costs, one alloc above the raw baseline — the same
+one-off as before this change, so the table path is provably entered by nothing
+but table-touching deltas. The table-bearing rows are up because a record can
+now span several visual lines and each column's grapheme widths are measured.
+
+The headline property still holds exactly: **plain-text streaming in markdown
+mode costs the same as raw mode** — the table path is only entered by deltas
+that actually touch a table. Even at the top of the observed band (1.8ms), a
+table re-render is under 1% of the 250ms tick budget, so tables re-rendering on
+every tick remain comfortably cheap.
+
 
 The old approach (before the `WindowRendering` interface refactoring) used the same
 optimization. It was accidentally dropped during the refactoring and restored in
