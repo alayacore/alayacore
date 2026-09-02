@@ -25,6 +25,12 @@ type modelConfig struct {
 	Reasoning0   json.RawMessage `json:"reasoning_0,omitempty" config:"reasoning_0,omitempty"` // Raw provider-level JSON merged into request body for reasoning level 0 (empty = no fields added)
 	Reasoning1   json.RawMessage `json:"reasoning_1,omitempty" config:"reasoning_1,omitempty"` // Raw provider-level JSON merged into request body for reasoning level 1 (empty = no fields added)
 	Reasoning2   json.RawMessage `json:"reasoning_2,omitempty" config:"reasoning_2,omitempty"` // Raw provider-level JSON merged into request body for reasoning level 2 (empty = no fields added)
+
+	// ReasoningField names the response delta key carrying reasoning text for
+	// this endpoint. Unlike reasoning_N (request body, per level) it has no
+	// level variants — a deployment picks one spelling regardless of effort.
+	// Empty means providers.DefaultReasoningField ("reasoning_content").
+	ReasoningField string `json:"reasoning_field,omitempty" config:"reasoning_field,omitempty"`
 }
 
 // ReasoningConfigs returns a map of reasoning level → raw provider JSON
@@ -67,17 +73,18 @@ func toModelInfos(models []modelConfig) []protocol.ModelInfo {
 	infos := make([]protocol.ModelInfo, len(models))
 	for i, m := range models {
 		infos[i] = protocol.ModelInfo{
-			ID:           m.ID,
-			Name:         m.Name,
-			ProtocolType: m.ProtocolType,
-			BaseURL:      m.BaseURL,
-			APIKey:       m.APIKey,
-			ModelName:    m.ModelName,
-			ContextLimit: m.ContextLimit,
-			MaxTokens:    m.MaxTokens,
-			Reasoning0:   m.Reasoning0,
-			Reasoning1:   m.Reasoning1,
-			Reasoning2:   m.Reasoning2,
+			ID:             m.ID,
+			Name:           m.Name,
+			ProtocolType:   m.ProtocolType,
+			BaseURL:        m.BaseURL,
+			APIKey:         m.APIKey,
+			ModelName:      m.ModelName,
+			ContextLimit:   m.ContextLimit,
+			MaxTokens:      m.MaxTokens,
+			Reasoning0:     m.Reasoning0,
+			Reasoning1:     m.Reasoning1,
+			Reasoning2:     m.Reasoning2,
+			ReasoningField: m.ReasoningField,
 		}
 	}
 	return infos

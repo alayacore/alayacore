@@ -595,3 +595,47 @@ func TestFormatThenParse_Reasoning(t *testing.T) {
 		}
 	}
 }
+
+// TestFormatThenParse_ReasoningField verifies the response-key setting
+// survives a format→parse cycle. Unlike reasoning_N it is a plain string, so
+// both the config tag (model.conf) and the json tag (:model_sync) have to be
+// right or the setting is silently lost and the provider falls back to the
+// default key.
+func TestFormatThenParse_ReasoningField(t *testing.T) {
+	original := []modelConfig{{
+		Name:           "vllm",
+		ProtocolType:   "openai",
+		BaseURL:        "http://127.0.0.1:8000/v1",
+		APIKey:         "k",
+		ModelName:      "deepseek-r1",
+		ReasoningField: "reasoning",
+	}}
+
+	parsed, errs := parseModelList(formatModelList(original), "model.conf")
+	if len(errs) != 0 {
+		t.Fatalf("expected 0 errors, got %d: %v", len(errs), errs)
+	}
+	if len(parsed) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(parsed))
+	}
+	if parsed[0].ReasoningField != "reasoning" {
+		t.Errorf("model.conf round-trip lost reasoning_field: got %q", parsed[0].ReasoningField)
+	}
+
+	synced, err := json.Marshal(parsed[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(synced), `"reasoning_field":"reasoning"`) {
+		t.Errorf(":model_sync payload missing reasoning_field: %s", synced)
+	}
+
+	// Omitted in model.conf → empty, which the provider maps to the default.
+	noField, errs := parseModelList("name: x\nprotocol_type: openai\n", "model.conf")
+	if len(errs) != 0 {
+		t.Fatalf("expected 0 errors, got %v", errs)
+	}
+	if noField[0].ReasoningField != "" {
+		t.Errorf("ReasoningField = %q, want empty when unset", noField[0].ReasoningField)
+	}
+}

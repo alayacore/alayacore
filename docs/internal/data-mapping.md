@@ -121,7 +121,7 @@ And on receive, both providers use the same pattern: accumulate content by `inde
 | Domain Type | OpenAI Wire | Anthropic Wire |
 |---|---|---|
 | `TextPart` | `content` (top-level field) | `content[]` array: `{type:"text", text:"..."}` |
-| `ReasoningPart` | `reasoning_content` (top-level field) | `content[]` array: `{type:"thinking", thinking:"..."}` |
+| `ReasoningPart` | Top-level key named by model.conf `reasoning_field` (same key on send and receive) — `reasoning_content` (default) or `reasoning` (vLLM) | `content[]` array: `{type:"thinking", thinking:"..."}` |
 | `ImagePart` | `content[]` array: `{type:"image_url", image_url:{url:"data:image/...;base64,..."}}` | `content[]` array: `{type:"image", source:{type:"base64", media_type:"image/jpeg", data:"..."}}` |
 | `AudioPart` | `content[]` array: `{type:"input_audio", input_audio:{data:"UklGRiQ...", format:"wav"}}` | ❌ No audio block exists → `{type:"text"}` placeholder (payload not echoed) |
 | `VideoPart` | `content[]` array: `{type:"video_url", video_url:{url:"data:video/...;base64,..."}, fps:2, media_resolution:"default"}` | ❌ No video block exists → `{type:"text"}` placeholder (payload not echoed) |
@@ -149,6 +149,14 @@ And on receive, both providers use the same pattern: accumulate content by `inde
 Chunk 1: {"choices":[{"delta":{"reasoning_content":"Let me think..."}}]}
 Chunk 2: {"choices":[{"delta":{"reasoning_content":" about this"}}]}
 ```
+
+> On a vLLM endpoint the same two chunks arrive as
+> `{"delta":{"reasoning":"Let me think..."}}` — vLLM renamed the key and no
+> longer emits `reasoning_content`. The key is therefore declared per
+> model.conf entry (`reasoning_field: "reasoning"`); unset means
+> `reasoning_content`, and a configured key is read exclusively. Replayed
+> reasoning is sent under that same key — one key per deployment, both
+> directions.
 
 **Anthropic wire:**
 ```
@@ -369,7 +377,7 @@ ToolInputPart{
 
 | Aspect | OpenAI | Anthropic |
 |---|---|---|
-| **Message structure** | Flat fields (`content`, `reasoning_content`, `tool_calls` at top level) | Content is always `[]anthropicContentBlock` array |
+| **Message structure** | Flat fields (`content`, `reasoning_content` or `reasoning`, `tool_calls` at top level) | Content is always `[]anthropicContentBlock` array |
 | **Tool result role** | `"tool"` | Remapped to `"user"` |
 | **Tool call args encoding** | Double-encoded JSON string (`json.Marshal(string(rawMsg))`) | Raw JSON object (`json.RawMessage` directly) |
 | **Empty reasoning when reasoning mode is on** | Sets `"reasoning_content": ""` (string pointer) | Prepends `{"type":"thinking","thinking":""}` to content array |
@@ -383,7 +391,7 @@ ToolInputPart{
 ```
 openAIStreamState {
 	textBuilder       strings.Builder                ← "content" delta chunks
-	reasoningBuilder  strings.Builder                ← "reasoning_content" delta chunks
+	reasoningBuilder  strings.Builder                ← delta chunks under the configured reasoning_field
 	toolAccumulators  map[int]*openAIToolAccumulator ← tool calls keyed by index
 }
 

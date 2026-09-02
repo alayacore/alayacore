@@ -615,7 +615,7 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 |------|--------------------------|----------------|
 | `version` | `message_version` (int), `core_version` (string) | `SM-message-version.bin` |
 | `model` | `active_id` (int), `active_name` (string), `context_limit` (int) | `SM-model.bin` |
-| `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int}`) | `SM-model-list.bin` |
+| `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.bin` |
 | `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string), `theme` (object, optional — full palette sent on startup, omitted on theme switch) | `SM-theme.bin` |
 | `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, selection, added, removed, tool, fold_arrow, unfold_arrow: string}}`) | `SM-theme-list.bin` |
 | `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.bin` |

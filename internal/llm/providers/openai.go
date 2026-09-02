@@ -12,11 +12,12 @@ package providers
 //    history, arguments must be marshaled to a JSON string (not raw JSON).
 //    See `openaiConvertToolInputs()`.
 //
-// 3. REASONING_CONTENT IN TOOL CALL CHAINS: Per DeepSeek's documentation,
-//    between two user messages all intermediate assistant reasoning_content
-//    must be passed back. When reasoning mode is enabled, reasoning_content
-//    is always set (even as empty string) on assistant messages so that
-//    messages containing only tool calls still satisfy this requirement.
+// 3. REASONING IN TOOL CALL CHAINS: Per DeepSeek's documentation, between two
+//    user messages all intermediate assistant reasoning must be passed back —
+//    under `reasoning_content` there, under `reasoning_field` on a vLLM-style
+//    endpoint (gotcha 7). When reasoning mode is enabled the key is always
+//    present on assistant messages (even as an empty string) so that messages
+//    containing only tool calls still satisfy this requirement.
 //    Conditional on reasoning mode to avoid wasting tokens. The logic lives
 //    in openaiConvertContents, not in the sub-converters.
 //
@@ -52,6 +53,39 @@ package providers
 //    URI or an empty string keeps its text label instead, because an
 //    unfetchable url fails the entire request — strictly worse than the missing
 //    media it would have stood for.
+//
+// 7. REASONING OUTPUT FIELD NAME IS NOT STANDARD: No candidate key is in the
+//    OpenAI schema — `ChatCompletionStreamResponseDelta` defines only
+//    content/role/tool_calls/function_call, so every server that ships
+//    reasoning invented one. DeepSeek named it `reasoning_content` (GLM,
+//    MiniMax, Qwen and most compatible endpoints copy that); vLLM renamed it to
+//    `reasoning` and stopped emitting the old name; OpenRouter serves
+//    `reasoning` with `reasoning_content` as a documented alias, plus a
+//    structured `reasoning_details` array.
+//
+//    Which name a deployment uses is a property of the serving stack, not of
+//    the model — the same deepseek weights answer differently on
+//    api.deepseek.com and on a self-hosted vLLM. model.conf therefore declares
+//    it per entry (`reasoning_field`) instead of the reader guessing: a guess
+//    has no sound tie-break when a server populates two names at once, and a
+//    hardcoded candidate list only grows by shipping a new binary.
+//
+//    Unset means providers.DefaultReasoningField (`reasoning_content`). A
+//    configured name is used and ONLY that one — reasoning is not then read
+//    from any other spelling, so a wrong value shows up as empty reasoning.
+//    A non-string value under that key (a `reasoning_details` array) is
+//    ignored for the same reason: extracting it needs type-aware parsing, not
+//    a different name.
+//
+//    The same key is used in BOTH directions: reasoning replayed in a
+//    tool-call chain (gotcha 3) goes out under `reasoning_field` too, because
+//    an endpoint speaks one vocabulary for one concept. Sending `reasoning` to
+//    a vLLM server is its canonical input path (its ChatMessage field), and
+//    the default keeps `reasoning_content` for the DeepSeek family, which
+//    requires that spelling — so no second knob is needed. openAIMessage.
+//    MarshalJSON performs the redirect; when the key equals the default the
+//    struct tag path is taken untouched, so ordinary requests marshal exactly
+//    as before.
 
 import (
 	"bufio"
@@ -83,6 +117,42 @@ type openAIMessage struct {
 	ReasoningContent *string          `json:"reasoning_content,omitempty"`
 	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string           `json:"tool_call_id,omitempty"`
+
+	// reasoningKey redirects the ReasoningContent key on the wire (gotcha 7).
+	// A deployment that names its reasoning field `reasoning` expects the
+	// replayed value back under that same name — one endpoint, one vocabulary.
+	// Empty keeps the `reasoning_content` struct tag, so the default path
+	// marshals byte-for-byte as before.
+	reasoningKey string
+}
+
+// MarshalJSON moves the replayed reasoning text to the configured key.
+func (m openAIMessage) MarshalJSON() ([]byte, error) {
+	type plain openAIMessage // same fields, no MarshalJSON — breaks the recursion
+	if m.reasoningKey == "" || m.reasoningKey == "reasoning_content" {
+		return json.Marshal(plain(m))
+	}
+	reasoning := m.ReasoningContent
+	out := m
+	out.ReasoningContent = nil // suppress the struct-tag key
+	out.reasoningKey = ""      // unexported: never serialized anyway
+	raw, err := json.Marshal(plain(out))
+	if err != nil {
+		return nil, err
+	}
+	if reasoning == nil {
+		return raw, nil
+	}
+	var obj map[string]json.RawMessage
+	if err = json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	var value json.RawMessage
+	if value, err = json.Marshal(reasoning); err != nil {
+		return nil, err
+	}
+	obj[m.reasoningKey] = value
+	return json.Marshal(obj)
 }
 
 type openAIToolCall struct {
@@ -109,10 +179,60 @@ type openAIToolFunc struct {
 }
 
 // openAIDelta represents the delta content from a streaming chunk.
+//
+// Only content and tool_calls are addressed by struct field. Reasoning is not:
+// its wire key is not part of the OpenAI schema and varies by server (gotcha 7),
+// so it is looked up by the name the user gave in model.conf `reasoning_field`.
+// Read it through reasoningText — never by guessing a key here.
 type openAIDelta struct {
-	Content          string           `json:"content"`
-	ReasoningContent string           `json:"reasoning_content"`
-	ToolCalls        []openAIToolCall `json:"tool_calls"`
+	Content   string           `json:"content"`
+	ToolCalls []openAIToolCall `json:"tool_calls"`
+
+	// other holds every key of the delta object except content and
+	// tool_calls, still raw, so a lookup can tell "absent" from "present but
+	// not a string".
+	other map[string]json.RawMessage
+}
+
+// UnmarshalJSON reads content/tool_calls typed and keeps the rest raw.
+func (d *openAIDelta) UnmarshalJSON(data []byte) error {
+	var typed struct {
+		Content   string           `json:"content"`
+		ToolCalls []openAIToolCall `json:"tool_calls"`
+	}
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	delete(raw, "content")
+	delete(raw, "tool_calls")
+	d.Content = typed.Content
+	d.ToolCalls = typed.ToolCalls
+	d.other = raw
+	return nil
+}
+
+// reasoningText returns this chunk's reasoning fragment, read from the key
+// named by field.
+//
+// It returns "" when the key is absent or when its value is not a JSON string.
+// The latter matters: some servers carry a same-named structured value
+// (OpenRouter's `reasoning_details` is an array of typed blocks), and pulling
+// text out of that shape needs type-aware parsing, not a name — so ignoring
+// it beats guessing.
+func (d openAIDelta) reasoningText(field string) string {
+	raw, ok := d.other[field]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	return s
 }
 
 // ============================================================================
@@ -167,7 +287,7 @@ func (p *OpenAIProvider) StreamMessages(
 	if extraSystemPrompt != "" {
 		apiMessages = append(apiMessages, openAIMessage{Role: "system", Content: extraSystemPrompt})
 	}
-	apiMessages = append(apiMessages, openaiConvertContents(contents, p.reasoningLevel, p.videoFPS, p.videoRes)...)
+	apiMessages = append(apiMessages, openaiConvertContents(contents, p.reasoningLevel, p.videoFPS, p.videoRes, p.reasoningField)...)
 
 	// Convert tools to OpenAI format
 	apiTools := make([]openAITool, 0, len(tools))
@@ -568,9 +688,9 @@ func (p *OpenAIProvider) checkFinishReason(reason string) (bool, error) {
 
 // handleDelta processes the delta content from a streaming chunk.
 func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEvent, error) bool, state *openAIStreamState) bool {
-	if delta.ReasoningContent != "" {
-		state.addReasoningDelta(delta.ReasoningContent)
-		if !yield(llm.ReasoningDeltaEvent{Delta: delta.ReasoningContent, Index: 0}, nil) {
+	if reasoning := delta.reasoningText(p.reasoningField); reasoning != "" {
+		state.addReasoningDelta(reasoning)
+		if !yield(llm.ReasoningDeltaEvent{Delta: reasoning, Index: 0}, nil) {
 			return false
 		}
 	}
@@ -616,7 +736,9 @@ func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEve
 
 // openaiConvertContents converts domain ContentParts to OpenAI wire format.
 // It groups consecutive same-role ContentParts into API messages.
-func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, videoFPS int, videoRes int) []openAIMessage {
+// reasoningKey names the wire key for replayed reasoning text (gotcha 7);
+// empty means the reasoning_content default.
+func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, videoFPS int, videoRes int, reasoningKey string) []openAIMessage {
 	chunks := llm.GroupByRole(contents)
 	if len(chunks) == 0 {
 		return nil
@@ -641,6 +763,7 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, video
 		}
 
 		if role == llm.RoleAssistant {
+			apiMsg.reasoningKey = reasoningKey
 			reasoningText := openaiExtractReasoning(chunk)
 			if reasoningText != "" || reasoningLevel > config.ReasoningLevelOff {
 				apiMsg.ReasoningContent = &reasoningText

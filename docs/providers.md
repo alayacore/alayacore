@@ -148,7 +148,7 @@ After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`
 
 `unquoteToolArg` handles three shapes: a JSON-string-encoded fragment (`"{\"path\":...}"` → the inner text, the standard OpenAI form), a raw JSON fragment (`{"path":...}` → passed through as-is, used by some compatible providers), and `null` (→ empty string). See `openAIStreamState.appendToolCallArgs()`.
 
-## Reasoning mode and reasoning_content
+## Reasoning mode and reasoning fields
 
 When reasoning mode is set via `:reason [0|1|2]` (or at startup via `--reasoning-level <0|1|2>`), the provider looks up `reasoning_<level>` from the active model in `model.conf` and **merges that JSON verbatim into the request body**. Top-level keys in the JSON become top-level keys of the request.
 
@@ -173,7 +173,7 @@ Reasoning level itself (`0`/`1`/`2`) drives:
 | OpenAI / DeepSeek | `{"thinking":{"type":"enabled"},"reasoning_effort":"high"}` | `{"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}` |
 | Any OpenAI-compatible | the keys documented by that provider | the keys documented by that provider |
 
-> **Note:** The OpenAI-compatible thinking/reasoning parameters (`thinking`, `reasoning_effort`, `reasoning_content`) are not part of the official OpenAI API standard. They originate from [DeepSeek's thinking mode documentation](https://api-docs.deepseek.com/guides/thinking_mode) and are supported by **DeepSeek**, **GLM**, and **MiniMax**. Other providers silently ignore unknown fields — so a custom `reasoning_*` block for one provider is no harm to another.
+> **Note:** The OpenAI-compatible thinking/reasoning parameters (`thinking`, `reasoning_effort`, `reasoning_content`) are not part of the official OpenAI API standard. They originate from [DeepSeek's thinking mode documentation](https://api-docs.deepseek.com/guides/thinking_mode) and are supported by **DeepSeek**, **GLM**, and **MiniMax**. Other providers silently ignore unknown fields — so a custom `reasoning_*` block for one provider is no harm to another. The response side is no more standard than this: the key carrying reasoning text is configurable (`reasoning_field`) — see below.
 
 ### OpenAI-compatible — request examples
 
@@ -282,11 +282,64 @@ With `reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max
 }
 ```
 
+### Sending reasoning back in tool-call chains
+
 Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. Per [DeepSeek's documentation](https://api-docs.deepseek.com/guides/thinking_mode):
 
 > Between two user messages, if the model performed a tool call, the intermediate assistant's `reasoning_content` must participate in the context concatenation and must be passed back to the API in all subsequent user interaction turns.
 
-This means **all** intermediate assistant messages in a multi-turn tool call chain must include their `reasoning_content`. Dropping it causes a 400 error from providers that require it.
+This means **all** intermediate assistant messages in a multi-turn tool call chain must include their reasoning text. Dropping it causes a 400 error from providers that require it. The key that text travels under is the one declared by `reasoning_field` — `reasoning_content` by default, which is the spelling DeepSeek itself expects.
+
+### Which key carries reasoning (`reasoning_field`)
+
+No key for reasoning exists in OpenAI's `ChatCompletionStreamResponseDelta`
+schema (only `content`, `role`, `tool_calls`, `function_call`) — every server
+that ships reasoning invented one, and the invented names differ:
+
+| Key | Served by |
+|---|---|
+| `reasoning_content` | DeepSeek (originator), GLM, MiniMax, Qwen/DashScope — **the default here** |
+| `reasoning` | vLLM (renamed from `reasoning_content`, old name no longer emitted), OpenRouter (`reasoning_content` is a documented alias of it) |
+| `reasoning_details` | OpenRouter — an **array** of typed blocks (`reasoning.summary` / `reasoning.text` / `reasoning.encrypted`), not a string |
+
+The key is **per model.conf entry**, because it is a property of the serving
+stack, not of the model: the same deepseek weights answer as
+`reasoning_content` on `api.deepseek.com` and as `reasoning` on a self-hosted
+vLLM. Declare it explicitly:
+
+```yaml
+name: "172.16.9.6:9999 / Local LLM (OpenAI)"
+protocol_type: "openai"
+base_url: "http://172.16.9.6:9999/v1"
+reasoning_field: "reasoning"
+```
+
+Rules:
+
+- **Omitted → `reasoning_content`.** Existing configs are unaffected.
+- **A configured key is used exclusively.** Nothing is read from any other
+  spelling, so a wrong value reads as empty reasoning — see below.
+- **A non-string value under the key is ignored.** Pointing
+  `reasoning_field` at `reasoning_details` yields no reasoning rather than
+  garbage; extracting those blocks needs type-aware parsing, not a name.
+- **One field, both directions.** Replayed reasoning in a tool-call chain goes
+  out under `reasoning_field` too. A deployment has one vocabulary for one
+  concept, so declaring "this endpoint calls it `reasoning`" must not make
+  alayacore answer with `reasoning_content`; and `reasoning` is vLLM's own
+  canonical input field (`ChatMessage.reasoning`), so the symmetric choice is
+  also the non-translated one. There is no separate send-side knob.
+  Pinned by `TestOpenAIReasoningFieldAppliesToSendSide` and
+  `TestOpenAIReasoningFieldGovernsEmptyPadding`.
+
+Why the key is configured rather than auto-detected: a guess has no sound
+tie-break once a server populates two names at once (OpenRouter does, as
+aliases), and a hardcoded candidate list only grows by shipping a new binary —
+whereas the model.conf entry already knows which stack it points at.
+
+**The failure mode to watch for:** reasoning disappearing with no error. A
+wrong or missing `reasoning_field` produces exactly that — the `REASONING`
+window never appears, text streams normally, nothing logs. Check this setting
+before suspecting `:reason` itself. See `TestOpenAIReasoningField`.
 
 ### Empty reasoning block padding — implementation
 
@@ -294,7 +347,7 @@ Both providers pad assistant messages with an empty reasoning value — but **on
 
 This behavior is independent of the `reasoning_*` JSON blocks — it is a hardcoded message-layer convention that DeepSeek and similar providers require. Configuring `reasoning_0: {"thinking":{"type":"disabled"}}` does NOT turn off empty padding; the padding is gated solely on the reasoning level being > 0.
 
-- **Anthropic provider** (`anthropicConvertMessages`): prepends an empty `{"type":"thinking","thinking":""}` block to every assistant message that lacks one. The thinking block must come first per Anthropic's API.
-- **OpenAI provider** (`openaiConvertMessages`): extracts reasoning text via `openaiExtractReasoning()` and sets `reasoning_content` on every assistant message — even as empty string when no reasoning text exists.
+- **Anthropic provider** (`anthropicConvertContents`): prepends an empty `{"type":"thinking","thinking":""}` block to every assistant message that lacks one. The thinking block must come first per Anthropic's API.
+- **OpenAI provider** (`openaiConvertContents`): extracts reasoning text via `openaiExtractReasoning()` and sets the reasoning key — `reasoning_field`, default `reasoning_content` (`openAIMessage.MarshalJSON` performs the redirect) — on every assistant message, even as an empty string when no reasoning text exists.
 
 Both are conditional on reasoning mode being enabled. When reasoning mode is off, no padding is added.

@@ -7,7 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/config"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/llm/providers"
@@ -1293,6 +1296,330 @@ func TestOpenAIWithReasoning(t *testing.T) {
 	} else if tp.Text != "Result: 123." {
 		t.Errorf("Text mismatch: %s", tp.Text)
 	}
+}
+
+// TestOpenAIReasoningField covers where reasoning text is read from: the
+// delta key named by model.conf `reasoning_field` (BaseConfig.ReasoningField).
+//
+// That key is not part of the OpenAI schema — ChatCompletionStreamResponseDelta
+// defines only content/role/tool_calls/function_call — so every server that
+// ships reasoning invented one: DeepSeek uses reasoning_content (GLM, MiniMax
+// and Qwen-family copy it), vLLM renamed it to reasoning and no longer emits
+// the old name, OpenRouter serves reasoning with reasoning_content as a
+// documented alias. Which name a deployment answers with is declared per
+// model.conf entry instead of guessed: a guess has no sound tie-break once two
+// names are populated at once, and a hardcoded candidate list only grows by
+// shipping a new binary.
+//
+// Unset means providers.DefaultReasoningField (reasoning_content), so existing
+// configs keep working unchanged. A configured name is used exclusively.
+func TestOpenAIReasoningField(t *testing.T) {
+	tests := []struct {
+		name          string
+		field         string   // BaseConfig.ReasoningField ("" = unset)
+		deltas        []string // one raw delta object per SSE chunk
+		wantReasoning string
+		wantText      string
+	}{
+		{
+			name:          "unset reads reasoning_content (default)",
+			field:         "",
+			deltas:        []string{`{"reasoning_content":"Analyzing..."}`, `{"reasoning_content":" done"}`, `{"content":"Answer."}`},
+			wantReasoning: "Analyzing... done",
+			wantText:      "Answer.",
+		},
+		{
+			// The pre-rename vLLM failure mode, now explicit: the default
+			// does not chase vLLM's spelling, so a vLLM endpoint needs
+			// reasoning_field: "reasoning".
+			name:          "unset does not read reasoning (vLLM needs config)",
+			field:         "",
+			deltas:        []string{`{"reasoning":"Analyzing..."}`, `{"content":"Answer."}`},
+			wantReasoning: "",
+			wantText:      "Answer.",
+		},
+		{
+			name:          "reasoning_field: reasoning reads vLLM",
+			field:         "reasoning",
+			deltas:        []string{`{"reasoning":"Analyzing..."}`, `{"reasoning":" done"}`, `{"content":"Answer."}`},
+			wantReasoning: "Analyzing... done",
+			wantText:      "Answer.",
+		},
+		{
+			name:          "explicit name is exclusive, alias ignored",
+			field:         "reasoning",
+			deltas:        []string{`{"reasoning":"from-reasoning","reasoning_content":"from-reasoning_content"}`},
+			wantReasoning: "from-reasoning",
+		},
+		{
+			name:          "configured name absent yields no reasoning event",
+			field:         "reasoning",
+			deltas:        []string{`{"reasoning_content":"wrong endpoint config"}`, `{"content":"Answer."}`},
+			wantReasoning: "",
+			wantText:      "Answer.",
+		},
+		{
+			// OpenRouter's reasoning_details is an array of typed blocks
+			// (reasoning.summary / .text / .encrypted). Reading it needs
+			// type-aware parsing; a name must not turn it into garbage.
+			name:          "structured value under the key is ignored",
+			field:         "reasoning_details",
+			deltas:        []string{`{"reasoning_details":[{"type":"reasoning.text","text":"thinking"}]}`, `{"content":"Answer."}`},
+			wantReasoning: "",
+			wantText:      "Answer.",
+		},
+		{
+			name:          "reasoning and text alternating",
+			field:         "reasoning",
+			deltas:        []string{`{"reasoning":"t1"}`, `{"content":"x1"}`, `{"reasoning":"t2"}`, `{"content":"x2"}`},
+			wantReasoning: "t1t2",
+			wantText:      "x1x2",
+		},
+		{
+			// content and tool_calls are stripped from the raw key set, so
+			// a mis-set name cannot redirect the answer into reasoning.
+			name:          "reasoning_field: content cannot steal answer text",
+			field:         "content",
+			deltas:        []string{`{"content":"Answer."}`},
+			wantReasoning: "",
+			wantText:      "Answer.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newMockSSEServer(t, func(w io.Writer) {
+				for _, d := range tt.deltas {
+					fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":%s}]}\n\n", d)
+				}
+				fmt.Fprint(w, "data: [DONE]\n\n")
+			})
+
+			provider, err := providers.NewOpenAI(providers.BaseConfig{
+				APIKey:         "test",
+				BaseURL:        server.URL,
+				ReasoningField: tt.field,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			events, err := provider.StreamMessages(context.Background(),
+				testMsg(llm.RoleUser, &llm.TextPart{Text: "Calculate"}), nil, "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var gotReasoning, gotText, gotReasoningComplete string
+			var emptyReasoningDeltas int
+			var stepComplete *llm.StepCompleteEvent
+
+			for event := range events {
+				switch e := event.(type) {
+				case llm.ReasoningDeltaEvent:
+					gotReasoning += e.Delta
+					if e.Delta == "" {
+						emptyReasoningDeltas++
+					}
+				case llm.TextDeltaEvent:
+					gotText += e.Delta
+				case llm.ReasoningCompleteEvent:
+					gotReasoningComplete = e.Text
+				case llm.StepCompleteEvent:
+					stepComplete = &e
+				}
+			}
+
+			if gotReasoning != tt.wantReasoning {
+				t.Errorf("streamed reasoning = %q, want %q", gotReasoning, tt.wantReasoning)
+			}
+			if gotText != tt.wantText {
+				t.Errorf("streamed text = %q, want %q", gotText, tt.wantText)
+			}
+			if emptyReasoningDeltas > 0 {
+				t.Errorf("got %d empty reasoning delta events, want 0", emptyReasoningDeltas)
+			}
+
+			// The complete event backs the authoritative AR frame.
+			if tt.wantReasoning == "" {
+				if gotReasoningComplete != "" {
+					t.Errorf("ReasoningCompleteEvent = %q, want none", gotReasoningComplete)
+				}
+			} else if gotReasoningComplete != tt.wantReasoning {
+				t.Errorf("ReasoningCompleteEvent = %q, want %q", gotReasoningComplete, tt.wantReasoning)
+			}
+
+			if stepComplete == nil {
+				t.Fatal("expected StepCompleteEvent")
+			}
+			var parts []string
+			for _, p := range stepComplete.Contents {
+				switch cp := p.(type) {
+				case *llm.ReasoningPart:
+					parts = append(parts, "reasoning:"+cp.Text)
+				case *llm.TextPart:
+					parts = append(parts, "text:"+cp.Text)
+				}
+			}
+			// Raw step content always carries both slots — reasoning is block 0,
+			// text block 1 — even when one is empty, so delta indices match
+			// content array positions (gotcha 5). The agent strips the empty
+			// placeholder after assigning history IDs, not the provider.
+			wantParts := []string{"reasoning:" + tt.wantReasoning, "text:" + tt.wantText}
+			if !reflect.DeepEqual(parts, wantParts) {
+				t.Errorf("content parts = %q, want %q", parts, wantParts)
+			}
+		})
+	}
+}
+
+// TestOpenAIReasoningFieldAppliesToSendSide pins the symmetry of
+// reasoning_field: which key a deployment uses for reasoning is one property of
+// that deployment, so it governs where reasoning is READ from and, in a
+// tool-call chain, the key replayed reasoning is SENT under (gotchas 3 and 7).
+// An asymmetric reading of the setting would mean telling alayacore "this
+// endpoint calls it reasoning" and having it answer with reasoning_content.
+func TestOpenAIReasoningFieldAppliesToSendSide(t *testing.T) {
+	tests := []struct {
+		name        string
+		field       string // BaseConfig.ReasoningField ("" = default)
+		wantSentKey string
+	}{
+		{name: "unset sends reasoning_content", field: "", wantSentKey: "reasoning_content"},
+		{name: "explicit default sends reasoning_content", field: "reasoning_content", wantSentKey: "reasoning_content"},
+		{name: "vLLM-style setting sends reasoning", field: "reasoning", wantSentKey: "reasoning"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requestBody map[string]any
+			server := newReasoningCaptureServer(t, &requestBody,
+				"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+					"data: [DONE]\n\n",
+			)
+
+			provider, err := providers.NewOpenAI(providers.BaseConfig{
+				APIKey:         "test-key",
+				BaseURL:        server.URL,
+				ReasoningField: tt.field,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider.SetReasoningLevel(config.ReasoningLevelNormal)
+
+			// A prior assistant turn that reasoned, then a fresh user turn.
+			messages := append(
+				testMsg(llm.RoleAssistant,
+					&llm.ReasoningPart{Text: "I thought about it"},
+					&llm.TextPart{Text: "earlier answer"}),
+				testMsg(llm.RoleUser, &llm.TextPart{Text: "and now?"})...,
+			)
+
+			events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range events {
+			}
+
+			assistant := findAssistantMessage(t, requestBody)
+			if got := assistant[tt.wantSentKey]; got != "I thought about it" {
+				t.Errorf("sent %s = %v, want %q (whole message: %v)", tt.wantSentKey, got, "I thought about it", assistant)
+			}
+
+			// The other spelling must be gone, not left alongside: a strict
+			// server rejects the unknown key, and a lenient one would be fed a
+			// name we were told not to use.
+			other := "reasoning"
+			if tt.wantSentKey == "reasoning" {
+				other = "reasoning_content"
+			}
+			if _, present := assistant[other]; present {
+				t.Errorf("key %q must not be sent when reasoning_field is %q: %v", other, tt.wantSentKey, assistant)
+			}
+		})
+	}
+}
+
+// TestOpenAIReasoningFieldGovernsEmptyPadding covers the replay requirement
+// for a tool-call-only assistant turn: with reasoning mode on, the key is sent
+// even when there is no reasoning text, and that placeholder has to land under
+// the configured key too — padding under a name the endpoint does not use
+// satisfies nothing.
+func TestOpenAIReasoningFieldGovernsEmptyPadding(t *testing.T) {
+	var requestBody map[string]any
+	server := newReasoningCaptureServer(t, &requestBody,
+		"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+			"data: [DONE]\n\n",
+	)
+
+	provider, err := providers.NewOpenAI(providers.BaseConfig{
+		APIKey:         "test-key",
+		BaseURL:        server.URL,
+		ReasoningField: "reasoning",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.SetReasoningLevel(config.ReasoningLevelNormal)
+
+	// Assistant turn with a tool call and no reasoning text, then its result.
+	messages := append(
+		append(
+			testMsg(llm.RoleAssistant, &llm.ToolInputPart{
+				ID:    "call_1",
+				Name:  "read_file",
+				Input: json.RawMessage(`{"path":"go.mod"}`),
+			}),
+			testMsg(llm.RoleTool, &llm.ToolOutputPart{
+				ID:     "call_1",
+				Output: []llm.ContentPart{&llm.TextPart{Text: "module github.com/alayacore/alayacore"}},
+			})...,
+		),
+		testMsg(llm.RoleUser, &llm.TextPart{Text: "next"})...,
+	)
+
+	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
+	}
+
+	assistant := findAssistantMessage(t, requestBody)
+	v, present := assistant["reasoning"]
+	if !present {
+		t.Fatalf("empty padding missing under configured key: %v", assistant)
+	}
+	if v != "" {
+		t.Errorf("padding = %v, want empty string", v)
+	}
+	if _, stale := assistant["reasoning_content"]; stale {
+		t.Errorf("padding must not use the default key when reasoning_field is set: %v", assistant)
+	}
+}
+
+// findAssistantMessage returns the first assistant message of a captured
+// request body as a map, so key-level assertions work regardless of which
+// reasoning spelling is in effect.
+func findAssistantMessage(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+	msgs, ok := body["messages"].([]any)
+	if !ok {
+		t.Fatalf("messages missing or wrong type: %T", body["messages"])
+	}
+	for _, m := range msgs {
+		mm, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		if mm["role"] == "assistant" {
+			return mm
+		}
+	}
+	t.Fatalf("no assistant message in %v", msgs)
+	return nil
 }
 
 func TestOpenAITextWithToolCallsConversion(t *testing.T) {

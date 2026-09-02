@@ -67,6 +67,7 @@ reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}
 | `reasoning_0` | No | Raw provider-level JSON merged into the request body when reasoning level is **0** (off). Top-level keys must match the provider's wire format. Omitted (or empty) → no reasoning-related fields are sent for that level. |
 | `reasoning_1` | No | Same as `reasoning_0` but for reasoning level **1** (normal). |
 | `reasoning_2` | No | Same as `reasoning_0` but for reasoning level **2** (max). |
+| `reasoning_field` | No | **OpenAI-protocol only.** Which key this endpoint uses for reasoning text — read from responses and used again when replaying reasoning. Omitted (or empty) → `reasoning_content`. See below. |
 
 ### Reasoning configuration (`reasoning_0` / `reasoning_1` / `reasoning_2`)
 
@@ -93,6 +94,47 @@ Reasoning level is independent of provider configuration. The level
 `--reasoning-level <level>` at startup, and is also persisted in the
 session file. Switching levels picks a different `reasoning_*` block at
 request time.
+
+### Reasoning response key (`reasoning_field`)
+
+`reasoning_0/1/2` decide which thinking fields go into the request body; this
+decides **which key reasoning text travels under** — in the response alayacore
+reads and in the assistant messages it replays. It needs declaring at all
+because that key is not standardized either: OpenAI's `ChatCompletionStreamResponseDelta` schema has
+only `content`, `role`, `tool_calls` and `function_call`; every server that
+ships reasoning invented a key for it:
+
+| Value | Served by |
+|---|---|
+| `reasoning_content` (default) | DeepSeek (originator), GLM, MiniMax, Qwen/DashScope |
+| `reasoning` | vLLM (renamed from `reasoning_content`, old name no longer emitted), OpenRouter |
+
+```yaml
+name: "Local LLM / vLLM"
+protocol_type: "openai"
+base_url: "http://127.0.0.1:8000/v1"
+reasoning_field: "reasoning"
+```
+
+Notes:
+
+- **The key belongs to the deployment, not the model.** The same deepseek
+  weights answer with `reasoning_content` on the DeepSeek API and `reasoning`
+  on a self-hosted vLLM, so declare it per entry (each entry already carries
+  its own `base_url`).
+- **A configured value is used exclusively** — nothing is read from any other
+  spelling. A wrong value therefore shows up as *reasoning silently missing*,
+  with text streaming normally and no error; check this field first when the
+  `REASONING` window never appears.
+- **One field covers both directions.** Replayed reasoning in a tool-call
+  chain is sent under the same key: unset keeps `reasoning_content` (what the
+  DeepSeek family requires), `reasoning_field: "reasoning"` sends `reasoning`
+  (vLLM's canonical input field).
+- **Non-string values are ignored.** OpenRouter's `reasoning_details` is an
+  array of typed blocks; reading those needs type-aware parsing, not a name, so
+  pointing this field at it yields no reasoning rather than garbage.
+- No `protocol_type: anthropic` equivalent is needed: thinking arrives as a
+  `{"type":"thinking"}` block inside `content[]`, which is standard for that API.
 
 ### Multiple Models
 
@@ -138,6 +180,8 @@ Rejected models are skipped — they won't appear in the model selector. Errors 
 If two or more models share the same `name`, the first occurrence is kept and subsequent duplicates are **rejected** with an error message. This prevents ambiguity in model selection.
 
 If a field value has the wrong type (e.g. `context_limit: abc`), an error is printed but the model is still loaded with the zero value for that field.
+
+`reasoning_field` and the contents of `reasoning_0/1/2` are **not** checked against the server. They name wire-format keys, and a name is only right or wrong relative to what a given deployment emits — alayacore has no way to know, and guessing would override a deliberate declaration. A mismatch therefore loads fine and reads as empty reasoning: the `REASONING` window never appears, text streams normally, nothing logs. When reasoning seems broken on an OpenAI-protocol model, compare this field against what the endpoint actually returns.
 
 Comments (`#`) are **line-level**: a comment line may appear anywhere inside a model block — including the first line — and the rest of the block is still parsed. A block containing only comments or blank lines is skipped entirely.
 

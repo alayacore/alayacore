@@ -275,5 +275,6 @@ func createProviderFromConfig(modelCfg *modelConfig, debugDir, proxyURL string) 
 		HTTPClient:       client,
 		MaxTokens:        modelCfg.MaxTokens,
 		ReasoningConfigs: modelCfg.ReasoningConfigs(),
+		ReasoningField:   modelCfg.ReasoningField,
 	})
 }

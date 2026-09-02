@@ -6,14 +6,18 @@ package providers
 // 1. DUAL SYSTEM PROMPT: --system flag appends extra system prompt rather than
 //    replacing default. Both prompts become separate system messages.
 //
-// 2. EMPTY THINKING BLOCK PADDING: Per DeepSeek's documentation, between two
-//    user messages all intermediate assistant reasoning_content must be passed
-//    back. When reasoning mode is enabled, an empty "thinking" block is
+// 2. EMPTY THINKING BLOCK PADDING: The replay requirement comes from DeepSeek's
+//    docs, where the field is OpenAI-side `reasoning_content`; on this wire the
+//    same content is a `thinking` block, so the requirement shows up as: between
+//    two user messages all intermediate assistant thinking must be passed back.
+//    When reasoning mode is enabled, an empty "thinking" block is
 //    prepended to every assistant message that lacks one, so that assistant
 //    messages containing only tool calls still satisfy this requirement.
 //    The thinking block must come first per Anthropic's API.
 //    Conditional on reasoning mode to avoid wasting tokens when thinking is off.
-//    See docs/architecture.md → "Empty thinking block padding".
+//    See docs/providers.md → "Empty reasoning block padding — implementation".
+//    Unlike the OpenAI provider, nothing here is configurable: this wire has one
+//    shape (gotcha 7 in openai.go covers the OpenAI-side naming).
 //
 // 3. AUDIO/VIDEO DEGRADATION: The Messages API defines content blocks for image
 //    and document, but none for audio or video — and an unknown block type

@@ -82,17 +82,18 @@ func WriteSystemMsg(w io.Writer, msg SystemMsg) error {
 // 2=max). They are user-controlled because each provider family has its
 // own thinking/effort vocabulary.
 type ModelInfo struct {
-	ID           int             `json:"id"`
-	Name         string          `json:"name"`
-	ProtocolType string          `json:"protocol_type"`
-	BaseURL      string          `json:"base_url"`
-	APIKey       string          `json:"api_key"`
-	ModelName    string          `json:"model_name"`
-	ContextLimit int             `json:"context_limit"`
-	MaxTokens    int             `json:"max_tokens"`
-	Reasoning0   json.RawMessage `json:"reasoning_0,omitempty"`
-	Reasoning1   json.RawMessage `json:"reasoning_1,omitempty"`
-	Reasoning2   json.RawMessage `json:"reasoning_2,omitempty"`
+	ID             int             `json:"id"`
+	Name           string          `json:"name"`
+	ProtocolType   string          `json:"protocol_type"`
+	BaseURL        string          `json:"base_url"`
+	APIKey         string          `json:"api_key"`
+	ModelName      string          `json:"model_name"`
+	ContextLimit   int             `json:"context_limit"`
+	MaxTokens      int             `json:"max_tokens"`
+	Reasoning0     json.RawMessage `json:"reasoning_0,omitempty"`
+	Reasoning1     json.RawMessage `json:"reasoning_1,omitempty"`
+	Reasoning2     json.RawMessage `json:"reasoning_2,omitempty"`
+	ReasoningField string          `json:"reasoning_field,omitempty"`
 }
 
 // ToolInputData is the JSON payload for TagAssistantF (AF).

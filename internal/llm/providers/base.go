@@ -40,7 +40,20 @@ type BaseConfig struct {
 	// 1=normal, 2=max). Nil/empty entries mean "no fields added for this
 	// level" so providers can short-circuit when nothing is configured.
 	ReasoningConfigs map[int]json.RawMessage
+
+	// ReasoningField names the key this endpoint uses for reasoning text
+	// (model.conf `reasoning_field`) — for the delta it is read from AND for
+	// the replayed assistant messages it is sent under. One endpoint, one
+	// vocabulary; the two directions are never configured separately.
+	// Empty means DefaultReasoningField. A lookup name, not a feature switch.
+	ReasoningField string
 }
+
+// DefaultReasoningField is the reasoning key used when ReasoningField is
+// unset. DeepSeek introduced it and GLM/MiniMax/Qwen-family endpoints and
+// Ollama follow (measured on a local Ollama), so it covers most servers; vLLM
+// renamed it to "reasoning" and needs `reasoning_field: "reasoning"`.
+const DefaultReasoningField = "reasoning_content"
 
 // baseProvider holds the common fields shared by all LLM providers.
 // Embedded by AnthropicProvider and OpenAIProvider.
@@ -52,6 +65,7 @@ type baseProvider struct {
 	maxTokens        int
 	reasoningLevel   int                     // 0=off, 1=normal, 2=max — UI display, session persistence, and message-layer empty-padding switch
 	reasoningConfigs map[int]json.RawMessage // per-level raw provider JSON merged into request body; nil entries omitted
+	reasoningField   string                  // response delta key carrying reasoning text; setBaseConfig applies the default when empty
 	videoFPS         int                     // frames per second for video attachments; 0 means default (2)
 	videoRes         int                     // video resolution mode: 0 or 1
 }
@@ -71,6 +85,10 @@ func (b *baseProvider) setBaseConfig(cfg BaseConfig, defaultModel string) {
 	b.maxTokens = cfg.MaxTokens
 	if b.maxTokens == 0 {
 		b.maxTokens = llm.DefaultMaxTokens
+	}
+	b.reasoningField = strings.TrimSpace(cfg.ReasoningField)
+	if b.reasoningField == "" {
+		b.reasoningField = DefaultReasoningField
 	}
 	if len(cfg.ReasoningConfigs) > 0 {
 		b.reasoningConfigs = make(map[int]json.RawMessage, len(cfg.ReasoningConfigs))

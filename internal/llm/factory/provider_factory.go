@@ -25,6 +25,11 @@ type ProviderConfig struct {
 	// 1=normal, 2=max); nil/empty entries mean "no fields added for this
 	// level".
 	ReasoningConfigs map[int]json.RawMessage
+
+	// ReasoningField is the response-side delta key carrying reasoning text
+	// (model.conf `reasoning_field`). Empty means the provider default,
+	// providers.DefaultReasoningField.
+	ReasoningField string
 }
 
 // NewProvider creates a provider based on configuration
@@ -36,6 +41,7 @@ func NewProvider(config ProviderConfig) (llm.Provider, error) {
 		HTTPClient:       config.HTTPClient,
 		MaxTokens:        config.MaxTokens,
 		ReasoningConfigs: config.ReasoningConfigs,
+		ReasoningField:   config.ReasoningField,
 	}
 
 	switch strings.ToLower(config.Type) {
