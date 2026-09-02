@@ -446,10 +446,12 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 
 		state := &openAIStreamState{}
 		scanner := newOpenAIScanner(reader)
+		sawDone := false
 
 		for scanner.Next() {
 			data := scanner.Data()
 			if data == "[DONE]" {
+				sawDone = true
 				break
 			}
 			if !p.handleEvent(data, yield, state) {
@@ -459,6 +461,29 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 
 		if err := scanner.Err(); err != nil {
 			yield(nil, err)
+			return
+		}
+
+		// A body that simply stops — proxy timeout, upstream close — is not a
+		// turn the server finished. OpenAI has no terminal *event*, but it does
+		// have two terminal *signals*, and either one is enough: the
+		// `finish_reason` field on the last chunk, or the `[DONE]` sentinel
+		// closing the stream. Requiring `finish_reason` specifically would
+		// reject endpoints that close with `[DONE]` and never name a reason;
+		// requiring `[DONE]` on top of a reason would reject endpoints that end
+		// the body after the final chunk. Both rejections were measured against
+		// this repo's own suite — 12 tests for the first. A body carrying
+		// *neither* is the one case that cannot be a completed turn, and
+		// rebuilding the step from the accumulators anyway presented a cut-off
+		// sentence as a concluded answer, so a retry believed the assistant had
+		// finished thinking.
+		//
+		// Same rule Anthropic applies to `message_stop`, for the same reason:
+		// the error is what lets llm.Agent's failed-step path keep the streamed
+		// blocks in history as partial, rather than the stream claiming they
+		// were the whole answer. See docs/providers.md → "Stream termination".
+		if !sawDone && state.getStopReason() == "" {
+			yield(nil, fmt.Errorf("openai stream ended before its terminating signal"))
 			return
 		}
 
