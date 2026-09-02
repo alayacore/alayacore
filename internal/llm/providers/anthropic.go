@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"sort"
 	"strings"
 
 	"github.com/alayacore/alayacore/internal/config"
@@ -409,9 +408,7 @@ func (p *AnthropicProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEv
 			}
 		}()
 
-		state := &anthropicStreamState{
-			contentParts: make(map[int]llm.ContentPart),
-		}
+		state := &anthropicStreamState{}
 		scanner := newAnthropicScanner(reader)
 
 		for scanner.Next() {
@@ -451,14 +448,14 @@ func (p *AnthropicProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEv
 	}
 }
 
-// blockAccumulator accumulates the content of a single content block by index.
-// Anthropic's wire format includes an index on every block event (start, delta, stop),
-// allowing blocks to arrive interleaved — similar to how OpenAI indexes tool calls.
+// blockAccumulator remembers one open content block: what kind it is and, for a
+// tool_use, its identity. Content itself is not held here — it reaches llm.Agent
+// as deltas and is assembled there, so the record cannot depend on this provider
+// having also kept a copy.
 type blockAccumulator struct {
-	blockType string          // "text" | "thinking" | "tool_use"
-	id        string          // tool_use id (empty for text/thinking)
-	name      string          // tool_use name (empty for text/thinking)
-	buffer    strings.Builder // shared: text, thinking deltas, or tool_use partial_json
+	blockType string // "text" | "thinking" | "tool_use"
+	id        string // tool_use id (empty for text/thinking)
+	name      string // tool_use name (empty for text/thinking)
 }
 
 // anthropicStreamState tracks accumulation state during streaming
@@ -466,8 +463,7 @@ type anthropicStreamState struct {
 	usage      llm.Usage
 	stopReason string
 
-	contentParts map[int]llm.ContentPart   // completed blocks by index
-	blocks       map[int]*blockAccumulator // index → block being accumulated
+	blocks map[int]*blockAccumulator // index → block still open
 
 	// sawMessageStop records whether the terminal message_stop event arrived.
 	// It is the only thing that ends an Anthropic message, and parseStream uses
@@ -487,31 +483,16 @@ func (s *anthropicStreamState) createBlock(index int, blockType, id, name string
 	return s.blocks[index]
 }
 
-func (s *anthropicStreamState) finishBlock(index int) {
+// closeBlock retires an open block and reports what it was, which is all the
+// boundary event needs to say. What the block contained is already with
+// llm.Agent's assembler, delivered as deltas.
+func (s *anthropicStreamState) closeBlock(index int) (blockType, id string, ok bool) {
 	block, ok := s.blocks[index]
 	if !ok {
-		return
-	}
-	switch block.blockType {
-	case anthropicBlockTypeText:
-		s.contentParts[index] = &llm.TextPart{
-			Text:            block.buffer.String(),
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: anthropicBlockKey(index)},
-		}
-	case anthropicBlockTypeThinking:
-		s.contentParts[index] = &llm.ReasoningPart{
-			Text:            block.buffer.String(),
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: anthropicBlockKey(index)},
-		}
-	case anthropicBlockTypeToolCall:
-		s.contentParts[index] = &llm.ToolInputPart{
-			ID:              block.id,
-			Input:           json.RawMessage(block.buffer.String()),
-			Name:            block.name,
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: anthropicBlockKey(index)},
-		}
+		return "", "", false
 	}
 	delete(s.blocks, index)
+	return block.blockType, block.id, true
 }
 
 func (s *anthropicStreamState) setUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens int64) {
@@ -539,37 +520,6 @@ func (s *anthropicStreamState) setStopReason(reason string) {
 // may hold several thinking or text blocks, so a per-kind string would collide;
 // the declared index is what keeps them apart.
 func anthropicBlockKey(index int) string { return fmt.Sprintf("block:%d", index) }
-
-// getContents returns the accumulated ContentParts sorted by index.
-// finishBlock() already converted each block to the correct ContentPart type
-// and stored it by index in the map. This function sorts by index to ensure
-// correct ordering regardless of the order blocks finished.
-func (s *anthropicStreamState) getContents() []llm.ContentPart {
-	indices := make([]int, 0, len(s.contentParts))
-	for i := range s.contentParts {
-		indices = append(indices, i)
-	}
-	sort.Ints(indices)
-	contents := make([]llm.ContentPart, len(indices))
-	for pos, i := range indices {
-		contents[pos] = s.contentParts[i]
-	}
-	return contents
-}
-
-// toolInputPart returns a complete ToolInputPart if the block at the given index is a tool_use.
-func (s *anthropicStreamState) toolInputPart(index int) *llm.ToolInputPart {
-	block, ok := s.blocks[index]
-	if !ok || block.blockType != anthropicBlockTypeToolCall {
-		return nil
-	}
-	return &llm.ToolInputPart{
-		ID:              block.id,
-		Name:            block.name,
-		Input:           json.RawMessage(block.buffer.String()),
-		ContentPartMeta: llm.ContentPartMeta{BlockKey: anthropicBlockKey(index)},
-	}
-}
 
 // ============================================================================
 // Event Handlers
@@ -613,7 +563,6 @@ func (p *AnthropicProvider) handleEvent(eventType, data string, yield func(llm.S
 		p.mergeUsage(event.Usage, state)
 		state.sawMessageStop = true
 		yield(llm.StepCompleteEvent{
-			Contents:   state.getContents(),
 			Usage:      state.getUsage(),
 			StopReason: state.stopReason,
 		}, nil)
@@ -660,17 +609,14 @@ func (p *AnthropicProvider) handleContentDelta(index int, delta anthropicSSEDelt
 	}
 	switch delta.Type {
 	case anthropicDeltaTypeText:
-		block.buffer.WriteString(delta.Text)
 		if !yield(llm.TextDeltaEvent{Delta: delta.Text, Key: anthropicBlockKey(index)}, nil) {
 			return false
 		}
 	case anthropicDeltaTypeThinking:
-		block.buffer.WriteString(delta.Thinking)
 		if !yield(llm.ReasoningDeltaEvent{Delta: delta.Thinking, Key: anthropicBlockKey(index)}, nil) {
 			return false
 		}
 	case anthropicDeltaTypeInputJSON:
-		block.buffer.WriteString(delta.PartialJSON)
 		if !yield(llm.ToolInputDeltaEvent{ID: block.id, Delta: delta.PartialJSON, Key: anthropicBlockKey(index)}, nil) {
 			return false
 		}
@@ -680,32 +626,24 @@ func (p *AnthropicProvider) handleContentDelta(index int, delta anthropicSSEDelt
 
 // handleContentBlockStop handles content_block_stop events
 func (p *AnthropicProvider) handleContentBlockStop(index int, yield func(llm.StreamEvent, error) bool, state *anthropicStreamState) bool {
-	// Capture block info before finishing (finishBlock deletes from map).
-	block, blockExists := state.blocks[index]
-
-	// Tool input completion.
-	tc := state.toolInputPart(index)
-	state.finishBlock(index)
-	if tc != nil {
-		return yield(llm.ToolInputCompleteEvent{
-			ID:    tc.ID,
-			Input: tc.Input,
-			Key:   anthropicBlockKey(index),
-		}, nil)
+	blockType, id, existed := state.closeBlock(index)
+	if !existed {
+		// A stop for a block the server never opened declares the end of
+		// nothing; llm.Agent has no such block and would ignore it anyway.
+		return true
 	}
+	key := anthropicBlockKey(index)
 
-	// Text and reasoning complete events.
-	if blockExists {
-		switch block.blockType {
-		case anthropicBlockTypeText:
-			if !yield(llm.TextCompleteEvent{Text: block.buffer.String(), Key: anthropicBlockKey(index)}, nil) {
-				return false
-			}
-		case anthropicBlockTypeThinking:
-			if !yield(llm.ReasoningCompleteEvent{Text: block.buffer.String(), Key: anthropicBlockKey(index)}, nil) {
-				return false
-			}
-		}
+	// Which event to emit is protocol knowledge — only this parser knows what
+	// kind of block the index held — but the content is already with llm.Agent,
+	// streamed as deltas. So this says only where a block ended.
+	switch blockType {
+	case anthropicBlockTypeToolCall:
+		return yield(llm.ToolInputCompleteEvent{ID: id, Key: key}, nil)
+	case anthropicBlockTypeText:
+		return yield(llm.TextCompleteEvent{Key: key}, nil)
+	case anthropicBlockTypeThinking:
+		return yield(llm.ReasoningCompleteEvent{Key: key}, nil)
 	}
 	return true
 }

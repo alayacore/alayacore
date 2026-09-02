@@ -22,13 +22,13 @@ func TestFailedStepKeepsReasoningAndText(t *testing.T) {
 	streamErr := errors.New("canceled")
 
 	provider := &salvageProvider{seq: func(yield func(StreamEvent, error) bool) {
-		yield(ReasoningDeltaEvent{Delta: "thin", Key: "b0"}, nil)
-		yield(ReasoningDeltaEvent{Delta: "king", Key: "b0"}, nil)
-		yield(ReasoningCompleteEvent{Text: "thinking", Key: "b0"}, nil)
-		yield(TextDeltaEvent{Delta: "Answer", Key: "b1"}, nil)
-		yield(TextCompleteEvent{Text: "Answer.", Key: "b1"}, nil)
+		yield(ReasoningDeltaEvent{Delta: "thinking", Key: "b0"}, nil)
+		yield(ReasoningCompleteEvent{Key: "b0"}, nil)
+		yield(TextDeltaEvent{Delta: "Answer.", Key: "b1"}, nil)
+		yield(TextCompleteEvent{Key: "b1"}, nil)
 		yield(ToolInputStartEvent{ID: "c1", Name: "noop", Key: "b2"}, nil)
-		yield(ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "b2"}, nil)
+		yield(ToolInputDeltaEvent{ID: "c1", Delta: "{}", Key: "b2"}, nil)
+		yield(ToolInputCompleteEvent{ID: "c1", Key: "b2"}, nil)
 		yield(nil, streamErr)
 	}}
 

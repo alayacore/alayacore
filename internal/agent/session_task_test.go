@@ -37,8 +37,14 @@ func (m *mockProviderStepFail) StreamMessages(_ context.Context, _ []llm.Content
 		return nil, resp.failErr
 	}
 	return func(yield func(llm.StreamEvent, error) bool) {
+		// A stub provider states only what the wire carried. llm.Agent assembles
+		// the step's record from these events, so a fake cannot describe the turn
+		// in terms the events do not support.
 		if resp.text != "" {
 			if !yield(llm.TextDeltaEvent{Delta: resp.text, Key: "block:0"}, nil) {
+				return
+			}
+			if !yield(llm.TextCompleteEvent{Key: "block:0"}, nil) {
 				return
 			}
 		}
@@ -47,28 +53,15 @@ func (m *mockProviderStepFail) StreamMessages(_ context.Context, _ []llm.Content
 			if !yield(llm.ToolInputStartEvent{ID: tc.ID, Name: tc.Name, Key: key}, nil) {
 				return
 			}
-			if !yield(llm.ToolInputCompleteEvent{ID: tc.ID, Input: tc.Input, Key: key}, nil) {
+			if !yield(llm.ToolInputDeltaEvent{ID: tc.ID, Delta: string(tc.Input), Key: key}, nil) {
+				return
+			}
+			if !yield(llm.ToolInputCompleteEvent{ID: tc.ID, Key: key}, nil) {
 				return
 			}
 		}
-		content := []llm.ContentPart{}
-		if resp.text != "" {
-			content = append(content, &llm.TextPart{
-				Text:            resp.text,
-				ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: "block:0"},
-			})
-		}
-		for i, tc := range resp.toolCalls {
-			content = append(content, &llm.ToolInputPart{
-				ID:              tc.ID,
-				Name:            tc.Name,
-				Input:           tc.Input,
-				ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: fmt.Sprintf("block:%d", i+1)},
-			})
-		}
 		yield(llm.StepCompleteEvent{
-			Contents: content,
-			Usage:    llm.Usage{InputTokens: 10, OutputTokens: 20},
+			Usage: llm.Usage{InputTokens: 10, OutputTokens: 20},
 		}, nil)
 	}, nil
 }

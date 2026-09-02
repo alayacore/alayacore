@@ -28,10 +28,8 @@ func (m *timedProvider) StreamMessages(
 		if !yield(TextDeltaEvent{Delta: "world", Key: "block:0"}, nil) {
 			return
 		}
+		yield(TextCompleteEvent{Key: "block:0"}, nil)
 		yield(StepCompleteEvent{
-			Contents: []ContentPart{
-				&TextPart{Text: "Hello world", ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"}},
-			},
 			Usage: Usage{
 				InputTokens:  10,
 				OutputTokens: 100,
@@ -233,14 +231,11 @@ func (m *variedProvider) StreamMessages(
 			if !yield(ToolInputDeltaEvent{ID: "c1", Delta: `{}`, Key: "block:0"}, nil) {
 				return
 			}
-			if !yield(ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "block:0"}, nil) {
+			if !yield(ToolInputCompleteEvent{ID: "c1", Key: "block:0"}, nil) {
 				return
 			}
 			time.Sleep(200 * time.Millisecond)
 			yield(StepCompleteEvent{
-				Contents: []ContentPart{
-					&ToolInputPart{ID: "c1", Name: "t", Input: json.RawMessage(`{}`), ContentPartMeta: ContentPartMeta{BlockKey: "block:0"}},
-				},
 				Usage:      Usage{OutputTokens: 20},
 				StopReason: "tool_use",
 			}, nil)
@@ -251,13 +246,10 @@ func (m *variedProvider) StreamMessages(
 			if !yield(ToolInputDeltaEvent{ID: "c2", Delta: `{}`, Key: "block:0"}, nil) {
 				return
 			}
-			if !yield(ToolInputCompleteEvent{ID: "c2", Input: json.RawMessage(`{}`), Key: "block:0"}, nil) {
+			if !yield(ToolInputCompleteEvent{ID: "c2", Key: "block:0"}, nil) {
 				return
 			}
 			yield(StepCompleteEvent{
-				Contents: []ContentPart{
-					&ToolInputPart{ID: "c2", Name: "t", Input: json.RawMessage(`{}`), ContentPartMeta: ContentPartMeta{BlockKey: "block:0"}},
-				},
 				Usage:      Usage{OutputTokens: 100},
 				StopReason: "tool_use",
 			}, nil)
@@ -270,10 +262,8 @@ func (m *variedProvider) StreamMessages(
 			if !yield(TextDeltaEvent{Delta: "y", Key: "block:0"}, nil) {
 				return
 			}
+			yield(TextCompleteEvent{Key: "block:0"}, nil)
 			yield(StepCompleteEvent{
-				Contents: []ContentPart{
-					&TextPart{Text: "xy", ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"}},
-				},
 				Usage:      Usage{OutputTokens: 100},
 				StopReason: "end_turn",
 			}, nil)
@@ -304,26 +294,22 @@ func (m *toolOnlyTimedProvider) StreamMessages(
 			if !yield(ToolInputStartEvent{ID: "c1", Name: "t", Key: "block:0"}, nil) {
 				return
 			}
-			if !yield(ToolInputDeltaEvent{ID: "c1", Delta: `{"path":"/tmp"`, Key: "block:0"}, nil) {
+			if !yield(ToolInputDeltaEvent{ID: "c1", Delta: `{"path":"/tmp"}`, Key: "block:0"}, nil) {
 				return
 			}
-			if !yield(ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{"path":"/tmp"}`), Key: "block:0"}, nil) {
+			if !yield(ToolInputCompleteEvent{ID: "c1", Key: "block:0"}, nil) {
 				return
 			}
 			yield(StepCompleteEvent{
-				Contents: []ContentPart{
-					&ToolInputPart{ID: "c1", Name: "t", Input: json.RawMessage(`{"path":"/tmp"}`), ContentPartMeta: ContentPartMeta{BlockKey: "block:0"}},
-				},
 				Usage:      Usage{},
 				StopReason: "tool_use",
 			}, nil)
 			return
 		}
 		// Step 2: text-only response ends the task.
+		yield(TextDeltaEvent{Delta: "done", Key: "block:0"}, nil)
+		yield(TextCompleteEvent{Key: "block:0"}, nil)
 		yield(StepCompleteEvent{
-			Contents: []ContentPart{
-				&TextPart{Text: "done", ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"}},
-			},
 			Usage:      Usage{OutputTokens: 5},
 			StopReason: "end_turn",
 		}, nil)

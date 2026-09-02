@@ -34,7 +34,6 @@ import (
 	"fmt"
 	"iter"
 	"math"
-	"strings"
 	"sync"
 	"time"
 )
@@ -259,15 +258,7 @@ func (a *Agent) completeStepStats(callbacks StreamCallbacks, step int, stepUsage
 //
 //nolint:gocyclo // switch dispatch over 8 event types with callback guards
 func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, error], callbacks StreamCallbacks, stepStart time.Time, stats *StepStats) (stepContents []ContentPart, stepUsage Usage, truncated bool, err error) {
-	var (
-		results []ContentPart
-
-		// executedToolCalls tracks every tool input whose goroutine was
-		// started, in emission order. On an error path the deferred
-		// salvage pairs them with whatever results already arrived, so
-		// tools whose side effects happened are recorded in history.
-		executedToolCalls []*ToolInputPart
-	)
+	var results []ContentPart // tool outputs as they are collected
 
 	// Per-stream context, canceled on every exit path (defer below).
 	// Deriving from the caller's ctx keeps task cancellation working:
@@ -295,25 +286,30 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	// that reads. A partial answer is kept for the same reason max_tokens
 	// truncation keeps one: it is what lets :continue resume the turn.
 
-	// History IDs keyed by stream block identity. The key, not a position, is
-	// what links a block streamed earlier to the content part assembled at
-	// step completion — see assignHistoryIDs and TextDeltaEvent.Key.
-	idByKey := make(map[string]uint64)
-	// Tool names by block identity, so ToolInputCompleteEvent can recover the
-	// name it received earlier from ToolInputStartEvent.
-	nameByKey := make(map[string]string)
-	// Reasoning and text as they stream, so a failed step can still hand its
-	// content to history (see the salvage defer below).
-	blocks := newStepTextBlocks()
+	// The step's record, assembled here from the stream: content, block
+	// identity, history IDs, and layout. One assembler serves every path out of
+	// this function — a step that finished, one that errored, one that was
+	// canceled — so what a turn contributes to history cannot depend on how it
+	// ended. Its IDs are minted when a block first appears, which is the same
+	// moment an adapter first hears about it, so a window on screen and the part
+	// that gets persisted are two views of one block.
+	//
+	// callbacks.IDGen may be nil: a caller that does not persist content asks for
+	// no numbering, and the blocks still carry their content.
+	assembler := newStreamAssembler(callbacks.IDGen)
 
 	var toolWg sync.WaitGroup
 	defer func() {
 		if err == nil {
 			return
 		}
-		contributed := blocks.parts(idByKey)
-		if len(executedToolCalls) > 0 {
-			contributed = append(contributed, salvageExecutedTools(executedToolCalls, results, resultCh)...)
+		// A cut step keeps what it streamed. Calls whose results never arrived
+		// are left out by the forgiving policy below, because an assistant
+		// tool_use without its tool_result is a conversation the next request
+		// cannot build.
+		contributed, pairErr := attachToolResults(assembler.parts(), collectResults(results, resultCh), true)
+		if pairErr != nil {
+			return
 		}
 		if len(contributed) > 0 {
 			stepContents = contributed
@@ -329,99 +325,99 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			return nil, Usage{}, false, err
 		}
 
-		// A note on every case below: the history ID is issued by blockID
-		// before the callback guard, never inside it. Whether the caller wants
-		// to *display* a block must not decide whether that block *has an ID* —
-		// a missing callback used to leave the persisted part holding the zero
-		// value, indistinguishable from "never numbered". blockID is called
-		// exactly once per event, so the first block to appear still takes the
-		// lowest ID.
+		// A note on every case below: the content method runs before the
+		// callback guard, and so does the history ID it mints along with the
+		// block. Whether the caller wants to *display* a block must not decide
+		// whether that block *has an ID* or *has content* — a missing callback
+		// used to leave the persisted part holding the zero value,
+		// indistinguishable from "never numbered".
 		switch e := event.(type) {
 		case TextDeltaEvent:
 			stats.setFirstToken(stepStart)
-			id := blockID(callbacks, idByKey, e.Key)
-			blocks.add(e.Key, textBlock, e.Delta)
+			assembler.text(e.Key, e.Delta)
 			if callbacks.OnTextDelta != nil {
-				if err := callbacks.OnTextDelta(e.Delta, id); err != nil {
+				if err := callbacks.OnTextDelta(e.Delta, assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case TextCompleteEvent:
-			id := blockID(callbacks, idByKey, e.Key)
-			blocks.set(e.Key, textBlock, e.Text) // authoritative
-			if callbacks.OnTextComplete != nil {
-				if err := callbacks.OnTextComplete(e.Text, id); err != nil {
+			// A boundary naming a block the stream never opened is refused here
+			// and at the assembler: no content, no ID, no empty window.
+			exists := assembler.close(e.Key)
+			if exists && callbacks.OnTextComplete != nil {
+				if err := callbacks.OnTextComplete(assembler.body(e.Key), assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case ReasoningDeltaEvent:
 			stats.setFirstToken(stepStart)
-			id := blockID(callbacks, idByKey, e.Key)
-			blocks.add(e.Key, reasoningBlock, e.Delta)
+			assembler.reasoning(e.Key, e.Delta)
 			if callbacks.OnReasoningDelta != nil {
-				if err := callbacks.OnReasoningDelta(e.Delta, id); err != nil {
+				if err := callbacks.OnReasoningDelta(e.Delta, assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case ReasoningCompleteEvent:
-			id := blockID(callbacks, idByKey, e.Key)
-			blocks.set(e.Key, reasoningBlock, e.Text) // authoritative
-			if callbacks.OnReasoningComplete != nil {
-				if err := callbacks.OnReasoningComplete(e.Text, id); err != nil {
+			exists := assembler.close(e.Key)
+			if exists && callbacks.OnReasoningComplete != nil {
+				if err := callbacks.OnReasoningComplete(assembler.body(e.Key), assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case ToolInputStartEvent:
-			id := blockID(callbacks, idByKey, e.Key)
+			assembler.toolStart(e.Key, e.ID, e.Name)
 			if callbacks.OnToolInputStart != nil {
-				if err := callbacks.OnToolInputStart(e.ID, e.Name, id); err != nil {
+				if err := callbacks.OnToolInputStart(e.ID, e.Name, assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
-			nameByKey[e.Key] = e.Name
 
 		case ToolInputDeltaEvent:
 			stats.setFirstToken(stepStart)
-			id := blockID(callbacks, idByKey, e.Key)
+			assembler.toolArgs(e.Key, e.Delta)
 			if callbacks.OnToolInputDelta != nil {
-				if err := callbacks.OnToolInputDelta(e.ID, e.Delta, id); err != nil {
+				if err := callbacks.OnToolInputDelta(e.ID, e.Delta, assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 
 		case ToolInputCompleteEvent:
-			id := blockID(callbacks, idByKey, e.Key)
-			// Repair tool input before processing (Patterns 1-4).
-			repairToolInput(&e.Input, nameByKey[e.Key], a.config.Tools)
+			if !assembler.close(e.Key) {
+				break // a call with no streamed arguments is not a call to run
+			}
+			// The assembled arguments, repaired, become the part that both
+			// execution and history use — one value for both, so a tool cannot
+			// run with an input different from the one it was recorded with.
+			_, name, args := assembler.toolCall(e.Key)
+			input := json.RawMessage(args)
+			repairToolInput(&input, name, a.config.Tools)
+			tc := assembler.beginToolCall(e.Key, input)
+			if tc == nil {
+				// The key was opened as a different kind of block, so this
+				// boundary describes something the stream never started.
+				break
+			}
 
 			if callbacks.OnToolInputComplete != nil {
-				if err := callbacks.OnToolInputComplete(e.ID, e.Input, id); err != nil {
+				if err := callbacks.OnToolInputComplete(tc.ID, tc.Input, tc.HistoryID); err != nil {
 					return nil, Usage{}, false, err
 				}
 			}
 			execCount++
-			tc := e.ToPart(id, nameByKey[e.Key])
-			executedToolCalls = append(executedToolCalls, tc)
 			a.handleStreamedToolInput(streamCtx, tc, callbacks, resultCh, &toolWg)
 
 		case StepCompleteEvent:
-			stepContents = e.Contents
 			stepUsage = e.Usage
-			// Strip empty placeholders before binding IDs. OpenAI always emits
-			// a reasoning slot and a text slot, and the absent one never
-			// produces an event, so it never holds a block key to bind — and it
-			// must not be mistaken for the real defect below (a part that
-			// carries content the provider never streamed).
-			stepContents = stripEmptyPlaceholders(stepContents)
-			if err := assignHistoryIDs(stepContents, idByKey, callbacks.IDGen != nil); err != nil {
-				return nil, Usage{}, false, err
-			}
-			// Repair tool inputs in step contents for history consistency.
-			repairToolInputsInContents(stepContents, a.config.Tools)
+			// The record is built here from what streamed, exactly as the
+			// failed-step path above builds it from what streamed — same
+			// assembler, so a step cannot be described two ways depending on how
+			// it ended. Tool calls are still incomplete at this point: their
+			// results are collected below and attached there.
+			stepContents = assembler.parts()
 			if e.StopReason == "max_tokens" || e.StopReason == "length" {
 				truncated = true
 			}
@@ -451,10 +447,11 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 		}
 	}
 
-	// Re-order results by tool call ID to match the LLM's intended order.
-	// toolInputs are extracted from stepContents, which preserves the
-	// SSE index order (0, 1, 2...) from the streaming response.
-	reordered, reorderErr := reorderToolResults(stepContents, results)
+	// Attach each result to the call it answers, in the order the model made
+	// them. A step that claims it finished must have an answer for every call it
+	// recorded, so this is the strict path: a missing or ambiguous pairing is a
+	// defect to fail on, not content to drop.
+	reordered, reorderErr := attachToolResults(stepContents, results, false)
 	if reorderErr != nil {
 		return nil, Usage{}, false, reorderErr
 	}
@@ -463,46 +460,33 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	return stepContents, stepUsage, truncated, nil
 }
 
-// reorderToolResults re-orders tool results by their tool call ID to match
-// the original order of tool calls in stepContents (which preserves the
-// SSE index order from the streaming response). Each result carries its
-// tool call ID, so we place them at the correct position regardless of
-// execution or collection order.
-//
-// Before returning, the slots are checked: any tool call without a
-// matching result (e.g. a non-conforming provider that reuses an empty
-// tool-call ID) is reported as an error instead of leaving a nil
-// ContentPart in the conversation history — a nil entry would panic
-// later in GroupByRole/GetRole (method call on nil interface).
-func reorderToolResults(stepContents, results []ContentPart) ([]ContentPart, error) {
-	toolInputs := extractToolInputs(stepContents)
-	finalResults := make([]ContentPart, len(toolInputs))
-	idToTool := make(map[string]int, len(toolInputs))
-	for i, tc := range toolInputs {
-		idToTool[tc.ID] = i
-	}
-	for _, r := range results {
-		if tr, ok := r.(*ToolOutputPart); ok {
-			if idx, ok := idToTool[tr.ID]; ok {
-				finalResults[idx] = r
-			}
-		}
-	}
-
-	// Check for unmatched slots before returning.
-	for i, p := range finalResults {
-		if p == nil {
-			return nil, fmt.Errorf("tool result missing for tool call %q", toolInputs[i].ID)
-		}
-	}
-
-	return append(stepContents, finalResults...), nil
-}
-
 // handleStreamedToolInput processes a completed tool call during streaming.
 // If the tool requires confirmation (per ToolNeedsConfirm), it starts a
 // goroutine that obtains a per-tool confirm channel and blocks until the
 // user responds. Otherwise it executes immediately in a goroutine.
+// genHistoryID numbers a part that was not streamed — a tool result, which the
+// model's reply never mentions and which the step's assembler therefore never
+// saw. It takes from the same counter as the streamed blocks, so the two kinds
+// stay in one sequence with no gap and no collision.
+func genHistoryID(callbacks StreamCallbacks) uint64 {
+	if callbacks.IDGen != nil {
+		return callbacks.IDGen()
+	}
+	return 0
+}
+
+// hasToolInputs reports whether a step's record contains a tool call, which is
+// what decides whether the agent loop continues to execute it or the turn is
+// over.
+func hasToolInputs(contents []ContentPart) bool {
+	for _, p := range contents {
+		if _, ok := p.(*ToolInputPart); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // All tools send exactly one result through resultCh, then call wg.Done().
 func (a *Agent) handleStreamedToolInput(ctx context.Context, tc *ToolInputPart, callbacks StreamCallbacks, resultCh chan<- ContentPart, wg *sync.WaitGroup) {
 	if callbacks.ToolNeedsConfirm != nil && callbacks.ToolNeedsConfirm(tc.Name) {
@@ -585,252 +569,12 @@ func sendToolResult(ctx context.Context, resultCh chan<- ContentPart, result Con
 	}
 }
 
-// salvageExecutedTools collects the results of tools that already executed
-// — from both the collector's local results and whatever is still queued in
-// resultCh — and emits each as a [tool_use, tool_result] pair in tool-call
-// emission order. Called on error paths (cancel, provider failure, callback
-// error): tools whose side effects happened must stay visible in history so
-// a retry or :continue sees a state consistent with reality.
-//
-// A tool call without a result (still running when the stream died, dropped
-// by a racing sendToolResult, or never confirmed) is omitted entirely — an
-// assistant tool_use must never appear without its matching tool_result.
-// The caller runs this after waiting for all tool goroutines (toolWg.Wait),
-// so the drain is deterministic and non-blocking.
-func salvageExecutedTools(toolCalls []*ToolInputPart, collected []ContentPart, resultCh <-chan ContentPart) []ContentPart {
-	// A tool-call ID appearing more than once is ambiguous: a non-conforming
-	// provider reused the ID, so we cannot tell which result belongs to
-	// which call. Those calls are omitted entirely — guessing a pairing
-	// would put wrong results in history and mislead the model on retry.
-	occurrences := make(map[string]int, len(toolCalls))
-	for _, tc := range toolCalls {
-		occurrences[tc.ID]++
-	}
-
-	// Index results by tool call ID (collected first, then drained).
-	byID := make(map[string]ContentPart, len(toolCalls))
-	for _, r := range collected {
-		if tr, ok := r.(*ToolOutputPart); ok && tr.ID != "" {
-			byID[tr.ID] = r
-		}
-	}
-	for {
-		select {
-		case r := <-resultCh:
-			if tr, ok := r.(*ToolOutputPart); ok && tr.ID != "" {
-				byID[tr.ID] = r
-			}
-		default:
-			// Emit pairs in tool-call emission order; skip unmatched and
-			// ambiguous (duplicate-ID) calls.
-			var salvaged []ContentPart
-			for _, tc := range toolCalls {
-				r, ok := byID[tc.ID]
-				if !ok || occurrences[tc.ID] > 1 {
-					continue
-				}
-				tc.SetRole(RoleAssistant)
-				salvaged = append(salvaged, tc, r)
-			}
-			return salvaged
-		}
-	}
-}
-
 func (a *Agent) toolDefinitions() []ToolDefinition {
 	defs := make([]ToolDefinition, len(a.config.Tools))
 	for i, tool := range a.config.Tools {
 		defs[i] = tool.Definition
 	}
 	return defs
-}
-
-// stepBlockKind distinguishes the two text-bearing content blocks a step can
-// stream. Tool calls are not tracked here: their salvage path is separate
-// because a call is only history-worthy once its result exists.
-type stepBlockKind int
-
-const (
-	reasoningBlock stepBlockKind = iota
-	textBlock
-)
-
-// stepTextBlocks accumulates the reasoning and text a provider streamed for one
-// step, keyed by block identity.
-//
-// It exists so a step that dies mid-flight still contributes its content to
-// history. Nothing else holds a copy: the provider assembles its authoritative
-// parts into StepCompleteEvent, which never arrives when the stream is cut, and
-// llm.Agent otherwise only forwards fragments to the display callbacks. The
-// fragments are what the user already watched arrive on screen, so discarding
-// them here leaves the display holding content that history — and after a save
-// and reopen, the file — does not.
-//
-// set() replaces accumulated fragments with the complete text a *CompleteEvent
-// carries, so a block that finished holds the authoritative string and only a
-// genuinely interrupted block stays partial.
-type stepTextBlocks struct {
-	order []string // first-seen order, which is also the streamed order
-	kinds map[string]stepBlockKind
-	text  map[string]*strings.Builder
-}
-
-func newStepTextBlocks() *stepTextBlocks {
-	return &stepTextBlocks{
-		kinds: map[string]stepBlockKind{},
-		text:  map[string]*strings.Builder{},
-	}
-}
-
-// add records a streamed fragment.
-func (b *stepTextBlocks) add(key string, kind stepBlockKind, delta string) {
-	b.track(key, kind)
-	b.text[key].WriteString(delta)
-}
-
-// set records a block's authoritative complete text, replacing whatever
-// fragments accumulated under that key.
-func (b *stepTextBlocks) set(key string, kind stepBlockKind, full string) {
-	b.track(key, kind)
-	b.text[key] = &strings.Builder{}
-	b.text[key].WriteString(full)
-}
-
-func (b *stepTextBlocks) track(key string, kind stepBlockKind) {
-	if _, seen := b.text[key]; !seen {
-		b.order = append(b.order, key)
-		b.kinds[key] = kind
-		b.text[key] = &strings.Builder{}
-	}
-	// A block streaming as two kinds would mean the provider mislabelled its
-	// own content; keep the kind first seen rather than mixing types under one
-	// key. The ID was issued for that first touch too, so they stay aligned.
-}
-
-// parts renders the accumulated blocks into content parts in streamed order,
-// each carrying the key it arrived under and the history ID that key was given.
-// Empty blocks are skipped: providers emit placeholder slots for blocks that
-// were never populated, and an empty part adds nothing to history.
-func (b *stepTextBlocks) parts(idByKey map[string]uint64) []ContentPart {
-	out := make([]ContentPart, 0, len(b.order))
-	for _, key := range b.order {
-		text := b.text[key].String()
-		if text == "" {
-			continue
-		}
-		var part ContentPart
-		switch b.kinds[key] {
-		case reasoningBlock:
-			part = &ReasoningPart{Text: text}
-		case textBlock:
-			part = &TextPart{Text: text}
-		}
-		part.SetBlockKey(key)
-		part.SetRole(RoleAssistant)
-		if id, ok := idByKey[key]; ok {
-			part.SetHistoryID(id)
-		}
-		out = append(out, part)
-	}
-	return out
-}
-
-// blockID returns the history ID of the content block identified by key,
-// issuing one on first sight. Called once per streaming event, outside the
-// callbacks.On* guards, so that display wiring cannot influence whether a
-// persisted part carries an ID at all.
-//
-// IDs therefore number blocks in the order the provider streamed them, which
-// is a stable but *arrival*-based ordering: it matches the order the step is
-// persisted in only while the provider streams in that order. Nothing in the
-// tree may treat ID magnitude as record order except where that is stated
-// (see docs/providers.md, "Complete-event order").
-func blockID(callbacks StreamCallbacks, idByKey map[string]uint64, key string) uint64 {
-	if id, ok := idByKey[key]; ok && id != 0 {
-		return id
-	}
-	id := genHistoryID(callbacks)
-	if id != 0 {
-		idByKey[key] = id
-	}
-	return id
-}
-
-// assignHistoryIDs binds each streamed block's ID onto the content part that
-// came from that block, by identity.
-//
-// This used to be positional — idByIndex[i] read onto contents[i] — which
-// quietly required a provider's block index to equal the part's position in
-// the assembled array. Nothing enforced that, and it broke silently: a server
-// whose tool-call indices skipped a number left the part at that position
-// unclaimed, and it was persisted with a zero HistoryID, the same value as
-// "never numbered".
-//
-// When numbering is on, an unclaimed part is an error rather than a zero, so a
-// provider that mislabels its blocks surfaces at the point of the mistake
-// instead of corrupting the conversation history. When numbering is off (no
-// IDGen — the caller never asked for history IDs), parts are left exactly as
-// they were before: nothing to bind, nothing to complain about.
-func assignHistoryIDs(contents []ContentPart, idByKey map[string]uint64, numbering bool) error {
-	for _, part := range contents {
-		key := part.GetBlockKey()
-		id, ok := idByKey[key]
-		if !ok {
-			if !numbering {
-				continue
-			}
-			if key == "" {
-				return fmt.Errorf("content part of type %T carries no block key; the provider assembled a part it never streamed", part)
-			}
-			return fmt.Errorf("content part %q (%T) has no history ID: the provider named a block it never streamed", key, part)
-		}
-		part.UpdateContentPartMeta(id, RoleAssistant)
-	}
-	return nil
-}
-
-// genHistoryID generates a new history ID using the callback's IDGen if available.
-func genHistoryID(callbacks StreamCallbacks) uint64 {
-	if callbacks.IDGen != nil {
-		return callbacks.IDGen()
-	}
-	return 0
-}
-
-// stripEmptyPlaceholders removes empty ReasoningPart and TextPart placeholders
-// from the content array. OpenAI emits these slots at fixed indices (0 and 1)
-// to keep delta indices aligned with content positions, even when absent.
-func stripEmptyPlaceholders(contents []ContentPart) []ContentPart {
-	filtered := make([]ContentPart, 0, len(contents))
-	for _, part := range contents {
-		switch p := part.(type) {
-		case *ReasoningPart:
-			if p.Text != "" {
-				filtered = append(filtered, part)
-			}
-		case *TextPart:
-			if p.Text != "" {
-				filtered = append(filtered, part)
-			}
-		default:
-			filtered = append(filtered, part)
-		}
-	}
-	return filtered
-}
-
-// ToPart converts a ToolInputCompleteEvent to a ToolInputPart,
-// carrying over the history ID assigned during streaming.
-func (e ToolInputCompleteEvent) ToPart(historyID uint64, name string) *ToolInputPart {
-	return &ToolInputPart{
-		ID:    e.ID,
-		Name:  name,
-		Input: e.Input,
-		ContentPartMeta: ContentPartMeta{
-			HistoryID: historyID,
-			BlockKey:  e.Key,
-		},
-	}
 }
 
 // executeTool executes a single tool call and returns the result.
@@ -886,27 +630,6 @@ func newToolOutput(callbacks StreamCallbacks, id string, contents []ContentPart,
 	return &ToolOutputPart{ID: id, Output: contents, IsError: isError, ContentPartMeta: ContentPartMeta{HistoryID: historyID, Role: RoleTool}}
 }
 
-// extractToolInputs extracts ToolInputParts from message content.
-func extractToolInputs(contents []ContentPart) []ToolInputPart {
-	var uses []ToolInputPart
-	for _, part := range contents {
-		if tc, ok := part.(*ToolInputPart); ok {
-			uses = append(uses, *tc)
-		}
-	}
-	return uses
-}
-
-// hasToolInputs checks if content contains tool calls.
-func hasToolInputs(contents []ContentPart) bool {
-	for _, part := range contents {
-		if _, ok := part.(*ToolInputPart); ok {
-			return true
-		}
-	}
-	return false
-}
-
 // repairToolInput repairs a tool input in-place using the tool's schema.
 // If the tool is not found or has no schema, the input is left unchanged.
 func repairToolInput(input *json.RawMessage, toolName string, tools []Tool) {
@@ -914,19 +637,6 @@ func repairToolInput(input *json.RawMessage, toolName string, tools []Tool) {
 		if fixed := RepairToolInput(*input, schema); string(fixed) != string(*input) {
 			*input = fixed
 		}
-	}
-}
-
-// repairToolInputsInContents applies repairToolInput to all ToolInputParts
-// in the content slice. This ensures the history stored via OnStepFinish
-// contains repaired JSON, so subsequent API requests send clean input.
-func repairToolInputsInContents(contents []ContentPart, tools []Tool) {
-	for _, part := range contents {
-		tp, ok := part.(*ToolInputPart)
-		if !ok {
-			continue
-		}
-		repairToolInput(&tp.Input, tp.Name, tools)
 	}
 }
 

@@ -140,7 +140,7 @@ ToolInputCompleteEvent
     └── OnToolInputComplete()           → streaming callback with repaired input
     │
     ▼
-StepCompleteEvent (e.Contents)
+attachToolResults (record from the assembler)
     │  independent ToolInputParts from provider
     │
     └── repairToolInputsInContents()    → history gets repaired input
@@ -209,6 +209,6 @@ scattered fixes in the provider code:
 |-------------|-------|-------------|
 | `openAIStreamState.appendToolCallArgs` null skip | Streaming transport | Prevents chunk-level corruption; repair layer works on final JSON |
 | `openAIStreamState.appendToolCallArgs` string unquoting | Streaming transport | Same — different abstraction level |
-| `stripEmptyPlaceholders` | Content array structure | Removes empty reasoning/text slots, unrelated to tool input JSON |
+| `streamAssembler` | Content array structure | Records only blocks that streamed content, so an empty reasoning/text slot never becomes a part; unrelated to tool input JSON |
 | `openaiConvertToolInputs` JSON-string wrapping | API compatibility | OpenAI wire format requirement, not a model-error fix |
 | `marshalToolInputData` prefix-marked fallback | Serialization | Catches what repair cannot touch — bytes that fail to unmarshal at all. Prefix-marks them so the AF frame is still delivered and the tool fails parsing (UF ✗) instead of the frame never being sent; see `internal/agent/serialization.go` |

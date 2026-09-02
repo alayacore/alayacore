@@ -18,25 +18,13 @@ type mockProviderAlwaysToolCalls struct {
 func (m *mockProviderAlwaysToolCalls) StreamMessages(_ context.Context, _ []ContentPart, _ []ToolDefinition, _, _ string) (iter.Seq2[StreamEvent, error], error) {
 	m.callCount++
 	return func(yield func(StreamEvent, error) bool) {
-		// Always emit a tool call, never a text-only response.
-		// Must emit ToolInputStartEvent first so the agent can track the name by index.
+		// Always emit a tool call, never a text-only response. The record is
+		// assembled by llm.Agent from these events, so a stub provider states
+		// only what the wire carried: identity, arguments, where they ended.
 		yield(ToolInputStartEvent{ID: "call_1", Name: "repeat", Key: "block:0"}, nil)
-		yield(ToolInputCompleteEvent{
-			ID:    "call_1",
-			Input: []byte(`{}`),
-			Key:   "block:0",
-		}, nil)
-		yield(StepCompleteEvent{
-			Contents: []ContentPart{
-				&ToolInputPart{
-					ID:              "call_1",
-					Name:            "repeat",
-					Input:           []byte(`{}`),
-					ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"},
-				},
-			},
-			Usage: Usage{InputTokens: 10, OutputTokens: 5},
-		}, nil)
+		yield(ToolInputDeltaEvent{ID: "call_1", Delta: "{}", Key: "block:0"}, nil)
+		yield(ToolInputCompleteEvent{ID: "call_1", Key: "block:0"}, nil)
+		yield(StepCompleteEvent{Usage: Usage{InputTokens: 10, OutputTokens: 5}}, nil)
 	}, nil
 }
 
@@ -128,8 +116,8 @@ type mockProviderTruncated struct {
 func (m *mockProviderTruncated) StreamMessages(_ context.Context, _ []ContentPart, _ []ToolDefinition, _, _ string) (iter.Seq2[StreamEvent, error], error) {
 	return func(yield func(StreamEvent, error) bool) {
 		yield(TextDeltaEvent{Delta: "Partial response...", Key: "block:0"}, nil)
+		yield(TextCompleteEvent{Key: "block:0"}, nil)
 		yield(StepCompleteEvent{
-			Contents:   []ContentPart{&TextPart{Text: "Partial response...", ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"}}},
 			Usage:      Usage{InputTokens: 10, OutputTokens: 5},
 			StopReason: m.stopReason,
 		}, nil)

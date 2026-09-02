@@ -89,7 +89,7 @@ The agent detects truncation in `streamEvents` and checks for it in `Stream()`. 
 ```go
 // In streamEvents:
 case StepCompleteEvent:
-	stepContents = e.Contents
+	stepContents = assembler.parts()
 	stepUsage = e.Usage
 	if e.StopReason == "max_tokens" || e.StopReason == "length" {
 		truncated = true

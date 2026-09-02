@@ -28,7 +28,8 @@ type errorMidStreamProvider struct{}
 func (m *errorMidStreamProvider) StreamMessages(_ context.Context, _ []ContentPart, _ []ToolDefinition, _, _ string) (iter.Seq2[StreamEvent, error], error) {
 	return func(yield func(StreamEvent, error) bool) {
 		yield(ToolInputStartEvent{ID: "call_1", Name: "block", Key: "block:0"}, nil)
-		yield(ToolInputCompleteEvent{ID: "call_1", Input: []byte(`{}`), Key: "block:0"}, nil)
+		yield(ToolInputDeltaEvent{ID: "call_1", Delta: `{}`, Key: "block:0"}, nil)
+		yield(ToolInputCompleteEvent{ID: "call_1", Key: "block:0"}, nil)
 		yield(nil, errors.New("provider stream failed mid-tool"))
 	}, nil
 }

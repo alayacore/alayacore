@@ -9,7 +9,7 @@ When a `ToolInputPart` event arrives during streaming, the agent calls `ToolNeed
 1. **No confirmation needed** — The tool executes immediately in a goroutine. Results flow back through a channel and are appended in receive order.
 2. **Confirmation needed** — A goroutine is started that obtains a per-tool confirm channel and blocks until the user responds. Once confirmed, the tool executes in the same goroutine.
 
-All results are collected and then re-ordered by tool call ID to match the original `stepContents` order.
+All results are collected and then attached by tool call ID, in the order the calls were made.
 
 See `internal/llm/agent.go` → `Stream()`, `streamEvents()`, and `handleStreamedToolInput()`.
 
@@ -34,10 +34,10 @@ The TUI adapter processes confirmations sequentially (one dialog at a time). Oth
 All results (from both confirmed and unconfirmed tools) flow through a single shared channel and are re-ordered by ID:
 
 ```go
-stepContents = reorderToolResults(stepContents, results)
+stepContents = attachToolResults(stepContents, results, strict)
 ```
 
-`reorderToolResults` matches each `ToolOutputPart` to its `ToolInputPart` by ID and places results in the original SSE index order so they match the assistant message's content order.
+`attachToolResults` matches each `ToolOutputPart` to its `ToolInputPart` by ID and appends the results in call order, so the record matches the sequence the model asked for. On a step that ended early it runs in forgiving mode and drops calls whose results never arrived, rather than recording a `tool_use` no one answered.
 
 ## Error Handling
 
@@ -60,7 +60,7 @@ for all in-flight tool goroutines to terminate before returning**:
   that never completed (still running when the stream died, dropped by a
   racing result send, or never confirmed) produces no history entry — an
   assistant `tool_use` never appears without its `tool_result`. See
-  `salvageExecutedTools()`.
+  `attachToolResults` in forgiving mode.
 
 This guarantees `Stream()` never returns while a tool goroutine is still
 alive, preventing goroutine leaks and post-error side effects.

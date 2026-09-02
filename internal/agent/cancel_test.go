@@ -259,7 +259,8 @@ func (m *toolThenBlockProvider) StreamMessages(ctx context.Context, _ []llm.Cont
 	m.once.Do(func() { close(m.started) })
 	return func(yield func(llm.StreamEvent, error) bool) {
 		yield(llm.ToolInputStartEvent{ID: "c1", Name: "exec", Key: "block:0"}, nil)
-		yield(llm.ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "block:0"}, nil)
+		yield(llm.ToolInputDeltaEvent{ID: "c1", Delta: `{}`, Key: "block:0"}, nil)
+		yield(llm.ToolInputCompleteEvent{ID: "c1", Key: "block:0"}, nil)
 		<-ctx.Done()
 		yield(nil, ctx.Err())
 	}, nil

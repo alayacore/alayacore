@@ -66,12 +66,13 @@ func TestTextWithToolCalls(t *testing.T) {
 		t.Errorf("Expected streaming text 'Let me help with that.', got '%s'", textReceived.String())
 	}
 
-	// Verify StepCompleteEvent contains both text AND tool calls
 	if stepComplete == nil {
 		t.Fatal("No StepCompleteEvent received")
 	}
 
-	msg := stepComplete.Contents
+	// Verify the recorded turn holds both text AND the tool call. The record is
+	// assembled by llm.Agent from the stream, so it is taken from a real step.
+	msg := stepRecord(t, provider)
 	t.Logf("Message role: %s", "(assistant)")
 	t.Logf("Message content parts: %d", len(msg))
 

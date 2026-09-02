@@ -213,17 +213,13 @@ func TestAnthropicRealToolCall(t *testing.T) {
 
 	var toolCalls []llm.ToolInputPart
 	var textReceived string
-	toolNames := make(map[string]string)
 
 	for event := range events {
 		if e, ok := event.(llm.TextDeltaEvent); ok {
 			textReceived += e.Delta
-		} else if e, ok := event.(llm.ToolInputStartEvent); ok {
-			toolNames[e.ID] = e.Name
-		} else if e, ok := event.(llm.ToolInputCompleteEvent); ok {
-			toolCalls = append(toolCalls, llm.ToolInputPart{ID: e.ID, Name: toolNames[e.ID], Input: e.Input})
 		}
 	}
+	toolCalls = streamedToolParts(events)
 
 	t.Logf("Text received: %q", textReceived)
 

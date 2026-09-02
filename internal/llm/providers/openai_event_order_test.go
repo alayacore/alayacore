@@ -42,17 +42,16 @@ func TestOpenAICompleteEventsFollowContentPositions(t *testing.T) {
 	}
 
 	var order []string
-	var contents []llm.ContentPart
 	for event := range events {
-		switch e := event.(type) {
+		switch event.(type) {
 		case llm.ReasoningCompleteEvent:
 			order = append(order, "reasoning-complete")
 		case llm.TextCompleteEvent:
 			order = append(order, "text-complete")
-		case llm.StepCompleteEvent:
-			contents = e.Contents
 		}
 	}
+	// The record the boundaries describe, assembled by llm.Agent.
+	contents := stepRecord(t, provider)
 
 	want := []string{"reasoning-complete", "text-complete"}
 	if len(order) != len(want) {

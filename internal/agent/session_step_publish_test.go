@@ -317,19 +317,19 @@ func (m *stepBlockingProvider) StreamMessages(_ context.Context, _ []llm.Content
 			if !yield(llm.TextDeltaEvent{Delta: "Step 1.", Key: "block:0"}, nil) {
 				return
 			}
-			if !yield(llm.TextCompleteEvent{Text: "Step 1.", Key: "block:0"}, nil) {
+			if !yield(llm.TextCompleteEvent{Key: "block:0"}, nil) {
 				return
 			}
 			if !yield(llm.ToolInputStartEvent{ID: "c1", Name: "t", Key: "block:1"}, nil) {
 				return
 			}
-			if !yield(llm.ToolInputCompleteEvent{ID: "c1", Input: []byte(`{}`), Key: "block:1"}, nil) {
+			if !yield(llm.ToolInputDeltaEvent{ID: "c1", Delta: `{}`, Key: "block:1"}, nil) {
 				return
 			}
-			yield(llm.StepCompleteEvent{Contents: []llm.ContentPart{
-				&llm.TextPart{Text: "Step 1.", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: "block:0"}},
-				&llm.ToolInputPart{ID: "c1", Name: "t", Input: []byte(`{}`), ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: "block:1"}},
-			}, Usage: llm.Usage{InputTokens: 10, OutputTokens: 10}}, nil)
+			if !yield(llm.ToolInputCompleteEvent{ID: "c1", Key: "block:1"}, nil) {
+				return
+			}
+			yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 10, OutputTokens: 10}}, nil)
 		}, nil
 	}
 	<-m.release
@@ -337,12 +337,10 @@ func (m *stepBlockingProvider) StreamMessages(_ context.Context, _ []llm.Content
 		if !yield(llm.TextDeltaEvent{Delta: "Step 2.", Key: "block:0"}, nil) {
 			return
 		}
-		if !yield(llm.TextCompleteEvent{Text: "Step 2.", Key: "block:0"}, nil) {
+		if !yield(llm.TextCompleteEvent{Key: "block:0"}, nil) {
 			return
 		}
-		yield(llm.StepCompleteEvent{Contents: []llm.ContentPart{
-			&llm.TextPart{Text: "Step 2.", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: "block:0"}},
-		}, Usage: llm.Usage{InputTokens: 10, OutputTokens: 10}}, nil)
+		yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 10, OutputTokens: 10}}, nil)
 	}, nil
 }
 

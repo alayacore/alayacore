@@ -27,7 +27,7 @@ func TestProviderCannotHandBackItsBufferAfterAbandonment(t *testing.T) {
 		}
 		// parseStream's tail: emit the authoritative completes, then the step.
 		reachedTail = true
-		yield(ReasoningCompleteEvent{Text: "thinking", Key: "reasoning"}, nil)
+		yield(ReasoningCompleteEvent{Key: "reasoning"}, nil)
 	}}
 
 	agent := NewAgent(AgentConfig{Provider: provider, MaxSteps: 2})
@@ -58,7 +58,7 @@ func TestYieldAfterAbandonmentPanics(t *testing.T) {
 		yield(ReasoningDeltaEvent{Delta: "thinking", Key: "reasoning"}, nil) // true: still pulling
 		yield(nil, errors.New("boom"))                                       // false: caller returns
 		// Ignoring that is legal Go and a runtime error at once.
-		_ = yield(TextCompleteEvent{Text: "too late", Key: "text"}, nil)
+		_ = yield(TextCompleteEvent{Key: "text"}, nil)
 	}}
 
 	agent := NewAgent(AgentConfig{Provider: provider, MaxSteps: 2})

@@ -3,8 +3,10 @@ package providers_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -257,16 +259,7 @@ func TestToolCallStreaming(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var toolCalls []llm.ToolInputPart
-	toolNames := make(map[string]string)
-	for event := range events {
-		if e, ok := event.(llm.ToolInputStartEvent); ok {
-			toolNames[e.ID] = e.Name
-		}
-		if tc, ok := event.(llm.ToolInputCompleteEvent); ok {
-			toolCalls = append(toolCalls, llm.ToolInputPart{ID: tc.ID, Name: toolNames[tc.ID], Input: tc.Input})
-		}
-	}
+	toolCalls := streamedToolParts(events)
 
 	if len(toolCalls) != 1 {
 		t.Fatalf("Expected 1 tool call, got %d", len(toolCalls))
@@ -318,16 +311,7 @@ func TestToolCallStreamingRawJSONArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var toolCalls []llm.ToolInputPart
-	toolNames := make(map[string]string)
-	for event := range events {
-		if e, ok := event.(llm.ToolInputStartEvent); ok {
-			toolNames[e.ID] = e.Name
-		}
-		if tc, ok := event.(llm.ToolInputCompleteEvent); ok {
-			toolCalls = append(toolCalls, llm.ToolInputPart{ID: tc.ID, Name: toolNames[tc.ID], Input: tc.Input})
-		}
-	}
+	toolCalls := streamedToolParts(events)
 
 	if len(toolCalls) != 1 {
 		t.Fatalf("Expected 1 tool call, got %d", len(toolCalls))
@@ -373,16 +357,7 @@ func TestToolCallStreamingChunked(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var toolCalls []llm.ToolInputPart
-	toolNames := make(map[string]string)
-	for event := range events {
-		if e, ok := event.(llm.ToolInputStartEvent); ok {
-			toolNames[e.ID] = e.Name
-		}
-		if tc, ok := event.(llm.ToolInputCompleteEvent); ok {
-			toolCalls = append(toolCalls, llm.ToolInputPart{ID: tc.ID, Name: toolNames[tc.ID], Input: tc.Input})
-		}
-	}
+	toolCalls := streamedToolParts(events)
 
 	if len(toolCalls) != 1 {
 		t.Fatalf("Expected 1 tool call, got %d", len(toolCalls))
@@ -440,16 +415,7 @@ func TestToolCallStreamingWithNullArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var toolCalls []llm.ToolInputPart
-	toolNames := make(map[string]string)
-	for event := range events {
-		if e, ok := event.(llm.ToolInputStartEvent); ok {
-			toolNames[e.ID] = e.Name
-		}
-		if tc, ok := event.(llm.ToolInputCompleteEvent); ok {
-			toolCalls = append(toolCalls, llm.ToolInputPart{ID: tc.ID, Name: toolNames[tc.ID], Input: tc.Input})
-		}
-	}
+	toolCalls := streamedToolParts(events)
 
 	if len(toolCalls) != 1 {
 		t.Fatalf("Expected 1 tool call, got %d", len(toolCalls))
@@ -497,19 +463,8 @@ func TestAnthropicToolCallStreaming(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var toolCalls []llm.ToolInputPart
-	var stepComplete *llm.StepCompleteEvent
-	toolNames := make(map[string]string)
-	for event := range events {
-		if e, ok := event.(llm.ToolInputStartEvent); ok {
-			toolNames[e.ID] = e.Name
-		}
-		if e, ok := event.(llm.ToolInputCompleteEvent); ok {
-			toolCalls = append(toolCalls, llm.ToolInputPart{ID: e.ID, Name: toolNames[e.ID], Input: e.Input})
-		} else if e, ok := event.(llm.StepCompleteEvent); ok {
-			stepComplete = &e
-		}
-	}
+	toolCalls := streamedToolParts(events)
+	stepComplete := stepEventOf(t, provider)
 
 	if len(toolCalls) != 1 {
 		t.Fatalf("Expected 1 tool call, got %d", len(toolCalls))
@@ -713,8 +668,8 @@ func TestAnthropicReasoningStreaming(t *testing.T) {
 		t.Fatal("Expected StepCompleteEvent")
 	}
 
-	// Check message content includes both reasoning and text
-	msg := stepComplete.Contents
+	// Check the recorded turn includes both reasoning and text
+	msg := stepRecord(t, provider)
 	if len(msg) != 2 {
 		t.Fatalf("Expected 2 content parts, got %d", len(msg))
 	}
@@ -762,7 +717,7 @@ func TestAnthropicThinkingOmittedMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, err := provider.StreamMessages(context.Background(), testMsg(llm.RoleUser, &llm.TextPart{Text: "GCD of 1071 and 462?"}), nil, "", "")
+	_, err = provider.StreamMessages(context.Background(), testMsg(llm.RoleUser, &llm.TextPart{Text: "GCD of 1071 and 462?"}), nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -771,22 +726,20 @@ func TestAnthropicThinkingOmittedMode(t *testing.T) {
 		reasoningParts int
 		textParts      int
 	)
-	for event := range events {
-		if e, ok := event.(llm.StepCompleteEvent); ok {
-			for _, part := range e.Contents {
-				switch p := part.(type) {
-				case *llm.ReasoningPart:
-					reasoningParts++
-					_ = p
-				case *llm.TextPart:
-					textParts++
-				}
-			}
+	// The turn's record, assembled by llm.Agent from this provider's stream.
+	for _, part := range stepRecord(t, provider) {
+		switch part.(type) {
+		case *llm.ReasoningPart:
+			reasoningParts++
+		case *llm.TextPart:
+			textParts++
 		}
 	}
 
-	if reasoningParts != 1 {
-		t.Errorf("Expected 1 reasoning part, got %d", reasoningParts)
+	// In omitted mode the server sends no thinking content, and a block that
+	// never streamed is not recorded as an empty reasoning part.
+	if reasoningParts != 0 {
+		t.Errorf("Expected no reasoning part, got %d", reasoningParts)
 	}
 	if textParts != 1 {
 		t.Errorf("Expected 1 text part, got %d", textParts)
@@ -1273,12 +1226,12 @@ func TestOpenAIWithReasoning(t *testing.T) {
 		t.Errorf("Expected text 'Result: 123.', got '%s'", textReceived)
 	}
 
-	// Verify step complete contains both reasoning and text
 	if stepComplete == nil {
 		t.Fatal("Expected StepCompleteEvent")
 	}
 
-	msg := stepComplete.Contents
+	// Verify the recorded turn holds both reasoning and text
+	msg := stepRecord(t, provider)
 	if len(msg) < 2 {
 		t.Fatalf("Expected at least 2 content parts (reasoning + text), got %d", len(msg))
 	}
@@ -1424,7 +1377,9 @@ func TestOpenAIReasoningField(t *testing.T) {
 				case llm.TextDeltaEvent:
 					gotText += e.Delta
 				case llm.ReasoningCompleteEvent:
-					gotReasoningComplete = e.Text
+					// The boundary carries no text; the joined deltas are the
+					// content, and this is what a provider must deliver.
+					gotReasoningComplete = gotReasoning
 				case llm.StepCompleteEvent:
 					stepComplete = &e
 				}
@@ -1453,7 +1408,7 @@ func TestOpenAIReasoningField(t *testing.T) {
 				t.Fatal("expected StepCompleteEvent")
 			}
 			var parts []string
-			for _, p := range stepComplete.Contents {
+			for _, p := range stepRecord(t, provider) {
 				switch cp := p.(type) {
 				case *llm.ReasoningPart:
 					parts = append(parts, "reasoning:"+cp.Text)
@@ -1465,7 +1420,17 @@ func TestOpenAIReasoningField(t *testing.T) {
 			// text block 1 — even when one is empty, so delta indices match
 			// content array positions (gotcha 5). The agent strips the empty
 			// placeholder after assigning history IDs, not the provider.
-			wantParts := []string{"reasoning:" + tt.wantReasoning, "text:" + tt.wantText}
+			// Only blocks that carried content enter the record: a slot the
+			// stream never filled is not an empty part in the conversation, and
+			// never was — the agent used to strip those placeholders before
+			// persisting, so asserting them here tested a discarded artifact.
+			var wantParts []string
+			if tt.wantReasoning != "" {
+				wantParts = append(wantParts, "reasoning:"+tt.wantReasoning)
+			}
+			if tt.wantText != "" {
+				wantParts = append(wantParts, "text:"+tt.wantText)
+			}
 			if !reflect.DeepEqual(parts, wantParts) {
 				t.Errorf("content parts = %q, want %q", parts, wantParts)
 			}
@@ -1826,16 +1791,7 @@ func TestAnthropicMultiToolCall(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var toolCalls []llm.ToolInputPart
-	toolNames := make(map[string]string)
-	for event := range events {
-		if e, ok := event.(llm.ToolInputStartEvent); ok {
-			toolNames[e.ID] = e.Name
-		}
-		if e, ok := event.(llm.ToolInputCompleteEvent); ok {
-			toolCalls = append(toolCalls, llm.ToolInputPart{ID: e.ID, Name: toolNames[e.ID], Input: e.Input})
-		}
-	}
+	toolCalls := streamedToolParts(events)
 
 	if len(toolCalls) != 2 {
 		t.Fatalf("Expected 2 tool calls, got %d", len(toolCalls))
@@ -2515,4 +2471,108 @@ func TestSetReasoningConfigsDropsEmptyEntries(t *testing.T) {
 	if _, ok := requestBody["reasoning_effort"]; ok {
 		t.Errorf("level 1 has empty config, must not emit reasoning_effort: %v", requestBody["reasoning_effort"])
 	}
+}
+
+// streamedToolParts joins what a provider streamed into the tool calls it
+// describes: identity from the block's start event, arguments accumulated from
+// its ToolInputDeltaEvent fragments. That is the same join llm.Agent's assembler
+// performs, gathered here so a wire-decoding test can still assert on a call's
+// assembled input.
+//
+// Blocks are tracked by their stream key, not by call ID, because the key is what
+// the protocol guarantees to be unique and stable: a server that omits or repeats
+// an ID would otherwise merge two calls into one.
+func streamedToolParts(events iter.Seq2[llm.StreamEvent, error]) []llm.ToolInputPart {
+	var order []string
+	byKey := map[string]*llm.ToolInputPart{}
+	for event := range events {
+		switch e := event.(type) {
+		case llm.ToolInputStartEvent:
+			if _, seen := byKey[e.Key]; !seen {
+				order = append(order, e.Key)
+				byKey[e.Key] = &llm.ToolInputPart{}
+			}
+			part := byKey[e.Key]
+			if e.ID != "" {
+				part.ID = e.ID
+			}
+			if e.Name != "" {
+				part.Name = e.Name
+			}
+		case llm.ToolInputDeltaEvent:
+			part, seen := byKey[e.Key]
+			if !seen {
+				order = append(order, e.Key)
+				part = &llm.ToolInputPart{}
+				byKey[e.Key] = part
+			}
+			if e.ID != "" && part.ID == "" {
+				part.ID = e.ID
+			}
+			part.Input = append(part.Input, e.Delta...)
+		}
+	}
+	out := make([]llm.ToolInputPart, 0, len(order))
+	for _, key := range order {
+		out = append(out, *byKey[key])
+	}
+	return out
+}
+
+// stepRecord runs a provider's stream through a real agent step and returns the
+// content parts that reached history. Tests asking "what did this turn record"
+// need this rather than an inspection of the events: the record is assembled by
+// llm.Agent, so asserting on events alone would not notice a broken assembly, and
+// asserting on a hand-built copy would test the test.
+func stepRecord(t *testing.T, provider llm.Provider) []llm.ContentPart {
+	t.Helper()
+	next := uint64(1)
+	var published []llm.ContentPart
+	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 1})
+	if _, err := agent.Stream(context.Background(),
+		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}),
+		llm.StreamCallbacks{
+			IDGen:               func() uint64 { n := next; next++; return n },
+			OnReasoningDelta:    func(string, uint64) error { return nil },
+			OnReasoningComplete: func(string, uint64) error { return nil },
+			OnTextDelta:         func(string, uint64) error { return nil },
+			OnTextComplete:      func(string, uint64) error { return nil },
+			OnToolInputStart:    func(_, _ string, _ uint64) error { return nil },
+			OnToolInputDelta:    func(_, _ string, _ uint64) error { return nil },
+			OnToolInputComplete: func(string, json.RawMessage, uint64) error { return nil },
+			OnStepFinish: func(c []llm.ContentPart, _ llm.Usage) error {
+				published = append([]llm.ContentPart{}, c...)
+				return nil
+			},
+		}); err != nil && !errors.Is(err, llm.ErrMaxStepsExceeded) {
+		// A stream that ends in a tool call cannot finish within one step; the
+		// record below is still the turn's, which is what the caller asks about.
+		t.Fatalf("agent step over this stream failed: %v", err)
+	}
+	// OnStepFinish publishes the accumulated conversation, prompt included. A
+	// test asking what *this turn* recorded wants the assistant's parts only.
+	var step []llm.ContentPart
+	for _, p := range published {
+		if p.GetRole() != llm.RoleUser {
+			step = append(step, p)
+		}
+	}
+	return step
+}
+
+// stepEventOf streams the same response again and returns the step event, for a
+// test that already consumed the first stream collecting tool calls.
+func stepEventOf(t *testing.T, provider llm.Provider) *llm.StepCompleteEvent {
+	t.Helper()
+	events, err := provider.StreamMessages(context.Background(),
+		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}), nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if e, ok := event.(llm.StepCompleteEvent); ok {
+			return &e
+		}
+	}
+	return nil
 }

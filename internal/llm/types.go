@@ -42,11 +42,6 @@ type ContentPart interface {
 	SetHistoryID(uint64)
 	GetRole() MessageRole
 	SetRole(MessageRole)
-	// GetBlockKey returns the provider-assigned identity of the stream block
-	// this part was assembled from. It is how llm.Agent binds a history ID onto
-	// the right part; see the BlockKey docs on ContentPartMeta.
-	GetBlockKey() string
-	SetBlockKey(string)
 	UpdateContentPartMeta(historyID uint64, role MessageRole)
 }
 
@@ -56,26 +51,12 @@ type ContentPart interface {
 type ContentPartMeta struct {
 	HistoryID uint64      `json:"-"`
 	Role      MessageRole `json:"-"`
-
-	// BlockKey is the identity of the streaming block this part came from, as
-	// handed out by the provider. A history ID is issued when that block first
-	// appears in the stream and later claimed by the part carrying the same
-	// key — an identity lookup, never a positional one.
-	//
-	// The key is opaque by contract: it is only ever compared for equality.
-	// It must be stable from the block's first event to the part's assembly,
-	// and it must not be derived from, or interpreted as, a position in the
-	// content array. Providers own the naming; see the Key field on the
-	// streaming events below, which carries the same value.
-	BlockKey string `json:"-"`
 }
 
 func (m *ContentPartMeta) GetHistoryID() uint64   { return m.HistoryID }
 func (m *ContentPartMeta) SetHistoryID(id uint64) { m.HistoryID = id }
 func (m *ContentPartMeta) GetRole() MessageRole   { return m.Role }
 func (m *ContentPartMeta) SetRole(r MessageRole)  { m.Role = r }
-func (m *ContentPartMeta) GetBlockKey() string    { return m.BlockKey }
-func (m *ContentPartMeta) SetBlockKey(k string)   { m.BlockKey = k }
 func (m *ContentPartMeta) UpdateContentPartMeta(id uint64, r MessageRole) {
 	m.HistoryID = id
 	m.Role = r
@@ -226,20 +207,22 @@ type TextDeltaEvent struct {
 	Delta string
 
 	// Key identifies which content block this fragment belongs to. Every
-	// streaming event carries it and every persisted part carries the same
-	// value, so a history ID issued during streaming can be claimed by the
-	// right part at step completion without any positional assumption. Opaque:
-	// only ever compared for equality, never ordered, added to, or used as an
-	// array index. Providers choose the naming (see internal/llm/providers).
+	// streaming event carries it, and llm.Agent assembles the step's blocks
+	// under it — so a block's content, its history ID and its place in the
+	// record are held by one object from first byte to persisted part, with no
+	// positional assumption and no later binding step. Opaque: only ever
+	// compared for equality, never ordered, added to, or used as an array
+	// index. Providers choose the naming (see internal/llm/providers).
 	Key string
 }
 
 func (TextDeltaEvent) isStreamEvent() {}
 
-// TextCompleteEvent signals that a text content block is fully received.
-// Carries the complete authoritative text.
+// TextCompleteEvent signals that a text block ended. It carries no content: the
+// body arrived through TextDeltaEvent and llm.Agent's assembler holds it. A
+// provider that receives a whole block at once sends one delta with the entire
+// text and then this boundary.
 type TextCompleteEvent struct {
-	Text string
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
 }
@@ -255,10 +238,9 @@ type ReasoningDeltaEvent struct {
 
 func (ReasoningDeltaEvent) isStreamEvent() {}
 
-// ReasoningCompleteEvent signals that a reasoning content block is fully received.
-// Carries the complete authoritative reasoning text.
+// ReasoningCompleteEvent signals that a reasoning block ended. It carries no
+// content; see TextCompleteEvent for the rule.
 type ReasoningCompleteEvent struct {
-	Text string
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
 }
@@ -285,10 +267,12 @@ type ToolInputDeltaEvent struct {
 
 func (ToolInputDeltaEvent) isStreamEvent() {}
 
-// ToolInputCompleteEvent signals that a tool call's arguments have finished streaming
+// ToolInputCompleteEvent signals that a tool call's arguments finished
+// streaming. It carries the call ID for adapter routing but not the arguments:
+// they arrived through ToolInputDeltaEvent and llm.Agent's assembler holds them,
+// which is what lets a step that was cut still know the calls it received.
 type ToolInputCompleteEvent struct {
-	ID    string
-	Input json.RawMessage
+	ID string
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
 }
@@ -296,8 +280,12 @@ type ToolInputCompleteEvent struct {
 func (ToolInputCompleteEvent) isStreamEvent() {}
 
 // StepCompleteEvent represents completion of an agentic step.
+//
+// It reports what the step ended with and nothing about what it contained: the
+// step's content parts are assembled from the events by llm.Agent, on this path
+// and on the ones that never reach it, so a provider cannot describe a turn
+// differently depending on how it ended.
 type StepCompleteEvent struct {
-	Contents   []ContentPart
 	Usage      Usage
 	StopReason string
 }

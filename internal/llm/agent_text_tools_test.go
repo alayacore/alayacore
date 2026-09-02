@@ -116,38 +116,31 @@ func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Con
 			if !yield(TextDeltaEvent{Delta: resp.text, Key: "block:0"}, nil) {
 				return
 			}
+			if !yield(TextCompleteEvent{Key: "block:0"}, nil) {
+				return
+			}
 		}
 
-		// Send tool call events — emit start event first, then complete.
-		// Real providers send ToolInputStartEvent with the name, then
-		// ToolInputCompleteEvent without the name (looked up by index).
+		// Send tool call events — identity, arguments, then where they ended.
+		// A stub provider states only what the wire carried: llm.Agent assembles
+		// the step's record from these, so there is no second copy to build and
+		// no way for this fake to describe the turn differently from the events
+		// it sent.
 		for i, tc := range resp.toolCalls {
 			key := fmt.Sprintf("block:%d", i+1) // 0 is the text block
 			if !yield(ToolInputStartEvent{ID: tc.ID, Name: tc.Name, Key: key}, nil) {
 				return
 			}
-			if !yield(ToolInputCompleteEvent{ID: tc.ID, Input: tc.Input, Key: key}, nil) {
+			if !yield(ToolInputDeltaEvent{ID: tc.ID, Delta: string(tc.Input), Key: key}, nil) {
+				return
+			}
+			if !yield(ToolInputCompleteEvent{ID: tc.ID, Key: key}, nil) {
 				return
 			}
 		}
 
-		// Send step complete with content containing BOTH text and tool calls
-		content := []ContentPart{}
-		if resp.text != "" {
-			content = append(content, &TextPart{Text: resp.text, ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"}})
-		}
-		for i, tc := range resp.toolCalls {
-			content = append(content, &ToolInputPart{
-				ID:              tc.ID,
-				Name:            tc.Name,
-				Input:           tc.Input,
-				ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: fmt.Sprintf("block:%d", i+1)},
-			})
-		}
-
 		yield(StepCompleteEvent{
-			Contents: content,
-			Usage:    Usage{InputTokens: 10, OutputTokens: 20},
+			Usage: Usage{InputTokens: 10, OutputTokens: 20},
 		}, nil)
 	}, nil
 }

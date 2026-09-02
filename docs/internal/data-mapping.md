@@ -10,14 +10,12 @@ All providers eat different wire formats and emit the same domain types:
 // llm/types.go — the domain types
 
 // ContentPart is implemented by all content block types.
-// Each implementation embeds ContentPartMeta for HistoryID, Role and BlockKey.
+// Each implementation embeds ContentPartMeta for HistoryID and Role.
 type ContentPart interface {
 	GetHistoryID() uint64
 	SetHistoryID(uint64)
 	GetRole() MessageRole
 	SetRole(MessageRole)
-	GetBlockKey() string     // identity of the stream block this part came from
-	SetBlockKey(string)
 	UpdateContentPartMeta(historyID uint64, role MessageRole)
 }
 
@@ -280,7 +278,7 @@ ToolInputPart{
 }
 ```
 
-**Why this works:** The `openAIStreamState` has a single `toolAccumulators[index]` per tool call, storing both metadata and argument fragments. Reasoning text accumulates independently in `reasoningBuilder`. They never interfere. `getContents()` simply appends all non-empty accumulators to the Content slice.
+**Why this works:** `openAIStreamState` remembers the identity of each tool call by index — the protocol sends ID and name once and fragments the arguments afterwards — while the argument fragments and the reasoning text travel out as deltas and are accumulated only by `llm.Agent`. Nothing is kept twice, so the two cannot disagree.
 
 ## Sending (Domain → Wire)
 
@@ -424,19 +422,19 @@ anthropicStreamState {
 }
 ```
 
-Every wire event carries an `index` (start, delta, stop), just like OpenAI's `tool_calls[index]`. Blocks may arrive interleaved — block 1 can start before block 0 finishes. Each block is independently accumulated by index. `content_block_stop(i)` stores the result in `contentParts[i]`, and `getContents()` sorts by index to produce the final ordered slice.
+Every wire event carries an `index` (start, delta, stop), just like OpenAI's `tool_calls[index]`. Blocks may arrive interleaved — block 1 can start before block 0 finishes. Each block is independently accumulated by index. `content_block_stop(i)` emits a boundary event for that index and nothing else; because blocks close in declared index order, the assembler's record follows it.
 
-### Block keys: how a history ID finds its part
+### Block keys: how a history ID finds its content
 
-A block's protocol `index` is a chunk-correlation handle: it says which accumulator a fragment belongs to. It is **not** an identity, and it must never be used as one — binding a history ID onto content by position in the assembled array (which is what this used to do) requires `event index == array position`, an assumption no provider guarantees. A server whose tool-call indices skipped a number left that tool holding `HistoryID = 0` for the rest of the session, the same value as "never numbered".
+A block's protocol `index` is a chunk-correlation handle: it says which fragments belong together. It is **not** an identity, and it must never be used as one — the first version of this bound history IDs by position in the array assembled at step end, which quietly assumes `event index == array position`, a thing no provider guarantees. A server whose tool-call indices skipped a number left that tool holding `HistoryID = 0` for the rest of the session, the same value as "never numbered".
 
-Providers therefore name each block, and the name is what carries the ID across:
+Providers therefore name each block, and the name is held by `llm.Agent`'s assembler for the block's whole life:
 
 ```
-streaming event   ...  Key: "tool:0"        ─┐
-                                             ├─ same string → ID binds correctly
-persisted part    ContentPartMeta.BlockKey   ─┘
+streaming event   Key: "tool:0"  ──▶  assembler block { key, kind, body, historyID }  ──▶  persisted part
 ```
+
+The key never reaches the part: it was only ever the join between a streamed block and a separately-assembled part, and once one object holds the content and its ID, there is nothing left to join. `persisted part` above is the record's entry, and what it carries is content, role, and the ID minted at the block's first byte.
 
 | Provider | Naming | Why |
 |----------|--------|-----|
@@ -448,6 +446,6 @@ Three rules follow for anyone implementing a provider:
 
 1. `Key` is opaque. It is compared for equality and never ordered, incremented, or used to index a slice. The old `2 + index` arithmetic existed only to fake a position, and faking a position is what broke.
 2. A block's key must not change between its first event and the part it becomes. OpenAI's `"tool:<index>"` is stable precisely because it is fixed before the call ID arrives.
-3. Every part returned in `StepCompleteEvent.Contents` must carry the key of a block that was actually streamed. One that wasn't is rejected with an error naming the key — deliberate, because the alternative is a silently unaddressable entry in the conversation. (Parts legitimately absent from the stream are the empty reasoning/text placeholders, which are stripped before binding; and when `IDGen` is nil there is no numbering to bind, so keyless parts pass.)
+3. A part exists only if its block streamed content under a key. There is no step-end binding step to get wrong, so a provider cannot persist a part the stream never carried, and an unfilled slot cannot become an empty part. (Numbering is skipped entirely when `IDGen` is nil; the content is still assembled.)
 
 IDs are issued in first-touch order, so they number blocks by arrival, not by record position. See [providers.md](../providers.md) → "Complete-event order" for the obligation that puts on providers, and [tui.md](../tui.md) → "Window Order" for the one place that reads ID magnitude as an order.

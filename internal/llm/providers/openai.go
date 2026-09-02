@@ -492,38 +492,38 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		// llm.Agent's failed-step path records them paired with their results.
 		incomplete := !sawDone && state.getStopReason() == ""
 
-		// Emit complete events for the step's blocks.
+		// Close the step's blocks. These events carry no content — the record is
+		// assembled by llm.Agent from the deltas — so what is being declared here
+		// is only where each block ended, and in what order.
 		//
-		// ORDER MATTERS: this must run in the same [reasoning, text, tools]
-		// order that getContents() persists, because it is the order these
-		// frames reach the adapters. Under --no-delta nothing is coalesced, so
-		// a frame is what creates its TUI window: emitted out of record order,
+		// ORDER MATTERS: the order these arrive in is the order the step is
+		// persisted in, because the assembler lays the record out by close order.
+		// It has to match the shape an assistant turn has in this protocol —
+		// reasoning, content, tool calls — because it is also the order these
+		// frames reach the adapters. Under --no-delta nothing is coalesced, so a
+		// frame is what creates its TUI window: emitted out of record order,
 		// ASSISTANT lands above the REASONING that produced it, and a saved
-		// session re-lays the same turn the other way on reopen. --plainio
-		// prints in the same frame order.
+		// session re-lays the same turn the other way on reopen. --plainio prints
+		// in the same frame order.
 		//
-		// This ordering does NOT decide history IDs. Those are minted at each
-		// block's first streamed event — blockID runs outside the callback
-		// guards, so a delta numbers the block even when no delta frame is
-		// emitted for it. Numbering therefore follows arrival in every mode,
-		// measured identical with and without --no-delta, and no provider that
-		// streams against its own message shape can be fixed from here. That
-		// residue is arrival order versus getContents()'s fixed layout; see
-		// docs/providers.md → "Complete-event order".
-		if reasoning := state.reasoningBuilder.String(); reasoning != "" {
-			if !yield(llm.ReasoningCompleteEvent{Text: reasoning, Key: openaiReasoningKey}, nil) {
-				return
-			}
+		// This ordering does NOT decide history IDs: those are minted when a
+		// block first appears, which is while the response streams. Numbering is
+		// therefore arrival-based in every mode, and a provider that streams
+		// against its own message shape cannot be fixed from here — that residue
+		// is arrival order versus this fixed layout. See docs/providers.md →
+		// "Complete-event order".
+		//
+		// Blocks the stream never opened are closed anyway rather than skipped by
+		// a presence check here: llm.Agent ignores a boundary for a block it never
+		// saw, so no phantom window and no empty part can come of it, and every
+		// provider is spared tracking whether it saw one.
+		if !yield(llm.ReasoningCompleteEvent{Key: openaiReasoningKey}, nil) {
+			return
 		}
-		if text := state.textBuilder.String(); text != "" {
-			if !yield(llm.TextCompleteEvent{Text: text, Key: openaiTextKey}, nil) {
-				return
-			}
+		if !yield(llm.TextCompleteEvent{Key: openaiTextKey}, nil) {
+			return
 		}
-
-		// Emit tool call events from accumulators, after reasoning and text,
-		// matching the [reasoning, text, tools] order getContents() persists.
-		for _, tc := range state.getToolCompleteEvents() {
+		for _, tc := range state.closedToolCalls() {
 			if !yield(tc, nil) {
 				return
 			}
@@ -535,7 +535,6 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		}
 
 		yield(llm.StepCompleteEvent{
-			Contents:   state.getContents(),
 			Usage:      state.getUsage(),
 			StopReason: state.getStopReason(),
 		}, nil)
@@ -543,22 +542,20 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 }
 
 // openAIStreamState tracks state across streaming events
-// openAIToolAccumulator accumulates a single tool call across streaming deltas.
-// OpenAI splits tool call data across delta events: one event carries id+name,
-// subsequent events carry argument fragments keyed by index.
-// This struct merges them, mirroring anthropicStreamState.blockAccumulator.
+// openAIToolAccumulator remembers a single tool call's identity across streaming
+// deltas. OpenAI sends the ID and name on one event and argument fragments keyed
+// by index afterwards, with an empty ID on the continuations, so the ID has to be
+// recalled to label every later delta. The arguments themselves are not kept
+// here: they reach llm.Agent as deltas and are assembled there.
 type openAIToolAccumulator struct {
 	id   string
 	name string
-	args strings.Builder
 }
 
 type openAIStreamState struct {
+	toolAccumulators map[int]*openAIToolAccumulator // tool call index -> identity
 	usage            llm.Usage
 	stopReason       string
-	textBuilder      strings.Builder
-	reasoningBuilder strings.Builder
-	toolAccumulators map[int]*openAIToolAccumulator // tool call index -> accumulator
 }
 
 func (s *openAIStreamState) setUsage(usage llm.Usage) {
@@ -575,14 +572,6 @@ func (s *openAIStreamState) setStopReason(reason string) {
 
 func (s *openAIStreamState) getStopReason() string {
 	return s.stopReason
-}
-
-func (s *openAIStreamState) addTextDelta(delta string) {
-	s.textBuilder.WriteString(delta)
-}
-
-func (s *openAIStreamState) addReasoningDelta(delta string) {
-	s.reasoningBuilder.WriteString(delta)
 }
 
 func (s *openAIStreamState) toolAccumulator(index int) *openAIToolAccumulator {
@@ -615,17 +604,6 @@ func unquoteToolArg(args json.RawMessage) string {
 	return string(args)
 }
 
-func (s *openAIStreamState) appendToolCallArgs(index int, args json.RawMessage) {
-	acc := s.toolAccumulator(index)
-	acc.args.WriteString(unquoteToolArg(args))
-}
-
-func (s *openAIStreamState) setToolCallName(index int, id, name string) {
-	acc := s.toolAccumulator(index)
-	acc.id = id
-	acc.name = name
-}
-
 // toolIndices returns sorted accumulator indices.
 func (s *openAIStreamState) toolIndices() []int {
 	indices := make([]int, 0, len(s.toolAccumulators))
@@ -636,73 +614,44 @@ func (s *openAIStreamState) toolIndices() []int {
 	return indices
 }
 
-func (s *openAIStreamState) getToolCompleteEvents() []llm.ToolInputCompleteEvent {
+// closedToolCalls names each tool call the stream opened, as a boundary event,
+// in the order the protocol declares them.
+//
+// The order is the wire's `tool_calls[].index`, not the order fragments
+// happened to arrive in: a server that streams index 1 before index 0 still gets
+// its calls laid out as it asked for them. That ordering is what llm.Agent's
+// assembler uses for the persisted record, so switching this to first-appearance
+// order would decide, by streaming luck, the sequence a model sees its own
+// parallel calls in on the next turn. Nothing here may do that.
+func (s *openAIStreamState) closedToolCalls() []llm.ToolInputCompleteEvent {
 	indices := s.toolIndices()
-	result := make([]llm.ToolInputCompleteEvent, len(indices))
+	out := make([]llm.ToolInputCompleteEvent, len(indices))
 	for pos, i := range indices {
-		acc := s.toolAccumulators[i]
-		result[pos] = llm.ToolInputCompleteEvent{
-			ID:    acc.id,
-			Input: json.RawMessage(acc.args.String()),
-			Key:   openaiToolKey(i),
-		}
+		out[pos] = llm.ToolInputCompleteEvent{ID: s.toolAccumulators[i].id, Key: openaiToolKey(i)}
 	}
-	return result
+	return out
 }
 
 // Block identity keys for this provider's content blocks. OpenAI's delta
 // schema has no notion of a content block: reasoning and content are two flat
-// fields, each accumulating into exactly one builder, so their keys are fixed
+// fields, each accumulating into exactly one block, so their keys are fixed
 // strings. Tool calls do carry a per-response index — but it is a chunk
 // correlation handle, and the call ID it pairs with is frequently empty on
 // continuation chunks, so the same handle is reused as the identity key: it is
-// present from the block's first event and never changes mid-stream. A call
-// ID would not be: a server that has not sent one yet, or never sends one,
-// would make the key shift (or collide) while the block is streaming.
+// present from the block's first event and never changes mid-stream. A call ID
+// would not be: a server that has not sent one yet, or never sends one, would
+// make the key shift (or collide) while the block is streaming.
 //
-// These are opaque. Nothing may order, increment, or index into them —
-// which is what the previous `2 + index` "content block index" scheme invited,
-// and how a server with non-contiguous tool indices produced a persisted part
-// with no history ID at all.
+// These are opaque. Nothing may order, increment, or index into them — which is
+// what the previous `2 + index` "content block index" scheme invited, and how a
+// server with non-contiguous tool indices produced a persisted part with no
+// history ID at all.
 const (
 	openaiReasoningKey = "reasoning"
 	openaiTextKey      = "text"
 )
 
 func openaiToolKey(rawIndex int) string { return fmt.Sprintf("tool:%d", rawIndex) }
-
-// getContents assembles a []ContentPart from the three parallel OpenAI stream accumulators.
-// OpenAI delivers reasoning, text, and tool calls as separate flat delta fields.
-// This function merges them into a flat ContentPart array,
-// matching the Anthropic-inspired content block model used by the rest of the codebase.
-//
-// Reasoning and text are always included as content blocks (even when empty) so that
-// their fixed indices (0 and 1) match the delta event indices used during streaming.
-// The agent strips empty placeholders after assigning history IDs via StepCompleteEvent.
-func (s *openAIStreamState) getContents() []llm.ContentPart {
-	indices := s.toolIndices()
-	contents := make([]llm.ContentPart, 0, 2+len(indices))
-	// Always add reasoning slot (index 0), may be empty placeholder.
-	contents = append(contents, &llm.ReasoningPart{
-		Text:            s.reasoningBuilder.String(),
-		ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: openaiReasoningKey},
-	})
-	// Always add text slot (index 1), may be empty placeholder.
-	contents = append(contents, &llm.TextPart{
-		Text:            s.textBuilder.String(),
-		ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: openaiTextKey},
-	})
-	for _, i := range indices {
-		acc := s.toolAccumulators[i]
-		contents = append(contents, &llm.ToolInputPart{
-			ID:              acc.id,
-			Input:           json.RawMessage(acc.args.String()),
-			Name:            acc.name,
-			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, BlockKey: openaiToolKey(i)},
-		})
-	}
-	return contents
-}
 
 // ============================================================================
 // Event Handlers
@@ -763,34 +712,43 @@ func (p *OpenAIProvider) checkFinishReason(reason string) (bool, error) {
 // handleDelta processes the delta content from a streaming chunk.
 func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEvent, error) bool, state *openAIStreamState) bool {
 	if reasoning := delta.reasoningText(p.reasoningField); reasoning != "" {
-		state.addReasoningDelta(reasoning)
 		if !yield(llm.ReasoningDeltaEvent{Delta: reasoning, Key: openaiReasoningKey}, nil) {
 			return false
 		}
 	}
 
 	if delta.Content != "" {
-		state.addTextDelta(delta.Content)
 		if !yield(llm.TextDeltaEvent{Delta: delta.Content, Key: openaiTextKey}, nil) {
 			return false
 		}
 	}
 
 	for _, tc := range delta.ToolCalls {
-		// Process name first so acc.id is set before any argument delta.
+		// Record identity as it arrives, before emitting anything. Some servers
+		// send the call ID in a chunk that carries no name, and reading the ID
+		// only on the name's chunk dropped it for the whole call — every later
+		// delta and the persisted part then had an empty ID.
+		acc := state.toolAccumulator(tc.Index)
+		if tc.ID != "" {
+			acc.id = tc.ID
+		}
 		if tc.Function.Name != "" {
-			state.setToolCallName(tc.Index, tc.ID, tc.Function.Name)
+			acc.name = tc.Function.Name
+		}
+
+		// The start event still waits for the name, which is what an adapter
+		// needs to label the window, and it fires once: a name arrives on one
+		// chunk and never on a continuation.
+		if tc.Function.Name != "" {
 			if !yield(llm.ToolInputStartEvent{
-				ID:   tc.ID,
-				Name: tc.Function.Name,
+				ID:   acc.id,
+				Name: acc.name,
 				Key:  openaiToolKey(tc.Index),
 			}, nil) {
 				return false
 			}
 		}
 		if len(tc.Function.Arguments) > 0 {
-			state.appendToolCallArgs(tc.Index, tc.Function.Arguments)
-			acc := state.toolAccumulator(tc.Index)
 			if !yield(llm.ToolInputDeltaEvent{
 				ID:    acc.id,
 				Delta: unquoteToolArg(tc.Function.Arguments),

@@ -46,10 +46,12 @@ func TestStreamSalvagesExecutedToolsOnCancel(t *testing.T) {
 	fastExecuted := make(chan struct{})
 	provider := &salvageProvider{seq: func(yield func(StreamEvent, error) bool) {
 		yield(ToolInputStartEvent{ID: "c1", Name: "fast_tool", Key: "block:0"}, nil)
-		yield(ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "block:0"}, nil)
+		yield(ToolInputDeltaEvent{ID: "c1", Delta: "{}", Key: "block:0"}, nil)
+		yield(ToolInputCompleteEvent{ID: "c1", Key: "block:0"}, nil)
 		// c2 requires confirmation; the user never responds.
 		yield(ToolInputStartEvent{ID: "c2", Name: "confirm_tool", Key: "block:1"}, nil)
-		yield(ToolInputCompleteEvent{ID: "c2", Input: json.RawMessage(`{}`), Key: "block:1"}, nil)
+		yield(ToolInputDeltaEvent{ID: "c2", Delta: "{}", Key: "block:1"}, nil)
+		yield(ToolInputCompleteEvent{ID: "c2", Key: "block:1"}, nil)
 		<-fastExecuted // end the stream only after the fast tool ran
 	}}
 
@@ -188,9 +190,11 @@ func TestStreamSalvageOmitsAmbiguousToolIDs(t *testing.T) {
 	provider := &salvageProvider{seq: func(yield func(StreamEvent, error) bool) {
 		// Both tool calls reuse ID "c1" (protocol violation).
 		yield(ToolInputStartEvent{ID: "c1", Name: "tool_a", Key: "block:0"}, nil)
-		yield(ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "block:0"}, nil)
+		yield(ToolInputDeltaEvent{ID: "c1", Delta: "{}", Key: "block:0"}, nil)
+		yield(ToolInputCompleteEvent{ID: "c1", Key: "block:0"}, nil)
 		yield(ToolInputStartEvent{ID: "c1", Name: "tool_b", Key: "block:1"}, nil)
-		yield(ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "block:1"}, nil)
+		yield(ToolInputDeltaEvent{ID: "c1", Delta: "{}", Key: "block:1"}, nil)
+		yield(ToolInputCompleteEvent{ID: "c1", Key: "block:1"}, nil)
 		// Wait for both tools to execute, then fail the stream.
 		<-executed
 		<-executed
@@ -241,17 +245,12 @@ func TestStreamSalvageAfterStepComplete(t *testing.T) {
 	providerErr := errors.New("provider stream failed after step complete")
 	provider := &salvageProvider{seq: func(yield func(StreamEvent, error) bool) {
 		yield(TextDeltaEvent{Delta: "partial text", Key: "block:0"}, nil)
-		yield(TextCompleteEvent{Text: "partial text", Key: "block:0"}, nil)
+		yield(TextCompleteEvent{Key: "block:0"}, nil)
 		yield(ToolInputStartEvent{ID: "c1", Name: "fast_tool", Key: "block:1"}, nil)
-		yield(ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "block:1"}, nil)
+		yield(ToolInputDeltaEvent{ID: "c1", Delta: "{}", Key: "block:1"}, nil)
+		yield(ToolInputCompleteEvent{ID: "c1", Key: "block:1"}, nil)
 		<-fastExecuted // tool ran and its result is in flight
-		yield(StepCompleteEvent{
-			Contents: []ContentPart{
-				&TextPart{Text: "partial text", ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:0"}},
-				&ToolInputPart{ID: "c1", Name: "fast_tool", Input: json.RawMessage(`{}`), ContentPartMeta: ContentPartMeta{Role: RoleAssistant, BlockKey: "block:1"}},
-			},
-			Usage: Usage{InputTokens: 10, OutputTokens: 5},
-		}, nil)
+		yield(StepCompleteEvent{Usage: Usage{InputTokens: 10, OutputTokens: 5}}, nil)
 		yield(nil, providerErr)
 	}}
 
@@ -305,7 +304,8 @@ func TestStreamSalvagesExecutedToolsOnStreamError(t *testing.T) {
 	providerErr := errors.New("provider stream failed mid-tool")
 	provider := &salvageProvider{seq: func(yield func(StreamEvent, error) bool) {
 		yield(ToolInputStartEvent{ID: "c1", Name: "fast_tool", Key: "block:0"}, nil)
-		yield(ToolInputCompleteEvent{ID: "c1", Input: json.RawMessage(`{}`), Key: "block:0"}, nil)
+		yield(ToolInputDeltaEvent{ID: "c1", Delta: "{}", Key: "block:0"}, nil)
+		yield(ToolInputCompleteEvent{ID: "c1", Key: "block:0"}, nil)
 		<-fastExecuted // let the tool finish before failing the stream
 		yield(nil, providerErr)
 	}}
