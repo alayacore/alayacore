@@ -426,6 +426,27 @@ func (p *AnthropicProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEv
 
 		if err := scanner.Err(); err != nil {
 			yield(nil, err)
+			return
+		}
+
+		// The body reached EOF with no error and no message_stop. Anthropic
+		// sends message_stop to end a message, and it is the only place
+		// StepCompleteEvent is emitted, so stopping here without it would
+		// return no events and no error: llm.Agent would treat the step as
+		// having produced nothing, report the turn as a success, and the
+		// reasoning and text the user watched stream in would exist only in
+		// the display -- never saved, gone on reopen. A truncated turn is worth
+		// keeping, so this is surfaced as an error and left to llm.Agent, whose
+		// failed-step path contributes the streamed blocks plus any completed
+		// tool pairs to history.
+		//
+		// Not synthesizing a StepCompleteEvent here is deliberate: the stop
+		// reason would be absent, and presenting a cut connection as a normally
+		// finished turn is what makes a retry believe the assistant concluded.
+		// (OpenAI's parseStream does synthesize at EOF, which preserves content
+		// but has the same honesty problem.)
+		if !state.sawMessageStop {
+			yield(nil, fmt.Errorf("anthropic stream ended before message_stop"))
 		}
 	}
 }
@@ -447,6 +468,11 @@ type anthropicStreamState struct {
 
 	contentParts map[int]llm.ContentPart   // completed blocks by index
 	blocks       map[int]*blockAccumulator // index → block being accumulated
+
+	// sawMessageStop records whether the terminal message_stop event arrived.
+	// It is the only thing that ends an Anthropic message, and parseStream uses
+	// its absence to tell "the server finished" from "the connection stopped".
+	sawMessageStop bool
 }
 
 func (s *anthropicStreamState) createBlock(index int, blockType, id, name string) *blockAccumulator {
@@ -585,6 +611,7 @@ func (p *AnthropicProvider) handleEvent(eventType, data string, yield func(llm.S
 			return false
 		}
 		p.mergeUsage(event.Usage, state)
+		state.sawMessageStop = true
 		yield(llm.StepCompleteEvent{
 			Contents:   state.getContents(),
 			Usage:      state.getUsage(),

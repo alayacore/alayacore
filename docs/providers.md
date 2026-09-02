@@ -155,6 +155,16 @@ So the remaining residue is OpenAI-only, needs a server to stream against its ow
 
 Pinned by `openai_event_order_test.go` (emission order, tools last), `openai_history_id_order_test.go` (ID numbering monotonic with content position; non-contiguous tool indices all get IDs), and `agent_blockkey_test.go` in the llm package (unstreamed block key is an error; no `IDGen` means no numbering to bind).
 
+## Stream termination
+
+The two protocols end a stream differently, and the difference is load-bearing for what reaches history.
+
+**Anthropic** ends a message with `message_stop`, and that event is the only place this provider emits `StepCompleteEvent`. A body that simply stops — a proxy timeout, an upstream close — therefore yielded no events and no error: `llm.Agent` saw a step that produced nothing, reported the turn as a success, and the reasoning and text the user had watched stream in existed only in the display, so they disappeared on save-and-reopen. `parseStream` now tracks whether `message_stop` arrived and, on a clean EOF without it, yields `anthropic stream ended before message_stop`. The error is the point: `llm.Agent`'s failed-step path then contributes the streamed blocks to history (see [step-messages.md](step-messages.md)), so a truncated turn is kept *and* known to be truncated. Synthesizing a `StepCompleteEvent` instead was rejected because there would be no stop reason, and a cut connection presented as a normally finished turn makes a retry believe the assistant concluded.
+
+**OpenAI** has no terminal event to wait for: `parseStream` rebuilds the step from its three accumulators when the body ends, unconditionally. Content therefore survives a missing `[DONE]` — but so does the fiction: the step is completed with whatever `finish_reason` arrived, which for a cut stream is none at all, and `llm.Agent` treats only `max_tokens`/`length` as truncation, so an empty stop reason reads as a finished turn. Measured: a stream without `[DONE]` returns `err = nil` and persists reasoning and text. That asymmetry is left as-is here — changing it would mean deciding what OpenAI's silence means, which is a separate call from not losing Anthropic's content.
+
+Pinned by `anthropic_stream_termination_test.go` (missing `message_stop` errors; its content still lands in history; a complete stream is unaffected).
+
 ## Null arguments in tool call chunks
 
 Some providers emit no-op deltas with `"arguments": null` (JSON literal null):
