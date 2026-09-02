@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"strings"
 	"sync"
 	"time"
 )
@@ -285,21 +286,14 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	// surviving sends are already in resultCh and the drain is
 	// deterministic (no race with in-flight senders).
 	//
-	// Note: when the step already completed (StepCompleteEvent arrived)
-	// before the error, its text/reasoning is dropped — only the tool
-	// pairs are kept. Treating the step as failed and discarding its text
-	// is consistent with cancel semantics, and the tool pairs (reality)
-	// are what matter for retry.
-	var toolWg sync.WaitGroup
-	defer func() {
-		if err != nil && len(executedToolCalls) > 0 {
-			stepContents = salvageExecutedTools(executedToolCalls, results, resultCh)
-		}
-	}()
-	defer toolWg.Wait()
-	defer cancelStream()
-
-	execCount := 0
+	// What a failed step still contributes: the reasoning and text streamed so
+	// far, plus tool pairs whose results arrived. The content a step produced is
+	// part of what happened — replaying a bare tool_use to an endpoint that
+	// expects the turn's reasoning alongside it (see openaiConvertContents,
+	// which pads an empty reasoning field rather than omitting the key) shows
+	// the model a turn it never emitted, and the longer the thinking, the worse
+	// that reads. A partial answer is kept for the same reason max_tokens
+	// truncation keeps one: it is what lets :continue resume the turn.
 
 	// History IDs keyed by stream block identity. The key, not a position, is
 	// what links a block streamed earlier to the content part assembled at
@@ -308,6 +302,27 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	// Tool names by block identity, so ToolInputCompleteEvent can recover the
 	// name it received earlier from ToolInputStartEvent.
 	nameByKey := make(map[string]string)
+	// Reasoning and text as they stream, so a failed step can still hand its
+	// content to history (see the salvage defer below).
+	blocks := newStepTextBlocks()
+
+	var toolWg sync.WaitGroup
+	defer func() {
+		if err == nil {
+			return
+		}
+		contributed := blocks.parts(idByKey)
+		if len(executedToolCalls) > 0 {
+			contributed = append(contributed, salvageExecutedTools(executedToolCalls, results, resultCh)...)
+		}
+		if len(contributed) > 0 {
+			stepContents = contributed
+		}
+	}()
+	defer toolWg.Wait()
+	defer cancelStream()
+
+	execCount := 0
 
 	for event, err := range events {
 		if err != nil {
@@ -325,6 +340,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 		case TextDeltaEvent:
 			stats.setFirstToken(stepStart)
 			id := blockID(callbacks, idByKey, e.Key)
+			blocks.add(e.Key, textBlock, e.Delta)
 			if callbacks.OnTextDelta != nil {
 				if err := callbacks.OnTextDelta(e.Delta, id); err != nil {
 					return nil, Usage{}, false, err
@@ -333,6 +349,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 		case TextCompleteEvent:
 			id := blockID(callbacks, idByKey, e.Key)
+			blocks.set(e.Key, textBlock, e.Text) // authoritative
 			if callbacks.OnTextComplete != nil {
 				if err := callbacks.OnTextComplete(e.Text, id); err != nil {
 					return nil, Usage{}, false, err
@@ -342,6 +359,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 		case ReasoningDeltaEvent:
 			stats.setFirstToken(stepStart)
 			id := blockID(callbacks, idByKey, e.Key)
+			blocks.add(e.Key, reasoningBlock, e.Delta)
 			if callbacks.OnReasoningDelta != nil {
 				if err := callbacks.OnReasoningDelta(e.Delta, id); err != nil {
 					return nil, Usage{}, false, err
@@ -350,6 +368,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 		case ReasoningCompleteEvent:
 			id := blockID(callbacks, idByKey, e.Key)
+			blocks.set(e.Key, reasoningBlock, e.Text) // authoritative
 			if callbacks.OnReasoningComplete != nil {
 				if err := callbacks.OnReasoningComplete(e.Text, id); err != nil {
 					return nil, Usage{}, false, err
@@ -624,6 +643,96 @@ func (a *Agent) toolDefinitions() []ToolDefinition {
 		defs[i] = tool.Definition
 	}
 	return defs
+}
+
+// stepBlockKind distinguishes the two text-bearing content blocks a step can
+// stream. Tool calls are not tracked here: their salvage path is separate
+// because a call is only history-worthy once its result exists.
+type stepBlockKind int
+
+const (
+	reasoningBlock stepBlockKind = iota
+	textBlock
+)
+
+// stepTextBlocks accumulates the reasoning and text a provider streamed for one
+// step, keyed by block identity.
+//
+// It exists so a step that dies mid-flight still contributes its content to
+// history. Nothing else holds a copy: the provider assembles its authoritative
+// parts into StepCompleteEvent, which never arrives when the stream is cut, and
+// llm.Agent otherwise only forwards fragments to the display callbacks. The
+// fragments are what the user already watched arrive on screen, so discarding
+// them here leaves the display holding content that history — and after a save
+// and reopen, the file — does not.
+//
+// set() replaces accumulated fragments with the complete text a *CompleteEvent
+// carries, so a block that finished holds the authoritative string and only a
+// genuinely interrupted block stays partial.
+type stepTextBlocks struct {
+	order []string // first-seen order, which is also the streamed order
+	kinds map[string]stepBlockKind
+	text  map[string]*strings.Builder
+}
+
+func newStepTextBlocks() *stepTextBlocks {
+	return &stepTextBlocks{
+		kinds: map[string]stepBlockKind{},
+		text:  map[string]*strings.Builder{},
+	}
+}
+
+// add records a streamed fragment.
+func (b *stepTextBlocks) add(key string, kind stepBlockKind, delta string) {
+	b.track(key, kind)
+	b.text[key].WriteString(delta)
+}
+
+// set records a block's authoritative complete text, replacing whatever
+// fragments accumulated under that key.
+func (b *stepTextBlocks) set(key string, kind stepBlockKind, full string) {
+	b.track(key, kind)
+	b.text[key] = &strings.Builder{}
+	b.text[key].WriteString(full)
+}
+
+func (b *stepTextBlocks) track(key string, kind stepBlockKind) {
+	if _, seen := b.text[key]; !seen {
+		b.order = append(b.order, key)
+		b.kinds[key] = kind
+		b.text[key] = &strings.Builder{}
+	}
+	// A block streaming as two kinds would mean the provider mislabelled its
+	// own content; keep the kind first seen rather than mixing types under one
+	// key. The ID was issued for that first touch too, so they stay aligned.
+}
+
+// parts renders the accumulated blocks into content parts in streamed order,
+// each carrying the key it arrived under and the history ID that key was given.
+// Empty blocks are skipped: providers emit placeholder slots for blocks that
+// were never populated, and an empty part adds nothing to history.
+func (b *stepTextBlocks) parts(idByKey map[string]uint64) []ContentPart {
+	out := make([]ContentPart, 0, len(b.order))
+	for _, key := range b.order {
+		text := b.text[key].String()
+		if text == "" {
+			continue
+		}
+		var part ContentPart
+		switch b.kinds[key] {
+		case reasoningBlock:
+			part = &ReasoningPart{Text: text}
+		case textBlock:
+			part = &TextPart{Text: text}
+		}
+		part.SetBlockKey(key)
+		part.SetRole(RoleAssistant)
+		if id, ok := idByKey[key]; ok {
+			part.SetHistoryID(id)
+		}
+		out = append(out, part)
+	}
+	return out
 }
 
 // blockID returns the history ID of the content block identified by key,

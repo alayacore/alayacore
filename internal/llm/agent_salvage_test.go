@@ -230,13 +230,12 @@ func TestStreamSalvageOmitsAmbiguousToolIDs(t *testing.T) {
 	}
 }
 
-// TestStreamSalvageAfterStepComplete verifies the complete-then-error
-// edge: the provider finishes a step (StepCompleteEvent with text + tool
-// call) and THEN the stream errors. The salvage keeps the executed
-// tool's pair — never leaving an orphaned tool_use — while the step's
-// text is dropped (the step is treated as failed; consistent with cancel
-// semantics). This locks in a SAFE history: no tool_use without its
-// tool_result, no duplicated parts.
+// TestStreamSalvageAfterStepComplete verifies the complete-then-error edge: the
+// provider finishes a step (StepCompleteEvent with text + tool call) and THEN
+// the stream errors. History keeps the step's text alongside the executed
+// tool's pair — the text was received in full, and dropping it would leave the
+// display holding content that history and, after save-and-reopen, the file do
+// not. No orphaned tool_use and no duplicated parts.
 func TestStreamSalvageAfterStepComplete(t *testing.T) {
 	fastExecuted := make(chan struct{})
 	providerErr := errors.New("provider stream failed after step complete")
@@ -278,17 +277,23 @@ func TestStreamSalvageAfterStepComplete(t *testing.T) {
 	if finishCalled != 1 {
 		t.Fatalf("OnStepFinish called %d times, want 1 (the salvage fold)", finishCalled)
 	}
-	// Safe history: exactly one [tool_use, tool_result] pair, no text, no
-	// orphaned tool_use. (The step's text is dropped — see the salvage
-	// defer note in streamEvents.)
-	if len(gotContents) != 2 {
-		t.Fatalf("salvaged contents = %d parts, want 2 (c1 pair only): %#v", len(gotContents), gotContents)
+	// Safe history: the step's text, then exactly one [tool_use, tool_result]
+	// pair. No orphaned tool_use, and the completed answer text survives.
+	if len(gotContents) != 3 {
+		t.Fatalf("salvaged contents = %d parts, want 3 (text + c1 pair): %#v", len(gotContents), gotContents)
 	}
-	if _, ok := gotContents[0].(*ToolInputPart); !ok {
-		t.Errorf("gotContents[0] = %#v, want ToolInputPart", gotContents[0])
+	tp, ok := gotContents[0].(*TextPart)
+	if !ok {
+		t.Fatalf("gotContents[0] = %#v, want TextPart (the step's text must not be dropped)", gotContents[0])
 	}
-	if _, ok := gotContents[1].(*ToolOutputPart); !ok {
-		t.Errorf("gotContents[1] = %#v, want ToolOutputPart", gotContents[1])
+	if tp.Text != "partial text" {
+		t.Errorf("salvaged text = %q, want %q", tp.Text, "partial text")
+	}
+	if _, ok := gotContents[1].(*ToolInputPart); !ok {
+		t.Errorf("gotContents[1] = %#v, want ToolInputPart", gotContents[1])
+	}
+	if _, ok := gotContents[2].(*ToolOutputPart); !ok {
+		t.Errorf("gotContents[2] = %#v, want ToolOutputPart", gotContents[2])
 	}
 }
 
