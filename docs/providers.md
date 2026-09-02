@@ -128,7 +128,7 @@ Tool arguments arrive in chunks across multiple delta events:
 
 `parseStream()` emits the step's trailing complete events after the stream ends, from the accumulators. Their order is load-bearing, not cosmetic: it has to agree with the order `getContents()` persists the step's parts in (`reasoning`, `text`, `tools`), for two reasons.
 
-- **historyID numbering.** `llm.Agent` hands out historyIDs on *first touch* of each block key (`blockID`). Under `--no-delta` no text/reasoning delta callbacks are registered (`session_task.go` — the tool ones are, always), so for those two blocks these complete events are the first and only touch: emitting a later block first numbers it *below* an earlier one, and nothing downstream can recover record order from ID order.
+- **historyID numbering.** `llm.Agent` hands out a historyID at the *first event* for each block key (`blockID`), whether or not a callback is registered for it — so IDs number blocks by stream arrival in every mode, `--no-delta` included (measured: identical numbering with and without delta callbacks). Emitting a later block first in the *trailing* events does not reorder the numbering, because the numbering was settled while the response streamed.
 - **Adapter output.** Adapters render in frame order. The terminal creates a window per block the moment its frame arrives (positions are fixed at creation; `WindowBuffer` only ever appends), and `--plainio` prints content as it streams — measured: `[AT, AR]` → `"Hello!\nuser said hello"`, `[AR, AT]` → `"user said hello\nHello!"`. Emitting out of array order puts the answer above the reasoning it came from.
 
 Both swaps are applied: `ReasoningCompleteEvent` precedes `TextCompleteEvent`, and the tool loop moved below that pair. Measured IDs per block for a `reasoning + text + one tool call` step:
@@ -138,6 +138,8 @@ Both swaps are applied: `ReasoningCompleteEvent` precedes `TextCompleteEvent`, a
 | reasoning, text, tool | delta (default) | 100 / 101 / 102 ✅ | 100 / 101 / 102 ✅ |
 | reasoning, text, tool | `--no-delta` | 102 / 103 / **100** ❌ | 100 / 101 / 102 ✅ |
 | tool_calls first | delta | 101 / 102 / **100** ❌ | 101 / 102 / **100** ❌ |
+
+Row 2's numbering did not move because of the frame reorder. It moved because `blockID` now runs outside the `callbacks.On* != nil` guards, so a block is numbered at its first streamed event even when no delta frame is emitted for it — which makes numbering arrival-based in *every* mode, `--no-delta` included (measured identical with and without). The frame reorder is what fixes row 2's *display*: with no deltas pending, `flushPendingDeltas` never runs and the authoritative frames alone decide window order.
 
 **What the move fixes** (`--no-delta`): no deltas are ever pending in that mode, so `flushPendingDeltas` is a no-op and the TUI creates windows purely in frame order. With tools emitted first, `TOOL CALL` landed *above* the `REASONING` that produced it while the record listed reasoning, text, tool — and reopening the saved session re-laid the same conversation as reasoning, text, tool, so live and reopened disagreed. `--plainio` printed in the same inverted order. Emission now equals array order, so all three agree.
 

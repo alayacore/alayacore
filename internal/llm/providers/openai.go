@@ -465,20 +465,20 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		// Emit complete events for the step's blocks.
 		//
 		// ORDER MATTERS: this must run in the same [reasoning, text, tools]
-		// order that getContents() persists. historyIDs are handed out by
-		// blockID on first touch of each block key, and under --no-delta there
-		// are no delta callbacks, so these complete events are the only touch —
-		// emitting a block first numbers it lower. Emitted out of array order,
-		// the numbers then disagree with the record order the session writes,
-		// and adapters (which create windows in frame order) render the blocks
-		// out of order too.
+		// order that getContents() persists, because it is the order these
+		// frames reach the adapters. Under --no-delta nothing is coalesced, so
+		// a frame is what creates its TUI window: emitted out of record order,
+		// ASSISTANT lands above the REASONING that produced it, and a saved
+		// session re-lays the same turn the other way on reopen. --plainio
+		// prints in the same frame order.
 		//
-		// This fixes reasoning/text and tools for --no-delta. It cannot fix
-		// a provider that *streams* its tool_calls delta before its
-		// reasoning/text deltas: in delta mode the tool takes its ID at that
-		// first delta, long before this block runs, so its ID stays below
-		// blocks persisted before it. That residue is an arrival-order vs
-		// array-order conflict in getContents(), not a bug fixable here — see
+		// This ordering does NOT decide history IDs. Those are minted at each
+		// block's first streamed event — blockID runs outside the callback
+		// guards, so a delta numbers the block even when no delta frame is
+		// emitted for it. Numbering therefore follows arrival in every mode,
+		// measured identical with and without --no-delta, and no provider that
+		// streams against its own message shape can be fixed from here. That
+		// residue is arrival order versus getContents()'s fixed layout; see
 		// docs/providers.md → "Complete-event order".
 		if reasoning := state.reasoningBuilder.String(); reasoning != "" {
 			if !yield(llm.ReasoningCompleteEvent{Text: reasoning, Key: openaiReasoningKey}, nil) {

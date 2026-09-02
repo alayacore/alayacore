@@ -11,19 +11,18 @@ import (
 	"github.com/alayacore/alayacore/internal/llm/providers"
 )
 
-// historyIDs are handed out by llm.Agent on *first touch* of each content
-// index (getOrAssignID), while the session records content in the array order
-// getContents() builds: reasoning, text, tools. In delta mode the first touch
-// is the first delta, so numbering follows delta arrival. With --no-delta no
-// text/reasoning delta callbacks are registered at all (session_task.go — the
-// tool callbacks are, in both modes), so for these two blocks the complete
-// events are the only touch and their emission order alone decides numbering —
-// which is why it has to match the array order.
+// historyIDs are handed out by llm.Agent at the first streamed event of each
+// content block (blockID), whether or not a callback consumes it, so numbering
+// tracks arrival. What must still line up with the record is the *frame* order
+// that providers emit at the end of the stream (see openai_event_order_test.go):
+// getContents() persists in [reasoning, text, tools], and under --no-delta that
+// frame order is what creates each TUI window.
 //
-// When parseStream emitted text first, the text block took the lower ID while
-// the session listed reasoning first, and --no-delta runs rendered ASSISTANT
-// above REASONING: with no deltas pending, flushPendingDeltas is a no-op and
-// the authoritative frames create the windows in arrival order.
+// The monotonic property asserted below holds for a provider streaming in
+// record order. Before blockID moved out of the callbacks.On* != nil guards,
+// --no-delta numbering came from the trailing complete events instead, and a
+// text-first emission produced reasoning=101 against text=100 — inverted with
+// the record order, which no consumer could recover from.
 func TestOpenAIHistoryIDsMonotonicWithContentPositions(t *testing.T) {
 	server := newMockSSEServer(t, func(w io.Writer) {
 		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"reasoning\":\"thinking hard\"}}]}\n\n")
