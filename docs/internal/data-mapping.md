@@ -445,7 +445,7 @@ The key never reaches the part: it was only ever the join between a streamed blo
 Three rules follow for anyone implementing a provider:
 
 1. `Key` is opaque. It is compared for equality and never ordered, incremented, or used to index a slice. The old `2 + index` arithmetic existed only to fake a position, and faking a position is what broke.
-2. A block's key must not change between its first event and the part it becomes. OpenAI's `"tool:<index>"` is stable precisely because it is fixed before the call ID arrives.
+2. A block's key must not change between its first event and its assembly into a part. OpenAI's `"tool:<index>"` is stable precisely because it is fixed before the call ID arrives.
 3. A part exists only if its block streamed content under a key. There is no step-end binding step to get wrong, so a provider cannot persist a part the stream never carried, and an unfilled slot cannot become an empty part. (Numbering is skipped entirely when `IDGen` is nil; the content is still assembled.)
 
 IDs are issued in first-touch order, so they number blocks by arrival, not by record position. See [providers.md](../providers.md) → "Complete-event order" for the obligation that puts on providers, and [tui.md](../tui.md) → "Window Order" for the one place that reads ID magnitude as an order.
