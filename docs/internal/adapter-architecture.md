@@ -94,7 +94,7 @@ main.go → config.Parse() → Settings
                 ↓
         app.Setup(Settings)
                 ↓
-        ├── skills.NewManager(skillPaths)
+        ├── skills.NewManager(skillPaths)   → metadata + load errors + notices
         ├── tools.DefaultTools(cfg.BuiltinTools)  → filtered built-in tools
         │   (all tools: read_file, write_file, edit_file, execute_command, search_content)
         │   (controlled by --builtin-tools flag; empty = no builtin tools)
@@ -103,6 +103,9 @@ main.go → config.Parse() → Settings
         terminal.NewAdapter(appConfig)  or  plainio.NewAdapter(appConfig)  or  terseio.NewAdapter(appConfig)  or  rawio.NewAdapter(appConfig)
                 ↓
         Session created with tools and system prompt
+          (app.StartSession writes the collected startup errors as SM `error`
+           frames and the skill discovery outcome as SM `notify` frames, so a
+           container that loaded nothing is visible in every adapter)
 ```
 
 ### User Prompt Flow

@@ -24,16 +24,26 @@ const maxDescriptionRunes = 1024
 // ParseSkillMarkdown reads a SKILL.md file and returns its frontmatter
 // metadata, its markdown body, and the problems found while reading.
 //
-// The error is reserved for a manifest that cannot be honored at all: a
-// missing or unclosed frontmatter block, an absent or malformed name, an absent
-// or overlong description. Everything else — an unparseable line, a duplicate
-// key, a nested metadata map — is returned in problems and leaves the rest of
-// the file readable. The loader surfaces both, so no form of input is dropped
-// or altered without saying where and why.
+// The error is reserved for a manifest that cannot be honored at all: a block
+// that never closes, a block containing a line that can only be the markdown
+// body under it (the usual shape of a deleted closing delimiter), an absent or
+// malformed name, an absent or overlong description. What is returned in
+// problems instead is a defect inside an otherwise sound block — a duplicate
+// key, a nested metadata map, a quote left open — where the rest of the file is
+// still readable, and a file with no frontmatter block at all, which is not a
+// parse failure: the body is intact, and it is the caller that refuses the
+// skill, for a name it had no way to read.
 //
-// The block is read with the project's key-value format (see
-// config.ParseKeyValue), not a general YAML parser, because the two disagree
-// exactly where a manifest must not be guessed at:
+// The loader surfaces both, so no form of input is dropped or altered without
+// saying where and why.
+//
+// The block is read with the same key-value shape as the project's config files,
+// not a general YAML parser. It is a reader of its own because a frontmatter
+// block has structure a config file does not: the delimiters that bound it, the
+// body after it that must never be mistaken for more manifest, and values
+// continued on indented lines. Where the two formats agree is the part that
+// matters here — the value is the rest of the line. Their disagreement with YAML
+// is exactly where a manifest must not be guessed at:
 //
 //   - `description: Use this skill when: the user asks about PDFs` is invalid
 //     YAML ("mapping values are not allowed here"), so the whole skill
@@ -55,8 +65,7 @@ func ParseSkillMarkdown(content string) (Metadata, string, []string, error) {
 
 	end, closed := frontmatterEnd(lines, open)
 	if !closed {
-		return Metadata{}, "", nil, fmt.Errorf(
-			`frontmatter block opened on line %d is never closed by a "`+frontmatterDelim+`" line`, open+1)
+		return Metadata{}, "", nil, unclosedFrontmatter(open)
 	}
 
 	meta, problems, err := parseManifestBlock(lines[open+1:end], open+2)
@@ -149,7 +158,7 @@ func parseManifestBlock(block []string, firstLine int) (Metadata, []string, erro
 			// blank line is a markdown heading, which is what a missing
 			// closing "---" leaves behind.
 			if blankSeen {
-				return meta, problems, unclosedFrontmatter(lineNo)
+				return meta, problems, badManifestLine(lineNo)
 			}
 			continue
 		}
@@ -160,7 +169,7 @@ func parseManifestBlock(block []string, firstLine int) (Metadata, []string, erro
 
 		key, rest, ok := splitKeyValue(text)
 		if !ok {
-			return meta, problems, unclosedFrontmatter(lineNo)
+			return meta, problems, badManifestLine(lineNo)
 		}
 		blankSeen = false
 
@@ -189,9 +198,21 @@ func parseManifestBlock(block []string, firstLine int) (Metadata, []string, erro
 	return meta, problems, nil
 }
 
-// unclosedFrontmatter reports the line that gave the manifest away.
-func unclosedFrontmatter(lineNo int) error {
-	return fmt.Errorf(`frontmatter block is not closed: line %d is neither an entry nor a closing "`+frontmatterDelim+`" line`, lineNo)
+// unclosedFrontmatter reports a block that runs to the end of the file without
+// ever meeting a closing delimiter.
+func unclosedFrontmatter(open int) error {
+	return fmt.Errorf(`frontmatter block opened on line %d is never closed by a "`+frontmatterDelim+`" line`, open+1)
+}
+
+// badManifestLine reports the line that cannot belong to a frontmatter block.
+//
+// It is most often the symptom of a deleted closing delimiter — the reader is
+// looking at markdown that was meant to be the body — but the reader cannot know
+// that, and neither can the user, so the message says what was found rather than
+// claiming the delimiter is missing when the block in fact does close further
+// down. The fix is the same either way, and it is named.
+func badManifestLine(lineNo int) error {
+	return fmt.Errorf(`line %d is neither a "key: value" entry, a comment nor a blank; a "`+frontmatterDelim+`" line must close the block before it`, lineNo)
 }
 
 // isScalarField reports whether a manifest key holds a string this reader

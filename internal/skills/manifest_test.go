@@ -54,19 +54,38 @@ func TestDescriptionKeepsItsHashMarks(t *testing.T) {
 // prose into the description — sometimes with no error at all. A line that can
 // only be body text is now reported as the missing delimiter it is.
 func TestUnclosedFrontmatterIsReportedNotSwallowed(t *testing.T) {
-	cases := map[string]string{
-		"heading then prose": "---\nname: x\ndescription: y\n\n# Title\n\nprose\n\n---\n\nmore\n",
-		"prose only":         "---\nname: x\ndescription: y\n\njust prose\n\n---\n\nmore\n",
-		"never closed":       "---\nname: x\ndescription: y\nbody\n",
+	cases := []struct {
+		label   string
+		content string
+		want    string
+	}{
+		{
+			// The delimiter is gone, so the scan runs to the next rule and
+			// the markdown inside it is what gives the answer away.
+			label:   "body text before any delimiter",
+			content: "---\nname: x\ndescription: y\n\n# Title\n\nprose\n\n---\n\nmore\n",
+			want:    `line 7 is neither a "key: value" entry`,
+		},
+		{
+			label:   "body text, delimiter further down",
+			content: "---\nname: x\ndescription: y\n\njust prose\n\n---\n\nmore\n",
+			want:    `line 5 is neither a "key: value" entry`,
+		},
+		{
+			// Nothing closes it, and the file says so.
+			label:   "never closed",
+			content: "---\nname: x\ndescription: y\nbody\n",
+			want:    "is never closed by a",
+		},
 	}
-	for label, content := range cases {
-		_, _, _, err := ParseSkillMarkdown(content)
+	for _, tc := range cases {
+		_, _, _, err := ParseSkillMarkdown(tc.content)
 		if err == nil {
-			t.Errorf("%s: no error; the reader guessed where the manifest ends", label)
+			t.Errorf("%s: no error; the reader guessed where the manifest ends", tc.label)
 			continue
 		}
-		if !strings.Contains(err.Error(), "not closed") && !strings.Contains(err.Error(), "never closed") {
-			t.Errorf("%s: err = %v, want it to name the unclosed block", label, err)
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want it to say %q", tc.label, err, tc.want)
 		}
 	}
 }

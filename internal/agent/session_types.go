@@ -248,7 +248,12 @@ type SessionConfig struct {
 	NoTheme       bool // If true, skip all theme loading, detection, and broadcasting
 	NoDelta       bool // If true, suppress delta frames (At, Ar, Af, Uf); use complete frames only
 
-	// External dependencies
+	// External dependencies.
+	//
+	// SkillsMgr is carried but not read: the prompt fragment is built once in
+	// app.Setup, and nothing in a session asks the manager anything today. It is
+	// the seam a /skills listing or a reload would attach to — see
+	// docs/skills.md ("Skill Specification") for what the feature does not do.
 	SkillsMgr *skills.Manager
 
 	// MCPInit handles MCP initialization lifecycle (connect, OAuth, discover).

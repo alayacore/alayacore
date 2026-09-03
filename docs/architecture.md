@@ -209,7 +209,7 @@ System Message 2: Extra System Prompt (from --system flag, repeatable)
 
 When `rg` is available, the default prompt includes an instruction to prefer the `search_content` tool for locating content over reading files chunk by chunk. This instruction is omitted when `rg` is not installed.
 
-When skill container paths are provided via `--skill` and skills are discovered, the prompt includes instructions for reading skill `SKILL.md` files from their `<location>`, followed by an `<available_skills>` XML fragment listing each skill's name, description, and location. Both are omitted entirely when no skills are configured. The three values come from files that may have come from anywhere, so each is collapsed to a single line and XML-escaped as it is written: the fragment stays well-formed no matter what a manifest contains.
+When skill container paths are provided via `--skill` and skills are discovered, the prompt includes instructions for reading skill `SKILL.md` files from their `<location>` — and for running a skill's own relative paths with `execute_command`'s `workdir` set to the folder holding that file — followed by an `<available_skills>` XML fragment listing each skill's name, description, and location. Both are omitted entirely when no skills are configured. The three values come from files that may have come from anywhere, so each is collapsed to a single line and XML-escaped as it is written: the fragment stays well-formed no matter what a manifest contains.
 
 Both providers (`openai`, `anthropic`) send these as two independent system
 messages. The default prompt and extra prompt are kept separate so the LLM API

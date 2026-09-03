@@ -20,9 +20,9 @@ type Manager struct {
 	notices    []string          // what discovery did, so a quiet nothing is still seen
 }
 
-// GetLoadErrors returns non-fatal errors collected during loading:
-// containers that could not be read, skills that failed to load and
-// duplicate skill names.
+// GetLoadErrors returns non-fatal errors collected during loading: a container
+// that could not be read, a skill that failed to load, a duplicate name that was
+// ignored, and any line of a loaded manifest the reader could not represent.
 func (m *Manager) GetLoadErrors() []string {
 	return m.loadErrors
 }
@@ -105,19 +105,14 @@ func (m *Manager) discoverSkills() {
 		if err != nil {
 			// Until now every failure here — a path that is a file, a directory
 			// nobody can open, a symlink left dangling — aborted discovery, then
-			// Setup, then the process, while the ordinary miss stayed silent. A
-			// container that cannot be read is now this container's own
-			// business: the reason is reported and the other containers still
-			// load.
+			// Setup, then the process. A container that cannot be read is now
+			// this container's own business: the reason is reported and the other
+			// containers still load.
 			//
-			// A path that does not exist is a notice rather than an error: a
-			// personal container is routinely passed before it has been
-			// created, and that is a future, not a fault.
+			// A path that is simply not there is a notice instead of an error: a
+			// personal container is routinely passed before it has been created,
+			// and that is a plan, not a fault.
 			if errors.Is(err, fs.ErrNotExist) {
-				// A container that is not there is reported, not fatal, and not
-				// an error either: a personal folder passed before it has been
-				// created is a plan, not a fault. It goes in the same line the
-				// user reads to find out whether skills loaded at all.
 				m.notices = append(m.notices, fmt.Sprintf("skill container %s does not exist", skillDir))
 			} else {
 				m.loadErrors = append(m.loadErrors, fmt.Sprintf("skill container %s: %v", skillDir, err))
@@ -174,9 +169,9 @@ func (m *Manager) discoverSkills() {
 		}
 
 		if len(m.skills) == found {
-			// The container was read and offered nothing. This is what pointing
-			// --skill at a skill's own folder looks like, and what a mistyped
-			// folder looks like; it used to be indistinguishable from success.
+			// The container was read and offered nothing: it is empty, it holds
+			// only asset folders, or it is a skill's own folder named as if it
+			// were a container. That used to be indistinguishable from success.
 			m.notices = append(m.notices, fmt.Sprintf("skill container %s loaded no skills", skillDir))
 		}
 	}

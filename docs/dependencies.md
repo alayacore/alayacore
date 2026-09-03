@@ -144,10 +144,13 @@ Used by the project's LLM communication layer.
 
 ### No YAML parser
 
-A skill's `SKILL.md` frontmatter is read with the project's key-value format
-(`internal/skills/manifest.go`), the same rules `model.conf`, runtime config,
-themes and MCP config use (`config.ParseKeyValue`). A general YAML parser was
-dropped with it: it rejected the unquoted colon in
+A skill's `SKILL.md` frontmatter is read with the same key-value shape as
+`model.conf`, runtime config, themes and MCP config — one `key: value` per line,
+`#` only starting a comment at the beginning of a line, the first duplicate key
+wins — implemented in `internal/skills/manifest.go`. It is not `config.ParseKeyValue`
+itself: the manifest reader additionally accepts quoted values, folded (`>`) and
+literal (`|`) blocks, and values continued on indented lines. A general YAML
+parser was dropped with it: it rejected the unquoted colon in
 `description: Use this skill when: …` (losing the skill outright) and ended
 plain scalars at ` #`, advertising `description: Count # of items` to the model
 as `Count` without any error. See [skills.md](skills.md#how-the-frontmatter-is-read).

@@ -61,9 +61,9 @@ depth is the one worth memorising.
 | Situation | Result |
 |---|---|
 | `PATH/<dir>/SKILL.md` exists | loaded — all such subdirectories, from one flag |
-| `PATH/<group>/<dir>/SKILL.md` (one extra level) | **not loaded, silently** — the scan is exactly one level deep, not recursive |
+| `PATH/<group>/<dir>/SKILL.md` (one extra level) | **not loaded** — the scan is exactly one level deep, not recursive. Nothing names the buried skill; only if the container holds nothing else does the run report it as loading no skills, and even then without the reason |
 | `--skill PATH/<skill>` (the skill dir itself) | **nothing loaded** — see the warning above; the startup line says so |
-| `PATH` does not exist | the container is reported at startup as contributing nothing; the run continues |
+| `PATH` does not exist | reported at startup as a container that contributed nothing; the run continues |
 | `PATH` is a file, or a directory that cannot be read | reported at startup as a load error; **the program still starts** (it used to exit before the first turn) |
 | a symlinked skill directory inside `PATH` | loaded like any other — the link is followed |
 | `PATH` given twice, or spelled two ways (`./skills`, `skills/`, the absolute path) | read once; a container cannot collide with itself |
@@ -74,29 +74,35 @@ depth is the one worth memorising.
 | frontmatter `name:` ≠ the directory name | that skill is **dropped**, and reported at startup as a load error |
 | frontmatter `name:` outside the naming rules below | same: dropped and reported |
 | a `description:` value containing `:` or `#` | kept verbatim — see [How the frontmatter is read](#how-the-frontmatter-is-read) |
-| frontmatter block with no closing `---` | that skill is **dropped**, and the line that proves it is reported |
-| a line inside the block that is neither an entry, a comment nor a blank | the block is treated as unclosed: the skill is dropped and that line is reported |
-| a line the reader cannot represent inside an otherwise closed block | the skill loads; the line and file are reported at startup |
+| frontmatter block never closed | the skill is dropped; the file is reported as never closed |
+| a line inside the block that is neither an entry, a comment nor a blank | the skill is dropped and that line is named — most often this is a deleted closing `---` whose block ran into the markdown body |
+| a line the reader cannot represent inside a well-formed block | the skill loads; the line and file are reported at startup (a nested `metadata:` map, a duplicate key, an unterminated quote) |
 | same skill name from two containers | the **first container listed wins**; the later skill is dropped and named at startup |
 | no `--skill` at all | no skills; the system prompt omits the skills section entirely, and nothing is printed about skills |
 
 ### What Startup Says
 
-A `--skill` container was given, so the run answers for it. Every line below is a
-system message in the TUI and a `notify`/`error` frame for `--plainio`,
-`--terseio` and `--rawio`:
+When at least one `--skill` container was configured, the run answers for it.
+Each line is a system (SM) frame on the TLV stream — the TUI shows it among the
+system lines at the top of the transcript, `--plainio` prints it, and a
+`--rawio`/`--terseio` client can read it off the `notify`/`error` type:
 
 ```
-skill container /home/me/.alayacore/skills does not exist
-skill container /home/me/project/skills loaded no skills
-skills: 0 skills loaded from 2 containers
+skill container /home/me/.alayacore/skills does not exist          notify
+skill container /home/me/project/skills loaded no skills           notify
+skills: 0 skills loaded from 2 containers                          notify
+skill container /home/me/project/skills/pdf/SKILL.md: open …: not a directory   error
+/home/me/project/skills/pdf/SKILL.md: line 4: duplicate key "description": the first value stands   error
+failed to load skill pdf from /home/me/project/skills: line 7 is neither a "key: value" entry, a comment nor a blank; a "---" line must close the block before it   error
+skill pdf from /home/me/.alayacore/skills/pdf/SKILL.md ignored: the name is already loaded from /home/me/project/skills/pdf/SKILL.md   error
 ```
 
-Containers are named as the run resolved them — absolute, `~` expanded — so the
-line can be pasted into a shell. The count is always printed when at least one
-container was configured; that is the only way "the flag did nothing" and "two
-skills are ready" are distinguishable without asking the model. Containers that
-work contribute nothing beyond the count.
+Containers are named as the run resolved them — absolute, `~` expanded — so a
+line can be pasted straight into a shell. The count line is always there once a
+container was configured; it is the only way "the flag did nothing" and "two
+skills are ready" are distinguishable without asking the model. A container that
+works contributes nothing beyond that count, and with no `--skill` at all nothing
+is printed about skills.
 
 Paths are resolved once, at startup: `~` is expanded, a relative path is made
 absolute against the working directory (so `./skills`, `skills/` and
@@ -187,9 +193,10 @@ Instructions for the agent...
 
 ### How the frontmatter is read
 
-The block is read with the project's key-value format — the same rules as
-`model.conf` (`config.ParseKeyValue`) — and not with a general YAML parser. The
-two disagree exactly where a manifest must not be guessed at:
+The block is read with the same key-value shape as the project's config files
+(`model.conf` and friends) — one `key: value` per line, the value being the rest
+of the line — and not with a general YAML parser. The two disagree exactly where
+a manifest must not be guessed at:
 
 - The value is everything after the first `: `, so a description may contain
   colons unquoted: `description: Use this skill when: the user asks about PDFs`.
@@ -287,4 +294,24 @@ When the user asks "what's the weather in Tokyo?", the LLM:
 
 ## Skill Specification
 
-For the full specification, see [agentskills.io](https://agentskills.io).
+Skills follow the [Agent Skills](https://agentskills.io) specification: the
+directory layout, the `SKILL.md` name, and the `name` / `description` / `license`
+/ `compatibility` / `metadata` fields are the spec's, and a package written for
+another implementation is read here as written.
+
+Three places where this implementation deliberately differs:
+
+- The frontmatter is read as the project's key-value format, not as general YAML
+  ([How the frontmatter is read](#how-the-frontmatter-is-read)). Every spec
+  example is valid in both readings; the difference shows up only on inputs YAML
+  would either reject or silently truncate.
+- `allowed-tools` is not read at all. The spec carries it, and this document
+  once described it as pre-approving tools, but nothing enforced it — so it was
+  removed rather than left as a permission a manifest could claim for itself.
+  Tool permissions live on the user's side of the boundary: `--builtin-tools`
+  and `--tool-confirm`.
+- Activation is not a mechanism here. The spec's progressive-disclosure contract
+  is met — metadata in the prompt, instructions on disk, read on demand — but
+  there is no `skill` tool, no `/skill` command and no `paths`-style automatic
+  gating: the agent decides to open a skill from its description, and a user
+  cannot force or list that choice at runtime.
