@@ -46,6 +46,11 @@ type Config struct {
 	// parsing. These are emitted as TLV system messages during session
 	// startup so the user sees them even in TUI mode.
 	StartupErrors []string
+
+	// Notices contains what startup decided that the user cannot otherwise
+	// see — the outcome of skill discovery, including the case where it
+	// discovered nothing.
+	Notices []string
 }
 
 // Setup initializes the common app components.
@@ -73,6 +78,9 @@ func Setup(cfg *config.Settings) (*Config, error) {
 	// Collect startup errors from all sources.
 	var startupErrors []string
 	startupErrors = append(startupErrors, skillsManager.GetLoadErrors()...)
+
+	// What discovery ended up doing, including the case where it did nothing.
+	notices := skillsManager.GetNotices()
 
 	// ========================================================================
 	// MCP (Model Context Protocol) — async initialization
@@ -116,6 +124,7 @@ func Setup(cfg *config.Settings) (*Config, error) {
 		ToolConfirmTools:  cfg.ToolConfirm,
 		MCPInit:           mcpInit,
 		StartupErrors:     startupErrors,
+		Notices:           notices,
 	}, nil
 }
 

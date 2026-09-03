@@ -73,9 +73,13 @@ description: A skill without a name
 
 # No Name Skill`
 
-	_, _, _, err := ParseSkillMarkdown(content)
+	_, _, problems, err := ParseSkillMarkdown(content)
 	if err == nil {
 		t.Fatal("Expected error for missing name, got nil")
+	}
+	// A required field is a reason to refuse the skill, not a line to note.
+	if len(problems) != 0 {
+		t.Errorf("Expected no problems beside the error, got %v", problems)
 	}
 	if !contains(err.Error(), "name is required") {
 		t.Errorf("Expected 'name is required' error, got: %v", err)
@@ -89,9 +93,12 @@ name: test-skill
 
 # No Description Skill`
 
-	_, _, _, err := ParseSkillMarkdown(content)
+	_, _, problems, err := ParseSkillMarkdown(content)
 	if err == nil {
 		t.Fatal("Expected error for missing description, got nil")
+	}
+	if len(problems) != 0 {
+		t.Errorf("Expected no problems beside the error, got %v", problems)
 	}
 	if !contains(err.Error(), "description is required") {
 		t.Errorf("Expected 'description is required' error, got: %v", err)

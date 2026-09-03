@@ -12,8 +12,8 @@ import (
 // that takes the file down with it is the worst failure this package can have.
 // Each test below pins one form that failure used to take.
 
-func manifest(name, description string) string {
-	return "---\nname: " + name + "\ndescription: " + description + "\n---\nbody\n"
+func manifest(description string) string {
+	return "---\nname: x\ndescription: " + description + "\n---\nbody\n"
 }
 
 // A colon plus space ends a YAML scalar's plain form, so "description: Use this
@@ -22,7 +22,7 @@ func manifest(name, description string) string {
 // author wrote and what the agent needs to see.
 func TestDescriptionKeepsItsColons(t *testing.T) {
 	text := "Use this skill when: the user asks about PDFs"
-	md, _, problems, err := ParseSkillMarkdown(manifest("x", text))
+	md, _, problems, err := ParseSkillMarkdown(manifest(text))
 	if err != nil {
 		t.Fatalf("a colon in the value lost the skill: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestDescriptionKeepsItsColons(t *testing.T) {
 // nothing to look at.
 func TestDescriptionKeepsItsHashMarks(t *testing.T) {
 	text := "Count # of items, and handle C# interop"
-	md, _, _, err := ParseSkillMarkdown(manifest("x", text))
+	md, _, _, err := ParseSkillMarkdown(manifest(text))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestUnknownKeysAreIgnored(t *testing.T) {
 }
 
 func TestQuotedValues(t *testing.T) {
-	md, _, problems, err := ParseSkillMarkdown(manifest("x", `"when: quoted, and # hash"`))
+	md, _, problems, err := ParseSkillMarkdown(manifest(`"when: quoted, and # hash"`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -226,11 +226,11 @@ func TestMissingFrontmatterNamesTheRealCause(t *testing.T) {
 // satisfies the format.
 func TestDescriptionLimitCountsCharactersNotBytes(t *testing.T) {
 	d := strings.Repeat("天", 400) // 1200 bytes: rejected when the limit was bytes
-	if _, _, _, err := ParseSkillMarkdown(manifest("x", d)); err != nil {
+	if _, _, _, err := ParseSkillMarkdown(manifest(d)); err != nil {
 		t.Errorf("400 characters (%d bytes) rejected: %v", utf8.RuneCountInString(d), err)
 	}
 
-	if _, _, _, err := ParseSkillMarkdown(manifest("x", strings.Repeat("天", 1100))); err == nil {
+	if _, _, _, err := ParseSkillMarkdown(manifest(strings.Repeat("天", 1100))); err == nil {
 		t.Error("1100 characters must still be rejected")
 	}
 }

@@ -60,8 +60,10 @@ to keep the layout in mind.
 |---|---|
 | `PATH/<dir>/SKILL.md` exists | loaded — all such subdirectories, from one flag |
 | `PATH/<group>/<dir>/SKILL.md` (one extra level) | **not loaded, silently** — the scan is exactly one level deep, not recursive |
-| `--skill PATH/<skill>` (the skill dir itself) | **nothing loaded, silently** — see the warning above |
-| `PATH` does not exist | skipped, no error |
+| `--skill PATH/<skill>` (the skill dir itself) | **nothing loaded** — see the warning above; the startup line says so |
+| `PATH` does not exist | the container is reported at startup as contributing nothing; the run continues |
+| `PATH` is a file, or a directory that cannot be read | reported at startup as a load error; **the program still starts** (it used to exit before the first turn) |
+| a symlinked skill directory inside `PATH` | loaded like any other — the link is followed |
 | subdirectory without `SKILL.md` | skipped, no error |
 | a plain file inside `PATH` | skipped |
 | frontmatter `name:` ≠ the directory name | that skill is **dropped**, and reported at startup as a load error |
@@ -69,8 +71,25 @@ to keep the layout in mind.
 | a `description:` value containing `:` or `#` | kept verbatim — see [How the frontmatter is read](#how-the-frontmatter-is-read) |
 | frontmatter block with no closing `---` | that skill is **dropped**, and the line that proves it is reported |
 | one unparseable line inside the block | the skill loads; the line and file are reported at startup |
-| same skill name from two containers | both kept (the prompt lists it twice), and reported as a duplicate at startup |
-| no `--skill` at all | no skills; the system prompt omits the skills section entirely |
+| same skill name from two containers | the **first container listed wins**; the later skill is dropped and named at startup |
+| no `--skill` at all | no skills; the system prompt omits the skills section entirely, and nothing is printed about skills |
+
+### What Startup Says
+
+A `--skill` container was given, so the run answers for it. Every line below is a
+system message in the TUI and a `notify`/`error` frame for `--plainio`,
+`--terseio` and `--rawio`:
+
+```
+skill container /home/me/.alayacore/skills does not exist
+skill container ./skills loaded no skills
+skills: 0 skills loaded from 2 containers
+```
+
+The count is always printed when at least one container was configured — that is
+the only way "the flag did nothing" and "two skills are ready" are
+distinguishable without asking the model. Containers that work simply contribute
+nothing to the first two lines.
 
 Paths are resolved against the working directory, so either give an absolute path
 or run from the project root.

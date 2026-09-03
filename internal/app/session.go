@@ -89,6 +89,13 @@ func StartSession(cfg *Config, output io.Writer, input io.Reader) (*agentpkg.Ses
 		_ = protocol.WriteSystemMsg(output, protocol.ErrorMsg{Text: e})
 	}
 
+	// Say what discovery decided. Errors name the broken inputs; this line
+	// reports the outcome, because "0 skills loaded" is not an error and was
+	// therefore invisible — the state users describe as "the flag does nothing".
+	for _, n := range cfg.Notices {
+		_ = protocol.WriteSystemMsg(output, protocol.NotifyMsg{Text: n})
+	}
+
 	// Check if we have any models available.
 	if !session.HasModels() {
 		return nil, nil, fmt.Errorf("%s", agentpkg.NoModelsErrorMessage(session.ModelConfigPath(), session.HasRejected()))

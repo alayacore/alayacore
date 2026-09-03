@@ -24,7 +24,7 @@ const maxDescriptionRunes = 1024
 // ParseSkillMarkdown reads a SKILL.md file and returns its frontmatter
 // metadata, its markdown body, and the problems found while reading.
 //
-// The error is reserved for a manifest that cannot be honoured at all: a
+// The error is reserved for a manifest that cannot be honored at all: a
 // missing or unclosed frontmatter block, an absent or malformed name, an absent
 // or overlong description. Everything else — an unparseable line, a duplicate
 // key, a nested metadata map — is returned in problems and leaves the rest of
@@ -81,7 +81,7 @@ func ParseSkillMarkdown(content string) (Metadata, string, []string, error) {
 	return meta, body, problems, nil
 }
 
-// splitLines normalises line endings and a leading byte-order mark so the rest
+// splitLines normalizes line endings and a leading byte-order mark so the rest
 // of the reader can compare lines exactly. A manifest saved by a Windows
 // editor is the same manifest.
 func splitLines(content string) []string {
@@ -179,7 +179,7 @@ func parseManifestBlock(block []string, firstLine int) (Metadata, []string, erro
 			value, i = parseScalar(rest, block, i, lineNo, key, &problems)
 			assignScalar(&meta, key, value)
 		default:
-			// An unrecognised key is read past, not complained about: the
+			// An unrecognized key is read past, not complained about: the
 			// manifest format grows new fields, and a field this build does
 			// not know must not cost the user the skill.
 			i = skipEntry(block, i)

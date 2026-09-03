@@ -1,7 +1,9 @@
 package skills
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,44 +14,71 @@ type Manager struct {
 	skills     []Skill
 	skillDirs  []string
 	loadErrors []string // non-fatal errors (failed skills, duplicate names)
+	notices    []string // what discovery did, so a quiet nothing is still seen
 }
 
 // GetLoadErrors returns non-fatal errors collected during loading:
-// skills that failed to load and duplicate skill names.
+// containers that could not be read, skills that failed to load and
+// duplicate skill names.
 func (m *Manager) GetLoadErrors() []string {
 	return m.loadErrors
 }
 
-// NewManager creates a new skill manager
+// GetNotices returns what discovery ended up doing — how many skills the agent
+// was told about, and which container contributed nothing. A skill folder that
+// loads no skills is the normal shape of every mistake this feature has, and it
+// used to be invisible: the run looked exactly like a run with no skills
+// configured at all.
+func (m *Manager) GetNotices() []string {
+	return m.notices
+}
+
+// NewManager creates a new skill manager.
+//
+// Discovery problems are reported, never returned: skills are one optional
+// feature, and a mistyped path, a plain file passed for a container, or a
+// directory the user cannot open must cost that container, not the program.
 func NewManager(skillPaths []string) (*Manager, error) {
 	m := &Manager{
 		skills:    []Skill{},
 		skillDirs: skillPaths,
 	}
 
-	// If no skill paths provided, return empty manager
-	if len(skillPaths) == 0 {
-		return m, nil
-	}
-
-	// Discover and load skill metadata from all paths
-	if err := m.discoverSkills(); err != nil {
-		return nil, fmt.Errorf("failed to discover skills: %w", err)
-	}
+	m.discoverSkills()
 
 	return m, nil
 }
 
+// manifestFileName is the one file that makes a directory a skill.
+const manifestFileName = "SKILL.md"
+
 // discoverSkills scans all skill directories for skills
-func (m *Manager) discoverSkills() error {
+func (m *Manager) discoverSkills() {
 	for _, skillDir := range m.skillDirs {
+		found := len(m.skills)
+
 		entries, err := os.ReadDir(skillDir)
 		if err != nil {
-			// If directory doesn't exist, that's OK - skip it
-			if os.IsNotExist(err) {
-				continue
+			// Until now every failure here — a path that is a file, a directory
+			// nobody can open, a symlink left dangling — aborted discovery, then
+			// Setup, then the process, while the ordinary miss stayed silent. A
+			// container that cannot be read is now this container's own
+			// business: the reason is reported and the other containers still
+			// load.
+			//
+			// A path that does not exist is a notice rather than an error: a
+			// personal container is routinely passed before it has been
+			// created, and that is a future, not a fault.
+			if errors.Is(err, fs.ErrNotExist) {
+				// A container that is not there is reported, not fatal, and not
+				// an error either: a personal folder passed before it has been
+				// created is a plan, not a fault. It goes in the same line the
+				// user reads to find out whether skills loaded at all.
+				m.notices = append(m.notices, fmt.Sprintf("skill container %s does not exist", skillDir))
+			} else {
+				m.loadErrors = append(m.loadErrors, fmt.Sprintf("skill container %s: %v", skillDir, err))
 			}
-			return err
+			continue
 		}
 
 		for _, entry := range entries {
@@ -58,7 +87,7 @@ func (m *Manager) discoverSkills() error {
 			}
 
 			skillPath := filepath.Join(skillDir, entry.Name())
-			skillFile := filepath.Join(skillPath, "SKILL.md")
+			skillFile := filepath.Join(skillPath, manifestFileName)
 
 			if _, err := os.Stat(skillFile); os.IsNotExist(err) {
 				continue
@@ -88,9 +117,31 @@ func (m *Manager) discoverSkills() error {
 
 			m.skills = append(m.skills, skill)
 		}
+
+		if len(m.skills) == found {
+			// The container was read and offered nothing. This is what pointing
+			// --skill at a skill's own folder looks like, and what a mistyped
+			// folder looks like; it used to be indistinguishable from success.
+			m.notices = append(m.notices, fmt.Sprintf("skill container %s loaded no skills", skillDir))
+		}
 	}
 
-	return nil
+	if len(m.skillDirs) > 0 {
+		// The count is the fact the user cannot infer from a silent success: with
+		// no line like this, "no containers configured", "containers configured
+		// but empty" and "everything working" look identical from the outside.
+		m.notices = append(m.notices, fmt.Sprintf("skills: %s loaded from %s",
+			countNoun(len(m.skills), "skill"), countNoun(len(m.skillDirs), "container")))
+	}
+}
+
+// countNoun renders a count with its noun, so one container never reads as
+// "1 containers".
+func countNoun(n int, noun string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, noun)
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // loadSkillMetadata loads only the frontmatter from a SKILL.md file. It returns

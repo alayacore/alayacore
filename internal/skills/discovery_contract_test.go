@@ -56,22 +56,25 @@ func TestContainerFlagLoadsEverySkillBeneathIt(t *testing.T) {
 }
 
 // Pointing --skill at a skill's own directory treats it as a container and finds
-// no sub-skills inside it: nothing loads, and nothing complains. Silent, so the
-// docs say so — and this pins that it is silent rather than an error, because a
-// future "helpfully" erroring here would also be a behavior change worth a test.
+// no sub-skills inside it: nothing loads. It no longer passes in silence — the
+// run says which container gave nothing, because a user who configured a
+// container and got no skills cannot tell that apart from success otherwise.
 func TestSkillDirectoryAsPathLoadsNothing(t *testing.T) {
 	root := t.TempDir()
 	skill := writeSkill(t, filepath.Join(root, "skills"), "weather")
 
 	m, err := NewManager([]string{skill})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("NewManager failed: %v", err)
 	}
 	if n := len(m.GetMetadata()); n != 0 {
 		t.Fatalf("loaded %d skills from the skill's own directory, want 0", n)
 	}
 	if errs := m.GetLoadErrors(); len(errs) != 0 {
-		t.Errorf("silence is the documented behavior, got errors: %v", errs)
+		t.Errorf("an empty container is not a fault, got load errors: %v", errs)
+	}
+	if !hasNotice(m, "loaded no skills") {
+		t.Errorf("notices = %v, want the empty container named", m.GetNotices())
 	}
 }
 
