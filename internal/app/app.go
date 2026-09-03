@@ -24,7 +24,7 @@ Never assume - verify with tools.
 
 Use search tools to locate code and patterns before using file read tools for detailed inspection.`
 
-const systemPromptSkills = `Check <available_skills> below; read the <location> file to load relevant skill instructions. Skill instructions may use relative paths - run them from the skill's directory (derived from <location>).`
+const systemPromptSkills = `Check <available_skills> below; read the <location> file to load relevant skill instructions. Skill instructions may use relative paths (scripts/, references/) - run them with execute_command's workdir set to the skill's own directory, which is the folder containing <location>.`
 
 // Config holds the common app configuration
 type Config struct {

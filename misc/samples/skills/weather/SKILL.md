@@ -13,6 +13,10 @@ Get weather information using the weather script.
 ./scripts/weather.sh "City name"
 ```
 
+Run it with the `execute_command` tool, `workdir` set to this skill's directory
+(the folder containing this file), so the relative path resolves here rather than
+in the user's project.
+
 - **Note**: Use English or Pinyin for city names (e.g. Use "Wuhan" instead of "武汉")
 
 The script fetches weather data from wttr.in in JSON format.

@@ -13,7 +13,7 @@ import (
 )
 
 func TestExecuteCommandNormalCompletion(t *testing.T) {
-	content, err := executeCommand(context.Background(), executeCommandInput{
+	content, err := executeCommand(context.Background(), ExecuteCommandInput{
 		Command: "echo hello",
 	})
 	if err != nil {
@@ -26,7 +26,7 @@ func TestExecuteCommandNormalCompletion(t *testing.T) {
 }
 
 func TestExecuteCommandExitError(t *testing.T) {
-	_, err := executeCommand(context.Background(), executeCommandInput{
+	_, err := executeCommand(context.Background(), ExecuteCommandInput{
 		Command: "exit 42",
 	})
 	if err == nil {
@@ -42,7 +42,7 @@ func TestExecuteCommandCancellation(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := executeCommand(ctx, executeCommandInput{
+		_, err := executeCommand(ctx, ExecuteCommandInput{
 			Command: "sleep 60",
 		})
 		done <- err
@@ -70,7 +70,7 @@ func TestExecuteCommandTimeout(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := executeCommand(ctx, executeCommandInput{
+		_, err := executeCommand(ctx, ExecuteCommandInput{
 			Command: "sleep 60",
 		})
 		done <- err
@@ -97,7 +97,7 @@ func TestExecuteCommandNoTimeoutByDefault(t *testing.T) {
 	defer func() { shell.DefaultCommandTimeout = orig }()
 	shell.DefaultCommandTimeout = 0
 
-	content, err := executeCommand(context.Background(), executeCommandInput{
+	content, err := executeCommand(context.Background(), ExecuteCommandInput{
 		Command: "sleep 1 && echo done",
 	})
 	if err != nil {
@@ -118,7 +118,7 @@ func TestExecuteCommandWorkingDir(t *testing.T) {
 	}
 	defer os.Chdir(originalWd)
 
-	content, err := executeCommand(context.Background(), executeCommandInput{
+	content, err := executeCommand(context.Background(), ExecuteCommandInput{
 		Command: "pwd",
 	})
 	if err != nil {

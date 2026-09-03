@@ -100,3 +100,30 @@ func TestEditFileHandlerFormatCallHugeInput(t *testing.T) {
 		t.Errorf("degenerate diff new lines = %d, want %d", newCount, 2*maxDiffLines+1)
 	}
 }
+
+// execute_command names a directory now, and where a command ran is part of
+// what it was: "./scripts/fetch.sh" in the skill's folder and in the project are
+// different calls that would otherwise print identically.
+func TestExecuteCommandHandlerFormatCallShowsWorkDir(t *testing.T) {
+	h := &ExecuteCommandHandler{}
+
+	plain := h.FormatCall([]byte(`{"command":"ls -la"}`))
+	if want := "execute_command: ls -la\n"; plain != want {
+		t.Errorf("without workdir = %q, want %q", plain, want)
+	}
+
+	withDir := h.FormatCall([]byte(`{"command":"./scripts/fetch.sh","workdir":"/home/me/skills/weather"}`))
+	want := "execute_command: ./scripts/fetch.sh [dir=/home/me/skills/weather]\n"
+	if withDir != want {
+		t.Errorf("with workdir = %q, want %q", withDir, want)
+	}
+
+	// An empty workdir is the same call as no workdir; it must not print "[]".
+	if got := h.FormatCall([]byte(`{"command":"ls","workdir":""}`)); got != "execute_command: ls\n" {
+		t.Errorf("empty workdir = %q", got)
+	}
+
+	if got := h.FormatCall([]byte(`{broken`)); got != "execute_command: <parse error>" {
+		t.Errorf("unparsable input = %q", got)
+	}
+}

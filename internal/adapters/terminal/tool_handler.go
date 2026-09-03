@@ -45,14 +45,19 @@ func (h *GenericHandler) FormatCall(input json.RawMessage) string {
 type ExecuteCommandHandler struct{}
 
 func (h *ExecuteCommandHandler) FormatCall(input json.RawMessage) string {
-	var args struct {
-		Command string `json:"command"`
-	}
+	var args tools.ExecuteCommandInput
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "execute_command: <parse error>"
 	}
+	text := escapeNewlines(args.Command)
+	if args.WorkDir != "" {
+		// The directory is part of what the command *is*: "ls" in the skill's
+		// folder and "ls" in the project are different calls, and a transcript
+		// showing only "ls" cannot be read back.
+		text += fmt.Sprintf(" [dir=%s]", escapeNewlines(args.WorkDir))
+	}
 	// Add newline at end so output starts on new line
-	return fmt.Sprintf("execute_command: %s\n", escapeNewlines(args.Command))
+	return fmt.Sprintf("execute_command: %s\n", text)
 }
 
 // ReadFileHandler handles read_file calls.

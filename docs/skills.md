@@ -16,7 +16,7 @@ AlayaCore supports the [Agent Skills](https://agentskills.io) specification. Ski
    </available_skills>
    ```
 3. **Activation** — When a task matches a skill's description, the LLM reads the `<location>` file using `read_file` to load the full instructions.
-4. **Execution** — The agent follows the loaded instructions, optionally running bundled scripts via the `execute_command` tool.
+4. **Execution** — The agent follows the loaded instructions, optionally running bundled scripts via the `execute_command` tool, passing `workdir` for the skill's own directory so relative paths inside `SKILL.md` resolve.
 
 ## Usage
 
@@ -135,8 +135,13 @@ reported error is about the name. For a symlinked skill folder, *its own name* i
 the directory name — `skills/pdf -> /shared/anything` loads, `skills/pdf2 ->
 /shared/pdf` does not, and the error says which two names disagreed.
 
-Relative paths inside a `SKILL.md` are resolved from that skill's own directory —
-the same directory `<location>` names in the injected XML.
+Relative paths inside a `SKILL.md` — `./scripts/fetch.sh`, `references/api.md` —
+are meant to be read from that skill's own directory, the folder containing
+`<location>`. That is a convention the agent has to act on, so two things back
+it: `<location>` is published as an absolute path, and `execute_command` takes an
+optional `workdir`, which the system prompt tells the agent to set to the skill
+directory when a skill's instructions name a relative path. Without `workdir` the
+only way to obey such a skill was to remember to prepend a `cd` to every command.
 
 ## Skill Directory Structure
 
@@ -277,7 +282,7 @@ When the user asks "what's the weather in Tokyo?", the LLM:
 1. Matches the query against the skill description
 2. Reads `<location>` (e.g. `/path/to/skills/weather/SKILL.md`) using `read_file`
 3. Reads the full instructions from `SKILL.md`
-4. Runs `scripts/weather.sh "Tokyo"` via the `execute_command` tool
+4. Runs `./scripts/weather.sh "Tokyo"` via the `execute_command` tool, with `workdir` set to `/path/to/skills/weather`
 5. Reports the results back to the user
 
 ## Skill Specification

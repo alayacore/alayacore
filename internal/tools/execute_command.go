@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -18,8 +19,11 @@ import (
 
 const maxCommandOutput = 64 * 1024 // 64KB
 
-type executeCommandInput struct {
+// ExecuteCommandInput is the input of the execute_command tool. It is exported
+// because the terminal adapter formats a tool call from it.
+type ExecuteCommandInput struct {
 	Command string `json:"command" jsonschema:"required" jsonschema_desc:"Command to execute"`
+	WorkDir string `json:"workdir" jsonschema_desc:"Directory to run the command in: absolute, or relative to the current working directory. Omit it to run in the current directory. Each call starts in the current directory again - this does not persist between calls."`
 }
 
 func NewExecuteCommandTool() llm.Tool {
@@ -27,21 +31,58 @@ func NewExecuteCommandTool() llm.Tool {
 		"execute_command",
 		shell.Detect().Description(),
 	).
-		WithSchema(llm.MustGenerateSchema(executeCommandInput{})).
+		WithSchema(llm.MustGenerateSchema(ExecuteCommandInput{})).
 		WithExecute(llm.TypedExecute(executeCommand)).
 		WithExecuteStreaming(llm.TypedExecuteStreaming(executeCommandStreaming)).
 		Build()
 }
 
-// runCommand builds and runs the shell command, writing stdout and stderr
-// to the provided writers. It returns the exit code and the error from
-// cmd.Wait (nil on clean exit).
-func runCommand(ctx context.Context, args executeCommandInput, stdout, stderr io.Writer) (int, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = "."
+// resolveWorkDir turns the workdir argument into the directory a command runs
+// in.
+//
+// An empty argument means the process's own directory, which is what this tool
+// did before the argument existed and what a command that names no directory
+// must keep doing. A relative argument is resolved against that same directory,
+// because that is how every other path-taking tool reads a path.
+//
+// The directory has to exist, and has to be one. Left to exec, a bad directory
+// surfaces as a failed command carrying the shell's own complaint, which reads
+// to the model as though the command ran and broke; checked here, it says what
+// actually went wrong and the command never starts.
+func resolveWorkDir(workDir string) (string, error) {
+	if workDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			// No answer for the working directory: let the child inherit
+			// whatever the process itself has, which is what cmd.Dir = "" does.
+			return "", nil
+		}
+		return cwd, nil
 	}
 
+	abs, err := filepath.Abs(workDir)
+	if err != nil {
+		return "", fmt.Errorf("workdir %q cannot be resolved: %w", workDir, err)
+	}
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("workdir %q does not exist", workDir)
+		}
+		return "", fmt.Errorf("workdir %q cannot be used: %w", workDir, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("workdir %q is not a directory", workDir)
+	}
+	return abs, nil
+}
+
+// runCommand builds and runs the shell command, writing stdout and stderr
+// to the provided writers. dir is the working directory returned by
+// resolveWorkDir. It returns the exit code and the error from cmd.Wait (nil on
+// clean exit).
+func runCommand(ctx context.Context, args ExecuteCommandInput, dir string, stdout, stderr io.Writer) (int, error) {
 	detectedShell := shell.Detect()
 
 	// Only wrap the context with a deadline when a timeout is configured;
@@ -57,7 +98,7 @@ func runCommand(ctx context.Context, args executeCommandInput, stdout, stderr io
 	baseCmd := detectedShell.BuildCmd(detectedShell.ResolvedBinary(), args.Command)
 	//nolint:gosec // G204: Command from user input is intentional
 	cmd := exec.CommandContext(execCtx, baseCmd.Path, baseCmd.Args[1:]...)
-	cmd.Dir = cwd
+	cmd.Dir = dir
 
 	devNull, err := shell.OpenDevNull()
 	if err != nil {
@@ -100,12 +141,17 @@ func runCommand(ctx context.Context, args executeCommandInput, stdout, stderr io
 	return exitCode, execErr
 }
 
-func executeCommand(ctx context.Context, args executeCommandInput) ([]llm.ContentPart, error) {
+func executeCommand(ctx context.Context, args ExecuteCommandInput) ([]llm.ContentPart, error) {
+	dir, err := resolveWorkDir(args.WorkDir)
+	if err != nil {
+		return nil, err
+	}
+
 	stdout, stderr := newCapture(maxCommandOutput), newCapture(maxCommandOutput)
 	defer stdout.Close()
 	defer stderr.Close()
 
-	exitCode, execErr := runCommand(ctx, args, stdout, stderr)
+	exitCode, execErr := runCommand(ctx, args, dir, stdout, stderr)
 	return commandResult(ctx, stdout, stderr, exitCode, execErr)
 }
 
@@ -303,10 +349,15 @@ func (w *streamingWriter) combinedPreview() string {
 	return w.err.text()
 }
 
-func executeCommandStreaming(ctx context.Context, args executeCommandInput, onDelta func(string)) ([]llm.ContentPart, error) {
+func executeCommandStreaming(ctx context.Context, args ExecuteCommandInput, onDelta func(string)) ([]llm.ContentPart, error) {
+	dir, err := resolveWorkDir(args.WorkDir)
+	if err != nil {
+		return nil, err
+	}
+
 	sw := newStreamingWriter(onDelta)
 	defer sw.Close()
-	exitCode, execErr := runCommand(ctx, args, sw, errWriter{sw})
+	exitCode, execErr := runCommand(ctx, args, dir, sw, errWriter{sw})
 	sw.flushPreview() // command finished — emit the final snapshot
 
 	return commandResult(ctx, sw.buf, sw.errBuf, exitCode, execErr)

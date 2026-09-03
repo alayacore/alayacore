@@ -251,7 +251,7 @@ func TestStreamingWriterStderrCRLF(t *testing.T) {
 
 func TestExecuteCommandStreamingEndToEnd(t *testing.T) {
 	var previews []string
-	contents, err := executeCommandStreaming(context.Background(), executeCommandInput{
+	contents, err := executeCommandStreaming(context.Background(), ExecuteCommandInput{
 		Command: "echo hello && echo world",
 	}, func(s string) { previews = append(previews, s) })
 	if err != nil {
@@ -278,7 +278,7 @@ func TestExecuteCommandStreamingEndToEnd(t *testing.T) {
 
 func TestExecuteCommandStreamingStderrEndToEnd(t *testing.T) {
 	var previews []string
-	contents, err := executeCommandStreaming(context.Background(), executeCommandInput{
+	contents, err := executeCommandStreaming(context.Background(), ExecuteCommandInput{
 		Command: "echo out-line && echo err-line >&2",
 	}, func(s string) { previews = append(previews, s) })
 	if err != nil {
