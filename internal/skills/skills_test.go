@@ -345,67 +345,84 @@ description: Skill from second directory
 	}
 }
 
+// The first container to claim a name keeps it, and the loser is named. Both
+// used to be published: the prompt advertised the same name twice with two
+// different locations, and the only thing the model could do with that was guess.
 func TestDuplicateSkillNames(t *testing.T) {
-	// Create first temp skill directory
 	tmpDir1 := t.TempDir()
-
 	skillDir1 := filepath.Join(tmpDir1, "duplicate-skill")
 	if err := os.Mkdir(skillDir1, 0755); err != nil {
 		t.Fatalf("Failed to create skill dir: %v", err)
 	}
-
 	skillFile1 := filepath.Join(skillDir1, "SKILL.md")
-	skillContent1 := `---
-name: duplicate-skill
-description: First occurrence
----
-
-# First Duplicate`
-	if err := os.WriteFile(skillFile1, []byte(skillContent1), 0644); err != nil {
+	if err := os.WriteFile(skillFile1, []byte("---\nname: duplicate-skill\ndescription: First occurrence\n---\n\n# First Duplicate"), 0644); err != nil {
 		t.Fatalf("Failed to write skill file: %v", err)
 	}
 
-	// Create second temp skill directory with same skill name
 	tmpDir2 := t.TempDir()
-
 	skillDir2 := filepath.Join(tmpDir2, "duplicate-skill")
 	if err := os.Mkdir(skillDir2, 0755); err != nil {
 		t.Fatalf("Failed to create skill dir: %v", err)
 	}
-
 	skillFile2 := filepath.Join(skillDir2, "SKILL.md")
-	skillContent2 := `---
-name: duplicate-skill
-description: Second occurrence
----
-
-# Second Duplicate`
-	if err := os.WriteFile(skillFile2, []byte(skillContent2), 0644); err != nil {
+	if err := os.WriteFile(skillFile2, []byte("---\nname: duplicate-skill\ndescription: Second occurrence\n---\n\n# Second Duplicate"), 0644); err != nil {
 		t.Fatalf("Failed to write skill file: %v", err)
 	}
 
-	// Test manager - both skills should be loaded (with error)
 	m, err := NewManager([]string{tmpDir1, tmpDir2})
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}
 
 	metadata := m.GetMetadata()
-	// Both skills should be in the list
-	if len(metadata) != 2 {
-		t.Errorf("Expected 2 skills (with duplicate names), got %d", len(metadata))
+	if len(metadata) != 1 {
+		t.Fatalf("Expected 1 skill (the first container wins), got %d", len(metadata))
+	}
+	if metadata[0].Description != "First occurrence" {
+		t.Errorf("the surviving skill is %q, want the one from the container listed first", metadata[0].Description)
+	}
+	if metadata[0].Location != skillFile1 {
+		t.Errorf("location = %s, want %s", metadata[0].Location, skillFile1)
 	}
 
-	// The duplicate must be reported via GetLoadErrors.
+	// The ignored skill must be reported with both paths, so the user can see
+	// which container lost and why.
 	found := false
 	for _, e := range m.GetLoadErrors() {
-		if strings.Contains(e, "duplicate skill name") && strings.Contains(e, "duplicate-skill") {
+		if strings.Contains(e, "duplicate-skill") && strings.Contains(e, "ignored") &&
+			strings.Contains(e, skillFile2) && strings.Contains(e, skillFile1) {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected duplicate skill name error, got: %v", m.GetLoadErrors())
+		t.Errorf("expected the ignored duplicate to name both manifests, got: %v", m.GetLoadErrors())
+	}
+	if n := strings.Count(m.GenerateSystemPromptFragment(), "<name>duplicate-skill</name>"); n != 1 {
+		t.Errorf("the prompt advertises the name %d times, want exactly once", n)
+	}
+}
+
+// Passing the same container twice is the same collision, not a second skill.
+func TestSameContainerGivenTwiceLoadsOnce(t *testing.T) {
+	container := t.TempDir()
+	dir := filepath.Join(container, "solo")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: solo\ndescription: d\n---\nbody"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := NewManager([]string{container, container})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loadedNames(m); len(got) != 1 {
+		t.Errorf("loaded %v, want one skill from a container named twice", got)
+	}
+	if len(m.GetLoadErrors()) != 1 {
+		t.Errorf("load errors = %v, want the ignored second copy named", m.GetLoadErrors())
 	}
 }
 

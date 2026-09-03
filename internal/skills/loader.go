@@ -13,8 +13,9 @@ import (
 type Manager struct {
 	skills     []Skill
 	skillDirs  []string
-	loadErrors []string // non-fatal errors (failed skills, duplicate names)
-	notices    []string // what discovery did, so a quiet nothing is still seen
+	taken      map[string]string // skill name -> the manifest that claimed it
+	loadErrors []string          // non-fatal errors (unreadable containers, failed skills, ignored duplicates)
+	notices    []string          // what discovery did, so a quiet nothing is still seen
 }
 
 // GetLoadErrors returns non-fatal errors collected during loading:
@@ -42,6 +43,7 @@ func NewManager(skillPaths []string) (*Manager, error) {
 	m := &Manager{
 		skills:    []Skill{},
 		skillDirs: skillPaths,
+		taken:     make(map[string]string),
 	}
 
 	m.discoverSkills()
@@ -82,11 +84,18 @@ func (m *Manager) discoverSkills() {
 		}
 
 		for _, entry := range entries {
-			if !entry.IsDir() {
+			skillPath := filepath.Join(skillDir, entry.Name())
+
+			// A skill folder kept somewhere else and symlinked into the container
+			// is the ordinary way to share one skill across projects. ReadDir
+			// classifies an entry by what it is rather than where it leads, so
+			// IsDir() is false for a link to a directory and the skill vanished
+			// without a report. A link whose target is gone stays invisible: the
+			// link is not a skill, and nothing was asked of it.
+			if !entryIsDirectory(entry, skillPath) {
 				continue
 			}
 
-			skillPath := filepath.Join(skillDir, entry.Name())
 			skillFile := filepath.Join(skillPath, manifestFileName)
 
 			if _, err := os.Stat(skillFile); os.IsNotExist(err) {
@@ -108,12 +117,16 @@ func (m *Manager) discoverSkills() {
 				continue
 			}
 
-			// Check for duplicate skill names
-			for _, existing := range m.skills {
-				if existing.Name == skill.Name {
-					m.loadErrors = append(m.loadErrors, fmt.Sprintf("duplicate skill name '%s' found in %s", skill.Name, skillDir))
-				}
+			// The first container to claim a name keeps it. The prompt advertises
+			// a skill by name and points at it by path, so two entries with one
+			// name and two locations handed the choice to the model — and both
+			// stayed callable. The order of --skill is the user's own statement of
+			// precedence, so it decides instead, and the loser is named.
+			if taken, clash := m.taken[skill.Name]; clash {
+				m.loadErrors = append(m.loadErrors, fmt.Sprintf("skill %s from %s ignored: the name is already loaded from %s", skill.Name, skillFile, taken))
+				continue
 			}
+			m.taken[skill.Name] = skill.Location
 
 			m.skills = append(m.skills, skill)
 		}
@@ -142,6 +155,21 @@ func countNoun(n int, noun string) string {
 		return fmt.Sprintf("%d %s", n, noun)
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// entryIsDirectory reports whether a container entry names a directory,
+// following a symbolic link. The listing decides for everything that is not a
+// link; only a link costs a stat, and a link whose target is missing or is not a
+// directory names no skill.
+func entryIsDirectory(entry fs.DirEntry, path string) bool {
+	if entry.IsDir() {
+		return true
+	}
+	if entry.Type()&fs.ModeSymlink == 0 {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // loadSkillMetadata loads only the frontmatter from a SKILL.md file. It returns

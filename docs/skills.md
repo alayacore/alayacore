@@ -94,6 +94,24 @@ nothing to the first two lines.
 Paths are resolved against the working directory, so either give an absolute path
 or run from the project root.
 
+**Two containers, one name.** The container listed first wins. The later skill is
+dropped and named at startup with both manifests, so the collision is visible
+instead of being handed to the model as two `<skill>` elements with one name:
+
+```
+skill pdf from /home/me/.alayacore/skills/pdf/SKILL.md ignored: the name is already loaded from /me/project/skills/pdf/SKILL.md
+```
+
+List containers in precedence order — the one that should win goes first, e.g.
+`--skill ./skills --skill ~/.alayacore/skills` lets a project override a personal
+skill of the same name.
+
+**A skill folder may be a link.** `skills/pdf -> /home/me/shared/skills/pdf`
+loads like any other folder, and `<location>` names the path *through* the
+container — the layout the user arranged — rather than the folder the link points
+at. A link that leads to nothing, or to a plain file, is not a skill and is not
+mentioned.
+
 Because the name must equal its directory name, the naming rules apply to the
 **folder** as well: 1–64 characters, lowercase letters, digits and hyphens only, no
 leading, trailing or consecutive hyphens. `My_Skill/` can never load, and the
