@@ -117,9 +117,8 @@ Instructions for the agent...
 |-------|----------|-------------|
 | `name` | Yes | Skill identifier. 1-64 characters, lowercase letters, numbers, and hyphens only. Must match the directory name. |
 | `description` | Yes | Describes what the skill does **and when to use it**. 1-1024 characters. This is what the LLM uses to decide whether to activate the skill. |
-| `license` | No | License name or reference |
-| `compatibility` | No | Environment requirements |
-| `allowed-tools` | No | Space-delimited list of pre-approved tools |
+| `license` | No | License name or reference. Recorded, not enforced. |
+| `compatibility` | No | Environment requirements. Recorded, not enforced — no dependency is checked. |
 
 ### Writing Good Descriptions
 
