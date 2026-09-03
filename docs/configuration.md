@@ -30,8 +30,12 @@ alayacore --config-path ./my-project-config
 ```
 
 > **Exception — Skills**: `--skill` is still a separate flag because skill
-> directories are project-specific and rarely live inside the config directory.
-> You can pass `--skill` multiple times for different paths.
+> folders are project-specific and rarely live inside the config directory.
+> Each `--skill` value is a **container**: all of its immediate subdirectories
+> holding a `SKILL.md` are loaded, so one flag is normally enough. Repeat it to
+> add further containers (e.g. project plus personal). Pointing it at a single
+> skill's own directory loads nothing. See
+> [skills.md](skills.md#what-discovery-guarantees).
 
 ## Model Config
 

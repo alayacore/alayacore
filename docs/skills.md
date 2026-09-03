@@ -4,7 +4,7 @@ AlayaCore supports the [Agent Skills](https://agentskills.io) specification. Ski
 
 ## How It Works
 
-1. **Discovery** — At startup, AlayaCore scans the skill directories and loads each skill's name and description from its `SKILL.md` frontmatter.
+1. **Discovery** — At startup, AlayaCore scans each `--skill` container one level deep and loads the name and description from every subdirectory's `SKILL.md` frontmatter.
 2. **Injection** — Skill metadata is injected into the system prompt so the LLM knows what's available:
    ```xml
    <available_skills>
@@ -20,16 +20,65 @@ AlayaCore supports the [Agent Skills](https://agentskills.io) specification. Ski
 
 ## Usage
 
+`--skill` takes a **container** directory, not a skill. AlayaCore loads every
+immediate subdirectory of it that contains a `SKILL.md`, so one flag brings in all
+of the skills in that folder:
+
+```
+skills/
+├── weather/
+│   └── SKILL.md      ← loaded
+├── pdf/
+│   └── SKILL.md      ← loaded
+└── notes/
+    └── SKILL.md      ← loaded
+```
+
 ```sh
-# Single skill directory
-alayacore --skill ./skills/weather
+# all skills under ./skills — this is the normal case
+alayacore --skill ./skills
 
-# Multiple skill directories
-alayacore --skill ./skills/weather --skill ./skills/pdf
+# several containers (e.g. project skills plus personal ones); repeat the flag
+alayacore --skill ./skills --skill ~/.alayacore/skills
 
-# With custom config directory
+# with a custom config directory
 alayacore --config-path ./my-config --skill ./skills
 ```
+
+> **Do not point `--skill` at a single skill's directory.** `--skill ./skills/weather`
+> treats `weather/` as the container and looks for `weather/<something>/SKILL.md` —
+> finding none, it loads nothing and reports no error. Measured: one flag per skill
+> (`--skill ./skills/weather --skill ./skills/pdf`) loads **0** skills; `--skill ./skills`
+> loads both. This is the most common way the feature appears broken when it is not.
+
+## What Discovery Guarantees
+
+Every one of these was measured against the loader; the silent ones are the reason
+to keep the layout in mind.
+
+| Situation | Result |
+|---|---|
+| `PATH/<dir>/SKILL.md` exists | loaded — all such subdirectories, from one flag |
+| `PATH/<group>/<dir>/SKILL.md` (one extra level) | **not loaded, silently** — the scan is exactly one level deep, not recursive |
+| `--skill PATH/<skill>` (the skill dir itself) | **nothing loaded, silently** — see the warning above |
+| `PATH` does not exist | skipped, no error |
+| subdirectory without `SKILL.md` | skipped, no error |
+| a plain file inside `PATH` | skipped |
+| frontmatter `name:` ≠ the directory name | that skill is **dropped**, and reported at startup as a load error |
+| frontmatter `name:` outside the naming rules below | same: dropped and reported |
+| same skill name from two containers | both kept (the prompt lists it twice), and reported as a duplicate at startup |
+| no `--skill` at all | no skills; the system prompt omits the skills section entirely |
+
+Paths are resolved against the working directory, so either give an absolute path
+or run from the project root.
+
+Because the name must equal its directory name, the naming rules apply to the
+**folder** as well: 1–64 characters, lowercase letters, digits and hyphens only, no
+leading, trailing or consecutive hyphens. `My_Skill/` can never load, and the
+reported error is about the name.
+
+Relative paths inside a `SKILL.md` are resolved from that skill's own directory —
+the same directory `<location>` names in the injected XML.
 
 ## Skill Directory Structure
 
