@@ -667,9 +667,33 @@ const (
 	openaiTextPos      = 2
 )
 
+// openaiToolPosBase is the first slot after the two flat fields.
+const openaiToolPosBase = openaiTextPos + 1
+
+// maxToolIndex bounds the offset so a hostile or broken `index` cannot overflow
+// the position into zero or a negative — which would read back as "no position
+// declared" or, worse, land on another block's slot.
+const maxToolIndex = 1 << 20
+
 // openaiToolPos places a tool call after both flat fields, keeping the relative
 // order the protocol's own index declares.
-func openaiToolPos(rawIndex int) int { return openaiTextPos + 1 + rawIndex }
+//
+// The clamping is load-bearing, not decoration. A raw index of -1 would otherwise
+// compute slot 2 and share the text block's declared position, silently letting a
+// malformed chunk reorder the answer against its own thinking; an index near
+// math.MaxInt would wrap to a negative and lose the declaration altogether. A
+// negative index collapses onto the first tool slot, where ties are broken
+// deterministically by closure then arrival; a huge one saturates to the same
+// neighborhood. Neither can reach a slot belonging to another kind of block.
+func openaiToolPos(rawIndex int) int {
+	if rawIndex <= 0 {
+		return openaiToolPosBase
+	}
+	if rawIndex > maxToolIndex {
+		return openaiToolPosBase + maxToolIndex
+	}
+	return openaiToolPosBase + rawIndex
+}
 
 // ============================================================================
 // Event Handlers

@@ -196,13 +196,14 @@ func TestAnthropicCutStepStillOrdersByDeclaredIndex(t *testing.T) {
 // exists to keep shut, and it would show up as scrambled order in a saved session
 // rather than as a failure anywhere near the cause.
 func TestAnthropicDeclaresPositionOnEveryContentEvent(t *testing.T) {
-	provider := newAnthropicOrdered(t, anthropicOrderedBody(true, true))
+	provider := newAnthropicOrdered(t, anthropicToolMessageBody())
 	events, err := provider.StreamMessages(context.Background(),
 		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}), nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	checked := 0
+	seen := map[string]bool{}
 	for event := range events {
 		var pos int
 		switch e := event.(type) {
@@ -214,15 +215,56 @@ func TestAnthropicDeclaresPositionOnEveryContentEvent(t *testing.T) {
 			pos = e.Position
 		case llm.ReasoningCompleteEvent:
 			pos = e.Position
+		case llm.ToolInputStartEvent:
+			pos = e.Position
+		case llm.ToolInputDeltaEvent:
+			pos = e.Position
+		case llm.ToolInputCompleteEvent:
+			pos = e.Position
 		default:
 			continue
 		}
 		checked++
+		seen[fmt.Sprintf("%T", event)] = true
 		if pos == 0 {
 			t.Errorf("%T carries no record position", event)
 		}
 	}
-	if checked < 4 {
-		t.Fatalf("only %d content events seen; the body no longer exercises this path", checked)
+	// Require coverage per event type rather than a bare count: a body that
+	// quietly stopped exercising one kind would otherwise leave that kind's
+	// declaration unchecked.
+	for _, kind := range []string{
+		"llm.ReasoningDeltaEvent", "llm.ReasoningCompleteEvent",
+		"llm.TextDeltaEvent", "llm.TextCompleteEvent",
+		"llm.ToolInputStartEvent", "llm.ToolInputDeltaEvent", "llm.ToolInputCompleteEvent",
+	} {
+		if !seen[kind] {
+			t.Errorf("guard never saw a %s; the body no longer covers it", kind)
+		}
+	}
+	if checked < 7 {
+		t.Fatalf("only %d content events seen", checked)
+	}
+}
+
+// anthropicToolMessageBody streams all three block kinds the protocol defines —
+// thinking, text, tool_use — each opened, fed, and closed in declared index order.
+// The declaration guard needs a body that touches every kind, or it silently stops
+// checking tool events the moment they are added.
+func anthropicToolMessageBody() func(io.Writer) {
+	return func(w io.Writer) {
+		ev := func(s string) { fmt.Fprint(w, s) }
+		ev("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n")
+		ev("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n")
+		ev("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"THINK\"}}\n\n")
+		ev("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+		ev("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+		ev("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ANSWER\"}}\n\n")
+		ev("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n")
+		ev("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c1\",\"name\":\"noop\"}}\n\n")
+		ev("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{}\"}}\n\n")
+		ev("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":2}\n\n")
+		ev("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":2}}\n\n")
+		ev("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
 	}
 }

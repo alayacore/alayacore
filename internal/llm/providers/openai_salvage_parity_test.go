@@ -235,3 +235,47 @@ func TestOpenAIDeclaresPositionOnEveryContentEvent(t *testing.T) {
 		t.Errorf("declared layout = %v, want reasoning < text < tool", positions)
 	}
 }
+
+// A malformed or hostile `tool_calls[].index` must not be able to move a tool call
+// onto another block's declared slot. Before clamping, index -1 computed to slot 2
+// — exactly the text block's — so one bad chunk could reorder the answer against
+// its own thinking in the persisted record; an index near math.MaxInt overflowed to
+// a negative, which reads back as "not declared" and loses the claim.
+//
+// Asserted through the record rather than the helper, so it survives the helper
+// being renamed or re-derived.
+func TestOpenAImalformedToolIndexCannotReorderTheRecord(t *testing.T) {
+	for _, rawIndex := range []string{"-1", "-5", "4611686018427387904"} {
+		t.Run("index="+rawIndex, func(t *testing.T) {
+			server := newMockSSEServer(t, func(w io.Writer) {
+				fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"THINK\"}}]}\n\n")
+				fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ANSWER\"}}]}\n\n")
+				fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":%s,\"id\":\"c1\",\"function\":{\"name\":\"noop\",\"arguments\":\"{}\"}}]}}]}\n\n", rawIndex)
+				fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n")
+			})
+			provider, err := providers.NewOpenAI(providers.BaseConfig{APIKey: "k", BaseURL: server.URL, ReasoningField: "reasoning_content"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			noop := llm.Tool{Definition: llm.ToolDefinition{Name: "noop"}, Execute: func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) {
+				return []llm.ContentPart{&llm.TextPart{Text: "did it", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleTool}}}, nil
+			}}
+
+			var kinds []string
+			for _, p := range stepRecordWithTools(t, provider, noop) {
+				switch p.(type) {
+				case *llm.ReasoningPart:
+					kinds = append(kinds, "reasoning")
+				case *llm.TextPart:
+					kinds = append(kinds, "text")
+				case *llm.ToolInputPart:
+					kinds = append(kinds, "call")
+				}
+			}
+			if got := strings.Join(kinds, ","); got != "reasoning,text,call" {
+				t.Errorf("record = [%s], want reasoning,text,call — a bad index may not place a call "+
+					"ahead of the content it accompanied", got)
+			}
+		})
+	}
+}

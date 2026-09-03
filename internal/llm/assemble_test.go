@@ -44,8 +44,8 @@ func TestAssemblerNumbersByArrivalAndLaysOutByClose(t *testing.T) {
 	a := newStreamAssembler(counter(1))
 	a.text(0, "text", "Answer.")            // arrives first, so takes the lower ID
 	a.reasoning(0, "reasoning", "thinking") // arrives second
-	a.close("reasoning")                    // closed first, so leads the record
-	a.close("text")
+	a.close(0, "reasoning")                 // closed first, so leads the record
+	a.close(0, "text")
 
 	got := render(a.parts())
 	want := "reasoning(thinking) id=2 | text(Answer.) id=1"
@@ -61,7 +61,7 @@ func TestAssemblerNumbersByArrivalAndLaysOutByClose(t *testing.T) {
 func TestAssemblerAppendsUnclosedAfterClosed(t *testing.T) {
 	a := newStreamAssembler(nil)
 	a.reasoning(0, "r1", "first thought")
-	a.close("r1")
+	a.close(0, "r1")
 	a.text(0, "t1", "second, never closed")
 	a.reasoning(0, "r2", "third, never closed")
 
@@ -79,8 +79,8 @@ func TestAssemblerAppendsUnclosedAfterClosed(t *testing.T) {
 func TestAssemblerCannotBeToldContentItNeverReceived(t *testing.T) {
 	a := newStreamAssembler(counter(1))
 	a.text(0, "text", "real")
-	a.close("text")
-	a.close("ghost") // a provider naming a block it never streamed
+	a.close(0, "text")
+	a.close(0, "ghost") // a provider naming a block it never streamed
 
 	if got := len(a.touched); got != 1 {
 		t.Fatalf("assembler holds %d blocks, want 1", got)
@@ -99,7 +99,7 @@ func TestAssemblerJoinsToolArgsAndFreezesOnePart(t *testing.T) {
 	a.toolStart(0, "tool:0", "c1", "read_file")
 	a.toolArgs(0, "tool:0", `{"path":`)
 	a.toolArgs(0, "tool:0", `"README.md"}`)
-	a.close("tool:0")
+	a.close(0, "tool:0")
 
 	id, name, args := a.toolCall("tool:0")
 	if id != "c1" || name != "read_file" {
@@ -143,9 +143,9 @@ func TestAssemblerDropsToolWithoutPart(t *testing.T) {
 func TestAssemblerSkipsEmptyBlocks(t *testing.T) {
 	a := newStreamAssembler(counter(1))
 	a.reasoning(0, "reasoning", "")
-	a.close("reasoning")
+	a.close(0, "reasoning")
 	a.text(0, "text", "hi")
-	a.close("text")
+	a.close(0, "text")
 
 	// The ID the empty reasoning slot consumed is not a mistake to fix: only a
 	// block that streamed content opens one, and no provider opens a delta with
@@ -161,8 +161,8 @@ func TestAssemblerToleratesNoNumbering(t *testing.T) {
 	a := newStreamAssembler(nil)
 	a.reasoning(0, "r", "thought")
 	a.text(0, "t", "answer")
-	a.close("r")
-	a.close("t")
+	a.close(0, "r")
+	a.close(0, "t")
 
 	parts := a.parts()
 	if len(parts) != 2 {
@@ -183,8 +183,8 @@ func TestAssemblerToleratesNoNumbering(t *testing.T) {
 func TestAssemblerIsIdempotentOnCloseAndKind(t *testing.T) {
 	a := newStreamAssembler(counter(7))
 	a.text(0, "t", "one")
-	a.close("t")
-	a.close("t")
+	a.close(0, "t")
+	a.close(0, "t")
 	a.reasoning(0, "t", "-smuggled") // same key, different kind
 
 	if got := render(a.parts()); got != "text(one-smuggled) id=7" {
@@ -232,10 +232,49 @@ func TestUndeclaredBlocksLandAfterDeclaredOnes(t *testing.T) {
 	a := newStreamAssembler(counter(1))
 	a.text(0, "mystery", "surprise") // no declaration
 	a.text(1, "text", "answer")
-	a.close("text")
-	a.close("mystery")
+	a.close(0, "text")
+	a.close(0, "mystery")
 
 	if got := render(a.parts()); got != "text(answer) id=2 | text(surprise) id=1" {
 		t.Errorf("record = [%s], want the declared block placed and the undeclared one appended", got)
+	}
+}
+
+// A provider may state layout best where it has the whole picture — at closure,
+// from the complete set of blocks — so a boundary event's declaration counts even
+// for a block whose deltas carried none.
+//
+// The closure order here deliberately contradicts the declared order: if the
+// assembler ignored a closure's position, these two would land in closure order
+// and the test could not tell the difference. That is the point.
+func TestClosureCanDeclarePositionWhenDeltasDidNot(t *testing.T) {
+	a := newStreamAssembler(counter(1))
+	a.text(0, "text", "ANSWER")          // no declaration on the content
+	a.reasoning(0, "reasoning", "THINK") // no declaration on the content
+	a.close(2, "text")                   // closes FIRST but belongs second
+	a.close(1, "reasoning")              // closes SECOND but belongs first
+
+	got := render(a.parts())
+	want := "reasoning(THINK) id=2 | text(ANSWER) id=1"
+	if got != want {
+		t.Errorf("record = [%s], want [%s]: a closure's declaration must place the block, "+
+			"not the sequence the closures happened to arrive in", got, want)
+	}
+}
+
+// A declared position outranks a closure, and the two are different claims: the
+// position says where the block belongs, the closure only says it ended. Here the
+// provider closes the wrong-order block first while the content carried the true
+// layout, which is the shape of a transport that finishes blocks out of order.
+func TestDeclaredPositionOutranksClosureOrder(t *testing.T) {
+	a := newStreamAssembler(counter(1))
+	a.text(2, "text", "ANSWER")
+	a.reasoning(1, "reasoning", "THINK")
+	a.close(2, "text")      // closed first
+	a.close(1, "reasoning") // closed last
+
+	got := render(a.parts())
+	if got != "reasoning(THINK) id=2 | text(ANSWER) id=1" {
+		t.Errorf("record = [%s], want the declared positions to win over closure order", got)
 	}
 }

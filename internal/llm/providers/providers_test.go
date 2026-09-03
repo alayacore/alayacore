@@ -2525,8 +2525,14 @@ func streamedToolParts(events iter.Seq2[llm.StreamEvent, error]) []llm.ToolInput
 // llm.Agent, so asserting on events alone would not notice a broken assembly, and
 // asserting on a hand-built copy would test the test.
 func stepRecord(t *testing.T, provider llm.Provider) []llm.ContentPart {
+	return stepRecordWithTools(t, provider)
+}
+
+// stepRecordWithTools is stepRecord for streams whose tool calls must actually
+// execute, which is the only way their results reach the record.
+func stepRecordWithTools(t *testing.T, provider llm.Provider, tools ...llm.Tool) []llm.ContentPart {
 	t.Helper()
-	parts, err := recordOfStep(t, provider)
+	parts, err := recordOfStepWithTools(t, provider, tools...)
 	if err != nil && !errors.Is(err, llm.ErrMaxStepsExceeded) {
 		t.Fatalf("agent step over this stream failed: %v", err)
 	}
@@ -2538,11 +2544,15 @@ func stepRecord(t *testing.T, provider llm.Provider) []llm.ContentPart {
 // a step that ends in failure. A failed step still publishes, so ignoring the
 // error here would hide exactly the thing those tests are about.
 func recordOfStep(t *testing.T, provider llm.Provider) ([]llm.ContentPart, error) {
+	return recordOfStepWithTools(t, provider)
+}
+
+func recordOfStepWithTools(t *testing.T, provider llm.Provider, tools ...llm.Tool) ([]llm.ContentPart, error) {
 	t.Helper()
 	next := uint64(1)
 	var published []llm.ContentPart
 	var failure error
-	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 1})
+	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, Tools: tools, MaxSteps: 1})
 	if _, err := agent.Stream(context.Background(),
 		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}),
 		llm.StreamCallbacks{

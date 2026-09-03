@@ -367,7 +367,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 		case TextCompleteEvent:
 			// A boundary naming a block the stream never opened is refused here
 			// and at the assembler: no content, no ID, no empty window.
-			exists := assembler.close(e.Key)
+			exists := assembler.close(e.Position, e.Key)
 			if exists && callbacks.OnTextComplete != nil {
 				if err := callbacks.OnTextComplete(assembler.body(e.Key), assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
@@ -384,7 +384,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			}
 
 		case ReasoningCompleteEvent:
-			exists := assembler.close(e.Key)
+			exists := assembler.close(e.Position, e.Key)
 			if exists && callbacks.OnReasoningComplete != nil {
 				if err := callbacks.OnReasoningComplete(assembler.body(e.Key), assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
@@ -409,7 +409,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			}
 
 		case ToolInputCompleteEvent:
-			if !assembler.close(e.Key) {
+			if !assembler.close(e.Position, e.Key) {
 				break // a call with no streamed arguments is not a call to run
 			}
 			// The assembled arguments, repaired, become the part that both

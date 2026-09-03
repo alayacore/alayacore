@@ -140,11 +140,16 @@ func (a *streamAssembler) declare(b *assembledBlock, position int) *assembledBlo
 	return b
 }
 
-func (a *streamAssembler) close(key string) bool {
+// close also adopts the position the boundary event declares, so a provider that
+// states layout only where it knows it best — at closure, from the complete set of
+// blocks — is still heard. declare() keeps the first claim, which means a delta
+// that already pinned the block wins unless it pinned nothing.
+func (a *streamAssembler) close(position int, key string) bool {
 	b, ok := a.byKey[key]
 	if !ok {
 		return false
 	}
+	a.declare(b, position)
 	if b.closed {
 		return true
 	}
@@ -281,15 +286,14 @@ func attachToolResults(record, results []ContentPart, dropUnanswered bool) ([]Co
 	return append(kept, answered...), nil
 }
 
-// parts renders the step's blocks into content parts.
+// parts renders the step's blocks into content parts, ordered by lessForRecord:
+// the position the provider declared for each block, wherever it declared it.
 //
-// Order is the order the provider closed them, because layout within the record
-// is protocol knowledge: Anthropic closes blocks in the index order the server
-// declared, and OpenAI closes its three slots in the order an assistant turn has
-// in that protocol — reasoning, content, tool calls. Neither order is the order
-// bytes happened to arrive in, and the record must not depend on that. Blocks
-// still open when the step ended are appended afterwards in first-sight order:
-// they were never declared finished, so nothing may claim where they belong.
+// Layout is protocol knowledge, and it is the record's own property — not a
+// by-product of how the transport ended. A block the server announced first is
+// placed first whether it closed at once, at the end, or never at all, because
+// this array is what gets replayed to the model on the next turn and what a
+// reopened session re-lays.
 //
 // A tool block contributes only if it got a part — its arguments were complete
 // and execution started. A call the stream never finished is not recorded,
