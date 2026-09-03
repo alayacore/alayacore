@@ -38,10 +38,7 @@ func TestPromptFragmentIsWellFormedForHostileMetadata(t *testing.T) {
 	if err := writeManifest(cont, "evil", "---\nname: evil\ndescription: "+description+"\n---\nbody\n"); err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager([]string{cont})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	m := NewManager([]string{cont})
 	if len(m.GetMetadata()) != 1 {
 		t.Fatalf("loaded %d skills, want 1 (from %s)", len(m.GetMetadata()), dir)
 	}
@@ -86,7 +83,7 @@ func TestPromptFragmentIsWellFormedForHostileMetadata(t *testing.T) {
 func TestPromptFragmentKeepsOneSkillPerThreeLines(t *testing.T) {
 	cont := t.TempDir()
 	writeManifest(cont, "tall", "---\nname: tall\ndescription: \"first\\nsecond\"\n---\nbody\n")
-	m, _ := NewManager([]string{cont})
+	m := NewManager([]string{cont})
 
 	fragment := m.GenerateSystemPromptFragment()
 	lines := strings.Split(strings.TrimSpace(fragment), "\n")

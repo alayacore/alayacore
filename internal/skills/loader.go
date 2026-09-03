@@ -34,12 +34,14 @@ func (m *Manager) GetNotices() []string {
 	return m.notices
 }
 
-// NewManager creates a new skill manager.
+// NewManager creates a new skill manager and discovers what the given container
+// paths hold.
 //
-// Discovery problems are reported, never returned: skills are one optional
+// It has no error to return, and that is the point: skills are one optional
 // feature, and a mistyped path, a plain file passed for a container, or a
 // directory the user cannot open must cost that container, not the program.
-func NewManager(skillPaths []string) (*Manager, error) {
+// Every such problem is reported through GetLoadErrors and GetNotices.
+func NewManager(skillPaths []string) *Manager {
 	m := &Manager{
 		skills:    []Skill{},
 		skillDirs: skillPaths,
@@ -48,7 +50,7 @@ func NewManager(skillPaths []string) (*Manager, error) {
 
 	m.discoverSkills()
 
-	return m, nil
+	return m
 }
 
 // manifestFileName is the one file that makes a directory a skill.

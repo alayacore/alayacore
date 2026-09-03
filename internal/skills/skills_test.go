@@ -155,10 +155,7 @@ This is a test skill.`
 	}
 
 	// Test manager
-	m, err := NewManager([]string{tmpDir})
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
+	m := NewManager([]string{tmpDir})
 
 	metadata := m.GetMetadata()
 	if len(metadata) != 1 {
@@ -201,10 +198,7 @@ description: A test skill
 		t.Fatalf("Failed to write skill file: %v", err)
 	}
 
-	m, err := NewManager([]string{tmpDir})
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
+	m := NewManager([]string{tmpDir})
 
 	metadata := m.GetMetadata()
 	if len(metadata) != 1 {
@@ -218,10 +212,7 @@ description: A test skill
 }
 
 func TestEmptySkillsDir(t *testing.T) {
-	m, err := NewManager([]string{})
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
+	m := NewManager([]string{})
 
 	metadata := m.GetMetadata()
 	if len(metadata) != 0 {
@@ -276,10 +267,7 @@ description: Second skill from directory 2
 	}
 
 	// Test manager with multiple paths
-	m, err := NewManager([]string{tmpDir1, tmpDir2})
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
+	m := NewManager([]string{tmpDir1, tmpDir2})
 
 	metadata := m.GetMetadata()
 	if len(metadata) != 2 {
@@ -331,10 +319,7 @@ description: Skill from second directory
 	}
 
 	// First path doesn't exist — should still discover skills from second path
-	m, err := NewManager([]string{missingDir, tmpDir})
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
+	m := NewManager([]string{missingDir, tmpDir})
 
 	metadata := m.GetMetadata()
 	if len(metadata) != 1 {
@@ -369,10 +354,7 @@ func TestDuplicateSkillNames(t *testing.T) {
 		t.Fatalf("Failed to write skill file: %v", err)
 	}
 
-	m, err := NewManager([]string{tmpDir1, tmpDir2})
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
+	m := NewManager([]string{tmpDir1, tmpDir2})
 
 	metadata := m.GetMetadata()
 	if len(metadata) != 1 {
@@ -414,10 +396,7 @@ func TestSameContainerGivenTwiceLoadsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := NewManager([]string{container, container})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{container, container})
 	if got := loadedNames(m); len(got) != 1 {
 		t.Errorf("loaded %v, want one skill from a container named twice", got)
 	}

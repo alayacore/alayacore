@@ -56,10 +56,7 @@ func TestUnreadableContainerCostsOnlyItself(t *testing.T) {
 	}
 
 	for _, container := range []string{notADirectory, unreadable} {
-		m, err := NewManager([]string{container, good})
-		if err != nil {
-			t.Fatalf("%s: NewManager failed the run: %v", container, err)
-		}
+		m := NewManager([]string{container, good})
 		if got := loadedNames(m); len(got) != 1 || got[0] != "pdf" {
 			t.Errorf("%s: loaded %v, want the readable container to still load pdf", container, got)
 		}
@@ -79,10 +76,7 @@ func TestMissingContainerIsReportedAsANotice(t *testing.T) {
 	}
 
 	missing := filepath.Join(t.TempDir(), "no-such-folder")
-	m, err := NewManager([]string{missing, good})
-	if err != nil {
-		t.Fatalf("NewManager failed the run: %v", err)
-	}
+	m := NewManager([]string{missing, good})
 	if n := len(m.GetMetadata()); n != 1 {
 		t.Fatalf("loaded %d skills, want pdf still loaded", n)
 	}
@@ -106,10 +100,7 @@ func TestStartupReportsHowManySkillsLoaded(t *testing.T) {
 		}
 	}
 
-	m, err := NewManager([]string{first, second})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{first, second})
 	if !hasNotice(m, "skills: 2 skills loaded from 2 containers") {
 		t.Errorf("notices = %v, want the count line", m.GetNotices())
 	}
@@ -119,20 +110,14 @@ func TestStartupReportsHowManySkillsLoaded(t *testing.T) {
 	if err := writeManifest(only, "solo", "---\nname: solo\ndescription: d\n---\nbody\n"); err != nil {
 		t.Fatal(err)
 	}
-	m, err = NewManager([]string{only})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m = NewManager([]string{only})
 	if !hasNotice(m, "skills: 1 skill loaded from 1 container") {
 		t.Errorf("notices = %v, want the count line without a plural", m.GetNotices())
 	}
 
 	// Nothing configured: nothing said. A feature that was not asked for has no
 	// outcome to report.
-	m, err = NewManager(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	m = NewManager(nil)
 	if len(m.GetNotices()) != 0 {
 		t.Errorf("notices = %v, want none without --skill", m.GetNotices())
 	}
@@ -146,10 +131,7 @@ func TestManifestProblemsReachStartupErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := NewManager([]string{container})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{container})
 	if n := len(m.GetMetadata()); n != 1 {
 		t.Fatalf("loaded %d skills, want the skill kept", n)
 	}

@@ -42,10 +42,7 @@ func TestContainerFlagLoadsEverySkillBeneathIt(t *testing.T) {
 	writeSkill(t, container, "pdf")
 	writeSkill(t, container, "notes")
 
-	m, err := NewManager([]string{container})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{container})
 	got := strings.Join(loadedNames(m), ",")
 	if got != "notes,pdf,weather" {
 		t.Errorf("loaded %q, want all three skills from the one container path", got)
@@ -63,10 +60,7 @@ func TestSkillDirectoryAsPathLoadsNothing(t *testing.T) {
 	root := t.TempDir()
 	skill := writeSkill(t, filepath.Join(root, "skills"), "weather")
 
-	m, err := NewManager([]string{skill})
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
+	m := NewManager([]string{skill})
 	if n := len(m.GetMetadata()); n != 0 {
 		t.Fatalf("loaded %d skills from the skill's own directory, want 0", n)
 	}
@@ -87,10 +81,7 @@ func TestDiscoveryIsOneLevelDeep(t *testing.T) {
 	writeSkill(t, container, "top")
 	writeSkill(t, filepath.Join(container, "grouped"), "buried") // container/grouped/buried
 
-	m, err := NewManager([]string{container})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{container})
 	if got := strings.Join(loadedNames(m), ","); got != "top" {
 		t.Errorf("loaded %q, want only the immediate child: the scan is not recursive", got)
 	}
@@ -110,10 +101,7 @@ func TestSubdirectoryWithoutManifestIsSkippedQuietly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := NewManager([]string{container})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{container})
 	if got := strings.Join(loadedNames(m), ","); got != "weather" {
 		t.Errorf("loaded %q, want only weather", got)
 	}
@@ -137,10 +125,7 @@ func TestNameMustMatchDirectoryName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := NewManager([]string{root})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{root})
 	if n := len(m.GetMetadata()); n != 0 {
 		t.Errorf("loaded %d skills, want 0: a mismatched name must not reach the prompt", n)
 	}
@@ -178,10 +163,7 @@ func TestSymlinkedSkillDirectoryIsFollowed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := NewManager([]string{container})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{container})
 	if got := loadedNames(m); len(got) != 1 || got[0] != "pdf" {
 		t.Fatalf("loaded %v, want the symlinked skill", got)
 	}
@@ -215,10 +197,7 @@ func TestLinkThatIsNotADirectoryStaysInvisible(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := NewManager([]string{container})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := NewManager([]string{container})
 	if n := len(m.GetMetadata()); n != 0 {
 		t.Errorf("loaded %d skills, want 0", n)
 	}

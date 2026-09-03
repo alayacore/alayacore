@@ -60,10 +60,7 @@ type Config struct {
 // The session manages init results internally — the adapter only needs
 // AsyncMCP for TUI lifecycle checks (e.g. init overlay).
 func Setup(cfg *config.Settings) (*Config, error) {
-	skillsManager, err := skills.NewManager(cfg.Skills)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize skills: %w", err)
-	}
+	skillsManager := skills.NewManager(cfg.Skills)
 
 	// Apply command timeout before tools are created, so that
 	// NewExecuteCommandTool() picks up the correct value for its
