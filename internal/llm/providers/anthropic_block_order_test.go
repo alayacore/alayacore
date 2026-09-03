@@ -142,3 +142,53 @@ func TestAnthropicStrandedBoundaryReleasedAtMessageStop(t *testing.T) {
 		t.Errorf("record = [%s], want the closed block placed and the unclosed one kept behind it", strings.Join(kinds, ","))
 	}
 }
+
+// The ordering guarantee is exactly as wide as the server's declaration: blocks
+// that closed are placed by declared index, blocks that never closed are placed
+// by the order their content arrived.
+//
+// This case is both, deliberately: the server opens thinking=0 then text=1,
+// streams text's delta first, and dies without closing anything. The record comes
+// out [text, reasoning] — inverted against the shape Anthropic defines for an
+// assistant turn (thinking first), and it is replayed that way.
+//
+// This is pinned as a known limit, not as correct behavior. Ordering the tail any
+// other way would mean inventing a position the server never declared, which is
+// the move that produced every ordering bug in this area. The honest fix, if the
+// truncated-turn order ever matters enough to pay for it, is to let the provider
+// pass along a declaration it already has: Anthropic announces
+// content_block_start(0) before content_block_start(1), so an "a block opened"
+// event for text and reasoning would make the first-touch order the declared one
+// and put this tail right. OpenAI has no such announcement to forward, so its
+// tail would stay arrival-ordered either way.
+func TestAnthropicCutStepOrdersUnclosedBlocksByArrival(t *testing.T) {
+	server := newMockSSEServer(t, func(w io.Writer) {
+		fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n")
+		fmt.Fprint(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n")
+		fmt.Fprint(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+		fmt.Fprint(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ANSWER\"}}\n\n")
+		fmt.Fprint(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"THINK\"}}\n\n")
+		// no content_block_stop, no message_stop: the body just ends
+	})
+	provider, err := providers.NewAnthropic(providers.BaseConfig{APIKey: "k", BaseURL: server.URL, Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	record, err := recordOfStep(t, provider)
+	if err == nil {
+		t.Fatal("a body with no message_stop must report an error")
+	}
+	var kinds []string
+	for _, p := range record {
+		switch p.(type) {
+		case *llm.ReasoningPart:
+			kinds = append(kinds, "reasoning")
+		case *llm.TextPart:
+			kinds = append(kinds, "text")
+		}
+	}
+	if got := strings.Join(kinds, ","); got != "text,reasoning" {
+		t.Errorf("cut record = [%s], want [text,reasoning]: nothing closed, so arrival is the only order available", got)
+	}
+}

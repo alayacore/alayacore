@@ -2526,8 +2526,22 @@ func streamedToolParts(events iter.Seq2[llm.StreamEvent, error]) []llm.ToolInput
 // asserting on a hand-built copy would test the test.
 func stepRecord(t *testing.T, provider llm.Provider) []llm.ContentPart {
 	t.Helper()
+	parts, err := recordOfStep(t, provider)
+	if err != nil && !errors.Is(err, llm.ErrMaxStepsExceeded) {
+		t.Fatalf("agent step over this stream failed: %v", err)
+	}
+	return parts
+}
+
+// recordOfStep is stepRecord without the verdict: it returns the record a step
+// reached history alongside the error the caller saw, for tests whose subject is
+// a step that ends in failure. A failed step still publishes, so ignoring the
+// error here would hide exactly the thing those tests are about.
+func recordOfStep(t *testing.T, provider llm.Provider) ([]llm.ContentPart, error) {
+	t.Helper()
 	next := uint64(1)
 	var published []llm.ContentPart
+	var failure error
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 1})
 	if _, err := agent.Stream(context.Background(),
 		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}),
@@ -2544,10 +2558,8 @@ func stepRecord(t *testing.T, provider llm.Provider) []llm.ContentPart {
 				published = append([]llm.ContentPart{}, c...)
 				return nil
 			},
-		}); err != nil && !errors.Is(err, llm.ErrMaxStepsExceeded) {
-		// A stream that ends in a tool call cannot finish within one step; the
-		// record below is still the turn's, which is what the caller asks about.
-		t.Fatalf("agent step over this stream failed: %v", err)
+		}); err != nil {
+		failure = err
 	}
 	// OnStepFinish publishes the accumulated conversation, prompt included. A
 	// test asking what *this turn* recorded wants the assistant's parts only.
@@ -2557,7 +2569,7 @@ func stepRecord(t *testing.T, provider llm.Provider) []llm.ContentPart {
 			step = append(step, p)
 		}
 	}
-	return step
+	return step, failure
 }
 
 // stepEventOf streams the same response again and returns the step event, for a
