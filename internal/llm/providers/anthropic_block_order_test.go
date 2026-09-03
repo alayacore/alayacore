@@ -189,3 +189,40 @@ func TestAnthropicCutStepStillOrdersByDeclaredIndex(t *testing.T) {
 			"and the session file is what gets replayed", got)
 	}
 }
+
+// Every content-bearing event from this provider must declare where its block
+// belongs. The rule is only a guarantee while the declaration is universal: one
+// future event site that forgets Position silently re-opens the hole this file
+// exists to keep shut, and it would show up as scrambled order in a saved session
+// rather than as a failure anywhere near the cause.
+func TestAnthropicDeclaresPositionOnEveryContentEvent(t *testing.T) {
+	provider := newAnthropicOrdered(t, anthropicOrderedBody(true, true))
+	events, err := provider.StreamMessages(context.Background(),
+		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}), nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for event := range events {
+		var pos int
+		switch e := event.(type) {
+		case llm.TextDeltaEvent:
+			pos = e.Position
+		case llm.ReasoningDeltaEvent:
+			pos = e.Position
+		case llm.TextCompleteEvent:
+			pos = e.Position
+		case llm.ReasoningCompleteEvent:
+			pos = e.Position
+		default:
+			continue
+		}
+		checked++
+		if pos == 0 {
+			t.Errorf("%T carries no record position", event)
+		}
+	}
+	if checked < 4 {
+		t.Fatalf("only %d content events seen; the body no longer exercises this path", checked)
+	}
+}

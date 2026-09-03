@@ -175,3 +175,63 @@ func TestOpenAICutStepRecordsAssistantTurnShape(t *testing.T) {
 			"with the content, so a cut stream cannot scramble the file", got)
 	}
 }
+
+// The same rule for OpenAI, whose protocol gives it nothing to forward: the
+// positions are constants derived from the assistant-turn shape, so a new event
+// site (a fourth block kind, a new delta field) is the realistic way this breaks.
+func TestOpenAIDeclaresPositionOnEveryContentEvent(t *testing.T) {
+	server := newMockSSEServer(t, func(w io.Writer) {
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"THINK\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ANSWER\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"noop\",\"arguments\":\"{}\"}}]}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n")
+	})
+	provider, err := providers.NewOpenAI(providers.BaseConfig{APIKey: "k", BaseURL: server.URL, ReasoningField: "reasoning_content"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.StreamMessages(context.Background(),
+		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}), nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	positions := map[string]int{}
+	checked := 0
+	for event := range events {
+		var pos int
+		var key string
+		switch e := event.(type) {
+		case llm.ReasoningDeltaEvent:
+			pos, key = e.Position, e.Key
+		case llm.TextDeltaEvent:
+			pos, key = e.Position, e.Key
+		case llm.ToolInputDeltaEvent:
+			pos, key = e.Position, e.Key
+		case llm.ToolInputStartEvent:
+			pos, key = e.Position, e.Key
+		case llm.ReasoningCompleteEvent:
+			pos, key = e.Position, e.Key
+		case llm.TextCompleteEvent:
+			pos, key = e.Position, e.Key
+		case llm.ToolInputCompleteEvent:
+			pos, key = e.Position, e.Key
+		default:
+			continue
+		}
+		checked++
+		if pos == 0 {
+			t.Errorf("%T for %q carries no record position", event, key)
+		}
+		if seen, dup := positions[key]; dup && seen != pos {
+			t.Errorf("block %q declared two positions: %d and %d", key, seen, pos)
+		}
+		positions[key] = pos
+	}
+	if checked < 7 {
+		t.Fatalf("only %d content events seen; the body no longer exercises this path", checked)
+	}
+	if positions["reasoning"] >= positions["text"] || positions["text"] >= positions["tool:0"] {
+		t.Errorf("declared layout = %v, want reasoning < text < tool", positions)
+	}
+}
