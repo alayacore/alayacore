@@ -142,9 +142,12 @@ Unix signal handling and terminal mode settings. Required by the TUI runtime (`p
 
 Used by the project's LLM communication layer.
 
-### `gopkg.in/yaml.v3` — YAML Parsing
+### No YAML parser
 
-Used to parse the YAML frontmatter of skill `SKILL.md` files
-(`internal/skills/manifest.go`). Model configs (`model.conf`), runtime
-config, themes, and MCP config use the key-value format
-(`config.ParseKeyValue`), not YAML.
+A skill's `SKILL.md` frontmatter is read with the project's key-value format
+(`internal/skills/manifest.go`), the same rules `model.conf`, runtime config,
+themes and MCP config use (`config.ParseKeyValue`). A general YAML parser was
+dropped with it: it rejected the unquoted colon in
+`description: Use this skill when: …` (losing the skill outright) and ended
+plain scalars at ` #`, advertising `description: Count # of items` to the model
+as `Count` without any error. See [skills.md](skills.md#how-the-frontmatter-is-read).

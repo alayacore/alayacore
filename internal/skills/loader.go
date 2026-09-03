@@ -64,8 +64,15 @@ func (m *Manager) discoverSkills() error {
 				continue
 			}
 
-			// Load only metadata at startup
-			skill, err := m.loadSkillMetadata(skillFile, entry.Name())
+			// Load only metadata at startup. A file that cannot be read
+			// partially is reported in full: problems collected on the way are
+			// shown even when the skill loads, because a value the reader could
+			// not represent means the agent is being told less than the author
+			// wrote.
+			skill, problems, err := m.loadSkillMetadata(skillFile, entry.Name())
+			for _, p := range problems {
+				m.loadErrors = append(m.loadErrors, fmt.Sprintf("%s: %s", skillFile, p))
+			}
 			if err != nil {
 				// Skip invalid skills but record the error
 				m.loadErrors = append(m.loadErrors, fmt.Sprintf("failed to load skill %s from %s: %v", entry.Name(), skillDir, err))
@@ -86,21 +93,29 @@ func (m *Manager) discoverSkills() error {
 	return nil
 }
 
-// loadSkillMetadata loads only the frontmatter from a SKILL.md file
-func (m *Manager) loadSkillMetadata(skillFile, dirName string) (Skill, error) {
+// loadSkillMetadata loads only the frontmatter from a SKILL.md file. It returns
+// the problems found while reading — lines the reader could not represent, a
+// nested metadata map, a duplicate key — separately from the error, so a skill
+// that loads with half its manifest intact still says so.
+func (m *Manager) loadSkillMetadata(skillFile, dirName string) (Skill, []string, error) {
 	content, err := os.ReadFile(skillFile)
 	if err != nil {
-		return Skill{}, err
+		return Skill{}, nil, err
 	}
 
-	metadata, _, err := ParseSkillMarkdown(string(content))
+	metadata, _, problems, err := ParseSkillMarkdown(string(content))
 	if err != nil {
-		return Skill{}, err
+		return Skill{}, problems, err
 	}
 
-	// Validate name matches directory
-	if metadata.Name != dirName {
-		return Skill{}, fmt.Errorf("skill name '%s' does not match directory '%s'", metadata.Name, dirName)
+	// The name the prompt advertises and the directory <location> points at
+	// must be one thing: an empty name means there was no manifest to read, and
+	// a different name means the agent would be sent to another skill.
+	switch {
+	case metadata.Name == "":
+		return Skill{}, problems, fmt.Errorf("no name in the manifest")
+	case metadata.Name != dirName:
+		return Skill{}, problems, fmt.Errorf("skill name %q does not match directory %q", metadata.Name, dirName)
 	}
 
 	return Skill{
@@ -108,7 +123,7 @@ func (m *Manager) loadSkillMetadata(skillFile, dirName string) (Skill, error) {
 		Description: metadata.Description,
 		Location:    skillFile,
 		Metadata:    metadata,
-	}, nil
+	}, problems, nil
 }
 
 // GetMetadata returns all skill metadata for system prompt injection

@@ -19,7 +19,7 @@ license: Apache-2.0
 
 This is the body content.`
 
-	metadata, body, err := ParseSkillMarkdown(content)
+	metadata, body, _, err := ParseSkillMarkdown(content)
 	if err != nil {
 		t.Fatalf("ParseSkillMarkdown failed: %v", err)
 	}
@@ -46,13 +46,19 @@ func TestParseSkillMarkdownNoFrontmatter(t *testing.T) {
 
 Some content here.`
 
-	metadata, body, err := ParseSkillMarkdown(content)
+	metadata, body, problems, err := ParseSkillMarkdown(content)
 	if err != nil {
 		t.Fatalf("ParseSkillMarkdown failed: %v", err)
 	}
 
 	if metadata.Name != "" {
 		t.Errorf("Expected empty name, got '%s'", metadata.Name)
+	}
+
+	// The reason is reported even though it is not an error: a file with no
+	// manifest cannot be advertised, and silence is how this went unnoticed.
+	if len(problems) == 0 {
+		t.Error("Expected a problem naming the missing frontmatter, got none")
 	}
 
 	if body == "" {
@@ -67,7 +73,7 @@ description: A skill without a name
 
 # No Name Skill`
 
-	_, _, err := ParseSkillMarkdown(content)
+	_, _, _, err := ParseSkillMarkdown(content)
 	if err == nil {
 		t.Fatal("Expected error for missing name, got nil")
 	}
@@ -83,7 +89,7 @@ name: test-skill
 
 # No Description Skill`
 
-	_, _, err := ParseSkillMarkdown(content)
+	_, _, _, err := ParseSkillMarkdown(content)
 	if err == nil {
 		t.Fatal("Expected error for missing description, got nil")
 	}

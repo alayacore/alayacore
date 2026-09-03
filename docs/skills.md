@@ -66,6 +66,9 @@ to keep the layout in mind.
 | a plain file inside `PATH` | skipped |
 | frontmatter `name:` ≠ the directory name | that skill is **dropped**, and reported at startup as a load error |
 | frontmatter `name:` outside the naming rules below | same: dropped and reported |
+| a `description:` value containing `:` or `#` | kept verbatim — see [How the frontmatter is read](#how-the-frontmatter-is-read) |
+| frontmatter block with no closing `---` | that skill is **dropped**, and the line that proves it is reported |
+| one unparseable line inside the block | the skill loads; the line and file are reported at startup |
 | same skill name from two containers | both kept (the prompt lists it twice), and reported as a duplicate at startup |
 | no `--skill` at all | no skills; the system prompt omits the skills section entirely |
 
@@ -92,7 +95,8 @@ my-skill/
 
 ## SKILL.md Format
 
-A skill's `SKILL.md` file uses YAML frontmatter followed by Markdown instructions:
+A skill's `SKILL.md` file is a frontmatter block — `---`, one `key: value` entry
+per line, `---` — followed by the Markdown instructions:
 
 ```yaml
 ---
@@ -119,6 +123,34 @@ Instructions for the agent...
 | `description` | Yes | Describes what the skill does **and when to use it**. 1-1024 characters. This is what the LLM uses to decide whether to activate the skill. |
 | `license` | No | License name or reference. Recorded, not enforced. |
 | `compatibility` | No | Environment requirements. Recorded, not enforced — no dependency is checked. |
+| `metadata` | No | Free-form `key: value` entries under the key, one level deep. Recorded, not used. |
+
+### How the frontmatter is read
+
+The block is read with the project's key-value format — the same rules as
+`model.conf` (`config.ParseKeyValue`) — and not with a general YAML parser. The
+two disagree exactly where a manifest must not be guessed at:
+
+- The value is everything after the first `: `, so a description may contain
+  colons unquoted: `description: Use this skill when: the user asks about PDFs`.
+- `#` starts a comment only at the beginning of a line, so
+  `description: Count # of items` keeps its text. (A YAML parser ends the value
+  at the ` #`, and the skill is then advertised as `Count` — half the trigger
+  text, no error raised.)
+- Values may be quoted (`"…"`, `'…'`), folded (`>`), literal (`|`), or continued
+  on indented lines. A blank line inside a folded value keeps the paragraph
+  break.
+- The opening `---` must be the file's first non-blank line, and every line
+  before the closing `---` must be an entry, a comment or a blank. A line that
+  can only be prose means the closing delimiter is missing, and it is reported
+  with its line number instead of being folded into the description while the
+  body is discarded.
+- A repeated key is a problem naming its line; the first value stands.
+- A field this build does not know is read past in silence, so a newer manifest
+  still loads.
+
+Anything the reader gives up on is printed at startup with its file and line,
+whether or not the skill ends up loading.
 
 ### Writing Good Descriptions
 
