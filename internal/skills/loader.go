@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/alayacore/alayacore/internal/config"
 )
 
 // Manager handles skill discovery and loading
@@ -37,6 +39,10 @@ func (m *Manager) GetNotices() []string {
 // NewManager creates a new skill manager and discovers what the given container
 // paths hold.
 //
+// The paths are normalized before anything else reads them: "~" is expanded, a
+// relative path is resolved against the working directory, and a container named
+// twice — in two spellings or the same one — is read once.
+//
 // It has no error to return, and that is the point: skills are one optional
 // feature, and a mistyped path, a plain file passed for a container, or a
 // directory the user cannot open must cost that container, not the program.
@@ -44,13 +50,47 @@ func (m *Manager) GetNotices() []string {
 func NewManager(skillPaths []string) *Manager {
 	m := &Manager{
 		skills:    []Skill{},
-		skillDirs: skillPaths,
+		skillDirs: normalizeContainers(skillPaths),
 		taken:     make(map[string]string),
 	}
 
 	m.discoverSkills()
 
 	return m
+}
+
+// normalizeContainers expands "~", makes each path absolute, and drops the
+// repetitions.
+//
+// Expanding is not a courtesy: "--skill ~/.alayacore/skills" only works today
+// because the shell happens to expand the tilde, and cmd.exe does not — quote it
+// and the path is literal, so it does not exist, and nothing loaded. Making the
+// path absolute is what lets <location> name one file that both the agent and
+// read_file agree on, instead of a path whose meaning depends on a working
+// directory the agent may change. The two also meet at deduplication: ./skills,
+// skills/ and /me/proj/skills are one container, and reading them twice would
+// look like a name collision inside the user's own flag.
+//
+// Symlinks are deliberately left alone: a container reached through a link is
+// still addressed through that link, which is the layout the user arranged.
+func normalizeContainers(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	seen := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		path = config.ExpandPath(path)
+		if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		out = append(out, path)
+	}
+	return out
 }
 
 // manifestFileName is the one file that makes a directory a skill.

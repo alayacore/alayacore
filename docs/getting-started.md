@@ -52,7 +52,7 @@ export ALAYACORE_SHELL=zsh
 | `--config-path` | `~/.alayacore/` | Config directory path (contains `model.conf`, `runtime.conf`, `themes/`) |
 | `--model` | *(none)* | Model name to activate (must exist in `model.conf`). Highest priority — overrides session file frontmatter and runtime config. |
 | `--system` | *(none)* | Extra system prompt text. Repeatable: `--system "rule 1" --system "rule 2"` |
-| `--skill` | *(none)* | Path to a **container** of skills: every immediate subdirectory with a `SKILL.md` is loaded. Repeatable for several containers — not one flag per skill. |
+| `--skill` | *(none)* | Path to a **container** of skills: every immediate subdirectory with a `SKILL.md` is loaded. Repeatable for several containers — not one flag per skill, and the first one listed wins a name collision. Relative and `~` paths are resolved at startup. |
 | `--session` | *(none)* | Path to session file for loading/saving conversations |
 | `--proxy` | *(none)* | Proxy URL. Supports `http://`, `https://`, and `socks5://` schemes |
 | `--max-steps` | `0` (no limit) | Maximum number of agent loop iterations per prompt. When set to 0 (the default), the agent loops until the model produces a final response. Exceeding this limit raises an error — use `:continue` to retry. |

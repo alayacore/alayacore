@@ -385,7 +385,10 @@ func TestDuplicateSkillNames(t *testing.T) {
 	}
 }
 
-// Passing the same container twice is the same collision, not a second skill.
+// Naming one container twice is one container, not a collision: the paths are
+// normalized before they are compared, so ./skills, skills/ and
+// /home/me/proj/skills all read once. It used to be read twice, which made the
+// same skill look like a name clash with itself and advertised it twice.
 func TestSameContainerGivenTwiceLoadsOnce(t *testing.T) {
 	container := t.TempDir()
 	dir := filepath.Join(container, "solo")
@@ -396,12 +399,15 @@ func TestSameContainerGivenTwiceLoadsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewManager([]string{container, container})
+	m := NewManager([]string{container, container, container + string(filepath.Separator)})
 	if got := loadedNames(m); len(got) != 1 {
-		t.Errorf("loaded %v, want one skill from a container named twice", got)
+		t.Errorf("loaded %v, want one skill from a container named three ways", got)
 	}
-	if len(m.GetLoadErrors()) != 1 {
-		t.Errorf("load errors = %v, want the ignored second copy named", m.GetLoadErrors())
+	if errs := m.GetLoadErrors(); len(errs) != 0 {
+		t.Errorf("load errors = %v, want none: nothing collided", errs)
+	}
+	if !hasNotice(m, "from 1 container") {
+		t.Errorf("notices = %v, want the count to say one container", m.GetNotices())
 	}
 }
 

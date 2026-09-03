@@ -47,14 +47,16 @@ alayacore --config-path ./my-config --skill ./skills
 
 > **Do not point `--skill` at a single skill's directory.** `--skill ./skills/weather`
 > treats `weather/` as the container and looks for `weather/<something>/SKILL.md` —
-> finding none, it loads nothing and reports no error. Measured: one flag per skill
+> finding none, it loads nothing. Measured: one flag per skill
 > (`--skill ./skills/weather --skill ./skills/pdf`) loads **0** skills; `--skill ./skills`
-> loads both. This is the most common way the feature appears broken when it is not.
+> loads both. The run says so — see [What Startup Says](#what-startup-says) — but the
+> layout is still the one that has to be right.
 
 ## What Discovery Guarantees
 
-Every one of these was measured against the loader; the silent ones are the reason
-to keep the layout in mind.
+Every one of these was measured against the loader. What used to be silent is
+now reported at startup; what is still silent is listed as silent, and the scan
+depth is the one worth memorising.
 
 | Situation | Result |
 |---|---|
@@ -64,13 +66,17 @@ to keep the layout in mind.
 | `PATH` does not exist | the container is reported at startup as contributing nothing; the run continues |
 | `PATH` is a file, or a directory that cannot be read | reported at startup as a load error; **the program still starts** (it used to exit before the first turn) |
 | a symlinked skill directory inside `PATH` | loaded like any other — the link is followed |
+| `PATH` given twice, or spelled two ways (`./skills`, `skills/`, the absolute path) | read once; a container cannot collide with itself |
+| `~` in the path | expanded before anything else reads it; no shell needed |
+| a relative `PATH` | resolved against the working directory at startup; `<location>` carries the absolute result |
 | subdirectory without `SKILL.md` | skipped, no error |
 | a plain file inside `PATH` | skipped |
 | frontmatter `name:` ≠ the directory name | that skill is **dropped**, and reported at startup as a load error |
 | frontmatter `name:` outside the naming rules below | same: dropped and reported |
 | a `description:` value containing `:` or `#` | kept verbatim — see [How the frontmatter is read](#how-the-frontmatter-is-read) |
 | frontmatter block with no closing `---` | that skill is **dropped**, and the line that proves it is reported |
-| one unparseable line inside the block | the skill loads; the line and file are reported at startup |
+| a line inside the block that is neither an entry, a comment nor a blank | the block is treated as unclosed: the skill is dropped and that line is reported |
+| a line the reader cannot represent inside an otherwise closed block | the skill loads; the line and file are reported at startup |
 | same skill name from two containers | the **first container listed wins**; the later skill is dropped and named at startup |
 | no `--skill` at all | no skills; the system prompt omits the skills section entirely, and nothing is printed about skills |
 
@@ -82,17 +88,27 @@ system message in the TUI and a `notify`/`error` frame for `--plainio`,
 
 ```
 skill container /home/me/.alayacore/skills does not exist
-skill container ./skills loaded no skills
+skill container /home/me/project/skills loaded no skills
 skills: 0 skills loaded from 2 containers
 ```
 
-The count is always printed when at least one container was configured — that is
-the only way "the flag did nothing" and "two skills are ready" are
-distinguishable without asking the model. Containers that work simply contribute
-nothing to the first two lines.
+Containers are named as the run resolved them — absolute, `~` expanded — so the
+line can be pasted into a shell. The count is always printed when at least one
+container was configured; that is the only way "the flag did nothing" and "two
+skills are ready" are distinguishable without asking the model. Containers that
+work contribute nothing beyond the count.
 
-Paths are resolved against the working directory, so either give an absolute path
-or run from the project root.
+Paths are resolved once, at startup: `~` is expanded, a relative path is made
+absolute against the working directory (so `./skills`, `skills/` and
+`/me/proj/skills` are the same container and are read once), and `<location>` in
+the prompt is that absolute path. Quote `--skill '~/.alayacore/skills'`, run from
+another directory, or use cmd.exe — the container is found either way, and the
+agent is handed a file name rather than a path whose meaning depends on where it
+happens to be.
+
+What is *not* resolved is a symlink: a container, or a skill folder inside one,
+reached through a link keeps the address the user arranged, not the target of the
+link.
 
 **Two containers, one name.** The container listed first wins. The later skill is
 dropped and named at startup with both manifests, so the collision is visible
@@ -115,7 +131,9 @@ mentioned.
 Because the name must equal its directory name, the naming rules apply to the
 **folder** as well: 1–64 characters, lowercase letters, digits and hyphens only, no
 leading, trailing or consecutive hyphens. `My_Skill/` can never load, and the
-reported error is about the name.
+reported error is about the name. For a symlinked skill folder, *its own name* is
+the directory name — `skills/pdf -> /shared/anything` loads, `skills/pdf2 ->
+/shared/pdf` does not, and the error says which two names disagreed.
 
 Relative paths inside a `SKILL.md` are resolved from that skill's own directory —
 the same directory `<location>` names in the injected XML.

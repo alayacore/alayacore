@@ -33,8 +33,9 @@ alayacore --config-path ./my-project-config
 > folders are project-specific and rarely live inside the config directory.
 > Each `--skill` value is a **container**: all of its immediate subdirectories
 > holding a `SKILL.md` are loaded, so one flag is normally enough. Repeat it to
-> add further containers (e.g. project plus personal). Pointing it at a single
-> skill's own directory loads nothing. See
+> add further containers (e.g. project plus personal) — the first one listed
+> wins a name collision. Relative and `~` paths are resolved at startup.
+> Pointing it at a single skill's own directory loads nothing. See
 > [skills.md](skills.md#what-discovery-guarantees).
 
 ## Model Config
