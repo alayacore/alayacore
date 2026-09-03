@@ -431,10 +431,13 @@ A block's protocol `index` is a chunk-correlation handle: it says which fragment
 Providers therefore name each block, and the name is held by `llm.Agent`'s assembler for the block's whole life:
 
 ```
-streaming event   Key: "tool:0"  ──▶  assembler block { key, kind, body, historyID }  ──▶  persisted part
+streaming event   Key: "tool:0", Position: 3
+        ──▶  assembler block { key, kind, body, histID, position, closed }  ──▶  persisted part
 ```
 
-The key never reaches the part: it was only ever the join between a streamed block and a separately-assembled part, and once one object holds the content and its ID, there is nothing left to join. `persisted part` above is the record's entry, and what it carries is content, role, and the ID minted at the block's first byte.
+`Key` says which block a fragment belongs to; `Position` says where that block sits in the record. Both are per-event, both are the provider's own knowledge: only the parser knows its wire's layout.
+
+Neither travels to the part: they were the join between a streamed block and a separately-assembled part, and once one object holds the content, its ID and its layout, there is nothing left to join. `persisted part` above is the record's entry, and what it carries is content, role, and the ID minted at the block's first byte.
 
 | Provider | Naming | Why |
 |----------|--------|-----|

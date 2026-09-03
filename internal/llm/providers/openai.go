@@ -517,10 +517,10 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		// a presence check here: llm.Agent ignores a boundary for a block it never
 		// saw, so no phantom window and no empty part can come of it, and every
 		// provider is spared tracking whether it saw one.
-		if !yield(llm.ReasoningCompleteEvent{Key: openaiReasoningKey}, nil) {
+		if !yield(llm.ReasoningCompleteEvent{Key: openaiReasoningKey, Position: openaiReasoningPos}, nil) {
 			return
 		}
-		if !yield(llm.TextCompleteEvent{Key: openaiTextKey}, nil) {
+		if !yield(llm.TextCompleteEvent{Key: openaiTextKey, Position: openaiTextPos}, nil) {
 			return
 		}
 		for _, tc := range state.closedToolCalls() {
@@ -627,7 +627,7 @@ func (s *openAIStreamState) closedToolCalls() []llm.ToolInputCompleteEvent {
 	indices := s.toolIndices()
 	out := make([]llm.ToolInputCompleteEvent, len(indices))
 	for pos, i := range indices {
-		out[pos] = llm.ToolInputCompleteEvent{ID: s.toolAccumulators[i].id, Key: openaiToolKey(i)}
+		out[pos] = llm.ToolInputCompleteEvent{ID: s.toolAccumulators[i].id, Key: openaiToolKey(i), Position: openaiToolPos(i)}
 	}
 	return out
 }
@@ -652,6 +652,24 @@ const (
 )
 
 func openaiToolKey(rawIndex int) string { return fmt.Sprintf("tool:%d", rawIndex) }
+
+// Record layout for an assistant turn in this protocol: reasoning, content, then
+// tool calls in index order. Positions are 1-based because llm's contract uses the
+// zero value to mean "not declared"; the offset for tools leaves slots 1 and 2 for
+// the two flat fields even when one of them never streamed.
+//
+// This is declared alongside the content rather than only at the step's closure so
+// that a stream cut before anything closed still lands in the protocol's shape:
+// the persisted record is what gets replayed, and an answer recorded ahead of the
+// thinking that produced it reads to the model as a turn it never sent.
+const (
+	openaiReasoningPos = 1
+	openaiTextPos      = 2
+)
+
+// openaiToolPos places a tool call after both flat fields, keeping the relative
+// order the protocol's own index declares.
+func openaiToolPos(rawIndex int) int { return openaiTextPos + 1 + rawIndex }
 
 // ============================================================================
 // Event Handlers
@@ -712,13 +730,13 @@ func (p *OpenAIProvider) checkFinishReason(reason string) (bool, error) {
 // handleDelta processes the delta content from a streaming chunk.
 func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEvent, error) bool, state *openAIStreamState) bool {
 	if reasoning := delta.reasoningText(p.reasoningField); reasoning != "" {
-		if !yield(llm.ReasoningDeltaEvent{Delta: reasoning, Key: openaiReasoningKey}, nil) {
+		if !yield(llm.ReasoningDeltaEvent{Delta: reasoning, Key: openaiReasoningKey, Position: openaiReasoningPos}, nil) {
 			return false
 		}
 	}
 
 	if delta.Content != "" {
-		if !yield(llm.TextDeltaEvent{Delta: delta.Content, Key: openaiTextKey}, nil) {
+		if !yield(llm.TextDeltaEvent{Delta: delta.Content, Key: openaiTextKey, Position: openaiTextPos}, nil) {
 			return false
 		}
 	}
@@ -741,18 +759,20 @@ func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEve
 		// chunk and never on a continuation.
 		if tc.Function.Name != "" {
 			if !yield(llm.ToolInputStartEvent{
-				ID:   acc.id,
-				Name: acc.name,
-				Key:  openaiToolKey(tc.Index),
+				ID:       acc.id,
+				Name:     acc.name,
+				Key:      openaiToolKey(tc.Index),
+				Position: openaiToolPos(tc.Index),
 			}, nil) {
 				return false
 			}
 		}
 		if len(tc.Function.Arguments) > 0 {
 			if !yield(llm.ToolInputDeltaEvent{
-				ID:    acc.id,
-				Delta: unquoteToolArg(tc.Function.Arguments),
-				Key:   openaiToolKey(tc.Index),
+				ID:       acc.id,
+				Delta:    unquoteToolArg(tc.Function.Arguments),
+				Key:      openaiToolKey(tc.Index),
+				Position: openaiToolPos(tc.Index),
 			}, nil) {
 				return false
 			}

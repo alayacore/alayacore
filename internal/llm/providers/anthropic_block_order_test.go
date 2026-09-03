@@ -135,33 +135,29 @@ func TestAnthropicStrandedBoundaryReleasedAtMessageStop(t *testing.T) {
 			kinds = append(kinds, "text")
 		}
 	}
-	// Block 0 streamed content but never closed, so it has no declared position.
-	// Its content is still kept — what the user watched arriving is what the step
-	// produced — and it lands after the blocks the server did place.
-	if strings.Join(kinds, ",") != "text,reasoning" {
-		t.Errorf("record = [%s], want the closed block placed and the unclosed one kept behind it", strings.Join(kinds, ","))
+	// Block 0 streamed content but never closed. It is still recorded — what the
+	// user watched arriving is what the step produced — and it keeps its DECLARED
+	// slot rather than being shoved to the tail: a position the server announced at
+	// content_block_start is a claim about layout whether or not the closure ever
+	// came, and the record is what gets replayed. Order is therefore
+	// [reasoning, text] even though only block 1 finished.
+	if strings.Join(kinds, ",") != "reasoning,text" {
+		t.Errorf("record = [%s], want reasoning,text per the declared indexes", strings.Join(kinds, ","))
 	}
 }
 
-// The ordering guarantee is exactly as wide as the server's declaration: blocks
-// that closed are placed by declared index, blocks that never closed are placed
-// by the order their content arrived.
+// A stream cut before any block closed still lands in the server's declared
+// index order. Layout is declared with the content (TextDeltaEvent.Position, from
+// the index the server announced at content_block_start) precisely so that the
+// closure is not the only place the record's order comes from: an earlier design
+// ordered blocks that never closed by arrival, and a server that opened thinking=0
+// then text=1 but streamed text's delta first recorded [text, reasoning] —
+// inverted against the shape Anthropic defines for an assistant turn, and replayed
+// to the model that way.
 //
-// This case is both, deliberately: the server opens thinking=0 then text=1,
-// streams text's delta first, and dies without closing anything. The record comes
-// out [text, reasoning] — inverted against the shape Anthropic defines for an
-// assistant turn (thinking first), and it is replayed that way.
-//
-// This is pinned as a known limit, not as correct behavior. Ordering the tail any
-// other way would mean inventing a position the server never declared, which is
-// the move that produced every ordering bug in this area. The honest fix, if the
-// truncated-turn order ever matters enough to pay for it, is to let the provider
-// pass along a declaration it already has: Anthropic announces
-// content_block_start(0) before content_block_start(1), so an "a block opened"
-// event for text and reasoning would make the first-touch order the declared one
-// and put this tail right. OpenAI has no such announcement to forward, so its
-// tail would stay arrival-ordered either way.
-func TestAnthropicCutStepOrdersUnclosedBlocksByArrival(t *testing.T) {
+// What the closure still decides is whether a block is *finished*; it no longer
+// has to decide where things go.
+func TestAnthropicCutStepStillOrdersByDeclaredIndex(t *testing.T) {
 	server := newMockSSEServer(t, func(w io.Writer) {
 		fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n")
 		fmt.Fprint(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n")
@@ -188,7 +184,8 @@ func TestAnthropicCutStepOrdersUnclosedBlocksByArrival(t *testing.T) {
 			kinds = append(kinds, "text")
 		}
 	}
-	if got := strings.Join(kinds, ","); got != "text,reasoning" {
-		t.Errorf("cut record = [%s], want [text,reasoning]: nothing closed, so arrival is the only order available", got)
+	if got := strings.Join(kinds, ","); got != "reasoning,text" {
+		t.Errorf("cut record = [%s], want [reasoning,text]: the server declared thinking=0 before text=1, "+
+			"and the session file is what gets replayed", got)
 	}
 }

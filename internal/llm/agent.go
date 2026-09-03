@@ -357,7 +357,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 		switch e := event.(type) {
 		case TextDeltaEvent:
 			stats.setFirstToken(stepStart)
-			assembler.text(e.Key, e.Delta)
+			assembler.text(e.Position, e.Key, e.Delta)
 			if callbacks.OnTextDelta != nil {
 				if err := callbacks.OnTextDelta(e.Delta, assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
@@ -376,7 +376,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 		case ReasoningDeltaEvent:
 			stats.setFirstToken(stepStart)
-			assembler.reasoning(e.Key, e.Delta)
+			assembler.reasoning(e.Position, e.Key, e.Delta)
 			if callbacks.OnReasoningDelta != nil {
 				if err := callbacks.OnReasoningDelta(e.Delta, assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
@@ -392,7 +392,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			}
 
 		case ToolInputStartEvent:
-			assembler.toolStart(e.Key, e.ID, e.Name)
+			assembler.toolStart(e.Position, e.Key, e.ID, e.Name)
 			if callbacks.OnToolInputStart != nil {
 				if err := callbacks.OnToolInputStart(e.ID, e.Name, assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err
@@ -401,7 +401,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 		case ToolInputDeltaEvent:
 			stats.setFirstToken(stepStart)
-			assembler.toolArgs(e.Key, e.Delta)
+			assembler.toolArgs(e.Position, e.Key, e.Delta)
 			if callbacks.OnToolInputDelta != nil {
 				if err := callbacks.OnToolInputDelta(e.ID, e.Delta, assembler.historyID(e.Key)); err != nil {
 					return nil, Usage{}, false, err

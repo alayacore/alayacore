@@ -143,7 +143,27 @@ The adapter's `pendingTextDeltas` is a third buffer and unrelated to any of this
 
 ## Complete-event order
 
-`parseStream()` closes the step's blocks after the stream ends (OpenAI has no per-block terminator, so all of them arrive here; Anthropic delivers each as its block closes, in declared index order). Their order is load-bearing, not cosmetic: it *is* the order the step is persisted in, because the assembler lays the record out by close order — and it is also the order these frames reach the adapters.
+`parseStream()` closes the step's blocks after the stream ends (OpenAI has no per-block terminator, so all of them arrive here; Anthropic delivers each as its block closes, in declared index order). The closure order still matters — under `--no-delta` it is the order that creates each TUI window — but it is **no longer what places blocks in the record**. That is `Position`.
+
+### Position: the record's layout, declared with the content
+
+Every content-bearing event carries `Position` (1-based; `0` = not declared) besides its `Key`: where the block belongs in the step's record. The assembler's layout rule is then a single total order used on every path a step can end by:
+
+1. **Declared position**, if the provider named one — the strongest claim, valid whether or not the block ever closed.
+2. **Closed before unclosed** — a closure is a weaker form of the same declaration (providers deliver them in declared order).
+3. **Close order**, then **arrival order**.
+
+Why the declaration must ride with the content rather than only with the closure: a stream can be cut before any block closes, and for OpenAI that is the *normal* shape (no per-field terminator at all). Before `Position` existed, a cut step's blocks were laid out by arrival — so a server streaming `content` before `reasoning_content`, or an Anthropic message whose `text` delta came before its `thinking` delta, **persisted the answer ahead of the thinking that produced it**, and that array is what gets replayed to the model on the next turn and what a reopened session re-lays. Display order can be arrival-based (the user watched it arrive in that order); the file cannot.
+
+| Provider | Declaration | Source of the claim |
+|---|---|---|
+| Anthropic | `Position = index + 1` on every event | The server announces `content_block_start(index)` before any of the block's content — a fact forwarded, not inferred |
+| OpenAI | `1` = reasoning, `2` = content, `3 + tool_calls[].index` = tools | The shape an assistant turn has in that protocol; the provider knows it statically, so it declares it on each chunk |
+| Test stubs / non-declaring providers | `0` | Falls back to closure then arrival — the pre-`Position` behavior, still deterministic |
+
+`Position` is the record's layout and nothing else: it never renumbers history IDs, which stay arrival-based because they are how the display addresses a block (`TestPositionDoesNotReorderIDs`). A block no one declared for lands after the declared ones; ordering it any other way would invent a slot the protocol never named.
+
+Pinned by `TestDeclaredPositionOrdersBlocksThatNeverClosed`, `TestAnthropicCutStepStillOrdersByDeclaredIndex`, and `TestOpenAICutStepRecordsAssistantTurnShape`.
 
 - **historyID numbering.** The assembler hands out a historyID when a block first appears, independent of what the caller registers callbacks for — so IDs number blocks by stream arrival in every mode, `--no-delta` included (measured: identical numbering with and without delta callbacks). Closing a later block first does not reorder the numbering, because numbering was settled while the response streamed.
 - **Adapter output.** Adapters render in frame order. The terminal creates a window per block the moment its frame arrives (positions are fixed at creation; `WindowBuffer` only ever appends), and `--plainio` prints content as it streams — measured: `[AT, AR]` → `"Hello!\nuser said hello"`, `[AR, AT]` → `"user said hello\nHello!"`. Emitting out of array order puts the answer above the reasoning it came from.

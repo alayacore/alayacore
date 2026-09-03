@@ -139,3 +139,39 @@ func TestCutStepRecordsWhatAFinishedStepWouldHave(t *testing.T) {
 		})
 	}
 }
+
+// OpenAI's delta schema has no per-field terminator, so a cut stream is the
+// normal way to reach the record without closures — and a server is free to put
+// `content` before `reasoning_content` in its chunks. The record must still come
+// out in the shape an assistant turn has in this protocol (reasoning, content,
+// tool calls), because that array is what gets replayed and what a saved session
+// re-lays on reopen.
+func TestOpenAICutStepRecordsAssistantTurnShape(t *testing.T) {
+	server := newMockSSEServer(t, func(w io.Writer) {
+		// content streamed first, reasoning second; no finish_reason, no [DONE]
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ANSWER\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"THINK\"}}]}\n\n")
+	})
+	provider, err := providers.NewOpenAI(providers.BaseConfig{APIKey: "k", BaseURL: server.URL, ReasoningField: "reasoning_content"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	record, err := recordOfStep(t, provider)
+	if err == nil {
+		t.Fatal("a body with no terminating signal must report an error")
+	}
+	var kinds []string
+	for _, p := range record {
+		switch p.(type) {
+		case *llm.ReasoningPart:
+			kinds = append(kinds, "reasoning")
+		case *llm.TextPart:
+			kinds = append(kinds, "text")
+		}
+	}
+	if got := strings.Join(kinds, ","); got != "reasoning,text" {
+		t.Errorf("record = [%s], want reasoning,text: the provider declares this turn's shape "+
+			"with the content, so a cut stream cannot scramble the file", got)
+	}
+}

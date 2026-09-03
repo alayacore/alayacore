@@ -42,9 +42,9 @@ func render(parts []ContentPart) string {
 // provider closed it (which is what gets persisted and replayed).
 func TestAssemblerNumbersByArrivalAndLaysOutByClose(t *testing.T) {
 	a := newStreamAssembler(counter(1))
-	a.text("text", "Answer.")            // arrives first, so takes the lower ID
-	a.reasoning("reasoning", "thinking") // arrives second
-	a.close("reasoning")                 // closed first, so leads the record
+	a.text(0, "text", "Answer.")            // arrives first, so takes the lower ID
+	a.reasoning(0, "reasoning", "thinking") // arrives second
+	a.close("reasoning")                    // closed first, so leads the record
 	a.close("text")
 
 	got := render(a.parts())
@@ -60,10 +60,10 @@ func TestAssemblerNumbersByArrivalAndLaysOutByClose(t *testing.T) {
 // finished head.
 func TestAssemblerAppendsUnclosedAfterClosed(t *testing.T) {
 	a := newStreamAssembler(nil)
-	a.reasoning("r1", "first thought")
+	a.reasoning(0, "r1", "first thought")
 	a.close("r1")
-	a.text("t1", "second, never closed")
-	a.reasoning("r2", "third, never closed")
+	a.text(0, "t1", "second, never closed")
+	a.reasoning(0, "r2", "third, never closed")
 
 	got := render(a.parts())
 	want := "reasoning(first thought) id=0 | text(second, never closed) id=0 | reasoning(third, never closed) id=0"
@@ -78,7 +78,7 @@ func TestAssemblerAppendsUnclosedAfterClosed(t *testing.T) {
 // is nothing to reject, because the record is built from what was streamed.
 func TestAssemblerCannotBeToldContentItNeverReceived(t *testing.T) {
 	a := newStreamAssembler(counter(1))
-	a.text("text", "real")
+	a.text(0, "text", "real")
 	a.close("text")
 	a.close("ghost") // a provider naming a block it never streamed
 
@@ -96,9 +96,9 @@ func TestAssemblerCannotBeToldContentItNeverReceived(t *testing.T) {
 // run with one input and be stored with another.
 func TestAssemblerJoinsToolArgsAndFreezesOnePart(t *testing.T) {
 	a := newStreamAssembler(counter(1))
-	a.toolStart("tool:0", "c1", "read_file")
-	a.toolArgs("tool:0", `{"path":`)
-	a.toolArgs("tool:0", `"README.md"}`)
+	a.toolStart(0, "tool:0", "c1", "read_file")
+	a.toolArgs(0, "tool:0", `{"path":`)
+	a.toolArgs(0, "tool:0", `"README.md"}`)
 	a.close("tool:0")
 
 	id, name, args := a.toolCall("tool:0")
@@ -130,8 +130,8 @@ func TestAssemblerJoinsToolArgsAndFreezesOnePart(t *testing.T) {
 // assistant tool_use without its tool_result is an unloadable conversation.
 func TestAssemblerDropsToolWithoutPart(t *testing.T) {
 	a := newStreamAssembler(nil)
-	a.toolStart("tool:0", "c1", "read_file")
-	a.toolArgs("tool:0", `{"path":`) // cut before the arguments finished
+	a.toolStart(0, "tool:0", "c1", "read_file")
+	a.toolArgs(0, "tool:0", `{"path":`) // cut before the arguments finished
 	if got := len(a.parts()); got != 0 {
 		t.Errorf("record holds %d parts, want 0: %#v", got, a.parts())
 	}
@@ -142,9 +142,9 @@ func TestAssemblerDropsToolWithoutPart(t *testing.T) {
 // the model then sees.
 func TestAssemblerSkipsEmptyBlocks(t *testing.T) {
 	a := newStreamAssembler(counter(1))
-	a.reasoning("reasoning", "")
+	a.reasoning(0, "reasoning", "")
 	a.close("reasoning")
-	a.text("text", "hi")
+	a.text(0, "text", "hi")
 	a.close("text")
 
 	// The ID the empty reasoning slot consumed is not a mistake to fix: only a
@@ -159,8 +159,8 @@ func TestAssemblerSkipsEmptyBlocks(t *testing.T) {
 // invented for it.
 func TestAssemblerToleratesNoNumbering(t *testing.T) {
 	a := newStreamAssembler(nil)
-	a.reasoning("r", "thought")
-	a.text("t", "answer")
+	a.reasoning(0, "r", "thought")
+	a.text(0, "t", "answer")
 	a.close("r")
 	a.close("t")
 
@@ -182,12 +182,60 @@ func TestAssemblerToleratesNoNumbering(t *testing.T) {
 // keeps the kind the stream opened it as.
 func TestAssemblerIsIdempotentOnCloseAndKind(t *testing.T) {
 	a := newStreamAssembler(counter(7))
-	a.text("t", "one")
+	a.text(0, "t", "one")
 	a.close("t")
 	a.close("t")
-	a.reasoning("t", "-smuggled") // same key, different kind
+	a.reasoning(0, "t", "-smuggled") // same key, different kind
 
 	if got := render(a.parts()); got != "text(one-smuggled) id=7" {
 		t.Errorf("record = [%s]", got)
+	}
+}
+
+// The declaration travels with the content, not only with the closure, because a
+// stream can be cut before any block closes. Here nothing closes, and the deltas
+// arrive in the wrong order — the case that left the persisted record inverted
+// against the protocol's shape for an assistant turn, and replayed that way.
+func TestDeclaredPositionOrdersBlocksThatNeverClosed(t *testing.T) {
+	a := newStreamAssembler(counter(1))
+	a.text(2, "text", "ANSWER")          // arrives first, declared second
+	a.reasoning(1, "reasoning", "THINK") // arrives second, declared first
+
+	if got := render(a.parts()); got != "reasoning(THINK) id=2 | text(ANSWER) id=1" {
+		t.Errorf("record = [%s], want the declared slots to decide layout"+
+			" (IDs stay arrival-based: numbering is display identity, layout is protocol shape)", got)
+	}
+}
+
+// A declared position is a claim about layout, not about numbering: the block that
+// arrives second still takes the second ID even though it leads the record. If
+// these ever coincide again in the implementation, one of the two has stopped
+// being what it is for.
+func TestPositionDoesNotReorderIDs(t *testing.T) {
+	a := newStreamAssembler(counter(10))
+	a.toolStart(3, "tool:0", "c1", "noop")
+	a.reasoning(1, "reasoning", "think")
+	a.text(2, "text", "answer")
+	if got := render(a.parts()); got != "reasoning(think) id=11 | text(answer) id=12" {
+		t.Errorf("record = [%s]", got)
+	}
+	if a.historyID("reasoning") != 11 || a.historyID("text") != 12 {
+		t.Errorf("IDs moved with layout: reasoning=%d text=%d, want 11 and 12 by arrival",
+			a.historyID("reasoning"), a.historyID("text"))
+	}
+}
+
+// Mixed: a provider that declares for some blocks only. The declared ones keep
+// their slots, the undeclared ones fall back to arrival behind them — the fallback
+// is per block, and an absent claim never drags a declared one around.
+func TestUndeclaredBlocksLandAfterDeclaredOnes(t *testing.T) {
+	a := newStreamAssembler(counter(1))
+	a.text(0, "mystery", "surprise") // no declaration
+	a.text(1, "text", "answer")
+	a.close("text")
+	a.close("mystery")
+
+	if got := render(a.parts()); got != "text(answer) id=2 | text(surprise) id=1" {
+		t.Errorf("record = [%s], want the declared block placed and the undeclared one appended", got)
 	}
 }

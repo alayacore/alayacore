@@ -549,11 +549,11 @@ func (s *anthropicStreamState) deliverCloses(flushAll bool, yield func(llm.Strea
 		var event llm.StreamEvent
 		switch c.blockType {
 		case anthropicBlockTypeToolCall:
-			event = llm.ToolInputCompleteEvent{ID: c.id, Key: key}
+			event = llm.ToolInputCompleteEvent{ID: c.id, Key: key, Position: i + 1}
 		case anthropicBlockTypeText:
-			event = llm.TextCompleteEvent{Key: key}
+			event = llm.TextCompleteEvent{Key: key, Position: i + 1}
 		case anthropicBlockTypeThinking:
-			event = llm.ReasoningCompleteEvent{Key: key}
+			event = llm.ReasoningCompleteEvent{Key: key, Position: i + 1}
 		default:
 			s.closureEmitted[i] = true
 			continue
@@ -673,9 +673,10 @@ func (p *AnthropicProvider) handleContentBlockStart(data string, yield func(llm.
 	state.createBlock(event.Index, event.ContentBlock.Type, event.ContentBlock.ID, event.ContentBlock.Name)
 	if event.ContentBlock.Type == anthropicBlockTypeToolCall {
 		if !yield(llm.ToolInputStartEvent{
-			ID:   event.ContentBlock.ID,
-			Name: event.ContentBlock.Name,
-			Key:  anthropicBlockKey(event.Index),
+			ID:       event.ContentBlock.ID,
+			Name:     event.ContentBlock.Name,
+			Key:      anthropicBlockKey(event.Index),
+			Position: event.Index + 1,
 		}, nil) {
 			return false
 		}
@@ -696,15 +697,15 @@ func (p *AnthropicProvider) handleContentDelta(index int, delta anthropicSSEDelt
 	}
 	switch delta.Type {
 	case anthropicDeltaTypeText:
-		if !yield(llm.TextDeltaEvent{Delta: delta.Text, Key: anthropicBlockKey(index)}, nil) {
+		if !yield(llm.TextDeltaEvent{Delta: delta.Text, Key: anthropicBlockKey(index), Position: index + 1}, nil) {
 			return false
 		}
 	case anthropicDeltaTypeThinking:
-		if !yield(llm.ReasoningDeltaEvent{Delta: delta.Thinking, Key: anthropicBlockKey(index)}, nil) {
+		if !yield(llm.ReasoningDeltaEvent{Delta: delta.Thinking, Key: anthropicBlockKey(index), Position: index + 1}, nil) {
 			return false
 		}
 	case anthropicDeltaTypeInputJSON:
-		if !yield(llm.ToolInputDeltaEvent{ID: block.id, Delta: delta.PartialJSON, Key: anthropicBlockKey(index)}, nil) {
+		if !yield(llm.ToolInputDeltaEvent{ID: block.id, Delta: delta.PartialJSON, Key: anthropicBlockKey(index), Position: index + 1}, nil) {
 			return false
 		}
 	}

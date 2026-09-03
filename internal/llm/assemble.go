@@ -3,6 +3,7 @@ package llm
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -57,6 +58,12 @@ type assembledBlock struct {
 	body   strings.Builder
 	histID uint64
 	closed bool
+	// position is the block's declared slot in the record: 1-based, 0 when the
+	// provider declared nothing. closeSeq is its rank in closure order. Both
+	// declare layout; position is the stronger claim because it is available even
+	// when the closure never arrives.
+	position int
+	closeSeq int
 	// part is the tool call this block became, once its arguments were complete
 	// and execution started. The record emits this same object, so the input a
 	// tool ran with and the input history stores cannot differ; nil for
@@ -94,19 +101,19 @@ func (a *streamAssembler) historyID(key string) uint64 {
 	return 0
 }
 
-func (a *streamAssembler) text(key, delta string) {
-	a.block(key, textBlockKind).body.WriteString(delta)
+func (a *streamAssembler) text(position int, key, delta string) {
+	a.declare(a.block(key, textBlockKind), position).body.WriteString(delta)
 }
 
-func (a *streamAssembler) reasoning(key, delta string) {
-	a.block(key, reasoningBlockKind).body.WriteString(delta)
+func (a *streamAssembler) reasoning(position int, key, delta string) {
+	a.declare(a.block(key, reasoningBlockKind), position).body.WriteString(delta)
 }
 
 // toolStart names a tool call. OpenAI sends the ID and name once and then
 // argument fragments keyed only by index, so identity arrives separately from
 // content by protocol rather than by choice.
-func (a *streamAssembler) toolStart(key, id, name string) {
-	b := a.block(key, toolBlockKind)
+func (a *streamAssembler) toolStart(position int, key, id, name string) {
+	b := a.declare(a.block(key, toolBlockKind), position)
 	if id != "" {
 		b.id = id
 	}
@@ -115,14 +122,24 @@ func (a *streamAssembler) toolStart(key, id, name string) {
 	}
 }
 
-func (a *streamAssembler) toolArgs(key, delta string) {
-	a.block(key, toolBlockKind).body.WriteString(delta)
+func (a *streamAssembler) toolArgs(position int, key, delta string) {
+	a.declare(a.block(key, toolBlockKind), position).body.WriteString(delta)
 }
 
 // close records that the provider declared this block finished and reports
 // whether such a block exists. It is idempotent, and a boundary naming a block
 // the stream never opened is refused: that block has no content, no history ID,
 // and must not reach either the record or the display as an empty window.
+// declare records a layout claim. The first one for a block wins, and a later
+// event carrying no position (a provider that declares on some events only) keeps
+// it rather than erasing it back to the undeclared zero.
+func (a *streamAssembler) declare(b *assembledBlock, position int) *assembledBlock {
+	if b.position == 0 && position > 0 {
+		b.position = position
+	}
+	return b
+}
+
 func (a *streamAssembler) close(key string) bool {
 	b, ok := a.byKey[key]
 	if !ok {
@@ -132,6 +149,7 @@ func (a *streamAssembler) close(key string) bool {
 		return true
 	}
 	b.closed = true
+	b.closeSeq = len(a.closed)
 	a.closed = append(a.closed, b)
 	return true
 }
@@ -304,13 +322,41 @@ func (a *streamAssembler) parts() []ContentPart {
 		part.SetHistoryID(b.histID)
 		out = append(out, part)
 	}
-	for _, b := range a.closed {
+	blocks := append([]*assembledBlock(nil), a.touched...)
+	sort.SliceStable(blocks, func(i, j int) bool {
+		return lessForRecord(blocks[i], blocks[j])
+	})
+	for _, b := range blocks {
 		emit(b)
 	}
-	for _, b := range a.touched {
-		if !b.closed {
-			emit(b)
-		}
-	}
 	return out
+}
+
+// lessForRecord is the record's layout rule - one total order, used whether the
+// step finished, failed, or was cut:
+//
+//  1. A declared position beats everything: it is the provider stating where the
+//     block belongs, and it holds whether or not the block ever closed.
+//  2. Blocks the server closed come before blocks it did not - a closure is a
+//     weaker form of the same declaration (providers deliver closures in declared
+//     order), while an open block has no claim beyond arrival.
+//  3. Close order, then first-sight order.
+//
+// Blocks no one declared for land after the declared ones, in arrival order.
+// That is the only order available for them: inventing a slot the protocol never
+// named is the move behind every ordering bug in this area.
+func lessForRecord(a, b *assembledBlock) bool {
+	if (a.position > 0) != (b.position > 0) {
+		return a.position > 0
+	}
+	if a.position > 0 && a.position != b.position {
+		return a.position < b.position
+	}
+	if a.closed != b.closed {
+		return a.closed
+	}
+	if a.closed && a.closeSeq != b.closeSeq {
+		return a.closeSeq < b.closeSeq
+	}
+	return a.histID < b.histID
 }

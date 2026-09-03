@@ -214,6 +214,16 @@ type TextDeltaEvent struct {
 	// compared for equality, never ordered, added to, or used as an array
 	// index. Providers choose the naming (see internal/llm/providers).
 	Key string
+
+	// Position is where this block belongs in the step's record: 1-based, so
+	// the zero value means "not declared" and a consumer can tell a missing
+	// declaration from the first slot. It travels with the content because a
+	// block's closure — the other place layout is declared — may never arrive:
+	// a stream cut before any block closed left the record ordered by arrival,
+	// which can invert the shape the protocol defines for an assistant turn.
+	// 1-based rather than 0-based also keeps a provider that never declares
+	// anything from accidentally claiming the first slot.
+	Position int
 }
 
 func (TextDeltaEvent) isStreamEvent() {}
@@ -225,6 +235,8 @@ func (TextDeltaEvent) isStreamEvent() {}
 type TextCompleteEvent struct {
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
+	// Position is this block's slot in the record; see TextDeltaEvent.Position.
+	Position int
 }
 
 func (TextCompleteEvent) isStreamEvent() {}
@@ -234,6 +246,8 @@ type ReasoningDeltaEvent struct {
 	Delta string
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
+	// Position is this block's slot in the record; see TextDeltaEvent.Position.
+	Position int
 }
 
 func (ReasoningDeltaEvent) isStreamEvent() {}
@@ -243,6 +257,8 @@ func (ReasoningDeltaEvent) isStreamEvent() {}
 type ReasoningCompleteEvent struct {
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
+	// Position is this block's slot in the record; see TextDeltaEvent.Position.
+	Position int
 }
 
 func (ReasoningCompleteEvent) isStreamEvent() {}
@@ -253,6 +269,8 @@ type ToolInputStartEvent struct {
 	Name string
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
+	// Position is this block's slot in the record; see TextDeltaEvent.Position.
+	Position int
 }
 
 func (ToolInputStartEvent) isStreamEvent() {}
@@ -263,6 +281,8 @@ type ToolInputDeltaEvent struct {
 	Delta string
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
+	// Position is this block's slot in the record; see TextDeltaEvent.Position.
+	Position int
 }
 
 func (ToolInputDeltaEvent) isStreamEvent() {}
@@ -275,6 +295,8 @@ type ToolInputCompleteEvent struct {
 	ID string
 	// Key identifies the content block; see TextDeltaEvent.Key.
 	Key string
+	// Position is this block's slot in the record; see TextDeltaEvent.Position.
+	Position int
 }
 
 func (ToolInputCompleteEvent) isStreamEvent() {}
