@@ -325,6 +325,11 @@ func (p *Program) run(model Model) (Model, error) {
 		case WindowSizeMsg:
 			p.width, p.height = msg.Width, msg.Height
 			p.screen.Resize(msg.Width, msg.Height)
+
+		case tickMsg:
+			// The model's heartbeat is also where the terminal size is
+			// re-read; see refreshSize.
+			p.refreshSize()
 		}
 
 		var cmd Cmd
@@ -452,6 +457,39 @@ func (p *Program) watchSignals(ctxDone <-chan struct{}) {
 				return
 			}
 		}
+	}
+}
+
+// refreshSize re-reads the terminal size and queues a WindowSizeMsg when it
+// changed. It runs from the model's tick (see run), which makes it the resize
+// source on platforms with no resize signal: Windows has none at all
+// (signals_windows.go → resizeSignal returns nil, and a pseudo console does not
+// deliver one either), so without this the layout keeps the size measured at
+// startup for the whole session, however much the window is dragged.
+//
+// It is also a safety net where SIGWINCH exists: that path is
+// watchSignals' business, and both converge here on the same two facts
+// (p.width/p.height and the screen caches), so a missed signal costs one frame
+// rather than the rest of the session.
+//
+// The send is non-blocking because the caller is the loop that drains p.msgs:
+// a full buffer would otherwise deadlock the program against itself. On a drop
+// the tracked size is deliberately left alone, so the next tick still sees a
+// difference and retries. Leaving it updated would swallow the change with no
+// WindowSizeMsg and no cache clear, and the display would keep laying out the
+// old width forever.
+//
+// The cost when nothing changed is one size query per tick: TIOCGWINSZ on
+// Unix, GetConsoleScreenBufferInfo on Windows.
+func (p *Program) refreshSize() {
+	w, h := p.screen.Size()
+	if w == p.width && h == p.height {
+		return
+	}
+	select {
+	case p.msgs <- WindowSizeMsg{Width: w, Height: h}:
+		p.width, p.height = w, h
+	default:
 	}
 }
 

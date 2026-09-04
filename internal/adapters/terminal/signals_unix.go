@@ -3,6 +3,8 @@
 package terminal
 
 // Unix signal watcher: SIGINT/SIGTERM quit the program, SIGWINCH resizes.
+// SIGWINCH is the immediate resize path; Program.refreshSize is the net under
+// it, re-reading the size on every model tick.
 
 import (
 	"os"

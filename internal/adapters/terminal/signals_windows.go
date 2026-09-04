@@ -3,8 +3,9 @@
 package terminal
 
 // Windows signal watcher: SIGINT/SIGTERM quit the program. There is no
-// SIGWINCH on Windows; terminal-size changes are detected by the app's own
-// polling instead.
+// SIGWINCH on Windows — and no resize signal of any kind, including under a
+// pseudo console — so terminal-size changes come from Program.refreshSize,
+// which re-reads the size on every model tick.
 
 import (
 	"os"
