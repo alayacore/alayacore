@@ -6,10 +6,11 @@ package terminal
 // screen, restore cooked mode), run something in the foreground, then
 // re-acquire the terminal (raw mode + alt screen) and repaint.
 //
-// The sequence mirrors bubbletea's exec.go + tty.go suspend path. The
-// platform-specific parts (parking the input loop so a foreground child
-// gets every keystroke, SIGTSTP/SIGCONT) live in exec_unix.go /
-// exec_windows.go.
+// The sequence mirrors bubbletea's exec.go + tty.go suspend path. Parking the
+// input loop — the half that decides whether the child can read the keyboard
+// at all, and whether the program can exit without waiting for a keystroke —
+// is shared, in program_input.go; the platform files only bound the read.
+// SIGTSTP/SIGCONT is the part that stays in exec_unix.go / exec_windows.go.
 
 import (
 	"os"
@@ -94,20 +95,29 @@ func (p *Program) Suspend(run func() error) error {
 
 // releaseTerminal parks the input loop and returns the terminal to its
 // pre-program state: cooked mode, main screen, visible cursor. After this
-// returns, no input is read by the program, so a foreground child gets
-// every keystroke.
+// returns, no input is read by the program, so a foreground child gets every
+// keystroke — and nothing is left reading that the teardown would later have to
+// wait for.
+//
+// A release that fails partway un-parks the loop before returning the error: a
+// parked loop is a program that renders and cannot be typed at, so the caller can
+// report the failure but the user cannot answer it.
 func (p *Program) releaseTerminal() error {
-	p.pauseInput() // park the input loop (no-op where unsupported)
+	p.pauseInput() // waits for the loop to report that it is between reads
 	if err := p.screen.Stop(); err != nil {
+		p.resumeInput()
 		return err
 	}
-	return p.tty.Restore()
+	if err := p.tty.Restore(); err != nil {
+		p.resumeInput()
+		return err
+	}
+	return nil
 }
 
 // acquireTerminal re-enters raw mode and the alt screen, resumes the input
-// loop, forces a full repaint, re-checks the terminal size (it may have
-// changed while another process was at the foreground), and propagates the
-// new size to the model.
+// loop, forces a full repaint, and re-checks the terminal size (it may have
+// changed while another process was at the foreground).
 //
 // The re-entry is not a formality: a child that owned the console (an editor)
 // may have left it in a state we do not want — Windows in particular, where a
@@ -122,16 +132,26 @@ func (p *Program) releaseTerminal() error {
 // degraded and reported, which is the lesser harm next to discarding the
 // conversation or dying silently.
 func (p *Program) acquireTerminal() error {
+	// The loop is un-parked whatever happens to the mode negotiation, for the
+	// same reason releaseTerminal does: a program that cannot be typed at
+	// cannot be told to leave. The degraded path an error below opens onto is
+	// documented as the lesser harm, and it is only that if the user can still
+	// reach :quit.
+	defer p.resumeInput()
 	if err := p.tty.MakeRaw(); err != nil {
 		return err
 	}
 	if err := p.screen.Start(); err != nil {
 		return err
 	}
-	p.resumeInput()
 	p.forceRepaint()
-	p.width, p.height = p.screen.Size()
-	p.msgs <- WindowSizeMsg{Width: p.width, Height: p.height}
+	// The size is re-checked, not announced: refreshSize is the one place that
+	// decides when the model hears about a size, and it sends without blocking.
+	// Blocking matters here because this runs *on* the event loop, which is the
+	// only thing that drains p.msgs — a queue filled by the session's streaming
+	// output while the editor was in the foreground would otherwise stop the
+	// program on the far side of the handoff, with no loop left to drain it.
+	p.refreshSize()
 	return nil
 }
 

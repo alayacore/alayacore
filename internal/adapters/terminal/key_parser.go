@@ -240,7 +240,14 @@ func (p *InputParser) Parse(data []byte) []any {
 		// ESC sequence.
 		seq, n, complete := consumeEscape(data)
 		if !complete {
-			p.pending = data
+			// Copy: these bytes belong to whoever handed them over, and the
+			// input loop hands the same buffer to the terminal again on its
+			// next read. An incomplete sequence is held here for the length of
+			// the escape-sequence timeout, which is long enough to be read out
+			// from under, and a split sequence that resolved to the tail of the
+			// next keystroke instead of its own would be wrong in a way nobody
+			// could reproduce.
+			p.pending = append([]byte(nil), data...)
 			return msgs
 		}
 		data = data[n:]

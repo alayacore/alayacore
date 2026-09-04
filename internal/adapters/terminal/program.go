@@ -208,13 +208,17 @@ type Program struct {
 	mu       sync.Mutex
 	lastView *View // content/cursor of the last rendered frame
 
-	// Input-parking protocol (exec_unix.go): while suspended (editor
-	// handoff, Ctrl-Z) the input loop parks so a foreground child gets
-	// every keystroke. inputPaused is the request flag; parkedCh is the
-	// input loop's acknowledgement; resumeCh wakes it up again.
-	inputPaused atomic.Bool
-	parkedCh    chan struct{}
-	resumeCh    chan struct{}
+	// Input parking (program_input.go): while the terminal is released — the
+	// editor handoff, Ctrl-Z — the input loop parks so a foreground child gets
+	// every keystroke, and no read of ours is left pending on the terminal.
+	// inputPaused is the request; parkedCh is the loop's acknowledgement;
+	// resumeCh wakes it again; inputStopped says the loop is gone for good,
+	// which is what the teardown waits for before closing the terminal.
+	input        inputSource
+	inputPaused  atomic.Bool
+	parkedCh     chan struct{}
+	resumeCh     chan struct{}
+	inputStopped chan struct{}
 }
 
 // Run starts the TUI program: opens the TTY, enters raw mode and the alt
@@ -224,18 +228,28 @@ func Run(model Model) (Model, error) {
 	if err != nil {
 		return model, err
 	}
-	if err := tty.MakeRaw(); err != nil {
+	if err = tty.MakeRaw(); err != nil {
 		return model, fmt.Errorf("terminal: enter raw mode: %w", err)
+	}
+	// The input source is negotiated next: it is the step that decides whether
+	// this program can read the keyboard at all, and nothing should be written
+	// to the terminal before that is known.
+	input, err := newInput(tty)
+	if err != nil {
+		_ = tty.Restore()
+		return model, err
 	}
 
 	p := &Program{
-		tty:      tty,
-		parser:   &InputParser{},
-		screen:   NewScreen(tty.Out()),
-		msgs:     make(chan Msg, 64),
-		cmds:     make(chan Cmd),
-		parkedCh: make(chan struct{}, 1),
-		resumeCh: make(chan struct{}, 1),
+		tty:          tty,
+		parser:       &InputParser{},
+		screen:       NewScreen(tty.Out()),
+		input:        input,
+		msgs:         make(chan Msg, 64),
+		cmds:         make(chan Cmd),
+		parkedCh:     make(chan struct{}, 1),
+		resumeCh:     make(chan struct{}, 1),
+		inputStopped: make(chan struct{}),
 	}
 	p.width, p.height = p.screen.Size()
 
@@ -246,8 +260,18 @@ func Run(model Model) (Model, error) {
 
 	// Restore the terminal on every exit path (including panics), then
 	// release the file handles (they may be /dev/tty or CONIN$/CONOUT$
-	// opened by OpenTTY, not the process's own stdin/stdout).
+	// opened by OpenTTY — not the process's own stdin/stdout, which Close
+	// leaves alone).
 	defer func() {
+		// Stop reading before anything else. The input loop is the only thing
+		// that can hold a read on the terminal, and the teardown is about to
+		// hand that terminal back: it writes the sequences that leave the
+		// alternate screen, restores the console mode, and closes the file.
+		// Closing a file waits in Go for a read still in flight on it — and a
+		// console read waits for input — so skipping this step is how quitting
+		// ends up waiting for a keystroke before the shell gets its prompt
+		// back. See program_input.go.
+		p.stopInput()
 		_ = p.screen.Stop()
 		_ = tty.Restore()
 		_ = tty.Close()
@@ -264,9 +288,12 @@ func (p *Program) run(model Model) (Model, error) {
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
 
-	if p.tty != nil {
-		// Input reader and signal watcher.
+	if p.input != nil {
+		// Input reader: the one place bytes become messages.
 		go p.readInput(ctxDone)
+	}
+	if p.tty != nil {
+		// Signal watcher (quit, and the resize signal where one exists).
 		go p.watchSignals(ctxDone)
 	}
 
