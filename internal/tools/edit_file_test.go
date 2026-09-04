@@ -17,7 +17,7 @@ func TestEditFile(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		setup       func()
+		setup       func() error
 		input       EditFileInput
 		expectError bool
 		errorMsg    string
@@ -25,8 +25,8 @@ func TestEditFile(t *testing.T) {
 	}{
 		{
 			name: "simple replacement",
-			setup: func() {
-				os.WriteFile(testFile, []byte("hello world"), 0644)
+			setup: func() error {
+				return os.WriteFile(testFile, []byte("hello world"), 0644)
 			},
 			input: EditFileInput{
 				Path:      testFile,
@@ -37,8 +37,8 @@ func TestEditFile(t *testing.T) {
 		},
 		{
 			name: "no changes when old and new are same",
-			setup: func() {
-				os.WriteFile(testFile, []byte("hello world"), 0644)
+			setup: func() error {
+				return os.WriteFile(testFile, []byte("hello world"), 0644)
 			},
 			input: EditFileInput{
 				Path:      testFile,
@@ -60,8 +60,8 @@ func TestEditFile(t *testing.T) {
 		},
 		{
 			name: "old_string not found in file",
-			setup: func() {
-				os.WriteFile(testFile, []byte("hello world"), 0644)
+			setup: func() error {
+				return os.WriteFile(testFile, []byte("hello world"), 0644)
 			},
 			input: EditFileInput{
 				Path:      testFile,
@@ -98,7 +98,9 @@ func TestEditFile(t *testing.T) {
 			// Clean up and setup
 			os.Remove(testFile)
 			if tt.setup != nil {
-				tt.setup()
+				if err := tt.setup(); err != nil {
+					t.Fatalf("test fixture: %v", err)
+				}
 			}
 
 			content, err := executeEditFile(context.Background(), tt.input)

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -97,8 +98,29 @@ func runMCPServer() {
 
 		// Delay if requested.
 		if delayStr != "" {
-			var ms int
-			fmt.Sscanf(delayStr, "%d", &ms)
+			// strconv.Atoi, not fmt.Sscanf: Sscanf("%d") stops at the first
+			// non-digit and reports success, so "5s" yields 5 with a nil error —
+			// meaning "delay 5 seconds" would have silently become "delay 5
+			// milliseconds" under a check that looked like it was validating the
+			// value. Atoi rejects the whole string or accepts none of it.
+			//
+			// The helper has no *testing.T to fail, so a bad value has to be
+			// reported some other way. Exiting beats what it replaces:
+			// leaving ms at zero turns "respond after N ms" into "respond at
+			// once", and the delay-dependent test then fails as a *missing
+			// context cancellation* — a shape that reads as flaky and gets
+			// re-run. Measured, not assumed: the failure text for that test is
+			// the same either way, because its assertion is about behavior and
+			// never sees a transport error. The message does reach a developer on
+			// the paths the transport already wires — a child that dies during
+			// connect gets its stderr appended by withStderrDetail (pinned by
+			// TestConnectErrorNamesTheServerDiagnostics), and --debug-log captures
+			// it regardless.
+			ms, err := strconv.Atoi(delayStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "test server: cannot parse MCP_TEST_SERVER_DELAY_MS=%q: %v\n", delayStr, err)
+				os.Exit(1)
+			}
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 		}
 
@@ -227,8 +249,17 @@ func runMCPServer() {
 	// read loop above) or the scan loop breaks, so it never delays the server
 	// from serving requests.
 	if s := os.Getenv("MCP_TEST_SERVER_EXIT_DELAY_MS"); s != "" {
-		var ms int
-		fmt.Sscanf(s, "%d", &ms)
+		ms, err := strconv.Atoi(s)
+		if err != nil {
+			// Same reasoning as the request delay, with one difference worth
+			// stating: no test currently notices this value at all. Feeding it
+			// garbage leaves TestManagerCloseAllIsConcurrent passing both before
+			// and after this check, because the delay only has to be long enough
+			// for CloseAll to return first. So this line guards the value against
+			// a future assertion, not a present one.
+			fmt.Fprintf(os.Stderr, "test server: cannot parse MCP_TEST_SERVER_EXIT_DELAY_MS=%q: %v\n", s, err)
+			os.Exit(1)
+		}
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
 }
@@ -260,6 +291,27 @@ func newStdioTestTransport(t *testing.T, extraEnv map[string]string, debugDir st
 	if err != nil {
 		t.Fatalf("NewStdioTransport() error = %v", err)
 	}
+
+	// A failing stdio test usually failed in the child, and the child's stderr
+	// goes to a bounded tail rather than the terminal (NewStdioTransport keeps it
+	// so a dead server can be diagnosed at all). Only transport-level errors get
+	// that tail attached, via withStderrDetail; a behavioral assertion that fails
+	// produces no such error, and the reason stays unseen. Measured both ways:
+	// without this hook, a bad MCP_TEST_SERVER_DELAY_MS fails the test as
+	// "expected context cancellation error, got nil" — which reads as a flaky
+	// timeout; with it, the run also prints "cannot parse ... invalid syntax".
+	//
+	// Registered above the Close cleanup, so LIFO ordering runs it last: Close()
+	// waits for the child's stderr copy to finish, which guarantees the tail holds
+	// everything it said, including output produced while dying.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		if tail := transport.StderrTail(); tail != "" {
+			t.Logf("test server stderr:\n%s", tail)
+		}
+	})
 
 	// Register cleanup to ensure the subprocess is terminated.
 	t.Cleanup(func() {

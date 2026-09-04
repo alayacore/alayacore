@@ -195,7 +195,11 @@ func (s *httpTestServer) handlePOST(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := jsonrpcResponse{JSONRPC: "2.0", ID: req.ID, Result: json.RawMessage(`{"echo":"ok"}`)}
-		json.NewEncoder(w).Encode(resp)
+		// Discarded on purpose, and here is the reason, so the next reader does
+		// not "fix" it into a silent bug: handlePOST has no *testing.T, and the
+		// only way Encode fails is a connection the client already closed — the
+		// client whose behavior the test asserts on, which reports that itself.
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -394,9 +398,21 @@ func TestHTTPTransport_GETStreamMethodNotAllowed(t *testing.T) {
 		if r.Method == "POST" {
 			w.Header().Set("Content-Type", "application/json")
 			var req jsonrpcRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			// Two things here, both deliberate. t is captured from the enclosing
+			// test, but this body runs on the server's goroutine, so Errorf is
+			// the legal half of the pair. And this POST branch is not currently
+			// reached by the test that owns this mux — it asserts on the GET
+			// stream's 405 — which was checked rather than assumed: replacing the
+			// body with a panic leaves the test passing. The checks are kept
+			// because they are what belongs in a handler, not because anything
+			// exercises them; whoever routes a POST through here inherits them.
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Errorf("decode request: %v", err)
+			}
 			resp := jsonrpcResponse{JSONRPC: "2.0", ID: req.ID, Result: json.RawMessage(`{}`)}
-			json.NewEncoder(w).Encode(resp)
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
 			return
 		}
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
