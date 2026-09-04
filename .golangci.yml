@@ -24,6 +24,12 @@ linters:
 
     # Additional linters
     - bodyclose      # Check HTTP response body is closed
+    # Reject a context.Context stored in a struct, and a context created fresh
+    # where one is already in the call chain. Both have exemptions in the code,
+    # each carrying the reason it is deserved — grep for nolint:containedctx and
+    # nolint:contextcheck.
+    - containedctx
+    - contextcheck
     - dogsled        # Check for too many blank identifiers
     - dupl           # Check for duplicate code
     - copyloopvar    # Check for loop variable copies (replaces exportloopref)
@@ -72,6 +78,10 @@ linters-settings:
   misspell:
     locale: US
 
+  # nolintlint is deliberately NOT enabled yet: with allow-unused:false it reports
+  # 9 directives across the terminal adapter, internal/tools and mcp auth tests
+  # that suppress nothing today. Those need deleting on their own, not smuggled in
+  # beside a context change; until then an unenforced //nolint stays unflagged.
   revive:
     rules:
       - name: blank-imports

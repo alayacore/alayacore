@@ -293,7 +293,7 @@ func (t *HTTPTransport) StartGETStream(ctx context.Context) (func(), error) {
 
 	sr := newSSEReadCloser(resp.Body)
 	closed := make(chan struct{})
-	go func() {
+	go func() { //nolint:contextcheck // this stream outlives the request that opened it; Close()/t.done bounds it
 		defer close(closed)
 		defer sr.Close()
 
@@ -479,7 +479,7 @@ func (t *HTTPTransport) readSSEResponse(ctx context.Context, resp *http.Response
 	}()
 
 	readDone := make(chan struct{})
-	go func() {
+	go func() { //nolint:contextcheck // read loop bounds to transport lifetime (loopCancel on t.done), not to the request
 		defer close(readDone)
 
 		// Context tied to transport lifetime: canceled when Close() is called.

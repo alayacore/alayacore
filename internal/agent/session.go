@@ -122,7 +122,23 @@ type sharedState struct {
 
 	histCounter uint64
 
-	sessionCtx    context.Context
+	// sessionCtx lives as long as the Session does — same lifetime, which is the
+	// first half of what makes holding a context defensible here. The second half
+	// is CancelTask: it is exported and called from the plainio/terseio SIGINT
+	// handlers, a goroutine outside the session with no context of its own to
+	// pass, and it needs Done() so a cancel request sent after the session has
+	// exited cannot block forever on a channel nobody reads.
+	//
+	// The two compliant alternatives are both worse. A sessionDone
+	// <-chan struct{} field satisfies the linter while being exactly
+	// runCtx.Done() — holding half a context and losing the right to call it one,
+	// including Err(), which run() uses. And a CancelTask(ctx) parameter would
+	// invite callers to pass context.Background(), which is the very thing
+	// contextcheck exists to catch, and drops the exit guard named above.
+	//
+	// Everything in run()'s own call tree takes the context as a parameter
+	// instead; only the cross-goroutine entry point reads this field.
+	sessionCtx    context.Context //nolint:containedctx // lifetime ≡ Session's; CancelTask is reached from a signal handler with no ctx to pass
 	sessionCancel context.CancelFunc
 
 	confirmChs map[string]chan bool

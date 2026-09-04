@@ -139,7 +139,13 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("unsupported proto-version %q", c.config.ProtoVersion)
 	}
 
-	transport, err := c.createTransport()
+	// The transport deliberately does not inherit Connect's context. It owns its
+	// own process lifetime: a monitor goroutine is the sole caller of
+	// cmd.Wait() (os/exec forbids concurrent Wait), and Close() performs the
+	// ordered shutdown — stdin EOF, then SIGTERM, then SIGKILL. Making this
+	// exec.CommandContext would add a second killer racing that sequence, and
+	// exec would reap the child behind the monitor's back.
+	transport, err := c.createTransport() //nolint:contextcheck // transport lifetime ≠ request lifetime; stdio_transport.go owns the process
 	if err != nil {
 		return err
 	}
@@ -666,7 +672,7 @@ func (c *Client) sendRequest(ctx context.Context, method string, params any) (js
 				// canceled (that's why we're here), so we need a live context.
 				notifyCtx, notifyCancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer notifyCancel()
-				c.sendCanceledNotification(notifyCtx, id, err)
+				c.sendCanceledNotification(notifyCtx, id, err) //nolint:contextcheck // ctx is canceled by definition here; a live one is required to deliver
 			}
 		}
 		return nil, err

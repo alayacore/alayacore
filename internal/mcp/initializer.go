@@ -168,8 +168,10 @@ type Initializer struct {
 	mu           sync.Mutex // guards authCodeChs and eventsClosed
 	eventsClosed bool
 
-	cancel context.CancelFunc // set by Start(), cancels the init context
-	ctx    context.Context    // set by Start(); aborts a blocking deliverEvent send
+	// cancel aborts the initialization; set by Start(). The context itself is
+	// deliberately NOT stored: every place that needs it is reached from run(ctx)
+	// or Start(ctx), which hold it. See deliverEvent.
+	cancel context.CancelFunc
 }
 
 // NewInitializer creates an Initializer from server configurations.
@@ -201,7 +203,6 @@ func (in *Initializer) Start(ctx context.Context) {
 	in.started.Do(func() {
 		runCtx, cancel := context.WithCancel(ctx)
 		in.cancel = cancel
-		in.ctx = runCtx
 		go in.run(runCtx)
 	})
 }
@@ -298,7 +299,7 @@ func (in *Initializer) run(ctx context.Context) {
 	// Deliver InitDone with guaranteed delivery: dropping it (as the lossy
 	// sendEvent would when the channel is full) makes the session treat a
 	// successful init as aborted — MCP tools never load.
-	in.deliverEvent(evt)
+	in.deliverEvent(ctx, evt)
 }
 
 // collectServerResult handles the full lifecycle of a single server:
@@ -593,7 +594,7 @@ func (in *Initializer) sendEvent(evt InitEvent) {
 // already propagated to the init context, so the send cannot block
 // forever. Must only be called from run() after all per-server goroutines
 // have finished, so holding mu across the send cannot stall them.
-func (in *Initializer) deliverEvent(evt InitEvent) {
+func (in *Initializer) deliverEvent(ctx context.Context, evt InitEvent) {
 	in.mu.Lock()
 	defer in.mu.Unlock()
 
@@ -602,6 +603,6 @@ func (in *Initializer) deliverEvent(evt InitEvent) {
 	}
 	select {
 	case in.events <- evt:
-	case <-in.ctx.Done():
+	case <-ctx.Done():
 	}
 }
