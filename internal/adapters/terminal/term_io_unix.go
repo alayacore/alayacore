@@ -16,6 +16,7 @@ import (
 func openTTY() (*TTY, error) {
 	in := os.Stdin
 	out := os.Stdout
+	ownsIn, ownsOut := false, false
 
 	if !term.IsTerminal(int(in.Fd())) || !term.IsTerminal(int(out.Fd())) {
 		tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
@@ -23,12 +24,12 @@ func openTTY() (*TTY, error) {
 			return nil, fmt.Errorf("terminal: could not open controlling TTY: %w", err)
 		}
 		if !term.IsTerminal(int(in.Fd())) {
-			in = tty
+			in, ownsIn = tty, true
 		}
 		if !term.IsTerminal(int(out.Fd())) {
-			out = tty
+			out, ownsOut = tty, true
 		}
 	}
 
-	return &TTY{in: in, out: out}, nil
+	return &TTY{in: in, out: out, ownsIn: ownsIn, ownsOut: ownsOut}, nil
 }

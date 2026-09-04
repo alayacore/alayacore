@@ -22,6 +22,14 @@ type TTY struct {
 	out   *os.File
 	state *term.State
 
+	// ownsIn/ownsOut mark the files openTTY opened itself — the /dev/tty or
+	// CONIN$/CONOUT$ fallback. The process's own stdin/stdout are not ours to
+	// close: os.File.Close waits for a read still in flight on the file, and the
+	// shell keeps using those descriptors after this program is done. Close is
+	// where the difference is enforced.
+	ownsIn  bool
+	ownsOut bool
+
 	// vt is the console-mode state enterVT returned (see console_windows.go /
 	// console_unix.go). On Unix it carries nothing; the field exists so the
 	// lifecycle below is written once for every platform.
@@ -90,18 +98,24 @@ func (t *TTY) Restore() error {
 	return err
 }
 
-// Read reads bytes from the terminal.
+// Read reads bytes from the terminal. The Unix input source reads through it;
+// the Windows one goes around it and reads console events instead, because a
+// console byte read cannot be bounded (program_input_windows.go).
 func (t *TTY) Read(p []byte) (int, error) {
 	return t.in.Read(p)
 }
 
-// Close closes the underlying input and output files.
+// Close releases the files openTTY opened. The process's own stdin and stdout
+// are deliberately left open: they belong to the shell that runs whatever comes
+// next, and closing one whose read is still in flight would make this call wait
+// for a keystroke that has no reason to arrive (Program.stopInput exists so that
+// no read is in flight here — but the streams are not ours to close either way).
 func (t *TTY) Close() error {
 	var errs []error
-	if t.in != nil {
+	if t.ownsIn {
 		errs = append(errs, t.in.Close())
 	}
-	if t.out != nil && t.out != t.in {
+	if t.ownsOut && t.out != t.in {
 		errs = append(errs, t.out.Close())
 	}
 	return errors.Join(errs...)

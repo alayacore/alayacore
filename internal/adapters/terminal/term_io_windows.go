@@ -15,6 +15,7 @@ import (
 func openTTY() (*TTY, error) {
 	in := os.Stdin
 	out := os.Stdout
+	ownsIn, ownsOut := false, false
 
 	if !term.IsTerminal(int(in.Fd())) || !term.IsTerminal(int(out.Fd())) {
 		inFile, err := os.OpenFile("CONIN$", os.O_RDWR, 0)
@@ -27,16 +28,16 @@ func openTTY() (*TTY, error) {
 			return nil, fmt.Errorf("terminal: could not open CONOUT$: %w", err)
 		}
 		if !term.IsTerminal(int(in.Fd())) {
-			in = inFile
+			in, ownsIn = inFile, true
 		} else {
 			inFile.Close()
 		}
 		if !term.IsTerminal(int(out.Fd())) {
-			out = outFile
+			out, ownsOut = outFile, true
 		} else {
 			outFile.Close()
 		}
 	}
 
-	return &TTY{in: in, out: out}, nil
+	return &TTY{in: in, out: out, ownsIn: ownsIn, ownsOut: ownsOut}, nil
 }
