@@ -125,6 +125,50 @@ func (m *resizeQuitModel) Update(msg Msg) (Model, Cmd) {
 	return m, nil
 }
 
+// TestConsecutiveTicksQueueOneResizeMessage is the anti-storm guard: a resize
+// must produce exactly one WindowSizeMsg, not one per tick. Three ticks are
+// queued and the tracked size only moves on the tick that delivered the
+// message, so the two that follow have nothing to report.
+//
+// The message is still sitting in the channel when the loop exits (QuitMsg was
+// queued before it, and the loop reads in order), which is why it is counted
+// from the buffer rather than from the model: what is under test is how many
+// times refreshSize sent, not how many the model saw.
+func TestConsecutiveTicksQueueOneResizeMessage(t *testing.T) {
+	msgs := make(chan Msg, 8)
+	p := sizedTestProgram(msgs, 100, 30)
+	p.width, p.height = 80, 24
+	m := &fakeModel{}
+
+	msgs <- tickMsg{}
+	msgs <- tickMsg{}
+	msgs <- tickMsg{}
+	msgs <- QuitMsg{}
+
+	if _, err := p.run(m); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	resizes := 0
+drain:
+	for {
+		select {
+		case msg := <-msgs:
+			if _, ok := msg.(WindowSizeMsg); ok {
+				resizes++
+			}
+		default:
+			break drain
+		}
+	}
+	if resizes != 1 {
+		t.Errorf("%d WindowSizeMsg queued for one real change, want exactly 1", resizes)
+	}
+	if p.width != 100 || p.height != 30 {
+		t.Errorf("tracked size = %dx%d, want 100x30", p.width, p.height)
+	}
+}
+
 // TestTickDrivesSizeRefresh runs the real loop: a tickMsg must be enough to
 // deliver a WindowSizeMsg to the model, which is the whole point — nothing on
 // Windows sends that message any other way.

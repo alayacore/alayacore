@@ -92,9 +92,34 @@ Covered by tests that run there:
   it preserves everything else, that it is idempotent, and the same for
   `inputNoSelectionMode` including the `ENABLE_EXTENDED_FLAGS` requirement.
 - `program_resize_poll_test.go` — `refreshSize` queues exactly one
-  `WindowSizeMsg` per real change, does not advance the tracked size when the
-  send is dropped (so the next tick retries), and is driven by a `tickMsg`
-  through the actual event loop.
+  `WindowSizeMsg` per real change (`TestConsecutiveTicksQueueOneResizeMessage`
+  sends three ticks and counts one message), does not advance the tracked size
+  when the send is dropped (so the next tick retries), and is driven by a
+  `tickMsg` through the actual event loop.
+
+### Cost and convergence
+
+`program_resize_cost_bench_test.go` measures the quiet-tick path against a real
+pty: **~240ns, 0 allocs**, ioctl included; the change path is the same plus a
+non-blocking send. At the 250ms tick that is ~1µs of CPU per second of running
+the UI — which is why `refreshSize` runs on every platform instead of behind a
+"no resize signal" branch.
+
+It cannot storm, and the reason is structural rather than a rate limit: every
+`WindowSizeMsg` sender in the tree (`run`'s initial frame, `acquireTerminal`,
+`watchSignals`, `refreshSize`) takes the size from `Screen.Size()`, and the
+tracked pair is only ever assigned by the event loop in `run`'s
+`case WindowSizeMsg`. So a message always agrees with what the next compare
+will read, one change produces one message, and there is exactly one writer of
+`p.width`/`p.height`. `watchSignals` deliberately queries without assigning —
+a second writer there would let one resize queue two messages, each clearing
+the frame caches and forcing a full repaint.
+
+Two senders can still agree-but-duplicate in principle (a SIGWINCH landing
+between a tick's query and its assignment) — the cost is one redundant message
+and one same-content frame, and `render` skips a byte-identical one. Fixing that
+would mean a lock around two integers read 4 times a second, which is a worse
+trade than the duplicate.
 - `input_newline_test.go` — the `Ctrl+J`/`Enter` split, and that the line break
   stays out of the generic key path so overlay filter boxes are unaffected.
 
