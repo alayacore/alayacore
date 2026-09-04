@@ -530,12 +530,22 @@ func (m Terminal) handleRedraw() (Terminal, Cmd) {
 }
 
 // handleInputKeys handles keys when the input field is focused.
-// It processes submit, editor open, attachment, and clear commands,
+// It processes submit, editor open, attachment, newline, and clear commands,
 // then delegates unrecognized keys to PromptInput.
 func (m Terminal) handleInputKeys(msg KeyMsg) (Terminal, Cmd) {
 	switch msg.String() {
 	case keyEnter:
 		return m.handleSubmit()
+	case keyCtrlJ:
+		// Ctrl+J inserts a line break instead of submitting. It is the
+		// terminal-independent way to compose multi-line prompt text: on a
+		// host without bracketed paste, the newlines of pasted text arrive as
+		// this same byte (LF is Ctrl+J), so they land here as content rather
+		// than as submissions. Enter keeps submitting — it is the byte the
+		// Enter key produces, and nothing a user pastes can be confused with
+		// it. See docs/tui.md → "Paste and terminal capability".
+		m.input = m.input.InsertNewline()
+		return m, nil
 	case keyCtrlA:
 		m = m.openAttachmentWindow()
 		return m, nil

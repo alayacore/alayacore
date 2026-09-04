@@ -215,6 +215,14 @@ func (m PromptInput) CursorEnd() PromptInput {
 	return m
 }
 
+// InsertNewline inserts a line break at the cursor (the prompt's Ctrl+J
+// action). Bound from handleInputKeys only, so overlay filter boxes — which
+// embed their own InputField and read Enter as "accept" — never see it.
+func (m PromptInput) InsertNewline() PromptInput {
+	m.input = m.input.insertNewline()
+	return m
+}
+
 // CursorPos returns the cursor position (in runes) within the input field.
 func (m PromptInput) CursorPos() int {
 	return m.input.CursorPos()

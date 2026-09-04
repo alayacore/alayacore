@@ -156,6 +156,27 @@ func (m InputField) handleInsertion(key string) (InputField, bool) {
 	return m, false
 }
 
+// insertNewline inserts a single line break at the cursor. It is the prompt's
+// Ctrl+J action (see keybinds.go → handleInputKeys).
+//
+// This is deliberately a separate primitive rather than
+// handlePaste(PasteMsg{Content: "\n"}): handlePaste trims trailing newlines
+// (terminals append one to pasted text, so a paste must not leave the caret on
+// an empty line), and a lone "\n" is therefore trimmed down to the empty
+// string, which its len(filtered) == 0 guard returns unchanged. Inserting a
+// line break on request wants the opposite policy — keep the newline — so it
+// cannot reuse that path.
+//
+// goalCol is reset for the same reason the character-insertion path resets it:
+// the remembered goal column of up/down navigation belongs to the line the
+// cursor was on, and a new line starts at column 0.
+func (m InputField) insertNewline() InputField {
+	m.value = slices.Insert(m.value, m.pos, '\n')
+	m.pos++
+	m.goalCol = -1
+	return m.ensureCursorVisible()
+}
+
 // handlePaste inserts pasted text at the cursor position.
 // Control characters are filtered out, except for newlines which are
 // allowed to support multi-line paste.

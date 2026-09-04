@@ -30,6 +30,7 @@ architecture.
 | Key | Action |
 |-----|--------|
 | `Enter` | Submit prompt |
+| `Ctrl+J` | Insert a line break in the prompt |
 | `Ctrl+S` | Save session |
 | `Ctrl+O` | Open in editor (`$EDITOR`) for multi-line input |
 | `Ctrl+L` | Open model selector |
@@ -48,6 +49,54 @@ architecture.
 ### Input Cursor & IME
 
 The prompt input (and overlay filter boxes) render the **real terminal cursor** (the emulator's default steady block — themes do not configure cursor color, since the `cursor` field was dropped from `Theme` when body content rendering stopped carrying an explicit foreground color). This keeps input behavior identical to a shell prompt: Chinese/Japanese IME composition draws its inline preedit directly in the input field and the candidate window anchors to the input line, so it does not jump around while streaming output is being rendered.
+
+### Paste and terminal capability
+
+Bracketed paste (DEC private mode 2004) is a **terminal capability**, not a
+program feature: the app opts in when it starts the screen
+(`screen.go` → `SetModeBracketedPaste`), and a terminal that implements it
+wraps clipboard content in `ESC [ 200~` … `ESC [ 201~`. The parser reads
+whatever sits between those markers as data instead of as keystrokes
+(`key_parser.go` → `PasteMsg`), and the input field normalizes `\r\n`/`\r`/`\n`
+to `\n`, drops other control characters, and trims trailing newlines
+(`input_field.go` → `handlePaste`). Windows Terminal, and xterm / VTE /
+alacritty / kitty and friends on Unix, all take this path.
+
+A terminal that does not implement mode 2004 gives the program no markers, and
+there is no way to ask for them: `GetConsoleMode` succeeds on every Windows
+console host whether or not it implements paste, and the standard query
+(DECRQM mode reporting) is unanswered by the ones that do not — inferring the
+answer from a missing reply means guessing on a timer. So pasted bytes arrive
+as ordinary keystrokes, and what happens depends on which byte that terminal
+uses for line endings:
+
+- **LF line endings** (every non-Windows host): LF *is* Ctrl+J, which the
+  prompt binds to "insert a line break". A pasted block therefore lands in the
+  input with its line structure intact and **nothing submits** — press `Enter`
+  to send the whole block as one prompt.
+- **CRLF line endings** (legacy Windows console host — `cmd.exe`, Windows
+  PowerShell, and `pwsh` in a plain console window): Windows clipboard text
+  ends its lines with `\r\n`, and CR *is* the Enter key. Each line in a pasted
+  block submits in turn: the first line goes out as the prompt, the rest hit the
+  running-task rejection (`keybinds.go` → `handleSubmit`, and the session's own
+  `BUSY` answer in `agent/session_io.go`), leaving their text in the input box.
+  Nothing is sent twice and no tool runs without the model asking, but the
+  prompt that arrives is not the block the user pasted.
+
+That last case is not fixable from inside the program without inferring intent
+from the timing of incoming bytes — there, the same CR is genuinely both
+content and command, and the app does not guess which one the user meant. Three
+options that work regardless of host, in order of preference:
+
+| Option | Why it is terminal-independent |
+|---|---|
+| Run in **Windows Terminal** | implements bracketed paste, truecolor, and the rest of the VT set; it is the default host on Windows 11 |
+| `Ctrl+O` — compose in `$EDITOR` | the editor owns the text; only the finished buffer is read back |
+| `Ctrl+A` — attach as a file | the content travels as an attachment frame, never as keystrokes |
+
+On a host without the markers, pasted text is processed one keystroke at a
+time, so a large block arrives as many key messages: correct, but slower than
+the bracketed path.
 
 ## Multi-Modal Attachments
 

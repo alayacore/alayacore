@@ -59,6 +59,7 @@ const (
 	keyCtrlF = "ctrl+f"
 	keyCtrlG = "ctrl+g"
 	keyCtrlH = "ctrl+h"
+	keyCtrlJ = "ctrl+j"
 	keyCtrlL = "ctrl+l"
 	keyCtrlO = "ctrl+o"
 	keyCtrlP = "ctrl+p"
