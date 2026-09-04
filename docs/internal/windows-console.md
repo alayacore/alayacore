@@ -357,9 +357,12 @@ onto a path no runner can exercise, so these are not academic:
 - **Click-to-select is available while a child owns the terminal.** The mode
   handed to the child is the one `term.MakeRaw` saved, and that predates
   `enterVT`'s QuickEdit clear, so a click during an editor session can enter select
-  mode, which suspends writes to the buffer — including the teardown writes that
-  come later. It takes a deliberate click, and the fix would be to re-apply
-  `inputNoSelectionMode` after `TTY.Restore` on the release path only (the final
-  exit must still give the user's QuickEdit back). Not done here because no report
-  has pinned it as the cause; the delayed-prompt report is fully explained by the
-  abandoned read above.
+  mode, which suspends writes to the buffer. Checked on the machine that reported
+  the original symptoms, and it does not outlive the handoff: the next keypress
+  ends the selection, so vim leaves select mode on `:` and the writes resume well
+  before the teardown reaches anything of ours. The behavior is the host's own and
+  the same one any console program gets, so `inputNoSelectionMode` is deliberately
+  *not* re-applied after `TTY.Restore` on the release path — doing so would take
+  click-to-copy away from the child for no measured gain, and the final exit has to
+  give the user's setting back either way. If a freeze that survives the child ever
+  is reported, that re-application is the one-line change to make.
