@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 type attachmentMode int
@@ -94,12 +95,15 @@ func (aw AttachmentWindow) Open() AttachmentWindow {
 	aw.SelectedIdx = 0
 	aw.selectedPath = ""
 	aw.currentDir, _ = os.Getwd()
-	if aw.currentDir == "/" {
-		aw.FilterInput = aw.FilterInput.WithValue("/")
-	} else {
-		aw.FilterInput = aw.FilterInput.WithValue(aw.currentDir + "/")
-	}
+	aw = aw.withListedDirValue()
 	return aw.loadDir(aw.currentDir)
+}
+
+// withListedDirValue writes the directory being listed into the input, with the
+// separator that opens the segment the user is about to type.
+func (aw AttachmentWindow) withListedDirValue() AttachmentWindow {
+	aw.FilterInput = aw.FilterInput.WithValue(dirValue(aw.currentDir))
+	return aw
 }
 
 func (aw AttachmentWindow) loadDir(dir string) AttachmentWindow {
@@ -287,11 +291,7 @@ func (aw AttachmentWindow) switchToLocal() AttachmentWindow {
 	if saved != "" {
 		aw.FilterInput = aw.FilterInput.WithValue(saved)
 	} else {
-		if aw.currentDir == "/" {
-			aw.FilterInput = aw.FilterInput.WithValue("/")
-		} else {
-			aw.FilterInput = aw.FilterInput.WithValue(aw.currentDir + "/")
-		}
+		aw = aw.withListedDirValue()
 	}
 	aw = aw.updateFiltered()
 	aw.FilterInput = aw.FilterInput.Focus()
@@ -311,14 +311,9 @@ func (aw AttachmentWindow) handleURLEntry() AttachmentWindow {
 }
 
 func (aw AttachmentWindow) autocompleteDir(dirName string) AttachmentWindow {
-	search := aw.FilterInput.Value()
-	switch {
-	case strings.Contains(search, "/"):
-		prefix := search[:strings.LastIndex(search, "/")+1]
-		aw.FilterInput = aw.FilterInput.WithValue(prefix + dirName + "/")
-	default:
-		aw.FilterInput = aw.FilterInput.WithValue(dirName + "/")
-	}
+	// currentDir is the directory on screen, so the chosen entry is appended to
+	// it rather than to whatever partial text is in the box.
+	aw.FilterInput = aw.FilterInput.WithValue(dirValue(filepath.Join(aw.currentDir, dirName)))
 	aw.lastFilterValue = "\x00"
 	return aw.updateFiltered()
 }
@@ -373,30 +368,26 @@ func (aw AttachmentWindow) handleListKeys(key string) AttachmentWindow {
 	return aw
 }
 
+// navigateByPath makes the directory named by the input the one being listed,
+// and returns whatever is left to filter it with. The split is filepath's own,
+// so a Windows path typed with either separator and a POSIX path behave the
+// same way. Text that names no place — and a directory that does not exist —
+// stays a filter term for the listing already on screen.
 func (aw AttachmentWindow) navigateByPath(search string) (AttachmentWindow, string) {
-	var absDir, filter string
-
-	switch {
-	case strings.HasPrefix(search, "/"):
-		if strings.HasSuffix(search, "/") {
-			absDir = search
-			filter = ""
-		} else {
-			absDir = filepath.Dir(search)
-			filter = filepath.Base(search)
-		}
-
-	default:
+	dir, filter := filepath.Split(search)
+	if !isRooted(dir) {
 		return aw, search
 	}
 
-	info, err := os.Stat(absDir)
+	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
 		return aw, search
 	}
 
-	aw.currentDir = absDir
-	aw = aw.loadDir(absDir)
+	// Clean, so currentDir is always in the shape dirValue expects: no trailing
+	// separator unless it is a root, ".." resolved lexically.
+	aw.currentDir = filepath.Clean(dir)
+	aw = aw.loadDir(aw.currentDir)
 	aw.lastFilterValue = "\x00"
 	return aw, filter
 }
@@ -441,58 +432,99 @@ func (aw AttachmentWindow) updateFiltered() AttachmentWindow {
 	return aw
 }
 
-// deletePathSegment deletes the path segment before the cursor, going back to
-// (but not including) the previous '/' separator. If no separator is found,
-// deletes to the beginning.
+// pathSeps are the characters that separate path segments in the picker's
+// input. '/' separates on every platform — Windows accepts it alongside its own
+// '\' — while a backslash counts only where the operating system is the one
+// that produces it, because on Unix it is an ordinary character inside a file
+// name. The platform half is filepath's own constant, so the segmentation here
+// cannot drift from the filepath calls this file also makes.
+const pathSeps = "/" + string(filepath.Separator)
+
+// isPathSep reports whether a byte of a path or a rune of the input's decoded
+// text separates segments. Accepting both keeps one definition of the rule; the
+// conversion is safe in each direction because both separators are ASCII.
+func isPathSep[T byte | rune](c T) bool {
+	return strings.ContainsRune(pathSeps, rune(c))
+}
+
+// isRooted reports whether a path names a place to look, rather than a term to
+// match against the directory already being listed: it begins with a separator
+// ("/usr", and on Windows the "\Users" of the current drive), or carries a
+// volume that a separator follows (`C:\Users`, a UNC `\\server\share`).
 //
-// Examples:
+// This is filepath.IsAbs plus one case: on Windows IsAbs answers false for a
+// path that is rooted on the current drive, and the picker has to accept what
+// os.Stat accepts. It deliberately excludes the drive-relative form ("C:file"),
+// which names no directory this program could list.
+func isRooted(path string) bool {
+	if path == "" {
+		return false
+	}
+	if isPathSep(path[0]) {
+		return true
+	}
+	vol := filepath.VolumeName(path)
+	return len(path) > len(vol) && isPathSep(path[len(vol)])
+}
+
+// dirValue renders a directory as the picker's input value: the directory plus
+// the separator that opens the segment about to be typed. Roots that already
+// carry their own separator — which is what filepath.Clean leaves "/" and `C:\`
+// as — are left alone, so no "//" or `C:\\` is ever put in the box.
+func dirValue(dir string) string {
+	if dir == "" || isPathSep(dir[len(dir)-1]) {
+		return dir
+	}
+	return dir + string(filepath.Separator)
+}
+
+// rootEnd is where the root of value ends, counted in runes: the volume and the
+// separators after it (`C:` → `C:\`), or a leading separator where no volume
+// owns the path. A segment delete never reaches before it, so the box always
+// keeps a directory to list. Text with no root at all — a relative path, which
+// the picker only holds if os.Getwd failed — has an end of 0 and deletes down to
+// its start, as it always did.
+func rootEnd(value string) int {
+	n := len(filepath.VolumeName(value))
+	for n < len(value) && isPathSep(value[n]) {
+		n++
+	}
+	return utf8.RuneCountInString(value[:n])
+}
+
+// deletePathSegment deletes the path segment before the cursor, back to the
+// separator that starts it, and never past the root of the path. The character
+// immediately before the cursor is skipped when looking for that separator, so
+// a trailing separator goes with the segment in front of it:
 //
-//	"/abc/def/"  (cursor at end)  →  "/abc/"
-//	"/abc/def"   (cursor at end)  →  "/abc/"
-//	"/abc/"      (cursor at end)  →  "/"
-//	"abc/def/"   (cursor at end)  →  "abc/"
+//	"/abc/def/"   (cursor at end)  →  "/abc/"
+//	"/abc/def"    (cursor at end)  →  "/abc/"
+//	"/abc/"       (cursor at end)  →  "/"
+//	"abc/def/"    (cursor at end)  →  "abc/"
+//	`C:\abc\def\` (cursor at end)  →  `C:\abc\`    (Windows)
+//	"/"           (cursor at end)  →  "/"          (rootEnd protects the root)
 func (aw AttachmentWindow) deletePathSegment() AttachmentWindow {
 	val := aw.FilterInput.Value()
+	runes := []rune(val)
 	pos := aw.FilterInput.CursorPos()
 
-	if pos <= 0 {
+	// At or before the end of the root there is no segment left to delete.
+	floor := rootEnd(val)
+	if pos <= floor {
 		return aw
 	}
 
-	// Don't delete the root path.
-	if val == "/" {
-		return aw
-	}
-
-	runes := []rune(val)
-	// Find the previous '/' before cursor. We start from pos-2 to skip the
-	// character immediately before the cursor, ensuring we delete the entire
-	// current segment (including the trailing '/' if present).
-	slashIdx := -1
-	for i := pos - 2; i >= 0; i-- {
-		if runes[i] == '/' {
-			slashIdx = i
+	// Delete back to just after the separator that starts the segment; where
+	// the segment begins at the root itself, rootEnd is already that index.
+	deleteFrom := floor
+	for i := pos - 2; i >= floor; i-- {
+		if isPathSep(runes[i]) {
+			deleteFrom = i + 1
 			break
 		}
 	}
 
-	var deleteFrom int
-	if slashIdx >= 0 {
-		// Delete from right after the '/' (keeping the separator).
-		deleteFrom = slashIdx + 1
-	} else {
-		// No '/' found — delete everything before cursor.
-		deleteFrom = 0
-	}
-
-	if deleteFrom >= pos {
-		return aw
-	}
-
-	newRunes := make([]rune, 0, len(runes)-(pos-deleteFrom))
-	newRunes = append(newRunes, runes[:deleteFrom]...)
-	newRunes = append(newRunes, runes[pos:]...)
-	aw.FilterInput = aw.FilterInput.WithValue(string(newRunes))
+	aw.FilterInput = aw.FilterInput.WithValue(string(runes[:deleteFrom]) + string(runes[pos:]))
 	aw.FilterInput = aw.FilterInput.WithCursorPos(deleteFrom)
 	return aw
 }

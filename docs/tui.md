@@ -200,7 +200,9 @@ Press `Ctrl+A` to open and toggle the attachment picker overlay. Two modes are a
 
 **Local Mode** (default):
 Browse and select local files via a file browser with fuzzy search.
-The input field shows the current directory path (with trailing `/`).
+The input field shows the directory being listed, ending in the separator that
+opens the segment being typed — `/` on Unix, `\` on Windows, where either
+separator is accepted when read.
 Type a path fragment to filter files, or type a new absolute path to navigate.
 
 | Key | Action |
@@ -209,7 +211,7 @@ Type a path fragment to filter files, or type a new absolute path to navigate.
 | `j`, `↓` | Move selection down |
 | `k`, `↑` | Move selection up |
 | `Backspace` | Delete one character, as in every other box |
-| `Ctrl+W` | Delete the last path segment (`/abc/def/` → `/abc/`); the root survives |
+| `Ctrl+W` | Delete the last path segment (`/abc/def/` → `/abc/`, `C:\a\b\` → `C:\a\`); the root survives |
 | `Enter` on dir | Append directory name to path input |
 | `Enter` on file | Add file as attachment and close |
 | `Ctrl+A` | Switch to URL mode |
