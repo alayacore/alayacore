@@ -11,7 +11,7 @@ import (
 // call starts, the lifecycle every call goes through, and the leaves that execute
 // a tool and turn its output into a history part. Nothing here assembles a step
 // or reads a stream — that is agent.go, and the seam between the two files is the
-// three-symbol interface below.
+// newToolRunner and the two methods it returns.
 //
 // A step's tool calls are run by one of two drivers, behind this interface.
 // streamEvents never asks which one it was given: it hands each completed call to
@@ -129,8 +129,9 @@ func (r *serialToolRunner) finish(ctx context.Context) ([]ContentPart, error) {
 }
 
 // parallelToolRunner launches one goroutine per call the moment its arguments
-// complete, so calls overlap each other and the rest of the stream, then gathers
-// their results in the order they happened to arrive.
+// complete, so calls overlap each other — and, where a provider closes a tool
+// block mid-stream, the calls still streaming behind it. Results are gathered in
+// whatever order they happen to arrive.
 //
 // The step's history order does not depend on that arrival order:
 // attachToolResults re-pairs every result with its call by ID, in the sequence the
@@ -178,11 +179,16 @@ func (r *parallelToolRunner) finish(ctx context.Context) ([]ContentPart, error) 
 //
 // What a driver runs: the life of one call, then the leaves.
 //
-// These four are here rather than in agent.go because nothing outside this file
-// calls them — the drivers call runToolCall and sendToolResult, runToolCall calls
-// executeTool and newToolOutput, and executeTool calls newToolOutput. That closes
-// the group: moving one of them without the others would split the chain instead
-// of gathering it.
+// These four are here rather than in agent.go because no production code outside
+// this file calls any of them: the drivers reach runToolCall and sendToolResult,
+// runToolCall reaches executeTool and newToolOutput, and executeTool reaches
+// newToolOutput. That closes the group, which is why moving one without the
+// others would split the chain rather than gather it.
+//
+// Tests are the exception, and a deliberate one: agent_streaming_tool_test.go
+// drives executeTool and runToolCall directly, because the streaming-variant
+// dispatch and the unknown-tool path are cheaper to pin at that boundary than by
+// composing a whole stream.
 // ────────────────────────────────────────────────────────────────────────────
 
 // runToolCall is the whole life of one tool call: ask for confirmation when the

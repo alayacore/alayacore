@@ -98,10 +98,11 @@ request body says the opposite word from the config line. That inversion happens
 exactly once, in the OpenAI provider, and nowhere else.
 
 The request field is sent on **every** request that carries tools — never
-omitted, so a server is never left holding the mode by its own default. That
-matters because these defaults differ between deployments: some OpenAI-compatible
-servers ship parallel calling off, others on, and an unstated field looks
-identical from the client either way.
+omitted. What default a given endpoint would have applied is not something
+alayacore can observe — an unstated field and an explicit `true` arrive as the
+same request from here — so relying on it would let a server-side setting nobody
+can read decide which mode this client is in. Stating it makes the request say
+what the client is doing.
 
 The field exists only in OpenAI Chat Completions. `protocol_type: "anthropic"`
 endpoints have no equivalent, and nothing is invented onto that wire — but the

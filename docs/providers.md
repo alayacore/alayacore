@@ -239,10 +239,10 @@ After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`
 `model.conf`'s `serial_tool_calls` reaches the request body of a Chat
 Completions endpoint as `parallel_tool_calls`, and it is sent on **every request
 that carries tools** — there is no configuration that leaves it out. A default is
-not a sufficient answer here: these servers disagree about their own defaults
-(some OpenAI-compatible endpoints ship parallel calling off), so an omitted field
-means different things on different deployments, and the client cannot tell which
-one it got.
+not a sufficient answer here: whatever default a deployment holds is invisible
+from the client — an omitted field and an explicit `true` arrive as the same
+request — so leaving it out would let a server-side setting nobody can read decide
+the mode.
 
 The two names run in opposite directions, which is a trap worth stating plainly:
 `serial_tool_calls: true` is the same request as `"parallel_tool_calls": false`.
@@ -251,12 +251,12 @@ has always had (an omitted key is `false` in this format); the request keeps
 Chat Completions' own positive name. `providers/openai.go` holds the one
 `!`, and no other layer may have one.
 
-That is safe to do because unknown top-level fields are not dangerous on this
-protocol — see the note under "Common shapes" below, measured against this repo's
-own suite of fake servers.
+Sending it is safe on this protocol because unknown top-level fields are recorded
+here as passing unnoticed — see the note under "Common shapes" below, the same
+property the `reasoning_*` escape hatch already relies on.
 
-Anthropic's Messages API has no such field, so nothing is invented onto that
-wire: a strict endpoint would be right to refuse a parameter it does not define.
+Anthropic's Messages API defines no such field, so nothing is sent there: doing
+so would be alayacore inventing a parameter that protocol has no meaning for.
 The setting still reaches an Anthropic model, because the half of it that matters
 most — running the calls one at a time in the order the model made them — lives
 in `llm.Agent`, not in the protocol. See

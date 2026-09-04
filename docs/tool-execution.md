@@ -8,12 +8,18 @@ in when calls start.
 
 | Mode | Selected by | Calls run |
 |---|---|---|
-| **Concurrent** (default) | `serial_tool_calls` omitted or `false` | Each starts as soon as its arguments finish streaming, overlapping with calls still streaming |
+| **Concurrent** (default) | `serial_tool_calls` omitted or `false` | Each starts as soon as its arguments complete, so calls overlap |
 | **Serial** | `serial_tool_calls: true` | One at a time, in the order the model made them, after the stream has ended |
 
 Serial mode exists because a great many models and servers have no notion of
 parallel tool calls: their side effects have to land in the sequence the model
 asked for, and two of them must never be writing files at the same time.
+
+Whether a call can start while later calls are still streaming is the provider's
+doing, not the mode's: Anthropic closes a tool block mid-message, so there the
+overlap includes the stream; OpenAI delivers every closure together after its
+stream ends, so there the overlap is only between tools (see
+[providers.md](providers.md#complete-event-order)).
 
 ## One Lifecycle, Two Drivers
 

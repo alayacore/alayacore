@@ -170,11 +170,16 @@ type StreamResult struct {
 // Stream executes the agent with streaming callbacks.
 //
 // Tools run in one of two modes, chosen by AgentConfig.SerialToolCalls:
-//   - parallel (default): confirmed and executed as soon as their arguments
-//     finish streaming (on ToolInputCompleteEvent), overlapping with other
-//     tools still being streamed;
-//   - serial: queued as they complete and then run one at a time, in the
-//     order the model made them, after the stream has ended.
+//   - parallel (default): each is confirmed and executed as soon as its
+//     arguments complete (on ToolInputCompleteEvent), so calls overlap;
+//   - serial: queued as they complete, then run one at a time, in the order
+//     the model made them, after the stream has ended.
+//
+// Whether a call can start while later calls are still streaming is decided by
+// the provider, not here: Anthropic closes a tool block mid-message, while OpenAI
+// delivers every closure together after its stream ends — so on OpenAI the
+// overlap is between the tools, not between a tool and the stream. See
+// docs/providers.md → "Complete-event order".
 func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks StreamCallbacks) (*StreamResult, error) {
 	allContents := make([]ContentPart, len(contents))
 	copy(allContents, contents)
@@ -510,8 +515,9 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 // saw. It takes from the same counter as the streamed blocks, so the two kinds
 // stay in one sequence with no gap and no collision.
 //
-// Both drivers call it at the same moment — when the call's arguments complete —
-// so switching modes cannot renumber a conversation.
+// streamEvents calls it once per completed call, before handing that call to any
+// driver, so numbering follows arrival and switching modes cannot renumber a
+// conversation.
 func genHistoryID(callbacks StreamCallbacks) uint64 {
 	if callbacks.IDGen != nil {
 		return callbacks.IDGen()

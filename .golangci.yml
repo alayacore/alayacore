@@ -60,6 +60,12 @@ linters-settings:
   errcheck:
     check-type-assertions: true
     check-blank: false
+    # issues.exclude-use-default is left at its default (true), and golangci-lint's
+    # built-in EXC0001 exclusion swallows a set of errcheck reports with it —
+    # unchecked Close and os.Remove among them. So a quiet errcheck is not evidence
+    # the code is clean, and not evidence the linter is off either: a bare
+    # f.Close() in a non-test file reports nothing as configured here, and reports
+    # itself as soon as the run adds --exclude-use-default=false.
 
   govet:
     enable-all: true
@@ -80,13 +86,26 @@ linters-settings:
     locale: US
 
   nolintlint:
-    # A directive that suppresses nothing is a claim about code that has since
-    # changed; it should be deleted, not kept. Named and explained, because
-    # "//nolint" without either is unreadable a month later and silently covers
-    # every linter that exists.
-    allow-unused: false
+    # Two syntactic rules, reliable and worth having: a directive must name the
+    # linter it silences and say why. A bare "//nolint" does neither, covers every
+    # linter that exists, and reads as a decision nobody recorded.
     require-explanation: true
     require-specific: true
+
+    # Reporting unused directives is switched off explicitly, not by omission:
+    # golangci-lint v1.64 does this by default, and with it on the same tree
+    # flipped between 0 and 2 findings depending on cache state — a check that
+    # cannot gate a build. It was also wrong both times it fired. Measured by
+    # stripping every directive in a scratch worktree and running cold: 70 issues
+    # surfaced, and output.go's and styles.go's nolint:revive lines were among
+    # them, as unexported-return reports at exactly those positions. Live
+    # directives, called dead.
+    #
+    # So finding a genuinely stale directive is a manual procedure, and a cheap
+    # one: that same scratch worktree, cold run, then diff the surviving reports
+    # against the directive list — lines that report nothing once unguarded are
+    # the stale ones. That is how the nine deleted in this history were confirmed.
+    allow-unused: true
   revive:
     rules:
       - name: blank-imports
