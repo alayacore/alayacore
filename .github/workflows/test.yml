@@ -90,16 +90,24 @@ jobs:
       # reasons that have nothing to do with the console. Widening it means
       # making each of those tests say what it actually requires, which is its
       # own change.
-      #
-      # Lint is not run here either: `GOOS=windows golangci-lint run` reports one
-      # pre-existing finding, Program.inputPaused, which only the Unix input loop
-      # reads (exec_windows.go parks input by doing nothing). It is real, it is
-      # not a bug, and moving that state behind the build tag is a separate
-      # change to the suspend path — not something to paper over with an
-      # exemption in a config file that already carries its exemptions one
-      # justified nolint at a time.
       - name: Test the terminal adapter
         run: go test ./internal/adapters/terminal/...
+
+      # Lint here too, for the same package the job tests. It used to be left
+      # out because `GOOS=windows golangci-lint run ./...` reported one finding
+      # the Linux run could not see — Program.inputPaused, read only by the Unix
+      # input loop — and that went away when parking the loop became shared code
+      # (program_input.go). Scope is the adapter rather than ./... because
+      # internal/tools/shell/terminate_windows.go carries findings of its own
+      # (unchecked CloseHandle, a tainted taskkill argument), which are that
+      # file's change to make and not the console's.
+      - name: Lint the terminal adapter (GOOS=windows)
+        env:
+          GOOS: windows
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          args: ./internal/adapters/terminal/...
 
   cross-compile:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}${{ matrix.goarm && format('v{0}', matrix.goarm) || '' }}
