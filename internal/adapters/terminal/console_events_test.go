@@ -198,6 +198,9 @@ func TestEncoderSequences(t *testing.T) {
 		// input field binds as "backspace".
 		{"backspace", keyEvent{down: true, virtualKey: vkBack, char: 0x08}, "\x7f"},
 		{"alt+backspace", keyEvent{down: true, virtualKey: vkBack, char: 0x08, ctrlState: ctrlLeftAlt}, "\x1b\x7f"},
+		// The attachment picker binds Ctrl+W to "delete one path segment", so the
+		// control byte it arrives as is part of the contract.
+		{"ctrl+w", keyEvent{down: true, virtualKey: 'W', char: 0x17, ctrlState: ctrlLeftCtrl}, "\x17"},
 	}
 
 	for _, tt := range tests {
@@ -473,7 +476,7 @@ func TestEncodedBracketedPasteSurvivesTheParser(t *testing.T) {
 func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
 	bound := []string{
 		keyCtrlA, keyCtrlC, keyCtrlD, keyCtrlF, keyCtrlG, keyCtrlH, keyCtrlJ,
-		keyCtrlL, keyCtrlO, keyCtrlP, keyCtrlR, keyCtrlS, keyCtrlU, keyCtrlZ,
+		keyCtrlL, keyCtrlO, keyCtrlP, keyCtrlR, keyCtrlS, keyCtrlU, keyCtrlW, keyCtrlZ,
 	}
 	if len(bound) == 0 {
 		t.Fatal("no ctrl chords to check")

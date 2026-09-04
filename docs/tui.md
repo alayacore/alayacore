@@ -208,7 +208,8 @@ Type a path fragment to filter files, or type a new absolute path to navigate.
 | `Tab` | Toggle focus between path input and file list |
 | `j`, `↓` | Move selection down |
 | `k`, `↑` | Move selection up |
-| `Backspace` | Delete last path segment (e.g. `/abc/def/` → `/abc/`) |
+| `Backspace` | Delete one character, as in every other box |
+| `Ctrl+W` | Delete the last path segment (`/abc/def/` → `/abc/`); the root survives |
 | `Enter` on dir | Append directory name to path input |
 | `Enter` on file | Add file as attachment and close |
 | `Ctrl+A` | Switch to URL mode |
@@ -222,6 +223,18 @@ Enter a remote URL to attach as an attachment.
 | `Enter` | Add the URL as attachment and close |
 | `Ctrl+A` | Switch to local mode |
 | `Esc` | Close picker without adding |
+
+`Ctrl+W` — not a modified Backspace — carries the segment delete, because a
+control byte is the only kind of chord that reliably reaches a program:
+`Shift+Backspace` *is* a plain Backspace on most terminals, `Ctrl+Backspace`
+arrives as `Ctrl+H` (which opens the help window here), and the encodings that
+could tell them apart — the kitty keyboard protocol's `ESC [ 127 ; 2 u`, xterm's
+`modifyOtherKeys` — are the ones [documented
+below](#why-shiftenter-is-not-the-line-break) as not read by `key_parser.go`.
+Alt-prefixed keys would survive the trip, and this program binds none. `Ctrl+W`
+is what readline uses to kill the word before the cursor, and in a path box the
+word is the segment. It is bound in this picker only; the prompt's own `Ctrl+W`
+does nothing.
 
 The path input is a bare input like every other overlay filter — no prompt prefix (the old `F`/`U` markers were removed). The current mode is discoverable from the help bar (`ctrl+a: switch to URL` / `switch to local`). File list rows render flush left, no `> ` marker; the selection is highlighted by the text color.
 

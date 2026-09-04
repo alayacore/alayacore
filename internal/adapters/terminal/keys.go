@@ -66,6 +66,7 @@ const (
 	keyCtrlR = "ctrl+r"
 	keyCtrlS = "ctrl+s"
 	keyCtrlU = "ctrl+u"
+	keyCtrlW = "ctrl+w"
 	keyCtrlZ = "ctrl+z"
 
 	// Command names (used with ":" prefix in input). cmdCancel is the

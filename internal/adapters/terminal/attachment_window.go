@@ -176,9 +176,16 @@ func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
 		return aw.toggleMode(), nil
 	}
 
-	// Backspace segment deletion: in local mode when filter input is focused,
-	// delete back to the previous path separator instead of a single character.
-	if key == "backspace" && aw.mode == modeLocal && aw.FilterInputFocused {
+	// Ctrl+W deletes a whole path segment; plain Backspace stays the
+	// single-character delete every other box has. A control byte is what the
+	// chord has to be: shift+backspace is a plain backspace on most terminals,
+	// ctrl+backspace arrives as ctrl+h (the help window), and the CSI-u forms
+	// that could carry either are ones key_parser.go does not read — see
+	// docs/tui.md, "Why Shift+Enter is not the line break". This program binds
+	// no Alt chords, so ESC-prefixed keys are not an option either. Local mode
+	// only, and only while the path input has focus: URL text and the list
+	// itself take the normal keys.
+	if key == keyCtrlW && aw.mode == modeLocal && aw.FilterInputFocused {
 		aw = aw.deletePathSegment()
 		aw = aw.updateFiltered()
 		return aw, nil
@@ -522,7 +529,7 @@ func (aw AttachmentWindow) render() string {
 	case aw.mode == modeURL:
 		help = "  enter: add URL | ctrl+a: switch to local | esc: close"
 	case aw.FilterInputFocused:
-		help = "  tab: list | enter: select dir | ctrl+a: switch to URL | esc: close"
+		help = "  tab: list | enter: pick | ctrl+w: up a level | ctrl+a: url"
 	default:
 		help = "  tab: search | j/k: navigate | enter: add file | enter on dir: browse | ctrl+a: switch to URL | esc: close"
 	}

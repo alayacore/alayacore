@@ -318,7 +318,7 @@ onto a path no runner can exercise, so these are not academic:
       translated characters as their own key events, an arrow would arrive as this
       program's sequence *plus* a stray `ESC [ A` of characters, and it would be
       obvious in the first second of typing.
-- [ ] The chords the application binds: Ctrl+A/C/D/G/H/J/L/O/P/R/S/U, F1, and
+- [ ] The chords the application binds: Ctrl+A/C/D/G/H/J/L/O/P/R/S/U/W, F1, and
       Ctrl+J versus Enter (the line-break split, which Ctrl+Enter should also
       reach as a line break).
 - [ ] Function keys — F1 is the one the help window is bound to, and the SS3/CSI
