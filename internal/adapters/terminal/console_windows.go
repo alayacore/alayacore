@@ -77,10 +77,10 @@ func enterVT(inFd, outFd uintptr) (vtState, error) {
 	outHandle := windows.Handle(outFd)
 	var prev uint32
 	if err := windows.GetConsoleMode(outHandle, &prev); err != nil {
-		return st, fmt.Errorf("console: cannot read the output mode (%w); this stream is not a console the interface can draw on", err)
+		return st, fmt.Errorf("this stream is not a console window the interface can draw on (%w)", err)
 	}
 	if err := windows.SetConsoleMode(outHandle, outputVTMode(prev)); err != nil {
-		return st, fmt.Errorf("console: cannot enable ANSI sequence processing (%w); run in Windows Terminal, or start a plain-text session with --plainio", err)
+		return st, fmt.Errorf("this console will not accept ANSI sequence processing (%w); run in Windows Terminal, or start a plain-text session with --plainio", err)
 	}
 	st.out, st.saved = prev, true
 
