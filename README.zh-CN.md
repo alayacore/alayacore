@@ -69,7 +69,7 @@ echo "what is 2+2?" | alayacore --terseio
 
 - 🤖 **自主工具调用循环** — LLM 规划、调用工具并迭代，直到任务完成（默认无步骤限制，可通过 `--max-steps` 可选设限）。
 - 🛠️ **五种内置工具** — `read_file`、`edit_file`、`write_file`、`execute_command`、`search_content`。通过 `--builtin-tools` 控制（默认全部启用）。
-- 🌐 **跨平台** — 支持 Linux、macOS 和 Windows。`execute_command` 工具可自动检测 shell（Unix 上为 bash/zsh/sh，Windows 上为 PowerShell/cmd）。
+- 🌐 **跨平台** — 支持 Linux、macOS 和 Windows。`execute_command` 工具可自动检测 shell（Unix 上为 bash/zsh/sh，Windows 上为 PowerShell/cmd）。TUI 通过 ANSI 转义序列渲染；在 Windows 上程序会主动向控制台申请启用该能力，因此 Windows Terminal 与 Windows 10+ 的 `cmd`/PowerShell 均可运行，行为差异见[文档](docs/tui.md#windows-consoles)。
 - 🧠 **支持任何 LLM 提供商** — OpenAI、Anthropic、DeepSeek、Qwen、Ollama、LM Studio。一个配置文件支持多个模型，运行时可切换。
 - 🔗 **MCP 支持** — 通过 `mcp.conf` 连接外部 [Model Context Protocol](https://modelcontextprotocol.io) 服务器，扩展数据库查询、API 访问、代码分析等能力。
 - 💾 **会话持久化** — 使用 `--session` 时自动保存和恢复对话；随时 `:save`（任务进行中也行）都会快照所有已完成的步骤。
@@ -101,6 +101,7 @@ echo "what is 2+2?" | alayacore --terseio
 ## 系统要求
 
 - **操作系统**：Linux、macOS 或 Windows
+- **终端**：TUI 依赖 ANSI 转义序列。Windows 上，Windows Terminal（Windows 11 的默认终端）为完整支持；传统控制台宿主同样可用——程序会自行启用序列处理——但它实现的能力更少，见 [Windows 控制台](docs/tui.md#windows-consoles)。完全无法使用该能力时，可改用纯文本适配器（`--plainio`、`--terseio`、`--rawio`）。
 - **注意**：`search_content` 工具需要系统中安装 [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`)。
 
 ## 从源码构建
