@@ -108,6 +108,19 @@ func (p *Program) releaseTerminal() error {
 // loop, forces a full repaint, re-checks the terminal size (it may have
 // changed while another process was at the foreground), and propagates the
 // new size to the model.
+//
+// The re-entry is not a formality: a child that owned the console (an editor)
+// may have left it in a state we do not want — Windows in particular, where a
+// child restores the console mode to whatever it found on entry, which does not
+// include the ANSI processing screen.go writes against. TTY.MakeRaw is what
+// negotiates it again (console_windows.go).
+//
+// Unlike the same failure in Run, an error here is returned rather than fatal:
+// the session holds work the user has not lost yet, and the one caller
+// (editor.go → ExecProcess) surfaces it through EditorFinishedMsg. Rendering
+// then continues without raw/alt mode, so frames land on the main screen —
+// degraded and reported, which is the lesser harm next to discarding the
+// conversation or dying silently.
 func (p *Program) acquireTerminal() error {
 	if err := p.tty.MakeRaw(); err != nil {
 		return err
