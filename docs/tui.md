@@ -111,7 +111,19 @@ application asks, so AlayaCore asks on entry
 | Sets `DISABLE_NEWLINE_AUTO_RETURN` | the renderer emits `\r\n` and expects a bare LF to move down without returning to column 0, as on every other terminal |
 | Clears `ENABLE_QUICK_EDIT_MODE` (with `ENABLE_EXTENDED_FLAGS`) | QuickEdit is on by default in `cmd` and PowerShell, and a single click inside the window enters select mode, which suspends the program's writes: the UI freezes mid-frame |
 | Puts all of it back on exit | the shell keeps using that screen buffer; leaving `DISABLE_NEWLINE_AUTO_RETURN` set would corrupt *its* output afterwards |
+| Reads the console as *events* and turns them into the byte sequences a terminal sends (`console_events.go`) | a byte read on a console handle waits for a whole line in cooked mode and cannot reliably be cancelled, so it is the one thing that must not be pending while a child owns the keyboard — see [the editor handoff](internal/windows-console.md#what-the-two-reports-were) |
 | Saves the cursor before entering the alternate screen, and restores it after leaving (`screen.go` → `Start`/`Stop`) | not Windows-specific, but it is why quitting cannot leave the caret in the middle of the shell's screen. The teardown moves to the last row, erases the screen it is leaving, switches back, then restores — so the shell is never left repainting from "caret mid-screen in an un-erased alternate buffer" |
+
+Because the console reports keys as structured events, the key names this
+application binds are produced by a table in `console_events.go` rather than by the
+console's own VT translation. That table is xterm's vocabulary — the same one
+`key_parser.go` reads from every Unix terminal — so `Ctrl+O`, `shift+up`, `home`,
+`backspace`, and a CJK or emoji commit mean the same thing on both platforms, and
+the agreement is asserted end to end (encoder → parser → key string) in
+`console_events_test.go`, which runs on every platform rather than only on Windows.
+Bracketed paste is unaffected by the change: where a terminal frames clipboard
+content with the two markers, they reach this program as characters, and the
+encoder passes characters through untouched (pinned by the same test file).
 
 Because it is the same `MakeRaw`/`Restore` pair that enters and leaves raw
 mode, re-acquisition (returning from `$EDITOR`, `Ctrl+O`) re-negotiates the

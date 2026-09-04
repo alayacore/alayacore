@@ -13,16 +13,13 @@ package terminal
 //  2. The cursor restore is last. Nothing may be written to this stream after
 //     it — the next byte belongs to the shell.
 //
-// Why it changed: quitting on Windows left the caret alone on an empty line,
-// with the shell's prompt present in the buffer but not painted — one Enter,
-// and the prompt appeared above the new line. The state the host had to
-// repaint *from* was "caret parked mid-screen in an un-erased alternate buffer,
-// then an implicit cursor jump by ?1049l alone". Bubble Tea's renderer did not
-// leave that state (move, flush, erase, switch, restore —
-// third_party/bubbletea/cursed_renderer.go, deleted in 4edb5a85), and the
-// sequence below matches it. Whether every step is needed on every host is a
-// real-machine question; that is why they are ordered and named instead of
-// merged, so a step can be dropped on evidence.
+// Status: written while chasing the delayed-prompt report on Windows, and that
+// report is NOT cured by this sequence — the prompt was waiting on an abandoned
+// console read, which is what docs/internal/windows-console.md → "What the two
+// reports were" now explains. The ordering still earns its keep on its own terms:
+// property 1 is the difference between clearing our screen and clearing the user's,
+// and property 2 is the guarantee that nothing of ours lands after the shell's
+// first byte. Nothing here should be read as the test of an explained cause.
 
 import (
 	"bytes"

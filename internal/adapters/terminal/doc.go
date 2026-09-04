@@ -38,7 +38,12 @@
 //   - tui_focus.go: Focus management (input/display switching, blur/focus)
 //   - tui_status.go: Status bar rendering (tokens, steps, switches)
 //   - keybinds.go: Declarative key binding configuration
+//   - program_input.go: The input loop and the parking protocol that hands the
+//     keyboard to a foreground child (per-platform sources:
+//     program_input_unix.go, program_input_windows.go)
 //   - key_parser.go: Byte-stream → key message parser (VT100/SS3/URxvt)
+//   - console_events.go: Windows console input events → the same byte stream
+//     (built for every platform so the mapping is testable without a console)
 //   - program.go: Self-built event loop (Update/Cmd/Msg dispatch, timers)
 //   - screen.go: Alt screen, cursor, and raw passthrough renderer with
 //     soft-wrap-aware row diffing
@@ -60,7 +65,8 @@
 //   - confirm_dialog.go: Confirmation dialogs (quit, cancel, tool, MCP auth, MCP init)
 //   - attachment_window.go: File/URL attachment picker
 //   - tool_render.go, tool_handler.go: Tool execution display
-//   - exec.go, editor.go: External editor / process handoff
+//   - exec.go: External process execution and terminal suspension (module 5)
+//   - editor.go: External editor support ($EDITOR handoff)
 //   - session_state.go: Session status/model/queue snapshot state
 //   - term_io.go: Raw-mode terminal I/O
 //

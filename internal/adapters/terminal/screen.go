@@ -95,17 +95,18 @@ func (s *Screen) Start() error {
 //  3. Leave the alt screen, then restore the saved cursor position explicitly.
 //
 // The last step is the reason the position is saved in Start rather than
-// relying on ?1049h/?1049l to carry it. Reported symptom that prompted this
-// (Windows, and not on Linux): after quitting, the shell's prompt was in the
-// buffer but not on screen — the caret sat alone on an empty line, and one
-// Enter made the prompt appear above it. That is a repaint the host did not
-// perform, and the state it had to repaint *from* was "caret parked mid-screen
-// in an un-erased alternate buffer, then an implicit cursor jump". Matching the
-// sequence Bubble Tea used for these hosts (move, flush, erase, switch,
-// restore — third_party/bubbletea/cursed_renderer.go → flush/exitAltScreen,
-// deleted in 4edb5a85) is the known-good baseline; whether it is each of these
-// steps or only some of them that matters on which host is a real-machine
-// question, so they are ordered and labeled rather than fused into one blob.
+// relying on ?1049h/?1049l to carry it: the switch is the only place in this
+// program that depends on state it did not itself save.
+//
+// This is the sequence Bubble Tea used for these hosts (move, flush, erase,
+// switch, restore — third_party/bubbletea/cursed_renderer.go →
+// flush/exitAltScreen, deleted in 4edb5a85). It was written while chasing the
+// delayed-prompt report on Windows, and it was not that report's fix: the prompt
+// was waiting on an abandoned console read, not on these bytes
+// (docs/internal/windows-console.md → "What the two reports were"). What this
+// ordering does, unconditionally, is hand back a screen whose caret position and
+// contents are set by this program rather than inferred by the host from a buffer
+// switch — which is the part a renderer can be responsible for.
 //
 // Nothing is written after the restore: the next byte on this stream belongs
 // to the shell.

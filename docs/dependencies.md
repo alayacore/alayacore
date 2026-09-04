@@ -140,18 +140,26 @@ st, err := term.MakeRaw(int(t.in.Fd()))
 The four calls the TUI cannot work without: `IsTerminal` (decide whether there
 is a terminal to take over), `GetSize` (layout), `MakeRaw`/`Restore` (the
 enter/exit pair around every frame). Note for Windows: its `makeRaw` also sets
-`ENABLE_VIRTUAL_TERMINAL_INPUT` on the input handle — that is why keystrokes
-arrive as the byte sequences `key_parser.go` parses — and it does nothing at all
-to the output handle, which is what `console_windows.go` is for.
+`ENABLE_VIRTUAL_TERMINAL_INPUT` on the input handle, which is what made keystrokes
+arrive as byte sequences when the console was read as a byte stream. It still sets
+it, and `Restore` still clears it, but the program no longer depends on it: the
+console is read as events and the sequences are produced here
+(`console_events.go`). It does nothing at all to the output handle, which is what
+`console_windows.go` is for.
 
 ### `golang.org/x/sys` — Platform Calls Below the Standard Library
 
-Three uses, all of them the reason a plain `os`/`term` call is not enough:
+Four uses, all of them the reason a plain `os`/`term` call is not enough:
 
 - `unix.Poll` — the timeout-bounded input read (`program_input_unix.go`), which
   is what lets the loop notice the pause request while parked.
 - `windows.GetConsoleMode`/`SetConsoleMode` — ANSI sequence processing and the
   QuickEdit clear (`console_windows.go`).
+- `windows.GetNumberOfConsoleInputEvents` — the count of events already queued,
+  which is what lets the Windows input read return in bounded time
+  (`program_input_windows.go`). `ReadConsoleInputW` has no binding in the package,
+  so that one call goes through `windows.NewLazySystemDLL`, the route the package
+  takes internally.
 - Windows job objects — `CreateJobObjectW`/`AssignProcessToJobObject`/
   `TerminateJobObject` through a `kernel32` lazy DLL, with `taskkill` as the
   fallback, to kill a tool's whole process tree
