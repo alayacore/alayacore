@@ -18,9 +18,9 @@ func TestProgramExecProcessHelper(t *testing.T) {
 	}
 	_, _ = os.Stderr.WriteString("helper-ran")
 	if os.Getenv("GO_WANT_HELPER_FAIL") == "1" {
-		os.Exit(1) //nolint:revive // intentional: helper process exit
+		os.Exit(1)
 	}
-	os.Exit(0) //nolint:revive // intentional: helper process exit
+	os.Exit(0)
 }
 
 // execTrigger asks the model to run an exec.Cmd via ExecProcess.

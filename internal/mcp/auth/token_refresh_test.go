@@ -75,7 +75,7 @@ func TestPersistentTokenProvider_Refresh(t *testing.T) {
 	if loaded == nil {
 		t.Fatal("token not persisted")
 	}
-	if loaded.AccessToken != "refreshed-access-token" { //nolint:staticcheck // checked nil above
+	if loaded.AccessToken != "refreshed-access-token" {
 		t.Errorf("persisted AccessToken = %q", loaded.AccessToken)
 	}
 }

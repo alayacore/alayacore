@@ -239,7 +239,7 @@ func TestEditorCreateTempFileContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(name) //nolint:errcheck // cleanup-only
+	defer os.Remove(name)
 
 	data, err := os.ReadFile(name)
 	if err != nil {

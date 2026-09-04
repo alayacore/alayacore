@@ -43,6 +43,7 @@ linters:
     - gosec          # Security checker
     - misspell       # Check spelling
     - nakedret       # Check for naked returns
+    - nolintlint     # Keep every //nolint named, explained, and still needed
     - noctx          # Check for HTTP requests without context
     - prealloc       # Check for preallocation suggestions
     - revive         # Fast, configurable, extensible linter
@@ -78,10 +79,14 @@ linters-settings:
   misspell:
     locale: US
 
-  # nolintlint is deliberately NOT enabled yet: with allow-unused:false it reports
-  # 9 directives across the terminal adapter, internal/tools and mcp auth tests
-  # that suppress nothing today. Those need deleting on their own, not smuggled in
-  # beside a context change; until then an unenforced //nolint stays unflagged.
+  nolintlint:
+    # A directive that suppresses nothing is a claim about code that has since
+    # changed; it should be deleted, not kept. Named and explained, because
+    # "//nolint" without either is unreadable a month later and silently covers
+    # every linter that exists.
+    allow-unused: false
+    require-explanation: true
+    require-specific: true
   revive:
     rules:
       - name: blank-imports

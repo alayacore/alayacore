@@ -37,7 +37,7 @@ func TestFileTokenStore_SaveAndLoad(t *testing.T) {
 	if loaded == nil {
 		t.Fatal("LoadToken() returned nil")
 	}
-	if loaded.AccessToken != token.AccessToken { //nolint:staticcheck // checked nil above
+	if loaded.AccessToken != token.AccessToken {
 		t.Errorf("AccessToken = %q, want %q", loaded.AccessToken, token.AccessToken)
 	}
 	if loaded.RefreshToken != token.RefreshToken {

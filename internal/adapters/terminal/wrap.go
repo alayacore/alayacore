@@ -44,7 +44,7 @@ func Wrap(s string, width int, breakpoints string) string {
 	var buf bytes.Buffer
 	s = ansi.Wrap(s, width, breakpoints)
 	w := NewWrapWriter(&buf)
-	defer w.Close() //nolint:errcheck // Close only flushes the style reset; errors are impossible for a bytes.Buffer
+	defer w.Close()
 	_, _ = io.WriteString(w, s)
 	return buf.String()
 }

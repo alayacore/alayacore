@@ -17,8 +17,8 @@ func TestProgramInputParksWhileSuspended(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pr.Close() //nolint:errcheck // cleanup-only close on a pipe
-	defer pw.Close() //nolint:errcheck // cleanup-only close on a pipe
+	defer pr.Close()
+	defer pw.Close()
 
 	p := &Program{
 		tty:      &TTY{in: pr, out: pr},

@@ -109,7 +109,6 @@ func runSearch(ctx context.Context, args SearchContentInput, stdout, stderr io.W
 		defer cancel()
 	}
 
-	//nolint:gosec // G204: args are from user input, rg is a trusted binary
 	cmd := exec.CommandContext(timeoutCtx, ripgrepBinary, rgArgs...)
 	cmd.Dir = cwd
 	cmd.Stdout = stdout
