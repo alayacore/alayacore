@@ -35,6 +35,14 @@ AlayaCore runs on Linux, macOS, and Windows. The `execute_command` tool automati
 | **Linux / macOS** | bash → zsh → sh |
 | **Windows** | pwsh → powershell → cmd |
 
+The interface itself depends on the terminal, not the OS: it writes ANSI
+sequences, which every modern emulator renders. On Windows the app enables
+sequence processing on the console when it starts, so `cmd.exe` and PowerShell
+work as well as Windows Terminal — with two documented exceptions (multi-line
+paste, cursor shape) in [Windows Consoles](tui.md#windows-consoles). Where the
+terminal cannot be used at all, run a plain-text adapter (`--plainio`,
+`--terseio`, `--rawio`).
+
 The tool description is dynamically adapted so the LLM knows which shell syntax to use. You can override the detection with the `ALAYACORE_SHELL` environment variable:
 
 ```sh

@@ -16,9 +16,9 @@ external editor then takes over the terminal (blocking).
 
 ### 2. Editor runs — SIGWINCH may be missed
 
-While the editor has control of the terminal, the TUI runtime's
-resize-listener goroutine is still running and listening for `SIGWINCH`.
-However, as the `RestoreTerminal()` comment in the upstream code explains:
+On Unix, the resize-listener goroutine (`watchSignals`) is still running and
+listening for `SIGWINCH` while the editor owns the terminal. However, as the
+`RestoreTerminal()` comment in the upstream code explains:
 
 ```go
 // If the output is a terminal, it may have been resized while another
@@ -26,6 +26,12 @@ However, as the `RestoreTerminal()` comment in the upstream code explains:
 // SIGWINCH. Detect any size change now and propagate the new size as
 // needed.
 ```
+
+On Windows there is no `SIGWINCH` to miss — `signals_windows.go` registers only
+`SIGINT`/`SIGTERM`, and `resizeSignal()` returns `nil` — so this step is the
+*only* resize information the program has while a child is in the foreground,
+and the query below is load-bearing rather than belt-and-braces. With no child
+running, size changes come from `Program.refreshSize` on the model tick.
 
 ### 3. Editor exits — terminal is restored — `WindowSizeMsg` is sent
 

@@ -24,8 +24,10 @@ dependency:
   restored)
 - **`key_parser.go`** — byte stream → key messages; streaming escape
   sequence state machine; bracketed paste passthrough; UTF-8
-- **`term_io.go`** — TTY opening (`/dev/tty` fallback), raw mode via
-  `golang.org/x/term`, byte reading
+- **`term_io.go`** — TTY opening (`/dev/tty` fallback, `CONIN$`/`CONOUT$` on
+  Windows), raw mode via `golang.org/x/term`, and the platform's
+  sequence-processing mode via the `enterVT`/`exitVT` hooks in
+  `console_unix.go` / `console_windows.go`
 - **`screen.go`** — alternate screen, cursor management, raw passthrough
   rendering (`ED2` + home + content verbatim + absolute CUP)
 - **`exec.go`** — external editor handoff (`ExecProcess`) and Ctrl-Z
@@ -125,18 +127,35 @@ Per-rune width lookup (O(1) table query, fast). It was the input chain's origina
 
 ## Utility Libraries
 
-### `golang.org/x/term` — Terminal Size Detection
+### `golang.org/x/term` — Terminal Mode, Size, and Raw Mode
 
 ```go
-// adapter.go
+// adapter.go — initial layout
 w, h, err := term.GetSize(int(os.Stdout.Fd()))
+
+// term_io.go — raw mode for the session
+st, err := term.MakeRaw(int(t.in.Fd()))
 ```
 
-Gets terminal dimensions at startup for initial layout.
+The four calls the TUI cannot work without: `IsTerminal` (decide whether there
+is a terminal to take over), `GetSize` (layout), `MakeRaw`/`Restore` (the
+enter/exit pair around every frame). Note for Windows: its `makeRaw` also sets
+`ENABLE_VIRTUAL_TERMINAL_INPUT` on the input handle — that is why keystrokes
+arrive as the byte sequences `key_parser.go` parses — and it does nothing at all
+to the output handle, which is what `console_windows.go` is for.
 
-### `golang.org/x/sys` — System Calls
+### `golang.org/x/sys` — Platform Calls Below the Standard Library
 
-Unix signal handling and terminal mode settings. Required by the TUI runtime (`program.go`).
+Three uses, all of them the reason a plain `os`/`term` call is not enough:
+
+- `unix.Poll` — the timeout-bounded input read (`program_input_unix.go`), which
+  is what lets the loop notice the pause request while parked.
+- `windows.GetConsoleMode`/`SetConsoleMode` — ANSI sequence processing and the
+  QuickEdit clear (`console_windows.go`).
+- Windows job objects — `CreateJobObjectW`/`AssignProcessToJobObject`/
+  `TerminateJobObject` through a `kernel32` lazy DLL, with `taskkill` as the
+  fallback, to kill a tool's whole process tree
+  (`tools/shell/terminate_windows.go`).
 
 ### `golang.org/x/net` — Networking
 

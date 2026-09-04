@@ -69,7 +69,7 @@ echo "what is 2+2?" | alayacore --terseio
 
 - 🤖 **Autonomous tool-calling loop** — The LLM plans, calls tools, and iterates until the task is done (no step limit by default; optionally bounded with `--max-steps`).
 - 🛠️ **Five built-in tools** — `read_file`, `edit_file`, `write_file`, `execute_command`, `search_content`. Controlled via `--builtin-tools` (default: all enabled).
-- 🌐 **Cross-platform** — Runs on Linux, macOS, and Windows. The `execute_command` tool auto-detects the shell (bash/zsh/sh on Unix, PowerShell/cmd on Windows).
+- 🌐 **Cross-platform** — Runs on Linux, macOS, and Windows. The `execute_command` tool auto-detects the shell (bash/zsh/sh on Unix, PowerShell/cmd on Windows). The TUI writes ANSI escape sequences; on Windows the app asks the console to process them, so both Windows Terminal and `cmd`/PowerShell on Windows 10+ work, with [documented differences](docs/tui.md#windows-consoles).
 - 🧠 **Any LLM provider** — OpenAI, Anthropic, DeepSeek, Qwen, Ollama, LM Studio. Multiple models in one config, switch at runtime.
 - 🔗 **MCP support** — Connect to external [Model Context Protocol](https://modelcontextprotocol.io) servers for database queries, API access, code analysis, and more via `mcp.conf`.
 - 💾 **Session persistence** — Save and resume conversations automatically when `--session` is specified; `:save` at any time — even mid-task — snapshots all completed steps.
@@ -101,6 +101,7 @@ echo "what is 2+2?" | alayacore --terseio
 ## System Requirements
 
 - **OS**: Linux, macOS, or Windows
+- **Terminal**: the TUI writes ANSI escape sequences. On Windows, Windows Terminal (the default on 11) is fully supported; the legacy console host works too — the app enables sequence processing itself — but implements less: see [Windows Consoles](docs/tui.md#windows-consoles). Any environment where that is unavailable can run the plain-text adapters instead (`--plainio`, `--terseio`, `--rawio`).
 - **Note**: The `search_content` tool requires [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) to be installed on the system.
 
 ## Building from Source

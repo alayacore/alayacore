@@ -98,6 +98,46 @@ On a host without the markers, pasted text is processed one keystroke at a
 time, so a large block arrives as many key messages: correct, but slower than
 the bracketed path.
 
+## Windows Consoles
+
+The TUI writes ANSI escape sequences, and on Windows that is a negotiated
+capability, not a given: a console screen buffer ignores them until the
+application asks, so AlayaCore asks on entry
+(`console_windows.go` → `enterVT`, from `TTY.MakeRaw`):
+
+| What it does | Why |
+|---|---|
+| Sets `ENABLE_VIRTUAL_TERMINAL_PROCESSING` on the output handle | without it the alternate-screen, cursor-positioning, and color sequences are written to the screen as visible text |
+| Sets `DISABLE_NEWLINE_AUTO_RETURN` | the renderer emits `\r\n` and expects a bare LF to move down without returning to column 0, as on every other terminal |
+| Clears `ENABLE_QUICK_EDIT_MODE` (with `ENABLE_EXTENDED_FLAGS`) | QuickEdit is on by default in `cmd` and PowerShell, and a single click inside the window enters select mode, which suspends the program's writes: the UI freezes mid-frame |
+| Puts all of it back on exit | the shell keeps using that screen buffer; leaving `DISABLE_NEWLINE_AUTO_RETURN` set would corrupt *its* output afterwards |
+
+Because it is the same `MakeRaw`/`Restore` pair that enters and leaves raw
+mode, re-acquisition (returning from `$EDITOR`, `Ctrl+O`) re-negotiates the
+mode: a child that owned the console restores it to its own default, which has
+no ANSI bit in it.
+
+What that means per host:
+
+| Host | Behavior |
+|---|---|
+| **Windows Terminal** (`wt`, default on Windows 11) | Nothing to enable — sequences are always processed. Bracketed paste, truecolor, and cursor-shape control all work |
+| **Legacy console host** (`cmd.exe`, Windows PowerShell, `pwsh` in a plain console window) | Alternate screen, cursor addressing, erase, colors, and resize work. Two things that host does not implement at all: cursor *shape* control (`DECSCUSR`) is ignored, and pasted multi-line text submits per line — see [Paste and terminal capability](#paste-and-terminal-capability) |
+| **No console at all** (service, detached process, redirected output with no `CONOUT$`) | Startup fails with an error naming `--plainio`, rather than painting escape codes onto a stream that will not read them |
+
+On color: the style layer emits 24-bit truecolor (`38;2;r;g;b`), byte-pinned by
+`style_test.go`, and there is deliberately no color-profile ladder — no
+downgrade to 256 or 16 colors, no terminal-capability negotiation. What a
+legacy console host does with a `38;2` sequence it does on its own: rendering
+it, or substituting from its own palette. Which of those happens on which
+Windows build is on the unverified list in
+[windows-console.md](internal/windows-console.md), not a promise this document
+makes.
+
+`TERM` is not consulted anywhere: it is absent on Windows and uninformative on
+the rest, and the checks above are made against the handle, not the
+environment.
+
 ## Multi-Modal Attachments
 
 AlayaCore supports multi-modal input — attaching images, audio, video, or documents alongside text. Attachments are sent as TLV frames **before** the text frame, all within a single `TagUserEnd`-delimited message:
