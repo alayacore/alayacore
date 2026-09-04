@@ -18,6 +18,7 @@ package terminal
 // actions cannot be confused with each other.
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -216,12 +217,21 @@ func TestBlockText(t *testing.T) {
 	}
 }
 
-// TestPasteUsesTheBlockRule keeps the two callers of the rule from drifting: what
-// a paste inserts is exactly what blockText returns.
-func TestPasteUsesTheBlockRule(t *testing.T) {
-	f := NewInputField().Focus().WithWidth(20)
-	after := f.handlePaste(PasteMsg{Content: "one\r\ntwo\r\n"})
-	if got, want := after.Value(), string(blockText("one\r\ntwo\r\n")); got != want {
-		t.Errorf("pasted value = %q, want %q", got, want)
+// TestBlockTextIsTheRuleForBothBlockSources keeps the two callers from drifting
+// apart: a paste and an editor buffer holding the same bytes must land in the
+// field the same way. They are the same category of input — text that arrived from
+// outside the keystroke path — and on Windows they arrive with the same CRLF, so
+// one rule has to cover both or one of them is wrong on half the hosts.
+func TestBlockTextIsTheRuleForBothBlockSources(t *testing.T) {
+	content := "one\r\ntwo\r\n\tthree\x00\r\n"
+
+	pasted := NewInputField().Focus().WithWidth(20).handlePaste(PasteMsg{Content: content})
+	edited := NewInputField().Focus().WithWidth(20).WithValue(string(blockText(content)))
+
+	if pasted.Value() != edited.Value() {
+		t.Errorf("block text diverged: paste gave %q, editor gave %q", pasted.Value(), edited.Value())
+	}
+	if strings.ContainsRune(pasted.Value(), '\r') {
+		t.Errorf("the pasted value still holds a CR: %q", pasted.Value())
 	}
 }

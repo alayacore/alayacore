@@ -20,7 +20,9 @@ package terminal
 // console, so nothing about it should depend on the Windows CI job to be believed.
 
 import (
+	"bytes"
 	"encoding/binary"
+	"strings"
 	"testing"
 	"unicode/utf16"
 	"unsafe"
@@ -461,6 +463,59 @@ func TestEncodedBracketedPasteSurvivesTheParser(t *testing.T) {
 	}
 }
 
+// TestEveryBoundCtrlChordIsReachable walks the Ctrl bindings the application
+// actually names (keys.go) rather than a hand-picked few, and asks for each one:
+// give me the event a Windows console delivers for that chord, encode it, parse
+// it, and tell me whether the key string survives. A chord that cannot be produced
+// is a shortcut that does nothing on Windows and something on every other platform
+// — the quietest possible failure, and the reason this is derived from the
+// constants instead of being a list of examples that can drift from them.
+func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
+	bound := []string{
+		keyCtrlA, keyCtrlC, keyCtrlD, keyCtrlF, keyCtrlG, keyCtrlH, keyCtrlJ,
+		keyCtrlL, keyCtrlO, keyCtrlP, keyCtrlR, keyCtrlS, keyCtrlU, keyCtrlZ,
+	}
+	if len(bound) == 0 {
+		t.Fatal("no ctrl chords to check")
+	}
+
+	for _, chord := range bound {
+		t.Run(chord, func(t *testing.T) {
+			letter, ok := strings.CutPrefix(chord, "ctrl+")
+			if !ok || len(letter) != 1 {
+				t.Fatalf("%q is not a ctrl+<letter> binding this test knows how to build", chord)
+			}
+			r := rune(letter[0])
+			// The event the console reports for Ctrl+<letter>: the key code is
+			// the uppercase letter, and the character is the control code. The
+			// second form is the same chord arriving without a character, which
+			// is what an IME state or an injected event can look like.
+			withChar := keyRecordOf(keyEvent{
+				down: true, virtualKey: uint16(r - 'a' + 'A'),
+				char: uint16(r - 'a' + 1), ctrlState: ctrlLeftCtrl,
+			})
+			bare := keyRecordOf(keyEvent{
+				down: true, virtualKey: uint16(r - 'a' + 'A'), ctrlState: ctrlLeftCtrl,
+			})
+			for _, rec := range []inputRecord{withChar, bare} {
+				var enc keyEncoder
+				data := enc.append(nil, rec)
+				msgs := parseAll(t, data)
+				if len(msgs) != 1 {
+					t.Fatalf("%q produced %d messages (%v), want 1", data, len(msgs), msgs)
+				}
+				key, ok := msgs[0].(KeyMsg)
+				if !ok {
+					t.Fatalf("msg = %T, want KeyMsg", msgs[0])
+				}
+				if key.String() != chord {
+					t.Errorf("%q arrives as %q, want %q", data, key.String(), chord)
+				}
+			}
+		})
+	}
+}
+
 // parseAll runs data through the parser the way the input loop does, including
 // the flush that resolves a trailing incomplete sequence.
 func parseAll(t *testing.T, data []byte) []Msg {
@@ -477,4 +532,47 @@ func parseAll(t *testing.T, data []byte) []Msg {
 		}
 	}
 	return msgs
+}
+
+// TestEncodedRecordsAreSelfDelimiting sweeps the whole key-code and modifier
+// space and asserts two properties of whatever the encoder emits.
+//
+// The first is that a keystroke never leaves the parser waiting. An incomplete
+// sequence pins the input loop for escSequenceTimeout before it resolves, so a
+// table entry missing its final byte would turn every press of that key into a
+// 50 ms stall — invisible to a test that only checks the resulting key name,
+// because the flush hides it. The Escape key is the honest exception: it is one
+// ESC byte, and it is genuinely ambiguous until the timeout says otherwise.
+//
+// The second is that no NUL reaches the byte stream. A NUL reads back as
+// Ctrl+Space, so an event that produced no character must produce no input at all
+// rather than a keystroke nobody pressed.
+func TestEncodedRecordsAreSelfDelimiting(t *testing.T) {
+	states := []uint32{
+		0, ctrlShift, ctrlLeftAlt, ctrlRightAlt, ctrlLeftCtrl, ctrlRightCtrl,
+		ctrlShift | ctrlLeftCtrl, ctrlShift | ctrlLeftAlt, ctrlLeftCtrl | ctrlRightAlt,
+	}
+	chars := []uint16{0, 'a', 'A', '1', ':', ' ', 0x08, 0x09, 0x0d, 0x0a, 0x1b, 0x7f,
+		0x4E2D, 0xD83D, 0xDE00}
+
+	for vk := 0; vk < 0x100; vk++ {
+		for _, state := range states {
+			for _, char := range chars {
+				var enc keyEncoder
+				data := enc.append(nil, keyRecordOf(keyEvent{
+					down: true, repeat: 1, virtualKey: uint16(vk), char: char, ctrlState: state,
+				}))
+				if i := bytes.IndexByte(data, 0); i >= 0 {
+					t.Fatalf("VK %#02x state %#x char %#04x emitted %q: a NUL at %d reads back as a keystroke",
+						vk, state, char, data, i)
+				}
+				p := &InputParser{}
+				p.Parse(data)
+				if p.HasPending() && !allESC(data) {
+					t.Fatalf("VK %#02x state %#x char %#04x emitted %q, which the parser can only resolve by waiting out the escape-sequence timeout",
+						vk, state, char, data)
+				}
+			}
+		}
+	}
 }
