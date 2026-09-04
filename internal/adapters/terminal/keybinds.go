@@ -564,7 +564,11 @@ func (m Terminal) handleInputKeys(msg KeyMsg) (Terminal, Cmd) {
 // Command Handling
 // ============================================================================
 
-// handleSubmit processes the input when Shift+Enter is pressed.
+// handleSubmit sends the current input as the prompt. It is what Enter does,
+// and Shift+Enter does not reach here as a different key on most hosts: the
+// line-break binding is Ctrl+J (see handleInputKeys and docs/tui.md → "Paste and
+// terminal capability"), which is the only byte that distinguishes the two
+// intentions without asking the terminal for a capability it may not have.
 func (m Terminal) handleSubmit() (Terminal, Cmd) {
 	prompt := strings.TrimSpace(m.input.Value())
 

@@ -46,6 +46,34 @@ architecture.
 | `Space` | Toggle window fold (expand/collapse) |
 | `r` | Toggle markdown rendering (unfolded assistant text/reasoning) |
 
+### Why `Shift+Enter` is not the line break
+
+`Enter` is CR. On most terminals `Shift+Enter` is *also* CR: the modifier never
+reaches the program, so there is no second thing to bind — binding it would name a
+key that never arrives.
+
+A terminal can report the difference, but only in an encoding the program has to
+understand and, usually, ask for:
+
+| Where the state exists | What it looks like |
+|---|---|
+| xterm with `modifyOtherKeys` | `ESC [ 27 ; 2 ; 13 ~` |
+| kitty / WezTerm / Ghostty (kitty keyboard protocol) | `ESC [ 13 ; 2 u` |
+| A Windows console read as *events* (`console_events.go`) | `VK_RETURN` with `SHIFT_PRESSED` — the legacy host reports it; the pseudo console hands over bytes, so under Windows Terminal the state arrives only if that host's richer input mode is on |
+
+`key_parser.go` discards both wire forms today — the `27` parameter is explicitly
+`not supported`, and `u` is not a final byte it knows — so a `shift+enter` binding
+added on top of the current parser would do nothing even on a terminal that reports
+the key. Supporting it means parsing those two forms and (for the protocol ones)
+requesting the capability in `Screen.Start` with the matching reset, the way
+bracketed paste is handled: a capability that degrades silently where the host
+lacks it.
+
+`Ctrl+J` asks for nothing of the kind. LF is a byte, the Enter key never produces
+it, and it is already what a pasted line break is — which is why it is the line
+break, and `Ctrl+O` (a real editor) the answer for anything long enough to want
+one.
+
 ### Input Cursor & IME
 
 The prompt input (and overlay filter boxes) render the **real terminal cursor** (the emulator's default steady block — themes do not configure cursor color, since the `cursor` field was dropped from `Theme` when body content rendering stopped carrying an explicit foreground color). This keeps input behavior identical to a shell prompt: Chinese/Japanese IME composition draws its inline preedit directly in the input field and the candidate window anchors to the input line, so it does not jump around while streaming output is being rendered.
