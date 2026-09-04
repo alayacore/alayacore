@@ -111,6 +111,7 @@ application asks, so AlayaCore asks on entry
 | Sets `DISABLE_NEWLINE_AUTO_RETURN` | the renderer emits `\r\n` and expects a bare LF to move down without returning to column 0, as on every other terminal |
 | Clears `ENABLE_QUICK_EDIT_MODE` (with `ENABLE_EXTENDED_FLAGS`) | QuickEdit is on by default in `cmd` and PowerShell, and a single click inside the window enters select mode, which suspends the program's writes: the UI freezes mid-frame |
 | Puts all of it back on exit | the shell keeps using that screen buffer; leaving `DISABLE_NEWLINE_AUTO_RETURN` set would corrupt *its* output afterwards |
+| Saves the cursor before entering the alternate screen, and restores it after leaving (`screen.go` → `Start`/`Stop`) | not Windows-specific, but it is why quitting cannot leave the caret in the middle of the shell's screen. The teardown moves to the last row, erases the screen it is leaving, switches back, then restores — so the shell is never left repainting from "caret mid-screen in an un-erased alternate buffer" |
 
 Because it is the same `MakeRaw`/`Restore` pair that enters and leaves raw
 mode, re-acquisition (returning from `$EDITOR`, `Ctrl+O`) re-negotiates the

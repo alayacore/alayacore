@@ -62,6 +62,10 @@ func (s *Screen) Start() error {
 		return nil
 	}
 	var buf []byte
+	// An explicit save of the cursor position, in addition to the one
+	// ?1049h performs. Stop restores it, rather than trusting the switch back
+	// to put the caret where the shell left it (see the note there).
+	buf = append(buf, ansi.SaveCurrentCursorPosition...)
 	buf = append(buf, ansi.SetModeAltScreenSaveCursor...)
 	buf = append(buf, ansi.SetModeBracketedPaste...)
 	buf = append(buf, ansi.SetModeFocusEvent...)
@@ -73,8 +77,38 @@ func (s *Screen) Start() error {
 	return nil
 }
 
-// Stop restores the cursor and leaves the alt screen. It is safe to call
-// multiple times (idempotent) — always defer it.
+// Stop leaves the alt screen and restores the terminal to what the shell
+// expects to find: its own buffer, the cursor where it parked it, and the
+// text cursor visible. It is safe to call multiple times (idempotent) — always
+// defer it.
+//
+// The order is not cosmetic. Everything here is written while the alternate
+// buffer is still current, which is what makes it safe to move and erase:
+//
+//  1. Home the cursor to column 1 of the last row. A frame ends with the caret
+//     in the middle of the screen (the prompt row), and a host that ignores
+//     ?1049h — so that the "alternate" screen *is* the shell's — would leave it
+//     there, in the middle of whatever the shell redraws next.
+//  2. Erase that screen. Same reason: on such a host this is what removes the
+//     program's output instead of leaving it under the prompt; on a host that
+//     does switch back, the buffer being discarded makes it a no-op.
+//  3. Leave the alt screen, then restore the saved cursor position explicitly.
+//
+// The last step is the reason the position is saved in Start rather than
+// relying on ?1049h/?1049l to carry it. Reported symptom that prompted this
+// (Windows, and not on Linux): after quitting, the shell's prompt was in the
+// buffer but not on screen — the caret sat alone on an empty line, and one
+// Enter made the prompt appear above it. That is a repaint the host did not
+// perform, and the state it had to repaint *from* was "caret parked mid-screen
+// in an un-erased alternate buffer, then an implicit cursor jump". Matching the
+// sequence Bubble Tea used for these hosts (move, flush, erase, switch,
+// restore — third_party/bubbletea/cursed_renderer.go → flush/exitAltScreen,
+// deleted in 4edb5a85) is the known-good baseline; whether it is each of these
+// steps or only some of them that matters on which host is a real-machine
+// question, so they are ordered and labeled rather than fused into one blob.
+//
+// Nothing is written after the restore: the next byte on this stream belongs
+// to the shell.
 func (s *Screen) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -82,10 +116,15 @@ func (s *Screen) Stop() error {
 		return nil
 	}
 	var buf []byte
+	if s.height > 0 {
+		buf = append(buf, ansi.CursorPosition(1, s.height)...)
+	}
+	buf = append(buf, ansi.EraseDisplay(2)...)
 	buf = append(buf, ansi.ResetModeBracketedPaste...)
 	buf = append(buf, ansi.ResetModeFocusEvent...)
 	buf = append(buf, ansi.SetModeTextCursorEnable...)
 	buf = append(buf, ansi.ResetModeAltScreenSaveCursor...)
+	buf = append(buf, ansi.RestoreCurrentCursorPosition...)
 	if _, err := s.out.Write(buf); err != nil {
 		return fmt.Errorf("terminal: exit alt screen: %w", err)
 	}
