@@ -1,0 +1,152 @@
+name: Test
+
+# What this workflow exists to prevent: the Bubble Tea fork removal (4edb5a85)
+# deleted the only code that enabled ANSI processing on a Windows console, and
+# nothing noticed. release.yml builds and publishes windows-amd64 and
+# windows-arm64, but only at tag time, on ubuntu, with `make test` — which runs
+# the suite for GOOS=linux. Between tags, no job ever compiled internal/adapters/terminal/*_windows.go.
+#
+# So the gate here is three things: the full suite and lint on Linux, a Windows
+# job that type-checks every package (including test files) for GOOS=windows and
+# runs the adapter suite there, and a build of every target release.yml
+# publishes, on every push.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  linux:
+    name: Linux (lint, vet, test, race)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          # Pinned to the version this tree is clean under. Unpinned, the action
+          # pulls the latest release, and a new check in someone else's linter
+          # would fail the build for code nobody touched.
+          version: v1.64.8
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Test (race detector)
+        # 25s on a dev box for the whole tree; cheap enough to always run.
+        run: go test -race ./...
+
+  windows:
+    name: Windows (vet every package, test the adapter)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # go vet type-checks for this job's GOOS, including _test.go files, so a
+      # file like console_windows.go — which no Linux build ever reads — has to
+      # compile here or the job says so.
+      - name: Vet (GOOS=windows)
+        run: go vet ./...
+
+      # The suite that runs here is the terminal adapter: it owns the
+      # windows_*.go files this job exists to protect, and it is written against
+      # buffers rather than against a console, so it needs no TTY — a runner
+      # hands `go test` pipes, never a console window. See
+      # program_resize_poll_test.go and console_windows_test.go for the parts
+      # that only have meaning on Windows and are portable to assert.
+      #
+      # Deliberately not included yet: internal/tools and internal/skills. Their
+      # tests assert POSIX semantics — directory symlinks (a privileged
+      # operation on Windows), umask and permission bits, and shell output from
+      # sh — so running them here would turn this job red on the first push for
+      # reasons that have nothing to do with the console. Widening it means
+      # making each of those tests say what it actually requires, which is its
+      # own change.
+      #
+      # Lint is not run here either: `GOOS=windows golangci-lint run` reports one
+      # pre-existing finding, Program.inputPaused, which only the Unix input loop
+      # reads (exec_windows.go parks input by doing nothing). It is real, it is
+      # not a bug, and moving that state behind the build tag is a separate
+      # change to the suspend path — not something to paper over with an
+      # exemption in a config file that already carries its exemptions one
+      # justified nolint at a time.
+      - name: Test the terminal adapter
+        run: go test ./internal/adapters/terminal/...
+
+  cross-compile:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}${{ matrix.goarm && format('v{0}', matrix.goarm) || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Exactly the targets `make release-all` publishes.
+        include:
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+          - goos: linux
+            goarch: "386"
+          - goos: linux
+            goarch: riscv64
+          - goos: linux
+            goarch: loong64
+          - goos: linux
+            goarch: ppc64le
+          - goos: linux
+            goarch: s390x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: go build -o "dist/alayacore-${GOOS}-${GOARCH}${GOARM:+-${GOARM}}" .
