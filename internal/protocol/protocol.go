@@ -94,6 +94,12 @@ type ModelInfo struct {
 	Reasoning1     json.RawMessage `json:"reasoning_1,omitempty"`
 	Reasoning2     json.RawMessage `json:"reasoning_2,omitempty"`
 	ReasoningField string          `json:"reasoning_field,omitempty"`
+
+	// SerialToolCalls mirrors modelConfig's json tag exactly. No omitempty:
+	// model_list is what a consumer edits and posts back through :model_sync,
+	// and what comes back replaces model.conf, so the broadcast has to state the
+	// mode instead of leaving a default to infer.
+	SerialToolCalls bool `json:"serial_tool_calls"`
 }
 
 // ToolInputData is the JSON payload for TagAssistantF (AF).

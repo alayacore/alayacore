@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -88,5 +89,61 @@ func TestExecuteToolFallsBackToExecute(t *testing.T) {
 	}
 	if deltaCalls != 0 {
 		t.Errorf("OnToolOutputDelta called %d times, want 0", deltaCalls)
+	}
+}
+
+// A model can name a tool that does not exist — a typo, a tool from another
+// model's config, an MCP server that has not finished initializing. The call has
+// to come back with an error the model can read, and it must be treated as an
+// answered call: the model asked, alayacore replies "no such tool". Returning it
+// as unanswered would drop the pair, and a step that recorded a tool_use with no
+// tool_result is the conversation the next request cannot build (gotcha 3).
+func TestExecuteToolUnknownToolAnswersTheCall(t *testing.T) {
+	a := NewAgent(AgentConfig{
+		Tools: []Tool{{
+			Definition: ToolDefinition{Name: "known_tool"},
+			Execute: func(_ context.Context, _ json.RawMessage) ([]ContentPart, error) {
+				return []ContentPart{&TextPart{Text: "ok"}}, nil
+			},
+		}},
+	})
+
+	var sawError bool
+	callbacks := StreamCallbacks{
+		OnToolOutput: func(_ string, _ []ContentPart, err error, _ uint64) error {
+			sawError = err != nil
+			return nil
+		},
+	}
+	call := &ToolInputPart{ID: "c1", Name: "no_such_tool"}
+
+	part := a.executeTool(context.Background(), call, callbacks, 7)
+	top, ok := part.(*ToolOutputPart)
+	if !ok {
+		t.Fatalf("got %T, want *ToolOutputPart", part)
+	}
+	if !top.IsError {
+		t.Error("an unknown tool produced a success result")
+	}
+	if !sawError {
+		t.Error("OnToolOutput was not told about the failure")
+	}
+	text := ""
+	if len(top.Output) > 0 {
+		if tp, isText := top.Output[0].(*TextPart); isText {
+			text = tp.Text
+		}
+	}
+	if !strings.Contains(text, "no_such_tool") {
+		t.Errorf("the result does not name the missing tool, so the model cannot correct it: %q", text)
+	}
+
+	// And through the shared lifecycle, which is what decides history.
+	result, ran := a.runToolCall(context.Background(), call, 7, StreamCallbacks{})
+	if !ran {
+		t.Error("runToolCall reported the call as never-executed; its result would be dropped from history")
+	}
+	if out, isResult := result.(*ToolOutputPart); !isResult || !out.IsError {
+		t.Errorf("runToolCall returned %v, want an error result", result)
 	}
 }

@@ -47,6 +47,16 @@ type BaseConfig struct {
 	// vocabulary; the two directions are never configured separately.
 	// Empty means DefaultReasoningField. A lookup name, not a feature switch.
 	ReasoningField string
+
+	// SerialToolCalls comes straight from model.conf `serial_tool_calls`, which
+	// spells the option the same negative way every layer does. This layer
+	// carries only one of the two things it decides: the Chat Completions
+	// request asks the server not to batch calls. The other — running the calls
+	// it batches anyway one at a time — is llm.Agent's, from the same value.
+	//
+	// OpenAI only on the wire, since only Chat Completions has a field for it;
+	// Anthropic gets the ordering and no request field, because there is none.
+	SerialToolCalls bool
 }
 
 // DefaultReasoningField is the reasoning key used when ReasoningField is
@@ -68,6 +78,10 @@ type baseProvider struct {
 	reasoningField   string                  // response delta key carrying reasoning text; setBaseConfig applies the default when empty
 	videoFPS         int                     // frames per second for video attachments; 0 means default (2)
 	videoRes         int                     // video resolution mode: 0 or 1
+
+	// serialToolCalls is model.conf `serial_tool_calls`, carried through without
+	// inversion. OpenAI negates it into the request field; see openai.go.
+	serialToolCalls bool
 }
 
 // setBaseConfig applies the common config to a baseProvider.
@@ -90,6 +104,7 @@ func (b *baseProvider) setBaseConfig(cfg BaseConfig, defaultModel string) {
 	if b.reasoningField == "" {
 		b.reasoningField = DefaultReasoningField
 	}
+	b.serialToolCalls = cfg.SerialToolCalls
 	if len(cfg.ReasoningConfigs) > 0 {
 		b.reasoningConfigs = make(map[int]json.RawMessage, len(cfg.ReasoningConfigs))
 		for k, v := range cfg.ReasoningConfigs {

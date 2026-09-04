@@ -134,8 +134,11 @@ ToolInputCompleteEvent
     │       ├── repairObject(input, schema) → recursively fix
     │       └── return fixed JSON
     │
-    ├── handleStreamedToolInput()       → tool receives repaired input
-    │                                     (unfixable bytes fail parse → UF ✗)
+    ├── runner.add()                    → tool receives repaired input
+    │   (toolRunner: parallel launches  (unfixable bytes fail parse → UF ✗)
+    │    here, serial queues until
+    │    finish) — the repaired input is
+    │    what runs either way)
     │
     └── OnToolInputComplete()           → streaming callback with repaired input
     │

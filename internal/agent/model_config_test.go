@@ -3,6 +3,9 @@ package agent
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -13,15 +16,23 @@ import (
 func TestToModelInfosWireCompatible(t *testing.T) {
 	// The wire format for model_list must serialize to exactly the same
 	// JSON bytes as modelConfig, so the TLV protocol stays compatible.
+	//
+	// Every field is mirrored, so setting serial_tool_calls here is what makes
+	// this comparison catch a forgotten line in toModelInfos: the domain would
+	// say true while the wire, left at bool's zero value, said false. The case
+	// where the domain carries no line at all is TestToModelInfos_SerialToolCalls
+	// AlwaysOnTheWire, and a field added to only one of the two types is caught
+	// generically by TestModelInfoAndModelConfigJSONKeysMatch.
 	m := modelConfig{
-		ID:           3,
-		Name:         "Test",
-		ProtocolType: "openai",
-		BaseURL:      "http://x",
-		APIKey:       "k",
-		ModelName:    "model-a",
-		ContextLimit: 200000,
-		MaxTokens:    0, // zero value must still appear in the wire bytes
+		ID:              3,
+		Name:            "Test",
+		ProtocolType:    "openai",
+		BaseURL:         "http://x",
+		APIKey:          "k",
+		ModelName:       "model-a",
+		ContextLimit:    200000,
+		MaxTokens:       0, // zero value must still appear in the wire bytes
+		SerialToolCalls: true,
 	}
 
 	domainJSON, err := json.Marshal([]modelConfig{m})
@@ -637,5 +648,299 @@ func TestFormatThenParse_ReasoningField(t *testing.T) {
 	}
 	if noField[0].ReasoningField != "" {
 		t.Errorf("ReasoningField = %q, want empty when unset", noField[0].ReasoningField)
+	}
+}
+
+// ============================================================================
+// parallel_tool_calls
+// ============================================================================
+
+// The option is spelled negatively so that its absent form — every model.conf
+// written before it existed, and every struct literal since — is the behavior
+// alayacore has always had. A positive spelling could not have said that with a
+// bool, whose zero value would have made all of them serial.
+func TestSerialToolCallsAbsentMeansTheHistoricalBehavior(t *testing.T) {
+	var fromAFile modelConfig // as parseModelList leaves an unmentioned option
+	if fromAFile.SerialToolCalls {
+		t.Error("an unmentioned serial_tool_calls came through as serial")
+	}
+
+	set := modelConfig{SerialToolCalls: true}
+	if !set.SerialToolCalls {
+		t.Error("serial_tool_calls: true did not stick")
+	}
+}
+
+// model_list is what a protocol consumer edits and hands back through
+// :model_sync, and what comes back replaces model.conf. So the broadcast states
+// the mode explicitly even where the config file wrote no line at all: a
+// consumer is never asked to reconstruct a default it was not given.
+//
+// The "configured true" case is what catches a forgotten toModelInfos line: the
+// wire would carry bool's zero value while the domain carried true.
+func TestToModelInfosSerialToolCallsAlwaysOnTheWire(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  bool
+	}{
+		{"not configured", false},
+		{"configured true", true},
+		{"configured false", false},
+	} {
+		m := modelConfig{
+			Name: "m", ProtocolType: "openai", BaseURL: "http://x",
+			APIKey: "k", ModelName: "model-a", SerialToolCalls: tc.set,
+		}
+		wireJSON, err := json.Marshal(toModelInfos([]modelConfig{m}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var models []map[string]any
+		if err := json.Unmarshal(wireJSON, &models); err != nil {
+			t.Fatalf("%s: unmarshal wire: %v", tc.name, err)
+		}
+		got, ok := models[0]["serial_tool_calls"]
+		if !ok {
+			t.Errorf("%s: key absent from the broadcast (%s); a consumer must never infer it", tc.name, wireJSON)
+			continue
+		}
+		asBool, isBool := got.(bool)
+		if !isBool {
+			t.Errorf("%s: serial_tool_calls = %#v, want a JSON bool", tc.name, got)
+			continue
+		}
+		if asBool != tc.set {
+			t.Errorf("%s: serial_tool_calls = %v, want %v", tc.name, asBool, tc.set)
+		}
+	}
+}
+
+// TestToModelInfosWireCompatible compares bytes for the fields one test case
+// happens to fill. This compares the types, so the general mistake — a field
+// added on one side only — fails here rather than quietly dropping a user's
+// setting the next time a consumer round-trips the model list.
+//
+// Only the JSON names are compared. Tag *options* are not: the domain's
+// `config` tag may leave an option out of model.conf when it is at its default,
+// while the json forms must always state it — a difference pinned by the two
+// tests above, not by a rule here.
+func TestModelInfoAndModelConfigJSONKeysMatch(t *testing.T) {
+	domain := jsonFieldNames(reflect.TypeOf(modelConfig{}))
+	wire := jsonFieldNames(reflect.TypeOf(protocol.ModelInfo{}))
+
+	for name := range domain {
+		if _, ok := wire[name]; !ok {
+			t.Errorf("modelConfig serializes %q but protocol.ModelInfo does not — the value is lost on broadcast", name)
+		}
+	}
+	for name := range wire {
+		if _, ok := domain[name]; !ok {
+			t.Errorf("protocol.ModelInfo serializes %q but modelConfig does not — it is dropped by :model_sync", name)
+		}
+	}
+	if len(domain) == 0 || len(wire) == 0 {
+		t.Fatalf("reflection found no fields (domain %d, wire %d) — the guard itself is broken", len(domain), len(wire))
+	}
+}
+
+// jsonFieldNames lists the JSON keys a struct marshals to, honoring omitempty
+// and the "-" skip marker.
+func jsonFieldNames(typ reflect.Type) map[string]bool {
+	names := make(map[string]bool)
+	for i := 0; i < typ.NumField(); i++ {
+		tag := typ.Field(i).Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		key, _, _ := strings.Cut(tag, ",")
+		if key == "" {
+			continue
+		}
+		names[key] = true
+	}
+	return names
+}
+
+// The loop a protocol consumer actually performs, end to end: a model is
+// broadcast as model_list (the wire type), posted straight back through
+// :model_sync, persisted to model.conf, and read again as if alayacore had just
+// started. A user's `serial_tool_calls: true` has to survive all four legs.
+//
+// Each leg runs a different function, so a value dropped anywhere shows up here
+// rather than as a config that quietly changed under the user.
+func TestModelListBroadcastSurvivesTheAdapterRoundTrip(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "model.conf")
+
+	for _, tc := range []struct {
+		name string
+		set  bool
+	}{
+		{"parallel", false},
+		{"serial", true},
+	} {
+		stored := modelConfig{
+			Name: "m", ProtocolType: "openai", BaseURL: "http://x",
+			APIKey: "k", ModelName: "model-a", SerialToolCalls: tc.set,
+		}
+
+		// Leg 1→2: what the session broadcasts.
+		broadcast, err := json.Marshal(modelListMsg{Models: toModelInfos([]modelConfig{stored})})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var envelope struct {
+			Models json.RawMessage `json:"models"`
+		}
+		if err := json.Unmarshal(broadcast, &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(envelope.Models), `"serial_tool_calls":`) {
+			t.Errorf("%s: broadcast omitted the mode (%s) — a consumer cannot edit what it cannot see", tc.name, envelope.Models)
+		}
+
+		// Leg 3: the consumer sends that same array back through :model_sync,
+		// which validates, replaces, and persists.
+		mm := newModelManager(configPath)
+		if msgs := mm.syncFromContent(string(envelope.Models)); len(msgs) != 0 {
+			t.Fatalf("%s: :model_sync rejected its own broadcast: %v", tc.name, msgs)
+		}
+		synced := mm.getModels()
+		if len(synced) != 1 {
+			t.Fatalf("%s: %d models after sync, want 1", tc.name, len(synced))
+		}
+		if got := synced[0].SerialToolCalls; got != tc.set {
+			t.Errorf("%s: mode changed through the adapter loop: got %v, want %v", tc.name, got, tc.set)
+		}
+
+		// Leg 4→5: the file it just wrote, read back the way a fresh start would.
+		onDisk, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("%s: read persisted config: %v", tc.name, err)
+		}
+		relaunched, errs := parseModelList(string(onDisk), configPath)
+		if len(errs) != 0 {
+			t.Fatalf("%s: reparse errors %v (file: %q)", tc.name, errs, onDisk)
+		}
+		if len(relaunched) != 1 {
+			t.Fatalf("%s: %d models on disk, want 1 (file %q)", tc.name, len(relaunched), onDisk)
+		}
+		if got := relaunched[0].SerialToolCalls; got != tc.set {
+			t.Errorf("%s: the persisted file says %v, want %v (file: %q)", tc.name, got, tc.set, onDisk)
+		}
+	}
+}
+
+// What the file says and what the program means, in both directions.
+//
+// The asymmetry this pins is deliberate: model.conf omits the option when it is
+// at its default, so an unchanged file stays free of a line saying nothing,
+// while every JSON the domain takes part in states it, so no consumer has to
+// infer a default. The two are only safe together if a false arriving from
+// either path means the same thing — which is what the negative spelling buys,
+// and what a *bool would have complicated for no benefit.
+func TestFormatThenParse_SerialToolCalls(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		set      bool
+		wantLine string // the model.conf line, "" meaning "write no line"
+	}{
+		{"default", false, ""},
+		{"serial", true, "serial_tool_calls: true"},
+	} {
+		original := []modelConfig{{
+			Name: "m", ProtocolType: "openai", BaseURL: "http://x",
+			APIKey: "k", ModelName: "model-a", SerialToolCalls: tc.set,
+		}}
+
+		text := formatModelList(original)
+		if tc.wantLine == "" {
+			if strings.Contains(text, "serial_tool_calls") {
+				t.Errorf("%s: the default wrote a line anyway: %q", tc.name, text)
+			}
+		} else if !strings.Contains(text, tc.wantLine) {
+			t.Errorf("%s: model.conf text = %q, want it to contain %q", tc.name, text, tc.wantLine)
+		}
+
+		parsed, errs := parseModelList(text, "model.conf")
+		if len(errs) != 0 {
+			t.Fatalf("%s: parse errors: %v (text %q)", tc.name, errs, text)
+		}
+		if parsed[0].SerialToolCalls != tc.set {
+			t.Errorf("%s: mode lost through the file round trip: got %v, want %v (text %q)",
+				tc.name, parsed[0].SerialToolCalls, tc.set, text)
+		}
+
+		// Writing what was just read must reproduce the file exactly, or a save
+		// would drift the config on every round trip.
+		if again := formatModelList(parsed); again != text {
+			t.Errorf("%s: second write differs:\n first: %q\nsecond: %q", tc.name, text, again)
+		}
+
+		// JSON, both ways: the mode is always stated, never left to inference.
+		synced, err := json.Marshal(parsed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(synced, []byte(`"serial_tool_calls":`)) {
+			t.Errorf("%s: JSON dropped the mode, forcing a consumer to infer it: %s", tc.name, synced)
+		}
+		var back []modelConfig
+		if err := json.Unmarshal(synced, &back); err != nil {
+			t.Fatalf("%s: unmarshal sync payload: %v", tc.name, err)
+		}
+		if back[0].SerialToolCalls != tc.set {
+			t.Errorf("%s: mode changed through :model_sync: got %v, want %v", tc.name, back[0].SerialToolCalls, tc.set)
+		}
+	}
+}
+
+// A hand-written file is the other way an option arrives, and it must accept the
+// spellings every other bool in the config format accepts. `false` explicitly
+// written says the same thing as the line being absent — both are the behavior
+// alayacore has always had.
+func TestParseModelList_SerialToolCallsSpellings(t *testing.T) {
+	const head = "name: \"m\"\nprotocol_type: openai\nbase_url: http://x\napi_key: k\nmodel_name: model-a\n"
+	for _, tc := range []struct{ text, want string }{
+		{"true", "serial"}, {"false", "parallel"},
+		{"yes", "serial"}, {"no", "parallel"},
+		{"on", "serial"}, {"off", "parallel"},
+		{"1", "serial"}, {"0", "parallel"},
+		{"", "parallel"},
+	} {
+		text := head + "serial_tool_calls: " + tc.text + "\n"
+		models, errs := parseModelList(text, "model.conf")
+		if len(errs) != 0 {
+			t.Fatalf("%q: unexpected parse errors: %v", tc.text, errs)
+		}
+		got := "parallel"
+		if models[0].SerialToolCalls {
+			got = "serial"
+		}
+		if got != tc.want {
+			t.Errorf("serial_tool_calls: %q -> %s, want %s", tc.text, got, tc.want)
+		}
+	}
+
+	// A value that is not a bool is reported, not quietly taken as false.
+	_, errs := parseModelList(head+"serial_tool_calls: maybe\n", "model.conf")
+	if len(errs) != 1 {
+		t.Fatalf("got %d errors (%v), want 1", len(errs), errs)
+	}
+}
+
+// The option's name is the one thing a user can type wrong in a way the format
+// cannot fix: the positive spelling is what the OpenAI request calls it, so it
+// is exactly what someone reaching for this setting will try first. The config
+// format rejects unknown keys rather than ignoring them, and the message has to
+// be the place that points at the real name — an unknown-key error with no hint
+// here reads as "this option does not exist".
+func TestParseModelList_PositiveSpellingIsRejectedAndNamed(t *testing.T) {
+	const text = "name: \"m\"\nprotocol_type: openai\nbase_url: http://x\napi_key: k\nmodel_name: model-a\nparallel_tool_calls: false\n"
+	_, errs := parseModelList(text, "model.conf")
+	if len(errs) != 1 {
+		t.Fatalf("got %d errors (%v), want the wrong name rejected with 1", len(errs), errs)
+	}
+	if !strings.Contains(errs[0], "parallel_tool_calls") {
+		t.Errorf("error does not name the offending key: %q", errs[0])
 	}
 }

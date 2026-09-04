@@ -253,6 +253,10 @@ func (ms *modelService) createProviderAndAgent(
 		SystemPrompt:      systemPrompt,
 		ExtraSystemPrompt: extraSystemPrompt,
 		MaxSteps:          maxSteps,
+		// Straight through, no inversion: model.conf spells the option
+		// negatively so its absent form is already the behavior the agent
+		// falls back on.
+		SerialToolCalls: modelConfig.SerialToolCalls,
 	})
 	return provider, agent, nil
 }
@@ -276,5 +280,8 @@ func createProviderFromConfig(modelCfg *modelConfig, debugDir, proxyURL string) 
 		MaxTokens:        modelCfg.MaxTokens,
 		ReasoningConfigs: modelCfg.ReasoningConfigs(),
 		ReasoningField:   modelCfg.ReasoningField,
+		// The same setting the agent got: the request field and the execution
+		// order are one decision, and neither layer re-derives it.
+		SerialToolCalls: modelCfg.SerialToolCalls,
 	})
 }

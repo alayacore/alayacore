@@ -234,6 +234,40 @@ After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`
 
 `unquoteToolArg` handles three shapes: a JSON-string-encoded fragment (`"{\"path\":...}"` → the inner text, the standard OpenAI form), a raw JSON fragment (`{"path":...}` → passed through as-is, used by some compatible providers), and `null` (→ empty string). See `openAIStreamState.appendToolCallArgs()`.
 
+## `parallel_tool_calls` / `serial_tool_calls`: always sent, on one protocol only
+
+`model.conf`'s `serial_tool_calls` reaches the request body of a Chat
+Completions endpoint as `parallel_tool_calls`, and it is sent on **every request
+that carries tools** — there is no configuration that leaves it out. A default is
+not a sufficient answer here: these servers disagree about their own defaults
+(some OpenAI-compatible endpoints ship parallel calling off), so an omitted field
+means different things on different deployments, and the client cannot tell which
+one it got.
+
+The two names run in opposite directions, which is a trap worth stating plainly:
+`serial_tool_calls: true` is the same request as `"parallel_tool_calls": false`.
+The config is spelled negatively so that omitting it keeps the behavior alayacore
+has always had (an omitted key is `false` in this format); the request keeps
+Chat Completions' own positive name. `providers/openai.go` holds the one
+`!`, and no other layer may have one.
+
+That is safe to do because unknown top-level fields are not dangerous on this
+protocol — see the note under "Common shapes" below, measured against this repo's
+own suite of fake servers.
+
+Anthropic's Messages API has no such field, so nothing is invented onto that
+wire: a strict endpoint would be right to refuse a parameter it does not define.
+The setting still reaches an Anthropic model, because the half of it that matters
+most — running the calls one at a time in the order the model made them — lives
+in `llm.Agent`, not in the protocol. See
+[tool-execution.md](tool-execution.md#tool-execution-concurrent-or-serial-with-per-tool-confirmation).
+
+One precedence rule worth knowing, because two mechanisms write the same body:
+the field is assigned **after** `mergeReasoningConfig`, so a `parallel_tool_calls`
+hand-written into `reasoning_0/1/2` is overwritten. The rule is that a setting
+alayacore models as a config field is authoritative over the raw-JSON escape
+hatch; `max_completion_tokens` already behaves the same way.
+
 ## Reasoning mode and reasoning fields
 
 When reasoning mode is set via `:reason [0|1|2]` (or at startup via `--reasoning-level <0|1|2>`), the provider looks up `reasoning_<level>` from the active model in `model.conf` and **merges that JSON verbatim into the request body**. Top-level keys in the JSON become top-level keys of the request.

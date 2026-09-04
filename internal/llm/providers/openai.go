@@ -315,6 +315,21 @@ func (p *OpenAIProvider) StreamMessages(
 	})
 	if len(apiTools) > 0 {
 		body["tools"] = apiTools
+		// The one inversion in the whole stack, and it is here because Chat
+		// Completions names the field positively while every layer of
+		// alayacore — model.conf included — spells the option negatively, so
+		// that its absent form is the behavior alayacore has always had. Do not
+		// propagate this negation outward: consumers take SerialToolCalls as is.
+		//
+		// Sent on every request that can mean something by it. Never omitted:
+		// these servers disagree about their own defaults, and an unstated
+		// field means the client cannot tell which mode it is in. With no tools
+		// there is nothing to batch, so it travels with the tools block.
+		//
+		// Assigned after mergeReasoningConfig, so it wins over a
+		// `parallel_tool_calls` hand-written into reasoning_N — the same rule
+		// max_completion_tokens already follows.
+		body["parallel_tool_calls"] = !p.serialToolCalls
 	}
 	if p.maxTokens > 0 {
 		body["max_completion_tokens"] = p.maxTokens

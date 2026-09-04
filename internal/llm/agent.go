@@ -29,6 +29,17 @@ package llm
 //    canceled and all goroutines are awaited before streamEvents returns, so no
 //    tool keeps executing (and no side effects happen) after the stream has
 //    errored, and no goroutine leaks. See streamEvents and sendToolResult.
+//    This covers the parallel driver only; the serial driver starts nothing
+//    until the stream has ended, so a stream that fails leaves nothing to
+//    cancel. Both drivers live in agent_execution.go.
+//
+// 5. ONE TOOL LIFECYCLE, TWO DRIVERS: confirm → execute → produce-result lives
+//    in runToolCall alone. The two drivers differ only in when a call may start
+//    (see the toolRunner comment in agent_execution.go), so a call's
+//    cancellation semantics are identical in both modes by construction and
+//    cannot drift apart. Anything that changes what a tool call does belongs in
+//    runToolCall, never in a driver; anything that changes when calls start
+//    belongs in a driver, never in streamEvents — which knows no mode at all.
 
 import (
 	"context"
@@ -70,6 +81,17 @@ type AgentConfig struct {
 	SystemPrompt      string // Default system prompt (base)
 	ExtraSystemPrompt string // User-provided extra system prompt via --system flag
 	MaxSteps          int
+
+	// SerialToolCalls runs the tool calls of one step one at a time, in the
+	// order the model made them, instead of starting a goroutine per call.
+	// Source: model.conf `serial_tool_calls`, carried through unchanged.
+	//
+	// The field is negative on purpose: its zero value (false) must equal the
+	// historical behavior, because AgentConfig is built as a struct literal all
+	// over the llm tests. A positive `ParallelToolCalls bool` would have made
+	// every one of them silently serial — the same trap the config key avoids,
+	// for the same reason.
+	SerialToolCalls bool
 }
 
 // Agent orchestrates tool-calling loops
@@ -146,8 +168,13 @@ type StreamResult struct {
 }
 
 // Stream executes the agent with streaming callbacks.
-// Tools are confirmed and executed as soon as their arguments finish streaming
-// (on ToolInputCompleteEvent), overlapping with other tools still being streamed.
+//
+// Tools run in one of two modes, chosen by AgentConfig.SerialToolCalls:
+//   - parallel (default): confirmed and executed as soon as their arguments
+//     finish streaming (on ToolInputCompleteEvent), overlapping with other
+//     tools still being streamed;
+//   - serial: queued as they complete and then run one at a time, in the
+//     order the model made them, after the stream has ended.
 func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks StreamCallbacks) (*StreamResult, error) {
 	allContents := make([]ContentPart, len(contents))
 	copy(allContents, contents)
@@ -306,6 +333,12 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	assembler := newStreamAssembler(callbacks.IDGen)
 
 	var toolWg sync.WaitGroup
+
+	// The driver for this step's tool calls, chosen from the model's configured
+	// mode. Nothing else in this function knows a mode exists: the event loop
+	// hands calls to it, and the collection below asks it to finish.
+	runner := a.newToolRunner(callbacks, resultCh, &toolWg)
+
 	defer func() {
 		// A panic in the loop below is a bug, and a bug is not a reason to take
 		// the user's content with it: what they watched stream in is already in
@@ -340,8 +373,6 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	}()
 	defer toolWg.Wait()
 	defer cancelStream()
-
-	execCount := 0
 
 	for event, err := range events {
 		if err != nil {
@@ -430,8 +461,7 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 					return nil, Usage{}, false, err
 				}
 			}
-			execCount++
-			a.handleStreamedToolInput(streamCtx, tc, callbacks, resultCh, &toolWg)
+			runner.add(streamCtx, tc, genHistoryID(callbacks))
 
 		case StepCompleteEvent:
 			stepUsage = e.Usage
@@ -452,22 +482,14 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 		}
 	}
 
-	// All tools (confirm and no-confirm) execute in goroutines started
-	// during streaming. Collect all results.
-	//
-	// The select on streamCtx.Done prevents a deadlock: a result may never
-	// arrive for a tool that was awaiting confirmation when the task was
-	// canceled (its goroutine returns without sending), so a bare receive
-	// would block forever. In that case we bail out; the deferred
-	// cancel+wait settles the goroutines, then salvage recovers whatever
-	// results did arrive.
-	for i := 0; i < execCount; i++ {
-		select {
-		case r := <-resultCh:
-			results = append(results, r)
-		case <-streamCtx.Done():
-			return nil, Usage{}, false, streamCtx.Err()
-		}
+	// Collect the step's tool results. The driver decides what "collect" means —
+	// waiting on goroutines launched during the stream, or running the calls now —
+	// and a canceled step hands back the results it did produce along with the
+	// error, so the deferred salvage can still record them.
+	stepResults, runErr := runner.finish(streamCtx)
+	results = append(results, stepResults...)
+	if runErr != nil {
+		return nil, Usage{}, false, runErr
 	}
 
 	// Attach each result to the call it answers, in the order the model made
@@ -483,14 +505,13 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	return stepContents, stepUsage, truncated, nil
 }
 
-// handleStreamedToolInput processes a completed tool call during streaming.
-// If the tool requires confirmation (per ToolNeedsConfirm), it starts a
-// goroutine that obtains a per-tool confirm channel and blocks until the
-// user responds. Otherwise it executes immediately in a goroutine.
 // genHistoryID numbers a part that was not streamed — a tool result, which the
 // model's reply never mentions and which the step's assembler therefore never
 // saw. It takes from the same counter as the streamed blocks, so the two kinds
 // stay in one sequence with no gap and no collision.
+//
+// Both drivers call it at the same moment — when the call's arguments complete —
+// so switching modes cannot renumber a conversation.
 func genHistoryID(callbacks StreamCallbacks) uint64 {
 	if callbacks.IDGen != nil {
 		return callbacks.IDGen()
@@ -510,147 +531,12 @@ func hasToolInputs(contents []ContentPart) bool {
 	return false
 }
 
-// All tools send exactly one result through resultCh, then call wg.Done().
-func (a *Agent) handleStreamedToolInput(ctx context.Context, tc *ToolInputPart, callbacks StreamCallbacks, resultCh chan<- ContentPart, wg *sync.WaitGroup) {
-	if callbacks.ToolNeedsConfirm != nil && callbacks.ToolNeedsConfirm(tc.Name) {
-		// Start goroutine that waits for confirmation before executing.
-		historyID := genHistoryID(callbacks)
-		wg.Add(1)
-		go func(ctx context.Context, tc *ToolInputPart, historyID uint64) {
-			defer wg.Done()
-			select {
-			case allowed := <-callbacks.OnToolConfirm(tc.ToConfirmRequest()):
-				if !allowed {
-					sendToolResult(ctx, resultCh, newToolOutput(callbacks, tc.ID, nil, fmt.Errorf("Tool execution denied by user"), historyID))
-					return
-				}
-				sendToolResult(ctx, resultCh, a.executeTool(ctx, tc, callbacks, historyID))
-			case <-ctx.Done():
-				// Canceled while waiting for confirmation — the tool never
-				// executed, so it must NOT enter the salvaged history (it
-				// would look as if it ran and failed; the collector bails
-				// on the same cancellation, so no result can deadlock it).
-				// But the AF start frame already created the tool window in
-				// the UI, which would otherwise stay stuck spinning with no
-				// UF frame to settle it. newToolOutput fires the
-				// OnToolOutput callback (UF isError → ✗) as a display-only
-				// frame; the returned part is deliberately discarded so the
-				// tool stays out of history.
-				_ = newToolOutput(callbacks, tc.ID, nil,
-					fmt.Errorf("tool execution canceled while awaiting confirmation"), historyID)
-			}
-		}(ctx, tc, historyID)
-		return
-	}
-
-	historyID := genHistoryID(callbacks)
-	wg.Add(1)
-	go func(tc *ToolInputPart, historyID uint64) {
-		defer wg.Done()
-		sendToolResult(ctx, resultCh, a.executeTool(ctx, tc, callbacks, historyID))
-	}(tc, historyID)
-}
-
-// sendToolResult delivers a tool result to the collector. It is designed
-// around two channel states, each with a distinct guarantee:
-//
-//  1. Room available (common case, ≤16 in-flight results): the first
-//     non-blocking send delivers immediately — even if the stream context
-//     is already canceled. This is what makes the salvage drain
-//     deterministic: salvage runs after all tool goroutines settle, so
-//     every result that had room lands in resultCh and is recovered. A
-//     single select between send and ctx.Done here would randomly drop
-//     results when cancellation raced a just-completed tool — the bug
-//     this two-step design replaces.
-//
-//  2. Channel full (more in-flight results than the 16-slot buffer): the
-//     sender must WAIT rather than drop. On the normal path the collector
-//     is actively draining and needs exactly execCount results — dropping
-//     would starve it and deadlock the step. The ctx.Done case is the
-//     escape hatch for the error path: once the collector has bailed,
-//     nobody drains, so a blocked send would hang this goroutine — and
-//     with it toolWg.Wait and Stream — forever; cancellation releases it.
-//
-// Net effect: never blocks when delivery is possible, never leaks when it
-// isn't, and the salvage drain always sees whatever could be delivered.
-func sendToolResult(ctx context.Context, resultCh chan<- ContentPart, result ContentPart) {
-	// Room available — deliver unconditionally (cancel or not). On error
-	// paths the salvage drain, which runs after all tool goroutines
-	// settle, picks the result up; on the normal path the collector does.
-	select {
-	case resultCh <- result:
-		return
-	default:
-	}
-
-	// Channel full — block until the collector drains (normal path), or
-	// the stream is canceled (error path: nobody will drain, so drop
-	// rather than hang toolWg.Wait forever).
-	select {
-	case resultCh <- result:
-	case <-ctx.Done():
-	}
-}
-
 func (a *Agent) toolDefinitions() []ToolDefinition {
 	defs := make([]ToolDefinition, len(a.config.Tools))
 	for i, tool := range a.config.Tools {
 		defs[i] = tool.Definition
 	}
 	return defs
-}
-
-// executeTool executes a single tool call and returns the result.
-func (a *Agent) executeTool(ctx context.Context, tc *ToolInputPart, callbacks StreamCallbacks, historyID uint64) ContentPart {
-	var tool *Tool
-	for _, t := range a.config.Tools {
-		if t.Definition.Name == tc.Name {
-			tool = &t
-			break
-		}
-	}
-
-	if tool == nil {
-		return newToolOutput(callbacks, tc.ID, nil, fmt.Errorf("unknown tool: %s", tc.Name), historyID)
-	}
-
-	var content []ContentPart
-	var err error
-	if tool.ExecuteStreaming != nil {
-		// Streaming variant: deliver ephemeral preview snapshots via
-		// onDelta while the tool runs. The authoritative result is still
-		// the returned []ContentPart — deltas are display-only.
-		onDelta := func(text string) {
-			if callbacks.OnToolOutputDelta != nil {
-				// Preview frames are best-effort: a write failure must
-				// not abort the tool execution.
-				_ = callbacks.OnToolOutputDelta(tc.ID, text, historyID)
-			}
-		}
-		content, err = tool.ExecuteStreaming(ctx, tc.Input, onDelta)
-	} else {
-		content, err = tool.Execute(ctx, tc.Input)
-	}
-	return newToolOutput(callbacks, tc.ID, content, err, historyID)
-}
-
-// newToolOutput creates a ToolOutputPart and fires the OnToolOutput callback
-// so the UI is notified immediately as each tool finishes.
-//
-// Note: content is processed (nil → empty, error → TextPart) BEFORE the
-// callback fires, so the callback always receives meaningful display text.
-func newToolOutput(callbacks StreamCallbacks, id string, contents []ContentPart, err error, historyID uint64) *ToolOutputPart {
-	if contents == nil {
-		contents = []ContentPart{}
-	}
-	isError := err != nil
-	if isError && len(contents) == 0 {
-		contents = []ContentPart{&TextPart{Text: err.Error()}}
-	}
-	if callbacks.OnToolOutput != nil {
-		_ = callbacks.OnToolOutput(id, contents, err, historyID)
-	}
-	return &ToolOutputPart{ID: id, Output: contents, IsError: isError, ContentPartMeta: ContentPartMeta{HistoryID: historyID, Role: RoleTool}}
 }
 
 // repairToolInput repairs a tool input in-place using the tool's schema.

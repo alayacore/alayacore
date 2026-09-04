@@ -31,6 +31,27 @@ type modelConfig struct {
 	// level variants — a deployment picks one spelling regardless of effort.
 	// Empty means providers.DefaultReasoningField ("reasoning_content").
 	ReasoningField string `json:"reasoning_field,omitempty" config:"reasoning_field,omitempty"`
+
+	// SerialToolCalls runs a step's tool calls one at a time, in the order the
+	// model made them, instead of overlapping them — for models and servers
+	// with no notion of parallel tool calling.
+	//
+	// Named and defaulted negative on purpose. The behavior it turns off is the
+	// one alayacore has always had, so false (Go's zero value, and what every
+	// model.conf written so far means) must be that old behavior — which a bool
+	// can express only when the option is spelled negatively. The positive
+	// spelling would have needed a *bool to keep "the user wrote nothing" apart
+	// from "the user wrote false".
+	//
+	// The OpenAI request field it drives is spelled the other way round, since
+	// that is Chat Completions' name for it: the single inversion lives in
+	// providers/openai.go, nowhere else.
+	//
+	// The json tag has no omitempty so every JSON the domain takes part in —
+	// :model_sync, the :model_list response — states the mode rather than
+	// leaving a consumer to infer it; the config tag does, so an unchanged
+	// model.conf stays free of a line saying nothing.
+	SerialToolCalls bool `json:"serial_tool_calls" config:"serial_tool_calls,omitempty"`
 }
 
 // ReasoningConfigs returns a map of reasoning level → raw provider JSON
@@ -85,6 +106,10 @@ func toModelInfos(models []modelConfig) []protocol.ModelInfo {
 			Reasoning1:     m.Reasoning1,
 			Reasoning2:     m.Reasoning2,
 			ReasoningField: m.ReasoningField,
+			// Carried straight across, no inversion: both types spell the option
+			// the same negative way, so the one place that has to flip it is the
+			// Chat Completions body.
+			SerialToolCalls: m.SerialToolCalls,
 		}
 	}
 	return infos

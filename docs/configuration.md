@@ -42,7 +42,7 @@ alayacore --config-path ./my-project-config
 
 **Location**: `<config-path>/model.conf`
 
-This file defines one or more LLM models that AlayaCore can use. It is auto-created with a default Ollama configuration on first run. Model edits made via the UI (pressing `e` in the model selector) are sent to the session via `:model_sync` and persisted back to this file automatically.
+This file defines one or more LLM models that AlayaCore can use. It is auto-created with a default Ollama configuration on first run. Models replaced via `:model_sync` are persisted back to this file automatically.
 
 ### Format
 
@@ -73,6 +73,54 @@ reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}
 | `reasoning_1` | No | Same as `reasoning_0` but for reasoning level **1** (normal). |
 | `reasoning_2` | No | Same as `reasoning_0` but for reasoning level **2** (max). |
 | `reasoning_field` | No | **OpenAI-protocol only.** Which key this endpoint uses for reasoning text — read from responses and used again when replaying reasoning. Omitted (or empty) → `reasoning_content`. See below. |
+| `serial_tool_calls` | No | `false` (default) or `true`. When `true`, alayacore runs a step's tool calls one at a time in the order the model made them, and the Chat Completions request asks for the same. See below. |
+
+### Tool-calling mode (`serial_tool_calls`)
+
+Many models and servers have no notion of parallel tool calls. This option is
+for them. It decides two things at once:
+
+| | `false` — omitted (default) | `true` |
+|---|---|---|
+| **Execution** | Each call starts as soon as its arguments finish streaming, so several run at once | One at a time, in the order the model made them |
+| **Chat Completions request** | `"parallel_tool_calls": true` | `"parallel_tool_calls": false` |
+
+**Why the name is negative.** Omitting the line must mean what alayacore has
+always done, and in this format an omitted key is a `false`. So the option is
+spelled for the new behavior, not the old one: `serial_tool_calls: true` is the
+thing you are opting into. The positive spelling (`parallel_tool_calls: false`)
+would have described the same setting but could not have been defaulted — an
+absent line would have read as `false`, and every existing `model.conf` would
+have silently switched modes.
+
+The request field keeps Chat Completions' own name, which is positive, so the
+request body says the opposite word from the config line. That inversion happens
+exactly once, in the OpenAI provider, and nowhere else.
+
+The request field is sent on **every** request that carries tools — never
+omitted, so a server is never left holding the mode by its own default. That
+matters because these defaults differ between deployments: some OpenAI-compatible
+servers ship parallel calling off, others on, and an unstated field looks
+identical from the client either way.
+
+The field exists only in OpenAI Chat Completions. `protocol_type: "anthropic"`
+endpoints have no equivalent, and nothing is invented onto that wire — but the
+**execution order still applies**, since that part lives in the agent rather than
+in the protocol. Setting `serial_tool_calls: true` on an Anthropic model is
+therefore meaningful, not a no-op.
+
+Ordering is by the index the model declared, not by the order argument fragments
+happened to arrive in. A model that asks for three things gets them run in the
+sequence it asked for.
+
+Two consequences worth knowing:
+
+- **A serial turn is slower** when the model asks for several things at once,
+  because the calls queue instead of overlapping. The option is a correctness
+  setting, not a performance one.
+- **Tool confirmations become one-at-a-time by construction.** A confirmation is
+  requested when its own turn comes, so a later call will not have its window
+  appear before an earlier one is answered.
 
 ### Reasoning configuration (`reasoning_0` / `reasoning_1` / `reasoning_2`)
 

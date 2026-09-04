@@ -30,6 +30,12 @@ type ProviderConfig struct {
 	// (model.conf `reasoning_field`). Empty means the provider default,
 	// providers.DefaultReasoningField.
 	ReasoningField string
+
+	// SerialToolCalls runs a step's tool calls one at a time and asks the Chat
+	// Completions endpoint for the same. It arrives verbatim from model.conf
+	// `serial_tool_calls`, whose negative spelling is what lets its absent form
+	// be the behavior alayacore has always had.
+	SerialToolCalls bool
 }
 
 // NewProvider creates a provider based on configuration
@@ -42,6 +48,7 @@ func NewProvider(config ProviderConfig) (llm.Provider, error) {
 		MaxTokens:        config.MaxTokens,
 		ReasoningConfigs: config.ReasoningConfigs,
 		ReasoningField:   config.ReasoningField,
+		SerialToolCalls:  config.SerialToolCalls,
 	}
 
 	switch strings.ToLower(config.Type) {
