@@ -83,3 +83,59 @@ func TestUnixInputParksWhileSuspended(t *testing.T) {
 		t.Fatal("key not delivered after resume")
 	}
 }
+
+// TestParkGivesTheKeystrokeToTheOtherReader is the handoff guarantee with two real
+// competing readers instead of a fake: a pipe, like the console input buffer, hands
+// each byte to whichever reader asked first. The loop is parked exactly the way
+// releaseTerminal parks it, and the read that follows stands in for the child's.
+// If parking ever becomes advisory again, this program takes the child's keystroke
+// — which is the Windows editor report, turned into a test.
+func TestParkGivesTheKeystrokeToTheOtherReader(t *testing.T) {
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pr.Close()
+	defer pw.Close()
+
+	input, err := newInput(&TTY{in: pr, out: pr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs := make(chan Msg, 16)
+	p := newParkedProgram(msgs, input)
+	ctxDone := make(chan struct{})
+	defer close(ctxDone)
+	go p.readInput(ctxDone)
+
+	// pauseInput blocks until the loop answers, so there is nothing to wait for
+	// here: the answer can only come from a loop that has stopped reading.
+	p.pauseInput()
+
+	if _, err := pw.Write([]byte{'k'}); err != nil {
+		t.Fatal(err)
+	}
+	// The child's read, given a deadline so that a regression reports "the program
+	// took the byte" instead of hanging the test.
+	got := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 1)
+		n, err := pr.Read(buf)
+		if err != nil {
+			got <- "error: " + err.Error()
+			return
+		}
+		got <- string(buf[:n])
+	}()
+
+	select {
+	case msg := <-msgs:
+		t.Fatalf("the parked loop delivered %v: the keystroke never reached the child", msg)
+	case s := <-got:
+		if s != "k" {
+			t.Errorf("the child read %q, want %q", s, "k")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the child's read was never answered")
+	}
+}

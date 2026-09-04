@@ -209,10 +209,14 @@ func TestEncoderSequences(t *testing.T) {
 	}
 }
 
-// TestEncoderDropsKeysWithNoForm: modifiers on their own, IME bookkeeping, and
-// keys nothing in this application binds produce no input at all — which is also
-// what a terminal with no mapping for them does. Silently forwarding their
-// character (usually zero, which would arrive as Ctrl+@) would not be.
+// TestEncoderDropsKeysWithNoForm: an event contributes the sequence for its key
+// code, or the character it typed, or nothing — which is also the order the
+// encoder asks the questions in. A lone Shift press, a media key, and an IME
+// composition marker all fall through both tests, and the reason they must be
+// silent is that their *character* is absent, not that their key code is
+// recognized as a modifier: VK_PROCESSKEY is the same code an IME commit arrives
+// with, and dropping by code alone would delete the text a CJK user typed (see
+// TestEncoderIMECommit).
 func TestEncoderDropsKeysWithNoForm(t *testing.T) {
 	dropped := []struct {
 		name string
@@ -234,6 +238,29 @@ func TestEncoderDropsKeysWithNoForm(t *testing.T) {
 				t.Errorf("got %q, want nothing", got)
 			}
 		})
+	}
+}
+
+// TestEncoderIMECommit: the case the ordering of those two questions exists for.
+// Windows delivers text committed by an IME — Chinese, Japanese, Korean, and the
+// dead-key accented letters of many European layouts — as a key event whose code
+// is the IME marker and whose *character* is the result. A committed ideograph is
+// also a surrogate pair, so both halves have to survive.
+func TestEncoderIMECommit(t *testing.T) {
+	var enc keyEncoder
+	got := string(enc.append(nil, keyRecordOf(keyEvent{down: true, virtualKey: vkProcess, char: 0x4E2D})))
+	if got != "中" {
+		t.Fatalf("an IME commit encoded as %q, want %q", got, "中")
+	}
+
+	high, low := utf16.EncodeRune('🀄') // a CJK-extension tile, beyond the BMP
+	half := enc.append(nil, keyRecordOf(keyEvent{down: true, virtualKey: vkProcess, char: uint16(high)}))
+	if len(half) != 0 {
+		t.Errorf("the first half of a committed pair encoded as %q, want it held", half)
+	}
+	whole := string(enc.append(nil, keyRecordOf(keyEvent{down: true, virtualKey: vkProcess, char: uint16(low)})))
+	if whole != "🀄" {
+		t.Errorf("the committed pair encoded as %q, want %q", whole, "🀄")
 	}
 }
 

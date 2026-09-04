@@ -151,6 +151,16 @@ resize path would be an improvement, and the record is where it would start.
 **Mouse events are read and dropped** because this UI has no mouse handling at all
 — `key_parser.go` parses no mouse sequence, so there was no behavior to preserve.
 
+**An external editor's buffer is block text, not keystrokes.** `blockText`
+(`input_field.go`) is what turns text arriving as a chunk into something the input
+field may hold: CRLF and lone CR become LF, control characters other than the
+newlines go, trailing newlines go. It has always been the rule for a bracketed
+paste; the editor handoff now runs the finished buffer through it as well. The
+reason is a Windows default rather than a Windows bug: notepad writes CRLF, and so
+does vim for a file it creates, so a prompt composed in `$EDITOR` came back with
+CRs in it — and a CR reaching the frame is the terminal being told to go to column
+0, with the rest of the line painted over another one.
+
 ### Kept from before
 
 **Gate on the syscalls failing, not on reading the bit back.** A read-back looks
@@ -318,6 +328,10 @@ onto a path no runner can exercise, so these are not academic:
 - [ ] A multi-line paste in `cmd`: nothing submits that the user did not ask for.
 - [ ] `Ctrl+O` into an editor and back: the editor takes input from the first
       keystroke, and returning repaints at the current size.
+- [ ] The same handoff into **notepad** (one of the default editors when `EDITOR`
+      is unset): it is a GUI process, so nothing about the console is involved, and
+      what it writes is a CRLF file — the prompt must come back with its lines
+      intact rather than painted over itself.
 - [ ] Quitting after an editor session, and quitting without one: the shell's
       prompt appears immediately, with no keypress required.
 - [ ] Colors render as the theme specifies in `cmd.exe` and in Windows Terminal;

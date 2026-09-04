@@ -59,8 +59,15 @@ wraps clipboard content in `ESC [ 200~` … `ESC [ 201~`. The parser reads
 whatever sits between those markers as data instead of as keystrokes
 (`key_parser.go` → `PasteMsg`), and the input field normalizes `\r\n`/`\r`/`\n`
 to `\n`, drops other control characters, and trims trailing newlines
-(`input_field.go` → `handlePaste`). Windows Terminal, and xterm / VTE /
+(`input_field.go` → `blockText`). Windows Terminal, and xterm / VTE /
 alacritty / kitty and friends on Unix, all take this path.
+
+`blockText` is the rule for any text that arrives as a *block* rather than as
+keystrokes, so the finished buffer of an external editor goes through it too
+(`tui.go` → `handleEditorFinished`). That matters most on Windows, where both
+sources use CRLF: notepad always, and vim by default for a file it creates.
+Before the rule was shared, a prompt composed in `notepad` came back carrying
+CRs, which the terminal reads as "column 0" — the frame painted over itself.
 
 A terminal that does not implement mode 2004 gives the program no markers, and
 there is no way to ask for them: `GetConsoleMode` succeeds on every Windows

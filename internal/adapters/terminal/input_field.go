@@ -177,15 +177,28 @@ func (m InputField) insertNewline() InputField {
 	return m.ensureCursorVisible()
 }
 
-// handlePaste inserts pasted text at the cursor position.
-// Control characters are filtered out, except for newlines which are
-// allowed to support multi-line paste.
-func (m InputField) handlePaste(msg PasteMsg) InputField {
-	runes := []rune(msg.Content)
-	if len(runes) == 0 {
-		return m
-	}
-	// Normalize line endings: handle \r\n and \r.
+// blockText is the one rule for text that arrives as a *block* rather than as
+// keystrokes: the content between bracketed-paste markers, and the finished
+// buffer of an external editor. Line endings are normalized to LF, control
+// characters other than the newlines are dropped, and trailing newlines are
+// trimmed.
+//
+// Each part of that is load-bearing on a Windows host, where the two sources
+// disagree with every other terminal about line endings: the clipboard ends lines
+// with CRLF, and an editor writing a fresh temp file (notepad always, vim with
+// fileformat=dos) hands back CRLF too. A bare CR inside the value is not merely
+// untidy — it reaches the frame verbatim, and on screen it moves the cursor to
+// column 0, painting the rest of the line over the beginning of another.
+//
+// Trailing newlines go because both sources add one: a terminal appends it to a
+// paste, and an editor appends it to the file. A buffer that held only a newline
+// therefore filters to nothing, which is the empty prompt the user left behind.
+//
+// The precedent for treating this as a boundary concern is already in the tree:
+// config.ParseKeyValueBlocks normalizes CRLF for the same reason, because the
+// model file is edited in the same editors.
+func blockText(content string) []rune {
+	runes := []rune(content)
 	normalized := make([]rune, 0, len(runes))
 	for i := 0; i < len(runes); i++ {
 		switch runes[i] {
@@ -200,21 +213,23 @@ func (m InputField) handlePaste(msg PasteMsg) InputField {
 			normalized = append(normalized, runes[i])
 		}
 	}
-	// Filter out non-printable control characters, but keep newlines.
+
 	filtered := make([]rune, 0, len(normalized))
 	for _, r := range normalized {
 		if r == '\n' || isPrintableRune(r) {
 			filtered = append(filtered, r)
 		}
 	}
-	if len(filtered) == 0 {
-		return m
-	}
-	// Trim trailing newlines (matches editor behavior — terminals often
-	// add a trailing newline on paste).
 	for len(filtered) > 0 && filtered[len(filtered)-1] == '\n' {
 		filtered = filtered[:len(filtered)-1]
 	}
+	return filtered
+}
+
+// handlePaste inserts pasted text at the cursor position, filtered by the block
+// rule (blockText) that an editor's buffer goes through as well.
+func (m InputField) handlePaste(msg PasteMsg) InputField {
+	filtered := blockText(msg.Content)
 	if len(filtered) == 0 {
 		return m
 	}

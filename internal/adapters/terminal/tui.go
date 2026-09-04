@@ -717,9 +717,10 @@ func (m Terminal) handleEditorFinished(msg EditorFinishedMsg) (Terminal, Cmd) {
 
 	case EditorActionUpdateInput:
 		if msg.Content != "" {
-			// Strip trailing newlines that text editors add by default.
-			content := strings.TrimRight(msg.Content, "\n")
-			m.input = m.input.WithValue(content)
+			// The buffer comes back through the same rule a paste does
+			// (input_field.go → blockText): a Windows editor writes CRLF,
+			// and a trailing newline the editor always adds.
+			m.input = m.input.WithValue(string(blockText(msg.Content)))
 			m.input = m.input.CursorEnd()
 			m = m.focusInput()
 		}

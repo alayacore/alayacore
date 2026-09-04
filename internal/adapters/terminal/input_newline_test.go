@@ -185,3 +185,43 @@ func TestPasteThenEnterSubmitsEverything(t *testing.T) {
 		t.Fatal("Enter after a pasted block did not submit")
 	}
 }
+
+// TestBlockText covers the rule for text that arrives as a block rather than as
+// keystrokes — the content between bracketed-paste markers, and the finished
+// buffer of an external editor (input_field.go → blockText). The two share one
+// rule because they are the same category of input, and because on Windows both
+// hand over CRLF where every other source hands over LF.
+func TestBlockText(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"plain", "abc", "abc"},
+		{"crlf becomes lf", "a\r\nb\r\nc", "a\nb\nc"},
+		{"lone cr is a line ending too", "a\rb", "a\nb"},
+		{"the editor's final newline is trimmed", "a\nb\n", "a\nb"},
+		{"a buffer that only held newlines", "\r\n", ""},
+		{"tabs go, as they do for a paste", "a\tb", "ab"},
+		{"escape bytes are not pasted as keys", "\x1b[31mred", "[31mred"},
+		{"a nul cannot reach the screen", "a\x00b", "ab"},
+		{"unicode survives", "你好 😀", "你好 😀"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(blockText(tt.content)); got != tt.want {
+				t.Errorf("blockText(%q) = %q, want %q", tt.content, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPasteUsesTheBlockRule keeps the two callers of the rule from drifting: what
+// a paste inserts is exactly what blockText returns.
+func TestPasteUsesTheBlockRule(t *testing.T) {
+	f := NewInputField().Focus().WithWidth(20)
+	after := f.handlePaste(PasteMsg{Content: "one\r\ntwo\r\n"})
+	if got, want := after.Value(), string(blockText("one\r\ntwo\r\n")); got != want {
+		t.Errorf("pasted value = %q, want %q", got, want)
+	}
+}

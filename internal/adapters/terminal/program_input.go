@@ -69,20 +69,26 @@ func (p *Program) readInput(ctxDone <-chan struct{}) {
 // returns true when ctxDone fired while parked. The park is acknowledged on
 // parkedCh, and releaseTerminal waits for that acknowledgement before touching
 // the terminal — so when it returns, no read of ours is in flight.
+//
+// The flag is the truth and the wake token is only a hint, which is why the
+// request is re-read after every wake. A token can be left behind: a pause that
+// timed out (a loop blocked delivering into a full queue) is resumed while the
+// loop is nowhere near the park check, and the token then sits in the channel.
+// Treating that as a release would leave the loop reading the terminal for the
+// rest of the session — the original bug, returning after one rare timeout.
 func (p *Program) parkIfSuspended(ctxDone <-chan struct{}) bool {
-	if !p.inputPaused.Load() {
-		return false
+	for p.inputPaused.Load() {
+		select {
+		case p.parkedCh <- struct{}{}:
+		default:
+		}
+		select {
+		case <-p.resumeCh:
+		case <-ctxDone:
+			return true
+		}
 	}
-	select {
-	case p.parkedCh <- struct{}{}:
-	default:
-	}
-	select {
-	case <-p.resumeCh:
-		return false
-	case <-ctxDone:
-		return true
-	}
+	return false
 }
 
 // deliverParsed parses data and delivers the resulting messages, waiting briefly
@@ -125,9 +131,19 @@ func (p *Program) sendInput(msg Msg, ctxDone <-chan struct{}) bool {
 // foreground child can be given the terminal. With no input source (a program
 // with no TTY, which is every test that drives the loop by hand) there is no loop
 // to wait for.
+//
+// A stale acknowledgement is dropped before the request, not after it: the loop
+// only ever answers a flag it has seen set, so an acknowledgement already sitting
+// in the channel at this moment belongs to an earlier pause — typically one that
+// timed out while the loop was blocked delivering into a full queue, and parked
+// afterwards. Waiting on that would return while the loop is still reading.
 func (p *Program) pauseInput() {
 	if p.input == nil {
 		return
+	}
+	select {
+	case <-p.parkedCh:
+	default:
 	}
 	p.inputPaused.Store(true)
 	select {
@@ -137,9 +153,9 @@ func (p *Program) pauseInput() {
 	}
 }
 
-// resumeInput wakes a parked input loop and lets it read the terminal again. It
-// also drains any stale acknowledgement left over from a timed-out pause, so a
-// later pauseInput cannot mistake it for a fresh one.
+// resumeInput wakes a parked input loop and lets it read the terminal again. The
+// wake is a hint (see parkIfSuspended): a token left over because the loop was
+// not parked when this ran cannot release a later park.
 func (p *Program) resumeInput() {
 	if p.input == nil {
 		return
@@ -147,10 +163,6 @@ func (p *Program) resumeInput() {
 	p.inputPaused.Store(false)
 	select {
 	case p.resumeCh <- struct{}{}:
-	default:
-	}
-	select {
-	case <-p.parkedCh:
 	default:
 	}
 }

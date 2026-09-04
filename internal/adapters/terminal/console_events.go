@@ -104,8 +104,9 @@ const (
 	ctrlMask uint32 = ctrlRightCtrl | ctrlLeftCtrl
 )
 
-// Virtual key codes (winuser.h). Only the keys with a byte form this program
-// cares about, plus the ones the encoder must recognize and drop.
+// Virtual key codes (winuser.h). The ones `specialKeyBytes` knows, plus the codes
+// that appear in the tests as "a press of this key alone carries no character",
+// and so contributes nothing.
 const (
 	vkBack    uint16 = 0x08
 	vkTab     uint16 = 0x09
@@ -113,7 +114,6 @@ const (
 	vkShift   uint16 = 0x10
 	vkControl uint16 = 0x11
 	vkMenu    uint16 = 0x12
-	vkPause   uint16 = 0x13
 	vkCapital uint16 = 0x14
 	vkEscape  uint16 = 0x1B
 	vkSpace   uint16 = 0x20
@@ -139,15 +139,10 @@ const (
 	vkF10     uint16 = 0x79
 	vkF11     uint16 = 0x7A
 	vkF12     uint16 = 0x7B
-	vkNumlock uint16 = 0x90
-	vkScroll  uint16 = 0x91
 	vkLShift  uint16 = 0xA0
-	vkRShift  uint16 = 0xA1
 	vkLCtrl   uint16 = 0xA2
-	vkRCtrl   uint16 = 0xA3
-	vkLMenu   uint16 = 0xA4
-	vkRMenu   uint16 = 0xA5
-	vkProcess uint16 = 0xE5 // IME composition in progress: no character yet
+	vkRMenu   uint16 = 0xA4
+	vkProcess uint16 = 0xE5 // IME: composition state, or the committed text itself
 )
 
 // Single-byte sequences, named because spelling 0x1b inline is how a prefix and a
@@ -171,18 +166,6 @@ const (
 // F13 and beyond have no form here: the application binds none, so they are
 // dropped with the other keys nothing is bound to.
 var functionKeyTilde = []int{15, 17, 18, 19, 20, 21, 23, 24}
-
-// isModifierOnly reports whether a key code is a modifier or a lock on its own:
-// pressing Shift is not an event any application binds, and the console reports
-// it as one.
-func isModifierOnly(virtualKey uint16) bool {
-	switch virtualKey {
-	case vkShift, vkControl, vkMenu, vkLShift, vkRShift, vkLCtrl, vkRCtrl, vkLMenu, vkRMenu,
-		vkCapital, vkNumlock, vkScroll, vkPause, vkProcess:
-		return true
-	}
-	return false
-}
 
 // keyEncoder converts events into bytes. It carries one piece of state across
 // events: a UTF-16 high surrogate whose low half has not arrived yet. The console
@@ -216,8 +199,19 @@ func (e *keyEncoder) append(dst []byte, rec inputRecord) []byte {
 }
 
 // appendKey adds the bytes for one key event.
+//
+// One rule, in this order: a key code with a terminal sequence contributes that
+// sequence; otherwise the event contributes the character it typed; otherwise it
+// contributes nothing. The character is asked *after* the key code and never
+// ignored because of it, because the console's own conventions make the key code
+// an unreliable reason to discard an event: an IME commits its text as
+// VK_PROCESSKEY carrying the character, so a table of "keys that are only
+// modifiers and can be ignored" would silently delete exactly the input a CJK
+// user produced. A bare modifier press carries no character, so it falls out of
+// this rule on its own terms — no exception list to keep correct.
 func (e *keyEncoder) appendKey(dst []byte, k keyEvent) []byte {
-	if !k.down || isModifierOnly(k.virtualKey) {
+	if !k.down {
+		// A release carries no input; reading it would double every keystroke.
 		e.highSurrogate = 0
 		return dst
 	}

@@ -849,3 +849,28 @@ func TestGetWindowContentRegular(t *testing.T) {
 		t.Errorf("Expected regular content, got: %q", content)
 	}
 }
+
+// TestEditorBufferLandsAsNewlines: the file a Windows editor hands back is a CRLF
+// document — notepad always, vim with fileformat=dos, which is its default for a
+// file it creates on Windows. The prompt has to read those as line breaks. A CR
+// that survives into the value is not cosmetic: it reaches the frame verbatim, and
+// the terminal acts on it as "go to column 0", painting the rest of the line over
+// the start of another one.
+func TestEditorBufferLandsAsNewlines(t *testing.T) {
+	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+
+	model, _ := terminal.Update(EditorFinishedMsg{
+		Action:  EditorActionUpdateInput,
+		Content: "first line\r\nsecond line\r\n",
+	})
+	m, ok := model.(Terminal)
+	if !ok {
+		t.Fatalf("model = %T, want Terminal", model)
+	}
+	if got := m.input.Value(); got != "first line\nsecond line" {
+		t.Errorf("input value = %q, want %q", got, "first line\nsecond line")
+	}
+	if strings.Contains(m.View().Content, "\r") {
+		t.Error("the view carries a bare CR; the frame would be painted over itself")
+	}
+}

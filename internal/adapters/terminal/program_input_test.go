@@ -225,6 +225,54 @@ func TestResumeAfterParkDeliversEveryQueuedByte(t *testing.T) {
 	}
 }
 
+// TestStaleWakeTokenCannotReleaseAPark pins the rule that the park request is the
+// truth and the wake token only a hint. The residue is reachable: when a pause
+// expires because the loop was blocked delivering into a full queue, the resume
+// that follows posts a token with nobody parked to take it, and it stays in the
+// channel. A loop that read that token as its release would start one more read
+// after acknowledging the park — into the window where releaseTerminal has already
+// handed the keyboard to the editor, which is the invariant the whole handoff
+// rests on.
+//
+// It is asserted on parkIfSuspended directly rather than by counting reads through
+// the loop: the extra read the old code allowed can land before a snapshot taken
+// after pauseInput returns, and the test would then pass for the wrong reason.
+func TestStaleWakeTokenCannotReleaseAPark(t *testing.T) {
+	p := newParkedProgram(make(chan Msg, 16), newFakeInput())
+	ctxDone := make(chan struct{})
+	defer close(ctxDone)
+
+	p.resumeCh <- struct{}{}  // the residue: a wake with nothing parked to take it
+	p.inputPaused.Store(true) // and now a real request stands
+
+	parked := make(chan bool, 1)
+	go func() { parked <- p.parkIfSuspended(ctxDone) }()
+	select {
+	case keptReading := <-parked:
+		if !keptReading {
+			t.Fatal("parkIfSuspended released the park on a stale wake token")
+		}
+		t.Error("parkIfSuspended reported the loop finished while a pause request stood")
+	case <-time.After(200 * time.Millisecond):
+		// still parked, which is the answer
+	}
+	select {
+	case <-p.parkedCh:
+	default:
+		t.Error("the park was never acknowledged, so pauseInput could not have waited for it")
+	}
+
+	p.resumeInput()
+	select {
+	case keptReading := <-parked:
+		if keptReading {
+			t.Error("a resume reported the loop finished instead of resuming it")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("resumeInput did not release the parked loop")
+	}
+}
+
 // TestStopInputWaitsForTheLoopToLeave is the teardown guarantee: when stopInput
 // returns, the loop has finished and is not inside a read, so the terminal can be
 // restored, its files closed, and the process exit — without a console read still
