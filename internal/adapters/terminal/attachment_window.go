@@ -557,13 +557,18 @@ func (aw AttachmentWindow) render() string {
 
 	helpStyle := NewStyle().Background(aw.Styles.ColorDim).Foreground(aw.Styles.ColorMuted)
 	var help string
+	// One line, one box width: the bar is truncated to the overlay's width, so a
+	// hint that does not fit is a hint nobody sees. Each state lists only what
+	// that state can do — which is also why the two paths through local mode
+	// differ. TestOverlayHelpBarsFit pins the budget; see that test before
+	// adding a fifth hint.
 	switch {
 	case aw.mode == modeURL:
-		help = "  enter: add URL | ctrl+a: switch to local | esc: close"
+		help = "  enter: add URL │ ctrl+a: switch to local │ esc: close"
 	case aw.FilterInputFocused:
-		help = "  tab: list | enter: pick | ctrl+w: up a level | ctrl+a: url"
+		help = "  tab: list │ enter: pick │ ctrl+w: up a level │ ctrl+a: url"
 	default:
-		help = "  tab: search | j/k: navigate | enter: add file | enter on dir: browse | ctrl+a: switch to URL | esc: close"
+		help = "  tab: search │ j/k: navigate │ enter: pick │ esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))

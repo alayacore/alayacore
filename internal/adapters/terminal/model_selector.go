@@ -238,7 +238,7 @@ func (ms ModelSelector) renderList() string {
 	if ms.FilterInputFocused {
 		help = "  tab: list │ ctrl+r: reload │ enter: select │ esc: close"
 	} else {
-		help = "  tab: search │ j/k: navigate │ ctrl+r: reload │ enter: select │ q/esc: close"
+		help = "  tab: search │ j/k: navigate │ enter: select │ q/esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))
