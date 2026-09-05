@@ -3,7 +3,7 @@ package terminal
 // Regression test: the fold arrow must not accumulate across renders.
 // windowFragment prepends the arrow to the window's first visible row;
 // a previous in-place mutation of the cached border.lines prepended
-// another arrow on every render (▶▶▶▶▶▶▶▶▶▶ USER ...).
+// another arrow on every render (▸▸▸▸▸▸▸▸▸▸ USER ...).
 
 import (
 	"strings"
@@ -29,8 +29,8 @@ func TestArrowNotAccumulatedAcrossRenders(t *testing.T) {
 	// Each folded line shows exactly one arrow.
 	for _, line := range strings.Split(out, "\n") {
 		trimmed := strings.TrimLeft(line, " ")
-		if strings.HasPrefix(trimmed, "▶") {
-			count := strings.Count(line, "▶")
+		if strings.HasPrefix(trimmed, foldArrow) {
+			count := strings.Count(line, foldArrow)
 			if count != 1 {
 				t.Errorf("folded line has %d arrows, want 1: %q", count, line)
 			}

@@ -26,6 +26,7 @@ import (
 	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/alayacore/alayacore/internal/protocol"
+	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -452,7 +453,10 @@ func (w *Window) renderCursorArrow(blocked bool) string {
 }
 
 // arrowChar returns the fold-state arrow glyph, configured by the theme
-// (falling back to conventional defaults if no theme is attached).
+// (falling back to the theme package's defaults if no theme is attached).
+// Styles normalizes the glyphs it carries (see NewStyles), so the values
+// used here are always single-cell; the empty check covers a hand-built
+// Styles with no theme attached.
 func (w *Window) arrowChar() string {
 	if w.styles != nil {
 		if w.Folded {
@@ -464,9 +468,9 @@ func (w *Window) arrowChar() string {
 		}
 	}
 	if w.Folded {
-		return "▶"
+		return theme.DefaultFoldArrow
 	}
-	return "▼"
+	return theme.DefaultUnfoldArrow
 }
 
 // arrowStyle returns the style for the collapse/expand arrow.

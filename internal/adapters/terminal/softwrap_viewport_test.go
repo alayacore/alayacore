@@ -92,7 +92,7 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 	// Folded fragment: single short line, unpadded (its EL erase clears
 	// any previous frame's residue on the row, keeping selections free of
 	// trailing spaces).
-	if !strings.Contains(plain, "▶ REASONING       short reasoning") {
+	if !strings.Contains(plain, foldArrow+" REASONING       short reasoning") {
 		t.Errorf("AR folded line missing: %q", plain)
 	}
 }
@@ -116,7 +116,7 @@ func TestRenderVirtualScrollToMiddle(t *testing.T) {
 	if strings.Contains(out, "─") {
 		t.Errorf("scrolled-into-window fragment must not contain box rules: %q", out)
 	}
-	if strings.Contains(out, "▶") || strings.Contains(out, "▼") {
+	if strings.Contains(out, foldArrow) || strings.Contains(out, unfoldArrow) {
 		t.Errorf("scrolled-into-window fragment must not contain the fold arrow: %q", out)
 	}
 	if strings.Contains(out, "\n") {
@@ -297,14 +297,14 @@ func TestRenderVirtualCursorArrow(t *testing.T) {
 	if !containsANSI(out) {
 		t.Error("cursor render should color the arrow")
 	}
-	if !strings.Contains(stripANSI(out), "▼") {
+	if !strings.Contains(stripANSI(out), unfoldArrow) {
 		t.Errorf("cursor window arrow missing at top: %q", stripANSI(out))
 	}
 
 	// Scrolled into the middle: no arrow (header not visible).
 	wb.SetViewportPosition(2, 5)
 	out = wb.GetAll(idx, false)
-	if strings.Contains(stripANSI(out), "▼") {
+	if strings.Contains(stripANSI(out), unfoldArrow) {
 		t.Errorf("arrow must not appear when scrolled into the window: %q", stripANSI(out))
 	}
 }

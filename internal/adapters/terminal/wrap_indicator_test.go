@@ -34,8 +34,8 @@ func TestFoldedToolCollapsedLine(t *testing.T) {
 		t.Fatalf("Collapsed tool window should be a single line, got %d lines:\n%s", len(renderedLines), rendered)
 	}
 	plain := stripANSI(rendered)
-	if !strings.HasPrefix(plain, "▶") {
-		t.Errorf("Collapsed line should start with ▶ arrow, got %q", plain)
+	if !strings.HasPrefix(plain, foldArrow) {
+		t.Errorf("Collapsed line should start with the collapse arrow, got %q", plain)
 	}
 	if !strings.Contains(plain, "TOOL") || !strings.Contains(plain, "test_tool") {
 		t.Errorf("Collapsed line should contain TOOL + tool name, got %q", plain)
@@ -89,7 +89,7 @@ func TestFoldedDiffCollapsedLine(t *testing.T) {
 	if len(renderedLines) != 1 {
 		t.Errorf("Folded diff should collapse to a single line, got %d lines:\n%s", len(renderedLines), rendered)
 	}
-	if !strings.HasPrefix(stripANSI(rendered), "▶") {
+	if !strings.HasPrefix(stripANSI(rendered), foldArrow) {
 		t.Error("Collapsed line must not contain box borders")
 	}
 	if !strings.Contains(stripANSI(rendered), "TOOL CALL") || !strings.Contains(stripANSI(rendered), "edit_file") {
@@ -111,8 +111,8 @@ func TestUnfoldedWindowHasHeaderAndBox(t *testing.T) {
 		t.Fatalf("Expanded window should be 4 lines (header + box), got %d:\n%s", len(lines), rendered)
 	}
 	header := stripANSI(lines[0])
-	if !strings.HasPrefix(header, "▼") {
-		t.Errorf("Header should start with ▼ arrow, got %q", header)
+	if !strings.HasPrefix(header, unfoldArrow) {
+		t.Errorf("Header should start with the expand arrow, got %q", header)
 	}
 	if !strings.Contains(header, "ASSISTANT") {
 		t.Errorf("Header should contain ASSISTANT label, got %q", header)
@@ -135,8 +135,8 @@ func TestFoldedSystemWindowLabels(t *testing.T) {
 	wb.AppendOrUpdate("SN", "sys-1", "nothing to cancel")
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
-	if !strings.HasPrefix(plain, "▶ SYSTEM NOTIFY") {
-		t.Errorf("System notify window should start with '▶ SYSTEM NOTIFY', got %q", plain)
+	if !strings.HasPrefix(plain, foldArrow+" SYSTEM NOTIFY") {
+		t.Errorf("System notify window should start with the collapse arrow + 'SYSTEM NOTIFY', got %q", plain)
 	}
 	if !strings.Contains(plain, "nothing to cancel") {
 		t.Errorf("System notify window should show content after label, got %q", plain)
@@ -147,8 +147,8 @@ func TestFoldedSystemWindowLabels(t *testing.T) {
 	rendered = wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 	plain = stripANSI(lines[len(lines)-1])
-	if !strings.HasPrefix(plain, "▶ SYSTEM ERROR") {
-		t.Errorf("System error window should start with '▶ SYSTEM ERROR', got %q", plain)
+	if !strings.HasPrefix(plain, foldArrow+" SYSTEM ERROR") {
+		t.Errorf("System error window should start with the collapse arrow + 'SYSTEM ERROR', got %q", plain)
 	}
 	if !strings.Contains(plain, "something failed") {
 		t.Errorf("System error window should show content after label, got %q", plain)
@@ -167,12 +167,12 @@ func TestExpandedSystemWindowHeaderLabels(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 
-	if !strings.Contains(stripANSI(lines[0]), "▼ SYSTEM NOTIFY") {
-		t.Errorf("Expanded notify header should be '▼ SYSTEM NOTIFY', got %q", stripANSI(lines[0]))
+	if !strings.Contains(stripANSI(lines[0]), unfoldArrow+" SYSTEM NOTIFY") {
+		t.Errorf("Expanded notify header should be the expand arrow + 'SYSTEM NOTIFY', got %q", stripANSI(lines[0]))
 	}
 	// SE window: header + box = 4 lines, so its header is at index 4.
-	if !strings.Contains(stripANSI(lines[4]), "▼ SYSTEM ERROR") {
-		t.Errorf("Expanded error header should be '▼ SYSTEM ERROR', got %q", stripANSI(lines[4]))
+	if !strings.Contains(stripANSI(lines[4]), unfoldArrow+" SYSTEM ERROR") {
+		t.Errorf("Expanded error header should be the expand arrow + 'SYSTEM ERROR', got %q", stripANSI(lines[4]))
 	}
 }
 
@@ -196,7 +196,7 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 
 	findLine := func(label string) string {
 		for _, l := range lines {
-			if strings.HasPrefix(stripANSI(l), "▶ "+label) {
+			if strings.HasPrefix(stripANSI(l), foldArrow+" "+label) {
 				return l
 			}
 		}
@@ -298,12 +298,12 @@ func TestFoldedLabelsAligned(t *testing.T) {
 	lines := strings.Split(rendered, "\n")
 
 	// Every collapsed line: content must start at the same display column
-	// ("▶ " + CollapsedLabelWidth) — labels are left-justified to a fixed
-	// column so USER/REASONING/ASSISTANT/… content aligns.
+	// (arrow + space + CollapsedLabelWidth) — labels are left-justified to a
+	// fixed column so USER/REASONING/ASSISTANT/… content aligns.
 	wantCol := 2 + CollapsedLabelWidth
 	for _, l := range lines {
 		plain := stripANSI(l)
-		if !strings.HasPrefix(plain, "▶") {
+		if !strings.HasPrefix(plain, foldArrow) {
 			continue
 		}
 		if c := contentColumn(plain); c != wantCol {
@@ -351,7 +351,7 @@ func TestFoldedToolStatusIndicatorNoReplacementChar(t *testing.T) {
 	if !strings.Contains(plain, "TOOL CALL ✓") {
 		t.Errorf("collapsed line should contain TOOL CALL + success check, got %q", plain)
 	}
-	// Content column must be exactly "▶ " + label column.
+	// Content column must be exactly "arrow + space" + label column.
 	if c := contentColumn(plain); c != 2+CollapsedLabelWidth {
 		t.Errorf("collapsed TOOL content column = %d, want %d: %q", c, 2+CollapsedLabelWidth, plain)
 	}
@@ -725,7 +725,7 @@ func TestFoldedTextWindowEllipsisIsDimmed(t *testing.T) {
 	wb2.AppendOrUpdate("SN", "n1", strings.Repeat("very long system notification that will need truncation ", 3))
 	snRendered := wb2.GetAll(-1, false)
 	snPlain := stripANSI(snRendered)
-	if !strings.HasPrefix(snPlain, "▶ SYSTEM NOTIFY") || !strings.Contains(snPlain, "…") {
+	if !strings.HasPrefix(snPlain, foldArrow+" SYSTEM NOTIFY") || !strings.Contains(snPlain, "…") {
 		t.Fatalf("SN collapsed summary should start with the leading ellipsis: %q", snPlain)
 	}
 	if !containsDimEllipsis(snRendered, styles) {
@@ -813,7 +813,7 @@ func TestFoldedTextWindowHeadAndTailUpdatesOnDelta(t *testing.T) {
 	}
 	// The middle ellipsis sits between head and tail — the line does NOT
 	// begin with "…" (that's tailSummary's behavior).
-	if strings.HasPrefix(plain, "▶ ASSISTANT       …") {
+	if strings.HasPrefix(plain, foldArrow+" ASSISTANT       …") {
 		t.Errorf("collapsed summary must not start with a leading ellipsis: %q", plain)
 	}
 	if !strings.Contains(plain, "…") {
@@ -846,7 +846,7 @@ func TestFoldArrowThemeConfigurable(t *testing.T) {
 	if !strings.Contains(stripANSI(rendered), "v ASSISTANT") {
 		t.Errorf("expanded header should use theme expand arrow, got %q", stripANSI(rendered))
 	}
-	if strings.Contains(stripANSI(rendered), "▼") {
+	if strings.Contains(stripANSI(rendered), unfoldArrow) {
 		t.Errorf("expanded header should not use hardcoded default, got %q", stripANSI(rendered))
 	}
 
@@ -856,7 +856,7 @@ func TestFoldArrowThemeConfigurable(t *testing.T) {
 	if !strings.HasPrefix(stripANSI(rendered), "> ") {
 		t.Errorf("collapsed line should use theme collapse arrow, got %q", stripANSI(rendered))
 	}
-	if strings.Contains(stripANSI(rendered), "▶") {
+	if strings.Contains(stripANSI(rendered), foldArrow) {
 		t.Errorf("collapsed line should not use hardcoded default, got %q", stripANSI(rendered))
 	}
 

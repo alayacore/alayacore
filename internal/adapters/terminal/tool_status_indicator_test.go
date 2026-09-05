@@ -81,13 +81,13 @@ func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 		Input: json.RawMessage("execute_command: lscpu"),
 	}, 0)
 
-	// Pending (executing): header is "▶ TOOL CALL ⠋ …" — a separator space
+	// Pending (executing): header is "▸ TOOL CALL ⠋ …" — a separator space
 	// and a spinner frame right after the label.
 	plain := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(plain, "▶ TOOL CALL ") {
-		t.Fatalf("pending header should start with ▶ TOOL CALL + space, got %q", plain)
+	if !strings.HasPrefix(plain, foldArrow+" TOOL CALL ") {
+		t.Fatalf("pending header should start with the collapse arrow + 'TOOL CALL ' + space, got %q", plain)
 	}
-	rest := []rune(strings.TrimPrefix(plain, "▶ TOOL CALL "))
+	rest := []rune(strings.TrimPrefix(plain, foldArrow+" TOOL CALL "))
 	if len(rest) == 0 {
 		t.Fatal("pending header has nothing after the label")
 	}
@@ -274,7 +274,7 @@ func TestUserPromptCollapsed(t *testing.T) {
 					if !strings.Contains(plain, "…") {
 						t.Fatalf("expected middle ellipsis: %q", plain)
 					}
-					rest := strings.TrimPrefix(plain, "▶ USER PROMPT")
+					rest := strings.TrimPrefix(plain, foldArrow+" USER PROMPT")
 					if strings.HasPrefix(rest, "…") {
 						t.Errorf("ellipsis must NOT be at line START: %q", plain)
 					}
@@ -299,20 +299,20 @@ func TestUserPromptLabel(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	wb.AppendOrUpdate(tlv.TagUserT, "u1", "what is lisp?")
 
-	// Collapsed (user windows start folded): "▶ USER PROMPT what is lisp?".
+	// Collapsed (user windows start folded): "▸ USER PROMPT what is lisp?".
 	plain := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(plain, "▶ USER PROMPT     what is lisp?") {
-		t.Errorf("collapsed user line should start with ▶ USER PROMPT, got %q", plain)
+	if !strings.HasPrefix(plain, foldArrow+" USER PROMPT     what is lisp?") {
+		t.Errorf("collapsed user line should start with the collapse arrow + 'USER PROMPT', got %q", plain)
 	}
 	if c := contentColumn(plain); c != 2+CollapsedLabelWidth {
 		t.Errorf("collapsed USER content column = %d, want %d: %q", c, 2+CollapsedLabelWidth, plain)
 	}
 
-	// Expanded header: "▼ USER PROMPT".
+	// Expanded header: "▾ USER PROMPT".
 	wb.ToggleFold(0)
 	plain = stripANSI(wb.GetAll(-1, false))
-	if !strings.Contains(plain, "▼ USER PROMPT") {
-		t.Errorf("expanded header should contain ▼ USER PROMPT, got %q", plain)
+	if !strings.Contains(plain, unfoldArrow+" USER PROMPT") {
+		t.Errorf("expanded header should contain the expand arrow + 'USER PROMPT', got %q", plain)
 	}
 }
 

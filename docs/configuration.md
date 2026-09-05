@@ -294,8 +294,8 @@ selection: #fab387
 added: #a6e3a1
 removed: #f38ba8
 tool: #f9e2af
-fold_arrow: "▶"
-unfold_arrow: "▼"
+fold_arrow: "▸"
+unfold_arrow: "▾"
 ```
 
 ### Color Roles
@@ -318,7 +318,13 @@ Body text (assistant messages, reasoning, user input, tool input/output) is rend
 
 | Key | Used for |
 |-----|----------|
-| `fold_arrow` | Arrow prefix on collapsed (folded) window header lines. Single codepoint |
-| `unfold_arrow` | Arrow prefix on expanded window header lines. Single codepoint |
+| `fold_arrow` | Arrow prefix on collapsed (folded) window header lines. One grapheme cluster, one display cell |
+| `unfold_arrow` | Arrow prefix on expanded window header lines. One grapheme cluster, one display cell |
+
+Collapsed headers are laid out as `arrow + space + label column`, so the layout reserves exactly one cell for the arrow. A value that needs more than one cell — `"▶️"` (`▶` plus the emoji variation selector), `"[+]"`, `"▸▾"` — is replaced by the built-in default (`▸` / `▾`) and reported as a theme load error, so a bad glyph can never shift every window header.
+
+The defaults are the *small* triangles, and not the heavier `▶` / `▼`, for terminal reasons rather than taste: `▶`/`▼` (U+25B6/U+25BC) are East Asian Width "ambiguous" — a terminal configured for double-width ambiguous characters draws them two cells while the layout measures one — and they are emoji-presentation codepoints, so Windows Terminal, GNOME Console and any font stack with an emoji fallback paint them as a two-cell color glyph. `▸`/`▾` (U+25B8/U+25BE) are narrow, default to text presentation, and are present in essentially every monospace font. Pure-ASCII pairs (`+` / `-`, `>` / `v`) are always safe if a theme wants to sidestep font coverage entirely.
+
+Defaults apply to newly created theme files; a `themes/*.conf` written by an older version keeps the glyphs it already has.
 
 Switch themes at runtime with `Ctrl+P`.

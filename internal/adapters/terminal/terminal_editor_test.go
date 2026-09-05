@@ -633,7 +633,7 @@ func TestWindowBufferWidth(t *testing.T) {
 	// Line 0 is the header (expand arrow + "ASSISTANT"); line 1 is the box
 	// top rule.
 	headerLine := lines[0]
-	if !strings.Contains(headerLine, "▼") || !strings.Contains(headerLine, "ASSISTANT") {
+	if !strings.Contains(headerLine, unfoldArrow) || !strings.Contains(headerLine, "ASSISTANT") {
 		t.Errorf("Header line missing: %q", headerLine)
 	}
 	topLine := lines[1]

@@ -58,7 +58,8 @@ type Styles struct {
 	ColorMuted   color.Color
 	ColorWarning color.Color
 
-	// Fold-state arrow glyphs (from the theme; single codepoint).
+	// Fold-state arrow glyphs (from the theme; one grapheme cluster, one
+	// display cell — theme.ArrowGlyphs replaces anything else).
 	FoldArrow   string // collapsed-window arrow
 	UnfoldArrow string // expanded-window arrow
 }
@@ -128,6 +129,12 @@ func (s *Styles) RenderOpenBox(content string, width int, borderColor color.Colo
 // NewStyles creates a Styles instance from a Theme
 func NewStyles(t *theme.Theme) *Styles {
 	baseStyle := NewStyle()
+	// Themes reach Styles from several sources — theme files, the session's
+	// theme_list message, hand-built themes in tests — and this is the one
+	// choke point all of them pass, so the arrow glyphs are validated here.
+	// The load-time warning (for files) comes from theme.parseTheme, which
+	// reports the same replacement through the init-error channel.
+	foldArrow, unfoldArrow, _ := theme.ArrowGlyphs(t.FoldArrow, t.UnfoldArrow)
 	return &Styles{
 		// Output text styles
 		Tool:        baseStyle.Foreground(Color(t.Tool)),
@@ -156,8 +163,8 @@ func NewStyles(t *theme.Theme) *Styles {
 		ColorMuted:   Color(t.Muted),
 		ColorWarning: Color(t.Warning),
 
-		FoldArrow:   t.FoldArrow,
-		UnfoldArrow: t.UnfoldArrow,
+		FoldArrow:   foldArrow,
+		UnfoldArrow: unfoldArrow,
 	}
 }
 

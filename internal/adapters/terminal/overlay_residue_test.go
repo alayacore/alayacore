@@ -45,20 +45,20 @@ func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	frame2 := m.View().Content
 
 	// The terminal applies frame2 over frame1. Without EL erases, the row
-	// "▶ USER PROMPT my os?" would trail "el's Core Ultra..."; with them,
+	// "▸ USER PROMPT my os?" would trail "el's Core Ultra..."; with them,
 	// the row is cleared at its end.
 	plain2 := stripANSI(frame2)
 	// Check the USER folded row specifically: its content must be exactly
 	// the folded line (no pollution from the old assistant row).
 	for _, row := range splitTerminalRows(plain2, W) {
-		if strings.HasPrefix(row, "▶ USER") {
+		if strings.HasPrefix(row, foldArrow+" USER") {
 			trimmed := strings.TrimRight(row, " ")
-			if trimmed != "▶ USER PROMPT     my os?" {
+			if trimmed != foldArrow+" USER PROMPT     my os?" {
 				t.Errorf("USER folded row polluted by residue: %q (trimmed %q)", row, trimmed)
 			}
 		}
 		// No folded row may trail rule characters (the old rule residue).
-		if strings.HasPrefix(row, "▶ ") && strings.Contains(row, "─") {
+		if strings.HasPrefix(row, foldArrow+" ") && strings.Contains(row, "─") {
 			t.Errorf("folded row trails rule residue: %q", row)
 		}
 	}
