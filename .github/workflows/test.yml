@@ -47,6 +47,15 @@ jobs:
           # pulls the latest release, and a new check in someone else's linter
           # would fail the build for code nobody touched.
           version: v1.64.8
+          # Built, not downloaded, and it cannot be downloaded: v1.64.8 is the
+          # last v1 release, so its release binary is frozen at the Go that built
+          # it (1.24), while golangci-lint refuses to load a config for a module
+          # declaring a newer Go than that. goinstall compiles the same tag with
+          # this job's own toolchain, so the pinned linters and the findings they
+          # report are unchanged; the Makefile names this same version, bump both.
+          # Moving to v2 instead means a config-schema migration plus every check
+          # the linter gained since — its own change.
+          install-mode: goinstall
 
       - name: Vet
         run: go vet ./...
@@ -107,6 +116,9 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64.8
+          # Same reason as the Linux job: the release binary is an older-Go build
+          # and cannot load this module at all.
+          install-mode: goinstall
           args: ./internal/adapters/terminal/...
 
   cross-compile:

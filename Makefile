@@ -10,6 +10,17 @@ GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 GOFMT=$(GOCMD) fmt
 
+# Linting. The version is CI's version (golangci-lint-action, install-mode:
+# goinstall, in .github/workflows/test.yml) named here rather than whatever
+# binary happens to be on PATH: a golangci-lint compiled by a Go older than
+# go.mod declares cannot read this module at all, and @latest would let a check
+# added in someone else's linter decide whether this build is green. Bump the
+# two together. `go run pkg@version` compiles it with the local toolchain, the
+# same way CI does; repeats cost ~4s off the build cache, the first run on a
+# fresh machine compiles the linter once.
+GOLANGCI_LINT_VERSION=v1.64.8
+GOLANGCI_LINT=$(GOCMD) run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
 # Binary names
 MAIN_BINARY=alayacore
 
@@ -74,10 +85,9 @@ test-coverage:
 	$(GOTEST) -v -coverprofile=coverage.out ./...
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
 
-## lint: Run golangci-lint
+## lint: Run golangci-lint (the version CI runs, built with the local toolchain)
 lint:
-	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-	golangci-lint run ./...
+	$(GOLANGCI_LINT) run ./...
 
 ## fmt: Format code
 fmt:
