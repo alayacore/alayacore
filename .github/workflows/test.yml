@@ -8,8 +8,8 @@ name: Test
 #
 # So the gate here is three things: the full suite and lint on Linux, a Windows
 # job that type-checks every package (including test files) for GOOS=windows and
-# runs the adapter suite there, and a build of every target release.yml
-# publishes, on every push.
+# runs the adapter suite and the checkout invariants there, and a build of every
+# target release.yml publishes, on every push.
 
 on:
   push:
@@ -68,29 +68,11 @@ jobs:
         run: go test -race ./...
 
   windows:
-    name: Windows (vet every package, test the adapter)
+    name: Windows (vet every package, test the adapter and the checkout)
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # .gitattributes is the fix; this is the alarm. Git for Windows installs
-      # with core.autocrlf=true and so rewrites the checkout to CRLF, which
-      # gofmt reads as every file in the tree being unformatted — the whole
-      # adapter, hundreds of findings, each pointing at line 1, none of them
-      # about the code. Assert the checkout is LF so the failure names the
-      # cause instead of burying it.
-      - name: Check the checkout's line endings
-        shell: bash
-        run: |
-          echo "effective core.autocrlf: $(git config --get core.autocrlf || echo unset)"
-          if files=$(git grep -lI $'\r' -- '*.go'); then
-            count=$(printf '%s\n' "$files" | wc -l)
-            printf '%s\n' "$files" | awk 'NR<=10{print} END{if (NR>10) printf "... and %d more\n", NR-10}'
-            echo "::error::$count .go files were checked out with CRLF, so gofmt will call every one of them unformatted. .gitattributes is what prevents this."
-            exit 1
-          fi
-          echo "every .go file is LF."
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -103,12 +85,13 @@ jobs:
       - name: Vet (GOOS=windows)
         run: go vet ./...
 
-      # The suite that runs here is the terminal adapter: it owns the
-      # windows_*.go files this job exists to protect, and it is written against
-      # buffers rather than against a console, so it needs no TTY — a runner
-      # hands `go test` pipes, never a console window. See
-      # program_resize_poll_test.go and console_windows_test.go for the parts
-      # that only have meaning on Windows and are portable to assert.
+      # The suite that runs here is the terminal adapter's, plus the checkout
+      # invariants noted below. The adapter owns the windows_*.go files this job
+      # exists to protect, and it is written against buffers rather than against
+      # a console, so it needs no TTY — a runner hands `go test` pipes, never a
+      # console window. See program_resize_poll_test.go and
+      # console_windows_test.go for the parts that only have meaning on Windows
+      # and are portable to assert.
       #
       # Deliberately not included yet: internal/tools and internal/skills. Their
       # tests assert POSIX semantics — directory symlinks (a privileged
@@ -117,18 +100,26 @@ jobs:
       # reasons that have nothing to do with the console. Widening it means
       # making each of those tests say what it actually requires, which is its
       # own change.
-      - name: Test the terminal adapter
-        run: go test ./internal/adapters/terminal/...
+      #
+      # internal/checkout is here because it is the only package in the suite
+      # that cannot be tested anywhere else: it asserts that the working copy
+      # git wrote out has LF line endings, and a Linux checkout has LF whatever
+      # .gitattributes says, so on the Linux job the assertion is true by
+      # geography rather than by rule. Windows is where core.autocrlf=true can
+      # reach the build, which is how this job came to fail on 144 gofmt
+      # findings that had nothing behind them.
+      - name: Test the terminal adapter and the checkout
+        run: go test ./internal/adapters/terminal/... ./internal/checkout/...
 
-      # Lint here too, for the same package the job tests. It used to be left
+      # Lint here too, for the same packages the job tests. It used to be left
       # out because `GOOS=windows golangci-lint run ./...` reported one finding
       # the Linux run could not see — Program.inputPaused, read only by the Unix
       # input loop — and that went away when parking the loop became shared code
-      # (program_input.go). Scope is the adapter rather than ./... because
+      # (program_input.go). Scope is those two packages rather than ./... because
       # internal/tools/shell/terminate_windows.go carries findings of its own
       # (unchecked CloseHandle, a tainted taskkill argument), which are that
       # file's change to make and not the console's.
-      - name: Lint the terminal adapter (GOOS=windows)
+      - name: Lint the terminal adapter and the checkout (GOOS=windows)
         env:
           GOOS: windows
         uses: golangci/golangci-lint-action@v6
@@ -137,7 +128,7 @@ jobs:
           # Same reason as the Linux job: the release binary is an older-Go build
           # and cannot load this module at all.
           install-mode: goinstall
-          args: ./internal/adapters/terminal/...
+          args: ./internal/adapters/terminal/... ./internal/checkout/...
 
   cross-compile:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}${{ matrix.goarm && format('v{0}', matrix.goarm) || '' }}

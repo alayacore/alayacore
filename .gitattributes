@@ -1,31 +1,62 @@
 # Line endings, pinned.
 #
-# Every text file here is LF in the index and LF in the working tree, on every
-# platform. That has to be *stated*, because Git for Windows — which GitHub's
-# windows-latest runner installs with its installer defaults, and which most
-# Windows contributors have on their machines too — sets core.autocrlf=true.
-# A plain checkout on Windows then rewrites every .go file to CRLF, and gofmt
-# counts CRLF as unformatted: the lint step in the Windows CI job reported
-# "File is not properly formatted" for every file in the terminal adapter, each
-# pointing at line 1. Nothing was wrong with the code; the line endings of the
-# checkout were the whole finding.
+# Every text file in this repository is LF in the index and LF in the working
+# tree, on every platform. That has to be *stated*, because Git for Windows
+# installs with core.autocrlf=true — windows-latest does not override the
+# installer default, and actions/checkout never touches it — which smudges an
+# LF-committed file to CRLF on the way out. gofmt parses CRLF without complaint
+# and prints LF, so it calls every such file unformatted: the Windows lint job
+# reported exactly that, 144 findings across the terminal adapter, each pointing
+# at line 1, none of them about the code.
 #
-# text=auto  normalize on commit (LF in the index), and leave anything that
-#            looks binary alone.
-# eol=lf     check out with LF. Attributes win over core.autocrlf, which is
-#            what makes this the fix rather than a workaround — and it fixes
-#            the contributor's machine in the same stroke, so `make lint` there
-#            stops inventing diffs it cannot explain.
+# The mechanism is gitattributes(5), and both halves are load-bearing:
+#
+#   "If the text attribute is unspecified, Git uses the core.autocrlf
+#    configuration variable to determine if the file should be converted."
+#     -> setting text explicitly is what takes core.autocrlf out of the answer.
+#   "eol=lf — This setting uses the same line endings in the working directory
+#    as in the index when the file is checked out."
+#     -> text=auto alone would still normalize on commit and hand a Windows
+#        checkout CRLF, because its own eol default on Windows is crlf.
+#
+# internal/checkout/line_endings_test.go holds this file to it: it asks git what
+# text and eol resolve to for every tracked path, and what the checkout actually
+# looks like, so a rule that silently stops applying fails a test rather than
+# reappearing as a wall of gofmt findings.
+
+# The catch-all, so that a file type nobody thought about is LF by default.
+# Inferred from content, which is the right bet for prose and the wrong bet for
+# anything executable or byte-exact — those are named below.
 * text=auto eol=lf
 
-# The binary files, named instead of inferred. Content detection is usually
-# right, but a fixture that happens to read as text must never be "normalized":
-# adapter-guide/tlv-samples/*.bin are byte-exact TLV recordings that the
-# adapter tests replay.
-*.bin  binary
-*.gif  binary
-*.jpg  binary
-*.pdf  binary
-*.png  binary
-*.wav  binary
-*.webp binary
+# The extensions this repository is made of, typed as text by name. Same
+# behaviour today; the point is that the outcome no longer depends on a
+# heuristic noticing that, say, a .sh file is text. Shell scripts and Make
+# recipes are the sharp edge: with a CR they do not merely look unformatted,
+# they fail to run or to build.
+*.go     text eol=lf
+*.conf   text eol=lf
+*.gitignore text eol=lf
+*.md     text eol=lf
+*.mod    text eol=lf
+*.sh     text eol=lf
+*.sum    text eol=lf
+*.svg    text eol=lf
+*.tape   text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+LICENSE  text eol=lf
+Makefile text eol=lf
+
+# Binary by name, never by detection: adapter-guide/tlv-samples/*.bin are byte
+# exact TLV recordings the adapter tests replay, and a fixture that happens to
+# read as text would otherwise be "corrected" into a different file. The -eol
+# backs out of the catch-all's eol=lf: on a path git is not converting at all,
+# an eol answer that says lf would be a lie to anyone reading `git check-attr`.
+*.bin  binary -eol
+*.gif  binary -eol
+*.jpg  binary -eol
+*.pdf  binary -eol
+*.png  binary -eol
+*.wav  binary -eol
+*.webp binary -eol
