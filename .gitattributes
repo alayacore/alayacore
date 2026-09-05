@@ -1,58 +1,50 @@
 # Line endings, pinned.
 #
-# Every text file in this repository is LF in the index and LF in the working
-# tree, on every platform. That has to be *stated*, because Git for Windows
-# installs with core.autocrlf=true — windows-latest does not override the
-# installer default, and actions/checkout never touches it — which smudges an
-# LF-committed file to CRLF on the way out. gofmt parses CRLF without complaint
-# and prints LF, so it calls every such file unformatted: the Windows lint job
-# reported exactly that, 144 findings across the terminal adapter, each pointing
-# at line 1, none of them about the code.
+# Every text file here is LF in the index and LF in the working tree, on every
+# platform — and that has to be *stated* rather than assumed, because Git for
+# Windows installs with core.autocrlf=true (windows-latest does not override the
+# installer default, and actions/checkout never touches it), which smudges an
+# LF-committed file to CRLF on checkout. gofmt parses CRLF happily and prints LF,
+# so it calls every such file unformatted: that is how the Windows CI job once
+# failed with 144 findings across the terminal adapter, each pointing at line 1,
+# none of them about the code.
 #
-# The mechanism is gitattributes(5), and both halves are load-bearing:
+# Both halves of the mechanism are load-bearing (gitattributes(5)): naming
+# `text` explicitly is what takes core.autocrlf out of the answer, and `eol=lf`
+# is what decides the checkout. `* text=auto` alone would still normalize the
+# index and still hand Windows CRLF, because its eol default there is crlf — the
+# half fix that keeps the Linux job green.
 #
-#   "If the text attribute is unspecified, Git uses the core.autocrlf
-#    configuration variable to determine if the file should be converted."
-#     -> setting text explicitly is what takes core.autocrlf out of the answer.
-#   "eol=lf — This setting uses the same line endings in the working directory
-#    as in the index when the file is checked out."
-#     -> text=auto alone would still normalize on commit and hand a Windows
-#        checkout CRLF, because its own eol default on Windows is crlf.
-#
-# internal/checkout/line_endings_test.go holds this file to it: it asks git what
-# text and eol resolve to for every tracked path, and what the checkout actually
-# looks like, so a rule that silently stops applying fails a test rather than
-# reappearing as a wall of gofmt findings.
+# `make check-gitattributes` (misc/check-gitattributes.sh) holds these rules to
+# it on the platform where a weakened one looks perfectly fine.
 
-# The catch-all, so that a file type nobody thought about is LF by default.
-# Inferred from content, which is the right bet for prose and the wrong bet for
-# anything executable or byte-exact — those are named below.
+# The catch-all: a file type nobody thought about is LF by default, with text
+# inferred from content. A fair bet for prose, a bad one for anything executable
+# or byte-exact, so those are named below.
 * text=auto eol=lf
 
-# The extensions this repository is made of, typed as text by name. Same
-# behaviour today; the point is that the outcome no longer depends on a
-# heuristic noticing that, say, a .sh file is text. Shell scripts and Make
-# recipes are the sharp edge: with a CR they do not merely look unformatted,
-# they fail to run or to build.
-*.go     text eol=lf
-*.conf   text eol=lf
+# Typed as text by name: the outcome stops depending on a heuristic noticing that
+# a file is text. Shell scripts are the sharp edge — with a CR they do not merely
+# look unformatted, they fail to run, and a Makefile fails to build.
+*.go        text eol=lf
+*.conf      text eol=lf
 *.gitignore text eol=lf
-*.md     text eol=lf
-*.mod    text eol=lf
-*.sh     text eol=lf
-*.sum    text eol=lf
-*.svg    text eol=lf
-*.tape   text eol=lf
-*.yml    text eol=lf
-*.yaml   text eol=lf
-LICENSE  text eol=lf
-Makefile text eol=lf
+*.md        text eol=lf
+*.mod       text eol=lf
+*.sh        text eol=lf
+*.sum       text eol=lf
+*.svg       text eol=lf
+*.tape      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+LICENSE     text eol=lf
+Makefile    text eol=lf
 
 # Binary by name, never by detection: adapter-guide/tlv-samples/*.bin are byte
-# exact TLV recordings the adapter tests replay, and a fixture that happens to
-# read as text would otherwise be "corrected" into a different file. The -eol
-# backs out of the catch-all's eol=lf: on a path git is not converting at all,
-# an eol answer that says lf would be a lie to anyone reading `git check-attr`.
+# exact TLV recordings the adapter tests replay, and a fixture that happened to
+# read as text would be "corrected" into a different file. The -eol backs out of
+# the catch-all's eol=lf, so `git check-attr` does not answer "lf" about a file
+# git is not converting at all.
 *.bin  binary -eol
 *.gif  binary -eol
 *.jpg  binary -eol

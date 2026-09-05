@@ -1,5 +1,5 @@
 .PHONY: all build test lint fmt clean install run release release-all \
-       build-windows build-darwin build-linux
+       build-windows build-darwin build-linux check check-gitattributes
 
 # Go parameters
 GOCMD=go
@@ -120,8 +120,12 @@ run:
 	CGO_ENABLED=0 $(GOBUILD) $(BUILDTAGS) -o $(MAIN_BINARY) .
 	./$(MAIN_BINARY)
 
-## check: Run all checks (fmt, vet, lint, test)
-check: fmt vet lint test
+## check-gitattributes: Assert .gitattributes still does what it says (misc/check-gitattributes.sh)
+check-gitattributes:
+	./misc/check-gitattributes.sh
+
+## check: Run all checks (attributes, fmt, vet, lint, test)
+check: check-gitattributes fmt vet lint test
 
 ## pre-commit: Run checks before committing
 pre-commit: fmt vet test
