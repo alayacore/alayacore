@@ -11,7 +11,8 @@ package terminal
 //
 //  1. Measuring and cutting cannot disagree. They used to: rows were sized
 //     with ansi.StringWidth and cut with uniseg's cluster widths, and the two
-//     tables give different cell counts for some single clusters — a keycap
+//     tables give different cell counts for some single clusters — measured
+//     on 4193 codepoints of the two, 237 of them printable; a keycap
 //     ("1" + U+FE0F + U+20E3) is 1 cell to uniseg and 2 to displaywidth. A
 //     4-cell budget was then filled with what measured 5 cells, and the row
 //     overflowed by one: the collapsed summary that pushed the next row
@@ -31,14 +32,16 @@ package terminal
 //     the limitation recorded in constants.go's glyph policy, waiver 2, and
 //     no width table can help with it.
 //
-// What is NOT routed here: ansi.Hardwrap, ansi.Wrap, ansi.Truncate and
-// ansi.Cut. They are escape-aware line breakers that also use displaywidth,
-// but through ansi's env-tuned copy of the options, so with
-// RUNEWIDTH_EASTASIAN set they break lines earlier than this file measures.
-// That direction is safe — an early break leaves a row under-filled, it can
-// never overflow a budget this file computed — so they stay. Routing them
-// here would mean reimplementing ECMA-48-aware word wrapping for no
-// additional safety.
+// What is NOT routed here: ansi.Hardwrap, ansi.Wrap and ansi.Cut — the
+// escape-aware breakers, which also use displaywidth but through ansi's
+// env-tuned copy of the options. With RUNEWIDTH_EASTASIAN set they break a
+// line earlier (or, for a rule drawn from box characters, later) than this
+// file measures: 15 tests in this package fail that way, which is what
+// "double-width-ambiguous is not a supported mode" means in practice
+// (constants.go, glyph policy; docs/tui.md). Routing them here would mean
+// reimplementing ECMA-48-aware word wrapping — the styled rows the cutters
+// do receive are already delegated to ansi.Cut/TruncateLeft below, which is
+// the one place that asymmetry is load-bearing.
 
 import (
 	"strings"

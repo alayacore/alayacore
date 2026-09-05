@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rivo/uniseg"
-
 	"github.com/alayacore/alayacore/internal/theme"
 
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -156,7 +154,7 @@ func TestMarkdownTablesNeverTruncate(t *testing.T) {
 					// Admissible only when the line is a single grapheme
 					// cluster that is itself wider than the window (a CJK
 					// glyph in a 1-column window) — nothing can fit that.
-					if n := uniseg.GraphemeClusterCount(line); n > 1 {
+					if n := clusterCount(line); n > 1 {
 						t.Fatalf("%s @%d: avoidable overflow (%d clusters, width %d): %q", tc.name, width, n, w, line)
 					}
 				}

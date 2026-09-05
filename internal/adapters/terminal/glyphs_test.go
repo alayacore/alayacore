@@ -9,19 +9,21 @@ package terminal
 // symbol that stops being drawn fails until its entry goes with it.
 //
 // What "classified" buys us is the one thing runtime cannot detect. A
-// terminal configured for double-width ambiguous characters (xterm
-// -cjkwidth, mlterm in a CJK locale, some font configurations) draws an
-// East-Asian-Ambiguous glyph two cells wide, and every width library we
-// build with answers 1 for it. So the property is measured offline, against
-// the tables in those libraries — uniseg's switchable
-// EastAsianAmbiguousWidth is the oracle for "is this glyph Ambiguous?" —
-// and pinned here. (The terminal consequence follows from the property and
-// has not been measured on a host here; see arrows_test.go for the same
-// disclaimer.)
+// terminal configured for double-width ambiguous characters draws an
+// East-Asian-Ambiguous glyph two cells wide while every width library
+// reports one. That configuration is deliberate and rare — a mainstream
+// terminal draws these glyphs one cell — but no runtime query reveals which
+// mode a host is in, so the guard is the choice of codepoint. The property
+// is measured offline against the table this build cuts with: displaywidth
+// charges an Ambiguous rune 1 or 2 cells depending on its EastAsianWidth
+// option and every other rune the same in both settings, so a rune whose
+// width moves is exactly the set of Ambiguous runes. (The terminal
+// consequence follows from the property and has not been measured on a host
+// here; see arrows_test.go for the same disclaimer.)
 //
-// This test mutates the package-level uniseg.EastAsianAmbiguousWidth and
-// restores it. No test in this package uses t.Parallel(), which is what
-// makes that safe; if that changes, the probe needs its own process.
+// The probe builds its own displaywidth.Options per call and mutates no
+// global state, which is what makes it safe to run alongside every other
+// test in this package.
 
 import (
 	"fmt"
@@ -36,7 +38,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/rivo/uniseg"
+	"github.com/clipperhouse/displaywidth"
 )
 
 type glyphClass struct {
@@ -98,8 +100,9 @@ var drawnGlyphs = map[rune]glyphClass{
 	'∞': {1, true, "unlimited context in the model column. Candidate for the word 'none'"},
 
 	// --- Wide by design: the media icons. --------------------------------
-	// Two cells under BOTH width models (they are Extended_Pictographic
-	// with Emoji_Presentation=Yes), so the layout reserves two. What is
+	// Two cells under the table this adapter measures and cuts with (they
+	// are Extended_Pictographic with Emoji_Presentation=Yes), so the layout
+	// reserves two. What is
 	// pinned here is that each stays a single codepoint — no U+FE0F, no ZWJ
 	// (policy rule 3) — and that nothing else in the adapter is wide.
 	'📷': {2, false, "image attachment icon"},
@@ -119,9 +122,8 @@ func TestDrawnGlyphsMatchPolicy(t *testing.T) {
 	var unclassified, stale []string
 	for r, files := range drawn {
 		if _, ok := drawnGlyphs[r]; !ok {
-			unclassified = append(unclassified, fmt.Sprintf("%q U+%04X (EAW=%s, ansi=%d, uniseg=%d) in %s",
-				r, r, eastAsianClass(r), cellWidth(string(r)), uniseg.StringWidth(string(r)),
-				strings.Join(files, ", ")))
+			unclassified = append(unclassified, fmt.Sprintf("%q U+%04X (EAW=%s, cells=%d) in %s",
+				r, r, eastAsianClass(r), cellWidth(string(r)), strings.Join(files, ", ")))
 		}
 	}
 	for r := range drawnGlyphs {
@@ -145,14 +147,15 @@ func TestDrawnGlyphsMatchPolicy(t *testing.T) {
 		}
 		g := string(r)
 
-		// The two width models in this package must agree on the glyph.
-		// This is the check that catches the class policy rule 3 is about:
-		// displaywidth reports U+2630 as two cells and uniseg as one, and
-		// reports a text glyph followed by U+FE0F as two where uniseg says
-		// one — a string measured by one library and sliced by the other is
-		// then one cell off, invisibly.
-		if a, u := cellWidth(g), uniseg.StringWidth(g); a != u {
-			t.Errorf("%q U+%04X: the two width models disagree — ansi=%d uniseg=%d", g, r, a, u)
+		// The two paths through the one table must agree: measuring the
+		// glyph whole, and summing it cluster by cluster. This is the
+		// invariant that replaced the cross-library check when the
+		// measurement and the cut became the same table (width.go) — the
+		// version of it that mattered is in width_test.go, over a corpus of
+		// multi-codepoint clusters.
+		cs := clusters(g)
+		if len(cs) != 1 || cs[0].cells != cellWidth(g) {
+			t.Errorf("%q U+%04X: whole-string measure is %d cells, clustering gives %v — one table, two answers", g, r, cellWidth(g), cs)
 		}
 		if got := cellWidth(g); got != want.cells {
 			t.Errorf("%q U+%04X: measures %d cells, policy reserves %d (%s)", g, r, got, want.cells, want.why)
@@ -188,19 +191,12 @@ func TestStatusDotIsNeutralWidth(t *testing.T) {
 	}
 }
 
-// isEastAsianAmbiguous asks uniseg — the library whose tables this build
-// links — whether the rune's East_Asian_Width is "A": it charges an
-// Ambiguous rune EastAsianAmbiguousWidth cells and every other rune the
-// same in both settings, so a rune whose width changes is exactly the set
-// of Ambiguous runes.
+// isEastAsianAmbiguous moves the EastAsianWidth option and sees whether the
+// rune's width moves with it. Only East_Asian_Width = A runes do; Neutral and
+// Wide runes cost the same either way.
 func isEastAsianAmbiguous(r rune) bool {
-	orig := uniseg.EastAsianAmbiguousWidth
-	defer func() { uniseg.EastAsianAmbiguousWidth = orig }()
-
-	uniseg.EastAsianAmbiguousWidth = 1
-	narrow := uniseg.StringWidth(string(r))
-	uniseg.EastAsianAmbiguousWidth = 2
-	wide := uniseg.StringWidth(string(r))
+	narrow := (&displaywidth.Options{EastAsianWidth: false}).String(string(r))
+	wide := (&displaywidth.Options{EastAsianWidth: true}).String(string(r))
 	return narrow != wide
 }
 
@@ -266,7 +262,7 @@ func eastAsianClass(r rune) string {
 	if isEastAsianAmbiguous(r) {
 		return "A"
 	}
-	if uniseg.StringWidth(string(r)) == 2 {
+	if cellWidth(string(r)) == 2 {
 		return "W"
 	}
 	return "N"

@@ -335,7 +335,7 @@ scrolls the viewport. While auto-follow is active:
 
 Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOL CALL` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `SYSTEM NOTIFY` for system notifications, or `SYSTEM ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOL CALL` + indicator followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
 
-An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrows are fixed by the terminal layout (`foldArrow` / `unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the header reserves exactly one cell for them, so the glyph is a geometry decision and switching color schemes must not change it. The arrows are fixed by the terminal layout (`foldArrow` / `unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the header reserves exactly one cell for the arrow, so the glyph is a geometry decision and switching color schemes must not change it. `▸`/`▾` were chosen over the heavier `▶`/`▼` because that pair is East Asian Width "ambiguous" *and* emoji-presenting — two cells in a terminal set to double-width Ambiguous, or wherever font resolution reaches an emoji font, while our width model still reports one. The rule is avoidability, not purity: `─` and the spinners stay ambiguous because nothing replaces them (see **Width calculation** under [Line Wrapping](#line-wrapping)), whereas `▸`/`▾` sit in the same block as `▶`/`▼` and cost nothing. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
+An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrows are fixed by the terminal layout (`foldArrow` / `unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the header reserves exactly one cell for them, so the glyph is a geometry decision and switching color schemes must not change it. The arrows are fixed by the terminal layout (`foldArrow` / `unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the header reserves exactly one cell for the arrow, so the glyph is a geometry decision and switching color schemes must not change it. `▸`/`▾` were chosen over the heavier `▶`/`▼` because both of those are East Asian Width "ambiguous" (two cells in a terminal set to double-width Ambiguous) and `▶` is Extended_Pictographic on top of it (with Emoji_Presentation=No, so text is its default — it reaches an emoji font only where a U+FE0F or a font stack says so), while the width table reports one cell for either. The rule is avoidability, not purity: `─` and the spinners stay ambiguous because nothing replaces them (see **Width calculation** under [Line Wrapping](#line-wrapping)), whereas `▸`/`▾` sit in the same block as `▶`/`▼` and cost nothing. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
 
 ### Collapsed Summary Truncation
 
@@ -387,18 +387,33 @@ contains ANSI codes with a new style and expect it to work.
 
 ## Glyphs and Terminal Width
 
-Every symbol the TUI draws is chosen against one constraint: the layout
-reserves exactly one cell for it, and a terminal configured to render
-East-Asian **Ambiguous** characters two cells wide (`xterm -cjkwidth`,
-`mlterm` in a CJK locale, some font configurations) happily draws such a
-glyph two cells while every width library reports one. Neither the app nor
-the libraries can see it happen at runtime, so the guard is the choice of
-codepoint: the fold arrows are `▸ ▾` (Neutral) and not `▶ ▼` (Ambiguous),
-the status dot is `∙` (Neutral) and not the `·`/`•` pair it replaced, and
-the help bars separate key hints with an ASCII `|` rather than `│`. Lines the app draws
-are one family: the frame rules, the markdown table grid and the in-content divider
-(`───`, `Separator`) are all box drawing, so a divider can never be confused with a
-markdown rule, a unified-diff file header, or the `---` frontmatter and config-block
+Cell arithmetic lives in one file. `internal/adapters/terminal/width.go`
+owns both "how many cells does this occupy" and "cut this string at N
+cells", from one width table (displaywidth's, with the options constructed
+there). That is a fix, not a style preference: rows used to be sized with
+`ansi.StringWidth` and cut with `rivo/uniseg`'s cluster widths, and the two
+tables disagree for some single clusters — a keycap (`1` + U+FE0F + U+20E3)
+is 1 cell to one and 2 to the other — so a 4-cell budget could be filled
+with what measures 5 cells, shifting the row below it and wrapping the last
+segment of a full-width row. `width_test.go` cuts every string in a corpus
+of those clusters at every budget and re-measures the result; the
+markdown-summary and tool-preview truncations that take this path are
+covered by the same invariant.
+
+Everything the TUI draws is then chosen against one constraint: the layout
+reserves exactly one cell for it, and a character whose `East_Asian_Width`
+is **Ambiguous** is drawn one cell wide by default and two cells wide by a
+terminal configured for CJK (`xterm -cjkwidth`, mlterm's setting, some font
+configurations) — a configuration nobody reaches by accident, and one no
+runtime query reveals (the adapter issues no capability probe; see
+[Paste and terminal capability](#paste-and-terminal-capability)). So the
+guard is the choice of codepoint: the fold arrows are `▸ ▾` (Neutral) and
+not `▶ ▼` (Ambiguous), the status dot is `∙` (Neutral) and not the `·`/`•`
+pair it replaced, and the help bars separate key hints with an ASCII `|`
+rather than `│`. Lines the app draws are one family: the frame rules, the
+markdown table grid and the in-content divider (`───`, `Separator`) are all
+box drawing, so a divider can never be confused with a markdown rule, a
+unified-diff file header, or the `---` frontmatter and config-block
 delimiters of this product's own file formats.
 
 Two classes are accepted as limitations instead of being worked around,
@@ -406,19 +421,27 @@ because no Neutral alternative exists: **box drawing** (`─ │` and the
 markdown table grid — the whole range `U+2500-U+257F` is Ambiguous, so
 every rule and table frame in the app shares the same exposure), and a few
 **typographic marks** (`…`, `—`, `∞`, `↓`). Program-owned symbols stay
-single codepoints throughout: the adapter sizes strings with one width
-library and slices grapheme clusters with another, and the two disagree on
-roughly 3100 codepoints — a glyph whose width depends on a variation
-selector or ZWJ would be measured one way and truncated the other.
+single codepoints throughout, now for a host-side reason: a glyph followed
+by U+FE0F asks the terminal for emoji presentation, and a terminal that
+ignores the request draws one cell where the table reserves two, and a ZWJ
+family is one cluster here and several there.
+
+One environment variable is worth naming, because it looks like support and
+is not: `RUNEWIDTH_EASTASIAN` is read by `x/ansi` at init and makes it charge
+Ambiguous glyphs two cells. `width.go` ignores it (it holds its own options),
+but the escape-aware breakers (`ansi.Hardwrap`, `Wrap`, `Truncate`, `Cut`)
+still read it, so with the variable set a frame rule wraps onto a second
+row. **Double-width-ambiguous is not a supported mode**; the assumption is
+written down here rather than left to a library default. Making it a real
+mode means either a capability probe for what the terminal actually does, or
+an ASCII glyph set for rules and grids — both product decisions, not bug
+fixes.
 
 The rule, the waiver list with its reasons, and the enforcement live in
 `internal/adapters/terminal/constants.go` (glyph policy) and
 `glyphs_test.go`, which scans the package's own string literals and fails
 on an unclassified glyph, a stale entry, or a measured width that
-contradicts its class. A terminal where the ambiguous glyphs really do come
-back two cells wide cannot be detected today either — the adapter queries
-nothing (`docs/tui.md` → [Paste and terminal capability](#paste-and-terminal-capability))
-— so the ASCII alternative would be a deliberate option, not a bug fix.
+contradicts its class.
 
 ## Tool Confirm Dialog
 

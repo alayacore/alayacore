@@ -52,20 +52,20 @@ func TestFoldArrowGlyphs(t *testing.T) {
 //     (with Emoji_Presentation=No — text is their default, so they need
 //     U+FE0F to be emoji by default); ▼ and ▲ are not in it at all.
 //
-// Both hazards measure one cell to at least one of our two width models,
-// so nothing at runtime can catch the damage — only the choice of glyph
-// can. (The properties were checked against Unicode 15 data and against
-// the tables of the libraries we build with; the terminal consequence
-// follows from those properties and has not been measured on a host here.)
-// glyphs_test.go re-derives the ambiguous-width half of this from the
-// libraries themselves, so a drift is caught by the build. A default
-// drifting back onto one of these is a regression, not a cosmetic change.
+// Both hazards measure one cell to the table this adapter now measures and
+// cuts with (width.go), so nothing at runtime can catch the damage — only
+// the choice of glyph can. (The properties were checked against Unicode 15
+// data and against that table; the terminal consequence follows from those
+// properties and has not been measured on a host here.) glyphs_test.go
+// re-derives the ambiguous-width half of this from the table itself, so a
+// drift is caught by the build. A default drifting back onto one of these
+// is a regression, not a cosmetic change.
 //
 // The two media keys ⏵ (U+23F5) and ⏷ (U+23F7) used to be on this list for
 // "emoji presentation", which is not a property either of them: they are
 // East-Asian Neutral and outside Extended_Pictographic (the pictographic
 // range jumps from U+23F3 to U+23F8, which is exactly where the media
-// buttons resume), so both width models in our stack give them one cell.
+// buttons resume), so the table we measure with gives them one cell.
 // They are dropped rather than kept on a reason that does not hold — the
 // arrows themselves are pinned by codepoint at the top of this file, which
 // is the guarantee that matters.
@@ -79,7 +79,7 @@ func TestArrowsAvoidUnreliableCodepoints(t *testing.T) {
 		'\u25CB': "○ ambiguous width",
 		'\u2192': "→ ambiguous width",
 		'\u2193': "↓ ambiguous width",
-		'\u2630': "☰ already two cells in our own width model",
+		'\u2630': "☰ already two cells in the table we measure with",
 	}
 	for _, g := range []string{foldArrow, unfoldArrow} {
 		for _, r := range g {

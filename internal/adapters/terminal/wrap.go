@@ -605,7 +605,7 @@ func wrapLabels(labels []string, width int, style Style) string {
 // truncateWithSuffix truncates a PLAIN (ANSI-free) string to fit within
 // maxWidth display columns, appending "…" to mark the cut. The result is
 // guaranteed to be at most maxWidth display columns wide, provided the
-// input contains no unexpanded tabs — ansi.StringWidth counts a tab as 0
+// input contains no unexpanded tabs — the width table counts a tab as 0
 // width while terminals render it as TabWidth columns. Callers must
 // expandTabs (see tool_render.go) before truncating content that may
 // contain tabs.
@@ -619,5 +619,12 @@ func truncateWithSuffix(content string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	return ansi.Truncate(content, maxWidth, "…")
+	if cellWidth(content) <= maxWidth {
+		return content
+	}
+	// The marker's own cells come off the budget through the same table
+	// that cuts the content — an env-tuned answer for one and a pinned one
+	// for the other is exactly the off-by-one this file used to have.
+	marker := "…"
+	return takeCells(content, maxWidth-cellWidth(marker)) + marker
 }

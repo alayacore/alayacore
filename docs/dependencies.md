@@ -61,67 +61,56 @@ former Lip Gloss output (locked by `style_test.go`):
 
 ## Low-level Text Processing
 
-### `github.com/charmbracelet/x/ansi` — ANSI-aware String Operations
+### `github.com/clipperhouse/displaywidth` — the one width table (direct dependency)
 
-Handles width measurement, truncation, and line-breaking on **text that already contains ANSI escape codes**. Used in three places:
-
-**① Text wrapping (`wrap.go`)**
+Every answer to "how many cells does this occupy" and every "cut this string at N cells" comes from this library, through `width.go`, from one `Options` value constructed there:
 
 ```go
-func wrapContent(s string, width int) string {
-	s = ansi.Hardwrap(s, width, true)  // hard-break at width
-	// ...
-}
+// width.go
+var widthModel = &displaywidth.Options{EastAsianWidth: false}
+
+func cellWidth(s string) int                 // ansi.Strip, then this table
+func takeCells(s string, cells int) string   // leading whole clusters
+func tailCells(s string, cells int) string   // trailing whole clusters
 ```
 
-The input to `wrapContent` is **styled** output containing `\033[32m...\033[0m` sequences. Line breaking must **ignore ANSI code bytes** and measure only visible characters.
+Two properties follow, both pinned by `width_test.go`:
 
-**② Confirmation dialog (`confirm_dialog.go`)**
+- **Measuring and cutting cannot disagree.** They used to: rows were sized with `ansi.StringWidth` and cut with `rivo/uniseg`'s cluster widths, and the two tables answer differently for some single clusters — a keycap (`1` + U+FE0F + U+20E3) is 1 cell to uniseg and 2 to displaywidth. A 4-cell budget then received 5 cells, and the row shifted the next one. `width_test.go` re-measures every cut at every budget and fails on an overrun; run against the previous implementation it names the keycap and the variation-selector cases.
+- **The environment cannot retune the layout.** `x/ansi` reads `RUNEWIDTH_EASTASIAN` in its own package `init` and, when it says true, charges East-Asian-Ambiguous glyphs (`│ ─ … — · • ↓ ∞`) two cells; nothing of ours runs early enough to undo it (an `init` in this package, or an `os.Unsetenv` in `main` — measured, both too late). Holding our own options is what makes the adapter's numbers not move. `TestCellWidthIgnoresRunewidthEastAsian` proves it by re-executing the test binary with the variable set.
+
+Cluster boundaries come from `github.com/clipperhouse/uax29/v2/graphemes`, which displaywidth and `x/ansi` both segment with; it stays an indirect dependency.
+
+### `github.com/charmbracelet/x/ansi` — protocol and escape-aware line breaking
+
+Everything that speaks to the terminal, plus the line breakers that must understand escapes to survive them:
+
+**① Line breaking on styled text (`wrap.go`, `confirm_dialog.go`)**
 
 ```go
-wrapped := ansi.Hardwrap(styled, innerWidth, true)
+s = ansi.Hardwrap(s, width, true)   // hard-break at width
 line = ansi.Truncate(line, limit, "")
 ```
 
-Same scenario — text with ANSI styles.
+The input contains `\033[32m...\033[0m` sequences. A breaker that measured those bytes as visible characters would break the line in the middle of a color code. `ansi` measures clusters, keeps the escapes attached, and re-emits them; `width.go` deliberately does not reimplement that (see its header on why `ansi.Cut`/`TruncateLeft` take the styled rows the cutters are handed).
 
-**③ Input field (`input_field.go`)**
+**② Output sequences and SGR (`screen.go`, `style.go`, `wrap.go`)** — cursor addressing and erase, alt screen, bracketed paste, focus reporting, cursor style and color, OSC-8 hyperlinks, and the SGR attribute order the styling layer is byte-compatible with. 87 production call sites across 38 symbols; this, not width, is why the dependency is here.
 
-```go
-// input_field.go — padding from the same uniseg width source as truncation
-valWidth := runesWidth(visible)
-```
+**③ Parsing the escape sequences inside a wrapped row (`wrap.go`)** — `ansi.Parser` reads SGR and OSC-8 as they pass through `WrapWriter`, so the active style and hyperlink can be re-emitted after every newline.
 
-The text here is **plain text** (user input, no ANSI codes) — the one case where `ansi` is *not* involved. Its width comes from the `uniseg` grapheme-cluster width source (the single width model shared by truncation, cursor placement, and scrolling).
+**Why plain text alone cannot do the measuring**
 
-So `ansi` is needed for the ANSI-bearing text paths (①② above); the input field is the plain-text exception.
-
-**Why can't `go-runewidth` replace it?**
-
-| Scenario | `ansi` | `runewidth` |
+| Scenario | `ansi` / `width.go` | `runewidth` alone |
 |----------|--------|-------------|
 | `Hardwrap("\033[32mHello\033[0m", 3, true)` | `"\033[32mHel\nlo\033[0m"` ✅ | `"\033[32mHel"` ❌ (counts ANSI as visible width) |
 | `Truncate("\033[32mHello\033[0m", 3, "")` | `"\033[32mHel\033[0m"` ✅ | `"\033[32mH"` ❌ (truncates mid-ANSI) |
-| `StringWidth("\033[32mHello\033[0m")` | `5` ✅ | `16` ❌ (counts ANSI bytes) |
+| `cellWidth("\033[32mHello\033[0m")` | `5` ✅ | `16` ❌ (counts ANSI bytes) |
 
-Since the project processes large amounts of styled text (containing ANSI codes), `ansi` is essential.
-
----
-
-### `github.com/rivo/uniseg` — Unicode Text Segmentation (direct dependency)
-
-The **single width source of the input chain** (`input_field.go`). `FirstGraphemeClusterInString` streams grapheme clusters and returns each cluster's terminal display width in one step. It internally applies the UAX #29 properties (Grapheme_Extend, SpacingMark, ZWJ, regional indicators, Prepend, …), so a cluster renders as one unit — `❤️` (heart + variation selector) is one 2-cell cluster, a ZWJ family emoji is one 2-cell cluster, `e` + combining acute is one 1-cell cluster — and truncation, cursor placement, scrolling, and padding always agree and never split a cluster:
-
-```go
-// input_field.go — graphemeClusters: segmentation + width in one source
-cluster, rest, width, nextState := uniseg.FirstGraphemeClusterInString(s, state)
-```
-
-Direct dependency of the input chain for grapheme segmentation and width.
+Since the project processes large amounts of styled text (containing ANSI codes), escape-aware measurement is required on one side or the other; `width.go` gets it by stripping through `ansi.Strip` first, which understands the full ECMA-48 grammar including 8-bit C1 (displaywidth's own escape handling covers 7-bit introducers only, and differs there — measured).
 
 ### `github.com/mattn/go-runewidth` — transitive dependency only
 
-Per-rune width lookup (O(1) table query, fast). It was the input chain's original width source, but it measures **one rune at a time** and has no knowledge of grapheme clusters: multi-rune display units are measured wrong — `❤️` (heart + variation selector) is 1 cell instead of 2, a ZWJ family emoji is 8 cells instead of 2. Wrong widths break truncation (overflow), cursor placement (off by a cell), and horizontal scrolling. The input chain therefore uses `uniseg` (grapheme-cluster aware) as its single width source; `go-runewidth` remains only as a transitive dependency of `x/ansi` (wrap/confirm-dialog subsystems) and no project code imports it directly anymore.
+Per-rune width lookup, with no knowledge of grapheme clusters: `❤️` (heart + variation selector) is 1 cell instead of 2, a ZWJ family emoji is 8 cells instead of 2. Wrong widths break truncation (overflow), cursor placement (off by a cell), and horizontal scrolling, so no code of ours measures with it. It stays in the build because `x/ansi` links it for its `WcWidth` methods (`StringWidthWc`, `TruncateWc`, ...), which this project never calls.
 
 ---
 

@@ -101,15 +101,15 @@ const statusDot = "∙"
 // Glyph policy
 // ============================================================================
 //
-// Everything the adapter draws is measured by one of TWO width models:
-// ansi.StringWidth (via displaywidth) sizes rows, and uniseg slices
-// grapheme clusters while truncating. A terminal is free to disagree with
-// both, in one specific way: a character whose East_Asian_Width is "A"
-// (Ambiguous) is drawn one cell wide by default and TWO cells wide by a
-// terminal configured for CJK (xterm -cjkwidth, mlterm in a CJK locale,
-// some font configurations). Nothing at runtime reveals it — both
-// libraries answer 1 for an ambiguous glyph — so the only defense is the
-// choice of codepoint.
+// Cell arithmetic has one home: width.go measures a string and cuts it from
+// the same table (displaywidth's, its options constructed there — see the
+// reasons in that file's header). What one table cannot know is what the
+// terminal does with a character whose East_Asian_Width is "A" (Ambiguous):
+// it is drawn one cell wide by default and TWO cells wide by a terminal
+// configured for CJK (xterm -cjkwidth, mlterm's setting, some font
+// configurations). That configuration is deliberate and rare — every
+// mainstream terminal defaults to one cell — and nothing reveals it at
+// runtime, so the only defense is the choice of codepoint.
 //
 //  1. A glyph the layout gives exactly one cell must be East-Asian Neutral
 //     and outside Extended_Pictographic. This is what pins ▸/▾ above, "∙"
@@ -141,14 +141,15 @@ const statusDot = "∙"
 //        Ambiguous-free apart from the markers above.)
 //     Anything else Ambiguous is a bug — that is the test, not the prose,
 //     that says so.
-//  3. Program-owned symbols are single codepoints. Multi-codepoint
-//     sequences are not banned because a library mis-measures them — both
-//     report 2 cells for a camera emoji followed by U+FE0F, and for a ZWJ
-//     family — but because the two models disagree on ~3100 codepoints
-//     (U+2713 followed by U+FE0F measures 2 to displaywidth and 1 to
-//     uniseg) and a single string passes through both. Never put a glyph
-//     whose width depends on a variation selector or ZWJ where a one-cell
-//     mismatch is a layout shift.
+//  3. Program-owned symbols are single codepoints. The reason used to be
+//     internal — the adapter measured a row with one library and cut it
+//     with another, and no glyph survived that pair untested — and it is
+//     now the terminal's: a glyph followed by U+FE0F asks for emoji
+//     presentation, which some terminals honor and some draw one cell wide
+//     while our table answers two, and a ZWJ family is one cluster on one
+//     host and several on the next. A single codepoint outside
+//     Extended_Pictographic has no second opinion to disagree with, so it
+//     cannot move a layout by a cell.
 //  4. Color and weight carry state before a glyph does. A marker that never
 //     changes is decoration: the "✦" that used to sit after the reasoning
 //     level (shown as "R0✦" even at level 0, pinned to never be

@@ -90,7 +90,7 @@ type WindowRendering interface {
 // inner/rendered are the '\n'-joined projections kept for the current
 // line-based output path.
 //
-// widths caches display widths (ansi.StringWidth) computed once at render
+// widths caches display widths (cellWidth) computed once at render
 // time, so renderVirtual can pad lines for soft-wrap fragment output
 // without re-measuring every line on every view. The arrow's width is not
 // cached: the glyph is a layout constant one cell wide
