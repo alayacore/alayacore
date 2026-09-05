@@ -13,8 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/protocol"
 )
 
@@ -70,7 +68,7 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 		}
 		want += allLines[i].Text
 		if i < len(allLines)-1 && allLines[i+1].Cont {
-			want += strings.Repeat(" ", 40-ansi.StringWidth(allLines[i].Text))
+			want += strings.Repeat(" ", 40-cellWidth(allLines[i].Text))
 		} else {
 			want += "\x1b[K"
 		}
@@ -89,7 +87,7 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 		}
 		wantPlain += stripANSI(allLines[i].Text)
 		if i < len(allLines)-1 && allLines[i+1].Cont {
-			wantPlain += strings.Repeat(" ", 40-ansi.StringWidth(allLines[i].Text))
+			wantPlain += strings.Repeat(" ", 40-cellWidth(allLines[i].Text))
 		}
 	}
 	if gotPlain != wantPlain {

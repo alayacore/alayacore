@@ -7,8 +7,6 @@ package terminal
 import (
 	"fmt"
 	"strings"
-
-	ansi "github.com/charmbracelet/x/ansi"
 )
 
 // overlayCloseTracker tracks whether an overlay was open before key handling,
@@ -53,7 +51,7 @@ func renderOverlay(baseContent string, box string, screenWidth, screenHeight int
 			break
 		}
 		// Pad to the box width so the row fully covers the base content.
-		if w := ansi.StringWidth(row); w < boxWidth {
+		if w := cellWidth(row); w < boxWidth {
 			row += strings.Repeat(" ", boxWidth-w)
 		}
 		// Absolute cursor position (1-based rows/cols).
@@ -72,7 +70,7 @@ func renderOverlay(baseContent string, box string, screenWidth, screenHeight int
 // list help (the Tab-focus flicker).
 func renderHelpBar(helpStyle Style, help string, boxWidth int) string {
 	help = truncateWithSuffix(help, max(0, boxWidth))
-	if w := ansi.StringWidth(help); w < boxWidth {
+	if w := cellWidth(help); w < boxWidth {
 		help += strings.Repeat(" ", boxWidth-w)
 	}
 	return helpStyle.Render(help)

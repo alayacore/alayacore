@@ -36,7 +36,6 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 )
 
@@ -121,7 +120,7 @@ func TestDrawnGlyphsMatchPolicy(t *testing.T) {
 	for r, files := range drawn {
 		if _, ok := drawnGlyphs[r]; !ok {
 			unclassified = append(unclassified, fmt.Sprintf("%q U+%04X (EAW=%s, ansi=%d, uniseg=%d) in %s",
-				r, r, eastAsianClass(r), ansi.StringWidth(string(r)), uniseg.StringWidth(string(r)),
+				r, r, eastAsianClass(r), cellWidth(string(r)), uniseg.StringWidth(string(r)),
 				strings.Join(files, ", ")))
 		}
 	}
@@ -152,10 +151,10 @@ func TestDrawnGlyphsMatchPolicy(t *testing.T) {
 		// reports a text glyph followed by U+FE0F as two where uniseg says
 		// one — a string measured by one library and sliced by the other is
 		// then one cell off, invisibly.
-		if a, u := ansi.StringWidth(g), uniseg.StringWidth(g); a != u {
+		if a, u := cellWidth(g), uniseg.StringWidth(g); a != u {
 			t.Errorf("%q U+%04X: the two width models disagree — ansi=%d uniseg=%d", g, r, a, u)
 		}
-		if got := ansi.StringWidth(g); got != want.cells {
+		if got := cellWidth(g); got != want.cells {
 			t.Errorf("%q U+%04X: measures %d cells, policy reserves %d (%s)", g, r, got, want.cells, want.why)
 		}
 		if n := utf8.RuneCountInString(g); n != 1 {
@@ -184,7 +183,7 @@ func TestStatusDotIsNeutralWidth(t *testing.T) {
 	if isEastAsianAmbiguous([]rune(statusDot)[0]) {
 		t.Errorf("statusDot %q is East-Asian Ambiguous — the old pair (· U+00B7, • U+2022) was, and that is what this replaced", statusDot)
 	}
-	if w := ansi.StringWidth(statusDot); w != 1 {
+	if w := cellWidth(statusDot); w != 1 {
 		t.Errorf("statusDot measures %d cells, the status row reserves 1", w)
 	}
 }

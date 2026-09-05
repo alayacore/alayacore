@@ -15,8 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -172,7 +170,7 @@ func TestStatusBarSingleRow(t *testing.T) {
 	// Find the last non-empty row — should be the status bar.
 	rows := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	last := rows[len(rows)-1]
-	if w := ansi.StringWidth(last); w > m.windowWidth {
+	if w := cellWidth(last); w > m.windowWidth {
 		t.Errorf("status bar row display width = %d, want ≤ %d (status text must be truncated)",
 			w, m.windowWidth)
 	}

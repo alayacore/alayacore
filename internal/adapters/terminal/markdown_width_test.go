@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 
 	"github.com/alayacore/alayacore/internal/theme"
@@ -45,7 +44,7 @@ func TestMarkdownTableColumnShrinkingWithWideChars(t *testing.T) {
 		// every column can hold its widest unbreakable cluster (minw), so no
 		// cell is ever handed less room than its own glyph needs.
 		for _, line := range strings.Split(plain, "\n") {
-			if lw := ansi.StringWidth(line); lw > width {
+			if lw := cellWidth(line); lw > width {
 				t.Errorf("width %d: row overflows (%d): %q", width, lw, line)
 			}
 		}
@@ -62,7 +61,7 @@ func TestMarkdownTableColumnShrinkingWithWideChars(t *testing.T) {
 		}
 		// Every line respects the width budget.
 		for _, line := range lines {
-			if w := ansi.StringWidth(line.Text); w > width {
+			if w := cellWidth(line.Text); w > width {
 				t.Errorf("width %d: line width %d exceeds budget: %q", width, w, line.Text)
 			}
 		}
@@ -153,7 +152,7 @@ func TestMarkdownTablesNeverTruncate(t *testing.T) {
 				// budget holds from width 1, and the sole tolerated exception is
 				// a lone grapheme cluster wider than the window (checked by
 				// cluster count below).
-				if w := ansi.StringWidth(line); w > width {
+				if w := cellWidth(line); w > width {
 					// Admissible only when the line is a single grapheme
 					// cluster that is itself wider than the window (a CJK
 					// glyph in a 1-column window) — nothing can fit that.

@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -31,7 +29,7 @@ func TestFoldArrowGlyphs(t *testing.T) {
 		// collapsedPrefixWidth, the arithmetic in the collapsed builders,
 		// and the content column the soft-wrap tests pin are all only
 		// correct while this holds.
-		if w := ansi.StringWidth(tc.glyph); w != arrowCellWidth {
+		if w := cellWidth(tc.glyph); w != arrowCellWidth {
 			t.Errorf("%s measures %d cells, layout reserves %d", tc.name, w, arrowCellWidth)
 		}
 	}

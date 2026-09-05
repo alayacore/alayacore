@@ -1004,7 +1004,7 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 	if len(widths) != len(w.border.lines) {
 		widths = make([]int, len(w.border.lines))
 		for li, ln := range w.border.lines {
-			widths[li] = ansi.StringWidth(ln.Text)
+			widths[li] = cellWidth(ln.Text)
 		}
 		w.border.widths = widths
 	}

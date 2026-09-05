@@ -3,8 +3,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/charmbracelet/x/ansi"
 )
 
 // TestPromptInputAttachmentsOffset verifies AttachmentsOffset reports the
@@ -69,7 +67,7 @@ func TestWrapLabelsSingleOversizeLabel(t *testing.T) {
 				t.Fatalf("rows: got %d, want %d (output=%q)", gotRows, tc.wantRows, got)
 			}
 			for i, line := range strings.Split(got, "\n") {
-				w := ansi.StringWidth(line)
+				w := cellWidth(line)
 				if w > tc.wantEachRow {
 					t.Fatalf("row %d width %d > %d: %q", i, w, tc.wantEachRow, line)
 				}

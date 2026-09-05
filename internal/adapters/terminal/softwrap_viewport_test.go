@@ -27,7 +27,7 @@ func fragmentRows(fragment string) int {
 		if line == "" {
 			continue // fragment boundary newline, not a row
 		}
-		w := ansi.StringWidth(line)
+		w := cellWidth(line)
 		rows += max(1, (w+width-1)/width)
 	}
 	return rows
@@ -82,7 +82,7 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 	}
 	// 25 words = 125 cells: rows of 40 + 40 + 40 + 5 (the last row is not
 	// padded — it ends the original line before the bottom rule).
-	if w := ansi.StringWidth(trimmed); w != 125 {
+	if w := cellWidth(trimmed); w != 125 {
 		t.Errorf("AT content display width = %d, want 125 (25 words)", w)
 	}
 	if fragmentRows(plain) != 8 {
@@ -125,7 +125,7 @@ func TestRenderVirtualScrollToMiddle(t *testing.T) {
 	// 3 visual lines of 40 cells each (the content rows happen to fill
 	// the width exactly); the fragment tail carries an EL erase for the
 	// last row.
-	if w := ansi.StringWidth(out); w != 3*40 {
+	if w := cellWidth(out); w != 3*40 {
 		t.Errorf("fragment display width = %d, want %d (3 lines × 40)", w, 3*40)
 	}
 	if !strings.HasSuffix(raw, "\x1b[K") {

@@ -440,7 +440,7 @@ func TestInputFieldWithValuePreservesAllContent(t *testing.T) {
 
 // TestInputFieldUnifiedWidthSource verifies the full View rendering path
 // with a multi-rune cluster: every width calculation (truncation, cursor,
-// padding) comes from the single uniseg width source, so ❤️ (a 2-cell
+// padding) comes from the single width table in width.go, so ❤️ (a 2-cell
 // cluster) can never make the view overflow or produce negative padding.
 func TestInputFieldUnifiedWidthSource(t *testing.T) {
 	g := NewInputField()
@@ -540,14 +540,16 @@ func TestInputFieldGraphemeWidth(t *testing.T) {
 }
 
 // TestInputFieldGraphemeWidths verifies the grapheme-aware width model for
-// multi-rune clusters. Widths follow the uniseg model (the single width
-// source): emoji clusters and combining sequences are measured as one unit.
-// A few edge characters (Devanagari vowel signs, keycaps, Arabic prepend)
-// differ between width libraries; the values below pin the uniseg model.
+// multi-rune clusters. Clusters and cell counts both come from width.go's
+// table — the one the rest of the adapter measures and cuts with — so an
+// emoji cluster and a combining sequence are measured as one unit.
+// A few edge characters (Devanagari vowel signs, keycaps) are counted
+// differently by other width libraries; the values below pin this build's
+// answer, not a universal one. Changing them is a change of table.
 func TestInputFieldGraphemeWidths(t *testing.T) {
 	cases := []struct {
 		s    string
-		want int // cluster width in cells (uniseg model)
+		want int // cluster width in cells (width.go's table)
 	}{
 		{"👧\U0001F3FB", 2},            // skin tone
 		{"\u05D1\u0591", 1},           // Hebrew cantillation
@@ -556,13 +558,13 @@ func TestInputFieldGraphemeWidths(t *testing.T) {
 		{"❤️", 2},                     // VS16 emoji
 		{"👨\u200d👩\u200d👧\u200d👦", 2}, // ZWJ family
 		{"e\u0301", 1},                // combining acute
-		{"\u0915\u093F", 2},           // Devanagari Mc (uniseg model)
-		{"1\uFE0F\u20E3", 1},          // keycap (uniseg model)
+		{"\u0915\u093F", 1},           // Devanagari Mc: this table counts the matra zero-width
+		{"1\uFE0F\u20E3", 2},          // keycap: emoji presentation, two cells
 		{"a你", 3},                     // plain text
 	}
 	for _, c := range cases {
 		if got := runesWidth([]rune(c.s)); got != c.want {
-			t.Errorf("runesWidth(%q)=%d, want %d (uniseg cluster width)", c.s, got, c.want)
+			t.Errorf("runesWidth(%q)=%d, want %d (width.go cluster width)", c.s, got, c.want)
 		}
 	}
 }

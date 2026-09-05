@@ -561,7 +561,7 @@ func wrapLabels(labels []string, width int, style Style) string {
 		if label == "" {
 			continue
 		}
-		labelWidth := ansi.StringWidth(label)
+		labelWidth := cellWidth(label)
 
 		// Single label wider than width: hard-wrap it into multiple lines
 		// first. Without this, the label would land on one line wider
@@ -581,7 +581,7 @@ func wrapLabels(labels []string, width int, style Style) string {
 		}
 
 		if currentLine.Len() > 0 {
-			currentWidth := ansi.StringWidth(currentLine.String())
+			currentWidth := cellWidth(currentLine.String())
 			sepWidth := 2 // "  "
 			if currentWidth+sepWidth+labelWidth > width {
 				flushCurrent()

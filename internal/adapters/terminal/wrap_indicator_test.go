@@ -5,14 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // familyEmoji is the ZWJ family sequence 👨‍👩‍👧‍👦 — a multi-codepoint
-// grapheme cluster used to verify takeHead / takeTail never split it
+// grapheme cluster used to verify takeCells / tailCells never split it
 // mid-cluster. 7 codepoints (4 emoji + 3 ZWJ), 1 grapheme, 2 display cols.
 const familyEmoji = "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466"
 
@@ -318,7 +316,7 @@ func contentColumn(plain string) int {
 	col := 0
 	limit := 2 + CollapsedLabelWidth
 	for _, r := range plain {
-		w := ansi.StringWidth(string(r))
+		w := cellWidth(string(r))
 		if col < limit {
 			col += w
 			continue
@@ -426,7 +424,7 @@ func TestTailSummary(t *testing.T) {
 				t.Errorf("tailSummary must not contain raw newlines: %q", got)
 			}
 			// And must fit the width (or be empty).
-			if w := ansi.StringWidth(got); w > tt.maxWidth {
+			if w := cellWidth(got); w > tt.maxWidth {
 				t.Errorf("tailSummary width = %d, want <= %d: %q", w, tt.maxWidth, got)
 			}
 		})
@@ -514,7 +512,7 @@ func TestHeadAndTailSummary(t *testing.T) {
 				t.Errorf("headAndTailSummary must not contain raw newlines: %q", got)
 			}
 			// And must fit the width (or be empty).
-			if w := ansi.StringWidth(got); w > tt.maxWidth {
+			if w := cellWidth(got); w > tt.maxWidth {
 				t.Errorf("headAndTailSummary width = %d, want <= %d: %q", w, tt.maxWidth, got)
 			}
 		})
@@ -522,7 +520,7 @@ func TestHeadAndTailSummary(t *testing.T) {
 }
 
 func TestTakeHeadAndTakeTailClusterAware(t *testing.T) {
-	// takeHead and takeTail must drop whole grapheme clusters rather
+	// takeCells and tailCells must drop whole grapheme clusters rather
 	// than splitting individual runes — multi-codepoint glyphs like ZWJ
 	// emoji, combining marks, and variation selectors would render as
 	// U+FFFD if cut mid-cluster.
@@ -569,6 +567,17 @@ func TestTakeHeadAndTakeTailClusterAware(t *testing.T) {
 			tail:  familyEmoji + "b", // 2+1=3 cols, "a" would be 4 → drop
 		},
 		{
+			// The case the two width tables used to disagree on: a keycap
+			// ("1" + U+FE0F + U+20E3) is 1 cell to uniseg and 2 to
+			// displaywidth. Cutting on one table against a budget from the
+			// other filled a 4-cell budget with 5 cells.
+			name:  "keycap: cut and measured by the same table",
+			input: "\u0031\uFE0F\u20E3 abcd",
+			width: 4,
+			head:  "1️⃣ a", // keycap(2) + " "(1) + "a"(1) = 4; "b" would be 5
+			tail:  "abcd",  // 7 total; drop keycap(2) then " "(1) → exactly 4
+		},
+		{
 			name:  "combining acute: e + combining mark kept together",
 			input: "e\u0301o", // é (e + combining acute U+0301) then o
 			width: 1,
@@ -579,26 +588,26 @@ func TestTakeHeadAndTakeTailClusterAware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := takeHead(tt.input, tt.width)
+			h := takeCells(tt.input, tt.width)
 			if h != tt.head {
-				t.Errorf("takeHead(%q, %d) = %q, want %q", tt.input, tt.width, h, tt.head)
+				t.Errorf("takeCells(%q, %d) = %q, want %q", tt.input, tt.width, h, tt.head)
 			}
-			if w := ansi.StringWidth(h); w > tt.width {
-				t.Errorf("takeHead width = %d, want <= %d: %q", w, tt.width, h)
+			if w := cellWidth(h); w > tt.width {
+				t.Errorf("takeCells width = %d, want <= %d: %q", w, tt.width, h)
 			}
-			tl := takeTail(tt.input, tt.width)
+			tl := tailCells(tt.input, tt.width)
 			if tl != tt.tail {
-				t.Errorf("takeTail(%q, %d) = %q, want %q", tt.input, tt.width, tl, tt.tail)
+				t.Errorf("tailCells(%q, %d) = %q, want %q", tt.input, tt.width, tl, tt.tail)
 			}
-			if w := ansi.StringWidth(tl); w > tt.width {
-				t.Errorf("takeTail width = %d, want <= %d: %q", w, tt.width, tl)
+			if w := cellWidth(tl); w > tt.width {
+				t.Errorf("tailCells width = %d, want <= %d: %q", w, tt.width, tl)
 			}
 			// Critical: no replacement characters (U+FFFD) from cluster splits.
 			if strings.Contains(h, "\uFFFD") {
-				t.Errorf("takeHead produced replacement char (cluster split): %q", h)
+				t.Errorf("takeCells produced replacement char (cluster split): %q", h)
 			}
 			if strings.Contains(tl, "\uFFFD") {
-				t.Errorf("takeTail produced replacement char (cluster split): %q", tl)
+				t.Errorf("tailCells produced replacement char (cluster split): %q", tl)
 			}
 		})
 	}
@@ -837,7 +846,7 @@ func TestCursorArrowColor(t *testing.T) {
 
 // displayWidth returns the terminal display width of a plain string.
 func displayWidth(s string) int {
-	return ansi.StringWidth(s)
+	return cellWidth(s)
 }
 
 // TestFoldedTextHeadAndTailEqualWeight: regression test for a bug where

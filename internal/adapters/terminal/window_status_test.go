@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -329,7 +327,7 @@ func TestToolRendererUfPreviewTabs(t *testing.T) {
 	if i := strings.IndexByte(firstLine, '\n'); i >= 0 {
 		firstLine = firstLine[:i]
 	}
-	if w := ansi.StringWidth(firstLine); w > 80 {
+	if w := cellWidth(firstLine); w > 80 {
 		t.Errorf("first line width = %d, want <= 80 (inner width)", w)
 	}
 }

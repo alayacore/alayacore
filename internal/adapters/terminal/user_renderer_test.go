@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -47,7 +45,7 @@ func TestUserPromptLongSingleLineSoftWraps(t *testing.T) {
 		t.Errorf("row 1 should be a soft-wrap continuation (Cont=true), got Cont=%v: %q",
 			lines[1].Cont, lines[1].Text)
 	}
-	if w := ansi.StringWidth(strings.TrimRight(joined, " ")); w != 124 {
+	if w := cellWidth(strings.TrimRight(joined, " ")); w != 124 {
 		t.Errorf("joined display width = %d, want 124 (25 words × 5 cells − trailing space)", w)
 	}
 }
@@ -186,7 +184,7 @@ func TestUserPromptCollapsedMediaOnlySummary(t *testing.T) {
 	if got := stripANSI(line); got != want {
 		t.Errorf("BuildCollapsed() = %q, want %q", got, want)
 	}
-	if width := ansi.StringWidth(stripANSI(line)); width > 28 {
+	if width := cellWidth(stripANSI(line)); width > 28 {
 		t.Errorf("collapsed media summary width = %d, want <= 28", width)
 	}
 }
@@ -207,7 +205,7 @@ func TestUserPromptCollapsedMediaSummaryFitsAndPrioritizesMedia(t *testing.T) {
 	if !strings.Contains(plain, "📷1") {
 		t.Errorf("collapsed media summary should retain the image badge, got %q", plain)
 	}
-	if width := ansi.StringWidth(plain); width > 32 {
+	if width := cellWidth(plain); width > 32 {
 		t.Errorf("collapsed media summary width = %d, want <= 32", width)
 	}
 	if strings.Contains(plain, "\n") {

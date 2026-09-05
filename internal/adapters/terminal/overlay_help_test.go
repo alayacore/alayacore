@@ -15,8 +15,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	ansi "github.com/charmbracelet/x/ansi"
 )
 
 func TestOverlayHelpBarsFit(t *testing.T) {
@@ -109,7 +107,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 		},
 	} {
 		t.Run(st.name, func(t *testing.T) {
-			if w := ansi.StringWidth(st.want); w > st.boxWidth {
+			if w := cellWidth(st.want); w > st.boxWidth {
 				t.Errorf("help text is %d cells, which does not fit the %d-cell box; renderHelpBar would cut it",
 					w, st.boxWidth)
 			}

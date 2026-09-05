@@ -8,8 +8,6 @@ import (
 	"slices"
 	"strings"
 	"unicode"
-
-	"github.com/rivo/uniseg"
 )
 
 // InputField is the Elm-style model for a text input with multi-line support
@@ -698,29 +696,22 @@ type clusterInfo struct {
 
 // graphemeClusters splits line into grapheme clusters and returns each
 // cluster's rune range and terminal display width. This is the single width
-// source for the whole input chain: uniseg performs the Unicode text
-// segmentation (UAX #29) and measures each cluster itself, so a cluster
-// renders as one unit — ❤️ (heart + variation selector) is one cluster of
-// width 2, a ZWJ family emoji is one cluster of width 2, "e" + combining
-// acute is one cluster of width 1 — and truncation, cursor placement,
-// scrolling, and padding always agree and never split a cluster.
+// source for the whole input chain: clusters() performs the Unicode text
+// segmentation (UAX #29) and measures each cluster from the one table the
+// adapter cuts with (width.go), so a cluster renders as one unit — a ZWJ
+// family emoji is one cluster, "e" + combining acute is one cluster of one
+// cell — and truncation, cursor placement, scrolling, and padding always
+// agree and never split a cluster.
 func graphemeClusters(line []rune) []clusterInfo {
 	if len(line) == 0 {
 		return nil
 	}
-	var clusters []clusterInfo
-	s := string(line)
-	state := -1
-	idx := 0
-	for s != "" {
-		cluster, rest, width, nextState := uniseg.FirstGraphemeClusterInString(s, state)
-		n := len([]rune(cluster))
-		clusters = append(clusters, clusterInfo{start: idx, end: idx + n, width: width})
-		idx += n
-		s = rest
-		state = nextState
+	cs := clusters(string(line))
+	out := make([]clusterInfo, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, clusterInfo{start: c.runeStart, end: c.runeEnd, width: c.cells})
 	}
-	return clusters
+	return out
 }
 
 func runesWidth(runes []rune) int {

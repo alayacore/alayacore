@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -38,7 +36,7 @@ func TestToolStatusIndicatorInheritsLabelColor(t *testing.T) {
 				t.Errorf("status %d: indicator must carry the label color, got %q", st, rendered)
 			}
 		}
-		if w := ansi.StringWidth(glyph); w != 1 {
+		if w := cellWidth(glyph); w != 1 {
 			t.Errorf("status %d: indicator must be 1 column wide (label alignment), %q is %d", st, glyph, w)
 		}
 	}
@@ -143,7 +141,7 @@ func TestCollapsedToolDeltaPreviewTailEllipsis(t *testing.T) {
 		t.Errorf("collapsed line should end with the delta tail, got %q", plain)
 	}
 	// And it fits the terminal width (single soft-wrap-free row).
-	if w := ansi.StringWidth(plain); w > 50 {
+	if w := cellWidth(plain); w > 50 {
 		t.Errorf("collapsed line width = %d, want <= 50: %q", w, plain)
 	}
 }
@@ -171,7 +169,7 @@ func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	if !strings.HasSuffix(preview, `hello"}`) {
 		t.Errorf("expanded delta preview should end with the delta tail, got %q", preview)
 	}
-	if w := ansi.StringWidth(preview); w > 30 {
+	if w := cellWidth(preview); w > 30 {
 		t.Errorf("preview width = %d, want <= 30: %q", w, preview)
 	}
 }
@@ -266,7 +264,7 @@ func TestUserPromptCollapsed(t *testing.T) {
 					t.Fatalf("collapsed user line must be a single line, got %q", plain)
 				}
 				// Width budget.
-				if w := ansi.StringWidth(plain); w > tc.width {
+				if w := cellWidth(plain); w > tc.width {
 					t.Errorf("line width %d > budget %d: %q", w, tc.width, plain)
 				}
 				if tc.ellipsisMid {
@@ -339,7 +337,7 @@ func TestUFOnlyCollapsedHeadAndTailEllipsis(t *testing.T) {
 	if !strings.HasSuffix(strings.TrimRight(plain, " "), "0123456789") {
 		t.Errorf("collapsed UF-only line should end with the output tail, got %q", plain)
 	}
-	if w := ansi.StringWidth(plain); w > 30 {
+	if w := cellWidth(plain); w > 30 {
 		t.Errorf("collapsed line width = %d, want <= 30: %q", w, plain)
 	}
 }
@@ -366,7 +364,7 @@ func TestUfPreviewTailEllipsis(t *testing.T) {
 	if !strings.HasSuffix(plain, "line ") {
 		t.Errorf("Uf preview should end with the output tail, got %q", p)
 	}
-	if w := ansi.StringWidth(p); w > 80 {
+	if w := cellWidth(p); w > 80 {
 		t.Errorf("preview width = %d, want <= 80: %q", w, p)
 	}
 

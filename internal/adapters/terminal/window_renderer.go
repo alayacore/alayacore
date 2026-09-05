@@ -10,9 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	ansi "github.com/charmbracelet/x/ansi"
-	"github.com/rivo/uniseg"
-
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -435,7 +432,7 @@ func tailParts(content string, maxWidth int) (string, bool) {
 	escaped := strings.ReplaceAll(content, "\n", "\\n")
 	escaped = strings.ReplaceAll(escaped, "\r", "")
 
-	if ansi.StringWidth(escaped) <= maxWidth {
+	if cellWidth(escaped) <= maxWidth {
 		return escaped, false
 	}
 	// Take the tail that fits. We deliberately use the FULL maxWidth
@@ -447,7 +444,7 @@ func tailParts(content string, maxWidth int) (string, bool) {
 	width := 0
 	start := len(runes)
 	for i := len(runes) - 1; i >= 0; i-- {
-		w := ansi.StringWidth(string(runes[i]))
+		w := cellWidth(string(runes[i]))
 		if width+w > room {
 			break
 		}
@@ -479,11 +476,11 @@ func tailParts(content string, maxWidth int) (string, bool) {
 //   - if the full content already fits maxWidth cols, return as-is.
 //
 // Grapheme-cluster-aware: head and tail are bounded by grapheme cluster
-// boundaries (not runes) via uniseg.FirstGraphemeClusterInString, so
-// multi-codepoint clusters like ZWJ emoji, combining marks, and
-// variation selectors are never split mid-cluster — unlike the per-rune
-// tailSummary above, which is fine for CJK and BMP but can chop
-// multi-rune clusters.
+// boundaries (not runes) via takeCells/tailCells, so multi-codepoint
+// clusters like ZWJ emoji, combining marks, and variation selectors are
+// never split mid-cluster — unlike the per-rune tailSummary above, which
+// is fine for CJK and BMP but can chop multi-rune clusters. The budget and
+// the cut come from the same width table (width.go).
 //
 // The "…" marker is *not* part of the returned string when styled —
 // callers that want to dim the marker should use headAndTailParts and
@@ -516,11 +513,11 @@ func headAndTailParts(content string, maxWidth int) (head, tail string, truncate
 	escaped := strings.ReplaceAll(content, "\n", "\\n")
 	escaped = strings.ReplaceAll(escaped, "\r", "")
 
-	if ansi.StringWidth(escaped) <= maxWidth {
+	if cellWidth(escaped) <= maxWidth {
 		return escaped, "", false
 	}
 	if maxWidth <= 2 {
-		return takeHead(escaped, maxWidth), "", true
+		return takeCells(escaped, maxWidth), "", true
 	}
 
 	// 40/60 split. Integer math: headWidth = maxWidth * 40 / 100.
@@ -533,76 +530,9 @@ func headAndTailParts(content string, maxWidth int) (head, tail string, truncate
 	tailWidth := maxWidth - headWidth - 1
 	if tailWidth < 1 {
 		// Very narrow widths where head already claims most of the room.
-		return takeHead(escaped, maxWidth), "", true
+		return takeCells(escaped, maxWidth), "", true
 	}
-	return takeHead(escaped, headWidth), takeTail(escaped, tailWidth), true
-}
-
-// takeHead returns the leading grapheme clusters of s whose total display
-// width is at most width. Clusters that would overflow are dropped from
-// the end (so the head stays left-anchored). Multi-cluster glyphs (ZWJ
-// emoji, combining marks, variation selectors) are never split.
-func takeHead(s string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	var result strings.Builder
-	state := -1
-	w := 0
-	for s != "" {
-		cluster, rest, cw, nextState := uniseg.FirstGraphemeClusterInString(s, state)
-		if w+cw > width {
-			break
-		}
-		result.WriteString(cluster)
-		w += cw
-		s = rest
-		state = nextState
-	}
-	return result.String()
-}
-
-// takeTail returns the trailing grapheme clusters of s whose total display
-// width is at most width. Clusters that would overflow are dropped from
-// the front (so the tail stays right-anchored). Multi-cluster glyphs are
-// never split — the function drops entire clusters rather than slicing
-// individual runes.
-func takeTail(s string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	// Two-pass: collect all clusters, then walk forward dropping leading
-	// clusters until the remaining suffix fits in width.
-	type entry struct {
-		s     string
-		width int
-	}
-	var entries []entry
-	state := -1
-	cur := s
-	for cur != "" {
-		cluster, rest, cw, nextState := uniseg.FirstGraphemeClusterInString(cur, state)
-		entries = append(entries, entry{s: cluster, width: cw})
-		cur = rest
-		state = nextState
-	}
-	if len(entries) == 0 {
-		return ""
-	}
-	total := 0
-	for _, e := range entries {
-		total += e.width
-	}
-	start := 0
-	for start < len(entries) && total > width {
-		total -= entries[start].width
-		start++
-	}
-	var result strings.Builder
-	for i := start; i < len(entries); i++ {
-		result.WriteString(entries[i].s)
-	}
-	return result.String()
+	return takeCells(escaped, headWidth), tailCells(escaped, tailWidth), true
 }
 
 // firstLine returns the first line of s (up to the first '\n').
@@ -622,7 +552,7 @@ func padLabel(label string) string {
 	if label == "" {
 		return ""
 	}
-	w := ansi.StringWidth(label)
+	w := cellWidth(label)
 	if w >= CollapsedLabelWidth {
 		return label
 	}
@@ -798,7 +728,7 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 
 	label := padLabel("USER PROMPT")
-	room := max(0, width-collapsedPrefixWidth-ansi.StringWidth(label))
+	room := max(0, width-collapsedPrefixWidth-cellWidth(label))
 
 	// Combine media + text into a single content string and run head+tail
 	// truncation on it (same rule as all other non-delta text windows).
@@ -1043,7 +973,7 @@ func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) 
 		if r.name != "" {
 			prefix += r.name + " "
 		}
-		room := max(0, width-collapsedPrefixWidth-ansi.StringWidth(prefix))
+		room := max(0, width-collapsedPrefixWidth-cellWidth(prefix))
 		tail, hasEllipsis := tailParts(flattenDelta(r.deltaBuffer), room-1)
 		if hasEllipsis {
 			return "…" + tail, true

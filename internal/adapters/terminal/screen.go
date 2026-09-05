@@ -222,7 +222,7 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 		if !hadOverlay {
 			if lr, ok := lastBaseTerminalRow(content, s.width); ok {
 				if needTailErase(s.lastContent, content, s.width) {
-					buf = append(buf, ansi.CursorPosition(ansi.StringWidth(lr.text)+1, lr.row+1)...)
+					buf = append(buf, ansi.CursorPosition(cellWidth(lr.text)+1, lr.row+1)...)
 					buf = append(buf, ansi.EraseDisplay(0)...)
 				}
 			}
@@ -420,7 +420,7 @@ func baseTerminalRows(text string, width int) int {
 	if width <= 0 {
 		return 1
 	}
-	w := ansi.StringWidth(text)
+	w := cellWidth(text)
 	if w <= 0 {
 		return 1
 	}

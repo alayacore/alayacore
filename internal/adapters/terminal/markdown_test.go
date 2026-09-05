@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	ansi "github.com/charmbracelet/x/ansi"
 )
 
 func TestRenderMarkdownTables_Basic(t *testing.T) {
@@ -210,7 +208,7 @@ func TestRenderMarkdownTables_FitToWidthInvariant(t *testing.T) {
 	for w := 19; w <= 120; w++ {
 		got := renderMarkdownTables(in, w)
 		for _, line := range strings.Split(got, "\n") {
-			if gotW := ansi.StringWidth(line); gotW > w {
+			if gotW := cellWidth(line); gotW > w {
 				t.Errorf("width %d: row width %d exceeds terminal: %q", w, gotW, line)
 			}
 		}
@@ -368,9 +366,9 @@ func TestRenderMarkdownTables_ContentGlyphsSurvive(t *testing.T) {
 		}
 		// The ambiguity is perceptual only: every row is still exactly as
 		// wide as every other, so alignment and line heights are unaffected.
-		w0 := ansi.StringWidth(got[0])
+		w0 := cellWidth(got[0])
 		for i, l := range got {
-			if w := ansi.StringWidth(l); w != w0 {
+			if w := cellWidth(l); w != w0 {
 				t.Errorf("%s: row %d is %d cells, row 0 is %d:\n%s", tc.name, i, w, w0, strings.Join(got, "\n"))
 			}
 		}

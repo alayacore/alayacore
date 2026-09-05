@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/tlv"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // TestMultiLineContentStaysMultiLine verifies the core complaint: content
@@ -58,7 +57,7 @@ func TestLongSingleLineSoftWraps(t *testing.T) {
 		t.Errorf("long line must copy back intact:\n  got:  %q\n  want: %q", content, original)
 	}
 	// It occupies several terminal rows (soft-wrap), not one.
-	if w := ansi.StringWidth(content); w <= 40 {
+	if w := cellWidth(content); w <= 40 {
 		t.Errorf("long line should exceed one row, width = %d", w)
 	}
 }

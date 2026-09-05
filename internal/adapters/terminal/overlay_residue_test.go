@@ -15,7 +15,6 @@ import (
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // TestOverlayResidueFoldedOverContent simulates the exact reported
@@ -81,7 +80,7 @@ func splitTerminalRows(s string, width int) []string {
 			col = 0
 			continue
 		}
-		w := ansi.StringWidth(string(r))
+		w := cellWidth(string(r))
 		cur += string(r)
 		col += w
 		if col >= width {

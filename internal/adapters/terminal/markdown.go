@@ -35,9 +35,6 @@ package terminal
 
 import (
 	"strings"
-
-	ansi "github.com/charmbracelet/x/ansi"
-	"github.com/rivo/uniseg"
 )
 
 // hasPipePrefix reports whether a line starts with '|' after trimming
@@ -469,7 +466,7 @@ func wrapCell(s string, width int) []string {
 	if s == "" || width <= 0 {
 		return []string{s}
 	}
-	if ansi.StringWidth(s) <= width {
+	if cellWidth(s) <= width {
 		return []string{s}
 	}
 	out := make([]string, 0, 4)
@@ -486,8 +483,8 @@ func wrapCell(s string, width int) []string {
 		// accounting. wrapContent should already have bounded it; a lone
 		// grapheme cluster wider than width is the one case that cannot be
 		// (see the file header), and it is emitted rather than dropped.
-		for ansi.StringWidth(line) > width {
-			head := takeHead(line, width)
+		for cellWidth(line) > width {
+			head := takeCells(line, width)
 			if head == "" {
 				break
 			}
@@ -625,10 +622,10 @@ func fieldLines(label, value string, maxWidth int) []string {
 // was being split for no reason.
 func wrappedAt(text string, maxWidth int, first, every string) []string {
 	firstRoom := max(1, maxWidth-len(first))
-	if ansi.StringWidth(text) <= firstRoom {
+	if cellWidth(text) <= firstRoom {
 		return []string{first + text}
 	}
-	head := takeHead(text, firstRoom)
+	head := takeCells(text, firstRoom)
 	if head == "" {
 		// Not even one grapheme cluster fits on line 0. Hand the whole text to
 		// the ordinary wrapper, which gives one cluster per line; grabbing all
@@ -657,7 +654,7 @@ func wrappedAt(text string, maxWidth int, first, every string) []string {
 // anyTooWide reports whether any line exceeds maxWidth display columns.
 func anyTooWide(lines []string, maxWidth int) bool {
 	for _, l := range lines {
-		if ansi.StringWidth(l) > maxWidth {
+		if cellWidth(l) > maxWidth {
 			return true
 		}
 	}
@@ -666,17 +663,17 @@ func anyTooWide(lines []string, maxWidth int) bool {
 
 // padRight pads a cell to width with trailing spaces (left aligned).
 func padRight(cell string, width int) string {
-	return cell + strings.Repeat(" ", max(0, width-ansi.StringWidth(cell)))
+	return cell + strings.Repeat(" ", max(0, width-cellWidth(cell)))
 }
 
 // padLeft pads a cell to width with leading spaces (right aligned).
 func padLeft(cell string, width int) string {
-	return strings.Repeat(" ", max(0, width-ansi.StringWidth(cell))) + cell
+	return strings.Repeat(" ", max(0, width-cellWidth(cell))) + cell
 }
 
 // padCenter pads a cell to width with spaces on both sides (centered).
 func padCenter(cell string, width int) string {
-	pad := max(0, width-ansi.StringWidth(cell))
+	pad := max(0, width-cellWidth(cell))
 	left := pad / 2
 	return strings.Repeat(" ", left) + cell + strings.Repeat(" ", pad-left)
 }
@@ -690,24 +687,6 @@ func sumWidths(ws []int) int {
 	return n
 }
 
-// widestCluster returns the display width of the widest single grapheme
-// cluster in s — the narrowest column s can be hard-wrapped into. A ZWJ emoji
-// or combining mark is measured whole, matching what a wrapper must place.
-func widestCluster(s string) int {
-	best, state := 0, -1
-	for s != "" {
-		cluster, rest, w, next := uniseg.FirstGraphemeClusterInString(s, state)
-		if cluster == "" {
-			break
-		}
-		s, state = rest, next
-		if w > best {
-			best = w
-		}
-	}
-	return best
-}
-
 // measureColumns returns, per column, the natural (max-content) width and the
 // irreducible width — the widest single grapheme cluster any cell in that
 // column holds. Both are zero for a column nothing was ever put in.
@@ -715,10 +694,10 @@ func measureColumns(rows [][]string, n int) (maxc, minw []int) {
 	maxc, minw = make([]int, n), make([]int, n)
 	for _, row := range rows {
 		for i := 0; i < n && i < len(row); i++ {
-			if w := ansi.StringWidth(row[i]); w > maxc[i] {
+			if w := cellWidth(row[i]); w > maxc[i] {
 				maxc[i] = w
 			}
-			if w := widestCluster(row[i]); w > minw[i] {
+			if w := widestCellCluster(row[i]); w > minw[i] {
 				minw[i] = w
 			}
 		}

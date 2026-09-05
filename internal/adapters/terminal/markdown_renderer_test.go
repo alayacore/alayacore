@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -491,7 +489,7 @@ func TestMarkdownTableWideChars(t *testing.T) {
 			}
 			// Every rendered line must respect the width budget.
 			for _, line := range lines {
-				if w := ansi.StringWidth(line.Text); w > tt.width {
+				if w := cellWidth(line.Text); w > tt.width {
 					t.Errorf("line width %d exceeds budget %d: %q", w, tt.width, line.Text)
 				}
 			}
@@ -538,7 +536,7 @@ func TestMarkdownTableRowAlignment(t *testing.T) {
 				}
 				var expectedWidth int
 				for i, line := range lines {
-					w := ansi.StringWidth(line.Text)
+					w := cellWidth(line.Text)
 					if i == 0 {
 						expectedWidth = w
 						continue

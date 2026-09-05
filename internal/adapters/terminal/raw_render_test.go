@@ -132,7 +132,7 @@ func terminalRows(s string, width int) int {
 	for _, line := range strings.Split(s, "\n") {
 		// '\r' has no display width; remaining runes occupy 1 column each
 		// (the test content is ASCII + box-drawing rules).
-		w := ansi.StringWidth(line)
+		w := cellWidth(line)
 		rows += max(1, (w+width-1)/width)
 	}
 	return rows

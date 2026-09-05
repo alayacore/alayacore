@@ -229,7 +229,7 @@ func (s Style) Render(strs ...string) string {
 		}
 		lines := strings.Split(str, "\n")
 		for i, l := range lines {
-			if pad := s.width - ansi.StringWidth(l); pad > 0 {
+			if pad := s.width - cellWidth(l); pad > 0 {
 				spaces := strings.Repeat(" ", pad)
 				if len(ws) > 0 {
 					spaces = ws.Styled(spaces)
@@ -248,7 +248,7 @@ func (s Style) Render(strs ...string) string {
 func Width(str string) int {
 	width := 0
 	for l := range strings.SplitSeq(str, "\n") {
-		if w := ansi.StringWidth(l); w > width {
+		if w := cellWidth(l); w > width {
 			width = w
 		}
 	}

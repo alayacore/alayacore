@@ -11,8 +11,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	ansi "github.com/charmbracelet/x/ansi"
 )
 
 func TestOverlayBoxStableAcrossTabFocus(t *testing.T) {
@@ -74,7 +72,7 @@ func TestOverlayBoxStableAcrossTabFocus(t *testing.T) {
 			// truncated to the box width).
 			for i := 0; i < 3; i++ {
 				for _, row := range strings.Split(tt.view(m), "\n") {
-					if w := ansi.StringWidth(row); w > widths[0] {
+					if w := cellWidth(row); w > widths[0] {
 						t.Errorf("row overflows the box (w=%d > %d): %q", w, widths[0], row)
 					}
 				}
