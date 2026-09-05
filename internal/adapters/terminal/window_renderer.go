@@ -304,10 +304,10 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if label != "" {
 		line = padLabel(label)
 	}
-	summaryWidth := max(0, width-2-CollapsedLabelWidth)
+	summaryWidth := max(0, width-collapsedPrefixWidth-CollapsedLabelWidth)
 	summary, ellipsisOffset := r.collapsedSummary(content, summaryWidth)
 	line += summary
-	line = truncateWithSuffix(line, max(0, width-2)) // safety net
+	line = truncateWithSuffix(line, max(0, width-collapsedPrefixWidth)) // safety net
 
 	if label == "" {
 		if styles == nil {
@@ -798,7 +798,7 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 
 	label := padLabel("USER PROMPT")
-	room := max(0, width-2-ansi.StringWidth(label))
+	room := max(0, width-collapsedPrefixWidth-ansi.StringWidth(label))
 
 	// Combine media + text into a single content string and run head+tail
 	// truncation on it (same rule as all other non-delta text windows).
@@ -820,7 +820,7 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if tail != "" {
 		plainLine += "…" + tail
 	}
-	line := truncateWithSuffix(plainLine, max(0, width-2)) // safety net
+	line := truncateWithSuffix(plainLine, max(0, width-collapsedPrefixWidth)) // safety net
 
 	// Render with styling: label muted+bold, "…" dim, content muted.
 	labelStyle := labelStyleForTag(tlv.TagUserT, styles)
@@ -1005,7 +1005,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if inputFirst != "" {
 		line += " " + inputFirst
 	}
-	line = truncateWithSuffix(line, max(0, width-2))
+	line = truncateWithSuffix(line, max(0, width-collapsedPrefixWidth))
 
 	return renderToolCollapsedLine(line, labelStyle, dotStyle, dot, r.name, inputFirstHasEllipsis, styles), 1
 }
@@ -1016,7 +1016,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 // the latest content.
 func renderUFOnlyCollapsed(r *toolRenderer, width int, styles *Styles) string {
 	first := firstLine(prepareContent(r.output))
-	head, tail, truncated := headAndTailParts(first, max(0, width-2))
+	head, tail, truncated := headAndTailParts(first, max(0, width-collapsedPrefixWidth))
 	var sb strings.Builder
 	if truncated && tail != "" {
 		sb.WriteString(styles.System.Render(head))
@@ -1043,7 +1043,7 @@ func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) 
 		if r.name != "" {
 			prefix += r.name + " "
 		}
-		room := max(0, width-2-ansi.StringWidth(prefix))
+		room := max(0, width-collapsedPrefixWidth-ansi.StringWidth(prefix))
 		tail, hasEllipsis := tailParts(flattenDelta(r.deltaBuffer), room-1)
 		if hasEllipsis {
 			return "…" + tail, true

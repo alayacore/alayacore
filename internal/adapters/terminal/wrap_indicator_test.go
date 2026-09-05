@@ -8,7 +8,6 @@ import (
 	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -819,49 +818,6 @@ func TestFoldedTextWindowHeadAndTailUpdatesOnDelta(t *testing.T) {
 	if !strings.Contains(plain, "…") {
 		t.Errorf("collapsed summary should contain the middle ellipsis, got %q", plain)
 	}
-}
-
-func TestFoldArrowThemeConfigurable(t *testing.T) {
-	// Custom arrows from a theme override the hardcoded defaults.
-	base := DefaultStyles()
-	custom := NewStyles(&theme.Theme{
-		Primary:     "#89d4fa",
-		Dim:         "#313244",
-		Muted:       "#6c7086",
-		Warning:     "#f77923",
-		Error:       "#f38ba8",
-		Selection:   "#fab387",
-		Added:       "#a6e3a1",
-		Removed:     "#f38ba8",
-		Tool:        "#f9e2af",
-		FoldArrow:   ">",
-		UnfoldArrow: "v",
-	})
-
-	wb := NewWindowBuffer(80, custom)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "hello")
-
-	// Expanded (default): expand arrow "v".
-	rendered := wb.GetAll(-1, false)
-	if !strings.Contains(stripANSI(rendered), "v ASSISTANT") {
-		t.Errorf("expanded header should use theme expand arrow, got %q", stripANSI(rendered))
-	}
-	if strings.Contains(stripANSI(rendered), unfoldArrow) {
-		t.Errorf("expanded header should not use hardcoded default, got %q", stripANSI(rendered))
-	}
-
-	// Folded: collapse arrow ">".
-	wb.ToggleFold(0)
-	rendered = wb.GetAll(-1, false)
-	if !strings.HasPrefix(stripANSI(rendered), "> ") {
-		t.Errorf("collapsed line should use theme collapse arrow, got %q", stripANSI(rendered))
-	}
-	if strings.Contains(stripANSI(rendered), foldArrow) {
-		t.Errorf("collapsed line should not use hardcoded default, got %q", stripANSI(rendered))
-	}
-
-	// Defaults still apply when the theme does not configure arrows.
-	_ = base
 }
 
 func TestCursorArrowColor(t *testing.T) {

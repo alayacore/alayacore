@@ -23,10 +23,7 @@ package terminal
 import (
 	"strings"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -93,23 +90,24 @@ type WindowRendering interface {
 // inner/rendered are the '\n'-joined projections kept for the current
 // line-based output path.
 //
-// widths and arrowWidth cache display widths (ansi.StringWidth) computed
-// once at render time, so renderVirtual can pad lines for soft-wrap
-// fragment output without re-measuring every line on every view.
+// widths caches display widths (ansi.StringWidth) computed once at render
+// time, so renderVirtual can pad lines for soft-wrap fragment output
+// without re-measuring every line on every view. The arrow's width is not
+// cached: the glyph is a layout constant one cell wide
+// (arrowCellWidth), so there is nothing to measure.
 // arrow caches the dim (non-cursor) arrow glyph so the fragment output
 // path never re-renders it per view (Style.Render is hot).
 type borderCache struct {
-	valid      bool
-	width      int
-	folded     bool
-	blocked    bool         // cached blocked state (different → cache miss)
-	rendered   string       // full output with dim arrow (non-cursor)
-	inner      string       // content after the arrow (for cursor arrow swap)
-	lines      []visualLine // visual rows, content after the arrow (line 0 = header/collapsed line, no arrow)
-	widths     []int        // display width per line (parallel to lines)
-	arrow      string       // dim arrow glyph, pre-rendered (non-cursor)
-	arrowWidth int          // display width of the fold-state arrow glyph
-	lineCount  int
+	valid     bool
+	width     int
+	folded    bool
+	blocked   bool         // cached blocked state (different → cache miss)
+	rendered  string       // full output with dim arrow (non-cursor)
+	inner     string       // content after the arrow (for cursor arrow swap)
+	lines     []visualLine // visual rows, content after the arrow (line 0 = header/collapsed line, no arrow)
+	widths    []int        // display width per line (parallel to lines)
+	arrow     string       // dim arrow glyph, pre-rendered (non-cursor)
+	lineCount int
 }
 
 // Window represents a single display window.
@@ -392,9 +390,7 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle St
 		borderStyle = borderStyle.Foreground(styles.ColorDim)
 	}
 
-	arrow := w.arrowChar()
-	arrowWidth := ansi.StringWidth(arrow)
-	w.border.arrow = arrowStyle(styles).Render(arrow)
+	w.border.arrow = arrowStyle(styles).Render(w.arrowChar())
 	if w.Folded {
 		// Collapsed: single line — arrow + label + content summary, truncated.
 		// BuildCollapsed skips full wrapping: only the summary (escaped tail
@@ -424,8 +420,6 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle St
 		w.border.lineCount = len(lines)
 	}
 
-	w.border.arrowWidth = arrowWidth
-
 	w.border.width = width
 	w.border.folded = w.Folded
 	w.border.blocked = blocked
@@ -452,25 +446,14 @@ func (w *Window) renderCursorArrow(blocked bool) string {
 	return NewStyle().Foreground(color).Render(w.arrowChar()) + w.border.inner
 }
 
-// arrowChar returns the fold-state arrow glyph, configured by the theme
-// (falling back to the theme package's defaults if no theme is attached).
-// Styles normalizes the glyphs it carries (see NewStyles), so the values
-// used here are always single-cell; the empty check covers a hand-built
-// Styles with no theme attached.
+// arrowChar returns the fold-state arrow glyph. The glyphs are terminal
+// layout constants (constants.go), not theme values — they own a cell of
+// the header geometry, which a palette switch must not disturb.
 func (w *Window) arrowChar() string {
-	if w.styles != nil {
-		if w.Folded {
-			if w.styles.FoldArrow != "" {
-				return w.styles.FoldArrow
-			}
-		} else if w.styles.UnfoldArrow != "" {
-			return w.styles.UnfoldArrow
-		}
-	}
 	if w.Folded {
-		return theme.DefaultFoldArrow
+		return foldArrow
 	}
-	return theme.DefaultUnfoldArrow
+	return unfoldArrow
 }
 
 // arrowStyle returns the style for the collapse/expand arrow.

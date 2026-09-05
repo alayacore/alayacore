@@ -36,11 +36,6 @@ type Theme struct {
 
 	// Tool color
 	Tool string `config:"tool" json:"tool"` // Tool name — tool call labels in conversation
-
-	// Fold-state arrow glyphs, configurable per theme. Each must be one
-	// grapheme cluster one display cell wide; see ArrowGlyphs.
-	FoldArrow   string `config:"fold_arrow" json:"fold_arrow"`     // collapsed-window arrow
-	UnfoldArrow string `config:"unfold_arrow" json:"unfold_arrow"` // expanded-window arrow
 }
 
 var (
@@ -78,12 +73,6 @@ func parseTheme(content string) (*Theme, []string) {
 			errs = append(errs, e.String())
 		}
 	}
-	// Arrow glyphs are layout-critical (see ArrowGlyphs): a bad one is
-	// reported and replaced rather than rendered, so a theme file can
-	// never shift the window header columns.
-	fold, unfold, glyphErrs := ArrowGlyphs(theme.FoldArrow, theme.UnfoldArrow)
-	theme.FoldArrow, theme.UnfoldArrow = fold, unfold
-	errs = append(errs, glyphErrs...)
 	return theme, errs
 }
 

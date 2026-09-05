@@ -1029,7 +1029,7 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 		}
 		first := lines[0]
 		lines = append([]visualLine{{Text: arrowStr + first.Text, Cont: first.Cont}}, lines[1:]...)
-		widths = append([]int{w.border.arrowWidth + widths[0]}, widths[1:]...)
+		widths = append([]int{arrowCellWidth + widths[0]}, widths[1:]...)
 	}
 	return lines, widths
 }
