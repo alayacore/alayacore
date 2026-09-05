@@ -74,6 +74,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # .gitattributes is the fix; this is the alarm. Git for Windows installs
+      # with core.autocrlf=true and so rewrites the checkout to CRLF, which
+      # gofmt reads as every file in the tree being unformatted — the whole
+      # adapter, hundreds of findings, each pointing at line 1, none of them
+      # about the code. Assert the checkout is LF so the failure names the
+      # cause instead of burying it.
+      - name: Check the checkout's line endings
+        shell: bash
+        run: |
+          echo "effective core.autocrlf: $(git config --get core.autocrlf || echo unset)"
+          if files=$(git grep -lI $'\r' -- '*.go'); then
+            count=$(printf '%s\n' "$files" | wc -l)
+            printf '%s\n' "$files" | awk 'NR<=10{print} END{if (NR>10) printf "... and %d more\n", NR-10}'
+            echo "::error::$count .go files were checked out with CRLF, so gofmt will call every one of them unformatted. .gitattributes is what prevents this."
+            exit 1
+          fi
+          echo "every .go file is LF."
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:

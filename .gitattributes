@@ -1,0 +1,31 @@
+# Line endings, pinned.
+#
+# Every text file here is LF in the index and LF in the working tree, on every
+# platform. That has to be *stated*, because Git for Windows — which GitHub's
+# windows-latest runner installs with its installer defaults, and which most
+# Windows contributors have on their machines too — sets core.autocrlf=true.
+# A plain checkout on Windows then rewrites every .go file to CRLF, and gofmt
+# counts CRLF as unformatted: the lint step in the Windows CI job reported
+# "File is not properly formatted" for every file in the terminal adapter, each
+# pointing at line 1. Nothing was wrong with the code; the line endings of the
+# checkout were the whole finding.
+#
+# text=auto  normalize on commit (LF in the index), and leave anything that
+#            looks binary alone.
+# eol=lf     check out with LF. Attributes win over core.autocrlf, which is
+#            what makes this the fix rather than a workaround — and it fixes
+#            the contributor's machine in the same stroke, so `make lint` there
+#            stops inventing diffs it cannot explain.
+* text=auto eol=lf
+
+# The binary files, named instead of inferred. Content detection is usually
+# right, but a fixture that happens to read as text must never be "normalized":
+# adapter-guide/tlv-samples/*.bin are byte-exact TLV recordings that the
+# adapter tests replay.
+*.bin  binary
+*.gif  binary
+*.jpg  binary
+*.pdf  binary
+*.png  binary
+*.wav  binary
+*.webp binary

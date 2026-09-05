@@ -31,14 +31,17 @@ const docPath = "../../../docs/markdown-rendering.md"
 
 // readDocForTest reads the document with its line endings normalized to LF.
 //
-// On the Windows runner this file reaches the working tree as CRLF: Git for
-// Windows is installed with core.autocrlf=true and actions/checkout never
-// changes it, so an LF-committed text file is smudged on checkout. The renderer
-// joins its lines with "\n", so comparing the raw bytes of a checkout asserts
-// the wrong thing — all seven examples went red there at once, for a cause no
-// edit to the document could either produce or cure. Normalizing first makes the
-// assertion about what the document says, which is how the product's own
-// key-value readers already treat CRLF input: as the same text.
+// The assertion is about what the document says, not about the bytes a
+// particular checkout happens to hold: the renderer joins its lines with "\n",
+// so comparing raw checkout bytes went red on all seven examples at once, for a
+// cause no edit to the document could either produce or cure. Normalizing first
+// is also how the product's own key-value readers treat CRLF input: as the same
+// text.
+//
+// CI no longer supplies the CRLF it once did — .gitattributes pins the checkout
+// to LF, which the Windows runner's core.autocrlf=true used to override. This
+// stays as defense for a working copy of someone's own making, and it costs one
+// ReplaceAll.
 func readDocForTest(t *testing.T) string {
 	t.Helper()
 	raw, err := os.ReadFile(docPath)
