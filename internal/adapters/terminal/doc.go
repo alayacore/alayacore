@@ -23,13 +23,23 @@
 //   - Input: io.WriteCloser sends TLV messages to the session
 //   - Output: OutputWriter parses TLV and renders styled content
 //
-// Emoji Notes:
+// Glyph and Emoji Notes:
 //
-//	Use only single-codepoint emoji throughout the TUI. Multi-codepoint
-//	emoji with variation selectors (U+FE0F) cause terminal compatibility
-//	issues — the width calculation mismatch can truncate adjacent text
-//	characters (e.g. "Image" → "Imag"). This affects all emoji used in
-//	labels, icons, and status indicators.
+//	Drawn symbols follow the glyph policy in constants.go (East-Asian
+//	width, single codepoint, one cell per fixed-width row).
+//
+//	Use only single-codepoint emoji. The old justification for this —
+//	that a variation selector makes the width model miscount and a
+//	truncation eats the neighboring character ("Image" → "Imag") — no
+//	longer holds: both width libraries measure a camera emoji followed by
+//	U+FE0F, and a ZWJ sequence, as one cluster of two cells. The rule
+//	stands for a different reason: this package measures a string with
+//	one library (ansi/displaywidth) and slices it with the other
+//	(uniseg), and the two disagree on roughly 3100 codepoints — U+2713
+//	followed by U+FE0F is 2 cells to the first and 1 to the second. Any
+//	glyph whose width depends on a variation selector or ZWJ is
+//	therefore a layout shift waiting to happen, and no host can detect
+//	it at runtime.
 //
 // Key Files:
 //

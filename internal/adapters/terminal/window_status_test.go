@@ -70,7 +70,7 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	}
 	// The status dot lives in the header line (TOOL CALL ⠋), not the content —
 	// content shows the bare argument without the tool-name prefix.
-	if contains(content, "•") {
+	if contains(content, statusDot) {
 		t.Errorf("Content should not contain a status dot, got: %s", content)
 	}
 	if !contains(stripANSI(content), "git status") {
@@ -80,9 +80,9 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	// Send result with success
 	wb.HandleToolOutput("tool123", "output", false, 0)
 
-	// Test rendering with success status: input + "---" + output
+	// Test rendering with success status: input + "───" + output
 	content = wb.RenderWindowContent(w, 76)
-	if !contains(stripANSI(content), "git status\n---\noutput") {
+	if !contains(stripANSI(content), "git status\n───\noutput") {
 		t.Errorf("Expected input --- output, got: %s", stripANSI(content))
 	}
 
@@ -91,7 +91,7 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 
 	// Test rendering with error status
 	content = wb.RenderWindowContent(w, 76)
-	if !contains(stripANSI(content), "git status\n---\nerror output") {
+	if !contains(stripANSI(content), "git status\n───\nerror output") {
 		t.Errorf("Expected input --- error output, got: %s", stripANSI(content))
 	}
 }
@@ -215,8 +215,8 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 				t.Errorf("Expected %d lines, got %d", tt.wantLines, lineCount)
 			}
 
-			// Streaming preview: bare delta, no status dots at all.
-			if strings.Contains(result, "·") || strings.Contains(result, "•") {
+			// Streaming preview: bare delta, no status dot at all.
+			if strings.Contains(result, statusDot) {
 				t.Errorf("Streaming preview should not contain status dots, got: %q", result)
 			}
 

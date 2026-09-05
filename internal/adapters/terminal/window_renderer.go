@@ -719,7 +719,7 @@ func (r *userRenderer) Invalidate() {}
 // BuildInner renders the user message as visual lines: media section
 // first (on top), then text below. This matches the natural content
 // order: media parts precede the text part. Multiple text parts are
-// separated with "---" in System color. Each returned line is one
+// separated with "───" (Separator) in System color. Each returned line is one
 // terminal row (no '\n' inside); lineCount includes the 2 box rules.
 //
 // Wrapping is performed by wrapVisualLines (NOT by a pre-pass of
@@ -739,11 +739,11 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		parts = append(parts, mediaBlockStr)
 	}
 
-	// Text portion: text parts separated by "---"
+	// Text portion: text parts separated by Separator ("───")
 	if len(r.textParts) > 0 {
 		var textBlock strings.Builder
 
-		// Separate from media with "---"
+		// Separate from media with Separator ("───")
 		if len(r.mediaParts) > 0 {
 			textBlock.WriteString(styles.System.Render(Separator))
 			textBlock.WriteString("\n")
@@ -922,7 +922,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// Neither carries the status indicator nor the "name: " prefix — the
 	// indicator lives in the header line (TOOL CALL ⠋) and the tool name is
 	// shown there too. Content is plain (no color, no bold); only the
-	// "---" separator and any leading "…" truncation marker keep their
+	// "───" separator and any leading "…" truncation marker keep their
 	// styled colors (muted / dim). The plain rows gain the dim Body color
 	// under an overlay, via styleBodyLines on the wrapped result below.
 	var call string
@@ -954,7 +954,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		}
 	}
 
-	// Append output with a "---" separator — uniform across all tools
+	// Append output with a "───" separator — uniform across all tools
 	// (parameters/results divider; edit_file and write_file included).
 	// Output rows are plain text (dim Body color under overlays); the
 	// separator keeps its muted color.

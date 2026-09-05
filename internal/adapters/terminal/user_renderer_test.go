@@ -54,7 +54,7 @@ func TestUserPromptLongSingleLineSoftWraps(t *testing.T) {
 
 // TestUserPromptMultiLineContentStaysMultiLine verifies the
 // complementary guarantee: when the user text has REAL hard newlines
-// (multiple text parts joined by "---", or a single part with '\n'
+// (multiple text parts joined by "───", or a single part with '\n'
 // inside), each original line stays a separate visual row with hard
 // separators — terminal selection copies the original multi-line
 // structure back.
@@ -64,7 +64,7 @@ func TestUserPromptMultiLineContentStaysMultiLine(t *testing.T) {
 	}
 	lines, _ := ur.BuildInner(80, false, DefaultStyles())
 
-	// 3 text parts separated by "---" → 5 visual rows:
+	// 3 text parts separated by "───" → 5 visual rows:
 	//   line one / --- / line two / --- / line three
 	if len(lines) != 5 {
 		t.Fatalf("expected 5 visual rows (3 parts + 2 separators), got %d: %q",
@@ -76,7 +76,7 @@ func TestUserPromptMultiLineContentStaysMultiLine(t *testing.T) {
 		}
 	}
 	joined := stripANSI(joinVisualLines(lines))
-	want := "line one\n---\nline two\n---\nline three"
+	want := "line one\n───\nline two\n───\nline three"
 	if joined != want {
 		t.Errorf("multi-part content:\n  got:  %q\n  want: %q", joined, want)
 	}

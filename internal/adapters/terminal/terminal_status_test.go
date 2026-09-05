@@ -7,10 +7,12 @@ import (
 )
 
 // TestStatusBarReasoningAlwaysShownWithoutHighlight verifies the status
-// bar always renders the reasoning indicator ("R0✦".."R2✦") with the
-// ✦ glyph retained but without the accent (highlight) color or bold
-// weight. The status dot is the only element in the status bar that
-// uses the accent.
+// bar always renders the reasoning level ("R0".."R2") plain — no accent
+// (highlight) color and no bold weight. The status dot is the only
+// element in the status bar that uses the accent. There is no marker
+// glyph after the level: ✦ used to be drawn there unconditionally
+// (even at R0, where it signals nothing), which read like a state
+// indicator while never changing state.
 func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
 	for _, level := range []int{0, 1, 2} {
 		t.Run(fmt.Sprintf("level=%d", level), func(t *testing.T) {
@@ -40,9 +42,8 @@ func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
 
 			plain := stripANSI(terminal.statusLeft)
 
-			// 1. Reasoning level is always shown with the ✦ glyph, even
-			//    when 0 ("R0✦").
-			want := fmt.Sprintf("R%d✦", level)
+			// 1. Reasoning level is always shown, even when 0 ("R0").
+			want := fmt.Sprintf("R%d", level)
 			if !containsSubstring(plain, want) {
 				t.Errorf("expected status to contain %q, got %q", want, plain)
 			}
@@ -54,7 +55,7 @@ func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
 			// 3. The accent color must not be applied to the reasoning
 			//    indicator. Render a reference string with the accent
 			//    style, capture its exact ANSI signature, and confirm
-			//    that signature never appears adjacent to the "R{n}✦".
+			//    that signature never appears adjacent to the "R{n}" text.
 			accentSignature := styles.Status.Foreground(styles.ColorAccent).Render("X")
 			// Style.Render wraps text in SGR escapes; pull out the
 			// opening escape prefix so we can scan for it.
@@ -242,7 +243,7 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 	out.handleSystemMsg(fmt.Sprintf(`{"type":"model","data":{"active_id":1,"active_name":%q,"context_limit":0}}`, modelName))
 
 	m := newTerminalForUpdateStatusTest(out)
-	m.windowWidth = 24 // lineBudget = 24: left "· R0✦ F↓" (8) leaves 15 cells for the model
+	m.windowWidth = 24 // left "∙ R0 F↓" (7) + a 40-cell model cannot share 24 → merged, truncated
 	m = m.updateStatus()
 
 	rendered := m.renderStatusBar()
@@ -280,7 +281,7 @@ func TestStatusBarNoModelOmitsPadding(t *testing.T) {
 	m = m.updateStatus()
 
 	plain := stripANSI(m.renderStatusBar())
-	if plain != "· R0✦ F↓" {
+	if plain != "∙ R0 F↓" {
 		t.Errorf("expected bare left segments without model, got %q", plain)
 	}
 }
@@ -297,7 +298,7 @@ func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":999999999,"context_limit":1000000000}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
-	m.windowWidth = 12 // content "· R2✦ F↓ | 1000.0M" (18) overflows → truncated to 12
+	m.windowWidth = 12 // content "∙ R2 F↓ | 1000.0M" (17) overflows → truncated to 12
 	m = m.updateStatus()
 
 	plain := stripANSI(m.renderStatusBar())

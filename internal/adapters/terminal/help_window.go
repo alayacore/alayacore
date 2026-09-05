@@ -390,14 +390,14 @@ func (hw HelpWindow) View() View {
 	helpStyle := NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorMuted)
 	var help string
 	if hw.FilterInputFocused {
-		help = "  tab: list │ esc: close"
+		help = "  tab: list | esc: close"
 	} else {
-		base := "tab: filter │ j/k: navigate"
+		base := "tab: filter | j/k: navigate"
 		if hw.SelectedIdx >= 0 && hw.SelectedIdx < hw.filteredLen() &&
 			hw.filteredItems[hw.SelectedIdx].Type == HelpItemCommand {
-			base += " │ enter: copy to input"
+			base += " | enter: copy to input"
 		}
-		base += " │ q/esc: close"
+		base += " | q/esc: close"
 		help = "  " + base
 	}
 	helpBar := renderHelpBar(helpStyle, help, hw.Width)

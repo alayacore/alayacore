@@ -236,9 +236,9 @@ func (ms ModelSelector) renderList() string {
 	helpStyle := NewStyle().Background(ms.Styles.ColorDim).Foreground(ms.Styles.ColorMuted)
 	var help string
 	if ms.FilterInputFocused {
-		help = "  tab: list │ ctrl+r: reload │ enter: select │ esc: close"
+		help = "  tab: list | ctrl+r: reload | enter: select | esc: close"
 	} else {
-		help = "  tab: search │ j/k: navigate │ enter: select │ q/esc: close"
+		help = "  tab: search | j/k: navigate | enter: select | q/esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))

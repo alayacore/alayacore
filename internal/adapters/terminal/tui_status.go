@@ -14,9 +14,10 @@ import (
 // statusStepsSegment returns the steps status string, or "" if no activity.
 // During a run it shows live progress ("3/5", "3/INF"); after completion it
 // shows the last run's frozen summary ("3/5", "3/INF") until the next task
-// starts. The leading dot in the status bar (• live vs · idle) tells the two
-// apart. Tool windows follow the same •/· convention: hollow while args
-// stream in, solid while running.
+// starts. Nothing in this segment marks live vs frozen: the status dot that
+// opens the bar does (accent + bold while a task runs, dim once it ends —
+// see renderStatusBar). Tool windows carry their own state in the header
+// instead ("TOOL CALL ⠋/✓/✗", see tool_render.go).
 func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurrentStep int, lastMaxSteps int) string {
 	if inProgress && currentStep > 0 {
 		if maxSteps > 0 {
@@ -45,7 +46,15 @@ func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
 		return ""
 	}
 	if ttftMS > 0 {
-		return fmt.Sprintf("%.1f tok/s · ttft %.1fs", stepTPS, float64(ttftMS)/1000)
+		// TTFT qualifies the throughput figure rather than standing beside
+		// it, so it goes in parentheses. This used to read
+		// "12.5 tok/s · ttft 1.2s": a middle dot is East-Asian Ambiguous,
+		// and the status row is truncated to exactly the terminal width, so
+		// a terminal that draws Ambiguous glyphs two cells wide wrapped this
+		// row's last cell onto a second row — the same failure the help bars
+		// were fixed for (glyph policy, constants.go). The parentheses cost
+		// the same 22 cells and say what the relationship actually is.
+		return fmt.Sprintf("%.1f tok/s (ttft %.1fs)", stepTPS, float64(ttftMS)/1000)
 	}
 	return fmt.Sprintf("%.1f tok/s", stepTPS)
 }
@@ -104,14 +113,17 @@ func (m *Terminal) renderStatusBar() string {
 		}
 	}
 
-	// Indicator dot: accent while a task runs (same convention as tool
-	// windows; green is reserved for success), dim otherwise.
-	indicatorGlyph := "·"
+	// Indicator dot: one glyph for both states, one cell in every terminal
+	// — see the rationale and the glyph policy at statusDot (constants.go).
+	// Accent while a task runs (green stays reserved for tool success), dim
+	// otherwise; the bold weight marks a running task even when an overlay
+	// has dimmed the whole bar.
+	indicatorGlyph := statusDot
 	indicatorStyle := m.styles.Status.Foreground(m.styles.ColorDim)
 	if m.inProgress {
-		indicatorGlyph = "•"
+		indicatorStyle = indicatorStyle.Bold(true)
 		if active {
-			indicatorStyle = m.styles.Status.Foreground(m.styles.ColorAccent)
+			indicatorStyle = m.styles.Status.Foreground(m.styles.ColorAccent).Bold(true)
 		}
 	}
 
@@ -144,7 +156,7 @@ func (m *Terminal) renderStatusBar() string {
 
 	// Render: indicator with its own style, the rest per segment
 	// (segments muted, " | " separators dim — all dim when blocked).
-	// Sliced by indicatorGlyph's byte length, not [:1]: "•" is 3 bytes.
+	// Sliced by indicatorGlyph's byte length, not [:1]: "∙" is 3 bytes.
 	content := indicatorStyle.Render(leftPlain[:len(indicatorGlyph)])
 	if rest := leftPlain[len(indicatorGlyph):]; rest != "" {
 		if strings.HasPrefix(rest, " ") {
@@ -224,7 +236,7 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudg
 // escape-sequence handling.
 //
 // Splitting is on the bare "|", not " | ": truncation can replace the
-// space after a separator with "…" (e.g. "R0✦ |…"), which would hide the
+// space after a separator with "…" (e.g. "R1 |…"), which would hide the
 // separator from a " | "-based split and paint the "|" with the segment
 // color. The separator's own spaces (one trailing on the left part, one
 // leading on the right part) are re-emitted exactly as the plain text
@@ -334,11 +346,14 @@ func (m Terminal) updateStatus() Terminal {
 	// plain text, so the "…" inherits the segment style naturally).
 	var segments []string
 
-	// Switch indicators segment (compact: "R1✦ F↓" in one segment).
-	// Reasoning level is always rendered ("R0✦".."R2✦") using the muted
+	// Switch indicators segment (compact: "R1 F↓" in one segment).
+	// The reasoning level is always rendered ("R0".."R2") using the muted
 	// style — the accent color and bold are reserved for the status dot,
-	// which remains the only highlighted element in the status bar.
-	switches := fmt.Sprintf("R%d✦", snap.ReasoningLevel)
+	// which remains the only highlighted element in the status bar. There is
+	// deliberately no glyph after the level: a marker that never changes with
+	// the state (an earlier revision drew "R0✦".."R2✦", ✦ shown even at 0)
+	// carries no information while looking like an indicator.
+	switches := fmt.Sprintf("R%d", snap.ReasoningLevel)
 	if m.display.shouldFollow() {
 		switches += " F↓"
 	}

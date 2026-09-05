@@ -36,7 +36,7 @@ func TestBodyNormalKeepsPlain(t *testing.T) {
 		}
 	}
 
-	// toolRenderer (plain input/output rows). The "---" separator keeps
+	// toolRenderer (plain input/output rows). The "───" separator keeps
 	// its System color even in normal mode — only the body rows must be
 	// ANSI-free.
 	tool := &toolRenderer{name: "execute_command", input: "ls -la", output: "tool output"}

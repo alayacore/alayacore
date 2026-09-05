@@ -272,11 +272,15 @@ func splitCells(line string) []string {
 // ============================================================================
 
 // Grid framing glyphs. Box-drawing is charged one display cell per glyph,
-// which is the assumption the whole terminal UI already makes — window borders
-// are strings.Repeat("─", width) (see Styles.RenderOpenBoxLines) and the status
-// dots, spinners and help separators are all East-Asian Ambiguous glyphs too.
-// A terminal that measured those as two cells would break every window frame,
-// so there is nothing table-specific to defend against here.
+// which is the assumption the whole terminal UI already makes: the window
+// rules are strings.Repeat("─", width) (see Styles.RenderOpenBoxLines), so a
+// terminal that measured a rule glyph as two cells breaks every frame in the
+// app, tables or not. That is the waiver recorded in the glyph policy
+// (constants.go) — the box-drawing range U+2500-U+257F is East-Asian
+// Ambiguous with no exception, so there is nothing table-specific to defend
+// against here. (The markers this comment used to cite as "also ambiguous"
+// — the status dot, the tool spinner, the fold arrows — are not ambiguous;
+// they are Neutral precisely so they do not lean on that waiver.)
 //
 // A full grid — a rule between every pair of rows — is what makes multi-line
 // rows readable: when a cell spans several terminal rows, a horizontal rule is

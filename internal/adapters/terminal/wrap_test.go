@@ -133,28 +133,28 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 	}
 
 	// Model merged into the left (gap ≤ 3) and truncated to a single
-	// column: "…" must be muted, not bare. W=9: the merged "R0✦ | gpt-4o"
-	// truncates to "R0✦ | …".
-	m := newTerm(9, "R0✦", "gpt-4o")
+	// column: "…" must be muted, not bare. W=9: the merged "R0 | gpt-4o"
+	// truncates to "R0 | …".
+	m := newTerm(9, "R0", "gpt-4o")
 	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
 		t.Errorf("model at 1 column: ellipsis not in segment style, got %q", rendered)
 	}
 
 	// Truncation landing just left of the " | " separator.
-	m = newTerm(6, "R0✦ | 123/128", "gpt-4o")
+	m = newTerm(6, "R0 | 123/128", "gpt-4o")
 	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
 		t.Errorf("truncation left of separator: ellipsis not in segment style, got %q", rendered)
 	}
 
 	// Truncation landing just right of the " | " separator.
-	m = newTerm(8, "R0✦ | 123/128", "gpt-4o")
+	m = newTerm(8, "R0 | 123/128", "gpt-4o")
 	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
 		t.Errorf("truncation right of separator: ellipsis not in segment style, got %q", rendered)
 	}
 
 	// Sweep: no width may produce a bare (unstyled) ellipsis.
 	for _, width := range []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10} {
-		m = newTerm(width, "R0✦ | 123/128", "gpt-4o")
+		m = newTerm(width, "R0 | 123/128", "gpt-4o")
 		if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
 			t.Errorf("width %d: bare ellipsis without segment style: %q", width, rendered)
 		}
@@ -172,7 +172,7 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 //     renders
 func TestStatusBarModelSeparatorGap(t *testing.T) {
 	m := newTerminalForUpdateStatusTest(NewTerminalOutput(DefaultStyles()))
-	m.statusLeft = "R0✦ | 12.3K/128K" // indicator + space + left = 18 cols
+	m.statusLeft = "R0 | 12.3K/128K" // indicator + space + left = 17 cols
 	m.statusRight = "gpt-4o"
 	m.inProgress = false
 
@@ -181,26 +181,26 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 		return stripANSI(m.renderStatusBar())
 	}
 
-	// Ample space (W=30, gap 6): model floats, blank padding.
-	if got := render(30); got != "· R0✦ | 12.3K/128K      gpt-4o" {
-		t.Errorf("gap>3: got %q, want %q", got, "· R0✦ | 12.3K/128K      gpt-4o")
+	// Ample space (W=29, gap 6): model floats, blank padding.
+	if got := render(29); got != "∙ R0 | 12.3K/128K      gpt-4o" {
+		t.Errorf("gap>3: got %q, want %q", got, "∙ R0 | 12.3K/128K      gpt-4o")
 	}
 
-	// Gap exactly 3 (W=27): merges into the left — reads like another
+	// Gap exactly 3 (W=26): merges into the left — reads like another
 	// segment, model stays flush right.
-	if got := render(27); got != "· R0✦ | 12.3K/128K | gpt-4o" {
-		t.Errorf("gap==3: got %q, want %q", got, "· R0✦ | 12.3K/128K | gpt-4o")
+	if got := render(26); got != "∙ R0 | 12.3K/128K | gpt-4o" {
+		t.Errorf("gap==3: got %q, want %q", got, "∙ R0 | 12.3K/128K | gpt-4o")
 	}
 
-	// Tight space (W=25, gap 1): merged; the model is truncated first.
-	if got := render(25); got != "· R0✦ | 12.3K/128K | gpt…" {
-		t.Errorf("gap<3 with full model: got %q, want %q", got, "· R0✦ | 12.3K/128K | gpt…")
+	// Tight space (W=24, gap 1): merged; the model is truncated first.
+	if got := render(24); got != "∙ R0 | 12.3K/128K | gpt…" {
+		t.Errorf("gap<3 with full model: got %q, want %q", got, "∙ R0 | 12.3K/128K | gpt…")
 	}
 
-	// No room even merged (W=20): the combined left is truncated, the
+	// No room even merged (W=19): the combined left is truncated, the
 	// model is cut away and "…" marks the truncation.
-	if got := render(20); got != "· R0✦ | 12.3K/128K …" {
-		t.Errorf("no room for model: got %q, want %q", got, "· R0✦ | 12.3K/128K …")
+	if got := render(19); got != "∙ R0 | 12.3K/128K …" {
+		t.Errorf("no room for model: got %q, want %q", got, "∙ R0 | 12.3K/128K …")
 	}
 }
 
@@ -216,17 +216,17 @@ func TestStatusBarTruncatedSeparatorKeepsDimPipe(t *testing.T) {
 	}
 
 	m := newTerminalForUpdateStatusTest(NewTerminalOutput(styles))
-	m.statusLeft = "R0✦ | 123/128"
+	m.statusLeft = "R0 | 123/128"
 	m.statusRight = "gpt-4o"
 	m.inProgress = false
-	m.windowWidth = 8 // left truncates to "· R0✦ |…" (the space after "|" is cut)
+	m.windowWidth = 7 // budget 5 → head "R0 |" + "…": the space after "|" is the cell cut
 
 	rendered := m.renderStatusBar()
 	if !strings.Contains(rendered, sepSig+"|") {
 		t.Errorf("'|' before '…' not rendered dim: %q", rendered)
 	}
-	if got := stripANSI(rendered); got != "· R0✦ |…" {
-		t.Errorf("text = %q, want %q", got, "· R0✦ |…")
+	if got := stripANSI(rendered); got != "∙ R0 |…" {
+		t.Errorf("text = %q, want %q", got, "∙ R0 |…")
 	}
 }
 

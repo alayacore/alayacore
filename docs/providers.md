@@ -283,7 +283,7 @@ When **all** `reasoning_*` blocks are absent from a model entry, **no thinking-r
 Reasoning level itself (`0`/`1`/`2`) drives:
 - which `reasoning_*` block is merged into the request body,
 - the empty-thinking-block padding in assistant messages (provider-specific message-layer behavior, not configurable),
-- the `R0✦`/`R1✦`/`R2✦` status indicator.
+- the `R0`/`R1`/`R2` status indicator.
 
 ### Common shapes
 

@@ -57,7 +57,9 @@ func TagForPath(path string) string {
 
 // MediaLabel returns the display label for a media tag.
 //
-// Use only single-codepoint emoji (see package doc.go for details).
+// The label is display text for an adapter (only the terminal one uses it
+// today), not protocol content: keep it to single-codepoint emoji, per the
+// glyph policy in internal/adapters/terminal/constants.go.
 func MediaLabel(tag string) string {
 	switch tag {
 	case TagUserI:

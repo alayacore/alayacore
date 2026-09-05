@@ -19,8 +19,8 @@ func TestStatusSpeedSegment(t *testing.T) {
 	}{
 		{"no data", 0, 0, ""},
 		{"step speed only", 12.5, 0, "12.5 tok/s"},
-		{"step speed with ttft", 12.5, 1200, "12.5 tok/s · ttft 1.2s"},
-		{"kept after completion", 12.5, 1200, "12.5 tok/s · ttft 1.2s"},
+		{"step speed with ttft", 12.5, 1200, "12.5 tok/s (ttft 1.2s)"},
+		{"kept after completion", 12.5, 1200, "12.5 tok/s (ttft 1.2s)"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,7 +89,7 @@ func TestStatusBarShowsSpeed(t *testing.T) {
 	*terminal = terminal.updateStatus()
 
 	plain := stripANSI(terminal.statusLeft)
-	if !containsSubstring(plain, "12.5 tok/s · ttft 1.2s") {
+	if !containsSubstring(plain, "12.5 tok/s (ttft 1.2s)") {
 		t.Errorf("status bar missing speed segment, got %q", plain)
 	}
 	// Segment order: context ("1.5K") → speed ("tok/s") → steps ("1/5").
@@ -135,7 +135,7 @@ func TestStatusBarKeepsSpeedAfterCompletion(t *testing.T) {
 	*terminal = terminal.updateStatus()
 
 	plain := stripANSI(terminal.statusLeft)
-	if !containsSubstring(plain, "12.5 tok/s · ttft 1.2s") {
+	if !containsSubstring(plain, "12.5 tok/s (ttft 1.2s)") {
 		t.Errorf("status bar lost speed after completion, want it kept, got %q", plain)
 	}
 }

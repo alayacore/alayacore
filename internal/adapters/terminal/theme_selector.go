@@ -278,9 +278,9 @@ func (ts ThemeSelector) renderList() string {
 	helpStyle := NewStyle().Background(ts.Styles.ColorDim).Foreground(ts.Styles.ColorMuted)
 	var help string
 	if ts.FilterInputFocused {
-		help = "  tab: list │ enter: select │ esc: close"
+		help = "  tab: list | enter: select | esc: close"
 	} else {
-		help = "  tab: search │ j/k: navigate │ enter: select │ q/esc: close"
+		help = "  tab: search | j/k: navigate | enter: select | q/esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, ts.Width))

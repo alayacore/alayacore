@@ -169,7 +169,7 @@ func TestScreenTabRepaintsOnlyChangedRows(t *testing.T) {
 	}
 	// Only the focus-dependent rows change: the help bar swaps to the
 	// list-focus text.
-	if !strings.Contains(out, "tab: search │") {
+	if !strings.Contains(out, "tab: search |") {
 		t.Errorf("changed help row should be repainted, got %q", out)
 	}
 }

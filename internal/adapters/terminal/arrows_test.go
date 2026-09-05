@@ -42,24 +42,41 @@ func TestFoldArrowGlyphs(t *testing.T) {
 }
 
 // The heavier triangle and arrow pairs are exactly the ones the constants
-// avoid, on two properties: East Asian Width "A" (a terminal configured for
-// double-width ambiguous characters draws them two cells) and
-// Emoji_Presentation=Yes (emoji display is their default per UTS#51, so a
-// terminal that resolves them through an emoji font draws a two-cell color
-// glyph). Both classes measure one cell to our own width model, so nothing
-// at runtime can catch the damage — only the choice of glyph can. (The
-// width property was checked against Unicode 15 data; the terminal
-// consequence follows from the properties and has not been measured on a
-// host here.) A default drifting back onto one of these is a regression,
-// not a cosmetic change.
+// avoid. Two properties matter, and they are NOT the same on these
+// codepoints — an earlier version of this comment claimed both for all of
+// them, which is wrong:
+//
+//   - East_Asian_Width "A" (Ambiguous): a terminal configured for
+//     double-width ambiguous characters draws the glyph two cells. ▶ ▼ ▲ ◀
+//     all have it; the small triangles ▸ ▾ do not.
+//   - Extended_Pictographic: such a codepoint can be resolved through an
+//     emoji font and come back two cells wide. ▶ and ◀ are in that set
+//     (with Emoji_Presentation=No — text is their default, so they need
+//     U+FE0F to be emoji by default); ▼ and ▲ are not in it at all.
+//
+// Both hazards measure one cell to at least one of our two width models,
+// so nothing at runtime can catch the damage — only the choice of glyph
+// can. (The properties were checked against Unicode 15 data and against
+// the tables of the libraries we build with; the terminal consequence
+// follows from those properties and has not been measured on a host here.)
+// glyphs_test.go re-derives the ambiguous-width half of this from the
+// libraries themselves, so a drift is caught by the build. A default
+// drifting back onto one of these is a regression, not a cosmetic change.
+//
+// The two media keys ⏵ (U+23F5) and ⏷ (U+23F7) used to be on this list for
+// "emoji presentation", which is not a property either of them: they are
+// East-Asian Neutral and outside Extended_Pictographic (the pictographic
+// range jumps from U+23F3 to U+23F8, which is exactly where the media
+// buttons resume), so both width models in our stack give them one cell.
+// They are dropped rather than kept on a reason that does not hold — the
+// arrows themselves are pinned by codepoint at the top of this file, which
+// is the guarantee that matters.
 func TestArrowsAvoidUnreliableCodepoints(t *testing.T) {
 	unreliable := map[rune]string{
-		'\u25B6': "▶ ambiguous width AND emoji presentation",
-		'\u25BC': "▼ ambiguous width AND emoji presentation",
-		'\u25B2': "▲ ambiguous width AND emoji presentation",
-		'\u25C0': "◀ ambiguous width AND emoji presentation",
-		'\u23F5': "⏵ emoji presentation (media play key)",
-		'\u23F7': "⏷ emoji presentation (media down key)",
+		'\u25B6': "▶ ambiguous width AND Extended_Pictographic",
+		'\u25BC': "▼ ambiguous width",
+		'\u25B2': "▲ ambiguous width",
+		'\u25C0': "◀ ambiguous width AND Extended_Pictographic",
 		'\u25CF': "● ambiguous width",
 		'\u25CB': "○ ambiguous width",
 		'\u2192': "→ ambiguous width",

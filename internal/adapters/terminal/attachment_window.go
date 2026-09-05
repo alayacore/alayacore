@@ -564,11 +564,11 @@ func (aw AttachmentWindow) render() string {
 	// adding a fifth hint.
 	switch {
 	case aw.mode == modeURL:
-		help = "  enter: add URL │ ctrl+a: switch to local │ esc: close"
+		help = "  enter: add URL | ctrl+a: switch to local | esc: close"
 	case aw.FilterInputFocused:
-		help = "  tab: list │ enter: pick │ ctrl+w: up a level │ ctrl+a: url"
+		help = "  tab: list | enter: pick | ctrl+w: up a level | ctrl+a: url"
 	default:
-		help = "  tab: search │ j/k: navigate │ enter: pick │ esc: close"
+		help = "  tab: search | j/k: navigate | enter: pick | esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))

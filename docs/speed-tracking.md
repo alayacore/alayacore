@@ -9,8 +9,16 @@ The session measures each LLM round trip (step) and shows the latest
 step's speed in the TUI status bar, right after the context segment:
 
 ```
-• R0✦ | 1.5K | 12.5 tok/s · ttft 1.2s | 1/5
+∙ R0 | 1.5K | 12.5 tok/s (ttft 1.2s) | 1/5
 ```
+
+The leading `∙` is the status dot — accent-colored and bold while a task
+runs, dim otherwise. TTFT is parenthesised rather than set off by a middle
+dot because the status row is truncated to exactly the terminal width, and
+a middle dot (U+00B7) is one of the East-Asian Ambiguous characters a CJK
+terminal can draw two cells wide. Both marks are drawn by
+`renderStatusBar`; what they may be is pinned by the glyph policy in
+`internal/adapters/terminal/constants.go`.
 
 Two metrics per step, both computed in `internal/llm` (provider-agnostic,
 single implementation for Anthropic and OpenAI):

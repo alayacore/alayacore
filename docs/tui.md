@@ -253,7 +253,7 @@ The attachment type is determined by file extension (or URL path extension):
 
 ### Display
 
-Attachments appear above the text input, separated by `---`, matching the rendering of user messages in the conversation history:
+Attachments appear above the text input, separated by `───` (the same divider the windows use), matching the rendering of user messages in the conversation history:
 
 When a user message is collapsed, attachments remain visible as a compact badge
 summary (for example, `📷1 🎵1`) before the text tail. Expand the window to
@@ -262,7 +262,7 @@ see the full attachment labels and content.
 ```
 ┌───────────────────────────────┐
 │ 📷 Image  🎵 Audio            │
-│ ---                           │
+│ ───                           │
 │ what are these?               │
 └───────────────────────────────┘
 ```
@@ -301,7 +301,7 @@ Every tool window's header line carries a status indicator right after the `TOOL
 
 ### Tool Result Separator
 
-Tool windows separate the tool call's arguments from its result with a dimmed `---` line. The arguments are shown without the status indicator or the `name: ` prefix (both live in the header line), so a window reads: header (`▾ TOOL CALL ⠋ execute_command`), argument line (`lscpu | grep …`, or `./scripts/fetch.sh [dir=/home/me/skills/weather]` when the call carried a `workdir`), `---`, result. `write_file` and `edit_file` follow the same layout. Only `edit_file`'s argument block is a real diff: the removed rows (`- `) render in the theme's removed color and the added rows (`+ `) in the added color (each wrapped continuation row stays self-contained); context rows and the bare argument line stay plain. `write_file` shows the raw file content being written — plain, never diff-colored (`- `/`+ ` lines there are literal content). While an overlay (model selector, help window, confirm dialog, …) is open, all this body text dims to the theme's `dim` color — see [configuration.md](configuration.md).
+Tool windows separate the tool call's arguments from its result with a dimmed `───` rule. The arguments are shown without the status indicator or the `name: ` prefix (both live in the header line), so a window reads: header (`▾ TOOL CALL ⠋ execute_command`), argument line (`lscpu | grep …`, or `./scripts/fetch.sh [dir=/home/me/skills/weather]` when the call carried a `workdir`), `───`, result. `write_file` and `edit_file` follow the same layout. Only `edit_file`'s argument block is a real diff: the removed rows (`- `) render in the theme's removed color and the added rows (`+ `) in the added color (each wrapped continuation row stays self-contained); context rows and the bare argument line stay plain. `write_file` shows the raw file content being written — plain, never diff-colored (`- `/`+ ` lines there are literal content). While an overlay (model selector, help window, confirm dialog, …) is open, all this body text dims to the theme's `dim` color — see [configuration.md](configuration.md).
 
 ### Auto-Follow
 
@@ -384,6 +384,41 @@ When styling text with the style layer, each segment must be rendered
 individually before concatenation. You cannot render a string that already
 contains ANSI codes with a new style and expect it to work.
 
+
+## Glyphs and Terminal Width
+
+Every symbol the TUI draws is chosen against one constraint: the layout
+reserves exactly one cell for it, and a terminal configured to render
+East-Asian **Ambiguous** characters two cells wide (`xterm -cjkwidth`,
+`mlterm` in a CJK locale, some font configurations) happily draws such a
+glyph two cells while every width library reports one. Neither the app nor
+the libraries can see it happen at runtime, so the guard is the choice of
+codepoint: the fold arrows are `▸ ▾` (Neutral) and not `▶ ▼` (Ambiguous),
+the status dot is `∙` (Neutral) and not the `·`/`•` pair it replaced, and
+the help bars separate key hints with an ASCII `|` rather than `│`. Lines the app draws
+are one family: the frame rules, the markdown table grid and the in-content divider
+(`───`, `Separator`) are all box drawing, so a divider can never be confused with a
+markdown rule, a unified-diff file header, or the `---` frontmatter and config-block
+delimiters of this product's own file formats.
+
+Two classes are accepted as limitations instead of being worked around,
+because no Neutral alternative exists: **box drawing** (`─ │` and the
+markdown table grid — the whole range `U+2500-U+257F` is Ambiguous, so
+every rule and table frame in the app shares the same exposure), and a few
+**typographic marks** (`…`, `—`, `∞`, `↓`). Program-owned symbols stay
+single codepoints throughout: the adapter sizes strings with one width
+library and slices grapheme clusters with another, and the two disagree on
+roughly 3100 codepoints — a glyph whose width depends on a variation
+selector or ZWJ would be measured one way and truncated the other.
+
+The rule, the waiver list with its reasons, and the enforcement live in
+`internal/adapters/terminal/constants.go` (glyph policy) and
+`glyphs_test.go`, which scans the package's own string literals and fails
+on an unclassified glyph, a stale entry, or a measured width that
+contradicts its class. A terminal where the ambiguous glyphs really do come
+back two cells wide cannot be detected today either — the adapter queries
+nothing (`docs/tui.md` → [Paste and terminal capability](#paste-and-terminal-capability))
+— so the ASCII alternative would be a deliberate option, not a bug fix.
 
 ## Tool Confirm Dialog
 
