@@ -28,8 +28,9 @@ func TestFoldArrowGlyphs(t *testing.T) {
 			t.Errorf("%s = %q, want the single rune %q", tc.name, tc.glyph, string(tc.want))
 		}
 		// The header layout reserves arrowCellWidth cells for the glyph —
-		// the width-2 arithmetic in the collapsed builders, and the content
-		// column the soft-wrap tests pin, are only correct while this holds.
+		// collapsedPrefixWidth, the arithmetic in the collapsed builders,
+		// and the content column the soft-wrap tests pin are all only
+		// correct while this holds.
 		if w := ansi.StringWidth(tc.glyph); w != arrowCellWidth {
 			t.Errorf("%s measures %d cells, layout reserves %d", tc.name, w, arrowCellWidth)
 		}
@@ -41,13 +42,16 @@ func TestFoldArrowGlyphs(t *testing.T) {
 }
 
 // The heavier triangle and arrow pairs are exactly the ones the constants
-// avoid: East Asian Width "A" (double-width in terminals configured for
-// wide ambiguous characters) or Emoji_Presentation=Yes (drawn as a
-// two-cell color emoji by Windows Terminal, GNOME Console, and font
-// stacks with an emoji fallback). Both classes read as one cell to our
-// width model, so nothing at runtime can catch the damage — only the
-// choice of glyph can. A default drifting back onto one of these is a
-// regression, not a cosmetic change.
+// avoid, on two properties: East Asian Width "A" (a terminal configured for
+// double-width ambiguous characters draws them two cells) and
+// Emoji_Presentation=Yes (emoji display is their default per UTS#51, so a
+// terminal that resolves them through an emoji font draws a two-cell color
+// glyph). Both classes measure one cell to our own width model, so nothing
+// at runtime can catch the damage — only the choice of glyph can. (The
+// width property was checked against Unicode 15 data; the terminal
+// consequence follows from the properties and has not been measured on a
+// host here.) A default drifting back onto one of these is a regression,
+// not a cosmetic change.
 func TestArrowsAvoidUnreliableCodepoints(t *testing.T) {
 	unreliable := map[rune]string{
 		'\u25B6': "▶ ambiguous width AND emoji presentation",

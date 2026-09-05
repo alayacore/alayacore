@@ -358,8 +358,8 @@ func (w *Window) RawDelta() string {
 //     (top/bottom rules only, no side borders).
 //
 // The cursor highlight colors the fold-state arrow with the selection
-// color; the arrow glyph itself comes from the theme; borders never
-// change color on navigation.
+// color; the arrow glyph is a layout constant, not a theme value
+// (constants.go); borders never change color on navigation.
 func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle Style, blocked bool) string {
 	if w.renderer == nil {
 		return ""

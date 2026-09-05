@@ -305,7 +305,7 @@ tool: #f9e2af
 | `muted` | Secondary text, system messages, tool content |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors |
-| `selection` | Selected items in lists, cursor arrow highlight |
+| `selection` | Selected items in lists, and the fold arrow of the window under the cursor |
 | `tool` | Tool call headers/labels |
 | `added` | Diff additions |
 | `removed` | Diff removals |

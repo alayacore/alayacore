@@ -33,15 +33,20 @@ const (
 // reserved for the arrow, so the glyph is a geometry decision, and a
 // palette switch must never change it.
 //
-// ▸/▾ (U+25B8/U+25BE) and not the heavier ▶/▼ (U+25B6/U+25BC), for
-// terminal reasons rather than taste: U+25B6/U+25BC are East Asian Width
-// "ambiguous" (double-width in terminals configured that way) and
-// Emoji_Presentation=Yes (Windows Terminal, GNOME Console and any font
-// stack with an emoji fallback paint them as a two-cell color emoji).
-// Both cases out-render the one cell the layout reserves and shift every
-// window header. U+25B8/U+25BE are narrow, default to text presentation,
-// and are present in essentially every monospace font. Tests pin the
-// codepoints and the cell width (arrows_test.go).
+// ▸/▾ (U+25B8/U+25BE) and not the heavier ▶/▼ (U+25B6/U+25BC). Two Unicode
+// properties decide it:
+//   - East Asian Width: U+25B6/U+25BC are "A" (ambiguous), so a terminal
+//     configured for double-width ambiguous characters draws them two
+//     cells; U+25B8/U+25BE are "N" (narrow) — one cell, always.
+//   - Emoji presentation: U+25B6/U+25BC have Emoji_Presentation=Yes (they
+//     are the "▶️" key, and emoji display is their default per UTS#51), so
+//     any terminal whose font resolution reaches an emoji font draws a
+//     two-cell color glyph. U+25B8/U+25BE are Emoji_Presentation=No.
+//
+// Either case out-renders the single cell the layout reserves, and neither
+// is visible to us at runtime — both width libraries report one cell for
+// all four codepoints — so only the choice of glyph can prevent it.
+// Tests pin the codepoints and the cell width (arrows_test.go).
 const (
 	foldArrow   = "▸"
 	unfoldArrow = "▾"
