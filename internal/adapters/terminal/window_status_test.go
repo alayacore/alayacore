@@ -68,7 +68,7 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 	}
 	// The status dot lives in the header line (TOOL CALL ⠋), not the content —
 	// content shows the bare argument without the tool-name prefix.
-	if contains(content, statusDot) {
+	if contains(content, statusDotGlyph) {
 		t.Errorf("Content should not contain a status dot, got: %s", content)
 	}
 	if !contains(stripANSI(content), "git status") {
@@ -214,7 +214,7 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 			}
 
 			// Streaming preview: bare delta, no status dot at all.
-			if strings.Contains(result, statusDot) {
+			if strings.Contains(result, statusDotGlyph) {
 				t.Errorf("Streaming preview should not contain status dots, got: %q", result)
 			}
 

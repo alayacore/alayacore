@@ -114,11 +114,11 @@ func (m *Terminal) renderStatusBar() string {
 	}
 
 	// Indicator dot: one glyph for both states, one cell in every terminal
-	// — see the rationale and the glyph policy at statusDot (constants.go).
+	// — see the rationale and the glyph policy at statusDotGlyph (constants.go).
 	// Accent while a task runs (green stays reserved for tool success), dim
 	// otherwise; the bold weight marks a running task even when an overlay
 	// has dimmed the whole bar.
-	indicatorGlyph := statusDot
+	indicatorGlyph := statusDotGlyph
 	indicatorStyle := m.styles.Status.Foreground(m.styles.ColorDim)
 	if m.inProgress {
 		indicatorStyle = indicatorStyle.Bold(true)

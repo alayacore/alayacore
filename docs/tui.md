@@ -253,19 +253,32 @@ The attachment type is determined by file extension (or URL path extension):
 
 ### Display
 
-Attachments appear above the text input, separated by `───` (the same divider the windows use), matching the rendering of user messages in the conversation history:
-
-When a user message is collapsed, attachments remain visible as a compact badge
-summary (for example, `📷1 🎵1`) before the text tail. Expand the window to
-see the full attachment labels and content.
+Attachments render above the text — the media block first, the text set off
+by the `───` divider — inside the window's open box (header line, then top
+and bottom rules with **no side borders**, per `Styles.RenderOpenBoxLines`;
+see [Window Container](#window-container)):
 
 ```
-┌───────────────────────────────┐
-│ 📷 Image  🎵 Audio            │
-│ ───                           │
-│ what are these?               │
-└───────────────────────────────┘
+▾ USER PROMPT
+────────────────────────
+📷 Image  🎵 Audio
+───
+what are these?
+────────────────────────
 ```
+
+Collapsed, the same window keeps the attachments as a compact badge summary
+and shows the text tail after it — two images and one audio here:
+
+```
+▸ USER PROMPT     📷2 🎵1 analyze this
+```
+
+The label column is padded to `CollapsedLabelWidth` by `padLabel`, the fold
+arrow is prefixed by the window layer, and the tail is cut by
+`tailCells`/`tailParts` (see
+[Collapsed Summary Truncation](#collapsed-summary-truncation)). Expand the
+window (`Space`) to see the full attachment labels and content.
 
 ### Sending
 
@@ -499,20 +512,46 @@ behaves.
 
 Width calculation is **Unicode-aware**:
 
+Measuring and cutting both go through `width.go`, against one table
+(`displaywidth`'s, options pinned there — see
+[Glyphs and Terminal Width](#glyphs-and-terminal-width)):
+
 - ASCII / Latin characters occupy **1 cell**
-- Box-drawing and other East-Asian Ambiguous glyphs (`─ │ ├ ┼ ✓ ⠋ →`) occupy
-  **1 cell** — the app-wide assumption behind every width calculation: window
-  borders are literally `strings.Repeat("─", width)`, and the status dots,
-  spinners and table rules all charge one cell per glyph. A terminal forced
-  into double-width Ambiguous mode (e.g. `RUNEWIDTH_EASTASIAN=1`) breaks that
-  assumption for the whole UI, not just tables.
+- East-Asian **Neutral** single-codepoint marks occupy **1 cell**, in every
+  configuration: the status dot `∙`, the fold arrows `▸ ▾`, the tool markers
+  `✓ ✗`, the spinner frames `⠋…⠏`. These are the glyphs the layout reserves
+  exactly one column for, which is why the status dot replaced the Ambiguous
+  `·`/`•` pair and why the help bars use an ASCII `|` where they used to draw
+  `│`. The heavier `▶ ▼` are Ambiguous too (`▶` Extended_Pictographic as
+  well), and the reasoning marker `✦` — Neutral, and drawn even at level 0 —
+  was deleted as decoration rather than replaced. All of it is the glyph
+  policy in `constants.go`.
+- East-Asian **Ambiguous** glyphs (`─ │ ├ ┼ →`, and the marks `… — ∞ ↓`) also
+  occupy **1 cell** — the app-wide assumption behind every width calculation:
+  window borders are literally `strings.Repeat("─", width)`, and table rules
+  and the truncation marker charge one cell per glyph. Box drawing has no
+  Neutral alternative, so this is the accepted exposure (waiver 2), not an
+  oversight.
 - CJK characters (中文、日本語、한국어) occupy **2 cells**
-- Emoji occupy **2 cells** (grapheme clusters per Unicode UAX #29)
+- Emoji occupy **2 cells** (grapheme clusters per Unicode UAX #29), and are
+  drawn from a single codepoint on purpose: a trailing U+FE0F asks the
+  terminal for emoji presentation, and a terminal that ignores the request
+  draws one cell where this table reserves two
 - ANSI escape codes (colors, bold, etc.) occupy **0 cells**
 - Tabs are expanded to **8 cells** (`TabWidth`) via `expandTabs` **before** any
-  width-sensitive operation (truncation, wrapping). This matters because the
-  underlying `x/ansi` width model counts a tab as 0 cells — expanding first
-  keeps truncation budgets and the final render consistent.
+  width-sensitive operation (truncation, wrapping), because both the table in
+  `width.go` and the `x/ansi` breakers count a tab as 0 cells while a terminal
+  renders it at the tab stop — expanding first keeps truncation budgets and
+  the final render consistent.
+
+`RUNEWIDTH_EASTASIAN=1` is worth naming precisely, because it is not a
+terminal setting: it changes what the Go width libraries report, not what the
+terminal draws. `width.go` ignores it by construction, but the escape-aware
+breakers (`ansi.Hardwrap`, `Wrap`, `Cut`) read it through `x/ansi`, so with it
+set a rule that measures one way breaks another way and the frame shifts —
+15 tests in this package fail that way. Double-width Ambiguous is therefore
+**not a supported mode**, and setting the variable on an ordinary terminal
+breaks the UI that would otherwise have been correct.
 
 Window rendering produces **visual line arrays** (`border.lines`) — one
 element per terminal row. Display widths are measured once per render

@@ -94,7 +94,7 @@ line = ansi.Truncate(line, limit, "")
 
 The input contains `\033[32m...\033[0m` sequences. A breaker that measured those bytes as visible characters would break the line in the middle of a color code. `ansi` measures clusters, keeps the escapes attached, and re-emits them; `width.go` deliberately does not reimplement that (see its header on why `ansi.Cut`/`TruncateLeft` take the styled rows the cutters are handed).
 
-**② Output sequences and SGR (`screen.go`, `style.go`, `wrap.go`)** — cursor addressing and erase, alt screen, bracketed paste, focus reporting, cursor style and color, OSC-8 hyperlinks, and the SGR attribute order the styling layer is byte-compatible with. 87 production call sites across 38 symbols; this, not width, is why the dependency is here.
+**② Output sequences and SGR (`screen.go`, `style.go`, `wrap.go`)** — cursor addressing and erase, alt screen, bracketed paste, focus reporting, cursor style and color, OSC-8 hyperlinks, and the SGR attribute order the styling layer is byte-compatible with. That role — not width — is why the dependency is here: 88 of its production call sites across 39 symbols are sequences and parsing (counted over non-test files, excluding the line breakers above, which ① already covers).
 
 **③ Parsing the escape sequences inside a wrapped row (`wrap.go`)** — `ansi.Parser` reads SGR and OSC-8 as they pass through `WrapWriter`, so the active style and hyperlink can be re-emitted after every newline.
 

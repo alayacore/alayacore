@@ -43,7 +43,7 @@ import (
 
 type glyphClass struct {
 	// cells is what the layout reserves for the glyph, under the width
-	// model the renderer measures with (ansi.StringWidth).
+	// model the renderer measures with (width.go's table).
 	cells int
 	// ambiguous records "East_Asian_Width = A": a double-width-ambiguous
 	// terminal draws it two cells, which is policy waiver 2 (constants.go).
@@ -180,14 +180,14 @@ func TestDrawnGlyphsMatchPolicy(t *testing.T) {
 // truncated to exactly the terminal width, so an Ambiguous glyph there
 // shifts the whole bar and wraps its last segment away.
 func TestStatusDotIsNeutralWidth(t *testing.T) {
-	if statusDot != "∙" {
-		t.Errorf("statusDot = %q, want U+2219 (BULLET OPERATOR)", statusDot)
+	if statusDotGlyph != "∙" {
+		t.Errorf("statusDotGlyph = %q, want U+2219 (BULLET OPERATOR)", statusDotGlyph)
 	}
-	if isEastAsianAmbiguous([]rune(statusDot)[0]) {
-		t.Errorf("statusDot %q is East-Asian Ambiguous — the old pair (· U+00B7, • U+2022) was, and that is what this replaced", statusDot)
+	if isEastAsianAmbiguous([]rune(statusDotGlyph)[0]) {
+		t.Errorf("statusDotGlyph %q is East-Asian Ambiguous — the old pair (· U+00B7, • U+2022) was, and that is what this replaced", statusDotGlyph)
 	}
-	if w := cellWidth(statusDot); w != 1 {
-		t.Errorf("statusDot measures %d cells, the status row reserves 1", w)
+	if w := cellWidth(statusDotGlyph); w != 1 {
+		t.Errorf("statusDotGlyph measures %d cells, the status row reserves 1", w)
 	}
 }
 

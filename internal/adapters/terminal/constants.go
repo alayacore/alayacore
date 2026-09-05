@@ -81,8 +81,11 @@ const (
 	collapsedPrefixWidth = arrowCellWidth + 1
 )
 
-// statusDot is the one state marker the status bar draws, at the very
-// first cell of a row that is truncated to exactly the terminal width.
+// statusDotGlyph is the one state marker the status bar draws, at the very
+// first cell of a row that is truncated to exactly the terminal width. The
+// tool header has its own marker — the (ToolStatus) statusDot method in
+// tool_render.go — and the two names are deliberately separate: similar
+// marks, one per row, never in the same line.
 //
 // It is a single East-Asian Neutral glyph for BOTH states: the old pair
 // was "·" U+00B7 (idle) and "•" U+2022 (running), both Ambiguous, so in a
@@ -95,7 +98,7 @@ const (
 // distinguishes running from idle). See renderStatusBar. U+2219 BULLET
 // OPERATOR keeps the dot language of the design and, of every
 // Neutral-width dot we measured, the best font coverage.
-const statusDot = "∙"
+const statusDotGlyph = "∙"
 
 // ============================================================================
 // Glyph policy
@@ -113,7 +116,7 @@ const statusDot = "∙"
 //
 //  1. A glyph the layout gives exactly one cell must be East-Asian Neutral
 //     and outside Extended_Pictographic. This is what pins ▸/▾ above, "∙"
-//     in statusDot, the "⠋…⠏"/"✓"/"✗" tool indicators, and the ASCII "|"
+//     in statusDotGlyph, the "⠋…⠏"/"✓"/"✗" tool indicators, and the ASCII "|"
 //     the help bars use between key hints — a help bar is truncated and
 //     padded to exactly the box width (renderHelpBar), so one doubled cell
 //     there overflows the row.

@@ -9,7 +9,7 @@ at the last rendered frame.
 Root cause chain:
 
 1. The spinner glyph is **baked into the window's border cache** at render
-   time (`BuildCollapsed`/`BuildExpanded` → `statusDot()` →
+   time (`BuildCollapsed`/`BuildInner` → `statusDot()` →
    `toolSpinnerFrame()`, a pure wall-clock function: 10 frames × 150ms).
 2. Border caches are only rebuilt when a window is invalidated, and that
    is **delta-driven**: `Af` argument deltas, `Uf` preview deltas, and

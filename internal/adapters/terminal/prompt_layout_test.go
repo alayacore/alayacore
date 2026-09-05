@@ -154,7 +154,7 @@ func TestInputBoxPositionInvariantUnderOversizeAttachment(t *testing.T) {
 // position. A runaway status text used to leak a soft-wrap onto the
 // row above and visually smash into the input box bottom rule.
 //
-// Asserts on display width (ansi.StringWidth), not byte count: the
+// Asserts on display width (cellWidth), not byte count: the
 // indicator and ellipsis are multi-byte UTF-8 characters whose byte
 // length exceeds their cell width.
 func TestStatusBarSingleRow(t *testing.T) {

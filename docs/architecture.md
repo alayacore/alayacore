@@ -191,7 +191,7 @@ AlayaCore uses Go build tags for all OS-specific code. The only platform-depende
 | `exec_unix.go` | `!windows` | `SetDetachFlags` (setsid), `OpenDevNull` (/dev/null) |
 | `exec_windows.go` | `windows` | `SetDetachFlags` (CREATE_NO_WINDOW + CREATE_NEW_PROCESS_GROUP), `OpenDevNull` (NUL) |
 | `terminate_unix.go` | `!windows` | `Job` (no-op), `AssignJob` (no-op), `ClearJob` (no-op), `SignalProcessGroup` (SIGINT; SIGKILL follow-up via `exec.Cmd.WaitDelay`) |
-| `terminate_windows.go` | `windows` | `Job` type, `AssignJob`, `ClearJob`, `TerminateProcessGroup` (Job Object → taskkill /F /T → Kill) |
+| `terminate_windows.go` | `windows` | `Job` type, `AssignJob`, `ClearJob`, `SignalProcessGroup` (Job Object → `taskkill /F /T` → `Kill`) |
 
 All other packages (LLM providers, session management, TLV protocol, skills, schema generation) are pure Go with no OS-specific code.
 

@@ -14,7 +14,6 @@ import (
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // TestPageScrollNoResidueBelowDisplay renders full Terminal frames before
@@ -66,5 +65,4 @@ func TestPageScrollNoResidueBelowDisplay(t *testing.T) {
 			break
 		}
 	}
-	_ = ansi.StringWidth
 }
