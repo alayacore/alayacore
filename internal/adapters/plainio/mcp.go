@@ -6,9 +6,21 @@ package plainio
 // starts a local OAuth callback server (internal/platform), opens the
 // browser, and — once the authorization code arrives — sends
 // ":mcp_confirm <server> <code> <redirect_uri>" as a CI frame, mirroring
-// the terminal adapter's startMCPAuthFlow. The URL and the manual
-// fallback commands are always printed, so users without a browser (or
-// with piped stdin) can complete the flow by hand.
+// the terminal adapter's startMCPAuthFlow. The filled-in authorization URL
+// is always printed.
+//
+// The manual fallback commands are printed where they are needed — when the
+// browser could not be opened, and when the callback wait timed out, which
+// is what a browser opened on another machine produces (its redirect
+// reaches that machine's 127.0.0.1, not this one's, so the callback here
+// never fires). They are deliberately not printed at the start of the flow:
+// the flow can then wait out its whole timeout, and the successful path —
+// browser here, code arrives, adapter submits the command itself — has no
+// use for them.
+//
+// Manual completion also needs something to type into. With piped stdin
+// there is nothing to type (readPrompts sees EOF at the end of the pipe),
+// and that case is served by the automatic path, not by these commands.
 //
 // Concurrency: the flow writes CI frames to the same TLV input writer as
 // readPrompts. The adapter wraps that writer in an app.LockedWriter, so
@@ -130,11 +142,9 @@ func (f *mcpAuthFlow) run(serverName, authURL string, input io.Writer, run *mcpA
 
 	f.out.printLine("\n[mcp: opening browser for %q…]\n", serverName)
 	f.out.printLine("[mcp: if the browser doesn't open, visit:]\n%s\n", filledURL)
-	f.out.printLine("[mcp: manual: :mcp_confirm %s <code> <redirect_uri> · :mcp_decline %s]\n",
-		serverName, serverName)
 
 	if err := f.openURL(filledURL); err != nil {
-		f.out.printLine("[mcp: failed to open browser: %v]\n", err)
+		f.printManualFallback(serverName, redirectURI, fmt.Sprintf("failed to open browser: %v", err))
 	}
 
 	select {
@@ -156,8 +166,34 @@ func (f *mcpAuthFlow) run(serverName, authURL string, input io.Writer, run *mcpA
 		// :mcp_decline) or MCP init finished/canceled — cleanup() stops
 		// the callback server.
 	case <-time.After(f.authTimeout):
-		f.out.printLine("[mcp: authorization for %q timed out — continue manually]\n", serverName)
+		// The common reason for getting here with the authorization
+		// actually completed: the browser was opened on another machine, so
+		// the redirect reached that machine's 127.0.0.1.
+		f.printManualFallback(serverName, redirectURI,
+			fmt.Sprintf("authorization for %q timed out", serverName))
 	}
+}
+
+// printManualFallback prints the out-of-band way to finish — or skip — an
+// authorization whose automatic callback did not arrive. reason is the
+// trigger, already worded for the bracket line.
+//
+// The confirm command is printed bare, without the "[mcp: …]" wrapper, for
+// the same reason the authorization URL above it is: it exists to be
+// selected and typed, and a wrapper would be copied along with it. It is
+// also what keeps the line copyable on an 80-column terminal — the prefix
+// costs 8 more columns and the server name is unbounded.
+//
+// The redirect URI is spelled out rather than shown as a
+// "<redirect_uri>" placeholder: the adapter knows the exact value it
+// substituted into the URL, so asking the reader to transcribe it out of a
+// percent-encoded query string is work this message can do for free. That
+// leaves <code> as the only thing to fill in.
+func (f *mcpAuthFlow) printManualFallback(serverName, redirectURI, reason string) {
+	f.out.printLine("\n[mcp: %s]\n", reason)
+	f.out.printLine("[mcp: to finish by hand (code = the ?code= value in the redirect URL), type:]\n")
+	f.out.printLine(":%s %s <code> %s\n", commands.CommandNameMCPConfirm, serverName, redirectURI)
+	f.out.printLine("[mcp: to skip this server: :%s %s]\n", commands.CommandNameMCPDecline, serverName)
 }
 
 // connected cancels the flow for one server: its authorization was

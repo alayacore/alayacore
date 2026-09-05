@@ -84,8 +84,13 @@ func TestMCPAuthFlow_SendsConfirmOnCallback(t *testing.T) {
 	if !strings.Contains(text, "https://example.com/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A4242%2Fcallback") {
 		t.Errorf("output = %q, want substituted URL", text)
 	}
-	if !strings.Contains(text, "manual: :mcp_confirm github <code> <redirect_uri>") {
-		t.Errorf("output = %q, want manual fallback hint", text)
+	// The automatic path printed no manual fallback: the code arrived, the
+	// adapter sent the command itself, and nothing was ever for the reader
+	// to type. This used to print the fallback commands at the start of
+	// every flow, so even a clean authorization ended with a line about
+	// typing something by hand.
+	if strings.Contains(text, "mcp_confirm") || strings.Contains(text, "mcp_decline") {
+		t.Errorf("successful flow should not print manual fallback commands, got %q", text)
 	}
 }
 
@@ -129,7 +134,58 @@ func TestMCPAuthFlow_TimeoutPrintsHint(t *testing.T) {
 	if !strings.Contains(env.out.String(), "timed out") {
 		t.Errorf("output = %q, want timeout hint", env.out.String())
 	}
+
+	// The timeout is where the manual fallback belongs: the authorization
+	// may well have happened, in a browser on another machine whose redirect
+	// never reaches this callback. The block must carry the command, with
+	// the redirect URI spelled out and nothing in front of it to copy by
+	// accident.
+	text := env.out.String()
+	wantCmd := ":mcp_confirm github <code> http://127.0.0.1:4242/callback"
+	if !strings.Contains(text, "\n"+wantCmd+"\n") {
+		t.Errorf("output = %q, want the confirm command bare on its own line %q", text, wantCmd)
+	}
+	if !strings.Contains(text, "[mcp: to skip this server: :mcp_decline github]") {
+		t.Errorf("output = %q, want the decline option", text)
+	}
+	if strings.Contains(text, "<redirect_uri>") {
+		t.Errorf("output = %q, must not leave the redirect URI as a placeholder — the adapter knows it", text)
+	}
 }
+
+// The browser could not be opened: the flow cannot receive a callback, so
+// this is the second place the manual fallback belongs — immediately, not
+// after the timeout expires.
+func TestMCPAuthFlow_BrowserOpenFailurePrintsManualFallback(t *testing.T) {
+	env := newTestFlow()
+	env.flow.startServer = func(_, _, _ string) (<-chan platform.CallbackResult, string, func()) {
+		return make(chan platform.CallbackResult), "http://127.0.0.1:4242/callback", func() {
+			select {
+			case env.fake.cleanupCh <- struct{}{}:
+			default:
+			}
+		}
+	}
+	env.flow.openURL = func(string) error { return errors.New("no DISPLAY") }
+	env.flow.authTimeout = 30 * time.Second
+
+	env.flow.start("github", "https://example.com/authorize")
+	env.flow.abort()
+	// Receiving the cleanup signal happens after every print run() makes:
+	// cleanup() is its last act, so the buffer can be read without racing
+	// the flow's goroutine.
+	<-env.fake.cleanupCh
+
+	text := env.out.String()
+	if !strings.Contains(text, "[mcp: failed to open browser: no DISPLAY]") {
+		t.Errorf("output = %q, want the open failure as the fallback's reason line", text)
+	}
+	if !strings.Contains(text, "\n"+wantConfirmCommand+"\n") {
+		t.Errorf("output = %q, want the confirm command on its own line", text)
+	}
+}
+
+const wantConfirmCommand = ":mcp_confirm github <code> http://127.0.0.1:4242/callback"
 
 func TestMCPAuthFlow_AbortStopsWaiting(t *testing.T) {
 	env := newTestFlow()

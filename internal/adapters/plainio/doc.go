@@ -58,9 +58,11 @@
 //     starts a local callback server (internal/platform), opens the
 //     browser, and sends ":mcp_confirm <server> <code> <redirect_uri>"
 //     automatically once the code arrives — one concurrent flow per
-//     server, since MCP servers initialize in parallel. Manual fallback
-//     (:mcp_confirm/:mcp_decline/:mcp_cancel) always works; the callback
-//     wait times out after 5 minutes. See docs/oauth.md for the full flow.
+//     server, since MCP servers initialize in parallel. The manual
+//     fallback commands (:mcp_confirm/:mcp_decline/:mcp_cancel) are
+//     printed where they are needed — a browser that could not be opened,
+//     or the callback wait timing out after 5 minutes — not up front; see
+//     mcp.go for why. See docs/oauth.md for the full flow.
 //
 // Communication with the session layer uses the same TLV protocol as the
 // terminal, terseio, and rawio adapters.

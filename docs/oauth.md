@@ -295,30 +295,42 @@ In the **PlainIO** adapter, when a server requires OAuth authorization,
 the adapter prints the authorization URL to stdout, starts a local
 callback server on `127.0.0.1` (replacing the `{{redirect_uri}}` and
 `{{state}}` placeholders), and tries to open the browser automatically.
-Once the code arrives, the adapter sends `:mcp_confirm` itself — no
-typing needed, so the flow also works with piped stdin. The output shows
-the filled-in URL plus the manual fallback commands:
+Once the code arrives, the adapter sends `:mcp_confirm` itself — no typing
+needed, which is what makes the flow work with a piped stdin, where there
+is nothing to type into at all. The output shows the filled-in URL:
 
 ```
 [mcp: server "github" requires authorization]
 [mcp: opening browser for "github"…]
 [mcp: if the browser doesn't open, visit:]
 https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A45231%2Fcallback&state=...
-[mcp: manual: :mcp_confirm github <code> <redirect_uri> · :mcp_decline github]
 ```
 
-If the browser fails to open (or the user prefers), the flow can be
-completed manually: open the printed URL, copy the authorization code
-from the redirect (the browser shows a connection error — the code is in
-the address bar), and type:
+The manual fallback commands are printed where they are needed — when the
+browser could not be opened, and when the callback wait times out after 5
+minutes. The timeout is also what a browser opened on **another machine**
+produces: its redirect reaches that machine's `127.0.0.1`, so the callback
+here never fires.
 
 ```
-:mcp_confirm github <code> <redirect_uri>
+[mcp: authorization for "github" timed out]
+[mcp: to finish by hand (code = the ?code= value in the redirect URL), type:]
+:mcp_confirm github <code> http://127.0.0.1:45231/callback
+[mcp: to skip this server: :mcp_decline github]
 ```
 
-Or decline with `:mcp_decline <server>` and cancel the whole init with
-`:mcp_cancel`. The callback wait times out after 5 minutes, after which
-the user can still finish manually.
+To finish by hand: open the printed URL, read the authorization code off
+the redirect (the browser shows a connection error — the code is in the
+address bar), and type that command with `<code>` replaced. The redirect
+URI is spelled out rather than left as a placeholder because the adapter
+knows the value it substituted into the URL, which leaves `<code>` as the
+only thing to fill in; the command line carries no `[mcp: …]` prefix for
+the same reason the URL is printed bare — it is meant to be selected and
+typed.
+
+`:mcp_decline <server>` skips just that server (the rest of MCP init and
+any other server's authorization stay intact); `:mcp_cancel` cancels the
+whole init.
 
 ## External URLs Summary
 
