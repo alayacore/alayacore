@@ -52,10 +52,13 @@ import (
 )
 
 // widthModel is the one set of width options the adapter measures with.
-// EastAsianWidth is pinned false (see 2 above); ControlSequences stays false
-// because escape handling is done by ansi.Strip, which understands the full
-// ECMA-48 grammar including 8-bit C1 (displaywidth's own escape handling
-// covers only 7-bit introducers, and differs on those: measured).
+// EastAsianWidth is pinned false (see 2 above). ControlSequences stays false:
+// escape handling is done by ansi.Strip first, which recognizes the whole
+// ECMA-48 grammar. displaywidth's own handling covers 7-bit introducers and
+// needs a second option for the 8-bit C1 forms, and it disagrees with the
+// stripper there (measured on "a" + C1 + "[m b": 6 cells against 4) — pasted
+// content can carry C1, so one implementation of escape removal, in the
+// place that also cuts, keeps measure and cut from parting company again.
 var widthModel = &displaywidth.Options{EastAsianWidth: false}
 
 // cellWidth returns the number of terminal cells s occupies. ANSI/ECMA-48

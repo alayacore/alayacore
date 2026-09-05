@@ -106,7 +106,7 @@ The input contains `\033[32m...\033[0m` sequences. A breaker that measured those
 | `Truncate("\033[32mHello\033[0m", 3, "")` | `"\033[32mHel\033[0m"` ✅ | `"\033[32mH"` ❌ (truncates mid-ANSI) |
 | `cellWidth("\033[32mHello\033[0m")` | `5` ✅ | `16` ❌ (counts ANSI bytes) |
 
-Since the project processes large amounts of styled text (containing ANSI codes), escape-aware measurement is required on one side or the other; `width.go` gets it by stripping through `ansi.Strip` first, which understands the full ECMA-48 grammar including 8-bit C1 (displaywidth's own escape handling covers 7-bit introducers only, and differs there — measured).
+Since the project processes large amounts of styled text (containing ANSI codes), escape-aware measurement is required on one side or the other; `width.go` gets it by stripping through `ansi.Strip` first, which understands the full ECMA-48 grammar including 8-bit C1 — displaywidth's own escape handling needs a second option for those and measures them differently (measured: 6 cells against 4).
 
 ### `github.com/mattn/go-runewidth` — transitive dependency only
 
