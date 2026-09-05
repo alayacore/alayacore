@@ -29,6 +29,25 @@ var docExampleSources = map[string]string{
 
 const docPath = "../../../docs/markdown-rendering.md"
 
+// readDocForTest reads the document with its line endings normalized to LF.
+//
+// On the Windows runner this file reaches the working tree as CRLF: Git for
+// Windows is installed with core.autocrlf=true and actions/checkout never
+// changes it, so an LF-committed text file is smudged on checkout. The renderer
+// joins its lines with "\n", so comparing the raw bytes of a checkout asserts
+// the wrong thing — all seven examples went red there at once, for a cause no
+// edit to the document could either produce or cure. Normalizing first makes the
+// assertion about what the document says, which is how the product's own
+// key-value readers already treat CRLF input: as the same text.
+func readDocForTest(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(docPath)
+	if err != nil {
+		t.Fatalf("cannot read the document: %v", err)
+	}
+	return strings.ReplaceAll(string(raw), "\r\n", "\n")
+}
+
 // docExampleCounts is the census each source must appear with; wantExampleMarkers
 // is their sum. Deliberately explicit: an assertion derived from len(map) let a
 // deleted marker and an added source cancel each other out.
@@ -44,11 +63,7 @@ const wantExampleMarkers = 7
 // (grid, grid with wrapped rows, record form) plus the exact widths that
 // produce them.
 func TestDocsMarkdownExamplesMatchRenderer(t *testing.T) {
-	raw, err := os.ReadFile(docPath)
-	if err != nil {
-		t.Fatalf("cannot read the document: %v", err)
-	}
-	text := string(raw)
+	text := readDocForTest(t)
 	// The marker is `<!-- @example src=NAME width=N -->`; keying on the opening
 	// alone keeps every field a k=v pair.
 	const marker = "<!-- @example "
@@ -116,11 +131,7 @@ func TestDocsMarkdownBoundsAreMeasured(t *testing.T) {
 		{"cjk", 3, "16 cells"},
 		{"ps", 10, "41 cells"},
 	}
-	raw, err := os.ReadFile(docPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(raw)
+	text := readDocForTest(t)
 	for _, tc := range cases {
 		in := docExampleSources[tc.src]
 		first := 0
