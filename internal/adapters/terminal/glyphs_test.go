@@ -96,7 +96,6 @@ var drawnGlyphs = map[rune]glyphClass{
 	// --- Waiver 2b: typographic marks with no Neutral same-meaning pair. --
 	'…': {1, true, "truncation marker; the Neutral option ⋯ (U+22EF) is mid-line, thin, and badly covered"},
 	'—': {1, true, "prose dash inside a dialog message — not a column, and ASCII '-' reads as a hyphen here"},
-	'↓': {1, true, "auto-follow marker in 'F↓'; every Neutral arrow measured (⬇, ⏷) is either pictographic or badly covered. Candidate for an ASCII replacement"},
 	'∞': {1, true, "unlimited context in the model column. Candidate for the word 'none'"},
 
 	// --- Wide by design: the media icons. --------------------------------

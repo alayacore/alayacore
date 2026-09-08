@@ -1,7 +1,8 @@
 package terminal
 
-// Regression tests for the CUP-anchored input box and status bar:
-// before the fix, the input box position depended on the display area's
+// Regression tests for the CUP-anchored blocks — the live edge, the input
+// box and the status bar: before the fix, the input box position depended
+// on the display area's
 // actual row count (because the View() concatenated display + input +
 // status as base rows in sequence). When the display's actual row count
 // drifted from viewportHeight — e.g. an attachment path wider than the
@@ -11,6 +12,7 @@ package terminal
 // its location is invariant under display content / scroll position.
 
 import (
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -18,55 +20,62 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// findCupRow returns the 1-indexed row of the first CUP sequence in
-// content. Returns (0, false) if no CUP sequence is present.
-func findCupRow(t *testing.T, content string) (int, bool) {
-	t.Helper()
+// cupRows returns the 1-indexed rows of every absolute-CUP anchor in
+// content, in frame order. View() emits three of them — the live edge, the
+// input box's top rule, the status bar — and the live edge only when its
+// marker has something to show, so a test that names "the first CUP" is
+// really naming whichever of the three comes first. These tests assert the
+// whole sequence instead.
+func cupRows(content string) []int {
 	re := regexp.MustCompile(`\x1b\[(\d+);1H`)
-	m := re.FindStringSubmatch(content)
-	if m == nil {
-		return 0, false
+	matches := re.FindAllStringSubmatch(content, -1)
+	rows := make([]int, 0, len(matches))
+	for _, m := range matches {
+		row := 0
+		for _, c := range m[1] {
+			row = row*10 + int(c-'0')
+		}
+		rows = append(rows, row)
 	}
-	row := 0
-	for _, c := range m[1] {
-		row = row*10 + int(c-'0')
-	}
-	return row, true
+	return rows
 }
 
-// TestInputBoxCUPAnchoredToBottom verifies that the input box is drawn
-// at an absolute CUP whose row equals (windowHeight - inputHeight).
-// Independent of any display content, the input box top rule is always
-// on the same row.
+// wantCupRows is the anchor sequence the layout owes a terminal of this
+// size, bottom-up: status bar on the last row, input box above it, live
+// edge above that (omitted when the marker draws nothing).
+func wantCupRows(m Terminal) []int {
+	inputY := max(0, m.windowHeight-m.input.Height()-1) // 0-indexed top rule
+	rows := make([]int, 0, 3)
+	if inputY > 0 && m.renderLiveEdge() != "" {
+		rows = append(rows, inputY) // 1-indexed row inputY-1+1
+	}
+	rows = append(rows, inputY+1, m.windowHeight)
+	return rows
+}
+
+// TestInputBoxCUPAnchoredToBottom verifies that every anchored block is
+// drawn at an absolute CUP whose row follows the layout formula, whatever
+// the display contains. Independent of any display content, the live edge,
+// the input box top rule and the status bar are always on the same rows.
 func TestInputBoxCUPAnchoredToBottom(t *testing.T) {
 	m := newTestTerminal()
 
 	v := m.View()
 	content := v.Content
 
-	// The first CUP in the view content positions the input box top rule.
-	wantRow := m.windowHeight - m.input.Height()
-	row, ok := findCupRow(t, content)
-	if !ok {
-		t.Fatal("expected CUP sequence in View content (input box must be CUP-anchored)")
+	got := cupRows(content)
+	want := wantCupRows(m)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("CUP anchors = %v, want %v (live edge, input box, status bar)", got, want)
 	}
-	if row != wantRow {
-		t.Errorf("input box CUP row = %d, want %d (windowHeight - inputHeight)", row, wantRow)
+	if len(want) != 3 {
+		t.Fatalf("fixture expected 3 anchors (live edge, input, status), got %v — newTestTerminal changed", want)
 	}
-
-	// The status bar CUP is the LAST CUP and lands on the last row.
-	lastCupRe := regexp.MustCompile(`\x1b\[(\d+);1H`)
-	matches := lastCupRe.FindAllStringSubmatch(content, -1)
-	if len(matches) < 2 {
-		t.Fatal("expected at least 2 CUPs in View content (input box + status bar)")
+	if want[1] != m.windowHeight-m.input.Height() {
+		t.Errorf("input box top rule row = %d, want %d (windowHeight - inputHeight)", want[1], m.windowHeight-m.input.Height())
 	}
-	last := matches[len(matches)-1]
-	statusRow := 0
-	for _, c := range last[1] {
-		statusRow = statusRow*10 + int(c-'0')
-	}
-	if statusRow != m.windowHeight {
-		t.Errorf("status bar CUP row = %d, want %d (last row)", statusRow, m.windowHeight)
+	if want[2] != m.windowHeight {
+		t.Errorf("status bar CUP row = %d, want %d (last row)", want[2], m.windowHeight)
 	}
 }
 
@@ -89,23 +98,18 @@ func TestInputBoxPositionInvariantUnderScroll(t *testing.T) {
 	m = m.updateDisplayHeight()
 	m = m.updateDisplayHeight()
 
-	v0 := m.View()
-	row0, ok := findCupRow(t, v0.Content)
-	if !ok {
-		t.Fatal("expected CUP sequence at row 0 scroll")
+	rows0 := cupRows(m.View().Content)
+	if len(rows0) == 0 {
+		t.Fatal("expected CUP anchors at row 0 scroll")
 	}
 
 	// Scroll up so the viewport now shows a different window range.
 	m.display = m.display.GotoTop()
 	m = m.updateDisplayHeight()
-	v1 := m.View()
-	row1, ok := findCupRow(t, v1.Content)
-	if !ok {
-		t.Fatal("expected CUP sequence at scroll-up state")
-	}
+	rows1 := cupRows(m.View().Content)
 
-	if row0 != row1 {
-		t.Fatalf("input box CUP row changed on scroll: was %d, now %d (must be invariant)", row0, row1)
+	if !reflect.DeepEqual(rows0, rows1) {
+		t.Fatalf("anchored rows changed on scroll: was %v, now %v (must be invariant)", rows0, rows1)
 	}
 }
 
@@ -125,27 +129,32 @@ func TestInputBoxPositionInvariantUnderOversizeAttachment(t *testing.T) {
 	// Anchor without attachment.
 	m = m.updateDisplayHeight()
 	m = m.updateDisplayHeight()
-	v0 := m.View()
-	row0, _ := findCupRow(t, v0.Content)
+	rows0 := cupRows(m.View().Content)
+	if want := wantCupRows(m); !reflect.DeepEqual(rows0, want) {
+		t.Errorf("anchors before the attachment = %v, want %v", rows0, want)
+	}
 
-	// Now add a long attachment path — wider than the box (80 wide).
+	// Now add a long attachment path — wider than the box (80 wide), so
+	// wrapLabels pre-wraps it and the box grows.
 	m = m.addAttachment("/very/long/path/that/exceeds/the/box/width/by/lots/file.txt")
 	m = m.updateDisplayHeight()
 	m = m.updateDisplayHeight()
-	v1 := m.View()
-	row1, _ := findCupRow(t, v1.Content)
-
-	wantRow1 := m.windowHeight - m.input.Height()
-	if row1 != wantRow1 {
-		t.Errorf("oversize attachment: input box CUP row = %d, want %d", row1, wantRow1)
+	rows1 := cupRows(m.View().Content)
+	if want := wantCupRows(m); !reflect.DeepEqual(rows1, want) {
+		t.Errorf("oversize attachment: anchors = %v, want %v", rows1, want)
 	}
-	// row0 should differ from row1 because adding the attachment grows
-	// the input box (pushing the top rule up). What matters is that
-	// row1 matches the formula, not that row0 == row1.
-	if row0 == row1 {
-		// Possible only if attachment didn't add any rows — that's a
-		// different bug, but not the one we're guarding against.
-		t.Logf("note: row unchanged after adding attachment (row0=%d row1=%d)", row0, row1)
+
+	// A taller box pushes the whole anchored stack up. What must hold
+	// through it is the stack's internal spacing: the live edge exactly one
+	// row above the box's top rule, and a status bar nothing can move,
+	// because it is pinned to the last row.
+	before, after := rows0[len(rows0)-2], rows1[len(rows1)-2]
+	if after >= before {
+		t.Errorf("growing the input box must push its top rule up: was row %d, now %d", before, after)
+	}
+	if rows0[len(rows0)-1] != rows1[len(rows1)-1] {
+		t.Errorf("the status bar row must not move: was %d, now %d",
+			rows0[len(rows0)-1], rows1[len(rows1)-1])
 	}
 }
 

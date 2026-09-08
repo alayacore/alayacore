@@ -137,11 +137,15 @@ const statusDotGlyph = "∙"
 //        config-block delimiter of this product's own file formats).
 //      - Typographic marks with no same-meaning Neutral equivalent: the
 //        ellipsis "…" (U+2026 — "⋯" U+22EF is Neutral but mid-line, thin,
-//        and poorly covered), "—" U+2014, "∞" U+221E, "↓" U+2193. Each one
+//        and poorly covered), "—" U+2014, "∞" U+221E. Each one
 //        is a row that can shift by a cell; none is a frame that can
 //        shatter. (The speed segment's "·" used to be on this list; the
 //        segment now reads "12.5 tok/s (ttft 1.2s)" instead, so the row is
-//        Ambiguous-free apart from the markers above.)
+//        Ambiguous-free apart from the markers above. "↓" U+2193 has left
+//        the list: the auto-follow marker it stood in is now the word
+//        "following" on the live-edge row (live_edge.go), and the only
+//        non-ASCII glyph that row draws is the box-drawing rule every
+//        frame in this UI already pays for.)
 //     Anything else Ambiguous is a bug — that is the test, not the prose,
 //     that says so.
 //  3. Program-owned symbols are single codepoints. The reason used to be

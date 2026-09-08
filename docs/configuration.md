@@ -302,7 +302,7 @@ tool: #f9e2af
 |-------|----------|
 | `primary` | User input text, prompt display, emphasis, focused box rules, running status dot (status bar only — tool windows use the colorless spinner while running) |
 | `dim` | Window rules, separators, status bar |
-| `muted` | Secondary text, system messages, tool content |
+| `muted` | Secondary text, system messages, tool content, the live-edge marker |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors |
 | `selection` | Selected items in lists, and the fold arrow of the window under the cursor |

@@ -107,6 +107,14 @@ func (m ScrollView) AtBottom() bool {
 	return m.yOffset >= m.maxYOffset()
 }
 
+// LinesBelow returns the number of document lines under the viewport's
+// bottom edge — what AtBottom answers with a yes/no, spelled out. 0 when
+// the viewport already shows the document's last line, including the case
+// where the whole document fits (totalLines < height).
+func (m ScrollView) LinesBelow() int {
+	return max(0, m.totalLines-(m.yOffset+m.height))
+}
+
 // View returns the rendered content — the pre-clipped visible region
 // produced by WindowBuffer.renderVirtual, which already pads to the
 // viewport height with blank rows (it knows the visual row count; a

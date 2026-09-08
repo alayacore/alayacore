@@ -15,8 +15,8 @@ import (
 func TestStatusBarShrinkNoResidue(t *testing.T) {
 	const W = 60
 	base := "line0\nline1\nline2\n"
-	// Frame 1: status bar with a trailing segment ("| F↓") — long.
-	frame1 := base + "\n\x1b[5;1HINPUT\x1b[K\n\x1b[6;1H∙ 1.5K/8K 18.7% | F↓"
+	// Frame 1: status bar with a trailing segment ("| 12.5 tok/s") — long.
+	frame1 := base + "\n\x1b[5;1HINPUT\x1b[K\n\x1b[6;1H∙ 1.5K/8K 18.7% | 12.5 tok/s"
 	// Frame 2: status bar without the segment — shorter.
 	frame2 := base + "\n\x1b[5;1HINPUT\x1b[K\n\x1b[6;1H∙ 2.1K/8K 26.2%"
 

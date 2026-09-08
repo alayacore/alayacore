@@ -345,6 +345,14 @@ func (m DisplayModel) shouldFollow() bool {
 	return m.autoFollow
 }
 
+// LinesBelow returns how many transcript lines the viewport hides below
+// its bottom edge (0 when it shows the document's last line). Read by the
+// live-edge marker (live_edge.go) to tell a scrolled-back user how much
+// they are missing.
+func (m DisplayModel) LinesBelow() int {
+	return m.scrollView.LinesBelow()
+}
+
 func (m DisplayModel) GetWindowCursor() int {
 	return m.windowCursor
 }

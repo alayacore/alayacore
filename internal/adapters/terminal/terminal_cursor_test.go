@@ -26,7 +26,12 @@ func newTestTerminal() Terminal {
 		styles:           styles,
 		hasFocus:         true,
 	}
-	m.display = m.display.WithHeight(20)
+	// The display region gets whatever the layout leaves after the input
+	// box, the live-edge row and the status bar take their share — going
+	// through updateDisplayHeight keeps the fixture from drifting from the
+	// real row accounting (View anchors the input box and the live edge
+	// with absolute CUPs, so a hand-set height here would overlap them).
+	m = m.updateDisplayHeight()
 	m.input = m.input.WithWidth(80)
 	return m
 }

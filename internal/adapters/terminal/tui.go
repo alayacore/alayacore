@@ -255,25 +255,24 @@ const (
 // pointers.  See docs/tui-architecture.md for the rationale.
 type Terminal struct {
 	// ── Elm UI state (value types, copied on every Update) ──────────────
-	display              DisplayModel     // conversation display with virtual scrolling
-	input                PromptInput      // text input, attachments, focus
-	modelSelector        ModelSelector    // model switching overlay
-	themeSelector        ThemeSelector    // theme switching overlay
-	helpWindow           HelpWindow       // keybinding help overlay
-	confirmOverlay       ConfirmDialog    // quit/cancel/tool confirm dialogs
-	mcpInitOverlay       ConfirmDialog    // MCP initialization progress overlay
-	attachmentWindow     AttachmentWindow // file/URL attachment picker
-	focusedWindow        string           // which pane has focus: "input" or "display"
-	statusLeft           string           // status bar left segments, PLAIN text joined with " | " (no ANSI — styles applied at render time)
-	statusRight          string           // active model name, PLAIN (styled at render time, right-aligned)
-	inProgress           bool             // whether a task is currently running
-	windowWidth          int              // terminal width in cells
-	windowHeight         int              // terminal height in cells
-	activeTheme          string           // last theme name from system info updates
-	appliedTheme         string           // last theme name that was visually applied
-	pendingAttachments   []attachment     // pending file attachments for multi-modal input
-	lastStatusVersion    uint64           // last StatusSnapshot.Version seen by updateStatus
-	lastStatusAutoFollow *bool            // display.shouldFollow() baked into m.statusLeft; used to detect local flips (e.g. via navigation) that don't bump the snapshot version
+	display            DisplayModel     // conversation display with virtual scrolling
+	input              PromptInput      // text input, attachments, focus
+	modelSelector      ModelSelector    // model switching overlay
+	themeSelector      ThemeSelector    // theme switching overlay
+	helpWindow         HelpWindow       // keybinding help overlay
+	confirmOverlay     ConfirmDialog    // quit/cancel/tool confirm dialogs
+	mcpInitOverlay     ConfirmDialog    // MCP initialization progress overlay
+	attachmentWindow   AttachmentWindow // file/URL attachment picker
+	focusedWindow      string           // which pane has focus: "input" or "display"
+	statusLeft         string           // status bar left segments, PLAIN text joined with " | " (no ANSI — styles applied at render time)
+	statusRight        string           // active model name, PLAIN (styled at render time, right-aligned)
+	inProgress         bool             // whether a task is currently running
+	windowWidth        int              // terminal width in cells
+	windowHeight       int              // terminal height in cells
+	activeTheme        string           // last theme name from system info updates
+	appliedTheme       string           // last theme name that was visually applied
+	pendingAttachments []attachment     // pending file attachments for multi-modal input
+	lastStatusVersion  uint64           // last StatusSnapshot.Version seen by updateStatus
 
 	lastModelVersion uint64 // last ModelSnapshot.Version seen by the selector rebuild
 
@@ -738,12 +737,18 @@ func (m Terminal) updateDisplayHeight() Terminal {
 	//   line H:          status bar (fixed, 1 line)
 	//   separator:       1 newline between input and status
 	//   lines above:     input box (dynamic, based on attachments)
-	//   separator:       1 newline between display and input
+	//   separator:       1 newline between live edge and input
+	//   live edge:       1 line (fixed) — the transcript's closing row
+	//   separator:       1 newline between display and live edge
 	//   remaining lines: display (elastic)
 	//
-	// Total = display + inputBox + statusBar = H
+	// Total = display + liveEdge + inputBox + statusBar = H. The live edge
+	// is reserved whether or not it has anything to show — a row that
+	// appears and disappears would shift the viewport by a line on every
+	// auto-follow flip, and the frame's row count is an invariant (the
+	// content must soft-wrap to exactly the screen height).
 	inputBoxHeight := m.input.Height()
-	m.display = m.display.WithHeight(max(0, m.windowHeight-inputBoxHeight-1))
+	m.display = m.display.WithHeight(max(0, m.windowHeight-inputBoxHeight-liveEdgeRows-1))
 	m.display = m.display.updateContent()
 	return m
 }
@@ -798,8 +803,9 @@ func (m Terminal) View() View {
 	//     before its CUP, the status bar would land on the same row as
 	//     the input box's bottom rule (and look glued to it);
 	//   - m.display.View().Content also has no trailing '\n', so without
-	//     a separator before the input-box CUP, the display's last row
-	//     and the input top rule would merge into one segment under
+	//     a separator after it the display's last row and whatever is
+	//     drawn next (the live edge, or the input top rule when the live
+	//     edge has nothing to show) would merge into one segment under
 	//     soft-wrap, losing a row and breaking the FullScreen invariant
 	//     (View content must soft-wrap to exactly screen height).
 	// The CUPs are absolute, so the '\n' does not change where the
@@ -808,6 +814,29 @@ func (m Terminal) View() View {
 	m.input = m.input.WithBlocked(m.isBlocked() || m.postLoading)
 	inputBoxHeight := m.input.Height()
 	inputBoxY := max(0, m.windowHeight-inputBoxHeight-1) // 0-indexed row of the top rule
+
+	// Live edge — the transcript's closing row (live_edge.go), the line
+	// between the last message and the input box's top rule. It gets its
+	// own '\n' and CUP for the same reasons as the two blocks below: the
+	// '\n' terminates the display's last row (without it the marker and the
+	// display tail merge into one segment under soft-wrap and the frame
+	// comes up a row short), and the CUP keeps the row's position absolute
+	// so a drift in the display's actual row count cannot drag it along.
+	//
+	// The '\n' is written whether or not the marker has anything to say: the
+	// layout reserved the row, and the frame must still soft-wrap to exactly
+	// the screen height. The whole block is skipped when inputBoxY is 0 — a
+	// terminal too short for the input box plus the status bar has no row to
+	// spare, and adding one here would put more rows in the frame than the
+	// screen has.
+	if m.windowHeight > 0 && inputBoxY > 0 {
+		sb.WriteString("\n")
+		if edge := m.renderLiveEdge(); edge != "" {
+			sb.WriteString(ansi.CursorPosition(1, inputBoxY)) // row inputBoxY-1
+			sb.WriteString(edge)
+		}
+	}
+
 	if m.windowHeight > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(ansi.CursorPosition(1, inputBoxY+1))

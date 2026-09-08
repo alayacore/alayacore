@@ -325,38 +325,27 @@ func formatTokenCount(n int64) string {
 // inProgress / appliedTheme.
 func (m Terminal) updateStatus() Terminal {
 	snap := m.out.SnapshotStatus()
-	autoFollow := m.display.shouldFollow()
-	// The cached m.statusLeft embeds the auto-follow indicator ("F↓").
-	// updateStatus only rebuilds when the status snapshot version changes
-	// (task progress, model change, MCP phase, theme, video config). The
-	// auto-follow state lives on the DisplayModel and flips when the user
-	// navigates with j/k/h/l/G/space — none of those bump the version, so
-	// without this second check the F↓ indicator would stay stale until
-	// the next status-affecting session event.
-	autoFollowChanged := m.lastStatusAutoFollow == nil || *m.lastStatusAutoFollow != autoFollow
-	if m.lastStatusVersion != 0 && m.lastStatusVersion == snap.Version && !autoFollowChanged {
+	if m.lastStatusVersion != 0 && m.lastStatusVersion == snap.Version {
 		return m
 	}
 	m.lastStatusVersion = snap.Version
-	seen := autoFollow
-	m.lastStatusAutoFollow = &seen
 
 	// Build PLAIN status segments, joined with " | " (styles are applied
 	// at render time in renderStatusBar — truncation happens on the
 	// plain text, so the "…" inherits the segment style naturally).
 	var segments []string
 
-	// Switch indicators segment (compact: "R1 F↓" in one segment).
-	// The reasoning level is always rendered ("R0".."R2") using the muted
-	// style — the accent color and bold are reserved for the status dot,
-	// which remains the only highlighted element in the status bar. There is
-	// deliberately no glyph after the level: a marker that never changes with
-	// the state (an earlier revision drew "R0✦".."R2✦", ✦ shown even at 0)
-	// carries no information while looking like an indicator.
+	// Switch indicators segment (compact: "R1"). The reasoning level is
+	// always rendered ("R0".."R2") using the muted style — the accent color
+	// and bold are reserved for the status dot, which remains the only
+	// highlighted element in the status bar. There is deliberately no glyph
+	// after the level: a marker that never changes with the state (an
+	// earlier revision drew "R0✦".."R2✦", ✦ shown even at 0) carries no
+	// information while looking like an indicator. The auto-follow marker
+	// that used to sit here ("F↓") moved to the live edge above the input
+	// box: it reports the transcript, so it belongs on the transcript's own
+	// closing row rather than on the row under the prompt (live_edge.go).
 	switches := fmt.Sprintf("R%d", snap.ReasoningLevel)
-	if m.display.shouldFollow() {
-		switches += " F↓"
-	}
 	segments = append(segments, switches)
 
 	// Context segment

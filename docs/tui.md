@@ -323,7 +323,6 @@ automatically scrolls to keep the newest content visible as it arrives.
 
 Auto-follow is disabled by any navigation that actually moves the cursor or
 scrolls the viewport. While auto-follow is active:
-
 | Key | Behavior | Disables auto-follow? |
 |-----|----------|-----------------------|
 | `G` | Follow the last window | ✅ Re-enables |
@@ -344,11 +343,44 @@ scrolls the viewport. While auto-follow is active:
 | `r` | Toggle markdown rendering | ❌ Never |
 | `Tab` | Toggle focus | ❌ Never |
 
+### Live Edge
+
+The state reads on the **live edge** — the one row between the last message
+and the input box's top rule, which is where the newest line arrives. It says
+`── following ──` while auto-follow is on, counts what the viewport hides
+otherwise (`── 12 lines below ──`), and stays blank when it has nothing to say
+(scrolled back to the last line: the whole transcript is on screen).
+
+The row belongs to the layout whether or not it carries text.
+`updateDisplayHeight` reserves it (`liveEdgeRows`), because a row that appeared
+and disappeared with the state would shift the viewport by a line on every flip
+and take the frame's height with it — the content must soft-wrap to exactly the
+screen height. The label is lowercase and muted: uppercase is this UI's block
+heading (`USER PROMPT`, `TOOL CALL`, padded to `CollapsedLabelWidth`) and a
+heading here would be read as one more window title, and dim is what the rules
+and borders are drawn with, so on the row directly above the input box's rule it
+would make a label read as frame. No bold either: accent plus bold is the
+running task's dot, and a marker that is on most of the time has to be the
+quietest thing on screen. `live_edge.go` renders it, `live_edge_test.go` pins
+it.
+
+It used to be a `F↓` segment at the start of the status bar — and that row is
+*below* the input box, so the arrow pointed down at the prompt while the fact it
+reported was above it, and the `F` asked the reader to already know it meant
+follow. Its glyph, U+2193, was also the only entry on the width-waiver list
+carrying its own "candidate for an ASCII replacement" note (see
+[Fold Mode](#fold-mode)); the dashes framing this label are the box-drawing
+rule every frame in the app already pays for, so the arrow has left the list.
+Reading the state while rendering, instead of baking it into the cached status
+string, retired a staleness patch along with it: navigation moves no session
+status version, so the segment kept showing the previous state until the next
+session event (`TestLiveEdgeReadsStateAtRenderTime`).
+
 ### Fold Mode
 
 Press `Space` on any window to collapse it — the window becomes a single header line: the collapse arrow followed by a label (`TOOL CALL` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `SYSTEM NOTIFY` for system notifications, or `SYSTEM ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOL CALL` + indicator followed by the tool name + arguments). The collapse arrow marks a collapsed window; press `Space` again to expand.
 
-An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrows are fixed by the terminal layout (`foldArrow` / `unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the header reserves exactly one cell for them, so the glyph is a geometry decision and switching color schemes must not change it. `▸`/`▾` were chosen over the heavier `▶`/`▼` because both of those are East Asian Width "ambiguous" (two cells in a terminal set to double-width Ambiguous) and `▶` is Extended_Pictographic on top of it (with Emoji_Presentation=No, so text is its default — it reaches an emoji font only where a U+FE0F or a font stack says so), while the width table reports one cell for either. The rule is avoidability, not purity: the box-drawing rules (`─ │`) and the typographic marks (`… — ∞ ↓`) stay ambiguous because nothing replaces them (see **Width calculation** under [Line Wrapping](#line-wrapping)), whereas `▸`/`▾` sit in the same Unicode block as `▶`/`▼` and cost nothing to switch. The spinner frames `⠋…⠏` and the tool markers `✓ ✗` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
+An expanded window shows a header line (expand arrow + label) above its content box, which uses only top/bottom rules — no side borders ("open" style). The cursor highlight only recolors the fold-state arrow with the selection color — rules never change color during navigation. The arrows are fixed by the terminal layout (`foldArrow` / `unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the header reserves exactly one cell for them, so the glyph is a geometry decision and switching color schemes must not change it. `▸`/`▾` were chosen over the heavier `▶`/`▼` because both of those are East Asian Width "ambiguous" (two cells in a terminal set to double-width Ambiguous) and `▶` is Extended_Pictographic on top of it (with Emoji_Presentation=No, so text is its default — it reaches an emoji font only where a U+FE0F or a font stack says so), while the width table reports one cell for either. The rule is avoidability, not purity: the box-drawing rules (`─ │`) and the typographic marks (`… — ∞`) stay ambiguous because nothing replaces them (see **Width calculation** under [Line Wrapping](#line-wrapping)), whereas `▸`/`▾` sit in the same Unicode block as `▶`/`▼` and cost nothing to switch. The spinner frames `⠋…⠏` and the tool markers `✓ ✗` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
 
 ### Collapsed Summary Truncation
 
@@ -433,7 +465,7 @@ Two classes are accepted as limitations instead of being worked around,
 because no Neutral alternative exists: **box drawing** (`─ │` and the
 markdown table grid — the whole range `U+2500-U+257F` is Ambiguous, so
 every rule and table frame in the app shares the same exposure), and a few
-**typographic marks** (`…`, `—`, `∞`, `↓`). Program-owned symbols stay
+**typographic marks** (`…`, `—`, `∞`). Program-owned symbols stay
 single codepoints throughout, now for a host-side reason: a glyph followed
 by U+FE0F asks the terminal for emoji presentation, and a terminal that
 ignores the request draws one cell where the table reserves two, and a ZWJ
@@ -526,7 +558,7 @@ Measuring and cutting both go through `width.go`, against one table
   well), and the reasoning marker `✦` — Neutral, and drawn even at level 0 —
   was deleted as decoration rather than replaced. All of it is the glyph
   policy in `constants.go`.
-- East-Asian **Ambiguous** glyphs (`─ │ ├ ┼ →`, and the marks `… — ∞ ↓`) also
+- East-Asian **Ambiguous** glyphs (`─ │ ├ ┼ →`, and the marks `… — ∞`) also
   occupy **1 cell** — the app-wide assumption behind every width calculation:
   window borders are literally `strings.Repeat("─", width)`, and table rules
   and the truncation marker charge one cell per glyph. Box drawing has no

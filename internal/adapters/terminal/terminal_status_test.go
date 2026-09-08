@@ -243,7 +243,7 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 	out.handleSystemMsg(fmt.Sprintf(`{"type":"model","data":{"active_id":1,"active_name":%q,"context_limit":0}}`, modelName))
 
 	m := newTerminalForUpdateStatusTest(out)
-	m.windowWidth = 24 // left "∙ R0 F↓" (7) + a 40-cell model cannot share 24 → merged, truncated
+	m.windowWidth = 24 // left "∙ R0" (4) + a 40-cell model cannot share 24 → merged, truncated
 	m = m.updateStatus()
 
 	rendered := m.renderStatusBar()
@@ -281,7 +281,7 @@ func TestStatusBarNoModelOmitsPadding(t *testing.T) {
 	m = m.updateStatus()
 
 	plain := stripANSI(m.renderStatusBar())
-	if plain != "∙ R0 F↓" {
+	if plain != "∙ R0" {
 		t.Errorf("expected bare left segments without model, got %q", plain)
 	}
 }
@@ -298,7 +298,7 @@ func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":999999999,"context_limit":1000000000}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
-	m.windowWidth = 12 // content "∙ R2 F↓ | 1000.0M" (17) overflows → truncated to 12
+	m.windowWidth = 12 // content "∙ R2 | 1000.0M" (14) overflows → truncated to 12
 	m = m.updateStatus()
 
 	plain := stripANSI(m.renderStatusBar())
