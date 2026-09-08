@@ -1,18 +1,20 @@
 package terminal
 
 // ConfirmDialog renders a centered floating overlay for confirmation dialogs.
-// Used for quit, cancel, and tool_confirm prompts.
+// Used for quit, cancel, tool-confirm, MCP OAuth auth, and MCP-init prompts.
 //
-// The dialog uses the same rendering pattern as ModelSelector and ModelSelector:
+// Rendering follows the shared overlay pattern (see ModelSelector):
 //   - SetSize stores the terminal dimensions
 //   - View renders with RenderOpenBox
-//   - RenderOverlay delegates to the shared overlay renderer
+//   - RenderOverlay CUP-anchors the box rows over the base content, joining
+//     a long single-line description preview into one soft-wrap run when the
+//     box spans the full terminal width (see RenderOverlay)
 //
-// Key handling: y/Y = confirm, n/N/esc = cancel.
+// Key handling: y/Y = confirm, n/N/esc = cancel, e (tool confirms with
+// input) = open the full tool input in $EDITOR (view-only).
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	ansi "github.com/charmbracelet/x/ansi"
@@ -37,8 +39,9 @@ const (
 	ConfirmMCPInit                    // MCP servers initializing (persistent)
 )
 
-// ConfirmDialog manages a floating confirmation overlay.
-// ConfirmDialog is an overlay dialog for confirming tool execution or quit.
+// ConfirmDialog manages a floating confirmation overlay: quit/cancel
+// prompts, tool-execution confirmations, MCP OAuth authorization, and the
+// MCP-initialization progress dialog.
 //
 // Field groups:
 //
@@ -67,7 +70,9 @@ type ConfirmDialog struct {
 	// ── Dependencies (pointer to shared data) ─
 	styles *Styles
 
-	// ── View cache ── invalidated whenever (Width, Description) changes.
+	// ── View cache ── invalidated whenever the rendered content would
+	// change: kind/toolName/toolInput (title, hint row) or Description
+	// (body) or Width (wrap). See viewCacheKey.
 	lastViewKey string
 	lastViewBox string
 }
@@ -318,15 +323,23 @@ func (cd ConfirmDialog) View() View {
 }
 
 // viewCacheKey produces a key that changes whenever the rendered output
-// would. Description drives the body; Width drives the wrap.
+// would. Description drives the body preview; Width drives the wrap; kind
+// and toolName drive the title; the 'e' hint row appears for tool
+// confirms that carry input (Description, derived from toolInput, stands
+// in for whether input is present).
 func (cd ConfirmDialog) viewCacheKey() string {
-	return cd.Description + "|" + strconv.Itoa(cd.Width)
+	return fmt.Sprintf("%d|%s|%s|%d", cd.kind, cd.toolName, cd.Description, cd.Width)
 }
 
 // buildContentLines returns the display lines for the dialog content.
+//
+// The rows above the kind-specific lines are fixed: blank, title, blank,
+// the two description rows (renderDescriptionRows always returns exactly
+// two), blank — six rows, i.e. ConfirmContentRows-2. The kind-specific
+// lines below (y/n plus an optional 'e' hint, or the two MCP-init hints)
+// bring the content to ConfirmContentRows; View() pads the remainder.
 func (cd ConfirmDialog) buildContentLines() []string {
 	innerWidth := max(0, cd.Width)
-	maxBodyLines := max(0, ConfirmContentRows-2)
 
 	titleText := cd.buildTitleText()
 	if titleText == "" {
@@ -336,29 +349,23 @@ func (cd ConfirmDialog) buildContentLines() []string {
 	titleLine := cd.renderTitleLine(titleText, innerWidth)
 	descRows := cd.renderDescriptionRows(innerWidth)
 
-	body := []string{""}
-	body = append(body, titleLine)
-	body = append(body, "")
-	body = append(body, descRows...)
-	body = append(body, "")
-
-	if len(body) > maxBodyLines {
-		body = body[:maxBodyLines-1]
-		body = append(body, cd.wrapAndCenter("...", cd.styles.System, innerWidth)[0])
-	}
-
-	for len(body) < maxBodyLines {
-		body = append(body, "")
-	}
-
-	lines := body
+	lines := []string{"", titleLine, "", descRows[0], descRows[1], ""}
 	switch cd.kind {
 	case ConfirmMCPInit:
 		lines = append(lines, cd.wrapAndCenter("Press Ctrl+G to cancel MCP initialization.", cd.styles.System, innerWidth)[0])
 		lines = append(lines, cd.wrapAndCenter("(this window will close automatically)", cd.styles.System, innerWidth)[0])
 	default:
 		lines = append(lines, cd.wrapAndCenter("y / n", cd.styles.Confirm, innerWidth)[0])
-		lines = append(lines, "")
+		// The tool-confirm dialog announces 'e' on its own centered hint
+		// row (same pattern as the MCP-init hints above): the title stays
+		// clean so a long tool name only ever truncates the title, never
+		// the affordance, and the hint is a full sentence rather than a
+		// cryptic "(e: ...)" tag.
+		if cd.kind == ConfirmTool && cd.toolInput != "" {
+			lines = append(lines, cd.wrapAndCenter("Press e to view the full input.", cd.styles.System, innerWidth)[0])
+		} else {
+			lines = append(lines, "")
+		}
 	}
 
 	return lines
@@ -377,7 +384,8 @@ func (cd ConfirmDialog) buildTitleText() string {
 		} else {
 			msg += "this tool"
 		}
-		return msg + " to run?"
+		msg += " to run?"
+		return msg
 	case ConfirmMCPAuth:
 		msg := "Authorize MCP server "
 		if cd.toolName != "" {
@@ -401,7 +409,11 @@ func (cd ConfirmDialog) renderTitleLine(titleText string, innerWidth int) string
 	lines := strings.Split(plainWrapped, "\n")
 	line := lines[0]
 	if len(lines) > 1 {
-		line = truncateWithSuffix(line, innerWidth)
+		// The title wrapped onto further rows (a long tool name): keep
+		// the first row and mark the cut with "…" — a
+		// truncateWithSuffix call on an exactly-full row is a no-op, and
+		// the overflow would otherwise be dropped silently.
+		line = takeCells(line, max(0, innerWidth-1)) + "…"
 	}
 	line = cd.styles.Confirm.Render(line)
 	w := Width(line)
@@ -409,13 +421,32 @@ func (cd ConfirmDialog) renderTitleLine(titleText string, innerWidth int) string
 	return strings.Repeat(" ", pad) + line + strings.Repeat(" ", innerWidth-w-pad)
 }
 
+// renderDescriptionRows returns the 2-row preview of the description.
+//
+// The rows use the same character-boundary breaks as a message window's
+// soft-wrap rows: a continuation runs exactly to the inner width and only
+// a final row may be shorter. When the two rows continue the SAME
+// original line (the usual single-line command), RenderOverlay emits them
+// as one continuous soft-wrap run — no hard '\n' inside the command — and
+// the Screen row diff tracks the run's wrapped span. When the description
+// does not fit in the two rows, the last visible row ends with "…" (in
+// its final cell, so the marker never overflows) — a silent drop of the
+// remainder would make a cut look like the real end of the input.
 func (cd ConfirmDialog) renderDescriptionRows(innerWidth int) []string {
 	rawWrapped := ansi.Hardwrap(cd.Description, innerWidth, true)
 	rawLines := strings.Split(rawWrapped, "\n")
+	// A trailing '\n' produces an empty final row that is not content —
+	// drop it so it neither fills a preview row nor triggers a false
+	// "…" marker.
+	for len(rawLines) > 0 && rawLines[len(rawLines)-1] == "" {
+		rawLines = rawLines[:len(rawLines)-1]
+	}
 	rawDesc := rawLines
 	if len(rawDesc) > 2 {
+		// The preview cannot show everything: keep the first two rows
+		// and reserve the last cell of the second for the marker.
 		rawDesc = rawDesc[:2]
-		rawDesc[1] = truncateWithSuffix(rawDesc[1], innerWidth)
+		rawDesc[1] = takeCells(rawDesc[1], max(0, innerWidth-1)) + "…"
 	}
 	for len(rawDesc) < 2 {
 		rawDesc = append(rawDesc, "")
@@ -460,12 +491,90 @@ func (cd ConfirmDialog) wrapAndCenter(text string, style Style, width int) []str
 	return lines
 }
 
+// descriptionRowsFormSoftRun reports whether the second description
+// row shown by the box continues the FIRST original line of the
+// description — a soft-wrap continuation in the message-window sense
+// (same original line, broken only at the display width). It mirrors
+// renderDescriptionRows' geometry (same width, same character-boundary
+// wrap), so the flag matches the two rows the box actually displays.
+// Multi-line descriptions whose second shown row starts a new original
+// line return false: those rows are legitimately hard-separated, exactly
+// as message windows separate original lines.
+func (cd ConfirmDialog) descriptionRowsFormSoftRun() bool {
+	if cd.Description == "" {
+		return false
+	}
+	vlines := wrapVisualLines(cd.Description, max(1, cd.Width))
+	return len(vlines) > 1 && vlines[1].Cont
+}
+
 // RenderOverlay renders the dialog as a centered overlay on top of base content.
+//
+// When the box spans the full terminal width, the two description rows of
+// the SAME original line are emitted as ONE continuous soft-wrap run — no
+// '\n', no CUP between them. Every box row ends exactly at the terminal
+// width, so the terminal's own soft wrap moves the second row to the next
+// terminal row and a selection copies the long command without fake
+// newlines — the same byte semantics as a message window's soft-wrap
+// fragment. The Screen row diff tracks the run's wrapped span (see
+// positionedRows in screen.go), so repaints and the dialog close clear
+// both rows. When the box is narrower than the terminal (centered — a
+// stale width before the next resize message), the run cannot cross rows;
+// fall back to the per-row absolute-position emission.
 func (cd ConfirmDialog) RenderOverlay(baseContent string, screenWidth, screenHeight int) string {
 	if !cd.IsOpen() {
 		return baseContent
 	}
+	box := cd.View().Content
+	x, y := overlayOrigin(box, screenWidth, screenHeight)
 	// Shift up by 1 line to compensate for confirm's compact content
 	// (no filter bar or list, unlike other overlays).
-	return renderOverlay(baseContent, cd.View().Content, screenWidth, screenHeight, -1)
+	y = max(0, y-1)
+
+	boxWidth := Width(box)
+	if x != 0 || boxWidth != screenWidth {
+		return renderOverlay(baseContent, box, screenWidth, screenHeight, -1)
+	}
+
+	// Box row layout (always 10 rows): rule, blank, title, blank,
+	// description ×2, blank, then kind-dependent rows — "y / n" plus
+	// either a blank (quit/cancel/MCP auth) or the tool-confirm hint
+	// "Press e to view the full input." (tool with input), or the two
+	// MCP-init hint lines. The description always occupies rows 4 and 5,
+	// which is what the soft-run logic below keys on.
+	rows := strings.Split(box, "\n")
+	descRun := cd.descriptionRowsFormSoftRun()
+
+	var sb strings.Builder
+	sb.Grow(len(baseContent) + len(box) + len(rows)*12)
+	sb.WriteString(baseContent)
+	for i, row := range rows {
+		rowY := y + i
+		if rowY >= screenHeight {
+			break
+		}
+		if descRun && i == 5 {
+			// Continuation of the description run: written straight after
+			// its full-width predecessor (the terminal soft-wraps it to
+			// the next terminal row). Not padded — a run tail carries no
+			// trailing spaces in a selection — but a short tail must
+			// erase the rest of the row so no dimmed base content shows
+			// through beside it.
+			sb.WriteString(row)
+			if w := cellWidth(row); w < boxWidth {
+				sb.WriteString(ansi.EraseLine(0))
+			}
+			continue
+		}
+		// Pad to the box width so the row fully covers the base content.
+		if w := cellWidth(row); w < boxWidth {
+			row += strings.Repeat(" ", boxWidth-w)
+		}
+		// Absolute cursor position (1-based rows/cols). The run's first
+		// row (i == 4) is padded to the full width here — the terminal
+		// then wraps exactly at the row boundary into the continuation.
+		fmt.Fprintf(&sb, "\x1b[%d;%dH", rowY+1, x+1)
+		sb.WriteString(row)
+	}
+	return sb.String()
 }

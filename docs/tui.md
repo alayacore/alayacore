@@ -498,7 +498,17 @@ When a tool requires confirmation (configured via `--tool-confirm`), a dialog ov
 | `n`, `Esc` | Reject the tool |
 | `e` | Open full tool input in external editor (view-only) |
 
-The dialog shows the tool name in the title and a 2-line preview of the tool's input arguments. Press `e` to inspect the complete input in `$EDITOR` without closing the dialog.
+The dialog shows the tool name in the title and a 2-row preview of the tool's
+input arguments. The preview wraps like a message window: rows of the same
+long command line are emitted as one continuous soft-wrap run (no hard
+newlines inside the command, so a selection copies it without fake line
+breaks), and when the input does not fit, the last visible row ends with `…`
+so a cut never looks like the real end of the arguments. The Screen row diff
+tracks the run's wrapped span, so live updates and the dialog close repaint
+every row it covered. When the dialog carries tool input, a hint row under
+the `y / n` line says `Press e to view the full input.` — the title itself
+stays clean, so a long tool name never pushes the hint off. Press `e` to
+inspect the complete input in `$EDITOR` without closing the dialog.
 
 ## Line Wrapping
 

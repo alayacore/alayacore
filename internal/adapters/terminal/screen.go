@@ -393,9 +393,13 @@ type positionedRow struct {
 // Overlay rows (CUP-positioned — live edge, input box, status bar, overlay
 // boxes) keep their absolute coordinates: they are anchored with absolute
 // CUP by design, so their position does not depend on how many terminal rows
-// the base content wrapped to. Nor may one of them go WIDER than the
-// terminal: a wrapped overlay row would spill onto the row below and collide
-// with whatever is anchored there. The box rules span the width by
+// the base content wrapped to. An overlay row may itself be a soft-wrap run
+// (a dialog's long-line preview): its text is emitted as one continuous
+// CUP-anchored write wider than the terminal, the terminal wraps it onto the
+// rows below, and the diff tracks the span (terminalRows) exactly like a
+// soft-wrapped base line — otherwise the wrapped continuation would survive
+// the overlay's close. Ordinary overlay rows are capped to the terminal
+// width and span exactly one row: the box rules span the width by
 // construction (`strings.Repeat`), and the short rows are capped to it — the
 // status bar truncates (renderStatusBar), the live edge measures its framing
 // glyph at its worst-case width first (renderLiveEdge), and an overlay box is
@@ -410,6 +414,8 @@ func positionedRows(content string, width int) []positionedRow {
 			pr.frameRow.row = term
 			pr.terminalRows = baseTerminalRows(r.text, width)
 			term += pr.terminalRows
+		} else {
+			pr.terminalRows = baseTerminalRows(r.text, width)
 		}
 		out = append(out, pr)
 	}
@@ -473,6 +479,14 @@ func lastBaseTerminalRow(content string, width int) (frameRow, bool) {
 // COMPOSITE: restore the base segment (or clear the row), then draw
 // every overlay row of that row in frame order.
 //
+// A full-width overlay row may itself be a soft-wrap RUN spanning
+// several terminal rows (a dialog's long-line preview): its span is
+// tracked like a soft-wrapped base line's (positionedRows/terminalRows),
+// and a changed run is repainted WHOLE from its start row as one
+// continuous write — per-row segments would split the run and leave
+// stale text on its wrapped continuation when the run shrinks or the
+// overlay closes.
+//
 //nolint:gocyclo // changed-row collection + composite repaint branches
 func diffFrameRows(oldContent, newContent string, width int) []byte {
 	oldRows := positionedRows(oldContent, width)
@@ -512,9 +526,18 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 	changed := make(map[int]bool)
 	for _, r := range oldRows {
 		if !r.base && !newMap[key(r.frameRow)] {
-			changed[r.frameRow.row] = true
+			// A vanished overlay row may have soft-wrapped to several
+			// terminal rows — every one of them must be repainted, or
+			// the wrapped continuation stays on screen after the overlay
+			// closes.
+			for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
+				changed[row] = true
+			}
 		}
 	}
+	// Start rows of wrapped overlay rows whose text changed or is new:
+	// repainted as one continuous run (see below), not per-row segments.
+	wrappedChanged := make(map[int]bool)
 	for _, r := range newRows {
 		if oldText, ok := oldMap[key(r.frameRow)]; !ok || oldText != r.frameRow.text {
 			if r.base {
@@ -526,14 +549,22 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 					changed[row] = true
 				}
 			} else {
-				changed[r.frameRow.row] = true
+				for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
+					changed[row] = true
+				}
+				if r.terminalRows > 1 {
+					wrappedChanged[r.frameRow.row] = true
+				}
 			}
 		}
 	}
 	overlaysByRow := make(map[int][]positionedRow)
 	for _, r := range newRows {
-		if !r.base {
-			overlaysByRow[r.frameRow.row] = append(overlaysByRow[r.frameRow.row], r)
+		if r.base {
+			continue
+		}
+		for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
+			overlaysByRow[row] = append(overlaysByRow[row], r)
 		}
 	}
 	rows := make([]int, 0, len(changed))
@@ -560,7 +591,7 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 			for r := base.frameRow.row; r < base.frameRow.row+base.terminalRows; r++ {
 				for _, ov := range overlaysByRow[r] {
 					buf = append(buf, ansi.CursorPosition(ov.frameRow.col+1, r+1)...)
-					buf = append(buf, ov.frameRow.text...)
+					buf = append(buf, overlayTextAt(ov, width, r)...)
 				}
 			}
 			// Skip every terminal row of this line.
@@ -570,6 +601,28 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 			}
 			i--
 			continue
+		}
+		if wrappedChanged[row] {
+			// A changed full-width soft-wrap overlay run (e.g. a dialog's
+			// long-line preview): repaint the WHOLE run from its start row
+			// as one continuous write, mirroring the soft-wrapped base
+			// line case — the terminal wraps it onto the rows below, so it
+			// stays one logical line and closing/repainting never leaves
+			// the wrapped continuation behind. The run is full-width, so
+			// the base beneath it is not visible and needs no restore.
+			ov, ok := wrappedOverlayAt(newRows, row)
+			if ok && ov.frameRow.col == 0 {
+				buf = append(buf, ansi.CursorPosition(1, ov.frameRow.row+1)...)
+				buf = append(buf, ov.frameRow.text...)
+				buf = append(buf, ansi.EraseLine(0)...)
+				// Skip every terminal row of this run.
+				end := ov.frameRow.row + ov.terminalRows
+				for i < len(rows) && rows[i] < end {
+					i++
+				}
+				i--
+				continue
+			}
 		}
 		// Restore the base segment (or clear the row when no base covers
 		// it) — this also erases any shrunk layer's old tail.
@@ -581,7 +634,7 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 		// Draw the row's overlay layers in frame order (later on top).
 		for _, r := range overlaysByRow[row] {
 			buf = append(buf, ansi.CursorPosition(r.frameRow.col+1, row+1)...)
-			buf = append(buf, r.frameRow.text...)
+			buf = append(buf, overlayTextAt(r, width, row)...)
 		}
 	}
 	return buf
@@ -601,6 +654,31 @@ func baseRowAt(rows []positionedRow, termRow int) (positionedRow, bool) {
 		return r, true
 	}
 	return positionedRow{}, false
+}
+
+// wrappedOverlayAt returns the overlay positionedRow whose soft-wrap span
+// STARTS at the given terminal row (a CUP-anchored row wider than the
+// terminal, e.g. a dialog's long-line preview). ok is false when no
+// wrapped overlay row starts there.
+func wrappedOverlayAt(rows []positionedRow, termRow int) (positionedRow, bool) {
+	for _, r := range rows {
+		if r.base || r.terminalRows <= 1 || r.frameRow.row != termRow {
+			continue
+		}
+		return r, true
+	}
+	return positionedRow{}, false
+}
+
+// overlayTextAt returns the text of overlay row ov to draw on the given
+// terminal row of its span: the whole text for a single-row overlay, or
+// the row's segment for a soft-wrapped overlay run (ANSI preserved).
+func overlayTextAt(ov positionedRow, width, termRow int) string {
+	if ov.terminalRows <= 1 {
+		return ov.frameRow.text
+	}
+	start := (termRow - ov.frameRow.row) * width
+	return ansi.Cut(ov.frameRow.text, start, start+width)
 }
 
 // baseRowTextAt returns the text that renders on the given terminal row

@@ -107,8 +107,11 @@ func (s *Styles) RenderOpenBox(content string, width int, borderColor color.Colo
 			lines = append(lines, "")
 		}
 	}
-	// Overlay boxes render every row as a hard line (no soft-wrap runs):
-	// each original line becomes a standalone row.
+	// Overlay boxes render every row as a hard line (no soft-wrap runs)
+	// here: each original line becomes a standalone box row. An overlay
+	// that wants a soft-wrap run — ConfirmDialog.RenderOverlay joins two
+	// description rows of a long single-line preview — re-joins rows at
+	// emission time, after this box is built.
 	vl := make([]visualLine, 0, len(lines))
 	for _, l := range lines {
 		vl = append(vl, visualLine{Text: l})
