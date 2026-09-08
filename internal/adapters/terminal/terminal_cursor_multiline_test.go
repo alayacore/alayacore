@@ -16,7 +16,9 @@ func TestTerminalViewRealCursorMultiline(t *testing.T) {
 	if v.Cursor == nil {
 		t.Fatal("expected real cursor when input is focused")
 	}
-	// Input box content is always a single line: y = displayH(20) + rule(1).
+	// Input box content is always a single line: rows 0-18 are the display,
+	// row 19 the live edge, row 20 the box's top rule — so the content line
+	// is y=21 whatever the value holds.
 	if v.Cursor.Y != 21 {
 		t.Fatalf("multiline cursor: got y=%d, want 21 (input box content line)", v.Cursor.Y)
 	}

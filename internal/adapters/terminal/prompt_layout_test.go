@@ -1,15 +1,18 @@
 package terminal
 
 // Regression tests for the CUP-anchored blocks — the live edge, the input
-// box and the status bar: before the fix, the input box position depended
-// on the display area's
-// actual row count (because the View() concatenated display + input +
-// status as base rows in sequence). When the display's actual row count
-// drifted from viewportHeight — e.g. an attachment path wider than the
-// box that wrapLabels did not pre-wrap, or fragment content changes
-// from scrolling — the input box and cursor landed on the wrong row.
-// After the fix, the input box is positioned with an absolute CUP and
-// its location is invariant under display content / scroll position.
+// box and the status bar. Before the fix, the input box's position depended
+// on the display area's actual row count (View() concatenated display, input
+// and status as base rows in sequence), so when that count drifted from
+// viewportHeight — an attachment path wider than the box that wrapLabels did
+// not pre-wrap, fragment content changes from scrolling — the input box and
+// the cursor landed on the wrong row. Anchoring each block with an absolute
+// CUP makes its position invariant under display content and scroll position.
+//
+// The assertions name the whole anchor sequence rather than "the first CUP in
+// the frame": that phrasing identified the input box while exactly two blocks
+// were anchored, and stopped being true the moment the live edge became the
+// third.
 
 import (
 	"reflect"

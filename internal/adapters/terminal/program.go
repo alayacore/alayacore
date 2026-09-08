@@ -63,10 +63,11 @@ type View struct {
 	Raw bool
 
 	// FullScreen marks content that soft-wraps to exactly the screen
-	// height (every row is padded to the terminal width, the viewport is
-	// padded with blank rows, and the input box + status bar fill the
-	// remaining rows). Such frames can be rendered by overwriting without
-	// clearing the screen first (ED2) — the full-width rows cover any
+	// height (the viewport is padded with blank rows, every base row spans
+	// the terminal width, and the live edge, the input box and the status
+	// bar fill the remaining rows — the short CUP-anchored rows among them
+	// are capped to the width rather than padded, see positionedRows). Such
+	// frames can be rendered by overwriting without clearing the screen first (ED2) — the full-width rows cover any
 	// previous content, eliminating the clear-then-redraw flicker. Views
 	// that do not fill the screen (loading, errors) leave it false and
 	// keep the clearing render path.

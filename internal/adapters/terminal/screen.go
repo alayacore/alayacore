@@ -390,11 +390,16 @@ type positionedRow struct {
 // Base rows flow sequentially from (0,0), and a logical row whose display
 // width exceeds the terminal width occupies several terminal rows, so the
 // position is the accumulated wrap count, not the newline index.
-// Overlay rows (CUP-positioned — input box, status bar, overlay boxes)
-// keep their absolute coordinates: they are anchored with absolute CUP by
-// design, so their position does not depend on how many terminal rows the
-// base content wrapped to, and they are padded to the full terminal width
-// so they never wrap themselves.
+// Overlay rows (CUP-positioned — live edge, input box, status bar, overlay
+// boxes) keep their absolute coordinates: they are anchored with absolute
+// CUP by design, so their position does not depend on how many terminal rows
+// the base content wrapped to. Nor may one of them go WIDER than the
+// terminal: a wrapped overlay row would spill onto the row below and collide
+// with whatever is anchored there. The box rules span the width by
+// construction (`strings.Repeat`), and the short rows are capped to it — the
+// status bar truncates (renderStatusBar), the live edge measures its framing
+// glyph at its worst-case width first (renderLiveEdge), and an overlay box is
+// laid out inside the width it was given.
 func positionedRows(content string, width int) []positionedRow {
 	rows := parseFrameRows(content)
 	out := make([]positionedRow, 0, len(rows))
@@ -461,8 +466,8 @@ func lastBaseTerminalRow(content string, width int) (frameRow, bool) {
 // Overlap rule: overlay boxes may span only PART of a terminal row
 // (they are centered — the column depends on the box width), so a row
 // can carry several layers: the base fragment plus multiple CUP-anchored
-// overlay rows at different columns (input box, status bar, centered
-// boxes). A single layer can never be repainted independently — an EL
+// overlay rows at different columns (live edge, input box, status bar,
+// centered boxes). A single layer can never be repainted independently — an EL
 // would wipe the other layers on the row, and a shrunk layer would leave
 // its old tail behind. Changed rows are therefore repainted as a
 // COMPOSITE: restore the base segment (or clear the row), then draw

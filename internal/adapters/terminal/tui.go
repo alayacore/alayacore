@@ -855,8 +855,9 @@ func (m Terminal) View() View {
 	v := NewView(overlayContent)
 	v.AltScreen = true
 	// The frame soft-wraps to exactly the screen height (viewport padded,
-	// every row padded to the terminal width, input box + status fill the
-	// rest), so it can be rendered by overwriting without clearing first
+	// its base rows spanning the terminal width, with the live edge, the
+	// input box and the status bar filling the rest), so it can be rendered
+	// by overwriting without clearing first
 	// — no ED2 flicker during streaming (see Screen.Render).
 	v.FullScreen = true
 	// Raw passthrough mode (forked bubbletea): the content is written
@@ -877,12 +878,15 @@ func (m Terminal) View() View {
 	if x, y, ok := m.overlayCursorPosition(); ok {
 		v.Cursor = m.newCursor(x, y)
 	} else if m.input.IsFocused() && !m.isBlocked() {
-		// y: display area occupies [0, displayH); the input box's top rule
-		// sits at displayH; content starts after the rule; then attachment
-		// lines (+ separator). The input renders a single content line, so
-		// the cursor's line index within the value does not affect y.
-		y := max(0, m.windowHeight-m.input.Height()-1) // display height
-		y++                                            // input box top rule
+		// y: the input box's top rule sits at (windowHeight - inputHeight - 1)
+		// — the same expression View uses for inputBoxY. The rows above it
+		// belong to the display region and the live edge, which reach down
+		// no further than the row before it. Content starts after the rule,
+		// then the attachment lines (+ separator). The input renders a single
+		// content line, so the cursor's line index within the value does not
+		// affect y.
+		y := max(0, m.windowHeight-m.input.Height()-1) // 0-indexed top rule
+		y++                                            // first content row
 		y += m.input.AttachmentsOffset()
 		// x: open boxes have no side border or padding, so the cursor cell
 		// is the horizontal position directly (prompt is empty for the

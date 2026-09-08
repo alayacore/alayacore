@@ -136,10 +136,13 @@ func TestLiveEdgeReadsStateAtRenderTime(t *testing.T) {
 		t.Errorf("status bar changed on navigation: %q → %q (the follow state must not live there)",
 			statusBefore, status)
 	}
-	// The old marker is gone for good — the transcript state is nowhere in
-	// the bar below the prompt.
-	if strings.Contains(statusBefore, "F") || strings.Contains(after, "F↓") {
-		t.Errorf("the 'F↓' marker reappeared: status=%q edge=%q", statusBefore, after)
+	// The follow state is no longer folded into the cached segment. Stated
+	// as the exact text rather than as "contains no F↓", because a substring
+	// check on a bar that can carry a model name is a check that passes for
+	// the wrong reason: the left segments hold the reasoning level and
+	// nothing else (this used to read "R0 F↓" while following).
+	if got := stripANSI(m.statusLeft); got != "R0" {
+		t.Errorf("status segments after the flip = %q, want the bare %q", got, "R0")
 	}
 }
 

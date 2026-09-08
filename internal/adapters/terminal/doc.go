@@ -47,6 +47,8 @@
 //     state machine, and overlay action type
 //   - tui_focus.go: Focus management (input/display switching, blur/focus)
 //   - tui_status.go: Status bar rendering (tokens, steps, switches)
+//   - live_edge.go: The live-edge row between the transcript and the prompt
+//     (auto-follow marker, hidden-line count)
 //   - keybinds.go: Declarative key binding configuration
 //   - program_input.go: The input loop and the parking protocol that hands the
 //     keyboard to a foreground child (per-platform sources:

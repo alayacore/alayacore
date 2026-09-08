@@ -42,7 +42,8 @@ func TestTerminalViewRealCursor(t *testing.T) {
 	m := newTestTerminal()
 
 	// Empty input: cursor at the first content cell of the input line.
-	// Layout: display 20 lines + input box top rule at y=20, content at y=21.
+	// Layout (24 rows): display 19 lines, the live edge on row 19, the input
+	// box's top rule at y=20, its content row at y=21.
 	// x = cell (0) — open boxes have no left border or padding.
 	v := m.View()
 	if v.Cursor == nil {
