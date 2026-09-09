@@ -150,12 +150,25 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
 		return m, nil
 
 	case keyF:
-		m, _ = m.MoveWindowCursorToNextUserPrompt()
-		return m.ScrollCursorToTop().updateContent(), nil
+		// Re-seat the viewport only when the jump happened. Unlike the
+		// EnsureCursorVisible used by the other jump keys,
+		// ScrollCursorToTop always moves: it puts the cursor window's first
+		// line at the top of the viewport. With the cursor parked below the
+		// last user prompt (where a finished turn leaves it) there is no
+		// next prompt to find, and re-seating anyway would yank the
+		// viewport up to the head of the window already under the cursor.
+		if next, moved := m.MoveWindowCursorToNextUserPrompt(); moved {
+			return next.ScrollCursorToTop().updateContent(), nil
+		}
+		return m, nil
 
 	case keyB:
-		m, _ = m.MoveWindowCursorToPrevUserPrompt()
-		return m.ScrollCursorToTop().updateContent(), nil
+		// Same guard as keyF, mirrored: no prompt above the cursor means
+		// nothing to jump to and nothing to re-seat.
+		if prev, moved := m.MoveWindowCursorToPrevUserPrompt(); moved {
+			return prev.ScrollCursorToTop().updateContent(), nil
+		}
+		return m, nil
 
 	case keyE:
 		content := m.GetCursorWindowContent()
@@ -733,7 +746,9 @@ func (m DisplayModel) findClosestVisibleWindow(viewportTop, viewportBottom, view
 
 // MoveWindowCursorToNextUserPrompt moves the window cursor forward (down) to
 // the next visible window whose tag is TagUserT ("UT"). Returns false if
-// no such window exists below the current cursor.
+// no such window exists below the current cursor, in which case the cursor
+// and the viewport are left untouched. Callers must test that flag before
+// re-seating the viewport, which always moves (see ScrollCursorToTop).
 func (m DisplayModel) MoveWindowCursorToNextUserPrompt() (DisplayModel, bool) {
 	if m.windowBuffer.WindowCount() == 0 {
 		return m, false
@@ -754,7 +769,9 @@ func (m DisplayModel) MoveWindowCursorToNextUserPrompt() (DisplayModel, bool) {
 
 // MoveWindowCursorToPrevUserPrompt moves the window cursor backward (up) to
 // the previous visible window whose tag is TagUserT ("UT"). Returns false
-// if no such window exists above the current cursor.
+// if no such window exists above the current cursor, in which case the
+// cursor and the viewport are left untouched. Callers must test that flag
+// before re-seating the viewport, which always moves (see ScrollCursorToTop).
 func (m DisplayModel) MoveWindowCursorToPrevUserPrompt() (DisplayModel, bool) {
 	if m.windowBuffer.WindowCount() == 0 {
 		return m, false

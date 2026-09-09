@@ -21,8 +21,8 @@ architecture.
 | `H` | Move cursor to top window in visible area |
 | `M` | Move cursor to middle window in visible area |
 | `L` | Move cursor to bottom window in visible area |
-| `f` | Jump to next user prompt |
-| `b` | Jump to previous user prompt |
+| `f` | Jump to next user prompt and put it at the top; leaves the view alone when there is none |
+| `b` | Jump to previous user prompt and put it at the top; leaves the view alone when there is none |
 | `e` | Open window content in external editor |
 
 ## Input & Actions
