@@ -568,3 +568,44 @@ func TestInputFieldGraphemeWidths(t *testing.T) {
 		}
 	}
 }
+
+// TestInputFieldIgnoresEscapeKeys pins the half of the contract the field owns:
+// a key that is not text inserts nothing, so an ESC that reaches the prompt is
+// invisible rather than stored.
+//
+// It is worth pinning because it is easy to read the reported garbage the other
+// way: that the ESC *is* in the value and merely not drawn. It cannot be — the
+// field inserts only a single printable rune (handleInsertion → printableRune),
+// and the two block paths filter control characters out (blockText). Whatever a
+// terminal's reply did, the prompt's content is only ever what was inserted into
+// it as text, so a frame's worth of `;` and digits was typed, not hidden.
+func TestInputFieldIgnoresEscapeKeys(t *testing.T) {
+	tests := []struct {
+		name string
+		key  Key
+	}{
+		{"escape", Key{Code: KeyEscape}},
+		{"raw ESC code", Key{Code: 0x1b}},
+		{"up", Key{Code: KeyUp}},
+		{"f1", Key{Code: KeyF1}},
+		{"alt chord", Key{Code: 'a', Mod: ModAlt}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := NewInputField().Focus().WithWidth(40)
+			after, _ := f.Update(KeyPressMsg(tt.key))
+			if got := after.Value(); got != "" {
+				t.Errorf("key %q inserted %q into the prompt; only printable text may be inserted",
+					KeyPressMsg(tt.key).String(), got)
+			}
+		})
+	}
+
+	// The control: a printable key still inserts, so the test above cannot pass
+	// by the field ignoring everything.
+	f := NewInputField().Focus().WithWidth(40)
+	after, _ := f.Update(KeyPressMsg{Code: 'a'})
+	if after.Value() != "a" {
+		t.Errorf("printable key inserted %q, want %q", after.Value(), "a")
+	}
+}

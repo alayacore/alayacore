@@ -192,7 +192,11 @@ func Tick(d time.Duration, fn func(time.Time) Msg) Cmd {
 }
 
 // escSequenceTimeout is how long the input loop waits for more bytes after
-// an incomplete escape sequence (e.g. a lone ESC) before resolving it.
+// an incomplete escape sequence (e.g. a lone ESC) before resolving it. It is
+// the loop's timer, not a function of one read: the loop keeps reading while a
+// sequence is outstanding and starts this clock over on every byte, so it
+// measures silence rather than the gap between two reads (program_input.go →
+// readInput).
 const escSequenceTimeout = 50 * time.Millisecond
 
 // Program runs a Model.

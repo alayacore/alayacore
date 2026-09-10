@@ -47,16 +47,60 @@ const (
 // reports an error, or when a delivery is abandoned because the program is
 // finishing — and it announces that it is finished either way, because the
 // teardown may not hand the terminal back before then (stopInput).
+//
+// An incomplete escape sequence is resolved here, on *silence*, and not on the
+// read that happened to stop in the middle of it. The difference is the whole of
+// a bug: this loop is the only reader, so a wait that does not read cannot
+// receive the rest of a sequence — the rest stays in the source, and a flush
+// taken at the end of the wait drops the head and leaves the body to be
+// delivered on the next read as typing. The read boundaries make it reachable
+// rather than theoretical: a Unix read stops at inputReadSize bytes and a
+// Windows one at consoleEventsPerRead events, so a burst that is not a multiple
+// of the boundary (the characters a host synthesizes for a mouse report are the
+// reported case) is cut mid-sequence routinely. The cut is meant to be invisible
+// — program_input_unix.go says as much of the parser ("it keeps an incomplete
+// sequence across calls") — and it becomes invisible here, where the next read
+// is asked for the rest before any timer is allowed to resolve it.
 func (p *Program) readInput(ctxDone <-chan struct{}) {
 	defer close(p.inputStopped)
+
+	// pendingSince is when the parser last received bytes and was still
+	// holding an incomplete sequence; the zero value means nothing is
+	// outstanding, so it is also the gate on the timer below.
+	//
+	// The residue is growth: a sequence that keeps arriving without a 50 ms gap
+	// is allowed to keep growing, where the reader this replaces gave up after
+	// one read. What bounds it is input the user is already sending — a paste is
+	// unbounded the same way, and the prompt's own value is uncapped — and the
+	// alternative is dropping a sequence that is still on its way, which is the
+	// bug this loop exists to fix.
+	var pendingSince time.Time
 
 	for {
 		if p.parkIfSuspended(ctxDone) {
 			return
 		}
 		data, err := p.input.next()
-		if len(data) > 0 && p.deliverParsed(data, ctxDone) {
-			return
+		if len(data) > 0 {
+			if p.deliverParsed(data, ctxDone) {
+				return
+			}
+			if p.parser.HasPending() {
+				pendingSince = time.Now()
+			} else {
+				pendingSince = time.Time{}
+			}
+		} else if !pendingSince.IsZero() && time.Since(pendingSince) >= escSequenceTimeout {
+			// The terminal has been quiet for the whole timeout with a
+			// sequence still incomplete, so it is not coming: Flush resolves a
+			// lone ESC to the Escape key and drops anything else that cannot
+			// be completed.
+			pendingSince = time.Time{}
+			for _, msg := range p.parser.Flush() {
+				if p.sendInput(msg, ctxDone) {
+					return
+				}
+			}
 		}
 		if err != nil {
 			return
@@ -91,28 +135,17 @@ func (p *Program) parkIfSuspended(ctxDone <-chan struct{}) bool {
 	return false
 }
 
-// deliverParsed parses data and delivers the resulting messages, waiting briefly
-// for the rest of a split escape sequence. It returns true when ctxDone fired
-// mid-delivery.
+// deliverParsed parses data and delivers the resulting messages. It returns true
+// when ctxDone fired mid-delivery.
+//
+// Resolving an incomplete sequence is deliberately not done here: this function
+// is called with the bytes of one read, and the reader that can fetch the rest
+// is the loop (readInput), not this call.
 func (p *Program) deliverParsed(data []byte, ctxDone <-chan struct{}) bool {
 	for _, msg := range p.parser.Parse(data) {
 		if p.sendInput(msg, ctxDone) {
 			return true
 		}
-	}
-	if !p.parser.HasPending() {
-		return false
-	}
-	// Wait briefly for the rest of a split sequence.
-	select {
-	case <-time.After(escSequenceTimeout):
-		for _, msg := range p.parser.Flush() {
-			if p.sendInput(msg, ctxDone) {
-				return true
-			}
-		}
-	case <-ctxDone:
-		return true
 	}
 	return false
 }

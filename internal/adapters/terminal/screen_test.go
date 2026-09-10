@@ -275,6 +275,9 @@ func TestScreenStartStop(t *testing.T) {
 			t.Errorf("Start() missing %q, got %q", want, out)
 		}
 	}
+	if !strings.Contains(out, mouseReportingOff) {
+		t.Errorf("Start() must turn mouse reporting off, got %q", out)
+	}
 	buf.Reset()
 	if err := s.Stop(); err != nil {
 		t.Fatal(err)
@@ -288,6 +291,32 @@ func TestScreenStartStop(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Stop() missing %q, got %q", want, out)
+		}
+	}
+	if !strings.Contains(out, mouseReportingOff) {
+		t.Errorf("Stop() must leave mouse reporting off, got %q", out)
+	}
+}
+
+// TestMouseReportingOffResetsEveryEncoding pins the exact set of modes Start and
+// Stop clear. A host reports the mouse in whichever encoding the mode that is
+// set names, so dropping one reset re-opens the leak for that encoding — and the
+// visible symptom (the parameters of a report typed into the prompt) looks
+// nothing like the one-line omission that caused it.
+func TestMouseReportingOffResetsEveryEncoding(t *testing.T) {
+	for _, want := range []string{
+		"\x1b[?9l",    // X10
+		"\x1b[?1000l", // normal (report on press/release)
+		"\x1b[?1001l", // highlight
+		"\x1b[?1002l", // button-event (report on drag)
+		"\x1b[?1003l", // any-event (report on every motion)
+		"\x1b[?1005l", // UTF-8 extended
+		"\x1b[?1006l", // SGR extended
+		"\x1b[?1015l", // urxvt extended
+		"\x1b[?1016l", // SGR-pixel extended
+	} {
+		if !strings.Contains(mouseReportingOff, want) {
+			t.Errorf("mouseReportingOff missing %q, got %q", want, mouseReportingOff)
 		}
 	}
 }

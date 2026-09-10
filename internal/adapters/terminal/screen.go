@@ -53,8 +53,46 @@ func NewScreen(out *os.File) *Screen {
 	return &Screen{out: out, sizeFile: out}
 }
 
-// Start enters the alt screen and enables bracketed paste and focus
-// reporting. The cursor is hidden until the first render.
+// mouseReportingOff turns off every mouse-tracking encoding a host might be
+// using. This UI has no mouse handling at all — console_events.go drops a mouse
+// event, and key_parser.go consumes a report's bytes in both encodings — so it
+// must also make sure the terminal is not *reporting* the mouse, rather than only
+// ignore reports it receives.
+//
+// The modes are a session's state, not this process's, and nothing here enables
+// them. That is exactly why they have to be cleared: a program that ran earlier
+// in the same terminal — an editor, a pager, `git log`, a TUI the agent ran
+// through a tool, or a previous session of this program — can leave one of them
+// set, and a terminal keeps reporting until someone turns it off. The reported
+// symptom belonged here rather than in the parser: a report whose `ESC [` is
+// consumed *before* this program sees it leaves its `Cb;Cx;CyM` parameters to be
+// typed, and a report with no introducer at all is indistinguishable from
+// typing, so the only place the mode can be answered is at the terminal. (The
+// report that minimized-then-restored Windows Terminal produced, and the
+// reader's own share of it, are in docs/internal/windows-console.md.)
+//
+// Clearing them also gives the user back the terminal's own click-and-drag
+// selection, which a set mouse mode takes away (the host keeps it for
+// Shift+drag only). Every mode is reset, not just the one that was observed:
+// the point is to stop being told about the mouse in any encoding, and a
+// terminal that never had the mode set ignores the reset.
+const mouseReportingOff = ansi.ResetModeMouseX10 +
+	ansi.ResetModeMouseNormal +
+	ansi.ResetModeMouseHighlight +
+	ansi.ResetModeMouseButtonEvent +
+	ansi.ResetModeMouseAnyEvent +
+	ansi.ResetModeMouseExtUtf8 +
+	ansi.ResetModeMouseExtSgr +
+	ansi.ResetModeMouseExtUrxvt +
+	ansi.ResetModeMouseExtSgrPixel
+
+// Start enters the alt screen, enables bracketed paste and focus reporting, and
+// turns mouse reporting off. The cursor is hidden until the first render.
+//
+// It is re-run after every child that owned the terminal (ExecProcess: the
+// external editor, Ctrl-Z), so the modes here are re-asserted rather than
+// negotiated once — which is what makes the mouse reset reach a mode a child
+// left behind.
 func (s *Screen) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -69,6 +107,7 @@ func (s *Screen) Start() error {
 	buf = append(buf, ansi.SetModeAltScreenSaveCursor...)
 	buf = append(buf, ansi.SetModeBracketedPaste...)
 	buf = append(buf, ansi.SetModeFocusEvent...)
+	buf = append(buf, mouseReportingOff...)
 	buf = append(buf, ansi.ResetModeTextCursorEnable...)
 	if _, err := s.out.Write(buf); err != nil {
 		return fmt.Errorf("terminal: enter alt screen: %w", err)
@@ -123,6 +162,11 @@ func (s *Screen) Stop() error {
 	buf = append(buf, ansi.EraseDisplay(2)...)
 	buf = append(buf, ansi.ResetModeBracketedPaste...)
 	buf = append(buf, ansi.ResetModeFocusEvent...)
+	// Mouse reporting goes back off here as well as in Start: a child that
+	// turned it on and exited without clearing it would otherwise hand the
+	// shell a terminal that keeps reporting the mouse, and the shell's own
+	// line editor would be the next thing to receive `35;60;10M` as typing.
+	buf = append(buf, mouseReportingOff...)
 	buf = append(buf, ansi.SetModeTextCursorEnable...)
 	buf = append(buf, ansi.ResetModeAltScreenSaveCursor...)
 	buf = append(buf, ansi.RestoreCurrentCursorPosition...)

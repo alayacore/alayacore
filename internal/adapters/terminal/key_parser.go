@@ -9,6 +9,17 @@ package terminal
 // PasteMsg instead of being parsed as keys. Focus-reporting events
 // (`\x1b[I` / `\x1b[O`, enabled by Screen.Start) become FocusMsg/BlurMsg.
 //
+// Every escape sequence is consumed whole, whether or not its meaning is one
+// this program has: a sequence that is not a key is dropped, never split so
+// that its body is typed into the prompt. That covers the terminal *replies*
+// the tree never asks for but can still receive — mouse reports (both the SGR
+// `CSI < ... M` form and the X10 `CSI M` form, whose three coordinate bytes the
+// final byte does not delimit), and the OSC/DCS/SOS/PM/APC string controls whose
+// bodies are a color, a capability or a clipboard read. A sequence that a read
+// boundary cuts in half is completed by the next read rather than resolved
+// early (program_input.go → readInput), which is what keeps a split report from
+// arriving as its own parameters.
+//
 // Key string compatibility: KeyMsg.String() must produce exactly the same
 // strings bubbletea/ultraviolet produced, because the whole application
 // matches keys via strings ("ctrl+a", "shift+up", "H", ":", "enter", ...).
@@ -242,11 +253,13 @@ func (p *InputParser) Parse(data []byte) []any {
 		if !complete {
 			// Copy: these bytes belong to whoever handed them over, and the
 			// input loop hands the same buffer to the terminal again on its
-			// next read. An incomplete sequence is held here for the length of
-			// the escape-sequence timeout, which is long enough to be read out
-			// from under, and a split sequence that resolved to the tail of the
-			// next keystroke instead of its own would be wrong in a way nobody
-			// could reproduce.
+			// next read. An incomplete sequence is held here until the loop
+			// resolves it — a timeout of silence, so at least as long as the
+			// escape-sequence timeout and longer if more bytes keep arriving
+			// (program_input.go → readInput) — which is long enough for the
+			// buffer to be read out from under, and a split sequence that
+			// resolved to the tail of the next keystroke instead of its own
+			// would be wrong in a way nobody could reproduce.
 			p.pending = append([]byte(nil), data...)
 			return msgs
 		}
@@ -328,29 +341,95 @@ func consumeEscape(data []byte) (string, int, bool) {
 	}
 	switch data[1] {
 	case '[': // CSI
+		// X10 mouse is the one CSI whose length its final byte does not
+		// give: `CSI M` carries three raw coordinate bytes after it.
+		if n, ok := consumeX10Mouse(data); ok {
+			return string(data[:n]), n, true
+		}
 		return consumeCSI(data)
 	case 'O': // SS3
 		return consumeSS3(data)
-	default:
-		// ESC + printable rune → Alt+key.
-		if data[1] >= 0x20 && data[1] != 0x7f {
-			_, n := utf8.DecodeRune(data[1:])
-			return string(data[:1+n]), 1 + n, true
+	case ']', 'P', 'X', '^', '_':
+		// String-type controls: OSC (ESC ]), DCS (ESC P), SOS (ESC X),
+		// PM (ESC ^), APC (ESC _). These are terminal *replies* (a color, a
+		// capability, a clipboard read), and their bodies are exactly the
+		// text that must never reach the prompt. Consume through the
+		// terminator when it is here (BEL or ST for OSC, ST for the rest);
+		// when it is not, this is Alt+<char> and falls through below.
+		if n, ok := consumeStringControl(data); ok {
+			return string(data[:n]), n, true
 		}
-		if data[1] == 0x1b {
-			// ESC followed by another escape sequence (ESC ESC [ A →
-			// alt+up). Consume the nested sequence as part of this one.
-			if len(data) == 2 {
-				return "", 0, false // need at least one more byte
-			}
-			_, n, complete := consumeEscape(data[1:])
-			if !complete {
-				return "", 0, false
-			}
-			return string(data[:1+n]), 1 + n, true
-		}
-		return string(data[:2]), 2, true
 	}
+	// ESC + printable rune → Alt+key.
+	if data[1] >= 0x20 && data[1] != 0x7f {
+		_, n := utf8.DecodeRune(data[1:])
+		return string(data[:1+n]), 1 + n, true
+	}
+	if data[1] == 0x1b {
+		// ESC followed by another escape sequence (ESC ESC [ A →
+		// alt+up). Consume the nested sequence as part of this one.
+		if len(data) == 2 {
+			return "", 0, false // need at least one more byte
+		}
+		_, n, complete := consumeEscape(data[1:])
+		if !complete {
+			return "", 0, false
+		}
+		return string(data[:1+n]), 1 + n, true
+	}
+	return string(data[:2]), 2, true
+}
+
+// stringTerminator is ST, which ends every string-type control (and, on its
+// own, cancels one).
+const stringTerminator = "\x1b\\"
+
+// consumeStringControl consumes an OSC/DCS/SOS/PM/APC sequence through its
+// terminator, and reports whether one was there to find. It deliberately does
+// not guess: without a terminator in hand, `ESC ]` is Alt+] (which is how a
+// terminal sends that chord) and the bytes after it are ordinary input, so the
+// caller's Alt+key path is the honest answer for that case.
+func consumeStringControl(data []byte) (int, bool) {
+	body := data[2:]
+	end := -1
+	if data[1] == ']' {
+		// OSC alone may end with BEL instead of ST.
+		if i := indexSeq(body, "\x07"); i >= 0 {
+			end = i + 1
+		}
+	}
+	if i := indexSeq(body, stringTerminator); i >= 0 {
+		if n := i + len(stringTerminator); end < 0 || n < end {
+			end = n
+		}
+	}
+	if end < 0 {
+		return 0, false
+	}
+	return 2 + end, true
+}
+
+// x10MouseLen is the byte length of an X10 mouse report on input: `CSI M` plus
+// the three coordinate bytes that follow it. The length is named rather than
+// spelled twice because both the consumer (consumeX10Mouse) and the decision
+// that it is not a key (escapeKey) have to agree on it, and an off-by-one there
+// is silent: a coordinate byte read as a CSI final is a key nobody pressed.
+const x10MouseLen = 6
+
+// consumeX10Mouse consumes an X10 mouse report — `CSI M` followed by three raw
+// bytes — as one sequence, and reports whether this is one.
+//
+// The three bytes are why this exists: `CSI M` is a complete-looking sequence
+// whose length the final byte does not give, so without this the parser drops
+// the `CSI M` and lets the coordinates through as keystrokes. They are taken
+// only when all three are already in hand: an incomplete `CSI M` is not worth
+// holding the next three keystrokes for, and mouse reporting being off
+// (screen.go → mouseReportingOff) is what makes that trade safe.
+func consumeX10Mouse(data []byte) (int, bool) {
+	if len(data) < x10MouseLen || data[2] != 'M' {
+		return 0, false
+	}
+	return x10MouseLen, true
 }
 
 // consumeCSI parses "\x1b[...<final>" where final is a letter or '~'.
@@ -376,7 +455,9 @@ func consumeSS3(data []byte) (string, int, bool) {
 }
 
 // escapeKey maps a complete escape sequence (starting with ESC) to a Key.
-// ok is false for unknown sequences (paste start is handled by the caller).
+// ok is false for sequences that are not keys — an unknown one, and the terminal
+// replies consumeEscape recognizes (mouse reports, the string controls) — which
+// the caller drops (paste start is handled by the caller too).
 //
 // Alt+key semantics (matching uv): ESC followed by a single character is
 // Alt+that character ("\x1ba" → alt+a); ESC followed by a full escape
@@ -384,6 +465,16 @@ func consumeSS3(data []byte) (string, int, bool) {
 func escapeKey(seq string) (Key, bool) {
 	if len(seq) == 1 {
 		return Key{Code: KeyEscape}, true
+	}
+	// An X10 mouse report is `CSI M` plus three coordinate bytes, and those
+	// bytes are what consumeX10Mouse took with it — not CSI parameters. The
+	// check lives here, on the whole sequence, because this is the one entry
+	// point every path goes through (including the nested call below for
+	// `ESC ESC …`): in escapeKeyInner the same sequence has lost its ESC and
+	// the length test is one byte out, which is how a report whose last
+	// coordinate byte is a CSI final turns into an arrow key nobody pressed.
+	if len(seq) == x10MouseLen && seq[0] == 0x1b && seq[2] == 'M' {
+		return Key{}, false
 	}
 	inner := seq[1:]
 	// ESC followed by another escape sequence (ESC ESC [ A → alt+up).
@@ -428,6 +519,10 @@ func escapeKeyInner(seq string) (Key, bool) {
 		return parseCSI(seq)
 	case 'O':
 		return parseSS3(seq)
+	case ']', 'P', 'X', '^', '_':
+		// A string control consumed through its terminator: a reply, not a key
+		// (consumeStringControl).
+		return Key{}, false
 	default:
 		// Multi-byte UTF-8 rune after ESC → alt+rune.
 		r, _ := utf8.DecodeRuneInString(seq)

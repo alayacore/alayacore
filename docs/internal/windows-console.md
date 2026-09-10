@@ -148,8 +148,44 @@ by `Program.refreshSize` on the model tick: one source of truth about what the
 terminal's size is, and the resize already converges within one tick. An immediate
 resize path would be an improvement, and the record is where it would start.
 
-**Mouse events are read and dropped** because this UI has no mouse handling at all
-— `key_parser.go` parses no mouse sequence, so there was no behavior to preserve.
+**Mouse *reporting* is turned off, and a report that still arrives is consumed
+whole.** This UI has no mouse handling at all: `console_events.go` drops a mouse
+event, and `key_parser.go` consumes a report's bytes rather than delivering them.
+Turning the mode off is the fix for the reported symptom, because the mode is what
+makes the terminal report in the first place — and the mode is a session's state
+rather than this process's.
+Nothing here ever sets it, which is the reason it has to be cleared: any program
+that ran earlier in the same terminal (an editor, a pager, a TUI the agent ran
+through a tool, a previous session) can leave one on, and a terminal keeps reporting
+until someone turns it off. So `Screen.Start` resets every mouse-tracking encoding
+(`screen.go` → `mouseReportingOff`), `Stop` resets them too, so the shell is not
+handed a terminal that keeps reporting, and because `Start` is re-run on re-acquire
+the reset also reaches a mode a child left behind.
+
+Consuming the report is the second half, and it is where the reported bytes came
+from. A report is `CSI < Cb;Cx;Cy M`, so its `ESC [` is a CSI introducer like any
+other and the parser consumes it whole — **when the report arrives whole**, which
+the reported one did not. The reason was our own reader, not the host: a read stops
+at a fixed size (`inputReadSize` bytes on Unix, `consoleEventsPerRead` events here),
+a burst of reports is cut by that boundary mid-sequence as a matter of course, and
+`deliverParsed` responded to the cut by waiting for the rest *without reading it*
+and then flushing — dropping `ESC [ <` and leaving the parameters, which were
+already sitting in the console buffer, to be delivered on the next read as typing.
+The loop now keeps reading while a sequence is outstanding and starts the timeout
+over on every byte, so the cut is invisible and the only thing the timeout resolves
+is real silence (a lone Escape keypress). The parser's CSI path then consumes the
+reassembled report, as it always would have; a report whose `ESC [` is stripped
+*before* it reaches this program is not recoverable at all — `Cb;Cx;CyM` on its own
+is ordinary text — which is the part the mode reset, not the parser, has to prevent.
+`program_input_cut_test.go` and `key_parser_reports_test.go` pin both halves.
+
+The other replies a terminal sends without being asked are consumed by the same
+rule: the X10 mouse report (`CSI M` plus three coordinate bytes the final byte
+does not delimit) and the OSC/DCS/SOS/PM/APC string controls, whose bodies are a
+color, a capability or a clipboard read. A reply is recognized as one only where
+it is unambiguous — the CSI is complete, the string control reached its
+terminator — so the Alt chords that share those bytes (`ESC <`, `ESC ]`, `ESC P`)
+still work."
 
 **An external editor's buffer is block text, not keystrokes.** `blockText`
 (`input_field.go`) is what turns text arriving as a chunk into something the input
@@ -247,11 +283,26 @@ Covered by tests that run there:
   arrives through the real parser as the string the application binds. It is
   build-tagged for nothing: it runs on Linux too, and on any machine this file is
   changed on.
+- `key_parser_reports_test.go` — that a terminal reply the program never asked
+  for is consumed rather than typed: both mouse encodings (including the X10 rows
+  whose coordinate byte would otherwise read as an arrow key), the
+  OSC/DCS/SOS/PM/APC string controls, and the Alt chords that share their
+  introducers. Build-tagged for nothing.
+- `input_field_test.go` → `TestInputFieldIgnoresEscapeKeys` — the field's half of
+  the same contract: a key that is not text inserts nothing, which is why an ESC
+  that reaches the prompt is invisible rather than stored.
 - `program_input_test.go` — the parking protocol: `pauseInput` does not return
   while a read is in flight, a parked loop starts no reads and delivers what
   arrived only after it is resumed, and `stopInput` returns only once the loop has
   finished. Also build-tagged for nothing, so the Windows job runs these against
   the loop it used to be unable to park.
+- `program_input_cut_test.go` — that a sequence a read boundary cuts in half is
+  completed by the next read instead of flushed: the mouse report at three cut
+  offsets, an arrow cut after `ESC [`, a focus and a blur report, and a bracketed
+  paste whose markers are split. The failure it pins is the reported one — the
+  tail arriving as typing — and it is also where the timeout is pinned: a lone
+  Escape is `esc`, and only after the timeout, measured rather than raced.
+  Build-tagged for nothing, so it runs on every platform.
 - `program_input_unix_test.go` — that the real Unix source keeps the promise the
   protocol is built on: it is between reads within one poll timeout, and the
   terminal is left alone while parked.
@@ -341,6 +392,11 @@ onto a path no runner can exercise, so these are not academic:
 - [ ] Clicking inside the `cmd` window while output is streaming does not freeze
       the UI (the QuickEdit clear).
 - [ ] Dragging the window resizes the layout, in both hosts, within one tick.
+- [ ] Minimizing the window and restoring it, with a mouse-tracking mode set (left
+      by a pager or editor that ran before, or by a child this program started):
+      nothing of the report reaches the prompt, because `Screen.Start` clears the
+      mode. This is the report `mouseReportingOff` answers, and the one a runner
+      cannot stage.
 - [ ] Focus in and out of the window: the dim and restore that
       `FocusMsg`/`BlurMsg` drive, if `FOCUS_EVENT_RECORD` reaches a legacy console
       application at all.
