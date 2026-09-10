@@ -3,11 +3,13 @@ package llm
 // Serial tool-calling tests.
 //
 // The mode exists because a great many models and servers have no notion of
-// parallel tool calls: their calls land in an order that has to hold, and two of
-// them must never be writing files at the same time. These tests pin the three
-// things that make that true and the one thing that must not regress — the
-// parallel driver still overlaps, so a serial test passing cannot be the result
-// of everything having quietly become serial.
+// parallel tool calls: their calls land in an order that has to hold. Keeping
+// two calls off the same file is no longer part of its job — that is the tools'
+// job now, in either mode (see internal/tools/file_mutation.go) — so serial mode
+// is about order alone. These tests pin the three things that make that true and
+// the one thing that must not regress — the parallel driver still overlaps, so a
+// serial test passing cannot be the result of everything having quietly become
+// serial.
 
 import (
 	"context"

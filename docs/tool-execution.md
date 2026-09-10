@@ -13,7 +13,9 @@ in when calls start.
 
 Serial mode exists because a great many models and servers have no notion of
 parallel tool calls: their side effects have to land in the sequence the model
-asked for, and two of them must never be writing files at the same time.
+asked for. Keeping two calls from writing the same file at once is no longer
+part of its job — that is now a property of the tools themselves, in either mode
+(see [Same-File Writes Are Serialized](#same-file-writes-are-serialized)).
 
 Whether a call can start while later calls are still streaming is the provider's
 doing, not the mode's: Anthropic closes a tool block mid-message, so there the
@@ -92,12 +94,14 @@ is told about, and one the user cannot prevent, since the model chose to emit
 the pair.
 
 That is fixed in the tools, not in a driver: `edit_file` and `write_file` take a
-single package-level mutex (`fileMutationMu`) around the whole
-read-rewrite-rename critical section, so at most one in-process file mutation
-runs at a time. The runner is unchanged and stays concurrent; only the file
-writes serialize, and they are a few syscalls, so nothing that matters loses
-parallelism. Reads do not take the lock — the rename is atomic, so a reader sees
-either the old file or the new one, never a torn one.
+single package-level mutex (`fileMutationMu`) around their whole mutation, so at
+most one in-process file mutation runs at a time. `write_file` is in the same
+lock chiefly to protect `edit_file`: a full write that landed between an edit's
+read and its rename would be swallowed by that rename. The runner is unchanged
+and stays concurrent; only the file writes serialize, and they are a few
+syscalls, so nothing that matters loses parallelism. Reads do not take the lock
+— the rename is atomic, so a reader sees either the old file or the new one,
+never a torn one.
 
 It is one coarse lock rather than a map keyed by path because a path is not a
 sound file identity (hard links and case-insensitive filesystems both map two

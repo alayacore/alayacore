@@ -3,8 +3,8 @@ package tools
 import "sync"
 
 // fileMutationMu serializes every in-process file mutation: edit_file and
-// write_file both take it, so at most one of them reads, rewrites, and renames
-// a file at any moment.
+// write_file both take it, so at most one file mutation runs in the process at
+// any moment.
 //
 // It exists because the concurrent tool runner (the default) launches one
 // goroutine per tool call the moment its arguments complete, so a model that
@@ -14,6 +14,11 @@ import "sync"
 // update neither the model nor the user is told about. The model emitting the
 // pair is not something the user can prevent, so the fix belongs here, in the
 // one place both tools pass through, rather than in a prompt.
+//
+// write_file takes the same lock chiefly to protect edit_file: a full write that
+// landed between an edit's read and its rename would be swallowed by that
+// rename. Its in-place fallback needs it for its own sake too — two O_TRUNC
+// writers at offset 0 can interleave.
 //
 // It is deliberately one coarse lock, not a map keyed by path. Path is not a
 // sound file identity — hard links and case-insensitive filesystems both map
