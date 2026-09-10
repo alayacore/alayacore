@@ -271,6 +271,13 @@ func executeEditFile(ctx context.Context, args EditFileInput) ([]llm.ContentPart
 		return nil, err
 	}
 
+	// Serialize against other in-process file mutations so a model that emits
+	// two edits for the same file in one step cannot lose one to the other's
+	// rename. Held from before the read to after the commit — see
+	// fileMutationMu.
+	fileMutationMu.Lock()
+	defer fileMutationMu.Unlock()
+
 	session, err := newEditSession(path)
 	if err != nil {
 		return nil, err

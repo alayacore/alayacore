@@ -82,6 +82,34 @@ See `internal/llm/agent.go` → `Stream()`, `streamEvents()` (which contains no
 mode check at all), and `internal/llm/agent_execution.go` → `toolRunner`,
 `serialToolRunner`, `parallelToolRunner`, `runToolCall`, `executeTool`.
 
+## Same-File Writes Are Serialized
+
+Concurrent mode launches a goroutine per call, so a model that emits two
+`edit_file` calls for the same file in one step runs them at once. Both are
+read-modify-write operations that end in a rename, so the second rename would
+silently discard the first edit — a lost update neither the model nor the user
+is told about, and one the user cannot prevent, since the model chose to emit
+the pair.
+
+That is fixed in the tools, not in a driver: `edit_file` and `write_file` take a
+single package-level mutex (`fileMutationMu`) around the whole
+read-rewrite-rename critical section, so at most one in-process file mutation
+runs at a time. The runner is unchanged and stays concurrent; only the file
+writes serialize, and they are a few syscalls, so nothing that matters loses
+parallelism. Reads do not take the lock — the rename is atomic, so a reader sees
+either the old file or the new one, never a torn one.
+
+It is one coarse lock rather than a map keyed by path because a path is not a
+sound file identity (hard links and case-insensitive filesystems both map two
+paths to one file), and a critical section this short has nothing to gain from
+finer granularity.
+
+Scope: this serializes writers **within this process** only. A competing write
+from outside it — another instance, an editor, `git`, a sync client — is not
+detected and still wins last, exactly as it would for any editor. Neither is a
+shell command run by `execute_command` that writes the same file, which the lock
+cannot cover. Detecting those would need a compare-and-swap at commit time.
+
 ## Execution Strategy
 
 | Phase | Mode | Execution |

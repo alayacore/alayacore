@@ -42,6 +42,12 @@ func executeWriteFile(_ context.Context, args WriteFileInput) ([]llm.ContentPart
 		return nil, fmt.Errorf("path is required")
 	}
 
+	// Serialize against other in-process file mutations (notably edit_file) so
+	// a concurrent write cannot interleave with an edit's read-rewrite-rename.
+	// See fileMutationMu.
+	fileMutationMu.Lock()
+	defer fileMutationMu.Unlock()
+
 	// Write through a symlink to the file it points at (see resolveWriteTarget).
 	target := resolveWriteTarget(args.Path)
 
