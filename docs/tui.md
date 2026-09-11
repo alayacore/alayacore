@@ -108,10 +108,12 @@ parser stays in paste mode and takes every keystroke that follows as pasted text
 The head is now held for the next read (`key_parser.go` → `takePaste`) and
 completed by it, exactly as any other sequence a boundary splits, and the input
 loop's silence timeout resolves the marker that never does arrive — the paste
-delivered, the head dropped as the unknown sequence it is, paste mode left. The
-sweep over every cut offset and every read size is
-`key_parser_paste_cut_test.go`; the loop's half is a row in
-`program_input_cut_test.go`.
+delivered, the head dropped as the unknown sequence it is, paste mode left. That
+timeout arms on *any* unfinished input (`InputParser.MidSequence`), not only on a
+held marker head: a paste whose body never resembles the closing marker is
+unfinished just the same, and only the state test covers it. The sweep over every
+cut offset and every read size is `key_parser_paste_cut_test.go`; the loop's half
+is a row in `program_input_cut_test.go`.
 
 Where a paste lands is decided by the pane the user focused, not by the terminal
 window's OS-level focus. That focus is reported too (DEC mode 1004, enabled by
