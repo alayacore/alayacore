@@ -264,9 +264,10 @@ func (p *InputParser) state() parserState {
 
 // MidSequence reports whether any input is unfinished — an incomplete escape
 // sequence, or an open paste. The input loop arms its silence timeout on this,
-// not on HasPending: an open paste with no marker head buffered is unfinished
-// just the same, and a timeout that only saw pending bytes would leave a paste
-// that never closes swallowing every keystroke that follows (see Flush).
+// not merely on buffered pending bytes: an open paste with no marker head
+// buffered is unfinished just the same, and a timeout that only saw pending
+// bytes would leave a paste that never closes swallowing every keystroke that
+// follows (see Flush).
 func (p *InputParser) MidSequence() bool { return p.state() != stGround }
 
 // Parse consumes data and returns the decoded messages. Bytes that form an
@@ -988,13 +989,4 @@ func allESC(b []byte) bool {
 		}
 	}
 	return true
-}
-
-// HasPending reports whether an incomplete escape sequence is buffered. It is a
-// diagnostic: the input loop arms its timeout on MidSequence, which also covers
-// an open paste — the distinction this method preserves (a marker head held in
-// pending vs. a paste open with nothing held) is what lets a test name which of
-// the two it is looking at.
-func (p *InputParser) HasPending() bool {
-	return len(p.pending) > 0
 }

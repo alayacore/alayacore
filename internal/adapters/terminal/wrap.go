@@ -375,15 +375,6 @@ func joinVisualLines(lines []visualLine) string {
 	return sb.String()
 }
 
-// wrapLines wraps content into lines at the given width.
-func wrapLines(content string, width int) []string {
-	if width <= 0 {
-		return []string{content}
-	}
-	wrapped := wrapContent(content, width)
-	return strings.Split(wrapped, "\n")
-}
-
 // wrapVisualLines wraps content into visual rows carrying continuation
 // marks: each ORIGINAL line's first row has Cont=false, and rows produced
 // by hard-wrapping an over-long single line have Cont=true. Cont=false
@@ -468,56 +459,6 @@ func appendDeltaWithNewlinesVisual(lines []visualLine, delta string, width int) 
 		}
 	}
 	return lines
-}
-
-// appendDeltaToLines incrementally wraps a delta onto existing lines.
-func appendDeltaToLines(lines []string, delta string, width int) []string {
-	if len(lines) == 0 {
-		return wrapLines(delta, width)
-	}
-	if width <= 0 {
-		lines[len(lines)-1] += delta
-		return lines
-	}
-
-	if strings.Contains(delta, "\n") {
-		return appendDeltaWithNewlines(lines, delta, width)
-	}
-
-	// Append to last line and rewrap
-	lastLine := lines[len(lines)-1]
-	combined := lastLine + delta
-	newLines := wrapLines(combined, width)
-	return append(lines[:len(lines)-1], newLines...)
-}
-
-// appendDeltaWithNewlines handles delta that contains newlines.
-func appendDeltaWithNewlines(lines []string, delta string, width int) []string {
-	parts := strings.Split(delta, "\n")
-	for i, part := range parts {
-		if i == 0 {
-			if len(lines) == 0 {
-				lines = wrapLines(part, width)
-			} else {
-				lastIdx := len(lines) - 1
-				combined := lines[lastIdx] + part
-				newLines := wrapLines(combined, width)
-				lines = append(lines[:lastIdx], newLines...)
-			}
-		} else {
-			lines = append(lines, wrapLines(part, width)...)
-		}
-	}
-	return lines
-}
-
-// styleMultiline applies a style to each line of text.
-func styleMultiline(content string, style Style) string {
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		lines[i] = style.Render(line)
-	}
-	return strings.Join(lines, "\n")
 }
 
 // wrapLabels wraps a list of labels at word boundaries (separator "  "),

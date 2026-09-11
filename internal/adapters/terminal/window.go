@@ -18,7 +18,7 @@ package terminal
 // Related files:
 //   - window_renderer.go — WindowRendering interface and implementations
 //   - window_buffer.go   — WindowBuffer, line tracking, virtual rendering
-//   - wrap.go            — wrapContent, wrapLines, appendDeltaToLines
+//   - wrap.go            — wrapContent, wrapVisualLines, appendDeltaToVisualLines
 
 import (
 	"strings"

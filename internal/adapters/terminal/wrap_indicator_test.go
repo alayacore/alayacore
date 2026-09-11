@@ -364,161 +364,6 @@ func TestFoldedToolStatusIndicatorNoReplacementChar(t *testing.T) {
 	}
 }
 
-func TestTailSummary(t *testing.T) {
-	tests := []struct {
-		name     string
-		content  string
-		maxWidth int
-		want     string
-	}{
-		{
-			name:     "short content fits entirely",
-			content:  "hello",
-			maxWidth: 20,
-			want:     "hello",
-		},
-		{
-			name:     "long content shows tail with ellipsis",
-			content:  "aaaaaaaaaa bbbbbbbbbb cccccccccc",
-			maxWidth: 15,
-			// Tail kept: 3 trailing "b"s + " " + 10 "c"s = 14 cols + "…".
-			want: "…bbb cccccccccc",
-		},
-		{
-			name:     "newlines escaped as literal backslash-n",
-			content:  "line one\nline two",
-			maxWidth: 50,
-			want:     "line one\\nline two",
-		},
-		{
-			name:     "tail keeps latest lines after escape",
-			content:  "first line\nsecond line\nthird line",
-			maxWidth: 20,
-			// Tail of 19 cols: "nd line" + "\n" + "third line".
-			want: "…nd line\\nthird line",
-		},
-		{
-			name:     "zero width",
-			content:  "hello",
-			maxWidth: 0,
-			want:     "",
-		},
-		{
-			name:     "multibyte safe",
-			content:  "中文内容测试尾部",
-			maxWidth: 8,
-			// room = 7 cols for the tail; 3 full-width chars (6 cols) fit:
-			// "试尾部". No half-width slicing of multi-byte runes.
-			want: "…试尾部",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tailSummary(tt.content, tt.maxWidth)
-			if got != tt.want {
-				t.Errorf("tailSummary(%q, %d) = %q, want %q", tt.content, tt.maxWidth, got, tt.want)
-			}
-			// The result must be a single logical line (no raw newlines).
-			if strings.Contains(got, "\n") {
-				t.Errorf("tailSummary must not contain raw newlines: %q", got)
-			}
-			// And must fit the width (or be empty).
-			if w := cellWidth(got); w > tt.maxWidth {
-				t.Errorf("tailSummary width = %d, want <= %d: %q", w, tt.maxWidth, got)
-			}
-		})
-	}
-}
-
-func TestHeadAndTailSummary(t *testing.T) {
-	// REASONING / ASSISTANT / USER PROMPT collapsed summaries show the
-	// head (topic) + "…" + tail (latest content), 40/60 split, with
-	// edge cases for narrow widths and wide-char handling.
-	tests := []struct {
-		name     string
-		content  string
-		maxWidth int
-		want     string
-	}{
-		{
-			name:     "short content fits entirely",
-			content:  "hello",
-			maxWidth: 20,
-			want:     "hello",
-		},
-		{
-			name:     "long content shows head and tail with middle ellipsis",
-			content:  "aaaaaaaaaa bbbbbbbbbb cccccccccc",
-			maxWidth: 15,
-			// 40/60 split: headWidth = 15*40/100 = 6, tailWidth = 15-6-1 = 8.
-			// head: "aaaaaa" (6 cols); tail: walk backward with budget 8
-			// — " cccccccc" (9) too big, drop the space → "cccccccc" (8).
-			want: "aaaaaa…cccccccc",
-		},
-		{
-			name:     "newlines escaped as literal backslash-n",
-			content:  "line one\nline two",
-			maxWidth: 50,
-			want:     "line one\\nline two",
-		},
-		{
-			name:     "head and tail both keep partial lines after escape",
-			content:  "first line\nsecond line\nthird line",
-			maxWidth: 20,
-			// 40/60 split: headWidth = 20*40/100 = 8, tailWidth = 20-8-1 = 11.
-			// head: "first li" (8); tail: walk backward with budget 11 —
-			// "\\nthird line" (12) too big, drop "\\" → "nthird line" (11).
-			want: "first li…nthird line",
-		},
-		{
-			name:     "zero width",
-			content:  "hello",
-			maxWidth: 0,
-			want:     "",
-		},
-		{
-			name:     "single column renders head only (no room for ellipsis)",
-			content:  "hello",
-			maxWidth: 1,
-			want:     "h",
-		},
-		{
-			name:     "two columns render head only (no room for ellipsis+tail)",
-			content:  "hello",
-			maxWidth: 2,
-			want:     "he",
-		},
-		{
-			name:     "CJK: head and tail never split mid-cluster",
-			content:  "中文内容测试尾部结束",
-			maxWidth: 10,
-			// 40/60 split: headWidth = 10*40/100 = 4, tailWidth = 10-4-1 = 5.
-			// Each CJK char is 2 cols. head fits "中文" (4 cols); tail
-			// fits 5 cols walking back: "部结束" (6) too big, drop "部"
-			// → "结束" (4 cols). head + … + tail = "中文…结束" (9 cols).
-			want: "中文…结束",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := headAndTailSummary(tt.content, tt.maxWidth)
-			if got != tt.want {
-				t.Errorf("headAndTailSummary(%q, %d) = %q, want %q", tt.content, tt.maxWidth, got, tt.want)
-			}
-			// The result must be a single logical line (no raw newlines).
-			if strings.Contains(got, "\n") {
-				t.Errorf("headAndTailSummary must not contain raw newlines: %q", got)
-			}
-			// And must fit the width (or be empty).
-			if w := cellWidth(got); w > tt.maxWidth {
-				t.Errorf("headAndTailSummary width = %d, want <= %d: %q", w, tt.maxWidth, got)
-			}
-		})
-	}
-}
-
 func TestTakeHeadAndTakeTailClusterAware(t *testing.T) {
 	// takeCells and tailCells must drop whole grapheme clusters rather
 	// than splitting individual runes — multi-codepoint glyphs like ZWJ
@@ -614,9 +459,9 @@ func TestTakeHeadAndTakeTailClusterAware(t *testing.T) {
 }
 
 func TestTailParts(t *testing.T) {
-	// tailParts is the structured form of tailSummary: returns the tail
-	// portion (no leading "…") and a truncated flag. Used by callers
-	// that want to style the marker themselves (e.g. dim vs muted).
+	// tailParts returns the tail portion (no leading "…") and a truncated
+	// flag. Used by callers that want to style the marker themselves
+	// (e.g. dim vs muted).
 	tests := []struct {
 		name      string
 		content   string
@@ -645,9 +490,8 @@ func TestTailParts(t *testing.T) {
 }
 
 func TestHeadAndTailParts(t *testing.T) {
-	// headAndTailParts is the structured form of headAndTailSummary.
-	// Returns head and tail separately plus a truncated flag. When not
-	// truncated, head is the full content and tail is empty.
+	// headAndTailParts returns head and tail separately plus a truncated
+	// flag. When not truncated, head is the full content and tail is empty.
 	tests := []struct {
 		name      string
 		content   string
@@ -713,7 +557,7 @@ func TestFoldedTextWindowEllipsisIsDimmed(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
-	// AT (assistant) — uses headAndTailSummary, middle "…" is dimmed.
+	// AT (assistant) — uses headAndTailParts, middle "…" is dimmed.
 	longText := strings.Repeat("beginning of answer ", 3) + " and then some more content ending"
 	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", longText)
 	wb.ToggleFold(0)
@@ -728,7 +572,7 @@ func TestFoldedTextWindowEllipsisIsDimmed(t *testing.T) {
 		t.Errorf("AT middle ellipsis should carry the dim (Status) color, got %q", atRendered)
 	}
 
-	// SN (system notify) — uses tailSummary, leading "…" is dimmed.
+	// SN (system notify) — uses tailParts, leading "…" is dimmed.
 	wb2 := NewWindowBuffer(40, styles)
 	wb2.AppendOrUpdate("SN", "n1", strings.Repeat("very long system notification that will need truncation ", 3))
 	snRendered := wb2.GetAll(-1, false)
@@ -801,7 +645,7 @@ func TestFoldedTextWindowHeadAndTailUpdatesOnDelta(t *testing.T) {
 	// The whole point: as deltas arrive, the collapsed summary keeps the
 	// head (topic) stable and updates the tail (latest content). The
 	// truncation marker sits in the MIDDLE — never at the line start
-	// (that's tailSummary's behavior, used for streaming-tail content).
+	// (that's tailParts's behavior, used for streaming-tail content).
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
@@ -820,7 +664,7 @@ func TestFoldedTextWindowHeadAndTailUpdatesOnDelta(t *testing.T) {
 		t.Errorf("collapsed summary should keep the head (topic), got %q", plain)
 	}
 	// The middle ellipsis sits between head and tail — the line does NOT
-	// begin with "…" (that's tailSummary's behavior).
+	// begin with "…" (that's tailParts's behavior).
 	if strings.HasPrefix(plain, foldArrow+" ASSISTANT       …") {
 		t.Errorf("collapsed summary must not start with a leading ellipsis: %q", plain)
 	}

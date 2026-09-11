@@ -325,3 +325,13 @@ func TestKeyString(t *testing.T) {
 		}
 	}
 }
+
+// HasPending reports whether an incomplete escape sequence is buffered. It is a
+// test-only accessor for the parser's unexported `pending`: the input loop
+// itself arms its silence timeout on MidSequence (which also covers an open
+// paste), while these tests ask the narrower question — "is a marker head held
+// in pending?" — to name the exact state they are asserting. It lives here
+// rather than in key_parser.go because no shipped code path consumes it.
+func (p *InputParser) HasPending() bool {
+	return len(p.pending) > 0
+}

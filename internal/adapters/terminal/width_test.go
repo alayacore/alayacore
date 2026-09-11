@@ -153,7 +153,7 @@ func checkCut(t *testing.T, what, s string, n int, got string, cs []cluster, fro
 		t.Errorf("%s(%q, %d) = %q is not valid UTF-8 — a cluster was split", what, s, n, got)
 	}
 	// How many clusters the result is made of.
-	k := clusterCount(got)
+	k := len(clusters(got))
 	var whole string
 	if fromHead {
 		whole = concatClusters(cs[:k])

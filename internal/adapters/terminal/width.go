@@ -203,11 +203,3 @@ func widestCellCluster(s string) int {
 	}
 	return best
 }
-
-// clusterCount returns the number of grapheme clusters in plain s. A row wider
-// than its budget is only forgivable when it is one cluster (a single CJK
-// glyph in a one-column window); more than one means something was
-// over-filled.
-func clusterCount(s string) int {
-	return len(clusters(s))
-}

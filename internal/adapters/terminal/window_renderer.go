@@ -398,29 +398,10 @@ func (r *textRenderer) TryLineCount(width int) (int, bool) {
 	return 0, false
 }
 
-// tailSummary renders the trailing part of content for a collapsed window:
-// the latest maxWidth display columns, with newlines escaped as the literal
-// two-character "\n" (a collapsed line must stay one visual line — line
-// heights are counted by '\n'). When the content is wider than maxWidth a
-// leading "…" marks the truncation. Multi-byte safe (rune + display width).
-//
-// The truncation marker ("…") is *not* part of the returned string when
-// styled — callers that want to dim the marker should use tailParts and
-// render the marker themselves.
-func tailSummary(content string, maxWidth int) string {
-	// Reserve 1 column for the leading "…" when truncated.
-	tail, truncated := tailParts(content, maxWidth-1)
-	if !truncated {
-		return tail
-	}
-	return "…" + tail
-}
-
-// tailParts is the structured form of tailSummary: returns the tail
-// content (no leading "…") and a flag indicating whether truncation
-// occurred. Callers that need to style the "…" marker differently from
-// the content (e.g. dim vs muted) should use this so they can render
-// each piece with its own Style.
+// tailParts returns the tail of content (no leading "…") and a flag
+// indicating whether truncation occurred. Callers that need to style the
+// "…" marker differently from the content (e.g. dim vs muted) use this so
+// they can render each piece with its own Style.
 //
 // When maxWidth <= 1, returns ("", false) — there's no room for content
 // even without a marker.
@@ -436,9 +417,9 @@ func tailParts(content string, maxWidth int) (string, bool) {
 		return escaped, false
 	}
 	// Take the tail that fits. We deliberately use the FULL maxWidth
-	// here (not maxWidth-1) — callers that prepend a "…" marker should
-	// subtract 1 from their own budget before calling, since we don't
-	// know if they want a marker at all. tailSummary does that adjustment.
+	// here (not maxWidth-1) — callers that prepend a "…" marker subtract
+	// 1 from their own budget before calling (see window_renderer.go),
+	// since we don't know if they want a marker at all.
 	room := maxWidth
 	runes := []rune(escaped)
 	width := 0
@@ -454,54 +435,29 @@ func tailParts(content string, maxWidth int) (string, bool) {
 	return string(runes[start:]), true
 }
 
-// headAndTailSummary renders the leading AND trailing parts of content for
-// a collapsed text window (REASONING / ASSISTANT / USER PROMPT):
+// headAndTailParts returns the leading and trailing parts of content for a
+// collapsed text window (REASONING / ASSISTANT / USER PROMPT) as separate
+// strings, plus a flag indicating whether the content was truncated. The
+// middle "…" marker is not included — callers render it themselves with their
+// own Style, which is what lets the marker be dimmed independently.
 //
-//	first ~40% of maxWidth cols  +  "…"  +  last ~60% of maxWidth cols
+// Layout rule: first ~40% of maxWidth cols, a "…", then the last ~60%. The head
+// conveys the topic of the message ("Here's how to…", "The user is asking
+// about…"), the tail conveys the actual content / punchline. For streaming-tail
+// content (tool deltas, UF snapshots) callers use tailParts instead — there the
+// latest content is the only signal that matters.
 //
-// Split rationale: the head conveys the topic of the message
-// ("Here's how to…", "The user is asking about…"), the tail conveys the
-// actual content / punchline. For long completed text both halves are
-// useful; for streaming-tail content (tool deltas, UF snapshots,
-// attachments) use tailSummary instead — there the latest content is the
-// only signal that matters.
-//
-// Layout (maxWidth cols total):
-//   - maxWidth <= 0  : return ""
+//   - maxWidth <= 0  : return ("", "", false)
 //   - maxWidth <= 2  : render the head only (no room for "…" + tail)
-//   - maxWidth >= 3  : head + "…" + tail, ~40% / ~60% (integer math),
-//     with a hard floor of 1 col on head so we always emit something,
-//     and a floor of 1 col on tail (if head already claims the width,
-//     fall back to "head only").
-//   - if the full content already fits maxWidth cols, return as-is.
+//   - maxWidth >= 3  : head + tail, ~40% / ~60% (integer math), with a hard
+//     floor of 1 col on head so something is always emitted, and a floor of
+//     1 col on tail (if head already claims the width, fall back to head-only)
+//   - if the full content already fits maxWidth cols, head is the whole thing
 //
 // Grapheme-cluster-aware: head and tail are bounded by grapheme cluster
-// boundaries (not runes) via takeCells/tailCells, so multi-codepoint
-// clusters like ZWJ emoji, combining marks, and variation selectors are
-// never split mid-cluster — unlike the per-rune tailSummary above, which
-// is fine for CJK and BMP but can chop multi-rune clusters. The budget and
-// the cut come from the same width table (width.go).
-//
-// The "…" marker is *not* part of the returned string when styled —
-// callers that want to dim the marker should use headAndTailParts and
-// render the marker themselves.
-func headAndTailSummary(content string, maxWidth int) string {
-	head, tail, truncated := headAndTailParts(content, maxWidth)
-	switch {
-	case !truncated:
-		return head
-	case tail == "":
-		// Narrow widths: head only (no room for ellipsis + tail).
-		return head
-	default:
-		return head + "…" + tail
-	}
-}
-
-// headAndTailParts is the structured form of headAndTailSummary: returns
-// the head and tail portions separately, and a flag indicating whether
-// the content was truncated. The middle "…" marker is *not* included in
-// either — callers render it themselves with their own Style.
+// boundaries (not runes) via takeCells/tailCells, so multi-codepoint clusters
+// like ZWJ emoji, combining marks, and variation selectors are never split
+// mid-cluster. The budget and the cut come from the same width table (width.go).
 //
 // When truncated is false, head is the full content and tail is "".
 // When truncated is true and tail is "", the function fell back to head-

@@ -251,35 +251,28 @@ func TestEditorCreateTempFileContent(t *testing.T) {
 }
 
 func TestRenderMultiline(t *testing.T) {
-	// Note: SetColorProfile is no longer needed in v2
-
+	// Style.Render already styles each line of a multi-line string separately
+	// (see style.go and TestStyleRenderPerLineReset, which locks the exact
+	// bytes); this covers a real style from DefaultStyles rather than a raw
+	// one, so a default with no SGR still renders each row.
 	styles := DefaultStyles()
-	// Use an existing style which should produce ANSI codes
 	style := styles.System
-	// First test direct rendering
-	direct := style.Render("test")
-	t.Logf("Direct render: %q, bytes: %v", direct, []byte(direct))
-	hasANSI := strings.Contains(direct, "\x1b[")
-	if !hasANSI {
-		t.Log("Warning: style.Render produced no ANSI codes (maybe color disabled)")
-	}
+
 	text := "line1\nline2\nline3"
-	result := styleMultiline(text, style)
+	result := style.Render(text)
 	lines := strings.Split(result, "\n")
 	if len(lines) != 3 {
-		t.Errorf("Expected 3 lines, got %d", len(lines))
+		t.Fatalf("Expected 3 lines, got %d", len(lines))
 	}
-	// Debug output
+
+	hasANSI := strings.Contains(style.Render("test"), "\x1b[")
+	if !hasANSI {
+		t.Log("Warning: style.Render produced no ANSI codes (maybe color disabled)")
+		return
+	}
 	for i, line := range lines {
-		t.Logf("Line %d: %q", i, line)
-		t.Logf("  bytes: %v", []byte(line))
-	}
-	// Check each line contains ANSI escape sequence if the style produces them
-	if hasANSI {
-		for i, line := range lines {
-			if !strings.Contains(line, "\x1b[") {
-				t.Errorf("Line %d missing ANSI escape sequence: %q", i, line)
-			}
+		if !strings.Contains(line, "\x1b[") {
+			t.Errorf("Line %d missing ANSI escape sequence: %q", i, line)
 		}
 	}
 }

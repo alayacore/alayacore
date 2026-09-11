@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-func TestWrapLines(t *testing.T) {
+func TestWrapVisualLines(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
 		width   int
-		wantMin int // minimum expected lines
+		wantMin int // minimum expected rows
 	}{
 		{"empty", "", 80, 1},
 		{"short", "Hello", 80, 1},
@@ -22,9 +22,9 @@ func TestWrapLines(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lines := wrapLines(tt.content, tt.width)
+			lines := wrapVisualLines(tt.content, tt.width)
 			if len(lines) < tt.wantMin {
-				t.Errorf("wrapLines() returned %d lines, want at least %d", len(lines), tt.wantMin)
+				t.Errorf("wrapVisualLines() returned %d rows, want at least %d", len(lines), tt.wantMin)
 			}
 		})
 	}
@@ -230,55 +230,32 @@ func TestStatusBarTruncatedSeparatorKeepsDimPipe(t *testing.T) {
 	}
 }
 
-func TestIncrementalWrap(t *testing.T) {
+func TestIncrementalWrapVisual(t *testing.T) {
 	width := 80
 
 	// Start with initial content
-	lines := wrapLines("Hello", width)
+	lines := wrapVisualLines("Hello", width)
 	if len(lines) != 1 {
-		t.Errorf("Expected 1 line, got %d", len(lines))
+		t.Errorf("Expected 1 row, got %d", len(lines))
 	}
 
-	// Append to same line (no newline)
-	lines = appendDeltaToLines(lines, " world", width)
+	// Append to same row (no newline)
+	lines = appendDeltaToVisualLines(lines, " world", width)
 	if len(lines) != 1 {
-		t.Errorf("Expected 1 line, got %d", len(lines))
+		t.Errorf("Expected 1 row, got %d", len(lines))
 	}
 
 	// Append with newline
-	lines = appendDeltaToLines(lines, "\nNew line", width)
+	lines = appendDeltaToVisualLines(lines, "\nNew line", width)
 	if len(lines) != 2 {
-		t.Errorf("Expected 2 lines, got %d", len(lines))
+		t.Errorf("Expected 2 rows, got %d", len(lines))
 	}
 }
 
-func TestIncrementalWrapMatchesFullWrap(t *testing.T) {
-	width := 40
-	words := strings.Split("The quick brown fox jumps over the lazy dog and then some more words to make it longer", " ")
-
-	// Full wrap at once
-	fullContent := strings.Join(words, " ")
-	fullLines := wrapLines(fullContent, width)
-
-	// Incremental wrap
-	incrementalLines := []string{}
-	for i, word := range words {
-		if i == 0 {
-			incrementalLines = wrapLines(word, width)
-		} else {
-			incrementalLines = appendDeltaToLines(incrementalLines, " "+word, width)
-		}
-	}
-
-	// Compare results
-	joinedFull := strings.Join(fullLines, "\n")
-	joinedIncremental := strings.Join(incrementalLines, "\n")
-
-	if joinedFull != joinedIncremental {
-		t.Errorf("Incremental wrap differs from full wrap:\nFull: %q\nIncremental: %q",
-			joinedFull, joinedIncremental)
-	}
-}
+// The incremental-vs-full equivalence property is covered exhaustively (tabs,
+// CRLF, CJK, long tokens, ...) by TestIncrementalMatchesFullRewrap in
+// softwrap_incremental_test.go; the line-array variant that used to live here
+// was removed with the wrapLines/appendDeltaToLines API it exercised.
 
 func TestWindowRenderCaching(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
@@ -350,7 +327,7 @@ func BenchmarkFullWrap(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = wrapLines(content, width)
+		_ = wrapVisualLines(content, width)
 	}
 }
 
@@ -359,10 +336,10 @@ func BenchmarkIncrementalWrap(b *testing.B) {
 	delta := "This is a test sentence for wrapping. "
 	width := 80
 
-	lines := wrapLines(baseContent, width)
+	lines := wrapVisualLines(baseContent, width)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		lines = appendDeltaToLines(lines, delta, width)
+		lines = appendDeltaToVisualLines(lines, delta, width)
 	}
 }
