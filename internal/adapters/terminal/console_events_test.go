@@ -22,7 +22,6 @@ package terminal
 import (
 	"bytes"
 	"encoding/binary"
-	"strings"
 	"testing"
 	"unicode/utf16"
 	"unsafe"
@@ -526,7 +525,7 @@ func TestEncodedBracketedPasteSurvivesTheParser(t *testing.T) {
 // — the quietest possible failure, and the reason this is derived from the
 // constants instead of being a list of examples that can drift from them.
 func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
-	bound := []string{
+	bound := []Chord{
 		keyCtrlA, keyCtrlC, keyCtrlD, keyCtrlF, keyCtrlG, keyCtrlH, keyCtrlJ,
 		keyCtrlL, keyCtrlO, keyCtrlP, keyCtrlR, keyCtrlS, keyCtrlU, keyCtrlW, keyCtrlZ,
 	}
@@ -535,12 +534,11 @@ func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
 	}
 
 	for _, chord := range bound {
-		t.Run(chord, func(t *testing.T) {
-			letter, ok := strings.CutPrefix(chord, "ctrl+")
-			if !ok || len(letter) != 1 {
+		t.Run(chord.String(), func(t *testing.T) {
+			r := chord.Code
+			if chord.Mod != ModCtrl || r < 'a' || r > 'z' {
 				t.Fatalf("%q is not a ctrl+<letter> binding this test knows how to build", chord)
 			}
-			r := rune(letter[0])
 			// The event the console reports for Ctrl+<letter>: the key code is
 			// the uppercase letter, and the character is the control code. The
 			// second form is the same chord arriving without a character, which
@@ -563,8 +561,8 @@ func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
 				if !ok {
 					t.Fatalf("msg = %T, want KeyMsg", msgs[0])
 				}
-				if key.String() != chord {
-					t.Errorf("%q arrives as %q, want %q", data, key.String(), chord)
+				if key.Chord() != chord {
+					t.Errorf("%q arrives as %q, want %q", data, key.Chord(), chord)
 				}
 			}
 		})

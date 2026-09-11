@@ -159,7 +159,7 @@ func (ms ModelSelector) Update(msg Msg) (ModelSelector, Cmd) {
 	if !ok {
 		return ms, nil
 	}
-	key := keyMsg.String()
+	key := keyMsg.Chord()
 
 	fl, result := ms.FilteredListCore.HandleKey(keyMsg)
 	ms.FilteredListCore = fl
@@ -207,7 +207,7 @@ func (ms ModelSelector) handleSearchEnter() ModelSelector {
 	return ms
 }
 
-func (ms ModelSelector) handleListKeys(key string) ModelSelector {
+func (ms ModelSelector) handleListKeys(key Chord) ModelSelector {
 	switch key {
 	case keyJ, keyDown:
 		if ms.SelectedIdx < len(ms.filteredModels)-1 {

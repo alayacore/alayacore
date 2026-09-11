@@ -1,77 +1,93 @@
 package terminal
 
-// Key string constants for the terminal UI.
-// All raw key strings used in key handling should be defined here.
-// This ensures a single source of truth for key bindings.
+// Key bindings for the terminal UI, as structured chords (Code + Mod).
+//
+// A binding is a Chord, never a string: the parser produces a KeyMsg, whose
+// Chord() is the key's identity, and every handler switches on that. Strings are
+// for rendering and tests (Key.String), not for deciding what a key means — a
+// mistyped string literal is a binding that silently never fires, which is what
+// this file exists to make impossible.
+//
+// This is the single source of truth for the chords the UI binds.
 
-import "github.com/alayacore/alayacore/internal/commands"
+import (
+	"github.com/alayacore/alayacore/internal/commands"
+)
 
+// Navigation and editing keys.
+var (
+	keyUp        = Chord{Code: KeyUp}
+	keyDown      = Chord{Code: KeyDown}
+	keyLeft      = Chord{Code: KeyLeft}
+	keyRight     = Chord{Code: KeyRight}
+	keyTab       = Chord{Code: KeyTab}
+	keyEnter     = Chord{Code: KeyEnter}
+	keyEsc       = Chord{Code: KeyEscape}
+	keySpace     = Chord{Code: KeySpace}
+	keyHome      = Chord{Code: KeyHome}
+	keyEnd       = Chord{Code: KeyEnd}
+	keyPgUp      = Chord{Code: KeyPgUp}
+	keyPgDown    = Chord{Code: KeyPgDown}
+	keyF1        = Chord{Code: KeyF1}
+	keyBackspace = Chord{Code: KeyBackspace}
+	keyDelete    = Chord{Code: KeyDelete}
+)
+
+// Letter keys. An uppercase letter is the chord a terminal reports for
+// shift+<letter> — the modifier never reaches the program, the case does.
+var (
+	keyJ      = Chord{Code: 'j'}
+	keyK      = Chord{Code: 'k'}
+	keyH      = Chord{Code: 'H'}
+	keyL      = Chord{Code: 'L'}
+	keyM      = Chord{Code: 'M'}
+	keyG      = Chord{Code: 'G'}
+	keyB      = Chord{Code: 'b'}
+	keyE      = Chord{Code: 'e'}
+	keyF      = Chord{Code: 'f'}
+	keyQ      = Chord{Code: 'q'}
+	keyR      = Chord{Code: 'r'}
+	keyY      = Chord{Code: 'y'}
+	keyN      = Chord{Code: 'n'}
+	keyGSmall = Chord{Code: 'g'}
+
+	keyYCapital = Chord{Code: 'Y'}
+	keyNCapital = Chord{Code: 'N'}
+	keyJCapital = Chord{Code: 'J'}
+	keyKCapital = Chord{Code: 'K'}
+
+	keyColon = Chord{Code: ':'}
+)
+
+// Shift plus a named key.
+var (
+	keyShiftDown = Chord{Code: KeyDown, Mod: ModShift}
+	keyShiftUp   = Chord{Code: KeyUp, Mod: ModShift}
+)
+
+// Control combinations.
+var (
+	keyCtrlA = Chord{Code: 'a', Mod: ModCtrl}
+	keyCtrlC = Chord{Code: 'c', Mod: ModCtrl}
+	keyCtrlD = Chord{Code: 'd', Mod: ModCtrl}
+	keyCtrlF = Chord{Code: 'f', Mod: ModCtrl}
+	keyCtrlG = Chord{Code: 'g', Mod: ModCtrl}
+	keyCtrlH = Chord{Code: 'h', Mod: ModCtrl}
+	keyCtrlJ = Chord{Code: 'j', Mod: ModCtrl}
+	keyCtrlL = Chord{Code: 'l', Mod: ModCtrl}
+	keyCtrlO = Chord{Code: 'o', Mod: ModCtrl}
+	keyCtrlP = Chord{Code: 'p', Mod: ModCtrl}
+	keyCtrlR = Chord{Code: 'r', Mod: ModCtrl}
+	keyCtrlS = Chord{Code: 's', Mod: ModCtrl}
+	keyCtrlU = Chord{Code: 'u', Mod: ModCtrl}
+	keyCtrlW = Chord{Code: 'w', Mod: ModCtrl}
+	keyCtrlZ = Chord{Code: 'z', Mod: ModCtrl}
+)
+
+// Command names (used with ":" prefix in input). cmdCancel is the
+// session command (shared constant); quit/q/suspend/help are
+// adapter-local controls with no session command behind them.
 const (
-	// Navigation keys
-	keyUp     = "up"
-	keyDown   = "down"
-	keyLeft   = "left"
-	keyRight  = "right"
-	keyTab    = "tab"
-	keyEnter  = "enter"
-	keyEsc    = "esc"
-	keySpace  = "space"
-	keyHome   = "home"
-	keyEnd    = "end"
-	keyPgUp   = "pgup"
-	keyPgDown = "pgdown"
-	keyF1     = "f1"
-
-	// Letter keys (lowercase)
-	keyJ      = "j"
-	keyK      = "k"
-	keyH      = "H"
-	keyL      = "L"
-	keyM      = "M"
-	keyG      = "G"
-	keyB      = "b"
-	keyD      = "d"
-	keyE      = "e"
-	keyF      = "f"
-	keyQ      = "q"
-	keyR      = "r"
-	keyY      = "y"
-	keyN      = "n"
-	keyGSmall = "g"
-
-	// Letter keys (uppercase)
-	keyYCapital = "Y"
-	keyNCapital = "N"
-
-	// Modifier keys
-	keyColon = ":"
-
-	// Shift+Letter
-	keyShiftDown = "shift+down"
-	keyShiftUp   = "shift+up"
-	keyJCapital  = "J"
-	keyKCapital  = "K"
-
-	// Ctrl combinations
-	keyCtrlA = "ctrl+a"
-	keyCtrlC = "ctrl+c"
-	keyCtrlD = "ctrl+d"
-	keyCtrlF = "ctrl+f"
-	keyCtrlG = "ctrl+g"
-	keyCtrlH = "ctrl+h"
-	keyCtrlJ = "ctrl+j"
-	keyCtrlL = "ctrl+l"
-	keyCtrlO = "ctrl+o"
-	keyCtrlP = "ctrl+p"
-	keyCtrlR = "ctrl+r"
-	keyCtrlS = "ctrl+s"
-	keyCtrlU = "ctrl+u"
-	keyCtrlW = "ctrl+w"
-	keyCtrlZ = "ctrl+z"
-
-	// Command names (used with ":" prefix in input). cmdCancel is the
-	// session command (shared constant); quit/q/suspend/help are
-	// adapter-local controls with no session command behind them.
 	cmdQuit    = "quit"
 	cmdQShort  = "q"
 	cmdCancel  = commands.CommandNameCancel

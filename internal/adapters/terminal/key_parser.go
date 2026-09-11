@@ -174,6 +174,19 @@ var keyTypeString = map[rune]string{
 // KeyMsg represents a key event (a key press).
 type KeyMsg interface {
 	String() string
+	// Chord is the key's identity for binding: which key, with which
+	// modifiers. It deliberately excludes Text — Text is how a key is rendered
+	// (shift+a is "A"), not what it is — so a binding matches the same chord
+	// whichever route produced it. Handlers switch on Chord, never on String:
+	// a mistyped string is a binding that silently never fires.
+	Chord() Chord
+}
+
+// Chord is a key's identity: its code and modifier set, and nothing else.
+// Comparable, so it can be a switch/`case` value and a map key.
+type Chord struct {
+	Code rune
+	Mod  KeyMod
 }
 
 // KeyPressMsg is a message that represents a key press.
@@ -181,6 +194,17 @@ type KeyPressMsg Key
 
 // String implements fmt.Stringer.
 func (k KeyPressMsg) String() string { return Key(k).String() }
+
+// Chord implements KeyMsg.
+func (k KeyPressMsg) Chord() Chord { return Key(k).Chord() }
+
+// Chord returns the key's identity (Code + Mod).
+func (k Key) Chord() Chord { return Chord{Code: k.Code, Mod: k.Mod} }
+
+// String renders the chord the way a key with no text would render: "ctrl+a",
+// "shift+up", "enter". For display and test names; binding still compares Code
+// and Mod, never this string.
+func (c Chord) String() string { return Key{Code: c.Code, Mod: c.Mod}.String() }
 
 // compile-time check: KeyPressMsg implements KeyMsg.
 var _ KeyMsg = KeyPressMsg{}

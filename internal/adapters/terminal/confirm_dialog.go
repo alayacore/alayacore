@@ -213,7 +213,7 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, Cmd) {
 	if !ok {
 		return cd, nil
 	}
-	key := keyMsg.String()
+	key := keyMsg.Chord()
 
 	if cd.kind == ConfirmMCPInit {
 		if key == keyCtrlG {

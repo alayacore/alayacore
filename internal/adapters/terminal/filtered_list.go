@@ -166,7 +166,7 @@ type FilteredListResult struct {
 
 // HandleKey processes a key event for the filtered list.
 func (fl FilteredListCore) HandleKey(msg KeyMsg) (FilteredListCore, FilteredListResult) {
-	keyStr := msg.String()
+	keyStr := msg.Chord()
 
 	if keyStr == keyTab {
 		return fl.HandleTabKey(), FilteredListResult{Handled: true}
@@ -180,7 +180,7 @@ func (fl FilteredListCore) HandleKey(msg KeyMsg) (FilteredListCore, FilteredList
 }
 
 // handleFilterFocusedKey handles keys when the filter input is focused.
-func (fl FilteredListCore) handleFilterFocusedKey(msg KeyMsg, key string) (FilteredListCore, FilteredListResult) {
+func (fl FilteredListCore) handleFilterFocusedKey(msg KeyMsg, key Chord) (FilteredListCore, FilteredListResult) {
 	if key == keyEsc {
 		fl.State = FilteredListClosed
 		return fl, FilteredListResult{Handled: true}
@@ -202,7 +202,7 @@ func (fl FilteredListCore) handleFilterFocusedKey(msg KeyMsg, key string) (Filte
 }
 
 // handleListFocusedKey handles keys when the list is focused.
-func (fl FilteredListCore) handleListFocusedKey(key string) (FilteredListCore, FilteredListResult) {
+func (fl FilteredListCore) handleListFocusedKey(key Chord) (FilteredListCore, FilteredListResult) {
 	switch key {
 	case keyQ, keyEsc:
 		fl.State = FilteredListClosed

@@ -81,7 +81,6 @@ func TestInputIsDrainedBeforeOutputBacklog(t *testing.T) {
 	}
 }
 
-
 func TestProgramUpdateAndQuit(t *testing.T) {
 	msgs := make(chan Msg, 4)
 	p, _ := newTestProgram(msgs)

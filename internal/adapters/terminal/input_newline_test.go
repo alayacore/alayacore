@@ -76,7 +76,7 @@ func TestPromptCtrlJInsertsNewlineWithoutSubmitting(t *testing.T) {
 	}
 
 	// Text typed after the break continues on the new line.
-	m, _ = m.handleInputKeys(KeyPressMsg(Key{Text: "b"}))
+	m, _ = m.handleInputKeys(KeyPressMsg(Key{Code: 'b'}))
 	if got := m.input.Value(); got != "\nb" {
 		t.Errorf("value after typing = %q, want %q", got, "\nb")
 	}

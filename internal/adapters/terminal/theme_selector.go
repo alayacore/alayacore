@@ -156,7 +156,7 @@ func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
 	if !ok {
 		return ts, nil
 	}
-	key := keyMsg.String()
+	key := keyMsg.Chord()
 
 	fl, result := ts.FilteredListCore.HandleKey(keyMsg)
 	ts.FilteredListCore = fl
@@ -205,7 +205,7 @@ func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
 	return ts, nil
 }
 
-func (ts ThemeSelector) handleListKeys(key string) ThemeSelector {
+func (ts ThemeSelector) handleListKeys(key Chord) ThemeSelector {
 	switch key {
 	case keyJ, keyDown:
 		if ts.SelectedIdx < len(ts.filteredThemes)-1 {

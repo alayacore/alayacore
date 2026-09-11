@@ -323,11 +323,11 @@ func TestInputFieldCursorNeverClipsWideRune(t *testing.T) {
 			g = g.WithValue(val).CursorEnd()
 			assertCursorRuneVisible(t, g)
 			for p := n - 1; p >= 0; p-- {
-				g, _ = g.handleKeyMsg(KeyPressMsg{Text: "left", Code: 0})
+				g, _ = g.handleKeyMsg(KeyPressMsg{Code: KeyLeft})
 				assertCursorRuneVisible(t, g)
 			}
 			for p := 1; p <= n; p++ {
-				g, _ = g.handleKeyMsg(KeyPressMsg{Text: "right", Code: 0})
+				g, _ = g.handleKeyMsg(KeyPressMsg{Code: KeyRight})
 				assertCursorRuneVisible(t, g)
 			}
 		}

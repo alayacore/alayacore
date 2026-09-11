@@ -36,7 +36,7 @@ func (m Terminal) handleKeyMsg(msg KeyMsg) (Terminal, Cmd) {
 	}
 
 	// Ctrl+Z works from any context, including overlays
-	if msg.String() == keyCtrlZ {
+	if msg.Chord() == keyCtrlZ {
 		return m, Suspend
 	}
 
@@ -51,7 +51,7 @@ func (m Terminal) handleKeyMsg(msg KeyMsg) (Terminal, Cmd) {
 	}
 
 	// Tab toggles focus between display and input
-	if msg.String() == keyTab {
+	if msg.Chord() == keyTab {
 		m = m.toggleFocus()
 		return m, nil
 	}
@@ -90,7 +90,7 @@ func (m Terminal) handleThemeSelectorKeys(msg KeyMsg) (Terminal, Cmd) {
 		// preview). handleThemePreview only applies when the tick's ID
 		// still matches, so bump the counter.
 		m.themePreviewID++
-		key := msg.String()
+		key := msg.Chord()
 		if key == keyQ || key == keyEsc {
 			// Cancel: restore original theme if a different theme was previewed.
 			lastApplied := m.previewAppliedTheme
@@ -314,7 +314,7 @@ func (m Terminal) handleOverlayModelSelector(msg KeyMsg) (Terminal, Cmd) {
 
 // handleMCPInitKeys handles keyboard input when the MCP init overlay is open.
 func (m Terminal) handleMCPInitKeys(msg KeyMsg) (Terminal, Cmd) {
-	if msg.String() == keyCtrlG {
+	if msg.Chord() == keyCtrlG {
 		return m, Batch(
 			m.emitCommand(":"+commands.CommandNameMCPSkip),
 			scheduleTick(),
@@ -459,7 +459,7 @@ func (m Terminal) handleDisplayKeys(msg KeyMsg) (Terminal, Cmd) {
 
 // handleGlobalKeys handles global keyboard shortcuts.
 func (m Terminal) handleGlobalKeys(msg KeyMsg) (Terminal, Cmd, bool) {
-	switch msg.String() {
+	switch msg.Chord() {
 	case keyCtrlG:
 		m = m.openConfirmCancel()
 		m.confirmFromCommand = false
@@ -533,7 +533,7 @@ func (m Terminal) handleRedraw() (Terminal, Cmd) {
 // It processes submit, editor open, attachment, newline, and clear commands,
 // then delegates unrecognized keys to PromptInput.
 func (m Terminal) handleInputKeys(msg KeyMsg) (Terminal, Cmd) {
-	switch msg.String() {
+	switch msg.Chord() {
 	case keyEnter:
 		return m.handleSubmit()
 	case keyCtrlJ:

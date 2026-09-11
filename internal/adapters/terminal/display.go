@@ -69,7 +69,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
 		return m, nil
 	}
 
-	switch keyMsg.String() {
+	switch keyMsg.Chord() {
 	case keyJ, keyDown:
 		m, _ = m.MoveWindowCursorDown()
 		return m.EnsureCursorVisible().updateContent(), nil

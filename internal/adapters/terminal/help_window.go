@@ -238,7 +238,7 @@ func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
 	if !ok {
 		return hw, nil
 	}
-	key := keyMsg.String()
+	key := keyMsg.Chord()
 
 	fl, result := hw.FilteredListCore.HandleKey(keyMsg)
 	hw.FilteredListCore = fl

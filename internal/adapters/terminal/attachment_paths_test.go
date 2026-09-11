@@ -218,7 +218,7 @@ func TestPickerListsTheDirectoryTheInputNames(t *testing.T) {
 // decode to, so the picker tests ride the same path the keyboard does. It fails
 // if the bytes decode to anything other than `want`, which is what keeps the
 // binding honest about the wire form rather than about a hand-built Key.
-func parseKeyBytes(t *testing.T, seq []byte, want string) KeyMsg {
+func parseKeyBytes(t *testing.T, seq []byte, want Chord) KeyMsg {
 	t.Helper()
 	var p InputParser
 	msgs := p.Parse(seq)
@@ -229,7 +229,7 @@ func parseKeyBytes(t *testing.T, seq []byte, want string) KeyMsg {
 	if !ok {
 		t.Fatalf("%q parsed to %T, want KeyPressMsg", seq, msgs[0])
 	}
-	if got := kp.String(); got != want {
+	if got := kp.Chord(); got != want {
 		t.Fatalf("%q reads as %q, want %q", seq, got, want)
 	}
 	return kp

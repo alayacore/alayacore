@@ -58,7 +58,7 @@ func (m PromptInput) Update(msg Msg) (PromptInput, Cmd) {
 		m.width = msg.Width
 		m.input = m.input.WithWidth(max(0, msg.Width))
 	}
-	if keyMsg, ok := msg.(KeyMsg); ok && keyMsg.String() == keyCtrlO {
+	if keyMsg, ok := msg.(KeyMsg); ok && keyMsg.Chord() == keyCtrlO {
 		return m, func() Msg {
 			return openEditorForPromptMsg{content: m.input.Value()}
 		}

@@ -75,7 +75,7 @@ func (m InputField) Update(msg Msg) (InputField, Cmd) {
 }
 
 func (m InputField) handleKeyMsg(msg KeyMsg) (InputField, Cmd) {
-	key := msg.String()
+	key := msg.Chord()
 
 	var handled bool
 	m, handled = m.handleMovement(key)
@@ -95,30 +95,30 @@ func (m InputField) handleKeyMsg(msg KeyMsg) (InputField, Cmd) {
 }
 
 // handleMovement returns true if the key was a cursor movement.
-func (m InputField) handleMovement(key string) (InputField, bool) {
-	switch {
-	case key == "left":
+func (m InputField) handleMovement(key Chord) (InputField, bool) {
+	switch key {
+	case keyLeft:
 		m = m.moveLeft()
-	case key == "right":
+	case keyRight:
 		m = m.moveRight()
-	case key == "up":
+	case keyUp:
 		var ok bool
 		m, ok = m.moveLineUp()
 		if !ok {
 			return m, true
 		}
-	case key == "down":
+	case keyDown:
 		var ok bool
 		m, ok = m.moveLineDown()
 		if !ok {
 			return m, true
 		}
-	case key == "home":
+	case keyHome:
 		m.pos = m.lineStart(m.pos)
 		m.visStart = 0
 		m.goalCol = -1
 		return m.ensureCursorVisible(), true
-	case key == "end":
+	case keyEnd:
 		m.pos = m.lineEnd(m.pos)
 		m.goalCol = -1
 		return m.ensureCursorVisible(), true
@@ -129,11 +129,11 @@ func (m InputField) handleMovement(key string) (InputField, bool) {
 }
 
 // handleDeletion returns true if the key was a deletion action.
-func (m InputField) handleDeletion(key string) (InputField, bool) {
-	switch {
-	case key == "backspace":
+func (m InputField) handleDeletion(key Chord) (InputField, bool) {
+	switch key {
+	case keyBackspace:
 		m = m.deleteBackward()
-	case key == "delete":
+	case keyDelete:
 		m = m.deleteForward()
 	default:
 		return m, false
@@ -141,25 +141,23 @@ func (m InputField) handleDeletion(key string) (InputField, bool) {
 	return m.ensureCursorVisible(), true
 }
 
-// handleInsertion returns true if the key was a character or space insertion.
-// Note: "space" is handled separately because KeyMsg.String() reports the space
-// key as "space" (not " "), so it can't go through printableRune's single-rune
-// check. The filtering policy is the same as handlePaste: both ultimately use
-// isPrintableRune to accept/reject control characters.
-func (m InputField) handleInsertion(key string) (InputField, bool) {
-	if key == "space" {
-		m.value = slices.Insert(m.value, m.pos, ' ')
-		m.pos++
-		m.goalCol = -1
-		return m.ensureCursorVisible(), true
+// handleInsertion returns true if the key inserted a character. A printable
+// character is inserted as itself; space is nothing special — it is the rune
+// 0x20, and isPrintableRune accepts it like any other. The filtering policy is
+// the same as handlePaste: isPrintableRune is the one rule for what text may
+// enter the buffer.
+//
+// The character comes from the chord's Code, not from re-parsing the rendered
+// string: a chord already carries the rune, and going back through String() to
+// recover it was a round trip that could only lose information.
+func (m InputField) handleInsertion(key Chord) (InputField, bool) {
+	if key.Mod != 0 || key.Code >= KeyExtended || !isPrintableRune(key.Code) {
+		return m, false
 	}
-	if r, ok := printableRune(key); ok {
-		m.value = slices.Insert(m.value, m.pos, r)
-		m.pos++
-		m.goalCol = -1
-		return m.ensureCursorVisible(), true
-	}
-	return m, false
+	m.value = slices.Insert(m.value, m.pos, key.Code)
+	m.pos++
+	m.goalCol = -1
+	return m.ensureCursorVisible(), true
 }
 
 // insertNewline inserts a single line break at the cursor. It is the prompt's
@@ -744,17 +742,6 @@ func runeIndexAtWidth(runes []rune, targetWidth int) int {
 
 func isPrintableRune(r rune) bool {
 	return !unicode.IsControl(r) && r != 0x7f
-}
-
-func printableRune(key string) (rune, bool) {
-	if len([]rune(key)) != 1 {
-		return 0, false
-	}
-	r := []rune(key)[0]
-	if !isPrintableRune(r) {
-		return 0, false
-	}
-	return r, true
 }
 
 func truncatePlaceholder(s string, maxWidth int) string {

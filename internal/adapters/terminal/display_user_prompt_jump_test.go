@@ -70,7 +70,7 @@ func TestPressFWithNoPromptBelowKeepsViewportPut(t *testing.T) {
 		t.Fatal("fixture is already seated at the window head; the yank would go undetected")
 	}
 
-	updated, _ := display.Update(KeyPressMsg(Key{Text: "f"}))
+	updated, _ := display.Update(KeyPressMsg(Key{Code: 'f'}))
 
 	if got := updated.GetWindowCursor(); got != cursorBefore {
 		t.Errorf("cursor moved with no prompt below it: %d -> %d", cursorBefore, got)
@@ -94,7 +94,7 @@ func TestPressFFollowingLeavesAutoFollowOn(t *testing.T) {
 	display, _ := buildPromptTranscript(5, 5, 20)
 
 	// G: cursor to the last window and follow it.
-	display, _ = display.Update(KeyPressMsg(Key{Text: "G"}))
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'G'}))
 	display = display.updateContent()
 	if !display.autoFollow {
 		t.Fatal("fixture lost auto-follow; G should have engaged it")
@@ -102,7 +102,7 @@ func TestPressFFollowingLeavesAutoFollowOn(t *testing.T) {
 
 	cursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
 
-	updated, _ := display.Update(KeyPressMsg(Key{Text: "f"}))
+	updated, _ := display.Update(KeyPressMsg(Key{Code: 'f'}))
 
 	if got := updated.GetWindowCursor(); got != cursorBefore {
 		t.Errorf("cursor moved with no prompt below it: %d -> %d", cursorBefore, got)
@@ -125,8 +125,8 @@ func TestPressFRepeatedlyFromLastPromptIsStable(t *testing.T) {
 	display = display.WithWindowCursor(promptIndex(0))
 
 	// First press: to prompt 1. Second: to prompt 2, the last one.
-	display, _ = display.Update(KeyPressMsg(Key{Text: "f"}))
-	display, _ = display.Update(KeyPressMsg(Key{Text: "f"}))
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'f'}))
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'f'}))
 	if got := display.GetWindowCursor(); got != promptIndex(2) {
 		t.Fatalf("expected the cursor on the last prompt (%d), got %d", promptIndex(2), got)
 	}
@@ -135,7 +135,7 @@ func TestPressFRepeatedlyFromLastPromptIsStable(t *testing.T) {
 	// still.
 	cursor, offset := display.GetWindowCursor(), display.YOffset()
 	for range 5 {
-		display, _ = display.Update(KeyPressMsg(Key{Text: "f"}))
+		display, _ = display.Update(KeyPressMsg(Key{Code: 'f'}))
 		if got := display.GetWindowCursor(); got != cursor {
 			t.Fatalf("cursor drifted on a press with nothing to jump to: %d -> %d", cursor, got)
 		}
@@ -155,7 +155,7 @@ func TestPressBWithNoPromptAboveKeepsViewportPut(t *testing.T) {
 
 	cursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
 
-	updated, _ := display.Update(KeyPressMsg(Key{Text: "b"}))
+	updated, _ := display.Update(KeyPressMsg(Key{Code: 'b'}))
 
 	if got := updated.GetWindowCursor(); got != cursorBefore {
 		t.Errorf("cursor moved with no prompt above it: %d -> %d", cursorBefore, got)
@@ -173,7 +173,7 @@ func TestPressFJumpsAndSeatsPromptAtTop(t *testing.T) {
 	display = display.WithWindowCursor(promptIndex(0))
 	display = display.GotoTop().updateContent()
 
-	display, _ = display.Update(KeyPressMsg(Key{Text: "f"}))
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'f'}))
 
 	if got := display.GetWindowCursor(); got != promptIndex(1) {
 		t.Fatalf("f did not advance to the next prompt: cursor %d, want %d", got, promptIndex(1))
@@ -192,7 +192,7 @@ func TestPressBJumpsAndSeatsPromptAtTop(t *testing.T) {
 	display = display.WithWindowCursor(answerIndex(2))
 	display = display.GotoBottom().updateContent()
 
-	display, _ = display.Update(KeyPressMsg(Key{Text: "b"}))
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'b'}))
 
 	if got := display.GetWindowCursor(); got != promptIndex(2) {
 		t.Fatalf("b did not retreat to the previous prompt: cursor %d, want %d", got, promptIndex(2))

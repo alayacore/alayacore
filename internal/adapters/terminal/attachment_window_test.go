@@ -87,7 +87,7 @@ func TestSegmentDeleteKeyIsCtrlW(t *testing.T) {
 	if !ok {
 		t.Fatalf("0x17 parsed to %T, want KeyPressMsg", msgs[0])
 	}
-	if got := killSegment.String(); got != keyCtrlW {
+	if got := killSegment.Chord(); got != keyCtrlW {
 		t.Fatalf("0x17 reads as %q, want %q", got, keyCtrlW)
 	}
 

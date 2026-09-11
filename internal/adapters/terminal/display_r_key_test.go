@@ -35,7 +35,7 @@ func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 
 	// Prime the scroll content (mimics first paint).
 	display = display.WithHeight(20)
-	display, _ = display.Update(KeyPressMsg(Key{Text: "G"})) // goto end + autoscroll
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'G'})) // goto end + autoscroll
 	display = display.updateContent()
 
 	before := display.scrollView.content
@@ -45,7 +45,7 @@ func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 
 	// Press 'r' — should toggle markdown OFF (default is ON for AT) and
 	// rebuild the viewport scroll content with raw (unpadded) rows.
-	display, _ = display.Update(KeyPressMsg(Key{Text: "r"}))
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'r'}))
 	after := display.scrollView.content
 
 	if before == after {
@@ -64,7 +64,7 @@ func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 	}
 
 	// Press 'r' again — should toggle markdown back ON (padded).
-	display, _ = display.Update(KeyPressMsg(Key{Text: "r"}))
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'r'}))
 	back := display.scrollView.content
 
 	if back == after {

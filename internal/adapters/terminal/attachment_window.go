@@ -172,7 +172,7 @@ func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
 		return aw, nil
 	}
 
-	key := msg.String()
+	key := msg.Chord()
 
 	if key == keyCtrlA {
 		return aw.toggleMode(), nil
@@ -242,7 +242,7 @@ func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
 	return aw, nil
 }
 
-func (aw AttachmentWindow) handleLocalModeKeys(filterChanged bool, key string, inputWasFocused bool) AttachmentWindow {
+func (aw AttachmentWindow) handleLocalModeKeys(filterChanged bool, key Chord, inputWasFocused bool) AttachmentWindow {
 	if filterChanged && aw.FilterInputFocused {
 		aw = aw.updateFiltered()
 	}
@@ -352,7 +352,7 @@ func (aw AttachmentWindow) handleSearchEnter() AttachmentWindow {
 	return aw
 }
 
-func (aw AttachmentWindow) handleListKeys(key string) AttachmentWindow {
+func (aw AttachmentWindow) handleListKeys(key Chord) AttachmentWindow {
 	switch key {
 	case keyJ, keyDown:
 		if aw.SelectedIdx < len(aw.filtered)-1 {
