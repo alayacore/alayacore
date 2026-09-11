@@ -615,7 +615,7 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 |------|--------------------------|----------------|
 | `version` | `message_version` (int), `core_version` (string) | `SM-message-version.bin` |
 | `model` | `active_id` (int), `active_name` (string), `context_limit` (int) | `SM-model.bin` |
-| `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.bin` |
+| `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, serial_tool_calls:bool, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.bin` |
 | `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string), `theme` (object, optional — full palette sent on startup, omitted on theme switch) | `SM-theme.bin` |
 | `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, selection, added, removed, tool: string}}`) | `SM-theme-list.bin` |
 | `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.bin` |
@@ -632,7 +632,7 @@ Complete wire values:
 ```
 SM-message-version.bin         {"type":"version","data":{"message_version":11,"core_version":"(set at build time)"}}
 SM-model.bin                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
-SM-model-list.bin              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0}]}}
+SM-model-list.bin              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
 SM-theme.bin                   {"type":"theme","data":{"name":"theme-dark"}}
 SM-theme-list.bin              {"type":"theme_list","data":{"themes":[{"name":"theme-dark","theme":{"primary":"#89d4fa","dim":"#313244","muted":"#6c7086","warning":"#f77923","error":"#f38ba8","selection":"#fab387","added":"#a6e3a1","removed":"#f38ba8","tool":"#f9e2af"}},{"name":"theme-light","theme":{"primary":"#1e66f5","dim":"#ccd0da","muted":"#9ca0b0","warning":"#df8e1d","error":"#d20f39","selection":"#fe640b","added":"#40a02b","removed":"#d20f39","tool":"#df8e1d"}}]}}
 SM-reasoning.bin               {"type":"reasoning","data":{"level":2}}
