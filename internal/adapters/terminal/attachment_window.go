@@ -89,7 +89,7 @@ func (aw AttachmentWindow) Open() AttachmentWindow {
 	aw.mode = modeLocal
 	aw.lastFilterValue = "\x00"
 	aw.FilterInputFocused = true
-	aw.FilterInput = aw.FilterInput.Focus()
+	aw.FilterInput = aw.FilterInput.WithActive(true)
 	aw.FilteredListCore = aw.FilteredListCore.updateFilterInputStyles()
 	aw.ScrollIdx = 0
 	aw.SelectedIdx = 0
@@ -156,11 +156,9 @@ func (aw AttachmentWindow) Update(msg Msg) (AttachmentWindow, Cmd) {
 	case KeyMsg:
 		return aw.updateForKeyMsg(msg)
 	case PasteMsg:
-		if !aw.FilterInputFocused {
-			return aw, nil
-		}
-		aw.FilterInput, _ = aw.FilterInput.Update(msg)
-		if aw.mode == modeLocal {
+		var changed bool
+		aw.FilteredListCore, changed = aw.InsertBlockText(msg.Content)
+		if changed && aw.mode == modeLocal {
 			aw = aw.updateFiltered()
 		}
 		return aw, nil
@@ -186,7 +184,9 @@ func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
 	// ctrl+backspace arrives as ctrl+h (the help window), and the CSI-u forms
 	// that could carry either are ones key_parser.go does not read — see
 	// docs/tui.md, "Why Shift+Enter is not the line break". This program binds
-	// no Alt chords, so ESC-prefixed keys are not an option either. Local mode
+	// no Alt chords — and could not add one on these five bytes even if it
+	// wanted to, since `key_parser.go` holds `ESC ]`/`ESC P`/`ESC X`/`ESC ^`/`ESC _`
+	// as a terminal reply in progress rather than reading them as a chord. Local mode
 	// only, and only while the path input has focus: URL text and the list
 	// itself take the normal keys.
 	if key == keyCtrlW && aw.mode == modeLocal && aw.FilterInputFocused {
@@ -275,7 +275,7 @@ func (aw AttachmentWindow) switchToURL() AttachmentWindow {
 	} else {
 		aw.FilterInput = aw.FilterInput.WithValue("")
 	}
-	aw.FilterInput = aw.FilterInput.Focus()
+	aw.FilterInput = aw.FilterInput.WithActive(true)
 	aw.FilterInputFocused = true
 	aw.FilteredListCore = aw.FilteredListCore.updateFilterInputStyles()
 	return aw
@@ -294,7 +294,7 @@ func (aw AttachmentWindow) switchToLocal() AttachmentWindow {
 		aw = aw.withListedDirValue()
 	}
 	aw = aw.updateFiltered()
-	aw.FilterInput = aw.FilterInput.Focus()
+	aw.FilterInput = aw.FilterInput.WithActive(true)
 	aw.FilterInputFocused = true
 	aw.FilteredListCore = aw.FilteredListCore.updateFilterInputStyles()
 	return aw
@@ -326,7 +326,7 @@ func (aw AttachmentWindow) handleEnter() AttachmentWindow {
 	if entry.isDir {
 		aw.selectedPath = ""
 		aw.FilterInputFocused = true
-		aw.FilterInput = aw.FilterInput.Focus()
+		aw.FilterInput = aw.FilterInput.WithActive(true)
 		aw.FilteredListCore = aw.FilteredListCore.updateFilterInputStyles()
 		aw = aw.autocompleteDir(entry.name)
 		return aw

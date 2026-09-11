@@ -69,7 +69,7 @@ func (ts ThemeSelector) Open(themes []ThemeEntry, activeTheme string) ThemeSelec
 	ts.FilterInput = ts.FilterInput.WithValue("")
 	ts.lastFilterValue = "\x00"
 	ts.FilterInputFocused = true
-	ts.FilterInput = ts.FilterInput.Focus()
+	ts.FilterInput = ts.FilterInput.WithActive(true)
 	ts.FilteredListCore = ts.FilteredListCore.updateFilterInputStyles()
 	ts.ScrollIdx = 0
 	ts.SelectedIdx = 0
@@ -139,6 +139,16 @@ func (ts ThemeSelector) View() View {
 //nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
 func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
 	if ts.State == FilteredListClosed {
+		return ts, nil
+	}
+
+	// A paste is text for the filter box; the re-filter matches typing.
+	if pmsg, isPaste := msg.(PasteMsg); isPaste {
+		var changed bool
+		ts.FilteredListCore, changed = ts.InsertBlockText(pmsg.Content)
+		if changed {
+			ts = ts.updateFilteredThemes()
+		}
 		return ts, nil
 	}
 

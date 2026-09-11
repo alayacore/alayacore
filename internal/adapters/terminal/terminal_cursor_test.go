@@ -128,7 +128,7 @@ func TestTerminalViewThemeOverlayCursor(t *testing.T) {
 	// Open the theme selector directly: openThemeSelector requires a
 	// themeManager, which newTestTerminal doesn't set up.
 	m.themeSelector = m.themeSelector.Open(nil, "")
-	m.input = m.input.Blur()
+	m.input = m.input.WithActive(false)
 
 	box := m.themeSelector.View().Content
 	x0, y0 := overlayOrigin(box, 80, 24)

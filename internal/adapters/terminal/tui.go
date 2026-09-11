@@ -574,18 +574,14 @@ func (m Terminal) handleTick() (Terminal, Cmd) {
 // The confirm overlay (confirmOverlay) handles auth confirm and tool
 // confirm as temporary dialogs on top of the init overlay.
 func (m Terminal) handleMCPOverlays() Terminal {
-	wasOpen := m.mcpInitOverlay.IsOpen()
 	var action OverlayAction
 	m, action = m.handleMCPProgress()
 	if action.CloseInitOverlay {
 		m = m.restoreFocusAfterConfirm()
 	}
 	if action.InitOverlayActive || action.OpenedConfirm {
-		// MCP init overlay just opened — blur input so its border renders
-		// as blurred (empty box) rather than focused but unreachable.
-		if action.InitOverlayActive && !wasOpen {
-			m.input = m.input.Blur()
-		}
+		// A modal owns the screen: the display dims, and the prompt's own
+		// blurred register follows from the keyboard target at render time.
 		m.display = m.display.WithBlocked(true)
 		m.display = m.display.updateContent()
 	}
@@ -628,10 +624,9 @@ func (m Terminal) handleSessionLoadedMsg() (Terminal, Cmd) {
 	// Populate model selector from the now-loaded model list.
 	modelSnap := m.out.SnapshotModels()
 
-	// Blur the input and try to open MCP init overlay immediately.
-	// The input stays blurred (rendered as empty box) until the first
-	// tick determines whether MCP init is needed.
-	m.input = m.input.Blur()
+	// Try to open the MCP init overlay immediately. Whether the prompt paints
+	// as the live box is derived from the keyboard target each frame (View), so
+	// a modal taking the keyboard needs no blur here.
 	m = m.handleMCPOverlays()
 
 	ms, cmd := m.modelSelector.LoadModels(modelSnap.Models, modelSnap.ActiveID)
@@ -812,6 +807,10 @@ func (m Terminal) View() View {
 	// subsequent content lands — only what the soft-wrap row counter
 	// sees, which is what we need.
 	m.input = m.input.WithBlocked(m.isBlocked() || m.postLoading)
+	// The live box, derived rather than stored: an overlay or a modal that owns
+	// the keyboard dims this box and takes the real caret with it, and so does
+	// the window losing OS focus — both painting facts, neither a routing one.
+	m.input = m.input.WithActive(m.keyboardTarget() == targetPrompt && m.hasFocus)
 	inputBoxHeight := m.input.Height()
 	inputBoxY := max(0, m.windowHeight-inputBoxHeight-1) // 0-indexed row of the top rule
 
@@ -877,7 +876,7 @@ func (m Terminal) View() View {
 	// overlays without a text input).
 	if x, y, ok := m.overlayCursorPosition(); ok {
 		v.Cursor = m.newCursor(x, y)
-	} else if m.input.ShowCaret() && !m.isBlocked() {
+	} else if m.input.IsActive() && !m.isBlocked() {
 		// y: the input box's top rule sits at (windowHeight - inputHeight - 1)
 		// — the same expression View uses for inputBoxY. The rows above it
 		// belong to the display region and the live edge, which reach down

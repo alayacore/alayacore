@@ -1,11 +1,28 @@
 package terminal
 
-// Focus management: input/display focus switching, blur/focus handling,
-// and the Terminal-level paste dispatcher that routes PasteMsg into the
-// focused input field. Per-input-field paste handling lives in
-// input_field.go's InputField.handlePaste.
+// Who owns the keyboard, and what the terminal window's focus is worth.
+//
+// Two questions live here, and keeping them apart is the point of the file.
+//
+// **Which box is the user writing into?** has exactly one answer,
+// `keyboardTarget`, derived from state the user changed: the pane they toggled
+// to, the overlay they opened, whether that overlay's filter or list holds the
+// caret, whether a modal has the screen. It is the only thing that decides where
+// a key or a paste goes, and no box gets to answer it for itself — a box that
+// does is a box that can drop input for a reason nobody chose. Per-box text
+// editing lives in `input_field.go` (`InputField.Update`, `handlePaste`).
+//
+// **"is this program's window the focused one?"** is `hasFocus`, reported by the
+// terminal (DEC mode 1004). It is worth the frame and nothing else: it paints
+// borders and text in the blurred register and takes the real caret away (IME
+// anchors on it). It was previously wired into the routing flag as well, and that
+// is the bug this split exists to have prevented — a terminal's own context menu
+// loses the window's focus to hand the clipboard back, so every paste pasted from
+// that menu was deleted in silence.
 //
 // Extracted from tui.go.
+
+import "fmt"
 
 // toggleFocus switches between display and input windows.
 func (m Terminal) toggleFocus() Terminal {
@@ -18,11 +35,12 @@ func (m Terminal) toggleFocus() Terminal {
 	return m
 }
 
-// focusInput switches focus to the input window.
+// focusInput switches the user's target to the prompt. It does not touch how the
+// box paints: View() derives that from the keyboard target and hasFocus every
+// frame, so a routing change and a painting change cannot drift apart.
 func (m Terminal) focusInput() Terminal {
 	m.focusedWindow = focusInput
 	m.display = m.display.WithDisplayFocused(false)
-	m.input = m.input.Focus()
 	return m
 }
 
@@ -30,7 +48,6 @@ func (m Terminal) focusInput() Terminal {
 func (m Terminal) focusDisplay() Terminal {
 	m.focusedWindow = focusDisplay
 	m.display = m.display.WithDisplayFocused(true)
-	m.input = m.input.Blur()
 	if m.display.GetWindowCursor() < 0 {
 		m.display = m.display.WithCursorToLastWindow()
 	}
@@ -40,7 +57,6 @@ func (m Terminal) focusDisplay() Terminal {
 // openModelSelector opens the model selector UI.
 func (m Terminal) openModelSelector() Terminal {
 	m.modelSelector = m.modelSelector.Open()
-	m.input = m.input.Blur()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
@@ -76,7 +92,6 @@ func (m Terminal) openThemeSelector() Terminal {
 			break
 		}
 	}
-	m.input = m.input.Blur()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
@@ -86,7 +101,6 @@ func (m Terminal) openThemeSelector() Terminal {
 // openHelpWindow opens the help window UI.
 func (m Terminal) openHelpWindow() Terminal {
 	m.helpWindow = m.helpWindow.Open()
-	m.input = m.input.Blur()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
@@ -96,7 +110,6 @@ func (m Terminal) openHelpWindow() Terminal {
 // openAttachmentWindow opens the attachment picker overlay.
 func (m Terminal) openAttachmentWindow() Terminal {
 	m.attachmentWindow = m.attachmentWindow.Open()
-	m.input = m.input.Blur()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
@@ -106,7 +119,6 @@ func (m Terminal) openAttachmentWindow() Terminal {
 // openConfirmQuit opens the quit confirmation dialog.
 func (m Terminal) openConfirmQuit() Terminal {
 	m.confirmOverlay = m.confirmOverlay.OpenQuit()
-	m.input = m.input.Blur()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
@@ -116,7 +128,6 @@ func (m Terminal) openConfirmQuit() Terminal {
 // openConfirmCancel opens the cancel-task confirmation dialog.
 func (m Terminal) openConfirmCancel() Terminal {
 	m.confirmOverlay = m.confirmOverlay.OpenCancel()
-	m.input = m.input.Blur()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
@@ -126,7 +137,6 @@ func (m Terminal) openConfirmCancel() Terminal {
 // openConfirmTool opens the tool-execution confirmation dialog.
 func (m Terminal) openConfirmTool(id, toolName, toolInput string) Terminal {
 	m.confirmOverlay = m.confirmOverlay.OpenTool(id, toolName, toolInput)
-	m.input = m.input.Blur()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
@@ -135,34 +145,27 @@ func (m Terminal) openConfirmTool(id, toolName, toolInput string) Terminal {
 
 func (m Terminal) openConfirmMCPAuth(server, url string) Terminal {
 	m.confirmOverlay = m.confirmOverlay.OpenMCPAuth(server, url)
-	m.input = m.input.Blur()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
 	return m
 }
 
-// handleBlur handles loss of application focus.
-//
-// The prompt is asked for its *window* focus, not for its focus: the two are
-// different things and only one of them is a reason to ignore input. A terminal
-// window loses focus to its own context menu, and the menu then puts the
-// clipboard into the pty while that loss is still the state of things — a blur
-// that gated the input path threw the paste away (the overlay filter boxes never
-// gated it, which is why the same menu paste worked in one box and not the
-// other). Keys and pastes arriving here came from this program's terminal, so
-// they go where the user's own focus says; what the blur is allowed to change is
-// the drawing.
+// handleBlur handles loss of application focus. It paints and nothing more: each
+// selector below is asked for its blurred register and loses the real caret, the
+// display dims, and the keyboard target is left exactly as the user set it. That
+// split is the whole lesson of the reported bug — the only thing that can deliver
+// input while the window is unfocused is something addressed to this program (the
+// terminal's own menu handing back a paste is the everyday case), so a focus
+// change may not be a reason to discard what arrives. The two dialogs need no
+// line here: their frame state comes from the target, which a blur never moves.
 func (m Terminal) handleBlur() Terminal {
 	m.hasFocus = false
 	m.display = m.display.WithBlocked(m.isBlocked())
 	m.display = m.display.WithDisplayFocused(false)
-	m.input = m.input.WithWindowFocus(false)
 	m.modelSelector = m.modelSelector.WithFocus(false)
 	m.themeSelector = m.themeSelector.WithFocus(false)
 	m.helpWindow = m.helpWindow.WithFocus(false)
-	m.confirmOverlay = m.confirmOverlay.WithFocus(false)
-	m.mcpInitOverlay = m.mcpInitOverlay.WithFocus(false)
 	m.attachmentWindow = m.attachmentWindow.WithFocus(false)
 	m.display = m.display.updateContent()
 	return m
@@ -172,12 +175,9 @@ func (m Terminal) handleBlur() Terminal {
 func (m Terminal) handleFocus() Terminal {
 	m.hasFocus = true
 	m.display = m.display.WithBlocked(m.isBlocked())
-	m.input = m.input.WithWindowFocus(true)
 	m.modelSelector = m.modelSelector.WithFocus(true)
 	m.themeSelector = m.themeSelector.WithFocus(true)
 	m.helpWindow = m.helpWindow.WithFocus(true)
-	m.confirmOverlay = m.confirmOverlay.WithFocus(true)
-	m.mcpInitOverlay = m.mcpInitOverlay.WithFocus(true)
 	m.attachmentWindow = m.attachmentWindow.WithFocus(true)
 
 	if m.modelSelector.IsOpen() ||
@@ -199,14 +199,138 @@ func (m Terminal) handleFocus() Terminal {
 	return m
 }
 
-// handlePaste handles clipboard paste events.
+// handlePaste routes a block of text the terminal delivered as one unit
+// (bracketed paste; the editor handoff has its own path) to the box that owns the
+// keyboard. The three answers are the three targets that can take text, and the
+// silence of the rest is deliberate:
+//
+//   - the prompt, or an open overlay's filter box, takes it;
+//   - a list with the caret (Tab moved there) has no text box, so a paste is
+//     discarded rather than moved out from under the user's target;
+//   - the display pane and a modal discard it for the same reason — the keys that
+//     belong there are commands, not text.
+//
+// Discarding is a decision, not a fallback: it is made in one place, from state
+// the user set, and not by whichever box happens to have been told to look
+// inactive. `input_routing_test.go` pins the whole table.
 func (m Terminal) handlePaste(msg PasteMsg) (Terminal, Cmd) {
-	if m.attachmentWindow.IsOpen() {
+	switch m.keyboardTarget() {
+	case targetPrompt:
+		var cmd Cmd
+		m.input, cmd = m.input.Update(msg)
+		return m, cmd
+
+	case targetOverlayFilter:
+		// (b) the open overlay's own box — whichever overlay that is, so the
+		// answer is the same in all four.
+		return m.pasteIntoOverlay(msg)
+
+	default:
+		return m, nil
+	}
+}
+
+// pasteIntoOverlay hands the block to the overlay that owns the keyboard, and
+// re-runs whatever filtering that overlay does on a value change. Each overlay
+// keeps its own item logic; what it no longer keeps is a decision about whether
+// it is the target.
+func (m Terminal) pasteIntoOverlay(msg PasteMsg) (Terminal, Cmd) {
+	switch {
+	case m.attachmentWindow.IsOpen():
 		aw, cmd := m.attachmentWindow.Update(msg)
 		m.attachmentWindow = aw
 		return m, cmd
+	case m.modelSelector.IsOpen():
+		ms, cmd := m.modelSelector.Update(msg)
+		m.modelSelector = ms
+		return m, cmd
+	case m.themeSelector.IsOpen():
+		ts, cmd := m.themeSelector.Update(msg)
+		m.themeSelector = ts
+		return m, cmd
+	case m.helpWindow.IsOpen():
+		hw, cmd := m.helpWindow.Update(msg)
+		m.helpWindow = hw
+		return m, cmd
 	}
-	var cmd Cmd
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
+	return m, nil
+}
+
+// inputTarget is the single answer to "which box owns the keyboard".
+type inputTarget int
+
+const (
+	// targetNothing is the loading screen: no box exists yet to own anything,
+	// so keys and pastes are discarded rather than queued for a box that is not
+	// drawn.
+	targetNothing inputTarget = iota
+	// targetPrompt is the prompt box, the only text box outside an overlay.
+	targetPrompt
+	// targetDisplay is the scrollback pane: commands, no text.
+	targetDisplay
+	// targetOverlayFilter is an open overlay's filter box.
+	targetOverlayFilter
+	// targetOverlayList is an open overlay's list: arrows and Enter, no text.
+	targetOverlayList
+	// targetModal is a yes/no dialog, which answers its own keys only.
+	targetModal
+)
+
+// String names the target for a failure line. A switch rather than an array
+// indexed by the value, because a target added later would turn a diagnostic into
+// a panic at the moment a test was trying to explain itself.
+func (t inputTarget) String() string {
+	switch t {
+	case targetNothing:
+		return "nothing"
+	case targetPrompt:
+		return "prompt"
+	case targetDisplay:
+		return "display"
+	case targetOverlayFilter:
+		return "overlay-filter"
+	case targetOverlayList:
+		return "overlay-list"
+	case targetModal:
+		return "modal"
+	}
+	return fmt.Sprintf("inputTarget(%d)", int(t))
+}
+
+// keyboardTarget resolves the owner of the keyboard from state the user changed
+// and nothing else. Priority order is the dispatch order in handleKeyMsg: a
+// modal, then a selector overlay (which is where the text can be), then the pane
+// the user toggled to. Loading is first because the screen has no boxes on it.
+//
+// It is a function rather than a field so that there is no second copy of the
+// answer to disagree with the first: every component that needs it asks, and the
+// painting of a box asks too (View derives PromptInput's register from here), so
+// routing and rendering cannot drift apart the way they did when a blur wrote
+// both.
+func (m Terminal) keyboardTarget() inputTarget {
+	switch {
+	case m.loading:
+		return targetNothing
+	case m.confirmOverlay.IsOpen() || m.mcpInitOverlay.IsOpen():
+		return targetModal
+	case m.attachmentWindow.IsOpen():
+		return m.overlayFilterOrList(m.attachmentWindow.FilterInputFocused)
+	case m.modelSelector.IsOpen():
+		return m.overlayFilterOrList(m.modelSelector.FilterInputFocused)
+	case m.themeSelector.IsOpen():
+		return m.overlayFilterOrList(m.themeSelector.FilterInputFocused)
+	case m.helpWindow.IsOpen():
+		return m.overlayFilterOrList(m.helpWindow.FilterInputFocused)
+	case m.focusedWindow == focusDisplay:
+		return targetDisplay
+	default:
+		return targetPrompt
+	}
+}
+
+func (m Terminal) overlayFilterOrList(filter bool) inputTarget {
+	if filter {
+		return targetOverlayFilter
+	}
+	return targetOverlayList
 }

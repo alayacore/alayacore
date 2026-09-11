@@ -25,7 +25,7 @@ func TestOverlayBoxStableAcrossTabFocus(t *testing.T) {
 			name: "model selector",
 			open: func(m Terminal) Terminal {
 				m.modelSelector = m.modelSelector.Open().WithSize(80, 24)
-				m.input = m.input.Blur()
+				m.input = m.input.WithActive(false)
 				return m
 			},
 			view: func(m Terminal) string { return m.modelSelector.View().Content },
@@ -34,7 +34,7 @@ func TestOverlayBoxStableAcrossTabFocus(t *testing.T) {
 			name: "theme selector",
 			open: func(m Terminal) Terminal {
 				m.themeSelector = m.themeSelector.Open(nil, "").WithSize(80, 24)
-				m.input = m.input.Blur()
+				m.input = m.input.WithActive(false)
 				return m
 			},
 			view: func(m Terminal) string { return m.themeSelector.View().Content },
@@ -43,7 +43,7 @@ func TestOverlayBoxStableAcrossTabFocus(t *testing.T) {
 			name: "attachment picker",
 			open: func(m Terminal) Terminal {
 				m.attachmentWindow = m.attachmentWindow.Open().WithSize(80, 24)
-				m.input = m.input.Blur()
+				m.input = m.input.WithActive(false)
 				return m
 			},
 			view: func(m Terminal) string { return m.attachmentWindow.View().Content },

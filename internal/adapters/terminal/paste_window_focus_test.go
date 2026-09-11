@@ -108,28 +108,58 @@ func TestPaneFocusStillDecidesWhereAPasteGoes(t *testing.T) {
 // TestWindowBlurKeepsTheVisualCue: giving up the input gate must not also give
 // up the cue. An unfocused window draws no real caret (IME anchors on it) and
 // draws its prompt in the blurred register.
+//
+// Both answers are read off the *frame*, never off a flag: the live-box state is
+// derived from the keyboard target and the window focus when Terminal.View runs,
+// so a test that set a field by hand would be asserting the fixture rather than
+// the behavior — which is how the old pair of flags drifted in the first place.
 func TestWindowBlurKeepsTheVisualCue(t *testing.T) {
 	m := newTestTerminal()
-	if m.View().Cursor == nil {
+	focused := m.View()
+	if focused.Cursor == nil {
 		t.Fatal("the fixture starts with no caret to lose")
 	}
-	focused := m.input.View().Content
 
-	m = m.focusInput()
-	m.input = m.input.WithWindowFocus(false)
-	if m.View().Cursor != nil {
+	feed(t, &m, BlurMsg{})
+	blurred := m.View()
+	if blurred.Cursor != nil {
 		t.Error("the real caret stayed on the screen while the window was unfocused")
 	}
-	if m.input.View().Content == focused {
-		t.Error("the prompt rendered identically focused and unfocused; the blur is invisible")
+	if blurred.Content == focused.Content {
+		t.Error("the frame rendered identically focused and unfocused; the blur is invisible")
 	}
 
-	// The focus returning puts both back, without help from anything else.
 	feed(t, &m, FocusMsg{})
-	if m.View().Cursor == nil {
+	back := m.View()
+	if back.Cursor == nil {
 		t.Error("the caret did not come back with the window focus")
 	}
-	if got := m.input.View().Content; got != focused {
-		t.Error("the prompt did not come back to its focused register with the window focus")
+	if back.Content != focused.Content {
+		t.Error("the frame did not come back with the window focus")
+	}
+}
+
+// TestOverlayFilterCueFollowsTheWindowToo: the prompt and an open overlay's box
+// must answer the window's focus the same way, because that is the asymmetry the
+// report was made of. The overlay keeps its caret while unfocused only if the
+// window has it — and keeps taking text either way.
+func TestOverlayFilterCueFollowsTheWindowToo(t *testing.T) {
+	m := newTestTerminal()
+	feed(t, &m, KeyPressMsg{Code: 'a', Mod: ModCtrl}) // the picker, in local mode
+	feed(t, &m, KeyPressMsg{Code: 'a', Mod: ModCtrl}) // and Ctrl+A again: URL mode
+	if got := m.keyboardTarget(); got != targetOverlayFilter {
+		t.Fatalf("target with the attachment picker open = %v, want the filter box", got)
+	}
+	if m.View().Cursor == nil {
+		t.Fatal("the overlay filter should own the caret while the window is focused")
+	}
+
+	feed(t, &m, BlurMsg{})
+	if m.View().Cursor != nil {
+		t.Error("the overlay kept the real caret while the window was unfocused")
+	}
+	feed(t, &m, PasteMsg{Content: "x"})
+	if m.attachmentWindow.FilterInput.Value() != "x" {
+		t.Error("the overlay filter stopped taking text when the window lost focus")
 	}
 }

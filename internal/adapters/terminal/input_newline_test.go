@@ -36,7 +36,7 @@ func keyCtrlJMsg() KeyMsg { return KeyPressMsg(Key{Code: 'j', Mod: ModCtrl}) }
 // filter box would put a newline into the filter string, where it can never
 // match an item, instead of leaving the filter alone.
 func TestInputFieldCtrlJNotHandledGenerically(t *testing.T) {
-	f := NewInputField().Focus().WithWidth(20)
+	f := NewInputField().WithWidth(20)
 	f = f.WithValue("ab").CursorEnd()
 
 	after, _ := f.Update(keyCtrlJMsg())
@@ -54,7 +54,7 @@ func TestInputFieldCtrlJNotHandledGenerically(t *testing.T) {
 // printableRune check, which is why pasting multi-line text on a host without
 // bracketed paste produced one long glued line.
 func TestInputFieldLoneNewlineIsDropped(t *testing.T) {
-	f := NewInputField().Focus().WithWidth(20)
+	f := NewInputField().WithWidth(20)
 
 	after, _ := f.Update(keyCtrlJMsg())
 	if after.Value() != "" {
@@ -104,7 +104,7 @@ func TestPromptEnterStillSubmits(t *testing.T) {
 // leave the caret on an empty line) and wrong for an explicit request to break
 // the line.
 func TestInputFieldLoneNewlinePasteIsTrimmed(t *testing.T) {
-	f := NewInputField().Focus().WithWidth(20)
+	f := NewInputField().WithWidth(20)
 
 	if after := f.handlePaste(PasteMsg{Content: "\n"}); after.Value() != "" {
 		t.Errorf("lone-newline paste produced %q, want the field left empty", after.Value())
@@ -118,7 +118,7 @@ func TestInputFieldLoneNewlinePasteIsTrimmed(t *testing.T) {
 // TestInputFieldInsertNewline covers the primitive: content, cursor position,
 // the goalCol reset, insertion at an arbitrary offset, and repeated presses.
 func TestInputFieldInsertNewline(t *testing.T) {
-	f := NewInputField().Focus().WithWidth(20).
+	f := NewInputField().WithWidth(20).
 		WithValue("ab").CursorEnd()
 	f.goalCol = 7 // a stale up/down goal column from earlier line navigation
 
@@ -135,7 +135,7 @@ func TestInputFieldInsertNewline(t *testing.T) {
 
 	// Insert at an arbitrary offset: the break lands at the cursor and splits
 	// the line.
-	g := NewInputField().Focus().WithWidth(20).
+	g := NewInputField().WithWidth(20).
 		WithValue("abcdef").WithCursorPos(2).insertNewline()
 	if g.Value() != "ab\ncdef" {
 		t.Errorf("mid-value insert = %q, want %q", g.Value(), "ab\ncdef")
@@ -147,7 +147,7 @@ func TestInputFieldInsertNewline(t *testing.T) {
 	// Repeated presses stack lines: the multi-line value the field is built
 	// for (up/down navigate lines) is reachable without a terminal that
 	// supports bracketed paste.
-	h := NewInputField().Focus().WithWidth(20).
+	h := NewInputField().WithWidth(20).
 		WithValue("x").CursorEnd().
 		insertNewline().insertNewline().insertNewline()
 	if h.Value() != "x\n\n\n" {
@@ -225,8 +225,8 @@ func TestBlockText(t *testing.T) {
 func TestBlockTextIsTheRuleForBothBlockSources(t *testing.T) {
 	content := "one\r\ntwo\r\n\tthree\x00\r\n"
 
-	pasted := NewInputField().Focus().WithWidth(20).handlePaste(PasteMsg{Content: content})
-	edited := NewInputField().Focus().WithWidth(20).WithValue(string(blockText(content)))
+	pasted := NewInputField().WithWidth(20).handlePaste(PasteMsg{Content: content})
+	edited := NewInputField().WithWidth(20).WithValue(string(blockText(content)))
 
 	if pasted.Value() != edited.Value() {
 		t.Errorf("block text diverged: paste gave %q, editor gave %q", pasted.Value(), edited.Value())

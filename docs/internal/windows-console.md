@@ -349,9 +349,16 @@ Covered by tests that run there:
 - `paste_window_focus_test.go` — that the window's OS-level focus is a rendering
   state and not an input gate: a paste and a keystroke arriving while the app is
   blurred land in the box the user was writing into, in the prompt and in an
-  overlay filter alike, the caret and the colors still go blurred, and the pane
-  focus is what keeps a paste out of a box that is not the user's target.
-  Build-tagged for nothing.
+  overlay filter alike, and the cue is still there — caret gone, frame blurred —
+  read off the rendered frame rather than off a flag a test pokes, because the
+  live-box state is derived at render. Build-tagged for nothing.
+- `input_routing_test.go` — the routing model as one table: ten states (prompt,
+  display, loading, each overlay's filter, an overlay's list, a modal) crossed
+  with a paste and a typed character, each paste row repeated with the window
+  focused and unfocused. It asserts the *delta* of every text box, so a row cannot
+  pass because its overlay silently failed to open — which is what the companion
+  `keyboardTarget` check is for, and what caught two such fixtures while this was
+  being written. Build-tagged for nothing.
 - `program_input_unix_test.go` — that the real Unix source keeps the promise the
   protocol is built on: it is between reads within one poll timeout, and the
   terminal is left alone while parked.

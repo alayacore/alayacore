@@ -340,9 +340,7 @@ func TestInputFieldCursorNeverClipsWideRune(t *testing.T) {
 // corrupted startIdx (cursorIdx is gone now, but the visible-text logic
 // remains).
 func TestInputFieldViewCursorPosition(t *testing.T) {
-	f := NewInputField()
-	f.WithWidth(20)
-	f.Focus()
+	f := NewInputField().WithWidth(20)
 
 	// Type "hello" through Update calls
 	keys := []string{"h", "e", "l", "l", "o"}
@@ -368,7 +366,7 @@ func TestInputFieldViewCursorPosition(t *testing.T) {
 	}
 
 	// Blurred rendering must also be cursor-free.
-	if strings.Contains(f.Blur().View(), "\x1b[48") {
+	if strings.Contains(f.WithActive(false).View(), "\x1b[48") {
 		t.Error("blurred view must not paint a cursor cell")
 	}
 }
@@ -592,7 +590,7 @@ func TestInputFieldIgnoresEscapeKeys(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := NewInputField().Focus().WithWidth(40)
+			f := NewInputField().WithWidth(40)
 			after, _ := f.Update(KeyPressMsg(tt.key))
 			if got := after.Value(); got != "" {
 				t.Errorf("key %q inserted %q into the prompt; only printable text may be inserted",
@@ -603,7 +601,7 @@ func TestInputFieldIgnoresEscapeKeys(t *testing.T) {
 
 	// The control: a printable key still inserts, so the test above cannot pass
 	// by the field ignoring everything.
-	f := NewInputField().Focus().WithWidth(40)
+	f := NewInputField().WithWidth(40)
 	after, _ := f.Update(KeyPressMsg{Code: 'a'})
 	if after.Value() != "a" {
 		t.Errorf("printable key inserted %q, want %q", after.Value(), "a")

@@ -131,7 +131,7 @@ func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
 
 	// Focus the search input first (simulates user pressing Tab to focus search)
 	ms.FilterInputFocused = true
-	ms.FilterInput = ms.FilterInput.Focus()
+	ms.FilterInput = ms.FilterInput.WithActive(true)
 	ms.updateFilterInputStyles()
 
 	// Type in search input

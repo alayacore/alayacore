@@ -72,7 +72,12 @@ func (fl FilteredListCore) WithStyles(styles *Styles) FilteredListCore {
 	return fl.updateFilterInputStyles()
 }
 
-// Set list focus state for visual styling.
+// WithFocus records the terminal window's OS-level focus for this list: the
+// blurred border register and the real caret, which an unfocused window gives up
+// because IME anchors on it. It is not a routing state — which box takes text is
+// Terminal.keyboardTarget, and a list that looks blurred still filters as the
+// user types (AttachmentWindow and the other selectors would otherwise stop
+// answering to a menu that stole the focus).
 func (fl FilteredListCore) WithFocus(hasFocus bool) FilteredListCore {
 	fl.HasFocus = hasFocus
 	return fl.updateFilterInputStyles()
@@ -117,13 +122,28 @@ func (fl FilteredListCore) updateFilterInputStyles() FilteredListCore {
 	return fl
 }
 
+// InsertBlockText puts a block of text — a bracketed paste — into the filter
+// box, and reports whether the value changed so the owner can re-run its own
+// filtering, the same way its key path reacts to FilterChanged.
+//
+// It is on the core rather than on each overlay because all four owe the user the
+// same answer, and three of them had quietly not given it: an overlay's Update
+// read only KeyMsg, so a paste into the model, theme or help filter vanished.
+// Whether this box is the target at all is not asked here — the caller resolved
+// that once (Terminal.keyboardTarget), which is the whole point of the split.
+func (fl FilteredListCore) InsertBlockText(content string) (FilteredListCore, bool) {
+	before := fl.FilterInput.Value()
+	fl.FilterInput = fl.FilterInput.handlePaste(PasteMsg{Content: content})
+	return fl, before != fl.FilterInput.Value()
+}
+
 // HandleTabKey toggles focus between the filter input and the list.
 func (fl FilteredListCore) HandleTabKey() FilteredListCore {
 	fl.FilterInputFocused = !fl.FilterInputFocused
 	if fl.FilterInputFocused {
-		fl.FilterInput = fl.FilterInput.Focus()
+		fl.FilterInput = fl.FilterInput.WithActive(true)
 	} else {
-		fl.FilterInput = fl.FilterInput.Blur()
+		fl.FilterInput = fl.FilterInput.WithActive(false)
 	}
 	return fl.updateFilterInputStyles()
 }

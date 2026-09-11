@@ -49,11 +49,10 @@ const (
 //	Dependencies  — pointers to shared data (Styles).
 type ConfirmDialog struct {
 	// ── Elm UI state (value types, copied on every WithXxx) ─
-	state    FilteredListState
-	kind     ConfirmKind
-	hasFocus bool
-	Width    int
-	Height   int
+	state  FilteredListState
+	kind   ConfirmKind
+	Width  int
+	Height int
 
 	Description string
 
@@ -89,10 +88,6 @@ func (cd ConfirmDialog) WithStyles(styles *Styles) ConfirmDialog {
 }
 
 // SetHasFocus sets the focus state for styling.
-func (cd ConfirmDialog) WithFocus(focused bool) ConfirmDialog {
-	cd.hasFocus = focused
-	return cd
-}
 
 // Kind returns the type of confirmation dialog currently active.
 func (cd ConfirmDialog) Kind() ConfirmKind { return cd.kind }

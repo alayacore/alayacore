@@ -123,11 +123,21 @@ window's focus while it is open and writes the clipboard into the pty before tha
 focus comes back. Gating the input path on the blur made "Paste" from that menu
 delete the block silently, while a middle-click paste — no menu, no blur — worked,
 and the same menu paste worked in the attachment window's URL box, whose filter
-gated on the pane only. So the blur blurs the drawing
-(`tui_focus.go` → `handleBlur`, `prompt_input.go` → `windowFocused`) and never the
-input path: text from the terminal goes to the box the user is writing into, and
-`paste_window_focus_test.go` pins both halves of that, including the caret still
-disappearing.
+gated on the pane only.
+
+So the routing answer lives in exactly one place, derived from state the user
+changed and nothing else: `Terminal.keyboardTarget` (`tui_focus.go`) resolves
+prompt / display / overlay filter / overlay list / modal / loading, and every text
+message is dispatched once against it. No box carries a flag that both routes its
+input and paints its frame — that pair of jobs on one bool is what let a
+cosmetic event (the commit that added focus handling said "to dim UI") delete a
+paste for two years. The window's focus is now worth painting only: the blurred
+border and text register, and the real caret (`View` derives
+`PromptInput.WithActive` from target and focus each frame, so the two can never
+drift). Which means `input_routing_test.go` can hold the whole model as a table:
+ten states × paste and typed text × window focused and unfocused, and the states
+that take nothing are discarded because that is a decision the table records, not
+because a box happened to be looking inactive.
 
 A terminal that does not implement mode 2004 gives the program no markers, and
 there is no way to ask for them: `GetConsoleMode` succeeds on every Windows
@@ -266,7 +276,7 @@ arrives as `Ctrl+H` (which opens the help window here), and the encodings that
 could tell them apart — the kitty keyboard protocol's `ESC [ 127 ; 2 u`, xterm's
 `modifyOtherKeys` — are the ones [documented
 below](#why-shiftenter-is-not-the-line-break) as not read by `key_parser.go`.
-Alt-prefixed keys would survive the trip, and this program binds none. `Ctrl+W`
+An Alt-prefixed key does survive the trip — as `ESC` plus the character — for every character that cannot begin a terminal reply, and for nothing else (`key_parser.go` holds `ESC ]`, `ESC P`, `ESC X`, `ESC ^`, `ESC _` as replies in progress, which is affordable precisely because no Alt chord is bound). `Ctrl+W`
 is what readline uses to kill the word before the cursor, and in a path box the
 word is the segment. It is bound in this picker only; the prompt's own `Ctrl+W`
 does nothing.

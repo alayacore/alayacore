@@ -128,7 +128,7 @@ func (ms ModelSelector) Open() ModelSelector {
 	ms.FilterInput = ms.FilterInput.WithValue("")
 	ms.lastFilterValue = "\x00"
 	ms.FilterInputFocused = true
-	ms.FilterInput = ms.FilterInput.Focus()
+	ms.FilterInput = ms.FilterInput.WithActive(true)
 	ms.FilteredListCore = ms.FilteredListCore.updateFilterInputStyles()
 	ms.ScrollIdx = 0
 	ms = ms.updateFilteredModels()
@@ -140,6 +140,18 @@ func (ms ModelSelector) Open() ModelSelector {
 //nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
 func (ms ModelSelector) Update(msg Msg) (ModelSelector, Cmd) {
 	if ms.State == FilteredListClosed {
+		return ms, nil
+	}
+
+	// A paste is text for the filter box, not a key: the list navigation it
+	// would otherwise trigger is not wanted, and the re-filter is the same one
+	// typing a character causes.
+	if pmsg, isPaste := msg.(PasteMsg); isPaste {
+		var changed bool
+		ms.FilteredListCore, changed = ms.InsertBlockText(pmsg.Content)
+		if changed {
+			ms = ms.updateFilteredModels()
+		}
 		return ms, nil
 	}
 

@@ -27,7 +27,13 @@ type InputField struct {
 	width       int // visible width (cells)
 	Prompt      string
 	Placeholder string
-	focused     bool
+	// active is which register the box paints in: the live one pads its value
+	// to the full width and renders with the focused styles. It is a rendering
+	// fact and nothing else — whether text arrives here is decided by whoever
+	// owns the keyboard (Terminal.keyboardTarget), never by the box. A box used
+	// to answer that question for itself, which is how a window losing OS focus
+	// (a state that decides only painting) could delete a paste.
+	active bool
 
 	styleFocused inputFieldStyle
 	styleBlurred inputFieldStyle
@@ -44,7 +50,7 @@ func NewInputField() InputField {
 	return InputField{
 		width:   20,
 		Prompt:  "> ",
-		focused: true,
+		active:  true,
 		goalCol: -1,
 	}
 }
@@ -52,11 +58,13 @@ func NewInputField() InputField {
 // Init implements Model.
 func (m InputField) Init() Cmd { return nil }
 
-// Update implements Model.
+// Update implements Model. It accepts what it is handed: an InputField is a
+// buffer, not a gate, and deciding whether this box is the user's target is the
+// owner's job (see Terminal.keyboardTarget). The owners reach it only for their
+// own target — PromptInput.Update from the input's dispatch, FilteredListCore
+// from a filter that the same dispatch already chose — so a message that should
+// not land here is never sent here in the first place, rather than dropped here.
 func (m InputField) Update(msg Msg) (InputField, Cmd) {
-	if !m.focused {
-		return m, nil
-	}
 	switch msg := msg.(type) {
 	case KeyMsg:
 		return m.handleKeyMsg(msg)
@@ -366,11 +374,11 @@ func (m InputField) View() string {
 	var v string
 	v += styleText(string(visible))
 
-	if !m.focused {
+	if !m.active {
 		return m.promptRender() + v
 	}
 
-	// When focused, pad with spaces to fill the input width.
+	// The live box pads to fill the input width.
 	// Width comes from the same source as the truncation/cursor math
 	// (runesWidth), so padding never disagrees with the rendered text.
 	valWidth := runesWidth(visible)
@@ -428,7 +436,7 @@ func (m InputField) placeholderView() string {
 		placeholder = truncatePlaceholder(placeholder, m.width-1)
 	}
 	v += styles.Placeholder.Inline(true).Render(placeholder)
-	if !m.focused {
+	if !m.active {
 		return m.promptRender() + v
 	}
 	// v contains styled (ANSI) text; measure the plain pieces instead:
@@ -442,23 +450,20 @@ func (m InputField) placeholderView() string {
 }
 
 func (m InputField) activeStyle() inputFieldStyle {
-	if m.focused {
+	if m.active {
 		return m.styleFocused
 	}
 	return m.styleBlurred
 }
 
-func (m InputField) Focus() InputField {
-	m.focused = true
+// WithActive says whether this box is the live one, for painting. See the field.
+func (m InputField) WithActive(active bool) InputField {
+	m.active = active
 	return m
 }
 
-func (m InputField) Blur() InputField {
-	m.focused = false
-	return m
-}
-
-func (m InputField) IsFocused() bool { return m.focused }
+// IsActive reports the painting state WithActive set.
+func (m InputField) IsActive() bool { return m.active }
 
 func (m InputField) Value() string { return string(m.value) }
 

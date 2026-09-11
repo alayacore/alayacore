@@ -54,7 +54,7 @@ Terminal (value type, root model)
 │   ├── openEditorForPromptMsg → open editor (prompt content)
 │   ├── focusInputWithValueMsg → focus input and insert text
 │   ├── OverlayClosedMsg  → restoreFocus
-│   ├── PasteMsg   → handlePaste (attachment window or input)
+│   ├── PasteMsg   → handlePaste (by keyboardTarget: prompt | overlay filter | discarded)
 │   ├── BlurMsg    → handleBlur
 │   ├── FocusMsg   → handleFocus
 │   ├── WindowSize → handleWindowSize

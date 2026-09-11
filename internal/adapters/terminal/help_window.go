@@ -161,7 +161,7 @@ func (hw HelpWindow) Open() HelpWindow {
 	hw.FilterInput = hw.FilterInput.WithValue("")
 	hw.lastFilterValue = "\x00"
 	hw.FilterInputFocused = true
-	hw.FilterInput = hw.FilterInput.Focus()
+	hw.FilterInput = hw.FilterInput.WithActive(true)
 	hw.FilteredListCore = hw.FilteredListCore.updateFilterInputStyles()
 	hw.ScrollIdx = 0
 	hw = hw.updateFilteredItems()
@@ -224,6 +224,16 @@ func (hw HelpWindow) filteredLen() int {
 
 //nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
 func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
+	// A paste is text for the filter box; the re-filter matches typing.
+	if pmsg, isPaste := msg.(PasteMsg); isPaste {
+		var changed bool
+		hw.FilteredListCore, changed = hw.InsertBlockText(pmsg.Content)
+		if changed {
+			hw = hw.updateFilteredItems()
+		}
+		return hw, nil
+	}
+
 	keyMsg, ok := msg.(KeyMsg)
 	if !ok {
 		return hw, nil
