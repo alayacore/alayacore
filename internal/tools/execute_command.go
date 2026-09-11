@@ -138,6 +138,20 @@ func runCommand(ctx context.Context, args ExecuteCommandInput, dir string, stdou
 		exitCode = shell.ExitCodeFromProcessState(cmd.ProcessState)
 	}
 
+	// The command context — not exec.Cmd's error — is the authority on why the
+	// child stopped. The per-call timeout is a deadline on execCtx, so a
+	// timeout surfaces from cmd.Wait as a signal-kill error ("signal: killed"),
+	// while execCtx.Err() is context.DeadlineExceeded. Classifying here, where
+	// that context is in scope, is what lets a timeout be reported as one; a
+	// caller holding only the parent ctx sees Err()==nil on the timeout path
+	// and cannot tell a timeout from an outward kill.
+	switch {
+	case errors.Is(execCtx.Err(), context.DeadlineExceeded):
+		execErr = fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded)
+	case errors.Is(execCtx.Err(), context.Canceled):
+		execErr = fmt.Errorf("%w: %w", ErrCanceled, execCtx.Err())
+	}
+
 	return exitCode, execErr
 }
 
@@ -152,7 +166,7 @@ func executeCommand(ctx context.Context, args ExecuteCommandInput) ([]llm.Conten
 	defer stderr.Close()
 
 	exitCode, execErr := runCommand(ctx, args, dir, stdout, stderr)
-	return commandResult(ctx, stdout, stderr, exitCode, execErr)
+	return handleCommandOutput(stdout, stderr, exitCode, execErr)
 }
 
 // ============================================================================
@@ -360,7 +374,7 @@ func executeCommandStreaming(ctx context.Context, args ExecuteCommandInput, onDe
 	exitCode, execErr := runCommand(ctx, args, dir, sw, errWriter{sw})
 	sw.flushPreview() // command finished — emit the final snapshot
 
-	return commandResult(ctx, sw.buf, sw.errBuf, exitCode, execErr)
+	return handleCommandOutput(sw.buf, sw.errBuf, exitCode, execErr)
 }
 
 // ErrCanceled and ErrTimeout classify why a tool stopped early. Tools used to
@@ -372,18 +386,6 @@ var (
 	ErrCanceled = errors.New("canceled")
 	ErrTimeout  = errors.New("timed out")
 )
-
-// commandResult is the shared tail of the buffered and streaming command
-// paths: it classifies a cancellation/timeout, then renders the output.
-func commandResult(ctx context.Context, stdout, stderr *capture, exitCode int, execErr error) ([]llm.ContentPart, error) {
-	switch {
-	case ctx.Err() != nil:
-		execErr = fmt.Errorf("%w: %w", ErrCanceled, ctx.Err())
-	case errors.Is(execErr, context.DeadlineExceeded):
-		execErr = fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded)
-	}
-	return handleCommandOutput(stdout, stderr, exitCode, execErr)
-}
 
 func handleCommandOutput(stdout, stderr *capture, exitCode int, execErr error) ([]llm.ContentPart, error) {
 	// The common case: nothing spilled to disk and the formatted output still

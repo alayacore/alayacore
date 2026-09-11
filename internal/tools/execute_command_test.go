@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -87,6 +88,29 @@ func TestExecuteCommandTimeout(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("command was not terminated within timeout")
+	}
+}
+
+func TestExecuteCommandConfiguredTimeoutIsErrTimeout(t *testing.T) {
+	// The timeout a user actually configures is --command-timeout, which lands
+	// on the per-command context inside runCommand — not on the caller's ctx.
+	// It must still be classified as ErrTimeout: the exec error alone is a
+	// signal kill ("signal: killed"), indistinguishable from an outward kill.
+	orig := shell.DefaultCommandTimeout
+	defer func() { shell.DefaultCommandTimeout = orig }()
+	shell.DefaultCommandTimeout = 300 * time.Millisecond
+
+	_, err := executeCommand(context.Background(), ExecuteCommandInput{
+		Command: "sleep 60",
+	})
+	if err == nil {
+		t.Fatal("expected error for a command that outlives --command-timeout")
+	}
+	if !errors.Is(err, ErrTimeout) {
+		t.Errorf("error = %v, want errors.Is(err, ErrTimeout)", err)
+	}
+	if !strings.HasPrefix(err.Error(), "timed out") {
+		t.Errorf("message = %q, want it to start with 'timed out'", err.Error())
 	}
 }
 
