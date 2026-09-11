@@ -1,6 +1,9 @@
 package terminal
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Terminal replies the program can receive without having asked for them must
 // be consumed whole and never delivered as keys. These tests pin that by the
@@ -81,36 +84,99 @@ func TestKeyParserDropsStringControls(t *testing.T) {
 	}
 }
 
-// TestKeyParserAltChordsSurvive is the other half of the contract: consuming a
-// reply must not cost the chord that shares its introducer. Alt+<, Alt+] and
-// Alt+P are `ESC <`, `ESC ]` and `ESC P` — the same bytes the replies start
-// with — and are only recognized as replies when what follows is one.
-func TestKeyParserAltChordsSurvive(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want []string
-	}{
-		{"alt+< then letter", "\x1b<a", []string{"alt+<", "a"}},
-		{"alt+] then letters", "\x1b]abc", []string{"alt+]", "a", "b", "c"}},
-		{"alt+P then digits", "\x1bP12", []string{"alt+P", "1", "2"}},
-		{"alt+X then letters", "\x1bXy", []string{"alt+X", "y"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+// TestKeyParserAltChordsAndHeldControls is the other half of the contract, and
+// the half that decides what the parser may not do: a byte behind `ESC` is read
+// as a chord only where it cannot be the start of a reply.
+//
+// `ESC <` is not an introducer — an SGR mouse report is `CSI <`, so its `<`
+// arrives behind `ESC [` and parses as a parameter — so Alt+< is still Alt+<.
+// The other five bytes are introducers, and an unterminated one is *held* for the
+// next read rather than resolved to a chord: that is what keeps a reply a read
+// boundary cut from typing its own body. Those five are therefore never
+// Alt+<char>, which is a trade this program can afford — keys.go binds no Alt
+// chord at all, so the chord on the other side of the trade is a key name no
+// handler would ever read.
+func TestKeyParserAltChordsAndHeldControls(t *testing.T) {
+	t.Run("chords that are not introducers survive", func(t *testing.T) {
+		tests := []struct {
+			in   string
+			want []string
+		}{
+			{"\x1b<a", []string{"alt+<", "a"}},
+			{"\x1ba", []string{"alt+a"}},
+			{"\x1b\x1b[A", []string{"alt+up"}},
+		}
+		for _, tt := range tests {
 			var p InputParser
-			var got []string
-			for _, m := range p.Parse([]byte(tt.in)) {
-				got = append(got, m.(KeyPressMsg).String())
+			msgs := p.Parse([]byte(tt.in))
+			if len(msgs) != len(tt.want) {
+				t.Fatalf("Parse(%q) = %d messages %#v, want %v", tt.in, len(msgs), msgs, tt.want)
 			}
-			if len(got) != len(tt.want) {
-				t.Fatalf("Parse(%q) = %v, want %v", tt.in, got, tt.want)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("Parse(%q)[%d] = %q, want %q", tt.in, i, got[i], tt.want[i])
+			for i, m := range msgs {
+				if got := m.(KeyPressMsg).String(); got != tt.want[i] {
+					t.Errorf("Parse(%q)[%d] = %q, want %q", tt.in, i, got, tt.want[i])
 				}
 			}
-		})
-	}
+			if p.HasPending() {
+				t.Errorf("Parse(%q) left bytes pending", tt.in)
+			}
+		}
+	})
+
+	t.Run("introducers are held until their terminator", func(t *testing.T) {
+		// The head alone, then the body and its terminator in the next read —
+		// the shape a boundary produces. Nothing may be delivered either way,
+		// and nothing may be left pending once the control has been closed.
+		tests := []struct {
+			name string
+			head string
+			tail string
+		}{
+			{"osc bel", "\x1b]52;c;", "aGVsbG8=\x07"},
+			{"osc st", "\x1b]0;title", "\x1b\\"},
+			{"dcs", "\x1bP1+r6d", "6978\x1b\\"},
+			{"sos", "\x1bXpay", "load\x1b\\"},
+			{"pm", "\x1b^pay", "load\x1b\\"},
+			{"apc", "\x1b_pay", "load\x1b\\"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var p InputParser
+				if msgs := p.Parse([]byte(tt.head)); len(msgs) != 0 {
+					t.Errorf("Parse(%q) produced %#v, want the control held as incomplete", escBytes(tt.head), msgs)
+				}
+				if !p.HasPending() {
+					t.Errorf("Parse(%q) resolved the head instead of holding it; its body would arrive as typing", escBytes(tt.head))
+				}
+				if msgs := p.Parse([]byte(tt.tail)); len(msgs) != 0 {
+					t.Errorf("then Parse(%q) produced %#v, want the reply consumed whole", escBytes(tt.tail), msgs)
+				}
+				if p.HasPending() {
+					t.Errorf("the closed control left %q pending", p.pending)
+				}
+			})
+		}
+	})
+
+	t.Run("a control that never terminates is dropped, not typed", func(t *testing.T) {
+		var p InputParser
+		if msgs := p.Parse([]byte("\x1b]11;rgb:1e1e/1e1e")); len(msgs) != 0 {
+			t.Fatalf("an unterminated reply produced %#v", msgs)
+		}
+		if msgs := p.Flush(); len(msgs) != 0 {
+			t.Errorf("Flush resolved the reply into %#v, want it dropped", msgs)
+		}
+		if p.HasPending() {
+			t.Error("Flush left the dropped reply pending")
+		}
+		// And what the user types afterwards is a key, not a reply's tail.
+		if msgs := p.Parse([]byte("k")); len(msgs) != 1 || msgs[0].(KeyPressMsg).String() != "k" {
+			t.Errorf("after the drop, %q arrived as %#v, want the key k", "k", msgs)
+		}
+	})
+}
+
+// escBytes names control bytes in a failure line.
+func escBytes(s string) string {
+	return strings.NewReplacer("\x1b", "E", "\x07", "BEL").Replace(s)
 }

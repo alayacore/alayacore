@@ -393,9 +393,17 @@ func consumeEscape(data []byte) (string, int, bool) {
 	switch data[1] {
 	case '[': // CSI
 		// X10 mouse is the one CSI whose length its final byte does not
-		// give: `CSI M` carries three raw coordinate bytes after it.
-		if n, ok := consumeX10Mouse(data); ok {
+		// give: `CSI M` carries three raw coordinate bytes after it. A read
+		// boundary inside those three must not resolve `CSI M` as a complete
+		// (and meaningless) CSI — the coordinates would then be delivered as
+		// keystrokes, which is the same garbage as a report with its head
+		// dropped. So a head is held, like any other cut sequence.
+		n, whole, coming := consumeX10Mouse(data)
+		if whole {
 			return string(data[:n]), n, true
+		}
+		if coming {
+			return "", 0, false
 		}
 		return consumeCSI(data)
 	case 'O': // SS3
@@ -403,13 +411,23 @@ func consumeEscape(data []byte) (string, int, bool) {
 	case ']', 'P', 'X', '^', '_':
 		// String-type controls: OSC (ESC ]), DCS (ESC P), SOS (ESC X),
 		// PM (ESC ^), APC (ESC _). These are terminal *replies* (a color, a
-		// capability, a clipboard read), and their bodies are exactly the
-		// text that must never reach the prompt. Consume through the
-		// terminator when it is here (BEL or ST for OSC, ST for the rest);
-		// when it is not, this is Alt+<char> and falls through below.
+		// capability, a clipboard read), and the point of reading one as a
+		// sequence is that no part of its body may reach the prompt. So an
+		// unterminated one is held, never resolved: the next read brings the
+		// terminator (program_input.go keeps reading while a sequence is
+		// outstanding and arms its timeout on every byte), and the one that
+		// never terminates is dropped by the silence timeout as the unknown
+		// sequence it is.
+		//
+		// These five bytes are therefore never Alt+<char>. That costs nothing:
+		// this program binds no Alt chord at all (keys.go has none, and
+		// attachment_window.go records the same fact where it explains why a
+		// box binds a control byte instead), while the alternative — resolving
+		// the head early — is a reply's body arriving as typing.
 		if n, ok := consumeStringControl(data); ok {
 			return string(data[:n]), n, true
 		}
+		return "", 0, false
 	}
 	// ESC + printable rune → Alt+key.
 	if data[1] >= 0x20 && data[1] != 0x7f {
@@ -436,10 +454,16 @@ func consumeEscape(data []byte) (string, int, bool) {
 const stringTerminator = "\x1b\\"
 
 // consumeStringControl consumes an OSC/DCS/SOS/PM/APC sequence through its
-// terminator, and reports whether one was there to find. It deliberately does
-// not guess: without a terminator in hand, `ESC ]` is Alt+] (which is how a
-// terminal sends that chord) and the bytes after it are ordinary input, so the
-// caller's Alt+key path is the honest answer for that case.
+// terminator, and reports whether the terminator is already in hand.
+//
+// When it is not, the caller holds the sequence rather than resolving it: an
+// unterminated `ESC ]` is not read as Alt+], because the bytes that follow a
+// reply's introducer are the reply's body and the prompt must never see them.
+// The choice is made for the introducer as a class, so it does not depend on
+// where a read boundary fell — which is the whole failure this closes (see
+// key_parser_read_invariance_test.go). A control that never terminates is
+// dropped by the loop's silence timeout, and no Alt chord is bound
+// (keys.go), so nothing waits on the other reading of those five bytes.
 func consumeStringControl(data []byte) (int, bool) {
 	body := data[2:]
 	end := -1
@@ -467,20 +491,31 @@ func consumeStringControl(data []byte) (int, bool) {
 // is silent: a coordinate byte read as a CSI final is a key nobody pressed.
 const x10MouseLen = 6
 
-// consumeX10Mouse consumes an X10 mouse report — `CSI M` followed by three raw
-// bytes — as one sequence, and reports whether this is one.
+// consumeX10Mouse measures an X10 mouse report — `CSI M` followed by three raw
+// coordinate bytes — and says which of three cases `data` is.
 //
-// The three bytes are why this exists: `CSI M` is a complete-looking sequence
-// whose length the final byte does not give, so without this the parser drops
-// the `CSI M` and lets the coordinates through as keystrokes. They are taken
-// only when all three are already in hand: an incomplete `CSI M` is not worth
-// holding the next three keystrokes for, and mouse reporting being off
-// (screen.go → mouseReportingOff) is what makes that trade safe.
-func consumeX10Mouse(data []byte) (int, bool) {
-	if len(data) < x10MouseLen || data[2] != 'M' {
-		return 0, false
+// whole: all six bytes are here, so the report is consumed as one sequence.
+// Without this the parser would drop the `CSI M` (a complete-looking CSI whose
+// final byte names no key it knows) and deliver the coordinates as keystrokes.
+//
+// coming: `ESC [ M` is here and its coordinates are not, all or part of them
+// being in the next read. The caller holds it, which is what keeps a report a
+// read boundary cut from typing its own body — the failure program_input.go
+// exists to prevent. Holding is cheap now that the loop keeps reading while a
+// sequence is outstanding and re-arms its timeout on every byte: the cost is at
+// most a few bytes of a report that never finishes, and mouse reporting being
+// off (screen.go → mouseReportingOff) is what makes even that unreachable
+// rather than merely unlikely.
+//
+// Neither: not an X10 report, and the CSI grammar decides (consumeCSI).
+func consumeX10Mouse(data []byte) (n int, whole, coming bool) {
+	if len(data) < x10MouseLen {
+		return 0, false, len(data) >= 3 && data[2] == 'M'
 	}
-	return x10MouseLen, true
+	if data[2] != 'M' {
+		return 0, false, false
+	}
+	return x10MouseLen, true, false
 }
 
 // consumeCSI parses "\x1b[...<final>" where final is a letter or '~'.
@@ -510,9 +545,12 @@ func consumeSS3(data []byte) (string, int, bool) {
 // replies consumeEscape recognizes (mouse reports, the string controls) — which
 // the caller drops (paste start is handled by the caller too).
 //
-// Alt+key semantics (matching uv): ESC followed by a single character is
-// Alt+that character ("\x1ba" → alt+a); ESC followed by a full escape
-// sequence is that sequence ("\x1b[A" → up; "\x1b\x1b[A" → alt+up).
+// Alt+key semantics (matching uv), with one narrowing that is this program's
+// own: ESC followed by a single character is Alt+that character ("\x1ba" →
+// alt+a), and ESC followed by a full escape sequence is that sequence
+// ("\x1b[A" → up; "\x1b\x1b[A" → alt+up). Not Alt are the five bytes that can
+// begin a string control — ] P X ^ _ — which consumeEscape holds instead
+// (consumeStringControl), because their other reading is a reply's body.
 func escapeKey(seq string) (Key, bool) {
 	if len(seq) == 1 {
 		return Key{Code: KeyEscape}, true

@@ -100,6 +100,20 @@ func TestCutSequenceCompletesOnTheNextRead(t *testing.T) {
 			want: nil,
 		},
 		{
+			// X10 is the CSI whose length its final byte does not give, so a
+			// boundary inside the coordinates is the cut most likely to be
+			// read as a key: `CSI M` looks finished and the bytes after it are
+			// the report's own coordinates.
+			name: "x10 mouse cut after the final byte",
+			read: [][]byte{[]byte("\x1b[M"), []byte(" !#")},
+			want: nil,
+		},
+		{
+			name: "x10 mouse cut mid-coordinates",
+			read: [][]byte{[]byte("\x1b[M !"), []byte("#\x1b[M !!\x1b[0;1m")},
+			want: nil,
+		},
+		{
 			// An arrow cut after `ESC [` must still be the arrow, not a stray
 			// capital A.
 			name: "arrow key",
@@ -117,6 +131,20 @@ func TestCutSequenceCompletesOnTheNextRead(t *testing.T) {
 			want: []string{"blur"},
 		},
 		{
+			// A string control's body is the text that must never reach the
+			// prompt, and the introducer is the byte that says so — see
+			// key_parser_read_invariance_test.go for why holding it is the
+			// only answer that does not depend on where the boundary fell.
+			name: "osc reply cut mid-body",
+			read: [][]byte{[]byte("\x1b]11;rgb:1e1e/"), []byte("1e1e/1e1e\x07")},
+			want: nil,
+		},
+		{
+			name: "dcs reply cut before its terminator",
+			read: [][]byte{[]byte("\x1bP1+r6d6978"), []byte("\x1b\\")},
+			want: nil,
+		},
+		{
 			name: "bracketed paste, start marker cut",
 			read: [][]byte{[]byte("\x1b[200~hel"), []byte("lo\x1b[201~")},
 			want: []string{"paste:hello"},
@@ -130,8 +158,7 @@ func TestCutSequenceCompletesOnTheNextRead(t *testing.T) {
 			name: "bracketed paste, end marker cut",
 			read: [][]byte{[]byte("\x1b[200~hello\x1b[20"), []byte("1~")},
 			want: []string{"paste:hello"},
-		},
-	}
+		}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := collectInput(t, tt.read...)

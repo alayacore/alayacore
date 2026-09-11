@@ -182,10 +182,22 @@ is ordinary text — which is the part the mode reset, not the parser, has to pr
 The other replies a terminal sends without being asked are consumed by the same
 rule: the X10 mouse report (`CSI M` plus three coordinate bytes the final byte
 does not delimit) and the OSC/DCS/SOS/PM/APC string controls, whose bodies are a
-color, a capability or a clipboard read. A reply is recognized as one only where
-it is unambiguous — the CSI is complete, the string control reached its
-terminator — so the Alt chords that share those bytes (`ESC <`, `ESC ]`, `ESC P`)
-still work.
+color, a capability or a clipboard read. Recognition does not depend on where the
+boundary fell, because an introducer whose sequence has not finished is *held*
+rather than resolved: `ESC [ M` with fewer than its six bytes, and `ESC ]`, `ESC P`,
+`ESC X`, `ESC ^`, `ESC _` without their terminator, are incomplete sequences the
+next read completes, exactly as a cut `CSI` is. What never completes is dropped by
+the loop's silence timeout. The alternative — resolving the head early to whatever
+else it could mean — is the leak this rule closes, because the only other meaning
+of those five bytes is a chord, and the program binds no Alt chord at all
+(`keys.go`; see `tui.md` on the `Ctrl+W` choice, which is the same fact from the
+binding side). `ESC <` is not an introducer — an SGR report's `<` arrives behind
+`ESC [` as a parameter — so Alt+< is still a chord, and `escapeKey` still names it.
+`key_parser_read_invariance_test.go` states the whole rule as the property it is:
+every stream in the corpus, read in runs of every length, must deliver what the
+same bytes read at once deliver. Before that test existed it failed on every
+string control in the corpus: `ESC ]11;rgb:…BEL` arriving a byte at a time typed
+`alt+] 1 1 ; r g b : …` into the prompt.
 
 The same read boundary falls inside a *paste* the way it falls inside a report,
 and there it is the worse of the two cases. Paste content is read without looking
@@ -296,9 +308,20 @@ Covered by tests that run there:
   changed on.
 - `key_parser_reports_test.go` — that a terminal reply the program never asked
   for is consumed rather than typed: both mouse encodings (including the X10 rows
-  whose coordinate byte would otherwise read as an arrow key), the
-  OSC/DCS/SOS/PM/APC string controls, and the Alt chords that share their
-  introducers. Build-tagged for nothing.
+  whose coordinate byte would otherwise read as an arrow key) and the
+  OSC/DCS/SOS/PM/APC string controls, each both whole and split across reads. The
+  Alt half of the contract is narrower than it was: `ESC <` is still a chord (it
+  is no introducer), while `ESC ]`, `ESC P`, `ESC X`, `ESC ^` and `ESC _` are held
+  as a reply in progress and dropped if they never terminate — a trade the tree
+  can make because no Alt chord is bound. Build-tagged for nothing.
+- `key_parser_read_invariance_test.go` — the rule those two files assert case by
+  case, stated once as a property: every stream in the corpus (both mouse
+  encodings, every string control, both paste markers, chords, keys, plain text,
+  and streams that end mid-sequence) parsed in reads of every length must
+  deliver exactly what the same bytes deliver parsed at once, the silence flush
+  included. It is the test that would have found the reported mouse bug and the
+  split paste marker without anyone guessing which byte a boundary would fall
+  on. Build-tagged for nothing.
 - `input_field_test.go` → `TestInputFieldIgnoresEscapeKeys` — the field's half of
   the same contract: a key that is not text inserts nothing, which is why an ESC
   that reaches the prompt is invisible rather than stored.
@@ -308,11 +331,14 @@ Covered by tests that run there:
   finished. Also build-tagged for nothing, so the Windows job runs these against
   the loop it used to be unable to park.
 - `program_input_cut_test.go` — that a sequence a read boundary cuts in half is
-  completed by the next read instead of flushed: the mouse report at three cut
-  offsets, an arrow cut after `ESC [`, a focus and a blur report, and a bracketed
-  paste at both of its markers. The failure it pins is the reported one — the
-  tail arriving as typing — and it is also where the timeout is pinned: a lone
-  Escape is `esc`, and only after the timeout, measured rather than raced.
+  completed by the next read instead of flushed, at the offsets that matter: the
+  SGR report at three cuts, the X10 report cut after its final byte and again
+  mid-coordinate (with a second report and an urxvt release behind the split, so
+  the residue cannot be read as keys), an arrow cut after `ESC [`, a focus and a
+  blur report, an OSC reply cut mid-body, a DCS cut before its terminator, and a
+  bracketed paste at both of its markers. The failure it pins is the reported one
+  — the tail arriving as typing — and it is also where the timeout is pinned: a
+  lone Escape is `esc`, and only after the timeout, measured rather than raced.
   Build-tagged for nothing, so it runs on every platform.
 - `key_parser_paste_cut_test.go` — the paste's own half of that rule, at the
   parser: the same stream cut at every byte offset and delivered in reads of
