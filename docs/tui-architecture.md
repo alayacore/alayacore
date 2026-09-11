@@ -29,7 +29,7 @@ type Cmd func() Msg  // not data — an opaque function
 |--------|-----|------------|-------------|
 | Cmd | Data (inspectable record) | `func() Msg` (opaque) | Runtime cannot inspect Cmd; renders before executing it |
 | Msg dispatch | Sum types, exhaustive | `interface{}` + type switch | No compiler guarantee |
-| Same-frame Cmd | Yes — runtime recurses before render | No — renders first, executes Cmd after | Continuous UI events must bypass Cmd to avoid 1-frame delay |
+| Same-frame effect | Yes — runtime recurses before render | Cmd runs after render | UI transitions are reported as `Result` values and folded in the same Update; `Cmd` carries only I/O |
 
 ## Architecture Overview
 
@@ -37,40 +37,39 @@ type Cmd func() Msg  // not data — an opaque function
 Terminal (value type, root model)
 ├── Update(msg Msg) → (Model, Cmd)     ← single entry point
 │
-├── Dispatches messages to components:
-│   ├── KeyMsg  → handleKeyMsg
-│   │   ├── overlay active → overlay.Update(msg)
-│   │   ├── Tab → toggleFocus
-│   │   ├── global shortcut → handleGlobalKeys
-│   │   └── focus-specific
-│   │       ├── display → DisplayModel.Update(msg)  ← delegates all display keys
-│   │       └── input   → PromptInput.Update(msg)   ← delegates all input keys
-│   ├── ThemeSelectedMsg  → emit theme_set command
-│   ├── ModelSelectedMsg  → emit model_set command
-│   ├── ConfirmResultMsg  → handleConfirmResult
-│   ├── HelpCmdMsg        → focus input with command
-│   ├── AttachmentSelectedMsg → addAttachment
-│   ├── openEditorForDisplayMsg → open editor (display content)
-│   ├── openEditorForPromptMsg → open editor (prompt content)
-│   ├── focusInputWithValueMsg → focus input and insert text
-│   ├── OverlayClosedMsg  → restoreFocus
-│   ├── PasteMsg   → handlePaste (by keyboardTarget: prompt | overlay filter | discarded)
-│   ├── BlurMsg    → handleBlur
-│   ├── FocusMsg   → handleFocus
-│   ├── WindowSize → handleWindowSize
-│   └── default (unknown msg) → stderr log
+├── KeyMsg → walks the input layer stack (inputLayers), top first:
+│   ├── universal   → Ctrl+Z (suspend), above every overlay and modal
+│   ├── modal       → confirm / MCP dialog (consumes all keys)
+│   ├── overlay     → theme / model / attachment / help (consumes all keys)
+│   ├── global      → Tab, Ctrl+S/L/P/R/H, F1
+│   └── pane        → DisplayModel.Update / PromptInput.Update
+│       The first layer that consumes the key wins. keyboardTarget walks the
+│       same stack to answer "which box does text go to", so dispatch and
+│       routing cannot disagree.
 │
-├── Components (each has Update returning Cmd):
-│   ├── DisplayModel      Update(msg Msg) → (DisplayModel,     Cmd)
-│   ├── PromptInput       Update(msg Msg) → (PromptInput,      Cmd)
-│   ├── ConfirmDialog     Update(msg Msg) → (ConfirmDialog,    Cmd)
-│   ├── ThemeSelector     Update(msg Msg) → (ThemeSelector,    Cmd)
-│   ├── ModelSelector     Update(msg Msg) → (ModelSelector,    Cmd)
-│   ├── HelpWindow        Update(msg Msg) → (HelpWindow,       Cmd)
-│   ├── AttachmentWindow  Update(msg Msg) → (AttachmentWindow, Cmd)
-│   └── InputField        Update(msg Msg) → (InputField,       Cmd)
+├── A component's Update returns (Self, []Result): facts as values.
+│   The dispatcher folds them synchronously through applyResult (a selection,
+│   an editor request, a confirm outcome), so the state change is same-frame and
+│   no opaque Cmd has to be unwrapped. Cmd is for I/O only.
 │
-├── Code reuse units (pure functions, no Cmd):
+├── Key identity is a Chord (Code + Mod), never a string: KeyMsg.Chord() →
+│   Chord, and every handler switches on a Chord (keys.go).
+│
+├── Asynchronous messages still handled by Update: session load results,
+│   WindowSizeMsg, tickMsg, themePreviewMsg, editor events,
+│   displayError/NotifyMsg, FocusMsg/BlurMsg, PasteMsg.
+│
+├── Components (each has Update returning []Result):
+│   ├── DisplayModel      Update(msg Msg) → (DisplayModel,     []Result)
+│   ├── PromptInput       Update(msg Msg) → (PromptInput,      []Result)
+│   ├── ConfirmDialog     Update(msg Msg) → (ConfirmDialog,    []Result)
+│   ├── ThemeSelector     Update(msg Msg) → (ThemeSelector,    []Result)
+│   ├── ModelSelector     Update(msg Msg) → (ModelSelector,    []Result)
+│   ├── HelpWindow        Update(msg Msg) → (HelpWindow,       []Result)
+│   ├── AttachmentWindow  Update(msg Msg) → (AttachmentWindow, []Result)
+│   └── InputField        Update(msg Msg) → (InputField,       []Result)
+│
+├── Code reuse units (pure functions, no I/O):
 │   └── FilteredListCore  HandleKey(msg KeyMsg) → (Self, FilteredListResult)
 │
 └── External systems (via interfaces/pointers):
@@ -84,36 +83,38 @@ Terminal (value type, root model)
 
 ### Components
 - Have their own lifecycle (open/close)
-- Communicate with Terminal via messages (ThemeSelectedMsg, etc.)
-- All have `Update(msg Msg) → (Self, Cmd)`
+- Report facts to Terminal as `Result` **values** (ModelSelectedMsg,
+  AttachmentSelectedMsg, …), which Terminal folds synchronously
+- All have `Update(msg Msg) → (Self, []Result)`
 
 ### Code Reuse Units (FilteredListCore)
 - Cannot exist independently — embedded into components
-- Have `HandleKey(msg KeyMsg) → (Self, Result)` — no Cmd
-- Used for continuous UI operations (scrolling, filtering) where
-  a 1-frame delay from Cmd routing would cause perceptible lag
-- This is NOT a hack; Elm does the same thing with pure helper functions.
-  The difference is that Elm's Cmd system is same-frame, so the optimization
-  is unnecessary there. In our runtime, Cmd execution adds 1 frame delay.
+- Have `HandleKey(msg KeyMsg) → (Self, FilteredListResult)` — no I/O
+- Shared pure logic (filtering, list navigation) with no parent-visible
+  results, so it needs neither a Cmd nor a Result
+- Its `FilteredListResult` still carries `[]Result` for the inner `InputField`,
+  which reports nothing today but keeps the core from assuming that
 
 ## Message-Based Communication
 
-Components communicate with Terminal through messages, not by returning
-result structs that Terminal reads:
+Components report facts to Terminal as `Result` values, not as Cmds that
+Terminal has to execute and inspect:
 
 ```
-DisplayModel.Update     → Cmd(openEditorForDisplayMsg) → Terminal.Update handles it
-DisplayModel.Update     → Cmd(focusInputWithValueMsg)  → Terminal.Update handles it
-PromptInput.Update      → Cmd(openEditorForPromptMsg)  → Terminal.Update handles it
-ThemeSelector.Update    → Cmd(ThemeSelectedMsg)          → Terminal.Update handles it
-ModelSelector.Update    → Cmd(ModelSelectedMsg)          → Terminal.Update handles it
-HelpWindow.Update       → Cmd(HelpCmdMsg)               → Terminal.Update handles it
-AttachmentWindow.Update → Cmd(AttachmentSelectedMsg)    → Terminal.Update handles it
-ConfirmDialog.Update    → Cmd(ConfirmResultMsg)         → Terminal.Update handles it
+DisplayModel.Update     → []Result{openEditorForDisplayMsg} → Terminal.applyResult
+DisplayModel.Update     → []Result{focusInputWithValueMsg}  → Terminal.applyResult
+PromptInput.Update      → []Result{openEditorForPromptMsg}  → Terminal.applyResult
+ThemeSelector.Update    → []Result{ThemeSelectedMsg}        → Terminal.applyResult
+ModelSelector.Update    → []Result{ModelSelectedMsg}        → Terminal.applyResult
+HelpWindow.Update       → []Result{HelpCmdMsg}              → Terminal.applyResult
+AttachmentWindow.Update → []Result{AttachmentSelectedMsg}   → Terminal.applyResult
+ConfirmDialog.Update    → []Result{ConfirmResultMsg}        → Terminal.applyResult
 ```
 
-Terminal does NOT read component internals. It only handles messages
-in its own Update switch.
+Terminal folds those results in the same Update (`foldResults` → `applyResult`)
+and never reads component internals. `applyResult` is the single place a
+result's meaning lives; `Terminal.Update` handles only input events and
+asynchronous facts from the runtime and the session.
 
 ## I/O Strategy
 
@@ -150,8 +151,7 @@ Sequence(a,b) → a(); b()                    ← event loop, no goroutine
 | Aspect | Pure Elm | Our Code | Acceptable? |
 |--------|----------|----------|-------------|
 | Cmd | Data (inspectable) | `func() Msg` (opaque) | Yes — runtime constraint |
-| Same-frame Cmd | Yes (recursive before render) | No (render before exec) | Yes — runtime limitation |
-| Continuous UI | Cmd is fine (same-frame) | Pure `HandleKey` (bypass Cmd) | Yes — necessary optimization |
+| Same-frame updates | `Cmd` is same-frame | UI facts are `Result` values folded same-frame; `Cmd` is I/O only | Yes — same frame kept, I/O kept async |
 | Messages | Sum types, exhaustive | `interface{}` + type switch | Yes — Go limitation |
-| Sub-components | `Cmd.map` for type-safe routing | Flat switch in Terminal | Yes — Go has no generics for this |
+| Sub-components | `Cmd.map` for type-safe routing | Ordered input layer stack + `Result` fold in Terminal | Yes — Go has no generics for this |
 | Immutable syntax | Record update `{ x \| f = v }` | Field assignment on local copy | Yes — equivalent semantics |

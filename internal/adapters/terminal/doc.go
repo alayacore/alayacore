@@ -49,7 +49,11 @@
 //   - tui_status.go: Status bar rendering (tokens, steps, switches)
 //   - live_edge.go: The live-edge row between the transcript and the prompt
 //     (auto-follow marker, hidden-line count)
-//   - keybinds.go: Declarative key binding configuration
+//   - keys.go: The bound key chords (Code + Mod) — the single source of bindings
+//   - keybinds.go: Key routing (the input layer stack) and the key handlers
+//   - input_layers.go: The ordered input layer stack for dispatch and routing
+//   - result.go: Result values a component reports, folded by applyResult
+//   - submission.go: The submitted-line grammar (prompt vs ":"-command)
 //   - program_input.go: The input loop and the parking protocol that hands the
 //     keyboard to a foreground child (per-platform sources:
 //     program_input_unix.go, program_input_windows.go)
