@@ -298,9 +298,11 @@ func (t inputTarget) String() string {
 }
 
 // keyboardTarget resolves the owner of the keyboard from state the user changed
-// and nothing else. Priority order is the dispatch order in handleKeyMsg: a
-// modal, then a selector overlay (which is where the text can be), then the pane
-// the user toggled to. Loading is first because the screen has no boxes on it.
+// and nothing else. It walks the same input layer stack dispatch walks
+// (inputLayers), stopping at the first layer that owns text — so routing and
+// dispatch cannot disagree about who is on top, which two hand-written chains
+// could. Loading is first because the screen has no boxes on it; a modal, then
+// an overlay, then the pane the user toggled to.
 //
 // It is a function rather than a field so that there is no second copy of the
 // answer to disagree with the first: every component that needs it asks, and the
@@ -308,11 +310,29 @@ func (t inputTarget) String() string {
 // routing and rendering cannot drift apart the way they did when a blur wrote
 // both.
 func (m Terminal) keyboardTarget() inputTarget {
+	for _, layer := range m.inputLayers() {
+		switch layer {
+		case layerLoading:
+			return targetNothing
+		case layerModal:
+			return targetModal
+		case layerOverlay:
+			return m.overlayTextTarget()
+		case layerPane:
+			if m.focusedWindow == focusDisplay {
+				return targetDisplay
+			}
+			return targetPrompt
+		}
+	}
+	return targetNothing
+}
+
+// overlayTextTarget is the text target an open overlay holds: its filter box when
+// the filter is focused, its list otherwise. Callers reach it only when an
+// overlay is open (inputLayers put layerOverlay in the stack).
+func (m Terminal) overlayTextTarget() inputTarget {
 	switch {
-	case m.loading:
-		return targetNothing
-	case m.confirmOverlay.IsOpen() || m.mcpInitOverlay.IsOpen():
-		return targetModal
 	case m.attachmentWindow.IsOpen():
 		return m.overlayFilterOrList(m.attachmentWindow.FilterInputFocused)
 	case m.modelSelector.IsOpen():
@@ -321,11 +341,8 @@ func (m Terminal) keyboardTarget() inputTarget {
 		return m.overlayFilterOrList(m.themeSelector.FilterInputFocused)
 	case m.helpWindow.IsOpen():
 		return m.overlayFilterOrList(m.helpWindow.FilterInputFocused)
-	case m.focusedWindow == focusDisplay:
-		return targetDisplay
-	default:
-		return targetPrompt
 	}
+	return targetNothing
 }
 
 func (m Terminal) overlayFilterOrList(filter bool) inputTarget {

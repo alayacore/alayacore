@@ -28,50 +28,54 @@ const mcpAuthTimeout = 5 * time.Minute
 // Key Handler
 // ============================================================================
 
-// handleKeyMsg routes keyboard input to the appropriate handler.
+// handleKeyMsg routes keyboard input down the input layer stack (see
+// input_layers.go). The first layer that consumes the key wins; a layer that
+// does not apply passes to the next. The order is the one inputLayers defines,
+// so this function no longer carries a second copy of the priority.
 func (m Terminal) handleKeyMsg(msg KeyMsg) (Terminal, Cmd) {
-	// During async session loading, ignore all keyboard input.
-	if m.loading {
-		return m, nil
-	}
+	for _, layer := range m.inputLayers() {
+		switch layer {
+		case layerLoading:
+			// The loading screen has no boxes; every key is dropped.
+			return m, nil
 
-	// Ctrl+Z works from any context, including overlays
-	if msg.Chord() == keyCtrlZ {
-		return m, Suspend
-	}
+		case layerUniversal:
+			if msg.Chord() == keyCtrlZ {
+				return m, Suspend
+			}
 
-	// Priority overlays (confirm, MCP init)
-	if tm, cmd, handled := m.handlePriorityOverlayKeys(msg); handled {
-		return tm, cmd
-	}
+		case layerModal:
+			tm, cmd, _ := m.handlePriorityOverlayKeys(msg)
+			return tm, cmd
 
-	// Selector overlays (theme, model, attachment, help)
-	if tm, cmd, handled := m.handleSelectorOverlayKeys(msg); handled {
-		return tm, cmd
-	}
+		case layerOverlay:
+			tm, cmd, _ := m.handleSelectorOverlayKeys(msg)
+			return tm, cmd
 
-	// Tab toggles focus between display and input
-	if msg.Chord() == keyTab {
-		m = m.toggleFocus()
-		return m, nil
-	}
+		case layerGlobal:
+			if msg.Chord() == keyTab {
+				return m.toggleFocus(), nil
+			}
+			if tm, cmd, handled := m.handleGlobalKeys(msg); handled {
+				return tm, cmd
+			}
 
-	// Global shortcuts (work from any context)
-	if tm, cmd, handled := m.handleGlobalKeys(msg); handled {
-		return tm, cmd
+		case layerPane:
+			return m.handlePaneKeys(msg)
+		}
 	}
+	return m, nil
+}
 
-	// Focus-specific key handling
+// handlePaneKeys handles keys when a pane (display or prompt) owns the keyboard.
+func (m Terminal) handlePaneKeys(msg KeyMsg) (Terminal, Cmd) {
 	switch m.focusedWindow {
 	case focusDisplay:
 		return m.handleDisplayKeys(msg)
-
 	case focusInput:
 		return m.handleInputKeys(msg)
-
-	default:
-		return m, nil
 	}
+	return m, nil
 }
 
 // handleThemeSelectorKeys handles input when theme selector is open.
