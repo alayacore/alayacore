@@ -9,12 +9,11 @@ import (
 
 // streamAssembler turns one step's event stream into that step's content parts.
 // It is the only place that does this: providers describe what arrived and where
-// a block ended, and the record is built from those descriptions alone. The
-// arrangement is deliberate — before it existed, three pieces of code assembled
-// the same step (getContents() in each provider, stepTextBlocks plus
-// salvageExecutedTools in llm.Agent), and nothing could keep them in agreement.
-// There is now one, and it is called on every path a step can end by, which is
-// the property its tests are named for.
+// a block ended, and the record is built from those descriptions alone. Being
+// the only one is the point — a step used to be assembled in three places, on
+// the path that finished and the paths that were cut, and nothing could keep
+// them in agreement. This assembler serves every path a step can end by, which
+// is the property its tests are named for.
 //
 // Two rules make that possible:
 //

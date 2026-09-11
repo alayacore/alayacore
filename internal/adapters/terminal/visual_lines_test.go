@@ -1,6 +1,6 @@
 package terminal
 
-// Phase-1 soft-wrap refactor tests (REFACTOR.md): the rendering pipeline
+// Phase-1 soft-wrap refactor tests: the rendering pipeline
 // produces VISUAL line arrays — each element is one terminal row with no
 // '\n' inside. Window.Render caches these in border.lines, and
 // WindowBuffer.ensureLineHeights derives lineHeights from their count.

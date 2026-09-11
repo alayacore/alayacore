@@ -128,7 +128,7 @@ Tool arguments arrive in chunks across multiple delta events:
 
 One place assembles a step: `internal/llm/assemble.go`'s `streamAssembler`, inside `llm.Agent`. Providers decode their wire format and say where each block ended; they hold no content.
 
-That was not the shape until recently, and the reason to insist on it is not tidiness. Three pieces of code used to turn a stream into `[]ContentPart` — `getContents()` in each provider for the path that finished, `stepTextBlocks` plus `salvageExecutedTools` in the agent for the path that was cut — and none could keep the others in agreement. A differential probe (same body, terminated vs cut) found where the convention failed: a tool call whose arguments had fully streamed was neither executed nor recorded on the cut path, because only the provider's tail produced it, while the adapter had already drawn it from its deltas. Two implementations of one fact reproduce that class of bug indefinitely; one cannot.
+That was not the shape until recently, and the reason to insist on it is not tidiness. Three pieces of code used to turn a stream into `[]ContentPart` — one per provider for the path that finished, two more in the agent for the paths that were cut — and none could keep the others in agreement. A differential probe (same body, terminated vs cut) found where the convention failed: a tool call whose arguments had fully streamed was neither executed nor recorded on the cut path, because only the provider's tail produced it, while the adapter had already drawn it from its deltas. Two implementations of one fact reproduce that class of bug indefinitely; one cannot.
 
 Two rules make one assembler possible:
 

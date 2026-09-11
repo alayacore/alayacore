@@ -1,6 +1,6 @@
 package terminal
 
-// Phase-3 soft-wrap refactor tests (REFACTOR.md): tool content styling
+// Phase-3 soft-wrap refactor tests: tool content styling
 // across fragment boundaries. Tool content lines are styled per visual
 // line (wrapContent's WrapWriter re-applies the active style at every
 // hard-wrap break), so each border.lines element is self-contained:

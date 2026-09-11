@@ -1,6 +1,6 @@
 package terminal
 
-// Phase-2 soft-wrap viewport tests (REFACTOR.md): renderVirtual clips the
+// Phase-2 soft-wrap viewport tests: renderVirtual clips the
 // viewport to VISUAL lines and outputs soft-wrap fragments — continuous
 // text within a window ('\n' only between windows), every line padded to
 // the full width except the last, so the terminal soft-wraps exactly at

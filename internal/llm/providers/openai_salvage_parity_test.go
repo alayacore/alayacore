@@ -92,13 +92,12 @@ func runOpenAIStep(t *testing.T, body func(io.Writer)) (record []string, ranTool
 }
 
 // One step's record used to be assembled twice by code that never called each
-// other: the provider's accumulators (getContents, delivered inside
-// StepCompleteEvent) on the path that finished, and llm.Agent's own copy
-// (stepTextBlocks, salvageExecutedTools) on the path that was cut. That design is
-// gone — llm.Agent's assembler now serves every path — but this test stays,
-// because it asserts the property the refactor exists to buy rather than its
-// mechanism: the same stream, run finished and run cut, must land the same
-// history — same parts, same order, same IDs — and must run the tool both times.
+// other: once by the provider on the path that finished, and once by llm.Agent
+// on the path that was cut. That design is gone — llm.Agent's assembler now
+// serves every path — but this test stays, because it asserts the property the
+// refactor exists to buy rather than its mechanism: the same stream, run
+// finished and run cut, must land the same history — same parts, same order,
+// same IDs — and must run the tool both times.
 //
 // The tool half is not decoration. It is where the old design measurably failed:
 // when the missing-terminator rule first landed as an early return, a call whose
