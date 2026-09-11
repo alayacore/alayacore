@@ -331,6 +331,10 @@ func (m Terminal) keyboardTarget() inputTarget {
 // overlayTextTarget is the text target an open overlay holds: its filter box when
 // the filter is focused, its list otherwise. Callers reach it only when an
 // overlay is open (inputLayers put layerOverlay in the stack).
+//
+// Order matters only if two overlays could be open at once, which they cannot:
+// an open overlay consumes every key, so the layer below never sees the chord
+// that would open another. The selector overlays are single-occupancy.
 func (m Terminal) overlayTextTarget() inputTarget {
 	switch {
 	case m.attachmentWindow.IsOpen():

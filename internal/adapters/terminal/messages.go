@@ -39,9 +39,10 @@ func (EditorFinishedMsg) isMsg()      {}
 func (displayErrorMsg) isMsg()        {}
 func (displayNotifyMsg) isMsg()       {}
 
-// failOnUnknownMsg makes Update's default case fatal. TestMain (messages_test.go)
-// sets it: a message type added to the set above without a case in Update then
-// fails the suite instead of being dropped silently — which is the point of
-// sealing Msg. Production leaves it false, where the default is unreachable
-// anyway.
-var failOnUnknownMsg bool
+// failOnUnknownDispatch makes the two dispatch-table defaults fatal: Update's
+// unknown-message case (tui.go) and applyResult's unknown-result tail
+// (result.go). TestMain (messages_test.go) sets it. A type added to the sealed
+// Msg or Result set without a handler then fails the suite instead of being
+// dropped — which is the point of sealing either one. Production leaves it false,
+// where both defaults are unreachable anyway.
+var failOnUnknownDispatch bool

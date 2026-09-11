@@ -91,10 +91,20 @@ func (p *Program) readInput(ctxDone <-chan struct{}) {
 				pendingSince = time.Time{}
 			}
 		} else if !pendingSince.IsZero() && time.Since(pendingSince) >= escSequenceTimeout {
-			// The terminal has been quiet for the whole timeout with a
-			// sequence still incomplete, so it is not coming: Flush resolves a
-			// lone ESC to the Escape key and drops anything else that cannot
-			// be completed.
+			// The terminal has been quiet for the whole timeout with input still
+			// unfinished, so the rest is not coming: Flush resolves a lone ESC to
+			// the Escape key, drops any other incomplete sequence, and closes an
+			// open paste (delivering what it collected).
+			//
+			// The contract is uniform: input that pauses longer than
+			// escSequenceTimeout mid-sequence is resolved early. For an escape
+			// sequence that is the point — a lone ESC must become Escape without
+			// perceptible delay. For an open paste it is the recovery from a paste
+			// whose end marker never arrives. The same threshold is used on
+			// purpose rather than adding a second knob: a well-formed paste arrives
+			// as one burst whose reads keep resetting this clock, so only a
+			// genuinely stalled transfer is affected, and closing it beats leaving
+			// a parser in paste mode that swallows every later keystroke.
 			pendingSince = time.Time{}
 			for _, msg := range p.parser.Flush() {
 				if p.sendInput(msg, ctxDone) {

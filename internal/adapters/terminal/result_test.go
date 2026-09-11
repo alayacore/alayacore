@@ -64,6 +64,22 @@ func TestFoldResultsAppliesEachOnceInOrder(t *testing.T) {
 	}
 }
 
+// TestApplyResultFailsOnUnhandledResult mirrors
+// TestUpdateFailsOnUnhandledMessage: Result is sealed too, and a result type
+// added without a case must fail loudly rather than fold into nothing.
+type unheardResult struct{}
+
+func (unheardResult) isResult() {}
+
+func TestApplyResultFailsOnUnhandledResult(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("applyResult did not fail on a sealed but unhandled result")
+		}
+	}()
+	newTestTerminal().applyResult(unheardResult{})
+}
+
 // TestApplyResultIsTheSingleInterpretation pins that a selection's meaning lives
 // in applyResult: folding a model or reload result emits the command the session
 // expects. Every dispatcher folds through here, so the meaning cannot drift.

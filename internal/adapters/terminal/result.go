@@ -94,5 +94,11 @@ func (m Terminal) applyResult(r Result) (Terminal, Cmd) {
 		m.display = m.display.updateContent()
 		return m, nil
 	}
+	// Unreachable: Result is sealed to the types above, and every one has a case.
+	// Under test it is fatal, so a result type added to the set without a case is
+	// caught here, exactly as an unhandled message is caught in Update.
+	if failOnUnknownDispatch {
+		panic(fmt.Sprintf("terminal: unhandled result %T", r))
+	}
 	return m, nil
 }

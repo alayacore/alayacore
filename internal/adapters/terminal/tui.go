@@ -494,7 +494,7 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 		// and every message that reaches Update is handled above. Under test it
 		// is fatal, so a message type added to the set without a case fails
 		// loudly instead of being dropped.
-		if failOnUnknownMsg {
+		if failOnUnknownDispatch {
 			panic(fmt.Sprintf("terminal: unhandled message %T", msg))
 		}
 		return m, nil

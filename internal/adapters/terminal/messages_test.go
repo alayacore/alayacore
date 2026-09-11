@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-// TestMain turns Update's unknown-message default fatal for the whole package,
-// so a message added to the sealed set without a handler fails here.
+// TestMain turns the unknown-dispatch defaults fatal for the whole package, so a
+// message or result added to a sealed set without a handler fails here.
 func TestMain(m *testing.M) {
-	failOnUnknownMsg = true
+	failOnUnknownDispatch = true
 	os.Exit(m.Run())
 }
 
