@@ -73,6 +73,12 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Terminal over a real pty
+        # Builds the binary and drives it on a pty: the one check here that
+        # judges the running program by what it paints rather than by its own
+        # tests. Needs the build, so make owns both steps.
+        run: make check-tty
+
       - name: Test (race detector)
         # 25s on a dev box for the whole tree; cheap enough to always run.
         run: go test -race ./...

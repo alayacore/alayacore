@@ -293,7 +293,13 @@ CI (`test.yml`) runs on every push: `go vet ./...` for `GOOS=windows` (which
 type-checks every package including test files), `golangci-lint` for the terminal
 adapter with `GOOS=windows`, `go test ./internal/adapters/terminal/...` on a
 Windows runner, builds for all twelve release targets, and the whole suite plus lint
-on Linux.
+and `make check-tty` on Linux. That last one is not a Go test: `misc/ttycheck.py`
+starts the built binary on a real pty, feeds it the bytes a terminal would feed it,
+and reads the painted frame back — so it can see a paste that never reaches the
+prompt without knowing that `PasteMsg` exists. It is POSIX-only for the reason this
+whole file states twice: on Windows the binary reads console events, and a runner
+has no console to hand it. It fails 7 of its 9 checks against the commit before
+`fbd3dbae`, which is the only reason to trust it.
 
 Covered by tests that run there:
 

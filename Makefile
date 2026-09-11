@@ -1,5 +1,5 @@
 .PHONY: all build test lint fmt clean install run release release-all \
-       build-windows build-darwin build-linux check check-gitattributes
+       build-windows build-darwin build-linux check check-gitattributes check-tty
 
 # Go parameters
 GOCMD=go
@@ -124,8 +124,15 @@ run:
 check-gitattributes:
 	./misc/check-gitattributes.sh
 
+## check-tty: Drive the built binary over a real pty and assert what reaches the
+## screen (misc/ttycheck.py). POSIX only — the binary reads console events on
+## Windows and no pseudo-console is created for it there, so the Windows job
+## covers this ground with unit tests instead.
+check-tty: build
+	python3 misc/ttycheck.py ./$(MAIN_BINARY)
+
 ## check: Run all checks (attributes, fmt, vet, lint, test)
-check: check-gitattributes fmt vet lint test
+check: check-gitattributes fmt vet lint test check-tty
 
 ## pre-commit: Run checks before committing
 pre-commit: fmt vet test
