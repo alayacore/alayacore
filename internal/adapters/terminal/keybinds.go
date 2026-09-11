@@ -534,11 +534,16 @@ func (m Terminal) handleInputKeys(msg KeyMsg) (Terminal, Cmd) {
 // terminal capability"), which is the only byte that distinguishes the two
 // intentions without asking the terminal for a capability it may not have.
 func (m Terminal) handleSubmit() (Terminal, Cmd) {
-	prompt := strings.TrimSpace(m.input.Value())
-
-	// Check if it's a command (starts with ":") — ignore attachments for commands.
-	if command, found := strings.CutPrefix(prompt, ":"); found {
-		return m.handleCommand(strings.TrimSpace(command))
+	// The line's grammar decides what it is: a command never travels as prompt
+	// text and prompt text never reaches the command path.
+	sub := parseSubmission(m.input.Value())
+	if command, ok := sub.(CommandSubmission); ok {
+		return m.handleCommand(command)
+	}
+	prompt, ok := sub.(PromptSubmission)
+	if !ok {
+		// parseSubmission returns exactly the two types above; defensive.
+		return m, nil
 	}
 
 	// If a task is running, reject without clearing input.
@@ -551,7 +556,7 @@ func (m Terminal) handleSubmit() (Terminal, Cmd) {
 	}
 
 	// Nothing to send
-	if prompt == "" && len(m.pendingAttachments) == 0 {
+	if prompt.Text == "" && len(m.pendingAttachments) == 0 {
 		return m, nil
 	}
 
@@ -562,42 +567,41 @@ func (m Terminal) handleSubmit() (Terminal, Cmd) {
 	m = m.clearAttachments()
 
 	return m, Batch(
-		submitCmd(writer, attachments, prompt),
+		submitCmd(writer, attachments, prompt.Text),
 		scheduleTick(),
 	)
 }
 
-// handleCommand processes a command string (without the ":" prefix).
-func (m Terminal) handleCommand(command string) (Terminal, Cmd) {
-	// Quit command
-	if command == cmdQuit || command == cmdQShort {
-		m = m.openConfirmQuit()
-		m.confirmFromCommand = true
-		return m, nil
+// handleCommand processes a command line (the ":"-form, already parsed).
+func (m Terminal) handleCommand(sub CommandSubmission) (Terminal, Cmd) {
+	// An adapter-local command is matched on its name with no arguments: a
+	// command that carries arguments is the session's, which is what the old
+	// whole-string comparison did (":quit foo" is not the local quit).
+	if sub.Args == "" {
+		switch sub.Name {
+		case cmdQuit, cmdQShort:
+			m = m.openConfirmQuit()
+			m.confirmFromCommand = true
+			return m, nil
+
+		case cmdCancel:
+			m = m.openConfirmCancel()
+			m.confirmFromCommand = true
+			return m, nil
+
+		case cmdSuspend:
+			m.input = m.input.WithValue("")
+			return m, Suspend
+
+		case cmdHelp:
+			m.input = m.input.WithValue("")
+			m = m.openHelpWindow()
+			return m, nil
+		}
 	}
 
-	// Cancel command
-	if command == cmdCancel {
-		m = m.openConfirmCancel()
-		m.confirmFromCommand = true
-		return m, nil
-	}
-
-	// Suspend command - suspends the process (like Ctrl+Z)
-	if command == cmdSuspend {
-		m.input = m.input.WithValue("")
-		return m, Suspend
-	}
-
-	// Help command - opens help window locally, not sent to session
-	if command == cmdHelp {
-		m.input = m.input.WithValue("")
-		m = m.openHelpWindow()
-		return m, nil
-	}
-
-	// All other commands - pass through to session
-	return m.submitCommand(command, true)
+	// Everything else is the session's command.
+	return m.submitCommand(sub.Raw, true)
 }
 
 // submitCommand sends a command to the session and optionally clears input.
