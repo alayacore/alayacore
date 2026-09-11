@@ -188,15 +188,6 @@ func (s *Session) State() SessionState {
 	return SessionState(s.state.Load())
 }
 
-// IsInitialized reports whether initialization is complete: the session
-// has been loaded (replay done — guaranteed by construction) and MCP init
-// has settled (done/canceled/aborted, or never configured).
-// It does NOT imply that an LLM agent has been created — agent creation
-// is lazy (first task) by design.
-func (s *Session) IsInitialized() bool {
-	return s.State() == SessionReady
-}
-
 // setState writes a new lifecycle phase. Transitions to SessionReady
 // broadcast exactly one SM "session" frame so adapters have an
 // authoritative "ready" signal. No-op when the phase is unchanged.

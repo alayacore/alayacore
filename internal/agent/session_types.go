@@ -187,7 +187,7 @@ type messageVersionMsg struct {
 	CoreVersion    string `json:"core_version"`
 }
 
-func (messageVersionMsg) SystemMsgType() string { return "version" }
+func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgTypeVersion) }
 
 // messageVersion is the current version of the message encoding
 // used in session files and TagSystemMsg broadcasts.

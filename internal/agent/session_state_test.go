@@ -74,8 +74,8 @@ func TestSessionState_NewSessionStartsStarting(t *testing.T) {
 	if got := s.State(); got != SessionStarting {
 		t.Errorf("State() = %v, want starting", got)
 	}
-	if s.IsInitialized() {
-		t.Error("IsInitialized() = true before Start(), want false")
+	if s.State() == SessionReady {
+		t.Error("State() = ready before Start(), want not ready")
 	}
 }
 
@@ -88,8 +88,8 @@ func TestSessionState_RestoreStartsStarting(t *testing.T) {
 	if got := s.State(); got != SessionStarting {
 		t.Errorf("State() = %v, want starting", got)
 	}
-	if s.IsInitialized() {
-		t.Error("IsInitialized() = true before Start(), want false")
+	if s.State() == SessionReady {
+		t.Error("State() = ready before Start(), want not ready")
 	}
 }
 
@@ -121,8 +121,8 @@ func TestSessionState_StartWithoutMCPReady(t *testing.T) {
 
 	s.Start()
 	waitForState(t, s, SessionReady)
-	if !s.IsInitialized() {
-		t.Error("IsInitialized() = false after MCP-less Start(), want true")
+	if s.State() != SessionReady {
+		t.Error("State() = not ready after MCP-less Start(), want ready")
 	}
 	// run() writes the ready frame before exiting — wait for Done() so the
 	// broadcast is complete before inspecting MockOutput (not thread-safe).
@@ -262,8 +262,8 @@ func TestSessionState_ReadyBroadcastExactlyOnce(t *testing.T) {
 	if got := countSessionReadyFrames(output); got != 1 {
 		t.Errorf("session-ready frames = %d, want exactly 1", got)
 	}
-	if !s.IsInitialized() {
-		t.Error("IsInitialized() = false after ready broadcast, want true")
+	if s.State() != SessionReady {
+		t.Error("State() = not ready after ready broadcast, want ready")
 	}
 }
 

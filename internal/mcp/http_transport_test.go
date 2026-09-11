@@ -102,12 +102,6 @@ func (s *httpTestServer) LastSessionID() string {
 	return s.lastSessionID
 }
 
-func (s *httpTestServer) RequestCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.requestCount
-}
-
 func (s *httpTestServer) WaitForPost(t *testing.T) {
 	t.Helper()
 	select {
