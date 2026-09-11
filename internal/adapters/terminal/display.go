@@ -63,7 +63,7 @@ func (m DisplayModel) Init() Cmd { return nil }
 // (e.g. switching focus, opening editor) are handled by Terminal.
 //
 //nolint:gocyclo // key dispatch over many shortcuts; each case is a simple navigation call
-func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
+func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	keyMsg, ok := msg.(KeyMsg)
 	if !ok {
 		return m, nil
@@ -174,22 +174,16 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, Cmd) {
 		content := m.GetCursorWindowContent()
 		if content != "" {
 			m = m.MarkUserScrolled()
-			return m, func() Msg {
-				return openEditorForDisplayMsg{content: content}
-			}
+			return m, []Result{openEditorForDisplayMsg{content: content}}
 		}
 		return m, nil
 
 	case keyColon:
-		return m, func() Msg {
-			return focusInputWithValueMsg{value: ":"}
-		}
+		return m, []Result{focusInputWithValueMsg{value: ":"}}
 
 	case keyCtrlF:
 		if historyID := m.GetCursorWindowHistoryID(); historyID > 0 {
-			return m, func() Msg {
-				return focusInputWithValueMsg{value: fmt.Sprintf(":%s %d ", commands.CommandNameFork, historyID)}
-			}
+			return m, []Result{focusInputWithValueMsg{value: fmt.Sprintf(":%s %d ", commands.CommandNameFork, historyID)}}
 		}
 		return m, nil
 

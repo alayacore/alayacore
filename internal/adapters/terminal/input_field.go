@@ -64,7 +64,11 @@ func (m InputField) Init() Cmd { return nil }
 // own target — PromptInput.Update from the input's dispatch, FilteredListCore
 // from a filter that the same dispatch already chose — so a message that should
 // not land here is never sent here in the first place, rather than dropped here.
-func (m InputField) Update(msg Msg) (InputField, Cmd) {
+//
+// It returns results, not a Cmd: a text buffer has no I/O to start, and a
+// component that reports what happened as a value is what keeps the parent from
+// having to unwrap an opaque func() to learn it.
+func (m InputField) Update(msg Msg) (InputField, []Result) {
 	switch msg := msg.(type) {
 	case KeyMsg:
 		return m.handleKeyMsg(msg)
@@ -74,7 +78,7 @@ func (m InputField) Update(msg Msg) (InputField, Cmd) {
 	return m, nil
 }
 
-func (m InputField) handleKeyMsg(msg KeyMsg) (InputField, Cmd) {
+func (m InputField) handleKeyMsg(msg KeyMsg) (InputField, []Result) {
 	key := msg.Chord()
 
 	var handled bool

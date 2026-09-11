@@ -160,8 +160,10 @@ type FilteredListResult struct {
 	Handled bool
 	// FilterChanged is true if the filter value changed.
 	FilterChanged bool
-	// Cmd is a Cmd from the inner InputField (cursor blink, etc.).
-	Cmd Cmd
+	// Results are the facts the inner InputField produced (empty today — a text
+	// buffer reports nothing the list must act on — but carried so the core does
+	// not have to know that).
+	Results []Result
 }
 
 // HandleKey processes a key event for the filtered list.
@@ -196,9 +198,9 @@ func (fl FilteredListCore) handleFilterFocusedKey(msg KeyMsg, key Chord) (Filter
 	}
 
 	oldValue := fl.FilterInput.Value()
-	var cmd Cmd
-	fl.FilterInput, cmd = fl.FilterInput.Update(msg)
-	return fl, FilteredListResult{Handled: true, FilterChanged: oldValue != fl.FilterInput.Value(), Cmd: cmd}
+	var results []Result
+	fl.FilterInput, results = fl.FilterInput.Update(msg)
+	return fl, FilteredListResult{Handled: true, FilterChanged: oldValue != fl.FilterInput.Value(), Results: results}
 }
 
 // handleListFocusedKey handles keys when the list is focused.

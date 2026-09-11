@@ -144,7 +144,7 @@ func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
 
 	// Press Ctrl+C
 	msg := KeyPressMsg(Key{Code: 'c', Mod: ModCtrl})
-	ms, cmd := ms.Update(msg)
+	ms, results := ms.Update(msg)
 
 	// Check that search input is cleared
 	if ms.FilterInput.Value() != "" {
@@ -156,9 +156,9 @@ func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
 		t.Errorf("Expected %d filtered models after clear, got %d", len(models), len(ms.filteredModels))
 	}
 
-	// Cmd should be nil (no action)
-	if cmd != nil {
-		t.Errorf("Ctrl+C should not return a command, got %v", cmd)
+	// No result (no action)
+	if len(results) != 0 {
+		t.Errorf("Ctrl+C should not return a result, got %v", results)
 	}
 }
 

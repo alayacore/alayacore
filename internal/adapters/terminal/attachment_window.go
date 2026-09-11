@@ -151,7 +151,7 @@ func isDirEntry(dir string, e os.DirEntry) bool {
 }
 
 // Update handles all messages for the attachment window: key events and paste.
-func (aw AttachmentWindow) Update(msg Msg) (AttachmentWindow, Cmd) {
+func (aw AttachmentWindow) Update(msg Msg) (AttachmentWindow, []Result) {
 	switch msg := msg.(type) {
 	case KeyMsg:
 		return aw.updateForKeyMsg(msg)
@@ -167,7 +167,7 @@ func (aw AttachmentWindow) Update(msg Msg) (AttachmentWindow, Cmd) {
 }
 
 //nolint:gocyclo // key dispatch over local/URL/autocomplete modes; each case is simple
-func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
+func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, []Result) {
 	if aw.State == FilteredListClosed {
 		return aw, nil
 	}
@@ -204,7 +204,7 @@ func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
 		aw = aw.handleURLEntry()
 		if aw.selectedPath != "" {
 			path := aw.selectedPath
-			return aw, func() Msg { return AttachmentSelectedMsg{Path: path} }
+			return aw, []Result{AttachmentSelectedMsg{Path: path}}
 		}
 		return aw, nil
 	}
@@ -230,9 +230,9 @@ func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, Cmd) {
 		// If a path was selected, send it as a message
 		if aw.selectedPath != "" {
 			path := aw.selectedPath
-			return aw, func() Msg { return AttachmentSelectedMsg{Path: path} }
+			return aw, []Result{AttachmentSelectedMsg{Path: path}}
 		}
-		return aw, result.Cmd
+		return aw, result.Results
 	}
 
 	if aw.mode == modeLocal && !aw.FilterInputFocused {

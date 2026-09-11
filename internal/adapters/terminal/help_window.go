@@ -223,7 +223,7 @@ func (hw HelpWindow) filteredLen() int {
 }
 
 //nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
-func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
+func (hw HelpWindow) Update(msg Msg) (HelpWindow, []Result) {
 	// A paste is text for the filter box; the re-filter matches typing.
 	if pmsg, isPaste := msg.(PasteMsg); isPaste {
 		var changed bool
@@ -292,9 +292,9 @@ func (hw HelpWindow) Update(msg Msg) (HelpWindow, Cmd) {
 			}
 		}
 		if pendingCmd != "" {
-			return hw, func() Msg { return HelpCmdMsg{Command: pendingCmd} }
+			return hw, []Result{HelpCmdMsg{Command: pendingCmd}}
 		}
-		return hw, result.Cmd
+		return hw, result.Results
 	}
 	return hw, nil
 }

@@ -78,8 +78,9 @@ func (m Terminal) handleKeyMsg(msg KeyMsg) (Terminal, Cmd) {
 func (m Terminal) handleThemeSelectorKeys(msg KeyMsg) (Terminal, Cmd) {
 	wasOpen := m.themeSelector.IsOpen()
 
-	ts, cmd := m.themeSelector.Update(msg)
+	ts, results := m.themeSelector.Update(msg)
 	m.themeSelector = ts
+	m, cmd := m.foldResults(results)
 
 	// If closed — restore original theme on cancel, or apply selected theme.
 	if wasOpen && !ts.IsOpen() {
@@ -304,8 +305,9 @@ func (m Terminal) restoreFocusAfterConfirm() Terminal {
 // handleOverlayModelSelector handles keyboard input when the model selector is open.
 func (m Terminal) handleOverlayModelSelector(msg KeyMsg) (Terminal, Cmd) {
 	wasOpen := m.modelSelector.IsOpen()
-	ms, cmd := m.modelSelector.Update(msg)
+	ms, results := m.modelSelector.Update(msg)
 	m.modelSelector = ms
+	m, cmd := m.foldResults(results)
 	if wasOpen && !ms.IsOpen() {
 		m = m.restoreFocus()
 	}
@@ -351,55 +353,31 @@ func (m Terminal) handleSelectorOverlayKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 	if m.attachmentWindow.IsOpen() {
 		aw := m.attachmentWindow
 		t := trackOverlay(aw)
-		aw, cmd := aw.Update(msg)
+		var results []Result
+		aw, results = aw.Update(msg)
 		m.attachmentWindow = aw
+		// Folding applies an AttachmentSelectedMsg — adding the file — before
+		// the focus is restored, which is the order the result's meaning wants:
+		// the selection lands, then the pane the user returns to is decided.
+		var cmd Cmd
+		m, cmd = m.foldResults(results)
 		if t.JustClosed(aw) {
-			// Consume the selection message synchronously so the attachment
-			// is added with the current Terminal state — and do NOT return
-			// the same Cmd: it would be dispatched a second time and its
-			// AttachmentSelectedMsg dropped by Terminal.Update's default
-			// case. Non-selection messages (none today) are re-wrapped so
-			// they still reach Update exactly once.
-			var pending Cmd
-			if cmd != nil {
-				if resultMsg := cmd(); resultMsg != nil {
-					if ac, ok := resultMsg.(AttachmentSelectedMsg); ok {
-						if strings.HasPrefix(ac.Path, "http://") || strings.HasPrefix(ac.Path, "https://") {
-							m = m.addURLAttachment(ac.Path)
-						} else {
-							m = m.addAttachment(ac.Path)
-						}
-					} else {
-						pending = func() Msg { return resultMsg }
-					}
-				}
-			}
 			m = m.restoreFocus()
-			return m, pending, true
 		}
 		return m, cmd, true
 	}
 	if m.helpWindow.IsOpen() {
 		hw := m.helpWindow
 		t := trackOverlay(hw)
-		hw, cmd := hw.Update(msg)
+		var results []Result
+		hw, results = hw.Update(msg)
 		m.helpWindow = hw
+		var cmd Cmd
+		m, cmd = m.foldResults(results)
 		if t.JustClosed(hw) {
-			// Check if a command was selected (via HelpCmdMsg)
-			if cmd != nil {
-				if resultMsg := cmd(); resultMsg != nil {
-					if hc, ok := resultMsg.(HelpCmdMsg); ok {
-						m = m.focusInput()
-						m.input = m.input.WithValue(hc.Command + " ")
-						m.input = m.input.CursorEnd()
-						m.display = m.display.updateContent()
-						return m, nil, true
-					}
-				}
-			}
 			m = m.restoreFocus()
 		}
-		return m, nil, true
+		return m, cmd, true
 	}
 	return m, nil, false
 }
@@ -434,9 +412,9 @@ func (m Terminal) handleConfirmResult(r *ConfirmResult) (Terminal, Cmd) {
 }
 
 func (m Terminal) handleDisplayKeys(msg KeyMsg) (Terminal, Cmd) {
-	var cmd Cmd
-	m.display, cmd = m.display.Update(msg)
-	return m, cmd
+	var results []Result
+	m.display, results = m.display.Update(msg)
+	return m.foldResults(results)
 }
 
 // handleGlobalKeys handles global keyboard shortcuts.
@@ -537,9 +515,9 @@ func (m Terminal) handleInputKeys(msg KeyMsg) (Terminal, Cmd) {
 		return m, nil
 	}
 
-	var cmd Cmd
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
+	var results []Result
+	m.input, results = m.input.Update(msg)
+	return m.foldResults(results)
 }
 
 // ============================================================================

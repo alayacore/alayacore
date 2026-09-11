@@ -138,7 +138,7 @@ func (ms ModelSelector) Open() ModelSelector {
 // --- Key Handling ---
 
 //nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
-func (ms ModelSelector) Update(msg Msg) (ModelSelector, Cmd) {
+func (ms ModelSelector) Update(msg Msg) (ModelSelector, []Result) {
 	if ms.State == FilteredListClosed {
 		return ms, nil
 	}
@@ -166,7 +166,7 @@ func (ms ModelSelector) Update(msg Msg) (ModelSelector, Cmd) {
 
 	// Handle Ctrl+R reload regardless of focus
 	if key == keyCtrlR {
-		return ms, func() Msg { return ReloadModelsMsg{} }
+		return ms, []Result{ReloadModelsMsg{}}
 	}
 
 	// Handle Enter selection in the list.
@@ -175,7 +175,7 @@ func (ms ModelSelector) Update(msg Msg) (ModelSelector, Cmd) {
 			ms.activeModel = &ms.filteredModels[fl.SelectedIdx]
 			fl = fl.Close()
 			ms.FilteredListCore = fl
-			return ms, func() Msg { return ModelSelectedMsg{ID: ms.activeModel.ID} }
+			return ms, []Result{ModelSelectedMsg{ID: ms.activeModel.ID}}
 		}
 	}
 
@@ -189,7 +189,7 @@ func (ms ModelSelector) Update(msg Msg) (ModelSelector, Cmd) {
 		if ms.FilterInputFocused && key == keyEnter && len(ms.filteredModels) > 0 {
 			ms = ms.handleSearchEnter()
 			ms.FilteredListCore = fl.Close()
-			return ms, func() Msg { return ModelSelectedMsg{ID: ms.activeModel.ID} }
+			return ms, []Result{ModelSelectedMsg{ID: ms.activeModel.ID}}
 		}
 		return ms, nil
 	}

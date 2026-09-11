@@ -272,25 +272,23 @@ func TestHelpWindowEnterOnCommand(t *testing.T) {
 	}
 
 	// Press Enter on :quit
-	hw, cmd := hw.Update(KeyPressMsg(Key{Code: KeyEnter}))
+	hw, results := hw.Update(KeyPressMsg(Key{Code: KeyEnter}))
 
 	// Window should be closed
 	if hw.IsOpen() {
 		t.Error("Help window should be closed after Enter on command")
 	}
 
-	// Cmd should carry HelpCmdMsg
-	if cmd == nil {
-		t.Fatal("Expected cmd to be non-nil after Enter on command")
+	// The result should carry HelpCmdMsg
+	if len(results) != 1 {
+		t.Fatalf("Expected one result after Enter on command, got %d", len(results))
 	}
-	if resultMsg := cmd(); resultMsg != nil {
-		if hc, ok := resultMsg.(HelpCmdMsg); ok {
-			if hc.Command != ":quit" {
-				t.Errorf("Expected pending command ':quit', got %q", hc.Command)
-			}
-		} else {
-			t.Errorf("Expected HelpCmdMsg, got %T", resultMsg)
-		}
+	hc, ok := results[0].(HelpCmdMsg)
+	if !ok {
+		t.Fatalf("Expected HelpCmdMsg, got %T", results[0])
+	}
+	if hc.Command != ":quit" {
+		t.Errorf("Expected pending command ':quit', got %q", hc.Command)
 	}
 }
 
@@ -307,17 +305,14 @@ func TestHelpWindowEnterOnCommandStripsArgs(t *testing.T) {
 	}
 	hw = hw.Open()
 
-	// Helper to extract command from cmd (must Tab to list first)
+	// Helper to extract command from the results (must Tab to list first)
 	getCmd := func(hw HelpWindow) string {
 		// Open returns with search focused; Tab to list
 		hw2, _ := hw.Update(KeyPressMsg(Key{Code: KeyTab}))
-		hw2, cmd := hw2.Update(KeyPressMsg(Key{Code: KeyEnter}))
+		hw2, results := hw2.Update(KeyPressMsg(Key{Code: KeyEnter}))
 		_ = hw2
-		if cmd == nil {
-			return ""
-		}
-		if resultMsg := cmd(); resultMsg != nil {
-			if hc, ok := resultMsg.(HelpCmdMsg); ok {
+		for _, r := range results {
+			if hc, ok := r.(HelpCmdMsg); ok {
 				return hc.Command
 			}
 		}
@@ -358,16 +353,16 @@ func TestHelpWindowEnterOnKeyBinding(t *testing.T) {
 	hw = hw.Open()
 
 	// Press Enter on Ctrl+H (not a :command)
-	hw, cmd := hw.Update(KeyPressMsg(Key{Code: KeyEnter}))
+	hw, results := hw.Update(KeyPressMsg(Key{Code: KeyEnter}))
 
 	// Window should stay open - Enter on non-command does nothing
 	if !hw.IsOpen() {
 		t.Error("Help window should stay open after Enter on key binding")
 	}
 
-	// No command
-	if cmd != nil {
-		t.Errorf("Expected no command, got %v", cmd)
+	// No result
+	if len(results) != 0 {
+		t.Errorf("Expected no results, got %v", results)
 	}
 }
 

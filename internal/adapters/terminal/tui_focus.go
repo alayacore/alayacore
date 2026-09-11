@@ -216,9 +216,9 @@ func (m Terminal) handleFocus() Terminal {
 func (m Terminal) handlePaste(msg PasteMsg) (Terminal, Cmd) {
 	switch m.keyboardTarget() {
 	case targetPrompt:
-		var cmd Cmd
-		m.input, cmd = m.input.Update(msg)
-		return m, cmd
+		var results []Result
+		m.input, results = m.input.Update(msg)
+		return m.foldResults(results)
 
 	case targetOverlayFilter:
 		// (b) the open overlay's own box — whichever overlay that is, so the
@@ -237,21 +237,21 @@ func (m Terminal) handlePaste(msg PasteMsg) (Terminal, Cmd) {
 func (m Terminal) pasteIntoOverlay(msg PasteMsg) (Terminal, Cmd) {
 	switch {
 	case m.attachmentWindow.IsOpen():
-		aw, cmd := m.attachmentWindow.Update(msg)
-		m.attachmentWindow = aw
-		return m, cmd
+		var results []Result
+		m.attachmentWindow, results = m.attachmentWindow.Update(msg)
+		return m.foldResults(results)
 	case m.modelSelector.IsOpen():
-		ms, cmd := m.modelSelector.Update(msg)
-		m.modelSelector = ms
-		return m, cmd
+		var results []Result
+		m.modelSelector, results = m.modelSelector.Update(msg)
+		return m.foldResults(results)
 	case m.themeSelector.IsOpen():
-		ts, cmd := m.themeSelector.Update(msg)
-		m.themeSelector = ts
-		return m, cmd
+		var results []Result
+		m.themeSelector, results = m.themeSelector.Update(msg)
+		return m.foldResults(results)
 	case m.helpWindow.IsOpen():
-		hw, cmd := m.helpWindow.Update(msg)
-		m.helpWindow = hw
-		return m, cmd
+		var results []Result
+		m.helpWindow, results = m.helpWindow.Update(msg)
+		return m.foldResults(results)
 	}
 	return m, nil
 }

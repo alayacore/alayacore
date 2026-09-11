@@ -137,7 +137,7 @@ func (ts ThemeSelector) View() View {
 // --- Key Handling ---
 
 //nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
-func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
+func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, []Result) {
 	if ts.State == FilteredListClosed {
 		return ts, nil
 	}
@@ -172,7 +172,7 @@ func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
 			if sel := ts.GetSelectedTheme(); sel != nil {
 				ts = ts.loadPreviewTheme()
 				ts.State = FilteredListClosed
-				return ts, func() Msg { return ThemeSelectedMsg{Name: sel.Name} }
+				return ts, []Result{ThemeSelectedMsg{Name: sel.Name}}
 			}
 		}
 
@@ -182,7 +182,7 @@ func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, Cmd) {
 			sel := ts.filteredThemes[0]
 			ts = ts.loadPreviewTheme()
 			ts.State = FilteredListClosed
-			return ts, func() Msg { return ThemeSelectedMsg{Name: sel.Name} }
+			return ts, []Result{ThemeSelectedMsg{Name: sel.Name}}
 		}
 
 		// Filter changed: update filtered list and load preview for first result.

@@ -52,19 +52,17 @@ func (m PromptInput) Init() Cmd {
 }
 
 // Update handles messages for the prompt input.
-func (m PromptInput) Update(msg Msg) (PromptInput, Cmd) {
-	var cmd Cmd
+func (m PromptInput) Update(msg Msg) (PromptInput, []Result) {
 	if msg, ok := msg.(WindowSizeMsg); ok {
 		m.width = msg.Width
 		m.input = m.input.WithWidth(max(0, msg.Width))
 	}
 	if keyMsg, ok := msg.(KeyMsg); ok && keyMsg.Chord() == keyCtrlO {
-		return m, func() Msg {
-			return openEditorForPromptMsg{content: m.input.Value()}
-		}
+		return m, []Result{openEditorForPromptMsg{content: m.input.Value()}}
 	}
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
+	var results []Result
+	m.input, results = m.input.Update(msg)
+	return m, results
 }
 
 // View renders the input field with border, attachments above if present.
