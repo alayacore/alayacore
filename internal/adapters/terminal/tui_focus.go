@@ -143,11 +143,21 @@ func (m Terminal) openConfirmMCPAuth(server, url string) Terminal {
 }
 
 // handleBlur handles loss of application focus.
+//
+// The prompt is asked for its *window* focus, not for its focus: the two are
+// different things and only one of them is a reason to ignore input. A terminal
+// window loses focus to its own context menu, and the menu then puts the
+// clipboard into the pty while that loss is still the state of things — a blur
+// that gated the input path threw the paste away (the overlay filter boxes never
+// gated it, which is why the same menu paste worked in one box and not the
+// other). Keys and pastes arriving here came from this program's terminal, so
+// they go where the user's own focus says; what the blur is allowed to change is
+// the drawing.
 func (m Terminal) handleBlur() Terminal {
 	m.hasFocus = false
 	m.display = m.display.WithBlocked(m.isBlocked())
 	m.display = m.display.WithDisplayFocused(false)
-	m.input = m.input.Blur()
+	m.input = m.input.WithWindowFocus(false)
 	m.modelSelector = m.modelSelector.WithFocus(false)
 	m.themeSelector = m.themeSelector.WithFocus(false)
 	m.helpWindow = m.helpWindow.WithFocus(false)
@@ -162,6 +172,7 @@ func (m Terminal) handleBlur() Terminal {
 func (m Terminal) handleFocus() Terminal {
 	m.hasFocus = true
 	m.display = m.display.WithBlocked(m.isBlocked())
+	m.input = m.input.WithWindowFocus(true)
 	m.modelSelector = m.modelSelector.WithFocus(true)
 	m.themeSelector = m.themeSelector.WithFocus(true)
 	m.helpWindow = m.helpWindow.WithFocus(true)

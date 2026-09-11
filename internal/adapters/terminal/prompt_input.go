@@ -19,8 +19,15 @@ type PromptInput struct {
 	input       InputField // wrapped input field (cursor, buffer, selection)
 	attachments []string   // pending attachment file paths to display
 	focused     bool       // whether this input is focused
-	width       int        // input field width
-	blocked     bool       // when true, content is dimmed (overlay active)
+	// windowFocused is the terminal window's OS-level focus, recorded by
+	// Terminal.hasFocus and mirrored here because the window's focus is what a
+	// border color can show. It is a *rendering* state and nothing else: text
+	// that arrives while the window is unfocused is still text the user sent to
+	// this program, and gating it here is how a paste disappears (see
+	// Terminal.handleBlur).
+	windowFocused bool
+	width         int  // input field width
+	blocked       bool // when true, content is dimmed (overlay active)
 
 	// ── Dependencies (pointer to shared data) ─
 	styles *Styles
@@ -35,10 +42,11 @@ func NewPromptInput(styles *Styles) PromptInput {
 	input = input.WithWidth(max(0, DefaultWidth))
 
 	return PromptInput{
-		input:   input,
-		focused: true,
-		styles:  styles,
-		width:   DefaultWidth,
+		input:         input,
+		focused:       true,
+		windowFocused: true,
+		styles:        styles,
+		width:         DefaultWidth,
 	}
 }
 func (m PromptInput) Init() Cmd {
@@ -65,7 +73,7 @@ func (m PromptInput) Update(msg Msg) (PromptInput, Cmd) {
 // When blocked is true, content is dimmed (overlay active).
 func (m PromptInput) View() View {
 	borderColor := m.styles.BorderFocused
-	if !m.focused {
+	if !m.focused || !m.windowFocused {
 		borderColor = m.styles.BorderBlurred
 	} else if m.input.LineCount() > 1 {
 		borderColor = m.styles.ColorWarning
@@ -117,18 +125,26 @@ func (m PromptInput) updateInputStyles() InputField {
 	if m.input.LineCount() > 1 {
 		promptColor = m.styles.ColorWarning
 	}
-	return m.input.WithStyles(
-		inputFieldStyle{
-			Prompt:      NewStyle().Foreground(promptColor).Bold(true),
-			Text:        NewStyle(),
-			Placeholder: NewStyle().Foreground(m.styles.ColorMuted),
-		},
-		inputFieldStyle{
-			Prompt:      NewStyle().Foreground(m.styles.ColorDim).Bold(true),
-			Text:        NewStyle().Foreground(m.styles.ColorDim),
-			Placeholder: NewStyle().Foreground(m.styles.ColorDim),
-		},
-	)
+	focused := inputFieldStyle{
+		Prompt:      NewStyle().Foreground(promptColor).Bold(true),
+		Text:        NewStyle(),
+		Placeholder: NewStyle().Foreground(m.styles.ColorMuted),
+	}
+	blurred := inputFieldStyle{
+		Prompt:      NewStyle().Foreground(m.styles.ColorDim).Bold(true),
+		Text:        NewStyle().Foreground(m.styles.ColorDim),
+		Placeholder: NewStyle().Foreground(m.styles.ColorDim),
+	}
+	if !m.windowFocused {
+		// Which of the two an InputField renders is its own focus flag, and
+		// that flag now means "the user is writing here" rather than "the
+		// window is the focused one" (see PromptInput.windowFocused). The
+		// window's answer therefore reaches the field as a style decision:
+		// hand the blurred register to both slots, which is the same look
+		// with the input path left open.
+		focused = blurred
+	}
+	return m.input.WithStyles(focused, blurred)
 }
 
 // Focus sets focus on the input.
@@ -138,12 +154,33 @@ func (m PromptInput) Focus() PromptInput {
 	return m
 }
 
-// Blur removes focus from the input.
+// Blur removes focus from the input: the user is writing somewhere else (the
+// display pane, or an overlay that owns the keyboard), so keys and pastes stop
+// landing here. The terminal window's own focus is a different question and is
+// not answered here — see WithWindowFocus.
 func (m PromptInput) Blur() PromptInput {
 	m.focused = false
 	m.input = m.input.Blur()
 	return m
 }
+
+// WithWindowFocus records whether the terminal window is the one the operating
+// system has focused. It is a rendering decision and only a rendering
+// decision: the border and the text take the blurred register and the real
+// cursor goes away, but the box keeps taking whatever the terminal delivers.
+// A window can lose that focus to its own context menu and hand the clipboard
+// back a moment later; treating the loss as a reason to drop input made every
+// paste pasted from that menu vanish.
+func (m PromptInput) WithWindowFocus(focused bool) PromptInput {
+	m.windowFocused = focused
+	return m
+}
+
+// ShowCaret reports where the real terminal cursor belongs: on this box when
+// the user is writing here and the window is the focused one. IME preedit and
+// the candidate window anchor on that cursor, so an unfocused window is asked
+// to give it up.
+func (m PromptInput) ShowCaret() bool { return m.IsFocused() && m.windowFocused }
 
 func (m PromptInput) IsFocused() bool {
 	return m.focused

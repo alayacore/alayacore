@@ -97,6 +97,38 @@ sources use CRLF: notepad always, and vim by default for a file it creates.
 Before the rule was shared, a prompt composed in `notepad` came back carrying
 CRs, which the terminal reads as "column 0" — the frame painted over itself.
 
+A paste is bounded by its markers and by nothing else, so those two sequences have
+to survive the shape the bytes arrive in. A read stops where the platform stops it
+(`inputReadSize` bytes on Unix, `consoleEventsPerRead` events on Windows), so a
+block longer than that is cut at an offset nobody chose, and the cut can land
+inside the closing marker. Paste content is read without looking for structure in
+it, so the head of a split marker is indistinguishable from the text in front of
+it — and text is where it used to go, which is a paste that never closes: the
+parser stays in paste mode and takes every keystroke that follows as pasted text.
+The head is now held for the next read (`key_parser.go` → `takePaste`) and
+completed by it, exactly as any other sequence a boundary splits, and the input
+loop's silence timeout resolves the marker that never does arrive — the paste
+delivered, the head dropped as the unknown sequence it is, paste mode left. The
+sweep over every cut offset and every read size is
+`key_parser_paste_cut_test.go`; the loop's half is a row in
+`program_input_cut_test.go`.
+
+Where a paste lands is decided by the pane the user focused, not by the terminal
+window's OS-level focus. That focus is reported too (DEC mode 1004, enabled by
+`Screen.Start`, arriving as `FocusMsg`/`BlurMsg`), and it is a fact about drawing:
+the real caret goes away (IME anchors on it) and the box takes its blurred colors.
+It is not a fact about who arriving text is for, and the program cannot tell the
+two apart — they disagree on the terminal's own **context menu**, which takes the
+window's focus while it is open and writes the clipboard into the pty before that
+focus comes back. Gating the input path on the blur made "Paste" from that menu
+delete the block silently, while a middle-click paste — no menu, no blur — worked,
+and the same menu paste worked in the attachment window's URL box, whose filter
+gated on the pane only. So the blur blurs the drawing
+(`tui_focus.go` → `handleBlur`, `prompt_input.go` → `windowFocused`) and never the
+input path: text from the terminal goes to the box the user is writing into, and
+`paste_window_focus_test.go` pins both halves of that, including the caret still
+disappearing.
+
 A terminal that does not implement mode 2004 gives the program no markers, and
 there is no way to ask for them: `GetConsoleMode` succeeds on every Windows
 console host whether or not it implements paste, and the standard query

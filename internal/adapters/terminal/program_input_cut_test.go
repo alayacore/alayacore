@@ -117,8 +117,18 @@ func TestCutSequenceCompletesOnTheNextRead(t *testing.T) {
 			want: []string{"blur"},
 		},
 		{
-			name: "bracketed paste markers",
+			name: "bracketed paste, start marker cut",
 			read: [][]byte{[]byte("\x1b[200~hel"), []byte("lo\x1b[201~")},
+			want: []string{"paste:hello"},
+		},
+		{
+			// The end marker is the cut with the worse failure behind it:
+			// its head is valid paste content, so dropping it into the
+			// content leaves a paste that never closes and swallows every
+			// keystroke after it. key_parser_paste_cut_test.go sweeps the
+			// offsets; this is the same cut through the real loop.
+			name: "bracketed paste, end marker cut",
+			read: [][]byte{[]byte("\x1b[200~hello\x1b[20"), []byte("1~")},
 			want: []string{"paste:hello"},
 		},
 	}

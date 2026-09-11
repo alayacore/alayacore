@@ -18,7 +18,10 @@ package terminal
 // bodies are a color, a capability or a clipboard read. A sequence that a read
 // boundary cuts in half is completed by the next read rather than resolved
 // early (program_input.go → readInput), which is what keeps a split report from
-// arriving as its own parameters.
+// arriving as its own parameters. The paste-end marker is held by the same rule
+// from inside a paste (takePaste → pasteTailHold): a marker whose head is written
+// into the content rather than kept is a paste that never ends, and every
+// keystroke after it joins the content instead of the prompt.
 //
 // Key string compatibility: KeyMsg.String() must produce exactly the same
 // strings bubbletea/ultraviolet produced, because the whole application
@@ -218,16 +221,13 @@ func (p *InputParser) Parse(data []byte) []any {
 	var msgs []any
 	for len(data) > 0 {
 		if p.inPaste {
-			if i := indexSeq(data, pasteEnd); i >= 0 {
-				p.paste.Write(data[:i])
-				p.inPaste = false
-				msgs = append(msgs, PasteMsg{Content: p.paste.String()})
-				p.paste.Reset()
-				data = data[i+len(pasteEnd):]
-				continue
+			pasted, rest, spent := p.takePaste(data)
+			msgs = append(msgs, pasted...)
+			if spent {
+				return msgs
 			}
-			p.paste.Write(data)
-			return msgs
+			data = rest
+			continue
 		}
 
 		if data[0] != 0x1b {
@@ -301,6 +301,57 @@ const (
 // indexSeq returns the index of seq in data, or -1.
 func indexSeq(data []byte, seq string) int {
 	return strings.Index(string(data), seq)
+}
+
+// takePaste consumes the part of an open paste that this read carries: the text
+// up to the end marker, or — when the marker is not here to find — everything
+// except a possible head of it.
+//
+// The head is the reason this is not just a write. A read stops where the
+// platform stops it (inputReadSize bytes on Unix, consoleEventsPerRead events on
+// Windows), so a long block is cut at an offset nobody chose, and a cut inside
+// `ESC [ 201 ~` leaves that head behind looking exactly like content. Written
+// into the content, it is a paste that never ends: the parser stays in paste
+// mode and takes every keystroke after it as pasted text. Held in pending
+// instead, it is completed by the next read like any other sequence a boundary
+// splits (program_input.go → readInput).
+//
+// rest is what is left of the read once the paste closed, and spent reports that
+// there is nothing left — the read is over, and whatever the parser is holding
+// needs the next one.
+func (p *InputParser) takePaste(data []byte) (msgs []any, rest []byte, spent bool) {
+	if i := indexSeq(data, pasteEnd); i >= 0 {
+		p.paste.Write(data[:i])
+		return []any{PasteMsg{Content: p.closePaste()}}, data[i+len(pasteEnd):], false
+	}
+	hold := pasteTailHold(data)
+	p.paste.Write(data[:len(data)-hold])
+	if hold > 0 {
+		p.pending = append([]byte(nil), data[len(data)-hold:]...)
+	}
+	return nil, nil, true
+}
+
+// pasteTailHold reports how many trailing bytes of data could be the beginning
+// of the paste-end marker, which the next read may complete. At most one byte
+// short of the marker is held: the whole marker is found by takePaste's search,
+// and a longer tail has nothing left to become — holding it would only move
+// paste content out of reach.
+func pasteTailHold(data []byte) int {
+	for k := min(len(data), len(pasteEnd)-1); k > 0; k-- {
+		if strings.HasSuffix(string(data), pasteEnd[:k]) {
+			return k
+		}
+	}
+	return 0
+}
+
+// closePaste leaves paste mode and hands back what was collected.
+func (p *InputParser) closePaste() string {
+	content := p.paste.String()
+	p.inPaste = false
+	p.paste.Reset()
+	return content
 }
 
 // decodeC0 decodes a single C0/C1 control byte (not ESC).
@@ -738,14 +789,26 @@ var ss3Keys = map[byte]Key{
 // Flush force-resolves any pending incomplete sequence. This is called by
 // the program's input loop after a short escape-sequence timeout: a lone
 // trailing ESC means the Escape key was pressed (uv/bubbletea treat ESC the
-// same way after their esc-sequence timeout); any other incomplete sequence
-// is unknown and dropped.
+// same way after their esc-sequence timeout); the head of a paste-end marker
+// means the paste is over without its marker, and is delivered as the paste;
+// any other incomplete sequence is unknown and dropped.
 func (p *InputParser) Flush() []any {
 	if len(p.pending) == 0 {
 		return nil
 	}
 	pending := p.pending
 	p.pending = nil
+	// Bytes held back as the head of a paste-end marker that never completed
+	// are an unknown sequence, and go the way every other one goes: dropped.
+	// What was collected in front of them is a paste the user sent, and it must
+	// not stay held — a parser left in paste mode swallows the rest of the
+	// session into that buffer, which is a dead keyboard, not a lost paste.
+	if p.inPaste {
+		if content := p.closePaste(); content != "" {
+			return []any{PasteMsg{Content: content}}
+		}
+		return nil
+	}
 	// One or more ESC bytes: emit that many Escape keys.
 	if allESC(pending) {
 		msgs := make([]any, len(pending))

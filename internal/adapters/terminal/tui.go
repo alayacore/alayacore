@@ -877,7 +877,7 @@ func (m Terminal) View() View {
 	// overlays without a text input).
 	if x, y, ok := m.overlayCursorPosition(); ok {
 		v.Cursor = m.newCursor(x, y)
-	} else if m.input.IsFocused() && !m.isBlocked() {
+	} else if m.input.ShowCaret() && !m.isBlocked() {
 		// y: the input box's top rule sits at (windowHeight - inputHeight - 1)
 		// — the same expression View uses for inputBoxY. The rows above it
 		// belong to the display region and the live edge, which reach down

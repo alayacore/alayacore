@@ -185,7 +185,18 @@ does not delimit) and the OSC/DCS/SOS/PM/APC string controls, whose bodies are a
 color, a capability or a clipboard read. A reply is recognized as one only where
 it is unambiguous — the CSI is complete, the string control reached its
 terminator — so the Alt chords that share those bytes (`ESC <`, `ESC ]`, `ESC P`)
-still work."
+still work.
+
+The same read boundary falls inside a *paste* the way it falls inside a report,
+and there it is the worse of the two cases. Paste content is read without looking
+for structure in it, so a boundary inside the closing marker leaves a head that
+is indistinguishable from content; written into the content, it is a paste that
+never ends, and a parser left in paste mode takes every keystroke after it as
+pasted text — a dead keyboard rather than a lost block. So the head is held by
+`key_parser.go` → `takePaste` and completed by the next read like any other
+cut sequence, and the loop's silence timeout resolves the one that never is:
+the paste delivered, the head dropped, paste mode left. See
+[tui.md → Paste and terminal capability](../tui.md#paste-and-terminal-capability).
 
 **An external editor's buffer is block text, not keystrokes.** `blockText`
 (`input_field.go`) is what turns text arriving as a chunk into something the input
@@ -299,10 +310,22 @@ Covered by tests that run there:
 - `program_input_cut_test.go` — that a sequence a read boundary cuts in half is
   completed by the next read instead of flushed: the mouse report at three cut
   offsets, an arrow cut after `ESC [`, a focus and a blur report, and a bracketed
-  paste whose markers are split. The failure it pins is the reported one — the
+  paste at both of its markers. The failure it pins is the reported one — the
   tail arriving as typing — and it is also where the timeout is pinned: a lone
   Escape is `esc`, and only after the timeout, measured rather than raced.
   Build-tagged for nothing, so it runs on every platform.
+- `key_parser_paste_cut_test.go` — the paste's own half of that rule, at the
+  parser: the same stream cut at every byte offset and delivered in reads of
+  every size, one paste out and paste mode left in every case; content that
+  genuinely ends with the head of the closing marker kept intact; and a marker
+  that never completes resolved by `Flush` into the paste it was holding, with
+  the keyboard working again behind it. Build-tagged for nothing.
+- `paste_window_focus_test.go` — that the window's OS-level focus is a rendering
+  state and not an input gate: a paste and a keystroke arriving while the app is
+  blurred land in the box the user was writing into, in the prompt and in an
+  overlay filter alike, the caret and the colors still go blurred, and the pane
+  focus is what keeps a paste out of a box that is not the user's target.
+  Build-tagged for nothing.
 - `program_input_unix_test.go` — that the real Unix source keeps the promise the
   protocol is built on: it is between reads within one poll timeout, and the
   terminal is left alone while parked.
@@ -399,7 +422,11 @@ onto a path no runner can exercise, so these are not academic:
       cannot stage.
 - [ ] Focus in and out of the window: the dim and restore that
       `FocusMsg`/`BlurMsg` drive, if `FOCUS_EVENT_RECORD` reaches a legacy console
-      application at all.
+      application at all. Which hosts report a *context menu* as a focus loss is
+      the same open question — the model no longer cares (the blur cannot delete
+      input, pinned by `paste_window_focus_test.go`), but the menu paste that
+      reported it came from one, and confirming which is the host's share of the
+      story this fix does not settle.
 
 ## Known gaps
 
