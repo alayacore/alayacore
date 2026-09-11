@@ -3,12 +3,15 @@ package terminal
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"testing"
 )
 
 // assertInputFieldInvariants checks the rendering/cursor invariants after
 // every operation in the fuzz test:
 //
+//  0. A single-line field's value holds no line break (and a multi-line
+//     field's may).
 //  1. The visible text never exceeds the viewport width.
 //  2. The cursor never sits beyond the rendered visible text.
 //  3. A rune at the cursor is never clipped by the right edge (when it could
@@ -28,6 +31,11 @@ func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 	}
 	if g.pos < 0 || g.pos > len(g.value) {
 		check("pos=%d out of range [0,%d]", g.pos, len(g.value))
+	}
+	// Invariant 0: the capacity rule — a single-line field can never hold a
+	// break, whatever door the text came through.
+	if !g.multiline && slices.Contains(g.value, '\n') {
+		check("single-line field holds a line break")
 	}
 	lineStart, lineEnd := g.currentLine(g.pos)
 	lineLen := lineEnd - lineStart
@@ -131,8 +139,15 @@ func TestInputFieldFuzzInvariants(t *testing.T) {
 
 	for _, seed := range []int64{1, 7, 42, 99, 1234, 2024, 31337, 55555, 77777, 99999} {
 		rng := rand.New(rand.NewSource(seed))
+		// Alternate capacity by seed so both are driven through the same
+		// operations: the invariants must hold for a single-line field (whose
+		// value may hold no break) and a multi-line one alike.
+		newField := NewInputField
+		if seed%2 == 0 {
+			newField = NewMultilineInputField
+		}
 		for iter := 0; iter < 8000; iter++ {
-			g := NewInputField()
+			g := newField()
 			g = g.WithWidth(1 + rng.Intn(15)) // width 1..15
 
 			steps := 1 + rng.Intn(30)
@@ -185,7 +200,7 @@ func TestInputFieldFuzzInvariants(t *testing.T) {
 					// (Without this, a stale visStart could survive when the
 					// new value coincidentally shares the old lineStart —
 					// all internal invariants would still pass.)
-					fresh := NewInputField().WithWidth(g.width).WithValue(s).CursorEnd()
+					fresh := newField().WithWidth(g.width).WithValue(s).CursorEnd()
 					if fresh.visStart != g.visStart || fresh.visLine != g.visLine {
 						t.Fatalf("seed=%d iter=%d: reset leaked visible start: g.visLine=%d visStart=%d, fresh visLine=%d visStart=%d (value=%q width=%d)",
 							seed, iter, g.visLine, g.visStart, fresh.visLine, fresh.visStart, s, g.width)

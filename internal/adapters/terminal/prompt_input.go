@@ -4,6 +4,7 @@ package terminal
 // It wraps an InputField which supports multi-line content.
 
 import (
+	"image/color"
 	"strings"
 )
 
@@ -34,7 +35,7 @@ type PromptInput struct {
 
 // NewPromptInput creates a new prompt input.
 func NewPromptInput(styles *Styles) PromptInput {
-	input := NewInputField()
+	input := NewMultilineInputField()
 	input.Placeholder = "Enter your prompt..."
 	input = input.WithActive(true)
 	input.Prompt = ""
@@ -68,16 +69,7 @@ func (m PromptInput) Update(msg Msg) (PromptInput, []Result) {
 // View renders the input field with border, attachments above if present.
 // When blocked is true, content is dimmed (overlay active).
 func (m PromptInput) View() View {
-	borderColor := m.styles.BorderFocused
-	if !m.active {
-		borderColor = m.styles.BorderBlurred
-	} else if m.input.LineCount() > 1 {
-		borderColor = m.styles.ColorWarning
-	}
-
-	if m.blocked {
-		borderColor = m.styles.ColorDim
-	}
+	borderColor := m.borderColor()
 
 	input := m.updateInputStyles()
 	content := input.View()
@@ -103,6 +95,25 @@ func (m PromptInput) View() View {
 		content = m.styles.Input.Foreground(m.styles.ColorDim).Render(content)
 	}
 	return NewView(m.styles.RenderOpenBox(content, m.width, borderColor))
+}
+
+// borderColor returns the prompt box's rule color. Multi-line content is the
+// one state of the box that changes it: a whole draft is waiting to be
+// submitted, so the rule turns to the warning color. The prompt is the one
+// field that can hold a line break (InputField's type doc), which is why this
+// affordance is exclusive to it — an overlay filter, being single-line, can
+// never reach the branch.
+func (m PromptInput) borderColor() color.Color {
+	switch {
+	case m.blocked:
+		return m.styles.ColorDim
+	case !m.active:
+		return m.styles.BorderBlurred
+	case m.input.LineCount() > 1:
+		return m.styles.ColorWarning
+	default:
+		return m.styles.BorderFocused
+	}
 }
 
 // updateInputStyles updates the text input styles based on current theme.
@@ -166,6 +177,14 @@ func (m PromptInput) Value() string {
 
 func (m PromptInput) WithValue(value string) PromptInput {
 	m.input = m.input.WithValue(value)
+	return m
+}
+
+// WithBlockValue replaces the prompt with a block of text that arrived whole —
+// an external editor's buffer — cursor at the end, through the wrapped field's
+// block rule (InputField.WithBlockValue).
+func (m PromptInput) WithBlockValue(value string) PromptInput {
+	m.input = m.input.WithBlockValue(value)
 	return m
 }
 

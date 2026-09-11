@@ -1,8 +1,14 @@
 package terminal
 
-// InputField is a text input component supporting multi-line content with a
-// single-line display. Users navigate lines with up/down arrows, and the
-// visible area shows only the line containing the cursor.
+// InputField is a text input component. Its display is always one line — the
+// line the cursor is on — and its *capacity* is one line or many: a multi-line
+// field's value may contain line breaks (Up/Down navigate them, a pasted block
+// keeps them) while a single-line field's value may not, and every door that
+// could introduce one removes it. Capacity is set once at construction
+// (NewInputField vs NewMultilineInputField) and is the field's own invariant,
+// not a routing decision: which box receives text is the owner's question
+// (Terminal.keyboardTarget), but a single-line box cannot hold a line break any
+// more than a fixed-width one can hold more cells than it has.
 
 import (
 	"slices"
@@ -35,6 +41,12 @@ type InputField struct {
 	// (a state that decides only painting) could delete a paste.
 	active bool
 
+	// multiline reports whether the value may contain line breaks; see the
+	// type doc. It is fixed at construction and is what decides whether a
+	// break from a paste, an editor buffer, or a WithValue call is kept or
+	// stripped — the one place the distinction lives.
+	multiline bool
+
 	styleFocused inputFieldStyle
 	styleBlurred inputFieldStyle
 }
@@ -45,7 +57,13 @@ type inputFieldStyle struct {
 	Placeholder Style
 }
 
-// NewInputField creates a new InputField with default settings.
+// NewInputField creates a single-line field: its value may hold no line break,
+// and one that a pasted or edited block carries is stripped rather than stored
+// (see stripLineBreaks). Single line is the default because a box that cannot
+// represent a break must not silently keep one — a filter holding a stranded
+// newline matches nothing, and the attachment box uses its value as a path, so
+// the corruption would be invisible, whereas a field that wanted breaks and did
+// not get them fails visibly.
 func NewInputField() InputField {
 	return InputField{
 		width:   20,
@@ -53,6 +71,16 @@ func NewInputField() InputField {
 		active:  true,
 		goalCol: -1,
 	}
+}
+
+// NewMultilineInputField creates a field whose value may hold line breaks:
+// Up/Down move between the lines and a pasted block keeps its breaks. The
+// prompt is the one such field — the one box whose Enter submits a whole draft
+// and whose Ctrl+J (PromptInput.InsertNewline) asks for a break.
+func NewMultilineInputField() InputField {
+	m := NewInputField()
+	m.multiline = true
+	return m
 }
 
 // Init implements Model.
@@ -178,7 +206,15 @@ func (m InputField) handleInsertion(key Chord) (InputField, bool) {
 // goalCol is reset for the same reason the character-insertion path resets it:
 // the remembered goal column of up/down navigation belongs to the line the
 // cursor was on, and a new line starts at column 0.
+//
+// On a single-line field there is no line to break to, so it is a no-op — the
+// same disposition a pasted break gets (stripLineBreaks). Only the prompt, the
+// one multi-line field, is bound to this action, but the field enforces its own
+// capacity rather than trusting the caller to have checked.
 func (m InputField) insertNewline() InputField {
+	if !m.multiline {
+		return m
+	}
 	m.value = slices.Insert(m.value, m.pos, '\n')
 	m.pos++
 	m.goalCol = -1
@@ -235,9 +271,15 @@ func blockText(content string) []rune {
 }
 
 // handlePaste inserts pasted text at the cursor position, filtered by the block
-// rule (blockText) that an editor's buffer goes through as well.
+// rule (blockText) that an editor's buffer goes through as well, and then
+// stripped of line breaks when the field is single-line. Both rules apply here
+// and in WithBlockValue — the two doors a block enters by — so the field's
+// capacity holds no matter which one a paste comes through.
 func (m InputField) handlePaste(msg PasteMsg) InputField {
 	filtered := blockText(msg.Content)
+	if !m.multiline {
+		filtered = stripLineBreaks(filtered)
+	}
 	if len(filtered) == 0 {
 		return m
 	}
@@ -245,6 +287,28 @@ func (m InputField) handlePaste(msg PasteMsg) InputField {
 	m.pos += len(filtered)
 	m.goalCol = -1
 	return m.ensureCursorVisible()
+}
+
+// stripLineBreaks returns runes with every line break removed. It is the whole
+// of single-line behavior: applied wherever text can enter a single-line
+// field, it makes "the value holds no break" true by construction instead of by
+// each caller remembering. The break is removed rather than replaced with a
+// space — that keeps every other character the block carried, matches the rule
+// blockText already applies to characters a buffer cannot represent (tabs and
+// NULs are dropped, not substituted), matches the keystroke path where LF
+// arrives as Ctrl+J and is not inserted, and matches the HTML rule that a
+// single-line <input> strips newlines from its value.
+func stripLineBreaks(runes []rune) []rune {
+	if !slices.Contains(runes, '\n') {
+		return runes
+	}
+	out := make([]rune, 0, len(runes))
+	for _, r := range runes {
+		if r != '\n' {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func (m InputField) ensureCursorVisible() InputField {
@@ -653,8 +717,15 @@ func (m InputField) CursorEnd() InputField {
 	return m.ensureCursorVisible()
 }
 
+// WithValue replaces the whole value and puts the cursor at the end. A
+// single-line field strips any line break the value carries, the same rule
+// handlePaste applies, so a caller cannot leave such a field holding a
+// character it cannot represent.
 func (m InputField) WithValue(s string) InputField {
 	m.value = []rune(s)
+	if !m.multiline {
+		m.value = stripLineBreaks(m.value)
+	}
 	m.pos = len(m.value)
 	m.goalCol = -1
 	// Explicitly invalidate the visible start: the new value's lineStart can
@@ -663,6 +734,15 @@ func (m InputField) WithValue(s string) InputField {
 	m.visLine = -1
 	m.visStart = 0
 	return m.ensureCursorVisible()
+}
+
+// WithBlockValue replaces the value with a block of text that arrived whole —
+// an external editor's buffer — cursor at the end. Routing it through the field
+// rather than letting the caller run blockText itself keeps the block rule in
+// one place and makes the field's line capacity hold for the editor exactly as
+// it does for a paste: this and handlePaste are the two doors a block enters by.
+func (m InputField) WithBlockValue(s string) InputField {
+	return m.WithValue(string(blockText(s)))
 }
 
 // WithCursorPos sets the cursor position to pos (in runes) within the value.

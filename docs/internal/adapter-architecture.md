@@ -11,7 +11,7 @@ The adapter layer handles user interaction and translates between user actions a
 | `Terminal` | Main TUI model composing all UI components |
 | `DisplayModel` | Renders assistant output with virtual scrolling |
 | `PromptInput` | Handles user text input with attachment display |
-| `InputField` | Reusable text input component (filter, search, command entry) |
+| `InputField` | Reusable text field: single-line by default (filter, search, path), multi-line only for the prompt |
 | `FilteredListCore` | Shared filtering, navigation, and overlay logic |
 | `ModelSelector` | Modal for switching between AI models |
 | `ThemeSelector` | Modal for switching between color themes |

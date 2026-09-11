@@ -92,10 +92,20 @@ alacritty / kitty and friends on Unix, all take this path.
 
 `blockText` is the rule for any text that arrives as a *block* rather than as
 keystrokes, so the finished buffer of an external editor goes through it too
-(`tui.go` → `handleEditorFinished`). That matters most on Windows, where both
+(`input_field.go` → `WithBlockValue`, reached from `tui.go` →
+`handleEditorFinished`). That matters most on Windows, where both
 sources use CRLF: notepad always, and vim by default for a file it creates.
 Before the rule was shared, a prompt composed in `notepad` came back carrying
 CRs, which the terminal reads as "column 0" — the frame painted over itself.
+
+A field is one line or many, and the rule in `blockText` is only half of it: a
+field that cannot hold a line break strips the ones a block carries
+(`input_field.go` → `stripLineBreaks`), so a multi-line paste into an overlay
+filter cannot leave a newline in a value that matches no item, and the
+attachment box — which uses its value as a path — cannot store one either. The
+prompt is the one multi-line field (`NewMultilineInputField`); every other text
+box is single line by construction, which is why the prompt is the only box whose
+border turns to the warning color when a draft spans more than one line.
 
 A paste is bounded by its markers and by nothing else, so those two sequences have
 to survive the shape the bytes arrive in. A read stops where the platform stops it

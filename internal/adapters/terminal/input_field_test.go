@@ -126,7 +126,7 @@ func TestInputFieldCursorCell(t *testing.T) {
 
 	// Multiline: cursor on the second line — the displayed line is the
 	// current line, so the cell offset is relative to that line only.
-	f = NewInputField()
+	f = NewMultilineInputField()
 	f = f.WithValue("first\nsecond").CursorEnd()
 	if cell := f.CursorCell(); cell != 6 {
 		t.Fatalf("multiline end: got cell %d, want 6", cell)

@@ -44,6 +44,10 @@ func NewModelSelector(styles *Styles) ModelSelector {
 	return ms
 }
 
+// newFilterInput builds the filter box shared by every selector overlay. It is
+// a single-line field: NewInputField strips line breaks from a pasted block, so
+// a multi-line paste cannot strand a newline in a value that would match no
+// item — see InputField's type doc.
 func newFilterInput(placeholder string) InputField {
 	input := NewInputField()
 	input.Placeholder = placeholder
