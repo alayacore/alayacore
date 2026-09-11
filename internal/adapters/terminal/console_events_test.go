@@ -191,7 +191,10 @@ func TestEncoderSequences(t *testing.T) {
 
 		{"escape", keyEvent{down: true, virtualKey: vkEscape, char: 0x1b}, "\x1b"},
 		{"escape without a character", keyEvent{down: true, virtualKey: vkEscape}, "\x1b"},
-		{"alt+escape", keyEvent{down: true, virtualKey: vkEscape, char: 0x1b, ctrlState: ctrlLeftAlt}, "\x1b\x1b"},
+		// Alt+Escape is dropped, not doubled into `ESC ESC`: the parser holds a
+		// nested ESC waiting for a byte that a chord will never send, and the
+		// silence timeout would then answer with two Escape keys for one press.
+		{"alt+escape", keyEvent{down: true, virtualKey: vkEscape, char: 0x1b, ctrlState: ctrlLeftAlt}, ""},
 
 		// Deliberately not the console's character for this key (0x08): see
 		// the note in specialKeyBytes. What comes out has to be what the
@@ -211,6 +214,55 @@ func TestEncoderSequences(t *testing.T) {
 				t.Errorf("encoded as %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestEncoderDropsAltOverASequenceHead is the event path's half of the rule
+// consumeEscape states for bytes: a chord that would begin a sequence the parser
+// holds is not encoded at all. The console has just told us this was a key press,
+// so emitting `ESC` plus `[`, `O`, `]`, `P`, `X`, `^` or `_` would trade a known
+// fact for the byte stream's ambiguity — and the parser, which resolves that
+// ambiguity by holding (a reply's body must never reach the prompt), would
+// swallow whatever the user typed next, a paste included. Nothing is bound to an
+// Alt chord (keys.go), so the drop delivers nothing the program can use anyway.
+func TestEncoderDropsAltOverASequenceHead(t *testing.T) {
+	const altHeld = ctrlLeftAlt
+	var enc keyEncoder
+	for _, head := range "[O]PX^_" {
+		got := string(enc.append(nil, keyRecordOf(keyEvent{down: true, virtualKey: uint16(head), char: uint16(head), ctrlState: altHeld})))
+		if got != "" {
+			t.Errorf("Alt+%c encoded as %q, want nothing", head, got)
+		}
+	}
+
+	// The cost the drop pays for, asserted rather than argued: after the chord,
+	// the next key must arrive. Encoding the chord as `ESC [` used to leave the
+	// parser holding a sequence, and the character behind it went into that hold.
+	p := &InputParser{}
+	chord := enc.append(nil, keyRecordOf(keyEvent{down: true, virtualKey: 'P', char: 'P', ctrlState: altHeld}))
+	if msgs := p.Parse(chord); len(msgs) != 0 {
+		t.Fatalf("the dropped chord produced %#v, want nothing", msgs)
+	}
+	if p.HasPending() {
+		t.Fatalf("the dropped chord left %q pending", p.pending)
+	}
+	next := enc.append(nil, keyRecordOf(keyEvent{down: true, virtualKey: 'H', char: 'h'}))
+	msgs := p.Parse(next)
+	if len(msgs) != 1 {
+		t.Fatalf("the key behind the chord produced %d messages %#v, want the one key h", len(msgs), msgs)
+	}
+	if got := msgs[0].(KeyMsg).String(); got != "h" {
+		t.Errorf("the key behind the chord arrived as %q, want %q", got, "h")
+	}
+
+	// Alt over an ordinary character is still the chord, and still reaches the
+	// parser as one: the drop is about sequence heads and nothing else.
+	altB := enc.append(nil, keyRecordOf(keyEvent{down: true, virtualKey: 'B', char: 'b', ctrlState: altHeld}))
+	if string(altB) != "\x1bb" {
+		t.Fatalf("Alt+B encoded as %q, want %q", altB, "\x1bb")
+	}
+	if msgs := (&InputParser{}).Parse(altB); len(msgs) != 1 || msgs[0].(KeyMsg).String() != "alt+b" {
+		t.Errorf("Alt+B parsed as %#v, want one alt+b", msgs)
 	}
 }
 

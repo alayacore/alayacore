@@ -240,6 +240,18 @@ func (e *keyEncoder) appendCharBytes(dst []byte, k keyEvent, n int) []byte {
 	// character is typed (AltGr+q is "@" on a German keyboard), so the character
 	// stands alone — which is also what it does on every other terminal.
 	alt := k.ctrlState&altMask != 0 && k.ctrlState&ctrlMask == 0
+	if alt && startsHeldSequence(byte(r)) {
+		// Alt+] / Alt+[ / Alt+O and friends: this event *is* a key press, and
+		// the console has just told us so. Emitting `ESC` plus that byte would
+		// turn that knowledge into the exact ambiguity the byte path cannot
+		// resolve — `ESC ]` is a color reply until proven otherwise — and the
+		// parser's hold would then swallow whatever the user types in the next
+		// silence window, a paste with it. Dropping the chord is the honest
+		// answer: this program binds no Alt chord (keys.go), so there is nothing
+		// here to deliver. Alt over Ctrl is already excluded above as AltGr.
+		e.highSurrogate = 0
+		return dst
+	}
 	for range n {
 		if alt {
 			dst = append(dst, keyESC)

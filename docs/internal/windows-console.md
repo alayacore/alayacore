@@ -99,13 +99,25 @@ output through the real parser and asserting the key strings the application bin
 longer load-bearing; and the mapping runs on every platform's test job, because
 `console_events.go` contains no syscall.
 
-**Two events are deliberately not encoded as the console reported them.**
+**Three events are deliberately not encoded as the console reported them.**
 Backspace carries BS (`0x08`) in its character field, which this parser reads as
 `ctrl+h` — the help window; terminals report Backspace as DEL (`0x7f`) and the
 input field binds `backspace`, so DEL is what is emitted. AltGr is Ctrl+Alt on the
 layouts that need both to type a character; prefixing those characters with ESC
 would turn `@` into `alt+@`, so Alt is reported as a chord only when Ctrl is not
-held. A third case covers for the console rather than departing from it:
+held. And Alt over a byte that can *begin* a sequence — `[`, `O`, or a string
+control's `] P X ^ _`, or a second `ESC` — is encoded as nothing at all. That one
+is the encoder spending knowledge the byte path does not have: the console has
+just said which key was pressed, whereas `ESC ]` on a byte stream is a color
+reply until proven otherwise, and the parser proves it by *holding*
+(`key_parser.go` → `startsHeldSequence`) because a reply's body must never reach
+the prompt. Synthesizing the prefix would have handed a known chord into that
+hold and eaten whatever the user typed next — measured before the rule existed:
+`Alt+]` followed by four presses of `h` produced no messages at all and left
+`\x1b]hhhh` pending, and the silence timeout then destroyed it, a paste arriving
+in that window with it. Dropping the chord costs nothing, because no Alt chord is
+bound (`keys.go`). `console_events_test.go` asserts both the drop and the survivor
+behind it. A fourth case covers for the console rather than departing from it:
 `Ctrl+letter` normally arrives as the control code in the character field, and when
 it arrives bare the code is derived from the key, which is what a terminal sends and
 what the `ctrl+<letter>` bindings name. All three are asserted in
@@ -308,7 +320,8 @@ Covered by tests that run there:
   `inputNoSelectionMode` including the `ENABLE_EXTENDED_FLAGS` requirement.
 - `console_events_test.go` — the `INPUT_RECORD` ABI (size and union offset), the
   event decoder, every sequence the encoder emits, the surrogate pairing, the two
-  deliberate departures above, and the end-to-end claim that each encoded key
+  deliberate departures above (the third of them asserted with the keystroke that
+  follows the dropped chord, because that keystroke is what the drop is for), and the end-to-end claim that each encoded key
   arrives through the real parser as the string the application binds. It is
   build-tagged for nothing: it runs on Linux too, and on any machine this file is
   changed on.

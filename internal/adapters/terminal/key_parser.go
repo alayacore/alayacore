@@ -390,8 +390,8 @@ func consumeEscape(data []byte) (string, int, bool) {
 	if len(data) == 1 {
 		return "", 0, false // lone ESC: may be part of a sequence
 	}
-	switch data[1] {
-	case '[': // CSI
+	switch {
+	case data[1] == '[': // CSI
 		// X10 mouse is the one CSI whose length its final byte does not
 		// give: `CSI M` carries three raw coordinate bytes after it. A read
 		// boundary inside those three must not resolve `CSI M` as a complete
@@ -406,9 +406,9 @@ func consumeEscape(data []byte) (string, int, bool) {
 			return "", 0, false
 		}
 		return consumeCSI(data)
-	case 'O': // SS3
+	case data[1] == 'O': // SS3
 		return consumeSS3(data)
-	case ']', 'P', 'X', '^', '_':
+	case isStringControlHead(data[1]):
 		// String-type controls: OSC (ESC ]), DCS (ESC P), SOS (ESC X),
 		// PM (ESC ^), APC (ESC _). These are terminal *replies* (a color, a
 		// capability, a clipboard read), and the point of reading one as a
@@ -452,6 +452,35 @@ func consumeEscape(data []byte) (string, int, bool) {
 // stringTerminator is ST, which ends every string-type control (and, on its
 // own, cancels one).
 const stringTerminator = "\x1b\\"
+
+// stringControlHeads are the bytes that begin an OSC/DCS/SOS/PM/APC control.
+// Named as a set, and consulted by the Windows console encoder as well
+// (console_events.go), because the two must agree exactly: the parser holds a
+// sequence headed by these bytes rather than resolving it early, and an encoder
+// that synthesized one from a key event would hand it that same hold — costing
+// the user whatever they type next.
+func isStringControlHead(b byte) bool {
+	switch b {
+	case ']', 'P', 'X', '^', '_':
+		return true
+	}
+	return false
+}
+
+// startsHeldSequence reports whether an ESC followed by this byte begins a
+// sequence that consumeEscape holds rather than resolves: a CSI or SS3 that has
+// not reached its final byte, one of the string controls without its terminator,
+// or another ESC (a nested chord, which needs at least one more byte).
+//
+// This is the question the event encoder has to ask. On a byte stream the same
+// bytes are ambiguous — `ESC ]` is either a color reply or someone's Alt+] — and
+// the parser holds them because a reply's body must never reach the prompt. On
+// the event path there is no ambiguity to preserve: the console has just said
+// which key was pressed, so emitting the prefix would manufacture the ambiguity
+// and pay for it with the keystrokes that follow.
+func startsHeldSequence(b byte) bool {
+	return b == '[' || b == 'O' || b == 0x1b || isStringControlHead(b)
+}
 
 // consumeStringControl consumes an OSC/DCS/SOS/PM/APC sequence through its
 // terminator, and reports whether the terminator is already in hand.
