@@ -220,3 +220,15 @@ func TestIncompleteSequenceIsDropped(t *testing.T) {
 		t.Errorf("loop delivered %v for an introducer with nothing behind it", got)
 	}
 }
+
+// TestUnterminatedPasteIsDeliveredOnSilence: a paste whose end marker never
+// arrives must be resolved by the loop's timeout even when nothing marker-like
+// is buffered. Gating the timeout on held bytes left this paste open, and an open
+// parser takes every keystroke that follows as pasted text — the dead keyboard
+// this case pins.
+func TestUnterminatedPasteIsDeliveredOnSilence(t *testing.T) {
+	got := collectInput(t, []byte(pasteStart+"hello"))
+	if len(got) != 1 || got[0] != "paste:hello" {
+		t.Fatalf("an unterminated paste delivered %v, want [paste:hello]", got)
+	}
+}

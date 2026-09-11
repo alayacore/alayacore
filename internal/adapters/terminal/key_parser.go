@@ -210,6 +210,39 @@ type InputParser struct {
 	paste   strings.Builder
 }
 
+// parserState is the machine's coarse state, derived from the two buffers above
+// rather than stored beside them: a field that every branch had to keep in step
+// with pending/inPaste is one more thing that can disagree with them. It exists
+// to name the state for Flush, which must resolve *any* unfinished input —
+// including an open paste whose buffer holds no marker head, the case that used
+// to sit here with no timer armed at all.
+type parserState int
+
+const (
+	stGround parserState = iota // nothing outstanding: the next byte starts fresh
+	stEscape                    // an escape sequence is held in pending
+	stPaste                     // a bracketed paste is open, collecting into paste
+)
+
+// state reports which of the three the parser is in.
+func (p *InputParser) state() parserState {
+	switch {
+	case p.inPaste:
+		return stPaste
+	case len(p.pending) > 0:
+		return stEscape
+	default:
+		return stGround
+	}
+}
+
+// MidSequence reports whether any input is unfinished — an incomplete escape
+// sequence, or an open paste. The input loop arms its silence timeout on this,
+// not on HasPending: an open paste with no marker head buffered is unfinished
+// just the same, and a timeout that only saw pending bytes would leave a paste
+// that never closes swallowing every keystroke that follows (see Flush).
+func (p *InputParser) MidSequence() bool { return p.state() != stGround }
+
 // Parse consumes data and returns the decoded messages. Bytes that form an
 // incomplete sequence are retained internally until the next call.
 func (p *InputParser) Parse(data []byte) []any {
@@ -853,38 +886,45 @@ var ss3Keys = map[byte]Key{
 	'd': {Code: KeyLeft, Mod: ModCtrl},
 }
 
-// Flush force-resolves any pending incomplete sequence. This is called by
-// the program's input loop after a short escape-sequence timeout: a lone
-// trailing ESC means the Escape key was pressed (uv/bubbletea treat ESC the
-// same way after their esc-sequence timeout); the head of a paste-end marker
-// means the paste is over without its marker, and is delivered as the paste;
-// any other incomplete sequence is unknown and dropped.
+// Flush force-resolves whatever is outstanding. The program's input loop calls
+// it after the terminal has been silent for the escape-sequence timeout: a lone
+// trailing ESC means the Escape key was pressed (uv/bubbletea treat ESC the same
+// way after their esc-sequence timeout); an open paste means the paste is over
+// without its end marker, and what was collected is delivered; any other
+// incomplete sequence is unknown and dropped.
+//
+// The paste case is decided by state, not by a non-empty pending: a paste body
+// does not have to end in the head of its marker, so a Flush gated on pending
+// left the common case — content, no marker head — in paste mode forever, and a
+// parser in paste mode takes every keystroke that follows as pasted text. That is
+// a dead keyboard, not a lost paste; delivering the collected content and leaving
+// paste mode is what keeps a broken paste from becoming one.
 func (p *InputParser) Flush() []any {
-	if len(p.pending) == 0 {
-		return nil
-	}
-	pending := p.pending
-	p.pending = nil
-	// Bytes held back as the head of a paste-end marker that never completed
-	// are an unknown sequence, and go the way every other one goes: dropped.
-	// What was collected in front of them is a paste the user sent, and it must
-	// not stay held — a parser left in paste mode swallows the rest of the
-	// session into that buffer, which is a dead keyboard, not a lost paste.
-	if p.inPaste {
+	switch p.state() {
+	case stPaste:
+		// A held marker head is meaningless once the paste is given up: it is
+		// not content and it must not be prepended to the next read.
+		p.pending = nil
 		if content := p.closePaste(); content != "" {
 			return []any{PasteMsg{Content: content}}
 		}
 		return nil
-	}
-	// One or more ESC bytes: emit that many Escape keys.
-	if allESC(pending) {
-		msgs := make([]any, len(pending))
-		for i := range pending {
-			msgs[i] = KeyPressMsg(Key{Code: KeyEscape})
+	case stEscape:
+		pending := p.pending
+		p.pending = nil
+		// One or more ESC bytes: emit that many Escape keys. Anything else
+		// that could not be completed is an unknown sequence, and dropped.
+		if allESC(pending) {
+			msgs := make([]any, len(pending))
+			for i := range pending {
+				msgs[i] = KeyPressMsg(Key{Code: KeyEscape})
+			}
+			return msgs
 		}
-		return msgs
+		return nil
+	default:
+		return nil
 	}
-	return nil
 }
 
 // allESC reports whether b consists only of ESC bytes.

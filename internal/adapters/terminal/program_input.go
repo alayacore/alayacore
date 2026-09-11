@@ -85,7 +85,7 @@ func (p *Program) readInput(ctxDone <-chan struct{}) {
 			if p.deliverParsed(data, ctxDone) {
 				return
 			}
-			if p.parser.HasPending() {
+			if p.parser.MidSequence() {
 				pendingSince = time.Now()
 			} else {
 				pendingSince = time.Time{}

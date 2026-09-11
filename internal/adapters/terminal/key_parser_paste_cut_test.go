@@ -169,3 +169,78 @@ func TestPasteWithoutItsMarkerResolvesOnSilence(t *testing.T) {
 		t.Fatalf("a byte typed after the resolved paste arrived as %v, want the key h", describeMsgs(typed))
 	}
 }
+
+// TestPasteWithNoMarkerHeadResolvesOnSilence is the case the state machine was
+// added for. A paste body does not have to end in the head of its end marker, so
+// there is often nothing to hold in pending — and a Flush gated on pending left
+// the parser in paste mode forever, taking every keystroke that followed as
+// pasted text. MidSequence (not HasPending) is the unfinished-input test, and
+// Flush must resolve the open paste even though pending is empty.
+func TestPasteWithNoMarkerHeadResolvesOnSilence(t *testing.T) {
+	p := &InputParser{}
+	// "pasted text" is not a suffix of the end marker, so nothing is held.
+	msgs := p.Parse([]byte(pasteStart + "pasted text"))
+	if len(msgs) != 0 {
+		t.Fatalf("an open paste produced %v, want nothing until its marker", describeMsgs(msgs))
+	}
+	if !p.inPaste {
+		t.Fatal("the parser left paste mode without an end marker")
+	}
+	if p.HasPending() {
+		t.Fatal("content that is not a marker head must not be buffered as pending")
+	}
+	if !p.MidSequence() {
+		t.Fatal("an open paste is unfinished input, but MidSequence reported otherwise")
+	}
+
+	resolved := p.Flush()
+	if len(resolved) != 1 {
+		t.Fatalf("Flush returned %v, want the one paste", describeMsgs(resolved))
+	}
+	paste, ok := resolved[0].(PasteMsg)
+	if !ok || paste.Content != "pasted text" {
+		t.Fatalf("Flush returned %v, want PasteMsg{pasted text}", describeMsgs(resolved))
+	}
+	if p.inPaste || p.MidSequence() {
+		t.Errorf("after Flush: inPaste=%v, MidSequence=%v", p.inPaste, p.MidSequence())
+	}
+
+	// And the keyboard works again.
+	typed := p.Parse([]byte("h"))
+	if len(typed) != 1 {
+		t.Fatalf("a byte typed after the resolved paste produced %v, want one key", describeMsgs(typed))
+	}
+	if key, isKey := typed[0].(KeyPressMsg); !isKey || Key(key).String() != "h" {
+		t.Fatalf("a byte typed after the resolved paste arrived as %v, want the key h", describeMsgs(typed))
+	}
+}
+
+// TestParserMidSequence pins the predicate the loop arms its timeout on: it must
+// be false in ground and true for every unfinished state, including an open paste
+// whose buffer is empty.
+func TestParserMidSequence(t *testing.T) {
+	p := &InputParser{}
+	if p.MidSequence() {
+		t.Fatal("a fresh parser is in ground, but MidSequence reported unfinished input")
+	}
+
+	// An incomplete escape sequence.
+	p.Parse([]byte("\x1b["))
+	if !p.MidSequence() {
+		t.Fatal("a held escape sequence must count as unfinished input")
+	}
+	p.Flush()
+	if p.MidSequence() {
+		t.Fatal("MidSequence stayed true after the escape sequence was flushed")
+	}
+
+	// An open paste with no marker head buffered.
+	p.Parse([]byte(pasteStart + "tail"))
+	if !p.MidSequence() {
+		t.Fatal("an open paste must count as unfinished input")
+	}
+	p.Flush()
+	if p.MidSequence() {
+		t.Fatal("MidSequence stayed true after the open paste was flushed")
+	}
+}
