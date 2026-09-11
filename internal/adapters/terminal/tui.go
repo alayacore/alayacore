@@ -490,6 +490,13 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 		return m.handlePaste(msg)
 
 	default:
+		// Unreachable by construction: Msg is sealed to the set in messages.go,
+		// and every message that reaches Update is handled above. Under test it
+		// is fatal, so a message type added to the set without a case fails
+		// loudly instead of being dropped.
+		if failOnUnknownMsg {
+			panic(fmt.Sprintf("terminal: unhandled message %T", msg))
+		}
 		return m, nil
 	}
 }

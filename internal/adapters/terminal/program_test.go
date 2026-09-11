@@ -353,7 +353,6 @@ func TestProgramPanicRecovery(t *testing.T) {
 	msgs := make(chan Msg, 4)
 	p, _ := newTestProgram(msgs)
 
-	type panicMsg struct{}
 	m := &fakeModel{panicOn: panicMsg{}}
 
 	go func() {

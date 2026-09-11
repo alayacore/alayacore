@@ -22,7 +22,7 @@ import (
 // offsets and returns the messages produced, along with whether the parser was
 // left inside a paste. That last is always the failure: the reads ran out while
 // the parser was still waiting for a marker.
-func feedReads(tb *testing.T, stream string, cuts ...int) (msgs []any, inPaste bool) {
+func feedReads(tb *testing.T, stream string, cuts ...int) (msgs []Msg, inPaste bool) {
 	tb.Helper()
 	p := &InputParser{}
 	prev := 0
@@ -37,7 +37,7 @@ func feedReads(tb *testing.T, stream string, cuts ...int) (msgs []any, inPaste b
 }
 
 // describeMsgs renders messages for a failure line without spilling a whole paste.
-func describeMsgs(msgs []any) []string {
+func describeMsgs(msgs []Msg) []string {
 	out := make([]string, 0, len(msgs))
 	for _, m := range msgs {
 		switch v := m.(type) {
@@ -54,7 +54,7 @@ func describeMsgs(msgs []any) []string {
 
 // onePaste asserts the messages are one paste of want followed by exactly the
 // named keys, and that the parser left paste mode behind.
-func onePaste(tb *testing.T, msgs []any, inPaste bool, want string, keys string) {
+func onePaste(tb *testing.T, msgs []Msg, inPaste bool, want string, keys string) {
 	tb.Helper()
 	if inPaste {
 		tb.Fatalf("parser left inside the paste: %v", describeMsgs(msgs))

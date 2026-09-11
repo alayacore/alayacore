@@ -102,7 +102,7 @@ func parseReads(reads [][]byte) (msgs, flushed string) {
 // renderMsgs names each message without spilling paste bytes into the failure
 // line: what the comparison is about is which messages exist, and a 300-byte
 // paste would bury the difference that matters. Short content is kept verbatim.
-func renderMsgs(dst []string, msgs []any) []string {
+func renderMsgs(dst []string, msgs []Msg) []string {
 	for _, m := range msgs {
 		switch v := m.(type) {
 		case PasteMsg:

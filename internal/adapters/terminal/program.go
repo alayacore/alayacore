@@ -22,9 +22,15 @@ import (
 	"time"
 )
 
-// Msg contains data from the result of an I/O operation. Messages trigger
-// the update function.
-type Msg any
+// Msg contains data from the result of an I/O operation. Messages trigger the
+// update function.
+//
+// Msg is a sealed interface: only types in this package that declare isMsg can
+// be a message. That is deliberate — after the input refactor the loop carries
+// only input events and asynchronous facts, and a value a component reports is
+// a Result (see result.go), not a message. Sealing means an unhandled message is
+// a compile-time impossibility rather than a silent drop in Update's default.
+type Msg interface{ isMsg() }
 
 // Cmd is an I/O operation that returns a message when it's complete. If
 // it's nil it's considered a no-op.
@@ -161,7 +167,10 @@ func Sequence(cmds ...Cmd) Cmd {
 
 // compactCmds ignores nil commands and returns the most direct command
 // possible (nil for none, the single command itself, or a batch/sequence).
-func compactCmds[T ~[]Cmd](cmds []Cmd) Cmd {
+func compactCmds[T interface {
+	Msg
+	~[]Cmd
+}](cmds []Cmd) Cmd {
 	var valid []Cmd
 	for _, c := range cmds {
 		if c != nil {

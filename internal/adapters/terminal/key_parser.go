@@ -171,8 +171,10 @@ var keyTypeString = map[rune]string{
 	KeyF12:       "f12",
 }
 
-// KeyMsg represents a key event (a key press).
+// KeyMsg represents a key event (a key press). It embeds Msg, so a key is a
+// message and the handler's `msg.(KeyMsg)` works against the sealed set.
 type KeyMsg interface {
+	Msg
 	String() string
 	// Chord is the key's identity for binding: which key, with which
 	// modifiers. It deliberately excludes Text — Text is how a key is rendered
@@ -269,13 +271,13 @@ func (p *InputParser) MidSequence() bool { return p.state() != stGround }
 
 // Parse consumes data and returns the decoded messages. Bytes that form an
 // incomplete sequence are retained internally until the next call.
-func (p *InputParser) Parse(data []byte) []any {
+func (p *InputParser) Parse(data []byte) []Msg {
 	if len(p.pending) > 0 {
 		data = append(p.pending, data...)
 		p.pending = nil
 	}
 
-	var msgs []any
+	var msgs []Msg
 	for len(data) > 0 {
 		if p.inPaste {
 			pasted, rest, spent := p.takePaste(data)
@@ -376,10 +378,10 @@ func indexSeq(data []byte, seq string) int {
 // rest is what is left of the read once the paste closed, and spent reports that
 // there is nothing left — the read is over, and whatever the parser is holding
 // needs the next one.
-func (p *InputParser) takePaste(data []byte) (msgs []any, rest []byte, spent bool) {
+func (p *InputParser) takePaste(data []byte) (msgs []Msg, rest []byte, spent bool) {
 	if i := indexSeq(data, pasteEnd); i >= 0 {
 		p.paste.Write(data[:i])
-		return []any{PasteMsg{Content: p.closePaste()}}, data[i+len(pasteEnd):], false
+		return []Msg{PasteMsg{Content: p.closePaste()}}, data[i+len(pasteEnd):], false
 	}
 	hold := pasteTailHold(data)
 	p.paste.Write(data[:len(data)-hold])
@@ -923,14 +925,14 @@ var ss3Keys = map[byte]Key{
 // parser in paste mode takes every keystroke that follows as pasted text. That is
 // a dead keyboard, not a lost paste; delivering the collected content and leaving
 // paste mode is what keeps a broken paste from becoming one.
-func (p *InputParser) Flush() []any {
+func (p *InputParser) Flush() []Msg {
 	switch p.state() {
 	case stPaste:
 		// A held marker head is meaningless once the paste is given up: it is
 		// not content and it must not be prepended to the next read.
 		p.pending = nil
 		if content := p.closePaste(); content != "" {
-			return []any{PasteMsg{Content: content}}
+			return []Msg{PasteMsg{Content: content}}
 		}
 		return nil
 	case stEscape:
@@ -939,7 +941,7 @@ func (p *InputParser) Flush() []any {
 		// One or more ESC bytes: emit that many Escape keys. Anything else
 		// that could not be completed is an unknown sequence, and dropped.
 		if allESC(pending) {
-			msgs := make([]any, len(pending))
+			msgs := make([]Msg, len(pending))
 			for i := range pending {
 				msgs[i] = KeyPressMsg(Key{Code: KeyEscape})
 			}

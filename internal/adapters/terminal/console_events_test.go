@@ -574,15 +574,9 @@ func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
 func parseAll(t *testing.T, data []byte) []Msg {
 	t.Helper()
 	p := &InputParser{}
-	parsed := p.Parse(data)
-	msgs := make([]Msg, 0, len(parsed))
-	for _, msg := range parsed {
-		msgs = append(msgs, msg)
-	}
+	msgs := p.Parse(data)
 	if p.HasPending() {
-		for _, msg := range p.Flush() {
-			msgs = append(msgs, msg)
-		}
+		msgs = append(msgs, p.Flush()...)
 	}
 	return msgs
 }
