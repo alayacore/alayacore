@@ -205,8 +205,18 @@ type Program struct {
 	parser *InputParser
 	screen *Screen
 
-	msgs chan Msg
-	cmds chan Cmd
+	// msgs carries everything the loop acts on except the keyboard: command
+	// results, ticks, resize reports, display writes. inputMsgs carries decoded
+	// keyboard input alone, so the loop can prefer it (run). The split exists
+	// because input is the highest-priority thing a TUI handles: while input and
+	// everything else shared one channel, a burst of output could fill the buffer
+	// and block the input loop's delivery, delaying a keystroke behind messages
+	// nobody is waiting on. A program with no input source (every test that drives
+	// the loop by hand) leaves inputMsgs nil, and a nil channel is simply never
+	// ready.
+	msgs      chan Msg
+	inputMsgs chan Msg
+	cmds      chan Cmd
 
 	width, height int
 
@@ -251,6 +261,7 @@ func Run(model Model) (Model, error) {
 		screen:       NewScreen(tty.Out()),
 		input:        input,
 		msgs:         make(chan Msg, 64),
+		inputMsgs:    make(chan Msg, 64),
 		cmds:         make(chan Cmd),
 		parkedCh:     make(chan struct{}, 1),
 		resumeCh:     make(chan struct{}, 1),
@@ -321,68 +332,102 @@ func (p *Program) run(model Model) (Model, error) {
 	}
 	p.render(model)
 
-	for msg := range p.msgs {
-		switch msg := msg.(type) {
-		case QuitMsg:
-			return model, nil
-		case SuspendMsg:
-			// Ctrl-Z: release the terminal, stop the process group, and
-			// re-acquire on SIGCONT (no-op without a real TTY).
-			p.suspend()
-			p.render(model)
+	for {
+		// Input first, without blocking: a keystroke must not wait behind a
+		// backlog of output messages. Drain what is already queued, then wait
+		// on both channels — inputMsgs is nil in a program with no input
+		// source, and a nil channel is never ready, so this collapses to the
+		// plain msgs wait there.
+		select {
+		case msg := <-p.inputMsgs:
+			m, quit, err := p.handleMsg(model, msg, ctxDone)
+			if quit || err != nil {
+				return m, err
+			}
+			model = m
 			continue
-		case execMsg:
-			// Editor handoff: run the command in the foreground with the
-			// terminal released, then re-acquire and repaint.
-			p.exec(msg, ctxDone)
-			p.render(model)
-			continue
-		case BatchMsg:
-			go p.execBatch(msg, ctxDone)
-			continue
-		case sequenceMsg:
-			go p.execSequence(msg, ctxDone)
-			continue
-		case forceRepaintMsg:
-			// Clear the frame caches so the next render is a full
-			// clear+repaint instead of a no-op identity-skip. Replaces
-			// the old `\x1b[0m` content-suffix trick — that approach
-			// made the view bytes differ to defeat the same-content
-			// check, which forced two diff renders per toggle. The
-			// synchronous cache clear here triggers exactly one
-			// clear+repaint and leaves the view content untouched.
-			p.forceRepaint()
-			p.render(model)
-			continue
-		case WindowSizeMsg:
-			p.width, p.height = msg.Width, msg.Height
-			p.screen.Resize(msg.Width, msg.Height)
-
-		case tickMsg:
-			// The model's heartbeat is also where the terminal size is
-			// re-read; see refreshSize.
-			p.refreshSize()
+		default:
 		}
 
-		var cmd Cmd
-		var err error
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					err = fmt.Errorf("terminal: panic in Update: %v", r)
-				}
-			}()
-			model, cmd = model.Update(msg)
-		}()
-		if err != nil {
-			return model, err
+		var msg Msg
+		select {
+		case msg = <-p.inputMsgs:
+		case msg = <-p.msgs:
 		}
-		if cmd != nil {
-			go p.dispatch(cmd, ctxDone)
+		m, quit, err := p.handleMsg(model, msg, ctxDone)
+		if quit || err != nil {
+			return m, err
 		}
-		p.render(model)
+		model = m
 	}
-	return model, nil // unreachable: msgs never closes
+}
+
+// handleMsg applies one message to the model. quit is true when the message
+// ended the program (QuitMsg); err is non-nil when Update panicked.
+//
+// Factored out of run so that both of the loop's channels — input and
+// everything else — go through exactly one dispatch.
+func (p *Program) handleMsg(model Model, msg Msg, ctxDone <-chan struct{}) (Model, bool, error) {
+	switch msg := msg.(type) {
+	case QuitMsg:
+		return model, true, nil
+	case SuspendMsg:
+		// Ctrl-Z: release the terminal, stop the process group, and
+		// re-acquire on SIGCONT (no-op without a real TTY).
+		p.suspend()
+		p.render(model)
+		return model, false, nil
+	case execMsg:
+		// Editor handoff: run the command in the foreground with the
+		// terminal released, then re-acquire and repaint.
+		p.exec(msg, ctxDone)
+		p.render(model)
+		return model, false, nil
+	case BatchMsg:
+		go p.execBatch(msg, ctxDone)
+		return model, false, nil
+	case sequenceMsg:
+		go p.execSequence(msg, ctxDone)
+		return model, false, nil
+	case forceRepaintMsg:
+		// Clear the frame caches so the next render is a full
+		// clear+repaint instead of a no-op identity-skip. Replaces
+		// the old `\x1b[0m` content-suffix trick — that approach
+		// made the view bytes differ to defeat the same-content
+		// check, which forced two diff renders per toggle. The
+		// synchronous cache clear here triggers exactly one
+		// clear+repaint and leaves the view content untouched.
+		p.forceRepaint()
+		p.render(model)
+		return model, false, nil
+	case WindowSizeMsg:
+		p.width, p.height = msg.Width, msg.Height
+		p.screen.Resize(msg.Width, msg.Height)
+
+	case tickMsg:
+		// The model's heartbeat is also where the terminal size is
+		// re-read; see refreshSize.
+		p.refreshSize()
+	}
+
+	var cmd Cmd
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("terminal: panic in Update: %v", r)
+			}
+		}()
+		model, cmd = model.Update(msg)
+	}()
+	if err != nil {
+		return model, false, err
+	}
+	if cmd != nil {
+		go p.dispatch(cmd, ctxDone)
+	}
+	p.render(model)
+	return model, false, nil
 }
 
 // dispatch runs a command in a goroutine and delivers its result message.

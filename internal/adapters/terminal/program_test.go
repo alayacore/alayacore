@@ -47,8 +47,41 @@ func newTestProgram(msgs chan Msg) (*Program, *bytes.Buffer) {
 	}, &buf
 }
 
-// TestProgramUpdateAndQuit verifies messages reach Update and QuitMsg ends
-// the loop.
+// backlogMsg is an output message with no special handling: it exists to fill
+// the loop's general channel so a priority test has something to be ahead of.
+type backlogMsg struct{ seq int }
+
+// TestInputIsDrainedBeforeOutputBacklog pins the reason input has its own
+// channel: a keystroke must not wait behind messages nobody is waiting on. A
+// backlog is queued on the general channel first, then a key on the input
+// channel; if the loop did not prefer input, the key would be delivered last.
+func TestInputIsDrainedBeforeOutputBacklog(t *testing.T) {
+	const backlog = 8
+	msgs := make(chan Msg, backlog+1)
+	inputMsgs := make(chan Msg, 1)
+	p, _ := newTestProgram(msgs)
+	p.inputMsgs = inputMsgs
+	m := &fakeModel{}
+
+	for i := 0; i < backlog; i++ {
+		msgs <- backlogMsg{seq: i}
+	}
+	inputMsgs <- KeyPressMsg(Key{Code: 'j'})
+	msgs <- QuitMsg{}
+
+	if _, err := p.run(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(m.updates) != backlog+1 {
+		t.Fatalf("the loop processed %d messages, want %d: %#v", len(m.updates), backlog+1, m.updates)
+	}
+	if _, ok := m.updates[0].(KeyPressMsg); !ok {
+		t.Fatalf("update[0] = %T, want the KeyPressMsg: input arrived behind the output backlog", m.updates[0])
+	}
+}
+
+
 func TestProgramUpdateAndQuit(t *testing.T) {
 	msgs := make(chan Msg, 4)
 	p, _ := newTestProgram(msgs)

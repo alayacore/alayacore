@@ -98,10 +98,16 @@ func (f *fakeInput) readCount() int {
 
 // newParkedProgram builds a Program wired for the parking tests: a message
 // channel, the loop's signaling channels, and the source to read.
+//
+// Input and control messages share one channel here. The parking tests read a
+// single stream and there is no output traffic to interleave, so the split the
+// real loop makes (program.go → inputMsgs) has nothing to prove in this fixture;
+// the priority itself is tested where it can be observed.
 func newParkedProgram(msgs chan Msg, input inputSource) *Program {
 	return &Program{
 		parser:       &InputParser{},
 		msgs:         msgs,
+		inputMsgs:    msgs,
 		input:        input,
 		parkedCh:     make(chan struct{}, 1),
 		resumeCh:     make(chan struct{}, 1),

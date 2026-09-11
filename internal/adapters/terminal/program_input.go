@@ -150,10 +150,13 @@ func (p *Program) deliverParsed(data []byte, ctxDone <-chan struct{}) bool {
 	return false
 }
 
-// sendInput delivers one input message, returning true when ctxDone fired.
+// sendInput delivers one input message, returning true when ctxDone fired. It
+// goes to the dedicated input channel, which the event loop drains before
+// anything else (program.go → run): input must not wait behind a backlog of
+// command results, ticks and display writes.
 func (p *Program) sendInput(msg Msg, ctxDone <-chan struct{}) bool {
 	select {
-	case p.msgs <- msg:
+	case p.inputMsgs <- msg:
 		return false
 	case <-ctxDone:
 		return true
