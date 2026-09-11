@@ -4,8 +4,8 @@ package terminal
 // rendering, and terminal lifecycle. This is module 3 of the self-built TUI
 // stack (see docs/tui-architecture.md).
 //
-// The loop mirrors bubbletea's (third_party/bubbletea/tea.go) minus the
-// cell-buffer renderer: messages arrive from the input reader and from
+// The loop mirrors bubbletea's tea.go (via the in-tree fork, deleted in 4edb5a85)
+// minus the cell-buffer renderer: messages arrive from the input reader and from
 // commands, special messages (QuitMsg/SuspendMsg/BatchMsg/sequenceMsg/
 // WindowSizeMsg) are handled internally, everything else goes
 // to model.Update. After every Update the view is rendered through

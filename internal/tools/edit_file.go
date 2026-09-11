@@ -55,7 +55,7 @@ type editSession struct {
 	tempFile  *os.File
 	tempPath  string
 	fileInfo  os.FileInfo
-	committed bool // set by Commit() to preserve temp file through Close()
+	committed bool // set by commit() to preserve temp file through Close()
 }
 
 // newEditSession opens the source file and creates a temp file in the same
@@ -96,7 +96,7 @@ func newEditSession(path string) (*editSession, error) {
 }
 
 // Close releases all resources. If the edit was not committed (via
-// Commit), the temporary file is removed. Idempotent — safe to call
+// commit), the temporary file is removed. Idempotent — safe to call
 // multiple times.
 func (s *editSession) Close() {
 	if s.srcFile != nil {

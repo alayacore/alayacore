@@ -121,7 +121,7 @@ Tool result:    Both can now deliver media to the model —
 Tool arguments arrive in chunks across multiple delta events:
 - First chunk: has `id` and `name`
 - Subsequent chunks: `id: ""` but correct `index`
-- **Must use `index` (not `id`) to associate chunks** — see `openAIStreamState.appendToolCallArgs()`
+- **Must use `index` (not `id`) to associate chunks** — the provider recalls each call's identity by index (`openAIStreamState.toolAccumulator`) and emits the fragments as `ToolInputDeltaEvent`; `llm.Agent`'s `streamAssembler` joins them
 - When sending back in history, arguments must be JSON-string (not raw JSON) — see `openaiConvertToolInputs()`
 
 ## Who accumulates streamed content
@@ -232,7 +232,7 @@ Some providers emit no-op deltas with `"arguments": null` (JSON literal null):
 
 After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`. `unquoteToolArg` unmarshals it into a string, which succeeds with an empty string — so the chunk contributes nothing to the accumulated arguments. Without that, a null chunk would corrupt the accumulated JSON (e.g. `{"path": "README.md"}null`), causing tool execution to fail.
 
-`unquoteToolArg` handles three shapes: a JSON-string-encoded fragment (`"{\"path\":...}"` → the inner text, the standard OpenAI form), a raw JSON fragment (`{"path":...}` → passed through as-is, used by some compatible providers), and `null` (→ empty string). See `openAIStreamState.appendToolCallArgs()`.
+`unquoteToolArg` handles three shapes: a JSON-string-encoded fragment (`"{\"path\":...}"` → the inner text, the standard OpenAI form), a raw JSON fragment (`{"path":...}` → passed through as-is, used by some compatible providers), and `null` (→ empty string). `OpenAIProvider.handleDelta` emits each fragment as a `ToolInputDeltaEvent`, and `llm.Agent`'s `streamAssembler` appends it to the call's arguments.
 
 ## `parallel_tool_calls` / `serial_tool_calls`: always sent, on one protocol only
 

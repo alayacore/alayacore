@@ -10,7 +10,7 @@ Verified 2026-08-18 against the current self-built TUI stack (no Bubbles/lipglos
 All optimizations are working correctly:
 
 - ✅ **Virtual rendering** — 16.6x faster than naive full render (3.0μs vs 50.2μs, 100 windows)
-- ✅ **Incremental content append** — O(delta) per frame via `appendDeltaToLines`, avoids O(n) full re-wrap (~553x speedup on 5000-line content)
+- ✅ **Incremental content append** — O(delta) per frame via `appendDeltaToVisualLines`, avoids O(n) full re-wrap (~553x speedup on 5000-line content)
 - ✅ **Incremental line height tracking** — `TryLineCount` from `wrappedLines` in ~1.1μs (full `ensureLineHeights` with 1 dirty window), no full render needed
 - ✅ **Streaming stays under 1ms** — average 4.1μs per full cycle (append + line tracking + GetAll), well within 250ms tick budget
 - ✅ **Custom ScrollView** (<1KB) — stores the pre-clipped visible region;
@@ -31,7 +31,7 @@ During streaming, every `AppendFromTLV` call on a `textRenderer`:
    incremental path; deltas that touch a table invalidate the cache and
    fall back to a full re-render (the table transform re-flows columns and
    wraps cells, so column widths and wrap points are whole-table properties)
-3. Wraps the delta as **plain text** via `appendDeltaToLines` — streaming
+3. Wraps the delta as **plain text** via `appendDeltaToVisualLines` — streaming
    content deliberately carries no styling in normal mode (markdown
    table rendering is plain text too), so the incremental path has no
    ANSI handling and no style state. The dim Body color shown while an
@@ -45,7 +45,7 @@ During streaming, every `AppendFromTLV` call on a `textRenderer`:
 This means line tracking during streaming is **always fast**, not just on cache hits:
 
 ```
-Streaming frame arrives → appendDeltaToLines (O(delta), plain text)
+Streaming frame arrives → appendDeltaToVisualLines (O(delta), plain text)
 TryLineCount → len(wrappedLines) + 3  (~1.1μs via ensureLineHeights, no full render)
 ```
 
@@ -262,10 +262,10 @@ so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 
 ## Key Design Decisions
 
-### Incremental `appendDeltaToLines`
+### Incremental `appendDeltaToVisualLines`
 
 `textRenderer.AppendFromTLV` appends each delta as **plain text** to
-`appendDeltaToLines`, which only wraps the delta and appends it to the existing
+`appendDeltaToVisualLines`, which only wraps the delta and appends it to the existing
 `wrappedLines` slice. This avoids re-wrapping the entire accumulated content,
 and because streaming content carries no styling in normal mode (markdown
 table rendering is plain text too), the incremental path never touches ANSI —

@@ -210,8 +210,8 @@ scattered fixes in the provider code:
 
 | Existing fix | Layer | Relationship |
 |-------------|-------|-------------|
-| `openAIStreamState.appendToolCallArgs` null skip | Streaming transport | Prevents chunk-level corruption; repair layer works on final JSON |
-| `openAIStreamState.appendToolCallArgs` string unquoting | Streaming transport | Same — different abstraction level |
+| `OpenAIProvider.handleDelta` null handling | Streaming transport | Prevents chunk-level corruption; repair layer works on final JSON |
+| `unquoteToolArg` string unquoting | Streaming transport | Same — different abstraction level |
 | `streamAssembler` | Content array structure | Records only blocks that streamed content, so an empty reasoning/text slot never becomes a part; unrelated to tool input JSON |
 | `openaiConvertToolInputs` JSON-string wrapping | API compatibility | OpenAI wire format requirement, not a model-error fix |
 | `marshalToolInputData` prefix-marked fallback | Serialization | Catches what repair cannot touch — bytes that fail to unmarshal at all. Prefix-marks them so the AF frame is still delivered and the tool fails parsing (UF ✗) instead of the frame never being sent; see `internal/agent/serialization.go` |

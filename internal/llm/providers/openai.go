@@ -6,7 +6,9 @@ package providers
 // 1. TOOL CALL ARGUMENTS CHUNKING: OpenAI-compatible APIs split tool call arguments
 //    across multiple delta events. Critical: subsequent chunks have `"id": ""` (empty)
 //    but correct `"index"`. Must use `index` (not `id`) to associate argument chunks
-//    with their tool call. See `appendToolCallArgs()` in openAIStreamState.
+//    with their tool call. The provider recalls each call's identity by index
+//    (openAIStreamState.toolAccumulator) and emits the fragments as
+//    ToolInputDeltaEvent; llm.Agent's streamAssembler (assemble.go) joins them.
 //
 // 2. TOOL CALL ARGUMENTS IN REQUESTS: When sending tool calls back in conversation
 //    history, arguments must be marshaled to a JSON string (not raw JSON).
@@ -22,10 +24,9 @@ package providers
 //    in openaiConvertContents, not in the sub-converters.
 //
 // 4. NULL ARGUMENTS IN TOOL CALL CHUNKS: Some providers emit no-op deltas
-//    with "arguments": null. Must be skipped to avoid corrupting the
-//    accumulated arguments string. See docs/providers.md →
-//    "Null arguments in tool call chunks".
-//    See `appendToolCallArgs()`.
+//    with "arguments": null. unquoteToolArg turns such a chunk into the empty
+//    string, so it contributes nothing to the arguments llm.Agent assembles.
+//    See docs/providers.md → "Null arguments in tool call chunks".
 //
 // 5. CONTENT BLOCK INDEXING: Delta event indices always use fixed positions:
 //    reasoning=0, text=1, tools=2+wire_index. The final message always includes
