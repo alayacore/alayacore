@@ -348,7 +348,10 @@ func (p *Program) run(model Model) (Model, error) {
 		// source, and a nil channel is never ready, so this collapses to the
 		// plain msgs wait there.
 		select {
-		case msg := <-p.inputMsgs:
+		case msg, ok := <-p.inputMsgs:
+			if !ok {
+				return model, nil // a closed channel ends the loop
+			}
 			m, quit, err := p.handleMsg(model, msg, ctxDone)
 			if quit || err != nil {
 				return m, err
@@ -359,9 +362,17 @@ func (p *Program) run(model Model) (Model, error) {
 		}
 
 		var msg Msg
+		var ok bool
 		select {
-		case msg = <-p.inputMsgs:
-		case msg = <-p.msgs:
+		case msg, ok = <-p.inputMsgs:
+		case msg, ok = <-p.msgs:
+		}
+		if !ok {
+			// A closed channel ends the loop, as `for range` did before the
+			// input split. Without this a closed channel would deliver a zero
+			// (nil) message forever: a busy loop in production, and a fatal
+			// unknown message under test.
+			return model, nil
 		}
 		m, quit, err := p.handleMsg(model, msg, ctxDone)
 		if quit || err != nil {

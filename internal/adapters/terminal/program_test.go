@@ -81,6 +81,34 @@ func TestInputIsDrainedBeforeOutputBacklog(t *testing.T) {
 	}
 }
 
+// TestProgramExitsWhenMsgsCloses pins the graceful exit the input split must not
+// have removed: a closed channel ends the loop, instead of delivering a zero
+// (nil) message forever — a busy loop in production, a fatal unknown message
+// under test.
+func TestProgramExitsWhenMsgsCloses(t *testing.T) {
+	msgs := make(chan Msg, 1)
+	p, _ := newTestProgram(msgs)
+	m := &fakeModel{}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := p.run(m)
+		done <- err
+	}()
+	close(msgs)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("run did not return when its message channel closed")
+	}
+}
+
+// TestProgramUpdateAndQuit verifies messages reach Update and QuitMsg ends the
+// loop.
 func TestProgramUpdateAndQuit(t *testing.T) {
 	msgs := make(chan Msg, 4)
 	p, _ := newTestProgram(msgs)
