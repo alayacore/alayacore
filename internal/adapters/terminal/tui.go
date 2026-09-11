@@ -432,6 +432,13 @@ func (m Terminal) loadSessionCmd() Cmd {
 //  5. Focus/Blur - application focus changes
 //  6. Paste - clipboard paste
 //
+// Component results — a model or theme selection, an editor request, a confirm
+// outcome — are deliberately not messages. A component hands one back as a
+// Result value and the dispatcher folds it through applyResult in the same
+// Update (see result.go), so there is no round trip and no opaque func() to
+// unwrap. What reaches this switch is only input events and asynchronous facts
+// from the runtime and the session.
+//
 //nolint:gocyclo // message dispatch over many Msg types; each case is a simple handler call
 func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	// Sync display dim state at the start of every update cycle.
@@ -456,32 +463,11 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	case tickMsg:
 		return m.handleTick()
 
-	case ThemeSelectedMsg:
-		return m.applyResult(msg)
-
-	case ModelSelectedMsg:
-		return m.applyResult(msg)
-
-	case ReloadModelsMsg:
-		return m.applyResult(msg)
-
-	case ConfirmResultMsg:
-		return m.applyResult(msg)
-
 	case themePreviewMsg:
 		return m.handleThemePreview(msg), nil
 
 	case editorStartMsg:
 		return m.handleEditorStart(msg)
-
-	case openEditorForDisplayMsg:
-		return m.applyResult(msg)
-
-	case focusInputWithValueMsg:
-		return m.applyResult(msg)
-
-	case openEditorForPromptMsg:
-		return m.applyResult(msg)
 
 	case displayErrorMsg:
 		m.out.WriteError(msg.message)

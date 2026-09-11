@@ -39,10 +39,34 @@ func TestFoldConfirmChangesStateInSameUpdate(t *testing.T) {
 	}
 }
 
-// TestApplyResultIsTheSingleInterpretation pins that a result means the same
-// thing however it arrives: folding a ModelSelectedMsg emits the model_set
-// command, which is what Terminal.Update's message case does too (both call
-// applyResult). A divergence would be a fact with two meanings.
+// TestFoldResultsAppliesEachOnceInOrder pins that a result list is folded
+// element by element: each applies, and later ones see the state earlier ones
+// left. This is the invariant the old synchronous cmd() path risked — a result
+// that was both folded and re-dispatched as a message would apply twice.
+func TestFoldResultsAppliesEachOnceInOrder(t *testing.T) {
+	m := newTestTerminal()
+	after, _ := m.foldResults([]Result{
+		AttachmentSelectedMsg{Path: "/tmp/a.txt"},
+		AttachmentSelectedMsg{Path: "/tmp/b.txt"},
+	})
+	if got := len(after.pendingAttachments); got != 2 {
+		t.Fatalf("pendingAttachments = %d, want 2: each result must apply exactly once", got)
+	}
+
+	// Order matters: the last focus request is the value that stands.
+	m2 := newTestTerminal()
+	after2, _ := m2.foldResults([]Result{
+		focusInputWithValueMsg{value: ":first "},
+		focusInputWithValueMsg{value: ":second "},
+	})
+	if got := after2.input.Value(); got != ":second " {
+		t.Fatalf("input = %q, want %q: results must fold in order", got, ":second ")
+	}
+}
+
+// TestApplyResultIsTheSingleInterpretation pins that a selection's meaning lives
+// in applyResult: folding a model or reload result emits the command the session
+// expects. Every dispatcher folds through here, so the meaning cannot drift.
 func TestApplyResultIsTheSingleInterpretation(t *testing.T) {
 	m := newTestTerminal()
 	if _, cmd := m.applyResult(ModelSelectedMsg{ID: 7}); cmd == nil {
