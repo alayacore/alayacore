@@ -441,6 +441,33 @@ func decodeC0(b byte) Key {
 	return Key{Code: rune(b)}
 }
 
+// Recognized sequence families — the decoder's vocabulary. Every byte that
+// begins one of these is consumed with it, whole, so no part of a reply reaches
+// the prompt. This is the list to extend when a terminal gains an encoding the
+// program must understand (a new keyboard protocol, say); nothing here is a key
+// this UI binds, it is what the decoder must recognize to not leak.
+//
+//	CSI <params> final      arrows/nav/F-keys
+//	CSI < ... M             SGR mouse report
+//	CSI M + 3 raw bytes     X10 mouse report (its final byte does not delimit it)
+//	SS3 ESC O final         application arrows / keypad
+//	OSC  ESC ] ... BEL|ST   window title, colors, clipboard
+//	DCS  ESC P ... ST       capabilities
+//	SOS/PM/APC ESC X|^|_ ... ST   string controls, read only to swallow the body
+//	ESC [ I / ESC [ O       focus reporting (FocusMsg / BlurMsg)
+//	ESC [ 200~ ... 201~     bracketed paste (PasteMsg)
+//	ESC <char>              Alt+<char>, except the five introducers below
+//
+// The five introducers `] P X ^ _` are held rather than resolved to an Alt chord,
+// because their other reading is a reply's body (consumeStringControl); the
+// parser therefore never produces Alt chords on those bytes, which costs nothing
+// because keys.go binds no Alt chord at all.
+//
+// key_parser_reports_test.go pins each family arriving whole; the read-invariance
+// and paste-cut sweeps pin them across every read boundary; key_parser_fuzz_test.go
+// fuzzes the two bodies whose bytes are arbitrary (a string control's, an X10
+// report's coordinates).
+//
 // consumeEscape parses an escape sequence starting at data[0] (which must be
 // 0x1b). It returns the raw sequence, its byte length, and whether it is
 // complete. An incomplete trailing sequence returns complete=false and the
