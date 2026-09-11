@@ -31,6 +31,21 @@ func (openEditorForDisplayMsg) isResult() {}
 func (openEditorForPromptMsg) isResult()  {}
 func (focusInputWithValueMsg) isResult()  {}
 
+// foldResults applies each result in order, batching the Cmds they imply. It is
+// how a dispatcher consumes a component's results: the state changes happen
+// here and now, the I/O is collected to run after.
+func (m Terminal) foldResults(results []Result) (Terminal, Cmd) {
+	var cmds []Cmd
+	for _, r := range results {
+		var cmd Cmd
+		m, cmd = m.applyResult(r)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	return m, Batch(cmds...)
+}
+
 // applyResult folds one Result into the model and returns any I/O it implies.
 // It is the single place these facts are interpreted: Update's message cases and
 // the component dispatch both call it, so a result cannot mean one thing when it

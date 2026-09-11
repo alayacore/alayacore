@@ -406,27 +406,9 @@ func (m Terminal) handleSelectorOverlayKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 
 // handleOverlayConfirm handles keyboard input when the confirm dialog is open.
 func (m Terminal) handleOverlayConfirm(msg KeyMsg) (Terminal, Cmd) {
-	cd, cmd := m.confirmOverlay.Update(msg)
+	cd, results := m.confirmOverlay.Update(msg)
 	m.confirmOverlay = cd
-
-	if cmd == nil {
-		return m, nil
-	}
-
-	resultMsg := cmd()
-	if resultMsg == nil {
-		return m, nil
-	}
-
-	if r, ok := resultMsg.(ConfirmResultMsg); ok {
-		// ConfirmResultMsg must be processed synchronously
-		// (modifies Terminal state inline)
-		return m.handleConfirmResult(r.Result)
-	}
-
-	// Other messages (e.g. openEditorForDisplayMsg):
-	// re-wrap and let Terminal.Update handle them normally
-	return m, func() Msg { return resultMsg }
+	return m.foldResults(results)
 }
 
 // handleConfirmResult processes a ConfirmResult (triggered by ConfirmResultMsg).

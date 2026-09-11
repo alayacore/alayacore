@@ -204,7 +204,7 @@ func (cd ConfirmDialog) Close() ConfirmDialog {
 
 // HandleKeyMsg processes a key press and updates state.
 // Returns the updated dialog and a result struct describing what happened.
-func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, Cmd) {
+func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 	if !cd.IsOpen() {
 		return cd, nil
 	}
@@ -221,7 +221,7 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, Cmd) {
 			r.CtrlGCanceled = true
 			result.canceled = true
 			result.state = FilteredListClosed
-			return result, func() Msg { return ConfirmResultMsg{Result: r} }
+			return result, []Result{ConfirmResultMsg{Result: r}}
 		}
 		return cd, nil // handled but no result
 	}
@@ -249,9 +249,7 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, Cmd) {
 			if cd.toolName != "" && strings.HasPrefix(content, cd.toolName+": ") {
 				content = content[len(cd.toolName)+2:]
 			}
-			return cd, func() Msg {
-				return openEditorForDisplayMsg{content: content}
-			}
+			return cd, []Result{openEditorForDisplayMsg{content: content}}
 		}
 		return cd, nil
 	}
@@ -272,12 +270,14 @@ func (cd ConfirmDialog) buildResult() (ConfirmDialog, *ConfirmResult) {
 	return cd, r
 }
 
-// closeWithResult closes the dialog and returns a Command that emits a ConfirmResultMsg.
-// The caller should set flags (confirmed, canceled, etc.) on cd before calling this.
-func (cd ConfirmDialog) closeWithResult() (ConfirmDialog, Cmd) {
+// closeWithResult closes the dialog and returns a ConfirmResult as a value. The
+// caller should set flags (confirmed, canceled, etc.) on cd before calling this.
+// A result, not a Cmd: the owner folds it in the same Update, so the dialog's
+// outcome is acted on without a frame's delay or an opaque cmd() call.
+func (cd ConfirmDialog) closeWithResult() (ConfirmDialog, []Result) {
 	cd.state = FilteredListClosed
 	_, r := cd.buildResult()
-	return cd, func() Msg { return ConfirmResultMsg{Result: r} }
+	return cd, []Result{ConfirmResultMsg{Result: r}}
 }
 
 // ConfirmResult captures the complete result of a confirm dialog interaction.
