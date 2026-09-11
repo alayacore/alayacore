@@ -118,9 +118,14 @@ window's OS-level focus. That focus is reported too (DEC mode 1004, enabled by
 `Screen.Start`, arriving as `FocusMsg`/`BlurMsg`), and it is a fact about drawing:
 the real caret goes away (IME anchors on it) and the box takes its blurred colors.
 It is not a fact about who arriving text is for, and the program cannot tell the
-two apart — they disagree on the terminal's own **context menu**, which takes the
-window's focus while it is open and writes the clipboard into the pty before that
-focus comes back. Gating the input path on the blur made "Paste" from that menu
+two apart. Where they disagree is the terminal's own **context menu**: a host that
+reports that menu as a focus change has already said "unfocused" by the time the
+menu hands the clipboard back, and the paste lands inside the blur. Which hosts
+report it is a property of the terminal, not of this program, and is recorded as
+unverified in [windows-console.md](internal/windows-console.md) rather than
+asserted here — the gate below is removed on the general rule that input arriving
+on this program's own pty is input addressed to it, whatever the window's
+painting state says. Gating the input path on the blur made "Paste" from that menu
 delete the block silently, while a middle-click paste — no menu, no blur — worked,
 and the same menu paste worked in the attachment window's URL box, whose filter
 gated on the pane only.
