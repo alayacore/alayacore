@@ -457,16 +457,16 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 		return m.handleTick()
 
 	case ThemeSelectedMsg:
-		return m, m.emitCommand(":" + commands.CommandNameThemeSet + " " + msg.Name)
+		return m.applyResult(msg)
 
 	case ModelSelectedMsg:
-		return m, m.emitCommand(fmt.Sprintf(":%s %d", commands.CommandNameModelSet, msg.ID))
+		return m.applyResult(msg)
 
 	case ReloadModelsMsg:
-		return m, m.emitCommand(":" + commands.CommandNameModelLoad)
+		return m.applyResult(msg)
 
 	case ConfirmResultMsg:
-		return m.handleConfirmResult(msg.Result)
+		return m.applyResult(msg)
 
 	case themePreviewMsg:
 		return m.handleThemePreview(msg), nil
@@ -475,16 +475,13 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 		return m.handleEditorStart(msg)
 
 	case openEditorForDisplayMsg:
-		return m, m.editor.OpenForDisplay(msg.content)
+		return m.applyResult(msg)
 
 	case focusInputWithValueMsg:
-		m = m.focusInput()
-		m.input = m.input.WithValue(msg.value).CursorEnd()
-		m.display = m.display.updateContent()
-		return m, nil
+		return m.applyResult(msg)
 
 	case openEditorForPromptMsg:
-		return m, m.editor.Open(msg.content)
+		return m.applyResult(msg)
 
 	case displayErrorMsg:
 		m.out.WriteError(msg.message)
