@@ -182,7 +182,7 @@ func TestDisplayRefreshAdvancesSpinnerWithoutDeltas(t *testing.T) {
 
 	// No deltas arrive; only the wall clock advances past one spinner slot.
 	time.Sleep(200 * time.Millisecond)
-	m, _ = m.handleDisplayRefresh()
+	m = m.handleDisplayRefresh()
 
 	g2 := toolSpinnerGlyph(t, stripANSI(m.display.lastContent))
 	if g2 == "" {
@@ -203,7 +203,7 @@ func TestDisplayRefreshIdleSkipsRender(t *testing.T) {
 	m.display = m.display.updateContent()
 	before := m.display.lastContent
 
-	m, _ = m.handleDisplayRefresh()
+	m = m.handleDisplayRefresh()
 
 	if m.display.lastContent != before {
 		t.Errorf("idle refresh must not re-render: content changed\nbefore: %q\nafter:  %q", before, m.display.lastContent)
@@ -226,7 +226,7 @@ func TestDisplayRefreshIdleSkipsRenderWithFinishedTool(t *testing.T) {
 	m.display = m.display.updateContent()
 	before := m.display.lastContent
 
-	m, _ = m.handleDisplayRefresh()
+	m = m.handleDisplayRefresh()
 
 	if m.display.lastContent != before {
 		t.Errorf("finished tool must not keep the spinner refresh alive: content changed")

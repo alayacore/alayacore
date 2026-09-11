@@ -219,7 +219,7 @@ func TestModelSelectorLoadModelsProtocol(t *testing.T) {
 	m := newTerminalForUpdateStatusTest(NewTerminalOutput(DefaultStyles()))
 	beforeCount := len(m.modelSelector.models)
 
-	ms, _ := m.modelSelector.LoadModels([]protocol.ModelInfo{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}}, 1)
+	ms := m.modelSelector.LoadModels([]protocol.ModelInfo{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}}, 1)
 	if len(ms.models) == beforeCount {
 		t.Errorf("LoadModels should populate the selector's model list: before=%d after=%d", beforeCount, len(ms.models))
 	}

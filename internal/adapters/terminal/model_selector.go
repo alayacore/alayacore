@@ -55,7 +55,10 @@ func newFilterInput(placeholder string) InputField {
 
 // --- Model Management ---
 
-func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (ModelSelector, Cmd) {
+// LoadModels rebuilds the selector's list from a model snapshot. It returns no
+// Cmd: it is pure state, and a component reports facts as Results, not Cmds
+// (result.go) — the second return value it used to carry was always nil.
+func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) ModelSelector {
 	if ms.modelsUnchangedSinceLastLoad(models) {
 		for i := range ms.models {
 			if ms.models[i].ID == activeID {
@@ -63,7 +66,7 @@ func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (M
 				break
 			}
 		}
-		return ms, nil
+		return ms
 	}
 
 	prevModelCount := ms.lastModelCount
@@ -91,7 +94,7 @@ func (ms ModelSelector) LoadModels(models []protocol.ModelInfo, activeID int) (M
 		ms.ScrollIdx = savedScrollIdx
 		ms.FilteredListCore = ms.FilteredListCore.ClampSelection(len(ms.filteredModels))
 	}
-	return ms, nil
+	return ms
 }
 
 func (ms ModelSelector) modelsUnchangedSinceLastLoad(models []protocol.ModelInfo) bool {

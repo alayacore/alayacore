@@ -225,7 +225,6 @@ type Program struct {
 	// ready.
 	msgs      chan Msg
 	inputMsgs chan Msg
-	cmds      chan Cmd
 
 	width, height int
 
@@ -271,7 +270,6 @@ func Run(model Model) (Model, error) {
 		input:        input,
 		msgs:         make(chan Msg, 64),
 		inputMsgs:    make(chan Msg, 64),
-		cmds:         make(chan Cmd),
 		parkedCh:     make(chan struct{}, 1),
 		resumeCh:     make(chan struct{}, 1),
 		inputStopped: make(chan struct{}),

@@ -447,7 +447,7 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	// Loading message handling — these take priority during startup.
 	switch msg := msg.(type) {
 	case sessionLoadedMsg:
-		return m.handleSessionLoadedMsg()
+		return m.handleSessionLoadedMsg(), nil
 
 	case sessionLoadingErrorMsg:
 		return m.handleSessionLoadingError(msg.err)
@@ -547,14 +547,10 @@ func (m Terminal) handleTick() (Terminal, Cmd) {
 		}
 	}
 
-	var cmd Cmd
-	m, cmd = m.handleDisplayRefresh()
-	return m, Batch(
-		Tick(TickInterval, func(_ time.Time) Msg {
-			return tickMsg{}
-		}),
-		cmd,
-	)
+	m = m.handleDisplayRefresh()
+	return m, Tick(TickInterval, func(_ time.Time) Msg {
+		return tickMsg{}
+	})
 }
 
 // handleMCPOverlays manages all MCP overlay state in one place.
@@ -582,7 +578,7 @@ func (m Terminal) handleMCPOverlays() Terminal {
 // It transitions the UI from the loading spinner to the normal TUI view,
 // applying the loaded theme, populating the model selector, and preparing
 // for MCP initialization if needed.
-func (m Terminal) handleSessionLoadedMsg() (Terminal, Cmd) {
+func (m Terminal) handleSessionLoadedMsg() Terminal {
 	m.loading = false
 	m.postLoading = true
 
@@ -619,9 +615,8 @@ func (m Terminal) handleSessionLoadedMsg() (Terminal, Cmd) {
 	// a modal taking the keyboard needs no blur here.
 	m = m.handleMCPOverlays()
 
-	ms, cmd := m.modelSelector.LoadModels(modelSnap.Models, modelSnap.ActiveID)
-	m.modelSelector = ms
-	return m, cmd
+	m.modelSelector = m.modelSelector.LoadModels(modelSnap.Models, modelSnap.ActiveID)
+	return m
 }
 
 // handleSessionLoadingError is called when the async session loading fails.
@@ -633,9 +628,9 @@ func (m Terminal) handleSessionLoadingError(err error) (Terminal, Cmd) {
 	return m, Quit
 }
 
-// handleDisplayRefresh checks if the display needs updating and returns
-// a Cmd for model selector updates if models changed.
-func (m Terminal) handleDisplayRefresh() (Terminal, Cmd) {
+// handleDisplayRefresh checks if the display needs updating and rebuilds the
+// model selector when the model list changed.
+func (m Terminal) handleDisplayRefresh() Terminal {
 	// Flush pending deltas first so the WindowBuffer has the latest content
 	// before we check the dirty flag.
 	m.out.FlushPendingDeltas()
@@ -654,7 +649,7 @@ func (m Terminal) handleDisplayRefresh() (Terminal, Cmd) {
 
 	if !m.out.DrainDirty() && !spinnerRefresh {
 		m = m.updateStatus()
-		return m, nil
+		return m
 	}
 
 	if m.out.WindowBuffer().WindowCount() > 0 {
@@ -673,11 +668,9 @@ func (m Terminal) handleDisplayRefresh() (Terminal, Cmd) {
 	modelSnap := m.out.SnapshotModels()
 	if m.lastModelVersion != modelSnap.Version || m.lastModelVersion == 0 {
 		m.lastModelVersion = modelSnap.Version
-		ms, cmd := m.modelSelector.LoadModels(modelSnap.Models, modelSnap.ActiveID)
-		m.modelSelector = ms
-		return m, cmd
+		m.modelSelector = m.modelSelector.LoadModels(modelSnap.Models, modelSnap.ActiveID)
 	}
-	return m, nil
+	return m
 }
 
 // handleEditorFinished handles completion of the external editor.

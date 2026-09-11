@@ -126,7 +126,7 @@ func TestModelSelectorCtrlCClearsSearch(t *testing.T) {
 		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
 		{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"},
 	}
-	ms, _ = ms.LoadModels(models, 0)
+	ms = ms.LoadModels(models, 0)
 	ms = ms.Open()
 
 	// Focus the search input first (simulates user pressing Tab to focus search)
@@ -171,7 +171,7 @@ func TestModelSelectorSetModelsUpdatesFilteredModels(t *testing.T) {
 		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
 		{Name: "Zhipu / GLM-5", ProtocolType: "anthropic", ModelName: "glm-5"},
 	}
-	ms, _ = ms.LoadModels(models, 0)
+	ms = ms.LoadModels(models, 0)
 	ms = ms.Open()
 
 	// Verify filteredModels is set
@@ -198,7 +198,7 @@ func TestModelSelectorSetModelsUpdatesFilteredModels(t *testing.T) {
 		{Name: "OpenAI GPT-4", ProtocolType: "openai", ModelName: "gpt-4"},
 		{Name: "Claude 3.5", ProtocolType: "anthropic", ModelName: "claude-3.5"},
 	}
-	ms, _ = ms.LoadModels(newModels, 0)
+	ms = ms.LoadModels(newModels, 0)
 
 	// After SetModels, filteredModels should be updated with the new models
 	// The search "gpt" should now match both GPT-4o and GPT-4
@@ -223,7 +223,7 @@ func TestModelSelectorLoadModelsPreservesSelection(t *testing.T) {
 		{ID: 1, Name: "Model A", ProtocolType: "openai", ModelName: "model-a"},
 		{ID: 2, Name: "Model B", ProtocolType: "anthropic", ModelName: "model-b"},
 	}
-	ms, _ = ms.LoadModels(models, 1) // Model A is active
+	ms = ms.LoadModels(models, 1) // Model A is active
 	ms = ms.Open()
 
 	// Simulate user pressing Tab to focus the list, then navigating to Model B (index 1)
@@ -242,7 +242,7 @@ func TestModelSelectorLoadModelsPreservesSelection(t *testing.T) {
 		{ID: 2, Name: "Model B", ProtocolType: "anthropic", ModelName: "model-b"},
 		{ID: 3, Name: "Model C", ProtocolType: "anthropic", ModelName: "model-c"},
 	}
-	ms, _ = ms.LoadModels(newModels, 1) // Model A is still active
+	ms = ms.LoadModels(newModels, 1) // Model A is still active
 
 	// Selection should still be at index 1 (Model B)
 	if ms.SelectedIdx != 1 {

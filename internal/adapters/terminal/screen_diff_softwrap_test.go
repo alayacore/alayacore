@@ -42,9 +42,7 @@ func TestRealAppWrappedLineContinuity(t *testing.T) {
 				wb.ToggleFold(0) // expand: window starts folded
 			}
 		}
-		var cmd Cmd
-		terminal, cmd = terminal.handleDisplayRefresh()
-		_ = cmd
+		terminal = terminal.handleDisplayRefresh()
 		return terminal.View().Content
 	}
 

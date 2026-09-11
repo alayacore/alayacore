@@ -990,7 +990,11 @@ func allESC(b []byte) bool {
 	return true
 }
 
-// HasPending reports whether an incomplete escape sequence is buffered.
+// HasPending reports whether an incomplete escape sequence is buffered. It is a
+// diagnostic: the input loop arms its timeout on MidSequence, which also covers
+// an open paste — the distinction this method preserves (a marker head held in
+// pending vs. a paste open with nothing held) is what lets a test name which of
+// the two it is looking at.
 func (p *InputParser) HasPending() bool {
 	return len(p.pending) > 0
 }

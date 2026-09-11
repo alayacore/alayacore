@@ -47,9 +47,10 @@ func (m Terminal) foldResults(results []Result) (Terminal, Cmd) {
 }
 
 // applyResult folds one Result into the model and returns any I/O it implies.
-// It is the single place these facts are interpreted: Update's message cases and
-// the component dispatch both call it, so a result cannot mean one thing when it
-// arrives as a message and another when it is folded.
+// It is the single place these facts are interpreted: every dispatcher folds a
+// component's results through it (foldResults), so a result cannot mean one
+// thing in one place and another elsewhere. Terminal.Update does not handle these
+// as messages — they are not messages (messages.go), and never travel the loop.
 //
 // A Result is applied synchronously, so a UI transition it drives — closing an
 // overlay, moving focus, selecting a theme — happens in the same frame it was
