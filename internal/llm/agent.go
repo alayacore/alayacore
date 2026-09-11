@@ -454,10 +454,18 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 			_, name, args := assembler.toolCall(e.Key)
 			input := json.RawMessage(args)
 			repairToolInput(&input, name, a.config.Tools)
-			tc := assembler.beginToolCall(e.Key, input)
+			tc, created := assembler.beginToolCall(e.Key, input)
 			if tc == nil {
 				// The key was opened as a different kind of block, so this
 				// boundary describes something the stream never started.
+				break
+			}
+			if !created {
+				// A repeated boundary for a call already started: a provider
+				// (or a proxy) sent ToolInputCompleteEvent twice for one call.
+				// The first boundary delivered the frame and started the call;
+				// starting it again would execute the tool a second time, so
+				// the repeat ends here.
 				break
 			}
 

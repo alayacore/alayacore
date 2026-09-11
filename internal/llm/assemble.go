@@ -182,16 +182,21 @@ func (a *streamAssembler) toolCall(key string) (id, name, args string) {
 
 // beginToolCall freezes a tool block into the part its execution starts with.
 // The record emits this same object, so what a tool ran with and what history
-// stores are one value rather than two derived from the same fragments. Calling
-// it twice for a key keeps the first part: a provider repeating a boundary must
-// not run a tool twice.
-func (a *streamAssembler) beginToolCall(key string, input json.RawMessage) *ToolInputPart {
+// stores are one value rather than two derived from the same fragments.
+//
+// The second result reports whether this call created the part. It is false
+// when the key already had one — a provider (or a proxy) repeating a
+// completion boundary. The caller must branch on it to start the call once:
+// the existing part is returned rather than nil, because the record needs it
+// either way, which is exactly why the part alone cannot tell a repeat from a
+// first completion.
+func (a *streamAssembler) beginToolCall(key string, input json.RawMessage) (*ToolInputPart, bool) {
 	b, ok := a.byKey[key]
 	if !ok || b.kind != toolBlockKind {
-		return nil
+		return nil, false
 	}
 	if b.part != nil {
-		return b.part
+		return b.part, false
 	}
 	b.part = &ToolInputPart{
 		ID:    b.id,
@@ -202,7 +207,7 @@ func (a *streamAssembler) beginToolCall(key string, input json.RawMessage) *Tool
 			Role:      RoleAssistant,
 		},
 	}
-	return b.part
+	return b.part, true
 }
 
 // collectResults finishes what attachToolResults needs on a path that never

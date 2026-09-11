@@ -112,9 +112,16 @@ func TestAssemblerJoinsToolArgsAndFreezesOnePart(t *testing.T) {
 		t.Errorf("joined arguments are not valid JSON: %q", args)
 	}
 
-	part := a.beginToolCall("tool:0", json.RawMessage(args))
-	if a.beginToolCall("tool:0", json.RawMessage(`{"path":"OTHER"}`)) != part {
+	part, created := a.beginToolCall("tool:0", json.RawMessage(args))
+	if !created {
+		t.Error("the first boundary did not create the call's part")
+	}
+	repeat, createdAgain := a.beginToolCall("tool:0", json.RawMessage(`{"path":"OTHER"}`))
+	if repeat != part {
 		t.Error("a repeated boundary replaced the call's input")
+	}
+	if createdAgain {
+		t.Error("a repeated boundary reported creating the part a second time")
 	}
 	got := render(a.parts())
 	if got != "call(c1) id=1" {
