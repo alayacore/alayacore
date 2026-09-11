@@ -63,11 +63,6 @@ func TestValidate(t *testing.T) {
 			name: "an empty debug dir means disabled",
 			cfg:  Settings{DebugLogDir: ""},
 		},
-		{
-			name:    "an unusable debug dir fails once, up front",
-			cfg:     Settings{DebugLogDir: "/proc/self/not-a-real-parent/deeper"},
-			wantErr: "--debug-log directory",
-		},
 	}
 
 	for _, tt := range tests {
@@ -110,16 +105,55 @@ func TestValidateMessageReadsWell(t *testing.T) {
 	t.Logf("rendered: %s", line)
 }
 
-// A usable --debug-log directory must validate (and be created, which is the
-// same MkdirAll the logger performs) rather than being rejected out of hand.
-func TestValidateAcceptsUsableDebugDir(t *testing.T) {
+// Validate is pure: a creatable --debug-log directory passes without anything
+// being created. Creation is Prepare's job (the tests below), which is what
+// keeps validation callable from a test — or twice — with no effect on the
+// machine.
+func TestValidateIsPureForDebugDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "logs")
 	cfg := Settings{DebugLogDir: dir}
 
 	if err := Validate(&cfg); err != nil {
 		t.Fatalf("Validate() = %v, want nil for a creatable directory", err)
 	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		t.Errorf("expected %q to have been created", dir)
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("Validate() touched the filesystem: stat(%q) err = %v, want not-exist", dir, err)
+	}
+}
+
+// Prepare creates the directory Validate accepted.
+func TestPrepareCreatesDebugDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "logs")
+	cfg := Settings{DebugLogDir: dir}
+
+	if err := Prepare(&cfg); err != nil {
+		t.Fatalf("Prepare() = %v, want nil for a creatable directory", err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("expected %q to have been created (stat err = %v)", dir, err)
+	}
+}
+
+// An unusable path is a usage error, so main reports it and exits exactly as it
+// does for a Validate failure — one message, exit 2.
+func TestPrepareRejectsUnusableDebugDir(t *testing.T) {
+	cfg := Settings{DebugLogDir: "/proc/self/not-a-real-parent/deeper"}
+	err := Prepare(&cfg)
+	if err == nil {
+		t.Fatal("Prepare() = nil, want an error for an unusable path")
+	}
+	if !strings.Contains(err.Error(), "--debug-log directory") {
+		t.Errorf("Prepare() = %q, want it to name the --debug-log directory", err)
+	}
+	if !errors.Is(err, ErrUsage) {
+		t.Errorf("Prepare() error %q is not wrapped in ErrUsage", err)
+	}
+}
+
+// An unset --debug-log is disabled: Prepare must not create anything.
+func TestPrepareNoDebugDirIsNoOp(t *testing.T) {
+	if err := Prepare(&Settings{}); err != nil {
+		t.Fatalf("Prepare() = %v, want nil when --debug-log is unset", err)
 	}
 }

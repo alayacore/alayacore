@@ -36,6 +36,16 @@ func main() {
 		os.Exit(2)
 	}
 
+	// The settings' filesystem side effects (creating the --debug-log
+	// directory), now that the combination is known to be usable. An unusable
+	// path is reported the same way as a validation failure: it is still
+	// "this cannot do what you asked", and it is still one message up front
+	// rather than an error from each consumer that later opens the directory.
+	if err := config.Prepare(cfg); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(2)
+	}
+
 	appCfg, err := app.Setup(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -19,6 +19,10 @@ var ErrUsage = errors.New("invalid configuration")
 // previously silent — a mistyped flag produced an unexplained hang, an agent
 // that did nothing while blaming the model, or a feature that never triggered.
 //
+// The check is pure: it reads the settings and touches nothing. Filesystem
+// side effects a valid setting implies belong to Prepare, so validation can run
+// repeatedly — in a test, or twice — with no effect on the machine.
+//
 // Returns the first problem found, wrapped in ErrUsage.
 func Validate(s *Settings) error {
 	// --terseio consumes all of stdin as the prompt or command, so tool
@@ -49,16 +53,26 @@ func Validate(s *Settings) error {
 		return fmt.Errorf("%w: --auto-summarize must be 0 (disabled) or 1-100 (threshold percentage), got %d", ErrUsage, s.AutoSummarize)
 	}
 
-	// --debug-log must be usable. Every consumer (the API logger and one MCP
-	// transport each) would otherwise fail independently and report the same
-	// problem N times — a wall of per-server errors for what is one bad path.
-	// Creating the directory here is not a new side effect: the logger itself
-	// does exactly this before opening its files.
-	if s.DebugLogDir != "" {
-		if err := os.MkdirAll(s.DebugLogDir, 0o755); err != nil {
-			return fmt.Errorf("%w: --debug-log directory %q cannot be used: %v", ErrUsage, s.DebugLogDir, err)
-		}
-	}
+	return nil
+}
 
+// Prepare performs the settings' filesystem side effects, after Validate has
+// accepted the combination. Today that is one: creating the --debug-log
+// directory.
+//
+// It lives apart from Validate so validation stays a pure function of the
+// flags — the same settings can be validated in a test, or twice, without
+// touching the filesystem. The directory is still created once, up front,
+// before any consumer opens it (the API logger, and one MCP transport each), so
+// an unusable path stays one error at startup rather than a wall of per-server
+// errors. Returns ErrUsage on failure, so main reports it exactly as it reports
+// a Validate failure.
+func Prepare(s *Settings) error {
+	if s.DebugLogDir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(s.DebugLogDir, 0o755); err != nil {
+		return fmt.Errorf("%w: --debug-log directory %q cannot be used: %v", ErrUsage, s.DebugLogDir, err)
+	}
 	return nil
 }
