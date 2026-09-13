@@ -309,6 +309,16 @@ func (a *Agent) executeTool(ctx context.Context, tc *ToolInputPart, callbacks St
 //
 // Note: content is processed (nil → empty, error → TextPart) BEFORE the
 // callback fires, so the callback always receives meaningful display text.
+//
+// The error → TextPart substitution is the rule that makes a bare error
+// readable at all: the parts are the only channel the model has, so a tool that
+// fails with nothing else to say is understood through its error string. It is
+// a fallback for exactly that case, not a general error channel — it cannot
+// amend content that already exists, because it cannot tell which part of that
+// content is output and which is the reason. So a tool that produces output of
+// its own must state why it stopped inside that output; execute_command does,
+// through commandHeader. Tools that report a stop as (nil, err) —
+// search_content, edit_file — rely on this rule and get it for free.
 func newToolOutput(callbacks StreamCallbacks, id string, contents []ContentPart, err error, historyID uint64) *ToolOutputPart {
 	if contents == nil {
 		contents = []ContentPart{}

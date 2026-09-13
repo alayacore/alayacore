@@ -381,26 +381,66 @@ func executeCommandStreaming(ctx context.Context, args ExecuteCommandInput, onDe
 // return bare prose ("Canceled", "timed out"), which callers could only match
 // with string comparison — and the capitalized variant was already dead
 // weight, kept only because history once keyed off it. Sentinels let the agent
-// layer branch with errors.Is.
+// layer branch with errors.Is, and they are what commandHeader reads to say
+// the reason in the result the model sees — the exit status cannot, so a stop
+// that skips this classification is a stop the model is left to guess at.
 var (
 	ErrCanceled = errors.New("canceled")
 	ErrTimeout  = errors.New("timed out")
 )
 
+// commandHeader returns the lines that explain why the command stopped: the
+// child's own exit status when it left one, followed by the reason when this
+// tool is the one that ended it.
+//
+// The exit status alone cannot carry that second line. A stop this tool caused
+// reaches cmd.Wait as an ordinary signal kill — 128+signal on Unix, 1 on
+// Windows — indistinguishable from any other kill, so "Exit Code: 130" states a
+// number the model has no way to read as a timeout. Rendering the reason here,
+// beside the sentinels it comes from, keeps the explanation next to the
+// classification instead of leaving it to be reconstructed from a number.
+//
+// An empty header means the streams speak for themselves: a clean exit, or a
+// failure this tool did not classify — where the error text is what
+// inlineCommandOutput falls back to, and only when the streams left nothing to
+// show.
+func commandHeader(exitCode int, execErr error) string {
+	var b strings.Builder
+	if exitCode > 0 {
+		fmt.Fprintf(&b, "Exit Code: %d\n", exitCode)
+	}
+	switch {
+	case errors.Is(execErr, ErrTimeout):
+		b.WriteString("Command timed out.\n")
+	case errors.Is(execErr, ErrCanceled):
+		b.WriteString("Command canceled.\n")
+	}
+	return b.String()
+}
+
 func handleCommandOutput(stdout, stderr *capture, exitCode int, execErr error) ([]llm.ContentPart, error) {
+	// Decided once, here, so that everything this command's result becomes —
+	// the inline text, the saved-file message, and the saved file itself —
+	// reports the same reason for the same stop.
+	header := commandHeader(exitCode, execErr)
+
 	// The common case: nothing spilled to disk and the formatted output still
 	// fits the budget, so it goes back inline.
 	if !stdout.spilled() && !stderr.spilled() {
-		if output := formatCommandOutput(stdout, stderr, exitCode); len(output) <= maxCommandOutput {
+		if output := formatCommandOutput(stdout, stderr, header); len(output) <= maxCommandOutput {
 			return inlineCommandOutput(output, execErr)
 		}
 	}
-	return handleLargeCommandOutput(stdout, stderr, exitCode, execErr)
+	return handleLargeCommandOutput(stdout, stderr, header, execErr)
 }
 
 func inlineCommandOutput(output string, execErr error) ([]llm.ContentPart, error) {
 	if execErr != nil {
 		if output == "" {
+			// Nothing to show and nothing classified to name: the error is all
+			// there is to say (a command that could not be started, say). A
+			// timeout or a cancellation is already a header line in the output,
+			// because its exit status would not have said so.
 			output = execErr.Error()
 		}
 		return []llm.ContentPart{&llm.TextPart{Text: output}}, execErr
@@ -415,22 +455,24 @@ func inlineCommandOutput(output string, execErr error) ([]llm.ContentPart, error
 // path. Unlike the previous implementation it never materializes the whole
 // output: sizes and line counts come from the captures, and the file is
 // written by streaming the in-memory prefix followed by the spill.
-func handleLargeCommandOutput(stdout, stderr *capture, exitCode int, execErr error) ([]llm.ContentPart, error) {
-	filePath, err := saveCommandOutput(stdout, stderr, exitCode)
+//
+// The message is built from the same header the file opens with, so a model
+// that reads the file instead of the message is told why the command stopped
+// in the same words — which is the case that matters, since it is the large
+// output the model has to read back through read_file.
+func handleLargeCommandOutput(stdout, stderr *capture, header string, execErr error) ([]llm.ContentPart, error) {
+	filePath, err := saveCommandOutput(stdout, stderr, header)
 	if err != nil {
 		// No file: fall back to the in-memory prefix rather than discarding a
 		// whole command's output because the temp directory is unusable.
 		note := fmt.Sprintf("\n\n[Output was %s and could not be saved to a file (%v); the text above is only its first %s.]",
 			describeSize(stdout.size()+stderr.size()), err, describeSize(int64(maxCommandOutput)))
-		return inlineCommandOutput(formatCommandOutput(stdout, stderr, exitCode)+note, execErr)
+		return inlineCommandOutput(formatCommandOutput(stdout, stderr, header)+note, execErr)
 	}
 
 	totalLines := stdout.lineTotal() + stderr.lineTotal()
 
-	var msg string
-	if execErr != nil && exitCode > 0 {
-		msg = fmt.Sprintf("Exit Code: %d\n", exitCode)
-	}
+	msg := header
 	msg += fmt.Sprintf(
 		"Output (%d lines, %s) saved to: %s\nUse read_file to access specific sections.",
 		totalLines, describeSize(stdout.size()+stderr.size()), filePath,
@@ -447,7 +489,14 @@ func handleLargeCommandOutput(stdout, stderr *capture, exitCode int, execErr err
 
 // writeCommandOutput is the single definition of the command output layout.
 // formatCommandOutput and the saved file must never disagree, so both go
-// through here.
+// through here — including the header, which is why it arrives already
+// rendered (commandHeader) rather than as an exit code each caller would have
+// to interpret for itself.
+//
+// With no header and nothing on stderr, the output is rendered as it is on
+// success: a lone stream needs no label. The failure is stated by the part
+// (IsError) and the error the caller returns, not by the layout — which is why
+// nothing here looks at an exit status. There isn't one to look at.
 //
 // includeSpill selects the full stream (for the file) or the in-memory part
 // only (for an inline string). Rendering the inline form straight from
@@ -455,13 +504,13 @@ func handleLargeCommandOutput(stdout, stderr *capture, exitCode int, execErr err
 // path where saving to disk just failed, which is exactly the disk-full case
 // where the spill is largest. That would reintroduce the unbounded allocation
 // this code exists to prevent.
-func writeCommandOutput(w io.Writer, stdout, stderr *capture, exitCode int, includeSpill bool) error {
-	if exitCode == 0 && stderr.size() == 0 {
+func writeCommandOutput(w io.Writer, stdout, stderr *capture, header string, includeSpill bool) error {
+	if header == "" && stderr.size() == 0 {
 		return stdout.emit(w, includeSpill)
 	}
 
-	if exitCode > 0 {
-		if _, err := fmt.Fprintf(w, "Exit Code: %d\n", exitCode); err != nil {
+	if header != "" {
+		if _, err := io.WriteString(w, header); err != nil {
 			return err
 		}
 	}
@@ -487,14 +536,14 @@ func writeCommandOutput(w io.Writer, stdout, stderr *capture, exitCode int, incl
 
 // saveCommandOutput streams the formatted command output to a file in this
 // process's temp directory and returns its path.
-func saveCommandOutput(stdout, stderr *capture, exitCode int) (string, error) {
+func saveCommandOutput(stdout, stderr *capture, header string) (string, error) {
 	f, err := createProcTmpFile("cmd-*.txt")
 	if err != nil {
 		return "", err
 	}
 	path := f.Name()
 
-	if werr := writeCommandOutput(f, stdout, stderr, exitCode, true); werr != nil {
+	if werr := writeCommandOutput(f, stdout, stderr, header, true); werr != nil {
 		f.Close()
 		os.Remove(path)
 		return "", werr
@@ -507,9 +556,9 @@ func saveCommandOutput(stdout, stderr *capture, exitCode int) (string, error) {
 }
 
 // formatCommandOutput renders the inline (memory-bounded) form of the output.
-func formatCommandOutput(stdout, stderr *capture, exitCode int) string {
+func formatCommandOutput(stdout, stderr *capture, header string) string {
 	var b strings.Builder
-	_ = writeCommandOutput(&b, stdout, stderr, exitCode, false) // strings.Builder never fails
+	_ = writeCommandOutput(&b, stdout, stderr, header, false) // strings.Builder never fails
 	return b.String()
 }
 

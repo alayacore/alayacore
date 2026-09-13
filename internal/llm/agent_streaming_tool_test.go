@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -89,6 +90,44 @@ func TestExecuteToolFallsBackToExecute(t *testing.T) {
 	}
 	if deltaCalls != 0 {
 		t.Errorf("OnToolOutputDelta called %d times, want 0", deltaCalls)
+	}
+}
+
+// A tool that fails with nothing else to say is understood through its error
+// string: the result text becomes err.Error(). This is the rule every tool that
+// returns (nil, err) is written against — a stop classified by a sentinel
+// (ErrTimeout, ErrCanceled) reaches the model this way — so it is pinned here
+// rather than left implicit in the tools that depend on it.
+//
+// The rule cannot cover a tool that produces output of its own: this fallback
+// only fires on an empty result, and nothing here can tell which part of a
+// non-empty one is output and which is the reason. execute_command therefore
+// states its own reason inside its output (see its commandHeader).
+func TestExecuteToolErrorOnlyBecomesTheModelVisibleText(t *testing.T) {
+	a := NewAgent(AgentConfig{Tools: []Tool{{
+		Definition: ToolDefinition{Name: "failing_tool"},
+		Execute: func(_ context.Context, _ json.RawMessage) ([]ContentPart, error) {
+			return nil, errors.New("disk is on fire")
+		},
+	}}})
+
+	part := a.executeTool(context.Background(), &ToolInputPart{ID: "c1", Name: "failing_tool"}, StreamCallbacks{}, 3)
+	top, ok := part.(*ToolOutputPart)
+	if !ok {
+		t.Fatalf("got %T, want *ToolOutputPart", part)
+	}
+	if !top.IsError {
+		t.Error("a failing tool produced a success result")
+	}
+	if len(top.Output) != 1 {
+		t.Fatalf("result has %d parts, want the error text alone: %v", len(top.Output), top.Output)
+	}
+	tp, ok := top.Output[0].(*TextPart)
+	if !ok {
+		t.Fatalf("result part is %T, want a TextPart: %v", top.Output[0], top.Output)
+	}
+	if tp.Text != "disk is on fire" {
+		t.Errorf("result text = %q, want the error text — the model has no other channel", tp.Text)
 	}
 }
 

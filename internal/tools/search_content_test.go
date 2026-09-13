@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alayacore/alayacore/internal/tools/shell"
 )
 
 // rgAvailable checks whether ripgrep is on the system, for test skipping.
@@ -471,5 +474,39 @@ func TestSearchContentReportsExactLineCount(t *testing.T) {
 	}
 	if strings.Contains(text, "8 matching lines") {
 		t.Errorf("match count over-reported by one: %q", text)
+	}
+}
+
+// A stopped search reports itself the way most tools here do: a bare error and
+// no content. That is not a detail of this tool — it is the rule the agent
+// layer applies to every tool (a result with no content is its error text, see
+// llm.Agent.newToolOutput), and it is what carries the classification to the
+// model instead of leaving it to Go callers. execute_command cannot use it —
+// it always produces output — which is why that tool states the reason inside
+// its own text (commandHeader).
+//
+// The context arrives already expired, so the test needs no slow search and no
+// ripgrep: the deadline is checked before the exec error is inspected.
+func TestSearchContentTimeoutIsReportedAsErrTimeout(t *testing.T) {
+	orig := shell.DefaultCommandTimeout
+	defer func() { shell.DefaultCommandTimeout = orig }()
+	shell.DefaultCommandTimeout = 5 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+
+	content, err := executeSearchContent(ctx, SearchContentInput{Pattern: "package"})
+	if err == nil {
+		t.Fatal("expected an error for a search that cannot finish")
+	}
+	if !errors.Is(err, ErrTimeout) {
+		t.Errorf("error = %v, want errors.Is(err, ErrTimeout)", err)
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("error = %q, want it to say the search timed out", err)
+	}
+	if len(content) != 0 {
+		t.Errorf("a classified stop must carry no content, or the reason — which travels as the error — is dropped: content = %v", content)
 	}
 }

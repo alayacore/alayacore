@@ -63,8 +63,18 @@ Output (5000 lines, 194.2KB) saved to: /tmp/alayacore-1234567890/cmd-12345.txt
 Use read_file to access specific sections.
 ```
 
+Or with a stop this tool caused — a `--command-timeout` expiry, or a cancellation:
+```
+Exit Code: 130
+Command timed out.
+Output (5000 lines, 194.2KB) saved to: /tmp/alayacore-1234567890/cmd-12345.txt
+Use read_file to access specific sections.
+```
+
 - Agent uses `read_file` with line ranges to access specific sections
 - Same behavior for canceled/timed out commands
+- The reason line is part of the output layout, so the saved file opens with the same header the result did — the model reads the same explanation whether it sees the message or reads the file back
+- The exit status alone cannot say *why* a command was stopped (a timeout looks like any signal kill: 128+signal on Unix, 1 on Windows), which is what the reason line is for; `Exit Code: 1` above is a command that failed on its own and gets no reason line. See [tool-execution.md](tool-execution.md#what-the-model-sees-when-a-tool-fails)
 - Exit code semantics differ by platform: on Windows, canceled/timed-out commands report exit code `1` (set by `TerminateJobObject`/`taskkill`); on Unix, a `SIGKILL`-terminated command reports `137` (128+9). See [architecture.md](architecture.md) for details.
 
 ## search_content

@@ -41,24 +41,35 @@ func TestExecuteCommandExitError(t *testing.T) {
 func TestExecuteCommandCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	done := make(chan error, 1)
+	done := make(chan struct {
+		content []llm.ContentPart
+		err     error
+	}, 1)
 	go func() {
-		_, err := executeCommand(ctx, ExecuteCommandInput{
+		content, err := executeCommand(ctx, ExecuteCommandInput{
 			Command: "sleep 60",
 		})
-		done <- err
+		done <- struct {
+			content []llm.ContentPart
+			err     error
+		}{content, err}
 	}()
 
 	time.Sleep(500 * time.Millisecond)
 	cancel()
 
 	select {
-	case err := <-done:
-		if err == nil {
+	case res := <-done:
+		if res.err == nil {
 			t.Fatal("expected error for canceled command")
 		}
-		if !strings.HasPrefix(err.Error(), "canceled") {
-			t.Errorf("expected message to start with 'canceled', got %q", err.Error())
+		if !strings.HasPrefix(res.err.Error(), "canceled") {
+			t.Errorf("expected message to start with 'canceled', got %q", res.err.Error())
+		}
+		// The reason has to be in the result text, not only in the error: the
+		// error is what callers classify, the text is what the model reads.
+		if text := extractText(res.content); !strings.Contains(text, "Command canceled.") {
+			t.Errorf("the model is not told the command was canceled: %q", text)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("command was not canceled within timeout")
@@ -100,7 +111,7 @@ func TestExecuteCommandConfiguredTimeoutIsErrTimeout(t *testing.T) {
 	defer func() { shell.DefaultCommandTimeout = orig }()
 	shell.DefaultCommandTimeout = 300 * time.Millisecond
 
-	_, err := executeCommand(context.Background(), ExecuteCommandInput{
+	content, err := executeCommand(context.Background(), ExecuteCommandInput{
 		Command: "sleep 60",
 	})
 	if err == nil {
@@ -111,6 +122,19 @@ func TestExecuteCommandConfiguredTimeoutIsErrTimeout(t *testing.T) {
 	}
 	if !strings.HasPrefix(err.Error(), "timed out") {
 		t.Errorf("message = %q, want it to start with 'timed out'", err.Error())
+	}
+	// The classification is not only for Go callers. In real life the killed
+	// command leaves an exit status of its own (130 here), so the header the
+	// model reads has to carry the reason — the status cannot.
+	text := extractText(content)
+	if !strings.Contains(text, "Command timed out.") {
+		t.Errorf("the model is not told the command timed out: %q", text)
+	}
+	// The status is whatever the signal-killed process left behind (130 here,
+	// 137 if it had to be killed harder), so only its presence is pinned: the
+	// reason is added, not substituted.
+	if !strings.Contains(text, "Exit Code: ") {
+		t.Errorf("the exit status was dropped from the result: %q", text)
 	}
 }
 
@@ -237,8 +261,8 @@ func TestHandleCommandOutput(t *testing.T) {
 			stdout:   "",
 			stderr:   "",
 			exitCode: 130,
-			execErr:  fmt.Errorf("canceled"),
-			wantText: "Exit Code: 130\n",
+			execErr:  fmt.Errorf("%w: %w", ErrCanceled, context.Canceled),
+			wantText: "Exit Code: 130\nCommand canceled.\n",
 			wantErr:  true,
 		},
 		{
@@ -246,8 +270,8 @@ func TestHandleCommandOutput(t *testing.T) {
 			stdout:   "partial",
 			stderr:   "",
 			exitCode: 130,
-			execErr:  fmt.Errorf("canceled"),
-			wantText: "Exit Code: 130\nSTDOUT:\npartial\n",
+			execErr:  fmt.Errorf("%w: %w", ErrCanceled, context.Canceled),
+			wantText: "Exit Code: 130\nCommand canceled.\nSTDOUT:\npartial\n",
 			wantErr:  true,
 		},
 		{
@@ -255,8 +279,8 @@ func TestHandleCommandOutput(t *testing.T) {
 			stdout:   "",
 			stderr:   "",
 			exitCode: -1,
-			execErr:  fmt.Errorf("timed out"),
-			wantText: "timed out",
+			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
+			wantText: "Command timed out.\n",
 			wantErr:  true,
 		},
 		{
@@ -264,8 +288,21 @@ func TestHandleCommandOutput(t *testing.T) {
 			stdout:   "partial",
 			stderr:   "",
 			exitCode: -1,
-			execErr:  fmt.Errorf("timed out"),
-			wantText: "STDOUT:\npartial\n",
+			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
+			wantText: "Command timed out.\nSTDOUT:\npartial\n",
+			wantErr:  true,
+		},
+		{
+			// The reason must not depend on the exit code: Windows reports a
+			// killed command as 1, which on its own is indistinguishable from
+			// an ordinary failure. This is the shape a real --command-timeout
+			// expiry takes there.
+			name:     "timed out with the platform's own exit code",
+			stdout:   "",
+			stderr:   "",
+			exitCode: 1,
+			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
+			wantText: "Exit Code: 1\nCommand timed out.\n",
 			wantErr:  true,
 		},
 		{
@@ -305,62 +342,136 @@ func TestHandleCommandOutput(t *testing.T) {
 	}
 }
 
-func TestFormatCommandOutput(t *testing.T) {
+// TestCommandHeader pins what the header says: the child's own exit status, and
+// — because a number cannot say why this tool ended the command — the reason
+// the sentinels classify, rendered from the sentinels themselves so that no
+// caller has to invent the wording.
+func TestCommandHeader(t *testing.T) {
 	tests := []struct {
 		name     string
-		stdout   string
-		stderr   string
 		exitCode int
+		execErr  error
 		want     string
 	}{
 		{
-			name:     "exit 0 stdout only",
-			stdout:   "hello\n",
-			stderr:   "",
+			name:     "clean exit says nothing",
 			exitCode: 0,
-			want:     "hello\n",
-		},
-		{
-			name:     "exit 0 empty both",
-			stdout:   "",
-			stderr:   "",
-			exitCode: 0,
+			execErr:  nil,
 			want:     "",
 		},
 		{
-			name:     "exit 1 with stderr",
-			stdout:   "",
-			stderr:   "error\n",
+			name:     "ordinary failure is the exit status alone",
 			exitCode: 1,
-			want:     "Exit Code: 1\nSTDERR:\nerror\n",
+			execErr:  fmt.Errorf("exit status 1"),
+			want:     "Exit Code: 1\n",
 		},
 		{
-			name:     "exit 1 stdout and stderr",
-			stdout:   "out\n",
-			stderr:   "err\n",
-			exitCode: 1,
-			want:     "Exit Code: 1\nSTDOUT:\nout\n\nSTDERR:\nerr\n",
+			name:     "timeout names the timeout",
+			exitCode: 130,
+			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
+			want:     "Exit Code: 130\nCommand timed out.\n",
 		},
 		{
-			name:     "exit 0 with stderr",
-			stdout:   "out\n",
-			stderr:   "warn\n",
-			exitCode: 0,
-			want:     "STDOUT:\nout\n\nSTDERR:\nwarn\n",
+			name:     "cancellation names the cancellation",
+			exitCode: 130,
+			execErr:  fmt.Errorf("%w: %w", ErrCanceled, context.Canceled),
+			want:     "Exit Code: 130\nCommand canceled.\n",
 		},
 		{
-			name:     "exit -1 no output",
-			stdout:   "",
-			stderr:   "",
+			// A signal-killed process has no exit status of its own, but the
+			// reason still has to be stated.
+			name:     "timeout with no exit status still names the timeout",
 			exitCode: -1,
+			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
+			want:     "Command timed out.\n",
+		},
+		{
+			name:     "an unclassified failure is left to the error text",
+			exitCode: -1,
+			execErr:  fmt.Errorf("failed to start command: %w", os.ErrNotExist),
 			want:     "",
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := commandHeader(tt.exitCode, tt.execErr); got != tt.want {
+				t.Errorf("commandHeader(%d, %v):\n  expected: %q\n  got:      %q", tt.exitCode, tt.execErr, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestFormatCommandOutput(t *testing.T) {
+	tests := []struct {
+		name   string
+		stdout string
+		stderr string
+		header string
+		want   string
+	}{
 		{
-			name:     "exit -1 with stdout",
-			stdout:   "partial\n",
-			stderr:   "",
-			exitCode: -1,
-			want:     "STDOUT:\npartial\n\n",
+			name:   "no header, stdout only",
+			stdout: "hello\n",
+			stderr: "",
+			header: "",
+			want:   "hello\n",
+		},
+		{
+			name:   "no header, nothing",
+			stdout: "",
+			stderr: "",
+			header: "",
+			want:   "",
+		},
+		{
+			name:   "exit status header with stderr",
+			stdout: "",
+			stderr: "error\n",
+			header: "Exit Code: 1\n",
+			want:   "Exit Code: 1\nSTDERR:\nerror\n",
+		},
+		{
+			name:   "exit status header with both streams",
+			stdout: "out\n",
+			stderr: "err\n",
+			header: "Exit Code: 1\n",
+			want:   "Exit Code: 1\nSTDOUT:\nout\n\nSTDERR:\nerr\n",
+		},
+		{
+			name:   "no header, both streams",
+			stdout: "out\n",
+			stderr: "warn\n",
+			header: "",
+			want:   "STDOUT:\nout\n\nSTDERR:\nwarn\n",
+		},
+		{
+			// No header and no output: the caller falls back to the error text.
+			name:   "no header, no output",
+			stdout: "",
+			stderr: "",
+			header: "",
+			want:   "",
+		},
+		{
+			// A stop with no header is a stop with nothing to declare — the
+			// exit code no longer selects the layout, so the single stream is
+			// rendered as it is on success. The failure travels as IsError and
+			// as the returned error, which is where a caller looks for it.
+			name:   "no header, stdout only, labeled by nothing",
+			stdout: "partial\n",
+			stderr: "",
+			header: "",
+			want:   "partial\n",
+		},
+		{
+			// The reason belongs with the exit status, above the streams: the
+			// header is the one place that answers "why did it stop".
+			name:   "reason header precedes the streams",
+			stdout: "partial\n",
+			stderr: "",
+			header: "Exit Code: 130\nCommand timed out.\n",
+			want:   "Exit Code: 130\nCommand timed out.\nSTDOUT:\npartial\n\n",
 		},
 	}
 
@@ -368,11 +479,41 @@ func TestFormatCommandOutput(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			stdout := newTestCapture(t, tt.stdout)
 			stderr := newTestCapture(t, tt.stderr)
-			got := formatCommandOutput(stdout, stderr, tt.exitCode)
+			got := formatCommandOutput(stdout, stderr, tt.header)
 			if got != tt.want {
 				t.Errorf("formatCommandOutput:\n  expected: %q\n  got:      %q", tt.want, got)
 			}
 		})
+	}
+}
+
+// Output too large to return inline is read back by the model through
+// read_file, so the saved file has to open with the same reason the message
+// gives — otherwise the explanation exists only for commands small enough not
+// to need the file, which is the wrong way round.
+func TestLargeCommandOutputFileCarriesTheStopReason(t *testing.T) {
+	stdout := newTestCapture(t, strings.Repeat("L\n", 40000)) // 80KB > 64KB budget
+	defer stdout.Close()
+	stderr := newTestCapture(t, "")
+	defer stderr.Close()
+
+	execErr := fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded)
+	content, err := handleCommandOutput(stdout, stderr, 130, execErr)
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("error = %v, want the stop to stay classified for callers", err)
+	}
+
+	msg := extractText(content)
+	if !strings.Contains(msg, "Command timed out.") {
+		t.Errorf("the message does not say why the command stopped: %q", msg)
+	}
+
+	data, readErr := os.ReadFile(savedPathFromMessage(t, msg))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.HasPrefix(string(data), "Exit Code: 130\nCommand timed out.\n") {
+		t.Errorf("the saved file does not open with the header the message stated: %.80q", data)
 	}
 }
 

@@ -175,3 +175,38 @@ both modes share is the per-stream context handed to each tool — the tool is
 still the only thing that decides what cancellation means — and the salvage
 path, which is reached from serial by returning the context error like the
 concurrent collector does.
+
+## What the Model Sees When a Tool Fails
+
+A tool result reaches the model as text plus an error flag: `is_error` on the
+wire — the `UF` payload and Anthropic name it the same — and a
+`{"status":"error",...}` content wrapper for OpenAI. The flag says *that*
+something failed and never *why*, so the reason has to be in the text. One
+question decides where a tool puts it: does the tool produce output of its own?
+
+- **A tool that fails with nothing else to say returns `(nil, err)`**, and its
+  error string becomes the result text (`newToolOutput` in
+  `internal/llm/agent_execution.go`). `read_file`, `edit_file`, `write_file`,
+  `search_content` and the MCP tools all take this path, so whatever they report
+  reaches the model as the error's own words — `timed out: context deadline
+  exceeded` for a stop they classify with a sentinel, `context canceled` for
+  `read_file`'s raw context error, `file not found: x` for `edit_file` — without
+  any of them writing that text a second time. The substitution is a fallback
+  for that case, not a general error channel: it fires only when the result is
+  empty, because nothing at that layer can tell which part of a non-empty result
+  is output and which is the reason.
+- **A tool that produces text of its own must say why it stopped in that text.**
+  `execute_command` is the only one. A command may have printed half its output
+  before it was stopped, and that output has to be shown, so its result is never
+  empty and the fallback above never applies to it. It states the reason in the
+  header `commandHeader` builds, because the exit status cannot: a command this
+  tool stops surfaces as an ordinary signal kill (128+signal on Unix, 1 on
+  Windows), indistinguishable from any other kill. The same header is written
+  into the saved file when the output is large, so a model that has to read the
+  full output back through `read_file` is told the same thing in the same words
+  (see [truncation.md](truncation.md#execute_command)).
+
+Both paths deliver the same fact through the same channel — the text — from
+whichever layer knows it. The wording is deliberately not shared: `search_content`
+surfaces the error string, `execute_command` writes a sentence, and neither is
+asked to imitate the other.
