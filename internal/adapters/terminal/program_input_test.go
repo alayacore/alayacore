@@ -284,15 +284,19 @@ func TestStaleWakeTokenCannotReleaseAPark(t *testing.T) {
 // restored, its files closed, and the process exit — without a console read still
 // waiting for input. The delayed shell prompt this replaces was exactly that wait:
 // os.File.Close does not return until the read in flight on the file does.
+//
+// The evidence is inputStopped, which readInput closes from its own defer as it
+// leaves the loop, so a closed channel here is the loop reporting that it has
+// stopped reading — the property the handback needs. It is deliberately not a
+// second channel closed by the goroutine that launched readInput: in the program
+// readInput is that goroutine's whole body, so there is nothing after the loop to
+// wait for, and a wrapper channel would close after inputStopped and could only
+// ever be observed through a scheduling window — the race this test used to have.
 func TestStopInputWaitsForTheLoopToLeave(t *testing.T) {
 	input := newFakeInput()
 	p := newParkedProgram(make(chan Msg, 16), input)
 	ctxDone := make(chan struct{})
-	loopDone := make(chan struct{})
-	go func() {
-		p.readInput(ctxDone)
-		close(loopDone)
-	}()
+	go p.readInput(ctxDone)
 	mustWaitFor(t, "the first read", func() bool { return input.readCount() > 0 })
 
 	// run() returns first, and its defer closes ctxDone; the teardown waits
@@ -305,11 +309,6 @@ func TestStopInputWaitsForTheLoopToLeave(t *testing.T) {
 	case <-p.inputStopped:
 	default:
 		t.Error("stopInput returned before the input loop reported itself finished")
-	}
-	select {
-	case <-loopDone:
-	default:
-		t.Error("stopInput returned while the input loop was still running")
 	}
 	if input.inARead() {
 		t.Error("a read is still in flight after stopInput: the teardown would wait for input")
