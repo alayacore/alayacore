@@ -77,9 +77,14 @@ type WindowRendering interface {
 	Invalidate()
 }
 
-// borderCache caches the rendered output for a Window.
+// renderCache is a window's render cache: the rows it last rendered (row 0,
+// the line that names it, then the content), the display widths measured for
+// them, the joined string the viewport consumes, and the row variants derived
+// on request (the cursor register, the pinned row's annotation).
 // This is separate from any internal cache inside the renderer
-// (e.g. textRenderer.wrappedLines for streaming optimization).
+// (e.g. textRenderer.wrappedLines for streaming optimization); this one is
+// keyed on the window's own display inputs — width, fold state, blocked state
+// and the receipt time row 0 prints.
 //
 // rendered is inner: row 0 is the whole of a window's chrome (marker, label,
 // timestamp) and every state of it is built here, so nothing is prefixed to
@@ -102,12 +107,12 @@ type WindowRendering interface {
 // time, so renderVirtual can pad lines for soft-wrap fragment output
 // without re-measuring every line on every view. The marker's width is not
 // cached: the glyph is a layout constant one cell wide (arrowCellWidth).
-type borderCache struct {
+type renderCache struct {
 	valid     bool
 	width     int
 	folded    bool
 	blocked   bool         // cached blocked state (different → cache miss)
-	createdAt time.Time    // cached Window.CreatedAt (the header prints it)
+	createdAt time.Time    // cached Window.CreatedAt (row 0 prints it)
 	rendered  string       // full non-cursor output
 	inner     string       // rendered, before any cursor row swap
 	lines     []visualLine // visual rows, line 0 = the window's own line (marker included)
@@ -185,12 +190,10 @@ type Window struct {
 
 	renderer WindowRendering
 
-	// border caches this window's rendered rows: row 0 (the one that names
+	// cache holds this window's rendered rows: row 0 (the one that names
 	// it), the visual content lines, and the row variants that are derived
-	// on request (the cursor register, the pinned row's annotation). The
-	// name is historical — a window's chrome is one row and no border is
-	// drawn; the struct is what the caches hang off.
-	border borderCache
+	// on request (the cursor register, the pinned row's annotation).
+	cache renderCache
 }
 
 // NewWindow creates a window with the appropriate renderer for the given tag.
@@ -238,7 +241,7 @@ func (w *Window) AppendFromTLV(tag string, value string) {
 		return
 	}
 	w.renderer.AppendFromTLV(tag, value)
-	w.border.valid = false
+	w.cache.valid = false
 }
 
 // AppendContent adds content from a non-TLV source (e.g. directly from output.go).
@@ -248,7 +251,7 @@ func (w *Window) AppendContent(content string) {
 		return
 	}
 	w.renderer.AppendFromTLV(w.renderer.Tag(), content)
-	w.border.valid = false
+	w.cache.valid = false
 }
 
 // EnsureVisibleContent marks the window visible if it has non-whitespace content.
@@ -260,7 +263,7 @@ func (w *Window) EnsureVisibleContent(content string) {
 
 // Invalidate marks the cache as stale.
 func (w *Window) Invalidate() {
-	w.border.valid = false
+	w.cache.valid = false
 	if w.renderer != nil {
 		w.renderer.Invalidate()
 	}
@@ -273,7 +276,7 @@ func (w *Window) SetRendererForTool(name, input string) {
 		input:  input,
 		status: ToolStatusPending,
 	}
-	w.border.valid = false
+	w.cache.valid = false
 }
 
 // HandleToolInput updates the tool call data on an existing tool window
@@ -309,7 +312,7 @@ func (w *Window) HandleToolInput(data protocol.ToolInputData, historyID uint64) 
 	if historyID > w.HistoryID {
 		w.HistoryID = historyID
 	}
-	w.border.valid = false
+	w.cache.valid = false
 }
 
 // HandleToolOutput sets the output and status on a tool window.
@@ -325,7 +328,7 @@ func (w *Window) HandleToolOutput(output string, isError bool, historyID uint64)
 	if historyID > w.HistoryID {
 		w.HistoryID = historyID
 	}
-	w.border.valid = false
+	w.cache.valid = false
 }
 
 // SetHistoryID sets the history ID if the given value is larger.
@@ -360,7 +363,7 @@ func (w *Window) ToggleMarkdownMode() bool {
 		return false
 	}
 	tr.ToggleMarkdownMode()
-	w.border.valid = false
+	w.cache.valid = false
 	return true
 }
 
@@ -382,7 +385,7 @@ func (w *Window) SetMarkdownDefault(on bool) {
 		return
 	}
 	tr.mdMode = on
-	w.border.valid = false
+	w.cache.valid = false
 }
 
 // RawStatus returns the tool status for testing.
@@ -440,17 +443,17 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 	// anything that stamps a window it did not construct) must not keep a
 	// stale header. Equal rather than == — time.Time carries a monotonic
 	// reading and a location pointer, and only the instant matters here.
-	if w.border.valid && w.border.width == width && w.border.folded == w.Folded &&
-		w.border.blocked == blocked && w.border.createdAt.Equal(w.CreatedAt) {
+	if w.cache.valid && w.cache.width == width && w.cache.folded == w.Folded &&
+		w.cache.blocked == blocked && w.cache.createdAt.Equal(w.CreatedAt) {
 		if isCursor {
 			return w.renderCursor()
 		}
-		return w.border.rendered
+		return w.cache.rendered
 	}
 
 	// Invalidate renderer cache when blocked state changes, so BuildInner
 	// does a full re-styled render with the new (dimmed or normal) styles.
-	if w.border.valid && w.border.blocked != blocked && w.renderer != nil {
+	if w.cache.valid && w.cache.blocked != blocked && w.renderer != nil {
 		w.renderer.Invalidate()
 	}
 
@@ -461,11 +464,11 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 		styles = styles.Dimmed()
 	}
 
-	w.border.line0Cursor = ""
-	w.border.line0CursorDone = false
-	w.border.pinnedRow = ""
-	w.border.pinnedDone = false
-	w.border.frameStyles = styles
+	w.cache.line0Cursor = ""
+	w.cache.line0CursorDone = false
+	w.cache.pinnedRow = ""
+	w.cache.pinnedDone = false
+	w.cache.frameStyles = styles
 	if w.Folded {
 		// Collapsed: one line — marker + label + content summary. The
 		// marker is part of the row (not prefixed later by the viewport
@@ -477,39 +480,39 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 		// for text windows, first line for tool windows) is read and
 		// truncated, so folding a large window is O(1).
 		inner, _ := w.renderer.BuildCollapsed(width, styles)
-		w.border.lines = []visualLine{{Text: w.lineStyle(styles).Render(w.markerChar()) + " " + inner}}
-		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
-		w.border.inner = w.border.lines[0].Text
-		w.border.rendered = w.border.inner
-		w.border.lineCount = 1
+		w.cache.lines = []visualLine{{Text: w.lineStyle(styles).Render(w.markerChar()) + " " + inner}}
+		w.cache.widths = nil // computed lazily by renderVirtual (fragment output)
+		w.cache.inner = w.cache.lines[0].Text
+		w.cache.rendered = w.cache.inner
+		w.cache.lineCount = 1
 	} else {
 		// Expanded: the window's own line — marker + label, the timestamp
 		// on the right — then the content. There is no rule and no closing
 		// line: a window is opened by its marker row, and the next window
 		// opens with its own. BuildInner returns the visual content lines
 		// (soft-wrap breakpoints); the whole window is one flat visual line
-		// array, so border.rendered == border.inner.
+		// array, so cache.rendered == cache.inner.
 		contentLines, _ := w.renderer.BuildInner(width, false, styles)
 		lines := make([]visualLine, 0, len(contentLines)+1)
 		lines = append(lines, visualLine{Text: w.buildExpandHeader(width, styles, "")})
 		lines = append(lines, contentLines...)
-		w.border.lines = lines
-		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
-		w.border.inner = joinVisualLines(lines)
-		w.border.rendered = w.border.inner
-		w.border.lineCount = len(lines)
+		w.cache.lines = lines
+		w.cache.widths = nil // computed lazily by renderVirtual (fragment output)
+		w.cache.inner = joinVisualLines(lines)
+		w.cache.rendered = w.cache.inner
+		w.cache.lineCount = len(lines)
 	}
 
-	w.border.width = width
-	w.border.folded = w.Folded
-	w.border.blocked = blocked
-	w.border.createdAt = w.CreatedAt
-	w.border.valid = true
+	w.cache.width = width
+	w.cache.folded = w.Folded
+	w.cache.blocked = blocked
+	w.cache.createdAt = w.CreatedAt
+	w.cache.valid = true
 
 	if isCursor {
 		return w.renderCursor()
 	}
-	return w.border.rendered
+	return w.cache.rendered
 }
 
 // markerChar returns the window's fold marker glyph: "+" while folded
@@ -532,7 +535,7 @@ func (w *Window) lineStyle(styles *Styles) Style {
 
 // cursorLine0 returns row 0 in the cursor's register — the marker and the
 // label column recolored, the content summary behind them left alone —
-// building it on first request and caching it in the border cache.
+// building it on first request and caching it in the render cache.
 //
 // It is not built by Render on purpose: the collapsed variant costs a
 // second BuildCollapsed (a full pass over the window's content, ~100µs on
@@ -544,25 +547,25 @@ func (w *Window) lineStyle(styles *Styles) Style {
 // through the renderers: the label color is part of the styles a renderer
 // already paints from, so recoloring it is a styles swap and nothing else.
 func (w *Window) cursorLine0() string {
-	if w.border.line0CursorDone {
-		return w.border.line0Cursor
+	if w.cache.line0CursorDone {
+		return w.cache.line0Cursor
 	}
-	w.border.line0CursorDone = true
+	w.cache.line0CursorDone = true
 	// Selected() swaps every color that names a window (label, prompt,
 	// error) for the selection color, so the line — marker, label, tool
 	// name, timestamp — comes out highlighted as one unit with no other
 	// change.
-	styles := w.border.frameStyles.Selected()
+	styles := w.cache.frameStyles.Selected()
 	if w.Folded {
 		// The summary is content and keeps its muted color; the marker and
 		// the label column take the selection color, so the two read as one
 		// highlighted unit.
-		inner, _ := w.renderer.BuildCollapsed(w.border.width, styles)
-		w.border.line0Cursor = w.lineStyle(styles).Render(w.markerChar()) + " " + inner
-		return w.border.line0Cursor
+		inner, _ := w.renderer.BuildCollapsed(w.cache.width, styles)
+		w.cache.line0Cursor = w.lineStyle(styles).Render(w.markerChar()) + " " + inner
+		return w.cache.line0Cursor
 	}
-	w.border.line0Cursor = w.buildExpandHeader(w.border.width, styles, "")
-	return w.border.line0Cursor
+	w.cache.line0Cursor = w.buildExpandHeader(w.cache.width, styles, "")
+	return w.cache.line0Cursor
 }
 
 // pinnedLine0 returns row 0 for the pinned case: the row above, with
@@ -576,7 +579,7 @@ func (w *Window) cursorLine0() string {
 // message above you", which is the question the pin raises — the pin says
 // whose message this is, this says where in it you are.
 //
-// Memoized on (linesAbove, register) in the border cache, and cleared by
+// Memoized on (linesAbove, register) in the render cache, and cleared by
 // Render with the rest of it. The annotation is viewport-dependent, which is
 // exactly why it is not part of `lines[0]`: that row is cached across
 // scrolls, and a count baked into it would be stale the moment the viewport
@@ -585,18 +588,18 @@ func (w *Window) cursorLine0() string {
 // it otherwise (streaming, a keystroke elsewhere), where the cost is one
 // comparison — no render, no measure, no allocation.
 func (w *Window) pinnedLine0(linesAbove int, isCursor bool) string {
-	if w.border.pinnedDone && w.border.pinnedAbove == linesAbove && w.border.pinnedCursor == isCursor {
-		return w.border.pinnedRow
+	if w.cache.pinnedDone && w.cache.pinnedAbove == linesAbove && w.cache.pinnedCursor == isCursor {
+		return w.cache.pinnedRow
 	}
-	styles := w.border.frameStyles
+	styles := w.cache.frameStyles
 	if isCursor {
 		styles = styles.Selected()
 	}
-	w.border.pinnedRow = w.buildExpandHeader(w.border.width, styles, lineCountText(linesAbove, "above"))
-	w.border.pinnedAbove = linesAbove
-	w.border.pinnedCursor = isCursor
-	w.border.pinnedDone = true
-	return w.border.pinnedRow
+	w.cache.pinnedRow = w.buildExpandHeader(w.cache.width, styles, lineCountText(linesAbove, "above"))
+	w.cache.pinnedAbove = linesAbove
+	w.cache.pinnedCursor = isCursor
+	w.cache.pinnedDone = true
+	return w.cache.pinnedRow
 }
 
 // renderCursor renders the cached window with the cursor's selection
@@ -610,7 +613,7 @@ func (w *Window) pinnedLine0(linesAbove int, isCursor bool) string {
 // was filled with (Render's cache key includes it), so the overlay case
 // needs no flag here.
 func (w *Window) renderCursor() string {
-	return replaceFirstLine(w.border.inner, w.cursorLine0())
+	return replaceFirstLine(w.cache.inner, w.cursorLine0())
 }
 
 // replaceFirstLine returns s with its first line replaced by first. Used
@@ -842,7 +845,7 @@ func toolNameStyle(styles *Styles) Style {
 
 // LineCount returns the cached line count (valid after Render).
 func (w *Window) LineCount() int {
-	return w.border.lineCount
+	return w.cache.lineCount
 }
 
 // UpdateLineCountFast attempts to compute the line count without a full render.

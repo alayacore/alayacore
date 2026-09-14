@@ -534,7 +534,7 @@ func TestWindowBufferRendering(t *testing.T) {
 	wb.AppendOrUpdate(tlv.TagAssistantR, "test2", "Reasoning")
 	rendered2 := wb.GetAll(-1, false)
 	// Should have two windows separated by newline
-	// Count border top lines? Simpler: ensure both contents appear
+	// Count the windows' own lines? Simpler: ensure both contents appear
 	if !strings.Contains(rendered2, "Hello world") || !strings.Contains(rendered2, "Reasoning") {
 		t.Errorf("Both window contents not found: %q", rendered2)
 	}
@@ -631,7 +631,7 @@ func TestWindowBufferWidth(t *testing.T) {
 	visibleLen := visibleLength(topLine)
 	// Ensure total visible width matches expected total width (should be totalWidth)
 	if visibleLen != totalWidth {
-		t.Errorf("Window border visible width %d does not match expected total width %d", visibleLen, totalWidth)
+		t.Errorf("Window line visible width %d does not match expected total width %d", visibleLen, totalWidth)
 	}
 	if !strings.Contains(lines[1], "Hello") {
 		t.Errorf("Content line missing: %q", lines[1])
@@ -661,7 +661,7 @@ func TestWindowBufferWidthMatchesInput(t *testing.T) {
 			t.Logf("Window line: %q", topLine)
 			t.Logf("Visible length: %d, expected: %d", visibleLen, inputTotalWidth)
 			if visibleLen != inputTotalWidth {
-				t.Errorf("Window border visible width %d does not match input total width %d", visibleLen, inputTotalWidth)
+				t.Errorf("Window line visible width %d does not match input total width %d", visibleLen, inputTotalWidth)
 			}
 			if !strings.Contains(lines[1], "Content") {
 				t.Errorf("Content line missing: %q", lines[1])

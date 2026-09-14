@@ -28,7 +28,7 @@ const (
 var toolSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // toolSpinnerFrameAt returns the spinner frame for the given moment. The
-// frame advances with each re-render: the tool window's border cache is
+// frame advances with each re-render: the tool window's render cache is
 // rebuilt on every delta append, status change, and (for executing tools)
 // the tick-driven spinner refresh (see
 // WindowBuffer.InvalidateRunningToolSpinners) — so the indicator rotates

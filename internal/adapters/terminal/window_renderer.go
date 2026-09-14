@@ -95,8 +95,8 @@ func (r *textRenderer) AppendFromTLV(_ string, value string) {
 		// original line inside wrapVisualLines, so incremental and full
 		// re-wrap agree on tab columns even when a delta starts with '\t'.
 		r.wrappedLines = appendDeltaToVisualLines(r.wrappedLines, stripANSI(value), r.cacheWidth)
-		// cacheValid stays false — border cache needs rebuild,
-		// but wrappedLines is current for TryLineCount.
+		// cacheValid stays false — the wrap cache needs a rebuild, but
+		// wrappedLines is current for TryLineCount.
 	} else {
 		r.cacheValid = false
 	}

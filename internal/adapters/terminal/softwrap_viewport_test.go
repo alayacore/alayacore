@@ -332,8 +332,8 @@ func TestRenderVirtualCursorHighlight(t *testing.T) {
 	if !strings.Contains(out, wantLabel) {
 		t.Errorf("cursor window label is not in the selection color: %q", out)
 	}
-	// The rest of the rule keeps the border color, and the non-cursor
-	// render differs only in that label.
+	// The rest of the row keeps its own style, and the non-cursor render
+	// differs only in that label.
 	plain := stripANSI(out)
 	if !strings.HasPrefix(plain, unfoldArrow+" ASSISTANT") {
 		t.Errorf("cursor render must keep the window's own line: %q", plain)

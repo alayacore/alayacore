@@ -256,7 +256,7 @@ func TestCursorHighlightInViewportFragments(t *testing.T) {
 }
 
 // TestCursorHighlightFollowsContent: the highlighted row is memoized per
-// border-cache generation, so it must be rebuilt when the content that
+// render-cache generation, so it must be rebuilt when the content that
 // feeds it changes (a longer summary, a tool status flip).
 func TestCursorHighlightFollowsContent(t *testing.T) {
 	styles := DefaultStyles()

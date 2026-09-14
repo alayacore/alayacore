@@ -2,7 +2,7 @@ package terminal
 
 // Phase-1 soft-wrap refactor tests: the rendering pipeline
 // produces VISUAL line arrays — each element is one terminal row with no
-// '\n' inside. Window.Render caches these in border.lines, and
+// '\n' inside. Window.Render caches these in its render cache, and
 // WindowBuffer.ensureLineHeights derives lineHeights from their count.
 // These tests lock in that structure so the Phase-2 viewport fragment
 // output can consume it.
@@ -35,9 +35,9 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 	w.CreatedAt = pinnedTime
 	rendered := w.Render(width, false, styles, false)
 
-	lines := w.border.lines
+	lines := w.cache.lines
 	if len(lines) != w.LineCount() {
-		t.Errorf("border.lines len = %d, LineCount() = %d, want equal", len(lines), w.LineCount())
+		t.Errorf("cached rows len = %d, LineCount() = %d, want equal", len(lines), w.LineCount())
 	}
 	if len(lines) < 2 {
 		t.Fatalf("expected the window's own line + content (>= 2 lines), got %d: %q", len(lines), joinVisualLines(lines))
@@ -74,20 +74,20 @@ func TestWindowVisualLinesFolded(t *testing.T) {
 
 	w.Render(40, false, styles, false)
 
-	if len(w.border.lines) != 1 {
-		t.Fatalf("folded window should be 1 visual line, got %d: %q", len(w.border.lines), joinVisualLines(w.border.lines))
+	if len(w.cache.lines) != 1 {
+		t.Fatalf("folded window should be 1 visual line, got %d: %q", len(w.cache.lines), joinVisualLines(w.cache.lines))
 	}
 	if w.LineCount() != 1 {
 		t.Errorf("LineCount() = %d, want 1", w.LineCount())
 	}
-	if strings.Contains(w.border.lines[0].Text, "\n") {
-		t.Errorf("folded visual line contains hard newline: %q", w.border.lines[0].Text)
+	if strings.Contains(w.cache.lines[0].Text, "\n") {
+		t.Errorf("folded visual line contains hard newline: %q", w.cache.lines[0].Text)
 	}
 }
 
 // TestWindowBufferLineHeightsAreVisual verifies ensureLineHeights derives
 // line heights from the visual line count (not '\n' counting), matching
-// Window.Render's border.lines for both folded and expanded windows.
+// Window.Render's cached rows for both folded and expanded windows.
 func TestWindowBufferLineHeightsAreVisual(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 
@@ -102,10 +102,10 @@ func TestWindowBufferLineHeightsAreVisual(t *testing.T) {
 	if at == nil {
 		t.Fatal("AT window not found")
 	}
-	// Force a full render so border.lines is populated.
+	// Force a full render so the rows are populated.
 	at.Render(40, false, wb.styles, false)
-	if got, want := wb.lineHeights[atIdx], len(at.border.lines); got != want {
-		t.Errorf("AT lineHeight = %d, border.lines = %d, want equal", got, want)
+	if got, want := wb.lineHeights[atIdx], len(at.cache.lines); got != want {
+		t.Errorf("AT lineHeight = %d, cached rows = %d, want equal", got, want)
 	}
 	if wb.lineHeights[atIdx] != at.LineCount() {
 		t.Errorf("AT lineHeight = %d, LineCount() = %d, want equal", wb.lineHeights[atIdx], at.LineCount())

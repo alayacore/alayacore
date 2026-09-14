@@ -31,7 +31,7 @@ func buildLongBuffer(totalLines int) *WindowBuffer {
 		}
 		wb.AppendOrUpdate("AT", id, sb.String())
 	}
-	// Viewport shows ~20 windows (10 rows each + borders).
+	// Viewport shows ~20 windows (10 content rows + the window's own line).
 	wb.SetViewportPosition(0, 220)
 	return wb
 }

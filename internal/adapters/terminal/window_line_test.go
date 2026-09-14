@@ -85,10 +85,10 @@ func TestWindowLineNeverExceedsWidth(t *testing.T) {
 		w.AppendContent("hello")
 		w.Render(width, false, styles, false)
 
-		if len(w.border.lines) == 0 {
+		if len(w.cache.lines) == 0 {
 			t.Fatalf("width %d: no border lines", width)
 		}
-		row := w.border.lines[0]
+		row := w.cache.lines[0]
 		if row.Cont {
 			t.Errorf("width %d: a window's own line must start a new original row (Cont=false)", width)
 		}

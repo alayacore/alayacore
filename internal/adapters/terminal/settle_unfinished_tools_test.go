@@ -74,7 +74,7 @@ func TestSettleUnfinishedTools(t *testing.T) {
 	}, 0)
 	wb.HandleToolOutput("failed", "err", true, 0)
 	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", "hello")
-	wb.GetAll(-1, false) // populate borders so invalidate is observable
+	wb.GetAll(-1, false) // populate the render cache so invalidate is observable
 
 	settled := wb.SettleUnfinishedTools()
 	if settled != 3 {

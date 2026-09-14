@@ -220,7 +220,8 @@ func TestWrapWordBoundary(t *testing.T) {
 	}
 }
 
-// TestGetForeground locks the getter used by the window border pipeline.
+// TestGetForeground locks the getter used by the body-dim pipeline
+// (window_renderer.go: body text has no foreground unless an overlay is up).
 func TestGetForeground(t *testing.T) {
 	hex := Color("#585b70")
 	if got := NewStyle().GetForeground(); got != nil {

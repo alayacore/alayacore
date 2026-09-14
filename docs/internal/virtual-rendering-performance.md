@@ -175,18 +175,18 @@ tools/reasoning + 10 unfolded user/assistant, width 120, viewport 40):
 Why it's fast:
 
 - **Folded windows are O(1)**: `UpdateLineCountFast` returns `1` immediately for
-  folded windows — no wrapping, no border render, no renderer access. During
+  folded windows — no wrapping, no row render, no renderer access. During
   streaming, deltas to folded windows cost nothing for line tracking (the
   folded line count stays `1`; the tool window's summary shows the first
   input line, which appends never change, and a folded text window only
   re-renders its single summary line).
 - **No full-content wrap on fold**: `BuildCollapsed` only reads and
   tail-truncates the content instead of wrapping the entire content.
-- **Cursor moves don't re-render borders**: only the one navigational element
+- **Cursor moves don't rebuild a window's rows**: only the one navigational element
   is recolored — the fold marker and the label column on a folded line, all
   of row 0 (marker, label, timestamp, and the pinned row's count) on an
   expanded one — reusing the cached content (`renderCursor`,
-  `borderCache.line0Cursor`).
+  `renderCache.line0Cursor`).
 - **Fewer total lines**: 1 line per folded window, and one row of chrome per
   expanded window (its label opens the window; there is no header line above
   it and no closing rule below it), shrinking `lineHeights`/scrolling math
@@ -225,7 +225,7 @@ longer re-splits or slices content.
 - each window's visual lines are joined **without `\n`** and padded to the
   full width (except the last row), so the terminal soft-wraps at the
   simulated breakpoints — copy restores the original text;
-- display widths are measured once per render (`border.widths`) and reused
+- display widths are measured once per render (`Window.cache.widths`) and reused
   for padding, so fragment output performs no per-line measurement;
 - the window's own line (marker, label, timestamp) is built once, at render
   time, and only its row is swapped in the cursor's register — no style
@@ -235,7 +235,7 @@ longer re-splits or slices content.
   and the body row it displaces is one row less to assemble. The pinned row is
   the one thing on screen that depends on where the viewport is — it carries
   the count of the window's hidden lines above — so it is not `lines[0]`: it is
-  memoized on that count in the window's border cache, which makes a frame that
+  memoized on that count in the window's render cache, which makes a frame that
   does not move the viewport a string compare (46 allocations either way, see
   `TestStickyPinAddsNoAllocations`) and a frame that moves it by a row one row
   rebuild (2012ns pinned-still → 3057ns pinned-scrolling against 2024ns
@@ -361,15 +361,15 @@ commit `1021326`.
 |-------|----------|----------|---------------|
 | Renderer lines | `textRenderer.wrappedLines` | Wrapped plain-text lines (AT/AR) | Resize, theme change |
 | Body-colored lines | `textRenderer.colored` | Dim-colored copy of `wrappedLines`, materialized only while an overlay is active (`styles.Body` carries a foreground) | Content append (`coloredDirty`), resize, theme change, blocked switch |
-| Window rows | `Window.border` | Visual lines (`lines`), display widths (`widths`, lazy), rendered string + lineCount, the memoized cursor row and the memoized pinned row | Content append, resize, theme, receipt time (the pinned row also by the hidden-line count it carries — a scroll, not a content change) |
+| Window rows | `Window.cache` | Visual lines (`lines`), display widths (`widths`, lazy), rendered string + lineCount, the memoized cursor row and the memoized pinned row | Content append, resize, theme, receipt time (the pinned row also by the hidden-line count it carries — a scroll, not a content change) |
 
 Renderer lines are **updated incrementally** during streaming (not invalidated).
-Border cache is marked invalid on every content change but rebuilt on next render.
+The render cache is marked invalid on every content change but rebuilt on next render.
 The pinned row is the one entry whose *input* is the viewport: it is keyed on the
 count, so a scroll that does not change the count reuses it and a scroll that does
 rebuilds that row alone.
 
-`lineCount` lives in border cache so `WindowBuffer` can read it with direct field
+`lineCount` lives in the render cache so `WindowBuffer` can read it with direct field
 access (no interface dispatch on the hot path).
 
 ### Why `ensureLineHeights` Defers Full Render

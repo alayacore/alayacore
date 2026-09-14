@@ -270,7 +270,7 @@ func TestWindowRenderCaching(t *testing.T) {
 	_ = w.Render(80, false, styles, false)
 
 	// Cache should be valid
-	if !w.border.valid {
+	if !w.cache.valid {
 		t.Error("expected cache to be valid after render")
 	}
 
@@ -295,7 +295,7 @@ func TestWindowRenderCacheInvalidation(t *testing.T) {
 	_ = w.Render(80, false, styles, false)
 
 	// Cache should be valid
-	if !w.border.valid {
+	if !w.cache.valid {
 		t.Error("expected cache to be valid after render")
 	}
 

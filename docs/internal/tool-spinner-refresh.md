@@ -8,10 +8,10 @@ at the last rendered frame.
 
 Root cause chain:
 
-1. The spinner glyph is **baked into the window's border cache** at render
+1. The spinner glyph is **baked into the window's render cache** at render
    time (`BuildCollapsed`/`BuildInner` → `statusDot()` →
    `toolSpinnerFrame()`, a pure wall-clock function: 10 frames × 150ms).
-2. Border caches are only rebuilt when a window is invalidated, and that
+2. Render caches are only rebuilt when a window is invalidated, and that
    is **delta-driven**: `Af` argument deltas, `Uf` preview deltas, and
    final `UF` frames all call `w.Invalidate()`. A silent tool emits none
    of these.
@@ -33,7 +33,7 @@ no such driver.
 
 - Scans windows whose renderer is a `*toolRenderer` with status
   `ToolStatusPending` (executing) and calls `w.Invalidate()` +
-  `markDirty(i)` — the border cache is rebuilt on the next `GetAll` with
+  `markDirty(i)` — the render cache is rebuilt on the next `GetAll` with
   the current wall-clock frame.
 - Returns `false` when no tool is executing, so the idle tick keeps the
   100% skip behavior: benchmarked at **76ns/op, 0 allocs** for a 100-window
@@ -72,7 +72,7 @@ no such driver.
   would only skip one row build (measured in
   [virtual-rendering-performance.md](virtual-rendering-performance.md) — the
   window-row cache). It would extend a documented aliasing pitfall (`lines`
-  aliases `w.border.lines`) into the most fragile, highest-gocyclo rendering
+  aliases `w.cache.lines`) into the most fragile, highest-gocyclo rendering
   code for negligible gain.
 - **Why `ToolStatusPending` only — not a general animation framework?**
   Two animations (loading screen, tool spinner) with different lifecycles

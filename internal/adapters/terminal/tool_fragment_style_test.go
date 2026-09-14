@@ -3,7 +3,7 @@ package terminal
 // Phase-3 soft-wrap refactor tests: tool content styling
 // across fragment boundaries. Tool content lines are styled per visual
 // line (wrapContent's WrapWriter re-applies the active style at every
-// hard-wrap break), so each border.lines element is self-contained:
+// hard-wrap break), so each element of the window's rows is self-contained:
 // clipping a window mid-content must yield fragments whose ANSI styles
 // match the same lines rendered in the full window — no style context
 // replay needed at fragment starts.
@@ -39,12 +39,12 @@ func makeDiffWindow(t *testing.T, width int) *WindowBuffer {
 // full window render (styles are self-contained per visual line).
 func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 	wb := makeDiffWindow(t, 40)
-	_ = wb.GetAll(-1, false) // full render populates border.lines
+	_ = wb.GetAll(-1, false) // full render populates the rows
 	w := wb.WindowAt(0)
 	if w == nil {
 		t.Fatal("tool window not found")
 	}
-	allLines := append([]visualLine(nil), w.border.lines...)
+	allLines := append([]visualLine(nil), w.cache.lines...)
 	if len(allLines) < 6 {
 		t.Fatalf("expected a multi-row tool window, got %d lines", len(allLines))
 	}

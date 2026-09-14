@@ -48,8 +48,8 @@ func TestToolSpinnerFrameAt(t *testing.T) {
 }
 
 // TestInvalidateRunningToolSpinnersInvalidatesPendingOnly: only executing
-// tool windows (ToolStatusPending) get their border invalidated; finished
-// tools and plain text windows keep their cached borders.
+// tool windows (ToolStatusPending) get their rows invalidated; finished
+// tools and plain text windows keep their cached rows.
 func TestInvalidateRunningToolSpinnersInvalidatesPendingOnly(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.HandleToolInputEvent(protocol.ToolInputData{
@@ -65,7 +65,7 @@ func TestInvalidateRunningToolSpinnersInvalidatesPendingOnly(t *testing.T) {
 	wb.HandleToolOutput("done", "content", false, 0)
 	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", "hello")
 
-	// Render once so every border cache is populated/valid.
+	// Render once so every render cache is populated/valid.
 	wb.GetAll(-1, false)
 
 	idxRunning, ok := wb.LookupID("running")
@@ -87,14 +87,14 @@ func TestInvalidateRunningToolSpinnersInvalidatesPendingOnly(t *testing.T) {
 	if !wb.IsDirty() {
 		t.Fatal("invalidation must mark the buffer dirty")
 	}
-	if wb.WindowAt(idxRunning).border.valid {
-		t.Error("pending tool window border must be invalidated")
+	if wb.WindowAt(idxRunning).cache.valid {
+		t.Error("a pending tool window's rows must be invalidated")
 	}
-	if !wb.WindowAt(idxDone).border.valid {
-		t.Error("finished tool window border must stay valid")
+	if !wb.WindowAt(idxDone).cache.valid {
+		t.Error("a finished tool window's rows must stay valid")
 	}
-	if !wb.WindowAt(idxText).border.valid {
-		t.Error("text window border must stay valid")
+	if !wb.WindowAt(idxText).cache.valid {
+		t.Error("a text window's rows must stay valid")
 	}
 }
 

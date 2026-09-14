@@ -458,7 +458,7 @@ cursor visibility would depend on themselves.
 
 The pinned row is the one row on screen whose text depends on where the viewport
 is, so it is not the cached `lines[0]`: it is memoized on the count it carries,
-in the window's border cache, and cleared with it. A frame that does not move the
+in the window's render cache, and cleared with it. A frame that does not move the
 viewport therefore re-reads it — 46 allocations with the pin and 48 without,
 `TestStickyPinAddsNoAllocations` — while a frame that moves the viewport by a
 row rebuilds that one row and nothing else: `BenchmarkStickyLineViewportRender`
@@ -729,8 +729,8 @@ Measuring and cutting both go through `width.go`, against one table
   policy in `constants.go`.
 - East-Asian **Ambiguous** glyphs (`─ │ ├ ┼ →`, and the marks `… — ∞`) also
   occupy **1 cell** — the app-wide assumption behind every width calculation:
-  window borders are literally `strings.Repeat("─", width)`, and table rules
-  and the truncation marker charge one cell per glyph. Box drawing has no
+  the prompt box's rules are literally `strings.Repeat("─", width)`, and table
+  rules and the truncation marker charge one cell per glyph. Box drawing has no
   Neutral alternative, so this is the accepted exposure (waiver 2), not an
   oversight.
 - CJK characters (中文、日本語、한국어) occupy **2 cells**
@@ -754,9 +754,9 @@ set a rule that measures one way breaks another way and the frame shifts —
 **not a supported mode**, and setting the variable on an ordinary terminal
 breaks the UI that would otherwise have been correct.
 
-Window rendering produces **visual line arrays** (`border.lines`) — one
+Window rendering produces **visual line arrays** (`Window.cache.lines`) — one
 element per terminal row. Display widths are measured once per render
-(`border.widths`) and reused by the viewport for padding, so fragment
+(`Window.cache.widths`) and reused by the viewport for padding, so fragment
 output never re-measures lines. `lineHeights` are the visual line counts,
 so cursor navigation (j/k/H/M/L) and `EnsureCursorVisible` operate on
 terminal rows exactly as before.

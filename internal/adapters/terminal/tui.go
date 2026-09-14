@@ -637,7 +637,7 @@ func (m Terminal) handleDisplayRefresh() Terminal {
 
 	// While a tool executes, its spinner must keep rotating even when the
 	// tool produces no output (no Uf/Af deltas arrive, so nothing
-	// invalidates the window's border cache — the glyph is baked in at the
+	// invalidates the window's render cache — the glyph is baked in at the
 	// last render). Invalidate executing tool windows on every tick; the
 	// call is a no-op when no tool is executing, so idle ticks keep the
 	// 100% skip behavior. Checked BEFORE DrainDirty so a stream of

@@ -344,7 +344,7 @@ func (wb *WindowBuffer) markDirty(idx int) {
 // ToolStatusPending) for re-render so its header rebuilds with the current
 // wall-clock spinner frame on the next GetAll. The tick handler calls this
 // when the display is otherwise idle: the spinner glyph is baked into the
-// window's border cache at the last render, so a long-running silent tool
+// window's render cache at the last render, so a long-running silent tool
 // (no Uf/Af frames → no delta-driven invalidation) would freeze the
 // spinner without it.
 //
@@ -371,7 +371,7 @@ func (wb *WindowBuffer) InvalidateRunningToolSpinners() bool {
 		if !ok || tr.status != ToolStatusPending {
 			continue
 		}
-		w.Invalidate() // border cache stale → rebuilt with current frame
+		w.Invalidate() // render cache stale → rebuilt with current frame
 		wb.markDirty(i)
 		refreshed = true
 	}
@@ -599,7 +599,7 @@ func (wb *WindowBuffer) GetWindowContent(windowIndex int) string {
 //
 // During incremental updates, UpdateLineCountFast is tried first (fast path using
 // len(wrappedLines) from TryLineCount). If the cache is stale, full Render is used
-// instead. The rendered string is cached in Window.border and reused by
+// instead. The rendered string is cached in Window.cache and reused by
 // GetAll → renderVirtual, which needs the content for the viewport.
 // This avoids an O(n) render in ensureLineHeights that would be immediately
 // overwritten by renderVirtual's own w.Render() call.
@@ -960,7 +960,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			// the viewport covers, so this is a memoized row build — the
 			// window's own line plus this message's hidden-line count —
 			// reused across every frame that does not move the viewport
-			// (border.widths[0] is not even needed: the pinned row ends an
+			// (cache.widths[0] is not even needed: the pinned row ends an
 			// original line and is never padded). Under the cursor it is the
 			// same row in the selection register.
 			//
@@ -1040,26 +1040,26 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 // here: the marker is part of the cached row, and the row is the same
 // width in both registers.
 func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) ([]visualLine, []int) {
-	// Ensure the border cache is populated (lineHeights alone don't
+	// Ensure the render cache is populated (lineHeights alone don't
 	// render folded windows — the fast path skips rendering).
 	w.Render(wb.width, false, wb.styles, blocked)
-	lines := w.border.lines[from:to]
+	lines := w.cache.lines[from:to]
 
 	// Display widths are computed lazily and cached: Render fills them
 	// only when the fragment output needs padding, so the line-counting
 	// paths (ensureLineHeights) never pay the per-line measurement cost.
-	widths := w.border.widths
-	if len(widths) != len(w.border.lines) {
-		widths = make([]int, len(w.border.lines))
-		for li, ln := range w.border.lines {
+	widths := w.cache.widths
+	if len(widths) != len(w.cache.lines) {
+		widths = make([]int, len(w.cache.lines))
+		for li, ln := range w.cache.lines {
 			widths[li] = cellWidth(ln.Text)
 		}
-		w.border.widths = widths
+		w.cache.widths = widths
 	}
 	widths = widths[from:to]
 
 	// The first row is REPLACED (not mutated in place): lines aliases
-	// w.border.lines, so mutating it would double the effects on the next
+	// w.cache.lines, so mutating it would double the effects on the next
 	// render. from != 0 means row 0 (and its highlight) is off-screen.
 	if from == 0 && isCursor {
 		first := lines[0]
@@ -1104,7 +1104,8 @@ func (wb *WindowBuffer) RenderWindowContent(w *Window, innerWidth int) string {
 	if w.renderer == nil {
 		return ""
 	}
-	// Use BuildInner to get the rendered content lines (without border)
+	// Use BuildInner to get the rendered content lines — the body only,
+	// without the window's own line (row 0) that Render composes above it.
 	lines, _ := w.renderer.BuildInner(innerWidth, false, wb.styles)
 	return joinVisualLines(lines)
 }

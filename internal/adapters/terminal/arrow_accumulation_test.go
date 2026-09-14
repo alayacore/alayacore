@@ -5,7 +5,7 @@ package terminal
 // (Window.Render → buildExpandHeader), and every path that touches row 0 —
 // windowFragment's cursor swap, the pinned row, the cursor row — REPLACES
 // the row rather than prepending to it. A previous in-place mutation of the
-// cached border.lines prepended another marker on every render
+// cached rows prepended another marker on every render
 // (++++++++++ USER ...).
 
 import (

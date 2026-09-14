@@ -117,7 +117,7 @@ func TestTerminalResizeUpdatesDisplayContent(t *testing.T) {
 	resizedContent := resizedView.Content
 
 	// The content should have been re-rendered with the new width
-	// Verify that the content changed (it should be different due to narrower borders)
+	// Verify that the content changed (it should be re-wrapped at the narrower width)
 	if resizedContent == initialContent {
 		t.Errorf("Expected content to change after resize")
 	}
