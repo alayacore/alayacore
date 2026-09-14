@@ -20,7 +20,7 @@ const (
 	StateInitializing
 	StateReady
 	StateFailed
-	StateStale // server tool list changed, needs restart
+	StateStale // a cached list (tools/resources/prompts) changed, needs restart
 )
 
 // Client manages a connection to a single MCP server.
@@ -30,6 +30,9 @@ const (
 //   - closeDone: atomic.Bool — Close() and monitor atomically claim the right
 //     to close closedCh via Swap(true). Only one succeeds, no mutex needed.
 //   - state: atomic.Int32 — CAS for safe state transitions
+//   - staleReason: atomic.Pointer[string] — written by MarkStale on the
+//     transport's read-loop goroutine, read by stateError on request
+//     goroutines; a plain field here would be a data race.
 //
 // A dedicated monitor goroutine watches transport.Done(). If the transport
 // dies unexpectedly (process crash, connection drop), it transitions the
@@ -55,8 +58,12 @@ type Client struct {
 	serverInfo   ImplementationInfo
 	instructions string
 
-	// staleReason is set when the server is marked stale (e.g. tool list changed).
-	staleReason string
+	// staleReason is the reason the server was marked stale. It is written by
+	// MarkStale, which runs on the transport's read-loop goroutine when a
+	// *_list_changed notification arrives, and read by stateError from whatever
+	// goroutine is making a request — so it is held in an atomic pointer rather
+	// than a plain field.
+	staleReason atomic.Pointer[string]
 
 	// toolsCache caches tool definitions (with parsed HeaderMappings) keyed
 	// by tool name. Used by CallTool to inject x-mcp-header HTTP headers.
@@ -100,10 +107,12 @@ func (c *Client) Instructions() string {
 	return c.instructions
 }
 
-// MarkStale marks the server as stale, indicating its tool list has changed.
+// MarkStale marks the server as stale: a list the client caches (tools,
+// resources, or prompts) changed, so it needs a restart. Called from the
+// notification handler with the specific reason.
 func (c *Client) MarkStale(reason string) {
+	c.staleReason.Store(&reason)
 	c.state.Store(int32(StateStale))
-	c.staleReason = reason
 }
 
 // Connect establishes the transport and performs MCP initialization.
@@ -586,7 +595,10 @@ func (c *Client) stateError(string) error {
 	case StateFailed:
 		return fmt.Errorf("server connection lost")
 	case StateStale:
-		return fmt.Errorf("%s", c.staleReason)
+		if r := c.staleReason.Load(); r != nil {
+			return fmt.Errorf("%s", *r)
+		}
+		return fmt.Errorf("server is stale")
 	default:
 		return fmt.Errorf("not ready (state=%d)", st)
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/debug"
 	"github.com/alayacore/alayacore/internal/mcp/auth"
@@ -57,8 +58,11 @@ type HTTPTransport struct {
 
 	debugWriter io.WriteCloser
 
-	// Notification handler for server-to-client notifications.
-	notificationHandler NotificationHandler
+	// notificationHandler is published by SetNotificationHandler, which the
+	// caller invokes after the transport may already be reading (a POST
+	// response's SSE stream, or the GET stream). It is held in an atomic
+	// pointer so that write and the reads are not a data race.
+	notificationHandler atomic.Pointer[NotificationHandler]
 }
 
 // sseReadCloser wraps an io.ReadCloser (HTTP response body) with the
@@ -237,7 +241,15 @@ func (t *HTTPTransport) Done() <-chan struct{} {
 
 // SetNotificationHandler registers a handler for server-to-client notifications.
 func (t *HTTPTransport) SetNotificationHandler(h NotificationHandler) {
-	t.notificationHandler = h
+	t.notificationHandler.Store(&h)
+}
+
+// notifHandler returns the registered notification handler, or nil.
+func (t *HTTPTransport) notifHandler() NotificationHandler {
+	if h := t.notificationHandler.Load(); h != nil {
+		return *h
+	}
+	return nil
 }
 
 // SetAuthProvider sets the OAuth token provider for this transport.
@@ -306,7 +318,7 @@ func (t *HTTPTransport) StartGETStream(ctx context.Context) (func(), error) {
 		if t.adapter != nil {
 			srh = t.adapter.ServerRequestHandler
 		}
-		t.readSSELoop(loopCtx, sr, srh, t.notificationHandler)
+		t.readSSELoop(loopCtx, sr, srh, t.notifHandler())
 	}()
 
 	return func() { sr.Close(); <-closed }, nil
@@ -491,7 +503,7 @@ func (t *HTTPTransport) readSSEResponse(ctx context.Context, resp *http.Response
 		if t.adapter != nil {
 			srh = t.adapter.ServerRequestHandler
 		}
-		t.readSSELoop(loopCtx, sr, srh, t.notificationHandler)
+		t.readSSELoop(loopCtx, sr, srh, t.notifHandler())
 	}()
 
 	select {

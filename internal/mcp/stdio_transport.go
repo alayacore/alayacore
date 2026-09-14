@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -48,8 +49,11 @@ type StdioTransport struct {
 	// connection failure can report the real cause instead of a bare EOF.
 	stderrTail *boundedTail
 
-	// Notification handler for server-to-client notifications.
-	notificationHandler NotificationHandler
+	// notificationHandler is published by SetNotificationHandler, which the
+	// caller invokes after NewStdioTransport has already started readLoop.
+	// readLoop reads it on every line, so it is held in an atomic pointer:
+	// as a plain field the write and the read would be a data race.
+	notificationHandler atomic.Pointer[NotificationHandler]
 }
 
 // NewStdioTransport creates a stdio transport that spawns the given command.
@@ -161,7 +165,7 @@ func (t *StdioTransport) readLoop() {
 
 	for t.scanner.Scan() {
 		data := t.scanner.Bytes()
-		if err := parseAndDispatchJSONRPC(ctx, data, t.pending, &t.pendingMu, t.debugWriter, t.handleServerRequest, t.notificationHandler); err != nil {
+		if err := parseAndDispatchJSONRPC(ctx, data, t.pending, &t.pendingMu, t.debugWriter, t.handleServerRequest, t.notifHandler()); err != nil {
 			if t.debugWriter != nil {
 				fmt.Fprintf(t.debugWriter, "MCP: malformed response line (len=%d): %v\n",
 					len(data), err)
@@ -213,7 +217,15 @@ func (t *StdioTransport) handleServerRequest(_ context.Context, id requestID, me
 
 // SetNotificationHandler registers a handler for server-to-client notifications.
 func (t *StdioTransport) SetNotificationHandler(h NotificationHandler) {
-	t.notificationHandler = h
+	t.notificationHandler.Store(&h)
+}
+
+// notifHandler returns the registered notification handler, or nil.
+func (t *StdioTransport) notifHandler() NotificationHandler {
+	if h := t.notificationHandler.Load(); h != nil {
+		return *h
+	}
+	return nil
 }
 
 func (t *StdioTransport) Send(ctx context.Context, req jsonrpcRequest) error {
