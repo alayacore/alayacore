@@ -300,11 +300,11 @@ removed: #f38ba8
 | Color | Used for |
 |-------|----------|
 | `primary` | User input text, emphasis, focused box rules, running status dot (status bar only — tool windows use the colorless spinner while running). The prompt box is the only surface that carries it: transcript windows do not |
-| `dim` | Unfocused box rules (the prompt box and a selector overlay's filter box), the status bar and its segment separators, overlay title and help-bar backgrounds, the live edge |
+| `dim` | Unfocused box rules (the prompt box and a selector overlay's filter box), the status bar and its segment separators, the pinned row's `N lines above` separator, overlay title and help-bar backgrounds, the live edge |
 | `muted` | Secondary text, system messages, tool content, the window line's default color |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors, and the `SYSTEM ERROR` line |
-| `selection` | Selected items in lists, and the display cursor's window line — the marker, the label, the pinned row's `N lines above` and its separator, and the timestamp (expanded, or a folded row's marker and label column; the tool name and the content summary keep their own colors) |
+| `selection` | Selected items in lists, and the display cursor's window line — the marker, the label, the pinned row's `N lines above` and the timestamp (expanded, or a folded row's marker and label column; the tool name, the content summary, and the pinned row's dim separator keep their own colors) |
 | `added` | Diff additions |
 | `removed` | Diff removals |
 
