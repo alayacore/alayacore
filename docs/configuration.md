@@ -301,15 +301,22 @@ tool: #f9e2af
 | Color | Used for |
 |-------|----------|
 | `primary` | User input text, emphasis, focused box rules, running status dot (status bar only — tool windows use the colorless spinner while running). The prompt box is the only surface that carries it: transcript windows do not |
-| `dim` | Window rules, separators, status bar |
+| `dim` | Unfocused box rules (the prompt box, overlays, the filter list), the status bar and its segment separators, overlay title and help-bar backgrounds, the live edge under an overlay |
 | `muted` | Secondary text, system messages, tool content, the window line's default color, the live-edge marker |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors, and the `SYSTEM ERROR` line |
 | `selection` | Selected items in lists, and the display cursor's window line — the marker, the label, the pinned row's `N lines above` and its separator, and the timestamp (expanded, or a folded row's marker and label column; the tool name and the content summary keep their own colors) |
-| `tool` | Tool call headers/labels |
+| `tool` | *Nothing draws with it* — see the note below |
 | `added` | Diff additions |
 | `removed` | Diff removals |
 
 Body text (assistant messages, reasoning, user input, tool input/output) is rendered without an explicit foreground color — it uses the terminal's default. When an overlay (model selector, help window, confirm dialog, …) is open, the body dims to the theme's `dim` color together with the rest of the background content. Selected/active items in overlay lists are emphasized with **bold** weight only, not color. The terminal cursor uses the emulator's default color (the theme does not control it).
+
+`tool` is loaded and validated but unused. The tool name on a window line takes
+`muted` + bold (`toolNameStyle`, `window.go`) in both fold states, and `TOOL CALL`
+takes the label color, so no renderer paints with the `tool` color at all. It
+stays in the palette and in this table until a decision is made, because the
+config parser **rejects unknown keys**: dropping it from `theme.Theme` would make
+every existing theme file that sets `tool:` fail to load.
 
 Switch themes at runtime with `Ctrl+P`.

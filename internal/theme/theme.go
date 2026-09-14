@@ -34,8 +34,11 @@ type Theme struct {
 	Added   string `config:"added" json:"added"`     // Added lines in diff
 	Removed string `config:"removed" json:"removed"` // Removed lines in diff
 
-	// Tool color
-	Tool string `config:"tool" json:"tool"` // Tool name — tool call labels in conversation
+	// Tool color. Unused: the tool name on a window line takes the muted
+	// tool-content color in both fold states (toolNameStyle, terminal
+	// adapter). Kept because the parser rejects unknown keys — see
+	// docs/configuration.md.
+	Tool string `config:"tool" json:"tool"` // Loaded and validated; no renderer draws with it
 }
 
 var (
