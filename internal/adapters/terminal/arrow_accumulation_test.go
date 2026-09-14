@@ -1,9 +1,9 @@
 package terminal
 
-// Regression test: the fold arrow must not accumulate across renders.
+// Regression test: the fold marker must not accumulate across renders.
 // windowFragment prepends the arrow to the window's first visible row;
 // a previous in-place mutation of the cached border.lines prepended
-// another arrow on every render (▸▸▸▸▸▸▸▸▸▸ USER ...).
+// another marker on every render (++++++++++ USER ...).
 
 import (
 	"strings"

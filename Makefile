@@ -1,5 +1,5 @@
-.PHONY: all build test lint fmt clean install run release release-all \
-       build-windows build-darwin build-linux check check-gitattributes
+.PHONY: all build test lint tools fmt clean install run release release-all \
+       build-windows build-darwin build-linux check check-gitattributes check-shell-style
 
 # Go parameters
 GOCMD=go
@@ -10,16 +10,16 @@ GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 GOFMT=$(GOCMD) fmt
 
-# Linting. The version is CI's version (golangci-lint-action, install-mode:
-# goinstall, in .github/workflows/test.yml) named here rather than whatever
-# binary happens to be on PATH: a golangci-lint compiled by a Go older than
-# go.mod declares cannot read this module at all, and @latest would let a check
-# added in someone else's linter decide whether this build is green. Bump the
-# two together. `go run pkg@version` compiles it with the local toolchain, the
-# same way CI does; repeats cost ~4s off the build cache, the first run on a
-# fresh machine compiles the linter once.
-GOLANGCI_LINT_VERSION=v1.64.8
-GOLANGCI_LINT=$(GOCMD) run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+# Linting. One file names the linter version — .golangci-lint-version, read here
+# and by both CI jobs (golangci-lint-action, install-mode: goinstall) — so the pin
+# cannot drift between the three. misc/run-golangci-lint.sh runs it, preferring an
+# installed binary that satisfies both halves of the pin (the version, and a
+# toolchain no older than go.mod declares: a golangci-lint built by an older Go
+# cannot read this module at all) and falling back to `go run pkg@version`, which
+# compiles the pinned tag with this module's toolchain the way CI does — the
+# command for each path lives in that script. `make tools` installs the preferred
+# binary.
+GOLANGCI_LINT_VERSION=$(shell cat .golangci-lint-version)
 
 # Binary names
 MAIN_BINARY=alayacore
@@ -85,9 +85,13 @@ test-coverage:
 	$(GOTEST) -v -coverprofile=coverage.out ./...
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
 
-## lint: Run golangci-lint (the version CI runs, built with the local toolchain)
+## tools: Install the pinned golangci-lint, built with this module's toolchain (needs the network once)
+tools:
+	$(GOCMD) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+## lint: Run golangci-lint (the version CI runs, built with this module's toolchain)
 lint:
-	$(GOLANGCI_LINT) run ./...
+	./misc/run-golangci-lint.sh
 
 ## fmt: Format code
 fmt:
@@ -124,8 +128,12 @@ run:
 check-gitattributes:
 	./misc/check-gitattributes.sh
 
-## check: Run all checks (attributes, fmt, vet, lint, test)
-check: check-gitattributes fmt vet lint test
+## check-shell-style: Assert shell scripts indent with tabs, like Go (misc/check-shell-style.sh)
+check-shell-style:
+	./misc/check-shell-style.sh
+
+## check: Run all checks (attributes, shell style, fmt, vet, lint, test)
+check: check-gitattributes check-shell-style fmt vet lint test
 
 ## pre-commit: Run checks before committing
 pre-commit: fmt vet test

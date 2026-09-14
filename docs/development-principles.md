@@ -103,3 +103,37 @@ When reviewing a change, ask:
 2. **Can a rawio client do this?** → If not, the TLV protocol needs a new message type.
 3. **Does this create a reverse dependency (agent → adapter)?** → Restructure immediately; this is never acceptable.
 4. **Does this type cross the adapter/agent boundary?** → Define the wire type in `internal/protocol` (e.g. `ModelInfo`); domain-only types stay in the agent package.
+
+## Code Style
+
+### Indentation: tabs, unless the format forbids them
+
+Go is gofmt'd, and gofmt indents with **tabs** — spaces are for *alignment*
+(the columns of a struct tag, a trailing comment). Every other file this repo
+owns that has a choice follows the same rule:
+
+| File | Indent | Enforced by |
+|------|--------|-------------|
+| `*.go` | tab | `gofmt` — `make fmt`, `make check` |
+| `Makefile` recipes | tab | make's own syntax: a recipe indented with spaces is not a recipe |
+| `*.sh` | tab | `misc/check-shell-style.sh` — `make check-shell-style`, `make check`, CI; `.editorconfig` tells editors the same thing |
+| `*.yml` | two spaces | the exception, and not a preference: the YAML spec forbids tabs in indentation |
+
+**Rationale:** one rule for the whole tree means no file needs a second opinion
+about what an indent is. Shell is the case worth writing down, because two-space
+indentation is the shell world's convention and most editors default `*.sh` to
+it — an editor's default is not a decision this repo made, and a script that
+keeps it reads as a style the repo never chose.
+
+**Indent versus alignment.** An indent is a tab. Space-aligning a column *inside*
+a line — gofmt's struct tags, a run of trailing comments — is alignment, and stays
+spaces. A shell script here has no such construct, so in shell the leading
+whitespace is tabs and nothing else: a continuation indents like any other line.
+That is exactly what `check-shell-style.sh` asserts — a space anywhere in the
+indent is the finding — and it is why the check does not look at trailing
+whitespace or at a tab's display width: those are different complaints about
+different things.
+
+`.editorconfig` carries the rule to editors, so a new file usually arrives
+already indented the way the checker expects; the checker is what happens when it
+does not.

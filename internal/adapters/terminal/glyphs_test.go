@@ -59,8 +59,6 @@ type glyphClass struct {
 // test measures both.
 var drawnGlyphs = map[rune]glyphClass{
 	// --- Fixed-width, Neutral: policy rule 1 satisfied. -----------------
-	'▸': {1, false, "collapsed fold arrow (constants.go)"},
-	'▾': {1, false, "expanded fold arrow (constants.go)"},
 	'∙': {1, false, "status dot — the only state marker in the status bar"},
 	'✓': {1, false, "tool success (tool_render.go)"},
 	'✗': {1, false, "tool failure (tool_render.go)"},

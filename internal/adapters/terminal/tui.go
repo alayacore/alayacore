@@ -871,7 +871,7 @@ func (m Terminal) View() View {
 		y := max(0, m.windowHeight-m.input.Height()-1) // 0-indexed top rule
 		y++                                            // first content row
 		y += m.input.AttachmentsOffset()
-		// x: open boxes have no side border or padding, so the cursor cell
+		// x: the prompt box has no side border or padding, so the cursor cell
 		// is the horizontal position directly (prompt is empty for the
 		// main input).
 		x := m.input.CursorCell()

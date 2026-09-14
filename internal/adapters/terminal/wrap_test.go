@@ -266,9 +266,8 @@ func TestWindowRenderCaching(t *testing.T) {
 
 	// First render - should populate cache
 	styles := DefaultStyles()
-	borderStyle := NewStyle().Foreground(styles.ColorDim)
 
-	_ = w.Render(80, false, styles, borderStyle, false)
+	_ = w.Render(80, false, styles, false)
 
 	// Cache should be valid
 	if !w.border.valid {
@@ -276,8 +275,8 @@ func TestWindowRenderCaching(t *testing.T) {
 	}
 
 	// Render again - should use cache
-	rendered1 := w.Render(80, false, styles, borderStyle, false)
-	rendered2 := w.Render(80, false, styles, borderStyle, false)
+	rendered1 := w.Render(80, false, styles, false)
+	rendered2 := w.Render(80, false, styles, false)
 
 	if rendered1 != rendered2 {
 		t.Error("expected same result from cached render")
@@ -292,9 +291,8 @@ func TestWindowRenderCacheInvalidation(t *testing.T) {
 	w := wb.WindowAt(0)
 
 	styles := DefaultStyles()
-	borderStyle := NewStyle().Foreground(styles.ColorDim)
 
-	_ = w.Render(80, false, styles, borderStyle, false)
+	_ = w.Render(80, false, styles, false)
 
 	// Cache should be valid
 	if !w.border.valid {
@@ -310,7 +308,7 @@ func TestWindowRenderCacheInvalidation(t *testing.T) {
 	}
 
 	// Render again — should use cached output, not re-wrap from scratch
-	rendered := w.Render(80, false, styles, borderStyle, false)
+	rendered := w.Render(80, false, styles, false)
 
 	// Render should contain the styled content
 	if !strings.Contains(rendered, "Hello") {

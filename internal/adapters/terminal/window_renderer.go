@@ -216,8 +216,9 @@ func (r *textRenderer) plainContent() bool {
 // dim Body color. Each returned line is one terminal row (no '\n'
 // inside) with a continuation mark: rows of the same original line join
 // without '\n' (soft wrap); rows starting a new original line are
-// separated by hard '\n'. lineCount includes the 2 box rules
-// (len(lines) + 2); Window.Render adds the header.
+// separated by hard '\n'. lineCount is the window's expanded height
+// (len(lines) + 1): the content rows plus the labeled rule that opens
+// them.
 func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 
@@ -235,7 +236,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 			r.content = buf.String()
 			r.contentParts = nil
 		}
-		return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 2
+		return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 1
 	}
 
 	// Full render: prepare, style (system messages only), and wrap
@@ -266,7 +267,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	r.cacheWidth = innerWidth
 	r.cacheValid = true
 
-	return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 2
+	return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 1
 }
 
 // BuildCollapsed returns the single-line collapsed form:
@@ -345,7 +346,7 @@ func (r *textRenderer) collapsedSummary(content string, summaryWidth int) (strin
 func renderCollapsedLineWithEllipsis(line, label string, ellipsisOffset int, tag string, styles *Styles) string {
 	labelPart := padLabel(label)
 	labelEnd := min(len(labelPart), len(line))
-	styledLabel := labelStyleForTag(tag, styles).Render(line[:labelEnd])
+	styledLabel := lineStyleForTag(tag, styles).Render(line[:labelEnd])
 	if len(line) <= labelEnd {
 		return styledLabel
 	}
@@ -389,11 +390,12 @@ func labelForTag(tag string) string {
 // TryLineCount returns the line count from cached wrapped lines (fast path).
 // With incremental append, wrappedLines is kept current during streaming,
 // so this succeeds even after content changes (no cacheValid check).
-// The count includes 2 border lines + 1 header line (expanded form).
+// The count is the window's expanded height: the content rows plus the one
+// labeled rule that opens it.
 func (r *textRenderer) TryLineCount(width int) (int, bool) {
 	innerWidth := max(0, width)
 	if len(r.wrappedLines) > 0 && r.cacheWidth == innerWidth {
-		return len(r.wrappedLines) + 3, true
+		return len(r.wrappedLines) + 1, true
 	}
 	return 0, false
 }
@@ -606,7 +608,8 @@ func (r *userRenderer) Invalidate() {}
 // first (on top), then text below. This matches the natural content
 // order: media parts precede the text part. Multiple text parts are
 // separated with "───" (Separator) in System color. Each returned line is one
-// terminal row (no '\n' inside); lineCount includes the 2 box rules.
+// terminal row (no '\n' inside); lineCount is the content rows plus the
+// window's opening labeled rule (len(lines) + 1).
 //
 // Wrapping is performed by wrapVisualLines (NOT by a pre-pass of
 // wrapContent): a pre-pass would insert hard '\n' at wrap points and
@@ -664,7 +667,7 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 
 	// Body color for the plain text rows (overlay dimming); styled rows
 	// (media badges, separators) keep their own styles.
-	return styleBodyLines(lines, styles), len(lines) + 2
+	return styleBodyLines(lines, styles), len(lines) + 1
 }
 
 // BuildCollapsed returns the single-line collapsed form:
@@ -709,7 +712,7 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	line := truncateWithSuffix(plainLine, max(0, width-collapsedPrefixWidth)) // safety net
 
 	// Render with styling: label muted+bold, "…" dim, content muted.
-	labelStyle := labelStyleForTag(tlv.TagUserT, styles)
+	labelStyle := lineStyleForTag(tlv.TagUserT, styles)
 	if len(line) <= len(label) {
 		return labelStyle.Render(line), 1
 	}
@@ -788,7 +791,7 @@ func (r *toolRenderer) AppendDelta(delta string) {
 
 // BuildInner renders the tool window content as visual lines. Each
 // returned line is one terminal row (no '\n' inside); lineCount
-// includes the 2 box rules.
+// includes the window's opening labeled rule (len(lines) + 1).
 func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 
@@ -801,7 +804,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		}
 		styled := prepareContent(output)
 		lines := wrapVisualLines(styled, innerWidth)
-		return styleBodyLines(lines, styles), len(lines) + 2
+		return styleBodyLines(lines, styles), len(lines) + 1
 	}
 
 	// Input: streaming delta preview (truncated JSON) or the full input.
@@ -856,7 +859,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	}
 
 	lines := wrapVisualLines(call, innerWidth)
-	return styleBodyLines(lines, styles), len(lines) + 2
+	return styleBodyLines(lines, styles), len(lines) + 1
 }
 
 // BuildCollapsed returns the single-line collapsed form for tool windows:
@@ -878,7 +881,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		return renderUFOnlyCollapsed(r, width, styles), 1
 	}
 
-	labelStyle := labelStyleForTag(r.Tag(), styles)
+	labelStyle := lineStyleForTag(r.Tag(), styles)
 	dot, dotStyle := r.status.statusDot(labelStyle)
 
 	inputFirst, inputFirstHasEllipsis := r.toolCollapsedInput(width, dot)
@@ -953,10 +956,12 @@ func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) 
 }
 
 // renderToolCollapsedLine applies per-segment styling to a tool window's
-// collapsed line: label + status indicator in the label color (muted +
-// bold), separator plain, label-column padding plain, tool name bold +
-// muted, and the input tail muted (with the "…" marker dim when
-// inputFirstHasEllipsis is true).
+// collapsed line. The window line's own parts — the "TOOL CALL" label, the
+// status indicator and the tool name — all take labelStyle, which is the
+// single style the whole line is drawn in (see lineStyleForTag); the
+// separator space and the label-column padding are plain (they are spaces),
+// and everything after the name is content and takes the muted content
+// color (with the "…" marker dim when inputFirstHasEllipsis is true).
 //
 // The indicator is multi-byte UTF-8 — slice by len(dot), never by byte 1.
 func renderToolCollapsedLine(
@@ -989,15 +994,17 @@ func renderToolCollapsedLine(
 	if len(line) <= toolLen+sepLen+dotLen {
 		return sb.String()
 	}
-	// Label column padding (plain spaces) + content: tool name in
-	// bold + muted, arguments in muted. The name's byte length is
-	// bounded by what survived truncation.
+	// Label column padding (plain spaces) + the tool name: part of the
+	// window's own line, so it takes labelStyle — the same style as the
+	// marker, the label and (when expanded) the timestamp — and moves with
+	// them when the cursor arrives. The name's byte length is bounded by
+	// what survived truncation.
 	paddingEnd := min(len(line), contentStart)
 	sb.WriteString(line[toolLen+sepLen+dotLen : paddingEnd])
 	nameByteLen := min(len(name), max(0, len(line)-contentStart))
 	nameEnd := contentStart + nameByteLen
 	if nameByteLen > 0 {
-		sb.WriteString(styles.ToolContent.Bold(true).Render(line[contentStart:nameEnd]))
+		sb.WriteString(labelStyle.Render(line[contentStart:nameEnd]))
 	}
 	// When the inputFirst delta was truncated, the leading "…" in the
 	// content area gets the dim color (styles.Status) instead of the

@@ -90,7 +90,7 @@ func (fl FilteredListCore) WithFocus(hasFocus bool) FilteredListCore {
 // in those states.
 //
 // Box layout: title (line 0), filter box top rule (line 1), filter input
-// content (line 2); open boxes have no left border or padding, so content
+// content (line 2); overlays have no left border or padding, so content
 // starts at column 0.
 func (fl FilteredListCore) CursorPosition(box string, screenWidth, screenHeight int) (x, y int, ok bool) {
 	if fl.State == FilteredListClosed || !fl.HasFocus || !fl.FilterInputFocused {

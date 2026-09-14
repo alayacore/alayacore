@@ -413,13 +413,14 @@ func TestScrollCursorToTop_PartiallyVisibleWindowMovesToTop(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
-	// Create windows (user text — folded by default, 1 line each)
+	// Create windows (user text — expanded by default: its own line plus
+	// the five content lines each)
 	for i := range 10 {
 		wb.AppendOrUpdate(tlv.TagUserT, "window-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
 	}
 
-	// Viewport of 5 rows: 10 folded windows (10 lines) overflow it, so
+	// Viewport of 5 rows: the windows overflow it many times over, so
 	// scrolling/offsets are meaningful (with a taller viewport the content
 	// would fit and YOffset would be clamped to 0).
 	display = display.WithHeight(5)

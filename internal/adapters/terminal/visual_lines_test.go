@@ -17,12 +17,12 @@ import (
 // TestWindowVisualLinesExpanded verifies that an expanded window renders to
 // a visual line array with the expected shape:
 //
-//	[0] header (" ASSISTANT")
-//	[1] top rule
-//	[2..n-2] wrapped content lines (one terminal row each)
-//	[n-1] bottom rule
+//	[0] the window's own line ("- ASSISTANT … timestamp")
+//	[1..n-1] wrapped content lines (one terminal row each)
 //
-// and that no element contains a hard newline.
+// and that no element contains a hard newline. There is no rule above or
+// below: a window is opened by its own line, and the next window's own
+// line ends it.
 func TestWindowVisualLinesExpanded(t *testing.T) {
 	styles := DefaultStyles()
 	w := NewWindow("at-1", tlv.TagAssistantT, styles)
@@ -32,25 +32,24 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 	w.AppendContent(strings.Repeat("word ", 25))
 
 	width := 40
-	rendered := w.Render(width, false, styles,
-		NewStyle().Foreground(styles.ColorDim), false)
+	w.CreatedAt = pinnedTime
+	rendered := w.Render(width, false, styles, false)
 
 	lines := w.border.lines
 	if len(lines) != w.LineCount() {
 		t.Errorf("border.lines len = %d, LineCount() = %d, want equal", len(lines), w.LineCount())
 	}
-	if len(lines) < 4 {
-		t.Fatalf("expected header + rule + content + rule (>= 4 lines), got %d: %q", len(lines), joinVisualLines(lines))
+	if len(lines) < 2 {
+		t.Fatalf("expected the window's own line + content (>= 2 lines), got %d: %q", len(lines), joinVisualLines(lines))
 	}
-	if !strings.Contains(stripANSI(lines[0].Text), "ASSISTANT") {
-		t.Errorf("line 0 should be the header, got %q", lines[0].Text)
+	if !strings.HasPrefix(stripANSI(lines[0].Text), unfoldArrow+" ASSISTANT") {
+		t.Errorf("line 0 should be the window's own line, got %q", lines[0].Text)
 	}
-	// Top and bottom rules: plain '─' runs (strip ANSI).
-	if plain := stripANSI(lines[1].Text); plain != strings.Repeat("─", width) {
-		t.Errorf("line 1 should be the top rule of %d '─', got %q", width, plain)
-	}
-	if plain := stripANSI(lines[len(lines)-1].Text); plain != strings.Repeat("─", width) {
-		t.Errorf("last line should be the bottom rule of %d '─', got %q", width, plain)
+	// The window's line carries the timestamp, right-aligned to the window
+	// edge, so it fills the width. (The instant does not matter — the
+	// column is a fixed 16 cells.)
+	if got := cellWidth(lines[0].Text); got != width {
+		t.Errorf("window line width = %d, want %d (timestamp right-aligned): %q", got, width, stripANSI(lines[0].Text))
 	}
 	// Every visual line is exactly one terminal row (no hard newline).
 	for i, ln := range lines {
@@ -58,11 +57,9 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 			t.Errorf("visual line %d contains a hard newline: %q", i, ln.Text)
 		}
 	}
-	// The rendered output is exactly arrow + the joined visual lines (the
-	// current line-based output path stays consistent).
-	want := arrowStyle(styles).Render(w.arrowChar()) + joinVisualLines(lines)
-	if rendered != want {
-		t.Errorf("rendered mismatch:\n  got:  %q\n  want: %q", rendered, want)
+	// The rendered output is the joined visual lines.
+	if rendered != joinVisualLines(lines) {
+		t.Errorf("rendered mismatch:\n  got:  %q\n  want: %q", rendered, joinVisualLines(lines))
 	}
 }
 
@@ -75,8 +72,7 @@ func TestWindowVisualLinesFolded(t *testing.T) {
 	w.Folded = true
 	w.AppendContent("hello world")
 
-	w.Render(40, false, styles,
-		NewStyle().Foreground(styles.ColorDim), false)
+	w.Render(40, false, styles, false)
 
 	if len(w.border.lines) != 1 {
 		t.Fatalf("folded window should be 1 visual line, got %d: %q", len(w.border.lines), joinVisualLines(w.border.lines))
@@ -107,7 +103,7 @@ func TestWindowBufferLineHeightsAreVisual(t *testing.T) {
 		t.Fatal("AT window not found")
 	}
 	// Force a full render so border.lines is populated.
-	at.Render(40, false, wb.styles, wb.borderStyle, false)
+	at.Render(40, false, wb.styles, false)
 	if got, want := wb.lineHeights[atIdx], len(at.border.lines); got != want {
 		t.Errorf("AT lineHeight = %d, border.lines = %d, want equal", got, want)
 	}

@@ -155,7 +155,7 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [Markdown 渲染](docs/markdown-rendering.md) | 助手窗口中表格的排版、重排与边框处理 |
 | [依赖](docs/dependencies.md) | 第三方依赖及其必要性说明 |
 | [TUI 架构](docs/tui-architecture.md) | Elm 架构与 TUI 内部设计 |
-| [开发原则](docs/development-principles.md) | 项目约定 — adapter/agent 隔离与测试 |
+| [开发原则](docs/development-principles.md) | 项目约定 — adapter/agent 隔离、测试与代码风格 |
 
 **内部设计文档**：[docs/internal/](docs/internal/)
 

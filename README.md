@@ -155,7 +155,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Markdown Rendering](docs/markdown-rendering.md) | How tables are laid out, re-flowed and framed in assistant windows |
 | [Dependencies](docs/dependencies.md) | Third-party dependencies and why each is needed |
 | [TUI Architecture](docs/tui-architecture.md) | Elm architecture and the TUI's internal design |
-| [Development Principles](docs/development-principles.md) | Project conventions — adapter/agent isolation and testing |
+| [Development Principles](docs/development-principles.md) | Project conventions — adapter/agent isolation, testing and code style |
 
 **Internal design docs**: [docs/internal/](docs/internal/)
 

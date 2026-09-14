@@ -79,11 +79,11 @@ func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 		Input: json.RawMessage("execute_command: lscpu"),
 	}, 0)
 
-	// Pending (executing): header is "▸ TOOL CALL ⠋ …" — a separator space
+	// Pending (executing): line is "+ TOOL CALL ⠋ …" — a separator space
 	// and a spinner frame right after the label.
 	plain := stripANSI(wb.GetAll(-1, false))
 	if !strings.HasPrefix(plain, foldArrow+" TOOL CALL ") {
-		t.Fatalf("pending header should start with the collapse arrow + 'TOOL CALL ' + space, got %q", plain)
+		t.Fatalf("pending header should start with the fold marker + 'TOOL CALL ' + space, got %q", plain)
 	}
 	rest := []rune(strings.TrimPrefix(plain, foldArrow+" TOOL CALL "))
 	if len(rest) == 0 {
@@ -158,8 +158,8 @@ func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	}
 
 	lines, lineCount := tr.BuildInner(30, false, styles)
-	if lineCount != 3 {
-		t.Fatalf("lineCount = %d, want 3 (delta preview + box rules)", lineCount)
+	if lineCount != 2 {
+		t.Fatalf("lineCount = %d, want 2 (delta preview + opening rule)", lineCount)
 	}
 	preview := lines[0].Text
 	plain := stripANSI(preview)
@@ -256,6 +256,7 @@ func TestUserPromptCollapsed(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				wb := NewWindowBuffer(tc.width, styles)
 				wb.AppendOrUpdate(tlv.TagUserT, "u1", tc.content)
+				wb.ToggleFold(0) // collapse it: these are the collapsed-line invariants
 
 				plain := stripANSI(wb.GetAll(-1, false))
 
@@ -291,26 +292,26 @@ func TestUserPromptCollapsed(t *testing.T) {
 }
 
 // TestUserPromptLabel: the user window label is "USER PROMPT" in both the
-// collapsed line and the expanded header, and its content stays aligned at
-// the fixed label column like every other window type.
+// expanded window line and the collapsed one, and its content stays aligned
+// at the fixed label column like every other window type.
 func TestUserPromptLabel(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	wb.AppendOrUpdate(tlv.TagUserT, "u1", "what is lisp?")
 
-	// Collapsed (user windows start folded): "▸ USER PROMPT what is lisp?".
+	// Expanded by default: the window's own line carries the label.
 	plain := stripANSI(wb.GetAll(-1, false))
+	if !strings.HasPrefix(plain, unfoldArrow+" USER PROMPT") {
+		t.Errorf("window line should carry the 'USER PROMPT' label, got %q", plain)
+	}
+
+	// Collapsed (Space): "+ USER PROMPT     what is lisp?".
+	wb.ToggleFold(0)
+	plain = stripANSI(wb.GetAll(-1, false))
 	if !strings.HasPrefix(plain, foldArrow+" USER PROMPT     what is lisp?") {
-		t.Errorf("collapsed user line should start with the collapse arrow + 'USER PROMPT', got %q", plain)
+		t.Errorf("collapsed user line should start with the fold marker + 'USER PROMPT', got %q", plain)
 	}
 	if c := contentColumn(plain); c != 2+CollapsedLabelWidth {
 		t.Errorf("collapsed USER content column = %d, want %d: %q", c, 2+CollapsedLabelWidth, plain)
-	}
-
-	// Expanded header: "▾ USER PROMPT".
-	wb.ToggleFold(0)
-	plain = stripANSI(wb.GetAll(-1, false))
-	if !strings.Contains(plain, unfoldArrow+" USER PROMPT") {
-		t.Errorf("expanded header should contain the expand arrow + 'USER PROMPT', got %q", plain)
 	}
 }
 

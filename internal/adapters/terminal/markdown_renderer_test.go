@@ -281,7 +281,7 @@ func TestRKeyTogglesMarkdownMode(t *testing.T) {
 	if w == nil || !w.MarkdownMode() {
 		t.Fatal("assistant text windows should start in markdown mode by default")
 	}
-	rendered := w.Render(120, false, terminal.display.styles, NewStyle().Foreground(terminal.display.styles.ColorDim), false)
+	rendered := w.Render(120, false, terminal.display.styles, false)
 	if !strings.Contains(rendered, "│ name            │ gender │ age │") {
 		t.Errorf("default render should show the grid:\n%s", rendered)
 	}
@@ -293,7 +293,7 @@ func TestRKeyTogglesMarkdownMode(t *testing.T) {
 	if w.MarkdownMode() {
 		t.Error("r should disable markdown mode")
 	}
-	rendered = w.Render(120, false, terminal.display.styles, NewStyle().Foreground(terminal.display.styles.ColorDim), false)
+	rendered = w.Render(120, false, terminal.display.styles, false)
 	if strings.Contains(rendered, "| name            | gender | age |") {
 		t.Errorf("raw render must not pad the table:\n%s", rendered)
 	}

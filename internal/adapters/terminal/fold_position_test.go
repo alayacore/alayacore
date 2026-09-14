@@ -11,7 +11,7 @@ import (
 
 // TestHMLPositioningWithFoldedWindows verifies that H (top), M (center) and
 // L (bottom) positioning account for the folded/unfolded state of windows:
-// a folded window occupies exactly 1 line (collapse arrow header), an
+// a folded window occupies exactly 1 line (its own marker line), an
 // expanded window occupies header + rules + content lines. Folding a window
 // must shift the visual rows of everything below it, so M's target changes
 // accordingly.

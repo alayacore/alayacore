@@ -24,12 +24,11 @@ import (
 // outputWriter.mu — SnapshotStatus et al. use atomic fields to avoid
 // lock ordering inversions. See output.go for details.
 type WindowBuffer struct {
-	mu          sync.Mutex
-	windows     []*Window
-	idIndex     map[string]int
-	width       int
-	styles      *Styles
-	borderStyle Style
+	mu      sync.Mutex
+	windows []*Window
+	idIndex map[string]int
+	width   int
+	styles  *Styles
 
 	// markdownDefault is the initial markdown rendering state for new
 	// assistant text windows (AT/AR). Defaults to on (markdown rendered);
@@ -61,7 +60,6 @@ func NewWindowBuffer(width int, styles *Styles) *WindowBuffer {
 		idIndex:         make(map[string]int),
 		width:           width,
 		styles:          styles,
-		borderStyle:     NewStyle().Foreground(styles.ColorDim),
 		lineHeights:     []int{},
 		dirtyIndex:      dirtyClean,
 		markdownDefault: true, // markdown rendering on by default
@@ -130,7 +128,6 @@ func (wb *WindowBuffer) WithStyles(styles *Styles) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 	wb.styles = styles
-	wb.borderStyle = NewStyle().Foreground(styles.ColorDim)
 	// Invalidate all windows to pick up new styles
 	for _, w := range wb.windows {
 		w.styles = styles // Update window's styles reference
@@ -156,10 +153,14 @@ func (wb *WindowBuffer) AppendOrUpdate(tag string, id string, content string) in
 		return idx
 	}
 
-	// Create new window. Assistant text (AT) starts expanded; everything
-	// else — user text (UT), tools (AF/UF), reasoning (AR), system
-	// messages (SN/SE) — starts collapsed.
-	folded := tag != tlv.TagAssistantT
+	// Create new window. The conversation windows a reader wants to see —
+	// assistant answers (AT) and the user's own turns (UT) — start
+	// expanded; the machinery around them — tools (AF/UF), reasoning (AR),
+	// system messages (SN/SE) — starts collapsed, so a step's scaffolding
+	// does not push the conversation off the screen. (A user prompt is the
+	// one message the reader is certain to want in full: it is the request
+	// the answer below it is answering, and it is short by nature.)
+	folded := tag != tlv.TagAssistantT && tag != tlv.TagUserT
 	historyID := parseHistoryID(id)
 	w := NewWindow(id, tag, wb.styles)
 	w.HistoryID = historyID
@@ -624,7 +625,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 				wb.lineHeights[wb.dirtyIndex] = lc
 				wb.totalLines += lc - oldHeight
 			} else {
-				w.Render(wb.width, false, wb.styles, wb.borderStyle, blocked)
+				w.Render(wb.width, false, wb.styles, blocked)
 				oldHeight := wb.lineHeights[wb.dirtyIndex]
 				newHeight := w.LineCount()
 				wb.lineHeights[wb.dirtyIndex] = newHeight
@@ -650,7 +651,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 					wb.totalLines++
 					continue
 				}
-				w.Render(wb.width, false, wb.styles, wb.borderStyle, blocked)
+				w.Render(wb.width, false, wb.styles, blocked)
 				wb.lineHeights[i] = w.LineCount()
 				wb.totalLines += wb.lineHeights[i]
 			} else {
@@ -922,15 +923,53 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 		// Clip the window's visual lines to the visible range.
 		from := max(startLine, winStart) - winStart
 		to := min(endLine, winEnd) - winStart
+
+		// Sticky window line: the window at the viewport's top edge keeps
+		// its own line pinned to screen row 0 while body rows of it are
+		// still visible below — scrolling through a long message keeps
+		// showing whose message it is. The pinned row DISPLACES the body
+		// row that would have been at screen row 0, so the frame still
+		// spends exactly viewportHeight rows.
+		//
+		// This is a screen-space composite and nothing else: lineHeights,
+		// totalLines, every cache keyed on them and ScrollView are
+		// untouched. (A viewport-dependent line height would put the
+		// document geometry in a feedback loop with the scroll position —
+		// clamping and cursor visibility would depend on themselves.)
+		// startLine+1 < winEnd is what keeps the pin from being an orphan:
+		// it guarantees at least one body row remains below the pinned one,
+		// which is also why the increment below can never empty the
+		// fragment.
+		pinned := i == startWindow && !w.Folded && winStart < startLine && startLine+1 < winEnd
+		if pinned {
+			from++
+		}
 		if from >= to {
 			continue
 		}
 
-		lines, widths := wb.windowFragment(w, from, to, cursorIndex == i, blocked)
+		lines, widths := wb.windowFragment(w, from, to, cursorIndex == i && !pinned, blocked)
 		emittedRows += len(lines)
 
 		if firstWritten {
 			sb.WriteString("\n")
+		}
+		if pinned {
+			// Read AFTER windowFragment: that call is what renders (and
+			// refreshes) the window's cache, and the pinned window is one
+			// the viewport covers, so this is a slice read of a row already
+			// built for this frame — no render, no re-measure, no
+			// allocation (border.widths[0] is not even needed: the pinned
+			// row ends an original line and is never padded). Under the
+			// cursor it is the memoized row swap, not a per-frame rebuild.
+			row := w.border.lines[0].Text
+			if cursorIndex == i {
+				row = w.cursorLine0()
+			}
+			sb.WriteString(row)
+			sb.WriteString(ansi.EraseLine(0))
+			sb.WriteString("\n")
+			emittedRows++
 		}
 		// Join the fragment according to continuation marks: rows of the
 		// SAME original line (Cont) join without '\n' — the terminal
@@ -987,14 +1026,18 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 }
 
 // windowFragment renders window w if needed and returns its clipped
-// visual lines [from,to) plus their display widths. The fold arrow is
-// prepended to the first line when the fragment starts at the window's
-// first line; isCursor selects the selection color (mirroring
-// renderCursorArrow), otherwise the cached dim arrow is reused.
+// visual lines [from,to) plus their display widths.
+//
+// Row 0 is the window's own line — marker, label, and (expanded) the
+// timestamp — and it is entirely built by Window.Render, so when the
+// fragment starts at the window's first line the cursor's register is a
+// single row swap (Window.cursorLine0). Nothing is prefixed or appended
+// here: the marker is part of the cached row, and the row is the same
+// width in both registers.
 func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) ([]visualLine, []int) {
 	// Ensure the border cache is populated (lineHeights alone don't
 	// render folded windows — the fast path skips rendering).
-	w.Render(wb.width, false, wb.styles, wb.borderStyle, blocked)
+	w.Render(wb.width, false, wb.styles, blocked)
 	lines := w.border.lines[from:to]
 
 	// Display widths are computed lazily and cached: Render fills them
@@ -1010,26 +1053,12 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 	}
 	widths = widths[from:to]
 
-	// Cursor highlight: recolor the arrow on the window's first visible
-	// line (the header), mirroring renderCursorArrow. The dim arrow is
-	// cached at render time; the cursor arrow (rare — one window) is
-	// rendered on demand. The first row is REPLACED (not mutated in
-	// place): lines aliases w.border.lines, so mutating it would prepend
-	// another arrow on every render.
-	if from == 0 {
-		var arrowStr string
-		if isCursor {
-			color := wb.styles.BorderCursor
-			if blocked {
-				color = wb.styles.ColorDim
-			}
-			arrowStr = NewStyle().Foreground(color).Render(w.arrowChar())
-		} else {
-			arrowStr = w.border.arrow
-		}
+	// The first row is REPLACED (not mutated in place): lines aliases
+	// w.border.lines, so mutating it would double the effects on the next
+	// render. from != 0 means row 0 (and its highlight) is off-screen.
+	if from == 0 && isCursor {
 		first := lines[0]
-		lines = append([]visualLine{{Text: arrowStr + first.Text, Cont: first.Cont}}, lines[1:]...)
-		widths = append([]int{arrowCellWidth + widths[0]}, widths[1:]...)
+		lines = append([]visualLine{{Text: w.cursorLine0(), Cont: first.Cont}}, lines[1:]...)
 	}
 	return lines, widths
 }
@@ -1047,7 +1076,7 @@ func (wb *WindowBuffer) renderAll(cursorIndex int, blocked bool) string {
 		if firstWritten {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(w.Render(wb.width, cursorIndex == i, wb.styles, wb.borderStyle, blocked))
+		sb.WriteString(w.Render(wb.width, cursorIndex == i, wb.styles, blocked))
 		firstWritten = true
 	}
 	return sb.String()

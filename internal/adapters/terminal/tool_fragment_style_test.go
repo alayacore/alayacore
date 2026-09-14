@@ -49,21 +49,25 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 		t.Fatalf("expected a multi-row tool window, got %d lines", len(allLines))
 	}
 
-	// Scrolled into the middle: viewport [3, len) — the remaining rows,
-	// exactly the viewport height, so no blank padding is appended.
+	// Scrolled into the middle: viewport [3, len). The window's own line is
+	// cut off, so it is pinned to screen row 0 — and the body row that would
+	// have been there (index 3) is displaced. The emitted rows are the
+	// pinned line plus rows 4+, which is exactly the viewport height, so no
+	// blank padding is appended.
 	height := len(allLines) - 3
 	wb.SetViewportPosition(3, height)
 	frag := wb.GetAll(-1, false)
 
-	// Reconstruct the expected fragment from the full render's rows:
-	// rows joined per continuation marks (Cont rows follow without '\n',
-	// new original lines are separated by '\n'), rows followed by a
-	// continuation padded to the width, and rows ending an original line
-	// (or the fragment's last row) get an EL erase (row-tail residue
-	// cleanup under the overlay renderer).
-	want := ""
-	for i := 3; i < len(allLines); i++ {
-		if i > 3 && !allLines[i].Cont {
+	// Reconstruct the expected fragment: the pinned row (erased, then
+	// terminated by a hard newline), then the full render's rows from the
+	// first visible body row — rows joined per continuation marks (Cont rows
+	// follow without '\n', new original lines are separated by '\n'), rows
+	// followed by a continuation padded to the width, and rows ending an
+	// original line (or the fragment's last row) get an EL erase (row-tail
+	// residue cleanup under the overlay renderer).
+	want := allLines[0].Text + "\x1b[K\n"
+	for i := 4; i < len(allLines); i++ {
+		if i > 4 && !allLines[i].Cont {
 			want += "\n"
 		}
 		want += allLines[i].Text
@@ -80,9 +84,9 @@ func TestToolFragmentStylesMatchFullRender(t *testing.T) {
 	// Sanity: the fragment equals the reconstruction (already asserted) and
 	// contains the same plain text as the corresponding full-render rows.
 	gotPlain := stripANSI(frag)
-	wantPlain := ""
-	for i := 3; i < len(allLines); i++ {
-		if i > 3 && !allLines[i].Cont {
+	wantPlain := stripANSI(allLines[0].Text) + "\n"
+	for i := 4; i < len(allLines); i++ {
+		if i > 4 && !allLines[i].Cont {
 			wantPlain += "\n"
 		}
 		wantPlain += stripANSI(allLines[i].Text)
@@ -109,7 +113,9 @@ func TestToolFragmentMidColorWrap(t *testing.T) {
 	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t1", Name: "edit_file", Input: json.RawMessage(input)}, 1)
 	wb.ToggleFold(0)
 
-	wb.SetViewportPosition(4, 10) // inside the wrapped diff input
+	// Inside the wrapped diff input: the window's own line is cut off, so it
+	// is pinned at row 0, and the wrapped diff rows follow it.
+	wb.SetViewportPosition(1, 10)
 	frag := wb.GetAll(-1, false)
 
 	// The content region holds the wrapped diff rows with their color.

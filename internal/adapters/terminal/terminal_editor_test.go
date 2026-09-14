@@ -521,10 +521,9 @@ func TestWindowBufferRendering(t *testing.T) {
 	wb.AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello world")
 	// Get rendered output
 	rendered := wb.GetAll(-1, false)
-	// Check that top/bottom rule lines appear (plain horizontal rules,
-	// full window width — open box with no side borders)
-	if !strings.Contains(rendered, strings.Repeat("─", 30)) {
-		t.Errorf("Rendered output missing rule line: %q", rendered)
+	// Check that the window's own line appears — marker, label, timestamp.
+	if !strings.HasPrefix(stripANSI(rendered), "- ASSISTANT") {
+		t.Errorf("Rendered output missing the window's own line: %q", rendered)
 	}
 	// Check that content appears inside
 	if !strings.Contains(rendered, "Hello world") {
@@ -620,34 +619,23 @@ func TestWindowBufferWidth(t *testing.T) {
 	wb.AppendOrUpdate(tlv.TagAssistantT, "test", "Hello")
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
-	if len(lines) < 3 {
+	if len(lines) < 2 {
 		t.Fatal("No lines rendered")
 	}
-	// Line 0 is the header (expand arrow + "ASSISTANT"); line 1 is the box
-	// top rule.
-	headerLine := lines[0]
-	if !strings.Contains(headerLine, unfoldArrow) || !strings.Contains(headerLine, "ASSISTANT") {
-		t.Errorf("Header line missing: %q", headerLine)
+	// Line 0 is the window's own line: the label, and the timestamp
+	// right-aligned to the window edge; the content follows it.
+	topLine := lines[0]
+	if !strings.HasPrefix(stripANSI(topLine), "- ASSISTANT") {
+		t.Errorf("Window line missing its label: %q", topLine)
 	}
-	topLine := lines[1]
-	// Top line should be a full-width horizontal rule (no side borders)
-	if !strings.Contains(topLine, strings.Repeat("─", totalWidth)) {
-		t.Errorf("Top rule missing: %q", topLine)
-	}
-	// Count visible characters between borders
 	visibleLen := visibleLength(topLine)
-	innerVisible := visibleLen - 2 // subtract border chars
-	// The style width is totalWidth, so top line visible length should equal totalWidth (if no line breaks).
-	// Allow small deviation due to padding? lipgloss may add spaces.
-	if innerVisible <= 0 {
-		t.Errorf("Inner border visible length zero: %q", topLine)
-	}
 	// Ensure total visible width matches expected total width (should be totalWidth)
 	if visibleLen != totalWidth {
 		t.Errorf("Window border visible width %d does not match expected total width %d", visibleLen, totalWidth)
 	}
-	// Ensure window width matches input box width pattern.
-	// Input box width = totalWidth - 4? Not needed here.
+	if !strings.Contains(lines[1], "Hello") {
+		t.Errorf("Content line missing: %q", lines[1])
+	}
 }
 
 func TestWindowBufferWidthMatchesInput(t *testing.T) {
@@ -661,20 +649,22 @@ func TestWindowBufferWidthMatchesInput(t *testing.T) {
 			// Create a window
 			wb.AppendOrUpdate(tlv.TagAssistantT, "test", "Content")
 			rendered := wb.GetAll(-1, false)
-			// Extract top border line (line 1 — line 0 is the header)
+			// The opening rule is line 0 and the content follows it.
 			lines := strings.Split(rendered, "\n")
-			if len(lines) < 3 {
+			if len(lines) < 2 {
 				t.Fatal("No lines rendered")
 			}
-			topLine := lines[1]
-			// The top line visible length should equal inputTotalWidth (including border chars)
+			topLine := lines[0]
+			// The rule spans the window width, label included, so its
+			// visible length should equal inputTotalWidth.
 			visibleLen := visibleLength(topLine)
-			t.Logf("Window header line: %q", lines[0])
-			t.Logf("Window top line: %q", topLine)
+			t.Logf("Window line: %q", topLine)
 			t.Logf("Visible length: %d, expected: %d", visibleLen, inputTotalWidth)
-			// Allow small deviation due to padding? lipgloss may add spaces.
 			if visibleLen != inputTotalWidth {
 				t.Errorf("Window border visible width %d does not match input total width %d", visibleLen, inputTotalWidth)
+			}
+			if !strings.Contains(lines[1], "Content") {
+				t.Errorf("Content line missing: %q", lines[1])
 			}
 		})
 	}

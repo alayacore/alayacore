@@ -45,10 +45,24 @@ jobs:
       - name: Check .gitattributes
         run: ./misc/check-gitattributes.sh
 
+      # The other side of the same coin: .gitattributes keeps the checkout
+      # byte-for-byte, this keeps the shell scripts indented with tabs (the
+      # rule in docs/development-principles.md → Code Style). Cheap, and it
+      # reads the files themselves, so the platform does not matter.
+      - name: Check shell style
+        run: ./misc/check-shell-style.sh
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      # One file names the linter version: the Makefile reads it (make lint /
+      # make tools), and each job that lints reads it here, so a bump is one
+      # edit instead of three that can drift apart.
+      - name: Pinned linter version
+        id: linter
+        run: echo "version=$(cat .golangci-lint-version)" >> "$GITHUB_OUTPUT"
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -56,13 +70,13 @@ jobs:
           # Pinned to the version this tree is clean under. Unpinned, the action
           # pulls the latest release, and a new check in someone else's linter
           # would fail the build for code nobody touched.
-          version: v1.64.8
+          version: ${{ steps.linter.outputs.version }}
           # Built, not downloaded, and it cannot be downloaded: v1.64.8 is the
           # last v1 release, so its release binary is frozen at the Go that built
           # it (1.24), while golangci-lint refuses to load a config for a module
           # declaring a newer Go than that. goinstall compiles the same tag with
           # this job's own toolchain, so the pinned linters and the findings they
-          # report are unchanged; the Makefile names this same version, bump both.
+          # report are unchanged.
           # Moving to v2 instead means a config-schema migration plus every check
           # the linter gained since — its own change.
           install-mode: goinstall
@@ -120,12 +134,16 @@ jobs:
       # internal/tools/shell/terminate_windows.go carries findings of its own
       # (unchecked CloseHandle, a tainted taskkill argument), which are that
       # file's change to make and not the console's.
+      - name: Pinned linter version
+        id: linter
+        run: echo "version=$(cat .golangci-lint-version)" >> "$GITHUB_OUTPUT"
+
       - name: Lint the terminal adapter (GOOS=windows)
         env:
           GOOS: windows
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.64.8
+          version: ${{ steps.linter.outputs.version }}
           # Same reason as the Linux job: the release binary is an older-Go build
           # and cannot load this module at all.
           install-mode: goinstall

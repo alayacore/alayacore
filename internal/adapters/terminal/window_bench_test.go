@@ -479,8 +479,7 @@ func BenchmarkDirectAppend(b *testing.B) {
 	w.AppendContent(strings.Repeat("This is a line that will wrap. ", 10))
 
 	// Initial render to populate cache
-	w.Render(80, false, styles,
-		NewStyle(), false)
+	w.Render(80, false, styles, false)
 
 	fmt.Printf("Initial: wrappedLines=%d, contentLen=%d, styles=%v\n",
 		0, len(w.RawContent()), w.styles != nil)
@@ -488,8 +487,7 @@ func BenchmarkDirectAppend(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		w.AppendContent(" more")
-		_ = w.Render(80, false, styles,
-			NewStyle(), false)
+		_ = w.Render(80, false, styles, false)
 	}
 }
 
@@ -499,16 +497,14 @@ func BenchmarkDirectAppendNoStyles(b *testing.B) {
 	w.AppendContent(strings.Repeat("This is a line that will wrap. ", 10))
 
 	styles := NewStyles(theme.DefaultTheme())
-	w.Render(80, false, styles,
-		NewStyle(), false)
+	w.Render(80, false, styles, false)
 
 	fmt.Printf("Initial (no styles): wrappedLines=%d\n", 0)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		w.AppendContent(" more")
-		_ = w.Render(80, false, styles,
-			NewStyle(), false)
+		_ = w.Render(80, false, styles, false)
 	}
 }
 
@@ -519,8 +515,7 @@ func BenchmarkDirectAppendDebug(_ *testing.B) {
 	w.AppendContent(strings.Repeat("This is a line that will wrap. ", 10))
 
 	// Initial render
-	w.Render(80, false, styles,
-		NewStyle(), false)
+	w.Render(80, false, styles, false)
 
 	fmt.Printf("Initial: wrappedLines=%d, cache.width=%d, width-4=%d\n",
 		0, 0, 0-4)
@@ -534,8 +529,7 @@ func BenchmarkDirectAppendDebug(_ *testing.B) {
 		fmt.Printf("  Fast path check: len(wrappedLines)=%d, cache.width-4=%d, innerWidth=76\n",
 			0, 0-4)
 
-		_ = w.Render(80, false, styles,
-			NewStyle(), false)
+		_ = w.Render(80, false, styles, false)
 		fmt.Printf("After Render %d: wrappedLines=%d, cache.valid=%v\n",
 			i+1, 0, false)
 	}
@@ -548,8 +542,7 @@ func BenchmarkRenderAfterAppend(b *testing.B) {
 	w.AppendContent(strings.Repeat("This is a line that will wrap. ", 10))
 
 	// Initial render to populate cache
-	w.Render(80, false, styles,
-		NewStyle(), false)
+	w.Render(80, false, styles, false)
 
 	fmt.Printf("Initial: wrappedLines=%d, cache.valid=%v, cache.width=%d\n",
 		0, false, 0)
@@ -560,8 +553,7 @@ func BenchmarkRenderAfterAppend(b *testing.B) {
 		w.AppendContent(" more text here")
 		b.StartTimer()
 
-		_ = w.Render(80, false, styles,
-			NewStyle(), false)
+		_ = w.Render(80, false, styles, false)
 	}
 }
 
@@ -572,8 +564,7 @@ func BenchmarkFullRebuildAfterAppend(b *testing.B) {
 	w.AppendContent(strings.Repeat("This is a line that will wrap. ", 10))
 
 	// Initial render
-	w.Render(80, false, styles,
-		NewStyle(), false)
+	w.Render(80, false, styles, false)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -582,8 +573,7 @@ func BenchmarkFullRebuildAfterAppend(b *testing.B) {
 		w.Invalidate() // Force full rebuild
 		b.StartTimer()
 
-		_ = w.Render(80, false, styles,
-			NewStyle(), false)
+		_ = w.Render(80, false, styles, false)
 	}
 }
 

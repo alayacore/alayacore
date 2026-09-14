@@ -33,24 +33,27 @@ func fragmentRows(fragment string) int {
 	return rows
 }
 
-// extractWindowContent returns the plain text between a window's two box
-// rules (the content region), or "" when the rules are not found. The
-// test content contains no '─', so the first '─' run is the top rule.
+// extractWindowContent returns the plain text of the content region that
+// follows a window's opening rule — the rows after row 0, up to the row
+// that begins the next window (a rule, or a folded line's arrow), which is
+// what now ends a window: an expanded window draws no closing rule.
+//
+// Rows are joined with '\n' (that is how they sit in the output), so a
+// single soft-wrapped original line still arrives as one row with no
+// newline inside it — which is exactly what the copy-fidelity tests assert.
 func extractWindowContent(plain string) string {
-	i := strings.Index(plain, "─")
-	if i < 0 {
+	rows := strings.Split(plain, "\n")
+	if len(rows) < 2 {
 		return ""
 	}
-	// Top rule = the run of '─' (3-byte UTF-8 each) starting at i.
-	j := i
-	for j+3 <= len(plain) && plain[j:j+3] == "─" {
-		j += 3
+	body := make([]string, 0, len(rows)-1)
+	for _, row := range rows[1:] {
+		if strings.HasPrefix(row, "─") || strings.HasPrefix(row, foldArrow) {
+			break
+		}
+		body = append(body, row)
 	}
-	k := strings.Index(plain[j:], "─")
-	if k < 0 {
-		return ""
-	}
-	return plain[j : j+k]
+	return strings.Join(body, "\n")
 }
 
 // TestRenderVirtualFragmentOutput verifies the viewport output shape:
@@ -60,20 +63,20 @@ func extractWindowContent(plain string) string {
 // and different original lines are hard '\n' separated.
 func TestRenderVirtualFragmentOutput(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
-	// AT window: header + rule + 4 content rows + rule = 7 visual lines.
+	// AT window: labeled rule + 4 content rows + rule = 6 visual lines.
 	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
 	// Folded reasoning window: 1 visual line.
 	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
 
-	// Viewport exactly the document height (8 rows) → no blank padding.
-	wb.SetViewportPosition(0, 8)
+	// Viewport exactly the document height (6 rows) → no blank padding.
+	wb.SetViewportPosition(0, 6)
 	out := wb.GetAll(-1, false)
 	plain := stripANSI(out)
 
 	// AT fragment: the single original long line's content rows join
 	// without '\n' (soft wrap) — extract the region between the rules.
 	if !strings.Contains(plain, "ASSISTANT") {
-		t.Errorf("AT fragment missing header: %q", plain)
+		t.Errorf("AT fragment missing the labeled top rule: %q", plain)
 	}
 	content := extractWindowContent(plain)
 	trimmed := strings.Trim(content, "\n") // rule boundaries are hard newlines
@@ -81,12 +84,12 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 		t.Errorf("single-line content must be continuous (no newline): %q", content)
 	}
 	// 25 words = 125 cells: rows of 40 + 40 + 40 + 5 (the last row is not
-	// padded — it ends the original line before the bottom rule).
+	// padded — it ends the original line, and the window ends with it).
 	if w := cellWidth(trimmed); w != 125 {
 		t.Errorf("AT content display width = %d, want 125 (25 words)", w)
 	}
-	if fragmentRows(plain) != 8 {
-		t.Errorf("fragment rows = %d, want 8 (AT 7 + AR 1)", fragmentRows(plain))
+	if fragmentRows(plain) != 6 {
+		t.Errorf("fragment rows = %d, want 6 (AT 5 + AR 1)", fragmentRows(plain))
 	}
 
 	// Folded fragment: single short line, unpadded (its EL erase clears
@@ -97,46 +100,51 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 	}
 }
 
-// TestRenderVirtualScrollToMiddle verifies scrolling into the middle of a
-// tall window shows the correct content fragment: no header, no box rules,
-// no arrow, starting at the visual line at the scroll offset.
-func TestRenderVirtualScrollToMiddle(t *testing.T) {
+// TestRenderVirtualScrolledIntoWindowPinsItsLine verifies what a fragment
+// clipped into the middle of a tall window looks like now that the window's
+// own line is pinned: the pinned line, then the body — continuous text (one
+// soft-wrap run), with the body row that would have been at screen row 0
+// displaced. No rules anywhere: a window has none.
+func TestRenderVirtualScrolledIntoWindowPinsItsLine(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
 
-	// Window visual lines: [0]=header, [1]=rule, [2..5]=content, [6]=rule.
-	// Viewport [2,5): content rows 2,3,4 only.
-	wb.SetViewportPosition(2, 3)
+	// Window visual lines: [0]=own line, [1..4]=content (one long line's
+	// four soft-wrap rows). Viewport [1,4): the own line is cut off, so it
+	// is pinned and content row 0 — the row that would have been at the top
+	// — is displaced, leaving content rows 1 and 2.
+	wb.SetViewportPosition(1, 3)
 	raw := wb.GetAll(-1, false)
 	out := stripANSI(raw)
 
-	if strings.Contains(out, "ASSISTANT") {
-		t.Errorf("scrolled-into-window fragment must not contain the header: %q", out)
+	if !strings.HasPrefix(out, unfoldArrow+" ASSISTANT") {
+		t.Errorf("the window's own line must be pinned at row 0: %q", out)
 	}
 	if strings.Contains(out, "─") {
-		t.Errorf("scrolled-into-window fragment must not contain box rules: %q", out)
+		t.Errorf("fragment must not contain rules: %q", out)
 	}
-	if strings.Contains(out, foldArrow) || strings.Contains(out, unfoldArrow) {
-		t.Errorf("scrolled-into-window fragment must not contain the fold arrow: %q", out)
+	if strings.Contains(out, foldArrow) {
+		t.Errorf("fragment must not contain the folded marker: %q", out)
 	}
-	if strings.Contains(out, "\n") {
-		t.Errorf("fragment must be continuous text: %q", out)
+	// One hard newline: after the pinned line the body is continuous (the
+	// rows of one soft-wrapped line join without '\n').
+	if got := strings.Count(out, "\n"); got != 1 {
+		t.Errorf("fragment should be pinned line + continuous body, got %d hard newlines: %q", got, out)
 	}
-	// 3 visual lines of 40 cells each (the content rows happen to fill
-	// the width exactly); the fragment tail carries an EL erase for the
-	// last row.
+	// 3 visual rows: the pinned line (40 cells) + content rows 1,2 (40
+	// each, padded so the soft-wrap lands on the row boundary).
 	if w := cellWidth(out); w != 3*40 {
-		t.Errorf("fragment display width = %d, want %d (3 lines × 40)", w, 3*40)
+		t.Errorf("fragment display width = %d, want %d (3 rows × 40)", w, 3*40)
 	}
 	if !strings.HasSuffix(raw, "\x1b[K") {
 		t.Errorf("fragment must end with an EL erase, got %q", raw)
 	}
-	// Content rows are word-runs; the fragment must contain the 3rd
-	// through 5th rows' text in order (rows of 8 words each).
-	want := strings.TrimRight(strings.Repeat("word ", 24), " ")
-	got := strings.TrimRight(out, " ")
-	if got != want {
-		t.Errorf("scrolled fragment:\n  got:  %q\n  want: %q", got, want)
+	// The body is the 9th through 24th words: content rows 1 and 2 of the
+	// long line (row 0 — the first eight words — is the displaced row).
+	body := strings.TrimRight(strings.SplitN(out, "\n", 2)[1], " ")
+	want := strings.TrimRight(strings.Repeat("word ", 16), " ")
+	if body != want {
+		t.Errorf("scrolled body:\n  got:  %q\n  want: %q", body, want)
 	}
 }
 
@@ -150,17 +158,17 @@ func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 	original := strings.Repeat("word ", 25)
 	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", original)
 
-	wb.SetViewportPosition(0, 7)
+	wb.SetViewportPosition(0, 5)
 	raw := wb.GetAll(-1, false)
 	out := stripANSI(raw)
 
-	// The content region sits between the window's two box rules and must
-	// be continuous (no hard newline) — the single line's soft wraps.
+	// The content region follows the window's opening rule and must be
+	// continuous (no hard newline) — the single line's soft wraps.
 	body := extractWindowContent(out)
 	if body == "" {
 		t.Fatal("content region not found")
 	}
-	body = strings.Trim(body, "\n") // rule boundaries are hard newlines
+	body = strings.Trim(body, "\n")
 	if strings.Contains(body, "\n") {
 		t.Fatalf("single-line content must not contain newlines: %q", body)
 	}
@@ -177,26 +185,35 @@ func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 // height.
 func TestRenderVirtualWindowBoundary(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
-	// AT window: 7 visual lines (0..6).
+	// AT window: 5 visual lines (0..4) — opening rule + 4 content rows.
 	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
-	// Folded reasoning: 1 visual line (7).
+	// Folded reasoning: 1 visual line (5).
 	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
 
-	// Viewport [5,8): AT rows 5,6 + AR row 7 = 3 rows.
-	wb.SetViewportPosition(5, 3)
+	// Viewport [3,6): the AT window's own line is cut off, so it is pinned
+	// at row 0; its last body row (row 4) follows, then AR (row 5).
+	wb.SetViewportPosition(3, 3)
 	out := wb.GetAll(-1, false)
 	plain := stripANSI(out)
 
 	if fragmentRows(plain) != 3 {
 		t.Errorf("viewport rows = %d, want 3 (fragments: %q)", fragmentRows(plain), plain)
 	}
-	// AT fragment rows 5,6: content row 5 + bottom rule — must contain
-	// the rule (padded to width) but not the top rule/header.
-	if !strings.Contains(plain, "─") {
-		t.Errorf("AT fragment should contain the bottom rule: %q", plain)
+	// The AT window is cut off, so its own line is pinned at row 0 and the
+	// body row that would have been there is displaced; the folded window
+	// that follows brings its own line. No rules anywhere.
+	if !strings.HasPrefix(plain, unfoldArrow+" ASSISTANT") {
+		t.Errorf("the cut-off window's own line should be pinned at row 0: %q", plain)
 	}
-	if strings.Contains(plain, "ASSISTANT") {
-		t.Errorf("AT fragment must not contain the header: %q", plain)
+	if !strings.Contains(plain, "word") {
+		t.Errorf("AT fragment should contain the content tail: %q", plain)
+	}
+	if strings.Contains(plain, "─") {
+		t.Errorf("AT fragment should contain no rule: %q", plain)
+	}
+	// The folded window that follows brings its own opening row.
+	if !strings.Contains(plain, foldArrow+" REASONING") {
+		t.Errorf("viewport should reach the folded window after the AT tail: %q", plain)
 	}
 }
 
@@ -249,16 +266,18 @@ func TestScrollViewSoftWrap(t *testing.T) {
 // layout while the bytes carry no fake newlines inside windows.
 func TestDisplayViewSoftWrapRows(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
-	// AT window: header + rule + 4 content + rule = 7 visual lines.
+	// AT window: its own line + 4 content rows = 5 visual lines.
 	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
-	// Folded windows: 1 visual line each.
+	// Folded reasoning: 1 visual line.
 	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
+	// User prompt: expanded by default — its own line + 1 content row.
 	wb.AppendOrUpdate(tlv.TagUserT, "ut-1", "hello user")
 
 	dm := NewDisplayModel(wb, DefaultStyles()).WithHeight(5).updateContent()
-	// Auto-follow: viewport at bottom — lines 4..9 (AT rows 4-6, AR, UT).
-	if dm.scrollView.YOffset() != 4 {
-		t.Fatalf("YOffset = %d, want 4 (document 9 lines - viewport 5)", dm.scrollView.YOffset())
+	// Auto-follow: viewport at bottom — lines 3..7 (AT rows 3-4, AR, UT's
+	// line, UT's content).
+	if dm.scrollView.YOffset() != 3 {
+		t.Fatalf("YOffset = %d, want 3 (document 8 lines - viewport 5)", dm.scrollView.YOffset())
 	}
 	v := dm.View().Content
 	// Simulate the terminal soft-wrap at the display width.
@@ -271,40 +290,70 @@ func TestDisplayViewSoftWrapRows(t *testing.T) {
 	if !strings.Contains(plain, "word") {
 		t.Errorf("terminal render should contain assistant content: %q", plain)
 	}
-	// The viewport shows the TAIL of the AT window (rows 4-6: content
-	// rows 3-4 + bottom rule) — the header/rule are scrolled off.
-	if strings.Contains(plain, "ASSISTANT") {
-		t.Errorf("viewport is mid-window — the AT header must not be visible: %q", plain)
+	// The viewport shows the TAIL of the AT window (rows 2-4: its last
+	// three content rows), and because its own line is scrolled off it is
+	// PINNED at row 0 — the label stays visible while the body moves, which
+	// is what the pin is for.
+	if !strings.HasPrefix(plain, unfoldArrow+" ASSISTANT") {
+		t.Errorf("the cut-off window's own line should be pinned at row 0: %q", plain)
 	}
 	if !strings.Contains(plain, "REASONING") || !strings.Contains(plain, "USER") {
 		t.Errorf("viewport should include the folded windows: %q", plain)
 	}
-	// And the bottom row is the bottom rule, not the top rule.
-	if strings.Contains(plain, "REASONING") && !strings.Contains(plain, "─") {
-		t.Errorf("viewport should include the AT bottom rule: %q", plain)
+	// No rule at all: the viewport is mid-window and the folded windows
+	// that follow have no box either.
+	if strings.Contains(plain, "─") {
+		t.Errorf("viewport should show no rule — mid-window and folded windows: %q", plain)
 	}
 }
 
-// TestRenderVirtualCursorArrow verifies the cursor window's fold arrow is
-// colored and only appears when the window's first line is visible.
-func TestRenderVirtualCursorArrow(t *testing.T) {
-	wb := NewWindowBuffer(40, DefaultStyles())
+// TestRenderVirtualCursorHighlight verifies the cursor render colors the
+// one navigational element the window draws — for an expanded window that
+// is the label inside the top rule — and that the highlight appears only
+// while that row is visible.
+func TestRenderVirtualCursorHighlight(t *testing.T) {
+	styles := DefaultStyles()
+	wb := NewWindowBuffer(40, styles)
 	idx := wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
 
-	// Viewport at top: cursor window's arrow is present (colored).
+	// Viewport at top: the window's first row (the labeled rule) is
+	// visible, so its label carries the selection color.
 	wb.SetViewportPosition(0, 5)
 	out := wb.GetAll(idx, false)
 	if !containsANSI(out) {
-		t.Error("cursor render should color the arrow")
+		t.Error("cursor render should color the top rule's label")
 	}
-	if !strings.Contains(stripANSI(out), unfoldArrow) {
-		t.Errorf("cursor window arrow missing at top: %q", stripANSI(out))
+	wantLabel := NewStyle().Bold(true).Foreground(styles.BorderCursor).Render("ASSISTANT")
+	if !strings.Contains(out, wantLabel) {
+		t.Errorf("cursor window label is not in the selection color: %q", out)
+	}
+	// The rest of the rule keeps the border color, and the non-cursor
+	// render differs only in that label.
+	plain := stripANSI(out)
+	if !strings.HasPrefix(plain, unfoldArrow+" ASSISTANT") {
+		t.Errorf("cursor render must keep the window's own line: %q", plain)
+	}
+	// The non-cursor render of the same window carries the dim label
+	// instead — the whole point of the cursor highlight.
+	if noCursor := wb.GetAll(-1, false); strings.Contains(noCursor, wantLabel) {
+		t.Error("non-cursor render must not carry the selection color")
 	}
 
-	// Scrolled into the middle: no arrow (header not visible).
+	// Scrolled into the middle: the window's own line is off-screen but
+	// pinned, so the cursor still shows — on the pinned row.
 	wb.SetViewportPosition(2, 5)
 	out = wb.GetAll(idx, false)
-	if strings.Contains(stripANSI(out), unfoldArrow) {
-		t.Errorf("arrow must not appear when scrolled into the window: %q", stripANSI(out))
+	if !strings.HasPrefix(out, NewStyle().Bold(true).Foreground(styles.BorderCursor).Render(unfoldArrow)+" ") {
+		t.Errorf("the pinned row should carry the cursor highlight: %q", out)
+	}
+	if !strings.Contains(out, wantLabel) {
+		t.Errorf("the pinned row's label should be in the selection color: %q", out)
+	}
+	// …and with the cursor on another window the pinned row is plain.
+	wb.AppendOrUpdate(tlv.TagAssistantT, "other-1", "another window")
+	other, _ := wb.LookupID("other-1")
+	out = wb.GetAll(other, false)
+	if strings.HasPrefix(out, NewStyle().Bold(true).Foreground(styles.BorderCursor).Render(unfoldArrow)+" ") {
+		t.Errorf("the pinned row of a non-cursor window must not be highlighted: %q", out)
 	}
 }

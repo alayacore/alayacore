@@ -45,8 +45,8 @@ set -euo pipefail
 # no checkout for these rules to have acted on, so the answer is "nothing to
 # check", not a failure in a build that is otherwise fine.
 if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-  echo "not a git checkout; .gitattributes has had no effect on these files" >&2
-  exit 0
+	echo "not a git checkout; .gitattributes has had no effect on these files" >&2
+	exit 0
 fi
 cd "$(git rev-parse --show-toplevel)"
 
@@ -58,45 +58,45 @@ trap 'rm -rf "$tmp"' EXIT
 # than one word and is padded, so its tail is rejoined with "attr/" stripped from
 # the first token only.
 git ls-files --eol |
-  awk -F'\t' '
-    {
-      n = split($1, c, " ")
-      attrs = ""
-      for (k = 3; k <= n; k++) attrs = attrs (k > 3 ? " " : "") (k == 3 ? substr(c[k], 6) : c[k])
-      print $2 "\t" c[1] "\t" attrs
-    }' >"$tmp/eol.tsv"
+	awk -F'\t' '
+		{
+			n = split($1, c, " ")
+			attrs = ""
+			for (k = 3; k <= n; k++) attrs = attrs (k > 3 ? " " : "") (k == 3 ? substr(c[k], 6) : c[k])
+			print $2 "\t" c[1] "\t" attrs
+		}' >"$tmp/eol.tsv"
 
 fail=0
 report() { # heading, file of findings
-  local heading=$1 file=$2 count
-  count=$(wc -l <"$file" | tr -d ' ')
-  if [ "$count" = "0" ]; then return 0; fi
-  fail=1
-  echo "$count $heading" >&2
-  head -10 "$file" | sed 's/^/  /' >&2
-  if [ "$count" -gt 10 ]; then
-    echo "  ... and $((count - 10)) more; the count is the finding, not the list" >&2
-  fi
-  echo >&2
+	local heading=$1 file=$2 count
+	count=$(wc -l <"$file" | tr -d ' ')
+	if [ "$count" = "0" ]; then return 0; fi
+	fail=1
+	echo "$count $heading" >&2
+	head -10 "$file" | sed 's/^/  /' >&2
+	if [ "$count" -gt 10 ]; then
+		echo "  ... and $((count - 10)) more; the count is the finding, not the list" >&2
+	fi
+	echo >&2
 }
 
 # 1. Without eol=lf the working copy follows core.autocrlf, whose default on
 #    Windows is true — which is the whole incident. Naming `text` is not enough:
 #    `* text=auto` alone normalizes the index and still hands over a CRLF tree.
 awk -F'\t' '$2 != "i/-text" && $3 !~ /eol=lf/ {
-          print $1 "\tattr/" ($3 == "" ? "(nothing matched: is .gitattributes gone?)" : $3)
-        }' "$tmp/eol.tsv" >"$tmp/eol"
+					print $1 "\tattr/" ($3 == "" ? "(nothing matched: is .gitattributes gone?)" : $3)
+				}' "$tmp/eol.tsv" >"$tmp/eol"
 report "tracked text files that no rule resolves to eol=lf, so their checkout obeys core.autocrlf (true on Windows, where gofmt then calls every file unformatted). In .gitattributes the last match wins per attribute — look for a later rule that replaces the one setting eol=lf:" "$tmp/eol"
 
 # 2. Anything git considers binary (i/-text) has to say so by name.
 awk -F'\t' '$2 == "i/-text" && $3 !~ /(^| )-text/ {
-          print $1 "\tattr/" ($3 == "" ? "(nothing matched)" : $3)
-        }' "$tmp/eol.tsv" >"$tmp/undeclared"
+					print $1 "\tattr/" ($3 == "" ? "(nothing matched)" : $3)
+				}' "$tmp/eol.tsv" >"$tmp/undeclared"
 report "binary files that are binary only because git guessed — name the extension instead, as \`*.<ext> binary -eol\`:" "$tmp/undeclared"
 
 if [ "$fail" = 0 ]; then
-  count=$(wc -l <"$tmp/eol.tsv" | tr -d ' ')
-  binaries=$(awk -F'\t' '$2 == "i/-text"' "$tmp/eol.tsv" | wc -l | tr -d ' ')
-  echo "$count tracked files: eol=lf wherever text is declared, and $binaries binaries declared by name."
+	count=$(wc -l <"$tmp/eol.tsv" | tr -d ' ')
+	binaries=$(awk -F'\t' '$2 == "i/-text"' "$tmp/eol.tsv" | wc -l | tr -d ' ')
+	echo "$count tracked files: eol=lf wherever text is declared, and $binaries binaries declared by name."
 fi
 exit "$fail"

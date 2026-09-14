@@ -264,7 +264,10 @@ func TestLiveEdgeColors(t *testing.T) {
 // previous count.
 func TestLiveEdgeRepaintLeavesNoResidue(t *testing.T) {
 	const W = 80
-	m := liveEdgeFixture(20)
+	// 30 windows, not 20: the fixture must be long enough that scrolling
+	// back 23 lines does not clamp at the document top (which would make
+	// the count a function of the document length instead of the scroll).
+	m := liveEdgeFixture(30)
 	markerRow := m.windowHeight - m.input.Height() - 1 - liveEdgeRows
 
 	paint := func(t *testing.T, frames ...Terminal) [][]rune {
@@ -297,6 +300,9 @@ func TestLiveEdgeRepaintLeavesNoResidue(t *testing.T) {
 	far := m
 	far.display = far.display.MarkUserScrolled().ScrollUp(23)
 	far = far.updateDisplayHeight()
+	if far.display.YOffset() == 0 {
+		t.Fatal("fixture: the scroll clamped at the top — the count below would be the document length, not the scroll")
+	}
 	if got := stripANSI(far.renderLiveEdge()); got != "── 23 lines below ──" {
 		t.Fatalf("fixture: got %q, want the 23-line count", got)
 	}

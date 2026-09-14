@@ -169,7 +169,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		renderedLines := strings.Split(rendered, "\n")
 
 		// New collapsed design: folded windows are a single header line
-		// (collapse arrow + "TOOL indicator edit_file …") with no border
+		// (fold marker + "TOOL indicator edit_file …") with no border
 		// and no fold-indicator row.
 		if len(renderedLines) != 1 {
 			t.Errorf("Rendered diff has %d lines, should collapse to 1", len(renderedLines))
@@ -310,20 +310,20 @@ func TestWindowBufferDiff(t *testing.T) {
 		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "tool-1", Name: "test_tool", Input: json.RawMessage("Tool output")}, 0)
 		wb.AppendOrUpdate(tlv.TagAssistantR, "reasoning-1", "Reasoning content")
 
-		// User text is collapsed by default (like tools/reasoning).
-		if !wb.WindowAt(0).Folded {
-			t.Error("User window should be folded by default")
+		// The conversation the reader came for is expanded: the user's own
+		// turn (it is the request the answer below it answers).
+		if wb.WindowAt(0).Folded {
+			t.Error("User window should NOT be folded by default")
 		}
-		// Assistant text is the only window type expanded by default.
 		if wb.WindowAt(1).Folded {
 			t.Error("Assistant window should NOT be folded by default")
 		}
 
-		// Tool window should be folded
+		// The scaffolding around it is collapsed, so a step's tool calls and
+		// reasoning do not push the conversation off the screen.
 		if !wb.WindowAt(2).Folded {
 			t.Error("Tool window should be folded by default")
 		}
-		// Reasoning should be folded
 		if !wb.WindowAt(3).Folded {
 			t.Error("Reasoning window should be folded by default")
 		}
@@ -484,4 +484,33 @@ func TestWindowBufferVisibility(t *testing.T) {
 			t.Error("User message window should be visible when it has non-whitespace content")
 		}
 	})
+}
+
+// TestArrivingUserPromptIsExpanded goes through the frame path the adapter
+// actually uses — the agent echoes the submitted prompt back as user text
+// frames, and a replayed session arrives the same way — so the default this
+// test pins is the one a user sees after pressing Enter, not just the one
+// AppendOrUpdate applies.
+func TestArrivingUserPromptIsExpanded(t *testing.T) {
+	out := NewTerminalOutput(DefaultStyles())
+	if err := tlv.WriteTLV(out, tlv.TagUserT, tlv.WrapID("7", "what is lisp?")); err != nil {
+		t.Fatalf("write user frame: %v", err)
+	}
+	if err := tlv.WriteTLV(out, tlv.TagUserEnd, ""); err != nil {
+		t.Fatalf("write end frame: %v", err)
+	}
+
+	wb := out.WindowBuffer()
+	if wb.WindowCount() != 1 {
+		t.Fatalf("window count = %d, want 1", wb.WindowCount())
+	}
+	w := wb.WindowAt(0)
+	if w.Folded {
+		t.Error("the prompt that just arrived should be expanded")
+	}
+	// Its own line and its content — the request is on screen in full.
+	plain := stripANSI(wb.GetAll(-1, false))
+	if !strings.HasPrefix(plain, unfoldArrow+" USER PROMPT") || !strings.Contains(plain, "what is lisp?") {
+		t.Errorf("rendered prompt = %q, want the window line and the prompt text", plain)
+	}
 }

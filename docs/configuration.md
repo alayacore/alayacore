@@ -300,12 +300,12 @@ tool: #f9e2af
 
 | Color | Used for |
 |-------|----------|
-| `primary` | User input text, prompt display, emphasis, focused box rules, running status dot (status bar only — tool windows use the colorless spinner while running) |
+| `primary` | User input text, emphasis, focused box rules, running status dot (status bar only — tool windows use the colorless spinner while running). The prompt box is the only surface that carries it: transcript windows do not |
 | `dim` | Window rules, separators, status bar |
-| `muted` | Secondary text, system messages, tool content, the live-edge marker |
+| `muted` | Secondary text, system messages, tool content, the window line's default color, the live-edge marker |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
-| `error` | Errors |
-| `selection` | Selected items in lists, and the fold arrow of the window under the cursor |
+| `error` | Errors, and the `SYSTEM ERROR` line |
+| `selection` | Selected items in lists, and the display cursor's window line — the fold marker and label of the window under the cursor (collapsed), or all of its line, timestamp included (expanded) |
 | `tool` | Tool call headers/labels |
 | `added` | Diff additions |
 | `removed` | Diff removals |

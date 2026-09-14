@@ -15,7 +15,7 @@ import "time"
 // very divider. A chrome line must not be spellable as content.
 //
 // The width cost is nil in the policy's terms: every window already spends
-// two full-width Ambiguous rules on its frame (the box-drawing waiver,
+// a full-width Ambiguous rule on opening itself (the box-drawing waiver,
 // constants.go), so three more cells of the same waived class change nothing
 // that the frame has not already committed to.
 const Separator = "───"
@@ -40,45 +40,59 @@ const (
 	TagWindowSN = "SN"
 )
 
-// Fold-state arrows. The collapsed arrow points right (the window can be
-// opened), the expanded arrow points down (it is showing its content).
+// The fold markers. A folded window is one line starting with "+" — there
+// is more to it; an expanded window's own line starts with "-" — its
+// content follows. Both are ASCII, and that is the point: a marker that
+// sits at column 0 of every window row must measure one cell in EVERY
+// terminal and must not depend on the reader's font covering a symbol
+// block. Non-ASCII can promise neither — the width tables say what the
+// terminal *should* do, and nothing can tell us what the font *has*.
 //
-// These belong to the terminal layout, not to the theme: the header is
-// laid out as "arrow + space + label column" with exactly one cell
-// reserved for the arrow, so the glyph is a geometry decision, and a
-// palette switch must never change it.
+// The pair replaced the triangles ▸/▾ (U+25B8/U+25BE). Those were picked
+// for width (East-Asian Neutral, outside Extended_Pictographic — the
+// waiver discussion in the glyph policy below) and the reasoning held; but
+// "a glyph that is probably one cell and probably in the font" is a worse
+// foundation for a marker that appears on every row than "a byte that is
+// defined to be one cell in every terminal that has ever existed".
 //
-// ▸/▾ (U+25B8/U+25BE) and not the heavier ▶/▼ (U+25B6/U+25BC), because of
-// East Asian Width: U+25B6/U+25BC are "A" (ambiguous), so a terminal
-// configured for double-width ambiguous characters draws them two cells;
-// U+25B8/U+25BE are "N" (narrow) — one cell, always. ▶ carries a second
-// hazard on top: it is in Extended_Pictographic (Emoji=Yes), so a terminal
-// whose font resolution reaches an emoji font can hand back a two-cell
-// color glyph even though its default presentation is text
-// (Emoji_Presentation=No — it needs U+FE0F to be emoji by default). ▼ is
-// not pictographic at all. An earlier revision of this comment claimed
-// Emoji_Presentation=Yes for both, which is why the pair is now justified
-// on width alone with the emoji hazard noted only where it exists.
-//
-// Either hazard out-renders the single cell the layout reserves, and
-// neither is visible to us at runtime — with the default options both
-// width libraries report one cell for all four codepoints — so only the
-// choice of glyph can prevent it. Tests pin the codepoints and the cell
-// width (arrows_test.go, glyphs_test.go).
+// The markers belong to the terminal layout, not to the theme: the
+// collapsed line is laid out as "marker + space + label column", so the
+// glyph owns a cell of that geometry, and a palette switch must never
+// change it.
 const (
-	foldArrow   = "▸"
-	unfoldArrow = "▾"
+	foldArrow   = "+"
+	unfoldArrow = "-"
 
-	// arrowCellWidth is the display width of both arrows. It is a
-	// constant because the arrows are; arrows_test.go asserts the glyphs
-	// really measure this wide.
+	// arrowCellWidth is the display width of both markers. It is a
+	// constant because the glyphs are (ASCII — the one class whose width
+	// no table can disagree about); arrows_test.go asserts it.
 	arrowCellWidth = 1
 
-	// collapsedPrefixWidth is what a header line spends before the label
-	// column: the arrow plus one separating space. Content is measured
-	// against the remaining width, and contentColumn tests pin the label
-	// column to start at exactly this offset.
+	// collapsedPrefixWidth is what a collapsed line spends before the
+	// label column: the marker plus one separating space. Content is
+	// measured against the remaining width, and contentColumn tests pin
+	// the label column to start at exactly this offset.
 	collapsedPrefixWidth = arrowCellWidth + 1
+)
+
+// timeStampLayout is the wall clock a window's own line carries on the
+// right, and timeStampWidth is its exact cell width.
+//
+// The column is right-aligned to the window edge, so a format whose width
+// drifted would move every timestamp on screen and misalign the whole
+// transcript: the layout is pinned, and a test asserts that a formatted
+// timestamp really measures timeStampWidth cells.
+//
+// Local time, not UTC: this is the reader's own receipt clock (when the
+// window appeared in this view), not a record field — Session records
+// carry no per-message time, and the frontmatter's created_at/updated_at
+// are UTC because those are data. Minutes, not seconds: two windows
+// created by one delta flush share a timestamp either way, and seconds
+// would cost 3 more cells of every row for a distinction the reader
+// cannot use.
+const (
+	timeStampLayout = "2006/01/02 15:04"
+	timeStampWidth  = 16
 )
 
 // statusDotGlyph is the one state marker the status bar draws, at the very
@@ -115,7 +129,7 @@ const statusDotGlyph = "∙"
 // runtime, so the only defense is the choice of codepoint.
 //
 //  1. A glyph the layout gives exactly one cell must be East-Asian Neutral
-//     and outside Extended_Pictographic. This is what pins ▸/▾ above, "∙"
+//     and outside Extended_Pictographic, or ASCII. This is what pins "∙"
 //     in statusDotGlyph, the "⠋…⠏"/"✓"/"✗" tool indicators, and the ASCII "|"
 //     the help bars use between key hints — a help bar is truncated and
 //     padded to exactly the box width (renderHelpBar), so one doubled cell
@@ -166,10 +180,11 @@ const statusDotGlyph = "∙"
 // non-ASCII character it draws, and fails on an unclassified glyph, on a
 // stale entry, and on a glyph whose measured width contradicts its class.
 
-// CollapsedLabelWidth is the width of the label column in collapsed window
-// header lines ("▸ LABEL content…"), so content starts at the same column
-// for every window type (USER PROMPT, REASONING, ASSISTANT, SYSTEM NOTIFY,
-// SYSTEM ERROR, TOOL). The widest label is "SYSTEM NOTIFY" (13 columns); the column is 16
-// to keep a separating space before content and leave headroom for longer
-// labels (e.g. "SYSTEM ERROR", "TOOL CALL") without re-tuning.
+// CollapsedLabelWidth is the width of the label column in a window's own
+// line ("+ LABEL content…" folded, "- LABEL … timestamp" expanded), so
+// content starts at the same column for every window type (USER PROMPT,
+// REASONING, ASSISTANT, SYSTEM NOTIFY, SYSTEM ERROR, TOOL). The widest
+// label is "SYSTEM NOTIFY" (13 columns); the column is 16 to keep a
+// separating space before content and leave headroom for longer labels
+// (e.g. "SYSTEM ERROR", "TOOL CALL") without re-tuning.
 const CollapsedLabelWidth = 16

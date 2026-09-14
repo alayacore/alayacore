@@ -1,0 +1,29 @@
+# EditorConfig — indentation, so the editor and the checker agree before review.
+#
+# The rule, its rationale and its exceptions are in
+# docs/development-principles.md → "Code Style". misc/check-shell-style.sh
+# enforces the shell half of it in `make check`; this file is what keeps a new
+# script from arriving already wrong, since most editors default *.sh to two
+# spaces — an editor's default is not a decision this repo made.
+#
+# Line endings are deliberately NOT set here: .gitattributes owns them, states
+# them once, and misc/check-gitattributes.sh asserts them.
+#
+# Alignment inside a line stays spaces, in every language here; only the INDENT
+# is a tab.
+root = true
+
+[*.go]
+indent_style = tab
+
+[Makefile]
+indent_style = tab
+
+[*.sh]
+indent_style = tab
+
+# The exception, and it is the format's, not a preference: YAML forbids tabs in
+# indentation.
+[*.yml]
+indent_style = space
+indent_size = 2

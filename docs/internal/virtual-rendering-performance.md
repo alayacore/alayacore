@@ -39,14 +39,15 @@ During streaming, every `AppendFromTLV` call on a `textRenderer`:
    (`bodyStyled`), backed by a `colored` cache so steady frames don't
    recolor
 4. Updates `wrappedLines` **incrementally** — only the new text is wrapped and appended
-5. `TryLineCount` returns `len(wrappedLines) + 3` immediately — no render needed
-   (+2 box rules, +1 header line of the expanded form)
+5. `TryLineCount` returns `len(wrappedLines) + 1` immediately — no render needed
+   (the +1 is the window's own line, above the content; a window draws no
+   other chrome)
 
 This means line tracking during streaming is **always fast**, not just on cache hits:
 
 ```
 Streaming frame arrives → appendDeltaToVisualLines (O(delta), plain text)
-TryLineCount → len(wrappedLines) + 3  (~1.1μs via ensureLineHeights, no full render)
+TryLineCount → len(wrappedLines) + 1  (~1.1μs via ensureLineHeights, no full render)
 ```
 
 A dedicated assertion test (`TestIncrementalPathIsUsed`) verifies that
@@ -158,7 +159,7 @@ Measured via `BenchmarkVirtualRenderingCursorMovementSingle` (100 windows, viewp
 ### Collapsed-Window Design (single-line fold headers)
 
 The collapsed-window design replaces the bordered fold (3 content lines +
-2 border lines) with a single collapse-arrow header line (`LABEL summary`:
+2 border lines) with a single marker line (`LABEL summary`:
 text windows show the escaped head + "…" + tail of the content (40/60
 split), tool windows the first input line; only streaming delta windows
 use leading "…" since the user only cares about the latest chunk).
@@ -181,14 +182,19 @@ Why it's fast:
   re-renders its single summary line).
 - **No full-content wrap on fold**: `BuildCollapsed` only reads and
   tail-truncates the content instead of wrapping the entire content.
-- **Cursor moves don't re-render borders**: only the arrow glyph is recolored
-  (`renderCursorArrow`), reusing the cached content.
-- **Fewer total lines**: 1 line per folded window, shrinking
-  `lineHeights`/scrolling math proportionally.
+- **Cursor moves don't re-render borders**: only the one navigational element
+  is recolored — the fold marker and the label column on a folded line, all
+  of row 0 (marker, label, timestamp) on an expanded one — reusing the
+  cached content (`renderCursor`, `borderCache.line0Cursor`).
+- **Fewer total lines**: 1 line per folded window, and one row of chrome per
+  expanded window (its label opens the window; there is no header line above
+  it and no closing rule below it), shrinking `lineHeights`/scrolling math
+  proportionally.
 
-Unfolded windows pay a small cost for the expand-arrow header line
-(`LABEL` above the open box — ~1.4μs per delta via `BenchmarkWindowBufferDelta`),
-which is dwarfed by the folded-window wins in real sessions.
+Unfolded windows pay a small cost for their own line (the window's label
+composed into it, plus the timestamp — ~1.4μs per delta via
+`BenchmarkWindowBufferDelta`), which is dwarfed by the folded-window wins in
+real sessions.
 
 ### GetWindowLineRange
 
@@ -220,8 +226,16 @@ longer re-splits or slices content.
   simulated breakpoints — copy restores the original text;
 - display widths are measured once per render (`border.widths`) and reused
   for padding, so fragment output performs no per-line measurement;
-- the dim fold arrow is pre-rendered (`border.arrow`) — no style-layer
-  render per window per view.
+- the window's own line (marker, label, timestamp) is built once, at render
+  time, and only its row is swapped in the cursor's register — no style
+  render per window per view;
+- the sticky window line (docs/tui.md → *Sticky Window Line*) is composited in
+  this same pass: the decision reuses the `winStart` the loop already computes,
+  the pinned row is a read of a row the same frame rendered, and the body row
+  it displaces is one row less to assemble — so it adds one `WriteString` and
+  nothing else. Geometry (`lineHeights`, `totalLines`) is not involved, which
+  is the point: a viewport-dependent line height would invalidate those caches
+  on every scroll step.
 
 Measured (120-window folded session / 100-window conversation, viewport
 30–40):
@@ -338,7 +352,7 @@ commit `1021326`.
 |-------|----------|----------|---------------|
 | Renderer lines | `textRenderer.wrappedLines` | Wrapped plain-text lines (AT/AR) | Resize, theme change |
 | Body-colored lines | `textRenderer.colored` | Dim-colored copy of `wrappedLines`, materialized only while an overlay is active (`styles.Body` carries a foreground) | Content append (`coloredDirty`), resize, theme change, blocked switch |
-| Border output | `Window.border` | Visual lines (`lines`), display widths (`widths`, lazy), dim arrow, rendered string + lineCount | Content append, resize, theme |
+| Border output | `Window.border` | Visual lines (`lines`), display widths (`widths`, lazy), rendered string + lineCount, the memoized cursor row | Content append, resize, theme, receipt time |
 
 Renderer lines are **updated incrementally** during streaming (not invalidated).
 Border cache is marked invalid on every content change but rebuilt on next render.

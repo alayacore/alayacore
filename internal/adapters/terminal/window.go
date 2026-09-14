@@ -22,6 +22,7 @@ package terminal
 
 import (
 	"strings"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -48,7 +49,7 @@ type WindowRendering interface {
 
 	// BuildInner returns the styled inner content lines and line count.
 	// width is the full window width (content wraps at the full width —
-	// open boxes have no side borders or padding).
+	// windows have no side borders or padding).
 	// The folded parameter is legacy (folded windows now render via
 	// BuildCollapsed); it is always false.
 	//
@@ -57,14 +58,15 @@ type WindowRendering interface {
 	// Cont): rows of the same original line join without '\n' (terminal
 	// soft-wrap), rows starting a new original line are separated by hard
 	// '\n' — the soft-wrap breakpoints that the viewport clips against
-	// (see docs/internal/virtual-rendering-performance.md). lineCount includes the 2 box rules
-	// (len(lines) + 2).
+	// (see docs/internal/virtual-rendering-performance.md). lineCount is
+	// the window's expanded height (len(lines) + 1): the content rows plus
+	// the window's own line above them.
 	BuildInner(width int, folded bool, styles *Styles) (lines []visualLine, lineCount int)
 
 	// BuildCollapsed returns the single-line collapsed representation of
 	// the window (label + content summary, truncated to fit width), WITHOUT
-	// the leading collapse arrow — Window.Render adds the arrow. lineCount
-	// is always 1. Long-form text windows summarize the escaped HEAD + "…"
+	// the leading fold marker — Window.Render composes row 0 (marker +
+	// this). lineCount is always 1. Long-form text windows summarize the escaped HEAD + "…"
 	// + TAIL of the content (see collapsedSummary / headAndTailParts);
 	// short system messages use TAIL-only (see tailParts). Tool windows
 	// summarize the first input line. Truncation markers are rendered dim.
@@ -78,9 +80,14 @@ type WindowRendering interface {
 // This is separate from any internal cache inside the renderer
 // (e.g. textRenderer.wrappedLines for streaming optimization).
 //
-// rendered is the full output with a dim arrow; inner is the content
-// after the arrow. The cursor highlight only recolors the arrow, so a
-// cursor render is arrow + inner — no border re-render needed.
+// rendered is inner: row 0 is the whole of a window's chrome (marker, label,
+// timestamp) and every state of it is built here, so nothing is prefixed to
+// the cached output later and the two fold states differ only in what row 0
+// says. See renderCursor / cursorLine0.
+//
+// The cursor highlight covers row 0 and nothing else, so a cursor render is
+// the cached rows with that one row swapped for its highlighted form
+// (line0Cursor).
 //
 // lines is the same content as inner, but as a VISUAL line array (one
 // element per terminal row, no '\n' inside; visualLine.Cont marks rows
@@ -92,22 +99,42 @@ type WindowRendering interface {
 //
 // widths caches display widths (cellWidth) computed once at render
 // time, so renderVirtual can pad lines for soft-wrap fragment output
-// without re-measuring every line on every view. The arrow's width is not
-// cached: the glyph is a layout constant one cell wide
-// (arrowCellWidth), so there is nothing to measure.
-// arrow caches the dim (non-cursor) arrow glyph so the fragment output
-// path never re-renders it per view (Style.Render is hot).
+// without re-measuring every line on every view. The marker's width is not
+// cached: the glyph is a layout constant one cell wide (arrowCellWidth).
 type borderCache struct {
 	valid     bool
 	width     int
 	folded    bool
 	blocked   bool         // cached blocked state (different → cache miss)
-	rendered  string       // full output with dim arrow (non-cursor)
-	inner     string       // content after the arrow (for cursor arrow swap)
-	lines     []visualLine // visual rows, content after the arrow (line 0 = header/collapsed line, no arrow)
+	createdAt time.Time    // cached Window.CreatedAt (the header prints it)
+	rendered  string       // full non-cursor output
+	inner     string       // rendered, before any cursor row swap
+	lines     []visualLine // visual rows, line 0 = the window's own line (marker included)
 	widths    []int        // display width per line (parallel to lines)
-	arrow     string       // dim arrow glyph, pre-rendered (non-cursor)
 	lineCount int
+
+	// line0Cursor is row 0 rendered in the cursor's register: a folded
+	// line's marker and label column recolored (its content summary keeps
+	// the muted color), an expanded line's whole row — marker, label and
+	// timestamp — in the selection color. Cursor rendering swaps row 0 for
+	// it; the row is the same width as the cached one, so the rest of the
+	// window (and all width accounting) is reused as-is.
+	//
+	// Built on first request, not by Render: the collapsed variant costs a
+	// second BuildCollapsed (a full pass over the window's content, ~100µs
+	// on a 2 KB message), Render runs for every window on every content
+	// change, and exactly one window at a time is under the cursor.
+	// line0CursorDone tells "not built yet" from "built and empty".
+	line0Cursor     string
+	line0CursorDone bool
+
+	// frameStyles is what the cursor row is composed from: the styles the
+	// window was rendered with — already dimmed when an overlay is up, so
+	// the highlighted row dims with everything else. The styles are stored
+	// as they were and the Selected() register is derived on first request,
+	// in cursorLine0, so that Render does not pay for a window that is not
+	// under the cursor.
+	frameStyles *Styles
 }
 
 // Window represents a single display window.
@@ -122,6 +149,20 @@ type Window struct {
 	Folded    bool
 	styles    *Styles
 
+	// CreatedAt is when this window was created — the adapter's own
+	// receipt clock, read ONCE at creation and then stored, never read
+	// again while rendering (a clock read inside Render would make the
+	// output a function of the moment, uncacheable and untestable).
+	//
+	// It is explicitly NOT a record field: the session file carries no
+	// per-message time (only session-level created_at/updated_at), so a
+	// replayed message is stamped with when this run received it. The
+	// header renders that as "arrival in this view", which is the fact the
+	// adapter actually has. Zero means unknown → no timestamp is rendered,
+	// which is what a Window built outside the adapter (tests) gets unless
+	// it sets one.
+	CreatedAt time.Time
+
 	renderer WindowRendering
 
 	// border caches the border-wrapped render output.
@@ -131,8 +172,9 @@ type Window struct {
 // NewWindow creates a window with the appropriate renderer for the given tag.
 func NewWindow(id string, tag string, styles *Styles) *Window {
 	w := &Window{
-		ID:     id,
-		styles: styles,
+		ID:        id,
+		styles:    styles,
+		CreatedAt: time.Now(), // the adapter's receipt clock — see Window.CreatedAt
 	}
 	w.setRenderer(tag)
 	return w
@@ -352,28 +394,32 @@ func (w *Window) RawDelta() string {
 // Render returns the window, using cache if valid.
 // When blocked is true, the content is rendered with dimmed colors.
 //
-// Two visual states:
-//   - Folded: a single line — collapse arrow + label + content summary (no box).
-//   - Expanded: a header line — expand arrow + label — above an open box
-//     (top/bottom rules only, no side borders).
+// Two visual states, one shape: both are a single "window line" that starts
+// with the fold marker and the label column, and what follows the label is
+// what tells them apart.
+//   - Folded: marker "+", label, content summary — one line, no content.
+//   - Expanded: marker "-", label, the arrival timestamp right-aligned —
+//     then the content, one row per wrapped line. No rule above or below:
+//     a window is opened by this line and closed by the next window's own
+//     (the prompt box closes the last one).
 //
-// The cursor highlight colors the fold-state arrow with the selection
-// color; the arrow glyph is a layout constant, not a theme value
-// (constants.go); borders never change color on navigation.
-func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle Style, blocked bool) string {
+// The cursor highlight recolors row 0 — marker and label (and, on an
+// expanded line, the timestamp), never a folded line's content summary.
+// The markers are layout constants, not theme values (constants.go).
+func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) string {
 	if w.renderer == nil {
 		return ""
 	}
 
-	// User messages use the same border color as focused input box
-	if _, ok := w.renderer.(*userRenderer); ok {
-		borderStyle = borderStyle.Foreground(styles.BorderFocused)
-	}
-
-	// Validate cache
-	if w.border.valid && w.border.width == width && w.border.folded == w.Folded && w.border.blocked == blocked {
+	// Validate cache. createdAt is part of the key: row 0 prints it, and a
+	// window whose receipt time is set after its first render (tests, and
+	// anything that stamps a window it did not construct) must not keep a
+	// stale header. Equal rather than == — time.Time carries a monotonic
+	// reading and a location pointer, and only the instant matters here.
+	if w.border.valid && w.border.width == width && w.border.folded == w.Folded &&
+		w.border.blocked == blocked && w.border.createdAt.Equal(w.CreatedAt) {
 		if isCursor {
-			return w.renderCursorArrow(blocked)
+			return w.renderCursor()
 		}
 		return w.border.rendered
 	}
@@ -384,85 +430,136 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, borderStyle St
 		w.renderer.Invalidate()
 	}
 
-	// Use dimmed styles and border when blocked
+	// Use dimmed styles when blocked (Dimmed() maps every color the window
+	// line draws with — including the prompt and error colors — to the dim
+	// color, so the line dims with the rest of the chrome).
 	if blocked {
 		styles = styles.Dimmed()
-		borderStyle = borderStyle.Foreground(styles.ColorDim)
 	}
 
-	w.border.arrow = arrowStyle(styles).Render(w.arrowChar())
+	w.border.line0Cursor = ""
+	w.border.line0CursorDone = false
+	w.border.frameStyles = styles
 	if w.Folded {
-		// Collapsed: single line — arrow + label + content summary, truncated.
-		// BuildCollapsed skips full wrapping: only the summary (escaped tail
+		// Collapsed: one line — marker + label + content summary. The
+		// marker is part of the row (not prefixed later by the viewport
+		// layer): both states' first rows are built here, so the cursor
+		// render has exactly one row to swap and every width is accounted
+		// for in one place.
+		//
+		// BuildCollapsed does no wrapping: only the summary (escaped tail
 		// for text windows, first line for tool windows) is read and
 		// truncated, so folding a large window is O(1).
 		inner, _ := w.renderer.BuildCollapsed(width, styles)
-		w.border.lines = []visualLine{{Text: " " + inner}}
+		w.border.lines = []visualLine{{Text: w.lineStyle(styles).Render(w.markerChar()) + " " + inner}}
 		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
 		w.border.inner = w.border.lines[0].Text
-		w.border.rendered = w.border.arrow + w.border.inner
+		w.border.rendered = w.border.inner
 		w.border.lineCount = 1
 	} else {
-		// Expanded: header line (expand arrow + label) above the open box.
-		// BuildInner returns the visual content lines (soft-wrap
-		// breakpoints); the box rules and the header are separate visual
-		// lines, so the whole window is one flat visual line array.
+		// Expanded: the window's own line — marker + label, the timestamp
+		// on the right — then the content. There is no rule and no closing
+		// line: a window is opened by its marker row, and the next window
+		// opens with its own. BuildInner returns the visual content lines
+		// (soft-wrap breakpoints); the whole window is one flat visual line
+		// array, so border.rendered == border.inner.
 		contentLines, _ := w.renderer.BuildInner(width, false, styles)
-		header := w.buildExpandHeader(styles)
-		boxLines := styles.RenderOpenBoxLines(contentLines, width, borderStyle.GetForeground())
-		lines := make([]visualLine, 0, len(boxLines)+1)
-		lines = append(lines, visualLine{Text: header})
-		lines = append(lines, boxLines...)
+		lines := make([]visualLine, 0, len(contentLines)+1)
+		lines = append(lines, visualLine{Text: w.buildExpandHeader(width, styles)})
+		lines = append(lines, contentLines...)
 		w.border.lines = lines
 		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
 		w.border.inner = joinVisualLines(lines)
-		w.border.rendered = w.border.arrow + w.border.inner
+		w.border.rendered = w.border.inner
 		w.border.lineCount = len(lines)
 	}
 
 	w.border.width = width
 	w.border.folded = w.Folded
 	w.border.blocked = blocked
+	w.border.createdAt = w.CreatedAt
 	w.border.valid = true
 
 	if isCursor {
-		return w.renderCursorArrow(blocked)
+		return w.renderCursor()
 	}
 	return w.border.rendered
 }
 
-// renderCursorArrow recolors only the collapse/expand arrow with the
-// selection color; the rest of the cached output is reused as-is.
-func (w *Window) renderCursorArrow(blocked bool) string {
-	// When blocked (overlay active), the selection color is replaced by
-	// the dim color so the highlight disappears under the overlay.
-	color := Color("")
-	if w.styles != nil {
-		color = w.styles.BorderCursor
-		if blocked {
-			color = w.styles.ColorDim
-		}
-	}
-	return NewStyle().Foreground(color).Render(w.arrowChar()) + w.border.inner
-}
-
-// arrowChar returns the fold-state arrow glyph. The glyphs are terminal
-// layout constants (constants.go), not theme values — they own a cell of
-// the header geometry, which a palette switch must not disturb.
-func (w *Window) arrowChar() string {
+// markerChar returns the window's fold marker glyph: "+" while folded
+// (there is more), "-" while expanded (its content follows). Both states
+// draw one, at column 0, so the label column never moves when a window
+// folds — and the marker is the row's only structural glyph, which is why
+// it is ASCII (constants.go).
+func (w *Window) markerChar() string {
 	if w.Folded {
 		return foldArrow
 	}
 	return unfoldArrow
 }
 
-// arrowStyle returns the style for the collapse/expand arrow.
-// Cursor highlighting is handled separately by renderCursorArrow.
-func arrowStyle(styles *Styles) Style {
-	if styles == nil {
-		return NewStyle()
+// lineStyle returns the style every glyph of this window's own line is
+// drawn in — see lineStyleForTag, which owns the per-type colors.
+func (w *Window) lineStyle(styles *Styles) Style {
+	return lineStyleForTag(w.Tag(), styles)
+}
+
+// cursorLine0 returns row 0 in the cursor's register — the marker and the
+// label column recolored, the content summary behind them left alone —
+// building it on first request and caching it in the border cache.
+//
+// It is not built by Render on purpose: the collapsed variant costs a
+// second BuildCollapsed (a full pass over the window's content, ~100µs on
+// a 2 KB message), Render runs for every window on every content change,
+// and exactly one window at a time is under the cursor. Memoized, the cost
+// is paid once per cache generation by that one window.
+//
+// The register comes from Styles.Selected() rather than from a flag pushed
+// through the renderers: the label color is part of the styles a renderer
+// already paints from, so recoloring it is a styles swap and nothing else.
+func (w *Window) cursorLine0() string {
+	if w.border.line0CursorDone {
+		return w.border.line0Cursor
 	}
-	return NewStyle().Foreground(styles.ColorDim)
+	w.border.line0CursorDone = true
+	// Selected() swaps every color that names a window (label, prompt,
+	// error) for the selection color, so the line — marker, label, tool
+	// name, timestamp — comes out highlighted as one unit with no other
+	// change.
+	styles := w.border.frameStyles.Selected()
+	if w.Folded {
+		// The summary is content and keeps its muted color; the marker and
+		// the label column take the selection color, so the two read as one
+		// highlighted unit.
+		inner, _ := w.renderer.BuildCollapsed(w.border.width, styles)
+		w.border.line0Cursor = w.lineStyle(styles).Render(w.markerChar()) + " " + inner
+		return w.border.line0Cursor
+	}
+	w.border.line0Cursor = w.buildExpandHeader(w.border.width, styles)
+	return w.border.line0Cursor
+}
+
+// renderCursor renders the cached window with the cursor's selection
+// highlight. Row 0 is the whole of it, in both fold states, and it is the
+// same width either way — so no width or line-count accounting changes and
+// the rest of the cached output is reused as-is.
+//
+// Every input it needs — the highlighted row, and the color the marker is
+// painted with (selection, or dim under an overlay) — was resolved when the
+// cache was filled, and the cache is only valid for the blocked state it
+// was filled with (Render's cache key includes it), so the overlay case
+// needs no flag here.
+func (w *Window) renderCursor() string {
+	return replaceFirstLine(w.border.inner, w.cursorLine0())
+}
+
+// replaceFirstLine returns s with its first line replaced by first. Used
+// to swap the cursor's highlighted row into a cached window render.
+func replaceFirstLine(s, first string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return first + s[i:]
+	}
+	return first
 }
 
 // windowLabel returns the header label for the window type, e.g.
@@ -490,22 +587,87 @@ func (w *Window) windowLabel() string {
 	}
 }
 
-// buildExpandHeader returns the expanded header line content (the part
-// after the arrow). Tool windows use the collapsed-style layout — bold
-// "TOOL CALL" + a space + the status indicator in the fixed label column,
-// then the muted tool name: "TOOL CALL ⠋    execute_command". The label
-// and indicator share the same color (labelStyle) so they read as one
-// unit. The tool name itself is rendered bold + muted, so the reader
-// can scan "TOOL CALL ✓ <read_file>" at a glance — the bold name is the
-// semantic payload, the rest of the header is chrome. Other windows use
-// their plain label ("ASSISTANT", "SYSTEM NOTIFY", …).
-func (w *Window) buildExpandHeader(styles *Styles) string {
+// buildExpandHeader returns the expanded window's first row: the marker,
+// the window's label, and the timestamp right-aligned to the window edge —
+//
+//   - REASONING                                     2026/09/14 16:32
+//
+// The label starts at the same cell as on a collapsed line (marker + one
+// space), so folding a window never moves its label. What differs between
+// the two states is the marker glyph and what follows the label: a content
+// summary when folded, the timestamp when expanded.
+//
+// markerColor paints the marker and the timestamp — the row's own chrome,
+// in one color (dim by default, the accent for a user prompt, the
+// selection color under the cursor) — while styles paints the label. The
+// two differ only in the cursor's register, where borderStyle carries the
+// selection color and styles is Styles.Selected(), so the whole row is
+// highlighted (see Window.cursorLine0).
+//
+// Widths, in priority order: the marker and the label always render (the
+// label is what identifies the window); the timestamp renders only when it
+// fits after the label with at least one space between them — metadata
+// yields to the name. A label too wide for the row is cut with "…" in the
+// label's own style: the tool header's per-segment styling is not worth
+// reassembling across a cut, and a truncated tool header only happens on a
+// terminal narrower than the tool name.
+func (w *Window) buildExpandHeader(width int, styles *Styles) string {
+	if width <= 0 {
+		return ""
+	}
+	lineStyle := w.lineStyle(styles)
+	marker := lineStyle.Render(w.markerChar())
+	plain, styled := w.expandTitle(styles)
+	if plain == "" {
+		// A window type with no label (see expandTitle): the marker stands
+		// alone, and there is nothing for a timestamp to be right-aligned
+		// against.
+		return takeCells(marker, width)
+	}
+
+	budget := width - collapsedPrefixWidth // cells left for label + gap + time
+	if budget < 1 {
+		return takeCells(marker, width)
+	}
+	if !w.CreatedAt.IsZero() && cellWidth(plain) <= budget-1-timeStampWidth {
+		gap := budget - cellWidth(plain) - timeStampWidth
+		return marker + " " + styled + strings.Repeat(" ", gap) + lineStyle.Render(w.timeStamp())
+	}
+	if cellWidth(plain) > budget {
+		plain = takeCells(plain, budget-1) + "…"
+		styled = lineStyle.Render(plain)
+	}
+	return marker + " " + styled
+}
+
+// timeStamp returns the window's arrival time — when the adapter created
+// this view of the message — formatted for the header's fixed-width
+// column. See timeStampLayout (constants.go) for the format, the width and
+// why it is local time rather than the UTC the session records use.
+func (w *Window) timeStamp() string {
+	return w.CreatedAt.Local().Format(timeStampLayout)
+}
+
+// expandTitle returns an expanded window's label in two forms: the plain
+// text (for the rule's width accounting) and the styled rendering.
+//
+// Tool windows keep the collapsed line's layout — bold "TOOL CALL" + a
+// space + the status indicator in the fixed label column, then the muted
+// bold tool name: "─ TOOL CALL ⠋    execute_command ──". The label and
+// indicator share one color so they read as a unit, and the bold name is
+// the semantic payload. Other windows use their plain label ("ASSISTANT",
+// "SYSTEM NOTIFY", "USER PROMPT", …).
+//
+// The colors come from styles, so a caller wanting the cursor's register
+// passes Styles.Selected() and gets a highlighted label — and, for tool
+// windows, a highlighted status indicator with it (statusDot inherits the
+// label color).
+func (w *Window) expandTitle(styles *Styles) (plain, styled string) {
+	labelStyle := lineStyleForTag(w.Tag(), styles)
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
-		labelStyle := labelStyleForTag(w.Tag(), styles)
 		dot, dotStyle := tr.status.statusDot(labelStyle)
 		label := padLabel(toolLabelWithIndicator(dot))
 		var sb strings.Builder
-		sb.WriteString(" ")
 		sb.WriteString(labelStyle.Render(label[:len(toolHeaderLabel)]))
 		// Separator space between the label and the status indicator.
 		sb.WriteString(label[len(toolHeaderLabel) : len(toolHeaderLabel)+len(toolLabelSep)])
@@ -514,38 +676,44 @@ func (w *Window) buildExpandHeader(styles *Styles) string {
 		// len(dot) bytes (not 1) after the label + separator.
 		sb.WriteString(label[len(toolHeaderLabel)+len(toolLabelSep)+len(dot):])
 		sb.WriteString(styles.ToolContent.Bold(true).Render(tr.name))
-		return sb.String()
+		return label + tr.name, sb.String()
 	}
 	label := w.windowLabel()
 	if label == "" {
-		return ""
+		return "", ""
 	}
-	return " " + w.labelStyle(styles).Render(label)
+	return label, labelStyle.Render(label)
 }
 
-// labelStyle returns the style used for the window's header label.
-func (w *Window) labelStyle(styles *Styles) Style {
-	return labelStyleForTag(w.Tag(), styles)
-}
-
-// labelStyleForTag returns the style used for a window type's header label
-// (e.g. "REASONING", "TOOL CALL", "SYSTEM ERROR"). All labels are bold —
-// default-foreground labels would distract the eye in the collapsed list.
-// SYSTEM NOTIFY and non-system labels use the muted System color; SYSTEM
-// ERROR keeps its red semantic color so the error is instantly
-// recognizable. Shared by the expanded header line and the collapsed
-// label segment.
-func labelStyleForTag(tag string, styles *Styles) Style {
+// lineStyleForTag returns the ONE style every glyph of a window's own line
+// is drawn in: the fold marker, the label, a tool window's name and the
+// arrival timestamp all take it, so the line reads as a single unit instead
+// of four differently-weighted pieces. Bold throughout — a line that names a
+// window is chrome and is meant to be scannable.
+//
+// The color is the label color for EVERY window type except the system
+// errors. A user's turn, a reasoning step, an answer and a tool call are all
+// the same kind of thing — conversation — and nothing about a user prompt
+// earns its line an accent: the accent belongs to the prompt box at the
+// bottom of the screen, which is the one live surface. SYSTEM ERROR keeps
+// the error color, because an error has to be recognizable at a glance and
+// from the far end of a scrollback.
+//
+// This is also the function the renderers call for their label segment
+// (collapsed lines and the expanded line alike), so both states are
+// guaranteed to agree.
+//
+// The cursor's register is simply Styles.Selected() — the same styles with
+// these colors swapped for the selection color — so "who is the cursor"
+// needs no parameter here.
+func lineStyleForTag(tag string, styles *Styles) Style {
 	if styles == nil {
 		return NewStyle().Bold(true)
 	}
-	switch tag {
-	case TagWindowSE:
+	if tag == TagWindowSE {
 		return styles.Error.Bold(true)
-	default:
-		// All other labels: bold + muted.
-		return styles.System.Bold(true)
 	}
+	return styles.Label.Bold(true)
 }
 
 // LineCount returns the cached line count (valid after Render).

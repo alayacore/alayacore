@@ -32,19 +32,19 @@ func lineAt(grid [][]rune, i int) string {
 // wraps to several terminal rows and asserts the frame diff renders the
 // exact intended rows: no truncated content, no residue, no shift.
 func TestScrollDiffSoftWrapAlignment(t *testing.T) {
-	const W, H = 40, 6
+	const W, H = 40, 5
 	content := "The simple test passes. The user's bug might require a more specific scenario. Let me make the test more aggressive and add diagnostic output:" // 142 chars, wraps to 4 rows at W=40
 
 	wb := NewWindowBuffer(W, DefaultStyles())
 	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", content)
 	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
-	// w1 = header + top rule + 4 content rows + bottom rule = 7 visual
-	// lines; ar = 1 folded line. Total 8 lines.
+	// w1 = labeled opening rule + 4 content rows = 5 visual lines;
+	// ar = 1 folded line. Total 6 lines, one more than the viewport.
 
 	dm := NewDisplayModel(wb, DefaultStyles()).WithHeight(H).updateContent()
-	// Auto-follow: viewport [2,8) — the content tail + bottom rule + AR.
-	if got := dm.YOffset(); got != 2 {
-		t.Fatalf("YOffset = %d, want 2 (8 lines - 6 viewport)", got)
+	// Auto-follow: viewport [1,6) — the four content rows + AR.
+	if got := dm.YOffset(); got != 1 {
+		t.Fatalf("YOffset = %d, want 1 (6 lines - 5 viewport)", got)
 	}
 
 	var buf bytes.Buffer
@@ -63,41 +63,42 @@ func TestScrollDiffSoftWrapAlignment(t *testing.T) {
 	}
 
 	render()
-	// Frame 1 (viewport [2,8)): rows 0-3 = content, row 4 = bottom rule,
-	// row 5 = folded reasoning.
-	for i := 0; i < 4; i++ {
+	// Frame 1 (viewport [1,6)): the window's own line is cut off, so it is
+	// PINNED at row 0 and the body row that would have been there (content
+	// row 0) is displaced. Rows 1-3 are therefore content rows 1-3, each
+	// wrapping across the width, and row 4 is the folded reasoning window.
+	if !strings.HasPrefix(lineAt(grid, 0), "- ASSISTANT") {
+		t.Fatalf("frame1 row 0 = %q, want the pinned window line", lineAt(grid, 0))
+	}
+	for i := 1; i < 4; i++ {
 		want := strings.TrimRight(content[i*40:min((i+1)*40, len(content))], " ")
 		if got := lineAt(grid, i); got != want {
-			t.Fatalf("frame1 row %d = %q, want %q", i, got, want)
+			t.Fatalf("frame1 row %d = %q, want %q (content row %d)", i, got, want, i)
 		}
 	}
-	if !strings.Contains(lineAt(grid, 4), "─") || !strings.Contains(lineAt(grid, 5), "REASONING") {
-		t.Fatalf("frame1 rows 4-5 wrong: %q / %q", lineAt(grid, 4), lineAt(grid, 5))
+	if !strings.Contains(lineAt(grid, 4), "REASONING") {
+		t.Fatalf("frame1 row 4 = %q, want the folded reasoning window", lineAt(grid, 4))
 	}
 
-	// Scroll up one line: viewport [1,7) — top rule + 4 content rows +
-	// bottom rule (the AR line scrolls off).
+	// Scroll up one line: viewport [0,5) — the window's own line + the four
+	// content rows (the AR line scrolls off).
 	dm = dm.MarkUserScrolled().ScrollUp(1).updateContent()
-	if got := dm.YOffset(); got != 1 {
-		t.Fatalf("YOffset after scroll = %d, want 1", got)
+	if got := dm.YOffset(); got != 0 {
+		t.Fatalf("YOffset after scroll = %d, want 0", got)
 	}
 	render()
 
 	// The scrolled frame must render exactly:
-	//   row 0: top rule
+	//   row 0: the window's own line (marker + label + timestamp)
 	//   rows 1-4: the four content rows
-	//   row 5: bottom rule
-	if !strings.Contains(lineAt(grid, 0), "─") {
-		t.Errorf("row 0 = %q, want the top rule", lineAt(grid, 0))
+	if !strings.HasPrefix(lineAt(grid, 0), "- ASSISTANT") {
+		t.Errorf("row 0 = %q, want the window's own line (marker + label)", lineAt(grid, 0))
 	}
 	// Join the raw rows (keeping the wrap-boundary spaces) and trim the
 	// padding — the full original content must survive intact.
 	joined := strings.TrimRight(string(grid[1])+string(grid[2])+string(grid[3])+string(grid[4]), " ")
 	if joined != content {
 		t.Errorf("scrolled content truncated/misaligned:\n  got:  %q\n  want: %q", joined, content)
-	}
-	if !strings.Contains(lineAt(grid, 5), "─") {
-		t.Errorf("row 5 = %q, want the bottom rule", lineAt(grid, 5))
 	}
 	// The AR line scrolled off and must not survive anywhere.
 	for i := 0; i < H; i++ {

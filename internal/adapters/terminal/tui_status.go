@@ -139,7 +139,7 @@ func (m *Terminal) renderStatusBar() string {
 	// Hard cap: the status bar row may occupy at most the full terminal
 	// width — anything wider would soft-wrap onto a second row. The cap
 	// is the full width: unlike a collapsed window header, which spends
-	// two cells on the fold arrow and its separating space
+	// two cells on the fold marker and its separating space
 	// (collapsedPrefixWidth), the status row reserves nothing before its
 	// content. The TUI's design language is
 	// flush-to-edge (input box rules, window separators all span the

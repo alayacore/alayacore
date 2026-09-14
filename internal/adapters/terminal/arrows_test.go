@@ -8,129 +8,90 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// The fold arrows are pinned by codepoint on purpose. They are the
-// product's answer to "how does a folded window look", and the choice was
-// made on what terminals can be relied on to draw in one cell — not on
-// taste. Change them deliberately, and keep the two rules below true.
-func TestFoldArrowGlyphs(t *testing.T) {
+// The fold markers are pinned on purpose: they are the product's answer to
+// "how does a collapsed window look, and how does an open one look", they
+// sit at column 0 of every window row, and the label column's arithmetic
+// depends on each being exactly one cell.
+//
+// They are ASCII. That is the whole argument: a marker on every row must
+// measure one cell in every terminal and must be in every font, and only
+// ASCII guarantees both. The pair they replaced (▸/▾, U+25B8/U+25BE) was
+// chosen for width alone — East-Asian Neutral, outside
+// Extended_Pictographic, measured and pinned in the glyph policy — which
+// is a good reason and a weaker guarantee than the character set itself.
+// A test cannot measure a font, so the pin is on ASCII-ness.
+func TestFoldMarkersAreAscii(t *testing.T) {
 	cases := []struct {
 		name  string
 		glyph string
-		want  rune
+		want  string
 	}{
-		{"foldArrow", foldArrow, '\u25B8'},     // ▸ small right triangle
-		{"unfoldArrow", unfoldArrow, '\u25BE'}, // ▾ small down triangle
+		{"foldArrow", foldArrow, "+"},
+		{"unfoldArrow", unfoldArrow, "-"},
 	}
 	for _, tc := range cases {
-		if r := []rune(tc.glyph); len(r) != 1 || r[0] != tc.want {
-			t.Errorf("%s = %q, want the single rune %q", tc.name, tc.glyph, string(tc.want))
+		if tc.glyph != tc.want {
+			t.Errorf("%s = %q, want %q", tc.name, tc.glyph, tc.want)
 		}
-		// The header layout reserves arrowCellWidth cells for the glyph —
-		// collapsedPrefixWidth, the arithmetic in the collapsed builders,
-		// and the content column the soft-wrap tests pin are all only
-		// correct while this holds.
+		for _, r := range tc.glyph {
+			if r > 0x7F {
+				t.Errorf("%s = %q is not ASCII — the marker's width is then a table's opinion, not the character set's", tc.name, tc.glyph)
+			}
+		}
 		if w := cellWidth(tc.glyph); w != arrowCellWidth {
 			t.Errorf("%s measures %d cells, layout reserves %d", tc.name, w, arrowCellWidth)
 		}
 	}
 	if collapsedPrefixWidth != arrowCellWidth+1 {
-		t.Errorf("collapsedPrefixWidth = %d, want the arrow (%d) + one separating space",
+		t.Errorf("collapsedPrefixWidth = %d, want the marker (%d) + one separating space",
 			collapsedPrefixWidth, arrowCellWidth)
 	}
 }
 
-// The heavier triangle and arrow pairs are exactly the ones the constants
-// avoid. Two properties matter, and they are NOT the same on these
-// codepoints — an earlier version of this comment claimed both for all of
-// them, which is wrong:
-//
-//   - East_Asian_Width "A" (Ambiguous): a terminal configured for
-//     double-width ambiguous characters draws the glyph two cells. ▶ ▼ ▲ ◀
-//     all have it; the small triangles ▸ ▾ do not.
-//   - Extended_Pictographic: such a codepoint can be resolved through an
-//     emoji font and come back two cells wide. ▶ and ◀ are in that set
-//     (with Emoji_Presentation=No — text is their default, so they need
-//     U+FE0F to be emoji by default); ▼ and ▲ are not in it at all.
-//
-// Both hazards measure one cell to the table this adapter now measures and
-// cuts with (width.go), so nothing at runtime can catch the damage — only
-// the choice of glyph can. (The properties were checked against Unicode 15
-// data and against that table; the terminal consequence follows from those
-// properties and has not been measured on a host here.) glyphs_test.go
-// re-derives the ambiguous-width half of this from the table itself, so a
-// drift is caught by the build. A default drifting back onto one of these
-// is a regression, not a cosmetic change.
-//
-// The two media keys ⏵ (U+23F5) and ⏷ (U+23F7) used to be on this list for
-// "emoji presentation", which is not a property either of them: they are
-// East-Asian Neutral and outside Extended_Pictographic (the pictographic
-// range jumps from U+23F3 to U+23F8, which is exactly where the media
-// buttons resume), so the table we measure with gives them one cell.
-// They are dropped rather than kept on a reason that does not hold — the
-// arrows themselves are pinned by codepoint at the top of this file, which
-// is the guarantee that matters.
-func TestArrowsAvoidUnreliableCodepoints(t *testing.T) {
-	unreliable := map[rune]string{
-		'\u25B6': "▶ ambiguous width AND Extended_Pictographic",
-		'\u25BC': "▼ ambiguous width",
-		'\u25B2': "▲ ambiguous width",
-		'\u25C0': "◀ ambiguous width AND Extended_Pictographic",
-		'\u25CF': "● ambiguous width",
-		'\u25CB': "○ ambiguous width",
-		'\u2192': "→ ambiguous width",
-		'\u2193': "↓ ambiguous width",
-		'\u2630': "☰ already two cells in the table we measure with",
-	}
-	for _, g := range []string{foldArrow, unfoldArrow} {
-		for _, r := range g {
-			if why, bad := unreliable[r]; bad {
-				t.Errorf("fold arrow uses %q: %s", string(r), why)
-			}
-		}
-	}
-}
-
-// The arrow is geometry, not color: it must not depend on the theme, on
+// The marker is geometry, not color: it must not depend on the theme, on
 // whether the palette is dimmed under an overlay, or on styles being
 // attached at all. (This is what the fold_arrow/unfold_arrow theme keys
 // used to violate — they let a palette switch change a structural
-// affordance, and let a user value break the header columns.)
-func TestArrowsIndependentOfTheme(t *testing.T) {
+// affordance, and let a user value break the label columns.)
+func TestFoldMarkersIndependentOfTheme(t *testing.T) {
 	other := &theme.Theme{
 		Primary: "#1e66f5", Dim: "#ccd0da", Muted: "#9ca0b0", Warning: "#df8e1d",
 		Error: "#d20f39", Selection: "#fe640b", Added: "#40a02b", Removed: "#d20f39",
 		Tool: "#df8e1d",
 	}
-	styles := []*Styles{nil, DefaultStyles(), DefaultStyles().Dimmed(), NewStyles(other)}
-	for _, folded := range []bool{true, false} {
-		want := unfoldArrow
-		if folded {
-			want = foldArrow
+	styles := []*Styles{DefaultStyles(), DefaultStyles().Dimmed(), NewStyles(other)}
+	for i, st := range styles {
+		wb := NewWindowBuffer(40, st)
+		wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "hello there")
+		wb.ToggleFold(0)
+		first := firstRow(stripANSI(wb.GetAll(-1, false)))
+		if !strings.HasPrefix(first, foldArrow) {
+			t.Errorf("styles[%d]: collapsed line = %q, want it to start with %q", i, first, foldArrow)
 		}
-		for _, st := range styles {
-			w := &Window{Folded: folded, styles: st}
-			if got := w.arrowChar(); got != want {
-				t.Errorf("arrowChar(folded=%v) = %q, want %q", folded, got, want)
-			}
+		if c := contentColumn(first); c != collapsedPrefixWidth+CollapsedLabelWidth {
+			t.Errorf("styles[%d]: content column = %d, want %d: %q",
+				i, c, collapsedPrefixWidth+CollapsedLabelWidth, first)
 		}
 	}
 }
 
-// End to end: both states render, and the collapsed content column is the
-// prefix plus the label column — the number a two-cell arrow would move.
-func TestFoldArrowRenderingKeepsHeaderColumns(t *testing.T) {
+// TestFoldMarkersKeepTheLabelColumn pins the property that makes the two
+// states one shape: the label starts at the same cell whether the window
+// is open or closed, so folding never shifts the text the reader is
+// scanning down.
+func TestFoldMarkersKeepTheLabelColumn(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "hello there")
 
 	expanded := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(expanded, unfoldArrow) {
-		t.Errorf("expanded header = %q, want it to start with %q", firstRow(expanded), unfoldArrow)
+	if !strings.HasPrefix(expanded, unfoldArrow+" ASSISTANT") {
+		t.Errorf("expanded line = %q, want %q + the label", firstRow(expanded), unfoldArrow)
 	}
 
 	wb.ToggleFold(0)
 	collapsed := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(collapsed, foldArrow) {
-		t.Fatalf("collapsed line = %q, want it to start with %q", firstRow(collapsed), foldArrow)
+	if !strings.HasPrefix(collapsed, foldArrow+" ASSISTANT") {
+		t.Fatalf("collapsed line = %q, want %q + the label", firstRow(collapsed), foldArrow)
 	}
 	if c := contentColumn(collapsed); c != collapsedPrefixWidth+CollapsedLabelWidth {
 		t.Errorf("collapsed content column = %d, want %d: %q",

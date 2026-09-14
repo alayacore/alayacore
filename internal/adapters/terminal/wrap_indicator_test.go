@@ -25,14 +25,14 @@ func TestFoldedToolCollapsedLine(t *testing.T) {
 	// Folded by default — render the window
 	rendered := wb.GetAll(-1, false)
 
-	// Collapsed form: exactly one line, starting with the collapse arrow.
+	// Collapsed form: exactly one line, starting with the fold marker.
 	renderedLines := strings.Split(rendered, "\n")
 	if len(renderedLines) != 1 {
 		t.Fatalf("Collapsed tool window should be a single line, got %d lines:\n%s", len(renderedLines), rendered)
 	}
 	plain := stripANSI(rendered)
 	if !strings.HasPrefix(plain, foldArrow) {
-		t.Errorf("Collapsed line should start with the collapse arrow, got %q", plain)
+		t.Errorf("Collapsed line should start with the fold marker, got %q", plain)
 	}
 	if !strings.Contains(plain, "TOOL") || !strings.Contains(plain, "test_tool") {
 		t.Errorf("Collapsed line should contain TOOL + tool name, got %q", plain)
@@ -103,25 +103,20 @@ func TestUnfoldedWindowHasHeaderAndBox(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 
-	// Line 0: header with expand arrow + label; line 1: top rule; last: bottom rule.
-	if len(lines) != 4 {
-		t.Fatalf("Expanded window should be 4 lines (header + box), got %d:\n%s", len(lines), rendered)
+	// Line 0: the window's own line (marker + label + timestamp); then the
+	// content. No closing line — the next window's own line ends this one.
+	if len(lines) != 2 {
+		t.Fatalf("Expanded window should be 2 lines (window line + content), got %d:\n%s", len(lines), rendered)
 	}
-	header := stripANSI(lines[0])
-	if !strings.HasPrefix(header, unfoldArrow) {
-		t.Errorf("Header should start with the expand arrow, got %q", header)
+	ownLine := stripANSI(lines[0])
+	if !strings.HasPrefix(ownLine, "- ASSISTANT") {
+		t.Errorf("Window line should carry the ASSISTANT label, got %q", ownLine)
 	}
-	if !strings.Contains(header, "ASSISTANT") {
-		t.Errorf("Header should contain ASSISTANT label, got %q", header)
+	if w := cellWidth(ownLine); w != 80 {
+		t.Errorf("Window line width = %d, want 80 (timestamp right-aligned): %q", w, ownLine)
 	}
-	if !strings.Contains(lines[1], strings.Repeat("─", 80)) {
-		t.Errorf("Top rule missing: %q", lines[1])
-	}
-	if !strings.Contains(lines[len(lines)-1], strings.Repeat("─", 80)) {
-		t.Errorf("Bottom rule missing: %q", lines[len(lines)-1])
-	}
-	if !strings.Contains(lines[2], "All edits are in place.") {
-		t.Errorf("Content missing: %q", lines[2])
+	if !strings.Contains(lines[1], "All edits are in place.") {
+		t.Errorf("Content missing: %q", lines[1])
 	}
 }
 
@@ -133,7 +128,7 @@ func TestFoldedSystemWindowLabels(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
 	if !strings.HasPrefix(plain, foldArrow+" SYSTEM NOTIFY") {
-		t.Errorf("System notify window should start with the collapse arrow + 'SYSTEM NOTIFY', got %q", plain)
+		t.Errorf("System notify window should start with the fold marker + 'SYSTEM NOTIFY', got %q", plain)
 	}
 	if !strings.Contains(plain, "nothing to cancel") {
 		t.Errorf("System notify window should show content after label, got %q", plain)
@@ -145,7 +140,7 @@ func TestFoldedSystemWindowLabels(t *testing.T) {
 	lines := strings.Split(rendered, "\n")
 	plain = stripANSI(lines[len(lines)-1])
 	if !strings.HasPrefix(plain, foldArrow+" SYSTEM ERROR") {
-		t.Errorf("System error window should start with the collapse arrow + 'SYSTEM ERROR', got %q", plain)
+		t.Errorf("System error window should start with the fold marker + 'SYSTEM ERROR', got %q", plain)
 	}
 	if !strings.Contains(plain, "something failed") {
 		t.Errorf("System error window should show content after label, got %q", plain)
@@ -155,7 +150,8 @@ func TestFoldedSystemWindowLabels(t *testing.T) {
 func TestExpandedSystemWindowHeaderLabels(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
-	// Unfold both system windows: headers must show SYSTEM NOTIFY / SYSTEM ERROR labels.
+	// Unfold both system windows: the labeled top rules must show SYSTEM
+	// NOTIFY / SYSTEM ERROR.
 	wb.AppendOrUpdate("SN", "sys-1", "nothing to cancel")
 	wb.AppendOrUpdate("SE", "sys-2", "something failed")
 	wb.ToggleFold(0)
@@ -164,12 +160,13 @@ func TestExpandedSystemWindowHeaderLabels(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 
-	if !strings.Contains(stripANSI(lines[0]), unfoldArrow+" SYSTEM NOTIFY") {
-		t.Errorf("Expanded notify header should be the expand arrow + 'SYSTEM NOTIFY', got %q", stripANSI(lines[0]))
+	if !strings.HasPrefix(stripANSI(lines[0]), "- SYSTEM NOTIFY") {
+		t.Errorf("Expanded notify window line should carry 'SYSTEM NOTIFY', got %q", stripANSI(lines[0]))
 	}
-	// SE window: header + box = 4 lines, so its header is at index 4.
-	if !strings.Contains(stripANSI(lines[4]), unfoldArrow+" SYSTEM ERROR") {
-		t.Errorf("Expanded error header should be the expand arrow + 'SYSTEM ERROR', got %q", stripANSI(lines[4]))
+	// SE window: window line + content = 2 lines, so its own line is at
+	// index 2.
+	if !strings.HasPrefix(stripANSI(lines[2]), "- SYSTEM ERROR") {
+		t.Errorf("Expanded error window line should carry 'SYSTEM ERROR', got %q", stripANSI(lines[2]))
 	}
 }
 
@@ -188,8 +185,11 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 
-	// Labels other than SYSTEM ERROR are bold + muted (no bright default color).
-	mutedBold := styles.System.Bold(true)
+	// Labels other than SYSTEM ERROR are bold + Styles.Label (muted by
+	// default), and the content summary behind them is muted — a different
+	// style on purpose, which is what lets the cursor highlight recolor
+	// the label without touching the summary.
+	labelBold := styles.Label.Bold(true)
 
 	findLine := func(label string) string {
 		for _, l := range lines {
@@ -204,7 +204,7 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 	// REASONING: label plain bold (no italic, no color); content summary
 	// muted (uniform with all collapsed window types).
 	line := findLine("REASONING")
-	if !strings.Contains(line, mutedBold.Render(padLabel("REASONING"))) {
+	if !strings.Contains(line, labelBold.Render(padLabel("REASONING"))) {
 		t.Errorf("REASONING label should be plain bold (no color): %q", line)
 	}
 	if !strings.Contains(stripANSI(line), "thinking about the plan") {
@@ -216,7 +216,7 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 
 	// ASSISTANT: label plain bold, content muted.
 	line = findLine("ASSISTANT")
-	if !strings.Contains(line, mutedBold.Render(padLabel("ASSISTANT"))) {
+	if !strings.Contains(line, labelBold.Render(padLabel("ASSISTANT"))) {
 		t.Errorf("ASSISTANT label should be plain bold (no color): %q", line)
 	}
 	if !strings.Contains(stripANSI(line), "all edits are in place") {
@@ -226,10 +226,10 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 		t.Errorf("ASSISTANT content summary should be muted: %q", line)
 	}
 
-	// SYSTEM NOTIFY: label keeps its System (muted) color.
+	// SYSTEM NOTIFY: label keeps the label color (muted).
 	line = findLine("SYSTEM NOTIFY")
-	if !strings.Contains(line, styles.System.Bold(true).Render(padLabel("SYSTEM NOTIFY"))) {
-		t.Errorf("SYSTEM NOTIFY label should keep the System (muted) color: %q", line)
+	if !strings.Contains(line, labelBold.Render(padLabel("SYSTEM NOTIFY"))) {
+		t.Errorf("SYSTEM NOTIFY label should keep the label (muted) color: %q", line)
 	}
 	if !strings.Contains(line, styles.System.Render("nothing to cancel")) {
 		t.Errorf("SYSTEM NOTIFY content summary should be muted: %q", line)
@@ -258,12 +258,12 @@ func TestFoldedToolCollapsedLabelColor(t *testing.T) {
 
 	rendered := wb.GetAll(-1, false)
 
-	// "TOOL CALL" is plain bold (muted color), the status indicator shares
-	// the label color so they read as a single colored unit, the tool name
-	// is bold + muted (so it stands out from the arguments), and the
-	// arguments after the name stay muted (no bold).
-	if !strings.Contains(rendered, styles.System.Bold(true).Render("TOOL CALL")) {
-		t.Errorf("TOOL CALL label should be plain bold (no color): %q", rendered)
+	// "TOOL CALL" is plain bold (the label color), the status indicator
+	// shares the label color so they read as a single colored unit, the
+	// tool name is bold + muted (so it stands out from the arguments), and
+	// the arguments after the name stay muted (no bold).
+	if !strings.Contains(rendered, styles.Label.Bold(true).Render("TOOL CALL")) {
+		t.Errorf("TOOL CALL label should be plain bold (the label color): %q", rendered)
 	}
 	if strings.Contains(rendered, styles.Tool.Render("TOOL CALL")) {
 		t.Errorf("TOOL CALL label should not use the Tool color: %q", rendered)
@@ -287,7 +287,7 @@ func TestFoldedLabelsAligned(t *testing.T) {
 	wb.AppendOrUpdate("SE", "e", "session failed")
 	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t", Name: "cat", Input: json.RawMessage("cat: /tmp/x")}, 5)
 
-	// Fold the assistant and user windows (folded by default otherwise).
+	// Collapse the user and assistant windows (both start expanded).
 	wb.ToggleFold(0)
 	wb.ToggleFold(2)
 

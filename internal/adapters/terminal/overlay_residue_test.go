@@ -44,7 +44,7 @@ func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	frame2 := m.View().Content
 
 	// The terminal applies frame2 over frame1. Without EL erases, the row
-	// "▸ USER PROMPT my os?" would trail "el's Core Ultra..."; with them,
+	// "+ USER PROMPT my os?" would trail "el's Core Ultra..."; with them,
 	// the row is cleared at its end.
 	plain2 := stripANSI(frame2)
 	// Check the USER folded row specifically: its content must be exactly

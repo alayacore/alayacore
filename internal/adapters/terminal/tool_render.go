@@ -63,7 +63,7 @@ func toolLabelWithIndicator(dot string) string {
 // ("TOOL CALL ⠋", "TOOL CALL ✓"). The indicator is rendered in the same
 // color as the label (labelStyle), so "TOOL CALL" + indicator + tool name
 // read as a single colored unit. labelStyle is also bold — the indicator
-// inherits the bold weight. Pass labelStyleForTag(tag, styles) here.
+// inherits the bold weight. Pass lineStyleForTag(tag, styles) here.
 func (s ToolStatus) statusDot(labelStyle Style) (string, Style) {
 	switch s {
 	case ToolStatusSuccess:

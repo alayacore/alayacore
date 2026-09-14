@@ -80,55 +80,35 @@ func TestUserPromptMultiLineContentStaysMultiLine(t *testing.T) {
 	}
 }
 
-// TestUserPromptBottomRuleHardSeparation verifies the box structure:
-// even when the user text soft-wraps to several terminal rows, the
-// window's bottom rule is the start of a NEW original row (Cont=false)
-// — joinVisualLines puts a hard '\n' before it, so the box ends with
-// "…lastContent\nbottomRule" and the next window (or status bar) starts
-// on a fresh row. The bottom rule itself does not pull in a trailing
-// '\n'; the per-window '\n' separator is added by renderAll /
-// renderVirtual between windows, and the TUI's View() adds another
-// before the input box CUP (see tui.go — same workaround applied to
-// every box type, not just the user echo window).
-func TestUserPromptBottomRuleHardSeparation(t *testing.T) {
-	ur := &userRenderer{
-		textParts: []string{strings.Repeat("word ", 25)},
-	}
-	contentLines, _ := ur.BuildInner(40, false, DefaultStyles())
-	if len(contentLines) == 0 {
-		t.Fatal("BuildInner returned no content lines")
-	}
+// TestSoftWrappedWindowEndsOnAHardRowBoundary pins what happens at the row
+// a soft-wrapping window ends on, now that no closing rule follows it. The
+// window's last row is the tail of its last original line — usually a
+// continuation row, and short (the fragment's last row is never padded to
+// the width, so a selection carries no trailing spaces). The next window
+// must therefore start on a NEW row: renderVirtual writes a hard '\n'
+// between window fragments, and that newline is what keeps the next
+// window's opening row out of the previous window's soft-wrap run.
+//
+// This is the invariant the user window's bottom rule used to provide by
+// being a Cont=false row (see the box removal in Window.Render); the rule
+// is gone, the boundary is not.
+func TestSoftWrappedWindowEndsOnAHardRowBoundary(t *testing.T) {
+	wb := NewWindowBuffer(40, DefaultStyles())
+	wb.AppendOrUpdate(tlv.TagUserT, "u1", strings.Repeat("word ", 25))
+	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
+	wb.SetViewportPosition(0, 6)
 
-	// Box construction (mirrors RenderOpenBoxLines): top rule, content,
-	// bottom rule — all Cont=false (a fresh original row each).
-	box := make([]visualLine, 0, len(contentLines)+2)
-	box = append(box, visualLine{Text: "topRule"})
-	box = append(box, contentLines...)
-	box = append(box, visualLine{Text: "bottomRule"})
-
-	// The bottom rule must be a fresh original row, not a continuation
-	// of the soft-wrap tail — otherwise the rule would be glued to the
-	// last soft-wrap row in the terminal display.
-	last := box[len(box)-1]
-	if last.Text != "bottomRule" {
-		t.Fatalf("last box row should be the bottom rule, got %q", last.Text)
+	plain := stripANSI(wb.GetAll(-1, false))
+	boundary := "word\n" + foldArrow + " REASONING"
+	if !strings.Contains(plain, boundary) {
+		t.Errorf("a wrapping window must end on a hard row boundary:\n  want %q inside\n  got  %q", boundary, plain)
 	}
-	if last.Cont {
-		t.Errorf("bottom rule must NOT be a continuation (Cont=false) — otherwise it merges into the soft-wrap tail: %q",
-			last.Text)
-	}
-
-	// Joined projection: bottom rule is preceded by '\n' (Cont=false
-	// marks the start of a new original row), but the soft-wrapped
-	// content itself contains no '\n' (continuation rows join without
-	// one). The trailing '\n' after the bottom rule belongs to the
-	// inter-window separator, not the box itself.
-	joined := joinVisualLines(box)
-	if strings.Contains(contentLines[0].Text, "\n") {
-		t.Errorf("soft-wrapped content must not contain hard newlines: %q", contentLines[0].Text)
-	}
-	if !strings.HasSuffix(joined, "\nbottomRule") {
-		t.Errorf("bottom rule must be preceded by a hard newline: %q", joined)
+	// The next window's row starts at column 0 of the new row — it is not
+	// pulled into the previous window's soft-wrap run.
+	for _, row := range strings.Split(plain, "\n") {
+		if strings.HasPrefix(row, foldArrow) && strings.HasPrefix(row, " word") {
+			t.Errorf("the next window must start a fresh row: %q", row)
+		}
 	}
 }
 

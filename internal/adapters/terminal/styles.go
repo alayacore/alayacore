@@ -38,6 +38,13 @@ type Styles struct {
 	Input   Style
 	Status  Style
 	Confirm Style
+	// Label is the style for a window's own line (its header label:
+	// "ASSISTANT", "REASONING", "TOOL CALL", "USER PROMPT", …) on both the
+	// collapsed line and the expanded top rule. It is a field of its own —
+	// not derived from System at the call site — because the cursor
+	// highlight recolors exactly this: the chrome that names the window,
+	// never the content underneath it (see Styles.Selected).
+	Label Style
 	// Body is the style for plain body text (assistant messages,
 	// reasoning, user message text, tool input/output). It carries NO
 	// foreground color in normal mode — body text renders in the
@@ -61,13 +68,21 @@ type Styles struct {
 
 // RenderOpenBoxLines renders an open box from VISUAL content lines (each
 // element one terminal row, no '\n' inside) and returns the box as a
-// visual line array: [top rule, ...content lines, bottom rule]. The
-// window pipeline uses this form — the viewport clips windows by visual
-// lines, so the box must expose its rows as an array (docs/internal/virtual-rendering-performance.md).
-// Callers must wrap (wrapContent) and truncate (truncateWithSuffix) every
-// content line themselves, and the content's wrap width is the FULL box
-// width. Trailing padding is unnecessary: terminals ignore trailing
-// whitespace, so content lines may be shorter than the box.
+// visual line array: [top rule, ...content lines, bottom rule].
+//
+// This is the box a FLOATING surface draws — an overlay (confirm dialog,
+// help window, model/theme/attachment list) and the prompt input. They
+// need the closing rule because nothing follows them: the box is the whole
+// of what the reader sees of that surface, so it has to end itself.
+//
+// Transcript windows deliberately do NOT use it. A window is opened by a
+// rule carrying its label (Window.buildExpandRule) and the next window is
+// opened by its own, so a closing rule under the content would repeat a
+// delimiter that is already there — see Window.Render. Callers must wrap
+// (wrapContent) and truncate (truncateWithSuffix) every content line
+// themselves, and the content's wrap width is the FULL box width. Trailing
+// padding is unnecessary: terminals ignore trailing whitespace, so content
+// lines may be shorter than the box.
 //
 //nolint:revive // visualLine is an internal render type
 func (s *Styles) RenderOpenBoxLines(lines []visualLine, width int, borderColor color.Color) []visualLine {
@@ -82,8 +97,11 @@ func (s *Styles) RenderOpenBoxLines(lines []visualLine, width int, borderColor c
 	return out
 }
 
-// RenderOpenBox renders a box with only top/bottom rules and NO side
-// borders ("open" style) — the collapsed-window design language:
+// RenderOpenBox renders a bordered box for a FLOATING surface — an overlay
+// or the prompt input — with only top/bottom rules and NO side borders
+// ("open" style). Unlike a transcript window (which opens with a labeled
+// rule and is closed by the next window), such a surface has nothing after
+// it, so it has to bracket itself:
 //
 //	──────────────────────────────────────────
 //	content line                           ← caller guarantees ≤ width
@@ -142,6 +160,10 @@ func NewStyles(t *theme.Theme) *Styles {
 		Input:   baseStyle,
 		Status:  baseStyle.Foreground(Color(t.Dim)),
 		Confirm: baseStyle.Foreground(Color(t.Warning)).Bold(true),
+		// Label: the muted color, like System — kept as its own field so
+		// the cursor highlight can recolor the label without touching the
+		// content summary that shares the muted color.
+		Label: baseStyle.Foreground(Color(t.Muted)),
 		// Body stays colorless (terminal default) — see Styles.Body.
 		Body: baseStyle,
 
@@ -179,6 +201,10 @@ func (s *Styles) Dimmed() *Styles {
 		Input:   s.Input.Foreground(s.ColorDim),
 		Status:  s.Status.Foreground(s.ColorDim),
 		Confirm: s.Confirm.Foreground(s.ColorDim),
+		// Label dims with the rest of the chrome. (Under an overlay it
+		// therefore reads the same as the cursor's own register, which is
+		// how the highlight is hidden while a modal owns the screen.)
+		Label: s.Label.Foreground(s.ColorDim),
 		// Body gains the dim foreground under an overlay so plain body
 		// text (which is colorless by default) dims with everything else.
 		Body: s.Body.Foreground(s.ColorDim),
@@ -193,4 +219,32 @@ func (s *Styles) Dimmed() *Styles {
 		ColorMuted:   s.ColorDim,
 		ColorWarning: s.ColorDim,
 	}
+}
+
+// Selected returns a copy of Styles in which the window-chrome styles carry
+// the selection color: the register a window's own line is drawn in while
+// the display cursor is on it.
+//
+// Only the styles that name a window are swapped — Label (every window
+// line's default color) and Error (SYSTEM ERROR's line). They are exactly
+// the colors lineStyleForTag can return, so every glyph of the highlighted
+// row — marker, label, tool name, timestamp — comes out in the selection
+// color from one styles swap. Everything else, in particular System, which
+// carries the collapsed line's content summary, keeps the color it has: the
+// highlight marks the window, never its content. (Prompt is deliberately
+// not swapped: Styles.Prompt belongs to the prompt box and the overlay
+// filter fields, and those are never window rows.)
+//
+// The counterpart of Dimmed() in the same spirit — a derived Styles rather
+// than a flag threaded through every renderer, so that "who is the cursor"
+// reaches the labels through the one channel the renderers already take
+// their colors from.
+func (s *Styles) Selected() *Styles {
+	if s == nil {
+		return nil
+	}
+	c := *s
+	c.Label = c.Label.Foreground(s.BorderCursor)
+	c.Error = c.Error.Foreground(s.BorderCursor)
+	return &c
 }
