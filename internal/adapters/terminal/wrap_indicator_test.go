@@ -262,6 +262,12 @@ func TestFoldedToolCollapsedLabelColor(t *testing.T) {
 	// shares the label color so they read as a single colored unit, the
 	// tool name is bold + muted (so it stands out from the arguments), and
 	// the arguments after the name stay muted (no bold).
+	//
+	// The name's style is the SAME one the expanded row uses, which in this
+	// register is the same bytes as the label's — so the assertion below
+	// cannot tell the two apart. What pins the name's style as its own is
+	// TestToolNameIsIdenticalFoldedAndExpanded, which compares the two fold
+	// states under the cursor, where they differ.
 	if !strings.Contains(rendered, styles.Label.Bold(true).Render("TOOL CALL")) {
 		t.Errorf("TOOL CALL label should be plain bold (the label color): %q", rendered)
 	}

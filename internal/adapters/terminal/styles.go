@@ -228,12 +228,15 @@ func (s *Styles) Dimmed() *Styles {
 // Only the styles that name a window are swapped — Label (every window
 // line's default color) and Error (SYSTEM ERROR's line). They are exactly
 // the colors lineStyleForTag can return, so every glyph of the highlighted
-// row — marker, label, tool name, timestamp — comes out in the selection
-// color from one styles swap. Everything else, in particular System, which
-// carries the collapsed line's content summary, keeps the color it has: the
-// highlight marks the window, never its content. (Prompt is deliberately
-// not swapped: Styles.Prompt belongs to the prompt box and the overlay
-// filter fields, and those are never window rows.)
+// row's chrome — marker, label, timestamp — comes out in the selection color
+// from one styles swap. Everything else keeps the color it has: System,
+// which carries the collapsed line's content summary, and ToolContent, which
+// carries a tool window's name and its arguments. The highlight marks the
+// window, never what it says — and the name is on the row at both fold
+// states, so swapping it would repaint the row when the reader folds it
+// (toolNameStyle, window.go). (Prompt is deliberately not swapped:
+// Styles.Prompt belongs to the prompt box and the overlay filter fields, and
+// those are never window rows.)
 //
 // The counterpart of Dimmed() in the same spirit — a derived Styles rather
 // than a flag threaded through every renderer, so that "who is the cursor"

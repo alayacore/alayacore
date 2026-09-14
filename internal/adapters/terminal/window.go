@@ -649,19 +649,23 @@ func (w *Window) timeStamp() string {
 }
 
 // expandTitle returns an expanded window's label in two forms: the plain
-// text (for the rule's width accounting) and the styled rendering.
+// text (for the row's width accounting) and the styled rendering.
 //
-// Tool windows keep the collapsed line's layout — bold "TOOL CALL" + a
-// space + the status indicator in the fixed label column, then the muted
-// bold tool name: "─ TOOL CALL ⠋    execute_command ──". The label and
-// indicator share one color so they read as a unit, and the bold name is
-// the semantic payload. Other windows use their plain label ("ASSISTANT",
-// "SYSTEM NOTIFY", "USER PROMPT", …).
+// Tool windows keep the collapsed line's layout — bold "TOOL CALL" + a space
+// + the status indicator in the fixed label column, then the tool name:
+// "- TOOL CALL ⠋    execute_command". The label and indicator share one
+// color so they read as a unit, and the bold name is the semantic payload.
+// Other windows use their plain label ("ASSISTANT", "SYSTEM NOTIFY",
+// "USER PROMPT", …).
+//
+// The name takes toolNameStyle, the same style the collapsed row paints it
+// with, so folding a window leaves it alone; everything else on the row
+// takes lineStyleForTag's style.
 //
 // The colors come from styles, so a caller wanting the cursor's register
 // passes Styles.Selected() and gets a highlighted label — and, for tool
 // windows, a highlighted status indicator with it (statusDot inherits the
-// label color).
+// label color). The name is not highlighted in either state.
 func (w *Window) expandTitle(styles *Styles) (plain, styled string) {
 	labelStyle := lineStyleForTag(w.Tag(), styles)
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
@@ -675,7 +679,7 @@ func (w *Window) expandTitle(styles *Styles) (plain, styled string) {
 		// Label-column padding — the indicator is multi-byte UTF-8, so skip
 		// len(dot) bytes (not 1) after the label + separator.
 		sb.WriteString(label[len(toolHeaderLabel)+len(toolLabelSep)+len(dot):])
-		sb.WriteString(styles.ToolContent.Bold(true).Render(tr.name))
+		sb.WriteString(toolNameStyle(styles).Render(tr.name))
 		return label + tr.name, sb.String()
 	}
 	label := w.windowLabel()
@@ -685,11 +689,15 @@ func (w *Window) expandTitle(styles *Styles) (plain, styled string) {
 	return label, labelStyle.Render(label)
 }
 
-// lineStyleForTag returns the ONE style every glyph of a window's own line
-// is drawn in: the fold marker, the label, a tool window's name and the
-// arrival timestamp all take it, so the line reads as a single unit instead
-// of four differently-weighted pieces. Bold throughout — a line that names a
-// window is chrome and is meant to be scannable.
+// lineStyleForTag returns the ONE style the chrome of a window's own line is
+// drawn in: the fold marker, the label and the arrival timestamp all take it,
+// so what names a window reads as a single unit instead of three
+// differently-weighted pieces. Bold throughout — a line that names a window
+// is chrome and is meant to be scannable.
+//
+// A tool window's name is the exception, and it is not this function's
+// business: it takes toolNameStyle in the collapsed row and in the expanded
+// one, so that folding a window repaints nothing (see toolNameStyle).
 //
 // The color is the label color for EVERY window type except the system
 // errors. A user's turn, a reasoning step, an answer and a tool call are all
@@ -714,6 +722,33 @@ func lineStyleForTag(tag string, styles *Styles) Style {
 		return styles.Error.Bold(true)
 	}
 	return styles.Label.Bold(true)
+}
+
+// toolNameStyle is the style a tool window's name is drawn in — in BOTH fold
+// states, which is the reason it exists as a named function rather than as
+// this expression written twice.
+//
+// The name is the payload of a tool row, not chrome, so it is deliberately
+// NOT lineStyleForTag's style: the highlight recolors the row's chrome (the
+// marker, the label, the timestamp) and leaves the name and the arguments in
+// the content color. That is the same reading the window body gets — the
+// cursor covers the line that names a window, never what the window says.
+//
+// Writing the expression out at both call sites is what let folded and
+// expanded drift apart: the collapsed row painted the name with the line's
+// style and the expanded row with this one, and because Label and
+// ToolContent are both muted the two only differed under the cursor — where
+// the name turned to the selection color when folded and stayed muted when
+// expanded. Folding a window repainted the one token the reader was looking
+// at. One function, called from both rows, is what keeps them equal.
+//
+// Bold, like the line: the name has to hold its own against the muted
+// arguments that follow it.
+func toolNameStyle(styles *Styles) Style {
+	if styles == nil {
+		return NewStyle().Bold(true)
+	}
+	return styles.ToolContent.Bold(true)
 }
 
 // LineCount returns the cached line count (valid after Render).

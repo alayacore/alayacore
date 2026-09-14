@@ -1,18 +1,18 @@
 package terminal
 
-// Tests for the cursor highlight and, with it, the one property the window
-// line has to hold in every state: **every glyph of the row shares a single
-// style** — the fold marker, the label, a tool window's name and the
-// arrival timestamp are painted with one Style, so the row reads as one
-// unit rather than as four differently-weighted pieces.
+// Tests for the cursor highlight and, with it, the styles a window's row is
+// assembled from.
 //
-// The style itself is lineStyleForTag's (bold + the window's color: the
-// label color, a user prompt's accent, or the error color), and its cursor
-// register is the same object with those colors swapped for the selection
-// color (Styles.Selected()) — which is what these tests compare against.
+// The row is lineStyleForTag's style — bold, one color: the fold marker, the
+// label and the arrival timestamp are painted with it, so the row reads as
+// one unit rather than as a dim marker followed by a bold word and a dim
+// clock — and its cursor register is the same object with the label (and
+// error) colors swapped for the selection color (Styles.Selected()).
 //
 // What the highlight must NOT touch: the folded line's content summary
-// (content, not chrome) and anything below row 0.
+// (content, not chrome), anything below row 0, and a tool window's name —
+// which is the row's payload and takes toolNameStyle in both fold states,
+// the invariant TestToolNameIsIdenticalFoldedAndExpanded pins.
 
 import (
 	"strings"
@@ -91,44 +91,107 @@ func TestWindowLineCollapsedIsOneStyle(t *testing.T) {
 	}
 }
 
-// TestWindowLineToolNameSharesTheStyle: a tool window's name is part of the
-// line, not a second style on it — so it moves with the line when the
-// cursor arrives, exactly like the label beside it. The arguments after it,
-// and the result inside it, stay content.
-func TestWindowLineToolNameSharesTheStyle(t *testing.T) {
+// styleRun returns the escape-delimited run a plain token is painted with
+// inside a rendered row — "\x1b[1;38;2;108;112;134mexecute_command\x1b[m" —
+// or "" when the token is not there. Comparing runs is how the tests below
+// ask "same style?" without naming the style: two rows that paint a token
+// the same way have the same run.
+func styleRun(row, token string) string {
+	i := strings.Index(row, token)
+	if i < 0 {
+		return ""
+	}
+	start := strings.LastIndex(row[:i], "\x1b[")
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(row[i:], "\x1b[m")
+	if end < 0 {
+		return ""
+	}
+	return row[start : i+end+len("\x1b[m")]
+}
+
+// TestToolNameIsIdenticalFoldedAndExpanded: a tool window's name is the one
+// token on the row that is not the line's style, and it must be painted the
+// same whichever way the window is folded.
+//
+// Folding a tool window is how a reader gets scaffolding out of the way; it
+// must not repaint the token that says which tool ran. The name is not the
+// line's style because it is the row's payload: the highlight covers the
+// chrome that names the window (the marker, the label, the timestamp) and
+// leaves the name and the arguments in the content color — see
+// toolNameStyle.
+//
+// The four runs (plain/cursor × folded/expanded) are compared against each
+// other rather than against an expected style, so what is pinned is the
+// property itself: folded == expanded, in both registers. The two extra
+// assertions keep that from passing vacuously — a row that highlights
+// nothing, and a row that highlights everything, both satisfy "all four
+// equal" — by requiring that the name does not carry the cursor's color and
+// that the label beside it does.
+func TestToolNameIsIdenticalFoldedAndExpanded(t *testing.T) {
+	const width, name = 80, "execute_command"
 	styles := DefaultStyles()
-	wb := NewWindowBuffer(80, styles)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", "x") // occupies row 0 of the transcript
+	wb := NewWindowBuffer(width, styles)
+	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", "x") // the tool row is not row 0
 	wb.HandleToolInputEvent(protocol.ToolInputData{
 		ID:    "t1",
-		Name:  "execute_command",
-		Input: []byte("execute_command: lscpu"),
+		Name:  name,
+		Input: []byte(name + ": lscpu"),
 	}, 0)
 	pinCreatedAt(wb)
 	ti, _ := wb.LookupID("t1")
 
-	// Folded (a tool window starts folded): the name follows the label
-	// column, the arguments follow the name.
-	plain, cursor := wb.GetAll(-1, false), wb.GetAll(ti, false)
-	if !strings.Contains(toolRow(plain), lineStyle(styles).Render("execute_command")) {
-		t.Errorf("the tool name should take the line's style: %q", toolRow(plain))
+	// A tool window arrives folded; expand it halfway down.
+	wb.HandleToolOutput("t1", "ok", false, 0)
+	pinCreatedAt(wb)
+
+	type rowCase struct {
+		what   string
+		row    string
+		cursor bool
+		folded bool
 	}
-	if !strings.Contains(toolRow(cursor), cursorLineStyle(styles).Render("execute_command")) {
-		t.Errorf("the tool name should move to the cursor register with the rest of the line: %q", toolRow(cursor))
+	cases := []rowCase{
+		{"folded, plain", toolRow(wb.GetAll(-1, false)), false, true},
+		{"folded, cursor", toolRow(wb.GetAll(ti, false)), true, true},
 	}
-	// …and the arguments stay content (the content color, no line weight).
-	if !strings.Contains(toolRow(plain), styles.ToolContent.Render(" lscpu")) {
-		t.Errorf("arguments are content and keep the content color: %q", toolRow(plain))
+	wb.ToggleFold(ti)
+	cases = append(cases,
+		rowCase{"expanded, plain", toolRow(wb.GetAll(-1, false)), false, false},
+		rowCase{"expanded, cursor", toolRow(wb.GetAll(ti, false)), true, false},
+	)
+
+	want := styleRun(cases[0].row, name)
+	if want == "" {
+		t.Fatalf("fixture: the folded row does not carry the tool name: %q", cases[0].row)
+	}
+	cursorName := cursorLineStyle(styles).Render(name)
+	for _, tc := range cases {
+		if got := styleRun(tc.row, name); got != want {
+			t.Errorf("%s: the tool name is painted %q, want %q (the run the folded row uses)",
+				tc.what, got, want)
+		}
+		if strings.Contains(tc.row, cursorName) {
+			t.Errorf("%s: the name must not take the cursor's color — it is the row's payload, "+
+				"not chrome: %q", tc.what, tc.row)
+		}
+		if tc.cursor && !strings.Contains(tc.row, cursorLineStyle(styles).Render("TOOL CALL")) {
+			t.Errorf("%s: the label must still highlight when the cursor is here: %q", tc.what, tc.row)
+		}
+		if tc.folded && !strings.Contains(tc.row, styles.ToolContent.Render(" lscpu")) {
+			t.Errorf("%s: arguments are content and keep the content color: %q", tc.what, tc.row)
+		}
 	}
 
-	// Expanded: the same name, on the line that also carries the timestamp.
-	wb.ToggleFold(ti)
-	plain = wb.GetAll(-1, false)
-	if !strings.Contains(toolRow(plain), lineStyle(styles).Render("execute_command")) {
-		t.Errorf("the expanded line should name the tool in the line's style: %q", toolRow(plain))
-	}
-	if !strings.Contains(toolRow(plain), lineStyle(styles).Render(pinnedTime.Format(timeStampLayout))) {
-		t.Errorf("and the timestamp beside it in the same style: %q", toolRow(plain))
+	// The rest of the expanded row is still one style: the timestamp beside
+	// the name moves to the cursor register with the label.
+	stamp := pinnedTime.Format(timeStampLayout)
+	expandedCursor := cases[len(cases)-1]
+	if got := styleRun(expandedCursor.row, stamp); got != cursorLineStyle(styles).Render(stamp) {
+		t.Errorf("expanded, cursor: the timestamp should take the line's cursor style:\n  got:  %q\n"+
+			"  want: %q", got, cursorLineStyle(styles).Render(stamp))
 	}
 }
 

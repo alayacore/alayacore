@@ -956,12 +956,17 @@ func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) 
 }
 
 // renderToolCollapsedLine applies per-segment styling to a tool window's
-// collapsed line. The window line's own parts — the "TOOL CALL" label, the
-// status indicator and the tool name — all take labelStyle, which is the
-// single style the whole line is drawn in (see lineStyleForTag); the
-// separator space and the label-column padding are plain (they are spaces),
-// and everything after the name is content and takes the muted content
-// color (with the "…" marker dim when inputFirstHasEllipsis is true).
+// collapsed line. The window line's own chrome — the "TOOL CALL" label and
+// the status indicator — takes labelStyle, the single style the whole line
+// is drawn in (see lineStyleForTag); the separator space and the
+// label-column padding are plain (they are spaces); the tool name takes
+// toolNameStyle and everything after it is content and takes the muted
+// content color (with the "…" marker dim when inputFirstHasEllipsis is
+// true).
+//
+// The name is the one glyph on the row that is not the line's style, and it
+// has to be the same style the expanded row paints it with: see
+// toolNameStyle.
 //
 // The indicator is multi-byte UTF-8 — slice by len(dot), never by byte 1.
 func renderToolCollapsedLine(
@@ -994,17 +999,17 @@ func renderToolCollapsedLine(
 	if len(line) <= toolLen+sepLen+dotLen {
 		return sb.String()
 	}
-	// Label column padding (plain spaces) + the tool name: part of the
-	// window's own line, so it takes labelStyle — the same style as the
-	// marker, the label and (when expanded) the timestamp — and moves with
-	// them when the cursor arrives. The name's byte length is bounded by
-	// what survived truncation.
+	// Label column padding (plain spaces) + the tool name. The name takes
+	// toolNameStyle — the same style the expanded line paints it with — so
+	// that folding a window does not repaint it; the padding around it is
+	// part of the label column and moves with the line. The name's byte
+	// length is bounded by what survived truncation.
 	paddingEnd := min(len(line), contentStart)
 	sb.WriteString(line[toolLen+sepLen+dotLen : paddingEnd])
 	nameByteLen := min(len(name), max(0, len(line)-contentStart))
 	nameEnd := contentStart + nameByteLen
 	if nameByteLen > 0 {
-		sb.WriteString(labelStyle.Render(line[contentStart:nameEnd]))
+		sb.WriteString(toolNameStyle(styles).Render(line[contentStart:nameEnd]))
 	}
 	// When the inputFirst delta was truncated, the leading "…" in the
 	// content area gets the dim color (styles.Status) instead of the
