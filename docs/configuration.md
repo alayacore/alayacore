@@ -300,7 +300,7 @@ removed: #f38ba8
 | Color | Used for |
 |-------|----------|
 | `primary` | User input text, emphasis, focused box rules, running status dot (status bar only — tool windows use the colorless spinner while running). The prompt box is the only surface that carries it: transcript windows do not |
-| `dim` | Unfocused box rules (the prompt box, overlays, the filter list), the status bar and its segment separators, overlay title and help-bar backgrounds, the live edge |
+| `dim` | Unfocused box rules (the prompt box and a selector overlay's filter box), the status bar and its segment separators, overlay title and help-bar backgrounds, the live edge |
 | `muted` | Secondary text, system messages, tool content, the window line's default color |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors, and the `SYSTEM ERROR` line |

@@ -40,21 +40,24 @@ func TestAttachmentWindowListRowsFlushLeft(t *testing.T) {
 	plain := stripANSI(aw.View().Content)
 	lines := strings.Split(plain, "\n")
 
-	// Rows live after the "N items" count line, before the help bar.
+	// Rows hang below the filter box's closing rule — the second rule in the
+	// overlay — and the help bar is the last line: the list has no rules of
+	// its own any more.
+	rules := 0
 	start := -1
 	for i, l := range lines {
-		if strings.Contains(l, "items") {
-			start = i + 1
-			break
+		if strings.HasPrefix(l, "──") {
+			rules++
+			if rules == 2 {
+				start = i + 1
+				break
+			}
 		}
 	}
 	if start < 0 {
-		t.Fatalf("could not locate the item count line in: %q", plain)
+		t.Fatalf("could not locate the filter box's closing rule in: %q", plain)
 	}
-	for _, l := range lines[start:] {
-		if strings.HasPrefix(l, "──") { // bottom box rule
-			break
-		}
+	for _, l := range lines[start : len(lines)-1] { // exclude the help bar
 		if l == "" {
 			continue
 		}

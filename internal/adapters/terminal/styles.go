@@ -71,10 +71,12 @@ type Styles struct {
 // element one terminal row, no '\n' inside) and returns the box as a
 // visual line array: [top rule, ...content lines, bottom rule].
 //
-// This is the box a FLOATING surface draws — an overlay (confirm dialog,
-// help window, model/theme/attachment list) and the prompt input. They
-// need the closing rule because nothing follows them: the box is the whole
-// of what the reader sees of that surface, so it has to end itself.
+// This is the box a FLOATING surface draws — a confirm dialog, the prompt
+// input, and the filter box at the top of a selector overlay (model, theme,
+// attachment, help). The standalone surfaces need the closing rule because
+// nothing follows them: the box is the whole of what the reader sees. In a
+// selector the closing rule is instead the one divider between the search
+// and the list, which hangs bare under it (RenderListBody).
 //
 // Transcript windows deliberately do NOT use it. A window is opened by a
 // rule carrying its label (Window.buildExpandRule) and the next window is
@@ -98,11 +100,10 @@ func (s *Styles) RenderOpenBoxLines(lines []visualLine, width int, borderColor c
 	return out
 }
 
-// RenderOpenBox renders a bordered box for a FLOATING surface — an overlay
-// or the prompt input — with only top/bottom rules and NO side borders
-// ("open" style). Unlike a transcript window (which opens with a labeled
-// rule and is closed by the next window), such a surface has nothing after
-// it, so it has to bracket itself:
+// RenderOpenBox renders a bordered box for a FLOATING surface — the prompt
+// input, a confirm dialog, or a selector overlay's filter box — with only
+// top/bottom rules and NO side borders ("open" style). A standalone surface
+// has nothing after it, so it has to bracket itself:
 //
 //	──────────────────────────────────────────
 //	content line                           ← caller guarantees ≤ width
@@ -141,6 +142,23 @@ func (s *Styles) RenderOpenBox(content string, width int, borderColor color.Colo
 		out = append(out, b.Text)
 	}
 	return strings.Join(out, "\n")
+}
+
+// RenderListBody renders the rows of a selector overlay's list with NO rules
+// of its own. The filter box above already ends in a rule, and that single
+// rule is the whole delimiter the search and the list need between them; the
+// help bar is what closes the surface below. A rule on either edge of the list
+// would only repeat one of those, so the list hangs bare under the filter box.
+//
+// Content is padded to a fixed height so the overlay keeps its size whether
+// the list is full, short, or empty — the same reason RenderOpenBox's height
+// argument exists. Callers wrap and truncate every row themselves.
+func (s *Styles) RenderListBody(content string, height int) string {
+	lines := strings.Split(content, "\n")
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // NewStyles creates a Styles instance from a Theme

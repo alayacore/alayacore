@@ -564,11 +564,11 @@ func (aw AttachmentWindow) render() string {
 	// adding a fifth hint.
 	switch {
 	case aw.mode == modeURL:
-		help = "  enter: add URL | ctrl+a: switch to local | esc: close"
+		help = "enter: add URL | ctrl+a: switch to local | esc: close"
 	case aw.FilterInputFocused:
-		help = "  tab: list | enter: pick | ctrl+w: up a level | ctrl+a: url"
+		help = "tab: list | enter: pick | ctrl+w: up a level | ctrl+a: url"
 	default:
-		help = "  tab: search | j/k: navigate | enter: pick | esc: close"
+		help = "tab: search | j/k: navigate | enter: pick | esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))
@@ -578,16 +578,12 @@ func (aw AttachmentWindow) render() string {
 
 func (aw AttachmentWindow) renderURLBody(sb *strings.Builder, _ int) {
 	sb.WriteString(aw.Styles.System.Render("Enter a URL to attach (e.g. https://example.com/image.jpg)"))
-	// Pad to match local mode height (file list box).
-	sb.WriteString(strings.Repeat("\n", 10))
+	// Pad to the local list's height (SelectorListRows rows), so switching
+	// modes with Ctrl+A does not resize the overlay and shift it vertically.
+	sb.WriteString(strings.Repeat("\n", SelectorListRows-1))
 }
 
 func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
-	countStr := fmt.Sprintf("%d items", len(aw.filtered))
-	sb.WriteString(aw.Styles.System.Render(countStr))
-	sb.WriteString("\n")
-
-	listBorderColor := aw.ListBorderColor()
 	listHeight := SelectorListRows
 	innerWidth := max(0, boxWidth)
 
@@ -614,8 +610,8 @@ func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
 		}
 	}
 
-	fileBox := aw.Styles.RenderOpenBox(content.String(), boxWidth, listBorderColor, listHeight)
-	sb.WriteString(fileBox)
+	fileBody := aw.Styles.RenderListBody(content.String(), listHeight)
+	sb.WriteString(fileBody)
 }
 
 func (aw AttachmentWindow) RenderOverlay(baseContent string, screenWidth, screenHeight int) string {

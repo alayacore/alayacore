@@ -5,7 +5,6 @@ package terminal
 
 import (
 	"fmt"
-	"image/color"
 	"strings"
 
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -241,23 +240,15 @@ func (ms ModelSelector) renderList() string {
 	sb.WriteString(searchBox)
 	sb.WriteString("\n")
 
-	if ms.activeModel != nil {
-		sb.WriteString(ms.Styles.System.Render("Current: "))
-		name := truncateWithSuffix(ms.activeModel.Name, max(0, ms.Width-Width("Current: ")))
-		sb.WriteString(NewStyle().Bold(true).Render(name))
-		sb.WriteString("\n")
-	}
-
-	listBorderColor := ms.ListBorderColor()
 	boxWidth := Width(searchBox)
-	sb.WriteString(ms.renderModelList(boxWidth, listBorderColor))
+	sb.WriteString(ms.renderModelList(boxWidth))
 
 	helpStyle := NewStyle().Background(ms.Styles.ColorDim).Foreground(ms.Styles.ColorMuted)
 	var help string
 	if ms.FilterInputFocused {
-		help = "  tab: list | ctrl+r: reload | enter: select | esc: close"
+		help = "tab: list | ctrl+r: reload | enter: select | esc: close"
 	} else {
-		help = "  tab: search | j/k: navigate | enter: select | q/esc: close"
+		help = "tab: search | j/k: navigate | enter: select | q/esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))
@@ -265,7 +256,7 @@ func (ms ModelSelector) renderList() string {
 	return sb.String()
 }
 
-func (ms ModelSelector) renderModelList(width int, borderColor color.Color) string {
+func (ms ModelSelector) renderModelList(width int) string {
 	var content strings.Builder
 	listHeight := SelectorListRows
 	innerWidth := max(0, width)
@@ -287,7 +278,7 @@ func (ms ModelSelector) renderModelList(width int, borderColor color.Color) stri
 		}
 	}
 
-	return ms.Styles.RenderOpenBox(content.String(), width, borderColor, listHeight)
+	return ms.Styles.RenderListBody(content.String(), listHeight)
 }
 
 func (ms ModelSelector) maxIDWidth() int {

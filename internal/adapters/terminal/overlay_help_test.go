@@ -32,7 +32,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 				aw.FilterInputFocused = true
 				return aw.View().Content
 			},
-			want: "  tab: list | enter: pick | ctrl+w: up a level | ctrl+a: url",
+			want: "tab: list | enter: pick | ctrl+w: up a level | ctrl+a: url",
 		},
 		{
 			name: "attachment, file list", boxWidth: 60,
@@ -41,13 +41,13 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 				aw.FilterInputFocused = false
 				return aw.View().Content
 			},
-			want: "  tab: search | j/k: navigate | enter: pick | esc: close",
+			want: "tab: search | j/k: navigate | enter: pick | esc: close",
 		},
 		{
 			name:     "attachment, URL mode",
 			boxWidth: 60,
 			render:   func() string { return NewAttachmentWindow(s).Open().switchToURL().View().Content },
-			want:     "  enter: add URL | ctrl+a: switch to local | esc: close",
+			want:     "enter: add URL | ctrl+a: switch to local | esc: close",
 		},
 		{
 			name: "model, filter", boxWidth: 60,
@@ -56,7 +56,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 				ms.FilterInputFocused = true
 				return ms.View().Content
 			},
-			want: "  tab: list | ctrl+r: reload | enter: select | esc: close",
+			want: "tab: list | ctrl+r: reload | enter: select | esc: close",
 		},
 		{
 			name: "model, list", boxWidth: 60,
@@ -65,7 +65,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 				ms.FilterInputFocused = false
 				return ms.View().Content
 			},
-			want: "  tab: search | j/k: navigate | enter: select | q/esc: close",
+			want: "tab: search | j/k: navigate | enter: select | q/esc: close",
 		},
 		{
 			name: "theme, filter", boxWidth: 60,
@@ -74,7 +74,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 				ts.FilterInputFocused = true
 				return ts.View().Content
 			},
-			want: "  tab: list | enter: select | esc: close",
+			want: "tab: list | enter: select | esc: close",
 		},
 		{
 			name: "theme, list", boxWidth: 60,
@@ -83,7 +83,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 				ts.FilterInputFocused = false
 				return ts.View().Content
 			},
-			want: "  tab: search | j/k: navigate | enter: select | q/esc: close",
+			want: "tab: search | j/k: navigate | enter: select | q/esc: close",
 		},
 		{
 			name:     "help, filter",
@@ -93,7 +93,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 				hw.FilterInputFocused = true
 				return hw.View().Content
 			},
-			want: "  tab: list | esc: close",
+			want: "tab: list | esc: close",
 		},
 		{
 			name:     "help, list",
@@ -103,7 +103,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 				hw.FilterInputFocused = false
 				return hw.View().Content
 			},
-			want: "  tab: filter | j/k: navigate | enter: copy to input | q/esc: close",
+			want: "tab: filter | j/k: navigate | enter: copy to input | q/esc: close",
 		},
 	} {
 		t.Run(st.name, func(t *testing.T) {

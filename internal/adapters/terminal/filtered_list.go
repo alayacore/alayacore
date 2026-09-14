@@ -270,11 +270,3 @@ func (fl FilteredListCore) FilterBorderColor() color.Color {
 	}
 	return fl.Styles.BorderFocused
 }
-
-// ListBorderColor returns the border color for the list based on focus state.
-func (fl FilteredListCore) ListBorderColor() color.Color {
-	if !fl.HasFocus || fl.FilterInputFocused {
-		return fl.Styles.BorderBlurred
-	}
-	return fl.Styles.BorderFocused
-}

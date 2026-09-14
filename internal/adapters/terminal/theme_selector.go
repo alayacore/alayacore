@@ -6,7 +6,6 @@ package terminal
 
 import (
 	"fmt"
-	"image/color"
 	"strings"
 
 	"github.com/alayacore/alayacore/internal/theme"
@@ -277,20 +276,14 @@ func (ts ThemeSelector) renderList() string {
 	sb.WriteString(filterBox)
 	sb.WriteString("\n")
 
-	sb.WriteString(ts.Styles.System.Render("Current: "))
-	themeName := truncateWithSuffix(ts.originalThemeName, max(0, ts.Width-Width("Current: ")))
-	sb.WriteString(NewStyle().Bold(true).Render(themeName))
-	sb.WriteString("\n")
-
-	listBorderColor := ts.ListBorderColor()
-	sb.WriteString(ts.renderThemeList(Width(filterBox), listBorderColor))
+	sb.WriteString(ts.renderThemeList(Width(filterBox)))
 
 	helpStyle := NewStyle().Background(ts.Styles.ColorDim).Foreground(ts.Styles.ColorMuted)
 	var help string
 	if ts.FilterInputFocused {
-		help = "  tab: list | enter: select | esc: close"
+		help = "tab: list | enter: select | esc: close"
 	} else {
-		help = "  tab: search | j/k: navigate | enter: select | q/esc: close"
+		help = "tab: search | j/k: navigate | enter: select | q/esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, ts.Width))
@@ -298,7 +291,7 @@ func (ts ThemeSelector) renderList() string {
 	return sb.String()
 }
 
-func (ts ThemeSelector) renderThemeList(width int, borderColor color.Color) string {
+func (ts ThemeSelector) renderThemeList(width int) string {
 	var content strings.Builder
 	listHeight := SelectorListRows
 	innerWidth := max(0, width)
@@ -332,7 +325,7 @@ func (ts ThemeSelector) renderThemeList(width int, borderColor color.Color) stri
 		}
 	}
 
-	return ts.Styles.RenderOpenBox(content.String(), width, borderColor, listHeight)
+	return ts.Styles.RenderListBody(content.String(), listHeight)
 }
 
 // RenderOverlay renders the theme selector as an overlay on top of base content.

@@ -390,9 +390,8 @@ func (hw HelpWindow) View() View {
 		lines = append(lines, "")
 	}
 
-	listBorderColor := hw.ListBorderColor()
 	content := strings.Join(lines, "\n")
-	listBox := hw.Styles.RenderOpenBox(content, hw.Width, listBorderColor, listHeight)
+	listBody := hw.Styles.RenderListBody(content, listHeight)
 
 	titleStyle := NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorAccent).Bold(true)
 	title := titleStyle.Render(fmt.Sprintf("%-*s", hw.Width, "Help"))
@@ -400,7 +399,7 @@ func (hw HelpWindow) View() View {
 	helpStyle := NewStyle().Background(hw.Styles.ColorDim).Foreground(hw.Styles.ColorMuted)
 	var help string
 	if hw.FilterInputFocused {
-		help = "  tab: list | esc: close"
+		help = "tab: list | esc: close"
 	} else {
 		base := "tab: filter | j/k: navigate"
 		if hw.SelectedIdx >= 0 && hw.SelectedIdx < hw.filteredLen() &&
@@ -408,14 +407,11 @@ func (hw HelpWindow) View() View {
 			base += " | enter: copy to input"
 		}
 		base += " | q/esc: close"
-		help = "  " + base
+		help = base
 	}
 	helpBar := renderHelpBar(helpStyle, help, hw.Width)
 
-	countStr := fmt.Sprintf("%d items", hw.filteredLen())
-	infoLine := hw.Styles.System.Render(countStr)
-
-	return NewView(title + "\n" + filterBox + "\n" + infoLine + "\n" + listBox + "\n" + helpBar)
+	return NewView(title + "\n" + filterBox + "\n" + listBody + "\n" + helpBar)
 }
 
 func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {
