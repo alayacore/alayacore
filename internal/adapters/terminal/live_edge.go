@@ -3,8 +3,8 @@ package terminal
 // The live-edge row: the transcript's closing line, drawn on the one row
 // between the last message and the input box's top rule.
 //
-//	── following ──          new output lands right here
-//	── 12 lines below ──     you are scrolled back; that much is hidden
+//	- following -            new output lands right here
+//	- 12 lines below -       you are scrolled back; that much is hidden
 //
 // It replaces the "F↓" segment of the status bar, which had two problems.
 // It reported a fact about the transcript from the row *below the input
@@ -14,8 +14,9 @@ package terminal
 // the line the newest content arrives at. The other problem was the glyph:
 // U+2193 is East-Asian Ambiguous and was the one entry on the waiver list
 // in glyphs_test.go that carried its own "candidate for an ASCII
-// replacement" note. The only non-ASCII glyph on this row is the framing
-// rule, already on the box-drawing waiver, so the arrow has left the list.
+// replacement" note. This row now draws no waived glyph at all — the frame
+// is an ASCII hyphen (see the framing note below) — so nothing on it can
+// move a cell on a double-width-ambiguous terminal.
 //
 // Both states are worth the row. Following and a hidden tail are normally
 // mutually exclusive — auto-follow pins the viewport to the document bottom
@@ -28,14 +29,13 @@ package terminal
 // decoration — is why the row keeps quiet there instead of stating what is
 // not the case.
 //
-// Color: muted, not dim. Dim is what the rules and borders are drawn with
-// (theme conf: "unfocused borders"), and this row sits directly above the
-// input box's top rule — in dim it reads as a piece of that frame instead
-// of a label. Muted is the theme's secondary-label color, and it is the
-// color the "F↓" it replaces had: status segments are muted, only the bar's
-// separators and base are dim. No bold either — accent+bold belongs to the
-// running-task dot, and a marker that is on most of the time must be the
-// quietest thing on the screen.
+// Color: dim. This row sits directly above the input box's top rule, and
+// dim is what that rule and every other border is drawn with, so the label
+// recedes into the frame rather than competing with it — the point: this
+// marker is on most of the time and should be the quietest thing on screen.
+// It shares the theme's dim with the chrome around it rather than the muted
+// secondary-label color the status segment it replaced used. No bold either
+// — accent+bold belongs to the running-task dot.
 //
 // Case: lowercase. Uppercase in this UI is a block heading (`USER PROMPT`,
 // `TOOL CALL`, padded to CollapsedLabelWidth), and a heading here would be
@@ -43,11 +43,16 @@ package terminal
 // underneath. Runtime readouts are lowercase throughout — the status
 // segments, the placeholder, the help bars.
 //
-// The framing dashes are the box-drawing rule, not ASCII "-": a chrome line
-// must not be spellable as content (the reason `Separator` is "───" — see
-// constants.go), and "- x -" is a markdown list item. That is not academic
-// here: the frame is written in raw passthrough mode so that a screen
-// selection copies cleanly, and this row would travel with the transcript.
+// The frame is one ASCII hyphen on each side: "- label -". ASCII "-" is one
+// cell in every terminal, so the row cannot shift on a double-width-
+// ambiguous host; the box-drawing rule it replaced ("──") is East-Asian
+// Ambiguous and had to be billed at its worst-case width (see
+// renderLiveEdge). The old rule was chosen because "a chrome line must not
+// be spellable as content" — the reason `Separator` is still "───" — and
+// "- x -" is a markdown list item. That trade-off is accepted here: the
+// frame is written in raw passthrough mode and travels with a screen
+// selection, but this row is an ambient readout, not content a reader is
+// meant to copy.
 //
 // The user-facing description is "Live Edge" in docs/tui.md.
 
@@ -59,16 +64,12 @@ const (
 	// liveEdgeRows is the display height the layout spends on the row.
 	liveEdgeRows = 1
 
-	// liveEdgeFrame is the rule run on each side of the label — two cells,
-	// where `Separator` uses three: this is a label with an edge, not a
-	// divider spanning a box.
-	liveEdgeFrame = "──"
-
-	// liveEdgeFrameCells is the display width of liveEdgeFrame, stated
-	// separately because the width check above has to bill it twice (once
-	// per side) at an Ambiguous glyph's worst-case cost. live_edge_test.go
-	// pins it against the frame so the two cannot drift.
-	liveEdgeFrameCells = 2
+	// liveEdgeFrame is the mark on each side of the label — one ASCII
+	// hyphen, so the row reads "- following -". ASCII is one cell in every
+	// terminal (constants.go), which is why the box-drawing rule the old
+	// frame used is gone: it is East-Asian Ambiguous and forced the width
+	// check to bill each dash at two cells.
+	liveEdgeFrame = "-"
 
 	// liveEdgeFollowing is the label while auto-follow pins the viewport
 	// to the newest line. The word is the one the docs use for `G`
@@ -130,28 +131,20 @@ func (m Terminal) renderLiveEdge() string {
 	line := liveEdgeFrame + " " + label + " " + liveEdgeFrame
 	// The row must not overflow its width: a soft-wrapped marker adds a row
 	// to the frame and breaks the height the layout reserved. The bare label
-	// is tried before truncating it, because a cut label ("── 12 li…") says
-	// less than a full one without the frame.
-	//
-	// The allowance is for the framing rule: U+2500 is East-Asian Ambiguous
-	// (policy waiver 2a, constants.go) and a terminal configured for
-	// double-width ambiguous characters draws each of the four dashes two
-	// cells. Counting them at their worst cost keeps the framed form only
-	// where it still fits doubled; the bare label is pure ASCII and cannot
-	// move at all.
-	if Width(line)+2*liveEdgeFrameCells > m.windowWidth {
+	// is tried before truncating it, because a cut label ("- 12 li…") says
+	// less than a full one without the frame. Both forms are pure ASCII, so
+	// there is no ambiguous-glyph allowance to bill — the box-drawing frame
+	// this replaced needed one.
+	if Width(line) > m.windowWidth {
 		line = label
 	}
 	if Width(line) > m.windowWidth {
-		// The truncation ellipsis is Ambiguous too — leave it a cell.
+		// The truncation ellipsis is Ambiguous — leave it a cell.
 		line = truncateWithSuffix(line, max(0, m.windowWidth-1))
 	}
 
-	// Muted; dim under an overlay, where the whole background recedes
-	// (same treatment the status bar gives its segments).
-	style := NewStyle().Foreground(m.styles.ColorMuted)
-	if m.isBlocked() {
-		style = NewStyle().Foreground(m.styles.ColorDim)
-	}
-	return style.Render(line)
+	// Dim in every state: it is the color of the rules and borders, and
+	// this row is the input box's top rule's neighbor. An overlay dims the
+	// whole background to the same color, so there is nothing to switch.
+	return NewStyle().Foreground(m.styles.ColorDim).Render(line)
 }

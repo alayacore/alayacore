@@ -471,8 +471,8 @@ behaviour, the boundaries and the cost.
 
 The state reads on the **live edge** — the one row between the last message
 and the input box's top rule, which is where the newest line arrives. It says
-`── following ──` while auto-follow is on, counts what the viewport hides
-otherwise (`── 12 lines below ──`), and stays blank when it has nothing to say
+`- following -` while auto-follow is on, counts what the viewport hides
+otherwise (`- 12 lines below -`), and stays blank when it has nothing to say
 (scrolled back to the last line: the whole transcript is on screen).
 
 It counts **document** lines under the viewport, whatever window they belong to
@@ -486,26 +486,26 @@ The row belongs to the layout whether or not it carries text.
 `updateDisplayHeight` reserves it (`liveEdgeRows`), because a row that appeared
 and disappeared with the state would shift the viewport by a line on every flip
 and take the frame's height with it — the content must soft-wrap to exactly the
-screen height. The label is lowercase and muted: uppercase is this UI's block
+screen height. The label is lowercase and dim: uppercase is this UI's block
 heading (`USER PROMPT`, `TOOL CALL`, padded to `CollapsedLabelWidth`) and a
-heading here would be read as one more window title, and dim is what the rules
-and borders are drawn with, so on the row directly above the input box's rule it
-would make a label read as frame. No bold either: accent plus bold is the
-running task's dot, and a marker that is on most of the time has to be the
-quietest thing on screen. `live_edge.go` renders it, `live_edge_test.go` pins
-it.
+heading here would be read as one more window title; dim is what the rules and
+borders are drawn with, so on the row directly above the input box's rule the
+marker recedes into the frame rather than competing with it — deliberately the
+quietest thing on screen, since it is on most of the time. The frame is an ASCII
+hyphen, so the row is one cell in every terminal. No bold either: accent plus
+bold is the running task's dot. `live_edge.go` renders it, `live_edge_test.go`
+pins it.
 
 It used to be a `F↓` segment at the start of the status bar — and that row is
 *below* the input box, so the arrow pointed down at the prompt while the fact it
 reported was above it, and the `F` asked the reader to already know it meant
 follow. Its glyph, U+2193, was also the only entry on the width-waiver list
 carrying its own "candidate for an ASCII replacement" note (see
-[Fold Mode](#fold-mode)); the dashes framing this label are the box-drawing
-rule every frame in the app already pays for, so the arrow has left the list.
-Reading the state while rendering, instead of baking it into the cached status
-string, retired a staleness patch along with it: navigation moves no session
-status version, so the segment kept showing the previous state until the next
-session event (`TestLiveEdgeReadsStateAtRenderTime`).
+[Fold Mode](#fold-mode)); the frame is now ASCII too, so the whole row draws no
+waived glyph. Reading the state while rendering, instead of baking it into the
+cached status string, retired a staleness patch along with it: navigation moves
+no session status version, so the segment kept showing the previous state until
+the next session event (`TestLiveEdgeReadsStateAtRenderTime`).
 
 ### Fold Mode
 

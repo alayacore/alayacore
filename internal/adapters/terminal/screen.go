@@ -445,9 +445,9 @@ type positionedRow struct {
 // the overlay's close. Ordinary overlay rows are capped to the terminal
 // width and span exactly one row: the box rules span the width by
 // construction (`strings.Repeat`), and the short rows are capped to it — the
-// status bar truncates (renderStatusBar), the live edge measures its framing
-// glyph at its worst-case width first (renderLiveEdge), and an overlay box is
-// laid out inside the width it was given.
+// status bar truncates (renderStatusBar), the live edge caps its ASCII
+// marker to the width (renderLiveEdge), and an overlay box is laid out
+// inside the width it was given.
 func positionedRows(content string, width int) []positionedRow {
 	rows := parseFrameRows(content)
 	out := make([]positionedRow, 0, len(rows))

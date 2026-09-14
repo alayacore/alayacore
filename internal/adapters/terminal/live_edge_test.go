@@ -70,7 +70,7 @@ func TestLiveEdgeCountsHiddenLines(t *testing.T) {
 	if got := m.display.LinesBelow(); got != 5 {
 		t.Fatalf("LinesBelow() = %d after ScrollUp(5), want 5", got)
 	}
-	if got := stripANSI(m.renderLiveEdge()); got != "── 5 lines below ──" {
+	if got := stripANSI(m.renderLiveEdge()); got != "- 5 lines below -" {
 		t.Errorf("renderLiveEdge() = %q, want the framed line count", got)
 	}
 
@@ -80,7 +80,7 @@ func TestLiveEdgeCountsHiddenLines(t *testing.T) {
 	if got := m.display.LinesBelow(); got != 1 {
 		t.Fatalf("LinesBelow() = %d after scrolling 4 of 5 back down, want 1", got)
 	}
-	if got := stripANSI(m.renderLiveEdge()); got != "── 1 line below ──" {
+	if got := stripANSI(m.renderLiveEdge()); got != "- 1 line below -" {
 		t.Errorf("one line below: got %q", got)
 	}
 
@@ -157,7 +157,7 @@ func TestLiveEdgeSitsAboveInputRule(t *testing.T) {
 	grid := applyFrame(nil, v.Content, W)
 
 	markerRow := H - m.input.Height() - 1 - liveEdgeRows // the reserved row
-	if got := lineAt(grid, markerRow); got != "── following ──" {
+	if got := lineAt(grid, markerRow); got != "- following -" {
 		t.Errorf("live edge row %d = %q, want the marker", markerRow, got)
 	}
 	rule := lineAt(grid, markerRow+1)
@@ -210,11 +210,12 @@ func TestLiveEdgeKeepsFrameHeight(t *testing.T) {
 func TestLiveEdgeFitsItsWidth(t *testing.T) {
 	m := liveEdgeFixture(20)
 
-	// The framing glyph is Ambiguous, so it is billed at two cells per
-	// dash: the framed form is only kept where it still fits doubled.
+	// Both forms are pure ASCII, so the framed form is kept wherever it
+	// fits outright — there is no ambiguous-glyph allowance to bill (the
+	// box-drawing frame this replaced needed one).
 	full := liveEdgeFrame + " following " + liveEdgeFrame
-	needed := Width(full) + 2*liveEdgeFrameCells
-	for _, width := range []int{needed, needed - 1, Width(full), 12, 5, 1, 0} {
+	needed := Width(full)
+	for _, width := range []int{needed, needed - 1, Width("following"), 5, 1, 0} {
 		m.windowWidth = width
 		got := stripANSI(m.renderLiveEdge())
 		if Width(got) > width {
@@ -228,37 +229,37 @@ func TestLiveEdgeFitsItsWidth(t *testing.T) {
 		}
 		if width < needed && width > 0 && got != "" && strings.HasPrefix(got, liveEdgeFrame) &&
 			strings.HasSuffix(got, liveEdgeFrame) {
-			t.Errorf("width %d: kept the frame without its ambiguity allowance: %q", width, got)
+			t.Errorf("width %d: kept the frame where it does not fit: %q", width, got)
 		}
 	}
 }
 
-// TestLiveEdgeColors checks the two documented colors: muted as a secondary
-// label, dim under an overlay where the whole background recedes. Both are
-// compared against the styles pipeline rather than a hardcoded escape
-// sequence, so a theme switch cannot make this test lie.
+// TestLiveEdgeColors pins the row's one color: dim, in every state. It is the
+// same register the rules and borders use — the point of the choice — and an
+// overlay, which dims the whole background to that same color, changes
+// nothing. Both are compared against the styles pipeline rather than a
+// hardcoded escape sequence, so a theme switch cannot make this test lie.
 func TestLiveEdgeColors(t *testing.T) {
 	m := liveEdgeFixture(20)
 	line := liveEdgeFrame + " following " + liveEdgeFrame
 
-	wantMuted := NewStyle().Foreground(m.styles.ColorMuted).Render(line)
-	if got := m.renderLiveEdge(); got != wantMuted {
-		t.Errorf("live edge style = %q, want the muted label style %q", got, wantMuted)
+	wantDim := NewStyle().Foreground(m.styles.ColorDim).Render(line)
+	if got := m.renderLiveEdge(); got != wantDim {
+		t.Errorf("live edge style = %q, want the dim style %q", got, wantDim)
 	}
 
 	m.confirmOverlay = m.confirmOverlay.OpenQuit()
 	if !m.isBlocked() {
 		t.Fatal("fixture: the confirm dialog must block the background")
 	}
-	wantDim := NewStyle().Foreground(m.styles.ColorDim).Render(line)
 	if got := m.renderLiveEdge(); got != wantDim {
-		t.Errorf("live edge under an overlay = %q, want the dim style %q", got, wantDim)
+		t.Errorf("live edge under an overlay = %q, want the same dim style %q", got, wantDim)
 	}
 }
 
 // TestLiveEdgeRepaintLeavesNoResidue covers the marker row through the
 // screen's row diff. The row is CUP-anchored and its text changes length
-// with the state — "── 23 lines below ──" shrinking to "── following ──", or
+// with the state — "- 23 lines below -" shrinking to "- following -", or
 // the whole marker going quiet — and a repainted overlay row that shrinks
 // must have its old tail erased, or the frame keeps a stale fragment of the
 // previous count.
@@ -303,19 +304,11 @@ func TestLiveEdgeRepaintLeavesNoResidue(t *testing.T) {
 	if far.display.YOffset() == 0 {
 		t.Fatal("fixture: the scroll clamped at the top — the count below would be the document length, not the scroll")
 	}
-	if got := stripANSI(far.renderLiveEdge()); got != "── 23 lines below ──" {
+	if got := stripANSI(far.renderLiveEdge()); got != "- 23 lines below -" {
 		t.Fatalf("fixture: got %q, want the 23-line count", got)
 	}
 	grid := paint(t, far, m)
-	if got := lineAt(grid, markerRow); got != "── following ──" {
-		t.Errorf("after the marker shrank, row %d = %q, want %q", markerRow, got, "── following ──")
-	}
-}
-
-// TestLiveEdgeFrameCellsAgreesWithFrame keeps the constant the width check
-// bills against equal to the glyph string it is billing.
-func TestLiveEdgeFrameCellsAgreesWithFrame(t *testing.T) {
-	if got := Width(liveEdgeFrame); got != liveEdgeFrameCells {
-		t.Errorf("Width(liveEdgeFrame) = %d, liveEdgeFrameCells = %d", got, liveEdgeFrameCells)
+	if got := lineAt(grid, markerRow); got != "- following -" {
+		t.Errorf("after the marker shrank, row %d = %q, want %q", markerRow, got, "- following -")
 	}
 }

@@ -35,8 +35,11 @@ func fragmentRows(fragment string) int {
 
 // extractWindowContent returns the plain text of the content region that
 // follows a window's opening rule — the rows after row 0, up to the row
-// that begins the next window (a rule, or a folded line's arrow), which is
-// what now ends a window: an expanded window draws no closing rule.
+// that begins the next window (a rule, or a window's own line), which is
+// what now ends a window: an expanded window draws no closing rule. A
+// window's own line opens with "+ " when folded and "- " when expanded,
+// and the live-edge row above the input box also opens with "- "; all
+// three are chrome, not content, so any of them ends the region.
 //
 // Rows are joined with '\n' (that is how they sit in the output), so a
 // single soft-wrapped original line still arrives as one row with no
@@ -46,9 +49,14 @@ func extractWindowContent(plain string) string {
 	if len(rows) < 2 {
 		return ""
 	}
+	chrome := func(row string) bool {
+		return strings.HasPrefix(row, "─") ||
+			strings.HasPrefix(row, foldArrow) ||
+			strings.HasPrefix(row, unfoldArrow+" ")
+	}
 	body := make([]string, 0, len(rows)-1)
 	for _, row := range rows[1:] {
-		if strings.HasPrefix(row, "─") || strings.HasPrefix(row, foldArrow) {
+		if chrome(row) {
 			break
 		}
 		body = append(body, row)
