@@ -50,10 +50,19 @@ var (
 )
 
 // tty is one run of the program on a pty.
+//
+// cmd and master are written once, in startProgram, before the pump goroutine
+// is started, and are never reassigned afterwards. pump reads them without a
+// lock on that basis alone: a field that is only ever read concurrently is not
+// a race. close is idempotent through closeOnce rather than by nulling those
+// fields, so nothing ever writes them again.
 type tty struct {
 	cmd    *exec.Cmd
 	master *os.File
 
+	closeOnce sync.Once
+
+	// mu guards buf, the pump goroutine's write end and the test's read end.
 	mu  sync.Mutex
 	buf []byte
 }
@@ -140,22 +149,26 @@ func (t *tty) pump() {
 	}
 }
 
+// close stops the program and releases the pty. Both the test body and its
+// cleanup call it, so the work is guarded by closeOnce: the second caller does
+// nothing. Closing the master is what unblocks the pump goroutine's Read with
+// an error, which ends it.
 func (t *tty) close() {
-	if t.cmd != nil && t.cmd.Process != nil {
-		_ = t.cmd.Process.Signal(os.Interrupt)
-		done := make(chan struct{})
-		go func() { _, _ = t.cmd.Process.Wait(); close(done) }()
-		select {
-		case <-done:
-		case <-time.After(3 * time.Second):
-			_ = t.cmd.Process.Kill()
+	t.closeOnce.Do(func() {
+		if t.cmd != nil && t.cmd.Process != nil {
+			_ = t.cmd.Process.Signal(os.Interrupt)
+			done := make(chan struct{})
+			go func() { _, _ = t.cmd.Process.Wait(); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				_ = t.cmd.Process.Kill()
+			}
 		}
-		t.cmd = nil
-	}
-	if t.master != nil {
-		t.master.Close()
-		t.master = nil
-	}
+		if t.master != nil {
+			t.master.Close()
+		}
+	})
 }
 
 // send writes bytes as the terminal side. chunk > 0 delivers in fixed-size
