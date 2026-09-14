@@ -505,7 +505,7 @@ func firstLine(s string) string {
 // column (CollapsedLabelWidth, display columns) so content lines align
 // across window types. Longer labels (e.g. "TOOL execute_command") are
 // returned unchanged. Width is measured in display columns (not bytes) —
-// labels may contain multi-byte glyphs such as the status dot.
+// labels may contain multi-byte glyphs such as the tool indicator.
 func padLabel(label string) string {
 	if label == "" {
 		return ""

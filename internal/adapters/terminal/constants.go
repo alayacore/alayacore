@@ -115,24 +115,26 @@ const (
 	timeStampWidth  = 26
 )
 
-// statusDotGlyph is the one state marker the status bar draws, at the very
-// first cell of a row that is truncated to exactly the terminal width. The
-// tool header has its own marker — the (ToolStatus) statusDot method in
-// tool_render.go — and the two names are deliberately separate: similar
-// marks, one per row, never in the same line.
+// statusIdleGlyph is the marker the status bar draws in its indicator column
+// when no task runs, at the very first cell of a row that is truncated to
+// exactly the terminal width. While a task runs the column holds one of the
+// shared spinner frames instead (spinner.go), so the column is always one
+// cell and the segments never shift when a task starts or ends.
 //
-// It is a single East-Asian Neutral glyph for BOTH states: the old pair
-// was "·" U+00B7 (idle) and "•" U+2022 (running), both Ambiguous, so in a
-// double-width-ambiguous terminal the row started one cell too late and
-// its last segment wrapped onto a second row — and the shift appeared
-// only while a task ran, which is the worst time to discover it.
+// It is U+283F "braille pattern dots-123456": the full six-dot cell, drawn
+// from the same braille block as the spinner — Neutral width, one cell, and
+// the same font coverage the spinner already relies on, so idle and running
+// cannot disagree about the column. Every spinner frame is a subset of these
+// six dots (the rotation only uses dots 1-6), so idle → running reads as the
+// ball breaking into motion: the state is told by the motion, not by a color,
+// and the bar needs no accent and no bold.
 //
-// The state now reads from color (dim idle / accent running, as before)
-// and weight (bold while running, so a bar dimmed by an overlay still
-// distinguishes running from idle). See renderStatusBar. U+2219 BULLET
-// OPERATOR keeps the dot language of the design and, of every
-// Neutral-width dot we measured, the best font coverage.
-const statusDotGlyph = "∙"
+// It is a glyph rather than a blank (which this briefly was) because a blank
+// indicator cell read as an indent — asymmetric and empty beside the running
+// spinner. A dot was the previous marker ("∙" U+2219, and the Ambiguous pair
+// "·" U+00B7 / "•" U+2022 before it); this keeps the braille family instead so
+// the column's width behaves identically in both states by construction.
+const statusIdleGlyph = "⠿"
 
 // ============================================================================
 // Glyph policy
@@ -149,8 +151,8 @@ const statusDotGlyph = "∙"
 // runtime, so the only defense is the choice of codepoint.
 //
 //  1. A glyph the layout gives exactly one cell must be East-Asian Neutral
-//     and outside Extended_Pictographic, or ASCII. This is what pins "∙"
-//     in statusDotGlyph, the "⠋…⠏"/"✓"/"✗" tool indicators, and the ASCII "|"
+//     and outside Extended_Pictographic, or ASCII. This is what pins the
+//     "⠋…⠏" spinner, the "✓"/"✗" tool indicators, and the ASCII "|"
 //     this UI separates fields with — the help bars between key hints, the
 //     status bar between segments, and a pinned window row between its
 //     hidden-line count and the timestamp. A help bar is truncated and

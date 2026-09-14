@@ -2,14 +2,16 @@ package terminal
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
 
 // TestStatusBarReasoningRidesWithModelWithoutHighlight verifies the status
 // bar always renders the reasoning level ("R0".."R2") plain — no accent
-// (highlight) color and no bold weight. The status dot is the only
-// element in the status bar that uses the accent. It also pins where the
+// (highlight) color and no bold weight. The status bar carries no accent and
+// no bold at all: it is one muted foreground, and the only state marker is
+// the spinner turning in the indicator column. It also pins where the
 // level sits: the right group, fused to the model name when there is one
 // ("gpt-4o | R2") and alone when there is not (a bare "R2") — the level
 // never moves to the left segments. There is no marker glyph after the
@@ -46,8 +48,8 @@ func TestStatusBarReasoningRidesWithModelWithoutHighlight(t *testing.T) {
 			want := fmt.Sprintf("R%d", level)
 
 			// 1. No active model: the level still sits on the right — the
-			//    bar is the status dot and the bare level, and the left
-			//    segments stay empty. Always shown, even when 0 ("R0").
+			//    bar is the blank indicator cell and the bare level, and the
+			//    left segments stay empty. Always shown, even when 0 ("R0").
 			rendered := terminal.renderStatusBar()
 			if got := stripANSI(rendered); !strings.HasSuffix(got, want) {
 				t.Errorf("status bar should end with %q, got %q", want, got)
@@ -301,7 +303,7 @@ func TestStatusBarSqueezedLineDropsReasoningFirst(t *testing.T) {
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
-	m.windowWidth = 9 // "∙ gpt-4o | R0" (13 cells) merges → "∙ gpt-4o…" (9)
+	m.windowWidth = 9 // "  gpt-4o | R0" (13 cells) merges → "  gpt-4o…" (9)
 
 	plain := stripANSI(m.renderStatusBar())
 	if !strings.Contains(plain, "gpt-4o") {
@@ -313,8 +315,8 @@ func TestStatusBarSqueezedLineDropsReasoningFirst(t *testing.T) {
 }
 
 // TestStatusBarNoModelKeepsLevelRightAligned verifies that with no active
-// model the bar is still the status dot and the level flush right — the
-// level's column does not depend on whether a model happens to be set —
+// model the bar is still the indicator column and the level flush right —
+// the level's column does not depend on whether a model happens to be set —
 // and that the model-empty left side carries no segments at all (no stray
 // separator, no padding injected before the group).
 func TestStatusBarNoModelKeepsLevelRightAligned(t *testing.T) {
@@ -328,14 +330,38 @@ func TestStatusBarNoModelKeepsLevelRightAligned(t *testing.T) {
 	}
 
 	plain := stripANSI(m.renderStatusBar())
-	if !strings.HasPrefix(plain, statusDotGlyph+" ") {
-		t.Errorf("status bar should open with the status dot, got %q", plain)
+	if !strings.HasPrefix(plain, statusIdleGlyph) {
+		t.Errorf("status bar should open with the idle indicator cell, got %q", plain)
 	}
 	if !strings.HasSuffix(plain, "R0") {
 		t.Errorf("status bar should end with the level, got %q", plain)
 	}
 	if w := Width(plain); w != m.windowWidth {
 		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	}
+}
+
+// TestStatusBarIndicatorColumn pins the indicator column: the still braille
+// cell when idle, one of the shared spinner frames while a task runs — the
+// same one cell in both states, so the segments never shift when a task
+// starts or ends. The state reads from the motion, not from a color.
+func TestStatusBarIndicatorColumn(t *testing.T) {
+	out := NewTerminalOutput(DefaultStyles())
+	out.handleSystemMsg(`{"type":"reasoning","data":{"level":0}}`)
+
+	m := newTerminalForUpdateStatusTest(out)
+	m = m.updateStatus()
+	idle := stripANSI(m.renderStatusBar())
+	if first := string([]rune(idle)[0]); first != statusIdleGlyph {
+		t.Errorf("idle status bar should open with %q, got %q", statusIdleGlyph, idle)
+	}
+
+	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":0}}`)
+	m = m.updateStatus()
+	running := stripANSI(m.renderStatusBar())
+	first := string([]rune(running)[0])
+	if !slices.Contains(spinnerFrames, first) {
+		t.Errorf("running status bar should open with a spinner frame, got %q", running)
 	}
 }
 

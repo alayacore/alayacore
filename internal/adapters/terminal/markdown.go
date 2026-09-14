@@ -276,8 +276,8 @@ func splitCells(line string) []string {
 // (constants.go) — the box-drawing range U+2500-U+257F is East-Asian
 // Ambiguous with no exception, so there is nothing table-specific to defend
 // against here. (The markers this comment used to cite as "also ambiguous"
-// — the status dot, the tool spinner, the fold markers — are not ambiguous;
-// they are Neutral precisely so they do not lean on that waiver.)
+// — the tool spinner, the fold markers — are not ambiguous; they are
+// Neutral precisely so they do not lean on that waiver.)
 //
 // A full grid — a rule between every pair of rows — is what makes multi-line
 // rows readable: when a cell spans several terminal rows, a horizontal rule is

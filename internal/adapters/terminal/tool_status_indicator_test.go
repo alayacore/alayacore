@@ -50,7 +50,7 @@ func TestToolRunningShowsSpinner(t *testing.T) {
 	for _, st := range []ToolStatus{ToolStatusNone, ToolStatusPending} {
 		glyph, _ := st.statusDot(labelStyle)
 		inSet := false
-		for _, f := range toolSpinnerFrames {
+		for _, f := range spinnerFrames {
 			if glyph == f {
 				inSet = true
 				break
@@ -90,7 +90,7 @@ func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 		t.Fatal("pending header has nothing after the label")
 	}
 	inSet := false
-	for _, f := range toolSpinnerFrames {
+	for _, f := range spinnerFrames {
 		if rest[0] == []rune(f)[0] {
 			inSet = true
 			break

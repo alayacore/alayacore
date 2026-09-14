@@ -10,7 +10,7 @@ Root cause chain:
 
 1. The spinner glyph is **baked into the window's render cache** at render
    time (`BuildCollapsed`/`BuildInner` → `statusDot()` →
-   `toolSpinnerFrame()`, a pure wall-clock function: 10 frames × 150ms).
+   `spinnerFrame()`, a pure wall-clock function: 10 frames × 150ms).
 2. Render caches are only rebuilt when a window is invalidated, and that
    is **delta-driven**: `Af` argument deltas, `Uf` preview deltas, and
    final `UF` frames all call `w.Invalidate()`. A silent tool emits none

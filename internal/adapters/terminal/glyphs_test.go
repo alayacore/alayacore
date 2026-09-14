@@ -59,7 +59,6 @@ type glyphClass struct {
 // test measures both.
 var drawnGlyphs = map[rune]glyphClass{
 	// --- Fixed-width, Neutral: policy rule 1 satisfied. -----------------
-	'∙': {1, false, "status dot — the only state marker in the status bar"},
 	'✓': {1, false, "tool success (tool_render.go)"},
 	'✗': {1, false, "tool failure (tool_render.go)"},
 	'⠋': {1, false, "tool spinner frame"},
@@ -72,6 +71,7 @@ var drawnGlyphs = map[rune]glyphClass{
 	'⠧': {1, false, "tool spinner frame"},
 	'⠇': {1, false, "tool spinner frame"},
 	'⠏': {1, false, "tool spinner frame"},
+	'⠿': {1, false, "status bar idle indicator — full six-dot braille cell, the union of the spinner frames"},
 
 	// --- Waiver 2a: box drawing, no Neutral alternative. ----------------
 	// The whole range U+2500-U+257F is Ambiguous (measured — the frame and
@@ -172,19 +172,21 @@ func TestDrawnGlyphsMatchPolicy(t *testing.T) {
 	}
 }
 
-// TestStatusDotIsNeutralWidth pins the specific change that motivated the
-// policy: the status bar draws its indicator into the FIRST cell of a row
-// truncated to exactly the terminal width, so an Ambiguous glyph there
-// shifts the whole bar and wraps its last segment away.
-func TestStatusDotIsNeutralWidth(t *testing.T) {
-	if statusDotGlyph != "∙" {
-		t.Errorf("statusDotGlyph = %q, want U+2219 (BULLET OPERATOR)", statusDotGlyph)
+// TestStatusIdleGlyphIsStillCell pins the status indicator's idle state. The
+// status bar draws its indicator into the FIRST cell of a row truncated to
+// exactly the terminal width, so the glyph must be one cell in every terminal
+// (an Ambiguous glyph there would shift the whole bar and wrap its last
+// segment away) — and it is drawn from the same braille block as the spinner
+// so idle and running cannot disagree about the column.
+func TestStatusIdleGlyphIsStillCell(t *testing.T) {
+	if statusIdleGlyph != "⠿" {
+		t.Errorf("statusIdleGlyph = %q, want U+283F (braille pattern dots-123456)", statusIdleGlyph)
 	}
-	if isEastAsianAmbiguous([]rune(statusDotGlyph)[0]) {
-		t.Errorf("statusDotGlyph %q is East-Asian Ambiguous — the old pair (· U+00B7, • U+2022) was, and that is what this replaced", statusDotGlyph)
+	if isEastAsianAmbiguous([]rune(statusIdleGlyph)[0]) {
+		t.Errorf("statusIdleGlyph %q is East-Asian Ambiguous — the status row is truncated to exactly the terminal width", statusIdleGlyph)
 	}
-	if w := cellWidth(statusDotGlyph); w != 1 {
-		t.Errorf("statusDotGlyph measures %d cells, the status row reserves 1", w)
+	if w := cellWidth(statusIdleGlyph); w != 1 {
+		t.Errorf("statusIdleGlyph measures %d cells, the status row reserves 1", w)
 	}
 }
 

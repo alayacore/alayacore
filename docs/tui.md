@@ -430,9 +430,9 @@ Its own field is separated from the timestamp by ` | `, which is how this UI
 separates fields on a chrome row: the status bar (`renderStatusSegments`) and
 the help bars are joined the same way, and the glyph policy lists that ASCII
 `|` with them (status bar, help bars — one cell, no waiver). The separator
-takes the dim color, exactly as the status bar paints its segment separators,
-so the two fields read apart instead of as one run: the count and the
-timestamp keep the row's own style, and only the bar between them recedes.
+takes the row's own style, like the count and the timestamp around it: the
+fields read apart by the two spaces that bracket the bar, not by a second
+color — a chrome row never mixes two colors.
 
 Like the timestamp, the count is metadata: it is drawn only when the label
 leaves room for it *and* for the timestamp, and it yields first — the timestamp
@@ -492,8 +492,8 @@ heading here would be read as one more window title; dim is what the rules and
 borders are drawn with, so on the row directly above the input box's rule the
 marker recedes into the frame rather than competing with it — deliberately the
 quietest thing on screen, since it is on most of the time. The frame is an ASCII
-hyphen, so the row is one cell in every terminal. No bold either: accent plus
-bold is the running task's dot. `live_edge.go` renders it, `live_edge_test.go`
+hyphen, so the row is one cell in every terminal. No bold either: the running
+task is marked by the spinner's motion, not by a color. `live_edge.go` renders it, `live_edge_test.go`
 pins it.
 
 It used to be a `F↓` segment at the start of the status bar — and that row is
@@ -537,9 +537,9 @@ Twenty-six cells, where the column was 16 before, buys two things. **Seconds**: 
 
 #### Cursor highlight
 
-The cursor highlight covers the window's own line, and never its content: on a folded window that is the marker and the label column, on an expanded one the same chrome plus the timestamp at the far end (and, when that row is the pinned one, the `N lines above` too — the dim ` | ` between them is the one bit of the row the highlight leaves dim in every register). Two things on that row stay out of it, because they are content — a tool window's name (it takes `toolNameStyle` in both fold states, so folding a window does not repaint it) and a folded row's summary, which keeps the muted color. That is why the label and the summary are separate styles (`Styles.Label` vs `Styles.System`), and why the name is a third one. And because the chrome is one style, "the highlight" is a single styles swap — the row is not assembled from pieces that would each need their own color (the pinned row's dim separator is the exception, and it is deliberately outside the highlight). Mechanically this is a derived styles set — `Styles.Selected()` swaps the two colours that can name a window (the label colour, which is what every window line is drawn in, and the error colour, which `SYSTEM ERROR` uses) for the selection color, and the renderers paint the row from whatever styles they are handed, so "who is the cursor" needs no extra parameter. The highlighted row is built on first request rather than by `Window.Render`, because the collapsed variant costs a second `BuildCollapsed`: `Render` runs for every window on every content change, while exactly one window at a time is under the cursor. Under an overlay (`Styles.Dimmed()`) the selection color *is* the dim color, so the highlight disappears while a modal owns the screen.
+The cursor highlight covers the window's own line, and never its content: on a folded window that is the marker and the label column, on an expanded one the same chrome plus the timestamp at the far end (and, when that row is the pinned one, the `N lines above` and its ` | `, which takes the row's own style with the rest). Two things on that row stay out of it, because they are content — a tool window's name (it takes `toolNameStyle` in both fold states, so folding a window does not repaint it) and a folded row's summary, which keeps the muted color. That is why the label and the summary are separate styles (`Styles.Label` vs `Styles.System`), and why the name is a third one. And because the chrome is one style, "the highlight" is a single styles swap — the row is not assembled from pieces that would each need their own color. Mechanically this is a derived styles set — `Styles.Selected()` swaps the two colours that can name a window (the label colour, which is what every window line is drawn in, and the error colour, which `SYSTEM ERROR` uses) for the selection color, and the renderers paint the row from whatever styles they are handed, so "who is the cursor" needs no extra parameter. The highlighted row is built on first request rather than by `Window.Render`, because the collapsed variant costs a second `BuildCollapsed`: `Render` runs for every window on every content change, while exactly one window at a time is under the cursor. Under an overlay (`Styles.Dimmed()`) the selection color *is* the dim color, so the highlight disappears while a modal owns the screen.
 
-The marker glyph is fixed by the terminal layout (`foldArrow`/`unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the line reserves exactly one cell for it, so the glyph is a geometry decision and switching color schemes must not change it. The spinner frames `⠋…⠏`, the tool markers `✓ ✗` and the status dot `∙` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
+The marker glyph is fixed by the terminal layout (`foldArrow`/`unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the line reserves exactly one cell for it, so the glyph is a geometry decision and switching color schemes must not change it. The spinner frames `⠋…⠏` and the tool markers `✓ ✗` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
 
 ### Collapsed Summary Truncation
 
@@ -611,8 +611,11 @@ terminal configured for CJK (`xterm -cjkwidth`, mlterm's setting, some font
 configurations) — a configuration nobody reaches by accident, and one no
 runtime query reveals (the adapter issues no capability probe; see
 [Paste and terminal capability](#paste-and-terminal-capability)). So the
-guard is the choice of codepoint: the status dot is `∙` (Neutral) and not
-the `·`/`•`, the fold markers are ASCII (`+`/`-`) and not the triangles
+guard is the choice of codepoint: the status indicator is the still braille
+cell `⠿` when idle and the shared spinner (`⠋…⠏`) when running — both from the
+same Neutral braille block, so the column cannot move between states — the
+fold markers
+are ASCII (`+`/`-`) and not the triangles
 pair it replaced, and the help bars separate key hints with an ASCII `|`
 rather than `│`. Lines the app draws are one family: the frame rules, the
 markdown table grid and the in-content divider (`───`, `Separator`) are all
@@ -719,10 +722,11 @@ Measuring and cutting both go through `width.go`, against one table
 
 - ASCII / Latin characters occupy **1 cell**
 - East-Asian **Neutral** single-codepoint marks occupy **1 cell**, in every
-  configuration: the status dot `∙`, the fold markers `+`/`-`, the tool markers
-  `✓ ✗`, the spinner frames `⠋…⠏`. These are the glyphs the layout reserves
-  exactly one column for, which is why the status dot replaced the Ambiguous
-  `·`/`•` pair and why the help bars use an ASCII `|` where they used to draw
+  configuration: the fold markers `+`/`-`, the tool markers `✓ ✗`, the spinner
+  frames `⠋…⠏` (which the status bar's indicator draws while a task runs; its
+  idle cell is the still braille cell `⠿`, the union of those six dots). These
+  are the glyphs the layout reserves
+  exactly one column for, which is why the help bars use an ASCII `|` where they used to draw
   `│`. The heavier `▶ ▼` are Ambiguous too (`▶` Extended_Pictographic as
   well), and the reasoning marker `✦` — Neutral, and drawn even at level 0 —
   was deleted as decoration rather than replaced. All of it is the glyph

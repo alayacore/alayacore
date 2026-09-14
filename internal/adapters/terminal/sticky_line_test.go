@@ -288,18 +288,17 @@ func TestPinnedAnnotationYieldsToTheTimestamp(t *testing.T) {
 }
 
 // TestPinnedAnnotationUnderTheCursor: with the cursor on the pinned window,
-// the count and the timestamp take the selection color with the rest of the
-// chrome, while the " | " between them stays dim — the status bar's
-// treatment of its segment separators, so the two fields read apart in every
-// register. The dim bar is not a cursor accident: Selected() leaves ColorDim
-// alone, exactly as it leaves the content colors alone.
+// the count, the " | " separator and the timestamp all take the selection
+// color with the rest of the chrome — the row is one color, and " | "
+// separates the two fields by its two spaces rather than by a second color.
+// (The separator used to stay dim in every register; that second color is
+// gone, so it is no longer a cursor accident either way.)
 func TestPinnedAnnotationUnderTheCursor(t *testing.T) {
 	styles := DefaultStyles()
 	wb := stickyWideFixture()
 	pinCreatedAt(wb)
 	idx, _ := wb.LookupID("tall")
 	winStart, _ := wb.GetWindowLineRange(idx)
-	sepStyle := lineStyle(styles).Foreground(styles.ColorDim)
 
 	wb.SetViewportPosition(winStart+3, 8)
 	row := firstRow(wb.GetAll(idx, false))
@@ -307,8 +306,8 @@ func TestPinnedAnnotationUnderTheCursor(t *testing.T) {
 		t.Errorf("the count should highlight with the row under the cursor:\n"+
 			"  got:  %q\n  want: %q", got, want)
 	}
-	if got, want := styleRun(row, "|"), sepStyle.Render("|"); got != want {
-		t.Errorf("the separator should stay dim under the cursor:\n"+
+	if got, want := styleRun(row, "|"), cursorLineStyle(styles).Render("|"); got != want {
+		t.Errorf("the separator should highlight with the row under the cursor:\n"+
 			"  got:  %q\n  want: %q", got, want)
 	}
 	stamp := pinnedTime.Format(timeStampLayout)
@@ -317,8 +316,8 @@ func TestPinnedAnnotationUnderTheCursor(t *testing.T) {
 			"  got:  %q\n  want: %q", got, want)
 	}
 
-	// The same row without the cursor is not highlighted, and the bar is dim
-	// there too — one separator style in every register.
+	// The same row without the cursor is not highlighted, and the separator
+	// takes the row's own style there too — one style in every register.
 	plainRow := firstRow(wb.GetAll(-1, false))
 	if strings.Contains(plainRow, cursorLineStyle(styles).Render("3 lines above")) {
 		t.Errorf("the count must not be highlighted when the cursor is elsewhere: %q", plainRow)
@@ -327,8 +326,8 @@ func TestPinnedAnnotationUnderTheCursor(t *testing.T) {
 		t.Errorf("the plain count should take the row's own style:\n"+
 			"  got:  %q\n  want: %q", got, want)
 	}
-	if got, want := styleRun(plainRow, "|"), sepStyle.Render("|"); got != want {
-		t.Errorf("the separator should be dim on the plain row too:\n"+
+	if got, want := styleRun(plainRow, "|"), lineStyle(styles).Render("|"); got != want {
+		t.Errorf("the separator should take the row's own style on the plain row too:\n"+
 			"  got:  %q\n  want: %q", got, want)
 	}
 }

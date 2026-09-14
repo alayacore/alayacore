@@ -14,10 +14,10 @@ import (
 // statusStepsSegment returns the steps status string, or "" if no activity.
 // During a run it shows live progress ("3/5", "3/INF"); after completion it
 // shows the last run's frozen summary ("3/5", "3/INF") until the next task
-// starts. Nothing in this segment marks live vs frozen: the status dot that
-// opens the bar does (accent + bold while a task runs, dim once it ends —
-// see renderStatusBar). Tool windows carry their own state in the header
-// instead ("TOOL CALL ⠋/✓/✗", see tool_render.go).
+// starts. Nothing in this segment marks live vs frozen: the indicator that
+// opens the bar does (the spinner turning while a task runs, the still braille
+// cell (⠿) once it ends — see renderStatusBar). Tool windows carry their own
+// state in the header instead ("TOOL CALL ⠋/✓/✗", see tool_render.go).
 func statusStepsSegment(inProgress bool, currentStep int, maxSteps int, lastCurrentStep int, lastMaxSteps int) string {
 	if inProgress && currentStep > 0 {
 		if maxSteps > 0 {
@@ -79,17 +79,25 @@ func statusRightSegment(model string, reasoningLevel int) string {
 // renderStatusBar renders the status bar line.
 // Status bar is dimmed when an overlay is active.
 //
-// Layout: the live status segments (context, speed, steps, video) start
-// at the left after the status dot. The right group — the active model
-// name with the reasoning level fused to it ("DeepSeek Flash | R2"), or
-// the bare level when no model is set — is placed by a single threshold
-// (see assembleStatusLeft): with ample space it floats right-aligned
-// after blank padding; when the gap would be ≤ 3 cells it merges into the
-// left segments (joined by " | ", truncated together) — the bar never
-// shows a squeezed right-aligned group or a 1-3 cell gap. The row may
-// run right up to the terminal edge (the cap is the full width, not
-// width-2 — see the hard cap below): the TUI's flush-to-edge design
-// language.
+// Layout: an indicator column opens the row — the still braille cell (⠿)
+// when idle, the shared spinner while a task runs (statusIdleGlyph,
+// spinner.go) — then the live
+// status segments (context, speed, steps, video). The right group — the
+// active model name with the reasoning level fused to it ("DeepSeek Flash
+// | R2"), or the bare level when no model is set — is placed by a single
+// threshold (see assembleStatusLeft): with ample space it floats
+// right-aligned after blank padding; when the gap would be ≤ 3 cells it
+// merges into the left segments (joined by " | ", truncated together) —
+// the bar never shows a squeezed right-aligned group or a 1-3 cell gap.
+// The row may run right up to the terminal edge (the cap is the full
+// width, not width-2 — see the hard cap below): the TUI's flush-to-edge
+// design language.
+//
+// Color: the whole row is one foreground — muted normally, dim when an
+// overlay blocks it. Segments, the " | " separators and the indicator all
+// share it; the bar never mixes a second register in, and it carries no
+// accent and no bold (the state is read from the spinner turning, not from
+// a color).
 //
 // The result is truncated to at most the terminal width so a runaway
 // status string — e.g. a session with a long token count + many steps
@@ -106,7 +114,10 @@ func statusRightSegment(model string, reasoningLevel int) string {
 // overlay-blocked state, width, theme styles). The indicator +
 // truncation + style.Render pipeline otherwise rebuilds a fresh
 // ANSI-encoded string every 250ms tick, only to be discarded by
-// Program.render's identity check.
+// Program.render's identity check. While a task runs the indicator is the
+// wall-clock spinner frame and is supposed to change every tick, so the
+// cache is skipped then (useCache); the idle string is constant per width
+// and stays cached.
 //
 // Styling model: statusLeft/statusRight are PLAIN strings (no ANSI).
 // Truncation happens on the plain text, then each segment is rendered
@@ -119,6 +130,18 @@ func statusRightSegment(model string, reasoningLevel int) string {
 // get a copy of Terminal and any cache field they mutate is discarded.
 func (m *Terminal) renderStatusBar() string {
 	active := !m.isBlocked()
+
+	// The indicator column is one cell and always present: the still braille
+	// cell (⠿) when idle, the shared spinner while a task runs. Reserving the
+	// cell in both states keeps the segments from shifting a column when a
+	// task starts or ends — the same reason the tool header keeps its label
+	// column. Motion carries the state, so the bar needs no accent, no bold
+	// and no second glyph (see statusIdleGlyph, spinner.go).
+	indicatorGlyph := statusIdleGlyph
+	if m.inProgress {
+		indicatorGlyph = spinnerFrame()
+	}
+
 	cacheKey := renderStatusBarCacheKey{
 		active:     active,
 		inProgress: m.inProgress,
@@ -127,34 +150,29 @@ func (m *Terminal) renderStatusBar() string {
 		left:       m.statusLeft,
 		right:      m.statusRight,
 	}
-	if m.renderedStatusBarCache != nil {
+	// The rendered string is a pure function of the key — except while a task
+	// runs, when the indicator is the wall-clock spinner frame and is meant to
+	// change on every tick. Skip the cache then; the idle string is constant
+	// per width and stays cached.
+	useCache := !m.inProgress
+	if useCache && m.renderedStatusBarCache != nil {
 		if cached, ok := (*m.renderedStatusBarCache)[cacheKey]; ok {
 			return cached
 		}
 	}
 
-	// Indicator dot: one glyph for both states, one cell in every terminal
-	// — see the rationale and the glyph policy at statusDotGlyph (constants.go).
-	// Accent while a task runs (green stays reserved for tool success), dim
-	// otherwise; the bold weight marks a running task even when an overlay
-	// has dimmed the whole bar.
-	indicatorGlyph := statusDotGlyph
-	indicatorStyle := m.styles.Status.Foreground(m.styles.ColorDim)
-	if m.inProgress {
-		indicatorStyle = indicatorStyle.Bold(true)
-		if active {
-			indicatorStyle = m.styles.Status.Foreground(m.styles.ColorAccent).Bold(true)
-		}
-	}
-
-	// Segment styles: muted segments with dim " | " separators when
-	// active; everything dim when the bar is blocked.
-	segStyle := m.styles.Status.Foreground(m.styles.ColorMuted)
-	sepStyle := m.styles.Status // dim
+	// One foreground for the whole row: muted. Segments, the " | " separators
+	// and the indicator all take it, so the bar is never two colors at once
+	// (it used to pair muted segments with dim separators). Under an overlay
+	// the row dims to a single color with the rest of the chrome rather than
+	// mixing a second register in.
+	barColor := m.styles.ColorMuted
 	if !active {
-		segStyle = m.styles.Status.Foreground(m.styles.ColorDim)
-		sepStyle = segStyle
+		barColor = m.styles.ColorDim
 	}
+	indicatorStyle := m.styles.Status.Foreground(barColor)
+	segStyle := indicatorStyle
+	sepStyle := indicatorStyle
 
 	// Hard cap: the status bar row may occupy at most the full terminal
 	// width — anything wider would soft-wrap onto a second row. The cap
@@ -175,9 +193,10 @@ func (m *Terminal) renderStatusBar() string {
 	// right-aligned truncated group (see assembleStatusLeft).
 	leftPlain := assembleStatusLeft(m.statusLeft, m.statusRight, indicatorGlyph, lineBudget)
 
-	// Render: indicator with its own style, the rest per segment
-	// (segments muted, " | " separators dim — all dim when blocked).
-	// Sliced by indicatorGlyph's byte length, not [:1]: "∙" is 3 bytes.
+	// Render: the indicator with its own style, then the rest per segment
+	// (segments and " | " separators share one muted style now, so the whole
+	// row is a single color; all dim when blocked). Sliced by indicatorGlyph's
+	// byte length, not [:1]: the spinner frame is 3 bytes.
 	content := indicatorStyle.Render(leftPlain[:len(indicatorGlyph)])
 	if rest := leftPlain[len(indicatorGlyph):]; rest != "" {
 		if strings.HasPrefix(rest, " ") {
@@ -188,20 +207,22 @@ func (m *Terminal) renderStatusBar() string {
 	}
 	rendered := m.styles.Status.Render(content)
 
-	if m.renderedStatusBarCache == nil {
-		cache := make(map[renderStatusBarCacheKey]string, 4)
-		m.renderedStatusBarCache = &cache
-	}
-	(*m.renderedStatusBarCache)[cacheKey] = rendered
-	// Bound the cache: small bounded map, drop the oldest entry when it
-	// grows. Status bar inputs only flip between two states per task
-	// (active/idle × blocked/unblocked) so this never grows past a
-	// handful of entries in practice.
-	if len(*m.renderedStatusBarCache) > 8 {
-		for k := range *m.renderedStatusBarCache {
-			if k != cacheKey {
-				delete(*m.renderedStatusBarCache, k)
-				break
+	if useCache {
+		if m.renderedStatusBarCache == nil {
+			cache := make(map[renderStatusBarCacheKey]string, 4)
+			m.renderedStatusBarCache = &cache
+		}
+		(*m.renderedStatusBarCache)[cacheKey] = rendered
+		// Bound the cache: small bounded map, drop the oldest entry when it
+		// grows. Status bar inputs only flip between two states per task
+		// (active/idle × blocked/unblocked) so this never grows past a
+		// handful of entries in practice.
+		if len(*m.renderedStatusBarCache) > 8 {
+			for k := range *m.renderedStatusBarCache {
+				if k != cacheKey {
+					delete(*m.renderedStatusBarCache, k)
+					break
+				}
 			}
 		}
 	}
@@ -372,11 +393,11 @@ func (m Terminal) updateStatus() Terminal {
 	// at a glance in every state must not move: pinning it to the left
 	// whenever a model happened to be set and to the right whenever it did
 	// not would make the same fact change address mid-session. With no
-	// model the bar is the status dot and the level flush right; that is
-	// the price of the fixed column.
+	// model the bar is the level flush right; that is the price of the
+	// fixed column.
 	//
-	// Muted style either way: the accent color and bold are reserved for the
-	// status dot, the only highlighted element in the status bar. There is
+	// Muted style either way: the status bar is one muted foreground and
+	// carries no accent and no bold (renderStatusBar). There is
 	// deliberately no glyph after the level: a marker that never changes
 	// with the state (an earlier revision drew "R0✦".."R2✦", ✦ shown even
 	// at 0) carries no information while looking like an indicator. The

@@ -9,7 +9,7 @@ The session measures each LLM round trip (step) and shows the latest
 step's speed in the TUI status bar, right after the context segment:
 
 ```
-∙ 1.5K | 12.5 tok/s (ttft 1.2s) | 1/5                     gpt-4o | R2
+⠹ 1.5K | 12.5 tok/s (ttft 1.2s) | 1/5                     gpt-4o | R2
 ```
 
 The right-aligned group is the active model name with the reasoning level
@@ -18,8 +18,13 @@ fused to it (`statusRightSegment` in
 level, still flush right, so the level's column never moves. The left
 segments carry the live telemetry only.
 
-The leading `∙` is the status dot — accent-colored and bold while a task
-runs, dim otherwise. TTFT is parenthesised rather than set off by a middle
+The leading cell is the status indicator: the shared braille spinner while a
+task runs (`⠋…⠏`, the glyph the tool header and the loading screen draw too),
+the still braille cell `⠿` (the union of those frames' six dots) otherwise.
+The indicator column is one cell in both states, so the
+segments never shift when a task starts or ends, and the state reads from
+the motion rather than from a color — the whole status row is a single muted
+foreground. TTFT is parenthesised rather than set off by a middle
 dot because the status row is truncated to exactly the terminal width, and
 a middle dot (U+00B7) is one of the East-Asian Ambiguous characters a CJK
 terminal can draw two cells wide, and the segments are separated by an ASCII

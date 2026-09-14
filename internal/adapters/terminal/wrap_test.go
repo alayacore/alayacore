@@ -193,43 +193,44 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 	}
 
 	// Ample space (W=27, gap 4): the group floats, blank padding.
-	if got := render(27); got != "∙ 12.3K/128K    gpt-4o | R0" {
-		t.Errorf("gap>3: got %q, want %q", got, "∙ 12.3K/128K    gpt-4o | R0")
+	if got := render(27); got != "⠿ 12.3K/128K    gpt-4o | R0" {
+		t.Errorf("gap>3: got %q, want %q", got, "⠿ 12.3K/128K    gpt-4o | R0")
 	}
 
 	// Gap exactly 3 (W=26): merges into the left — reads like another
 	// segment, group stays flush right.
-	if got := render(26); got != "∙ 12.3K/128K | gpt-4o | R0" {
-		t.Errorf("gap==3: got %q, want %q", got, "∙ 12.3K/128K | gpt-4o | R0")
+	if got := render(26); got != "⠿ 12.3K/128K | gpt-4o | R0" {
+		t.Errorf("gap==3: got %q, want %q", got, "⠿ 12.3K/128K | gpt-4o | R0")
 	}
 
 	// Tight space (W=24, gap 1): merged; the level's cells go first, the
 	// model name is still whole.
-	if got := render(24); got != "∙ 12.3K/128K | gpt-4o |…" {
-		t.Errorf("gap<3 with full level: got %q, want %q", got, "∙ 12.3K/128K | gpt-4o |…")
+	if got := render(24); got != "⠿ 12.3K/128K | gpt-4o |…" {
+		t.Errorf("gap<3 with full level: got %q, want %q", got, "⠿ 12.3K/128K | gpt-4o |…")
 	}
 
 	// Tighter (W=21): the truncation reaches the model name.
-	if got := render(21); got != "∙ 12.3K/128K | gpt-4…" {
-		t.Errorf("gap<3 with truncated model: got %q, want %q", got, "∙ 12.3K/128K | gpt-4…")
+	if got := render(21); got != "⠿ 12.3K/128K | gpt-4…" {
+		t.Errorf("gap<3 with truncated model: got %q, want %q", got, "⠿ 12.3K/128K | gpt-4…")
 	}
 
 	// No room even merged (W=14): the left segment is truncated, the
 	// group is cut away and "…" marks the truncation.
-	if got := render(14); got != "∙ 12.3K/128K …" {
-		t.Errorf("no room for the group: got %q, want %q", got, "∙ 12.3K/128K …")
+	if got := render(14); got != "⠿ 12.3K/128K …" {
+		t.Errorf("no room for the group: got %q, want %q", got, "⠿ 12.3K/128K …")
 	}
 }
 
-// TestStatusBarTruncatedSeparatorKeepsDimPipe covers the "|…" case: when
-// truncation replaces the space after a "|" with "…", the "|" must still
-// render dim (sepStyle) — a " | "-based split would miss the separator
-// and paint it with the muted segment color.
-func TestStatusBarTruncatedSeparatorKeepsDimPipe(t *testing.T) {
+// TestStatusBarTruncatedSeparatorStyled covers the "|…" case: when
+// truncation replaces the space after a "|" with "…", the "|" must still be
+// rendered in the bar's one style (muted) — a " | "-based split would miss
+// the separator and leave it bare. Segments and separators share that style,
+// so the bar is a single color.
+func TestStatusBarTruncatedSeparatorStyled(t *testing.T) {
 	styles := DefaultStyles()
-	sepSig := styles.Status.Render("X")
+	sepSig := styles.Status.Foreground(styles.ColorMuted).Render("X")
 	if i := strings.Index(sepSig, "X"); i > 0 {
-		sepSig = sepSig[:i] // dim SGR open prefix
+		sepSig = sepSig[:i] // muted SGR open prefix
 	}
 
 	m := newTerminalForUpdateStatusTest(NewTerminalOutput(styles))
@@ -240,10 +241,10 @@ func TestStatusBarTruncatedSeparatorKeepsDimPipe(t *testing.T) {
 
 	rendered := m.renderStatusBar()
 	if !strings.Contains(rendered, sepSig+"|") {
-		t.Errorf("'|' before '…' not rendered dim: %q", rendered)
+		t.Errorf("'|' before '…' not rendered in the bar style: %q", rendered)
 	}
-	if got := stripANSI(rendered); got != "∙ 12.3K/128K |…" {
-		t.Errorf("text = %q, want %q", got, "∙ 12.3K/128K |…")
+	if got := stripANSI(rendered); got != "⠿ 12.3K/128K |…" {
+		t.Errorf("text = %q, want %q", got, "⠿ 12.3K/128K |…")
 	}
 }
 

@@ -42,7 +42,7 @@ func TestWindow_WithANSIContent(t *testing.T) {
 			name:     "tool call with ANSI in command",
 			tag:      tlv.TagAssistantF,
 			content:  "execute_command: echo \x1b[31mtest\x1b[0m",
-			expected: "echo test", // status dot and tool name live in the header line
+			expected: "echo test", // tool indicator and tool name live in the header line
 		},
 		{
 			name:     "text with embedded ANSI",
@@ -167,7 +167,7 @@ func TestWindow_DiffContentWithANSI(t *testing.T) {
 	resultStripped := stripANSI(result)
 
 	// Should contain the text without the embedded ANSI from input; the
-	// first line shows the bare argument (no status dot, no tool-name
+	// first line shows the bare argument (no tool indicator, no tool-name
 	// prefix). Context rows stay plain.
 	expected := "/tmp/test.txt\n- old line\n+ new line\n  unchanged"
 

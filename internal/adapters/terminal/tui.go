@@ -922,13 +922,13 @@ func (m Terminal) overlayCursorPosition() (x, y int, ok bool) {
 // otherwise produce on every tick. The first paint (empty lastContent)
 // still clears; later repaints diff only the changed row.
 //
-// The spinner frames are the same braille dot-segment rotation used by
-// tool windows (see toolSpinnerFrames in tool_render.go). They advance
-// based on wall clock, so any re-render — the 250ms tick, a content
+// The spinner frames are the shared braille dot-segment rotation (see
+// spinner.go) — the same glyph the tool header and the status bar draw. They
+// advance based on wall clock, so any re-render — the 250ms tick, a content
 // arrival, an overlay open — picks up the current frame without a
 // separate timer.
 func (m Terminal) renderLoadingView() View {
-	spinnerChar := toolSpinnerFrame()
+	spinnerChar := spinnerFrame()
 
 	msg := fmt.Sprintf(" %s Loading session...", spinnerChar)
 	// Center the message vertically and horizontally (ASCII width ~= len).

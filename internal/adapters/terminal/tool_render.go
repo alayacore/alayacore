@@ -5,7 +5,6 @@ package terminal
 
 import (
 	"strings"
-	"time"
 )
 
 // ============================================================================
@@ -21,27 +20,6 @@ const (
 	ToolStatusError                     // Tool failed (plain ✗)
 	ToolStatusPending                   // Executing, awaiting result (spinner)
 )
-
-// toolSpinnerFrames is the braille dot-segment rotation also used by the
-// session-loading screen. While arguments stream in or the tool executes,
-// the header shows the current frame in place of a static dot.
-var toolSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-// toolSpinnerFrameAt returns the spinner frame for the given moment. The
-// frame advances with each re-render: the tool window's render cache is
-// rebuilt on every delta append, status change, and (for executing tools)
-// the tick-driven spinner refresh (see
-// WindowBuffer.InvalidateRunningToolSpinners) — so the indicator rotates
-// with the refresh cadence, no separate timer. Extracted from
-// toolSpinnerFrame so tests can inject a fixed moment.
-func toolSpinnerFrameAt(t time.Time) string {
-	return toolSpinnerFrames[int(t.UnixMilli()/150)%len(toolSpinnerFrames)]
-}
-
-// toolSpinnerFrame returns the spinner frame for the current moment.
-func toolSpinnerFrame() string {
-	return toolSpinnerFrameAt(time.Now())
-}
 
 // toolHeaderLabel is the fixed tool-window label shown in the header line.
 // The status indicator (spinner while running, ✓/✗ when done) follows
@@ -71,9 +49,9 @@ func (s ToolStatus) statusDot(labelStyle Style) (string, Style) {
 	case ToolStatusError:
 		return "✗", labelStyle
 	case ToolStatusPending:
-		return toolSpinnerFrame(), labelStyle
+		return spinnerFrame(), labelStyle
 	default: // ToolStatusNone — arguments still streaming in
-		return toolSpinnerFrame(), labelStyle
+		return spinnerFrame(), labelStyle
 	}
 }
 

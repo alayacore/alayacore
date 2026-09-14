@@ -699,21 +699,17 @@ func (w *Window) buildExpandHeader(width int, styles *Styles, annotation string)
 	// glyph policy lists that ASCII "|" with them. So the block costs its
 	// own cells plus the bar and the two spaces around it: 3, not 1.
 	//
-	// The bar is painted dim, the way the status bar paints its segment
-	// separators, so the count and the timestamp read as two fields rather
-	// than one run. The two fields keep the row's own style — and so take
-	// the selection color under the cursor — while the bar stays in the
-	// dim register: Selected() leaves ColorDim alone, exactly as it leaves
-	// the content colors alone.
+	// The bar takes the row's own style, like the count and the timestamp
+	// around it: the row is one color, and " | " separates the two fields by
+	// its two spaces rather than by a second color. (It used to be painted
+	// dim, the status bar's old separator treatment; that register is gone —
+	// the status bar's separators take its one muted foreground too, so a
+	// chrome row never mixes two colors.)
 	annBlock := ""
 	if annotation != "" {
 		annBlock = annotation + " | "
 	}
 	annCells := cellWidth(annBlock)
-	sepStyle := lineStyle
-	if styles != nil {
-		sepStyle = lineStyle.Foreground(styles.ColorDim)
-	}
 
 	budget := width - collapsedPrefixWidth // cells left for label + gap + time
 	if budget < 1 {
@@ -731,7 +727,7 @@ func (w *Window) buildExpandHeader(width int, styles *Styles, annotation string)
 	case annotation != "" && fits(annCells):
 		gap := budget - cellWidth(plain) - annCells - timeStampWidth
 		return marker + " " + styled + strings.Repeat(" ", gap) +
-			lineStyle.Render(annotation) + " " + sepStyle.Render("|") + " " +
+			lineStyle.Render(annotation) + " " + lineStyle.Render("|") + " " +
 			lineStyle.Render(w.timeStamp())
 	case fits(0):
 		gap := budget - cellWidth(plain) - timeStampWidth

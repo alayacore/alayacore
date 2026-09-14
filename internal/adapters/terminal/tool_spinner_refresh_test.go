@@ -2,7 +2,7 @@ package terminal
 
 // Tests for the tick-driven tool spinner refresh:
 //
-//   - toolSpinnerFrameAt: the extracted wall-clock frame function (frame
+//   - spinnerFrameAt: the extracted wall-clock frame function (frame
 //     advances every 150ms, wraps after 10 frames) — the unit seam that
 //     makes the refresh tests deterministic without real waits.
 //   - WindowBuffer.InvalidateRunningToolSpinners: only executing tool
@@ -28,21 +28,21 @@ import (
 // 150ms slot, exact boundaries, and cycle wrap after 10 frames.
 func TestToolSpinnerFrameAt(t *testing.T) {
 	base := time.UnixMilli(0)
-	for i := 0; i < len(toolSpinnerFrames); i++ {
-		got := toolSpinnerFrameAt(base.Add(time.Duration(i) * 150 * time.Millisecond))
-		if got != toolSpinnerFrames[i] {
-			t.Errorf("frame at +%dms = %q, want %q", i*150, got, toolSpinnerFrames[i])
+	for i := 0; i < len(spinnerFrames); i++ {
+		got := spinnerFrameAt(base.Add(time.Duration(i) * 150 * time.Millisecond))
+		if got != spinnerFrames[i] {
+			t.Errorf("frame at +%dms = %q, want %q", i*150, got, spinnerFrames[i])
 		}
 	}
 	// Cycle wraps: 1500ms == 10 slots → frame 0 again.
-	if got := toolSpinnerFrameAt(base.Add(1500 * time.Millisecond)); got != toolSpinnerFrames[0] {
-		t.Errorf("frame at +1500ms = %q, want %q (cycle wrap)", got, toolSpinnerFrames[0])
+	if got := spinnerFrameAt(base.Add(1500 * time.Millisecond)); got != spinnerFrames[0] {
+		t.Errorf("frame at +1500ms = %q, want %q (cycle wrap)", got, spinnerFrames[0])
 	}
 	// Inside one slot the frame is stable; across a boundary it changes.
-	if a, b := toolSpinnerFrameAt(base), toolSpinnerFrameAt(base.Add(149*time.Millisecond)); a != b {
+	if a, b := spinnerFrameAt(base), spinnerFrameAt(base.Add(149*time.Millisecond)); a != b {
 		t.Errorf("frames within one 150ms slot must match: %q != %q", a, b)
 	}
-	if a, b := toolSpinnerFrameAt(base), toolSpinnerFrameAt(base.Add(150*time.Millisecond)); a == b {
+	if a, b := spinnerFrameAt(base), spinnerFrameAt(base.Add(150*time.Millisecond)); a == b {
 		t.Errorf("frames across a 150ms boundary must differ: %q == %q", a, b)
 	}
 }
@@ -243,7 +243,7 @@ func toolSpinnerGlyph(t *testing.T, content string) string {
 		return ""
 	}
 	rest := content[i+len(label):]
-	for _, f := range toolSpinnerFrames {
+	for _, f := range spinnerFrames {
 		if strings.HasPrefix(rest, f) {
 			return f
 		}

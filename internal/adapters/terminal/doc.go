@@ -81,6 +81,8 @@
 //   - confirm_dialog.go: Confirmation dialogs (quit, cancel, tool, MCP auth, MCP init)
 //   - attachment_window.go: File/URL attachment picker
 //   - tool_render.go, tool_handler.go: Tool execution display
+//   - spinner.go: The shared braille spinner frames (tool header, session
+//     loading screen, status bar indicator)
 //   - exec.go: External process execution and terminal suspension (module 5)
 //   - editor.go: External editor support ($EDITOR handoff)
 //   - session_state.go: Session status/model/queue snapshot state
