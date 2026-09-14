@@ -184,8 +184,9 @@ Why it's fast:
   tail-truncates the content instead of wrapping the entire content.
 - **Cursor moves don't re-render borders**: only the one navigational element
   is recolored — the fold marker and the label column on a folded line, all
-  of row 0 (marker, label, timestamp) on an expanded one — reusing the
-  cached content (`renderCursor`, `borderCache.line0Cursor`).
+  of row 0 (marker, label, timestamp, and the pinned row's count) on an
+  expanded one — reusing the cached content (`renderCursor`,
+  `borderCache.line0Cursor`).
 - **Fewer total lines**: 1 line per folded window, and one row of chrome per
   expanded window (its label opens the window; there is no header line above
   it and no closing rule below it), shrinking `lineHeights`/scrolling math
@@ -230,12 +231,20 @@ longer re-splits or slices content.
   time, and only its row is swapped in the cursor's register — no style
   render per window per view;
 - the sticky window line (docs/tui.md → *Sticky Window Line*) is composited in
-  this same pass: the decision reuses the `winStart` the loop already computes,
-  the pinned row is a read of a row the same frame rendered, and the body row
-  it displaces is one row less to assemble — so it adds one `WriteString` and
-  nothing else. Geometry (`lineHeights`, `totalLines`) is not involved, which
-  is the point: a viewport-dependent line height would invalidate those caches
-  on every scroll step.
+  this same pass: the decision reuses the `winStart` the loop already computes
+  and the body row it displaces is one row less to assemble. The pinned row is
+  the one thing on screen that depends on where the viewport is — it carries
+  the count of the window's hidden lines above — so it is not `lines[0]`: it is
+  memoized on that count in the window's border cache, which makes a frame that
+  does not move the viewport a string compare (46 allocations either way, see
+  `TestStickyPinAddsNoAllocations`) and a frame that moves it by a row one row
+  rebuild (2012ns pinned-still → 3057ns pinned-scrolling against 2024ns
+  unpinned, `BenchmarkStickyLineViewportRender`). The rebuild is the window
+  line's build, not the body's: `TestStickyPinCostIsIndependentOfTheWindowSize`
+  holds a 400-row message to a 40-row one's allocations. Geometry
+  (`lineHeights`, `totalLines`) is not involved, which is the point: a
+  viewport-dependent line height would invalidate those caches on every scroll
+  step.
 
 Measured (120-window folded session / 100-window conversation, viewport
 30–40):
@@ -352,10 +361,13 @@ commit `1021326`.
 |-------|----------|----------|---------------|
 | Renderer lines | `textRenderer.wrappedLines` | Wrapped plain-text lines (AT/AR) | Resize, theme change |
 | Body-colored lines | `textRenderer.colored` | Dim-colored copy of `wrappedLines`, materialized only while an overlay is active (`styles.Body` carries a foreground) | Content append (`coloredDirty`), resize, theme change, blocked switch |
-| Border output | `Window.border` | Visual lines (`lines`), display widths (`widths`, lazy), rendered string + lineCount, the memoized cursor row | Content append, resize, theme, receipt time |
+| Window rows | `Window.border` | Visual lines (`lines`), display widths (`widths`, lazy), rendered string + lineCount, the memoized cursor row and the memoized pinned row | Content append, resize, theme, receipt time (the pinned row also by the hidden-line count it carries — a scroll, not a content change) |
 
 Renderer lines are **updated incrementally** during streaming (not invalidated).
 Border cache is marked invalid on every content change but rebuilt on next render.
+The pinned row is the one entry whose *input* is the viewport: it is keyed on the
+count, so a scroll that does not change the count reuses it and a scroll that does
+rebuilds that row alone.
 
 `lineCount` lives in border cache so `WindowBuffer` can read it with direct field
 access (no interface dispatch on the hot path).
@@ -364,6 +376,6 @@ access (no interface dispatch on the hot path).
 
 During streaming, `ensureLineHeights` first tries `UpdateLineCountFast` → `TryLineCount`.
 If the renderer's `wrappedLines` is populated, this returns the line count in ~1.1μs
-without rendering. The actual `w.Render()` — which joins wrapped lines, applies borders,
-and renders the style layer — is deferred to `GetAll` → `renderVirtual`, which needs
-the rendered output for the viewport anyway.
+without rendering. The actual `w.Render()` — which joins wrapped lines, composes
+the window's own row, and renders the style layer — is deferred to `GetAll` →
+`renderVirtual`, which needs the rendered output for the viewport anyway.

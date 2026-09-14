@@ -66,12 +66,14 @@ no such driver.
   still freeze. It also needs a per-command ticker goroutine and a
   `lastSent`-dedup bypass. The TUI-side fix covers **every** tool with a
   pending window.
-- **Why not a render-time glyph patch** (like the cursor-arrow
-  replacement in `windowFragment`)? The `updateContent` early-exit still
-  requires per-tick dirtying, so the hook is not avoided; it would only
-  skip one border rebuild (~100ns). It would extend a documented aliasing
-  pitfall (`lines` aliases `w.border.lines`) into the most fragile,
-  highest-gocyclo rendering code for negligible gain.
+- **Why not a render-time glyph patch** (like the cursor row
+  replacement in `windowFragment`, or the pinned row's)? The `updateContent`
+  early-exit still requires per-tick dirtying, so the hook is not avoided; it
+  would only skip one row build (measured in
+  [virtual-rendering-performance.md](virtual-rendering-performance.md) — the
+  window-row cache). It would extend a documented aliasing pitfall (`lines`
+  aliases `w.border.lines`) into the most fragile, highest-gocyclo rendering
+  code for negligible gain.
 - **Why `ToolStatusPending` only — not a general animation framework?**
   Two animations (loading screen, tool spinner) with different lifecycles
   do not justify an abstraction; it would add indirection, not clarity.

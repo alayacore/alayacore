@@ -38,12 +38,14 @@ type Styles struct {
 	Input   Style
 	Status  Style
 	Confirm Style
-	// Label is the style for a window's own line (its header label:
-	// "ASSISTANT", "REASONING", "TOOL CALL", "USER PROMPT", …) on both the
-	// collapsed line and the expanded top rule. It is a field of its own —
-	// not derived from System at the call site — because the cursor
-	// highlight recolors exactly this: the chrome that names the window,
-	// never the content underneath it (see Styles.Selected).
+	// Label is the style for the chrome of a window's own line (its marker,
+	// label, timestamp and, on the pinned row, the hidden-line count:
+	// "ASSISTANT", "REASONING", "TOOL CALL", "USER PROMPT", …) in both fold
+	// states. It is a field of its own — not derived from System at the call
+	// site — because the cursor highlight recolors exactly this: the chrome
+	// that names the window, never the content underneath it, and not the
+	// tool name either, which is the row's payload (see Styles.Selected and
+	// toolNameStyle, window.go).
 	Label Style
 	// Body is the style for plain body text (assistant messages,
 	// reasoning, user message text, tool input/output). It carries NO

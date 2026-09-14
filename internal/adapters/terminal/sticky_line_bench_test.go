@@ -2,12 +2,19 @@ package terminal
 
 // Benchmark for the sticky window line: the same oversize window rendered
 // with its own line in its natural place (top of the viewport, viewport at
-// the window's first row) and with it pinned (viewport one row further down,
-// so the line is cut off and the pin draws it). Both go through the
-// production renderVirtual, so the delta between the two sub-benchmarks IS
-// the cost of the feature — and the contract is that it is one cached-row
-// read plus one write, i.e. within noise of the same viewport without it
-// (TestStickyPinAddsNoAllocations pins the allocation side).
+// the window's first row), with it pinned (viewport one row further down, so
+// the line is cut off and the pin draws it), with it pinned while the
+// viewport moves a row per frame, and with it pinned under the cursor. All go
+// through the production renderVirtual, so the deltas between the
+// sub-benchmarks ARE the cost of the feature.
+//
+// The contract has two halves, and the sub-benchmarks are what keep them
+// apart: a frame that does not move the viewport must cost what the same
+// viewport costs without the pin (pinned vs unpinned —
+// TestStickyPinAddsNoAllocations pins the allocation side), and a frame that
+// moves it by a row pays for one row, not for the message
+// (pinned-scrolling — TestStickyPinCostIsIndependentOfTheWindowSize pins
+// that).
 
 import (
 	"fmt"

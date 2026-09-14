@@ -305,7 +305,7 @@ tool: #f9e2af
 | `muted` | Secondary text, system messages, tool content, the window line's default color, the live-edge marker |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors, and the `SYSTEM ERROR` line |
-| `selection` | Selected items in lists, and the display cursor's window line — the fold marker and label of the window under the cursor (collapsed), or all of its line, timestamp included (expanded) |
+| `selection` | Selected items in lists, and the display cursor's window line — the marker, the label, the pinned row's `N lines above` and its separator, and the timestamp (expanded, or a folded row's marker and label column; the tool name and the content summary keep their own colors) |
 | `tool` | Tool call headers/labels |
 | `added` | Diff additions |
 | `removed` | Diff removals |

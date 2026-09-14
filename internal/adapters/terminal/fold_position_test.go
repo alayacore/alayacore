@@ -11,10 +11,10 @@ import (
 
 // TestHMLPositioningWithFoldedWindows verifies that H (top), M (center) and
 // L (bottom) positioning account for the folded/unfolded state of windows:
-// a folded window occupies exactly 1 line (its own marker line), an
-// expanded window occupies header + rules + content lines. Folding a window
-// must shift the visual rows of everything below it, so M's target changes
-// accordingly.
+// a folded window occupies exactly 1 line (its own marker line), an expanded
+// one its own line plus its content lines (no rules, no borders — see
+// buildExpandHeader). Folding a window must shift the visual rows of
+// everything below it, so M's target changes accordingly.
 func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
@@ -24,7 +24,7 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	wb.HandleToolOutput("t0", "ok", false, 0)
 
 	// Window 1: expanded assistant (default unfolded) — 3 content lines →
-	// header + top rule + 3 + bottom rule = 6 lines.
+	// its own line + 3 = 4 lines.
 	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "line one\nline two\nline three")
 
 	// Window 2: folded tool — 1 line.
@@ -41,15 +41,20 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	dm = dm.MarkUserScrolled() // H/M/L require auto-follow off
 	dm = dm.updateContent()
 
-	// Row layout while a1 is expanded (9 total rows):
-	//   0: collapse-arrow TOOL read_file
-	//   1: expand-arrow ASSISTANT
-	//   2: ─────────────
-	//   3-5: content
-	//   6: ─────────────
-	//   7: collapse-arrow TOOL grep
-	//   8: collapse-arrow TOOL cat
-	// Viewport [0,4): rows 0,1,2,3.
+	// Row layout while a1 is expanded (7 total rows: a window's own line and
+	// its content, nothing else — the fixture is asserted below so this
+	// comment cannot rot again):
+	//   0:   + TOOL CALL ✓     read_file ⋯     (folded)
+	//   1:   - ASSISTANT                       (expanded: its own line)
+	//   2-4: its three content lines
+	//   5:   + TOOL CALL ✓     grep ⋯          (folded)
+	//   6:   + TOOL CALL ✓     cat ⋯           (folded)
+	// Viewport [0,4): rows 0,1,2,3 — the top row is window 0, but its center
+	// (row 2) and its bottom (row 3) are inside window 1.
+	if got := wb.GetTotalLines(); got != 7 {
+		t.Fatalf("fixture: total lines = %d, want 7 (one folded row + one expanded "+
+			"window's own line + its 3 content lines + two folded rows)", got)
+	}
 
 	// H: top visible window is window 0.
 	dm, _ = dm.MoveWindowCursorToTop()
@@ -57,7 +62,7 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 		t.Errorf("H with a1 expanded: cursor = %d, want 0", got)
 	}
 
-	// M: viewport center row = 4/2 = 2 → inside window 1 (rows 1-6).
+	// M: viewport center row = 4/2 = 2 → inside window 1 (rows 1-4).
 	dm, _ = dm.MoveWindowCursorToCenter()
 	if got := dm.GetWindowCursor(); got != 1 {
 		t.Errorf("M with a1 expanded: cursor = %d, want 1", got)
@@ -74,7 +79,7 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	wb.ToggleFold(1)
 	dm = dm.updateContent()
 
-	// M: center row = 4/2 = 2 → now inside window 2 (rows 2-3).
+	// M: center row = 4/2 = 2 → now window 2, which sits on row 2.
 	dm, _ = dm.MoveWindowCursorToCenter()
 	if got := dm.GetWindowCursor(); got != 2 {
 		t.Errorf("M with a1 folded: cursor = %d, want 2", got)

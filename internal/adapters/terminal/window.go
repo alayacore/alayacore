@@ -1,6 +1,7 @@
 package terminal
 
-// Window is a single display unit with border and content.
+// Window is a single display unit: the row that names it and the content
+// under it.
 //
 // Architecture
 //
@@ -184,7 +185,11 @@ type Window struct {
 
 	renderer WindowRendering
 
-	// border caches the border-wrapped render output.
+	// border caches this window's rendered rows: row 0 (the one that names
+	// it), the visual content lines, and the row variants that are derived
+	// on request (the cursor register, the pinned row's annotation). The
+	// name is historical — a window's chrome is one row and no border is
+	// drawn; the struct is what the caches hang off.
 	border borderCache
 }
 
@@ -577,8 +582,8 @@ func (w *Window) cursorLine0() string {
 // scrolls, and a count baked into it would be stale the moment the viewport
 // moved. Here the one window under the pin rebuilds its row when the count
 // changes (a scroll step that crosses one of its rows) and the frame reuses
-// it otherwise (streaming, a keystroke elsewhere), where the cost is a
-// compare and a slice read — no render, no measure, no allocation.
+// it otherwise (streaming, a keystroke elsewhere), where the cost is one
+// comparison — no render, no measure, no allocation.
 func (w *Window) pinnedLine0(linesAbove int, isCursor bool) string {
 	if w.border.pinnedDone && w.border.pinnedAbove == linesAbove && w.border.pinnedCursor == isCursor {
 		return w.border.pinnedRow

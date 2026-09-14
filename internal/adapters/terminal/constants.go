@@ -151,9 +151,12 @@ const statusDotGlyph = "∙"
 //  1. A glyph the layout gives exactly one cell must be East-Asian Neutral
 //     and outside Extended_Pictographic, or ASCII. This is what pins "∙"
 //     in statusDotGlyph, the "⠋…⠏"/"✓"/"✗" tool indicators, and the ASCII "|"
-//     the help bars use between key hints — a help bar is truncated and
-//     padded to exactly the box width (renderHelpBar), so one doubled cell
-//     there overflows the row.
+//     this UI separates fields with — the help bars between key hints, the
+//     status bar between segments, and a pinned window row between its
+//     hidden-line count and the timestamp. A help bar is truncated and
+//     padded to exactly the box width (renderHelpBar) and a window row is
+//     right-aligned to the window edge, so one doubled cell in either
+//     overflows the row.
 //  2. Where a whole class is Ambiguous and no Neutral member carries the
 //     meaning, rule 1 is waived for the class and recorded as a limitation
 //     instead of being worked around glyph by glyph. Two classes need the
