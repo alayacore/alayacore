@@ -590,7 +590,7 @@ func (w *Window) windowLabel() string {
 // buildExpandHeader returns the expanded window's first row: the marker,
 // the window's label, and the timestamp right-aligned to the window edge —
 //
-//   - REASONING                                     2026/09/14 16:32
+//   - REASONING                              2026/09/14 16:32:07 +08:00
 //
 // The label starts at the same cell as on a collapsed line (marker + one
 // space), so folding a window never moves its label. What differs between

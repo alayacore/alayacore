@@ -3,7 +3,7 @@ package terminal
 // Tests for a window's own line — row 0, the only chrome a window spends:
 //
 //	+ REASONING       The user says "my os" — unclear. …
-//	- REASONING                                     2026/09/14 16:32
+//	- REASONING                              2026/09/14 16:32:07 +08:00
 //
 // What is pinned here is the geometry the rest of the frame depends on, not
 // a preference about looks: the row must never exceed the window width (the
@@ -18,6 +18,7 @@ package terminal
 // tool_status_indicator_test.go; this file is about the shape they sit in.
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -44,14 +45,29 @@ func pinCreatedAt(wb *WindowBuffer) {
 // the layout constant: the row is right-aligned to the window edge, so a
 // format whose formatted width drifted by a cell would move every timestamp
 // on screen (and misalign the transcript) without any other test failing.
+//
+// The shape is pinned with the width, because the width is only stable
+// while the shape is: "2026/09/14 18:30:07 +08:00" — seconds, and a numeric
+// UTC offset rather than a zone name ("CST" is three different zones) or a
+// zone-less local time (which would say nothing about which clock it is,
+// and would silently change meaning in a terminal whose TZ differs from the
+// session's). The cases below cover a positive offset, a negative one, UTC
+// and single-digit fields.
 func TestTimeStampWidthIsPinned(t *testing.T) {
+	shape := regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:\d{2}$`)
 	for _, tm := range []time.Time{
 		pinnedTime,
-		time.Date(2006, 1, 2, 3, 4, 0, 0, time.Local),   // single-digit month/day/hour
-		time.Date(2026, 12, 31, 23, 59, 0, 0, time.UTC), // last minute of a year, UTC
+		time.Date(2006, 1, 2, 3, 4, 0, 0, time.Local),                       // single-digit month/day/hour
+		time.Date(2026, 12, 31, 23, 59, 0, 0, time.UTC),                     // last minute of a year, UTC
+		time.Date(2026, 12, 31, 23, 59, 0, 0, time.FixedZone("X", -5*3600)), // west of Greenwich
 	} {
-		if got := cellWidth(tm.Format(timeStampLayout)); got != timeStampWidth {
-			t.Errorf("%q formats to %d cells, layout reserves %d", tm.Format(timeStampLayout), got, timeStampWidth)
+		got := tm.Format(timeStampLayout)
+		if cellWidth(got) != timeStampWidth {
+			t.Errorf("%q formats to %d cells, layout reserves %d", got, cellWidth(got), timeStampWidth)
+		}
+		if !shape.MatchString(got) {
+			t.Errorf("%q is not the layout's shape %s: seconds and a numeric offset, nothing more",
+				got, shape)
 		}
 	}
 }
@@ -117,20 +133,31 @@ func TestWindowLineNeverExceedsWidth(t *testing.T) {
 // label identifies the window, the timestamp is metadata, so on a narrow
 // terminal the timestamp is dropped rather than the label being squeezed —
 // and a long tool header keeps its name.
+//
+// The two widths are derived from the row's geometry rather than written
+// down, so this test keeps meaning what it says when the timestamp's width
+// changes: marker + label + one gap cell + the timestamp column, one cell
+// short of which the timestamp must be gone and at which it must be there.
 func TestWindowLineTimestampYieldsToTheLabel(t *testing.T) {
 	styles := DefaultStyles()
-	// The tool label is 31 cells ("TOOL CALL ⠋" padded to the 16-cell
-	// column, then the name), so marker + label + gap + timestamp needs 50.
-	wb := NewWindowBuffer(49, styles)
-	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: []byte("execute_command: lscpu"),
-	}, 0)
-	pinCreatedAt(wb)
-	wb.ToggleFold(0) // tool windows start folded; open it
+	// The tool label is "TOOL CALL ⠋" padded to the label column, then the
+	// name.
+	label := padLabel(toolLabelWithIndicator("✓")) + "execute_command"
+	fits := collapsedPrefixWidth + cellWidth(label) + 1 + timeStampWidth
 
-	plain := stripANSI(wb.GetAll(-1, false))
+	open := func(width int) string {
+		wb := NewWindowBuffer(width, styles)
+		wb.HandleToolInputEvent(protocol.ToolInputData{
+			ID:    "t1",
+			Name:  "execute_command",
+			Input: []byte("execute_command: lscpu"),
+		}, 0)
+		pinCreatedAt(wb)
+		wb.ToggleFold(0) // tool windows start folded; open it
+		return stripANSI(wb.GetAll(-1, false))
+	}
+
+	plain := open(fits - 1)
 	if !strings.HasPrefix(plain, unfoldArrow+" TOOL CALL") {
 		t.Errorf("the label must survive: %q", firstRow(plain))
 	}
@@ -142,20 +169,13 @@ func TestWindowLineTimestampYieldsToTheLabel(t *testing.T) {
 	}
 
 	// One cell wider and it fits.
-	wb2 := NewWindowBuffer(50, styles)
-	wb2.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: []byte("execute_command: lscpu"),
-	}, 0)
-	pinCreatedAt(wb2)
-	wb2.ToggleFold(0)
-	plain = stripANSI(wb2.GetAll(-1, false))
+	plain = open(fits)
 	if !strings.HasSuffix(firstRow(plain), pinnedTime.Format(timeStampLayout)) {
-		t.Errorf("at 50 cells the timestamp fits and must be shown: %q", firstRow(plain))
+		t.Errorf("at %d cells the timestamp fits and must be shown: %q", fits, firstRow(plain))
 	}
-	if got := cellWidth(firstRow(plain)); got != 50 {
-		t.Errorf("row with a timestamp = %d cells, want 50 (right-aligned to the edge): %q", got, firstRow(plain))
+	if got := cellWidth(firstRow(plain)); got != fits {
+		t.Errorf("row with a timestamp = %d cells, want %d (right-aligned to the edge): %q",
+			got, fits, firstRow(plain))
 	}
 }
 

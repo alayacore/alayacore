@@ -47,7 +47,7 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 	}
 	// The window's line carries the timestamp, right-aligned to the window
 	// edge, so it fills the width. (The instant does not matter — the
-	// column is a fixed 16 cells.)
+	// column is a fixed timeStampWidth cells.)
 	if got := cellWidth(lines[0].Text); got != width {
 		t.Errorf("window line width = %d, want %d (timestamp right-aligned): %q", got, width, stripANSI(lines[0].Text))
 	}

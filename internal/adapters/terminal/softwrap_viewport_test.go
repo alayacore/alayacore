@@ -123,8 +123,13 @@ func TestRenderVirtualScrolledIntoWindowPinsItsLine(t *testing.T) {
 	if strings.Contains(out, "─") {
 		t.Errorf("fragment must not contain rules: %q", out)
 	}
-	if strings.Contains(out, foldArrow) {
-		t.Errorf("fragment must not contain the folded marker: %q", out)
+	// No folded window here. The marker is column 0 of a row, so that is
+	// where to look for it: a substring search would trip over the "+" of a
+	// UTC offset in the pinned line's timestamp.
+	for _, row := range strings.Split(out, "\n") {
+		if strings.HasPrefix(row, foldArrow) {
+			t.Errorf("fragment must not contain a folded row: %q", row)
+		}
 	}
 	// One hard newline: after the pinned line the body is continuous (the
 	// rows of one soft-wrapped line join without '\n').

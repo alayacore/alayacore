@@ -81,18 +81,38 @@ const (
 // The column is right-aligned to the window edge, so a format whose width
 // drifted would move every timestamp on screen and misalign the whole
 // transcript: the layout is pinned, and a test asserts that a formatted
-// timestamp really measures timeStampWidth cells.
+// timestamp measures exactly timeStampWidth cells — every zone, every month,
+// every day. The shape is the one this UI already used, plus seconds and the
+// UTC offset: "2026/09/14 18:30:07 +08:00".
 //
-// Local time, not UTC: this is the reader's own receipt clock (when the
-// window appeared in this view), not a record field — Session records
-// carry no per-message time, and the frontmatter's created_at/updated_at
-// are UTC because those are data. Minutes, not seconds: two windows
-// created by one delta flush share a timestamp either way, and seconds
-// would cost 3 more cells of every row for a distinction the reader
-// cannot use.
+// Local time with its offset, not UTC: this is the reader's own receipt clock
+// (when the window appeared in this view), not a record field. Session
+// records carry no per-message time — the frontmatter's created_at and
+// updated_at are session-level, written once, in whatever zone the session
+// was created in, and are nothing a per-window clock can borrow.
+//
+// Seconds, where the layout used to stop at the minute: a minute is shorter
+// than the gaps this transcript is read for (a command that ran 40 seconds
+// and the answer that follows it land in the same minute), while everything
+// one delta flush delivers still shares one second — 400 windows are created,
+// stamped and rendered in about a millisecond — so the finer resolution
+// separates what a reader is looking at without fragmenting what arrived
+// together. It costs 3 cells of every row.
+//
+// The offset is the other half of saying "local": six cells that name the
+// zone the clock is in. They are the same six cells on every row of a
+// session, because the zone is the process's — constant chrome, spent on
+// making a column that appears nowhere else in the frame self-describing. (A
+// zone name would be three cells, "CST", and mean three different zones.)
+// This is not RFC 3339, and a strict parser will reject it: a
+// machine-readable column, if one is ever wanted, is a separate decision.
+//
+// The width is not negotiable in the other direction either: a timestamp is
+// drawn only when the label leaves room for all of it beside itself (see
+// buildExpandHeader), never truncated and never shortened to fit.
 const (
-	timeStampLayout = "2006/01/02 15:04"
-	timeStampWidth  = 16
+	timeStampLayout = "2006/01/02 15:04:05 -07:00"
+	timeStampWidth  = 26
 )
 
 // statusDotGlyph is the one state marker the status bar draws, at the very

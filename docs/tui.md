@@ -318,7 +318,7 @@ by the `───` divider — under the window's own line (marker + label; see
 [Window Container](#window-container)):
 
 ```
-- USER PROMPT                       2026/09/14 16:32
+- USER PROMPT             2026/09/14 16:32:07 +08:00
 📷 Image  🎵 Audio
 ───
 what are these?
@@ -411,7 +411,7 @@ as long as any of its body is still visible below. Reading the middle of a
 long answer, you keep seeing whose answer it is:
 
 ```
-- ASSISTANT                                         2026/09/14 16:32   ← pinned
+- ASSISTANT                               2026/09/14 16:32:07 +08:00   ← pinned
 …the part of the answer you have scrolled to…
 ```
 
@@ -481,7 +481,7 @@ The exception is a tool window's **name**, which is the row's payload rather tha
 
 ```
 + REASONING       The user says "my os" — unclear. Perhaps they w… running. Let me check with a command.
-- REASONING                                                     2026/09/14 16:32
+- REASONING                                           2026/09/14 16:32:07 +08:00
 The user says "my os" — unclear. Perhaps they want to know what OS they are on.
 ```
 
@@ -491,9 +491,11 @@ An expanded window's line is `- LABEL`, the arrival timestamp right-aligned to t
 
 #### The timestamp
 
-The expanded line carries `2026/09/14 16:32` at its right end: **when the adapter received this window**, which is the only time the display has. The session record carries no per-message time (its `created_at`/`updated_at` are session-level), so a replayed session stamps every message with the moment the replay reached the adapter — the honest reading of "arrival time", and the reason the header calls it nothing more.
+The expanded line carries `2026/09/14 16:32:07 +08:00` at its right end: **when the adapter received this window**, which is the only time the display has. The session record carries no per-message time (its `created_at`/`updated_at` are session-level), so a replayed session stamps every message with the moment the replay reached the adapter — the honest reading of "arrival time", and the reason the header calls it nothing more.
 
-It is the adapter's receipt clock, read once when the window is created (`Window.CreatedAt`) and never read again while rendering: rendering stays a pure function of the window's state (cacheable, testable), and the clock is touched at exactly one boundary. The column is a fixed 16 cells (`timeStampLayout`, pinned by a test) and right-aligned, so the label yields to it and never the other way round: a tool header too long for the row keeps its name and loses the timestamp rather than the reverse. On a terminal too narrow for both, the timestamp is simply not drawn — no truncation, no shortened format.
+It is the adapter's receipt clock, read once when the window is created (`Window.CreatedAt`) and never read again while rendering: rendering stays a pure function of the window's state (cacheable, testable), and the clock is touched at exactly one boundary. The column is a fixed 26 cells (`timeStampLayout`, pinned by a test) and right-aligned, so the label yields to it and never the other way round: a tool header too long for the row keeps its name and loses the timestamp rather than the reverse. On a terminal too narrow for both, the timestamp is simply not drawn — no truncation, no shortened format.
+
+Twenty-six cells, where the column was 16 before, buys two things. **Seconds**: a minute is shorter than the gaps this transcript is read for — a command that ran 40 seconds and the answer after it land in the same minute — while everything one delta flush delivers still shares one second (400 windows are created, stamped and rendered in about a millisecond), so the finer resolution separates what a reader is looking at without fragmenting what arrived together. **The offset**: six cells that name the zone the clock is in, and they are the same six cells on every row of a session, because the zone is the process's — constant chrome, spent on making a column that appears nowhere else in the frame self-describing. A zone *name* would be three cells, `CST`, and mean three different zones. The format is the wall-clock shape the UI already used, so this is not RFC 3339 and a strict parser will reject it; a machine-readable column, if one is ever wanted, is a separate decision.
 
 #### Cursor highlight
 
