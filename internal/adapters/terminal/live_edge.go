@@ -35,7 +35,7 @@ package terminal
 // marker is on most of the time and should be the quietest thing on screen.
 // It shares the theme's dim with the chrome around it rather than the muted
 // secondary-label color the status segment it replaced used. No bold either
-// — accent+bold belongs to the running-task dot.
+// — the running task is marked by the spinner's motion, not by a color.
 //
 // Case: lowercase. Uppercase in this UI is a block heading (`USER PROMPT`,
 // `TOOL CALL`, padded to CollapsedLabelWidth), and a heading here would be

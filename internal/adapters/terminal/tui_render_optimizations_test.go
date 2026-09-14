@@ -260,8 +260,9 @@ func TestRenderStatusBarCacheInvalidatesOnChange(t *testing.T) {
 	m = m.updateStatus()
 	first := m.renderStatusBar()
 
-	// Task starts → inProgress flips; the indicator color (accent vs dim)
-	// changes, so the rendered string must differ.
+	// Task starts → inProgress flips; the indicator becomes the spinner and
+	// the row is no longer served from the cache, so the rendered string must
+	// differ.
 	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":0}}`)
 	m = m.updateStatus()
 	second := m.renderStatusBar()

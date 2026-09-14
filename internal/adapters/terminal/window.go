@@ -660,12 +660,14 @@ func (w *Window) windowLabel() string {
 // the two states is the marker glyph and what follows the label: a content
 // summary when folded, the timestamp when expanded.
 //
-// markerColor paints the marker and the timestamp — the row's own chrome,
-// in one color (dim by default, the accent for a user prompt, the
-// selection color under the cursor) — while styles paints the label. The
-// two differ only in the cursor's register, where borderStyle carries the
-// selection color and styles is Styles.Selected(), so the whole row is
-// highlighted (see Window.cursorLine0).
+// Every piece of the row's own chrome — the marker, the label, the timestamp
+// and the annotation — is drawn in the row's one line style (lineStyle →
+// lineStyleForTag: bold in the label color, or the error color for
+// SYSTEM ERROR). styles is that same set unless the cursor is on this
+// window, when the caller hands in Styles.Selected() and the whole row comes
+// out highlighted as a unit (see Window.cursorLine0). A tool window's name is
+// the one piece that is not line style: it takes toolNameStyle in both fold
+// states (expandTitle).
 //
 // Widths, in priority order: the marker and the label always render (the
 // label is what identifies the window); then the timestamp, then the

@@ -31,7 +31,7 @@ var widthCorpus = []string{
 	"e\u0301o",           // combining acute: one cluster of 1
 	"कि indic",           // Devanagari Mc: 2 to uniseg, 1 here
 	"🇨🇳🇧🇷 flags",         // regional indicator pairs
-	"∙ R0 | 12.3K/128K | gpt…",
+	"⠿ R0 | 12.3K/128K | gpt…",
 	"─────",
 	"a\tb",
 }
@@ -43,7 +43,7 @@ var widthCorpus = []string{
 var styledCorpus = []string{
 	"\x1b[31mred\x1b[0m reset",
 	"\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\",
-	"\x1b[38;2;49;50;68m∙\x1b[m \x1b[1mR0\x1b[m \x1b[38;2;49;50;68m│\x1b[m hi",
+	"\x1b[38;2;49;50;68m⠿\x1b[m \x1b[1mR0\x1b[m \x1b[38;2;49;50;68m│\x1b[m hi",
 }
 
 // allCorpus is widthCorpus plus the styled rows.

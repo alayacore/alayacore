@@ -24,7 +24,9 @@ Root cause chain:
 The session-loading screen does not freeze because `Terminal.View()`
 rebuilds `renderLoadingView()` fresh on every tick (a separate, fully
 tick-driven path that bypasses the display cache). The tool spinner had
-no such driver.
+no such driver. The status bar's own indicator needs none either: while a
+task runs `renderStatusBar` skips its render cache, so `View()` rebuilds
+it — spinner frame and all — on every tick (idle keeps the cache).
 
 ## Fix
 
@@ -75,8 +77,10 @@ no such driver.
   aliases `w.cache.lines`) into the most fragile, highest-gocyclo rendering
   code for negligible gain.
 - **Why `ToolStatusPending` only — not a general animation framework?**
-  Two animations (loading screen, tool spinner) with different lifecycles
-  do not justify an abstraction; it would add indirection, not clarity.
+  The spinner is one glyph and one wall-clock function (`spinner.go`), now
+  shared by the loading screen, the tool header and the status bar; each
+  surface just re-renders from it. A framework would add indirection, not
+  clarity.
 
 ### Future direction
 
