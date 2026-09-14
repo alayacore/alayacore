@@ -9,8 +9,14 @@ The session measures each LLM round trip (step) and shows the latest
 step's speed in the TUI status bar, right after the context segment:
 
 ```
-∙ R0 | 1.5K | 12.5 tok/s (ttft 1.2s) | 1/5
+∙ 1.5K | 12.5 tok/s (ttft 1.2s) | 1/5                     gpt-4o | R2
 ```
+
+The right-aligned group is the active model name with the reasoning level
+fused to it (`statusRightSegment` in
+`internal/adapters/terminal/tui_status.go`); with no model set it is the bare
+level, still flush right, so the level's column never moves. The left
+segments carry the live telemetry only.
 
 The leading `∙` is the status dot — accent-colored and bold while a task
 runs, dim otherwise. TTFT is parenthesised rather than set off by a middle

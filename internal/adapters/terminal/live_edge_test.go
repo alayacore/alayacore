@@ -139,10 +139,15 @@ func TestLiveEdgeReadsStateAtRenderTime(t *testing.T) {
 	// The follow state is no longer folded into the cached segment. Stated
 	// as the exact text rather than as "contains no F↓", because a substring
 	// check on a bar that can carry a model name is a check that passes for
-	// the wrong reason: the left segments hold the reasoning level and
-	// nothing else (this used to read "R0 F↓" while following).
-	if got := stripANSI(m.statusLeft); got != "R0" {
-		t.Errorf("status segments after the flip = %q, want the bare %q", got, "R0")
+	// the wrong reason. This fixture has no model and no telemetry, so the
+	// left segments are empty and the level — the one field the bar always
+	// shows — is the right group (this used to read "R0 F↓" while following,
+	// back when the level opened the left segments).
+	if got := stripANSI(m.statusLeft); got != "" {
+		t.Errorf("status segments after the flip = %q, want none (the level is a right-group field)", got)
+	}
+	if got := stripANSI(m.statusRight); got != "R0" {
+		t.Errorf("status right group after the flip = %q, want %q", got, "R0")
 	}
 }
 

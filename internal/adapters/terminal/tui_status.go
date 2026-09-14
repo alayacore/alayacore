@@ -1,8 +1,8 @@
 package terminal
 
-// Status bar: session state display (steps, tokens, switches).
+// Status bar: session state display (steps, tokens, right group).
 //
-// Extracted from tui.go. Owns statusLeft and inProgress state,
+// Extracted from tui.go. Owns statusLeft/statusRight and inProgress state,
 // and provides rendering helpers.
 
 import (
@@ -59,21 +59,41 @@ func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
 	return fmt.Sprintf("%.1f tok/s", stepTPS)
 }
 
+// statusRightSegment returns the right-aligned status group: the active
+// model name with the reasoning level fused to it ("DeepSeek Flash | R2"),
+// or the bare level ("R2") when no model is active — the level's column
+// does not depend on whether a model happens to be set.
+//
+// The level rides at the tail deliberately. The group is truncated from
+// its end when the line runs out of room (assembleStatusLeft), so a
+// squeezed bar drops "R2" before the truncation eats into the model name:
+// the model identifies the session, and the level is a setting the session
+// file already records.
+func statusRightSegment(model string, reasoningLevel int) string {
+	if model == "" {
+		return fmt.Sprintf("R%d", reasoningLevel)
+	}
+	return fmt.Sprintf("%s | R%d", model, reasoningLevel)
+}
+
 // renderStatusBar renders the status bar line.
 // Status bar is dimmed when an overlay is active.
 //
-// Layout: the status segments (reasoning, context, steps, video) start at
-// the left after the status dot. The active model name is placed by a
-// single threshold (see assembleStatusLeft): with ample space it floats
-// right-aligned after blank padding; when the gap would be ≤ 3 cells it
-// merges into the left segments (joined by " | ", truncated together) —
-// the bar never shows a squeezed right-aligned model or a 1-3 cell gap.
-// Without a model the left-aligned segments may also run up to the right
-// edge — the TUI's flush-to-edge design language.
+// Layout: the live status segments (context, speed, steps, video) start
+// at the left after the status dot. The right group — the active model
+// name with the reasoning level fused to it ("DeepSeek Flash | R2"), or
+// the bare level when no model is set — is placed by a single threshold
+// (see assembleStatusLeft): with ample space it floats right-aligned
+// after blank padding; when the gap would be ≤ 3 cells it merges into the
+// left segments (joined by " | ", truncated together) — the bar never
+// shows a squeezed right-aligned group or a 1-3 cell gap. The row may
+// run right up to the terminal edge (the cap is the full width, not
+// width-2 — see the hard cap below): the TUI's flush-to-edge design
+// language.
 //
 // The result is truncated to at most the terminal width so a runaway
-// status string — e.g. a session with every switch + a long token count
-// + many steps + video config + a long model name — does not soft-wrap
+// status string — e.g. a session with a long token count + many steps
+// + video config + a long model name — does not soft-wrap
 // onto a second row in raw passthrough mode. Two status rows would push
 // the input box's rendered content against the bottom rule and overlap
 // the prompt area, even though the input box is now drawn with an
@@ -82,7 +102,7 @@ func statusSpeedSegment(stepTPS float64, ttftMS int64) string {
 //
 // View() invokes this on every render; the cache short-circuits when
 // the inputs that affect the rendered string are unchanged since the
-// last call (status text, model segment, in-progress flag,
+// last call (status text, right group, in-progress flag,
 // overlay-blocked state, width, theme styles). The indicator +
 // truncation + style.Render pipeline otherwise rebuilds a fresh
 // ANSI-encoded string every 250ms tick, only to be discarded by
@@ -144,14 +164,15 @@ func (m *Terminal) renderStatusBar() string {
 	// content. The TUI's design language is
 	// flush-to-edge (input box rules, window separators all span the
 	// full width), and the status content is assembled from program-
-	// controlled segments (indicator, reasoning, tokens, steps, video,
-	// model name) that contain no tabs — the one case the width model
-	// documents as unreliable (ansi.Hardwrap counts a tab as 0 cells).
+	// controlled segments (indicator, tokens, steps, video, model
+	// name with its reasoning level) that contain no tabs — the one
+	// case the width model documents as unreliable (ansi.Hardwrap
+	// counts a tab as 0 cells).
 	// So the rendered line may legitimately run right up to the edge.
 	lineBudget := max(0, m.windowWidth)
 
 	// Assemble the plain line: indicator + truncated segments +
-	// right-aligned truncated model (see assembleStatusLeft).
+	// right-aligned truncated group (see assembleStatusLeft).
 	leftPlain := assembleStatusLeft(m.statusLeft, m.statusRight, indicatorGlyph, lineBudget)
 
 	// Render: indicator with its own style, the rest per segment
@@ -190,14 +211,22 @@ func (m *Terminal) renderStatusBar() string {
 // assembleStatusLeft builds the PLAIN left part of the status bar:
 // the indicator glyph, the status segments truncated to the remaining
 // budget (always keeping a 1-cell separator after the indicator), and
-// the model right-aligned flush against the right screen edge.
+// the right group (model name + reasoning level, or the bare level when
+// no model is set) right-aligned flush against the right screen edge.
 //
-// The model is placed by a single threshold: it floats right-aligned
+// The group is placed by a single threshold: it floats right-aligned
 // (blank padding, flush right) only when the gap exceeds 3 cells. A gap
-// of ≤ 3 cells is too cramped — the model merges into the left segments
-// instead, joined by " | " and truncated together (the model is last, so
-// truncation cuts it first). The bar never shows a squeezed right-aligned
-// model or a 1-3 cell gap.
+// of ≤ 3 cells is too cramped — the group merges into the left segments
+// instead, joined by " | " and truncated together (the group is last, so
+// truncation eats into its tail — the reasoning level — before it costs
+// the model name). The bar never shows a squeezed right-aligned group or
+// a 1-3 cell gap.
+//
+// An empty statusRight renders the left segments alone. updateStatus
+// never produces one — the group always carries at least the reasoning
+// level — but renderStatusBar is also reached by a hand-built Terminal
+// whose status has not been loaded yet, and by tests that pin this
+// layout with bare segments.
 func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudget int) string {
 	left := indicatorGlyph
 	if statusLeft != "" {
@@ -210,12 +239,12 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudg
 		return left
 	}
 
-	// Ample space (gap > 3): model floats flush right.
+	// Ample space (gap > 3): the group floats flush right.
 	if gap := lineBudget - Width(left) - Width(statusRight); gap > 3 {
 		return left + strings.Repeat(" ", gap) + statusRight
 	}
 
-	// Tight space (gap ≤ 3): no right-aligned element — the model joins
+	// Tight space (gap ≤ 3): no right-aligned element — the group joins
 	// the left segments, truncated together.
 	merged := statusLeft
 	if merged != "" {
@@ -242,7 +271,7 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudg
 // leading on the right part) are re-emitted exactly as the plain text
 // has them — a space truncated away is not restored, so the rendered
 // width always matches the plain width (lineBudget). Extra spaces (the
-// blank gap before the right-aligned model) stay inside their part.
+// blank gap before the right-aligned model group) stay inside their part.
 // Empty parts (dangling separators from a cut) are dropped.
 func renderStatusSegments(plain string, segStyle, sepStyle Style) string {
 	if plain == "" {
@@ -335,18 +364,27 @@ func (m Terminal) updateStatus() Terminal {
 	// plain text, so the "…" inherits the segment style naturally).
 	var segments []string
 
-	// Switch indicators segment (compact: "R1"). The reasoning level is
-	// always rendered ("R0".."R2") using the muted style — the accent color
-	// and bold are reserved for the status dot, which remains the only
-	// highlighted element in the status bar. There is deliberately no glyph
-	// after the level: a marker that never changes with the state (an
-	// earlier revision drew "R0✦".."R2✦", ✦ shown even at 0) carries no
-	// information while looking like an indicator. The auto-follow marker
-	// that used to sit here ("F↓") moved to the live edge above the input
-	// box: it reports the transcript, so it belongs on the transcript's own
-	// closing row rather than on the row under the prompt (live_edge.go).
-	switches := fmt.Sprintf("R%d", snap.ReasoningLevel)
-	segments = append(segments, switches)
+	// Reasoning level ("R0".."R2") rides on the right, with the model name
+	// when there is one (statusRightSegment: "DeepSeek Flash | R2") and
+	// alone when there is not (a bare "R2"), never at the head of the left
+	// segments. It says how the model thinks, while the left group carries
+	// the live session telemetry (tokens, speed, steps) — and a field read
+	// at a glance in every state must not move: pinning it to the left
+	// whenever a model happened to be set and to the right whenever it did
+	// not would make the same fact change address mid-session. With no
+	// model the bar is the status dot and the level flush right; that is
+	// the price of the fixed column.
+	//
+	// Muted style either way: the accent color and bold are reserved for the
+	// status dot, the only highlighted element in the status bar. There is
+	// deliberately no glyph after the level: a marker that never changes
+	// with the state (an earlier revision drew "R0✦".."R2✦", ✦ shown even
+	// at 0) carries no information while looking like an indicator. The
+	// auto-follow marker that used to sit here ("F↓") moved to the live edge
+	// above the input box: it reports the transcript, so it belongs on the
+	// transcript's own closing row rather than on the row under the prompt
+	// (live_edge.go).
+	m.statusRight = statusRightSegment(snap.ActiveModel, snap.ReasoningLevel)
 
 	// Context segment
 	if snap.ContextTokens > 0 {
@@ -379,10 +417,6 @@ func (m Terminal) updateStatus() Terminal {
 	}
 
 	m.statusLeft = strings.Join(segments, " | ")
-	// Model segment — not joined with the left segments; renderStatusBar
-	// right-aligns it in the remaining flexible space and truncates it
-	// with "…" when the left segments leave no room.
-	m.statusRight = snap.ActiveModel
 	m.inProgress = snap.InProgress
 
 	m = m.syncThemeFromSession(snap.ActiveTheme, snap.ActiveThemeData)

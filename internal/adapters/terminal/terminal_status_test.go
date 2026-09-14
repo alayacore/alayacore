@@ -6,14 +6,17 @@ import (
 	"testing"
 )
 
-// TestStatusBarReasoningAlwaysShownWithoutHighlight verifies the status
+// TestStatusBarReasoningRidesWithModelWithoutHighlight verifies the status
 // bar always renders the reasoning level ("R0".."R2") plain — no accent
 // (highlight) color and no bold weight. The status dot is the only
-// element in the status bar that uses the accent. There is no marker
-// glyph after the level: ✦ used to be drawn there unconditionally
-// (even at R0, where it signals nothing), which read like a state
-// indicator while never changing state.
-func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
+// element in the status bar that uses the accent. It also pins where the
+// level sits: the right group, fused to the model name when there is one
+// ("gpt-4o | R2") and alone when there is not (a bare "R2") — the level
+// never moves to the left segments. There is no marker glyph after the
+// level: ✦ used to be drawn there unconditionally (even at R0, where it
+// signals nothing), which read like a state indicator while never
+// changing state.
+func TestStatusBarReasoningRidesWithModelWithoutHighlight(t *testing.T) {
 	for _, level := range []int{0, 1, 2} {
 		t.Run(fmt.Sprintf("level=%d", level), func(t *testing.T) {
 			out := NewTerminalOutput(DefaultStyles())
@@ -40,19 +43,34 @@ func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
 
 			*terminal = terminal.updateStatus()
 
-			plain := stripANSI(terminal.statusLeft)
-
-			// 1. Reasoning level is always shown, even when 0 ("R0").
 			want := fmt.Sprintf("R%d", level)
-			if !containsSubstring(plain, want) {
-				t.Errorf("expected status to contain %q, got %q", want, plain)
+
+			// 1. No active model: the level still sits on the right — the
+			//    bar is the status dot and the bare level, and the left
+			//    segments stay empty. Always shown, even when 0 ("R0").
+			rendered := terminal.renderStatusBar()
+			if got := stripANSI(rendered); !strings.HasSuffix(got, want) {
+				t.Errorf("status bar should end with %q, got %q", want, got)
 			}
-			// 2. No bold SGR — bold was tied to the accent color and is
+			if got := stripANSI(terminal.statusLeft); got != "" {
+				t.Errorf("level must not be a left segment, got %q", got)
+			}
+
+			// 2. Active model: the level rides after the model name in the
+			//    right group.
+			out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
+			*terminal = terminal.updateStatus()
+
+			rendered = terminal.renderStatusBar()
+			if got := stripANSI(rendered); !strings.HasSuffix(got, "gpt-4o | "+want) {
+				t.Errorf("status bar should end with the model group %q, got %q", "gpt-4o | "+want, got)
+			}
+			// 3. No bold SGR — bold was tied to the accent color and is
 			//    no longer applied to the reasoning indicator.
-			if strings.Contains(terminal.statusLeft, "\x1b[1m") {
-				t.Errorf("reasoning indicator should not be bold, got %q", terminal.statusLeft)
+			if strings.Contains(rendered, "\x1b[1m") {
+				t.Errorf("reasoning indicator should not be bold, got %q", rendered)
 			}
-			// 3. The accent color must not be applied to the reasoning
+			// 4. The accent color must not be applied to the reasoning
 			//    indicator. Render a reference string with the accent
 			//    style, capture its exact ANSI signature, and confirm
 			//    that signature never appears adjacent to the "R{n}" text.
@@ -66,14 +84,14 @@ func TestStatusBarReasoningAlwaysShownWithoutHighlight(t *testing.T) {
 			if accentOpen != "" && strings.Contains(accentOpen, "\x1b[") {
 				// Locate "R{n}" in the raw (ANSI-bearing) status and
 				// confirm the accent signature is not adjacent to it.
-				rawIdx := strings.Index(terminal.statusLeft, want)
+				rawIdx := strings.Index(rendered, want)
 				if rawIdx >= 0 {
-					window := terminal.statusLeft
+					window := rendered
 					if rawIdx-len(accentOpen) >= 0 {
-						window = terminal.statusLeft[rawIdx-len(accentOpen) : rawIdx+len(want)]
+						window = rendered[rawIdx-len(accentOpen) : rawIdx+len(want)]
 					}
 					if strings.Contains(window, accentOpen) {
-						t.Errorf("accent SGR %q wraps R{n} text: %q", accentOpen, terminal.statusLeft)
+						t.Errorf("accent SGR %q wraps R{n} text: %q", accentOpen, rendered)
 					}
 				}
 			}
@@ -205,8 +223,9 @@ func containsSubstring(s, substr string) bool {
 
 // TestStatusBarShowsActiveModelRightAligned verifies the active model
 // name is displayed in the status bar, right-aligned in the remaining
-// flexible space: the line ends with the model name and the padding
-// sits between the left status segments and the model.
+// flexible space with the reasoning level fused to it: the line ends
+// with the model group and the padding sits between the left status
+// segments and the group.
 func TestStatusBarShowsActiveModelRightAligned(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":128000}}`)
@@ -217,11 +236,12 @@ func TestStatusBarShowsActiveModelRightAligned(t *testing.T) {
 	rendered := m.renderStatusBar()
 	plain := stripANSI(rendered)
 
-	// Model name is the last thing on the line (right-aligned).
-	if !strings.HasSuffix(plain, "gpt-4o") {
-		t.Errorf("status bar should end with the model name, got %q", plain)
+	// The model group — model name plus the reasoning level riding after
+	// it — is the last thing on the line (right-aligned).
+	if !strings.HasSuffix(plain, "gpt-4o | R0") {
+		t.Errorf("status bar should end with the model group, got %q", plain)
 	}
-	// The flexible padding goes between the left segments and the model.
+	// The flexible padding goes between the left segments and the group.
 	if !strings.Contains(plain, " gpt-4o") {
 		t.Errorf("expected padding before the right-aligned model, got %q", plain)
 	}
@@ -234,8 +254,8 @@ func TestStatusBarShowsActiveModelRightAligned(t *testing.T) {
 }
 
 // TestStatusBarModelTruncatedWithEllipsis verifies the right-aligned
-// model is truncated with "…" when the remaining space cannot fit it,
-// and dropped entirely when there is no room at all.
+// model group is truncated with "…" when the remaining space cannot fit
+// it, and dropped entirely when there is no room at all.
 func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 	const modelName = "a-very-long-model-name-that-does-not-fit"
 
@@ -243,7 +263,7 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 	out.handleSystemMsg(fmt.Sprintf(`{"type":"model","data":{"active_id":1,"active_name":%q,"context_limit":0}}`, modelName))
 
 	m := newTerminalForUpdateStatusTest(out)
-	m.windowWidth = 24 // left "∙ R0" (4) + a 40-cell model cannot share 24 → merged, truncated
+	m.windowWidth = 24 // the 45-cell group ("<40-cell name> | R0") cannot share 24 with the dot → merged, truncated
 	m = m.updateStatus()
 
 	rendered := m.renderStatusBar()
@@ -260,10 +280,9 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
 	}
 
-	// Extremely narrow window: the model merges into the left segments
-	// and is cut away entirely by the combined truncation (only the
-	// left segments remain, themselves truncated).
-	m.windowWidth = 6 // lineBudget = 6: the merged left+model truncates the model away
+	// Extremely narrow window: the group joins the (empty) left segments
+	// and the truncation cuts into the model name itself.
+	m.windowWidth = 6 // budget 4: only the first cells of the model name survive
 	m = m.updateStatus()
 	plain = stripANSI(m.renderStatusBar())
 	if strings.Contains(plain, modelName) {
@@ -271,34 +290,68 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 	}
 }
 
-// TestStatusBarNoModelOmitsPadding verifies that without an active
-// model the status bar renders exactly the left segments with no
-// trailing padding (the model-empty path must not inject spaces).
-func TestStatusBarNoModelOmitsPadding(t *testing.T) {
+// TestStatusBarSqueezedLineDropsReasoningFirst pins the tail position of
+// the reasoning level in the model group: truncation runs from the end,
+// so a line with no room loses "R0" before it costs the reader any of
+// the model name — a squeeze must not take the session's identity while
+// a setting the session file already records is still on screen.
+func TestStatusBarSqueezedLineDropsReasoningFirst(t *testing.T) {
+	out := NewTerminalOutput(DefaultStyles())
+	out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
+
+	m := newTerminalForUpdateStatusTest(out)
+	m = m.updateStatus()
+	m.windowWidth = 9 // "∙ gpt-4o | R0" (13 cells) merges → "∙ gpt-4o…" (9)
+
+	plain := stripANSI(m.renderStatusBar())
+	if !strings.Contains(plain, "gpt-4o") {
+		t.Errorf("the model name must survive the squeeze, got %q", plain)
+	}
+	if strings.Contains(plain, "R0") {
+		t.Errorf("the level rides at the tail and must be truncated first, got %q", plain)
+	}
+}
+
+// TestStatusBarNoModelKeepsLevelRightAligned verifies that with no active
+// model the bar is still the status dot and the level flush right — the
+// level's column does not depend on whether a model happens to be set —
+// and that the model-empty left side carries no segments at all (no stray
+// separator, no padding injected before the group).
+func TestStatusBarNoModelKeepsLevelRightAligned(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
 
+	if got := stripANSI(m.statusLeft); got != "" {
+		t.Errorf("left segments without a model = %q, want none (the level is a right-group field)", got)
+	}
+
 	plain := stripANSI(m.renderStatusBar())
-	if plain != "∙ R0" {
-		t.Errorf("expected bare left segments without model, got %q", plain)
+	if !strings.HasPrefix(plain, statusDotGlyph+" ") {
+		t.Errorf("status bar should open with the status dot, got %q", plain)
+	}
+	if !strings.HasSuffix(plain, "R0") {
+		t.Errorf("status bar should end with the level, got %q", plain)
+	}
+	if w := Width(plain); w != m.windowWidth {
+		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
 	}
 }
 
 // TestStatusBarNoModelMayFillWidth verifies the no-model path shares
-// the same full-width cap as the model path: an overlong bare status
-// line is truncated to the window width (flush-to-edge design), not to
-// windowWidth-2.
+// the same full-width cap as the model path: an overlong status line is
+// truncated to the window width (flush-to-edge design), not to
+// windowWidth-2 — the level stays in the right group throughout.
 func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	// Long reasoning + context segments so the bare line overflows a
-	// narrow window.
+	// Long reasoning + context segments so the row overflows a narrow
+	// window.
 	out.handleSystemMsg(`{"type":"reasoning","data":{"level":2}}`)
 	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":999999999,"context_limit":1000000000}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
-	m.windowWidth = 12 // content "∙ R2 | 1000.0M" (14) overflows → truncated to 12
+	m.windowWidth = 12 // the 22-cell context segment overflows the budget on its own → truncated
 	m = m.updateStatus()
 
 	plain := stripANSI(m.renderStatusBar())
@@ -310,10 +363,11 @@ func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 	}
 }
 
-// TestStatusBarModelInvalidatesRenderCache verifies the render cache
-// key includes the model segment — a model change must produce a new
-// rendered line even when every other input is unchanged.
-func TestStatusBarModelInvalidatesRenderCache(t *testing.T) {
+// TestStatusBarModelGroupInvalidatesRenderCache verifies the render cache
+// key includes the whole right group — a model change and a reasoning
+// level change must each produce a new rendered line even when every
+// other input is unchanged.
+func TestStatusBarModelGroupInvalidatesRenderCache(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
 
@@ -333,8 +387,42 @@ func TestStatusBarModelInvalidatesRenderCache(t *testing.T) {
 	if second == first {
 		t.Errorf("status bar should change when the active model changes: %q == %q", second, first)
 	}
-	if !strings.HasSuffix(stripANSI(second), "claude-sonnet-4-5") {
+	if !strings.HasSuffix(stripANSI(second), "claude-sonnet-4-5 | R0") {
 		t.Errorf("status bar should show the new model, got %q", stripANSI(second))
+	}
+
+	// Reasoning level change → new render: the level is part of the group,
+	// so a level change has to move the cache key too.
+	out.handleSystemMsg(`{"type":"reasoning","data":{"level":2}}`)
+	m = m.updateStatus()
+	third := m.renderStatusBar()
+	if third == second {
+		t.Errorf("status bar should change when the reasoning level changes: %q == %q", third, second)
+	}
+	if !strings.HasSuffix(stripANSI(third), "claude-sonnet-4-5 | R2") {
+		t.Errorf("status bar should show the new level, got %q", stripANSI(third))
+	}
+}
+
+// TestStatusRightSegment pins the group the status bar puts on the
+// right: the model name with the reasoning level fused to it, or the bare
+// level when no model is active — the level never moves to the left.
+func TestStatusRightSegment(t *testing.T) {
+	tests := []struct {
+		model string
+		level int
+		want  string
+	}{
+		{"gpt-4o", 0, "gpt-4o | R0"},
+		{"gpt-4o", 2, "gpt-4o | R2"},
+		{"DeepSeek / DeepSeek Flash", 2, "DeepSeek / DeepSeek Flash | R2"},
+		{"", 0, "R0"},
+		{"", 2, "R2"},
+	}
+	for _, tt := range tests {
+		if got := statusRightSegment(tt.model, tt.level); got != tt.want {
+			t.Errorf("statusRightSegment(%q, %d) = %q, want %q", tt.model, tt.level, got, tt.want)
+		}
 	}
 }
 

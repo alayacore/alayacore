@@ -51,9 +51,9 @@ type sessionState struct {
 	// statusVersion increments on every status-affecting update. The
 	// Terminal caches the last-seen version and skips the status-bar
 	// rebuild when nothing has changed since the last snapshot — the
-	// status bar (steps, tokens, MCP, theme, video, model) only changes
-	// a few times per task, but the tick handler rebuilds it 4×/sec
-	// regardless.
+	// status bar (steps, tokens, MCP, theme, video, model, reasoning
+	// level) only changes a few times per task, but the tick handler
+	// rebuilds it 4×/sec regardless.
 	statusVersion uint64
 
 	// modelVersion increments only on model-list / active-model updates

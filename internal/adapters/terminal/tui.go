@@ -265,7 +265,7 @@ type Terminal struct {
 	attachmentWindow   AttachmentWindow // file/URL attachment picker
 	focusedWindow      string           // which pane has focus: "input" or "display"
 	statusLeft         string           // status bar left segments, PLAIN text joined with " | " (no ANSI — styles applied at render time)
-	statusRight        string           // active model name, PLAIN (styled at render time, right-aligned)
+	statusRight        string           // status bar right group — the active model name with the reasoning level ("gpt-4o | R2"), or the bare level with no model ("R2"); PLAIN (styled at render time, right-aligned)
 	inProgress         bool             // whether a task is currently running
 	windowWidth        int              // terminal width in cells
 	windowHeight       int              // terminal height in cells

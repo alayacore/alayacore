@@ -46,7 +46,7 @@
 //   - tui.go: Terminal model, overlay components, overlay rendering, MCP overlay
 //     state machine, and overlay action type
 //   - tui_focus.go: Focus management (input/display switching, blur/focus)
-//   - tui_status.go: Status bar rendering (tokens, steps, switches)
+//   - tui_status.go: Status bar rendering (tokens, steps, model + reasoning group)
 //   - live_edge.go: The live-edge row between the transcript and the prompt
 //     (auto-follow marker, hidden-line count)
 //   - keys.go: The bound key chords (Code + Mod) — the single source of bindings

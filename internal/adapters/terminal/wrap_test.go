@@ -96,8 +96,8 @@ func TestTruncateWithSuffix(t *testing.T) {
 // default color. The status bar stores PLAIN text and styles each
 // segment at render time, so the ellipsis color falls out of the render
 // pipeline. This covers the cases that used to fail with raw ANSI
-// handling: a segment squeezed to one column, and truncation landing on
-// either side of the " | " separator.
+// handling: a segment cut mid-text, and truncation landing on either
+// side of the " | " separator.
 func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 	styles := DefaultStyles()
 	segStyle := styles.Status.Foreground(styles.ColorMuted)
@@ -107,11 +107,16 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 		segSig = segSig[:i]
 	}
 
-	newTerm := func(width int, status, model string) Terminal {
+	// The two inputs below are the shape updateStatus produces: a context
+	// segment on the left, and the model group — the model name with the
+	// reasoning level fused to it (statusRightSegment) — on the right.
+	const leftSeg, modelGroup = "12.3K/128K", "gpt-4o | R0"
+
+	newTerm := func(width int, status, right string) Terminal {
 		m := newTerminalForUpdateStatusTest(NewTerminalOutput(styles))
 		m.windowWidth = width
 		m.statusLeft = status
-		m.statusRight = model
+		m.statusRight = right
 		m.inProgress = true
 		return m
 	}
@@ -132,29 +137,30 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 		return !strings.Contains(head[open+len(segSig):], "\x1b[m")
 	}
 
-	// Model merged into the left (gap ≤ 3) and truncated to a single
-	// column: "…" must be muted, not bare. W=9: the merged "R0 | gpt-4o"
-	// truncates to "R0 | …".
-	m := newTerm(9, "R0", "gpt-4o")
+	// Group merged into the left (gap ≤ 3) and the truncation landing
+	// inside it: "…" must be muted, not bare. W=21 → "… | gpt-4…".
+	m := newTerm(21, leftSeg, modelGroup)
 	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
-		t.Errorf("model at 1 column: ellipsis not in segment style, got %q", rendered)
+		t.Errorf("segment truncated mid-text: ellipsis not in segment style, got %q", rendered)
 	}
 
-	// Truncation landing just left of the " | " separator.
-	m = newTerm(6, "R0 | 123/128", "gpt-4o")
+	// Truncation landing just left of the " | " separator (the space
+	// before it survives, the separator does not). W=14 → "…/128K …".
+	m = newTerm(14, leftSeg, modelGroup)
 	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
 		t.Errorf("truncation left of separator: ellipsis not in segment style, got %q", rendered)
 	}
 
-	// Truncation landing just right of the " | " separator.
-	m = newTerm(8, "R0 | 123/128", "gpt-4o")
+	// Truncation landing just right of the " | " separator (the space
+	// after it is the cell cut). W=15 → "…/128K |…".
+	m = newTerm(15, leftSeg, modelGroup)
 	if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
 		t.Errorf("truncation right of separator: ellipsis not in segment style, got %q", rendered)
 	}
 
 	// Sweep: no width may produce a bare (unstyled) ellipsis.
 	for _, width := range []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10} {
-		m = newTerm(width, "R0 | 123/128", "gpt-4o")
+		m = newTerm(width, leftSeg, modelGroup)
 		if rendered := m.renderStatusBar(); !ellipsisStyled(rendered) {
 			t.Errorf("width %d: bare ellipsis without segment style: %q", width, rendered)
 		}
@@ -162,18 +168,23 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 }
 
 // TestStatusBarModelSeparatorGap locks the single-threshold placement
-// rule between the left segments and the model:
+// rule between the left segments and the model group (the active model
+// name with the reasoning level fused to it — the shape updateStatus
+// produces):
 //
-//   - ample space (gap > 3) → model floats right-aligned after blank
+//   - ample space (gap > 3) → the group floats right-aligned after blank
 //     padding, flush right
-//   - tight space (gap ≤ 3) → no right-aligned element: the model
+//   - tight space (gap ≤ 3) → no right-aligned element: the group
 //     merges into the left segments (joined by " | "), truncated
-//     together — a squeezed right-aligned model or a 1-3 cell gap never
+//     together — a squeezed right-aligned group or a 1-3 cell gap never
 //     renders
+//
+// In the merged branch the level, riding at the group's tail, is what
+// truncation reaches first; the model name is what it costs next.
 func TestStatusBarModelSeparatorGap(t *testing.T) {
 	m := newTerminalForUpdateStatusTest(NewTerminalOutput(DefaultStyles()))
-	m.statusLeft = "R0 | 12.3K/128K" // indicator + space + left = 17 cols
-	m.statusRight = "gpt-4o"
+	m.statusLeft = "12.3K/128K"   // indicator + space + left = 12 cols
+	m.statusRight = "gpt-4o | R0" // the group = 11 cols
 	m.inProgress = false
 
 	render := func(width int) string {
@@ -181,26 +192,32 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 		return stripANSI(m.renderStatusBar())
 	}
 
-	// Ample space (W=29, gap 6): model floats, blank padding.
-	if got := render(29); got != "∙ R0 | 12.3K/128K      gpt-4o" {
-		t.Errorf("gap>3: got %q, want %q", got, "∙ R0 | 12.3K/128K      gpt-4o")
+	// Ample space (W=27, gap 4): the group floats, blank padding.
+	if got := render(27); got != "∙ 12.3K/128K    gpt-4o | R0" {
+		t.Errorf("gap>3: got %q, want %q", got, "∙ 12.3K/128K    gpt-4o | R0")
 	}
 
 	// Gap exactly 3 (W=26): merges into the left — reads like another
-	// segment, model stays flush right.
-	if got := render(26); got != "∙ R0 | 12.3K/128K | gpt-4o" {
-		t.Errorf("gap==3: got %q, want %q", got, "∙ R0 | 12.3K/128K | gpt-4o")
+	// segment, group stays flush right.
+	if got := render(26); got != "∙ 12.3K/128K | gpt-4o | R0" {
+		t.Errorf("gap==3: got %q, want %q", got, "∙ 12.3K/128K | gpt-4o | R0")
 	}
 
-	// Tight space (W=24, gap 1): merged; the model is truncated first.
-	if got := render(24); got != "∙ R0 | 12.3K/128K | gpt…" {
-		t.Errorf("gap<3 with full model: got %q, want %q", got, "∙ R0 | 12.3K/128K | gpt…")
+	// Tight space (W=24, gap 1): merged; the level's cells go first, the
+	// model name is still whole.
+	if got := render(24); got != "∙ 12.3K/128K | gpt-4o |…" {
+		t.Errorf("gap<3 with full level: got %q, want %q", got, "∙ 12.3K/128K | gpt-4o |…")
 	}
 
-	// No room even merged (W=19): the combined left is truncated, the
-	// model is cut away and "…" marks the truncation.
-	if got := render(19); got != "∙ R0 | 12.3K/128K …" {
-		t.Errorf("no room for model: got %q, want %q", got, "∙ R0 | 12.3K/128K …")
+	// Tighter (W=21): the truncation reaches the model name.
+	if got := render(21); got != "∙ 12.3K/128K | gpt-4…" {
+		t.Errorf("gap<3 with truncated model: got %q, want %q", got, "∙ 12.3K/128K | gpt-4…")
+	}
+
+	// No room even merged (W=14): the left segment is truncated, the
+	// group is cut away and "…" marks the truncation.
+	if got := render(14); got != "∙ 12.3K/128K …" {
+		t.Errorf("no room for the group: got %q, want %q", got, "∙ 12.3K/128K …")
 	}
 }
 
@@ -216,17 +233,17 @@ func TestStatusBarTruncatedSeparatorKeepsDimPipe(t *testing.T) {
 	}
 
 	m := newTerminalForUpdateStatusTest(NewTerminalOutput(styles))
-	m.statusLeft = "R0 | 123/128"
-	m.statusRight = "gpt-4o"
+	m.statusLeft = "12.3K/128K"
+	m.statusRight = "gpt-4o | R0"
 	m.inProgress = false
-	m.windowWidth = 7 // budget 5 → head "R0 |" + "…": the space after "|" is the cell cut
+	m.windowWidth = 15 // budget 13 → head "12.3K/128K |" + "…": the space after "|" is the cell cut
 
 	rendered := m.renderStatusBar()
 	if !strings.Contains(rendered, sepSig+"|") {
 		t.Errorf("'|' before '…' not rendered dim: %q", rendered)
 	}
-	if got := stripANSI(rendered); got != "∙ R0 |…" {
-		t.Errorf("text = %q, want %q", got, "∙ R0 |…")
+	if got := stripANSI(rendered); got != "∙ 12.3K/128K |…" {
+		t.Errorf("text = %q, want %q", got, "∙ 12.3K/128K |…")
 	}
 }
 
