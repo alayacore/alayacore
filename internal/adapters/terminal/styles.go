@@ -25,13 +25,6 @@ import (
 // always replaces the entire instance.
 type Styles struct {
 	// Output text styles
-	//
-	// Tool is the palette's `tool` color and NO renderer draws with it: a
-	// tool window's name takes ToolContent (toolNameStyle, window.go) in
-	// both fold states, and its label takes Label with every other window
-	// type. It is kept until the palette decision is made — see the note in
-	// docs/configuration.md.
-	Tool        Style
 	ToolContent Style
 	Error       Style
 	System      Style
@@ -155,7 +148,6 @@ func NewStyles(t *theme.Theme) *Styles {
 	baseStyle := NewStyle()
 	return &Styles{
 		// Output text styles
-		Tool:        baseStyle.Foreground(Color(t.Tool)),
 		ToolContent: baseStyle.Foreground(Color(t.Muted)),
 		Error:       baseStyle.Foreground(Color(t.Error)),
 		System:      baseStyle.Foreground(Color(t.Muted)),
@@ -196,7 +188,6 @@ func (s *Styles) Dimmed() *Styles {
 	}
 	return &Styles{
 		// Output text styles — all foreground → ColorDim
-		Tool:        s.Tool.Foreground(s.ColorDim),
 		ToolContent: s.ToolContent.Foreground(s.ColorDim),
 		Error:       s.Error.Foreground(s.ColorDim),
 		System:      s.System.Foreground(s.ColorDim),

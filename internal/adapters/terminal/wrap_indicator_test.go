@@ -271,9 +271,6 @@ func TestFoldedToolCollapsedLabelColor(t *testing.T) {
 	if !strings.Contains(rendered, styles.Label.Bold(true).Render("TOOL CALL")) {
 		t.Errorf("TOOL CALL label should be plain bold (the label color): %q", rendered)
 	}
-	if strings.Contains(rendered, styles.Tool.Render("TOOL CALL")) {
-		t.Errorf("TOOL CALL label should not use the Tool color: %q", rendered)
-	}
 	if !strings.Contains(rendered, styles.ToolContent.Bold(true).Render("edit_file")) {
 		t.Errorf("tool name should be bold + muted: %q", rendered)
 	}

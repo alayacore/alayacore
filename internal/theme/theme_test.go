@@ -71,10 +71,6 @@ error: #ff0000
 	if th.Warning != "#f77923" {
 		t.Errorf("Expected Warning #f77923 (default), got %s", th.Warning)
 	}
-
-	if th.Tool != "#f9e2af" {
-		t.Errorf("Expected Tool #f9e2af (default), got %s", th.Tool)
-	}
 }
 
 func TestLoadThemeWithUnknownFields(t *testing.T) {

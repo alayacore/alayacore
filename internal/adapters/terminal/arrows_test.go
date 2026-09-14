@@ -57,7 +57,6 @@ func TestFoldMarkersIndependentOfTheme(t *testing.T) {
 	other := &theme.Theme{
 		Primary: "#1e66f5", Dim: "#ccd0da", Muted: "#9ca0b0", Warning: "#df8e1d",
 		Error: "#d20f39", Selection: "#fe640b", Added: "#40a02b", Removed: "#d20f39",
-		Tool: "#df8e1d",
 	}
 	styles := []*Styles{DefaultStyles(), DefaultStyles().Dimmed(), NewStyles(other)}
 	for i, st := range styles {
