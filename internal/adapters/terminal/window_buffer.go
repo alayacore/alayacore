@@ -957,15 +957,20 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 		if pinned {
 			// Read AFTER windowFragment: that call is what renders (and
 			// refreshes) the window's cache, and the pinned window is one
-			// the viewport covers, so this is a slice read of a row already
-			// built for this frame — no render, no re-measure, no
-			// allocation (border.widths[0] is not even needed: the pinned
-			// row ends an original line and is never padded). Under the
-			// cursor it is the memoized row swap, not a per-frame rebuild.
-			row := w.border.lines[0].Text
-			if cursorIndex == i {
-				row = w.cursorLine0()
-			}
+			// the viewport covers, so this is a memoized row build — the
+			// window's own line plus this message's hidden-line count —
+			// reused across every frame that does not move the viewport
+			// (border.widths[0] is not even needed: the pinned row ends an
+			// original line and is never padded). Under the cursor it is the
+			// same row in the selection register.
+			//
+			// linesAbove is the count of this window's body rows the pin did
+			// not draw: the fragment starts at winStart+from, and the pin
+			// spent one more row on the window's own line, so the rows
+			// between the own line and the fragment's first row are
+			// exactly startLine-winStart. Always ≥ 1 here (the pin needs
+			// winStart < startLine), which is also the count the row shows.
+			row := w.pinnedLine0(startLine-winStart, cursorIndex == i)
 			sb.WriteString(row)
 			sb.WriteString(ansi.EraseLine(0))
 			sb.WriteString("\n")

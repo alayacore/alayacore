@@ -128,6 +128,25 @@ type borderCache struct {
 	line0Cursor     string
 	line0CursorDone bool
 
+	// pinnedRow is row 0 with the pinned annotation — "<n> lines above",
+	// the count of THIS window's lines hidden above the viewport. It is the
+	// one part of the row that depends on where the viewport is, so it
+	// cannot live in `lines[0]` (keyed on content, width, theme and the
+	// receipt time) and is memoized here instead, the way line0Cursor is
+	// memoized on the register: pinnedDone tells "not built yet" from
+	// "built", and pinnedAbove/pinnedCursor are the inputs it was built for.
+	// Render clears it with the rest of the cache, so a rebuilt row is never
+	// annotated with a stale count.
+	//
+	// The pin is drawn for one window at a time, and the count changes only
+	// when the viewport crosses one of that window's rows — so a frame that
+	// does not move the viewport (streaming, a status flip, a keystroke
+	// elsewhere) re-reads this and pays nothing: see Window.pinnedLine0.
+	pinnedRow    string
+	pinnedAbove  int
+	pinnedCursor bool
+	pinnedDone   bool
+
 	// frameStyles is what the cursor row is composed from: the styles the
 	// window was rendered with — already dimmed when an overlay is up, so
 	// the highlighted row dims with everything else. The styles are stored
@@ -439,6 +458,8 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 
 	w.border.line0Cursor = ""
 	w.border.line0CursorDone = false
+	w.border.pinnedRow = ""
+	w.border.pinnedDone = false
 	w.border.frameStyles = styles
 	if w.Folded {
 		// Collapsed: one line — marker + label + content summary. The
@@ -465,7 +486,7 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 		// array, so border.rendered == border.inner.
 		contentLines, _ := w.renderer.BuildInner(width, false, styles)
 		lines := make([]visualLine, 0, len(contentLines)+1)
-		lines = append(lines, visualLine{Text: w.buildExpandHeader(width, styles)})
+		lines = append(lines, visualLine{Text: w.buildExpandHeader(width, styles, "")})
 		lines = append(lines, contentLines...)
 		w.border.lines = lines
 		w.border.widths = nil // computed lazily by renderVirtual (fragment output)
@@ -535,8 +556,42 @@ func (w *Window) cursorLine0() string {
 		w.border.line0Cursor = w.lineStyle(styles).Render(w.markerChar()) + " " + inner
 		return w.border.line0Cursor
 	}
-	w.border.line0Cursor = w.buildExpandHeader(w.border.width, styles)
+	w.border.line0Cursor = w.buildExpandHeader(w.border.width, styles, "")
 	return w.border.line0Cursor
+}
+
+// pinnedLine0 returns row 0 for the pinned case: the row above, with
+// "<linesAbove> lines above" added left of the timestamp — how much of THIS
+// window the reader has scrolled past.
+//
+// linesAbove is winStart-relative: the pinned row is the window's own line,
+// and the body rows between it and the fragment's first row are exactly the
+// ones the pin did not draw (see renderVirtual). The count is the window's
+// own, never the transcript's: it says "there are 40 more lines of this
+// message above you", which is the question the pin raises — the pin says
+// whose message this is, this says where in it you are.
+//
+// Memoized on (linesAbove, register) in the border cache, and cleared by
+// Render with the rest of it. The annotation is viewport-dependent, which is
+// exactly why it is not part of `lines[0]`: that row is cached across
+// scrolls, and a count baked into it would be stale the moment the viewport
+// moved. Here the one window under the pin rebuilds its row when the count
+// changes (a scroll step that crosses one of its rows) and the frame reuses
+// it otherwise (streaming, a keystroke elsewhere), where the cost is a
+// compare and a slice read — no render, no measure, no allocation.
+func (w *Window) pinnedLine0(linesAbove int, isCursor bool) string {
+	if w.border.pinnedDone && w.border.pinnedAbove == linesAbove && w.border.pinnedCursor == isCursor {
+		return w.border.pinnedRow
+	}
+	styles := w.border.frameStyles
+	if isCursor {
+		styles = styles.Selected()
+	}
+	w.border.pinnedRow = w.buildExpandHeader(w.border.width, styles, lineCountText(linesAbove, "above"))
+	w.border.pinnedAbove = linesAbove
+	w.border.pinnedCursor = isCursor
+	w.border.pinnedDone = true
+	return w.border.pinnedRow
 }
 
 // renderCursor renders the cached window with the cursor's selection
@@ -605,13 +660,18 @@ func (w *Window) windowLabel() string {
 // highlighted (see Window.cursorLine0).
 //
 // Widths, in priority order: the marker and the label always render (the
-// label is what identifies the window); the timestamp renders only when it
-// fits after the label with at least one space between them — metadata
-// yields to the name. A label too wide for the row is cut with "…" in the
-// label's own style: the tool header's per-segment styling is not worth
-// reassembling across a cut, and a truncated tool header only happens on a
-// terminal narrower than the tool name.
-func (w *Window) buildExpandHeader(width int, styles *Styles) string {
+// label is what identifies the window); then the timestamp, then the
+// annotation — both are metadata, and metadata yields to the name. Each is
+// drawn only when it fits beside what has priority over it with at least one
+// space between them, and neither is ever truncated or shortened to fit. A
+// label too wide for the row is cut with "…" in the label's own style: the
+// tool header's per-segment styling is not worth reassembling across a cut,
+// and a truncated tool header only happens on a terminal narrower than the
+// tool name.
+//
+// annotation is the pinned row's "<n> lines above" (see pinnedLine0) or ""
+// for every other row; an empty annotation changes nothing.
+func (w *Window) buildExpandHeader(width int, styles *Styles, annotation string) string {
 	if width <= 0 {
 		return ""
 	}
@@ -625,11 +685,35 @@ func (w *Window) buildExpandHeader(width int, styles *Styles) string {
 		return takeCells(marker, width)
 	}
 
+	// The annotation is a separate field from the timestamp, and this UI
+	// separates fields on a chrome row with " | " — the status bar
+	// (renderStatusSegments) and the help bars do exactly that, and the
+	// glyph policy lists that ASCII "|" with them. So the block costs its
+	// own cells plus the bar and the two spaces around it: 3, not 1.
+	annBlock := ""
+	if annotation != "" {
+		annBlock = annotation + " | "
+	}
+	annCells := cellWidth(annBlock)
+
 	budget := width - collapsedPrefixWidth // cells left for label + gap + time
 	if budget < 1 {
 		return takeCells(marker, width)
 	}
-	if !w.CreatedAt.IsZero() && cellWidth(plain) <= budget-1-timeStampWidth {
+	// The metadata that can follow the label, in the order it yields: the
+	// timestamp with the annotation, the timestamp alone, nothing. An
+	// annotation that does not fit is dropped without taking the timestamp
+	// with it — a narrow pinned row must still say when the message
+	// arrived.
+	fits := func(extra int) bool {
+		return !w.CreatedAt.IsZero() && cellWidth(plain)+extra <= budget-1-timeStampWidth
+	}
+	switch {
+	case fits(annCells):
+		gap := budget - cellWidth(plain) - annCells - timeStampWidth
+		return marker + " " + styled + strings.Repeat(" ", gap) +
+			lineStyle.Render(annBlock+w.timeStamp())
+	case fits(0):
 		gap := budget - cellWidth(plain) - timeStampWidth
 		return marker + " " + styled + strings.Repeat(" ", gap) + lineStyle.Render(w.timeStamp())
 	}

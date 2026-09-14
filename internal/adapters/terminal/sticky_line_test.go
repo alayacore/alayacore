@@ -11,9 +11,13 @@ package terminal
 // file exists to keep true: the displaced row, and "the pin is a
 // screen-space composite, not a document row".
 //
-// The cost of the pin is part of its contract, not an implementation detail:
-// it must be a cached-row read, so TestStickyPinAddsNoAllocations fails if
-// anyone rebuilds, re-measures or copies the row per frame.
+// The cost of the pin is part of its contract, not an implementation detail.
+// The pinned row carries a count of the window's hidden lines — the one
+// viewport-dependent thing on any row — so it is memoized on that count: a
+// frame that does not move the viewport re-reads it and pays nothing at all
+// (TestStickyPinAddsNoAllocations), a frame that moves the viewport by a row
+// rebuilds that one row and nothing else
+// (TestStickyPinCostIsIndependentOfTheWindowSize).
 
 import (
 	"fmt"
@@ -155,28 +159,232 @@ func TestStickyPinIsScreenSpaceOnly(t *testing.T) {
 	}
 }
 
-// TestStickyPinAddsNoAllocations is the cost contract in test form: the pin
-// is a read of a row the same frame already built plus one write into the
-// fragment, so it must allocate exactly as much as the same viewport with
-// the line in its natural place. A per-frame rebuild (Style.Render), a
-// re-measure (cellWidth) or a copied row slice would all show up here.
-func TestStickyPinAddsNoAllocations(t *testing.T) {
-	wb := stickyFixture()
-	render := func(y int) func() {
-		return func() {
-			wb.SetViewportPosition(y, 4)
-			_ = wb.GetAll(-1, false)
+// stickyWideFixture is the same tall window at a width with room for the
+// label, the hidden-line count and the timestamp — 80 cells, where the
+// narrow fixture above drops the count (see
+// TestPinnedAnnotationYieldsToTheTimestamp). Body rows are "row000" …
+// "row039" so a rendered row names itself.
+func stickyWideFixture() *WindowBuffer {
+	return stickyWideFixtureWith(40, nil)
+}
+
+// stickyWideFixtureWith builds it behind `before` folded steps, for the
+// question of what the count is counted against.
+func stickyWideFixtureWith(body int, before []string) *WindowBuffer {
+	wb := NewWindowBuffer(80, DefaultStyles())
+	for i, id := range before {
+		_ = i
+		wb.AppendOrUpdate(tlv.TagAssistantR, id, "step")
+	}
+	var b strings.Builder
+	for i := 0; i < body; i++ {
+		fmt.Fprintf(&b, "row%03d\n", i)
+	}
+	wb.AppendOrUpdate(tlv.TagAssistantT, "tall", strings.TrimSuffix(b.String(), "\n"))
+	return wb
+}
+
+// TestPinnedRowCountsItsOwnHiddenLines: the count on the pinned row is THIS
+// window's hidden lines — it tracks the scroll position inside the message
+// and knows nothing about how much transcript is above it.
+func TestPinnedRowCountsItsOwnHiddenLines(t *testing.T) {
+	var before []string
+	for i := 0; i < 60; i++ {
+		before = append(before, fmt.Sprintf("step%02d", i))
+	}
+	cases := []struct {
+		name   string
+		before []string
+	}{
+		{"the first window in the session", nil},
+		{"behind 60 folded steps", before},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wb := stickyWideFixtureWith(40, tc.before)
+			idx, _ := wb.LookupID("tall")
+			winStart, _ := wb.GetWindowLineRange(idx)
+			for _, k := range []int{1, 2, 5, 17} {
+				// The viewport top sits k rows into the message.
+				rows := stickyRows(t, wb, winStart+k, 10)
+				want := fmt.Sprintf("%d lines above", k)
+				if k == 1 {
+					want = "1 line above" // singular, like the live edge's "1 line below"
+				}
+				if !strings.Contains(rows[0], want) {
+					t.Errorf("viewport %d rows into the message: row 0 = %q, want %q",
+						k, rows[0], want)
+				}
+				// …and the rows above it are the ones it counted.
+				if !strings.Contains(strings.Join(rows, "|"), fmt.Sprintf("row%03d", k)) {
+					t.Errorf("viewport %d rows in: the body should start one row below the "+
+						"displaced row: %q", k, rows)
+				}
+			}
+
+			// The line in its natural place is not pinned and carries no count.
+			rows := stickyRows(t, wb, winStart, 4)
+			if strings.Contains(rows[0], "lines above") {
+				t.Errorf("an unpinned row must not count anything: %q", rows[0])
+			}
+		})
+	}
+}
+
+// TestPinnedAnnotationYieldsToTheTimestamp pins the order the right-hand
+// metadata yields in: the count is drawn only when the timestamp is drawn
+// and there is room for both, and a row too narrow for both keeps the
+// timestamp rather than trading it for the count. The label — what
+// identifies the message — is never the thing that gives way.
+func TestPinnedAnnotationYieldsToTheTimestamp(t *testing.T) {
+	const count = "1 line above"
+	firstWithCount, sawTimestamp := 0, false
+	for width := 12; width <= 90; width++ {
+		wb := NewWindowBuffer(width, DefaultStyles())
+		wb.AppendOrUpdate(tlv.TagAssistantT, "tall", "row00\nrow01\nrow02\nrow03")
+		pinCreatedAt(wb)
+		rows := stickyRows(t, wb, 1, 3)
+		row := rows[0]
+
+		if !strings.Contains(row, "ASSISTANT") {
+			t.Fatalf("width %d: the label must always survive: %q", width, row)
+		}
+		hasCount := strings.Contains(row, count)
+		hasStamp := strings.HasSuffix(strings.TrimRight(row, " "), pinnedTime.Format(timeStampLayout))
+		switch {
+		case hasCount && !hasStamp:
+			t.Errorf("width %d: the count was drawn without its anchor, the timestamp: %q", width, row)
+		case hasStamp && !hasCount && firstWithCount == 0:
+			sawTimestamp = true
+		case hasCount && firstWithCount == 0:
+			firstWithCount = width
+		}
+		// The two fields are separated by the UI's field separator, one
+		// space each side — never glued to the count, never doubled.
+		if hasCount {
+			want := count + " | " + pinnedTime.Format(timeStampLayout)
+			if !strings.HasSuffix(strings.TrimRight(row, " "), want) {
+				t.Errorf("width %d: the pinned row should end with %q, got %q", width, want, row)
+			}
+		}
+		if cellWidth(row) > width {
+			t.Errorf("width %d: row = %d cells: %q", width, cellWidth(row), row)
+		}
+		if hasStamp && cellWidth(row) != width {
+			t.Errorf("width %d: a row with a timestamp is right-aligned to the edge, got %d cells: %q",
+				width, cellWidth(row), row)
 		}
 	}
-	// Warm every cache first: the first render of a window is not the frame
-	// this contract is about.
-	render(0)()
-	render(1)()
+	if firstWithCount == 0 {
+		t.Fatal("the count never fit: the widths below do not reach the layout's threshold")
+	}
+	if !sawTimestamp {
+		t.Errorf("no width showed the timestamp without the count — the priority order was not exercised")
+	}
+	if firstWithCount <= 12 {
+		t.Errorf("the count appeared at width %d, which cannot hold label + count + timestamp", firstWithCount)
+	}
+	t.Logf("label + '%s | ' + timestamp first fit at width %d", count, firstWithCount)
+}
 
-	plain := testing.AllocsPerRun(50, render(0)) // the line in its natural place
-	pinned := testing.AllocsPerRun(50, render(1))
-	if pinned > plain {
-		t.Errorf("the pin allocated %v per frame, the same viewport without it %v — the pin must add nothing", pinned, plain)
+// TestPinnedAnnotationUnderTheCursor: the annotated row is row 0 like any
+// other, so with the cursor on that window the count, its separator and the
+// timestamp are painted in the selection color with the rest of the chrome —
+// one run of one style, because the whole tail is one Render call.
+func TestPinnedAnnotationUnderTheCursor(t *testing.T) {
+	styles := DefaultStyles()
+	wb := stickyWideFixture()
+	pinCreatedAt(wb)
+	idx, _ := wb.LookupID("tall")
+	winStart, _ := wb.GetWindowLineRange(idx)
+
+	wb.SetViewportPosition(winStart+3, 8)
+	row := firstRow(wb.GetAll(idx, false))
+	want := cursorLineStyle(styles).Render("3 lines above | " + pinnedTime.Format(timeStampLayout))
+	if got := styleRun(row, "3 lines above"); got != want {
+		t.Errorf("the count and its separator should highlight with the row under the cursor:\n"+
+			"  got:  %q\n  want: %q", got, want)
+	}
+	// The same row without the cursor is not highlighted.
+	if row := firstRow(wb.GetAll(-1, false)); strings.Contains(row, cursorLineStyle(styles).Render("3 lines above")) {
+		t.Errorf("the count must not be highlighted when the cursor is elsewhere: %q", row)
+	}
+}
+
+// TestStickyPinCostIsIndependentOfTheWindowSize: scrolling through a pinned
+// window pays for one row — not for the window's body. A count that
+// re-measured or re-wrapped anything would make a 400-row message cost ten
+// times a 40-row one.
+//
+// The scroll position is cycled inside a range both bodies support (a
+// position that saturates at the document's end would compare a moving
+// viewport against a clamped still one, and measure the clamp).
+func TestStickyPinCostIsIndependentOfTheWindowSize(t *testing.T) {
+	measure := func(body int) float64 {
+		wb := stickyWideFixtureWith(body, nil)
+		idx, _ := wb.LookupID("tall")
+		winStart, _ := wb.GetWindowLineRange(idx)
+		_ = wb.GetTotalLines()
+
+		lo, hi := winStart+5, winStart+20
+		y := lo
+		step := func() {
+			y++
+			if y > hi {
+				y = lo
+			}
+			wb.SetViewportPosition(y, 10)
+			_ = wb.GetAll(-1, false)
+		}
+		for i := 0; i < 3; i++ {
+			step()
+		}
+		return testing.AllocsPerRun(200, step)
+	}
+	small, large := measure(40), measure(400)
+	if small != large {
+		t.Errorf("a scrolling pinned frame allocated %v with a 40-row body and %v with a 400-row one — "+
+			"the cost must be one row, not the window", small, large)
+	}
+}
+
+// TestStickyPinAddsNoAllocations is the cost contract in test form: once the
+// pinned row has been built for a position, the pin is a read of that row
+// plus one write into the fragment, so it must allocate exactly as much as
+// the same viewport with the line in its natural place. A per-frame rebuild
+// (Style.Render), a re-measure (cellWidth) or a copied row slice would all
+// show up here. Both widths are measured: at 80 the pinned row carries the
+// count, so this also pins that the count's memo — not its absence — is what
+// keeps the frame free.
+func TestStickyPinAddsNoAllocations(t *testing.T) {
+	for _, width := range []int{40, 80} {
+		t.Run(itoa(width)+" columns", func(t *testing.T) {
+			wb := NewWindowBuffer(width, DefaultStyles())
+			var body strings.Builder
+			for i := 0; i < 10; i++ {
+				fmt.Fprintf(&body, "row%02d\n", i)
+			}
+			wb.AppendOrUpdate(tlv.TagAssistantT, "tall", strings.TrimSuffix(body.String(), "\n"))
+			wb.AppendOrUpdate(tlv.TagUserT, "after", "next message")
+
+			render := func(y int) func() {
+				return func() {
+					wb.SetViewportPosition(y, 4)
+					_ = wb.GetAll(-1, false)
+				}
+			}
+			// Warm every cache first: the first render of a window is not the
+			// frame this contract is about.
+			render(0)()
+			render(1)()
+
+			plain := testing.AllocsPerRun(50, render(0)) // the line in its natural place
+			pinned := testing.AllocsPerRun(50, render(1))
+			if pinned > plain {
+				t.Errorf("the pin allocated %v per frame, the same viewport without it %v — "+
+					"the pin must add nothing", pinned, plain)
+			}
+		})
 	}
 }
 

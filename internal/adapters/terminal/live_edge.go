@@ -77,16 +77,31 @@ const (
 	liveEdgeFollowing = "following"
 )
 
+// lineCountText spells a count of hidden lines out: "1 line above", "12
+// lines above". Singular for one — "1 lines above" is the kind of thing a
+// reader notices — and shared by both places that count hidden transcript
+// lines (the live edge's "below", the pinned row's "above"), so the two
+// cannot disagree about how to say it.
+//
+// They count different things and say so: the live edge counts DOCUMENT
+// lines under the viewport (any window), the pinned row counts the lines of
+// THE ONE window whose own line it is drawing (the message you are in the
+// middle of). See liveEdgeText and Window.pinnedLine0.
+func lineCountText(n int, direction string) string {
+	if n == 1 {
+		return "1 line " + direction
+	}
+	return fmt.Sprintf("%d lines %s", n, direction)
+}
+
 // liveEdgeText returns the plain label for the current display state, or
 // "" when the row has nothing to report.
 func liveEdgeText(following bool, linesBelow int) string {
 	switch {
 	case following:
 		return liveEdgeFollowing
-	case linesBelow == 1:
-		return "1 line below"
-	case linesBelow > 1:
-		return fmt.Sprintf("%d lines below", linesBelow)
+	case linesBelow > 0:
+		return lineCountText(linesBelow, "below")
 	default:
 		return ""
 	}

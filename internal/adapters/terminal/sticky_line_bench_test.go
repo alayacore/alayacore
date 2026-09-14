@@ -55,6 +55,24 @@ func BenchmarkStickyLineViewportRender(b *testing.B) {
 			_ = wb.GetAll(-1, false)
 		}
 	})
+	b.Run("pinned-scrolling", func(b *testing.B) {
+		// One row per frame: the count on the pinned row changes, so its memo
+		// misses and the row is rebuilt — the pessimistic case. The delta
+		// against `pinned` is what a scroll step pays for the count.
+		idx, _ := wb.LookupID("a1")
+		winStart, winEnd := wb.GetWindowLineRange(idx)
+		y := winStart + 1
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			y++
+			if y+height >= winEnd {
+				y = winStart + 1
+			}
+			wb.SetViewportPosition(y, height)
+			_ = wb.GetAll(-1, false)
+		}
+	})
 	b.Run("pinned-cursor-on-it", func(b *testing.B) {
 		b.ReportAllocs()
 		idx, _ := wb.LookupID("a1")
