@@ -330,15 +330,15 @@ func TestRenderVirtualCursorHighlight(t *testing.T) {
 	idx := wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
 
 	// Viewport at top: the window's first row (the labeled rule) is
-	// visible, so its label carries the selection color.
+	// visible, so its label carries the accent color.
 	wb.SetViewportPosition(0, 5)
 	out := wb.GetAll(idx, false)
 	if !containsANSI(out) {
 		t.Error("cursor render should color the top rule's label")
 	}
-	wantLabel := NewStyle().Bold(true).Foreground(styles.BorderCursor).Render("ASSISTANT")
+	wantLabel := NewStyle().Bold(true).Foreground(styles.ColorAccent).Render("ASSISTANT")
 	if !strings.Contains(out, wantLabel) {
-		t.Errorf("cursor window label is not in the selection color: %q", out)
+		t.Errorf("cursor window label is not in the accent color: %q", out)
 	}
 	// The rest of the row keeps its own style, and the non-cursor render
 	// differs only in that label.
@@ -349,24 +349,24 @@ func TestRenderVirtualCursorHighlight(t *testing.T) {
 	// The non-cursor render of the same window carries the dim label
 	// instead — the whole point of the cursor highlight.
 	if noCursor := wb.GetAll(-1, false); strings.Contains(noCursor, wantLabel) {
-		t.Error("non-cursor render must not carry the selection color")
+		t.Error("non-cursor render must not carry the accent color")
 	}
 
 	// Scrolled into the middle: the window's own line is off-screen but
 	// pinned, so the cursor still shows — on the pinned row.
 	wb.SetViewportPosition(2, 5)
 	out = wb.GetAll(idx, false)
-	if !strings.HasPrefix(out, NewStyle().Bold(true).Foreground(styles.BorderCursor).Render(unfoldArrow)+" ") {
+	if !strings.HasPrefix(out, NewStyle().Bold(true).Foreground(styles.ColorAccent).Render(unfoldArrow)+" ") {
 		t.Errorf("the pinned row should carry the cursor highlight: %q", out)
 	}
 	if !strings.Contains(out, wantLabel) {
-		t.Errorf("the pinned row's label should be in the selection color: %q", out)
+		t.Errorf("the pinned row's label should be in the accent color: %q", out)
 	}
 	// …and with the cursor on another window the pinned row is plain.
 	wb.AppendOrUpdate(tlv.TagAssistantT, "other-1", "another window")
 	other, _ := wb.LookupID("other-1")
 	out = wb.GetAll(other, false)
-	if strings.HasPrefix(out, NewStyle().Bold(true).Foreground(styles.BorderCursor).Render(unfoldArrow)+" ") {
+	if strings.HasPrefix(out, NewStyle().Bold(true).Foreground(styles.ColorAccent).Render(unfoldArrow)+" ") {
 		t.Errorf("the pinned row of a non-cursor window must not be highlighted: %q", out)
 	}
 }

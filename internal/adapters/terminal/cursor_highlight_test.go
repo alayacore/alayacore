@@ -7,7 +7,7 @@ package terminal
 // label and the arrival timestamp are painted with it, so the row reads as
 // one unit rather than as a dim marker followed by a bold word and a dim
 // clock — and its cursor register is the same object with the label (and
-// error) colors swapped for the selection color (Styles.Selected()).
+// error) colors swapped for the accent color (Styles.Selected()).
 //
 // What the highlight must NOT touch: the folded line's content summary
 // (content, not chrome), anything below row 0, and a tool window's name —

@@ -288,7 +288,7 @@ func TestPinnedAnnotationYieldsToTheTimestamp(t *testing.T) {
 }
 
 // TestPinnedAnnotationUnderTheCursor: with the cursor on the pinned window,
-// the count, the " | " separator and the timestamp all take the selection
+// the count, the " | " separator and the timestamp all take the accent
 // color with the rest of the chrome — the row is one color, and " | "
 // separates the two fields by its two spaces rather than by a second color.
 // (The separator used to stay dim in every register; that second color is

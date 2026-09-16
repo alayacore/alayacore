@@ -58,7 +58,6 @@ type Styles struct {
 	// Border colors
 	BorderFocused color.Color
 	BorderBlurred color.Color
-	BorderCursor  color.Color
 
 	// Text colors for dynamic use
 	ColorAccent  color.Color
@@ -188,7 +187,6 @@ func NewStyles(t *theme.Theme) *Styles {
 		// Component-specific colors
 		BorderFocused: Color(t.Primary),
 		BorderBlurred: Color(t.Dim),
-		BorderCursor:  Color(t.Selection),
 
 		ColorAccent:  Color(t.Primary),
 		ColorDim:     Color(t.Dim),
@@ -229,7 +227,6 @@ func (s *Styles) Dimmed() *Styles {
 		// Colors — unchanged (used as dynamic color references)
 		BorderFocused: s.ColorDim,
 		BorderBlurred: s.ColorDim,
-		BorderCursor:  s.ColorDim,
 
 		ColorAccent:  s.ColorDim,
 		ColorDim:     s.ColorDim,
@@ -239,13 +236,13 @@ func (s *Styles) Dimmed() *Styles {
 }
 
 // Selected returns a copy of Styles in which the window-chrome styles carry
-// the selection color: the register a window's own line is drawn in while
-// the display cursor is on it.
+// the accent color: the register a window's own line is drawn in while the
+// display cursor is on it.
 //
 // Only the styles that name a window are swapped — Label (every window
 // line's default color) and Error (SYSTEM ERROR's line). They are exactly
 // the colors lineStyleForTag can return, so every glyph of the highlighted
-// row's chrome — marker, label, timestamp — comes out in the selection color
+// row's chrome — marker, label, timestamp — comes out in the accent color
 // from one styles swap. Everything else keeps the color it has: System,
 // which carries the collapsed line's content summary, and ToolContent, which
 // carries a tool window's name and its arguments. The highlight marks the
@@ -254,6 +251,10 @@ func (s *Styles) Dimmed() *Styles {
 // (toolNameStyle, window.go). (Prompt is deliberately not swapped:
 // Styles.Prompt belongs to the prompt box and the overlay filter fields, and
 // those are never window rows.)
+//
+// The accent is ColorAccent — the theme's primary, the same color the prompt
+// box and a focused rule carry — so the palette has a single highlight color
+// rather than a second one spent on the cursor alone.
 //
 // The counterpart of Dimmed() in the same spirit — a derived Styles rather
 // than a flag threaded through every renderer, so that "who is the cursor"
@@ -264,7 +265,7 @@ func (s *Styles) Selected() *Styles {
 		return nil
 	}
 	c := *s
-	c.Label = c.Label.Foreground(s.BorderCursor)
-	c.Error = c.Error.Foreground(s.BorderCursor)
+	c.Label = c.Label.Foreground(s.ColorAccent)
+	c.Error = c.Error.Foreground(s.ColorAccent)
 	return &c
 }

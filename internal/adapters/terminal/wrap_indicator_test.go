@@ -683,7 +683,7 @@ func TestCursorArrowColor(t *testing.T) {
 	// Render without cursor: arrow is dim.
 	plain := stripANSI(wb.GetAll(-1, false))
 
-	// Render with cursor: arrow should use the selection color, border unchanged.
+	// Render with cursor: arrow should use the accent color, border unchanged.
 	rendered := wb.GetAll(0, false)
 	if !strings.Contains(rendered, "\x1b[") {
 		t.Fatal("Expected ANSI codes in cursor render")

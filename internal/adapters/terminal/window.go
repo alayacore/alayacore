@@ -122,7 +122,7 @@ type renderCache struct {
 	// line0Cursor is row 0 rendered in the cursor's register: a folded
 	// line's marker and label column recolored (its content summary keeps
 	// the muted color), an expanded line's whole row — marker, label and
-	// timestamp — in the selection color. Cursor rendering swaps row 0 for
+	// timestamp — in the accent color. Cursor rendering swaps row 0 for
 	// it; the row is the same width as the cached one, so the rest of the
 	// window (and all width accounting) is reused as-is.
 	//
@@ -551,14 +551,13 @@ func (w *Window) cursorLine0() string {
 		return w.cache.line0Cursor
 	}
 	w.cache.line0CursorDone = true
-	// Selected() swaps every color that names a window (label, prompt,
-	// error) for the selection color, so the line — marker, label, tool
-	// name, timestamp — comes out highlighted as one unit with no other
-	// change.
+	// Selected() swaps every color that names a window (label, error) for
+	// the accent color, so the line — marker, label, tool name, timestamp —
+	// comes out highlighted as one unit with no other change.
 	styles := w.cache.frameStyles.Selected()
 	if w.Folded {
 		// The summary is content and keeps its muted color; the marker and
-		// the label column take the selection color, so the two read as one
+		// the label column take the accent color, so the two read as one
 		// highlighted unit.
 		inner, _ := w.renderer.BuildCollapsed(w.cache.width, styles)
 		w.cache.line0Cursor = w.lineStyle(styles).Render(w.markerChar()) + " " + inner
@@ -602,13 +601,13 @@ func (w *Window) pinnedLine0(linesAbove int, isCursor bool) string {
 	return w.cache.pinnedRow
 }
 
-// renderCursor renders the cached window with the cursor's selection
-// highlight. Row 0 is the whole of it, in both fold states, and it is the
-// same width either way — so no width or line-count accounting changes and
-// the rest of the cached output is reused as-is.
+// renderCursor renders the cached window with the cursor's highlight. Row 0
+// is the whole of it, in both fold states, and the row is the same width
+// either way — so no width or line-count accounting changes and the rest of
+// the cached output is reused as-is.
 //
 // Every input it needs — the highlighted row, and the color the marker is
-// painted with (selection, or dim under an overlay) — was resolved when the
+// painted with (the accent, or dim under an overlay) — was resolved when the
 // cache was filled, and the cache is only valid for the blocked state it
 // was filled with (Render's cache key includes it), so the overlay case
 // needs no flag here.
@@ -804,8 +803,9 @@ func (w *Window) expandTitle(styles *Styles) (plain, styled string) {
 // The color is the label color for EVERY window type except the system
 // errors. A user's turn, a reasoning step, an answer and a tool call are all
 // the same kind of thing — conversation — and nothing about a user prompt
-// earns its line an accent: the accent belongs to the prompt box at the
-// bottom of the screen, which is the one live surface. SYSTEM ERROR keeps
+// earns its line an accent: in the resting register the accent belongs to the
+// prompt box at the bottom of the screen, the one live surface (the cursor's
+// own line borrows it transiently — see below). SYSTEM ERROR keeps
 // the error color, because an error has to be recognizable at a glance and
 // from the far end of a scrollback.
 //
@@ -814,7 +814,7 @@ func (w *Window) expandTitle(styles *Styles) (plain, styled string) {
 // guaranteed to agree.
 //
 // The cursor's register is simply Styles.Selected() — the same styles with
-// these colors swapped for the selection color — so "who is the cursor"
+// these colors swapped for the accent color — so "who is the cursor"
 // needs no parameter here.
 func lineStyleForTag(tag string, styles *Styles) Style {
 	if styles == nil {
@@ -840,7 +840,7 @@ func lineStyleForTag(tag string, styles *Styles) Style {
 // expanded drift apart: the collapsed row painted the name with the line's
 // style and the expanded row with this one, and because Label and
 // ToolContent are both muted the two only differed under the cursor — where
-// the name turned to the selection color when folded and stayed muted when
+// the name turned to the accent color when folded and stayed muted when
 // expanded. Folding a window repainted the one token the reader was looking
 // at. One function, called from both rows, is what keeps them equal.
 //

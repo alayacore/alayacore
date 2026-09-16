@@ -290,7 +290,6 @@ dim: #313244
 muted: #6c7086
 warning: #f77923
 error: #f38ba8
-selection: #fab387
 added: #a6e3a1
 removed: #f38ba8
 ```
@@ -299,12 +298,11 @@ removed: #f38ba8
 
 | Color | Used for |
 |-------|----------|
-| `primary` | User input text, emphasis, focused box rules. The prompt box is the only surface that carries it: transcript windows do not, and the status bar is one muted foreground |
+| `primary` | User input text, emphasis, focused box rules, overlay titles, and the display cursor's window line (marker, label, timestamp and, on a pinned row, its hidden-line count). The prompt box and the cursor's window line are the two surfaces that carry it; the status bar is one muted foreground |
 | `dim` | Unfocused box rules (the prompt box and a selector overlay's filter box), the status bar while an overlay dims it, overlay title and help-bar backgrounds, the live edge |
-| `muted` | Secondary text, system messages, tool content, the window line's default color, the status bar (segments, ` | ` separators and indicator — one foreground) |
+| `muted` | Secondary text, system messages, tool content, the window line's default color, the status bar (segments, ` \| ` separators and indicator — one foreground) |
 | `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
 | `error` | Errors, and the `SYSTEM ERROR` line |
-| `selection` | Selected items in lists, and the display cursor's window line — the marker, the label, the pinned row's `N lines above`, its ` | ` separator and the timestamp (expanded, or a folded row's marker and label column; the tool name and the content summary keep their own colors) |
 | `added` | Diff additions |
 | `removed` | Diff removals |
 

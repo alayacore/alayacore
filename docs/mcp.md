@@ -125,7 +125,7 @@ and their tools are discovered at startup.
 
 | Flag | Description |
 |------|-------------|
-| `--debug-log` | Debug log directory (`. = CWD, or any path). Enables both JSON-RPC and API debug logging. |
+| `--debug-log` | Debug log directory (`.` = CWD, or any path). Enables both JSON-RPC and API debug logging. |
 
 ## Tool Naming
 

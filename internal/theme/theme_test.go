@@ -121,7 +121,6 @@ func TestLoadThemeFieldAliases(t *testing.T) {
 		themePath := filepath.Join(testDir, "test.conf")
 		content := `# Test theme
 primary: #222222
-selection: #999999
 added: #bbbbbb
 removed: #cccccc
 `
@@ -136,9 +135,6 @@ removed: #cccccc
 
 		if th.Primary != "#222222" {
 			t.Errorf("Expected primary #222222, got %s", th.Primary)
-		}
-		if th.Selection != "#999999" {
-			t.Errorf("Expected selection #999999, got %s", th.Selection)
 		}
 		if th.Added != "#bbbbbb" {
 			t.Errorf("Expected added #bbbbbb, got %s", th.Added)

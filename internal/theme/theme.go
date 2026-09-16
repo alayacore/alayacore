@@ -23,12 +23,11 @@ var lightThemeContent string
 // Each field maps to a key in the .conf theme files.
 type Theme struct {
 	// Core palette
-	Primary   string `config:"primary" json:"primary"`     // Accent color — selected items, focused borders, highlights
-	Dim       string `config:"dim" json:"dim"`             // Dimmed color — unfocused borders, muted text
-	Muted     string `config:"muted" json:"muted"`         // Muted color — placeholders, secondary labels
-	Warning   string `config:"warning" json:"warning"`     // Warning color — alerts, caution, confirmations
-	Error     string `config:"error" json:"error"`         // Error color — errors, failures
-	Selection string `config:"selection" json:"selection"` // Selection highlight — selected list item, search match
+	Primary string `config:"primary" json:"primary"` // Accent color — prompt text, focused borders, overlay titles, the display cursor's window line
+	Dim     string `config:"dim" json:"dim"`         // Dimmed color — unfocused borders, muted text
+	Muted   string `config:"muted" json:"muted"`     // Muted color — placeholders, secondary labels
+	Warning string `config:"warning" json:"warning"` // Warning color — alerts, caution, confirmations
+	Error   string `config:"error" json:"error"`     // Error color — errors, failures
 
 	// Diff colors
 	Added   string `config:"added" json:"added"`     // Added lines in diff
