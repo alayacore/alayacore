@@ -37,7 +37,7 @@ Sleep 1s
 
 Ctrl+L
 Sleep 1s
-Type "deflash"
+Type "flash"
 Sleep 1s
 Enter
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -69,6 +70,66 @@ func TestModelListSampleMatchesModelInfo(t *testing.T) {
 	}
 }
 
+// themeListSamplePath is the adapter-guide's theme_list export: the frame the
+// terminal caches its palettes from. It gets a full-fidelity check rather than
+// the framing/JSON-only sweep below — theme_list's payload is a name plus a
+// theme.Theme, and Theme is the one wire struct that lives outside
+// internal/agent, so the round-trip needs no import this package cannot take. A
+// palette role added to or dropped from Theme changes the re-marshal, which is
+// the point: the schema table, the wire-value example, and this shipped frame
+// must move together. They did not when `selection` went — the table and example
+// were updated and the .bin was not, and the sweep below cannot see a field.
+const themeListSamplePath = "../../adapter-guide/tlv-samples/SM-theme-list.bin"
+
+func TestThemeListSampleMatchesTheme(t *testing.T) {
+	raw, err := os.ReadFile(themeListSamplePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", themeListSamplePath, err)
+	}
+
+	// The sample is one TLV frame: tag "SM", value an envelope.
+	reader := bytes.NewReader(raw)
+	tag, value, err := tlv.ReadTLV(reader)
+	if err != nil {
+		t.Fatalf("decode TLV frame: %v", err)
+	}
+	if tag != tlv.TagSystemMsg {
+		t.Fatalf("tag = %q, want %q", tag, tlv.TagSystemMsg)
+	}
+
+	env, err := ParseSystemMsg(value)
+	if err != nil {
+		t.Fatalf("parse system message: %v", err)
+	}
+	if env.Type != string(MsgTypeThemeList) {
+		t.Fatalf("type = %q, want %q", env.Type, MsgTypeThemeList)
+	}
+
+	var payload struct {
+		Themes []struct {
+			Name  string       `json:"name"`
+			Theme *theme.Theme `json:"theme"`
+		} `json:"themes"`
+	}
+	if err := json.Unmarshal(env.Data, &payload); err != nil {
+		t.Fatalf("decode theme_list payload: %v", err)
+	}
+	if len(payload.Themes) == 0 {
+		t.Fatal("sample carries no themes")
+	}
+
+	// A field added to (or removed from) theme.Theme changes this re-marshal,
+	// which is the whole point: the sample must be regenerated with it.
+	regenerated, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("re-marshal payload: %v", err)
+	}
+	if !bytes.Equal(regenerated, env.Data) {
+		t.Errorf("SM-theme-list.bin no longer matches theme.Theme:\n  sample:      %s\n  regenerated: %s",
+			env.Data, regenerated)
+	}
+}
+
 // The guide ships one .bin per frame it documents, and nothing kept them in
 // step with the code. Two had already drifted by the time this was written:
 // SM-model-list.bin had lost a field (the file above), and
@@ -83,8 +144,9 @@ func TestModelListSampleMatchesModelInfo(t *testing.T) {
 //
 // What it deliberately does not check: whether the JSON's fields match the Go
 // type. That needs a per-tag round-trip, and most payload structs (the SM
-// message types) live in internal/agent. Model_list is the one with a
-// full-fidelity check; see TestModelListSampleMatchesModelInfo.
+// message types) live in internal/agent. Model_list and theme_list carry
+// full-fidelity checks; see TestModelListSampleMatchesModelInfo and
+// TestThemeListSampleMatchesTheme.
 func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 	files, err := filepath.Glob("../../adapter-guide/tlv-samples/*.bin")
 	if err != nil {
