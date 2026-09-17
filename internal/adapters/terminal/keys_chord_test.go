@@ -56,8 +56,6 @@ func TestKeyChordConstants(t *testing.T) {
 		{keyF1, "f1"},
 		{keyCtrlA, "ctrl+a"},
 		{keyCtrlZ, "ctrl+z"},
-		{keyShiftUp, "shift+up"},
-		{keyShiftDown, "shift+down"},
 	}
 	for _, tc := range cases {
 		if got := tc.chord.String(); got != tc.want {

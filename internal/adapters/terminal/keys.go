@@ -59,12 +59,6 @@ var (
 	keyColon = Chord{Code: ':'}
 )
 
-// Shift plus a named key.
-var (
-	keyShiftDown = Chord{Code: KeyDown, Mod: ModShift}
-	keyShiftUp   = Chord{Code: KeyUp, Mod: ModShift}
-)
-
 // Control combinations.
 var (
 	keyCtrlA = Chord{Code: 'a', Mod: ModCtrl}

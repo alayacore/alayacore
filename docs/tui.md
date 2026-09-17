@@ -12,8 +12,8 @@ architecture.
 | `Tab` | Switch focus between display and input window |
 | `j` | Move window cursor down |
 | `k` | Move window cursor up |
-| `J` / `Shift+Down` | Scroll down one line |
-| `K` / `Shift+Up` | Scroll up one line |
+| `↓` / `J` | Scroll down one line |
+| `↑` / `K` | Scroll up one line |
 | `Ctrl+D` | Scroll down half screen |
 | `Ctrl+U` | Scroll up half screen |
 | `g` | Go to first window, scroll to top |
@@ -24,6 +24,42 @@ architecture.
 | `f` | Jump to next user prompt and put it at the top; leaves the view alone when there is none |
 | `b` | Jump to previous user prompt and put it at the top; leaves the view alone when there is none |
 | `e` | Open window content in external editor |
+
+Two families, and they do not overlap: **the home row moves the pointer**
+(`j`/`k`, and the vim names `H`/`M`/`L`, `g`/`G`, `f`/`b`), **the arrows and the
+page keys move the viewport** (`↑`/`↓` one line, `PgUp`/`PgDn` and `Ctrl+U`/`Ctrl+D`
+by page). `J`/`K` are the viewport motion spelled on the home row, so shift
+carries exactly one meaning in this table: leave the pointer, move the screen.
+
+The arrows are bound to the viewport rather than copied onto `j`/`k` because of
+the mouse wheel. While this program owns the alternate screen it asks for no
+mouse reports (`screen.go` → `mouseReportingOff`), which is also what leaves
+click-and-drag text selection with the terminal — the trade this UI refuses to
+make. A host that lets the wheel reach the application at all in that state does
+it by writing the arrow keys' own bytes, `ESC [ A` and `ESC [ B`, into the input
+stream: gesture and keystroke are then literally the same message, there is no
+second thing to bind, and whatever the arrows do *is* the wheel's behavior — one
+line per arrow a host produces for a notch, releasing auto-follow on the way up
+and staying inert at the live edge on the way down. Bound to the cursor instead,
+that same stream is a motion auto-follow refuses at the live edge (rolling down
+appears to do nothing) and one that steps whole windows at a time (rolling up
+jumps): the feel this replaced.
+
+Where a host synthesizes nothing for the wheel, nothing here changed for it: it
+still sends no wheel input, and `PgUp`/`PgDn` and `Ctrl+U`/`Ctrl+D` remain the
+page motions. Taking the wheel as a report instead (`key_parser.go` decodes
+`CSI < Cb;Cx;Cy M` today in order to drop it) would reach more hosts and would
+cost the terminal's own selection, so it is not on the table.
+
+One consequence for the table above: `shift+up`/`shift+down` are now decoded and
+bound nowhere, so no binding in this UI asks a terminal to report a *modified*
+arrow — which is not what a wheel synthesizes anyway.
+
+One exception, and it is the same rule stated where it has to be: in a list
+overlay (model selector, theme selector, attachment picker, help window) the
+list has no viewport of its own apart from its selection, so there `↓`/`↑` move
+the selection — as `j`/`k` do. The arrows are the primary motion of whatever is
+on screen; in the transcript that is the viewport, in a picker it is the cursor.
 
 ## Input & Actions
 
@@ -399,17 +435,17 @@ scrolls the viewport. While auto-follow is active:
 | Key | Behavior | Disables auto-follow? |
 |-----|----------|-----------------------|
 | `G` | Follow the last window | ✅ Re-enables |
-| `j` / `↓` | Move cursor down | ❌ No-op (race protection) |
+| `j` | Move cursor down | ❌ No-op (race protection) |
 | `L` | Move cursor to bottom | ❌ No-op (race protection) |
-| `J` / `Shift+Down` | Scroll down one line | ❌ No-op when at bottom |
+| `↓` / `J` | Scroll down one line | ❌ No-op when at bottom |
 | `Ctrl+D` | Scroll down half screen | ❌ No-op when at bottom |
-| `k` / `↑` | Move cursor up | ✅ If cursor actually moves |
+| `k` | Move cursor up | ✅ If cursor actually moves |
 | `H` | Move to top of visible area | ✅ If cursor actually moves |
 | `M` | Move to center of visible area | ✅ If cursor actually moves |
 | `f` | Jump to next user prompt | ✅ If cursor actually moves |
 | `b` | Jump to previous user prompt | ✅ If cursor actually moves |
 | `g` / `Home` | Go to first window | ✅ If cursor actually moves |
-| `K` / `Shift+Up` | Scroll up one line | ✅ Always |
+| `↑` / `K` | Scroll up one line | ✅ Always |
 | `Ctrl+U` | Scroll up half screen | ✅ Always |
 | `e` | Open in editor | ✅ Always |
 | `Space` | Toggle window fold | ❌ Never |

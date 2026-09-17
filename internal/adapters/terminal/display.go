@@ -70,11 +70,14 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	}
 
 	switch keyMsg.Chord() {
-	case keyJ, keyDown:
+	// The pointer, on the home row only. `j`/`k` and the vim names below own
+	// it; the arrows belong to the viewport, for the reason written on those
+	// cases.
+	case keyJ:
 		m, _ = m.MoveWindowCursorDown()
 		return m.EnsureCursorVisible().updateContent(), nil
 
-	case keyK, keyUp:
+	case keyK:
 		m, _ = m.MoveWindowCursorUp()
 		return m.EnsureCursorVisible().updateContent(), nil
 
@@ -91,7 +94,31 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		m = m.ScrollUp(max(1, m.GetHeight()/2))
 		return m.updateContent(), nil
 
-	case keyJCapital, keyShiftDown:
+	// The viewport, on the arrows and on their shifted letters.
+	//
+	// The arrows belong here rather than beside `j`/`k` because of the mouse
+	// wheel. While this program owns the alternate screen it asks for no mouse
+	// reports (screen.go → mouseReportingOff, which is also what leaves
+	// click-and-drag text selection with the terminal), so a host that lets the
+	// wheel reach the application at all does it by writing the arrow keys' own
+	// bytes — `ESC [ A`, `ESC [ B` — into the input stream. Gesture and
+	// keystroke are then literally the same message and there is no second thing
+	// to bind: whatever the arrows do *is* the wheel's behavior, at one line per
+	// arrow a host produces for a notch. A host that synthesizes nothing keeps
+	// sending no wheel input at all, and loses nothing by it — its users page
+	// with `PgUp`/`PgDn` and `Ctrl+U`/`Ctrl+D` as before.
+	//
+	// Bound to the pointer instead, that same stream is a motion auto-follow
+	// refuses at the live edge (MoveWindowCursorDown returns straight away, so
+	// rolling down looked dead) and that steps whole windows at a time (rolling
+	// up jumped): the feel this replaced.
+	//
+	// `J`/`K` stay — the same motion spelled on the home row, so shift carries
+	// exactly one meaning in this table (leave the pointer, move the screen).
+	// Shift plus an arrow is deliberately unbound: it was the only binding that
+	// needed a terminal to report a modified arrow, and a modified arrow is not
+	// what a wheel synthesizes. The parser still decodes them.
+	case keyJCapital, keyDown:
 		if !m.AtBottom() {
 			m = m.MarkUserScrolled()
 			m = m.ScrollDown(1)
@@ -99,7 +126,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		}
 		return m, nil
 
-	case keyKCapital, keyShiftUp:
+	case keyKCapital, keyUp:
 		m = m.MarkUserScrolled()
 		m = m.ScrollUp(1)
 		return m.updateContent(), nil
