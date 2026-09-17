@@ -226,9 +226,10 @@ func TestModelSelectorLoadModelsPreservesSelection(t *testing.T) {
 	ms = ms.LoadModels(models, 1) // Model A is active
 	ms = ms.Open()
 
-	// Simulate user pressing Tab to focus the list, then navigating to Model B (index 1)
+	// Simulate user pressing Tab to focus the list, then navigating to Model B
+	// (index 1) with the key that does it: a list takes `j`, not the arrow.
 	ms.FilteredListCore = ms.HandleTabKey() // now FilterInputFocused=false, list is focused
-	ms = ms.handleListKeys(keyDown)
+	ms = ms.handleListKeys(keyJ)
 
 	// Verify we selected Model B
 	if ms.SelectedIdx != 1 {

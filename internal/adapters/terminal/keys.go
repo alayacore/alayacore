@@ -45,7 +45,6 @@ var (
 	keyB      = Chord{Code: 'b'}
 	keyE      = Chord{Code: 'e'}
 	keyF      = Chord{Code: 'f'}
-	keyQ      = Chord{Code: 'q'}
 	keyR      = Chord{Code: 'r'}
 	keyY      = Chord{Code: 'y'}
 	keyN      = Chord{Code: 'n'}

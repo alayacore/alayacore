@@ -130,21 +130,30 @@ func TestHelpWindowNavigationBoundary(t *testing.T) {
 func TestHelpWindowCloseKeys(t *testing.T) {
 	styles := DefaultStyles()
 
-	// Test 'q' key (Tab to list first, then q)
-	hw := NewHelpWindow(styles)
-	hw = hw.Open()
-	hw, _ = hw.Update(KeyPressMsg(Key{Code: KeyTab}))
-	hw, _ = hw.Update(KeyPressMsg(Key{Code: 'q'}))
-	if hw.IsOpen() {
-		t.Error("Help window should be closed after pressing q (while list is focused)")
+	// `Esc` is the way out, from either focus. `q` used to quit while the list
+	// was focused; it is gone, so this asserts the one key that closes and, below,
+	// that `q` survives as text where it was always text.
+	for _, listFocused := range []bool{true, false} {
+		hw := NewHelpWindow(styles).Open()
+		if listFocused {
+			hw, _ = hw.Update(KeyPressMsg(Key{Code: KeyTab}))
+		}
+		hw, _ = hw.Update(KeyPressMsg(Key{Code: KeyEsc}))
+		if hw.IsOpen() {
+			t.Errorf("esc did not close the help window (list focused: %v)", listFocused)
+		}
 	}
 
-	// Test 'esc' key (works regardless of focus)
-	hw = NewHelpWindow(styles)
-	hw = hw.Open()
-	hw, _ = hw.Update(KeyPressMsg(Key{Code: KeyEsc}))
-	if hw.IsOpen() {
-		t.Error("Help window should be closed after pressing esc")
+	// `q` in the filter is a character the user is typing, not a quit. The list
+	// state — where `q` used to close — is covered for every list overlay by
+	// overlay_nav_test.go.
+	hw := NewHelpWindow(styles).Open()
+	hw, _ = hw.Update(KeyPressMsg(Key{Code: 'q'}))
+	if !hw.IsOpen() {
+		t.Fatal("q closed the help window from the filter input")
+	}
+	if got := hw.FilterInput.Value(); got != "q" {
+		t.Errorf("filter input = %q, want %q: typing must not be a command", got, "q")
 	}
 }
 

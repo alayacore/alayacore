@@ -96,7 +96,7 @@ func (m Terminal) handleThemeSelectorKeys(msg KeyMsg) (Terminal, Cmd) {
 		// still matches, so bump the counter.
 		m.themePreviewID++
 		key := msg.Chord()
-		if key == keyQ || key == keyEsc {
+		if key == keyEsc {
 			// Cancel: restore original theme if a different theme was previewed.
 			lastApplied := m.previewAppliedTheme
 			m.previewAppliedTheme = nil

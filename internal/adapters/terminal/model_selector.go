@@ -215,11 +215,11 @@ func (ms ModelSelector) handleSearchEnter() ModelSelector {
 
 func (ms ModelSelector) handleListKeys(key Chord) ModelSelector {
 	switch key {
-	case keyJ, keyDown:
+	case keyJ:
 		if ms.SelectedIdx < len(ms.filteredModels)-1 {
 			ms.SelectedIdx++
 		}
-	case keyK, keyUp:
+	case keyK:
 		if ms.SelectedIdx > 0 {
 			ms.SelectedIdx--
 		}
@@ -248,7 +248,7 @@ func (ms ModelSelector) renderList() string {
 	if ms.FilterInputFocused {
 		help = "tab: list | ctrl+r: reload | enter: select | esc: close"
 	} else {
-		help = "tab: search | j/k: navigate | enter: select | q/esc: close"
+		help = "tab: search | j/k: navigate | enter: select | esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, boxWidth))

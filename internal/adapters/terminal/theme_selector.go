@@ -162,7 +162,7 @@ func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, []Result) {
 
 	if result.Handled {
 		// Close overlay.
-		if !fl.FilterInputFocused && (key == keyQ || key == keyEsc) {
+		if !fl.FilterInputFocused && key == keyEsc {
 			return ts.Close(), nil
 		}
 
@@ -206,12 +206,12 @@ func (ts ThemeSelector) Update(msg Msg) (ThemeSelector, []Result) {
 
 func (ts ThemeSelector) handleListKeys(key Chord) ThemeSelector {
 	switch key {
-	case keyJ, keyDown:
+	case keyJ:
 		if ts.SelectedIdx < len(ts.filteredThemes)-1 {
 			ts.SelectedIdx++
 			ts = ts.loadPreviewTheme()
 		}
-	case keyK, keyUp:
+	case keyK:
 		if ts.SelectedIdx > 0 {
 			ts.SelectedIdx--
 			ts = ts.loadPreviewTheme()
@@ -283,7 +283,7 @@ func (ts ThemeSelector) renderList() string {
 	if ts.FilterInputFocused {
 		help = "tab: list | enter: select | esc: close"
 	} else {
-		help = "tab: search | j/k: navigate | enter: select | q/esc: close"
+		help = "tab: search | j/k: navigate | enter: select | esc: close"
 	}
 	sb.WriteString("\n")
 	sb.WriteString(renderHelpBar(helpStyle, help, ts.Width))

@@ -206,12 +206,12 @@ func (fl FilteredListCore) handleFilterFocusedKey(msg KeyMsg, key Chord) (Filter
 // handleListFocusedKey handles keys when the list is focused.
 func (fl FilteredListCore) handleListFocusedKey(key Chord) (FilteredListCore, FilteredListResult) {
 	switch key {
-	case keyQ, keyEsc:
+	case keyEsc:
 		fl.State = FilteredListClosed
 		return fl, FilteredListResult{Handled: true}
-	case keyJ, keyDown:
+	case keyJ:
 		return fl, FilteredListResult{Handled: true}
-	case keyK, keyUp:
+	case keyK:
 		return fl, FilteredListResult{Handled: true}
 	case keyEnter:
 		return fl, FilteredListResult{Handled: true}

@@ -354,11 +354,11 @@ func (aw AttachmentWindow) handleSearchEnter() AttachmentWindow {
 
 func (aw AttachmentWindow) handleListKeys(key Chord) AttachmentWindow {
 	switch key {
-	case keyJ, keyDown:
+	case keyJ:
 		if aw.SelectedIdx < len(aw.filtered)-1 {
 			aw.SelectedIdx++
 		}
-	case keyK, keyUp:
+	case keyK:
 		if aw.SelectedIdx > 0 {
 			aw.SelectedIdx--
 		}

@@ -285,9 +285,9 @@ func (hw HelpWindow) Update(msg Msg) (HelpWindow, []Result) {
 		}
 		if !hw.FilterInputFocused {
 			switch {
-			case key == keyJ || key == keyDown:
+			case key == keyJ:
 				hw = hw.moveDown()
-			case key == keyK || key == keyUp:
+			case key == keyK:
 				hw = hw.moveUp()
 			}
 		}
@@ -406,7 +406,7 @@ func (hw HelpWindow) View() View {
 			hw.filteredItems[hw.SelectedIdx].Type == HelpItemCommand {
 			base += " | enter: copy to input"
 		}
-		base += " | q/esc: close"
+		base += " | esc: close"
 		help = base
 	}
 	helpBar := renderHelpBar(helpStyle, help, hw.Width)

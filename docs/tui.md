@@ -55,11 +55,15 @@ One consequence for the table above: `shift+up`/`shift+down` are now decoded and
 bound nowhere, so no binding in this UI asks a terminal to report a *modified*
 arrow — which is not what a wheel synthesizes anyway.
 
-One exception, and it is the same rule stated where it has to be: in a list
-overlay (model selector, theme selector, attachment picker, help window) the
-list has no viewport of its own apart from its selection, so there `↓`/`↑` move
-the selection — as `j`/`k` do. The arrows are the primary motion of whatever is
-on screen; in the transcript that is the viewport, in a picker it is the cursor.
+A list overlay takes no arrows at all, and that is the same rule, not an
+exception: a picker's only degree of freedom is its selection — `ScrollIdx` is
+derived from it (`filtered_list.go` → `EnsureVisible`), so there is no viewport
+an arrow could move, and binding the arrows there would bind one state twice.
+`j`/`k` navigate, `Enter` selects, `Esc` closes, `Tab` swaps between the filter
+input and the list. Two consequences are wanted rather than tolerated: the wheel
+is inert while an overlay is open (it arrives as the arrows, and the arrows
+answer to nothing here), and `q` no longer closes a picker — it was a convention
+stacked on top of `Esc`, and one key per job is why `Esc` is the only way out.
 
 ## Input & Actions
 
@@ -304,8 +308,8 @@ Type a path fragment to filter files, or type a new absolute path to navigate.
 | Key | Action |
 |-----|--------|
 | `Tab` | Toggle focus between path input and file list |
-| `j`, `↓` | Move selection down |
-| `k`, `↑` | Move selection up |
+| `j` | Move selection down |
+| `k` | Move selection up |
 | `Backspace` | Delete one character, as in every other box |
 | `Ctrl+W` | Delete the last path segment (`/abc/def/` → `/abc/`, `C:\a\b\` → `C:\a\`); the root survives |
 | `Enter` on dir | Append directory name to path input |
@@ -822,9 +826,9 @@ Press `Ctrl+H` or type `:help` to open a help window listing all keybindings and
 | Key | Action |
 |-----|--------|
 | `Tab` | Toggle focus between filter input and list |
-| `q`, `Esc` | Close help window |
-| `j`, `↓` | Move selection down |
-| `k`, `↑` | Move selection up |
+| `Esc` | Close help window |
+| `j` | Move selection down |
+| `k` | Move selection up |
 | `Enter` | Copy selected command to input (commands only) |
 
 The help window is organized into three sections:
