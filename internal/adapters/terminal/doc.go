@@ -26,20 +26,10 @@
 // Glyph and Emoji Notes:
 //
 //	Drawn symbols follow the glyph policy in constants.go (East-Asian
-//	width, single codepoint, one cell per fixed-width row).
-//
-//	Use only single-codepoint emoji. The old justification for this —
-//	that a variation selector makes the width model miscount and a
-//	truncation eats the neighboring character ("Image" → "Imag") —
-//	never held: a camera emoji followed by U+FE0F, and a ZWJ sequence,
-//	measure as one cluster of two cells either way. The rule survived
-//	for a different reason, and that reason changed once measuring and
-//	cutting came to share one table (width.go): what is left is the
-//	host. A glyph followed by U+FE0F asks the terminal for emoji
-//	presentation, and a terminal that ignores the request draws one cell
-//	where the table reserves two; a ZWJ family is one cluster on one
-//	host and several on the next. A single codepoint has no second
-//	opinion to disagree with, so it cannot move a layout by a cell.
+//	width, single codepoint, one cell per fixed-width row) — read it there
+//	before adding a symbol. The one rule worth repeating at this level:
+//	only single-codepoint emoji, because a U+FE0F or a ZWJ sequence gives
+//	the host a second opinion about the cell count (constants.go, rule 3).
 //
 // Key Files:
 //

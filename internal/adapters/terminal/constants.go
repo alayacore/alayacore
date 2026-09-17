@@ -184,28 +184,17 @@ const statusIdleGlyph = "⠿"
 //        ellipsis "…" (U+2026 — "⋯" U+22EF is Neutral but mid-line, thin,
 //        and poorly covered), "—" U+2014, "∞" U+221E. Each one
 //        is a row that can shift by a cell; none is a frame that can
-//        shatter. (The speed segment's "·" used to be on this list; the
-//        segment now reads "12.5 tok/s (ttft 1.2s)" instead, so the row is
-//        Ambiguous-free apart from the markers above. "↓" U+2193 has left
-//        the list: the auto-follow marker it stood in is now the word
-//        "following" on the live-edge row (live_edge.go), and that row is
-//        pure ASCII — its frame is an ASCII hyphen — so it draws no
-//        Ambiguous glyph at all.)
+//        shatter.
 //     Anything else Ambiguous is a bug — that is the test, not the prose,
 //     that says so.
-//  3. Program-owned symbols are single codepoints. The reason used to be
-//     internal — the adapter measured a row with one library and cut it
-//     with another, and no glyph survived that pair untested — and it is
-//     now the terminal's: a glyph followed by U+FE0F asks for emoji
-//     presentation, which some terminals honor and some draw one cell wide
-//     while our table answers two, and a ZWJ family is one cluster on one
-//     host and several on the next. A single codepoint outside
-//     Extended_Pictographic has no second opinion to disagree with, so it
-//     cannot move a layout by a cell.
+//  3. Program-owned symbols are single codepoints. A glyph followed by
+//     U+FE0F asks for emoji presentation, which some terminals honor and
+//     some draw one cell wide while our table answers two; a ZWJ family is
+//     one cluster on one host and several on the next. A single codepoint
+//     outside Extended_Pictographic has no second opinion to disagree with,
+//     so it cannot move a layout by a cell.
 //  4. Color and weight carry state before a glyph does. A marker that never
-//     changes is decoration: the "✦" that used to sit after the reasoning
-//     level (shown as "R0✦" even at level 0, pinned to never be
-//     highlighted) carried no information and looked like an indicator.
+//     changes is decoration, not information.
 //
 // glyphs_test.go scans this package's own source, extracts every
 // non-ASCII character it draws, and fails on an unclassified glyph, on a
