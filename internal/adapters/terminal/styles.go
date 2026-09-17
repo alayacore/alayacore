@@ -28,10 +28,23 @@ type Styles struct {
 	ToolContent Style
 	Error       Style
 	System      Style
-	Prompt      Style
-	Attachment  Style
-	DiffRemove  Style
-	DiffAdd     Style
+	// Attachment is the badge row of a user message — the expanded window
+	// body, its collapsed summary, and the prompt box: muted plus bold, the
+	// register a window's own line is drawn in (lineStyleForTag). That is
+	// deliberate: the badge is header material naming what came with the
+	// message, not part of the message's text, which stays colorless (Body).
+	// It is a field of its own rather than an alias of Label because the
+	// cursor highlight recolors Label and must not recolor the badge
+	// (Styles.Selected).
+	//
+	// It asks for no color beyond the chrome's. Weight, not color, is this
+	// UI's structural emphasis (an overlay list marks its selected row exactly
+	// that way), and warning is the palette's one alert channel — spent on
+	// what the reader is asked to decide about (a confirmation, a draft
+	// waiting to be sent), never on a routine attachment.
+	Attachment Style
+	DiffRemove Style
+	DiffAdd    Style
 
 	// Display styles
 	Input   Style
@@ -77,14 +90,14 @@ type Styles struct {
 // selector the closing rule is instead the one divider between the search
 // and the list, which hangs bare under it (RenderListBody).
 //
-// Transcript windows deliberately do NOT use it. A window is opened by a
-// rule carrying its label (Window.buildExpandRule) and the next window is
-// opened by its own, so a closing rule under the content would repeat a
-// delimiter that is already there — see Window.Render. Callers must wrap
-// (wrapContent) and truncate (truncateWithSuffix) every content line
-// themselves, and the content's wrap width is the FULL box width. Trailing
-// padding is unnecessary: terminals ignore trailing whitespace, so content
-// lines may be shorter than the box.
+// Transcript windows deliberately do NOT use it. A window is opened by its
+// own line carrying its label (Window.buildExpandHeader — text, not a rule)
+// and the next window is opened by its own, so a closing rule under the
+// content would repeat a delimiter that is already there — see Window.Render.
+// Callers must wrap (wrapContent) and truncate (truncateWithSuffix) every
+// content line themselves, and the content's wrap width is the FULL box
+// width. Trailing padding is unnecessary: terminals ignore trailing
+// whitespace, so content lines may be shorter than the box.
 //
 //nolint:revive // visualLine is an internal render type
 func (s *Styles) RenderOpenBoxLines(lines []visualLine, width int, borderColor color.Color) []visualLine {
@@ -168,8 +181,7 @@ func NewStyles(t *theme.Theme) *Styles {
 		ToolContent: baseStyle.Foreground(Color(t.Muted)),
 		Error:       baseStyle.Foreground(Color(t.Error)),
 		System:      baseStyle.Foreground(Color(t.Muted)),
-		Prompt:      baseStyle.Foreground(Color(t.Primary)).Bold(true),
-		Attachment:  baseStyle.Foreground(Color(t.Warning)).Bold(true),
+		Attachment:  baseStyle.Foreground(Color(t.Muted)).Bold(true),
 		DiffRemove:  baseStyle.Foreground(Color(t.Removed)),
 		DiffAdd:     baseStyle.Foreground(Color(t.Added)),
 
@@ -207,7 +219,6 @@ func (s *Styles) Dimmed() *Styles {
 		ToolContent: s.ToolContent.Foreground(s.ColorDim),
 		Error:       s.Error.Foreground(s.ColorDim),
 		System:      s.System.Foreground(s.ColorDim),
-		Prompt:      s.Prompt.Foreground(s.ColorDim),
 		Attachment:  s.Attachment.Foreground(s.ColorDim),
 		DiffRemove:  s.DiffRemove.Foreground(s.ColorDim),
 		DiffAdd:     s.DiffAdd.Foreground(s.ColorDim),
@@ -248,9 +259,9 @@ func (s *Styles) Dimmed() *Styles {
 // carries a tool window's name and its arguments. The highlight marks the
 // window, never what it says — and the name is on the row at both fold
 // states, so swapping it would repaint the row when the reader folds it
-// (toolNameStyle, window.go). (Prompt is deliberately not swapped:
-// Styles.Prompt belongs to the prompt box and the overlay filter fields, and
-// those are never window rows.)
+// (toolNameStyle, window.go). (Attachment is deliberately not swapped
+// either: the badges say what arrived with the message, not which window the
+// cursor is on, and they sit in the body under the line, not on it.)
 //
 // The accent is ColorAccent — the theme's primary, the same color the prompt
 // box and a focused rule carry — so the palette has a single highlight color

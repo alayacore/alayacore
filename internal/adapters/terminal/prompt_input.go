@@ -18,7 +18,7 @@ import (
 type PromptInput struct {
 	// ── Elm UI state (value types, copied on every WithXxx) ─
 	input       InputField // wrapped input field (cursor, buffer, selection)
-	attachments []string   // pending attachment file paths to display
+	attachments []string   // attachment display rows, verbatim (today: media badges)
 	// active is the painting answer to "is this the box the user is writing
 	// into, in a window the operating system has focused". Terminal derives it
 	// each frame from its own keyboard target and hasFocus, and passes it down
@@ -67,6 +67,13 @@ func (m PromptInput) Update(msg Msg) (PromptInput, []Result) {
 }
 
 // View renders the input field with border, attachments above if present.
+// The attachment block needs no divider of its own: it is drawn in the
+// window chrome's register (muted + bold, Styles.Attachment) and holds four
+// fixed labels, the draft under it is plain, and the box's own rules already
+// bracket both — a "───" row between them would draw a line the reader
+// cannot type, and a selection copied out of the box would return it as a
+// phantom row.
+//
 // When blocked is true, content is dimmed (overlay active).
 func (m PromptInput) View() View {
 	borderColor := m.borderColor()
@@ -76,17 +83,12 @@ func (m PromptInput) View() View {
 	if len(m.attachments) > 0 {
 		innerWidth := max(0, m.width)
 		attachmentStyle := m.styles.Attachment
-		systemStyle := m.styles.System
 		if m.blocked {
 			attachmentStyle = attachmentStyle.Foreground(m.styles.ColorDim)
-			systemStyle = systemStyle.Foreground(m.styles.ColorDim)
 		}
 		styledMedia := wrapLabels(m.attachments, innerWidth, attachmentStyle)
-		separator := systemStyle.Width(innerWidth).Render(Separator)
 		var sb strings.Builder
 		sb.WriteString(styledMedia)
-		sb.WriteString("\n")
-		sb.WriteString(separator)
 		sb.WriteString("\n")
 		sb.WriteString(content)
 		return NewView(m.styles.RenderOpenBox(sb.String(), m.width, borderColor))
@@ -125,15 +127,14 @@ func (m PromptInput) borderColor() color.Color {
 // (a handful of NewStyle() calls) and the downstream same-content
 // identity check in Program.render skips the terminal write anyway.
 //
-// The line count still drives the prompt color (warning for multi-line
-// inputs as a brighter visual cue).
+// The multi-line draft is announced by the box's own rules (borderColor),
+// not by the field. Every input in this UI is a bare field — InputField.Prompt
+// is "" for the prompt box and for all four overlay filter boxes — so the
+// Prompt register below is set but never seen; it is what a prefix would take
+// if a surface ever grew one.
 func (m PromptInput) updateInputStyles() InputField {
-	promptColor := m.styles.ColorAccent
-	if m.input.LineCount() > 1 {
-		promptColor = m.styles.ColorWarning
-	}
 	focused := inputFieldStyle{
-		Prompt:      NewStyle().Foreground(promptColor).Bold(true),
+		Prompt:      NewStyle().Foreground(m.styles.ColorAccent).Bold(true),
 		Text:        NewStyle(),
 		Placeholder: NewStyle().Foreground(m.styles.ColorMuted),
 	}
@@ -188,13 +189,17 @@ func (m PromptInput) WithBlockValue(value string) PromptInput {
 	return m
 }
 
-// SetAttachments sets the pending attachment paths for display.
-func (m PromptInput) WithAttachments(paths []string) PromptInput {
-	m.attachments = paths
+// WithAttachments sets the attachment rows the box displays, verbatim — one
+// label per attachment, in attachment order. The caller decides what the row
+// says; today Terminal hands it the media badges
+// (Terminal.pendingAttachmentLabels), and this box only ever measures them
+// (wrapLabels, Height, AttachmentsOffset).
+func (m PromptInput) WithAttachments(labels []string) PromptInput {
+	m.attachments = labels
 	return m
 }
 
-// Attachments returns the current attachment paths.
+// Attachments returns the current attachment display rows.
 func (m PromptInput) Attachments() []string {
 	return m.attachments
 }
@@ -207,7 +212,7 @@ func (m PromptInput) Height() int {
 	if len(m.attachments) > 0 {
 		innerWidth := max(0, m.width)
 		styledMedia := wrapLabels(m.attachments, innerWidth, m.styles.Attachment)
-		lines += Height(styledMedia) + 1 // attachment lines + separator
+		lines += Height(styledMedia) // attachment rows only
 	}
 	return lines
 }
@@ -267,13 +272,15 @@ func (m PromptInput) CursorCell() int {
 }
 
 // AttachmentsOffset returns the number of content lines above the input
-// text inside the bordered box (attachment lines + separator line),
-// or 0 when there are no pending attachments.
+// text inside the bordered box (the wrapped attachment rows), or 0 when
+// there are no pending attachments. It is the one source of the real
+// cursor's row inside the box (Terminal.View), so it must agree with what
+// View() emits row for row — including the absence of a divider row.
 func (m PromptInput) AttachmentsOffset() int {
 	if len(m.attachments) == 0 {
 		return 0
 	}
 	innerWidth := max(0, m.width)
 	styledMedia := wrapLabels(m.attachments, innerWidth, m.styles.Attachment)
-	return Height(styledMedia) + 1 // + separator line
+	return Height(styledMedia)
 }

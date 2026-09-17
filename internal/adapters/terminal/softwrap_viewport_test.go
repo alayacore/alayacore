@@ -34,7 +34,7 @@ func fragmentRows(fragment string) int {
 }
 
 // extractWindowContent returns the plain text of the content region that
-// follows a window's opening rule — the rows after row 0, up to the row
+// follows a window's opening line — the rows after row 0, up to the row
 // that begins the next window (a rule, or a window's own line), which is
 // what now ends a window: an expanded window draws no closing rule. A
 // window's own line opens with "+ " when folded and "- " when expanded,
@@ -175,7 +175,7 @@ func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 	raw := wb.GetAll(-1, false)
 	out := stripANSI(raw)
 
-	// The content region follows the window's opening rule and must be
+	// The content region follows the window's opening line and must be
 	// continuous (no hard newline) — the single line's soft wraps.
 	body := extractWindowContent(out)
 	if body == "" {
@@ -198,7 +198,7 @@ func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 // height.
 func TestRenderVirtualWindowBoundary(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
-	// AT window: 5 visual lines (0..4) — opening rule + 4 content rows.
+	// AT window: 5 visual lines (0..4) — opening line + 4 content rows.
 	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
 	// Folded reasoning: 1 visual line (5).
 	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")

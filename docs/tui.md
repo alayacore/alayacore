@@ -313,19 +313,32 @@ The attachment type is determined by file extension (or URL path extension):
 
 ### Display
 
-Attachments render above the text — the media block first, the text set off
-by the `───` divider — under the window's own line (marker + label; see
+Attachments render above the text — the media block first, the text directly
+under it — beneath the window's own line (marker + label; see
 [Window Container](#window-container)):
 
 ```
 - USER PROMPT             2026/09/14 16:32:07 +08:00
 📷 Image  🎵 Audio
-───
 what are these?
 ```
 
+Nothing divides those two rows. The media block is header material — the
+chrome register (muted, bold), one of four fixed labels — and the text under
+it is plain body, so the boundary is already drawn; the `───` rule is reserved
+for the joins that would otherwise read as one continuous run, which is two
+text parts of one message and a tool window's arguments versus its result. The
+prompt box works the same
+way, and grows upward rather than downward: its top rule is anchored from the
+bottom of the screen, so attaching a file costs the transcript a row and never
+moves the caret.
+
 Collapsed (`Space`), the same window keeps the attachments as a compact badge
-summary and shows the text tail after it — two images and one audio here:
+summary and shows the text tail after it — two images and one audio here. The
+badges keep the register they hold unfolded (bold, in the label's muted color):
+folding a window restyles nothing. When the row is too narrow and truncation
+cuts into the summary itself, the whole thing stays in the plain content color
+rather than painting half a bold badge:
 
 ```
 + USER PROMPT     📷2 🎵1 analyze this
@@ -358,7 +371,7 @@ Note: `:quit` / `:q`, `:help`, and `:suspend` are handled directly by each adapt
 
 The display area organizes content into separate windows — one per message or tool call. Windows have synchronized widths and can be navigated independently.
 
-Every window spends exactly ONE row of chrome — its own line — and it never draws a border. That line opens with the fold marker (`+` folded, `-` expanded), then the label in the fixed `CollapsedLabelWidth` column, so the label sits at the same cell in both states and folding never moves it. What follows the label is what tells the two states apart: the content summary when folded, the arrival timestamp right-aligned to the window edge when expanded — with the message's hidden-line count beside it while that row is pinned to the screen top ([Sticky Window Line](#sticky-window-line)). Nothing delimits a window's end: the next window's own line does, and the last one is closed by the live-edge row and the prompt box under it. A *floating* surface instead brackets its one-line input with top and bottom rules — the prompt box around its own input, a selector overlay around its filter box. In a selector, that box's closing rule is the only divider between the search and the bare list under it, and the help bar closes the overlay below.
+Every window spends exactly ONE row of chrome — its own line — and it never draws a border. That line opens with the fold marker (`+` folded, `-` expanded), then the label in the fixed `CollapsedLabelWidth` column, so the label sits at the same cell in both states and folding never moves it. What follows the label is what tells the two states apart: the content summary when folded, the arrival timestamp right-aligned to the window edge when expanded — with the message's hidden-line count beside it while that row is pinned to the screen top ([Sticky Window Line](#sticky-window-line)). Nothing delimits a window's end: the next window's own line does, and the last one is closed by the live-edge row and the prompt box under it. A *floating* surface instead brackets its content with top and bottom rules — the prompt box around the draft (and, when files are attached, the badge rows above it), a selector overlay around its filter box. In a selector, that box's closing rule is the only divider between the search and the bare list under it, and the help bar closes the overlay below.
 
 ### Window Order
 
@@ -525,7 +538,7 @@ The user says "my os" — unclear. Perhaps they want to know what OS they are on
 
 **The markers are ASCII**, and that is the argument for them: a glyph that sits at column 0 of every window row must measure one cell in every terminal and must exist in every font, and only ASCII guarantees both. They replaced the triangles `▸`/`▾` (U+25B8/U+25BE), which were chosen for width alone (East-Asian Neutral, outside Extended_Pictographic — see the glyph policy in `constants.go`): a good reason, and a weaker guarantee than the character set itself. Nothing in the frame depends on a symbol block any more; every glyph the window layer draws is either ASCII or a box-drawing rule, and box drawing is a class-wide waiver the frame has always paid for.
 
-An expanded window's line is `- LABEL`, the arrival timestamp right-aligned to the window edge — and, while that line is pinned to the screen top, the count of the window's own lines hidden above it — and then the content. There is **no rule above and none below**: a window is opened by its own line, and closed by the next window's own line (the prompt box closes the last one). A *floating* surface brackets its one-line input with rules instead — the prompt input around its own input, a selector overlay around its filter box — and in a selector the bare list hangs under that box's closing rule, with the help bar closing the overlay below.
+An expanded window's line is `- LABEL`, the arrival timestamp right-aligned to the window edge — and, while that line is pinned to the screen top, the count of the window's own lines hidden above it — and then the content. There is **no rule above and none below**: a window is opened by its own line, and closed by the next window's own line (the prompt box closes the last one). A *floating* surface brackets its content with rules instead — the prompt input around the draft, with the attachment badge rows above it when files are attached, and a selector overlay around its filter box — and in a selector the bare list hangs under that box's closing rule, with the help bar closing the overlay below.
 
 #### The timestamp
 
@@ -549,7 +562,7 @@ Collapsed window summaries use **head + "…" + tail** (40/60 split of the avail
 
 This gives a clean rule: **only delta → leading `…`; everything else → head+tail.**
 
-The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in both forms, while the surrounding content uses the muted color (`t.Muted`). This creates a clear visual hierarchy: actual content vs. truncation marker. The dim color is lighter than muted on a light background, so the `…` recedes — appropriate because it's metadata, not content. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster.
+The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in both forms, while the surrounding content uses the muted color (`t.Muted`). This creates a clear visual hierarchy: actual content vs. truncation marker. The dim color is lighter than muted on a light background, so the `…` recedes — appropriate because it's metadata, not content. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster. On a `USER PROMPT` row the content may open with the attachment badge summary; that run keeps the chrome register (muted, **bold**) it holds unfolded — but only while the cut leaves it whole, since half a badge is not worth two colors (`collapsedRow.style`).
 
 ### Markdown Rendering
 

@@ -159,7 +159,7 @@ func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
 
 	lines, lineCount := tr.BuildInner(30, false, styles)
 	if lineCount != 2 {
-		t.Fatalf("lineCount = %d, want 2 (delta preview + opening rule)", lineCount)
+		t.Fatalf("lineCount = %d, want 2 (delta preview + opening line)", lineCount)
 	}
 	preview := lines[0].Text
 	plain := stripANSI(preview)

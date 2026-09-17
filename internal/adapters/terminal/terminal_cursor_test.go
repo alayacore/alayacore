@@ -66,8 +66,11 @@ func TestTerminalViewRealCursor(t *testing.T) {
 		t.Fatalf("with text: got cursor (%d,%d), want (2,21)", v.Cursor.X, v.Cursor.Y)
 	}
 
-	// Attachments push the input text down: display height shrinks to
-	// 24-5-1 = 18, content line = 18 + 1 (rule) + 2 (media+separator) = 21.
+	// Attachments grow the box UPWARD, not the caret downward: Height()
+	// gains the media row, so the bottom-anchored top rule moves up one and
+	// AttachmentsOffset() moves the caret back down one — 19 + 1 (first
+	// content row) + 1 (media row) = 21, the row it was before. The display
+	// region simply gets one row less (24 - 4 - 1 = 19).
 	m = m.addAttachment("/tmp/a.txt")
 	v = m.View()
 	if v.Cursor.X != 2 || v.Cursor.Y != 21 {

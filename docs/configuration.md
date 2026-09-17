@@ -300,12 +300,12 @@ removed: #f38ba8
 |-------|----------|
 | `primary` | User input text, emphasis, focused box rules, overlay titles, and the display cursor's window line (marker, label, timestamp and, on a pinned row, its hidden-line count). The prompt box and the cursor's window line are the two surfaces that carry it; the status bar is one muted foreground |
 | `dim` | Unfocused box rules (the prompt box and a selector overlay's filter box), the status bar while an overlay dims it, overlay title and help-bar backgrounds, the live edge |
-| `muted` | Secondary text, system messages, tool content, the window line's default color, the status bar (segments, ` \| ` separators and indicator — one foreground) |
-| `warning` | Confirm dialogs, multi-line prompt hints, attachment labels |
+| `muted` | Secondary text, system messages, tool content, the window line's default color, the attachment badges (with bold), the status bar (segments, ` \| ` separators and indicator — one foreground) |
+| `warning` | Confirm dialogs, multi-line prompt hints |
 | `error` | Errors, and the `SYSTEM ERROR` line |
 | `added` | Diff additions |
 | `removed` | Diff removals |
 
-Body text (assistant messages, reasoning, user input, tool input/output) is rendered without an explicit foreground color — it uses the terminal's default. When an overlay (model selector, help window, confirm dialog, …) is open, the body dims to the theme's `dim` color together with the rest of the background content. Selected/active items in overlay lists are emphasized with **bold** weight only, not color. The terminal cursor uses the emulator's default color (the theme does not control it).
+Body text (assistant messages, reasoning, user input, tool input/output) is rendered without an explicit foreground color — it uses the terminal's default. When an overlay (model selector, help window, confirm dialog, …) is open, the body dims to the theme's `dim` color together with the rest of the background content. Selected/active items in overlay lists are emphasized with **bold** weight only, not color. A user message's attachment badges take the same treatment one step further to the chrome side: `muted` with **bold**, the register a window's own line is drawn in — never `warning`, because the alert color marks what the reader is asked to decide about, not what happened to arrive with a message. The terminal cursor uses the emulator's default color (the theme does not control it).
 
 Switch themes at runtime with `Ctrl+P`.

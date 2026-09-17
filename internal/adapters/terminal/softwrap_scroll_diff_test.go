@@ -38,7 +38,7 @@ func TestScrollDiffSoftWrapAlignment(t *testing.T) {
 	wb := NewWindowBuffer(W, DefaultStyles())
 	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", content)
 	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
-	// w1 = labeled opening rule + 4 content rows = 5 visual lines;
+	// w1 = labeled opening line + 4 content rows = 5 visual lines;
 	// ar = 1 folded line. Total 6 lines, one more than the viewport.
 
 	dm := NewDisplayModel(wb, DefaultStyles()).WithHeight(H).updateContent()

@@ -184,7 +184,7 @@ func TestToolRendererDeltaTruncation(t *testing.T) {
 			innerW:    80,
 			toolName:  "write_file",
 			delta:     `{"path":"/tmp/foo"}`,
-			wantLines: 2, // opening labeled rule + content
+			wantLines: 2, // opening line + content
 			wantTrim:  false,
 		},
 		{
@@ -255,7 +255,7 @@ func TestToolRendererUfPreviewTruncated(t *testing.T) {
 	lines, lineCount := tr.BuildInner(80, false, styles)
 	result := joinVisualLines(lines)
 	if lineCount != 4 {
-		t.Errorf("lineCount = %d, want 4 (input + --- + preview + opening rule)", lineCount)
+		t.Errorf("lineCount = %d, want 4 (input + --- + preview + opening line)", lineCount)
 	}
 	if strings.Contains(result, strings.Repeat("x", 200)) {
 		t.Error("preview should be truncated, full 200-char output leaked")
@@ -278,7 +278,7 @@ func TestToolRendererUfPreviewShort(t *testing.T) {
 	lines, lineCount := tr.BuildInner(80, false, styles)
 	result := joinVisualLines(lines)
 	if lineCount != 4 {
-		t.Errorf("lineCount = %d, want 4 (input + --- + preview + opening rule)", lineCount)
+		t.Errorf("lineCount = %d, want 4 (input + --- + preview + opening line)", lineCount)
 	}
 	if !strings.Contains(result, " 42%") {
 		t.Errorf("preview should contain %q, got %q", " 42%", result)
@@ -326,7 +326,7 @@ func TestToolRendererUfPreviewTabs(t *testing.T) {
 	lines, lineCount := tr.BuildInner(80, false, styles)
 	result := joinVisualLines(lines)
 	if lineCount != 4 {
-		t.Errorf("lineCount = %d, want 4 (input + --- + preview + opening rule)", lineCount)
+		t.Errorf("lineCount = %d, want 4 (input + --- + preview + opening line)", lineCount)
 	}
 	if strings.Contains(result, "\t") {
 		t.Error("preview should not contain raw tabs")
@@ -358,7 +358,7 @@ func TestToolRendererUfPreviewFlattensNewlines(t *testing.T) {
 	lines, lineCount := tr.BuildInner(80, false, styles)
 	result := joinVisualLines(lines)
 	if lineCount != 4 {
-		t.Errorf("lineCount = %d, want 4 (input + --- + flattened preview + opening rule)", lineCount)
+		t.Errorf("lineCount = %d, want 4 (input + --- + flattened preview + opening line)", lineCount)
 	}
 	if !strings.Contains(result, "line one line two") {
 		t.Errorf("expected flattened content, got %q", result)
@@ -380,7 +380,7 @@ func TestToolRendererUfPreviewFillsRemainingWidth(t *testing.T) {
 	lines, lineCount := tr.BuildInner(80, false, styles)
 	result := joinVisualLines(lines)
 	if lineCount != 4 {
-		t.Errorf("lineCount = %d, want 4 (input + --- + preview + opening rule)", lineCount)
+		t.Errorf("lineCount = %d, want 4 (input + --- + preview + opening line)", lineCount)
 	}
 	if !strings.Contains(result, strings.Repeat("y", 60)) {
 		t.Errorf("preview should fill remaining width without truncation, got %q", result)
@@ -405,7 +405,7 @@ func TestToolRendererUfPreviewBlockGlyphs(t *testing.T) {
 	lines, lineCount := tr.BuildInner(80, false, styles)
 	result := joinVisualLines(lines)
 	if lineCount != 4 {
-		t.Errorf("lineCount = %d, want 4 (input + --- + single-line preview + opening rule)", lineCount)
+		t.Errorf("lineCount = %d, want 4 (input + --- + single-line preview + opening line)", lineCount)
 	}
 	if !strings.Contains(result, "████████░░░░░░░░") {
 		t.Errorf("block glyphs should render intact, got %q", result)

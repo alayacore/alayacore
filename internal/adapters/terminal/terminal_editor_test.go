@@ -649,7 +649,7 @@ func TestWindowBufferWidthMatchesInput(t *testing.T) {
 			// Create a window
 			wb.AppendOrUpdate(tlv.TagAssistantT, "test", "Content")
 			rendered := wb.GetAll(-1, false)
-			// The opening rule is line 0 and the content follows it.
+			// The opening line is line 0 and the content follows it.
 			lines := strings.Split(rendered, "\n")
 			if len(lines) < 2 {
 				t.Fatal("No lines rendered")

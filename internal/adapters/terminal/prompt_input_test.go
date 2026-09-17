@@ -6,7 +6,8 @@ import (
 )
 
 // TestPromptInputAttachmentsOffset verifies AttachmentsOffset reports the
-// number of content lines above the input text (attachment lines + separator).
+// number of content lines above the input text (the wrapped attachment
+// rows, with no divider row between them and the draft).
 func TestPromptInputAttachmentsOffset(t *testing.T) {
 	styles := DefaultStyles()
 	p := NewPromptInput(styles)
@@ -16,13 +17,13 @@ func TestPromptInputAttachmentsOffset(t *testing.T) {
 	}
 
 	p = p.WithAttachments([]string{"a.txt"})
-	if off := p.AttachmentsOffset(); off != 2 {
-		t.Fatalf("one attachment: got %d, want 2 (1 media line + separator)", off)
+	if off := p.AttachmentsOffset(); off != 1 {
+		t.Fatalf("one attachment: got %d, want 1 (one media row, no divider row)", off)
 	}
 
 	p = p.WithAttachments([]string{"a.txt", "b.txt", "c.txt", "d.txt"})
-	if off := p.AttachmentsOffset(); off != 2 {
-		t.Fatalf("multiple short attachments: got %d, want 2", off)
+	if off := p.AttachmentsOffset(); off != 1 {
+		t.Fatalf("multiple short attachments: got %d, want 1 (all on one row)", off)
 	}
 
 	// A long label wraps to multiple lines, increasing the offset.
@@ -30,7 +31,7 @@ func TestPromptInputAttachmentsOffset(t *testing.T) {
 	p = p.WithAttachments([]string{long})
 	innerWidth := max(0, p.width)
 	styledMedia := wrapLabels(p.Attachments(), innerWidth, p.styles.Attachment)
-	want := Height(styledMedia) + 1 // + separator line
+	want := Height(styledMedia)
 	if off := p.AttachmentsOffset(); off != want {
 		t.Fatalf("long attachment: got %d, want %d", off, want)
 	}
@@ -93,16 +94,41 @@ func TestPromptInputAttachmentOversizeAlignment(t *testing.T) {
 	p = p.WithAttachments([]string{longPath})
 
 	// What the terminal will actually render: top rule + (hard-wrapped
-	// media rows) + separator + input field + bottom rule.
-	expectedTerminalRows := 1 + (len(longPath)+40-1)/40 + 1 + 1 + 1
+	// media rows) + input field + bottom rule.
+	mediaRows := (len(longPath) + 40 - 1) / 40
+	expectedTerminalRows := 1 + mediaRows + 1 + 1
 	if h := p.Height(); h != expectedTerminalRows {
 		t.Fatalf("Height(): got %d, want %d (oversize path must be pre-wrapped so "+
 			"computed row count matches terminal row count)", h, expectedTerminalRows)
 	}
 
 	// And AttachmentsOffset must point at the input field row.
-	wantOff := (len(longPath)+40-1)/40 + 1
-	if off := p.AttachmentsOffset(); off != wantOff {
-		t.Fatalf("AttachmentsOffset(): got %d, want %d", off, wantOff)
+	if off := p.AttachmentsOffset(); off != mediaRows {
+		t.Fatalf("AttachmentsOffset(): got %d, want %d", off, mediaRows)
+	}
+}
+
+// TestPromptInputBoxRowsWithAttachments pins what the box actually emits,
+// not just what the arithmetic claims: top rule, one row per wrapped
+// attachment row, the draft row, bottom rule — no divider row — and the row
+// count equal to Height(), which is what anchors the box to the screen
+// bottom and positions the real caret.
+func TestPromptInputBoxRowsWithAttachments(t *testing.T) {
+	styles := DefaultStyles()
+	p := NewPromptInput(styles).WithWidth(60).WithAttachments([]string{"a.txt", "b.txt"})
+	p = p.WithValue("hi")
+
+	rows := strings.Split(p.View().Content, "\n")
+	mediaRows := p.AttachmentsOffset()
+	if want := 1 + mediaRows + 1 + 1; len(rows) != want { // rules + media + draft
+		t.Fatalf("box rows = %d, want %d: %q", len(rows), want, stripANSI(strings.Join(rows, "\n")))
+	}
+	if len(rows) != p.Height() {
+		t.Fatalf("Height() = %d but View() emitted %d rows", p.Height(), len(rows))
+	}
+	for i, r := range rows {
+		if strings.TrimSpace(stripANSI(r)) == Separator {
+			t.Errorf("row %d is a divider row; the attachment block and the draft must sit adjacent: %q", i, stripANSI(r))
+		}
 	}
 }

@@ -2,22 +2,28 @@ package terminal
 
 import "time"
 
-// Separator is the visual divider between blocks inside a window: tool
-// arguments and tool result, media block and user text, one user text part
-// and the next.
+// Separator is the visual divider between two blocks of content inside a
+// window: tool arguments and tool result, one user text part and the next.
+// Both jobs are the same job — a rule between rows that would otherwise read
+// as one continuous run — and nothing else needs it: a user window's media
+// block is header material (the chrome register: muted, bold —
+// Styles.Attachment; four fixed labels) under the window's own line, so the
+// boundary above its text draws no rule (see userRenderer.BuildInner and
+// PromptInput.View).
 //
-// It is three cells of the same box-drawing rule the window frames are made
-// of (see Styles.RenderOpenBoxLines), deliberately not the ASCII "---".
-// "---" is a meaningful token everywhere else in this product — the session
-// frontmatter, the model.conf and mcp.conf block delimiters, the SKILL.md
-// frontmatter, a markdown horizontal rule, and the file header of a unified
-// diff (`--- a/file`), which the edit_file window shows right above this
-// very divider. A chrome line must not be spellable as content.
+// It is three cells of the same box-drawing class the app's real rules are
+// drawn from — Styles.RenderOpenBoxLines repeats this glyph across a floating
+// surface's width — deliberately not the ASCII "---". "---" is a meaningful
+// token everywhere else in this product — the session frontmatter, the
+// model.conf and mcp.conf block delimiters, the SKILL.md frontmatter, a
+// markdown horizontal rule, and the file header of a unified diff
+// (`--- a/file`), which the edit_file window shows right above this very
+// divider. A chrome line must not be spellable as content.
 //
-// The width cost is nil in the policy's terms: every window already spends
-// a full-width Ambiguous rule on opening itself (the box-drawing waiver,
-// constants.go), so three more cells of the same waived class change nothing
-// that the frame has not already committed to.
+// The width cost is nil in the policy's terms: box drawing is waived as a
+// class, because the surfaces that must span a row have nothing else to span
+// it with (the glyph policy below), so three more cells of an already-waived
+// class add no new exposure to the doubling this waiver accepts.
 const Separator = "───"
 
 // Timing constants for UI responsiveness.

@@ -606,10 +606,15 @@ func (r *userRenderer) Invalidate() {}
 
 // BuildInner renders the user message as visual lines: media section
 // first (on top), then text below. This matches the natural content
-// order: media parts precede the text part. Multiple text parts are
-// separated with "───" (Separator) in System color. Each returned line is one
-// terminal row (no '\n' inside); lineCount is the content rows plus the
-// window's opening labeled rule (len(lines) + 1).
+// order: media parts precede the text part. The two need no divider
+// between them — the media block is the window's own header material
+// (muted, bold, four fixed labels), the text under it is plain, and the
+// window's line above already opened the block; a rule there would delimit
+// a boundary nobody mistakes. Multiple text parts ARE separated
+// with "───" (Separator) in System color, because two text parts carry
+// identical styling and nothing else tells them apart. Each returned line
+// is one terminal row (no '\n' inside); lineCount is the content rows plus
+// the window's own line (len(lines) + 1).
 //
 // Wrapping is performed by wrapVisualLines (NOT by a pre-pass of
 // wrapContent): a pre-pass would insert hard '\n' at wrap points and
@@ -631,12 +636,6 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// Text portion: text parts separated by Separator ("───")
 	if len(r.textParts) > 0 {
 		var textBlock strings.Builder
-
-		// Separate from media with Separator ("───")
-		if len(r.mediaParts) > 0 {
-			textBlock.WriteString(styles.System.Render(Separator))
-			textBlock.WriteString("\n")
-		}
 
 		firstText := true
 		for _, part := range r.textParts {
@@ -711,36 +710,81 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 	line := truncateWithSuffix(plainLine, max(0, width-collapsedPrefixWidth)) // safety net
 
-	// Render with styling: label muted+bold, "…" dim, content muted.
+	return collapsedRow{
+		line: line, label: label, head: head, tail: tail,
+		truncated: truncated, media: mediaSummary,
+	}.style(styles), 1
+}
+
+// collapsedRow is a user window's collapsed line: the plain row as it will be
+// drawn, plus the runs that produced it. userRenderer.BuildCollapsed decides
+// where to cut, collapsedRow.style decides which run each byte belongs to, and
+// the second question can only be answered from the first one's result — so
+// the row travels with its parts instead of the styler re-deriving them from
+// the content. (Splitting the two is also what fits BuildCollapsed back into
+// the complexity budget it had outgrown.)
+type collapsedRow struct {
+	line      string // plain, already truncated to the row's width
+	label     string // the padded label column; a prefix of line
+	head      string // content kept from the front, after the label
+	tail      string // content kept from the back; "" when nothing was cut
+	truncated bool   // head+tail truncation cut into the content
+	media     string // the badge summary as it stood before truncation
+}
+
+// style paints the row's runs: the label in the window line's register, the
+// badge run in the attachment style, the text muted, "…" dim.
+//
+// The badges take styles.Attachment — the one style the expanded body draws
+// them in — because the collapsed row and the expanded block show the same
+// tokens, and folding must not restyle them (toolNameStyle, window.go, is the
+// same lesson from the other side). The summary is a prefix of the content, so
+// a prefix test on the plain line locates it exactly; when truncation cut into
+// the badge run itself there is no intact run to paint, and the summary stays
+// in the content's muted color rather than showing half a badge in bold.
+func (row collapsedRow) style(styles *Styles) string {
 	labelStyle := lineStyleForTag(tlv.TagUserT, styles)
-	if len(line) <= len(label) {
-		return labelStyle.Render(line), 1
+	if len(row.line) <= len(row.label) {
+		return labelStyle.Render(row.line)
 	}
 	var rendered strings.Builder
-	rendered.WriteString(labelStyle.Render(line[:len(label)]))
-	rest := line[len(label):]
-	if !truncated || tail == "" {
-		rendered.WriteString(styles.System.Render(rest))
-		return rendered.String(), 1
+	rendered.WriteString(labelStyle.Render(row.line[:len(row.label)]))
+
+	rest := row.line[len(row.label):]
+	mediaRun := 0
+	if strings.HasPrefix(rest, row.media) {
+		mediaRun = min(len(row.media), len(row.head))
 	}
-	// head + "…" + tail. The "…" might have been cut by truncateWithSuffix.
-	headEnd := len(label) + len(head)
-	if headEnd > len(line) {
+	if mediaRun > 0 {
+		rendered.WriteString(styles.Attachment.Render(rest[:mediaRun]))
+		rest = rest[mediaRun:]
+		row.head = row.head[mediaRun:]
+	}
+
+	if !row.truncated || row.tail == "" {
+		rendered.WriteString(styles.System.Render(rest))
+		return rendered.String()
+	}
+	// head + "…" + tail, now that the badge run is off the front. The "…"
+	// might have been cut by the safety-net truncation.
+	headEnd := len(row.head)
+	if headEnd > len(rest) {
 		// head was truncated mid-way — fall back to muted
 		rendered.WriteString(styles.System.Render(rest))
-		return rendered.String(), 1
+		return rendered.String()
 	}
-	rendered.WriteString(styles.System.Render(line[len(label):headEnd]))
-	if headEnd+len("…") <= len(line) {
-		rendered.WriteString(styles.Status.Render(line[headEnd : headEnd+len("…")]))
-		if headEnd+len("…") < len(line) {
-			rendered.WriteString(styles.System.Render(line[headEnd+len("…"):]))
-		}
-	} else {
+	rendered.WriteString(styles.System.Render(rest[:headEnd]))
+	ell := len("…")
+	if headEnd+ell > len(rest) {
 		// "…" was cut — render the rest as muted
-		rendered.WriteString(styles.System.Render(line[headEnd:]))
+		rendered.WriteString(styles.System.Render(rest[headEnd:]))
+		return rendered.String()
 	}
-	return rendered.String(), 1
+	rendered.WriteString(styles.Status.Render(rest[headEnd : headEnd+ell]))
+	if headEnd+ell < len(rest) {
+		rendered.WriteString(styles.System.Render(rest[headEnd+ell:]))
+	}
+	return rendered.String()
 }
 
 // ============================================================================
@@ -791,7 +835,7 @@ func (r *toolRenderer) AppendDelta(delta string) {
 
 // BuildInner renders the tool window content as visual lines. Each
 // returned line is one terminal row (no '\n' inside); lineCount
-// includes the window's opening labeled rule (len(lines) + 1).
+// includes the window's own line (len(lines) + 1).
 func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
 	innerWidth := max(0, width)
 

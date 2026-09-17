@@ -769,7 +769,7 @@ func (m Terminal) View() View {
 	// count (which can drift from viewportHeight when soft-wrap or
 	// scroll-induced fragment count changes happen). Top rule sits at
 	// (m.windowHeight - inputHeight - 1) (0-indexed); the box content
-	// (attachments, separator, input field) follows, then the bottom rule.
+	// (attachments, input field) follows, then the bottom rule.
 	//
 	// The status bar sits at the last row (m.windowHeight - 1, 0-indexed)
 	// and is also positioned with a CUP — guarantees the status bar is
@@ -865,7 +865,7 @@ func (m Terminal) View() View {
 		// — the same expression View uses for inputBoxY. The rows above it
 		// belong to the display region and the live edge, which reach down
 		// no further than the row before it. Content starts after the rule,
-		// then the attachment lines (+ separator). The input renders a single
+		// then the attachment rows. The input renders a single
 		// content line, so the cursor's line index within the value does not
 		// affect y.
 		y := max(0, m.windowHeight-m.input.Height()-1) // 0-indexed top rule

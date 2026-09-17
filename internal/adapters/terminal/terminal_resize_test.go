@@ -122,14 +122,14 @@ func TestTerminalResizeUpdatesDisplayContent(t *testing.T) {
 		t.Errorf("Expected content to change after resize")
 	}
 
-	// Verify the window's opening rule spans the new, narrower width. The
+	// Verify the window's opening line spans the new, narrower width. The
 	// rule carries the window's label, so this measures the row instead of
 	// looking for a magic run of dashes.
 	if first := firstRow(stripANSI(resizedContent)); cellWidth(first) != 40 {
-		t.Errorf("opening rule width after resize = %d, want 40: %q", cellWidth(first), first)
+		t.Errorf("opening line width after resize = %d, want 40: %q", cellWidth(first), first)
 	}
 	if first := firstRow(stripANSI(initialContent)); cellWidth(first) != 80 {
-		t.Errorf("opening rule width before resize = %d, want 80: %q", cellWidth(first), first)
+		t.Errorf("opening line width before resize = %d, want 80: %q", cellWidth(first), first)
 	}
 
 	// Verify the window buffer width was updated

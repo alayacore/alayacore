@@ -7,6 +7,44 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
+// TestUserPromptMediaAndTextHaveNoDividerRow pins the media/text boundary:
+// the badge block sits DIRECTLY above the user's text with no "───" row
+// between them. The block is header material (muted, bold, one of four fixed
+// labels) and the text is plain body, so the boundary already reads without
+// a rule; the divider stays reserved for joins that would otherwise read as
+// one continuous run (two text parts, a tool window's arguments versus its
+// result).
+//
+// The second case is the bug the divider used to carry: the rule was written
+// BEFORE the first non-empty text part was found, so an all-blank text block
+// under media rendered a rule with nothing under it.
+func TestUserPromptMediaAndTextHaveNoDividerRow(t *testing.T) {
+	media := []string{tlv.MediaLabel(tlv.TagUserI), tlv.MediaLabel(tlv.TagUserA)}
+
+	ur := &userRenderer{textParts: []string{"what are these?"}, mediaParts: media}
+	lines, count := ur.BuildInner(80, false, DefaultStyles())
+	if len(lines) != 2 {
+		t.Fatalf("media + text rows = %d, want 2 (badge row + text row): %q",
+			len(lines), stripANSI(joinVisualLines(lines)))
+	}
+	if count != len(lines)+1 {
+		t.Errorf("lineCount = %d, want len(lines)+1 = %d", count, len(lines)+1)
+	}
+	if got, want := stripANSI(joinVisualLines(lines)), "📷 Image  🎵 Audio\nwhat are these?"; got != want {
+		t.Errorf("media + text:\n  got  %q\n  want %q", got, want)
+	}
+
+	blank := &userRenderer{textParts: []string{"   "}, mediaParts: []string{tlv.MediaLabel(tlv.TagUserI)}}
+	lines, _ = blank.BuildInner(80, false, DefaultStyles())
+	if len(lines) != 1 {
+		t.Fatalf("media + blank text rows = %d, want 1 (no rule, no empty row): %q",
+			len(lines), stripANSI(joinVisualLines(lines)))
+	}
+	if got := stripANSI(joinVisualLines(lines)); strings.Contains(got, Separator) {
+		t.Errorf("a blank text block must not leave a dangling %q row, got %q", Separator, got)
+	}
+}
+
 // TestUserPromptLongSingleLineSoftWraps is a regression test for the
 // user echo window: a long SINGLE user line must use the same soft-wrap
 // pipeline as the assistant text window — its continuation rows join
