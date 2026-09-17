@@ -8,9 +8,18 @@ package terminal
 //   - Text input for filtering
 //   - Scrollable list of items below
 //   - Tab toggles focus between filter and list
-//   - Arrow keys navigate the list
-//   - Escape/q closes
+//   - `j`/`k` navigate the list
+//   - `Esc` closes, from either focus
 //   - Same scroll clamping, border styling, overlay positioning
+//
+// No arrow key is bound here, and that is not an oversight. A list has one
+// degree of freedom: ScrollIdx is derived from SelectedIdx (EnsureVisible), so
+// there is no viewport for an arrow to move — binding them would bind one state
+// twice. And the arrows are the only form a mouse wheel reaches this program in
+// (screen.go asks for no mouse reports), so answering them here would hand the
+// wheel a notch-by-notch selection walk through a list whose fast path is its
+// filter box. The cost is accepted and stated: the wheel does nothing while one
+// of these overlays is open. overlay_nav_test.go pins the contract for all four.
 //
 // Embedding types call the core methods and add their own item-specific
 // filtering, rendering, and key handling.

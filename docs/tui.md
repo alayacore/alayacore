@@ -14,10 +14,10 @@ architecture.
 | `k` | Move window cursor up |
 | `↓` / `J` | Scroll down one line |
 | `↑` / `K` | Scroll up one line |
-| `Ctrl+D` | Scroll down half screen |
-| `Ctrl+U` | Scroll up half screen |
-| `g` | Go to first window, scroll to top |
-| `G` | Follow the last window |
+| `Ctrl+D` / `PgDn` | Scroll down half screen |
+| `Ctrl+U` / `PgUp` | Scroll up half screen |
+| `g` / `Home` | Go to first window, scroll to top |
+| `G` / `End` | Follow the last window |
 | `H` | Move cursor to top window in visible area |
 | `M` | Move cursor to middle window in visible area |
 | `L` | Move cursor to bottom window in visible area |
@@ -27,9 +27,14 @@ architecture.
 
 Two families, and they do not overlap: **the home row moves the pointer**
 (`j`/`k`, and the vim names `H`/`M`/`L`, `g`/`G`, `f`/`b`), **the arrows and the
-page keys move the viewport** (`↑`/`↓` one line, `PgUp`/`PgDn` and `Ctrl+U`/`Ctrl+D`
-by page). `J`/`K` are the viewport motion spelled on the home row, so shift
-carries exactly one meaning in this table: leave the pointer, move the screen.
+coarse keys move the viewport** (`↑`/`↓` one line; `Ctrl+U`/`Ctrl+D` and
+`PgUp`/`PgDn` half a screen — all four share one handler, so a Page key moves by
+half a screen here, which is what its table row says). `J`/`K` are the viewport
+motion spelled on the home row, so shift carries exactly one meaning in this
+table: leave the pointer, move the screen.
+
+Four keys serve both families: `g` and `Home` put the pointer on the first window
+and take the view with it, `G` and `End` do the last.
 
 The arrows are bound to the viewport rather than copied onto `j`/`k` because of
 the mouse wheel. While this program owns the alternate screen it asks for no
@@ -46,8 +51,8 @@ appears to do nothing) and one that steps whole windows at a time (rolling up
 jumps): the feel this replaced.
 
 Where a host synthesizes nothing for the wheel, nothing here changed for it: it
-still sends no wheel input, and `PgUp`/`PgDn` and `Ctrl+U`/`Ctrl+D` remain the
-page motions. Taking the wheel as a report instead (`key_parser.go` decodes
+still sends no wheel input, and `Ctrl+U`/`Ctrl+D` and `PgUp`/`PgDn` remain the
+coarse (half-screen) motions. Taking the wheel as a report instead (`key_parser.go` decodes
 `CSI < Cb;Cx;Cy M` today in order to drop it) would reach more hosts and would
 cost the terminal's own selection, so it is not on the table.
 
@@ -442,7 +447,7 @@ scrolls the viewport. While auto-follow is active:
 | `j` | Move cursor down | ❌ No-op (race protection) |
 | `L` | Move cursor to bottom | ❌ No-op (race protection) |
 | `↓` / `J` | Scroll down one line | ❌ No-op when at bottom |
-| `Ctrl+D` | Scroll down half screen | ❌ No-op when at bottom |
+| `Ctrl+D` / `PgDn` | Scroll down half screen | ❌ No-op when at bottom |
 | `k` | Move cursor up | ✅ If cursor actually moves |
 | `H` | Move to top of visible area | ✅ If cursor actually moves |
 | `M` | Move to center of visible area | ✅ If cursor actually moves |
@@ -450,7 +455,7 @@ scrolls the viewport. While auto-follow is active:
 | `b` | Jump to previous user prompt | ✅ If cursor actually moves |
 | `g` / `Home` | Go to first window | ✅ If cursor actually moves |
 | `↑` / `K` | Scroll up one line | ✅ Always |
-| `Ctrl+U` | Scroll up half screen | ✅ Always |
+| `Ctrl+U` / `PgUp` | Scroll up half screen | ✅ Always |
 | `e` | Open in editor | ✅ Always |
 | `Space` | Toggle window fold | ❌ Never |
 | `r` | Toggle markdown rendering | ❌ Never |

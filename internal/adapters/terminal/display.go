@@ -105,8 +105,8 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	// keystroke are then literally the same message and there is no second thing
 	// to bind: whatever the arrows do *is* the wheel's behavior, at one line per
 	// arrow a host produces for a notch. A host that synthesizes nothing keeps
-	// sending no wheel input at all, and loses nothing by it — its users page
-	// with `PgUp`/`PgDn` and `Ctrl+U`/`Ctrl+D` as before.
+	// sending no wheel input at all, and loses nothing by it — its users still move
+	// half a screen at a time with `Ctrl+U`/`Ctrl+D` and `PgUp`/`PgDn`.
 	//
 	// Bound to the pointer instead, that same stream is a motion auto-follow
 	// refuses at the live edge (MoveWindowCursorDown returns straight away, so

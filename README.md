@@ -21,7 +21,7 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ## Modes
 
-**TUI Mode** — split-pane interface with streaming output, vim navigation, and session management.
+**TUI Mode** — split-pane interface with streaming output, home-row keyboard navigation, and session management.
 
 ![AlayaCore demo](misc/alayacore-demo.gif)
 
@@ -79,7 +79,7 @@ echo "what is 2+2?" | alayacore --terseio
 
 ### TUI (terminal interface)
 
-- 🖥️ **Streaming output** — Real-time display with virtual scrolling, foldable windows, and vim-like keybindings.
+- 🖥️ **Streaming output** — Real-time display with virtual scrolling, foldable windows, and vim's keys for the cursor (`j`/`k`, `H`/`M`/`L`, `g`/`G`) while the arrow keys and the mouse wheel move the view.
 - ⚡ **Provider speed tracking** — Live end-to-end tok/s and time-to-first-token (TTFT) for the latest step in the status bar (see [speed-tracking.md](docs/speed-tracking.md)).
 - 📊 **Markdown rendering** — Assistant markdown output (currently tables) renders by default; press `r` on an unfolded window to toggle raw/rendered (`--no-markdown` disables the default).
 - 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`; a model can also read media itself via `read_file`. Which types actually reach it is protocol-dependent — image works on both, audio/video need an OpenAI-style endpoint, documents need Anthropic (see [providers.md](docs/providers.md)).

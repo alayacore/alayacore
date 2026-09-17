@@ -13,8 +13,8 @@ package terminal
 // `Esc` already does that job, and a key that repeats another key's job is a key
 // whose meaning has to be remembered twice.
 //
-// Each overlay keeps its own switch statement (they were written independently),
-// which is exactly why this file drives all four: the drift this pins is one
+// Each overlay keeps its own switch statement, which is exactly why this file
+// drives all four: the drift this pins is one
 // overlay still answering `↓` while another does not.
 
 import (
