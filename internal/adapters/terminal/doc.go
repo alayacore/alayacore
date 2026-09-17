@@ -31,52 +31,30 @@
 //	only single-codepoint emoji, because a U+FE0F or a ZWJ sequence gives
 //	the host a second opinion about the cell count (constants.go, rule 3).
 //
-// Key Files:
+// Source Layout:
 //
-//   - tui.go: Terminal model, overlay components, overlay rendering, MCP overlay
-//     state machine, and overlay action type
-//   - tui_focus.go: Focus management (input/display switching, blur/focus)
-//   - tui_status.go: Status bar rendering (tokens, steps, model + reasoning group)
-//   - live_edge.go: The live-edge row between the transcript and the prompt
-//     (auto-follow marker, hidden-line count)
-//   - keys.go: The bound key chords (Code + Mod) — the single source of bindings
-//   - keybinds.go: Key routing (the input layer stack) and the key handlers
-//   - input_layers.go: The ordered input layer stack for dispatch and routing
-//   - result.go: Result values a component reports, folded by applyResult
-//   - submission.go: The submitted-line grammar (prompt vs ":"-command)
-//   - program_input.go: The input loop and the parking protocol that hands the
-//     keyboard to a foreground child (per-platform sources:
-//     program_input_unix.go, program_input_windows.go)
-//   - key_parser.go: Byte-stream → key message parser (VT100/SS3/URxvt)
-//   - console_events.go: Windows console input events → the same byte stream
-//     (built for every platform so the mapping is testable without a console)
-//   - program.go: Self-built event loop (Update/Cmd/Msg dispatch, timers)
-//   - screen.go: Alt screen, cursor, and raw passthrough renderer with
-//     soft-wrap-aware row diffing
-//   - output.go: TLV parsing and styled rendering
-//   - display.go: DisplayModel, virtual scrolling, and cursor navigation
-//   - window.go: Window struct with polymorphic WindowRendering interface
-//   - window_renderer.go: Renderers for text, user, and tool windows
-//   - window_buffer.go: WindowBuffer, line tracking, and virtual rendering
-//   - wrap.go: Display-width wrapping, truncation, and visual-line splitting
-//   - styles.go, style.go: Self-built style layer (SGR byte-compatible)
-//   - scroll_view.go: Viewport clipping and scroll clamping
-//   - prompt_input.go, input_field.go: Input handling and external editor support
-//   - model_selector.go: Model switching UI with fuzzy search
-//   - theme_manager.go: Wrapper around theme.Manager with startup init errors
-//   - theme_selector.go: Theme selection UI with live preview
-//   - init_errors.go: Init error collection for initialization errors
-//   - overlay.go: Overlay rendering for selectors
-//   - help_window.go: Keybinding and command help overlay
-//   - confirm_dialog.go: Confirmation dialogs (quit, cancel, tool, MCP auth, MCP init)
-//   - attachment_window.go: File/URL attachment picker
-//   - tool_render.go, tool_handler.go: Tool execution display
-//   - spinner.go: The shared braille spinner frames (tool header, session
-//     loading screen, status bar indicator)
-//   - exec.go: External process execution and terminal suspension (module 5)
-//   - editor.go: External editor support ($EDITOR handoff)
-//   - session_state.go: Session status/model/queue snapshot state
-//   - term_io.go: Raw-mode terminal I/O
+//	One flat directory. Start at tui.go (the root model) and program.go (the
+//	event loop); everything else groups by concern rather than by file, so a
+//	new file rarely needs a line here:
+//
+//	  - input     — bytes → keys (key_parser.go, console_events.go), then
+//	                the bindings and the dispatch stack (keys.go,
+//	                keybinds.go, input_layers.go)
+//	  - rendering — the window model and its pipeline (window.go,
+//	                window_renderer.go, window_buffer.go, wrap.go,
+//	                display.go, scroll_view.go, live_edge.go) and the
+//	                terminal surface under it (screen.go)
+//	  - surfaces  — prompt_input.go / input_field.go, overlay.go, the
+//	                selectors (model_selector.go, theme_selector.go,
+//	                help_window.go, attachment_window.go),
+//	                confirm_dialog.go, filtered_list.go
+//	  - look      — styles.go / style.go (SGR layer), theme_manager.go,
+//	                spinner.go, markdown.go, diff.go, constants.go (glyph
+//	                policy)
+//	  - I/O       — output.go, tool_render.go / tool_handler.go, exec.go,
+//	                editor.go, term_io*.go, program_input*.go
+//
+//	docs/tui-architecture.md maps the whole stack.
 //
 // Theme data types (Theme struct, DefaultTheme, LoadTheme) and the core
 // Manager live in internal/theme — shared with future GUI adapters.
