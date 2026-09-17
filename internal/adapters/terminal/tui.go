@@ -843,7 +843,7 @@ func (m Terminal) View() View {
 	// by overwriting without clearing first
 	// — no ED2 flicker during streaming (see Screen.Render).
 	v.FullScreen = true
-	// Raw passthrough mode (forked bubbletea): the content is written
+	// Raw passthrough mode (Bubble Tea's Raw branch): the content is written
 	// verbatim to the terminal so it soft-wraps natively — window
 	// fragments (continuous text padded to the terminal width) wrap
 	// exactly at the visual lines, preserving copy fidelity (no fake

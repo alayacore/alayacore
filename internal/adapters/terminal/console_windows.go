@@ -8,8 +8,7 @@ package terminal
 // interpreted once the application asks for it: without
 // ENABLE_VIRTUAL_TERMINAL_PROCESSING the buffer writes the escape bytes out as
 // visible text, so an alternate-screen entry lands on screen as "?1049h". This
-// is the piece that the deleted Bubble Tea fork used to do for us
-// (third_party/bubbletea/tty_windows.go → initInput, dropped in 4edb5a85);
+// is the piece Bubble Tea's Windows backend did for us;
 // golang.org/x/term does the input half — its makeRaw sets
 // ENABLE_VIRTUAL_TERMINAL_INPUT — and never touches the output handle.
 //

@@ -6,11 +6,10 @@ package terminal
 //
 // Render writes the view content VERBATIM after clearing the screen and
 // homing the cursor: `ED2` + home + content + absolute CUP. This is the
-// same raw passthrough logic that was proven in the in-tree bubbletea fork's
-// renderer (cursed_renderer.go, Raw branch; the fork was deleted in 4edb5a85): the
-// terminal soft-wraps the content natively, so window fragments (continuous
-// text padded to the terminal width) land exactly on the intended visual
-// rows and selections copy without fake newlines.
+// same raw passthrough logic Bubble Tea's renderer used in its Raw branch:
+// the terminal soft-wraps the content natively, so window fragments
+// (continuous text padded to the terminal width) land exactly on the intended
+// visual rows and selections copy without fake newlines.
 
 import (
 	"fmt"
@@ -138,8 +137,7 @@ func (s *Screen) Start() error {
 // program that depends on state it did not itself save.
 //
 // This is the sequence Bubble Tea used for these hosts (move, flush, erase,
-// switch, restore — third_party/bubbletea/cursed_renderer.go →
-// flush/exitAltScreen, deleted in 4edb5a85). It was written while chasing the
+// switch, restore). It was written while chasing the
 // delayed-prompt report on Windows, and it was not that report's fix: the prompt
 // was waiting on an abandoned console read, not on these bytes
 // (docs/internal/windows-console.md → "What the two reports were"). What this
