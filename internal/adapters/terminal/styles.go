@@ -56,10 +56,12 @@ type Styles struct {
 	// label, timestamp and, on the pinned row, the hidden-line count:
 	// "ASSISTANT", "REASONING", "TOOL CALL", "USER PROMPT", …) in both fold
 	// states. It is a field of its own — not derived from System at the call
-	// site — because the cursor highlight recolors exactly this: the chrome
-	// that names the window, never the content underneath it, and not the
-	// tool name either, which is the row's payload (see Styles.Selected and
-	// toolNameStyle, window.go).
+	// site — because it is exactly what the cursor highlight recolors: the
+	// chrome that names the window, never the content underneath it. The
+	// things that must therefore keep their own style, unswapped by
+	// Styles.Selected(), are a collapsed line's summary (System), a tool
+	// window's name (ToolContent — toolNameStyle, window.go), and the
+	// attachment badges (Attachment).
 	Label Style
 	// Body is the style for plain body text (assistant messages,
 	// reasoning, user message text, tool input/output). It carries NO
@@ -255,27 +257,17 @@ func (s *Styles) Dimmed() *Styles {
 // the accent color: the register a window's own line is drawn in while the
 // display cursor is on it.
 //
-// Only the styles that name a window are swapped — Label (every window
-// line's default color) and Error (SYSTEM ERROR's line). They are exactly
-// the colors lineStyleForTag can return, so every glyph of the highlighted
-// row's chrome — marker, label, timestamp — comes out in the accent color
-// from one styles swap. Everything else keeps the color it has: System,
-// which carries the collapsed line's content summary, and ToolContent, which
-// carries a tool window's name and its arguments. The highlight marks the
-// window, never what it says — and the name is on the row at both fold
-// states, so swapping it would repaint the row when the reader folds it
-// (toolNameStyle, window.go). (Attachment is deliberately not swapped
-// either: the badges say what arrived with the message, not which window the
-// cursor is on, and they sit in the body under the line, not on it.)
+// Only the styles that name a window are swapped — Label and Error, which are
+// exactly the colors lineStyleForTag can return. Everything else keeps its
+// color, so the highlight marks the window and never what it says (see
+// Styles.Label for what that leaves out and why).
 //
 // The accent is ColorAccent — the theme's primary, the same color the prompt
 // box and a focused rule carry — so the palette has a single highlight color
-// rather than a second one spent on the cursor alone.
-//
-// The counterpart of Dimmed() in the same spirit — a derived Styles rather
-// than a flag threaded through every renderer, so that "who is the cursor"
-// reaches the labels through the one channel the renderers already take
-// their colors from.
+// rather than a second one spent on the cursor alone. It is the counterpart of
+// Dimmed() in the same spirit: a derived Styles rather than a flag threaded
+// through every renderer, so "who is the cursor" reaches the labels through
+// the one channel the renderers already take their colors from.
 func (s *Styles) Selected() *Styles {
 	if s == nil {
 		return nil

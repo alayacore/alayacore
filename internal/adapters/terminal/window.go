@@ -552,8 +552,9 @@ func (w *Window) cursorLine0() string {
 	}
 	w.cache.line0CursorDone = true
 	// Selected() swaps every color that names a window (label, error) for
-	// the accent color, so the line — marker, label, tool name, timestamp —
-	// comes out highlighted as one unit with no other change.
+	// the accent color, so the line's chrome — marker, label, timestamp —
+	// comes out highlighted as one unit. A tool window's name is content and
+	// keeps toolNameStyle, so it is not part of that unit.
 	styles := w.cache.frameStyles.Selected()
 	if w.Folded {
 		// The summary is content and keeps its muted color; the marker and
@@ -796,26 +797,20 @@ func (w *Window) expandTitle(styles *Styles) (plain, styled string) {
 // differently-weighted pieces. Bold throughout — a line that names a window
 // is chrome and is meant to be scannable.
 //
-// A tool window's name is the exception, and it is not this function's
-// business: it takes toolNameStyle in the collapsed row and in the expanded
-// one, so that folding a window repaints nothing (see toolNameStyle).
-//
 // The color is the label color for EVERY window type except the system
-// errors. A user's turn, a reasoning step, an answer and a tool call are all
-// the same kind of thing — conversation — and nothing about a user prompt
-// earns its line an accent: in the resting register the accent belongs to the
-// prompt box at the bottom of the screen, the one live surface (the cursor's
-// own line borrows it transiently — see below). SYSTEM ERROR keeps
-// the error color, because an error has to be recognizable at a glance and
-// from the far end of a scrollback.
+// errors: no window type earns an accent, because no user's turn, reasoning
+// step, answer or tool call is more urgent than another (the resting accent is
+// the prompt box's — docs/tui.md, "Fold Mode"). SYSTEM ERROR keeps the error
+// color, because an error has to be recognizable at a glance and from the far
+// end of a scrollback.
 //
-// This is also the function the renderers call for their label segment
-// (collapsed lines and the expanded line alike), so both states are
-// guaranteed to agree.
+// A tool window's name is the exception, and it is not this function's
+// business: it takes toolNameStyle in both fold states, so folding a window
+// repaints nothing (see toolNameStyle).
 //
-// The cursor's register is simply Styles.Selected() — the same styles with
-// these colors swapped for the accent color — so "who is the cursor"
-// needs no parameter here.
+// The renderers call this for their label segment in both fold states, so the
+// two cannot disagree. The cursor's register is simply Styles.Selected(), so
+// "who is the cursor" needs no parameter here.
 func lineStyleForTag(tag string, styles *Styles) Style {
 	if styles == nil {
 		return NewStyle().Bold(true)
@@ -827,24 +822,16 @@ func lineStyleForTag(tag string, styles *Styles) Style {
 }
 
 // toolNameStyle is the style a tool window's name is drawn in — in BOTH fold
-// states, which is the reason it exists as a named function rather than as
-// this expression written twice.
+// states. That is the reason it exists as a named function rather than as the
+// expression written out twice: writing it twice is what once let folded and
+// expanded drift apart, since Label and ToolContent are both muted and the two
+// only differed under the cursor — the name turned to the accent color folded
+// and stayed muted expanded, so folding a window repainted the one token the
+// reader was looking at.
 //
-// The name is the payload of a tool row, not chrome, so it is deliberately
-// NOT lineStyleForTag's style: the highlight recolors the row's chrome (the
-// marker, the label, the timestamp) and leaves the name and the arguments in
-// the content color. That is the same reading the window body gets — the
-// cursor covers the line that names a window, never what the window says.
-//
-// Writing the expression out at both call sites is what let folded and
-// expanded drift apart: the collapsed row painted the name with the line's
-// style and the expanded row with this one, and because Label and
-// ToolContent are both muted the two only differed under the cursor — where
-// the name turned to the accent color when folded and stayed muted when
-// expanded. Folding a window repainted the one token the reader was looking
-// at. One function, called from both rows, is what keeps them equal.
-//
-// Bold, like the line: the name has to hold its own against the muted
+// The name is the row's payload, not chrome, so it is deliberately NOT
+// lineStyleForTag's style, and the highlight leaves it (and the arguments)
+// alone. Bold, like the line: the name has to hold its own against the muted
 // arguments that follow it.
 func toolNameStyle(styles *Styles) Style {
 	if styles == nil {
