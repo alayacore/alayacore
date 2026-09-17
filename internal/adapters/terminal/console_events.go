@@ -139,7 +139,6 @@ const (
 	vkF10     uint16 = 0x79
 	vkF11     uint16 = 0x7A
 	vkF12     uint16 = 0x7B
-	vkLShift  uint16 = 0xA0
 	vkLCtrl   uint16 = 0xA2
 	vkRMenu   uint16 = 0xA4
 	vkProcess uint16 = 0xE5 // IME: composition state, or the committed text itself
