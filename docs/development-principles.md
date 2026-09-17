@@ -137,3 +137,27 @@ different things.
 `.editorconfig` carries the rule to editors, so a new file usually arrives
 already indented the way the checker expects; the checker is what happens when it
 does not.
+
+## Documentation and Comments
+
+### One fact, one home
+
+State a design fact **once** — in the type or function doc where it lives, or in a
+single `docs/` page — and reference it by name everywhere else. A rule restated in
+four comments is a rule that disagrees with itself after the next change, and the
+reader cannot tell which copy is current. When the pull is to re-explain something
+nearby, link instead: a symbol name, or `docs/...md#anchor`.
+
+Two corollaries:
+
+- **Don't describe what this tree no longer has.** No paths to deleted files, no
+  commit hashes in comments — the commit message is where history lives, and a
+  pointer to a file that is gone is worse than none.
+- **Keep a comment shorter than the code it explains.** Past roughly 20 lines it
+  is a design note, not a line comment: it belongs in `docs/`, linked once.
+
+`misc/check-doc-links.sh` (`make check-doc-links`, run in CI) fails on a relative
+Markdown link that does not resolve from the file that wrote it.
+
+The rule is not "write less" — this repo's comments explain *why*, and that is the
+point. It is "do not write the same thing twice".
