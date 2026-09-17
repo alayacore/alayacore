@@ -608,9 +608,9 @@ func (r *userRenderer) Invalidate() {}
 // first (on top), then text below. This matches the natural content
 // order: media parts precede the text part. The two need no divider
 // between them — the media block is the window's own header material
-// (muted, bold, four fixed labels), the text under it is plain, and the
-// window's line above already opened the block; a rule there would delimit
-// a boundary nobody mistakes. Multiple text parts ARE separated
+// (default color, bold, four fixed labels), the text under it is plain,
+// and the window's line above already opened the block; a rule there would
+// delimit a boundary nobody mistakes. Multiple text parts ARE separated
 // with "───" (Separator) in System color, because two text parts carry
 // identical styling and nothing else tells them apart. Each returned line
 // is one terminal row (no '\n' inside); lineCount is the content rows plus

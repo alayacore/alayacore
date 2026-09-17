@@ -3,12 +3,14 @@ package terminal
 // The attachment badge's register, and the alert channel it must not spend.
 //
 // A badge names what accompanies a message — it is header material, so it
-// takes the window chrome's own register (muted + bold, the same pair a
-// window's line is drawn in) and never the theme's warning color, which is
-// the palette's one alert channel: spent on what the reader is asked to
-// decide about (a confirmation, a draft waiting to be sent). And the badge
-// is the same object folded and unfolded, so both rows must paint it the
-// same way (see toolNameStyle, window.go).
+// takes the terminal's DEFAULT foreground plus bold, told from the plain body
+// under it by weight alone, and never the theme's warning color, which is the
+// palette's one alert channel: spent on what the reader is asked to decide
+// about (a confirmation, a draft waiting to be sent). It also deliberately
+// does NOT take the window line's muted color (Styles.Label): badge and label
+// used to paint identically, so the attachment names read as part of the tag.
+// And the badge is the same object folded and unfolded, so both rows must
+// paint it the same way (see toolNameStyle, window.go).
 
 import (
 	"strings"
@@ -71,8 +73,11 @@ func TestAttachmentBadgesKeepTheirRegisterAcrossFold(t *testing.T) {
 	if lines[0].Text != want {
 		t.Errorf("expanded badge row:\n  got  %q\n  want %q", lines[0].Text, want)
 	}
-	if wantBold := st.Label.Bold(true).Render("📷 Image  🎵 Audio"); want != wantBold {
-		t.Errorf("Styles.Attachment is no longer the window chrome's register (muted + bold)")
+	if wantBold := NewStyle().Bold(true).Render("📷 Image  🎵 Audio"); want != wantBold {
+		t.Errorf("Styles.Attachment is no longer the default-foreground + bold register:\n  got  %q\n  want %q", want, wantBold)
+	}
+	if st.Attachment.Render("Z") == st.Label.Bold(true).Render("Z") {
+		t.Error("Styles.Attachment now paints identically to the window label (muted + bold); the badge must not read as the tag")
 	}
 
 	collapsed := collapseOf(t, ur, st, 80)
@@ -83,8 +88,9 @@ func TestAttachmentBadgesKeepTheirRegisterAcrossFold(t *testing.T) {
 
 // TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem pins the degenerate
 // half of the rule above: the run is styled only when it survived truncation
-// whole. A half-badge is not worth two colors, so the summary then takes the
-// content's plain muted — and nothing about the line's width or text changes.
+// whole. A half-badge is not worth two registers, so the summary then takes
+// the content's plain muted — and nothing about the line's width or text
+// changes.
 func TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem(t *testing.T) {
 	st := DefaultStyles()
 	ur := &userRenderer{
@@ -98,9 +104,10 @@ func TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem(t *testing.T) {
 	if w := cellWidth(stripANSI(line)); w > 24 {
 		t.Errorf("collapsed line overflows its width: %d cells, %q", w, stripANSI(line))
 	}
-	// One bold run only — the label column. A styled badge run would add a
-	// second "\x1b[1;" register opening, which is what the fallback avoids.
-	if n := strings.Count(line, "\x1b[1;"); n != 1 {
+	// One bold run only — the label column. The label is muted + bold, so it
+	// opens with "\x1b[1;"; a styled badge run would add its own bold opening
+	// ("\x1b[1m"), which is what the fallback avoids.
+	if n := strings.Count(line, "\x1b[1m") + strings.Count(line, "\x1b[1;"); n != 1 {
 		t.Errorf("a badge run cut mid-way must not be half-styled: %d bold runs in %q, want 1 (the label)", n, line)
 	}
 	if plain := stripANSI(line); !strings.HasPrefix(plain, "USER PROMPT") {

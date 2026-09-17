@@ -369,8 +369,9 @@ what are these?
 ```
 
 Nothing divides those two rows. The media block is header material — the
-chrome register (muted, bold), one of four fixed labels — and the text under
-it is plain body, so the boundary is already drawn; the `───` rule is reserved
+terminal's default color, bold, one of four fixed labels — and the text under
+it is plain body: same color, told apart by weight. So the boundary is already
+drawn; the `───` rule is reserved
 for the joins that would otherwise read as one continuous run, which is two
 text parts of one message and a tool window's arguments versus its result. The
 prompt box works the same
@@ -380,8 +381,10 @@ moves the caret.
 
 Collapsed (`Space`), the same window keeps the attachments as a compact badge
 summary and shows the text tail after it — two images and one audio here. The
-badges keep the register they hold unfolded (bold, in the label's muted color):
-folding a window restyles nothing. When the row is too narrow and truncation
+badges keep the register they hold unfolded (bold, in the terminal's default
+color — deliberately not the window line's muted color, which would make them
+read as part of the tag): folding a window restyles nothing. When the row is
+too narrow and truncation
 cuts into the summary itself, the whole thing stays in the plain content color
 rather than painting half a bold badge:
 
@@ -607,7 +610,7 @@ Collapsed window summaries use **head + "…" + tail** (40/60 split of the avail
 
 This gives a clean rule: **only delta → leading `…`; everything else → head+tail.**
 
-The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in both forms, while the surrounding content uses the muted color (`t.Muted`). This creates a clear visual hierarchy: actual content vs. truncation marker. The dim color is lighter than muted on a light background, so the `…` recedes — appropriate because it's metadata, not content. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster. On a `USER PROMPT` row the content may open with the attachment badge summary; that run keeps the chrome register (muted, **bold**) it holds unfolded — but only while the cut leaves it whole, since half a badge is not worth two colors (`collapsedRow.style`).
+The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in both forms, while the surrounding content uses the muted color (`t.Muted`). This creates a clear visual hierarchy: actual content vs. truncation marker. The dim color is lighter than muted on a light background, so the `…` recedes — appropriate because it's metadata, not content. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster. On a `USER PROMPT` row the content may open with the attachment badge summary; that run keeps the register (default foreground, **bold**) it holds unfolded — but only while the cut leaves it whole, since half a badge is not worth two registers (`collapsedRow.style`).
 
 ### Markdown Rendering
 

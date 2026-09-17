@@ -6,7 +6,7 @@ import "time"
 // window: tool arguments and tool result, one user text part and the next.
 // Both jobs are the same job — a rule between rows that would otherwise read
 // as one continuous run — and nothing else needs it: a user window's media
-// block is header material (the chrome register: muted, bold —
+// block is header material (the terminal's default color, bold —
 // Styles.Attachment; four fixed labels) under the window's own line, so the
 // boundary above its text draws no rule (see userRenderer.BuildInner and
 // PromptInput.View).

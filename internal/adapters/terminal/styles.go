@@ -29,19 +29,21 @@ type Styles struct {
 	Error       Style
 	System      Style
 	// Attachment is the badge row of a user message — the expanded window
-	// body, its collapsed summary, and the prompt box: muted plus bold, the
-	// register a window's own line is drawn in (lineStyleForTag). That is
-	// deliberate: the badge is header material naming what came with the
-	// message, not part of the message's text, which stays colorless (Body).
+	// body, its collapsed summary, and the prompt box: the terminal's own
+	// DEFAULT foreground plus bold. It is header material naming what came
+	// with the message, not part of the message's text, and it is told from
+	// that text by WEIGHT, not by color: the plain body under it is
+	// default-weight in the very same default color, so bold is the whole of
+	// the difference. That keeps the palette out of it — in particular the
+	// muted color of the window's own line (Styles.Label), which the badge
+	// used to share and so read as if the attachment names belonged to the
+	// tag; and the warning color, the palette's one alert channel, spent on
+	// what the reader is asked to decide about (a confirmation, a draft
+	// waiting to be sent), never on a routine attachment.
+	//
 	// It is a field of its own rather than an alias of Label because the
 	// cursor highlight recolors Label and must not recolor the badge
 	// (Styles.Selected).
-	//
-	// It asks for no color beyond the chrome's. Weight, not color, is this
-	// UI's structural emphasis (an overlay list marks its selected row exactly
-	// that way), and warning is the palette's one alert channel — spent on
-	// what the reader is asked to decide about (a confirmation, a draft
-	// waiting to be sent), never on a routine attachment.
 	Attachment Style
 	DiffRemove Style
 	DiffAdd    Style
@@ -181,9 +183,12 @@ func NewStyles(t *theme.Theme) *Styles {
 		ToolContent: baseStyle.Foreground(Color(t.Muted)),
 		Error:       baseStyle.Foreground(Color(t.Error)),
 		System:      baseStyle.Foreground(Color(t.Muted)),
-		Attachment:  baseStyle.Foreground(Color(t.Muted)).Bold(true),
-		DiffRemove:  baseStyle.Foreground(Color(t.Removed)),
-		DiffAdd:     baseStyle.Foreground(Color(t.Added)),
+		// Attachment: default foreground (no color) + bold — the badge is
+		// told from the body text by weight alone, and deliberately not by
+		// the window line's muted color (see the field doc).
+		Attachment: baseStyle.Bold(true),
+		DiffRemove: baseStyle.Foreground(Color(t.Removed)),
+		DiffAdd:    baseStyle.Foreground(Color(t.Added)),
 
 		// Display styles
 		Input:   baseStyle,

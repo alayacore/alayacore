@@ -68,8 +68,8 @@ func (m PromptInput) Update(msg Msg) (PromptInput, []Result) {
 
 // View renders the input field with border, attachments above if present.
 // The attachment block needs no divider of its own: it is drawn in the
-// window chrome's register (muted + bold, Styles.Attachment) and holds four
-// fixed labels, the draft under it is plain, and the box's own rules already
+// terminal's default color, bold (Styles.Attachment) and holds four fixed
+// labels, the draft under it is plain, and the box's own rules already
 // bracket both — a "───" row between them would draw a line the reader
 // cannot type, and a selection copied out of the box would return it as a
 // phantom row.

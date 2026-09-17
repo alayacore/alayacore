@@ -9,7 +9,7 @@ import (
 
 // TestUserPromptMediaAndTextHaveNoDividerRow pins the media/text boundary:
 // the badge block sits DIRECTLY above the user's text with no "───" row
-// between them. The block is header material (muted, bold, one of four fixed
+// between them. The block is header material (default color, bold, one of four
 // labels) and the text is plain body, so the boundary already reads without
 // a rule; the divider stays reserved for joins that would otherwise read as
 // one continuous run (two text parts, a tool window's arguments versus its
