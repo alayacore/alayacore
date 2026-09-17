@@ -52,6 +52,14 @@ jobs:
       - name: Check shell style
         run: ./misc/check-shell-style.sh
 
+      # The docs are a graph of relative links, and nothing else in the build
+      # reads its edges: a renamed page leaves a 404 only a human would find.
+      # This resolves every relative Markdown link against the file that wrote
+      # it, so the two failures a link can have — a target that moved and one
+      # that never existed — are caught at the source.
+      - name: Check doc links
+        run: ./misc/check-doc-links.sh
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:

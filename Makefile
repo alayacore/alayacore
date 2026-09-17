@@ -1,5 +1,5 @@
 .PHONY: all build test lint tools fmt clean install run release release-all \
-       build-windows build-darwin build-linux check check-gitattributes check-shell-style
+       build-windows build-darwin build-linux check check-gitattributes check-shell-style check-doc-links
 
 # Go parameters
 GOCMD=go
@@ -132,8 +132,12 @@ check-gitattributes:
 check-shell-style:
 	./misc/check-shell-style.sh
 
-## check: Run all checks (attributes, shell style, fmt, vet, lint, test)
-check: check-gitattributes check-shell-style fmt vet lint test
+## check-doc-links: Assert every relative Markdown link still resolves (misc/check-doc-links.sh)
+check-doc-links:
+	./misc/check-doc-links.sh
+
+## check: Run all checks (attributes, shell style, doc links, fmt, vet, lint, test)
+check: check-gitattributes check-shell-style check-doc-links fmt vet lint test
 
 ## pre-commit: Run checks before committing
 pre-commit: fmt vet test
