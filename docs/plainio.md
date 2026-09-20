@@ -33,7 +33,7 @@ prompt that spans two lines.
 > and has no task queue. If you pipe multiple prompts into stdin, only the
 > **first** one is executed. Subsequent prompts are rejected with:
 > ```
-> Error: A task is already running. Wait for it to complete or cancel it.
+> [error: A task is already running. Wait for it to complete or cancel it.]
 > ```
 > For scripting multiple questions, use `--terseio` (one message per
 > invocation) or launch `alayacore --plainio` once per prompt (the process

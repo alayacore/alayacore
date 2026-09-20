@@ -72,11 +72,14 @@ These commands require LLM calls and run in a separate goroutine:
 
 ## Adapter-Specific Commands
 
-Some commands are handled directly by each adapter and never reach the session command dispatch:
+These commands are intercepted by the adapter before they reach the session
+command dispatch. An interception either adds interaction and then forwards
+the command (the TUI confirmation dialogs), or handles it entirely locally:
 
 | Command | TUI | Plain IO | Terse IO | Raw IO |
 |---------|-----|----------|----------|--------|
-| `:quit` / `:q` | Shows confirmation dialog | Exits immediately | Exits cleanly (code 0) | Not interpreted — raw CI/CO pass-through |
+| `:quit` / `:q` | Shows confirmation dialog, then exits | Exits immediately | Exits cleanly (code 0) | Not interpreted — raw CI/CO pass-through |
+| `:cancel` | Shows confirmation dialog, then forwards `:cancel` to the session | Sent to session | Sent to session | Not interpreted — raw CI/CO pass-through |
 | `:help` | Opens help window | Sent to session (unknown command) | Sent to session (unknown command) | Not interpreted — raw CI/CO pass-through |
 | `:suspend` | Suspends process (Ctrl+Z) | Not supported | Not supported | Not interpreted — raw CI/CO pass-through |
 

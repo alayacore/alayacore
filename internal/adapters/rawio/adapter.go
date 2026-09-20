@@ -25,7 +25,8 @@ func NewAdapter(cfg *app.Config) *Adapter {
 }
 
 // Start runs the rawio adapter. It blocks until the session finishes.
-// Returns 0 on success, 1 on any error (startup or task failure).
+// Returns 1 only if the session fails to start; a task error is reported on
+// stdout as a TLV frame, not here.
 // The controlling process reads stdout and handles TLV itself.
 func (a *Adapter) Start() int {
 	// Serialize concurrent session writes (run + task goroutines) so TLV

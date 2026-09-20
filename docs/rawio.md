@@ -49,8 +49,8 @@ controlling process detects and handles it.
 
 | Code | Meaning |
 |------|---------|
-| `0` | Normal exit — all tasks completed successfully |
-| `1` | Error — startup failure (config, no models) or task error during execution |
+| `0` | Normal exit — the session finished |
+| `1` | Error — startup failure (config, no models) |
 
 ## Example
 
