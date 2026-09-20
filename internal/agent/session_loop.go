@@ -60,19 +60,27 @@ func (s *Session) run() {
 		s.setState(SessionInitializing)
 	}
 
+	// Capture the input channel in a local: the loop stops selecting on it once
+	// the stream ends, while s.inputMsgCh itself must stay valid — inputPump
+	// sends on that field.
+	ch := s.inputMsgCh
+
 	for {
 		if s.shouldExit() {
 			return
 		}
 
 		select {
-		case msg, ok := <-s.inputMsgCh:
+		case msg, ok := <-ch:
 			if !ok {
-				// Input closed (EOF). Drain the currently running task.
-				if s.activeTask != nil {
-					s.drainUntilTaskDone()
-				}
-				return
+				// The adapter's stream ended (EOF): no more input, but the
+				// input is not what is in flight — a running task or a
+				// deferred prompt still is. Clear the case so it cannot spin
+				// on a channel that is permanently ready, and let the loop
+				// finish what was already accepted.
+				s.inputEnded = true
+				ch = nil
+				continue
 			}
 			s.handleInputMsg(msg)
 
@@ -108,11 +116,19 @@ func (s *Session) run() {
 	}
 }
 
-// shouldExit reports whether run() can return: the session context is done,
-// or :quit was accepted and nothing is in flight. A task that is already
-// running is "in flight", so quitting waits for it instead of dropping it.
+// shouldExit reports whether run() can return: the session's context is done
+// (its output broke, or the process is going away), or its input has ended or a
+// quit was accepted *and* nothing is in flight.
+//
+// "Nothing in flight" is the point. A task that is still running is work the
+// user asked for, and so is a prompt accepted before the session was ready: the
+// session holds them rather than dropping them, which is only possible because
+// the input end is a fact about the input, not a teardown of the conversation.
 func (s *Session) shouldExit() bool {
-	return s.sessionCtx.Err() != nil || (s.quitting && s.activeTask == nil)
+	if s.sessionCtx.Err() != nil {
+		return true
+	}
+	return (s.quitting || s.inputEnded) && s.activeTask == nil && s.pending == nil
 }
 
 // handleMCPEvent processes a single MCP initialization event.
@@ -199,39 +215,6 @@ func (s *Session) flushPendingEvents() {
 		case ev := <-s.taskEventCh:
 			s.handleTaskEvent(ev)
 		default:
-			return
-		}
-	}
-}
-
-// drainUntilTaskDone processes task completion signals until the currently
-// running task finishes. Used during shutdown (input EOF) to let the active
-// task complete before the session exits. Cancel requests are still served
-// so SIGINT can abort the drained task instead of waiting for it.
-//
-// Priority: taskResultCh is checked first to avoid processing redundant
-// events when the task has already finished.
-func (s *Session) drainUntilTaskDone() {
-	for {
-		// Check taskResultCh first with priority to avoid unnecessary
-		// event processing when the task has already completed.
-		select {
-		case contents := <-s.taskResultCh:
-			s.handleTaskDone(contents)
-			return
-		default:
-		}
-
-		select {
-		case ev := <-s.taskEventCh:
-			s.handleTaskEvent(ev)
-		case contents := <-s.taskResultCh:
-			s.handleTaskDone(contents)
-			return
-		case done := <-s.cancelReqCh:
-			_, err := s.cancelTask()
-			done <- err == nil
-		case <-s.sessionCtx.Done():
 			return
 		}
 	}

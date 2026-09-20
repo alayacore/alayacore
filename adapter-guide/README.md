@@ -25,6 +25,7 @@ UA  → stdin   User audio (data:audio/...;base64,... or URL)
 UD  → stdin   User document (data:application/...;base64,... or URL)
 UE  → stdin   User message end — flushes staged content as a single message
 CI  → stdin   Command input (JSON CmdMsg: {"id":"...","name":"...","input":"..."})
+CE  → stdin   Input end — no more prompts. Not a closed stream: commands may still follow
 At  ← stdout  Assistant text (streaming delta: \x00<id>\x00<content>)
 Ar  ← stdout  Assistant reasoning (streaming delta: \x00<id>\x00<content>)
 Af  ← stdout  Function/tool argument (streaming delta: \x00<id>\x00<JSON>)
@@ -50,7 +51,7 @@ Each tag is two characters: **role** + **type**.
 |---|---|---|
 | `U` | **U**ser | UT (user text), UI (user image), UF (function result), Uf (result preview) |
 | `A` | **A**ssistant | AT (assistant text), AR (assistant reasoning), AF (function call) |
-| `C` | **C**ommand (control plane) | CI (command input), CO (command output) |
+| `C` | **C**ommand (control plane) | CI (command input), CO (command output), CE (input end) |
 | `S` | **S**ystem | SM (system message) |
 
 | Second letter | Type | Examples |
@@ -62,7 +63,7 @@ Each tag is two characters: **role** + **type**.
 | `D` | **D**ocument | UD |
 | `R` | **R**easoning | AR, Ar |
 | `F` | **F**unction/tool | AF, UF, Af, Uf |
-| `E` | **E**nd (flush) | UE |
+| `E` | **E**nd (flush) | UE, CE |
 | `I` | **I**nput (command request) | CI |
 | `O` | **O**utput (command result) | CO |
 | `M` | **M**essage | SM |
@@ -326,6 +327,10 @@ configured).
   initialization (spinner, blocked input box, "waiting for MCP" states)
   should wait for this frame instead of inferring readiness from `mcp`
   frames or the startup `task` frame.
+- A prompt that arrives **before** this frame is accepted and held: the session
+  runs it the moment it becomes ready. A client does not have to wait for the
+  frame before prompting — which matters for one that has already reached the
+  end of its input, because it has no way to send the prompt again.
 
 **`closed`** — sent **once**, as the session's last act: after every other
 frame, including the output of the last task. It is the terminal frame, and

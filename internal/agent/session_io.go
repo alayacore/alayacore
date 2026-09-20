@@ -13,6 +13,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,12 +47,16 @@ import (
 //   - cmdInput holds the command's argument string
 //   - cmdID holds the adapter-generated call ID, echoed in the CO result
 //   - contentParts is nil, isCmd is true
+//
+// For the input-end frame (CE):
+//   - inputEnd is true and carries nothing else
 type inputMsg struct {
 	contentParts []llm.ContentPart // combined user content (media + text)
 	cmd          string            // command name for commands, empty for prompts
 	cmdInput     string            // command argument string (from CI frame)
 	cmdID        string            // command call ID (from CI frame), echoed in CO
 	isCmd        bool              // true when cmd is set
+	inputEnd     bool              // true for CE: the adapter has no more input
 	err          error             // non-nil when the input pump hit a validation error
 }
 
@@ -59,6 +64,10 @@ type inputMsg struct {
 // input stream, builds inputMsg values, and sends them to inputMsgCh.
 // It does NOT interpret commands or access session state — all of
 // that lives in the run() goroutine.
+//
+// EOF is reported by closing inputMsgCh: a reader that ends (a pipe whose
+// writer closed, a keyboard at Ctrl-D) is the adapter saying it has no more
+// input, exactly like a CE frame, and run() treats the two identically.
 func (s *Session) inputPump() {
 	var staged []llm.ContentPart
 
@@ -79,7 +88,9 @@ func (s *Session) inputPump() {
 // Returns the updated staged content (nil when staged content has been
 // consumed by UE or discarded by an error). Media tags (UI/UV/UA/UD)
 // and regular text (UT) are staged until UE or EOF. Command frames (CI)
-// are sent immediately without staging.
+// are sent immediately without staging. CE reports that the adapter has no
+// more input — the same fact as EOF, on a stream that stays open — and
+// flushes whatever is staged before it.
 func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) []llm.ContentPart {
 	switch tag {
 	case tlv.TagUserI:
@@ -111,6 +122,17 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 		if len(staged) > 0 {
 			s.inputMsgCh <- inputMsg{contentParts: staged}
 		}
+		return nil
+	case tlv.TagInputEnd:
+		// The adapter has no more input. This is the same fact as EOF on the
+		// stream, so it takes the same shape: whatever is staged is a complete
+		// message first, and only then does the input end. The order cannot be
+		// swapped — one goroutine sending on one channel is FIFO, so the prompt
+		// is always dequeued before the end.
+		if len(staged) > 0 {
+			s.inputMsgCh <- inputMsg{contentParts: staged}
+		}
+		s.inputMsgCh <- inputMsg{inputEnd: true}
 		return nil
 	default:
 		s.inputMsgCh <- inputMsg{err: fmt.Errorf("invalid input tag: %s", tag)}
@@ -306,6 +328,23 @@ func (s *Session) cleanupConfirmChannels() {
 // handler based on whether it's a command or a regular prompt.
 // ============================================================================
 
+// prepareTask's two refusal reasons, as values. Callers distinguish them with
+// errors.Is: one is a reason to *hold* a prompt (the session is not ready yet,
+// which passes), the other a reason to report it (there is nowhere to put it).
+var (
+	// errMCPNotReady: MCP initialization has not settled, so the tool list is
+	// incomplete. Transient — the prompt waits for readiness instead of being
+	// refused. The code stays MCP_NOT_READY for wire compatibility.
+	errMCPNotReady = &cmdErr{Code: "MCP_NOT_READY",
+		Message: "MCP servers are still initializing or OAuth authorization is pending. " +
+			"Please wait for initialization to complete."}
+
+	// errTaskBusy: a task is already running. Accepting a second one would
+	// need a queue, which this session does not have.
+	errTaskBusy = &cmdErr{Code: "BUSY",
+		Message: "A task is already running. Wait for it to complete or cancel it."}
+)
+
 // prepareTask checks preconditions and creates a cancellable context for
 // a new task. Returns an error (wrapped as cmdErr where meaningful) if
 // the task cannot start; callers decide how to report it (CO for task
@@ -320,16 +359,12 @@ func (s *Session) prepareTask() (context.Context, error) {
 	// incomplete. Sending an LLM request would produce a response without
 	// MCP tools, and the subsequent agent reset (when MCP init completes)
 	// would invalidate the provider's cache. prepareTask only runs after
-	// run() has started, so State() is Initializing or Ready here — the
-	// error code is kept as MCP_NOT_READY for wire compatibility.
+	// run() has started, so State() is Initializing or Ready here.
 	if s.State() != SessionReady {
-		return nil, &cmdErr{Code: "MCP_NOT_READY",
-			Message: "MCP servers are still initializing or OAuth authorization is pending. " +
-				"Please wait for initialization to complete."}
+		return nil, errMCPNotReady
 	}
 	if s.activeTask != nil {
-		return nil, &cmdErr{Code: "BUSY",
-			Message: "A task is already running. Wait for it to complete or cancel it."}
+		return nil, errTaskBusy
 	}
 	if err := s.ensureAgentInitialized(); err != nil {
 		return nil, err
@@ -356,8 +391,63 @@ func (s *Session) startTaskCommand(id string, run func(context.Context)) {
 	go run(ctx)
 }
 
+// submitPrompt takes a user prompt and either starts it or holds it.
+//
+// The session refuses a prompt for exactly two reasons: it would need a queue
+// (a task is already in flight), or the session cannot start a task at all. A
+// *stage* it is passing through — MCP initialization — is a reason to hold the
+// prompt instead: the adapter has no way to know when that stage ends, and a
+// client that submitted its only prompt and then hit EOF has no way to retry.
+//
+// The holding place is a single slot, not a queue: while it is occupied there
+// is nothing in flight, so a second prompt here can only mean a client that
+// wants two tasks at once — the BUSY case, reported as such.
+func (s *Session) submitPrompt(parts []llm.ContentPart) {
+	ctx, err := s.prepareTask()
+	switch {
+	case err == nil:
+		go s.runTaskNormal(ctx, parts)
+	case errors.Is(err, errMCPNotReady) && s.pending == nil:
+		s.pending = parts
+		s.writeNotify("prompt deferred until MCP initialization completes")
+	default:
+		s.writeError(err.Error()) // BUSY, slot already taken, or a permanent failure
+	}
+}
+
+// startDeferredPrompt starts the prompt that was held back until the session
+// became ready.
+//
+// Invariant: pending != nil implies State() != SessionReady, and syncState is
+// the only place that transition happens — so this runs at most once, and only
+// after the ready frame has been written.
+func (s *Session) startDeferredPrompt() {
+	if s.pending == nil {
+		return
+	}
+	parts := s.pending
+	s.pending = nil
+	ctx, err := s.prepareTask()
+	if err != nil {
+		// Unreachable: the slot is only filled while the session is not ready,
+		// and this runs on the transition out of that state.
+		s.writeError(err.Error())
+		return
+	}
+	go s.runTaskNormal(ctx, parts)
+}
+
 // handleInputMsg processes a parsed input message. Called from run() goroutine.
 func (s *Session) handleInputMsg(msg inputMsg) {
+	if msg.inputEnd {
+		// The adapter is done sending prompts. Whatever it sent before this
+		// was already handled (one goroutine, one channel, FIFO), so all that
+		// is left is to stop accepting new work and let run() finish what it
+		// already took on.
+		s.inputEnded = true
+		return
+	}
+
 	if msg.err != nil {
 		// Input-pump validation errors (invalid CI JSON, staged-content
 		// conflict, unknown tags). No request ID is available — the empty
@@ -367,12 +457,7 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	}
 
 	if !msg.isCmd {
-		if ctx, err := s.prepareTask(); err != nil {
-			// Non-command failure — reported as an SM error.
-			s.writeError(err.Error())
-		} else {
-			go s.runTaskNormal(ctx, msg.contentParts)
-		}
+		s.submitPrompt(msg.contentParts)
 		return
 	}
 
@@ -719,18 +804,26 @@ func (s *Session) saveSession(args string) (any, error) {
 	return map[string]any{"path": path}, nil
 }
 
-// handleQuit handles the :quit command. It asks the session to end: no new
-// work is accepted, and run() returns as soon as nothing is in flight — a
-// task already running still finishes. Idempotent.
+// handleQuit handles the :quit command. It asks the session to end: the
+// deferred prompt is dropped, no new work is accepted, and run() returns as
+// soon as nothing is in flight — a task already running still finishes.
+// Idempotent.
 func (s *Session) handleQuit(args string) (any, error) {
 	if strings.TrimSpace(args) != "" {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :quit (no arguments)"}
 	}
 	s.quitting = true
+	s.pending = nil // a prompt that has not started yet is dropped
 	return nil, nil
 }
 
 func (s *Session) cancelTask() (any, error) {
+	// A prompt accepted but not started: canceling it means dropping it, and
+	// then there is nothing in flight for run() to wait for.
+	if s.pending != nil {
+		s.pending = nil
+		return nil, nil
+	}
 	if s.activeTask != nil {
 		if s.cancelRunningTask() {
 			return nil, nil

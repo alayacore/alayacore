@@ -66,9 +66,9 @@ MCP servers work the same as in the TUI: configured servers connect at
 startup and their tools (and `tool_confirm` prompts) behave identically. A
 prompt piped into stdin is held until MCP initialization has settled (the
 session's authoritative "ready" frame), so it is not rejected with
-`MCP_NOT_READY`; on a terminal a prompt is submitted immediately (an early
-one is rejected and can be retyped). Commands (`:mcp_cancel`, `:quit`, …)
-are never held.
+`MCP_NOT_READY`; on a terminal a prompt is submitted immediately, and an early
+one is held by the session until initialization settles — nothing to retype.
+Commands (`:mcp_cancel`, `:quit`, …) are never held.
 When a server requires OAuth authorization, plainio prints the
 authorization URL, starts a local callback server, and opens the browser
 automatically — once you authorize, the code is submitted for you. If

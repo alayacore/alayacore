@@ -83,10 +83,21 @@ type runState struct {
 
 	activeTask *taskHandle // non-nil when a task is running; nil when idle
 
+	// pending is the prompt accepted before the session was ready (MCP init
+	// still running), waiting for the one transition that makes it runnable.
+	// A single slot, not a queue: while it is occupied no task is running, so
+	// nothing could be executing behind it.
+	pending []llm.ContentPart
+
 	// quitting is set by :quit (handleQuit). The session stops accepting
 	// new work and run() returns once nothing is in flight, so a task that
 	// is already running still finishes.
 	quitting bool
+
+	// inputEnded is set when the adapter says it has no more input (a CE
+	// frame) or its stream ends (EOF). No more prompts are accepted; work
+	// already accepted — a running task, a deferred prompt — still finishes.
+	inputEnded bool
 
 	// taskCommandID holds the command ID of the task that just finished.
 	// sendTaskMsg uses it for the completion taskMsg, since activeTask is
@@ -209,13 +220,23 @@ func (s *Session) setState(phase SessionState) {
 	}
 }
 
-// syncState advances the lifecycle state after MCP init progress.
+// syncState advances the lifecycle state after MCP init progress, and starts a
+// prompt that was waiting for it.
+//
+// The two halves stay in one function but in this order: the ready frame is
+// written before the deferred prompt starts, so no client can observe the
+// session becoming ready and its first task beginning in the other order.
 // Idempotent: only transitions SessionInitializing → SessionReady once
 // mcpService reports ready. Must only be called from the run() goroutine
 // (or run()'s own setup); readers use the atomic publish in State().
+//
+// The deferred prompt is started here rather than in setState: setState is
+// "publish this phase" and is also called by run()'s setup, where the slot is
+// necessarily empty. Advancing past a stage is this function's job.
 func (s *Session) syncState() {
 	if s.State() == SessionInitializing && s.mcpService.IsReady() {
-		s.setState(SessionReady)
+		s.setState(SessionReady) // 1. the ready frame goes out first
+		s.startDeferredPrompt()  // 2. then the prompt that waited for it
 	}
 }
 

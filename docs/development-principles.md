@@ -39,6 +39,7 @@ Every capability available to built-in adapters must be achievable through TLV f
 | Direction | Tag | Covers |
 |-----------|-----|--------|
 | adapter → agent (stdin) | `UT` + `UE` | User text prompts |
+| adapter → agent (stdin) | `CE` | End of input: no more prompts (the stream stays open for commands) |
 | adapter → agent (stdin) | `CI` | All commands (`save`, `cancel`, `model_set`, etc.) — JSON `{id, name, input}` |
 | adapter → agent (stdin) | `UI`/`UV`/`UA`/`UD` | Media input (image/video/audio/document) |
 | agent → adapter (stdout) | `UT`/`UI`/`UV`/`UA`/`UD` | User message echo (with assigned history ID) |

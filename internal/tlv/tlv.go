@@ -10,6 +10,8 @@
 //   - UA: User audio
 //   - UD: User document
 //   - UE: User message end
+//   - CE: Control-plane input end (the adapter has no more input; commands
+//     may still follow — see TagInputEnd)
 //   - AT: Assistant text (complete/authoritative; empty if deltas preceded it)
 //   - AR: Assistant reasoning (complete/authoritative; empty if deltas preceded it)
 //   - AF: Assistant function / tool call (complete/authoritative)
@@ -55,6 +57,17 @@ const (
 	// the tool control plane (AF/UF). Payloads are plain JSON, no envelope.
 	TagCommandIn  = "CI" // Command input: CmdMsg JSON (adapter → agent)
 	TagCommandOut = "CO" // Command output: CmdResultMsg JSON (agent → adapter)
+
+	// TagInputEnd is the control plane's half-close: the adapter has no more
+	// input (its stdin reached EOF). It is TCP's FIN, not a torn-down
+	// connection — no further *prompts* are coming, but commands may still
+	// arrive on the same stream (an OAuth callback submits its :mcp_confirm
+	// through the pipe that just ended).
+	//
+	// It is a control frame, not user content: never staged, echoed, persisted,
+	// or replayed. An adapter with nothing more to say sends this instead of
+	// closing its write end, because closing would end that command path too.
+	TagInputEnd = "CE"
 
 	TagSystemMsg = "SM" // System message JSON: {"type":"...","data":{...}}
 

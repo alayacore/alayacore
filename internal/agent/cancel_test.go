@@ -86,19 +86,20 @@ func TestCancelTask_NoTask(t *testing.T) {
 	}
 }
 
-func TestCancelTask_WhileDraining(t *testing.T) {
+func TestCancelTask_AfterInputEnded(t *testing.T) {
 	// Input EOF (the terseio case: stdin is closed right after the
-	// prompt) sends run() into drainUntilTaskDone while the task runs.
-	// CancelTask must still be served there.
+	// prompt) ends the session's input while a task is still running.
+	// The task is in flight, so run() stays in its loop — serving cancel
+	// requests — until the task finishes.
 	s, canceled, cleanup := newCancelTestSession(t, true)
 	defer cleanup()
 
-	// Close the input pipe — inputPump reads EOF, run() enters
-	// drainUntilTaskDone waiting for the task to finish.
+	// Close the input pipe: inputPump reads EOF, run() records that its input
+	// has ended and keeps processing what it already accepted.
 	s.Input.(*io.PipeReader).Close()
 
 	if !s.CancelTask() {
-		t.Fatal("CancelTask should cancel a task while the session is draining")
+		t.Fatal("CancelTask should cancel a task after the input has ended")
 	}
 	select {
 	case <-canceled:
