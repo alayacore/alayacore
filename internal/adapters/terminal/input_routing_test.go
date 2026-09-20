@@ -42,6 +42,14 @@ func openPrompt(tb *testing.T) Terminal        { return newTestTerminal() }
 func openDisplay(tb *testing.T) Terminal       { return newTestTerminal().focusDisplay() }
 func openModelSelector(tb *testing.T) Terminal { return newTestTerminal().openModelSelector() }
 
+// openMCPInit opens the display-only MCP-init overlay, which the session closes
+// (the ready frame) rather than a key.
+func openMCPInit(tb *testing.T) Terminal {
+	m := newTestTerminal()
+	m.mcpInitOverlay = m.mcpInitOverlay.OpenMCPInit()
+	return m
+}
+
 // openTheme needs a theme manager: `openThemeSelector` declines to open without
 // one, and a row that silently does not open its overlay would pass by testing
 // the prompt instead. `TestKeyboardTargetForEveryState` is what catches that, and
@@ -93,6 +101,7 @@ func routingStates() []routingState {
 		{"theme filter", openTheme, "theme"},
 		{"help filter", openHelp, "help"},
 		{"tool-confirm modal", openModal, ""},
+		{"MCP-init modal", openMCPInit, ""},
 	}
 }
 
@@ -253,6 +262,7 @@ func TestKeyboardTargetForEveryState(t *testing.T) {
 		"theme filter":              targetOverlayFilter,
 		"help filter":               targetOverlayFilter,
 		"tool-confirm modal":        targetModal,
+		"MCP-init modal":            targetModal,
 	}
 	for _, st := range routingStates() {
 		t.Run(st.name, func(t *testing.T) {

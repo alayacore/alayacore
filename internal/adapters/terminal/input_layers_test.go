@@ -7,8 +7,13 @@ package terminal
 // keeps the two from drifting.
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/commands"
+	"github.com/alayacore/alayacore/internal/protocol"
+	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestInputLayersForEveryState cross-checks the stack each fixture produces
@@ -27,6 +32,7 @@ func TestInputLayersForEveryState(t *testing.T) {
 		"theme filter":              overlay,
 		"help filter":               overlay,
 		"tool-confirm modal":        {layerUniversal, layerModal},
+		"MCP-init modal":            {layerUniversal, layerModal},
 	}
 	for _, st := range routingStates() {
 		t.Run(st.name, func(t *testing.T) {
@@ -77,5 +83,64 @@ func TestOverlayOutranksGlobalKeys(t *testing.T) {
 	after := feedMsg(t, m, KeyPressMsg{Code: 'g', Mod: ModCtrl})
 	if after.confirmOverlay.IsOpen() {
 		t.Fatal("Ctrl+G leaked past the overlay to the global layer")
+	}
+}
+
+// The MCP-init overlay's one key, and where it goes.
+//
+// Ctrl+G cancels initialization by emitting :mcp_cancel — it must not reach the
+// global layer, which would open the cancel-confirm dialog instead. The overlay
+// itself stays up: nothing on it closes it, because it is closed by the
+// session's ready frame. That is also why ConfirmDialog has no key branch for
+// this kind: the dialog is display-only, and this handler is its whole keyboard.
+func TestMCPInitModalOwnsTheKeyboard(t *testing.T) {
+	cap := &captureWriteCloser{}
+	m := openMCPInit(t)
+	m.streamInput = cap
+
+	after, cmd := m.Update(KeyPressMsg{Code: 'g', Mod: ModCtrl})
+	m = after.(Terminal)
+	if m.confirmOverlay.IsOpen() {
+		t.Fatalf("Ctrl+G reached the global layer: the cancel dialog opened (kind %v)", m.confirmOverlay.Kind())
+	}
+	if !m.mcpInitOverlay.IsOpen() || m.mcpInitOverlay.Kind() != ConfirmMCPInit {
+		t.Fatalf("the MCP-init overlay should still be up: open=%v kind=%v",
+			m.mcpInitOverlay.IsOpen(), m.mcpInitOverlay.Kind())
+	}
+
+	// The key's I/O: one :mcp_cancel CI frame. The handler batches it with the
+	// next tick, so the batch is run the way the event loop runs it.
+	if cmd == nil {
+		t.Fatal("Ctrl+G should emit :mcp_cancel")
+	}
+	switch msg := cmd().(type) {
+	case BatchMsg:
+		for _, c := range msg {
+			if c != nil {
+				_ = c()
+			}
+		}
+	default:
+		t.Fatalf("Ctrl+G produced %T, want a BatchMsg", msg)
+	}
+	tag, value, err := tlv.ReadTLV(cap)
+	if err != nil {
+		t.Fatalf("read the emitted command: %v", err)
+	}
+	if tag != tlv.TagCommandIn {
+		t.Fatalf("tag = %s, want CI", tag)
+	}
+	var sent protocol.CmdMsg
+	if err := json.Unmarshal([]byte(value), &sent); err != nil {
+		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
+	}
+	if sent.Name != commands.CommandNameMCPSkip {
+		t.Errorf("sent %q, want %q", sent.Name, commands.CommandNameMCPSkip)
+	}
+
+	// Any other global chord is swallowed too: the modal is the keyboard's owner
+	// while it is up.
+	if leaked := feedMsg(t, m, KeyPressMsg{Code: 'l', Mod: ModCtrl}); leaked.modelSelector.IsOpen() {
+		t.Error("Ctrl+L leaked past the MCP-init modal and opened the model selector")
 	}
 }

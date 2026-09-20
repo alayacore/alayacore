@@ -103,11 +103,6 @@ func (to *outputWriter) WithStyles(styles *Styles) {
 	to.windowBuffer.WithStyles(styles)
 }
 
-// Close cleans up resources (no background goroutine to stop)
-func (to *outputWriter) Close() error {
-	return nil
-}
-
 func (to *outputWriter) Write(p []byte) (n int, err error) {
 	to.mu.Lock()
 	to.buffer = append(to.buffer, p...)

@@ -76,9 +76,12 @@ type ModelSnapshot struct {
 
 // OutputWriter is the interface for writing output from the session.
 // It abstracts the terminal output writer for better testability.
+//
+// It is an io.Writer and not an io.Closer: nothing closes the display. The
+// program's own teardown releases the terminal (see Program.Run), and the
+// session's output is this process's memory, not a file.
 type OutputWriter interface {
 	io.Writer
-	io.Closer
 
 	// Configuration
 	SetWindowWidth(width int)

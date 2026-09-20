@@ -248,8 +248,13 @@ func (cd ConfirmDialog) Close() ConfirmDialog {
 
 // ---- Key Handling ----
 
-// HandleKeyMsg processes a key press and updates state.
-// Returns the updated dialog and a result struct describing what happened.
+// Update handles a key press on a dialog that takes keys, and returns a result
+// describing what happened.
+//
+// Only the confirm overlay is driven this way. The MCP-init overlay is
+// display-only (its one key is handled by the Terminal, which sends
+// :mcp_cancel — see handleMCPInitKeys), so there is no branch for it here, and
+// adding one would be unreachable.
 func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 	if !cd.IsOpen() {
 		return cd, nil
@@ -260,17 +265,6 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 		return cd, nil
 	}
 	key := keyMsg.Chord()
-
-	if cd.kind == ConfirmMCPInit {
-		if key == keyCtrlG {
-			result, r := cd.buildResult()
-			r.CtrlGCanceled = true
-			result.canceled = true
-			result.state = FilteredListClosed
-			return result, []Result{ConfirmResultMsg{Result: r}}
-		}
-		return cd, nil // handled but no result
-	}
 
 	if cd.isQuitWait() {
 		return cd.updateQuitWaiting(key)
