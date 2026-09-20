@@ -48,7 +48,12 @@ func writeCommand(input io.Writer, cmd string) error {
 // readPrompts reads lines from stdin and emits them as TLV messages.
 // Lines ending with `\` are continued on the next line (backslash-escaped newline).
 // Returns nil on EOF (Ctrl-D), errQuitPrompt on :quit/:q, or a read/write error.
-func readPrompts(input io.Writer, reader io.Reader) error {
+//
+// gate, when non-nil, is consulted immediately before each *prompt* frame is
+// written and blocks until the session is ready to accept one. Commands
+// bypass it, so a user can still steer a still-initializing session
+// (`:mcp_cancel`, `:quit`, …). A gate error stops the feed.
+func readPrompts(input io.Writer, reader io.Reader, gate func() error) error {
 	scanner := bufio.NewReader(reader)
 	var prompt strings.Builder
 
@@ -61,7 +66,7 @@ func readPrompts(input io.Writer, reader io.Reader) error {
 					prompt.WriteString(line)
 					text := strings.TrimRight(prompt.String(), "\r\n")
 					if text != "" {
-						if err = sendPrompt(input, text); err != nil {
+						if err = sendPrompt(input, text, gate); err != nil {
 							return err
 						}
 					}
@@ -93,18 +98,24 @@ func readPrompts(input io.Writer, reader io.Reader) error {
 			return errQuitPrompt
 		}
 
-		if err := sendPrompt(input, text); err != nil {
+		if err := sendPrompt(input, text, gate); err != nil {
 			return err
 		}
 	}
 }
 
 // sendPrompt writes a prompt to the TLV stream, followed by UE to flush.
-// Commands (starting with ':') are sent as CI frames without UE.
-// Returns the first write error, if any.
-func sendPrompt(input io.Writer, text string) error {
+// Commands (starting with ':') are sent as CI frames without UE and bypass
+// gate — they do not start a task that needs MCP tools, and some of them
+// exist precisely to steer MCP init. Returns the first write error, if any.
+func sendPrompt(input io.Writer, text string, gate func() error) error {
 	if strings.HasPrefix(text, ":") {
 		return writeCommand(input, text)
+	}
+	if gate != nil {
+		if err := gate(); err != nil {
+			return err
+		}
 	}
 	if err := tlv.WriteTLV(input, tlv.TagUserT, text); err != nil {
 		return err

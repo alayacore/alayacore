@@ -306,6 +306,12 @@ is nothing to type into at all. The output shows the filled-in URL:
 https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A45231%2Fcallback&state=...
 ```
 
+The **TerseIO** adapter runs the same automatic flow (shared code); its
+progress lines and URL go to stderr, since stdout carries only the final
+answer. Because it has no stdin left to type into, a server whose automatic
+authorization does not complete is **declined** rather than left pending —
+MCP init then settles and the prompt runs without that server's tools.
+
 The manual fallback commands are printed where they are needed — when the
 browser could not be opened, and when the callback wait times out after 5
 minutes. The timeout is also what a browser opened on **another machine**

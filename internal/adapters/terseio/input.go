@@ -56,9 +56,14 @@ func writeCommand(input io.Writer, cmd string) error {
 //   - ":quit" / ":q" are intercepted locally (clean exit, code 0).
 //   - anything else is sent as one UT + UE prompt pair.
 //
+// gate, when non-nil, is consulted before the prompt is written and blocks
+// until the session is ready to accept one. A command bypasses it: the
+// whole input is a single command, and commands like :mcp_cancel exist to
+// steer an initializing session. A gate error stops the feed.
+//
 // Trailing newlines are trimmed (a prompt piped from echo/printf or a
 // file usually ends with "\n"). Empty input emits nothing.
-func readAllPrompt(input io.Writer, reader io.Reader) error {
+func readAllPrompt(input io.Writer, reader io.Reader, gate func() error) error {
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return err
@@ -72,6 +77,11 @@ func readAllPrompt(input io.Writer, reader io.Reader) error {
 			return errQuitPrompt
 		}
 		return writeCommand(input, strings.TrimPrefix(text, ":"))
+	}
+	if gate != nil {
+		if err := gate(); err != nil {
+			return err
+		}
 	}
 	if err := tlv.WriteTLV(input, tlv.TagUserT, text); err != nil {
 		return err

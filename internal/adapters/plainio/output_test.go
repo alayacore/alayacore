@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/app"
+	"github.com/alayacore/alayacore/internal/mcpauth"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -416,5 +418,79 @@ func TestSystemMsg_MCPHookCanPrint(t *testing.T) {
 	o.Write(mcpSMTLV("auth_required", "github", "https://example.com", ""))
 	if !strings.Contains(buf.String(), "[hook printed for github]") {
 		t.Errorf("output = %q, want hook print inside deferred hook", buf.String())
+	}
+}
+
+// TestSystemMsg_SessionReadyMarksReady pins the gate signal: only the
+// authoritative "session" frame with state "ready" opens it, and only once.
+func TestSystemMsg_SessionReadyMarksReady(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{writer: &buf, ready: app.NewReadySignal()}
+
+	// Non-ready states (initializing, empty) must not open the gate.
+	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"initializing"}}`))
+	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{}}`))
+	select {
+	case <-o.Ready():
+		t.Fatal("Ready() marked by a non-ready session frame")
+	default:
+	}
+
+	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"ready"}}`))
+	select {
+	case <-o.Ready():
+	default:
+		t.Fatal("Ready() not marked by the session ready frame")
+	}
+
+	// Idempotent: a second ready frame must not panic (close of a closed
+	// channel would).
+	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"ready"}}`))
+}
+
+// TestOutput_PrintManualFallback pins the manual-fallback format: the
+// confirm command must be bare (selectable/copyable) on its own line, with
+// the real redirect URI spelled out and no placeholder.
+func TestOutput_PrintManualFallback(t *testing.T) {
+	var buf bytes.Buffer
+	o := &stdoutOutput{writer: &buf}
+	o.printManualFallback("github", "http://127.0.0.1:4242/callback", `authorization for "github" timed out`)
+
+	text := buf.String()
+	if !strings.Contains(text, `timed out`) {
+		t.Errorf("output = %q, want the reason line", text)
+	}
+	wantCmd := ":mcp_confirm github <code> http://127.0.0.1:4242/callback"
+	if !strings.Contains(text, "\n"+wantCmd+"\n") {
+		t.Errorf("output = %q, want the confirm command bare on its own line %q", text, wantCmd)
+	}
+	if !strings.Contains(text, "[mcp: to skip this server: :mcp_decline github]") {
+		t.Errorf("output = %q, want the decline option", text)
+	}
+	if strings.Contains(text, "<redirect_uri>") {
+		t.Errorf("output = %q, must not leave the redirect URI as a placeholder", text)
+	}
+}
+
+// TestUnresolvedPolicy pins the two branches: a terminal keeps the manual
+// path (WaitManual, instructions printed); a pipe declines so MCP init
+// settles (there is nowhere to type a code).
+func TestUnresolvedPolicy(t *testing.T) {
+	var buf bytes.Buffer
+	out := &stdoutOutput{writer: &buf}
+
+	if got := unresolvedPolicy(out, true)("github", "http://127.0.0.1:4242/callback", "timed out"); got != mcpauth.WaitManual {
+		t.Errorf("interactive policy = %v, want WaitManual", got)
+	}
+	if !strings.Contains(buf.String(), ":mcp_confirm github <code> http://127.0.0.1:4242/callback") {
+		t.Errorf("interactive output = %q, want manual instructions", buf.String())
+	}
+
+	buf.Reset()
+	if got := unresolvedPolicy(out, false)("github", "http://127.0.0.1:4242/callback", "timed out"); got != mcpauth.Decline {
+		t.Errorf("non-interactive policy = %v, want Decline", got)
+	}
+	if !strings.Contains(buf.String(), "declining") || strings.Contains(buf.String(), ":mcp_confirm") {
+		t.Errorf("non-interactive output = %q, want a decline notice and no manual command", buf.String())
 	}
 }

@@ -750,11 +750,13 @@ The terminal adapter implements this via `startMCPAuthFlow`
 (`internal/adapters/terminal/keybinds.go`): it starts
 `platform.StartCallbackServer`, opens the browser with
 `platform.OpenURL`, and writes the `mcp_confirm` CI frame on callback.
-The plainio adapter mirrors the same flow in
-`internal/adapters/plainio/mcp.go` (asynchronous, URL always printed as
-a manual fallback). terseio and rawio do not implement it: terseio is
-scripting-only, and rawio delegates the whole flow to the controlling
-process.
+The plainio and terseio adapters share the same automatic flow in
+`internal/mcpauth/mcpauth.go` (asynchronous; the URL is always printed).
+Where there is somewhere to type — plainio on a terminal — a callback that
+never arrives falls back to printing the manual
+`:mcp_confirm`/`:mcp_decline` commands; where there is not — plainio on
+piped stdin, and terseio always — the server is declined instead, so MCP
+init settles. rawio delegates the whole flow to the controlling process.
 
 ### Model Sync
 

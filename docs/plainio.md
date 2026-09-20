@@ -63,7 +63,12 @@ A blank line separates messages of different types.
 ### MCP Support
 
 MCP servers work the same as in the TUI: configured servers connect at
-startup and their tools (and `tool_confirm` prompts) behave identically.
+startup and their tools (and `tool_confirm` prompts) behave identically. A
+prompt piped into stdin is held until MCP initialization has settled (the
+session's authoritative "ready" frame), so it is not rejected with
+`MCP_NOT_READY`; on a terminal a prompt is submitted immediately (an early
+one is rejected and can be retyped). Commands (`:mcp_cancel`, `:quit`, …)
+are never held.
 When a server requires OAuth authorization, plainio prints the
 authorization URL, starts a local callback server, and opens the browser
 automatically — once you authorize, the code is submitted for you. If
@@ -71,6 +76,14 @@ the browser doesn't open, visit the printed URL and type
 `:mcp_confirm <server> <code> <redirect_uri>`; use `:mcp_decline
 <server>` to skip a server or `:mcp_cancel` to abort MCP init. See
 [OAuth](oauth.md) for the full flow.
+
+> ⚠️ **Piped stdin cannot type a code.** When the automatic callback does
+> not arrive (the browser could not be opened, or the 5-minute wait timed
+> out) and stdin is not a terminal, plainio **declines** the server instead
+> of printing manual commands — there is nothing to type them into. MCP
+> init then settles and your prompt runs without that server's tools.
+> Manual `:mcp_confirm`/`:mcp_decline` instructions are only printed on a
+> terminal.
 
 > 💡 **Just want the final answer?** Use `--terseio` instead — it reads all
 > of stdin as one prompt (or one command if it starts with `:`) and prints

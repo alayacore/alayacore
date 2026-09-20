@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -53,6 +54,22 @@ type answerOutput struct {
 	// only) and the stale buffer from an earlier message must NOT print.
 	// Protected by mu.
 	lastMsgHasText bool
+
+	// ready is marked by the session's authoritative SM "session" frame
+	// (state "ready"). The adapter's input feeder waits on it before
+	// submitting the prompt so a piped prompt cannot be rejected with
+	// MCP_NOT_READY.
+	ready *app.ReadySignal
+
+	// MCP hooks, injected by the adapter. mcpAuthRequired starts the
+	// automatic OAuth flow for a server; onMCPConnected stops a flow whose
+	// server connected by another path; onMCPDone stops every flow when MCP
+	// init settles. They are invoked from inside handleSystemMsg (under
+	// mu), so they must not block: mcpauth.Flow's methods only do
+	// bookkeeping and hand off to their own goroutines.
+	mcpAuthRequired func(server, url string)
+	onMCPConnected  func(server string)
+	onMCPDone       func()
 }
 
 func newAnswerOutput(stdout, stderr io.Writer) *answerOutput {
@@ -60,7 +77,20 @@ func newAnswerOutput(stdout, stderr io.Writer) *answerOutput {
 		stdout:  stdout,
 		stderr:  stderr,
 		errorCh: make(chan struct{}),
+		ready:   app.NewReadySignal(),
 	}
+}
+
+// Ready returns a channel closed once the session signals readiness.
+func (o *answerOutput) Ready() <-chan struct{} { return o.ready.Wait() }
+
+// diagnostic writes a fully formatted progress line to stderr under the
+// output lock, so the MCP auth goroutine and the frame parser cannot
+// interleave a line.
+func (o *answerOutput) diagnostic(format string, args ...any) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	fmt.Fprintf(o.stderr, format, args...)
 }
 
 // Write parses and buffers complete TLV frames from p.
@@ -261,6 +291,8 @@ func (o *answerOutput) bufferFinalText(id, content string) {
 //     answer is never printed), exit-code machinery triggered.
 //   - notify: rendered to stderr (diagnostics must not pollute stdout).
 //   - task: on the in_progress true→false edge, the final answer is flushed.
+//
+//nolint:gocyclo // dispatch over system message types; each case is simple
 func (o *answerOutput) handleSystemMsg(value string) {
 	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
@@ -299,5 +331,64 @@ func (o *answerOutput) handleSystemMsg(value string) {
 			}
 			o.inProgress.Store(m.InProgress)
 		}
+	case protocol.MsgTypeMCP:
+		o.handleSystemMCP(env.Data)
+	case protocol.MsgTypeSession:
+		// The authoritative "ready to accept prompts" frame. state "ready"
+		// is the wire value of SessionReady and is sent exactly once.
+		var m struct {
+			State string `json:"state"`
+		}
+		if json.Unmarshal(env.Data, &m) == nil && m.State == "ready" && o.ready != nil {
+			o.ready.Mark()
+		}
 	}
+}
+
+// handleSystemMCP processes an "mcp" system message — MCP init progress.
+// Progress goes to stderr (stdout stays a pure answer channel);
+// "auth_required" starts the adapter-injected automatic OAuth flow, and
+// "connected"/"done" stop flows that are no longer needed.
+func (o *answerOutput) handleSystemMCP(data json.RawMessage) {
+	var m struct {
+		Status string `json:"status"`
+		Server string `json:"server,omitempty"`
+		URL    string `json:"url,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}
+	if json.Unmarshal(data, &m) != nil {
+		return
+	}
+	switch m.Status {
+	case "connecting":
+		o.mcpStatus("connecting %q", m.Server)
+	case "connected":
+		o.mcpStatus("connected %q", m.Server)
+		if o.onMCPConnected != nil {
+			o.onMCPConnected(m.Server)
+		}
+	case "failed":
+		o.mcpStatus("failed %q: %s", m.Server, m.Error)
+	case "auth_required":
+		if m.Server == "" {
+			return
+		}
+		o.mcpStatus("server %q requires authorization", m.Server)
+		if o.mcpAuthRequired != nil {
+			o.mcpAuthRequired(m.Server, m.URL)
+		}
+	case "auth_running":
+		o.mcpStatus("waiting for authorization for %q…", m.Server)
+	case "done":
+		// Natural completion, or :mcp_cancel — stop any running flow.
+		if o.onMCPDone != nil {
+			o.onMCPDone()
+		}
+	}
+}
+
+// mcpStatus writes one MCP progress line to stderr. Called under o.mu
+// (from handleSystemMsg).
+func (o *answerOutput) mcpStatus(format string, args ...any) {
+	fmt.Fprintf(o.stderr, "\n[mcp: "+format+"]\n", args...)
 }

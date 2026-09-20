@@ -5,6 +5,7 @@ package terseio
 // print ONLY the final answer.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,10 +13,15 @@ import (
 	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/app"
+	"github.com/alayacore/alayacore/internal/mcpauth"
 )
 
 // Compile-time check: Adapter satisfies app.Adapter.
 var _ app.Adapter = (*Adapter)(nil)
+
+// errSessionClosed is returned by the input gate when the session ends
+// before it signals readiness.
+var errSessionClosed = errors.New("session closed")
 
 // Adapter reads all of stdin as a single prompt — or a single command
 // (":continue", ":save /tmp/x", ...) — and prints only the final
@@ -40,11 +46,36 @@ func NewAdapter(cfg *app.Config) *Adapter {
 // if it starts with ":", as a single command (":continue", ":save", ...;
 // see input.go). Command errors go to stderr and set exit code 1, just
 // like session errors.
+//
 // stdout receives ONLY the final assistant text; errors and notifications
 // go to stderr. --tool-confirm is rejected at startup (see main.go), so no
 // tool_confirm frames can arrive and no interactive channel is needed.
+//
+// MCP OAuth is handled automatically: the adapter starts the callback
+// server, opens the browser, and submits the code itself (mcpauth). A
+// server whose automatic authorization cannot complete is declined (there
+// is no one to type a code), so MCP init still settles and the prompt runs
+// without that server's tools.
 func (a *Adapter) Start() int {
 	output := newAnswerOutput(os.Stdout, os.Stderr)
+
+	// MCP OAuth flow. The TLV input writer is attached after StartSession
+	// returns it; the atomic pointer lets the flow's send closure pick it
+	// up without a data race.
+	var inputPtr atomic.Pointer[app.LockedWriter]
+	flow := mcpauth.New(func(cmd string) error {
+		w := inputPtr.Load()
+		if w == nil {
+			return errors.New("input stream not ready")
+		}
+		return writeCommand(w, cmd)
+	}, output.diagnostic)
+	// No interactive channel: leave the flow's default Unresolved policy in
+	// place (decline a server whose automatic authorization fails), so a
+	// stuck authorization always settles instead of hanging the run.
+	output.mcpAuthRequired = flow.Start
+	output.onMCPConnected = flow.Connected
+	output.onMCPDone = flow.Abort
 
 	// Load session.
 	session, inputWriter, err := app.StartSession(a.Config, output, nil)
@@ -52,6 +83,18 @@ func (a *Adapter) Start() int {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
+
+	// input serializes writes to the session's TLV input stream: the stdin
+	// goroutine and the MCP OAuth flow both write to the same pipe, so TLV
+	// frames must never interleave.
+	input := app.NewLockedWriter(inputWriter)
+	inputPtr.Store(input)
+
+	// feedCtx aborts a prompt waiting for the ready frame when Ctrl-C
+	// arrives; the session cannot be reached otherwise (there is no task to
+	// cancel yet).
+	feedCtx, feedCancel := context.WithCancel(context.Background())
+	defer feedCancel()
 
 	// Ctrl-C (SIGINT) cancels the running task via the session's
 	// CancelTask — NOT by writing a :cancel CI frame to the TLV input
@@ -75,23 +118,14 @@ func (a *Adapter) Start() int {
 		signal.Stop(sigCh)
 		close(sigCh)
 	}()
-	go func() {
-		for {
-			select {
-			case _, ok := <-sigCh:
-				if !ok {
-					return
-				}
-				sigint.Store(true)
-				session.CancelTask()
-				// Unblock a pending io.ReadAll on stdin.
-				os.Stdin.Close()
-			case <-session.Done():
-				// Session is gone; nothing left to cancel.
-				return
-			}
-		}
-	}()
+	go app.WatchSignals(sigCh, session.Done(), func() {
+		sigint.Store(true)
+		session.CancelTask()
+		// Unblock a prompt waiting for the ready frame, and a pending
+		// io.ReadAll on stdin.
+		feedCancel()
+		os.Stdin.Close()
+	})
 
 	exitCh := make(chan int, 1)
 
@@ -99,8 +133,20 @@ func (a *Adapter) Start() int {
 	// (EOF). terseio never needs further input — tool confirmations are
 	// impossible (the --tool-confirm conflict is rejected in main.go) —
 	// so closing early is safe and lets the session's run() loop finish.
+	// The prompt waits for the session's ready frame first; closing before
+	// then would let run() exit while MCP init is still in flight, and a
+	// prompt sent during init is rejected with MCP_NOT_READY.
 	go func() {
-		err := readAllPrompt(inputWriter, os.Stdin)
+		err := readAllPrompt(input, os.Stdin, func() error {
+			select {
+			case <-output.Ready():
+				return nil
+			case <-feedCtx.Done():
+				return feedCtx.Err()
+			case <-session.Done():
+				return errSessionClosed
+			}
+		})
 		inputWriter.Close()
 		code := 0
 		if err != nil && !errors.Is(err, errQuitPrompt) {

@@ -85,6 +85,30 @@ alayacore --terseio --session my-convo.alaya <<< ":save backup.alaya"
 > conflict is rejected at startup with exit code `2`. Use `--plainio`
 > if you need interactive tool confirmation.
 
+## MCP
+
+Configured MCP servers connect at startup, exactly as in the TUI and
+plainio. The one prompt (or command) waits for the session's authoritative
+"ready" frame — emitted once MCP initialization has settled — before it is
+sent, so a piped prompt is never rejected with `MCP_NOT_READY`.
+
+When a server requires OAuth authorization, terseio runs the same automatic
+callback flow as plainio (shared code): it starts a loopback callback
+server, opens the browser, and submits the authorization code itself. No
+stdin is needed, which is what makes the flow work in a pipe. MCP progress
+and the authorization URL are written to **stderr** (stdout stays a pure
+answer channel).
+
+A server whose automatic authorization does not complete — the browser
+could not be opened, or the callback wait timed out after 5 minutes — is
+**declined**: terseio has nowhere to type a code, and leaving the server
+pending would hang initialization forever. MCP init then settles and the
+prompt runs without that server's tools. The session reports the declined
+server as an MCP failure, which — like any SM error — sets exit code `1`
+and discards the buffered answer; remove authorization-protected servers
+from `mcp.conf`, or use `--plainio` on a terminal, if a run must not depend
+on a browser. `Ctrl-C` during the wait aborts the run (exit `130`).
+
 ## Differences from `--plainio`
 
 | | `--plainio` | `--terseio` |
@@ -93,7 +117,7 @@ alayacore --terseio --session my-convo.alaya <<< ":save backup.alaya"
 | stdout | full transcript: prompts, reasoning, tool JSON, results | final answer only |
 | errors | printed to stdout, never affect exit code | printed to stderr; session **and command** errors set exit code 1 |
 | tool confirmations | interactive (`:tool_confirm <id>` / `:tool_decline <id>`) | rejected at startup (`--tool-confirm` conflict) |
-| MCP OAuth authorization | automatic (callback server + browser) with manual fallback | not supported — prompts are rejected (`MCP_NOT_READY`) while authorization is pending; use `--plainio` for OAuth-protected servers |
+| MCP OAuth authorization | automatic (callback server + browser) with manual fallback | automatic (callback server + browser), shared with plainio; a server that cannot be authorized automatically is declined (there is nowhere to type a code) |
 | commands (`:save`, `:continue`, ...) | any line starting with `:` is a command | whole stdin starting with `:` is one command |
 
 ## Examples

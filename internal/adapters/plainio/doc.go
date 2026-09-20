@@ -1,8 +1,9 @@
 // Package plainio provides a plain stdin/stdout adapter for AlayaCore.
 //
 // It reads user prompts from stdin (one per newline) and prints assistant
-// messages to stdout. No terminal features (ANSI codes, TTY detection, etc.)
-// are used — just plain IO.
+// messages to stdout. Rendering uses no terminal features (ANSI codes, TTY
+// detection, etc.) — just plain IO. TTY-ness of stdin is consulted only to
+// choose the MCP OAuth fallback policy (see below).
 //
 // Activate with the --plainio flag.
 //
@@ -54,15 +55,28 @@
 // MCP support:
 //   - MCP servers connect at startup and their tools behave like built-in
 //     tools (including tool_confirm prompts).
+//   - A prompt from a pipe is held until the session emits its
+//     authoritative "ready" frame (replay + MCP init complete). This is
+//     what makes a piped prompt work: without it the prompt races MCP init
+//     and is rejected with MCP_NOT_READY, and the pipe's EOF then ends the
+//     session before it can retry. On a terminal the prompt is submitted
+//     immediately instead — an early prompt is rejected with MCP_NOT_READY
+//     and can simply be retyped, while gating it would deadlock the manual
+//     :mcp_confirm fallback (the reader would be parked and could not type
+//     the code). Commands are never held on either path, so :mcp_cancel /
+//     :quit still work during init.
 //   - When a server requires OAuth authorization, plainio prints the URL,
 //     starts a local callback server (internal/platform), opens the
 //     browser, and sends ":mcp_confirm <server> <code> <redirect_uri>"
 //     automatically once the code arrives — one concurrent flow per
-//     server, since MCP servers initialize in parallel. The manual
-//     fallback commands (:mcp_confirm/:mcp_decline/:mcp_cancel) are
-//     printed where they are needed — a browser that could not be opened,
-//     or the callback wait timing out after 5 minutes — not up front; see
-//     mcp.go for why. See docs/oauth.md for the full flow.
+//     server, since MCP servers initialize in parallel. The flow is shared
+//     with terseio (internal/mcpauth).
+//   - Fallback when the automatic callback does not arrive (browser could
+//     not be opened, or the 5-minute wait timed out): on a terminal the
+//     manual :mcp_confirm/:mcp_decline commands are printed for the user to
+//     type; with piped stdin there is nothing to type into, so the server
+//     is declined instead (MCP init then settles and the prompt runs
+//     without that server's tools). See docs/oauth.md for the full flow.
 //
 // Communication with the session layer uses the same TLV protocol as the
 // terminal, terseio, and rawio adapters.
@@ -71,5 +85,4 @@
 //   - adapter.go: Adapter struct, Start() entry point
 //   - input.go: Stdin line reader with backslash continuation
 //   - output.go: TLV parser and plain-text renderer
-//   - mcp.go: MCP OAuth authorization flows
 package plainio

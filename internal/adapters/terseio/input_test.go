@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -14,7 +15,7 @@ import (
 
 func TestReadAllPrompt_MultiLine(t *testing.T) {
 	var buf bytes.Buffer
-	err := readAllPrompt(&buf, strings.NewReader("line one\nline two\n\n"))
+	err := readAllPrompt(&buf, strings.NewReader("line one\nline two\n\n"), nil)
 	if err != nil {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
@@ -37,7 +38,7 @@ func TestReadAllPrompt_MultiLine(t *testing.T) {
 
 func TestReadAllPrompt_SingleLineNoNewline(t *testing.T) {
 	var buf bytes.Buffer
-	err := readAllPrompt(&buf, strings.NewReader("single line"))
+	err := readAllPrompt(&buf, strings.NewReader("single line"), nil)
 	if err != nil {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
@@ -49,7 +50,7 @@ func TestReadAllPrompt_SingleLineNoNewline(t *testing.T) {
 
 func TestReadAllPrompt_EmptyInput(t *testing.T) {
 	var buf bytes.Buffer
-	if err := readAllPrompt(&buf, strings.NewReader("\n\n")); err != nil {
+	if err := readAllPrompt(&buf, strings.NewReader("\n\n"), nil); err != nil {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
 	if buf.Len() != 0 {
@@ -59,7 +60,7 @@ func TestReadAllPrompt_EmptyInput(t *testing.T) {
 
 func TestReadAllPrompt_Command(t *testing.T) {
 	var buf bytes.Buffer
-	err := readAllPrompt(&buf, strings.NewReader(":save /tmp/x.alaya\n"))
+	err := readAllPrompt(&buf, strings.NewReader(":save /tmp/x.alaya\n"), nil)
 	if err != nil {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
@@ -95,7 +96,7 @@ func TestReadAllPrompt_CommandMultiLine(t *testing.T) {
 	// The WHOLE input is the command; a newline is just another separator
 	// between the name and the argument text.
 	var buf bytes.Buffer
-	err := readAllPrompt(&buf, strings.NewReader(":save\n/tmp/x.alaya\n"))
+	err := readAllPrompt(&buf, strings.NewReader(":save\n/tmp/x.alaya\n"), nil)
 	if err != nil {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
@@ -118,7 +119,7 @@ func TestReadAllPrompt_CommandMultiLine(t *testing.T) {
 
 func TestReadAllPrompt_CommandNoArgs(t *testing.T) {
 	var buf bytes.Buffer
-	err := readAllPrompt(&buf, strings.NewReader(":continue\n"))
+	err := readAllPrompt(&buf, strings.NewReader(":continue\n"), nil)
 	if err != nil {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
@@ -140,12 +141,85 @@ func TestReadAllPrompt_Quit(t *testing.T) {
 	// :quit / :q are transport-level controls — clean exit, nothing sent.
 	for _, input := range []string{":quit", ":q", ":quit\n", ":q\n"} {
 		var buf bytes.Buffer
-		err := readAllPrompt(&buf, strings.NewReader(input))
+		err := readAllPrompt(&buf, strings.NewReader(input), nil)
 		if !errors.Is(err, errQuitPrompt) {
 			t.Errorf("readAllPrompt(%q) error = %v, want errQuitPrompt", input, err)
 		}
 		if buf.Len() != 0 {
 			t.Errorf("readAllPrompt(%q) wrote %d bytes, want 0", input, buf.Len())
 		}
+	}
+}
+
+// frameCapture collects TLV frames written from a goroutine; a channel is
+// used because the test reads while the reader goroutine writes.
+type frameCapture struct{ ch chan string }
+
+func (c *frameCapture) Write(p []byte) (int, error) {
+	c.ch <- string(p)
+	return len(p), nil
+}
+
+// A prompt waits at the gate before it is written, so a piped prompt
+// cannot reach the session before MCP init settles.
+func TestReadAllPrompt_PromptWaitsForGate(t *testing.T) {
+	cap := &frameCapture{ch: make(chan string, 4)}
+	released := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- readAllPrompt(cap, strings.NewReader("hello\n"), func() error {
+			<-released
+			return nil
+		})
+	}()
+
+	select {
+	case frame := <-cap.ch:
+		t.Fatalf("prompt written before the gate released: %q", frame)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(released)
+	for _, want := range []string{tlv.TagUserT, tlv.TagUserEnd} {
+		select {
+		case frame := <-cap.ch:
+			if tag := frame[:2]; tag != want {
+				t.Fatalf("frame tag = %q, want %q", tag, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("frame %q not written after the gate released", want)
+		}
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("readAllPrompt() error = %v", err)
+	}
+}
+
+// A command bypasses the gate: the whole stdin is one command, and
+// commands like :mcp_cancel exist to steer an initializing session.
+func TestReadAllPrompt_CommandBypassesGate(t *testing.T) {
+	var buf bytes.Buffer
+	gateErr := errors.New("blocked")
+
+	err := readAllPrompt(&buf, strings.NewReader(":cancel\n"), func() error { return gateErr })
+	if err != nil {
+		t.Fatalf("command must bypass the gate, got %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("command frame expected")
+	}
+}
+
+// A gate error stops the feed without writing the prompt.
+func TestReadAllPrompt_GateErrorStopsFeed(t *testing.T) {
+	var buf bytes.Buffer
+	gateErr := errors.New("session closed")
+
+	err := readAllPrompt(&buf, strings.NewReader("hello\n"), func() error { return gateErr })
+	if !errors.Is(err, gateErr) {
+		t.Fatalf("readAllPrompt() error = %v, want %v", err, gateErr)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("prompt written despite gate error: %q", buf.String())
 	}
 }

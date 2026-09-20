@@ -157,7 +157,7 @@ func TestTerseOutput_ErrorGoesToStderrAndDiscardsAnswer(t *testing.T) {
 func TestTerseOutput_CommandError_GoesToStderrAndSetsExitCode(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
-	o.Write(cmdResultMsg("terse-1", protocol.CmdError{Code: "UNKNOWN_COMMAND", Message: "unknown command: foo"}, true))
+	o.Write(cmdResultMsg("co-err", protocol.CmdError{Code: "UNKNOWN_COMMAND", Message: "unknown command: foo"}, true))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())
@@ -178,9 +178,12 @@ func TestTerseOutput_CommandError_GoesToStderrAndSetsExitCode(t *testing.T) {
 func TestTerseOutput_CommandSuccess_SaveRendered(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
-	// Correlate the CI the adapter sent: id → CommandNameSave.
-	commandNames.Store("terse-7", commands.CommandNameSave)
-	o.Write(cmdResultMsg("terse-7", map[string]any{"path": "/tmp/x.alaya"}, false))
+	// Correlate the CI the adapter sent: id → CommandNameSave. The id uses
+	// a prefix writeCommand never generates ("terse-N"), so it cannot
+	// collide with the package-global command tracking the input tests
+	// drive.
+	commandNames.Store("co-save", commands.CommandNameSave)
+	o.Write(cmdResultMsg("co-save", map[string]any{"path": "/tmp/x.alaya"}, false))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())
@@ -197,8 +200,8 @@ func TestTerseOutput_CommandSuccess_SelfEvidentSilent(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
 	// :continue — the final answer on stdout is the feedback, not the CO.
-	commandNames.Store("terse-8", commands.CommandNameContinue)
-	o.Write(cmdResultMsg("terse-8", map[string]any{"status": "started"}, false))
+	commandNames.Store("co-continue", commands.CommandNameContinue)
+	o.Write(cmdResultMsg("co-continue", map[string]any{"status": "started"}, false))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())
@@ -212,7 +215,7 @@ func TestTerseOutput_CommandSuccess_UnknownNameSilent(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
 	// No CI correlation (or unknown command name) — stay silent.
-	o.Write(cmdResultMsg("terse-9", map[string]any{"ok": true}, false))
+	o.Write(cmdResultMsg("co-unknown", map[string]any{"ok": true}, false))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())
@@ -350,4 +353,92 @@ func parseTLVFrames(t *testing.T, data []byte) []tlvFrame {
 		t.Fatalf("trailing %d bytes after TLV frames", len(data))
 	}
 	return frames
+}
+
+// sessionMsg builds an SM "session" frame.
+func sessionMsg(state string) []byte {
+	payload, _ := json.Marshal(protocol.SystemMsgEnvelope{
+		Type: string(protocol.MsgTypeSession),
+		Data: json.RawMessage(fmt.Sprintf(`{"state":%q}`, state)),
+	})
+	return encodeTestTLV(tlv.TagSystemMsg, string(payload))
+}
+
+// mcpMsg builds an SM "mcp" frame.
+func mcpMsg(status, server, url, errText string) []byte {
+	payload, _ := json.Marshal(protocol.SystemMsgEnvelope{
+		Type: string(protocol.MsgTypeMCP),
+		Data: json.RawMessage(fmt.Sprintf(`{"status":%q,"server":%q,"url":%q,"error":%q}`,
+			status, server, url, errText)),
+	})
+	return encodeTestTLV(tlv.TagSystemMsg, string(payload))
+}
+
+// Only the authoritative "session" frame with state "ready" opens the gate.
+func TestTerseOutput_SessionReadyMarksReady(t *testing.T) {
+	o, _, _ := newTestOutput()
+
+	o.Write(sessionMsg("initializing"))
+	select {
+	case <-o.Ready():
+		t.Fatal("Ready() marked by a non-ready session frame")
+	default:
+	}
+
+	o.Write(sessionMsg("ready"))
+	select {
+	case <-o.Ready():
+	default:
+		t.Fatal("Ready() not marked by the session ready frame")
+	}
+
+	// Idempotent: a second ready frame must not panic.
+	o.Write(sessionMsg("ready"))
+}
+
+// MCP progress goes to stderr; stdout stays a pure answer channel.
+func TestTerseOutput_MCPProgressGoesToStderr(t *testing.T) {
+	o, out, errBuf := newTestOutput()
+
+	o.Write(mcpMsg("connecting", "github", "", ""))
+	o.Write(mcpMsg("connected", "github", "", ""))
+	o.Write(mcpMsg("failed", "vercel", "", "boom"))
+
+	if out.String() != "" {
+		t.Errorf("stdout = %q, want empty", out.String())
+	}
+	for _, want := range []string{`connecting "github"`, `connected "github"`, `failed "vercel": boom`} {
+		if !strings.Contains(errBuf.String(), want) {
+			t.Errorf("stderr = %q, want %q", errBuf.String(), want)
+		}
+	}
+}
+
+// "auth_required" hands off to the injected OAuth flow; "connected" and
+// "done" stop flows that are no longer needed.
+func TestTerseOutput_MCPHooks(t *testing.T) {
+	o, _, errBuf := newTestOutput()
+	var authServer, authURL, connectedServer string
+	var done int
+	o.mcpAuthRequired = func(server, url string) { authServer, authURL = server, url }
+	o.onMCPConnected = func(server string) { connectedServer = server }
+	o.onMCPDone = func() { done++ }
+
+	o.Write(mcpMsg("auth_required", "github", "https://example.com/authorize", ""))
+	if authServer != "github" || authURL != "https://example.com/authorize" {
+		t.Errorf("mcpAuthRequired(%q, %q), want github + URL", authServer, authURL)
+	}
+	if !strings.Contains(errBuf.String(), `requires authorization`) {
+		t.Errorf("stderr = %q, want the authorization notice", errBuf.String())
+	}
+
+	o.Write(mcpMsg("connected", "github", "", ""))
+	if connectedServer != "github" {
+		t.Errorf("onMCPConnected(%q), want github", connectedServer)
+	}
+
+	o.Write(mcpMsg("done", "", "", ""))
+	if done != 1 {
+		t.Errorf("onMCPDone called %d times, want 1", done)
+	}
 }

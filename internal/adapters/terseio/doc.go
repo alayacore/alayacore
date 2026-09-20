@@ -20,6 +20,19 @@
 //     text (e.g. reasoning-only or tool-call-only), stdout is empty.
 //   - stderr: errors ("[error: ...]"), notifications ("[...]"), and
 //     informative command results (e.g. ":save" → "Session saved to ...").
+//     MCP init progress ("[mcp: ...]") is written here too — stdout stays a
+//     pure answer channel.
+//   - MCP OAuth is automatic (shared with plainio via internal/mcpauth):
+//     the adapter starts the callback server, opens the browser, and
+//     submits the code itself — no stdin is needed. A server whose
+//     automatic authorization does not complete (browser could not be
+//     opened, or the 5-minute wait timed out) is DECLINED, since terseio
+//     has nowhere to type a code; MCP init then settles and the prompt runs
+//     without that server's tools. The session reports the declined server
+//     as an MCP failure, which — like any SM error — sets exit code 1.
+//   - The prompt waits for the session's authoritative "ready" frame before
+//     it is sent (MCP init complete), so a piped prompt is not rejected
+//     with MCP_NOT_READY. A command bypasses the wait.
 //   - --tool-confirm is REJECTED at startup (main.go): terseio consumes
 //     stdin, so tool confirmations could never be answered. With the
 //     conflict rejected, tool_confirm frames cannot arrive and no
@@ -31,8 +44,9 @@
 //     processes, which never receive the terminal's SIGINT) is aborted
 //     cleanly, the buffered answer is discarded, and the process exits
 //     130 (128+SIGINT) so scripts still detect the interruption. SIGINT
-//     during the stdin read phase aborts the read; SIGINT after the task
-//     finished only forces the exit code.
+//     during the stdin read phase, or while the prompt waits for the ready
+//     frame, aborts the read/wait; SIGINT after the task finished only
+//     forces the exit code.
 //   - --session works: the conversation is persisted; intermediate content
 //     (tool calls, reasoning) is saved to the session file once the task
 //     completes even though it is never printed.

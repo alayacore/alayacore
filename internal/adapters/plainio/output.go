@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -53,14 +54,24 @@ type stdoutOutput struct {
 	mcpAuthRequired func(server, url string)
 	onMCPConnected  func(server string)
 	onMCPDone       func()
+
+	// ready is marked by the session's authoritative SM "session" frame
+	// (state "ready"): replay and MCP init are complete and prompts are
+	// accepted. The adapter's input feeder waits on it before submitting a
+	// prompt so a piped prompt cannot be rejected with MCP_NOT_READY.
+	ready *app.ReadySignal
 }
 
 func newStdoutOutput() *stdoutOutput {
 	return &stdoutOutput{
 		writer:    os.Stdout,
 		seenDelta: make(map[string]bool),
+		ready:     app.NewReadySignal(),
 	}
 }
+
+// Ready returns a channel closed once the session signals readiness.
+func (o *stdoutOutput) Ready() <-chan struct{} { return o.ready.Wait() }
 
 func (o *stdoutOutput) Write(p []byte) (int, error) {
 	o.mu.Lock()
@@ -327,6 +338,8 @@ func (o *stdoutOutput) emitSeparator(tag string) {
 // handleSystemMsg processes a TagSystemMsg frame.
 // Handles error, notify, task, and tool_confirm system messages.
 // Task completion transitions print a trailing blank line between tasks.
+//
+//nolint:gocyclo // dispatch over system message types; each case is simple
 func (o *stdoutOutput) handleSystemMsg(value string) {
 	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
@@ -376,6 +389,17 @@ func (o *stdoutOutput) handleSystemMsg(value string) {
 
 	case protocol.MsgTypeMCP:
 		o.handleSystemMCP(env.Data)
+
+	case protocol.MsgTypeSession:
+		// The authoritative "ready to accept prompts" frame (see the
+		// agent's sessionMsg). state "ready" is the wire value of
+		// SessionReady and is sent exactly once.
+		var m struct {
+			State string `json:"state"`
+		}
+		if json.Unmarshal(env.Data, &m) == nil && m.State == "ready" && o.ready != nil {
+			o.ready.Mark()
+		}
 	}
 }
 
@@ -439,4 +463,26 @@ func (o *stdoutOutput) printLine(format string, args ...any) {
 	fmt.Fprintf(o.writer, format, args...)
 	o.lastTag = ""
 	o.lastHistoryID = ""
+}
+
+// printManualFallback prints the out-of-band way to finish — or skip — an
+// authorization whose automatic callback did not arrive. reason is the
+// trigger, already worded for the bracket line.
+//
+// The confirm command is printed bare, without the "[mcp: …]" wrapper, for
+// the same reason the authorization URL above it is: it exists to be
+// selected and typed, and a wrapper would be copied along with it. The
+// redirect URI is spelled out rather than shown as a "<redirect_uri>"
+// placeholder: the flow knows the exact value it substituted into the URL,
+// so transcribing it out of a percent-encoded query string is work this
+// message can do for free. That leaves <code> as the only thing to fill in.
+//
+// This is only reachable on an interactive stdin (plainio's Unresolved
+// policy declines instead when stdin is not a terminal) — there must be
+// somewhere to type before a "to finish by hand" hint is honest.
+func (o *stdoutOutput) printManualFallback(serverName, redirectURI, reason string) {
+	o.printLine("\n[mcp: %s]\n", reason)
+	o.printLine("[mcp: to finish by hand (code = the ?code= value in the redirect URL), type:]\n")
+	o.printLine(":%s %s <code> %s\n", commands.CommandNameMCPConfirm, serverName, redirectURI)
+	o.printLine("[mcp: to skip this server: :%s %s]\n", commands.CommandNameMCPDecline, serverName)
 }
