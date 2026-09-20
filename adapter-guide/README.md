@@ -485,8 +485,10 @@ The **semantics** of the history ID differ by tag type:
 
 5. **Output stream broken**: On the first write error to stdout, the agent
    cancels the session context and stops processing. No further frames are
-   sent. The adapter will see EOF on stdout and should handle it gracefully
-   (e.g. close the connection, show a notification).
+   sent — not even the terminal `closed` frame, since writing it is what failed
+   — so in this one case the adapter must read the end of stdout as the end of
+   the session instead of waiting for that frame. Handle it gracefully (e.g.
+   close the connection, show a notification).
 
 6. **Missing UF**: A tool call (AF) without a matching UF is still in progress.
    If the session ends before all tool calls complete, pending tool calls are
@@ -587,6 +589,7 @@ UV-video.bin                   UV data:video/mp4;base64,...
 UV-video-url.bin               UV https://...
 UD-document.bin                UD data:application/pdf;base64,...
 UE.bin                         UE "" (length 0)
+CE.bin                         CE "" (length 0) — input end: no more prompts, commands may still follow
 CI-cancel.bin                  CI {"id":"1","name":"cancel"}
 CI-save.bin                    CI {"id":"2","name":"save","input":"/tmp/x.alaya"}
 CI-model-sync.bin              CI {"id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
@@ -700,6 +703,13 @@ The `input` is an opaque string whose syntax is defined by each command
 (e.g. `"/tmp/x.alaya"` for `save`, `"3"` for `model_set`). The adapter does
 not need to understand command semantics — it only splits the human-facing
 text into name + input.
+
+The command vocabulary — every name, its arguments, and its result — is listed
+in [commands.md](../docs/commands.md); this chapter documents how a command
+travels, not which ones exist. For a client with no built-in adapter, two matter
+most: `cancel` stops the task in flight, and `quit` ends the session, letting a
+task that is already running finish first (the [session lifecycle
+signal](#session-lifecycle-signal) is what follows).
 
 Every CI frame receives exactly one **CO** (Command Output) frame, echoing
 the same `id`:

@@ -160,7 +160,8 @@ func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 		tlv.TagAssistantR: true, tlv.TagAssistantT: true, tlv.TagAssistantF: true,
 		tlv.TagUserT: true, tlv.TagUserF: true, tlv.TagUserI: true, tlv.TagUserV: true,
 		tlv.TagUserA: true, tlv.TagUserD: true, tlv.TagUserEnd: true,
-		tlv.TagCommandIn: true, tlv.TagCommandOut: true, tlv.TagSystemMsg: true,
+		tlv.TagCommandIn: true, tlv.TagCommandOut: true, tlv.TagInputEnd: true,
+		tlv.TagSystemMsg:       true,
 		tlv.TagAssistantRDelta: true, tlv.TagAssistantTDelta: true,
 		tlv.TagAssistantFDelta: true, tlv.TagUserFDelta: true,
 	}

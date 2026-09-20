@@ -4,9 +4,12 @@ package agent
 //
 // The run() goroutine owns all mutable state. It processes events from
 // the input pump, the task goroutine, and system info requests.
-// There is no task queue — prompts and LLM-requiring commands run
-// immediately in a task goroutine.  Input during a running task is
-// rejected.
+//
+// There is no task queue: one task runs at a time, and a prompt that arrives
+// while one is in flight is refused (BUSY) rather than parked. The one prompt
+// that *is* held is one that arrives before the session is ready (MCP init still
+// running) — it waits in a single slot, because a client cannot see that stage
+// and one at EOF has no way to send the prompt again (see submitPrompt).
 //
 // Extracted from session_task.go to separate concerns:
 //   - session_task.go:        prompt processing, agent loop, auto-summarization

@@ -35,7 +35,7 @@ func TestFoldConfirmChangesStateInSameUpdate(t *testing.T) {
 		t.Fatal("confirming quit did not set the quitting state in the same fold")
 	}
 	if cmd == nil {
-		t.Fatal("confirming quit must still yield the I/O it implies (close + quit)")
+		t.Fatal("confirming quit must still yield the I/O it implies (the quit command)")
 	}
 }
 

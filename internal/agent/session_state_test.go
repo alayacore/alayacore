@@ -5,7 +5,8 @@ package agent
 //
 // The lifecycle is: Starting (construction; load + replay complete by
 // definition) → Initializing (run() started, MCP init pending) → Ready
-// (MCP init settled: done / canceled / aborted, or never configured).
+// (MCP init settled: done / canceled / aborted, or never configured) →
+// Closed (run() returning; the terminal state, broadcast as the last frame).
 // Agent/provider creation is lazy and NOT part of this state.
 
 import (

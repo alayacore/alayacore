@@ -10,9 +10,10 @@
 // Input rules:
 //   - Each line is read as a prompt.
 //   - A trailing backslash (\) before newline continues the prompt on the next line.
-//   - There is no task queue — only one prompt is processed per invocation.
-//     If stdin contains multiple prompts, only the first is executed; the
-//     rest are rejected while the first is running.
+//   - There is no task queue: prompts run one at a time, and a prompt that
+//     arrives while one is in flight is refused. On a pipe that means only the
+//     first prompt of a multi-line stdin is executed; interactively you can keep
+//     typing (the refusals are listed in docs/plainio.md).
 //   - :quit / :q stops reading input; the program waits for any running
 //     task, then exits with code 0.
 //   - Ctrl-D (EOF) closes input; the program waits for the current task to

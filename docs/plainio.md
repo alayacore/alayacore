@@ -4,7 +4,10 @@
 
 ## Input
 
-- Each line from stdin is treated as a separate prompt (one prompt per invocation — see note below)
+- Each line from stdin is treated as a separate prompt, and prompts run one at a
+  time. Interactively that means as many as you care to type; on a **pipe** it
+  means the first one, because the rest arrive while it is still running (see
+  the note below)
 - A trailing backslash (`\`) continues the prompt on the next line:
 
 ```
@@ -31,10 +34,16 @@ prompt that spans two lines.
 
 > **⚠️ One task at a time.** Plain IO processes prompts **one at a time**
 > and has no task queue. If you pipe multiple prompts into stdin, only the
-> **first** one is executed. Subsequent prompts are rejected with:
+> **first** one is executed, because the rest arrive while it is still
+> running. Which refusal you see depends on how far along the session is:
 > ```
+> [error: MCP servers are still initializing or OAuth authorization is pending. Please wait for initialization to complete.]
 > [error: A task is already running. Wait for it to complete or cancel it.]
 > ```
+> The first is the transient one — the session has not finished starting (MCP
+> init) and is already holding the prompt you sent; the second means a task is in
+> flight. Interactively neither is a wall: the prompt you type after a task
+> finishes is accepted normally.
 > For scripting multiple questions, use `--terseio` (one message per
 > invocation) or launch `alayacore --plainio` once per prompt (the process
 > spawn cost is negligible).
@@ -91,9 +100,10 @@ the browser doesn't open, visit the printed URL and type
 
 ## Session Persistence
 
-> ⚠️ Since plain IO only processes **one prompt per invocation**, saving
-> and resuming the conversation across invocations is essential for
-> multi-turn interactions. Use `--session` for this.
+> ⚠️ A **pipe** can send one prompt per invocation (see the note above), so
+> multi-turn *scripting* needs saving and resuming with `--session`. Interactive
+> use keeps the whole conversation in one invocation; the session file is what
+> survives it.
 
 Plain IO can persist conversations using a **session file**, just like the
 TUI mode. The session file records every turn (prompts, assistant replies,
