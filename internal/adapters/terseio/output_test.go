@@ -374,26 +374,22 @@ func mcpMsg(status, server, url, errText string) []byte {
 	return encodeTestTLV(tlv.TagSystemMsg, string(payload))
 }
 
-// Only the authoritative "session" frame with state "ready" opens the gate.
-func TestTerseOutput_SessionReadyMarksReady(t *testing.T) {
-	o, _, _ := newTestOutput()
-
-	o.Write(sessionMsg("initializing"))
-	select {
-	case <-o.Ready():
-		t.Fatal("Ready() marked by a non-ready session frame")
-	default:
-	}
+// Session lifecycle frames are not user content: the adapter renders nothing
+// for them. It does not gate on them any more — the session holds a prompt that
+// arrives before it is ready — so all that must hold is that neither "ready"
+// nor "closed" reaches stdout.
+func TestTerseOutput_SessionFramesAreNotRendered(t *testing.T) {
+	o, stdout, stderr := newTestOutput()
 
 	o.Write(sessionMsg("ready"))
-	select {
-	case <-o.Ready():
-	default:
-		t.Fatal("Ready() not marked by the session ready frame")
-	}
+	o.Write(sessionMsg("closed"))
 
-	// Idempotent: a second ready frame must not panic.
-	o.Write(sessionMsg("ready"))
+	if got := stdout.String(); got != "" {
+		t.Errorf("stdout = %q, want nothing for session frames", got)
+	}
+	if got := stderr.String(); got != "" {
+		t.Errorf("stderr = %q, want nothing for session frames", got)
+	}
 }
 
 // MCP progress goes to stderr; stdout stays a pure answer channel.

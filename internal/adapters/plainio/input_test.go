@@ -18,7 +18,7 @@ func TestReadPrompts_SingleLine(t *testing.T) {
 	var buf bytes.Buffer
 	input := strings.NewReader("hello\n")
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestReadPrompts_MultiLineBackslash(t *testing.T) {
 	var buf bytes.Buffer
 	input := strings.NewReader("first line\\\nsecond line\\\nthird line\n")
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestReadPrompts_TrailingBackslash(t *testing.T) {
 	// Trailing backslash at EOF with no continuation — the backslash
 	// is consumed, leaving "hello" as the accumulated text.
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestReadPrompts_MultipleLines(t *testing.T) {
 	var buf bytes.Buffer
 	input := strings.NewReader("first\nsecond\nthird\n")
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestReadPrompts_EmptyLines(t *testing.T) {
 	var buf bytes.Buffer
 	input := strings.NewReader("hello\n\n\nworld\n")
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestReadPrompts_EOFPartialLine(t *testing.T) {
 	var buf bytes.Buffer
 	input := strings.NewReader("partial prompt")
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestReadPrompts_Command(t *testing.T) {
 	var buf bytes.Buffer
 	input := strings.NewReader(":cancel\n")
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestReadPrompts_CommandWithArgs(t *testing.T) {
 	var buf bytes.Buffer
 	input := strings.NewReader(":save /tmp/x.alaya\n")
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestReadPrompts_QuitCommand(t *testing.T) {
 		// sees errQuitPrompt (a clean exit, code 0) and the session
 		// receives a quit command.
 		input := strings.NewReader("some text\n:" + word + "\nmore text\n")
-		err := readPrompts(&buf, input, nil)
+		err := readPrompts(&buf, input)
 		if !errors.Is(err, errQuitPrompt) {
 			t.Fatalf(":%s: expected errQuitPrompt, got %v", word, err)
 		}
@@ -316,7 +316,7 @@ func TestReadPrompts_QuitCommand(t *testing.T) {
 // answers INVALID_ARGS) and reading continues to EOF.
 func TestReadPrompts_QuitWithArgsIsNotLocalQuit(t *testing.T) {
 	var buf bytes.Buffer
-	if err := readPrompts(&buf, strings.NewReader(":quit foo\n"), nil); err != nil {
+	if err := readPrompts(&buf, strings.NewReader(":quit foo\n")); err != nil {
 		t.Fatalf("readPrompts() error = %v, want nil (EOF)", err)
 	}
 
@@ -369,7 +369,7 @@ func TestReadPrompts_BackslashThenEOF(t *testing.T) {
 	var buf bytes.Buffer
 	input := strings.NewReader("hello\\\n")
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestReadPrompts_ReturnsEOFError(t *testing.T) {
 	var buf bytes.Buffer
 	input := &errorReader{}
 
-	err := readPrompts(&buf, input, nil)
+	err := readPrompts(&buf, input)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -412,78 +412,31 @@ func (r *errorReader) Read(p []byte) (int, error) {
 	return 0, io.ErrUnexpectedEOF
 }
 
-// frameCapture collects TLV frames written by readPrompts from a
-// goroutine; a channel is used because the test reads while the reader
-// goroutine writes.
-type frameCapture struct{ ch chan string }
-
-func (c *frameCapture) Write(p []byte) (int, error) {
-	c.ch <- string(p)
-	return len(p), nil
-}
-
-// TestReadPrompts_GateBlocksPromptButNotCommand pins the contract that
-// makes a piped prompt safe: a prompt waits for the ready gate, while a
-// command is emitted immediately so a user can still steer an
-// initializing session (:mcp_cancel) or leave (:quit).
-func TestReadPrompts_GateBlocksPromptButNotCommand(t *testing.T) {
-	cap := &frameCapture{ch: make(chan string, 8)}
-	released := make(chan struct{})
-
-	errCh := make(chan error, 1)
+// The feed never waits for the session: a prompt that arrives before MCP init
+// has settled is held by the session, which is the only side that can tell
+// whether refusing it would leave the client with no way to retry. Pinned
+// behaviourally: nothing else has to happen for the frames to be written.
+func TestReadPrompts_WritesWithoutWaiting(t *testing.T) {
+	var buf bytes.Buffer
+	done := make(chan error, 1)
 	go func() {
-		errCh <- readPrompts(cap, strings.NewReader(":cancel\nhello\n"), func() error {
-			<-released
-			return nil
-		})
+		done <- readPrompts(&buf, strings.NewReader("hello\n"))
 	}()
 
-	// The command frame is written while the gate is still blocking —
-	// proof that commands bypass it.
 	select {
-	case frame := <-cap.ch:
-		if tag := frame[:2]; tag != tlv.TagCommandIn {
-			t.Fatalf("first frame tag = %q, want CI (command bypasses the gate)", tag)
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("readPrompts() error = %v", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("command frame was not emitted before the gate released")
+		t.Fatal("readPrompts() blocked: the feed must not wait for the session")
 	}
 
-	// The prompt is blocked at the gate: nothing else is written.
-	select {
-	case frame := <-cap.ch:
-		t.Fatalf("prompt written before the gate released: %q", frame)
-	case <-time.After(50 * time.Millisecond):
+	tag, value, err := tlv.ReadTLV(&buf)
+	if err != nil {
+		t.Fatalf("read the prompt frame: %v", err)
 	}
-
-	close(released)
-
-	// Now UT then UE.
-	for _, want := range []string{tlv.TagUserT, tlv.TagUserEnd} {
-		select {
-		case frame := <-cap.ch:
-			if tag := frame[:2]; tag != want {
-				t.Fatalf("frame tag = %q, want %q", tag, want)
-			}
-		case <-time.After(2 * time.Second):
-			t.Fatalf("frame %q not written after the gate released", want)
-		}
-	}
-	if err := <-errCh; err != nil {
-		t.Fatalf("readPrompts() error = %v", err)
-	}
-}
-
-// A gate error stops the feed without writing the prompt.
-func TestReadPrompts_GateErrorStopsFeed(t *testing.T) {
-	var buf bytes.Buffer
-	gateErr := errors.New("session closed")
-
-	err := readPrompts(&buf, strings.NewReader("hello\n"), func() error { return gateErr })
-	if !errors.Is(err, gateErr) {
-		t.Fatalf("readPrompts() error = %v, want %v", err, gateErr)
-	}
-	if buf.Len() != 0 {
-		t.Errorf("prompt written despite gate error: %q", buf.String())
+	if tag != tlv.TagUserT || value != "hello" {
+		t.Errorf("first frame = %s %q, want UT %q", tag, value, "hello")
 	}
 }

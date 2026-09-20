@@ -9,7 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -55,12 +54,6 @@ type answerOutput struct {
 	// Protected by mu.
 	lastMsgHasText bool
 
-	// ready is marked by the session's authoritative SM "session" frame
-	// (state "ready"). The adapter's input feeder waits on it before
-	// submitting the prompt so a piped prompt cannot be rejected with
-	// MCP_NOT_READY.
-	ready *app.ReadySignal
-
 	// MCP hooks, injected by the adapter. mcpAuthRequired starts the
 	// automatic OAuth flow for a server; onMCPConnected stops a flow whose
 	// server connected by another path; onMCPDone stops every flow when MCP
@@ -77,12 +70,8 @@ func newAnswerOutput(stdout, stderr io.Writer) *answerOutput {
 		stdout:  stdout,
 		stderr:  stderr,
 		errorCh: make(chan struct{}),
-		ready:   app.NewReadySignal(),
 	}
 }
-
-// Ready returns a channel closed once the session signals readiness.
-func (o *answerOutput) Ready() <-chan struct{} { return o.ready.Wait() }
 
 // diagnostic writes a fully formatted progress line to stderr under the
 // output lock, so the MCP auth goroutine and the frame parser cannot
@@ -333,15 +322,6 @@ func (o *answerOutput) handleSystemMsg(value string) {
 		}
 	case protocol.MsgTypeMCP:
 		o.handleSystemMCP(env.Data)
-	case protocol.MsgTypeSession:
-		// The authoritative "ready to accept prompts" frame. state "ready"
-		// is the wire value of SessionReady and is sent exactly once.
-		var m struct {
-			State string `json:"state"`
-		}
-		if json.Unmarshal(env.Data, &m) == nil && m.State == "ready" && o.ready != nil {
-			o.ready.Mark()
-		}
 	}
 }
 

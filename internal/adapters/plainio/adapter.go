@@ -25,11 +25,6 @@ import (
 // Compile-time check: Adapter satisfies app.Adapter.
 var _ app.Adapter = (*Adapter)(nil)
 
-// errSessionClosed is returned by the input gate when the session ends
-// before it signals readiness, so the stdin reader stops instead of blocking
-// forever.
-var errSessionClosed = errors.New("session closed")
-
 // Adapter reads prompts from stdin and prints assistant output to stdout.
 type Adapter struct {
 	Config *app.Config
@@ -85,9 +80,9 @@ func unresolvedPolicy(out *stdoutOutput, interactive bool) mcpauth.Unresolved {
 func (a *Adapter) Start() int {
 	output := newStdoutOutput()
 
-	// stdin decides the OAuth fallback policy and whether prompts are gated:
-	// a terminal can still receive a typed :mcp_confirm and a retry, a pipe
-	// can do neither.
+	// stdin decides the MCP OAuth fallback policy: a terminal can still
+	// receive a typed :mcp_confirm, a pipe cannot. Prompts are not gated on
+	// anything — the session holds one that arrives before it is ready.
 	interactive := stdinIsTerminal()
 
 	// MCP OAuth flow. The TLV input writer is attached after StartSession
@@ -127,12 +122,11 @@ func (a *Adapter) Start() int {
 	// process. Killing would orphan running tool processes: shell tools
 	// start with setsid (own session, no controlling terminal), so they
 	// never receive the terminal's SIGINT. Cancellation goes through the
-	// session's CancelTask (not a :cancel CI frame on the TLV pipe): the
-	// pipe may already be closed at EOF, after which a frame could never
-	// reach the session. The cancel is always attempted, matching the
-	// terminal adapter's Ctrl-G/:cancel — when idle, the session reports
-	// "nothing to cancel" and the session continues. The process exits
-	// only via :quit/:q or EOF (Ctrl-D).
+	// session's CancelTask rather than a :cancel CI frame, so it depends on
+	// nothing on this side of the pipe being alive or read. The cancel is
+	// always attempted, matching the terminal adapter's Ctrl-G/:cancel —
+	// when idle, the session reports "nothing to cancel" and the session
+	// continues. The process exits only via :quit/:q or EOF (Ctrl-D).
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
 	defer func() {
@@ -147,37 +141,18 @@ func (a *Adapter) Start() int {
 		}
 	})
 
-	readyCh := output.Ready()
 	exitCh := make(chan int, 1)
 
 	// readStdin reads prompts from stdin and emits TLV messages.
 	// Only this goroutine and the MCP OAuth flow write to the input
 	// stream (both through the lockedWriter, so writes are safe).
 	readStdin := func() {
-		// Wait for the session's ready frame before the first prompt —
-		// but only when stdin is not a terminal. A piped prompt is
-		// available immediately and would race MCP init, and the pipe's
-		// EOF then ends the session before it can retry, so it must wait.
-		// An interactive user can retry (an early prompt is rejected with
-		// MCP_NOT_READY and the session continues), and gating it would
-		// deadlock the manual :mcp_confirm fallback: the reader would be
-		// parked at the gate and could no longer type the code that lets
-		// MCP init settle. The pipe stays open throughout init either way,
-		// so a running OAuth callback can submit its :mcp_confirm.
-		var gate func() error
-		if !interactive {
-			gate = func() error {
-				select {
-				case <-readyCh:
-					return nil
-				case <-session.Done():
-					return errSessionClosed
-				}
-			}
-		}
-		err := readPrompts(input, os.Stdin, gate)
-		// Close signals EOF regardless, unblocking the session.
-		inputWriter.Close()
+		err := readPrompts(input, os.Stdin)
+		// The stream is not closed here: say that the input has ended and let
+		// the session finish. The pipe must outlive this goroutine, because
+		// the session may still need to be steered — a running OAuth callback
+		// submits its :mcp_confirm here, after stdin is exhausted.
+		app.SendInputEnd(input)
 		code := 0
 		// :quit/:q and EOF are both clean exits (code 0); only a stdin
 		// read error is a process-level failure.
@@ -199,8 +174,11 @@ func (a *Adapter) Start() int {
 	case <-session.Done():
 	}
 
-	// Wait for the session to finish processing.
+	// Wait for the session to finish processing, then release the pipe: it is
+	// what the session reads, so closing it earlier would leave the pump
+	// parked on it and cut off the commands above.
 	<-session.Done()
+	_ = inputWriter.Close()
 
 	return code
 }

@@ -31,9 +31,9 @@
 //     has nowhere to type a code; MCP init then settles and the prompt runs
 //     without that server's tools. The session reports the declined server
 //     as an MCP failure, which — like any SM error — sets exit code 1.
-//   - The prompt waits for the session's authoritative "ready" frame before
-//     it is sent (MCP init complete), so a piped prompt is not rejected
-//     with MCP_NOT_READY. A command bypasses the wait.
+//   - The prompt is sent as soon as stdin is read: the session holds one that
+//     arrives before it is ready (replay + MCP init complete) and runs it then,
+//     so nothing here waits for a frame. A command is sent the same way.
 //   - --tool-confirm is REJECTED at startup (main.go): terseio consumes
 //     stdin, so tool confirmations could never be answered. With the
 //     conflict rejected, tool_confirm frames cannot arrive and no
@@ -45,9 +45,8 @@
 //     processes, which never receive the terminal's SIGINT) is aborted
 //     cleanly, the buffered answer is discarded, and the process exits
 //     130 (128+SIGINT) so scripts still detect the interruption. SIGINT
-//     during the stdin read phase, or while the prompt waits for the ready
-//     frame, aborts the read/wait; SIGINT after the task finished only
-//     forces the exit code.
+//     during the stdin read phase aborts that read; SIGINT after the task
+//     finished only forces the exit code.
 //   - --session works: the conversation is persisted; intermediate content
 //     (tool calls, reasoning) is saved to the session file once the task
 //     completes even though it is never printed.

@@ -5,7 +5,6 @@ package terseio
 // print ONLY the final answer.
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -18,10 +17,6 @@ import (
 
 // Compile-time check: Adapter satisfies app.Adapter.
 var _ app.Adapter = (*Adapter)(nil)
-
-// errSessionClosed is returned by the input gate when the session ends
-// before it signals readiness.
-var errSessionClosed = errors.New("session closed")
 
 // Adapter reads all of stdin as a single prompt — or a single command
 // (":continue", ":save /tmp/x", ...) — and prints only the final
@@ -90,26 +85,19 @@ func (a *Adapter) Start() int {
 	input := app.NewLockedWriter(inputWriter)
 	inputPtr.Store(input)
 
-	// feedCtx aborts a prompt waiting for the ready frame when Ctrl-C
-	// arrives; the session cannot be reached otherwise (there is no task to
-	// cancel yet).
-	feedCtx, feedCancel := context.WithCancel(context.Background())
-	defer feedCancel()
-
-	// Ctrl-C (SIGINT) cancels the running task via the session's
-	// CancelTask — NOT by writing a :cancel CI frame to the TLV input
-	// pipe. The pipe is already closed by the time the task runs: stdin
-	// reached EOF and the adapter closed inputWriter, so inputPump has
-	// exited and a late frame could never reach the session (io.Pipe
-	// Write after Close fails immediately). Killing the process outright
-	// would orphan running tool processes: shell tools start with setsid
-	// (own session, no controlling terminal), so they never receive the
-	// terminal's SIGINT — only CancelTask propagates the abort through
-	// the session's cancel machinery. The session aborts the task, its
-	// error path discards the buffered answer, and the adapter exits 130
-	// (128+SIGINT) to preserve scripting conventions. SIGINT during the
-	// stdin read phase (interactive misuse without EOF) also closes stdin
-	// to abort the read; SIGINT after the task finished only forces the
+	// Ctrl-C (SIGINT) cancels the running task through the session's
+	// CancelTask — NOT by writing a :cancel CI frame. The adapter's own input
+	// is spent by then (stdin was read to EOF and CE was sent), and the cancel
+	// has to work whether or not the session is still reading frames:
+	// CancelTask is the direct path, and the exit code below (130) is defined
+	// around it. Killing the process outright would orphan running tool
+	// processes: shell tools start with setsid (own session, no controlling
+	// terminal), so they never receive the terminal's SIGINT — only CancelTask
+	// propagates the abort through the session's cancel machinery. The session
+	// aborts the task, its error path discards the buffered answer, and the
+	// adapter exits 130 (128+SIGINT) to preserve scripting conventions. SIGINT
+	// during the stdin read phase (interactive misuse without EOF) also closes
+	// stdin to abort that read; SIGINT after the task finished only forces the
 	// exit code.
 	var sigint atomic.Bool
 	sigCh := make(chan os.Signal, 1)
@@ -121,33 +109,19 @@ func (a *Adapter) Start() int {
 	go app.WatchSignals(sigCh, session.Done(), func() {
 		sigint.Store(true)
 		session.CancelTask()
-		// Unblock a prompt waiting for the ready frame, and a pending
-		// io.ReadAll on stdin.
-		feedCancel()
-		os.Stdin.Close()
+		os.Stdin.Close() // unblock a pending io.ReadAll on stdin
 	})
 
 	exitCh := make(chan int, 1)
 
-	// Read all of stdin as one prompt or one command, then close input
-	// (EOF). terseio never needs further input — tool confirmations are
-	// impossible (the --tool-confirm conflict is rejected in main.go) —
-	// so closing early is safe and lets the session's run() loop finish.
-	// The prompt waits for the session's ready frame first; closing before
-	// then would let run() exit while MCP init is still in flight, and a
-	// prompt sent during init is rejected with MCP_NOT_READY.
+	// Read all of stdin as one prompt or one command, then say the input has
+	// ended. terseio never needs further input — tool confirmations are
+	// impossible (the --tool-confirm conflict is rejected in main.go) — but the
+	// pipe stays open for the session, which may still have a command to
+	// receive from the MCP OAuth flow running beside this goroutine.
 	go func() {
-		err := readAllPrompt(input, os.Stdin, func() error {
-			select {
-			case <-output.Ready():
-				return nil
-			case <-feedCtx.Done():
-				return feedCtx.Err()
-			case <-session.Done():
-				return errSessionClosed
-			}
-		})
-		inputWriter.Close()
+		err := readAllPrompt(input, os.Stdin)
+		app.SendInputEnd(input)
 		code := 0
 		if err != nil && !errors.Is(err, errQuitPrompt) {
 			code = 1
@@ -170,8 +144,11 @@ func (a *Adapter) Start() int {
 	case <-session.Done():
 	}
 
-	// Wait for the session to finish processing.
+	// Wait for the session to finish processing, then release the pipe: it is
+	// what the session reads, so closing it earlier would leave the pump parked
+	// on it and cut off the commands above.
 	<-session.Done()
+	_ = inputWriter.Close()
 
 	// Final check: even on a clean EOF path the session may have written
 	// errors (network failures, API errors, etc.) that arrived after the

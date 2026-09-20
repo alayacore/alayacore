@@ -10,7 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -54,24 +53,14 @@ type stdoutOutput struct {
 	mcpAuthRequired func(server, url string)
 	onMCPConnected  func(server string)
 	onMCPDone       func()
-
-	// ready is marked by the session's authoritative SM "session" frame
-	// (state "ready"): replay and MCP init are complete and prompts are
-	// accepted. The adapter's input feeder waits on it before submitting a
-	// prompt so a piped prompt cannot be rejected with MCP_NOT_READY.
-	ready *app.ReadySignal
 }
 
 func newStdoutOutput() *stdoutOutput {
 	return &stdoutOutput{
 		writer:    os.Stdout,
 		seenDelta: make(map[string]bool),
-		ready:     app.NewReadySignal(),
 	}
 }
-
-// Ready returns a channel closed once the session signals readiness.
-func (o *stdoutOutput) Ready() <-chan struct{} { return o.ready.Wait() }
 
 func (o *stdoutOutput) Write(p []byte) (int, error) {
 	o.mu.Lock()
@@ -389,17 +378,6 @@ func (o *stdoutOutput) handleSystemMsg(value string) {
 
 	case protocol.MsgTypeMCP:
 		o.handleSystemMCP(env.Data)
-
-	case protocol.MsgTypeSession:
-		// The authoritative "ready to accept prompts" frame (see the
-		// agent's sessionMsg). state "ready" is the wire value of
-		// SessionReady and is sent exactly once.
-		var m struct {
-			State string `json:"state"`
-		}
-		if json.Unmarshal(env.Data, &m) == nil && m.State == "ready" && o.ready != nil {
-			o.ready.Mark()
-		}
 	}
 }
 

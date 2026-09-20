@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/mcpauth"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -421,31 +420,20 @@ func TestSystemMsg_MCPHookCanPrint(t *testing.T) {
 	}
 }
 
-// TestSystemMsg_SessionReadyMarksReady pins the gate signal: only the
-// authoritative "session" frame with state "ready" opens it, and only once.
-func TestSystemMsg_SessionReadyMarksReady(t *testing.T) {
+// Session lifecycle frames are not user content: the adapter renders nothing
+// for them. It does not gate prompts on them any more — the session holds a
+// prompt that arrives before it is ready — so "ready" and "closed" carry no
+// meaning here; all that must hold is that neither is printed.
+func TestSystemMsg_SessionFramesAreNotRendered(t *testing.T) {
 	var buf bytes.Buffer
-	o := &stdoutOutput{writer: &buf, ready: app.NewReadySignal()}
-
-	// Non-ready states (initializing, empty) must not open the gate.
-	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"initializing"}}`))
-	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{}}`))
-	select {
-	case <-o.Ready():
-		t.Fatal("Ready() marked by a non-ready session frame")
-	default:
-	}
+	o := &stdoutOutput{writer: &buf, seenDelta: make(map[string]bool)}
 
 	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"ready"}}`))
-	select {
-	case <-o.Ready():
-	default:
-		t.Fatal("Ready() not marked by the session ready frame")
-	}
+	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`))
 
-	// Idempotent: a second ready frame must not panic (close of a closed
-	// channel would).
-	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"ready"}}`))
+	if got := buf.String(); got != "" {
+		t.Errorf("session frames produced output %q, want none", got)
+	}
 }
 
 // TestOutput_PrintManualFallback pins the manual-fallback format: the

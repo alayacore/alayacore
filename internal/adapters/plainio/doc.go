@@ -55,16 +55,11 @@
 // MCP support:
 //   - MCP servers connect at startup and their tools behave like built-in
 //     tools (including tool_confirm prompts).
-//   - A prompt from a pipe is held until the session emits its
-//     authoritative "ready" frame (replay + MCP init complete). This is
-//     what makes a piped prompt work: without it the prompt races MCP init
-//     and is rejected with MCP_NOT_READY, and the pipe's EOF then ends the
-//     session before it can retry. On a terminal the prompt is submitted
-//     immediately instead — an early prompt is rejected with MCP_NOT_READY
-//     and can simply be retyped, while gating it would deadlock the manual
-//     :mcp_confirm fallback (the reader would be parked and could not type
-//     the code). Commands are never held on either path, so :mcp_cancel /
-//     :quit still work during init.
+//   - Prompts are written as soon as they are read, and the session holds one
+//     that arrives before it is ready: it runs as soon as replay and MCP init
+//     are done. The adapter never waits for readiness (an early prompt used to
+//     be refused, which a piped client cannot retry) and never closes the input
+//     pipe early — the OAuth flow below submits its :mcp_confirm through it.
 //   - When a server requires OAuth authorization, plainio prints the URL,
 //     starts a local callback server (internal/platform), opens the
 //     browser, and sends ":mcp_confirm <server> <code> <redirect_uri>"

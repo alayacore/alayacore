@@ -312,6 +312,13 @@ answer. Because it has no stdin left to type into, a server whose automatic
 authorization does not complete is **declined** rather than left pending —
 MCP init then settles and the prompt runs without that server's tools.
 
+> **Invariant:** the input stream stays open until the session exits. The
+> automatic flow submits its `:mcp_confirm` on that stream, and stdin is
+> usually exhausted (and `CE` sent) long before the browser comes back — so an
+> adapter that closed it at EOF would turn every automatic authorization into a
+> silent decline: the write fails, the server is never authorized, and nothing
+> reports it.
+
 The manual fallback commands are printed where they are needed — when the
 browser could not be opened, and when the callback wait times out after 5
 minutes. The timeout is also what a browser opened on **another machine**

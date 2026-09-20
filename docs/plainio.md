@@ -63,12 +63,11 @@ A blank line separates messages of different types.
 ### MCP Support
 
 MCP servers work the same as in the TUI: configured servers connect at
-startup and their tools (and `tool_confirm` prompts) behave identically. A
-prompt piped into stdin is held until MCP initialization has settled (the
-session's authoritative "ready" frame), so it is not rejected with
-`MCP_NOT_READY`; on a terminal a prompt is submitted immediately, and an early
-one is held by the session until initialization settles — nothing to retype.
-Commands (`:mcp_cancel`, `:quit`, …) are never held.
+startup and their tools (and `tool_confirm` prompts) behave identically. Each
+prompt is sent as soon as it is read; a prompt that arrives before MCP
+initialization has settled is held by the session and runs as soon as it is
+ready, so an early prompt is never rejected with `MCP_NOT_READY` and there is
+nothing to retype. Commands (`:mcp_cancel`, `:quit`, …) are never held.
 When a server requires OAuth authorization, plainio prints the
 authorization URL, starts a local callback server, and opens the browser
 automatically — once you authorize, the code is submitted for you. If
