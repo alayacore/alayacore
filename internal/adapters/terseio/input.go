@@ -14,9 +14,9 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// errQuitPrompt is returned by readAllPrompt when stdin is ":quit" or
-// ":q". Like plainio, these are transport-level controls (there is no
-// quit command in the session registry) and mean a clean exit (code 0).
+// errQuitPrompt is returned by readAllPrompt when stdin is ":quit" or ":q".
+// The adapter sends the session's quit command first and then stops reading;
+// the exit code stays 0 (a clean exit, like EOF).
 var errQuitPrompt = errors.New("quit")
 
 // commandSeq generates unique command call IDs for CI frames.
@@ -53,7 +53,8 @@ func writeCommand(input io.Writer, cmd string) error {
 //     as a single CI command frame — the WHOLE input is the command,
 //     including newlines in the argument text (":continue" works, so do
 //     ":save", ":cancel", ...).
-//   - ":quit" / ":q" are intercepted locally (clean exit, code 0).
+//   - ":quit" / ":q" ask the session to end (the quit command is sent
+//     first) and stop reading: clean exit, code 0.
 //   - anything else is sent as one UT + UE prompt pair.
 //
 // gate, when non-nil, is consulted before the prompt is written and blocks
@@ -74,6 +75,7 @@ func readAllPrompt(input io.Writer, reader io.Reader, gate func() error) error {
 	}
 	if strings.HasPrefix(text, ":") {
 		if text == ":quit" || text == ":q" {
+			_ = writeCommand(input, "quit") // best effort: the session may be gone
 			return errQuitPrompt
 		}
 		return writeCommand(input, strings.TrimPrefix(text, ":"))

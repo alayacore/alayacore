@@ -74,8 +74,8 @@ alayacore --terseio --session my-convo.alaya <<< ":save backup.alaya"
   `[Session saved to backup.alaya]`) and stay silent for self-evident ones
   (`:cancel`) and async task commands (`:continue`, `:summarize`) whose real
   feedback is the final answer on stdout.
-- `:quit` / `:q` exit cleanly (code `0`) without sending anything, like in
-  plainio.
+- `:quit` / `:q` ask the session to end — they are sent as the quit command,
+  like any other command — and exit cleanly (code `0`), like in plainio.
 - ⚠️ **The `:` prefix is not escapable** — a prompt that genuinely starts
   with `:` must be run via `--plainio` (or a leading space added).
 

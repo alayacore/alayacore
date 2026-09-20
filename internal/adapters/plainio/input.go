@@ -16,8 +16,9 @@ import (
 )
 
 // errQuitPrompt is returned by readPrompts when the user types :quit or :q.
-// The adapter treats it as a clean exit request (code 0), like EOF — task
-// errors never affect the exit code — unlike a stdin read error (code 1).
+// The adapter sends the session's quit command first and then treats it as a
+// clean exit request (code 0), like EOF — task errors never affect the exit
+// code — unlike a stdin read error (code 1).
 var errQuitPrompt = errors.New("quit")
 
 // commandSeq generates unique command call IDs for CI frames.
@@ -47,7 +48,8 @@ func writeCommand(input io.Writer, cmd string) error {
 
 // readPrompts reads lines from stdin and emits them as TLV messages.
 // Lines ending with `\` are continued on the next line (backslash-escaped newline).
-// Returns nil on EOF (Ctrl-D), errQuitPrompt on :quit/:q, or a read/write error.
+// Returns nil on EOF (Ctrl-D), errQuitPrompt on :quit/:q (which is sent to the
+// session as a quit command first), or a read/write error.
 //
 // gate, when non-nil, is consulted immediately before each *prompt* frame is
 // written and blocks until the session is ready to accept one. Commands
@@ -93,8 +95,11 @@ func readPrompts(input io.Writer, reader io.Reader, gate func() error) error {
 			continue
 		}
 
-		// Intercept :quit/:q — handled locally, not by the session
+		// :quit/:q stop reading and ask the session to end. Ending the
+		// session is the session's decision (it knows whether a task is
+		// still running); the exit code stays the adapter's (0).
 		if text == ":quit" || text == ":q" {
+			_ = writeCommand(input, "quit") // best effort: the session may be gone
 			return errQuitPrompt
 		}
 

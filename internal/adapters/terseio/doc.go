@@ -10,8 +10,9 @@
 //   - If the input starts with ":", the WHOLE input is sent as a single
 //     command (":continue", ":save /tmp/x", ...) — the name/args split is
 //     at the first whitespace, so multi-line command input works. ":quit"
-//     / ":q" exit cleanly (code 0) without sending anything. Command
-//     errors are printed to stderr and set exit code 1.
+//     / ":q" ask the session to end — they are sent as the quit command —
+//     and exit cleanly (code 0). Command errors are printed to stderr and
+//     set exit code 1.
 //   - Otherwise the input is ONE prompt: assistant text is answered on
 //     stdout, and prompt text is never echoed.
 //   - stdout: contains ONLY the final assistant text answer, followed by

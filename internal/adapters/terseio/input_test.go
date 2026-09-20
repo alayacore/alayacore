@@ -138,16 +138,50 @@ func TestReadAllPrompt_CommandNoArgs(t *testing.T) {
 }
 
 func TestReadAllPrompt_Quit(t *testing.T) {
-	// :quit / :q are transport-level controls — clean exit, nothing sent.
+	// :quit / :q stop reading and ask the session to end: one CI frame
+	// naming the quit command, then errQuitPrompt (clean exit, code 0).
 	for _, input := range []string{":quit", ":q", ":quit\n", ":q\n"} {
 		var buf bytes.Buffer
 		err := readAllPrompt(&buf, strings.NewReader(input), nil)
 		if !errors.Is(err, errQuitPrompt) {
 			t.Errorf("readAllPrompt(%q) error = %v, want errQuitPrompt", input, err)
 		}
-		if buf.Len() != 0 {
-			t.Errorf("readAllPrompt(%q) wrote %d bytes, want 0", input, buf.Len())
+		frames := parseTLVFrames(t, buf.Bytes())
+		if len(frames) != 1 {
+			t.Fatalf("readAllPrompt(%q) frames = %d, want 1 (CI)", input, len(frames))
 		}
+		if frames[0].tag != tlv.TagCommandIn {
+			t.Errorf("readAllPrompt(%q) frame tag = %q, want %q", input, frames[0].tag, tlv.TagCommandIn)
+		}
+		var cmd protocol.CmdMsg
+		if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
+			t.Fatalf("readAllPrompt(%q): CI payload not JSON: %v", input, err)
+		}
+		if cmd.Name != commands.CommandNameQuit || cmd.Input != "" {
+			t.Errorf("readAllPrompt(%q) cmd = %+v, want name %q with empty input", input, cmd, commands.CommandNameQuit)
+		}
+	}
+}
+
+// An argument makes the line the session's command, not the local quit:
+// ":quit now" is sent as a "quit" command carrying "now" (the session
+// answers INVALID_ARGS), and it is not a clean exit.
+func TestReadAllPrompt_QuitWithArgsIsSent(t *testing.T) {
+	var buf bytes.Buffer
+	if err := readAllPrompt(&buf, strings.NewReader(":quit now\n"), nil); err != nil {
+		t.Fatalf("readAllPrompt() error = %v, want nil", err)
+	}
+
+	frames := parseTLVFrames(t, buf.Bytes())
+	if len(frames) != 1 || frames[0].tag != tlv.TagCommandIn {
+		t.Fatalf("frames = %+v, want 1 CI frame", frames)
+	}
+	var cmd protocol.CmdMsg
+	if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
+		t.Fatalf("CI payload not JSON: %v", err)
+	}
+	if cmd.Name != commands.CommandNameQuit || cmd.Input != "now" {
+		t.Errorf("cmd = %+v, want name %q input %q", cmd, commands.CommandNameQuit, "now")
 	}
 }
 

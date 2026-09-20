@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -268,39 +269,99 @@ func TestReadPrompts_CommandWithArgs(t *testing.T) {
 }
 
 func TestReadPrompts_QuitCommand(t *testing.T) {
-	var buf bytes.Buffer
+	for _, word := range []string{"quit", "q"} {
+		var buf bytes.Buffer
 
-	// :quit should return errQuitPrompt immediately without any output
-	input := strings.NewReader("some text\n:quit\nmore text\n")
-	err := readPrompts(&buf, input, nil)
-	if !errors.Is(err, errQuitPrompt) {
-		t.Fatalf("expected errQuitPrompt, got %v", err)
+		// :quit stops reading and asks the session to end: the reader
+		// sees errQuitPrompt (a clean exit, code 0) and the session
+		// receives a quit command.
+		input := strings.NewReader("some text\n:" + word + "\nmore text\n")
+		err := readPrompts(&buf, input, nil)
+		if !errors.Is(err, errQuitPrompt) {
+			t.Fatalf(":%s: expected errQuitPrompt, got %v", word, err)
+		}
+
+		// Only "some text" should be emitted as a prompt
+		tag, value, err := tlv.ReadTLV(&buf)
+		if err != nil {
+			t.Fatalf(":%s: failed to read TLV: %v", word, err)
+		}
+		if tag != tlv.TagUserT {
+			t.Errorf(":%s: expected tag UT, got %s", word, tag)
+		}
+		if value != "some text" {
+			t.Errorf(":%s: expected 'some text', got %q", word, value)
+		}
+
+		// UE after first prompt
+		tag, _, err = tlv.ReadTLV(&buf)
+		if err != nil {
+			t.Fatalf(":%s: failed to read UE TLV: %v", word, err)
+		}
+		if tag != tlv.TagUserEnd {
+			t.Errorf(":%s: expected UE tag, got %s", word, tag)
+		}
+
+		assertQuitCommand(t, &buf, word)
+
+		// Should be no more data
+		if buf.Len() > 0 {
+			t.Errorf(":%s: expected no more data after :quit, got %d bytes", word, buf.Len())
+		}
+	}
+}
+
+// An argument makes the line the session's command, not the local quit:
+// ":quit foo" is sent as a "quit" command carrying "foo" (the session
+// answers INVALID_ARGS) and reading continues to EOF.
+func TestReadPrompts_QuitWithArgsIsNotLocalQuit(t *testing.T) {
+	var buf bytes.Buffer
+	if err := readPrompts(&buf, strings.NewReader(":quit foo\n"), nil); err != nil {
+		t.Fatalf("readPrompts() error = %v, want nil (EOF)", err)
 	}
 
-	// Only "some text" should be emitted
 	tag, value, err := tlv.ReadTLV(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserT {
-		t.Errorf("expected tag UT, got %s", tag)
+	if tag != tlv.TagCommandIn {
+		t.Fatalf("tag = %s, want CI", tag)
 	}
-	if value != "some text" {
-		t.Errorf("expected 'some text', got %q", value)
+	var cmd protocol.CmdMsg
+	if err := json.Unmarshal([]byte(value), &cmd); err != nil {
+		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
 	}
+	if cmd.Name != commands.CommandNameQuit || cmd.Input != "foo" {
+		t.Errorf("cmd = %+v, want name %q input %q", cmd, commands.CommandNameQuit, "foo")
+	}
+	if tag, _, err := tlv.ReadTLV(&buf); err == nil {
+		t.Errorf("expected EOF after the command, got tag %s", tag)
+	}
+}
 
-	// UE after first prompt
-	tag, _, err = tlv.ReadTLV(&buf)
+// assertQuitCommand reads one frame and asserts it is a CI naming the
+// session's quit command of the user's typed word, with no arguments.
+func assertQuitCommand(t *testing.T, buf *bytes.Buffer, typed string) {
+	t.Helper()
+	tag, value, err := tlv.ReadTLV(buf)
 	if err != nil {
-		t.Fatalf("failed to read UE TLV: %v", err)
+		t.Fatalf(":%s: failed to read quit CI frame: %v", typed, err)
 	}
-	if tag != tlv.TagUserEnd {
-		t.Errorf("expected UE tag, got %s", tag)
+	if tag != tlv.TagCommandIn {
+		t.Fatalf(":%s: quit frame tag = %s, want CI", typed, tag)
 	}
-
-	// Should be no more data
-	if buf.Len() > 0 {
-		t.Errorf("expected no more data after :quit, got %d bytes", buf.Len())
+	var cmd protocol.CmdMsg
+	if err := json.Unmarshal([]byte(value), &cmd); err != nil {
+		t.Fatalf(":%s: CI payload is not CmdMsg JSON: %v", typed, err)
+	}
+	if cmd.Name != commands.CommandNameQuit {
+		t.Errorf(":%s: quit command name = %q, want %q", typed, cmd.Name, commands.CommandNameQuit)
+	}
+	if cmd.Input != "" {
+		t.Errorf(":%s: quit command input = %q, want empty", typed, cmd.Input)
+	}
+	if cmd.ID == "" {
+		t.Errorf(":%s: quit CI frame should carry a generated call ID", typed)
 	}
 }
 
