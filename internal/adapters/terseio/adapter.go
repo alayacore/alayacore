@@ -85,6 +85,11 @@ func (a *Adapter) Start() int {
 	input := app.NewLockedWriter(inputWriter)
 	inputPtr.Store(input)
 
+	// The adapter learns that the session is over from its terminal frame, not
+	// from the session handle: that handle is kept for CancelTask alone, which
+	// is a request (SIGINT) rather than an observation of session state.
+	closed := output.Closed()
+
 	// Ctrl-C (SIGINT) cancels the running task through the session's
 	// CancelTask — NOT by writing a :cancel CI frame. The adapter's own input
 	// is spent by then (stdin was read to EOF and CE was sent), and the cancel
@@ -106,7 +111,7 @@ func (a *Adapter) Start() int {
 		signal.Stop(sigCh)
 		close(sigCh)
 	}()
-	go app.WatchSignals(sigCh, session.Done(), func() {
+	go app.WatchSignals(sigCh, closed, func() {
 		sigint.Store(true)
 		session.CancelTask()
 		os.Stdin.Close() // unblock a pending io.ReadAll on stdin
@@ -141,13 +146,13 @@ func (a *Adapter) Start() int {
 		// Unblock a pending io.ReadAll on stdin (interactive misuse where
 		// the user has not sent EOF yet).
 		os.Stdin.Close()
-	case <-session.Done():
+	case <-closed:
 	}
 
-	// Wait for the session to finish processing, then release the pipe: it is
+	// Wait for the session's terminal frame before releasing the pipe: it is
 	// what the session reads, so closing it earlier would leave the pump parked
 	// on it and cut off the commands above.
-	<-session.Done()
+	<-closed
 	_ = inputWriter.Close()
 
 	// Final check: even on a clean EOF path the session may have written

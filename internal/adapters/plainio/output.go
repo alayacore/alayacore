@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -53,14 +54,26 @@ type stdoutOutput struct {
 	mcpAuthRequired func(server, url string)
 	onMCPConnected  func(server string)
 	onMCPDone       func()
+
+	// closed is marked when the session's terminal frame arrives (SM
+	// "session", state "closed"). The adapter's Start waits on it instead of
+	// holding a session handle: the frame is the session's own announcement,
+	// and it is written after everything else, so nothing has to be inferred
+	// from a stream ending.
+	closed *app.Latch
 }
 
 func newStdoutOutput() *stdoutOutput {
 	return &stdoutOutput{
 		writer:    os.Stdout,
 		seenDelta: make(map[string]bool),
+		closed:    app.NewLatch(),
 	}
 }
+
+// Closed returns a channel closed once the session's terminal frame has been
+// parsed.
+func (o *stdoutOutput) Closed() <-chan struct{} { return o.closed.Done() }
 
 func (o *stdoutOutput) Write(p []byte) (int, error) {
 	o.mu.Lock()
@@ -378,6 +391,18 @@ func (o *stdoutOutput) handleSystemMsg(value string) {
 
 	case protocol.MsgTypeMCP:
 		o.handleSystemMCP(env.Data)
+
+	case protocol.MsgTypeSession:
+		// The session's terminal frame: everything the session had to say has
+		// been written, so this is where the adapter stops reading and leaves.
+		// "ready" is deliberately not interpreted — nothing here waits for
+		// readiness any more (a prompt sent too early is held by the session).
+		var m struct {
+			State string `json:"state"`
+		}
+		if json.Unmarshal(env.Data, &m) == nil && m.State == "closed" {
+			o.closed.Mark()
+		}
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/mcpauth"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -422,13 +423,29 @@ func TestSystemMsg_MCPHookCanPrint(t *testing.T) {
 
 // Session lifecycle frames are not user content: the adapter renders nothing
 // for them. It does not gate prompts on them any more — the session holds a
-// prompt that arrives before it is ready — so "ready" and "closed" carry no
-// meaning here; all that must hold is that neither is printed.
-func TestSystemMsg_SessionFramesAreNotRendered(t *testing.T) {
+// prompt that arrives before it is ready — so "ready" carries no meaning here;
+// "closed" is the one it acts on, and it acts by marking the latch its Start
+// waits on (see Closed()).
+func TestSystemMsg_SessionFramesDriveTheLatch(t *testing.T) {
 	var buf bytes.Buffer
-	o := &stdoutOutput{writer: &buf, seenDelta: make(map[string]bool)}
+	o := &stdoutOutput{writer: &buf, seenDelta: make(map[string]bool), closed: app.NewLatch()}
 
 	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"ready"}}`))
+	select {
+	case <-o.Closed():
+		t.Fatal("the ready frame must not report the session as over")
+	default:
+	}
+
+	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`))
+	select {
+	case <-o.Closed():
+	default:
+		t.Fatal("the terminal frame should mark Closed()")
+	}
+
+	// Idempotent: a second terminal frame must not panic (close of a closed
+	// channel would).
 	o.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`))
 
 	if got := buf.String(); got != "" {

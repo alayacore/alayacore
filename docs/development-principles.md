@@ -94,6 +94,8 @@ protocol stays byte-compatible.
 | Adapter imports agent (types, constants, functions) | ❌ **No** | Use wire types from `internal/protocol` — importing agent bypasses the TLV boundary |
 | Adapter uses command-name string literals (`"cancel"`) | ⚠️ Avoid | Use `commands.CommandNameCancel` — the shared `internal/commands` package is the single source of truth for CI/CO names |
 | Adapter calls agent's functions | ❌ **No** | Bypasses the TLV boundary |
+| Adapter calls `session.CancelTask()` (plainio/terseio SIGINT) | ⚠️ Yes — the only such call | A *request*, not an observation: it has to work whether or not the session is reading frames, and the SIGINT exit codes (0/130) are defined around this call rather than around a CO result. Everything an adapter *observes* comes from the wire |
+| `rawio` waits on `session.Done()` | ⚠️ Yes | rawio interprets no frames by definition — that is its contract — so it cannot learn "the session ended" from the wire. Waiting for the session goroutine is the process-level equivalent of the exit its controlling process observes anyway |
 | Agent imports adapter | ❌ **Never** | One-way dependency — agent must not know adapters exist |
 
 ### Architecture Checklist

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
@@ -54,6 +55,13 @@ type answerOutput struct {
 	// Protected by mu.
 	lastMsgHasText bool
 
+	// closed is marked when the session's terminal frame arrives (SM
+	// "session", state "closed"). The adapter's Start waits on it instead of
+	// holding a session handle: the frame is the session's own announcement,
+	// and it is written after everything else, so nothing has to be inferred
+	// from a stream ending.
+	closed *app.Latch
+
 	// MCP hooks, injected by the adapter. mcpAuthRequired starts the
 	// automatic OAuth flow for a server; onMCPConnected stops a flow whose
 	// server connected by another path; onMCPDone stops every flow when MCP
@@ -70,8 +78,13 @@ func newAnswerOutput(stdout, stderr io.Writer) *answerOutput {
 		stdout:  stdout,
 		stderr:  stderr,
 		errorCh: make(chan struct{}),
+		closed:  app.NewLatch(),
 	}
 }
+
+// Closed returns a channel closed once the session's terminal frame has been
+// parsed.
+func (o *answerOutput) Closed() <-chan struct{} { return o.closed.Done() }
 
 // diagnostic writes a fully formatted progress line to stderr under the
 // output lock, so the MCP auth goroutine and the frame parser cannot
@@ -105,8 +118,8 @@ func (o *answerOutput) HasError() bool {
 
 // FlushFinal prints the buffered final answer to stdout, at most once.
 // Thread-safe: takes the mutex, so it is safe from the adapter goroutine
-// after session.Done() and from any other caller. No-op after an error
-// (the buffer is discarded), if already flushed, or if the final message
+// after the session's terminal frame and from any other caller. No-op after an
+// error (the buffer is discarded), if already flushed, or if the final message
 // contained no text (the buffer then holds stale text from an earlier
 // intermediate message — printing it would be wrong).
 func (o *answerOutput) FlushFinal() {
@@ -322,6 +335,17 @@ func (o *answerOutput) handleSystemMsg(value string) {
 		}
 	case protocol.MsgTypeMCP:
 		o.handleSystemMCP(env.Data)
+	case protocol.MsgTypeSession:
+		// The session's terminal frame: everything the session had to say has
+		// been written, so this is where the adapter stops waiting and leaves.
+		// "ready" is deliberately not interpreted — nothing here waits for
+		// readiness any more (a prompt sent too early is held by the session).
+		var m struct {
+			State string `json:"state"`
+		}
+		if json.Unmarshal(env.Data, &m) == nil && m.State == "closed" {
+			o.closed.Mark()
+		}
 	}
 }
 

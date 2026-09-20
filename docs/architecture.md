@@ -56,24 +56,26 @@ The session uses three goroutines for concurrent operation:
 | `outputBroken` (atomic.Bool) | both | — | Output stream failure flag (any goroutine can set) |
 | `confirmChs` (map + mutex) | both | — | Per-tool confirmation channel map (MCP-style) |
 
-**Lifecycle — drain on EOF:**
+**Lifecycle — the end of input:**
 
-When the input stream reaches EOF (e.g. a piped `echo` command closes stdin),
-the inputPump closes `inputMsgCh` and exits. If a task is still running, `run()`
-enters `drainUntilTaskDone()` to process state events and the task completion
-events one by one before the session exits. This ensures that all output
-(prompt echo, assistant response, tool results) is flushed and no pending
-prompts are abandoned.
+Input ends when the adapter's stream ends (EOF: `inputPump` closes `inputMsgCh`)
+or when the adapter says so with a `CE` frame — the same fact on a stream that
+stays open for commands. Either way `run()` records that its input has ended and
+keeps looping: a task that is already running, or a prompt accepted before the
+session was ready, is work the user asked for, so the loop goes on serving
+cancels, task events, and task results until nothing is in flight. Only then
+does it return — after broadcasting the terminal `session{state:"closed"}` frame.
 
 ```
-stdin EOF ──▶ inputPump closes inputMsgCh ──▶ run() detects closed channel
-                                                │
-                                    ┌───────────┴───────────┐
-                                    │  drain running task   │
-                                    │  (loop until empty)   │
-                                    └───────────┬───────────┘
-                                                │
-                                             return
+input ends (EOF or CE) ──▶ run() records it ──┐
+                                              │
+                        ┌─────────────────────┴──────────────────────┐
+                        │ a task, or a prompt waiting for readiness, │
+                        │ is still in flight → keep looping (serves  │
+                        │ :cancel and task events) until it is not   │
+                        └─────────────────────┬──────────────────────┘
+                                              │
+                        session{state:"closed"} goes out ──▶ return
 ```
 
 **State ownership:**

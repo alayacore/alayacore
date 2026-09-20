@@ -376,13 +376,25 @@ func mcpMsg(status, server, url, errText string) []byte {
 
 // Session lifecycle frames are not user content: the adapter renders nothing
 // for them. It does not gate on them any more — the session holds a prompt that
-// arrives before it is ready — so all that must hold is that neither "ready"
-// nor "closed" reaches stdout.
-func TestTerseOutput_SessionFramesAreNotRendered(t *testing.T) {
+// arrives before it is ready — so "ready" carries no meaning here; "closed" is
+// the one it acts on, by marking the latch its Start waits on (see Closed()).
+func TestTerseOutput_SessionFramesDriveTheLatch(t *testing.T) {
 	o, stdout, stderr := newTestOutput()
 
 	o.Write(sessionMsg("ready"))
+	select {
+	case <-o.Closed():
+		t.Fatal("the ready frame must not report the session as over")
+	default:
+	}
+
 	o.Write(sessionMsg("closed"))
+	select {
+	case <-o.Closed():
+	default:
+		t.Fatal("the terminal frame should mark Closed()")
+	}
+	o.Write(sessionMsg("closed")) // idempotent
 
 	if got := stdout.String(); got != "" {
 		t.Errorf("stdout = %q, want nothing for session frames", got)

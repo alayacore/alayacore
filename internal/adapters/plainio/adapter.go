@@ -118,6 +118,11 @@ func (a *Adapter) Start() int {
 	input := app.NewLockedWriter(inputWriter)
 	inputPtr.Store(input)
 
+	// The adapter learns that the session is over from its terminal frame, not
+	// from the session handle: that handle is kept for CancelTask alone, which
+	// is a request (SIGINT) rather than an observation of session state.
+	closed := output.Closed()
+
 	// Ctrl-C (SIGINT) cancels the current task instead of killing the
 	// process. Killing would orphan running tool processes: shell tools
 	// start with setsid (own session, no controlling terminal), so they
@@ -133,7 +138,7 @@ func (a *Adapter) Start() int {
 		signal.Stop(sigCh)
 		close(sigCh)
 	}()
-	go app.WatchSignals(sigCh, session.Done(), func() {
+	go app.WatchSignals(sigCh, closed, func() {
 		if !session.CancelTask() {
 			// Nothing was running — keep the same feedback the
 			// :cancel CI frame used to produce via its CO error.
@@ -171,13 +176,13 @@ func (a *Adapter) Start() int {
 	code := 0
 	select {
 	case code = <-exitCh:
-	case <-session.Done():
+	case <-closed:
 	}
 
-	// Wait for the session to finish processing, then release the pipe: it is
+	// Wait for the session's terminal frame before releasing the pipe: it is
 	// what the session reads, so closing it earlier would leave the pump
 	// parked on it and cut off the commands above.
-	<-session.Done()
+	<-closed
 	_ = inputWriter.Close()
 
 	return code
