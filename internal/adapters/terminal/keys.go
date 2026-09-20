@@ -77,11 +77,13 @@ var (
 	keyCtrlZ = Chord{Code: 'z', Mod: ModCtrl}
 )
 
-// Command names (used with ":" prefix in input). cmdCancel is the
-// session command (shared constant); quit/q/suspend/help are
-// adapter-local controls with no session command behind them.
+// Command names (used with ":" prefix in input). cmdQuit and cmdCancel are
+// session command names (shared constants) that the TUI intercepts to add its
+// own behavior — the confirmation dialog, the exit code. cmdQShort is the
+// quit alias; suspend/help are adapter-local controls with no session command
+// behind them.
 const (
-	cmdQuit    = "quit"
+	cmdQuit    = commands.CommandNameQuit
 	cmdQShort  = "q"
 	cmdCancel  = commands.CommandNameCancel
 	cmdSuspend = "suspend"

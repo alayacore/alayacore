@@ -54,7 +54,7 @@ func (s *Session) run() {
 	}
 
 	for {
-		if s.sessionCtx.Err() != nil {
+		if s.shouldExit() {
 			return
 		}
 
@@ -99,6 +99,13 @@ func (s *Session) run() {
 			return
 		}
 	}
+}
+
+// shouldExit reports whether run() can return: the session context is done,
+// or :quit was accepted and nothing is in flight. A task that is already
+// running is "in flight", so quitting waits for it instead of dropping it.
+func (s *Session) shouldExit() bool {
+	return s.sessionCtx.Err() != nil || (s.quitting && s.activeTask == nil)
 }
 
 // handleMCPEvent processes a single MCP initialization event.

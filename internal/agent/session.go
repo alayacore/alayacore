@@ -83,6 +83,11 @@ type runState struct {
 
 	activeTask *taskHandle // non-nil when a task is running; nil when idle
 
+	// quitting is set by :quit (handleQuit). The session stops accepting
+	// new work and run() returns once nothing is in flight, so a task that
+	// is already running still finishes.
+	quitting bool
+
 	// taskCommandID holds the command ID of the task that just finished.
 	// sendTaskMsg uses it for the completion taskMsg, since activeTask is
 	// cleared before the final broadcast.

@@ -2,6 +2,26 @@ package commands
 
 import "testing"
 
+func TestCanonical(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"q", CommandNameQuit},
+		{"quit", CommandNameQuit},
+		{"save", CommandNameSave}, // a name with no alias is its own canonical form
+		{"nope", "nope"},          // unknown names are returned unchanged
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Canonical(tt.name); got != tt.want {
+				t.Errorf("Canonical(%q) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSplitCommand(t *testing.T) {
 	tests := []struct {
 		name     string

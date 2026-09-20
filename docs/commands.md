@@ -39,6 +39,7 @@ Commands fall into three categories:
 
 | Command | Action | CO result |
 |---------|--------|-----------|
+| `:quit` | End the session (alias: `:q`). A task that is already running is allowed to finish first. | `null` |
 | `:cancel` | Cancel current task | `null` |
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. | `{"path"}` |
 | `:theme_set <name>` | Switch to a different theme. TUI only — rejected with `UNAVAILABLE` in Plain IO, Terse IO, and Raw IO (`NoTheme`) | `{"name"}` |
@@ -82,6 +83,11 @@ the command (the TUI confirmation dialogs), or handles it entirely locally:
 | `:cancel` | Shows confirmation dialog, then forwards `:cancel` to the session | Sent to session | Sent to session | Not interpreted — raw CI/CO pass-through |
 | `:help` | Opens help window | Sent to session (unknown command) | Sent to session (unknown command) | Not interpreted — raw CI/CO pass-through |
 | `:suspend` | Suspends process (Ctrl+Z) | Not supported | Not supported | Not interpreted — raw CI/CO pass-through |
+
+`:quit` appears in both tables: the session owns what quitting means — a `quit`
+CI frame ends the session, which is how a rawio client quits — while each
+adapter intercepts the user-facing `:quit`/`:q` to keep control of the
+confirmation and of the process exit code.
 
 ## :fork Details
 

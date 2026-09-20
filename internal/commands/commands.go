@@ -18,6 +18,11 @@ import "strings"
 // the colon). They are the single source of truth for both the agent
 // registry and adapter-side rendering/sending.
 const (
+	// CommandNameQuit ends the session: no new work is accepted and the
+	// session returns as soon as nothing is in flight, so a task already
+	// running still finishes. ":q" is accepted as an alias (see Canonical).
+	CommandNameQuit = "quit"
+
 	CommandNameSummarize   = "summarize"
 	CommandNameCancel      = "cancel"
 	CommandNameContinue    = "continue"
@@ -35,6 +40,24 @@ const (
 	CommandNameMCPDecline  = "mcp_decline"
 	CommandNameMCPSkip     = "mcp_cancel"
 )
+
+// commandAliases maps the aliases users may type to their canonical command
+// name. Which words name a command is this package's business, so the
+// resolution lives here: neither the agent's registry nor the adapters have
+// to keep a copy of this table.
+var commandAliases = map[string]string{
+	"q": CommandNameQuit,
+}
+
+// Canonical resolves an alias to its canonical command name; a name that is
+// not an alias is returned unchanged. Applying it to every command name is
+// safe — command names that carry no alias are their own canonical form.
+func Canonical(name string) string {
+	if canonical, ok := commandAliases[name]; ok {
+		return canonical
+	}
+	return name
+}
 
 // SplitCommand splits a command string into its name and argument tail at
 // the FIRST whitespace (space, tab, CR, LF), trimming the separator from

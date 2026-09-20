@@ -311,6 +311,11 @@ func (s *Session) cleanupConfirmChannels() {
 // the task cannot start; callers decide how to report it (CO for task
 // commands, SM error for normal prompts).
 func (s *Session) prepareTask() (context.Context, error) {
+	// :quit has been accepted: the session is on its way out and must not
+	// take on work it would drop.
+	if s.quitting {
+		return nil, &cmdErr{Code: "SHUTTING_DOWN", Message: "the session is shutting down"}
+	}
 	// Before the session is ready (MCP init pending), the tool list is
 	// incomplete. Sending an LLM request would produce a response without
 	// MCP tools, and the subsequent agent reset (when MCP init completes)
@@ -394,7 +399,9 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	}
 
 	// Registry commands — synchronous dispatch in the run() goroutine.
-	cmdDef, ok := lookupCommand(name)
+	// Aliases (:q) resolve to their canonical name first: which words name
+	// a command is the vocabulary package's business, not the dispatcher's.
+	cmdDef, ok := lookupCommand(commands.Canonical(name))
 	if !ok {
 		s.writeCmdResult(msg.cmdID, nil, &cmdErr{Code: "UNKNOWN_COMMAND", Message: fmt.Sprintf("unknown command: %s", name)})
 		return
@@ -710,6 +717,17 @@ func (s *Session) saveSession(args string) (any, error) {
 		return nil, &cmdErr{Code: "IO_ERROR", Message: fmt.Sprintf("save: failed to save session: %v", err)}
 	}
 	return map[string]any{"path": path}, nil
+}
+
+// handleQuit handles the :quit command. It asks the session to end: no new
+// work is accepted, and run() returns as soon as nothing is in flight — a
+// task already running still finishes. Idempotent.
+func (s *Session) handleQuit(args string) (any, error) {
+	if strings.TrimSpace(args) != "" {
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :quit (no arguments)"}
+	}
+	s.quitting = true
+	return nil, nil
 }
 
 func (s *Session) cancelTask() (any, error) {

@@ -87,6 +87,8 @@ var defaultCommandRegistry = newCommandRegistry()
 // come from the shared commands package (single source of truth for the
 // agent registry and adapter-side rendering).
 var defaultCommandDefs = []command{
+	{commands.CommandNameQuit, "End the session", "", cmdImmediate,
+		func(s *Session, _ context.Context, args string) (any, error) { return s.handleQuit(args) }},
 	{commands.CommandNameCancel, "Cancel the current task", "", cmdImmediate,
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.cancelTask() }},
 	{commands.CommandNameSave, "Save the current session", "[filename]", cmdImmediate,
