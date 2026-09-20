@@ -289,6 +289,7 @@ type Terminal struct {
 
 	// ── Transient state (set once or infrequently, not Elm-copied semantically) ─
 	quitting              bool         // terminal is shutting down
+	quitCancelSent        bool         // the wait window's 'c' went out (its next phase takes no keys)
 	confirmFromCommand    bool         // cancel came from :cancel command (vs Ctrl+G)
 	hasFocus              bool         // terminal has OS-level application focus
 	themePreviewID        int          // debounce ID for pending theme preview
@@ -596,7 +597,13 @@ func (m Terminal) handleQuitWaitingOverlay() Terminal {
 		return m
 	}
 	if !m.confirmOverlay.IsOpen() {
-		m.confirmOverlay = m.confirmOverlay.OpenQuitWaiting()
+		if m.quitCancelSent {
+			// The cancel went out; the window returns in the phase that only
+			// reports progress, since there is nothing left to decide.
+			m.confirmOverlay = m.confirmOverlay.OpenQuitCanceling()
+		} else {
+			m.confirmOverlay = m.confirmOverlay.OpenQuitWaiting()
+		}
 	}
 	m.confirmOverlay = m.confirmOverlay.UpdateQuitWaiting(snap)
 	m.display = m.display.WithBlocked(true)

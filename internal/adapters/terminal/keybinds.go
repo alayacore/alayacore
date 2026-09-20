@@ -421,10 +421,15 @@ func (m Terminal) handleConfirmResult(r *ConfirmResult) (Terminal, Cmd) {
 // task so the session can end now. The quit is already sent — there is nothing
 // to confirm and nothing to undo — so this only stops the work, and the exit
 // follows from the session's terminal frame like any other.
+//
+// The window comes back in its canceling phase, which takes no keys. Without
+// that the next tick would reopen the same window and offer `c` again — for
+// something that has already been sent.
 func (m Terminal) handleConfirmQuitWaiting(r *ConfirmResult) (Terminal, Cmd) {
 	if !r.Canceled {
 		return m, nil
 	}
+	m.quitCancelSent = true
 	return m, m.emitCommand(":" + commands.CommandNameCancel)
 }
 

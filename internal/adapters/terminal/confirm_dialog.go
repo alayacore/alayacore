@@ -1,8 +1,9 @@
 package terminal
 
 // ConfirmDialog renders a centered floating overlay for confirmation dialogs.
-// Used for quit, cancel, tool-confirm, MCP OAuth auth, and the two persistent
-// progress windows (MCP init, and waiting for a task to finish after a quit).
+// Used for quit, cancel, tool-confirm, MCP OAuth auth, and two persistent
+// progress windows: MCP init, and the two phases of waiting for a task to finish
+// after a quit (waiting, then canceling).
 //
 // Rendering follows the shared overlay pattern (see ModelSelector):
 //   - SetSize stores the terminal dimensions
@@ -32,13 +33,14 @@ const ConfirmContentRows = 8
 type ConfirmKind int
 
 const (
-	ConfirmNone        ConfirmKind = iota // No dialog active
-	ConfirmQuit                           // Confirm exit
-	ConfirmCancel                         // Confirm cancel current request
-	ConfirmTool                           // Confirm tool execution
-	ConfirmMCPAuth                        // Confirm MCP OAuth authorization (temporary)
-	ConfirmMCPInit                        // MCP servers initializing (persistent)
-	ConfirmQuitWaiting                    // Exit accepted, waiting for the running task (persistent)
+	ConfirmNone          ConfirmKind = iota // No dialog active
+	ConfirmQuit                             // Confirm exit
+	ConfirmCancel                           // Confirm cancel current request
+	ConfirmTool                             // Confirm tool execution
+	ConfirmMCPAuth                          // Confirm MCP OAuth authorization (temporary)
+	ConfirmMCPInit                          // MCP servers initializing (persistent)
+	ConfirmQuitWaiting                      // Exit accepted, waiting for the running task (persistent)
+	ConfirmQuitCanceling                    // Exit accepted, that task told to stop (persistent)
 )
 
 // ConfirmDialog manages a floating confirmation overlay: quit/cancel
@@ -183,12 +185,24 @@ func (cd ConfirmDialog) OpenQuitWaiting() ConfirmDialog {
 	return cd
 }
 
+// OpenQuitCanceling reopens the wait window once its 'c' has been sent. The quit
+// is still pending — the session ends when the task actually stops — but there
+// is nothing left to decide, so this phase takes no keys: offering 'c' again
+// would offer something already done, and Esc would offer to undo what cannot be
+// undone.
+func (cd ConfirmDialog) OpenQuitCanceling() ConfirmDialog {
+	cd = cd.open(ConfirmQuitCanceling)
+	cd.Description = spinnerFrame() + " Task in progress"
+	return cd
+}
+
 // UpdateQuitWaiting refreshes the body from the session's status snapshot — the
 // same one the status bar reads, so this is not a second progress channel: the
 // step the task is on, and the spinner, which is what says the task is still
-// moving rather than stuck.
+// moving rather than stuck. The canceling phase shows the same step, since it is
+// what has to finish moving for the exit to happen.
 func (cd ConfirmDialog) UpdateQuitWaiting(snap StatusSnapshot) ConfirmDialog {
-	if cd.kind != ConfirmQuitWaiting {
+	if cd.kind != ConfirmQuitWaiting && cd.kind != ConfirmQuitCanceling {
 		return cd
 	}
 	step := "Task in progress"
@@ -258,7 +272,7 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 		return cd, nil // handled but no result
 	}
 
-	if cd.kind == ConfirmQuitWaiting {
+	if cd.isQuitWait() {
 		return cd.updateQuitWaiting(key)
 	}
 
@@ -293,12 +307,22 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 	return cd, nil
 }
 
+// isQuitWait reports whether the dialog is a phase of waiting for a task to
+// finish so the session can end: first with 'c' offered, then with the cancel
+// already sent.
+func (cd ConfirmDialog) isQuitWait() bool {
+	return cd.kind == ConfirmQuitWaiting || cd.kind == ConfirmQuitCanceling
+}
+
 // updateQuitWaiting handles a key while the wait window is up. The only decision
 // left is whether to keep waiting: the quit has been sent and cannot be taken
 // back, so nothing — not Esc, not n — undoes it, and the escape hatch is
-// canceling the task, which lets the session end now. Any other key is ignored
-// rather than closing a window that would only reopen.
+// canceling the task, which lets the session end now. In the canceling phase
+// there is not even that: no key does anything.
 func (cd ConfirmDialog) updateQuitWaiting(key Chord) (ConfirmDialog, []Result) {
+	if cd.kind == ConfirmQuitCanceling {
+		return cd, nil
+	}
 	switch key {
 	case keyC, keyCCapital, keyCtrlG:
 		cd.canceled = true
@@ -402,6 +426,9 @@ func (cd ConfirmDialog) buildContentLines() []string {
 	case ConfirmQuitWaiting:
 		lines = append(lines, cd.wrapAndCenter("Press c to cancel the task and exit now.", cd.styles.System, innerWidth)[0])
 		lines = append(lines, cd.wrapAndCenter("(this window closes when the session ends)", cd.styles.System, innerWidth)[0])
+	case ConfirmQuitCanceling:
+		lines = append(lines, cd.wrapAndCenter("The task is being stopped.", cd.styles.System, innerWidth)[0])
+		lines = append(lines, cd.wrapAndCenter("(this window closes when the session ends)", cd.styles.System, innerWidth)[0])
 	default:
 		lines = append(lines, cd.wrapAndCenter("y / n", cd.styles.Confirm, innerWidth)[0])
 		// The tool-confirm dialog announces 'e' on its own centered hint
@@ -446,6 +473,8 @@ func (cd ConfirmDialog) buildTitleText() string {
 		return "Initializing MCP servers…"
 	case ConfirmQuitWaiting:
 		return "Waiting for the task to finish…"
+	case ConfirmQuitCanceling:
+		return "Canceling the task…"
 	default:
 		return ""
 	}

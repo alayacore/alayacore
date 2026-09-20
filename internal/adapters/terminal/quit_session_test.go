@@ -191,3 +191,65 @@ func TestQuitWaitingOverlayStaysHiddenWhenIdle(t *testing.T) {
 		t.Errorf("an idle session needs no wait window, got kind %v", m.confirmOverlay.Kind())
 	}
 }
+
+// After 'c' is sent, the window must not come back offering 'c' again: the
+// cancel is done, and the only thing left is for the task to stop and the
+// session to end. It returns in a phase that takes no keys.
+func TestQuitWaitingWindowAfterCancel(t *testing.T) {
+	m := newTestTerminal()
+	m = m.updateComponentSizes(80, 24)
+	m.streamInput = &captureWriteCloser{}
+	m.quitting = true
+	m.out.Write(encodeTestTLV(tlv.TagSystemMsg,
+		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) //nolint:errcheck // test frame
+
+	after, _ := m.handleTick()
+	m = after
+
+	// 'c' cancels and closes the dialog.
+	model, cmd := m.Update(KeyPressMsg{Code: 'c'})
+	m = model.(Terminal)
+	if cmd == nil {
+		t.Fatal("'c' should emit :cancel")
+	}
+	if m.confirmOverlay.IsOpen() {
+		t.Fatal("'c' should close the window it answered")
+	}
+
+	// The task is still in flight — the session has not processed :cancel yet —
+	// so the next tick shows the canceling phase rather than reopening the same
+	// window.
+	after, _ = m.handleTick()
+	m = after
+	if !m.confirmOverlay.IsOpen() || m.confirmOverlay.Kind() != ConfirmQuitCanceling {
+		t.Fatalf("expected the canceling window, got open=%v kind=%v",
+			m.confirmOverlay.IsOpen(), m.confirmOverlay.Kind())
+	}
+	body := stripANSI(m.confirmOverlay.View().Content)
+	if strings.Contains(body, "Press c to cancel") {
+		t.Errorf("the canceling window must not offer c again:\n%s", body)
+	}
+	if !strings.Contains(body, "The task is being stopped.") {
+		t.Errorf("the canceling window should say what is happening:\n%s", body)
+	}
+	// The step it is waiting on is still shown: it is what has to finish moving.
+	if !strings.Contains(body, "Step 3/10") {
+		t.Errorf("the canceling window should still show the step:\n%s", body)
+	}
+
+	// And it takes no keys: a second 'c' (or anything else) does nothing.
+	for _, key := range []KeyPressMsg{{Code: 'c'}, {Code: KeyEscape}, {Code: 'y'}} {
+		next, c := m.Update(key)
+		m = next.(Terminal)
+		if c != nil {
+			t.Errorf("key %v produced a command in the canceling phase", key)
+		}
+		if !m.confirmOverlay.IsOpen() || m.confirmOverlay.Kind() != ConfirmQuitCanceling {
+			t.Errorf("key %v changed the canceling window: open=%v kind=%v",
+				key, m.confirmOverlay.IsOpen(), m.confirmOverlay.Kind())
+		}
+	}
+	if !m.quitting {
+		t.Error("the quit must stay accepted")
+	}
+}
