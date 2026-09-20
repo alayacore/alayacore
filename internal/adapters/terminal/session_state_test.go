@@ -60,6 +60,38 @@ func TestSessionReadyOneShot(t *testing.T) {
 	}
 }
 
+// TestSessionClosedOneShot verifies the terminal frame is consumed exactly
+// once — the Terminal leaves the event loop a single time.
+func TestSessionClosedOneShot(t *testing.T) {
+	st := newTestSessionState()
+
+	if st.takeSessionClosed() {
+		t.Fatal("takeSessionClosed should be false before markSessionClosed")
+	}
+
+	st.markSessionClosed()
+	if !st.takeSessionClosed() {
+		t.Fatal("takeSessionClosed should report the terminal frame once")
+	}
+	if st.takeSessionClosed() {
+		t.Fatal("takeSessionClosed should be one-shot (false after consumption)")
+	}
+}
+
+// TestSessionClosedDoesNotMarkReady pins that the terminal frame is not a
+// readiness signal: a session that ends before initialization completed has
+// closed without having been ready, and the init overlay must not be closed
+// by it.
+func TestSessionClosedDoesNotMarkReady(t *testing.T) {
+	st := newTestSessionState()
+
+	st.markSessionClosed()
+
+	if st.takeSessionReady() {
+		t.Fatal("the closed frame must not report initialization complete")
+	}
+}
+
 // TestUpdateMCPProgressResetsListOnNewCycle verifies that a new init cycle
 // (after done/idle) clears stale server entries. Regression test: the old
 // code checked s.mcpStatus AFTER assigning the incoming status, so the

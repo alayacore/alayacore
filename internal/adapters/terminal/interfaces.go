@@ -96,7 +96,8 @@ type OutputWriter interface {
 	GetPendingToolConfirm() (id, toolName, toolInput string, ok bool)
 	GetPendingMCPAuth() (server, url string, ok bool)
 	ClearMCPAuths()
-	ConsumeSessionReady() bool // returns true if initialization just completed (SM "session" ready frame)
+	ConsumeSessionReady() bool  // returns true if initialization just completed (SM "session" ready frame)
+	ConsumeSessionClosed() bool // returns true if the session ended (SM "session" closed frame)
 
 	// Update signaling
 	FlushPendingDeltas() // flushes accumulated delta frames to WindowBuffer

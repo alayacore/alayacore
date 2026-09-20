@@ -40,6 +40,31 @@ func TestSessionReadyIgnoresOtherStates(t *testing.T) {
 	}
 }
 
+// TestSessionClosedFrameIsTerminal verifies the SM "session" closed frame is
+// picked up by ConsumeSessionClosed — the session's own announcement that it
+// is over — and is one-shot. The ready frame is a different state and must
+// not set it.
+func TestSessionClosedFrameIsTerminal(t *testing.T) {
+	w := NewTerminalOutput(DefaultStyles())
+
+	if w.ConsumeSessionClosed() {
+		t.Fatal("ConsumeSessionClosed should be false before the terminal frame")
+	}
+
+	w.handleSystemMsg(`{"type":"session","data":{"state":"ready"}}`)
+	if w.ConsumeSessionClosed() {
+		t.Fatal("the ready frame must not report the session as over")
+	}
+
+	w.handleSystemMsg(`{"type":"session","data":{"state":"closed"}}`)
+	if !w.ConsumeSessionClosed() {
+		t.Fatal("ConsumeSessionClosed should be true after the terminal frame")
+	}
+	if w.ConsumeSessionClosed() {
+		t.Fatal("ConsumeSessionClosed should be one-shot (false after consumption)")
+	}
+}
+
 // TestMCPDoneDoesNotCloseOverlay is a regression test: the MCP progress
 // "done" frame is display-only (it also arrives for canceled/aborted init
 // and never for the no-MCP case) — overlay closure must be driven solely

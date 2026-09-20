@@ -536,6 +536,13 @@ func (m Terminal) handleTick() (Terminal, Cmd) {
 		})
 	}
 
+	// The session has announced that it is over (its terminal frame): leave,
+	// releasing the input pipe on the way out. The last task's output is
+	// already in the WindowBuffer — see handleSessionClosed.
+	if m.out.ConsumeSessionClosed() {
+		return m.handleSessionClosed(), Quit
+	}
+
 	m = m.handleMCPOverlays()
 
 	// First tick after loading: initialization is done — restore input
@@ -551,6 +558,19 @@ func (m Terminal) handleTick() (Terminal, Cmd) {
 	return m, Tick(TickInterval, func(_ time.Time) Msg {
 		return tickMsg{}
 	})
+}
+
+// handleSessionClosed finishes the exit sequence after the session's terminal
+// frame. It does not flush pending deltas: that frame is an authoritative,
+// non-delta frame, so the outputWriter already flushed whatever was pending
+// when it arrived — the last task's streaming output is in the WindowBuffer by
+// the time we decide to leave, which is the state the final render draws. The
+// input pipe is released because the session that read it is gone.
+func (m Terminal) handleSessionClosed() Terminal {
+	if m.streamInput != nil {
+		_ = m.streamInput.Close()
+	}
+	return m
 }
 
 // handleMCPOverlays manages all MCP overlay state in one place.

@@ -147,15 +147,15 @@ func (m Terminal) handleThemePreview(msg themePreviewMsg) Terminal {
 
 func (m Terminal) handleConfirmQuit(r *ConfirmResult, fromCmd bool) (Terminal, Cmd) {
 	if r.Confirmed {
+		// Ask the session to end rather than closing the pipes and returning
+		// Quit: the session is what decides whether it is done, and it may
+		// still be finishing a task. Exiting here would orphan the tool
+		// processes that task spawned (they are in their own session and
+		// receive no terminal signal) and skip the auto-save at its end. The
+		// exit itself happens when the session's terminal frame arrives — see
+		// handleTick.
 		m.quitting = true
-		return m, Sequence(
-			func() Msg {
-				m.streamInput.Close()
-				m.out.Close()
-				return nil
-			},
-			Quit,
-		)
+		return m, m.emitCommand(":" + commands.CommandNameQuit)
 	}
 	if fromCmd {
 		m.input = m.input.WithValue("")

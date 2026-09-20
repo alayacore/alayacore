@@ -75,6 +75,13 @@ type sessionState struct {
 	// close the init overlay exactly once.
 	sessionReady bool
 
+	// sessionClosed is set by the SM "session" frame (state "closed") — the
+	// session's terminal frame, sent once as run() exits and after every
+	// other frame including the last task's output. Consumed one-shot by
+	// takeSessionClosed, which is how the Terminal learns the session is
+	// over without holding a session handle.
+	sessionClosed bool
+
 	// Per-server init progress.
 	mcpServer  string   // current server being connected/authorized
 	mcpServers []string // full list of servers currently being initialized
@@ -319,6 +326,29 @@ func (s *sessionState) takeSessionReady() bool {
 		return false
 	}
 	s.sessionReady = false
+	return true
+}
+
+// markSessionClosed records the SM "session" closed frame — the session's
+// terminal frame. It is the last thing the session writes, so a client that
+// waits for it has seen everything. Set for every session exactly once.
+func (s *sessionState) markSessionClosed() {
+	s.mu.Lock()
+	s.sessionClosed = true
+	s.mu.Unlock()
+}
+
+// takeSessionClosed returns true if the session's terminal frame arrived and
+// resets the flag. One-shot — the Terminal uses this to leave the event loop
+// exactly once, on the session's own announcement rather than on a stream
+// that closed.
+func (s *sessionState) takeSessionClosed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.sessionClosed {
+		return false
+	}
+	s.sessionClosed = false
 	return true
 }
 

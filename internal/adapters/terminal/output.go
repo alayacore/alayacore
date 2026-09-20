@@ -732,16 +732,23 @@ func (to *outputWriter) handleSystemMCP(data json.RawMessage) {
 // handleSystemSession processes a "session" system message — the
 // authoritative lifecycle signal. state "ready" means initialization
 // completed (replay + MCP settle, including canceled/aborted MCP init
-// and the no-MCP case). The Terminal consumes it to close the init
-// overlay; see outputWriter.ConsumeSessionReady().
+// and the no-MCP case), which the Terminal consumes to close the init
+// overlay; state "closed" is the terminal frame, which it consumes to
+// leave the event loop. See outputWriter.ConsumeSessionReady() and
+// ConsumeSessionClosed().
 func (to *outputWriter) handleSystemSession(data json.RawMessage) {
 	var m struct {
 		State string `json:"state"`
 	}
-	if json.Unmarshal(data, &m) != nil || m.State != "ready" {
+	if json.Unmarshal(data, &m) != nil {
 		return
 	}
-	to.status.markSessionReady()
+	switch m.State {
+	case "ready":
+		to.status.markSessionReady()
+	case "closed":
+		to.status.markSessionClosed()
+	}
 }
 
 // handleSystemToolConfirm processes a tool_confirm system message.
@@ -791,6 +798,15 @@ func (to *outputWriter) ConsumeSessionReady() bool {
 		to.status.clearMCPAuths()
 	}
 	return done
+}
+
+// ConsumeSessionClosed returns true if the session's terminal frame has
+// arrived (SM "session" closed), and resets the flag. The Terminal uses this
+// to leave the event loop once the session is over: the frame is the
+// session's own announcement, so nothing has to be inferred from a stream
+// ending.
+func (to *outputWriter) ConsumeSessionClosed() bool {
+	return to.status.takeSessionClosed()
 }
 
 // SnapshotStatus returns a consistent point-in-time view of session status.
