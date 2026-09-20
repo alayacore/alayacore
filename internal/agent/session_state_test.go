@@ -11,6 +11,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -32,16 +33,22 @@ func waitForState(t *testing.T, s *Session, want SessionState) {
 	t.Fatalf("state = %v, want %v", s.State(), want)
 }
 
-// countSessionReadyFrames returns how many SM "session" frames with
-// state "ready" appear in the captured output.
-func countSessionReadyFrames(output *MockOutput) int {
+// countSessionFrames returns how many SM "session" frames carry state in
+// the captured output.
+func countSessionFrames(output *MockOutput, state string) int {
 	count := 0
 	for _, m := range output.Messages {
-		if strings.Contains(m, `"type":"session"`) && strings.Contains(m, `"state":"ready"`) {
+		if strings.Contains(m, `"type":"session"`) && strings.Contains(m, `"state":"`+state+`"`) {
 			count++
 		}
 	}
 	return count
+}
+
+// countSessionReadyFrames returns how many SM "session" frames with
+// state "ready" appear in the captured output.
+func countSessionReadyFrames(output *MockOutput) int {
+	return countSessionFrames(output, "ready")
 }
 
 func TestSessionState_String(t *testing.T) {
@@ -52,6 +59,7 @@ func TestSessionState_String(t *testing.T) {
 		{SessionStarting, "starting"},
 		{SessionInitializing, "initializing"},
 		{SessionReady, "ready"},
+		{SessionClosed, "closed"},
 		{SessionState(99), "SessionState(99)"},
 	}
 	for _, c := range cases {
@@ -98,10 +106,15 @@ func TestSessionState_StartWithoutMCPReady(t *testing.T) {
 	output := &MockOutput{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// The input stays open: this session is alive and idle, not one that
+	// ends on the first read (which would go straight on to the terminal
+	// phase before the ready state could be observed).
+	r, w := io.Pipe()
+
 	s := &Session{
 		sessionConfig: sessionConfig{
 			SessionConfig: SessionConfig{
-				Input:  &nopInput{},
+				Input:  r,
 				Output: output,
 			},
 		},
@@ -124,16 +137,21 @@ func TestSessionState_StartWithoutMCPReady(t *testing.T) {
 	if s.State() != SessionReady {
 		t.Error("State() = not ready after MCP-less Start(), want ready")
 	}
-	// run() writes the ready frame before exiting — wait for Done() so the
-	// broadcast is complete before inspecting MockOutput (not thread-safe).
+
+	// The input ends, run() returns, and only then is the terminal frame
+	// written — waiting for Done() also makes the (not thread-safe)
+	// MockOutput safe to inspect.
+	_ = w.Close()
 	select {
 	case <-s.Done():
 	case <-time.After(2 * time.Second):
 		t.Fatal("run() did not exit")
 	}
-	// Without MCP, run() broadcasts the ready frame at startup.
 	if got := countSessionReadyFrames(output); got != 1 {
 		t.Errorf("session-ready frames = %d, want exactly 1", got)
+	}
+	if got := countSessionFrames(output, "closed"); got != 1 {
+		t.Errorf("closed frames = %d, want exactly 1", got)
 	}
 }
 
@@ -304,5 +322,106 @@ func TestPrepareTask_GatedOnSessionState(t *testing.T) {
 	}
 	if s.activeTask == nil {
 		t.Error("activeTask should be set after successful prepareTask")
+	}
+}
+
+// ============================================================================
+// The terminal frame — SessionClosed
+// ============================================================================
+
+// Exiting announces the terminal state exactly once, after everything else
+// the session had to say: a client that treats "closed" as "the protocol is
+// over" must not have output arrive behind it.
+func TestSessionState_ClosedFrameIsLastAndSentOnce(t *testing.T) {
+	output := &MockOutput{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r, w := io.Pipe()
+
+	s := &Session{
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{
+				Input:  r,
+				Output: output,
+			},
+		},
+		runState: runState{
+			Contents:     make([]llm.ContentPart, 0),
+			taskEventCh:  make(chan taskEvent, 64),
+			taskResultCh: make(chan []llm.ContentPart, 1),
+			cancelReqCh:  make(chan chan bool, 1),
+		},
+		sharedState: sharedState{
+			sessionCtx:    ctx,
+			sessionCancel: cancel,
+			confirmChs:    make(map[string]chan bool),
+		},
+		runDoneCh: make(chan struct{}),
+	}
+	s.mcpService = newMCPService(nil, output)
+	s.Start()
+
+	// A task reports completion — the last thing the session writes before
+	// it is asked to leave — then the input ends and run() returns.
+	s.taskResultCh <- nil
+	if err := w.Close(); err != nil {
+		t.Fatalf("close input: %v", err)
+	}
+	select {
+	case <-s.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("run() did not exit")
+	}
+
+	joined := strings.Join(output.Messages, "")
+	if got := countSessionFrames(output, "closed"); got != 1 {
+		t.Errorf("closed frames = %d, want exactly 1 in %q", got, joined)
+	}
+	if got := countSessionReadyFrames(output); got != 1 {
+		t.Errorf("ready frames = %d, want exactly 1", got)
+	}
+	if s.State() != SessionClosed {
+		t.Errorf("State() = %v after run() returned, want closed", s.State())
+	}
+	closedAt := strings.LastIndex(joined, `"state":"closed"`)
+	if closedAt < 0 {
+		t.Fatalf("no closed frame in %q", joined)
+	}
+	if taskAt := strings.LastIndex(joined, `"type":"task"`); taskAt > closedAt {
+		t.Errorf("task output follows the closed frame:\n%s", joined)
+	}
+}
+
+// The terminal frame does not depend on having been ready: a session that
+// ends while MCP init is still in flight still announces that it is over.
+// That is what lets an adapter wait for a frame instead of inferring the end
+// from its own EOF — the ready frame it was waiting for can no longer arrive.
+func TestSessionState_ClosedFrameWithoutEverBeingReady(t *testing.T) {
+	output := &MockOutput{}
+	s := &Session{
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{Output: output},
+		},
+		sharedState: sharedState{},
+	}
+	s.mcpService = newMCPService(&mcp.Initializer{}, output)
+	s.state.Store(int32(SessionInitializing)) // init never settled
+
+	s.setState(SessionClosed) // what run()'s defer does on the way out
+
+	if got := countSessionFrames(output, "closed"); got != 1 {
+		t.Errorf("closed frames = %d, want exactly 1", got)
+	}
+	if got := countSessionReadyFrames(output); got != 0 {
+		t.Errorf("ready frames = %d, want 0 (init never settled)", got)
+	}
+	if s.State() != SessionClosed {
+		t.Errorf("State() = %v, want closed", s.State())
+	}
+
+	// A closed session accepts nothing — the existing "must be ready" gate
+	// refuses new work without a check of its own.
+	if _, err := s.prepareTask(); err == nil {
+		t.Error("prepareTask() accepted work after the session closed")
 	}
 }

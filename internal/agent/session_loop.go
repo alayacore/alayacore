@@ -28,8 +28,15 @@ import (
 //   - Task completion signals (via taskResultCh)
 //   - MCP initialization events (via mcpService.Events())
 func (s *Session) run() {
-	defer close(s.runDoneCh)
-	defer s.sessionCancel()
+	// The session's last act, in this order: stop the housekeeping (task
+	// goroutines see sessionCtx done), publish the terminal state — which is
+	// written after every other frame, since nothing else can write once the
+	// state is stored — and only then wake the in-process waiters of Done().
+	defer func() {
+		s.sessionCancel()
+		s.setState(SessionClosed)
+		close(s.runDoneCh)
+	}()
 
 	// Start MCP initialization — the goroutine sends events that
 	// we read from mcpService.Events() in the main select below.

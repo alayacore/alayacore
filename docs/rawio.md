@@ -37,6 +37,12 @@ See [TLV Protocol](internal/adapter-architecture.md#tlv-protocol) for full detai
   stdout with no formatting, interpretation, or filtering.
 - The controlling process is responsible for parsing TLV frames from
   stdout and handling any TagSystemMsg with type "error" itself.
+- The session's lifecycle is reported by a TagSystemMsg of type `session`:
+  `{"state":"ready"}` once, when the session is ready to accept prompts, and
+  `{"state":"closed"}` once, as the last frame before the process exits — so a
+  controlling process can wait for a frame instead of inferring the end from
+  stdout EOF. See the
+  [adapter guide](../adapter-guide/README.md#session-lifecycle-signal).
 - Stderr is reserved for error messages, logging, and diagnostics.
 
 ## Errors

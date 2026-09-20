@@ -25,8 +25,8 @@ import (
 // load + replay, guaranteed complete by construction) and one asynchronous
 // phase (MCP init, when MCP servers are configured). State transitions are
 // owned by the run() goroutine: constructors store SessionStarting,
-// run() sets the initial phase, and setState()/syncState() (session.go)
-// advance it once MCP init settles.
+// run() sets the initial phase, setState()/syncState() (session.go) advance
+// it once MCP init settles, and run()'s exit stores SessionClosed.
 //
 // IMPORTANT: agent/provider creation is deliberately lazy (happens on the
 // first task, and MCP init completion resets an already-created agent so it
@@ -47,6 +47,13 @@ const (
 	// SessionReady: MCP initialization has settled (done, canceled, or
 	// aborted) — or was never configured. Prompts are accepted.
 	SessionReady
+
+	// SessionClosed: the session has ended. This is a terminal phase, never
+	// a startup one: run() broadcasts it once on its way out, after every
+	// other frame, and nothing else is written afterwards. State() never
+	// leaves it, so prepareTask's "must be ready" check keeps refusing new
+	// work.
+	SessionClosed
 )
 
 // String returns a stable, human-readable name for the state.
@@ -58,6 +65,8 @@ func (s SessionState) String() string {
 		return "initializing"
 	case SessionReady:
 		return "ready"
+	case SessionClosed:
+		return "closed"
 	default:
 		return fmt.Sprintf("SessionState(%d)", int(s))
 	}
@@ -166,11 +175,14 @@ type mcpMsg struct {
 
 func (mcpMsg) SystemMsgType() string { return "mcp" }
 
-// sessionMsg carries the session startup lifecycle state (type "session").
-// Sent exactly once, on the transition to SessionReady — after replay and
-// after MCP init has settled (done/canceled/aborted, or never configured).
-// Adapters can treat this frame as the authoritative "ready to accept
-// prompts" signal; the state value mirrors SessionState.String().
+// sessionMsg carries the session lifecycle state (type "session").
+//
+// Sent on the two transitions an adapter has a reason to observe: once on
+// SessionReady — after replay and after MCP init has settled
+// (done/canceled/aborted, or never configured), the authoritative "ready to
+// accept prompts" signal — and once on SessionClosed, the terminal frame,
+// written before run() returns and after all task output. The state value
+// mirrors SessionState.String().
 type sessionMsg struct {
 	State string `json:"state"`
 }

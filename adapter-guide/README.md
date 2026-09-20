@@ -304,33 +304,42 @@ Note: During replay, a tool call is a single AF frame with both `name` and
 only happens during live streaming. User and assistant frames are interleaved
 as they were in the original conversation.
 
-### Session-ready signal
+### Session lifecycle signal
 
-When initialization completes, the agent broadcasts exactly **one**
-`session` system message:
+The session reports its lifecycle in `session` system messages — exactly one
+per transition, so a client that waits for a frame is never left guessing:
 
 ```
-SM {"type":"session","data":{"state":"ready"}}
+SM {"type":"session","data":{"state":"ready"}}   ← ready to accept prompts
+SM {"type":"session","data":{"state":"closed"}}  ← the session is over
 ```
 
-- Sent **once per session**, when the session becomes ready to accept
-  prompts — i.e. after session load + replay (always synchronous, before
-  startup) and after MCP init has settled (done / canceled / aborted, or
-  never configured).
+**`ready`** — sent **once per session**, when the session becomes ready to
+accept prompts — i.e. after session load + replay (always synchronous, before
+startup) and after MCP init has settled (done / canceled / aborted, or never
+configured).
+
 - Ordering: with MCP configured it arrives after the final `mcp` frame
   (`done` or `canceled`); without MCP it arrives immediately after the
   replayed content / startup broadcast.
-- This is the **authoritative** readiness signal. Adapters that gate input
-  on initialization (spinner, blocked input box, "waiting for MCP" states)
+- This is the **authoritative** readiness signal. Clients that wait for
+  initialization (spinner, blocked input box, "waiting for MCP" states)
   should wait for this frame instead of inferring readiness from `mcp`
   frames or the startup `task` frame.
-- Adapters that don't recognize the `session` type ignore it (unknown SM
-  types are skipped), so older adapters are unaffected.
+
+**`closed`** — sent **once**, as the session's last act: after every other
+frame, including the output of the last task. It is the terminal frame, and
+nothing follows it on stdout. A client that needs to know the session has
+ended — rather than inferring it from EOF on stdout — waits for this frame;
+see [Delivery guarantee](#delivery-guarantee) for how it relates to `ready`.
+
+Adapters that don't recognize the `session` type ignore it (unknown SM types
+are skipped), so older adapters are unaffected.
 
 #### Delivery guarantee
 
-While the session is alive, the ready frame is **always** delivered,
-exactly once, regardless of how MCP initialization ends:
+`ready` and `closed` are both **always** delivered exactly once each, and a
+session that ends before it was ever ready still sends `closed`:
 
 | MCP outcome | Path to the ready frame |
 |-------------|------------------------|
@@ -350,12 +359,12 @@ This is guaranteed by three layers in the core:
    `aborted` — which still transitions to `ready`, so the adapter is never
    left waiting.
 
-The only case in which the frame is not sent is when the session itself
-has terminated (input stream closed or session canceled) **before** MCP
-init settles. In that case the session is no longer processing any input —
-no prompt can be accepted anyway — and the adapter should treat session
-termination (EOF / shutdown) as the end of the protocol, not wait for a
-ready frame that will never arrive.
+The ready frame is not sent when the session itself terminates (input stream
+closed or session canceled) **before** MCP init settles — but that case gets
+the `closed` frame instead, so a client waiting for either signal still hears
+back. A client that only knows about `ready` should treat `closed` (or EOF)
+as the end of the protocol; the session is gone either way, and no prompt it
+sent can be answered.
 
 ## Adapter Implementation Notes
 
@@ -625,7 +634,7 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 | `notify` | `text` (string) | `SM-notify.bin` |
 | `tool_confirm` | `id` (string) — one-way notification; the user's decision is returned via the `tool_confirm` / `tool_decline` commands (CI frames), not via an SM response | `SM-tool-confirm.bin` |
 | `mcp` | `status` (string: one of `connecting`, `auth_required`, `auth_running`, `connected`, `failed`, `done`), `server` (string, opt), `url` (string, opt — set for `auth_required`; may contain `{{redirect_uri}}` and `{{state}}` placeholders), `error` (string, opt — set for `failed`) | `SM-mcp-connecting.bin`, `SM-mcp-auth-required.bin`, `SM-mcp-auth-running.bin`, `SM-mcp-connected.bin`, `SM-mcp-failed.bin`, `SM-mcp-done.bin` |
-| `session` | `state` (string: `ready` — sent **exactly once**, when initialization completes) | `SM-session-ready.bin` |
+| `session` | `state` (string: `ready` — sent **exactly once**, when initialization completes; `closed` — sent **exactly once**, as the last frame before the session exits) | `SM-session-ready.bin`, `SM-session-closed.bin` |
 
 Complete wire values:
 
@@ -650,6 +659,7 @@ SM-mcp-connected.bin           {"type":"mcp","data":{"status":"connected","serve
 SM-mcp-failed.bin              {"type":"mcp","data":{"status":"failed","server":"github","error":"connection timeout"}}
 SM-mcp-done.bin                {"type":"mcp","data":{"status":"done"}}
 SM-session-ready.bin           {"type":"session","data":{"state":"ready"}}
+SM-session-closed.bin          {"type":"session","data":{"state":"closed"}}
 ```
 
 ## Adapter → Agent Commands
