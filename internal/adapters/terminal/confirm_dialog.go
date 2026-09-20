@@ -1,7 +1,8 @@
 package terminal
 
 // ConfirmDialog renders a centered floating overlay for confirmation dialogs.
-// Used for quit, cancel, tool-confirm, MCP OAuth auth, and MCP-init prompts.
+// Used for quit, cancel, tool-confirm, MCP OAuth auth, and the two persistent
+// progress windows (MCP init, and waiting for a task to finish after a quit).
 //
 // Rendering follows the shared overlay pattern (see ModelSelector):
 //   - SetSize stores the terminal dimensions
@@ -31,12 +32,13 @@ const ConfirmContentRows = 8
 type ConfirmKind int
 
 const (
-	ConfirmNone    ConfirmKind = iota // No dialog active
-	ConfirmQuit                       // Confirm exit
-	ConfirmCancel                     // Confirm cancel current request
-	ConfirmTool                       // Confirm tool execution
-	ConfirmMCPAuth                    // Confirm MCP OAuth authorization (temporary)
-	ConfirmMCPInit                    // MCP servers initializing (persistent)
+	ConfirmNone        ConfirmKind = iota // No dialog active
+	ConfirmQuit                           // Confirm exit
+	ConfirmCancel                         // Confirm cancel current request
+	ConfirmTool                           // Confirm tool execution
+	ConfirmMCPAuth                        // Confirm MCP OAuth authorization (temporary)
+	ConfirmMCPInit                        // MCP servers initializing (persistent)
+	ConfirmQuitWaiting                    // Exit accepted, waiting for the running task (persistent)
 )
 
 // ConfirmDialog manages a floating confirmation overlay: quit/cancel
@@ -170,6 +172,36 @@ func (cd ConfirmDialog) UpdateMCPInitProgress(servers []string) ConfirmDialog {
 	return cd
 }
 
+// OpenQuitWaiting opens the dialog shown after :quit was confirmed while a task
+// was running. Like ConfirmMCPInit it is persistent and keeps taking keys: it
+// stays until the session's terminal frame arrives, and 'c' cancels the task so
+// the session can end at once. It is not a confirmation — the quit has already
+// been sent and cannot be taken back.
+func (cd ConfirmDialog) OpenQuitWaiting() ConfirmDialog {
+	cd = cd.open(ConfirmQuitWaiting)
+	cd.Description = spinnerFrame() + " Task in progress"
+	return cd
+}
+
+// UpdateQuitWaiting refreshes the body from the session's status snapshot — the
+// same one the status bar reads, so this is not a second progress channel: the
+// step the task is on, and the spinner, which is what says the task is still
+// moving rather than stuck.
+func (cd ConfirmDialog) UpdateQuitWaiting(snap StatusSnapshot) ConfirmDialog {
+	if cd.kind != ConfirmQuitWaiting {
+		return cd
+	}
+	step := "Task in progress"
+	switch {
+	case snap.CurrentStep > 0 && snap.MaxSteps > 0:
+		step = fmt.Sprintf("Step %d/%d", snap.CurrentStep, snap.MaxSteps)
+	case snap.CurrentStep > 0:
+		step = fmt.Sprintf("Step %d", snap.CurrentStep)
+	}
+	cd.Description = spinnerFrame() + " " + step
+	return cd
+}
+
 // OpenTool opens the dialog for confirming a tool call.
 func (cd ConfirmDialog) OpenTool(toolID, toolName, toolInput string) ConfirmDialog {
 	cd = cd.open(ConfirmTool)
@@ -226,6 +258,10 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 		return cd, nil // handled but no result
 	}
 
+	if cd.kind == ConfirmQuitWaiting {
+		return cd.updateQuitWaiting(key)
+	}
+
 	switch key {
 	case keyY, keyYCapital:
 		cd.confirmed = true
@@ -254,6 +290,20 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 		return cd, nil
 	}
 
+	return cd, nil
+}
+
+// updateQuitWaiting handles a key while the wait window is up. The only decision
+// left is whether to keep waiting: the quit has been sent and cannot be taken
+// back, so nothing — not Esc, not n — undoes it, and the escape hatch is
+// canceling the task, which lets the session end now. Any other key is ignored
+// rather than closing a window that would only reopen.
+func (cd ConfirmDialog) updateQuitWaiting(key Chord) (ConfirmDialog, []Result) {
+	switch key {
+	case keyC, keyCCapital, keyCtrlG:
+		cd.canceled = true
+		return cd.closeWithResult()
+	}
 	return cd, nil
 }
 
@@ -349,6 +399,9 @@ func (cd ConfirmDialog) buildContentLines() []string {
 	case ConfirmMCPInit:
 		lines = append(lines, cd.wrapAndCenter("Press Ctrl+G to cancel MCP initialization.", cd.styles.System, innerWidth)[0])
 		lines = append(lines, cd.wrapAndCenter("(this window will close automatically)", cd.styles.System, innerWidth)[0])
+	case ConfirmQuitWaiting:
+		lines = append(lines, cd.wrapAndCenter("Press c to cancel the task and exit now.", cd.styles.System, innerWidth)[0])
+		lines = append(lines, cd.wrapAndCenter("(this window closes when the session ends)", cd.styles.System, innerWidth)[0])
 	default:
 		lines = append(lines, cd.wrapAndCenter("y / n", cd.styles.Confirm, innerWidth)[0])
 		// The tool-confirm dialog announces 'e' on its own centered hint
@@ -391,6 +444,8 @@ func (cd ConfirmDialog) buildTitleText() string {
 		return msg + "?"
 	case ConfirmMCPInit:
 		return "Initializing MCP servers…"
+	case ConfirmQuitWaiting:
+		return "Waiting for the task to finish…"
 	default:
 		return ""
 	}
@@ -534,9 +589,10 @@ func (cd ConfirmDialog) RenderOverlay(baseContent string, screenWidth, screenHei
 	// Box row layout (always 10 rows): rule, blank, title, blank,
 	// description ×2, blank, then kind-dependent rows — "y / n" plus
 	// either a blank (quit/cancel/MCP auth) or the tool-confirm hint
-	// "Press e to view the full input." (tool with input), or the two
-	// MCP-init hint lines. The description always occupies rows 4 and 5,
-	// which is what the soft-run logic below keys on.
+	// "Press e to view the full input." (tool with input), or the two hint
+	// lines of a persistent progress window (MCP init, quit wait). The
+	// description always occupies rows 4 and 5, which is what the soft-run
+	// logic below keys on.
 	rows := strings.Split(box, "\n")
 	descRun := cd.descriptionRowsFormSoftRun()
 

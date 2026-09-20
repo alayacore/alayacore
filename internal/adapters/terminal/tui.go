@@ -543,6 +543,9 @@ func (m Terminal) handleTick() (Terminal, Cmd) {
 		return m.handleSessionClosed(), Quit
 	}
 
+	// A quit that has been sent but not honored yet.
+	m = m.handleQuitWaitingOverlay()
+
 	m = m.handleMCPOverlays()
 
 	// First tick after loading: initialization is done — restore input
@@ -570,6 +573,34 @@ func (m Terminal) handleSessionClosed() Terminal {
 	if m.streamInput != nil {
 		_ = m.streamInput.Close()
 	}
+	return m
+}
+
+// handleQuitWaitingOverlay shows the wait window for a quit that the session
+// has not honored yet because a task is still running: the session ends when
+// that task does, and the user's one remaining choice is to cancel it. Nothing
+// is shown when the session is idle — the terminal frame is already on its way
+// and the program leaves without a window appearing at all. Called on every
+// tick, like the other session-progress overlays.
+//
+// It takes the confirm overlay while it is up, so a tool confirmation the
+// running task asks for in the meantime does not appear behind it: the quit is
+// the user's last instruction, and 'c' is the way out of the task that would
+// otherwise wait for an answer.
+func (m Terminal) handleQuitWaitingOverlay() Terminal {
+	if !m.quitting {
+		return m
+	}
+	snap := m.out.SnapshotStatus()
+	if !snap.InProgress {
+		return m
+	}
+	if !m.confirmOverlay.IsOpen() {
+		m.confirmOverlay = m.confirmOverlay.OpenQuitWaiting()
+	}
+	m.confirmOverlay = m.confirmOverlay.UpdateQuitWaiting(snap)
+	m.display = m.display.WithBlocked(true)
+	m.display = m.display.updateContent()
 	return m
 }
 

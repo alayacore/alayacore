@@ -48,10 +48,12 @@ var (
 	keyR      = Chord{Code: 'r'}
 	keyY      = Chord{Code: 'y'}
 	keyN      = Chord{Code: 'n'}
+	keyC      = Chord{Code: 'c'}
 	keyGSmall = Chord{Code: 'g'}
 
 	keyYCapital = Chord{Code: 'Y'}
 	keyNCapital = Chord{Code: 'N'}
+	keyCCapital = Chord{Code: 'C'}
 	keyJCapital = Chord{Code: 'J'}
 	keyKCapital = Chord{Code: 'K'}
 

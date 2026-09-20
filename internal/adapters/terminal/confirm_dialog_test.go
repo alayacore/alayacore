@@ -368,3 +368,77 @@ func TestConfirmDialogRunUpdateThenCloseLeavesNoResidue(t *testing.T) {
 		}
 	}
 }
+
+// The wait window shown after :quit was confirmed while a task runs: it reports
+// the step from the status snapshot (the same one the status bar reads), names
+// the one key that does anything, and is not a choice — Esc and n leave it
+// standing, because the quit has already been sent.
+func TestConfirmQuitWaitingDialog(t *testing.T) {
+	cd := NewConfirmDialog(DefaultStyles()).WithSize(60, 24).OpenQuitWaiting()
+	if !cd.IsOpen() || cd.Kind() != ConfirmQuitWaiting {
+		t.Fatalf("OpenQuitWaiting: open=%v kind=%v", cd.IsOpen(), cd.Kind())
+	}
+
+	cd = cd.UpdateQuitWaiting(StatusSnapshot{InProgress: true, CurrentStep: 3, MaxSteps: 10})
+	got := strings.Join(confirmDialogRows(t, cd), "\n")
+	for _, want := range []string{"Waiting for the task to finish", "Step 3/10", "Press c to cancel the task and exit now."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("wait window is missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "y / n") {
+		t.Errorf("the wait window must not offer a choice:\n%s", got)
+	}
+
+	// Esc and n are the cancel keys of every other dialog here; in this one
+	// they must change nothing.
+	for _, key := range []KeyPressMsg{{Code: KeyEscape}, {Code: 'n'}, {Code: 'y'}} {
+		after, results := cd.Update(key)
+		if len(results) != 0 || !after.IsOpen() {
+			t.Errorf("key %v closed or answered the wait window: results=%v open=%v", key, results, after.IsOpen())
+		}
+	}
+
+	// 'c' is the way out: the task is canceled, which is what lets the session
+	// end now.
+	after, results := cd.Update(KeyPressMsg{Code: 'c'})
+	if after.IsOpen() {
+		t.Error("'c' should close the wait window")
+	}
+	if len(results) != 1 {
+		t.Fatalf("'c' produced %d results, want 1", len(results))
+	}
+	msg, ok := results[0].(ConfirmResultMsg)
+	if !ok {
+		t.Fatalf("result = %T, want ConfirmResultMsg", results[0])
+	}
+	if !msg.Result.Canceled || msg.Result.Kind != ConfirmQuitWaiting {
+		t.Errorf("result = %+v, want a cancel of ConfirmQuitWaiting", msg.Result)
+	}
+}
+
+// Ctrl+G does the same as 'c' here: it is the global "cancel" chord, and while
+// this window is up the task is the only thing left to cancel.
+func TestConfirmQuitWaitingCtrlG(t *testing.T) {
+	cd := NewConfirmDialog(DefaultStyles()).WithSize(60, 24).OpenQuitWaiting()
+	after, results := cd.Update(KeyPressMsg{Code: 'g', Mod: ModCtrl})
+	if after.IsOpen() {
+		t.Error("Ctrl+G should close the wait window")
+	}
+	if len(results) != 1 {
+		t.Fatalf("Ctrl+G produced %d results, want 1", len(results))
+	}
+	msg, ok := results[0].(ConfirmResultMsg)
+	if !ok || !msg.Result.Canceled {
+		t.Errorf("Ctrl+G result = %#v, want a cancel", results[0])
+	}
+}
+
+// A snapshot without a step still says something true: the task is in progress.
+func TestConfirmQuitWaitingWithoutStep(t *testing.T) {
+	cd := NewConfirmDialog(DefaultStyles()).WithSize(60, 24).OpenQuitWaiting()
+	cd = cd.UpdateQuitWaiting(StatusSnapshot{InProgress: true})
+	if got := strings.Join(confirmDialogRows(t, cd), "\n"); !strings.Contains(got, "Task in progress") {
+		t.Errorf("wait window without a step:\n%s", got)
+	}
+}

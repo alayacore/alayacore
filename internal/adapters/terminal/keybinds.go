@@ -411,8 +411,21 @@ func (m Terminal) handleConfirmResult(r *ConfirmResult) (Terminal, Cmd) {
 		return m.handleConfirmTool(r, fromCmd)
 	case ConfirmMCPAuth:
 		return m.handleConfirmMCPAuth(r, fromCmd)
+	case ConfirmQuitWaiting:
+		return m.handleConfirmQuitWaiting(r)
 	}
 	return m, nil
+}
+
+// handleConfirmQuitWaiting handles the quit dialog's one action: canceling the
+// task so the session can end now. The quit is already sent — there is nothing
+// to confirm and nothing to undo — so this only stops the work, and the exit
+// follows from the session's terminal frame like any other.
+func (m Terminal) handleConfirmQuitWaiting(r *ConfirmResult) (Terminal, Cmd) {
+	if !r.Canceled {
+		return m, nil
+	}
+	return m, m.emitCommand(":" + commands.CommandNameCancel)
 }
 
 func (m Terminal) handleDisplayKeys(msg KeyMsg) (Terminal, Cmd) {

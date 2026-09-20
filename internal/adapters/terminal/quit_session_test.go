@@ -9,6 +9,7 @@ package terminal
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/commands"
@@ -117,5 +118,76 @@ func TestSessionClosedFrameEndsTheProgram(t *testing.T) {
 	}
 	if wb := after.out.WindowBuffer(); wb.WindowCount() == 0 {
 		t.Error("the pending delta should have been flushed into a window")
+	}
+}
+
+// While the session finishes the task that :quit asked about, the terminal
+// shows a wait window instead of leaving silently — and 'c' cancels that task
+// so the exit can happen now.
+func TestQuitWaitingOverlayOffersCancel(t *testing.T) {
+	m := newTestTerminal()
+	m = m.updateComponentSizes(80, 24) // as the constructor does; overlays wrap at Width
+	cap := &captureWriteCloser{}
+	m.streamInput = cap
+	m.quitting = true
+
+	// A task in progress, as the session reports it.
+	m.out.Write(encodeTestTLV(tlv.TagSystemMsg,
+		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) //nolint:errcheck // test frame
+
+	after, cmd := m.handleTick()
+	m = after
+	if cmd == nil {
+		t.Fatal("the tick must keep the program alive while the session runs")
+	}
+	if !m.confirmOverlay.IsOpen() || m.confirmOverlay.Kind() != ConfirmQuitWaiting {
+		t.Fatalf("a pending quit with a task running should show the wait window: open=%v kind=%v",
+			m.confirmOverlay.IsOpen(), m.confirmOverlay.Kind())
+	}
+	body := stripANSI(m.confirmOverlay.View().Content)
+	for _, want := range []string{"Step 3/10", "Press c to cancel the task and exit now."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("wait window is missing %q:\n%s", want, body)
+		}
+	}
+
+	// 'c' cancels the task and the session ends on its own from there.
+	model, cmd := m.Update(KeyPressMsg{Code: 'c'})
+	m = model.(Terminal)
+	if cmd == nil {
+		t.Fatal("'c' should emit the cancel command")
+	}
+	cmd()
+	tag, value, err := tlv.ReadTLV(cap)
+	if err != nil {
+		t.Fatalf("read the emitted command: %v", err)
+	}
+	if tag != tlv.TagCommandIn {
+		t.Fatalf("tag = %s, want CI", tag)
+	}
+	var sent protocol.CmdMsg
+	if err := json.Unmarshal([]byte(value), &sent); err != nil {
+		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
+	}
+	if sent.Name != commands.CommandNameCancel {
+		t.Errorf("sent %q, want %q", sent.Name, commands.CommandNameCancel)
+	}
+	if !m.quitting {
+		t.Error("canceling the task must not un-quit: the quit is already sent")
+	}
+}
+
+// An idle session has nothing to wait for, so the window never appears: the
+// session's terminal frame arrives at once and the program leaves.
+func TestQuitWaitingOverlayStaysHiddenWhenIdle(t *testing.T) {
+	m := newTestTerminal()
+	m.streamInput = &captureWriteCloser{}
+	m.quitting = true
+
+	if _, cmd := m.handleTick(); cmd == nil {
+		t.Fatal("no terminal frame yet: the tick must keep the program alive")
+	}
+	if m.confirmOverlay.IsOpen() {
+		t.Errorf("an idle session needs no wait window, got kind %v", m.confirmOverlay.Kind())
 	}
 }
