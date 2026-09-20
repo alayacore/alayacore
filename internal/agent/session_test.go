@@ -756,13 +756,29 @@ func TestTLVFormatRecursionProtection(t *testing.T) {
 	}
 }
 
+// sessionFrontmatter returns a session frontmatter block carrying the current
+// message_version, plus any extra lines. Built from the constant rather than a
+// literal: the number is the protocol's, and a fixture that hardcoded it went
+// stale on every bump (the version check is exact, so the fixture would quietly
+// stop testing what it was written for).
+func sessionFrontmatter(extra ...string) []byte {
+	lines := []string{
+		"---",
+		"message_version: " + strconv.Itoa(messageVersion),
+		"created_at: 2024-01-15T10:30:00Z",
+		"updated_at: 2024-01-15T10:30:00Z",
+	}
+	lines = append(lines, extra...)
+	lines = append(lines, "---", "")
+	return []byte(strings.Join(lines, "\n"))
+}
+
 // TestLoadSessionMissingReasoningLevel verifies that when a session file's
 // frontmatter does not contain a reasoning_level key, the reasoning_level defaults
 // to 1 (normal) rather than 0 (off).
 func TestLoadSessionMissingReasoningLevel(t *testing.T) {
 	// Frontmatter without reasoning_level, mimicking an older session file.
-	// Must include message_version: 11 for the version check to pass.
-	raw := []byte("---\nmessage_version: 11\ncreated_at: 2024-01-15T10:30:00Z\nupdated_at: 2024-01-15T10:30:00Z\n---\n")
+	raw := sessionFrontmatter()
 
 	data, err := parseSessionData(raw)
 	if err != nil {
@@ -774,7 +790,7 @@ func TestLoadSessionMissingReasoningLevel(t *testing.T) {
 	}
 
 	// Also verify that an explicit reasoning_level: 0 is preserved.
-	raw2 := []byte("---\nmessage_version: 11\ncreated_at: 2024-01-15T10:30:00Z\nupdated_at: 2024-01-15T10:30:00Z\nreasoning_level: 0\n---\n")
+	raw2 := sessionFrontmatter("reasoning_level: 0")
 
 	data2, err := parseSessionData(raw2)
 	if err != nil {
@@ -806,7 +822,7 @@ func TestLoadSessionInvalidReasoningLevel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			raw := []byte("---\nmessage_version: 11\ncreated_at: 2024-01-15T10:30:00Z\nupdated_at: 2024-01-15T10:30:00Z\n" + tt.value + "\n---\n")
+			raw := sessionFrontmatter(tt.value)
 
 			data, err := parseSessionData(raw)
 			if err != nil {
@@ -888,7 +904,7 @@ func TestLoadSessionVersionMismatch(t *testing.T) {
 		},
 		{
 			name:    "version zero",
-			raw:     "---\nmessage_version: 0\ncreated_at: 2024-01-15T10:30:00Z\nupdated_at: 2024-01-15T10:30:00Z\n---\n",
+			raw:     "---\nmessage_version: 0\ncreated_at: 2024-01-15T10:30:00Z\nupdated_at: 2024-01-15T10:30:00Z\n---\n", // 0 is never the current version
 			wantErr: errSessionVersionMismatch,
 		},
 	}
@@ -909,7 +925,7 @@ func TestLoadSessionVersionMismatch(t *testing.T) {
 // TestLoadSessionVersionValid verifies that a session file with a valid version
 // loads successfully.
 func TestLoadSessionVersionValid(t *testing.T) {
-	raw := []byte("---\nmessage_version: 11\ncreated_at: 2024-01-15T10:30:00Z\nupdated_at: 2024-01-15T10:30:00Z\n---\n")
+	raw := sessionFrontmatter()
 
 	data, err := parseSessionData(raw)
 	if err != nil {

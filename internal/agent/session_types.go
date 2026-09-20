@@ -189,8 +189,8 @@ type sessionMsg struct {
 
 func (sessionMsg) SystemMsgType() string { return "session" }
 
-// messageVersionMsg carries the TLV message format version and the
-// alayacore application version (type "version").
+// messageVersionMsg carries the protocol version and the alayacore
+// application version (type "version").
 // Sent as the first TagSystemMsg frame so adapters can validate format
 // compatibility and identify the core version before processing
 // subsequent messages.
@@ -201,15 +201,30 @@ type messageVersionMsg struct {
 
 func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgTypeVersion) }
 
-// messageVersion is the current version of the message encoding
-// used in session files and TagSystemMsg broadcasts.
-// Increment when making backward-incompatible changes to the TLV
-// message format within the session body.
+// messageVersion is the adapter protocol version: the frame format adapters
+// speak — the tags, the SM types, and the states those carry. It is broadcast
+// as the first TagSystemMsg frame (messageVersionMsg) so an out-of-process
+// client can check compatibility before reading anything else.
 //
+// It moves for additive changes too — a new tag, a new state, a new command —
+// because an adapter that knows only the older format has no other way to learn
+// that the newer one exists.
+//
+// Session files record the number in their frontmatter and loading demands an
+// exact match (see parseSessionMeta). That is a side effect of carrying the
+// protocol version in the file, not a promise about the file's contents, and
+// nothing here migrates an older file: editing the field to load one anyway is
+// the user's call. See docs/architecture.md ("message_version").
+//
+// v12: the input plane gained CE (TagInputEnd — the adapter's input is
+// exhausted without closing the stream, so commands may still follow), the
+// "session" message gained the terminal state "closed", and the quit command
+// joined the vocabulary (with the q alias). All additive: an adapter that
+// knows none of them still speaks v11.
 // v11: commands moved to the CI/CO control plane — text commands
 // (UT ':' sniffing) removed, command results now travel as CO frames,
 // taskMsg gained command_id for async command correlation.
-const messageVersion = 11
+const messageVersion = 12
 
 // sessionMeta is the frontmatter metadata.
 type sessionMeta struct {

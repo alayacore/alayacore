@@ -15,6 +15,26 @@ both human and AI readers can rely on it as the single source of truth.
 [2-byte tag][4-byte length (big-endian)][N bytes of value]
 ```
 
+## Protocol Version
+
+The first `SM` frame of a session is the version frame:
+
+```
+SM {"type":"version","data":{"message_version":12,"core_version":"<build-time version>"}}
+```
+
+`message_version` identifies the frame format described in this document — the
+tags, the SM types, and the states those carry. It is the number to check before
+parsing anything else, because a core speaking a different version may use tags
+this document does not define, and an older client has no other way to learn that
+a newer core is there.
+
+It moves for additive changes too. A new tag, a new state, a new command: each is
+something an adapter may start relying on, and the number is where it finds out
+that it can.
+
+`core_version` is the alayacore build, for reporting.
+
 ## Tags
 
 ```
@@ -644,7 +664,7 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 Complete wire values:
 
 ```
-SM-message-version.bin         {"type":"version","data":{"message_version":11,"core_version":"(set at build time)"}}
+SM-message-version.bin         {"type":"version","data":{"message_version":12,"core_version":"(set at build time)"}}
 SM-model.bin                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
 SM-model-list.bin              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
 SM-theme.bin                   {"type":"theme","data":{"name":"theme-dark"}}
