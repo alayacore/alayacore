@@ -67,8 +67,8 @@ type StdioTransport struct {
 //
 // bufio.Scanner's default token size is 64KB, which a legitimate MCP tool
 // result (a file read through a filesystem server, say) easily exceeds; the
-// line is then dropped and the transport looks dead. The explicit buffer keeps
-// stdio in step with the HTTP transport, which shares maxMessageBytes.
+// line is then dropped and the request fails. The explicit buffer keeps stdio
+// in step with the HTTP transport, which shares maxMessageBytes.
 func newStdioScanner(r io.Reader) *bufio.Scanner {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxMessageBytes)

@@ -210,6 +210,18 @@ Why *either*, not both: each signal alone is a legitimate ending for real endpoi
 
 Pinned by `anthropic_stream_termination_test.go` and `openai_stream_termination_test.go` (each terminal signal accepted on its own, no signal rejected, and the rejected stream's content verified to land in history anyway). `openai_salvage_parity_test.go` pins the stronger property, which is the one that keeps the two independent assemblers honest: the same body run terminated and run cut must land the *same* history — same parts, same order, same IDs — and must execute the tool both times.
 
+## Stream size bound
+
+An SSE event is bounded at 8MB, and the bound is on the **decoded event** — the data accumulated between blank lines — not on a line. `internal/llm/providers/sse.go` holds the constant and a small line reader; both scanners check the event as it accumulates.
+
+The distinction is the point. SSE lets one event's data span several `data:` lines, so a per-line cap makes the same payload pass or fail depending on how the provider chose to break it up — and that is what the cap used to be: `bufio.Scanner`'s token budget, 1MB. A provider that sent a large tool call atomically (one `data:` line) failed the read; the same call streamed as many small deltas did not. The scanner is gone, so line breaks decide nothing.
+
+8MB is fixed rather than derived from `max_tokens`: it is the memory ceiling, and a ceiling a config value can raise is not a ceiling. Provider output limits are tens of thousands to ~128K tokens — around half a megabyte of text, a few MB at the worst with JSON escaping — so nothing legitimate is rejected, while a misbehaving server is still bounded.
+
+Past the bound the turn fails with `SSE event exceeded 8MB — the model may have generated an oversized tool call`, and the scanner stays stopped. This is not the EOF case: a pending event at EOF is still drained, so a cleanly truncated stream keeps its last event (see [Stream termination](#stream-termination) above).
+
+The constant tracks what providers can emit, not what is typical. **If a turn can ever approach 1MB or more of output, revisit it** — that is the change that would invalidate the number.
+
 ## Null arguments in tool call chunks
 
 Some providers emit no-op deltas with `"arguments": null` (JSON literal null):

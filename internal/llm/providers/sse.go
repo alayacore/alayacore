@@ -25,9 +25,9 @@ import (
 // ceiling, and a ceiling a config value can raise is not a ceiling.
 //
 // 8MB is far above any real single turn. Provider output limits are tens of
-// thousands to ~128K tokens, and even a pathologically escape-heavy JSON
-// encoding of a whole turn stays in the low single-digit MB, so no legitimate
-// turn is rejected — yet a misbehaving server is still bounded.
+// thousands to ~128K tokens (around half a megabyte of text), and even a
+// pathological, escape-heavy JSON encoding of one stays within a few MB, so no
+// legitimate turn is rejected — yet a misbehaving server is still bounded.
 //
 // NOTE: model output limits grow. A single turn today tops out around half a
 // megabyte of output (provider caps of ~128K tokens), but if a turn can ever
