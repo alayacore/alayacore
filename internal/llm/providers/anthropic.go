@@ -358,43 +358,7 @@ func (s *anthropicScanner) Next() bool {
 			continue
 		}
 
-		// Parse SSE field line (same logic as MCP's processSSELine).
-		switch {
-		case strings.HasPrefix(line, "event:"):
-			// Reset both fields — this is the start of a new event.
-			s.eventType = ""
-			s.eventData.Reset()
-			s.hasData = false
-			if len(line) > 6 && line[6] == ' ' {
-				s.eventType = line[7:]
-			} else {
-				s.eventType = line[6:]
-			}
-
-		case strings.HasPrefix(line, "data:"):
-			if s.eventData.Len() > 0 {
-				s.eventData.WriteString("\n")
-			}
-			if len(line) > 5 && line[5] == ' ' {
-				s.eventData.WriteString(line[6:])
-			} else {
-				s.eventData.WriteString(line[5:])
-			}
-			s.hasData = true
-			// The bound is on the event, not the line: a provider may put a
-			// whole large tool call in one, or spread it over many.
-			if s.eventData.Len() > maxEventBytes {
-				readErr = errEventTooLarge()
-			}
-
-		case len(line) > 0 && line[0] == ':':
-			// Comment — ignore.
-
-		default:
-			// Unknown field — ignore per SSE spec.
-		}
-
-		if readErr != nil {
+		if readErr = s.applyField(line); readErr != nil {
 			break
 		}
 	}
@@ -412,6 +376,48 @@ func (s *anthropicScanner) Next() bool {
 	}
 
 	return false
+}
+
+// applyField folds one non-empty SSE field line into the pending event.
+// Unknown fields and comments are ignored. It returns errEventTooLarge once
+// the accumulated event passes maxEventBytes.
+func (s *anthropicScanner) applyField(line string) error {
+	// Same field parsing as MCP's processSSELine.
+	switch {
+	case strings.HasPrefix(line, "event:"):
+		// Reset both fields — this is the start of a new event.
+		s.eventType = ""
+		s.eventData.Reset()
+		s.hasData = false
+		if len(line) > 6 && line[6] == ' ' {
+			s.eventType = line[7:]
+		} else {
+			s.eventType = line[6:]
+		}
+
+	case strings.HasPrefix(line, "data:"):
+		if s.eventData.Len() > 0 {
+			s.eventData.WriteString("\n")
+		}
+		if len(line) > 5 && line[5] == ' ' {
+			s.eventData.WriteString(line[6:])
+		} else {
+			s.eventData.WriteString(line[5:])
+		}
+		s.hasData = true
+		// The bound is on the event, not the line: a provider may put a
+		// whole large tool call in one, or spread it over many.
+		if s.eventData.Len() > maxEventBytes {
+			return errEventTooLarge()
+		}
+
+	case line[0] == ':':
+		// Comment — ignore.
+
+	default:
+		// Unknown field — ignore per SSE spec.
+	}
+	return nil
 }
 
 // Err returns any error encountered during scanning.

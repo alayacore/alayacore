@@ -216,7 +216,7 @@ func runMCPServer() {
 		}
 
 		// Big-response mode: "big/<n>" returns a single-line result
-		// carrying n bytes of payload, modelling an MCP tool result (for
+		// carrying n bytes of payload, modeling an MCP tool result (for
 		// example a file's contents) that exceeds a reader's line buffer.
 		if strings.HasPrefix(msg.Method, "big/") {
 			n, err := strconv.Atoi(strings.TrimPrefix(msg.Method, "big/"))
