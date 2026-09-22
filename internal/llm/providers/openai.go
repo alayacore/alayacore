@@ -89,9 +89,9 @@ package providers
 //    as before.
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -380,26 +380,40 @@ func (p *OpenAIProvider) SetReasoningConfigs(configs map[int]json.RawMessage) {
 // Lines without the "data:" prefix (event:, comments, blank lines) are
 // ignored, matching the Anthropic scanner's accumulation model.
 type openaiScanner struct {
-	scanner     *bufio.Scanner
+	reader      *sseLineReader
 	currentData string
 	err         error
 }
 
 func newOpenAIScanner(reader io.Reader) *openaiScanner {
-	scanner := bufio.NewScanner(reader)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, sseMaxLineBytes)
-	return &openaiScanner{scanner: scanner}
+	return &openaiScanner{reader: newSSELineReader(reader)}
 }
 
 // Next advances to the next complete SSE event.
-// Returns false when the stream is exhausted or an error occurs.
+// Returns false when the stream is exhausted or an error occurs. Once an
+// error is set the scanner stays stopped, like bufio.Scanner.
 func (s *openaiScanner) Next() bool {
+	if s.err != nil {
+		return false
+	}
+
 	var data strings.Builder
 	hasData := false
+	var readErr error
 
-	for s.scanner.Scan() {
-		line := strings.TrimSpace(s.scanner.Text()) // also tolerates CRLF
+	for {
+		line, err := s.reader.next()
+		if err != nil {
+			// EOF is the normal end of a (possibly truncated) stream and is
+			// handled by draining a pending event below. Any other error is
+			// fatal and is reported instead: the pending event is unfinished
+			// or unverifiable, so it is not emitted as if it were complete.
+			if !errors.Is(err, io.EOF) {
+				readErr = err
+			}
+			break
+		}
+		line = strings.TrimSpace(line) // also tolerates CRLF
 
 		// Empty line — terminate the current event if we have one
 		// (per the SSE spec).
@@ -421,6 +435,12 @@ func (s *openaiScanner) Next() bool {
 				data.WriteString(line[5:]) // "data:hello" → "hello", "data:" → ""
 			}
 			hasData = true
+			// The bound is on the event, not the line: a provider may put a
+			// whole large tool call in one, or spread it over many.
+			if data.Len() > maxEventBytes {
+				readErr = errEventTooLarge()
+				break
+			}
 			continue
 		}
 
@@ -428,15 +448,16 @@ func (s *openaiScanner) Next() bool {
 		// terminate the current data event.
 	}
 
+	if readErr != nil {
+		s.err = readErr
+		return false
+	}
+
 	// EOF reached. Drain any pending event that wasn't terminated by a
 	// blank line (handles truncated streams gracefully).
 	if hasData {
 		s.currentData = data.String()
 		return true
-	}
-
-	if err := s.scanner.Err(); err != nil {
-		s.err = sseScannerErr(err)
 	}
 	return false
 }

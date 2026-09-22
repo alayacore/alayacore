@@ -30,9 +30,9 @@ package providers
 //    native audio/video blocks, it just cannot put them on a tool message.
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -314,24 +314,39 @@ func (p *AnthropicProvider) SetReasoningConfigs(configs map[int]json.RawMessage)
 //
 // This follows the same logic as MCP's processSSELine.
 type anthropicScanner struct {
-	scanner   *bufio.Scanner
+	reader    *sseLineReader
 	eventType string
 	eventData strings.Builder
 	hasData   bool // true if we've accumulated any data for the current event
+	err       error
 }
 
 func newAnthropicScanner(reader io.Reader) *anthropicScanner {
-	scanner := bufio.NewScanner(reader)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, sseMaxLineBytes)
-	return &anthropicScanner{scanner: scanner}
+	return &anthropicScanner{reader: newSSELineReader(reader)}
 }
 
 // Next advances to the next complete SSE event.
-// Returns false when the stream is exhausted or an error occurs.
+// Returns false when the stream is exhausted or an error occurs. Once an
+// error is set the scanner stays stopped, like bufio.Scanner.
 func (s *anthropicScanner) Next() bool {
-	for s.scanner.Scan() {
-		line := s.scanner.Text()
+	if s.err != nil {
+		return false
+	}
+
+	var readErr error
+
+	for {
+		line, err := s.reader.next()
+		if err != nil {
+			// EOF is the normal end of a (possibly truncated) stream and is
+			// handled by draining a pending event below. Any other error is
+			// fatal and is reported instead: the pending event is unfinished
+			// or unverifiable, so it is not emitted as if it were complete.
+			if !errors.Is(err, io.EOF) {
+				readErr = err
+			}
+			break
+		}
 
 		// Empty line — terminate the current event if we have one.
 		if line == "" {
@@ -366,6 +381,11 @@ func (s *anthropicScanner) Next() bool {
 				s.eventData.WriteString(line[5:])
 			}
 			s.hasData = true
+			// The bound is on the event, not the line: a provider may put a
+			// whole large tool call in one, or spread it over many.
+			if s.eventData.Len() > maxEventBytes {
+				readErr = errEventTooLarge()
+			}
 
 		case len(line) > 0 && line[0] == ':':
 			// Comment — ignore.
@@ -373,6 +393,15 @@ func (s *anthropicScanner) Next() bool {
 		default:
 			// Unknown field — ignore per SSE spec.
 		}
+
+		if readErr != nil {
+			break
+		}
+	}
+
+	if readErr != nil {
+		s.err = readErr
+		return false
 	}
 
 	// EOF reached. Drain any pending event that wasn't terminated by
@@ -387,7 +416,7 @@ func (s *anthropicScanner) Next() bool {
 
 // Err returns any error encountered during scanning.
 func (s *anthropicScanner) Err() error {
-	return sseScannerErr(s.scanner.Err())
+	return s.err
 }
 
 // Event returns the current event's type and data payload.
