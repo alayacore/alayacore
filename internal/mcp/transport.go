@@ -46,6 +46,18 @@ const maxStderrTail = 8 * 1024
 // the remote server must not get to decide its size.
 const maxTextResponseBytes = 1 << 20 // 1MB
 
+// maxMessageBytes bounds a single JSON-RPC message alayacore will read from an
+// MCP transport: one NDJSON line over stdio, one SSE event over HTTP.
+//
+// The two transports must agree. They did not: HTTP allowed 1MB while stdio
+// was left at bufio.Scanner's 64KB default, so a tool result big enough to
+// matter — a file fetched through an MCP filesystem server — was readable over
+// HTTP and silently killed the stdio transport. The bound has to clear the
+// largest payload alayacore itself can produce: a 16MB file returned as a
+// base64 data URI is already ~22MB. 64MB leaves headroom while still bounding
+// what a hostile or misconfigured server can make us allocate.
+const maxMessageBytes = 64 << 20 // 64MB
+
 // boundedTail is a goroutine-safe ring buffer keeping the last max bytes
 // written to it. It implements io.Writer, which makes it suitable as
 // exec.Cmd.Stderr: the child's output is copied by an exec-internal

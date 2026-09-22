@@ -215,6 +215,25 @@ func runMCPServer() {
 			}
 		}
 
+		// Big-response mode: "big/<n>" returns a single-line result
+		// carrying n bytes of payload, modelling an MCP tool result (for
+		// example a file's contents) that exceeds a reader's line buffer.
+		if strings.HasPrefix(msg.Method, "big/") {
+			n, err := strconv.Atoi(strings.TrimPrefix(msg.Method, "big/"))
+			if err != nil || n <= 0 {
+				n = 256 * 1024
+			}
+			resp := jsonrpcResponse{
+				JSONRPC: "2.0",
+				ID:      msg.ID,
+				Result:  mustMarshal(map[string]any{"data": strings.Repeat("x", n)}),
+			}
+			data, _ := json.Marshal(resp)
+			os.Stdout.Write(data)
+			os.Stdout.Write([]byte("\n"))
+			continue
+		}
+
 		// Normal response — echo method and params back in result.
 		result := map[string]any{
 			"echo_method": msg.Method,
@@ -822,5 +841,67 @@ func TestStdioTransport_SendReceive_WithCustomError(t *testing.T) {
 	}
 	if rpcErr.Message != "Custom error" {
 		t.Errorf("error message = %q, want %q", rpcErr.Message, "Custom error")
+	}
+}
+
+// TestStdioTransport_ResponseLargerThanScanBuffer guards against the reader
+// imposing a smaller message limit than a peer can legitimately send. A tool
+// result worth reading (a file fetched through an MCP filesystem server)
+// arrives as one NDJSON line, and the scanner must not be left at
+// bufio.Scanner's 64KB default, which drops the line and kills the transport.
+func TestStdioTransport_ResponseLargerThanScanBuffer(t *testing.T) {
+	transport := newStdioTestTransport(t, nil, "")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	const want = 256 * 1024 // well past bufio.Scanner's 64KB default token size
+	resp, err := transport.SendReceive(ctx, jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      requestID("big"),
+		Method:  "big/" + strconv.Itoa(want),
+	})
+	if err != nil {
+		t.Fatalf("SendReceive() error = %v (a %d-byte response line must be readable)", err, want)
+	}
+
+	var got struct {
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(resp, &got); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if len(got.Data) != want {
+		t.Errorf("payload len = %d, want %d", len(got.Data), want)
+	}
+}
+
+// TestStdioTransport_ScanErrorIsSurfaced covers the other half of a too-long
+// line: when the reader does give up, the caller must learn why. A closed
+// pending channel on its own reports EOF, which reads as "the server went
+// away" and hides the real cause.
+func TestStdioTransport_ScanErrorIsSurfaced(t *testing.T) {
+	// A scanner with a deliberately tiny token budget stands in for a line
+	// over the real maxMessageBytes; the real bound is 64MB, too large to
+	// exercise end to end.
+	scanner := bufio.NewScanner(strings.NewReader(strings.Repeat("x", 4096) + "\n"))
+	scanner.Buffer(make([]byte, 0, 16), 32)
+
+	transport := &StdioTransport{
+		scanner: scanner,
+		done:    make(chan struct{}),
+		pending: make(map[requestID]chan<- jsonrpcResponse),
+	}
+
+	transport.readerWg.Add(1)
+	transport.readLoop()
+	transport.readerWg.Wait()
+
+	err := transport.readError()
+	if err == nil {
+		t.Fatal("readError() = nil, want the scanner failure")
+	}
+	if !errors.Is(err, bufio.ErrTooLong) {
+		t.Errorf("readError() = %v, want it to wrap %v", err, bufio.ErrTooLong)
 	}
 }

@@ -77,7 +77,7 @@ type sseReadCloser struct {
 // newSSEReadCloser creates an sseReadCloser from an HTTP response body.
 func newSSEReadCloser(body io.ReadCloser) *sseReadCloser {
 	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxMessageBytes)
 	return &sseReadCloser{
 		body:    body,
 		scanner: scanner,
@@ -440,10 +440,17 @@ func (t *HTTPTransport) readJSONResponse(body io.ReadCloser) (json.RawMessage, e
 //nolint:unparam // signature matches readJSONResponse for switch consistency
 func (t *HTTPTransport) readTextResponse(body io.ReadCloser) (json.RawMessage, error) {
 	// Capped: the body becomes an error message shown to the user and fed to
-	// the model, so a server cannot decide its size.
-	data, err := io.ReadAll(io.LimitReader(body, maxTextResponseBytes))
+	// the model, so a server cannot decide its size. Read one byte past the
+	// cap so a longer body is named as too large rather than shown truncated.
+	data, err := io.ReadAll(io.LimitReader(body, maxTextResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read text response: %w", err)
+	}
+	if len(data) > maxTextResponseBytes {
+		return nil, &RPCError{
+			Code:    -32000,
+			Message: fmt.Sprintf("text/plain response exceeds %d bytes", maxTextResponseBytes),
+		}
 	}
 	msg := strings.TrimSpace(string(data))
 	if msg == "" {

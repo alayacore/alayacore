@@ -388,7 +388,7 @@ type openaiScanner struct {
 func newOpenAIScanner(reader io.Reader) *openaiScanner {
 	scanner := bufio.NewScanner(reader)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, sseMaxLineBytes)
 	return &openaiScanner{scanner: scanner}
 }
 
@@ -436,7 +436,7 @@ func (s *openaiScanner) Next() bool {
 	}
 
 	if err := s.scanner.Err(); err != nil {
-		s.err = err
+		s.err = sseScannerErr(err)
 	}
 	return false
 }

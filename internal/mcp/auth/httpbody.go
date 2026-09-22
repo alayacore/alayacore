@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"io"
 )
 
@@ -14,12 +15,18 @@ import (
 const maxResponseBytes = 1 << 20 // 1MB
 
 // readCapped reads at most maxResponseBytes from r. A body larger than the cap
-// is cut off, which makes the JSON decode fail with a parse error rather than
-// letting a server allocate unbounded memory.
+// is rejected with an explicit error: silently cutting it off would surface as
+// a JSON parse error, which misattributes the cause.
 func readCapped(r io.Reader) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(r, maxResponseBytes))
+	// Read one byte past the cap: a body at exactly the limit is fine, and a
+	// longer one is reported as too large instead of being cut off and
+	// resurfacing later as a confusing JSON parse error.
+	body, err := io.ReadAll(io.LimitReader(r, maxResponseBytes+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes", maxResponseBytes)
 	}
 	return body, nil
 }

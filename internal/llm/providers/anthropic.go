@@ -33,7 +33,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -324,7 +323,7 @@ type anthropicScanner struct {
 func newAnthropicScanner(reader io.Reader) *anthropicScanner {
 	scanner := bufio.NewScanner(reader)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, sseMaxLineBytes)
 	return &anthropicScanner{scanner: scanner}
 }
 
@@ -388,11 +387,7 @@ func (s *anthropicScanner) Next() bool {
 
 // Err returns any error encountered during scanning.
 func (s *anthropicScanner) Err() error {
-	err := s.scanner.Err()
-	if errors.Is(err, bufio.ErrTooLong) {
-		return fmt.Errorf("SSE line exceeded 1MB limit — the model may have generated an oversized tool call")
-	}
-	return err
+	return sseScannerErr(s.scanner.Err())
 }
 
 // Event returns the current event's type and data payload.
