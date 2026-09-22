@@ -11,7 +11,7 @@ import (
 )
 
 // encodeTestTLV encodes a TLV frame for test input. Test payloads are
-// tiny and never exceed maxMessageSize, so the encode error is ignored.
+// tiny and never exceed tlv.MaxMessageSize, so the encode error is ignored.
 func encodeTestTLV(tag, value string) []byte {
 	msg, _ := tlv.EncodeTLV(tag, value)
 	return msg

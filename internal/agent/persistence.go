@@ -20,9 +20,6 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// maxTLVContentSize is the safety limit for a single TLV record's content.
-const maxTLVContentSize = 10 * 1024 * 1024
-
 // errSessionVersionMismatch is returned when a session file has a version
 // that does not match messageVersion and cannot be loaded.
 var errSessionVersionMismatch = errors.New("session file version mismatch")
@@ -235,7 +232,12 @@ func (r *persistenceTLVReader) read() (tag string, content []byte, err error) {
 	if err := binary.Read(r.reader, binary.BigEndian, &length); err != nil {
 		return "", nil, fmt.Errorf("failed to read length: %w", err)
 	}
-	if length < 0 || length > maxTLVContentSize {
+	// Reject before allocating, but never apply a tighter bound than
+	// EncodeTLV: a session record that saved successfully must load back.
+	// The remaining-body check keeps a corrupt length field from triggering
+	// an outsized allocation, while still admitting any frame the writer
+	// could have produced (a real frame can never exceed the bytes on disk).
+	if length < 0 || length > tlv.MaxMessageSize || int(length) > r.reader.Len() {
 		return "", nil, fmt.Errorf("invalid length: %d", length)
 	}
 

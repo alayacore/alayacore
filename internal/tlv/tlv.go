@@ -78,19 +78,24 @@ const (
 	TagUserFDelta      = "Uf" // Tool result preview snapshot (ephemeral, non-authoritative)
 )
 
-// maxMessageSize is the largest frame length the wire format allows.
+// MaxMessageSize is the largest frame length the wire format allows.
 // It fits in the 4-byte (uint32) length field and in a 32-bit int, so
 // EncodeTLV/ReadTLV never need to handle a value that overflows either.
 // EncodeTLV rejects longer values (never truncates) and ReadTLV rejects
 // longer peer-advertised lengths before allocating.
-const maxMessageSize = 1<<31 - 1
+//
+// Exported so every consumer of the TLV format shares this single bound:
+// in particular session persistence, whose reader must not impose a
+// *smaller* cap than EncodeTLV — doing so makes a session that saved
+// successfully (e.g. a large base64 tool result) unloadable.
+const MaxMessageSize = 1<<31 - 1
 
 // checkEncodeLength validates that a message length fits in the wire
-// format. Extracted as a pure function so the >maxMessageSize path can
+// format. Extracted as a pure function so the >MaxMessageSize path can
 // be tested without allocating a multi-GB string.
 func checkEncodeLength(length int64) error {
-	if length > maxMessageSize {
-		return fmt.Errorf("tlv: message length %d exceeds maximum %d", length, maxMessageSize)
+	if length > MaxMessageSize {
+		return fmt.Errorf("tlv: message length %d exceeds maximum %d", length, MaxMessageSize)
 	}
 	return nil
 }
@@ -100,7 +105,7 @@ func checkEncodeLength(length int64) error {
 //
 // The tag must be exactly 2 characters (the wire format has a fixed 2-byte
 // tag field) — anything else returns an error instead of panicking on the
-// tag byte indexing. Returns an error if value exceeds maxMessageSize. The
+// tag byte indexing. Returns an error if value exceeds MaxMessageSize. The
 // caller must surface this rather than silently truncating — a truncated
 // frame would be delivered as if it were the complete message.
 func EncodeTLV(tag string, value string) ([]byte, error) {
@@ -114,14 +119,14 @@ func EncodeTLV(tag string, value string) ([]byte, error) {
 	msg := make([]byte, 6+len(value))
 	msg[0] = tag[0]
 	msg[1] = tag[1]
-	binary.BigEndian.PutUint32(msg[2:], uint32(len(value))) //nolint:gosec // G115: length is bounded by maxMessageSize
+	binary.BigEndian.PutUint32(msg[2:], uint32(len(value))) //nolint:gosec // G115: length is bounded by MaxMessageSize
 	copy(msg[6:], value)
 
 	return msg, nil
 }
 
 // WriteTLV writes a TLV-encoded message to the writer.
-// Returns an error if the message exceeds maxMessageSize (never
+// Returns an error if the message exceeds MaxMessageSize (never
 // truncated) or if the underlying write fails.
 func WriteTLV(output io.Writer, tag string, value string) error {
 	msg, err := EncodeTLV(tag, value)
@@ -136,7 +141,7 @@ func WriteTLV(output io.Writer, tag string, value string) error {
 // It blocks until a full frame has been read or an error occurs.
 //
 // The length field is peer-controlled, so frames longer than
-// maxMessageSize are rejected BEFORE any allocation. Without this
+// MaxMessageSize are rejected BEFORE any allocation. Without this
 // guard a corrupt or malicious peer could advertise a length of up to
 // 4GB (uint32), causing an oversized allocation (OOM on 64-bit,
 // make([]byte, ...) panic on 32-bit platforms).
@@ -152,8 +157,8 @@ func ReadTLV(input io.Reader) (string, string, error) {
 		return tag, "", nil
 	}
 
-	if length > maxMessageSize {
-		return "", "", fmt.Errorf("tlv: frame length %d exceeds maximum %d", length, maxMessageSize)
+	if length > MaxMessageSize {
+		return "", "", fmt.Errorf("tlv: frame length %d exceeds maximum %d", length, MaxMessageSize)
 	}
 
 	valueBuf := make([]byte, length)

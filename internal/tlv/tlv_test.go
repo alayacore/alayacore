@@ -56,27 +56,27 @@ func TestReadTLV_RejectsOversizedLength(t *testing.T) {
 		t.Errorf("error = %q, want mention of maximum size", err)
 	}
 
-	// Just above the limit (maxMessageSize + 1) is also rejected.
+	// Just above the limit (MaxMessageSize + 1) is also rejected.
 	var over [6]byte
 	over[0], over[1] = TagUserT[0], TagUserT[1]
-	binary.BigEndian.PutUint32(over[2:], maxMessageSize+1)
+	binary.BigEndian.PutUint32(over[2:], MaxMessageSize+1)
 	_, _, err = ReadTLV(bytes.NewReader(over[:]))
 	if err == nil {
-		t.Fatal("ReadTLV() expected error for length > maxMessageSize, got nil")
+		t.Fatal("ReadTLV() expected error for length > MaxMessageSize, got nil")
 	}
 
-	// Boundary: length == maxMessageSize passes the size check and falls
+	// Boundary: length == MaxMessageSize passes the size check and falls
 	// through to reading the value bytes (which are absent here, so the
 	// error must be a read error, NOT a size error).
 	var atLimit [6]byte
 	atLimit[0], atLimit[1] = TagUserT[0], TagUserT[1]
-	binary.BigEndian.PutUint32(atLimit[2:], maxMessageSize)
+	binary.BigEndian.PutUint32(atLimit[2:], MaxMessageSize)
 	_, _, err = ReadTLV(bytes.NewReader(atLimit[:]))
 	if err == nil {
 		t.Fatal("expected error (value bytes missing), got nil")
 	}
 	if strings.Contains(err.Error(), "exceeds maximum") {
-		t.Errorf("boundary length %d should pass the size check, got: %v", maxMessageSize, err)
+		t.Errorf("boundary length %d should pass the size check, got: %v", MaxMessageSize, err)
 	}
 }
 
@@ -88,16 +88,16 @@ func TestReadTLV_TruncatedHeader(t *testing.T) {
 }
 
 // TestCheckEncodeLength verifies the encode-side size guard without
-// allocating a multi-GB string (maxMessageSize ≈ 2GB).
+// allocating a multi-GB string (MaxMessageSize ≈ 2GB).
 func TestCheckEncodeLength(t *testing.T) {
 	if err := checkEncodeLength(0); err != nil {
 		t.Errorf("zero length should pass, got: %v", err)
 	}
-	if err := checkEncodeLength(maxMessageSize); err != nil {
-		t.Errorf("boundary length %d should pass, got: %v", maxMessageSize, err)
+	if err := checkEncodeLength(MaxMessageSize); err != nil {
+		t.Errorf("boundary length %d should pass, got: %v", MaxMessageSize, err)
 	}
-	if err := checkEncodeLength(maxMessageSize + 1); err == nil {
-		t.Error("expected error for length maxMessageSize+1, got nil")
+	if err := checkEncodeLength(MaxMessageSize + 1); err == nil {
+		t.Error("expected error for length MaxMessageSize+1, got nil")
 	}
 	if err := checkEncodeLength(1<<32 - 1); err == nil {
 		t.Error("expected error for max uint32 length, got nil")
