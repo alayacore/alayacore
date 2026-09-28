@@ -19,7 +19,7 @@ import (
 // cluster — switches to the vertical
 // record layout. Either way every glyph must survive, no cluster may be
 // broken, and no line may exceed the width budget.
-func TestMarkdownTableColumnShrinkingWithWideChars(t *testing.T) {
+func TestMarkdownTableWideColumnsWithCJK(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 
 	// 3-col table where the first column is much wider than the others and

@@ -303,7 +303,7 @@ func TestRecordLayoutHasNoBlankLines(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdownTables_ContentGlyphsSurvives locks what the no-loss
+// TestRenderMarkdownTables_ContentGlyphsSurvive locks what the no-loss
 // multiset check structurally cannot see: the box-drawing glyphs are also the
 // framing glyphs, so dropLayoutNoise strips them from both sides and a lost
 // "│" inside a cell would go unnoticed there. Exact rendered lines close that

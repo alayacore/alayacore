@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// BenchmarkScrollViewSetContent benchmarks ScrollView.SetContent at various sizes.
+// BenchmarkScrollViewWithContent benchmarks ScrollView.WithContent at various sizes.
 func BenchmarkScrollViewWithContent(b *testing.B) {
 	sizes := []int{10, 100, 1000, 10000}
 	for _, n := range sizes {

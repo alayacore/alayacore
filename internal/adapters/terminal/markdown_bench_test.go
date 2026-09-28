@@ -13,7 +13,7 @@ import (
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
-// BenchmarkRenderMarkdownTables measures the pure transform cost (no wrap).
+// BenchmarkRenderMarkdownTables_Small measures the pure transform cost (no wrap).
 func BenchmarkRenderMarkdownTables_Small(b *testing.B) {
 	content := "| name | gender | age |\n|---|---|---|\n| Walllace Gibbon | male | 100 |\n| Harry Potter | male | 10 |"
 	b.ReportAllocs()

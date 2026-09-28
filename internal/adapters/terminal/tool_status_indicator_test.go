@@ -174,7 +174,6 @@ func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	}
 }
 
-// TestUserPromptCollapsedTail: the user prompt collapsed summary is
 // TestUserPromptCollapsed covers the user-prompt collapsed-view summary
 // across the cases that matter: short content that fits, multi-part
 // content with newlines, narrow-width ASCII truncation, and narrow-width

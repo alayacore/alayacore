@@ -627,7 +627,7 @@ func BenchmarkStreamingUpdateWithoutVirtualRendering(b *testing.B) {
 	}
 }
 
-// BenchmarkGetAllOnly isolates the GetAll cost
+// BenchmarkGetAllWithVirtual isolates the GetAll cost
 func BenchmarkGetAllWithVirtual(b *testing.B) {
 	styles := NewStyles(theme.DefaultTheme())
 	wb := NewWindowBuffer(80, styles)
@@ -823,7 +823,7 @@ func BenchmarkEnsureLineHeightsFullRebuild(b *testing.B) {
 	}
 }
 
-// BenchmarkIncrementalWrapping measures incremental append-to-existing-wrappedLines.
+// BenchmarkIncrementalWrappingPath measures incremental append-to-existing-wrappedLines.
 // State is built once; each iteration appends a small delta and tracks
 // the line count (incremental path — no full re-wrap).
 func BenchmarkIncrementalWrappingPath(b *testing.B) {
