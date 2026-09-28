@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // InputField is the Elm-style model for a text input with multi-line support
@@ -351,12 +352,13 @@ func (m InputField) ensureCursorVisible() InputField {
 	if relPos < len(line) {
 		// Width of the cluster at the cursor: the whole cluster must stay
 		// visible so it is never split at the right edge of the viewport.
-		for _, c := range graphemeClusters(line) {
-			if relPos >= c.start && relPos < c.end {
-				need = c.width
-				break
+		walkLineClusters(line, func(start, end, width int) bool {
+			if relPos >= start && relPos < end {
+				need = width
+				return false
 			}
-		}
+			return start <= relPos
+		})
 	}
 	startCell := runesWidth(line[:m.visStart])
 
@@ -392,12 +394,17 @@ func clusterStartAt(line []rune, pos int) int {
 	if pos <= 0 || pos >= len(line) {
 		return pos
 	}
-	for _, c := range graphemeClusters(line) {
-		if pos >= c.start && pos < c.end {
-			return c.start
+	start := pos
+	walkLineClusters(line, func(a, b, _ int) bool {
+		if pos >= a && pos < b {
+			start = a
+			return false
 		}
-	}
-	return pos
+		// Clusters are ordered and disjoint: once one begins past pos, none
+		// of the rest can contain it.
+		return a <= pos
+	})
+	return start
 }
 
 // firstRuneStartAtLeast returns the index of the first grapheme cluster whose
@@ -409,14 +416,17 @@ func firstRuneStartAtLeast(line []rune, target int) int {
 	if target <= 0 {
 		return 0
 	}
+	idx := len(line)
 	cells := 0
-	for _, c := range graphemeClusters(line) {
+	walkLineClusters(line, func(start, _, width int) bool {
 		if cells >= target {
-			return c.start
+			idx = start
+			return false
 		}
-		cells += c.width
-	}
-	return len(line)
+		cells += width
+		return true
+	})
+	return idx
 }
 
 // View implements Model.
@@ -477,19 +487,20 @@ func (m InputField) buildVisibleText() []rune {
 	lineStart, lineEnd := m.currentLine(m.pos)
 	line := m.value[lineStart:lineEnd]
 
-	start := min(m.visStart, len(line))
+	from := min(m.visStart, len(line))
 	var vis []rune
 	cells := 0
-	for _, c := range graphemeClusters(line) {
-		if c.end <= start {
-			continue // cluster fully before the visible start
+	walkLineClusters(line, func(start, end, width int) bool {
+		if end <= from {
+			return true // cluster fully before the visible start
 		}
-		if cells+c.width > m.width {
-			break // do not split a cluster at the right edge
+		if cells+width > m.width {
+			return false // do not split a cluster at the right edge
 		}
-		vis = append(vis, line[c.start:c.end]...)
-		cells += c.width
-	}
+		vis = append(vis, line[start:end]...)
+		cells += width
+		return true
+	})
 	return vis
 }
 
@@ -774,38 +785,45 @@ func (m InputField) WithStyles(focused, blurred inputFieldStyle) InputField {
 // Helpers
 // ============================================================================
 
-// clusterInfo describes one grapheme cluster: its rune range within a line
-// and its terminal display width in cells.
-type clusterInfo struct {
-	start, end int // rune indices, end exclusive
-	width      int // display width in cells
-}
-
-// graphemeClusters splits line into grapheme clusters and returns each
-// cluster's rune range and terminal display width. This is the single width
-// source for the whole input chain: clusters() performs the Unicode text
-// segmentation (UAX #29) and measures each cluster from the one table the
-// adapter cuts with (width.go), so a cluster renders as one unit — a ZWJ
-// family emoji is one cluster, "e" + combining acute is one cluster of one
-// cell — and truncation, cursor placement, scrolling, and padding always
-// agree and never split a cluster.
-func graphemeClusters(line []rune) []clusterInfo {
+// walkLineClusters calls fn for each grapheme cluster of line, in order, with
+// the cluster's rune range within line and its width in cells. fn returns
+// false to stop the walk, and every caller does: the questions the input chain
+// asks — how wide is this line, how wide is the part before the caret, which
+// cluster is the caret in, which cluster starts at or past this cell, which
+// clusters fit the viewport — are all answered partway through one line.
+//
+// Segmentation and widths come from width.go's one table (walkCells), so the
+// caret, the cutters and the renderer cannot disagree about where a cluster
+// starts or how wide it is. The line is encoded to a string once per walk,
+// because the table segments strings and the field holds runes: one allocation
+// the size of the line, where materializing a []clusterInfo was ~120 B per
+// cluster and made a keystroke at the end of a long line cost megabytes
+// (docs/internal/virtual-rendering-performance.md).
+//
+// cluster_structural_test.go holds the materializing oracle this is checked
+// against, over 20,000 random lines of the clusters width libraries disagree
+// about.
+func walkLineClusters(line []rune, fn func(start, end, width int) bool) {
 	if len(line) == 0 {
-		return nil
+		return
 	}
-	cs := clusters(string(line))
-	out := make([]clusterInfo, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, clusterInfo{start: c.runeStart, end: c.runeEnd, width: c.cells})
-	}
-	return out
+	runeStart := 0
+	walkCells(string(line), func(text string, cells int) bool {
+		n := utf8.RuneCountInString(text)
+		if !fn(runeStart, runeStart+n, cells) {
+			return false
+		}
+		runeStart += n
+		return true
+	})
 }
 
 func runesWidth(runes []rune) int {
 	total := 0
-	for _, c := range graphemeClusters(runes) {
-		total += c.width
-	}
+	walkLineClusters(runes, func(_, _, width int) bool {
+		total += width
+		return true
+	})
 	return total
 }
 
@@ -814,30 +832,26 @@ func runesWidth(runes []rune) int {
 // cluster boundary (a cluster is never split). If targetWidth exceeds the
 // total width, returns len(runes).
 func runeIndexAtWidth(runes []rune, targetWidth int) int {
+	idx := len(runes)
 	cells := 0
-	for _, c := range graphemeClusters(runes) {
-		if cells+c.width > targetWidth {
-			return c.start
+	walkLineClusters(runes, func(start, _, width int) bool {
+		if cells+width > targetWidth {
+			idx = start
+			return false
 		}
-		cells += c.width
-	}
-	return len(runes)
+		cells += width
+		return true
+	})
+	return idx
 }
 
 func isPrintableRune(r rune) bool {
 	return !unicode.IsControl(r) && r != 0x7f
 }
 
+// truncatePlaceholder cuts a placeholder to maxWidth cells without splitting a
+// cluster. It is takeCells — the one prefix cut in the adapter — under the name
+// this call site reads by; the rule and the table live in width.go.
 func truncatePlaceholder(s string, maxWidth int) string {
-	runes := []rune(s)
-	var result strings.Builder
-	cells := 0
-	for _, c := range graphemeClusters(runes) {
-		if cells+c.width > maxWidth {
-			break
-		}
-		result.WriteString(string(runes[c.start:c.end]))
-		cells += c.width
-	}
-	return result.String()
+	return takeCells(s, maxWidth)
 }

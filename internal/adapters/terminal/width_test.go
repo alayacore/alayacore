@@ -113,8 +113,12 @@ func runWidthChild() (string, error) {
 // one cell for a keycap or a text-plus-VS16 cluster, because the budget was
 // counted in one table and the cut in another. This test, run against the
 // previous implementation, fails.
+//
+// It runs over breakerCorpus — long runs, styled rows and all three forms of a
+// C1 control included — because the budget is the one promise that has to hold
+// on every route through the cutters, whichever of them a given string takes.
 func TestCutNeverOverrunsItsBudget(t *testing.T) {
-	for _, s := range allCorpus() {
+	for _, s := range breakerCorpus() {
 		full := cellWidth(s)
 		for n := 0; n <= full+2; n++ {
 			if got := cellWidth(takeCells(s, n)); got > n {
@@ -184,6 +188,109 @@ func concatClusters(cs []cluster) string {
 		b.WriteString(c.text)
 	}
 	return b.String()
+}
+
+// cluster is one grapheme cluster: its text, the cells it occupies, and its
+// rune range within the string it came from.
+//
+// This is the test oracle, not production code. width.go answers every
+// question with a fold over walkCells — a sum, a max, a prefix, a suffix, one
+// position — and never builds this list, because building it is O(len(s)) in
+// time and ~120 B per cluster in garbage for answers that are O(1). The tests
+// keep the materializing form on purpose: an oracle that shares an
+// implementation with the code under test cannot disagree with it, and the
+// disagreements are the whole subject of this file.
+type cluster struct {
+	text               string
+	cells              int
+	runeStart, runeEnd int // rune indices, runeEnd exclusive
+}
+
+// clusters returns s's grapheme clusters in order, over plain text: escape
+// sequences are not text and are not treated as units here (takeCells and
+// tailCells route styled strings elsewhere). Cutting a string to a cell
+// budget must never split a cluster — a base character and its
+// combining mark, or an emoji and its variation selector, are drawn as one
+// unit and half of one is garbage on screen — and the input chain moves the
+// caret by whole clusters, which is why the rune range comes along too.
+func clusters(s string) []cluster {
+	if s == "" {
+		return nil
+	}
+	it := widthModel.StringGraphemes(s)
+	var out []cluster
+	runes := 0
+	for it.Next() {
+		v := it.Value()
+		n := utf8.RuneCountInString(v)
+		out = append(out, cluster{text: v, cells: it.Width(), runeStart: runes, runeEnd: runes + n})
+		runes += n
+	}
+	return out
+}
+
+// TestCutsCostTheCutNotTheString is the allocation contract behind the
+// cutters, and the guard on the bug it replaced. takeCells and tailCells used
+// to answer from a materialized []cluster of the whole string, so a 30-cell
+// head of a long message cost one struct and one substring per cluster —
+// 245 KB and 45μs for a 2 KB string, twice, on the per-frame path of every
+// folded text window, and ~1 ms and 4 MB per keystroke at the end of a long
+// prompt line (docs/internal/virtual-rendering-performance.md records both).
+//
+// A cut's cost has to follow its own budget, not the length of what it cuts.
+// Time is machine-dependent and the budgets above are already covered by
+// TestCutIsMaximalAndClusterAligned; the allocation count is the part a test
+// can state exactly, and it is the part that regressed: one string returned,
+// whatever the input, and zero for a fold that returns a number.
+func TestCutsCostTheCutNotTheString(t *testing.T) {
+	inputs := []struct {
+		name string
+		s    string
+	}{
+		{"100 wide clusters", strings.Repeat("中", 100)},
+		{"10000 wide clusters", strings.Repeat("中", 10000)},
+		{"200 ascii bytes", strings.Repeat("a", 200)},
+		{"20000 ascii bytes", strings.Repeat("a", 20000)},
+	}
+	cuts := []struct {
+		name string
+		fn   func(string, int) string
+	}{
+		{"takeCells", takeCells},
+		{"tailCells", tailCells},
+	}
+	// The bound is a ceiling rather than an exact count because AllocsPerRun
+	// reads process-wide mallocs, and a -race build can add one of its own mid-
+	// measurement. It does not need to be tight to do its job: an implementation
+	// that materializes the clusters reports one allocation per cluster, so
+	// ~10,000 on the long inputs against a ceiling of 8. Same budget, 100x the
+	// clusters, same bound — that pairing is what makes the cost follow the cut.
+	const ceiling = 8
+	for _, cut := range cuts {
+		for _, budget := range []int{1, 20} {
+			for _, in := range inputs {
+				n := testing.AllocsPerRun(10, func() { _ = cut.fn(in.s, budget) })
+				if n > ceiling {
+					t.Errorf("%s(%s, %d) allocated %.0f times; a cut returns one string, it does not build a cluster per cell",
+						cut.name, in.name, budget, n)
+				}
+			}
+		}
+	}
+	folds := []struct {
+		name string
+		fn   func(string) int
+	}{
+		{"widestCellCluster", widestCellCluster},
+		{"cellWidth", cellWidth},
+	}
+	for _, fold := range folds {
+		for _, in := range inputs {
+			if n := testing.AllocsPerRun(10, func() { _ = fold.fn(in.s) }); n > ceiling {
+				t.Errorf("%s(%s) allocated %.0f times; a fold over clusters builds nothing", fold.name, in.name, n)
+			}
+		}
+	}
 }
 
 // TestClustersMatchCellWidth guards against a table split inside width.go
@@ -445,7 +552,7 @@ func TestKeepAndDropPartitionTheString(t *testing.T) {
 func TestWalkCellsAgreesWithCellWidth(t *testing.T) {
 	for _, s := range breakerCorpus() {
 		sum := 0
-		walkCells(s, func(_ string, cells int) { sum += cells })
+		walkCells(s, func(_ string, cells int) bool { sum += cells; return true })
 		if sum != cellWidth(s) {
 			t.Errorf("walkCells(%q) sums to %d cells, cellWidth says %d", s, sum, cellWidth(s))
 		}

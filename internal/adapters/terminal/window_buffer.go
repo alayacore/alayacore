@@ -618,8 +618,17 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 		w := wb.windows[wb.dirtyIndex]
 		// Only render and count lines for visible windows
 		if w.Visible {
-			// Fast path: try UpdateLineCountFast first (~58μs when cache valid,
-			// otherwise falls through to full Render ~100-200μs).
+			// Fast path: ask the renderer for a count from the lines it
+			// already wrapped. A text renderer answers in nanoseconds when
+			// nothing changed and in about a microsecond right after an
+			// append, because AppendFromTLV wrapped the delta into
+			// wrappedLines on the way in (appendDeltaToVisualLines) — so
+			// streaming takes this path too, not just cache hits. Anything
+			// that cannot answer from wrapped lines (a tool or user window,
+			// a width change, a first render or theme switch) falls through
+			// to the full Render below, which re-wraps the window's whole
+			// content; BenchmarkWindowBufferResize pays that for 50 windows
+			// at a time.
 			if lc, ok := w.UpdateLineCountFast(wb.width); ok {
 				oldHeight := wb.lineHeights[wb.dirtyIndex]
 				wb.lineHeights[wb.dirtyIndex] = lc

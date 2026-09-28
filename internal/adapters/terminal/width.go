@@ -47,6 +47,22 @@ package terminal
 //     full repaint. width_test.go's budget and greediness tests are the check;
 //     screen_repaint_invariant_test.go holds the frame-level consequence.
 //
+//  4. Nothing here materializes a list of clusters. Every question this file
+//     and the input chain ask of a string — how wide, what is the widest
+//     cluster, where does the prefix that fits end, where does the suffix that
+//     fits begin, which cluster is this position in — is a fold, so it is
+//     answered by walking (walkCells) and stopping when the answer is known.
+//     The list form was here once, and it made each of those questions cost
+//     O(len(s)) in time and ~120 B per cluster in garbage: a folded window's
+//     one-row summary was 100μs and half a megabyte on a 2 KB message, and a
+//     keystroke at the end of a long prompt line was ~1 ms and ~4 MB. Both are
+//     measured in docs/internal/virtual-rendering-performance.md, and both are
+//     pinned by allocation-count tests (TestCutsCostTheCutNotTheString,
+//     TestLineQueriesCostOneEncoding) so the shape cannot come back quietly.
+//     A cut returns a copy of what it kept rather than a substring of its
+//     input: the folded summary is cached on the window, and a 30-cell prefix
+//     must not hold the whole message alive behind it.
+//
 // With RUNEWIDTH_EASTASIAN set, x/ansi's copy of the options bills East-Asian-
 // Ambiguous glyphs (│ ─ … — · • ↓ ∞) two cells. Nothing here reads that copy,
 // so the variable cannot move a row; double-width-ambiguous stays an
@@ -135,6 +151,12 @@ var breakerModel = &displaywidth.Options{
 // text and the cells it draws. An escape sequence arrives as one cluster of
 // zero cells, so a caller copies it verbatim and the budget is untouched.
 //
+// fn returns false to stop the walk. That is what lets a caller whose answer
+// is a prefix — takeCells, and the input chain's "which cluster is the caret
+// in" — cost its answer instead of the string: the walk ends at the budget
+// rather than at the end of s. A caller that wants the whole string returns
+// true from every call.
+//
 // Two speeds, one meaning. Plain ASCII with no escape in it is walked byte by
 // byte — each byte its own cluster, one cell, a control zero — which is the
 // answer the table gives without paying for the walk. That is the common case
@@ -142,7 +164,14 @@ var breakerModel = &displaywidth.Options{
 // the speed it had before the breakers moved onto this file's table —
 // BenchmarkFullWrap and BenchmarkWrapContent are the two that would show it.
 // Everything else goes through the table.
-func walkCells(s string, fn func(text string, cells int)) {
+//
+// This is the only cluster primitive the adapter has. Nothing materializes a
+// []cluster: every caller wants a sum, a max, a prefix, a suffix or one
+// position, and all five are folds. Building the list first made each of them
+// O(len(s)) in time and ~120 B per cluster in garbage, which is how a folded
+// window's one-row summary came to cost 100μs and half a megabyte on a 2 KB
+// message (docs/internal/virtual-rendering-performance.md).
+func walkCells(s string, fn func(text string, cells int) bool) {
 	if s == "" {
 		return
 	}
@@ -152,13 +181,17 @@ func walkCells(s string, fn func(text string, cells int)) {
 			if s[i] <= 0x1f {
 				cells = 0
 			}
-			fn(s[i:i+1], cells)
+			if !fn(s[i:i+1], cells) {
+				return
+			}
 		}
 		return
 	}
 	it := breakerModel.StringGraphemes(s)
 	for it.Next() {
-		fn(it.Value(), it.Width())
+		if !fn(it.Value(), it.Width()) {
+			return
+		}
 	}
 }
 
@@ -208,17 +241,17 @@ func hardwrapCells(s string, width int) string {
 	var b strings.Builder
 	b.Grow(len(s) + len(s)/width + 8)
 	cur := 0
-	walkCells(s, func(text string, cells int) {
+	walkCells(s, func(text string, cells int) bool {
 		if cells == 0 {
 			// An escape (kept, uncharged) or a control. Only a newline ends
 			// the line.
 			if text == "\n" {
 				b.WriteByte('\n')
 				cur = 0
-				return
+				return true
 			}
 			b.WriteString(text)
-			return
+			return true
 		}
 		// Break only when the line already carries something. An unbreakable
 		// cluster — a CJK glyph in a 1-cell column — then gets a line to
@@ -230,6 +263,7 @@ func hardwrapCells(s string, width int) string {
 		}
 		b.WriteString(text)
 		cur += cells
+		return true
 	})
 	return b.String()
 }
@@ -250,20 +284,21 @@ func keepCells(s string, n int) string {
 	b.Grow(len(s))
 	used := 0
 	done := false
-	walkCells(s, func(text string, cells int) {
+	walkCells(s, func(text string, cells int) bool {
 		if cells == 0 && escapeCluster(text) {
 			b.WriteString(text)
-			return
+			return true
 		}
 		// A character that draws nothing (a tab) belongs to the prefix only
 		// while the budget is not yet spent, which is the rule dropCells
 		// mirrors — so the two halves meet at one boundary and add back up.
 		if done || (cells == 0 && used >= n) || used+cells > n {
 			done = true
-			return // keep walking: the escapes behind the cut are kept
+			return true // keep walking: the escapes behind the cut are kept
 		}
 		b.WriteString(text)
 		used += cells
+		return true
 	})
 	return b.String()
 }
@@ -279,10 +314,10 @@ func dropCells(s string, n int) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	dropped := 0
-	walkCells(s, func(text string, cells int) {
+	walkCells(s, func(text string, cells int) bool {
 		if cells == 0 && escapeCluster(text) {
 			b.WriteString(text)
-			return
+			return true
 		}
 		// Once the budget is spent — exactly, or by a cluster that
 		// straddles it — everything that follows is kept. Marking the budget
@@ -291,9 +326,10 @@ func dropCells(s string, n int) string {
 		if dropped >= n || dropped+cells > n {
 			dropped = n
 			b.WriteString(text)
-			return
+			return true
 		}
 		dropped += cells
+		return true
 	})
 	return b.String()
 }
@@ -352,40 +388,15 @@ func runeBoundary(s string, i int) int {
 	return i
 }
 
-// cluster is one grapheme cluster: its text, the cells it occupies, and its
-// rune range within the string it came from.
-type cluster struct {
-	text               string
-	cells              int
-	runeStart, runeEnd int // rune indices, runeEnd exclusive
-}
-
-// clusters returns s's grapheme clusters in order, over plain text: escape
-// sequences are not text and are not treated as units here (takeCells and
-// tailCells route styled strings elsewhere). Cutting a string to a cell
-// budget must never split a cluster — a base character and its
-// combining mark, or an emoji and its variation selector, are drawn as one
-// unit and half of one is garbage on screen — and the input chain moves the
-// caret by whole clusters, which is why the rune range comes along too.
-func clusters(s string) []cluster {
-	if s == "" {
-		return nil
-	}
-	it := widthModel.StringGraphemes(s)
-	var out []cluster
-	runes := 0
-	for it.Next() {
-		v := it.Value()
-		n := utf8.RuneCountInString(v)
-		out = append(out, cluster{text: v, cells: it.Width(), runeStart: runes, runeEnd: runes + n})
-		runes += n
-	}
-	return out
-}
-
 // takeCells returns the leading clusters of s whose total width is at most
 // cells, dropping from the end rather than splitting a cluster or
 // overrunning the budget. cells <= 0 yields "".
+//
+// The walk stops at the budget, so this costs the cut and not the string: a
+// 30-cell head of a 128 KB message is 30 cells of work and one small
+// allocation. The result is a copy of that prefix rather than s[:n] for the
+// same reason — the folded summary that asks for it is cached on the window,
+// and a 30-cell substring would keep the whole message alive behind it.
 //
 // s is expected to be plain text — the adapter's window and table content,
 // which is styled later by the render layer. A styled string is still cut
@@ -396,30 +407,44 @@ func takeCells(s string, cells int) string {
 	if cells <= 0 || s == "" {
 		return ""
 	}
-	// Fast path: the whole string already fits. One measurement, no
-	// clustering pass.
-	w := cellWidth(s)
-	if w <= cells {
+	// Fast path: the whole string already fits. One measurement, no walk.
+	if w := cellWidth(s); w <= cells {
 		return s
 	}
 	if hasEscape(s) {
 		return keepCells(s, cells)
 	}
-	var b strings.Builder
-	used := 0
-	for _, c := range clusters(s) {
-		if used+c.cells > cells {
-			break
+	used, end := 0, 0
+	walkCells(s, func(text string, w int) bool {
+		if used+w > cells {
+			return false
 		}
-		b.WriteString(c.text)
-		used += c.cells
-	}
-	return b.String()
+		used += w
+		end += len(text)
+		return true
+	})
+	return strings.Clone(s[:end])
 }
 
 // tailCells returns the trailing clusters of s whose total width is at most
 // cells, dropping whole clusters from the front so the result stays
-// right-anchored. cells <= 0 yields "". See takeCells on plain text.
+// right-anchored. cells <= 0 yields "". See takeCells on plain text, and on
+// why the answer is a copy.
+//
+// A suffix cannot be found from its own end — segmentation runs forward — so
+// this is one pass over s that stops at the first cluster boundary whose
+// remainder fits the budget. The pass allocates nothing; only the tail it
+// returns is allocated.
+//
+// The budget is a ceiling on both routes, which is what makes the pair
+// trustworthy: a cluster that straddles it is dropped, not kept, exactly as
+// takeCells drops it. (Routing the styled case through dropCells got this
+// wrong, because dropCells' own contract is the opposite — it and keepCells
+// partition a string, so it keeps the straddler. A styled row of 2-cell
+// clusters asked for a 3-cell tail and got 4, which is the row-one-too-low
+// class of bug this file exists to make unrepresentable.) Escapes still travel
+// with the tail on both sides of the cut: dropping the SGR reset that preceded
+// it would repaint everything after the row.
 func tailCells(s string, cells int) string {
 	if cells <= 0 || s == "" {
 		return ""
@@ -429,22 +454,32 @@ func tailCells(s string, cells int) string {
 		return s
 	}
 	if hasEscape(s) {
-		// Drop from the front; to keep the last `cells`, drop everything
-		// before them.
-		return dropCells(s, w-cells)
+		remaining := w
+		var b strings.Builder
+		b.Grow(len(s))
+		walkCells(s, func(text string, cw int) bool {
+			switch {
+			case cw == 0 && escapeCluster(text):
+				b.WriteString(text) // pen state, kept on both sides of the cut
+			case remaining > cells:
+				remaining -= cw // still too much above the cut: drop this cluster
+			default:
+				b.WriteString(text)
+			}
+			return true
+		})
+		return b.String()
 	}
-	cs := clusters(s)
-	used := w
-	start := 0
-	for start < len(cs) && used > cells {
-		used -= cs[start].cells
-		start++
-	}
-	var b strings.Builder
-	for _, c := range cs[start:] {
-		b.WriteString(c.text)
-	}
-	return b.String()
+	remaining, start := w, 0
+	walkCells(s, func(text string, cw int) bool {
+		if remaining <= cells {
+			return false
+		}
+		remaining -= cw
+		start += len(text)
+		return true
+	})
+	return strings.Clone(s[start:])
 }
 
 // widestCellCluster returns the width of the widest single grapheme cluster
@@ -452,10 +487,11 @@ func tailCells(s string, cells int) string {
 // dropping content. A cluster wider than the space available cannot be shown at all.
 func widestCellCluster(s string) int {
 	best := 0
-	for _, c := range clusters(s) {
-		if c.cells > best {
-			best = c.cells
+	walkCells(s, func(_ string, cells int) bool {
+		if cells > best {
+			best = cells
 		}
-	}
+		return true
+	})
 	return best
 }

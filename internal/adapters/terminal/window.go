@@ -127,9 +127,11 @@ type renderCache struct {
 	// window (and all width accounting) is reused as-is.
 	//
 	// Built on first request, not by Render: the collapsed variant costs a
-	// second BuildCollapsed (a full pass over the window's content, ~100µs
-	// on a 2 KB message), Render runs for every window on every content
-	// change, and exactly one window at a time is under the cursor.
+	// second BuildCollapsed, which for a text window is a pass over the whole
+	// content to derive its head + "…" + tail (BenchmarkFoldedTextStreamingDelta
+	// prices the frame that contains one: 17.5μs at 2 KB of content, 934μs at
+	// 128 KB). Render runs for every window on every content change, and
+	// exactly one window at a time is under the cursor.
 	// line0CursorDone tells "not built yet" from "built and empty".
 	line0Cursor     string
 	line0CursorDone bool
@@ -476,9 +478,14 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 		// render has exactly one row to swap and every width is accounted
 		// for in one place.
 		//
-		// BuildCollapsed does no wrapping: only the summary (escaped tail
-		// for text windows, first line for tool windows) is read and
-		// truncated, so folding a large window is O(1).
+		// BuildCollapsed does no wrapping. For a tool window it reads only
+		// the first line of the input, so its cost does not depend on the
+		// output. For a text window the summary is head + "…" + tail of the
+		// whole content, so deriving it costs a pass over that content:
+		// O(content) in time, O(cut) in memory, because the cutters walk
+		// clusters rather than build a list of them (width.go). They used to
+		// build it, twice per frame, at ~430 B per byte of message —
+		// BenchmarkFoldedTextStreamingDelta is the benchmark that prices it.
 		inner, _ := w.renderer.BuildCollapsed(width, styles)
 		w.cache.lines = []visualLine{{Text: w.lineStyle(styles).Render(w.markerChar()) + " " + inner}}
 		w.cache.widths = nil // computed lazily by renderVirtual (fragment output)
@@ -538,10 +545,12 @@ func (w *Window) lineStyle(styles *Styles) Style {
 // building it on first request and caching it in the render cache.
 //
 // It is not built by Render on purpose: the collapsed variant costs a
-// second BuildCollapsed (a full pass over the window's content, ~100µs on
-// a 2 KB message), Render runs for every window on every content change,
-// and exactly one window at a time is under the cursor. Memoized, the cost
-// is paid once per cache generation by that one window.
+// second BuildCollapsed, which for a text window is a pass over the whole
+// content to derive its head + "…" + tail
+// (BenchmarkFoldedTextStreamingDelta prices the frame that contains one),
+// Render runs for every window on every content change, and exactly one
+// window at a time is under the cursor.
+// Memoized, the cost is paid once per cache generation by that one window.
 //
 // The register comes from Styles.Selected() rather than from a flag pushed
 // through the renderers: the label color is part of the styles a renderer
@@ -850,8 +859,13 @@ func (w *Window) LineCount() int {
 //
 // Folded windows are always a single line, so this returns immediately
 // without touching the renderer — during streaming, deltas to folded
-// windows no longer trigger any wrapping or rendering for line tracking.
-// This is the main performance win of the collapsed-line design.
+// windows no longer trigger any wrapping or rendering for line TRACKING.
+// That is the main performance win of the collapsed-line design, and it is
+// the whole of it: drawing the folded row is not free, because a folded text
+// window's summary is head + "…" + tail of its entire content. That cost
+// lands in Render, not here, and it grows with the message —
+// BenchmarkFoldedTextStreamingDelta measures it against the same content
+// expanded.
 func (w *Window) UpdateLineCountFast(width int) (int, bool) {
 	if w.renderer == nil {
 		return 0, false
@@ -859,12 +873,18 @@ func (w *Window) UpdateLineCountFast(width int) (int, bool) {
 	if w.Folded {
 		return 1, true
 	}
-	// Unfolded: try the renderer's internal cache. This fast path
-	// (~58μs) only applies when the renderer's internal cache is still
-	// valid (e.g. after resize or theme change, not after content append).
-	// During streaming, every append invalidates the cache, so this
-	// returns false and ensureLineHeights falls through to the full
-	// Render (~100-200μs).
+	// Unfolded: ask the renderer for a count from the lines it already
+	// wrapped. Only textRenderer can answer — it is the one that keeps
+	// wrappedLines — and both of its answers are cheap: a cached count when
+	// nothing changed (nanoseconds), or len(wrappedLines)+1 right after an
+	// append, because AppendFromTLV wrapped the delta incrementally as it
+	// arrived (about a microsecond). Everything else answers false and
+	// ensureLineHeights falls through to a full Render: a tool or user
+	// window, a text renderer whose width changed (resize), and one whose
+	// lines were dropped (first render, theme switch, Invalidate).
+	// TestIncrementalPathIsUsed holds the streaming case; the earlier claim
+	// that streaming always fell through here was wrong, and it was the
+	// reason the fall-through looked hot.
 	return w.renderLineCountFromCache(width)
 }
 
