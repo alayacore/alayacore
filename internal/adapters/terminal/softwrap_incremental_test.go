@@ -118,7 +118,8 @@ func TestIncrementalMatchesFullRewrap(t *testing.T) {
 		"}\n",
 	})
 
-	// 9. trailing space then continuation (hardwrap preserveSpace)
+	// 9. trailing space then continuation: a break keeps the spaces it lands
+	//    between ("aa   bb" at 4 -> "aa  \n bb"), it does not eat them
 	runIncrementalConsistencyCase(t, "trailing spaces", []string{
 		"line with trailing spaces    ",
 		"continued",

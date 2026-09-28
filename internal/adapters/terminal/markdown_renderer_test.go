@@ -389,8 +389,8 @@ func TestMarkdownModeTableCellSplitAcrossDeltas(t *testing.T) {
 
 // TestMarkdownTableWideChars covers unicode handling in markdown table
 // cells: CJK (width 2), ZWJ emoji clusters (👨‍👩‍👧‍👦), and combining
-// marks (é). The rendering pipeline uses cellWidth for column
-// sizing and ansi.Hardwrap (cluster-aware) for wrapping, so we expect:
+// marks (é). The rendering pipeline sizes columns and breaks rows with one
+// table (width.go's cellWidth and hardwrapCells), so we expect:
 //   - column widths sized by display columns (not byte length)
 //   - overflow hard-wrapped, never truncated (no "…" at all)
 //   - wrapping never splits mid-rune or mid-cluster (no U+FFFD artifacts)

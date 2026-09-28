@@ -312,7 +312,7 @@ func TestToolRendererUfPreviewAuthoritative(t *testing.T) {
 func TestToolRendererUfPreviewTabs(t *testing.T) {
 	// Uf preview containing tabs: tabs must be expanded before truncation
 	// so width accounting matches the final render (expandTabs = 8 cols).
-	// ansi.Hardwrap counts a tab as 0 width, so truncating raw tabs lets
+	// The width table counts a tab as 0 cells, so truncating raw tabs lets
 	// the expanded preview overflow the window and soft-wrap at the
 	// terminal (invisible to lineCount, which only counts '\n').
 	styles := NewStyles(theme.DefaultTheme())

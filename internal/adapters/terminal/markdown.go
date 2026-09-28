@@ -21,7 +21,7 @@ package terminal
 // Fitting: a table wider than the terminal is re-flowed, never truncated.
 // Columns are allocated by marginal gain and cells that no longer fit are
 // HARD-WRAPPED with the same primitive as ordinary body text (wrapContent →
-// ansi.Hardwrap), so a row may occupy several terminal rows and a horizontal
+// hardwrapCells), so a row may occupy several terminal rows and a horizontal
 // rule separates each pair of records. The frame is kept however cramped the
 // columns get; only when a column cannot even hold its widest unbreakable
 // grapheme cluster does the layout fall back to a vertical record form
@@ -454,7 +454,7 @@ func renderRecord(row []string, widths []int, align []mdAlign) []string {
 }
 
 // wrapCell hard-wraps a cell to width display columns using the same
-// primitive as ordinary body text (wrapContent → ansi.Hardwrap), so it breaks
+// primitive as ordinary body text (wrapContent → hardwrapCells), so it breaks
 // at the same offsets the terminal would break a line of prose.
 //
 // Not byte-identical to prose, deliberately: the space a break landed on is
@@ -473,8 +473,8 @@ func wrapCell(s string, width int) []string {
 	for _, line := range strings.Split(wrapContent(s, width), "\n") {
 		// Spaces at either end are dead weight: the caller pads to width
 		// (a right-aligned column would otherwise be pushed left by trailing
-		// spaces), and ansi.Hardwrap leaves the space it broke on at the head
-		// of the continuation line, which would shift that line by a column.
+		// spaces), and the wrapper leaves the space it broke on at the head of
+		// the continuation line, which would shift that line by a column.
 		// Safe to strip: splitCells already trimmed the cell, so any leading
 		// space here came from the wrap itself.
 		line = strings.Trim(line, " ")
@@ -493,11 +493,12 @@ func wrapCell(s string, width int) []string {
 		}
 		out = append(out, line)
 	}
-	// ansi.Hardwrap can emit an empty leading line when no grapheme cluster
-	// fits the requested width (a CJK glyph in a 1-cell column). Such a line
-	// carries no content, and as a table cell or a field line it is pure blank
-	// noise, so it is dropped — unless it is all there is (an empty cell must
-	// still render as one padded row).
+	// Drop empty lines. hardwrapCells gives an unbreakable cluster (a CJK
+	// glyph in a 1-cell column) a line to itself rather than an empty line
+	// ahead of it, but an input that ends in a newline still yields a trailing
+	// empty one, and as a table cell or a field line it is pure blank noise —
+	// unless it is all there is (an empty cell must still render as one padded
+	// row).
 	if len(out) > 1 {
 		kept := out[:0]
 		for _, l := range out {

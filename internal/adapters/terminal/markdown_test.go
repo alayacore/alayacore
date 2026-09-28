@@ -217,9 +217,10 @@ func TestRenderMarkdownTables_FitToWidthInvariant(t *testing.T) {
 
 func TestWrapCellDropsTheSpaceItBrokeOn(t *testing.T) {
 	// Deliberate, documented behavior (see wrapCell): a cell shares prose
-	// break OFFSETS but not bytes. ansi.Hardwrap leaves the space it broke on
-	// at the head of the continuation line; prose renders that stray leading
-	// space, a table cell must not — it would shift the column by one cell.
+	// break OFFSETS but not bytes. The wrapper leaves the space it broke on at
+	// the head of the continuation line ("alpha beta\n gamma"); prose renders
+	// that stray leading space, a table cell must not — it would shift the
+	// column by one cell.
 	got := wrapCell("alpha beta gamma", 10)
 	want := []string{"alpha beta", "gamma"}
 	if len(got) != len(want) {
@@ -284,9 +285,12 @@ func TestWrappedAtLineBudgets(t *testing.T) {
 	}
 }
 
-// TestRecordLayoutHasNoBlankLines guards against the wrapper emitting empty
-// rows: ansi.Hardwrap yields an empty leading line when no grapheme cluster
-// fits the requested width, which reads as a stray gap between fields.
+// TestRecordLayoutHasNoBlankLines guards against a blank row in the record
+// layout, which reads as a stray gap between fields. The wrapper is no longer
+// a source of one — hardwrapCells gives an unbreakable cluster a line to
+// itself instead of an empty line ahead of it, where the library wrapper it
+// replaced emitted "\n中" for a CJK glyph in a 1-cell column — but the record
+// layout joins several pieces, and a blank can still arrive from any of them.
 func TestRecordLayoutHasNoBlankLines(t *testing.T) {
 	// Every cell non-empty, so a blank output line is always a defect.
 	in := "| 名称 | 说明 |\n|---|---|\n| 值 | 本地跑 |\n| 另一个 | 短 |"

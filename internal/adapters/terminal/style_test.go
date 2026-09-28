@@ -7,7 +7,6 @@ package terminal
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 )
 
@@ -120,25 +119,6 @@ func TestStyleRenderInline(t *testing.T) {
 	}
 }
 
-// TestStyleRenderWidthPad locks block-width padding (plain spaces unless
-// a background is set).
-func TestStyleRenderWidthPad(t *testing.T) {
-	hex := Color("#585b70")
-	got := NewStyle().Foreground(hex).Width(8).Render("ab")
-	want := "\x1b[38;2;88;91;112mab\x1b[m      "
-	if got != want {
-		t.Errorf("Render() = %q, want %q", got, want)
-	}
-
-	// Width with background: padding carries the background color.
-	got = NewStyle().Foreground(hex).Background(Color("#ffffff")).Width(6).Render("ab")
-	want = "\x1b[38;2;88;91;112;48;2;255;255;255mab\x1b[m" +
-		"\x1b[48;2;255;255;255m    \x1b[m"
-	if got != want {
-		t.Errorf("Render() = %q, want %q", got, want)
-	}
-}
-
 // TestColorParsing locks Color's spec handling.
 func TestColorParsing(t *testing.T) {
 	if got := Color("#585b70"); got == nil {
@@ -205,18 +185,6 @@ func TestWrapWriterRestyle(t *testing.T) {
 	want := "\x1b[38;2;88;91;112mabc\x1b[m\n\x1b[38;2;88;91;112mdef\x1b[0m"
 	if buf.String() != want {
 		t.Errorf("restyled = %q, want %q", buf.String(), want)
-	}
-}
-
-// TestWrapWordBoundary locks word-boundary wrap behavior.
-func TestWrapWordBoundary(t *testing.T) {
-	in := "aaa bbb ccc"
-	got := Wrap(in, 7, " ")
-	if got != "aaa bbb\nccc" {
-		t.Errorf("Wrap() = %q, want %q", got, "aaa bbb\nccc")
-	}
-	if !strings.Contains(Wrap("hello world", 5, " "), "hello") {
-		t.Errorf("Wrap(hello world, 5) = %q", Wrap("hello world", 5, " "))
 	}
 }
 

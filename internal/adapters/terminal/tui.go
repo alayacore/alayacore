@@ -999,8 +999,8 @@ func (m Terminal) renderLoadingView() View {
 	// message row, bottomRows erased blank rows. Total rows = windowHeight
 	// so the view fills the screen exactly and Screen.Render can take the
 	// diff path. The rows are joined with '\n' (not a trailing '\n') so the
-	// string has exactly windowHeight-1 newlines — Hardwrap reports
-	// windowHeight rows from it, matching the FullScreen invariant.
+	// string has exactly windowHeight-1 newlines — wrapping it at the screen
+	// width reports windowHeight rows, matching the FullScreen invariant.
 	blankRow := ansi.EraseLine(0)
 	lines := make([]string, 0, m.windowHeight)
 	for i := 0; i < padY; i++ {

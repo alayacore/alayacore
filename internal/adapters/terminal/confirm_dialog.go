@@ -478,7 +478,7 @@ func (cd ConfirmDialog) renderTitleLine(titleText string, innerWidth int) string
 	// Truncate the plain title first, then render with the Confirm style —
 	// the "…" inserted by truncation inherits the style from the render
 	// call (no escape-sequence handling needed).
-	plainWrapped := ansi.Hardwrap(titleText, innerWidth, true)
+	plainWrapped := hardwrapCells(titleText, innerWidth)
 	lines := strings.Split(plainWrapped, "\n")
 	line := lines[0]
 	if len(lines) > 1 {
@@ -506,7 +506,7 @@ func (cd ConfirmDialog) renderTitleLine(titleText string, innerWidth int) string
 // its final cell, so the marker never overflows) — a silent drop of the
 // remainder would make a cut look like the real end of the input.
 func (cd ConfirmDialog) renderDescriptionRows(innerWidth int) []string {
-	rawWrapped := ansi.Hardwrap(cd.Description, innerWidth, true)
+	rawWrapped := hardwrapCells(cd.Description, innerWidth)
 	rawLines := strings.Split(rawWrapped, "\n")
 	// A trailing '\n' produces an empty final row that is not content —
 	// drop it so it neither fills a preview row nor triggers a false

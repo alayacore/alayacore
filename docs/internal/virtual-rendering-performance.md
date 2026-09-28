@@ -262,13 +262,16 @@ The render path (full wrap, resize, theme switch) is unchanged: display
 widths are computed **lazily** — only when fragment output needs padding —
 so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 
-### wrapContent vs word-boundary Wrap
+### wrapContent
 
 | Algorithm | Time | Memory | Allocs |
 |-----------|------|--------|--------|
-| **wrapContent** (character-boundary) | **27.7μs** | 17.3KB | 1,780 |
-| Wrap (word-boundary) | 35.4μs | 15.7KB | 1,781 |
-| **Speedup** | **1.27x** | — | — |
+| **wrapContent** (cluster-boundary) | **35.5μs** | 9.6KB | 1,772 |
+
+`wrapContent` is the only wrapping path: the word-boundary wrapper this used to
+be compared against was deleted with the `Style` block width that reached it
+(see `style.go`), and it was the last line break not measured with `width.go`'s
+table. `BenchmarkWrapContent` measures the remaining one.
 
 ### Resize Performance
 

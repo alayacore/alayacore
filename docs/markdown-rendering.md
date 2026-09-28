@@ -46,7 +46,7 @@ allocated by marginal gain — each spare cell goes to the column where it remov
 the most wrapped lines — so text-heavy columns widen first and short ones like
 `Size` and `Used` are never padded into uselessness. A cell that no longer fits is
 hard wrapped with the same primitive ordinary body text uses (`wrapContent` →
-`ansi.Hardwrap`: character boundaries, no word detection), so one record may span
+`hardwrapCells`: cluster boundaries, no word detection), so one record may span
 several rows and the horizontal rule is what marks where it ends:
 
 <!-- @example src=df width=62 -->

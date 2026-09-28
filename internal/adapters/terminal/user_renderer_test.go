@@ -63,8 +63,9 @@ func TestUserPromptLongSingleLineSoftWraps(t *testing.T) {
 
 	// Joined projection: must NOT contain a hard newline — the single
 	// line's soft-wrap continuations join without '\n', so a terminal
-	// selection restores the original text verbatim (trailing space
-	// stripped by Hardwrap, like the AT regression test).
+	// selection restores the original text verbatim. The wrapper keeps a
+	// trailing space where the original had one, so both sides are trimmed
+	// before the comparison (as the AT regression test does).
 	joined := joinVisualLines(lines)
 	if strings.Contains(joined, "\n") {
 		t.Fatalf("user prompt soft-wrap broken — hard newlines in joined content: %q", joined)

@@ -121,9 +121,17 @@ type Style struct {
 	italic        bool
 	underline     bool
 	strikethrough bool
-	width         int
 	inline        bool
 }
+
+// Style has no block width, and so no word wrap and no per-line pad. lipgloss
+// carried all three; this layer inherited them, and nothing ever set the width
+// (Style.Width had no caller outside its own test), so both branches were dead
+// — and the wrapper they reached was the last line break in the adapter not
+// measured with width.go's table. Deleting them is what makes that table the
+// only opinion about where a line ends. A row that has to be padded to a width
+// is padded where the width is known (renderOverlay, padLabel, renderHelpBar),
+// not inside the pen.
 
 // NewStyle returns an empty style.
 func NewStyle() Style { return Style{} }
@@ -149,11 +157,6 @@ func (s Style) Underline(b bool) Style { s.underline = b; return s }
 // Strikethrough sets the strikethrough attribute.
 func (s Style) Strikethrough(b bool) Style { s.strikethrough = b; return s }
 
-// Width sets the block width: every rendered line is padded with spaces to
-// this width (matching lipgloss's left-aligned block padding; the padding
-// carries the fg/bg colors).
-func (s Style) Width(w int) Style { s.width = w; return s }
-
 // Inline renders the string as a single line: newlines are stripped so the
 // whole content is wrapped in one SGR pair (no per-line resets).
 func (s Style) Inline(b bool) Style { s.inline = b; return s }
@@ -171,12 +174,6 @@ func (s Style) Render(strs ...string) string {
 	// otherwise emit stray resets between the concatenated lines).
 	if s.inline {
 		str = strings.ReplaceAll(str, "\n", "")
-	}
-
-	// Word wrap at the block width (lipgloss parity; the app only sets
-	// Width on single-line content, so this is normally a no-op).
-	if !s.inline && s.width > 0 {
-		str = Wrap(str, s.width, "")
 	}
 
 	// Build the SGR style in lipgloss's canonical order: bold/italic first,
@@ -217,28 +214,6 @@ func (s Style) Render(strs ...string) string {
 		b.WriteString(te.Styled(line))
 	}
 	str = b.String()
-
-	// Block width: pad each line to the width. lipgloss styles the padding
-	// with a "whitespace style" that only carries bg + underline color (fg
-	// joins it only when reverse, which this style layer does not support),
-	// so the common case is plain spaces.
-	if s.width > 0 {
-		var ws ansi.Style
-		if s.bg != nil {
-			ws = ws.BackgroundColor(s.bg)
-		}
-		lines := strings.Split(str, "\n")
-		for i, l := range lines {
-			if pad := s.width - cellWidth(l); pad > 0 {
-				spaces := strings.Repeat(" ", pad)
-				if len(ws) > 0 {
-					spaces = ws.Styled(spaces)
-				}
-				lines[i] = l + spaces
-			}
-		}
-		str = strings.Join(lines, "\n")
-	}
 
 	return str
 }

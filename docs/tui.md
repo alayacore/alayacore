@@ -653,17 +653,22 @@ contains ANSI codes with a new style and expect it to work.
 ## Glyphs and Terminal Width
 
 Cell arithmetic lives in one file. `internal/adapters/terminal/width.go`
-owns both "how many cells does this occupy" and "cut this string at N
-cells", from one width table (displaywidth's, with the options constructed
-there). That is a fix, not a style preference: rows used to be sized with
-`ansi.StringWidth` and cut with `rivo/uniseg`'s cluster widths, and the two
-tables disagree for some single clusters — a keycap (`1` + U+FE0F + U+20E3)
-is 1 cell to one and 2 to the other — so a 4-cell budget could be filled
-with what measures 5 cells, shifting the row below it and wrapping the last
-segment of a full-width row. `width_test.go` cuts every string in a corpus
-of those clusters at every budget and re-measures the result; the
-markdown-summary and tool-preview truncations that take this path are
-covered by the same invariant.
+owns all three questions — "how many cells does this occupy", "cut this
+string at N cells", "break this string into rows of at most N cells" — and
+answers them from one width table (displaywidth's, with the options
+constructed there). No breaker or cutter is delegated to a library, so "no
+row exceeds its budget" is a property of the code rather than an assumption
+about somebody else's cluster walk.
+
+That took three rounds, and each round is written down once, where the code
+is: `width.go`'s header lists the three disagreements it exists to prevent
+(two width tables measuring against each other, then cutting against
+measuring, then breaking against measuring) and what each one cost on screen.
+The tests are `width_test.go` (every string in a corpus of the disputed
+clusters, cut and wrapped at every budget and re-measured),
+`TestViewAlwaysFillsScreen` and `screen_repaint_invariant_test.go` (the
+frame-level consequence: a frame that does not fill the screen exactly is a
+frame whose rows the diff renderer will place wrongly).
 
 Everything the TUI draws is then chosen against one constraint: the layout
 reserves exactly one cell for it, and a character whose `East_Asian_Width`
@@ -695,14 +700,14 @@ family is one cluster here and several there.
 
 One environment variable is worth naming, because it looks like support and
 is not: `RUNEWIDTH_EASTASIAN` is read by `x/ansi` at init and makes it charge
-Ambiguous glyphs two cells. `width.go` ignores it (it holds its own options),
-but the escape-aware breakers (`ansi.Hardwrap`, `Wrap`, `Truncate`, `Cut`)
-still read it, so with the variable set a frame rule wraps onto a second
-row. **Double-width-ambiguous is not a supported mode**; the assumption is
-written down here rather than left to a library default. Making it a real
-mode means either a capability probe for what the terminal actually does, or
-an ASCII glyph set for rules and grids — both product decisions, not bug
-fixes.
+Ambiguous glyphs two cells. Nothing in the adapter reads `x/ansi`'s copy of the
+options any more — `width.go` holds its own, and every breaker and cutter is
+`width.go`'s too — so the variable cannot move a row. (It used to: with it set,
+8 top-level tests in this package failed. Now the whole package passes with it
+set.) **Double-width-ambiguous is not a supported mode**; the assumption is
+written down here rather than left to a library default. Making it a real mode
+means either a capability probe for what the terminal actually does, or an
+ASCII glyph set for rules and grids — both product decisions, not bug fixes.
 
 The rule, the waiver list with its reasons, and the enforcement live in
 `internal/adapters/terminal/constants.go` (glyph policy) and
@@ -804,19 +809,19 @@ Measuring and cutting both go through `width.go`, against one table
   draws one cell where this table reserves two
 - ANSI escape codes (colors, bold, etc.) occupy **0 cells**
 - Tabs are expanded to **8 cells** (`TabWidth`) via `expandTabs` **before** any
-  width-sensitive operation (truncation, wrapping), because both the table in
-  `width.go` and the `x/ansi` breakers count a tab as 0 cells while a terminal
-  renders it at the tab stop — expanding first keeps truncation budgets and
-  the final render consistent.
+  width-sensitive operation (truncation, wrapping), because the table in
+  `width.go` counts a tab as 0 cells while a terminal renders it at the tab
+  stop — expanding first keeps truncation budgets and the final render
+  consistent.
 
 `RUNEWIDTH_EASTASIAN=1` is worth naming precisely, because it is not a
 terminal setting: it changes what the Go width libraries report, not what the
-terminal draws. `width.go` ignores it by construction, but the escape-aware
-breakers (`ansi.Hardwrap`, `Wrap`, `Cut`) read it through `x/ansi`, so with it
-set a rule that measures one way breaks another way and the frame shifts —
-15 tests in this package fail that way. Double-width Ambiguous is therefore
+terminal draws. `width.go` ignores it by construction, and so does every
+breaker and cutter, which are all `width.go`'s (`hardwrapCells`,
+`keepCells`/`dropCells`/`cutCells`). Double-width Ambiguous is therefore
 **not a supported mode**, and setting the variable on an ordinary terminal
-breaks the UI that would otherwise have been correct.
+changes nothing the layout depends on — the whole package's test suite passes
+with it set, where 8 top-level tests used to fail.
 
 Window rendering produces **visual line arrays** (`Window.cache.lines`) — one
 element per terminal row. Display widths are measured once per render

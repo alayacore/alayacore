@@ -33,12 +33,29 @@ func (t overlayCloseTracker) JustClosed(ov interface{ IsOpen() bool }) bool {
 // "lines" are continuous fragments, not rows). Instead each box row is
 // written at its absolute screen position with a CUP sequence, padded to
 // the box width so it fully covers the base content beneath.
+//
+// Every row this function emits is bounded by the columns the box actually has
+// on screen, so none of them reaches the terminal wider than the pane and none
+// soft-wraps. A box wider than the terminal — a narrow pane, or one row no
+// component clamped, like the model selector's "No models match your search." —
+// cannot be centered, so it starts at column 0 and its rows are cut at the
+// right edge. Why an overlay row must not wrap is diffFrameRows' skip rule.
+//
+// The bound is this function's, not the frame's: ConfirmDialog.RenderOverlay
+// has a second path that emits two of its rows as ONE continuous write wider
+// than the pane, deliberately, so a long command copies without a fake newline
+// in the middle. That is the one overlay soft-wrap run, and it is the run the
+// skip rule has to handle.
 func renderOverlay(baseContent string, box string, screenWidth, screenHeight int, yOffset int) string {
 	x, y := overlayOrigin(box, screenWidth, screenHeight)
 	y = max(0, y+yOffset)
 
 	boxWidth := Width(box)
 	boxHeight := Height(box)
+	// The columns the box has from its origin to the right edge of the
+	// screen: the box width, or less when the box does not fit.
+	avail := max(0, screenWidth-x)
+	target := min(boxWidth, avail)
 
 	var sb strings.Builder
 	sb.Grow(len(baseContent) + len(box) + boxHeight*12)
@@ -50,9 +67,14 @@ func renderOverlay(baseContent string, box string, screenWidth, screenHeight int
 		if rowY >= screenHeight {
 			break
 		}
-		// Pad to the box width so the row fully covers the base content.
-		if w := cellWidth(row); w < boxWidth {
-			row += strings.Repeat(" ", boxWidth-w)
+		// Bound the row to the space available, then pad to it so the row
+		// fully covers the base content beneath. keepCells preserves the
+		// escapes past the cut, so a truncated row keeps its SGR reset.
+		if w := cellWidth(row); w > target {
+			row = keepCells(row, target)
+		}
+		if w := cellWidth(row); w < target {
+			row += strings.Repeat(" ", target-w)
 		}
 		// Absolute cursor position (1-based rows/cols).
 		fmt.Fprintf(&sb, "\x1b[%d;%dH", rowY+1, x+1)

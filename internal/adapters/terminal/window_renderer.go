@@ -345,7 +345,11 @@ func (r *textRenderer) collapsedSummary(content string, summaryWidth int) (strin
 // content and should match the tail's muted weight.
 func renderCollapsedLineWithEllipsis(line, label string, ellipsisOffset int, tag string, styles *Styles) string {
 	labelPart := padLabel(label)
-	labelEnd := min(len(labelPart), len(line))
+	// The label column is a byte offset into a line a later truncation may
+	// have shortened into the middle of the column — and the ellipsis it
+	// cut with is multi-byte, so the offset has to land on a rune boundary
+	// (see runeBoundary).
+	labelEnd := runeBoundary(line, len(labelPart))
 	styledLabel := lineStyleForTag(tag, styles).Render(line[:labelEnd])
 	if len(line) <= labelEnd {
 		return styledLabel
@@ -354,12 +358,17 @@ func renderCollapsedLineWithEllipsis(line, label string, ellipsisOffset int, tag
 		return styledLabel + line[labelEnd:]
 	}
 	content := line[labelEnd:]
-	if ellipsisOffset < 0 {
+	// The marker's offset was computed before the caller's safety-net
+	// truncation, so it is only usable while it still points at a marker:
+	// a line the truncation shortened has its ellipsis somewhere else (or
+	// none), and slicing at a stale byte offset would split a rune or run
+	// off the end. Verified, not assumed — the whole content is styled as
+	// one run when the offset no longer holds.
+	if ellipsisOffset < 0 || ellipsisOffset+len("…") > len(content) ||
+		!strings.HasPrefix(content[ellipsisOffset:], "…") {
 		return styledLabel + styles.System.Render(content)
 	}
-	// Content = padding + head + "…" + tail. Re-split at the marker
-	// (which sits at byte offset ellipsisOffset within content, since the
-	// summary's ellipsisOffset was computed against the post-label string).
+	// Content = padding + head + "…" + tail.
 	head := content[:ellipsisOffset]
 	marker := content[ellipsisOffset : ellipsisOffset+len("…")]
 	tail := content[ellipsisOffset+len("…"):]
@@ -519,7 +528,7 @@ func padLabel(label string) string {
 
 // flattenDelta flattens a streaming delta to a single line, expanding
 // tabs first so width accounting matches the final render (expandTabs →
-// TabWidth columns; ansi.Hardwrap counts a tab as 0 width).
+// TabWidth columns; the width table counts a tab as 0 cells).
 func flattenDelta(delta string) string {
 	d := strings.ReplaceAll(delta, "\n", " ")
 	d = strings.ReplaceAll(d, "\r", "")
@@ -1012,7 +1021,12 @@ func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) 
 // has to be the same style the expanded row paints it with: see
 // toolNameStyle.
 //
-// The indicator is multi-byte UTF-8 — slice by len(dot), never by byte 1.
+// Every offset here is a position in the line as BuildCollapsed BUILT it, and
+// the line it receives has been through truncateWithSuffix since — so each one
+// goes through cut (runeBoundary) before it is used, and the name segment is
+// measured against the line rather than against `name`, which the truncation
+// may have shortened (a 32-column pane does it to "execute_command"). See
+// runeBoundary for what an unaligned offset costs.
 func renderToolCollapsedLine(
 	line string,
 	labelStyle, dotStyle Style,
@@ -1024,41 +1038,56 @@ func renderToolCollapsedLine(
 	sepLen := len(toolLabelSep)
 	dotLen := len(dot)
 	contentStart := len(padLabel(toolLabelWithIndicator(dot)))
-	if len(line) <= toolLen {
+
+	// cut turns a built-position into a usable one.
+	cut := func(i int) int { return runeBoundary(line, i) }
+
+	labelEnd := cut(toolLen)
+	if labelEnd == len(line) {
 		return labelStyle.Render(line)
 	}
 	var sb strings.Builder
-	sb.WriteString(labelStyle.Render(line[:toolLen]))
-	// Separator space between the label and the indicator (plain, part
-	// of the fixed label column) — only when it survived truncation.
-	if len(line) > toolLen {
-		sb.WriteString(line[toolLen:min(len(line), toolLen+sepLen)])
+	sb.WriteString(labelStyle.Render(line[:labelEnd]))
+
+	// Separator space between the label and the indicator (plain, part of
+	// the fixed label column) — only when it survived truncation.
+	sepEnd := cut(toolLen + sepLen)
+	sb.WriteString(line[labelEnd:sepEnd])
+
+	// Status indicator — the label color (muted + bold), so it visually
+	// joins the "TOOL CALL" label.
+	dotEnd := cut(toolLen + sepLen + dotLen)
+	if dotEnd > sepEnd {
+		sb.WriteString(dotStyle.Render(line[sepEnd:dotEnd]))
 	}
-	// Status indicator — uses the label color (muted + bold), so it
-	// visually joins the "TOOL CALL" label. Multi-byte safe (slice by
-	// len(dot), never by byte 1).
-	if len(line) > toolLen+sepLen {
-		sb.WriteString(dotStyle.Render(line[toolLen+sepLen : min(len(line), toolLen+sepLen+dotLen)]))
-	}
-	if len(line) <= toolLen+sepLen+dotLen {
+	if dotEnd == len(line) {
 		return sb.String()
 	}
+
 	// Label column padding (plain spaces) + the tool name. The name takes
 	// toolNameStyle — the same style the expanded line paints it with — so
 	// that folding a window does not repaint it; the padding around it is
-	// part of the label column and moves with the line. The name's byte
-	// length is bounded by what survived truncation.
-	paddingEnd := min(len(line), contentStart)
-	sb.WriteString(line[toolLen+sepLen+dotLen : paddingEnd])
-	nameByteLen := min(len(name), max(0, len(line)-contentStart))
-	nameEnd := contentStart + nameByteLen
-	if nameByteLen > 0 {
-		sb.WriteString(toolNameStyle(styles).Render(line[contentStart:nameEnd]))
+	// part of the label column and moves with the line.
+	padEnd := cut(contentStart)
+	sb.WriteString(line[dotEnd:padEnd])
+
+	// What follows the label column is the name only for as far as the name
+	// actually survived: the truncation can cut the name itself ("execute_
+	// comma…" where `name` still says "execute_command"), so the segment is
+	// measured against the line rather than against `name`.
+	nameEnd := cut(padEnd + sharedPrefixLen(line[padEnd:], name))
+	if nameEnd > padEnd {
+		sb.WriteString(toolNameStyle(styles).Render(line[padEnd:nameEnd]))
 	}
+
 	// When the inputFirst delta was truncated, the leading "…" in the
-	// content area gets the dim color (styles.Status) instead of the
-	// muted ToolContent. Position: right after the name + space.
-	if inputFirstHasEllipsis && len(line) > nameEnd+1+len("…") {
+	// content area gets the dim color (styles.Status) instead of the muted
+	// ToolContent. Position: right after the name + space. The layout is
+	// checked rather than assumed — a name the truncation cut leaves the
+	// marker somewhere else, and styling from a guessed offset is what
+	// split the rune.
+	if inputFirstHasEllipsis && nameEnd+1+len("…") <= len(line) &&
+		line[nameEnd] == ' ' && strings.HasPrefix(line[nameEnd+1:], "…") {
 		sb.WriteString(line[nameEnd : nameEnd+1]) // space
 		sb.WriteString(styles.Status.Render(line[nameEnd+1 : nameEnd+1+len("…")]))
 		sb.WriteString(styles.ToolContent.Render(line[nameEnd+1+len("…"):]))
@@ -1068,6 +1097,17 @@ func renderToolCollapsedLine(
 		sb.WriteString(styles.ToolContent.Render(line[nameEnd:]))
 	}
 	return sb.String()
+}
+
+// sharedPrefixLen returns the count of leading bytes s and prefix have in
+// common, rounded down to a rune boundary of s — so a caller can slice
+// s[:sharedPrefixLen(s, prefix)] and get whole characters.
+func sharedPrefixLen(s, prefix string) int {
+	n := 0
+	for n < len(s) && n < len(prefix) && s[n] == prefix[n] {
+		n++
+	}
+	return runeBoundary(s, n)
 }
 
 // previewOutput renders the Uf preview snapshot (Pending status) as a
@@ -1087,8 +1127,8 @@ func (r *toolRenderer) previewOutput(innerWidth int, styles *Styles) string {
 	out := strings.ReplaceAll(r.output, "\n", " ")
 	out = strings.ReplaceAll(out, "\r", "")
 	// Expand tabs BEFORE truncation so width accounting matches the final
-	// render (expandTabs → TabWidth columns): ansi.Hardwrap counts a tab
-	// as 0 width, so truncating raw tabs would let the expanded preview
+	// render (expandTabs → TabWidth columns): the width table counts a tab
+	// as 0 cells, so truncating raw tabs would let the expanded preview
 	// overflow the window and soft-wrap at the terminal.
 	out = expandTabs(out)
 	// Tail kept with a leading ellipsis (dim) when it does not fit.

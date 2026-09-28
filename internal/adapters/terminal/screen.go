@@ -435,17 +435,17 @@ type positionedRow struct {
 // Overlay rows (CUP-positioned — live edge, input box, status bar, overlay
 // boxes) keep their absolute coordinates: they are anchored with absolute
 // CUP by design, so their position does not depend on how many terminal rows
-// the base content wrapped to. An overlay row may itself be a soft-wrap run
-// (a dialog's long-line preview): its text is emitted as one continuous
-// CUP-anchored write wider than the terminal, the terminal wraps it onto the
-// rows below, and the diff tracks the span (terminalRows) exactly like a
-// soft-wrapped base line — otherwise the wrapped continuation would survive
-// the overlay's close. Ordinary overlay rows are capped to the terminal
-// width and span exactly one row: the box rules span the width by
-// construction (`strings.Repeat`), and the short rows are capped to it — the
-// status bar truncates (renderStatusBar), the live edge caps its ASCII
-// marker to the width (renderLiveEdge), and an overlay box is laid out
-// inside the width it was given.
+// the base content wrapped to. An overlay row may itself be a soft-wrap run:
+// its text is emitted as one continuous CUP-anchored write wider than the
+// terminal, the terminal wraps it onto the rows below, and the diff tracks
+// the span (terminalRows) exactly like a soft-wrapped base line — otherwise
+// the wrapped continuation would survive the overlay's close. Ordinary
+// overlay rows are capped to the terminal width and span exactly one row:
+// the box rules span the width by construction (`strings.Repeat`), and the
+// short rows are capped to it — the status bar truncates (renderStatusBar),
+// the live edge caps its ASCII marker to the width (renderLiveEdge), and
+// renderOverlay bounds every box row to the columns the box has on screen, so
+// in practice only the deliberate run above ever spans more than one row.
 func positionedRows(content string, width int) []positionedRow {
 	rows := parseFrameRows(content)
 	out := make([]positionedRow, 0, len(rows))
@@ -601,10 +601,12 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 		}
 	}
 	overlaysByRow := make(map[int][]positionedRow)
+	overlayStarts := make(map[int]bool, len(newRows))
 	for _, r := range newRows {
 		if r.base {
 			continue
 		}
+		overlayStarts[r.frameRow.row] = true
 		for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
 			overlaysByRow[row] = append(overlaysByRow[row], r)
 		}
@@ -657,9 +659,19 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 				buf = append(buf, ansi.CursorPosition(1, ov.frameRow.row+1)...)
 				buf = append(buf, ov.frameRow.text...)
 				buf = append(buf, ansi.EraseLine(0)...)
-				// Skip every terminal row of this run.
+				// Skip the run's own terminal rows — but not one where a
+				// DIFFERENT overlay row starts. Consecutive box rows of an
+				// overlay that does not fit the terminal each wrap onto the
+				// row below, so their spans overlap: the run painted here
+				// covers the cells of the rows it spans, but it is not the
+				// row that starts on them, and skipping those rows is what
+				// left whole overlay rows undrawn (a blank rule inside the
+				// box, the previous frame's tail surviving a shorter row)
+				// until a full redraw. Painting them in ascending order
+				// reproduces the frame's own layering.
 				end := ov.frameRow.row + ov.terminalRows
-				for i < len(rows) && rows[i] < end {
+				i++ // this row is the run's own start; it is the one just painted
+				for i < len(rows) && rows[i] < end && !overlayStarts[rows[i]] {
 					i++
 				}
 				i--
@@ -720,7 +732,7 @@ func overlayTextAt(ov positionedRow, width, termRow int) string {
 		return ov.frameRow.text
 	}
 	start := (termRow - ov.frameRow.row) * width
-	return ansi.Cut(ov.frameRow.text, start, start+width)
+	return cutCells(ov.frameRow.text, start, start+width)
 }
 
 // baseRowTextAt returns the text that renders on the given terminal row
@@ -736,7 +748,7 @@ func baseRowTextAt(rows []positionedRow, width, termRow int) (string, bool) {
 		return r.frameRow.text, true
 	}
 	start := (termRow - r.frameRow.row) * width
-	return ansi.Cut(r.frameRow.text, start, start+width), true
+	return cutCells(r.frameRow.text, start, start+width), true
 }
 
 // boolInt converts a bool to an int (0/1) for use in map keys.

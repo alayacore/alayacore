@@ -290,3 +290,235 @@ func TestWidestCellClusterFeedsTheTableShrinker(t *testing.T) {
 		}
 	}
 }
+
+// The breakers — hardwrapCells, keepCells/dropCells/cutCells — are held to the
+// same two promises the cutters already were: nothing they return may measure
+// wider than the budget it was given, and nothing they return may be half a
+// character. Why they are this file's and not the library's is point 3 of
+// width.go's header; these are the tests that make the promise checkable.
+
+// breakerCorpus is the corpus plus the shapes a wrapper meets and a cutter
+// does not: runs long enough to wrap, and the same runs already styled.
+func breakerCorpus() []string {
+	out := allCorpus()
+	for _, s := range []string{
+		strings.Repeat("1️⃣", 40),
+		strings.Repeat("中", 40),
+		strings.Repeat("a\uFE0F", 40),
+		strings.Repeat("word ", 40),
+		"1️⃣ 第一步：安装依赖\n2️⃣ 第二步：运行测试\n3️⃣ 第三步：部署上线",
+		strings.Repeat("👨‍👩‍👧‍👦", 20),
+	} {
+		out = append(out, s, "\x1b[31m"+s+"\x1b[0m")
+	}
+	return out
+}
+
+// TestHardwrapNeverOverrunsItsBudget is the invariant the frame's height
+// depends on: every row hardwrapCells returns fits the width it was given, so
+// the row count the layout charges is the row count the terminal draws.
+func TestHardwrapNeverOverrunsItsBudget(t *testing.T) {
+	for _, s := range breakerCorpus() {
+		for width := 1; width <= 80; width++ {
+			got := hardwrapCells(s, width)
+			for i, line := range strings.Split(got, "\n") {
+				// A single cluster wider than the budget cannot be
+				// broken; that row is alone and documented.
+				if widestCellCluster(line) > width {
+					continue
+				}
+				if w := cellWidth(line); w > width {
+					t.Errorf("hardwrapCells(%q, %d) row %d measures %d cells: %q", s, width, i, w, line)
+				}
+			}
+			if !utf8.ValidString(got) {
+				t.Errorf("hardwrapCells(%q, %d) is not valid UTF-8: %q", s, width, got)
+			}
+		}
+	}
+}
+
+// TestHardwrapKeepsTheContent says what the budget must not cost: wrapping
+// inserts newlines and nothing else. Strip them and the text is the input —
+// every character, every escape, in order.
+func TestHardwrapKeepsTheContent(t *testing.T) {
+	for _, s := range breakerCorpus() {
+		for _, width := range []int{1, 3, 7, 12, 20, 40, 80} {
+			got := strings.ReplaceAll(hardwrapCells(s, width), "\n", "")
+			want := strings.ReplaceAll(s, "\n", "")
+			if got != want {
+				t.Errorf("hardwrapCells(%q, %d) changed the content:\n got %q\nwant %q", s, width, got, want)
+			}
+		}
+	}
+}
+
+// TestCutCellsFitsBudgetAndKeepsRunesWhole covers the cutter the diff renderer
+// slices a soft-wrapped row with. A window whose edges fall on cluster
+// boundaries — which is what a soft-wrap row boundary always is, the rows
+// being padded to the exact width — must come back exactly that many cells;
+// an edge inside a wide cluster cannot be honored, and the guarantee then is
+// the absolute one: never more than `right` cells from the start of the
+// string, and never half a character.
+func TestCutCellsFitsBudgetAndKeepsRunesWhole(t *testing.T) {
+	for _, s := range breakerCorpus() {
+		full := cellWidth(s)
+		edges := clusterEdges(ansi.Strip(s))
+		for left := 0; left <= full+2; left++ {
+			for right := left; right <= full+2; right++ {
+				got := cutCells(s, left, right)
+				if !utf8.ValidString(got) {
+					t.Fatalf("cutCells(%q, %d, %d) is not valid UTF-8: %q", s, left, right, got)
+				}
+				if w := cellWidth(got); w > min(right, full) {
+					t.Errorf("cutCells(%q, %d, %d) measures %d cells, past the right edge", s, left, right, w)
+				}
+				if edges[left] && edges[right] && right <= full {
+					if w := cellWidth(got); w != right-left {
+						t.Errorf("cutCells(%q, %d, %d) on cluster edges measures %d cells, want %d",
+							s, left, right, w, right-left)
+					}
+				}
+				if cellWidth(keepCells(s, right)) > right {
+					t.Errorf("keepCells(%q, %d) measures %d cells — over budget",
+						s, right, cellWidth(keepCells(s, right)))
+				}
+			}
+		}
+	}
+}
+
+// clusterEdges marks the cell offsets in plain s that fall on a cluster
+// boundary, so a test can tell an exactable window from one that cuts a wide
+// cluster in half.
+func clusterEdges(s string) map[int]bool {
+	edges := map[int]bool{0: true}
+	at := 0
+	for _, c := range clusters(s) {
+		at += c.cells
+		edges[at] = true
+	}
+	return edges
+}
+
+// TestKeepAndDropPartitionTheString is what makes cutCells exact rather than
+// approximate: the two halves meet at one cluster boundary and put the whole
+// string back together.
+func TestKeepAndDropPartitionTheString(t *testing.T) {
+	for _, s := range widthCorpus { // plain text: the escape-preserving halves do not re-join byte-for-byte
+		full := cellWidth(s)
+		for n := 0; n <= full; n++ {
+			keep, drop := keepCells(s, n), dropCells(s, n)
+			if keep+drop != s {
+				t.Errorf("keepCells(%q,%d)=%q + dropCells=%q does not reassemble the input", s, n, keep, drop)
+			}
+			if cellWidth(keep) > n {
+				t.Errorf("keepCells(%q, %d) measures %d cells", s, n, cellWidth(keep))
+			}
+			if cellWidth(keep)+cellWidth(drop) != full {
+				t.Errorf("the halves of %q at %d measure %d cells, the whole measures %d",
+					s, n, cellWidth(keep)+cellWidth(drop), full)
+			}
+		}
+	}
+}
+
+// TestWalkCellsAgreesWithCellWidth is the guard on the escape-aware route
+// itself: summing the clusters walkCells yields must give the number cellWidth
+// reports, or the breakers would be measuring with a second table again —
+// which is the defect they were written to end.
+func TestWalkCellsAgreesWithCellWidth(t *testing.T) {
+	for _, s := range breakerCorpus() {
+		sum := 0
+		walkCells(s, func(_ string, cells int) { sum += cells })
+		if sum != cellWidth(s) {
+			t.Errorf("walkCells(%q) sums to %d cells, cellWidth says %d", s, sum, cellWidth(s))
+		}
+	}
+}
+
+// TestWrapVisualLinesRowsFitTheBudget is the same promise at the level the
+// frame is built from: every visual row a window produces fits the width the
+// viewport will pad it to. renderVirtual pads a row to the width only when it
+// is under it, so a row that arrives over budget is a row the terminal wraps
+// into a line the layout never counted.
+func TestWrapVisualLinesRowsFitTheBudget(t *testing.T) {
+	for _, s := range breakerCorpus() {
+		for _, width := range []int{1, 3, 7, 12, 20, 24, 40, 80} {
+			for i, vl := range wrapVisualLines(s, width) {
+				if widestCellCluster(vl.Text) > width {
+					continue // unbreakable cluster: documented, alone on its row
+				}
+				if w := cellWidth(vl.Text); w > width {
+					t.Errorf("wrapVisualLines(%q, %d) row %d measures %d cells: %q", s, width, i, w, vl.Text)
+				}
+			}
+		}
+	}
+}
+
+// TestHardwrapIsGreedyAndPathIndependent holds walkCells' two speeds to each
+// other. The break rule exists once, but the byte walk for plain ASCII and the
+// cluster walk for everything else are two tokenizers, and a token they
+// disagreed about would move a break. Two properties are asked, and together
+// they pin a wrap completely:
+//
+//   - GREEDY: a break happens only where the next cluster would not fit, so no
+//     line can absorb the first cluster of the one below it. A tokenizer that
+//     billed a cluster low would break late and overflow the budget — which
+//     TestHardwrapNeverOverrunsItsBudget catches — and one that billed it high
+//     would break early, which satisfies the budget and is still wrong: rows
+//     the layout never reserved. Only greediness catches that half.
+//   - PATH-INDEPENDENT: the same text with every "a" replaced by "ä" (one cell
+//     either way, two bytes, so the ASCII route declines it) breaks in the same
+//     places.
+//
+// Greediness is asked per SOURCE line: a newline in the input is a break the
+// wrapper must keep, and telling it apart from a break the wrapper chose is
+// not possible from the output alone. That is sound because the wrapper resets
+// its column at every newline, so each source line wraps independently.
+func TestHardwrapIsGreedyAndPathIndependent(t *testing.T) {
+	corpus := append(breakerCorpus(),
+		// the ASCII route's own shapes
+		strings.Repeat("abcdefghij", 12),
+		strings.Repeat("line\n", 20),
+		"tab\there\tagain",
+		strings.Repeat("x", 240),
+	)
+	for _, s := range corpus {
+		for width := 1; width <= 40; width++ {
+			for _, src := range strings.Split(s, "\n") {
+				lines := strings.Split(hardwrapCells(src, width), "\n")
+				for i := 0; i+1 < len(lines); i++ {
+					next := firstClusterOf(lines[i+1])
+					if next == "" {
+						continue
+					}
+					if cellWidth(lines[i])+cellWidth(next) <= width {
+						t.Errorf("hardwrapCells(%q, %d) broke early: row %d (%d cells) could have taken %q (%d cells) from row %d",
+							src, width, i, cellWidth(lines[i]), next, cellWidth(next), i+1)
+					}
+				}
+			}
+			if plainASCIIFast(s) {
+				want := strings.ReplaceAll(hardwrapCells(s, width), "a", "ä")
+				if got := hardwrapCells(strings.ReplaceAll(s, "a", "ä"), width); got != want {
+					t.Errorf("hardwrapCells(%q, %d) breaks differently from its ASCII route:\n got %q\nwant %q",
+						s, width, got, want)
+				}
+			}
+		}
+	}
+}
+
+// firstClusterOf returns s's first grapheme cluster, or "" for an empty s.
+func firstClusterOf(s string) string {
+	if s == "" {
+		return ""
+	}
+	c := clusters(s)
+	if len(c) == 0 {
+		return ""
+	}
+	return c[0].text
+}

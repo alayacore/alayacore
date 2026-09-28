@@ -72,41 +72,42 @@ var widthModel = &displaywidth.Options{EastAsianWidth: false}
 func cellWidth(s string) int                 // ansi.Strip, then this table
 func takeCells(s string, cells int) string   // leading whole clusters
 func tailCells(s string, cells int) string   // trailing whole clusters
+
+// the breakers: one escape-aware cluster walk (walkCells) over the same table
+func hardwrapCells(s string, width int) string        // rows of at most width cells
+func keepCells(s string, n int) string                // leading n cells, escapes kept
+func dropCells(s string, n int) string                // the complement of keepCells
+func cutCells(s string, left, right int) string       // cells [left, right)
+func runeBoundary(s string, i int) int                // a byte offset, off any split rune
 ```
 
-Two properties follow, both pinned by `width_test.go`:
+Three properties follow, all pinned by `width_test.go`:
 
 - **Measuring and cutting cannot disagree.** They used to: rows were sized with `ansi.StringWidth` and cut with `rivo/uniseg`'s cluster widths, and the two tables answer differently for some single clusters — a keycap (`1` + U+FE0F + U+20E3) is 1 cell to uniseg and 2 to displaywidth. A 4-cell budget then received 5 cells, and the row shifted the next one. `width_test.go` re-measures every cut at every budget and fails on an overrun; run against the previous implementation it names the keycap and the variation-selector cases.
+- **Measuring and breaking cannot disagree either.** The breakers are this file's too (`hardwrapCells`, `keepCells`/`dropCells`/`cutCells`), and nothing in the adapter calls `x/ansi`'s. Its `Hardwrap`/`Cut` walk *bytes* and form a grapheme cluster only when the lead byte is non-ASCII, so they under-bill a cluster that starts with an ASCII character and hand back rows *wider than the budget they were given* — the mechanism, the on-screen consequence and the measurements are `width.go`'s header, point 3. `TestHardwrapNeverOverrunsItsBudget` and `TestWrapVisualLinesRowsFitTheBudget` hold the row-level promise; `TestViewAlwaysFillsScreen` and `screen_repaint_invariant_test.go` hold the frame-level one.
 - **The environment cannot retune the layout.** `x/ansi` reads `RUNEWIDTH_EASTASIAN` in its own package `init` and, when it says true, charges East-Asian-Ambiguous glyphs (`│ ─ … — · • ↓ ∞`) two cells; nothing of ours runs early enough to undo it (an `init` in this package, or an `os.Unsetenv` in `main` — measured, both too late). Holding our own options is what makes the adapter's numbers not move. `TestCellWidthIgnoresRunewidthEastAsian` proves it by re-executing the test binary with the variable set.
 
-Cluster boundaries come from `github.com/clipperhouse/uax29/v2/graphemes`, which displaywidth and `x/ansi` both segment with; it stays an indirect dependency.
+Cluster boundaries come from `github.com/clipperhouse/uax29/v2/graphemes`, which displaywidth and `x/ansi` both segment with; it stays an indirect dependency. `walkCells` reaches it through `displaywidth.Options.StringGraphemes` with the control-sequence options on, which is what lets a breaker keep an escape sequence attached to the row it sits in without a second width table.
 
-### `github.com/charmbracelet/x/ansi` — protocol and escape-aware line breaking
+### `github.com/charmbracelet/x/ansi` — protocol, SGR, and escape removal
 
-Everything that speaks to the terminal, plus the line breakers that must understand escapes to survive them:
+Everything that speaks to the terminal. It is **not** where a line ends: every breaker and cutter is `width.go`'s (see the displaywidth section for the defect that moved them), and the word wrapper it used to provide went away with the block width that reached it (`style.go`'s note on `Style`).
 
-**① Line breaking on styled text (`wrap.go`, `confirm_dialog.go`)**
+**① Output sequences and SGR (`screen.go`, `style.go`, `wrap.go`)** — cursor addressing and erase, alt screen, bracketed paste, focus reporting, cursor style and color, OSC-8 hyperlinks, and the SGR attribute order the styling layer is byte-compatible with. That role — not width — is why the dependency is here: all 99 of its production references across 49 symbols are sequences, colors and parsing. The count is by syntax tree, not by grep — every `ansi.X` selector in every non-test file (`go/ast` over `internal/`), so a mention in a comment is not counted and a symbol cannot hide. The same walk reports **zero** references to `Hardwrap`, `Wrap`, `Wordwrap`, `Cut`, `Truncate` and `TruncateLeft`, in production or in tests; `StringWidth` survives in two test references only, which is `TestCellWidthMatchesAnsi` pinning this project's table against the library's.
 
-```go
-s = ansi.Hardwrap(s, width, true)   // hard-break at width
-line = ansi.Truncate(line, limit, "")
-```
+**② Parsing the escape sequences inside a wrapped row (`wrap.go`)** — `ansi.Parser` reads SGR and OSC-8 as they pass through `WrapWriter`, so the active style and hyperlink can be re-emitted after every newline.
 
-The input contains `\033[32m...\033[0m` sequences. A breaker that measured those bytes as visible characters would break the line in the middle of a color code. `ansi` measures clusters, keeps the escapes attached, and re-emits them; `width.go` deliberately does not reimplement that (see its header on why `ansi.Cut`/`TruncateLeft` take the styled rows the cutters are handed).
-
-**② Output sequences and SGR (`screen.go`, `style.go`, `wrap.go`)** — cursor addressing and erase, alt screen, bracketed paste, focus reporting, cursor style and color, OSC-8 hyperlinks, and the SGR attribute order the styling layer is byte-compatible with. That role — not width — is why the dependency is here: 88 of its production call sites across 39 symbols are sequences and parsing (counted over non-test files, excluding the line breakers above, which ① already covers).
-
-**③ Parsing the escape sequences inside a wrapped row (`wrap.go`)** — `ansi.Parser` reads SGR and OSC-8 as they pass through `WrapWriter`, so the active style and hyperlink can be re-emitted after every newline.
+**③ Removing escapes before measuring (`width.go`)** — `cellWidth` strips through `ansi.Strip`, which understands the full ECMA-48 grammar including 8-bit C1; displaywidth's own escape handling needs a second option for those and measures them differently (measured: 6 cells against 4).
 
 **Why plain text alone cannot do the measuring**
 
-| Scenario | `ansi` / `width.go` | `runewidth` alone |
+| Scenario | `width.go` | `runewidth` alone |
 |----------|--------|-------------|
-| `Hardwrap("\033[32mHello\033[0m", 3, true)` | `"\033[32mHel\nlo\033[0m"` ✅ | `"\033[32mHel"` ❌ (counts ANSI as visible width) |
-| `Truncate("\033[32mHello\033[0m", 3, "")` | `"\033[32mHel\033[0m"` ✅ | `"\033[32mH"` ❌ (truncates mid-ANSI) |
+| `hardwrapCells("\033[32mHello\033[0m", 3)` | `"\033[32mHel\nlo\033[0m"` ✅ | `"\033[32mHel"` ❌ (counts ANSI as visible width) |
+| `keepCells("\033[32mHello\033[0m", 3)` | `"\033[32mHel\033[0m"` ✅ | `"\033[32mH"` ❌ (truncates mid-ANSI) |
 | `cellWidth("\033[32mHello\033[0m")` | `5` ✅ | `16` ❌ (counts ANSI bytes) |
 
-Since the project processes large amounts of styled text (containing ANSI codes), escape-aware measurement is required on one side or the other; `width.go` gets it by stripping through `ansi.Strip` first, which understands the full ECMA-48 grammar including 8-bit C1 — displaywidth's own escape handling needs a second option for those and measures them differently (measured: 6 cells against 4).
+Since the project processes large amounts of styled text (containing ANSI codes), escape-aware measurement is required on one side or the other. `cellWidth` strips (③ above); the breakers cannot strip — a cut row is still styled — so they walk clusters with displaywidth's control-sequence options on instead. `TestWalkCellsAgreesWithCellWidth` is the check that the two routes through the same library still return one number.
 
 ### `github.com/mattn/go-runewidth` — transitive dependency only
 

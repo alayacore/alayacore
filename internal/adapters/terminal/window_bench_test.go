@@ -862,27 +862,21 @@ func BenchmarkFullWrappingPath(b *testing.B) {
 	}
 }
 
-// BenchmarkWrapContentVsWordBoundaryWrap compares wrapContent
-// (character-boundary) vs Wrap (word-boundary) on code-like content.
-func BenchmarkWrapContentVsWordBoundaryWrap(b *testing.B) {
+// BenchmarkWrapContent is the full re-wrap of code-like content — the shape a
+// resize or a fold toggle produces. It used to be one half of a comparison
+// against the word-boundary wrapper; that wrapper is gone (see the note on
+// Style in style.go), so this measures the only wrapping path left.
+func BenchmarkWrapContent(b *testing.B) {
 	code := strings.Repeat(`func prepareContent(s string) string {
 	s = stripANSI(s)
 	s = expandTabs(s)
 	return s
 }
 `, 20)
-
-	b.Run("wrapContent", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			wrapContent(code, 60)
-		}
-	})
-
-	b.Run("wordBoundaryWrap", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			Wrap(code, 60, " ")
-		}
-	})
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		wrapContent(code, 60)
+	}
 }
 
 // BenchmarkAppendVsFullWrap_LongContent compares incremental append to

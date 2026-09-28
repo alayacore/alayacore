@@ -28,24 +28,15 @@ func wrapContent(s string, width int) string {
 	if width < 1 {
 		return s
 	}
-	// Step 1: hard-wrap at character boundaries (like a terminal)
-	s = ansi.Hardwrap(s, width, true)
+	// Step 1: hard-wrap at cluster boundaries (like a terminal), measured
+	// with the same table cellWidth uses — see width.go's header for why
+	// this is not ansi.Hardwrap.
+	s = hardwrapCells(s, width)
 	// Step 2: re-apply ANSI styles after each inserted newline
 	var buf bytes.Buffer
 	w := NewWrapWriter(&buf)
 	defer w.Close()
 	_, _ = io.WriteString(w, s) // bytes.Buffer.Write never fails
-	return buf.String()
-}
-
-// Wrap wraps the given string to the given width at word boundaries,
-// preserving ANSI styles across lines (mirrors lipgloss.Wrap).
-func Wrap(s string, width int, breakpoints string) string {
-	var buf bytes.Buffer
-	s = ansi.Wrap(s, width, breakpoints)
-	w := NewWrapWriter(&buf)
-	defer w.Close()
-	_, _ = io.WriteString(w, s)
 	return buf.String()
 }
 
@@ -513,7 +504,7 @@ func wrapLabels(labels []string, width int, style Style) string {
 		// the displayed rows matching the computed row count exactly).
 		if labelWidth > width {
 			flushCurrent()
-			for _, part := range strings.Split(ansi.Hardwrap(label, width, true), "\n") {
+			for _, part := range strings.Split(hardwrapCells(label, width), "\n") {
 				if part != "" {
 					lines = append(lines, style.Render(part))
 				}

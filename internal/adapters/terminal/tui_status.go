@@ -184,7 +184,7 @@ func (m *Terminal) renderStatusBar() string {
 	// full width), and the status content is assembled from program-
 	// controlled segments (indicator, tokens, steps, video, model
 	// name with its reasoning level) that contain no tabs — the one
-	// case the width model documents as unreliable (ansi.Hardwrap
+	// case the width model documents as unreliable (the width table
 	// counts a tab as 0 cells).
 	// So the rendered line may legitimately run right up to the edge.
 	lineBudget := max(0, m.windowWidth)
