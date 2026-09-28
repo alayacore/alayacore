@@ -3,23 +3,42 @@
 Performance analysis of AlayaCore's virtual scrolling system for the terminal display.
 
 Benchmarks run on: Intel(R) Core(TM) Ultra 9 285K, Linux amd64, Go 1.26.1.
-Verified 2026-08-18 against the current self-built TUI stack (no Bubbles/lipgloss).
+Verified 2026-08-18 against the then-current self-built TUI stack (no
+Bubbles/lipgloss).
+
+The microseconds below are that machine's and that date's. A re-measurement on
+2026-09-28 (AMD Ryzen 7 5800U, Go 1.26.4) found several of them stale by more
+than the hardware difference. Three were stale in a way no re-run could have
+fixed, because the prose no longer described the benchmark: two benchmarks had
+changed shape since their figures were written, and one had been deleted
+outright. Those are corrected in place below; the rest are listed in
+[Stale figures](#stale-figures-2026-09-28-re-measurement). Read the ratios and
+the allocation counts, which travel between machines; treat the absolute times
+as indicative until the section is re-run on the reference machine.
 
 ## Summary
 
 All optimizations are working correctly:
 
-- ✅ **Virtual rendering** — 16.6x faster than naive full render (3.0μs vs 50.2μs, 100 windows)
-- ✅ **Incremental content append** — O(delta) per frame via `appendDeltaToVisualLines`, avoids O(n) full re-wrap (~553x speedup on 5000-line content)
+- ✅ **Virtual rendering** — ~10x faster than rendering every window, and 30x
+  lighter (100 windows, viewport 30: 3.8KB against 113KB per `GetAll`; the
+  ratio and the memory travel between machines, the times are the
+  re-measurement's, 1.5μs against 15.0μs on a Ryzen 7 5800U). This bullet said
+  16.6x / 3.0μs / 50.2μs until 2026-09-28; the non-virtual side had got ~3x
+  cheaper since it was written, which is the whole gap. See
+  [Stale figures](#stale-figures-2026-09-28-re-measurement)
+- ✅ **Incremental content append** — O(delta) per frame via `appendDeltaToVisualLines`, avoids O(n) full re-wrap (~510x on 5000-line content, 779B against 474KB per frame; it was ~553x before the width-table change made the incremental side cheaper again)
 - ✅ **Incremental line height tracking** — `TryLineCount` from `wrappedLines` in ~1.1μs (full `ensureLineHeights` with 1 dirty window), no full render needed
-- ✅ **Streaming stays under 1ms** — average 4.1μs per full cycle (append + line tracking + GetAll), well within 250ms tick budget
+- ✅ **Streaming stays under 1ms** — single-digit μs per full cycle (append + line tracking + GetAll), well within the 250ms tick budget. This bullet quoted 4.1μs; the re-measurement gets 3.0μs on a slower machine, so the figure was stale, but the claim it supports is off by three orders of magnitude either way
 - ✅ **Custom ScrollView** (<1KB) — stores the pre-clipped visible region;
   `View()` pads to the viewport height (~138ns, 4 allocs). `WithContent` is
   ~0.1ns (no re-split)
 - ✅ **Soft-wrap fragment viewport** — `renderVirtual` clips to visual lines
   and emits continuous per-window fragments (`\n` only between windows);
-  display widths cached per render, so `GetAll` renders 100 windows in 2.6μs
-  (see [Soft-Wrap Fragment Rendering](#soft-wrap-fragment-rendering))
+  display widths cached per render, so `GetAll` renders 100 windows without
+  touching the ones outside the viewport (see
+  [Soft-Wrap Fragment Rendering](#soft-wrap-fragment-rendering); this bullet
+  quoted 2.6μs, the re-measurement gets 1.4μs on a slower machine)
 
 ## How Streaming Works
 
@@ -76,52 +95,60 @@ exclusively.
 
 ### Streaming Performance (Realistic 250ms Tick)
 
+Re-measured 2026-09-28 on AMD Ryzen 7 5800U; the full-cycle row had drifted and
+the other three came out within the machine factor of the figures they replace.
+
 | Metric | Value |
 |--------|-------|
-| Average full cycle (append + line tracking + GetAll) | **4.1μs** |
-| Incremental append only (AppendOrUpdate) | **52ns** |
-| Small delta streaming (append + line tracking) | **1.2μs** |
-| Long content incremental append (5000-line content) | **1.3μs** |
+| Average full cycle (append + line tracking + GetAll), `StreamingUpdateWithVirtualRendering` | **3.1μs** |
+| Incremental append only, `JustAppendUpdate` | **47ns**, 0 allocs |
+| Small delta streaming (append + line tracking) | **1.7μs** |
+| Long content incremental append (5000-line content) | **1.6μs** |
 | Budget | < 1ms (target), 250ms (actual tick) |
 
 ### Incremental Append vs Full Re-wrap (5000-line content)
 
-Measured via `BenchmarkAppendVsFullWrap_LongContent` (500 lines of wrapped content, ~5000 wrapped lines at 80 cols).
+Measured via `BenchmarkAppendVsFullWrap_LongContent` (500 lines of wrapped content, ~5000 wrapped lines at 80 cols). Re-measured 2026-09-28 on AMD Ryzen 7 5800U, `-benchtime 300x`; this benchmark appends on every iteration, so the memory and allocation columns move with `-benchtime` and only the ratio is stable across runs.
 
 | Operation | Time | Memory | Allocs |
 |-----------|------|--------|--------|
-| **Incremental append** | **1.3μs** | **865B** | **62** |
-| Full re-wrap | 0.73ms | 796KB | 32,085 |
-| **Speedup** | **553x** | **920x** | **518x** |
+| **Incremental append** | **1.6μs** | **779B** | **61** |
+| Full re-wrap | 0.81ms | 474KB | 27,327 |
+| **Speedup** | **~510x** | **~610x** | **~448x** |
 
 Without the incremental path, every streaming frame on a long LLM response
-would trigger a full O(n) re-wrap of the entire accumulated content — 0.73ms
+would trigger a full O(n) re-wrap of the entire accumulated content — 0.81ms
 per frame. At the 250ms tick interval this is still manageable, but burst
 scenarios (multiple frames arriving between ticks) would accumulate latency.
 
 ### Streaming Update End-to-End (51 windows, 50 history + 1 streaming)
 
-Measured via `BenchmarkStreamingUpdateWithIncremental` vs `BenchmarkStreamingUpdateWithoutIncremental`
-(viewport=30; the non-incremental side is 100 windows with no viewport, i.e. full render).
+Measured via `BenchmarkStreamingUpdateWithIncremental` vs `BenchmarkStreamingUpdateWithoutIncremental`.
+Both sides are 51 windows (50 history + 1 streaming) at viewport 30; they differ
+in one thing — the non-incremental side invalidates the streaming window before
+each append, so every iteration re-wraps it from scratch instead of appending to
+`wrappedLines`. (This section used to describe the non-incremental side as
+"100 windows with no viewport, i.e. full render" and quote 0.60ms against 4.1μs
+for a 146x speedup. That was not what the benchmark measured, and the ratio was
+comparing a viewported 51-window update against something else entirely.)
 
-| Scenario | Time | Memory | Allocs | Speedup |
-|----------|------|--------|--------|:-------:|
-| **Incremental (1 dirty window)** | **4.1μs** | 11.7KB | 121 | **baseline** |
-| Full rebuild (all dirty, no incremental) | 0.60ms | 631KB | 25,480 | **146x slower** |
+| Scenario | Memory | Allocs |
+|----------|--------|--------|
+| **Incremental (1 dirty window)** | 4.5KB | 93 |
+| Full re-wrap of the streaming window | 12.7KB | 608 |
 
 Window count does not change the incremental cost: a probe with the documented
-101-window scenario (100 history + 1 streaming, viewport 30) measures **4.0μs**
-— the same as 51 windows. Incremental path is O(delta), independent of history
-length.
+101-window scenario (100 history + 1 streaming, viewport 30) measures the same
+as 51 windows. The incremental path is O(delta), independent of history length.
 
 ### Virtual Rendering
 
-Measured via `BenchmarkGetAllWithVirtual` vs `BenchmarkGetAllWithoutVirtual` (100 windows, viewport=30 lines).
+Measured via `BenchmarkGetAllWithVirtual` vs `BenchmarkGetAllWithoutVirtual` (100 windows, viewport=30 lines). Re-measured 2026-09-28 on AMD Ryzen 7 5800U; the non-virtual side had got ~3x cheaper since the figures above it were written, which is why the speedup is no longer 16.6x.
 
 | Scenario | Time | Memory | Speedup |
 |----------|------|--------|:-------:|
-| `GetAll` with virtual rendering (100 windows) | **3.0μs** | 10.5KB | **16.6x** |
-| `GetAll` without virtual rendering (100 windows) | **50.2μs** | 285KB | baseline |
+| `GetAll` with virtual rendering (100 windows) | **1.4μs** | 3.8KB | **10.8x** |
+| `GetAll` without virtual rendering (100 windows) | **14.9μs** | 113KB | baseline |
 
 ### Line Height Tracking
 
@@ -141,20 +168,25 @@ Measured via `BenchmarkWindowBufferDeltaWithGetAll` (100 windows, delta to last 
 
 | Metric | Value |
 |--------|-------|
-| Delta + GetTotalLines + GetAll (incremental) | **4.1μs** |
-| Delta + GetTotalLines + GetAll (full rebuild) | **1.7ms*** |
+| Delta + GetTotalLines + GetAll (incremental, 100 windows) | **3.7μs** |
 
-\* Measured via `BenchmarkFullRebuildAfterAppend` (all windows invalidated) —
-incremental is ~425x faster.
+The full-rebuild side is not comparable and is no longer quoted here.
+`BenchmarkFullRebuildAfterAppend` — which this section used to cite as "all
+windows invalidated", 1.7ms, ~425x slower — invalidates and re-renders **one**
+window of ~310 characters. It measures what a single window's full re-render
+costs, not what a full rebuild of the buffer costs, so the two numbers were
+never a ratio.
 
 ### Cursor Movement
 
-Measured via `BenchmarkVirtualRenderingCursorMovementSingle` (100 windows, viewport=30).
+Measured via `BenchmarkVirtualRenderingCursorMovementSingle` and
+`BenchmarkVirtualRenderingScroll` (100 windows, viewport=30). Re-measured
+2026-09-28 on AMD Ryzen 7 5800U.
 
 | Metric | Value |
 |--------|-------|
-| Single cursor move (EnsureCursorVisible + updateContent) | **3.2μs** |
-| Scroll 20 steps down + 20 steps up | **113μs** |
+| Single cursor move (EnsureCursorVisible + updateContent) | **2.8μs** |
+| Scroll 20 steps down + 20 steps up | **82μs** |
 
 ### Collapsed-Window Design (single-line fold headers)
 
@@ -163,16 +195,10 @@ The collapsed-window design replaces the bordered fold (3 content lines +
 text windows show the escaped head + "…" + tail of the content (40/60
 split), tool windows the first input line; only streaming delta windows
 use leading "…" since the user only cares about the latest chunk).
-Measured via `BenchmarkFoldedSession*` (120 windows — 110 folded
-tools/reasoning + 10 unfolded user/assistant, width 120, viewport 40):
-
-| Scenario | Value |
-|----------|------:|
-| `GetAll` viewport render | **7.9μs** |
-| 20 cursor moves (j/k) | **0.17ms** |
-| Delta into a folded tool window (Uf preview) | **0.11μs** |
-
-Why it's fast:
+No benchmark measures this session shape any more: the folded-session
+benchmark these figures came from is gone from the tree, and a number nobody
+can reproduce is worse than none. What is checkable by reading the code is why
+the shape is cheap:
 
 - **Folded windows are O(1)**: `UpdateLineCountFast` returns `1` immediately for
   folded windows — no wrapping, no row render, no renderer access. During
@@ -246,17 +272,16 @@ longer re-splits or slices content.
   viewport-dependent line height would invalidate those caches on every scroll
   step.
 
-Measured (120-window folded session / 100-window conversation, viewport
-30–40):
+Measured (100-window conversation, viewport 30). Re-measured 2026-09-28 on AMD
+Ryzen 7 5800U; the folded-session row is gone with its benchmark.
 
 | Benchmark | Value |
 |-----------|------:|
-| `WindowBufferGetAll` | **2.6μs** |
-| `FoldedSessionGetAll` | **7.9μs** |
-| `WindowBufferDeltaWithGetAll` | **4.1μs** |
-| `VirtualRenderingCursorMovement` | **60μs** |
-| `VirtualRenderingScroll` | **113μs** |
-| `StreamingUpdateWithVirtualRendering` | **4.1μs** |
+| `WindowBufferGetAll` | **1.5μs** |
+| `WindowBufferDeltaWithGetAll` | **3.7μs** |
+| `VirtualRenderingCursorMovement` | **50μs** |
+| `VirtualRenderingScroll` | **82μs** |
+| `StreamingUpdateWithVirtualRendering` | **3.1μs** |
 
 The render path (full wrap, resize, theme switch) is unchanged: display
 widths are computed **lazily** — only when fragment output needs padding —
@@ -264,14 +289,29 @@ so `ensureLineHeights`/`Render` never pay the per-line measurement cost.
 
 ### wrapContent
 
-| Algorithm | Time | Memory | Allocs |
-|-----------|------|--------|--------|
-| **wrapContent** (cluster-boundary) | **35.5μs** | 9.6KB | 1,772 |
-
 `wrapContent` is the only wrapping path: the word-boundary wrapper this used to
 be compared against was deleted with the `Style` block width that reached it
 (see `style.go`), and it was the last line break not measured with `width.go`'s
 table. `BenchmarkWrapContent` measures the remaining one.
+
+The move onto `width.go`'s table made it faster, not slower, because the common
+call — one original line that already fits — now returns the string it was given
+instead of rebuilding it. Measured back-to-back on one machine (AMD Ryzen 7
+5800U, so comparable to itself and not to the figures above), against the
+library wrapper it replaced:
+
+| | Time | Memory | Allocs |
+|---|---:|---:|---:|
+| `ansi.Hardwrap` (before) | 50.6μs | 17.2KB | 1,780 |
+| `hardwrapCells` (after) | **35.6μs** | **9.6KB** | 1,772 |
+
+The larger effect is on the paths that wrap short lines, where the early-out
+applies. It shows up in allocation rather than in time: the full re-wrap of a
+5000-line document went from 560KB and 27,034 allocations per operation to
+474KB and 27,327, and markdown streaming from 18.1KB to 14.8KB. (`GetAll` over
+100 windows did not move — 113KB before and after; the 285KB this document
+quoted for it was already stale, see
+[Stale figures](#stale-figures-2026-09-28-re-measurement).)
 
 ### Resize Performance
 
@@ -279,10 +319,55 @@ table. `BenchmarkWrapContent` measures the remaining one.
 |----------|------|
 | Resize 50 windows (80↔120 cols) | **0.21ms** |
 
+## Stale figures (2026-09-28 re-measurement)
+
+Every benchmark this document names was re-run on AMD Ryzen 7 5800U, Go 1.26.4,
+taking the minimum of repeated runs. Three of them were run against the tree
+before the width-table change as well, so each row can say whether it drifted on
+its own or was moved by that change. The "measured here" column is the same
+figure the section tables above quote; the before/after pair comes from a
+back-to-back A/B at `-benchtime 200x`, so for `AppendVsFullWrap_LongContent` —
+which appends on every iteration, so its memory and allocation columns move with
+`-benchtime` — the pair and the table can differ in the last digit. Only its
+ratio is stable.
+
+The machine factor was calibrated on the benchmarks that nothing in the
+renderer touches — `GetWindowLineRange` 21ns → 31ns, `JustEnsureLineHeights`
+1.1μs → 1.55μs, `WindowBufferResize` 0.21ms → 0.28ms — so this machine is
+roughly **1.3–1.5x slower** than the reference. A figure that came out *lower*
+here is therefore stale by more than the hardware, and the memory and
+allocation columns are hardware-independent outright.
+
+| Row | Documented | Measured here | Same benchmark before the change | Reading |
+|-----|-----------|---------------|----------------------------------|---------|
+| `GetAll` without virtual, memory | 285KB | **113KB** | 113KB | stale before; unchanged |
+| `GetAll` without virtual, time | 50.2μs | **14.9μs** | 15.4μs | stale before by ~4.7x once the machine factor is allowed for |
+| `GetAll` with virtual, memory | 10.5KB | **3.8KB** | 3.8KB | stale before; unchanged |
+| virtual-vs-not speedup | 16.6x | **~10x** | ~11x | the headline ratio no longer holds |
+| `WindowBufferGetAll` | 2.6μs | **1.5μs** | 1.6μs | stale before |
+| Incremental append, memory | 865B | **779B** | 940B | stale before, then reduced further by the change |
+| Full re-wrap, memory | 796KB | **474KB** | 560KB | stale before, then −15% from the change |
+| Full re-wrap, allocs | 32,085 | **27,327** | 27,034 | stale before; unchanged within run-to-run drift |
+| `StreamingUpdateWithIncremental`, allocs | 121 | **93** | 96 | stale before, then −3 from the change |
+| `VirtualRenderingScroll` | 113μs | **82μs** | not re-measured | lower on a slower machine, so stale |
+| incremental-vs-full-re-wrap speedup | 553x | **~510x** | ~407x | a ratio, so it travels: it moved because the incremental side got faster (940B → 779B), and it had already drifted before that |
+
+Two of the rows above were wrong in a way no re-measurement could have caught,
+because the prose described a benchmark that no longer exists in that form: the
+non-incremental streaming side, and `FullRebuildAfterAppend`. Both are corrected
+where they appear. `FoldedSessionGetAll` had no benchmark behind it at all and
+its figures are gone rather than re-measured.
+
+What is *not* stale: the structural claims — the incremental path is O(delta)
+and independent of window count, folded windows are O(1) for line tracking,
+`updateContent` skips unchanged content, and the streaming cycle is orders of
+magnitude inside the 250ms tick. Those are properties of the code and were
+re-verified by reading it; only the microseconds attached to them drifted.
+
 ## Why Rate Limiting Isn't Needed
 
 1. **UI refresh is polled at 250ms intervals** — data ingestion itself is not throttled
-2. **Render overhead is well under 0.01%** of wall time during streaming (4.1μs per 250ms tick ≈ 0.002%)
+2. **Render overhead is well under 0.01%** of wall time during streaming (a few μs per 250ms tick ≈ 0.001%)
 3. **`updateContent()` skips unchanged content** efficiently — the one deliberate exception is the executing-tool spinner refresh (`InvalidateRunningToolSpinners`), which invalidates pending tool windows per tick so the header spinner keeps rotating during silent commands; it costs a ~100ns scan plus one window render, only while a tool executes (see [tool-spinner-refresh.md](tool-spinner-refresh.md))
 4. **Incremental append is O(delta)** — no quadratic accumulation for long responses
 
