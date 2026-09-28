@@ -670,36 +670,34 @@ func BenchmarkGetAllWithoutVirtual(b *testing.B) {
 }
 
 // ============================================================================
-// Performance Summary
+// Reading the numbers these produce
 // ============================================================================
 //
-// Virtual Rendering Performance (100 windows, viewport showing middle 30 lines):
+// The figures live in docs/internal/virtual-rendering-performance.md, which
+// names the machine, the toolchain, the -benchtime and the run count behind
+// each one. They are deliberately not repeated here: a number in a comment
+// carries no method and rots silently. The block that stood here quoted a 3.5x
+// virtual-rendering speedup, ~700μs per streaming update and a 1.4% render
+// overhead from a profiling session that predates the soft-wrap viewport and
+// the one-row window; the same benchmarks on the current tree measure 10.9x
+// and single-digit microseconds, and the tick is 250ms (tui.go → TickInterval),
+// not the 50ms that percentage was taken against.
 //
-// GetAll (rendering only):
-//   - With virtual rendering:    ~20μs (3.5x faster)
-//   - Without virtual rendering: ~71μs
+// Two shapes matter before comparing any two rows:
 //
-// Full update cycle (delta + GetAll):
-//   - Incremental (1 dirty):     ~41μs
-//   - Full rebuild (all dirty):  ~5.3ms (130x slower)
-//
-// Incremental wrapping (wrap operation only):
-//   - Incremental append:        ~1.6μs
-//   - Full wrap:                 ~72μs (45x slower)
-//
-// Cursor movement (single):
-//   - EnsureCursorVisible + updateContent: ~340μs average (best ~210μs, worst ~800μs)
-//
-// Realistic streaming (profiled):
-//   - Average render time:       ~700μs per update
-//   - Render overhead:           ~1.4% of total time (at 50ms intervals)
-//   - Updates/second:            ~3572
-//
-// Conclusion: NO RATE LIMITING NEEDED
-//   - UI refresh is polled at 250ms intervals (tui.go → TickInterval)
-//   - Render overhead is only 1.4% of wall time
-//   - updateContent() skips unchanged content efficiently
-//   - Virtual rendering provides 3.5x speedup
+//   - Benchmarks that append on every iteration (WindowBufferDelta,
+//     WindowBufferDeltaWithGetAll, StreamingUpdate*, StreamingSmallDelta,
+//     JustAppendUpdate, JustEnsureLineHeights, AppendVsFullWrap_LongContent)
+//     grow their content as they run, so their memory and allocation columns
+//     move with -benchtime. Quote the benchtime with the figure, or use the
+//     ratio, which is the stable part. Benchmarks whose state is rebuilt per
+//     iteration under StopTimer (FoldedTextStreamingDelta) do not have this
+//     problem and say so.
+//   - "100 windows" buffers hold ~500 document lines and the viewport is 30 of
+//     them, so a viewport render touches one to three windows. The
+//     render-everything side of a comparison is the benchmark that sets no
+//     viewport at all (GetAllWithoutVirtual,
+//     StreamingUpdateWithoutVirtualRendering).
 func BenchmarkWindowBufferResize(b *testing.B) {
 	styles := NewStyles(theme.DefaultTheme())
 
@@ -880,8 +878,14 @@ func BenchmarkWrapContent(b *testing.B) {
 }
 
 // BenchmarkAppendVsFullWrap_LongContent compares incremental append to
-// full re-wrap on very long content (5000+ lines). This is the scenario
+// full re-wrap on one long message: 500 repeats of a 52-character sentence,
+// so 26,000 bytes with no newline in it, which wraps to 325 rows at 80
+// columns (326 counted lines with the window's own). This is the scenario
 // that matters during streaming of a long LLM response.
+//
+// Both sides append " delta" on every iteration, so the content — and with it
+// the memory and allocation columns — grows with -benchtime. Quote the
+// benchtime alongside any figure from here.
 func BenchmarkAppendVsFullWrap_LongContent(b *testing.B) {
 	styles := NewStyles(theme.DefaultTheme())
 	longContent := strings.Repeat("This is a line of content that wraps at 80 columns. ", 500)

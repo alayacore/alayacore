@@ -522,9 +522,13 @@ is, so it is not the cached `lines[0]`: it is memoized on the count it carries,
 in the window's render cache, and cleared with it. A frame that does not move the
 viewport therefore re-reads it — 46 allocations with the pin and 48 without,
 `TestStickyPinAddsNoAllocations` — while a frame that moves the viewport by a
-row rebuilds that one row and nothing else: `BenchmarkStickyLineViewportRender`
-measures 2012ns pinned-still and 3057ns pinned-scrolling against 2024ns
-unpinned, and `TestStickyPinCostIsIndependentOfTheWindowSize` holds a 400-row
+row rebuilds that one row and nothing else. `BenchmarkStickyLineViewportRender`
+measures the four frames of that contract over one session (minimum of 10 runs
+at `-benchtime 1s`): `unpinned` 1965ns and `pinned` 2065ns, the same frame
+within run-to-run noise; `pinned-cursor-on-it` 2070ns, so the highlighted
+variant costs what the plain one does; and `pinned-scrolling` 3370ns at 85
+allocations against 46 — one row rebuilt per row scrolled.
+`TestStickyPinCostIsIndependentOfTheWindowSize` holds a 400-row
 message to the same allocations as a 40-row one. `sticky_line_test.go` pins the
 behaviour, the boundaries and the cost.
 
@@ -594,13 +598,13 @@ The expanded line carries `2026/09/14 16:32:07 +08:00` at its right end: **when 
 
 It is the adapter's receipt clock, read once when the window is created (`Window.CreatedAt`) and never read again while rendering: rendering stays a pure function of the window's state (cacheable, testable), and the clock is touched at exactly one boundary. The column is a fixed 26 cells (`timeStampLayout`, pinned by a test) and right-aligned, so the label yields to it and never the other way round: a tool header too long for the row keeps its name and loses the timestamp rather than the reverse. On a terminal too narrow for both, the timestamp is simply not drawn — no truncation, no shortened format. The pinned row's `N lines above` sits in the gap to the left of it and yields first, because the timestamp is the anchor that places it: a label too wide leaves room for the timestamp alone, and the count then drops out (a count without its timestamp would be unanchored chrome). Label, then timestamp, then count: the count costs 15 cells at its narrowest (`1 line above` plus its ` | ` separator) and grows with the number, so it first fits at width 53 on an `ASSISTANT` row and at 75 on a tool row carrying `execute_command` — comfortable at 80 columns, out of reach on a 40-column terminal, which keeps the label and the timestamp.
 
-Twenty-six cells, where the column was 16 before, buys two things. **Seconds**: a minute is shorter than the gaps this transcript is read for — a command that ran 40 seconds and the answer after it land in the same minute — while everything one delta flush delivers still shares one second (400 windows are created, stamped and rendered in about a millisecond), so the finer resolution separates what a reader is looking at without fragmenting what arrived together. **The offset**: six cells that name the zone the clock is in, and they are the same six cells on every row of a session, because the zone is the process's — constant chrome, spent on making a column that appears nowhere else in the frame self-describing. A zone *name* would be three cells, `CST`, and mean three different zones. The format is the wall-clock shape the UI already used, so this is not RFC 3339 and a strict parser will reject it; a machine-readable column, if one is ever wanted, is a separate decision.
+Twenty-six cells, where the column was 16 before, buys two things. **Seconds**: a minute is shorter than the gaps this transcript is read for — a command that ran 40 seconds and the answer after it land in the same minute — while everything one delta flush delivers still shares one second (400 windows are created, stamped and rendered in a couple of milliseconds), so the finer resolution separates what a reader is looking at without fragmenting what arrived together. **The offset**: six cells that name the zone the clock is in, and they are the same six cells on every row of a session, because the zone is the process's — constant chrome, spent on making a column that appears nowhere else in the frame self-describing. A zone *name* would be three cells, `CST`, and mean three different zones. The format is the wall-clock shape the UI already used, so this is not RFC 3339 and a strict parser will reject it; a machine-readable column, if one is ever wanted, is a separate decision.
 
 #### Cursor highlight
 
 The cursor highlight covers the window's own line, and never its content: on a folded window that is the marker and the label column, on an expanded one the same chrome plus the timestamp at the far end (and, when that row is the pinned one, the `N lines above` and its ` | `, which takes the row's own style with the rest). Two things on that row stay out of it, because they are content — a tool window's name (it takes `toolNameStyle` in both fold states, so folding a window does not repaint it) and a folded row's summary, which keeps the muted color. That is why the label and the summary are separate styles (`Styles.Label` vs `Styles.System`), and why the name is a third one. And because the chrome is one style, "the highlight" is a single styles swap — the row is not assembled from pieces that would each need their own color. Mechanically this is a derived styles set — `Styles.Selected()` swaps the two colours that can name a window (the label colour, which is what every window line is drawn in, and the error colour, which `SYSTEM ERROR` uses) for the accent color (the theme's primary), and the renderers paint the row from whatever styles they are handed, so "who is the cursor" needs no extra parameter. The highlighted row is built on first request rather than by `Window.Render`, because the collapsed variant costs a second `BuildCollapsed`: `Render` runs for every window on every content change, while exactly one window at a time is under the cursor. Under an overlay (`Styles.Dimmed()`) the accent color *is* the dim color, so the highlight disappears while a modal owns the screen.
 
-The marker glyph is fixed by the terminal layout (`foldArrow`/`unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the line reserves exactly one cell for it, so the glyph is a geometry decision and switching color schemes must not change it. The spinner frames `⠋…⠏` and the tool markers `✓ ✗` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale (collapsed windows are O(1) to render and track).
+The marker glyph is fixed by the terminal layout (`foldArrow`/`unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the line reserves exactly one cell for it, so the glyph is a geometry decision and switching color schemes must not change it. The spinner frames `⠋…⠏` and the tool markers `✓ ✗` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale — with one distinction that document benchmarks rather than asserts: a collapsed window's line *count* is O(1) to track, while drawing its summary row is O(1) for a tool window (the first input line) and one pass over the message for a text window (head + "…" + tail of it), which is why a folded reasoning window that streams is measured against the same content expanded.
 
 ### Collapsed Summary Truncation
 
@@ -635,8 +639,10 @@ The display uses virtual scrolling to handle large outputs efficiently. The
 viewport clips the window buffer to the visible **visual lines** and renders
 only the windows that overlap them — typically 1-3 windows per frame, down
 from the buffered window range of the old model. Cached display widths make
-fragment output cheap: `GetAll` (viewport render) measured **~68% faster**
-after the soft-wrap refactor (`BenchmarkWindowBufferGetAll`). See
+fragment output cheap: across the soft-wrap refactor (`fa211241^` → `7d391db5`,
+both ends measured back to back on one machine) `GetAll` went from
+7.10μs and 44,160 B/op to 2.58μs and 12,104 B/op — **~64% faster** — and the
+current tree measures 1.6μs and 6,080 B/op (`BenchmarkWindowBufferGetAll`). See
 [performance analysis](internal/virtual-rendering-performance.md) for details.
 
 ### Sentinel values
@@ -754,7 +760,7 @@ inspect the complete input in `$EDITOR` without closing the dialog.
 
 Content in each window is wrapped to the available width using the
 **terminal's own soft-wrap** (see
-`internal/virtual-rendering-performance.md`). The viewport renders each
+`docs/internal/virtual-rendering-performance.md`). The viewport renders each
 window as a **continuous fragment** — the visual rows are joined without
 hard newlines, and every row except the last is padded with trailing
 spaces to the full window width, so the terminal soft-wraps exactly at

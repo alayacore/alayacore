@@ -580,7 +580,7 @@ func (p *Program) watchSignals(ctxDone <-chan struct{}) {
 // WindowSizeMsg and no cache clear, and the display would keep laying out the
 // old width forever.
 //
-// The cost is measured rather than assumed: about 240ns and zero allocations
+// The cost is measured rather than assumed: about 200ns and zero allocations
 // per quiet tick, ioctl included (BenchmarkRefreshSizeUnchanged, against a real
 // pty — program_resize_cost_bench_test.go). At a 250ms tick that is roughly 1µs
 // of CPU per second of running the UI. Which is why this is not hidden behind an

@@ -38,10 +38,13 @@ it — spinner frame and all — on every tick (idle keeps the cache).
   `markDirty(i)` — the render cache is rebuilt on the next `GetAll` with
   the current wall-clock frame.
 - Returns `false` when no tool is executing, so the idle tick keeps the
-  100% skip behavior: benchmarked at **76ns/op, 0 allocs** for a 100-window
-  idle buffer (pending case: **100ns/op, 0 allocs**; the subsequent
-  viewport render is ~6.5μs on the dev machine, paid only while a tool
-  runs).
+  100% skip behavior: benchmarked at **31ns/op, 0 allocs** for a 100-window
+  idle buffer (`BenchmarkInvalidateRunningToolSpinnersIdle`, minimum of 10 runs
+  at `-benchtime 1s`), and at **33ns/op, 0 allocs** for the same buffer with one
+  pending tool (`…Pending`). Both are per tick and neither allocates. The frame
+  the invalidation triggers is the ordinary viewport render with one collapsed
+  row rebuilt inside it — what a frame costs, by session shape, is tabulated in
+  [virtual-rendering-performance.md](virtual-rendering-performance.md).
 
 ### Design notes (read before refactoring)
 
@@ -84,7 +87,7 @@ it — spinner frame and all — on every tick (idle keeps the cache).
 
 ### Future direction
 
-If the idle scan (76ns/tick) ever matters, replace it with an
+If the idle scan (31ns/tick) ever matters, replace it with an
 `atomic.Int32` running-tool counter maintained at the status transition
 sites in `window.go` / `window_buffer.go` — not before profile data
 demands it.
