@@ -698,6 +698,19 @@ by U+FE0F asks the terminal for emoji presentation, and a terminal that
 ignores the request draws one cell where the table reserves two, and a ZWJ
 family is one cluster here and several there.
 
+That is a measured fact about hosts, not a worry, and it applies to content
+the app does not own — a model's keycap list, a user's paste. `width.go`
+bills `1️⃣` two cells, which is what UAX #29 and #11 say and what tmux 3.7c
+draws; the tmux 3.4 that `ubuntu-latest` ships came back with a 2-cell
+`1`+VS16 followed by a separate combining keycap, three cells, so on that
+build the app's rows land a cell off wherever such a cluster appears. There
+is no table that satisfies both hosts — answering it needs a capability
+probe, which the adapter does not issue (see
+[Paste and terminal capability](#paste-and-terminal-capability)) — so it is
+recorded as an exposure with the same shape as waiver 2, and
+`TestScreenMatchesATerminalUnderTmux` reports rather than fails on the rows
+where a host and the table disagree.
+
 One environment variable is worth naming, because it looks like support and
 is not: `RUNEWIDTH_EASTASIAN` is read by `x/ansi` at init and makes it charge
 Ambiguous glyphs two cells. Nothing in the adapter reads `x/ansi`'s copy of the
