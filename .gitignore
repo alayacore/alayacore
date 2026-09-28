@@ -3,6 +3,9 @@ alayacore-linux-*
 alayacore-darwin-*
 alayacore-windows-*
 alayacore-*.log
+*.test
+coverage.out
+coverage.html
 *.swp
 *~
 .obsidian/
