@@ -89,6 +89,25 @@ jobs:
           # the linter gained since — its own change.
           install-mode: goinstall
 
+      # The terminal adapter's replay test judges its grid model against a real
+      # terminal: it writes a recorded frame stream into a tmux pane and diffs
+      # the capture against the model. That makes tmux a dependency of the
+      # suite, and it was an undeclared one — present only because the runner
+      # image happens to ship it, at whatever version the image was built with.
+      # That cost a red build once already: the image's tmux 3.4 and a
+      # development box's 3.7c bill a keycap cluster differently, so the model
+      # and the pane disagreed about rows no code of ours controls. Installing
+      # it here declares the dependency, so an image that drops it fails this
+      # step instead of silently skipping the test, and printing the version
+      # puts the build the suite is judging against into the log.
+      - name: Install tmux (the replay test's reference terminal)
+        run: |
+          if ! command -v tmux >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends tmux
+          fi
+          tmux -V
+
       - name: Vet
         run: go vet ./...
 

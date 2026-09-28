@@ -45,6 +45,15 @@ func TestScreenMatchesATerminalUnderTmux(t *testing.T) {
 	}
 	tmux, err := exec.LookPath("tmux")
 	if err != nil {
+		// On a developer's box this is a skip: the check needs a terminal
+		// multiplexer and not everyone has one. In CI it is a failure, because
+		// the workflow installs tmux as this test's reference terminal — and
+		// `go test ./...` runs without -v, so a skip here would be invisible
+		// and the suite would quietly lose its only comparison against a real
+		// terminal. Nothing else would say so.
+		if os.Getenv("CI") != "" {
+			t.Fatalf("tmux is not installed, but the workflow installs it as this test's reference terminal (see .github/workflows/test.yml): %v", err)
+		}
 		t.Skip("tmux is not installed")
 	}
 	version := tmuxVersion(t, tmux)
