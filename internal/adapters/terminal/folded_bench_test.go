@@ -143,11 +143,12 @@ func BenchmarkFoldedToolStreamingDelta(b *testing.B) {
 // and a substring per cluster, twice per frame — so this frame cost 99μs and
 // 503 KB at 2 KB of content and 13.5ms and 56.8 MB at 128 KB: 12x to 81x more
 // than the same content EXPANDED, which is the inversion this benchmark exists
-// to make visible. width.go's cutters are folds now and the numbers are 17.5μs
-// / 12 KB and 934μs / 780 KB. What is left is honest: the line COUNT of a
-// folded window is O(1) (UpdateLineCountFast returns 1 without touching the
-// renderer) and the ROW is one pass over the content, O(content) in time and
-// O(cut) in memory.
+// to make visible. Two materializations came out — width.go's cluster list, and
+// the whole-message escape copy the summary used to cut 75 cells out of — and
+// the numbers are 15.1μs / 5.1 KB and 770μs / 134 KB, lighter than the expanded
+// side at every size. What is left is honest: the line COUNT of a folded window
+// is O(1) (UpdateLineCountFast returns 1 without touching the renderer) and the
+// ROW is one pass over the content, O(content) in time and O(cut) in memory.
 //
 // Reasoning windows fold by default and stream for as long as the model thinks,
 // which puts this on the per-tick path of a long "thinking" phase — so the

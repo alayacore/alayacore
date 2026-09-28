@@ -120,7 +120,13 @@ func prepareContent(s string) string {
 }
 
 // expandTabs converts tabs to spaces, treating tabs as TabWidth-space width.
+// A string with no tab in it is returned as it is: the walk below rebuilds
+// through a Builder rune by rune, and the summary paths call this on whole
+// messages that almost never contain a tab.
 func expandTabs(s string) string {
+	if !strings.Contains(s, "\t") {
+		return s
+	}
 	var result strings.Builder
 	col := 0
 	for _, r := range s {

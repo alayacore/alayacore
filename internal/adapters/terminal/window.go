@@ -129,7 +129,7 @@ type renderCache struct {
 	// Built on first request, not by Render: the collapsed variant costs a
 	// second BuildCollapsed, which for a text window is a pass over the whole
 	// content to derive its head + "…" + tail (BenchmarkFoldedTextStreamingDelta
-	// prices the frame that contains one: 17.5μs at 2 KB of content, 934μs at
+	// prices the frame that contains one: 15μs at 2 KB of content, 770μs at
 	// 128 KB). Render runs for every window on every content change, and
 	// exactly one window at a time is under the cursor.
 	// line0CursorDone tells "not built yet" from "built and empty".
@@ -548,7 +548,7 @@ func (w *Window) lineStyle(styles *Styles) Style {
 // second BuildCollapsed, which for a text window is a pass over the whole
 // content to derive its head + "…" + tail
 // (BenchmarkFoldedTextStreamingDelta prices the frame that contains one),
-// Render runs for every window on every content change, and exactly one
+// while Render runs for every window on every content change and exactly one
 // window at a time is under the cursor.
 // Memoized, the cost is paid once per cache generation by that one window.
 //

@@ -420,30 +420,20 @@ func tailParts(content string, maxWidth int) (string, bool) {
 	if maxWidth <= 1 {
 		return "", false
 	}
-	// Escape newlines first so the result is a single logical line.
-	escaped := strings.ReplaceAll(content, "\n", "\\n")
-	escaped = strings.ReplaceAll(escaped, "\r", "")
-
-	if cellWidth(escaped) <= maxWidth {
-		return escaped, false
+	if escapedWidth(content) <= maxWidth {
+		return escapeBreaks(content), false
 	}
 	// Take the tail that fits. We deliberately use the FULL maxWidth
 	// here (not maxWidth-1) — callers that prepend a "…" marker subtract
 	// 1 from their own budget before calling (see window_renderer.go),
 	// since we don't know if they want a marker at all.
-	room := maxWidth
-	runes := []rune(escaped)
-	width := 0
-	start := len(runes)
-	for i := len(runes) - 1; i >= 0; i-- {
-		w := cellWidth(string(runes[i]))
-		if width+w > room {
-			break
-		}
-		width += w
-		start = i
-	}
-	return string(runes[start:]), true
+	//
+	// The cut is tailCells, so it lands on a cluster boundary. It used to be a
+	// backwards walk over []rune measuring one rune at a time, which split
+	// multi-rune clusters: tailParts("aaaa 👨‍👩‍👧‍👦", 2) returned
+	// ZWJ+boy, the back half of a family emoji, on the row a user watches while
+	// a command runs. That walk also allocated a string per rune it examined.
+	return cutEscaped(content, maxWidth, true), true
 }
 
 // headAndTailParts returns the leading and trailing parts of content for a
@@ -477,14 +467,11 @@ func headAndTailParts(content string, maxWidth int) (head, tail string, truncate
 	if maxWidth <= 0 {
 		return "", "", false
 	}
-	escaped := strings.ReplaceAll(content, "\n", "\\n")
-	escaped = strings.ReplaceAll(escaped, "\r", "")
-
-	if cellWidth(escaped) <= maxWidth {
-		return escaped, "", false
+	if escapedWidth(content) <= maxWidth {
+		return escapeBreaks(content), "", false
 	}
 	if maxWidth <= 2 {
-		return takeCells(escaped, maxWidth), "", true
+		return cutEscaped(content, maxWidth, false), "", true
 	}
 
 	// 40/60 split. Integer math: headWidth = maxWidth * 40 / 100.
@@ -497,9 +484,58 @@ func headAndTailParts(content string, maxWidth int) (head, tail string, truncate
 	tailWidth := maxWidth - headWidth - 1
 	if tailWidth < 1 {
 		// Very narrow widths where head already claims most of the room.
-		return takeCells(escaped, maxWidth), "", true
+		return cutEscaped(content, maxWidth, false), "", true
 	}
-	return takeCells(escaped, headWidth), tailCells(escaped, tailWidth), true
+	return cutEscaped(content, headWidth, false), cutEscaped(content, tailWidth, true), true
+}
+
+// escapeBreaks renders s as one logical line: each '\n' becomes the
+// two-character marker `\n`, and a stray '\r' goes away. A summary is one row,
+// and line heights count '\n', so a real break in one would move every row
+// below it. Both ReplaceAll calls hand back their input untouched when there is
+// nothing to replace, so this costs a scan plus a copy only when s has a
+// newline in it.
+//
+// Not tool_handler.go's escapeNewlines, and the two must not be merged: that
+// one also turns a tab into `\t` for a command line shown inline and keeps
+// '\r', while a summary has already had its tabs expanded to spaces
+// (prepareContent / flattenDelta) and must not carry a carriage return.
+func escapeBreaks(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\n", "\\n"), "\r", "")
+}
+
+// escapedWidth returns the width s will measure once escapeBreaks has run,
+// without building it: a '\n' is 0 cells and its marker is 2, a '\r' is 0 cells
+// and is deleted, and every other character keeps the width it has.
+func escapedWidth(s string) int {
+	return cellWidth(s) + 2*strings.Count(s, "\n")
+}
+
+// cutEscaped returns budget cells from the wanted end of content, escaped.
+//
+// It cuts BEFORE it escapes, and then cuts the escaped result to the same
+// budget from the same end. That is not the obvious order — the obvious one
+// escapes the whole message and keeps 30 cells of it — but it is the same
+// answer, because escaping can only widen a character: the escaped text that
+// fits a budget always sits inside the raw cut, so re-cutting from the same end
+// with the same budget lands on the same boundary. Both orders are run over the
+// corpus at every budget by TestSummaryEscapeOrderIsEquivalent, which keeps the
+// escape-first form as its oracle.
+//
+// The order is the whole point. A folded window re-derives its summary on every
+// delta, so escaping first copied the entire message per frame to draw two
+// thirds of one row — and the same shape sat in tailParts, on the streaming
+// tool preview (docs/internal/virtual-rendering-performance.md).
+func cutEscaped(content string, budget int, fromTail bool) string {
+	cut := takeCells(content, budget)
+	if fromTail {
+		cut = tailCells(content, budget)
+	}
+	escaped := escapeBreaks(cut)
+	if fromTail {
+		return tailCells(escaped, budget)
+	}
+	return takeCells(escaped, budget)
 }
 
 // firstLine returns the first line of s (up to the first '\n').
