@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -37,10 +35,10 @@ func TestRawViewSoftWrapEndToEnd(t *testing.T) {
 	// Simulate the terminal: soft-wrap the raw content at the screen width.
 	// The renderer emits \r\n (raw mode has no ONLCR): '\r' returns to
 	// column 0 before the line feed, so a full-width row followed by a
-	// window separator is ONE row — Hardwrap on bare '\n' would insert a
-	// spurious blank row at that boundary. Hardwrap is still used below
+	// window separator is ONE row — a wrap on bare '\n' would insert a
+	// spurious blank row at that boundary. The wrapped text is used below
 	// for the content assertions (row count comes from terminalRows).
-	wrapped := ansi.Hardwrap(stripANSI(content), 80, true)
+	wrapped := hardwrapCells(stripANSI(content), 80)
 	rows := terminalRows(stripANSI(content), 80)
 	t.Logf("TERMINAL ROWS=%d", rows)
 	if rows != 24 {

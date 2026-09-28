@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	ansi "github.com/charmbracelet/x/ansi"
-
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -293,8 +291,9 @@ func TestDisplayViewSoftWrapRows(t *testing.T) {
 		t.Fatalf("YOffset = %d, want 3 (document 8 lines - viewport 5)", dm.scrollView.YOffset())
 	}
 	v := dm.View().Content
-	// Simulate the terminal soft-wrap at the display width.
-	wrapped := ansi.Hardwrap(v, 40, true)
+	// Simulate the terminal soft-wrap at the display width, with the table
+	// the terminal was measured against (width.go's header).
+	wrapped := hardwrapCells(v, 40)
 	rows := strings.Count(wrapped, "\n") + 1
 	if rows != 5 {
 		t.Errorf("terminal soft-wrap of View() = %d rows, want 5 (viewport height)", rows)
