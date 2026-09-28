@@ -114,16 +114,21 @@ func hasEscape(s string) bool {
 // false, which is the whole point: the number a breaker charges is the number
 // cellWidth reports and the number the terminal draws.
 //
-// ControlSequences8Bit is on here and off in widthModel, and that is not a
-// disagreement about width — a C1 sequence is zero cells either way. It is a
-// difference in what the walker treats as one unit: with the option, a C1
-// introducer and the sequence behind it stay a single cluster, so a cut lands
-// outside the sequence rather than inside it. Widths still come from the same
-// trie, which width_test.go pins against cellWidth.
+// ControlSequences8Bit is off, and turning it on is a measured mistake rather
+// than a matter of taste. cellWidth removes escapes with ansi.Strip, which
+// recognizes a raw C1 byte (0x80-0x9F) as an introducer; hasEscape, the guard
+// that decides whether to strip, recognizes only the UTF-8 form (C2 80..9F), so
+// a raw C1 byte is never stripped and cellWidth bills it as the visible
+// characters it then looks like. With the 8-bit option on, this walker instead
+// folds the raw sequence into one zero-width cluster — and the two disagree,
+// measured on "a" + 0x9B + "[m b": cellWidth 6, walker 4, so hardwrapCells
+// returned a 5-cell row for a 3-cell budget. With it off the walker agrees with
+// cellWidth on all three forms a C1 can arrive in (raw byte 6/6, UTF-8 encoded
+// 5/5, and 7-bit CSI 2/2), which is the property this file exists to hold.
+// TestWalkCellsAgreesWithCellWidth covers all three.
 var breakerModel = &displaywidth.Options{
-	EastAsianWidth:       false,
-	ControlSequences:     true,
-	ControlSequences8Bit: true,
+	EastAsianWidth:   false,
+	ControlSequences: true,
 }
 
 // walkCells calls fn once per grapheme cluster of s, in order: the cluster's

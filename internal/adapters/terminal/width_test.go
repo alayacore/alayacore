@@ -301,6 +301,16 @@ func TestWidestCellClusterFeedsTheTableShrinker(t *testing.T) {
 // does not: runs long enough to wrap, and the same runs already styled.
 func breakerCorpus() []string {
 	out := allCorpus()
+	// The three forms an ECMA-48 C1 control can arrive in. A raw 0x9B byte is
+	// the one that caught a real disagreement: hasEscape recognizes only the
+	// UTF-8 form, so cellWidth never strips the raw one, and a walker with
+	// ControlSequences8Bit enabled folded it into a zero-width cluster instead
+	// of billing it the visible characters cellWidth saw (see breakerModel).
+	out = append(out,
+		"a"+string([]byte{0x9b})+"[m b",
+		"a\u009b[m b",
+		"a\x1b[31mb",
+	)
 	for _, s := range []string{
 		strings.Repeat("1️⃣", 40),
 		strings.Repeat("中", 40),
@@ -331,7 +341,10 @@ func TestHardwrapNeverOverrunsItsBudget(t *testing.T) {
 					t.Errorf("hardwrapCells(%q, %d) row %d measures %d cells: %q", s, width, i, w, line)
 				}
 			}
-			if !utf8.ValidString(got) {
+			// Half a character is only a defect if the input was whole
+			// characters: the corpus carries a raw C1 byte, which is not
+			// valid UTF-8 to begin with and cannot be made so by a wrapper.
+			if utf8.ValidString(s) && !utf8.ValidString(got) {
 				t.Errorf("hardwrapCells(%q, %d) is not valid UTF-8: %q", s, width, got)
 			}
 		}
@@ -367,7 +380,9 @@ func TestCutCellsFitsBudgetAndKeepsRunesWhole(t *testing.T) {
 		for left := 0; left <= full+2; left++ {
 			for right := left; right <= full+2; right++ {
 				got := cutCells(s, left, right)
-				if !utf8.ValidString(got) {
+				// As above: a raw C1 byte in the corpus is not valid UTF-8
+				// before the cut either.
+				if utf8.ValidString(s) && !utf8.ValidString(got) {
 					t.Fatalf("cutCells(%q, %d, %d) is not valid UTF-8: %q", s, left, right, got)
 				}
 				if w := cellWidth(got); w > min(right, full) {
