@@ -6,8 +6,8 @@ package terminal
 // boundary nobody thought to put in a test, so the count is held against the pass
 // it replaced rather than against a restatement of it.
 //
-// The reference here is the same code with the counts retired (summaryBytes = -1),
-// which sends summaryContent down prepareContent and measure — exactly what a
+// The reference here is the same code with its counts retired, which sends
+// summaryContent down prepareContent and measure — exactly what a
 // folded row did before. Two renderers are built from the same bytes, one keeping
 // the counts and one not, and their folded rows are required to be identical.
 //
@@ -75,19 +75,23 @@ func TestFoldedSummaryIsPricedTheSameWhicheverWay(t *testing.T) {
 		for _, split := range splits {
 			a := newSummaryRenderer(content, split)
 			b := newSummaryRenderer(content, split)
-			b.summaryBytes = -1 // the reference: measure the message every time
-
-			// Which path each took, so a corpus that quietly retired every count
-			// cannot pass by comparing the slow path with itself.
-			if a.summaryBytes == len(a.rawContent()) {
-				kept++
-			} else {
-				retired++
-			}
+			b.summary.retire() // the reference: measure the message every time
 
 			raw := a.rawContent()
 			if raw != content {
 				t.Fatalf("split %d: the renderer's content is %q, want %q", split, raw, content)
+			}
+
+			// Which path each took, so a corpus that quietly retired every count
+			// cannot pass by comparing the slow path with itself. An empty content
+			// is left out of the tally and does not count as a kept one: its counts
+			// are zero whatever note does with them, so a note that forgot the byte
+			// total would still look kept there, the guard would be vacuous, and the
+			// fast path would be silently off for every real message.
+			if raw != "" && a.summary.covers(len(raw)) {
+				kept++
+			} else {
+				retired++
 			}
 
 			// The counts themselves, against a measurement of the same content.
@@ -180,14 +184,13 @@ func TestSummaryCountsSurviveAFold(t *testing.T) {
 		for i := 0; i < len(content); i += split {
 			r.AppendFromTLV("", content[i:min(i+split, len(content))])
 		}
-		beforeCells, beforeNewlines := r.summaryCells, r.summaryNewlines
+		before := r.summary
 		r.mergeParts()
-		if r.summaryCells != beforeCells || r.summaryNewlines != beforeNewlines {
-			t.Errorf("split %d: a fold moved the counts from (%d cells, %d breaks) to (%d, %d)",
-				split, beforeCells, beforeNewlines, r.summaryCells, r.summaryNewlines)
+		if r.summary != before {
+			t.Errorf("split %d: a fold moved the counts from %+v to %+v", split, before, r.summary)
 		}
 		ref := &textRenderer{tag: tlv.TagAssistantR, content: content}
-		ref.summaryBytes = -1
+		ref.summary.retire()
 		for _, width := range []int{8, 40, 80} {
 			got, _ := r.BuildCollapsed(width, DefaultStyles())
 			want, _ := ref.BuildCollapsed(width, DefaultStyles())
@@ -206,17 +209,17 @@ func TestSummaryCountsRetireForGood(t *testing.T) {
 	for _, retiring := range []string{"\t", "\r", "\x1b[0m", "你", "\u0301", "\x7f", "\uFE0F"} {
 		r := &textRenderer{tag: tlv.TagAssistantR}
 		r.AppendFromTLV("", "plain ascii before")
-		if r.summaryBytes < 0 {
+		if r.summary.retired() {
 			t.Fatalf("%q: plain ASCII retired the counts", retiring)
 		}
 		r.AppendFromTLV("", retiring)
-		if r.summaryBytes >= 0 {
+		if !r.summary.retired() {
 			t.Errorf("%q did not retire the counts", retiring)
 		}
-		before := r.summaryBytes
+		before := r.summary
 		r.AppendFromTLV("", "and plain ascii after, which must not revive them")
-		if r.summaryBytes != before {
-			t.Errorf("%q: a plain delta after it moved summaryBytes from %d to %d", retiring, before, r.summaryBytes)
+		if r.summary != before {
+			t.Errorf("%q: a plain delta after retiring moved the counts from %+v to %+v", retiring, before, r.summary)
 		}
 	}
 }
@@ -228,11 +231,11 @@ func TestSummaryCountsRetireForGood(t *testing.T) {
 func TestSummaryCountsAreNotTrustedForContentTheyNeverSaw(t *testing.T) {
 	content := "content that was set rather than appended, and is long enough to truncate"
 	r := &textRenderer{tag: tlv.TagAssistantR, content: content}
-	if r.summaryBytes != 0 {
-		t.Fatalf("a fresh renderer accounts for %d bytes, want 0", r.summaryBytes)
+	if r.summary.bytes != 0 {
+		t.Fatalf("a fresh renderer accounts for %d bytes, want 0", r.summary.bytes)
 	}
 	ref := &textRenderer{tag: tlv.TagAssistantR, content: content}
-	ref.summaryBytes = -1
+	ref.summary.retire()
 	for _, width := range []int{8, 40, 80} {
 		got, _ := r.BuildCollapsed(width, DefaultStyles())
 		want, _ := ref.BuildCollapsed(width, DefaultStyles())
@@ -244,18 +247,53 @@ func TestSummaryCountsAreNotTrustedForContentTheyNeverSaw(t *testing.T) {
 		}
 	}
 	// And appending to it afterwards must not revive a count that missed the head.
-	// What matters is the row it draws, not the field: noteSummaryDelta will add
-	// the delta's bytes to a count that started at zero, and the length check in
-	// summaryContent is what has to notice that the total no longer covers the
-	// content.
+	// What matters is the row it draws, not the field: summaryCounts.note will add
+	// the delta's bytes to a count that started at zero, and covers is what has to
+	// notice that the total no longer accounts for the content.
 	r.AppendFromTLV("", " more")
 	ref.AppendFromTLV("", " more")
-	ref.summaryBytes = -1
+	ref.summary.retire()
 	for _, width := range []int{8, 40, 80} {
 		got, _ := r.BuildCollapsed(width, DefaultStyles())
 		want, _ := ref.BuildCollapsed(width, DefaultStyles())
 		if got != want {
 			t.Errorf("width %d: after appending to content it never counted, got %q, want %q", width, got, want)
+		}
+	}
+}
+
+// TestSummaryCountsCoverExactlyTheBytesTheyCounted pins covers to equality rather
+// than to "at least". bytes can only equal or trail the content length today —
+// content grows by exactly the deltas note sees, and mergeParts replaces it with a
+// string of the same bytes — so a >= would be unobservable and this is a test of a
+// state the public API cannot reach. It is here on purpose: a restore path, or a
+// compaction that replaces a window's content with a shorter one, would reach it,
+// and pricing a short message with a long message's counts is precisely the
+// failure summaryPrice exists to make inexpressible.
+func TestSummaryCountsCoverExactlyTheBytesTheyCounted(t *testing.T) {
+	c := summaryCounts{cells: 5, newlines: 1, bytes: 5}
+	for _, n := range []int{0, 1, 4, 5, 6, 100} {
+		if got, want := c.covers(n), n == 5; got != want {
+			t.Errorf("counts over 5 bytes: covers(%d) = %v, want %v", n, got, want)
+		}
+	}
+
+	// The zero value accounts for an empty content and for nothing else, which is
+	// what makes a renderer built with its content already in it measure instead of
+	// pricing the message at zero cells.
+	var zero summaryCounts
+	if !zero.covers(0) {
+		t.Error("the zero value does not cover an empty content, so a window that never streamed would measure a row it can price")
+	}
+	if zero.covers(1) {
+		t.Error("the zero value covers a content it never saw")
+	}
+
+	// And retired counts cover nothing at all, including the length they had.
+	c.retire()
+	for _, n := range []int{0, 5, 100} {
+		if c.covers(n) {
+			t.Errorf("retired counts cover %d bytes", n)
 		}
 	}
 }

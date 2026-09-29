@@ -686,23 +686,30 @@ listed with what each would catch, because a refactor that only has to be
   ASCII and an ASCII row a hard wrap broke is exactly the width. A padding count of
   zero and a count nobody consulted look identical there — it passed unchanged
   through every mutation below.
-- *the summary's counts* (`summary_pricing_test.go`, 5): the differential is the
-  same code with the counts retired (`summaryBytes = -1`), which sends a folded row
-  down `prepareContent` and `measure` — what it did before this — so the reference
-  is the implementation replaced and not a restatement of it. Two renderers take the
-  same bytes as two deltas split at every offset, and their folded rows must be
-  identical at twelve widths in three style registers. 149 of those cases keep the
-  counts and 246 retire them, which is the part that makes it a comparison: a corpus
-  that quietly retired every count would diff the slow path against itself and prove
-  nothing. Beside it — that the fit rule agrees with the row the summary actually
-  draws, `cellWidth(escapeBreaks(content))`, which shares no code with `escapedWidth`
+- *the summary's counts* (`summary_pricing_test.go`, 6): the differential is the
+  same code with the counts retired (`summaryCounts.retire`), which sends a folded
+  row down `prepareContent` and `priceSummary` — what it did before this — so the
+  reference is the implementation replaced and not a restatement of it. Two
+  renderers take the same bytes as two deltas split at every offset, and their
+  folded rows must be identical at twelve widths in three style registers. 148 of
+  those cases keep the counts and 247 retire them, which is the part that makes it
+  a comparison: a corpus that quietly retired every count would diff the slow path
+  against itself and prove nothing. The corpus's empty content is deliberately left
+  out of the 148, and a mutation is what showed that is not pedantry: a `note` that
+  forgot to add the delta's bytes still looked *kept* on an empty content, because
+  zero is the right byte total for one, so the guard reported itself satisfied
+  while the fast path was silently off for every real message. Beside it — that
+  the fit rule agrees with the row the summary actually draws,
+  `cellWidth(escapeBreaks(content))`, which shares no code with `escapedWidth`
   (the rule `priceSummary` spends) or with the counts `summaryContent` keeps, so a
   line break priced at anything other than the two cells it draws fails here; that
   folding the pending deltas leaves the counts
   alone, with the content appended one byte at a time so that there is a delta
   boundary between every two bytes; that a byte which retires the counts retires
-  them for good; and that a renderer built with its content already in it is
-  measured rather than priced at zero cells.
+  them for good; that a renderer built with its content already in it is
+  measured rather than priced at zero cells; and that `covers` is an equality and
+  not an "at least", which no state the public API can reach needs today and a
+  restore path or a content-replacing compaction would.
 
 Four of these were mutation-checked — the change reverted or broken on purpose,
 to confirm the test fails: folding every frame instead of at the threshold, and
@@ -747,6 +754,28 @@ spread across the callers. There is one constructor and one cached path now, and
 neither can hand over a count belonging to a different string; the two cold call
 sites read `headAndTailParts(priceSummary(content), room)` and have no integer to
 get wrong.
+
+The counts themselves became one value for the same reason: three fields on the
+renderer (`summaryCells`, `summaryNewlines`, `summaryBytes`, with `-1` in the last
+meaning "junk") could be written in any combination, and a cell sum out of step
+with the byte count beside it prices a row against a message that is not the one
+being drawn. `summaryCounts` has one writer, `note`, which writes all of it, and
+one reader predicate, `covers`. Nine mutations were run against that shape and all
+nine were caught: `covers` weakened to `>=` and made to ignore the content length;
+`note` forgetting the byte count, the cells, or the line breaks; `retire` doing
+nothing; `price` forgetting the line breaks; `plainSummaryCounts` letting a tab
+through; and `note` reviving counts it had retired.
+
+Two of the nine survived the first run, and both are worth more than the eight
+that did not. `note` forgetting the byte count turns the fast path off for every
+real message — correct output, and the whole point of the counts quietly gone —
+and the tally that exists to notice a corpus diffing the slow path against itself
+reported 149 cases kept, because the corpus's empty content has a byte total of
+zero whether `note` adds to it or not. Excluding it from the tally is what makes
+the guard mean what it says. `covers` weakened to `>=` is unobservable through the
+public API today, since content only ever grows to the length the counts reach, so
+it is pinned by a test of a state the API cannot produce — the state a restore path
+or a content-replacing compaction would create.
 
 **What is left, deliberately.** The folded frame is 12.5μs and 134 KB at 128 KB of
 content — 0.005% of a 250ms tick, against the 5.4% and 56.8 MB it was — and one

@@ -25,30 +25,11 @@ type textRenderer struct {
 	contentLen   int      // cumulative length of all deltas
 	contentParts []string // streaming deltas (avoids O(n²) string concat)
 
-	// The width of the content, kept as the content grows, so that a folded row
-	// does not walk the whole message to draw two thirds of one line. summaryBytes
-	// is the bytes summaryCells and summaryNewlines account for, and is -1 from the
-	// first byte they cannot.
-	//
-	// What they cannot is anything the byte-wise width route does not price — a byte
-	// over 0x7E, ESC, DEL — or anything prepareContent would rewrite: a tab or a
-	// carriage return. For every other byte one byte is one cluster, so a delta's
-	// cells add to the total exactly and no cluster can straddle two deltas. That
-	// is the whole reason this is sound where summing per-delta measurements of
-	// arbitrary text would not be: a combining mark arriving in the delta after its
-	// base would be priced as two clusters and drawn as one.
-	//
-	// Content only grows, so a byte that retired the counts retired them for good
-	// and -1 is never undone.
-	//
-	// They are trusted only when summaryBytes is the length of the content being
-	// summarized. That is what makes the zero value safe: a renderer built with its
-	// content already in it — a test fixture, or a restore path added later —
-	// accounts for none of it, so summaryBytes is 0 against a non-empty content and
-	// the message is measured instead.
-	summaryCells    int
-	summaryNewlines int
-	summaryBytes    int
+	// The price of the content, kept as the content grows so a folded row does not
+	// walk the whole message to draw two thirds of one line. summaryCounts carries
+	// the reasoning, the conditions a byte has to meet to be counted, and why the
+	// zero value is safe.
+	summary summaryCounts
 
 	mdMode bool // render markdown (toggled with 'r'; AT/AR only)
 
@@ -83,7 +64,7 @@ func (r *textRenderer) ToolInfo() *ToolInfo { return nil }
 func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	r.contentParts = append(r.contentParts, value)
 	r.contentLen += len(value)
-	r.noteSummaryDelta(value)
+	r.summary.note(value)
 	// The plain wrappedLines cache may change on any of the paths below,
 	// so the body-colored copy must be rebuilt on the next BuildInner.
 	r.coloredDirty = true
@@ -243,63 +224,107 @@ func (r *textRenderer) rawContent() string {
 	return buf.String()
 }
 
-// noteSummaryDelta folds one streaming delta into the counts a folded summary
-// reads, or retires them. It is called from AppendFromTLV, the one path every byte
-// of a text window's content arrives by — which is what makes summaryBytes a length
-// the content can be checked against rather than a number that happens to be near.
-func (r *textRenderer) noteSummaryDelta(delta string) {
-	if r.summaryBytes < 0 {
-		return
-	}
-	cells, newlines, ok := plainSummaryCounts(delta)
-	if !ok {
-		r.summaryBytes = -1
-		return
-	}
-	r.summaryCells += cells
-	r.summaryNewlines += newlines
-	r.summaryBytes += len(delta)
+// summaryCounts is the price of a text window's content, kept as that content
+// grows so a folded row does not walk the whole message to draw two thirds of one
+// line. note is the only thing that writes it and it writes all of it, which is
+// the reason this is a value and not three fields on the renderer: loose fields
+// can be updated in any combination, and a cell sum out of step with the byte
+// count beside it prices a row against a message that is not the one being drawn.
+//
+// What the counts cannot cover is anything the byte-wise width route does not
+// price — a byte over 0x7E, ESC, DEL — or anything prepareContent would rewrite:
+// a tab or a carriage return. For every other byte one byte is one cluster, so a
+// delta's cells add to the total exactly and no cluster can straddle two deltas.
+// That is the whole reason this is sound where summing per-delta measurements of
+// arbitrary text would not be: a combining mark arriving in the delta after its
+// base would be priced as two clusters and drawn as one.
+type summaryCounts struct {
+	cells    int
+	newlines int
+	// bytes is how much of the content cells and newlines account for, and
+	// summaryRetired from the first byte they cannot. Content only grows, so
+	// counts that retired are retired for good.
+	bytes int
 }
 
-// plainSummaryCounts returns the cells s draws and the line breaks in it, and
-// whether s is content those two can be kept for: every byte priced by the width
-// table's byte-wise route, and left alone by prepareContent. One byte that fails
-// either retires the counts for the whole content, so both questions are asked in
-// the same pass over the delta.
-func plainSummaryCounts(s string) (cells, newlines int, ok bool) {
+// summaryRetired is what bytes holds once the counts are junk. No content length
+// equals it, so covers answers false from then on with no second flag to keep in
+// step with the first.
+const summaryRetired = -1
+
+// note folds one streaming delta in, or retires the counts. It is called from
+// AppendFromTLV, the one path every byte of a text window's content arrives by —
+// which is what makes bytes a length the content can be checked against rather
+// than a number that happens to be near it.
+func (c *summaryCounts) note(delta string) {
+	if c.retired() {
+		return
+	}
+	d, ok := plainSummaryCounts(delta)
+	if !ok {
+		c.retire()
+		return
+	}
+	c.cells += d.cells
+	c.newlines += d.newlines
+	c.bytes += d.bytes
+}
+
+// retire drops the counts for good. Content only grows, so nothing brings them
+// back, and a byte that retired them would retire them again.
+func (c *summaryCounts) retire() { *c = summaryCounts{bytes: summaryRetired} }
+
+// retired reports whether the counts have been dropped.
+func (c summaryCounts) retired() bool { return c.bytes == summaryRetired }
+
+// covers reports whether the counts account for every byte of a content n bytes
+// long. The zero value accounts for none of a non-empty content, which is what
+// makes it safe: a renderer built with its content already in it — a test fixture,
+// or a restore path added later — is measured instead of priced at zero cells.
+func (c summaryCounts) covers(n int) bool { return c.bytes == n }
+
+// price is the summaryPrice these counts stand for, of a content covers has
+// already said they account for. Both halves come from the same sums, so they
+// cannot describe different messages.
+func (c summaryCounts) price(raw string) summaryPrice {
+	return summaryPrice{
+		m:       measured{s: raw, cells: c.cells, ascii: true},
+		escaped: c.cells + 2*c.newlines,
+	}
+}
+
+// plainSummaryCounts prices s as a summaryCounts, and reports whether s is
+// content counts can be kept for: every byte priced by the width table's
+// byte-wise route, and left alone by prepareContent. One byte that fails either
+// retires the counts for the whole content, so both questions are asked in the
+// same pass over the delta.
+func plainSummaryCounts(s string) (summaryCounts, bool) {
+	var c summaryCounts
 	for i := 0; i < len(s); i++ {
 		b := s[i]
 		if offASCIIRoute(b) || b == '\t' || b == '\r' {
-			return 0, 0, false
+			return summaryCounts{}, false
 		}
-		cells += asciiCells(b)
+		c.cells += asciiCells(b)
 		if b == '\n' {
-			newlines++
+			c.newlines++
 		}
 	}
-	return cells, newlines, true
+	c.bytes = len(s)
+	return c, true
 }
 
 // summaryContent is the content a folded summary draws, priced.
 //
 // While the counts cover every byte of raw, prepareContent has nothing to do — a
 // tab, a carriage return and an escape each retire them — so the content is raw
-// itself and the measurement is the counts. Those are the passes over the message
-// this exists to avoid: on 128 KB, measure is 38μs of a 46μs BuildCollapsed,
+// itself and the price is the counts. Those are the passes over the message this
+// exists to avoid: on 128 KB, measure is 38μs of a 46μs BuildCollapsed,
 // prepareContent's two scans are 2.7μs more, and escapedWidth counts the line
 // breaks in a third.
-//
-// This is the one place a summaryPrice is assembled out of parts instead of built by
-// priceSummary, which is why the escaped half is spelled out rather than asked for:
-// both numbers are sums over the deltas, so the width after escaping is the cell
-// sum plus two cells per break — the answer the third pass would have walked the
-// message to reach.
 func (r *textRenderer) summaryContent(raw string) summaryPrice {
-	if r.summaryBytes >= 0 && r.summaryBytes == len(raw) {
-		return summaryPrice{
-			m:       measured{s: raw, cells: r.summaryCells, ascii: true},
-			escaped: r.summaryCells + 2*r.summaryNewlines,
-		}
+	if r.summary.covers(len(raw)) {
+		return r.summary.price(raw)
 	}
 	return priceSummary(prepareContent(raw))
 }
