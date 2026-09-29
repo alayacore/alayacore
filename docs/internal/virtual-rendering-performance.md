@@ -548,6 +548,13 @@ over ~2.4M operations. The sweep found one real difference on the way: a caret
 *inside* a multi-rune cluster is priced from the truncated prefix, not from the
 cluster start, and the pass had to reproduce that.
 
+An oracle is a comparison between two implementations of this package, so it cannot
+say whether either survives the rest of the way out — the field's `View`, the window
+layout, the screen's row diff, and a terminal's own width table.
+`caret_e2e_test.go`, at the module root, drives the built binary inside tmux and
+requires the column tmux reports the caret at and the text tmux shows there to
+describe one window of the line, over ASCII, CJK, and a line mixing the two.
+
 The cutters were not the only caller paying for the list, and the missing tab
 guard was not only the summary's. Markdown expands tabs per table line and per
 wrapped row, so both fixes landed there too: `RenderMarkdownTables_Large`
@@ -608,7 +615,8 @@ listed with what each would catch, because a refactor that only has to be
   swaps; and a cursor frame is byte-for-byte the rows as drawn, padding included.
 - *the caret pass* (`cursor_probe_test.go`, 3): the oracle comparison described
   above, plus `probeLine`'s six answers each checked against the walk they
-  replaced.
+  replaced. Outside this package, `caret_e2e_test.go` (3 cases) asks a terminal
+  where the caret ended up and what it drew there.
 
 Four of these were mutation-checked — the change reverted or broken on purpose,
 to confirm the test fails: folding every frame instead of at the threshold, and
