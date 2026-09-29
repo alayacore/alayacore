@@ -394,7 +394,7 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 	// target = 11+1-5 = 7, so visStart = 7 ("HIJK", cursor at rel 4 =
 	// width-1), independent of the old value's state.
 	newLine := []rune("ABCDEFGHIJK")
-	wantStart := firstRuneStartAtLeast(newLine, runesWidth(newLine)+1-5)
+	wantStart, _ := firstRuneStartAtLeast(newLine, runesWidth(newLine)+1-5)
 	if g.visStart != wantStart {
 		t.Errorf("visStart=%d leaked from old value (was %d); want recomputed %d", g.visStart, stale, wantStart)
 	}

@@ -312,6 +312,17 @@ func stripLineBreaks(runes []rune) []rune {
 	return out
 }
 
+// ensureCursorVisible scrolls the field's viewport so the cursor — and the
+// whole of the grapheme cluster it sits in — is inside the visible text.
+//
+// Everything it decides with is a prefix sum over the same line's clusters:
+// where the stored visible start anchors now that inserts have shifted the
+// boundaries, the cells before it, the cells before the cursor, the width of
+// the cluster under the cursor, and whether the line fits at all. probeLine
+// takes them in one pass. Asked separately they were five to eight walks per
+// keystroke, and a walk encodes the line as a string before it can segment it —
+// which is what made typing into a 4000-cell line cost half a millisecond and
+// 57 KB of re-encoding per character (BenchmarkInputFieldInsertLongLine).
 func (m InputField) ensureCursorVisible() InputField {
 	if m.width <= 0 {
 		return m
@@ -331,45 +342,27 @@ func (m InputField) ensureCursorVisible() InputField {
 	if m.visStart > len(line) {
 		m.visStart = len(line)
 	}
+
+	p := probeLine(line, m.pos-lineStart, m.visStart, m.width)
 	// Inserts/deletes can also shift grapheme cluster boundaries within the
 	// line (e.g. inserting a character before "a" + combining acute), so a
-	// previously valid visStart may no longer be a cluster boundary.
-	// Re-anchor it to the containing cluster to keep the invariant
+	// previously valid visStart may no longer be a cluster boundary. The pass
+	// re-anchors it to the containing cluster to keep the invariant
 	// "visStart is always a cluster boundary".
-	m.visStart = clusterStartAt(line, m.visStart)
-	if len(line) == 0 || runesWidth(line) <= m.width {
+	m.visStart = p.anchored
+	if p.fits {
 		m.visStart = 0
 		return m
 	}
 
-	relPos := m.pos - lineStart // cursor position within the line
-	cursorCell := runesWidth(line[:relPos])
-	// The rune under the cursor must stay fully visible: a wide (CJK) rune
-	// straddling the right edge of the viewport would be clipped in half.
-	// At end-of-line there is no rune, but the cursor block itself still
-	// needs one cell, so the threshold degrades to the plain cursor check.
-	need := 1
-	if relPos < len(line) {
-		// Width of the cluster at the cursor: the whole cluster must stay
-		// visible so it is never split at the right edge of the viewport.
-		walkLineClusters(line, func(start, end, width int) bool {
-			if relPos >= start && relPos < end {
-				need = width
-				return false
-			}
-			return start <= relPos
-		})
-	}
-	startCell := runesWidth(line[:m.visStart])
-
 	switch {
-	case cursorCell < startCell:
+	case p.cursorCell < p.startCell:
 		// Cursor left of the window: show the cluster containing the cursor
 		// at the left edge. Anchor at the cluster start so visStart stays a
 		// cluster boundary even when the cursor sits inside a cluster (e.g.
 		// between an emoji and its variation selector).
-		m.visStart = clusterStartAt(line, relPos)
-	case cursorCell+need > startCell+m.width:
+		m.visStart = p.clusterAt
+	case p.cursorCell+p.need > p.startCell+m.width:
 		// Scroll so the cluster at the cursor is fully visible: the visible
 		// start must be a cluster boundary with
 		// startCell >= cursorCell + need - width. Rounding that target up
@@ -377,47 +370,102 @@ func (m InputField) ensureCursorVisible() InputField {
 		// width-need, so the cluster is never clipped by the right edge —
 		// and for 1-cell clusters the cursor can sit at rel = width-1
 		// instead of being pushed further left than necessary.
-		m.visStart = firstRuneStartAtLeast(line, cursorCell+need-m.width)
+		start, startCells := firstRuneStartAtLeast(line, p.cursorCell+p.need-m.width)
+		m.visStart = start
 		// Physical limit: when the viewport cannot fit the cluster at the
-		// cursor (need > width), keep at least the cursor block visible.
-		if runesWidth(line[:m.visStart]) > cursorCell {
-			m.visStart = clusterStartAt(line, relPos)
+		// cursor (need > width), keep at least the cursor block visible. The
+		// walk that found start counted the cells before it on the way.
+		if startCells > p.cursorCell {
+			m.visStart = p.clusterAt
 		}
 	}
 	return m
 }
 
-// clusterStartAt returns the start index of the grapheme cluster containing
-// pos within line (or pos itself when it lies on a cluster boundary or past
-// the end of the line).
-func clusterStartAt(line []rune, pos int) int {
-	if pos <= 0 || pos >= len(line) {
-		return pos
+// lineProbe is what one pass over a line's clusters tells ensureCursorVisible.
+type lineProbe struct {
+	fits       bool // the whole line draws within the field's width
+	anchored   int  // vis, moved to the start of the cluster it falls inside
+	startCell  int  // cells drawn before anchored
+	cursorCell int  // cells drawn before cursor
+	need       int  // cells the cluster under the cursor draws (1 at end-of-line)
+	clusterAt  int  // where that cluster starts (cursor itself at end-of-line)
+}
+
+// probeLine walks line's clusters once and answers every prefix question the
+// caller has about two positions in it.
+//
+// cursor and vis are rune indices into line, each in [0, len(line)]. A position
+// AT len(line) belongs to no cluster and is reported as end-of-line — which is
+// what a caret after the last character and a visible start clamped to the end
+// both are, and why need degrades to 1 there: no cluster has to fit, but the
+// cursor block still needs a cell.
+//
+// The pass stops as soon as no answer can still change: the line is known not to
+// fit and both positions have been passed. "fits" is only ever asked as a
+// yes/no, so the exact width of a long line is nobody's business — a caret near
+// the left edge of a 4000-cell line costs the caret's neighborhood, not the
+// line.
+func probeLine(line []rune, cursor, vis, width int) lineProbe {
+	p := lineProbe{fits: true, anchored: vis, clusterAt: cursor, need: 1}
+	if len(line) == 0 {
+		return p
 	}
-	start := pos
-	walkLineClusters(line, func(a, b, _ int) bool {
-		if pos >= a && pos < b {
-			start = a
-			return false
+	cells := 0
+	seenCursor, seenVis := false, false
+	walkLineClusters(line, func(start, end, w int) bool {
+		if !seenVis && vis >= start && vis < end {
+			p.anchored = start
+			p.startCell = cells
+			seenVis = true
 		}
-		// Clusters are ordered and disjoint: once one begins past pos, none
-		// of the rest can contain it.
-		return a <= pos
+		if !seenCursor && cursor >= start && cursor < end {
+			p.clusterAt = start
+			p.need = w
+			seenCursor = true
+			// The caret can sit INSIDE a cluster — between an emoji and its
+			// variation selector, or after the "e" of an "e" + combining acute.
+			// The cells before it are then the cells before the cluster plus
+			// whatever the part of the cluster left of the caret draws on its
+			// own, which is what runesWidth(line[:cursor]) has always reported
+			// and what positions the cursor block. start is a cluster boundary,
+			// so segmenting from it again gives the same clusters: the two
+			// measures add.
+			p.cursorCell = cells + runesWidth(line[start:cursor])
+		}
+		cells += w
+		if cells > width {
+			p.fits = false
+		}
+		return !(seenCursor && seenVis && !p.fits)
 	})
-	return start
+	// A position no cluster contained sits at the end of the line, so the cells
+	// before it are the cells of the whole line. That is exact even though the
+	// pass can stop early: it stops only once BOTH positions have been seen, so
+	// neither branch below can read a partial count.
+	if !seenVis {
+		p.anchored = len(line)
+		p.startCell = cells
+	}
+	if !seenCursor {
+		p.clusterAt = cursor
+		p.cursorCell = cells
+	}
+	return p
 }
 
 // firstRuneStartAtLeast returns the index of the first grapheme cluster whose
 // start cell is >= target, rounding up to a cluster boundary so a wide
-// character (e.g. an emoji) is never split at the left edge of the viewport.
-// Returns 0 for target <= 0 and len(line) when target is past the end of the
-// line.
-func firstRuneStartAtLeast(line []rune, target int) int {
+// character (e.g. an emoji) is never split at the left edge of the viewport,
+// together with the cells drawn before that index — the walk has counted them
+// on the way, and the caller would otherwise walk the line again to ask.
+// Returns (0, 0) for target <= 0, and (len(line), the line's width) when target
+// is past the end of the line.
+func firstRuneStartAtLeast(line []rune, target int) (idx, cells int) {
 	if target <= 0 {
-		return 0
+		return 0, 0
 	}
-	idx := len(line)
-	cells := 0
+	idx = len(line)
 	walkLineClusters(line, func(start, _, width int) bool {
 		if cells >= target {
 			idx = start
@@ -426,7 +474,7 @@ func firstRuneStartAtLeast(line []rune, target int) int {
 		cells += width
 		return true
 	})
-	return idx
+	return idx, cells
 }
 
 // View implements Model.

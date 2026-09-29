@@ -106,8 +106,8 @@ func TestLineQueriesCostOneEncoding(t *testing.T) {
 		run  func([]rune)
 	}{
 		{"runesWidth", func(l []rune) { _ = runesWidth(l) }},
-		{"clusterStartAt", func(l []rune) { _ = clusterStartAt(l, len(l)/2) }},
-		{"firstRuneStartAtLeast", func(l []rune) { _ = firstRuneStartAtLeast(l, len(l)/2) }},
+		{"probeLine", func(l []rune) { _ = probeLine(l, len(l)/2, len(l)/3, 60) }},
+		{"firstRuneStartAtLeast", func(l []rune) { _, _ = firstRuneStartAtLeast(l, len(l)/2) }},
 		{"runeIndexAtWidth", func(l []rune) { _ = runeIndexAtWidth(l, len(l)/2) }},
 	}
 	// A ceiling, not an exact count: AllocsPerRun reads process-wide mallocs and
