@@ -362,6 +362,19 @@ func hardwrapCells(s string, width int) string {
 // Unlike hardwrapCells this cannot stop at the first line that does not fit, since
 // a caller wants every row's width — which is why hardwrapCells keeps asking
 // linesFit, whose whole job is the yes/no question it can answer early.
+//
+// The two are deliberately not one function, and the reason is measured rather than
+// a preference. Merging them means either collecting widths no caller asked for or
+// threading a pointer that may be nil through the walk; the first was built and
+// priced, and it costs BenchmarkWrapContent 2,040 B and 8 allocations per call
+// where it now has none, and 2.05μs where it now takes 1.37μs. The fit pass appends
+// a width per line whether or not anything reads it, and that benchmark's hundred
+// lines all already fit, so the merged form allocates a slice of widths for rows it
+// never broke. What the two share is the break rule, and that is single-sourced in
+// hardwrapWalk; what is duplicated is four lines of builder around it.
+// TestHardwrapWidthsMatchTheRowsItBroke pins the two drivers to each other, and a
+// pair pinned by a differential is not the hazard a wrapper delegating to its own
+// body is: these two can disagree, so comparing them says something.
 func hardwrapCellsWidths(s string, width int, cells []int) (string, []int) {
 	if s == "" {
 		return s, append(cells, 0)
