@@ -356,6 +356,11 @@ type visualLine struct {
 // rows (Cont) follow their predecessor without a newline; rows starting
 // a new original line are separated by '\n'.
 func joinVisualLines(lines []visualLine) string {
+	// One row joins to itself: returning it as-is keeps a folded window's
+	// Render from allocating a copy of the single row it already has.
+	if len(lines) == 1 {
+		return lines[0].Text
+	}
 	var sb strings.Builder
 	for i, l := range lines {
 		if i > 0 && !l.Cont {

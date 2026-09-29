@@ -95,29 +95,34 @@ type WindowRendering interface {
 // the cached rows with that one row swapped for its highlighted form
 // (line0Cursor).
 //
-// lines is the same content as inner, but as a VISUAL line array (one
-// element per terminal row, no '\n' inside; visualLine.Cont marks rows
-// that continue the same original line — soft-wrap — while rows starting
-// a new original line are separated by hard '\n'). It is the structure
-// the viewport clips against for soft-wrap fragment output (docs/internal/virtual-rendering-performance.md);
-// inner/rendered are the '\n'-joined projections kept for the current
-// line-based output path.
+// lines is the window's content as a VISUAL line array (one element per
+// terminal row, no '\n' inside; visualLine.Cont marks rows that continue
+// the same original line — soft-wrap — while rows starting a new original
+// line are separated by hard '\n'). It is the structure the viewport clips
+// against for soft-wrap fragment output (docs/internal/virtual-rendering-performance.md);
+// joined is its '\n'-joined projection, for the line-based output path.
 //
-// widths caches display widths (cellWidth) computed once at render
-// time, so renderVirtual can pad lines for soft-wrap fragment output
-// without re-measuring every line on every view. The marker's width is not
-// cached: the glyph is a layout constant one cell wide (arrowCellWidth).
+// Display widths are NOT cached here: the only width a frame needs is the one
+// it pads a soft-wrapped row with, and renderVirtual measures that row where it
+// pads it.
 type renderCache struct {
 	valid     bool
 	width     int
 	folded    bool
 	blocked   bool         // cached blocked state (different → cache miss)
 	createdAt time.Time    // cached Window.CreatedAt (row 0 prints it)
-	rendered  string       // full non-cursor output
-	inner     string       // rendered, before any cursor row swap
 	lines     []visualLine // visual rows, line 0 = the window's own line (marker included)
-	widths    []int        // display width per line (parallel to lines)
 	lineCount int
+
+	// joined is `lines` as one string: the form Render returns, and the one
+	// renderCursor swaps row 0 in. Built on first request, not by buildLines
+	// — the viewport path slices `lines` and never reads the string, so
+	// joining there would allocate the window's whole rendered text on every
+	// frame to throw it away (for a long expanded window that is the single
+	// largest allocation in the frame).
+	// joinedDone tells "not built yet" from "built and empty".
+	joined     string
+	joinedDone bool
 
 	// line0Cursor is row 0 rendered in the cursor's register: a folded
 	// line's marker and label column recolored (its content summary keeps
@@ -129,7 +134,7 @@ type renderCache struct {
 	// Built on first request, not by Render: the collapsed variant costs a
 	// second BuildCollapsed, which for a text window is a pass over the whole
 	// content to derive its head + "…" + tail (BenchmarkFoldedTextStreamingDelta
-	// prices the frame that contains one: 15μs at 2 KB of content, 770μs at
+	// prices the frame that contains one: 3.8μs at 2 KB of content, 64μs at
 	// 128 KB). Render runs for every window on every content change, and
 	// exactly one window at a time is under the cursor.
 	// line0CursorDone tells "not built yet" from "built and empty".
@@ -435,9 +440,37 @@ func (w *Window) RawDelta() string {
 // The cursor highlight recolors row 0 — marker and label (and, on an
 // expanded line, the timestamp), never a folded line's content summary.
 // The markers are layout constants, not theme values (constants.go).
+//
+// The rows and their join are separate work, and not every caller wants
+// both — so they are separate calls: buildLines fills the rows, joined
+// projects them into the one string this returns. A window with no renderer
+// draws nothing; the guard has to be here rather than in buildLines because
+// renderCursor dereferences frameStyles and renderer, which only a render
+// fills.
 func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) string {
 	if w.renderer == nil {
 		return ""
+	}
+	w.buildLines(width, styles, blocked)
+	if isCursor {
+		return w.renderCursor()
+	}
+	return w.joined()
+}
+
+// buildLines fills cache.lines — and the row count — for (width, styles,
+// blocked), or returns at once when the cache already holds them. It is
+// Render minus the join, and it is what the callers that want rows call:
+// WindowBuffer.windowFragment clips cache.lines to the viewport and
+// WindowBuffer.ensureLineHeights reads only LineCount. Neither ever looks at
+// the joined string, and for a long expanded window that string is the
+// frame's largest single allocation.
+//
+// It carries its own no-renderer guard because it is called directly, where
+// Render's cannot cover it.
+func (w *Window) buildLines(width int, styles *Styles, blocked bool) {
+	if w.renderer == nil {
+		return
 	}
 
 	// Validate cache. createdAt is part of the key: row 0 prints it, and a
@@ -447,10 +480,7 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 	// reading and a location pointer, and only the instant matters here.
 	if w.cache.valid && w.cache.width == width && w.cache.folded == w.Folded &&
 		w.cache.blocked == blocked && w.cache.createdAt.Equal(w.CreatedAt) {
-		if isCursor {
-			return w.renderCursor()
-		}
-		return w.cache.rendered
+		return
 	}
 
 	// Invalidate renderer cache when blocked state changes, so BuildInner
@@ -466,10 +496,16 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 		styles = styles.Dimmed()
 	}
 
+	// Every memo derived from the rows is cleared with them: the rows are
+	// about to be replaced, so a row swap, a pin annotation or a join built
+	// from the old ones would be stale. Clearing joined (not just its flag)
+	// also hands the old string to the collector.
 	w.cache.line0Cursor = ""
 	w.cache.line0CursorDone = false
 	w.cache.pinnedRow = ""
 	w.cache.pinnedDone = false
+	w.cache.joined = ""
+	w.cache.joinedDone = false
 	w.cache.frameStyles = styles
 	if w.Folded {
 		// Collapsed: one line — marker + label + content summary. The
@@ -486,11 +522,8 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 		// clusters rather than build a list of them (width.go). They used to
 		// build it, twice per frame, at ~430 B per byte of message —
 		// BenchmarkFoldedTextStreamingDelta is the benchmark that prices it.
-		inner, _ := w.renderer.BuildCollapsed(width, styles)
-		w.cache.lines = []visualLine{{Text: w.lineStyle(styles).Render(w.markerChar()) + " " + inner}}
-		w.cache.widths = nil // computed lazily by renderVirtual (fragment output)
-		w.cache.inner = w.cache.lines[0].Text
-		w.cache.rendered = w.cache.inner
+		summary, _ := w.renderer.BuildCollapsed(width, styles)
+		w.cache.lines = []visualLine{{Text: w.lineStyle(styles).Render(w.markerChar()) + " " + summary}}
 		w.cache.lineCount = 1
 	} else {
 		// Expanded: the window's own line — marker + label, the timestamp
@@ -498,15 +531,12 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 		// line: a window is opened by its marker row, and the next window
 		// opens with its own. BuildInner returns the visual content lines
 		// (soft-wrap breakpoints); the whole window is one flat visual line
-		// array, so cache.rendered == cache.inner.
+		// array, which joined() projects into the string Render returns.
 		contentLines, _ := w.renderer.BuildInner(width, false, styles)
 		lines := make([]visualLine, 0, len(contentLines)+1)
 		lines = append(lines, visualLine{Text: w.buildExpandHeader(width, styles, "")})
 		lines = append(lines, contentLines...)
 		w.cache.lines = lines
-		w.cache.widths = nil // computed lazily by renderVirtual (fragment output)
-		w.cache.inner = joinVisualLines(lines)
-		w.cache.rendered = w.cache.inner
 		w.cache.lineCount = len(lines)
 	}
 
@@ -515,11 +545,23 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 	w.cache.blocked = blocked
 	w.cache.createdAt = w.CreatedAt
 	w.cache.valid = true
+}
 
-	if isCursor {
-		return w.renderCursor()
+// joined returns cache.lines as one string, building it on first use: the
+// rows draw in sequence, a continuation row following its predecessor with
+// no separator and every other row starting after a '\n' (joinVisualLines).
+//
+// It cannot serve a stale join. buildLines clears joinedDone whenever it
+// replaces the rows, the rows are never mutated in place (windowFragment
+// REPLACES its first row in a fresh slice precisely because it aliases
+// cache.lines), and joined is only reached through Render — after buildLines
+// has run, so the cache is valid and the rows are the current ones.
+func (w *Window) joined() string {
+	if !w.cache.joinedDone {
+		w.cache.joined = joinVisualLines(w.cache.lines)
+		w.cache.joinedDone = true
 	}
-	return w.cache.rendered
+	return w.cache.joined
 }
 
 // markerChar returns the window's fold marker glyph: "+" while folded
@@ -622,7 +664,7 @@ func (w *Window) pinnedLine0(linesAbove int, isCursor bool) string {
 // was filled with (Render's cache key includes it), so the overlay case
 // needs no flag here.
 func (w *Window) renderCursor() string {
-	return replaceFirstLine(w.cache.inner, w.cursorLine0())
+	return replaceFirstLine(w.joined(), w.cursorLine0())
 }
 
 // replaceFirstLine returns s with its first line replaced by first. Used
@@ -855,7 +897,8 @@ func (w *Window) LineCount() int {
 }
 
 // UpdateLineCountFast attempts to compute the line count without a full render.
-// Returns (lineCount, ok). If ok is false, the caller must call Render().
+// Returns (lineCount, ok). If ok is false, the caller must build the window's
+// rows itself (Window.buildLines).
 //
 // Folded windows are always a single line, so this returns immediately
 // without touching the renderer — during streaming, deltas to folded
@@ -863,7 +906,7 @@ func (w *Window) LineCount() int {
 // That is the main performance win of the collapsed-line design, and it is
 // the whole of it: drawing the folded row is not free, because a folded text
 // window's summary is head + "…" + tail of its entire content. That cost
-// lands in Render, not here, and it grows with the message —
+// lands in buildLines, not here, and it grows with the message —
 // BenchmarkFoldedTextStreamingDelta measures it against the same content
 // expanded.
 func (w *Window) UpdateLineCountFast(width int) (int, bool) {
@@ -879,9 +922,10 @@ func (w *Window) UpdateLineCountFast(width int) (int, bool) {
 	// nothing changed (nanoseconds), or len(wrappedLines)+1 right after an
 	// append, because AppendFromTLV wrapped the delta incrementally as it
 	// arrived (about a microsecond). Everything else answers false and
-	// ensureLineHeights falls through to a full Render: a tool or user
-	// window, a text renderer whose width changed (resize), and one whose
-	// lines were dropped (first render, theme switch, Invalidate).
+	// ensureLineHeights falls through to a full Window.buildLines — the rows
+	// without Render's join — for: a tool or user window, a text renderer
+	// whose width changed (resize), and one whose lines were dropped (first
+	// render, theme switch, Invalidate).
 	// TestIncrementalPathIsUsed holds the streaming case; the earlier claim
 	// that streaming always fell through here was wrong, and it was the
 	// reason the fall-through looked hot.

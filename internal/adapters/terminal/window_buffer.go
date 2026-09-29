@@ -593,16 +593,17 @@ func (wb *WindowBuffer) GetWindowContent(windowIndex int) string {
 
 // ensureLineHeights rebuilds line heights if dirty.
 // Supports incremental update when only one window changed.
-// blocked is passed through to Window.Render for cache coherency (line counts
-// are unaffected by dimming, but the cache entry must match what renderVirtual
-// will request).
+// blocked is passed through to Window.buildLines for cache coherency (line
+// counts are unaffected by dimming, but the cache entry must match what
+// renderVirtual will request).
 //
 // During incremental updates, UpdateLineCountFast is tried first (fast path using
-// len(wrappedLines) from TryLineCount). If the cache is stale, full Render is used
-// instead. The rendered string is cached in Window.cache and reused by
-// GetAll → renderVirtual, which needs the content for the viewport.
-// This avoids an O(n) render in ensureLineHeights that would be immediately
-// overwritten by renderVirtual's own w.Render() call.
+// len(wrappedLines) from TryLineCount). If the cache is stale, the window's rows
+// are built instead — and only its rows. This counts lines and renderVirtual
+// clips rows; neither reads the joined string Window.Render returns, so asking
+// buildLines for the rows keeps a full rebuild from joining every window's
+// whole text to throw it away. What it builds lands in Window.cache, where
+// renderVirtual picks it up, so no work is repeated.
 func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 	if !wb.dirty && len(wb.lineHeights) == len(wb.windows) {
 		return
@@ -626,7 +627,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 			// streaming takes this path too, not just cache hits. Anything
 			// that cannot answer from wrapped lines (a tool or user window,
 			// a width change, a first render or theme switch) falls through
-			// to the full Render below, which re-wraps the window's whole
+			// to the full buildLines below, which re-wraps the window's whole
 			// content; BenchmarkWindowBufferResize pays that for 50 windows
 			// at a time.
 			if lc, ok := w.UpdateLineCountFast(wb.width); ok {
@@ -634,7 +635,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 				wb.lineHeights[wb.dirtyIndex] = lc
 				wb.totalLines += lc - oldHeight
 			} else {
-				w.Render(wb.width, false, wb.styles, blocked)
+				w.buildLines(wb.width, wb.styles, blocked)
 				oldHeight := wb.lineHeights[wb.dirtyIndex]
 				newHeight := w.LineCount()
 				wb.lineHeights[wb.dirtyIndex] = newHeight
@@ -660,7 +661,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 					wb.totalLines++
 					continue
 				}
-				w.Render(wb.width, false, wb.styles, blocked)
+				w.buildLines(wb.width, wb.styles, blocked)
 				wb.lineHeights[i] = w.LineCount()
 				wb.totalLines += wb.lineHeights[i]
 			} else {
@@ -957,7 +958,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			continue
 		}
 
-		lines, widths := wb.windowFragment(w, from, to, cursorIndex == i && !pinned, blocked)
+		lines := wb.windowFragment(w, from, to, cursorIndex == i && !pinned, blocked)
 		emittedRows += len(lines)
 
 		if firstWritten {
@@ -969,8 +970,8 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			// the viewport covers, so this is a memoized row build — the
 			// window's own line plus this message's hidden-line count —
 			// reused across every frame that does not move the viewport
-			// (cache.widths[0] is not even needed: the pinned row ends an
-			// original line and is never padded). Under the cursor it is the
+			// (the pinned row ends an original line and is never padded, so
+			// no width is measured for it). Under the cursor it is the
 			// same row in the selection register.
 			//
 			// linesAbove is the count of this window's body rows the pin did
@@ -1002,7 +1003,10 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			if j < len(lines)-1 && lines[j+1].Cont {
 				// Row followed by a continuation: pad to the full width so
 				// the soft-wrap break lands exactly at the visual boundary.
-				if wdt := widths[j]; wdt < wb.width {
+				// Measured here, for this row only: padding is the sole use a
+				// frame has for a row's width. windowFragment says why that
+				// replaced a per-window cache, and what the trade costs.
+				if wdt := cellWidth(vl.Text); wdt < wb.width {
 					sb.WriteString(strings.Repeat(" ", wb.width-wdt))
 				}
 			} else if j < len(lines)-1 {
@@ -1039,33 +1043,42 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 	return sb.String()
 }
 
-// windowFragment renders window w if needed and returns its clipped
-// visual lines [from,to) plus their display widths.
+// windowFragment renders window w if needed and returns its clipped visual
+// lines [from,to).
 //
 // Row 0 is the window's own line — marker, label, and (expanded) the
-// timestamp — and it is entirely built by Window.Render, so when the
+// timestamp — and it is entirely built by Window.buildLines, so when the
 // fragment starts at the window's first line the cursor's register is a
 // single row swap (Window.cursorLine0). Nothing is prefixed or appended
 // here: the marker is part of the cached row, and the row is the same
 // width in both registers.
-func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) ([]visualLine, []int) {
-	// Ensure the render cache is populated (lineHeights alone don't
-	// render folded windows — the fast path skips rendering).
-	w.Render(wb.width, false, wb.styles, blocked)
+//
+// No widths come back with the rows. renderVirtual needs one only where it pads
+// a row for a soft wrap, so it measures that row there. This used to fill a
+// per-window cache covering EVERY row on the first fragment after a rebuild —
+// and during streaming every delta rebuilds, so a frame measured all ~2,600 rows
+// of a 128 KB message in order to draw 40 of them (57μs and 23 KB per frame).
+// The cache is gone rather than re-keyed on the range: it needed an invalidation
+// rule to stay honest about it, and a per-frame cost bounded by the viewport
+// beats a per-rebuild cost bounded by the message.
+//
+// Bounded is not free, and the price is measured rather than assumed. A buffer
+// that redraws WITHOUT rebuilding used to reuse the cache and now measures its
+// padded rows again each frame, and a dimmed row is measured through ansi.Strip,
+// which copies it: BenchmarkGetAllDimmed/dimmed (20 windows, viewport 30) went
+// 2.4μs → 5.8μs and 13,104 B → 15,824 B, against the −57μs above. Summing the
+// row's clusters with walkCells avoids the copy and is not the fix —
+// breakerModel's escape-aware iterator is slower than the table's ASCII run,
+// measured at 6.8μs against 5.8μs. Carrying each row's width out of the wrap
+// that produced it would beat both, and is a change to visualLine rather than to
+// this call.
+func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) []visualLine {
+	// Ensure the window's rows are built (lineHeights alone don't render
+	// folded windows — the fast path skips rendering). buildLines, not
+	// Render: this clips rows, so the joined string Render returns would be
+	// built here and discarded — for a long window, every frame.
+	w.buildLines(wb.width, wb.styles, blocked)
 	lines := w.cache.lines[from:to]
-
-	// Display widths are computed lazily and cached: Render fills them
-	// only when the fragment output needs padding, so the line-counting
-	// paths (ensureLineHeights) never pay the per-line measurement cost.
-	widths := w.cache.widths
-	if len(widths) != len(w.cache.lines) {
-		widths = make([]int, len(w.cache.lines))
-		for li, ln := range w.cache.lines {
-			widths[li] = cellWidth(ln.Text)
-		}
-		w.cache.widths = widths
-	}
-	widths = widths[from:to]
 
 	// The first row is REPLACED (not mutated in place): lines aliases
 	// w.cache.lines, so mutating it would double the effects on the next
@@ -1074,7 +1087,7 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 		first := lines[0]
 		lines = append([]visualLine{{Text: w.cursorLine0(), Cont: first.Cont}}, lines[1:]...)
 	}
-	return lines, widths
+	return lines
 }
 
 // renderAll renders all visible windows
