@@ -440,7 +440,7 @@ func (m Terminal) loadSessionCmd() Cmd {
 // unwrap. What reaches this switch is only input events and asynchronous facts
 // from the runtime and the session.
 //
-//nolint:gocyclo // message dispatch over many Msg types; each case is a simple handler call
+// message dispatch over many Msg types; each case is a simple handler call
 func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	// Sync display dim state at the start of every update cycle.
 	m.display = m.display.WithBlocked(m.isBlocked())

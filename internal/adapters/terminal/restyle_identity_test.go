@@ -26,7 +26,7 @@ import (
 func oldRestyleBreaks(s string) string {
 	var buf bytes.Buffer
 	w := NewWrapWriter(&buf)
-	defer w.Close() //nolint:errcheck // the only error a bytes.Buffer returns is nil
+	defer w.Close() // the only error a bytes.Buffer returns is nil
 	_, _ = io.WriteString(w, s)
 	return buf.String()
 }

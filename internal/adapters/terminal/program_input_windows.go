@@ -145,9 +145,9 @@ func readConsoleEvents(h windows.Handle, records []inputRecord) (int, error) {
 	var read uint32
 	ok, _, err := procReadConsoleInputW.Call(
 		uintptr(h),
-		uintptr(unsafe.Pointer(&records[0])), //nolint:gosec // G103: the ABI the API's own signature asks for
-		uintptr(len(records)),                //nolint:gosec // G115: a slice length, and the API takes a DWORD
-		uintptr(unsafe.Pointer(&read)),       //nolint:gosec // G103: out-parameter, as above
+		uintptr(unsafe.Pointer(&records[0])), // the ABI the API's own signature asks for
+		uintptr(len(records)),                // a slice length, and the API takes a DWORD
+		uintptr(unsafe.Pointer(&read)),       // out-parameter, as above
 	)
 	if ok == 0 {
 		if err != nil {

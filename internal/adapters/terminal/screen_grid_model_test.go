@@ -183,7 +183,7 @@ func TestGridModelBillsIllFormedBytesAsTheTerminalDrew(t *testing.T) {
 
 // write runs a byte stream through the grid.
 //
-//nolint:gocyclo // one dispatch over the byte classes a frame can contain
+// one dispatch over the byte classes a frame can contain
 func (g *grid) write(data []byte) {
 	i := 0
 	for i < len(data) {

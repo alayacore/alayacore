@@ -62,14 +62,14 @@ func (c *capture) Write(p []byte) (int, error) {
 		if _, err := c.spill.Write(p); err != nil && c.spillErr == nil {
 			c.spillErr = err // recorded, not returned: see the doc comment above
 		}
-		return n, nil //nolint:nilerr // a spool failure must not fail a tool that ran fine
+		return n, nil // a spool failure must not fail a tool that ran fine
 	}
 
 	if c.spillErr != nil {
 		// Opening the spill already failed once; keep dropping the excess
 		// instead of retrying the filesystem on every write for a stream that
 		// may never end.
-		return n, nil //nolint:nilerr // spillErr is a recorded fact, not this write's error
+		return n, nil // spillErr is a recorded fact, not this write's error
 	}
 
 	if c.total <= int64(c.maxBytes) {
@@ -89,7 +89,7 @@ func (c *capture) Write(p []byte) (int, error) {
 	if err != nil {
 		c.spillErr = err
 		// Excess dropped; the caller reports the truncation instead.
-		return n, nil //nolint:nilerr // a spool failure must not fail a tool that ran fine
+		return n, nil // a spool failure must not fail a tool that ran fine
 	}
 	c.spill, c.spillPath = f, f.Name()
 

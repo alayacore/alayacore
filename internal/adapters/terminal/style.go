@@ -166,7 +166,7 @@ func (s Style) Inline(b bool) Style { s.inline = b; return s }
 // line is self-contained (SGR prefix + reset), which is what the soft-wrap
 // fragment pipeline relies on.
 //
-//nolint:gocyclo // mirrors lipgloss Render's branch order
+// mirrors lipgloss Render's branch order
 func (s Style) Render(strs ...string) string {
 	str := strings.Join(strs, " ")
 

@@ -405,7 +405,7 @@ func sessionContent(rng *rand.Rand, width int) string {
 // randomSession drives one session. The action mix is weighted towards content
 // arriving, because that is what a session spends its time doing.
 //
-//nolint:gocyclo // one dispatch over the things a user can do; each case is a call
+// one dispatch over the things a user can do; each case is a call
 func randomSession(h *frameHarness, rng *rand.Rand) {
 	nav := []rune{'j', 'k', 'J', 'K', 'G', 'g', 'b', 'e', 'r', 'R', 'f'}
 	tags := []string{tlv.TagAssistantT, tlv.TagUserT, tlv.TagAssistantR}

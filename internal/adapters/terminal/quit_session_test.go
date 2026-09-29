@@ -104,7 +104,7 @@ func TestSessionClosedFrameEndsTheProgram(t *testing.T) {
 	if _, err := m.out.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "bye"))); err != nil {
 		t.Fatalf("write delta frame: %v", err)
 	}
-	m.out.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`)) //nolint:errcheck // test frame
+	m.out.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`)) // test frame
 
 	after, cmd := m.handleTick()
 	if cmd == nil {
@@ -133,7 +133,7 @@ func TestQuitWaitingOverlayOffersCancel(t *testing.T) {
 
 	// A task in progress, as the session reports it.
 	m.out.Write(encodeTestTLV(tlv.TagSystemMsg,
-		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) //nolint:errcheck // test frame
+		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame
 
 	after, cmd := m.handleTick()
 	m = after
@@ -201,7 +201,7 @@ func TestQuitWaitingWindowAfterCancel(t *testing.T) {
 	m.streamInput = &captureWriteCloser{}
 	m.quitting = true
 	m.out.Write(encodeTestTLV(tlv.TagSystemMsg,
-		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) //nolint:errcheck // test frame
+		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame
 
 	after, _ := m.handleTick()
 	m = after

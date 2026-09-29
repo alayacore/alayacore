@@ -294,7 +294,7 @@ func (o *answerOutput) bufferFinalText(id, content string) {
 //   - notify: rendered to stderr (diagnostics must not pollute stdout).
 //   - task: on the in_progress true→false edge, the final answer is flushed.
 //
-//nolint:gocyclo // dispatch over system message types; each case is simple
+// dispatch over system message types; each case is simple
 func (o *answerOutput) handleSystemMsg(value string) {
 	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
