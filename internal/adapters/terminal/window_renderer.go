@@ -380,31 +380,31 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 1
 }
 
-// BuildCollapsed returns the single-line collapsed form:
-// "REASONING …latest content" (label + trailing content), truncated to
-// fit width minus the arrow.
+// BuildCollapsed returns the single-line collapsed form: the label column, then a
+// summary of the content — "REASONING  the head of the message…its tail" — cut to
+// fit width minus collapsedPrefixWidth, the arrow and the space after it.
 //
-// The summary shows the LATEST characters of the content (not the first
-// line), so streaming deltas are visible in the collapsed list — new
-// input arrives at the tail. Newlines are escaped as the literal "\n"
-// to preserve the single-line invariant (line heights count '\n'). A
-// leading "…" marks truncation when the content is wider than the box.
+// The summary is head + "…" + tail, not the tail alone: the head carries the topic
+// of the message and the tail carries where it has got to, which in a window that
+// re-summarizes on every delta is the part that moves. headAndTailMeasured gives the
+// head 40% of the budget and the tail what is left after the marker; when the whole
+// content fits, there is no marker and the summary is all of it. Newlines are escaped
+// to the literal "\n" so the row stays one line — line heights count '\n', so a real
+// break in a summary would move every row below it. The "…" is therefore in the
+// middle or nowhere. A *leading* "…" is a different summary shape, belongs to the
+// streaming delta previews, and lives in toolRenderer.
 //
 // AT/AR: the label is styled (bold + muted) and the content summary is
 // muted — the collapsed header is UI chrome, while the expanded body
 // stays plain text in normal mode (dimmed Body color under overlays).
 // The collapsed preview always shows the RAW content
 // (never the markdown table transform — the preview is one line and
-// markdown state only affects expanded rendering). All non-delta text
-// uses head+tail (so the user sees both the topic and the latest
-// content); the only leading "…" is reserved for streaming delta
-// content, which lives in toolRenderer.
+// markdown state only affects expanded rendering).
 //
-// Truncation markers ("…") are rendered with styles.Status (the dim
-// color) to visually separate them from the actual content — content
-// uses the muted foreground, the marker uses the lighter dim
-// foreground. This applies to both the middle "…" in head+tail and
-// the leading "…" in tail-only summaries.
+// The marker is rendered with styles.Status (the dim color) to separate it from
+// the content, which uses the muted foreground — renderCollapsedLineWithEllipsis
+// splits the row at the marker's offset to do it. toolRenderer dims its own
+// markers, middle and leading, at the places it builds them.
 func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	m, newlines := r.summaryContent(r.rawContent())
 	label := labelForTag(r.tag)
@@ -858,11 +858,13 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	return styleBodyLines(lines, styles), len(lines) + 1
 }
 
-// BuildCollapsed returns the single-line collapsed form:
-// "USER PROMPT media-summary …content-tail", truncated to fit width minus
-// the arrow. Media badges always come first and therefore remain visible
-// even when the text is long. A media-only message shows all attachment
-// types and their counts in the available width.
+// BuildCollapsed returns the single-line collapsed form: the label column, then a
+// head + "…" + tail summary of the content — "USER PROMPT 📷2 the head of the
+// prompt…its tail" — cut to fit width minus the arrow. The content summarized is
+// the media badges followed by the text (compactMediaSummary, "📷2 📄1"), so the
+// badges land in the head and stay visible however long the prompt is. A media-only
+// message has no text after them, and shows the attachment types and their counts
+// in the available width.
 //
 // Truncation markers ("…") are rendered with styles.Status to visually
 // separate them from the actual content (muted).
