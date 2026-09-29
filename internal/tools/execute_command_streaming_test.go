@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"math/rand"
 	"strings"
 	"sync"
 	"testing"
@@ -378,5 +379,153 @@ func TestStreamingWriterRuneBoundaryLastLine(t *testing.T) {
 	}
 	if !strings.HasSuffix(w.out.lastLine, "界") {
 		t.Errorf("lastLine should end with a complete CJK char, got tail %q", w.out.lastLine[len(w.out.lastLine)-6:])
+	}
+}
+
+// TestStreamingWriterPreviewDoesNotShowHalfACharacter is the case a read boundary
+// creates: a pipe hands the writer a chunk that ends inside a character, and the
+// preview is rendered from it before the rest arrives. What the preview must not
+// do is show the first bytes of a character as the U+FFFD they become on their
+// way out — the next read completes them, so a box would be a character the
+// terminal never draws. Both halves are asserted, because a preview that simply
+// dropped the bytes would be well-formed and wrong.
+func TestStreamingWriterPreviewDoesNotShowHalfACharacter(t *testing.T) {
+	// One cell and two, two bytes and three and four, plus a cluster whose bytes
+	// are more than one character's: the split is a byte offset, so which of
+	// them it lands in is the whole question.
+	corpus := []string{"é", "界", "█", "─", "😀", "한", "Ω", "中", "🇨🇳", "👨‍👩‍👧", "1️⃣"}
+
+	// The explicit case first, so the sweep below is not the only thing saying
+	// what a withheld tail leaves on screen: every byte that arrived and is
+	// complete is shown, and the character still arriving is the only thing
+	// missing — the preview is not emptied and it is not padded with a box.
+	w := newStreamingWriter(nil)
+	w.Write([]byte("progress \xe2"))
+	if got := w.out.text(); got != "progress " {
+		t.Errorf("preview of a half-arrived █ = %q, want %q", got, "progress ")
+	}
+	w.Write([]byte("\x96\x88 42%"))
+	if got := w.out.text(); got != "progress █ 42%" {
+		t.Errorf("preview after █ completed = %q, want %q", got, "progress █ 42%")
+	}
+
+	for _, ch := range corpus {
+		line := "progress " + ch + " 42%"
+		for cut := 1; cut < len(line); cut++ {
+			w := newStreamingWriter(nil)
+			w.Write([]byte(line[:cut]))
+			got := w.out.text()
+			if !utf8.ValidString(got) {
+				t.Errorf("%q cut at %d: preview of the first half %q is not well-formed", line, cut, got)
+			}
+			if !strings.HasPrefix(line, got) {
+				t.Errorf("%q cut at %d: preview %q is not a prefix of the line", line, cut, got)
+			}
+			if utf8.ValidString(line[:cut]) && got != line[:cut] {
+				t.Errorf("%q cut at %d: preview %q dropped bytes that are complete", line, cut, got)
+			}
+			if len(got) > cut {
+				t.Errorf("%q cut at %d: preview %q is longer than what arrived", line, cut, got)
+			}
+			w.Write([]byte(line[cut:]))
+			if got := w.out.text(); got != line {
+				t.Errorf("%q cut at %d: preview after the completing write = %q, want the whole line", line, cut, got)
+			}
+		}
+	}
+}
+
+// TestStreamingWriterPreviewHoldsOnlyWhatCanStillBeCompleted is the other half of
+// the rule, and the half that over-eager trimming gets wrong. Bytes that cannot
+// be part of a character however the output goes on are not "still arriving" —
+// they are what the child sent — so holding them would hold them forever and lose
+// them. They are returned as they are, and the repair every frame goes out
+// through is what replaces them, the same way a terminal does.
+func TestStreamingWriterPreviewHoldsOnlyWhatCanStillBeCompleted(t *testing.T) {
+	for _, tail := range []string{
+		"progress \xf5",         // past U+10FFFF: no continuation can make it a character
+		"progress \xfe",         // never a lead byte
+		"progress \xfe\xff",     // two of them
+		"progress \x80",         // a continuation with nothing to continue
+		"progress \xc0\x80",     // an overlong encoding
+		"progress \xed\xa0\x80", // a surrogate
+	} {
+		w := newStreamingWriter(nil)
+		w.Write([]byte(tail))
+		if got := w.out.text(); got != tail {
+			t.Errorf("preview of %q = %q, want the bytes as sent: nothing can complete them", tail, got)
+		}
+
+		// The same bytes at the end of a completed line, which is the case where a
+		// trim would be loss rather than a pause: the line is closed, so no later
+		// read can add the byte this one ends with.
+		line := newStreamingWriter(nil)
+		line.Write([]byte(tail + "\n"))
+		if got := line.out.text(); got != tail {
+			t.Errorf("preview of the completed line %q = %q, want the bytes as sent", tail, got)
+		}
+	}
+
+	// And the case that decides which of the two fields the trim belongs on: a
+	// line that ends inside a character, which is the bytes above' opposite — a
+	// sequence that is short rather than impossible. The newline closed the line,
+	// so nothing can complete it, and withholding it for a character that is
+	// never coming would drop it from the preview and from the result with it.
+	// This is why the trim is on the tail and not on lastLine.
+	closed := newStreamingWriter(nil)
+	closed.Write([]byte("progress \xe2\n"))
+	if got := closed.out.text(); got != "progress \xe2" {
+		t.Errorf("preview of a line closed on a partial character = %q, want the bytes as sent", got)
+	}
+}
+
+// TestStreamingWriterPreviewFallsBackWhenTheTailIsAllWithheld pins what a
+// withheld tail leaves behind. A tail that is nothing but the start of a
+// character trims to the empty string, and the preview falls back to the last
+// completed line — not to the empty string, which combinedPreview reads as "this
+// stream has nothing to say" and answers with the other stream's line.
+func TestStreamingWriterPreviewFallsBackWhenTheTailIsAllWithheld(t *testing.T) {
+	w := newStreamingWriter(nil)
+	w.Write([]byte("done\n"))
+	w.Write([]byte("\xe2"))
+	if got := w.out.text(); got != "done" {
+		t.Errorf("preview = %q, want %q: the tail is one byte of a character and nothing else", got, "done")
+	}
+}
+
+// TestStreamingWriterPreviewIsWellFormedWhenItsInputIs is the sweep above as a
+// property, over the boundaries a pipe actually produces: a preview is
+// well-formed whenever everything written so far is well-formed, whatever cuts
+// the writes into chunks, and the last preview is the one an unchunked write
+// produces. The second half is what separates holding bytes from dropping them —
+// a run that discarded the withheld bytes would still be well-formed.
+func TestStreamingWriterPreviewIsWellFormedWhenItsInputIs(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	pieces := []string{"a", "é", "界", "█", "😀", "\n", "\r", "\x80", "\xf5", "\xfe", "\x9b"}
+	for trial := 0; trial < 2000; trial++ {
+		var body []byte
+		for i := 0; i < 1+rng.Intn(20); i++ {
+			body = append(body, pieces[rng.Intn(len(pieces))]...)
+		}
+
+		whole := newStreamingWriter(nil)
+		whole.Write(body)
+
+		chunked := newStreamingWriter(nil)
+		for off := 0; off < len(body); {
+			n := 1 + rng.Intn(len(body)-off)
+			chunked.Write(body[off : off+n])
+			off += n
+			if utf8.Valid(body[:off]) {
+				if got := chunked.out.text(); !utf8.ValidString(got) {
+					t.Fatalf("trial %d: %q in chunks to offset %d, preview %q is not well-formed",
+						trial, body, off, got)
+				}
+			}
+		}
+		if got, want := chunked.out.text(), whole.out.text(); got != want {
+			t.Fatalf("trial %d: %q in chunks ends at %q, want %q from one write",
+				trial, body, got, want)
+		}
 	}
 }

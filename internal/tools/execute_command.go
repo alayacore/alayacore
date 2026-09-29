@@ -227,10 +227,42 @@ func truncateAtRuneBoundary(s string, maxLen int) string {
 	return s[cut:]
 }
 
+// trimIncompleteTail returns s without a trailing partial character: the first
+// bytes of a sequence whose remaining bytes have not arrived yet.
+//
+// "Not arrived yet" and "never will be UTF-8" are different questions, and
+// utf8.FullRuneInString is the function that tells them apart — a short but so
+// far well-formed sequence is not a full rune, while bytes that cannot continue
+// a character however they go on are one. The first are held back, because the
+// next read finishes them. The second are returned, because holding them would
+// hold them forever. decodePrintable draws the same line on the input side.
+func trimIncompleteTail(s string) string {
+	for i := 1; i <= utf8.UTFMax && i <= len(s); i++ {
+		if !utf8.RuneStart(s[len(s)-i]) {
+			continue
+		}
+		if utf8.FullRuneInString(s[len(s)-i:]) {
+			return s
+		}
+		return s[:len(s)-i]
+	}
+	return s
+}
+
 // text returns the snapshot: the current line, or the most recently
 // completed line when the current line is empty.
+//
+// The tail is trimmed of a trailing partial character rather than the tail being
+// kept whole, because a read boundary can fall inside one and a preview is a
+// view: the bytes stay in the tail for the next read to complete, and what is
+// held back is only what this view would otherwise have to show as U+FFFD, since
+// every byte that leaves this package goes out through a json.Marshal that
+// replaces ill-formed ones. lastLine is not trimmed — its bytes have all
+// arrived, so a partial character there can never be completed and holding it
+// would drop it for good. A child that ends its output mid-character still says
+// so in the result, which carries its bytes unrepaired.
 func (ls *lineSnapshot) text() string {
-	text := ls.tail.String()
+	text := trimIncompleteTail(ls.tail.String())
 	if text == "" {
 		return ls.lastLine
 	}
