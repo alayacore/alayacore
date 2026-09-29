@@ -136,31 +136,41 @@ func BenchmarkFoldedToolStreamingDelta(b *testing.B) {
 // all — that is the 100ns the benchmark above measures. A folded text window
 // shows head + "…" + tail of its whole content (textRenderer.BuildCollapsed →
 // collapsedSummary → headAndTailParts), so deriving that row means reading the
-// message: one walk to find the head, one to find the tail.
+// message: one pass to price it, then a head cut that stops at its budget and a
+// tail cut that counts back from the end.
 //
 // It used to mean a great deal more than reading it. Both cutters answered from
 // a helper that materialized every grapheme cluster of the content — a struct
 // and a substring per cluster, twice per frame — so this frame cost 99μs and
 // 503 KB at 2 KB of content and 13.5ms and 56.8 MB at 128 KB: 12x to 81x more
 // than the same content EXPANDED, which is the inversion this benchmark exists
-// to make visible. Two materializations came out — width.go's cluster list, and
-// the whole-message escape copy the summary used to cut 75 cells out of — and
-// the numbers are 15.1μs / 5.1 KB and 770μs / 134 KB, lighter than the expanded
-// side at every size. What is left is honest: the line COUNT of a folded window
-// is O(1) (UpdateLineCountFast returns 1 without touching the renderer) and the
-// ROW is one pass over the content, O(content) in time and O(cut) in memory.
+// to make visible. Three rounds of that came out: width.go's cluster list, the
+// whole-message escape copy the summary cut 75 cells out of, and then the
+// repeated measuring (the frame priced the same message four times over — three
+// widths and an escape probe each cutter repeated — before the cuts became
+// O(budget)). The numbers are 3.8μs / 4.8 KB at 2 KB and 64μs / 134 KB at
+// 128 KB, against the 13.5ms and 56.8 MB this started at.
 //
-// Reasoning windows fold by default and stream for as long as the model thinks,
-// which puts this on the per-tick path of a long "thinking" phase — so the
-// slope across the three sizes is the point, not any one number. See
+// READ THE TWO SIDES AGAINST EACH OTHER, because the inversion has flipped.
+// At 2 KB folded is still the cheap state (3.8μs against 4.3μs). At 32 KB and
+// 128 KB the EXPANDED side is cheaper — 7.8μs against 18μs, and 18μs against
+// 64μs — and lighter (28 KB against 35 KB, 80 KB against 134 KB). That is not
+// a defect in the fold, it is what the two states do: an expanded frame appends
+// one delta to the wrapped rows and draws ≤40 of them, O(delta + viewport),
+// while a folded frame re-derives a summary of the WHOLE message, O(content),
+// and joins the streaming delta parts to read it. Folding trades "draw forty
+// rows" for "summarize everything", and past a few tens of kilobytes that trade
+// is a loss. Reasoning windows fold by default and stream for as long as the
+// model thinks, so this is the per-tick cost of a long "thinking" phase — see
 // docs/internal/virtual-rendering-performance.md → "The fold summary
-// materialized every cluster (found and fixed)".
+// materialized every cluster (found and fixed)" for what is left and what would
+// take the folded frame back to O(budget).
 //
-// Each size runs twice, folded and expanded, on identical content: the
-// expanded side is the control. Folding a window is supposed to be the cheap
-// state, and for a tool window it is; for a text window the two sides are the
-// wrong way round, and the pair is what shows that without anyone having to
-// trust a prose figure.
+// Each size runs twice, folded and expanded, on identical content, so the
+// expanded side is the control and the slope across the three sizes is the
+// point rather than any one number. Folding is supposed to be the cheap state,
+// and for a tool window it is; for a text window the pair says which of the two
+// is dearer and by how much, without anyone having to trust a prose figure.
 //
 // The buffer is rebuilt per iteration under StopTimer, so one iteration is one
 // frame against a content size that does not drift as the run goes on: unlike

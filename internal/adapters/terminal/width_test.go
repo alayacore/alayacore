@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -61,6 +62,179 @@ func TestCellWidthMatchesAnsi(t *testing.T) {
 	for _, s := range allCorpus() {
 		if got, want := cellWidth(s), ansi.StringWidth(s); got != want {
 			t.Errorf("cellWidth(%q) = %d, ansi.StringWidth = %d", s, got, want)
+		}
+	}
+}
+
+// tailByForwardWalk is the route-independent definition of a tail cut: the
+// longest suffix that fits the budget, found by dropping clusters off the front
+// until what remains fits. It is what measured.tail does on the table route,
+// written out here as the oracle for the ASCII route's backward count — two
+// different algorithms over the same string, so their agreement is evidence
+// rather than a tautology. (The width RULE both apply is anchored separately,
+// by TestCellWidthAgreesWithTheTableOnASCII.)
+func tailByForwardWalk(s string, cells int) string {
+	if cells <= 0 || s == "" {
+		return ""
+	}
+	total := cellWidth(s)
+	if total <= cells {
+		return s
+	}
+	remaining, start := total, 0
+	walkCells(s, func(text string, cw int) bool {
+		if remaining <= cells {
+			return false
+		}
+		remaining -= cw
+		start += len(text)
+		return true
+	})
+	return s[start:]
+}
+
+// TestTailCutsAgreeAcrossRoutes holds measured.tail's backward ASCII count to
+// the forward walk every other route takes. The cases that matter are the ones
+// where zero-width bytes sit on either side of the cut: a control charges
+// nothing, so the backward count absorbs it into the tail and the forward walk
+// has to reach the same start by a different argument.
+func TestTailCutsAgreeAcrossRoutes(t *testing.T) {
+	corpus := append(append(breakerCorpus(), allCorpus()...), summaryCorpus()...)
+	// The corpus is short; the backward route exists for long bodies, and a
+	// disagreement there is the expensive kind. Both routes are exercised: the
+	// ASCII ones take the backward count, the CJK one the forward walk.
+	corpus = append(corpus,
+		strings.Repeat("reasoning about the task and planning the next steps\n", 200),
+		strings.Repeat("\n\n\n", 500),
+		strings.Repeat("a\n", 1000)+"\t\t  trailing \n\n\n",
+		"\n\n\n"+strings.Repeat("x", 500),
+		strings.Repeat("中文内容 mixed with ascii\n", 200),
+	)
+	for _, s := range corpus {
+		m := measure(s)
+		if m.escape {
+			// A styled string takes the escape-aware route, whose contract is
+			// different by design: escapes travel with the tail on BOTH sides of
+			// the cut, so dropping the SGR reset that preceded it would repaint
+			// everything after the row. That route is unchanged here and is
+			// covered by TestCutNeverOverrunsItsBudget and the escape-travel
+			// tests; this oracle models the plain routes only.
+			continue
+		}
+		for _, n := range []int{-1, 0, 1, 2, 3, 5, 8, 13, 40, 41, 79, 1000, 100000} {
+			if got, want := m.tail(n), tailByForwardWalk(s, n); got != want {
+				t.Errorf("measure(%d bytes, ascii=%v).tail(%d) = %q, the forward walk gives %q",
+					len(s), m.ascii, n, got, want)
+			}
+		}
+	}
+}
+
+// TestMeasuredWalkIsWalkCells pins the dispatch, which is the only thing that
+// could part measured.walk from walkCells: measure picks a route once and walk
+// takes it, while walkCells picks per call. The two must visit the same
+// clusters in the same order, or a cut made from a measurement would be cut
+// somewhere other than where the width was priced.
+func TestMeasuredWalkIsWalkCells(t *testing.T) {
+	collect := func(walk func(func(string, int) bool)) (text []string, cells []int) {
+		walk(func(t string, c int) bool {
+			text = append(text, t)
+			cells = append(cells, c)
+			return true
+		})
+		return
+	}
+	for _, s := range append(append(breakerCorpus(), allCorpus()...), summaryCorpus()...) {
+		wantText, wantCells := collect(func(fn func(string, int) bool) { walkCells(s, fn) })
+		gotText, gotCells := collect(measure(s).walk)
+		if !slices.Equal(gotText, wantText) || !slices.Equal(gotCells, wantCells) {
+			t.Errorf("measure(%q).walk and walkCells disagree:\n got  %q %v\n want %q %v",
+				s, gotText, gotCells, wantText, wantCells)
+		}
+	}
+}
+
+// TestMeasuredCutsMatchTheOneShotCutters pins the measured/one-shot split.
+// measure(s).head(n) IS takeCells(s, n) and .tail(n) IS tailCells(s, n), at
+// every budget including the degenerate ones, and measure's escape route is the
+// one hasEscape picks. The summary paths cut one message twice from a single
+// measurement, so the two forms are the same cut reached by two doors: were
+// they ever to part, a folded row would be cut by a rule no cutter test covers.
+func TestMeasuredCutsMatchTheOneShotCutters(t *testing.T) {
+	corpus := append(append(breakerCorpus(), allCorpus()...), summaryCorpus()...)
+	for _, s := range corpus {
+		m := measure(s)
+		if got, want := m.escape, hasEscape(s); got != want {
+			t.Errorf("measure(%q).escape = %v, hasEscape says %v", s, got, want)
+		}
+		for _, n := range []int{-1, 0, 1, 2, 3, 5, 8, 13, 40, 1000} {
+			if got, want := m.head(n), takeCells(s, n); got != want {
+				t.Errorf("measure(%q).head(%d) = %q, takeCells = %q", s, n, got, want)
+			}
+			if got, want := m.tail(n), tailCells(s, n); got != want {
+				t.Errorf("measure(%q).tail(%d) = %q, tailCells = %q", s, n, got, want)
+			}
+		}
+	}
+}
+
+// TestCellWidthAgreesWithTheTableOnASCII is the anchor for the byte-wise route.
+// cellWidth and walkCells both price plain ASCII through asciiCells, so
+// TestWalkCellsAgreesWithCellWidth can no longer catch a rule that is wrong for
+// the two of them alike — a byte the table bills differently would move every
+// row it appears in, consistently and invisibly. This compares the rule against
+// displaywidth's own table over the whole domain plainASCIIFast admits, rather
+// than over a corpus: every single byte, every pair from an alphabet of the
+// awkward ones, and the hand-picked sequences where segmentation is known not
+// to be per-byte ("\r\n" is one cluster).
+func TestCellWidthAgreesWithTheTableOnASCII(t *testing.T) {
+	agrees := func(t *testing.T, s string) {
+		t.Helper()
+		if !plainASCIIFast(s) {
+			t.Fatalf("%q does not take the ASCII route; the comparison means nothing", s)
+		}
+		if got, want := cellWidth(s), widthModel.String(s); got != want {
+			t.Errorf("cellWidth(%q) = %d, the table says %d", s, got, want)
+		}
+	}
+
+	// Every byte the route accepts. ESC and DEL are declined by plainASCIIFast,
+	// so they take the table route and there is nothing to compare.
+	for b := 0; b <= 0x7e; b++ {
+		if b == 0x1b {
+			continue
+		}
+		agrees(t, string(rune(b)))
+	}
+
+	// Pairs: segmentation can price a sequence differently from the sum of its
+	// bytes, so the rule has to hold for what the route actually sees.
+	const alphabet = "\x00\a\b\t\n\v\f\r \x1f\"'-.09AZaz~"
+	for _, a := range alphabet {
+		for _, b := range alphabet {
+			s := string(a) + string(b)
+			if plainASCIIFast(s) {
+				agrees(t, s)
+			}
+		}
+	}
+
+	for _, s := range []string{
+		"\r\n", "\n\r", "\r\n\r\n", "a\r\nb", "\t\t\t", " \t \n",
+		strings.Repeat("reasoning about the task and planning the next steps\n", 40),
+		strings.Repeat("\r\n", 100),
+		strings.Repeat("~!@#$%^&*()_+`1234567890-=[]\\{}|;':\",./<>? ", 20),
+	} {
+		agrees(t, s)
+	}
+
+	// And the corpora the rest of this file measures with, for the ones that
+	// happen to be plain ASCII.
+	for _, s := range append(breakerCorpus(), allCorpus()...) {
+		if plainASCIIFast(s) {
+			if got, want := cellWidth(s), widthModel.String(s); got != want {
+				t.Errorf("cellWidth(%q) = %d, the table says %d", s, got, want)
+			}
 		}
 	}
 }
@@ -258,6 +432,11 @@ func TestCutsCostTheCutNotTheString(t *testing.T) {
 	}{
 		{"takeCells", takeCells},
 		{"tailCells", tailCells},
+		// The measured pair is what the summary paths actually cut with, so it
+		// carries the same promise: measure allocates nothing, and the cut
+		// allocates the piece it returns.
+		{"measured.head", func(s string, n int) string { return measure(s).head(n) }},
+		{"measured.tail", func(s string, n int) string { return measure(s).tail(n) }},
 	}
 	// The bound is a ceiling rather than an exact count because AllocsPerRun
 	// reads process-wide mallocs, and a -race build can add one of its own mid-
@@ -283,6 +462,7 @@ func TestCutsCostTheCutNotTheString(t *testing.T) {
 	}{
 		{"widestCellCluster", widestCellCluster},
 		{"cellWidth", cellWidth},
+		{"measure", func(s string) int { return measure(s).cells }},
 	}
 	for _, fold := range folds {
 		for _, in := range inputs {

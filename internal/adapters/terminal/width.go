@@ -87,21 +87,108 @@ import (
 // place that also cuts, keeps measure and cut from parting company again.
 var widthModel = &displaywidth.Options{EastAsianWidth: false}
 
+// asciiCells is the cell count of one ASCII byte: a printable byte draws one
+// cell, a control draws none. offASCIIRoute is what entitles a caller to apply
+// this byte by byte instead of cluster by cluster — measure applies it to a
+// sum and walkCells to a row, and both come through these two, so the width a
+// measurement reports and the width a cutter charges cannot diverge.
+//
+// TestCellWidthAgreesWithTheTableOnASCII is the check on the rule itself: over
+// every ASCII byte, every pair of the awkward ones, and the sequences where
+// segmentation is known not to be per-byte, the byte-wise answer is the answer
+// the width table gives.
+func asciiCells(b byte) int {
+	if b > 0x1f {
+		return 1
+	}
+	return 0
+}
+
+// offASCIIRoute reports whether b takes a string off the byte-wise route: a
+// byte above 0x7E can be part of a multi-byte rune, and ESC and DEL introduce
+// an escape sequence whose bytes are not drawn. Either way one byte is not one
+// cluster, so the string has to be segmented.
+func offASCIIRoute(b byte) bool {
+	return b > 0x7e || b == 0x1b || b == 0x7f
+}
+
+// asciiWidth returns the cells s draws, or -1 when s is not measurable byte by
+// byte. One pass answers both, because the byte that disqualifies s is a byte
+// the sum has to look at anyway — and a caller that would otherwise ask
+// plainASCIIFast and then measure is asking for two passes over the same
+// string.
+func asciiWidth(s string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if offASCIIRoute(b) {
+			return -1
+		}
+		n += asciiCells(b)
+	}
+	return n
+}
+
+// measured is a string together with the facts about the WHOLE of it that a
+// cutter needs before it can take a piece out: the cells it draws, which of the
+// two walking routes it takes, and whether it carries an escape sequence (which
+// sends the cut to the escape-aware breaker, because a cut row is still
+// styled).
+//
+// All three are a pass over the string to find out, and the summary paths ask
+// for them more than once per frame — a folded row is a head and a tail of the
+// same message, so measuring per cut walked a 128 KB message four times over
+// before it drew two thirds of one row. measure answers once; head, tail and
+// walk spend the answer.
+type measured struct {
+	s      string
+	cells  int
+	ascii  bool // plain ASCII, no escape: one byte is one cluster
+	escape bool // carries an escape introducer: cut with the escape-aware breaker
+}
+
+// measure gathers what the cutters need. Plain ASCII — transcript prose, table
+// cells, window labels, and the whole content of a text window — is priced by
+// the same byte loop that establishes it carries no escape, so the common case
+// is one pass and no segmentation. Everything else goes to the table, after
+// ansi.Strip when there is an escape in it.
+func measure(s string) measured {
+	if s == "" {
+		return measured{}
+	}
+	if w := asciiWidth(s); w >= 0 {
+		return measured{s: s, cells: w, ascii: true}
+	}
+	if hasEscape(s) {
+		return measured{s: s, cells: widthModel.String(ansi.Strip(s)), escape: true}
+	}
+	return measured{s: s, cells: widthModel.String(s)}
+}
+
+// walk calls fn once per grapheme cluster of the measured string, in order,
+// taking the route measure already chose rather than deciding again. walkCells
+// is the same walk for a caller that has nothing measured; both reach the same
+// two routes, so the clusters a cut sees are the clusters a measurement priced.
+func (m measured) walk(fn func(text string, cells int) bool) {
+	if m.s == "" {
+		return
+	}
+	if m.ascii {
+		walkASCIIBytes(m.s, fn)
+		return
+	}
+	walkClusters(m.s, fn)
+}
+
 // cellWidth returns the number of terminal cells s occupies. ANSI/ECMA-48
 // escape sequences are not drawn and count for nothing, tabs and newlines
 // count for nothing (callers expand tabs before measuring — see
 // expandTabs), and a grapheme cluster is measured whole.
+//
+// A caller that also cuts s should measure it once and use measured.head /
+// measured.tail rather than pay for this a second time.
 func cellWidth(s string) int {
-	if s == "" {
-		return 0
-	}
-	// Unstyled text is the common case on the hot paths (window labels,
-	// table cells, status segments), and stripping is a second full pass
-	// over the string.
-	if !hasEscape(s) {
-		return widthModel.String(s)
-	}
-	return widthModel.String(ansi.Strip(s))
+	return measure(s).cells
 }
 
 // hasEscape reports whether s may contain an escape sequence: a 7-bit
@@ -158,8 +245,8 @@ var breakerModel = &displaywidth.Options{
 // true from every call.
 //
 // Two speeds, one meaning. Plain ASCII with no escape in it is walked byte by
-// byte — each byte its own cluster, one cell, a control zero — which is the
-// answer the table gives without paying for the walk. That is the common case
+// byte — each byte its own cluster, priced by asciiCells — which is the answer
+// the table gives without paying for the walk. That is the common case
 // (transcript prose), and it is what keeps a full re-wrap of a long document at
 // the speed it had before the breakers moved onto this file's table —
 // BenchmarkFullWrap and BenchmarkWrapContent are the two that would show it.
@@ -176,17 +263,27 @@ func walkCells(s string, fn func(text string, cells int) bool) {
 		return
 	}
 	if plainASCIIFast(s) {
-		for i := 0; i < len(s); i++ {
-			cells := 1
-			if s[i] <= 0x1f {
-				cells = 0
-			}
-			if !fn(s[i:i+1], cells) {
-				return
-			}
-		}
+		walkASCIIBytes(s, fn)
 		return
 	}
+	walkClusters(s, fn)
+}
+
+// walkASCIIBytes is the byte-wise route. plainASCIIFast — or measure, which
+// asks the same question — has established that every byte is its own cluster,
+// so this emits one per byte, priced by asciiCells, and never segments.
+func walkASCIIBytes(s string, fn func(text string, cells int) bool) {
+	for i := 0; i < len(s); i++ {
+		if !fn(s[i:i+1], asciiCells(s[i])) {
+			return
+		}
+	}
+}
+
+// walkClusters is the table route: segmentation runs forward through
+// breakerModel, which folds an escape sequence into one zero-width cluster so
+// that a cut row keeps its styling.
+func walkClusters(s string, fn func(text string, cells int) bool) {
 	it := breakerModel.StringGraphemes(s)
 	for it.Next() {
 		if !fn(it.Value(), it.Width()) {
@@ -209,13 +306,12 @@ func linesFit(s string, width int) bool {
 	return true
 }
 
-// plainASCIIFast reports whether s can be walked byte by byte: no byte above
-// 0x7E, and no escape introducer. An escape is ASCII too, so the second
-// condition is what keeps a styled row out of that path — its sequence bytes
-// would be billed as cells.
+// plainASCIIFast reports whether s can be walked byte by byte — the same
+// question asciiWidth answers, asked by a caller that wants the walk rather
+// than the sum (walkCells emits a cluster per byte here).
 func plainASCIIFast(s string) bool {
 	for i := 0; i < len(s); i++ {
-		if b := s[i]; b > 0x7e || b == 0x1b || b == 0x7f {
+		if offASCIIRoute(s[i]) {
 			return false
 		}
 	}
@@ -404,18 +500,30 @@ func runeBoundary(s string, i int) int {
 // string is handed to the escape-aware cutter instead), but the clustering
 // guarantee does not cover it.
 func takeCells(s string, cells int) string {
+	// The guard stays here rather than only in head: a caller with no room
+	// left must not pay for measuring the string it cannot use.
 	if cells <= 0 || s == "" {
 		return ""
 	}
-	// Fast path: the whole string already fits. One measurement, no walk.
-	if w := cellWidth(s); w <= cells {
-		return s
+	return measure(s).head(cells)
+}
+
+// head is takeCells with the measurement already in hand — the same cut,
+// without a second pass over the whole string to price it. A caller that takes
+// a head and a tail of one string measures once and asks for both.
+func (m measured) head(cells int) string {
+	if cells <= 0 || m.s == "" {
+		return ""
 	}
-	if hasEscape(s) {
-		return keepCells(s, cells)
+	// Fast path: the whole string already fits. No walk.
+	if m.cells <= cells {
+		return m.s
+	}
+	if m.escape {
+		return keepCells(m.s, cells)
 	}
 	used, end := 0, 0
-	walkCells(s, func(text string, w int) bool {
+	m.walk(func(text string, w int) bool {
 		if used+w > cells {
 			return false
 		}
@@ -423,7 +531,7 @@ func takeCells(s string, cells int) string {
 		end += len(text)
 		return true
 	})
-	return strings.Clone(s[:end])
+	return strings.Clone(m.s[:end])
 }
 
 // tailCells returns the trailing clusters of s whose total width is at most
@@ -446,18 +554,49 @@ func takeCells(s string, cells int) string {
 // with the tail on both sides of the cut: dropping the SGR reset that preceded
 // it would repaint everything after the row.
 func tailCells(s string, cells int) string {
+	// The guard stays here rather than only in tail, for the reason takeCells
+	// gives: no room means nothing to measure.
 	if cells <= 0 || s == "" {
 		return ""
 	}
-	w := cellWidth(s)
-	if w <= cells {
-		return s
+	return measure(s).tail(cells)
+}
+
+// tail is tailCells with the measurement already in hand.
+//
+// Segmentation runs forward, so in general a suffix cannot be found from its
+// own end: the walk drops clusters off the front until what remains fits the
+// budget, and "what remains" is the total minus what was dropped. Plain ASCII
+// is the exception — there one byte is one cluster, so the cut is found by
+// counting back from the end, which costs the budget rather than the message.
+// A folded summary is one row taken off the end of a whole transcript, and
+// locating that row used to cost a walk of the transcript on every frame:
+// measured on 128 KB, 185μs for the walk against 1μs to count back 41 cells.
+// TestTailCutsAgreeAcrossRoutes holds the backward route to the forward one.
+func (m measured) tail(cells int) string {
+	if cells <= 0 || m.s == "" {
+		return ""
 	}
-	if hasEscape(s) {
-		remaining := w
+	if m.cells <= cells {
+		return m.s
+	}
+	if m.ascii {
+		used, start := 0, len(m.s)
+		for start > 0 {
+			w := asciiCells(m.s[start-1])
+			if used+w > cells {
+				break // would overrun the budget: drop this cluster and all before it
+			}
+			used += w
+			start--
+		}
+		return strings.Clone(m.s[start:])
+	}
+	if m.escape {
+		remaining := m.cells
 		var b strings.Builder
-		b.Grow(len(s))
-		walkCells(s, func(text string, cw int) bool {
+		b.Grow(len(m.s))
+		m.walk(func(text string, cw int) bool {
 			switch {
 			case cw == 0 && escapeCluster(text):
 				b.WriteString(text) // pen state, kept on both sides of the cut
@@ -470,8 +609,8 @@ func tailCells(s string, cells int) string {
 		})
 		return b.String()
 	}
-	remaining, start := w, 0
-	walkCells(s, func(text string, cw int) bool {
+	remaining, start := m.cells, 0
+	m.walk(func(text string, cw int) bool {
 		if remaining <= cells {
 			return false
 		}
@@ -479,7 +618,7 @@ func tailCells(s string, cells int) string {
 		start += len(text)
 		return true
 	})
-	return strings.Clone(s[start:])
+	return strings.Clone(m.s[start:])
 }
 
 // widestCellCluster returns the width of the widest single grapheme cluster

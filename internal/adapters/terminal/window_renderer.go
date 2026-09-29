@@ -185,17 +185,54 @@ func (r *textRenderer) ToggleMarkdownMode() bool {
 	return r.mdMode
 }
 
-// rawContent returns the full accumulated content for testing.
+// rawContent returns the full accumulated content: r.content with the
+// pending streaming deltas folded in. It does NOT store the merge — the
+// deltas stay separate until mergeParts folds them for good.
+//
+// This is the read path, not a test helper: BuildCollapsed derives a folded
+// summary from it (one call per frame while a text window streams), as does
+// Window.RawContent and the markdown tail probe.
 func (r *textRenderer) rawContent() string {
-	if len(r.contentParts) > 0 {
-		var buf strings.Builder
-		buf.WriteString(r.content)
-		for _, p := range r.contentParts {
-			buf.WriteString(p)
-		}
-		return buf.String()
+	if len(r.contentParts) == 0 {
+		return r.content
 	}
-	return r.content
+	// Size the buffer exactly, so the merge is one allocation and one copy
+	// rather than the builder's doubling. The scan is over the pending
+	// deltas only, which maxContentParts bounds.
+	n := len(r.content)
+	for _, p := range r.contentParts {
+		n += len(p)
+	}
+	var buf strings.Builder
+	buf.Grow(n)
+	buf.WriteString(r.content)
+	for _, p := range r.contentParts {
+		buf.WriteString(p)
+	}
+	return buf.String()
+}
+
+// maxContentParts bounds how many streaming deltas may sit unmerged in
+// contentParts.
+//
+// Append keeps each delta separate so one costs O(delta) instead of
+// O(content) — that is the whole point of the slice. But the list cannot grow
+// without bound: every header is memory, and every rawContent (one per frame
+// while a text window streams folded) walks the lot. Folding is a full copy of
+// the accumulated content, so it is amortized over this many deltas rather
+// than paid per frame: at 64, a 128 KB message copies 2 KB per delta instead
+// of 128 KB per frame.
+const maxContentParts = 64
+
+// mergeParts folds the pending deltas into r.content and drops them, so the
+// paths that need one string see it. Callers that only need to READ the
+// content use rawContent, which merges without storing.
+func (r *textRenderer) mergeParts() {
+	if len(r.contentParts) == 0 {
+		return
+	}
+	r.content = r.rawContent()
+	r.contentParts = nil
 }
 
 // plainContent returns true when this text window's content must render
@@ -225,31 +262,19 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// Fast path: use cached wrapped lines if width matches.
 	// wrappedLines is kept current by AppendFromTLV's incremental path.
 	if r.cacheWidth == innerWidth && len(r.wrappedLines) > 0 {
-		// Still merge contentParts for eventual consistency (resize, slow path).
-		// This prevents unbounded growth during long streaming sessions.
-		if len(r.contentParts) > 0 {
-			var buf strings.Builder
-			buf.WriteString(r.content)
-			for _, part := range r.contentParts {
-				buf.WriteString(part)
-			}
-			r.content = buf.String()
-			r.contentParts = nil
+		// The rows are already right, so this frame has no use for one
+		// merged string — only the pending-delta list must stay bounded
+		// (maxContentParts). This used to merge on EVERY frame, copying the
+		// whole accumulated content to produce a string nothing then read.
+		if len(r.contentParts) >= maxContentParts {
+			r.mergeParts()
 		}
 		return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 1
 	}
 
-	// Full render: prepare, style (system messages only), and wrap
-	// Ensure full content from parts
-	if len(r.contentParts) > 0 {
-		var buf strings.Builder
-		buf.WriteString(r.content)
-		for _, part := range r.contentParts {
-			buf.WriteString(part)
-		}
-		r.content = buf.String()
-		r.contentParts = nil
-	}
+	// Full render: prepare, style (system messages only), and wrap.
+	// The wrap reads one string, so the deltas are folded for good.
+	r.mergeParts()
 
 	// stripANSI only — tabs are expanded per original line inside
 	// wrapVisualLines so the full path matches the incremental path.
@@ -420,7 +445,8 @@ func tailParts(content string, maxWidth int) (string, bool) {
 	if maxWidth <= 1 {
 		return "", false
 	}
-	if escapedWidth(content) <= maxWidth {
+	m := measure(content)
+	if escapedWidth(content, m.cells) <= maxWidth {
 		return escapeBreaks(content), false
 	}
 	// Take the tail that fits. We deliberately use the FULL maxWidth
@@ -433,7 +459,7 @@ func tailParts(content string, maxWidth int) (string, bool) {
 	// multi-rune clusters: tailParts("aaaa 👨‍👩‍👧‍👦", 2) returned
 	// ZWJ+boy, the back half of a family emoji, on the row a user watches while
 	// a command runs. That walk also allocated a string per rune it examined.
-	return cutEscaped(content, maxWidth, true), true
+	return cutMeasured(m, maxWidth, true), true
 }
 
 // headAndTailParts returns the leading and trailing parts of content for a
@@ -456,8 +482,9 @@ func tailParts(content string, maxWidth int) (string, bool) {
 //   - if the full content already fits maxWidth cols, head is the whole thing
 //
 // Grapheme-cluster-aware: head and tail are bounded by grapheme cluster
-// boundaries (not runes) via takeCells/tailCells, so multi-codepoint clusters
-// like ZWJ emoji, combining marks, and variation selectors are never split
+// boundaries (not runes) via measured.head/tail — takeCells/tailCells with the
+// whole-string measurement hoisted — so multi-codepoint clusters like ZWJ
+// emoji, combining marks, and variation selectors are never split
 // mid-cluster. The budget and the cut come from the same width table (width.go).
 //
 // When truncated is false, head is the full content and tail is "".
@@ -467,11 +494,18 @@ func headAndTailParts(content string, maxWidth int) (head, tail string, truncate
 	if maxWidth <= 0 {
 		return "", "", false
 	}
-	if escapedWidth(content) <= maxWidth {
+	// Measured once for all three questions below — does it fit, where does
+	// the head end, where does the tail begin. Each of them used to measure
+	// the whole message itself, so a folded row walked a 128 KB message four
+	// times over (three widths and the escape probe each cutter repeated) to
+	// draw two thirds of one line; a CPU profile put the escape probe alone at
+	// a third of the frame.
+	m := measure(content)
+	if escapedWidth(content, m.cells) <= maxWidth {
 		return escapeBreaks(content), "", false
 	}
 	if maxWidth <= 2 {
-		return cutEscaped(content, maxWidth, false), "", true
+		return cutMeasured(m, maxWidth, false), "", true
 	}
 
 	// 40/60 split. Integer math: headWidth = maxWidth * 40 / 100.
@@ -484,9 +518,9 @@ func headAndTailParts(content string, maxWidth int) (head, tail string, truncate
 	tailWidth := maxWidth - headWidth - 1
 	if tailWidth < 1 {
 		// Very narrow widths where head already claims most of the room.
-		return cutEscaped(content, maxWidth, false), "", true
+		return cutMeasured(m, maxWidth, false), "", true
 	}
-	return cutEscaped(content, headWidth, false), cutEscaped(content, tailWidth, true), true
+	return cutMeasured(m, headWidth, false), cutMeasured(m, tailWidth, true), true
 }
 
 // escapeBreaks renders s as one logical line: each '\n' becomes the
@@ -507,11 +541,16 @@ func escapeBreaks(s string) string {
 // escapedWidth returns the width s will measure once escapeBreaks has run,
 // without building it: a '\n' is 0 cells and its marker is 2, a '\r' is 0 cells
 // and is deleted, and every other character keeps the width it has.
-func escapedWidth(s string) int {
-	return cellWidth(s) + 2*strings.Count(s, "\n")
+//
+// cells is s's measured width — measure(s).cells — handed in rather than
+// re-derived, because both callers have already measured s in order to cut it.
+func escapedWidth(s string, cells int) int {
+	return cells + 2*strings.Count(s, "\n")
 }
 
-// cutEscaped returns budget cells from the wanted end of content, escaped.
+// cutMeasured returns budget cells from the wanted end of already-measured
+// content, escaped. Both summary paths call it, and both have measured their
+// content already to answer "does it all fit".
 //
 // It cuts BEFORE it escapes, and then cuts the escaped result to the same
 // budget from the same end. That is not the obvious order — the obvious one
@@ -526,10 +565,14 @@ func escapedWidth(s string) int {
 // delta, so escaping first copied the entire message per frame to draw two
 // thirds of one row — and the same shape sat in tailParts, on the streaming
 // tool preview (docs/internal/virtual-rendering-performance.md).
-func cutEscaped(content string, budget int, fromTail bool) string {
-	cut := takeCells(content, budget)
+//
+// The re-cut of the escaped text goes through the one-shot cutters: that string
+// is at most budget cells long, so there is nothing left to hoist. No budget or
+// empty content needs a guard here either — head and tail answer "" for both.
+func cutMeasured(m measured, budget int, fromTail bool) string {
+	cut := m.head(budget)
 	if fromTail {
-		cut = tailCells(content, budget)
+		cut = m.tail(budget)
 	}
 	escaped := escapeBreaks(cut)
 	if fromTail {
