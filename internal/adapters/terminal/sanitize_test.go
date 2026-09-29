@@ -3,9 +3,11 @@ package terminal
 // The expectations in this file are not derived from a specification or from the
 // code under test. They are what tmux 3.7c drew, read back out of it: a pane 40
 // columns wide starting at column 0, printf'ing the input, then #{cursor_x} for
-// the cell count and capture-pane for the bytes it stored. The harness is
-// /tmp/perf/invprobe.sh in the revision that took them; TestScreenMatchesATerminal
-// UnderTmux is the same idea, applied to a whole frame instead of one string.
+// the cell count and capture-pane for the bytes it stored. `misc/probe-tmux-utf8.sh`
+// re-takes every row here and prints the tmux it took them on — the rows are that
+// build's answers, so a build that answers differently is a reason to re-take the
+// table, not to loosen it. TestScreenMatchesATerminalUnderTmux is the same idea,
+// applied to a whole frame instead of one string.
 //
 // They are recorded here because the alternative is a width table whose agreement
 // with a terminal is a claim in a comment. Every row below is a case where a
