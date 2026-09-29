@@ -22,7 +22,7 @@ Memory columns are the `B/op` `go test` prints; where prose rounds to KB it
 divides by 1000, which is the convention this file's older figures were written
 in.
 
-What this revision changed in the code, so the figures can be placed — five
+What this revision changed in the code, so the figures can be placed — six
 changes, each removing work a frame did and threw away:
 
 1. **`Window.Render` split into rows and their join.** The viewport path clips
@@ -41,12 +41,22 @@ changes, each removing work a frame did and threw away:
    byte is one cluster. A CPU profile had put the escape probe alone at a third
    of the folded frame: the same message was priced four times over per frame.
 4. **`windowFragment` no longer measures every row of the window** to draw ≤40
-   of them. The per-window width cache is gone; `renderVirtual` measures a row
-   where it pads it. This is the one change of the five with a cost, and the
-   cost is measured and stated where it lands.
+   of them. The per-window width cache is gone, and what a row needs after it
+   rides along in `visualLine.Pad`, so `renderVirtual` writes that many spaces
+   instead of measuring the row to work them out. This was the one change of the
+   five with a cost; the cost is closed, and both the cost and the closing are
+   measured where it landed.
 5. **`ensureCursorVisible` asks one pass instead of five to eight.** Every
    quantity it decides with is a prefix sum over the same line's clusters, and
    each walk encoded the line as a string first.
+6. **The wrap stopped allocating per line and per byte.** `restyleBreaks` built a
+   `WrapWriter` for every original line of a message, `WrapWriter.Write` allocated
+   a one-byte slice for every byte it handed the parser, and a line's row widths
+   were a fresh `[]int` per line under a comment saying they were one scratch. All
+   three are gone: the style pass is skipped when there is no escape in the content
+   to re-apply, the byte comes from a field on the writer, and the scratch is
+   outside the loop. [wrapContent](#wrapcontent) carries the figures, and the
+   condition the skip needs — which is not the obvious one.
 
 Plus the stale figures in comments across `window.go`, `window_renderer.go`,
 `width.go` and the benchmark files. Every number below is measured on the tree
@@ -79,12 +89,13 @@ Working as designed:
   19.5μs across batches — see
   [What moved](#what-moved-and-what-moved-it)
 - ✅ **Incremental content append** — O(delta) per frame via
-  `appendDeltaToVisualLines`, avoiding an O(n) full re-wrap: ~491x on a 26KB
-  message (325 wrapped rows), 648 B against 242 KB per frame
-- ✅ **Incremental line height tracking** — `TryLineCount` from `wrappedLines`
-  in 788ns (a whole `ensureLineHeights` pass with 1 dirty window), no render
-- ✅ **Streaming stays under 1ms** — 2.38μs per full cycle (append + line
-  tracking + viewport render) against a 250ms tick, so the frame is ~0.001% of
+  `appendDeltaToVisualLines`, avoiding an O(n) full re-wrap: ~529x on a 26KB
+  message (325 wrapped rows), 214 B against 99 KB per frame
+- ✅ **Incremental line height tracking** — `TryLineCount` from `wrappedLines`,
+  no render, against the 273ns a whole `ensureLineHeights` pass with 1 dirty
+  window costs
+- ✅ **Streaming stays under 1ms** — 1.61μs per full cycle (append + line
+  tracking + viewport render) against a 250ms tick, so the frame is ~0.0006% of
   the budget
 - ✅ **Custom ScrollView** — 40 bytes of state holding the pre-clipped visible
   region; `View()` pads to the viewport height in 124ns and 4 allocs,
@@ -158,7 +169,7 @@ This means line tracking during streaming is **always fast**, not just on cache 
 
 ```
 Streaming frame arrives → appendDeltaToVisualLines (O(delta), plain text)
-TryLineCount → len(wrappedLines) + 1  (788ns for the whole ensureLineHeights pass, no render)
+TryLineCount → len(wrappedLines) + 1  (273ns for the whole ensureLineHeights pass, no render)
 ```
 
 A dedicated assertion test (`TestIncrementalPathIsUsed`) verifies that
@@ -201,10 +212,10 @@ Minimum of 10 runs at `-benchtime 1s`, except the last row (see its section).
 
 | Metric | Value | Memory | Allocs |
 |--------|-------|--------|-------:|
-| Average full cycle (append + line tracking + GetAll), `StreamingUpdateWithVirtualRendering` | **2.38μs** | 4,496 B | 93 |
+| Average full cycle (append + line tracking + GetAll), `StreamingUpdateWithVirtualRendering` | **1.61μs** | 4,004 B | 40 |
 | Incremental append only, `JustAppendUpdate` | **46ns** | 81 B | 0 |
-| Small delta streaming (append + line tracking), `StreamingSmallDelta` | **838ns** | 665 B | 58 |
-| Long content incremental append (26KB message), `AppendVsFullWrap_LongContent/incremental` | **1.10μs** (median, `-benchtime 300x`) | 648 B | 58 |
+| Small delta streaming (append + line tracking), `StreamingSmallDelta` | **267ns** | 217 B | 5 |
+| Long content incremental append (26KB message), `AppendVsFullWrap_LongContent/incremental` | **0.30μs** (median, `-benchtime 300x`) | 214 B | 5 |
 | Budget | < 1ms (target), 250ms (actual tick) | | |
 
 `JustAppendUpdate` reports 81 B/op and 0 allocs/op because the bytes are the
@@ -221,16 +232,25 @@ always 325 wrapped rows, and the benchmark's own comment said so too.
 Both sides append on every iteration, so `-benchtime` is part of the figure:
 **median of 6 runs at `-benchtime 300x`** — medians rather than minima because
 the incremental side is sub-microsecond, where one fast run is not a typical one
-(the six land between 1064ns and 1315ns).
+(the six land between 274ns and 335ns).
 
 | Operation | Time | Memory | Allocs |
 |-----------|------|--------|-------:|
-| **Incremental append** | **1.10μs** | **648 B** | **58** |
-| Full re-wrap | 0.54ms | 242,110 B | 27,293 |
-| **Speedup** | **~491x** | **~374x** | **~471x** |
+| **Incremental append** | **0.30μs** | **214 B** | **5** |
+| Full re-wrap | 0.158ms | 99,374 B | 48 |
+| **Speedup** | **~529x** | **~464x** | **~9.6x** |
+
+Both sides moved when the wrap stopped allocating per line and per byte
+([wrapContent](#wrapcontent)), and the full re-wrap by far the more: this row was
+0.54ms, 242,110 B and 27,293 allocs against an incremental 1.10μs, 648 B and 58.
+The allocation ratio is the one to read as an inversion rather than a loss —
+**~471x became ~9.6x** — because most of what the full re-wrap allocated was one
+slice per byte of content, and that was a defect rather than a cost. The time
+ratio holds (~491x → ~529x) and the memory ratio improved (~374x → ~464x) for the
+same reason: those per-byte slices were most of the 242 KB.
 
 Without the incremental path, every streaming frame on a long LLM response
-would trigger a full O(n) re-wrap of the entire accumulated content — 0.54ms
+would trigger a full O(n) re-wrap of the entire accumulated content — 0.158ms
 per frame. At the 250ms tick interval this is still manageable, but burst
 scenarios (multiple frames arriving between ticks) would accumulate latency.
 
@@ -247,20 +267,28 @@ comparing a viewported 51-window update against something else entirely.)
 
 **Minimum of 3 runs at `-benchtime 200x`** — pinned because both sides append
 per iteration and the non-incremental one's memory grows with the run: the same
-pair at `300x` reads 14.9 KB and 855 allocs for the side that re-wraps, while
-the incremental side does not move (4.4 KB, 89 allocs) because it is O(delta).
+pair at `300x` reads 7,386 B and 72 allocs for the side that re-wraps, while
+the incremental side does not move (3,943 B, 40 allocs) because it is O(delta).
+That growth used to be much steeper — the row read 14.9 KB and 855 allocs at
+`300x` against 11,240 B and 601 at `200x` — because most of what the re-wrap
+allocated was one slice per byte of content, and the content grows with the run.
+The benchtime is still part of the figure; it is now a small part.
 
 | Scenario | Time | Memory | Allocs |
 |----------|------|--------|-------:|
-| **Incremental (1 dirty window)** | **2.38μs** | 4,368 B | 89 |
-| Full re-wrap of the streaming window | 13.0μs | 11,240 B | 601 |
+| **Incremental (1 dirty window)** | **1.54μs** | 3,956 B | 40 |
+| Full re-wrap of the streaming window | 5.33μs | 6,409 B | 71 |
 
 Window count does not change the incremental cost, and the reason is structural
 rather than empirical: `ensureLineHeights` touches the one dirty window and
 `renderVirtual` only the windows the viewport overlaps, so nothing in the frame
-iterates the history. A probe at 50, 100 and 400 history windows reports the
-same 4,491 B and 93 allocs per frame, with the times inside run-to-run noise
-(2.4–3.6μs). The incremental path is O(delta), independent of history length.
+iterates the history. A probe at 50, 100 and 400 history windows reported the
+same per-frame memory and allocation count at each, with the times inside
+run-to-run noise; those figures were 4,491 B and 93 allocs when the probe was
+run and are 4,004 B and 40 today, the wrap's per-line and per-byte allocations
+having gone ([wrapContent](#wrapcontent)). The structural claim is what the probe
+was for, and it is unchanged: the incremental path is O(delta), independent of
+history length.
 
 ### Virtual Rendering
 
@@ -285,10 +313,10 @@ side builds all ~500.
 
 | Scenario | Benchmark | Time | Memory | Allocs |
 |----------|-----------|------|--------|-------:|
-| Incremental, 1 dirty window (20 windows) | `JustEnsureLineHeights` | **788ns** | 638 B | 55 |
-| Incremental, 1 dirty window (100 windows) | `EnsureLineHeightsIncremental` | **1.01μs** | 722 B | 65 |
+| Incremental, 1 dirty window (20 windows) | `JustEnsureLineHeights` | **273ns** | 212 B | 5 |
+| Incremental, 1 dirty window (100 windows) | `EnsureLineHeightsIncremental` | **333ns** | 247 B | 5 |
 | `lineHeights` array rebuilt over 100 windows | `EnsureLineHeightsFullRebuild` | **253ns** | 0 B | 0 |
-| Every window re-wrapped from scratch (50 windows, 80↔120 cols) | `WindowBufferResize` | **0.15ms** | 168,545 B | 6,800 |
+| Every window re-wrapped from scratch (50 windows, 80↔120 cols) | `WindowBufferResize` | **0.072ms** | 81,601 B | 1,900 |
 
 Two rows this table used to carry are gone rather than re-measured:
 "~150μs (1 dirty window, uncached)" and "~7.1ms (all 100 windows rendered from
@@ -307,7 +335,7 @@ window, viewport 30). Minimum of 10 runs at `-benchtime 1s`.
 
 | Metric | Value | Memory | Allocs |
 |--------|-------|--------|-------:|
-| Delta + GetTotalLines + GetAll (incremental, 100 windows) | **2.75μs** | 6,920 B | 111 |
+| Delta + GetTotalLines + GetAll (incremental, 100 windows) | **1.89μs** | 6,357 B | 41 |
 
 The full-rebuild side is not comparable and is no longer quoted here.
 `BenchmarkFullRebuildAfterAppend` — which this section used to cite as "all
@@ -382,17 +410,18 @@ Unfolded windows pay a small cost for their own line (the window's label
 composed into it, plus the timestamp — 1.00μs per delta via
 `BenchmarkWindowBufferDelta`). Which of the two states is dearer used to depend on
 the length of the message, with a crossover between 2KB and 32KB. It does not any
-more: the folded side now prices its summary from counts kept as the content grew,
-so it is the cheaper state in **time** at every size, and the dearer one in
+more: the folded side prices its summary from counts kept as the content grew, so
+it is the cheaper state in **time** at 2KB and 128KB and indistinguishable from
+expanded at 32KB (0.97x, inside the run-to-run band), and the dearer one in
 **memory** above 2KB, because summarizing still joins the message into one string
 while an expanded frame appends one delta to rows that are already wrapped.
-Minimum of 3 runs at `-benchtime 1500x`, both sides from the same binary:
+Minimum of 6 runs at `-benchtime 1500x`, both sides from the same binary:
 
 | Content size | Folded | Expanded | Folded ÷ expanded |
 |---|---:|---:|---:|
-| 2KB | 3.47μs, 4,776 B | 4.85μs, 9,945 B | **0.72x time, 0.48x memory** |
-| 32KB | 5.88μs, 35,496 B | 7.93μs, 27,082 B | **0.74x time**, 1.3x memory |
-| 128KB | 12.5μs, 133,801 B | 18.9μs, 79,205 B | **0.66x time**, 1.7x memory |
+| 2KB | 3.38μs, 4,776 B | 3.92μs, 8,816 B | **0.86x time**, 0.54x memory |
+| 32KB | 5.76μs, 35,496 B | 5.96μs, 24,177 B | **0.97x time**, 1.5x memory |
+| 128KB | 12.6μs, 133,800 B | 14.2μs, 73,332 B | **0.89x time**, 1.8x memory |
 
 Reasoning windows fold by default and are the ones that get long while streaming,
 so the time column is the one that matters for them, and the memory column is what
@@ -411,35 +440,50 @@ one frame at a fixed content size and its memory columns mean the same thing at
 any `-benchtime`. Each size runs folded and expanded on identical content; the
 expanded side is the control. Minimum of 4 runs at `-benchtime 1s`.
 
-| Content size | Folded: as found | cutters streamed | summary cut before escaping | frame measured once (now) | Expanded: as found | Expanded: now |
+| Content size | Folded: as found | cutters streamed | summary cut before escaping | frame priced from counts (now) | Expanded: as found | Expanded: now |
 |---|---:|---:|---:|---:|---:|---:|
-| 2KB | 99.0μs, 503,259 B, 95 | 17.5μs, 12,312 B, 63 | 15.1μs, 5,112 B, 55 | **3.75μs, 4,776 B, 51** | 7.84μs, 20,064 B, 97 | **4.28μs, 10,061 B, 86** |
-| 32KB | 4.20ms, 13,739,011 B, 127 | 249μs, 222,752 B, 73 | 193μs, 35,833 B, 55 | **18.1μs, 35,496 B, 51** | 57.0μs, 221,878 B, 106 | **7.77μs, 27,725 B, 86** |
-| 128KB | 13.5ms, 56,779,754 B, 143 | 934μs, 779,824 B, 77 | 770μs, 134,136 B, 55 | **63.9μs, 133,801 B, 51** | 220μs, 757,253 B, 111 | **18.2μs, 80,156 B, 86** |
+| 2KB | 99.0μs, 503,259 B, 95 | 17.5μs, 12,312 B, 63 | 15.1μs, 5,112 B, 55 | **3.38μs, 4,776 B, 51** | 7.84μs, 20,064 B, 97 | **3.92μs, 8,816 B, 75** |
+| 32KB | 4.20ms, 13,739,011 B, 127 | 249μs, 222,752 B, 73 | 193μs, 35,833 B, 55 | **5.76μs, 35,496 B, 51** | 57.0μs, 221,878 B, 106 | **5.96μs, 24,177 B, 75** |
+| 128KB | 13.5ms, 56,779,754 B, 143 | 934μs, 779,824 B, 77 | 770μs, 134,136 B, 55 | **12.6μs, 133,800 B, 51** | 220μs, 757,253 B, 111 | **14.2μs, 73,332 B, 75** |
 
 The first three folded columns are the previous revision's, quoted as it
-measured them (minimum of 4 at `-benchtime 1s`); the last three are this one's
-(minimum of 6). End to end the folded frame is **26x faster and 105x lighter at
-2KB, 211x and 424x at 128KB**, and the expanded control — which nobody set out
-to fix — is **12x faster and 9.4x lighter at 128KB**, because three of the five
-changes were about work an expanded frame did and discarded.
+measured them (minimum of 4 at `-benchtime 1s`); the last three are this tree's
+(minimum of 6 at `-benchtime 1500x`). The two benchtimes are comparable here and
+would not be elsewhere: this benchmark rebuilds its buffer under `StopTimer`, so
+one iteration is exactly one frame at a fixed content size, and the memory
+columns do not move with `-benchtime` — the folded 133,800 B and expanded
+73,332 B are the same figures a `-benchtime 1s` run reports.
 
-**The inversion this benchmark was added to expose has flipped, and the flip is
-the interesting result.** Folded used to be 12x–81x dearer than expanded; it is
-now dearer only above ~2KB, and at 128KB expanded is **3.5x faster and 1.7x
-lighter** than folded. That is not a regression in the fold, it is what the two
+The fourth folded column is labelled for the change that moved it most and spans
+two: pricing the summary from counts kept as the content grew, and then the
+wrap's per-line and per-byte allocations going
+([wrapContent](#wrapcontent)). It read 3.75μs / 18.1μs / 63.9μs between them —
+the middle and last of those were this document's own stale figures, left behind
+when the pricing change landed and corrected here. End to end the folded frame is
+**29x faster and 105x lighter at 2KB, 1,070x and 424x at 128KB**, and the
+expanded control — which nobody set out to fix — is **15.5x faster and 10.3x
+lighter at 128KB**, because three of the six changes were about work an expanded
+frame did and discarded and the sixth was mostly about expanded frames.
+
+**The inversion this benchmark was added to expose has flipped, and then flipped
+again in memory only.** Folded used to be 12x–81x dearer than expanded. It is not
+dearer in *time* at any size measured: 3.38μs against 3.92μs at 2KB, 5.76μs
+against 5.96μs at 32KB — inside the run-to-run band, so call those two equal —
+and 12.6μs against 14.2μs at 128KB. It is dearer in **memory** above 2KB, and by
+more the longer the message: 1.5x at 32KB, 1.8x at 128KB. That is what the two
 states now cost:
 
 - an **expanded** frame appends one delta to the already-wrapped rows and draws
   the ≤40 of them the viewport shows — O(delta + viewport), independent of how
   long the message has become;
-- a **folded** frame re-derives head + "…" + tail of the *whole* message —
-  O(content) — and joins the streaming delta parts into one string to read it.
+- a **folded** frame re-derives head + "…" + tail of the *whole* message and
+  joins the streaming delta parts into one string to read it — O(budget) in the
+  work it does over the message, O(content) in the bytes it copies to reach them.
 
-Folding trades "draw forty rows" for "summarize everything". Below a few tens
-of kilobytes the trade wins (3.75μs against 4.28μs at 2KB); above it, it loses.
-Reasoning windows fold by default and stream for as long as the model thinks, so
-the losing side of that trade is the per-tick cost of a long "thinking" phase.
+Folding trades "draw forty rows" for "summarize everything". That trade now wins
+on time at every size measured and loses on memory above 2KB, and the memory is
+the join. Reasoning windows fold by default and stream for as long as the model
+thinks, so the join is the per-tick cost of a long "thinking" phase.
 [What is left in the frame path](#what-is-left-in-the-frame-path) prices what is
 still O(content) in the folded frame and says what would make it O(budget).
 
@@ -789,12 +833,16 @@ expanded streaming frame, measured after each change in isolation.
    expensive at every point after; it now rides along in `visualLine.Pad`, an int32
    that fits in the padding `Cont`'s bool already leaves in the struct, and
    `renderVirtual` writes that many spaces instead of measuring the row to work
-   them out. **`GetAllDimmed/dimmed` is back at 2.3μs and 13,104 B — the same bytes
-   it was before the trade — and `/normal` at 1.8μs.** The counting is not free
-   where it happens: `FullWrappingPath` is +5% (5.9μs → 6.2μs) and +2% memory, and
-   `WindowBufferResize` holds its time for 2.5 KB more, which still leaves it 25 KB
-   under what it cost before this item. Measuring the two against each other needed
-   interleaving: run in separate batches, `WrapContent` and
+   them out. **`GetAllDimmed/dimmed` is back at 2.4μs and 13,104 B — the same bytes
+   it was before the trade, and the same it still is — and `/normal` at 1.8μs.** The
+   counting was not free where it happened: measured at the time, `FullWrappingPath`
+   was +5% (5.9μs → 6.2μs) and +2% memory, and `WindowBufferResize` held its time
+   for 2.5 KB more, which still left it 25 KB under what it cost before this item.
+   Item 6 has since taken both well below where they started — `FullWrappingPath`
+   is 2.1μs, 2,576 B and 44 allocs against the 6.2μs and 328 the counting left it
+   at, and `WindowBufferResize` 73μs and 81.6 KB against 152μs and 170 KB — so what
+   this item paid is no longer on the books. Measuring the two against each other
+   needed interleaving: run in separate batches, `WrapContent` and
    `FoldedToolStreamingDelta` each appeared to move by 20% and neither does when the
    binaries alternate rounds.
 
@@ -913,10 +961,10 @@ at viewport 30; the folded session is the 120-window one at viewport 40.
 | Benchmark | Value |
 |-----------|------:|
 | `WindowBufferGetAll` | **1.71μs** |
-| `WindowBufferDeltaWithGetAll` | **2.75μs** |
+| `WindowBufferDeltaWithGetAll` | **1.89μs** |
 | `VirtualRenderingCursorMovement` | **39.3μs** |
 | `VirtualRenderingScroll` | **64.0μs** |
-| `StreamingUpdateWithVirtualRendering` | **2.38μs** |
+| `StreamingUpdateWithVirtualRendering` | **1.61μs** |
 | `FoldedSessionGetAll` | **6.75μs** |
 
 The folded row was dropped from this table on 2026-09-28 as unmeasurable and is
@@ -939,7 +987,19 @@ be compared against was deleted with the `Style` block width that reached it
 (see `style.go`), and it was the last line break not measured with `width.go`'s
 table. `BenchmarkWrapContent` measures it — 1,760 bytes of code-like content
 whose lines all already fit, wrapping to 101 rows at 60 columns:
-**22.1μs, 9,590 B, 1,772 allocs** (minimum of 10 runs at `-benchtime 1s`).
+
+| | Time | Memory | Allocs |
+|---|---:|---:|---:|
+| before the two findings below | 21.6μs | 9,590 B | 1,772 |
+| today | **1.3μs** | **0 B** | **0** |
+
+Minimum of 10 runs at `-benchtime 1s`, both rows on the reference machine. This
+input now costs nothing at all, and that is the correct answer rather than a
+lucky one: every line already fits, so `hardwrapCells` returns the string it was
+given (`linesFit` early-out), and the content carries no escape, so the style
+pass has nothing to re-apply and returns that same string
+(`canRestyleNothing`). Two functions each handing back their input is what 0 B
+and 0 allocs mean.
 
 The A/B against the wrapper it replaced is below, and it needed correcting on
 two counts. The rows were labelled `ansi.Hardwrap (before)` against
@@ -957,31 +1017,104 @@ runs at `-benchtime 5000x`, same process, same input.
 | | Time | Memory | Allocs |
 |---|---:|---:|---:|
 | before: `ansi.Hardwrap` + WrapWriter | 30.2μs | 17,244 B | 1,780 |
-| after: `hardwrapCells` + WrapWriter (today's `wrapContent`) | 24.4μs | **9,577 B** | 1,772 |
+| after: `hardwrapCells` + WrapWriter (the `wrapContent` of that revision) | 24.4μs | **9,577 B** | 1,772 |
 | — the break step alone, before | 6.7μs | 7,616 B | 8 |
 | — the break step alone, after | **2.0μs** | **0 B** | **0** |
 
 So the break got **3.3x faster and stopped allocating**, and the call as a whole
-moved ~1.2x in time and ~1.8x in memory, because step 2 (the `WrapWriter` style
-pass) dominates it. The time ratio is the soft number here — repeated batches of
+moved ~1.2x in time and ~1.8x in memory, because step 2 — the `WrapWriter` style
+pass — dominated it. The time ratio is the soft number here — repeated batches of
 the same A/B put it between 1.1x and 1.5x — while the memory and allocation
 columns are exact and repeat. That is the load-bearing part, and the reason is
 visible in the last two rows: this input's lines all already fit, so
 `hardwrapCells` returns the string it was given (`linesFit` early-out) while
 `ansi.Hardwrap` rebuilt it.
 
-The larger effect is on the paths that wrap short lines, where that early-out
-applies, and it shows up in allocation rather than in time. Two document-level
-figures sit near it and are worth stating with their attribution fixed: the full
-re-wrap of the 26KB message allocates **242 KB and 27,293** per operation today
-against 607 KB and 27,335 before the width table, and markdown streaming
-**12.8 KB and 1,072** against 18.4 KB and 1,195. **Neither reduction is the width
-table's**, which is what this paragraph said until 2026-09-28: measured at
-`c637636c^` and at `c637636c` on this machine, both figures are unchanged across
-that commit (607 KB and 18.4 KB on both sides). They moved later, in two steps —
-at `4cb2b34a` (476 KB, 15.1 KB) and again with this revision's missing tab guard
-(359 KB, 12.8 KB); see [What moved](#what-moved-and-what-moved-it). The width
-table's own measurable win is the one in the table above.
+Step 2 dominating the call is what made it worth counting its allocations, and
+that counting is the two findings below. It no longer dominates: on content with
+no escape in it, step 2 does not run at all.
+
+**What the 1,772 allocations were.** Both were found by counting allocations per
+LINE of a wrapped message rather than per call, which is the granularity the
+callers that dominate a re-wrap pay at: `wrapVisualLines` calls `wrapRows` once
+per original line, and `wrapRows` calls `restyleBreaks` on what the break
+produced.
+
+- *the style pass built a writer per line.* `restyleBreaks` constructed a
+  `WrapWriter` — the writer, its two handler closures, a buffer, and a parser from
+  the pool — on every call. `WrapWriter`'s doc said the parser "is not allocated
+  per line as the audit suggested", which was true of `wrapContent` and `Wrap`,
+  which call it once per invocation, and false of this path. The comment now says
+  what the code does.
+- *the writer allocated a slice per byte.* `WrapWriter.Write` handed the underlying
+  writer `[]byte{b}`, one byte at a time, because the parser has to be advanced
+  through each byte in turn. That is one allocation per byte of styled content: 31
+  for a 31-character line, which with the construction above is why a plain
+  single-row line cost **38** allocations in total. It writes from a one-byte field
+  on the writer now, which is safe because an `io.Writer` must not retain what it
+  is given.
+
+A plain single-row line so went from 38 allocations to 0, and `wrapVisualLines` on
+a 200-line message from **7,815 to 211**. The 200 that remain are one per line —
+the rows slice `wrapRows` splits the wrapped line into. Two hundred more used to
+sit beside them, a `[]int` of widths per line, and are now one scratch outside the
+loop; that loop's comment already claimed the scratch, while the code declared it
+inside the loop and passed `nil`. Counting per line is what turned up both, and
+`TestWrapVisualLinesKeepsOneWidthScratch` is what keeps them found. It asserts the
+slope rather than a count, because counts move and slopes do not: doubling the
+lines must not add anything like one allocation per line.
+
+Skipping the style pass needs a condition, and the obvious one is wrong. Every
+byte the writer adds beyond the ones it is given is guarded by the pen or the
+hyperlink being set, and only a CSI `m` or an OSC 8 sets either, so the question
+is whether the string carries an introducer. `hasEscape` answers it for a 7-bit
+ESC and for a C1 control in its two-byte UTF-8 form, `C2 80..9F`. The parser is
+byte-oriented, though, and also reads a LONE byte in `0x80..0x9F` as a C1
+introducer — which `hasEscape` deliberately does not, because in valid UTF-8 such
+a byte is a continuation, and reading it as an introducer would put most CJK text
+on the escape route (文 ends in `0x87`). The condition is therefore
+`!hasEscape(s) && utf8.ValidString(s)`, and the second half is load-bearing:
+`"\x9b31m red\nacross a break"` comes back from the writer restyled, and
+`hasEscape` finds nothing in it. Over 4,000 generated strings, of those the writer
+changes, 108 are declined by `hasEscape` and **10 only by `utf8.ValidString`** —
+which is the count that says the first version of this fast path, written with
+`hasEscape` alone, was unsound and would have dropped a restyle.
+`TestNothingTheWriterChangesEvadesCanRestyleNothing` asserts the implication in
+that direction, and fails if either half stops being needed by anything in the
+corpus, so neither can be deleted quietly.
+
+The larger effect is on the paths that wrap short lines, where both early-outs
+apply, and it shows up in allocation far more than in time. The two
+document-level figures this paragraph has always carried, re-measured on the
+reference machine at each revision that moved them:
+
+| | full re-wrap of the 26 KB message | markdown streaming |
+|---|---|---|
+| before the width table | 607 KB, 27,335 allocs | 18.4 KB, 1,195 allocs |
+| at `4cb2b34a`, then with the missing tab guard | 476 KB, then 359 KB | 15.1 KB, then 12.8 KB / 1,072 |
+| before the two findings above | 350 KB, ~34,500 allocs | 13.1 KB, 1,097 allocs |
+| today | **190 KB, 49 allocs** | **4.2 KB, 128 allocs** |
+
+All at `-benchtime 1s`, minimum of 10 runs for time and the exact columns for
+memory; the re-wrap benchmark's content grows with benchtime, so its allocation
+column is only comparable within a row. **Neither of the first two reductions is
+the width table's**, which is what this paragraph said until 2026-09-28: measured
+at `c637636c^` and at `c637636c` on this machine, both figures are unchanged
+across that commit (607 KB and 18.4 KB on both sides). They moved later, in two
+steps; see [What moved](#what-moved-and-what-moved-it). The width table's own
+measurable win is the one in the A/B above.
+
+The last row is the two findings, and the allocation column is the part to read.
+The re-wrap benchmark's content is 26,000 bytes in a SINGLE original line, so the
+per-byte slice allocation was ~26,000 allocations on its own, and head's count
+varied from 33,501 to 36,648 across the 10 runs because it scaled with content
+that grows per iteration. Today's is 49 and 50 — flat across all 10 runs, because
+nothing in the path is per byte any more. Time moved with it:
+`AppendVsFullWrap_LongContent/full-rewrap` 526μs → 253μs, `FullWrap` 63.9μs →
+19.8μs, `FullWrappingPath` 6.1μs → 2.1μs, and the expanded side of a folded text
+window's frame 18.3μs → 14.4μs at 128 KB. Those are interleaved `benchstat`
+comparisons of the two binaries over 8 to 12 rounds, all at p=0.000; the folded
+side, which does not wrap a body, is unchanged at every size.
 
 ### Resize Performance
 
@@ -989,12 +1122,19 @@ Minimum of 10 runs at `-benchtime 1s`.
 
 | Scenario | Value | Memory | Allocs |
 |----------|-------|--------|-------:|
-| Resize 50 windows (80↔120 cols) | **0.15ms** | 168,545 B | 6,800 |
+| Resize 50 windows (80↔120 cols), before the two findings in [wrapContent](#wrapcontent) | 0.155ms | 170,400 B | 7,100 |
+| Resize 50 windows (80↔120 cols), today | **0.072ms** | **81,601 B** | **1,900** |
+
+This row read 0.15ms, 168,545 B and 6,800 allocs before it was re-measured on
+the reference machine; the memory and allocation columns move with the tree, the
+time column with the machine and its state.
 
 This is the from-scratch re-wrap path: `WithWidth` invalidates every window, so
 each pays a full `wrapContent`. Its 50 windows are expanded text windows of 65
-bytes each, which is the shape that pays a re-wrap per window; a folded window
-answers with the summary row instead, and that row's cost is the subject of
+bytes each, which is the shape that pays a re-wrap per window — and 65 bytes is
+short enough that the per-line cost of the style pass was most of what a window
+paid, which is why this row halved. A folded window answers with the summary row
+instead, and that row's cost is the subject of
 [The fold summary materialized every cluster](#the-fold-summary-materialized-every-cluster-found-and-fixed).
 
 ## What moved, and what moved it
@@ -1086,9 +1226,9 @@ matter. The correctness fix stays; the allocation cost is gone.
 reason: the cutters stopped materializing clusters and the summary stopped
 escaping the whole message before cutting it (`5da8383e` and `8be4bbfc`). Full
 re-wrap 476 KB → 359 KB and 27,328 → 27,308 allocs at `300x`; incremental append
-779 B → **648 B** and 61 → **58**; markdown streaming 15.1 KB → **12.8 KB** and
-1,139 → **1,072**; `WindowBufferResize` 208,516 B → 195,135 B and 7,900 → 6,900
-allocs; `JustEnsureLineHeights` 1.03μs → **788ns**. The mechanism is in
+779 B → 648 B and 61 → 58; markdown streaming 15.1 KB → 12.8 KB and 1,139 →
+1,072; `WindowBufferResize` 208,516 B → 195,135 B and 7,900 → 6,900 allocs;
+`JustEnsureLineHeights` 1.03μs → 788ns. The mechanism is in
 [the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed); the
 reason a *tab* guard shows up in a re-wrap and a resize is that
 `wrapVisualLines` expands tabs per original line, and almost none of them
@@ -1096,20 +1236,43 @@ contain one.
 
 **This revision moved two of those again**, and neither is a fourth mechanism —
 they are the byte-wise ASCII route through `cellWidth` and the rows/join split.
-Full re-wrap 359 KB → **242 KB** and 27,308 → **27,293** allocs at `300x`,
-because the re-wrap measures every row it produces; `WindowBufferResize`
-195,135 B → **168,545 B** and 6,900 → **6,800** allocs, because a full rebuild
-no longer joins 50 windows' text to count their lines. The bolded figures in the
-paragraph above are the ones this revision did not move.
+Full re-wrap 359 KB → 242 KB and 27,308 → 27,293 allocs at `300x`, because the
+re-wrap measures every row it produces; `WindowBufferResize` 195,135 B →
+168,545 B and 6,900 → 6,800 allocs, because a full rebuild no longer joins 50
+windows' text to count their lines.
+
+**And then the wrap's own allocations moved nearly all of them again**, for a
+reason that is neither a width table nor a cutter: `restyleBreaks` built a
+`WrapWriter` for every original line of a message, and `WrapWriter.Write`
+allocated a one-byte slice for every byte it handed the parser — so a re-wrap
+paid once per line and once per byte of content. Full re-wrap 242 KB →
+**99,374 B** and 27,293 → **48** allocs at `300x`; incremental append 648 B →
+**214 B** and 58 → **5**; markdown streaming 12.8 KB → **4.2 KB** and 1,072 →
+**128**; `WindowBufferResize` 168,545 B → **81,601 B** and 6,800 → **1,900**
+allocs; `JustEnsureLineHeights` 788ns → **273ns** and 638 B → **212 B**. Bold is
+the current tree again, and the two paragraphs above are history. The mechanism,
+and the condition that lets the style pass be skipped at all, are in
+[wrapContent](#wrapcontent).
 
 The benchtime trap is worth keeping visible, because the previous revision fell
 into it and it is easy to fall into again: `AppendVsFullWrap_LongContent`
 appends on every iteration, so at `-benchtime 1s` (~1,800 iterations) its full
-re-wrap reports 616 KB and 32,148 allocs while at `300x` it reports 476 KB and
-27,328. The 2026-08-18 figures (796 KB, 32,085 allocs) were taken at the default
-`1s`, and they reproduce to within 0.2% at `10c5e88b` with that benchtime. So
-that row was never stale either — it was compared against a `300x` measurement,
-which made one benchmark's two benchtimes look like 2.5x of drift.
+re-wrap reported 616 KB and 32,148 allocs at the tree this was found in, while
+at `300x` it reported 476 KB and 27,328. The 2026-08-18 figures (796 KB, 32,085
+allocs) were taken at the default `1s`, and they reproduce to within 0.2% at
+`10c5e88b` with that benchtime. So that row was never stale either — it was
+compared against a `300x` measurement, which made one benchmark's two benchtimes
+look like 2.5x of drift.
+
+Those were the figures then. Today the same pair reads ~181 KB and 50 allocs at
+`1s` against 99,374 B and 48 at `300x`, because the allocation that scaled with
+the content was one slice per byte and is gone ([wrapContent](#wrapcontent)).
+Read that honestly rather than as the trap getting smaller in every sense: the
+*absolute* spread fell a long way (140 KB and 4,820 allocs between the two
+benchtimes, against 82 KB and 2 now), but the memory *ratio* grew, from 1.29x to
+1.82x, because the part of the figure that does not depend on benchtime shrank
+much faster than the part that does. The trap is still worth knowing and the
+benchtime still belongs beside any figure from that benchmark.
 
 There is a second trap beside it, and this revision fell into both. `StopTimer`
 excludes setup from the **timing** and from nothing else. Two consequences:
@@ -1137,7 +1300,7 @@ the folded *row* — see
 ## Why Rate Limiting Isn't Needed
 
 1. **UI refresh is polled at 250ms intervals** — data ingestion itself is not throttled
-2. **Render overhead is well under 0.01%** of wall time during streaming (2.38μs per 250ms tick ≈ 0.001%). The one thing that ever threatened this claim was the folded text summary, which spent 5.4% of a tick at 128KB of reasoning text while it materialized every cluster twice per frame and then escaped the whole message to cut 75 cells out of it; it spends 0.005% now ([the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed)). The caveat that remains is about growth rather than this figure: window content is not capped, so a frame costs more the longer the message it draws — see [What is left in the frame path](#what-is-left-in-the-frame-path)
+2. **Render overhead is well under 0.01%** of wall time during streaming (1.61μs per 250ms tick ≈ 0.0006%). The one thing that ever threatened this claim was the folded text summary, which spent 5.4% of a tick at 128KB of reasoning text while it materialized every cluster twice per frame and then escaped the whole message to cut 75 cells out of it; it spends 0.005% now ([the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed)). The caveat that remains is about growth rather than this figure: window content is not capped, so a frame costs more the longer the message it draws — see [What is left in the frame path](#what-is-left-in-the-frame-path)
 3. **`updateContent()` skips unchanged content** efficiently — the one deliberate exception is the executing-tool spinner refresh (`InvalidateRunningToolSpinners`), which invalidates pending tool windows per tick so the header spinner keeps rotating during silent commands; it costs a 33ns scan and 0 allocations, plus the one window's row in the frame that follows, only while a tool executes (see [tool-spinner-refresh.md](tool-spinner-refresh.md)). That row is a tool window's, so it reads the first input line — the cheap summary, not the O(content) one
 4. **Incremental append is O(delta)** — no quadratic accumulation for long responses
 
@@ -1175,19 +1338,26 @@ gives those allocations back:
 
 | Benchmark (allocs/op) | Before the reflow (`4719fdcc`) | At the reflow (`e691eb90`) | After the width table (`c637636c`) | This tree |
 |---|---:|---:|---:|---:|
-| `MarkdownStreaming_PlainDeltas` | 1,195 | 1,195 | 1,195 | **1,072** |
-| `MarkdownStreaming_RawMode` | 1,194 | 1,194 | 1,194 | **1,071** |
-| `MarkdownStreaming_TableDeltas` | 17,003 | 52,819 | — | **47,980** |
+| `MarkdownStreaming_PlainDeltas` | 1,195 | 1,195 | 1,195 | **128** |
+| `MarkdownStreaming_RawMode` | 1,194 | 1,194 | 1,194 | **127** |
+| `MarkdownStreaming_TableDeltas` | 17,003 | 52,819 | — | **6,253** |
 | `RenderMarkdownTables_Large` | 1,971 | 3,503 | 5,418 | **3,096** |
 | `RenderMarkdownTables_Small` | 56 | 101 | 132 | **90** |
 
-Read the last two rows as a pair: the reflow's real cost was 1,971 → 3,503
+The last two rows are where this tree last stood and did not move again; the
+first three fell when the wrap stopped allocating per line and per byte
+([wrapContent](#wrapcontent)), the streaming rows from 1,072 / 1,071 / 47,980.
+`RenderMarkdownTables_*` render a table without wrapping a window's content, so
+they are untouched by it — which is a useful control, since it says the fall is
+the wrap's and not something that moved under all of markdown.
+
+Read the two `RenderMarkdownTables` rows as a pair: the reflow's real cost was
+1,971 → 3,503
 allocs on the large transform (~1.8x, because a record can now span several
 visual lines), the width table then took it to 5,418 for no functional gain, and
 this revision takes it to **3,096** — below where it started, because the
 transform expands tabs per table line and per wrapped row and `expandTabs` no
-longer rebuilds a string that has no tab in it. The `PlainDeltas` fall from
-1,195 to 1,072 is that same guard plus `4cb2b34a`'s earlier cut.
+longer rebuilds a string that has no tab in it.
 
 Allocation counts are exact and repeatable — every run of every column reported
 the same integers — which is why the table is stated in allocations.
@@ -1199,13 +1369,14 @@ single-run microseconds and had to be "corrected" twice against pure noise.
 Ratios are stable, point estimates are not.
 
 What the allocations prove: markdown-mode streaming of non-table deltas costs
-**exactly** what raw mode costs, one alloc above the raw baseline — 1,072 against
-1,071 on this tree, the same one-off as at `4719fdcc` — so the table path is
+**exactly** what raw mode costs, one alloc above the raw baseline — 128 against
+127 on this tree, the same one-off as at `4719fdcc` — so the table path is
 provably entered by nothing but table-touching deltas. The table-bearing rows are
 up because a record can now span several visual lines and each column's grapheme
-widths are measured. Note that the *plain* rows fell (1,195 → 1,072) in two
-later steps, not at the reflow: the identity held across every change, and the
-absolute counts moved under it.
+widths are measured. Note that the *plain* rows fell (1,195 → 1,072 → 128) in
+steps after the reflow rather than at it: the identity held across every change,
+and the absolute counts moved under it. That a one-alloc gap survives a fall of
+that size is why the table is stated in allocations at all.
 
 **The headline property still holds exactly: plain-text streaming in markdown
 mode costs the same as raw mode** — the table path is only entered by deltas
@@ -1269,7 +1440,7 @@ access (no interface dispatch on the hot path).
 ### Why `ensureLineHeights` Defers Full Render
 
 During streaming, `ensureLineHeights` first tries `UpdateLineCountFast` → `TryLineCount`.
-If the renderer's `wrappedLines` is populated, this returns the line count in 1.01μs
+If the renderer's `wrappedLines` is populated, this returns the line count in 333ns
 for the whole pass, without rendering. Otherwise it calls `Window.buildLines`,
 which composes the window's own row and wraps the content into visual rows but
 does **not** join them — `GetAll` → `renderVirtual` clips those rows to the

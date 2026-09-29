@@ -17,6 +17,7 @@ import (
 	"image/color"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	ansi "github.com/charmbracelet/x/ansi"
 )
@@ -43,12 +44,46 @@ func wrapContent(s string, width int) string {
 // needs, and it is width-preserving by construction: it inserts escape sequences
 // and nothing else, and escapes charge no cells. It also adds no '\n', so the
 // rows it returns are the rows it was given.
+//
+// A string the writer would hand back unchanged is handed back here instead —
+// canRestyleNothing says why that is a proof and not a guess. It is the common
+// case: transcript prose, tool output, most rows of most messages. A per-line
+// call used to pay 38 allocations for it, one of them per byte written.
 func restyleBreaks(s string) string {
+	if canRestyleNothing(s) {
+		return s
+	}
 	var buf bytes.Buffer
 	w := NewWrapWriter(&buf)
 	defer w.Close()
 	_, _ = io.WriteString(w, s) // bytes.Buffer.Write never fails
 	return buf.String()
+}
+
+// canRestyleNothing reports whether the WrapWriter would emit exactly the bytes
+// it is given for s, so that restyleBreaks can skip building one.
+//
+// Every byte the writer adds is guarded by the pen or the hyperlink being set,
+// and only a CSI 'm' or an OSC 8 sets either, so the question is whether s
+// carries an introducer. hasEscape answers it for the two forms a well-formed
+// string can hold: a 7-bit ESC, and a C1 control in its UTF-8 encoding, C2
+// followed by 80..9F.
+//
+// The well-formedness is a condition and not a formality. The parser is
+// byte-oriented and reads a LONE byte in 0x80..9F as a C1 introducer, which
+// hasEscape deliberately does not: in valid UTF-8 such a byte is a continuation,
+// and reading it as an introducer would put most CJK text on the escape route —
+// 文 ends in 0x87. A string that is not valid UTF-8 can therefore carry an
+// introducer hasEscape cannot see, and has to go through the writer. That is not
+// hypothetical: "\x9b31m red\nacross a break" comes back from the writer
+// restyled, and hasEscape finds nothing in it.
+//
+// TestNothingTheWriterChangesEvadesCanRestyleNothing is the check on this, over
+// random bytes rather than a chosen corpus, asserting the implication in the
+// direction that has to hold: a string the writer changes is never one this
+// reports safe to skip.
+func canRestyleNothing(s string) bool {
+	return !hasEscape(s) && utf8.ValidString(s)
 }
 
 // wrapRows is wrapContent returning the rows it produced and the width of each.
@@ -85,16 +120,26 @@ func wrapRows(s string, width int, cells []int) (rows []string, widths []int) {
 // (which used ultraviolet's Style); the pen parsing and canonical SGR
 // re-emission are byte-compatible.
 //
-// The ansi.Parser is allocated once per WrapWriter (via ansi.GetParser
-// in NewWrapWriter, returned to the pool in Close). wrapContent and
-// Wrap call NewWrapWriter once per invocation, so the pool does see
-// reuse across consecutive renders — it is not allocated per line as
-// the audit suggested.
+// The ansi.Parser comes from a pool (ansi.GetParser in NewWrapWriter, returned
+// to it in Close), so building a WrapWriter reuses a parser rather than
+// allocating one. The writer itself, its two handler closures and the buffer
+// they write into are not pooled, and building one per line is what the wrap
+// does: wrapRows calls restyleBreaks once per ORIGINAL line of a message. A
+// plain single-row line so paid 38 allocations to move a pen that never left
+// zero — one of them per byte it wrote, which is what the scratch below is for.
+// restyleBreaks now returns its input untouched when there is no escape in it,
+// so that line skips the construction entirely; styled content still builds one
+// per line.
 type WrapWriter struct {
 	w     io.Writer
 	p     *ansi.Parser
 	style penStyle
 	link  link
+	// one is the scratch a single byte is written from. Write has to hand the
+	// parser every byte in turn, and []byte{b} made that one allocation per
+	// byte of every line the wrap produced. An io.Writer must not retain what
+	// it is given, so reusing one array for the whole stream is safe.
+	one [1]byte
 }
 
 // NewWrapWriter returns a new WrapWriter.
@@ -131,20 +176,21 @@ func (w *WrapWriter) Write(p []byte) (int, error) {
 		w.p.Advance(b)
 		if b == '\n' {
 			if !w.style.IsZero() {
-				_, _ = w.w.Write([]byte(ansi.ResetStyle))
+				_, _ = io.WriteString(w.w, ansi.ResetStyle)
 			}
 			if !w.link.IsZero() {
-				_, _ = w.w.Write([]byte(ansi.ResetHyperlink()))
+				_, _ = io.WriteString(w.w, ansi.ResetHyperlink())
 			}
 		}
 
-		_, _ = w.w.Write([]byte{b})
+		w.one[0] = b
+		_, _ = w.w.Write(w.one[:])
 		if b == '\n' {
 			if !w.link.IsZero() {
-				_, _ = w.w.Write([]byte(ansi.SetHyperlink(w.link.URL, w.link.Params)))
+				_, _ = io.WriteString(w.w, ansi.SetHyperlink(w.link.URL, w.link.Params))
 			}
 			if !w.style.IsZero() {
-				_, _ = w.w.Write([]byte(w.style.String()))
+				_, _ = io.WriteString(w.w, w.style.String())
 			}
 		}
 	}
@@ -157,10 +203,10 @@ func (w *WrapWriter) Write(p []byte) (int, error) {
 // it does not cause safety issues or leaks.
 func (w *WrapWriter) Close() error {
 	if !w.style.IsZero() {
-		_, _ = w.w.Write([]byte(ansi.ResetStyle))
+		_, _ = io.WriteString(w.w, ansi.ResetStyle)
 	}
 	if !w.link.IsZero() {
-		_, _ = w.w.Write([]byte(ansi.ResetHyperlink()))
+		_, _ = io.WriteString(w.w, ansi.ResetHyperlink())
 	}
 	if w.p != nil {
 		ansi.PutParser(w.p)
@@ -436,7 +482,11 @@ func joinVisualLines(lines []visualLine) string {
 func wrapVisualLines(s string, width int) []visualLine {
 	var out []visualLine
 	// One scratch for the widths of every row of every line, rather than one per
-	// line: a message is many lines and most of them make one row.
+	// line: a message is many lines and most of them make one row. wrapRows fills
+	// the slice it is handed and hands it back, so it survives the loop — and
+	// reusing it is safe because the widths are read inside the iteration that
+	// produced them, when the rows they belong to are being appended to out.
+	var widths []int
 	for _, part := range strings.Split(s, "\n") {
 		// Expand tabs per ORIGINAL line (column resets at '\n'): this is
 		// done here — not on the whole content — so the incremental
@@ -445,16 +495,15 @@ func wrapVisualLines(s string, width int) []visualLine {
 		// column, not from 0).
 		part = expandTabs(part)
 		var rows []string
-		var widths []int
 		switch {
 		case width >= 1:
-			rows, widths = wrapRows(part, width, nil)
+			rows, widths = wrapRows(part, width, widths[:0])
 		case part != "":
 			rows = []string{part}
-			widths = []int{cellWidth(part)}
+			widths = append(widths[:0], cellWidth(part))
 		default:
 			rows = []string{""}
-			widths = []int{0}
+			widths = append(widths[:0], 0)
 		}
 		for i, r := range rows {
 			// A row the wrap broke is followed by one of its own continuations,

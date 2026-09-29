@@ -157,10 +157,11 @@ func BenchmarkFoldedToolStreamingDelta(b *testing.B) {
 // 56.8 MB this started at.
 //
 // READ THE TWO SIDES AGAINST EACH OTHER, because the inversion has gone back the
-// other way. Folded is the cheaper state in TIME at every size — 3.5μs against
-// 4.8μs at 2 KB, 5.9μs against 7.9μs at 32 KB, 12.5μs against 18.9μs at 128 KB —
-// and the dearer one in MEMORY above 2 KB: 35 KB against 27 KB, and 134 KB against
-// 79 KB. The memory is the join. A folded frame still folds the streaming delta
+// other way. Folded is the cheaper state in TIME at 2 KB and 128 KB and level with
+// expanded at 32 KB — 3.4μs against 3.9μs, 5.8μs against 6.0μs, 12.6μs against
+// 14.2μs, the middle pair inside the run-to-run band — and the dearer one in
+// MEMORY above 2 KB: 35 KB against 24 KB, and 134 KB against 73 KB. The memory is
+// the join. A folded frame still folds the streaming delta
 // parts into one string in order to cut a head and a tail out of it, while an
 // expanded frame appends one delta to rows that are already wrapped and draws ≤40
 // of them. So the folded row is O(budget) in the work it does over the message and
