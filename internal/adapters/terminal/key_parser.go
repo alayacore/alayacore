@@ -228,10 +228,11 @@ type FocusMsg struct{}
 // BlurMsg is emitted when the terminal loses focus.
 type BlurMsg struct{}
 
-// InputParser is a streaming key parser. It retains incomplete escape
-// sequences across Parse calls and tracks bracketed paste state.
+// InputParser is a streaming key parser. It retains the bytes of an unfinished
+// sequence across Parse calls — an escape sequence, or a multi-byte character a
+// read boundary cut in half — and tracks bracketed paste state.
 type InputParser struct {
-	pending []byte // incomplete escape sequence bytes
+	pending []byte // bytes of an unfinished sequence, escape or UTF-8
 	inPaste bool
 	paste   strings.Builder
 }
@@ -245,9 +246,9 @@ type InputParser struct {
 type parserState int
 
 const (
-	stGround parserState = iota // nothing outstanding: the next byte starts fresh
-	stEscape                    // an escape sequence is held in pending
-	stPaste                     // a bracketed paste is open, collecting into paste
+	stGround  parserState = iota // nothing outstanding: the next byte starts fresh
+	stPartial                    // an unfinished sequence is held in pending
+	stPaste                      // a bracketed paste is open, collecting into paste
 )
 
 // state reports which of the three the parser is in.
@@ -256,18 +257,18 @@ func (p *InputParser) state() parserState {
 	case p.inPaste:
 		return stPaste
 	case len(p.pending) > 0:
-		return stEscape
+		return stPartial
 	default:
 		return stGround
 	}
 }
 
-// MidSequence reports whether any input is unfinished — an incomplete escape
-// sequence, or an open paste. The input loop arms its silence timeout on this,
-// not merely on buffered pending bytes: an open paste with no marker head
-// buffered is unfinished just the same, and a timeout that only saw pending
-// bytes would leave a paste that never closes swallowing every keystroke that
-// follows (see Flush).
+// MidSequence reports whether any input is unfinished — the bytes of an
+// incomplete escape sequence or of a multi-byte character, or an open paste. The
+// input loop arms its silence timeout on this, not merely on buffered pending
+// bytes: an open paste with no marker head buffered is unfinished just the same,
+// and a timeout that only saw pending bytes would leave a paste that never closes
+// swallowing every keystroke that follows (see Flush).
 func (p *InputParser) MidSequence() bool { return p.state() != stGround }
 
 // Parse consumes data and returns the decoded messages. Bytes that form an
@@ -292,18 +293,19 @@ func (p *InputParser) Parse(data []byte) []Msg {
 
 		if data[0] != 0x1b {
 			// Fast path: C0 control or printable rune.
-			if data[0] < 0x20 || data[0] == 0x7f {
-				msgs = append(msgs, KeyPressMsg(decodeC0(data[0])))
-				data = data[1:]
-				continue
+			key, n, held := decodePrintable(data)
+			if held {
+				// The head is an encoding a read boundary cut short, and its
+				// remaining bytes are still in the kernel's buffer. Holding them is
+				// what makes the parse independent of where the boundary fell — the
+				// same hold, the same buffer and the same silence timeout an
+				// incomplete escape sequence gets. Copy: these bytes belong to
+				// whoever handed them over, and the input loop hands the same buffer
+				// back on its next read.
+				p.pending = append([]byte(nil), data...)
+				return msgs
 			}
-			r, n := utf8.DecodeRune(data)
-			if r == utf8.RuneError && n == 1 {
-				// Invalid byte: swallow it (mirrors terminal behavior of
-				// replacing unknown bytes with a rune error character).
-				r = utf8.RuneError
-			}
-			msgs = append(msgs, KeyPressMsg(Key{Code: r}))
+			msgs = append(msgs, KeyPressMsg(key))
 			data = data[n:]
 			continue
 		}
@@ -351,6 +353,35 @@ func (p *InputParser) Parse(data []byte) []Msg {
 		msgs = append(msgs, KeyPressMsg(k))
 	}
 	return msgs
+}
+
+// decodePrintable decodes the head of a read that is not an ESC: a C0 control, or
+// one printable character. It returns the key it is and how many bytes it took.
+//
+// held reports a third possibility, which is not a key at all. utf8.DecodeRune
+// answers for an encoding the read cut short exactly as it answers for a byte that
+// is not UTF-8 — (RuneError, 1) — and only utf8.FullRune separates them, since an
+// invalid encoding counts as full on the grounds that it converts as a width-1
+// error rune. So a head that is short but valid is a character still arriving: its
+// remaining bytes are in the kernel's buffer and come with the next read, and the
+// caller holds them rather than delivering a replacement character for each byte
+// of one character. Without that, a burst longer than inputReadSize puts a boundary
+// inside a multi-byte encoding as a matter of course, and a CJK character typed
+// into the prompt arrives as three U+FFFD.
+func decodePrintable(data []byte) (key Key, n int, held bool) {
+	if data[0] < 0x20 || data[0] == 0x7f {
+		return decodeC0(data[0]), 1, false
+	}
+	r, size := utf8.DecodeRune(data)
+	if r == utf8.RuneError && size == 1 {
+		if !utf8.FullRune(data) {
+			return Key{}, 0, true
+		}
+		// Invalid byte: swallow it (mirrors terminal behavior of replacing
+		// unknown bytes with a rune error character).
+		r = utf8.RuneError
+	}
+	return Key{Code: r}, size, false
 }
 
 const (
@@ -963,11 +994,15 @@ func (p *InputParser) Flush() []Msg {
 			return []Msg{PasteMsg{Content: content}}
 		}
 		return nil
-	case stEscape:
+	case stPartial:
 		pending := p.pending
 		p.pending = nil
-		// One or more ESC bytes: emit that many Escape keys. Anything else
-		// that could not be completed is an unknown sequence, and dropped.
+		// One or more ESC bytes: emit that many Escape keys, because a lone ESC is
+		// a keypress the user is waiting on. Anything else that could not be
+		// completed is dropped — an unknown escape sequence, or the head of a
+		// multi-byte character whose remaining bytes never arrived. Dropping the
+		// latter is what the silence timeout is for: the alternative is putting a
+		// U+FFFD in the field for a character that was merely still on its way.
 		if allESC(pending) {
 			msgs := make([]Msg, len(pending))
 			for i := range pending {

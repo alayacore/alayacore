@@ -7,11 +7,13 @@
 // terminal does — bytes in one end, the painted frame back out the other — and
 // asks the only question a user can ask: is the text I pasted on the screen?
 //
-// That distance is the point. Two of the defects behind this file were invisible
+// That distance is the point. Three of the defects behind this file were invisible
 // to reasoning about the code, because the code was correct about the thing it was
-// written to do: `InputField` was right that an unfocused box ignores input, and
-// `consumeEscape` was right that an unterminated introducer is held. What was
-// wrong was an assumption each made about who would set it, and only the running
+// written to do: `InputField` was right that an unfocused box ignores input,
+// `consumeEscape` was right that an unterminated introducer is held, and the
+// printable fast path was right that `utf8.DecodeRune` reports what it reports.
+// What was wrong each time was an assumption about who would set something — the
+// focus, the rest of a sequence, the rest of a character — and only the running
 // program can say what a user ends up seeing.
 //
 // It also caught a wrong measurement: the first sweep of the blur matrix appeared
@@ -217,7 +219,12 @@ func (t *tty) waitFor(needle []byte, timeout time.Duration) bool {
 // the blur only affected a few hundred ms; against a settled frame the effect was
 // permanent, and the earlier reading was simply not a measurement of what it
 // claimed to be.
-func (t *tty) settled(tb *testing.T, quiet time.Duration, cap time.Duration) bool {
+//
+// There is no return value. Whether the frame went quiet is reported by the log
+// line below, and no caller can act on it: a case that has not settled has to
+// assert against the bytes it has anyway, because the alternative is a test that
+// skips itself whenever the machine is slow.
+func (t *tty) settled(tb *testing.T, quiet time.Duration, cap time.Duration) {
 	tb.Helper()
 	var last []byte
 	stable := time.Duration(0)
@@ -232,11 +239,10 @@ func (t *tty) settled(tb *testing.T, quiet time.Duration, cap time.Duration) boo
 		}
 		last = out
 		if stable >= quiet {
-			return true
+			return
 		}
 	}
 	tb.Logf("frame never went quiet within %v; blur-dependent assertions may be weakened", cap)
-	return false
 }
 
 func (t *tty) paste(tb *testing.T, content []byte) {
@@ -365,6 +371,42 @@ func TestEndToEndOverPty(t *testing.T) {
 		th.paste(t, []byte("MIDDLE-CLICK-OK"))
 		if !th.waitFor([]byte("MIDDLE-CLICK-OK"), 3*time.Second) {
 			t.Error("the paste never reached the screen")
+		}
+		th.close()
+	})
+
+	// 5. A multi-byte character cut by the read boundary.
+	//
+	//    Cases 1–4 all deliver ASCII, and the paste cases are doubly insulated:
+	//    a bracketed paste accumulates bytes and decodes once at the end, so no
+	//    boundary inside it can split a character. Typed text has neither
+	//    protection. The program reads at most inputReadSize bytes at a time, so a
+	//    burst of CJK longer than that puts a boundary inside a character's
+	//    encoding as a matter of course — and utf8.DecodeRune reports an
+	//    incomplete encoding and an invalid byte the same way, (RuneError, 1). The
+	//    printable fast path read that as "invalid byte" and emitted a keypress for
+	//    it, so every byte of one character became its own U+FFFD in the field.
+	//
+	//    One byte at a time is the delivery that cannot dodge the split: a
+	//    single-byte write never completes a three-byte character, so this holds at
+	//    any read size the program chooses. What it proves is narrow and stated
+	//    narrowly — the built binary over a real pty does not corrupt a user's CJK
+	//    into replacement characters. The exhaustive claim, that every read size
+	//    from one byte up gives the messages the same bytes read at once give, is
+	//    TestParseIsInvariantToReadBoundaries, and it is the one that can afford to
+	//    be exhaustive.
+	t.Run("a multi-byte character cut by the read boundary", func(t *testing.T) {
+		th := startProgram(t, binary)
+		// 102 runes, 306 bytes: past inputReadSize, so the real batch boundary
+		// falls inside the text as well as the artificial one-byte delivery.
+		text := strings.Repeat("你好世界中文", 17)
+		th.send(t, []byte(text), 1)
+		if !th.waitFor([]byte("你"), 3*time.Second) {
+			t.Error("none of the typed text reached the screen")
+		}
+		th.settled(t, 500*time.Millisecond, 5*time.Second)
+		if bytes.Contains(th.out(), []byte("\uFFFD")) {
+			t.Error("a character split across reads reached the screen as U+FFFD: the parser is not holding an incomplete encoding")
 		}
 		th.close()
 	})

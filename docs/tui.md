@@ -170,6 +170,26 @@ unfinished just the same, and only the state test covers it. The sweep over ever
 cut offset and every read size is `key_parser_paste_cut_test.go`; the loop's half
 is a row in `program_input_cut_test.go`.
 
+The same boundary falls inside a *character*. A bracketed paste accumulates bytes
+and decodes once at the end, so no cut inside one can split a character; typed text
+has no such buffer, and a burst longer than `inputReadSize` puts a boundary inside a
+multi-byte encoding as a matter of course — an IME committing a sentence, or a host
+with no bracketed paste that sends one as keystrokes. `utf8.DecodeRune` reports an
+incomplete encoding and an invalid byte the same way, `(RuneError, 1)`, and the
+printable fast path read that as "invalid byte" and emitted a keypress for it, so
+each byte of one character became its own U+FFFD in the field: three for a CJK
+character, four for an emoji. `utf8.FullRune` is what tells them apart, and it
+counts an invalid encoding as full because one converts as a width-1 error rune —
+so what it reports incomplete is genuinely still arriving. The fast path holds it in
+the same `pending` an incomplete escape sequence is held in, and the same silence
+timeout resolves it: completed by the next read, or dropped rather than drawn as a
+replacement character for text that was merely on its way.
+`key_parser_read_invariance_test.go` states this as the property it is, and its
+streams now include text with no paste around it, so every read size from one byte
+up has to deliver what the same bytes deliver read at once. Case 5 of
+`tty_e2e_test.go` is that claim against the built binary over a real pty, sent one
+byte at a time so that no read size the program chooses can dodge the split.
+
 Where a paste lands is decided by the pane the user focused, not by the terminal
 window's OS-level focus. That focus is reported too (DEC mode 1004, enabled by
 `Screen.Start`, arriving as `FocusMsg`/`BlurMsg`), and it is a fact about drawing:

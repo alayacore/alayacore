@@ -22,8 +22,10 @@ import (
 
 // invarianceStreams are the shapes whose bytes a boundary can divide: the two
 // mouse encodings, the string controls a terminal replies with unprompted, both
-// bracketed-paste markers, the chords that share those introducers, keys, and
-// text that is no sequence at all.
+// bracketed-paste markers, the chords that share those introducers, keys, text
+// that is no sequence at all, and text whose characters are wider than a byte —
+// the last being a cut no sequence grammar describes, since it lands inside one
+// character's encoding rather than between two sequences.
 func invarianceStreams() []string {
 	paste := pasteStart + "two\r\nlines" + pasteEnd
 	return []string{
@@ -55,6 +57,17 @@ func invarianceStreams() []string {
 		"\x1bOP",
 		"hello\r\nworld",
 		"\x1b[200~日本語👍\x1b[201~",
+		// The same text with no paste around it: keystrokes, which take the
+		// parser's printable fast path rather than its byte-accumulating paste
+		// buffer. A boundary inside a multi-byte encoding is the one cut the
+		// fast path cannot see, because utf8.DecodeRune reports an incomplete
+		// sequence and an invalid byte the same way.
+		"日本語",
+		"e\u0301e\u0301",
+		"👍🏽",
+		"a你b好c",
+		strings.Repeat("你好世界中文", 17),
+		"中文" + paste,
 		"\x1b[200~\x1b[201~",
 		"\x1b",
 		"\x1b[",
