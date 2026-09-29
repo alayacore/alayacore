@@ -19,13 +19,18 @@ package terminal
 // invalid byte is ever consulted. So content is repaired on its way into a Window
 // — AppendFromTLV and its neighbors — and everything downstream may assume it.
 //
-// The input side needs no repair of its own: decodePrintable already turns a byte
-// that is not UTF-8 into U+FFFD and holds a sequence a read cut short, so what a
-// user types or pastes into the prompt reaches a Window well-formed. It replaces
-// per byte rather than per ill-formed run, so a truncated sequence in the middle
-// of a paste shows one box per byte where a terminal echoing the same bytes would
-// show one; that is a cosmetic difference in the user's own text and not a width,
-// and the caret e2e case pins the drawn width against the caret either way.
+// The input side is the same question arriving with a weaker guarantee. It has to
+// hold a run a read cut short, because its remaining bytes are still in the
+// kernel's buffer and a replacement for them now would be a box for a character
+// that is arriving — and it has to replace a run that is finished but ill-formed
+// with one U+FFFD, which is the rule above. Those are two answers to "is this
+// unfinished or is it broken", and only the second is a replacement: the hold is
+// decodePrintable's, the run is the same illFormedRun the repair here walks, and
+// the measurements in sanitize_test.go are asserted of both paths. So a keystroke,
+// a paste and a Window's content all draw the same number of boxes for the same
+// bytes, and nothing decides what an invalid byte means by accident. A paste is
+// repaired where a read becomes text — closePaste, which hands over a string every
+// consumer can take as one.
 
 import (
 	"strings"
@@ -72,10 +77,18 @@ func sanitizeUTF8(s string) string {
 	return b.String()
 }
 
-// illFormedRun is how many bytes at the head of s a terminal consumes for the one
-// replacement it draws, given that s[0] cannot begin a well-formed sequence —
-// which is the only way sanitizeUTF8 calls it.
-func illFormedRun(s string) int {
+// illFormedRun is how many bytes a terminal consumes for the one replacement it
+// draws, given that the first byte cannot begin a well-formed sequence — which is
+// the only way a caller asks.
+//
+// It is written over the two things a caller can be holding, a Window's content and
+// a read, because this is one rule and the type it is written over is not a reason
+// for a second copy of it. The keystroke path needs it per byte of a buffer and the
+// render path per run of a string, and both are asking the same question the same
+// terminal was measured answering. (isPathSep in attachment_window.go is the same
+// shape for the same reason: one rule, two types, and it is the rule that is the
+// single thing.)
+func illFormedRun[T ~string | ~[]byte](s T) int {
 	// Continuations the lead byte is owed: one for a 2-byte encoding, two for a
 	// 3-byte, three for a 4-byte. Taken whether or not they make the sequence
 	// legal, which is how a surrogate or an overlong encoding ends up as one

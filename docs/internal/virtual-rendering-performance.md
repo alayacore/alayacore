@@ -1165,8 +1165,15 @@ Two consequences are checked rather than asserted:
   one in half. That is structural and not a hope: every frame's text reaches the
   adapter out of a `json.Unmarshal` or a `json.Marshal`, and both replace ill-formed
   bytes rather than passing them on, so a string on the wire is well-formed before the
-  adapter sees it. The input side reaches the same guarantee from the other direction
-  — `decodePrintable` holds a sequence a read cut short instead of replacing it.
+  adapter sees it. The input side reaches the same guarantee from the other direction,
+  and the same rule: `decodePrintable` holds a sequence a read cut short — it is
+  unfinished, not broken — and replaces a run that is finished but ill-formed with one
+  U+FFFD, by the same `illFormedRun` this repair walks. A paste is repaired where a
+  read becomes text (`closePaste`), so every `PasteMsg` consumer gets a string. The
+  table below is asserted of all three paths, and it was five rows wrong on two of
+  them when the assertion was written: `utf8.DecodeRune` answers `(RuneError, 1)` for
+  a truncated 3-byte sequence as well as for a byte that cannot be one, so a rule that
+  followed it replaced per byte.
   `TestContentThatIsNotWellFormedIsRepairedNotHeld` pins what happens when the
   guarantee is violated anyway: the two halves of one character become two
   replacements, and the frame is still well-formed. The pricing differential had to

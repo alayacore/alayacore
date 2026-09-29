@@ -377,9 +377,13 @@ func decodePrintable(data []byte) (key Key, n int, held bool) {
 		if !utf8.FullRune(data) {
 			return Key{}, 0, true
 		}
-		// Invalid byte: swallow it (mirrors terminal behavior of replacing
-		// unknown bytes with a rune error character).
-		r = utf8.RuneError
+		// Ill-formed, and not because it is unfinished: the terminal draws one
+		// replacement for the run this lead byte is owed and takes the run's bytes
+		// off the stream with it, so this is one key and not one per byte. The same
+		// rule the render path applies to a Window's content (sanitize.go), and the
+		// same measurements decide both — sanitize_test.go's table is asserted of
+		// this path in key_replacement_test.go.
+		return Key{Code: utf8.RuneError}, illFormedRun(data), false
 	}
 	return Key{Code: r}, size, false
 }
@@ -437,9 +441,16 @@ func pasteTailHold(data []byte) int {
 	return 0
 }
 
-// closePaste leaves paste mode and hands back what was collected.
+// closePaste leaves paste mode and hands back what was collected, repaired.
+//
+// The repair is here rather than in the prompt because this is where bytes become
+// text: what the paste carried is a read's worth of whatever the terminal sent, and
+// a client that sends a broken encoding sends it through here. Every consumer of
+// PasteMsg gets a well-formed string and no consumer has to decide for itself what
+// an ill-formed byte means — the same rule and the same measurements the keystroke
+// path and the render path use (sanitize.go, key_replacement_test.go).
 func (p *InputParser) closePaste() string {
-	content := p.paste.String()
+	content := sanitizeUTF8(p.paste.String())
 	p.inPaste = false
 	p.paste.Reset()
 	return content
