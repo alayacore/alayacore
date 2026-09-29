@@ -718,10 +718,27 @@ scan using `>=` for its budget and ignoring zero-width bytes. Each was caught,
 the first two by more than one test. The padding rule was mutation-checked seven
 more ways: the count off by one; padding asked for by every row rather than only
 the ones a continuation follows; the count dropped where a row is recolored, which
-is the silent failure the dimmed register would otherwise hide, and is caught by
-exactly one test; the row's width recorded after the running count was reset
-instead of before; and the frame ignoring the count, writing one space too many,
-and writing one too few. Each was caught. The summary's counts were
+is the silent failure the dimmed register would otherwise hide; the row's width
+recorded after the running count was reset instead of before; and the frame
+ignoring the count, writing one space too many, and writing one too few. Each was
+caught.
+
+The recolored-row one said "caught by exactly one test" when it was first run, and
+re-running it found a second copy that nothing caught at all. A body row under an
+overlay is recolored in one of two places — `bodyStyled`, which caches a text
+window's copy, and `styleBodyLines`, which recolors a user or tool window's plain
+rows per frame — and the sweep meant to cover both put its wide content in a text
+window only. Its other windows held ASCII, whose rows a hard wrap breaks at exactly
+the width, so they asked for no padding and never reached the line that carries the
+count across; and its tool window was `edit_file`, whose rows `RenderDiffContent`
+colors, while `styleBodyLines` hands an escaped row back untouched. Dropping
+`Pad: l.Pad` from `styleBodyLines` passed the whole package. The sweep now puts
+wide content in all three kinds of window and tallies which of them produced a
+padded row under the dimmed register, so its coverage is a checked fact rather than
+an intention, and the frame-level case runs over both registers and all three kinds
+too. Re-run, the five mutations of that path are caught by 5 tests, 4, 10, 26 and
+10 — the two recolored copies, then the frame ignoring the count, writing one space
+too many, and writing one too few. The summary's counts were
 mutation-checked eight more ways and each was caught: letting a tab through, and
 letting a carriage return through, so that the content measured is not the content
 counted; pricing a line break as one cell; not counting line breaks at all;

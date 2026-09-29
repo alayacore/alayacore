@@ -159,9 +159,23 @@ func TestWrapRowsMatchesWrapContent(t *testing.T) {
 // several widths — including row 0 after windowFragment swaps it for the cursor's
 // register, and including the dimmed register, where a row's text is a recolored
 // copy that carries its padding across rather than earning it again.
+//
+// There are two such copies and a sweep has to reach both. A text window's body is
+// recolored by bodyStyled, which caches the copy; a user window's and a tool
+// window's plain rows are recolored by styleBodyLines, per frame. Neither runs at
+// all in the normal register, where Body has no foreground and the rows come back
+// as they were, so a padded row exercises a copy only under the dimmed one — and
+// only if the window holding it is wide enough to have one. The tally at the bottom
+// is the part that says this sweep did.
 func TestWindowRowsPadToTheBufferWidth(t *testing.T) {
 	long := "content that is long enough to wrap at any of the widths below "
+	// Wide content, because an ASCII row that a hard wrap broke is exactly the
+	// width and so asks for no padding at all: the count is non-zero only where a
+	// cluster is wider than the space left at the break.
+	wide := strings.Repeat("你好世界中文", 20)
+
 	padded := 0
+	dimmedPadded := map[string]int{}
 	for _, width := range []int{12, 13, 24, 25, 40, 41, 80} {
 		for _, blocked := range []bool{false, true} {
 			styles := DefaultStyles()
@@ -171,13 +185,16 @@ func TestWindowRowsPadToTheBufferWidth(t *testing.T) {
 			wb := NewWindowBuffer(width, styles)
 			wb.AppendOrUpdate("AT", "text", strings.Repeat(long, 6))
 			wb.AppendOrUpdate("UT", "user", strings.Repeat(long, 6))
-			// Wide content, because an ASCII row that a hard wrap broke is exactly
-			// the width and so asks for no padding at all: the count is non-zero
-			// only where a cluster is wider than the space left at the break. A
-			// sweep without this checks the rule on rows that never exercise it.
-			wb.AppendOrUpdate("AT", "wide", strings.Repeat("你好世界中文", 20))
+			wb.AppendOrUpdate("AT", "wide", wide)
+			wb.AppendOrUpdate("UT", "wideuser", wide)
 			wb.HandleToolInputEvent(protocol.ToolInputData{
 				ID: "t1", Name: "edit_file", Input: []byte(strings.Repeat(long+"\n", 6)),
+			}, 1)
+			// Not edit_file: that name goes through RenderDiffContent, whose rows
+			// carry escapes, and styleBodyLines hands an escaped row back untouched.
+			// A diff tool never reaches the copy this sweep exists to check.
+			wb.HandleToolInputEvent(protocol.ToolInputData{
+				ID: "t2", Name: "write_file", Input: []byte(wide),
 			}, 1)
 
 			for _, folded := range []bool{false, true} {
@@ -186,9 +203,14 @@ func TestWindowRowsPadToTheBufferWidth(t *testing.T) {
 					w.Folded = folded
 					w.Invalidate()
 					w.buildLines(width, styles, blocked)
-					where := fmt.Sprintf("built rows (width=%d blocked=%v folded=%v window=%d)", width, blocked, folded, i)
+					kind := rendererKind(w)
+					where := fmt.Sprintf("built rows (width=%d blocked=%v folded=%v window=%d %s)", width, blocked, folded, i, kind)
 					checkPaddedRows(t, where, w.cache.lines, width)
-					padded += countPadded(w.cache.lines)
+					n := countPadded(w.cache.lines)
+					padded += n
+					if blocked && n > 0 {
+						dimmedPadded[kind] += n
+					}
 
 					// The cursor's register: row 0 replaced by a recolored copy.
 					frag := wb.windowFragment(w, 0, len(w.cache.lines), true, blocked)
@@ -204,7 +226,31 @@ func TestWindowRowsPadToTheBufferWidth(t *testing.T) {
 	if padded == 0 {
 		t.Fatal("no row in the sweep asked for padding, so the rule was never exercised")
 	}
-	t.Logf("%d rows asked for padding", padded)
+	// And a sweep whose padded rows all sit in one kind of window has checked one of
+	// the two recolored copies. Dropping the padding from the other is silent: the
+	// row draws short, the terminal wraps where the row ended rather than where the
+	// frame meant, and every row after it is one terminal row out.
+	for _, kind := range []string{"text", "user", "tool"} {
+		if dimmedPadded[kind] == 0 {
+			t.Errorf("no dimmed %s window had a row asking for padding, so the copy that recolors %s rows was never checked", kind, kind)
+		}
+	}
+	t.Logf("%d rows asked for padding; dimmed, by renderer: %v", padded, dimmedPadded)
+}
+
+// rendererKind names the renderer a window draws with, for a tally that has to
+// tell the two recolored-copy paths apart.
+func rendererKind(w *Window) string {
+	switch w.renderer.(type) {
+	case *textRenderer:
+		return "text"
+	case *userRenderer:
+		return "user"
+	case *toolRenderer:
+		return "tool"
+	default:
+		return fmt.Sprintf("%T", w.renderer)
+	}
 }
 
 // TestDeltaRowsPadToTheWidthTheyDraw covers the streaming path, where rows are not
@@ -293,47 +339,90 @@ func countPadded(rows []visualLine) int {
 // against an odd width cannot divide evenly, and then a frame that stopped
 // consulting the count draws a short row and every row after it lands one terminal
 // row out.
+//
+// It runs over the three kinds of window and both registers, because the row a frame
+// reads is not always the row the wrap made: under an overlay a body row's text is a
+// recolored copy, made by bodyStyled for a text window and by styleBodyLines for a
+// user or tool window's plain rows. A copy that did not carry the count across
+// would leave the frame writing no spaces after a row that still needs them, and the
+// row-level checks above would not see it — they check the rows a window holds, and
+// the copy is what the frame holds.
 func TestFrameWritesThePaddingARowAsksFor(t *testing.T) {
 	// Odd, so a two-cell cluster straddles the break and the row before it asks
 	// for the one space that brings it up to the width.
 	const width = 41
-	styles := DefaultStyles()
-	wb := NewWindowBuffer(width, styles)
-	wb.AppendOrUpdate("AT", "wide", strings.Repeat("你好世界中文", 20))
+	wide := strings.Repeat("你好世界中文", 20)
 
-	_ = wb.GetAll(-1, false) // full render populates the rows
-	w := wb.WindowAt(0)
-	rows := append([]visualLine(nil), w.cache.lines...)
-	if countPadded(rows) == 0 {
-		t.Fatalf("no row at width %d asks for padding, so this case cannot check what a frame writes", width)
+	kinds := []struct {
+		name  string
+		build func(wb *WindowBuffer)
+	}{
+		{"text", func(wb *WindowBuffer) { wb.AppendOrUpdate("AT", "wide", wide) }},
+		{"user", func(wb *WindowBuffer) { wb.AppendOrUpdate("UT", "wide", wide) }},
+		// Not edit_file: that name goes through RenderDiffContent, whose rows carry
+		// escapes, and styleBodyLines hands an escaped row back untouched.
+		{"tool", func(wb *WindowBuffer) {
+			wb.HandleToolInputEvent(protocol.ToolInputData{
+				ID: "t1", Name: "write_file", Input: []byte(wide),
+			}, 1)
+		}},
 	}
 
-	wb.SetViewportPosition(0, len(rows))
-	frame := wb.GetAll(-1, false)
-
-	// Rebuilt from the rows and a measurement of their text — not from the counts
-	// the rows carry — so a count the frame trusted too far shows up here. The
-	// branch structure mirrors renderVirtual's: a row a continuation follows is
-	// padded to the width, a row ending its original line is erased instead so a
-	// selection carries no trailing spaces, and the fragment's last row is erased
-	// once after the loop.
-	var b strings.Builder
-	for i, vl := range rows {
-		if i > 0 && !vl.Cont {
-			b.WriteString("\n")
+	for _, blocked := range []bool{false, true} {
+		register := "normal"
+		if blocked {
+			register = "dimmed"
 		}
-		b.WriteString(vl.Text)
-		switch {
-		case i < len(rows)-1 && rows[i+1].Cont:
-			b.WriteString(strings.Repeat(" ", wantPad(vl.Text, width)))
-		case i < len(rows)-1:
-			b.WriteString("\x1b[K")
-		}
-	}
-	b.WriteString("\x1b[K")
-	want := b.String()
+		for _, kind := range kinds {
+			t.Run(register+"/"+kind.name, func(t *testing.T) {
+				styles := DefaultStyles()
+				if blocked {
+					styles = styles.Dimmed()
+				}
+				wb := NewWindowBuffer(width, styles)
+				kind.build(wb)
 
-	if !strings.HasPrefix(frame, want) {
-		t.Errorf("the frame is not the rows with the padding they ask for:\n got  %q\n want %q", frame, want)
+				// A tool window folds by default, and a folded window is one summary
+				// row, which ends its own line and so asks for no padding at all.
+				w := wb.WindowAt(0)
+				w.Folded = false
+				w.Invalidate()
+
+				_ = wb.GetAll(-1, blocked) // full render populates the rows
+				rows := append([]visualLine(nil), w.cache.lines...)
+				if countPadded(rows) == 0 {
+					t.Fatalf("no %s row at width %d asks for padding, so this case cannot check what a frame writes", kind.name, width)
+				}
+
+				wb.SetViewportPosition(0, len(rows))
+				frame := wb.GetAll(-1, blocked)
+
+				// Rebuilt from the rows and a measurement of their text — not from the
+				// counts the rows carry — so a count the frame trusted too far shows up
+				// here. The branch structure mirrors renderVirtual's: a row a
+				// continuation follows is padded to the width, a row ending its original
+				// line is erased instead so a selection carries no trailing spaces, and
+				// the fragment's last row is erased once after the loop.
+				var b strings.Builder
+				for i, vl := range rows {
+					if i > 0 && !vl.Cont {
+						b.WriteString("\n")
+					}
+					b.WriteString(vl.Text)
+					switch {
+					case i < len(rows)-1 && rows[i+1].Cont:
+						b.WriteString(strings.Repeat(" ", wantPad(vl.Text, width)))
+					case i < len(rows)-1:
+						b.WriteString("\x1b[K")
+					}
+				}
+				b.WriteString("\x1b[K")
+				want := b.String()
+
+				if !strings.HasPrefix(frame, want) {
+					t.Errorf("the frame is not the rows with the padding they ask for:\n got  %q\n want %q", frame, want)
+				}
+			})
+		}
 	}
 }
