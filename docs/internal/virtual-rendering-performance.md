@@ -102,10 +102,12 @@ Two things were not fine, and both are fixed rather than recorded:
   cluster of the message, twice, per frame.** Reasoning windows fold by default
   and re-summarize on every delta, so at 128KB that frame cost 13.5ms and
   56.8 MB — 41x the time and 76x the memory the *same content expanded* costs,
-  which is backwards for the state whose whole job is to be cheap. Three rounds
-  of whole-message work came out, in three revisions: the cutters' cluster list,
-  the whole-message escape copy they cut out of, and then the four separate
-  pricings of the same message per frame. The frame is now **64μs and 134 KB**,
+  which is backwards for the state whose whole job is to be cheap. Four rounds
+  of whole-message work came out: the cutters' cluster list, the whole-message
+  escape copy they cut out of, the four separate pricings of the same message per
+  frame, and then the last pricing too — a text renderer now keeps the cells its
+  content draws and the line breaks in it, summed per delta, so a folded row reads
+  a count instead of walking the message. The frame is now **12.5μs and 134 KB**,
   and the same defect's other face — a keystroke at the end of a long prompt
   line, ~1ms and ~4 MB — is down to **~117μs and ~22 KB**. A third tail cut, the
   one the streaming tool previews use, turned out to split grapheme clusters; it
@@ -121,7 +123,8 @@ Two things were not fine, and both are fixed rather than recorded:
   the five to eight prefix sums it used to ask separately. At 128KB of content
   the **expanded** streaming frame went 231μs/757,278 B → **18.2μs/80,156 B**
   (12.7x, 9.4x) and the folded one 709μs/134,136 B → **63.9μs/133,801 B**
-  (11.1x). The fifth of those first traded a per-rebuild cost for a per-frame one
+  (11.1x), and on to 12.5μs when the summary's last pricing pass went with it.
+  The fifth of those first traded a per-rebuild cost for a per-frame one
   — `GetAllDimmed/dimmed` went 2.4μs → 5.8μs and 13,104 B → 15,824 B, because a
   frame that redraws without rebuilding then re-measured the rows it pads — and
   the trade is since closed: the wrap counts what a row needs after it at the
@@ -377,20 +380,23 @@ Why the shape is cheap where it is cheap:
 
 Unfolded windows pay a small cost for their own line (the window's label
 composed into it, plus the timestamp — 1.00μs per delta via
-`BenchmarkWindowBufferDelta`). Which of the two states is dearer now depends on
-the length of the message, and the crossover is between 2KB and 32KB:
+`BenchmarkWindowBufferDelta`). Which of the two states is dearer used to depend on
+the length of the message, with a crossover between 2KB and 32KB. It does not any
+more: the folded side now prices its summary from counts kept as the content grew,
+so it is the cheaper state in **time** at every size, and the dearer one in
+**memory** above 2KB, because summarizing still joins the message into one string
+while an expanded frame appends one delta to rows that are already wrapped.
+Minimum of 3 runs at `-benchtime 1500x`, both sides from the same binary:
 
 | Content size | Folded | Expanded | Folded ÷ expanded |
 |---|---:|---:|---:|
-| 2KB | 3.75μs, 4,776 B | 4.28μs, 10,061 B | **0.88x time, 0.47x memory** |
-| 32KB | 18.1μs, 35,496 B | 7.77μs, 27,725 B | 2.3x time, 1.3x memory |
-| 128KB | 63.9μs, 133,801 B | 18.2μs, 80,156 B | 3.5x time, 1.7x memory |
+| 2KB | 3.47μs, 4,776 B | 4.85μs, 9,945 B | **0.72x time, 0.48x memory** |
+| 32KB | 5.88μs, 35,496 B | 7.93μs, 27,082 B | **0.74x time**, 1.3x memory |
+| 128KB | 12.5μs, 133,801 B | 18.9μs, 79,205 B | **0.66x time**, 1.7x memory |
 
-Summarizing a message means reading it, while an expanded frame appends one
-delta to rows that are already wrapped and draws the ≤40 of them the viewport
-shows. Short messages make the fold the cheap state it is meant to be; long ones
-do not, and reasoning windows — which fold by default — are the ones that get
-long while streaming. The previous revision had this the other way round in
+Reasoning windows fold by default and are the ones that get long while streaming,
+so the time column is the one that matters for them, and the memory column is what
+is left to argue about. The previous revision had this the other way round in
 memory (5,112 B against 20,064 B at 2KB, 134 KB against 757 KB at 128KB)
 because the expanded frame still carried the whole-window work listed in
 [What is left in the frame path](#what-is-left-in-the-frame-path); that work is
@@ -636,6 +642,22 @@ listed with what each would catch, because a refactor that only has to be
   ASCII and an ASCII row a hard wrap broke is exactly the width. A padding count of
   zero and a count nobody consulted look identical there — it passed unchanged
   through every mutation below.
+- *the summary's counts* (`summary_pricing_test.go`, 5): the differential is the
+  same code with the counts retired (`summaryBytes = -1`), which sends a folded row
+  down `prepareContent` and `measure` — what it did before this — so the reference
+  is the implementation replaced and not a restatement of it. Two renderers take the
+  same bytes as two deltas split at every offset, and their folded rows must be
+  identical at twelve widths in three style registers. 149 of those cases keep the
+  counts and 246 retire them, which is the part that makes it a comparison: a corpus
+  that quietly retired every count would diff the slow path against itself and prove
+  nothing. Beside it — that the fit rule agrees with `escapedWidth`, the function
+  that states the same question independently, which is needed because
+  `headAndTailParts` now delegates to `headAndTailMeasured` and so cannot disagree
+  with it about a rule they share; that folding the pending deltas leaves the counts
+  alone, with the content appended one byte at a time so that there is a delta
+  boundary between every two bytes; that a byte which retires the counts retires
+  them for good; and that a renderer built with its content already in it is
+  measured rather than priced at zero cells.
 
 Four of these were mutation-checked — the change reverted or broken on purpose,
 to confirm the test fails: folding every frame instead of at the threshold, and
@@ -647,31 +669,46 @@ the ones a continuation follows; the count dropped where a row is recolored, whi
 is the silent failure the dimmed register would otherwise hide, and is caught by
 exactly one test; the row's width recorded after the running count was reset
 instead of before; and the frame ignoring the count, writing one space too many,
-and writing one too few. Each was caught.
+and writing one too few. Each was caught. The summary's counts were
+mutation-checked eight more ways and each was caught: letting a tab through, and
+letting a carriage return through, so that the content measured is not the content
+counted; pricing a line break as one cell; not counting line breaks at all;
+dropping the `+2` the fit rule owes them; dropping the check that the bytes counted
+are the bytes of the content being summarized, and weakening that check to `<=`;
+and losing the counts at a fold. Two of the eight were caught by one test each, and
+one — the fit rule's missing `+2` — was caught by none at all until a test was
+written against `escapedWidth` rather than against the branch that shares its code.
 
-**What is left, deliberately.** The folded frame is 64μs and 134 KB at 128 KB
-of content — 0.026% of a 250ms tick, against the 5.4% and 56.8 MB it was — and
-two things in it are still proportional to the message rather than to the row:
+**What is left, deliberately.** The folded frame is 12.5μs and 134 KB at 128 KB of
+content — 0.005% of a 250ms tick, against the 5.4% and 56.8 MB it was — and one
+thing in it is still proportional to the message rather than to the row:
 
 - **the join.** `rawContent()` folds the streaming delta parts into one string
-  before anything can measure or cut it. A memory profile of the frame puts
-  **97%** of its allocation in that call (131 KB of 134 KB) and a CPU profile
-  puts only ~12μs of its 64μs there: it is a garbage problem, not a latency one.
-- **the pricing pass.** `measure` walks the whole message once — 37μs of the
-  64μs — to answer "does this fit in 70 cells?", a question settled after 70
-  cells. It was four such passes before this revision; it is now one, and the
-  cuts either side of it are O(budget): the head stops at its budget and the
-  tail counts back from the end, measured at 50ns and 32ns against 24.6μs and
-  185μs for the same two cuts before.
+  before anything can cut it. A memory profile of the frame puts **97%** of its
+  allocation in that call (131 KB of 134 KB), and with the pricing pass gone it is
+  most of the time too: a 12.5μs frame against a join measured at 19μs on its own
+  at this size. It is a garbage problem first and a latency one second, and it is
+  why the revision that removed the pricing pass reports no change in bytes.
+
+The pricing pass that used to be listed beside it is gone: `measure` walked the
+whole message — 37μs of the then-64μs frame — to answer "does this fit in 70
+cells?", a question settled after 70 cells. A text renderer now keeps the cells and
+the line breaks, summed per delta, and a folded row reads the counts. **The folded
+frame at 128 KB went 66μs → 12.5μs and at 32 KB 20μs → 5.9μs**; the expanded frame,
+which builds no summary, did not move. [What is left in the frame
+path](#what-is-left-in-the-frame-path) states the rule for when the counts may be
+kept and what retires them.
 
 Removing the join means deriving head and tail from `contentParts` directly, and
 that is deliberately not attempted here: a grapheme cluster can straddle a part
 boundary (a combining mark arriving in its own delta), and `prepareContent` is
 not chunk-safe at all — `expandTabs` is a column state machine, so a tab's width
-depends on everything before it, and an escape sequence can straddle too. Both
-are real cases for streaming deltas, and the frame budget does not ask for the
-risk. Removing the pricing pass is a smaller, sounder change and is itemized in
-[What is left in the frame path](#what-is-left-in-the-frame-path).
+depends on everything before it, and an escape sequence can straddle too. The
+counts above sidestep that rather than solve it: they are kept only for content on
+which `prepareContent` is the identity and one byte is one cluster, so there is no
+boundary for anything to straddle. Widening them to content that does straddle
+would mean carrying the boundary along with the count, and at 12.5μs a frame the
+join is not asking for it.
 
 ### What is left in the frame path
 
@@ -740,24 +777,34 @@ expanded streaming frame, measured after each change in isolation.
 164μs, which is items 2 and 3 together: a resize is the one operation that
 rebuilds every window at once.
 
-**What is left.** The expanded frame is now O(delta + viewport). The folded one
-is still O(content), and that is the whole of the remaining growth in the frame
-path — 64μs and 134 KB at 128 KB of content, of which a profile puts 97% of the
-bytes in `rawContent`'s join and 37μs of the 64μs in `measure`'s single pass.
-Three changes would take the pricing pass out, and each is sound on its own:
+**What is left.** The expanded frame is now O(delta + viewport). The folded one is
+O(budget) in time for content that can be priced as it arrives and O(content) for
+content that cannot, and O(content) in bytes either way: at 128 KB the frame is
+12.5μs and 134 KB, and a profile puts 97% of the bytes — and, with the pricing
+pass gone, most of the time — in `rawContent`'s join.
 
-- an early-exit "does it fit" walk. Sound because every term of the sum is
-  non-negative, so a prefix that already exceeds the budget settles the answer
-  for the whole;
-- cuts that do not need the total width. `measured.tail` already does not on the
-  ASCII route — it counts back — and `measured.head` needs it only for its "the
-  whole string fits" fast path, which the fits test has already answered;
-- a cached answer to "is the accumulated content plain ASCII", which is what
-  decides the route and is monotone under appending: one flag, tested against
-  each delta instead of against the message.
+The pricing pass is gone, by the third of the three changes itemized here when it
+was still outstanding, which subsumed the other two. A text renderer keeps the
+cells its content draws and the line breaks in it, summed per delta, so "does this
+fit" and which route the cuts take are both answered from a count instead of a
+walk. An early-exit walk would have made the pass shorter; this removes it, and
+`prepareContent`'s two scans go with it, since a byte that would give either of
+them work is a byte that retires the count.
 
-Together those make the row O(budget). The join is the other half and is
-deliberately not attempted: see
+The counts are kept only while they can be kept *exactly*, and that is a byte rule
+rather than a judgement: every byte on the width table's byte-wise route, and none
+that `prepareContent` would rewrite. There one byte is one cluster, so a delta's
+cells add to the total exactly and no cluster can straddle two deltas — which is
+the whole reason a per-delta sum is sound here and would not be over arbitrary
+text. A combining mark arriving in the delta after its base, a tab, a carriage
+return, an escape or any byte over 0x7E retires the counts for good, and the
+message is measured again exactly as before. Content only grows, so nothing
+un-retires them; and they are trusted only when the bytes they cover are the length
+of the content being summarized, which is what keeps a renderer built with its
+content already in it — a fixture, or a restore path added later — from being priced
+as though it had accounted for bytes it never saw.
+
+The join is the remaining half and is deliberately not attempted: see
 [What is left, deliberately](#the-fold-summary-materialized-every-cluster-found-and-fixed)
 for the two reasons a chunked summary is not a local change.
 
@@ -768,7 +815,8 @@ scratch file); nothing bounds an AT or AR window. A frame that is O(content)
 therefore grows for as long as the model streams, and the total work of one long
 answer is quadratic in its length. At 128 KB the expanded frame is 18μs and
 would stay there at 4 MB, because it is O(delta + viewport); the folded one is
-64μs and would be ~2ms, because it is not. Both are inside a 250ms tick, and the
+12.5μs and would be ~0.4ms, because the join it still does is O(content) even
+though the summary's pricing is not. Both are inside a 250ms tick, and the
 argument for closing the gap is about growth rather than about any figure in this
 file. Full rebuilds are the other O(content) shape — a resize, a theme switch or
 a fold toggle re-wraps every window — and `WindowBufferResize` is the benchmark
@@ -1064,7 +1112,7 @@ the folded *row* — see
 ## Why Rate Limiting Isn't Needed
 
 1. **UI refresh is polled at 250ms intervals** — data ingestion itself is not throttled
-2. **Render overhead is well under 0.01%** of wall time during streaming (2.38μs per 250ms tick ≈ 0.001%). The one thing that ever threatened this claim was the folded text summary, which spent 5.4% of a tick at 128KB of reasoning text while it materialized every cluster twice per frame and then escaped the whole message to cut 75 cells out of it; it spends 0.026% now ([the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed)). The caveat that remains is about growth rather than this figure: window content is not capped, so a frame costs more the longer the message it draws — see [What is left in the frame path](#what-is-left-in-the-frame-path)
+2. **Render overhead is well under 0.01%** of wall time during streaming (2.38μs per 250ms tick ≈ 0.001%). The one thing that ever threatened this claim was the folded text summary, which spent 5.4% of a tick at 128KB of reasoning text while it materialized every cluster twice per frame and then escaped the whole message to cut 75 cells out of it; it spends 0.005% now ([the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed)). The caveat that remains is about growth rather than this figure: window content is not capped, so a frame costs more the longer the message it draws — see [What is left in the frame path](#what-is-left-in-the-frame-path)
 3. **`updateContent()` skips unchanged content** efficiently — the one deliberate exception is the executing-tool spinner refresh (`InvalidateRunningToolSpinners`), which invalidates pending tool windows per tick so the header spinner keeps rotating during silent commands; it costs a 33ns scan and 0 allocations, plus the one window's row in the frame that follows, only while a tool executes (see [tool-spinner-refresh.md](tool-spinner-refresh.md)). That row is a tool window's, so it reads the first input line — the cheap summary, not the O(content) one
 4. **Incremental append is O(delta)** — no quadratic accumulation for long responses
 

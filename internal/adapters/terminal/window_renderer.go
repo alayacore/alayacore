@@ -24,7 +24,33 @@ type textRenderer struct {
 	content      string   // full content (built from parts on demand)
 	contentLen   int      // cumulative length of all deltas
 	contentParts []string // streaming deltas (avoids O(n²) string concat)
-	mdMode       bool     // render markdown (toggled with 'r'; AT/AR only)
+
+	// The width of the content, kept as the content grows, so that a folded row
+	// does not walk the whole message to draw two thirds of one line. summaryBytes
+	// is the bytes summaryCells and summaryNewlines account for, and is -1 from the
+	// first byte they cannot.
+	//
+	// What they cannot is anything the byte-wise width route does not price — a byte
+	// over 0x7E, ESC, DEL — or anything prepareContent would rewrite: a tab or a
+	// carriage return. For every other byte one byte is one cluster, so a delta's
+	// cells add to the total exactly and no cluster can straddle two deltas. That
+	// is the whole reason this is sound where summing per-delta measurements of
+	// arbitrary text would not be: a combining mark arriving in the delta after its
+	// base would be priced as two clusters and drawn as one.
+	//
+	// Content only grows, so a byte that retired the counts retired them for good
+	// and -1 is never undone.
+	//
+	// They are trusted only when summaryBytes is the length of the content being
+	// summarized. That is what makes the zero value safe: a renderer built with its
+	// content already in it — a test fixture, or a restore path added later —
+	// accounts for none of it, so summaryBytes is 0 against a non-empty content and
+	// the message is measured instead.
+	summaryCells    int
+	summaryNewlines int
+	summaryBytes    int
+
+	mdMode bool // render markdown (toggled with 'r'; AT/AR only)
 
 	// mdTailInTable reports whether the accumulated content ends inside a
 	// table block (last line starts with '|' and no closing blank/text
@@ -57,6 +83,7 @@ func (r *textRenderer) ToolInfo() *ToolInfo { return nil }
 func (r *textRenderer) AppendFromTLV(_ string, value string) {
 	r.contentParts = append(r.contentParts, value)
 	r.contentLen += len(value)
+	r.noteSummaryDelta(value)
 	// The plain wrappedLines cache may change on any of the paths below,
 	// so the body-colored copy must be rebuilt on the next BuildInner.
 	r.coloredDirty = true
@@ -216,6 +243,60 @@ func (r *textRenderer) rawContent() string {
 	return buf.String()
 }
 
+// noteSummaryDelta folds one streaming delta into the counts a folded summary
+// reads, or retires them. It is called from AppendFromTLV, the one path every byte
+// of a text window's content arrives by — which is what makes summaryBytes a length
+// the content can be checked against rather than a number that happens to be near.
+func (r *textRenderer) noteSummaryDelta(delta string) {
+	if r.summaryBytes < 0 {
+		return
+	}
+	cells, newlines, ok := plainSummaryCounts(delta)
+	if !ok {
+		r.summaryBytes = -1
+		return
+	}
+	r.summaryCells += cells
+	r.summaryNewlines += newlines
+	r.summaryBytes += len(delta)
+}
+
+// plainSummaryCounts returns the cells s draws and the line breaks in it, and
+// whether s is content those two can be kept for: every byte priced by the width
+// table's byte-wise route, and left alone by prepareContent. One byte that fails
+// either retires the counts for the whole content, so both questions are asked in
+// the same pass over the delta.
+func plainSummaryCounts(s string) (cells, newlines int, ok bool) {
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if offASCIIRoute(b) || b == '\t' || b == '\r' {
+			return 0, 0, false
+		}
+		cells += asciiCells(b)
+		if b == '\n' {
+			newlines++
+		}
+	}
+	return cells, newlines, true
+}
+
+// summaryContent is the content a folded summary draws, as a measurement of it and
+// a count of its line breaks.
+//
+// While the counts cover every byte of raw, prepareContent has nothing to do — a
+// tab, a carriage return and an escape each retire them — so the content is raw
+// itself and the measurement is the counts. Those are the passes over the message
+// this exists to avoid: on 128 KB, measure is 38μs of a 46μs BuildCollapsed,
+// prepareContent's two scans are 2.7μs more, and escapedWidth counts the line
+// breaks in a third.
+func (r *textRenderer) summaryContent(raw string) (m measured, newlines int) {
+	if r.summaryBytes >= 0 && r.summaryBytes == len(raw) {
+		return measured{s: raw, cells: r.summaryCells, ascii: true}, r.summaryNewlines
+	}
+	content := prepareContent(raw)
+	return measure(content), strings.Count(content, "\n")
+}
+
 // maxContentParts bounds how many streaming deltas may sit unmerged in
 // contentParts.
 //
@@ -325,14 +406,14 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 // foreground. This applies to both the middle "…" in head+tail and
 // the leading "…" in tail-only summaries.
 func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
-	content := prepareContent(r.rawContent())
+	m, newlines := r.summaryContent(r.rawContent())
 	label := labelForTag(r.tag)
 	line := ""
 	if label != "" {
 		line = padLabel(label)
 	}
 	summaryWidth := max(0, width-collapsedPrefixWidth-CollapsedLabelWidth)
-	summary, ellipsisOffset := r.collapsedSummary(content, summaryWidth)
+	summary, ellipsisOffset := collapsedSummary(m, newlines, summaryWidth)
 	line += summary
 	line = truncateWithSuffix(line, max(0, width-collapsedPrefixWidth)) // safety net
 
@@ -350,8 +431,12 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 // -1 if no marker is present). All non-delta text uses head+tail (so
 // the user sees both topic and latest content); the only leading "…"
 // is reserved for streaming delta content, which lives in toolRenderer.
-func (r *textRenderer) collapsedSummary(content string, summaryWidth int) (string, int) {
-	head, tail, truncated := headAndTailParts(content, summaryWidth)
+//
+// It takes the content already measured, with the line-break count that belongs to
+// that measurement, because both are what a renderer keeps as its content grows
+// (summaryContent) and re-deriving either is a pass over the whole message.
+func collapsedSummary(m measured, newlines, summaryWidth int) (string, int) {
+	head, tail, truncated := headAndTailMeasured(m, newlines, summaryWidth)
 	switch {
 	case !truncated, tail == "":
 		return head, -1
@@ -498,15 +583,27 @@ func headAndTailParts(content string, maxWidth int) (head, tail string, truncate
 	if maxWidth <= 0 {
 		return "", "", false
 	}
-	// Measured once for all three questions below — does it fit, where does
-	// the head end, where does the tail begin. Each of them used to measure
-	// the whole message itself, so a folded row walked a 128 KB message four
-	// times over (three widths and the escape probe each cutter repeated) to
+	// Measured once for all three questions headAndTailMeasured asks — does it
+	// fit, where does the head end, where does the tail begin. Each of them used
+	// to measure the whole message itself, so a folded row walked a 128 KB message
+	// four times over (three widths and the escape probe each cutter repeated) to
 	// draw two thirds of one line; a CPU profile put the escape probe alone at
-	// a third of the frame.
-	m := measure(content)
-	if escapedWidth(content, m.cells) <= maxWidth {
-		return escapeBreaks(content), "", false
+	// a third of the frame. The line-break count is the other half of "does it
+	// fit" and is a pass of its own, which is why a caller that keeps both hands
+	// them in instead (headAndTailMeasured).
+	return headAndTailMeasured(measure(content), strings.Count(content, "\n"), maxWidth)
+}
+
+// headAndTailMeasured is headAndTailParts for content already measured, with the
+// count of its line breaks beside the measurement. escapeBreaks turns each break
+// into two cells, so the count is part of whether the content fits and not
+// something the fit check can skip.
+func headAndTailMeasured(m measured, newlines, maxWidth int) (head, tail string, truncated bool) {
+	if maxWidth <= 0 {
+		return "", "", false
+	}
+	if m.cells+2*newlines <= maxWidth {
+		return escapeBreaks(m.s), "", false
 	}
 	if maxWidth <= 2 {
 		return cutMeasured(m, maxWidth, false), "", true

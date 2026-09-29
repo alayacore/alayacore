@@ -135,36 +135,39 @@ func BenchmarkFoldedToolStreamingDelta(b *testing.B) {
 // first line of its input, so an output delta does not re-read the output at
 // all — that is the 100ns the benchmark above measures. A folded text window
 // shows head + "…" + tail of its whole content (textRenderer.BuildCollapsed →
-// collapsedSummary → headAndTailParts), so deriving that row means reading the
-// message: one pass to price it, then a head cut that stops at its budget and a
-// tail cut that counts back from the end.
+// collapsedSummary → headAndTailMeasured), so deriving that row used to mean
+// reading the message: one pass to price it, then a head cut that stops at its
+// budget and a tail cut that counts back from the end. The pricing pass is gone —
+// the renderer keeps the cells and the line breaks as its content grows — and what
+// is left of reading the message is the join that puts the delta parts into one
+// string for the cuts to work on.
 //
 // It used to mean a great deal more than reading it. Both cutters answered from
 // a helper that materialized every grapheme cluster of the content — a struct
 // and a substring per cluster, twice per frame — so this frame cost 99μs and
 // 503 KB at 2 KB of content and 13.5ms and 56.8 MB at 128 KB: 12x to 81x more
 // than the same content EXPANDED, which is the inversion this benchmark exists
-// to make visible. Three rounds of that came out: width.go's cluster list, the
-// whole-message escape copy the summary cut 75 cells out of, and then the
-// repeated measuring (the frame priced the same message four times over — three
-// widths and an escape probe each cutter repeated — before the cuts became
-// O(budget)). The numbers are 3.8μs / 4.8 KB at 2 KB and 64μs / 134 KB at
-// 128 KB, against the 13.5ms and 56.8 MB this started at.
+// to make visible. Four rounds of that came out: width.go's cluster list, the
+// whole-message escape copy the summary cut 75 cells out of, the repeated
+// measuring (the frame priced the same message four times over — three widths
+// and an escape probe each cutter repeated — before the cuts became O(budget)),
+// and then the last pricing pass as well, which a text renderer now answers from
+// the cells and the line breaks it keeps as its content grows. The numbers are
+// 3.5μs / 4.8 KB at 2 KB and 12.5μs / 134 KB at 128 KB, against the 13.5ms and
+// 56.8 MB this started at.
 //
-// READ THE TWO SIDES AGAINST EACH OTHER, because the inversion has flipped.
-// At 2 KB folded is still the cheap state (3.8μs against 4.3μs). At 32 KB and
-// 128 KB the EXPANDED side is cheaper — 7.8μs against 18μs, and 18μs against
-// 64μs — and lighter (28 KB against 35 KB, 80 KB against 134 KB). That is not
-// a defect in the fold, it is what the two states do: an expanded frame appends
-// one delta to the wrapped rows and draws ≤40 of them, O(delta + viewport),
-// while a folded frame re-derives a summary of the WHOLE message, O(content),
-// and joins the streaming delta parts to read it. Folding trades "draw forty
-// rows" for "summarize everything", and past a few tens of kilobytes that trade
-// is a loss. Reasoning windows fold by default and stream for as long as the
-// model thinks, so this is the per-tick cost of a long "thinking" phase — see
-// docs/internal/virtual-rendering-performance.md → "The fold summary
-// materialized every cluster (found and fixed)" for what is left and what would
-// take the folded frame back to O(budget).
+// READ THE TWO SIDES AGAINST EACH OTHER, because the inversion has gone back the
+// other way. Folded is the cheaper state in TIME at every size — 3.5μs against
+// 4.8μs at 2 KB, 5.9μs against 7.9μs at 32 KB, 12.5μs against 18.9μs at 128 KB —
+// and the dearer one in MEMORY above 2 KB: 35 KB against 27 KB, and 134 KB against
+// 79 KB. The memory is the join. A folded frame still folds the streaming delta
+// parts into one string in order to cut a head and a tail out of it, while an
+// expanded frame appends one delta to rows that are already wrapped and draws ≤40
+// of them. So the folded row is O(budget) in the work it does over the message and
+// O(content) in the bytes it copies to reach them, and the copying is what is left
+// — see docs/internal/virtual-rendering-performance.md → "The fold summary
+// materialized every cluster (found and fixed)" for why a summary that reads the
+// parts directly is not a local change.
 //
 // Each size runs twice, folded and expanded, on identical content, so the
 // expanded side is the control and the slope across the three sizes is the
