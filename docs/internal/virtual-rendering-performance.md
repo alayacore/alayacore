@@ -3,33 +3,61 @@
 Performance analysis of AlayaCore's virtual scrolling system for the terminal display.
 
 Benchmarks run on: Intel(R) Core(TM) Ultra 9 285K, Linux amd64, Go 1.26.1,
-against the tree at `373d006b` plus this revision's changes to it. Every figure
-in this file was re-measured on that machine on 2026-09-28 — the whole suite,
-not a sample — and the method is part of the figure:
+against the tree at `e0abb8f9` plus this revision's changes to it. Every figure
+this revision moved was re-measured on that machine on 2026-09-29 — the whole
+suite, not a sample — and the method is part of the figure:
 
 ```
-go test ./internal/adapters/terminal/ -run '^$' -bench '<Name>' -benchmem -benchtime 1s -count 10
+go test ./internal/adapters/terminal/ -run '^$' -bench '<Name>' -benchmem -benchtime 1s -count 6
 ```
 
 Quoted value is the **minimum** of those runs, because that is the one number a
 benchmark run reliably reproduces; where a minimum is a lone outlier the row
-says it quotes the median instead. Four tables pin a fixed `-benchtime Nx`
-rather than `1s`, and each says so, because those benchmarks append on every
-iteration and their memory columns move with `-benchtime`. Memory columns are
-the `B/op` `go test` prints; where prose rounds to KB it divides by 1000, which
-is the convention this file's older figures were written in.
+says it quotes the median instead. Tables this revision did not move keep the
+figures — and the run count — of the 2026-09-28 re-measurement at `-count 10`,
+and each table says which count its numbers came from. Four tables pin a fixed
+`-benchtime Nx` rather than `1s`, and each says so, because those benchmarks
+append on every iteration and their memory columns move with `-benchtime`.
+Memory columns are the `B/op` `go test` prints; where prose rounds to KB it
+divides by 1000, which is the convention this file's older figures were written
+in.
 
-What this revision changed in the code, so the figures can be placed: the
-cluster cutters in `width.go` and the input chain's cluster helpers became folds
-over one streaming walk instead of a materialized list
+What this revision changed in the code, so the figures can be placed — five
+changes, each removing work a frame did and threw away:
+
+1. **`Window.Render` split into rows and their join.** The viewport path clips
+   `cache.lines` and `ensureLineHeights` reads only `LineCount`, so both now ask
+   `buildLines` for the rows; the joined string is built on first request behind
+   `joined()` and the two always-identical fields `cache.inner`/`cache.rendered`
+   became one. [What is left in the frame path](#what-is-left-in-the-frame-path)
+   recorded this as the frame's largest allocation and it was.
+2. **`BuildInner` folds the streaming delta parts at a threshold**
+   (`maxContentParts`) instead of on every frame, which was a full copy of the
+   message per frame to produce a string that frame never read.
+3. **The summary paths measure their message once.** `measure` returns the width
+   *and* the walking route in one pass, and `measured.head`/`.tail` spend that
+   answer; `cellWidth` gained the byte-wise ASCII route `walkCells` already had,
+   and the tail cut takes it *backwards*, which is sound only because one ASCII
+   byte is one cluster. A CPU profile had put the escape probe alone at a third
+   of the folded frame: the same message was priced four times over per frame.
+4. **`windowFragment` no longer measures every row of the window** to draw ≤40
+   of them. The per-window width cache is gone; `renderVirtual` measures a row
+   where it pads it. This is the one change of the five with a cost, and the
+   cost is measured and stated where it lands.
+5. **`ensureCursorVisible` asks one pass instead of five to eight.** Every
+   quantity it decides with is a prefix sum over the same line's clusters, and
+   each walk encoded the line as a string first.
+
+Plus the stale figures in comments across `window.go`, `window_renderer.go`,
+`width.go` and the benchmark files. Every number below is measured on the tree
+that includes those changes; where a figure existed before them and moved, both
+values are given.
+
+The previous revision's changes are still in the tree and still described here:
+the cluster cutters in `width.go` and the input chain's cluster helpers became
+folds over one streaming walk instead of a materialized list
 ([the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed)),
-`tailCells`' styled branch stopped overrunning its budget, one benchmark was
-added (`BenchmarkFoldedTextStreamingDelta`) and two allocation-count tests
-(`TestCutsCostTheCutNotTheString`, `TestLineQueriesCostOneEncoding`), and the
-stale figures in comments across `window.go`, `window_buffer.go`, `program.go`
-and the benchmark files were corrected. Every number below is measured on the
-tree that includes those changes; where a figure existed before them and moved,
-both values are given.
+and `tailCells`' styled branch stopped overrunning its budget.
 
 An interim re-measurement on an AMD Ryzen 7 5800U (2026-09-28, Go 1.26.4) is
 superseded by this one and is in the git history of this file rather than in
@@ -42,45 +70,61 @@ bisect.
 
 Working as designed:
 
-- ✅ **Virtual rendering** — ~11x less work than rendering every window, and
-  30x lighter: 100 windows at viewport 30 costs 1.37μs and 3,776 B/op with the
-  viewport clip, against 14.6μs and 113,104 B/op without it
-  (`GetAllWithVirtual` / `GetAllWithoutVirtual`). The ratio is 10.7x rather
-  than the 16.6x this file used to quote because the *baseline* got 2.5x
-  cheaper, not because the clip got worse — see
+- ✅ **Virtual rendering** — ~12x less work than rendering every window, and
+  30x lighter: 100 windows at viewport 30 costs 1.38μs and 3,776 B/op with the
+  viewport clip, against 16.7μs and 113,105 B/op without it
+  (`GetAllWithVirtual` / `GetAllWithoutVirtual`). Neither side moved in this
+  revision; the ratio is quoted from inside one batch because the unclipped side
+  is the noisiest benchmark in the file and has landed anywhere from 14.6μs to
+  19.5μs across batches — see
   [What moved](#what-moved-and-what-moved-it)
 - ✅ **Incremental content append** — O(delta) per frame via
-  `appendDeltaToVisualLines`, avoiding an O(n) full re-wrap: ~521x on a 26KB
-  message (325 wrapped rows), 648 B against 359 KB per frame
+  `appendDeltaToVisualLines`, avoiding an O(n) full re-wrap: ~491x on a 26KB
+  message (325 wrapped rows), 648 B against 242 KB per frame
 - ✅ **Incremental line height tracking** — `TryLineCount` from `wrappedLines`
   in 788ns (a whole `ensureLineHeights` pass with 1 dirty window), no render
-- ✅ **Streaming stays under 1ms** — 2.45μs per full cycle (append + line
+- ✅ **Streaming stays under 1ms** — 2.38μs per full cycle (append + line
   tracking + viewport render) against a 250ms tick, so the frame is ~0.001% of
   the budget
 - ✅ **Custom ScrollView** — 40 bytes of state holding the pre-clipped visible
   region; `View()` pads to the viewport height in 124ns and 4 allocs,
   `WithContent` is 0.09ns because there is no re-split
 - ✅ **Soft-wrap fragment viewport** — `renderVirtual` clips to visual lines
-  and emits continuous per-window fragments (`\n` only between windows), with
-  display widths cached per render, so a viewport render of 100 windows costs
-  1.60μs (`WindowBufferGetAll`) and never touches the windows outside it (see
+  and emits continuous per-window fragments (`\n` only between windows), and
+  measures a row's width only where it pads one, so a viewport render of 100
+  windows costs 1.71μs (`WindowBufferGetAll`) and never touches the windows
+  outside it — nor the rows of the ones inside it that are off screen (see
   [Soft-Wrap Fragment Rendering](#soft-wrap-fragment-rendering))
 
-One thing was not fine, and this revision fixes it rather than recording it:
+Two things were not fine, and both are fixed rather than recorded:
 
 - 🔧 **A folded text window's summary row used to materialize every grapheme
   cluster of the message, twice, per frame.** Reasoning windows fold by default
   and re-summarize on every delta, so at 128KB that frame cost 13.5ms and
   56.8 MB — 41x the time and 76x the memory the *same content expanded* costs,
-  which is backwards for the state whose whole job is to be cheap. Two
-  materializations were removed, not one: the cutters' cluster list, and the
-  whole-message escape copy they cut out of. The frame is now **770μs and
-  134 KB** — lighter than the expanded side at every size — and the same
-  defect's other face (a keystroke at the end of a long prompt line, ~1ms and
-  ~4 MB) is down to ~300μs and ~57 KB. A third tail cut, the one the streaming
-  tool previews use, turned out to split grapheme clusters; it does not now.
-  Five tests pin all of it.
+  which is backwards for the state whose whole job is to be cheap. Three rounds
+  of whole-message work came out, in three revisions: the cutters' cluster list,
+  the whole-message escape copy they cut out of, and then the four separate
+  pricings of the same message per frame. The frame is now **64μs and 134 KB**,
+  and the same defect's other face — a keystroke at the end of a long prompt
+  line, ~1ms and ~4 MB — is down to **~117μs and ~22 KB**. A third tail cut, the
+  one the streaming tool previews use, turned out to split grapheme clusters; it
+  does not now.
   See [The fold summary materialized every cluster](#the-fold-summary-materialized-every-cluster-found-and-fixed)
+- 🔧 **Frames did work they threw away.** Five changes, each removing a pass or
+  a copy that nothing read: `Window.Render` split into rows and their join, so
+  the viewport path stops building a string per window per frame; `BuildInner`
+  folds the streaming delta parts at a threshold instead of every frame; the
+  summary paths price their message once instead of four times, and the tail cut
+  runs backwards on plain ASCII; `windowFragment` stops measuring every row of
+  the window to draw forty of them; and `ensureCursorVisible` asks one pass for
+  the five to eight prefix sums it used to ask separately. At 128KB of content
+  the **expanded** streaming frame went 231μs/757,278 B → **18.2μs/80,156 B**
+  (12.7x, 9.4x) and the folded one 709μs/134,136 B → **63.9μs/133,801 B**
+  (11.1x). One of the five has a price and it is stated where it lands:
+  `GetAllDimmed/dimmed` went 2.4μs → 5.8μs and 13,104 B → 15,824 B, because a
+  frame that redraws without rebuilding now re-measures the rows it pads.
+  See [What is left in the frame path](#what-is-left-in-the-frame-path)
 
 ## How Streaming Works
 
@@ -151,7 +195,7 @@ Minimum of 10 runs at `-benchtime 1s`, except the last row (see its section).
 
 | Metric | Value | Memory | Allocs |
 |--------|-------|--------|-------:|
-| Average full cycle (append + line tracking + GetAll), `StreamingUpdateWithVirtualRendering` | **2.45μs** | 4,506 B | 93 |
+| Average full cycle (append + line tracking + GetAll), `StreamingUpdateWithVirtualRendering` | **2.38μs** | 4,496 B | 93 |
 | Incremental append only, `JustAppendUpdate` | **46ns** | 81 B | 0 |
 | Small delta streaming (append + line tracking), `StreamingSmallDelta` | **838ns** | 665 B | 58 |
 | Long content incremental append (26KB message), `AppendVsFullWrap_LongContent/incremental` | **1.10μs** (median, `-benchtime 300x`) | 648 B | 58 |
@@ -171,16 +215,16 @@ always 325 wrapped rows, and the benchmark's own comment said so too.
 Both sides append on every iteration, so `-benchtime` is part of the figure:
 **median of 6 runs at `-benchtime 300x`** — medians rather than minima because
 the incremental side is sub-microsecond, where one fast run is not a typical one
-(the six land between 1063ns and 1172ns).
+(the six land between 1064ns and 1315ns).
 
 | Operation | Time | Memory | Allocs |
 |-----------|------|--------|-------:|
 | **Incremental append** | **1.10μs** | **648 B** | **58** |
-| Full re-wrap | 0.57ms | 359,240 B | 27,308 |
-| **Speedup** | **~521x** | **~554x** | **~471x** |
+| Full re-wrap | 0.54ms | 242,110 B | 27,293 |
+| **Speedup** | **~491x** | **~374x** | **~471x** |
 
 Without the incremental path, every streaming frame on a long LLM response
-would trigger a full O(n) re-wrap of the entire accumulated content — 0.57ms
+would trigger a full O(n) re-wrap of the entire accumulated content — 0.54ms
 per frame. At the 250ms tick interval this is still manageable, but burst
 scenarios (multiple frames arriving between ticks) would accumulate latency.
 
@@ -215,16 +259,17 @@ same 4,491 B and 93 allocs per frame, with the times inside run-to-run noise
 ### Virtual Rendering
 
 Measured via `BenchmarkGetAllWithVirtual` vs `BenchmarkGetAllWithoutVirtual`
-(100 windows, viewport=30 lines). Minimum of 20 runs at `-benchtime 1s`: the
-unclipped side is the noisiest benchmark in the file — the 20 runs quoted here
-span 14.6–15.7μs, and its minimum has landed anywhere from 14.6μs to 19.5μs
-across batches — because it is the one that renders ~500 rows instead of 30.
-Take a ratio from inside one batch, never from two.
+(100 windows, viewport=30 lines). Minimum of 6 runs at `-benchtime 1s`: the
+unclipped side is the noisiest benchmark in the file — its minimum has landed
+anywhere from 14.6μs to 19.5μs across batches, this one at 16.7μs — because it
+is the one that renders ~500 rows instead of 30. Take a ratio from inside one
+batch, never from two. Neither side changed in this revision; the batch before
+it measured 1.41μs and 17.5μs.
 
 | Scenario | Time | Memory | Allocs | Speedup |
 |----------|------|--------|-------:|:-------:|
-| `GetAll` with virtual rendering (100 windows) | **1.37μs** | 3,776 B | 35 | **10.7x** |
-| `GetAll` without virtual rendering (100 windows) | **14.6μs** | 113,104 B | 14 | baseline |
+| `GetAll` with virtual rendering (100 windows) | **1.38μs** | 3,776 B | 35 | **12.1x** |
+| `GetAll` without virtual rendering (100 windows) | **16.7μs** | 113,105 B | 14 | baseline |
 
 Memory is the sharper claim and it does not depend on the clock: **30x less
 allocated per frame**, because the clipped side builds 30 rows and the unclipped
@@ -236,8 +281,8 @@ side builds all ~500.
 |----------|-----------|------|--------|-------:|
 | Incremental, 1 dirty window (20 windows) | `JustEnsureLineHeights` | **788ns** | 638 B | 55 |
 | Incremental, 1 dirty window (100 windows) | `EnsureLineHeightsIncremental` | **1.01μs** | 722 B | 65 |
-| `lineHeights` array rebuilt over 100 windows | `EnsureLineHeightsFullRebuild` | **299ns** | 0 B | 0 |
-| Every window re-wrapped from scratch (50 windows, 80↔120 cols) | `WindowBufferResize` | **0.17ms** | 195,135 B | 6,900 |
+| `lineHeights` array rebuilt over 100 windows | `EnsureLineHeightsFullRebuild` | **253ns** | 0 B | 0 |
+| Every window re-wrapped from scratch (50 windows, 80↔120 cols) | `WindowBufferResize` | **0.15ms** | 168,545 B | 6,800 |
 
 Two rows this table used to carry are gone rather than re-measured:
 "~150μs (1 dirty window, uncached)" and "~7.1ms (all 100 windows rendered from
@@ -245,7 +290,7 @@ scratch)", both starred as historical estimates. Nothing in the tree measures
 either, and the second is not what the benchmark named for it does —
 `EnsureLineHeightsFullRebuild` sets `dirtyIndex = dirtyFullRebuild` but never
 invalidates the windows, so every `Render` inside it hits the render cache and
-the 299ns is the cost of rebuilding the height array from cached counts. A
+the 253ns is the cost of rebuilding the height array from cached counts. A
 genuine from-scratch pass is the resize row: that one does invalidate, and pays
 a full re-wrap per window.
 
@@ -256,7 +301,7 @@ window, viewport 30). Minimum of 10 runs at `-benchtime 1s`.
 
 | Metric | Value | Memory | Allocs |
 |--------|-------|--------|-------:|
-| Delta + GetTotalLines + GetAll (incremental, 100 windows) | **2.79μs** | 6,921 B | 111 |
+| Delta + GetTotalLines + GetAll (incremental, 100 windows) | **2.75μs** | 6,920 B | 111 |
 
 The full-rebuild side is not comparable and is no longer quoted here.
 `BenchmarkFullRebuildAfterAppend` — which this section used to cite as "all
@@ -273,9 +318,9 @@ Measured via `BenchmarkVirtualRenderingCursorMovementSingle`,
 
 | Metric | Value | Memory | Allocs |
 |--------|-------|--------|-------:|
-| Single cursor move (EnsureCursorVisible + updateContent) | **2.04μs** | 6,254 B | 38 |
-| 20 cursor moves through the buffer | **39.0μs** | 125,090 B | 760 |
-| Scroll 20 steps down + 20 steps up | **65.6μs** | 177,281 B | 1,400 |
+| Single cursor move (EnsureCursorVisible + updateContent) | **1.99μs** | 6,254 B | 38 |
+| 20 cursor moves through the buffer | **39.3μs** | 125,090 B | 760 |
+| Scroll 20 steps down + 20 steps up | **64.0μs** | 177,282 B | 1,400 |
 
 ### Collapsed-Window Design (single-line fold headers)
 
@@ -298,9 +343,9 @@ section. Minimum of 10 runs at `-benchtime 1s`; of 4 for the fourth row.
 | Scenario | Value | Memory | Allocs |
 |----------|------:|--------|-------:|
 | `GetAll` viewport render of the whole session | **6.75μs** | 46,464 B | 51 |
-| 20 cursor moves (j/k) through it | **149μs** | 929,788 B | 1,040 |
+| 20 cursor moves (j/k) through it | **145μs** | 929,787 B | 1,040 |
 | Delta into a folded **tool** window (Uf preview) | **104ns** | 88 B | 2 |
-| Delta into a folded **text** window, 2KB content | **15.1μs** | 5,112 B | 55 |
+| Delta into a folded **text** window, 2KB content | **3.75μs** | 4,776 B | 51 |
 
 The three figures this section quoted before 2026-09-28 were deleted on the
 grounds that "the folded-session benchmark these figures came from is gone from
@@ -328,36 +373,66 @@ Why the shape is cheap where it is cheap:
   proportionally. The 120-window session above is 190 document lines.
 
 Unfolded windows pay a small cost for their own line (the window's label
-composed into it, plus the timestamp — 1.12μs per delta via
-`BenchmarkWindowBufferDelta`). A folded text window's frame is still the dearer
-of the two in **time** — 1.9x at 2KB, 3.4x at 32KB, 3.5x at 128KB — because
-summarizing a message means reading it, while an expanded window's rows are
-already wrapped and a frame only joins the ones the viewport shows. In
-**memory** the order is now the one the design intends: 5,112 B against the
-expanded side's 20,064 B at 2KB, and 134 KB against 757 KB at 128KB — because
-the expanded frame still carries the whole-window work listed in
-[What is left in the frame path](#what-is-left-in-the-frame-path).
+composed into it, plus the timestamp — 1.00μs per delta via
+`BenchmarkWindowBufferDelta`). Which of the two states is dearer now depends on
+the length of the message, and the crossover is between 2KB and 32KB:
+
+| Content size | Folded | Expanded | Folded ÷ expanded |
+|---|---:|---:|---:|
+| 2KB | 3.75μs, 4,776 B | 4.28μs, 10,061 B | **0.88x time, 0.47x memory** |
+| 32KB | 18.1μs, 35,496 B | 7.77μs, 27,725 B | 2.3x time, 1.3x memory |
+| 128KB | 63.9μs, 133,801 B | 18.2μs, 80,156 B | 3.5x time, 1.7x memory |
+
+Summarizing a message means reading it, while an expanded frame appends one
+delta to rows that are already wrapped and draws the ≤40 of them the viewport
+shows. Short messages make the fold the cheap state it is meant to be; long ones
+do not, and reasoning windows — which fold by default — are the ones that get
+long while streaming. The previous revision had this the other way round in
+memory (5,112 B against 20,064 B at 2KB, 134 KB against 757 KB at 128KB)
+because the expanded frame still carried the whole-window work listed in
+[What is left in the frame path](#what-is-left-in-the-frame-path); that work is
+gone, and what is left on the folded side is itemized there too.
 
 ### The fold summary materialized every cluster (found and fixed)
 
-`BenchmarkFoldedTextStreamingDelta` was added by this revision to price the one
-frame shape nothing else in the tree measured: a folded **text** window
+`BenchmarkFoldedTextStreamingDelta` was added by the previous revision to price
+the one frame shape nothing else in the tree measured: a folded **text** window
 streaming. It rebuilds its buffer under `StopTimer`, so one iteration is exactly
 one frame at a fixed content size and its memory columns mean the same thing at
 any `-benchtime`. Each size runs folded and expanded on identical content; the
 expanded side is the control. Minimum of 4 runs at `-benchtime 1s`.
 
-| Content size | Folded, as found | after the cutters streamed | after the summary stopped escaping first | Expanded (control) |
-|---|---:|---:|---:|---:|
-| 2KB | 99.0μs, 503,259 B, 95 | 17.5μs, 12,312 B, 63 | **15.1μs, 5,112 B, 55** | 7.84μs, 20,064 B, 97 |
-| 32KB | 4.20ms, 13,739,011 B, 127 | 249μs, 222,752 B, 73 | **193μs, 35,833 B, 55** | 57.0μs, 221,878 B, 106 |
-| 128KB | 13.5ms, 56,779,754 B, 143 | 934μs, 779,824 B, 77 | **770μs, 134,136 B, 55** | 220μs, 757,253 B, 111 |
+| Content size | Folded: as found | cutters streamed | summary cut before escaping | frame measured once (now) | Expanded: as found | Expanded: now |
+|---|---:|---:|---:|---:|---:|---:|
+| 2KB | 99.0μs, 503,259 B, 95 | 17.5μs, 12,312 B, 63 | 15.1μs, 5,112 B, 55 | **3.75μs, 4,776 B, 51** | 7.84μs, 20,064 B, 97 | **4.28μs, 10,061 B, 86** |
+| 32KB | 4.20ms, 13,739,011 B, 127 | 249μs, 222,752 B, 73 | 193μs, 35,833 B, 55 | **18.1μs, 35,496 B, 51** | 57.0μs, 221,878 B, 106 | **7.77μs, 27,725 B, 86** |
+| 128KB | 13.5ms, 56,779,754 B, 143 | 934μs, 779,824 B, 77 | 770μs, 134,136 B, 55 | **63.9μs, 133,801 B, 51** | 220μs, 757,253 B, 111 | **18.2μs, 80,156 B, 86** |
 
-End to end: **6.6x faster and 98x lighter at 2KB, 17.5x and 423x at 128KB.** The
-folded side is now the *lighter* of the two at every size, which is what folding
-is supposed to mean; it is still the dearer one in time (2.0x / 3.4x / 3.5x),
-because summarizing a message means reading it while an expanded window's rows
-are already wrapped and a frame only joins the ones on screen.
+The first three folded columns are the previous revision's, quoted as it
+measured them (minimum of 4 at `-benchtime 1s`); the last three are this one's
+(minimum of 6). End to end the folded frame is **26x faster and 105x lighter at
+2KB, 211x and 424x at 128KB**, and the expanded control — which nobody set out
+to fix — is **12x faster and 9.4x lighter at 128KB**, because three of the five
+changes were about work an expanded frame did and discarded.
+
+**The inversion this benchmark was added to expose has flipped, and the flip is
+the interesting result.** Folded used to be 12x–81x dearer than expanded; it is
+now dearer only above ~2KB, and at 128KB expanded is **3.5x faster and 1.7x
+lighter** than folded. That is not a regression in the fold, it is what the two
+states now cost:
+
+- an **expanded** frame appends one delta to the already-wrapped rows and draws
+  the ≤40 of them the viewport shows — O(delta + viewport), independent of how
+  long the message has become;
+- a **folded** frame re-derives head + "…" + tail of the *whole* message —
+  O(content) — and joins the streaming delta parts into one string to read it.
+
+Folding trades "draw forty rows" for "summarize everything". Below a few tens
+of kilobytes the trade wins (3.75μs against 4.28μs at 2KB); above it, it loses.
+Reasoning windows fold by default and stream for as long as the model thinks, so
+the losing side of that trade is the per-tick cost of a long "thinking" phase.
+[What is left in the frame path](#what-is-left-in-the-frame-path) prices what is
+still O(content) in the folded frame and says what would make it O(budget).
 
 Before either fix the two sides were the wrong way round — folding a text window
 cost 12x to 81x *more* per frame than opening it — and the allocation count
@@ -447,100 +522,214 @@ now, so it is cluster-aligned with every other cut in the adapter.
 | | per keystroke at the end of a 4000-cell line | one width sum over 10,000 runes |
 |---|---|---|
 | as found | ~1 ms and ~4 MB (`InputFieldInsertLongLine`: 19.6ms, 81.8 MB for a build + 20 keys) | 523μs, 2.1 MB, 21 allocs |
-| now | ~300μs and ~57 KB (same benchmark: **6.10ms, 1.14 MB, 131 allocs**) | **109μs, 20.5 KB, 1 alloc** |
+| after the cutters streamed | ~300μs and ~57 KB (6.10ms, 1.14 MB, 131 allocs) | 109μs, 20.5 KB, 1 alloc |
+| after one pass asked them all (now) | **~117μs and ~22 KB** (**2.33ms, 442 KB, 46 allocs**) | **106μs, 20.5 KB, 1 alloc** |
 
-`InputFieldMoveLongLine` (a build plus 200 arrow moves) went 1.27ms → **471μs**
-and 5.2 MB → **156 KB**; `InputFieldViewLongLine` (one `View()` of a 2000-cell
-line) went 81μs → **25.4μs** and 306 KB → **5,064 B**. Movement was always
-cheaper than insertion because `handleMovement` does not call
+`InputFieldMoveLongLine` (a build plus 200 arrow moves) went 1.27ms → 471μs →
+**232μs** and 5.2 MB → 156 KB → **115 KB**; `InputFieldViewLongLine` (one
+`View()` of a 2000-cell line) went 81μs → **24.9μs** and 306 KB → **5,064 B**.
+Movement was always cheaper than insertion because `handleMovement` does not call
 `ensureCursorVisible`; that asymmetry is unchanged and is now the only thing
 separating the two.
+
+The last row of the first column is the five-to-eight walks becoming one. Every
+quantity `ensureCursorVisible` decides with is a prefix sum over the same line's
+clusters — where the stored visible start anchors now that inserts have shifted
+the boundaries, the cells before it, the cells before the caret, the width of
+the cluster under the caret, whether the line fits at all — and each walk encoded
+the line as a string before it could segment it, which is where the 1.14 MB went
+(57 KB per keystroke is five 12 KB encodings). `probeLine` takes them in one
+pass and stops early once the answers cannot change. It is a rewrite of
+arithmetic that decides where the caret is drawn, so it is held to the old
+function verbatim as an oracle over **83,712** swept states and 4,000 random
+operation sequences, on exact equality of the visible start — not merely "the
+invariants still hold", which `TestInputFieldFuzzInvariants` separately checks
+over ~2.4M operations. The sweep found one real difference on the way: a caret
+*inside* a multi-rune cluster is priced from the truncated prefix, not from the
+cluster start, and the pass had to reproduce that.
 
 The cutters were not the only caller paying for the list, and the missing tab
 guard was not only the summary's. Markdown expands tabs per table line and per
 wrapped row, so both fixes landed there too: `RenderMarkdownTables_Large`
-293μs/646,897 B/5,418 allocs as found → **135μs/197,941 B/3,096**, which is
-*below* what it measured before `c637636c` moved the per-cell cut onto the list
-(210,282 B/3,503), and one 20-row table render 807 → 567 allocs, the figure the
-old notes quoted. `FullWrap` 41,995 B → 29,066 B and `WindowBufferResize`
-7,900 → 6,900 allocs are the same missing tab guard, one allocation per wrapped
-line.
+293μs/646,897 B/5,418 allocs as found → 135μs/197,941 B/3,096 → **124μs** on
+this revision's byte-wise ASCII route through `cellWidth`, which is *below* what
+it measured before `c637636c` moved the per-cell cut onto the list (210,282
+B/3,503), and one 20-row table render 807 → 567 allocs, the figure the old notes
+quoted. `FullWrap` 41,995 B → 29,066 B and `WindowBufferResize` 7,900 → 6,900
+allocs are the same missing tab guard, one allocation per wrapped line; the
+resize is **150μs** now against 164μs, because a full rebuild asks `buildLines`
+for 50 windows' rows and no longer joins any of them.
 
-**What pins it.** Five tests: two on allocation shape, two differential against
-the implementations they replaced, one on the cluster invariant the rune walk
-broke. Allocation shape:
-`TestCutsCostTheCutNotTheString` (both cutters and both folds, over 100-cluster
-and 10,000-cluster inputs at the same budget) and
-`TestLineQueriesCostOneEncoding` (the four input-chain queries over 100-rune and
-10,000-rune lines) fail above a small ceiling — a materializing implementation
-reports one allocation per cluster, ~10,000 against a ceiling of 8. The ceiling
-is not an exact count because `AllocsPerRun` reads process-wide mallocs and a
-`-race` build adds one of its own; the first version of the first test failed
-under `-race` for exactly that reason. Behaviour: the two differential tests
-above and `TestTailPartsNeverSplitsACluster`, plus the invariants that already
-existed and still run — budget over the
-whole breaker corpus, maximality and cluster alignment against the oracle, the
-styled-cut guarantees, and 20,000 random lines of the structural test.
+**What pins it.** Five tests from that revision: two on allocation shape, two
+differential against the implementations they replaced, one on the cluster
+invariant the rune walk broke. Allocation shape:
+`TestCutsCostTheCutNotTheString` (both cutters, both folds and the three new
+`measure` entry points, over 100-cluster and 10,000-cluster inputs at the same
+budget) and `TestLineQueriesCostOneEncoding` (the four input-chain queries over
+100-rune and 10,000-rune lines) fail above a small ceiling — a materializing
+implementation reports one allocation per cluster, ~10,000 against a ceiling of
+8. The ceiling is not an exact count because `AllocsPerRun` reads process-wide
+mallocs and a `-race` build adds one of its own; the first version of the first
+test failed under `-race` for exactly that reason. Behaviour: the two
+differential tests above and `TestTailPartsNeverSplitsACluster`, plus the
+invariants that already existed and still run — budget over the whole breaker
+corpus, maximality and cluster alignment against the oracle, the styled-cut
+guarantees, and 20,000 random lines of the structural test.
 
-**What is left, deliberately.** One full-content copy per folded frame:
-`rawContent()` joins the streaming delta parts into a single string before
-anything can measure or cut it, and a profile of the 128 KB frame now puts 95%
-of its remaining allocation in that join. The frame is 770μs and 134 KB,
-0.3% of a 250ms tick, against the 5.4% and 56.8 MB it was. Removing the last
-copy means deriving head and tail from `contentParts` directly — the head from
-the first parts, the tail from the last — and the trap is a grapheme cluster
-that straddles a part boundary, which is a real case for streaming deltas (a
-combining mark arriving in its own chunk). That is a change with its own test
-burden, and the frame budget does not ask for it yet. The expanded path has the
-same join in `BuildInner`, plus two more O(window) items a frame does not need
-(see [What is left in the frame path](#what-is-left-in-the-frame-path)).
+**What pins this revision.** Eighteen more tests, one group per change. They are
+listed with what each would catch, because a refactor that only has to be
+*equivalent* is the kind that silently stops being so:
+
+- *rows vs join* (`window_join_test.go`, 6): a viewport frame and a resize must
+  leave `joinedDone` false — the two tests that fail if an eager join comes
+  back; `Render` must still return exactly the rows joined, in both registers,
+  with row 0 and only row 0 swapped; the join must not survive an invalidation;
+  a folded window's `Render` returns its row rather than a copy; a window with
+  no renderer draws nothing on both entry points.
+- *delta folding* (`streaming_compaction_test.go`, 3): the same message renders
+  the same rows whatever its fold history, compared through the one path that
+  reads `r.content`; the pending list never exceeds `maxContentParts` over 1,280
+  deltas; below the threshold the fast path folds nothing — and its leaving them
+  pending is also the proof the fast path ran.
+- *measuring once* (`width_test.go`, 4): `measure(s).head/tail` **is**
+  `takeCells/tailCells(s, n)` over three corpora at ten budgets, and
+  `measure(s).escape` is `hasEscape(s)`; `measured.walk` visits exactly what
+  `walkCells` would, which is the only thing that could part them; the backward
+  ASCII tail equals a forward-walk oracle written out in the test, over long
+  bodies and the zero-width-byte cases where the two arguments differ; and the
+  byte-wise ASCII rule is held against displaywidth's own table over every ASCII
+  byte, every pair of the awkward ones, and the sequences where segmentation is
+  not per-byte — this last one because `cellWidth` and `walkCells` now price
+  ASCII through the *same* function, which made the existing
+  `TestWalkCellsAgreesWithCellWidth` unable to catch a rule wrong for both.
+- *row widths* (`frame_padding_test.go`, 2): row 0 of any window, in both fold
+  states at four widths, is never followed by a continuation — the property that
+  lets the frame measure the row it draws, since row 0 is the one the cursor
+  swaps; and a cursor frame is byte-for-byte the rows as drawn, padding included.
+- *the caret pass* (`cursor_probe_test.go`, 3): the oracle comparison described
+  above, plus `probeLine`'s six answers each checked against the walk they
+  replaced.
+
+Four of these were mutation-checked — the change reverted or broken on purpose,
+to confirm the test fails: folding every frame instead of at the threshold, and
+never folding; `asciiCells` pricing a control as one cell; the backward tail
+scan using `>=` for its budget and ignoring zero-width bytes. Each was caught,
+the first two by more than one test.
+
+**What is left, deliberately.** The folded frame is 64μs and 134 KB at 128 KB
+of content — 0.026% of a 250ms tick, against the 5.4% and 56.8 MB it was — and
+two things in it are still proportional to the message rather than to the row:
+
+- **the join.** `rawContent()` folds the streaming delta parts into one string
+  before anything can measure or cut it. A memory profile of the frame puts
+  **97%** of its allocation in that call (131 KB of 134 KB) and a CPU profile
+  puts only ~12μs of its 64μs there: it is a garbage problem, not a latency one.
+- **the pricing pass.** `measure` walks the whole message once — 37μs of the
+  64μs — to answer "does this fit in 70 cells?", a question settled after 70
+  cells. It was four such passes before this revision; it is now one, and the
+  cuts either side of it are O(budget): the head stops at its budget and the
+  tail counts back from the end, measured at 50ns and 32ns against 24.6μs and
+  185μs for the same two cuts before.
+
+Removing the join means deriving head and tail from `contentParts` directly, and
+that is deliberately not attempted here: a grapheme cluster can straddle a part
+boundary (a combining mark arriving in its own delta), and `prepareContent` is
+not chunk-safe at all — `expandTabs` is a column state machine, so a tab's width
+depends on everything before it, and an escape sequence can straddle too. Both
+are real cases for streaming deltas, and the frame budget does not ask for the
+risk. Removing the pricing pass is a smaller, sounder change and is itemized in
+[What is left in the frame path](#what-is-left-in-the-frame-path).
 
 ### What is left in the frame path
 
-Fixing the folded summary moved the "O(window) per frame" title to the expanded
-window, which is the common case: at 128 KB of content the folded frame now
-allocates 134,136 B (~1.05x the message) and the expanded one 757,253 B (~5.9x
-it). Three things in `Window.Render` and its caller are proportional to the
-whole window while a frame shows at most `viewportHeight` rows of it. None is
-fixed here; all three are recorded so the next reader does not have to find them
-again, and each is a separate change with its own test burden.
+This section recorded three things in `Window.Render` and its caller that were
+proportional to the whole window while a frame shows at most `viewportHeight`
+rows of it. **All three are fixed.** They are kept here with what each cost and
+what each was worth, because the third one has a price and the price is real.
+Minimum of 6 runs at `-benchtime 1s`; the three figures per item are the 128 KB
+expanded streaming frame, measured after each change in isolation.
 
-1. **`BuildInner` compacts the delta parts on every render.** Its fast path
-   merges `contentParts` into `r.content` through a `strings.Builder` — a full
+1. **`BuildInner` compacted the delta parts on every render.** Its fast path
+   merged `contentParts` into `r.content` through a `strings.Builder` — a full
    copy of the message per frame — with a comment saying it prevents unbounded
-   part growth. A threshold would serve that purpose; per-frame compaction
-   picks the one moment the content is largest and the frames are most
-   frequent. This is the folded side's remaining copy too (`rawContent`).
-2. **`Window.Render` joins the whole window into `cache.inner`/`cache.rendered`
-   and the shipped frame path never reads it.** The only production caller of
-   `GetAll` (display.go) sets a viewport immediately before, so `renderVirtual`
-   runs and takes its rows from `cache.lines[from:to]`; `cache.inner` is read by
-   `renderAll` and `renderCursor`, which that path does not reach
-   (`windowFragment` calls `Render` with `isCursor` false and discards the
-   return). `renderAll` is the fallback for a zero-height viewport, so this is
-   cold rather than dead — but it is built on every render, and it is the single
-   biggest allocation in an expanded frame. Making it lazy behind the accessor
-   that returns it is the change; the care it needs is that `Render`'s
-   cache-hit early return hands `cache.rendered` straight back.
-3. **`windowFragment` measures the width of every row to draw ≤40 of them.** It
-   fills `cache.widths` for all of `cache.lines` and then slices `[from:to)`.
-   The cache is per render generation, so during streaming that is a full
-   `cellWidth` pass over the window per frame — time, not memory (the slice is
-   8 B per row). Measuring the visible range only needs the cache keyed on the
-   range as well as the generation, or no cache at all: 40 rows is nothing.
+   part growth. A threshold serves that purpose without the copy, so it now
+   folds at `maxContentParts` (64): a 128 KB message copies 2 KB per delta
+   instead of 128 KB per frame. **235,094 B → 103,734 B, 124μs → 104μs.** The
+   fold lives in one place (`mergeParts`) and the read in one place
+   (`rawContent`), so they cannot drift; nothing in the tree depends on the fold
+   having happened, because the only path that reads `r.content` directly is the
+   full re-wrap, which folds first.
+2. **`Window.Render` joined the whole window and the shipped frame path never
+   read it.** The only production caller of `GetAll` (display.go) sets a viewport
+   immediately before, so `renderVirtual` runs and takes its rows from
+   `cache.lines[from:to]`; the joined string is read by `renderAll` and
+   `renderCursor`, which that path does not reach. `Render` is now `buildLines`
+   (rows) plus `joined()` (their projection, built on first request), and the
+   callers that want rows — `windowFragment`, and `ensureLineHeights`, which on a
+   resize renders every window including the ones far off screen — ask for rows.
+   `cache.inner` and `cache.rendered` were only ever assigned the same string, so
+   they became one field: two names for one value is a drift waiting to happen.
+   **757,278 B → 235,094 B, 231μs → 124μs.**
+3. **`windowFragment` measured the width of every row to draw ≤40 of them.** It
+   filled `cache.widths` for all of `cache.lines` and then sliced `[from,to)`,
+   and the cache was per render generation — so during streaming, when every
+   delta rebuilds the rows, a frame measured ~2,600 rows to draw 40. The cache
+   is gone rather than re-keyed: `renderVirtual` measures a row where it pads it,
+   and most rows are not padded (only the ones a soft wrap continues).
+   **103,734 B → 80,156 B, 75.7μs → 18.2μs.**
 
-The reason all three survive is that they are O(window) with a small constant
-and no allocation blow-up, while the two that were fixed were O(window) with a
-constant of ~120 B and ~430 B per byte. The bound is worth stating plainly,
-because it is the part that does not show up in any single measurement:
-**assistant text and reasoning content are not capped.** `docs/truncation.md`
-bounds *tool output* (64 KB in memory, then a scratch file); nothing bounds an
-AT or AR window. So per-frame cost grows for as long as the model streams, and
-the total work of one long answer is quadratic in its length. At 128 KB the
-expanded frame is 220μs and the folded one 770μs, both well inside a 250ms
-tick; at 4 MB they would not be. That is the argument for making a frame
-O(viewport) rather than O(window), and it is an argument about growth, not about
-any figure in this file.
+   **This one costs something, and it is measured rather than waved away.** A
+   buffer that redraws *without* rebuilding used to reuse its width cache and now
+   measures its padded rows again each frame, and a dimmed row is measured
+   through `ansi.Strip`, which copies it: `GetAllDimmed/dimmed` (20 windows,
+   viewport 30) went **2.4μs → 5.8μs** and 13,104 B → 15,824 B, and `/normal`
+   1.7μs → 2.3μs at unchanged memory. The trade is
+   a per-frame cost bounded by the viewport against a per-rebuild cost bounded by
+   the message, which is the direction the bound below argues for — but it is a
+   regression on a named benchmark and belongs in the record. Summing the row's
+   clusters with `walkCells` avoids the copy and is *not* the fix: it measured
+   6.8μs against 5.8μs, because `breakerModel`'s escape-aware iterator is slower
+   than the table's ASCII run. Carrying each row's width out of the wrap that
+   produced it would beat both — `hardwrapCells` already knows it — and is a
+   change to `visualLine` (9 construction sites) rather than to this loop.
+
+`WindowBufferResize` (50 windows re-wrapped, 80↔120 cols) is **150μs** against
+164μs, which is items 2 and 3 together: a resize is the one operation that
+rebuilds every window at once.
+
+**What is left.** The expanded frame is now O(delta + viewport). The folded one
+is still O(content), and that is the whole of the remaining growth in the frame
+path — 64μs and 134 KB at 128 KB of content, of which a profile puts 97% of the
+bytes in `rawContent`'s join and 37μs of the 64μs in `measure`'s single pass.
+Three changes would take the pricing pass out, and each is sound on its own:
+
+- an early-exit "does it fit" walk. Sound because every term of the sum is
+  non-negative, so a prefix that already exceeds the budget settles the answer
+  for the whole;
+- cuts that do not need the total width. `measured.tail` already does not on the
+  ASCII route — it counts back — and `measured.head` needs it only for its "the
+  whole string fits" fast path, which the fits test has already answered;
+- a cached answer to "is the accumulated content plain ASCII", which is what
+  decides the route and is monotone under appending: one flag, tested against
+  each delta instead of against the message.
+
+Together those make the row O(budget). The join is the other half and is
+deliberately not attempted: see
+[What is left, deliberately](#the-fold-summary-materialized-every-cluster-found-and-fixed)
+for the two reasons a chunked summary is not a local change.
+
+The bound is worth stating plainly, because it is the part that does not show up
+in any single measurement: **assistant text and reasoning content are not
+capped.** `docs/truncation.md` bounds *tool output* (64 KB in memory, then a
+scratch file); nothing bounds an AT or AR window. A frame that is O(content)
+therefore grows for as long as the model streams, and the total work of one long
+answer is quadratic in its length. At 128 KB the expanded frame is 18μs and
+would stay there at 4 MB, because it is O(delta + viewport); the folded one is
+64μs and would be ~2ms, because it is not. Both are inside a 250ms tick, and the
+argument for closing the gap is about growth rather than about any figure in this
+file. Full rebuilds are the other O(content) shape — a resize, a theme switch or
+a fold toggle re-wraps every window — and `WindowBufferResize` is the benchmark
+that prices one.
 
 ### GetWindowLineRange
 
@@ -548,8 +737,8 @@ Minimum of 20 runs at `-benchtime 1s`; both are allocation-free.
 
 | Scenario | Benchmark | Time |
 |----------|-----------|------|
-| Single lookup (windowIndex=50, 100 windows) | `WindowBufferGetWindowLineRange` | **20.9ns** |
-| Three lookups (indices 50, 25, 75) | `GetWindowLineRangeCached` | **54.4ns total** |
+| Single lookup (windowIndex=50, 100 windows) | `WindowBufferGetWindowLineRange` | **25.8ns** |
+| Three lookups (indices 50, 25, 75) | `GetWindowLineRangeCached` | **72.9ns total** |
 
 ### ScrollView Component
 
@@ -575,8 +764,14 @@ property the design is after: the cost does not depend on the document.
 - each window's visual lines are joined **without `\n`** and padded to the
   full width (except the last row), so the terminal soft-wraps at the
   simulated breakpoints — copy restores the original text;
-- display widths are measured once per render (`Window.cache.widths`) and reused
-  for padding, so fragment output performs no per-line measurement;
+- a row's display width is measured where the frame pads it, and only there:
+  padding is the one use a frame has for a width, and most rows are not padded
+  (only the ones a soft wrap continues). This used to be a per-window cache of
+  every row's width, refilled on the first fragment after a rebuild — which
+  during streaming is every frame, so a 128 KB message had ~2,600 rows measured
+  to draw 40 of them. The trade the change makes, and its price on a small
+  buffer that redraws without rebuilding, are both measured in
+  [What is left in the frame path](#what-is-left-in-the-frame-path);
 - the window's own line (marker, label, timestamp) is built once, at render
   time, and only its row is swapped in the cursor's register — no style
   render per window per view;
@@ -601,11 +796,11 @@ at viewport 30; the folded session is the 120-window one at viewport 40.
 
 | Benchmark | Value |
 |-----------|------:|
-| `WindowBufferGetAll` | **1.60μs** |
-| `WindowBufferDeltaWithGetAll` | **2.79μs** |
-| `VirtualRenderingCursorMovement` | **39.0μs** |
-| `VirtualRenderingScroll` | **65.6μs** |
-| `StreamingUpdateWithVirtualRendering` | **2.45μs** |
+| `WindowBufferGetAll` | **1.71μs** |
+| `WindowBufferDeltaWithGetAll` | **2.75μs** |
+| `VirtualRenderingCursorMovement` | **39.3μs** |
+| `VirtualRenderingScroll` | **64.0μs** |
+| `StreamingUpdateWithVirtualRendering` | **2.38μs** |
 | `FoldedSessionGetAll` | **6.75μs** |
 
 The folded row was dropped from this table on 2026-09-28 as unmeasurable and is
@@ -662,7 +857,7 @@ visible in the last two rows: this input's lines all already fit, so
 The larger effect is on the paths that wrap short lines, where that early-out
 applies, and it shows up in allocation rather than in time. Two document-level
 figures sit near it and are worth stating with their attribution fixed: the full
-re-wrap of the 26KB message allocates **359 KB and 27,308** per operation today
+re-wrap of the 26KB message allocates **242 KB and 27,293** per operation today
 against 607 KB and 27,335 before the width table, and markdown streaming
 **12.8 KB and 1,072** against 18.4 KB and 1,195. **Neither reduction is the width
 table's**, which is what this paragraph said until 2026-09-28: measured at
@@ -678,7 +873,7 @@ Minimum of 10 runs at `-benchtime 1s`.
 
 | Scenario | Value | Memory | Allocs |
 |----------|-------|--------|-------:|
-| Resize 50 windows (80↔120 cols) | **0.17ms** | 195,135 B | 6,900 |
+| Resize 50 windows (80↔120 cols) | **0.15ms** | 168,545 B | 6,800 |
 
 This is the from-scratch re-wrap path: `WithWidth` invalidates every window, so
 each pays a full `wrapContent`. Its 50 windows are expanded text windows of 65
@@ -771,18 +966,25 @@ That commit measured its cost as "948ns vs 913ns for a 30-cell cut out of a
 and expensive in *allocation*, and only on inputs long enough for the list to
 matter. The correctness fix stays; the allocation cost is gone.
 
-**And then this revision moved five of the rows again**, for a third reason: the
-cutters stopped materializing clusters and the summary stopped escaping the
-whole message before cutting it (`5da8383e` and the commit carrying these
-notes). Full re-wrap 476 KB → **359 KB** and 27,328 → **27,308** allocs at
-`300x`; incremental append 779 B → **648 B** and 61 → **58**; markdown streaming
-15.1 KB → **12.8 KB** and 1,139 → **1,072**; `WindowBufferResize` 208,516 B →
-**195,135 B** and 7,900 → **6,900** allocs; `JustEnsureLineHeights` 1.03μs →
-**788ns**. The mechanism is in
+**And then the previous revision moved five of the rows again**, for a third
+reason: the cutters stopped materializing clusters and the summary stopped
+escaping the whole message before cutting it (`5da8383e` and `8be4bbfc`). Full
+re-wrap 476 KB → 359 KB and 27,328 → 27,308 allocs at `300x`; incremental append
+779 B → **648 B** and 61 → **58**; markdown streaming 15.1 KB → **12.8 KB** and
+1,139 → **1,072**; `WindowBufferResize` 208,516 B → 195,135 B and 7,900 → 6,900
+allocs; `JustEnsureLineHeights` 1.03μs → **788ns**. The mechanism is in
 [the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed); the
 reason a *tab* guard shows up in a re-wrap and a resize is that
 `wrapVisualLines` expands tabs per original line, and almost none of them
 contain one.
+
+**This revision moved two of those again**, and neither is a fourth mechanism —
+they are the byte-wise ASCII route through `cellWidth` and the rows/join split.
+Full re-wrap 359 KB → **242 KB** and 27,308 → **27,293** allocs at `300x`,
+because the re-wrap measures every row it produces; `WindowBufferResize`
+195,135 B → **168,545 B** and 6,900 → **6,800** allocs, because a full rebuild
+no longer joins 50 windows' text to count their lines. The bolded figures in the
+paragraph above are the ones this revision did not move.
 
 The benchtime trap is worth keeping visible, because the previous revision fell
 into it and it is easy to fall into again: `AppendVsFullWrap_LongContent`
@@ -792,6 +994,21 @@ re-wrap reports 616 KB and 32,148 allocs while at `300x` it reports 476 KB and
 `1s`, and they reproduce to within 0.2% at `10c5e88b` with that benchtime. So
 that row was never stale either — it was compared against a `300x` measurement,
 which made one benchmark's two benchtimes look like 2.5x of drift.
+
+There is a second trap beside it, and this revision fell into both. `StopTimer`
+excludes setup from the **timing** and from nothing else. Two consequences:
+
+- `-benchtime 1s` runs iterations until the *timed* work fills a second, so a
+  benchmark that rebuilds a 128 KB buffer under `StopTimer` runs ~65,000
+  iterations of ~1.3 ms of setup to time 18μs of frame — about 85 seconds of wall
+  clock per `-count`. Making the frame faster makes the benchmark *slower to run*.
+  Pin `-benchtime Nx` for these; the four tables that do say so.
+- A CPU profile taken with `-test.cpuprofile` covers the setup too. Profiling
+  `BenchmarkFoldedTextStreamingDelta` that way attributed 4.4% of the frame to
+  `deltaHasPipeLine`, which is not in the frame at all — it is the 128 KB
+  `AppendFromTLV` in the setup, once per iteration. Every attribution in this
+  revision was re-taken against probes that build the renderer once outside the
+  loop and call only the part under examination.
 
 What is *not* stale, and was re-verified by reading the code rather than by
 timing it: the incremental path is O(delta) and independent of window count,
@@ -804,7 +1021,7 @@ the folded *row* — see
 ## Why Rate Limiting Isn't Needed
 
 1. **UI refresh is polled at 250ms intervals** — data ingestion itself is not throttled
-2. **Render overhead is well under 0.01%** of wall time during streaming (2.45μs per 250ms tick ≈ 0.001%). The one thing that ever threatened this claim was the folded text summary, which spent 5.4% of a tick at 128KB of reasoning text while it materialized every cluster twice per frame and then escaped the whole message to cut 75 cells out of it; it spends 0.3% now ([the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed)). The caveat that remains is about growth rather than this figure: window content is not capped, so a frame costs more the longer the message it draws — see [What is left in the frame path](#what-is-left-in-the-frame-path)
+2. **Render overhead is well under 0.01%** of wall time during streaming (2.38μs per 250ms tick ≈ 0.001%). The one thing that ever threatened this claim was the folded text summary, which spent 5.4% of a tick at 128KB of reasoning text while it materialized every cluster twice per frame and then escaped the whole message to cut 75 cells out of it; it spends 0.026% now ([the finding](#the-fold-summary-materialized-every-cluster-found-and-fixed)). The caveat that remains is about growth rather than this figure: window content is not capped, so a frame costs more the longer the message it draws — see [What is left in the frame path](#what-is-left-in-the-frame-path)
 3. **`updateContent()` skips unchanged content** efficiently — the one deliberate exception is the executing-tool spinner refresh (`InvalidateRunningToolSpinners`), which invalidates pending tool windows per tick so the header spinner keeps rotating during silent commands; it costs a 33ns scan and 0 allocations, plus the one window's row in the frame that follows, only while a tool executes (see [tool-spinner-refresh.md](tool-spinner-refresh.md)). That row is a tool window's, so it reads the first input line — the cheap summary, not the O(content) one
 4. **Incremental append is O(delta)** — no quadratic accumulation for long responses
 
@@ -936,13 +1153,17 @@ access (no interface dispatch on the hot path).
 ### Why `ensureLineHeights` Defers Full Render
 
 During streaming, `ensureLineHeights` first tries `UpdateLineCountFast` → `TryLineCount`.
-If the renderer's `wrappedLines` is populated, this returns the line count in 1.03μs
-for the whole pass, without rendering. The actual `w.Render()` — which joins wrapped
-lines, composes the window's own row, and renders the style layer — is deferred to
-`GetAll` → `renderVirtual`, which needs the rendered output for the viewport anyway.
+If the renderer's `wrappedLines` is populated, this returns the line count in 1.01μs
+for the whole pass, without rendering. Otherwise it calls `Window.buildLines`,
+which composes the window's own row and wraps the content into visual rows but
+does **not** join them — `GetAll` → `renderVirtual` clips those rows to the
+viewport, and the joined string only `renderAll` and the cursor's register want
+is built behind `joined()`, on first request. A resize is the case that pays: it
+rebuilds every window, and joining 50 of them to count their lines was the
+dearer half of it.
 
 The deferral is also what keeps a folded window's summary out of line tracking:
-a full `lineHeights` rebuild over a 100-window buffer costs 299ns and allocates
+a full `lineHeights` rebuild over a 100-window buffer costs 252ns and allocates
 nothing (`EnsureLineHeightsFullRebuild`), because a folded window answers `1`
 without a renderer call at all and an unfolded one answers from the count its
 last render cached. Deriving the summary arrives in the frame instead, and only

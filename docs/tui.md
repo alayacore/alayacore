@@ -638,11 +638,13 @@ was deliberately not done, and the guarantees tests hold:
 The display uses virtual scrolling to handle large outputs efficiently. The
 viewport clips the window buffer to the visible **visual lines** and renders
 only the windows that overlap them — typically 1-3 windows per frame, down
-from the buffered window range of the old model. Cached display widths make
-fragment output cheap: across the soft-wrap refactor (`fa211241^` → `7d391db5`,
+from the buffered window range of the old model. A fragment costs what it draws
+and nothing else: the rows come from the window's cache without being joined
+into a string, and a row's display width is measured only where the frame pads
+it for a soft wrap. Across the soft-wrap refactor (`fa211241^` → `7d391db5`,
 both ends measured back to back on one machine) `GetAll` went from
 7.10μs and 44,160 B/op to 2.58μs and 12,104 B/op — **~64% faster** — and the
-current tree measures 1.6μs and 6,080 B/op (`BenchmarkWindowBufferGetAll`). See
+current tree measures 1.71μs and 6,080 B/op (`BenchmarkWindowBufferGetAll`). See
 [performance analysis](internal/virtual-rendering-performance.md) for details.
 
 ### Sentinel values
@@ -843,11 +845,13 @@ changes nothing the layout depends on — the whole package's test suite passes
 with it set, where 8 top-level tests used to fail.
 
 Window rendering produces **visual line arrays** (`Window.cache.lines`) — one
-element per terminal row. Display widths are measured once per render
-(`Window.cache.widths`) and reused by the viewport for padding, so fragment
-output never re-measures lines. `lineHeights` are the visual line counts,
-so cursor navigation (j/k/H/M/L) and `EnsureCursorVisible` operate on
-terminal rows exactly as before.
+element per terminal row. The viewport clips that array; it does not ask for the
+joined string `Window.Render` returns, which is built only when something reads
+it. A row's display width is measured where the frame pads it for a soft wrap,
+and nowhere else — an earlier design cached every row's width per render, which
+meant measuring all ~2,600 rows of a 128 KB message to draw the 40 on screen.
+`lineHeights` are the visual line counts, so cursor navigation (j/k/H/M/L) and
+`EnsureCursorVisible` operate on terminal rows exactly as before.
 
 Incremental updates avoid re-wrapping the entire content on every token. Only the last line is combined with the new delta and re-wrapped, keeping per-token cost proportional to the delta size rather than total content.
 

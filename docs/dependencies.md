@@ -69,9 +69,15 @@ Every answer to "how many cells does this occupy" and every "cut this string at 
 // width.go
 var widthModel = &displaywidth.Options{EastAsianWidth: false}
 
-func cellWidth(s string) int                 // ansi.Strip, then this table
+func cellWidth(s string) int                 // this table; byte-wise for plain ASCII
 func takeCells(s string, cells int) string   // leading whole clusters
 func tailCells(s string, cells int) string   // trailing whole clusters
+
+// measure answers "how wide" and "which walking route" in one pass, so a caller
+// that cuts one string twice prices it once. Plain ASCII never reaches the table.
+func measure(s string) measured
+func (m measured) head(cells int) string     // takeCells, measurement hoisted
+func (m measured) tail(cells int) string     // tailCells; backwards on plain ASCII
 
 // the breakers: one escape-aware cluster walk (walkCells) over the same table
 func hardwrapCells(s string, width int) string        // rows of at most width cells
@@ -107,7 +113,7 @@ Everything that speaks to the terminal. It is **not** where a line ends: every b
 | `keepCells("\033[32mHello\033[0m", 3)` | `"\033[32mHel\033[0m"` ✅ | `"\033[32mH"` ❌ (truncates mid-ANSI) |
 | `cellWidth("\033[32mHello\033[0m")` | `5` ✅ | `16` ❌ (counts ANSI bytes) |
 
-Since the project processes large amounts of styled text (containing ANSI codes), escape-aware measurement is required on one side or the other. `cellWidth` strips (③ above); the breakers cannot strip — a cut row is still styled — so they walk clusters with displaywidth's control-sequence options on instead. `TestWalkCellsAgreesWithCellWidth` is the check that the two routes through the same library still return one number.
+Since the project processes large amounts of styled text (containing ANSI codes), escape-aware measurement is required on one side or the other. `cellWidth` strips (③ above); the breakers cannot strip — a cut row is still styled — so they walk clusters with displaywidth's control-sequence options on instead. Three checks hold the routes to each other and to the library: `TestCellWidthMatchesAnsi` (against `ansi.StringWidth`), `TestCellWidthAgreesWithTheTableOnASCII` (the byte-wise ASCII route against this table, over every ASCII byte — needed because `cellWidth` and `walkCells` now price ASCII through the *same* function, which leaves `TestWalkCellsAgreesWithCellWidth` unable to catch a rule wrong for both), and `TestWalkCellsAgreesWithCellWidth` (the two routes through the same library returning one number).
 
 ### `github.com/mattn/go-runewidth` — transitive dependency only
 
