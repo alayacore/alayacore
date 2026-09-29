@@ -336,12 +336,86 @@ func hardwrapCells(s string, width int) string {
 	}
 	var b strings.Builder
 	b.Grow(len(s) + len(s)/width + 8)
+	hardwrapWalk(s, width, &b, nil)
+	return b.String()
+}
+
+// hardwrapCellsWidths is hardwrapCells together with the width of each row it
+// produced: the i'th entry appended to cells is the cells the i'th '\n'-separated
+// row of the result draws, so the count is always one more than the result's
+// newline count.
+//
+// The widths cost nothing to keep. The walk charges cells per cluster in order to
+// find the breaks, and cur is the running total it charges them to — reading it at
+// a break is the width of the row that just ended. A caller that has to know a
+// row's width should therefore ask here rather than measure the row afterwards,
+// which is what the frame does when it pads a row for the terminal to soft-wrap:
+// counted once per row built, instead of measured once per row drawn per frame,
+// and without the copy that measuring a styled row makes (cellWidth strips its
+// escapes first).
+//
+// cells is the scratch to append into, so a caller wrapping many lines in a loop
+// pays for one slice instead of one per line; pass cells[:0]. What it holds on
+// entry is not read, and it is truncated here when the first pass turns out to
+// have described s's own lines rather than the rows a break produces.
+//
+// Unlike hardwrapCells this cannot stop at the first line that does not fit, since
+// a caller wants every row's width — which is why hardwrapCells keeps asking
+// linesFit, whose whole job is the yes/no question it can answer early.
+func hardwrapCellsWidths(s string, width int, cells []int) (string, []int) {
+	if s == "" {
+		return s, append(cells, 0)
+	}
+	if width < 1 {
+		// Nothing to break at, so the rows are s's own lines. A caller that asked
+		// for widths still gets them.
+		for line := range strings.SplitSeq(s, "\n") {
+			cells = append(cells, cellWidth(line))
+		}
+		return s, cells
+	}
+	// Deciding that every line already fits measures every line, so in the case
+	// where nothing is broken the widths are in hand and the walk never runs.
+	fit := true
+	for line := range strings.SplitSeq(s, "\n") {
+		w := cellWidth(line)
+		cells = append(cells, w)
+		if w > width {
+			fit = false
+		}
+	}
+	if fit {
+		return s, cells
+	}
+	// Something has to break, so those were the widths of s's lines and not of the
+	// rows the break produces.
+	cells = cells[:0]
+	var b strings.Builder
+	b.Grow(len(s) + len(s)/width + 8)
+	hardwrapWalk(s, width, &b, &cells)
+	return b.String(), cells
+}
+
+// hardwrapWalk writes s to b, broken at cluster boundaries so that no row exceeds
+// width cells, and appends each row's width to cells when cells is not nil. It is
+// the break rule, in one place: hardwrapCells and hardwrapCellsWidths differ only
+// in whether they keep what the walk counted.
+//
+// The row-end bookkeeping is spelled out at each of the three places a row ends
+// rather than closed over in a helper. A closure that reads and a walk that writes
+// the same cur forces cur onto the heap, and then every cluster of every row pays
+// a pointer indirection for a counter that was a register — measured, on
+// BenchmarkWrapContent, as 19% of the walk for no allocation saved.
+func hardwrapWalk(s string, width int, b *strings.Builder, cells *[]int) {
 	cur := 0
-	walkCells(s, func(text string, cells int) bool {
-		if cells == 0 {
+	walkCells(s, func(text string, w int) bool {
+		if w == 0 {
 			// An escape (kept, uncharged) or a control. Only a newline ends
 			// the line.
 			if text == "\n" {
+				if cells != nil {
+					*cells = append(*cells, cur)
+				}
 				b.WriteByte('\n')
 				cur = 0
 				return true
@@ -353,15 +427,20 @@ func hardwrapCells(s string, width int) string {
 		// cluster — a CJK glyph in a 1-cell column — then gets a line to
 		// itself instead of an empty line ahead of it, which is what keeps
 		// the row count equal to the cluster count.
-		if cur > 0 && cur+cells > width {
+		if cur > 0 && cur+w > width {
+			if cells != nil {
+				*cells = append(*cells, cur)
+			}
 			b.WriteByte('\n')
 			cur = 0
 		}
 		b.WriteString(text)
-		cur += cells
+		cur += w
 		return true
 	})
-	return b.String()
+	if cells != nil {
+		*cells = append(*cells, cur)
+	}
 }
 
 // keepCells returns the leading clusters of s whose total is at most n cells,

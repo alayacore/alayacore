@@ -109,6 +109,10 @@ func (s *Styles) RenderOpenBoxLines(lines []visualLine, width int, borderColor c
 	borderStyle := NewStyle().Foreground(borderColor)
 	rule = borderStyle.Render(rule)
 
+	// No row here carries padding, and that is an answer rather than an omission:
+	// a box brackets content whose rows each end their own original line, so nothing
+	// in it is a soft-wrap predecessor, and the one caller flattens the result to a
+	// string without a frame ever reading it.
 	out := make([]visualLine, 0, len(lines)+2)
 	out = append(out, visualLine{Text: rule})
 	out = append(out, lines...)

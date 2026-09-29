@@ -1003,11 +1003,12 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			if j < len(lines)-1 && lines[j+1].Cont {
 				// Row followed by a continuation: pad to the full width so
 				// the soft-wrap break lands exactly at the visual boundary.
-				// Measured here, for this row only: padding is the sole use a
-				// frame has for a row's width. windowFragment says why that
-				// replaced a per-window cache, and what the trade costs.
-				if wdt := cellWidth(vl.Text); wdt < wb.width {
-					sb.WriteString(strings.Repeat(" ", wb.width-wdt))
+				// The count arrives with the row — the walk that broke it
+				// charged cells to find the break, so the padding is worked out
+				// once per row built rather than measured once per row drawn per
+				// frame, and a redraw that rebuilds nothing measures nothing.
+				if pad := int(vl.Pad); pad > 0 {
+					sb.WriteString(strings.Repeat(" ", pad))
 				}
 			} else if j < len(lines)-1 {
 				// Row ending an original line: not padded (copy stays free
@@ -1053,25 +1054,28 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 // here: the marker is part of the cached row, and the row is the same
 // width in both registers.
 //
-// No widths come back with the rows. renderVirtual needs one only where it pads
-// a row for a soft wrap, so it measures that row there. This used to fill a
-// per-window cache covering EVERY row on the first fragment after a rebuild —
-// and during streaming every delta rebuilds, so a frame measured all ~2,600 rows
-// of a 128 KB message in order to draw 40 of them (57μs and 23 KB per frame).
-// The cache is gone rather than re-keyed on the range: it needed an invalidation
-// rule to stay honest about it, and a per-frame cost bounded by the viewport
-// beats a per-rebuild cost bounded by the message.
+// Padding comes back with the rows, as visualLine.Pad. renderVirtual needs it
+// only where it pads a row for a soft wrap, and it reads it there, so nothing in a
+// frame measures a row. There used to be a per-window cache of widths instead,
+// filled for EVERY row on the first fragment after a rebuild — and during streaming
+// every delta rebuilds, so a frame measured all ~2,600 rows of a 128 KB message in
+// order to draw 40 of them (57μs and 23 KB per frame). The cache is still gone: it
+// needed an invalidation rule to stay honest about it, and a padding count that
+// travels with the row it belongs to cannot go stale behind one.
 //
-// Bounded is not free, and the price is measured rather than assumed. A buffer
-// that redraws WITHOUT rebuilding used to reuse the cache and now measures its
-// padded rows again each frame, and a dimmed row is measured through ansi.Strip,
-// which copies it: BenchmarkGetAllDimmed/dimmed (20 windows, viewport 30) went
-// 2.4μs → 5.8μs and 13,104 B → 15,824 B, against the −57μs above. Summing the
-// row's clusters with walkCells avoids the copy and is not the fix —
-// breakerModel's escape-aware iterator is slower than the table's ASCII run,
-// measured at 6.8μs against 5.8μs. Carrying each row's width out of the wrap
-// that produced it would beat both, and is a change to visualLine rather than to
-// this call.
+// Getting there took two steps and the first one cost something. Measuring the
+// padded rows in the frame — where padding is the only use a frame has for a width
+// — bounds the cost by the viewport instead of by the message, but a buffer that
+// redraws WITHOUT rebuilding then re-measures them every frame, and a dimmed row is
+// measured through ansi.Strip, which copies it: BenchmarkGetAllDimmed/dimmed
+// (20 windows, viewport 30) went 2.4μs → 5.8μs and 13,104 B → 15,824 B. Summing
+// the row's clusters with walkCells avoids the copy and is not the fix either:
+// breakerModel's escape-aware iterator is slower than the table's ASCII run, 6.8μs
+// against 5.8μs. What wins is not measuring at all. hardwrapCells charges cells per
+// cluster in order to find the breaks, so what a row needs after it is known at the
+// moment the row is made and expensive at every point after; and an int32 fits in
+// the padding Cont's bool already leaves in the struct, so carrying it costs no
+// memory.
 func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) []visualLine {
 	// Ensure the window's rows are built (lineHeights alone don't render
 	// folded windows — the fast path skips rendering). buildLines, not

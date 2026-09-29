@@ -523,6 +523,12 @@ func (w *Window) buildLines(width int, styles *Styles, blocked bool) {
 		// build it, twice per frame, at ~430 B per byte of message —
 		// BenchmarkFoldedTextStreamingDelta is the benchmark that prices it.
 		summary, _ := w.renderer.BuildCollapsed(width, styles)
+		// Row 0 carries no padding, and nothing here has to work out that it
+		// carries none: it is never followed by a continuation
+		// (TestWindowRow0IsNeverSoftWrapped), so no frame pads it. Measuring it
+		// anyway, to fill a field nothing reads, cost a Strip of a styled row per
+		// window per rebuild — some 30μs across the 50 windows
+		// BenchmarkWindowBufferResize rebuilds.
 		w.cache.lines = []visualLine{{Text: w.lineStyle(styles).Render(w.markerChar()) + " " + summary}}
 		w.cache.lineCount = 1
 	} else {
@@ -534,6 +540,8 @@ func (w *Window) buildLines(width int, styles *Styles, blocked bool) {
 		// array, which joined() projects into the string Render returns.
 		contentLines, _ := w.renderer.BuildInner(width, false, styles)
 		lines := make([]visualLine, 0, len(contentLines)+1)
+		// The header is row 0 and carries no padding, for the reason the folded
+		// branch gives.
 		lines = append(lines, visualLine{Text: w.buildExpandHeader(width, styles, "")})
 		lines = append(lines, contentLines...)
 		w.cache.lines = lines

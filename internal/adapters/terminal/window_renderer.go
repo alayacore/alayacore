@@ -126,7 +126,11 @@ func (r *textRenderer) bodyStyled(lines []visualLine, styles *Styles) []visualLi
 	}
 	colored := make([]visualLine, len(lines))
 	for i, l := range lines {
-		colored[i] = visualLine{Text: styles.Body.Render(l.Text), Cont: l.Cont}
+		// The padding carries over: Body.Render wraps the row in SGR sequences,
+		// and escapes charge no cells, so the row draws the same width as before
+		// and needs the same spaces after it. Dropping it here would take the
+		// padding off every dimmed row, which is every row an overlay draws.
+		colored[i] = visualLine{Text: styles.Body.Render(l.Text), Pad: l.Pad, Cont: l.Cont}
 	}
 	r.colored = colored
 	r.coloredDirty = false
@@ -150,7 +154,7 @@ func styleBodyLines(lines []visualLine, styles *Styles) []visualLine {
 			out[i] = l
 			continue
 		}
-		out[i] = visualLine{Text: styles.Body.Render(l.Text), Cont: l.Cont}
+		out[i] = visualLine{Text: styles.Body.Render(l.Text), Pad: l.Pad, Cont: l.Cont}
 	}
 	return out
 }

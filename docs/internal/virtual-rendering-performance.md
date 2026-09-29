@@ -121,9 +121,12 @@ Two things were not fine, and both are fixed rather than recorded:
   the five to eight prefix sums it used to ask separately. At 128KB of content
   the **expanded** streaming frame went 231μs/757,278 B → **18.2μs/80,156 B**
   (12.7x, 9.4x) and the folded one 709μs/134,136 B → **63.9μs/133,801 B**
-  (11.1x). One of the five has a price and it is stated where it lands:
-  `GetAllDimmed/dimmed` went 2.4μs → 5.8μs and 13,104 B → 15,824 B, because a
-  frame that redraws without rebuilding now re-measures the rows it pads.
+  (11.1x). The fifth of those first traded a per-rebuild cost for a per-frame one
+  — `GetAllDimmed/dimmed` went 2.4μs → 5.8μs and 13,104 B → 15,824 B, because a
+  frame that redraws without rebuilding then re-measured the rows it pads — and
+  the trade is since closed: the wrap counts what a row needs after it at the
+  moment it breaks the row, and the frame reads the count. That benchmark is back
+  at **2.3μs and 13,104 B**, the bytes it was before the trade.
   See [What is left in the frame path](#what-is-left-in-the-frame-path)
 
 ## How Streaming Works
@@ -617,12 +620,34 @@ listed with what each would catch, because a refactor that only has to be
   above, plus `probeLine`'s six answers each checked against the walk they
   replaced. Outside this package, `caret_e2e_test.go` (3 cases) asks a terminal
   where the caret ended up and what it drew there.
+- *the row's own padding* (`row_padding_test.go`, 8): that every row asks for the
+  spaces the frame would have measured for it — `max(0, width − cellWidth(text))`
+  where a continuation follows and 0 where one does not — over 1,465 rows of a
+  corpus of wide clusters, combining marks, tabs and styled text at eight widths;
+  that `hardwrapCellsWidths` breaks exactly where `hardwrapCells` does and reports
+  one width per row; that `wrapRows` rejoined is `wrapContent`; the same rule over
+  every row of every window in both fold states and both style registers, and over
+  every step of both streaming delta paths; that a box asks for none; that a row is
+  still 24 bytes, which is the whole reason the count is an int32; and, at frame
+  level, that the bytes written are the rows with the padding they ask for.
+
+  The frame-level case needs wide content, and that is worth saying plainly:
+  `TestCursorFramePadsTheRowsItDraws` cannot see any of it, because its fixture is
+  ASCII and an ASCII row a hard wrap broke is exactly the width. A padding count of
+  zero and a count nobody consulted look identical there — it passed unchanged
+  through every mutation below.
 
 Four of these were mutation-checked — the change reverted or broken on purpose,
 to confirm the test fails: folding every frame instead of at the threshold, and
 never folding; `asciiCells` pricing a control as one cell; the backward tail
 scan using `>=` for its budget and ignoring zero-width bytes. Each was caught,
-the first two by more than one test.
+the first two by more than one test. The padding rule was mutation-checked seven
+more ways: the count off by one; padding asked for by every row rather than only
+the ones a continuation follows; the count dropped where a row is recolored, which
+is the silent failure the dimmed register would otherwise hide, and is caught by
+exactly one test; the row's width recorded after the running count was reset
+instead of before; and the frame ignoring the count, writing one space too many,
+and writing one too few. Each was caught.
 
 **What is left, deliberately.** The folded frame is 64μs and 134 KB at 128 KB
 of content — 0.026% of a 250ms tick, against the 5.4% and 56.8 MB it was — and
@@ -686,20 +711,30 @@ expanded streaming frame, measured after each change in isolation.
    and most rows are not padded (only the ones a soft wrap continues).
    **103,734 B → 80,156 B, 75.7μs → 18.2μs.**
 
-   **This one costs something, and it is measured rather than waved away.** A
-   buffer that redraws *without* rebuilding used to reuse its width cache and now
-   measures its padded rows again each frame, and a dimmed row is measured
-   through `ansi.Strip`, which copies it: `GetAllDimmed/dimmed` (20 windows,
-   viewport 30) went **2.4μs → 5.8μs** and 13,104 B → 15,824 B, and `/normal`
-   1.7μs → 2.3μs at unchanged memory. The trade is
-   a per-frame cost bounded by the viewport against a per-rebuild cost bounded by
-   the message, which is the direction the bound below argues for — but it is a
-   regression on a named benchmark and belongs in the record. Summing the row's
-   clusters with `walkCells` avoids the copy and is *not* the fix: it measured
-   6.8μs against 5.8μs, because `breakerModel`'s escape-aware iterator is slower
-   than the table's ASCII run. Carrying each row's width out of the wrap that
-   produced it would beat both — `hardwrapCells` already knows it — and is a
-   change to `visualLine` (9 construction sites) rather than to this loop.
+   **This one cost something, and the cost is now closed.** A buffer that redraws
+   *without* rebuilding used to reuse its width cache and then measured its padded
+   rows again each frame, and a dimmed row is measured through `ansi.Strip`, which
+   copies it: `GetAllDimmed/dimmed` (20 windows, viewport 30) went 2.4μs → 5.8μs
+   and 13,104 B → 15,824 B, and `/normal` 1.7μs → 2.3μs at unchanged memory. The
+   trade was a per-frame cost bounded by the viewport against a per-rebuild cost
+   bounded by the message, which is the direction the bound below argues for — but
+   it was a regression on a named benchmark, and it is gone rather than merely
+   recorded. Summing the row's clusters with `walkCells` avoids the copy and is
+   *not* how: that measured 6.8μs against 5.8μs, because `breakerModel`'s
+   escape-aware iterator is slower than the table's ASCII run. What works is not
+   measuring at all. `hardwrapCells` charges cells per cluster in order to find the
+   breaks, so what a row needs after it is known at the moment the row is made and
+   expensive at every point after; it now rides along in `visualLine.Pad`, an int32
+   that fits in the padding `Cont`'s bool already leaves in the struct, and
+   `renderVirtual` writes that many spaces instead of measuring the row to work
+   them out. **`GetAllDimmed/dimmed` is back at 2.3μs and 13,104 B — the same bytes
+   it was before the trade — and `/normal` at 1.8μs.** The counting is not free
+   where it happens: `FullWrappingPath` is +5% (5.9μs → 6.2μs) and +2% memory, and
+   `WindowBufferResize` holds its time for 2.5 KB more, which still leaves it 25 KB
+   under what it cost before this item. Measuring the two against each other needed
+   interleaving: run in separate batches, `WrapContent` and
+   `FoldedToolStreamingDelta` each appeared to move by 20% and neither does when the
+   binaries alternate rounds.
 
 `WindowBufferResize` (50 windows re-wrapped, 80↔120 cols) is **150μs** against
 164μs, which is items 2 and 3 together: a resize is the one operation that

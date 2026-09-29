@@ -31,13 +31,48 @@ func wrapContent(s string, width int) string {
 	// Step 1: hard-wrap at cluster boundaries (like a terminal), measured
 	// with the same table cellWidth uses — see width.go's header for why
 	// this is not ansi.Hardwrap.
-	s = hardwrapCells(s, width)
 	// Step 2: re-apply ANSI styles after each inserted newline
+	return restyleBreaks(hardwrapCells(s, width))
+}
+
+// restyleBreaks re-applies the style in force across each '\n' in s. A terminal
+// drops the pen at a line boundary, so a row a wrap produced would draw
+// unstyled from its second row on without this.
+//
+// It is the half of wrapContent that a caller wanting the rows separately still
+// needs, and it is width-preserving by construction: it inserts escape sequences
+// and nothing else, and escapes charge no cells. It also adds no '\n', so the
+// rows it returns are the rows it was given.
+func restyleBreaks(s string) string {
 	var buf bytes.Buffer
 	w := NewWrapWriter(&buf)
 	defer w.Close()
 	_, _ = io.WriteString(w, s) // bytes.Buffer.Write never fails
 	return buf.String()
+}
+
+// wrapRows is wrapContent returning the rows it produced and the width of each.
+// The widths come from the hard-wrap walk, which charged cells to find the breaks
+// in the first place, and restyleBreaks preserves them — so this is what a caller
+// that has to know a row's width calls, instead of wrapping and then measuring.
+//
+// cells is the scratch the widths are appended to, for a caller wrapping many
+// lines in a loop; pass cells[:0].
+func wrapRows(s string, width int, cells []int) (rows []string, widths []int) {
+	joined, widths := hardwrapCellsWidths(s, width, cells)
+	rows = strings.Split(restyleBreaks(joined), "\n")
+	if len(widths) != len(rows) {
+		// Cannot happen: hardwrapCellsWidths emits one width per row and
+		// restyleBreaks adds no break of its own. Recomputing rather than
+		// indexing out of range keeps a rendering path from panicking should
+		// that ever stop holding, and TestWrapRowsMatchesWrapContent is what
+		// says it stopped.
+		widths = make([]int, len(rows))
+		for i, r := range rows {
+			widths[i] = cellWidth(r)
+		}
+	}
+	return rows, widths
 }
 
 // WrapWriter is a writer that writes to a buffer and keeps track of the
@@ -347,8 +382,30 @@ func readLink(p []byte, l *link) {
 // original line and are separated from the previous row by a hard '\n'.
 // This is what keeps copy-fidelity: only genuinely-long single lines
 // become soft-wrap runs — ordinary multi-line content stays multi-line.
+//
+// Pad is the spaces a frame must append to this row so that the terminal's own
+// soft wrap lands on the row boundary instead of somewhere inside the next one.
+// It is non-zero only for a row the wrap broke, which is exactly the set of rows a
+// frame pads: a row followed by a continuation. Every other row — a window's own
+// line, a folded summary, a box rule, a row that ends its original line — leaves it
+// at zero, which is the right answer rather than an absent one, and is why no
+// construction site has to work out a width it does not need.
+//
+// The wrap fills it in for free: hardwrapCells charges cells per cluster to find
+// the breaks, so the cells a row took are known at the moment it is made and
+// expensive at every point after (measuring a styled row copies it, since
+// cellWidth strips the escapes first). It is int32 because that fits in the padding
+// Cont's bool already leaves in this struct, so carrying it costs no memory —
+// 24 bytes a row either way, against 32 for an int.
+//
+// Pad is relative to the width the row was wrapped at, and a frame pads to the
+// width it renders at. Those are the same number: buildLines is keyed on the
+// buffer's width and rebuilds when it changes, and every renderer wraps at the
+// width it is given (innerWidth := max(0, width)). TestRowsPadToTheWidthTheyDraw
+// pins the equality rather than assuming it.
 type visualLine struct {
 	Text string
+	Pad  int32
 	Cont bool
 }
 
@@ -378,6 +435,8 @@ func joinVisualLines(lines []visualLine) string {
 // predecessor (soft wrap).
 func wrapVisualLines(s string, width int) []visualLine {
 	var out []visualLine
+	// One scratch for the widths of every row of every line, rather than one per
+	// line: a message is many lines and most of them make one row.
 	for _, part := range strings.Split(s, "\n") {
 		// Expand tabs per ORIGINAL line (column resets at '\n'): this is
 		// done here — not on the whole content — so the incremental
@@ -386,16 +445,30 @@ func wrapVisualLines(s string, width int) []visualLine {
 		// column, not from 0).
 		part = expandTabs(part)
 		var rows []string
+		var widths []int
 		switch {
 		case width >= 1:
-			rows = strings.Split(wrapContent(part, width), "\n")
+			rows, widths = wrapRows(part, width, nil)
 		case part != "":
 			rows = []string{part}
+			widths = []int{cellWidth(part)}
 		default:
 			rows = []string{""}
+			widths = []int{0}
 		}
 		for i, r := range rows {
-			out = append(out, visualLine{Text: r, Cont: i > 0})
+			// A row the wrap broke is followed by one of its own continuations,
+			// and is the row a frame has to pad out to the width it was broken at
+			// so the terminal wraps where the row ends. The part's last row ends
+			// the original line and is padded by nobody: a selection must not
+			// carry trailing spaces. A row wider than the width — the unbreakable
+			// cluster that gets a line to itself — pads to nothing, which is what
+			// measuring it in the frame used to decide too.
+			var pad int32
+			if i < len(rows)-1 {
+				pad = int32(max(0, width-widths[i])) //nolint:gosec // G115: bounded by width, and non-negative by the max
+			}
+			out = append(out, visualLine{Text: r, Pad: pad, Cont: i > 0})
 		}
 	}
 	return out
@@ -410,6 +483,8 @@ func appendDeltaToVisualLines(lines []visualLine, delta string, width int) []vis
 	if width <= 0 {
 		last := lines[len(lines)-1]
 		last.Text += delta
+		// last.Pad carries over unchanged and was zero: this is its part's last
+		// row, which no frame pads, and at this width none could.
 		lines[len(lines)-1] = last
 		return lines
 	}
