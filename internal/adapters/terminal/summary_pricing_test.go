@@ -92,14 +92,18 @@ func TestFoldedSummaryIsPricedTheSameWhicheverWay(t *testing.T) {
 
 			// The counts themselves, against a measurement of the same content.
 			want := prepareContent(raw)
-			gotM, gotNewlines := a.summaryContent(raw)
-			if wantM := measure(want); gotM.cells != wantM.cells || gotM.s != want {
+			got := a.summaryContent(raw)
+			if wantM := measure(want); got.m.cells != wantM.cells || got.m.s != want {
 				t.Errorf("%q split %d: summaryContent measured %d cells of %q, want %d cells of %q",
-					content, split, gotM.cells, gotM.s, wantM.cells, want)
+					content, split, got.m.cells, got.m.s, wantM.cells, want)
 			}
-			if wantNewlines := strings.Count(want, "\n"); gotNewlines != wantNewlines {
-				t.Errorf("%q split %d: summaryContent counted %d line breaks, want %d",
-					content, split, gotNewlines, wantNewlines)
+			// The escaped half is checked against what escaping actually draws,
+			// not against escapedWidth or the counts' own arithmetic: it is the
+			// number a fit check spends, and it is the half the cached path
+			// assembles by hand.
+			if wantEscaped := cellWidth(escapeBreaks(want)); got.escaped != wantEscaped {
+				t.Errorf("%q split %d: summaryContent priced the escaped row at %d cells, want %d",
+					content, split, got.escaped, wantEscaped)
 			}
 
 			for _, width := range widths {
@@ -123,55 +127,39 @@ func TestFoldedSummaryIsPricedTheSameWhicheverWay(t *testing.T) {
 	t.Logf("%d cases kept the counts, %d retired them", kept, retired)
 }
 
-// TestHeadAndTailMeasuredIsHeadAndTailParts checks that the split hands the right
-// two things over: a measurement of the content, and the count of line breaks that
-// belongs to that same content. It cannot check the fit rule the two share —
-// headAndTailParts delegates to headAndTailMeasured, so a change there moves both
-// sides together. TestHeadAndTailFitsWhatEscapedWidthSays is the one that can.
-func TestHeadAndTailMeasuredIsHeadAndTailParts(t *testing.T) {
-	widths := []int{-1, 0, 1, 2, 3, 4, 5, 8, 13, 40, 79, 80, 120}
-	for _, content := range summaryPricingCorpus() {
-		prepared := prepareContent(content)
-		m := measure(prepared)
-		newlines := strings.Count(prepared, "\n")
-		for _, w := range widths {
-			gotHead, gotTail, gotTrunc := headAndTailMeasured(m, newlines, w)
-			wantHead, wantTail, wantTrunc := headAndTailParts(prepared, w)
-			if gotHead != wantHead || gotTail != wantTail || gotTrunc != wantTrunc {
-				t.Errorf("%q at width %d:\n  measured handed in: (%q, %q, %v)\n  measured inside:    (%q, %q, %v)",
-					content, w, gotHead, gotTail, gotTrunc, wantHead, wantTail, wantTrunc)
-			}
-		}
-	}
-}
-
-// TestHeadAndTailFitsWhatEscapedWidthSays pins the fit rule to the function that
-// states it independently. escapedWidth is what a summary's width becomes once
-// escapeBreaks has run — every line break 0 cells becoming a two-cell marker — and
-// tailParts still asks it directly, so it is a second statement of the same
-// question rather than a restatement of the branch under test.
+// TestSummaryFitsWhatEscapeBreaksDraws pins the fit rule to the row a summary
+// actually draws. escapeBreaks is what the content becomes — every line break,
+// 0 cells, turning into a two-cell marker — so measuring that string states
+// "does it fit" while sharing no code with the branch under test: not
+// escapedWidth, which priceSummary spends, and not the counts summaryContent keeps.
 //
 // "Fits" is observable from outside as "not truncated": the branch that finds the
 // content inside the budget returns the whole of it escaped and says nothing was
 // cut, and every other return says something was.
-func TestHeadAndTailFitsWhatEscapedWidthSays(t *testing.T) {
+//
+// This catches a fit check that forgets the line breaks — reading the budget
+// against the raw cell count says a message with enough newlines fits when it
+// does not — and an escapedWidth that prices a break at anything other than the
+// two cells it draws.
+func TestSummaryFitsWhatEscapeBreaksDraws(t *testing.T) {
 	for _, content := range summaryPricingCorpus() {
 		prepared := prepareContent(content)
-		m := measure(prepared)
-		newlines := strings.Count(prepared, "\n")
+		priced := priceSummary(prepared)
+		drawn := escapeBreaks(prepared)
+		drawnCells := cellWidth(drawn)
 		for _, w := range []int{1, 2, 3, 4, 5, 8, 13, 40, 79, 80, 120} {
-			head, tail, truncated := headAndTailMeasured(m, newlines, w)
-			if fits := escapedWidth(prepared, m.cells) <= w; fits == truncated {
-				t.Errorf("%q at width %d: escapedWidth says the content %s, and the summary says it %s",
-					content, w,
+			head, tail, truncated := headAndTailParts(priced, w)
+			if fits := drawnCells <= w; fits == truncated {
+				t.Errorf("%q at width %d: the escaped content is %d cells, so it %s, and the summary says it %s",
+					content, w, drawnCells,
 					map[bool]string{true: "fits", false: "does not fit"}[fits],
 					map[bool]string{true: "was truncated", false: "was not truncated"}[truncated])
 				continue
 			}
 			if !truncated {
-				if want := escapeBreaks(prepared); head != want || tail != "" {
+				if head != drawn || tail != "" {
 					t.Errorf("%q at width %d: the content fits, so the summary is all of it escaped:\n got  (%q, %q)\n want (%q, \"\")",
-						content, w, head, tail, want)
+						content, w, head, tail, drawn)
 				}
 			}
 		}

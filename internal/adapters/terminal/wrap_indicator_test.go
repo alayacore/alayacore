@@ -538,7 +538,7 @@ func TestHeadAndTailParts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			head, tail, trunc := headAndTailParts(tt.content, tt.maxWidth)
+			head, tail, trunc := headAndTailParts(priceSummary(tt.content), tt.maxWidth)
 			if head != tt.wantHead {
 				t.Errorf("headAndTailParts(%q, %d) head = %q, want %q", tt.content, tt.maxWidth, head, tt.wantHead)
 			}

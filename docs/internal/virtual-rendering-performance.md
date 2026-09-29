@@ -650,10 +650,11 @@ listed with what each would catch, because a refactor that only has to be
   identical at twelve widths in three style registers. 149 of those cases keep the
   counts and 246 retire them, which is the part that makes it a comparison: a corpus
   that quietly retired every count would diff the slow path against itself and prove
-  nothing. Beside it — that the fit rule agrees with `escapedWidth`, the function
-  that states the same question independently, which is needed because
-  `headAndTailParts` now delegates to `headAndTailMeasured` and so cannot disagree
-  with it about a rule they share; that folding the pending deltas leaves the counts
+  nothing. Beside it — that the fit rule agrees with the row the summary actually
+  draws, `cellWidth(escapeBreaks(content))`, which shares no code with `escapedWidth`
+  (the rule `priceSummary` spends) or with the counts `summaryContent` keeps, so a
+  line break priced at anything other than the two cells it draws fails here; that
+  folding the pending deltas leaves the counts
   alone, with the content appended one byte at a time so that there is a delta
   boundary between every two bytes; that a byte which retires the counts retires
   them for good; and that a renderer built with its content already in it is
@@ -677,7 +678,31 @@ dropping the `+2` the fit rule owes them; dropping the check that the bytes coun
 are the bytes of the content being summarized, and weakening that check to `<=`;
 and losing the counts at a fold. Two of the eight were caught by one test each, and
 one — the fit rule's missing `+2` — was caught by none at all until a test was
-written against `escapedWidth` rather than against the branch that shares its code.
+written against a statement of the rule that the branch under test does not share
+code with.
+
+That oracle has moved once since, and the reason is worth keeping. It was
+`escapedWidth`, which at the time stood beside the fit check as a second statement
+of the same question. The price of a summary then became a value of its own
+(`summaryPrice`, built by `priceSummary`) and `escapedWidth` moved inside it, so a
+test written against `escapedWidth` would have been comparing the rule with itself
+again — the same tautology, one level up. The oracle is now the escaped row measured
+for real, `cellWidth(escapeBreaks(content))`, and seven mutations run against that
+shape were all caught: the fit check reading the raw cell count instead of the
+escaped width; `escapedWidth` pricing a break at one cell; the cached price
+forgetting the breaks; `priceSummary` never escaping; the head taking 60% of the
+budget rather than 40%; the measured fallback skipping `prepareContent`; and the
+branch that fits returning the content unescaped.
+
+Two other mutations survived the shape before this one, and neither is writable now.
+`headAndTailParts` used to take a measurement and a line-break count as separate
+arguments, so every caller had to keep them in step, and passing `0` for the count
+at `userRenderer.BuildCollapsed` — or `7` at `renderUFOnlyCollapsed` — passed the
+whole package. Nothing catches a pair assembled wrongly when the assembling is
+spread across the callers. There is one constructor and one cached path now, and
+neither can hand over a count belonging to a different string; the two cold call
+sites read `headAndTailParts(priceSummary(content), room)` and have no integer to
+get wrong.
 
 **What is left, deliberately.** The folded frame is 12.5μs and 134 KB at 128 KB of
 content — 0.005% of a 250ms tick, against the 5.4% and 56.8 MB it was — and one

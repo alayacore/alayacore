@@ -280,8 +280,7 @@ func plainSummaryCounts(s string) (cells, newlines int, ok bool) {
 	return cells, newlines, true
 }
 
-// summaryContent is the content a folded summary draws, as a measurement of it and
-// a count of its line breaks.
+// summaryContent is the content a folded summary draws, priced.
 //
 // While the counts cover every byte of raw, prepareContent has nothing to do — a
 // tab, a carriage return and an escape each retire them — so the content is raw
@@ -289,12 +288,20 @@ func plainSummaryCounts(s string) (cells, newlines int, ok bool) {
 // this exists to avoid: on 128 KB, measure is 38μs of a 46μs BuildCollapsed,
 // prepareContent's two scans are 2.7μs more, and escapedWidth counts the line
 // breaks in a third.
-func (r *textRenderer) summaryContent(raw string) (m measured, newlines int) {
+//
+// This is the one place a summaryPrice is assembled out of parts instead of built by
+// priceSummary, which is why the escaped half is spelled out rather than asked for:
+// both numbers are sums over the deltas, so the width after escaping is the cell
+// sum plus two cells per break — the answer the third pass would have walked the
+// message to reach.
+func (r *textRenderer) summaryContent(raw string) summaryPrice {
 	if r.summaryBytes >= 0 && r.summaryBytes == len(raw) {
-		return measured{s: raw, cells: r.summaryCells, ascii: true}, r.summaryNewlines
+		return summaryPrice{
+			m:       measured{s: raw, cells: r.summaryCells, ascii: true},
+			escaped: r.summaryCells + 2*r.summaryNewlines,
+		}
 	}
-	content := prepareContent(raw)
-	return measure(content), strings.Count(content, "\n")
+	return priceSummary(prepareContent(raw))
 }
 
 // maxContentParts bounds how many streaming deltas may sit unmerged in
@@ -386,7 +393,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 //
 // The summary is head + "…" + tail, not the tail alone: the head carries the topic
 // of the message and the tail carries where it has got to, which in a window that
-// re-summarizes on every delta is the part that moves. headAndTailMeasured gives the
+// re-summarizes on every delta is the part that moves. headAndTailParts gives the
 // head 40% of the budget and the tail what is left after the marker; when the whole
 // content fits, there is no marker and the summary is all of it. Newlines are escaped
 // to the literal "\n" so the row stays one line — line heights count '\n', so a real
@@ -406,14 +413,13 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 // splits the row at the marker's offset to do it. toolRenderer dims its own
 // markers, middle and leading, at the places it builds them.
 func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
-	m, newlines := r.summaryContent(r.rawContent())
 	label := labelForTag(r.tag)
 	line := ""
 	if label != "" {
 		line = padLabel(label)
 	}
 	summaryWidth := max(0, width-collapsedPrefixWidth-CollapsedLabelWidth)
-	summary, ellipsisOffset := collapsedSummary(m, newlines, summaryWidth)
+	summary, ellipsisOffset := collapsedSummary(r.summaryContent(r.rawContent()), summaryWidth)
 	line += summary
 	line = truncateWithSuffix(line, max(0, width-collapsedPrefixWidth)) // safety net
 
@@ -432,11 +438,11 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 // the user sees both topic and latest content); the only leading "…"
 // is reserved for streaming delta content, which lives in toolRenderer.
 //
-// It takes the content already measured, with the line-break count that belongs to
-// that measurement, because both are what a renderer keeps as its content grows
-// (summaryContent) and re-deriving either is a pass over the whole message.
-func collapsedSummary(m measured, newlines, summaryWidth int) (string, int) {
-	head, tail, truncated := headAndTailMeasured(m, newlines, summaryWidth)
+// It takes the message already priced, because that price is what a renderer
+// keeps as its content grows (summaryContent) and re-deriving either half of it
+// is a pass over the whole message.
+func collapsedSummary(p summaryPrice, summaryWidth int) (string, int) {
+	head, tail, truncated := headAndTailParts(p, summaryWidth)
 	switch {
 	case !truncated, tail == "":
 		return head, -1
@@ -551,7 +557,7 @@ func tailParts(content string, maxWidth int) (string, bool) {
 	return cutMeasured(m, maxWidth, true), true
 }
 
-// headAndTailParts returns the leading and trailing parts of content for a
+// headAndTailParts returns the leading and trailing parts of a message for a
 // collapsed text window (REASONING / ASSISTANT / USER PROMPT) as separate
 // strings, plus a flag indicating whether the content was truncated. The
 // middle "…" marker is not included — callers render it themselves with their
@@ -579,34 +585,23 @@ func tailParts(content string, maxWidth int) (string, bool) {
 // When truncated is false, head is the full content and tail is "".
 // When truncated is true and tail is "", the function fell back to head-
 // only (very narrow widths where there's no room for ellipsis + tail).
-func headAndTailParts(content string, maxWidth int) (head, tail string, truncated bool) {
+//
+// The message arrives already priced (summaryPrice) rather than as a string: the
+// fit check reads the escaped width and the cuts read the measurement, and all
+// three questions used to derive what they needed themselves. A folded row so
+// walked a 128 KB message four times over — three widths and the escape probe
+// each cutter repeated — to draw two thirds of one line, and a CPU profile put
+// the escape probe alone at a third of the frame. Pricing once and spending the
+// answer is what makes a folded row O(budget) instead of O(message).
+func headAndTailParts(p summaryPrice, maxWidth int) (head, tail string, truncated bool) {
 	if maxWidth <= 0 {
 		return "", "", false
 	}
-	// Measured once for all three questions headAndTailMeasured asks — does it
-	// fit, where does the head end, where does the tail begin. Each of them used
-	// to measure the whole message itself, so a folded row walked a 128 KB message
-	// four times over (three widths and the escape probe each cutter repeated) to
-	// draw two thirds of one line; a CPU profile put the escape probe alone at
-	// a third of the frame. The line-break count is the other half of "does it
-	// fit" and is a pass of its own, which is why a caller that keeps both hands
-	// them in instead (headAndTailMeasured).
-	return headAndTailMeasured(measure(content), strings.Count(content, "\n"), maxWidth)
-}
-
-// headAndTailMeasured is headAndTailParts for content already measured, with the
-// count of its line breaks beside the measurement. escapeBreaks turns each break
-// into two cells, so the count is part of whether the content fits and not
-// something the fit check can skip.
-func headAndTailMeasured(m measured, newlines, maxWidth int) (head, tail string, truncated bool) {
-	if maxWidth <= 0 {
-		return "", "", false
-	}
-	if m.cells+2*newlines <= maxWidth {
-		return escapeBreaks(m.s), "", false
+	if p.escaped <= maxWidth {
+		return escapeBreaks(p.m.s), "", false
 	}
 	if maxWidth <= 2 {
-		return cutMeasured(m, maxWidth, false), "", true
+		return cutMeasured(p.m, maxWidth, false), "", true
 	}
 
 	// 40/60 split. Integer math: headWidth = maxWidth * 40 / 100.
@@ -619,9 +614,9 @@ func headAndTailMeasured(m measured, newlines, maxWidth int) (head, tail string,
 	tailWidth := maxWidth - headWidth - 1
 	if tailWidth < 1 {
 		// Very narrow widths where head already claims most of the room.
-		return cutMeasured(m, maxWidth, false), "", true
+		return cutMeasured(p.m, maxWidth, false), "", true
 	}
-	return cutMeasured(m, headWidth, false), cutMeasured(m, tailWidth, true), true
+	return cutMeasured(p.m, headWidth, false), cutMeasured(p.m, tailWidth, true), true
 }
 
 // escapeBreaks renders s as one logical line: each '\n' becomes the
@@ -647,6 +642,28 @@ func escapeBreaks(s string) string {
 // re-derived, because both callers have already measured s in order to cut it.
 func escapedWidth(s string, cells int) int {
 	return cells + 2*strings.Count(s, "\n")
+}
+
+// summaryPrice is one message priced for a collapsed row: the measurement its cuts
+// spend, and the width that measurement becomes once escapeBreaks has run, which
+// is what "does it all fit" reads. The two are facts about the same string, and a
+// summary that priced the fit against one message and cut another would draw a row
+// that does not fit it — so they travel together and are gathered in one call.
+//
+// A caller with the content in hand calls priceSummary. A textRenderer does not have
+// it in hand: it keeps the two numbers beside its content as that content grows
+// (summaryContent), which is the whole reason a folded 128 KB row is O(budget).
+// That is the only place the pair is assembled by hand, and it is the only place
+// that can get it wrong.
+type summaryPrice struct {
+	m       measured
+	escaped int
+}
+
+// priceSummary prices s for a collapsed row.
+func priceSummary(s string) summaryPrice {
+	m := measure(s)
+	return summaryPrice{m: m, escaped: escapedWidth(s, m.cells)}
 }
 
 // cutMeasured returns budget cells from the wanted end of already-measured
@@ -893,7 +910,7 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	default:
 		content = textContent
 	}
-	head, tail, truncated := headAndTailParts(content, room)
+	head, tail, truncated := headAndTailParts(priceSummary(content), room)
 
 	plainLine := label + head
 	if tail != "" {
@@ -1140,7 +1157,7 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 // the latest content.
 func renderUFOnlyCollapsed(r *toolRenderer, width int, styles *Styles) string {
 	first := firstLine(prepareContent(r.output))
-	head, tail, truncated := headAndTailParts(first, max(0, width-collapsedPrefixWidth))
+	head, tail, truncated := headAndTailParts(priceSummary(first), max(0, width-collapsedPrefixWidth))
 	var sb strings.Builder
 	if truncated && tail != "" {
 		sb.WriteString(styles.System.Render(head))

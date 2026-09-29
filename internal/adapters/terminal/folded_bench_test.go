@@ -135,7 +135,7 @@ func BenchmarkFoldedToolStreamingDelta(b *testing.B) {
 // first line of its input, so an output delta does not re-read the output at
 // all — that is the 100ns the benchmark above measures. A folded text window
 // shows head + "…" + tail of its whole content (textRenderer.BuildCollapsed →
-// collapsedSummary → headAndTailMeasured), so deriving that row used to mean
+// collapsedSummary → headAndTailParts), so deriving that row used to mean
 // reading the message: one pass to price it, then a head cut that stops at its
 // budget and a tail cut that counts back from the end. The pricing pass is gone —
 // the renderer keeps the cells and the line breaks as its content grows — and what

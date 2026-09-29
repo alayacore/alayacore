@@ -116,7 +116,7 @@ func TestSummaryEscapeOrderIsEquivalent(t *testing.T) {
 		for _, content := range []string{raw, prepareContent(raw)} {
 			for w := 0; w <= 40; w++ {
 				wantH, wantT, wantTrunc := oldHeadAndTailParts(content, w)
-				gotH, gotT, gotTrunc := headAndTailParts(content, w)
+				gotH, gotT, gotTrunc := headAndTailParts(priceSummary(content), w)
 				if gotH != wantH || gotT != wantT || gotTrunc != wantTrunc {
 					t.Errorf("headAndTailParts(%q, %d):\n  escape-then-cut = (%q, %q, %v)\n  cut-then-escape = (%q, %q, %v)",
 						content, w, wantH, wantT, wantTrunc, gotH, gotT, gotTrunc)
