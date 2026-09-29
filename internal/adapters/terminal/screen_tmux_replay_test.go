@@ -75,6 +75,23 @@ func TestScreenMatchesATerminalUnderTmux(t *testing.T) {
 			"a row that runs past the pane width so the terminal has to soft-wrap it, "+
 			"and a second wrapped row to make the run span two terminal rows\n")
 	h.step("disputed clusters")
+	// Ill-formed bytes, one shape per row so a disagreement is a misplaced row
+	// rather than an argument about one glyph: a lone continuation byte, a 3-byte
+	// encoding cut short, a lone C1 control that an escape parser would mistake for
+	// an introducer, a byte that cannot appear in UTF-8, and an overlong encoding.
+	// No producer sends these — every frame's text reaches the adapter out of a
+	// json.Unmarshal or a json.Marshal, and both replace ill-formed bytes — so what
+	// this row checks is the invariant at the far end of them: the bytes the adapter
+	// emits are well-formed, and the pane tmux paints from them is the pane the grid
+	// model predicted. Without sanitizeUTF8 the raw bytes would go out, tmux would
+	// substitute for them on its own rules, and the two would differ.
+	h.appendWin(tlvAssistantText, "w3",
+		"ill-formed: a\x80b\n"+
+			"truncated: a\xe4\xb8z\n"+
+			"lone C1: a\x9b[m b\n"+
+			"not utf8: a\xf5b a\xfe\xffb\n"+
+			"overlong: a\xc0\x80b\n")
+	h.step("ill-formed bytes")
 	for i, tc := range []struct{ name, input string }{
 		{"ls", "ls -la"},
 		{"execute_command", "cd /home/wallace/playground/alayacore && go test ./internal/adapters/terminal/ -run Test -v"},

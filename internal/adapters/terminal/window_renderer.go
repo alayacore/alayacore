@@ -62,6 +62,9 @@ func (r *textRenderer) Tag() string { return r.tag }
 func (r *textRenderer) ToolInfo() *ToolInfo { return nil }
 
 func (r *textRenderer) AppendFromTLV(_ string, value string) {
+	// Sanitized before anything counts it: contentLen and the summary's counts both
+	// have to describe the bytes that will be drawn, and those are the repaired ones.
+	value = sanitizeUTF8(value)
 	r.contentParts = append(r.contentParts, value)
 	r.contentLen += len(value)
 	r.summary.note(value)
@@ -822,6 +825,7 @@ func (r *userRenderer) Tag() string { return tlv.TagUserT }
 func (r *userRenderer) ToolInfo() *ToolInfo { return nil }
 
 func (r *userRenderer) AppendFromTLV(tag string, value string) {
+	value = sanitizeUTF8(value)
 	switch tag {
 	case tlv.TagUserT:
 		if value != "" {
@@ -1047,13 +1051,25 @@ func (r *toolRenderer) ToolInfo() *ToolInfo {
 	}
 }
 
+// setName, setInput, setOutput and the delta writer below are the only things that
+// assign a tool renderer's drawn fields, and each one repairs what it is given.
+// That is what makes "a Window's content is well-formed UTF-8" hold structurally
+// rather than by every caller remembering: the fields are written in four places
+// and all four sanitize, so a path added later either goes through one of them or
+// fails TestEveryContentIngressDrawsWellFormedUTF8.
+func (r *toolRenderer) setName(s string) { r.name = sanitizeUTF8(s) }
+
+func (r *toolRenderer) setInput(s string) { r.input = sanitizeUTF8(s) }
+
+func (r *toolRenderer) setOutput(s string) { r.output = sanitizeUTF8(s) }
+
 func (r *toolRenderer) AppendFromTLV(_ string, value string) {
 	// Tool data normally arrives via structured setters (HandleToolInput/HandleToolOutput).
 	// For replayed content or direct testing, dispatch by window type.
 	if r.isUF {
-		r.output = value
+		r.setOutput(value)
 	} else {
-		r.input = value
+		r.setInput(value)
 	}
 }
 
@@ -1063,7 +1079,7 @@ func (r *toolRenderer) Invalidate() {}
 // Each call replaces the previous delta — the window shows only the
 // most recently received chunk.
 func (r *toolRenderer) AppendDelta(delta string) {
-	r.deltaBuffer = delta
+	r.deltaBuffer = sanitizeUTF8(delta)
 }
 
 // BuildInner renders the tool window content as visual lines. Each

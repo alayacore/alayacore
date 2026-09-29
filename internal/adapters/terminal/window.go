@@ -278,11 +278,10 @@ func (w *Window) Invalidate() {
 
 // SetRendererForTool switches the renderer to toolRenderer (for AF/UF frames).
 func (w *Window) SetRendererForTool(name, input string) {
-	w.renderer = &toolRenderer{
-		name:   name,
-		input:  input,
-		status: ToolStatusPending,
-	}
+	tr := &toolRenderer{status: ToolStatusPending}
+	tr.setName(name)
+	tr.setInput(input)
+	w.renderer = tr
 	w.cache.valid = false
 }
 
@@ -295,20 +294,20 @@ func (w *Window) HandleToolInput(data protocol.ToolInputData, historyID uint64) 
 	if tr, ok := w.renderer.(*toolRenderer); ok {
 		if data.Name != "" && len(data.Input) == 0 {
 			// Start frame — set name, keep existing input
-			tr.name = data.Name
+			tr.setName(data.Name)
 			if tr.input == "" {
-				tr.input = string(data.Input)
+				tr.setInput(string(data.Input))
 			}
 		} else {
 			if data.Name != "" {
-				tr.name = data.Name
+				tr.setName(data.Name)
 			} else if tr.name == "" {
 				// AF frame arrived with empty name. Without a fallback
 				// the tool window's BuildCollapsed path treats name=="" as
 				// a UF-only window and renders nothing useful.
-				tr.name = "_"
+				tr.setName("_")
 			}
-			tr.input = string(data.Input)
+			tr.setInput(string(data.Input))
 			// Complete input arrived, clear delta preview.
 			tr.deltaBuffer = ""
 		}
@@ -325,7 +324,7 @@ func (w *Window) HandleToolInput(data protocol.ToolInputData, historyID uint64) 
 // HandleToolOutput sets the output and status on a tool window.
 func (w *Window) HandleToolOutput(output string, isError bool, historyID uint64) {
 	if tr, ok := w.renderer.(*toolRenderer); ok {
-		tr.output = output
+		tr.setOutput(output)
 		if isError {
 			tr.status = ToolStatusError
 		} else {

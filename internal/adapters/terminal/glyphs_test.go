@@ -59,19 +59,20 @@ type glyphClass struct {
 // test measures both.
 var drawnGlyphs = map[rune]glyphClass{
 	// --- Fixed-width, Neutral: policy rule 1 satisfied. -----------------
-	'✓': {1, false, "tool success (tool_render.go)"},
-	'✗': {1, false, "tool failure (tool_render.go)"},
-	'⠋': {1, false, "tool spinner frame"},
-	'⠙': {1, false, "tool spinner frame"},
-	'⠹': {1, false, "tool spinner frame"},
-	'⠸': {1, false, "tool spinner frame"},
-	'⠼': {1, false, "tool spinner frame"},
-	'⠴': {1, false, "tool spinner frame"},
-	'⠦': {1, false, "tool spinner frame"},
-	'⠧': {1, false, "tool spinner frame"},
-	'⠇': {1, false, "tool spinner frame"},
-	'⠏': {1, false, "tool spinner frame"},
-	'⠿': {1, false, "status bar idle indicator — full six-dot braille cell, the union of the spinner frames"},
+	'✓':      {1, false, "tool success (tool_render.go)"},
+	'✗':      {1, false, "tool failure (tool_render.go)"},
+	'⠋':      {1, false, "tool spinner frame"},
+	'⠙':      {1, false, "tool spinner frame"},
+	'⠹':      {1, false, "tool spinner frame"},
+	'⠸':      {1, false, "tool spinner frame"},
+	'⠼':      {1, false, "tool spinner frame"},
+	'⠴':      {1, false, "tool spinner frame"},
+	'⠦':      {1, false, "tool spinner frame"},
+	'⠧':      {1, false, "tool spinner frame"},
+	'⠇':      {1, false, "tool spinner frame"},
+	'⠏':      {1, false, "tool spinner frame"},
+	'⠿':      {1, false, "status bar idle indicator — full six-dot braille cell, the union of the spinner frames"},
+	'\uFFFD': {1, false, "replacement for an ill-formed run of bytes in window content (sanitize.go). It is the glyph a terminal draws for those same bytes, so repairing to it changes nothing on screen — and what it buys is that every byte the adapter emits is well-formed UTF-8, which is what makes one width table answer for every terminal"},
 
 	// --- Waiver 2a: box drawing, no Neutral alternative. ----------------
 	// The whole range U+2500-U+257F is Ambiguous (measured — the frame and

@@ -1110,24 +1110,107 @@ inside the loop and passed `nil`. Counting per line is what turned up both, and
 slope rather than a count, because counts move and slopes do not: doubling the
 lines must not add anything like one allocation per line.
 
-Skipping the style pass needs a condition, and the obvious one is wrong. Every
-byte the writer adds beyond the ones it is given is guarded by the pen or the
-hyperlink being set, and only a CSI `m` or an OSC 8 sets either, so the question
-is whether the string carries an introducer. `hasEscape` answers it for a 7-bit
-ESC and for a C1 control in its two-byte UTF-8 form, `C2 80..9F`. The parser is
-byte-oriented, though, and also reads a LONE byte in `0x80..0x9F` as a C1
-introducer — which `hasEscape` deliberately does not, because in valid UTF-8 such
-a byte is a continuation, and reading it as an introducer would put most CJK text
-on the escape route (文 ends in `0x87`). The condition is therefore
-`!hasEscape(s) && utf8.ValidString(s)`, and the second half is load-bearing:
-`"\x9b31m red\nacross a break"` comes back from the writer restyled, and
-`hasEscape` finds nothing in it. Over 4,000 generated strings, of those the writer
-changes, 108 are declined by `hasEscape` and **10 only by `utf8.ValidString`** —
-which is the count that says the first version of this fast path, written with
-`hasEscape` alone, was unsound and would have dropped a restyle.
-`TestNothingTheWriterChangesEvadesCanRestyleNothing` asserts the implication in
-that direction, and fails if either half stops being needed by anything in the
-corpus, so neither can be deleted quietly.
+Skipping the style pass needs a condition, and getting it right took a terminal.
+Every byte the writer adds beyond the ones it is given is guarded by the pen or the
+hyperlink being set, and only a CSI `m` or an OSC 8 sets either, so the question is
+whether the string carries an introducer — which is what `hasEscape` answers.
+
+The first version of this fast path added a second condition, `utf8.ValidString(s)`,
+and this document recorded it as load-bearing: the writer's escape parser is
+byte-oriented and reads a LONE byte in `0x80..0x9F` as a C1 introducer, so
+`"\x9b31m red\nacross a break"` came back from it restyled, and over 4,000 generated
+strings 10 were declined only by the well-formedness check. All of that was true and
+it was measured against the wrong oracle. The parser does not decide what a terminal
+draws; a terminal does. tmux 3.7c asked to draw a lone `0x9B` stores one U+FFFD and
+draws the bytes after it as text — six cells for `"a" + 0x9B + "[m b"`, no color, no
+control sequence entered. So there is no pen to carry across the break, and sending
+such a string to the writer produced SGR sequences nothing had asked for, recoloring
+every row after it. The predicate is `!hasEscape(s)`,
+`TestALoneC1ControlIsTextNotAnIntroducer` pins the case the extra condition existed
+for, and `TestNothingWithAnEscapeIsSkipped` covers the direction that has to hold —
+a string carrying an ESC is never skipped — over 4,000 generated strings.
+
+Asking the terminal settled more than that one condition. Three components in this
+package gave three different answers for the same bytes, and only one of them is
+what a user sees (`sanitize_test.go` has all seventeen measurements and the harness
+that took them):
+
+| input | tmux drew | `cellWidth` | `ansi.Strip`, then the table | the escape parser |
+|---|---:|---:|---:|---|
+| `"a" + 0x9B + "[m b"` | 6 cells | 6 ✓ | 4 | a red foreground |
+| `"a" + 0xF5 + "b"` | 3 cells | **1** | — | — |
+
+The second row is a layout bug and not a rounding difference: `displaywidth` takes
+`0xF5` for the lead of a 4-byte encoding and consumes what follows it, so that row is
+padded and wrapped two cells short of what the terminal draws. No option fixes it,
+because it is the library's handling of a byte that cannot appear in UTF-8 at all —
+and that is the observation that ends the argument. **The adapter should not be
+emitting such a byte.** What an ill-formed byte draws is each terminal's own error
+recovery, so no width table can be right about it everywhere; the way to make one
+table answer for every terminal is to stop sending bytes that need recovering from.
+
+So content is repaired on its way into a Window. `sanitizeUTF8` replaces each
+ill-formed run with one U+FFFD, and the four fields a renderer draws are written only
+through functions that call it. The rule is the terminal's own, measured rather than
+taken from a specification: a lead byte consumes the continuations its encoding calls
+for whether or not they make a legal sequence, so a truncated 3-byte encoding is one
+replacement and three lone continuation bytes are three. Neither
+`strings.ToValidUTF8` — one replacement for a whole run, so one box where the
+terminal draws three — nor a loop over `DecodeRune`, which advances a byte per error
+and so draws three where the terminal draws one, does that.
+
+Two consequences are checked rather than asserted:
+
+- **An appending frame carries whole characters**, so repairing per delta cannot cut
+  one in half. That is structural and not a hope: every frame's text reaches the
+  adapter out of a `json.Unmarshal` or a `json.Marshal`, and both replace ill-formed
+  bytes rather than passing them on, so a string on the wire is well-formed before the
+  adapter sees it. The input side reaches the same guarantee from the other direction
+  — `decodePrintable` holds a sequence a read cut short instead of replacing it.
+  `TestContentThatIsNotWellFormedIsRepairedNotHeld` pins what happens when the
+  guarantee is violated anyway: the two halves of one character become two
+  replacements, and the frame is still well-formed. The pricing differential had to
+  change for the same reason — it used to split its corpus at every byte offset,
+  which is an input the transport cannot produce.
+- **Every ingress is covered**, which is the part that cannot be settled by reading.
+  `WindowBuffer` writes a tool renderer's fields directly in three places instead of
+  going through `Window`, so a repair added at `Window` would have missed them.
+  `TestEveryContentIngressDrawsWellFormedUTF8` drives twelve entry points with
+  ill-formed bytes, in both style registers at three widths, and requires the frame to
+  be well-formed *and* to contain a replacement — the second half because four of the
+  twelve first passed by drawing nothing at all, their window having been created
+  empty and so invisible. Mutating any one of the six write sites fails it, and
+  removing the text renderer's repair fails
+  `TestScreenMatchesATerminalUnderTmux`: the replay stream carries a row of
+  ill-formed bytes now, and tmux and the grid model agree on it only because the
+  bytes that reach tmux are the repaired ones.
+
+The cost is one `utf8.ValidString` scan per append and no allocation — `allocs/op`
+unchanged on every benchmark measured. `JustAppendUpdate`, the smallest benchmark in
+the suite at 65ns, is +5.0% (p=0.001 over 14 interleaved rounds), about 3ns; nothing
+else moved, and the few that read a couple of percent faster are noise at that size
+and are not claimed.
+
+The grid model the replay test judges frames against had `ControlSequences8Bit` on,
+which bills `"a" + 0x9B + "[m b"` at 4 cells where the terminal drew 6. It is off,
+and `TestGridModelBillsIllFormedBytesAsTheTerminalDrew` compares it against the
+measured cursor columns so the setting is a checked fact rather than a default. It had
+been unexercised for the whole of its life, because the replayed stream contained no
+ill-formed bytes — an oracle nothing contradicts is a guess. One measured input is
+excepted from that comparison and named in the test: `0xF5`, where the library is
+wrong and the repair is what keeps it out of reach.
+
+Twelve mutations of the repair, the ingress and the oracle were run and all twelve
+were caught: the repair doing nothing; one replacement per bad byte instead of per
+run; a lead consuming continuations it is not owed; a byte that cannot lead a
+sequence taking the next one with it; each of the six write sites losing its repair;
+the predicate sending ill-formed content back to the writer; and the grid oracle
+reading a lone C1 as an introducer again. One survived the first run — the lead
+consuming continuations it is not owed — because no corpus entry had an ill-formed
+lead followed by more continuations than its encoding calls for. A surrogate and then
+a lone continuation byte is that shape, and it was measured rather than invented:
+tmux draws four cells and two replacements for `"a" + ED A0 80 + 80 + "b"`, which is
+what closed the gap.
 
 The larger effect is on the paths that wrap short lines, where both early-outs
 apply, and it shows up in allocation far more than in time. The two

@@ -17,7 +17,6 @@ import (
 	"image/color"
 	"io"
 	"strings"
-	"unicode/utf8"
 
 	ansi "github.com/charmbracelet/x/ansi"
 )
@@ -60,30 +59,30 @@ func restyleBreaks(s string) string {
 	return buf.String()
 }
 
-// canRestyleNothing reports whether the WrapWriter would emit exactly the bytes
-// it is given for s, so that restyleBreaks can skip building one.
+// canRestyleNothing reports whether there is nothing for the WrapWriter to
+// re-apply across s's line breaks, so that restyleBreaks can skip building one.
 //
-// Every byte the writer adds is guarded by the pen or the hyperlink being set,
-// and only a CSI 'm' or an OSC 8 sets either, so the question is whether s
-// carries an introducer. hasEscape answers it for the two forms a well-formed
-// string can hold: a 7-bit ESC, and a C1 control in its UTF-8 encoding, C2
-// followed by 80..9F.
+// Every byte the writer adds beyond the ones it is given is guarded by the pen or
+// the hyperlink being set, and only a CSI 'm' or an OSC 8 sets either. Both are
+// introduced by ESC, which is the only introducer a terminal in UTF-8 mode reads,
+// so the question is exactly "does s contain an ESC" — and hasEscape answers it.
+// No ESC means the pen cannot have moved, which means there is no style to carry
+// across a break, which means the writer would copy s to a buffer and hand back an
+// equal string.
 //
-// The well-formedness is a condition and not a formality. The parser is
-// byte-oriented and reads a LONE byte in 0x80..9F as a C1 introducer, which
-// hasEscape deliberately does not: in valid UTF-8 such a byte is a continuation,
-// and reading it as an introducer would put most CJK text on the escape route —
-// 文 ends in 0x87. A string that is not valid UTF-8 can therefore carry an
-// introducer hasEscape cannot see, and has to go through the writer. That is not
-// hypothetical: "\x9b31m red\nacross a break" comes back from the writer
-// restyled, and hasEscape finds nothing in it.
-//
-// TestNothingTheWriterChangesEvadesCanRestyleNothing is the check on this, over
-// random bytes rather than a chosen corpus, asserting the implication in the
-// direction that has to hold: a string the writer changes is never one this
-// reports safe to skip.
+// It is deliberately not `!hasEscape(s) && utf8.ValidString(s)`, which is what a
+// first version of this said. The reasoning there was that the escape parser
+// inside the writer reads a LONE byte in 0x80..9F as a C1 introducer, so
+// ill-formed content had to be sent through it. That gets the authority backwards:
+// the parser is not what decides what a terminal draws, the terminal is, and tmux
+// 3.7c draws a lone 0x9B as one U+FFFD and the bytes after it as text — it does
+// not enter a control sequence, so the pen does not move and there is nothing to
+// re-apply. Sending such a string to the writer produced SGR sequences the
+// terminal had no reason to expect, recoloring the rows after the break. The
+// measurements are in sanitize_test.go, and content reaching here is well-formed
+// anyway (sanitize.go), so the case is one the invariant already excludes.
 func canRestyleNothing(s string) bool {
-	return !hasEscape(s) && utf8.ValidString(s)
+	return !hasEscape(s)
 }
 
 // wrapRows is wrapContent returning the rows it produced and the width of each.

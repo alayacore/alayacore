@@ -273,7 +273,7 @@ func (wb *WindowBuffer) HandleToolOutputDelta(id, text string, historyID uint64)
 
 	w := wb.windows[idx]
 	if tr, ok := w.renderer.(*toolRenderer); ok {
-		tr.output = text
+		tr.setOutput(text)
 		if tr.status == ToolStatusNone {
 			tr.status = ToolStatusPending
 		}
@@ -308,7 +308,7 @@ func (wb *WindowBuffer) HandleToolOutput(id, output string, isError bool, histor
 	w.Visible = true
 	w.SetRendererForTool("", "")
 	if tr, ok := w.renderer.(*toolRenderer); ok {
-		tr.output = output
+		tr.setOutput(output)
 		tr.status = status
 	}
 
@@ -404,7 +404,7 @@ func (wb *WindowBuffer) SettleUnfinishedTools() int {
 		}
 		tr.status = ToolStatusError
 		if tr.output == "" {
-			tr.output = "tool did not complete before the task ended"
+			tr.setOutput("tool did not complete before the task ended")
 		}
 		w.Invalidate()
 		wb.markDirty(i)

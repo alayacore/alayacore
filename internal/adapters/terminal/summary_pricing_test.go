@@ -22,6 +22,7 @@ package terminal
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/alayacore/alayacore/internal/tlv"
 )
@@ -52,6 +53,95 @@ func newSummaryRenderer(content string, split int) *textRenderer {
 	return r
 }
 
+// runeBoundaries are the offsets at which s can be cut in two and leave both
+// halves well-formed — offset 0, offset len(s), and every byte that begins a
+// character.
+func runeBoundaries(s string) []int {
+	out := make([]int, 0, len(s)+1)
+	for i := 0; i < len(s); i++ {
+		if utf8.RuneStart(s[i]) {
+			out = append(out, i)
+		}
+	}
+	return append(out, len(s))
+}
+
+// snapToRuneStart moves i back to the start of the character it falls inside, so
+// a chosen offset can be used as a split without cutting a character in half.
+func snapToRuneStart(s string, i int) int {
+	if i >= len(s) {
+		return len(s)
+	}
+	for i > 0 && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	return i
+}
+
+// TestContentThatIsNotWellFormedIsRepairedNotHeld pins what a Window does with a
+// delta that is not well-formed UTF-8: it repairs it where it lands and holds
+// nothing back. Appending the two halves of one character therefore gives two
+// replacements and not the character.
+//
+// That is a decision and not an oversight, and it rests on the halves never
+// arriving. Every appending frame's text reaches the adapter out of a
+// json.Unmarshal or a json.Marshal, and both replace ill-formed bytes rather than
+// passing them on, so a delta is whole characters or nothing; the input side
+// reaches the same guarantee from the other direction, decodePrintable holding a
+// sequence a read cut short instead of replacing it. Holding a tail here too would
+// be stateful repair for an input the transport cannot produce, and the state
+// would have to be threaded through contentLen and the summary's counts, which
+// describe the bytes that have arrived.
+//
+// What matters is the other half of the assertion: whatever arrives, the frame
+// that comes out is well-formed, because that is the contract the width table and
+// the escape parser on the other side of it are relying on.
+func TestContentThatIsNotWellFormedIsRepairedNotHeld(t *testing.T) {
+	// A byte that is not UTF-8 at all is one replacement.
+	lone := &textRenderer{tag: tlv.TagAssistantR}
+	lone.AppendFromTLV("", "a\x80b")
+	if got := lone.rawContent(); got != "a\uFFFDb" {
+		t.Errorf("a lone continuation byte: content is %q, want %q", got, "a\uFFFDb")
+	}
+
+	// The two halves of 中 (E4 B8 AD), appended separately, are three
+	// replacements — the repair is per delta and does not wait to see whether the
+	// next one completes the character.
+	split := &textRenderer{tag: tlv.TagAssistantR}
+	split.AppendFromTLV("", "a\xe4")
+	split.AppendFromTLV("", "\xb8\xadb")
+	if got := split.rawContent(); got != "a\uFFFD\uFFFD\uFFFDb" {
+		t.Errorf("a character split across two deltas: content is %q, want %q", got, "a\uFFFD\uFFFD\uFFFDb")
+	}
+
+	// And the frame is well-formed whatever the content was, in both registers
+	// and at a width that truncates, so the repaired bytes are what gets drawn.
+	for _, r := range []*textRenderer{lone, split} {
+		for _, styles := range []*Styles{DefaultStyles(), DefaultStyles().Dimmed(), nil} {
+			for _, width := range []int{1, 8, 40} {
+				for _, folded := range []bool{true, false} {
+					var frame string
+					if folded {
+						frame, _ = r.BuildCollapsed(width, styles)
+					} else {
+						frame = joinVisualLines(mustBuildInner(r, width, styles))
+					}
+					if !utf8.ValidString(frame) {
+						t.Errorf("frame is not well-formed UTF-8 (width %d folded %v): %q", width, folded, frame)
+					}
+				}
+			}
+		}
+	}
+}
+
+// mustBuildInner is BuildInner without the line count, for a caller that only
+// means to join the rows.
+func mustBuildInner(r *textRenderer, width int, styles *Styles) []visualLine {
+	lines, _ := r.BuildInner(width, false, styles)
+	return lines
+}
+
 // TestFoldedSummaryIsPricedTheSameWhicheverWay is the differential: same bytes,
 // same widths, same style registers, one renderer keeping the counts and one
 // measuring the message, and the folded row must come out identical.
@@ -64,13 +154,23 @@ func TestFoldedSummaryIsPricedTheSameWhicheverWay(t *testing.T) {
 		// Every split for a short content, the interesting ones for a long one:
 		// the sweep is about a boundary falling inside a cluster or between two
 		// deltas, and a 10 KB content has no boundary that a 40-byte one lacks.
+		//
+		// Splits land on character boundaries, and that is a fact about the
+		// transport rather than a convenience: a Window repairs what it is given,
+		// so a split inside an encoding would leave two U+FFFD where the producer
+		// meant one character. No producer can send one. Every frame's text
+		// reaches the adapter out of a json.Unmarshal or a json.Marshal, and both
+		// replace ill-formed bytes instead of passing them on, so an appending
+		// frame carries whole characters by construction — see sanitize.go, and
+		// TestContentThatIsNotWellFormedIsRepairedNotHeld for what happens when
+		// that is violated anyway.
 		var splits []int
 		if len(content) <= 64 {
-			for i := 0; i <= len(content); i++ {
-				splits = append(splits, i)
-			}
+			splits = runeBoundaries(content)
 		} else {
-			splits = []int{0, 1, 2, 7, len(content) / 3, len(content) / 2, len(content) - 2, len(content) - 1, len(content)}
+			for _, want := range []int{0, 1, 2, 7, len(content) / 3, len(content) / 2, len(content) - 2, len(content) - 1, len(content)} {
+				splits = append(splits, snapToRuneStart(content, want))
+			}
 		}
 		for _, split := range splits {
 			a := newSummaryRenderer(content, split)

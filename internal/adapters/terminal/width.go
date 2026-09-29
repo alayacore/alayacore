@@ -79,12 +79,13 @@ import (
 
 // widthModel is the one set of width options the adapter measures with.
 // EastAsianWidth is pinned false (see 2 above). ControlSequences stays false:
-// escape handling is done by ansi.Strip first, which recognizes the whole
-// ECMA-48 grammar. displaywidth's own handling covers 7-bit introducers and
-// needs a second option for the 8-bit C1 forms, and it disagrees with the
-// stripper there (measured on "a" + C1 + "[m b": 6 cells against 4) — pasted
-// content can carry C1, so one implementation of escape removal, in the
-// place that also cuts, keeps measure and cut from parting company again.
+// escape handling is done by ansi.Strip first, so the table only ever sees text.
+// displaywidth's own handling of introducers would need the second option for the
+// 8-bit C1 forms, and it disagrees with both the stripper and the terminal there —
+// measured on "a" + 0x9B + "[m b", the terminal draws 6 cells, this table bills 6,
+// and ansi.Strip bills 4. One implementation of escape removal, in the place that
+// also cuts, is what keeps measure and cut from parting company; hasEscape says why
+// the gate around it has to be exactly as wide as it is.
 var widthModel = &displaywidth.Options{EastAsianWidth: false}
 
 // asciiCells is the cell count of one ASCII byte: a printable byte draws one
@@ -194,6 +195,22 @@ func cellWidth(s string) int {
 // hasEscape reports whether s may contain an escape sequence: a 7-bit
 // introducer (ESC, DEL) or a C1 control encoded as UTF-8 (U+0080-U+009F).
 // Cheap because it only looks for the introducers, never parses them.
+//
+// A LONE byte in 0x80..9F is deliberately not one. Such a byte is not UTF-8 — in a
+// well-formed string a C1 control is the two-byte form this does look for, and a
+// bare 0x80..0x9F is a continuation with no lead — and no terminal in UTF-8 mode
+// reads it as an introducer either: tmux 3.7c draws it as one U+FFFD of one cell
+// and draws the bytes after it as text (sanitize_test.go has the cursor columns and
+// the pane bytes). Recognizing it here would put ordinary CJK prose on the escape
+// route, since 文 ends in 0x87 and … contains 0x80.
+//
+// That is load-bearing, because hasEscape is the gate on ansi.Strip and Strip does
+// read a lone C1 as an introducer: on "a" + 0x9B + "[m b" it removes three bytes
+// the terminal draws and bills 4 cells where the terminal drew 6. The gate keeps
+// Strip off exactly the inputs Strip is wrong about. Content is also repaired on
+// its way into a Window, so a lone C1 cannot reach here from one (sanitize.go); the
+// gate is what made the width right before that, and what keeps it right for a
+// caller measuring a string that never went through a Window.
 func hasEscape(s string) bool {
 	for i := 0; i < len(s); i++ {
 		switch b := s[i]; b {
@@ -229,6 +246,14 @@ func hasEscape(s string) bool {
 // cellWidth on all three forms a C1 can arrive in (raw byte 6/6, UTF-8 encoded
 // 5/5, and 7-bit CSI 2/2), which is the property this file exists to hold.
 // TestWalkCellsAgreesWithCellWidth covers all three.
+//
+// Agreeing with each other is necessary and not sufficient, so the three were also
+// put to a terminal: tmux 3.7c draws 6 cells for the raw form, 5 for the UTF-8 one
+// and 2 for a 7-bit CSI, which is what both routes already said. The measurements
+// and the harness are in sanitize_test.go. Content is repaired on its way into a
+// Window as well, so the raw form cannot reach a row from one; the agreement is
+// what makes measuring anything else — a label, a dialog, a string a test built —
+// safe too.
 var breakerModel = &displaywidth.Options{
 	EastAsianWidth:   false,
 	ControlSequences: true,

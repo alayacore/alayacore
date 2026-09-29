@@ -38,6 +38,7 @@ package terminal
 
 import (
 	"strings"
+	"testing"
 
 	"github.com/clipperhouse/displaywidth"
 )
@@ -92,10 +93,18 @@ func newGrid(width, height int) *grid {
 // replays a recorded frame stream into tmux and diffs the pane against this
 // model, so the two can only agree if the numbers here are the ones a terminal
 // actually draws.
+//
+// ControlSequences8Bit is off because that is what the terminal does, measured:
+// tmux 3.7c draws a lone byte in 0x80..9F as one U+FFFD and the bytes after it as
+// text, so it never enters a control sequence on one (sanitize_test.go has the
+// cursor columns and the pane bytes). With the option on this model folded such a
+// byte and what followed it into one zero-width cluster and disagreed with the
+// pane by two cells. It was on for as long as the replayed stream contained no
+// ill-formed bytes, which is the whole of it until now — a setting nothing
+// exercised is a guess, and the stream carries such a row today.
 var gridModel = &displaywidth.Options{
-	EastAsianWidth:       false,
-	ControlSequences:     true,
-	ControlSequences8Bit: true,
+	EastAsianWidth:   false,
+	ControlSequences: true,
 }
 
 // firstCluster returns the first grapheme cluster of s and the cells it
@@ -106,6 +115,70 @@ func firstCluster(s string) (string, int) {
 		return "", 0
 	}
 	return it.Value(), it.Width()
+}
+
+// TestGridModelBillsIllFormedBytesAsTheTerminalDrew pins the oracle to the
+// terminal on exactly the inputs a width library is likeliest to get wrong, and is
+// the only thing that makes ControlSequences8Bit's value a checked fact rather than
+// a guess. The adapter does not emit ill-formed bytes — sanitizeUTF8 repairs
+// content on its way into a Window — so no replayed frame reaches the raw half of
+// this test, and without it the setting would be unexercised again. The
+// expectations are the cursor columns tmux 3.7c reported for the same bytes
+// (terminalCases, in sanitize_test.go, taken with the harness described there).
+//
+// With ControlSequences8Bit on, "a" + 0x9B + "[m b" bills 4 cells where the
+// terminal drew 6: the model folded that byte and the two after it into one
+// zero-width cluster, taking 0x9B for the C1 introducer a terminal in UTF-8 mode
+// does not read it as.
+func TestGridModelBillsIllFormedBytesAsTheTerminalDrew(t *testing.T) {
+	// The one measured input whose RAW bytes the oracle bills differently from the
+	// terminal, and why it is allowed to be the only one. displaywidth takes 0xF5
+	// for the lead of a 4-byte encoding and consumes what follows it, so "a" + 0xF5
+	// + "b" bills 1 cell where the terminal drew 3; no option changes that, it is
+	// the library's handling of a byte that cannot appear in UTF-8 at all, and
+	// sanitizeUTF8 is what keeps such a byte out of every string the adapter bills
+	// or emits. TestSanitizeUTF8IsWhatTheComponentsDisagreeAbout records the same
+	// defect in cellWidth, so it is a known library behavior written down in two
+	// places rather than a difference of opinion discovered twice.
+	rawExceptions := map[string]string{
+		"a byte past U+10FFFF": "displaywidth consumes what follows a 0xF5 lead",
+	}
+	// The exceptions are allowed to exist and not to grow. A lone C1 is the input
+	// that distinguishes ControlSequences8Bit on from off, so if it ever lands in
+	// the table nothing pins the setting any more.
+	if why, ok := rawExceptions["a lone C1 control"]; ok {
+		t.Fatalf("a lone C1 is excepted (%s), so ControlSequences8Bit is a guess again", why)
+	}
+
+	billed := 0
+	for _, tc := range terminalCases {
+		// What production does: repair, then bill. Every measured input has to come
+		// out at the width the terminal drew, because the padding and the wrap are
+		// arithmetic on that width.
+		repaired := newGrid(40, 6)
+		repaired.write([]byte(sanitizeUTF8(tc.in)))
+		if repaired.cx != tc.cells {
+			t.Errorf("%s: the grid bills the repaired form of %q at %d cells, the terminal drew %d",
+				tc.name, tc.in, repaired.cx, tc.cells)
+			continue
+		}
+
+		if why, ok := rawExceptions[tc.name]; ok {
+			t.Logf("%s: excepted from the raw comparison — %s", tc.name, why)
+			continue
+		}
+		raw := newGrid(40, 6)
+		raw.write([]byte(tc.in))
+		if raw.cx != tc.cells {
+			t.Errorf("%s: the grid model bills %d cells for the raw %q, the terminal drew %d",
+				tc.name, raw.cx, tc.in, tc.cells)
+			continue
+		}
+		billed++
+	}
+	if billed != len(terminalCases)-len(rawExceptions) {
+		t.Errorf("%d of %d inputs were compared raw, want %d", billed, len(terminalCases), len(terminalCases)-len(rawExceptions))
+	}
 }
 
 // write runs a byte stream through the grid.
