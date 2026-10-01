@@ -6,6 +6,41 @@ Non-obvious patterns when working with LLM provider implementations.
 > - [data-mapping.md](internal/data-mapping.md) — how OpenAI/Anthropic wire formats map to domain types
 > - [tool-input-repair.md](tool-input-repair.md) — how common JSON output errors are repaired at the agent level
 
+## Images too large for an endpoint
+
+An image whose longest side exceeds **4096 px** is shrunk to fit before it is stored or sent. The number is the largest that is safe across the endpoints we know: GLM stops at 6000×6000, DeepSeek at 8192 px per side and at 4096 once a request carries 15 or more images, and Anthropic at 8000×8000 and at 2000 once it carries more than 20.
+
+It is a constant rather than a `model.conf` field on purpose: the fit is re-evaluated on every send, so a value that could change between runs would let what the model is shown now differ from what an already-answered turn was shown.
+
+The fit runs in two places, and what separates them is the image that cannot be decoded:
+
+| Where | What it does |
+|---|---|
+| **Ingest** — `agent.runTaskNormal` (user input), `newToolOutput` (tool output) | Shrinks what it can. An image it cannot read is left exactly as it is. |
+| **Send** — each provider's `StreamMessages` | Shrinks what it can, and replaces an image it cannot decode with the text note below. |
+
+Ingest shrinks and does nothing else, because the session stores what it is handed. A note written there would replace the user's own attachment in their session and — the echo being made from the fitted part — come back to the adapter as a wall of user text where the attachment's label belongs. The note is the wire's, computed per request, where nothing is written down. The send-time pass is not a duplicate of the ingest one: it is the only implementation of the note, and it keeps a source that forgot to fit from turning into a rejected request.
+
+An image this client cannot decode — webp or heic, which the standard library has no decoder for — becomes a text block:
+
+> `[Unreadable image (image/webp): this client cannot read its dimensions (unsupported image format), so the content was NOT delivered to you and you have not perceived it. Do not describe or quote it. To inspect it, convert it to JPEG or PNG at 4096 px or less (e.g. with an image tool via execute_command), then read or attach it again.]`
+
+The wording is the substance. A terse `[image too large]` reads to a model as "a result came back", and it will describe media it never received.
+
+### What survives the shrink
+
+| Source | Result |
+|---|---|
+| **JPEG** | Re-encoded at quality 90. APP1 (EXIF — including the orientation tag a phone writes instead of rotating its pixels) and APP2 (the ICC color profile) are copied **verbatim**; nothing is interpreted, so a consumer that honored them before honors them after. |
+| **PNG** | Re-encoded losslessly. |
+| **GIF**, longest side ≤ 4096 | **Never re-encoded.** The part comes back untouched — bytes, format and animation alike. |
+| **GIF**, longest side > 4096 | A **PNG still of its first frame**; `image.Decode` yields one frame, not a sequence. No endpoint here turns an image block into a frame sequence either — Anthropic documents that it uses only the first frame, and Kimi may decode an animation as video and bill it as one. |
+| **GIF whose first frame is smaller than its logical screen** | Passed through untouched. `DecodeConfig` reports the logical screen while `Decode` returns the first frame, so the header calls the image oversized and the decode does not; the frame's offset is not recoverable, so the canvas cannot be rebuilt. An endpoint that measures the screen will still refuse it. |
+
+### Not covered
+
+A request carrying more than 20 images still exceeds Anthropic's 2000 px per side. That cap moves with the request, and one constant cannot express it; the fit does not try.
+
 ## OpenAI multimodal content format
 
 All media types (image, audio, video, document) are stored as a **URI** in the domain layer — either a data URI (`data:{mime};base64,...`) or a plain URL (`https://...`). The OpenAI provider transmits them as follows:

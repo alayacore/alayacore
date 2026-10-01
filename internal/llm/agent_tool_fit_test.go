@@ -116,3 +116,22 @@ func TestFitWithinNeverEnlarges(t *testing.T) {
 		}
 	}
 }
+
+// TestUnsendableImageNoteMatchesDocs pins the full note sentence.
+//
+// docs/providers.md quotes this string verbatim as the block an endpoint
+// receives for an image this client cannot read. Without a pin, rewording the
+// message would leave the docs describing bytes no code ever produces — the
+// same rule TestAnthropicPlaceholderTextMatchesDocs applies to the audio/video
+// placeholder. If this fails, fix both.
+func TestUnsendableImageNoteMatchesDocs(t *testing.T) {
+	got := unsendableImageNote("data:image/webp;base64,AAAA")
+
+	const documented = "[Unreadable image (image/webp): this client cannot read its dimensions " +
+		"(unsupported image format), so the content was NOT delivered to you and you have not " +
+		"perceived it. Do not describe or quote it. To inspect it, convert it to JPEG or PNG at " +
+		"4096 px or less (e.g. with an image tool via execute_command), then read or attach it again.]"
+	if got != documented {
+		t.Errorf("note drifted from the text quoted in docs/providers.md:\n got: %v\nwant: %s", got, documented)
+	}
+}

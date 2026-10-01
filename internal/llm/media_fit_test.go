@@ -856,3 +856,49 @@ func TestShrinkImagesLeavesNestedUndecodableImageAlone(t *testing.T) {
 		t.Errorf("note does not deny delivery: %s", note.Text)
 	}
 }
+
+// TestSmallGIFIsStoredUntouched pins the most common GIF case, and the one the
+// question "what lands in the session" turns on: a GIF at or under the limit is
+// never re-encoded, so it is stored and sent as the GIF it was, animation and
+// all. Only a GIF that really had to be shrunk becomes a PNG still.
+func TestSmallGIFIsStoredUntouched(t *testing.T) {
+	const w, h = 100, 100 // under the edge limit
+	pal := color.Palette{color.RGBA{R: 255, A: 255}, color.RGBA{B: 255, A: 255}}
+	frames := make([]*image.Paletted, 2)
+	for i := range frames {
+		f := image.NewPaletted(image.Rect(0, 0, w, h), pal)
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				if x >= w/2 {
+					f.SetColorIndex(x, y, 1) // the second frame's own palette entry
+				}
+			}
+		}
+		frames[i] = f
+	}
+	var buf bytes.Buffer
+	if err := gif.EncodeAll(&buf, &gif.GIF{Image: frames, Delay: []int{10, 10}}); err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	// Precondition: two frames, inside the limit — the shape the claim is about.
+	if decoded, err := gif.DecodeAll(bytes.NewReader(buf.Bytes())); err != nil || len(decoded.Image) != 2 {
+		t.Fatalf("fixture is not a two-frame gif: %v", err)
+	}
+	uri := "data:image/gif;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	for _, tc := range []struct {
+		name string
+		fit  func([]llm.ContentPart) []llm.ContentPart
+	}{
+		{"ingest", llm.ShrinkImages},
+		{"send", llm.FitImagesForSend},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := []llm.ContentPart{&llm.ImagePart{URI: uri}}
+			out := tc.fit(in)
+			if out[0] != in[0] {
+				t.Fatalf("a GIF inside the limit was rebuilt: %T %.30s", out[0], out[0].(*llm.ImagePart).URI)
+			}
+		})
+	}
+}
