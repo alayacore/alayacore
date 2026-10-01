@@ -327,6 +327,13 @@ func newToolOutput(callbacks StreamCallbacks, id string, contents []ContentPart,
 	if isError && len(contents) == 0 {
 		contents = []ContentPart{&TextPart{Text: err.Error()}}
 	}
+	// Shrink oversized images here, where the result is built: this one value
+	// becomes both the UF frame the adapter sees and the part stored in
+	// history, so fitting it once keeps the two from disagreeing (and pays the
+	// shrink once instead of on every send). The ingest form is used, so an
+	// image this client cannot decode is still stored as itself; the send gate
+	// turns it into the note where that substitution belongs. See media_fit.go.
+	contents = ShrinkImages(contents)
 	if callbacks.OnToolOutput != nil {
 		_ = callbacks.OnToolOutput(id, contents, err, historyID)
 	}

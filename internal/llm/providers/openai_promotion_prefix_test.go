@@ -57,7 +57,7 @@ func captureRawMessages(t *testing.T, contents []llm.ContentPart) []json.RawMess
 func mediaRound(id string) []llm.ContentPart {
 	out := &llm.ToolOutputPart{ID: id, Output: []llm.ContentPart{
 		&llm.TextPart{Text: "Read " + id},
-		&llm.ImagePart{URI: "data:image/png;base64,AAAA"},
+		&llm.ImagePart{URI: mustPNGDataURI(1, 1)},
 		&llm.VideoPart{URI: "data:video/mp4;base64,BBBB"},
 	}}
 	out.SetRole(llm.RoleTool)

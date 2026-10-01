@@ -186,7 +186,7 @@ func TestAnthropicPlaceholderDeniesPerception(t *testing.T) {
 // tool_result is not verified by this test — see docs/providers.md.
 func TestAnthropicImageDocumentStillNative(t *testing.T) {
 	contents := testMsg(llm.RoleTool,
-		&llm.ToolOutputPart{ID: "call-i", Output: []llm.ContentPart{&llm.ImagePart{URI: "data:image/png;base64,iVBOR"}}, IsError: false},
+		&llm.ToolOutputPart{ID: "call-i", Output: []llm.ContentPart{&llm.ImagePart{URI: mustPNGDataURI(1, 1)}}, IsError: false},
 		&llm.ToolOutputPart{ID: "call-d", Output: []llm.ContentPart{&llm.DocumentPart{URI: "data:application/pdf;base64,JVBERi0="}}},
 	)
 

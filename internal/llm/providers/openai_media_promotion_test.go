@@ -20,11 +20,16 @@ import (
 // tool to read.
 
 const (
-	testImageURI = "data:image/png;base64,iVBORw0KGgo="
 	testVideoURI = "data:video/mp4;base64,AAAA"
 	testWavURI   = "data:audio/wav;base64,UklGRiQ="
 	testPDFURI   = "data:application/pdf;base64,JVBERi0="
 )
+
+// testImageURI is a real, small PNG rather than a stub. The send-time image
+// gate (media_fit.go) measures image headers, so a fixture that is not a
+// genuine image would be degraded to text instead of forwarded, and every test
+// that means "an image goes on the wire" would assert the wrong thing.
+var testImageURI = mustPNGDataURI(1, 1)
 
 // captureMessages runs a provider against a stub server and returns the
 // wire-format messages it received, so assertions are made on the real JSON
@@ -198,11 +203,11 @@ func TestOpenAIToolMediaAggregatedIntoOneMessage(t *testing.T) {
 func TestOpenAIToolMediaGroupedPerResult(t *testing.T) {
 	msgs := captureMessages(t, toolRound(
 		&llm.ToolOutputPart{ID: "call-1", Output: []llm.ContentPart{
-			&llm.ImagePart{URI: "data:image/png;base64,AAAA"},
-			&llm.ImagePart{URI: "data:image/png;base64,BBBB"},
+			&llm.ImagePart{URI: mustPNGDataURI(1, 1)},
+			&llm.ImagePart{URI: mustPNGDataURI(1, 2)},
 		}},
 		&llm.ToolOutputPart{ID: "call-3", Output: []llm.ContentPart{
-			&llm.ImagePart{URI: "data:image/png;base64,CCCC"},
+			&llm.ImagePart{URI: mustPNGDataURI(2, 1)},
 		}},
 	), nil)
 

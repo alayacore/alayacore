@@ -225,6 +225,13 @@ func (p *AnthropicProvider) StreamMessages(
 	systemPrompt string,
 	extraSystemPrompt string,
 ) (iter.Seq2[llm.StreamEvent, error], error) {
+	// Safety net, not the primary path: ingest already shrank every image it
+	// could (see media_fit.go), so for ordinary content this does no more than
+	// measure a header. It still shrinks, and it is the only place an image
+	// that cannot be decoded becomes the note — so a source which forgot to
+	// fit degrades to slow, never to a rejected request.
+	contents = llm.FitImagesForSend(contents)
+
 	// Convert messages to Anthropic format
 	apiMessages := anthropicConvertContents(contents, p.reasoningLevel)
 

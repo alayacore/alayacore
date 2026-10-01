@@ -510,6 +510,13 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 		contents = s.doAutoSummarize(ctx, contents)
 	}
 
+	// Shrink oversized images before they are numbered and echoed: the adapter,
+	// the stored session and the model must all see the same part, and the
+	// shrink should be paid here once rather than on every send. This is the
+	// ingest form — it never substitutes a note, so an attachment this client
+	// cannot decode stays in the session as itself. See internal/llm/media_fit.go.
+	parts = llm.ShrinkImages(parts)
+
 	// Assign history IDs, append to contents, and echo to output.
 	for _, part := range parts {
 		id := s.histIncAndGet()

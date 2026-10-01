@@ -220,7 +220,10 @@ func readMediaFile(file *os.File, path string, info os.FileInfo, mimeType string
 	sizeKB := float64(len(data)) / 1024
 
 	return []llm.ContentPart{
-		&llm.TextPart{Text: fmt.Sprintf("Read %s (%.1fKB, %s)", filepath.Base(path), sizeKB, mimeType)},
+		// The full path, not filepath.Base: the model needs to be able to act
+		// on the file (shrink it, convert it) when an image is too large to
+		// forward — the note that replaces the image carries no path.
+		&llm.TextPart{Text: fmt.Sprintf("Read %s (%.1fKB, %s)", path, sizeKB, mimeType)},
 		llm.MediaContentPart(mimeType, dataURI),
 	}, nil
 }

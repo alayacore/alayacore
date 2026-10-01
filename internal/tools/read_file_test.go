@@ -251,8 +251,8 @@ func TestReadFileMediaSmall(t *testing.T) {
 	}
 
 	text := extractFirstText(result)
-	if !strings.Contains(text, "Read small.jpg") {
-		t.Errorf("expected read confirmation, got %q", text)
+	if !strings.Contains(text, "Read "+tmpFile) {
+		t.Errorf("expected read confirmation naming the full path, got %q", text)
 	}
 	if len(result) != 2 {
 		t.Fatalf("expected text + media parts, got %d parts", len(result))
