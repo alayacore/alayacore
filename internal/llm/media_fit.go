@@ -48,10 +48,12 @@ import (
 // An image whose longest side exceeds it is shrunk to it before it is
 // stored or sent.
 //
-// It is the largest value that is safe across the endpoints we know: GLM caps at
-// 6000x6000, DeepSeek drops to 4096 px per side once a request carries 15 or
-// more images, and Anthropic's many-image rule is stricter (2000) but only past
-// 20 images. 4096 sits under all of them for the ordinary case.
+// It is sized for a request that carries few images: DeepSeek allows 8192 px
+// per side and Anthropic 8000x8000. Both tighten that cap as the request grows
+// — DeepSeek to 4096 at 15 or more images, Anthropic to 2000 past 20 — and that
+// cap counts the request rather than the image, so it is not one this constant
+// can express. Neither the count nor the endpoints' byte caps are enforced
+// here; see docs/providers.md → "What this does not cover".
 //
 // It is a constant, not configuration, on purpose. The gate runs afresh on
 // every send, so a value that could change between runs would let what the

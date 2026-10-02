@@ -8,7 +8,7 @@ Non-obvious patterns when working with LLM provider implementations.
 
 ## Images too large for an endpoint
 
-An image whose longest side exceeds **4096 px** is shrunk to fit before it is stored or sent. The number is the largest that is safe across the endpoints we know: GLM stops at 6000×6000, DeepSeek at 8192 px per side and at 4096 once a request carries 15 or more images, and Anthropic at 8000×8000 and at 2000 once it carries more than 20.
+An image whose longest side exceeds **4096 px** is shrunk to fit before it is stored or sent. 4096 is the largest side that is safe while a request carries few images: DeepSeek allows 8192 px per side and Anthropic 8000×8000. Both tighten that cap as the request grows — DeepSeek to 4096 once it carries 15 or more images, Anthropic to 2000 once it carries more than 20 — and the fit covers neither, because the cap counts the **request**, not the image. See **What this does not cover** below.
 
 It is a constant rather than a `model.conf` field on purpose: the fit is re-evaluated on every send, so a value that could change between runs would let what the model is shown now differ from what an already-answered turn was shown.
 
@@ -37,9 +37,12 @@ The wording is the substance. A terse `[image too large]` reads to a model as "a
 | **GIF**, longest side > 4096 | A **PNG still of its first frame**; `image.Decode` yields one frame, not a sequence. No endpoint here turns an image block into a frame sequence either — Anthropic documents that it uses only the first frame, and Kimi may decode an animation as video and bill it as one. |
 | **GIF whose first frame is smaller than its logical screen** | Passed through untouched. `DecodeConfig` reports the logical screen while `Decode` returns the first frame, so the header calls the image oversized and the decode does not; the frame's offset is not recoverable, so the canvas cannot be rebuilt. An endpoint that measures the screen will still refuse it. |
 
-### Not covered
+### What this does not cover
 
-A request carrying more than 20 images still exceeds Anthropic's 2000 px per side. That cap moves with the request, and one constant cannot express it; the fit does not try.
+Two limits are left to the endpoints, and both fail the same way: the request is **refused**, and because the image is in the persisted history that every later request re-sends, the refusal repeats — the session cannot recover.
+
+- **The count, not the image.** The tightening above is measured across the whole request, and every request re-sends the history, so an image from an earlier turn counts again — and so does one nested in a `tool_result`, which is where a `read_file` of a screenshot lands. Anthropic refuses a request whose images are over its many-image cap with an `invalid_request_error` naming "many-image requests"; 4096 is over the 2000 that applies past 20 images. The cap moves with the request, one constant cannot express it, and the fit does not try.
+- **Bytes, not pixels.** The fit measures dimensions only. Endpoints also cap the encoded size of one image and of the whole body: Anthropic at 10 MB per image (base64; 5 MB on Bedrock and Google Cloud) and 32 MB per request, DeepSeek at 32 MiB per image and 48 MiB per request. An image can be under every dimension limit and still be over these, and nothing in the fit measures bytes.
 
 ## OpenAI multimodal content format
 
