@@ -1214,12 +1214,10 @@ func renderUFOnlyCollapsed(r *toolRenderer, width int, styles *Styles) string {
 // name in the collapsed view (either the streaming delta preview tail
 // or the FIRST LINE of the completed input — a tool's argument block can be
 // long, so its first line is the whole of what a one-row summary can promise,
-// and that is the rule for every tool). The second return value is true when
-// the input was truncated and has a leading "…" marker.
-//
-// The first line is also why a line a handler put BELOW the first — an
-// execute_command workdir annotation — is not in the folded row at all: it is
-// shown when the window is expanded, the way edit_file shows its diff rows.
+// and that is the rule for every tool). A line a handler put below the first —
+// an execute_command annotation — is therefore drawn in the expanded body only.
+// The second return value is true when the input was truncated and has a
+// leading "…" marker.
 func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) {
 	if r.deltaBuffer != "" {
 		// Streaming delta preview: keep the LATEST chunk's tail (new JSON
@@ -1408,25 +1406,13 @@ func defaultToolRender(input, name string) string {
 // renderToolArgLine renders a tool call's argument block for the expanded window
 // body. content is the block as defaultToolRender produced it.
 //
-// For execute_command the block's first line is the command and any line after
-// it is an annotation the handler appended — the workdir (see dirMarker), which
-// is harness note rather than command. Those lines are drawn in bold, the
-// channel this UI uses to mark a position without spending a color (the tool
-// name on the line above does the same), so they cannot be read as more of the
-// command. Everything on the first line stays plain body text.
+// execute_command's block is the command and, at most, one annotation the
+// handler appended on a line of its own (see ExecuteCommandHandler.FormatCall) —
+// that line is drawn bold, the first one stays plain body text.
 //
-// Which lines those are needs no matching: an execute_command command cannot
-// contain a line break, so a block with a second line can only have got it from
-// the handler. Reading the block's shape here — rather than carrying the
-// annotation alongside it — is what edit_file's rows do too: the text is the
-// encoding, the renderer that draws it is the one that reads it, and the tool
-// name says which encoding to expect, so write_file's literal "[dir=…]" is not
-// mistaken for one.
-//
-// Both parts go through styles.Body so the block dims as a unit under an
-// overlay: styleBodyLines leaves a row that already carries SGR alone, which
-// the annotation's row does. Under Dimmed() Body resolves to ColorDim and keeps
-// the bold, so the annotation still stands out from the command it annotates.
+// Both go through styles.Body so the block dims as one under an overlay, which
+// is why the plain line is rendered rather than passed through: styleBodyLines
+// leaves a row that already carries SGR alone, and the annotation's row does.
 func renderToolArgLine(name, content string, styles *Styles) string {
 	if name != "execute_command" {
 		return content

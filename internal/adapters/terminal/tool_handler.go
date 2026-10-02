@@ -44,27 +44,27 @@ func (h *GenericHandler) FormatCall(input json.RawMessage) string {
 // ExecuteCommandHandler handles execute_command calls.
 type ExecuteCommandHandler struct{}
 
-// ExecuteCommandHandler records the call's workdir as a "[dir=<dir>]" line of
-// its own, after the command line, because where a command ran is part of what
-// the call *is*: "ls" in the skill's folder and "ls" in the project are
-// different calls, and a transcript showing only "ls" cannot be read back.
-//
-// Its own line, rather than trailing the command, is what makes the annotation
-// unconfusable with the command's arguments — and it is what makes reading it
-// back exact rather than a guess. A command cannot contain a line break
-// (escapeNewlines), so an execute_command argument block has at most two lines:
-// the first IS the command and any line after it IS an annotation. The renderer
-// leans on exactly that (see renderToolArgLine) — no "[dir=" is matched and no
-// bracket is looked for, so a command that merely contains bracketed text (a
-// glob, say: "ls /tmp/[dir=*]") cannot be mistaken for one.
-//
-// The block's first line as the payload and its remaining lines as the tool's
-// own notes is the same shape edit_file already has: its first line is the path
-// and the lines below are the diff, which the renderer colors by reading them.
+// dirMarker renders the workdir annotation: "[dir=<workdir>]". workdir is the
+// already-escaped directory (escapeNewlines).
 func dirMarker(workdir string) string {
 	return "[dir=" + workdir + "]"
 }
 
+// FormatCall writes the call's workdir as a "[dir=<dir>]" line of its own, after
+// the command, because where a command ran is part of what the call *is*: "ls"
+// in the skill's folder and "ls" in the project are different calls, and a
+// transcript showing only "ls" cannot be read back.
+//
+// A line of its own rather than trailing the command, and the second reason for
+// that is the load-bearing one: it makes the annotation exact to find. A command
+// cannot contain a line break (escapeNewlines), so this block has at most two
+// lines — the first IS the command and the second IS an annotation — which is
+// all the renderer needs to act on, matching nothing (see renderToolArgLine).
+// Trailing the command, "[dir=" would have to be looked for, and a command that
+// merely contains it would be taken for the annotation: a glob
+// ("ls /tmp/[dir=*]"), or one that happens to end in "]" as well
+// ("echo [dir=/x]"). How the two lines are drawn is docs/tui.md → "Tool Result
+// Separator".
 func (h *ExecuteCommandHandler) FormatCall(input json.RawMessage) string {
 	var args tools.ExecuteCommandInput
 	if err := json.Unmarshal(input, &args); err != nil {

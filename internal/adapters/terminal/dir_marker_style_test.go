@@ -1,16 +1,9 @@
 package terminal
 
 // ExecuteCommandHandler shows a call's workdir as a "[dir=…]" line of its own,
-// after the command. These tests pin both halves of that: the layout (the
-// annotation is on its own row, never trailing the command) and the weight (it
-// is bold, the channel this UI uses to mark a position without spending a
-// color).
-//
-// They also pin what the layout buys. Because a command cannot contain a line
-// break, an execute_command argument block has at most two lines and the second
-// can only have come from the handler — so reading it back is exact, with no
-// "[dir=" matched and no bracket looked for. The cases below are the ones a
-// bracket-matching rule would get wrong.
+// under the command, drawn bold — the layout docs/tui.md → "Tool Result
+// Separator" describes. These tests pin that layout and its weight, and
+// the lines a rule that matched "[dir=…]" in the text would get wrong.
 
 import (
 	"encoding/json"
@@ -117,11 +110,10 @@ func TestExecuteCommandNoWorkdirStaysPlain(t *testing.T) {
 }
 
 // TestExecuteCommandDirMarkerNotInFoldedRow: the folded row summarizes the
-// call's first line, so the annotation appears only when the window is
-// expanded. That is the rule every tool follows — edit_file's folded row shows
-// its path and not one line of the diff — and it is the intended placement, not
-// a shortfall: the folded row is for scanning what ran, and the annotation is
-// read on the expanded block it belongs to.
+// call's first line and nothing below it, so the annotation appears when the
+// window is expanded — the placement docs/tui.md → "Tool Result Separator"
+// records, pinned so it is not taken
+// for a bug and "fixed".
 func TestExecuteCommandDirMarkerNotInFoldedRow(t *testing.T) {
 	wb, _ := newDirWindow(t, DefaultStyles(), testCallText())
 
