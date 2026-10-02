@@ -9,9 +9,9 @@ AlayaCore supports the [Agent Skills](https://agentskills.io) specification. Ski
    ```xml
    <available_skills>
      <skill>
-       <name>weather</name>
-       <description>Use this skill whenever the user wants to get weather information...</description>
-       <location>/path/to/skills/weather/SKILL.md</location>
+       <name>inspect-image</name>
+       <description>Use this skill whenever a question can only be answered by looking at an image...</description>
+       <location>/path/to/skills/inspect-image/SKILL.md</location>
      </skill>
    </available_skills>
    ```
@@ -26,7 +26,7 @@ of the skills in that folder:
 
 ```
 skills/
-├── weather/
+├── inspect-image/
 │   └── SKILL.md      ← loaded
 ├── pdf/
 │   └── SKILL.md      ← loaded
@@ -45,10 +45,10 @@ alayacore --skill ./skills --skill ~/.alayacore/skills
 alayacore --config-path ./my-config --skill ./skills
 ```
 
-> **Do not point `--skill` at a single skill's directory.** `--skill ./skills/weather`
-> treats `weather/` as the container and looks for `weather/<something>/SKILL.md` —
+> **Do not point `--skill` at a single skill's directory.** `--skill ./skills/inspect-image`
+> treats `inspect-image/` as the container and looks for `inspect-image/<something>/SKILL.md` —
 > finding none, it loads nothing. Measured: one flag per skill
-> (`--skill ./skills/weather --skill ./skills/pdf`) loads **0** skills; `--skill ./skills`
+> (`--skill ./skills/inspect-image --skill ./skills/pdf`) loads **0** skills; `--skill ./skills`
 > loads both. The run says so — see [What Startup Says](#what-startup-says) — but the
 > layout is still the one that has to be right.
 
@@ -226,9 +226,9 @@ Loaded skills are advertised in the system prompt, one element per skill:
 ```xml
 <available_skills>
   <skill>
-    <name>weather</name>
-    <description>Use this skill whenever the user wants to get weather information…</description>
-    <location>/home/me/project/.alayacore/skills/weather/SKILL.md</location>
+    <name>inspect-image</name>
+    <description>Use this skill whenever a question can only be answered by looking at an image…</description>
+    <location>/home/me/project/.alayacore/skills/inspect-image/SKILL.md</location>
   </skill>
 </available_skills>
 ```
@@ -249,48 +249,54 @@ The description serves as the trigger for skill activation. Be specific about **
 
 ```yaml
 # Good — clear trigger conditions
-description: Use this skill whenever the user wants to get weather information. This includes current weather, forecasts, temperature, humidity, wind, and weather conditions for any city or region.
+description: Use this skill whenever a question can only be answered by looking at an image — checking a screenshot or a rendered page for a layout or rendering bug, reading a chart, diagram or photo, or confirming what a picture shows. It runs a separate AlayaCore instance that reads the image and answers in text, so the image itself never enters this conversation.
 
 # Bad — too vague
-description: Weather information.
+description: Image inspection.
 ```
 
-## Example: Weather Skill
+## Example: inspect-image
+
+The repository ships one sample,
+[`misc/samples/skills/inspect-image`](../misc/samples/skills/inspect-image/SKILL.md):
 
 ```
-skills/weather/
+inspect-image/
 ├── SKILL.md
 └── scripts/
-    └── weather.sh
+    └── inspect-image.sh
 ```
 
-**SKILL.md:**
+**SKILL.md** (abridged):
 
 ```yaml
 ---
-name: weather
-description: Use this skill whenever the user wants to get weather information. This includes current weather, forecasts, temperature, humidity, wind, and weather conditions for any city or region.
+name: inspect-image
+description: Use this skill whenever a question can only be answered by looking at an image — checking a screenshot or a rendered page for a layout or rendering bug, reading a chart, diagram or photo, or confirming what a picture shows. It runs a separate AlayaCore instance that reads the image and answers in text, so the image itself never enters this conversation.
 ---
 
-# Weather Skill
+# Inspect Image Skill
 
-Get weather information using the weather script.
+Answer a question about one or more images without the pixels entering this
+conversation.
 
 ## Usage
 
-```sh
-./scripts/weather.sh "City name"
+./scripts/inspect-image.sh "<prompt naming the image path(s)>"
 ```
 
-- **Note**: Use English or Pinyin for city names (e.g. Use "Wuhan" instead of "武汉")
-```
+When the agent needs to know what a rendering looks like, it:
 
-When the user asks "what's the weather in Tokyo?", the LLM:
-1. Matches the query against the skill description
-2. Reads `<location>` (e.g. `/path/to/skills/weather/SKILL.md`) using `read_file`
+1. Matches the need against the skill description
+2. Reads `<location>` (e.g. `/home/me/project/skills/inspect-image/SKILL.md`) using `read_file`
 3. Reads the full instructions from `SKILL.md`
-4. Runs `./scripts/weather.sh "Tokyo"` via the `execute_command` tool, with `workdir` set to `/path/to/skills/weather`
-5. Reports the results back to the user
+4. Runs `./scripts/inspect-image.sh "…"` via the `execute_command` tool, with `workdir` set to `/home/me/project/skills/inspect-image`
+5. Reads the text the script prints — the image itself never reached it
+
+> This sample is the *unusual* shape of a skill: its script starts a second
+> AlayaCore and returns only that instance's conclusion, which is what keeps the
+> image out of the caller's history. Most skills are a script that does its own
+> work and prints its own answer, and the layout above is the same either way.
 
 ## Skill Specification
 

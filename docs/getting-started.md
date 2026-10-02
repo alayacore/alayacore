@@ -93,8 +93,9 @@ alayacore --model "OpenAI GPT-4o"
 # Session persistence
 alayacore --session ~/sessions/refactor.alaya
 
-# Multiple skill directories
-alayacore --skill ./skills          # loads ./skills/weather, ./skills/pdf, ...
+# Skills — one flag per container; each loads every skill directory under it
+alayacore --skill ./skills                    # ./skills/inspect-image, ./skills/pdf, …
+alayacore --skill misc/samples/skills         # the bundled sample
 
 # Behind a proxy
 alayacore --proxy http://127.0.0.1:7890
