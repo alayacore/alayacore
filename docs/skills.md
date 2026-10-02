@@ -45,12 +45,13 @@ alayacore --skill ./skills --skill ~/.alayacore/skills
 alayacore --config-path ./my-config --skill ./skills
 ```
 
-> **Do not point `--skill` at a single skill's directory.** `--skill ./skills/inspect-image`
-> treats `inspect-image/` as the container and looks for `inspect-image/<something>/SKILL.md` —
-> finding none, it loads nothing. Measured: one flag per skill
-> (`--skill ./skills/inspect-image --skill ./skills/pdf`) loads **0** skills; `--skill ./skills`
-> loads both. The run says so — see [What Startup Says](#what-startup-says) — but the
-> layout is still the one that has to be right.
+> **Do not point `--skill` at a single skill's directory.** The value is read as a
+> *container*: `--skill ./skills/pdf` does not load the `pdf` skill, it looks for
+> skill directories inside `pdf/` — finds none, and loads nothing. Measured: one
+> flag per skill (`--skill ./skills/pdf --skill ./skills/notes`) loads **0** skills;
+> `--skill ./skills` loads both. The run says so — see
+> [What Startup Says](#what-startup-says) — but the layout is still the one that
+> has to be right.
 
 ## What Discovery Guarantees
 
