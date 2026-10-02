@@ -1132,7 +1132,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 			// RAW file content being written (not a diff; - / + prefixed
 			// lines there are literal content and must stay plain in
 			// normal mode; dimmed under overlays by styleBodyLines).
-			call = defaultToolRender(r.input, r.name)
+			call = renderToolArgLine(r.name, defaultToolRender(r.input, r.name), styles)
 		}
 	}
 
@@ -1212,8 +1212,14 @@ func renderUFOnlyCollapsed(r *toolRenderer, width int, styles *Styles) string {
 
 // toolCollapsedInput returns the input portion that follows the tool
 // name in the collapsed view (either the streaming delta preview tail
-// or the first line of the completed input). The second return value
-// is true when the input was truncated and has a leading "…" marker.
+// or the FIRST LINE of the completed input — a tool's argument block can be
+// long, so its first line is the whole of what a one-row summary can promise,
+// and that is the rule for every tool). The second return value is true when
+// the input was truncated and has a leading "…" marker.
+//
+// The first line is also why a line a handler put BELOW the first — an
+// execute_command workdir annotation — is not in the folded row at all: it is
+// shown when the window is expanded, the way edit_file shows its diff rows.
 func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) {
 	if r.deltaBuffer != "" {
 		// Streaming delta preview: keep the LATEST chunk's tail (new JSON
@@ -1382,12 +1388,52 @@ func (r *toolRenderer) previewOutput(innerWidth int, styles *Styles) string {
 // defaultToolRender renders a tool call's input as a muted argument block:
 // no status indicator (it lives in the header line's TOOL CALL ⠋) and no
 // "name: " prefix (the tool name lives in the header line too).
+//
+// What it strips is exactly the framing FormatCall added — "<name>:", one
+// space, and the trailing newline — and not a byte more. TrimSpace would also
+// eat whitespace the handler meant to keep, and with it the block's line
+// structure: execute_command's annotations are read positionally (a line after
+// the first, see renderToolArgLine), so a call whose command is empty would lose
+// the line its annotation sits on and stop being drawn as an annotation at all.
 func defaultToolRender(input, name string) string {
 	content := prepareContent(input)
 	if name != "" {
 		if stripped, ok := strings.CutPrefix(content, name+":"); ok {
-			content = strings.TrimSpace(stripped)
+			content = strings.TrimSuffix(strings.TrimPrefix(stripped, " "), "\n")
 		}
 	}
 	return content
+}
+
+// renderToolArgLine renders a tool call's argument block for the expanded window
+// body. content is the block as defaultToolRender produced it.
+//
+// For execute_command the block's first line is the command and any line after
+// it is an annotation the handler appended — the workdir (see dirMarker), which
+// is harness note rather than command. Those lines are drawn in bold, the
+// channel this UI uses to mark a position without spending a color (the tool
+// name on the line above does the same), so they cannot be read as more of the
+// command. Everything on the first line stays plain body text.
+//
+// Which lines those are needs no matching: an execute_command command cannot
+// contain a line break, so a block with a second line can only have got it from
+// the handler. Reading the block's shape here — rather than carrying the
+// annotation alongside it — is what edit_file's rows do too: the text is the
+// encoding, the renderer that draws it is the one that reads it, and the tool
+// name says which encoding to expect, so write_file's literal "[dir=…]" is not
+// mistaken for one.
+//
+// Both parts go through styles.Body so the block dims as a unit under an
+// overlay: styleBodyLines leaves a row that already carries SGR alone, which
+// the annotation's row does. Under Dimmed() Body resolves to ColorDim and keeps
+// the bold, so the annotation still stands out from the command it annotates.
+func renderToolArgLine(name, content string, styles *Styles) string {
+	if name != "execute_command" {
+		return content
+	}
+	command, annotation, ok := strings.Cut(content, "\n")
+	if !ok {
+		return content
+	}
+	return styles.Body.Render(command) + "\n" + styles.Body.Bold(true).Render(annotation)
 }

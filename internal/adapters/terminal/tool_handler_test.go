@@ -112,8 +112,10 @@ func TestExecuteCommandHandlerFormatCallShowsWorkDir(t *testing.T) {
 		t.Errorf("without workdir = %q, want %q", plain, want)
 	}
 
+	// The workdir goes on a line of its own, after the command, so it cannot be
+	// read as one of the command's own arguments (see dirMarker).
 	withDir := h.FormatCall([]byte(`{"command":"./scripts/fetch.sh","workdir":"/home/me/skills/weather"}`))
-	want := "execute_command: ./scripts/fetch.sh [dir=/home/me/skills/weather]\n"
+	want := "execute_command: ./scripts/fetch.sh\n[dir=/home/me/skills/weather]\n"
 	if withDir != want {
 		t.Errorf("with workdir = %q, want %q", withDir, want)
 	}

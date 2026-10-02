@@ -44,6 +44,27 @@ func (h *GenericHandler) FormatCall(input json.RawMessage) string {
 // ExecuteCommandHandler handles execute_command calls.
 type ExecuteCommandHandler struct{}
 
+// ExecuteCommandHandler records the call's workdir as a "[dir=<dir>]" line of
+// its own, after the command line, because where a command ran is part of what
+// the call *is*: "ls" in the skill's folder and "ls" in the project are
+// different calls, and a transcript showing only "ls" cannot be read back.
+//
+// Its own line, rather than trailing the command, is what makes the annotation
+// unconfusable with the command's arguments — and it is what makes reading it
+// back exact rather than a guess. A command cannot contain a line break
+// (escapeNewlines), so an execute_command argument block has at most two lines:
+// the first IS the command and any line after it IS an annotation. The renderer
+// leans on exactly that (see renderToolArgLine) — no "[dir=" is matched and no
+// bracket is looked for, so a command that merely contains bracketed text (a
+// glob, say: "ls /tmp/[dir=*]") cannot be mistaken for one.
+//
+// The block's first line as the payload and its remaining lines as the tool's
+// own notes is the same shape edit_file already has: its first line is the path
+// and the lines below are the diff, which the renderer colors by reading them.
+func dirMarker(workdir string) string {
+	return "[dir=" + workdir + "]"
+}
+
 func (h *ExecuteCommandHandler) FormatCall(input json.RawMessage) string {
 	var args tools.ExecuteCommandInput
 	if err := json.Unmarshal(input, &args); err != nil {
@@ -51,10 +72,7 @@ func (h *ExecuteCommandHandler) FormatCall(input json.RawMessage) string {
 	}
 	text := escapeNewlines(args.Command)
 	if args.WorkDir != "" {
-		// The directory is part of what the command *is*: "ls" in the skill's
-		// folder and "ls" in the project are different calls, and a transcript
-		// showing only "ls" cannot be read back.
-		text += fmt.Sprintf(" [dir=%s]", escapeNewlines(args.WorkDir))
+		text += "\n" + dirMarker(escapeNewlines(args.WorkDir))
 	}
 	// Add newline at end so output starts on new line
 	return fmt.Sprintf("execute_command: %s\n", text)
