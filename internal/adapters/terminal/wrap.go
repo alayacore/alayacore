@@ -480,6 +480,19 @@ func joinVisualLines(lines []visualLine) string {
 		return lines[0].Text
 	}
 	var sb strings.Builder
+	// The join is exactly the rows' bytes plus one '\n' per hard break, so its
+	// size is known before anything is written: growing once is the one
+	// allocation the result needs, where the builder's doubling is a logarithm
+	// of them. Most of what reaches here is a window's rendered rows, which is
+	// both many rows and long ones.
+	n := 0
+	for i, l := range lines {
+		n += len(l.Text)
+		if i > 0 && !l.Cont {
+			n++
+		}
+	}
+	sb.Grow(n)
 	for i, l := range lines {
 		if i > 0 && !l.Cont {
 			sb.WriteByte('\n')

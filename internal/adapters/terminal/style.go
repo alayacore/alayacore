@@ -202,8 +202,12 @@ func (s Style) Render(strs ...string) string {
 		te = te.Strikethrough(true)
 	}
 
-	// Style each line separately: every row is self-contained.
+	// Style each line separately: every row is self-contained. Each line gains
+	// an SGR prefix and reset, so the unstyled string is a lower bound on the
+	// result: sizing the builder from it is one allocation, where styling a
+	// many-line block through the doubling is several.
 	var b strings.Builder
+	b.Grow(len(str))
 	isFirst := true
 	for line := range strings.SplitSeq(str, "\n") {
 		if isFirst {

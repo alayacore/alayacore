@@ -128,6 +128,10 @@ func expandTabs(s string) string {
 		return s
 	}
 	var result strings.Builder
+	// A tab becomes at least one space and every other rune is copied, so the
+	// input's length is a lower bound on the result — the same bound stripANSI
+	// below sizes its builder from.
+	result.Grow(len(s))
 	col := 0
 	for _, r := range s {
 		switch r {
