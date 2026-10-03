@@ -150,7 +150,9 @@ var restyleTokens = []string{
 // be one allocation per byte, []byte{b} for each of them. Lengthening a styled
 // string without adding a break must therefore add almost nothing: what the writer
 // emits per byte is the byte itself, and what it emits per break is bounded by the
-// breaks. The little it does add is the buffer growing.
+// breaks. restyleBreaks sizes its buffer from the input once, so the ten-times-longer
+// line adds nothing at all; the slack in the bound is for what AllocsPerRun picks up
+// from a -race build's own allocations, not for growth.
 func TestRestyleBreaksDoesNotAllocatePerByte(t *testing.T) {
 	pad := func(n int) string {
 		return "\x1b[31m" + strings.Repeat("a", n) + "\n" + strings.Repeat("b", n) + "\x1b[0m"

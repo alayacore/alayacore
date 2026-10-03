@@ -53,6 +53,15 @@ func restyleBreaks(s string) string {
 		return s
 	}
 	var buf bytes.Buffer
+	// The writer copies every byte it is given, so len(s) is a lower bound on
+	// what the buffer must hold; sizing it in one step spends an allocation
+	// where bytes.Buffer would spend the logarithm of them doubling into place.
+	// It also keeps the cost from tracking the content length at all, which is
+	// what the test below reads: that test compares two lengths, and under -race
+	// each of the buffer's growth steps is billed two allocations instead of
+	// one, so a buffer left to grow made a ten-times-longer line look like it
+	// was allocating per byte.
+	buf.Grow(len(s))
 	w := NewWrapWriter(&buf)
 	defer w.Close()
 	_, _ = io.WriteString(w, s) // bytes.Buffer.Write never fails
