@@ -43,7 +43,7 @@ The session uses three goroutines for concurrent operation:
 |-----------|--------|------|
 | **Main loop** (`run()`) | `Session.Start()` | Owns all mutable state, processes commands |
 | **Input pump** (`inputPump()`) | launched by `run()` | Reads TLV frames from the input stream, sends parsed messages to the main loop |
-| **Task worker** (`runTask()`) | spawned by `run()` per task | Executes a single task (LLM streaming + tool calls), returns final messages via `taskResultCh` |
+| **Task worker** (`runTaskNormal` / `runTaskContinue` / `runTaskSummarize`) | spawned by `run()` per task | Executes a single task (LLM streaming + tool calls), returns final messages via `taskResultCh` |
 
 **Cross-goroutine communication:**
 

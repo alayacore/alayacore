@@ -134,8 +134,8 @@ Two mechanical requirements make this valid:
   following user text as one user turn, so a summarize prompt appended after a
   tool result does not become two consecutive user messages.
 
-The replacement is published (`contentsReplacedEvent`) so `:save` and the
-adapter see the compacted history the model is actually running on.
+The replacement is published (`contentsReplacedEvent`) so `:save` during the
+turn writes the compacted history — the same one the model is running on.
 
 ### Limits
 
@@ -193,5 +193,5 @@ Both are sent by the same goroutine sequentially, and the FIFO channel guarantee
 - `runTaskSummarize()` / `summarizeContents()` (in `session_task.go`) — sends the summarize prompt via `processPrompt`, then replaces conversation history with the summary and resets `ContextTokens` to the summary's output token count via `setContextTokensEvent`
 - `setContextTokensEvent` — a dedicated task event that sets `ContextTokens` to the correct value after summarization, overriding the stale value from the preceding `stepFinishEvent`
 - `groupForAnthropic` — groups a tool result and a following user text into one user turn (Anthropic wire rule; keeps a post-tool-result summarize prompt from splitting into two user messages)
-- `applyModelContextLimit()` — sets `ContextLimit` from the active model's config
+- `SwitchModel()` / `ensureAgentInitialized()` — sync `ContextLimit` from the active model's config (`modelService.contextLimit`) on a model switch and on lazy agent init
 - `sessionMeta.ContextTokens` — persisted to session file frontmatter so the status bar shows the correct context usage immediately after loading a session

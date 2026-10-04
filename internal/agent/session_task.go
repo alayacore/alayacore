@@ -589,8 +589,8 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 		s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
 	}
 
-	// Publish the replacement so :save and the adapter see the compacted
-	// history the model is actually running on, not the pre-compaction one.
+	// Publish the replacement so :save during the task saves the compacted form
+	// (the adapter was already told about the trailing "Continue" above).
 	s.sendEvent(contentsReplacedEvent{Contents: cloneParts(result)})
 	return result, nil
 }
