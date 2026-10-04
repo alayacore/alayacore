@@ -24,6 +24,7 @@ import (
 type midTaskProvider struct {
 	mu             sync.Mutex
 	summarizeCount int
+	requests       [][]llm.ContentPart
 }
 
 func (m *midTaskProvider) StreamMessages(_ context.Context, history []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
@@ -44,6 +45,9 @@ func (m *midTaskProvider) StreamMessages(_ context.Context, history []llm.Conten
 	if hasSummarize {
 		m.summarizeCount++
 	}
+	cp := make([]llm.ContentPart, len(history))
+	copy(cp, history)
+	m.requests = append(m.requests, cp)
 	m.mu.Unlock()
 
 	return func(yield func(llm.StreamEvent, error) bool) {
@@ -78,6 +82,15 @@ func (m *midTaskProvider) summarizeCalls() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.summarizeCount
+}
+
+func (m *midTaskProvider) lastRequest() []llm.ContentPart {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.requests) == 0 {
+		return nil
+	}
+	return m.requests[len(m.requests)-1]
 }
 
 // compactFailProvider asks for a tool on its first normal step (pushing the
@@ -282,6 +295,14 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 	}
 	if containsText(session.Contents, "working") {
 		t.Fatalf("pre-compaction content survived into the final history: %v", texts(session.Contents))
+	}
+
+	// The request after compaction must end on a user turn. Ending on the
+	// assistant summary would be read as prefill ("continue this assistant
+	// turn"), not as a fresh turn to resume.
+	tail := provider.lastRequest()
+	if len(tail) == 0 || tail[len(tail)-1].GetRole() != llm.RoleUser {
+		t.Fatalf("post-compaction request ends on %v, want a user turn", tail)
 	}
 }
 

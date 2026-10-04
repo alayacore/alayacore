@@ -561,6 +561,18 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 	if err != nil {
 		return nil, err
 	}
+	// End the replacement on a user turn. summarizeContents returns
+	// [Continue(user), summary(assistant)]; sending that as-is would be the one
+	// request in the session that ends on an assistant message, which every API
+	// reads as "continue this assistant turn" (prefill) — the model may keep
+	// writing the summary instead of resuming the work. A trailing "Continue"
+	// makes it an ordinary "respond to the user" turn, exactly as
+	// runTaskContinue does. It is a synthetic turn, so it is not echoed.
+	continuePart := &llm.TextPart{Text: "Continue"}
+	continuePart.SetHistoryID(s.histIncAndGet())
+	continuePart.SetRole(llm.RoleUser)
+	result = append(result, continuePart)
+
 	// Publish the replacement so :save and the adapter see the compacted
 	// history the model is actually running on, not the pre-compaction one.
 	s.sendEvent(contentsReplacedEvent{Contents: cloneParts(result)})

@@ -116,9 +116,15 @@ must not reset the displayed step to 1 or blank the speed readout.
 A step boundary always ends with a paired `assistant(tool_use)` and the
 `tool_result` answering it. The summarize prompt is appended **after** that tool
 result and the request is sent, so the model reads the result — and the whole
-turn — and folds them into the summary. The compacted history (`[Continue,
-summary]`) then replaces the conversation, and the turn continues from it.
-Nothing is discarded without the model having seen it.
+turn — and folds them into the summary. The compacted history then replaces the
+conversation, and the turn continues from it. Nothing is discarded without the
+model having seen it.
+
+The replacement ends on a synthetic user `Continue`, so the next request is an
+ordinary "respond to the user" turn. Ending on the assistant summary would be
+the one request in the session that ends on an assistant message, which every
+API reads as *prefill* — "continue this assistant turn" — and the model may keep
+writing the summary instead of resuming the work.
 
 Two mechanical requirements make this valid:
 
