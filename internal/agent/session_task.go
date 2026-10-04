@@ -109,13 +109,20 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// summarization request itself (which runs with publishSteps=false) can
 	// never re-trigger it. Compaction is best-effort: on failure we keep the
 	// uncompressed history rather than fail the task.
+	//
+	// A failure also stops further attempts for this turn: the next step only
+	// makes the context larger, so retrying would repeat the failure and flood
+	// the adapter with errors. The next turn's task-start check retries from
+	// scratch.
+	compactionFailed := false
 	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
-		if !publishSteps || !s.exceedsAutoSummarizeThreshold(contextTokens) {
+		if !publishSteps || compactionFailed || !s.exceedsAutoSummarizeThreshold(contextTokens) {
 			return nil, nil
 		}
 		compacted, err := s.compactForContinuation(ctx, contents, contextTokens)
 		if err != nil {
 			s.writeErrorf("Auto-summarization failed: %v", err)
+			compactionFailed = true
 			return nil, nil
 		}
 		// The replacement is the published baseline now: the next step's

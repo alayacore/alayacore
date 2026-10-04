@@ -145,7 +145,8 @@ adapter see the compacted history the model is actually running on.
   set it flush against 100.
 - Compaction is **best-effort**: if the summarize request fails, the task keeps
   running on the uncompressed history (reported as a system error) rather than
-  failing.
+  failing, and the attempt is not repeated again in the same turn — the next
+  turn's task-start check retries from scratch.
 - Every compaction writes a pre-summarize backup first, and the filename carries
   sub-second precision, so a task that compacts more than once never overwrites
   an earlier backup.

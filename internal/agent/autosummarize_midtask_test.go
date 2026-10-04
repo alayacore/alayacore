@@ -194,6 +194,96 @@ func TestAutoSummarizeMidTaskFailureKeepsRunning(t *testing.T) {
 	}
 }
 
+// repeatFailProvider asks for a tool on its first two normal steps (so the loop
+// stays over threshold across two step boundaries) and answers every summarize
+// request with nothing, so summarization always fails.
+type repeatFailProvider struct {
+	mu             sync.Mutex
+	normalCalls    int
+	summarizeCount int
+}
+
+func (m *repeatFailProvider) StreamMessages(_ context.Context, history []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
+	hasSummarize := false
+	for _, p := range history {
+		if tp, ok := p.(*llm.TextPart); ok && tp.Text == summarizePrompt {
+			hasSummarize = true
+		}
+	}
+	m.mu.Lock()
+	if hasSummarize {
+		m.summarizeCount++
+	} else {
+		m.normalCalls++
+	}
+	n := m.normalCalls
+	m.mu.Unlock()
+
+	return func(yield func(llm.StreamEvent, error) bool) {
+		switch {
+		case hasSummarize:
+			// No text: summarizeContents rejects this, so compaction fails.
+			yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 100, OutputTokens: 0}}, nil)
+		case n <= 2:
+			yield(llm.TextDeltaEvent{Delta: "working", Key: "block:0"}, nil)
+			yield(llm.ToolInputStartEvent{ID: "c", Name: "t", Key: "block:1"}, nil)
+			yield(llm.ToolInputDeltaEvent{ID: "c", Delta: `{}`, Key: "block:1"}, nil)
+			yield(llm.ToolInputCompleteEvent{ID: "c", Key: "block:1"}, nil)
+			yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 100, OutputTokens: 5}, StopReason: "tool_use"}, nil)
+		default:
+			if !yield(llm.TextDeltaEvent{Delta: "recovered", Key: "block:0"}, nil) {
+				return
+			}
+			yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 20, OutputTokens: 5}}, nil)
+		}
+	}, nil
+}
+
+func (m *repeatFailProvider) SetReasoningLevel(_ int)                       {}
+func (m *repeatFailProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
+func (m *repeatFailProvider) SetVideoConfig(_ int, _ int)                   {}
+
+func (m *repeatFailProvider) summarizeCalls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.summarizeCount
+}
+
+// TestAutoSummarizeMidTaskFailureIsNotRetriedPerStep: when a mid-task summarize
+// fails, it must not be attempted again on the following steps of the same turn
+// — that would repeat the failure and flood the adapter with one error per step.
+func TestAutoSummarizeMidTaskFailureIsNotRetriedPerStep(t *testing.T) {
+	provider := &repeatFailProvider{}
+	agent := llm.NewAgent(llm.AgentConfig{
+		Provider: provider,
+		Tools: []llm.Tool{{
+			Definition: llm.ToolDefinition{Name: "t", Description: "test", Schema: []byte(`{"type":"object"}`)},
+			Execute:    func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) { return nil, nil },
+		}},
+		MaxSteps: 10,
+	})
+	session := &Session{
+		sessionConfig: sessionConfig{
+			modelService:  &modelService{agent: agent},
+			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard},
+		},
+		sharedState: sharedState{ContextLimit: 100, ContextTokens: 10},
+		runState:    runState{taskEventCh: make(chan taskEvent, 20)},
+	}
+	session.Contents = []llm.ContentPart{
+		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	}
+
+	runOneTask(t, session, []llm.ContentPart{&llm.TextPart{Text: "do it"}})
+
+	if got := provider.summarizeCalls(); got != 1 {
+		t.Fatalf("summarizeCalls = %d, want 1 (a failed compaction must not retry every step)", got)
+	}
+	if !containsText(session.Contents, "recovered") {
+		t.Fatalf("task did not finish: %v", texts(session.Contents))
+	}
+}
+
 func texts(parts []llm.ContentPart) []string {
 	var out []string
 	for _, p := range parts {
