@@ -78,8 +78,9 @@ type promptPartsEvent struct {
 
 func (promptPartsEvent) taskEvent() {}
 
-// contentsReplacedEvent publishes a mid-task wholesale replacement of the
-// conversation (the auto-summarize result). Unlike append events, the
+// contentsReplacedEvent publishes a wholesale replacement of the
+// conversation while a task is running (the auto-summarize result — from the
+// task-start summarize or the between-steps compaction). Unlike append events, the
 // replacement slice is copied before publication: the task goroutine keeps
 // appending to its own copy afterwards, while run() takes full ownership of
 // the published one. Sent only when auto-summarization succeeds.
@@ -98,7 +99,7 @@ func cloneParts(parts []llm.ContentPart) []llm.ContentPart {
 }
 
 // setContextTokensEvent sets ContextTokens on the run() goroutine.
-// Used by summarize() to correct the value after the stepFinishEvent
+// Used by summarizeContents() to correct the value after the stepFinishEvent
 // from processPrompt overwrites it with the full old-context token count.
 type setContextTokensEvent struct {
 	Tokens int64

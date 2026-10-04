@@ -551,7 +551,9 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 //
 //   runTaskNormal     — normal prompt. Appends user parts to history, calls
 //                       processPrompt. If the context was near the token limit,
-//                       it synchronously runs doAutoSummarize first to free space.
+//                       it synchronously runs doAutoSummarize first to free
+//                       space; a turn that grows past the limit mid-flight is
+//                       compacted between steps by processPrompt's OnBeforeSend.
 //
 //   runTaskContinue   — retry last prompt. If the last response was assistant
 //                       (canceled mid-stream), appends "Continue" and resends.
@@ -567,11 +569,13 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 //                       the summarize prompt, calls processPrompt, then replaces
 //                       the conversation with a summary.
 //
-// The key difference: doAutoSummarize (called from runTaskNormal) is synchronous
-// — it must complete before the user's new prompt can be processed, because
-// it needs to free token space first. runTaskSummarize runs as an independent
-// task goroutine because :summarize is an explicit user command, not a
-// precondition for another operation.
+// The key difference: doAutoSummarize (from runTaskNormal) and
+// compactForContinuation (from processPrompt's OnBeforeSend) both run
+// synchronously inside the turn that needs the space — the first before a new
+// prompt is processed, the second between two of its steps — because each must
+// free token space before the next request is sent. runTaskSummarize runs as an
+// independent task goroutine because :summarize is an explicit user command,
+// not a precondition for another operation.
 // ============================================================================
 
 // runTaskNormal executes a normal prompt in its own goroutine.
