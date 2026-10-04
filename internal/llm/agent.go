@@ -136,6 +136,18 @@ type StreamCallbacks struct {
 	OnStepStart  func(step int) error
 	OnStepFinish func(contents []ContentPart, usage Usage) error
 
+	// OnBeforeSend is called at the top of every step, before that step's
+	// request is sent, with the history as it currently stands. It may return
+	// a replacement history (e.g. a compacted conversation); a nil return
+	// leaves the history unchanged, and a non-nil error aborts the turn.
+	//
+	// When a replacement is returned it becomes the working history for this
+	// and every subsequent step, and is what a final StreamResult reports. The
+	// caller owns the replacement's numbering: the agent does not renumber the
+	// parts it is handed, because they were numbered when the caller produced
+	// them (see Session's mid-task auto-summarization).
+	OnBeforeSend func(contents []ContentPart) ([]ContentPart, error)
+
 	// OnStepStats reports per-step speed metrics (TTFT, duration, tok/s)
 	// computed from the provider's authoritative usage. Fired after the
 	// step's stream completes and before OnStepFinish. Not fired for
@@ -167,6 +179,24 @@ type StreamResult struct {
 	Usage    Usage
 }
 
+// beforeSend applies the OnBeforeSend hook, returning the history the step
+// should be sent on: the hook's replacement when it returns one, otherwise the
+// history it was given. A nil-returning hook and a nil hook are one case here —
+// both mean "unchanged" — which keeps the loop's own control flow flat.
+func beforeSend(callbacks StreamCallbacks, contents []ContentPart) ([]ContentPart, error) {
+	if callbacks.OnBeforeSend == nil {
+		return contents, nil
+	}
+	next, err := callbacks.OnBeforeSend(contents)
+	if err != nil {
+		return nil, err
+	}
+	if next == nil {
+		return contents, nil
+	}
+	return next, nil
+}
+
 // Stream executes the agent with streaming callbacks.
 //
 // Tools run in one of two modes, chosen by AgentConfig.SerialToolCalls:
@@ -187,9 +217,18 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 	var totalUsage Usage
 
 	for step := 1; step <= a.config.MaxSteps; step++ {
+		// OnBeforeSend runs before the step is announced and before its
+		// request is built, so a caller that rewrites the history (e.g. to
+		// compact it) does so for a step that has not started yet.
+		next, err := beforeSend(callbacks, allContents)
+		if err != nil {
+			return nil, err
+		}
+		allContents = next
+
 		if callbacks.OnStepStart != nil {
-			if err := callbacks.OnStepStart(step); err != nil {
-				return nil, err
+			if cbErr := callbacks.OnStepStart(step); cbErr != nil {
+				return nil, cbErr
 			}
 		}
 

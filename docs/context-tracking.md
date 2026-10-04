@@ -91,6 +91,55 @@ The apparent "drop" from 2218 to 2123 after model switch is the difference in to
 
 Note that `ContextTokens` now includes `OutputTokens`, so the values differ from the earlier documentation version where only input+cache were tracked.
 
+## Auto-Summarization (`--auto-summarize`)
+
+When `--auto-summarize=N` is set (N = 1–100), the conversation is summarized
+whenever the measured context reaches N% of `ContextLimit`. The check runs at
+two points, both *before* a request is sent:
+
+1. **At the start of a prompt** — `runTaskNormal` calls `shouldAutoSummarize()`
+   before the new prompt is appended. This compacts a completed conversation
+   before the next turn begins.
+2. **Before each step of a running task** — `processPrompt`'s `OnBeforeSend`
+   hook checks after every agent step. This compacts a *long single turn* (many
+   tool calls) mid-flight, instead of letting it run past the limit.
+
+Both use the same predicate (`exceedsAutoSummarizeThreshold`) and the same
+operation (`summarizeContents`) — one rule, one implementation, two call sites.
+
+### Mid-task compaction and tool results
+
+A step boundary always ends with a paired `assistant(tool_use)` and the
+`tool_result` answering it. The summarize prompt is appended **after** that tool
+result and the request is sent, so the model reads the result — and the whole
+turn — and folds them into the summary. The compacted history (`[Continue,
+summary]`) then replaces the conversation, and the turn continues from it.
+Nothing is discarded without the model having seen it.
+
+Two mechanical requirements make this valid:
+
+- **`OnBeforeSend`** (`internal/llm`) lets a caller hand the loop a replacement
+  history at the top of any step; a nil return leaves the history unchanged.
+- **`groupForAnthropic`** (`internal/llm/providers`) treats a tool result and a
+  following user text as one user turn, so a summarize prompt appended after a
+  tool result does not become two consecutive user messages.
+
+The replacement is published (`contentsReplacedEvent`) so `:save` and the
+adapter see the compacted history the model is actually running on.
+
+### Limits
+
+- The trigger reads the **last reported usage**, which is one tool result short
+  of the request the next step will send — the exact count is only known once
+  that request returns. The threshold's headroom absorbs the difference; do not
+  set it flush against 100.
+- Compaction is **best-effort**: if the summarize request fails, the task keeps
+  running on the uncompressed history (reported as a system error) rather than
+  failing.
+- Every compaction writes a pre-summarize backup first, and the filename carries
+  sub-second precision, so a task that compacts more than once never overwrites
+  an earlier backup.
+
 ## Manual Summarization (`:summarize`)
 
 The `:summarize` command is a **task command** — it runs in a task goroutine and can be canceled with `:cancel`. It is the only way to reduce context usage manually when auto-summarize is disabled.
@@ -128,8 +177,10 @@ Both are sent by the same goroutine sequentially, and the FIFO channel guarantee
 
 ## Related
 
-- `shouldAutoSummarize()` — triggers when `ContextTokens >= ContextLimit * threshold / 100` (threshold set via `--auto-summarize`, e.g. `--auto-summarize=65`; 0 = disabled)
-- `runSummarize()` (in `session_task.go`) — sends the summarize prompt via `summarizeContents` → `processPrompt`, then replaces conversation history with the summary and resets `ContextTokens` to the summary's output token count via `setContextTokensEvent`
+- `shouldAutoSummarize()` / `exceedsAutoSummarizeThreshold()` — triggers when `ContextTokens >= ContextLimit * threshold / 100` (threshold set via `--auto-summarize`, e.g. `--auto-summarize=65`; 0 = disabled). Called at task start and, via `processPrompt`'s `OnBeforeSend`, before each step of a running task.
+- `processPrompt` `OnBeforeSend` — the mid-task trigger: `compactForContinuation` summarizes and hands the compacted history back to the agent loop for the rest of the turn.
+- `runTaskSummarize()` / `summarizeContents()` (in `session_task.go`) — sends the summarize prompt via `processPrompt`, then replaces conversation history with the summary and resets `ContextTokens` to the summary's output token count via `setContextTokensEvent`
 - `setContextTokensEvent` — a dedicated task event that sets `ContextTokens` to the correct value after summarization, overriding the stale value from the preceding `stepFinishEvent`
+- `groupForAnthropic` — groups a tool result and a following user text into one user turn (Anthropic wire rule; keeps a post-tool-result summarize prompt from splitting into two user messages)
 - `applyModelContextLimit()` — sets `ContextLimit` from the active model's config
 - `sessionMeta.ContextTokens` — persisted to session file frontmatter so the status bar shows the correct context usage immediately after loading a session

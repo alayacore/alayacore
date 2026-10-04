@@ -846,6 +846,41 @@ func unmarshalSSE[T any](data string, yield func(llm.StreamEvent, error) bool) (
 // Message Conversion (Anthropic wire format)
 // ============================================================================
 
+// groupForAnthropic groups consecutive parts by their Anthropic wire role.
+//
+// It differs from llm.GroupByRole (which OpenAI uses) in one place: a tool
+// result and a user text part both belong to a single "user" turn on Anthropic,
+// so they are grouped together. GroupByRole would split them, emitting two
+// consecutive user messages — invalid for the Messages API, and exactly the
+// shape produced when a mid-task summarization prompt lands right after a tool
+// result.
+//
+// Within the merged chunk the order is preserved, so a tool_result block still
+// precedes the text block, which is what Anthropic requires.
+func groupForAnthropic(contents []llm.ContentPart) [][]llm.ContentPart {
+	wireRole := func(r llm.MessageRole) llm.MessageRole {
+		if r == llm.RoleTool {
+			return llm.RoleUser
+		}
+		return r
+	}
+	if len(contents) == 0 {
+		return nil
+	}
+	var chunks [][]llm.ContentPart
+	i := 0
+	for i < len(contents) {
+		role := wireRole(contents[i].GetRole())
+		j := i
+		for j < len(contents) && wireRole(contents[j].GetRole()) == role {
+			j++
+		}
+		chunks = append(chunks, contents[i:j])
+		i = j
+	}
+	return chunks
+}
+
 // anthropicConvertContents converts domain ContentParts to Anthropic wire format.
 // Groups consecutive same-role parts into API messages.
 //
@@ -855,7 +890,7 @@ func unmarshalSSE[T any](data string, yield func(llm.StreamEvent, error) bool) (
 //   - llm.ToolInputPart   → anthropicContentBlock{Type: "tool_use"}
 //   - llm.ToolOutputPart → anthropicContentBlock{Type: "tool_result"} (role remapped to "user")
 func anthropicConvertContents(contents []llm.ContentPart, reasoningLevel int) []anthropicMessage {
-	chunks := llm.GroupByRole(contents)
+	chunks := groupForAnthropic(contents)
 	if len(chunks) == 0 {
 		return nil
 	}

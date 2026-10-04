@@ -55,8 +55,23 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// parts before prevLen), so len(fullContents) >= prevLen always holds.
 	prevLen := len(history)
 
+	// contextTokens is this task's view of the context size, taken from the
+	// provider's authoritative usage after each step, and the number the
+	// mid-task check reads. Unlike s.ContextTokens (owned by run() and updated
+	// asynchronously from task events), it is written and read on the task
+	// goroutine only, so the check needs no synchronization.
+	//
+	// It measures the step that just finished, which is one tool result short
+	// of what the next step will send — the exact count is only known once
+	// that request returns. The --auto-summarize headroom is what absorbs the
+	// difference, the same approximation the task-start check has always used.
+	var contextTokens int64
+
 	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
 		fullContents = cleanIncompleteToolInputs(contents)
+		if n := usage.InputTokens + usage.OutputTokens + usage.CacheReadTokens + usage.CacheCreationTokens; n > 0 {
+			contextTokens = n
+		}
 		ev := stepFinishEvent{
 			InputTokens:         usage.InputTokens,
 			OutputTokens:        usage.OutputTokens,
@@ -85,6 +100,28 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		return nil
 	}
 
+	// onBeforeSend runs at the top of every step, before its request is sent.
+	// If the context has grown past the --auto-summarize threshold mid-task, it
+	// summarizes the conversation and hands the compacted history back for the
+	// rest of the turn. publishSteps gates this to real prompts, so the
+	// summarization request itself (which runs with publishSteps=false) can
+	// never re-trigger it. Compaction is best-effort: on failure we keep the
+	// uncompressed history rather than fail the task.
+	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
+		if !publishSteps || !s.exceedsAutoSummarizeThreshold(contextTokens) {
+			return nil, nil
+		}
+		compacted, err := s.compactForContinuation(ctx, contents)
+		if err != nil {
+			s.writeErrorf("Auto-summarization failed: %v", err)
+			return nil, nil
+		}
+		// The replacement is the published baseline now: the next step's
+		// delta is measured from its end, not from the old history's.
+		prevLen = len(compacted)
+		return compacted, nil
+	}
+
 	dw := &deltaWriter{output: s.Output}
 
 	callbacks := llm.StreamCallbacks{
@@ -98,6 +135,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		OnStepStart:         s.handleStepStart,
 		OnStepFinish:        onStepFinish,
 		OnStepStats:         s.handleStepStats,
+		OnBeforeSend:        onBeforeSend,
 		IDGen:               s.histIncAndGet,
 	}
 
@@ -412,22 +450,34 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 // shouldAutoSummarize returns true when auto-summarization is enabled and
 // the current context tokens exceed s.AutoSummarize of the configured limit.
 func (s *Session) shouldAutoSummarize() bool {
+	return s.exceedsAutoSummarizeThreshold(s.ContextTokens)
+}
+
+// exceedsAutoSummarizeThreshold reports whether tokens is at or above the
+// configured --auto-summarize percentage of the context limit. It is the one
+// predicate behind both trigger points: the start of a task (shouldAutoSummarize)
+// and each step of a running one (processPrompt's OnBeforeSend). 0 disables it.
+func (s *Session) exceedsAutoSummarizeThreshold(tokens int64) bool {
 	limit := s.ContextLimit
-	return s.AutoSummarize > 0 && limit > 0 && s.ContextTokens > 0 &&
-		s.ContextTokens >= limit*int64(s.AutoSummarize)/100
+	return s.AutoSummarize > 0 && limit > 0 && tokens > 0 &&
+		tokens >= limit*int64(s.AutoSummarize)/100
 }
 
 // summarizeBackup saves a timestamped backup of the current session contents
 // before summarization. Silently skips if no session file is configured.
 // Failures are reported as system errors — without the backup the original
 // conversation is unrecoverable after summarization.
+//
+// The timestamp carries sub-second precision because a single task can now
+// summarize more than once; a seconds-only stamp would make the second backup
+// silently overwrite the first.
 func (s *Session) summarizeBackup(contents []llm.ContentPart) {
 	if s.SessionFile == "" {
 		return
 	}
 	ext := filepath.Ext(s.SessionFile)
 	base := strings.TrimSuffix(s.SessionFile, ext)
-	backupPath := fmt.Sprintf("%s-%s%s", base, time.Now().Format("20060102150405"), ext)
+	backupPath := fmt.Sprintf("%s-%s%s", base, time.Now().Format("20060102150405.000000000"), ext)
 	if err := s.saveContentToFile(backupPath, contents); err != nil {
 		s.writeErrorf("Failed to create pre-summarize backup: %v", err)
 	} else {
@@ -460,6 +510,33 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 	// goroutine keeps appending to its own copy below.
 	s.sendEvent(contentsReplacedEvent{Contents: cloneParts(result)})
 	return result
+}
+
+// compactForContinuation summarizes the conversation between two agent steps
+// and returns the compacted history to continue from.
+//
+// It is the mid-task counterpart of doAutoSummarize. The history it is given
+// ends with a tool result the model asked for and has not yet acted on; the
+// summarize prompt is appended after it, so the model reads that result — and
+// the whole turn — and folds them into the summary. The compacted history
+// replaces the conversation and the loop continues from it, which is why no
+// tool result is discarded: it was folded into the summary by the model that
+// saw it.
+//
+// On failure it returns the error and the caller keeps the uncompressed
+// history — compaction is best-effort, never a reason to fail a running task.
+func (s *Session) compactForContinuation(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
+	s.writeNotify("Context limit reached. Summarizing to continue...")
+	s.summarizeBackup(contents)
+
+	result, err := s.summarizeContents(ctx, contents)
+	if err != nil {
+		return nil, err
+	}
+	// Publish the replacement so :save and the adapter see the compacted
+	// history the model is actually running on, not the pre-compaction one.
+	s.sendEvent(contentsReplacedEvent{Contents: cloneParts(result)})
+	return result, nil
 }
 
 // ============================================================================
