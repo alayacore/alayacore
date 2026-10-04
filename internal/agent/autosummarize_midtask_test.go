@@ -6,6 +6,7 @@ import (
 	"io"
 	"iter"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -343,6 +344,7 @@ func TestAutoSummarizeRunsAtContinueStart(t *testing.T) {
 // — not only at the start of a turn — and then keep running on the summary.
 func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 	provider := &midTaskProvider{}
+	output := &syncOutput{}
 	agent := llm.NewAgent(llm.AgentConfig{
 		Provider: provider,
 		Tools: []llm.Tool{{
@@ -357,7 +359,9 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 			// SessionFile set so the pre-summarize backup actually runs: it is
 			// the path that reads the context size from the task goroutine, and
 			// this test is where a race on that read would surface (-race).
-			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard,
+			// Output captures the frames so the test can check the trailing
+			// "Continue" is echoed to the adapter.
+			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: output,
 				SessionFile: filepath.Join(t.TempDir(), "s.alaya")},
 		},
 		sharedState: sharedState{
@@ -393,6 +397,15 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 	tail := provider.lastRequest()
 	if len(tail) == 0 || tail[len(tail)-1].GetRole() != llm.RoleUser {
 		t.Fatalf("post-compaction request ends on %v, want a user turn", tail)
+	}
+
+	// The trailing "Continue" is part of the session's Contents, so the adapter
+	// must have been shown it too — otherwise it would appear only after a
+	// session reload, and the reloaded conversation would differ from the live
+	// one. (The summarize prompt uses "continuation", so "Continue" here is
+	// unambiguous.)
+	if !strings.Contains(output.String(), "Continue") {
+		t.Fatalf("trailing Continue was not echoed to the adapter; output:\n%s", output.String())
 	}
 }
 

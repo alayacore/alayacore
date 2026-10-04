@@ -574,11 +574,20 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 	// reads as "continue this assistant turn" (prefill) — the model may keep
 	// writing the summary instead of resuming the work. A trailing "Continue"
 	// makes it an ordinary "respond to the user" turn, exactly as
-	// runTaskContinue does. It is a synthetic turn, so it is not echoed.
+	// runTaskContinue does.
 	continuePart := &llm.TextPart{Text: "Continue"}
-	continuePart.SetHistoryID(s.histIncAndGet())
+	id := s.histIncAndGet()
+	continuePart.SetHistoryID(id)
 	continuePart.SetRole(llm.RoleUser)
 	result = append(result, continuePart)
+
+	// Echo it, as runTaskContinue echoes its "Continue": the part is part of the
+	// session's Contents (published just below), so the adapter must be shown it
+	// too — otherwise it would appear only after a session reload, and the
+	// reloaded conversation would differ from the live one.
+	if tag, val, err := contentPartToTLV(continuePart); err == nil && tag != "" {
+		s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
+	}
 
 	// Publish the replacement so :save and the adapter see the compacted
 	// history the model is actually running on, not the pre-compaction one.
