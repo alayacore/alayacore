@@ -24,7 +24,18 @@ func loadSession(path string) (*sessionData, error) {
 }
 
 // saveContentToFile saves the current session's contents with its metadata.
+//
+// Reads ContextTokens, so it must be called from the run() goroutine, which
+// owns that field. The task goroutine must use saveContentToFileWithContext
+// instead, passing a count it owns — run() writes ContextTokens while the task
+// runs, so a task-goroutine read of it is a data race.
 func (s *Session) saveContentToFile(path string, contents []llm.ContentPart) error {
+	return s.saveContentToFileWithContext(path, contents, s.ContextTokens)
+}
+
+// saveContentToFileWithContext is saveContentToFile with an explicit context
+// size, for callers that do not own — or must not read — s.ContextTokens.
+func (s *Session) saveContentToFileWithContext(path string, contents []llm.ContentPart, contextTokens int64) error {
 	reasoningLevel := 0
 	videoFPS := 0
 	videoRes := 0
@@ -39,7 +50,7 @@ func (s *Session) saveContentToFile(path string, contents []llm.ContentPart) err
 		ActiveModel:    s.activeModelName(),
 		MessageVersion: messageVersion,
 		ReasoningLevel: reasoningLevel,
-		ContextTokens:  s.ContextTokens,
+		ContextTokens:  contextTokens,
 		VideoFPS:       videoFPS,
 		VideoRes:       videoRes,
 	}

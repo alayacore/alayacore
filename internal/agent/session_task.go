@@ -111,7 +111,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		if !publishSteps || !s.exceedsAutoSummarizeThreshold(contextTokens) {
 			return nil, nil
 		}
-		compacted, err := s.compactForContinuation(ctx, contents)
+		compacted, err := s.compactForContinuation(ctx, contents, contextTokens)
 		if err != nil {
 			s.writeErrorf("Auto-summarization failed: %v", err)
 			return nil, nil
@@ -132,11 +132,19 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		OnToolOutput:        s.handleToolOutput,
 		OnToolConfirm:       s.handleToolConfirm,
 		ToolNeedsConfirm:    s.needsToolConfirm,
-		OnStepStart:         s.handleStepStart,
 		OnStepFinish:        onStepFinish,
-		OnStepStats:         s.handleStepStats,
 		OnBeforeSend:        onBeforeSend,
 		IDGen:               s.histIncAndGet,
+	}
+
+	// Step-boundary events describe the *task's* progress — its step number and
+	// per-step speed. A summarize call (publishSteps=false) is an internal
+	// helper of some turn, not a task of its own, so it must not emit them: a
+	// compaction between steps would otherwise reset the displayed step to 1
+	// and blank the speed mid-turn (see stepStartEvent in session_loop.go).
+	if publishSteps {
+		callbacks.OnStepStart = s.handleStepStart
+		callbacks.OnStepStats = s.handleStepStats
 	}
 
 	if !s.NoDelta {
@@ -468,17 +476,22 @@ func (s *Session) exceedsAutoSummarizeThreshold(tokens int64) bool {
 // Failures are reported as system errors — without the backup the original
 // conversation is unrecoverable after summarization.
 //
+// contextTokens is the size to record in the backup's metadata. It is passed in
+// rather than read from s.ContextTokens: a mid-task caller runs on the task
+// goroutine, which does not own that field (run() writes it concurrently). The
+// task-start callers pass their own snapshot.
+//
 // The timestamp carries sub-second precision because a single task can now
 // summarize more than once; a seconds-only stamp would make the second backup
 // silently overwrite the first.
-func (s *Session) summarizeBackup(contents []llm.ContentPart) {
+func (s *Session) summarizeBackup(contents []llm.ContentPart, contextTokens int64) {
 	if s.SessionFile == "" {
 		return
 	}
 	ext := filepath.Ext(s.SessionFile)
 	base := strings.TrimSuffix(s.SessionFile, ext)
 	backupPath := fmt.Sprintf("%s-%s%s", base, time.Now().Format("20060102150405.000000000"), ext)
-	if err := s.saveContentToFile(backupPath, contents); err != nil {
+	if err := s.saveContentToFileWithContext(backupPath, contents, contextTokens); err != nil {
 		s.writeErrorf("Failed to create pre-summarize backup: %v", err)
 	} else {
 		s.writeNotifyf("Pre-summarize backup saved to %s", backupPath)
@@ -495,7 +508,10 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 	s.writeNotifyf("Context usage at %d/%d tokens (%.0f%%). Auto-summarizing...",
 		s.ContextTokens, limit, usage)
 
-	s.summarizeBackup(contents)
+	// Task-start: no step of this task has run, so s.ContextTokens is ours to
+	// read (run() wrote it before this goroutine started, and will not write it
+	// again until this task sends its first event).
+	s.summarizeBackup(contents, s.ContextTokens)
 	s.writeNotify("Summarizing conversation...")
 
 	result, err := s.summarizeContents(ctx, contents)
@@ -523,11 +539,15 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 // tool result is discarded: it was folded into the summary by the model that
 // saw it.
 //
+// contextTokens is the caller's own view of the context size (the task-local
+// count processPrompt keeps). It is passed, not read from s.ContextTokens,
+// because this runs on the task goroutine while run() is writing that field.
+//
 // On failure it returns the error and the caller keeps the uncompressed
 // history — compaction is best-effort, never a reason to fail a running task.
-func (s *Session) compactForContinuation(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
+func (s *Session) compactForContinuation(ctx context.Context, contents []llm.ContentPart, contextTokens int64) ([]llm.ContentPart, error) {
 	s.writeNotify("Context limit reached. Summarizing to continue...")
-	s.summarizeBackup(contents)
+	s.summarizeBackup(contents, contextTokens)
 
 	result, err := s.summarizeContents(ctx, contents)
 	if err != nil {
@@ -672,7 +692,8 @@ func (s *Session) runTaskSummarize(ctx context.Context) {
 		s.taskResultCh <- contents
 	}()
 
-	s.summarizeBackup(contents)
+	// Task-start: as in doAutoSummarize, s.ContextTokens is ours to read here.
+	s.summarizeBackup(contents, s.ContextTokens)
 	s.writeNotify("Summarizing conversation...")
 
 	contents, err := s.summarizeContents(ctx, contents)

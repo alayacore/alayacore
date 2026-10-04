@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"iter"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -149,7 +151,7 @@ func TestAutoSummarizeMidTaskFailureKeepsRunning(t *testing.T) {
 	session := &Session{
 		sessionConfig: sessionConfig{
 			modelService:  &modelService{agent: agent},
-			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65},
+			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard, SessionFile: filepath.Join(t.TempDir(), "s.alaya")},
 		},
 		sharedState: sharedState{
 			ContextLimit:  100,
@@ -203,8 +205,12 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 	})
 	session := &Session{
 		sessionConfig: sessionConfig{
-			modelService:  &modelService{agent: agent},
-			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65},
+			modelService: &modelService{agent: agent},
+			// SessionFile set so the pre-summarize backup actually runs: it is
+			// the path that reads the context size from the task goroutine, and
+			// this test is where a race on that read would surface (-race).
+			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard,
+				SessionFile: filepath.Join(t.TempDir(), "s.alaya")},
 		},
 		sharedState: sharedState{
 			ContextLimit:  100, // 65% = 65
