@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 )
@@ -188,6 +189,50 @@ func texts(parts []llm.ContentPart) []string {
 		}
 	}
 	return out
+}
+
+// TestAutoSummarizeRunsAtContinueStart pins that :continue — a turn like any
+// other — runs the task-start auto-summarize, not only the mid-task one. Before
+// that check, a retried turn whose history was already over the threshold would
+// send its first request uncompressed.
+func TestAutoSummarizeRunsAtContinueStart(t *testing.T) {
+	provider := &midTaskProvider{}
+	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
+	session := &Session{
+		sessionConfig: sessionConfig{
+			modelService:  &modelService{agent: agent},
+			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard},
+		},
+		sharedState: sharedState{ContextLimit: 100, ContextTokens: 70}, // over the 65% threshold
+		runState:    runState{taskEventCh: make(chan taskEvent, 20), taskResultCh: make(chan []llm.ContentPart, 1)},
+	}
+	session.Contents = []llm.ContentPart{
+		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+		&llm.TextPart{Text: "partial", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant}},
+	}
+
+	go session.runTaskContinue(context.Background())
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case ev := <-session.taskEventCh:
+			session.handleTaskEvent(ev)
+		case contents := <-session.taskResultCh:
+			session.drainAndHandleDone(t, contents)
+			if got := provider.summarizeCalls(); got != 1 {
+				t.Fatalf("summarizeCalls = %d, want 1 (task-start summarize on :continue)", got)
+			}
+			if !containsText(session.Contents, "SUMMARY OF EARLIER WORK") {
+				t.Fatalf("final contents missing the summary: %v", texts(session.Contents))
+			}
+			if !containsText(session.Contents, "done") {
+				t.Fatalf("final contents missing the resumed answer: %v", texts(session.Contents))
+			}
+			return
+		case <-deadline:
+			t.Fatal("timed out waiting for :continue task")
+		}
+	}
 }
 
 // TestAutoSummarizeCompactsMidTask is the whole point of the feature: a single

@@ -97,15 +97,19 @@ When `--auto-summarize=N` is set (N = 1–100), the conversation is summarized
 whenever the measured context reaches N% of `ContextLimit`. The check runs at
 two points, both *before* a request is sent:
 
-1. **At the start of a prompt** — `runTaskNormal` calls `shouldAutoSummarize()`
-   before the new prompt is appended. This compacts a completed conversation
-   before the next turn begins.
+1. **At the start of a task** — `runTaskNormal` (a prompt) and `runTaskContinue`
+   (`:continue`) call `shouldAutoSummarize()` before the turn's own input is
+   appended. This compacts a completed conversation before the next turn begins.
 2. **Before each step of a running task** — `processPrompt`'s `OnBeforeSend`
    hook checks after every agent step. This compacts a *long single turn* (many
    tool calls) mid-flight, instead of letting it run past the limit.
 
 Both use the same predicate (`exceedsAutoSummarizeThreshold`) and the same
 operation (`summarizeContents`) — one rule, one implementation, two call sites.
+
+A summarize call is an internal helper of whichever turn invoked it, not a task
+of its own, so it does not emit task-step events: a compaction between steps
+must not reset the displayed step to 1 or blank the speed readout.
 
 ### Mid-task compaction and tool results
 

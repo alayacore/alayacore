@@ -37,13 +37,15 @@ import (
 // execution, and step tracking. Returns the full response contents and
 // total output token usage.
 //
-// publishSteps controls per-step publication: when true, each
-// OnStepFinish delta (the new parts produced since the previous step) is
-// sent to the run() goroutine via stepFinishEvent so :save/:fork can see
-// in-progress task content. Summarization calls pass false — summarize is
-// a conversation-replacement operation whose internals (prompt + response)
-// must not transiently pollute Contents; the replacement itself is
-// published separately (contentsReplacedEvent / taskResultCh).
+// publishSteps marks this call as a real turn, whose progress is published:
+// when true, each OnStepFinish delta (the parts produced since the previous
+// step) is sent to run() via stepFinishEvent so :save/:fork see in-progress
+// task content, and the step-boundary events (stepStartEvent/stepStatsEvent)
+// are emitted so the status bar tracks the step. Summarization calls pass
+// false — a summarize is an internal helper of some turn, not a task of its
+// own: its internals (prompt + response) must not transiently pollute Contents
+// and must not move the displayed step, and the replacement itself is published
+// separately (contentsReplacedEvent / taskResultCh).
 func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, publishSteps bool) ([]llm.ContentPart, int64, error) {
 	var fullContents []llm.ContentPart
 	var outputTokens int64
@@ -410,8 +412,14 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 		s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
 	}
 
-	// Send the conversation (with the prompt) to the LLM.
-	promptContents := append(contents, promptPart) //nolint:gocritic // intentional — keep contents unchanged
+	// Send the conversation (with the prompt) to the LLM. The prompt is
+	// appended to a copy: `contents` belongs to the caller (for a mid-task
+	// summarize it is the agent loop's working history), and append into its
+	// spare capacity would write past the caller's length into a backing array
+	// the loop keeps appending to.
+	promptContents := make([]llm.ContentPart, len(contents), len(contents)+1)
+	copy(promptContents, contents)
+	promptContents = append(promptContents, promptPart)
 	fullContents, outputTokens, err := s.processPrompt(ctx, promptContents, false)
 	if err != nil {
 		return contents, err
@@ -575,9 +583,11 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 //                       space; a turn that grows past the limit mid-flight is
 //                       compacted between steps by processPrompt's OnBeforeSend.
 //
-//   runTaskContinue   — retry last prompt. If the last response was assistant
-//                       (canceled mid-stream), appends "Continue" and resends.
-//                       Otherwise (user/tool message), resends the history as-is.
+//   runTaskContinue   — retry last prompt. First runs the same task-start
+//                       auto-summarize as runTaskNormal, then: if the last
+//                       response was assistant (canceled mid-stream), appends
+//                       "Continue" and resends; otherwise (user/tool message),
+//                       resends the history as-is.
 //
 // Cancellation: a canceled task simply ends with whatever completed — the
 // salvaged [tool_use, tool_result] pairs, or the previous history if no
@@ -655,6 +665,14 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 	if len(contents) == 0 {
 		s.writeError("No messages to resend")
 		return
+	}
+
+	// Same task-start check as runTaskNormal: a retried turn is still a turn,
+	// and its history can be over the threshold. Done before "Continue" is
+	// appended, so the summarize prompt lands on the completed conversation
+	// rather than after a fresh user part.
+	if s.shouldAutoSummarize() {
+		contents = s.doAutoSummarize(ctx, contents)
 	}
 
 	lastPart := contents[len(contents)-1]
