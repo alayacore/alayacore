@@ -54,13 +54,12 @@ type stepFinishEvent struct {
 func (stepFinishEvent) taskEvent() {}
 
 // stepStatsEvent carries the just-finished step's speed metrics from the
-// task goroutine to run(), which stores them for the status bar broadcast
-// (lastStepTPS/lastTTFTMS). Totals are reset when a task is accepted
-// (beginTask); no averaging is performed — the reported value
-// is the latest step's simple end-to-end throughput (output tokens /
-// round-trip duration). It is sent before the matching stepFinishEvent,
-// so the finish broadcast always sees the updated values (single-sender
-// FIFO on taskEventCh).
+// task goroutine to run(), which stores them (lastStepTPS/lastTTFTMS) for the
+// status bar broadcast. No averaging is performed — the reported value is the
+// latest step's simple end-to-end throughput (output tokens / round-trip
+// duration). It is sent before the matching stepFinishEvent, so the finish
+// broadcast always sees the updated values (single-sender FIFO on
+// taskEventCh).
 type stepStatsEvent struct {
 	TokensPerSec     float64
 	TimeToFirstToken time.Duration

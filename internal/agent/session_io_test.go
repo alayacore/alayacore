@@ -352,13 +352,11 @@ func TestStartTaskCommand_Success(t *testing.T) {
 	}
 }
 
-// TestStartTaskCommand_BroadcastsTaskStart locks the task-acceptance
-// broadcast: an async command (:continue/:summarize) must announce
-// in_progress before its goroutine runs. A summarize suppresses the step
-// boundaries that would otherwise report progress (processPrompt runs with
-// publishSteps=false), so without this frame the adapter — and the TUI
-// status bar's spinner — would not learn the task is running until its lone
-// step-finish frame, at the very end of the round trip.
+// TestStartTaskCommand_BroadcastsTaskStart pins the task-acceptance broadcast
+// on the command path: the running frame is written, carries the command id,
+// and is written before the task goroutine runs. (Why the frame must exist is
+// beginTask's comment; the end-to-end behavior is covered by the entry-point
+// tests in summarize_status_test.go.)
 func TestStartTaskCommand_BroadcastsTaskStart(t *testing.T) {
 	output := &MockOutput{}
 	ms := newModelService(newModelManager(""), newRuntimeManager(""))

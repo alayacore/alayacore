@@ -230,15 +230,13 @@ func (s *Session) handleTaskEvent(ev taskEvent) {
 		if s.activeTask != nil {
 			s.activeTask.step = e.Step
 		}
-		// The previous task's final speed was cleared when this task was
-		// accepted (beginTask), so the step-1 broadcast below never
-		// carries stale data — visible to rawio and other consumers beyond
-		// the TUI.
+		// Speed needs no reset here: beginTask cleared it when this task was
+		// accepted, so the step-1 broadcast cannot carry the previous task's
+		// values.
 		s.sendSystemInfo(systemInfoTask)
 
 	case stepStatsEvent:
-		// Speed metrics for the just-finished step. Totals were reset when
-		// the task was accepted (beginTask); the values are read by the
+		// Speed metrics for the just-finished step; the values are read by the
 		// stepFinishEvent broadcast that follows (FIFO).
 		//
 		// TokensPerSec is the simple end-to-end throughput of the step

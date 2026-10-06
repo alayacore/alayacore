@@ -328,9 +328,11 @@ func (s *Session) cleanupConfirmChannels() {
 // handler based on whether it's a command or a regular prompt.
 // ============================================================================
 
-// beginTask's two refusal reasons, as values. Callers distinguish them with
-// errors.Is: one is a reason to *hold* a prompt (the session is not ready yet,
-// which passes), the other a reason to report it (there is nowhere to put it).
+// The two refusal reasons callers must tell apart by value, via errors.Is: one
+// is a reason to *hold* a prompt (the session is not ready yet, which passes),
+// the other a reason to report it (there is nowhere to put it). beginTask has
+// two further exits — quitting and agent-initialization failure — that need no
+// such distinction.
 var (
 	// errMCPNotReady: MCP initialization has not settled, so the tool list is
 	// incomplete. Transient — the prompt waits for readiness instead of being
@@ -346,13 +348,12 @@ var (
 )
 
 // beginTask checks preconditions, reserves the task slot, and creates a
-// cancellable context for a new task. Reserving the slot (setting activeTask)
-// is also where the running state is announced to the adapter (see the comment
-// at the sendSystemInfo call below), so no task start can skip it. commandID
-// labels the task when it was started by an async command (:continue/
-// :summarize); pass "" for a prompt. Returns an error (wrapped as cmdErr where
-// meaningful) if the task cannot start; callers decide how to report it (CO for
-// task commands, SM error for normal prompts).
+// cancellable context for a new task. Reserving the slot is also where the
+// running state is announced to the adapter — see the comment at the
+// sendSystemInfo call. commandID labels the task when it was started by an
+// async command (:continue/:summarize); pass "" for a prompt. Returns an error
+// (wrapped as cmdErr where meaningful) if the task cannot start; callers decide
+// how to report it (CO for task commands, SM error for normal prompts).
 func (s *Session) beginTask(commandID string) (context.Context, error) {
 	// :quit has been accepted: the session is on its way out and must not
 	// take on work it would drop.
@@ -382,26 +383,20 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 	s.lastStepTPS = 0
 	s.lastTTFTMS = 0
 
-	// Announce the running state. This lives here, not at the spawn sites,
-	// because setting activeTask is the one thing every task start must do
-	// (the BUSY gate, cancellation and completion all read it — a task that
-	// skipped this would not work at all), so the announcement cannot be
-	// forgotten by a new entry point.
+	// Announce the running state, here rather than at the spawn sites: setting
+	// activeTask is the one thing every task start must do (the BUSY gate,
+	// cancellation and completion all read it), so a new entry point cannot
+	// forget the broadcast by forgetting some second helper.
 	//
-	// It is required, not decorative: task status otherwise reaches the adapter
-	// only on step boundaries (stepStartEvent/stepFinishEvent →
+	// The frame is required, not decorative. Task status otherwise reaches the
+	// adapter only on step boundaries (stepStartEvent/stepFinishEvent →
 	// sendSystemInfo). A summarize suppresses the boundary events that would
 	// open a step (processPrompt runs with publishSteps=false), and its lone
 	// stepFinishEvent arrives only once the round trip is over — so for
-	// essentially the whole summarize the adapter would still read the session
-	// as idle, and the status bar's indicator would sit on the idle glyph
-	// instead of spinning. (The task-start auto-summarize runs before the
-	// turn's first step event and has the same gap.)
-	//
-	// Ordering: this frame precedes the CO "started" reply that
-	// startTaskCommand writes next. CI/CO and SM are independent planes on one
-	// stream (see adapter-guide → "Async task commands"); their interleaving is
-	// not part of the contract.
+	// essentially the whole summarize the adapter would read the session as
+	// idle, and the status bar's indicator would sit on the idle glyph instead
+	// of spinning. (The task-start auto-summarize runs before the turn's first
+	// step event and has the same gap.)
 	s.sendSystemInfo(systemInfoTask)
 	return taskCtx, nil
 }
@@ -411,10 +406,11 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 // error if the task cannot start. Task completion is reported via taskMsg
 // carrying the command ID (see sendTaskMsg).
 //
-// The CO is written after beginTask's running-state frame: accepting the
-// command and starting the task are the same event, and the two frames are
-// projections of it onto the control plane (CO) and the state plane (SM),
-// whose relative order is not significant.
+// The CO is written after beginTask's running-state frame. Accepting the
+// command and starting the task are one event; the two frames are its
+// projections onto the control plane (CO) and the state plane (SM), and their
+// interleaving is not part of the contract (adapter-guide → "Async task
+// commands").
 func (s *Session) startTaskCommand(id string, run func(context.Context)) {
 	ctx, err := s.beginTask(id)
 	if err != nil {

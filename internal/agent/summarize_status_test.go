@@ -1,17 +1,11 @@
 package agent
 
-// The TUI status bar's spinner is driven solely by the SM task frame's
-// in_progress flag (terminal/spinner.go, terminal/tui_status.go). Task status
-// otherwise reaches the adapter only on step boundaries — and the two places
-// that produce no opening step event are a :summarize (processPrompt runs with
-// publishSteps=false, so no step-start/step-stats) and the task-start
-// auto-summarize (it runs before the turn's first step). Without the
-// task-acceptance broadcast both windows read as idle to the adapter and the
-// indicator never turns.
-//
-// These tests drive the real run() loop for each task entry point and assert
-// the session already reports in_progress while the task's first request is
-// genuinely in flight (parked inside the provider):
+// The status bar's spinner is driven solely by the SM task frame's in_progress
+// flag (terminal/spinner.go, terminal/tui_status.go). These tests drive the
+// real run() loop for each task entry point and assert the session already
+// reports in_progress while the task's first request is genuinely in flight
+// (parked inside the provider) — the window beginTask's announcement exists to
+// cover; see that function for why step boundaries alone do not:
 //
 //   - :summarize                      → runTaskSummarize
 //   - normal prompt + auto-summarize  → runTaskNormal

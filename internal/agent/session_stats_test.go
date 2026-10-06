@@ -94,10 +94,6 @@ func TestStepStatsNoOutputClearsSpeed(t *testing.T) {
 	}
 }
 
-// The guarantee that a task-start broadcast never carries the previous
-// task's speed is pinned at the real start point rather than the old step-1
-// proxy — see TestStartTaskCommand_BroadcastsTaskStart in session_io_test.go.
-
 // TestTaskMsgSpeedFieldsAbsentWithoutSteps verifies that the speed fields
 // stay absent (omitted) when no step has completed — the additive
 // backward-compat guarantee for older adapters.
