@@ -106,6 +106,46 @@ so adapters treat them consistently (e.g. terseio sets exit code 1):
 - **Pre-summarize backup** — the timestamped backup written before auto-summarization failed (`Failed to create pre-summarize backup: ...`); without it the original conversation is unrecoverable after summarization
 - **Auto-summarization** — the summarization LLM call failed (`Auto-summarization failed: ...`). Compaction is best-effort, so the task continues on the uncompressed history and runs at risk over the threshold. This arrives at the start of a task or part-way through one (see [context-tracking.md](context-tracking.md)).
 
+## Automatic Retry of Transient Failures
+
+A provider that is rate-limiting (429), overloaded (529), or briefly unavailable
+(408/500/502/503/504, plus transport timeouts) is retried automatically before
+the turn is allowed to fail — so a transient failure stays invisible unless it
+outlives the retry budget.
+
+**Where.** `llm.Agent.sendWithRetry` (`internal/llm/agent.go`) re-sends the
+step's request. A step's request is issued **synchronously inside**
+`Provider.StreamMessages`, so a failure there means nothing has streamed yet: no
+content, no tool call, no history ID. Re-sending is therefore idempotent — it
+cannot duplicate content, re-run a tool whose side effects already happened, or
+pollute history. An error that arrives *after* the stream has started (e.g. an
+Anthropic `error` event) may follow content the user already watched stream in,
+so it is surfaced as-is rather than retried.
+
+**Classification is structural, not a string match.** The provider returns a
+typed `*llm.APIError` (`internal/llm/retry.go`) carrying the HTTP status and the
+parsed `Retry-After` hint; `llm.IsRetryable` decides from those. The retryable
+statuses are listed explicitly — 501/505 are permanent, so retrying them only
+delays the error. `context.Canceled`/`context.DeadlineExceeded` are never
+retried.
+
+**Timing.** `Retry-After` wins when the server sent one; otherwise exponential
+backoff (1s, 2s, 4s…), both capped. Retries are bounded (`maxRetries`), so a
+persistent failure cannot loop forever. The wait is a `select` on the context,
+so `:cancel` interrupts a backoff immediately.
+
+**Visibility.** Each retry is announced **before** the wait through
+`StreamCallbacks.OnRetry`, which the session turns into an SM `notify` (not an
+`error` — the turn has not failed):
+
+```
+provider rate limited the request (status 429) — retrying in 2s (retry 1/3)
+```
+
+If every retry is exhausted, the ordinary failed-step path reports the final
+failure as it always has. Because the retry lives in the session/agent layer,
+all four adapters inherit it.
+
 ## Error Recovery
 
 When an error occurs during prompt processing, the prompt **fails** instead of continuing.
@@ -150,6 +190,20 @@ Max steps and truncation behavior is tested in `internal/llm/agent_maxsteps_test
 | `TestAgentTruncatedMaxTokens` | Agent returns `ErrResponseTruncated` for `max_tokens`, partial messages preserved |
 | `TestAgentTruncatedLength` | Agent returns `ErrResponseTruncated` for `length`, partial messages preserved |
 | `TestAgentNoTruncationOnEndTurn` | Agent does not return `ErrResponseTruncated` for `end_turn` |
+
+Automatic retry is tested in `internal/llm/retry_test.go`,
+`internal/llm/agent_retry_test.go`, and
+`internal/llm/providers/base_retry_test.go`:
+
+| Test | Verifies |
+|------|----------|
+| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport timeouts are |
+| `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
+| `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
+| `TestAgentRetriesExhausted` | A permanent 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
+| `TestAgentDoesNotRetryPermanentError` | A 401 is not retried |
+| `TestAgentRetryCanceledDuringBackoff` | A cancel during the wait stops before the next request (`context.Canceled`) |
+| `TestParseRetryAfter` / `TestDoRequestReturnsTypedAPIError` | Provider parses `Retry-After` (seconds and HTTP-date) and returns a typed `*llm.APIError` |
 
 ## Error Message Construction (`fmt.Errorf` Chaining)
 

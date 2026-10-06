@@ -18,7 +18,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
 )
@@ -189,8 +191,38 @@ func errorBodySnippet(body []byte) string {
 	return string(body[:errorSnippetMaxBytes]) + "…[error body truncated]"
 }
 
+// parseRetryAfter parses an HTTP Retry-After header value, which is either
+// delay-seconds or an HTTP-date (RFC 7231 §7.1.3). Returns 0 when the header is
+// absent, unparseable, or already in the past, so the caller falls back to its
+// own backoff. The value is not capped here — retryDelay caps it — so this stays
+// a faithful parse of what the server said.
+func parseRetryAfter(v string) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+	}
+	return 0
+}
+
 // doRequest sends the request and handles non-200 responses.
 // Returns the response body reader (caller must close).
+//
+// A non-200 response becomes an *llm.APIError rather than a plain error: its
+// status and Retry-After are what let llm.Agent decide, structurally, whether a
+// transient failure may be re-sent (see llm.IsRetryable). The Error() text is
+// unchanged from the previous fmt.Errorf, so logs and user-facing messages read
+// the same.
 func (b *baseProvider) doRequest(req *http.Request) (io.ReadCloser, error) {
 	resp, err := b.client.Do(req)
 	if err != nil {
@@ -203,11 +235,20 @@ func (b *baseProvider) doRequest(req *http.Request) (io.ReadCloser, error) {
 		// interpolated verbatim into an error string that reaches both the
 		// terminal and the model's context.
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
 		resp.Body.Close()
 		if readErr != nil {
-			return nil, fmt.Errorf("API error (status %d): failed to read error body: %w", resp.StatusCode, readErr)
+			return nil, &llm.APIError{
+				StatusCode: resp.StatusCode,
+				Body:       "failed to read error body: " + readErr.Error(),
+				RetryAfter: retryAfter,
+			}
 		}
-		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, errorBodySnippet(body))
+		return nil, &llm.APIError{
+			StatusCode: resp.StatusCode,
+			Body:       errorBodySnippet(body),
+			RetryAfter: retryAfter,
+		}
 	}
 
 	return resp.Body, nil

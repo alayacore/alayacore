@@ -133,6 +133,12 @@ type StreamCallbacks struct {
 	// If nil, no tools trigger confirmation — they all execute immediately.
 	ToolNeedsConfirm func(name string) bool
 
+	// OnRetry is called when a step's request failed transiently and the
+	// agent is about to wait and re-send it. It fires before the wait, so a
+	// caller can surface the rate limit (or other transient failure) while it
+	// is being handled instead of after the fact. Optional.
+	OnRetry func(RetryNotice) error
+
 	OnStepStart  func(step int) error
 	OnStepFinish func(contents []ContentPart, usage Usage) error
 
@@ -232,12 +238,13 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 			}
 		}
 
-		// stepStart is recorded before StreamMessages because the HTTP
-		// request happens synchronously inside it — starting here makes
-		// TTFT and Duration include request/network latency.
-		stepStart := time.Now()
-
-		events, err := a.config.Provider.StreamMessages(ctx, allContents, a.toolDefinitions(), a.config.SystemPrompt, a.config.ExtraSystemPrompt)
+		// stepStart is the start of the attempt that actually succeeded.
+		// sendWithRetry re-sends a transiently failed request and reports
+		// that attempt's start, so the retry waits are not charged to the
+		// step's TTFT or tok/s. The request is issued synchronously inside
+		// StreamMessages, so starting there makes TTFT and Duration include
+		// request/network latency.
+		events, stepStart, err := a.sendWithRetry(ctx, allContents, callbacks)
 		if err != nil {
 			return nil, fmt.Errorf("provider stream failed: %w", err)
 		}
@@ -291,6 +298,51 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 	}
 
 	return &StreamResult{Contents: allContents, Usage: totalUsage}, ErrMaxStepsExceeded
+}
+
+// sendWithRetry issues a step's request and re-sends it on transient provider
+// failures — a rate limit (429), an overload (529), a gateway/5xx blip, or a
+// network timeout (see IsRetryable).
+//
+// It is deliberately confined to the pre-stream call: StreamMessages issues the
+// HTTP request synchronously and returns an error before any event is produced,
+// so a retry here cannot duplicate streamed content, re-run a tool with side
+// effects, or mint a history ID. An in-stream error (one that follows content)
+// is never routed here.
+//
+// Each retry is announced through callbacks.OnRetry *before* the wait, so the
+// adapter can show what is happening; the wait itself is interruptible, so
+// :cancel is honored during a backoff. The returned time is the start of the
+// attempt that succeeded, for the caller's speed metrics.
+func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callbacks StreamCallbacks) (iter.Seq2[StreamEvent, error], time.Time, error) {
+	for attempt := 1; ; attempt++ {
+		attemptStart := time.Now()
+		events, err := a.config.Provider.StreamMessages(
+			ctx, contents, a.toolDefinitions(), a.config.SystemPrompt, a.config.ExtraSystemPrompt)
+		if err == nil {
+			return events, attemptStart, nil
+		}
+
+		retriesUsed := attempt - 1
+		if retriesUsed >= maxRetries || !IsRetryable(err) {
+			return nil, attemptStart, err
+		}
+
+		wait := retryDelay(retriesUsed+1, err)
+		if callbacks.OnRetry != nil {
+			if cbErr := callbacks.OnRetry(RetryNotice{
+				Retry:      retriesUsed + 1,
+				MaxRetries: maxRetries,
+				Wait:       wait,
+				Reason:     retryReason(err),
+			}); cbErr != nil {
+				return nil, attemptStart, cbErr
+			}
+		}
+		if err := sleepCtx(ctx, wait); err != nil {
+			return nil, attemptStart, err
+		}
+	}
 }
 
 // completeStepStats fills the authoritative fields of a step's stats
