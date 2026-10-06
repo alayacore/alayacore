@@ -18,7 +18,9 @@ import (
 // GetWindowLineRange → ensureLineHeights, which sets wb.dirty=false at
 // the end as a side effect. By the time updateContent ran, IsDirty()
 // returned false and updateContent early-returned without rebuilding
-// scroll content. Fix: reorder to updateContent().EnsureCursorVisible().
+// scroll content. Fix: mark contentDirty explicitly before the anchor and
+// EnsureCursorVisible, so the viewport is rebuilt regardless of wb.dirty
+// (see the note on case keyR).
 func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 	wb := NewWindowBuffer(80, styles)

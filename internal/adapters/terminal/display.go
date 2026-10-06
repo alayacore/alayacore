@@ -155,24 +155,26 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 
 	case keySpace:
 		m, _ = m.ToggleWindowFold()
-		return m.EnsureCursorVisible().updateContent(), nil
+		return m.anchorCursorWindow().EnsureCursorVisible().updateContent(), nil
 
 	case keyR:
 		// Toggle markdown rendering — only effective on an
 		// UNFOLDED plain-text window (assistant text / reasoning).
 		//
-		// Order matters: call updateContent BEFORE EnsureCursorVisible.
-		// EnsureCursorVisible → GetWindowLineRange → ensureLineHeights,
-		// which clears wb.dirty as a side effect. If we checked dirty
-		// (via IsDirty) after that, updateContent would early-return and
-		// the viewport would not pick up the new markdown/raw rendering,
-		// forcing the user to press Ctrl+R to force a repaint.
+		// The toggle leaves the buffer dirty, but the anchor and
+		// EnsureCursorVisible below both call GetWindowLineRange →
+		// ensureLineHeights, which clears wb.dirty as a side effect.
+		// contentDirty is therefore set explicitly, so updateContent (last)
+		// still rebuilds the viewport with the new rendering — without it,
+		// updateContent would early-return and the toggle would not show
+		// until Ctrl+R.
 		w := m.windowBuffer.WindowAt(m.windowCursor)
 		if w == nil || w.Folded {
 			return m, nil
 		}
 		if m.windowBuffer.ToggleMarkdownMode(m.windowCursor) {
-			return m.updateContent().EnsureCursorVisible(), nil
+			m.contentDirty = true
+			return m.anchorCursorWindow().EnsureCursorVisible().updateContent(), nil
 		}
 		return m, nil
 
@@ -568,6 +570,32 @@ func (m DisplayModel) ScrollCursorToTop() DisplayModel {
 	startLine, _ := m.windowBuffer.GetWindowLineRange(m.windowCursor)
 	m.scrollView = m.scrollView.WithYOffset(startLine)
 	m.contentDirty = true
+	return m
+}
+
+// anchorCursorWindow re-seats the viewport after a toggle that changes only the
+// window's body — a fold/unfold, or a markdown re-render. The own line keeps its
+// document position either way, so a line that is on screen keeps its row. A
+// line above the viewport top does not: when the shrunken window no longer
+// reaches below that line, the row is left entirely above the viewport and
+// EnsureCursorVisible would drag the viewport to the row's bottom edge — the
+// jump a pinned line took when its window collapsed to a single row. Pulling
+// the offset up to the own line brings it back to row 0, so the toggle reads as
+// a change in place: the rule is simply that a cursor window scrolled above the
+// top returns to the top, the place ScrollCursorToTop puts it.
+//
+// Only a line above the top moves the offset; at or below the top it is left
+// alone, and EnsureCursorVisible still covers a window scrolled off the bottom.
+// The offset is clamped, so a window near the transcript's end settles as high
+// as the shrunken document allows.
+func (m DisplayModel) anchorCursorWindow() DisplayModel {
+	if m.windowCursor < 0 {
+		return m
+	}
+	if start, _ := m.windowBuffer.GetWindowLineRange(m.windowCursor); start < m.scrollView.YOffset() {
+		m.scrollView = m.scrollView.WithYOffset(start)
+		m.contentDirty = true
+	}
 	return m
 }
 
