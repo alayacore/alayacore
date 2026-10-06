@@ -1,7 +1,7 @@
 package agent
 
 // Session lifecycle state tests — SessionState transitions and the
-// prepareTask gate.
+// beginTask gate.
 //
 // The lifecycle is: Starting (construction; load + replay complete by
 // definition) → Initializing (run() started, MCP init pending) → Ready
@@ -286,8 +286,8 @@ func TestSessionState_ReadyBroadcastExactlyOnce(t *testing.T) {
 	}
 }
 
-// prepareTask gates on the lifecycle state, not on MCP internals.
-func TestPrepareTask_GatedOnSessionState(t *testing.T) {
+// beginTask gates on the lifecycle state, not on MCP internals.
+func TestBeginTask_GatedOnSessionState(t *testing.T) {
 	output := &MockOutput{}
 	ms := newModelService(newModelManager(""), newRuntimeManager(""))
 	ms.agent = &llm.Agent{}
@@ -306,23 +306,23 @@ func TestPrepareTask_GatedOnSessionState(t *testing.T) {
 	}
 
 	// SessionStarting → rejected with MCP_NOT_READY (wire-stable code).
-	_, err := s.prepareTask()
+	_, err := s.beginTask("")
 	var ce *cmdErr
 	if !errors.As(err, &ce) || ce.Code != "MCP_NOT_READY" {
-		t.Fatalf("prepareTask() error = %v, want cmdErr MCP_NOT_READY", err)
+		t.Fatalf("beginTask() error = %v, want cmdErr MCP_NOT_READY", err)
 	}
 
 	// SessionReady → accepted.
 	s.state.Store(int32(SessionReady))
-	ctx, err := s.prepareTask()
+	ctx, err := s.beginTask("")
 	if err != nil {
-		t.Fatalf("prepareTask() after ready: %v", err)
+		t.Fatalf("beginTask() after ready: %v", err)
 	}
 	if ctx == nil {
-		t.Fatal("prepareTask() returned nil context")
+		t.Fatal("beginTask() returned nil context")
 	}
 	if s.activeTask == nil {
-		t.Error("activeTask should be set after successful prepareTask")
+		t.Error("activeTask should be set after successful beginTask")
 	}
 }
 
@@ -422,7 +422,7 @@ func TestSessionState_ClosedFrameWithoutEverBeingReady(t *testing.T) {
 
 	// A closed session accepts nothing — the existing "must be ready" gate
 	// refuses new work without a check of its own.
-	if _, err := s.prepareTask(); err == nil {
-		t.Error("prepareTask() accepted work after the session closed")
+	if _, err := s.beginTask(""); err == nil {
+		t.Error("beginTask() accepted work after the session closed")
 	}
 }

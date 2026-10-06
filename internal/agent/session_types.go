@@ -51,7 +51,7 @@ const (
 	// SessionClosed: the session has ended. This is a terminal phase, never
 	// a startup one: run() broadcasts it once on its way out, after every
 	// other frame, and nothing else is written afterwards. State() never
-	// leaves it, so prepareTask's "must be ready" check keeps refusing new
+	// leaves it, so beginTask's "must be ready" check keeps refusing new
 	// work.
 	SessionClosed
 )

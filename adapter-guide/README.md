@@ -745,10 +745,17 @@ via an SM `task` message carrying the same `command_id`:
 
 ```
 CI {"id":"9","name":"continue"}
-CO {"id":"9","output":{"status":"started"}}                          ← accepted
 SM {"type":"task","data":{"in_progress":true,"command_id":"9"}}      ← running
+CO {"id":"9","output":{"status":"started"}}                          ← accepted
 SM {"type":"task","data":{"in_progress":false,"command_id":"9"}}     ← done
 ```
+
+CI/CO (the control plane) and SM (the state plane) are independent channels
+multiplexed on one stream: the CO ack and the `in_progress:true` frame are two
+projections of the same acceptance, and **their relative order is not part of
+the contract** — do not depend on seeing the ack before the running state. The
+ack is still immediate; it is never deferred until the task finishes. A refused
+command produces the CO error and no running frame.
 
 ### Example: save command
 

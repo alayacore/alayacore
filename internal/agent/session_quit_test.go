@@ -3,7 +3,7 @@ package agent
 // :quit tests — the session-owned shutdown path (C2a).
 //
 // :quit is a session command, not an adapter-local string comparison: it
-// sets runState.quitting, prepareTask refuses new work with SHUTTING_DOWN,
+// sets runState.quitting, beginTask refuses new work with SHUTTING_DOWN,
 // and run() returns once nothing is in flight — a task that is already
 // running still finishes.
 

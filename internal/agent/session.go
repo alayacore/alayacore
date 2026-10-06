@@ -66,7 +66,7 @@ type sessionConfig struct {
 }
 
 // taskHandle encapsulates the mutable state of a currently running task.
-// It is created by tryStartNextTask and consumed by handleTaskDone.
+// It is created by beginTask and consumed by handleTaskDone.
 // Grouping these fields prevents inconsistent state that could arise from
 // out-of-order method calls on individual fields (e.g. setting inProgress
 // without a cancel func, or clearing them separately).
@@ -105,9 +105,8 @@ type runState struct {
 	taskCommandID string
 
 	// Latest step's speed metrics, set from stepStatsEvent handling and
-	// read by sendTaskMsg for the status bar. Reset when a task starts
-	// (stepStartEvent Step==1) so the step-1 broadcast never carries the
-	// previous task's values.
+	// read by sendTaskMsg for the status bar. Reset when a task is accepted
+	// (beginTask) so no broadcast ever carries the previous task's values.
 	lastStepTPS float64 // latest step's end-to-end tok/s (0 = none/no output)
 	lastTTFTMS  int64   // latest step's time-to-first-token (ms)
 

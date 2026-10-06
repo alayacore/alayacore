@@ -55,8 +55,8 @@ func (stepFinishEvent) taskEvent() {}
 
 // stepStatsEvent carries the just-finished step's speed metrics from the
 // task goroutine to run(), which stores them for the status bar broadcast
-// (lastStepTPS/lastTTFTMS). Totals are reset by the task's
-// stepStartEvent(Step==1); no averaging is performed — the reported value
+// (lastStepTPS/lastTTFTMS). Totals are reset when a task is accepted
+// (beginTask); no averaging is performed — the reported value
 // is the latest step's simple end-to-end throughput (output tokens /
 // round-trip duration). It is sent before the matching stepFinishEvent,
 // so the finish broadcast always sees the updated values (single-sender

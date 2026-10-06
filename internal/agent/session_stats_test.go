@@ -94,49 +94,9 @@ func TestStepStatsNoOutputClearsSpeed(t *testing.T) {
 	}
 }
 
-// TestTaskStartBroadcastClearsSpeed verifies that a new task's
-// stepStartEvent(Step==1) clears the previous task's speed values so
-// the start broadcast carries no stale data.
-func TestTaskStartBroadcastClearsSpeed(t *testing.T) {
-	var buf bytes.Buffer
-	session := &Session{
-		sessionConfig: sessionConfig{
-			SessionConfig: SessionConfig{Output: &buf, MaxSteps: 10},
-		},
-		sharedState: sharedState{
-			histCounter:  1,
-			outputBroken: atomic.Bool{},
-		},
-		runState: runState{
-			taskEventCh: make(chan taskEvent, 20),
-		},
-	}
-
-	// Previous task had speed data.
-	session.handleTaskEvent(stepStatsEvent{TokensPerSec: 125, TimeToFirstToken: 200 * time.Millisecond})
-
-	// New task starts.
-	buf.Reset()
-	session.handleTaskEvent(stepStartEvent{Step: 1})
-	session.sendTaskMsg()
-
-	tag, value, err := tlv.ReadTLV(&buf)
-	if err != nil {
-		t.Fatalf("ReadTLV failed: %v", err)
-	}
-	if tag != tlv.TagSystemMsg {
-		t.Fatalf("tag = %q, want system msg", tag)
-	}
-	env, err := protocol.ParseSystemMsg(value)
-	if err != nil {
-		t.Fatalf("ParseSystemMsg failed: %v", err)
-	}
-	for _, field := range []string{`"step_tps"`, `"ttft_ms"`} {
-		if bytes.Contains(env.Data, []byte(field)) {
-			t.Errorf("task start broadcast contains stale %s: %s", field, env.Data)
-		}
-	}
-}
+// The guarantee that a task-start broadcast never carries the previous
+// task's speed is pinned at the real start point rather than the old step-1
+// proxy — see TestStartTaskCommand_BroadcastsTaskStart in session_io_test.go.
 
 // TestTaskMsgSpeedFieldsAbsentWithoutSteps verifies that the speed fields
 // stay absent (omitted) when no step has completed — the additive

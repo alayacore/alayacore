@@ -6,6 +6,7 @@ package agent
 // Broadcasting overview:
 //
 //   Guaranteed broadcasts (critical state transitions):
+//     beginTask()                    → sendSystemInfo(systemInfoTask)  — task accepted (in_progress, before the goroutine starts)
 //     handleTaskEvent(stepStartEvent)  → sendSystemInfo(systemInfoTask)  — step counter
 //     handleTaskEvent(stepFinishEvent) → Contents append (NewParts) + sendSystemInfo(systemInfoTask) — token count update
 //     handleTaskEvent(promptPartsEvent)      → Contents append (user/Continue parts)

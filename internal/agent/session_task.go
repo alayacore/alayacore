@@ -612,7 +612,7 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 // Task goroutines — runTaskNormal, runTaskContinue, runTaskSummarize
 //
 // These three functions are the entry points for task goroutines, each started
-// by prepareTask (called from handleInputMsg) for normal prompts, :continue,
+// by beginTask (called from handleInputMsg) for normal prompts, :continue,
 // They all call processPrompt (which blocks on the LLM) and therefore run in
 // their own goroutine to keep the main event loop responsive.
 //

@@ -331,7 +331,7 @@ func TestStartTaskCommand_Success(t *testing.T) {
 			sessionCtx: sessionCtx,
 		},
 	}
-	// startTaskCommand goes through prepareTask, which gates on the
+	// startTaskCommand goes through beginTask, which gates on the
 	// lifecycle state — simulate a session whose init has completed.
 	s.state.Store(int32(SessionReady))
 
@@ -352,30 +352,140 @@ func TestStartTaskCommand_Success(t *testing.T) {
 	}
 }
 
-func TestStartTaskCommand_Busy(t *testing.T) {
+// TestStartTaskCommand_BroadcastsTaskStart locks the task-acceptance
+// broadcast: an async command (:continue/:summarize) must announce
+// in_progress before its goroutine runs. A summarize suppresses the step
+// boundaries that would otherwise report progress (processPrompt runs with
+// publishSteps=false), so without this frame the adapter — and the TUI
+// status bar's spinner — would not learn the task is running until its lone
+// step-finish frame, at the very end of the round trip.
+func TestStartTaskCommand_BroadcastsTaskStart(t *testing.T) {
 	output := &MockOutput{}
+	ms := newModelService(newModelManager(""), newRuntimeManager(""))
+	ms.agent = &llm.Agent{}
+	ms.provider = &mockProviderStepFail{}
+
+	sessionCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	s := &Session{
-		runState: runState{
-			activeTask: &taskHandle{},
-		},
 		sessionConfig: sessionConfig{
+			modelService: ms,
 			SessionConfig: SessionConfig{
-				Output: output,
+				Output:   output,
+				MaxSteps: 5,
 			},
 		},
+		sharedState: sharedState{sessionCtx: sessionCtx},
 	}
-	// startTaskCommand goes through prepareTask, which gates on the
-	// lifecycle state — simulate a session whose init has completed.
 	s.state.Store(int32(SessionReady))
+	// A prior task left its final speed behind; accepting the new task must
+	// clear it so the in-progress frame carries no stale telemetry.
+	s.lastStepTPS = 42
+	s.lastTTFTMS = 100
 
-	s.startTaskCommand("x2", func(context.Context) {})
+	// Hold the task goroutine until the output has been inspected: the
+	// start frame is written synchronously, before the goroutine starts.
+	release := make(chan struct{})
+	done := make(chan struct{})
+	s.startTaskCommand("x9", func(context.Context) {
+		<-release
+		close(done)
+	})
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"code":"BUSY"`) {
-		t.Errorf("expected BUSY error in CO: %s", joined)
+	if !strings.Contains(joined, `"in_progress":true`) {
+		t.Fatalf("task start must broadcast in_progress:true: %s", joined)
 	}
-	if !strings.Contains(joined, `"id":"x2"`) {
-		t.Errorf("expected echoed id in CO: %s", joined)
+	if !strings.Contains(joined, `"command_id":"x9"`) {
+		t.Fatalf("task start frame must carry the command id: %s", joined)
+	}
+	if strings.Contains(joined, `"step_tps":`) || strings.Contains(joined, `"ttft_ms":`) {
+		t.Errorf("task start frame must not carry the previous task's speed: %s", joined)
+	}
+	// The CO ack and the running-state SM are projections of the same
+	// acceptance onto two independent planes; their relative order is not
+	// asserted because it is not part of the contract.
+	close(release)
+	<-done
+}
+
+// TestStartTaskCommand_RefusedDoesNotBroadcast: every early exit of beginTask
+// is a refusal, and a refusal must be inert — answered with a CO error, no task
+// frame, and no disturbance to the running/idle state (the task slot is not
+// allocated, the previous task's speed is not cleared). It enumerates all four
+// exits: quitting, not-ready, busy, and agent initialization failure.
+func TestStartTaskCommand_RefusedDoesNotBroadcast(t *testing.T) {
+	cases := []struct {
+		name     string
+		setup    func(*Session)
+		wantCode string
+	}{
+		{
+			name: "quitting",
+			setup: func(s *Session) {
+				s.state.Store(int32(SessionReady))
+				s.quitting = true
+			},
+			wantCode: "SHUTTING_DOWN",
+		},
+		{
+			name:     "not_ready",
+			setup:    func(s *Session) { s.state.Store(int32(SessionStarting)) },
+			wantCode: "MCP_NOT_READY",
+		},
+		{
+			name: "busy",
+			setup: func(s *Session) {
+				s.state.Store(int32(SessionReady))
+				s.activeTask = &taskHandle{}
+			},
+			wantCode: "BUSY",
+		},
+		{
+			name: "agent_init_failed",
+			setup: func(s *Session) {
+				s.state.Store(int32(SessionReady))
+				// No active model: ensureAgentInitialized cannot build an agent.
+				s.modelService = newModelService(newModelManager(""), newRuntimeManager(""))
+			},
+			wantCode: "ERROR",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			output := &MockOutput{}
+			s := &Session{
+				sessionConfig: sessionConfig{
+					SessionConfig: SessionConfig{Output: output},
+				},
+				// A live task's telemetry: a refusal must leave it alone.
+				runState: runState{lastStepTPS: 42, lastTTFTMS: 7},
+			}
+			tc.setup(s)
+			slotBefore := s.activeTask
+
+			s.startTaskCommand("x2", func(context.Context) {})
+
+			joined := strings.Join(output.Messages, "")
+			if !strings.Contains(joined, `"code":"`+tc.wantCode+`"`) {
+				t.Errorf("expected %s error in CO: %s", tc.wantCode, joined)
+			}
+			if !strings.Contains(joined, `"id":"x2"`) {
+				t.Errorf("expected echoed id in CO: %s", joined)
+			}
+			// No task frame at all: neither in_progress:true (the indicator must
+			// not turn for work that is not running) nor a spurious idle frame.
+			if frames := taskFrames(t, joined); len(frames) != 0 {
+				t.Errorf("a refused task must not emit a task frame: %v (%s)", frames, joined)
+			}
+			if s.activeTask != slotBefore {
+				t.Errorf("a refused command must not allocate the task slot: %v -> %v", slotBefore, s.activeTask)
+			}
+			if s.lastStepTPS != 42 || s.lastTTFTMS != 7 {
+				t.Errorf("a refused command must not clear a live task's speed: tps=%v ttft=%v", s.lastStepTPS, s.lastTTFTMS)
+			}
+		})
 	}
 }
 

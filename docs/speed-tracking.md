@@ -118,8 +118,8 @@ first step with output tokens completes; older adapters ignore them):
 
 The values reflect the **latest step only** — no task-level averaging is
 reported. Speed persists across task completion (final step's speed stays
-visible) and is cleared when the next task starts (`stepStartEvent`
-step 1) so no stale data is broadcast.
+visible) and is cleared when the next task is accepted (`beginTask`, so
+no stale data is broadcast from the task-acceptance frame onward).
 
 ## Display Rules (TUI)
 

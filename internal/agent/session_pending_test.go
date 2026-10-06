@@ -104,6 +104,11 @@ func TestDeferredPromptStartsAfterReady(t *testing.T) {
 	if s.activeTask != nil {
 		t.Fatal("holding a prompt must not start a task")
 	}
+	// Holding is not starting: no task frame may appear before readiness —
+	// neither a running one nor a spurious idle one.
+	if frames := taskFrames(t, output.String()); len(frames) != 0 {
+		t.Errorf("a held prompt must not emit a task frame: %v", frames)
+	}
 
 	// MCP init settles, and the session advances past it. HandleEvent is the
 	// mcpService's own state change; going through handleMCPEvent would also
