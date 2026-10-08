@@ -220,6 +220,16 @@ func lcsRows(oldLines, newLines []string) []diffRow {
 // common subsequence of oldLines[i:] and newLines[j:] — the suffix table,
 // because lcsRows walks forward and asks what is still matchable *after* the
 // line it is looking at.
+//
+// It is a grid, and that is a correctness argument rather than a preference: the
+// flat alternative (one []int32 behind a stride) does not panic when the stride
+// is wrong — the index lands inside the slab — it answers wrong, and these values
+// decide only which side lcsRows consumes next, so the block comes out marking
+// lines it could have matched: a diff saying something changed that did not, the
+// lie this block has already told twice — once as a blank line drawn as context,
+// once as an undiffable pair drawn as every line changed. The flat table's one
+// allocation and half the bytes (16 MB against 33 MB at maxDiffLines) are a
+// measurable but invisible gain; if that peak ever matters, the cap is the lever.
 func lcsSuffixLengths(oldLines, newLines []string) [][]int {
 	m, n := len(oldLines), len(newLines)
 	lcs := make([][]int, m+1)
