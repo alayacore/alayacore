@@ -217,8 +217,9 @@ func (t *StdioTransport) readError() error {
 }
 
 // handleServerRequest handles a JSON-RPC request from the server (e.g. ping).
-// Responses are sent back through the transport.
-func (t *StdioTransport) handleServerRequest(_ context.Context, id requestID, method string) {
+// Responses are sent back through the transport; the error is the reply's own
+// failure, which parseAndDispatchJSONRPC records.
+func (t *StdioTransport) handleServerRequest(_ context.Context, id requestID, method string) error {
 	switch method {
 	case methodPing:
 		// Respond with empty result.
@@ -228,7 +229,7 @@ func (t *StdioTransport) handleServerRequest(_ context.Context, id requestID, me
 			Result:  json.RawMessage(`{}`),
 		}
 		data, _ := json.Marshal(resp) // static struct, cannot fail
-		t.reply(data)
+		return t.reply(data)
 
 	default:
 		// Method not found — respond with error.
@@ -241,22 +242,18 @@ func (t *StdioTransport) handleServerRequest(_ context.Context, id requestID, me
 			},
 		}
 		data, _ := json.Marshal(resp) // static struct, cannot fail
-		t.reply(data)
+		return t.reply(data)
 	}
 }
 
-// reply writes a response to the server's stdin. There is no caller to return
-// the error to — this runs on the reader goroutine — so it goes to the debug
-// log: an unanswered ping is otherwise invisible until the server closes the
-// connection, and that read-side error names the connection, not the cause.
-func (t *StdioTransport) reply(data []byte) {
+// reply writes a response to the server's stdin. The error is returned rather
+// than logged here, so that both transports report a failed reply the same way
+// — from the one place that dispatches the server's request.
+func (t *StdioTransport) reply(data []byte) error {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	_, err := t.stdin.Write(append(data, '\n'))
-	t.mu.Unlock()
-
-	if err != nil && t.debugWriter != nil {
-		fmt.Fprintf(t.debugWriter, "MCP: reply to server failed: %v\n", err)
-	}
+	return err
 }
 
 // SetNotificationHandler registers a handler for server-to-client notifications.

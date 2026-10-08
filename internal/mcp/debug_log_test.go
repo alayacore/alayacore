@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/mcp/auth"
@@ -128,21 +129,31 @@ func TestOAuthTokenPersistFailureIsRecorded(t *testing.T) {
 }
 
 // A reply to the server's own request (ping) that cannot be written leaves an
-// unanswered request behind: the reader goroutine has no caller to return it to,
-// so the debug log is where it goes.
+// unanswered request behind. It is recorded by the dispatcher, which is the one
+// place both transports pass through, so the reader goroutine needs no caller of
+// its own to report to.
 func TestStdioServerReplyFailureIsRecorded(t *testing.T) {
 	r, w := io.Pipe()
 	if err := r.Close(); err != nil {
 		t.Fatal(err)
 	}
 
+	var mu sync.Mutex
 	log := &writeCloser{}
 	tr := &StdioTransport{stdin: w, debugWriter: log}
 
-	tr.handleServerRequest(context.Background(), requestID("1"), methodPing)
+	request := []byte(`{"jsonrpc":"2.0","id":"srv-1","method":"ping"}`)
+	pending := make(map[requestID]chan<- jsonrpcResponse)
+	if err := parseAndDispatchJSONRPC(context.Background(), request, pending, &mu, log, tr.handleServerRequest, nil); err != nil {
+		t.Fatalf("parseAndDispatchJSONRPC: %v", err)
+	}
 
-	if got := log.String(); !strings.Contains(got, "reply to server failed") {
+	got := log.String()
+	if !strings.Contains(got, `reply to server request "ping" failed`) {
 		t.Errorf("debug log = %q, want the failed reply recorded", got)
+	}
+	if !strings.Contains(got, "closed pipe") {
+		t.Errorf("debug log = %q, want the write error in it", got)
 	}
 }
 

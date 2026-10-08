@@ -120,7 +120,9 @@ func (a *AdapterV20241105) CancelByNotification() bool { return true }
 
 // ServerRequestHandler is a no-op — 2024-11-05 does not support HTTP transport
 // in this implementation, so this callback is never invoked.
-func (a *AdapterV20241105) ServerRequestHandler(_ context.Context, _ requestID, _ string) {}
+func (a *AdapterV20241105) ServerRequestHandler(_ context.Context, _ requestID, _ string) error {
+	return nil
+}
 
 // EnrichRequest is a no-op — 2024-11-05 does not require any HTTP headers
 // (no MCP-Protocol-Version, no MCP-Session-Id, no Mcp-* headers).

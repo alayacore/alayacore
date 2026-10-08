@@ -65,8 +65,9 @@ type HTTPAdapter interface {
 	// server-to-client requests and is a no-op.
 	// The ctx is tied to the transport's lifetime — it is canceled when
 	// the transport is closed, so implementations should use it for
-	// outbound requests (e.g. responding to ping).
-	ServerRequestHandler(ctx context.Context, id requestID, method string)
+	// outbound requests (e.g. responding to ping). A non-nil error is the
+	// reply's failure, recorded by the transport that called it.
+	ServerRequestHandler(ctx context.Context, id requestID, method string) error
 
 	// SetToolHeaderMappings feeds the adapter tool header mappings from the
 	// last ListTools response, used for Mcp-Param-{Name} header injection

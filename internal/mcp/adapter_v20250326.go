@@ -152,9 +152,9 @@ func (a *AdapterV20250326) CancelByNotification() bool { return true }
 // ServerRequestHandler handles a server-to-client request on an SSE stream
 // (ping in 2025-03-26). Responds to ping, rejects unknown methods.
 // Uses the provided ctx (tied to transport lifetime) for the outbound HTTP POST.
-func (a *AdapterV20250326) ServerRequestHandler(ctx context.Context, id requestID, method string) {
+func (a *AdapterV20250326) ServerRequestHandler(ctx context.Context, id requestID, method string) error {
 	if a.httpClient == nil || a.endpointURL == "" {
-		return
+		return nil // no HTTP configuration: nothing to reply with, nothing to report
 	}
 
 	// Cap to 10s but respect transport shutdown via ctx.
@@ -173,12 +173,12 @@ func (a *AdapterV20250326) ServerRequestHandler(ctx context.Context, id requestI
 
 	data, err := json.Marshal(resp)
 	if err != nil {
-		return
+		return err
 	}
 
 	httpReq, err := http.NewRequestWithContext(reqCtx, "POST", a.endpointURL, strings.NewReader(string(data)))
 	if err != nil {
-		return
+		return err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
@@ -187,9 +187,19 @@ func (a *AdapterV20250326) ServerRequestHandler(ctx context.Context, id requestI
 		httpReq.Header.Set("MCP-Session-Id", a.sessionID)
 	}
 
-	if r, err := a.httpClient.Do(httpReq); err == nil {
-		r.Body.Close()
+	r, err := a.httpClient.Do(httpReq)
+	if err != nil {
+		return err
 	}
+	defer r.Body.Close()
+	// Drain before closing, as the transport's Send does, so the connection can
+	// be reused. Anything but a 2xx means the reply may not have landed: the
+	// spec asks for 202, and reporting it here is the only trace it leaves.
+	_, _ = io.Copy(io.Discard, r.Body)
+	if r.StatusCode < 200 || r.StatusCode >= 300 {
+		return fmt.Errorf("server answered a reply with status %d", r.StatusCode)
+	}
+	return nil
 }
 
 // EnrichRequest adds MCP-Protocol-Version and (if assigned) MCP-Session-Id

@@ -1,8 +1,11 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -99,9 +102,10 @@ func TestParseAndDispatchJSONRPC_ServerRequest(t *testing.T) {
 
 	var handledID requestID
 	var handledMethod string
-	handler := func(_ context.Context, id requestID, method string) {
+	handler := func(_ context.Context, id requestID, method string) error {
 		handledID = id
 		handledMethod = method
+		return nil
 	}
 
 	// Server sends a ping request.
@@ -125,8 +129,9 @@ func TestParseAndDispatchJSONRPC_ServerNotification(t *testing.T) {
 	var mu sync.Mutex
 
 	called := false
-	handler := func(_ context.Context, id requestID, method string) {
+	handler := func(_ context.Context, id requestID, method string) error {
 		called = true
+		return nil
 	}
 
 	data := []byte(`{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}`)
@@ -137,5 +142,49 @@ func TestParseAndDispatchJSONRPC_ServerNotification(t *testing.T) {
 
 	if called {
 		t.Error("handler was called for a notification (no ID)")
+	}
+}
+
+// A reply to the server's own request can fail — the transport is broken, or
+// the server answered it with a status that is not 2xx — and the reader must
+// keep reading. The failure is recorded instead: one unanswered request is not
+// a reason to tear down a stream that still works, and the transport's own
+// diagnosis goes to the debug log, which is where --debug-log points.
+func TestParseAndDispatchJSONRPC_ServerRequestReplyFailureIsLogged(t *testing.T) {
+	pending := make(map[requestID]chan<- jsonrpcResponse)
+	var mu sync.Mutex
+	var log bytes.Buffer
+
+	replyErr := errors.New("broken pipe")
+	handler := func(_ context.Context, _ requestID, _ string) error { return replyErr }
+
+	data := []byte(`{"jsonrpc":"2.0","id":"srv-1","method":"ping"}`)
+	if err := parseAndDispatchJSONRPC(context.Background(), data, pending, &mu, &log, handler, nil); err != nil {
+		t.Fatalf("parseAndDispatchJSONRPC() error = %v, want nil (a failed reply is not a parse error)", err)
+	}
+
+	got := log.String()
+	if !strings.Contains(got, `reply to server request "ping" failed`) {
+		t.Errorf("debug log = %q, want the failed reply named", got)
+	}
+	if !strings.Contains(got, "broken pipe") {
+		t.Errorf("debug log = %q, want the reply's own error in it", got)
+	}
+}
+
+// A reply that succeeds logs nothing: the debug log is for what went wrong.
+func TestParseAndDispatchJSONRPC_SuccessfulServerRequestLogsNothing(t *testing.T) {
+	pending := make(map[requestID]chan<- jsonrpcResponse)
+	var mu sync.Mutex
+	var log bytes.Buffer
+
+	handler := func(_ context.Context, _ requestID, _ string) error { return nil }
+
+	data := []byte(`{"jsonrpc":"2.0","id":"srv-1","method":"ping"}`)
+	if err := parseAndDispatchJSONRPC(context.Background(), data, pending, &mu, &log, handler, nil); err != nil {
+		t.Fatalf("parseAndDispatchJSONRPC() error = %v", err)
+	}
+	if got := log.String(); got != "" {
+		t.Errorf("debug log = %q, want nothing for a reply that landed", got)
 	}
 }

@@ -180,9 +180,13 @@ func dispatchResponse(resp jsonrpcResponse, pending map[requestID]chan<- jsonrpc
 // ServerRequestHandler is a callback for handling server-to-client requests
 // on SSE streams. In 2025-11-25, servers may send requests such as ping.
 // In 2026-07-28+, servers do not send JSON-RPC requests (they use MRTR
-// InputRequiredResult instead). The handler should respond to the request
-// using the transport's Send method.
-type ServerRequestHandler func(ctx context.Context, id requestID, method string)
+// InputRequiredResult instead). The handler responds through the transport.
+//
+// The error it returns is the reply's own failure — the response could not be
+// written or posted. It is recorded and the reader keeps reading: a stream is
+// still readable after one failed reply, and a connection that really broke
+// reports itself on the read side.
+type ServerRequestHandler func(ctx context.Context, id requestID, method string) error
 
 // NotificationHandler is a callback for handling server-to-client notifications.
 // These are JSON-RPC notifications (no ID) sent by the server (e.g.
@@ -205,7 +209,11 @@ func parseAndDispatchJSONRPC(ctx context.Context, data []byte, pending map[reque
 	}
 	if err := json.Unmarshal(data, &reqFields); err == nil && reqFields.Method != "" {
 		if reqFields.ID != "" && handleServerReq != nil {
-			handleServerReq(ctx, reqFields.ID, reqFields.Method)
+			if err := handleServerReq(ctx, reqFields.ID, reqFields.Method); err != nil && debugWriter != nil {
+				// The server is left waiting for this reply, so it is worth a
+				// line; the stream is not worth tearing down for it.
+				fmt.Fprintf(debugWriter, "MCP: reply to server request %q failed: %v\n", reqFields.Method, err)
+			}
 		} else if handleNotification != nil {
 			handleNotification(reqFields.Method)
 		}
