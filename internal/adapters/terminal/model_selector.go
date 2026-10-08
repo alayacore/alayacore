@@ -266,8 +266,10 @@ func (ms ModelSelector) renderModelList(width int) string {
 		content.WriteString(ms.Styles.System.Render("No models match your search."))
 	default:
 		ms.FilteredListCore = ms.FilteredListCore.EnsureVisible()
+		// Column widths come from the whole model set, never the visible
+		// window: scrolling or filtering must not re-flow the columns.
 		idWidth := ms.maxIDWidth()
-		nameMaxWidth, ctxColWidth, provColWidth := ms.measureColumns(listHeight, innerWidth, idWidth)
+		nameMaxWidth, ctxColWidth, provColWidth := ms.measureColumns(innerWidth, idWidth)
 
 		for i := ms.ScrollIdx; i < min(ms.ScrollIdx+listHeight, len(ms.filteredModels)); i++ {
 			line := ms.renderModelRow(i, idWidth, nameMaxWidth, ctxColWidth, provColWidth)
@@ -281,9 +283,12 @@ func (ms ModelSelector) renderModelList(width int) string {
 	return ms.Styles.RenderListBody(content.String(), listHeight)
 }
 
+// maxIDWidth returns the index-column width. It measures every loaded model,
+// not the filtered subset, so the index column keeps its width when a filter
+// hides the model with the largest ID.
 func (ms ModelSelector) maxIDWidth() int {
 	maxID := 0
-	for _, m := range ms.filteredModels {
+	for _, m := range ms.models {
 		if m.ID > maxID {
 			maxID = m.ID
 		}
@@ -291,53 +296,62 @@ func (ms ModelSelector) maxIDWidth() int {
 	return len(fmt.Sprintf("%d", maxID))
 }
 
-func (ms ModelSelector) measureColumns(listHeight, innerWidth, idWidth int) (nameMaxWidth, ctxColWidth, provColWidth int) {
+// measureColumns allocates the name/context/provider widths for the list.
+// It measures the full model set (ms.models), not the visible window or the
+// filtered subset, so a scroll or a filter cannot move a column: for a given
+// width the layout is fixed — the same property the help overlay gets by
+// sizing its columns from every item (help_window.recalculateColumnWidths).
+//
+// The right pair takes its natural width while the name can still show its
+// longest entry, then gives cells back a cell at a time — and is dropped as a
+// pair, never one column at a time. Dropping one alone would hand its cells to
+// the name, a column to its LEFT, and shove the surviving right column
+// sideways as the terminal narrows; dropping the pair only shortens the row.
+func (ms ModelSelector) measureColumns(innerWidth, idWidth int) (nameMaxWidth, ctxColWidth, provColWidth int) {
 	longestName := 0
 	naturalCtx := 0
 	naturalProv := 0
-	for i := ms.ScrollIdx; i < min(ms.ScrollIdx+listHeight, len(ms.filteredModels)); i++ {
-		m := ms.filteredModels[i]
+	for _, m := range ms.models {
 		if w := Width(m.Name); w > longestName {
 			longestName = w
 		}
-		ctx := formatContextLimit(int64(m.ContextLimit))
-		if w := Width(ctx); w > naturalCtx {
+		if w := Width(formatContextLimit(int64(m.ContextLimit))); w > naturalCtx {
 			naturalCtx = w
 		}
-		provider := capitalize(m.ProtocolType)
-		if w := Width(provider); w > naturalProv {
+		if w := Width(capitalize(m.ProtocolType)); w > naturalProv {
 			naturalProv = w
 		}
 	}
 	naturalCtx = max(1, naturalCtx)
 	naturalProv = max(1, naturalProv)
 
-	prefixWidth := 2 + idWidth
+	// row is what is left of the line after the index column and its gap.
+	row := max(1, innerWidth-(2+idWidth))
 	minName := max(10, longestName)
-	nameMaxWidth = innerWidth - prefixWidth
 
-	minCol := 2
-	extraCtx := nameMaxWidth - minName
-	switch {
-	case extraCtx >= 1+naturalCtx:
-		ctxColWidth = naturalCtx
-		nameMaxWidth -= 1 + naturalCtx
-	case extraCtx >= minCol:
-		ctxColWidth = extraCtx - 1
-		nameMaxWidth = minName
+	// Cells for the right pair, their gaps included: their natural width
+	// while the name keeps its longest entry, whatever is left below that.
+	right := min(row-minName, 1+naturalCtx+1+naturalProv)
+	if floor := 1 + 1 + 1 + 1; right < floor {
+		// Not even a gap and one cell each: the name keeps the row and the
+		// right pair goes whole, which is why the survivors never shift.
+		right = 0
 	}
 
-	extraProv := nameMaxWidth - minName
-	switch {
-	case extraProv >= 1+naturalProv:
-		provColWidth = naturalProv
-		nameMaxWidth -= 1 + naturalProv
-	case extraProv >= minCol:
-		provColWidth = extraProv - 1
-		nameMaxWidth = minName
-	}
+	// Context is served before the provider, and always leaves the provider
+	// its gap and one cell, so the two shrink together.
+	ctxColWidth = min(naturalCtx, max(0, right-1-1-1))
+	provColWidth = min(naturalProv, max(0, right-1-ctxColWidth-1))
 
-	return max(1, nameMaxWidth), ctxColWidth, provColWidth
+	used := 0
+	if ctxColWidth > 0 {
+		used += 1 + ctxColWidth
+	}
+	if provColWidth > 0 {
+		used += 1 + provColWidth
+	}
+	nameMaxWidth = max(1, row-used)
+	return nameMaxWidth, ctxColWidth, provColWidth
 }
 
 func (ms ModelSelector) renderModelRow(i, idWidth, nameMaxWidth, ctxColWidth, provColWidth int) string {

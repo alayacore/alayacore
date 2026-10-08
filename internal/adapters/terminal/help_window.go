@@ -139,6 +139,13 @@ func (hw HelpWindow) recalculateColumnWidths() HelpWindow {
 		max(maxKeyLen, idealKeyWidth),
 		max(1, innerWidth-1),
 	)
+	// The description needs its gap and a cell. When the key leaves neither,
+	// the description is dropped and the key takes the whole width: reserving
+	// the gap anyway would end every row one cell short, leaving a stray cell
+	// after a truncated key's ellipsis.
+	if innerWidth-1-hw.keyColumnWidth < 1 {
+		hw.keyColumnWidth = innerWidth
+	}
 	return hw
 }
 
