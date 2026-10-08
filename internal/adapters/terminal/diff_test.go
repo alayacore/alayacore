@@ -141,37 +141,51 @@ func TestComputeDiffAboveTheCap(t *testing.T) {
 
 // TestDiffRowsInvariants checks what the block may never get wrong, over random
 // line pairs including blank ones rather than over examples. The examples above
-// pin the shapes a reader sees; these pin the three rules behind them:
+// pin the shapes a reader sees; these pin the four rules behind them:
 //
 //  1. The rows account for every line and invent none: consuming them against
 //     the inputs — a context row is the next line of both, a removal of the old
 //     side, an addition of the new, an elided row that many lines that are equal
 //     on both sides — reaches the end of both inputs, line for line.
-//  2. A change is never drawn as no change, and no change is drawn as one: the
+//  2. The rows mark as few lines as a line diff can: (m+n) - 2L rows for the LCS
+//     length L, which is what a maximal matching of the two inputs costs. A diff
+//     that marks a line it could have matched tells the reader something changed
+//     that did not — the failure that marks nothing, one row at a time — and
+//     that is what a wrong index into the table produces, so this rule is also
+//     the one that holds the table's arithmetic.
+//  3. A change is never drawn as no change, and no change is drawn as one: the
 //     rows hold a marked row exactly when the two inputs differ.
-//  3. No stretch of unchanged rows is longer than a hunk's context: the block is
+//  4. No stretch of unchanged rows is longer than a hunk's context: the block is
 //     bounded by the change, which is the whole reason the folding exists.
 //
-// Rule 2 is the one a blank line breaks when a row's kind is read back out of
-// its text, since "removed blank" and "unchanged blank" are both "". Rule 1 is
-// the one the folding could break, by folding rows it should have drawn or by
-// counting wrong.
+// Rules 2 and 3 are the two halves of honesty about a change, and they are the
+// rules a blank line breaks when a row's kind is read back out of its text
+// ("removed blank" and "unchanged blank" are both ""). Rule 1 is the one the
+// folding could break, by folding rows it should have drawn or counting wrong.
 func TestDiffRowsInvariants(t *testing.T) {
-	alphabet := []string{"", "a", "b"} // a third of every input is a blank line
-
-	// Two size regimes: tiny inputs make the rows and the inputs nearly the same
-	// length (so the accounting is checked line by line), and inputs of up to 60
-	// lines make runs long enough that the folding actually fires.
-	for _, maxLines := range []int{6, 60} {
+	// Three size regimes: tiny inputs make the rows and the inputs nearly the
+	// same length (so the accounting is checked line by line), inputs of up to
+	// 60 lines make runs long enough that the folding actually fires, and a
+	// larger alphabet with odd lengths keeps lines mostly distinct (so matches
+	// are earned rather than accidental).
+	regimes := []struct {
+		alphabet []string
+		maxLines int
+	}{
+		{[]string{"", "a", "b"}, 6},                 // a third of every input is a blank line
+		{[]string{"", "a", "b"}, 60},                // long runs between the changes
+		{[]string{"", "a", "b", "c", "d", "e"}, 25}, // mostly distinct lines
+	}
+	for _, regime := range regimes {
 		for _, seed := range []int64{1, 7, 42, 1234, 31337} {
 			rng := rand.New(rand.NewSource(seed))
 			for iter := 0; iter < 1000; iter++ {
-				oldLines := randomLines(rng, alphabet, maxLines)
-				newLines := randomLines(rng, alphabet, maxLines)
+				oldLines := randomLines(rng, regime.alphabet, regime.maxLines)
+				newLines := randomLines(rng, regime.alphabet, regime.maxLines)
 				rows := computeDiff(oldLines, newLines)
 
 				consumedOld, consumedNew := 0, 0
-				marked := false
+				marked := 0
 				for _, row := range rows {
 					switch row.kind {
 					case rowContext:
@@ -187,14 +201,14 @@ func TestDiffRowsInvariants(t *testing.T) {
 								seed, row.line, consumedOld, oldLines)
 						}
 						consumedOld++
-						marked = true
+						marked++
 					case rowAdded:
 						if !lineIs(newLines, consumedNew, row.line) {
 							t.Fatalf("seed %d: added row %q is not new line %d:\n  new %q",
 								seed, row.line, consumedNew, newLines)
 						}
 						consumedNew++
-						marked = true
+						marked++
 					case rowElidedUnchanged:
 						if !sameFrom(oldLines, newLines, consumedOld, consumedNew, row.count) {
 							t.Fatalf("seed %d: elided row counts %d lines from (%d,%d), which are not equal on both sides:\n  old %q\n  new %q\n  rows %q",
@@ -202,7 +216,6 @@ func TestDiffRowsInvariants(t *testing.T) {
 						}
 						consumedOld += row.count
 						consumedNew += row.count
-						marked = true
 					default:
 						t.Fatalf("seed %d: row kind %d below the cap", seed, row.kind)
 					}
@@ -212,8 +225,12 @@ func TestDiffRowsInvariants(t *testing.T) {
 					t.Fatalf("seed %d: the rows account for %d of %d old lines and %d of %d new:\n  rows %q",
 						seed, consumedOld, len(oldLines), consumedNew, len(newLines), drawDiff(rows))
 				}
-				if marked != !slices.Equal(oldLines, newLines) {
-					t.Fatalf("seed %d: diff of %q → %q marked=%v", seed, oldLines, newLines, marked)
+				if want := len(oldLines) + len(newLines) - 2*lcsLength(oldLines, newLines); marked != want {
+					t.Fatalf("seed %d: %d rows marked, but %q → %q needs only %d:\n  rows %q",
+						seed, marked, oldLines, newLines, want, drawDiff(rows))
+				}
+				if (marked > 0) != !slices.Equal(oldLines, newLines) {
+					t.Fatalf("seed %d: diff of %q → %q marked=%d", seed, oldLines, newLines, marked)
 				}
 				for _, run := range contextRuns(rows) {
 					if run > 2*diffContext+1 {
@@ -224,6 +241,26 @@ func TestDiffRowsInvariants(t *testing.T) {
 			}
 		}
 	}
+}
+
+// lcsLength is the textbook longest-common-subsequence length, written the short
+// way. It is the reference for rule 2: it says how many rows a line diff has to
+// mark at minimum, independently of how the rows are computed.
+func lcsLength(a, b []string) int {
+	dp := make([][]int, len(a)+1)
+	for i := range dp {
+		dp[i] = make([]int, len(b)+1)
+	}
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			if a[i-1] == b[j-1] {
+				dp[i][j] = dp[i-1][j-1] + 1
+			} else {
+				dp[i][j] = max(dp[i-1][j], dp[i][j-1])
+			}
+		}
+	}
+	return dp[len(a)][len(b)]
 }
 
 // randomLines returns 0..maxLines lines drawn from alphabet, blank lines
