@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,34 @@ func TestRuntimeManager(t *testing.T) {
 	rm2 := newRuntimeManager(runtimePath)
 	if rm2.getActiveModel() != "Test Model" {
 		t.Errorf("Expected 'Test Model' after reload, got: %s", rm2.getActiveModel())
+	}
+}
+
+// A runtime config that exists but cannot be read is reported rather than
+// swallowed: the session falls back to the first model, and without a message
+// that fallback is indistinguishable from a machine that never saved a choice.
+func TestRuntimeManagerUnreadableFileIsReported(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "runtime.conf")
+	// A directory where the config file goes: it exists, and reading it as a
+	// file fails for root too, so the test cannot pass vacuously.
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	rm := newRuntimeManager(path)
+
+	errs := rm.getLoadErrors()
+	if len(errs) == 0 {
+		t.Fatal("an unreadable runtime config was not reported")
+	}
+	if !strings.Contains(strings.Join(errs, "\n"), "runtime.conf") {
+		t.Errorf("load errors = %v, want the file named", errs)
+	}
+	if got := rm.getActiveModel(); got != "" {
+		t.Errorf("active model = %q, want the empty fallback", got)
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		t.Error("the loader replaced a path that already existed")
 	}
 }
 

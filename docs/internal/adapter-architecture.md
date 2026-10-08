@@ -149,7 +149,7 @@ The `StartSession()` function in `app/session.go` handles shared initialization 
 - Creates an `io.Pipe()` internally, returning the `PipeWriter` to the adapter so it can feed TLV messages to the session
 - `session.InitError()` — fatal initialization check (--model flag validation)
 - `session.GetLoadErrors()` — emit model config errors as system messages
-- `session.GetRuntimeLoadErrors()` — emit runtime.conf parse errors as system messages
+- `session.GetRuntimeLoadErrors()` — emit runtime.conf errors as system messages: parse errors, and a file that is there but cannot be read
 - `session.HasModels()` — abort if no models configured
 
 This is setup code, not runtime coupling. Once the program starts, the adapter only interacts with the session via TLV.

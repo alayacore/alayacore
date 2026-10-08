@@ -8,6 +8,54 @@ import (
 	"testing"
 )
 
+// A config file that exists but cannot be read is reported through the same
+// list as a parse error. The session's fallback (no models, "edit this file")
+// would otherwise blame the file's contents for a permission problem, and the
+// creation path must not touch a path that is already there.
+func TestModelManagerUnreadableFileIsReported(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "model.conf")
+	// A directory where the config file goes: it exists, and reading it as a
+	// file fails the same way for root and for everyone else — a chmod-based
+	// test would pass vacuously when the suite runs as root.
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	mm := newModelManager(path)
+
+	errs := mm.getLoadErrors()
+	if len(errs) == 0 {
+		t.Fatal("an unreadable model config was not reported")
+	}
+	if !strings.Contains(strings.Join(errs, "\n"), "model.conf") {
+		t.Errorf("load errors = %v, want the file named", errs)
+	}
+	if mm.hasModels() {
+		t.Error("models were loaded from a config that could not be read")
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		t.Error("the loader replaced a path that already existed")
+	}
+}
+
+// A model config that is not there yet is created, not reported: a first run
+// has to leave a usable default behind, and nothing was asked of the file.
+func TestModelManagerMissingFileIsCreated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "model.conf")
+
+	mm := newModelManager(path)
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("model config was not created: %v", err)
+	}
+	if !mm.hasModels() {
+		t.Errorf("no models loaded from the created default; load errors = %v", mm.getLoadErrors())
+	}
+	if errs := mm.getLoadErrors(); len(errs) != 0 {
+		t.Errorf("creating the file reported errors: %v", errs)
+	}
+}
+
 func TestParseModelConfig(t *testing.T) {
 	tests := []struct {
 		name     string

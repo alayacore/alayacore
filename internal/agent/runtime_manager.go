@@ -34,9 +34,14 @@ func newRuntimeManager(runtimePath string) *runtimeManager {
 	rm := &runtimeManager{}
 	rm.path = runtimePath
 
-	// Load if path is set
+	// Load if path is set. A missing file is created (first run); a file that
+	// is there but cannot be read is reported, because the fallback to the
+	// first model would otherwise be indistinguishable from a machine that has
+	// no saved preference yet.
 	if rm.path != "" {
-		_ = rm.load() // best-effort load on init
+		if err := rm.load(); err != nil {
+			rm.loadErrs = append(rm.loadErrs, fmt.Sprintf("%s: %v", filepath.Base(rm.path), err))
+		}
 	}
 
 	return rm

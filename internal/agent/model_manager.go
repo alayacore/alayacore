@@ -66,7 +66,13 @@ func newModelManager(configPath string) *modelManager {
 		nextID:   1, // IDs start from 1; 0 is reserved as "no model"
 	}
 	if configPath != "" {
-		_ = mm.loadFromFile(configPath) // best-effort load on init
+		// A missing file is created (first run). Anything else that stops the
+		// read — permissions, a path that is not a file — is reported: the
+		// startup error for an empty model list names this file and tells the
+		// user to edit it, which is the wrong advice when it cannot be read.
+		if err := mm.loadFromFile(configPath); err != nil {
+			mm.loadErrors = append(mm.loadErrors, fmt.Sprintf("%s: %v", filepath.Base(configPath), err))
+		}
 	}
 	return mm
 }
