@@ -29,6 +29,12 @@ type Transport interface {
 	// Done returns a channel that's closed when the transport has
 	// encountered a fatal error or been closed.
 	Done() <-chan struct{}
+
+	// DebugWriter returns the transport's debug log, or nil when debug logging
+	// is off. It exists for problems that are not fatal and have no other
+	// channel: the MCP event stream carries what happened to a server's
+	// initialization, not the diagnosis of a step that recovered.
+	DebugWriter() io.Writer
 }
 
 // ============================================================================

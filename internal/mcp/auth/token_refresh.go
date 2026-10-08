@@ -139,6 +139,12 @@ func (p *PersistentTokenProvider) tryLoadFromDisk() *Token {
 	}
 	loaded, err := p.store.LoadToken(p.serverID)
 	if err != nil || loaded == nil {
+		// Not the re-authorization path: this provider only exists once a
+		// token has been obtained (needsPersistedAuth stores it before
+		// setupAuth builds the provider), so the fallback is the in-memory
+		// token. Said here because the silence looks like the one in
+		// needsPersistedAuth, which does decide whether the user authorizes
+		// again — that one reports through the client's debug log.
 		return nil
 	}
 	p.setCached(loaded)
@@ -326,7 +332,9 @@ func (p *PersistentTokenProvider) InvalidateToken(_ context.Context) error {
 }
 
 // persistToken saves the token to disk via the store.
-// Errors are silently ignored — persistence is best-effort.
+// Errors are silently ignored — persistence is best-effort, and a failed write
+// costs the next start a refresh rather than a new authorization: a refresh
+// only happens when the file was readable, so the old token is still there.
 func (p *PersistentTokenProvider) persistToken(tok *Token) {
 	if p.store == nil {
 		return

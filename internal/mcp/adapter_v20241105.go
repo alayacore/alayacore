@@ -91,7 +91,14 @@ func (a *AdapterV20241105) Handshake(ctx context.Context, c *Client) (string, er
 	c.serverInfo = result.ServerInfo
 	c.instructions = result.Instructions
 
-	_ = c.sendNotification(ctx, methodNotificationsInitialized, nil)
+	if err := c.sendNotification(ctx, methodNotificationsInitialized, nil); err != nil {
+		// Not fatal: Send fails both when the notification could not be
+		// delivered and when the server answered it with a status the
+		// transport does not expect (202). A connection that really broke
+		// reports itself on the tools/list that follows, with this server's
+		// name — this line is what keeps the reason from being lost.
+		c.debugf("MCP: %q: initialized notification not delivered: %v", c.Name(), err)
+	}
 
 	return result.ProtocolVersion, nil
 }

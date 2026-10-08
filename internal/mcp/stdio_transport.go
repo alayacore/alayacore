@@ -228,9 +228,7 @@ func (t *StdioTransport) handleServerRequest(_ context.Context, id requestID, me
 			Result:  json.RawMessage(`{}`),
 		}
 		data, _ := json.Marshal(resp) // static struct, cannot fail
-		t.mu.Lock()
-		_, _ = t.stdin.Write(append(data, '\n'))
-		t.mu.Unlock()
+		t.reply(data)
 
 	default:
 		// Method not found — respond with error.
@@ -243,9 +241,21 @@ func (t *StdioTransport) handleServerRequest(_ context.Context, id requestID, me
 			},
 		}
 		data, _ := json.Marshal(resp) // static struct, cannot fail
-		t.mu.Lock()
-		_, _ = t.stdin.Write(append(data, '\n'))
-		t.mu.Unlock()
+		t.reply(data)
+	}
+}
+
+// reply writes a response to the server's stdin. There is no caller to return
+// the error to — this runs on the reader goroutine — so it goes to the debug
+// log: an unanswered ping is otherwise invisible until the server closes the
+// connection, and that read-side error names the connection, not the cause.
+func (t *StdioTransport) reply(data []byte) {
+	t.mu.Lock()
+	_, err := t.stdin.Write(append(data, '\n'))
+	t.mu.Unlock()
+
+	if err != nil && t.debugWriter != nil {
+		fmt.Fprintf(t.debugWriter, "MCP: reply to server failed: %v\n", err)
 	}
 }
 
@@ -416,6 +426,9 @@ func (t *StdioTransport) Close() error {
 func (t *StdioTransport) Done() <-chan struct{} {
 	return t.done
 }
+
+// DebugWriter returns the debug log, or nil when debug logging is off.
+func (t *StdioTransport) DebugWriter() io.Writer { return t.debugWriter }
 
 // StderrTail returns the last bytes the server wrote to stderr, satisfying
 // stderrDiagnostician so connection failures can name their real cause.

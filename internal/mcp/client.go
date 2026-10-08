@@ -207,12 +207,8 @@ func (c *Client) Connect(ctx context.Context) error {
 	if ht, ok := transport.(*HTTPTransport); ok {
 		if ha, ok := c.adapter.(HTTPAdapter); ok {
 			if err := ha.OnTransportReady(ctx, ht); err != nil {
-				if c.config.DebugDir != "" {
-					if dw := ht.DebugWriter(); dw != nil {
-						fmt.Fprintf(dw, "MCP: OnTransportReady failed for %q: %v\n", c.config.Name, err)
-					}
-				}
 				// Non-fatal — the client still works for tool calls via POST.
+				c.debugf("MCP: OnTransportReady failed for %q: %v", c.config.Name, err)
 			}
 		}
 	}
@@ -288,9 +284,7 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 		t.HeaderMappings = parseHeaderMappings(t.InputSchema)
 		if rejectInvalid {
 			if verr := validateXMcpHeaderAnnotations(t.InputSchema); verr != nil {
-				if ht, ok := c.loadTransport().(*HTTPTransport); ok && ht.DebugWriter() != nil {
-					fmt.Fprintf(ht.DebugWriter(), "MCP: rejecting tool %q: %v\n", t.Name, verr)
-				}
+				c.debugf("MCP: rejecting tool %q: %v", t.Name, verr)
 				continue
 			}
 		}
@@ -460,6 +454,13 @@ func (c *Client) needsPersistedAuth() bool {
 	}
 	if c.tokenStore != nil {
 		loaded, loadErr := c.tokenStore.LoadToken(c.config.Name)
+		if loadErr != nil {
+			// Treated as "no token": the interactive flow that follows is the
+			// only way back and it recovers. It recovers by asking the user to
+			// authorize again though, and every start from now on, so the
+			// reason belongs where that prompt will be investigated.
+			c.debugf("MCP: %q: token cache unreadable, re-authorizing: %v", c.Name(), loadErr)
+		}
 		if loadErr == nil && loaded != nil && (loaded.Valid() || loaded.RefreshToken != "") {
 			c.config.Auth.obtainedToken = loaded
 			return false
@@ -559,7 +560,11 @@ func (c *Client) resetState() {
 func (c *Client) connectWithOAuthToken(ctx context.Context, token *auth.Token) error {
 	c.config.Auth.obtainedToken = token
 	if c.tokenStore != nil {
-		_ = c.tokenStore.SaveToken(c.Name(), token)
+		if err := c.tokenStore.SaveToken(c.Name(), token); err != nil {
+			// This run is authorized either way; without the file, so is no
+			// other — the next start authorizes again.
+			c.debugf("MCP: %q: could not persist the token: %v", c.Name(), err)
+		}
 	}
 	c.resetState()
 	if err := c.Connect(ctx); err != nil {
@@ -578,6 +583,21 @@ func (c *Client) loadTransport() Transport {
 	c.transportMu.RLock()
 	defer c.transportMu.RUnlock()
 	return c.transport
+}
+
+// debugf records a transport-level problem that is not fatal, when a debug log
+// is configured. The newline is added. It has nowhere else to go: the MCP event
+// stream carries what happened to a server's initialization — connecting,
+// connected, failed — and everything recorded here is "it worked, but for a
+// reason worth knowing".
+func (c *Client) debugf(format string, args ...any) {
+	tp := c.loadTransport()
+	if tp == nil {
+		return
+	}
+	if dw := tp.DebugWriter(); dw != nil {
+		fmt.Fprintf(dw, format+"\n", args...)
+	}
 }
 
 // storeTransport sets the current transport; nil clears the slot.

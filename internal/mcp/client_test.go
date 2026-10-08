@@ -1,9 +1,11 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +19,10 @@ type mockTransport struct {
 	responses []json.RawMessage
 	index     atomic.Int32
 	done      chan struct{}
+	debug     bytes.Buffer
+	// sendErr, when set, is what Send reports: the transport-level failure a
+	// debug log is supposed to record without failing the handshake.
+	sendErr error
 }
 
 func newMockTransport(responses []json.RawMessage) *mockTransport {
@@ -31,7 +37,25 @@ func (m *mockTransport) Send(ctx context.Context, req jsonrpcRequest) error {
 	m.mu.Lock()
 	m.requests = append(m.requests, req)
 	m.mu.Unlock()
-	return nil
+	return m.sendErr
+}
+
+// DebugWriter returns the captured debug log, so a test can read back what the
+// client recorded. Always non-nil: debug logging is what these tests exercise.
+func (m *mockTransport) DebugWriter() io.Writer { return m }
+
+// Write makes the mock itself the log sink; the mutex keeps it race-free when a
+// transport goroutine writes while a test reads.
+func (m *mockTransport) Write(p []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.debug.Write(p)
+}
+
+func (m *mockTransport) debugLog() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.debug.String()
 }
 
 func (m *mockTransport) SendReceive(ctx context.Context, req jsonrpcRequest) (json.RawMessage, error) {
