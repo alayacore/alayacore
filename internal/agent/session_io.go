@@ -714,8 +714,15 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 	// Validate that the theme exists before persisting.
 	if s.ThemesFolder != "" {
 		themePath := filepath.Join(s.ThemesFolder, name+".conf")
-		if _, err := os.Stat(themePath); os.IsNotExist(err) {
-			return nil, &cmdErr{Code: "NOT_FOUND", Message: fmt.Sprintf("Theme %q not found", name)}
+		// Only a missing file is NOT_FOUND. Any other stat failure means the
+		// theme cannot be checked — and applying it would leave the name active
+		// in the runtime config while the UI kept its old colors, because the
+		// adapter resolves a theme by looking it up in the list it was sent.
+		if _, err := os.Stat(themePath); err != nil {
+			if os.IsNotExist(err) {
+				return nil, &cmdErr{Code: "NOT_FOUND", Message: fmt.Sprintf("Theme %q not found", name)}
+			}
+			return nil, &cmdErr{Code: "THEME_ERROR", Message: fmt.Sprintf("Cannot read theme %q: %v", name, err)}
 		}
 	}
 

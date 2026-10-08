@@ -67,7 +67,7 @@ for the full isolation rules.
 
 ### Theme Persistence
 
-The session persists the active theme to `runtime.conf` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The session skips theme broadcasting entirely for plainio, terseio, and rawio modes (`NoTheme` — they have no visual rendering): no `theme`/`theme_list` messages are sent, theme parse errors are never emitted, and `:theme_set` is rejected as unavailable. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
+The session persists the active theme to `runtime.conf` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The session skips theme broadcasting entirely for plainio, terseio, and rawio modes (`NoTheme` — they have no visual rendering): no `theme`/`theme_list` messages are sent, theme errors are never emitted, and `:theme_set` is rejected as unavailable. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
 
 Theme changes flow through the session to keep a single source of truth:
 

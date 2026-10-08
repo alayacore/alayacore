@@ -227,14 +227,16 @@ func (s *Session) sendThemeMsg() {
 }
 
 // loadThemeFromFile loads a theme from a file path and returns its info.
-// Returns parse errors from theme loading (unknown fields, type mismatches).
-func loadThemeFromFile(path string) (themeInfo, []string, bool) {
+// Returns parse errors from theme loading (unknown fields, type mismatches),
+// or an error when the file cannot be read at all — the caller reports it, so
+// a theme the user wrote is never silently absent from the list.
+func loadThemeFromFile(path string) (themeInfo, []string, error) {
 	name := strings.TrimSuffix(filepath.Base(path), ".conf")
 	t, errs, err := theme.LoadTheme(path)
 	if err != nil {
-		return themeInfo{}, nil, false
+		return themeInfo{}, nil, err
 	}
-	return themeInfo{Name: name, Theme: t}, errs, true
+	return themeInfo{Name: name, Theme: t}, errs, nil
 }
 
 // sendThemeListMsg sends the full list of available themes with content.
@@ -251,12 +253,19 @@ func (s *Session) sendThemeListMsg() {
 	}
 	infos := make([]themeInfo, 0, len(confs))
 	for _, path := range confs {
-		if info, errs, ok := loadThemeFromFile(path); ok {
-			infos = append(infos, info)
-			for _, e := range errs {
-				s.writeError(e)
-			}
+		info, errs, err := loadThemeFromFile(path)
+		// Parse errors are shown even when the theme loaded: a value the reader
+		// could not represent means the UI is styling less than the file asked
+		// for. A read failure is shown too — the theme is missing from the list
+		// the selector offers, and silence would look like the file is not there.
+		for _, e := range errs {
+			s.writeError(e)
 		}
+		if err != nil {
+			s.writeError(fmt.Sprintf("%s: %v", filepath.Base(path), err))
+			continue
+		}
+		infos = append(infos, info)
 	}
 	if len(infos) > 0 {
 		s.writeSystemMsg(themeListMsg{Themes: infos})
