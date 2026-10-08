@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -46,8 +47,15 @@ const (
 type Client struct {
 	config     ServerConfig
 	tokenStore auth.TokenStore
-	transport  atomic.Value // stores Transport or nil
-	state      atomic.Int32 // stores ClientState as int32
+
+	// transportMu guards transport, which every request reads and a reconnect
+	// replaces — including with nil. It is not an atomic.Value: that cannot
+	// hold the nil that clearing the slot needs (storing it panics) and it
+	// demands one concrete type for the life of the value.
+	transportMu sync.RWMutex
+	transport   Transport // nil before the first Connect and after resetState
+
+	state atomic.Int32 // stores ClientState as int32
 
 	// adapter handles protocol-version-specific behavior
 	// (handshake, _meta injection, and HTTP transport hooks).
@@ -567,24 +575,16 @@ func (c *Client) connectWithOAuthToken(ctx context.Context, token *auth.Token) e
 
 // loadTransport returns the current transport, or nil.
 func (c *Client) loadTransport() Transport {
-	v := c.transport.Load()
-	if v == nil {
-		return nil
-	}
-	tp, ok := v.(Transport)
-	if !ok {
-		return nil
-	}
-	return tp
+	c.transportMu.RLock()
+	defer c.transportMu.RUnlock()
+	return c.transport
 }
 
-// storeTransport sets the current transport.
+// storeTransport sets the current transport; nil clears the slot.
 func (c *Client) storeTransport(t Transport) {
-	if t == nil {
-		c.transport.Store(nil)
-	} else {
-		c.transport.Store(t)
-	}
+	c.transportMu.Lock()
+	defer c.transportMu.Unlock()
+	c.transport = t
 }
 
 // stateError returns a descriptive error for the current client state.
