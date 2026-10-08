@@ -78,21 +78,23 @@ const (
 	liveEdgeFollowing = "following"
 )
 
-// lineCountText spells a count of hidden lines out: "1 line above", "12
-// lines above". Singular for one — "1 lines above" is the kind of thing a
-// reader notices — and shared by both places that count hidden transcript
-// lines (the live edge's "below", the pinned row's "above"), so the two
-// cannot disagree about how to say it.
+// lineCountText spells a count of hidden lines out: "1 line above", "12 lines
+// below", "412 lines hidden". Singular for one — "1 lines above" is the kind of
+// thing a reader notices — and shared by all three places that count lines the
+// frame did not draw (the live edge's "below", the pinned row's "above", an
+// edit_file block's "hidden"), so they cannot disagree about how to say it.
 //
-// They count different things and say so: the live edge counts DOCUMENT
-// lines under the viewport (any window), the pinned row counts the lines of
-// THE ONE window whose own line it is drawing (the message you are in the
-// middle of). See liveEdgeText and Window.pinnedLine0.
-func lineCountText(n int, direction string) string {
+// They count different things and say so: the live edge counts DOCUMENT lines
+// under the viewport (any window), the pinned row counts the lines of THE ONE
+// window whose own line it is drawing (the message you are in the middle of),
+// and the diff block counts unchanged lines between two hunks — the only one of
+// the three where the hidden lines are known to be uninteresting. See
+// liveEdgeText, Window.pinnedLine0 and diffRow.text.
+func lineCountText(n int, word string) string {
 	if n == 1 {
-		return "1 line " + direction
+		return "1 line " + word
 	}
-	return fmt.Sprintf("%d lines %s", n, direction)
+	return fmt.Sprintf("%d lines %s", n, word)
 }
 
 // liveEdgeText returns the plain label for the current display state, or

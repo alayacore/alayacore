@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -62,36 +63,30 @@ func TestEditFileHandlerBlankLineChangeKeepsItsMarker(t *testing.T) {
 	}
 }
 
-// TestEditFileHandlerFormatCallHugeInput guards the LCS size cap: a huge
-// old/new string pair (larger than maxDiffLines) must fall back to the
-// degenerate all-changed diff instead of building an m×n matrix — the
-// result stays bounded and contains every line with its +/- marker.
+// TestEditFileHandlerFormatCallHugeInput pins the size cap. A pair of huge
+// arguments — the shape that once allocated an 800MB table and took the session
+// down with it — is not diffed at all, and the block says so in one row. It
+// must not draw every line as removed and added instead: that is a claim about
+// the change nobody made, and the longest way to say nothing.
 func TestEditFileHandlerFormatCallHugeInput(t *testing.T) {
 	h := &EditFileHandler{}
+	// JSON-escaped already: the block is one line per entry, joined.
 	makeBlock := func(prefix string, n int) string {
-		var sb strings.Builder
-		for i := 0; i < n; i++ {
-			sb.WriteString(prefix)
-			sb.WriteString("\n")
+		lines := make([]string, n)
+		for i := range lines {
+			lines[i] = fmt.Sprintf("%s-%d", prefix, i)
 		}
-		return sb.String()
+		return strings.Join(lines, `\n`)
 	}
-	// Both sides exceed the cap (2*maxDiffLines each) — the product would
-	// be 16M matrix cells if the guard were missing.
-	input := `{"path":"f","old_string":` +
-		strings.ReplaceAll(`"`+makeBlock("old", 2*maxDiffLines+1)+`"`, "\n", `\n`) +
-		`,"new_string":` +
-		strings.ReplaceAll(`"`+makeBlock("new", 2*maxDiffLines+1)+`"`, "\n", `\n`) +
-		`}`
+	// Both sides exceed the cap (2*maxDiffLines+1 lines each) and share no end
+	// at all, so the whole pair is the undiffable middle.
+	n := 2*maxDiffLines + 1
+	input := `{"path":"f","old_string":"` + makeBlock("old", n) + `","new_string":"` + makeBlock("new", n) + `"}`
 
 	result := h.FormatCall([]byte(input))
-	oldCount := strings.Count(result, "- old")
-	newCount := strings.Count(result, "+ new")
-	if oldCount != 2*maxDiffLines+1 {
-		t.Errorf("degenerate diff old lines = %d, want %d", oldCount, 2*maxDiffLines+1)
-	}
-	if newCount != 2*maxDiffLines+1 {
-		t.Errorf("degenerate diff new lines = %d, want %d", newCount, 2*maxDiffLines+1)
+	want := fmt.Sprintf("edit_file: f\n… %d lines hidden, too large to diff", 2*n)
+	if result != want {
+		t.Errorf("FormatCall:\n  got:  %q\n  want: %q", result, want)
 	}
 }
 

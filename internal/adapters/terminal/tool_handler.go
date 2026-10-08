@@ -133,7 +133,7 @@ func (h *EditFileHandler) FormatCall(input json.RawMessage) string {
 	lines := make([]string, 0, len(rows)+1)
 	lines = append(lines, fmt.Sprintf("edit_file: %s", args.Path))
 	for _, row := range rows {
-		lines = append(lines, row.marker()+row.text)
+		lines = append(lines, row.spell())
 	}
 
 	return strings.Join(lines, "\n")

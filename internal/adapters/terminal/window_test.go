@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -332,6 +333,55 @@ func TestWindowBufferDiff(t *testing.T) {
 
 		if plain := stripANSI(wb.GetAll(-1, false)); !strings.Contains(plain, `C:\src\a.go`) {
 			t.Errorf("the whole path should be shown, got:\n%s", plain)
+		}
+	})
+
+	t.Run("a long unchanged stretch is one counted row", func(t *testing.T) {
+		styles := DefaultStyles()
+		wb := NewWindowBuffer(80, styles)
+		// Ten unchanged lines, one changed, ten unchanged: the hunk keeps its
+		// context and the rest is a row that counts itself — in the chrome
+		// color the separator above it is drawn in, never a diff color.
+		oldLines := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "old", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t"}
+		newLines := append([]string(nil), oldLines...)
+		newLines[10] = "new"
+
+		formatted := GetHandler("edit_file").FormatCall([]byte(
+			`{"path":"f.go","old_string":"` + strings.Join(oldLines, `\n`) + `","new_string":"` + strings.Join(newLines, `\n`) + `"}`))
+		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "fold-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
+		wb.HandleToolOutput("fold-1", "File edited successfully", false, 0)
+		wb.ToggleFold(0)
+
+		rendered := wb.GetAll(-1, false)
+		if want := styles.System.Render("… 4 lines hidden"); !strings.Contains(rendered, want) {
+			t.Errorf("a folded stretch should be drawn as counted chrome %q, got:\n%s", want, stripANSI(rendered))
+		}
+		plain := stripANSI(rendered)
+		if !strings.Contains(plain, "  a\n  b\n  c\n") || !strings.Contains(plain, "\n  h\n  i\n  j\n- old\n+ new\n  k\n  l\n  m\n") ||
+			!strings.Contains(plain, "\n  r\n  s\n  t\n") {
+			t.Errorf("the change must keep its context on both sides, got:\n%s", plain)
+		}
+	})
+
+	t.Run("an argument pair too large to diff says so", func(t *testing.T) {
+		wb := NewWindowBuffer(80, DefaultStyles())
+		var oldLines, newLines []string
+		for i := 0; i <= maxDiffLines; i++ {
+			oldLines = append(oldLines, fmt.Sprintf("old-%d", i))
+			newLines = append(newLines, fmt.Sprintf("new-%d", i))
+		}
+		formatted := GetHandler("edit_file").FormatCall([]byte(
+			`{"path":"f.go","old_string":"` + strings.Join(oldLines, `\n`) + `","new_string":"` + strings.Join(newLines, `\n`) + `"}`))
+		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "big-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
+		wb.HandleToolOutput("big-1", "File edited successfully", false, 0)
+		wb.ToggleFold(0)
+
+		plain := stripANSI(wb.GetAll(-1, false))
+		if !strings.Contains(plain, "too large to diff") {
+			t.Errorf("the block must say why it shows nothing, got:\n%s", plain)
+		}
+		if strings.Contains(plain, "- old-") || strings.Contains(plain, "+ new-") {
+			t.Errorf("nothing was compared, so no row may claim a line changed, got:\n%s", plain)
 		}
 	})
 

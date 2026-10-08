@@ -60,35 +60,39 @@ func (s ToolStatus) statusDot(labelStyle Style) (string, Style) {
 // ============================================================================
 
 // RenderDiffContent prepares a diff window's raw Content: the Content
-// already has `- `, `+ `, `  ` prefixes. Removed rows (`- `) are colored
-// with styles.DiffRemove, added rows (`+ `) with styles.DiffAdd; context
-// rows and the first line stay plain. The first line ("tool_name: args")
-// is rendered as the bare argument line (no status indicator, no
-// tool-name prefix — both live in the header line). styles may be nil —
-// the diff then renders plain. No wrapping is performed here — the caller
-// wraps the combined window content once (wrapVisualLines) so
-// original-line boundaries stay hard newlines and only over-long single
-// lines soft-wrap (wrapContent re-applies the per-line color on wrapped
-// continuations).
+// already has `- `, `+ `, `  ` prefixes, and the "… " prefixed rows that stand
+// in for lines the block did not draw. Removed rows (`- `) are colored with
+// styles.DiffRemove, added rows (`+ `) with styles.DiffAdd; the elided rows are
+// chrome and take the muted color the separator above them is drawn in;
+// context rows and the first line stay plain. The first line
+// ("tool_name: args") is rendered as the bare argument line (no status
+// indicator, no tool-name prefix — both live in the header line). styles may be
+// nil — the diff then renders plain. No wrapping is performed here — the caller
+// wraps the combined window content once (wrapVisualLines) so original-line
+// boundaries stay hard newlines and only over-long single lines soft-wrap
+// (wrapContent re-applies the per-line color on wrapped continuations).
 //
-// The block is unframed by defaultToolRender, which strips `name:`, one
-// space, and the trailing newline — and nothing else, which is the point
-// here: this block's rows are the tool's own, and its last one is a row like
-// any other. Trimming the block's whitespace instead would delete that row
-// when it is blank, and a blank row is the entire evidence of a blank line
-// being added or removed.
+// The block is unframed by defaultToolRender, which strips `name:`, one space,
+// and the trailing newline — and nothing else, which is the point here: the
+// block's rows are the tool's own, and its last one is a row like any other.
+// Trimming the block's whitespace instead would delete that row when it is
+// blank, and a blank row is the entire evidence of a blank line being added or
+// removed.
 func RenderDiffContent(content, name string, styles *Styles) string {
 	content = defaultToolRender(content, name)
 
 	lines := strings.Split(content, "\n")
 	for i := 1; i < len(lines); i++ {
-		// Rows keep their -/+ markers; changed rows carry their diff
-		// colors (removed red, added green), context rows stay plain.
+		// Rows keep their markers; changed rows carry their diff colors
+		// (removed red, added green), the elided rows the chrome color, and
+		// context rows stay plain.
 		switch {
-		case styles != nil && strings.HasPrefix(lines[i], "- "):
+		case styles != nil && strings.HasPrefix(lines[i], diffMarkerRemoved):
 			lines[i] = styles.DiffRemove.Render(lines[i])
-		case styles != nil && strings.HasPrefix(lines[i], "+ "):
+		case styles != nil && strings.HasPrefix(lines[i], diffMarkerAdded):
 			lines[i] = styles.DiffAdd.Render(lines[i])
+		case styles != nil && strings.HasPrefix(lines[i], diffMarkerElided):
+			lines[i] = styles.System.Render(lines[i])
 		}
 	}
 
