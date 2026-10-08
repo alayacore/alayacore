@@ -497,10 +497,7 @@ func (t *HTTPTransport) readSSEResponse(ctx context.Context, resp *http.Response
 		}
 	}()
 
-	readDone := make(chan struct{})
 	go func() { //nolint:contextcheck // read loop bounds to transport lifetime (loopCancel on t.done), not to the request
-		defer close(readDone)
-
 		// Context tied to transport lifetime: canceled when Close() is called.
 		loopCtx, loopCancel := context.WithCancel(context.Background())
 		defer loopCancel()
@@ -511,12 +508,17 @@ func (t *HTTPTransport) readSSEResponse(ctx context.Context, resp *http.Response
 			srh = t.adapter.ServerRequestHandler
 		}
 		t.readSSELoop(loopCtx, sr, srh, t.notifHandler())
+
+		// The stream is over: the response for reqID can no longer
+		// arrive. Say so on the channel that waits for it — see
+		// closePendingResponse for why that is not a second signal.
+		t.closePendingResponse(reqID)
 	}()
 
 	select {
 	case respData, ok := <-respCh:
 		if !ok {
-			return nil, io.EOF
+			return nil, fmt.Errorf("SSE stream ended before response for %q was received", reqID)
 		}
 		if respData.Error != nil {
 			return nil, &RPCError{
@@ -528,17 +530,32 @@ func (t *HTTPTransport) readSSEResponse(ctx context.Context, resp *http.Response
 		success = true
 		return respData.Result, nil
 
+	// Cancellation and shutdown are decisions to stop waiting, not
+	// outcomes of the request, so unlike a stream's end they are reported
+	// as they are instead of being second-guessed against respCh.
 	case <-ctx.Done():
 		return nil, ctx.Err()
 
 	case <-t.done:
 		return nil, io.EOF
+	}
+}
 
-	case <-readDone:
-		t.pendingMu.Lock()
-		delete(t.pending, reqID)
-		t.pendingMu.Unlock()
-		return nil, fmt.Errorf("SSE stream ended before response for %q was received", reqID)
+// closePendingResponse tells whoever is waiting for the response to reqID
+// that it can no longer arrive, by closing the channel it waits on. That
+// channel carries the answer already: a response is buffered before any
+// close and a receive returns the buffer first, so a delivered response is
+// read before the end is, rather than the two being ready cases that a
+// select picks between at random. Removal and close travel together, as
+// they do in dispatchResponse, so the close has one owner.
+func (t *HTTPTransport) closePendingResponse(reqID requestID) {
+	t.pendingMu.Lock()
+	respCh, ours := t.pending[reqID]
+	delete(t.pending, reqID)
+	t.pendingMu.Unlock()
+
+	if ours {
+		close(respCh)
 	}
 }
 

@@ -28,6 +28,8 @@ type httpTestServer struct {
 	responseMode string // "json" (default) or "sse"
 	sseData      string
 	delayResp    time.Duration
+	// endWithoutResponse ends an SSE stream with no response event.
+	endWithoutResponse bool
 
 	postRequests  []jsonrpcRequest
 	lastSessionID string
@@ -51,6 +53,12 @@ func withRequireSession() httpTestOption {
 
 func withResponseMode(mode string) httpTestOption {
 	return func(s *httpTestServer) { s.responseMode = mode }
+}
+
+// withSSEEndWithoutResponse makes an SSE-mode server end the stream without
+// ever naming the request: the shape of a server that gives up on it.
+func withSSEEndWithoutResponse() httpTestOption {
+	return func(s *httpTestServer) { s.endWithoutResponse = true }
 }
 
 func withResponseDelay(d time.Duration) httpTestOption {
@@ -175,6 +183,11 @@ func (s *httpTestServer) handlePOST(w http.ResponseWriter, r *http.Request) {
 		flusher, _ := w.(http.Flusher)
 		flusher.Flush()
 
+		if s.endWithoutResponse {
+			// Return without ever writing the response event.
+			return
+		}
+
 		if s.sseData != "" {
 			fmt.Fprint(w, s.sseData)
 			flusher.Flush()
@@ -269,6 +282,114 @@ func TestHTTPTransport_SendReceive_SSE(t *testing.T) {
 	}
 	if result["echo"] != "ok" {
 		t.Errorf("echo = %q, want ok", result["echo"])
+	}
+}
+
+// The pending entry is the hand-off point for a response: whoever removes it
+// under the lock owns closing its channel. Both orders have to hold. A
+// response delivered first must still be read after the stream ends, and a
+// stream that ends first must turn a later response into a no-op rather than
+// a send on a closed channel (which panics).
+func TestHTTPTransport_PendingResponseCloseOwnership(t *testing.T) {
+	const (
+		deliveredID = requestID("delivered")
+		endedID     = requestID("ended")
+	)
+
+	result := json.RawMessage(`{"echo":"ok"}`)
+
+	t.Run("response delivered first", func(t *testing.T) {
+		tr, err := NewHTTPTransport("http://127.0.0.1:0", "")
+		if err != nil {
+			t.Fatalf("NewHTTPTransport: %v", err)
+		}
+		defer tr.Close()
+
+		respCh := make(chan jsonrpcResponse, 1)
+		tr.pendingMu.Lock()
+		tr.pending[deliveredID] = respCh
+		tr.pendingMu.Unlock()
+
+		dispatchResponse(jsonrpcResponse{JSONRPC: "2.0", ID: deliveredID, Result: result},
+			tr.pending, &tr.pendingMu, nil, nil)
+
+		// The stream ends after the response did. There is nothing left
+		// for this to close; the answer must survive it.
+		tr.closePendingResponse(deliveredID)
+
+		got, ok := <-respCh
+		if !ok {
+			t.Fatal("the response was lost when the stream ended")
+		}
+		if string(got.Result) != string(result) {
+			t.Errorf("result = %s, want %s", got.Result, result)
+		}
+	})
+
+	t.Run("stream ended first", func(t *testing.T) {
+		tr, err := NewHTTPTransport("http://127.0.0.1:0", "")
+		if err != nil {
+			t.Fatalf("NewHTTPTransport: %v", err)
+		}
+		defer tr.Close()
+
+		respCh := make(chan jsonrpcResponse, 1)
+		tr.pendingMu.Lock()
+		tr.pending[endedID] = respCh
+		tr.pendingMu.Unlock()
+
+		tr.closePendingResponse(endedID)
+
+		// A response that shows up afterwards must be discarded. Sending
+		// it would panic on the closed channel.
+		dispatchResponse(jsonrpcResponse{JSONRPC: "2.0", ID: endedID, Result: result},
+			tr.pending, &tr.pendingMu, nil, nil)
+
+		// The read is bounded so that a stream's end that never closes
+		// the channel reports the missing close instead of hanging.
+		select {
+		case got, ok := <-respCh:
+			if ok {
+				t.Errorf("response %s arrived after the stream had ended", got.Result)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("the stream's end left its channel open")
+		}
+	})
+}
+
+// The one case where "no response" is the whole truth: the stream ended
+// without ever naming the request. It is an error that says so, and it
+// leaves nothing pending for a later message to land in.
+func TestHTTPTransport_SendReceive_SSEStreamEndsWithoutResponse(t *testing.T) {
+	srv := newHTTPServer(t, withResponseMode("sse"), withSSEEndWithoutResponse())
+	defer srv.Close()
+
+	tr, _ := NewHTTPTransport(srv.URL(), "")
+	defer tr.Close()
+
+	// Bounded: a stream's end that never releases the waiter has to report
+	// a deadline rather than hang.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := tr.SendReceive(ctx, jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      requestID("1"),
+		Method:  "test/sse",
+	})
+	if err == nil {
+		t.Fatal("SendReceive: expected an error for a stream with no response, got nil")
+	}
+	if !strings.Contains(err.Error(), "SSE stream ended before response") {
+		t.Errorf("error = %v, want it to name the ended stream, not a deadline", err)
+	}
+
+	tr.pendingMu.Lock()
+	left := len(tr.pending)
+	tr.pendingMu.Unlock()
+	if left != 0 {
+		t.Errorf("%d requests left pending, want 0", left)
 	}
 }
 
