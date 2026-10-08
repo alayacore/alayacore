@@ -249,6 +249,11 @@ func (s *Session) sendThemeListMsg() {
 	}
 	confs, err := filepath.Glob(filepath.Join(s.ThemesFolder, "*.conf"))
 	if err != nil {
+		// Glob only fails on a pattern it cannot parse, and this pattern
+		// carries the user's own folder: a path with an unmatched bracket
+		// (legal on Unix) used to leave the list empty and unsent, which is
+		// the same silence as a folder that holds no themes.
+		s.writeError(fmt.Sprintf("themes folder %s: %v", s.ThemesFolder, err))
 		return
 	}
 	infos := make([]themeInfo, 0, len(confs))

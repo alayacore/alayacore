@@ -52,6 +52,34 @@ func systemMsgFrames(t *testing.T, output string, want string) []json.RawMessage
 	return frames
 }
 
+// A themes folder whose path glob cannot parse leaves the list unsent, and that
+// used to be silent too: an unmatched bracket in the path is legal on Unix, and
+// it is the user's own directory name, not a malformed theme.
+func TestThemeListReportsUnparsableFolderPath(t *testing.T) {
+	output := &syncOutput{}
+	s := &Session{
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{
+				Output:       output,
+				ThemesFolder: filepath.Join(t.TempDir(), "odd[name"),
+			},
+		},
+	}
+
+	s.sendThemeListMsg()
+
+	if lists := systemMsgFrames(t, output.String(), string(protocol.MsgTypeThemeList)); len(lists) != 0 {
+		t.Errorf("theme_list frames = %d, want none from a folder that cannot be listed", len(lists))
+	}
+	errFrames := systemMsgFrames(t, output.String(), string(protocol.MsgTypeError))
+	if len(errFrames) != 1 {
+		t.Fatalf("error frames = %d, want one for the unparsable path", len(errFrames))
+	}
+	if !strings.Contains(string(errFrames[0]), "odd[name") {
+		t.Errorf("error frame = %s, want the folder named", errFrames[0])
+	}
+}
+
 // A theme file that cannot be read is named instead of silently vanishing from
 // the list: the adapter offers what it was sent, so a missing theme used to be
 // indistinguishable from a theme file that is not there.
