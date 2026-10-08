@@ -301,6 +301,40 @@ func TestWindowBufferDiff(t *testing.T) {
 		}
 	})
 
+	t.Run("a removed blank line keeps its marker", func(t *testing.T) {
+		wb := NewWindowBuffer(80, DefaultStyles())
+		// old_string ends with a newline, new_string does not: the whole edit is
+		// the removal of one empty line. The window has to say so — a blank row
+		// drawn as context says nothing happened, which is what a reader who saw
+		// this call concluded.
+		formatted := GetHandler("edit_file").FormatCall([]byte(`{"path":"f.go","old_string":"a\nb\n","new_string":"a\nb"}`))
+		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "blank-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
+		wb.HandleToolOutput("blank-1", "File edited successfully", false, 0)
+		wb.ToggleFold(0)
+
+		plain := stripANSI(wb.GetAll(-1, false))
+		for _, line := range strings.Split(plain, "\n") {
+			if strings.TrimRight(line, " ") == "-" {
+				return
+			}
+		}
+		t.Errorf("a removed blank line should reach the frame as a '-' row, got:\n%s", plain)
+	})
+
+	t.Run("a path's colon is not the framing", func(t *testing.T) {
+		wb := NewWindowBuffer(80, DefaultStyles())
+		// A Windows path contains a colon, and the block's first line is the
+		// bare path: reading that colon as the "name: " framing would print
+		// "\src\a.go".
+		formatted := GetHandler("edit_file").FormatCall([]byte(`{"path":"C:\\src\\a.go","old_string":"x","new_string":"y"}`))
+		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "colon-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
+		wb.ToggleFold(0)
+
+		if plain := stripANSI(wb.GetAll(-1, false)); !strings.Contains(plain, `C:\src\a.go`) {
+			t.Errorf("the whole path should be shown, got:\n%s", plain)
+		}
+	})
+
 	t.Run("user and assistant messages fold defaults", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 

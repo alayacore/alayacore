@@ -39,32 +39,26 @@ func TestGenericHandlerCompactsPrettyJSON(t *testing.T) {
 	}
 }
 
-// TestComputeDiff verifies the LCS diff marks insertions, deletions, and
-// unchanged lines correctly.
-func TestComputeDiff(t *testing.T) {
-	oldLines := []string{"a", "b", "c", "d"}
-	newLines := []string{"a", "x", "c", "e"}
+// TestEditFileHandlerBlankLineChangeKeepsItsMarker pins the shape of a diff
+// whose whole change is a blank line. The call is one that actually happened,
+// as recorded: old_string ends with a newline and new_string does not, so the
+// two lines above it are identical and the entire edit is the removal of one
+// empty line. That row carries "- " like any other removal — the text after the
+// marker is empty, which is why the marker, not the text, has to say what
+// happened to the line.
+func TestEditFileHandlerBlankLineChangeKeepsItsMarker(t *testing.T) {
+	h := &EditFileHandler{}
+	input := `{"path":"internal/mcp/client.go",` +
+		`"old_string":"// loadTransport returns the current transport, or nil.\nfunc (c *Client) loadTransport() Transport {\n",` +
+		`"new_string":"// loadTransport returns the current transport, or nil.\nfunc (c *Client) loadTransport() Transport {"}`
 
-	pairs := computeDiff(oldLines, newLines)
-
-	var out []string
-	for _, p := range pairs {
-		switch {
-		case p.old == p.new:
-			out = append(out, "  "+p.old)
-		case p.old == "":
-			out = append(out, "+ "+p.new)
-		case p.new == "":
-			out = append(out, "- "+p.old)
-		default:
-			out = append(out, "- "+p.old)
-			out = append(out, "+ "+p.new)
-		}
-	}
-	got := strings.Join(out, "\n")
-	want := "  a\n- b\n+ x\n  c\n- d\n+ e"
+	got := h.FormatCall([]byte(input))
+	want := "edit_file: internal/mcp/client.go\n" +
+		"  // loadTransport returns the current transport, or nil.\n" +
+		"  func (c *Client) loadTransport() Transport {\n" +
+		"- "
 	if got != want {
-		t.Errorf("diff output:\n  got:  %q\n  want: %q", got, want)
+		t.Errorf("FormatCall:\n  got:  %q\n  want: %q", got, want)
 	}
 }
 

@@ -70,41 +70,25 @@ func (s ToolStatus) statusDot(labelStyle Style) (string, Style) {
 // original-line boundaries stay hard newlines and only over-long single
 // lines soft-wrap (wrapContent re-applies the per-line color on wrapped
 // continuations).
+//
+// The block is unframed by defaultToolRender, which strips `name:`, one
+// space, and the trailing newline — and nothing else, which is the point
+// here: this block's rows are the tool's own, and its last one is a row like
+// any other. Trimming the block's whitespace instead would delete that row
+// when it is blank, and a blank row is the entire evidence of a blank line
+// being added or removed.
 func RenderDiffContent(content, name string, styles *Styles) string {
-	// Prepare content: strip ANSI and expand tabs before processing
-	content = prepareContent(content)
-	if name != "" {
-		if stripped, ok := strings.CutPrefix(content, name+":"); ok {
-			content = strings.TrimSpace(stripped)
-		}
-	}
+	content = defaultToolRender(content, name)
 
 	lines := strings.Split(content, "\n")
-	if len(lines) == 0 {
-		return ""
-	}
-
-	for i, line := range lines {
-		if i == 0 {
-			// Header line: "tool_name: args" → show args only, plain.
-			if colon := strings.Index(line, ":"); colon >= 0 {
-				line = strings.TrimSpace(line[colon+1:])
-			}
-			lines[i] = line
-			continue
-		}
-		if line == "" {
-			continue
-		}
-		// Diff rows keep their -/+ markers; changed rows carry their diff
+	for i := 1; i < len(lines); i++ {
+		// Rows keep their -/+ markers; changed rows carry their diff
 		// colors (removed red, added green), context rows stay plain.
 		switch {
-		case styles != nil && strings.HasPrefix(line, "- "):
-			lines[i] = styles.DiffRemove.Render(line)
-		case styles != nil && strings.HasPrefix(line, "+ "):
-			lines[i] = styles.DiffAdd.Render(line)
-		default:
-			lines[i] = line
+		case styles != nil && strings.HasPrefix(lines[i], "- "):
+			lines[i] = styles.DiffRemove.Render(lines[i])
+		case styles != nil && strings.HasPrefix(lines[i], "+ "):
+			lines[i] = styles.DiffAdd.Render(lines[i])
 		}
 	}
 
