@@ -36,6 +36,7 @@ type httpTestServer struct {
 	requestCount  int
 	getCount      int
 	postReceived  chan struct{}
+	getReceived   chan struct{}
 	done          chan struct{}
 	wg            sync.WaitGroup
 	closeOnce     sync.Once
@@ -71,6 +72,7 @@ func newHTTPServer(t *testing.T, opts ...httpTestOption) *httpTestServer {
 		t:            t,
 		responseMode: "json",
 		postReceived: make(chan struct{}, 100),
+		getReceived:  make(chan struct{}, 100),
 		done:         make(chan struct{}),
 	}
 	for _, o := range opts {
@@ -116,6 +118,19 @@ func (s *httpTestServer) WaitForPost(t *testing.T) {
 	case <-s.postReceived:
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for POST")
+	}
+}
+
+// WaitForGET waits for a GET stream to have been accepted. An event rather
+// than a sleep: the test that measures how many GETs arrived must not decide
+// that by guessing how long one takes, and the count is only meaningful once
+// the connection it counts is known to have landed.
+func (s *httpTestServer) WaitForGET(t *testing.T) {
+	t.Helper()
+	select {
+	case <-s.getReceived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for GET")
 	}
 }
 
@@ -220,6 +235,11 @@ func (s *httpTestServer) handleGET(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.getCount++
 	s.mu.Unlock()
+
+	select {
+	case s.getReceived <- struct{}{}:
+	default:
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
@@ -485,7 +505,8 @@ func TestHTTPTransport_GETStream(t *testing.T) {
 	}
 	defer closeFn()
 
-	time.Sleep(100 * time.Millisecond)
+	srv.WaitForGET(t)
+
 	srv.mu.Lock()
 	count := srv.getCount
 	srv.mu.Unlock()
