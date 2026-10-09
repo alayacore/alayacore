@@ -155,10 +155,12 @@ turn writes the compacted history — the same one the model is running on.
 - Compaction is **fail-closed**: if the summarize request fails, the turn ends
   rather than continuing on the uncompressed history (reported as a system
   error). The request that would follow is the one the threshold exists to
-  prevent, so carrying on only postpones the rejection to the provider, which
-  reports it a step later without naming the summarization. Recovery is the
-  user's to choose: raise `context_limit`, lower `max_tokens`, `:fork`, or start
-  a new session.
+  prevent. The room that is left may carry the turn to its end anyway — that is
+  what this rule costs — but the constraint the user set would otherwise be
+  broken in silence, and where the provider enforces `prompt + max_tokens` the
+  failure is attributed to the summarize rather than to the request it failed to
+  prevent. Recovery is the user's to choose: raise `context_limit`, lower
+  `max_tokens`, `:fork`, or start a new session.
 - Every compaction writes a pre-summarize backup first, and the filename carries
   sub-second precision, so a task that compacts more than once never overwrites
   an earlier backup.

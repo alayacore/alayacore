@@ -111,10 +111,12 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	//
 	// A failed compaction ends the turn rather than continuing on the
 	// uncompressed history: --auto-summarize is a constraint the user declared,
-	// and the request that would follow is the one it exists to prevent, so
-	// carrying on only postpones the rejection to the provider — which reports
-	// it a step later, as an oversized request, without naming the summarization
-	// that failed to prevent it (docs/context-tracking.md).
+	// and the request that would follow is the one it exists to prevent. The
+	// room that is left may carry the turn to its end anyway — that is what this
+	// rule costs — but the constraint would otherwise be broken in silence, and
+	// where the provider enforces prompt + max_tokens it answers that request a
+	// step later with an error naming neither the summarize nor the threshold
+	// (docs/context-tracking.md).
 	//
 	// Nothing is retried here: the summarize request is an ordinary request, so
 	// sendWithRetry has already retried it (llm.IsRetryable) before its error
