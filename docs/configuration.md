@@ -52,7 +52,7 @@ protocol_type: "openai"
 base_url: "https://api.example.com/v1"
 api_key: "your-api-key"
 model_name: "model-identifier"
-context_limit: 128000
+context_limit: 131072
 reasoning_0: {"thinking":{"type":"disabled"}}
 reasoning_1: {"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}
 reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}
@@ -218,7 +218,7 @@ protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
 model_name: "qwen3:30b-a3b"
-context_limit: 128000
+context_limit: 131072
 ```
 
 ### Validation

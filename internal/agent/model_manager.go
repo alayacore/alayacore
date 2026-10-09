@@ -35,7 +35,7 @@ protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
 model_name: "gpt-oss:20b"
-context_limit: 128000
+context_limit: 131072
 `
 
 // knownProtocolTypes are the protocol types accepted by the provider factory.
