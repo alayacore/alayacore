@@ -55,8 +55,8 @@ model_name: "model-identifier"
 context_limit: 262144
 max_tokens: 65536
 reasoning_0: {"thinking":{"type":"disabled"}}
-reasoning_1: {"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}
-reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}
+reasoning_1: {"thinking":{"type":"enabled"},"reasoning_effort":"high"}
+reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}
 ```
 
 ### Fields
