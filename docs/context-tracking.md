@@ -152,6 +152,10 @@ turn writes the compacted history — the same one the model is running on.
   threshold of 75 has no room for the overshoot above and every summarize fails
   with a 400 (`prompt + max_tokens exceeds the context`). Keep the threshold
   below `(context_limit - max_tokens) / context_limit`.
+- A window of **262144 or less must name its own `max_tokens`**: the built-in
+  131072 is calibrated for a 1M context, and on a smaller window it takes half or
+  more of the room the prompt needs, putting the ceiling above within reach of
+  ordinary thresholds.
 - Compaction is **fail-closed**: if the summarize request fails, the turn ends
   rather than continuing on the uncompressed history (reported as a system
   error). The request that would follow is the one the threshold exists to

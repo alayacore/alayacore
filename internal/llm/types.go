@@ -9,9 +9,14 @@ import (
 	"time"
 )
 
-// DefaultMaxTokens is the default maximum output tokens when the user
-// doesn't specify one. 128K covers coding agents generating large code
-// blocks, multi-file changes, and long tool call chains.
+// DefaultMaxTokens is the maximum output tokens used when the user doesn't
+// specify one: an eighth of a 1M context, the window it is calibrated for. A
+// long turn needs the room — a coding agent writes large code blocks, multi-file
+// changes and long tool call chains — but a window of 262144 or less has to name
+// its own cap. At this value such a window leaves the prompt half of itself or
+// less, and that caps the --auto-summarize threshold with it, since a request is
+// accepted only while prompt + max_tokens fits the window
+// (docs/context-tracking.md).
 const DefaultMaxTokens = 131072
 
 // MessageRole represents the role of a message
