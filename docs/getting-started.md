@@ -15,7 +15,7 @@ base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
 model_name: "minicpm-v4.6"
 context_limit: 262144
-max_tokens: 4096
+max_tokens: 65536
 ```
 
 To use other providers, edit the config file — press `Ctrl+L` then `e` in the terminal, or edit it directly. See [configuration.md](configuration.md) for the full format.

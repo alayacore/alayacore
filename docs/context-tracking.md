@@ -147,11 +147,11 @@ turn writes the compacted history — the same one the model is running on.
   `prompt + max_tokens <= context_limit` — rejecting an over-limit request
   instead of truncating it, which is what fails the summarize request itself —
   the request can be sent only while the context stays under
-  `context_limit - max_tokens`. With a 262144-token context and `max_tokens:
-  65536` that ceiling is 75%, so a threshold of 75 has no room for the
-  overshoot above and every summarize fails with a 400 (`prompt + max_tokens
-  exceeds the context`). Keep the threshold below
-  `(context_limit - max_tokens) / context_limit`.
+  `context_limit - max_tokens` — with the default model config
+  (`context_limit: 262144`, `max_tokens: 65536`) that ceiling is 75%, so a
+  threshold of 75 has no room for the overshoot above and every summarize fails
+  with a 400 (`prompt + max_tokens exceeds the context`). Keep the threshold
+  below `(context_limit - max_tokens) / context_limit`.
 - Compaction is **fail-closed**: if the summarize request fails, the turn ends
   rather than continuing on the uncompressed history (reported as a system
   error). The request that would follow is the one the threshold exists to

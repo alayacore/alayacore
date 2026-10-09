@@ -34,18 +34,19 @@ type modelManager struct {
 // a machine with no GPU and nothing pulled yet, and a default the user has to
 // plan a download around is not a default.
 //
-// max_tokens is set rather than left at the 131072 default, which would reserve
-// half of this window and leave the --auto-summarize threshold nowhere to go
-// (docs/context-tracking.md). It has to stay under the model's own output cap:
-// a provider that checks the sum rejects the request outright, and this is the
-// config a first run sends.
+// max_tokens is the model's own output cap, and it must not exceed it: a
+// provider that validates rejects the request outright, and this is the config a
+// first run sends. Setting it also decides how much of the window a prompt may
+// use — the 131072 default would reserve half of this 262144 window and leave
+// the --auto-summarize threshold nowhere above 50%, where this leaves it at 75%
+// (docs/context-tracking.md).
 const defaultModelConfig = `name: "Ollama (127.0.0.1) / MiniCPM-V 4.6"
 protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
 model_name: "minicpm-v4.6"
 context_limit: 262144
-max_tokens: 4096
+max_tokens: 65536
 `
 
 // knownProtocolTypes are the protocol types accepted by the provider factory.
