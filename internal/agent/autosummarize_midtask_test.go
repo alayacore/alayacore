@@ -247,6 +247,57 @@ func TestAutoSummarizeTaskStartFailureSkipsTheTurn(t *testing.T) {
 	}
 }
 
+// TestAutoSummarizeTaskStartFailureSkipsContinue covers the same rule on the
+// :continue entry point, whose copy of it is its own branch: a retried turn runs
+// the task-start summarize first, and its failure has to end the turn there too.
+func TestAutoSummarizeTaskStartFailureSkipsContinue(t *testing.T) {
+	provider := &compactFailProvider{}
+	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
+	session := &Session{
+		sessionConfig: sessionConfig{
+			modelService:  &modelService{agent: agent},
+			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard},
+		},
+		sharedState: sharedState{ContextLimit: 100, ContextTokens: 70}, // over the 65% threshold
+		runState: runState{
+			taskEventCh:  make(chan taskEvent, 20),
+			taskResultCh: make(chan []llm.ContentPart, 1),
+		},
+	}
+	session.Contents = []llm.ContentPart{
+		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+		&llm.TextPart{Text: "partial", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant}},
+	}
+
+	go session.runTaskContinue(context.Background())
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case ev := <-session.taskEventCh:
+			session.handleTaskEvent(ev)
+		case contents := <-session.taskResultCh:
+			session.drainAndHandleDone(t, contents)
+			if got := provider.summarizeCalls(); got != 1 {
+				t.Fatalf("summarizeCalls = %d, want 1 (task-start summarize did not fire)", got)
+			}
+			if got := provider.normalRequestCount(); got != 0 {
+				t.Fatalf("normalRequestCount = %d, want 0 (the turn must not proceed)", got)
+			}
+			// The turn ended before runTaskContinue's own step, so the
+			// "Continue" it appends for an assistant tail was never added.
+			if containsText(session.Contents, "Continue") {
+				t.Fatalf("the turn proceeded past the failed compaction: %v", texts(session.Contents))
+			}
+			if !containsText(session.Contents, "partial") {
+				t.Fatalf("the history should be preserved: %v", texts(session.Contents))
+			}
+			return
+		case <-deadline:
+			t.Fatal("timed out waiting for the :continue task")
+		}
+	}
+}
+
 func texts(parts []llm.ContentPart) []string {
 	var out []string
 	for _, p := range parts {
