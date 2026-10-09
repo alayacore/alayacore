@@ -109,19 +109,17 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// summarization request itself (which runs with publishSteps=false) can
 	// never re-trigger it.
 	//
-	// A failed compaction ends the turn instead of continuing on the
-	// uncompressed history. --auto-summarize is a constraint the user declared,
-	// and the request that follows a failure is the one it exists to prevent:
-	// carrying on breaks the invariant and only postpones the rejection to the
-	// provider, which reports it a step later as an oversized request without
-	// naming the summarization that failed to prevent it. Fail-closed, and the
-	// recovery (raise context_limit, lower max_tokens, :fork, a new session) is
-	// the user's to choose.
+	// A failed compaction ends the turn rather than continuing on the
+	// uncompressed history: --auto-summarize is a constraint the user declared,
+	// and the request that would follow is the one it exists to prevent, so
+	// carrying on only postpones the rejection to the provider — which reports
+	// it a step later, as an oversized request, without naming the summarization
+	// that failed to prevent it (docs/context-tracking.md).
 	//
-	// Nothing is retried here: the summarize request is a normal request, so
-	// sendWithRetry has already retried it (see llm.IsRetryable) before its
-	// error reaches this point. What arrives here is permanent or exhausted,
-	// and the next step's context would only be larger.
+	// Nothing is retried here: the summarize request is an ordinary request, so
+	// sendWithRetry has already retried it (llm.IsRetryable) before its error
+	// arrives. What arrives is permanent or exhausted, and the next step's
+	// context would only be larger.
 	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
 		if !publishSteps || !s.exceedsAutoSummarizeThreshold(contextTokens) {
 			return nil, nil
@@ -476,7 +474,7 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 	// Its text is the request the model actually answered. It used to read
 	// "Continue", which named an instruction nobody gave — the summary answers
 	// "summarize the conversation", not "continue" — and collided with the
-	// resume turn three other call sites use that same word for.
+	// resume turn, which is the only other thing that word means here.
 	result := make([]llm.ContentPart, 0, 2)
 	requestID := s.histIncAndGet()
 	result = append(result, &llm.TextPart{
@@ -645,10 +643,8 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 //   runTaskNormal     — normal prompt. Appends user parts to history, calls
 //                       processPrompt. If the context was near the token limit,
 //                       it synchronously runs doAutoSummarize first to free
-//                       space, and a failure ends the turn there; a turn that
-//                       grows past the limit mid-flight is compacted between
-//                       steps by processPrompt's OnBeforeSend, which likewise
-//                       ends the turn on failure.
+//                       space; a turn that grows past the limit mid-flight is
+//                       compacted between steps by processPrompt's OnBeforeSend.
 //
 //   runTaskContinue   — retry last prompt. First runs the same task-start
 //                       auto-summarize as runTaskNormal, then: if the last
@@ -743,8 +739,7 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 	// Same task-start check as runTaskNormal: a retried turn is still a turn,
 	// and its history can be over the threshold. Done before "Continue" is
 	// appended, so the summarize prompt lands on the completed conversation
-	// rather than after a fresh user part. As in runTaskNormal, a failed
-	// compaction ends the turn.
+	// rather than after a fresh user part.
 	if s.shouldAutoSummarize() {
 		compacted, err := s.doAutoSummarize(ctx, contents)
 		if err != nil {

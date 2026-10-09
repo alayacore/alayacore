@@ -36,8 +36,8 @@ func (m *midTaskProvider) StreamMessages(_ context.Context, history []llm.Conten
 			continue
 		}
 		// "Continue" is the resume turn and nothing else: the compacted
-		// history's opening user turn is the summary request, so this word no
-		// longer appears twice in it meaning two different things.
+		// history's opening user turn is the summary request, so matching this
+		// word matches the resume.
 		switch tp.Text {
 		case summarizePrompt:
 			hasSummarize = true

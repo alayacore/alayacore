@@ -167,7 +167,7 @@ The `:summarize` command is a **task command** — it runs in a task goroutine a
    - **Blocked** — Unresolved errors, failing tests, open questions
    - **Next** — Ordered actions to resume
 2. Calls the LLM to generate the summary
-3. **Replaces the entire conversation history** with the summary (the user turn it answers — the summary request — followed by the assistant's summary response; the user turn is what keeps the compacted history from opening on an assistant message)
+3. **Replaces the entire conversation history** with the summary, preceded by the user turn it answers (the summary request) — the summary is an assistant message, so a turn has to come in front of it
 4. Resets `ContextTokens` to the summary's output token count via `setContextTokensEvent` (a dedicated event that corrects the value after the `stepFinishEvent` from `processPrompt` has been processed)
 
 ### ⚠️ Event ordering

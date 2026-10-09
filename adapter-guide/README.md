@@ -120,6 +120,7 @@ The adapter must be prepared to **receive** user tags on stdout in these scenari
 
 1. **Prompt echo** — When the user sends a prompt (UT + UE on stdin), the agent echoes each content part back on stdout with an assigned history ID before sending them to the LLM.
 2. **Session replay** — When a saved session file (key-value frontmatter + binary TLV body, specified via `--session`) is loaded, all historical content (including user messages) is replayed to the adapter on stdout with their original history IDs.
+3. **The agent's own user turns** — Not every user tag is something the user typed: the `Continue` that resumes a cancelled turn (`:continue`) and the one a mid-task compaction appends are written by the agent. They are parts of the conversation like any other, so they are echoed like any other.
 
 > **For adapter implementors:** You cannot assume user tags only appear on stdin.
 > The terminal adapter (`internal/adapters/terminal/output.go`), the plainio
@@ -478,10 +479,12 @@ The **semantics** of the history ID differ by tag type:
    - **Auto-save** arrives after the task completes (before the final `task`
      message with `in_progress:false`) — the conversation is unaffected, but
      the session file is stale and may be lost.
-   - **Pre-summarize backup / auto-summarization** arrive during the task.
-     A failed auto-summarization ends the turn rather than sending an
-     oversized request, and the task's own completion follows. Display both
-     so the user knows why the turn stopped and that the session is at risk.
+   - **Pre-summarize backup / auto-summarization** arrive during the task. A
+     failed auto-summarization ends the turn rather than sending the oversized
+     request that would follow, and the task's completion arrives behind it. A
+     failed backup does not stop the summarize. Display both: the first says
+     why the turn stopped, the second that a summarize which proceeds without
+     a backup leaves the original conversation unrecoverable.
 
 5. **Output stream broken**: On the first write error to stdout, the agent
    cancels the session context and stops processing. No further frames are

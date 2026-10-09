@@ -181,8 +181,7 @@ func TestRunTaskSummarize_NoTransientPollution(t *testing.T) {
 				t.Fatalf("final Contents = %v, want [summary request, summary]", session.Contents)
 			}
 			// The summary is an assistant message, so the compacted history
-			// opens on the user turn it answers: the summary request. It used to
-			// read "Continue", which is the resume word and not this.
+			// opens on the user turn it answers: the summary request.
 			if tp, ok := session.Contents[0].(*llm.TextPart); !ok ||
 				tp.Text != "Summarize the conversation so far." || tp.Role != llm.RoleUser {
 				t.Fatalf("final[0] = %#v, want the user summary request", session.Contents[0])
