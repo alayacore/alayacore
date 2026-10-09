@@ -20,8 +20,8 @@ import (
 //     context size over the threshold;
 //   - the summarize request (its history carries the summarize prompt) answers
 //     with a summary;
-//   - the step after compaction (its history starts with "Continue") answers
-//     with the plain final text.
+//   - the step after compaction (its history carries the trailing "Continue")
+//     answers with the plain final text.
 type midTaskProvider struct {
 	mu             sync.Mutex
 	summarizeCount int
@@ -35,6 +35,9 @@ func (m *midTaskProvider) StreamMessages(_ context.Context, history []llm.Conten
 		if !ok {
 			continue
 		}
+		// "Continue" is the resume turn and nothing else: the compacted
+		// history's opening user turn is the summary request, so this word no
+		// longer appears twice in it meaning two different things.
 		switch tp.Text {
 		case summarizePrompt:
 			hasSummarize = true

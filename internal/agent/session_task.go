@@ -424,7 +424,7 @@ func cleanIncompleteToolInputs(contents []llm.ContentPart) []llm.ContentPart {
 // ============================================================================
 
 // summarizeContents appends the summarize prompt, calls processPrompt,
-// and formats the response as a "Continue" + summary conversation.
+// and formats the response as a summary request + the assistant's summary.
 // On any failure, returns the original contents (without the prompt).
 func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
 	// Build and append the summarize prompt. It is an instruction to the model,
@@ -463,14 +463,26 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 		return contents, fmt.Errorf("summarization produced no text")
 	}
 
-	// Build the summarized conversation: a "Continue" user message
-	// followed by the summary text.
+	// Build the summarized conversation: the request the summary answers, as a
+	// user turn, followed by the summary itself.
+	//
+	// The user turn is structural, not decoration. The summary is an assistant
+	// message, so without a turn in front of it the compacted history would
+	// open on an assistant message — and the summary cannot move to the user
+	// side instead, because the next user part (the resuming prompt, or the
+	// trailing resume turn) would then group into the same turn as the summary
+	// and bury the instruction inside it.
+	//
+	// Its text is the request the model actually answered. It used to read
+	// "Continue", which named an instruction nobody gave — the summary answers
+	// "summarize the conversation", not "continue" — and collided with the
+	// resume turn three other call sites use that same word for.
 	result := make([]llm.ContentPart, 0, 2)
-	continueID := s.histIncAndGet()
+	requestID := s.histIncAndGet()
 	result = append(result, &llm.TextPart{
-		Text: "Continue",
+		Text: "Summarize the conversation so far.",
 		ContentPartMeta: llm.ContentPartMeta{
-			HistoryID: continueID,
+			HistoryID: requestID,
 			Role:      llm.RoleUser,
 		},
 	})
@@ -593,12 +605,12 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 		return nil, err
 	}
 	// End the replacement on a user turn. summarizeContents returns
-	// [Continue(user), summary(assistant)]; sending that as-is would be the one
-	// request in the session that ends on an assistant message, which every API
-	// reads as "continue this assistant turn" (prefill) — the model may keep
-	// writing the summary instead of resuming the work. A trailing "Continue"
-	// makes it an ordinary "respond to the user" turn, exactly as
-	// runTaskContinue does.
+	// [summary request (user), summary (assistant)]; sending that as-is would be
+	// the one request in the session that ends on an assistant message, which
+	// every API reads as "continue this assistant turn" (prefill) — the model
+	// may keep writing the summary instead of resuming the work. A trailing
+	// "Continue", the resume word the other call sites use, makes it an ordinary
+	// "respond to the user" turn, exactly as runTaskContinue does.
 	continuePart := &llm.TextPart{Text: "Continue"}
 	id := s.histIncAndGet()
 	continuePart.SetHistoryID(id)

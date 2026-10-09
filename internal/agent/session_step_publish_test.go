@@ -178,10 +178,14 @@ func TestRunTaskSummarize_NoTransientPollution(t *testing.T) {
 		case contents := <-session.taskResultCh:
 			session.drainAndHandleDone(t, contents)
 			if len(session.Contents) != 2 {
-				t.Fatalf("final Contents = %v, want [Continue, summary]", session.Contents)
+				t.Fatalf("final Contents = %v, want [summary request, summary]", session.Contents)
 			}
-			if tp, ok := session.Contents[0].(*llm.TextPart); !ok || tp.Text != "Continue" || tp.Role != llm.RoleUser {
-				t.Fatalf("final[0] = %#v, want user Continue", session.Contents[0])
+			// The summary is an assistant message, so the compacted history
+			// opens on the user turn it answers: the summary request. It used to
+			// read "Continue", which is the resume word and not this.
+			if tp, ok := session.Contents[0].(*llm.TextPart); !ok ||
+				tp.Text != "Summarize the conversation so far." || tp.Role != llm.RoleUser {
+				t.Fatalf("final[0] = %#v, want the user summary request", session.Contents[0])
 			}
 			if tp, ok := session.Contents[1].(*llm.TextPart); !ok || !strings.Contains(tp.Text, "Summary") {
 				t.Fatalf("final[1] = %#v, want summary text", session.Contents[1])
@@ -258,8 +262,8 @@ func TestDoAutoSummarizePublishesReplacement(t *testing.T) {
 				}
 				phase = 1
 				if len(session.Contents) != 2 ||
-					!containsText(session.Contents, "Continue") || !containsText(session.Contents, "Summary") {
-					t.Fatalf("Contents after replacement = %v, want [Continue, summary]", session.Contents)
+					!containsText(session.Contents, "Summarize the conversation so far.") || !containsText(session.Contents, "Summary") {
+					t.Fatalf("Contents after replacement = %v, want [summary request, summary]", session.Contents)
 				}
 			case promptPartsEvent:
 				if phase != 1 {
@@ -275,7 +279,7 @@ func TestDoAutoSummarizePublishesReplacement(t *testing.T) {
 			}
 		case contents := <-session.taskResultCh:
 			session.drainAndHandleDone(t, contents)
-			for _, want := range []string{"Continue", "Summary", "do it", "Final answer."} {
+			for _, want := range []string{"Summarize the conversation so far.", "Summary", "do it", "Final answer."} {
 				if !containsText(session.Contents, want) {
 					t.Fatalf("final Contents missing %q: %v", want, session.Contents)
 				}
