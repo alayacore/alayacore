@@ -432,6 +432,22 @@ The **semantics** of the history ID differ by tag type:
 - On session replay, ALL content parts (AT, AR, AF, UF, UT/UI/UA/UV/UD) carry a history ID,
   matching the format they had during live streaming
 
+### Summarize (`--auto-summarize` and `:summarize`)
+
+Compaction replaces the conversation, and no frame announces the replacement, so
+after one the transcript an adapter has accumulated is not the session's
+`Contents`. Three things to know:
+
+- **The summary arrives as ordinary assistant text** (At deltas, then AT), like
+  any other model output — it is produced by an ordinary request.
+- **Its frame's history ID is not the stored part's ID.** The ID is assigned
+  while streaming, and the compacted history then carries the summary as a fresh
+  part with a fresh ID. A window keyed by the frame's ID names a part no
+  `Contents` holds, and `:fork` on it answers `NOT_FOUND`.
+- **The user turn that opens the compacted history is not sent as a frame.** The
+  history opens on a user turn (the summary request); it is never echoed, so live
+  the summary appears with no user turn in front of it, and a reload shows it.
+
 ### Error handling
 
 1. **Corrupt session file**: If a content part in a saved session cannot be

@@ -141,8 +141,17 @@ turn writes the compacted history — the same one the model is running on.
 
 - The trigger reads the **last reported usage**, which is one tool result short
   of the request the next step will send — the exact count is only known once
-  that request returns. The threshold's headroom absorbs the difference; do not
-  set it flush against 100.
+  that request returns — so the compaction fires a little late, by about one
+  tool result.
+- The threshold's ceiling is **not 100%**. Where the provider requires
+  `prompt + max_tokens <= context_limit` — rejecting an over-limit request
+  instead of truncating it, which is what fails the summarize request itself —
+  the request can be sent only while the context stays under
+  `context_limit - max_tokens`. With a 262144-token context and `max_tokens:
+  65536` that ceiling is 75%, so a threshold of 75 has no room for the
+  overshoot above and every summarize fails with a 400 (`prompt + max_tokens
+  exceeds the context`). Keep the threshold below
+  `(context_limit - max_tokens) / context_limit`.
 - Compaction is **fail-closed**: if the summarize request fails, the turn ends
   rather than continuing on the uncompressed history (reported as a system
   error). The request that would follow is the one the threshold exists to
