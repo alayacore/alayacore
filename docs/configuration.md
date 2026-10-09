@@ -195,11 +195,11 @@ Notes:
 Separate models with `---`. The first model becomes active on startup (unless `runtime.conf` has a saved preference):
 
 ```
-name: "OpenAI GPT-4o"
+name: "OpenAI-compatible"
 protocol_type: "openai"
-base_url: "https://api.openai.com/v1"
+base_url: "https://api.example.com/v1"
 api_key: "sk-..."
-model_name: "gpt-4o"
+model_name: "your-128k-model"
 context_limit: 131072
 reasoning_1: {"thinking":{"type":"enabled"},"reasoning_effort":"high"}
 reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}
