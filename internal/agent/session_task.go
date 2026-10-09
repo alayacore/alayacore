@@ -427,15 +427,16 @@ func cleanIncompleteToolInputs(contents []llm.ContentPart) []llm.ContentPart {
 // and formats the response as a "Continue" + summary conversation.
 // On any failure, returns the original contents (without the prompt).
 func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
-	// Build and append the summarize prompt, assigning a history ID
-	// so the adapter can track it in the UI.
+	// Build and append the summarize prompt. It is an instruction to the model,
+	// not a turn the user took, so it is never echoed as a user tag: it is not
+	// part of Contents (the callers discard it on failure and the summary
+	// replaces it on success), and an ID advertised to the adapter that no
+	// record holds is one :fork cannot resolve. The notify frames around the
+	// summarize already say it is happening. It still takes a history ID, like
+	// every finalized part.
 	promptPart := &llm.TextPart{Text: summarizePrompt}
-	id := s.histIncAndGet()
-	promptPart.SetHistoryID(id)
+	promptPart.SetHistoryID(s.histIncAndGet())
 	promptPart.SetRole(llm.RoleUser)
-	if tag, val, err := contentPartToTLV(promptPart); err == nil && tag != "" {
-		s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
-	}
 
 	// Send the conversation (with the prompt) to the LLM. The prompt is
 	// appended to a copy: `contents` belongs to the caller (for a mid-task

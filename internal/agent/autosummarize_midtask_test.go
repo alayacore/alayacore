@@ -361,10 +361,18 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 	// The trailing "Continue" is part of the session's Contents, so the adapter
 	// must have been shown it too — otherwise it would appear only after a
 	// session reload, and the reloaded conversation would differ from the live
-	// one. (The summarize prompt uses "continuation", so "Continue" here is
-	// unambiguous.)
+	// one.
 	if !strings.Contains(output.String(), "Continue") {
 		t.Fatalf("trailing Continue was not echoed to the adapter; output:\n%s", output.String())
+	}
+
+	// The summarize prompt is the one part the agent builds that no record
+	// holds: the callers discard it, and the summary replaces the history it was
+	// appended to. So it is not echoed as a user turn — an ID the adapter was
+	// shown but Contents does not hold is one :fork cannot resolve.
+	firstLine, _, _ := strings.Cut(summarizePrompt, "\n")
+	if strings.Contains(output.String(), firstLine) {
+		t.Fatalf("the summarize prompt was echoed as a user turn; output:\n%s", output.String())
 	}
 }
 
