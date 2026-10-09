@@ -222,7 +222,23 @@ func replayInTmux(t *testing.T, tmux string, width, height int, stream []byte, c
 		t.Fatal(err)
 	}
 	done := filepath.Join(dir, "done")
-	socket := filepath.Base(dir)
+	// The socket file goes in this test's own directory, not tmux's default
+	// (/tmp/tmux-<uid>): kill-server stops the server but leaves the file behind.
+	// Short on purpose — a socket path is capped near 108 bytes.
+	sockDir, err := os.MkdirTemp("", "alaya-replay-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Registered before the kill-server cleanup below, so the server goes first.
+	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
+	// A name of its own, fresh per run. It was filepath.Base(dir), which is the
+	// subtest's "001" — the same name every run, over a socket file that was
+	// never removed. That is the reuse the caret e2e avoids by naming its socket
+	// with the pid and the clock.
+	socket := fmt.Sprintf("alaya-replay-%d-%d", os.Getpid(), time.Now().UnixNano())
+	// TMUX and TMUX_PANE are cleared for the same reason the caret e2e clears
+	// them: these checks run under whatever shell the reader used.
+	env := append(os.Environ(), "TMUX=", "TMUX_PANE=", "TMUX_TMPDIR="+sockDir)
 
 	cat := "cat " + src
 	if chunk > 0 {
@@ -233,7 +249,9 @@ func replayInTmux(t *testing.T, tmux string, width, height int, stream []byte, c
 	// A socket of its own: the reader's tmux, if any, is not this test's to
 	// kill.
 	run := func(verb ...string) *exec.Cmd {
-		return exec.Command(tmux, append([]string{"-L", socket}, verb...)...)
+		cmd := exec.Command(tmux, append([]string{"-L", socket}, verb...)...)
+		cmd.Env = env
+		return cmd
 	}
 	if out, err := run("new-session", "-d", "-s", "replay",
 		"-x", fmt.Sprint(width), "-y", fmt.Sprint(height), "sh", "-c", pane).CombinedOutput(); err != nil {

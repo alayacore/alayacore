@@ -75,12 +75,26 @@ type tmuxProgram struct {
 	socket  string
 	session string
 	dir     string
+	// sockDir is TMUX_TMPDIR for every invocation: where the socket file lands.
+	sockDir string
 }
 
 // startProgramInTmux launches the binary in a detached tmux pane of the given size
 // and waits for the prompt, mirroring what startProgram waits for over a pty.
 func startProgramInTmux(tb *testing.T, tmux, binary string, width, height int) *tmuxProgram {
 	tb.Helper()
+	// The socket file goes in a directory of this program's own, not tmux's
+	// default (/tmp/tmux-<uid>): kill-server stops the server but leaves the file
+	// behind, so the default location collected one per run and nothing owned
+	// them. Short on purpose — a socket path is capped near 108 bytes, and
+	// tb.TempDir()'s name is long enough to reach that on its own.
+	sockDir, err := os.MkdirTemp("", "alaya-caret-")
+	if err != nil {
+		tb.Fatalf("making a tmux socket directory: %v", err)
+	}
+	// Registered before p.close below, so the server is killed before the
+	// directory holding its socket is taken away.
+	tb.Cleanup(func() { _ = os.RemoveAll(sockDir) })
 	p := &tmuxProgram{
 		tb:   tb,
 		tmux: tmux,
@@ -90,6 +104,7 @@ func startProgramInTmux(tb *testing.T, tmux, binary string, width, height int) *
 		socket:  fmt.Sprintf("alaya-caret-%d-%d", os.Getpid(), time.Now().UnixNano()),
 		session: "caret",
 		dir:     tb.TempDir(),
+		sockDir: sockDir,
 	}
 	tb.Cleanup(p.close)
 
@@ -117,14 +132,23 @@ func startProgramInTmux(tb *testing.T, tmux, binary string, width, height int) *
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// run invokes tmux on this program's socket and returns its output. TMUX and
-// TMUX_PANE are cleared: tmux refuses to start a server from inside a session it
-// thinks it would have to nest in, and these checks run under whatever shell the
-// reader used. -L already puts the server on a socket of its own.
+// tmuxEnv is the environment every tmux invocation of this program runs with.
+// TMUX and TMUX_PANE are cleared: tmux refuses to start a server from inside a
+// session it thinks it would have to nest in, and these checks run under
+// whatever shell the reader used. TMUX_TMPDIR is where the socket file is put,
+// so it is this program's own directory — the one tb.Cleanup removes. run and
+// close both go through here, because a close that looked in another directory
+// would kill nothing and leave the server running.
+func (p *tmuxProgram) tmuxEnv() []string {
+	return append(os.Environ(), "TMUX=", "TMUX_PANE=", "TMUX_TMPDIR="+p.sockDir)
+}
+
+// run invokes tmux on this program's socket and returns its output. -L puts the
+// server on a socket of its own; see tmuxEnv for the rest of the environment.
 func (p *tmuxProgram) run(args ...string) string {
 	p.tb.Helper()
 	cmd := exec.Command(p.tmux, append([]string{"-L", p.socket}, args...)...)
-	cmd.Env = append(os.Environ(), "TMUX=", "TMUX_PANE=")
+	cmd.Env = p.tmuxEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		p.tb.Fatalf("tmux %s: %v\n%s", strings.Join(args, " "), err, out)
@@ -136,7 +160,7 @@ func (p *tmuxProgram) run(args ...string) string {
 // on the default socket.
 func (p *tmuxProgram) close() {
 	cmd := exec.Command(p.tmux, "-L", p.socket, "kill-server")
-	cmd.Env = append(os.Environ(), "TMUX=", "TMUX_PANE=")
+	cmd.Env = p.tmuxEnv()
 	_ = cmd.Run() // already dead when a test failed early; not an error worth having
 }
 
