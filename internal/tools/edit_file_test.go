@@ -230,3 +230,46 @@ func TestEditFileEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestEditFilePreservesFileMode pins that an edit keeps the target's exact
+// mode. CreateTemp makes the temp file 0600, so commit has to apply the
+// source's mode to it before the rename — a step the previous ordering ran
+// after the rename, where its failure landed the edit and still reported an
+// error. The modes are the source's own (not the temp's 0600), so a missing
+// chmod shows up here rather than looking like success.
+func TestEditFilePreservesFileMode(t *testing.T) {
+	for _, mode := range []os.FileMode{0644, 0604, 0755} {
+		t.Run(mode.String(), func(t *testing.T) {
+			f := filepath.Join(t.TempDir(), "f")
+			if err := os.WriteFile(f, []byte("hello world"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(f, mode); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := executeEditFile(context.Background(), EditFileInput{
+				Path:      f,
+				OldString: "hello",
+				NewString: "goodbye",
+			}); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			content, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(content) != "goodbye world" {
+				t.Errorf("content = %q, want %q", content, "goodbye world")
+			}
+			info, err := os.Stat(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != mode {
+				t.Errorf("mode = %v, want %v", info.Mode().Perm(), mode)
+			}
+		})
+	}
+}

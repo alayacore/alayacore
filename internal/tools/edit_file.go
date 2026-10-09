@@ -127,7 +127,26 @@ func (s *editSession) Write(p []byte) (int, error) {
 // commit finalizes the edit by atomically renaming the temp file over the
 // source. After a successful commit, Close() will not remove the temp file
 // (it no longer exists at its original path).
+//
+// The rename is the commit point, so everything that can fail comes before it
+// and nothing fallible may follow it. A chmod after the rename broke exactly
+// that: the file was replaced, the mode call failed, and the tool reported
+// failure for an edit that had already landed — the one outcome a caller
+// cannot recover from, because it contradicts what it was told.
 func (s *editSession) commit() error {
+	// CreateTemp makes the file 0600, so the source's mode has to be applied
+	// explicitly. Doing it on the temp handle (rather than by path after the
+	// rename) also keeps the final step the only step that moves the file.
+	if err := s.tempFile.Chmod(s.fileInfo.Mode()); err != nil {
+		return fmt.Errorf("failed to set file permissions: %w", err)
+	}
+
+	// Flush before the rename: the rename is atomic, but it does not order the
+	// data write behind it, so a power loss can leave the renamed file present
+	// but empty. Best effort, as in write_file — the data is already written
+	// and some filesystems reject Sync.
+	_ = s.tempFile.Sync()
+
 	// Close both files before rename to release all OS handles.
 	if err := s.tempFile.Close(); err != nil {
 		return fmt.Errorf("failed to close temp file: %w", err)
@@ -145,10 +164,6 @@ func (s *editSession) commit() error {
 		return fmt.Errorf("failed to replace file: %w", err)
 	}
 	s.committed = true
-
-	if err := os.Chmod(s.srcPath, s.fileInfo.Mode()); err != nil {
-		return fmt.Errorf("failed to restore file permissions: %w", err)
-	}
 
 	return nil
 }
