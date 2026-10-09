@@ -151,9 +151,21 @@ func (m *compactFailProvider) summarizeCalls() int {
 	return m.summarizeCount
 }
 
-// TestAutoSummarizeMidTaskFailureKeepsRunning: a failed mid-task summarization
-// must not fail the task. The turn continues on the uncompressed history.
-func TestAutoSummarizeMidTaskFailureKeepsRunning(t *testing.T) {
+// normalRequestCount counts the requests that were not summarize requests. A
+// turn that fails to compact ends before its next normal step, so this stays at
+// 1 mid-task and 0 at the task start.
+func (m *compactFailProvider) normalRequestCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.normalCalls
+}
+
+// TestAutoSummarizeMidTaskFailureEndsTheTurn: a failed mid-task summarization
+// ends the turn. Carrying on would send the oversized request the user's
+// --auto-summarize threshold exists to prevent, so the step after the failed
+// compaction is never issued — and the uncompressed history survives intact, so
+// :continue resumes from it rather than from a truncated one.
+func TestAutoSummarizeMidTaskFailureEndsTheTurn(t *testing.T) {
 	provider := &compactFailProvider{}
 	agent := llm.NewAgent(llm.AgentConfig{
 		Provider: provider,
@@ -187,88 +199,29 @@ func TestAutoSummarizeMidTaskFailureKeepsRunning(t *testing.T) {
 	if got := provider.summarizeCalls(); got != 1 {
 		t.Fatalf("summarizeCalls = %d, want 1 attempt", got)
 	}
-	if !containsText(session.Contents, "recovered") {
-		t.Fatalf("task did not finish after the failed summarize: %v", texts(session.Contents))
+	if got := provider.normalRequestCount(); got != 1 {
+		t.Fatalf("normalCalls = %d, want 1 (the turn ends instead of sending the next step)", got)
+	}
+	if containsText(session.Contents, "recovered") {
+		t.Fatalf("the step after the failed compaction was issued: %v", texts(session.Contents))
 	}
 	if !containsText(session.Contents, "working") {
 		t.Fatalf("failed compaction should leave the uncompressed history: %v", texts(session.Contents))
 	}
 }
 
-// repeatFailProvider asks for a tool on its first two normal steps (so the loop
-// stays over threshold across two step boundaries) and answers every summarize
-// request with nothing, so summarization always fails.
-type repeatFailProvider struct {
-	mu             sync.Mutex
-	normalCalls    int
-	summarizeCount int
-}
-
-func (m *repeatFailProvider) StreamMessages(_ context.Context, history []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
-	hasSummarize := false
-	for _, p := range history {
-		if tp, ok := p.(*llm.TextPart); ok && tp.Text == summarizePrompt {
-			hasSummarize = true
-		}
-	}
-	m.mu.Lock()
-	if hasSummarize {
-		m.summarizeCount++
-	} else {
-		m.normalCalls++
-	}
-	n := m.normalCalls
-	m.mu.Unlock()
-
-	return func(yield func(llm.StreamEvent, error) bool) {
-		switch {
-		case hasSummarize:
-			// No text: summarizeContents rejects this, so compaction fails.
-			yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 100, OutputTokens: 0}}, nil)
-		case n <= 2:
-			yield(llm.TextDeltaEvent{Delta: "working", Key: "block:0"}, nil)
-			yield(llm.ToolInputStartEvent{ID: "c", Name: "t", Key: "block:1"}, nil)
-			yield(llm.ToolInputDeltaEvent{ID: "c", Delta: `{}`, Key: "block:1"}, nil)
-			yield(llm.ToolInputCompleteEvent{ID: "c", Key: "block:1"}, nil)
-			yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 100, OutputTokens: 5}, StopReason: "tool_use"}, nil)
-		default:
-			if !yield(llm.TextDeltaEvent{Delta: "recovered", Key: "block:0"}, nil) {
-				return
-			}
-			yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 20, OutputTokens: 5}}, nil)
-		}
-	}, nil
-}
-
-func (m *repeatFailProvider) SetReasoningLevel(_ int)                       {}
-func (m *repeatFailProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *repeatFailProvider) SetVideoConfig(_ int, _ int)                   {}
-
-func (m *repeatFailProvider) summarizeCalls() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.summarizeCount
-}
-
-// TestAutoSummarizeMidTaskFailureIsNotRetriedPerStep: when a mid-task summarize
-// fails, it must not be attempted again on the following steps of the same turn
-// — that would repeat the failure and flood the adapter with one error per step.
-func TestAutoSummarizeMidTaskFailureIsNotRetriedPerStep(t *testing.T) {
-	provider := &repeatFailProvider{}
-	agent := llm.NewAgent(llm.AgentConfig{
-		Provider: provider,
-		Tools: []llm.Tool{{
-			Definition: llm.ToolDefinition{Name: "t", Description: "test", Schema: []byte(`{"type":"object"}`)},
-			Execute:    func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) { return nil, nil },
-		}},
-		MaxSteps: 10,
-	})
+// TestAutoSummarizeTaskStartFailureSkipsTheTurn: the same rule at the task
+// start. The compaction runs before the user's parts are appended, so a failure
+// ends the turn with the prompt never sent and the history untouched.
+func TestAutoSummarizeTaskStartFailureSkipsTheTurn(t *testing.T) {
+	provider := &compactFailProvider{}
+	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
 	session := &Session{
 		sessionConfig: sessionConfig{
 			modelService:  &modelService{agent: agent},
 			SessionConfig: SessionConfig{NoDelta: true, AutoSummarize: 65, Output: io.Discard},
 		},
-		sharedState: sharedState{ContextLimit: 100, ContextTokens: 10},
+		sharedState: sharedState{ContextLimit: 100, ContextTokens: 70}, // over the 65% threshold
 		runState:    runState{taskEventCh: make(chan taskEvent, 20)},
 	}
 	session.Contents = []llm.ContentPart{
@@ -278,10 +231,16 @@ func TestAutoSummarizeMidTaskFailureIsNotRetriedPerStep(t *testing.T) {
 	runOneTask(t, session, []llm.ContentPart{&llm.TextPart{Text: "do it"}})
 
 	if got := provider.summarizeCalls(); got != 1 {
-		t.Fatalf("summarizeCalls = %d, want 1 (a failed compaction must not retry every step)", got)
+		t.Fatalf("summarizeCalls = %d, want 1 (task-start summarize did not fire)", got)
 	}
-	if !containsText(session.Contents, "recovered") {
-		t.Fatalf("task did not finish: %v", texts(session.Contents))
+	if got := provider.normalRequestCount(); got != 0 {
+		t.Fatalf("normalCalls = %d, want 0 (the prompt must not be sent after a failed compaction)", got)
+	}
+	if containsText(session.Contents, "do it") {
+		t.Fatalf("the user's prompt was appended despite the failed compaction: %v", texts(session.Contents))
+	}
+	if !containsText(session.Contents, "hi") {
+		t.Fatalf("the history should be preserved: %v", texts(session.Contents))
 	}
 }
 

@@ -32,7 +32,7 @@ still detect the interruption by exit code. Ctrl-C during the stdin read
 phase (interactive use without EOF) aborts the read; Ctrl-C after the
 task finished only forces the exit code.
 
-Any SM error sets exit code `1` — including failed persistence (auto-save, pre-summarize backup) and failed auto-summarization, since these put the session at risk. Such errors also discard the buffered final answer: a script should retry or inspect the session file.
+Any SM error sets exit code `1` — including failed persistence (auto-save, pre-summarize backup) and failed auto-summarization, which ends the turn rather than sending the oversized request. Such errors also discard the buffered final answer: a script should retry or inspect the session file.
 
 Empty stdin produces no prompt and exits `0` with empty output.
 

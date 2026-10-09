@@ -479,9 +479,10 @@ The **semantics** of the history ID differ by tag type:
    - **Auto-save** arrives after the task completes (before the final `task`
      message with `in_progress:false`) — the conversation is unaffected, but
      the session file is stale and may be lost.
-   - **Pre-summarize backup / auto-summarization** arrive during the task;
-     the prompt continues (possibly over the context threshold). Display
-     them so the user knows the session is at risk.
+   - **Pre-summarize backup / auto-summarization** arrive during the task.
+     A failed auto-summarization ends the turn rather than sending an
+     oversized request, and the task's own completion follows. Display both
+     so the user knows why the turn stopped and that the session is at risk.
 
 5. **Output stream broken**: On the first write error to stdout, the agent
    cancels the session context and stops processing. No further frames are

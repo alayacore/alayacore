@@ -156,7 +156,10 @@ func TestDoAutoSummarizePreservesContentsOnError(t *testing.T) {
 	contents := []llm.ContentPart{
 		&llm.TextPart{Text: "existing content", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
 	}
-	result := session.doAutoSummarize(context.Background(), contents)
+	result, err := session.doAutoSummarize(context.Background(), contents)
+	if err == nil {
+		t.Fatal("doAutoSummarize returned nil error on a failed summarization")
+	}
 
 	if len(result) == 0 {
 		t.Fatal("doAutoSummarize returned empty on error")
@@ -200,7 +203,10 @@ func TestDoAutoSummarizeBuildSummaryFails(t *testing.T) {
 	contents := []llm.ContentPart{
 		&llm.TextPart{Text: "original", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
 	}
-	result := session.doAutoSummarize(context.Background(), contents)
+	result, err := session.doAutoSummarize(context.Background(), contents)
+	if err == nil {
+		t.Fatal("doAutoSummarize returned nil error when the summary produced no text")
+	}
 
 	// summarizeContents failed (no text) — original history preserved.
 	if len(result) != 1 {

@@ -143,10 +143,13 @@ turn writes the compacted history — the same one the model is running on.
   of the request the next step will send — the exact count is only known once
   that request returns. The threshold's headroom absorbs the difference; do not
   set it flush against 100.
-- Compaction is **best-effort**: if the summarize request fails, the task keeps
-  running on the uncompressed history (reported as a system error) rather than
-  failing, and the attempt is not repeated again in the same turn — the next
-  turn's task-start check retries from scratch.
+- Compaction is **fail-closed**: if the summarize request fails, the turn ends
+  rather than continuing on the uncompressed history (reported as a system
+  error). The request that would follow is the one the threshold exists to
+  prevent, so carrying on only postpones the rejection to the provider, which
+  reports it a step later without naming the summarization. Recovery is the
+  user's to choose: raise `context_limit`, lower `max_tokens`, `:fork`, or start
+  a new session.
 - Every compaction writes a pre-summarize backup first, and the filename carries
   sub-second precision, so a task that compacts more than once never overwrites
   an earlier backup.

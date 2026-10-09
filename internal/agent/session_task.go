@@ -107,23 +107,28 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// summarizes the conversation and hands the compacted history back for the
 	// rest of the turn. publishSteps gates this to real prompts, so the
 	// summarization request itself (which runs with publishSteps=false) can
-	// never re-trigger it. Compaction is best-effort: on failure we keep the
-	// uncompressed history rather than fail the task.
+	// never re-trigger it.
 	//
-	// A failure also stops further attempts for this turn: the next step only
-	// makes the context larger, so retrying would repeat the failure and flood
-	// the adapter with errors. The next turn's task-start check retries from
-	// scratch.
-	compactionFailed := false
+	// A failed compaction ends the turn instead of continuing on the
+	// uncompressed history. --auto-summarize is a constraint the user declared,
+	// and the request that follows a failure is the one it exists to prevent:
+	// carrying on breaks the invariant and only postpones the rejection to the
+	// provider, which reports it a step later as an oversized request without
+	// naming the summarization that failed to prevent it. Fail-closed, and the
+	// recovery (raise context_limit, lower max_tokens, :fork, a new session) is
+	// the user's to choose.
+	//
+	// Nothing is retried here: the summarize request is a normal request, so
+	// sendWithRetry has already retried it (see llm.IsRetryable) before its
+	// error reaches this point. What arrives here is permanent or exhausted,
+	// and the next step's context would only be larger.
 	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
-		if !publishSteps || compactionFailed || !s.exceedsAutoSummarizeThreshold(contextTokens) {
+		if !publishSteps || !s.exceedsAutoSummarizeThreshold(contextTokens) {
 			return nil, nil
 		}
 		compacted, err := s.compactForContinuation(ctx, contents, contextTokens)
 		if err != nil {
-			s.writeErrorf("Auto-summarization failed: %v", err)
-			compactionFailed = true
-			return nil, nil
+			return nil, fmt.Errorf("Auto-summarization failed: %w", err)
 		}
 		// The replacement is the published baseline now: the next step's
 		// delta is measured from its end, not from the old history's.
@@ -526,11 +531,17 @@ func (s *Session) summarizeBackup(contents []llm.ContentPart, contextTokens int6
 	}
 }
 
-// doAutoSummarize logs progress notifications, triggers summarization,
-// and reports failures as system errors.
-// Called synchronously from runTaskNormal when the context is near
-// the token limit — must complete before the user's prompt is processed.
-func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPart) []llm.ContentPart {
+// doAutoSummarize logs progress notifications and triggers summarization.
+// Called synchronously from runTaskNormal and runTaskContinue when the context
+// is near the token limit — it must complete before the user's turn is
+// processed, and the turn does not proceed if it fails.
+//
+// On success the conversation has been replaced by the summary. On failure it
+// returns the error and the caller ends the turn rather than sending a request
+// the --auto-summarize threshold exists to prevent (see onBeforeSend for the
+// same rule mid-task). The uncompressed history is returned unchanged and stays
+// the session's, so nothing is lost.
+func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
 	limit := s.ContextLimit
 	usage := float64(s.ContextTokens) * 100 / float64(limit)
 	s.writeNotifyf("Context usage at %d/%d tokens (%.0f%%). Auto-summarizing...",
@@ -544,8 +555,7 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 
 	result, err := s.summarizeContents(ctx, contents)
 	if err != nil {
-		s.writeErrorf("Auto-summarization failed: %v", err)
-		return result // == contents on failure: no replacement event, no copy
+		return contents, err
 	}
 
 	// Success: the conversation was replaced by the summary. Publish the
@@ -553,7 +563,7 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 	// clone transfers ownership: run() keeps this slice, while the task
 	// goroutine keeps appending to its own copy below.
 	s.sendEvent(contentsReplacedEvent{Contents: cloneParts(result)})
-	return result
+	return result, nil
 }
 
 // compactForContinuation summarizes the conversation between two agent steps
@@ -571,8 +581,8 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 // count processPrompt keeps). It is passed, not read from s.ContextTokens,
 // because this runs on the task goroutine while run() is writing that field.
 //
-// On failure it returns the error and the caller keeps the uncompressed
-// history — compaction is best-effort, never a reason to fail a running task.
+// On failure it returns the error, which ends the turn: the caller must not
+// continue on the uncompressed history (see onBeforeSend for why).
 func (s *Session) compactForContinuation(ctx context.Context, contents []llm.ContentPart, contextTokens int64) ([]llm.ContentPart, error) {
 	s.writeNotify("Context limit reached. Summarizing to continue...")
 	s.summarizeBackup(contents, contextTokens)
@@ -622,8 +632,10 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 //   runTaskNormal     — normal prompt. Appends user parts to history, calls
 //                       processPrompt. If the context was near the token limit,
 //                       it synchronously runs doAutoSummarize first to free
-//                       space; a turn that grows past the limit mid-flight is
-//                       compacted between steps by processPrompt's OnBeforeSend.
+//                       space, and a failure ends the turn there; a turn that
+//                       grows past the limit mid-flight is compacted between
+//                       steps by processPrompt's OnBeforeSend, which likewise
+//                       ends the turn on failure.
 //
 //   runTaskContinue   — retry last prompt. First runs the same task-start
 //                       auto-summarize as runTaskNormal, then: if the last
@@ -645,7 +657,8 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 // compactForContinuation (from processPrompt's OnBeforeSend) both run
 // synchronously inside the turn that needs the space — the first before a new
 // prompt is processed, the second between two of its steps — because each must
-// free token space before the next request is sent. runTaskSummarize runs as an
+// free token space before the next request is sent. When one fails the turn
+// ends rather than sending that request anyway. runTaskSummarize runs as an
 // independent task goroutine because :summarize is an explicit user command,
 // not a precondition for another operation.
 // ============================================================================
@@ -660,7 +673,12 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 	}()
 
 	if s.shouldAutoSummarize() {
-		contents = s.doAutoSummarize(ctx, contents)
+		compacted, err := s.doAutoSummarize(ctx, contents)
+		if err != nil {
+			s.writeErrorf("Auto-summarization failed: %v", err)
+			return
+		}
+		contents = compacted
 	}
 
 	// Shrink oversized images before they are numbered and echoed: the adapter,
@@ -712,9 +730,15 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 	// Same task-start check as runTaskNormal: a retried turn is still a turn,
 	// and its history can be over the threshold. Done before "Continue" is
 	// appended, so the summarize prompt lands on the completed conversation
-	// rather than after a fresh user part.
+	// rather than after a fresh user part. As in runTaskNormal, a failed
+	// compaction ends the turn.
 	if s.shouldAutoSummarize() {
-		contents = s.doAutoSummarize(ctx, contents)
+		compacted, err := s.doAutoSummarize(ctx, contents)
+		if err != nil {
+			s.writeErrorf("Auto-summarization failed: %v", err)
+			return
+		}
+		contents = compacted
 	}
 
 	lastPart := contents[len(contents)-1]
