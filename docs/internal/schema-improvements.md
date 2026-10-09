@@ -131,7 +131,7 @@ All five built-in tools use this pattern:
 | Tool | File | Lines |
 |------|------|-------|
 | `read_file` | `internal/tools/read_file.go` | ~180 |
-| `edit_file` | `internal/tools/edit_file.go` | ~319 |
+| `edit_file` | `internal/tools/edit_file.go` | ~334 |
 | `write_file` | `internal/tools/write_file.go` | ~39 |
 | `execute_command` | `internal/tools/execute_command.go` | ~364 |
 | `search_content` | `internal/tools/search_content.go` | ~211 |

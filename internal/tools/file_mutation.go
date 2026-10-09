@@ -28,9 +28,9 @@ import "sync"
 // so there is nothing to gain from finer granularity and no state to get wrong.
 //
 // It is NOT reentrant: a mutating file tool must never call another. Today
-// neither edit_file nor write_file calls the other, and the fallbacks
-// (executeEditFileTolerant, writeInPlace) operate on a session already under the
-// lock rather than re-entering it.
+// neither edit_file nor write_file calls the other, and write_file's in-place
+// fallback (writeInPlace) runs inside the same critical section rather than
+// re-entering it.
 //
 // Scope: this serializes writes within this process only. Concurrent writers
 // outside it — another instance, an editor, git, a sync client, or a shell
