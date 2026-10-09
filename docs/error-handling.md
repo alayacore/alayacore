@@ -59,7 +59,7 @@ if choice.FinishReason != "" && choice.FinishReason != "stop" &&
 
 ### Implementation
 
-`internal/llm/providers/anthropic.go` → `handleMessageDelta`:
+`internal/llm/providers/anthropic.go` → `handleStopReason`:
 
 ```go
 if stopReason == "refusal" {
