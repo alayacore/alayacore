@@ -52,7 +52,7 @@ protocol_type: "openai"
 base_url: "https://api.example.com/v1"
 api_key: "your-api-key"
 model_name: "model-identifier"
-context_limit: 131072
+context_limit: 262144
 max_tokens: 65536
 reasoning_0: {"thinking":{"type":"disabled"}}
 reasoning_1: {"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}
@@ -198,7 +198,7 @@ Separate models with `---`. The first model becomes active on startup (unless `r
 ```
 name: "DeepSeek Flash"
 protocol_type: "openai"
-base_url: "https://api.deepseek.com/v1"
+base_url: "https://api.deepseek.com"
 api_key: "sk-..."
 model_name: "deepseek-flash"
 context_limit: 1048576
