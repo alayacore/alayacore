@@ -41,7 +41,7 @@ func executeWriteFile(_ context.Context, args WriteFileInput) ([]llm.ContentPart
 
 ## Before vs After
 
-The old approach required writing raw JSON schemas and manual `json.Unmarshal` in every tool function. The new approach uses struct tags and `TypedExecute` to eliminate both. See the Pattern Overview above for the current style — the tool definition is ~30 lines instead of 70+, with compile-time type safety and no manual JSON handling.
+The old approach required writing raw JSON schemas and manual `json.Unmarshal` in every tool function. The new approach uses struct tags and `TypedExecute` to eliminate both. See the Pattern Overview above for the current style — a tool definition is a tagged struct and one `TypedExecute` call, with compile-time type safety and no manual JSON handling.
 
 ## Schema Tag Syntax
 

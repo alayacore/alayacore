@@ -151,16 +151,22 @@ four comments is a rule that disagrees with itself after the next change, and th
 reader cannot tell which copy is current. When the pull is to re-explain something
 nearby, link instead: a symbol name, or `docs/...md#anchor`.
 
-Two corollaries:
+Three corollaries:
 
 - **Don't describe what this tree no longer has.** No paths to deleted files, no
   commit hashes in comments — the commit message is where history lives, and a
   pointer to a file that is gone is worse than none.
 - **Keep a comment shorter than the code it explains.** Past roughly 20 lines it
   is a design note, not a line comment: it belongs in `docs/`, linked once.
+- **Don't write what a command can tell you.** No line numbers (`width.go:NNN`),
+  no line counts (`~N lines`): gofmt, a comment or a test split moves them, and
+  the reader who wants the number runs the command. Say what is true of the
+  design and let the number be derived.
 
-`misc/check-doc-links.sh` (`make check-doc-links`, run in CI) fails on a relative
-Markdown link that does not resolve from the file that wrote it.
+`misc/check-docs.sh` (`make check-docs`, run in CI) fails on both shapes a tool
+can decide exactly: a relative Markdown link that does not resolve from the file
+that wrote it, and a perishable shape in prose — a line number or a line count.
+It guesses at nothing else; its header says what it leaves to review, and why.
 
 The rule is not "write less" — this repo's comments explain *why*, and that is the
 point. It is "do not write the same thing twice".
