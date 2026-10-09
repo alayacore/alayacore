@@ -230,7 +230,7 @@ func containsSubstring(s, substr string) bool {
 // segments and the group.
 func TestStatusBarShowsActiveModelRightAligned(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":128000}}`)
+	out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"test-model","context_limit":131072}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
@@ -240,11 +240,11 @@ func TestStatusBarShowsActiveModelRightAligned(t *testing.T) {
 
 	// The model group — model name plus the reasoning level riding after
 	// it — is the last thing on the line (right-aligned).
-	if !strings.HasSuffix(plain, "gpt-4o | R0") {
+	if !strings.HasSuffix(plain, "test-model | R0") {
 		t.Errorf("status bar should end with the model group, got %q", plain)
 	}
 	// The flexible padding goes between the left segments and the group.
-	if !strings.Contains(plain, " gpt-4o") {
+	if !strings.Contains(plain, " test-model") {
 		t.Errorf("expected padding before the right-aligned model, got %q", plain)
 	}
 	// Flush against the right edge: no trailing cells after the model.
@@ -470,7 +470,7 @@ func TestFormatTokenCount(t *testing.T) {
 		{1000000, "1M"},
 		{1500000, "1.5M"},
 		{10000000, "10M"},
-		{128000, "128K"},
+		{131072, "131.1K"},
 	}
 
 	for _, tt := range tests {

@@ -64,20 +64,20 @@ func TestParseModelConfig(t *testing.T) {
 	}{
 		{
 			name: "single model",
-			input: `name: "OpenAI GPT-4o"
+			input: `name: "OpenAI-compatible"
 protocol_type: "openai"
-base_url: "https://api.openai.com/v1"
+base_url: "https://api.example.com/v1"
 api_key: "test-key"
-model_name: "gpt-4o"
-context_limit: 128000`,
+model_name: "your-128k-model"
+context_limit: 131072`,
 			expected: []modelConfig{
 				{
-					Name:         "OpenAI GPT-4o",
+					Name:         "OpenAI-compatible",
 					ProtocolType: "openai",
-					BaseURL:      "https://api.openai.com/v1",
+					BaseURL:      "https://api.example.com/v1",
 					APIKey:       "test-key",
-					ModelName:    "gpt-4o",
-					ContextLimit: 128000,
+					ModelName:    "your-128k-model",
+					ContextLimit: 131072,
 				},
 			},
 		},
