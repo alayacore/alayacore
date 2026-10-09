@@ -9,12 +9,12 @@ alayacore
 On first run, AlayaCore auto-creates a default model config at `~/.alayacore/model.conf` configured for Ollama:
 
 ```
-name: "Ollama (127.0.0.1) / GPT OSS 20B"
+name: "Ollama (127.0.0.1) / MiniCPM-V 4.6"
 protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
-model_name: "gpt-oss:20b"
-context_limit: 131072
+model_name: "minicpm-v4.6"
+context_limit: 262144
 ```
 
 To use other providers, edit the config file — press `Ctrl+L` then `e` in the terminal, or edit it directly. See [configuration.md](configuration.md) for the full format.

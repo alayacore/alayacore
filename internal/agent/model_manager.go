@@ -30,12 +30,12 @@ type modelManager struct {
 }
 
 // defaultModelConfig is the default model configuration written when config file is empty
-const defaultModelConfig = `name: "Ollama (127.0.0.1) / GPT OSS 20B"
+const defaultModelConfig = `name: "Ollama (127.0.0.1) / MiniCPM-V 4.6"
 protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
-model_name: "gpt-oss:20b"
-context_limit: 131072
+model_name: "minicpm-v4.6"
+context_limit: 262144
 `
 
 // knownProtocolTypes are the protocol types accepted by the provider factory.
