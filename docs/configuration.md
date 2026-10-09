@@ -196,30 +196,26 @@ Notes:
 Separate models with `---`. The first model becomes active on startup (unless `runtime.conf` has a saved preference):
 
 ```
-name: "OpenAI-compatible"
+name: "DeepSeek Flash"
 protocol_type: "openai"
-base_url: "https://api.example.com/v1"
+base_url: "https://api.deepseek.com/v1"
 api_key: "sk-..."
-model_name: "your-128k-model"
-context_limit: 131072
-reasoning_1: {"thinking":{"type":"enabled"},"reasoning_effort":"high"}
-reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}
+model_name: "deepseek-flash"
+context_limit: 1048576
+# No max_tokens, and this is the window that does not need one: the built-in
+# 131072 is exactly an eighth of it, which is what it is calibrated for. A window
+# of 262144 or less has to name its own.
 ---
-name: "Anthropic Claude Sonnet"
-protocol_type: "anthropic"
-base_url: "https://api.anthropic.com"
-api_key: "sk-ant-..."
-model_name: "claude-sonnet-4-20250514"
-context_limit: 200000
-reasoning_1: {"thinking":{"type":"enabled"},"output_config":{"effort":"high"}}
-reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}
----
-name: "Ollama / Qwen3 30B"
+name: "Qwen3.8-27B"
 protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
 api_key: "no-key-by-default"
-model_name: "qwen3:30b-a3b"
-context_limit: 131072
+model_name: "qwen3.8:27b"
+context_limit: 262144
+# This one does name it: at the 131072 default the prompt would be left half of
+# the window or less, and where a provider checks the sum that is also the
+# --auto-summarize ceiling (see context-tracking.md).
+max_tokens: 65536
 ```
 
 ### Validation
