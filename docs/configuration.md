@@ -68,7 +68,7 @@ reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max"}}
 | `api_key` | Yes | API key for authentication |
 | `model_name` | Yes | Model identifier sent to the API |
 | `context_limit` | No | Maximum context window in tokens. `0` means unlimited. Used for context display and auto-summarization. |
-| `max_tokens` | No | Maximum output tokens per response. `0` means use the default (131072). Sent as `max_tokens` for Anthropic, `max_completion_tokens` for OpenAI. Set explicitly for models with lower output limits. |
+| `max_tokens` | No | Maximum output tokens per response. `0` means use the default (131072). Sent as `max_tokens` for Anthropic, `max_completion_tokens` for OpenAI. Set explicitly for models with lower output limits — and to leave a prompt room where the provider requires `prompt + max_tokens <= context_limit`, which is what caps the `--auto-summarize` threshold (see [context-tracking.md](context-tracking.md)). |
 | `reasoning_0` | No | Raw provider-level JSON merged into the request body when reasoning level is **0** (off). Top-level keys must match the provider's wire format. Omitted (or empty) → no reasoning-related fields are sent for that level. |
 | `reasoning_1` | No | Same as `reasoning_0` but for reasoning level **1** (normal). |
 | `reasoning_2` | No | Same as `reasoning_0` but for reasoning level **2** (max). |
@@ -200,7 +200,7 @@ protocol_type: "openai"
 base_url: "https://api.openai.com/v1"
 api_key: "sk-..."
 model_name: "gpt-4o"
-context_limit: 128000
+context_limit: 131072
 reasoning_1: {"thinking":{"type":"enabled"},"reasoning_effort":"high"}
 reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}
 ---

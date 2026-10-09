@@ -74,8 +74,11 @@ type tmuxProgram struct {
 	tmux    string
 	socket  string
 	session string
+	// dir is what the pane runs with as HOME, and where its launcher script is
+	// written. sockDir is TMUX_TMPDIR for every invocation: where the socket
+	// file lands. The two are apart because a socket path is length-capped and
+	// this name is long.
 	dir     string
-	// sockDir is TMUX_TMPDIR for every invocation: where the socket file lands.
 	sockDir string
 }
 

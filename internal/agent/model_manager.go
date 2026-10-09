@@ -29,7 +29,10 @@ type modelManager struct {
 	allRejected bool     // true when model blocks were present but ALL were rejected (no usable models remain)
 }
 
-// defaultModelConfig is the default model configuration written when config file is empty
+// defaultModelConfig is the default model configuration written when config
+// file is empty. The model is a small one on purpose: a first run has to work on
+// a machine with no GPU and nothing pulled yet, and a default the user has to
+// plan a download around is not a default.
 const defaultModelConfig = `name: "Ollama (127.0.0.1) / MiniCPM-V 4.6"
 protocol_type: "anthropic"
 base_url: "http://127.0.0.1:11434"
