@@ -209,26 +209,35 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			contents = compacted
 		}
 
-		// Splice in any steering that has arrived since the last step. It goes
-		// last — after the tool results the model just asked for, and after a
-		// compaction replacement — so it is the freshest thing the model reads
-		// and nothing downstream can fold it away.
+		// Append the user parts this step must be sent with. Two things can
+		// supply them: the user's own words, if any have arrived since the last
+		// boundary, or — when there are none and the history ends on an
+		// assistant message — a synthetic "Continue". The second case is the
+		// compaction's: its replacement ends on the assistant summary, and a
+		// request must not end on an assistant message (every API reads that as
+		// "continue this assistant turn" — prefill). A boundary that did not
+		// compact ends on tool results, so nothing is appended there.
 		//
-		// The history this step is sent on, captured before the splice. A step
-		// that never finishes publishes nothing, and this is the base the words
+		// Either way the parts go last — after the tool results the model just
+		// asked for, and after a compaction replacement — so they are the
+		// freshest thing the model reads and nothing downstream can fold them
+		// away.
+		//
+		// The history this step is sent on, captured before the append. A step
+		// that never finishes publishes nothing, and this is the base the parts
 		// were appended to; the failure path below adds them back to it. It is
 		// taken here, after the compaction, precisely so that a boundary that
-		// both compacted and spliced keeps the compacted form.
+		// both compacted and appended keeps the compacted form.
 		stepBase = contents
-		if parts := s.takeSteering(); len(parts) > 0 {
-			// The whole of the words' admission happens here, at the moment
-			// they enter a request — fit, role, number, echo — exactly as a
-			// fresh prompt gets it in runTaskNormal. Not at the step's finish:
-			// the adapter draws windows in the order their frames arrive, so an
+		if parts := s.stepUserParts(contents); len(parts) > 0 {
+			// The whole of their admission happens here, at the moment they
+			// enter a request — fit, role, number, echo — exactly as a fresh
+			// prompt gets it in runTaskNormal. Not at the step's finish: the
+			// adapter draws windows in the order their frames arrive, so an
 			// echo deferred to OnStepFinish lands after the very answer it
-			// steered. The words are sent to the model here, so they are in the
+			// steered. They are sent to the model here, so they are in the
 			// conversation from here.
-			parts = s.spliceSteering(parts)
+			parts = s.spliceUserParts(parts)
 			// Publish them to Contents in the same breath as that echo — the
 			// same event runTaskNormal publishes a fresh prompt's parts with —
 			// so a :save or :fork during this step sees the words the transcript
@@ -308,28 +317,55 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 // processPrompt Dependencies: deltaWriter, TLV helpers, callbacks
 // ============================================================================
 
-// spliceSteering prepares the parts of one steering batch for the step they are
-// being spliced into, and returns them for the caller to append to the request:
-// it fits oversized attachments, gives each part the user role, numbers it, and
-// echoes it to the adapter. It is the whole of a steering part's admission, and
-// it is the same treatment a fresh prompt gets in runTaskNormal — fit, role,
-// number, echo — at the same point in the life of the part: before the request
-// that carries it is built.
+// stepUserParts returns the user parts a step's request must be sent with: the
+// user's steering if any is waiting, and otherwise the synthetic "Continue" a
+// compaction's replacement needs. It is empty when the boundary needs neither,
+// which is the ordinary case.
 //
-// It runs at the SPLICE and not at the step's finish, for two reasons. The
+// The rule behind the second case is that a request must not end on an
+// assistant message: every API reads that as "continue this assistant turn"
+// (prefill), and the model may keep writing the summary instead of resuming the
+// work. A compaction's replacement ends on the assistant summary, so it needs
+// the trailing user turn; a boundary that did not compact ends on the tool
+// results the model just asked for, and needs nothing.
+func (s *Session) stepUserParts(contents []llm.ContentPart) []llm.ContentPart {
+	parts := s.takeSteering()
+	if len(parts) > 0 {
+		return parts
+	}
+	if len(contents) > 0 && contents[len(contents)-1].GetRole() == llm.RoleAssistant {
+		return []llm.ContentPart{&llm.TextPart{Text: "Continue"}}
+	}
+	return nil
+}
+
+// spliceUserParts prepares the user parts being appended to the step about to
+// be sent, and returns them for the caller to append to the request: it fits
+// oversized attachments, gives each part the user role, numbers it, and echoes
+// it to the adapter. It is the whole of their admission, and it is the same
+// treatment a fresh prompt gets in runTaskNormal — fit, role, number, echo — at
+// the same point in the life of the parts: before the request that carries them
+// is built.
+//
+// Two things arrive through it: a batch of the user's steering, and the
+// synthetic "Continue" a compaction's replacement needs so the request does not
+// end on an assistant message (see onBeforeSend). They are the same kind of
+// thing to everything downstream — a user part appended at a boundary — and
+// living in one place is what keeps them from diverging.
+//
+// It runs at the boundary and not at the step's finish, for two reasons. The
 // adapter renders windows in the order their frames arrive
 // (WindowBuffer.AppendOrUpdate appends), so an echo deferred to OnStepFinish
 // would land after the very answer the words steered — the prompt shown under
-// the reasoning it caused. And the words are in the request from this moment, so
-// they are in the conversation from this moment: the step's finish only carries
-// them into Contents (by riding the step's delta), and a step that then fails
-// cannot take back what the model was already sent.
+// the reasoning it caused. And the parts are in the request from this moment, so
+// they are in the conversation from this moment: a step that then fails cannot
+// take back what the model was already sent.
 //
 // The role is set here and not left to the caller: each provider groups the
 // history by role and stamps that role onto its wire messages, so a part whose
 // role is still unset goes out as an empty-role message and the API rejects the
 // whole request.
-func (s *Session) spliceSteering(parts []llm.ContentPart) []llm.ContentPart {
+func (s *Session) spliceUserParts(parts []llm.ContentPart) []llm.ContentPart {
 	parts = llm.ShrinkImages(parts)
 	for _, part := range parts {
 		part.SetRole(llm.RoleUser)
@@ -761,29 +797,16 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 	if err != nil {
 		return nil, err
 	}
-	// End the replacement on a user turn. summarizeContents returns
-	// [summary request (user), summary (assistant)]; sending that as-is would be
-	// the one request in the session that ends on an assistant message, which
-	// every API reads as "continue this assistant turn" (prefill) — the model
-	// may keep writing the summary instead of resuming the work. A trailing
-	// "Continue", the resume word the other call sites use, makes it an ordinary
-	// "respond to the user" turn, exactly as runTaskContinue does.
-	continuePart := &llm.TextPart{Text: "Continue"}
-	id := s.histIncAndGet()
-	continuePart.SetHistoryID(id)
-	continuePart.SetRole(llm.RoleUser)
-	result = append(result, continuePart)
-
-	// Echo it, as runTaskContinue echoes its "Continue": the part is part of the
-	// session's Contents (published just below), so the adapter must be shown it
-	// too — otherwise it would appear only after a session reload, and the
-	// reloaded conversation would differ from the live one.
-	if tag, val, err := contentPartToTLV(continuePart); err == nil && tag != "" {
-		s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
-	}
-
-	// Publish the replacement so :save during the task saves the compacted form
-	// (the adapter was already told about the trailing "Continue" above).
+	// The replacement is [summary request (user), summary (assistant)], and it
+	// ends on the assistant — which a request must not do: every API reads a
+	// trailing assistant message as "continue this assistant turn" (prefill),
+	// and the model may keep writing the summary instead of resuming the work.
+	// The trailing user turn that fixes that is added by the caller, which is
+	// the one place that knows whether the user's own words are arriving to end
+	// the request instead — in which case no synthetic turn is needed (see the
+	// append in onBeforeSend).
+	//
+	// Publish the replacement so :save during the task saves the compacted form.
 	s.sendEvent(contentsReplacedEvent{Contents: cloneParts(result)})
 	return result, nil
 }

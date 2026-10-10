@@ -120,11 +120,16 @@ turn — and folds them into the summary. The compacted history then replaces th
 conversation, and the turn continues from it. Nothing is discarded without the
 model having seen it.
 
-The replacement ends on a synthetic user `Continue`, so the next request is an
-ordinary "respond to the user" turn. Ending on the assistant summary would be
-the one request in the session that ends on an assistant message, which every
-API reads as *prefill* — "continue this assistant turn" — and the model may keep
-writing the summary instead of resuming the work.
+The replacement ends on the assistant summary. That would be the one request in
+the session that ends on an assistant message, which every API reads as
+*prefill* — "continue this assistant turn" — and the model may keep writing the
+summary instead of resuming the work. So the turn is ended on a user part
+instead: the user's own steering words when any are waiting (they go last
+anyway — see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn)),
+otherwise a synthetic `Continue`, the resume word `runTaskContinue` uses. That
+trailing part is appended, numbered, echoed and published like any other part
+added at a step boundary (`spliceUserParts`), so its history ID resolves in
+`Contents` from the moment the adapter is shown it.
 
 Two mechanical requirements make this valid:
 

@@ -1237,9 +1237,12 @@ func TestCancelKeepsSplicedBatch(t *testing.T) {
 // Compaction and steering in the same boundary, in that order. The order is not
 // a preference: a compaction replaces the history wholesale, so a steering part
 // appended before it would vanish from Contents while the adapter kept the ID it
-// was shown. This pins the order, and with it the two things that follow —
-// steering never lands in the summarize request, and a steering part that is
-// spliced after a replacement keeps an ID that resolves.
+// was shown. This pins the order, and with it the three things that follow —
+// steering never lands in the summarize request, a steering part that is spliced
+// after a replacement keeps an ID that resolves, and the synthetic "Continue"
+// the replacement would otherwise need (to end the request on a user part rather
+// than on the assistant summary) is not added, because the user's own words
+// already end it.
 func TestSteeringSplicedAfterCompactionInSameBoundary(t *testing.T) {
 	output := &syncOutput{}
 	toolStarted := make(chan struct{})
@@ -1283,15 +1286,18 @@ func TestSteeringSplicedAfterCompactionInSameBoundary(t *testing.T) {
 	if indexOfSteering(provider.request(1)) >= 0 {
 		t.Fatalf("the summarize request carried the user's words: %s", summary(provider.request(1)))
 	}
-	// ...and the step after it must, at the tail, behind the "Continue" the
-	// compaction ends on.
+	// ...and the step after it must, at the tail. The user's words end the
+	// request themselves, so the compaction's synthetic "Continue" is not
+	// added: a trailing user part is what a request must end on, and the words
+	// already are one.
 	step2 := provider.request(2)
 	if idx := indexOfSteering(step2); idx != len(step2)-1 {
 		t.Fatalf("steering must be the last thing the model reads after a compaction: %s", summary(step2))
 	}
-	last, ok := provider.request(2)[len(step2)-2].(*llm.TextPart)
-	if !ok || last.Text != "Continue" {
-		t.Fatalf("steering must be spliced behind the compaction's Continue turn: %s", summary(step2))
+	for _, p := range step2 {
+		if tp, ok := p.(*llm.TextPart); ok && tp.Text == "Continue" {
+			t.Fatalf("the compaction's synthetic Continue must not be added when the user's own words end the request: %s", summary(step2))
+		}
 	}
 
 	// Exactly once in Contents, and the ID the adapter was shown resolves there
