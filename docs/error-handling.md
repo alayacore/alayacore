@@ -160,7 +160,13 @@ Errors include:
 The user can:
 - `:continue` — retry the last prompt
 - `:model_set` — switch to a different model, then `:continue`
-- Type a new prompt — the next prompt is sent as a new user message
+- Type a new prompt — sent as a new user message; if a task is still running, it is spliced into that turn at its next step boundary instead (see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn))
+
+The session is idle as soon as a turn fails, which is what makes the two commands
+above usable: a failed turn does **not** start anything on its own. Anything the
+user had steered into it — never delivered, because the turn did not land — is
+discarded, with an SM `notify` saying so; retyping it is the user's call. That is
+the one place the session drops input, and it is never silent.
 
 ### `:continue`
 

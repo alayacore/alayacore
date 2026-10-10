@@ -564,14 +564,15 @@ func (m Terminal) handleSubmit() (Terminal, Cmd) {
 		return m, nil
 	}
 
-	// If a task is running, reject without clearing input.
-	if m.inProgress {
-		return m, func() Msg {
-			return displayErrorMsg{
-				message: "A task is already running. Wait for it to complete or cancel it.",
-			}
-		}
-	}
+	// No refusal for a running task here: the prompt is sent anyway. The
+	// session splices a prompt that arrives mid-turn into that turn at its
+	// next step boundary (steering) and acknowledges it with a notify — or
+	// refuses it with an SM error when its steering queue is full. Refusing
+	// here, as this used to on m.inProgress, would keep steering out of the
+	// TUI entirely: nothing would ever reach the session for it to steer with.
+	// The cost is that a refused prompt leaves the input box with only that
+	// error to show for it — see docs/tui.md ("Paste and terminal
+	// capability") for how not to get there.
 
 	// Nothing to send
 	if prompt.Text == "" && len(m.pendingAttachments) == 0 {

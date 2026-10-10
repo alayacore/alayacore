@@ -1,10 +1,11 @@
 package agent
 
-// A prompt that arrives before the session is ready is held, not refused, and a
-// prompt that arrives while something is already in flight is refused. These
-// pin the split: "not ready yet" is a stage the session passes through (the
-// client cannot see it, and a piped client has no way to retry), while "busy"
-// means the session would need a queue to accept it.
+// A prompt that arrives before the session is ready is held, not refused; one
+// that arrives while a task is already in flight is spliced into that turn
+// (steering) rather than refused. These pin the split: "not ready yet" is a
+// stage the session passes through (the client cannot see it, and a piped
+// client has no way to retry), while "busy" is a turn the words can still
+// reach — and only a full steering queue is left to refuse.
 //
 // The second half of the file covers CE: the adapter's "no more input" frame,
 // which is EOF's fact on a stream that stays open for commands.
@@ -159,23 +160,69 @@ func TestSecondPromptWhileHoldingIsRefused(t *testing.T) {
 	}
 }
 
-// A prompt that arrives with a task already running is a BUSY error, not
-// something to hold: it is the queue case, and this session has no queue.
-func TestPromptWhileTaskRunningIsRefused(t *testing.T) {
+// A prompt that arrives with a task already running is spliced into that turn
+// (steering), not refused: refusing is what made a mid-turn correction cost a
+// cancel and a wasted step.
+func TestPromptWhileTaskRunningIsSteered(t *testing.T) {
 	output := &syncOutput{}
 	s := newDeferredPromptSession(t, output, &mockProviderStepFail{})
 
 	s.state.Store(int32(SessionReady))
 	s.activeTask = &taskHandle{}
 
-	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "hello"}})
+	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "actually, use Y"}})
+
+	got := output.String()
+	if strings.Contains(got, "A task is already running") {
+		t.Errorf("a prompt during a task must not be refused as BUSY: %q", got)
+	}
+	if !strings.Contains(got, "steering queued") {
+		t.Errorf("expected the steering acknowledgement, got: %q", got)
+	}
+	parts := s.takeSteering()
+	if len(parts) != 1 {
+		t.Fatalf("queued steering = %#v, want the one submitted part", parts)
+	}
+	if tp, ok := parts[0].(*llm.TextPart); !ok || tp.Text != "actually, use Y" {
+		t.Fatalf("queued steering = %#v, want the submitted prompt", parts)
+	}
+	if s.pending != nil {
+		t.Error("a steered prompt must not be held in the MCP slot")
+	}
+	if parts[0].GetHistoryID() != 0 {
+		t.Error("a queued steering part must stay unnumbered until the step that carries it commits")
+	}
+}
+
+// The steering queue is bounded. Past it the prompt is refused with the code a
+// busy session has always used, so a client that sends without reading cannot
+// make the session buffer without limit — and the refusal is the one a client
+// already knows how to handle.
+func TestSteeringQueueFullIsRefused(t *testing.T) {
+	output := &syncOutput{}
+	s := newDeferredPromptSession(t, output, &mockProviderStepFail{})
+	s.state.Store(int32(SessionReady))
+	s.activeTask = &taskHandle{}
+
+	filler := make([]llm.ContentPart, maxSteeringParts)
+	for i := range filler {
+		filler[i] = &llm.TextPart{Text: "fill"}
+	}
+	if !s.queueSteering(filler) {
+		t.Fatal("the queue should accept exactly maxSteeringParts parts")
+	}
+
+	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "one more"}})
 
 	got := output.String()
 	if !strings.Contains(got, "A task is already running") {
-		t.Errorf("expected BUSY, got: %q", got)
+		t.Errorf("a full steering queue must refuse with BUSY, got: %q", got)
 	}
-	if s.pending != nil {
-		t.Error("a BUSY prompt must not be held")
+	if strings.Contains(got, "steering queued") {
+		t.Errorf("a refused prompt must not be acknowledged as queued: %q", got)
+	}
+	if n := len(s.takeSteering()); n != maxSteeringParts {
+		t.Errorf("a refused prompt must not enter the queue: it holds %d parts", n)
 	}
 }
 

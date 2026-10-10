@@ -48,6 +48,14 @@ Commands fall into three categories:
 | `:tool_decline <id>` | Decline a pending tool execution | `{"tool_id"}` |
 | `:mcp_cancel` | Cancel MCP server initialization | `null` |
 
+`:cancel` cancels the running task, and it takes the turn's undelivered steering
+with it: words the user steered into that turn that the model has not received
+yet are dropped, with an SM `notify` saying so. Leaving them queued would start a
+fresh task on its own the moment the canceled one unwinds — a stop button that
+keeps going. A prompt that arrives *after* the cancel is a fresh intent and is
+delivered normally (see
+[architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn)).
+
 ## Idle Commands
 
 These commands are rejected with an error if a task is currently running:

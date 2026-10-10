@@ -391,7 +391,7 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 	// The frame is required, not decorative. Task status otherwise reaches the
 	// adapter only on step boundaries (stepStartEvent/stepFinishEvent →
 	// sendSystemInfo). A summarize suppresses the boundary events that would
-	// open a step (processPrompt runs with publishSteps=false), and its lone
+	// open a step (processPrompt runs as a summarizeCall), and its lone
 	// stepFinishEvent arrives only once the round trip is over — so for
 	// essentially the whole summarize the adapter would read the session as
 	// idle, and the status bar's indicator would sit on the idle glyph instead
@@ -421,17 +421,23 @@ func (s *Session) startTaskCommand(id string, run func(context.Context)) {
 	go run(ctx)
 }
 
-// submitPrompt takes a user prompt and either starts it or holds it.
+// submitPrompt takes a user prompt and starts it, steers with it, or holds it.
 //
-// The session refuses a prompt for exactly two reasons: it would need a queue
-// (a task is already in flight), or the session cannot start a task at all. A
-// *stage* it is passing through — MCP initialization — is a reason to hold the
-// prompt instead: the adapter has no way to know when that stage ends, and a
-// client that submitted its only prompt and then hit EOF has no way to retry.
+// Three outcomes, and the difference between them is the point:
+//
+//   - The session is idle: the prompt starts a task.
+//   - A task is in flight: the prompt is spliced into that turn at its next
+//     step boundary (steering — see session_steering.go) instead of being
+//     refused. This is the case that used to be a plain BUSY error and the
+//     reason a correction no longer costs a cancel plus a wasted turn.
+//   - The session cannot start a task at all: refused. A *stage* it is passing
+//     through — MCP initialization — is not a refusal but a hold: the adapter
+//     has no way to know when that stage ends, and a client that submitted its
+//     only prompt and then hit EOF has no way to retry.
 //
 // The holding place is a single slot, not a queue: while it is occupied there
-// is nothing in flight, so a second prompt here can only mean a client that
-// wants two tasks at once — the BUSY case, reported as such.
+// is nothing in flight, so a prompt that arrives on top of it can only mean a
+// client that wants two tasks at once — refused, as it always was.
 func (s *Session) submitPrompt(parts []llm.ContentPart) {
 	ctx, err := s.beginTask("")
 	switch {
@@ -440,8 +446,21 @@ func (s *Session) submitPrompt(parts []llm.ContentPart) {
 	case errors.Is(err, errMCPNotReady) && s.pending == nil:
 		s.pending = parts
 		s.writeNotify("prompt deferred until MCP initialization completes")
+	case errors.Is(err, errTaskBusy):
+		// A task is running: steer it rather than refuse. Only a full steering
+		// queue is left to refuse, and it is refused with the code a busy
+		// session has always used, so a client that was ready to handle BUSY
+		// is not the one that has to learn a new one.
+		if !s.queueSteering(parts) {
+			s.writeError(err.Error())
+			return
+		}
+		// Acknowledge: nothing else tells the user their words were accepted
+		// rather than refused, and the message itself does not reach the
+		// transcript until the step that carries it completes.
+		s.writeNotify("steering queued — delivered after the current tool call")
 	default:
-		s.writeError(err.Error()) // BUSY, slot already taken, or a permanent failure
+		s.writeError(err.Error()) // MCP slot already taken, or a permanent failure
 	}
 }
 
@@ -863,6 +882,24 @@ func (s *Session) cancelTask() (any, error) {
 	}
 	if s.activeTask != nil {
 		if s.cancelRunningTask() {
+			// Canceling means stop, so anything the user steered into the turn
+			// being canceled goes with it: leaving it queued would start a new
+			// task on its own the instant this one unwinds, which is a stop
+			// button that keeps going. The user is told, because the words are
+			// theirs to retype.
+			//
+			// Only what is queued at this instant is dropped. A prompt that
+			// arrives after the cancel is a fresh intent — "cancel, then type
+			// what I actually wanted" is an ordinary sequence, and swallowing
+			// it would be the silent loss this rule exists to avoid.
+			//
+			// The batch the task goroutine has already taken is not here to
+			// take: processPrompt's deferred restore drops it when it sees the
+			// canceled context, which is the same decision made on the half
+			// that is no longer in the queue.
+			if len(s.takeSteering()) > 0 {
+				s.writeNotify("steering dropped — the task was canceled before it was delivered")
+			}
 			return nil, nil
 		}
 	}

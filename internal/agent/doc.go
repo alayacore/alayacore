@@ -4,6 +4,9 @@
 // adapters (terminal/plainio/terseio) and the AI model provider. It handles:
 //
 //   - Prompt execution and task management
+//   - Steering: a prompt that arrives while a task runs is spliced into that
+//     turn at its next step boundary instead of being refused
+//     (session_steering.go)
 //   - Model interaction and streaming
 //   - Context management and auto-summarization (--auto-summarize=threshold)
 //   - Command processing (:save, :model_set, :model_load, etc.)

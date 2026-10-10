@@ -33,17 +33,21 @@ prompt that spans two lines.
 > errors should use [`--terseio`](terseio.md).
 
 > **⚠️ One task at a time.** Plain IO processes prompts **one at a time**
-> and has no task queue. If you pipe multiple prompts into stdin, only the
-> **first** one is executed, because the rest arrive while it is still
-> running. Which refusal you see depends on how far along the session is:
+> and has no task queue. If you pipe multiple prompts into stdin, the **first**
+> one starts the task; the ones that arrive while it runs are **steered** into
+> it — spliced in at the next step boundary (`agent/session_steering.go`) rather
+> than refused — so the model sees them as one or two turns, not as separate
+> exchanges. Anything left when the turn ends is delivered as the next prompt.
+> Which refusal you see depends on how far along the session is:
 > ```
 > [error: MCP servers are still initializing or OAuth authorization is pending. Please wait for initialization to complete.]
 > [error: A task is already running. Wait for it to complete or cancel it.]
 > ```
 > The first is the transient one — the session has not finished starting (MCP
-> init) and is already holding the prompt you sent; the second means a task is in
-> flight. Interactively neither is a wall: the prompt you type after a task
-> finishes is accepted normally.
+> init) and is already holding the prompt you sent; the second is now only the
+> steering queue being full (more than `maxSteeringParts` parts were piped in
+> behind a single task). Interactively neither is a wall: the prompt you type
+> after a task finishes is accepted normally.
 > For scripting multiple questions, use `--terseio` (one message per
 > invocation) or launch `alayacore --plainio` once per prompt (the process
 > spawn cost is negligible).

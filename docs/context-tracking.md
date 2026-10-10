@@ -134,6 +134,25 @@ Two mechanical requirements make this valid:
   following user text as one user turn, so a summarize prompt appended after a
   tool result does not become two consecutive user messages.
 
+`OnBeforeSend` has a second caller, with a fixed order relative to compaction:
+**steering** (see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn)).
+A prompt that arrives while a turn is running is spliced in at a step boundary
+too, and it must be spliced *after* a compaction replacement — a compaction
+replaces the history wholesale, so words appended before it would vanish from
+`Contents` while the adapter kept the history ID it was shown.
+
+A summarize is a `summarizeCall`, not a `userTurn` (see `promptKind` in
+`internal/agent/session_task.go`), and it is never given the `OnBeforeSend` hook
+at all: `processPrompt` installs that hook for a turn only, so the steering queue
+is not reachable from one, at any of its steps. That is not bookkeeping: a summarize
+drives the same multi-step tool loop as a turn, but its history is a copy that
+either replaces the conversation or is thrown away, so words spliced into it would
+be consumed by a request whose result nobody keeps. And there is no exception on
+the other side: a summarize that **fails** is a call that did not land, so
+whatever was queued during it is dropped with it, by the same rule that governs a
+failed turn (see
+[architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn)).
+
 The replacement is published (`contentsReplacedEvent`) so `:save` during the
 turn writes the compacted history — the same one the model is running on.
 

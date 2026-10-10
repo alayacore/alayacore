@@ -55,6 +55,7 @@ The session uses three goroutines for concurrent operation:
 | `taskEventCh` (buffered, cap 64) | task worker | run() | Step progress, token counts |
 | `outputBroken` (atomic.Bool) | both | — | Output stream failure flag (any goroutine can set) |
 | `confirmChs` (map + mutex) | both | — | Per-tool confirmation channel map (MCP-style) |
+| `steering` (slice + mutex) | both | — | Prompts that arrive while a task runs, waiting for that turn's next step boundary |
 
 **Lifecycle — the end of input:**
 
@@ -86,6 +87,61 @@ input ends (EOF or CE) ──▶ run() records it ──┐
 **Gotcha — everything is in run():** There is no "fast path" in the input pump for latency-critical commands. The `inputMsgCh` buffer is cap 100 but each message is processed in microseconds — the input channel drains orders of magnitude faster than a human can type or an LLM can stream. If you're tempted to add a special case to the input pump, ask: is the latency measurable? If not, keep it in `run()` where it belongs.
 
 **Design rationale:** Tasks must run in a separate goroutine because LLM streaming is blocking (3-10s per step). If tasks ran synchronously in `run()`, the main loop could not process user input (`:cancel`, new prompts, immediate commands) during task execution. The per-task goroutine keeps the main loop responsive.
+
+#### Steering — a prompt that arrives mid-turn
+
+One task runs at a time, and there is no task queue (see the `run()` comment in
+`internal/agent/session_loop.go`). A prompt that arrives while a task is in
+flight is therefore neither parked as a second task nor refused: it is **spliced
+into the running turn** at that turn's next step boundary, so a correction
+reaches the model without canceling the step in flight and paying for a repeat
+turn. Only a full steering queue is refused, with the `BUSY` code a client
+already knows.
+
+The boundary is the only injection point there can be. It is the one place the
+agent loop lets a caller rewrite the history (`OnBeforeSend`) and the one place
+the history is a valid request — by then every tool call of the previous step has
+its result. Words typed while a tool is running thus reach the model *after* that
+tool returns, never between a call and its answer (which the Anthropic Messages
+API rejects outright).
+
+Delivery is a **two-phase commit**, which is what keeps `Contents` and the
+adapter's view of history IDs in step: a part is numbered, echoed and published
+only at the moment the model has actually received it (its step's
+`OnStepFinish`), riding that step's delta.
+
+A steering message is a modification of the turn it was typed into, not a message
+in its own right, so its fate follows that turn's — where "turn" is a `userTurn`
+in `processPrompt`'s terms (see `promptKind` in
+`internal/agent/session_task.go`):
+
+- **The turn lands** — it is delivered, either spliced at a boundary or, when the
+  turn ended before a boundary could carry it (the model answered without calling
+  another tool), as the next prompt. That second case is what "type the next
+  thing while it is working" means, and it is the common one.
+- **The turn does not land** — it failed, or it was canceled — it is **discarded**
+  and the discard is announced (an SM notify). There is no turn left for the
+  words to modify, so re-delivering them would either spend a turn nobody asked
+  for or fold a correction into whatever the user types next, where it would read
+  as something they never said. Both halves go: what is still queued
+  (`cancelTask` drains it on cancel, `processPrompt`'s deferred discard takes it
+  on failure) and what a step had spliced in but never finished — a batch whose
+  step *did* finish is committed, and the model has read it, so it is part of the
+  conversation and the failure of a later step cannot take it back. An input
+  arriving *after* the turn ends is untouched by any of this: it was never part
+  of that turn.
+
+A canceled turn is the clearest case of the second rule, since a queue that
+survived it would start a new task on its own the moment the canceled one
+unwound — a stop button that keeps going.
+
+The take side needs no rule of its own: it falls out of the same distinction.
+Only a `userTurn` is given the hook that can reach the queue, so a
+`summarizeCall` — even a multi-step one, tools and all — never takes the words,
+and that has to be so: its history is a copy that either replaces the conversation
+or is thrown away, so words consumed by it would vanish with nothing to report,
+because from the queue's point of view they had been delivered. See
+`internal/agent/session_steering.go` and `session_task.go`'s `processPrompt`.
 
 
 ### Session Persistence

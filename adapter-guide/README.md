@@ -121,6 +121,7 @@ The adapter must be prepared to **receive** user tags on stdout in these scenari
 1. **Prompt echo** — When the user sends a prompt (UT + UE on stdin), the agent echoes each content part back on stdout with an assigned history ID before sending them to the LLM.
 2. **Session replay** — When a saved session file (key-value frontmatter + binary TLV body, specified via `--session`) is loaded, all historical content (including user messages) is replayed to the adapter on stdout with their original history IDs.
 3. **The agent's own user turns** — Not every user tag is something the user typed: the `Continue` that resumes a cancelled turn (`:continue`) and the one a mid-task compaction appends are written by the agent. They are parts of the conversation like any other, so they are echoed like any other.
+4. **Steering** — A prompt sent while a task is running is spliced into that turn at its next step boundary, so its echo (with its history ID) arrives when the model receives it — one step later, not immediately. In the meantime the session sends an SM `notify` acknowledging it (`steering queued …`), and refuses it with an SM `error` (`code:"BUSY"`) only if its steering queue is full. An adapter should therefore keep the submitted text visible, or render it as pending, until the echo arrives.
 
 > **For adapter implementors:** You cannot assume user tags only appear on stdin.
 > The terminal adapter (`internal/adapters/terminal/output.go`), the plainio

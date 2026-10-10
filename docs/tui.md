@@ -236,11 +236,14 @@ uses for line endings:
 - **CRLF line endings** (legacy Windows console host — `cmd.exe`, Windows
   PowerShell, and `pwsh` in a plain console window): Windows clipboard text
   ends its lines with `\r\n`, and CR *is* the Enter key. Each line in a pasted
-  block submits in turn: the first line goes out as the prompt, the rest hit the
-  running-task rejection (`keybinds.go` → `handleSubmit`, and the session's own
-  `BUSY` answer in `agent/session_io.go`), leaving their text in the input box.
-  Nothing is sent twice and no tool runs without the model asking, but the
-  prompt that arrives is not the block the user pasted.
+  block submits in turn: the first line starts the task, and the rest are
+  spliced into it as **steering** at the next step boundary
+  (`agent/session_steering.go`). So the model receives the block's lines as one
+  or two user turns rather than as the single message that was pasted — and no
+  line is left in the input box to be sent a second time. Past the steering
+  queue's bound (`maxSteeringParts`) the extra lines are refused with the
+  session's `BUSY` error and are lost with the error message; the three options
+  below are what to use instead.
 
 That last case is not fixable from inside the program without inferring intent
 from the timing of incoming bytes — there, the same CR is genuinely both

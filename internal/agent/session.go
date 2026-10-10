@@ -33,6 +33,8 @@ package agent
 //   - session_event.go — taskEvent types for actor model communication
 //   - session_model.go — model management, provider creation, reasoning level
 //   - session_task.go  — input processing, prompt execution, agent loop
+//   - session_loop.go  — the main event loop (run) and task completion
+//   - session_steering.go — prompts that arrive mid-turn, and their delivery
 //   - session_io.go    — command handling, summarize, save
 //   - session_output.go — TLV write helpers, usage tracking, system info
 //   - session_persist.go — session save/load, markdown format
@@ -158,6 +160,15 @@ type sharedState struct {
 
 	confirmChs map[string]chan bool
 	confirmMu  sync.Mutex
+
+	// steering holds prompts that arrived while a task was in flight, waiting
+	// for that turn's next step boundary. It is shared state for the same
+	// reason confirmChs is: run() writes it (a prompt arrived) while the task
+	// goroutine takes from it at a boundary — and, when the step a batch was
+	// spliced into never completed, puts the batch back. Parts in here are
+	// deliberately unnumbered and unechoed; see session_steering.go.
+	steering   []llm.ContentPart
+	steeringMu sync.Mutex
 
 	outputBroken atomic.Bool
 

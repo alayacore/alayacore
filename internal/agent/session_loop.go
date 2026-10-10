@@ -6,10 +6,13 @@ package agent
 // the input pump, the task goroutine, and system info requests.
 //
 // There is no task queue: one task runs at a time, and a prompt that arrives
-// while one is in flight is refused (BUSY) rather than parked. The one prompt
-// that *is* held is one that arrives before the session is ready (MCP init still
-// running) — it waits in a single slot, because a client cannot see that stage
-// and one at EOF has no way to send the prompt again (see submitPrompt).
+// while one is in flight is neither parked as a second task nor refused — it is
+// spliced into the running turn at that turn's next step boundary (steering;
+// see session_steering.go), and refused with BUSY only when the steering queue
+// is full. The one prompt that *is* held is one that arrives before the session
+// is ready (MCP init still running) — it waits in a single slot, because a
+// client cannot see that stage and one at EOF has no way to send the prompt
+// again (see submitPrompt).
 //
 // Extracted from session_task.go to separate concerns:
 //   - session_task.go:        prompt processing, agent loop, auto-summarization
@@ -208,6 +211,12 @@ func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 	}
 
 	s.sendSystemInfo(systemInfoTask)
+
+	// Anything the user steered that never found a step boundary — the turn
+	// ended without one, the step meant to carry it failed, or the turn was
+	// canceled — becomes the next prompt. Dropping it here would lose input
+	// the user watched leave the input box.
+	s.deliverLeftoverSteering()
 }
 
 // flushPendingEvents drains remaining taskEventCh events from the

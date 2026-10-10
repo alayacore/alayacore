@@ -32,21 +32,47 @@ import (
 // etc.), and cleanIncompleteToolInputs below are its direct dependencies.
 // ============================================================================
 
+// promptKind says which of the two things processPrompt has been asked to do.
+// They share this function because they share almost everything — the same
+// stream, the same multi-step tool loop, the same callbacks — but they are
+// different jobs, and the difference is not a detail this code may forget:
+//
+//   - userTurn is the user's own turn. Its progress belongs on the adapter's
+//     status bar, its history is the conversation's, and it is the only kind
+//     that may take the user's steering.
+//   - summarizeCall is a summarize — :summarize, the auto-summarize at the
+//     start of a turn, or the one a full context triggers between steps. It
+//     drives the same loop (it can even call tools), but its result never
+//     becomes the conversation: it replaces the history or is thrown away. So
+//     nothing about it is published, and it must keep its hands off the user's
+//     words.
+//
+// Named rather than a bare bool because the value is read at the call site,
+// where "false" said only "do not publish steps" — one of the three things it
+// actually means.
+type promptKind int
+
+const (
+	userTurn promptKind = iota
+	summarizeCall
+)
+
 // processPrompt sends the conversation history to the LLM via the agent's
 // Stream method, using registered callbacks for streaming output, tool
 // execution, and step tracking. Returns the full response contents and
 // total output token usage.
 //
-// publishSteps marks this call as a real turn, whose progress is published:
-// when true, each OnStepFinish delta (the parts produced since the previous
-// step) is sent to run() via stepFinishEvent so :save/:fork see in-progress
-// task content, and the step-boundary events (stepStartEvent/stepStatsEvent)
-// are emitted so the status bar tracks the step. Summarization calls pass
-// false — a summarize is an internal helper of some turn, not a task of its
-// own: its internals (prompt + response) must not transiently pollute Contents
-// and must not move the displayed step, and the replacement itself is published
-// separately (contentsReplacedEvent / taskResultCh).
-func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, publishSteps bool) ([]llm.ContentPart, int64, error) {
+// kind decides what the call is given, and everything it is given follows from
+// that one answer (see promptKind): a userTurn publishes its step progress
+// (stepStartEvent/stepStatsEvent for the status bar, and a stepFinishEvent
+// delta per step so :save/:fork see in-progress task content) and may rewrite
+// the history it is about to send — that is where a mid-task compaction and the
+// user's steering are spliced in. A summarizeCall gets none of that: publishing
+// its steps would move the displayed step and blank the speed mid-turn, its
+// internals (prompt, response, and any tool calls of its own) must not
+// transiently pollute Contents, and it must not compact again or take steering
+// into a history that will be discarded.
+func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, kind promptKind) ([]llm.ContentPart, int64, error) {
 	var fullContents []llm.ContentPart
 	var outputTokens int64
 
@@ -56,6 +82,29 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// strips only orphaned calls from the current step's tail (never
 	// parts before prevLen), so len(fullContents) >= prevLen always holds.
 	prevLen := len(history)
+
+	// pendingInjected is the batch of steering parts spliced into the step
+	// about to be sent, held here until that step completes. The parts stay
+	// unnumbered and unechoed until then: a steering part must never be shown
+	// to the adapter with a history ID Contents does not hold, and Contents
+	// only gains it when the step's delta (which carries it) is published —
+	// see session_steering.go.
+	//
+	// turnFailed records that this call — the user's turn — did not land. The
+	// deferred discard below reads it together with ctx: a turn that failed and
+	// a turn that was canceled are the same event as far as the user's steering
+	// is concerned.
+	var pendingInjected []llm.ContentPart
+	var turnFailed bool
+	defer func() {
+		// One rule, no exceptions: a turn that did not land — it failed, or it
+		// was canceled — takes everything it had not delivered with it, and
+		// says so. See session_steering.go.
+		if !turnFailed && ctx.Err() == nil {
+			return
+		}
+		s.discardUndeliveredSteering(pendingInjected)
+	}()
 
 	// contextTokens is this task's view of the context size, taken from the
 	// provider's authoritative usage after each step, and the number the
@@ -71,6 +120,13 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 
 	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
 		fullContents = cleanIncompleteToolInputs(contents)
+
+		// Commit the steering parts this step carried: the step completed, so
+		// the model has read them and they are part of the conversation now.
+		// Clearing the batch also disarms the deferred settle above.
+		s.commitSteering(pendingInjected)
+		pendingInjected = nil
+
 		if n := usage.InputTokens + usage.OutputTokens + usage.CacheReadTokens + usage.CacheCreationTokens; n > 0 {
 			contextTokens = n
 		}
@@ -80,7 +136,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			CacheReadTokens:     usage.CacheReadTokens,
 			CacheCreationTokens: usage.CacheCreationTokens,
 		}
-		if publishSteps {
+		if kind == userTurn {
 			// NewParts is a view into the agent's accumulation; run()
 			// copies the pointers out immediately and never retains the
 			// view (see stepFinishEvent docs).
@@ -102,12 +158,15 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		return nil
 	}
 
-	// onBeforeSend runs at the top of every step, before its request is sent.
-	// If the context has grown past the --auto-summarize threshold mid-task, it
-	// summarizes the conversation and hands the compacted history back for the
-	// rest of the turn. publishSteps gates this to real prompts, so the
-	// summarization request itself (which runs with publishSteps=false) can
-	// never re-trigger it.
+	// onBeforeSend runs at the top of every step of a userTurn, before its
+	// request is sent. If the context has grown past the --auto-summarize
+	// threshold mid-task, it summarizes the conversation and hands the compacted
+	// history back for the rest of the turn; and it is where the user's steering
+	// is spliced in. Both are rewrites of the history the next request is built
+	// from, which is why this hook — like the step-boundary events — is
+	// installed for a userTurn alone (see the callbacks below): a summarizeCall
+	// never gets it, so it can neither re-trigger compaction nor swallow words
+	// meant for the user.
 	//
 	// A failed compaction ends the turn rather than continuing on the
 	// uncompressed history: --auto-summarize is a constraint the user declared,
@@ -123,17 +182,41 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// arrives. What arrives is permanent or exhausted, and the next step's
 	// context would only be larger.
 	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
-		if !publishSteps || !s.exceedsAutoSummarizeThreshold(contextTokens) {
-			return nil, nil
+		// Compaction first, steering second — never the other way round. A
+		// compaction replaces the history wholesale, so a steering part
+		// appended before it would vanish from Contents while the adapter kept
+		// the ID it was shown.
+		if s.exceedsAutoSummarizeThreshold(contextTokens) {
+			compacted, err := s.compactForContinuation(ctx, contents, contextTokens)
+			if err != nil {
+				return nil, fmt.Errorf("Auto-summarization failed: %w", err)
+			}
+			// The replacement is the published baseline now: the next step's
+			// delta is measured from its end, not from the old history's.
+			prevLen = len(compacted)
+			contents = compacted
 		}
-		compacted, err := s.compactForContinuation(ctx, contents, contextTokens)
-		if err != nil {
-			return nil, fmt.Errorf("Auto-summarization failed: %w", err)
+
+		// Splice in any steering that has arrived since the last step. It goes
+		// last — after the tool results the model just asked for, and after a
+		// compaction replacement — so it is the freshest thing the model reads
+		// and nothing downstream can fold it away.
+		//
+		// prevLen is deliberately NOT advanced here: these parts ride this
+		// step's delta, which is exactly how they enter Contents — once, and in
+		// the order the model itself saw. Their numbering and echo happen at
+		// that same commit (onStepFinish).
+		if parts := s.takeSteering(); len(parts) > 0 {
+			// Fit oversized attachments before they are numbered and sent, the
+			// same treatment a fresh prompt gets in runTaskNormal.
+			parts = llm.ShrinkImages(parts)
+			next := make([]llm.ContentPart, len(contents), len(contents)+len(parts))
+			copy(next, contents)
+			next = append(next, parts...)
+			contents = next
+			pendingInjected = parts
 		}
-		// The replacement is the published baseline now: the next step's
-		// delta is measured from its end, not from the old history's.
-		prevLen = len(compacted)
-		return compacted, nil
+		return contents, nil
 	}
 
 	dw := &deltaWriter{output: s.Output}
@@ -148,18 +231,17 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		ToolNeedsConfirm:    s.needsToolConfirm,
 		OnRetry:             s.handleRetry,
 		OnStepFinish:        onStepFinish,
-		OnBeforeSend:        onBeforeSend,
 		IDGen:               s.histIncAndGet,
 	}
 
-	// Step-boundary events describe the *task's* progress — its step number and
-	// per-step speed. A summarize call (publishSteps=false) is an internal
-	// helper of some turn, not a task of its own, so it must not emit them: a
-	// compaction between steps would otherwise reset the displayed step to 1
-	// and blank the speed mid-turn (see stepStartEvent in session_loop.go).
-	if publishSteps {
+	// The hooks a call gets follow from kind — this is the whole of that
+	// decision, in one place. A summarize gets no step-boundary events and no
+	// OnBeforeSend: that hook is "rewrite the history the next request is built
+	// from", which a summarize has no business doing (see promptKind).
+	if kind == userTurn {
 		callbacks.OnStepStart = s.handleStepStart
 		callbacks.OnStepStats = s.handleStepStats
+		callbacks.OnBeforeSend = onBeforeSend
 	}
 
 	if !s.NoDelta {
@@ -175,6 +257,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	_, err := s.Agent().Stream(ctx, history, callbacks)
 
 	if err != nil {
+		turnFailed = true
 		return fullContents, outputTokens, err
 	}
 
@@ -184,6 +267,23 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 // ============================================================================
 // processPrompt Dependencies: deltaWriter, TLV helpers, callbacks
 // ============================================================================
+
+// commitSteering finalizes the steering parts a step carried: it numbers them,
+// gives them their user role and echoes them to the adapter. It runs at the
+// commit point — the step's OnStepFinish — because that is the moment the model
+// has actually received them, and it is what makes the history ID the adapter is
+// shown and the part that enters Contents (by riding that step's delta) appear
+// together and never disagree. Called with an empty batch, it does nothing.
+func (s *Session) commitSteering(parts []llm.ContentPart) {
+	for _, part := range parts {
+		id := s.histIncAndGet()
+		part.SetHistoryID(id)
+		part.SetRole(llm.RoleUser)
+		if tag, val, err := contentPartToTLV(part); err == nil && tag != "" {
+			s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
+		}
+	}
+}
 
 // deltaWriter writes streaming delta frames directly to the TLV output,
 // bypassing the session layer. Delta frames are ephemeral and not persisted.
@@ -446,7 +546,7 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 	promptContents := make([]llm.ContentPart, len(contents), len(contents)+1)
 	copy(promptContents, contents)
 	promptContents = append(promptContents, promptPart)
-	fullContents, outputTokens, err := s.processPrompt(ctx, promptContents, false)
+	fullContents, outputTokens, err := s.processPrompt(ctx, promptContents, summarizeCall)
 	if err != nil {
 		return contents, err
 	}
@@ -687,6 +787,9 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 		compacted, err := s.doAutoSummarize(ctx, contents)
 		if err != nil {
 			s.writeErrorf("Auto-summarization failed: %v", err)
+			// The turn never started, so it did not land: anything the user
+			// steered in while this ran goes with it (session_steering.go).
+			s.discardUndeliveredSteering(nil)
 			return
 		}
 		contents = compacted
@@ -713,7 +816,7 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 	// during the task includes the just-submitted prompt.
 	s.sendEvent(promptPartsEvent{Parts: parts})
 
-	fullContents, _, err := s.processPrompt(ctx, contents, true)
+	fullContents, _, err := s.processPrompt(ctx, contents, userTurn)
 	if err != nil {
 		s.writeError(err.Error())
 	}
@@ -746,6 +849,8 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 		compacted, err := s.doAutoSummarize(ctx, contents)
 		if err != nil {
 			s.writeErrorf("Auto-summarization failed: %v", err)
+			// The turn never started, so it did not land — see runTaskNormal.
+			s.discardUndeliveredSteering(nil)
 			return
 		}
 		contents = compacted
@@ -767,7 +872,7 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 		s.sendEvent(promptPartsEvent{Parts: []llm.ContentPart{part}})
 	}
 
-	fullContents, _, err := s.processPrompt(ctx, contents, true)
+	fullContents, _, err := s.processPrompt(ctx, contents, userTurn)
 	if err != nil {
 		s.writeError(err.Error())
 	}
