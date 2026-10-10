@@ -718,9 +718,9 @@ func TestSteeringSplicedStaysWhenTurnFails(t *testing.T) {
 // The words can be spliced into the FIRST step — reachable when a prompt is
 // typed while the task-start auto-summarize runs and is still queued when the
 // step's request is built — and that step can then fail. The history and the
-// prompt must survive with the words appended: the base the words are put back
-// on is the history the step was sent on, never fullContents, which is empty
-// when no step has finished.
+// prompt must survive with the words appended: the base they are added to is the
+// history the step was sent on, never fullContents, which is empty when no step
+// has finished.
 func TestSteeringSplicedAtFirstStepThenStepFails(t *testing.T) {
 	output := &syncOutput{}
 	provider := &steeringProvider{steps: []steeringStep{

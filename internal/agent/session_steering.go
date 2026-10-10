@@ -19,21 +19,18 @@ import "github.com/alayacore/alayacore/internal/llm"
 // tool is still running therefore reach the model *after* that tool returns,
 // never between a call and its answer.
 //
-// Delivery is an admission at the splice, and there is nothing two-phase about
-// it. A part is fitted, given its user role, numbered and echoed to the adapter
-// the moment it enters a request — in processPrompt's onBeforeSend, the same
-// point in the part's life at which runTaskNormal does all four for a fresh
-// prompt. It is not deferred to the step's finish, and that is settled by what
-// the adapter draws: windows are rendered in the order their frames arrive, so
-// an echo deferred to OnStepFinish lands *under* the reasoning it caused. The
-// part enters Contents in the same breath, published the way runTaskNormal
-// publishes a fresh prompt's parts — so a :save or :fork during the step sees
-// what the transcript already shows, and the step's delta carries only the
-// step's own output. Because the whole admission is at the splice, a step that
-// fails cannot take back words the model was already sent: they are in the
-// conversation, and processPrompt puts them in the returned Contents too. So
-// the adapter is never shown an ID that Contents does not hold — at any point,
-// on any outcome.
+// Delivery is an admission at the splice. A part is fitted, given its user role,
+// numbered, echoed to the adapter and published to Contents the moment it enters
+// a request — in processPrompt's onBeforeSend, the same point in a part's life at
+// which runTaskNormal does all of that for a fresh prompt (spliceUserParts is
+// that one implementation). Two things follow, and they are the whole of the
+// mechanism's correctness: the words are shown before the answer they steered
+// (the adapter draws windows in frame order — see spliceUserParts for why the
+// echo cannot wait for the step's finish), and an ID the adapter is shown always
+// resolves in Contents, on any outcome — a step that fails takes nothing back,
+// because processPrompt puts what the boundary appended into the returned
+// Contents. :save and :fork therefore agree with the transcript at every
+// instant, not merely once the step is over.
 //
 // One policy decides where a steering message ends up, and it turns on a single
 // question: had the turn already sent it — spliced it in — by the time the turn
@@ -51,13 +48,14 @@ import "github.com/alayacore/alayacore/internal/llm"
 //     start a task on its own the moment the canceled one unwound — a stop
 //     button that keeps going.
 //
-// Both halves live in different places and both are covered: the queue (drained
-// by run()'s cancelTask on a cancel, by processPrompt's deferred discard on a
-// failure) and what a step had already spliced, which the splice discard does
-// not touch — it is in the conversation. Every drop is announced: the words are
-// in neither the transcript nor the session file, so the user has to be told,
-// and retyping them is their call. Input arriving after a turn ends is untouched
-// by any of this, because it was never part of the turn that ended.
+// The drop side has one place, not two: only the queue is ever dropped, because
+// it is the only thing holding words the model has not been sent. run()'s
+// cancelTask drains it on a cancel and processPrompt's deferred discard drains it
+// on a failure; a part a boundary had already appended left the queue and is in
+// the conversation, where nothing can take it back. Every drop is announced: the
+// words are in neither the transcript nor the session file, so the user has to be
+// told, and retyping them is their call. Input arriving after a turn ends is
+// untouched by any of this, because it was never part of the turn that ended.
 //
 // The queue is reachable only from a userTurn, and that follows from the kind
 // rather than from any knowledge held here: processPrompt installs the
@@ -66,10 +64,12 @@ import "github.com/alayacore/alayacore/internal/llm"
 // can publish its own steps. The gate is not bookkeeping — a summarize call's
 // history is a copy that either replaces the conversation or is thrown away, so
 // words consumed by it would vanish with nothing to report, because from the
-// queue's point of view they had been delivered. The policy above then applies
-// to a summarizeCall with no special case: it is given no step-boundary hook, so
-// it never splices, and the queue is simply not touched by it — and a summarize
-// that fails is the turn failing, so the still-queued words go with it.
+// queue's point of view they had been delivered. So a summarizeCall never touches
+// the queue — it is given no step-boundary hook, and cannot splice — and the
+// queue's fate is still the turn's: a summarize that fails is a turn that did not
+// land, so whatever is queued at that moment goes with it (for a standalone
+// :summarize that task is the turn; for a mid-turn compaction it is the enclosing
+// one).
 //
 // The acknowledgement is an SM notify, not a new SM type. messageVersion — the
 // wire protocol version an adapter checks — is also the session file's

@@ -83,19 +83,20 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// parts before prevLen), so len(fullContents) >= prevLen always holds.
 	prevLen := len(history)
 
-	// pendingInjected is the batch of steering parts spliced into the step
-	// about to be sent, held here until that step's finish. The parts are
-	// numbered, echoed and published to Contents at the splice itself (see
-	// onBeforeSend): they are what the request already carries, so they are part
-	// of the conversation from that moment and not from the step's finish. This
-	// field exists for the one case where the step never finishes — the words
-	// were sent and shown, so the returned Contents must carry them too (an ID
-	// the adapter was shown that Contents does not hold is a window :fork cannot
-	// resolve, and a failed step cannot un-send them).
+	// pendingInjected is the user parts this boundary appended to the step about
+	// to be sent — the user's steering, or the synthetic "Continue" a compaction
+	// needs (see stepUserParts) — held here until that step's finish. They are
+	// numbered, echoed and published to Contents at the append itself (see
+	// onBeforeSend), so they are part of the conversation from that moment and
+	// not from the step's finish. This field exists for the one case where the
+	// step never finishes: they were sent and shown, so the returned Contents
+	// must carry them too (an ID the adapter was shown that Contents does not
+	// hold is a window :fork cannot resolve, and a failed step cannot un-send
+	// them).
 	//
-	// stepBase is the history that step was sent on, without the splice. It is
-	// the base the failure path needs, because the batch has to be added to the
-	// history *it* was appended to — and that is neither fullContents (empty
+	// stepBase is the history that step was sent on, before that append. It is
+	// the base the failure path needs, because the parts have to be added to the
+	// history *they* were appended to — and that is neither fullContents (empty
 	// when no step has finished) nor the caller's history (stale once a
 	// compaction has replaced it at this very boundary, which is what the
 	// assignment in onBeforeSend captures).
@@ -133,7 +134,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
 		fullContents = cleanIncompleteToolInputs(contents)
 
-		// The step landed, so the words it carried are in fullContents through
+		// The step landed, so the parts it carried are in fullContents through
 		// this same assignment — they were part of what the model was sent.
 		// Clearing the batch keeps a later failure from adding them a second
 		// time.
@@ -209,38 +210,26 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			contents = compacted
 		}
 
-		// Append the user parts this step must be sent with. Two things can
-		// supply them: the user's own words, if any have arrived since the last
-		// boundary, or — when there are none and the history ends on an
-		// assistant message — a synthetic "Continue". The second case is the
-		// compaction's: its replacement ends on the assistant summary, and a
-		// request must not end on an assistant message (every API reads that as
-		// "continue this assistant turn" — prefill). A boundary that did not
-		// compact ends on tool results, so nothing is appended there.
+		// Append the user parts this step must be sent with — the user's
+		// steering, or the synthetic "Continue" a compaction's replacement needs
+		// (the rule is stepUserParts'). They go last: after the tool results the
+		// model just asked for, and after a compaction replacement, so they are
+		// the freshest thing the model reads.
 		//
-		// Either way the parts go last — after the tool results the model just
-		// asked for, and after a compaction replacement — so they are the
-		// freshest thing the model reads and nothing downstream can fold them
-		// away.
-		//
-		// The history this step is sent on, captured before the append. A step
-		// that never finishes publishes nothing, and this is the base the parts
-		// were appended to; the failure path below adds them back to it. It is
-		// taken here, after the compaction, precisely so that a boundary that
-		// both compacted and appended keeps the compacted form.
+		// stepBase is the history this step is sent on before them. It is taken
+		// here, after the compaction, so a boundary that both compacted and
+		// appended keeps the compacted form — a step that never finishes
+		// publishes nothing, and the failure path below needs the base the parts
+		// were appended to.
 		stepBase = contents
 		if parts := s.stepUserParts(contents); len(parts) > 0 {
-			// The whole of their admission happens here, at the moment they
-			// enter a request — fit, role, number, echo — exactly as a fresh
-			// prompt gets it in runTaskNormal. Not at the step's finish: the
-			// adapter draws windows in the order their frames arrive, so an
-			// echo deferred to OnStepFinish lands after the very answer it
-			// steered. They are sent to the model here, so they are in the
-			// conversation from here.
+			// The whole of their admission: fit, role, number, echo, publish —
+			// at the moment they enter a request, and not at the step's finish
+			// (spliceUserParts covers why, and why the two must not be split).
 			parts = s.spliceUserParts(parts)
 			// Publish them to Contents in the same breath as that echo — the
 			// same event runTaskNormal publishes a fresh prompt's parts with —
-			// so a :save or :fork during this step sees the words the transcript
+			// so a :save or :fork during this step sees what the transcript
 			// already shows. prevLen moves past them, which leaves the step's
 			// delta carrying only the step's own output; without that, they
 			// would enter Contents twice.
@@ -294,11 +283,11 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 
 	if err != nil {
 		turnFailed = true
-		// The words spliced into the step that failed were sent and echoed at
-		// the splice, so they are already part of the adapter's conversation.
-		// Put them in the returned Contents too, on the history they were sent
-		// with — stepBase, not fullContents: fullContents is empty when no step
-		// has finished (this step is the first), and stale when a compaction
+		// The parts appended to the step that failed were sent and echoed at the
+		// append, so they are already part of the adapter's conversation. Put
+		// them in the returned Contents too, on the history they were sent with
+		// — stepBase, not fullContents: fullContents is empty when no step has
+		// finished (this step is the first), and stale when a compaction
 		// replaced the history at this very boundary. Without this the adapter
 		// holds a window whose ID nothing resolves.
 		if len(pendingInjected) > 0 {
@@ -798,13 +787,10 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 		return nil, err
 	}
 	// The replacement is [summary request (user), summary (assistant)], and it
-	// ends on the assistant — which a request must not do: every API reads a
-	// trailing assistant message as "continue this assistant turn" (prefill),
-	// and the model may keep writing the summary instead of resuming the work.
-	// The trailing user turn that fixes that is added by the caller, which is
-	// the one place that knows whether the user's own words are arriving to end
-	// the request instead — in which case no synthetic turn is needed (see the
-	// append in onBeforeSend).
+	// ends on the assistant. The trailing user turn that fixes that is added by
+	// the caller — see stepUserParts, which is where the rule lives because that
+	// is the one place that knows whether the user's own words are arriving to
+	// end the request instead.
 	//
 	// Publish the replacement so :save during the task saves the compacted form.
 	s.sendEvent(contentsReplacedEvent{Contents: cloneParts(result)})
