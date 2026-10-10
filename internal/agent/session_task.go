@@ -84,12 +84,15 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	prevLen := len(history)
 
 	// pendingInjected is the batch of steering parts spliced into the step
-	// about to be sent, held here until that step completes. The parts stay
-	// unnumbered and unechoed until then (they do carry their user role from
-	// the splice — a request cannot go out without it, see onBeforeSend): a
-	// steering part must never be shown to the adapter with a history ID
-	// Contents does not hold, and Contents only gains it when the step's delta
-	// (which carries it) is published — see session_steering.go.
+	// about to be sent, held here until that step's finish. The parts are
+	// numbered and echoed at the splice itself (see onBeforeSend): they are what
+	// the request already carries, so they are part of the conversation from
+	// that moment and not from the step's finish. What waits for the finish is
+	// only their Contents entry, which they ride the step's delta into — and
+	// this field exists for the one case where that entry never comes, the step
+	// failing: the words were sent and shown, so they go into the returned
+	// Contents anyway (an ID the adapter was shown that Contents does not hold
+	// is a window :fork cannot resolve, and a failed step cannot un-send them).
 	//
 	// turnFailed records that this call — the user's turn — did not land. The
 	// deferred discard below reads it together with ctx: a turn that failed and
@@ -98,13 +101,14 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	var pendingInjected []llm.ContentPart
 	var turnFailed bool
 	defer func() {
-		// One rule, no exceptions: a turn that did not land — it failed, or it
-		// was canceled — takes everything it had not delivered with it, and
-		// says so. See session_steering.go.
+		// A turn that did not land — it failed, or it was canceled — takes the
+		// steering it never spliced with it, and says so. Only the queue: what a
+		// step had already spliced was numbered, echoed and sent, and belongs to
+		// the conversation whatever the step did next (see session_steering.go).
 		if !turnFailed && ctx.Err() == nil {
 			return
 		}
-		s.discardUndeliveredSteering(pendingInjected)
+		s.discardQueuedSteering()
 	}()
 
 	// contextTokens is this task's view of the context size, taken from the
@@ -122,10 +126,10 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
 		fullContents = cleanIncompleteToolInputs(contents)
 
-		// Commit the steering parts this step carried: the step completed, so
-		// the model has read them and they are part of the conversation now.
-		// Clearing the batch also disarms the deferred settle above.
-		s.commitSteering(pendingInjected)
+		// The step landed, so the words it carried are in fullContents through
+		// this same assignment — they were part of what the model was sent.
+		// Clearing the batch keeps a later failure from adding them a second
+		// time.
 		pendingInjected = nil
 
 		if n := usage.InputTokens + usage.OutputTokens + usage.CacheReadTokens + usage.CacheCreationTokens; n > 0 {
@@ -205,22 +209,16 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		//
 		// prevLen is deliberately NOT advanced here: these parts ride this
 		// step's delta, which is exactly how they enter Contents — once, and in
-		// the order the model itself saw. Their numbering and echo happen at
-		// that same commit (onStepFinish).
+		// the order the model itself saw.
 		if parts := s.takeSteering(); len(parts) > 0 {
-			// Fit oversized attachments before they are numbered and sent, the
-			// same treatment a fresh prompt gets in runTaskNormal.
-			parts = llm.ShrinkImages(parts)
-			// Give the words their user role here: after the fit, so it lands on
-			// whatever parts the fit returned, and before the request, which is
-			// built from these very parts. Each provider groups the history by
-			// role and stamps it onto its wire messages, so a role still unset
-			// goes out as an empty-role message and the API rejects the whole
-			// request — this cannot wait for the commit, which runs only after
-			// the request has already gone.
-			for _, part := range parts {
-				part.SetRole(llm.RoleUser)
-			}
+			// The whole of the words' admission happens here, at the moment
+			// they enter a request — fit, role, number, echo — exactly as a
+			// fresh prompt gets it in runTaskNormal. Not at the step's finish:
+			// the adapter draws windows in the order their frames arrive, so an
+			// echo deferred to OnStepFinish lands after the very answer it
+			// steered. The words are sent to the model here, so they are in the
+			// conversation from here.
+			parts = s.spliceSteering(parts)
 			next := make([]llm.ContentPart, len(contents), len(contents)+len(parts))
 			copy(next, contents)
 			next = append(next, parts...)
@@ -269,6 +267,21 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 
 	if err != nil {
 		turnFailed = true
+		// The words spliced into the step that failed were sent and echoed at
+		// the splice, so they are already part of the adapter's conversation.
+		// fullContents does not carry them — the step produced no finish to
+		// ride — so put them in the returned Contents here, or the adapter
+		// holds a window whose ID nothing resolves. A failed step cannot
+		// un-send what the model was already given (see session_steering.go).
+		// A step that failed *after* finishing its work has already cleared
+		// this batch in onStepFinish, and they are in fullContents by then, so
+		// this adds nothing twice.
+		if len(pendingInjected) > 0 {
+			merged := make([]llm.ContentPart, 0, len(fullContents)+len(pendingInjected))
+			merged = append(merged, fullContents...)
+			merged = append(merged, pendingInjected...)
+			fullContents = merged
+		}
 		return fullContents, outputTokens, err
 	}
 
@@ -279,24 +292,38 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 // processPrompt Dependencies: deltaWriter, TLV helpers, callbacks
 // ============================================================================
 
-// commitSteering finalizes the steering parts a step carried: it numbers them
-// and echoes them to the adapter. It runs at the commit point — the step's
-// OnStepFinish — because that is the moment the model has actually received
-// them, and it is what makes the history ID the adapter is shown and the part
-// that enters Contents (by riding that step's delta) appear together and never
-// disagree. Called with an empty batch, it does nothing.
+// spliceSteering prepares the parts of one steering batch for the step they are
+// being spliced into, and returns them for the caller to append to the request:
+// it fits oversized attachments, gives each part the user role, numbers it, and
+// echoes it to the adapter. It is the whole of a steering part's admission, and
+// it is the same treatment a fresh prompt gets in runTaskNormal — fit, role,
+// number, echo — at the same point in the life of the part: before the request
+// that carries it is built.
 //
-// The user role is not set here: it is given at the splice (onBeforeSend), so
-// the request that carries the part is well-formed when it is built. Only the
-// number and the echo wait for the commit.
-func (s *Session) commitSteering(parts []llm.ContentPart) {
+// It runs at the SPLICE and not at the step's finish, for two reasons. The
+// adapter renders windows in the order their frames arrive
+// (WindowBuffer.AppendOrUpdate appends), so an echo deferred to OnStepFinish
+// would land after the very answer the words steered — the prompt shown under
+// the reasoning it caused. And the words are in the request from this moment, so
+// they are in the conversation from this moment: the step's finish only carries
+// them into Contents (by riding the step's delta), and a step that then fails
+// cannot take back what the model was already sent.
+//
+// The role is set here and not left to the caller: each provider groups the
+// history by role and stamps that role onto its wire messages, so a part whose
+// role is still unset goes out as an empty-role message and the API rejects the
+// whole request.
+func (s *Session) spliceSteering(parts []llm.ContentPart) []llm.ContentPart {
+	parts = llm.ShrinkImages(parts)
 	for _, part := range parts {
+		part.SetRole(llm.RoleUser)
 		id := s.histIncAndGet()
 		part.SetHistoryID(id)
 		if tag, val, err := contentPartToTLV(part); err == nil && tag != "" {
 			s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
 		}
 	}
+	return parts
 }
 
 // deltaWriter writes streaming delta frames directly to the TLV output,
@@ -801,9 +828,10 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 		compacted, err := s.doAutoSummarize(ctx, contents)
 		if err != nil {
 			s.writeErrorf("Auto-summarization failed: %v", err)
-			// The turn never started, so it did not land: anything the user
-			// steered in while this ran goes with it (session_steering.go).
-			s.discardUndeliveredSteering(nil)
+			// The turn never started, so nothing was spliced: whatever the user
+			// steered in while this ran is still queued, and goes with the turn
+			// (session_steering.go).
+			s.discardQueuedSteering()
 			return
 		}
 		contents = compacted
@@ -863,8 +891,8 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 		compacted, err := s.doAutoSummarize(ctx, contents)
 		if err != nil {
 			s.writeErrorf("Auto-summarization failed: %v", err)
-			// The turn never started, so it did not land — see runTaskNormal.
-			s.discardUndeliveredSteering(nil)
+			// The turn never started, so nothing was spliced — see runTaskNormal.
+			s.discardQueuedSteering()
 			return
 		}
 		contents = compacted

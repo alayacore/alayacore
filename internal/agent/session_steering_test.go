@@ -10,17 +10,21 @@ package agent
 //     the history ID the adapter was shown resolves there (no dangling ID).
 //   - TestSteeringSplicedPartIsAUserMessage   — the spliced part is a user part
 //     at the instant the request carrying it is built (an empty role fails the
-//     whole API request), so the role is set at the splice, not at the commit.
+//     whole API request), so the role is set at the splice, before the send.
+//   - TestSteeringEchoedBeforeTheAnswerItSteered — the words are echoed before
+//     the answer they steered: windows render in frame order, so a late echo
+//     would show the prompt under the reasoning it caused.
 //   - TestSteeringLeftoverDeliveredAsNextPrompt — a turn that ends without a
 //     next step still delivers the words: they become the next prompt.
-//   - TestSteeringSurvivesFailedStep          — the regression guard: a step
-//     whose request fails before producing anything must neither leave a
-//     dangling ID nor lose the input. The batch goes back to the queue and is
-//     delivered as the next prompt.
+//   - TestSteeringSplicedStaysWhenTurnFails   — a batch that reached a step is
+//     in the conversation: a later failure leaves it in Contents, with the ID
+//     the adapter was shown resolving there.
+//   - TestSteeringQueuedDuringFailingRequestIsDropped — the words that never
+//     reached a step are the ones a failed turn drops.
 //   - TestSteeringNotTakenBySummarizeCall     — a summarize call (an internal
 //     helper of a turn) must not drain the queue.
-//   - TestSteeringCommitIsOnceOnly            — a committed batch is not
-//     re-numbered or re-published by later steps.
+//   - TestSteeringSpliceIsOnceOnly            — a spliced batch is numbered and
+//     echoed once, and later steps re-publish nothing.
 
 import (
 	"context"
@@ -55,11 +59,11 @@ type steeringStep struct {
 // was sent on, so a test can assert on what the model actually saw.
 //
 // It records two views of each call, and the difference matters: calls holds the
-// history slice (whose elements are the live part pointers, so a later
-// commitSteering mutates what a test reads back), while rolesAtSend captures
+// history slice (whose elements are the live part pointers, so a field some
+// later step mutates reads back at its new value), while rolesAtSend captures
 // each part's role at the instant the call was issued — the moment a real
-// provider serializes its wire messages. A check on calls alone cannot see what
-// role a part was sent with.
+// provider serializes its wire messages. A role stamped after the request had
+// gone would be invisible in calls alone.
 type steeringProvider struct {
 	mu    sync.Mutex
 	steps []steeringStep
@@ -128,11 +132,10 @@ func (p *steeringProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // request returns the history the n-th provider call (0-based) was sent on.
 //
-// Its elements are the live part pointers, so a field a later step mutates — the
-// steering part's HistoryID, stamped at the commit — reads back at its committed
-// value rather than its sent value. That mutation is also why a role that went
-// out as "" is invisible here: a commit used to set it to "user" only after the
-// request had gone. Use rolesAtSend for the roles as they actually went out.
+// Its elements are the live part pointers, so a field a later step mutates reads
+// back at its new value rather than the value it was sent with. That is why the
+// role assertion reads rolesAtSend: a role stamped after the request had gone
+// would be hidden here.
 func (p *steeringProvider) request(n int) []llm.ContentPart {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -141,7 +144,7 @@ func (p *steeringProvider) request(n int) []llm.ContentPart {
 
 // rolesAtSend returns each part's role as it was when the n-th call (0-based)
 // was issued — the moment a real provider serializes its wire messages, and the
-// only moment a roleless part is observable at all.
+// only moment a role stamped late can be told apart from one stamped in time.
 func (p *steeringProvider) rolesAtSend(n int) []llm.MessageRole {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -276,6 +279,10 @@ func summary(parts []llm.ContentPart) string {
 
 const steeringText = "actually, use Y instead"
 
+// The answer the model gives in the step the words are spliced into. Distinct
+// so the frame-order test can point at it.
+const steeringAnswer = "the answer that came after the words"
+
 // The splice lands after the tool result the model just asked for, reaches the
 // model in the next step's request, and enters Contents exactly once — with the
 // history ID the adapter was shown, so a :fork on that ID resolves.
@@ -339,8 +346,8 @@ func TestSteeringInjectedAtStepBoundary(t *testing.T) {
 		t.Fatalf("part after the steering = %v, want the assistant's answer", next)
 	}
 
-	// The ID the adapter was shown is the ID Contents holds. This is the
-	// property the two-phase commit exists for.
+	// The ID the adapter was shown is the ID Contents holds: the whole reason
+	// the echo and the Contents entry can never disagree.
 	ids := echoedUserIDs(t, output.String())
 	if len(ids) != 2 { // the prompt, then the steering
 		t.Fatalf("echoed user IDs = %v, want [prompt, steering]", ids)
@@ -358,10 +365,10 @@ func TestSteeringInjectedAtStepBoundary(t *testing.T) {
 // real API rejects the whole request — the 422 "unknown variant" error that
 // names a message index rather than the steering that caused it.
 //
-// The role is therefore given at the splice (onBeforeSend), not at the commit:
-// the commit runs at the step's OnStepFinish, after the request has already
-// gone. This test reads the roles captured at send time — request(n) holds the
-// same part pointers and would show the committed role instead.
+// The role is therefore given at the splice (onBeforeSend), before the request
+// is built — the same place the part is numbered and echoed. This test reads the
+// roles captured at send time; request(n) holds the same part pointers, so a
+// role stamped after the request would be hidden there.
 func TestSteeringSplicedPartIsAUserMessage(t *testing.T) {
 	output := &syncOutput{}
 	toolStarted := make(chan struct{})
@@ -404,6 +411,70 @@ func TestSteeringSplicedPartIsAUserMessage(t *testing.T) {
 	for i, role := range roles {
 		if role == "" {
 			t.Errorf("request part %d went out with an empty role: %v", i, roles)
+		}
+	}
+}
+
+// The words must be echoed to the adapter BEFORE the answer they steered, never
+// after it. The adapter draws windows in the order their frames arrive, so an
+// echo that waited for the step's finish would put the prompt *under* the
+// reasoning it caused — the transcript claiming the model answered words it had
+// not yet been given. This pins the frame order itself, which no Contents-order
+// assertion can: Contents receives the part through the step's delta whether the
+// echo was early or late.
+func TestSteeringEchoedBeforeTheAnswerItSteered(t *testing.T) {
+	output := &syncOutput{}
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+
+	provider := &steeringProvider{steps: []steeringStep{
+		{text: "Let me check.", toolCall: &llm.ToolInputPart{ID: "c1", Name: "t", Input: []byte(`{}`)}},
+		{text: steeringAnswer},
+	}}
+	tool := llm.Tool{
+		Definition: llm.ToolDefinition{Name: "t", Description: "test", Schema: []byte(`{"type":"object"}`)},
+		Execute: func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) {
+			close(toolStarted)
+			<-releaseTool
+			return []llm.ContentPart{&llm.TextPart{Text: "the tool result"}}, nil
+		},
+	}
+	s := steeringSession(t, output, provider, []llm.Tool{tool}, []llm.ContentPart{
+		&llm.TextPart{Text: "earlier", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	})
+
+	go s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "do it"}})
+	<-toolStarted
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	close(releaseTool)
+
+	driveRun(t, s)
+
+	out := output.String()
+	ut := frameIndexContaining(t, out, tlv.TagUserT, steeringText)
+	at := frameIndexContaining(t, out, tlv.TagAssistantT, steeringAnswer)
+	if ut < 0 || at < 0 {
+		t.Fatalf("steering UT frame at %d, answer AT frame at %d — both must be present:\n%q", ut, at, out)
+	}
+	if ut > at {
+		t.Fatalf("the steering was echoed at frame %d, after the answer it steered at frame %d — the adapter draws windows in frame order, so the prompt lands under the answer it caused", ut, at)
+	}
+}
+
+// frameIndexContaining returns the ordinal (0-based, over every frame in out) of
+// the first frame with the given tag whose value contains want, or -1.
+func frameIndexContaining(t *testing.T, out, tag, want string) int {
+	t.Helper()
+	r := strings.NewReader(out)
+	for i := 0; ; i++ {
+		gotTag, value, err := tlv.ReadTLV(r)
+		if err != nil {
+			return -1
+		}
+		if gotTag == tag && strings.Contains(value, want) {
+			return i
 		}
 	}
 }
@@ -457,17 +528,13 @@ func TestSteeringLeftoverDeliveredAsNextPrompt(t *testing.T) {
 	}
 }
 
-// A turn that does not land takes its steering with it. The words were a
-// modification of that turn; with the turn gone there is nothing for them to
-// modify, so they are dropped (and said so) rather than re-sent — re-sending
-// would either spend a turn the user did not ask for or fold the correction into
-// whatever they type next.
-//
-// This is also where the dangling-ID hazard would have lived under a naive
-// design: the batch was spliced into a request that never produced anything, so
-// if it had been echoed at injection the adapter would hold an ID that no
-// Contents entry resolves.
-func TestSteeringDroppedWhenTurnFails(t *testing.T) {
+// A batch a step already spliced was sent to the model and echoed to the
+// adapter, so it is part of the conversation, and a failure afterwards cannot
+// take it back: the words stay in Contents and the ID the adapter was shown
+// resolves there. The drop rule covers only what is still queued (see
+// TestSteeringQueuedDuringFailingRequestIsDropped); nothing is reported dropped
+// here, because nothing was.
+func TestSteeringSplicedStaysWhenTurnFails(t *testing.T) {
 	output := &syncOutput{}
 	toolStarted := make(chan struct{})
 	releaseTool := make(chan struct{})
@@ -505,24 +572,32 @@ func TestSteeringDroppedWhenTurnFails(t *testing.T) {
 	if indexOfSteering(provider.request(1)) < 0 {
 		t.Fatalf("steering was not spliced into the step that then failed: %s", summary(provider.request(1)))
 	}
-	// Dropped: not in history, not echoed, not re-sent.
-	for _, p := range s.Contents {
-		if tp, ok := p.(*llm.TextPart); ok && tp.Text == steeringText {
-			t.Fatalf("steering survived a failed turn into Contents: %s", summary(s.Contents))
+	// Kept: in Contents, echoed exactly once, and the ID the adapter was shown
+	// resolves there.
+	idx := indexOfSteering(s.Contents)
+	if idx < 0 {
+		t.Fatalf("a batch the model was already sent is missing from Contents: %s", summary(s.Contents))
+	}
+	steerID := s.Contents[idx].GetHistoryID()
+	seen := 0
+	for _, id := range echoedUserIDs(t, output.String()) {
+		if id == fmt.Sprintf("%d", steerID) {
+			seen++
 		}
 	}
-	if strings.Contains(output.String(), steeringText) {
-		t.Fatalf("steering was echoed to the adapter despite the turn failing: %q", output.String())
+	if seen != 1 {
+		t.Fatalf("the steering (ID %d) was echoed %d times, want exactly 1", steerID, seen)
 	}
 	if n := provider.callCount(); n != 2 {
-		t.Fatalf("provider calls = %d, want 2 — a failed turn must not re-send its steering", n)
+		t.Fatalf("provider calls = %d, want 2 — the failure must not re-send it", n)
 	}
 	if parts := s.takeSteering(); len(parts) != 0 {
 		t.Fatalf("the queue holds %d parts after a failed turn, want none", len(parts))
 	}
-	// And the user is told, because the words are gone from everywhere else.
-	if !strings.Contains(output.String(), "steering dropped") {
-		t.Errorf("the discard was silent: %q", output.String())
+	// Nothing was left in the queue, so nothing was dropped, so nothing is
+	// announced as dropped.
+	if strings.Contains(output.String(), "steering dropped") {
+		t.Errorf("a batch that was spliced was reported dropped: %q", output.String())
 	}
 }
 
@@ -888,16 +963,16 @@ func TestCancelKeepsSteeringArrivingAfterIt(t *testing.T) {
 	}
 }
 
-// The half that is no longer in the queue: a batch the task goroutine had
-// already spliced into a step goes back nowhere when that step is cut short by a
-// cancel. Dropping only the queue would let this one through and restart the
-// very task the user stopped.
+// The half of the cancel rule the queue drain cannot cover: a batch the task
+// goroutine had already spliced was sent to the model and echoed to the adapter,
+// so it is in the conversation. The cancel stops the turn, but it cannot unsend
+// what the model was already given — the words stay in Contents with the ID the
+// adapter was shown, which is what keeps the adapter from holding a window
+// nothing resolves.
 //
-// The window here is the one the queue drain cannot cover: the batch has been
-// taken and the request is in flight, so there is nothing left for cancelTask to
-// drain — the decision belongs to the task goroutine, which is what makes
-// processPrompt's deferred restore the other half of the rule.
-func TestCancelDropsBatchInFlight(t *testing.T) {
+// Only the queue is drained on a cancel (TestCancelDropsQueuedSteering), because
+// only the queue could start a task of its own afterwards.
+func TestCancelKeepsSplicedBatch(t *testing.T) {
 	output := &syncOutput{}
 	toolStarted := make(chan struct{})
 	releaseTool := make(chan struct{})
@@ -946,17 +1021,24 @@ func TestCancelDropsBatchInFlight(t *testing.T) {
 	if indexOfSteering(provider.request(1)) < 0 {
 		t.Fatalf("the batch was never spliced into the canceled step: %s", summary(provider.request(1)))
 	}
-	// ...and it went nowhere: not in history, not echoed, not re-sent.
-	for _, p := range s.Contents {
-		if tp, ok := p.(*llm.TextPart); ok && tp.Text == steeringText {
-			t.Fatalf("canceled steering survived into Contents: %s", summary(s.Contents))
+	// ...and it is part of the conversation, not re-sent as its own turn: in
+	// Contents, with the ID the adapter was shown.
+	idx := indexOfSteering(s.Contents)
+	if idx < 0 {
+		t.Fatalf("a batch the model was already sent is missing from Contents: %s", summary(s.Contents))
+	}
+	steerID := s.Contents[idx].GetHistoryID()
+	seen := 0
+	for _, id := range echoedUserIDs(t, output.String()) {
+		if id == fmt.Sprintf("%d", steerID) {
+			seen++
 		}
 	}
-	if strings.Contains(output.String(), steeringText) {
-		t.Fatalf("canceled steering was echoed to the adapter: %q", output.String())
+	if seen != 1 {
+		t.Fatalf("the steering (ID %d) was echoed %d times, want exactly 1", steerID, seen)
 	}
 	if n := provider.callCount(); n != 2 {
-		t.Fatalf("provider calls = %d, want 2 — canceled steering must not be re-sent", n)
+		t.Fatalf("provider calls = %d, want 2 — a cancel must not re-send it", n)
 	}
 }
 
@@ -1058,9 +1140,8 @@ func TestSteeringSplicedAfterCompactionInSameBoundary(t *testing.T) {
 	}
 }
 
-// A committed batch is committed once: later steps must not re-number or
-// re-publish it.
-func TestSteeringCommitIsOnceOnly(t *testing.T) {
+// A spliced batch is spliced once: later steps must not re-number or re-echo it.
+func TestSteeringSpliceIsOnceOnly(t *testing.T) {
 	output := &syncOutput{}
 
 	provider := &steeringProvider{steps: []steeringStep{

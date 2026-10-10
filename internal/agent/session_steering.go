@@ -19,45 +19,44 @@ import "github.com/alayacore/alayacore/internal/llm"
 // tool is still running therefore reach the model *after* that tool returns,
 // never between a call and its answer.
 //
-// Delivery is a two-phase commit. A part is numbered, echoed to the adapter and
-// published into Contents only at the moment the model has actually received it
-// — its step's OnStepFinish. Until then it is unnumbered and lives only in this
-// queue. That is what keeps a dangling history ID out: the adapter is never
-// shown an ID that Contents does not hold, because the echo and the part's entry
-// into Contents come from the same commit (the part rides that step's delta —
-// see processPrompt's onBeforeSend for why prevLen is not advanced for it). Its
-// user role, by contrast, it takes at the splice and not at the commit: the
-// request that carries it is built — and its parts grouped by role — before the
-// commit runs, so a part still wearing the role "" would be sent as an
-// empty-role message and rejected.
+// Delivery is an admission at the splice, and there is nothing two-phase about
+// it. A part is fitted, given its user role, numbered and echoed to the adapter
+// the moment it enters a request — in processPrompt's onBeforeSend, the same
+// point in the part's life at which runTaskNormal does all four for a fresh
+// prompt. It is not deferred to the step's finish, and that is settled by what
+// the adapter draws: windows are rendered in the order their frames arrive, so
+// an echo deferred to OnStepFinish lands *under* the reasoning it caused. What
+// waits for the finish is only the part's entry into Contents, which it rides
+// that step's delta into (see onBeforeSend for why prevLen is not advanced for
+// it). Because the admission is at the splice and the Contents entry is the
+// step's, a step that fails cannot take back words the model was already sent:
+// they are in the conversation, and processPrompt puts them in the returned
+// Contents too. So the adapter is never shown an ID that Contents does not hold
+// — at any point, on any outcome.
 //
-// One policy decides where a steering message ends up, and it has no exceptions:
-// it is delivered if the turn it was typed into landed, and dropped if it did
-// not. ("A turn" throughout this file means a userTurn — the kind
-// processPrompt is told the call is; see promptKind.)
+// One policy decides where a steering message ends up, and it turns on a single
+// question: had the turn already sent it — spliced it in — by the time the turn
+// ended? ("A turn" throughout this file means a userTurn, the kind processPrompt
+// is told the call is; see promptKind.)
 //
-//   - Landed → delivered: spliced at a boundary, or — when the turn ended before
-//     a boundary could carry it (the model answered without calling another
-//     tool, which is what "type the next thing while it is working" means, and
-//     the common case) — as the next prompt.
-//   - Did not land → dropped, with an SM notify. The words are a modification of
-//     the turn they were typed into, not a message with a life of their own;
-//     with that turn gone (an error, a cancel) there is nothing left for them to
-//     modify, and re-delivering them would either spend a turn nobody asked for
-//     or fold a correction into whatever the user types next, where it would
-//     read as something they never said. A canceled turn is the clearest
-//     instance: a queue that survived it would start a task on its own the
-//     moment the canceled one unwound — a stop button that keeps going.
+//   - Spliced → delivered. It was numbered, echoed and sent; it is in the
+//     conversation from that moment, and a failure or a cancel afterwards does
+//     not take it back — the model has been given it, and Contents holds it.
+//   - Not spliced, still in the queue when the turn ended → delivered as the
+//     next prompt if the turn landed (this is "type the next thing while it is
+//     working", and the common case), dropped with an SM notify if it did not.
+//     The words never put anything on the wire, so a turn that dies cannot
+//     leave them to run on afterwards: a queue that survived a cancel would
+//     start a task on its own the moment the canceled one unwound — a stop
+//     button that keeps going.
 //
-// Both halves of an undelivered batch are covered, because they live in different
-// places: what is still queued (drained by run()'s cancelTask on a cancel, by
-// processPrompt's deferred discard on a failure) and what a step had already
-// spliced in (that same discard). A batch whose step *did* finish is committed
-// and stays — the model has read it, so a later failure cannot take it back. The
-// drop is always announced: the words are in neither the transcript nor the
-// session file, so the user has to be told, and retyping them is their call.
-// Input arriving after a turn ends is untouched by any of this, because it was
-// never part of the turn that ended.
+// Both halves live in different places and both are covered: the queue (drained
+// by run()'s cancelTask on a cancel, by processPrompt's deferred discard on a
+// failure) and what a step had already spliced, which the splice discard does
+// not touch — it is in the conversation. Every drop is announced: the words are
+// in neither the transcript nor the session file, so the user has to be told,
+// and retyping them is their call. Input arriving after a turn ends is untouched
+// by any of this, because it was never part of the turn that ended.
 //
 // The queue is reachable only from a userTurn, and that follows from the kind
 // rather than from any knowledge held here: processPrompt installs the
@@ -67,8 +66,9 @@ import "github.com/alayacore/alayacore/internal/llm"
 // history is a copy that either replaces the conversation or is thrown away, so
 // words consumed by it would vanish with nothing to report, because from the
 // queue's point of view they had been delivered. The policy above then applies
-// to a summarizeCall exactly as it does to a userTurn — did the call land? — so
-// a summarize that fails is a call that did not land, and its queue goes with it.
+// to a summarizeCall with no special case: it is given no step-boundary hook, so
+// it never splices, and the queue is simply not touched by it — and a summarize
+// that fails is the turn failing, so the still-queued words go with it.
 //
 // The acknowledgement is an SM notify, not a new SM type. messageVersion — the
 // wire protocol version an adapter checks — is also the session file's
@@ -114,16 +114,17 @@ func (s *Session) takeSteering() []llm.ContentPart {
 	return parts
 }
 
-// discardUndeliveredSteering drops every word the turn was still going to be
-// told — the batch its step had already spliced in (batch) and whatever is still
-// queued — and says so. It is the "did not land" half of the policy above, and
-// the reason a failed turn does not leave its steering to run on afterwards.
+// discardQueuedSteering drops whatever is still in the queue and says so. It is
+// the "not spliced" half of the policy above, and the reason a failed or
+// canceled turn does not leave its steering to run on afterwards. Only the
+// queue: a part a step had already spliced was sent and echoed, so it is in the
+// conversation, and nothing here can or should take it back.
 //
-// The notice is what keeps that from being the silent kind: the words are in
-// neither the transcript nor the session file, so the user has to be told, and
-// retyping them is their call to make.
-func (s *Session) discardUndeliveredSteering(batch []llm.ContentPart) {
-	if len(batch)+len(s.takeSteering()) == 0 {
+// The notice is what keeps the drop from being the silent kind: these words are
+// in neither the transcript nor the session file, so the user has to be told,
+// and retyping them is their call to make.
+func (s *Session) discardQueuedSteering() {
+	if len(s.takeSteering()) == 0 {
 		return
 	}
 	s.writeNotify("steering dropped — the turn ended before it could be delivered")
@@ -136,9 +137,9 @@ func (s *Session) discardUndeliveredSteering(batch []llm.ContentPart) {
 // turn's last step boundary — and the turn either landed (so it is the user's
 // next request, typed while the last answer was still streaming) or it was
 // canceled/turned out to have failed, in which case processPrompt already
-// discarded everything that belonged to it. Either way what is left here is
-// fresh intent, and it is delivered rather than held: this is the case that
-// makes "type the next thing while it is working" work.
+// drained the queue. Either way what is left here is fresh intent, and it is
+// delivered rather than held: this is the case that makes "type the next thing
+// while it is working" work.
 //
 // Ordering: called from run()'s handleTaskDone, after Contents has been
 // committed and the idle state broadcast. The task goroutine's last touch of the

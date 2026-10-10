@@ -105,35 +105,33 @@ its result. Words typed while a tool is running thus reach the model *after* tha
 tool returns, never between a call and its answer (which the Anthropic Messages
 API rejects outright).
 
-Delivery is a **two-phase commit**, which is what keeps `Contents` and the
-adapter's view of history IDs in step: a part is numbered, echoed and published
-only at the moment the model has actually received it (its step's
-`OnStepFinish`), riding that step's delta.
+Delivery is a single admission at the splice, and it is that — not a deferred
+commit — which keeps `Contents` and the adapter's view of history IDs in step. A
+part is fitted, given its user role, numbered and echoed the moment it is spliced
+into a request — the same treatment a fresh prompt gets in `runTaskNormal`, at the
+same point in its life — and its entry into `Contents` follows through that step's
+delta, so the two never disagree. The echo is *not* deferred to the step's
+`OnStepFinish`: the adapter draws windows in the order their frames arrive, so an
+echo that waited would land *under* the answer it caused — the transcript
+showing a prompt the model had already answered.
 
-A steering message is a modification of the turn it was typed into, not a message
-in its own right, so its fate follows that turn's — where "turn" is a `userTurn`
-in `processPrompt`'s terms (see `promptKind` in
-`internal/agent/session_task.go`):
+The rule for where a steering message ends up turns on one question — had the
+turn spliced it in before the turn ended?
 
-- **The turn lands** — it is delivered, either spliced at a boundary or, when the
-  turn ended before a boundary could carry it (the model answered without calling
-  another tool), as the next prompt. That second case is what "type the next
-  thing while it is working" means, and it is the common one.
-- **The turn does not land** — it failed, or it was canceled — it is **discarded**
-  and the discard is announced (an SM notify). There is no turn left for the
-  words to modify, so re-delivering them would either spend a turn nobody asked
-  for or fold a correction into whatever the user types next, where it would read
-  as something they never said. Both halves go: what is still queued
-  (`cancelTask` drains it on cancel, `processPrompt`'s deferred discard takes it
-  on failure) and what a step had spliced in but never finished — a batch whose
-  step *did* finish is committed, and the model has read it, so it is part of the
-  conversation and the failure of a later step cannot take it back. An input
-  arriving *after* the turn ends is untouched by any of this: it was never part
-  of that turn.
+- **Spliced** — the words were sent to the model and echoed to the adapter, so
+  they are part of the conversation: numbered, in `Contents`, and a failure or a
+  cancel afterwards cannot take them back.
+- **Still queued when the turn ended** — delivered as the next prompt if the turn
+  landed (the model answered without calling another tool, which is what "type
+  the next thing while it is working" means, and the common case), or dropped
+  with an SM notify if it did not. These words never reached a step, so a turn
+  that dies cannot leave them to run on afterwards. An input arriving *after* the
+  turn ends is untouched by any of this: it was never part of that turn.
 
 A canceled turn is the clearest case of the second rule, since a queue that
 survived it would start a new task on its own the moment the canceled one
-unwound — a stop button that keeps going.
+unwound — a stop button that keeps going. The words it had already spliced stay,
+because the model has been given them.
 
 The take side needs no rule of its own: it falls out of the same distinction.
 Only a `userTurn` is given the hook that can reach the queue, so a
