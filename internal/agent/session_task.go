@@ -85,20 +85,27 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 
 	// pendingInjected is the batch of steering parts spliced into the step
 	// about to be sent, held here until that step's finish. The parts are
-	// numbered and echoed at the splice itself (see onBeforeSend): they are what
-	// the request already carries, so they are part of the conversation from
-	// that moment and not from the step's finish. What waits for the finish is
-	// only their Contents entry, which they ride the step's delta into — and
-	// this field exists for the one case where that entry never comes, the step
-	// failing: the words were sent and shown, so they go into the returned
-	// Contents anyway (an ID the adapter was shown that Contents does not hold
-	// is a window :fork cannot resolve, and a failed step cannot un-send them).
+	// numbered, echoed and published to Contents at the splice itself (see
+	// onBeforeSend): they are what the request already carries, so they are part
+	// of the conversation from that moment and not from the step's finish. This
+	// field exists for the one case where the step never finishes — the words
+	// were sent and shown, so the returned Contents must carry them too (an ID
+	// the adapter was shown that Contents does not hold is a window :fork cannot
+	// resolve, and a failed step cannot un-send them).
+	//
+	// stepBase is the history that step was sent on, without the splice. It is
+	// the base the failure path needs, because the batch has to be added to the
+	// history *it* was appended to — and that is neither fullContents (empty
+	// when no step has finished) nor the caller's history (stale once a
+	// compaction has replaced it at this very boundary, which is what the
+	// assignment in onBeforeSend captures).
 	//
 	// turnFailed records that this call — the user's turn — did not land. The
 	// deferred discard below reads it together with ctx: a turn that failed and
 	// a turn that was canceled are the same event as far as the user's steering
 	// is concerned.
 	var pendingInjected []llm.ContentPart
+	var stepBase []llm.ContentPart
 	var turnFailed bool
 	defer func() {
 		// A turn that did not land — it failed, or it was canceled — takes the
@@ -207,9 +214,12 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		// compaction replacement — so it is the freshest thing the model reads
 		// and nothing downstream can fold it away.
 		//
-		// prevLen is deliberately NOT advanced here: these parts ride this
-		// step's delta, which is exactly how they enter Contents — once, and in
-		// the order the model itself saw.
+		// The history this step is sent on, captured before the splice. A step
+		// that never finishes publishes nothing, and this is the base the words
+		// were appended to; the failure path below adds them back to it. It is
+		// taken here, after the compaction, precisely so that a boundary that
+		// both compacted and spliced keeps the compacted form.
+		stepBase = contents
 		if parts := s.takeSteering(); len(parts) > 0 {
 			// The whole of the words' admission happens here, at the moment
 			// they enter a request — fit, role, number, echo — exactly as a
@@ -219,9 +229,17 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			// steered. The words are sent to the model here, so they are in the
 			// conversation from here.
 			parts = s.spliceSteering(parts)
+			// Publish them to Contents in the same breath as that echo — the
+			// same event runTaskNormal publishes a fresh prompt's parts with —
+			// so a :save or :fork during this step sees the words the transcript
+			// already shows. prevLen moves past them, which leaves the step's
+			// delta carrying only the step's own output; without that, they
+			// would enter Contents twice.
+			s.sendEvent(promptPartsEvent{Parts: parts})
 			next := make([]llm.ContentPart, len(contents), len(contents)+len(parts))
 			copy(next, contents)
 			next = append(next, parts...)
+			prevLen += len(parts)
 			contents = next
 			pendingInjected = parts
 		}
@@ -269,16 +287,14 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		turnFailed = true
 		// The words spliced into the step that failed were sent and echoed at
 		// the splice, so they are already part of the adapter's conversation.
-		// fullContents does not carry them — the step produced no finish to
-		// ride — so put them in the returned Contents here, or the adapter
-		// holds a window whose ID nothing resolves. A failed step cannot
-		// un-send what the model was already given (see session_steering.go).
-		// A step that failed *after* finishing its work has already cleared
-		// this batch in onStepFinish, and they are in fullContents by then, so
-		// this adds nothing twice.
+		// Put them in the returned Contents too, on the history they were sent
+		// with — stepBase, not fullContents: fullContents is empty when no step
+		// has finished (this step is the first), and stale when a compaction
+		// replaced the history at this very boundary. Without this the adapter
+		// holds a window whose ID nothing resolves.
 		if len(pendingInjected) > 0 {
-			merged := make([]llm.ContentPart, 0, len(fullContents)+len(pendingInjected))
-			merged = append(merged, fullContents...)
+			merged := make([]llm.ContentPart, 0, len(stepBase)+len(pendingInjected))
+			merged = append(merged, stepBase...)
 			merged = append(merged, pendingInjected...)
 			fullContents = merged
 		}

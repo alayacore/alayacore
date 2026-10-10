@@ -456,8 +456,9 @@ func (s *Session) submitPrompt(parts []llm.ContentPart) {
 			return
 		}
 		// Acknowledge: nothing else tells the user their words were accepted
-		// rather than refused, and the message itself does not reach the
-		// transcript until the step that carries it completes.
+		// rather than refused. The words reach the transcript at the turn's
+		// next step boundary, where they are spliced in and echoed — which can
+		// be a whole tool call away, and is not at all if the turn ends first.
 		s.writeNotify("steering queued — delivered after the current tool call")
 	default:
 		s.writeError(err.Error()) // MCP slot already taken, or a permanent failure
@@ -893,10 +894,11 @@ func (s *Session) cancelTask() (any, error) {
 			// what I actually wanted" is an ordinary sequence, and swallowing
 			// it would be the silent loss this rule exists to avoid.
 			//
-			// The batch the task goroutine has already taken is not here to
-			// take: processPrompt's deferred restore drops it when it sees the
-			// canceled context, which is the same decision made on the half
-			// that is no longer in the queue.
+			// What the task goroutine has already spliced is not here to take,
+			// and is not dropped: those words were sent to the model and echoed
+			// to the adapter, so they are part of the conversation. A cancel
+			// stops the turn; it cannot unsend what the model was given (see
+			// session_steering.go).
 			if len(s.takeSteering()) > 0 {
 				s.writeNotify("steering dropped — the task was canceled before it was delivered")
 			}

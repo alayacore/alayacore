@@ -163,10 +163,11 @@ type sharedState struct {
 
 	// steering holds prompts that arrived while a task was in flight, waiting
 	// for that turn's next step boundary. It is shared state for the same
-	// reason confirmChs is: run() writes it (a prompt arrived) while the task
-	// goroutine takes from it at a boundary — and, when the step a batch was
-	// spliced into never completed, puts the batch back. Parts in here are
-	// deliberately unnumbered and unechoed; see session_steering.go.
+	// reason confirmChs is: run() writes it (a prompt arrived) and drains it
+	// (a cancel, or a task ending), while the task goroutine takes from it at a
+	// boundary. Parts in here are deliberately unnumbered and unechoed — that
+	// happens at the splice, once they are out of the queue, and a part that is
+	// spliced never comes back here; see session_steering.go.
 	steering   []llm.ContentPart
 	steeringMu sync.Mutex
 

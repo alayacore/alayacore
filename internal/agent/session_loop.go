@@ -212,10 +212,13 @@ func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 
 	s.sendSystemInfo(systemInfoTask)
 
-	// Anything the user steered that never found a step boundary — the turn
-	// ended without one, the step meant to carry it failed, or the turn was
-	// canceled — becomes the next prompt. Dropping it here would lose input
-	// the user watched leave the input box.
+	// Anything the user steered that is still queued when the turn ends — the
+	// turn ended without another step boundary, or the words arrived after the
+	// last one — becomes the next prompt. Dropping it here would lose input the
+	// user watched leave the input box. (What a turn that failed or was
+	// canceled had queued was already drained: processPrompt's deferred
+	// discard, or cancelTask. And a batch a step had already spliced is in the
+	// conversation already, so neither reaches here.)
 	s.deliverLeftoverSteering()
 }
 

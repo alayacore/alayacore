@@ -25,14 +25,15 @@ import "github.com/alayacore/alayacore/internal/llm"
 // point in the part's life at which runTaskNormal does all four for a fresh
 // prompt. It is not deferred to the step's finish, and that is settled by what
 // the adapter draws: windows are rendered in the order their frames arrive, so
-// an echo deferred to OnStepFinish lands *under* the reasoning it caused. What
-// waits for the finish is only the part's entry into Contents, which it rides
-// that step's delta into (see onBeforeSend for why prevLen is not advanced for
-// it). Because the admission is at the splice and the Contents entry is the
-// step's, a step that fails cannot take back words the model was already sent:
-// they are in the conversation, and processPrompt puts them in the returned
-// Contents too. So the adapter is never shown an ID that Contents does not hold
-// — at any point, on any outcome.
+// an echo deferred to OnStepFinish lands *under* the reasoning it caused. The
+// part enters Contents in the same breath, published the way runTaskNormal
+// publishes a fresh prompt's parts — so a :save or :fork during the step sees
+// what the transcript already shows, and the step's delta carries only the
+// step's own output. Because the whole admission is at the splice, a step that
+// fails cannot take back words the model was already sent: they are in the
+// conversation, and processPrompt puts them in the returned Contents too. So
+// the adapter is never shown an ID that Contents does not hold — at any point,
+// on any outcome.
 //
 // One policy decides where a steering message ends up, and it turns on a single
 // question: had the turn already sent it — spliced it in — by the time the turn

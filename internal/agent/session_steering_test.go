@@ -6,19 +6,25 @@ package agent
 // What these pin, in the order the design depends on them:
 //
 //   - TestSteeringInjectedAtStepBoundary      — the splice lands after the tool
-//     result, the words ride that step's delta into Contents exactly once, and
-//     the history ID the adapter was shown resolves there (no dangling ID).
+//     result, the words reach Contents exactly once and the history ID the
+//     adapter was shown resolves there (no dangling ID).
 //   - TestSteeringSplicedPartIsAUserMessage   — the spliced part is a user part
 //     at the instant the request carrying it is built (an empty role fails the
 //     whole API request), so the role is set at the splice, before the send.
 //   - TestSteeringEchoedBeforeTheAnswerItSteered — the words are echoed before
 //     the answer they steered: windows render in frame order, so a late echo
 //     would show the prompt under the reasoning it caused.
+//   - TestSteeringPublishedBeforeItsStepFinishes — the words reach Contents at
+//     the splice, not at the step's finish, so a :save/:fork mid-step sees what
+//     the transcript already shows.
 //   - TestSteeringLeftoverDeliveredAsNextPrompt — a turn that ends without a
 //     next step still delivers the words: they become the next prompt.
 //   - TestSteeringSplicedStaysWhenTurnFails   — a batch that reached a step is
 //     in the conversation: a later failure leaves it in Contents, with the ID
 //     the adapter was shown resolving there.
+//   - TestSteeringSplicedAtFirstStepThenStepFails — the put-back's base is the
+//     history the step was sent on, not fullContents: a first-step splice that
+//     then fails keeps the history instead of being replaced by the words.
 //   - TestSteeringQueuedDuringFailingRequestIsDropped — the words that never
 //     reached a step are the ones a failed turn drops.
 //   - TestSteeringNotTakenBySummarizeCall     — a summarize call (an internal
@@ -234,6 +240,17 @@ func echoedUserIDs(t *testing.T, out string) []string {
 	}
 }
 
+// countText returns how many TextParts in parts carry exactly the given text.
+func countText(parts []llm.ContentPart, want string) int {
+	n := 0
+	for _, p := range parts {
+		if tp, ok := p.(*llm.TextPart); ok && tp.Text == want {
+			n++
+		}
+	}
+	return n
+}
+
 // indexOfSteering returns the index of the steering text in parts, or -1.
 func indexOfSteering(parts []llm.ContentPart) int {
 	for i, p := range parts {
@@ -355,6 +372,96 @@ func TestSteeringInjectedAtStepBoundary(t *testing.T) {
 	steerID := s.Contents[idxSteer].GetHistoryID()
 	if want := fmt.Sprintf("%d", steerID); ids[1] != want {
 		t.Fatalf("adapter was shown ID %q for the steering, Contents holds %d", ids[1], steerID)
+	}
+}
+
+// The words must reach Contents the moment they are echoed — at the splice —
+// and not when the step that carries them finishes. The transcript shows them
+// from the splice, so a :save or :fork during that step must see them too; and
+// they must be published exactly once, which is why the step's delta no longer
+// carries them.
+//
+// The task is run with nothing draining its event channel, so the sequence it
+// left behind can be read back afterwards — no concurrency, and the ordering is
+// the property under test.
+func TestSteeringPublishedBeforeItsStepFinishes(t *testing.T) {
+	output := &syncOutput{}
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+
+	provider := &steeringProvider{steps: []steeringStep{
+		{text: "Let me check.", toolCall: &llm.ToolInputPart{ID: "c1", Name: "t", Input: []byte(`{}`)}},
+		{text: steeringAnswer},
+	}}
+	tool := llm.Tool{
+		Definition: llm.ToolDefinition{Name: "t", Description: "test", Schema: []byte(`{"type":"object"}`)},
+		Execute: func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) {
+			close(toolStarted)
+			<-releaseTool
+			return []llm.ContentPart{&llm.TextPart{Text: "the tool result"}}, nil
+		},
+	}
+	s := steeringSession(t, output, provider, []llm.Tool{tool}, []llm.ContentPart{
+		&llm.TextPart{Text: "earlier", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	})
+
+	go s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "do it"}})
+	<-toolStarted
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	close(releaseTool)
+
+	// The events the task left queued, in order.
+	var seq []string
+	drain := func() {
+		for {
+			select {
+			case ev := <-s.taskEventCh:
+				switch e := ev.(type) {
+				case promptPartsEvent:
+					if countText(e.Parts, steeringText) > 0 {
+						seq = append(seq, "published")
+					}
+				case stepFinishEvent:
+					if countText(e.NewParts, steeringText) > 0 {
+						seq = append(seq, "in-a-step-delta")
+					} else {
+						seq = append(seq, "step-finished")
+					}
+				}
+			default:
+				return
+			}
+		}
+	}
+	contents := <-s.taskResultCh
+	drain()
+	s.handleTaskDone(contents)
+	drain()
+
+	first, last := -1, -1
+	for i, x := range seq {
+		switch x {
+		case "published":
+			if first >= 0 {
+				t.Fatalf("the words were published twice: %v", seq)
+			}
+			first = i
+		case "in-a-step-delta":
+			t.Fatalf("the words arrived through a step's delta as well as at the splice: %v", seq)
+		case "step-finished":
+			last = i
+		}
+	}
+	if first < 0 {
+		t.Fatalf("the words were never published to Contents: %v", seq)
+	}
+	if first > last {
+		t.Fatalf("the words were published after the step that carries them finished: %v", seq)
+	}
+	if n := countText(s.Contents, steeringText); n != 1 {
+		t.Fatalf("steering appears %d times in Contents, want exactly 1: %s", n, summary(s.Contents))
 	}
 }
 
@@ -572,8 +679,15 @@ func TestSteeringSplicedStaysWhenTurnFails(t *testing.T) {
 	if indexOfSteering(provider.request(1)) < 0 {
 		t.Fatalf("steering was not spliced into the step that then failed: %s", summary(provider.request(1)))
 	}
-	// Kept: in Contents, echoed exactly once, and the ID the adapter was shown
+	// Kept: in Contents (the whole history, with the words appended — not
+	// replaced by them), echoed exactly once, and the ID the adapter was shown
 	// resolves there.
+	if countText(s.Contents, "earlier") != 1 || countText(s.Contents, "do it") != 1 {
+		t.Fatalf("the failed turn lost its history: %s", summary(s.Contents))
+	}
+	if last, ok := s.Contents[len(s.Contents)-1].(*llm.TextPart); !ok || last.Text != steeringText {
+		t.Fatalf("the words must be the trailing part of Contents: %s", summary(s.Contents))
+	}
 	idx := indexOfSteering(s.Contents)
 	if idx < 0 {
 		t.Fatalf("a batch the model was already sent is missing from Contents: %s", summary(s.Contents))
@@ -598,6 +712,84 @@ func TestSteeringSplicedStaysWhenTurnFails(t *testing.T) {
 	// announced as dropped.
 	if strings.Contains(output.String(), "steering dropped") {
 		t.Errorf("a batch that was spliced was reported dropped: %q", output.String())
+	}
+}
+
+// The words can be spliced into the FIRST step — reachable when a prompt is
+// typed while the task-start auto-summarize runs and is still queued when the
+// step's request is built — and that step can then fail. The history and the
+// prompt must survive with the words appended: the base the words are put back
+// on is the history the step was sent on, never fullContents, which is empty
+// when no step has finished.
+func TestSteeringSplicedAtFirstStepThenStepFails(t *testing.T) {
+	output := &syncOutput{}
+	provider := &steeringProvider{steps: []steeringStep{
+		{failErr: errors.New("provider stream failed: 400")},
+	}}
+	s := steeringSession(t, output, provider, nil, []llm.ContentPart{
+		&llm.TextPart{Text: "earlier", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	})
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	go s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "do it"}})
+	driveRun(t, s)
+
+	want := []string{"earlier", "do it", steeringText}
+	if len(s.Contents) != len(want) {
+		t.Fatalf("Contents = %s, want the history plus the words", summary(s.Contents))
+	}
+	for i, w := range want {
+		if tp, ok := s.Contents[i].(*llm.TextPart); !ok || tp.Text != w {
+			t.Fatalf("Contents[%d] = %v, want %q: %s", i, s.Contents[i], w, summary(s.Contents))
+		}
+	}
+}
+
+// The same put-back, at a boundary that also compacted. The base is the history
+// the step was *sent* on — the compacted form, which is what the boundary
+// captured — so the pre-compaction history must not come back. (The step that
+// fails is the one the compaction was performed for, which is why this is a
+// failure *after* a successful summarize.)
+func TestSteeringSplicedAtCompactionBoundaryThenStepFails(t *testing.T) {
+	output := &syncOutput{}
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+
+	provider := &steeringProvider{steps: []steeringStep{
+		{text: "Step 1.", toolCall: &llm.ToolInputPart{ID: "c1", Name: "t", Input: []byte(`{}`)}},
+		{text: "Summary of the conversation."}, // the compaction's summarize call
+		{failErr: errors.New("provider stream failed: 400")},
+	}}
+	tool := llm.Tool{
+		Definition: llm.ToolDefinition{Name: "t", Description: "test", Schema: []byte(`{"type":"object"}`)},
+		Execute: func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) {
+			close(toolStarted)
+			<-releaseTool
+			return []llm.ContentPart{&llm.TextPart{Text: "the tool result"}}, nil
+		},
+	}
+	s := steeringSession(t, output, provider, []llm.Tool{tool}, []llm.ContentPart{
+		&llm.TextPart{Text: "earlier", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	})
+	s.AutoSummarize, s.ContextLimit = 100, 10
+
+	go s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "do it"}})
+	<-toolStarted
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	close(releaseTool)
+	driveRun(t, s)
+
+	if countText(s.Contents, "earlier") != 0 || countText(s.Contents, "do it") != 0 {
+		t.Fatalf("the pre-compaction history came back: %s", summary(s.Contents))
+	}
+	if countText(s.Contents, "Summary of the conversation.") != 1 {
+		t.Fatalf("the compacted form is missing: %s", summary(s.Contents))
+	}
+	if last, ok := s.Contents[len(s.Contents)-1].(*llm.TextPart); !ok || last.Text != steeringText {
+		t.Fatalf("the words must be the trailing part of Contents: %s", summary(s.Contents))
 	}
 }
 

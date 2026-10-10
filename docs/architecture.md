@@ -107,13 +107,14 @@ API rejects outright).
 
 Delivery is a single admission at the splice, and it is that — not a deferred
 commit — which keeps `Contents` and the adapter's view of history IDs in step. A
-part is fitted, given its user role, numbered and echoed the moment it is spliced
-into a request — the same treatment a fresh prompt gets in `runTaskNormal`, at the
-same point in its life — and its entry into `Contents` follows through that step's
-delta, so the two never disagree. The echo is *not* deferred to the step's
-`OnStepFinish`: the adapter draws windows in the order their frames arrive, so an
-echo that waited would land *under* the answer it caused — the transcript
-showing a prompt the model had already answered.
+part is fitted, given its user role, numbered, echoed and published to `Contents`
+the moment it is spliced into a request — the same treatment a fresh prompt gets
+in `runTaskNormal`, at the same point in its life. The echo is *not* deferred to
+the step's `OnStepFinish`: the adapter draws windows in the order their frames
+arrive, so an echo that waited would land *under* the answer it caused — the
+transcript showing a prompt the model had already answered. And the `Contents`
+entry goes with the echo, not with the step's delta, so a `:save` or `:fork`
+during that step sees what the transcript already shows.
 
 The rule for where a steering message ends up turns on one question — had the
 turn spliced it in before the turn ended?

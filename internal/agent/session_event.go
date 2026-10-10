@@ -69,8 +69,9 @@ func (stepStatsEvent) taskEvent() {}
 
 // promptPartsEvent publishes finalized content parts that entered the
 // task's working copy outside the agent loop (user prompt parts, the
-// "Continue" marker). run() appends them to Contents. Parts must be
-// finalized (IDs assigned) and immutable after publication.
+// "Continue" marker, a steering batch at the splice). run() appends them to
+// Contents. Parts must be finalized (IDs assigned) and immutable after
+// publication.
 type promptPartsEvent struct {
 	Parts []llm.ContentPart
 }
