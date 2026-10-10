@@ -78,6 +78,14 @@ func TestUnclosedFrontmatterIsReportedNotSwallowed(t *testing.T) {
 			content: "---\nname: x\ndescription: y\nbody\n",
 			want:    "is never closed by a",
 		},
+		{
+			// The block runs past the reader's bound, which is not the same
+			// finding: the file may close it on the next line, and saying "never
+			// closed" there would be a claim the reader cannot make.
+			label:   "past the bound",
+			content: "---\nname: x\ndescription: y\n" + strings.Repeat("# c\n", 250) + "---\nbody\n",
+			want:    `has no closing "---" line in the next 200 lines`,
+		},
 	}
 	for _, tc := range cases {
 		_, _, _, err := ParseSkillMarkdown(tc.content)

@@ -12,8 +12,9 @@ package skills
 //
 // The properties below are the ones a wrong reading can break, each of which
 // this package promises somewhere: that a skill which loads is usable, that the
-// body is the file's own tail, that a message names a line the file has, that
-// reading is a pure function, and the shape of a file with no manifest at all.
+// body is the file's own tail, that a message names a line the file has and not a
+// blank one, that reading is a pure function, and the shape of a file with no
+// manifest at all.
 
 import (
 	"regexp"

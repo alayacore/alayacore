@@ -12,9 +12,9 @@ const (
 	// maxFrontmatterLines bounds the search for the closing line. A SKILL.md is
 	// a document, not a data stream: exactly one block belongs to the reader,
 	// and it is the one that starts on the file's first non-blank line. The
-	// search is bounded so a deleted closing "---" is reported rather than
-	// swallowing the markdown body — a "---" under a heading is a horizontal
-	// rule, not a delimiter.
+	// bound is what keeps a deleted closing "---" from being searched for
+	// through the whole document — within it the reader reports the first line
+	// that can only be prose, and past it the file is reported as unclosed.
 	maxFrontmatterLines = 200
 )
 
@@ -29,10 +29,11 @@ const maxDescriptionRunes = 1024
 // body under it (the usual shape of a deleted closing delimiter), an absent or
 // malformed name, an absent or overlong description. What is returned in
 // problems instead is a defect inside an otherwise sound block — a duplicate
-// key, a quote left open — where the rest of the file is still readable, and a
-// file with no frontmatter block at all, which is not a parse failure: the body
-// is intact, and it is the caller that refuses the skill, for a name it had no
-// way to read.
+// key, a quote left open, a block scalar with nothing indented under it, an
+// explicit indentation the content does not reach — where the rest of the file
+// is still readable, and a file with no frontmatter block at all, which is not a
+// parse failure: the body is intact, and it is the caller that refuses the
+// skill, for a name it had no way to read.
 //
 // The loader surfaces both, so no form of input is dropped or altered without
 // saying where and why.
@@ -41,9 +42,9 @@ const maxDescriptionRunes = 1024
 // not a general YAML parser. It is a reader of its own because a frontmatter
 // block has structure a config file does not: the delimiters that bound it, the
 // body after it that must never be mistaken for more manifest, and values
-// continued on indented lines. Where the two formats agree is the part that
-// matters here — the value is the rest of the line. Their disagreement with YAML
-// is exactly where a manifest must not be guessed at:
+// continued on indented lines. For an ordinary value the two formats agree, and
+// the value is the rest of the line. Two of the places they do not are where a
+// manifest must not be guessed at:
 //
 //   - `description: Use this skill when: the user asks about PDFs` is invalid
 //     YAML ("mapping values are not allowed here"), so the whole skill
@@ -68,7 +69,11 @@ func ParseSkillMarkdown(content string) (Metadata, string, []string, error) {
 
 	end, closed := frontmatterEnd(lines, open)
 	if !closed {
-		return Metadata{}, "", nil, unclosedFrontmatter(open)
+		// The scan stops either at the end of the file or at its own bound, and
+		// the two say different things to the author: only one of them is a
+		// block the file never closes.
+		bounded := len(lines) > open+maxFrontmatterLines
+		return Metadata{}, "", nil, unclosedFrontmatter(open, bounded)
 	}
 
 	meta, problems, err := parseManifestBlock(lines[open+1:end], open+2)
@@ -118,7 +123,9 @@ func frontmatterOpen(lines []string) int {
 }
 
 // frontmatterEnd returns the index of the line closing the block that opens at
-// start, or -1 when the block is never closed within its own bounds.
+// start, or -1 when no such line is found within maxFrontmatterLines of it. The
+// bool says whether one was found; unclosedFrontmatter is where the two ways a
+// search can come up empty are told apart.
 //
 // The closing delimiter is a line of its own, at the start of the line. An
 // indented "---" is content — a line of the literal or folded block above it —
@@ -214,9 +221,17 @@ func parseManifestBlock(block []string, firstLine int) (Metadata, []string, erro
 	return meta, problems, nil
 }
 
-// unclosedFrontmatter reports a block that runs to the end of the file without
-// ever meeting a closing delimiter.
-func unclosedFrontmatter(open int) error {
+// unclosedFrontmatter reports a block the reader found no closing delimiter for.
+//
+// There are two ways that happens and the reader knows which: the scan reached
+// the end of the file, or it stopped at its own bound. "Never closed" is false
+// for the second — the file may close the block on the line after the search
+// stopped — and naming the bound for the first tells a five-line manifest about
+// a line it never came near.
+func unclosedFrontmatter(open int, bounded bool) error {
+	if bounded {
+		return fmt.Errorf(`frontmatter block opened on line %d has no closing "`+frontmatterDelim+`" line in the next %d lines`, open+1, maxFrontmatterLines)
+	}
 	return fmt.Errorf(`frontmatter block opened on line %d is never closed by a "`+frontmatterDelim+`" line`, open+1)
 }
 

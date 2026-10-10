@@ -75,7 +75,7 @@ depth is the one worth memorising.
 | frontmatter `name:` ≠ the directory name | that skill is **dropped**, and reported at startup as a load error |
 | frontmatter `name:` outside the naming rules below | same: dropped and reported |
 | a `description:` value containing `:` or `#` | kept verbatim — see [How the frontmatter is read](#how-the-frontmatter-is-read) |
-| frontmatter block never closed | the skill is dropped; the file is reported as never closed |
+| frontmatter block not closed | the skill is dropped; the file is reported as unclosed, and the report says whether the reader reached the end of the file or stopped at its bound |
 | a line inside the block that is neither an entry, a comment nor a blank | the skill is dropped and that line is named — most often this is a deleted closing `---` whose block ran into the markdown body |
 | a line the reader cannot represent inside a well-formed block | the skill loads; the line and file are reported at startup (a duplicate key, an unterminated quote) |
 | same skill name from two containers | the **first container listed wins**; the later skill is dropped and named at startup |
@@ -196,15 +196,15 @@ Instructions for the agent...
 
 The block is read with the same key-value shape as the project's config files
 (`model.conf` and friends) — one `key: value` per line, the value being the rest
-of the line — and not with a general YAML parser. The two disagree exactly where
-a manifest must not be guessed at:
+of the line — and not with a general YAML parser. What it does with each shape is
+below; [the table at the end of this section](#where-this-reading-departs-from-yaml-on-purpose)
+lists the places where the reading differs from YAML's, and each of those is
+deliberate.
 
 - The value is everything after the first `: `, so a description may contain
   colons unquoted: `description: Use this skill when: the user asks about PDFs`.
 - `#` starts a comment only at the beginning of a line, so
-  `description: Count # of items` keeps its text. (A YAML parser ends the value
-  at the ` #`, and the skill is then advertised as `Count` — half the trigger
-  text, no error raised.)
+  `description: Count # of items` keeps its text.
 - Values may be quoted (`"…"`, `'…'`), folded (`>`), literal (`|`), or continued
   on indented lines. A block scalar follows YAML: `|` and `>` are clip (the value
   ends with one line break), `-` strips it, `+` keeps every blank line the author
@@ -217,35 +217,35 @@ a manifest must not be guessed at:
   line of the block scalar above it, not the end of the block. A line that can
   only be prose means the closing delimiter is missing, and it is reported with
   its line number instead of being folded into the description while the body is
-  discarded.
+  discarded. The search for the closing `---` stops at line 200, so a block that
+  has not closed by then is reported as unclosed and the skill is dropped.
 - A repeated key is a problem naming its line; the first value stands.
 - A field this build does not know is read past in silence, so a newer manifest
   still loads. The spec's free-form `metadata` is read the same way — the whole
-  entry is skipped, nested or flat. Nothing here reads it, and no partial reading
-  of a free-form value can be faithful: a `requires:` holding a map came back as
-  `requires: ""` — a value the author never wrote — while the nesting was
-  reported as a problem, so a manifest written to the spec printed an error at
-  startup.
+  entry is skipped, nested or flat — because nothing here reads it.
 
 Anything the reader gives up on is printed at startup with its file and line,
 whether or not the skill ends up loading.
 
 #### Where this reading departs from YAML on purpose
 
-The first two rows are why the general parser was dropped; they must not be
-"fixed" back into YAML behaviour.
+Every row is deliberate. The first two are why the general parser was dropped, and
+they must not be "fixed" back into YAML behaviour.
 
 | Input | YAML | Here |
 |-------|------|------|
-| `description: Use this skill when: the user asks about PDFs` | parse error — the skill disappears | the value is the rest of the line |
-| `description: Count # of items` | value ends at the ` #`, silently — the model is shown `Count` | `#` is kept, because it only opens a comment at the start of a line |
+| `description: Use this skill when: the user asks about PDFs` | a parse error — the skill disappears | the value is the rest of the line |
+| `description: Count # of items` | the value ends at the ` #`, silently — the model is shown `Count` | the text, as written |
+| `description:` written twice | an error — the file is refused | the first value, and the line is named |
+| `description:` over an indented map | a type error — a map where a string is required | the text, folded to one line |
 | `description: - hyphen led`, `description: [a, b]` | a type error — a sequence where a string is required | the text, as written |
+| an anchor or alias: `description: &d x` with `license: *d` | resolved, both read `x` | the text, as written |
 | a TAB in a continuation line's indentation | illegal | read like any other indentation |
-| a nested map under an unknown or free-form key | read (and rejected if the field is a string) | the entry is skipped whole |
+| a nested map under a key this build does not read | read | the entry is skipped whole |
 | `\|4` over content indented 2 | a parse error — the file is refused | the text, with the short line named at startup |
 
-Everything else follows YAML: quoting and escapes, `#` after a block scalar's own
-header, chomping (`-`, `+`, and the default clip) and indentation (`|2`)
+Everything else follows YAML: quoting and escapes, a `#` after a block scalar's
+own header, chomping (`-`, `+`, and the default clip) and indentation (`|2`)
 indicators, and lines indented deeper than their block. The expectations in
 [`internal/skills/manifest_test.go`](../internal/skills/manifest_test.go) for
 those are `yaml.v3`'s own output for the same frontmatter, and
@@ -341,9 +341,11 @@ another implementation is read here as written.
 Three places where this implementation deliberately differs:
 
 - The frontmatter is read as the project's key-value format, not as general YAML
-  ([How the frontmatter is read](#how-the-frontmatter-is-read)). Every spec
-  example is valid in both readings; the difference shows up only on inputs YAML
-  would either reject or silently truncate.
+  ([How the frontmatter is read](#how-the-frontmatter-is-read)). A construct the
+  reader does not interpret — an anchor, an alias, a flow collection — is kept as
+  text rather than resolved, and
+  [the table there](#where-this-reading-departs-from-yaml-on-purpose) lists the
+  places where the two readings differ.
 - `allowed-tools` is not read at all. The spec carries it, and this document
   once described it as pre-approving tools, but nothing enforced it — so it was
   removed rather than left as a permission a manifest could claim for itself.
