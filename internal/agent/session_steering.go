@@ -25,7 +25,11 @@ import "github.com/alayacore/alayacore/internal/llm"
 // queue. That is what keeps a dangling history ID out: the adapter is never
 // shown an ID that Contents does not hold, because the echo and the part's entry
 // into Contents come from the same commit (the part rides that step's delta —
-// see processPrompt's onBeforeSend for why prevLen is not advanced for it).
+// see processPrompt's onBeforeSend for why prevLen is not advanced for it). Its
+// user role, by contrast, it takes at the splice and not at the commit: the
+// request that carries it is built — and its parts grouped by role — before the
+// commit runs, so a part still wearing the role "" would be sent as an
+// empty-role message and rejected.
 //
 // One policy decides where a steering message ends up, and it has no exceptions:
 // it is delivered if the turn it was typed into landed, and dropped if it did

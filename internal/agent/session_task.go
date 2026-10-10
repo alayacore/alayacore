@@ -85,10 +85,11 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 
 	// pendingInjected is the batch of steering parts spliced into the step
 	// about to be sent, held here until that step completes. The parts stay
-	// unnumbered and unechoed until then: a steering part must never be shown
-	// to the adapter with a history ID Contents does not hold, and Contents
-	// only gains it when the step's delta (which carries it) is published —
-	// see session_steering.go.
+	// unnumbered and unechoed until then (they do carry their user role from
+	// the splice — a request cannot go out without it, see onBeforeSend): a
+	// steering part must never be shown to the adapter with a history ID
+	// Contents does not hold, and Contents only gains it when the step's delta
+	// (which carries it) is published — see session_steering.go.
 	//
 	// turnFailed records that this call — the user's turn — did not land. The
 	// deferred discard below reads it together with ctx: a turn that failed and
@@ -210,6 +211,16 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			// Fit oversized attachments before they are numbered and sent, the
 			// same treatment a fresh prompt gets in runTaskNormal.
 			parts = llm.ShrinkImages(parts)
+			// Give the words their user role here: after the fit, so it lands on
+			// whatever parts the fit returned, and before the request, which is
+			// built from these very parts. Each provider groups the history by
+			// role and stamps it onto its wire messages, so a role still unset
+			// goes out as an empty-role message and the API rejects the whole
+			// request — this cannot wait for the commit, which runs only after
+			// the request has already gone.
+			for _, part := range parts {
+				part.SetRole(llm.RoleUser)
+			}
 			next := make([]llm.ContentPart, len(contents), len(contents)+len(parts))
 			copy(next, contents)
 			next = append(next, parts...)
@@ -268,17 +279,20 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 // processPrompt Dependencies: deltaWriter, TLV helpers, callbacks
 // ============================================================================
 
-// commitSteering finalizes the steering parts a step carried: it numbers them,
-// gives them their user role and echoes them to the adapter. It runs at the
-// commit point — the step's OnStepFinish — because that is the moment the model
-// has actually received them, and it is what makes the history ID the adapter is
-// shown and the part that enters Contents (by riding that step's delta) appear
-// together and never disagree. Called with an empty batch, it does nothing.
+// commitSteering finalizes the steering parts a step carried: it numbers them
+// and echoes them to the adapter. It runs at the commit point — the step's
+// OnStepFinish — because that is the moment the model has actually received
+// them, and it is what makes the history ID the adapter is shown and the part
+// that enters Contents (by riding that step's delta) appear together and never
+// disagree. Called with an empty batch, it does nothing.
+//
+// The user role is not set here: it is given at the splice (onBeforeSend), so
+// the request that carries the part is well-formed when it is built. Only the
+// number and the echo wait for the commit.
 func (s *Session) commitSteering(parts []llm.ContentPart) {
 	for _, part := range parts {
 		id := s.histIncAndGet()
 		part.SetHistoryID(id)
-		part.SetRole(llm.RoleUser)
 		if tag, val, err := contentPartToTLV(part); err == nil && tag != "" {
 			s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
 		}

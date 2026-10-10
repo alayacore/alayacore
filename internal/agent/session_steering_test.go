@@ -8,6 +8,9 @@ package agent
 //   - TestSteeringInjectedAtStepBoundary      — the splice lands after the tool
 //     result, the words ride that step's delta into Contents exactly once, and
 //     the history ID the adapter was shown resolves there (no dangling ID).
+//   - TestSteeringSplicedPartIsAUserMessage   — the spliced part is a user part
+//     at the instant the request carrying it is built (an empty role fails the
+//     whole API request), so the role is set at the splice, not at the commit.
 //   - TestSteeringLeftoverDeliveredAsNextPrompt — a turn that ends without a
 //     next step still delivers the words: they become the next prompt.
 //   - TestSteeringSurvivesFailedStep          — the regression guard: a step
@@ -50,10 +53,18 @@ type steeringStep struct {
 
 // steeringProvider is a scripted provider that records the history every call
 // was sent on, so a test can assert on what the model actually saw.
+//
+// It records two views of each call, and the difference matters: calls holds the
+// history slice (whose elements are the live part pointers, so a later
+// commitSteering mutates what a test reads back), while rolesAtSend captures
+// each part's role at the instant the call was issued — the moment a real
+// provider serializes its wire messages. A check on calls alone cannot see what
+// role a part was sent with.
 type steeringProvider struct {
 	mu    sync.Mutex
 	steps []steeringStep
 	calls [][]llm.ContentPart
+	roles [][]llm.MessageRole
 }
 
 func (p *steeringProvider) StreamMessages(ctx context.Context, history []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
@@ -67,6 +78,11 @@ func (p *steeringProvider) StreamMessages(ctx context.Context, history []llm.Con
 	cp := make([]llm.ContentPart, len(history))
 	copy(cp, history)
 	p.calls = append(p.calls, cp)
+	roles := make([]llm.MessageRole, len(history))
+	for j, part := range history {
+		roles[j] = part.GetRole()
+	}
+	p.roles = append(p.roles, roles)
 	p.mu.Unlock()
 
 	// A request in flight: the call is recorded (so a test can see what it was
@@ -111,10 +127,25 @@ func (p *steeringProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 func (p *steeringProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // request returns the history the n-th provider call (0-based) was sent on.
+//
+// Its elements are the live part pointers, so a field a later step mutates — the
+// steering part's HistoryID, stamped at the commit — reads back at its committed
+// value rather than its sent value. That mutation is also why a role that went
+// out as "" is invisible here: a commit used to set it to "user" only after the
+// request had gone. Use rolesAtSend for the roles as they actually went out.
 func (p *steeringProvider) request(n int) []llm.ContentPart {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.calls[n]
+}
+
+// rolesAtSend returns each part's role as it was when the n-th call (0-based)
+// was issued — the moment a real provider serializes its wire messages, and the
+// only moment a roleless part is observable at all.
+func (p *steeringProvider) rolesAtSend(n int) []llm.MessageRole {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.roles[n]
 }
 
 func (p *steeringProvider) callCount() int {
@@ -317,6 +348,63 @@ func TestSteeringInjectedAtStepBoundary(t *testing.T) {
 	steerID := s.Contents[idxSteer].GetHistoryID()
 	if want := fmt.Sprintf("%d", steerID); ids[1] != want {
 		t.Fatalf("adapter was shown ID %q for the steering, Contents holds %d", ids[1], steerID)
+	}
+}
+
+// The part a splice adds must be a well-formed user message by the time the
+// request is built. The providers group the history by role and write that role
+// onto each wire message (llm.GroupByRole → openaiConvertContents), so a part
+// whose role is still the empty string goes out as an empty-role message and a
+// real API rejects the whole request — the 422 "unknown variant" error that
+// names a message index rather than the steering that caused it.
+//
+// The role is therefore given at the splice (onBeforeSend), not at the commit:
+// the commit runs at the step's OnStepFinish, after the request has already
+// gone. This test reads the roles captured at send time — request(n) holds the
+// same part pointers and would show the committed role instead.
+func TestSteeringSplicedPartIsAUserMessage(t *testing.T) {
+	output := &syncOutput{}
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+
+	provider := &steeringProvider{steps: []steeringStep{
+		{text: "Let me check.", toolCall: &llm.ToolInputPart{ID: "c1", Name: "t", Input: []byte(`{}`)}},
+		{text: "Done."},
+	}}
+	tool := llm.Tool{
+		Definition: llm.ToolDefinition{Name: "t", Description: "test", Schema: []byte(`{"type":"object"}`)},
+		Execute: func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) {
+			close(toolStarted)
+			<-releaseTool
+			return []llm.ContentPart{&llm.TextPart{Text: "the tool result"}}, nil
+		},
+	}
+	s := steeringSession(t, output, provider, []llm.Tool{tool}, []llm.ContentPart{
+		&llm.TextPart{Text: "earlier", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	})
+
+	go s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "do it"}})
+	<-toolStarted
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	close(releaseTool)
+
+	driveRun(t, s)
+
+	roles := provider.rolesAtSend(1)
+	idx := indexOfSteering(provider.request(1))
+	if idx < 0 {
+		t.Fatalf("steering never reached the model: %s", summary(provider.request(1)))
+	}
+	if got := roles[idx]; got != llm.RoleUser {
+		t.Errorf("the spliced part went out with role %q, want %q — a real provider rejects an empty role", got, llm.RoleUser)
+	}
+	// One roleless part fails the entire request, so none may be roleless.
+	for i, role := range roles {
+		if role == "" {
+			t.Errorf("request part %d went out with an empty role: %v", i, roles)
+		}
 	}
 }
 
