@@ -61,10 +61,11 @@ func TestUnclosedFrontmatterIsReportedNotSwallowed(t *testing.T) {
 	}{
 		{
 			// The delimiter is gone, so the scan runs to the next rule and
-			// the markdown inside it is what gives the answer away.
-			label:   "body text before any delimiter",
+			// the markdown inside it is what gives the answer away — the
+			// heading itself now, rather than the prose under it.
+			label:   "heading before any delimiter",
 			content: "---\nname: x\ndescription: y\n\n# Title\n\nprose\n\n---\n\nmore\n",
-			want:    `line 7 is neither a "key: value" entry`,
+			want:    `line 5 is neither a "key: value" entry`,
 		},
 		{
 			label:   "body text, delimiter further down",
@@ -90,6 +91,25 @@ func TestUnclosedFrontmatterIsReportedNotSwallowed(t *testing.T) {
 	}
 }
 
+// The blank line between an entry and a "#" line is what decides whether that
+// line is a comment or the markdown heading a deleted closing "---" let into the
+// block. The reader used to advance past that blank while collecting the entry's
+// continuation, so the heading read as a comment and the section under it left
+// the body with no error anywhere: the skill loaded, minus part of the document.
+func TestHeadingAfterEntryIsNotAComment(t *testing.T) {
+	content := "---\nname: x\ndescription: d\nlicense: MIT\n\n# Title\n\n---\n\nmore\n"
+	_, _, problems, err := ParseSkillMarkdown(content)
+	if err == nil {
+		t.Fatal("the heading was read as a comment; the block ran into the body and said nothing")
+	}
+	if len(problems) != 0 {
+		t.Errorf("problems = %v, want a line that can only be the body to be the error it is", problems)
+	}
+	if !strings.Contains(err.Error(), "line 6") {
+		t.Errorf("err = %v, want the heading's own line named", err)
+	}
+}
+
 // The mirror of that test: a "---" after the block is a horizontal rule and must
 // stay in the body untouched.
 func TestBodyRuleIsNotAFrontmatterDelimiter(t *testing.T) {
@@ -109,8 +129,75 @@ func TestBodyRuleIsNotAFrontmatterDelimiter(t *testing.T) {
 	}
 }
 
+// A block scalar's own line can be a "---" — indented, so it is content, not the
+// end of the block. The closing delimiter used to be found by trimming the line
+// first, so a rule inside `description: |` cut the description short and leaked
+// `license: MIT` and the delimiter into the body — a wrong manifest with no
+// error raised.
+func TestIndentedRuleDoesNotCloseTheBlock(t *testing.T) {
+	content := "---\nname: x\ndescription: |\n  first\n  ---\n  second\nlicense: MIT\n---\nbody\n"
+	md, body, problems, err := ParseSkillMarkdown(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if md.Description != "first\n---\nsecond\n" {
+		t.Errorf("description = %q, want the indented rule kept as content", md.Description)
+	}
+	if md.License != "MIT" {
+		t.Errorf("license = %q, want the entry after the block still read", md.License)
+	}
+	if strings.Contains(body, "license:") || !strings.Contains(body, "body") {
+		t.Errorf("body = %q, want only the document after the manifest", body)
+	}
+	if len(problems) != 0 {
+		t.Errorf("unexpected problems: %v", problems)
+	}
+
+	// The same line under a free-form entry is part of what that entry skips.
+	content = "---\nname: x\ndescription: d\nmetadata:\n  note: |\n    ---\nlicense: MIT\n---\nbody\n"
+	md, _, _, err = ParseSkillMarkdown(content)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if md.License != "MIT" {
+		t.Errorf("license = %q, want the entry after the metadata block still read", md.License)
+	}
+}
+
+// An explicit indentation the content does not reach is an error for YAML. Here
+// the author's text is kept — cut to the indentation each line actually carries,
+// never into a word — and the line is named, because reading it as if the header
+// were right is how `one` came back as `e`.
+func TestExplicitIndentShorterThanContent(t *testing.T) {
+	md, _, problems, err := ParseSkillMarkdown("---\nname: x\ndescription: |4\n  one\n  two\n---\nbody\n")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if md.Description != "one\ntwo\n" {
+		t.Errorf("description = %q, want the text kept", md.Description)
+	}
+	if len(problems) != 1 || !strings.Contains(problems[0], "line 4") {
+		t.Errorf("problems = %v, want the short line named", problems)
+	}
+
+	// An indicator the content does reach cuts exactly that much, leaving any
+	// extra indentation as part of the value — YAML's own result for `|2` over
+	// four-space content.
+	md, _, problems, err = ParseSkillMarkdown("---\nname: x\ndescription: |2\n    one\n    two\n---\nbody\n")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if md.Description != "  one\n  two\n" {
+		t.Errorf("description = %q, want the extra indentation kept", md.Description)
+	}
+	if len(problems) != 0 {
+		t.Errorf("unexpected problems: %v", problems)
+	}
+}
+
 // Folded and literal block scalars are how long descriptions are written.
 func TestBlockScalars(t *testing.T) {
+	// ">-" strips the trailing break.
 	md, _, problems, err := ParseSkillMarkdown("---\nname: x\ndescription: >-\n  First.\n\n  Second.\n---\nbody\n")
 	if err != nil {
 		t.Fatalf("folded description: %v", err)
@@ -122,11 +209,13 @@ func TestBlockScalars(t *testing.T) {
 		t.Errorf("folded: unexpected problems %v", problems)
 	}
 
+	// "|" is the default (clip): the lines' breaks are kept and the value ends
+	// with the one break the block itself ends with, as YAML defines it.
 	md, _, _, err = ParseSkillMarkdown("---\nname: x\ndescription: |\n  one\n  two\n---\nbody\n")
 	if err != nil {
 		t.Fatalf("literal description: %v", err)
 	}
-	if md.Description != "one\ntwo" {
+	if md.Description != "one\ntwo\n" {
 		t.Errorf("literal = %q, want the line breaks kept", md.Description)
 	}
 
@@ -142,31 +231,77 @@ func TestBlockScalars(t *testing.T) {
 	}
 }
 
-// metadata is not read by anything. It used to be able to kill a skill: a nested
-// map failed the YAML parse of the whole file. Now it is reported and the file
-// stands.
-func TestNestedMetadataCannotLoseTheSkill(t *testing.T) {
-	md, _, problems, err := ParseSkillMarkdown("---\nname: x\ndescription: d\nmetadata:\n  team:\n    name: infra\n---\nbody\n")
-	if err != nil {
-		t.Fatalf("a nested metadata map lost the skill: %v", err)
+// The chomping indicator is honored rather than approximated. Reading every
+// header as if it were the default silently rewrote the value: "|+" lost the
+// blank lines the author left, and the three modes are not interchangeable.
+func TestBlockScalarChomping(t *testing.T) {
+	cases := []struct {
+		header string
+		want   string
+	}{
+		{"|", "one\ntwo\n"},    // clip: exactly one trailing break
+		{"|-", "one\ntwo"},     // strip
+		{"|+", "one\ntwo\n\n"}, // keep: the blank line the author left
+		{">", "one two\n"},
+		{">-", "one two"},
+		{">+", "one two\n\n"},
 	}
-	if md.Name != "x" || md.Description != "d" {
-		t.Errorf("fields read = %q/%q", md.Name, md.Description)
+	for _, tc := range cases {
+		md, _, _, err := ParseSkillMarkdown("---\nname: x\ndescription: " + tc.header + "\n  one\n  two\n\n---\nbody\n")
+		if err != nil {
+			t.Fatalf("%q: %v", tc.header, err)
+		}
+		if md.Description != tc.want {
+			t.Errorf("%q = %q, want %q", tc.header, md.Description, tc.want)
+		}
 	}
-	if len(problems) == 0 || !strings.Contains(problems[0], "nested") {
-		t.Errorf("problems = %v, want the unread nesting reported", problems)
-	}
+}
 
-	// A flat map, which is what the field can hold, is read.
-	md, _, problems, err = ParseSkillMarkdown("---\nname: x\ndescription: d\nmetadata:\n  author: jane\n  version: 2\n---\nbody\n")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// A line indented deeper than the block is content, not a continuation of the
+// sentence above it: YAML keeps such lines as they are, and folding them joined
+// words the author had separated. Each expectation is yaml.v3's own output for
+// the same frontmatter.
+func TestFoldedKeepsDeeperLines(t *testing.T) {
+	cases := []struct{ block, want string }{
+		{"  one\n   deeper\n  two", "one\n deeper\ntwo\n"},
+		{"  one\n\n   deeper\n  two", "one\n\n deeper\ntwo\n"},
+		{"  one\n   deeper\n\n  two", "one\n deeper\n\ntwo\n"},
 	}
-	if md.Metadata["author"] != "jane" || md.Metadata["version"] != "2" {
-		t.Errorf("metadata = %v, want both entries", md.Metadata)
+	for _, tc := range cases {
+		md, _, _, err := ParseSkillMarkdown("---\nname: x\ndescription: >\n" + tc.block + "\n---\nbody\n")
+		if err != nil {
+			t.Fatalf("%q: %v", tc.block, err)
+		}
+		if md.Description != tc.want {
+			t.Errorf(">\n%s = %q, want %q", tc.block, md.Description, tc.want)
+		}
 	}
-	if len(problems) != 0 {
-		t.Errorf("unexpected problems: %v", problems)
+}
+
+// The spec's `metadata` is free-form and nothing in this build reads it, so the
+// whole entry is skipped, nested or flat. It used to be recorded one level deep
+// and the nesting reported: a valid manifest then printed an error at startup,
+// and a `requires:` holding a map came back as `requires: ""` — a value the
+// author never wrote.
+func TestMetadataIsSkippedWholeWhateverItsShape(t *testing.T) {
+	for _, content := range []string{
+		"---\nname: x\ndescription: d\nmetadata:\n  team:\n    name: infra\n  author: jane\n---\nbody\n",
+		"---\nname: x\ndescription: d\nmetadata:\n  author: jane\n  version: 2\n---\nbody\n",
+		"---\nname: x\ndescription: d\nmetadata: {author: jane}\n---\nbody\n",
+	} {
+		md, body, problems, err := ParseSkillMarkdown(content)
+		if err != nil {
+			t.Fatalf("a metadata block lost the skill: %v", err)
+		}
+		if md.Name != "x" || md.Description != "d" {
+			t.Errorf("fields read = %q/%q, want the entry skipped, not the file", md.Name, md.Description)
+		}
+		if !strings.Contains(body, "body") {
+			t.Errorf("body = %q, want the document after the entry", body)
+		}
+		if len(problems) != 0 {
+			t.Errorf("problems = %v, want a free-form field read past in silence", problems)
+		}
 	}
 }
 

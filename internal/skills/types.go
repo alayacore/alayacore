@@ -4,21 +4,20 @@ package skills
 // Metadata is the frontmatter of a SKILL.md file.
 //
 // Two of these fields do anything: Name and Description, which the prompt
-// advertises. License, Compatibility and Metadata are recorded — nothing
-// enforces a license, checks a compatibility claim, or reads a metadata entry —
-// and are kept on the Skill so the parsed manifest is inspectable without
-// re-reading the file. A field the build does not know at all is skipped rather
-// than refused, so a newer manifest still loads.
+// advertises. License and Compatibility are recorded — nothing enforces a
+// license or checks a compatibility claim — and are kept on the Skill so the
+// parsed manifest is inspectable without re-reading the file.
 //
-// There is deliberately no tool-permission field here: a skill cannot grant
-// itself tools, and `allowed-tools` was removed once it was clear nothing read
-// it. Tools are the user's to grant — --builtin-tools and --tool-confirm.
+// The spec's free-form `metadata` field is deliberately absent: the reader skips
+// the whole entry rather than record part of it (see ParseSkillMarkdown). There
+// is likewise no tool-permission field: a skill cannot grant itself tools, and
+// `allowed-tools` was removed once it was clear nothing read it. Tools are the
+// user's to grant — --builtin-tools and --tool-confirm.
 type Metadata struct {
 	Name          string
 	Description   string
 	License       string
 	Compatibility string
-	Metadata      map[string]string
 }
 
 // Skill is one loaded skill: what the prompt says about it, and where the agent

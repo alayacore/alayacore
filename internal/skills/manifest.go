@@ -29,10 +29,10 @@ const maxDescriptionRunes = 1024
 // body under it (the usual shape of a deleted closing delimiter), an absent or
 // malformed name, an absent or overlong description. What is returned in
 // problems instead is a defect inside an otherwise sound block — a duplicate
-// key, a nested metadata map, a quote left open — where the rest of the file is
-// still readable, and a file with no frontmatter block at all, which is not a
-// parse failure: the body is intact, and it is the caller that refuses the
-// skill, for a name it had no way to read.
+// key, a quote left open — where the rest of the file is still readable, and a
+// file with no frontmatter block at all, which is not a parse failure: the body
+// is intact, and it is the caller that refuses the skill, for a name it had no
+// way to read.
 //
 // The loader surfaces both, so no form of input is dropped or altered without
 // saying where and why.
@@ -53,7 +53,10 @@ const maxDescriptionRunes = 1024
 //     only starts a comment at the beginning of a line.
 //
 // Values may still be quoted, folded (`>`), literal (`|`) or continued on
-// indented lines, which is all of YAML the manifest format needs.
+// indented lines, which is all of YAML the manifest format needs. A block
+// scalar's chomping and indentation indicators are read, and a line indented
+// deeper than its block stays a line of its own, so the value is the one YAML
+// would have read rather than an approximation of it.
 func ParseSkillMarkdown(content string) (Metadata, string, []string, error) {
 	lines := splitLines(content)
 
@@ -116,13 +119,20 @@ func frontmatterOpen(lines []string) int {
 
 // frontmatterEnd returns the index of the line closing the block that opens at
 // start, or -1 when the block is never closed within its own bounds.
+//
+// The closing delimiter is a line of its own, at the start of the line. An
+// indented "---" is content — a line of the literal or folded block above it —
+// and indentation is already what decides ownership everywhere else in this
+// reader, so it decides here too. Comparing with the line trimmed instead closed
+// a `description: |` at its own rule, cutting the value short and leaking the
+// rest of the manifest into the body with no error anywhere.
 func frontmatterEnd(lines []string, start int) (int, bool) {
 	limit := start + maxFrontmatterLines
 	if limit > len(lines) {
 		limit = len(lines)
 	}
 	for i := start + 1; i < limit; i++ {
-		switch strings.TrimSpace(lines[i]) {
+		switch strings.TrimRight(lines[i], " \t") {
 		case frontmatterDelim, "...":
 			return i, true
 		}
@@ -181,16 +191,22 @@ func parseManifestBlock(block []string, firstLine int) (Metadata, []string, erro
 		seen[key] = true
 
 		switch {
-		case key == "metadata":
-			meta.Metadata, i = parseStringMap(block, i, lineNo, &problems)
 		case isScalarField(key):
 			var value string
 			value, i = parseScalar(rest, block, i, lineNo, key, &problems)
 			assignScalar(&meta, key, value)
 		default:
-			// An unrecognized key is read past, not complained about: the
-			// manifest format grows new fields, and a field this build does
-			// not know must not cost the user the skill.
+			// Every other key is read past whole, not complained about: the
+			// manifest format grows new fields, and a field this build does not
+			// use must not cost the user the skill.
+			//
+			// That is the treatment the spec's `metadata` gets, and the reason it
+			// is not a case of its own: it is free-form and nothing here reads
+			// it, so there is no reading of it that can be right. Recording the
+			// one level a scalar map could hold would hand back structure the
+			// author did not write — a `requires:` that held a map came back as
+			// `requires: ""` — and complaining about the rest made a valid
+			// manifest, nested or flat, print an error at startup.
 			i = skipEntry(block, i)
 		}
 	}
@@ -252,13 +268,29 @@ func parseScalar(rest string, block []string, i, lineNo int, key string, problem
 		return foldScalar(body), next
 
 	case rest[0] == '|' || rest[0] == '>':
+		style, chomp, explicit, isHeader := blockHeader(rest)
+		if !isHeader {
+			// A "|" or ">" that does not head a block — `description: > 5
+			// items` — is a plain value. Reading it as an empty block cost the
+			// skill its description and said nothing about why.
+			return foldScalar(append([]string{rest}, body...)), next
+		}
 		if len(body) == 0 {
 			*problems = append(*problems, fmt.Sprintf("line %d: key %q declares a block scalar with no indented content", lineNo, key))
 		}
-		if rest[0] == '|' {
-			return literalScalar(body), next
+		indent := blockIndent(body, explicit)
+		if k := shortIndentedLine(body, explicit); k >= 0 {
+			*problems = append(*problems, fmt.Sprintf(
+				"line %d: key %q declares indentation %d but this line is indented %d, so the block is read from the line's own indentation",
+				lineNo+1+k, key, explicit, indentationOf(body[k])))
 		}
-		return foldScalar(body), next
+		var text string
+		if style == '|' {
+			text = literalScalar(body, indent)
+		} else {
+			text = foldedBlock(body, indent)
+		}
+		return chompBlock(text, chomp, countBlanks(block, next)), next
 
 	case isQuote(rest[0]):
 		if !closesQuote(rest) {
@@ -275,56 +307,197 @@ func parseScalar(rest string, block []string, i, lineNo int, key string, problem
 	}
 }
 
-// parseStringMap reads the one-level map under a "metadata:" key. Anything
-// deeper is reported and skipped: the field is informational, and a nested map
-// must not cost the file its name and description the way a YAML parse failure
-// used to.
-func parseStringMap(block []string, i, lineNo int, problems *[]string) (map[string]string, int) {
-	body, next := collectContinuation(block, i)
-	if len(body) == 0 {
-		return nil, next
+// blockHeader reads a block scalar header: "|" or ">", then an optional
+// indentation indicator (1-9) and an optional chomping indicator ("-" strip,
+// "+" keep) in either order, then optional spaces and an optional comment. It
+// returns the style, the chomping byte (0 for the default, clip) and the
+// explicit indentation (0 when the header carried none).
+//
+// The header must end there. YAML's three chomping modes are honored rather than
+// approximated, because approximating them is a silent rewrite of the value:
+// "|+" keeps the blank lines the author left, and "|" clips to one break.
+func blockHeader(rest string) (style, chomp byte, indent int, ok bool) {
+	if rest == "" || (rest[0] != '|' && rest[0] != '>') {
+		return 0, 0, 0, false
 	}
+	style = rest[0]
 
-	out := make(map[string]string, len(body))
-	base := -1
-	nestedReported := false
-	for j, line := range body {
-		text := strings.TrimSpace(line)
-		if text == "" || strings.HasPrefix(text, "#") {
-			continue
+	indicators := rest[1:]
+	if i := strings.IndexByte(indicators, '#'); i >= 0 {
+		// A comment follows whitespace, as it does anywhere else in YAML.
+		if i > 0 && indicators[i-1] != ' ' && indicators[i-1] != '\t' {
+			return 0, 0, 0, false
 		}
-		indent := indentationOf(line)
-		if base < 0 {
-			base = indent
-		}
-		if indent > base {
-			if !nestedReported {
-				*problems = append(*problems, fmt.Sprintf("line %d: nested entries under %q are not read", lineNo+j, "metadata"))
-				nestedReported = true
+		indicators = indicators[:i]
+	}
+	for _, c := range strings.Trim(indicators, " \t") {
+		switch {
+		case c == '-' || c == '+':
+			if chomp != 0 {
+				return 0, 0, 0, false
 			}
+			chomp = byte(c)
+		case c >= '1' && c <= '9':
+			if indent != 0 {
+				return 0, 0, 0, false
+			}
+			indent = int(c - '0')
+		default:
+			return 0, 0, 0, false
+		}
+	}
+	return style, chomp, indent, true
+}
+
+// blockIndent returns the indentation the block scalar's content shares: the
+// header's explicit indicator when it carried one, otherwise the smallest
+// indentation among the body's non-blank lines.
+func blockIndent(body []string, explicit int) int {
+	if explicit > 0 {
+		return explicit
+	}
+	indent := -1
+	for _, line := range body {
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		key, value, ok := splitKeyValue(text)
-		if !ok {
-			*problems = append(*problems, fmt.Sprintf("line %d: not a key: value entry under %q, skipped: %s", lineNo+j, "metadata", text))
+		if n := indentationOf(line); indent < 0 || n < indent {
+			indent = n
+		}
+	}
+	if indent < 0 {
+		return 0
+	}
+	return indent
+}
+
+// cutIndent removes the block's indentation from one line, never more than the
+// whitespace the line actually starts with. An explicit indicator can name an
+// indentation the content does not reach, and cutting the count it asked for
+// took characters out of the text: `|4` over two-space lines read `one` as `e`.
+func cutIndent(line string, indent int) string {
+	if strings.TrimSpace(line) == "" {
+		return ""
+	}
+	n := indentationOf(line)
+	if n > indent {
+		n = indent
+	}
+	return line[n:]
+}
+
+// shortIndentedLine returns the index of the first body line indented less than
+// the header's explicit indentation, or -1. YAML rejects such a block outright;
+// this reader keeps the author's text instead, and the caller names the line so
+// the difference is visible rather than silently reinterpreted.
+func shortIndentedLine(body []string, explicit int) int {
+	if explicit <= 0 {
+		return -1
+	}
+	for k, line := range body {
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		out[key] = unquote(value)
+		if indentationOf(line) < explicit {
+			return k
+		}
 	}
-	if len(out) == 0 {
-		return nil, next
+	return -1
+}
+
+// literalScalar keeps the lines' breaks, after cutting the indentation the block
+// shares.
+func literalScalar(body []string, indent int) string {
+	out := make([]string, len(body))
+	for k, line := range body {
+		out[k] = cutIndent(line, indent)
 	}
-	return out, next
+	return strings.Join(out, "\n")
+}
+
+// foldedBlock joins lines the way a folded YAML scalar does. A break between two
+// lines at the block's own indentation folds to a space; a break is kept — as
+// many breaks as there are empty lines between the two, plus one when either
+// side is indented deeper than the block — when that is not the case.
+//
+// The deeper line is why: it is content, a run of it is not a continuation of
+// the sentence above it, and joining it rewrote the author's text.
+func foldedBlock(body []string, indent int) string {
+	var sb strings.Builder
+	blanks := 0
+	prevMore := false
+	started := false
+	for _, line := range body {
+		if strings.TrimSpace(line) == "" {
+			blanks++
+			continue
+		}
+		more := indentationOf(line) > indent
+		switch {
+		case !started && blanks > 0:
+			sb.WriteString(strings.Repeat("\n", blanks))
+		case started && (blanks > 0 || more || prevMore):
+			breaks := blanks
+			if more || prevMore {
+				breaks++
+			}
+			sb.WriteString(strings.Repeat("\n", breaks))
+		case started:
+			sb.WriteString(" ")
+		}
+		sb.WriteString(cutIndent(line, indent))
+		prevMore = more
+		blanks = 0
+		started = true
+	}
+	return sb.String()
+}
+
+// countBlanks counts the blank lines a block scalar left for the entry below it.
+// The reader keeps them out of the body so that a heading after them is still
+// seen as body; a "+" header is the one place they belong to the value, which is
+// why they are counted here instead of being consumed.
+func countBlanks(block []string, next int) int {
+	n := 0
+	for j := next; j < len(block) && strings.TrimSpace(block[j]) == ""; j++ {
+		n++
+	}
+	return n
+}
+
+// chompBlock applies a block scalar's chomping indicator: "-" strips the
+// trailing break, "+" keeps the blank lines the author left, and the default
+// clips to exactly one break. YAML's three modes, not an approximation of them.
+func chompBlock(text string, chomp byte, blanks int) string {
+	if text == "" {
+		return ""
+	}
+	switch chomp {
+	case '-':
+		return text
+	case '+':
+		return text + strings.Repeat("\n", 1+blanks)
+	default:
+		return text + "\n"
+	}
 }
 
 // collectContinuation gathers the lines owned by the entry above the cursor:
 // indented lines and the blank lines between them, stopping at the next
-// top-level entry. Trailing blank lines are left behind — they separate this
-// entry from the next, they are not part of its value.
+// top-level entry. The cursor it returns sits on the first line the entry does
+// not own, so the blank line separating this entry from the next is left for the
+// caller rather than skipped here — which is what the block's comment rule rests
+// on, since a "#" line is a comment only while no blank precedes it. Advancing
+// past that trailing blank hid it, so a markdown heading admitted by a deleted
+// closing "---" was read as a comment and the text under it left the body with
+// no error.
 func collectContinuation(block []string, i int) ([]string, int) {
 	start := i
+	end := i
 	for i < len(block) {
 		if strings.TrimSpace(block[i]) == "" {
+			// Hold the blank tentatively: it belongs to the entry only if
+			// indented content follows it.
 			i++
 			continue
 		}
@@ -332,12 +505,9 @@ func collectContinuation(block []string, i int) ([]string, int) {
 			break
 		}
 		i++
+		end = i
 	}
-	body := block[start:i]
-	for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
-		body = body[:len(body)-1]
-	}
-	return body, i
+	return block[start:end], end
 }
 
 // skipEntry moves the cursor past the continuation lines of an entry whose
@@ -347,8 +517,10 @@ func skipEntry(block []string, i int) int {
 	return next
 }
 
-// foldScalar joins lines the way a folded YAML scalar does: one space between
-// continued lines, one newline where the author left a blank line.
+// foldScalar joins the lines of a plain value — one continued on indented lines,
+// or a bare key over the indented map YAML would have nested — with one space
+// between them and one newline where the author left a blank line. A block
+// scalar's `>` is not this: see foldedBlock.
 func foldScalar(body []string) string {
 	var sb strings.Builder
 	pendingNewline := false
@@ -369,33 +541,6 @@ func foldScalar(body []string) string {
 		pendingNewline = false
 	}
 	return sb.String()
-}
-
-// literalScalar joins lines keeping their breaks, after cutting the indentation
-// every line shares.
-func literalScalar(body []string) string {
-	indent := -1
-	for _, line := range body {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		n := indentationOf(line)
-		if indent < 0 || n < indent {
-			indent = n
-		}
-	}
-	out := make([]string, len(body))
-	for k, line := range body {
-		switch {
-		case strings.TrimSpace(line) == "":
-			out[k] = ""
-		case len(line) >= indent:
-			out[k] = line[indent:]
-		default:
-			out[k] = strings.TrimLeft(line, " \t")
-		}
-	}
-	return strings.Join(out, "\n")
 }
 
 // splitKeyValue cuts an entry at the FIRST colon. Requiring the key to look

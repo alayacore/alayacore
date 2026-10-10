@@ -210,9 +210,9 @@ func entryIsDirectory(entry fs.DirEntry, path string) bool {
 }
 
 // loadSkillMetadata loads only the frontmatter from a SKILL.md file. It returns
-// the problems found while reading — lines the reader could not represent, a
-// nested metadata map, a duplicate key — separately from the error, so a skill
-// that loads with half its manifest intact still says so.
+// the problems found while reading — a duplicate key, a quote left open —
+// separately from the error, so a skill that loads with half its manifest intact
+// still says so.
 func (m *Manager) loadSkillMetadata(skillFile, dirName string) (Skill, []string, error) {
 	content, err := os.ReadFile(skillFile)
 	if err != nil {

@@ -136,6 +136,10 @@ check-shell-style:
 check-docs:
 	./misc/check-docs.sh
 
+## check-yaml-block-scalars: Re-verify our block scalars against yaml.v3 (misc/check-yaml-block-scalars.sh; needs yaml.v3 on disk, so it is not in `check`)
+check-yaml-block-scalars:
+	./misc/check-yaml-block-scalars.sh
+
 ## check: Run all checks (attributes, shell style, doc links, fmt, vet, lint, test)
 check: check-gitattributes check-shell-style check-docs fmt vet lint test
 

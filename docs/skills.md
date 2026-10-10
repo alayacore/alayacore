@@ -77,7 +77,7 @@ depth is the one worth memorising.
 | a `description:` value containing `:` or `#` | kept verbatim — see [How the frontmatter is read](#how-the-frontmatter-is-read) |
 | frontmatter block never closed | the skill is dropped; the file is reported as never closed |
 | a line inside the block that is neither an entry, a comment nor a blank | the skill is dropped and that line is named — most often this is a deleted closing `---` whose block ran into the markdown body |
-| a line the reader cannot represent inside a well-formed block | the skill loads; the line and file are reported at startup (a nested `metadata:` map, a duplicate key, an unterminated quote) |
+| a line the reader cannot represent inside a well-formed block | the skill loads; the line and file are reported at startup (a duplicate key, an unterminated quote) |
 | same skill name from two containers | the **first container listed wins**; the later skill is dropped and named at startup |
 | no `--skill` at all | no skills; the system prompt omits the skills section entirely, and nothing is printed about skills |
 
@@ -190,7 +190,7 @@ Instructions for the agent...
 | `description` | Yes | Describes what the skill does **and when to use it**. 1-1024 characters. This is what the LLM uses to decide whether to activate the skill. |
 | `license` | No | License name or reference. Recorded, not enforced. |
 | `compatibility` | No | Environment requirements. Recorded, not enforced — no dependency is checked. |
-| `metadata` | No | Free-form `key: value` entries under the key, one level deep. Recorded, not used. |
+| `metadata` | No | Free-form by spec. **Not read** — the whole entry is skipped, however it is shaped, like a field this build does not know. |
 
 ### How the frontmatter is read
 
@@ -206,19 +206,51 @@ a manifest must not be guessed at:
   at the ` #`, and the skill is then advertised as `Count` — half the trigger
   text, no error raised.)
 - Values may be quoted (`"…"`, `'…'`), folded (`>`), literal (`|`), or continued
-  on indented lines. A blank line inside a folded value keeps the paragraph
-  break.
+  on indented lines. A block scalar follows YAML: `|` and `>` are clip (the value
+  ends with one line break), `-` strips it, `+` keeps every blank line the author
+  left, an indentation digit (`|2`) sets the content's indent, and a line
+  indented deeper than the block is a line of its own rather than a continuation
+  of the one above it.
 - The opening `---` must be the file's first non-blank line, and every line
-  before the closing `---` must be an entry, a comment or a blank. A line that
-  can only be prose means the closing delimiter is missing, and it is reported
-  with its line number instead of being folded into the description while the
-  body is discarded.
+  before the closing `---` must be an entry, a comment or a blank. The closing
+  `---` is a line of its own at the start of the line: an indented `---` is a
+  line of the block scalar above it, not the end of the block. A line that can
+  only be prose means the closing delimiter is missing, and it is reported with
+  its line number instead of being folded into the description while the body is
+  discarded.
 - A repeated key is a problem naming its line; the first value stands.
 - A field this build does not know is read past in silence, so a newer manifest
-  still loads.
+  still loads. The spec's free-form `metadata` is read the same way — the whole
+  entry is skipped, nested or flat. Nothing here reads it, and no partial reading
+  of a free-form value can be faithful: a `requires:` holding a map came back as
+  `requires: ""` — a value the author never wrote — while the nesting was
+  reported as a problem, so a manifest written to the spec printed an error at
+  startup.
 
 Anything the reader gives up on is printed at startup with its file and line,
 whether or not the skill ends up loading.
+
+#### Where this reading departs from YAML on purpose
+
+The first two rows are why the general parser was dropped; they must not be
+"fixed" back into YAML behaviour.
+
+| Input | YAML | Here |
+|-------|------|------|
+| `description: Use this skill when: the user asks about PDFs` | parse error — the skill disappears | the value is the rest of the line |
+| `description: Count # of items` | value ends at the ` #`, silently — the model is shown `Count` | `#` is kept, because it only opens a comment at the start of a line |
+| `description: - hyphen led`, `description: [a, b]` | a type error — a sequence where a string is required | the text, as written |
+| a TAB in a continuation line's indentation | illegal | read like any other indentation |
+| a nested map under an unknown or free-form key | read (and rejected if the field is a string) | the entry is skipped whole |
+| `\|4` over content indented 2 | a parse error — the file is refused | the text, with the short line named at startup |
+
+Everything else follows YAML: quoting and escapes, `#` after a block scalar's own
+header, chomping (`-`, `+`, and the default clip) and indentation (`|2`)
+indicators, and lines indented deeper than their block. The expectations in
+[`internal/skills/manifest_test.go`](../internal/skills/manifest_test.go) for
+those are `yaml.v3`'s own output for the same frontmatter, and
+[`misc/check-yaml-block-scalars.sh`](../misc/check-yaml-block-scalars.sh)
+re-measures the whole batch against it (`make check-yaml-block-scalars`).
 
 ### What the Model Sees
 

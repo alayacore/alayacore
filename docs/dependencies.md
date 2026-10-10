@@ -177,3 +177,10 @@ parser was dropped with it: it rejected the unquoted colon in
 `description: Use this skill when: …` (losing the skill outright) and ended
 plain scalars at ` #`, advertising `description: Count # of items` to the model
 as `Count` without any error. See [skills.md](skills.md#how-the-frontmatter-is-read).
+
+`gopkg.in/yaml.v3` therefore has no place in this module's `go.mod`. The one
+thing that still consults it is
+[`misc/check-yaml-block-scalars.sh`](../misc/check-yaml-block-scalars.sh), which
+builds it in a scratch module to re-measure the reader's block scalars against
+YAML — a check that needs the module on disk or the network, which is why it is
+its own Makefile target rather than part of `make check`.

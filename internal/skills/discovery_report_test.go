@@ -127,7 +127,7 @@ func TestStartupReportsHowManySkillsLoaded(t *testing.T) {
 // so: the agent is being told less than the author wrote.
 func TestManifestProblemsReachStartupErrors(t *testing.T) {
 	container := t.TempDir()
-	if err := writeManifest(container, "odd", "---\nname: odd\ndescription: d\nmetadata:\n  team:\n    name: infra\n---\nbody\n"); err != nil {
+	if err := writeManifest(container, "odd", "---\nname: odd\ndescription: d\ndescription: d2\n---\nbody\n"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,7 +135,7 @@ func TestManifestProblemsReachStartupErrors(t *testing.T) {
 	if n := len(m.GetMetadata()); n != 1 {
 		t.Fatalf("loaded %d skills, want the skill kept", n)
 	}
-	if !hasLoadError(m, "nested entries") {
-		t.Errorf("load errors = %v, want the unread nesting reported with its line", m.GetLoadErrors())
+	if !hasLoadError(m, "duplicate key") {
+		t.Errorf("load errors = %v, want the duplicate key reported with its line", m.GetLoadErrors())
 	}
 }
