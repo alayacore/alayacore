@@ -1155,6 +1155,107 @@ func TestCancelKeepsSteeringArrivingAfterIt(t *testing.T) {
 	}
 }
 
+// The cancel rule in the window it actually happens in: the prompt a user types
+// after ":cancel" is queued while the canceled task is still unwinding, into the
+// same session-wide queue. processPrompt's deferred discard runs in exactly that
+// window — it fires whenever the turn's context is canceled — so it must leave
+// the post-cancel intent alone. cancelSteering already disposed of the turn's
+// own words at the instant of the cancel; a second drain here is what used to
+// sweep up the post-cancel prompt and lose it.
+func TestPostCancelSteeringSurvivesDeferredDiscard(t *testing.T) {
+	output := &syncOutput{}
+	provider := &steeringProvider{steps: []steeringStep{{text: "the answer"}}}
+	s := steeringSession(t, output, provider, nil, nil)
+	s.activeTask = &taskHandle{cancel: func() {}}
+
+	// The turn's own words, then the cancel: drained and announced right there.
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: "old intent"}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	if _, err := s.cancelTask(); err != nil {
+		t.Fatalf("cancelTask() = %v, want success", err)
+	}
+
+	// The canceled task is still unwinding; the user types what they meant.
+	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "and use Y"}})
+
+	// The task goroutine reaches processPrompt's deferred discard, which runs
+	// because the turn was canceled. It must not take the post-cancel prompt.
+	s.discardQueuedSteering()
+
+	// The canceled task ends; the post-cancel prompt becomes the next turn.
+	s.activeTask = nil
+	s.handleTaskDone(nil)
+	driveRun(t, s)
+
+	if n := provider.callCount(); n != 1 {
+		t.Fatalf("provider calls = %d, want 1 (the prompt typed after the cancel)", n)
+	}
+	req := provider.request(0)
+	last, ok := req[len(req)-1].(*llm.TextPart)
+	if !ok || last.Text != "and use Y" {
+		t.Fatalf("post-cancel prompt not delivered as the trailing user turn: %s", summary(req))
+	}
+	if strings.Contains(output.String(), "the turn ended before it could be delivered") {
+		t.Errorf("post-cancel prompt was reported dropped: %q", output.String())
+	}
+}
+
+// A cancel marks the queue drained for *its own* turn only. The next turn must
+// start clean: if it fails with words still queued, they are dropped like any
+// other failed turn's, not carried forward on a flag the cancel left set. This
+// guards beginTask's per-turn reset of steeringDrained — without it, a single
+// cancel would suppress every later failure's discard, and the queued words
+// would leak into an unintended next turn.
+func TestSteeringDroppedOnFailureAfterACancel(t *testing.T) {
+	output := &syncOutput{}
+	requestInFlight := make(chan struct{})
+
+	provider := &steeringProvider{steps: []steeringStep{
+		{text: "Step 1.", toolCall: &llm.ToolInputPart{ID: "c1", Name: "t", Input: []byte(`{}`)}},
+		{text: "never reached", preWait: requestInFlight, failErr: errors.New("provider stream failed: 400")},
+	}}
+	tool := llm.Tool{
+		Definition: llm.ToolDefinition{Name: "t", Description: "test", Schema: []byte(`{"type":"object"}`)},
+		Execute: func(_ context.Context, _ json.RawMessage) ([]llm.ContentPart, error) {
+			return []llm.ContentPart{&llm.TextPart{Text: "the tool result"}}, nil
+		},
+	}
+	s := steeringSession(t, output, provider, []llm.Tool{tool}, []llm.ContentPart{
+		&llm.TextPart{Text: "earlier", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	})
+
+	// A canceled turn first: cancelTask sets the per-turn drain flag.
+	s.activeTask = &taskHandle{cancel: func() {}}
+	if _, err := s.cancelTask(); err != nil {
+		t.Fatalf("cancelTask() = %v, want success", err)
+	}
+	s.activeTask = nil // the canceling task unwinds
+
+	// The next turn starts through the real entry point (beginTask runs here,
+	// and must clear the flag) and fails with words queued behind its step 2.
+	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "do it"}})
+	waitFor(t, func() bool { return provider.callCount() == 2 }, "the failing turn's second request to be in flight")
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	close(requestInFlight)
+	driveRun(t, s)
+
+	// The failed turn's words are gone, and were not promoted to a new turn.
+	if n := provider.callCount(); n != 2 {
+		t.Fatalf("provider calls = %d, want 2 — the words must not run on as their own turn", n)
+	}
+	for _, p := range s.Contents {
+		if tp, ok := p.(*llm.TextPart); ok && tp.Text == steeringText {
+			t.Fatalf("steering of a failed turn survived into Contents: %s", summary(s.Contents))
+		}
+	}
+	if !strings.Contains(output.String(), "steering dropped") {
+		t.Errorf("the discard was silent: %q", output.String())
+	}
+}
+
 // The half of the cancel rule the queue drain cannot cover: a batch the task
 // goroutine had already spliced was sent to the model and echoed to the adapter,
 // so it is in the conversation. The cancel stops the turn, but it cannot unsend

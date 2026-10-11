@@ -376,6 +376,12 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 	}
 	taskCtx, taskCancel := context.WithCancel(s.sessionCtx)
 	s.activeTask = &taskHandle{cancel: taskCancel, step: 0, commandID: commandID}
+	// This turn owns the steering queue afresh: a cancel that drained the
+	// previous turn's queue (cancelSteering) must not suppress this turn's
+	// deferred discard. See steeringDrained.
+	s.steeringMu.Lock()
+	s.steeringDrained = false
+	s.steeringMu.Unlock()
 	// Clear the previous task's final speed: a new task has produced no step,
 	// so neither the frame below nor any later one may carry the run that just
 	// ended. Doing it here — rather than at step 1 — is what makes a summarize
@@ -459,7 +465,7 @@ func (s *Session) submitPrompt(parts []llm.ContentPart) {
 		// rather than refused. The words reach the transcript at the turn's
 		// next step boundary, where they are spliced in and echoed — which can
 		// be a whole tool call away, and is not at all if the turn ends first.
-		s.writeNotify("steering queued — delivered after the current tool call")
+		s.writeNotify("steering queued — delivered into the running turn, or as your next prompt")
 	default:
 		s.writeError(err.Error()) // MCP slot already taken, or a permanent failure
 	}
@@ -899,7 +905,7 @@ func (s *Session) cancelTask() (any, error) {
 			// to the adapter, so they are part of the conversation. A cancel
 			// stops the turn; it cannot unsend what the model was given (see
 			// session_steering.go).
-			if len(s.takeSteering()) > 0 {
+			if s.cancelSteering() {
 				s.writeNotify("steering dropped — the task was canceled before it was delivered")
 			}
 			return nil, nil

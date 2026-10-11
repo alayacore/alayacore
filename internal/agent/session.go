@@ -171,6 +171,15 @@ type sharedState struct {
 	steering   []llm.ContentPart
 	steeringMu sync.Mutex
 
+	// steeringDrained records that a cancel already disposed of this turn's
+	// steering (cancelSteering), so processPrompt's deferred discard must not
+	// drain a second time. The two drains are not the same event: the words a
+	// user types *in the window between ":cancel" and the canceled task
+	// unwinding* land in this same session-wide queue, and they are a fresh
+	// intent, not the canceled turn's. Clearing the flag in beginTask makes it
+	// per-turn. See session_steering.go.
+	steeringDrained bool
+
 	outputBroken atomic.Bool
 
 	// state is the startup lifecycle phase (SessionState), published

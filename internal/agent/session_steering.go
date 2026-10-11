@@ -121,14 +121,47 @@ func (s *Session) takeSteering() []llm.ContentPart {
 // queue: a part a step had already spliced was sent and echoed, so it is in the
 // conversation, and nothing here can or should take it back.
 //
+// It is a no-op for a turn a cancel already drained (steeringDrained). Those
+// words are handled by cancelSteering the moment the cancel is processed; a
+// second drain here would sweep up whatever the user typed *after* the cancel,
+// while the canceled task was still unwinding — input that never belonged to
+// the turn being discarded (see TestPostCancelSteeringSurvivesDeferredDiscard).
+//
 // The notice is what keeps the drop from being the silent kind: these words are
 // in neither the transcript nor the session file, so the user has to be told,
 // and retyping them is their call to make.
 func (s *Session) discardQueuedSteering() {
-	if len(s.takeSteering()) == 0 {
-		return
+	s.steeringMu.Lock()
+	dropped := false
+	if !s.steeringDrained && len(s.steering) > 0 {
+		s.steering = nil
+		dropped = true
 	}
-	s.writeNotify("steering dropped — the turn ended before it could be delivered")
+	s.steeringMu.Unlock()
+	if dropped {
+		s.writeNotify("steering dropped — the turn ended before it could be delivered")
+	}
+}
+
+// cancelSteering disposes of the queue when a running task is canceled, and
+// records that it did so the canceled turn's deferred discard stays a no-op.
+//
+// The second half is the point. The queue is session-wide, so a prompt the user
+// types after ":cancel" but before the task goroutine finishes unwinding lands
+// in it too. cancelTask drains at the instant of the cancel, which is exactly
+// the boundary the policy draws ("only what is queued at this instant is
+// dropped"); the deferred discard runs later, in that unwinding window, and
+// must therefore not drain again. Reports whether anything was actually
+// dropped, i.e. whether the user must be told.
+func (s *Session) cancelSteering() bool {
+	s.steeringMu.Lock()
+	defer s.steeringMu.Unlock()
+	s.steeringDrained = true
+	if len(s.steering) == 0 {
+		return false
+	}
+	s.steering = nil
+	return true
 }
 
 // deliverLeftoverSteering hands steering that is still queued when a task ends
