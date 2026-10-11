@@ -53,6 +53,8 @@ type StatusSnapshot struct {
 
 	// SteeringPending is the number of steering submissions reported "queued"
 	// and not yet delivered or dropped (see sessionState.updateSteering).
+	// Read by the live-edge row on every render (live_edge.go), not by the
+	// status bar.
 	SteeringPending int
 
 	// Version is a monotonic counter that increments on every

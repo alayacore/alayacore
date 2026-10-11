@@ -64,8 +64,8 @@ func TestLiveEdgeText(t *testing.T) {
 // away without the user having typed anything).
 func TestLiveEdgeWidthNeverChangesTheFacts(t *testing.T) {
 	m := liveEdgeFixture(20)
-	steeringPhase(t, m.out, "queued")
-	steeringPhase(t, m.out, "queued")
+	steeringPhase(t, m.out, "queued", "")
+	steeringPhase(t, m.out, "queued", "")
 	m.display = m.display.MarkUserScrolled().ScrollUp(5)
 	m = m.updateDisplayHeight()
 
