@@ -29,22 +29,85 @@ func TestLiveEdgeText(t *testing.T) {
 		name       string
 		following  bool
 		linesBelow int
+		steering   int
 		want       string
 	}{
-		{"following", true, 0, "following"},
+		{"following", true, 0, 0, "following"},
 		// The two cannot be true together (following pins the viewport to
 		// the bottom), but following wins if a caller ever passes both.
-		{"following wins over a count", true, 7, "following"},
-		{"several lines below", false, 7, "7 lines below"},
-		{"one line below", false, 1, "1 line below"},
-		{"nothing below, nothing to say", false, 0, ""},
+		{"following wins over a count", true, 7, 0, "following"},
+		{"several lines below", false, 7, 0, "7 lines below"},
+		{"one line below", false, 1, 0, "1 line below"},
+		{"nothing below, nothing to say", false, 0, 0, ""},
+		// Steering rides alongside the position fact, whichever it is.
+		{"following and steering", true, 0, 2, "following, 2 steering"},
+		{"one line below and steering", false, 1, 1, "1 line below, 1 steering"},
+		// The count stands alone in the one state with no position to report
+		// (scrolled back to the last line without re-enabling follow).
+		{"steering alone", false, 0, 3, "3 steering"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := liveEdgeText(tc.following, tc.linesBelow); got != tc.want {
-				t.Errorf("liveEdgeText(%v, %d) = %q, want %q", tc.following, tc.linesBelow, got, tc.want)
+			if got := liveEdgeText(tc.following, tc.linesBelow, tc.steering); got != tc.want {
+				t.Errorf("liveEdgeText(%v, %d, %d) = %q, want %q",
+					tc.following, tc.linesBelow, tc.steering, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestLiveEdgeWidthNeverChangesTheFacts pins the row's one width rule: the
+// framed label with the phrase cut between the hyphens when the terminal is too
+// narrow for it. What the row says is not a function of width — it used to drop
+// its frame, then its position label, as room ran out, so one session read as
+// three different readouts at three widths (and a resize could take the count
+// away without the user having typed anything).
+func TestLiveEdgeWidthNeverChangesTheFacts(t *testing.T) {
+	m := liveEdgeFixture(20)
+	steeringPhase(t, m.out, "queued")
+	steeringPhase(t, m.out, "queued")
+	m.display = m.display.MarkUserScrolled().ScrollUp(5)
+	m = m.updateDisplayHeight()
+
+	full := stripANSI(m.renderLiveEdge())
+	if full != "- 5 lines below, 2 steering -" {
+		t.Fatalf("fixture: live edge = %q, want both facts", full)
+	}
+	needed := Width(full)
+
+	for width := 5; width <= needed; width++ {
+		m.windowWidth = width
+		got := stripANSI(m.renderLiveEdge())
+		if Width(got) > width {
+			t.Errorf("width %d: rendered %q is %d cells, over the terminal", width, got, Width(got))
+		}
+		if width == needed {
+			if got != full {
+				t.Errorf("width %d: got %q, want the whole row %q", width, got, full)
+			}
+			continue
+		}
+		// Under the row's own width: the same phrase, still framed, cut from
+		// its end — the closing hyphen included, never a bare label.
+		if !strings.HasPrefix(got, liveEdgeFrame+" ") || !strings.HasSuffix(got, " "+liveEdgeFrame) {
+			t.Errorf("width %d: %q is not framed", width, got)
+		}
+		inner := strings.TrimSuffix(strings.TrimPrefix(got, liveEdgeFrame+" "), " "+liveEdgeFrame)
+		if !strings.HasSuffix(inner, "…") {
+			t.Errorf("width %d: %q is not a truncation", width, got)
+		}
+		if cut := strings.TrimSuffix(inner, "…"); !strings.HasPrefix(full, liveEdgeFrame+" "+cut) {
+			t.Errorf("width %d: %q is not a head of %q", width, got, full)
+		}
+	}
+
+	// Below the frame's own width there is no row to be a marker on: nothing
+	// is drawn, and nothing overflows.
+	for _, width := range []int{4, 3, 2, 1, 0} {
+		m.windowWidth = width
+		if got := stripANSI(m.renderLiveEdge()); got != "" {
+			t.Errorf("width %d: rendered %q, want nothing (no room for the frame)", width, got)
+		}
 	}
 }
 
@@ -208,33 +271,34 @@ func TestLiveEdgeKeepsFrameHeight(t *testing.T) {
 	}
 }
 
-// TestLiveEdgeFitsItsWidth covers the row's own overflow rule: a marker that
+// TestLiveEdgeFitsItsWidth covers the row's only width rule: a marker that
 // wrapped to a second row would push the frame past the height the layout
-// reserved. The framed form gives way to the bare label, the bare label to a
-// truncation, and nothing at all to a width with no room in it.
+// reserved, so a label too wide for the row is truncated between the hyphens
+// (see renderLiveEdge).
 func TestLiveEdgeFitsItsWidth(t *testing.T) {
 	m := liveEdgeFixture(20)
 
-	// Both forms are pure ASCII, so the framed form is kept wherever it
-	// fits outright — there is no ambiguous-glyph allowance to bill (the
+	// The row is pure ASCII, so the framed form is kept wherever it fits
+	// outright — there is no ambiguous-glyph allowance to bill (the
 	// box-drawing frame this replaced needed one).
 	full := liveEdgeFrame + " following " + liveEdgeFrame
 	needed := Width(full)
-	for _, width := range []int{needed, needed - 1, Width("following"), 5, 1, 0} {
+	for _, width := range []int{needed, needed - 1, Width("following"), 5, 4, 1, 0} {
 		m.windowWidth = width
 		got := stripANSI(m.renderLiveEdge())
 		if Width(got) > width {
 			t.Errorf("width %d: rendered %q is %d cells, over the terminal", width, got, Width(got))
 		}
-		if width == 0 && got != "" {
-			t.Errorf("width 0: got %q, want nothing rendered", got)
-		}
 		if width >= needed && got != full {
 			t.Errorf("width %d: got %q, want the framed form %q", width, got, full)
 		}
-		if width < needed && width > 0 && got != "" && strings.HasPrefix(got, liveEdgeFrame) &&
-			strings.HasSuffix(got, liveEdgeFrame) {
-			t.Errorf("width %d: kept the frame where it does not fit: %q", width, got)
+		if width >= 5 && width < needed {
+			if !strings.HasPrefix(got, liveEdgeFrame+" ") || !strings.HasSuffix(got, " "+liveEdgeFrame) {
+				t.Errorf("width %d: got %q, want the frame kept around a cut label", width, got)
+			}
+		}
+		if width < 5 && got != "" {
+			t.Errorf("width %d: got %q, want nothing (no room for the frame)", width, got)
 		}
 	}
 }

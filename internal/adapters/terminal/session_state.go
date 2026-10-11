@@ -31,11 +31,11 @@ type sessionState struct {
 	maxSteps       int
 	reasoningLevel int
 
-	// Steering queue, shown as "N steering" in the status bar: submissions
-	// reported "queued" and not yet "delivered"/"dropped". steeringDeliveredAhead
-	// absorbs the one inversion the two session writers can produce — a
-	// delivered/dropped written before the queued it belongs to (see
-	// updateSteering).
+	// Steering queue, shown as "N steering" on the live-edge row above the
+	// input box (live_edge.go): submissions reported "queued" and not yet
+	// "delivered"/"dropped". steeringDeliveredAhead absorbs the one inversion
+	// the two session writers can produce — a delivered/dropped written before
+	// the queued it belongs to (see updateSteering).
 	steeringPending        int
 	steeringDeliveredAhead bool
 
