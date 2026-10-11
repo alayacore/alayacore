@@ -228,9 +228,13 @@ func TestSteeringQueueFullIsRefused(t *testing.T) {
 }
 
 // :cancel drops a prompt that was accepted but never started, and reports that
-// it did something.
+// it did something — the drop is announced, not silent.
 func TestCancelDropsHeldPrompt(t *testing.T) {
-	s := &Session{runState: runState{pending: []llm.ContentPart{&llm.TextPart{Text: "held"}}}}
+	output := &syncOutput{}
+	s := &Session{
+		sessionConfig: sessionConfig{SessionConfig: SessionConfig{Output: output}},
+		runState:      runState{pending: []llm.ContentPart{&llm.TextPart{Text: "held"}}},
+	}
 
 	if _, err := s.cancelTask(); err != nil {
 		t.Fatalf("cancelTask() on a held prompt = %v, want success", err)
@@ -238,12 +242,19 @@ func TestCancelDropsHeldPrompt(t *testing.T) {
 	if s.pending != nil {
 		t.Error("cancelTask() should clear the held prompt")
 	}
+	if !strings.Contains(output.String(), "prompt dropped") {
+		t.Errorf("dropping the held prompt must be announced, got: %q", output.String())
+	}
 }
 
 // :quit drops the held prompt too: the session is leaving, and the exit
-// condition waits for the slot to be empty.
+// condition waits for the slot to be empty. Announced, like every drop.
 func TestQuitDropsHeldPrompt(t *testing.T) {
-	s := &Session{runState: runState{pending: []llm.ContentPart{&llm.TextPart{Text: "held"}}}}
+	output := &syncOutput{}
+	s := &Session{
+		sessionConfig: sessionConfig{SessionConfig: SessionConfig{Output: output}},
+		runState:      runState{pending: []llm.ContentPart{&llm.TextPart{Text: "held"}}},
+	}
 
 	if _, err := s.handleQuit(""); err != nil {
 		t.Fatalf("handleQuit() = %v, want success", err)
@@ -253,6 +264,9 @@ func TestQuitDropsHeldPrompt(t *testing.T) {
 	}
 	if !s.quitting {
 		t.Error(":quit should mark the session as quitting")
+	}
+	if !strings.Contains(output.String(), "prompt dropped") {
+		t.Errorf("dropping the held prompt must be announced, got: %q", output.String())
 	}
 }
 

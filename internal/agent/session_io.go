@@ -878,15 +878,23 @@ func (s *Session) handleQuit(args string) (any, error) {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :quit (no arguments)"}
 	}
 	s.quitting = true
-	s.pending = nil // a prompt that has not started yet is dropped
+	if s.pending != nil {
+		// A prompt held for MCP readiness will not run: the session is leaving.
+		// Its deferral was announced, so its loss is too — a drop is never
+		// silent.
+		s.pending = nil
+		s.writeNotify("prompt dropped — the session is quitting")
+	}
 	return nil, nil
 }
 
 func (s *Session) cancelTask() (any, error) {
 	// A prompt accepted but not started: canceling it means dropping it, and
-	// then there is nothing in flight for run() to wait for.
+	// then there is nothing in flight for run() to wait for. The drop is
+	// announced, like every other.
 	if s.pending != nil {
 		s.pending = nil
+		s.writeNotify("prompt dropped — it was canceled before it could start")
 		return nil, nil
 	}
 	if s.activeTask != nil {
