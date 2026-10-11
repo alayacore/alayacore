@@ -432,6 +432,13 @@ func (m Terminal) updateStatus() Terminal {
 		segments = append(segments, stepVal)
 	}
 
+	// Steering segment — right after steps: the live telemetry of the running
+	// turn. Shown only while a batch is queued (driven by the "steering" SM;
+	// see sessionState.updateSteering).
+	if snap.SteeringPending > 0 {
+		segments = append(segments, fmt.Sprintf("%d steering", snap.SteeringPending))
+	}
+
 	// Video config segment (last)
 	if fps := snap.VideoFPS; fps > 0 {
 		segments = append(segments, fmt.Sprintf("V:%d,%d", fps, snap.VideoRes))

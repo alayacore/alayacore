@@ -1092,6 +1092,33 @@ func readFile(t *testing.T, path string) string {
 // Canceling stops the turn *and* what the turn was going to be told: leaving
 // the queue in place would start a fresh task on its own the moment the
 // canceled one unwinds.
+// A :quit with steering still queued drops it — it will not run — but the drop
+// is announced like every other, so the steering contract stays total: every
+// queued submission ends in exactly one terminal phase.
+func TestQuitDropsLeftoverSteeringWithNotice(t *testing.T) {
+	output := &syncOutput{}
+	provider := &steeringProvider{steps: []steeringStep{{text: "the answer"}}}
+	s := steeringSession(t, output, provider, nil, nil)
+	s.activeTask = &taskHandle{cancel: func() {}}
+
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: "pending words"}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	s.quitting = true
+
+	// The task ends; the queued words are leftover and the session is quitting.
+	s.activeTask = nil
+	s.handleTaskDone(nil)
+
+	got := output.String()
+	if !strings.Contains(got, `"phase":"dropped"`) || !strings.Contains(got, `"reason":"quit"`) {
+		t.Errorf("a quit must report the leftover steering dropped with reason quit: %q", got)
+	}
+	if n := provider.callCount(); n != 0 {
+		t.Fatalf("a quit must not start a turn for the leftover steering: %d provider calls", n)
+	}
+}
+
 func TestCancelDropsQueuedSteering(t *testing.T) {
 	output := &syncOutput{}
 	provider := &steeringProvider{steps: []steeringStep{{text: "never runs"}}}

@@ -241,8 +241,8 @@ uses for line endings:
   (`agent/session_steering.go`). So the model receives the block's lines as one
   or two user turns rather than as the single message that was pasted — and no
   line is left in the input box to be sent a second time. Past the steering
-  queue's bound (`maxSteeringParts`) the extra lines are refused with the
-  session's `BUSY` error and are lost with the error message; the three options
+  queue's bound (`maxSteeringParts`) the extra lines are refused (a `steering`
+  message with phase `refused`) and are lost with that message; the three options
   below are what to use instead.
 
 That last case is not fixable from inside the program without inferring intent

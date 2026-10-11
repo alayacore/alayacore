@@ -189,6 +189,26 @@ type sessionMsg struct {
 
 func (sessionMsg) SystemMsgType() string { return "session" }
 
+// steeringMsg reports the lifecycle of steering — prompts a user sends while a
+// task is already running (type "steering"). See session_steering.go for the
+// mechanism; this only reports it.
+//
+// Phase is machine-readable: "queued", "delivered", "dropped", or "refused"
+// (protocol.Steering*). Granularity is deliberately mixed: Queued and Refused
+// are per submission, Delivered and Dropped are per batch (the whole queue is
+// spliced or discarded together, so there is never a partial delivery).
+//
+// Reason qualifies a Dropped message ("canceled" or "failed"). Text is an
+// optional human-readable line; an adapter may use it or ignore it entirely —
+// the session prescribes no rendering for any of this.
+type steeringMsg struct {
+	Phase  string `json:"phase"`
+	Reason string `json:"reason,omitempty"`
+	Text   string `json:"text,omitempty"`
+}
+
+func (steeringMsg) SystemMsgType() string { return string(protocol.MsgTypeSteering) }
+
 // messageVersionMsg carries the protocol version and the alayacore
 // application version (type "version").
 // Sent as the first TagSystemMsg frame so adapters can validate format
@@ -216,6 +236,11 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // nothing here migrates an older file: editing the field to load one anyway is
 // the user's call. See docs/architecture.md ("message_version").
 //
+// v13: steering is reported by a dedicated "steering" SM (queued / delivered /
+// dropped / refused), replacing the "steering queued" and "steering dropped"
+// notify texts and the SM error a full queue used to raise for a prompt.
+// Additive for adapters that ignore unknown SM types; the session-file
+// version moves with it as always.
 // v12: the input plane gained CE (TagInputEnd — the adapter's input is
 // exhausted without closing the stream, so commands may still follow), the
 // "session" message gained the terminal state "closed", and the quit command
@@ -224,7 +249,7 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // v11: commands moved to the CI/CO control plane — text commands
 // (UT ':' sniffing) removed, command results now travel as CO frames,
 // taskMsg gained command_id for async command correlation.
-const messageVersion = 12
+const messageVersion = 13
 
 // sessionMeta is the frontmatter metadata.
 type sessionMeta struct {

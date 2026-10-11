@@ -454,18 +454,20 @@ func (s *Session) submitPrompt(parts []llm.ContentPart) {
 		s.writeNotify("prompt deferred until MCP initialization completes")
 	case errors.Is(err, errTaskBusy):
 		// A task is running: steer it rather than refuse. Only a full steering
-		// queue is left to refuse, and it is refused with the code a busy
-		// session has always used, so a client that was ready to handle BUSY
-		// is not the one that has to learn a new one.
+		// queue is refused, and the refusal carries its own reason — the generic
+		// BUSY text ("a task is already running") names a condition that is not
+		// why THIS prompt was refused.
 		if !s.queueSteering(parts) {
-			s.writeError(err.Error())
+			s.writeSteering(protocol.SteeringRefused, "",
+				"Too many prompts are already queued for the running task; this one was not queued. Wait for it to continue, or cancel it.")
 			return
 		}
-		// Acknowledge: nothing else tells the user their words were accepted
-		// rather than refused. The words reach the transcript at the turn's
-		// next step boundary, where they are spliced in and echoed — which can
-		// be a whole tool call away, and is not at all if the turn ends first.
-		s.writeNotify("steering queued — delivered into the running turn, or as your next prompt")
+		// Accepted: say so. Nothing else tells the user their words were taken.
+		// They reach the transcript at the turn's next step boundary, where they
+		// are spliced in and echoed — a whole tool call away, or not at all if
+		// the turn ends first.
+		s.writeSteering(protocol.SteeringQueued, "",
+			"steering queued — delivered into the running turn, or as your next prompt")
 	default:
 		s.writeError(err.Error()) // MCP slot already taken, or a permanent failure
 	}
@@ -906,7 +908,8 @@ func (s *Session) cancelTask() (any, error) {
 			// stops the turn; it cannot unsend what the model was given (see
 			// session_steering.go).
 			if s.cancelSteering() {
-				s.writeNotify("steering dropped — the task was canceled before it was delivered")
+				s.writeSteering(protocol.SteeringDropped, protocol.SteeringDroppedCanceled,
+					"steering dropped — the task was canceled before it was delivered")
 			}
 			return nil, nil
 		}

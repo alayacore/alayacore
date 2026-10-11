@@ -222,7 +222,13 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		// publishes nothing, and the failure path below needs the base the parts
 		// were appended to.
 		stepBase = contents
-		if parts := s.stepUserParts(contents); len(parts) > 0 {
+		if parts, steering := s.stepUserParts(contents); len(parts) > 0 {
+			if steering {
+				// The batch left the queue here. Report it delivered before the
+				// echo frames below, so a client tracking the queue sees it
+				// settle before the words appear as content.
+				s.writeSteering(protocol.SteeringDelivered, "", "")
+			}
 			// The whole of their admission: fit, role, number, echo, publish —
 			// at the moment they enter a request, and not at the step's finish
 			// (spliceUserParts covers why, and why the two must not be split).
@@ -308,8 +314,9 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 
 // stepUserParts returns the user parts a step's request must be sent with: the
 // user's steering if any is waiting, and otherwise the synthetic "Continue" a
-// compaction's replacement needs. It is empty when the boundary needs neither,
-// which is the ordinary case.
+// compaction's replacement needs. The second return says which — true only for
+// the user's steering, the case a boundary reports as a delivered batch.
+// It is empty when the boundary needs neither, which is the ordinary case.
 //
 // The rule behind the second case is that a request must not end on an
 // assistant message: every API reads that as "continue this assistant turn"
@@ -317,15 +324,14 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 // work. A compaction's replacement ends on the assistant summary, so it needs
 // the trailing user turn; a boundary that did not compact ends on the tool
 // results the model just asked for, and needs nothing.
-func (s *Session) stepUserParts(contents []llm.ContentPart) []llm.ContentPart {
-	parts := s.takeSteering()
-	if len(parts) > 0 {
-		return parts
+func (s *Session) stepUserParts(contents []llm.ContentPart) (parts []llm.ContentPart, steering bool) {
+	if p := s.takeSteering(); len(p) > 0 {
+		return p, true
 	}
 	if len(contents) > 0 && contents[len(contents)-1].GetRole() == llm.RoleAssistant {
-		return []llm.ContentPart{&llm.TextPart{Text: "Continue"}}
+		return []llm.ContentPart{&llm.TextPart{Text: "Continue"}}, false
 	}
-	return nil
+	return nil, false
 }
 
 // spliceUserParts prepares the user parts being appended to the step about to

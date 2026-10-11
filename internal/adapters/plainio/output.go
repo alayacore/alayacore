@@ -366,6 +366,20 @@ func (o *stdoutOutput) handleSystemMsg(value string) {
 			o.lastTag = ""
 			o.lastHistoryID = ""
 		}
+	case protocol.MsgTypeSteering:
+		var m struct {
+			Phase string `json:"phase"`
+			Text  string `json:"text"`
+		}
+		if json.Unmarshal(env.Data, &m) == nil && m.Text != "" {
+			if m.Phase == protocol.SteeringRefused {
+				fmt.Fprintf(o.writer, "\n[error: %s]\n", m.Text)
+			} else {
+				fmt.Fprintf(o.writer, "\n[%s]\n", m.Text)
+			}
+			o.lastTag = ""
+			o.lastHistoryID = ""
+		}
 	case protocol.MsgTypeTask:
 		var m struct {
 			InProgress bool `json:"in_progress"`

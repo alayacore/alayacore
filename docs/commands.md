@@ -49,8 +49,8 @@ Commands fall into three categories:
 | `:mcp_cancel` | Cancel MCP server initialization | `null` |
 
 `:cancel` cancels the running task, and it takes the turn's *queued* steering with
-it: words that have not yet been spliced into a step are dropped, with an SM
-`notify` saying so. Leaving them queued would start a fresh task on its own the
+it: words that have not yet been spliced into a step are dropped, with a
+`steering` message (phase `dropped`, reason `canceled`) saying so. Leaving them queued would start a fresh task on its own the
 moment the canceled one unwinds — a stop button that keeps going. Words the turn
 had already spliced were sent to the model, so they stay in the conversation —
 a cancel stops the turn, it cannot unsend what the model was given. A prompt that

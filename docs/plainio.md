@@ -41,12 +41,12 @@ prompt that spans two lines.
 > Which refusal you see depends on how far along the session is:
 > ```
 > [error: MCP servers are still initializing or OAuth authorization is pending. Please wait for initialization to complete.]
-> [error: A task is already running. Wait for it to complete or cancel it.]
+> [error: Too many prompts are already queued for the running task; this one was not queued. Wait for it to continue, or cancel it.]
 > ```
 > The first is the transient one — the session has not finished starting (MCP
-> init) and is already holding the prompt you sent; the second is now only the
+> init) and is already holding the prompt you sent; the second is the
 > steering queue being full (more than `maxSteeringParts` parts were piped in
-> behind a single task). Interactively neither is a wall: the prompt you type
+> behind a single task), reported as a `steering` message with phase `refused`. Interactively neither is a wall: the prompt you type
 > after a task finishes is accepted normally.
 > For scripting multiple questions, use `--terseio` (one message per
 > invocation) or launch `alayacore --plainio` once per prompt (the process

@@ -31,6 +31,14 @@ type sessionState struct {
 	maxSteps       int
 	reasoningLevel int
 
+	// Steering queue, shown as "N steering" in the status bar: submissions
+	// reported "queued" and not yet "delivered"/"dropped". steeringDeliveredAhead
+	// absorbs the one inversion the two session writers can produce — a
+	// delivered/dropped written before the queued it belongs to (see
+	// updateSteering).
+	steeringPending        int
+	steeringDeliveredAhead bool
+
 	// Provider speed metrics from the "task" system message.
 	// stepTPS/ttftMS are the latest step's values. Zero until a step with
 	// output tokens completes; no task-level averaging is displayed.
@@ -156,6 +164,35 @@ func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, co
 	s.ttftMS = ttftMS
 	s.statusVersion++
 	return completed
+}
+
+// updateSteering folds one "steering" SM phase into the queued count. "queued"
+// counts a submission in; "delivered"/"dropped" clear the whole batch, which is
+// all-or-nothing (the session drains the queue in one take); "refused" never
+// entered. Queued/refused come from the run goroutine and delivered/dropped
+// from the task goroutine, so a delivered can precede the queued it belongs to
+// — steeringDeliveredAhead cancels that one queued instead of letting the count
+// stick.
+func (s *sessionState) updateSteering(phase string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch phase {
+	case protocol.SteeringQueued:
+		if s.steeringDeliveredAhead {
+			s.steeringDeliveredAhead = false
+			return
+		}
+		s.steeringPending++
+	case protocol.SteeringDelivered, protocol.SteeringDropped:
+		if s.steeringPending == 0 {
+			s.steeringDeliveredAhead = true
+			return
+		}
+		s.steeringPending = 0
+	default:
+		return
+	}
+	s.statusVersion++
 }
 
 // updateModel atomically updates active model info.
@@ -396,6 +433,7 @@ func (s *sessionState) snapshotStatus() StatusSnapshot {
 		TTFTMS:          s.ttftMS,
 		MCPStatus:       s.mcpStatus,
 		MCPServer:       s.mcpServer,
+		SteeringPending: s.steeringPending,
 		Version:         s.statusVersion,
 	}
 	// Copy slices only when populated — `append([]T(nil), nil...)` allocates

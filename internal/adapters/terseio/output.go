@@ -321,6 +321,18 @@ func (o *answerOutput) handleSystemMsg(value string) {
 		if json.Unmarshal(env.Data, &m) == nil {
 			fmt.Fprintf(o.stderr, "[%s]\n", m.Text)
 		}
+	case protocol.MsgTypeSteering:
+		var m struct {
+			Phase string `json:"phase"`
+			Text  string `json:"text"`
+		}
+		if json.Unmarshal(env.Data, &m) == nil && m.Text != "" {
+			if m.Phase == protocol.SteeringRefused {
+				fmt.Fprintf(o.stderr, "[error: %s]\n", m.Text)
+			} else {
+				fmt.Fprintf(o.stderr, "[%s]\n", m.Text)
+			}
+		}
 	case protocol.MsgTypeTask:
 		var m struct {
 			InProgress bool `json:"in_progress"`

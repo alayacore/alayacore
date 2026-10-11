@@ -51,6 +51,10 @@ type StatusSnapshot struct {
 	// CachedThemes holds the full list of themes received from the session.
 	CachedThemes []ThemeEntry
 
+	// SteeringPending is the number of steering submissions reported "queued"
+	// and not yet delivered or dropped (see sessionState.updateSteering).
+	SteeringPending int
+
 	// Version is a monotonic counter that increments on every
 	// status-affecting update. The Terminal uses it to skip status-bar
 	// rebuilds when nothing has changed since the last snapshot.

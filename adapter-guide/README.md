@@ -121,7 +121,7 @@ The adapter must be prepared to **receive** user tags on stdout in these scenari
 1. **Prompt echo** — When the user sends a prompt (UT + UE on stdin), the agent echoes each content part back on stdout with an assigned history ID before sending them to the LLM.
 2. **Session replay** — When a saved session file (key-value frontmatter + binary TLV body, specified via `--session`) is loaded, all historical content (including user messages) is replayed to the adapter on stdout with their original history IDs.
 3. **The agent's own user turns** — Not every user tag is something the user typed: the `Continue` that resumes a cancelled turn (`:continue`) and the one a mid-task compaction appends are written by the agent. They are parts of the conversation like any other, so they are echoed like any other.
-4. **Steering** — A prompt sent while a task is running is spliced into that turn at its next step boundary, so its echo (with its history ID) arrives when the model receives it — one step later, not immediately. In the meantime the session sends an SM `notify` acknowledging it (`steering queued — delivered into the running turn, or as your next prompt`), and refuses it with an SM `error` (`code:"BUSY"`) only if its steering queue is full. An adapter should therefore keep the submitted text visible, or render it as pending, until the echo arrives.
+4. **Steering** — A prompt sent while a task is running is spliced into that turn at its next step boundary (or becomes the next prompt if the turn ends first), so its echo (with its history ID) arrives when the model receives it — one step later, not immediately. The session reports this lifecycle as an SM `steering` message carrying a `phase` of `queued`, `delivered`, `dropped`, or `refused`. The echo is the authoritative record — the words enter `Contents` only at delivery.
 
 > **For adapter implementors:** You cannot assume user tags only appear on stdin.
 > The terminal adapter (`internal/adapters/terminal/output.go`), the plainio
@@ -683,11 +683,12 @@ CO-task-started.bin            CO {"id":"9","output":{"status":"started"}}
 | `tool_confirm` | `id` (string) — one-way notification; the user's decision is returned via the `tool_confirm` / `tool_decline` commands (CI frames), not via an SM response | `SM-tool-confirm.bin` |
 | `mcp` | `status` (string: one of `connecting`, `auth_required`, `auth_running`, `connected`, `failed`, `done`), `server` (string, opt), `url` (string, opt — set for `auth_required`; may contain `{{redirect_uri}}` and `{{state}}` placeholders), `error` (string, opt — set for `failed`) | `SM-mcp-connecting.bin`, `SM-mcp-auth-required.bin`, `SM-mcp-auth-running.bin`, `SM-mcp-connected.bin`, `SM-mcp-failed.bin`, `SM-mcp-done.bin` |
 | `session` | `state` (string: `ready` — sent **exactly once**, when initialization completes; `closed` — sent **exactly once**, as the last frame before the session exits) | `SM-session-ready.bin`, `SM-session-closed.bin` |
+| `steering` | `phase` (string: one of `queued`, `delivered`, `dropped`, `refused`), `reason` (string, opt — `canceled`, `failed` or `quit`; set only for `dropped`), `text` (string, opt — a human-readable line; `delivered` carries none) | `SM-steering-queued.bin`, `SM-steering-delivered.bin`, `SM-steering-dropped.bin`, `SM-steering-refused.bin` |
 
 Complete wire values:
 
 ```
-SM-message-version.bin         {"type":"version","data":{"message_version":12,"core_version":"(set at build time)"}}
+SM-message-version.bin         {"type":"version","data":{"message_version":13,"core_version":"(set at build time)"}}
 SM-model.bin                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
 SM-model-list.bin              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
 SM-theme.bin                   {"type":"theme","data":{"name":"theme-dark"}}
@@ -708,6 +709,10 @@ SM-mcp-failed.bin              {"type":"mcp","data":{"status":"failed","server":
 SM-mcp-done.bin                {"type":"mcp","data":{"status":"done"}}
 SM-session-ready.bin           {"type":"session","data":{"state":"ready"}}
 SM-session-closed.bin          {"type":"session","data":{"state":"closed"}}
+SM-steering-queued.bin         {"type":"steering","data":{"phase":"queued","text":"steering queued — delivered into the running turn, or as your next prompt"}}
+SM-steering-delivered.bin      {"type":"steering","data":{"phase":"delivered"}}
+SM-steering-dropped.bin        {"type":"steering","data":{"phase":"dropped","reason":"canceled","text":"steering dropped — the task was canceled before it was delivered"}}
+SM-steering-refused.bin        {"type":"steering","data":{"phase":"refused","text":"Too many prompts are already queued for the running task; this one was not queued. Wait for it to continue, or cancel it."}}
 ```
 
 ## Adapter → Agent Commands

@@ -165,7 +165,7 @@ The user can:
 The session is idle as soon as a turn fails, which is what makes the two commands
 above usable: a failed turn does **not** start anything on its own. Anything the
 user had steered into it — never delivered, because the turn did not land — is
-discarded, with an SM `notify` saying so; retyping it is the user's call. That is
+discarded, with a `steering` message (phase `dropped`, reason `failed`) saying so; retyping it is the user's call. That is
 the one place the session drops input, and it is never silent.
 
 ### `:continue`

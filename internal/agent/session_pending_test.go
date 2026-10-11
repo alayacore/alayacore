@@ -194,10 +194,11 @@ func TestPromptWhileTaskRunningIsSteered(t *testing.T) {
 	}
 }
 
-// The steering queue is bounded. Past it the prompt is refused with the code a
-// busy session has always used, so a client that sends without reading cannot
-// make the session buffer without limit — and the refusal is the one a client
-// already knows how to handle.
+// The steering queue is bounded. Past it the prompt is refused, reported as a
+// "steering" message with phase "refused" — not the generic BUSY text, whose
+// reason ("a task is already running") is not why this prompt was refused. The
+// bound is what stops a client that sends without reading from growing the
+// session's memory without limit.
 func TestSteeringQueueFullIsRefused(t *testing.T) {
 	output := &syncOutput{}
 	s := newDeferredPromptSession(t, output, &mockProviderStepFail{})
@@ -215,11 +216,11 @@ func TestSteeringQueueFullIsRefused(t *testing.T) {
 	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "one more"}})
 
 	got := output.String()
-	if !strings.Contains(got, "A task is already running") {
-		t.Errorf("a full steering queue must refuse with BUSY, got: %q", got)
+	if !strings.Contains(got, `"phase":"refused"`) {
+		t.Errorf("a full steering queue must be refused with phase refused, got: %q", got)
 	}
-	if strings.Contains(got, "steering queued") {
-		t.Errorf("a refused prompt must not be acknowledged as queued: %q", got)
+	if strings.Contains(got, `"phase":"queued"`) {
+		t.Errorf("a refused prompt must not be reported as queued: %q", got)
 	}
 	if n := len(s.takeSteering()); n != maxSteeringParts {
 		t.Errorf("a refused prompt must not enter the queue: it holds %d parts", n)

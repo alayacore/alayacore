@@ -513,8 +513,38 @@ func (to *outputWriter) handleSystemMsg(value string) {
 		to.handleSystemMCP(env.Data)
 	case protocol.MsgTypeSession:
 		to.handleSystemSession(env.Data)
+	case protocol.MsgTypeSteering:
+		to.handleSystemSteering(env.Data)
 	}
 	to.dirty.Store(true)
+}
+
+// handleSystemSteering folds a steering event into the queue count, and renders
+// the human line it carries only where that line adds something the count does
+// not — a drop or a refusal. The refused phase keeps the error register the BUSY
+// text used to have.
+func (to *outputWriter) handleSystemSteering(data json.RawMessage) {
+	var m struct {
+		Phase string `json:"phase"`
+		Text  string `json:"text"`
+	}
+	if json.Unmarshal(data, &m) != nil {
+		return
+	}
+	// The count is driven by the phase. The human line is shown only where it
+	// says something the count does not — a drop (the words are gone) or a
+	// refusal (this prompt was not queued). A "queued" line would only repeat
+	// the count.
+	to.status.updateSteering(m.Phase)
+	if m.Text == "" || m.Phase == protocol.SteeringQueued {
+		return
+	}
+	id := to.generateWindowID()
+	tag := TagWindowSN
+	if m.Phase == protocol.SteeringRefused {
+		tag = TagWindowSE
+	}
+	to.windowBuffer.AppendOrUpdate(tag, id, m.Text)
 }
 
 func (to *outputWriter) handleSystemError(data json.RawMessage) {

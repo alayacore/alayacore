@@ -95,8 +95,8 @@ One task runs at a time, and there is no task queue (see the `run()` comment in
 flight is therefore neither parked as a second task nor refused: it is **spliced
 into the running turn** at that turn's next step boundary, so a correction
 reaches the model without canceling the step in flight and paying for a repeat
-turn. Only a full steering queue is refused, with the `BUSY` code a client
-already knows.
+turn. Only a full steering queue is refused (reported as a `steering` message
+with phase `refused`, not the generic BUSY text).
 
 The boundary is the only injection point there can be. It is the one place the
 agent loop lets a caller rewrite the history (`OnBeforeSend`) and the one place
@@ -125,7 +125,7 @@ turn spliced it in before the turn ended?
 - **Still queued when the turn ended** — delivered as the next prompt if the turn
   landed (the model answered without calling another tool, which is what "type
   the next thing while it is working" means, and the common case), or dropped
-  with an SM notify if it did not. These words never reached a step, so a turn
+  with a `steering` message (phase `dropped`) if it did not. These words never reached a step, so a turn
   that dies cannot leave them to run on afterwards. An input arriving *after* the
   turn ends is untouched by any of this: it was never part of that turn.
 

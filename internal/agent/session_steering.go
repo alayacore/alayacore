@@ -1,6 +1,9 @@
 package agent
 
-import "github.com/alayacore/alayacore/internal/llm"
+import (
+	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
+)
 
 // Steering: a prompt that arrives while a task is already running.
 //
@@ -71,15 +74,18 @@ import "github.com/alayacore/alayacore/internal/llm"
 // :summarize that task is the turn; for a mid-turn compaction it is the enclosing
 // one).
 //
-// The acknowledgement is an SM notify, not a new SM type. messageVersion — the
-// wire protocol version an adapter checks — is also the session file's
-// compatibility version: parseSessionMeta demands an exact match, so an additive
-// SM type would make every saved session refuse to load. The notify says the
-// same thing with vocabulary that already exists, and the message itself
-// announces its own arrival by being echoed with its history ID. Adding a
-// dedicated `steering` type (and paying the version bump, and the migration)
-// is worth doing when an adapter needs to distinguish the case mechanically
-// rather than by reading a line of text.
+// The lifecycle is reported as a "steering" system message — a dedicated SM
+// type (phase: queued / delivered / dropped / refused), not a line of text an
+// adapter has to match. This is the case an earlier revision deferred as "worth
+// doing when an adapter needs to distinguish the case mechanically": it now
+// does. Queued and refused are per submission; delivered and dropped are per
+// batch, because the whole queue is spliced or discarded at once (takeSteering
+// drains it), so there is never a partial delivery to correlate.
+//
+// The type was additive, but messageVersion moved 12 → 13 with it regardless
+// (the version moves for additive changes; see messageVersion). Session files
+// record that number and load only on an exact match, so an older file must be
+// edited to load — see parseSessionMeta.
 
 // maxSteeringParts bounds the queue. A prompt arriving with a task in flight is
 // accepted only while there is room, so a client that sends without reading
@@ -139,7 +145,8 @@ func (s *Session) discardQueuedSteering() {
 	}
 	s.steeringMu.Unlock()
 	if dropped {
-		s.writeNotify("steering dropped — the turn ended before it could be delivered")
+		s.writeSteering(protocol.SteeringDropped, protocol.SteeringDroppedFailed,
+			"steering dropped — the turn ended before it could be delivered")
 	}
 }
 
@@ -185,9 +192,18 @@ func (s *Session) deliverLeftoverSteering() {
 		return
 	}
 	if s.quitting {
-		// The session is leaving and would refuse the task anyway; dropping
-		// the parts here is what keeps them from holding the exit open.
+		// The session is leaving and would refuse the task anyway; dropping the
+		// parts here is what keeps them from holding the exit open. It is still
+		// a drop of accepted input, so it is announced like every other — the
+		// steering contract is total: every queued submission ends in exactly
+		// one terminal phase.
+		s.writeSteering(protocol.SteeringDropped, protocol.SteeringDroppedQuit,
+			"steering dropped — the session is quitting")
 		return
 	}
+	// The batch is delivered as the next prompt. Report it before submitPrompt
+	// spawns the task goroutine that echoes the words, so the report precedes
+	// the echo.
+	s.writeSteering(protocol.SteeringDelivered, "", "")
 	s.submitPrompt(parts)
 }

@@ -99,6 +99,13 @@ func (s *Session) writeNotifyf(format string, args ...any) {
 	s.writeNotify(fmt.Sprintf(format, args...))
 }
 
+// writeSteering reports one steering lifecycle event as an SM "steering"
+// frame. phase is one of protocol.Steering*; reason and text are optional
+// (see steeringMsg).
+func (s *Session) writeSteering(phase, reason, text string) {
+	s.writeSystemMsg(steeringMsg{Phase: phase, Reason: reason, Text: text})
+}
+
 // writeCmdResult writes a CO (command Output) frame for a command call.
 // On success, result is serialized into Output (nil → JSON null).
 // On error, Output carries a uniform CmdError object; cmdErr codes are
