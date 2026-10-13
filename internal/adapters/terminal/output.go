@@ -39,6 +39,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -195,6 +196,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		if !to.windowBuffer.HasWindow(d.ID) {
 			to.windowBuffer.AppendOrUpdate(displayTag, d.ID, d.Text)
 		}
+		to.applyWireTime(d.ID, d.Time)
 
 	// User content — accumulated until the next non-user tag triggers flush.
 	case tlv.TagUserX:
@@ -211,6 +213,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		} else {
 			to.bufferUserContent(d.ID, mediaLabel(displayTag), displayTag)
 		}
+		to.applyWireTime(to.activeUserWindowID, d.Time)
 
 	case tlv.TagUserEnd:
 		// Flush any pending user content. TagUserEnd should only appear
@@ -241,6 +244,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		}
 
 		to.windowBuffer.HandleToolInputEvent(fd, parseHistoryID(fd.ID))
+		to.applyWireTime(fd.CallID, fd.Time)
 
 	// Tool input delta — partial JSON arguments during streaming.
 	case tlv.TagAssistantFDelta:
@@ -273,6 +277,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		// Extract display text from the content item list.
 		displayText := extractToolOutputDisplayText(tr.Output)
 		to.windowBuffer.HandleToolOutput(tr.CallID, displayText, tr.IsError, parseHistoryID(tr.ID))
+		to.applyWireTime(tr.CallID, tr.Time)
 
 	// System tags
 	case tlv.TagSystemMsg:
@@ -835,6 +840,23 @@ func (to *outputWriter) generateWindowID() string {
 // userTag returns true if tag is a user content tag (on the wire).
 func userTag(tag string) bool {
 	return tag == tlv.TagUserX || tag == tlv.TagUserEnd
+}
+
+// applyWireTime stamps a window's CreatedAt from a frame's "time" field, when
+// one is present and parses. v14 puts the message time on authoritative
+// content/function frames, so a replayed message renders when it was actually
+// sent; frames without one (deltas; a part migrated from a v13 file) keep the
+// receipt clock. id is the window's id — the history id for content, the
+// call_id for a tool window.
+func (to *outputWriter) applyWireTime(id, wireTime string) {
+	if wireTime == "" {
+		return
+	}
+	t, err := time.Parse(time.RFC3339, wireTime)
+	if err != nil {
+		return
+	}
+	to.windowBuffer.SetCreatedAt(id, t)
 }
 
 // bufferUserContent processes one user content frame.

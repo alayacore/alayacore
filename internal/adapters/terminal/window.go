@@ -181,18 +181,17 @@ type Window struct {
 	Folded    bool
 	styles    *Styles
 
-	// CreatedAt is when this window was created — the adapter's own
-	// receipt clock, read ONCE at creation and then stored, never read
-	// again while rendering (a clock read inside Render would make the
-	// output a function of the moment, uncacheable and untestable).
+	// CreatedAt is the time this window's message carries. v14 puts the
+	// message time on authoritative content/function frames ("time"), so a
+	// replayed message shows when it was actually sent; the window is
+	// stamped from that field when it arrives, and falls back to the
+	// adapter's receipt clock otherwise (deltas never carry a time, and a
+	// part migrated from a v13 file has none). It is read once when set and
+	// then stored — a clock read inside Render would make the output a
+	// function of the moment, uncacheable and untestable.
 	//
-	// It is explicitly NOT a record field: the session file carries no
-	// per-message time (only session-level created_at/updated_at), so a
-	// replayed message is stamped with when this run received it. The
-	// header renders that as "arrival in this view", which is the fact the
-	// adapter actually has. Zero means unknown → no timestamp is rendered,
-	// which is what a Window built outside the adapter (tests) gets unless
-	// it sets one.
+	// Zero means unknown → no timestamp is rendered, which is what a Window
+	// built outside the adapter (tests) gets unless it sets one.
 	CreatedAt time.Time
 
 	renderer WindowRendering

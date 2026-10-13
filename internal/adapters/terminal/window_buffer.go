@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	ansi "github.com/charmbracelet/x/ansi"
 
@@ -479,6 +480,25 @@ func (wb *WindowBuffer) SetHistoryID(id string, historyID uint64) {
 	if idx, ok := wb.idIndex[id]; ok {
 		wb.windows[idx].HistoryID = historyID
 	}
+}
+
+// SetCreatedAt stamps a window's CreatedAt from a frame's "time" field. v14
+// carries the message time on authoritative content/function frames, so a
+// replayed message shows when it was actually sent rather than when this run
+// received it. A zero time (deltas never carry one, and a part migrated from a
+// v13 file has none) leaves the window's receipt clock in place.
+func (wb *WindowBuffer) SetCreatedAt(id string, t time.Time) {
+	if t.IsZero() {
+		return
+	}
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	idx, ok := wb.idIndex[id]
+	if !ok {
+		return
+	}
+	wb.windows[idx].CreatedAt = t
+	wb.markDirty(idx)
 }
 
 // AllWindows returns a copy of the windows slice for snapshotting.
