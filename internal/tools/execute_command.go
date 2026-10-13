@@ -83,6 +83,14 @@ func resolveWorkDir(workDir string) (string, error) {
 // resolveWorkDir. It returns the exit code and the error from cmd.Wait (nil on
 // clean exit).
 func runCommand(ctx context.Context, args ExecuteCommandInput, dir string, stdout, stderr io.Writer) (int, error) {
+	// An empty command is a caller error, not a shell no-op. A model that sends
+	// the wrong argument name — "cmd" for the required "command", say — would
+	// otherwise run `bash -c ""`, get a cheerful "Command completed successfully
+	// (no output)", and believe its command ran while nothing happened.
+	if strings.TrimSpace(args.Command) == "" {
+		return 0, fmt.Errorf("execute_command: the `command` argument is required (it was empty; an empty command is not run)")
+	}
+
 	detectedShell := shell.Detect()
 
 	// Only wrap the context with a deadline when a timeout is configured;

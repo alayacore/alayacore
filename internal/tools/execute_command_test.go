@@ -26,6 +26,35 @@ func TestExecuteCommandNormalCompletion(t *testing.T) {
 	}
 }
 
+// TestExecuteCommandEmptyCommandIsAnError pins the failure mode a wrong argument
+// name produces: a model that sends "cmd" instead of the required "command"
+// leaves Command empty, and an empty command used to run `bash -c ""` — exit 0,
+// no output, reported as "Command completed successfully (no output)". The model
+// then believes its command ran while nothing happened. It is a caller error now,
+// and the message names the argument so the next attempt uses it.
+func TestExecuteCommandEmptyCommandIsAnError(t *testing.T) {
+	cases := []ExecuteCommandInput{
+		{},
+		{Command: "   "},
+		{WorkDir: "."},
+	}
+	for _, args := range cases {
+		content, err := executeCommand(context.Background(), args)
+		if err == nil {
+			t.Errorf("%+v ran; content = %q", args, extractText(content))
+			continue
+		}
+		if !strings.Contains(err.Error(), "`command`") {
+			t.Errorf("%+v: error %q should name the `command` argument", args, err)
+		}
+	}
+
+	// Same guard on the streaming path: it shares runCommand.
+	if _, err := executeCommandStreaming(context.Background(), ExecuteCommandInput{}, func(string) {}); err == nil {
+		t.Error("streaming executeCommandStreaming ran an empty command")
+	}
+}
+
 func TestExecuteCommandExitError(t *testing.T) {
 	_, err := executeCommand(context.Background(), ExecuteCommandInput{
 		Command: "exit 42",
