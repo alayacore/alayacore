@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -133,40 +134,89 @@ func (m Terminal) emitCommand(cmd string) Cmd {
 }
 
 // submitCmd returns a Cmd that sends staged content (attachments + text)
-// as a complete user message via TLV. Runs outside Update when executed by
-// the event loop. Errors reading attachments are returned as
+// as a complete user message. Runs outside Update when executed by the event
+// loop. Anything that stopped the message from being sent is returned as
 // displayErrorMsg so the event loop handles the display write.
 func submitCmd(w io.WriteCloser, attachments []attachment, prompt string) Cmd {
 	return func() Msg {
 		var errs []string
-		for _, a := range attachments {
-			var value string
-			if a.isURL {
-				value = a.path
-			} else {
-				data, err := os.ReadFile(a.path)
-				if err != nil {
-					errs = append(errs, fmt.Sprintf("Failed to read attachment: %s", err))
-					continue
-				}
-				mime := wire.MimeTypeForPath(a.path)
-				b64 := base64.StdEncoding.EncodeToString(data)
-				value = fmt.Sprintf("data:%s;base64,%s", mime, b64)
-			}
-			_ = wire.WriteFrame(w, wire.TagUserX, contentBody(a.kind, value))
-		}
-		if prompt != "" {
-			_ = wire.WriteFrame(w, wire.TagUserX, contentBody(protocol.TypeText, prompt))
-		}
-		_ = wire.WriteFrame(w, wire.TagUserEnd, "")
 
-		if len(errs) > 0 {
-			return displayErrorMsg{
-				message: strings.Join(errs, "\n"),
+		// send reports a failed write instead of dropping it. The frame stream is
+		// the session's input: an error means it is gone, and the rest of this
+		// message cannot arrive either, so sending stops there. Silently ignoring
+		// it — which is what this did — is how an attachment disappears while the
+		// text around it is delivered, leaving the model to answer a question
+		// about a file it never saw.
+		send := func(tag, body string) bool {
+			if err := wire.WriteFrame(w, tag, body); err != nil {
+				errs = append(errs, fmt.Sprintf("Failed to send the message: %s", err))
+				return false
+			}
+			return true
+		}
+
+		for _, a := range attachments {
+			value, problem := attachmentValue(a)
+			if problem != "" {
+				errs = append(errs, problem)
+				continue
+			}
+			if !send(wire.TagUserX, contentBody(a.kind, value)) {
+				return reportErrs(errs)
 			}
 		}
+		if prompt != "" && !send(wire.TagUserX, contentBody(protocol.TypeText, prompt)) {
+			return reportErrs(errs)
+		}
+		if !send(wire.TagUserEnd, "") {
+			return reportErrs(errs)
+		}
+		return reportErrs(errs)
+	}
+}
+
+// maxAttachmentBytes bounds one attachment, counting the file as it is on disk.
+// The frame it becomes is about a third larger again (base64) plus its JSON
+// wrapper, which leaves it well inside wire.MaxFrameSize — that bound is the
+// transport's last resort, not one a user action should ever reach.
+//
+// 16MB is the same ceiling read_file uses for media it hands the model, and for
+// the same reason: a file this size is already far past what a provider will
+// accept in one turn, and the failure it prevents is not a rejected prompt but a
+// frame that cannot be written at all.
+const maxAttachmentBytes = 16 * 1024 * 1024
+
+// attachmentValue returns the frame value for one attachment — the file as a
+// base64 data URI, or its URL — or, as the second result, the message to show
+// the user instead. The message is a string rather than an error because it is
+// shown as written, not wrapped into a diagnostic.
+func attachmentValue(a attachment) (value, problem string) {
+	if a.isURL {
+		return a.path, ""
+	}
+	info, err := os.Stat(a.path)
+	if err != nil {
+		return "", fmt.Sprintf("Failed to read attachment: %s", err)
+	}
+	if info.Size() > maxAttachmentBytes {
+		return "", fmt.Sprintf("Attachment %s is %.1fMB — over the %dMB limit. Media is embedded as base64 and cannot be truncated; attach a smaller file or process it with execute_command instead.",
+			filepath.Base(a.path), float64(info.Size())/(1024*1024), maxAttachmentBytes/(1024*1024))
+	}
+	data, err := os.ReadFile(a.path)
+	if err != nil {
+		return "", fmt.Sprintf("Failed to read attachment: %s", err)
+	}
+	return fmt.Sprintf("data:%s;base64,%s",
+		wire.MimeTypeForPath(a.path), base64.StdEncoding.EncodeToString(data)), ""
+}
+
+// reportErrs turns accumulated failures into the message the event loop shows,
+// or nil when there is nothing to say.
+func reportErrs(errs []string) Msg {
+	if len(errs) == 0 {
 		return nil
 	}
+	return displayErrorMsg{message: strings.Join(errs, "\n")}
 }
 
 // addAttachment adds a local file path to pending attachments.
