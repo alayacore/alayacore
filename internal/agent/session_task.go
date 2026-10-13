@@ -206,6 +206,10 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// arrives. What arrives is permanent or exhausted, and the next step's
 	// context would only be larger.
 	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
+		// The step's clock, captured before anything else this step does. Both
+		// the echo helpers and stampParts read it, so what the adapter is shown
+		// live is the value that ends up in the record.
+		s.stepStartedAt = time.Now()
 		// Compaction first, steering second — never the other way round. A
 		// compaction replaces the history wholesale, so a steering part
 		// appended before it would vanish from Contents while the adapter kept
@@ -421,7 +425,10 @@ func (s *Session) applyVideoDefault(part llm.ContentPart) {
 // reader below serialization must see a part that is already complete: a later
 // serialization reads only the part and never consults live state.
 func (s *Session) stampParts(parts []llm.ContentPart) {
-	now := time.Now()
+	now := s.stepStartedAt
+	if now.IsZero() {
+		now = time.Now()
+	}
 	for _, p := range parts {
 		if p.GetTime().IsZero() {
 			p.SetTime(now)
@@ -527,7 +534,7 @@ func (s *Session) handleToolOutput(toolCallID string, contents []llm.ContentPart
 	for _, part := range contents {
 		s.applyVideoDefault(part)
 	}
-	data, marshalErr := marshalToolOutputBody(wireMetaNow(historyID), toolCallID, contents, err != nil)
+	data, marshalErr := marshalToolOutputBody(s.wireMetaNow(historyID), toolCallID, contents, err != nil)
 	if marshalErr != nil {
 		return fmt.Errorf("failed to marshal tool output: %w", marshalErr)
 	}
@@ -561,7 +568,7 @@ func (s *Session) handleReasoningComplete(text string, historyID uint64) error {
 
 // writeContentFrame writes a complete AX content frame.
 func (s *Session) writeContentFrame(kind, text string, historyID uint64) error {
-	body, err := marshalContentBody(wireMetaNow(historyID), protocol.ContentItem{Type: kind, Text: text})
+	body, err := marshalContentBody(s.wireMetaNow(historyID), protocol.ContentItem{Type: kind, Text: text})
 	if err != nil {
 		return err
 	}
@@ -571,7 +578,7 @@ func (s *Session) writeContentFrame(kind, text string, historyID uint64) error {
 
 // handleToolInputStart marshals and writes a tool call start frame.
 func (s *Session) handleToolInputStart(toolCallID, name string, historyID uint64) error {
-	data, err := marshalToolInputBody(wireMetaNow(historyID), toolCallID, name, nil)
+	data, err := marshalToolInputBody(s.wireMetaNow(historyID), toolCallID, name, nil)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input start: %w", err)
 	}
@@ -581,7 +588,7 @@ func (s *Session) handleToolInputStart(toolCallID, name string, historyID uint64
 
 // handleToolInputComplete marshals and writes a tool call input frame.
 func (s *Session) handleToolInputComplete(toolCallID string, input json.RawMessage, historyID uint64) error {
-	data, err := marshalToolInputBody(wireMetaNow(historyID), toolCallID, "", input)
+	data, err := marshalToolInputBody(s.wireMetaNow(historyID), toolCallID, "", input)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input complete: %w", err)
 	}
@@ -932,6 +939,10 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 
 // runTaskNormal executes a normal prompt in its own goroutine.
 func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
+	// This task owns the step clock: clear what the previous task left, so a
+	// task that never sets it (a summarize) cannot timestamp frames with a
+	// stale value.
+	s.stepStartedAt = time.Time{}
 	contents := make([]llm.ContentPart, len(s.Contents))
 	copy(contents, s.Contents)
 
@@ -981,6 +992,7 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 // a normal user message.  If the last message was from the assistant,
 // a "Continue" text is appended; otherwise the last prompt is resent.
 func (s *Session) runTaskContinue(ctx context.Context) {
+	s.stepStartedAt = time.Time{}
 	contents := make([]llm.ContentPart, len(s.Contents))
 	copy(contents, s.Contents)
 
@@ -1031,6 +1043,7 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 // runTaskSummarize constructs a summarization prompt and processes it.
 // After the LLM responds, the conversation is replaced with a summary.
 func (s *Session) runTaskSummarize(ctx context.Context) {
+	s.stepStartedAt = time.Time{}
 	contents := make([]llm.ContentPart, len(s.Contents))
 	copy(contents, s.Contents)
 

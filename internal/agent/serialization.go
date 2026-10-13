@@ -155,6 +155,18 @@ func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 		if err := json.Unmarshal(body, &d); err != nil {
 			return nil, fmt.Errorf("failed to parse content: %w", err)
 		}
+		// The tag names the side, the item names the kind; a kind on the wrong
+		// side is a malformed frame. Rejecting it keeps a part's role from
+		// depending on which representation a reader saw: reasoning is assistant
+		// content, and contentPartJSON writes a ReasoningPart as AX whatever its
+		// role — so accepting one under UX would store a user-role part that the
+		// file then records as assistant.
+		if tag == tlv.TagUserX && d.Type == protocol.TypeReasoning {
+			return nil, fmt.Errorf("content type %q cannot be user content", d.Type)
+		}
+		if tag == tlv.TagAssistantX && d.Type != protocol.TypeText && d.Type != protocol.TypeReasoning {
+			return nil, fmt.Errorf("content type %q cannot be assistant content", d.Type)
+		}
 		part, err := partFromContentItem(d.ContentItem)
 		if err != nil {
 			return nil, err
@@ -202,7 +214,13 @@ func wireID(id uint64) string {
 }
 
 // wireMetaNow is the frame metadata for a wire frame carrying a history id,
-// stamped with the current time (authoritative frames only).
-func wireMetaNow(id uint64) protocol.ContentMeta {
-	return protocol.ContentMeta{ID: wireID(id), Time: rfc3339(time.Now())}
+// stamped with the time of the step it belongs to (Session.stepStartedAt), so
+// the frame's time is the record's. A task with no step clock (a summarize)
+// falls back to the moment of use.
+func (s *Session) wireMetaNow(id uint64) protocol.ContentMeta {
+	t := s.stepStartedAt
+	if t.IsZero() {
+		t = time.Now()
+	}
+	return protocol.ContentMeta{ID: wireID(id), Time: rfc3339(t)}
 }

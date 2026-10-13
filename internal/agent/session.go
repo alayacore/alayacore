@@ -137,6 +137,18 @@ type sharedState struct {
 
 	histCounter uint64
 
+	// stepStartedAt is the wall clock of the step whose request is in flight,
+	// captured in OnBeforeSend (userTurn only) and read both by the echo helpers
+	// and by stampParts — so a message's live timestamp is the same value that
+	// gets persisted, instead of two time.Now() calls that differ by however
+	// long the step's tools ran.
+	//
+	// Written and read only by the task goroutine. Zero means no step set it: a
+	// summarize task never runs OnBeforeSend, so its echoes fall back to the
+	// clock at the moment of use (nothing a summarize streams is persisted, so
+	// there is no record for it to disagree with).
+	stepStartedAt time.Time
+
 	// sessionCtx lives as long as the Session does — same lifetime, which is the
 	// first half of what makes holding a context defensible here. The second half
 	// is CancelTask: it is exported and called from the plainio/terseio SIGINT
