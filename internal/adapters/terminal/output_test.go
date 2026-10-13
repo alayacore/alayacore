@@ -538,19 +538,19 @@ func TestDeltaFlushViaNonDeltaTag(t *testing.T) {
 // Helpers
 // ============================================================================
 
-// writeAt writes a TagAssistantTDelta frame through the output pipeline.
+// writeAt writes an assistant text delta (Ax) frame through the output pipeline.
 func writeAt(out *outputWriter, id, content string) {
 	data := encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta(id, content))
 	_, _ = out.Write(data)
 }
 
-// writeAr writes a TagAssistantRDelta frame through the output pipeline.
+// writeAr writes an assistant reasoning delta (Ax) frame through the output pipeline.
 func writeAr(out *outputWriter, id, content string) {
 	data := encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantReasoningDelta(id, content))
 	_, _ = out.Write(data)
 }
 
-// writeAT writes a TagAssistantT (authoritative) frame through the output pipeline.
+// writeAT writes an authoritative assistant text (AX) frame through the output pipeline.
 func writeAT(out *outputWriter, id, content string) {
 	data := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText(id, content))
 	_, _ = out.Write(data)

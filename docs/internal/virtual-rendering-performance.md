@@ -148,7 +148,8 @@ Two things were not fine, and both are fixed rather than recorded:
 During streaming, every `AppendFromTLV` call on a `textRenderer`:
 
 1. Appends the delta to `contentParts` (O(1) for eventual consistency)
-2. In **markdown mode** (the default for AT/AR), plain deltas — no `|`
+2. In **markdown mode** (the default for AT/AR — the terminal's window kinds
+   for text and reasoning, not wire tags), plain deltas — no `|`
    line and content tail not inside an open table — take the same
    incremental path; deltas that touch a table invalidate the cache and
    fall back to a full re-render (the table transform re-flows columns and

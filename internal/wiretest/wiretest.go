@@ -114,11 +114,6 @@ func ToolOutput(id, callID string, items []protocol.ContentItem, isError bool) s
 	return mustJSON(protocol.ToolOutputData{CallID: callID, Output: items, IsError: isError, ContentMeta: meta(id)})
 }
 
-// ToolOutputText builds a UF body with a single text item.
-func ToolOutputText(id, callID, text string, isError bool) string {
-	return ToolOutput(id, callID, []protocol.ContentItem{{Type: protocol.TypeText, Text: text}}, isError)
-}
-
 // ToolOutputLegacy builds a UF body from an {"id"/"call_id","output"/"content",...} object.
 func ToolOutputLegacy(id, legacy string) string {
 	var m struct {

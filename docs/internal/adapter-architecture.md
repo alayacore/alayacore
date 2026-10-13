@@ -113,13 +113,13 @@ main.go → config.Parse() → Settings
 ```
 User types prompt
   → PromptInput captures input
-    → Emit TLV(UT, prompt), TLV(UE)
+    → Emit TLV(UX, one JSON content item), TLV(UE)
       → inputPump reads TLV, stages content, flushes on UE
         → runTask() (task goroutine)
           → processPrompt()
             → Agent.Stream()
-              → Delta callbacks emit TLV(At), TLV(Ar), TLV(Af) (streaming deltas)
-              → Complete callbacks emit TLV(AT), TLV(AR), TLV(AF) (authoritative)
+              → Delta callbacks emit TLV(Ax), TLV(Af) (streaming deltas)
+              → Complete callbacks emit TLV(AX), TLV(AF) (authoritative)
               → Tool output callbacks emit TLV(UF)
               → Tool preview callbacks emit TLV(Uf) (ephemeral snapshots; ignored by non-TUI adapters)
                 → OutputWriter parses TLV
@@ -132,12 +132,12 @@ User types prompt
 
 ```
 Agent.Stream() receives tool_call event
-  → OnToolInputStart callback → TLV(AF, {"id":"<id>","name":"<tool>"}) → UI shows tool name immediately
-    → OnToolInputDelta callback → TLV(Af, {"id":"<id>","delta":"..."}) → UI shows truncated one-line preview
-    → OnToolInputComplete callback → TLV(AF, {"id":"<id>","input":{...}}) → UI fills in full arguments
+  → OnToolInputStart callback → TLV(AF, call_id + name) → UI shows tool name immediately
+    → OnToolInputDelta callback → TLV(Af, call_id + delta) → UI shows truncated one-line preview
+    → OnToolInputComplete callback → TLV(AF, call_id + input) → UI fills in full arguments
       → Agent executes tool: tool.ExecuteStreaming(ctx, input, onDelta) when available
-        → OnToolOutputDelta callback → TLV(Uf, {"id":"<id>","text":"..."}) → UI shows live result preview snapshot
-        → OnToolOutput callback → TLV(UF, {"id":"<id>","output":[{"type":"text","text":"..."}]}) → UI replaces preview with authoritative output
+        → OnToolOutputDelta callback → TLV(Uf, call_id + text) → UI shows live result preview snapshot
+        → OnToolOutput callback → TLV(UF, call_id + output) → UI replaces preview with authoritative output
           → Tool result added to messages
             → Agent continues to next step (if under max_steps)
 ```

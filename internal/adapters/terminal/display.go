@@ -793,7 +793,7 @@ func (m DisplayModel) findClosestVisibleWindow(viewportTop, viewportBottom, view
 }
 
 // MoveWindowCursorToNextUserPrompt moves the window cursor forward (down) to
-// the next visible window whose tag is TagUserT ("UT"). Returns false if
+// the next visible window whose tag is tagUserText (a user message). Returns false if
 // no such window exists below the current cursor, in which case the cursor
 // and the viewport are left untouched. Callers must test that flag before
 // re-seating the viewport, which always moves (see ScrollCursorToTop).
@@ -816,7 +816,7 @@ func (m DisplayModel) MoveWindowCursorToNextUserPrompt() (DisplayModel, bool) {
 }
 
 // MoveWindowCursorToPrevUserPrompt moves the window cursor backward (up) to
-// the previous visible window whose tag is TagUserT ("UT"). Returns false
+// the previous visible window whose tag is tagUserText (a user message). Returns false
 // if no such window exists above the current cursor, in which case the
 // cursor and the viewport are left untouched. Callers must test that flag
 // before re-seating the viewport, which always moves (see ScrollCursorToTop).

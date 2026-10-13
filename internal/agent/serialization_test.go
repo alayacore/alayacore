@@ -1,6 +1,6 @@
 package agent
 
-// Tests for marshalToolInputData's malformed-input fallback.
+// Tests for marshalToolInputBody's malformed-input fallback.
 //
 // A provider can stream a truncated/non-JSON tool input that survives the
 // tool-input repair layer (repair needs the input to unmarshal at all).
