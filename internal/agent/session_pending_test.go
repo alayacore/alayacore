@@ -14,12 +14,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/alayacore/alayacore/internal/wiretest"
 	"iter"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/mcp"

@@ -2,9 +2,10 @@ package terminal
 
 import (
 	"encoding/json"
-	"github.com/alayacore/alayacore/internal/wiretest"
 	"strings"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"

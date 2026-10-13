@@ -34,7 +34,7 @@ var testImageURI = mustPNGDataURI(1, 1)
 // captureMessages runs a provider against a stub server and returns the
 // wire-format messages it received, so assertions are made on the real JSON
 // body rather than on internal Go structures.
-func captureMessages(t *testing.T, contents []llm.ContentPart, configure func(*providers.OpenAIProvider)) []map[string]any {
+func captureMessages(t *testing.T, contents []llm.ContentPart) []map[string]any {
 	t.Helper()
 
 	var captured []map[string]any
@@ -58,10 +58,6 @@ func captureMessages(t *testing.T, contents []llm.ContentPart, configure func(*p
 	if err != nil {
 		t.Fatal(err)
 	}
-	if configure != nil {
-		configure(p)
-	}
-
 	events, err := p.StreamMessages(context.Background(), contents, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +129,7 @@ func TestOpenAIToolResultImageIsPromoted(t *testing.T) {
 	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 		ID:     "call-1",
 		Output: []llm.ContentPart{&llm.TextPart{Text: "Read a.png (1.2KB, image/png)"}, &llm.ImagePart{URI: testImageURI}},
-	}), nil)
+	}))
 
 	if got, want := roles(msgs), []string{"user", "assistant", "tool", "user"}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("roles = %v, want %v (media must be promoted after every tool message)", got, want)
@@ -172,7 +168,7 @@ func TestOpenAIToolMediaAggregatedIntoOneMessage(t *testing.T) {
 		&llm.ToolOutputPart{ID: "call-1", Output: []llm.ContentPart{&llm.ImagePart{URI: testImageURI}}},
 		&llm.ToolOutputPart{ID: "call-2", Output: []llm.ContentPart{&llm.TextPart{Text: "plain result"}}},
 		&llm.ToolOutputPart{ID: "call-3", Output: []llm.ContentPart{&llm.VideoPart{URI: testVideoURI}}},
-	), nil)
+	))
 
 	if got, want := roles(msgs), []string{"user", "assistant", "tool", "tool", "tool", "user"}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("roles = %v, want %v (one promoted message, after all tool messages)", got, want)
@@ -209,7 +205,7 @@ func TestOpenAIToolMediaGroupedPerResult(t *testing.T) {
 		&llm.ToolOutputPart{ID: "call-3", Output: []llm.ContentPart{
 			&llm.ImagePart{URI: mustPNGDataURI(2, 1)},
 		}},
-	), nil)
+	))
 
 	promoted := contentBlocks(t, msgs[4])
 	want := []string{"text", "image_url", "image_url", "text", "image_url"}
@@ -251,7 +247,7 @@ func TestOpenAIToolResultVideoPromotedWithConfig(t *testing.T) {
 	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 		ID:     "call-1",
 		Output: []llm.ContentPart{&llm.VideoPart{URI: testVideoURI, FPS: 8, Res: 1}},
-	}), nil)
+	}))
 
 	promoted := contentBlocks(t, msgs[3])
 	v := promoted[1]
@@ -272,7 +268,7 @@ func TestOpenAIToolResultAudioPromoted(t *testing.T) {
 	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 		ID:     "call-1",
 		Output: []llm.ContentPart{&llm.AudioPart{URI: testWavURI}},
-	}), nil)
+	}))
 
 	promoted := contentBlocks(t, msgs[3])
 	if got, want := blockTypes(promoted), []string{"text", "input_audio"}; strings.Join(got, ",") != strings.Join(want, ",") {
@@ -303,7 +299,7 @@ func TestOpenAIToolMediaNotPromoted(t *testing.T) {
 			msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 				ID:     "call-1",
 				Output: []llm.ContentPart{tc.part},
-			}), nil)
+			}))
 
 			if len(msgs) != 3 {
 				t.Fatalf("got %d messages %v, want 3 (nothing to promote)", len(msgs), roles(msgs))
@@ -328,7 +324,7 @@ func TestOpenAINoMediaAddsNoUserMessage(t *testing.T) {
 	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 		ID:     "call-1",
 		Output: []llm.ContentPart{&llm.TextPart{Text: "Result A"}},
-	}), nil)
+	}))
 
 	if got, want := roles(msgs), []string{"user", "assistant", "tool"}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("roles = %v, want %v", got, want)
@@ -346,7 +342,7 @@ func TestOpenAIErrorToolResultMediaPromoted(t *testing.T) {
 		ID:      "call-1",
 		IsError: true,
 		Output:  []llm.ContentPart{&llm.ImagePart{URI: testImageURI}},
-	}), nil)
+	}))
 
 	if c := msgs[2]["content"].(string); !strings.Contains(c, `"status":"error"`) {
 		t.Errorf("error status wrapper lost: %s", c)
@@ -372,7 +368,7 @@ func TestOpenAISeparateRoundsPromoteSeparately(t *testing.T) {
 		&llm.ToolOutputPart{ID: "call-2", Output: []llm.ContentPart{&llm.ImagePart{URI: testImageURI}}},
 	)...)
 
-	msgs := captureMessages(t, contents, nil)
+	msgs := captureMessages(t, contents)
 	wantRoles := []string{"user", "assistant", "tool", "user", "assistant", "tool", "user"}
 	if got := roles(msgs); strings.Join(got, ",") != strings.Join(wantRoles, ",") {
 		t.Fatalf("roles = %v, want %v", got, wantRoles)
@@ -396,7 +392,7 @@ func TestOpenAIUserAttachedMediaUnchanged(t *testing.T) {
 		&llm.DocumentPart{URI: testPDFURI},
 	)
 
-	msgs := captureMessages(t, contents, nil)
+	msgs := captureMessages(t, contents)
 	blocks := contentBlocks(t, msgs[0])
 	want := []string{"text", "image_url", "input_audio", "video_url", "text"}
 	if got := blockTypes(blocks); strings.Join(got, ",") != strings.Join(want, ",") {
@@ -429,7 +425,7 @@ func TestOpenAIToolMediaWithUnfetchableURINotPromoted(t *testing.T) {
 			msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 				ID:     "call-1",
 				Output: []llm.ContentPart{tc.part},
-			}), nil)
+			}))
 
 			if len(msgs) != 3 {
 				t.Fatalf("got %d messages %v, want 3 — unfetchable URI must not spawn a promoted message", len(msgs), roles(msgs))
@@ -458,7 +454,7 @@ func TestOpenAIRemoteImageURLStillPromoted(t *testing.T) {
 	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 		ID:     "call-1",
 		Output: []llm.ContentPart{&llm.ImagePart{URI: "https://example.com/a.png"}},
-	}), nil)
+	}))
 
 	if len(msgs) != 4 {
 		t.Fatalf("got %d messages %v, want 4 (remote URL is promotable)", len(msgs), roles(msgs))

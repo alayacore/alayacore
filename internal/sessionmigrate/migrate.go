@@ -66,8 +66,8 @@ func upgradeFrontmatter(front []byte) []byte {
 		}
 		return []byte(s[:i] + "message_version: 14" + s[i+lineEnd:])
 	}
-	close := strings.LastIndex(s, "---")
-	return []byte(s[:close] + "message_version: 14\n" + s[close:])
+	closing := strings.LastIndex(s, "---")
+	return []byte(s[:closing] + "message_version: 14\n" + s[closing:])
 }
 
 // upgradeBody rewrites every TLV frame in the body.

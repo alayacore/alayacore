@@ -1,8 +1,9 @@
 package terminal
 
 import (
-	"github.com/alayacore/alayacore/internal/wiretest"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"

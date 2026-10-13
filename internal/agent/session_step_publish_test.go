@@ -19,7 +19,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"github.com/alayacore/alayacore/internal/wiretest"
 	"io"
 	"iter"
 	"os"
@@ -28,6 +27,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"

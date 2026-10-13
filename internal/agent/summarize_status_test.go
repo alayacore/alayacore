@@ -15,12 +15,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/alayacore/alayacore/internal/wiretest"
 	"io"
 	"iter"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/llm"

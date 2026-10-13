@@ -3,10 +3,11 @@ package terminal
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/alayacore/alayacore/internal/wiretest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"

@@ -46,7 +46,7 @@ func dataURIDims(t *testing.T, uri string) (int, int) {
 // TestOversizeImageGoesOutShrunkOnWire is the end-to-end assertion for OpenAI:
 // the request still carries an image, and it is within the limit.
 func TestOversizeImageGoesOutShrunkOnWire(t *testing.T) {
-	msgs := captureMessages(t, testMsg(llm.RoleUser, &llm.ImagePart{URI: mustPNGDataURI(9000, 3000)}), nil)
+	msgs := captureMessages(t, testMsg(llm.RoleUser, &llm.ImagePart{URI: mustPNGDataURI(9000, 3000)}))
 	body, _ := json.Marshal(msgs)
 
 	if !strings.Contains(string(body), "image_url") {
@@ -76,7 +76,7 @@ func TestOversizeToolImageStillPromoted(t *testing.T) {
 	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 		ID:     "call-1",
 		Output: []llm.ContentPart{&llm.ImagePart{URI: mustPNGDataURI(testMaxImageEdge+1, 1)}},
-	}), nil)
+	}))
 	body, _ := json.Marshal(msgs)
 
 	if !strings.Contains(string(body), "image_url") {
@@ -90,7 +90,7 @@ func TestOversizeToolImageStillPromoted(t *testing.T) {
 // TestWebpImageDegradedToText is the fallback end to end: a format this client
 // cannot decode becomes the note rather than an unforwardable block.
 func TestWebpImageDegradedToText(t *testing.T) {
-	msgs := captureMessages(t, testMsg(llm.RoleUser, &llm.ImagePart{URI: "data:image/webp;base64,AAAA"}), nil)
+	msgs := captureMessages(t, testMsg(llm.RoleUser, &llm.ImagePart{URI: "data:image/webp;base64,AAAA"}))
 	body, _ := json.Marshal(msgs)
 
 	if strings.Contains(string(body), "image_url") {
