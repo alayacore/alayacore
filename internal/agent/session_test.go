@@ -536,7 +536,7 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 		},
 	}
 
-	// Generate RawTLV using the actual formatting function
+	// Generate Rawframe using the actual formatting function
 	raw, err := formatSessionMarkdown(sessionData)
 	if err != nil {
 		t.Fatalf("Failed to format session: %v", err)
@@ -568,25 +568,25 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 		t.Error("Content did not write any output")
 	}
 
-	// Parse the output data to check what TLV was sent
+	// Parse the output data to check what frame was sent
 	outputStr := string(mockOutput.data)
 
-	// User message should be in TLV
+	// User message should be in frame
 	if !strings.Contains(outputStr, "List files") {
-		t.Error("User message should be in TLV")
+		t.Error("User message should be in frame")
 	}
 
-	// Assistant messages should be in TLV
+	// Assistant messages should be in frame
 	if !strings.Contains(outputStr, "I'll list files for you") {
-		t.Error("First assistant message should be in TLV")
+		t.Error("First assistant message should be in frame")
 	}
 	if !strings.Contains(outputStr, "Found 2 files!") {
-		t.Error("Second assistant message should be in TLV")
+		t.Error("Second assistant message should be in frame")
 	}
 
-	// Tool call should be in TLV as FC tag
+	// Tool call should be in frame as FC tag
 	if !strings.Contains(outputStr, "execute_command") {
-		t.Error("Tool call should be in TLV")
+		t.Error("Tool call should be in frame")
 	}
 }
 
@@ -680,9 +680,9 @@ func TestCleanIncompleteToolCalls(t *testing.T) {
 	}
 }
 
-// TestTLVFormatRecursionProtection tests that the TLV format correctly handles
+// TestFrameFormatRecursionProtection tests that the frame format correctly handles
 // session file content embedded in tool results (the recursion problem).
-func TestTLVFormatRecursionProtection(t *testing.T) {
+func TestFrameFormatRecursionProtection(t *testing.T) {
 	tmpDir := t.TempDir()
 	sessionPath := filepath.Join(tmpDir, "recursion-test.alaya")
 

@@ -31,10 +31,10 @@ import (
 func TestFlushPendingDeltasCreatesWindowsInHistoryIDOrder(t *testing.T) {
 	const iterations = 200
 
-	arDelta := encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantReasoningDelta("1", "The user said hello?"))
-	atDelta := encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "Hello! How can I help?"))
-	arFrame := encodeTestTLV(wire.TagAssistantX, wiretest.AssistantReasoning("1", ""))
-	atFrame := encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("2", ""))
+	arDelta := frameBytes(wire.TagAssistantXDelta, wiretest.AssistantReasoningDelta("1", "The user said hello?"))
+	atDelta := frameBytes(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "Hello! How can I help?"))
+	arFrame := frameBytes(wire.TagAssistantX, wiretest.AssistantReasoning("1", ""))
+	atFrame := frameBytes(wire.TagAssistantX, wiretest.AssistantText("2", ""))
 
 	tests := []struct {
 		name   string

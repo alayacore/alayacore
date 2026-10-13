@@ -3,9 +3,9 @@
 //
 // It provides the SystemMsg interface and implementations (ErrorMsg, NotifyMsg,
 // ToolConfirmMsg), the tool data structures (ToolInputData, ToolOutputData), and
-// helpers for reading/writing system messages as TLV frames.
+// helpers for reading/writing system messages as frames.
 //
-// The protocol layer depends on the internal/tlv package for low-level frame
+// The protocol layer depends on the internal/wire package for low-level frame
 // encoding.
 package protocol
 
@@ -78,7 +78,7 @@ func ParseSystemMsg(value string) (SystemMsgEnvelope, error) {
 	return env, nil
 }
 
-// WriteSystemMsg marshals msg as a TagSystemMsg TLV frame.
+// WriteSystemMsg marshals msg as a TagSystemMsg frame.
 func WriteSystemMsg(w io.Writer, msg SystemMsg) error {
 	data, err := json.Marshal(msg)
 	if err != nil {

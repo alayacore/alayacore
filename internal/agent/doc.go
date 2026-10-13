@@ -15,7 +15,7 @@
 // Data Model:
 //
 //	The session stores conversation history as a flat, ordered slice of
-//	ContentPart, where each item has a stable ID matching the TLV history ID
+//	ContentPart, where each item has a stable ID matching the frame history ID
 //	sent to the adapter. This lets the adapter reference one content block by
 //	ID (e.g. ":save 5") with no secondary index. Each ContentPart carries its
 //	own Role, so provider conversion groups consecutive same-role parts into
@@ -35,7 +35,7 @@
 //
 // Communication Protocol:
 //
-//	Adapters talk to Session over one TLV (Tag-Length-Value) byte stream. The
+//	Adapters talk to Session over one frame (Tag-Length-Value) byte stream. The
 //	tag vocabulary (UT/UE/UI/UV/UA/UD in; AT/AR/AF/UF/CO/SM out) and the
 //	frame-order contract live in docs/development-principles.md. Each frame's
 //	history ID prefix corresponds to ContentPart.GetHistoryID(); those IDs are

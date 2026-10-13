@@ -103,10 +103,10 @@ func TestSessionClosedFrameEndsTheProgram(t *testing.T) {
 	// itself an authoritative frame, so the outputWriter flushed the delta when
 	// the frame arrived — this pins that the session's last words are in the
 	// WindowBuffer by the time the program leaves.
-	if _, err := m.out.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "bye"))); err != nil {
+	if _, err := m.out.Write(frameBytes(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "bye"))); err != nil {
 		t.Fatalf("write delta frame: %v", err)
 	}
-	m.out.Write(encodeTestTLV(wire.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`)) // test frame
+	m.out.Write(frameBytes(wire.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`)) // test frame
 
 	after, cmd := m.handleTick()
 	if cmd == nil {
@@ -134,7 +134,7 @@ func TestQuitWaitingOverlayOffersCancel(t *testing.T) {
 	m.quitting = true
 
 	// A task in progress, as the session reports it.
-	m.out.Write(encodeTestTLV(wire.TagSystemMsg,
+	m.out.Write(frameBytes(wire.TagSystemMsg,
 		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame
 
 	after, cmd := m.handleTick()
@@ -202,7 +202,7 @@ func TestQuitWaitingWindowAfterCancel(t *testing.T) {
 	m = m.updateComponentSizes(80, 24)
 	m.streamInput = &captureWriteCloser{}
 	m.quitting = true
-	m.out.Write(encodeTestTLV(wire.TagSystemMsg,
+	m.out.Write(frameBytes(wire.TagSystemMsg,
 		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame
 
 	after, _ := m.handleTick()

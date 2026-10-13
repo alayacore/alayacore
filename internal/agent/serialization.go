@@ -1,6 +1,6 @@
 package agent
 
-// ContentPart ↔ wire frame (TLV tag + JSON body) serialization.
+// ContentPart ↔ wire frame (frame tag + JSON body) serialization.
 //
 // This file is the single source of truth for turning a ContentPart into a
 // frame and back. Two callers share it: the wire (echo / replay, which carry
@@ -11,7 +11,7 @@ package agent
 //
 // The frame's concrete kind lives inside the JSON ("type"), not in the tag: the
 // tag names the plane (UX/AX content, AF/UF function), the content item names
-// the kind. See internal/tlv for the tag vocabulary and internal/protocol for
+// the kind. See internal/wire for the tag vocabulary and internal/protocol for
 // the payload types.
 
 import (
@@ -103,7 +103,7 @@ func marshalToolOutputBody(meta protocol.ContentMeta, callID string, parts []llm
 // ContentPart ↔ frame
 // ============================================================================
 
-// contentPartJSON serializes a ContentPart as a TLV tag and JSON body. id is
+// contentPartJSON serializes a ContentPart as a frame tag and JSON body. id is
 // the history id for a wire frame, or "" for the session file.
 func contentPartJSON(part llm.ContentPart, id string) (tag string, body string, err error) {
 	meta := protocol.ContentMeta{ID: id, Time: rfc3339(part.GetTime())}
@@ -165,7 +165,7 @@ func assistantKind(kind string) bool {
 	return kind == protocol.TypeText || kind == protocol.TypeReasoning
 }
 
-// contentPartFromJSON converts a TLV tag + JSON body into a ContentPart with
+// contentPartFromJSON converts a frame tag + JSON body into a ContentPart with
 // Role and Time set. A nil part with a nil error means "nothing to keep" — an
 // AF start frame (name only) is skipped, matching the old writer's shape.
 func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {

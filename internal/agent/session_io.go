@@ -31,7 +31,7 @@ import (
 // ============================================================================
 // Input pump — inputMsg, inputPump, handleInputFrame
 //
-// The input pump runs in its own goroutine, reading TLV frames from the
+// The input pump runs in its own goroutine, reading frames from the
 // input stream and dispatching parsed messages (inputMsg) to the run()
 // goroutine via inputMsgCh. It has no knowledge of command names and
 // never touches session state — all command handling lives in run().
@@ -98,7 +98,7 @@ func (s *Session) inputPump() {
 	}
 }
 
-// handleInputFrame processes a single TLV frame from the input stream.
+// handleInputFrame processes a single frame from the input stream.
 // Returns the updated staged content (nil when staged content has been
 // consumed by UE or discarded by an error). Media tags (UI/UV/UA/UD)
 // and regular text (UT) are staged until UE or EOF. Command frames (CI)
@@ -941,7 +941,7 @@ func (s *Session) cancelTask() (any, error) {
 // owns activeTask) via cancelReqCh. Returns true if a task was running
 // and was canceled, false if there was nothing to cancel or the session
 // has already exited. Used by the plainio/terseio SIGINT handlers — the
-// TLV input pipe cannot carry a CI frame after the adapter closed it at
+// frame input pipe cannot carry a CI frame after the adapter closed it at
 // EOF, so cancellation must not depend on the pipe.
 func (s *Session) CancelTask() bool {
 	done := make(chan bool, 1)

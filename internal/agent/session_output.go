@@ -1,6 +1,6 @@
 package agent
 
-// Session output helpers: writing TLV messages to the adapter output,
+// Session output helpers: writing frames to the adapter output,
 // tracking token usage, and broadcasting system info.
 //
 // Broadcasting overview:
@@ -48,7 +48,7 @@ const (
 )
 
 // ============================================================================
-// TLV Write Helpers
+// frame Write Helpers
 //
 // All writes check for a previously broken output stream.  On the first
 // write error the session context is canceled, which stops the agent
@@ -63,8 +63,8 @@ func (s *Session) markOutputBroken() {
 	}
 }
 
-// writeTLV writes a TLV frame. On error, marks output as broken.
-func (s *Session) writeTLV(tag string, value string) {
+// writeFrame writes a frame. On error, marks output as broken.
+func (s *Session) writeFrame(tag string, value string) {
 	if s.outputBroken.Load() || s.Output == nil {
 		return
 	}
@@ -142,10 +142,10 @@ func (s *Session) writeCmdResult(id string, result any, err error) {
 
 	data, marshalErr := json.Marshal(msg)
 	if marshalErr != nil {
-		// Last resort: drop the frame entirely (writeTLV would corrupt).
+		// Last resort: drop the frame entirely (writeFrame would corrupt).
 		return
 	}
-	s.writeTLV(wire.TagCommandOut, string(data))
+	s.writeFrame(wire.TagCommandOut, string(data))
 }
 
 // ============================================================================
@@ -249,7 +249,7 @@ func loadThemeFromFile(path string) (themeInfo, []string, error) {
 // sendThemeListMsg sends the full list of available themes with content.
 // Called once on startup so the TUI can cache theme data; skipped entirely
 // for non-TUI modes (NoTheme). Parse errors from theme files are sent as
-// TLV error messages so the TUI sees them.
+// frame error messages so the TUI sees them.
 func (s *Session) sendThemeListMsg() {
 	if s.ThemesFolder == "" {
 		return

@@ -324,7 +324,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 }
 
 // ============================================================================
-// processPrompt Dependencies: deltaWriter, TLV helpers, callbacks
+// processPrompt Dependencies: deltaWriter, frame helpers, callbacks
 // ============================================================================
 
 // stepUserParts returns the user parts a step's request must be sent with: the
@@ -395,7 +395,7 @@ func (s *Session) finalizeUserPart(part llm.ContentPart) {
 	id := s.histIncAndGet()
 	part.SetHistoryID(id)
 	if tag, body, err := contentPartJSON(part, wireID(id)); err == nil && tag != "" {
-		s.writeTLV(tag, body)
+		s.writeFrame(tag, body)
 	}
 }
 
@@ -437,7 +437,7 @@ func (s *Session) stampParts(parts []llm.ContentPart) {
 	}
 }
 
-// deltaWriter writes streaming delta frames directly to the TLV output,
+// deltaWriter writes streaming delta frames directly to the frame output,
 // bypassing the session layer. Delta frames are ephemeral and not persisted.
 type deltaWriter struct {
 	output io.Writer
@@ -538,7 +538,7 @@ func (s *Session) handleToolOutput(toolCallID string, contents []llm.ContentPart
 	if marshalErr != nil {
 		return fmt.Errorf("failed to marshal tool output: %w", marshalErr)
 	}
-	s.writeTLV(wire.TagUserF, data)
+	s.writeFrame(wire.TagUserF, data)
 	return nil
 }
 
@@ -572,7 +572,7 @@ func (s *Session) writeContentFrame(kind, text string, historyID uint64) error {
 	if err != nil {
 		return err
 	}
-	s.writeTLV(wire.TagAssistantX, body)
+	s.writeFrame(wire.TagAssistantX, body)
 	return nil
 }
 
@@ -582,7 +582,7 @@ func (s *Session) handleToolInputStart(toolCallID, name string, historyID uint64
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input start: %w", err)
 	}
-	s.writeTLV(wire.TagAssistantF, data)
+	s.writeFrame(wire.TagAssistantF, data)
 	return nil
 }
 
@@ -592,7 +592,7 @@ func (s *Session) handleToolInputComplete(toolCallID string, input json.RawMessa
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input complete: %w", err)
 	}
-	s.writeTLV(wire.TagAssistantF, data)
+	s.writeFrame(wire.TagAssistantF, data)
 	return nil
 }
 

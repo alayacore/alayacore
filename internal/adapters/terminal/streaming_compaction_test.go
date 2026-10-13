@@ -18,7 +18,7 @@ import (
 // runs, and the fast path really does leave the deltas pending.
 
 // newStreamingTextRenderer is a plain streaming text window's renderer (AT) —
-// the tag whose deltas AppendFromTLV keeps incrementally wrapped.
+// the tag whose deltas AppendFromFrame keeps incrementally wrapped.
 func newStreamingTextRenderer() *textRenderer {
 	return &textRenderer{tag: tagAssistantText}
 }
@@ -38,13 +38,13 @@ func TestFoldHistoryIsUnobservable(t *testing.T) {
 	whole := strings.Repeat(piece, repeats)
 
 	one := newStreamingTextRenderer()
-	one.AppendFromTLV(one.Tag(), whole)
+	one.AppendFromFrame(one.Tag(), whole)
 	one.BuildInner(firstWidth, false, nil)
 
 	many := newStreamingTextRenderer()
 	folds := 0
 	for i := 0; i < repeats; i++ {
-		many.AppendFromTLV(many.Tag(), piece)
+		many.AppendFromFrame(many.Tag(), piece)
 		many.BuildInner(firstWidth, false, nil) // the streaming frame
 		if len(many.contentParts) == 0 {
 			folds++
@@ -76,11 +76,11 @@ func TestPendingDeltasStayBounded(t *testing.T) {
 		deltas = 20 * maxContentParts
 	)
 	r := newStreamingTextRenderer()
-	r.AppendFromTLV(r.Tag(), "seed\n")
+	r.AppendFromFrame(r.Tag(), "seed\n")
 	r.BuildInner(width, false, nil)
 
 	for i := 1; i <= deltas; i++ {
-		r.AppendFromTLV(r.Tag(), "delta ")
+		r.AppendFromFrame(r.Tag(), "delta ")
 		r.BuildInner(width, false, nil) // the streaming frame
 		if len(r.contentParts) > maxContentParts {
 			t.Fatalf("after %d deltas the pending list holds %d entries; maxContentParts is %d",
@@ -98,13 +98,13 @@ func TestPendingDeltasStayBounded(t *testing.T) {
 func TestFastPathLeavesDeltasPending(t *testing.T) {
 	const width = 40
 	r := newStreamingTextRenderer()
-	r.AppendFromTLV(r.Tag(), "seed line\n")
+	r.AppendFromFrame(r.Tag(), "seed line\n")
 	r.BuildInner(width, false, nil) // full path: folds, and arms the fast path
 	if len(r.contentParts) != 0 {
 		t.Fatalf("the full path left %d deltas pending", len(r.contentParts))
 	}
 
-	r.AppendFromTLV(r.Tag(), "more")
+	r.AppendFromFrame(r.Tag(), "more")
 	r.BuildInner(width, false, nil)
 
 	// One pending delta is below maxContentParts, so the fast path leaves it —

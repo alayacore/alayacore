@@ -28,7 +28,7 @@ func TestOnToolOutputCallback(t *testing.T) {
 
 		data, marshalErr := marshalToolOutputBody(protocol.ContentMeta{}, id, content, err != nil)
 		if marshalErr == nil {
-			session.writeTLV(wire.TagUserF, data)
+			session.writeFrame(wire.TagUserF, data)
 		}
 	}
 

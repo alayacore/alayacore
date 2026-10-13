@@ -15,7 +15,7 @@ import (
 	"github.com/alayacore/alayacore/internal/wire"
 )
 
-// answerOutput implements io.Writer. It parses TLV messages, buffers the
+// answerOutput implements io.Writer. It parses frames, buffers the
 // text of the CURRENT assistant message (dropping earlier messages when a
 // new history ID starts), and prints it to stdout exactly once when the
 // task completes — but only if the final message actually contains text
@@ -95,7 +95,7 @@ func (o *answerOutput) diagnostic(format string, args ...any) {
 	fmt.Fprintf(o.stderr, format, args...)
 }
 
-// Write parses and buffers complete TLV frames from p.
+// Write parses and buffers complete frames from p.
 func (o *answerOutput) Write(p []byte) (int, error) {
 	o.mu.Lock()
 	o.dec.Feed(p)

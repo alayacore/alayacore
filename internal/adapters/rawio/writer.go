@@ -5,13 +5,13 @@ import (
 	"sync"
 )
 
-// lockedWriter serializes concurrent writes so each TLV frame is written
+// lockedWriter serializes concurrent writes so each frame is written
 // atomically.
 //
 // The session writes from two goroutines (run() and the task goroutine).
 // A single os.File.Write on a pipe is only atomic up to PIPE_BUF (4096
 // bytes); larger frames (base64 media, large tool output, big system
-// messages) could otherwise interleave mid-frame and corrupt the TLV
+// messages) could otherwise interleave mid-frame and corrupt the frame
 // stream for the controlling process. plainio and terminal protect their
 // output with a mutex; rawio must do the same.
 type lockedWriter struct {

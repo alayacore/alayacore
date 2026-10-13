@@ -5,7 +5,7 @@ package terminal
 //   - Display of assistant output with virtual scrolling
 //   - User input with external editor support
 //   - Model selection and theme switching
-//   - TLV protocol communication with the session
+//   - frame protocol communication with the session
 
 import (
 	"encoding/base64"
@@ -362,8 +362,8 @@ type Terminal struct {
 	selectorOriginalTheme *theme.Theme // theme data active when selector opened
 
 	// ── Dependencies (pointer types, shared, not copied semantically) ──
-	out          OutputWriter   // TLV output writer (shared, thread-safe)
-	streamInput  io.WriteCloser // TLV input writer (shared, thread-safe)
+	out          OutputWriter   // output writer (shared, thread-safe)
+	streamInput  io.WriteCloser // input writer (shared, thread-safe)
 	pipeReader   *io.PipeReader // read end of input pipe; set before async loading
 	appConfig    *app.Config    // application configuration (read-only)
 	editor       *Editor        // external editor process helper (stateless service)

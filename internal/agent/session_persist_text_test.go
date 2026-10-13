@@ -46,7 +46,7 @@ func TestSessionSavePreservesTextWithToolCalls(t *testing.T) {
 		Contents: contents,
 	}
 
-	// Format to markdown (TLV format)
+	// Format to markdown (frame format)
 	raw, err := formatSessionMarkdown(data)
 	if err != nil {
 		t.Fatalf("Failed to format session: %v", err)

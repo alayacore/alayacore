@@ -265,7 +265,7 @@ type taskFrame struct {
 }
 
 // taskFrames parses every SM "task" frame out of the captured output
-// (concatenated TLV frames) in write order. A partial trailing frame —
+// (concatenated frames) in write order. A partial trailing frame —
 // possible while the session is mid-write — ends the scan.
 func taskFrames(t *testing.T, output string) []taskFrame {
 	t.Helper()

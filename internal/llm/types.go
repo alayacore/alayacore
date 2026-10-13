@@ -29,7 +29,7 @@ const (
 	RoleTool      MessageRole = "tool"
 )
 
-// ContentPart type discriminator strings for TLV serialization.
+// ContentPart type discriminator strings for frame serialization.
 const (
 	ContentPartText       = "text"
 	ContentPartImage      = "image"

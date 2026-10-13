@@ -24,7 +24,7 @@ func TestMarkdownTableWideColumnsWithCJK(t *testing.T) {
 	// contains CJK content.
 	content := "| 名前 | age | city |\n|---|---|---|\n| 山田太郎さん | 30 | 東京 |"
 	r := &textRenderer{tag: tagAssistantText}
-	r.AppendFromTLV(tagAssistantText, content)
+	r.AppendFromFrame(tagAssistantText, content)
 	r.ToggleMarkdownMode() // enable table formatting
 
 	for _, width := range []int{20, 28, 40, 60} {

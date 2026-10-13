@@ -51,11 +51,11 @@
 //     (tool calls, reasoning) is saved to the session file once the task
 //     completes even though it is never printed.
 //
-// Communication with the session layer uses the same TLV protocol as the
+// Communication with the session layer uses the same frame protocol as the
 // terminal, plainio, and rawio adapters.
 //
 // Key Files:
 //   - adapter.go: Adapter struct, Start() entry point
 //   - input.go: Full-stdin prompt/command reader
-//   - output.go: TLV parser and answer-only renderer
+//   - output.go: frame parser and answer-only renderer
 package terseio

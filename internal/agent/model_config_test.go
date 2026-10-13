@@ -15,7 +15,7 @@ import (
 
 func TestToModelInfosWireCompatible(t *testing.T) {
 	// The wire format for model_list must serialize to exactly the same
-	// JSON bytes as modelConfig, so the TLV protocol stays compatible.
+	// JSON bytes as modelConfig, so the frame protocol stays compatible.
 	//
 	// Every field is mirrored, so setting serial_tool_calls here is what makes
 	// this comparison catch a forgotten line in toModelInfos: the domain would

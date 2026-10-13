@@ -48,7 +48,7 @@ func writeCommand(input io.Writer, cmd string) error {
 	return wire.WriteFrame(input, wire.TagCommandIn, string(payload))
 }
 
-// readAllPrompt reads the entire reader and emits it as ONE TLV message:
+// readAllPrompt reads the entire reader and emits it as ONE frame:
 //   - stdin starting with ":" (after trimming trailing newlines) is sent
 //     as a single CI command frame — the WHOLE input is the command,
 //     including newlines in the argument text (":continue" works, so do

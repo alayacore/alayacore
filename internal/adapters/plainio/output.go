@@ -24,7 +24,7 @@ import (
 const maxSeenDeltaEntries = 512
 
 // stdoutOutput implements io.Writer.
-// It parses TLV messages and prints human-readable text to stdout.
+// It parses frames and prints human-readable text to stdout.
 //
 // Concurrency: the session writes from two goroutines (task and run),
 // so a mutex protects the buffer and the tag/history-ID state.

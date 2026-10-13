@@ -1,13 +1,13 @@
 //go:build ignore
 
-// gen_wire_samples is a ONE-OFF tool that re-frames the adapter-guide sample
-// frames from the length-prefixed v14 wire to the line-based v15 wire. It is
-// kept for provenance — it documents exactly how the committed samples were
-// transformed — and is not part of the build.
+// gen_wire_samples is a ONE-OFF tool that re-framed the adapter-guide sample
+// frames when the wire format moved to one frame per line: it read the samples in
+// their v14 framing (a 2-byte tag, a 4-byte big-endian length, then the value) and
+// wrote them as lines. The samples it produced are committed; re-running it needs
+// those v14 originals, so it is kept for provenance rather than for use.
 //
-// The v14 framing is a 2-byte tag, a 4-byte big-endian length, and the value; it
-// is copied here rather than imported because nothing in the running program
-// reads v14 any more.
+// The v14 framing is copied here rather than imported because nothing in the
+// running program reads it any more.
 //
 // The value is passed through encoding/json's compactor, which elides
 // insignificant whitespace and keeps everything else — key order included, so a
@@ -16,7 +16,11 @@
 // raw control character inside a JSON string fails here rather than being
 // published as a frame no reader accepts.
 //
-// Usage: go run ./misc/gen_wire_samples.go
+// The v14 originals are no longer in the tree — the samples were rewritten in
+// place when the format changed — so the source directory is an argument: point
+// it at a checkout of the commit that still had them.
+//
+// Usage: go run ./misc/gen_wire_samples.go <directory of v14 .bin samples>
 package main
 
 import (
@@ -28,12 +32,16 @@ import (
 	"path/filepath"
 )
 
-const (
-	srcDir = "adapter-guide/tlv-samples"
-	dstDir = "adapter-guide/wire-samples"
-)
+// dstDir is where the samples live now, one frame per line per file.
+const dstDir = "adapter-guide/wire-samples"
 
 func main() {
+	if len(os.Args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: go run ./misc/gen_wire_samples.go <directory of v14 .bin samples>")
+		os.Exit(2)
+	}
+	srcDir := os.Args[1]
+
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
 		panic(err)

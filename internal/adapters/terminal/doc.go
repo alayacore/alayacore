@@ -19,9 +19,9 @@
 //	  - Status bar: Shows session status (tokens, model info)
 //	  - ModelSelector: Modal for switching between AI models
 //
-// Communication with the session layer uses TLV (Tag-Length-Value) protocol:
-//   - Input: io.WriteCloser sends TLV messages to the session
-//   - Output: OutputWriter parses TLV and renders styled content
+// Communication with the session layer uses frame protocol:
+//   - Input: io.WriteCloser sends frames to the session
+//   - Output: OutputWriter parses frame and renders styled content
 //
 // Glyph and Emoji Notes:
 //

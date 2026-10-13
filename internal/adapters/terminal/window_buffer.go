@@ -433,7 +433,7 @@ func (wb *WindowBuffer) AppendUserContent(id, tag, value string) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 	if idx, ok := wb.idIndex[id]; ok {
-		wb.windows[idx].AppendFromTLV(tag, value)
+		wb.windows[idx].AppendFromFrame(tag, value)
 		wb.markDirty(idx)
 	}
 }
@@ -642,7 +642,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 			// Fast path: ask the renderer for a count from the lines it
 			// already wrapped. A text renderer answers in nanoseconds when
 			// nothing changed and in about a microsecond right after an
-			// append, because AppendFromTLV wrapped the delta into
+			// append, because AppendFromFrame wrapped the delta into
 			// wrappedLines on the way in (appendDeltaToVisualLines) — so
 			// streaming takes this path too, not just cache hits. Anything
 			// that cannot answer from wrapped lines (a tool or user window,

@@ -17,7 +17,7 @@ package terminal
 // ways: every terminal then draws what the width table says, the escape parser
 // has no raw C1 to mistake for an introducer, and no library's handling of an
 // invalid byte is ever consulted. So content is repaired on its way into a Window
-// — AppendFromTLV and its neighbors — and everything downstream may assume it.
+// — AppendFromFrame and its neighbors — and everything downstream may assume it.
 //
 // The input side is the same question arriving with a weaker guarantee. It has to
 // hold a run a read cut short, because its remaining bytes are still in the

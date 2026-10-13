@@ -43,7 +43,7 @@ type Config struct {
 	MCPInit *mcp.Initializer
 
 	// StartupErrors contains errors from skills loading and MCP config
-	// parsing. These are emitted as TLV system messages during session
+	// parsing. These are emitted as frame system messages during session
 	// startup so the user sees them even in TUI mode.
 	StartupErrors []string
 

@@ -39,14 +39,14 @@ type ToolInfo struct {
 // WindowRendering handles type-specific rendering and content management.
 // Each Window has one renderer; implementations are not shared across windows.
 type WindowRendering interface {
-	// Tag returns the TLV tag for cursor navigation.
+	// Tag returns the frame tag for cursor navigation.
 	Tag() string
 
 	// ToolInfo returns tool call details, or nil if not a tool window.
 	ToolInfo() *ToolInfo
 
-	// AppendFromTLV processes one incoming TLV frame.
-	AppendFromTLV(tag string, value string)
+	// AppendFromFrame processes one incoming frame.
+	AppendFromFrame(tag string, value string)
 
 	// BuildInner returns the styled inner content lines and line count.
 	// width is the full window width (content wraps at the full width —
@@ -213,7 +213,7 @@ func NewWindow(id string, tag string, styles *Styles) *Window {
 	return w
 }
 
-// setRenderer sets the renderer based on the TLV tag.
+// setRenderer sets the renderer based on the frame tag.
 func (w *Window) setRenderer(tag string) {
 	switch tag {
 	case tagUserText:
@@ -233,7 +233,7 @@ func (w *Window) ToolInfo() *ToolInfo {
 	return w.renderer.ToolInfo()
 }
 
-// Tag returns the TLV tag for cursor navigation.
+// Tag returns the frame tag for cursor navigation.
 func (w *Window) Tag() string {
 	if w.renderer == nil {
 		return ""
@@ -241,22 +241,22 @@ func (w *Window) Tag() string {
 	return w.renderer.Tag()
 }
 
-// AppendFromTLV processes one incoming TLV frame.
-func (w *Window) AppendFromTLV(tag string, value string) {
+// AppendFromFrame processes one incoming frame.
+func (w *Window) AppendFromFrame(tag string, value string) {
 	if w.renderer == nil {
 		return
 	}
-	w.renderer.AppendFromTLV(tag, value)
+	w.renderer.AppendFromFrame(tag, value)
 	w.cache.valid = false
 }
 
-// AppendContent adds content from a non-TLV source (e.g. directly from output.go).
-// Used for system messages (SE, SN) that don't go through TLV dispatch.
+// AppendContent adds content from a non-frame source (e.g. directly from output.go).
+// Used for system messages (SE, SN) that don't go through frame dispatch.
 func (w *Window) AppendContent(content string) {
 	if w.renderer == nil {
 		return
 	}
-	w.renderer.AppendFromTLV(w.renderer.Tag(), content)
+	w.renderer.AppendFromFrame(w.renderer.Tag(), content)
 	w.cache.valid = false
 }
 
@@ -409,7 +409,7 @@ func (w *Window) RawToolName() string {
 	return ""
 }
 
-// RawTag returns the TLV tag for testing.
+// RawTag returns the frame tag for testing.
 func (w *Window) RawTag() string {
 	return w.Tag()
 }
@@ -926,7 +926,7 @@ func (w *Window) UpdateLineCountFast(width int) (int, bool) {
 	// wrapped. Only textRenderer can answer — it is the one that keeps
 	// wrappedLines — and both of its answers are cheap: a cached count when
 	// nothing changed (nanoseconds), or len(wrappedLines)+1 right after an
-	// append, because AppendFromTLV wrapped the delta incrementally as it
+	// append, because AppendFromFrame wrapped the delta incrementally as it
 	// arrived (about a microsecond). Everything else answers false and
 	// ensureLineHeights falls through to a full Window.buildLines — the rows
 	// without Render's join — for: a tool or user window, a text renderer

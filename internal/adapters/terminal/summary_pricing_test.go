@@ -46,8 +46,8 @@ func summaryPricingCorpus() []string {
 // split at offset split.
 func newSummaryRenderer(content string, split int) *textRenderer {
 	r := &textRenderer{tag: tagAssistantReasoning}
-	r.AppendFromTLV("", content[:split])
-	r.AppendFromTLV("", content[split:])
+	r.AppendFromFrame("", content[:split])
+	r.AppendFromFrame("", content[split:])
 	return r
 }
 
@@ -97,7 +97,7 @@ func snapToRuneStart(s string, i int) int {
 func TestContentThatIsNotWellFormedIsRepairedNotHeld(t *testing.T) {
 	// A byte that is not UTF-8 at all is one replacement.
 	lone := &textRenderer{tag: tagAssistantReasoning}
-	lone.AppendFromTLV("", "a\x80b")
+	lone.AppendFromFrame("", "a\x80b")
 	if got := lone.rawContent(); got != "a\uFFFDb" {
 		t.Errorf("a lone continuation byte: content is %q, want %q", got, "a\uFFFDb")
 	}
@@ -106,8 +106,8 @@ func TestContentThatIsNotWellFormedIsRepairedNotHeld(t *testing.T) {
 	// replacements — the repair is per delta and does not wait to see whether the
 	// next one completes the character.
 	split := &textRenderer{tag: tagAssistantReasoning}
-	split.AppendFromTLV("", "a\xe4")
-	split.AppendFromTLV("", "\xb8\xadb")
+	split.AppendFromFrame("", "a\xe4")
+	split.AppendFromFrame("", "\xb8\xadb")
 	if got := split.rawContent(); got != "a\uFFFD\uFFFD\uFFFDb" {
 		t.Errorf("a character split across two deltas: content is %q, want %q", got, "a\uFFFD\uFFFD\uFFFDb")
 	}
@@ -280,7 +280,7 @@ func TestSummaryCountsSurviveAFold(t *testing.T) {
 	for _, split := range []int{1, 2, 7, maxContentParts, maxContentParts + 1} {
 		r := &textRenderer{tag: tagAssistantReasoning}
 		for i := 0; i < len(content); i += split {
-			r.AppendFromTLV("", content[i:min(i+split, len(content))])
+			r.AppendFromFrame("", content[i:min(i+split, len(content))])
 		}
 		before := r.summary
 		r.mergeParts()
@@ -306,16 +306,16 @@ func TestSummaryCountsSurviveAFold(t *testing.T) {
 func TestSummaryCountsRetireForGood(t *testing.T) {
 	for _, retiring := range []string{"\t", "\r", "\x1b[0m", "你", "\u0301", "\x7f", "\uFE0F"} {
 		r := &textRenderer{tag: tagAssistantReasoning}
-		r.AppendFromTLV("", "plain ascii before")
+		r.AppendFromFrame("", "plain ascii before")
 		if r.summary.retired() {
 			t.Fatalf("%q: plain ASCII retired the counts", retiring)
 		}
-		r.AppendFromTLV("", retiring)
+		r.AppendFromFrame("", retiring)
 		if !r.summary.retired() {
 			t.Errorf("%q did not retire the counts", retiring)
 		}
 		before := r.summary
-		r.AppendFromTLV("", "and plain ascii after, which must not revive them")
+		r.AppendFromFrame("", "and plain ascii after, which must not revive them")
 		if r.summary != before {
 			t.Errorf("%q: a plain delta after retiring moved the counts from %+v to %+v", retiring, before, r.summary)
 		}
@@ -348,8 +348,8 @@ func TestSummaryCountsAreNotTrustedForContentTheyNeverSaw(t *testing.T) {
 	// What matters is the row it draws, not the field: summaryCounts.note will add
 	// the delta's bytes to a count that started at zero, and covers is what has to
 	// notice that the total no longer accounts for the content.
-	r.AppendFromTLV("", " more")
-	ref.AppendFromTLV("", " more")
+	r.AppendFromFrame("", " more")
+	ref.AppendFromFrame("", " more")
 	ref.summary.retire()
 	for _, width := range []int{8, 40, 80} {
 		got, _ := r.BuildCollapsed(width, DefaultStyles())

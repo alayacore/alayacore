@@ -51,7 +51,7 @@ func runIncrementalConsistencyCase(t *testing.T, name string, deltas []string) {
 	r := &textRenderer{tag: "AT"}
 	for i, d := range deltas {
 		all = append(all, d)
-		r.AppendFromTLV("AT", d)
+		r.AppendFromFrame("AT", d)
 
 		incLines, _ := r.BuildInner(80, false, styles)
 		fullLines := wrapVisualLines(stripANSI(strings.Join(all, "")), 80)

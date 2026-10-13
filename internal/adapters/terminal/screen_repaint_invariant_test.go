@@ -185,7 +185,7 @@ func (h *frameHarness) key(code rune, mod KeyMod) {
 	h.step(fmt.Sprintf("key %q mod %d", code, mod))
 }
 
-// appendWin feeds content the way the session does — a TLV frame through the
+// appendWin feeds content the way the session does — a frame through the
 // output writer — so the dirty flags the refresh path gates on are the real
 // ones.
 func (h *frameHarness) appendWin(tag, id, content string) {

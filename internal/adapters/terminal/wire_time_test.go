@@ -12,7 +12,7 @@ import (
 // message shows when it was actually sent rather than when this run read it.
 func TestWireTimeStampsTheWindow(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("7", "hello")))
+	out.Write(frameBytes(wire.TagAssistantX, wiretest.AssistantText("7", "hello")))
 
 	ws := out.windowBuffer.AllWindows()
 	if len(ws) != 1 {
@@ -27,7 +27,7 @@ func TestWireTimeStampsTheWindow(t *testing.T) {
 // keyed by the first content item's id.
 func TestWireTimeStampsAUserEcho(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.Write(encodeTestTLV(wire.TagUserX, wiretest.UserText("3", "hi")))
+	out.Write(frameBytes(wire.TagUserX, wiretest.UserText("3", "hi")))
 	out.FlushPendingDeltas()
 
 	ws := out.windowBuffer.AllWindows()
@@ -43,7 +43,7 @@ func TestWireTimeStampsAUserEcho(t *testing.T) {
 // the window keeps the adapter's receipt clock and does not fabricate one.
 func TestDeltaLeavesTheReceiptClock(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("7", "he")))
+	out.Write(frameBytes(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("7", "he")))
 	out.FlushPendingDeltas()
 
 	ws := out.windowBuffer.AllWindows()

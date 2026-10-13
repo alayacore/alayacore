@@ -220,7 +220,7 @@ func (m Terminal) handleConfirmMCPAuth(r *ConfirmResult, fromCmd bool) (Terminal
 // startMCPAuthFlow starts the OAuth callback server, opens the browser,
 // and returns a Cmd that waits for the authorization code.
 // The callback server is started synchronously (needed before the Cmd);
-// all user-facing I/O (notification, browser, TLV writes) runs in the Cmd.
+// all user-facing I/O (notification, browser, frame writes) runs in the Cmd.
 //
 // Uses Sequence to split into phases so all display output (notify/error)
 // flows through messages handled by Terminal.Update rather than direct calls
@@ -240,7 +240,7 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 	filledURL = strings.ReplaceAll(filledURL, "{{redirect_uri}}", encodedRedirect)
 	filledURL = strings.ReplaceAll(filledURL, "{{state}}", state)
 
-	// Capture streamInput for TLV writes in phase 2 (it's a pointer, safe to capture)
+	// Capture streamInput for frame writes in phase 2 (it's a pointer, safe to capture)
 	streamInput := m.streamInput
 
 	return Sequence(

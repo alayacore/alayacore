@@ -2,7 +2,7 @@ package agent
 
 // modelManager is responsible for loading model definitions from a
 // key-value config file (model.conf) and managing them in memory.
-// All persistence is handled internally; adapters interact via TLV messages.
+// All persistence is handled internally; adapters interact via frames.
 //
 // All methods are called from the session's run() goroutine only, so no
 // synchronization is needed.

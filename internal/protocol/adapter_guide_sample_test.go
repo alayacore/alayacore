@@ -32,11 +32,11 @@ func TestModelListSampleMatchesModelInfo(t *testing.T) {
 		t.Fatalf("read %s: %v", samplePath, err)
 	}
 
-	// The sample is one TLV frame: tag "SM", value an envelope.
+	// The sample is one frame: tag "SM", value an envelope.
 	reader := bytes.NewReader(raw)
 	tag, value, err := wiretest.NextFrame(reader)
 	if err != nil {
-		t.Fatalf("decode TLV frame: %v", err)
+		t.Fatalf("decode frame: %v", err)
 	}
 	if tag != wire.TagSystemMsg {
 		t.Fatalf("tag = %q, want %q", tag, wire.TagSystemMsg)
@@ -89,11 +89,11 @@ func TestThemeListSampleMatchesTheme(t *testing.T) {
 		t.Fatalf("read %s: %v", themeListSamplePath, err)
 	}
 
-	// The sample is one TLV frame: tag "SM", value an envelope.
+	// The sample is one frame: tag "SM", value an envelope.
 	reader := bytes.NewReader(raw)
 	tag, value, err := wiretest.NextFrame(reader)
 	if err != nil {
-		t.Fatalf("decode TLV frame: %v", err)
+		t.Fatalf("decode frame: %v", err)
 	}
 	if tag != wire.TagSystemMsg {
 		t.Fatalf("tag = %q, want %q", tag, wire.TagSystemMsg)
@@ -186,7 +186,7 @@ func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 			reader := bytes.NewReader(raw)
 			tag, value, err := wiretest.NextFrame(reader)
 			if err != nil {
-				t.Fatalf("not a TLV frame: %v", err)
+				t.Fatalf("not a frame: %v", err)
 			}
 			if reader.Len() != 0 {
 				t.Errorf("%d trailing bytes after the frame", reader.Len())

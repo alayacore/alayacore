@@ -10,9 +10,9 @@ import (
 
 // TestLoadSessionLargeToolResultFrame is a regression guard for the bug where
 // a session that saved successfully could not be loaded back: a tool result
-// whose serialized TLV frame exceeds the old private 10MiB cap (for example
+// whose serialized frame exceeds the old private 10MiB cap (for example
 // read_file returning an 8-9MB image as a base64 data URI) was rejected by the
-// persistence reader with "invalid length", even though wire.EncodeTLV happily
+// persistence reader with "invalid length", even though wire.Encodeframe happily
 // wrote it (MaxMessageSize ≈ 2GiB).
 //
 // The persistence reader must not impose a tighter bound than the writer.
@@ -50,7 +50,7 @@ func TestLoadSessionLargeToolResultFrame(t *testing.T) {
 
 	loaded, err := parseSessionData(raw)
 	if err != nil {
-		t.Fatalf("parseSessionData rejected a valid >10MiB TLV frame: %v", err)
+		t.Fatalf("parseSessionData rejected a valid >10MiB frame: %v", err)
 	}
 	if len(loaded.Contents) != 1 {
 		t.Fatalf("got %d content parts, want 1", len(loaded.Contents))

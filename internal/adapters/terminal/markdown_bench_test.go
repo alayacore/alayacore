@@ -66,12 +66,12 @@ func markdownTableDeltas(rows int) []string {
 	return deltas
 }
 
-// runMarkdownStreaming mirrors the real tick flow: AppendFromTLV, then
+// runMarkdownStreaming mirrors the real tick flow: AppendFromFrame, then
 // TryLineCount (the ensureLineHeights fast path); on a miss, BuildInner
 // re-renders (exactly what ensureLineHeights does on cache invalidation).
 func runMarkdownStreaming(r *textRenderer, deltas []string, styles *Styles) {
 	for _, d := range deltas {
-		r.AppendFromTLV(tagAssistantText, d)
+		r.AppendFromFrame(tagAssistantText, d)
 		if _, ok := r.TryLineCount(80); !ok {
 			r.BuildInner(80, false, styles)
 		}

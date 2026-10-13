@@ -320,7 +320,7 @@ func TestWindowRenderCacheInvalidation(t *testing.T) {
 	// Append more content to verify streaming accumulation
 	w.AppendContent(" world")
 
-	// Content should include both parts — AppendFromTLV accumulates deltas
+	// Content should include both parts — AppendFromFrame accumulates deltas
 	if !strings.Contains(w.RawContent(), "Hello world") {
 		t.Errorf("expected 'Hello world' in content, got %q", w.RawContent())
 	}

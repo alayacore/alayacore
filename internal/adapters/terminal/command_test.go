@@ -21,7 +21,7 @@ func TestWriteCommand_CIFrame(t *testing.T) {
 
 	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
-		t.Fatalf("ReadTLV failed: %v", err)
+		t.Fatalf("ReadFrame failed: %v", err)
 	}
 	if tag != wire.TagCommandIn {
 		t.Errorf("expected CI tag, got %s", tag)
@@ -51,7 +51,7 @@ func TestWriteCommand_NoArgs(t *testing.T) {
 
 	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
-		t.Fatalf("ReadTLV failed: %v", err)
+		t.Fatalf("ReadFrame failed: %v", err)
 	}
 	if tag != wire.TagCommandIn {
 		t.Errorf("expected CI tag, got %s", tag)
@@ -71,7 +71,7 @@ func TestWriteCommand_CommandWithoutColon(t *testing.T) {
 
 	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
-		t.Fatalf("ReadTLV failed: %v", err)
+		t.Fatalf("ReadFrame failed: %v", err)
 	}
 	if tag != wire.TagCommandIn {
 		t.Errorf("expected CI tag, got %s", tag)
@@ -98,7 +98,7 @@ func TestCommandOut_ErrorRendersMessage(t *testing.T) {
 		Output:  mustRaw(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 
 	windows := out.windowBuffer.AllWindows()
@@ -125,7 +125,7 @@ func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 
 	windows := out.windowBuffer.AllWindows()
@@ -147,7 +147,7 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 
 	windows := out.windowBuffer.AllWindows()
@@ -176,7 +176,7 @@ func TestCommandOut_UnknownCommandSilent(t *testing.T) {
 		Output: mustRaw(`{"foo":"bar"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 
 	windows := out.windowBuffer.AllWindows()
@@ -192,7 +192,7 @@ func TestCommandOut_MalformedIgnored(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	if err := wire.WriteFrame(out, wire.TagCommandOut, "{not json"); err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 
 	windows := out.windowBuffer.AllWindows()

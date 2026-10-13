@@ -20,7 +20,7 @@ import (
 // textRenderer handles simple text content with optional streaming deltas.
 // Used for AT, AR, SN, and SE tags.
 type textRenderer struct {
-	tag          string   // TLV tag that created this window
+	tag          string   // frame tag that created this window
 	content      string   // full content (built from parts on demand)
 	contentLen   int      // cumulative length of all deltas
 	contentParts []string // streaming deltas (avoids O(n²) string concat)
@@ -41,7 +41,7 @@ type textRenderer struct {
 
 	// Cached wrapped lines for fast incremental update via
 	// appendDeltaToVisualLines. Populated by BuildInner, updated
-	// incrementally by AppendFromTLV. Each row carries a continuation
+	// incrementally by AppendFromFrame. Each row carries a continuation
 	// mark (visualLine.Cont) — rows of the same original line join
 	// without '\n' (terminal soft-wrap); different original lines are
 	// separated by hard '\n'.
@@ -61,7 +61,7 @@ func (r *textRenderer) Tag() string { return r.tag }
 
 func (r *textRenderer) ToolInfo() *ToolInfo { return nil }
 
-func (r *textRenderer) AppendFromTLV(_ string, value string) {
+func (r *textRenderer) AppendFromFrame(_ string, value string) {
 	// Sanitized before anything counts it: contentLen and the summary's counts both
 	// have to describe the bytes that will be drawn, and those are the repaired ones.
 	value = sanitizeUTF8(value)
@@ -256,7 +256,7 @@ type summaryCounts struct {
 const summaryRetired = -1
 
 // note folds one streaming delta in, or retires the counts. It is called from
-// AppendFromTLV, the one path every byte of a text window's content arrives by —
+// AppendFromFrame, the one path every byte of a text window's content arrives by —
 // which is what makes bytes a length the content can be checked against rather
 // than a number that happens to be near it.
 func (c *summaryCounts) note(delta string) {
@@ -380,7 +380,7 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	innerWidth := max(0, width)
 
 	// Fast path: use cached wrapped lines if width matches.
-	// wrappedLines is kept current by AppendFromTLV's incremental path.
+	// wrappedLines is kept current by AppendFromFrame's incremental path.
 	if r.cacheWidth == innerWidth && len(r.wrappedLines) > 0 {
 		// The rows are already right, so this frame has no use for one
 		// merged string — only the pending-delta list must stay bounded
@@ -824,7 +824,7 @@ func (r *userRenderer) Tag() string { return tagUserText }
 
 func (r *userRenderer) ToolInfo() *ToolInfo { return nil }
 
-func (r *userRenderer) AppendFromTLV(tag string, value string) {
+func (r *userRenderer) AppendFromFrame(tag string, value string) {
 	value = sanitizeUTF8(value)
 	switch tag {
 	case tagUserText:
@@ -1063,7 +1063,7 @@ func (r *toolRenderer) setInput(s string) { r.input = sanitizeUTF8(s) }
 
 func (r *toolRenderer) setOutput(s string) { r.output = sanitizeUTF8(s) }
 
-func (r *toolRenderer) AppendFromTLV(_ string, value string) {
+func (r *toolRenderer) AppendFromFrame(_ string, value string) {
 	// Tool data normally arrives via structured setters (HandleToolInput/HandleToolOutput).
 	// For replayed content or direct testing, dispatch by window type.
 	if r.isUF {

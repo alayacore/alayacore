@@ -145,7 +145,7 @@ Two things were not fine, and both are fixed rather than recorded:
 
 ## How Streaming Works
 
-During streaming, every `AppendFromTLV` call on a `textRenderer`:
+During streaming, every `AppendFromFrame` call on a `textRenderer`:
 
 1. Appends the delta to `contentParts` (O(1) for eventual consistency)
 2. In **markdown mode** (the default for AT/AR — the terminal's window kinds
@@ -1422,7 +1422,7 @@ excludes setup from the **timing** and from nothing else. Two consequences:
 - A CPU profile taken with `-test.cpuprofile` covers the setup too. Profiling
   `BenchmarkFoldedTextStreamingDelta` that way attributed 4.4% of the frame to
   `deltaHasPipeLine`, which is not in the frame at all — it is the 128 KB
-  `AppendFromTLV` in the setup, once per iteration. Every attribution in this
+  `AppendFromFrame` in the setup, once per iteration. Every attribution in this
   revision was re-taken against probes that build the renderer once outside the
   loop and call only the part under examination.
 
@@ -1445,7 +1445,7 @@ the folded *row* — see
 
 ### Incremental `appendDeltaToVisualLines`
 
-`textRenderer.AppendFromTLV` appends each delta as **plain text** to
+`textRenderer.AppendFromFrame` appends each delta as **plain text** to
 `appendDeltaToVisualLines`, which only wraps the delta and appends it to the existing
 `wrappedLines` slice. This avoids re-wrapping the entire accumulated content,
 and because streaming content carries no styling in normal mode (markdown

@@ -10,7 +10,7 @@ import (
 // than PIPE_BUF (4096 bytes) never interleave: the output must be a
 // sequence of intact frames, each containing a single uniform byte pattern.
 // This is exactly the case where a bare os.Stdout write could tear and
-// corrupt the TLV stream for the controlling process.
+// corrupt the frame stream for the controlling process.
 func TestLockedWriterSerializesFrames(t *testing.T) {
 	const (
 		goroutines = 8

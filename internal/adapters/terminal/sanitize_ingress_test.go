@@ -78,9 +78,9 @@ func TestEveryContentIngressDrawsWellFormedUTF8(t *testing.T) {
 				wb.WindowAt(i).SetRendererForTool(ingressIllFormed, ingressIllFormed)
 			}
 		}},
-		{"Window.AppendFromTLV directly", func(wb *WindowBuffer) {
+		{"Window.AppendFromFrame directly", func(wb *WindowBuffer) {
 			wb.AppendOrUpdate(tagAssistantText, "direct", "")
-			wb.WindowAt(0).AppendFromTLV(tagAssistantText, ingressIllFormed)
+			wb.WindowAt(0).AppendFromFrame(tagAssistantText, ingressIllFormed)
 		}},
 		{"Window.AppendContent directly", func(wb *WindowBuffer) {
 			wb.AppendOrUpdate(tagAssistantText, "direct2", "")

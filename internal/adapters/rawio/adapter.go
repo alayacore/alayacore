@@ -1,6 +1,6 @@
 package rawio
 
-// Package rawio provides a raw TLV stdin/stdout adapter for AlayaCore.
+// Package rawio provides a raw frame stdin/stdout adapter for AlayaCore.
 // It forwards raw bytes between stdin/stdout and the agent session —
 // no parsing, no formatting, no interpretation.
 
@@ -26,10 +26,10 @@ func NewAdapter(cfg *app.Config) *Adapter {
 
 // Start runs the rawio adapter. It blocks until the session finishes.
 // Returns 1 only if the session fails to start; a task error is reported on
-// stdout as a TLV frame, not here.
-// The controlling process reads stdout and handles TLV itself.
+// stdout as a frame, not here.
+// The controlling process reads stdout and handles frame itself.
 func (a *Adapter) Start() int {
-	// Serialize concurrent session writes (run + task goroutines) so TLV
+	// Serialize concurrent session writes (run + task goroutines) so frame
 	// frames larger than PIPE_BUF cannot interleave on stdout.
 	out := &lockedWriter{w: os.Stdout}
 	session, _, err := app.StartSession(a.Config, out, os.Stdin)

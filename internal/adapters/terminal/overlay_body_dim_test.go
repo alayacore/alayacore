@@ -19,7 +19,7 @@ func TestBodyNormalKeepsPlain(t *testing.T) {
 
 	// textRenderer (assistant text / reasoning / system messages).
 	tr := &textRenderer{tag: tagAssistantText}
-	tr.AppendFromTLV(tagAssistantText, "assistant body text")
+	tr.AppendFromFrame(tagAssistantText, "assistant body text")
 	for _, l := range mustLines(t, tr, styles) {
 		if strings.Contains(l.Text, "\x1b[") {
 			t.Fatalf("normal-mode body must be ANSI-free, got %q", l.Text)
@@ -57,7 +57,7 @@ func TestBodyDimmedUnderOverlay(t *testing.T) {
 
 	// textRenderer.
 	tr := &textRenderer{tag: tagAssistantText}
-	tr.AppendFromTLV(tagAssistantText, "assistant body text")
+	tr.AppendFromFrame(tagAssistantText, "assistant body text")
 	for _, l := range mustLines(t, tr, styles) {
 		if !strings.Contains(l.Text, "\x1b[") {
 			t.Fatalf("dimmed body must carry SGR, got %q", l.Text)
@@ -98,14 +98,14 @@ func TestBodyDimmedIncrementalAppend(t *testing.T) {
 	styles := DefaultStyles().Dimmed()
 
 	tr := &textRenderer{tag: tagAssistantText}
-	tr.AppendFromTLV(tagAssistantText, "hello")
+	tr.AppendFromFrame(tagAssistantText, "hello")
 	lines := mustLines(t, tr, styles)
 	if got := stripANSI(lines[0].Text); got != "hello" {
 		t.Fatalf("first build = %q, want %q", got, "hello")
 	}
 
 	// Incremental append (the fast path) must recolor the new content.
-	tr.AppendFromTLV(tagAssistantText, " world")
+	tr.AppendFromFrame(tagAssistantText, " world")
 	lines = mustLines(t, tr, styles)
 	if got := stripANSI(lines[0].Text); got != "hello world" {
 		t.Fatalf("after append = %q, want %q", got, "hello world")
@@ -152,7 +152,7 @@ func TestBodyCacheInvalidatedOnBlockedSwitch(t *testing.T) {
 	dimmed := normal.Dimmed()
 
 	tr := &textRenderer{tag: tagAssistantText}
-	tr.AppendFromTLV(tagAssistantText, "body")
+	tr.AppendFromFrame(tagAssistantText, "body")
 
 	// Normal first: plain.
 	if got := mustLines(t, tr, normal)[0].Text; strings.Contains(got, "\x1b[") {

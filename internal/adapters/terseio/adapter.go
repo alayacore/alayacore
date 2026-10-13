@@ -54,7 +54,7 @@ func NewAdapter(cfg *app.Config) *Adapter {
 func (a *Adapter) Start() int {
 	output := newAnswerOutput(os.Stdout, os.Stderr)
 
-	// MCP OAuth flow. The TLV input writer is attached after StartSession
+	// MCP OAuth flow. The input writer is attached after StartSession
 	// returns it; the atomic pointer lets the flow's send closure pick it
 	// up without a data race.
 	var inputPtr atomic.Pointer[app.LockedWriter]
@@ -79,8 +79,8 @@ func (a *Adapter) Start() int {
 		return 1
 	}
 
-	// input serializes writes to the session's TLV input stream: the stdin
-	// goroutine and the MCP OAuth flow both write to the same pipe, so TLV
+	// input serializes writes to the session's frame input stream: the stdin
+	// goroutine and the MCP OAuth flow both write to the same pipe, so frame
 	// frames must never interleave.
 	input := app.NewLockedWriter(inputWriter)
 	inputPtr.Store(input)

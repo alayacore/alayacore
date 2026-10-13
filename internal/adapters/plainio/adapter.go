@@ -85,7 +85,7 @@ func (a *Adapter) Start() int {
 	// anything — the session holds one that arrives before it is ready.
 	interactive := stdinIsTerminal()
 
-	// MCP OAuth flow. The TLV input writer is attached after StartSession
+	// MCP OAuth flow. The input writer is attached after StartSession
 	// returns it; the atomic pointer lets the flow's send closure pick it
 	// up without a data race. Wiring the hooks before StartSession means no
 	// "auth_required" event can slip through — though in practice the
@@ -111,9 +111,9 @@ func (a *Adapter) Start() int {
 		return 1
 	}
 
-	// input serializes writes to the session's TLV input stream: the
+	// input serializes writes to the session's frame input stream: the
 	// stdin goroutine and the MCP OAuth flow both write to the same
-	// pipe, so TLV frames must never interleave. (The SIGINT handler
+	// pipe, so frames must never interleave. (The SIGINT handler
 	// cancels through the session directly — see below.)
 	input := app.NewLockedWriter(inputWriter)
 	inputPtr.Store(input)
@@ -148,7 +148,7 @@ func (a *Adapter) Start() int {
 
 	exitCh := make(chan int, 1)
 
-	// readStdin reads prompts from stdin and emits TLV messages.
+	// readStdin reads prompts from stdin and emits frames.
 	// Only this goroutine and the MCP OAuth flow write to the input
 	// stream (both through the lockedWriter, so writes are safe).
 	readStdin := func() {

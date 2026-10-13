@@ -174,7 +174,7 @@ func TestInputFrame_UserText_ThenEnd(t *testing.T) {
 // Command output (CO) tests
 // ============================================================================
 
-// newCmdOutputSession returns a Session whose Output captures raw TLV bytes.
+// newCmdOutputSession returns a Session whose Output captures raw frame bytes.
 func newCmdOutputSession() (*Session, *MockOutput) {
 	output := &MockOutput{}
 	s := &Session{

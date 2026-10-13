@@ -162,7 +162,7 @@ func (m *syncOutput) String() string {
 }
 
 // TestCancelTask_EndToEnd verifies the full terseio-style path: a prompt
-// arrives over the TLV input pipe, the task blocks in the provider,
+// arrives over the frame input pipe, the task blocks in the provider,
 // CancelTask aborts it, and the session emits an SM error — the signal
 // the terseio output uses to discard the buffered answer.
 func TestCancelTask_EndToEnd(t *testing.T) {
@@ -203,7 +203,7 @@ func TestCancelTask_EndToEnd(t *testing.T) {
 	s.mcpService = newMCPService(nil, output)
 	s.Start()
 
-	// Deliver a prompt over the TLV input pipe (what terseio does after
+	// Deliver a prompt over the frame input pipe (what terseio does after
 	// reading stdin to EOF).
 	if err := wire.WriteFrame(w, wire.TagUserX, wiretest.UserText("1", "hello")); err != nil {
 		t.Fatalf("write UT: %v", err)

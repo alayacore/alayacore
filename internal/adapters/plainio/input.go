@@ -46,7 +46,7 @@ func writeCommand(input io.Writer, cmd string) error {
 	return wire.WriteFrame(input, wire.TagCommandIn, string(payload))
 }
 
-// readPrompts reads lines from stdin and emits them as TLV messages.
+// readPrompts reads lines from stdin and emits them as frames.
 // Lines ending with `\` are continued on the next line (backslash-escaped newline).
 // Returns nil on EOF (Ctrl-D), errQuitPrompt on :quit/:q (which is sent to the
 // session as a quit command first), or a read/write error.
@@ -109,7 +109,7 @@ func readPrompts(input io.Writer, reader io.Reader) error {
 	}
 }
 
-// sendPrompt writes a prompt to the TLV stream, followed by UE to flush.
+// sendPrompt writes a prompt to the frame stream, followed by UE to flush.
 // Commands (starting with ':') are sent as CI frames without UE — they do not
 // start a task that needs MCP tools, and some of them exist precisely to steer
 // MCP init. Returns the first write error, if any.

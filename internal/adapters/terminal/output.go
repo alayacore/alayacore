@@ -47,7 +47,7 @@ import (
 	"github.com/alayacore/alayacore/internal/wire"
 )
 
-// outputWriter parses TLV from the session and writes styled content to the WindowBuffer.
+// outputWriter parses frame from the session and writes styled content to the WindowBuffer.
 // It implements io.Writer for the agent/session output stream.
 type outputWriter struct {
 	windowBuffer *WindowBuffer
@@ -156,7 +156,7 @@ func (to *outputWriter) processBuffer() error {
 	}
 }
 
-// writeColored writes styled content based on the TLV tag
+// writeColored writes styled content based on the frame tag
 //
 //nolint:gocyclo // dispatch over many tag types; each case is simple
 func (to *outputWriter) writeColored(tag string, value string) {
@@ -873,7 +873,7 @@ func (to *outputWriter) applyWireTime(id, wireTime string) {
 
 // bufferUserContent processes one user content frame.
 // On the first frame, creates a new window. On subsequent frames,
-// updates the existing window incrementally via AppendFromTLV.
+// updates the existing window incrementally via AppendFromFrame.
 // Always marks dirty so the next tick renders the latest state.
 func (to *outputWriter) bufferUserContent(id, content string, tag string) {
 	if to.activeUserWindowID == "" {

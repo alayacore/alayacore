@@ -117,7 +117,7 @@ func TestTaskMsgSpeedFieldsAbsentWithoutSteps(t *testing.T) {
 
 	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
-		t.Fatalf("ReadTLV failed: %v", err)
+		t.Fatalf("ReadFrame failed: %v", err)
 	}
 	if tag != wire.TagSystemMsg {
 		t.Fatalf("tag = %q, want system msg", tag)
@@ -136,13 +136,13 @@ func TestTaskMsgSpeedFieldsAbsentWithoutSteps(t *testing.T) {
 	}
 }
 
-// readTaskMsg reads the next TLV frame, asserts it is an SM "task"
+// readTaskMsg reads the next frame, asserts it is an SM "task"
 // message, and unmarshals its data into m.
 func readTaskMsg(t *testing.T, buf *bytes.Buffer, m any) {
 	t.Helper()
 	tag, value, err := wiretest.NextFrame(buf)
 	if err != nil {
-		t.Fatalf("ReadTLV failed: %v", err)
+		t.Fatalf("ReadFrame failed: %v", err)
 	}
 	if tag != wire.TagSystemMsg {
 		t.Fatalf("tag = %q, want system msg", tag)

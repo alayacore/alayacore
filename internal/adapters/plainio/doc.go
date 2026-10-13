@@ -74,11 +74,11 @@
 //     is declined instead (MCP init then settles and the prompt runs
 //     without that server's tools). See docs/oauth.md for the full flow.
 //
-// Communication with the session layer uses the same TLV protocol as the
+// Communication with the session layer uses the same frame protocol as the
 // terminal, terseio, and rawio adapters.
 //
 // Key Files:
 //   - adapter.go: Adapter struct, Start() entry point
 //   - input.go: Stdin line reader with backslash continuation
-//   - output.go: TLV parser and plain-text renderer
+//   - output.go: frame parser and plain-text renderer
 package plainio

@@ -25,7 +25,7 @@ import (
 //
 // input is an optional pre-created input reader. If nil, an io.Pipe is
 // created internally and the PipeWriter is returned so the adapter can
-// feed TLV messages to the session. When input is non-nil, the returned
+// feed frames to the session. When input is non-nil, the returned
 // WriteCloser is nil — the caller manages the pipe writer itself.
 //
 // Returns nil, nil, and an error if the session cannot be used.

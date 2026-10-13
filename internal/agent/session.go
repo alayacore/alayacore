@@ -8,7 +8,7 @@ package agent
 //   events on taskEventCh. All cross-goroutine communication is channel-based.
 //
 //   Three goroutines:
-//     1. inputPump — reads TLV frames from input, sends parsed messages
+//     1. inputPump — reads frames from input, sends parsed messages
 //        to the main loop via s.inputMsgCh.  It has no knowledge of commands
 //        and never touches session state.
 //     2. run() — main loop that owns Contents, active task, and system
@@ -36,7 +36,7 @@ package agent
 //   - session_loop.go  — the main event loop (run) and task completion
 //   - session_steering.go — prompts that arrive mid-turn, and their delivery
 //   - session_io.go    — command handling, summarize, save
-//   - session_output.go — TLV write helpers, usage tracking, system info
+//   - session_output.go — frame write helpers, usage tracking, system info
 //   - session_persist.go — session save/load, markdown format
 
 import (
@@ -79,7 +79,7 @@ type taskHandle struct {
 // runState groups fields owned exclusively by the run() goroutine.
 // All reads and writes happen in the run() event loop.
 type runState struct {
-	Contents []llm.ContentPart // flat, ordered, 1:1 with TLV — set from task result
+	Contents []llm.ContentPart // flat, ordered, 1:1 with frame — set from task result
 
 	activeTask *taskHandle // non-nil when a task is running; nil when idle
 
@@ -110,7 +110,7 @@ type runState struct {
 	lastStepTPS float64 // latest step's end-to-end tok/s (0 = none/no output)
 	lastTTFTMS  int64   // latest step's time-to-first-token (ms)
 
-	inputMsgCh   chan inputMsg // inputPump → run: parsed TLV messages
+	inputMsgCh   chan inputMsg // inputPump → run: parsed frames
 	taskEventCh  chan taskEvent
 	taskResultCh chan []llm.ContentPart
 
@@ -449,7 +449,7 @@ func RestoreFromSession(cfg SessionConfig, data *sessionData) *Session {
 // replayContentsToAdapter sends all content parts to the adapter with history IDs,
 // so the adapter can reference them by ID even after session reload.
 // No UE markers are needed — writeColored's non-user-tag flush and the
-// bufferUserContent / AppendFromTLV incremental path handle grouping.
+// bufferUserContent / AppendFromFrame incremental path handle grouping.
 func (s *Session) replayContentsToAdapter() error {
 	for _, part := range s.Contents {
 		tag, body, err := contentPartJSON(part, wireID(part.GetHistoryID()))
@@ -457,7 +457,7 @@ func (s *Session) replayContentsToAdapter() error {
 			return fmt.Errorf("corrupt session file: failed to serialize content part (HistoryID=%d): %w", part.GetHistoryID(), err)
 		}
 
-		s.writeTLV(tag, body)
+		s.writeFrame(tag, body)
 	}
 
 	return nil

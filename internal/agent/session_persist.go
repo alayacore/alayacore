@@ -2,7 +2,7 @@ package agent
 
 // Session persistence: saving, loading, and displaying sessions.
 //
-// The serialization format (markdown + TLV) and low-level I/O are
+// The serialization format (markdown + frame) and low-level I/O are
 // owned by persistence.go. This file contains Session-specific wrappers
 // that add the session's metadata when saving.
 

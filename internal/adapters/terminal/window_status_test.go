@@ -119,7 +119,7 @@ func containsAnySpinner(s string) bool {
 }
 
 func TestOutputWriterToolCallStartThenFull(t *testing.T) {
-	// End-to-end test: write TagAssistantF TLVs through the actual
+	// End-to-end test: write TagAssistantF frames through the actual
 	// outputWriter pipeline (Write → processBuffer → writeColored → HandleToolInputEvent).
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
 	out.SetWindowWidth(80)
@@ -129,7 +129,7 @@ func TestOutputWriterToolCallStartThenFull(t *testing.T) {
 			CallID: id,
 			Name:   name,
 		})
-		return encodeTestTLV(wire.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
+		return frameBytes(wire.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
 	}
 
 	makeInputFD := func(id, input string) []byte {
@@ -137,7 +137,7 @@ func TestOutputWriterToolCallStartThenFull(t *testing.T) {
 			CallID: id,
 			Input:  json.RawMessage(input),
 		})
-		return encodeTestTLV(wire.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
+		return frameBytes(wire.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
 	}
 
 	// 1. Simulate ToolCallStart: Name set, no input yet
