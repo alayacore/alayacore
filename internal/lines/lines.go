@@ -91,10 +91,16 @@ func (s *Splitter) Next() ([]byte, error) {
 		// at least len(buf)+1 bytes long — past the bound even if the terminator
 		// arrives next.
 		if len(s.buf) >= s.limit {
-			return nil, fmt.Errorf("%w: %d bytes with no terminator (limit %d)",
-				ErrLineTooLong, len(s.buf), s.limit)
+			return nil, tooLong(len(s.buf), s.limit)
 		}
 		return nil, ErrIncomplete
+	}
+	// The line is complete, and the bound counts its terminator. The check has to
+	// happen here as well as above: a terminator that arrives in the same read as
+	// an over-long line would otherwise walk straight past the bound, and the
+	// buffer would have grown to hold it first.
+	if i+1 > s.limit {
+		return nil, tooLong(i+1, s.limit)
 	}
 
 	line := s.buf[:i]
@@ -112,6 +118,13 @@ func (s *Splitter) Next() ([]byte, error) {
 		s.buf = rest
 	}
 	return line, nil
+}
+
+// tooLong reports a line over the bound. The bytes are left where they are: a
+// caller that asks again is told the same thing, rather than being stepped past
+// the line silently.
+func tooLong(size, limit int) error {
+	return fmt.Errorf("%w: %d bytes (limit %d)", ErrLineTooLong, size, limit)
 }
 
 // TakePending removes and returns the bytes buffered without a terminator: the

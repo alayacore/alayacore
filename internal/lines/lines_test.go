@@ -115,6 +115,23 @@ func TestSplitter_Next_LinePastMaxIsRejected(t *testing.T) {
 	}
 }
 
+// TestSplitter_Next_TerminatedLinePastMaxIsRejected covers the bound from the
+// other side: a line that arrives already terminated, in one read. Checking only
+// an unterminated prefix would let it through, and the buffer would have grown to
+// hold the whole line before anyone looked.
+func TestSplitter_Next_TerminatedLinePastMaxIsRejected(t *testing.T) {
+	sp := NewSplitter(4)
+	feed(sp, "abcde\n")
+
+	_, err := sp.Next()
+	if !errors.Is(err, ErrLineTooLong) {
+		t.Fatalf("Next() error = %v, want ErrLineTooLong", err)
+	}
+	if got := sp.Pending(); got != 6 {
+		t.Errorf("Pending() = %d, want the 6 buffered bytes untouched", got)
+	}
+}
+
 func TestSplitter_TakePending(t *testing.T) {
 	sp := NewSplitter(maxTestLine)
 	feed(sp, "tail")
