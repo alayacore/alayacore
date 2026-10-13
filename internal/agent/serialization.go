@@ -145,6 +145,26 @@ func contentPartJSON(part llm.ContentPart, id string) (tag string, body string, 
 	return tag, body, nil
 }
 
+// intoModelKind reports whether a content kind travels into the model — user
+// content (UX) and tool-result content (UF.output). Reasoning is the one kind
+// that belongs to the assistant side alone, so it may appear under neither; a
+// kind accepted on one side and not the other would let a part's role depend on
+// which representation a reader saw.
+func intoModelKind(kind string) bool {
+	switch kind {
+	case protocol.TypeText, protocol.TypeImage, protocol.TypeVideo, protocol.TypeAudio, protocol.TypeDocument:
+		return true
+	}
+	return false
+}
+
+// assistantKind reports whether a content kind may appear under AX: the
+// assistant produces text and reasoning. Tool calls and their results have
+// their own frames (AF/UF), not content items.
+func assistantKind(kind string) bool {
+	return kind == protocol.TypeText || kind == protocol.TypeReasoning
+}
+
 // contentPartFromJSON converts a TLV tag + JSON body into a ContentPart with
 // Role and Time set. A nil part with a nil error means "nothing to keep" — an
 // AF start frame (name only) is skipped, matching the old writer's shape.
@@ -156,20 +176,17 @@ func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 			return nil, fmt.Errorf("failed to parse content: %w", err)
 		}
 		// The tag names the side, the item names the kind; a kind on the wrong
-		// side is a malformed frame. Rejecting it keeps a part's role from
-		// depending on which representation a reader saw: reasoning is assistant
-		// content, and contentPartJSON writes a ReasoningPart as AX whatever its
-		// role — so accepting one under UX would store a user-role part that the
-		// file then records as assistant.
-		if tag == tlv.TagUserX && d.Type == protocol.TypeReasoning {
-			return nil, fmt.Errorf("content type %q cannot be user content", d.Type)
-		}
-		if tag == tlv.TagAssistantX && d.Type != protocol.TypeText && d.Type != protocol.TypeReasoning {
-			return nil, fmt.Errorf("content type %q cannot be assistant content", d.Type)
-		}
+		// side is a malformed frame. Checked after partFromContentItem so an
+		// unknown kind still reports itself as unknown.
 		part, err := partFromContentItem(d.ContentItem)
 		if err != nil {
 			return nil, err
+		}
+		if tag == tlv.TagUserX && !intoModelKind(d.Type) {
+			return nil, fmt.Errorf("content type %q cannot be user content", d.Type)
+		}
+		if tag == tlv.TagAssistantX && !assistantKind(d.Type) {
+			return nil, fmt.Errorf("content type %q cannot be assistant content", d.Type)
 		}
 		role := llm.RoleUser
 		if tag == tlv.TagAssistantX {

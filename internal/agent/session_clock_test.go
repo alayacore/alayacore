@@ -48,7 +48,8 @@ func TestStepClockFallsBackWhenUnset(t *testing.T) {
 // item names the kind, so a kind on the wrong side is rejected rather than
 // stored — otherwise a reasoning item sent under UX would be a user-role part
 // in memory but assistant content in the file (contentPartJSON writes a
-// ReasoningPart as AX whatever its role).
+// ReasoningPart as AX whatever its role). The same rule covers a tool result's
+// nested items, which are model input too.
 func TestContentFrameRejectsAKindOnTheWrongSide(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -63,6 +64,12 @@ func TestContentFrameRejectsAKindOnTheWrongSide(t *testing.T) {
 		{"image under UX", tlv.TagUserX, `{"type":"image","uri":"x"}`, false},
 		{"reasoning under AX", tlv.TagAssistantX, `{"type":"reasoning","text":"x"}`, false},
 		{"text under AX", tlv.TagAssistantX, `{"type":"text","text":"x"}`, false},
+		{"reasoning in a tool result", tlv.TagUserF,
+			`{"call_id":"t1","output":[{"type":"reasoning","text":"x"}]}`, true},
+		{"image in a tool result", tlv.TagUserF,
+			`{"call_id":"t1","output":[{"type":"image","uri":"x"}]}`, false},
+		{"text in a tool result", tlv.TagUserF,
+			`{"call_id":"t1","output":[{"type":"text","text":"x"}]}`, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
