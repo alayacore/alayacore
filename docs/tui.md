@@ -319,7 +319,7 @@ environment.
 AlayaCore supports multi-modal input — attaching images, audio, video, or documents alongside text. Attachments are sent as TLV frames **before** the text frame, all within a single `TagUserEnd`-delimited message:
 
 ```
-[TagUserI/V/A/D frames...] + [TagUserT text] + [TagUserEnd]
+[UX frames (image/audio/video/document, then text)] + [UE]
 ```
 
 ### Attachment Picker
@@ -427,7 +427,7 @@ becomes `-`, the timestamp appears on the right, and the content follows.
 When you press `Enter`:
 - Local files are read, base64-encoded into `data:` URIs, and sent as TLV frames
 - URLs are sent as-is (no fetching)
-- Text is sent as a `TagUserT` frame
+- Text is sent as a `UX` frame carrying a text content item
 - A `TagUserEnd` frame finalizes the message
 
 Attachments are cleared after sending. Use `Ctrl+C` to discard both text and pending attachments without sending.

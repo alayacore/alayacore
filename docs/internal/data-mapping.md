@@ -24,7 +24,7 @@ type TextPart       struct { ContentPartMeta; Text string }
 type ReasoningPart  struct { ContentPartMeta; Text string }
 type ImagePart      struct { ContentPartMeta; URI string }
 type AudioPart      struct { ContentPartMeta; URI string }
-type VideoPart      struct { ContentPartMeta; URI string }
+type VideoPart      struct { ContentPartMeta; URI string; FPS int; Res int }
 type DocumentPart   struct { ContentPartMeta; URI string }
 type ToolInputPart  struct { ContentPartMeta; ID string; Name string; Input json.RawMessage }
 type ToolOutputPart struct { ContentPartMeta; ID string; Output []ContentPart; IsError bool }

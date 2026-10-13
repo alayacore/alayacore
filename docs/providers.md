@@ -58,7 +58,7 @@ All media types (image, audio, video, document) are stored as a **URI** in the d
 Key points:
 - **Image** and **video** use the `url` field with the URI value (accepts both data URIs and remote URLs).
 - **Audio** uses the `data` field with **raw base64 data** (not a data URI) plus a `format` field derived from the MIME type. **Remote URLs are not supported** for audio — if a plain URL is provided it is replaced with a text placeholder.
-- **Video** includes additional parameters `fps` and `media_resolution` (defaults to `2` and `"default"`, configurable via `:video_config`).
+- **Video** includes additional parameters `fps` and `media_resolution`. They come from the video part itself (`llm.VideoPart.FPS`/`Res`), fixed when the video entered the conversation; `:video_config` only sets the default applied to videos ingested afterwards, so changing it never rewrites an earlier block. Unset means the provider default (`2` and `"default"`).
 - **Document** (e.g. PDF) becomes a text placeholder naming the file and MIME type, because OpenAI Chat Completions API has no document content block. It is the one media type that cannot be promoted out of a tool result either — there is no block to attach.
 
 > **Note:** These wire formats are compatible with providers that extend the OpenAI-style API to support multimodal input (e.g. DeepSeek, Qwen, MiniMax, StepFun, Xiaomi MiMo). Standard OpenAI Chat Completions API only supports `image_url` and `input_audio` natively; `video_url` is a non-standard extension.
@@ -134,8 +134,7 @@ Three consequences of promotion worth knowing:
   genuinely repeated are upload bytes and server-side tokenization, plus full
   input pricing on endpoints that do not cache. It also means anything that
   rewrites an *earlier* block invalidates the prefix from that point:
-  `:video_config` changes `fps`/`media_resolution` embedded in every video
-  block, and `video_url` itself is a non-standard extension — so promoting
+  `video_url` itself is a non-standard extension — so promoting
   video to a strict Chat Completions endpoint can turn a request that
   previously succeeded (media flattened to text) into a 400.
 

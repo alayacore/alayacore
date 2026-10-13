@@ -7,11 +7,11 @@ The adapter (UI layer) and agent (core AI logic) **must be completely isolated**
 ```
 ┌──────────┐     TLV frames (stdin)      ┌──────────┐
 │          │ ──────────────────────────▶ │          │
-│ Adapter  │  UT/UE/UI/UV/UA/UD (input)  │  Agent   │
+│ Adapter  │     UX/UE (input)           │  Agent   │
 │ (TUI/    │                             │ (session │
 │  plainio/│ ◀────────────────────────── │  + llm)  │
 │  terseio/│                             │          │
-│  rawio)  │  AT/AR/AF/UF/UT/UI/UV/UA/UD │          │
+│  rawio)  │  UX/AX/AF/UF + Ax/Af/Uf     │          │
 │          │     + SM  (stdout)          │          │
 └──────────┘                             └──────────┘
 ```
@@ -38,20 +38,20 @@ Every capability available to built-in adapters must be achievable through TLV f
 
 | Direction | Tag | Covers |
 |-----------|-----|--------|
-| adapter → agent (stdin) | `UT` + `UE` | User text prompts |
+| adapter → agent (stdin) | `UX` + `UE` | User content prompts (JSON content item) |
 | adapter → agent (stdin) | `CE` | End of input: no more prompts (the stream stays open for commands) |
-| adapter → agent (stdin) | `CI` | All commands (`save`, `cancel`, `model_set`, etc.) — JSON `{id, name, input}` |
-| adapter → agent (stdin) | `UI`/`UV`/`UA`/`UD` | Media input (image/video/audio/document) |
-| agent → adapter (stdout) | `UT`/`UI`/`UV`/`UA`/`UD` | User message echo (with assigned history ID) |
-| agent → adapter (stdout) | `AT`/`AR` | Assistant text/reasoning (complete/authoritative; empty content if deltas preceded it) |
-| agent → adapter (stdout) | `At`/`Ar` | Assistant text/reasoning (streaming deltas; absent with `--no-delta`) |
+| adapter → agent (stdin) | `CI` | All commands (`save`, `cancel`, `model_set`, etc.) — JSON `{call_id, name, input}` |
+| adapter → agent (stdin) | `UX` (`type` image/video/audio/document) | Media input |
+| agent → adapter (stdout) | `UX` | User content echo (with assigned history id) |
+| agent → adapter (stdout) | `AX` | Assistant content — text/reasoning (complete/authoritative; empty content if deltas preceded it) |
+| agent → adapter (stdout) | `Ax` | Assistant content (streaming deltas; absent with `--no-delta`) |
 | agent → adapter (stdout) | `AF`/`UF` | Tool calls and results (JSON) |
 | agent → adapter (stdout) | `Af` | Tool call arguments (streaming delta, partial JSON; absent with `--no-delta`) |
 | agent → adapter (stdout) | `Uf` | Tool result preview snapshot (ephemeral, display-only; authoritative result arrives via `UF`; absent with `--no-delta`) |
-| agent → adapter (stdout) | `CO` | Command results (JSON `{id, output, is_error}` — one per CI) |
+| agent → adapter (stdout) | `CO` | Command results (JSON `{call_id, output, is_error}` — one per CI) |
 | agent → adapter (stdout) | `SM` | System state — task, model, theme, reasoning, mcp, session, error, notify, tool_confirm, version |
 
-> **Note:** User tags (UT, UI, UV, UA, UD) flow in **both** directions.
+> **Note:** User content (`UX`) flows in **both** directions.
 > On **stdin** they carry new user input; on **stdout** they carry the agent's
 > echo of that input with an assigned history ID. Adapters must handle both.
 

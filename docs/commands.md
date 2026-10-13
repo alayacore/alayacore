@@ -8,16 +8,16 @@ Commands travel over a dedicated control plane, mirroring the tool control
 plane (AF/UF):
 
 ```
-CI {"id":"<call-id>","name":"<command>","input":"<args-string>"}   adapter → agent
-CO {"id":"<call-id>","output":<result>}                            agent → adapter
-CO {"id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
+CI {"call_id":"<call-id>","name":"<command>","input":"<args-string>"}   adapter → agent
+CO {"call_id":"<call-id>","output":<result>}                            agent → adapter
+CO {"call_id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
 ```
 
 - The adapter generates the call ID and echoes it back — every CI receives
   exactly one CO.
 - `output` is structured JSON defined per command (see table below); on
   failure it is a uniform error object `{code, message}`. Rendering is the
-  adapter's job: CO carries no display text — adapters correlate the CO `id`
+  adapter's job: CO carries no display text — adapters correlate the CO `call_id`
   with the CI they sent (which carries the `name`) to render results.
 - Adapters translate the human-facing `:command args` text into CI frames;
   the agent never sees colon-text. The TUI, Plain IO, and Terse IO adapters
@@ -69,7 +69,7 @@ These commands are rejected with an error if a task is currently running:
 | `:model_load` | Reload model configs from the config file | `{"models"}` |
 | `:model_sync` | Apply edited model config (sent by UI, not user-facing) | `{"models"}` |
 | `:reason [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 — set the startup level with `--reasoning-level <0\|1\|2>` (CLI flag wins over the session file's saved `reasoning_level`) | `{"level"}` |
-| `:video_config <fps> <0\|1>` | Set video FPS and resolution (0=default, 1=max) | `{"fps","res"}` |
+| `:video_config <fps> <0\|1>` | Set the default video FPS and resolution (0=default, 1=max) applied to videos ingested after it — each video keeps the settings it was ingested with | `{"fps","res"}` |
 
 ## Task Commands
 
