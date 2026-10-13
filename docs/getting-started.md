@@ -74,7 +74,7 @@ export ALAYACORE_SHELL=zsh
 | `--no-markdown` | `false` | Disable markdown rendering by default — new assistant text windows start in raw mode. Per-window toggling with `r` still works. |
 | `--plainio` | `false` | Plain stdin/stdout mode — interactive use without a TUI (full transcript output) |
 | `--terseio` | `false` | Read all of stdin as one prompt (or one command if it starts with `:`) and print only the final answer (stdout stays clean; errors go to stderr). Incompatible with `--tool-confirm` |
-| `--rawio` | `false` | Raw TLV stdin/stdout mode — pipe TLV frames directly between agent and controlling process |
+| `--rawio` | `false` | Raw frame stdin/stdout mode — pipe frames directly between agent and controlling process |
 | `--debug-log` | `""` | Debug log directory (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging. |
 | `--version` | — | Print version and exit |
 | `--help` | — | Print help and exit |
@@ -114,5 +114,5 @@ echo "what is 2+2?" | alayacore --terseio > answer.txt
 - **[Terminal UI](tui.md)** — Learn the keybindings and commands
 - **[Plain IO Mode](plainio.md)** — Use AlayaCore without a terminal UI
 - **[Terse IO Mode](terseio.md)** — Read all stdin as one prompt or command; print only the final answer
-- **[Raw IO Mode](rawio.md)** — Control AlayaCore programmatically via raw TLV frames
+- **[Raw IO Mode](rawio.md)** — Control AlayaCore programmatically via raw frames
 - **[Skills System](skills.md)** — Extend the agent with custom skill packages

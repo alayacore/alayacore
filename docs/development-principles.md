@@ -2,18 +2,18 @@
 
 ## Adapter ↔ Agent Isolation
 
-The adapter (UI layer) and agent (core AI logic) **must be completely isolated**. They communicate exclusively through a single bidirectional TLV (Tag-Length-Value) byte stream — no direct function calls, no shared state, no bypass.
+The adapter (UI layer) and agent (core AI logic) **must be completely isolated**. They communicate exclusively through a single bidirectional frame stream (one frame per line) — no direct function calls, no shared state, no bypass.
 
 ```
-┌──────────┐     TLV frames (stdin)      ┌──────────┐
-│          │ ──────────────────────────▶ │          │
-│ Adapter  │     UX/UE (input)           │  Agent   │
-│ (TUI/    │                             │ (session │
-│  plainio/│ ◀────────────────────────── │  + llm)  │
-│  terseio/│                             │          │
-│  rawio)  │  UX/AX/AF/UF + Ax/Af/Uf     │          │
-│          │     + SM  (stdout)          │          │
-└──────────┘                             └──────────┘
+┌──────────┐      frames (stdin)      ┌──────────┐
+│          │ ───────────────────────▶ │          │
+│ Adapter  │      UX/UE (input)       │  Agent   │
+│ (TUI/    │                          │ (session │
+│  plainio/│ ◀─────────────────────── │  + llm)  │
+│  terseio/│                          │          │
+│  rawio)  │  UX/AX/AF/UF + Ax/Af/Uf  │          │
+│          │      + SM  (stdout)      │          │
+└──────────┘                          └──────────┘
 ```
 
 ### Three Hard Rules
@@ -30,11 +30,11 @@ blocks = append(blocks, agentpkg.SerializeModelConfig(m))
 models := make([]protocol.ModelInfo, ...)
 ```
 
-**Rationale:** A function call bypasses the TLV boundary and creates hidden runtime coupling. An external adapter written in Python or Rust could never make that call — so built-in adapters shouldn't either.
+**Rationale:** A function call bypasses the frame boundary and creates hidden runtime coupling. An external adapter written in Python or Rust could never make that call — so built-in adapters shouldn't either.
 
-#### Rule 2: TLV protocol must be complete
+#### Rule 2: The frame protocol must be complete
 
-Every capability available to built-in adapters must be achievable through TLV frames alone. If a feature cannot be exercised via `--rawio` (raw TLV stdin/stdout), the protocol is incomplete.
+Every capability available to built-in adapters must be achievable through frames alone. If a feature cannot be exercised via `--rawio` (raw frame stdin/stdout), the protocol is incomplete.
 
 | Direction | Tag | Covers |
 |-----------|-----|--------|
@@ -64,11 +64,11 @@ Every capability available to built-in adapters must be achievable through TLV f
 > *first touch*, so it only tracks this order while providers emit in it (see
 > [providers.md](providers.md) → "Complete-event order").
 
-**Test:** If you can't do it through raw TLV frames, don't add it to the built-in adapter either. First extend the protocol.
+**Test:** If you can't do it through raw frames, don't add it to the built-in adapter either. First extend the protocol.
 
 #### Rule 3: Wire types live in protocol; domain types live in domain packages
 
-Types that cross the adapter/agent boundary in TLV frames are **wire types**:
+Types that cross the adapter/agent boundary in frames are **wire types**:
 they live in `internal/protocol` (e.g. `ModelInfo` for the `model_list`
 message). Domain types used only inside the agent (e.g. `modelConfig`) stay
 in their domain package (`internal/agent`). Adapters decode wire types; they
@@ -76,7 +76,8 @@ never import the agent package.
 
 ```
 internal/protocol/  ← System message types, tool data structures, ModelInfo
-internal/tlv/       ← TLV tag constants, frame encoding/decoding
+internal/wire/      ← frame tags, encoding/decoding
+internal/lines/     ← splitting a byte stream into lines (the frame boundary)
 internal/theme/     ← Theme data structures (shared with adapters)
 internal/commands/  ← Command name constants (CI/CO vocabulary)
 internal/config/    ← Key-value parsing primitives, CLI Settings (no domain types)
@@ -84,7 +85,7 @@ internal/agent/     ← Domain types: modelConfig, runtimeConfig, ...
 ```
 
 This prevents circular dependencies and keeps the boundary clean. When a
-type moves between packages, keep the wire JSON tags unchanged so the TLV
+type moves between packages, keep the wire JSON tags unchanged so the frame
 protocol stays byte-compatible.
 
 ### When Exceptions Apply
@@ -92,9 +93,9 @@ protocol stays byte-compatible.
 | Scenario | Allowed? | Reason |
 |----------|----------|--------|
 | `internal/app/session.go` imports agent | ✅ Yes | Bootstrap layer, not an adapter |
-| Adapter imports agent (types, constants, functions) | ❌ **No** | Use wire types from `internal/protocol` — importing agent bypasses the TLV boundary |
+| Adapter imports agent (types, constants, functions) | ❌ **No** | Use wire types from `internal/protocol` — importing agent bypasses the frame boundary |
 | Adapter uses command-name string literals (`"cancel"`) | ⚠️ Avoid | Use `commands.CommandNameCancel` — the shared `internal/commands` package is the single source of truth for CI/CO names |
-| Adapter calls agent's functions | ❌ **No** | Bypasses the TLV boundary |
+| Adapter calls agent's functions | ❌ **No** | Bypasses the frame boundary |
 | Adapter calls `session.CancelTask()` (plainio/terseio SIGINT) | ⚠️ Yes — the only such call | A *request*, not an observation: it has to work whether or not the session is reading frames, and the SIGINT exit codes (0/130) are defined around this call rather than around a CO result. Everything an adapter *observes* comes from the wire |
 | `rawio` waits on `session.Done()` | ⚠️ Yes | rawio interprets no frames by definition — that is its contract — so it cannot learn "the session ended" from the wire. Waiting for the session goroutine is the process-level equivalent of the exit its controlling process observes anyway |
 | Agent imports adapter | ❌ **Never** | One-way dependency — agent must not know adapters exist |
@@ -103,8 +104,8 @@ protocol stays byte-compatible.
 
 When reviewing a change, ask:
 
-1. **Does this call an agent function from an adapter?** → Move the function to a neutral package or find a TLV-based approach.
-2. **Can a rawio client do this?** → If not, the TLV protocol needs a new message type.
+1. **Does this call an agent function from an adapter?** → Move the function to a neutral package or find a frame-based approach.
+2. **Can a rawio client do this?** → If not, the frame protocol needs a new message type.
 3. **Does this create a reverse dependency (agent → adapter)?** → Restructure immediately; this is never acceptable.
 4. **Does this type cross the adapter/agent boundary?** → Define the wire type in `internal/protocol` (e.g. `ModelInfo`); domain-only types stay in the agent package.
 

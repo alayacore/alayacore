@@ -1,29 +1,52 @@
 # Adapter Guide
 
-This document is a **dual-purpose reference**: it describes the TLV protocol
+This document is a **dual-purpose reference**: it describes the frame protocol
 used by `alayacore --rawio` for **human adapter developers**, and it is also
 designed to be read by **AI agents** that need to understand the protocol
 in order to generate or update adapter implementations.
 
-The `tlv-samples/` subdirectory contains sample `.bin` frames for reference.
-When updating this guide, maintain the structured, unambiguous style so that
-both human and AI readers can rely on it as the single source of truth.
+The `wire-samples/` subdirectory contains one sample file per frame it
+documents, each holding that frame as it appears on the wire. When updating this
+guide, maintain the structured, unambiguous style so that both human and AI
+readers can rely on it as the single source of truth.
 
 ## Wire Format
 
+One frame per line:
+
 ```
-[2-byte tag][4-byte length (big-endian)][N bytes of value]
+[2-byte tag][value]\n
 ```
+
+The tag is two ASCII letters. The value is a JSON object, except for the control
+frames `UE` and `CE`, whose line is the tag alone. Nothing else follows the value
+on the line, and there are no separator lines: every line is a frame.
+
+Two consequences shape everything below.
+
+**A value is never more than one line.** A raw LF or CR inside a value would end
+the frame early, so it is not allowed, and a writer that marshals JSON with any
+standard library gets that for free (`\n` is escaped). Skip the library and the
+reader reports the fragments as malformed rather than reading them as frames —
+no line of a multi-line JSON object begins with two ASCII letters.
+
+**A malformed frame ends the stream.** The reader does not skip it and does not
+resynchronise: a frame that is not a frame means the writer lost its place, and
+guessing where it meant to be is how a client misreads everything after it. The
+reader reports the line — a blank one, a tag that is not two letters, a value
+that is not a JSON object — and the session stops. For the same reason a stream
+that ends mid-frame is an error rather than a frame: a truncated message must not
+be read as a complete one.
 
 ## Protocol Version
 
 The first `SM` frame of a session is the version frame:
 
 ```
-SM {"type":"version","data":{"message_version":14,"core_version":"<build-time version>"}}
+SM {"type":"version","data":{"message_version":15,"core_version":"<build-time version>"}}
 ```
 
-`message_version` identifies the frame format described in this document — the
+`message_version` identifies the wire format described in this document — the
 tags, the SM types, and the states those carry. It is the number to check before
 parsing anything else, because a core speaking a different version may use tags
 this document does not define, and an older client has no other way to learn that
@@ -123,7 +146,7 @@ content. `I`/`O` encode **direction**: `CI` is sent by the adapter on stdin,
 The adapter must be prepared to **receive** `UX` on stdout in these scenarios:
 
 1. **Prompt echo** — When the user sends a prompt (`UX` + `UE` on stdin), the agent echoes each content item back on stdout with an assigned history id before sending them to the LLM.
-2. **Session replay** — When a saved session file (key-value frontmatter + binary TLV body, specified via `--session`) is loaded, all historical content (including user messages) is replayed to the adapter on stdout with their original history ids.
+2. **Session replay** — When a saved session file (key-value frontmatter + frame body, specified via `--session`) is loaded, all historical content (including user messages) is replayed to the adapter on stdout with their original history ids.
 3. **The agent's own user turns** — Not every `UX` frame is something the user typed: the `Continue` that resumes a cancelled turn (`:continue`) and the one a mid-task compaction appends are written by the agent. They are parts of the conversation like any other, so they are echoed like any other.
 4. **Steering** — A prompt sent while a task is running is spliced into that turn at its next step boundary (or becomes the next prompt if the turn ends first), so its echo (with its history id) arrives when the model receives it — one step later, not immediately. The session reports this lifecycle as an SM `steering` message carrying a `phase` of `queued`, `delivered`, `dropped`, or `refused`. The echo is the authoritative record — the words enter `Contents` only at delivery.
 
@@ -238,7 +261,7 @@ During session replay the tool call is a single AF frame with both `name` and `i
   authoritative**: adapters may drop or ignore it, and the final `UF` frame
   always overwrites any preview content.
 
-A tool call (AF) without a matching UF is still in progress. Each `.bin` sample below shows one frame in this lifecycle.
+A tool call (AF) without a matching UF is still in progress. Each `.txt` sample below shows one frame in this lifecycle.
 
 ## Example: Text Prompt Flow (with streaming deltas)
 
@@ -532,65 +555,65 @@ tag it carries and the frame is the JSON body in the file.
 ### read_file
 
 ```
-stdin:  UX-read-file.bin               UX {"type":"text","text":"Read the file main.go"}
+stdin:  UX-read-file.txt               UX {"type":"text","text":"Read the file main.go"}
                                        UE
-stdout: UX-echo-read-file.bin          UX {"id":"5","time":"...","type":"text","text":"Read the file main.go"}
-        AF-read-file-start.bin         AF {"id":"6","time":"...","call_id":"t1","name":"read_file"}
-        AF-read-file-input.bin         AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go"}}   ← or AF-read-file-input-range.bin
-        UF-read-file-success.bin       UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
-        UF-read-file-failed.bin        UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"file not found"}],"is_error":true}
+stdout: UX-echo-read-file.txt          UX {"id":"5","time":"...","type":"text","text":"Read the file main.go"}
+        AF-read-file-start.txt         AF {"id":"6","time":"...","call_id":"t1","name":"read_file"}
+        AF-read-file-input.txt         AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go"}}   ← or AF-read-file-input-range.txt
+        UF-read-file-success.txt       UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
+        UF-read-file-failed.txt        UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"file not found"}],"is_error":true}
 ```
 
-The `AF-read-file-input-range.bin` sample is an **alternative** to `AF-read-file-input.bin` — it demonstrates the `start_line` and `num_lines` optional parameters. Only one input frame is sent per tool invocation.
+The `AF-read-file-input-range.txt` sample is an **alternative** to `AF-read-file-input.txt` — it demonstrates the `start_line` and `num_lines` optional parameters. Only one input frame is sent per tool invocation.
 
 ### write_file
 
 ```
-stdin:  UX-write-file.bin              UX {"type":"text","text":"Write a hello world Go program to hello.go"}
+stdin:  UX-write-file.txt              UX {"type":"text","text":"Write a hello world Go program to hello.go"}
                                        UE
 stdout: (echo)                         UX {"id":"9","time":"...","type":"text","text":"Write a hello world Go program to hello.go"}
-        AF-write-file-start.bin        AF {"id":"10","time":"...","call_id":"t3","name":"write_file"}
-        AF-write-file-input.bin        AF {"id":"10","time":"...","call_id":"t3","input":{"content":"package main","path":"main.go"}}
-        UF-write-file-success.bin      UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"File written successfully"}]}
-        UF-write-file-failed.bin       UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"permission denied"}],"is_error":true}
+        AF-write-file-start.txt        AF {"id":"10","time":"...","call_id":"t3","name":"write_file"}
+        AF-write-file-input.txt        AF {"id":"10","time":"...","call_id":"t3","input":{"content":"package main","path":"main.go"}}
+        UF-write-file-success.txt      UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"File written successfully"}]}
+        UF-write-file-failed.txt       UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"permission denied"}],"is_error":true}
 ```
 
 ### edit_file
 
 ```
-stdin:  UX-edit-file.bin               UX {"type":"text","text":"Edit main.go to fix the greeting"}
+stdin:  UX-edit-file.txt               UX {"type":"text","text":"Edit main.go to fix the greeting"}
                                        UE
 stdout: (echo)                         UX {"id":"7","time":"...","type":"text","text":"Edit main.go to fix the greeting"}
-        AF-edit-file-start.bin         AF {"id":"8","time":"...","call_id":"t2","name":"edit_file"}
-        AF-edit-file-input.bin         AF {"id":"8","time":"...","call_id":"t2","input":{"new_string":"fmt.Printf","old_string":"fmt.Println","path":"main.go"}}
-        UF-edit-file-success.bin       UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"File edited successfully"}]}
-        UF-edit-file-failed.bin        UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"old_string not found"}],"is_error":true}
+        AF-edit-file-start.txt         AF {"id":"8","time":"...","call_id":"t2","name":"edit_file"}
+        AF-edit-file-input.txt         AF {"id":"8","time":"...","call_id":"t2","input":{"new_string":"fmt.Printf","old_string":"fmt.Println","path":"main.go"}}
+        UF-edit-file-success.txt       UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"File edited successfully"}]}
+        UF-edit-file-failed.txt        UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"old_string not found"}],"is_error":true}
 ```
 
 ### search_content
 
 ```
-stdin:  UX-search-content.bin          UX {"type":"text","text":"Search for TODO in Go files"}
+stdin:  UX-search-content.txt          UX {"type":"text","text":"Search for TODO in Go files"}
                                        UE
 stdout: (echo)                         UX {"id":"11","time":"...","type":"text","text":"Search for TODO in Go files"}
-        AF-search-content-start.bin    AF {"id":"12","time":"...","call_id":"t4","name":"search_content"}
-        AF-search-content-input.bin    AF {"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
-        Uf-search-content-preview.bin  Uf {"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}   ← ephemeral preview (optional)
-        UF-search-content-success.bin  UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
-        UF-search-content-failed.bin   UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
+        AF-search-content-start.txt    AF {"id":"12","time":"...","call_id":"t4","name":"search_content"}
+        AF-search-content-input.txt    AF {"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
+        Uf-search-content-preview.txt  Uf {"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}   ← ephemeral preview (optional)
+        UF-search-content-success.txt  UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
+        UF-search-content-failed.txt   UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
 ```
 
 ### execute_command
 
 ```
-stdin:  UX-execute-command.bin         UX {"type":"text","text":"Run: ls -la"}
+stdin:  UX-execute-command.txt         UX {"type":"text","text":"Run: ls -la"}
                                        UE
 stdout: (echo)                         UX {"id":"13","time":"...","type":"text","text":"Run: ls -la"}
-        AF-execute-command-start.bin   AF {"id":"14","time":"...","call_id":"t5","name":"execute_command"}
-        AF-execute-command-input.bin   AF {"id":"14","time":"...","call_id":"t5","input":{"command":"ls -la"}}
-        Uf-execute-command-preview.bin Uf {"id":"14","call_id":"t5","text":"total 42..."}   ← ephemeral preview (optional)
-        UF-execute-command-success.bin UF {"id":"15","time":"...","call_id":"t5","output":[{"type":"text","text":"total 42..."}]}
-        UF-execute-command-failed.bin  UF {"id":"15","time":"...","call_id":"t5","output":[{"type":"text","text":"command not found"}],"is_error":true}
+        AF-execute-command-start.txt   AF {"id":"14","time":"...","call_id":"t5","name":"execute_command"}
+        AF-execute-command-input.txt   AF {"id":"14","time":"...","call_id":"t5","input":{"command":"ls -la"}}
+        Uf-execute-command-preview.txt Uf {"id":"14","call_id":"t5","text":"total 42..."}   ← ephemeral preview (optional)
+        UF-execute-command-success.txt UF {"id":"15","time":"...","call_id":"t5","output":[{"type":"text","text":"total 42..."}]}
+        UF-execute-command-failed.txt  UF {"id":"15","time":"...","call_id":"t5","output":[{"type":"text","text":"command not found"}],"is_error":true}
 ```
 
 ### Text / Reasoning / System / Tool samples
@@ -600,120 +623,120 @@ Samples are grouped by direction below.
 **stdin (adapter → agent, no history id, no time):**
 
 ```
-UX-hello.bin                   UX {"type":"text","text":"hello"}
-UX-empty.bin                   UX {"type":"text"}   (no text — an empty prompt)
-UX-image.bin                   UX {"type":"image","uri":"data:image/jpeg;base64,..."}
-UX-image-url.bin               UX {"type":"image","uri":"https://..."}
-UX-audio.bin                   UX {"type":"audio","uri":"data:audio/mpeg;base64,..."}
-UX-audio-url.bin               UX {"type":"audio","uri":"https://..."}
-UX-video.bin                   UX {"type":"video","uri":"data:video/mp4;base64,...","fps":5,"res":1}
-UX-video-url.bin               UX {"type":"video","uri":"https://...","fps":5,"res":1}
-UX-document.bin                UX {"type":"document","uri":"data:application/pdf;base64,..."}
-UE.bin                         UE "" (length 0)
-CE.bin                         CE "" (length 0) — input end: no more prompts, commands may still follow
-CI-cancel.bin                  CI {"call_id":"1","name":"cancel"}
-CI-save.bin                    CI {"call_id":"2","name":"save","input":"/tmp/x.alaya"}
-CI-model-sync.bin              CI {"call_id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
+UX-hello.txt                   UX {"type":"text","text":"hello"}
+UX-empty.txt                   UX {"type":"text"}   (no text — an empty prompt)
+UX-image.txt                   UX {"type":"image","uri":"data:image/jpeg;base64,..."}
+UX-image-url.txt               UX {"type":"image","uri":"https://..."}
+UX-audio.txt                   UX {"type":"audio","uri":"data:audio/mpeg;base64,..."}
+UX-audio-url.txt               UX {"type":"audio","uri":"https://..."}
+UX-video.txt                   UX {"type":"video","uri":"data:video/mp4;base64,...","fps":5,"res":1}
+UX-video-url.txt               UX {"type":"video","uri":"https://...","fps":5,"res":1}
+UX-document.txt                UX {"type":"document","uri":"data:application/pdf;base64,..."}
+UE.txt                         UE "" (length 0)
+CE.txt                         CE "" (length 0) — input end: no more prompts, commands may still follow
+CI-cancel.txt                  CI {"call_id":"1","name":"cancel"}
+CI-save.txt                    CI {"call_id":"2","name":"save","input":"/tmp/x.alaya"}
+CI-model-sync.txt              CI {"call_id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
 ```
 
 **stdout — content (history id in `"id"`, time on authoritative frames):**
 
 ```
-UX-echo-hello.bin              UX {"id":"1","time":"...","type":"text","text":"Hello"}
-UX-echo-read-file.bin          UX {"id":"5","time":"...","type":"text","text":"Read the file main.go"}
-UX-echo-image.bin              UX {"id":"2","time":"...","type":"image","uri":"data:image/jpeg;..."}
-UX-echo-audio-url.bin          UX {"id":"3","time":"...","type":"audio","uri":"https://..."}
-UX-echo-video-url.bin          UX {"id":"4","time":"...","type":"video","uri":"https://..."}
-Ax-hello.bin                   Ax {"id":"1","type":"text","text":"Hello"}
-Ax-world.bin                   Ax {"id":"1","type":"text","text":" world"} (same stream)
-Ax-new-step.bin                Ax {"id":"2","type":"text","text":"Next step"} (new stream)
-Ax-thinking.bin                Ax {"id":"3","type":"reasoning","text":"thinking..."}
-AX-complete.bin                AX {"id":"4","time":"...","type":"text","text":"Here's what main.go does..."}   (content varies by mode)
-AX-reasoning.bin               AX {"id":"3","time":"...","type":"reasoning","text":"I need to read the file first..."} (content varies by mode)
+UX-echo-hello.txt              UX {"id":"1","time":"...","type":"text","text":"Hello"}
+UX-echo-read-file.txt          UX {"id":"5","time":"...","type":"text","text":"Read the file main.go"}
+UX-echo-image.txt              UX {"id":"2","time":"...","type":"image","uri":"data:image/jpeg;..."}
+UX-echo-audio-url.txt          UX {"id":"3","time":"...","type":"audio","uri":"https://..."}
+UX-echo-video-url.txt          UX {"id":"4","time":"...","type":"video","uri":"https://..."}
+Ax-hello.txt                   Ax {"id":"1","type":"text","text":"Hello"}
+Ax-world.txt                   Ax {"id":"1","type":"text","text":" world"} (same stream)
+Ax-new-step.txt                Ax {"id":"2","type":"text","text":"Next step"} (new stream)
+Ax-thinking.txt                Ax {"id":"3","type":"reasoning","text":"thinking..."}
+AX-complete.txt                AX {"id":"4","time":"...","type":"text","text":"Here's what main.go does..."}   (content varies by mode)
+AX-reasoning.txt               AX {"id":"3","time":"...","type":"reasoning","text":"I need to read the file first..."} (content varies by mode)
 ```
 
 **stdout — tool frames (history id in `"id"`; matching by `"call_id"`):**
 
 ```
-AF-read-file-start.bin         AF {"id":"6","time":"...","call_id":"t1","name":"read_file"}
-AF-read-file-input.bin         AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go"}}
-AF-read-file-input-range.bin   AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go","start_line":10,"num_lines":20}}
-UF-read-file-success.bin       UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
-UF-read-file-failed.bin        UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"file not found"}],"is_error":true}
-AF-edit-file-start.bin         AF {"id":"8","time":"...","call_id":"t2","name":"edit_file"}
-AF-edit-file-input.bin         AF {"id":"8","time":"...","call_id":"t2","input":{"new_string":"fmt.Printf","old_string":"fmt.Println","path":"main.go"}}
-UF-edit-file-success.bin       UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"File edited successfully"}]}
-UF-edit-file-failed.bin        UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"old_string not found"}],"is_error":true}
-AF-write-file-start.bin        AF {"id":"10","time":"...","call_id":"t3","name":"write_file"}
-AF-write-file-input.bin        AF {"id":"10","time":"...","call_id":"t3","input":{"content":"package main","path":"main.go"}}
-UF-write-file-success.bin      UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"File written successfully"}]}
-UF-write-file-failed.bin       UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"permission denied"}],"is_error":true}
-AF-search-content-start.bin    AF {"id":"12","time":"...","call_id":"t4","name":"search_content"}
-AF-search-content-input.bin    AF {"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
-Uf-search-content-preview.bin  Uf {"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}
-UF-search-content-success.bin  UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
-UF-search-content-failed.bin   UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
-Af-tool-delta.bin              Af {"id":"6","call_id":"t1","delta":"{\"path\":\""}
-Uf-execute-command-preview.bin Uf {"id":"14","call_id":"t5","text":"total 42..."}
+AF-read-file-start.txt         AF {"id":"6","time":"...","call_id":"t1","name":"read_file"}
+AF-read-file-input.txt         AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go"}}
+AF-read-file-input-range.txt   AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go","start_line":10,"num_lines":20}}
+UF-read-file-success.txt       UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
+UF-read-file-failed.txt        UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"file not found"}],"is_error":true}
+AF-edit-file-start.txt         AF {"id":"8","time":"...","call_id":"t2","name":"edit_file"}
+AF-edit-file-input.txt         AF {"id":"8","time":"...","call_id":"t2","input":{"new_string":"fmt.Printf","old_string":"fmt.Println","path":"main.go"}}
+UF-edit-file-success.txt       UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"File edited successfully"}]}
+UF-edit-file-failed.txt        UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"old_string not found"}],"is_error":true}
+AF-write-file-start.txt        AF {"id":"10","time":"...","call_id":"t3","name":"write_file"}
+AF-write-file-input.txt        AF {"id":"10","time":"...","call_id":"t3","input":{"content":"package main","path":"main.go"}}
+UF-write-file-success.txt      UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"File written successfully"}]}
+UF-write-file-failed.txt       UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"permission denied"}],"is_error":true}
+AF-search-content-start.txt    AF {"id":"12","time":"...","call_id":"t4","name":"search_content"}
+AF-search-content-input.txt    AF {"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
+Uf-search-content-preview.txt  Uf {"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}
+UF-search-content-success.txt  UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
+UF-search-content-failed.txt   UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
+Af-tool-delta.txt              Af {"id":"6","call_id":"t1","delta":"{\"path\":\""}
+Uf-execute-command-preview.txt Uf {"id":"14","call_id":"t5","text":"total 42..."}
 ```
 
 **stdout — commands and system messages (no history id):**
 
 ```
-CO-save-success.bin            CO {"call_id":"2","output":{"path":"/tmp/x.alaya"}}
-CO-command-error.bin           CO {"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
-CO-task-started.bin            CO {"call_id":"9","output":{"status":"started"}}
+CO-save-success.txt            CO {"call_id":"2","output":{"path":"/tmp/x.alaya"}}
+CO-command-error.txt           CO {"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+CO-task-started.txt            CO {"call_id":"9","output":{"status":"started"}}
 ```
 
 The system-message samples follow with their schema.
 
 **stdout — system messages (no history ID, JSON `{"type":"...","data":{...}}`):**
 
-| Type | JSON Schema (data fields) | Example `.bin` |
+| Type | JSON Schema (data fields) | Example `.txt` |
 |------|--------------------------|----------------|
-| `version` | `message_version` (int), `core_version` (string) | `SM-message-version.bin` |
-| `model` | `active_id` (int), `active_name` (string), `context_limit` (int) | `SM-model.bin` |
-| `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, serial_tool_calls:bool, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.bin` |
-| `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string), `theme` (object, optional — full palette sent on startup, omitted on theme switch) | `SM-theme.bin` |
-| `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, added, removed: string}}`) | `SM-theme-list.bin` |
-| `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.bin` |
-| `video_config` | `fps` (int), `res` (int) | `SM-video-config.bin` |
-| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`), `step_tps` (float, opt — latest step's end-to-end throughput in tokens/sec: output tokens ÷ round-trip duration, latency included; absent until a step with output tokens completes; 0 for a step with no output tokens), `ttft_ms` (int, opt — latest step's time-to-first-token in ms) | `SM-task-start.bin`, `SM-task-step.bin`, `SM-task-end.bin` |
-| `error` | `text` (string) | `SM-error.bin` |
-| `notify` | `text` (string) | `SM-notify.bin` |
-| `tool_confirm` | `call_id` (string) — one-way notification; the user's decision is returned via the `tool_confirm` / `tool_decline` commands (CI frames), not via an SM response | `SM-tool-confirm.bin` |
-| `mcp` | `status` (string: one of `connecting`, `auth_required`, `auth_running`, `connected`, `failed`, `done`), `server` (string, opt), `url` (string, opt — set for `auth_required`; may contain `{{redirect_uri}}` and `{{state}}` placeholders), `error` (string, opt — set for `failed`) | `SM-mcp-connecting.bin`, `SM-mcp-auth-required.bin`, `SM-mcp-auth-running.bin`, `SM-mcp-connected.bin`, `SM-mcp-failed.bin`, `SM-mcp-done.bin` |
-| `session` | `state` (string: `ready` — sent **exactly once**, when initialization completes; `closed` — sent **exactly once**, as the last frame before the session exits) | `SM-session-ready.bin`, `SM-session-closed.bin` |
-| `steering` | `phase` (string: one of `queued`, `delivered`, `dropped`, `refused`), `reason` (string, opt — `canceled`, `failed` or `quit`; set only for `dropped`), `text` (string, opt — a human-readable line; `delivered` carries none) | `SM-steering-queued.bin`, `SM-steering-delivered.bin`, `SM-steering-dropped.bin`, `SM-steering-refused.bin` |
+| `version` | `message_version` (int), `core_version` (string) | `SM-message-version.txt` |
+| `model` | `active_id` (int), `active_name` (string), `context_limit` (int) | `SM-model.txt` |
+| `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, serial_tool_calls:bool, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.txt` |
+| `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string), `theme` (object, optional — full palette sent on startup, omitted on theme switch) | `SM-theme.txt` |
+| `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, added, removed: string}}`) | `SM-theme-list.txt` |
+| `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.txt` |
+| `video_config` | `fps` (int), `res` (int) | `SM-video-config.txt` |
+| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`), `step_tps` (float, opt — latest step's end-to-end throughput in tokens/sec: output tokens ÷ round-trip duration, latency included; absent until a step with output tokens completes; 0 for a step with no output tokens), `ttft_ms` (int, opt — latest step's time-to-first-token in ms) | `SM-task-start.txt`, `SM-task-step.txt`, `SM-task-end.txt` |
+| `error` | `text` (string) | `SM-error.txt` |
+| `notify` | `text` (string) | `SM-notify.txt` |
+| `tool_confirm` | `call_id` (string) — one-way notification; the user's decision is returned via the `tool_confirm` / `tool_decline` commands (CI frames), not via an SM response | `SM-tool-confirm.txt` |
+| `mcp` | `status` (string: one of `connecting`, `auth_required`, `auth_running`, `connected`, `failed`, `done`), `server` (string, opt), `url` (string, opt — set for `auth_required`; may contain `{{redirect_uri}}` and `{{state}}` placeholders), `error` (string, opt — set for `failed`) | `SM-mcp-connecting.txt`, `SM-mcp-auth-required.txt`, `SM-mcp-auth-running.txt`, `SM-mcp-connected.txt`, `SM-mcp-failed.txt`, `SM-mcp-done.txt` |
+| `session` | `state` (string: `ready` — sent **exactly once**, when initialization completes; `closed` — sent **exactly once**, as the last frame before the session exits) | `SM-session-ready.txt`, `SM-session-closed.txt` |
+| `steering` | `phase` (string: one of `queued`, `delivered`, `dropped`, `refused`), `reason` (string, opt — `canceled`, `failed` or `quit`; set only for `dropped`), `text` (string, opt — a human-readable line; `delivered` carries none) | `SM-steering-queued.txt`, `SM-steering-delivered.txt`, `SM-steering-dropped.txt`, `SM-steering-refused.txt` |
 
 Complete wire values:
 
 ```
-SM-message-version.bin         {"type":"version","data":{"message_version":14,"core_version":"(set at build time)"}}
-SM-model.bin                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
-SM-model-list.bin              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
-SM-theme.bin                   {"type":"theme","data":{"name":"theme-dark"}}
-SM-theme-list.bin              {"type":"theme_list","data":{"themes":[{"name":"theme-dark","theme":{"primary":"#89d4fa","dim":"#313244","muted":"#6c7086","warning":"#f77923","error":"#f38ba8","added":"#a6e3a1","removed":"#f38ba8"}},{"name":"theme-light","theme":{"primary":"#1e66f5","dim":"#ccd0da","muted":"#9ca0b0","warning":"#df8e1d","error":"#d20f39","added":"#40a02b","removed":"#d20f39"}}]}}
-SM-reasoning.bin               {"type":"reasoning","data":{"level":2}}
-SM-video-config.bin            {"type":"video_config","data":{"fps":5,"res":1}}
-SM-task-start.bin              {"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":10,"context":0}}
-SM-task-step.bin               {"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":10,"context":8600,"step_tps":12.5,"ttft_ms":1200}}
-SM-task-end.bin                {"type":"task","data":{"in_progress":false,"context":1500,"step_tps":12.5,"ttft_ms":1200}}
-SM-error.bin                   {"type":"error","data":{"text":"something broke"}}
-SM-notify.bin                  {"type":"notify","data":{"text":"all good"}}
-SM-tool-confirm.bin            {"type":"tool_confirm","data":{"call_id":"t1"}}
-SM-mcp-connecting.bin          {"type":"mcp","data":{"status":"connecting","server":"github"}}
-SM-mcp-auth-required.bin        {"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://github.com/login/oauth/authorize?...redirect_uri={{redirect_uri}}&state={{state}}"}}
-SM-mcp-auth-running.bin        {"type":"mcp","data":{"status":"auth_running","server":"github"}}
-SM-mcp-connected.bin           {"type":"mcp","data":{"status":"connected","server":"github"}}
-SM-mcp-failed.bin              {"type":"mcp","data":{"status":"failed","server":"github","error":"connection timeout"}}
-SM-mcp-done.bin                {"type":"mcp","data":{"status":"done"}}
-SM-session-ready.bin           {"type":"session","data":{"state":"ready"}}
-SM-session-closed.bin          {"type":"session","data":{"state":"closed"}}
-SM-steering-queued.bin         {"type":"steering","data":{"phase":"queued","text":"steering queued — delivered into the running turn, or as your next prompt"}}
-SM-steering-delivered.bin      {"type":"steering","data":{"phase":"delivered"}}
-SM-steering-dropped.bin        {"type":"steering","data":{"phase":"dropped","reason":"canceled","text":"steering dropped — the task was canceled before it was delivered"}}
-SM-steering-refused.bin        {"type":"steering","data":{"phase":"refused","text":"Too many prompts are already queued for the running task; this one was not queued. Wait for it to continue, or cancel it."}}
+SM-message-version.txt         {"type":"version","data":{"message_version":15,"core_version":"(set at build time)"}}
+SM-model.txt                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
+SM-model-list.txt              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
+SM-theme.txt                   {"type":"theme","data":{"name":"theme-dark"}}
+SM-theme-list.txt              {"type":"theme_list","data":{"themes":[{"name":"theme-dark","theme":{"primary":"#89d4fa","dim":"#313244","muted":"#6c7086","warning":"#f77923","error":"#f38ba8","added":"#a6e3a1","removed":"#f38ba8"}},{"name":"theme-light","theme":{"primary":"#1e66f5","dim":"#ccd0da","muted":"#9ca0b0","warning":"#df8e1d","error":"#d20f39","added":"#40a02b","removed":"#d20f39"}}]}}
+SM-reasoning.txt               {"type":"reasoning","data":{"level":2}}
+SM-video-config.txt            {"type":"video_config","data":{"fps":5,"res":1}}
+SM-task-start.txt              {"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":10,"context":0}}
+SM-task-step.txt               {"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":10,"context":8600,"step_tps":12.5,"ttft_ms":1200}}
+SM-task-end.txt                {"type":"task","data":{"in_progress":false,"context":1500,"step_tps":12.5,"ttft_ms":1200}}
+SM-error.txt                   {"type":"error","data":{"text":"something broke"}}
+SM-notify.txt                  {"type":"notify","data":{"text":"all good"}}
+SM-tool-confirm.txt            {"type":"tool_confirm","data":{"call_id":"t1"}}
+SM-mcp-connecting.txt          {"type":"mcp","data":{"status":"connecting","server":"github"}}
+SM-mcp-auth-required.txt        {"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://github.com/login/oauth/authorize?...redirect_uri={{redirect_uri}}&state={{state}}"}}
+SM-mcp-auth-running.txt        {"type":"mcp","data":{"status":"auth_running","server":"github"}}
+SM-mcp-connected.txt           {"type":"mcp","data":{"status":"connected","server":"github"}}
+SM-mcp-failed.txt              {"type":"mcp","data":{"status":"failed","server":"github","error":"connection timeout"}}
+SM-mcp-done.txt                {"type":"mcp","data":{"status":"done"}}
+SM-session-ready.txt           {"type":"session","data":{"state":"ready"}}
+SM-session-closed.txt          {"type":"session","data":{"state":"closed"}}
+SM-steering-queued.txt         {"type":"steering","data":{"phase":"queued","text":"steering queued — delivered into the running turn, or as your next prompt"}}
+SM-steering-delivered.txt      {"type":"steering","data":{"phase":"delivered"}}
+SM-steering-dropped.txt        {"type":"steering","data":{"phase":"dropped","reason":"canceled","text":"steering dropped — the task was canceled before it was delivered"}}
+SM-steering-refused.txt        {"type":"steering","data":{"phase":"refused","text":"Too many prompts are already queued for the running task; this one was not queued. Wait for it to continue, or cancel it."}}
 ```
 
 ## Adapter → Agent Commands
@@ -799,7 +822,7 @@ stdout: CO {"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","me
 
 ### Tool Confirmation
 
-When the agent sends `SM-tool-confirm.bin`, the adapter **must** respond
+When the agent sends `SM-tool-confirm.txt`, the adapter **must** respond
 with a `tool_confirm` or `tool_decline` CI frame:
 
 | SM Received | Adapter Action | CI Response |
@@ -808,7 +831,7 @@ with a `tool_confirm` or `tool_decline` CI frame:
 
 ### MCP Initialization & OAuth
 
-When the agent sends `SM-mcp-auth-required.bin`, the adapter must open the
+When the agent sends `SM-mcp-auth-required.txt`, the adapter must open the
 authorization URL in a browser, start a local callback server to capture
 the OAuth code, then respond with the code:
 
@@ -846,7 +869,7 @@ sends the full model list JSON back to the agent via `model_sync`:
 | `:model` command → editor session ends | Read edited file, send content as JSON array | `{"call_id":"...","name":"model_sync","input":"[{...}, {...}]"}` |
 
 The `input` is a serialized array of model config objects (same format as the
-`models` field in `SM-model-list.bin`). The agent replaces all models with
+`models` field in `SM-model-list.txt`). The agent replaces all models with
 the provided list, re-resolves the active model, and reinitializes the
 provider. If any model block is rejected or persistence fails, the command
 fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
@@ -872,22 +895,26 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 
 ## Use
 
+A sample file *is* the bytes to send — one frame per line, so it can be piped
+straight in. `wirecat` decodes what comes back with the same reader the core uses,
+which means it also reports a frame the format does not allow.
+
 ```sh
 # Pipe a user prompt to the agent
-cat tlv-samples/UX-read-file.bin | alayacore --rawio
+cat wire-samples/UX-read-file.txt | alayacore --rawio
 
 # Pipe a user prompt and decode the response frames
-cat tlv-samples/UX-read-file.bin | alayacore --rawio | go run ./misc/tlvcat.go
+cat wire-samples/UX-read-file.txt | alayacore --rawio | go run ./misc/wirecat.go
 
 # Decode a single frame (stdin or stdout direction)
-cat tlv-samples/AF-read-file-start.bin | go run ./misc/tlvcat.go
+cat wire-samples/AF-read-file-start.txt | go run ./misc/wirecat.go
 
 # Decode a user echo frame (agent → adapter, with history ID)
-cat tlv-samples/UX-echo-hello.bin | go run ./misc/tlvcat.go
+cat wire-samples/UX-echo-hello.txt | go run ./misc/wirecat.go
 ```
 
 ## Generate Media Requests (Go)
 
 ```sh
-go run misc/gen_tlv_request.go "question" image.jpg audio.wav video.mp4
+go run misc/gen_wire_request.go "question" image.jpg audio.wav video.mp4
 ```

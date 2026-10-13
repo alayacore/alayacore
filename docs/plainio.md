@@ -111,7 +111,7 @@ the browser doesn't open, visit the printed URL and type
 
 Plain IO can persist conversations using a **session file**, just like the
 TUI mode. The session file records every turn (prompts, assistant replies,
-tool calls, tool results) in key-value frontmatter + binary TLV format.
+tool calls, tool results) in key-value frontmatter + one frame per line.
 
 **How it works:**
 
@@ -141,7 +141,7 @@ alayacore --plainio --session my-convo.alaya <<< "what is my name?"
 alayacore --plainio --session my-convo.alaya <<< "remember this fact: dogs are fluffy"
 ```
 
-Since the session file contains binary TLV data after the key-value frontmatter, it is not human-readable as plain text. Use `tlvcat.go` (in `misc/`) to inspect the contents, or use the `--plainio` mode to replay the conversation.
+A session file is text: one frame per line after the key-value frontmatter. `cat` shows the conversation, `grep` finds a turn in it, and `wirecat.go` (in `misc/`) decodes each frame with the reader the core uses — which also means it reports one the format does not allow. `--plainio` replays the conversation instead.
 
 ## Examples
 

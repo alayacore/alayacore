@@ -74,7 +74,7 @@ Terminal (value type, root model)
 │
 └── External systems (via interfaces/pointers):
     ├── out         OutputWriter    (session output, shared mutable)
-    ├── streamInput io.WriteCloser  (TLV pipe to session)
+    ├── streamInput io.WriteCloser  (frame pipe to session)
     └── themeManager *ThemeManager  (theme load errors at startup)
 
 ```
@@ -120,8 +120,8 @@ asynchronous facts from the runtime and the session.
 
 | I/O Operation | Path | Reason |
 |--------------|------|--------|
-| `emitCommand` (TLV write) | `Cmd` | Always in Update context |
-| `submitCmd` (batch TLV writes) | `Cmd` | Multiple writes, one unit |
+| `emitCommand` (frame write) | `Cmd` | Always in Update context |
+| `submitCmd` (batch frame writes) | `Cmd` | Multiple writes, one unit |
 | `startMCPAuthFlow` (OAuth) | `Sequence` | Multi-phase: notify → open browser → wait for callback |
 | `displayErrorMsg` / `displayNotifyMsg` | `Cmd` → `Terminal.Update` handler | Routes all `WriteError`/`WriteNotify` through the event loop |
 | `WriteError` (in Init) | `Batch` of `displayErrorMsg` Cmds | Now goes through Update like all other display writes |

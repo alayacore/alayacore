@@ -316,7 +316,7 @@ environment.
 
 ## Multi-Modal Attachments
 
-AlayaCore supports multi-modal input — attaching images, audio, video, or documents alongside text. Attachments are sent as TLV frames **before** the text frame, all within a single `TagUserEnd`-delimited message:
+AlayaCore supports multi-modal input — attaching images, audio, video, or documents alongside text. Attachments are sent as frames **before** the text frame, all within a single `TagUserEnd`-delimited message:
 
 ```
 [UX frames (image/audio/video/document, then text)] + [UE]
@@ -425,7 +425,7 @@ becomes `-`, the timestamp appears on the right, and the content follows.
 ### Sending
 
 When you press `Enter`:
-- Local files are read, base64-encoded into `data:` URIs, and sent as TLV frames
+- Local files are read, base64-encoded into `data:` URIs, and sent as frames
 - URLs are sent as-is (no fetching)
 - Text is sent as a `UX` frame carrying a text content item
 - A `TagUserEnd` frame finalizes the message

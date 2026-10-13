@@ -33,11 +33,11 @@ A fast, minimal AI Agent for your terminal, scripts, and programmatic control.
 
 ![AlayaCore terseio demo](misc/alayacore-demo-terseio.gif)
 
-**Raw IO Mode** — full control and integration with other programs via raw TLV frames on stdin/stdout.
+**Raw IO Mode** — full control and integration with other programs via raw frames on stdin/stdout.
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
 
-AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (interactive plain-text stdin/stdout without a TUI), **Terse IO** (answer-only for pipes and scripts), and **Raw IO** (raw TLV frames for programmatic control).
+AlayaCore connects to any OpenAI-compatible or Anthropic-compatible LLM and gives it the tools to read, write, and edit files, and execute commands — with session persistence and multi-step agentic tool-calling loops. The same agent core powers all four modes: **TUI** (interactive terminal interface), **Plain IO** (interactive plain-text stdin/stdout without a TUI), **Terse IO** (answer-only for pipes and scripts), and **Raw IO** (raw frames for programmatic control).
 
 **Choose a mode:** interactive TUI → run `alayacore` · interactive without a TUI → `--plainio` · scripts/pipes → `--terseio` · programmatic control → `--rawio`
 
@@ -96,7 +96,7 @@ echo "what is 2+2?" | alayacore --terseio
 
 ### Raw IO (`--rawio`)
 
-- 🔌 **Programmatic control** — Raw TLV frames on stdin/stdout for custom integrations.
+- 🔌 **Programmatic control** — Raw frames on stdin/stdout for custom integrations.
 
 ## System Requirements
 
@@ -138,12 +138,12 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Terminal UI](docs/tui.md) | Keybindings, commands, windows, and navigation |
 | [Plain IO Mode](docs/plainio.md) | Interactive plain-text stdin/stdout, no TUI |
 | [Terse IO Mode](docs/terseio.md) | Read all stdin as one prompt or command; print only the final answer |
-| [Raw IO Mode](docs/rawio.md) | Raw TLV frames on stdin/stdout for programmatic control |
-| [Adapter Guide](adapter-guide/README.md) | TLV protocol reference for Raw IO — frame format, tags, and adapter implementation guide |
+| [Raw IO Mode](docs/rawio.md) | Raw frames on stdin/stdout for programmatic control |
+| [Adapter Guide](adapter-guide/README.md) | Frame protocol reference for Raw IO — the wire format, tags, and an adapter implementation guide |
 | [Skills System](docs/skills.md) | Agent Skills specification, directory structure, SKILL.md format |
 | [MCP](docs/mcp.md) | Model Context Protocol — connect to external MCP servers |
 | [MCP OAuth](docs/oauth.md) | OAuth 2.1 authorization_code flow for MCP servers |
-| [Architecture](docs/architecture.md) | Layered architecture, TLV protocol, data flow, design decisions |
+| [Architecture](docs/architecture.md) | Layered architecture, frame protocol, data flow, design decisions |
 | [Step Messages](docs/step-messages.md) | Message structure within an agentic step (assistant + tool results) |
 | [Providers](docs/providers.md) | Provider-specific gotchas (multimodal media matrix, tool call chunking, null args, reasoning mode) |
 | [Tool Input Repair](docs/tool-input-repair.md) | How malformed LLM tool inputs are repaired against their JSON schemas |

@@ -33,11 +33,11 @@
 
 ![AlayaCore terseio demo](misc/alayacore-demo-terseio.gif)
 
-**Raw IO 模式** — 完整的控制权，通过原始 TLV 帧与其他程序集成（stdin/stdout）。
+**Raw IO 模式** — 完整的控制权，通过原始帧（frame）与其他程序集成（stdin/stdout）。
 
 ![AlayaCore rawio demo](misc/alayacore-demo-rawio.gif)
 
-AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（无 TUI 的交互式纯文本模式）、**Terse IO**（只输出最终答案的管道/脚本模式）和 **Raw IO**（原始 TLV 帧程序化控制模式）。
+AlayaCore 可连接任何兼容 OpenAI 或 Anthropic 的 LLM，并为其提供读取、写入、编辑文件和执行命令的能力——支持会话持久化和多步骤智能工具调用循环。相同的 Agent 核心驱动所有四种模式：**TUI**（交互式终端界面）、**Plain IO**（无 TUI 的交互式纯文本模式）、**Terse IO**（只输出最终答案的管道/脚本模式）和 **Raw IO**（原始帧程序化控制模式）。
 
 **模式速查：** 交互 TUI → 运行 `alayacore` · 无 TUI 的交互 → `--plainio` · 脚本/管道 → `--terseio` · 程序化控制 → `--rawio`
 
@@ -96,7 +96,7 @@ echo "what is 2+2?" | alayacore --terseio
 
 ### Raw IO（`--rawio`）
 
-- 🔌 **程序化控制** — stdin/stdout 上的原始 TLV 帧，用于自定义集成。
+- 🔌 **程序化控制** — stdin/stdout 上的原始帧，用于自定义集成。
 
 ## 系统要求
 
@@ -138,12 +138,12 @@ AlayaCore **不在请求体中发送** Anthropic 专用的 `cache_control` 字�
 | [终端 UI](docs/tui.md) | 快捷键、命令、窗口和导航 |
 | [Plain IO 模式](docs/plainio.md) | 无 TUI 的交互式纯文本 stdin/stdout |
 | [Terse IO 模式](docs/terseio.md) | 将整个 stdin 作为一个 prompt 或命令，只输出最终答案 |
-| [Raw IO 模式](docs/rawio.md) | 用于程序化控制的原始 TLV 帧 |
+| [Raw IO 模式](docs/rawio.md) | 用于程序化控制的原始帧 |
 | [Adapter Guide](adapter-guide/README.md) | Raw IO 协议参考 — 帧格式、标签、adapter 实现指南 |
 | [技能系统](docs/skills.md) | Agent Skills 规范、目录结构、SKILL.md 格式 |
 | [MCP](docs/mcp.md) | Model Context Protocol — 连接外部 MCP 服务器扩展工具集 |
 | [MCP OAuth](docs/oauth.md) | MCP 服务器的 OAuth 2.1 authorization_code 授权流程 |
-| [架构](docs/architecture.md) | 分层架构、TLV 协议、数据流、设计决策 |
+| [架构](docs/architecture.md) | 分层架构、帧协议（frame protocol）、数据流、设计决策 |
 | [步骤消息](docs/step-messages.md) | 智能体步骤中的消息结构（assistant + tool 结果） |
 | [提供商](docs/providers.md) | 提供商特定的注意事项（多模态媒体能力矩阵、tool call 分块、null 参数、推理模式） |
 | [工具输入修复](docs/tool-input-repair.md) | 如何根据 JSON Schema 修复 LLM 的错误工具输入 |

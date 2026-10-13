@@ -84,7 +84,7 @@ depth is the one worth memorising.
 ### What Startup Says
 
 When at least one `--skill` container was configured, the run answers for it.
-Each line is a system (SM) frame on the TLV stream — the TUI shows it among the
+Each line is a system (SM) frame on the frame stream — the TUI shows it among the
 system lines at the top of the transcript, `--plainio` prints it, and a
 `--rawio`/`--terseio` client can read it off the `notify`/`error` type:
 

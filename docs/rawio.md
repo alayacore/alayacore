@@ -1,28 +1,36 @@
 # Raw IO Mode
 
-`--rawio` runs AlayaCore in raw TLV mode, where stdin and stdout carry
-TLV-encoded messages directly. Unlike `--plainio` which translates between
-human-readable text and TLV, rawio passes TLV frames through unmodified.
+`--rawio` runs AlayaCore in raw frame mode, where stdin and stdout carry
+frames directly. Unlike `--plainio` which translates between human-readable
+text and frames, rawio passes frames through unmodified.
 
 This mode is designed for **programmatic control** — a parent process
-(e.g., another AI agent, a script, or an orchestration tool) sends TLV
-frames to AlayaCore's stdin and reads TLV frames from its stdout, using
-the TLV protocol directly.
+(e.g., another AI agent, a script, or an orchestration tool) sends frames
+to AlayaCore's stdin and reads frames from its stdout, using the wire
+format directly.
 
-## TLV Protocol
+## Wire Format
 
-Messages use the standard Tag-Length-Value format:
+One frame per line:
 
 ```
-[2-byte tag][4-byte length (big-endian)][value bytes]
+[2-byte tag][value]\n
 ```
 
-See [TLV Protocol](internal/adapter-architecture.md#tlv-protocol) for full details.
+The tag is two ASCII letters. The value is a JSON object, except for the
+control frames `UE` and `CE`, whose line is the tag alone. See the
+[Adapter Guide](../adapter-guide/README.md) for the frame vocabulary, and
+[Wire Format](internal/adapter-architecture.md#wire-format) for how it is
+read and written.
+
+A frame is a line, so a session's output is readable as text: `cat`,
+`grep` and `jq` work on it. What they cannot do is check a frame, which is
+what `wirecat` is for.
 
 ## Input
 
 - Raw bytes from stdin are piped directly to the session. The session's
-  `io.ReadFull` handles TLV frame boundary detection internally.
+  frame reader handles boundary detection internally.
 - **Commands**: send a `CI` frame (`{"id":"...","name":"save","input":"..."}`)
   and receive exactly one `CO` frame back with the matching `id`. See
   [adapter-guide](../adapter-guide/README.md) for the full command table.
@@ -33,10 +41,10 @@ See [TLV Protocol](internal/adapter-architecture.md#tlv-protocol) for full detai
 
 ## Output
 
-- All TLV-encoded messages from the session are written directly to
-  stdout with no formatting, interpretation, or filtering.
-- The controlling process is responsible for parsing TLV frames from
-  stdout and handling any TagSystemMsg with type "error" itself.
+- All frames from the session are written directly to stdout with no
+  formatting, interpretation, or filtering.
+- The controlling process is responsible for parsing frames from stdout
+  and handling any TagSystemMsg with type "error" itself.
 - The session's lifecycle is reported by a TagSystemMsg of type `session`:
   `{"state":"ready"}` once, when the session is ready to accept prompts, and
   `{"state":"closed"}` once, as the last frame before the process exits — so a
@@ -47,9 +55,15 @@ See [TLV Protocol](internal/adapter-architecture.md#tlv-protocol) for full detai
 
 ## Errors
 
-Rawio does not inspect or interpret TLV frames. If the session encounters
+Rawio does not inspect or interpret frames. If the session encounters
 an error, it emits a TagSystemMsg with type "error" on stdout — the
 controlling process detects and handles it.
+
+A malformed frame is one the format does not have: a line that is blank, that
+does not begin with a two-letter tag, or whose value is not a JSON object. The
+reader stops there rather than skipping it — the frames behind it are not read —
+and reports what it found, so a writer that lost its place finds out instead of
+having its input quietly discarded.
 
 ## Exit Codes
 
@@ -62,29 +76,29 @@ controlling process detects and handles it.
 
 ```sh
 # Send a UX frame (one JSON content item) followed by UE (user message end)
-printf 'UX\x00\x00\x00\x1e{"type":"text","text":"hello"}UE\x00\x00\x00\x00' | alayacore --rawio
+printf 'UX{"type":"text","text":"hello"}\nUE\n' | alayacore --rawio
 ```
 
-Inspect the raw TLV output with `tlvcat`:
+Inspect the frames with `wirecat`, which decodes each one with the same reader
+the core uses (so a frame the format does not allow is reported):
 
 ```sh
-# Pipe the output through tlvcat to see tags and values
-printf 'UX\x00\x00\x00\x1e{"type":"text","text":"hello"}UE\x00\x00\x00\x00' | alayacore --rawio | go run ./misc/tlvcat.go
+printf 'UX{"type":"text","text":"hello"}\nUE\n' | alayacore --rawio | go run ./misc/wirecat.go
 ```
 
-Or generate a TLV request with images and inspect the result:
+Or generate a request with images and inspect the result:
 
 ```sh
 # Generate a request with 2 images
-go run misc/gen_tlv_request.go \
+go run misc/gen_wire_request.go \
   "What's in these images?" image1.jpg image2.jpg \
-  | alayacore --rawio | go run ./misc/tlvcat.go
+  | alayacore --rawio | go run ./misc/wirecat.go
 ```
 
 ## Use Cases
 
 - **Orchestration**: A parent AI agent launches AlayaCore as a subprocess
-  and communicates with it using TLV frames.
-- **Testing**: Send specific TLV sequences to test session behavior.
+  and communicates with it using frames.
+- **Testing**: Send specific frame sequences to test session behavior.
 - **Integration**: Connect AlayaCore to custom UIs, dashboards, or
-  pipelines that speak the TLV protocol.
+  pipelines that speak the wire format.

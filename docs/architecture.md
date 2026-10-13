@@ -2,8 +2,8 @@
 
 AlayaCore follows a layered architecture with **strict adapter-agent isolation**.
 The adapter (UI) and agent (session + LLM) communicate **exclusively** via a
-lightweight TLV (Tag-Length-Value) binary protocol — no direct function calls,
-no shared mutable state, no bypass. See [development-principles.md](development-principles.md)
+lightweight frame protocol — one frame per line, no direct
+function calls, no shared mutable state, no bypass. See [development-principles.md](development-principles.md)
 for the full rules.
 
 ## Components
@@ -28,7 +28,7 @@ The session layer manages conversation state, task execution, and model interact
 | `Session` | Main struct managing conversation state, message history, and task execution |
 | Model management | Owns model config loading, runtime settings, provider/agent creation, reasoning level, and model resolution |
 | MCP lifecycle | Owns MCP initialization (connect, OAuth, discover, ready flag) |
-| Session persistence | Handles session file I/O and markdown/TLV serialization |
+| Session persistence | Handles session file I/O and markdown/frame serialization |
 | Command dispatch | Declarative command registration and dispatch for `:save`, `:cancel`, etc. |
 | Model config loading | Loads and manages AI model configurations from `model.conf`. Persists edits from `:model_sync` back to the file. |
 | Runtime settings | Persists runtime settings (active model, active theme) to `runtime.conf` |
@@ -42,7 +42,7 @@ The session uses three goroutines for concurrent operation:
 | Goroutine | Source | Role |
 |-----------|--------|------|
 | **Main loop** (`run()`) | `Session.Start()` | Owns all mutable state, processes commands |
-| **Input pump** (`inputPump()`) | launched by `run()` | Reads TLV frames from the input stream, sends parsed messages to the main loop |
+| **Input pump** (`inputPump()`) | launched by `run()` | Reads frames from the input stream, sends parsed messages to the main loop |
 | **Task worker** (`runTaskNormal` / `runTaskContinue` / `runTaskSummarize`) | spawned by `run()` per task | Executes a single task (LLM streaming + tool calls), returns final messages via `taskResultCh` |
 
 **Cross-goroutine communication:**
@@ -80,7 +80,7 @@ input ends (EOF or CE) ──▶ run() records it ──┐
 ```
 
 **State ownership:**
-- The input pump goroutine is a pure TLV parser. It reads frames from the input stream, builds inputMsg values, and sends them to `run()` via `inputMsgCh`. It has zero knowledge of commands and never touches session state — commands arrive as CI frames (`TagCommandIn`) and are dispatched entirely in `run()`. All command dispatch, cancellation, and output writing happens in `run()`.
+- The input pump goroutine is a pure frame parser. It reads frames from the input stream, builds inputMsg values, and sends them to `run()` via `inputMsgCh`. It has zero knowledge of commands and never touches session state — commands arrive as CI frames (`TagCommandIn`) and are dispatched entirely in `run()`. All command dispatch, cancellation, and output writing happens in `run()`.
 - Commands are a request/response control plane: CI `{id, name, input}` → CO `{id, output, is_error}`. Results never travel as SM `error`/`notify` — those are reserved for non-command events.
 - `sendSystemInfo` runs only in the `run()` goroutine; the task goroutine sends state mutations via `taskEventCh` which trigger broadcasts.
 
@@ -150,15 +150,15 @@ because from the queue's point of view they had been delivered. See
 - **Load** — On startup, AlayaCore starts a new empty session unless you specify `--session` to load an existing one. A missing session file is the normal first-run case (silent). If the file exists but is corrupt or unreadable, an error message is emitted (system error message, shown by the active adapter) and a fresh session is started; an incompatible `message_version` is rejected outright (see below).
 - **Auto-summarize** — When `--auto-summarize` is set to a positive threshold percentage (e.g. `--auto-summarize=65`), AlayaCore automatically triggers `:summarize` when context reaches that percentage of the limit. It is checked at the start of every prompt **and before each step of a running task**, so a single long turn is compacted mid-flight rather than only between prompts: the summarize prompt is sent after the step's tool result (so the model reads it before summarizing), the compacted history replaces the conversation, and the turn continues from it. A failed summarization ends the turn and is reported to the adapter as a system error message — the uncompressed history is preserved rather than the request that would follow being sent (see `docs/context-tracking.md`).
 
-Session files use a key-value frontmatter + binary TLV body format. The frontmatter uses `---` delimiters with simple `key: value` lines (parsed by `config.ParseKeyValue`). The body contains TLV-encoded conversation data (messages, tool calls, tool results) written directly as binary TLV records after the frontmatter.
+Session files use a key-value frontmatter + one-frame-per-line body format. The frontmatter uses `---` delimiters with simple `key: value` lines (parsed by `config.ParseKeyValue`). The body contains the conversation (messages, tool calls, tool results) written directly as frames after the frontmatter.
 
 **History IDs are not in the file.** A body record carries a tag and its JSON body only — `HistoryID`/`Role`/`Time` are `json:"-"` on `ContentPartMeta`, and the writer serializes the frame with an empty `"id"` (`contentPartJSON(part, "")`). The id is a *stream* concern: added per frame for the adapter by `replayContentsToAdapter`, never by the writer. Loading re-issues IDs sequentially in file order (`persistence.go`: `seqID++` then `SetHistoryID(seqID)`), so a loaded session's IDs are exactly `1..N`, ascending with position, by construction. That is why `histCounter` can resume at `len(Contents)` without risking a collision, and why a numbering anomaly seen in a live session — a block numbered against the record, or IDs ordered against the record — is a property of that run's arrival order: it is never written down, and reopening the file clears it.
 
-The frontmatter includes a `message_version` field carrying the **adapter protocol version** — the frame format adapters speak (tags, SM types, the states they carry). It is broadcast to adapters as the first `TagSystemMsg` frame on startup (`{"type":"version","data":{"message_version":14,"core_version":"<build-time version>"}}`), so an out-of-process adapter (a `--rawio` client) can validate format compatibility before processing subsequent messages. The built-in adapters are compiled from this same source, so they share the constant directly and do not act on the frame. The number moves for additive changes too (a new tag, a new state): an adapter that knows only the older format has no other way to learn that the newer one exists.
+The frontmatter includes a `message_version` field carrying the **adapter protocol version** — the frame format adapters speak (tags, SM types, the states they carry). It is broadcast to adapters as the first `TagSystemMsg` frame on startup (`{"type":"version","data":{"message_version":15,"core_version":"<build-time version>"}}`), so an out-of-process adapter (a `--rawio` client) can validate format compatibility before processing subsequent messages. The built-in adapters are compiled from this same source, so they share the constant directly and do not act on the frame. The number moves for additive changes too (a new tag, a new state): an adapter that knows only the older format has no other way to learn that the newer one exists.
 
 Session files record the number, and loading demands an exact match (`parseSessionMeta`) — any mismatch is rejected outright, and nothing migrates an older file. That is a consequence of carrying the protocol version in the file rather than a promise about the file's contents; a user who wants to load one anyway can edit the field in the frontmatter.
 
-**Message grouping on load:** The session format stores a flat sequence of TLV chunks with no explicit message boundaries. On load, chunks are grouped into messages by role: consecutive chunks with the same role are merged into a single message's `Content` array. This correctly handles multi-part user messages (e.g., when a user adds context after a failed prompt) and assistant messages containing reasoning + text + tool calls.
+**Message grouping on load:** The session format stores a flat sequence of frames with no explicit message boundaries. On load, frames are grouped into messages by role: consecutive frames with the same role are merged into a single message's `Content` array. This correctly handles multi-part user messages (e.g., when a user adds context after a failed prompt) and assistant messages containing reasoning + text + tool calls.
 
 ### Agent Layer (`internal/llm/`)
 
@@ -252,7 +252,7 @@ AlayaCore uses Go build tags for all OS-specific code. The only platform-depende
 | `terminate_unix.go` | `!windows` | `Job` (no-op), `AssignJob` (no-op), `ClearJob` (no-op), `SignalProcessGroup` (SIGINT; SIGKILL follow-up via `exec.Cmd.WaitDelay`) |
 | `terminate_windows.go` | `windows` | `Job` type, `AssignJob`, `ClearJob`, `SignalProcessGroup` (Job Object → `taskkill /F /T` → `Kill`) |
 
-All other packages (LLM providers, session management, TLV protocol, skills, schema generation) are pure Go with no OS-specific code.
+All other packages (LLM providers, session management, frame protocol, skills, schema generation) are pure Go with no OS-specific code.
 
 ## System Prompt Architecture
 
@@ -295,7 +295,7 @@ correct base directory for the current session.
 
 ## Design Decisions
 
-1. **TLV Protocol** — Simple binary protocol enforces strict separation between adapters and session. The TUI, plain-IO, and raw-IO modes all share the same session/agent logic. No adapter may call agent functions directly — all communication goes through TLV frames.
+1. **Frame Protocol** — A simple line protocol enforces strict separation between adapters and session. The TUI, plain-IO, and raw-IO modes all share the same session/agent logic. No adapter may call agent functions directly — all communication goes through frames.
 2. **Virtual Scrolling** — Only visible windows are rendered. See [virtual-rendering-performance.md](internal/virtual-rendering-performance.md).
 3. **Typed Tools** — `TypedExecute[T]` wrapper for type-safe tool implementations with auto-generated schemas. See [schema-improvements.md](internal/schema-improvements.md).
 4. **Lazy Agent Init** — Agent and provider are created on first use, not at startup.

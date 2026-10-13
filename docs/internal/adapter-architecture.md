@@ -1,6 +1,6 @@
 # Adapter Architecture
 
-The adapter layer handles user interaction and translates between user actions and the TLV protocol.
+The adapter layer handles user interaction and translates between user actions and the frame protocol.
 
 ## Adapters
 
@@ -18,7 +18,7 @@ The adapter layer handles user interaction and translates between user actions a
 | `HelpWindow` | Overlay listing keybindings and commands with search |
 | `AttachmentWindow` | File/URL attachment picker with directory browser |
 | `ConfirmDialog` | Confirmation dialog for tool execution and other actions |
-| `OutputWriter` | Parses TLV from session and renders styled content |
+| `OutputWriter` | Parses frame from session and renders styled content |
 | `WindowBuffer` | Virtual scrolling buffer for display windows |
 | `Theme` | Customizable color scheme (Catppuccin Mocha default) |
 
@@ -32,32 +32,32 @@ Minimal stdin/stdout mode, activated with `--terseio`. Reads **all of stdin as a
 
 ### RawIO Adapter (`internal/adapters/rawio/`)
 
-Raw TLV stdin/stdout mode, activated with `--rawio`. Reads and writes raw TLV-encoded frames directly, with no text parsing or formatting. Designed for parent programs that speak the TLV protocol to control AlayaCore programmatically.
+Raw frame stdin/stdout mode, activated with `--rawio`. Reads and writes raw frames directly, with no text parsing or formatting. Designed for parent programs that speak the frame protocol to control AlayaCore programmatically.
 
 ### File Naming Convention
 
 Files in the adapter packages are named from the **session's perspective**:
 
-- **`input.go`** — builds the **input to the session**. Reads user data (keystrokes, stdin lines) and feeds it into the session's input channel via TLV-encoded messages.
-- **`output.go`** — handles the **output from the session**. Receives TLV messages from the session and renders them to the user (TUI windows, stdout).
+- **`input.go`** — builds the **input to the session**. Reads user data (keystrokes, stdin lines) and feeds it into the session's input channel via frames.
+- **`output.go`** — handles the **output from the session**. Receives frames from the session and renders them to the user (TUI windows, stdout).
 
 The rawio adapter is a thin exception — `adapter.go` passes `os.Stdin`
 directly to the session, and `writer.go` wraps `os.Stdout` in a
 `lockedWriter` that serializes the session's concurrent writes (run +
-task goroutines) so TLV frames larger than PIPE_BUF cannot interleave
+task goroutines) so frames larger than PIPE_BUF cannot interleave
 mid-frame and corrupt the protocol.
 
 ```
-User IO ──▶ input.go ──▶ TLV (stdin) ──▶ Session ──▶ TLV (stdout) ──▶ output.go ──▶ User IO
+User IO ──▶ input.go ──▶ frames (stdin) ──▶ Session ──▶ frames (stdout) ──▶ output.go ──▶ User IO
 ```
 
 ## Communication Pattern
 
-All adapters communicate with the session **exclusively** through the TLV stream protocol:
+All adapters communicate with the session **exclusively** through the frame stream protocol:
 
 ```
-Adapter ──▶ TLV frames (stdin) ──▶ Session
-Session ──▶ TLV frames (stdout) ──▶ Adapter
+Adapter ──▶ frames (stdin) ──▶ Session
+Session ──▶ frames (stdout) ──▶ Adapter
 ```
 
 This is the **only** runtime channel. The session must not call adapter functions,
@@ -67,23 +67,29 @@ for the full isolation rules.
 
 ### Theme Persistence
 
-The session persists the active theme to `runtime.conf` and communicates it to the terminal adapter through TLV as a `TagSystemMsg` with type `"theme"`. The session skips theme broadcasting entirely for plainio, terseio, and rawio modes (`NoTheme` — they have no visual rendering): no `theme`/`theme_list` messages are sent, theme errors are never emitted, and `:theme_set` is rejected as unavailable. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
+The session persists the active theme to `runtime.conf` and communicates it to the terminal adapter as frames as a `TagSystemMsg` with type `"theme"`. The session skips theme broadcasting entirely for plainio, terseio, and rawio modes (`NoTheme` — they have no visual rendering): no `theme`/`theme_list` messages are sent, theme errors are never emitted, and `:theme_set` is rejected as unavailable. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
 
 Theme changes flow through the session to keep a single source of truth:
 
 1. `:theme_set <name>` (typed by user) or theme selector confirm both send the command to the session (as a CI frame; the result arrives as a CO frame)
-2. Session persists the theme name to `runtime.conf` and broadcasts the updated theme via a `TagSystemMsg` TLV message (`{"type":"theme","data":{"name":"...","theme":{...}}}`)
-3. The terminal detects the theme change in `updateStatus()` and calls `applyTheme()` with the full theme data from the TLV message, updating all UI component styles
+2. Session persists the theme name to `runtime.conf` and broadcasts the updated theme via a `TagSystemMsg` frame (`{"type":"theme","data":{"name":"...","theme":{...}}}`)
+3. The terminal detects the theme change in `updateStatus()` and calls `applyTheme()` with the full theme data from the frame, updating all UI component styles
 
 This ensures both paths converge: the theme selector's live preview applies
 themes via a debounced tick for smooth navigation, but the final commit
 always goes through the session.
 
-## TLV Protocol
+## Wire Format
 
-See [`adapter-guide/README.md`](../../adapter-guide/README.md) for the full TLV
-protocol spec — wire format, tags, delta messages, function lifecycle,
-and binary samples for every message type.
+One frame per line: a two-byte tag, a JSON value, and an LF. The tag names the
+frame's plane and the value carries the kind; `UE` and `CE` are control frames
+whose line is the tag alone. The reader never skips a malformed frame — it ends
+the stream, because a frame that is not a frame means the writer lost its place.
+
+See [`adapter-guide/README.md`](../../adapter-guide/README.md) for the full frame
+protocol spec — the format, the tags, delta messages, function lifecycle, and a
+sample file for every frame type — and `internal/lines` for the boundary itself,
+which the MCP and SSE readers share.
 
 ## Data Flow
 
@@ -113,16 +119,16 @@ main.go → config.Parse() → Settings
 ```
 User types prompt
   → PromptInput captures input
-    → Emit TLV(UX, one JSON content item), TLV(UE)
-      → inputPump reads TLV, stages content, flushes on UE
+    → Emit frame(UX, one JSON content item), frame(UE)
+      → inputPump reads frame, stages content, flushes on UE
         → runTask() (task goroutine)
           → processPrompt()
             → Agent.Stream()
-              → Delta callbacks emit TLV(Ax), TLV(Af) (streaming deltas)
-              → Complete callbacks emit TLV(AX), TLV(AF) (authoritative)
-              → Tool output callbacks emit TLV(UF)
-              → Tool preview callbacks emit TLV(Uf) (ephemeral snapshots; ignored by non-TUI adapters)
-                → OutputWriter parses TLV
+              → Delta callbacks emit frame(Ax), frame(Af) (streaming deltas)
+              → Complete callbacks emit frame(AX), frame(AF) (authoritative)
+              → Tool output callbacks emit frame(UF)
+              → Tool preview callbacks emit frame(Uf) (ephemeral snapshots; ignored by non-TUI adapters)
+                → OutputWriter parses frames
                   → WindowBuffer.AppendOrUpdate()
                     → DisplayModel.View()
                       → Terminal renders output
@@ -132,12 +138,12 @@ User types prompt
 
 ```
 Agent.Stream() receives tool_call event
-  → OnToolInputStart callback → TLV(AF, call_id + name) → UI shows tool name immediately
-    → OnToolInputDelta callback → TLV(Af, call_id + delta) → UI shows truncated one-line preview
-    → OnToolInputComplete callback → TLV(AF, call_id + input) → UI fills in full arguments
+  → OnToolInputStart callback → frame(AF, call_id + name) → UI shows tool name immediately
+    → OnToolInputDelta callback → frame(Af, call_id + delta) → UI shows truncated one-line preview
+    → OnToolInputComplete callback → frame(AF, call_id + input) → UI fills in full arguments
       → Agent executes tool: tool.ExecuteStreaming(ctx, input, onDelta) when available
-        → OnToolOutputDelta callback → TLV(Uf, call_id + text) → UI shows live result preview snapshot
-        → OnToolOutput callback → TLV(UF, call_id + output) → UI replaces preview with authoritative output
+        → OnToolOutputDelta callback → frame(Uf, call_id + text) → UI shows live result preview snapshot
+        → OnToolOutput callback → frame(UF, call_id + output) → UI replaces preview with authoritative output
           → Tool result added to messages
             → Agent continues to next step (if under max_steps)
 ```
@@ -146,10 +152,10 @@ Agent.Stream() receives tool_call event
 
 The `StartSession()` function in `app/session.go` handles shared initialization for all adapters:
 
-- Creates an `io.Pipe()` internally, returning the `PipeWriter` to the adapter so it can feed TLV messages to the session
+- Creates an `io.Pipe()` internally, returning the `PipeWriter` to the adapter so it can feed frames to the session
 - `session.InitError()` — fatal initialization check (--model flag validation)
 - `session.GetLoadErrors()` — emit model config errors as system messages
 - `session.GetRuntimeLoadErrors()` — emit runtime.conf errors as system messages: parse errors, and a file that is there but cannot be read
 - `session.HasModels()` — abort if no models configured
 
-This is setup code, not runtime coupling. Once the program starts, the adapter only interacts with the session via TLV.
+This is setup code, not runtime coupling. Once the program starts, the adapter only interacts with the session as frames.
