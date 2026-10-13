@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestPressRTogglesMarkdownInViewport reproduces the bug where pressing
@@ -27,7 +26,7 @@ func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 	display := NewDisplayModel(wb, styles)
 
 	table := "| name | gender | age |\n|---|---|---|\n| Walllace | male | 100 |\n| Harry | male | 10 |\n"
-	wb.AppendOrUpdate(tlv.TagAssistantT, "win-1", table)
+	wb.AppendOrUpdate(tagAssistantText, "win-1", table)
 
 	// By default new windows are unfolded (Folded=false). Put the cursor
 	// on it and focus the display so 'r' is routed to the display model

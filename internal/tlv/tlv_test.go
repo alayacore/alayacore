@@ -9,7 +9,7 @@ import (
 )
 
 func TestReadTLV_RoundTrip(t *testing.T) {
-	msg, err := EncodeTLV(TagUserT, "hello world")
+	msg, err := EncodeTLV(TagUserX, "hello world")
 	if err != nil {
 		t.Fatalf("EncodeTLV() error = %v", err)
 	}
@@ -17,8 +17,8 @@ func TestReadTLV_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadTLV() error = %v", err)
 	}
-	if tag != TagUserT {
-		t.Errorf("tag = %q, want %q", tag, TagUserT)
+	if tag != TagUserX {
+		t.Errorf("tag = %q, want %q", tag, TagUserX)
 	}
 	if value != "hello world" {
 		t.Errorf("value = %q, want %q", value, "hello world")
@@ -47,7 +47,7 @@ func TestReadTLV_EmptyValue(t *testing.T) {
 func TestReadTLV_RejectsOversizedLength(t *testing.T) {
 	// Header advertising the maximum uint32 length (~4GB — would OOM
 	// without the guard, or panic on 32-bit platforms).
-	header := []byte{TagUserT[0], TagUserT[1], 0xff, 0xff, 0xff, 0xff}
+	header := []byte{TagUserX[0], TagUserX[1], 0xff, 0xff, 0xff, 0xff}
 	_, _, err := ReadTLV(bytes.NewReader(header))
 	if err == nil {
 		t.Fatal("ReadTLV() expected error for oversized length, got nil")
@@ -58,7 +58,7 @@ func TestReadTLV_RejectsOversizedLength(t *testing.T) {
 
 	// Just above the limit (MaxMessageSize + 1) is also rejected.
 	var over [6]byte
-	over[0], over[1] = TagUserT[0], TagUserT[1]
+	over[0], over[1] = TagUserX[0], TagUserX[1]
 	binary.BigEndian.PutUint32(over[2:], MaxMessageSize+1)
 	_, _, err = ReadTLV(bytes.NewReader(over[:]))
 	if err == nil {
@@ -69,7 +69,7 @@ func TestReadTLV_RejectsOversizedLength(t *testing.T) {
 	// through to reading the value bytes (which are absent here, so the
 	// error must be a read error, NOT a size error).
 	var atLimit [6]byte
-	atLimit[0], atLimit[1] = TagUserT[0], TagUserT[1]
+	atLimit[0], atLimit[1] = TagUserX[0], TagUserX[1]
 	binary.BigEndian.PutUint32(atLimit[2:], MaxMessageSize)
 	_, _, err = ReadTLV(bytes.NewReader(atLimit[:]))
 	if err == nil {
@@ -81,7 +81,7 @@ func TestReadTLV_RejectsOversizedLength(t *testing.T) {
 }
 
 func TestReadTLV_TruncatedHeader(t *testing.T) {
-	_, _, err := ReadTLV(bytes.NewReader([]byte{TagUserT[0]}))
+	_, _, err := ReadTLV(bytes.NewReader([]byte{TagUserX[0]}))
 	if err == nil {
 		t.Fatal("expected error for truncated header, got nil")
 	}
@@ -107,7 +107,7 @@ func TestCheckEncodeLength(t *testing.T) {
 // TestEncodeTLV_NormalValue verifies the two-value return of the new
 // signature (success path).
 func TestEncodeTLV_NormalValue(t *testing.T) {
-	msg, err := EncodeTLV(TagUserT, "hello")
+	msg, err := EncodeTLV(TagUserX, "hello")
 	if err != nil {
 		t.Fatalf("EncodeTLV() error = %v", err)
 	}

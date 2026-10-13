@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,10 +29,10 @@ func TestNewlineBetweenDifferentStreamGroups(t *testing.T) {
 	}
 
 	// Simulate: assistant text delta with NUL-delimited history IDs
-	msg1 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("1", "hello "))
-	msg2 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("1", "world"))
+	msg1 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", "hello "))
+	msg2 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", "world"))
 	// New step: different history ID
-	msg3 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("2", "new step"))
+	msg3 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", "new step"))
 
 	o.Write(msg1)
 	o.Write(msg2)
@@ -54,8 +55,8 @@ func TestDeltaCompleteFrameSkipped(t *testing.T) {
 	// Delta mode: At carries the content, AT is an empty terminator. The
 	// terminator must be skipped — processing it would print a spurious
 	// separator (delta tag "At" vs complete tag "AT") and an empty line.
-	o.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "hello")))
-	o.Write(encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("1", "")))
+	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "hello")))
+	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", "")))
 
 	if got := buf.String(); got != "hello" {
 		t.Errorf("output = %q, want %q (empty AT terminator must not add a separator)", got, "hello")
@@ -73,7 +74,7 @@ func TestSeenDeltaBounded(t *testing.T) {
 	// bounded and the oldest (smallest) IDs must be evicted.
 	total := maxSeenDeltaEntries + 50
 	for i := 0; i < total; i++ {
-		o.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID(strconv.Itoa(i), "x")))
+		o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta(strconv.Itoa(i), "x")))
 	}
 
 	if len(o.seenDelta) > maxSeenDeltaEntries {
@@ -88,7 +89,7 @@ func TestSeenDeltaBounded(t *testing.T) {
 
 	// The complete-frame skip must still work for a retained ID.
 	buf.Reset()
-	o.Write(encodeTestTLV(tlv.TagAssistantT, tlv.WrapID(strconv.Itoa(total-1), "")))
+	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText(strconv.Itoa(total-1), "")))
 	if got := buf.String(); got != "" {
 		t.Errorf("output = %q, want empty (retained ID terminator must be skipped)", got)
 	}
@@ -101,7 +102,7 @@ func TestCommandOut_ErrorRenders(t *testing.T) {
 	}
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		ID:      "x1",
+		CallID:  "x1",
 		IsError: true,
 		Output:  json.RawMessage(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
 	})
@@ -120,7 +121,7 @@ func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 	}
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		ID:     "x2",
+		CallID: "x2",
 		Output: json.RawMessage(`{"path":"/tmp/x.alaya"}`),
 	})
 	o.Write(encodeTestTLV(tlv.TagCommandOut, string(payload)))
@@ -140,7 +141,7 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 	defer commandNames.Delete("p1")
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		ID:     "p1",
+		CallID: "p1",
 		Output: json.RawMessage(`{"path":"/tmp/x.alaya"}`),
 	})
 	o.Write(encodeTestTLV(tlv.TagCommandOut, string(payload)))
@@ -176,8 +177,8 @@ func TestNewlineBetweenTextAndReasoning(t *testing.T) {
 		writer: &buf,
 	}
 
-	msg1 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("1", "some text"))
-	msg2 := encodeTestTLV(tlv.TagAssistantR, tlv.WrapID("2", "some reasoning"))
+	msg1 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", "some text"))
+	msg2 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantReasoning("2", "some reasoning"))
 
 	o.Write(msg1)
 	o.Write(msg2)
@@ -195,8 +196,8 @@ func TestNewlineBetweenReasoningAndText(t *testing.T) {
 		writer: &buf,
 	}
 
-	msg1 := encodeTestTLV(tlv.TagAssistantR, tlv.WrapID("1", "thinking..."))
-	msg2 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("2", "answer"))
+	msg1 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantReasoning("1", "thinking..."))
+	msg2 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", "answer"))
 
 	o.Write(msg1)
 	o.Write(msg2)
@@ -216,8 +217,8 @@ func TestNoPrefixNoNewline(t *testing.T) {
 
 	// Messages without stream prefixes are malformed for stdout AT frames
 	// (history ID is always required). They should be silently ignored.
-	msg1 := encodeTestTLV(tlv.TagAssistantT, "hello ")
-	msg2 := encodeTestTLV(tlv.TagAssistantT, "world")
+	msg1 := encodeTestTLV(tlv.TagAssistantX, "hello ")
+	msg2 := encodeTestTLV(tlv.TagAssistantX, "world")
 
 	o.Write(msg1)
 	o.Write(msg2)
@@ -236,11 +237,11 @@ func TestToolCallResetsStreamPrefix(t *testing.T) {
 	}
 
 	// Stream some text
-	msg1 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("1", "hello"))
+	msg1 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", "hello"))
 	// Then a tool call (resets prefix)
 	msg2 := encodeTestTLV(tlv.TagAssistantF, `{"id":"1","type":"call","name":"read_file","input":"{}"}`)
 	// Then more text with different prefix — should NOT get extra newline since tool call reset it
-	msg3 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("2", "result"))
+	msg3 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", "result"))
 
 	o.Write(msg1)
 	o.Write(msg2)
@@ -259,11 +260,11 @@ func TestUserPromptResetsStreamPrefix(t *testing.T) {
 		writer: &buf,
 	}
 
-	msg1 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("1", "response"))
+	msg1 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", "response"))
 	// Echoed user prompts carry a NUL-delimited history ID (the agent
 	// assigns one before echoing back).
-	msg2 := encodeTestTLV(tlv.TagUserT, tlv.WrapID("9", "next prompt"))
-	msg3 := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("2", "new response"))
+	msg2 := encodeTestTLV(tlv.TagUserX, wiretest.UserText("9", "next prompt"))
+	msg3 := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", "new response"))
 
 	o.Write(msg1)
 	o.Write(msg2)
@@ -286,11 +287,11 @@ func TestUserPromptBlockFormat(t *testing.T) {
 
 	// Tool result ends with a newline → the User block gets a blank line
 	// before it.
-	o.Write(encodeTestTLV(tlv.TagUserF, tlv.WrapID("3", `{"id":"c1","output":[],"is_error":false}`)))
-	o.Write(encodeTestTLV(tlv.TagUserT, tlv.WrapID("1", "hello world")))
-	o.Write(encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("2", "answer")))
+	o.Write(encodeTestTLV(tlv.TagUserF, wiretest.ToolOutputLegacy("3", `{"id":"c1","output":[],"is_error":false}`)))
+	o.Write(encodeTestTLV(tlv.TagUserX, wiretest.UserText("1", "hello world")))
+	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", "answer")))
 
-	want := "{\"id\":\"c1\",\"output\":[],\"is_error\":false}\n\nUser: hello world\n\nanswer"
+	want := wiretest.ToolOutputLegacy("3", `{"id":"c1","output":[],"is_error":false}`) + "\n\nUser: hello world\n\nanswer"
 	if got := buf.String(); got != want {
 		t.Errorf("output = %q, want %q", got, want)
 	}

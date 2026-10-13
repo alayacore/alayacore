@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/theme"
@@ -29,10 +30,10 @@ import (
 func TestFlushPendingDeltasCreatesWindowsInHistoryIDOrder(t *testing.T) {
 	const iterations = 200
 
-	arDelta := encodeTestTLV(tlv.TagAssistantRDelta, tlv.WrapID("1", "The user said hello?"))
-	atDelta := encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("2", "Hello! How can I help?"))
-	arFrame := encodeTestTLV(tlv.TagAssistantR, tlv.WrapID("1", ""))
-	atFrame := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID("2", ""))
+	arDelta := encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantReasoningDelta("1", "The user said hello?"))
+	atDelta := encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "Hello! How can I help?"))
+	arFrame := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantReasoning("1", ""))
+	atFrame := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", ""))
 
 	tests := []struct {
 		name   string
@@ -60,11 +61,11 @@ func TestFlushPendingDeltasCreatesWindowsInHistoryIDOrder(t *testing.T) {
 				if wb.WindowCount() != 2 {
 					t.Fatalf("iteration %d: expected 2 windows, got %d", i, wb.WindowCount())
 				}
-				if got := wb.WindowAt(0).Tag(); got != tlv.TagAssistantR {
+				if got := wb.WindowAt(0).Tag(); got != tagAssistantReasoning {
 					t.Fatalf("iteration %d: window 0 must be reasoning (AR), got %s — "+
 						"flushPendingDeltas is not ordering by historyID", i, got)
 				}
-				if got := wb.WindowAt(1).Tag(); got != tlv.TagAssistantT {
+				if got := wb.WindowAt(1).Tag(); got != tagAssistantText {
 					t.Fatalf("iteration %d: window 1 must be assistant text (AT), got %s", i, got)
 				}
 			}

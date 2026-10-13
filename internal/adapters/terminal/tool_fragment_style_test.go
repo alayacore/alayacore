@@ -26,7 +26,7 @@ func makeDiffWindow(t *testing.T, width int) *WindowBuffer {
 	// Input is raw tool-call text with REAL newlines (as produced by the
 	// agent) — the diff prefixes drive RenderDiffContent's coloring.
 	input := "edit_file: /tmp/x\n- old line one\n+ new line one\n  context line\n- another old line"
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t1", Name: "edit_file", Input: json.RawMessage(input)}, 1)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t1", Name: "edit_file", Input: json.RawMessage(input)}, 1)
 	// Output: a separator + a long line that wraps across visual rows.
 	wb.HandleToolOutput("t1", "long output line that definitely wraps across several visual rows at this width", false, 2)
 	wb.ToggleFold(0) // expand
@@ -110,7 +110,7 @@ func TestToolFragmentMidColorWrap(t *testing.T) {
 	// A single long diff line (- prefix) far wider than the window: its
 	// wrapped continuations keep the DiffRemove color.
 	input := "edit_file: /tmp/x\n- " + strings.Repeat("X", 120)
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t1", Name: "edit_file", Input: json.RawMessage(input)}, 1)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t1", Name: "edit_file", Input: json.RawMessage(input)}, 1)
 	wb.ToggleFold(0)
 
 	// Inside the wrapped diff input: the window's own line is cut off, so it

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"strings"
 	"testing"
 	"time"
@@ -24,11 +25,11 @@ func TestReadAllPrompt_MultiLine(t *testing.T) {
 	if len(frames) != 2 {
 		t.Fatalf("frames = %d, want 2 (UT + UE), got %q", len(frames), buf.String())
 	}
-	if frames[0].tag != tlv.TagUserT {
-		t.Errorf("frame[0] tag = %q, want %q", frames[0].tag, tlv.TagUserT)
+	if frames[0].tag != tlv.TagUserX {
+		t.Errorf("frame[0] tag = %q, want %q", frames[0].tag, tlv.TagUserX)
 	}
 	// Trailing newlines trimmed, inner newlines preserved.
-	if frames[0].value != "line one\nline two" {
+	if frames[0].value != wiretest.UserText("", "line one\nline two") {
 		t.Errorf("prompt = %q, want %q", frames[0].value, "line one\nline two")
 	}
 	if frames[1].tag != tlv.TagUserEnd {
@@ -43,7 +44,7 @@ func TestReadAllPrompt_SingleLineNoNewline(t *testing.T) {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
 	frames := parseTLVFrames(t, buf.Bytes())
-	if len(frames) != 2 || frames[0].value != "single line" {
+	if len(frames) != 2 || frames[0].value != wiretest.UserText("", "single line") {
 		t.Errorf("frames = %+v, want UT with %q + UE", frames, "single line")
 	}
 }
@@ -83,12 +84,12 @@ func TestReadAllPrompt_Command(t *testing.T) {
 	if cmd.Input != "/tmp/x.alaya" {
 		t.Errorf("cmd.Input = %q, want %q", cmd.Input, "/tmp/x.alaya")
 	}
-	if !strings.HasPrefix(cmd.ID, "terse-") {
-		t.Errorf("cmd.ID = %q, want terse- prefix", cmd.ID)
+	if !strings.HasPrefix(cmd.CallID, "terse-") {
+		t.Errorf("cmd.CallID = %q, want terse- prefix", cmd.CallID)
 	}
 	// The adapter must track the id → name mapping for CO correlation.
-	if name, ok := commandNames.Load(cmd.ID); !ok || name != commands.CommandNameSave {
-		t.Errorf("commandNames[%q] = %v, %v; want %q, true", cmd.ID, name, ok, commands.CommandNameSave)
+	if name, ok := commandNames.Load(cmd.CallID); !ok || name != commands.CommandNameSave {
+		t.Errorf("commandNames[%q] = %v, %v; want %q, true", cmd.CallID, name, ok, commands.CommandNameSave)
 	}
 }
 
@@ -206,7 +207,7 @@ func TestReadAllPrompt_WritesWithoutWaiting(t *testing.T) {
 	}
 
 	frames := parseTLVFrames(t, buf.Bytes())
-	if len(frames) != 2 || frames[0].tag != tlv.TagUserT || frames[0].value != "hello" {
+	if len(frames) != 2 || frames[0].tag != tlv.TagUserX || frames[0].value != wiretest.UserText("", "hello") {
 		t.Errorf("frames = %+v, want UT %q + UE", frames, "hello")
 	}
 }

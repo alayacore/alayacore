@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,7 +43,7 @@ func readInputMsg(t *testing.T, s *Session) inputMsg {
 func TestInputFrame_CommandIn_Valid(t *testing.T) {
 	s := newInputFrameSession()
 
-	cmd := protocol.CmdMsg{ID: "a1b2", Name: "save", Input: "/tmp/x.alaya"}
+	cmd := protocol.CmdMsg{CallID: "a1b2", Name: "save", Input: "/tmp/x.alaya"}
 	payload, err := json.Marshal(cmd)
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)
@@ -74,7 +75,7 @@ func TestInputFrame_CommandIn_Valid(t *testing.T) {
 func TestInputFrame_CommandIn_NoInput(t *testing.T) {
 	s := newInputFrameSession()
 
-	cmd := protocol.CmdMsg{ID: "c3d4", Name: "cancel"}
+	cmd := protocol.CmdMsg{CallID: "c3d4", Name: "cancel"}
 	payload, err := json.Marshal(cmd)
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)
@@ -108,12 +109,12 @@ func TestInputFrame_CommandIn_InvalidJSON(t *testing.T) {
 func TestInputFrame_CommandIn_WithStagedContent(t *testing.T) {
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagUserT, "hello", nil)
+	staged := s.handleInputFrame(tlv.TagUserX, wiretest.UserText("", "hello"), nil)
 	if len(staged) != 1 {
 		t.Fatalf("expected 1 staged part, got %d", len(staged))
 	}
 
-	cmd := protocol.CmdMsg{ID: "x", Name: "save"}
+	cmd := protocol.CmdMsg{CallID: "x", Name: "save"}
 	payload, _ := json.Marshal(cmd)
 	staged = s.handleInputFrame(tlv.TagCommandIn, string(payload), staged)
 	if staged != nil {
@@ -130,7 +131,7 @@ func TestInputFrame_UserText_NoCommandSniffing(t *testing.T) {
 	// UT no longer carries commands: ":cancel" is plain user text now.
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagUserT, ":cancel", nil)
+	staged := s.handleInputFrame(tlv.TagUserX, wiretest.UserText("", ":cancel"), nil)
 	if len(staged) != 1 {
 		t.Fatalf("expected 1 staged part, got %d", len(staged))
 	}
@@ -153,7 +154,7 @@ func TestInputFrame_UserText_NoCommandSniffing(t *testing.T) {
 func TestInputFrame_UserText_ThenEnd(t *testing.T) {
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagUserT, "hello", nil)
+	staged := s.handleInputFrame(tlv.TagUserX, wiretest.UserText("", "hello"), nil)
 	staged = s.handleInputFrame(tlv.TagUserEnd, "", staged)
 	if staged != nil {
 		t.Errorf("UE should clear staged content, got %d parts", len(staged))
@@ -189,7 +190,7 @@ func TestWriteCmdResult_Success(t *testing.T) {
 	s.writeCmdResult("a1b2", map[string]any{"path": "/tmp/x.alaya"}, nil)
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"id":"a1b2"`) {
+	if !strings.Contains(joined, `"call_id":"a1b2"`) {
 		t.Errorf("missing id in CO: %s", joined)
 	}
 	if !strings.Contains(joined, `"path":"/tmp/x.alaya"`) {
@@ -255,7 +256,7 @@ func TestHandleInputMsg_UnknownCommand(t *testing.T) {
 	if !strings.Contains(joined, `"code":"UNKNOWN_COMMAND"`) {
 		t.Errorf("expected UNKNOWN_COMMAND in CO: %s", joined)
 	}
-	if !strings.Contains(joined, `"id":"x1"`) {
+	if !strings.Contains(joined, `"call_id":"x1"`) {
 		t.Errorf("expected echoed id in CO: %s", joined)
 	}
 }
@@ -269,7 +270,7 @@ func TestHandleInputMsg_InputErrorUncorrelated(t *testing.T) {
 	if !strings.Contains(joined, `"code":"BAD_FRAME"`) {
 		t.Errorf("expected BAD_FRAME in CO: %s", joined)
 	}
-	if !strings.Contains(joined, `"id":""`) {
+	if !strings.Contains(joined, `"call_id":""`) {
 		t.Errorf("input errors should carry empty id: %s", joined)
 	}
 }
@@ -469,7 +470,7 @@ func TestStartTaskCommand_RefusedDoesNotBroadcast(t *testing.T) {
 			if !strings.Contains(joined, `"code":"`+tc.wantCode+`"`) {
 				t.Errorf("expected %s error in CO: %s", tc.wantCode, joined)
 			}
-			if !strings.Contains(joined, `"id":"x2"`) {
+			if !strings.Contains(joined, `"call_id":"x2"`) {
 				t.Errorf("expected echoed id in CO: %s", joined)
 			}
 			// No task frame at all: neither in_progress:true (the indicator must

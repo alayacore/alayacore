@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestUpdateTaskCompletionEdge locks the edge detection that drives the
@@ -47,33 +46,33 @@ func TestSettleUnfinishedTools(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	// Executing tool with no output yet — the straggler case.
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "pending",
-		Name:  "execute_command",
-		Input: json.RawMessage("sleep 60"),
+		CallID: "pending",
+		Name:   "execute_command",
+		Input:  json.RawMessage("sleep 60"),
 	}, 0)
 	// Executing tool with partial output — output must be preserved.
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "partial",
-		Name:  "search_content",
-		Input: json.RawMessage("x"),
+		CallID: "partial",
+		Name:   "search_content",
+		Input:  json.RawMessage("x"),
 	}, 0)
 	wb.HandleToolOutputDelta("partial", "50%", 0)
 	// Args-streaming window (never completed its AF input).
 	wb.HandleToolInputDelta("streaming", "write_file", `{"path":"/tmp/`, 0)
 	// Finished tools and a text window — untouched.
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "done",
-		Name:  "read_file",
-		Input: json.RawMessage("x"),
+		CallID: "done",
+		Name:   "read_file",
+		Input:  json.RawMessage("x"),
 	}, 0)
 	wb.HandleToolOutput("done", "content", false, 0)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "failed",
-		Name:  "execute_command",
-		Input: json.RawMessage("boom"),
+		CallID: "failed",
+		Name:   "execute_command",
+		Input:  json.RawMessage("boom"),
 	}, 0)
 	wb.HandleToolOutput("failed", "err", true, 0)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", "hello")
+	wb.AppendOrUpdate(tagAssistantText, "w1", "hello")
 	wb.GetAll(-1, false) // populate the render cache so invalidate is observable
 
 	settled := wb.SettleUnfinishedTools()
@@ -131,9 +130,9 @@ func TestSettleUnfinishedTools(t *testing.T) {
 func TestTaskCompletionSettlesPendingTools(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	out.WindowBuffer().HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: json.RawMessage("sleep 60"),
+		CallID: "t1",
+		Name:   "execute_command",
+		Input:  json.RawMessage("sleep 60"),
 	}, 0)
 
 	// Task runs, then completes — no UF frame ever arrives for t1.
@@ -156,15 +155,15 @@ func TestTaskCompletionDoesNotDisturbSettledTools(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	wb := out.WindowBuffer()
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "ok",
-		Name:  "read_file",
-		Input: json.RawMessage("x"),
+		CallID: "ok",
+		Name:   "read_file",
+		Input:  json.RawMessage("x"),
 	}, 0)
 	wb.HandleToolOutput("ok", "content", false, 0)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "bad",
-		Name:  "execute_command",
-		Input: json.RawMessage("boom"),
+		CallID: "bad",
+		Name:   "execute_command",
+		Input:  json.RawMessage("boom"),
 	}, 0)
 	wb.HandleToolOutput("bad", "err", true, 0)
 

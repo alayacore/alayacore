@@ -3,53 +3,49 @@
 //
 // Wire format: [2-byte tag][4-byte big-endian length][value bytes]
 //
-// Tag values are 2-character strings identifying the content type:
-//   - UT: User text
-//   - UI: User image
-//   - UV: User video
-//   - UA: User audio
-//   - UD: User document
+// Every frame carries either a zero-length control value (UE, CE) or a JSON
+// object. The two-byte tag names the frame's *plane*, not the concrete content
+// kind — the kind travels inside the JSON as "type". Tags are grouped as a
+// 2x2 over {into the model (U), out of the model (A)} x {content (X), function (F)}:
+//   - UX: User content (a content item; both directions — input and echo)
+//   - AX: Assistant content (complete/authoritative; empty if deltas preceded it)
+//   - AF: Assistant function / tool call (complete/authoritative)
+//   - UF: User function / tool result
 //   - UE: User message end
 //   - CE: Control-plane input end (the adapter has no more input; commands
 //     may still follow — see TagInputEnd)
-//   - AT: Assistant text (complete/authoritative; empty if deltas preceded it)
-//   - AR: Assistant reasoning (complete/authoritative; empty if deltas preceded it)
-//   - AF: Assistant function / tool call (complete/authoritative)
-//   - UF: User function / tool result
 //   - CI: Command input (adapter → agent, JSON CmdMsg)
 //   - CO: Command output (agent → adapter, JSON CmdResultMsg)
 //   - SM: System message
 //
+// Function frames are kept apart from content frames because a tool call and
+// its result are a *pair* correlated by call_id — they can run in parallel,
+// interleave, stream half-way, and be reordered by id. They are not a
+// self-contained content item, so they carry their own shape.
+//
 // Lowercase tags carry streaming delta / incremental content:
-//   - At: Assistant text delta (streaming fragment)
-//   - Ar: Assistant reasoning delta (streaming fragment)
+//   - Ax: Assistant content delta (streaming fragment; "type" says text or reasoning)
 //   - Af: Assistant function / tool call delta (partial JSON argument)
 //   - Uf: Tool result preview snapshot (ephemeral, display-only; the
 //     authoritative result always arrives via UF)
 //
-// AT/AR behavior varies by mode:
-//   - Default (deltas enabled): At/Ar carry content; AT/AR are empty terminators.
-//   - --no-delta mode: At/Ar are absent; AT/AR carry the full content.
+// AX behavior varies by mode:
+//   - Default (deltas enabled): Ax carries content; AX is an empty terminator.
+//   - --no-delta mode: Ax is absent; AX carries the full content.
 package tlv
 
 import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"strings"
 )
 
 // TLV tag constants - these are sent over the wire.
 const (
-	TagAssistantR = "AR" // Reasoning/thinking content (complete)
-	TagAssistantT = "AT" // Assistant text output (complete)
-	TagAssistantF = "AF" // JSON: id, name, input (function arguments, complete)
-	TagUserT      = "UT" // User text input
-	TagUserF      = "UF" // JSON: id, output, is_error (function result)
-	TagUserI      = "UI" // User image — data:image/...;base64,... or URL
-	TagUserV      = "UV" // User video — data:video/...;base64,... or URL
-	TagUserA      = "UA" // User audio — data:audio/...;base64,... or URL
-	TagUserD      = "UD" // User document — data:application/...;base64,... or URL
+	TagAssistantF = "AF" // JSON: call_id, name, input (function arguments, complete)
+	TagUserF      = "UF" // JSON: call_id, output, is_error (function result)
+	TagUserX      = "UX" // User content — JSON content item (type + text/uri/…)
+	TagAssistantX = "AX" // Assistant content — JSON content item (type + text)
 
 	TagUserEnd = "UE" // User message end — flushes staged content as one window
 
@@ -72,8 +68,7 @@ const (
 	TagSystemMsg = "SM" // System message JSON: {"type":"...","data":{...}}
 
 	// Lowercase tags for streaming delta / incremental content.
-	TagAssistantRDelta = "Ar" // Assistant reasoning delta (streaming fragment)
-	TagAssistantTDelta = "At" // Assistant text delta (streaming fragment)
+	TagAssistantXDelta = "Ax" // Assistant content delta (type is text or reasoning)
 	TagAssistantFDelta = "Af" // Assistant function / tool call delta (partial JSON argument)
 	TagUserFDelta      = "Uf" // Tool result preview snapshot (ephemeral, non-authoritative)
 )
@@ -167,32 +162,4 @@ func ReadTLV(input io.Reader) (string, string, error) {
 	}
 
 	return tag, string(valueBuf), nil
-}
-
-// WrapID prepends a NUL-delimited history ID to content.
-// Format: \x00<id>\x00<content>
-func WrapID(id string, content string) string {
-	return "\x00" + id + "\x00" + content
-}
-
-// UnwrapID extracts the NUL-delimited history ID prefix from a value.
-// Returns (id, content, true) on success, ("", value, false) if the
-// value has no NUL prefix (history ID not present).
-func UnwrapID(value string) (id string, content string, ok bool) {
-	if len(value) == 0 || value[0] != 0 {
-		return "", value, false
-	}
-
-	endIdx := strings.IndexByte(value[1:], 0)
-	if endIdx == -1 {
-		return "", value, false
-	}
-	endIdx++
-
-	id = value[1:endIdx]
-	if id == "" {
-		return "", value, false
-	}
-
-	return id, value[endIdx+1:], true
 }

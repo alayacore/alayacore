@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // familyEmoji is the ZWJ family sequence 👨‍👩‍👧‍👦 — a multi-codepoint
@@ -20,7 +19,7 @@ func TestFoldedToolCollapsedLine(t *testing.T) {
 	// Create a tool window with VERY long content that would wrap to many
 	// lines if expanded. The collapsed form must be a single truncated line.
 	longContent := strings.Repeat("This is a test sentence that will wrap. ", 12)
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "tool123", Name: "test_tool", Input: json.RawMessage(longContent)}, 0)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "tool123", Name: "test_tool", Input: json.RawMessage(longContent)}, 0)
 
 	// Folded by default — render the window
 	rendered := wb.GetAll(-1, false)
@@ -47,7 +46,7 @@ func TestFoldedToolCollapsedTruncatesToWidth(t *testing.T) {
 	wb := NewWindowBuffer(30, DefaultStyles())
 
 	longContent := strings.Repeat("This is a very long tool argument that will definitely overflow. ", 8)
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "tool123", Name: "test_tool", Input: json.RawMessage(longContent)}, 0)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "tool123", Name: "test_tool", Input: json.RawMessage(longContent)}, 0)
 
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
@@ -76,7 +75,7 @@ func TestFoldedDiffCollapsedLine(t *testing.T) {
 		content.WriteString(string(rune('0' + i%10)))
 		content.WriteString("\n")
 	}
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "diff123", Name: "edit_file", Input: json.RawMessage(content.String())}, 0)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "diff123", Name: "edit_file", Input: json.RawMessage(content.String())}, 0)
 
 	// Folded by default — render
 	rendered := wb.GetAll(-1, false)
@@ -174,8 +173,8 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
-	wb.AppendOrUpdate(tlv.TagAssistantR, "reason-1", "thinking about the plan")
-	wb.AppendOrUpdate(tlv.TagAssistantT, "assist-1", "all edits are in place")
+	wb.AppendOrUpdate(tagAssistantReasoning, "reason-1", "thinking about the plan")
+	wb.AppendOrUpdate(tagAssistantText, "assist-1", "all edits are in place")
 	wb.AppendOrUpdate("SN", "sys-1", "nothing to cancel")
 	wb.AppendOrUpdate("SE", "sys-2", "session failed")
 
@@ -251,9 +250,9 @@ func TestFoldedToolCollapsedLabelColor(t *testing.T) {
 	wb := NewWindowBuffer(80, styles)
 
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "tool123",
-		Name:  "edit_file",
-		Input: json.RawMessage("edit_file: /tmp/style.css"),
+		CallID: "tool123",
+		Name:   "edit_file",
+		Input:  json.RawMessage("edit_file: /tmp/style.css"),
 	}, 0)
 
 	rendered := wb.GetAll(-1, false)
@@ -283,12 +282,12 @@ func TestFoldedLabelsAligned(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
-	wb.AppendOrUpdate(tlv.TagUserT, "u", "what is lisp?")
-	wb.AppendOrUpdate(tlv.TagAssistantR, "r", "The user is asking what is lisp")
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a", "Lisp is one of the oldest languages")
+	wb.AppendOrUpdate(tagUserText, "u", "what is lisp?")
+	wb.AppendOrUpdate(tagAssistantReasoning, "r", "The user is asking what is lisp")
+	wb.AppendOrUpdate(tagAssistantText, "a", "Lisp is one of the oldest languages")
 	wb.AppendOrUpdate("SN", "n", "nothing to cancel")
 	wb.AppendOrUpdate("SE", "e", "session failed")
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t", Name: "cat", Input: json.RawMessage("cat: /tmp/x")}, 5)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t", Name: "cat", Input: json.RawMessage("cat: /tmp/x")}, 5)
 
 	// Collapse the user and assistant windows (both start expanded).
 	wb.ToggleFold(0)
@@ -336,9 +335,9 @@ func TestFoldedToolStatusIndicatorNoReplacementChar(t *testing.T) {
 	wb := NewWindowBuffer(80, styles)
 
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: json.RawMessage("execute_command: lscpu"),
+		CallID: "t1",
+		Name:   "execute_command",
+		Input:  json.RawMessage("execute_command: lscpu"),
 	}, 1)
 	wb.HandleToolOutput("t1", "x86_64", false, 1)
 
@@ -562,7 +561,7 @@ func TestFoldedTextWindowEllipsisIsDimmed(t *testing.T) {
 
 	// AT (assistant) — uses headAndTailParts, middle "…" is dimmed.
 	longText := strings.Repeat("beginning of answer ", 3) + " and then some more content ending"
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", longText)
+	wb.AppendOrUpdate(tagAssistantText, "a1", longText)
 	wb.ToggleFold(0)
 	atRendered := wb.GetAll(-1, false)
 	atPlain := stripANSI(atRendered)
@@ -625,7 +624,7 @@ func TestFoldedTextWindowShowsTail(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "first line\nsecond line\nthird line tail")
+	wb.AppendOrUpdate(tagAssistantText, "a1", "first line\nsecond line\nthird line tail")
 	wb.ToggleFold(0) // AT is expanded by default; fold it for the summary test
 
 	rendered := wb.GetAll(-1, false)
@@ -654,8 +653,8 @@ func TestFoldedTextWindowHeadAndTailUpdatesOnDelta(t *testing.T) {
 
 	// Simulate a streaming assistant window: long content so the collapsed
 	// summary truncates and shows head + "…" + tail.
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", strings.Repeat("beginning of answer ", 3))
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", " and then some more content ending")
+	wb.AppendOrUpdate(tagAssistantText, "a1", strings.Repeat("beginning of answer ", 3))
+	wb.AppendOrUpdate(tagAssistantText, "a1", " and then some more content ending")
 	wb.ToggleFold(0) // AT is expanded by default; fold it for the summary test
 
 	rendered := wb.GetAll(-1, false)
@@ -707,7 +706,7 @@ func TestFoldedTextHeadAndTailEqualWeight(t *testing.T) {
 	wb := NewWindowBuffer(80, styles)
 
 	longText := "this is the start of a very long reasoning that exceeds the available width for sure"
-	wb.AppendOrUpdate(tlv.TagAssistantR, "r1", longText)
+	wb.AppendOrUpdate(tagAssistantReasoning, "r1", longText)
 
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)

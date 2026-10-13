@@ -10,8 +10,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // fragmentRows returns the number of terminal rows a soft-wrap fragment
@@ -70,9 +68,9 @@ func extractWindowContent(plain string) string {
 func TestRenderVirtualFragmentOutput(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	// AT window: labeled rule + 4 content rows + rule = 6 visual lines.
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
+	wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))
 	// Folded reasoning window: 1 visual line.
-	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
+	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "short reasoning")
 
 	// Viewport exactly the document height (6 rows) → no blank padding.
 	wb.SetViewportPosition(0, 6)
@@ -113,7 +111,7 @@ func TestRenderVirtualFragmentOutput(t *testing.T) {
 // displaced. No rules anywhere: a window has none.
 func TestRenderVirtualScrolledIntoWindowPinsItsLine(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
+	wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))
 
 	// Window visual lines: [0]=own line, [1..4]=content (one long line's
 	// four soft-wrap rows). Viewport [1,4): the own line is cut off, so it
@@ -167,7 +165,7 @@ func TestRenderVirtualScrolledIntoWindowPinsItsLine(t *testing.T) {
 func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	original := strings.Repeat("word ", 25)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", original)
+	wb.AppendOrUpdate(tagAssistantText, "at-1", original)
 
 	wb.SetViewportPosition(0, 5)
 	raw := wb.GetAll(-1, false)
@@ -197,9 +195,9 @@ func TestRenderVirtualCopyRestoresOriginal(t *testing.T) {
 func TestRenderVirtualWindowBoundary(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	// AT window: 5 visual lines (0..4) — opening line + 4 content rows.
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
+	wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))
 	// Folded reasoning: 1 visual line (5).
-	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
+	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "short reasoning")
 
 	// Viewport [3,6): the AT window's own line is cut off, so it is pinned
 	// at row 0; its last body row (row 4) follows, then AR (row 5).
@@ -278,11 +276,11 @@ func TestScrollViewSoftWrap(t *testing.T) {
 func TestDisplayViewSoftWrapRows(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	// AT window: its own line + 4 content rows = 5 visual lines.
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
+	wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))
 	// Folded reasoning: 1 visual line.
-	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
+	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "short reasoning")
 	// User prompt: expanded by default — its own line + 1 content row.
-	wb.AppendOrUpdate(tlv.TagUserT, "ut-1", "hello user")
+	wb.AppendOrUpdate(tagUserText, "ut-1", "hello user")
 
 	dm := NewDisplayModel(wb, DefaultStyles()).WithHeight(5).updateContent()
 	// Auto-follow: viewport at bottom — lines 3..7 (AT rows 3-4, AR, UT's
@@ -326,7 +324,7 @@ func TestDisplayViewSoftWrapRows(t *testing.T) {
 func TestRenderVirtualCursorHighlight(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(40, styles)
-	idx := wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
+	idx := wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))
 
 	// Viewport at top: the window's first row (the labeled rule) is
 	// visible, so its label carries the accent color.
@@ -362,7 +360,7 @@ func TestRenderVirtualCursorHighlight(t *testing.T) {
 		t.Errorf("the pinned row's label should be in the accent color: %q", out)
 	}
 	// …and with the cursor on another window the pinned row is plain.
-	wb.AppendOrUpdate(tlv.TagAssistantT, "other-1", "another window")
+	wb.AppendOrUpdate(tagAssistantText, "other-1", "another window")
 	other, _ := wb.LookupID("other-1")
 	out = wb.GetAll(other, false)
 	if strings.HasPrefix(out, NewStyle().Bold(true).Foreground(styles.ColorAccent).Render(unfoldArrow)+" ") {

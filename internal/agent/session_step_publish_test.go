@@ -19,6 +19,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"io"
 	"iter"
 	"os"
@@ -397,7 +398,7 @@ func TestSaveDuringStreaming_EndToEnd(t *testing.T) {
 	s.Start()
 
 	// Deliver a prompt (what plainio/terseio do).
-	if err := tlv.WriteTLV(w, tlv.TagUserT, tlv.WrapID("1", "hello")); err != nil {
+	if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", "hello")); err != nil {
 		t.Fatalf("write UT: %v", err)
 	}
 	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
@@ -413,7 +414,7 @@ func TestSaveDuringStreaming_EndToEnd(t *testing.T) {
 
 	// :save mid-task → the file must contain the user prompt and step 1,
 	// but NOT step 2 (the task is still running and blocked).
-	cmd, err := json.Marshal(protocol.CmdMsg{ID: "s1", Name: "save", Input: savePath})
+	cmd, err := json.Marshal(protocol.CmdMsg{CallID: "s1", Name: "save", Input: savePath})
 	if err != nil {
 		t.Fatalf("marshal save cmd: %v", err)
 	}

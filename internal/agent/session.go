@@ -44,7 +44,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -53,7 +52,6 @@ import (
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/skills"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // sessionConfig groups fields that are set once at construction and
@@ -442,12 +440,12 @@ func RestoreFromSession(cfg SessionConfig, data *sessionData) *Session {
 // bufferUserContent / AppendFromTLV incremental path handle grouping.
 func (s *Session) replayContentsToAdapter() error {
 	for _, part := range s.Contents {
-		tag, content, err := contentPartToTLV(part)
+		tag, body, err := contentPartJSON(part, wireID(part.GetHistoryID()))
 		if err != nil {
 			return fmt.Errorf("corrupt session file: failed to serialize content part (HistoryID=%d): %w", part.GetHistoryID(), err)
 		}
 
-		s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(part.GetHistoryID(), 10), content))
+		s.writeTLV(tag, body)
 	}
 
 	return nil

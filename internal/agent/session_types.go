@@ -236,6 +236,14 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // nothing here migrates an older file: editing the field to load one anyway is
 // the user's call. See docs/architecture.md ("message_version").
 //
+// v14: every content frame's value is JSON. Text and media tags collapsed into
+// a 2x2 — UX/AX (content) and AF/UF (function) — with the concrete kind carried
+// as a content item's "type". The history id moved from a NUL-delimited prefix
+// into the frame's top-level "id", so WrapID/UnwrapID are gone; the tool-call
+// id became "call_id" (freeing "id" to mean history id everywhere), and
+// ContentMeta gained "time" (message time, persisted and replayed). Video
+// fps/resolution became per-part (llm.VideoPart), so a :video_config change no
+// longer rewrites already-sent messages.
 // v13: steering is reported by a dedicated "steering" SM (queued / delivered /
 // dropped / refused), replacing the "steering queued" and "steering dropped"
 // notify texts and the SM error a full queue used to raise for a prompt.
@@ -249,7 +257,7 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // v11: commands moved to the CI/CO control plane — text commands
 // (UT ':' sniffing) removed, command results now travel as CO frames,
 // taskMsg gained command_id for async command correlation.
-const messageVersion = 13
+const messageVersion = 14
 
 // sessionMeta is the frontmatter metadata.
 type sessionMeta struct {

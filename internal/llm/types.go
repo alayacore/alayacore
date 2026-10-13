@@ -47,21 +47,30 @@ type ContentPart interface {
 	SetHistoryID(uint64)
 	GetRole() MessageRole
 	SetRole(MessageRole)
+	GetTime() time.Time
+	SetTime(time.Time)
 	UpdateContentPartMeta(historyID uint64, role MessageRole)
 }
 
 // ContentPartMeta holds the metadata common to all ContentPart types.
 // Embedded in each concrete ContentPart to avoid duplicating
-// the HistoryID/Role fields and their accessor methods.
+// the field accessors.
+//
+// Time is when the part entered the conversation record (stamped by the
+// session, persisted, and replayed). It is never consulted when serializing a
+// request to a provider — serialization is a pure function of the record.
 type ContentPartMeta struct {
 	HistoryID uint64      `json:"-"`
 	Role      MessageRole `json:"-"`
+	Time      time.Time   `json:"-"`
 }
 
 func (m *ContentPartMeta) GetHistoryID() uint64   { return m.HistoryID }
 func (m *ContentPartMeta) SetHistoryID(id uint64) { m.HistoryID = id }
 func (m *ContentPartMeta) GetRole() MessageRole   { return m.Role }
 func (m *ContentPartMeta) SetRole(r MessageRole)  { m.Role = r }
+func (m *ContentPartMeta) GetTime() time.Time     { return m.Time }
+func (m *ContentPartMeta) SetTime(t time.Time)    { m.Time = t }
 func (m *ContentPartMeta) UpdateContentPartMeta(id uint64, r MessageRole) {
 	m.HistoryID = id
 	m.Role = r
@@ -79,10 +88,17 @@ type ImagePart struct {
 	URI string
 }
 
-// VideoPart represents a video content (data:video/...;base64,... or URL)
+// VideoPart represents a video content (data:video/...;base64,... or URL).
+//
+// FPS and Res are the video's own encoding settings, captured when the part
+// enters the record (from the adapter, or the session default) and never read
+// from live global state at serialization time. Res is 0 (default) or 1 (max);
+// FPS 0 means "unset" and the provider falls back to its default (2).
 type VideoPart struct {
 	ContentPartMeta
 	URI string
+	FPS int
+	Res int
 }
 
 // AudioPart represents an audio content (data:audio/...;base64,... or URL)
@@ -324,5 +340,4 @@ type Provider interface {
 	StreamMessages(ctx context.Context, contents []ContentPart, tools []ToolDefinition, systemPrompt string, extraSystemPrompt string) (iter.Seq2[StreamEvent, error], error)
 	SetReasoningLevel(level int)
 	SetReasoningConfigs(configs map[int]json.RawMessage)
-	SetVideoConfig(fps int, resolution int)
 }

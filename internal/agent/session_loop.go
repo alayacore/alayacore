@@ -260,6 +260,7 @@ func (s *Session) handleTaskEvent(ev taskEvent) {
 
 	case stepFinishEvent:
 		if len(e.NewParts) > 0 {
+			s.stampParts(e.NewParts)
 			s.Contents = append(s.Contents, e.NewParts...)
 		}
 		newContext := e.InputTokens + e.OutputTokens + e.CacheReadTokens + e.CacheCreationTokens

@@ -362,7 +362,7 @@ func (r *textRenderer) mergeParts() {
 // The returned lines gain the dim Body color only under an overlay
 // (see bodyStyled / styles.Body).
 func (r *textRenderer) plainContent() bool {
-	return r.tag == tlv.TagAssistantT || r.tag == tlv.TagAssistantR
+	return r.tag == tagAssistantText || r.tag == tagAssistantReasoning
 }
 
 // BuildInner returns the inner content as visual lines.
@@ -529,11 +529,11 @@ func renderCollapsedLineWithEllipsis(line, label string, ellipsisOffset int, tag
 // labelForTag returns the header label for text-type windows.
 func labelForTag(tag string) string {
 	switch tag {
-	case tlv.TagAssistantR:
+	case tagAssistantReasoning:
 		return "REASONING"
-	case tlv.TagAssistantT:
+	case tagAssistantText:
 		return "ASSISTANT"
-	case tlv.TagUserT:
+	case tagUserText:
 		return "USER PROMPT"
 	case TagWindowSN:
 		return "SYSTEM NOTIFY"
@@ -793,13 +793,13 @@ func compactMediaSummary(mediaParts []string) string {
 // Known labels are explicit; unknown labels use their first token.
 func compactMediaIcon(label string) string {
 	switch label {
-	case tlv.MediaLabel(tlv.TagUserI):
+	case tlv.MediaLabel(tlv.KindImage):
 		return "📷"
-	case tlv.MediaLabel(tlv.TagUserV):
+	case tlv.MediaLabel(tlv.KindVideo):
 		return "🎬"
-	case tlv.MediaLabel(tlv.TagUserA):
+	case tlv.MediaLabel(tlv.KindAudio):
 		return "🎵"
-	case tlv.MediaLabel(tlv.TagUserD):
+	case tlv.MediaLabel(tlv.KindDocument):
 		return "📄"
 	}
 	if i := strings.IndexByte(label, ' '); i >= 0 {
@@ -820,19 +820,19 @@ type userRenderer struct {
 	contentLen int
 }
 
-func (r *userRenderer) Tag() string { return tlv.TagUserT }
+func (r *userRenderer) Tag() string { return tagUserText }
 
 func (r *userRenderer) ToolInfo() *ToolInfo { return nil }
 
 func (r *userRenderer) AppendFromTLV(tag string, value string) {
 	value = sanitizeUTF8(value)
 	switch tag {
-	case tlv.TagUserT:
+	case tagUserText:
 		if value != "" {
 			r.textParts = append(r.textParts, value)
 		}
-	case tlv.TagUserI, tlv.TagUserV, tlv.TagUserA, tlv.TagUserD:
-		r.mediaParts = append(r.mediaParts, tlv.MediaLabel(tag))
+	case tagUserImage, tagUserVideo, tagUserAudio, tagUserDoc:
+		r.mediaParts = append(r.mediaParts, mediaLabel(tag))
 	}
 	r.contentLen += len(value)
 }
@@ -980,7 +980,7 @@ type collapsedRow struct {
 // the badge run itself there is no intact run to paint, and the summary stays
 // in the content's muted color rather than showing half a badge in bold.
 func (row collapsedRow) style(styles *Styles) string {
-	labelStyle := lineStyleForTag(tlv.TagUserT, styles)
+	labelStyle := lineStyleForTag(tagUserText, styles)
 	if len(row.line) <= len(row.label) {
 		return labelStyle.Render(row.line)
 	}

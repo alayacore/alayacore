@@ -29,7 +29,7 @@ func TestWindowRow0IsNeverSoftWrapped(t *testing.T) {
 		wb.AppendOrUpdate("AT", "text", strings.Repeat(long, 6))
 		wb.AppendOrUpdate("UT", "user", strings.Repeat(long, 6))
 		wb.HandleToolInputEvent(protocol.ToolInputData{
-			ID: "t1", Name: "edit_file", Input: json.RawMessage(strings.Repeat(long+"\n", 6)),
+			CallID: "t1", Name: "edit_file", Input: json.RawMessage(strings.Repeat(long+"\n", 6)),
 		}, 1)
 
 		for _, folded := range []bool{false, true} {

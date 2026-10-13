@@ -19,6 +19,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"io"
 	"iter"
 	"strings"
@@ -202,7 +203,7 @@ func TestAutoSummarizeEndToEnd_RealRunLoop(t *testing.T) {
 	// the first is over the threshold when it starts.
 	long := strings.Repeat("x", 800)
 	for i := 1; i <= 3; i++ {
-		if err := tlv.WriteTLV(w, tlv.TagUserT, tlv.WrapID("1", long)); err != nil {
+		if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", long)); err != nil {
 			t.Fatalf("write UT: %v", err)
 		}
 		if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {

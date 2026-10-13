@@ -25,8 +25,6 @@ package terminal
 import (
 	"fmt"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // tallTranscript builds a transcript that cannot fit its viewport: one line
@@ -38,7 +36,7 @@ func tallTranscript(t *testing.T) DisplayModel {
 	const windows, height = 40, 10
 	wb := NewWindowBuffer(80, DefaultStyles())
 	for i := range windows {
-		wb.AppendOrUpdate(tlv.TagAssistantT, fmt.Sprintf("w%d", i), fmt.Sprintf("body %d", i))
+		wb.AppendOrUpdate(tagAssistantText, fmt.Sprintf("w%d", i), fmt.Sprintf("body %d", i))
 	}
 	return NewDisplayModel(wb, DefaultStyles()).WithHeight(height).updateContent()
 }

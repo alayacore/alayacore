@@ -79,7 +79,7 @@ func TestTimeStampWidthIsPinned(t *testing.T) {
 func TestWindowLineNeverExceedsWidth(t *testing.T) {
 	for _, width := range []int{1, 2, 5, 12, 20, 40, 129} {
 		styles := DefaultStyles()
-		w := NewWindow("at-1", tlv.TagAssistantT, styles)
+		w := NewWindow("at-1", tagAssistantText, styles)
 		w.Visible = true
 		w.CreatedAt = pinnedTime
 		w.AppendContent("hello")
@@ -148,9 +148,9 @@ func TestWindowLineTimestampYieldsToTheLabel(t *testing.T) {
 	open := func(width int) string {
 		wb := NewWindowBuffer(width, styles)
 		wb.HandleToolInputEvent(protocol.ToolInputData{
-			ID:    "t1",
-			Name:  "execute_command",
-			Input: []byte("execute_command: lscpu"),
+			CallID: "t1",
+			Name:   "execute_command",
+			Input:  []byte("execute_command: lscpu"),
 		}, 0)
 		pinCreatedAt(wb)
 		wb.ToggleFold(0) // tool windows start folded; open it
@@ -185,7 +185,7 @@ func TestWindowLineTimestampYieldsToTheLabel(t *testing.T) {
 func TestWindowLineWithoutATime(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "hello")
+	wb.AppendOrUpdate(tagAssistantText, "a1", "hello")
 	wb.WindowAt(0).CreatedAt = time.Time{} // unknown (a Window built outside the adapter)
 
 	plain := stripANSI(wb.GetAll(-1, false))
@@ -201,9 +201,9 @@ func TestWindowLineToolHeaderIsTheCollapsedHeader(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: []byte("execute_command: lscpu"),
+		CallID: "t1",
+		Name:   "execute_command",
+		Input:  []byte("execute_command: lscpu"),
 	}, 0)
 	wb.HandleToolOutput("t1", "x86_64", false, 0)
 	wb.ToggleFold(0)
@@ -233,9 +233,9 @@ func TestWindowLineColorIsTheDefaultExceptErrors(t *testing.T) {
 		label string
 		style func(*Styles) Style
 	}{
-		{"user prompt", tlv.TagUserT, "USER PROMPT", defaultLine},
-		{"reasoning", tlv.TagAssistantR, "REASONING", defaultLine},
-		{"assistant", tlv.TagAssistantT, "ASSISTANT", defaultLine},
+		{"user prompt", tagUserText, "USER PROMPT", defaultLine},
+		{"reasoning", tagAssistantReasoning, "REASONING", defaultLine},
+		{"assistant", tagAssistantText, "ASSISTANT", defaultLine},
 		{"tool call", tlv.TagAssistantF, "TOOL CALL", defaultLine},
 		{"system notify", TagWindowSN, "SYSTEM NOTIFY", defaultLine},
 		{"system error", TagWindowSE, "SYSTEM ERROR", errorLine},

@@ -9,8 +9,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestMultiLineContentStaysMultiLine verifies the core complaint: content
@@ -18,7 +16,7 @@ import (
 func TestMultiLineContentStaysMultiLine(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	original := "line one\nline two\nline three"
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", original)
+	wb.AppendOrUpdate(tagAssistantText, "a1", original)
 	wb.SetViewportPosition(0, 8)
 	out := stripANSI(wb.GetAll(-1, false))
 
@@ -41,7 +39,7 @@ func TestMultiLineContentStaysMultiLine(t *testing.T) {
 func TestLongSingleLineSoftWraps(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	original := strings.Repeat("word ", 25)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", original)
+	wb.AppendOrUpdate(tagAssistantText, "a1", original)
 	wb.SetViewportPosition(0, 8)
 	out := stripANSI(wb.GetAll(-1, false))
 

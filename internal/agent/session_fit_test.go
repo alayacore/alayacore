@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"image"
 	"image/png"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -92,17 +94,20 @@ func TestRunTaskNormalFitsOversizeImagesBeforeStoring(t *testing.T) {
 	}
 }
 
-// frameTags returns the TLV tags a session wrote to its output, in order.
-func frameTags(t *testing.T, raw []byte) []string {
+// outFrame is one frame a session wrote: its tag and JSON value.
+type outFrame struct{ tag, value string }
+
+// outFrames returns the frames a session wrote to its output, in order.
+func outFrames(t *testing.T, raw []byte) []outFrame {
 	t.Helper()
-	var tags []string
+	var frames []outFrame
 	r := bytes.NewReader(raw)
 	for {
-		tag, _, err := tlv.ReadTLV(r)
+		tag, value, err := tlv.ReadTLV(r)
 		if err != nil {
-			return tags
+			return frames
 		}
-		tags = append(tags, tag)
+		frames = append(frames, outFrame{tag: tag, value: value})
 	}
 }
 
@@ -153,12 +158,19 @@ func TestRunTaskNormalKeepsUndecodableImageAndEchoesItAsMedia(t *testing.T) {
 	}
 
 	var hasMedia, hasUserText bool
-	for _, tag := range frameTags(t, out.Bytes()) {
-		switch tag {
-		case tlv.TagUserI:
-			hasMedia = true
-		case tlv.TagUserT:
+	for _, f := range outFrames(t, out.Bytes()) {
+		if f.tag != tlv.TagUserX {
+			continue
+		}
+		var d protocol.ContentData
+		if json.Unmarshal([]byte(f.value), &d) != nil {
+			continue
+		}
+		switch d.Type {
+		case protocol.TypeText:
 			hasUserText = true
+		default:
+			hasMedia = true
 		}
 	}
 	if !hasMedia {

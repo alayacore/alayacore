@@ -36,11 +36,11 @@ func TestWriteCommand_CIFrame(t *testing.T) {
 	if msg.Input != "/tmp/x.alaya" {
 		t.Errorf("input = %q, want %q", msg.Input, "/tmp/x.alaya")
 	}
-	if msg.ID == "" {
+	if msg.CallID == "" {
 		t.Error("CI frame should carry a generated call ID")
 	}
-	if !strings.HasPrefix(msg.ID, "tui-") {
-		t.Errorf("unexpected id format: %q", msg.ID)
+	if !strings.HasPrefix(msg.CallID, "tui-") {
+		t.Errorf("unexpected id format: %q", msg.CallID)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestCommandOut_ErrorRendersMessage(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		ID:      "x1",
+		CallID:  "x1",
 		IsError: true,
 		Output:  mustRaw(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
 	})
@@ -120,7 +120,7 @@ func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		ID:     "x2",
+		CallID: "x2",
 		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
 	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {
@@ -142,7 +142,7 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 	defer commandNames.Delete("t1")
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		ID:     "t1",
+		CallID: "t1",
 		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
 	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {
@@ -171,7 +171,7 @@ func TestCommandOut_UnknownCommandSilent(t *testing.T) {
 	defer commandNames.Delete("t2")
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		ID:     "t2",
+		CallID: "t2",
 		Output: mustRaw(`{"foo":"bar"}`),
 	})
 	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {

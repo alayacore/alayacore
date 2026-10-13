@@ -79,11 +79,11 @@ func formatSessionMarkdown(data *sessionData) ([]byte, error) {
 	buf.WriteString(formatFrontmatter(&data.sessionMeta))
 
 	for _, part := range data.Contents {
-		tag, content, err := contentPartToTLV(part)
+		tag, body, err := contentPartJSON(part, "")
 		if err != nil {
 			return nil, fmt.Errorf("save: %w", err)
 		}
-		encoded, err := tlv.EncodeTLV(tag, content)
+		encoded, err := tlv.EncodeTLV(tag, body)
 		if err != nil {
 			return nil, fmt.Errorf("save: %w", err)
 		}
@@ -186,7 +186,7 @@ func parseMessagesTLV(body string) ([]llm.ContentPart, error) {
 			return contents, fmt.Errorf("read error at chunk %d: %w", len(contents), err)
 		}
 
-		msgPart, err := contentPartFromTLV(tag, raw)
+		msgPart, err := contentPartFromJSON(tag, raw)
 		if err != nil {
 			return contents, fmt.Errorf("parse error at chunk %d (tag %q): %w", len(contents), tag, err)
 		}

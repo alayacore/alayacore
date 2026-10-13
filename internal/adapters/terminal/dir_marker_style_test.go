@@ -30,9 +30,9 @@ func newDirWindow(t *testing.T, styles *Styles, text string) (*WindowBuffer, int
 	t.Helper()
 	wb := NewWindowBuffer(120, styles)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: json.RawMessage(text),
+		CallID: "t1",
+		Name:   "execute_command",
+		Input:  json.RawMessage(text),
 	}, 0)
 	wb.HandleToolOutput("t1", "ok", false, 0)
 	idx, ok := wb.LookupID("t1")

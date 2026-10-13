@@ -3,8 +3,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // The f/b keys jump the cursor between user prompts and re-seat the viewport
@@ -36,8 +34,8 @@ const promptJumpViewport = 10
 func buildPromptTranscript(answerLineCounts ...int) (DisplayModel, *WindowBuffer) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	for i, lines := range answerLineCounts {
-		wb.AppendOrUpdate(tlv.TagUserT, promptID(i), "prompt text")
-		wb.AppendOrUpdate(tlv.TagAssistantT, answerID(i), strings.Repeat("answer line\n", lines))
+		wb.AppendOrUpdate(tagUserText, promptID(i), "prompt text")
+		wb.AppendOrUpdate(tagAssistantText, answerID(i), strings.Repeat("answer line\n", lines))
 	}
 	d := NewDisplayModel(wb, DefaultStyles()).WithDisplayFocused(true).WithHeight(promptJumpViewport)
 	return d.updateContent(), wb

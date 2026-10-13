@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -363,14 +362,56 @@ func (s *Session) stepUserParts(contents []llm.ContentPart) (parts []llm.Content
 func (s *Session) spliceUserParts(parts []llm.ContentPart) []llm.ContentPart {
 	parts = llm.ShrinkImages(parts)
 	for _, part := range parts {
-		part.SetRole(llm.RoleUser)
-		id := s.histIncAndGet()
-		part.SetHistoryID(id)
-		if tag, val, err := contentPartToTLV(part); err == nil && tag != "" {
-			s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
-		}
+		s.finalizeUserPart(part)
 	}
 	return parts
+}
+
+// finalizeUserPart is the single place a user part is finished and echoed: it
+// assigns the role, stamps the time, resolves the video default (so the part
+// carries its own fps/res and serialization never consults global state),
+// numbers it, and writes the echo frame. Doing all of it here is what keeps the
+// echoed shape and the stored shape from drifting apart.
+func (s *Session) finalizeUserPart(part llm.ContentPart) {
+	part.SetRole(llm.RoleUser)
+	part.SetTime(time.Now())
+	s.applyVideoDefault(part)
+	id := s.histIncAndGet()
+	part.SetHistoryID(id)
+	if tag, body, err := contentPartJSON(part, wireID(id)); err == nil && tag != "" {
+		s.writeTLV(tag, body)
+	}
+}
+
+// applyVideoDefault fills an unset video's fps/res from the session default, so
+// the part's serialization is a pure function of the part. Tool results nest
+// their content, so it recurses.
+func (s *Session) applyVideoDefault(part llm.ContentPart) {
+	switch v := part.(type) {
+	case *llm.VideoPart:
+		if v.FPS == 0 && s.modelService != nil {
+			v.FPS, v.Res = s.modelService.videoFPS, s.modelService.videoRes
+		}
+	case *llm.ToolOutputPart:
+		for _, sub := range v.Output {
+			s.applyVideoDefault(sub)
+		}
+	}
+}
+
+// stampParts stamps the fields a freshly assembled assistant/tool part cannot
+// know about itself: its time, and (for a video) the session's current default.
+// Called as the parts enter the record — the same rule finalizeUserPart applies
+// to user parts — so a later serialization reads only the part and never
+// consults live state.
+func (s *Session) stampParts(parts []llm.ContentPart) {
+	now := time.Now()
+	for _, p := range parts {
+		if p.GetTime().IsZero() {
+			p.SetTime(now)
+		}
+		s.applyVideoDefault(p)
+	}
 }
 
 // deltaWriter writes streaming delta frames directly to the TLV output,
@@ -380,36 +421,48 @@ type deltaWriter struct {
 }
 
 func (dw *deltaWriter) handleTextDelta(delta string, historyID uint64) error {
-	return tlv.WriteTLV(dw.output, tlv.TagAssistantTDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), delta))
+	return dw.handleContentDelta(protocol.TypeText, delta, historyID)
 }
 
 func (dw *deltaWriter) handleReasoningDelta(delta string, historyID uint64) error {
-	return tlv.WriteTLV(dw.output, tlv.TagAssistantRDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), delta))
+	return dw.handleContentDelta(protocol.TypeReasoning, delta, historyID)
+}
+
+// handleContentDelta writes an Ax (assistant content delta) frame. The content
+// kind (text vs reasoning) travels in the JSON, since the tag no longer names it.
+func (dw *deltaWriter) handleContentDelta(kind, text string, historyID uint64) error {
+	body, err := marshalContentBody(protocol.ContentMeta{ID: wireID(historyID)}, protocol.ContentItem{Type: kind, Text: text})
+	if err != nil {
+		return err
+	}
+	return tlv.WriteTLV(dw.output, tlv.TagAssistantXDelta, body)
 }
 
 func (dw *deltaWriter) handleToolInputDelta(toolCallID, delta string, historyID uint64) error {
-	data, err := json.Marshal(protocol.ToolInputDeltaData{ID: toolCallID, Delta: delta})
+	data, err := json.Marshal(protocol.ToolInputDeltaData{
+		CallID:      toolCallID,
+		Delta:       delta,
+		ContentMeta: protocol.ContentMeta{ID: wireID(historyID)},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input delta: %w", err)
 	}
-	return tlv.WriteTLV(dw.output, tlv.TagAssistantFDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), string(data)))
+	return tlv.WriteTLV(dw.output, tlv.TagAssistantFDelta, string(data))
 }
 
 // handleToolOutputDelta writes a TagUserFDelta (Uf) frame carrying an
 // ephemeral tool result preview snapshot. Display-only: frames may be
 // dropped or coalesced; the authoritative result arrives via UF.
 func (dw *deltaWriter) handleToolOutputDelta(toolCallID, text string, historyID uint64) error {
-	data, err := json.Marshal(protocol.ToolOutputDeltaData{ID: toolCallID, Text: text})
+	data, err := json.Marshal(protocol.ToolOutputDeltaData{
+		CallID:      toolCallID,
+		Text:        text,
+		ContentMeta: protocol.ContentMeta{ID: wireID(historyID)},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool output delta: %w", err)
 	}
-	return tlv.WriteTLV(dw.output, tlv.TagUserFDelta, tlv.WrapID(strconv.FormatUint(historyID, 10), string(data)))
-}
-
-// writeTLVWithID formats the historyID and writes a TLV entry to the output stream.
-func (s *Session) writeTLVWithID(tag string, historyID uint64, data string) {
-	id := strconv.FormatUint(historyID, 10)
-	s.writeTLV(tag, tlv.WrapID(id, data))
+	return tlv.WriteTLV(dw.output, tlv.TagUserFDelta, string(data))
 }
 
 // handleToolConfirm handles a tool confirmation request.
@@ -438,7 +491,7 @@ func (s *Session) handleToolConfirm(req llm.ToolConfirmRequest) <-chan bool {
 	s.confirmChs[req.ID] = ch
 	s.confirmMu.Unlock()
 
-	if err := protocol.WriteSystemMsg(s.Output, protocol.ToolConfirmMsg{ID: req.ID}); err != nil {
+	if err := protocol.WriteSystemMsg(s.Output, protocol.ToolConfirmMsg{CallID: req.ID}); err != nil {
 		s.markOutputBroken()
 		// Only send false if handleConfirmCommand hasn't already
 		// consumed the channel. Otherwise we'd race with its write.
@@ -455,57 +508,68 @@ func (s *Session) handleToolConfirm(req llm.ToolConfirmRequest) <-chan bool {
 
 // handleToolOutput serializes tool results and writes them to the output stream.
 func (s *Session) handleToolOutput(toolCallID string, contents []llm.ContentPart, err error, historyID uint64) error {
-	data, marshalErr := marshalToolOutputData(toolCallID, contents, err != nil)
+	for _, part := range contents {
+		s.applyVideoDefault(part)
+	}
+	data, marshalErr := marshalToolOutputBody(wireMetaNow(historyID), toolCallID, contents, err != nil)
 	if marshalErr != nil {
 		return fmt.Errorf("failed to marshal tool output: %w", marshalErr)
 	}
-	s.writeTLVWithID(tlv.TagUserF, historyID, string(data))
+	s.writeTLV(tlv.TagUserF, data)
 	return nil
 }
 
 // handleTextComplete writes the complete authoritative text to the output.
 // When delta streaming is enabled (default), the content is empty — the
-// text was already delivered via At delta frames, so AT serves only as a
-// terminator/flush signal. When --no-delta is set, AT carries the full text.
+// text was already delivered via Ax delta frames, so AX serves only as a
+// terminator/flush signal. When --no-delta is set, AX carries the full text.
 func (s *Session) handleTextComplete(text string, historyID uint64) error {
 	content := text
 	if !s.NoDelta {
 		content = "" // deltas already delivered the content
 	}
-	s.writeTLVWithID(tlv.TagAssistantT, historyID, content)
-	return nil
+	return s.writeContentFrame(protocol.TypeText, content, historyID)
 }
 
 // handleReasoningComplete writes the complete authoritative reasoning to the output.
 // When delta streaming is enabled (default), the content is empty — the
-// reasoning was already delivered via Ar delta frames. When --no-delta is
-// set, AR carries the full reasoning text.
+// reasoning was already delivered via Ax delta frames. When --no-delta is
+// set, AX carries the full reasoning text.
 func (s *Session) handleReasoningComplete(text string, historyID uint64) error {
 	content := text
 	if !s.NoDelta {
 		content = "" // deltas already delivered the content
 	}
-	s.writeTLVWithID(tlv.TagAssistantR, historyID, content)
+	return s.writeContentFrame(protocol.TypeReasoning, content, historyID)
+}
+
+// writeContentFrame writes a complete AX content frame.
+func (s *Session) writeContentFrame(kind, text string, historyID uint64) error {
+	body, err := marshalContentBody(wireMetaNow(historyID), protocol.ContentItem{Type: kind, Text: text})
+	if err != nil {
+		return err
+	}
+	s.writeTLV(tlv.TagAssistantX, body)
 	return nil
 }
 
 // handleToolInputStart marshals and writes a tool call start frame.
 func (s *Session) handleToolInputStart(toolCallID, name string, historyID uint64) error {
-	data, err := marshalToolInputData(toolCallID, name, nil)
+	data, err := marshalToolInputBody(wireMetaNow(historyID), toolCallID, name, nil)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input start: %w", err)
 	}
-	s.writeTLVWithID(tlv.TagAssistantF, historyID, string(data))
+	s.writeTLV(tlv.TagAssistantF, data)
 	return nil
 }
 
 // handleToolInputComplete marshals and writes a tool call input frame.
 func (s *Session) handleToolInputComplete(toolCallID string, input json.RawMessage, historyID uint64) error {
-	data, err := marshalToolInputData(toolCallID, "", input)
+	data, err := marshalToolInputBody(wireMetaNow(historyID), toolCallID, "", input)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input complete: %w", err)
 	}
-	s.writeTLVWithID(tlv.TagAssistantF, historyID, string(data))
+	s.writeTLV(tlv.TagAssistantF, data)
 	return nil
 }
 
@@ -875,15 +939,10 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 	// cannot decode stays in the session as itself. See internal/llm/media_fit.go.
 	parts = llm.ShrinkImages(parts)
 
-	// Assign history IDs, append to contents, and echo to output.
+	// Finalize (role / id / time / video default), echo, then keep in contents.
 	for _, part := range parts {
-		id := s.histIncAndGet()
-		part.SetHistoryID(id)
-		part.SetRole(llm.RoleUser)
+		s.finalizeUserPart(part)
 		contents = append(contents, part)
-		if tag, val, err := contentPartToTLV(part); err == nil && tag != "" {
-			s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
-		}
 	}
 	// Parts are finalized (IDs/roles assigned) — publish them so :save
 	// during the task includes the just-submitted prompt.
@@ -934,13 +993,8 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 		// Assistant message — LLM was interrupted mid-response.
 		// Append "Continue" as a user message to tell it to pick up where it left off.
 		part := &llm.TextPart{Text: "Continue"}
-		id := s.histIncAndGet()
-		part.SetHistoryID(id)
-		part.SetRole(llm.RoleUser)
+		s.finalizeUserPart(part)
 		contents = append(contents, part)
-		if tag, val, err := contentPartToTLV(part); err == nil && tag != "" {
-			s.writeTLV(tag, tlv.WrapID(strconv.FormatUint(id, 10), val))
-		}
 		// Finalized — publish so :save during the task sees it.
 		s.sendEvent(promptPartsEvent{Parts: []llm.ContentPart{part}})
 	}

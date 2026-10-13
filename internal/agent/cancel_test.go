@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"io"
 	"iter"
 	"strings"
@@ -203,7 +204,7 @@ func TestCancelTask_EndToEnd(t *testing.T) {
 
 	// Deliver a prompt over the TLV input pipe (what terseio does after
 	// reading stdin to EOF).
-	if err := tlv.WriteTLV(w, tlv.TagUserT, tlv.WrapID("1", "hello")); err != nil {
+	if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", "hello")); err != nil {
 		t.Fatalf("write UT: %v", err)
 	}
 	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
@@ -329,7 +330,7 @@ func TestCancelTask_KeepsExecutedToolResult(t *testing.T) {
 	s.Start()
 
 	// Deliver a prompt.
-	if err := tlv.WriteTLV(w, tlv.TagUserT, tlv.WrapID("1", "hello")); err != nil {
+	if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", "hello")); err != nil {
 		t.Fatalf("write UT: %v", err)
 	}
 	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {

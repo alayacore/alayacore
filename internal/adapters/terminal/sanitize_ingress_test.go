@@ -41,23 +41,23 @@ func TestEveryContentIngressDrawsWellFormedUTF8(t *testing.T) {
 		feed func(wb *WindowBuffer)
 	}{
 		{"AppendOrUpdate, assistant text (AT)", func(wb *WindowBuffer) {
-			wb.AppendOrUpdate(tlv.TagAssistantT, "at", ingressIllFormed)
+			wb.AppendOrUpdate(tagAssistantText, "at", ingressIllFormed)
 		}},
 		{"AppendOrUpdate, reasoning (AR)", func(wb *WindowBuffer) {
-			wb.AppendOrUpdate(tlv.TagAssistantR, "ar", ingressIllFormed)
+			wb.AppendOrUpdate(tagAssistantReasoning, "ar", ingressIllFormed)
 		}},
 		{"AppendOrUpdate, user text (UT)", func(wb *WindowBuffer) {
-			wb.AppendOrUpdate(tlv.TagUserT, "ut", ingressIllFormed)
+			wb.AppendOrUpdate(tagUserText, "ut", ingressIllFormed)
 		}},
 		{"AppendUserContent", func(wb *WindowBuffer) {
-			wb.AppendOrUpdate(tlv.TagUserT, "uc", "")
-			wb.AppendUserContent("uc", tlv.TagUserT, ingressIllFormed)
+			wb.AppendOrUpdate(tagUserText, "uc", "")
+			wb.AppendUserContent("uc", tagUserText, ingressIllFormed)
 		}},
 		{"HandleToolInputEvent, name and input (AF)", func(wb *WindowBuffer) {
 			wb.HandleToolInputEvent(protocol.ToolInputData{
-				ID:    "af",
-				Name:  ingressIllFormed,
-				Input: json.RawMessage(ingressIllFormed),
+				CallID: "af",
+				Name:   ingressIllFormed,
+				Input:  json.RawMessage(ingressIllFormed),
 			}, 1)
 		}},
 		{"HandleToolInputDelta, name and delta (Af)", func(wb *WindowBuffer) {
@@ -79,11 +79,11 @@ func TestEveryContentIngressDrawsWellFormedUTF8(t *testing.T) {
 			}
 		}},
 		{"Window.AppendFromTLV directly", func(wb *WindowBuffer) {
-			wb.AppendOrUpdate(tlv.TagAssistantT, "direct", "")
-			wb.WindowAt(0).AppendFromTLV(tlv.TagAssistantT, ingressIllFormed)
+			wb.AppendOrUpdate(tagAssistantText, "direct", "")
+			wb.WindowAt(0).AppendFromTLV(tagAssistantText, ingressIllFormed)
 		}},
 		{"Window.AppendContent directly", func(wb *WindowBuffer) {
-			wb.AppendOrUpdate(tlv.TagAssistantT, "direct2", "")
+			wb.AppendOrUpdate(tagAssistantText, "direct2", "")
 			wb.WindowAt(0).AppendContent(ingressIllFormed)
 		}},
 	}
@@ -133,13 +133,13 @@ func TestEveryContentIngressDrawsWellFormedUTF8(t *testing.T) {
 // its own — which is what the summary's counts and the wrap are both reading.
 func TestIngressRepairsRatherThanDrops(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at", ingressIllFormed)
+	wb.AppendOrUpdate(tagAssistantText, "at", ingressIllFormed)
 	if got := wb.WindowAt(0).RawContent(); got != ingressRepaired {
 		t.Errorf("a text window's content is %q, want %q", got, ingressRepaired)
 	}
 	// And appending more does not disturb what was repaired: the counts cover the
 	// repaired bytes, not the ones that arrived.
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at", " tail")
+	wb.AppendOrUpdate(tagAssistantText, "at", " tail")
 	if got := wb.WindowAt(0).RawContent(); got != ingressRepaired+" tail" {
 		t.Errorf("after a further append the content is %q, want %q", got, ingressRepaired+" tail")
 	}

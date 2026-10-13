@@ -27,9 +27,9 @@ func TestOnToolOutputCallback(t *testing.T) {
 			IsError: err != nil,
 		})
 
-		data, marshalErr := marshalToolOutputData(id, content, err != nil)
+		data, marshalErr := marshalToolOutputBody(protocol.ContentMeta{}, id, content, err != nil)
 		if marshalErr == nil {
-			session.writeTLV(tlv.TagUserF, string(data))
+			session.writeTLV(tlv.TagUserF, data)
 		}
 	}
 
@@ -48,8 +48,8 @@ func TestOnToolOutputCallback(t *testing.T) {
 	if err := json.Unmarshal([]byte(value), &got); err != nil {
 		t.Fatalf("Failed to parse UF JSON: %v", err)
 	}
-	if got.ID != "call1" || got.IsError != false {
-		t.Errorf("Expected {call1, false}, got {%s, %t}", got.ID, got.IsError)
+	if got.CallID != "call1" || got.IsError != false {
+		t.Errorf("Expected {call1, false}, got {%s, %t}", got.CallID, got.IsError)
 	}
 
 	output.data = nil
@@ -63,8 +63,8 @@ func TestOnToolOutputCallback(t *testing.T) {
 	if err := json.Unmarshal([]byte(value), &got); err != nil {
 		t.Fatalf("Failed to parse UF JSON: %v", err)
 	}
-	if got.ID != "call2" || got.IsError != true {
-		t.Errorf("Expected {call2, true}, got {%s, %t}", got.ID, got.IsError)
+	if got.CallID != "call2" || got.IsError != true {
+		t.Errorf("Expected {call2, true}, got {%s, %t}", got.CallID, got.IsError)
 	}
 }
 

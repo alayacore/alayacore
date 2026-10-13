@@ -214,9 +214,6 @@ func (p *AnthropicProvider) SetReasoningLevel(level int) {
 	p.reasoningLevel = level
 }
 
-// SetVideoConfig is a no-op for Anthropic (fps/resolution are not used).
-func (p *AnthropicProvider) SetVideoConfig(_ int, _ int) {}
-
 // StreamMessages streams messages from Anthropic
 func (p *AnthropicProvider) StreamMessages(
 	ctx context.Context,

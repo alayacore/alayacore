@@ -112,7 +112,7 @@ func (s *Session) writeSteering(phase, reason, text string) {
 // preserved, plain errors default to "ERROR". An empty id is legal and
 // means the error could not be correlated to a request.
 func (s *Session) writeCmdResult(id string, result any, err error) {
-	msg := protocol.CmdResultMsg{ID: id}
+	msg := protocol.CmdResultMsg{CallID: id}
 
 	switch {
 	case err != nil:

@@ -185,7 +185,6 @@ func (ms *modelService) SwitchModel(modelConfig *modelConfig, baseTools []llm.To
 	if ms.provider != nil {
 		ms.provider.SetReasoningLevel(ms.reasoningLevel)
 		ms.provider.SetReasoningConfigs(modelConfig.ReasoningConfigs())
-		ms.provider.SetVideoConfig(ms.videoFPS, ms.videoRes)
 	}
 	return nil
 }
@@ -224,13 +223,14 @@ func (ms *modelService) SetReasoningLevel(level int) {
 	}
 }
 
-// SetVideoConfig sets the default video FPS and resolution, and syncs to the provider.
+// SetVideoConfig sets the default video FPS and resolution applied to videos
+// that enter a session. It is a session-level *default*: each VideoPart
+// snapshots the value when it is ingested, so changing the default never
+// rewrites a message already in the record. Nothing is pushed to the provider —
+// there is no global video state to push (see llm.VideoPart).
 func (ms *modelService) SetVideoConfig(fps int, resolution int) {
 	ms.videoFPS = fps
 	ms.videoRes = resolution
-	if ms.provider != nil {
-		ms.provider.SetVideoConfig(fps, resolution)
-	}
 }
 
 // ============================================================================

@@ -17,8 +17,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 const (
@@ -34,15 +32,15 @@ func foldAnchorFixture(t *testing.T, trails int) (*WindowBuffer, int) {
 	t.Helper()
 	wb := NewWindowBuffer(80, DefaultStyles())
 	for i := 0; i < anchorLeads; i++ {
-		wb.AppendOrUpdate(tlv.TagUserT, fmt.Sprintf("lead%d", i), "lead prompt")
+		wb.AppendOrUpdate(tagUserText, fmt.Sprintf("lead%d", i), "lead prompt")
 	}
 	var body strings.Builder
 	for i := 0; i < 40; i++ {
 		fmt.Fprintf(&body, "row%02d\n", i)
 	}
-	wb.AppendOrUpdate(tlv.TagAssistantT, "tall", strings.TrimSuffix(body.String(), "\n"))
+	wb.AppendOrUpdate(tagAssistantText, "tall", strings.TrimSuffix(body.String(), "\n"))
 	for i := 0; i < trails; i++ {
-		wb.AppendOrUpdate(tlv.TagUserT, fmt.Sprintf("trail%d", i), "trail prompt")
+		wb.AppendOrUpdate(tagUserText, fmt.Sprintf("trail%d", i), "trail prompt")
 	}
 	_ = wb.GetTotalLines()
 	return wb, anchorLeads
@@ -213,10 +211,10 @@ func TestMarkdownToggleWhilePinnedKeepsTheHeaderAtTheTop(t *testing.T) {
 	}
 
 	wb := NewWindowBuffer(24, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagUserT, "lead", "lead")
-	wb.AppendOrUpdate(tlv.TagAssistantT, "table", table.String())
+	wb.AppendOrUpdate(tagUserText, "lead", "lead")
+	wb.AppendOrUpdate(tagAssistantText, "table", table.String())
 	for i := 0; i < 5; i++ {
-		wb.AppendOrUpdate(tlv.TagUserT, fmt.Sprintf("trail%d", i), "trail")
+		wb.AppendOrUpdate(tagUserText, fmt.Sprintf("trail%d", i), "trail")
 	}
 	_ = wb.GetTotalLines()
 

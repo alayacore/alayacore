@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"iter"
 	"strings"
 	"sync"
@@ -316,7 +317,7 @@ func TestShouldExit(t *testing.T) {
 func TestInputFrame_InputEndFlushesStagedFirst(t *testing.T) {
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagUserT, "hello", nil)
+	staged := s.handleInputFrame(tlv.TagUserX, wiretest.UserText("", "hello"), nil)
 	staged = s.handleInputFrame(tlv.TagInputEnd, "", staged)
 	if staged != nil {
 		t.Errorf("CE should clear staged content, got %d parts", len(staged))
@@ -388,11 +389,11 @@ func TestInputEndFrame_CommandsStillFlow(t *testing.T) {
 
 	path := t.TempDir() + "/after-ce.alaya"
 	if err := tlv.WriteTLV(w, tlv.TagCommandIn,
-		`{"id":"c1","name":"save","input":"`+path+`"}`); err != nil {
+		`{"call_id":"c1","name":"save","input":"`+path+`"}`); err != nil {
 		t.Fatalf("write CI after CE: %v", err)
 	}
 
-	waitForOutput(t, output, `"id":"c1"`)
+	waitForOutput(t, output, `"call_id":"c1"`)
 	if !strings.Contains(output.String(), "after-ce.alaya") {
 		t.Errorf("the command after CE was not answered with its result: %q", output.String())
 	}

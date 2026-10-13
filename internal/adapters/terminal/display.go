@@ -11,7 +11,6 @@ import (
 	"fmt"
 
 	"github.com/alayacore/alayacore/internal/commands"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 type DisplayModel struct {
@@ -805,7 +804,7 @@ func (m DisplayModel) MoveWindowCursorToNextUserPrompt() (DisplayModel, bool) {
 
 	found := false
 	m.windowBuffer.ForEachVisible(m.windowCursor+1, func(i int, w *Window) bool {
-		if w.Tag() == tlv.TagUserT {
+		if w.Tag() == tagUserText {
 			m = m.setCursor(i)
 			found = true
 			return false
@@ -828,7 +827,7 @@ func (m DisplayModel) MoveWindowCursorToPrevUserPrompt() (DisplayModel, bool) {
 
 	found := false
 	m.windowBuffer.ForEachVisibleBackward(m.windowCursor-1, func(i int, w *Window) bool {
-		if w.Tag() == tlv.TagUserT {
+		if w.Tag() == tagUserText {
 			m = m.setCursor(i)
 			found = true
 			return false

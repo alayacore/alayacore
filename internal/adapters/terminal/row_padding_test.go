@@ -188,13 +188,13 @@ func TestWindowRowsPadToTheBufferWidth(t *testing.T) {
 			wb.AppendOrUpdate("AT", "wide", wide)
 			wb.AppendOrUpdate("UT", "wideuser", wide)
 			wb.HandleToolInputEvent(protocol.ToolInputData{
-				ID: "t1", Name: "edit_file", Input: []byte(strings.Repeat(long+"\n", 6)),
+				CallID: "t1", Name: "edit_file", Input: []byte(strings.Repeat(long+"\n", 6)),
 			}, 1)
 			// Not edit_file: that name goes through RenderDiffContent, whose rows
 			// carry escapes, and styleBodyLines hands an escaped row back untouched.
 			// A diff tool never reaches the copy this sweep exists to check.
 			wb.HandleToolInputEvent(protocol.ToolInputData{
-				ID: "t2", Name: "write_file", Input: []byte(wide),
+				CallID: "t2", Name: "write_file", Input: []byte(wide),
 			}, 1)
 
 			for _, folded := range []bool{false, true} {
@@ -363,7 +363,7 @@ func TestFrameWritesThePaddingARowAsksFor(t *testing.T) {
 		// escapes, and styleBodyLines hands an escaped row back untouched.
 		{"tool", func(wb *WindowBuffer) {
 			wb.HandleToolInputEvent(protocol.ToolInputData{
-				ID: "t1", Name: "write_file", Input: []byte(wide),
+				CallID: "t1", Name: "write_file", Input: []byte(wide),
 			}, 1)
 		}},
 	}

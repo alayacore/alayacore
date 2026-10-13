@@ -74,9 +74,9 @@ func TestToolRunningShowsSpinner(t *testing.T) {
 func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: json.RawMessage("execute_command: lscpu"),
+		CallID: "t1",
+		Name:   "execute_command",
+		Input:  json.RawMessage("execute_command: lscpu"),
 	}, 0)
 
 	// Pending (executing): line is "+ TOOL CALL ⠋ …" — a separator space
@@ -254,7 +254,7 @@ func TestUserPromptCollapsed(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				wb := NewWindowBuffer(tc.width, styles)
-				wb.AppendOrUpdate(tlv.TagUserT, "u1", tc.content)
+				wb.AppendOrUpdate(tagUserText, "u1", tc.content)
 				wb.ToggleFold(0) // collapse it: these are the collapsed-line invariants
 
 				plain := stripANSI(wb.GetAll(-1, false))
@@ -295,7 +295,7 @@ func TestUserPromptCollapsed(t *testing.T) {
 // at the fixed label column like every other window type.
 func TestUserPromptLabel(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagUserT, "u1", "what is lisp?")
+	wb.AppendOrUpdate(tagUserText, "u1", "what is lisp?")
 
 	// Expanded by default: the window's own line carries the label.
 	plain := stripANSI(wb.GetAll(-1, false))

@@ -14,13 +14,13 @@ func TestCmdMsgMarshal(t *testing.T) {
 	}{
 		{
 			name: "with input",
-			msg:  CmdMsg{ID: "a1b2", Name: "save", Input: "/tmp/x.alaya"},
-			want: `{"id":"a1b2","name":"save","input":"/tmp/x.alaya"}`,
+			msg:  CmdMsg{CallID: "a1b2", Name: "save", Input: "/tmp/x.alaya"},
+			want: `{"call_id":"a1b2","name":"save","input":"/tmp/x.alaya"}`,
 		},
 		{
 			name: "no input omitted",
-			msg:  CmdMsg{ID: "c3d4", Name: "cancel"},
-			want: `{"id":"c3d4","name":"cancel"}`,
+			msg:  CmdMsg{CallID: "c3d4", Name: "cancel"},
+			want: `{"call_id":"c3d4","name":"cancel"}`,
 		},
 	}
 	for _, tt := range tests {
@@ -37,12 +37,12 @@ func TestCmdMsgMarshal(t *testing.T) {
 }
 
 func TestCmdMsgUnmarshal(t *testing.T) {
-	raw := `{"id":"e5f6","name":"model_set","input":"3"}`
+	raw := `{"call_id":"e5f6","name":"model_set","input":"3"}`
 	var msg CmdMsg
 	if err := json.Unmarshal([]byte(raw), &msg); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
-	want := CmdMsg{ID: "e5f6", Name: "model_set", Input: "3"}
+	want := CmdMsg{CallID: "e5f6", Name: "model_set", Input: "3"}
 	if !reflect.DeepEqual(msg, want) {
 		t.Errorf("Unmarshal = %+v, want %+v", msg, want)
 	}
@@ -57,27 +57,27 @@ func TestCmdResultMsgMarshal(t *testing.T) {
 		{
 			name: "success with result",
 			msg: CmdResultMsg{
-				ID:     "a1b2",
+				CallID: "a1b2",
 				Output: json.RawMessage(`{"path":"/tmp/x.alaya"}`),
 			},
-			want: `{"id":"a1b2","output":{"path":"/tmp/x.alaya"}}`,
+			want: `{"call_id":"a1b2","output":{"path":"/tmp/x.alaya"}}`,
 		},
 		{
 			name: "success without result (fire-and-forget)",
 			msg: CmdResultMsg{
-				ID:     "zzz",
+				CallID: "zzz",
 				Output: json.RawMessage(`null`),
 			},
-			want: `{"id":"zzz","output":null}`,
+			want: `{"call_id":"zzz","output":null}`,
 		},
 		{
 			name: "error with uniform error object",
 			msg: CmdResultMsg{
-				ID:      "c3d4",
+				CallID:  "c3d4",
 				Output:  json.RawMessage(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
 				IsError: true,
 			},
-			want: `{"id":"c3d4","output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"},"is_error":true}`,
+			want: `{"call_id":"c3d4","output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"},"is_error":true}`,
 		},
 	}
 	for _, tt := range tests {
@@ -94,12 +94,12 @@ func TestCmdResultMsgMarshal(t *testing.T) {
 }
 
 func TestCmdResultMsgRoundTrip(t *testing.T) {
-	raw := `{"id":"e5f6","output":{"path":"./extract.alaya","count":43},"is_error":true}`
+	raw := `{"call_id":"e5f6","output":{"path":"./extract.alaya","count":43},"is_error":true}`
 	var msg CmdResultMsg
 	if err := json.Unmarshal([]byte(raw), &msg); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
-	if msg.ID != "e5f6" || !msg.IsError {
+	if msg.CallID != "e5f6" || !msg.IsError {
 		t.Fatalf("parsed fields wrong: %+v", msg)
 	}
 	var errObj CmdError

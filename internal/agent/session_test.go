@@ -556,11 +556,11 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 	// Create mock output and send content parts
 	mockOutput := &mockOutput{}
 	for _, part := range loadedData.Contents {
-		tag, content, err := contentPartToTLV(part)
+		tag, body, err := contentPartJSON(part, wireID(part.GetHistoryID()))
 		if err != nil {
 			t.Fatalf("Failed to serialize part: %v", err)
 		}
-		_ = tlv.WriteTLV(mockOutput, tag, tlv.WrapID(strconv.FormatUint(part.GetHistoryID(), 10), content))
+		_ = tlv.WriteTLV(mockOutput, tag, body)
 	}
 
 	// Verify that output was written

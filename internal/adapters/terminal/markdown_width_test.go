@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/theme"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestMarkdownTableWideColumnsWithCJK verifies the fit path when CJK content
@@ -25,8 +23,8 @@ func TestMarkdownTableWideColumnsWithCJK(t *testing.T) {
 	// 3-col table where the first column is much wider than the others and
 	// contains CJK content.
 	content := "| 名前 | age | city |\n|---|---|---|\n| 山田太郎さん | 30 | 東京 |"
-	r := &textRenderer{tag: tlv.TagAssistantT}
-	r.AppendFromTLV(tlv.TagAssistantT, content)
+	r := &textRenderer{tag: tagAssistantText}
+	r.AppendFromTLV(tagAssistantText, content)
 	r.ToggleMarkdownMode() // enable table formatting
 
 	for _, width := range []int{20, 28, 40, 60} {

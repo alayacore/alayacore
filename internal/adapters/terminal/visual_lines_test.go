@@ -10,8 +10,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestWindowVisualLinesExpanded verifies that an expanded window renders to
@@ -25,7 +23,7 @@ import (
 // line ends it.
 func TestWindowVisualLinesExpanded(t *testing.T) {
 	styles := DefaultStyles()
-	w := NewWindow("at-1", tlv.TagAssistantT, styles)
+	w := NewWindow("at-1", tagAssistantText, styles)
 	w.Visible = true
 	w.Folded = false
 	// 25 words * 5 chars = 125 chars → wraps to several rows at width 40.
@@ -67,7 +65,7 @@ func TestWindowVisualLinesExpanded(t *testing.T) {
 // visual line (no box).
 func TestWindowVisualLinesFolded(t *testing.T) {
 	styles := DefaultStyles()
-	w := NewWindow("at-1", tlv.TagAssistantT, styles)
+	w := NewWindow("at-1", tagAssistantText, styles)
 	w.Visible = true
 	w.Folded = true
 	w.AppendContent("hello world")
@@ -92,9 +90,9 @@ func TestWindowBufferLineHeightsAreVisual(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 
 	// Expanded AT with multi-row content.
-	atIdx := wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", strings.Repeat("word ", 25))
+	atIdx := wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))
 	// Folded reasoning (default folded).
-	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short")
+	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "short")
 
 	wb.GetTotalLines() // triggers ensureLineHeights
 

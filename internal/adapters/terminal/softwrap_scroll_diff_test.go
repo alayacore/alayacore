@@ -15,8 +15,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // lineAt returns the textual content of grid row i (trimmed of trailing
@@ -36,8 +34,8 @@ func TestScrollDiffSoftWrapAlignment(t *testing.T) {
 	content := "The simple test passes. The user's bug might require a more specific scenario. Let me make the test more aggressive and add diagnostic output:" // 142 chars, wraps to 4 rows at W=40
 
 	wb := NewWindowBuffer(W, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", content)
-	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
+	wb.AppendOrUpdate(tagAssistantText, "w1", content)
+	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "short reasoning")
 	// w1 = labeled opening line + 4 content rows = 5 visual lines;
 	// ar = 1 folded line. Total 6 lines, one more than the viewport.
 

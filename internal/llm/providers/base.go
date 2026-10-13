@@ -78,8 +78,6 @@ type baseProvider struct {
 	reasoningLevel   int                     // 0=off, 1=normal, 2=max — UI display, session persistence, and message-layer empty-padding switch
 	reasoningConfigs map[int]json.RawMessage // per-level raw provider JSON merged into request body; nil entries omitted
 	reasoningField   string                  // response delta key carrying reasoning text; setBaseConfig applies the default when empty
-	videoFPS         int                     // frames per second for video attachments; 0 means default (2)
-	videoRes         int                     // video resolution mode: 0 or 1
 
 	// serialToolCalls is model.conf `serial_tool_calls`, carried through without
 	// inversion. OpenAI negates it into the request field; see openai.go.

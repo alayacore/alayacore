@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"encoding/json"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"strings"
 	"testing"
 
@@ -75,7 +76,7 @@ func TestTextDeltaCoalescingMultipleWindows(t *testing.T) {
 		switch w.ID {
 		case "5":
 			foundText = true
-			if w.Tag() != tlv.TagAssistantT {
+			if w.Tag() != tagAssistantText {
 				t.Errorf("text window expected tag AT, got %s", w.Tag())
 			}
 			if w.RawContent() != "Hello World" {
@@ -83,7 +84,7 @@ func TestTextDeltaCoalescingMultipleWindows(t *testing.T) {
 			}
 		case "3":
 			foundReasoning = true
-			if w.Tag() != tlv.TagAssistantR {
+			if w.Tag() != tagAssistantReasoning {
 				t.Errorf("reasoning window expected tag AR, got %s", w.Tag())
 			}
 			if w.RawContent() != "Reasoning..." {
@@ -311,12 +312,12 @@ func TestTextAndToolDeltaInterleaving(t *testing.T) {
 	for i := 0; i < wb.WindowCount(); i++ {
 		w := wb.WindowAt(i)
 		switch w.Tag() {
-		case tlv.TagAssistantT:
+		case tagAssistantText:
 			foundText = true
 			if w.RawContent() != "Hello World" {
 				t.Errorf("text content: expected %q, got %q", "Hello World", w.RawContent())
 			}
-		case tlv.TagAssistantR:
+		case tagAssistantReasoning:
 			foundReasoning = true
 			if w.RawContent() != "thinking hard" {
 				t.Errorf("reasoning content: expected %q, got %q", "thinking hard", w.RawContent())
@@ -422,7 +423,7 @@ func TestDrainDirtyIsPureQuery(t *testing.T) {
 
 	// Write a non-delta frame to set dirty.
 	var buf strings.Builder
-	buf.Write(encodeTestTLV(tlv.TagUserF, tlv.WrapID("1", `{"id":"call_1","content":[],"is_error":false}`)))
+	buf.Write(encodeTestTLV(tlv.TagUserF, wiretest.ToolOutputLegacy("1", `{"id":"call_1","content":[],"is_error":false}`)))
 	_, err := out.Write([]byte(buf.String()))
 	if err != nil {
 		t.Fatalf("Write failed: %v", err)
@@ -468,11 +469,11 @@ func TestDeltaCoalescingThroughWrite(t *testing.T) {
 
 	// Single write with multiple TLV frames.
 	var buf strings.Builder
-	buf.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "A")))
-	buf.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "B")))
-	buf.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "C")))
-	buf.Write(encodeTestTLV(tlv.TagAssistantRDelta, tlv.WrapID("2", "think")))
-	buf.Write(encodeTestTLV(tlv.TagAssistantRDelta, tlv.WrapID("2", "ing")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "A")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "B")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "C")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantReasoningDelta("2", "think")))
+	buf.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantReasoningDelta("2", "ing")))
 
 	_, err := out.Write([]byte(buf.String()))
 	if err != nil {
@@ -514,8 +515,8 @@ func TestDeltaFlushViaNonDeltaTag(t *testing.T) {
 	out.SetWindowWidth(80)
 
 	var buf strings.Builder
-	buf.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "some text")))
-	buf.Write(encodeTestTLV(tlv.TagUserF, tlv.WrapID("1", `{"id":"call_1","content":[],"is_error":false}`)))
+	buf.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "some text")))
+	buf.Write(encodeTestTLV(tlv.TagUserF, wiretest.ToolOutputLegacy("1", `{"id":"call_1","content":[],"is_error":false}`)))
 
 	_, err := out.Write([]byte(buf.String()))
 	if err != nil {
@@ -538,40 +539,40 @@ func TestDeltaFlushViaNonDeltaTag(t *testing.T) {
 
 // writeAt writes a TagAssistantTDelta frame through the output pipeline.
 func writeAt(out *outputWriter, id, content string) {
-	data := encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID(id, content))
+	data := encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta(id, content))
 	_, _ = out.Write(data)
 }
 
 // writeAr writes a TagAssistantRDelta frame through the output pipeline.
 func writeAr(out *outputWriter, id, content string) {
-	data := encodeTestTLV(tlv.TagAssistantRDelta, tlv.WrapID(id, content))
+	data := encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantReasoningDelta(id, content))
 	_, _ = out.Write(data)
 }
 
 // writeAT writes a TagAssistantT (authoritative) frame through the output pipeline.
 func writeAT(out *outputWriter, id, content string) {
-	data := encodeTestTLV(tlv.TagAssistantT, tlv.WrapID(id, content))
+	data := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText(id, content))
 	_, _ = out.Write(data)
 }
 
 // writeAf writes a TagAssistantFDelta (tool delta) frame through the output pipeline.
 func writeAf(out *outputWriter, historyID, toolID, delta string) {
-	fd, _ := json.Marshal(protocol.ToolInputDeltaData{ID: toolID, Delta: delta})
-	data := encodeTestTLV(tlv.TagAssistantFDelta, tlv.WrapID(historyID, string(fd)))
+	fd, _ := json.Marshal(protocol.ToolInputDeltaData{CallID: toolID, Delta: delta})
+	data := encodeTestTLV(tlv.TagAssistantFDelta, wiretest.ToolInputDeltaLegacy(historyID, string(fd)))
 	_, _ = out.Write(data)
 }
 
 // writeUf writes a TagUserFDelta (tool result preview) frame through the output pipeline.
 func writeUf(out *outputWriter, historyID, toolID, text string) {
-	od, _ := json.Marshal(protocol.ToolOutputDeltaData{ID: toolID, Text: text})
-	data := encodeTestTLV(tlv.TagUserFDelta, tlv.WrapID(historyID, string(od)))
+	od, _ := json.Marshal(protocol.ToolOutputDeltaData{CallID: toolID, Text: text})
+	data := encodeTestTLV(tlv.TagUserFDelta, wiretest.ToolOutputDeltaLegacy(historyID, string(od)))
 	_, _ = out.Write(data)
 }
 
 // writeAFStart writes a TagAssistantF (tool start) frame with tool name.
 func writeAFStart(out *outputWriter, historyID, toolID, toolName string) {
-	fd, _ := json.Marshal(protocol.ToolInputData{ID: toolID, Name: toolName})
-	data := encodeTestTLV(tlv.TagAssistantF, tlv.WrapID(historyID, string(fd)))
+	fd, _ := json.Marshal(protocol.ToolInputData{CallID: toolID, Name: toolName})
+	data := encodeTestTLV(tlv.TagAssistantF, wiretest.ToolInputLegacy(historyID, string(fd)))
 	_, _ = out.Write(data)
 }
 
@@ -605,7 +606,7 @@ func TestToolOutputDeltaPreview(t *testing.T) {
 	}
 
 	// Authoritative UF overwrites the preview.
-	buf := encodeTestTLV(tlv.TagUserF, tlv.WrapID("1",
+	buf := encodeTestTLV(tlv.TagUserF, wiretest.ToolOutputLegacy("1",
 		`{"id":"call_1","output":[{"type":"text","text":"done\n"}],"is_error":false}`))
 	_, _ = out.Write(buf)
 

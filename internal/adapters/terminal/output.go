@@ -166,67 +166,69 @@ func (to *outputWriter) writeColored(tag string, value string) {
 	switch tag {
 	// Streaming delta frames — incremental content appended to existing window.
 	// Instead of writing directly to WindowBuffer, accumulate for coalescing.
-	case tlv.TagAssistantTDelta, tlv.TagAssistantRDelta:
-		id, content, ok := tlv.UnwrapID(value)
+	// Streaming content delta — incremental content appended to an existing
+	// window. Instead of writing directly to WindowBuffer, accumulate for
+	// coalescing. The content kind (text vs reasoning) rides in the JSON.
+	case tlv.TagAssistantXDelta:
+		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		// Map lowercase delta tag to uppercase for display styling.
-		displayTag := tlv.TagAssistantT
-		if tag == tlv.TagAssistantRDelta {
-			displayTag = tlv.TagAssistantR
+		displayTag, ok := contentDisplayTag(tlv.TagAssistantX, d.Type)
+		if !ok {
+			return
 		}
-		to.pendTextDelta(id, displayTag, content)
+		to.pendTextDelta(d.ID, displayTag, d.Text)
 
-	// Complete authoritative frames — content already delivered via deltas
-	// during live streaming, but carries the authoritative content during
-	// replay. Only display if no window exists yet (replay case).
-	case tlv.TagAssistantT, tlv.TagAssistantR:
-		id, content, ok := tlv.UnwrapID(value)
+	// Complete authoritative content — already delivered via deltas during
+	// live streaming, but carries the authoritative content during replay.
+	// Only display if no window exists yet (replay case).
+	case tlv.TagAssistantX:
+		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		if !to.windowBuffer.HasWindow(id) {
-			to.windowBuffer.AppendOrUpdate(tag, id, content)
+		displayTag, ok := contentDisplayTag(tlv.TagAssistantX, d.Type)
+		if !ok {
+			return
+		}
+		if !to.windowBuffer.HasWindow(d.ID) {
+			to.windowBuffer.AppendOrUpdate(displayTag, d.ID, d.Text)
 		}
 
-	// User text tag — carries NUL-delimited historyID
-	// User content tags — accumulated until next non-user tag triggers flush.
-	case tlv.TagUserT:
-		id, content, ok := tlv.UnwrapID(value)
+	// User content — accumulated until the next non-user tag triggers flush.
+	case tlv.TagUserX:
+		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		to.bufferUserContent(id, content, tlv.TagUserT)
-
-	case tlv.TagUserI, tlv.TagUserV, tlv.TagUserA, tlv.TagUserD:
-		id, _, ok := tlv.UnwrapID(value)
+		displayTag, ok := contentDisplayTag(tlv.TagUserX, d.Type)
 		if !ok {
 			return
 		}
-		to.bufferUserContent(id, tlv.MediaLabel(tag), tag)
+		if d.Type == protocol.TypeText {
+			to.bufferUserContent(d.ID, d.Text, displayTag)
+		} else {
+			to.bufferUserContent(d.ID, mediaLabel(displayTag), displayTag)
+		}
 
 	case tlv.TagUserEnd:
 		// Flush any pending user content. TagUserEnd should only appear
 		// on the input stream, but handle it here as a safety measure.
 		to.flushUserContent()
 
-	// Function lifecycle (JSON: id, type, name, input, status)
-	// Carries NUL-delimited historyID prefix
+	// Function lifecycle (JSON: call_id, name, input). The history id rides in
+	// the body's "id"; call_id pairs the call with its result.
 	case tlv.TagAssistantF:
-		id, payload, ok := tlv.UnwrapID(value)
-		if !ok {
-			return
-		}
 		var fd protocol.ToolInputData
-		if err := json.Unmarshal([]byte(payload), &fd); err != nil {
+		if err := json.Unmarshal([]byte(value), &fd); err != nil {
 			return
 		}
 
 		// Resolve the tool name — prefer the existing window (input frame)
 		// over the frame itself (start/combined).
 		name := fd.Name
-		if info := to.windowBuffer.GetFunctionInfo(fd.ID); info != nil {
+		if info := to.windowBuffer.GetFunctionInfo(fd.CallID); info != nil {
 			name = info.Name
 		}
 
@@ -238,53 +240,39 @@ func (to *outputWriter) writeColored(tag string, value string) {
 			fd.Input = json.RawMessage(handler.FormatCall(fd.Input))
 		}
 
-		to.windowBuffer.HandleToolInputEvent(fd, parseHistoryID(id))
+		to.windowBuffer.HandleToolInputEvent(fd, parseHistoryID(fd.ID))
 
 	// Tool input delta — partial JSON arguments during streaming.
 	case tlv.TagAssistantFDelta:
-		id, payload, ok := tlv.UnwrapID(value)
-		if !ok {
-			return
-		}
 		var fd protocol.ToolInputDeltaData
-		if err := json.Unmarshal([]byte(payload), &fd); err != nil {
+		if err := json.Unmarshal([]byte(value), &fd); err != nil {
 			return
 		}
 		// Resolve tool name from existing window if known.
 		name := ""
-		if info := to.windowBuffer.GetFunctionInfo(fd.ID); info != nil {
+		if info := to.windowBuffer.GetFunctionInfo(fd.CallID); info != nil {
 			name = info.Name
 		}
-		to.pendToolDelta(fd.ID, name, fd.Delta, parseHistoryID(id))
+		to.pendToolDelta(fd.CallID, name, fd.Delta, parseHistoryID(fd.ID))
 
-	// Tool result preview snapshot (JSON: id, text)
+	// Tool result preview snapshot (JSON: call_id, text)
 	// Ephemeral display-only frame; authoritative result arrives via UF.
-	// Carries NUL-delimited historyID prefix
 	case tlv.TagUserFDelta:
-		id, payload, ok := tlv.UnwrapID(value)
-		if !ok {
-			return
-		}
 		var od protocol.ToolOutputDeltaData
-		if err := json.Unmarshal([]byte(payload), &od); err != nil {
+		if err := json.Unmarshal([]byte(value), &od); err != nil {
 			return
 		}
-		to.windowBuffer.HandleToolOutputDelta(od.ID, od.Text, parseHistoryID(id))
+		to.windowBuffer.HandleToolOutputDelta(od.CallID, od.Text, parseHistoryID(od.ID))
 
-	// Function result (JSON: id, content, is_error)
-	// Carries NUL-delimited historyID prefix
+	// Function result (JSON: call_id, output, is_error)
 	case tlv.TagUserF:
-		id, payload, ok := tlv.UnwrapID(value)
-		if !ok {
-			return
-		}
 		var tr protocol.ToolOutputData
-		if err := json.Unmarshal([]byte(payload), &tr); err != nil {
+		if err := json.Unmarshal([]byte(value), &tr); err != nil {
 			return
 		}
-		// Extract display text from the content JSON array
+		// Extract display text from the content item list.
 		displayText := extractToolOutputDisplayText(tr.Output)
-		to.windowBuffer.HandleToolOutput(tr.ID, displayText, tr.IsError, parseHistoryID(id))
+		to.windowBuffer.HandleToolOutput(tr.CallID, displayText, tr.IsError, parseHistoryID(tr.ID))
 
 	// System tags
 	case tlv.TagSystemMsg:
@@ -316,13 +304,13 @@ func (to *outputWriter) triggerUpdateForTag(tag string) {
 }
 
 // isAccumulatingDelta reports whether a frame is an accumulating delta
-// (At/Ar/Af). These tags accumulate content in pending maps instead of
+// (Ax/Af). These tags accumulate content in pending maps instead of
 // touching the window directly, so they do not trigger flushPendingDeltas
 // on arrival — flushing mid-stream would interleave authoritative frames
 // incorrectly.
 func isAccumulatingDelta(tag string) bool {
 	switch tag {
-	case tlv.TagAssistantTDelta, tlv.TagAssistantRDelta, tlv.TagAssistantFDelta:
+	case tlv.TagAssistantXDelta, tlv.TagAssistantFDelta:
 		return true
 	}
 	return false
@@ -335,25 +323,20 @@ func isWriteThroughDelta(tag string) bool {
 	return tag == tlv.TagUserFDelta
 }
 
-// tagsThatSetDirty marks tags whose arrival requires a redraw. At/Ar/Af
+// tagsThatSetDirty marks tags whose arrival requires a redraw. Ax/Af
 // are NOT in this set: they accumulate pending data without modifying
 // WindowBuffer, and the dirty flag is set by flushPendingDeltas() when
 // those pending deltas are eventually written out. Uf IS in the set
 // because it updates the window directly (snapshot semantics).
 var tagsThatSetDirty = map[string]bool{
-	tlv.TagAssistantT: true,
-	tlv.TagAssistantR: true,
+	tlv.TagAssistantX: true,
+	tlv.TagUserX:      true,
 	tlv.TagAssistantF: true,
-	tlv.TagUserT:      true,
 	tlv.TagUserF:      true,
-	tlv.TagUserI:      true,
-	tlv.TagUserV:      true,
-	tlv.TagUserA:      true,
-	tlv.TagUserD:      true,
 	tlv.TagUserFDelta: true,
 }
 
-// pendTextDelta accumulates a text delta ("At" / "Ar") for coalescing.
+// pendTextDelta accumulates a text delta ("Ax") for coalescing.
 // Multiple deltas for the same window are merged into a single
 // AppendOrUpdate call when flushPendingDeltas is called.
 // Must be called under outputWriter.mu.
@@ -590,7 +573,7 @@ func (to *outputWriter) handleCommandOut(value string) {
 		to.dirty.Store(true)
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.ID)
+	name, _ := commandNames.LoadAndDelete(msg.CallID)
 	nameStr, _ := name.(string)
 	text := renderCommandResult(nameStr, msg.Output)
 	if text == "" {
@@ -780,20 +763,20 @@ func (to *outputWriter) handleSystemSession(data json.RawMessage) {
 // Stores the pending state so the Terminal can open its confirm overlay.
 func (to *outputWriter) handleSystemToolConfirm(data json.RawMessage) {
 	var m struct {
-		ID string `json:"id"`
+		CallID string `json:"call_id"`
 	}
-	if json.Unmarshal(data, &m) != nil || m.ID == "" {
+	if json.Unmarshal(data, &m) != nil || m.CallID == "" {
 		return
 	}
 	// Look up the tool info from the function data window for a richer message.
 	toolName := ""
 	toolInput := ""
-	if info := to.windowBuffer.GetFunctionInfo(m.ID); info != nil {
+	if info := to.windowBuffer.GetFunctionInfo(m.CallID); info != nil {
 		toolName = info.Name
 		toolInput = info.Input
 	}
 	// Store pending state for the Terminal's confirm overlay.
-	to.status.addToolConfirmPending(m.ID, toolName, toolInput)
+	to.status.addToolConfirmPending(m.CallID, toolName, toolInput)
 }
 
 // GetPendingToolConfirm returns any pending tool confirmation and clears it.
@@ -849,10 +832,9 @@ func (to *outputWriter) generateWindowID() string {
 	return fmt.Sprintf("win%d", to.nextWindowID.Add(1))
 }
 
-// userTag returns true if tag is a user content tag.
+// userTag returns true if tag is a user content tag (on the wire).
 func userTag(tag string) bool {
-	return tag == tlv.TagUserT || tag == tlv.TagUserI ||
-		tag == tlv.TagUserV || tag == tlv.TagUserA || tag == tlv.TagUserD || tag == tlv.TagUserEnd
+	return tag == tlv.TagUserX || tag == tlv.TagUserEnd
 }
 
 // bufferUserContent processes one user content frame.
@@ -863,7 +845,7 @@ func (to *outputWriter) bufferUserContent(id, content string, tag string) {
 	if to.activeUserWindowID == "" {
 		// First frame — create the window
 		to.activeUserWindowID = id
-		to.windowBuffer.AppendOrUpdate(tlv.TagUserT, id, "")
+		to.windowBuffer.AppendOrUpdate(tagUserText, id, "")
 		to.windowBuffer.SetWindowVisible(id)
 	}
 
@@ -893,23 +875,16 @@ func (to *outputWriter) SetWindowWidth(width int) {
 	to.windowBuffer.WithWidth(width)
 }
 
-// extractToolOutputDisplayText extracts display text from a tool result content JSON array.
-// The content is a JSON array of {"type":"text","text":"..."} items.
-func extractToolOutputDisplayText(content json.RawMessage) string {
-	if len(content) == 0 {
-		return ""
-	}
-	var items []struct {
-		Type string `json:"type"`
-		Text string `json:"text,omitempty"`
-	}
-	if err := json.Unmarshal(content, &items); err != nil {
-		return string(content)
-	}
+// extractToolOutputDisplayText extracts display text from a tool result's
+// content items — the first text item, or a placeholder when there is none.
+func extractToolOutputDisplayText(items []protocol.ContentItem) string {
 	for _, item := range items {
-		if item.Type == "text" {
+		if item.Type == protocol.TypeText {
 			return item.Text
 		}
+	}
+	if len(items) == 0 {
+		return ""
 	}
 	return "(non-text result)"
 }

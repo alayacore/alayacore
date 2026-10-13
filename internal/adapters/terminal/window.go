@@ -217,7 +217,7 @@ func NewWindow(id string, tag string, styles *Styles) *Window {
 // setRenderer sets the renderer based on the TLV tag.
 func (w *Window) setRenderer(tag string) {
 	switch tag {
-	case tlv.TagUserT:
+	case tagUserText:
 		w.renderer = &userRenderer{}
 	case tlv.TagAssistantF, tlv.TagUserF:
 		w.renderer = &toolRenderer{isUF: tag == tlv.TagUserF}
@@ -693,11 +693,11 @@ func (w *Window) windowLabel() string {
 			return toolHeaderLabel + " " + ti.Name
 		}
 		return toolHeaderLabel
-	case tlv.TagAssistantR:
+	case tagAssistantReasoning:
 		return "REASONING"
-	case tlv.TagAssistantT:
+	case tagAssistantText:
 		return "ASSISTANT"
-	case tlv.TagUserT:
+	case tagUserText:
 		return "USER PROMPT"
 	case TagWindowSN:
 		return "SYSTEM NOTIFY"

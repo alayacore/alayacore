@@ -157,19 +157,19 @@ func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 	}
 
 	known := map[string]bool{
-		tlv.TagAssistantR: true, tlv.TagAssistantT: true, tlv.TagAssistantF: true,
-		tlv.TagUserT: true, tlv.TagUserF: true, tlv.TagUserI: true, tlv.TagUserV: true,
-		tlv.TagUserA: true, tlv.TagUserD: true, tlv.TagUserEnd: true,
-		tlv.TagCommandIn: true, tlv.TagCommandOut: true, tlv.TagInputEnd: true,
-		tlv.TagSystemMsg:       true,
-		tlv.TagAssistantRDelta: true, tlv.TagAssistantTDelta: true,
+		tlv.TagAssistantF: true, tlv.TagUserF: true,
+		tlv.TagUserX: true, tlv.TagAssistantX: true, tlv.TagAssistantXDelta: true,
+		tlv.TagUserEnd: true, tlv.TagInputEnd: true,
+		tlv.TagCommandIn: true, tlv.TagCommandOut: true, tlv.TagSystemMsg: true,
 		tlv.TagAssistantFDelta: true, tlv.TagUserFDelta: true,
 	}
-	// Tags whose payload is JSON (after an optional id prefix). The text and
-	// media tags carry text or a data URI, and carry no JSON by design.
+	// Tags whose payload is JSON. With v14 that is every frame except the
+	// zero-length control frames (UE/CE): text, media and tool frames all carry
+	// a JSON object.
 	jsonBearing := map[string]bool{
-		tlv.TagAssistantF: true, tlv.TagUserF: true,
-		tlv.TagAssistantFDelta: true, tlv.TagUserFDelta: true,
+		tlv.TagUserX: true, tlv.TagAssistantX: true, tlv.TagAssistantXDelta: true,
+		tlv.TagAssistantF: true, tlv.TagAssistantFDelta: true,
+		tlv.TagUserF: true, tlv.TagUserFDelta: true,
 		tlv.TagCommandIn: true, tlv.TagCommandOut: true, tlv.TagSystemMsg: true,
 	}
 
@@ -203,11 +203,8 @@ func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 				t.Errorf("frame tag %q does not match the sample name %q", tag, name)
 			}
 
-			// UnwrapID is a no-op without a prefix, so this is the payload
-			// either way; a malformed prefix would make it disagree.
-			_, content, _ := tlv.UnwrapID(value)
-			if jsonBearing[tag] && !json.Valid([]byte(content)) {
-				t.Errorf("payload of %s is not valid JSON:\n%s", tag, content)
+			if jsonBearing[tag] && !json.Valid([]byte(value)) {
+				t.Errorf("payload of %s is not valid JSON:\n%s", tag, value)
 			}
 		})
 	}

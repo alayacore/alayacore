@@ -19,7 +19,7 @@ import (
 // BEFORE the first non-empty text part was found, so an all-blank text block
 // under media rendered a rule with nothing under it.
 func TestUserPromptMediaAndTextHaveNoDividerRow(t *testing.T) {
-	media := []string{tlv.MediaLabel(tlv.TagUserI), tlv.MediaLabel(tlv.TagUserA)}
+	media := []string{tlv.MediaLabel(tlv.KindImage), tlv.MediaLabel(tlv.KindAudio)}
 
 	ur := &userRenderer{textParts: []string{"what are these?"}, mediaParts: media}
 	lines, count := ur.BuildInner(80, false, DefaultStyles())
@@ -34,7 +34,7 @@ func TestUserPromptMediaAndTextHaveNoDividerRow(t *testing.T) {
 		t.Errorf("media + text:\n  got  %q\n  want %q", got, want)
 	}
 
-	blank := &userRenderer{textParts: []string{"   "}, mediaParts: []string{tlv.MediaLabel(tlv.TagUserI)}}
+	blank := &userRenderer{textParts: []string{"   "}, mediaParts: []string{tlv.MediaLabel(tlv.KindImage)}}
 	lines, _ = blank.BuildInner(80, false, DefaultStyles())
 	if len(lines) != 1 {
 		t.Fatalf("media + blank text rows = %d, want 1 (no rule, no empty row): %q",
@@ -133,8 +133,8 @@ func TestUserPromptMultiLineContentStaysMultiLine(t *testing.T) {
 // is gone, the boundary is not.
 func TestSoftWrappedWindowEndsOnAHardRowBoundary(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagUserT, "u1", strings.Repeat("word ", 25))
-	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "short reasoning")
+	wb.AppendOrUpdate(tagUserText, "u1", strings.Repeat("word ", 25))
+	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "short reasoning")
 	wb.SetViewportPosition(0, 6)
 
 	plain := stripANSI(wb.GetAll(-1, false))
@@ -153,11 +153,11 @@ func TestSoftWrappedWindowEndsOnAHardRowBoundary(t *testing.T) {
 
 func TestCompactMediaSummary(t *testing.T) {
 	labels := []string{
-		tlv.MediaLabel(tlv.TagUserI),
-		tlv.MediaLabel(tlv.TagUserA),
-		tlv.MediaLabel(tlv.TagUserI),
-		tlv.MediaLabel(tlv.TagUserD),
-		tlv.MediaLabel(tlv.TagUserA),
+		tlv.MediaLabel(tlv.KindImage),
+		tlv.MediaLabel(tlv.KindAudio),
+		tlv.MediaLabel(tlv.KindImage),
+		tlv.MediaLabel(tlv.KindDocument),
+		tlv.MediaLabel(tlv.KindAudio),
 	}
 
 	got := compactMediaSummary(labels)
@@ -172,9 +172,9 @@ func TestUserPromptCollapsedMediaSummary(t *testing.T) {
 	ur := &userRenderer{
 		textParts: []string{"analyze this"},
 		mediaParts: []string{
-			tlv.MediaLabel(tlv.TagUserI),
-			tlv.MediaLabel(tlv.TagUserA),
-			tlv.MediaLabel(tlv.TagUserI),
+			tlv.MediaLabel(tlv.KindImage),
+			tlv.MediaLabel(tlv.KindAudio),
+			tlv.MediaLabel(tlv.KindImage),
 		},
 	}
 
@@ -191,10 +191,10 @@ func TestUserPromptCollapsedMediaSummary(t *testing.T) {
 func TestUserPromptCollapsedMediaOnlySummary(t *testing.T) {
 	ur := &userRenderer{
 		mediaParts: []string{
-			tlv.MediaLabel(tlv.TagUserI),
-			tlv.MediaLabel(tlv.TagUserA),
-			tlv.MediaLabel(tlv.TagUserI),
-			tlv.MediaLabel(tlv.TagUserV),
+			tlv.MediaLabel(tlv.KindImage),
+			tlv.MediaLabel(tlv.KindAudio),
+			tlv.MediaLabel(tlv.KindImage),
+			tlv.MediaLabel(tlv.KindVideo),
 		},
 	}
 
@@ -212,10 +212,10 @@ func TestUserPromptCollapsedMediaSummaryFitsAndPrioritizesMedia(t *testing.T) {
 	ur := &userRenderer{
 		textParts: []string{strings.Repeat("long text ", 10)},
 		mediaParts: []string{
-			tlv.MediaLabel(tlv.TagUserI),
-			tlv.MediaLabel(tlv.TagUserV),
-			tlv.MediaLabel(tlv.TagUserA),
-			tlv.MediaLabel(tlv.TagUserD),
+			tlv.MediaLabel(tlv.KindImage),
+			tlv.MediaLabel(tlv.KindVideo),
+			tlv.MediaLabel(tlv.KindAudio),
+			tlv.MediaLabel(tlv.KindDocument),
 		},
 	}
 

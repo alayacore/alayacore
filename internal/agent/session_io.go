@@ -93,19 +93,16 @@ func (s *Session) inputPump() {
 // flushes whatever is staged before it.
 func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) []llm.ContentPart {
 	switch tag {
-	case tlv.TagUserI:
-		return append(staged, &llm.ImagePart{URI: value})
-	case tlv.TagUserV:
-		return append(staged, &llm.VideoPart{URI: value})
-	case tlv.TagUserA:
-		return append(staged, &llm.AudioPart{URI: value})
-	case tlv.TagUserD:
-		return append(staged, &llm.DocumentPart{URI: value})
-	case tlv.TagUserT:
-		if value != "" {
-			return append(staged, &llm.TextPart{Text: value})
+	case tlv.TagUserX:
+		part, err := contentPartFromJSON(tlv.TagUserX, []byte(value))
+		if err != nil {
+			s.inputMsgCh <- inputMsg{err: fmt.Errorf("invalid content frame: %v", err)}
+			return nil
 		}
-		return staged
+		if tp, ok := part.(*llm.TextPart); ok && tp.Text == "" {
+			return staged // an empty text part contributes nothing
+		}
+		return append(staged, part)
 	case tlv.TagCommandIn:
 		if len(staged) > 0 {
 			s.inputMsgCh <- inputMsg{err: fmt.Errorf("command can not be sent with staged content")}
@@ -116,7 +113,7 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 			s.inputMsgCh <- inputMsg{err: fmt.Errorf("invalid command frame: %v", err)}
 			return staged
 		}
-		s.inputMsgCh <- inputMsg{isCmd: true, cmd: cmd.Name, cmdInput: cmd.Input, cmdID: cmd.ID}
+		s.inputMsgCh <- inputMsg{isCmd: true, cmd: cmd.Name, cmdInput: cmd.Input, cmdID: cmd.CallID}
 		return staged
 	case tlv.TagUserEnd:
 		if len(staged) > 0 {

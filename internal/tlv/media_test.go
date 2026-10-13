@@ -2,56 +2,56 @@ package tlv
 
 import "testing"
 
-// TestTagForPathLocal verifies local file paths map to the expected tags.
-func TestTagForPathLocal(t *testing.T) {
+// TestKindForPathLocal verifies local file paths map to the expected kinds.
+func TestKindForPathLocal(t *testing.T) {
 	cases := []struct {
 		path string
 		want string
 	}{
-		{"photo.jpg", TagUserI},
-		{"photo.JPG", TagUserI}, // case-insensitive
-		{"photo.png", TagUserI},
-		{"photo.gif", TagUserI},
-		{"photo.webp", TagUserI},
-		{"photo.bmp", TagUserI},
-		{"photo.svg", TagUserI},
-		{"clip.mp4", TagUserV},
-		{"clip.mov", TagUserV},
-		{"song.mp3", TagUserA},
-		{"song.wav", TagUserA},
-		{"doc.pdf", TagUserD},
-		{"archive.tar.gz", TagUserD}, // unknown → document
-		{"noext", TagUserD},          // no extension → document
+		{"photo.jpg", KindImage},
+		{"photo.JPG", KindImage}, // case-insensitive
+		{"photo.png", KindImage},
+		{"photo.gif", KindImage},
+		{"photo.webp", KindImage},
+		{"photo.bmp", KindImage},
+		{"photo.svg", KindImage},
+		{"clip.mp4", KindVideo},
+		{"clip.mov", KindVideo},
+		{"song.mp3", KindAudio},
+		{"song.wav", KindAudio},
+		{"doc.pdf", KindDocument},
+		{"archive.tar.gz", KindDocument}, // unknown → document
+		{"noext", KindDocument},          // no extension → document
 	}
 	for _, tc := range cases {
-		if got := TagForPath(tc.path); got != tc.want {
-			t.Errorf("TagForPath(%q) = %q, want %q", tc.path, got, tc.want)
+		if got := KindForPath(tc.path); got != tc.want {
+			t.Errorf("KindForPath(%q) = %q, want %q", tc.path, got, tc.want)
 		}
 	}
 }
 
-// TestTagForPathURL verifies URLs are classified by their path extension,
+// TestKindForPathURL verifies URLs are classified by their path extension,
 // ignoring query strings and fragments — a URL like
-// "https://example.com/a.jpg?x=1" must be an image (UI), not a document.
-func TestTagForPathURL(t *testing.T) {
+// "https://example.com/a.jpg?x=1" must be an image, not a document.
+func TestKindForPathURL(t *testing.T) {
 	cases := []struct {
 		url  string
 		want string
 	}{
-		{"https://example.com/a.jpg", TagUserI},
-		{"https://example.com/a.jpg?x=1", TagUserI},
-		{"https://example.com/a.jpg?x=1&y=2", TagUserI},
-		{"https://example.com/a.jpg#fragment", TagUserI},
-		{"https://example.com/a.jpg?token=abc#frag", TagUserI},
-		{"https://example.com/dir/photo.PNG?raw=1", TagUserI},
-		{"https://example.com/clip.mp4?token=abc", TagUserV},
-		{"https://example.com/song.wav?dl=1", TagUserA},
-		{"https://example.com/doc.pdf#page=3", TagUserD},
-		{"https://example.com/download?id=123", TagUserD}, // no extension → document
+		{"https://example.com/a.jpg", KindImage},
+		{"https://example.com/a.jpg?x=1", KindImage},
+		{"https://example.com/a.jpg?x=1&y=2", KindImage},
+		{"https://example.com/a.jpg#fragment", KindImage},
+		{"https://example.com/a.jpg?token=abc#frag", KindImage},
+		{"https://example.com/dir/photo.PNG?raw=1", KindImage},
+		{"https://example.com/clip.mp4?token=abc", KindVideo},
+		{"https://example.com/song.wav?dl=1", KindAudio},
+		{"https://example.com/doc.pdf#page=3", KindDocument},
+		{"https://example.com/download?id=123", KindDocument}, // no extension → document
 	}
 	for _, tc := range cases {
-		if got := TagForPath(tc.url); got != tc.want {
-			t.Errorf("TagForPath(%q) = %q, want %q", tc.url, got, tc.want)
+		if got := KindForPath(tc.url); got != tc.want {
+			t.Errorf("KindForPath(%q) = %q, want %q", tc.url, got, tc.want)
 		}
 	}
 }

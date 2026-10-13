@@ -19,8 +19,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // cupRows returns the 1-indexed rows of every absolute-CUP anchor in
@@ -94,7 +92,7 @@ func TestInputBoxPositionInvariantUnderScroll(t *testing.T) {
 	// Fill the display with enough content that scrolling has visible
 	// effect on the rendered display region.
 	for i := 0; i < 40; i++ {
-		wb.AppendOrUpdate(tlv.TagAssistantT,
+		wb.AppendOrUpdate(tagAssistantText,
 			"id-"+itoa(i),
 			"line "+itoa(i)+" — a bit of content to scroll past")
 	}
@@ -126,7 +124,7 @@ func TestInputBoxPositionInvariantUnderOversizeAttachment(t *testing.T) {
 	wb := m.out.WindowBuffer()
 
 	// Display content (so display area is non-trivial).
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w1",
+	wb.AppendOrUpdate(tagAssistantText, "w1",
 		"some content that pushes the display around a bit")
 
 	// Anchor without attachment.

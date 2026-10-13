@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestHMLPositioningWithFoldedWindows verifies that H (top), M (center) and
@@ -20,19 +19,19 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	wb := NewWindowBuffer(80, styles)
 
 	// Window 0: folded tool (default) — 1 line.
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t0", Name: "read_file", Input: json.RawMessage("read_file: /a.txt")}, 0)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t0", Name: "read_file", Input: json.RawMessage("read_file: /a.txt")}, 0)
 	wb.HandleToolOutput("t0", "ok", false, 0)
 
 	// Window 1: expanded assistant (default unfolded) — 3 content lines →
 	// its own line + 3 = 4 lines.
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "line one\nline two\nline three")
+	wb.AppendOrUpdate(tagAssistantText, "a1", "line one\nline two\nline three")
 
 	// Window 2: folded tool — 1 line.
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t2", Name: "grep", Input: json.RawMessage("grep: foo")}, 2)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t2", Name: "grep", Input: json.RawMessage("grep: foo")}, 2)
 	wb.HandleToolOutput("t2", "ok", false, 2)
 
 	// Window 3: folded tool — 1 line.
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t3", Name: "cat", Input: json.RawMessage("cat: /b.txt")}, 3)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t3", Name: "cat", Input: json.RawMessage("cat: /b.txt")}, 3)
 	wb.HandleToolOutput("t3", "ok", false, 3)
 
 	// Viewport of 4 rows: only the top part of the session is visible.
@@ -100,11 +99,11 @@ func TestHMLLineRangeConsistency(t *testing.T) {
 	wb := NewWindowBuffer(80, styles)
 
 	// Mixed session: folded tools + expanded assistant + folded reasoning.
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t0", Name: "edit_file", Input: json.RawMessage("edit_file: /x.css")}, 0)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t0", Name: "edit_file", Input: json.RawMessage("edit_file: /x.css")}, 0)
 	wb.HandleToolOutput("t0", "done", false, 0)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "multi\nline\nassistant\nreply")
-	wb.AppendOrUpdate(tlv.TagAssistantR, "r2", "reasoning text that should be folded")
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t3", Name: "execute_command", Input: json.RawMessage("execute_command: ls")}, 3)
+	wb.AppendOrUpdate(tagAssistantText, "a1", "multi\nline\nassistant\nreply")
+	wb.AppendOrUpdate(tagAssistantReasoning, "r2", "reasoning text that should be folded")
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t3", Name: "execute_command", Input: json.RawMessage("execute_command: ls")}, 3)
 	wb.HandleToolOutput("t3", "ok", false, 3)
 
 	_ = wb.GetTotalLines()
@@ -166,7 +165,7 @@ func TestHMLFoldedScrollClamp(t *testing.T) {
 
 	// Many expanded windows, scrolled to the bottom.
 	for i := 0; i < 5; i++ {
-		wb.AppendOrUpdate(tlv.TagAssistantT, fmt.Sprintf("a%d", i), "some\ncontent\nlines")
+		wb.AppendOrUpdate(tagAssistantText, fmt.Sprintf("a%d", i), "some\ncontent\nlines")
 	}
 	_ = wb.GetTotalLines()
 

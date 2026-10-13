@@ -951,9 +951,9 @@ func BenchmarkGetAllDimmed(b *testing.B) {
 	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("af-%d", i)
 		wb.HandleToolInputEvent(protocol.ToolInputData{
-			ID:    id,
-			Name:  "read_file",
-			Input: []byte("/path/to/some/file.txt"),
+			CallID: id,
+			Name:   "read_file",
+			Input:  []byte("/path/to/some/file.txt"),
 		}, uint64(i))
 	}
 

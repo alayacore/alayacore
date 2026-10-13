@@ -9,6 +9,7 @@ package terminal
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"strings"
 	"testing"
 
@@ -101,7 +102,7 @@ func TestSessionClosedFrameEndsTheProgram(t *testing.T) {
 	// itself an authoritative frame, so the outputWriter flushed the delta when
 	// the frame arrived — this pins that the session's last words are in the
 	// WindowBuffer by the time the program leaves.
-	if _, err := m.out.Write(encodeTestTLV(tlv.TagAssistantTDelta, tlv.WrapID("1", "bye"))); err != nil {
+	if _, err := m.out.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "bye"))); err != nil {
 		t.Fatalf("write delta frame: %v", err)
 	}
 	m.out.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`)) // test frame

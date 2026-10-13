@@ -5,6 +5,16 @@ import (
 	"strings"
 )
 
+// Content kinds carried by a "type" field inside a content item (UX / AX /
+// UF.output). The protocol package aliases these; the values are the wire
+// vocabulary, so they must stay stable.
+const (
+	KindImage    = "image"
+	KindVideo    = "video"
+	KindAudio    = "audio"
+	KindDocument = "document"
+)
+
 var mimeMap = map[string]string{
 	".jpg": "image/jpeg", ".jpeg": "image/jpeg",
 	".png": "image/png", ".gif": "image/gif",
@@ -25,7 +35,7 @@ var mimeMap = map[string]string{
 // URL query strings and fragments are stripped first, so that
 // "https://example.com/a.jpg?x=1" yields ".jpg" instead of ".jpg?x=1" —
 // the latter would not match mimeMap and misclassify the attachment as a
-// document (UD) instead of an image (UI). Harmless for local paths.
+// document instead of an image. Harmless for local paths.
 func extOf(pathOrURL string) string {
 	if q := strings.IndexAny(pathOrURL, "?#"); q >= 0 {
 		pathOrURL = pathOrURL[:q]
@@ -41,34 +51,37 @@ func MimeTypeForPath(path string) string {
 	return "application/octet-stream"
 }
 
-// TagForPath returns the TLV tag (UI, UV, UA, or UD) for a file based on its extension.
-func TagForPath(path string) string {
+// KindForPath returns the content kind ("image", "video", "audio", or
+// "document") for a file, based on its extension. Unknown extensions are
+// documents — the protocol's catch-all for a payload it does not model
+// specifically.
+func KindForPath(path string) string {
 	switch extOf(path) {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg":
-		return TagUserI
+		return KindImage
 	case ".mp4", ".mpeg", ".mpg", ".avi", ".mov", ".webm", ".mkv":
-		return TagUserV
+		return KindVideo
 	case ".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".wma":
-		return TagUserA
+		return KindAudio
 	default:
-		return TagUserD
+		return KindDocument
 	}
 }
 
-// MediaLabel returns the display label for a media tag.
+// MediaLabel returns the display label for a content kind.
 //
 // The label is display text for an adapter (only the terminal one uses it
 // today), not protocol content: keep it to single-codepoint emoji, per the
 // glyph policy in internal/adapters/terminal/constants.go.
-func MediaLabel(tag string) string {
-	switch tag {
-	case TagUserI:
+func MediaLabel(kind string) string {
+	switch kind {
+	case KindImage:
 		return "📷 Image"
-	case TagUserV:
+	case KindVideo:
 		return "🎬 Video"
-	case TagUserA:
+	case KindAudio:
 		return "🎵 Audio"
-	case TagUserD:
+	case KindDocument:
 		return "📄 Document"
 	}
 	return ""

@@ -14,7 +14,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestOverlayResidueFoldedOverContent simulates the exact reported
@@ -30,7 +29,7 @@ func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	wb := m.out.WindowBuffer()
 
 	// Frame 1: assistant expanded (long row on screen row N).
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", `This is part of Intel's Core Ultra 200 series (Arrow Lake architecture, launched late 2024).`)
+	wb.AppendOrUpdate(tagAssistantText, "a1", `This is part of Intel's Core Ultra 200 series (Arrow Lake architecture, launched late 2024).`)
 	mm, _ = m.Update(WindowSizeMsg{Width: W, Height: 24})
 	m = mm.(Terminal)
 	frame1 := m.View().Content
@@ -38,7 +37,7 @@ func TestOverlayResidueFoldedOverContent(t *testing.T) {
 
 	// Frame 2: a folded USER window appears — its short row lands on a
 	// screen row previously occupied by a long assistant row (or rule).
-	wb.AppendOrUpdate(tlv.TagUserT, "u1", "my os?")
+	wb.AppendOrUpdate(tagUserText, "u1", "my os?")
 	mm, _ = m.Update(WindowSizeMsg{Width: W, Height: 24})
 	m = mm.(Terminal)
 	frame2 := m.View().Content

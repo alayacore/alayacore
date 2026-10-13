@@ -35,9 +35,9 @@ func writeCommand(input io.Writer, cmd string) error {
 	name, args := commands.SplitCommand(strings.TrimPrefix(cmd, ":"))
 	id := fmt.Sprintf("plain-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
-		ID:    id,
-		Name:  name,
-		Input: args,
+		CallID: id,
+		Name:   name,
+		Input:  args,
 	})
 	if err != nil {
 		return err
@@ -117,7 +117,11 @@ func sendPrompt(input io.Writer, text string) error {
 	if strings.HasPrefix(text, ":") {
 		return writeCommand(input, text)
 	}
-	if err := tlv.WriteTLV(input, tlv.TagUserT, text); err != nil {
+	body, err := json.Marshal(protocol.ContentData{ContentItem: protocol.ContentItem{Type: protocol.TypeText, Text: text}})
+	if err != nil {
+		return err
+	}
+	if err := tlv.WriteTLV(input, tlv.TagUserX, string(body)); err != nil {
 		return err
 	}
 	return tlv.WriteTLV(input, tlv.TagUserEnd, "")

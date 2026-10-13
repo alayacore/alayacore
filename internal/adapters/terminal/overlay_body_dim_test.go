@@ -10,8 +10,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestBodyNormalKeepsPlain locks the "terminal default color" contract:
@@ -20,8 +18,8 @@ func TestBodyNormalKeepsPlain(t *testing.T) {
 	styles := DefaultStyles()
 
 	// textRenderer (assistant text / reasoning / system messages).
-	tr := &textRenderer{tag: tlv.TagAssistantT}
-	tr.AppendFromTLV(tlv.TagAssistantT, "assistant body text")
+	tr := &textRenderer{tag: tagAssistantText}
+	tr.AppendFromTLV(tagAssistantText, "assistant body text")
 	for _, l := range mustLines(t, tr, styles) {
 		if strings.Contains(l.Text, "\x1b[") {
 			t.Fatalf("normal-mode body must be ANSI-free, got %q", l.Text)
@@ -58,8 +56,8 @@ func TestBodyDimmedUnderOverlay(t *testing.T) {
 	dimmed := NewStyle().Foreground(styles.ColorDim)
 
 	// textRenderer.
-	tr := &textRenderer{tag: tlv.TagAssistantT}
-	tr.AppendFromTLV(tlv.TagAssistantT, "assistant body text")
+	tr := &textRenderer{tag: tagAssistantText}
+	tr.AppendFromTLV(tagAssistantText, "assistant body text")
 	for _, l := range mustLines(t, tr, styles) {
 		if !strings.Contains(l.Text, "\x1b[") {
 			t.Fatalf("dimmed body must carry SGR, got %q", l.Text)
@@ -99,15 +97,15 @@ func TestBodyDimmedUnderOverlay(t *testing.T) {
 func TestBodyDimmedIncrementalAppend(t *testing.T) {
 	styles := DefaultStyles().Dimmed()
 
-	tr := &textRenderer{tag: tlv.TagAssistantT}
-	tr.AppendFromTLV(tlv.TagAssistantT, "hello")
+	tr := &textRenderer{tag: tagAssistantText}
+	tr.AppendFromTLV(tagAssistantText, "hello")
 	lines := mustLines(t, tr, styles)
 	if got := stripANSI(lines[0].Text); got != "hello" {
 		t.Fatalf("first build = %q, want %q", got, "hello")
 	}
 
 	// Incremental append (the fast path) must recolor the new content.
-	tr.AppendFromTLV(tlv.TagAssistantT, " world")
+	tr.AppendFromTLV(tagAssistantText, " world")
 	lines = mustLines(t, tr, styles)
 	if got := stripANSI(lines[0].Text); got != "hello world" {
 		t.Fatalf("after append = %q, want %q", got, "hello world")
@@ -153,8 +151,8 @@ func TestBodyCacheInvalidatedOnBlockedSwitch(t *testing.T) {
 	normal := DefaultStyles()
 	dimmed := normal.Dimmed()
 
-	tr := &textRenderer{tag: tlv.TagAssistantT}
-	tr.AppendFromTLV(tlv.TagAssistantT, "body")
+	tr := &textRenderer{tag: tagAssistantText}
+	tr.AppendFromTLV(tagAssistantText, "body")
 
 	// Normal first: plain.
 	if got := mustLines(t, tr, normal)[0].Text; strings.Contains(got, "\x1b[") {

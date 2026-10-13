@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // lineStyle is the style the whole window line is drawn in for the styles
@@ -51,7 +50,7 @@ func TestWindowLineIsOneStyle(t *testing.T) {
 	const width = 60
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(width, styles)
-	idx := wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", "hello there")
+	idx := wb.AppendOrUpdate(tagAssistantText, "at-1", "hello there")
 	pinCreatedAt(wb)
 
 	label, stamp := "ASSISTANT", pinnedTime.Format(timeStampLayout)
@@ -76,7 +75,7 @@ func TestWindowLineCollapsedIsOneStyle(t *testing.T) {
 	const width = 60
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(width, styles)
-	idx := wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", "hello there")
+	idx := wb.AppendOrUpdate(tagAssistantText, "at-1", "hello there")
 	pinCreatedAt(wb)
 	wb.ToggleFold(idx)
 
@@ -134,11 +133,11 @@ func TestToolNameIsIdenticalFoldedAndExpanded(t *testing.T) {
 	const width, name = 80, "execute_command"
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(width, styles)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", "x") // the tool row is not row 0
+	wb.AppendOrUpdate(tagAssistantText, "at-1", "x") // the tool row is not row 0
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  name,
-		Input: []byte(name + ": lscpu"),
+		CallID: "t1",
+		Name:   name,
+		Input:  []byte(name + ": lscpu"),
 	}, 0)
 	pinCreatedAt(wb)
 	ti, _ := wb.LookupID("t1")
@@ -202,7 +201,7 @@ func TestCursorHighlightBlockedIsDim(t *testing.T) {
 	const width = 60
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(width, styles)
-	idx := wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", "hello there")
+	idx := wb.AppendOrUpdate(tagAssistantText, "at-1", "hello there")
 	pinCreatedAt(wb)
 
 	dimLine := styles.Dimmed().Label.Bold(true)
@@ -227,7 +226,7 @@ func TestCursorHighlightBlockedIsDim(t *testing.T) {
 func TestCursorHighlightInViewportFragments(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(40, styles)
-	idx := wb.AppendOrUpdate(tlv.TagAssistantT, "at-1", "hello there")
+	idx := wb.AppendOrUpdate(tagAssistantText, "at-1", "hello there")
 	pinCreatedAt(wb)
 	wb.SetViewportPosition(0, 3)
 
@@ -262,7 +261,7 @@ func TestCursorHighlightFollowsContent(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(40, styles)
 	// Reasoning windows start folded — no toggle needed.
-	idx := wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "first")
+	idx := wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "first")
 	pinCreatedAt(wb)
 
 	if got := wb.GetAll(idx, false); !strings.Contains(got, cursorLineStyle(styles).Render(padLabel("REASONING"))) {
@@ -273,7 +272,7 @@ func TestCursorHighlightFollowsContent(t *testing.T) {
 	// against it. AppendOrUpdate appends to the existing window, so the
 	// summary now reads "firstsecond thought" (muted) under the still
 	// highlighted label.
-	wb.AppendOrUpdate(tlv.TagAssistantR, "ar-1", "second thought")
+	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "second thought")
 	pinCreatedAt(wb)
 	got := wb.GetAll(idx, false)
 	if !strings.Contains(got, cursorLineStyle(styles).Render(padLabel("REASONING"))) {

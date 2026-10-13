@@ -15,7 +15,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // makeFoldedSession builds a WindowBuffer resembling a long agent session:
@@ -36,9 +35,9 @@ func makeFoldedSession() *WindowBuffer {
 		id := fmt.Sprintf("call-%03d", i)
 		input := fmt.Sprintf("execute_command: grep -rn \"fontWeight\\|font-weight\" src-elm/src src-elm/*.js 2>/dev/null | grep -v style.css | head -20 (step %d)", i)
 		wb.HandleToolInputEvent(protocol.ToolInputData{
-			ID:    id,
-			Name:  "execute_command",
-			Input: json.RawMessage(input),
+			CallID: id,
+			Name:   "execute_command",
+			Input:  json.RawMessage(input),
 		}, uint64(i))
 		// Command output — a few lines.
 		output := strings.Repeat("  some output line from command execution\n", 4)
@@ -49,20 +48,20 @@ func makeFoldedSession() *WindowBuffer {
 	for i := 0; i < 20; i++ {
 		id := fmt.Sprintf("reason-%03d", i)
 		content := strings.Repeat("reasoning about the task and planning the next steps\n", 3)
-		wb.AppendOrUpdate(tlv.TagAssistantR, id, content)
+		wb.AppendOrUpdate(tagAssistantReasoning, id, content)
 	}
 
 	// Unfolded assistant messages.
 	for i := 0; i < 10; i++ {
 		id := fmt.Sprintf("assist-%03d", i)
 		content := strings.Repeat("All edits are in place. Let me do a final sanity check — brace balance, light-mode conflicts.\n", 5)
-		wb.AppendOrUpdate(tlv.TagAssistantT, id, content)
+		wb.AppendOrUpdate(tagAssistantText, id, content)
 	}
 
 	// Unfolded user messages.
 	for i := 0; i < 10; i++ {
 		id := fmt.Sprintf("user-%03d", i)
-		wb.AppendOrUpdate(tlv.TagUserT, id, fmt.Sprintf("Please fix issue #%d in the style sheet", i))
+		wb.AppendOrUpdate(tagUserText, id, fmt.Sprintf("Please fix issue #%d in the style sheet", i))
 	}
 
 	return wb
@@ -115,8 +114,8 @@ func BenchmarkFoldedToolStreamingDelta(b *testing.B) {
 
 	// The currently-streaming tool window.
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:   "call-live",
-		Name: "write_file",
+		CallID: "call-live",
+		Name:   "write_file",
 	}, 0)
 
 	b.ResetTimer()
@@ -200,14 +199,14 @@ func BenchmarkFoldedTextStreamingDelta(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					b.StopTimer()
 					wb := NewWindowBuffer(120, styles)
-					wb.AppendOrUpdate(tlv.TagAssistantR, "reason-live", content)
+					wb.AppendOrUpdate(tagAssistantReasoning, "reason-live", content)
 					wb.WindowAt(0).Folded = state.folded
 					wb.SetViewportPosition(0, 40)
 					_ = wb.GetTotalLines()
 					_ = wb.GetAll(-1, false)
 					b.StartTimer()
 
-					wb.AppendOrUpdate(tlv.TagAssistantR, "reason-live", " more")
+					wb.AppendOrUpdate(tagAssistantReasoning, "reason-live", " more")
 					_ = wb.GetTotalLines()
 					_ = wb.GetAll(-1, false)
 				}

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // The fold markers are pinned on purpose: they are the product's answer to
@@ -61,7 +60,7 @@ func TestFoldMarkersIndependentOfTheme(t *testing.T) {
 	styles := []*Styles{DefaultStyles(), DefaultStyles().Dimmed(), NewStyles(other)}
 	for i, st := range styles {
 		wb := NewWindowBuffer(40, st)
-		wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "hello there")
+		wb.AppendOrUpdate(tagAssistantText, "a1", "hello there")
 		wb.ToggleFold(0)
 		first := firstRow(stripANSI(wb.GetAll(-1, false)))
 		if !strings.HasPrefix(first, foldArrow) {
@@ -80,7 +79,7 @@ func TestFoldMarkersIndependentOfTheme(t *testing.T) {
 // scanning down.
 func TestFoldMarkersKeepTheLabelColumn(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "hello there")
+	wb.AppendOrUpdate(tagAssistantText, "a1", "hello there")
 
 	expanded := stripANSI(wb.GetAll(-1, false))
 	if !strings.HasPrefix(expanded, unfoldArrow+" ASSISTANT") {

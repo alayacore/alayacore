@@ -12,8 +12,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestOverlayBoxSpansTerminalWidth locks the design: overlay boxes span
@@ -58,8 +56,8 @@ func TestTabKeepsOverlayAtWideTerminal(t *testing.T) {
 	m.windowWidth = W
 	m.windowHeight = 50
 	wb := m.out.WindowBuffer()
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "assistant answer line one\nline two more content")
-	wb.AppendOrUpdate(tlv.TagUserT, "u1", "user prompt here")
+	wb.AppendOrUpdate(tagAssistantText, "a1", "assistant answer line one\nline two more content")
+	wb.AppendOrUpdate(tagUserText, "u1", "user prompt here")
 	m.display = m.display.updateContent()
 	m = m.openModelSelector()
 
@@ -111,7 +109,7 @@ func TestTabKeepsOverlayNarrowTerminal(t *testing.T) {
 	m.windowWidth = W
 	m.windowHeight = 20
 	wb := m.out.WindowBuffer()
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "assistant answer line one")
+	wb.AppendOrUpdate(tagAssistantText, "a1", "assistant answer line one")
 	m.display = m.display.updateContent()
 	m = m.openModelSelector()
 

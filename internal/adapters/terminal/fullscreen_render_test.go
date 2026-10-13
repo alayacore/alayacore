@@ -12,7 +12,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestViewAlwaysFillsScreen verifies the normal Terminal.View content
@@ -33,20 +32,20 @@ func TestViewAlwaysFillsScreen(t *testing.T) {
 		{"small empty", 40, 10, nil, ""},
 		{"default empty", 80, 24, nil, ""},
 		{"large with windows", 100, 40, [][2]string{
-			{tlv.TagAssistantT, strings.Repeat("line of text here\n", 30)},
+			{tagAssistantText, strings.Repeat("line of text here\n", 30)},
 		}, ""},
 		{"with typed input", 100, 24, [][2]string{
-			{tlv.TagAssistantT, strings.Repeat("line of text here\n", 30)},
+			{tagAssistantText, strings.Repeat("line of text here\n", 30)},
 		}, "the screen looks weird"},
 		// Keycaps: the cluster whose width the library wrapper got wrong
 		// (width.go's header, point 3).
 		{"keycap list", 40, 20, [][2]string{
-			{tlv.TagAssistantT, "步骤如下：\n1️⃣ 第一步：安装依赖并确认环境变量\n2️⃣ 第二步：运行测试\n3️⃣ 第三步：部署上线\n"},
-			{tlv.TagAssistantT, strings.Repeat("9️⃣", 30)},
+			{tagAssistantText, "步骤如下：\n1️⃣ 第一步：安装依赖并确认环境变量\n2️⃣ 第二步：运行测试\n3️⃣ 第三步：部署上线\n"},
+			{tagAssistantText, strings.Repeat("9️⃣", 30)},
 		}, ""},
 		{"keycap run on a narrow pane", 24, 16, [][2]string{
-			{tlv.TagAssistantT, strings.Repeat("9️⃣", 30)},
-			{tlv.TagUserT, strings.Repeat("1️⃣2️⃣3️⃣", 20)},
+			{tagAssistantText, strings.Repeat("9️⃣", 30)},
+			{tagUserText, strings.Repeat("1️⃣2️⃣3️⃣", 20)},
 		}, ""},
 	}
 

@@ -2,12 +2,14 @@ package terminal
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 func tlvFrame(tag, id, payload string) []byte {
@@ -16,6 +18,16 @@ func tlvFrame(tag, id, payload string) []byte {
 	copy(b[0:2], tag)
 	binary.BigEndian.PutUint32(b[2:6], uint32(len(value)))
 	copy(b[6:], value)
+	return b
+}
+
+// encodeFrame wraps a JSON body in a TLV frame (no id prefix — the history id
+// travels inside the body).
+func encodeFrame(tag, body string) []byte {
+	b := make([]byte, 6+len(body))
+	copy(b[0:2], tag)
+	binary.BigEndian.PutUint32(b[2:6], uint32(len(body)))
+	copy(b[6:], body)
 	return b
 }
 
@@ -34,8 +46,10 @@ func TestRealAppWrappedLineContinuity(t *testing.T) {
 	terminal.out.SetWindowWidth(width)
 
 	writeTool := func(command string, expand bool) string {
-		payload := fmt.Sprintf(`{"id":"t1","name":"execute_command","input":{"command":%q}}`, command)
-		terminal.out.Write(append(tlvFrame(tlv.TagAssistantF, "t1", payload), tlvFrame(tlv.TagUserF, "t1", `{"id":"t1","content":[],"is_error":false}`)...))
+		af := encodeFrame(tlv.TagAssistantF, wiretest.ToolInput("t1", "t1", "execute_command",
+			json.RawMessage(fmt.Sprintf(`{"command":%q}`, command))))
+		uf := encodeFrame(tlv.TagUserF, wiretest.ToolOutputLegacy("t1", `{"id":"t1","content":[],"is_error":false}`))
+		terminal.out.Write(append(af, uf...))
 		terminal.out.FlushPendingDeltas()
 		if expand {
 			if wb := terminal.out.WindowBuffer(); wb.WindowCount() > 0 {

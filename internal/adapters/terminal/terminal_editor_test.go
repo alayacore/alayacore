@@ -3,6 +3,7 @@ package terminal
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"os"
 	"strings"
 	"testing"
@@ -463,17 +464,17 @@ func TestCtrlUClearsInput(t *testing.T) {
 func TestWindowBufferDeltaRouting(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	// Write assistant text delta with history ID
-	err := tlv.WriteTLV(out, tlv.TagAssistantTDelta, tlv.WrapID("1", "Hello"))
+	err := tlv.WriteTLV(out, tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "Hello"))
 	if err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
 	// Write another delta with same history ID
-	err = tlv.WriteTLV(out, tlv.TagAssistantTDelta, tlv.WrapID("1", " world"))
+	err = tlv.WriteTLV(out, tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", " world"))
 	if err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
 	// Write different history ID
-	err = tlv.WriteTLV(out, tlv.TagAssistantTDelta, tlv.WrapID("2", "Another"))
+	err = tlv.WriteTLV(out, tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "Another"))
 	if err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
@@ -518,7 +519,7 @@ func TestWindowBufferDeltaRouting(t *testing.T) {
 func TestWindowBufferRendering(t *testing.T) {
 	wb := NewWindowBuffer(30, DefaultStyles())
 	// Add a window with some content
-	wb.AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello world")
+	wb.AppendOrUpdate(tagAssistantText, "test1", "Hello world")
 	// Get rendered output
 	rendered := wb.GetAll(-1, false)
 	// Check that the window's own line appears — marker, label, timestamp.
@@ -531,7 +532,7 @@ func TestWindowBufferRendering(t *testing.T) {
 	}
 	// Check width constraint: count lines? Not needed.
 	// Add another window and ensure ordering
-	wb.AppendOrUpdate(tlv.TagAssistantR, "test2", "Reasoning")
+	wb.AppendOrUpdate(tagAssistantReasoning, "test2", "Reasoning")
 	rendered2 := wb.GetAll(-1, false)
 	// Should have two windows separated by newline
 	// Count the windows' own lines? Simpler: ensure both contents appear
@@ -580,7 +581,7 @@ func TestWindowBufferEdgeCases(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	// Delta message without valid NUL-delimited history ID (plain text)
 	// is malformed — should be silently ignored.
-	err := tlv.WriteTLV(out, tlv.TagAssistantTDelta, "plain text without history ID")
+	err := tlv.WriteTLV(out, tlv.TagAssistantXDelta, "plain text without history ID")
 	if err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
@@ -590,7 +591,7 @@ func TestWindowBufferEdgeCases(t *testing.T) {
 		t.Errorf("Expected 0 windows (malformed frame), got %d", len(windows))
 	}
 	// Mixed delta and non-delta messages
-	err = tlv.WriteTLV(out, tlv.TagAssistantTDelta, tlv.WrapID("3", "Delta"))
+	err = tlv.WriteTLV(out, tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("3", "Delta"))
 	if err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
@@ -604,7 +605,7 @@ func TestWindowBufferEdgeCases(t *testing.T) {
 		t.Errorf("Expected 2 windows, got %d", len(windows))
 	}
 	// Check ordering: first delta, second error
-	if windows[0].RawTag() != tlv.TagAssistantT {
+	if windows[0].RawTag() != tagAssistantText {
 		t.Errorf("First window tag mismatch, got %s", windows[0].RawTag())
 	}
 	if windows[1].RawTag() != TagWindowSE {
@@ -616,7 +617,7 @@ func TestWindowBufferWidth(t *testing.T) {
 	// Test that window width matches expected total width
 	const totalWidth = 50
 	wb := NewWindowBuffer(totalWidth, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "test", "Hello")
+	wb.AppendOrUpdate(tagAssistantText, "test", "Hello")
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 	if len(lines) < 2 {
@@ -647,7 +648,7 @@ func TestWindowBufferWidthMatchesInput(t *testing.T) {
 			// Window buffer width should be same as input total width
 			wb := NewWindowBuffer(inputTotalWidth, DefaultStyles())
 			// Create a window
-			wb.AppendOrUpdate(tlv.TagAssistantT, "test", "Content")
+			wb.AppendOrUpdate(tagAssistantText, "test", "Content")
 			rendered := wb.GetAll(-1, false)
 			// The opening line is line 0 and the content follows it.
 			lines := strings.Split(rendered, "\n")
@@ -675,7 +676,7 @@ func TestEKeyOpensDisplayWindowInEditor(t *testing.T) {
 	terminal = terminal.focusDisplay()
 
 	// Add a window with content
-	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello from display")
+	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", "Hello from display")
 
 	// Set cursor to first window
 	terminal.display = terminal.display.WithWindowCursor(0)
@@ -724,7 +725,7 @@ func TestEKeyDoesNothingInInputWindow(t *testing.T) {
 	terminal = terminal.focusInput()
 
 	// Add a window with content
-	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello from display")
+	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", "Hello from display")
 
 	// Press 'e' key while in input window (should be passed to input, not open editor)
 	msg := KeyPressMsg(Key{Code: 'e'})
@@ -791,7 +792,7 @@ func TestDisplayEditorFinishedWithError(t *testing.T) {
 func TestGetWindowContentWriteFile(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	content := "write_file: /path/to/file.txt\nline1\nline2\nline3"
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "test-id", Name: "write_file", Input: json.RawMessage(content)}, 0)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "test-id", Name: "write_file", Input: json.RawMessage(content)}, 0)
 
 	result := wb.GetWindowContent(0)
 	if result != content {
@@ -803,7 +804,7 @@ func TestGetWindowContentDiff(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	// Simulate formatted diff content (what parseDiffFromFormatted produces)
 	content := "edit_file: /path/to/file.txt\n- old line 1\n+ new line 1\n  same line\n"
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "test-id", Name: "edit_file", Input: json.RawMessage(content)}, 0)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "test-id", Name: "edit_file", Input: json.RawMessage(content)}, 0)
 
 	result := wb.GetWindowContent(0)
 
@@ -825,7 +826,7 @@ func TestGetWindowContentDiff(t *testing.T) {
 
 func TestGetWindowContentRegular(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "test-id", "Hello world")
+	wb.AppendOrUpdate(tagAssistantText, "test-id", "Hello world")
 
 	content := wb.GetWindowContent(0)
 	if content != "Hello world" {

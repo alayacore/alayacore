@@ -3,8 +3,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // A window's rows and their '\n'-joined projection are separate work, and the
@@ -28,7 +26,7 @@ const longBody = "a line of assistant text that wraps at eighty columns\n"
 // threw the string away — once per window per frame.
 func TestViewportFrameNeverJoinsTheWindow(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "msg", strings.Repeat(longBody, 200))
+	wb.AppendOrUpdate(tagAssistantText, "msg", strings.Repeat(longBody, 200))
 	w := wb.WindowAt(0)
 	if w.Folded {
 		t.Fatal("an assistant text window starts expanded; the test needs many rows")
@@ -56,7 +54,7 @@ func TestViewportFrameNeverJoinsTheWindow(t *testing.T) {
 func TestResizeNeverJoinsTheWindow(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	for _, id := range []string{"m1", "m2", "m3", "m4", "m5"} {
-		wb.AppendOrUpdate(tlv.TagAssistantT, id, strings.Repeat(longBody, 50))
+		wb.AppendOrUpdate(tagAssistantText, id, strings.Repeat(longBody, 50))
 	}
 	if len(wb.windows) != 5 {
 		t.Fatalf("expected 5 windows, got %d", len(wb.windows))
@@ -82,7 +80,7 @@ func TestResizeNeverJoinsTheWindow(t *testing.T) {
 // highlighted form, and row 0 only.
 func TestRenderReturnsTheRowsJoined(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "msg", "first line\nsecond line\nthird line")
+	wb.AppendOrUpdate(tagAssistantText, "msg", "first line\nsecond line\nthird line")
 	w := wb.WindowAt(0)
 	styles := DefaultStyles()
 
@@ -118,7 +116,7 @@ func TestRenderReturnsTheRowsJoined(t *testing.T) {
 // new rows — and the old string is dropped, not held for the window's life.
 func TestJoinIsNotStaleAfterTheRowsChange(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "msg", "hello")
+	wb.AppendOrUpdate(tagAssistantText, "msg", "hello")
 	w := wb.WindowAt(0)
 	styles := DefaultStyles()
 
@@ -146,7 +144,7 @@ func TestJoinIsNotStaleAfterTheRowsChange(t *testing.T) {
 // (joinVisualLines has a fast path for exactly this).
 func TestFoldedRenderReturnsItsRow(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "msg", "some content that would be summarized")
+	wb.AppendOrUpdate(tagAssistantText, "msg", "some content that would be summarized")
 	w := wb.WindowAt(0)
 	w.Folded = true
 

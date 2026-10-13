@@ -168,34 +168,28 @@ func (o *answerOutput) processBuffer() {
 
 func (o *answerOutput) handleTag(tag, value string) {
 	switch tag {
-	case tlv.TagAssistantTDelta:
-		id, content, ok := tlv.UnwrapID(value)
-		if !ok {
-			return
+	case tlv.TagAssistantXDelta:
+		if d, ok := decodeContent(value); ok && d.Type == protocol.TypeText {
+			o.lastMsgHasText = true
+			o.bufferFinalText(d.ID, d.Text)
 		}
-		o.lastMsgHasText = true
-		o.bufferFinalText(id, content)
 
-	case tlv.TagAssistantT:
-		id, content, ok := tlv.UnwrapID(value)
-		if !ok {
-			return
+	case tlv.TagAssistantX:
+		// Delta mode: AX carries empty content (already streamed via Ax);
+		// --no-delta: AX carries the full text. Buffering both is safe.
+		if d, ok := decodeContent(value); ok && d.Type == protocol.TypeText {
+			o.lastMsgHasText = true
+			o.bufferFinalText(d.ID, d.Text)
 		}
-		// Delta mode: AT carries empty content (already streamed via At);
-		// --no-delta: AT carries the full text. Buffering both is safe.
-		o.lastMsgHasText = true
-		o.bufferFinalText(id, content)
 
-	case tlv.TagAssistantRDelta, tlv.TagAssistantR,
-		tlv.TagAssistantFDelta, tlv.TagAssistantF,
-		tlv.TagUserFDelta, // tool result preview — ephemeral, UF is authoritative
-		tlv.TagUserT, tlv.TagUserI, tlv.TagUserV, tlv.TagUserA, tlv.TagUserD:
-		// Reasoning, tool calls, and user content are never part of the
-		// final answer. Suppressed.
+	case tlv.TagAssistantFDelta, tlv.TagAssistantF,
+		tlv.TagUserFDelta, tlv.TagUserX:
+		// Reasoning (AX with type "reasoning"), tool calls, and user
+		// content are never part of the final answer. Suppressed.
 
 	case tlv.TagUserF:
 		// A tool result closes the current assistant message group: the
-		// next AT/AR/AF frame belongs to a new message. Resetting here
+		// next AX/AF frame belongs to a new message. Resetting here
 		// ensures a final message without text (e.g. reasoning-only)
 		// never flushes the previous message's intermediate text.
 		o.lastMsgHasText = false
@@ -210,6 +204,16 @@ func (o *answerOutput) handleTag(tag, value string) {
 		// tool_confirm and anything else: suppressed. tool_confirm can
 		// never arrive: --tool-confirm is rejected at startup (main.go).
 	}
+}
+
+// decodeContent parses a content-frame body. ok is false on malformed JSON; the
+// frame is then skipped rather than trusted.
+func decodeContent(value string) (protocol.ContentData, bool) {
+	var d protocol.ContentData
+	if err := json.Unmarshal([]byte(value), &d); err != nil {
+		return protocol.ContentData{}, false
+	}
+	return d, true
 }
 
 // handleCommandOut processes a CO (Command Output) frame — the reply to a
@@ -240,7 +244,7 @@ func (o *answerOutput) handleCommandOut(value string) {
 		}
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.ID)
+	name, _ := commandNames.LoadAndDelete(msg.CallID)
 	nameStr, _ := name.(string)
 	text := renderCommandResult(nameStr, msg.Output)
 	if text != "" {

@@ -34,6 +34,7 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
 )
 
@@ -104,22 +105,22 @@ func TestCompleteFramesCarryContentOnlyWhenDeltasAreOff(t *testing.T) {
 			s.taskResultCh = make(chan []llm.ContentPart, 1)
 			s.runTaskNormal(context.Background(), []llm.ContentPart{&llm.TextPart{Text: "hi"}})
 
-			frames := readIDedFrames(out.String())
+			frames := readContentFrames(out.String())
 
-			if got := strings.Join(contents(frames, tlv.TagAssistantTDelta), ""); got != textFragments {
-				t.Errorf("the At frames carry %q, want %q", got, textFragments)
+			if got := strings.Join(contents(frames, axText), ""); got != textFragments {
+				t.Errorf("the text delta frames carry %q, want %q", got, textFragments)
 			}
-			if got := strings.Join(contents(frames, tlv.TagAssistantRDelta), ""); got != reasoningFragments {
-				t.Errorf("the Ar frames carry %q, want %q", got, reasoningFragments)
+			if got := strings.Join(contents(frames, axReasoning), ""); got != reasoningFragments {
+				t.Errorf("the reasoning delta frames carry %q, want %q", got, reasoningFragments)
 			}
-			assertOneCompleteFrame(t, frames, tlv.TagAssistantT, textComplete)
-			assertOneCompleteFrame(t, frames, tlv.TagAssistantR, reasoningComplete)
+			assertOneCompleteFrame(t, frames, axComplete, textComplete)
+			assertOneCompleteFrame(t, frames, arComplete, reasoningComplete)
 
 			// The ids matter as much as the content: the adapter skips a complete
 			// frame by looking up the window its id names, so a complete frame
 			// numbered differently from its fragments would find no window, create
 			// a second one for the same block, and show the turn twice.
-			fragIDs, completeIDs := ids(frames, tlv.TagAssistantTDelta), ids(frames, tlv.TagAssistantT)
+			fragIDs, completeIDs := ids(frames, axText), ids(frames, axComplete)
 			if len(fragIDs) > 0 && len(completeIDs) > 0 && fragIDs[0] != completeIDs[0] {
 				t.Errorf("AT names window %q, its At fragments name %q", completeIDs[0], fragIDs[0])
 			}
@@ -127,11 +128,13 @@ func TestCompleteFramesCarryContentOnlyWhenDeltasAreOff(t *testing.T) {
 	}
 }
 
-// framesUnderTag holds the (id, content) pairs of one tag, in the order the
-// session wrote them.
+// frame holds the (id, content) pair of one content frame, in the order the
+// session wrote it.
 type frame struct{ id, content string }
 
-func readIDedFrames(stream string) map[string][]frame {
+// readContentFrames groups content frames by "tag:kind" — text and reasoning
+// deltas share the Ax tag, so the content kind is part of the key.
+func readContentFrames(stream string) map[string][]frame {
 	out := map[string][]frame{}
 	rest := strings.NewReader(stream)
 	for {
@@ -139,37 +142,49 @@ func readIDedFrames(stream string) map[string][]frame {
 		if err != nil {
 			return out
 		}
-		id, content, ok := tlv.UnwrapID(value)
-		if !ok {
+		if tag != tlv.TagAssistantXDelta && tag != tlv.TagAssistantX {
 			continue
 		}
-		out[tag] = append(out[tag], frame{id: id, content: content})
+		var d protocol.ContentData
+		if json.Unmarshal([]byte(value), &d) != nil {
+			continue
+		}
+		key := tag + ":" + d.Type
+		out[key] = append(out[key], frame{id: d.ID, content: d.Text})
 	}
 }
 
-func contents(frames map[string][]frame, tag string) []string {
-	got := make([]string, 0, len(frames[tag]))
-	for _, f := range frames[tag] {
+// Keys for readContentFrames, so the test does not spell out "tag:kind".
+const (
+	axText      = tlv.TagAssistantXDelta + ":" + protocol.TypeText
+	axReasoning = tlv.TagAssistantXDelta + ":" + protocol.TypeReasoning
+	axComplete  = tlv.TagAssistantX + ":" + protocol.TypeText
+	arComplete  = tlv.TagAssistantX + ":" + protocol.TypeReasoning
+)
+
+func contents(frames map[string][]frame, key string) []string {
+	got := make([]string, 0, len(frames[key]))
+	for _, f := range frames[key] {
 		got = append(got, f.content)
 	}
 	return got
 }
 
-func ids(frames map[string][]frame, tag string) []string {
-	got := make([]string, 0, len(frames[tag]))
-	for _, f := range frames[tag] {
+func ids(frames map[string][]frame, key string) []string {
+	got := make([]string, 0, len(frames[key]))
+	for _, f := range frames[key] {
 		got = append(got, f.id)
 	}
 	return got
 }
 
-func assertOneCompleteFrame(t *testing.T, frames map[string][]frame, tag, want string) {
+func assertOneCompleteFrame(t *testing.T, frames map[string][]frame, key, want string) {
 	t.Helper()
-	got := frames[tag]
+	got := frames[key]
 	if len(got) != 1 {
-		t.Fatalf("%s: %d frames, want exactly 1", tag, len(got))
+		t.Fatalf("%s: %d frames, want exactly 1", key, len(got))
 	}
 	if got[0].content != want {
-		t.Errorf("%s carries %q, want %q", tag, got[0].content, want)
+		t.Errorf("%s carries %q, want %q", key, got[0].content, want)
 	}
 }

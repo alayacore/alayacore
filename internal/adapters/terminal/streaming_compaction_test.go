@@ -3,8 +3,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // Streaming keeps every delta in its own string (textRenderer.contentParts) so
@@ -22,7 +20,7 @@ import (
 // newStreamingTextRenderer is a plain streaming text window's renderer (AT) —
 // the tag whose deltas AppendFromTLV keeps incrementally wrapped.
 func newStreamingTextRenderer() *textRenderer {
-	return &textRenderer{tag: tlv.TagAssistantT}
+	return &textRenderer{tag: tagAssistantText}
 }
 
 // TestFoldHistoryIsUnobservable builds one message two ways: as a single delta

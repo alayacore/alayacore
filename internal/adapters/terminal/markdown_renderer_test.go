@@ -19,8 +19,8 @@ const mdTableContent = "| name | gender | age |\n|---|---|---|\n| Walllace Gibbo
 // on an assistant text renderer, including cache invalidation.
 func TestTextRendererMarkdownModeToggle(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
-	r := &textRenderer{tag: tlv.TagAssistantT}
-	r.AppendFromTLV(tlv.TagAssistantT, mdTableContent)
+	r := &textRenderer{tag: tagAssistantText}
+	r.AppendFromTLV(tagAssistantText, mdTableContent)
 
 	// Raw mode (default): the table is NOT padded.
 	raw, _ := r.BuildInner(120, false, styles)
@@ -66,7 +66,7 @@ func TestTextRendererMarkdownModeToggle(t *testing.T) {
 // must re-flow the entire first column.
 func TestTextRendererMarkdownModeStreaming(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
-	r := &textRenderer{tag: tlv.TagAssistantT}
+	r := &textRenderer{tag: tagAssistantText}
 	r.ToggleMarkdownMode()
 	all := ""
 
@@ -78,7 +78,7 @@ func TestTextRendererMarkdownModeStreaming(t *testing.T) {
 	}
 	for _, d := range deltas {
 		all += d
-		r.AppendFromTLV(tlv.TagAssistantT, d)
+		r.AppendFromTLV(tagAssistantText, d)
 		if _, ok := r.TryLineCount(120); ok {
 			t.Fatal("TryLineCount must miss after a delta in markdown mode")
 		}
@@ -91,7 +91,7 @@ func TestTextRendererMarkdownModeStreaming(t *testing.T) {
 
 	// A very long name arrives: the whole first column must be re-flowed.
 	longName := "A Very Very Long Name Indeed"
-	r.AppendFromTLV(tlv.TagAssistantT, "\n| "+longName+" | male | 1 |")
+	r.AppendFromTLV(tagAssistantText, "\n| "+longName+" | male | 1 |")
 	lines, _ := r.BuildInner(120, false, styles)
 	rendered := joinVisualLines(lines)
 	if !strings.Contains(rendered, longName) {
@@ -110,7 +110,7 @@ func TestTextRendererMarkdownModeStreaming(t *testing.T) {
 // transform+wrap of the accumulated content.
 func TestMarkdownModeMatchesFullRewrap(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
-	r := &textRenderer{tag: tlv.TagAssistantT}
+	r := &textRenderer{tag: tagAssistantText}
 	r.ToggleMarkdownMode()
 	all := ""
 
@@ -123,7 +123,7 @@ func TestMarkdownModeMatchesFullRewrap(t *testing.T) {
 	for ci, deltas := range cases {
 		for _, d := range deltas {
 			all += d
-			r.AppendFromTLV(tlv.TagAssistantT, d)
+			r.AppendFromTLV(tagAssistantText, d)
 			got, _ := r.BuildInner(100, false, styles)
 			want := wrapVisualLines(renderMarkdownTables(stripANSI(all), 100), 100)
 			if !sameVisualLines(got, want) {
@@ -138,12 +138,12 @@ func TestMarkdownModeMatchesFullRewrap(t *testing.T) {
 func TestWindowToggleMarkdownModeRestricted(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 
-	w := NewWindow("1", tlv.TagAssistantT, styles)
+	w := NewWindow("1", tagAssistantText, styles)
 	if !w.ToggleMarkdownMode() || !w.MarkdownMode() {
 		t.Error("assistant text window must toggle markdown mode")
 	}
 
-	wReason := NewWindow("2", tlv.TagAssistantR, styles)
+	wReason := NewWindow("2", tagAssistantReasoning, styles)
 	if !wReason.ToggleMarkdownMode() || !wReason.MarkdownMode() {
 		t.Error("reasoning window must toggle markdown mode")
 	}
@@ -151,7 +151,7 @@ func TestWindowToggleMarkdownModeRestricted(t *testing.T) {
 	for _, tc := range []struct {
 		tag string
 	}{
-		{TagWindowSN}, {TagWindowSE}, {tlv.TagUserT}, {tlv.TagAssistantF}, {tlv.TagUserF},
+		{TagWindowSN}, {TagWindowSE}, {tagUserText}, {tlv.TagAssistantF}, {tlv.TagUserF},
 	} {
 		other := NewWindow("x", tc.tag, styles)
 		if other.ToggleMarkdownMode() {
@@ -168,12 +168,12 @@ func TestWindowToggleMarkdownModeRestricted(t *testing.T) {
 // stays valid after each append, exactly like raw mode.
 func TestMarkdownModeIncrementalPlainDelta(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
-	r := &textRenderer{tag: tlv.TagAssistantT, mdMode: true}
-	r.AppendFromTLV(tlv.TagAssistantT, "Hello world")
+	r := &textRenderer{tag: tagAssistantText, mdMode: true}
+	r.AppendFromTLV(tagAssistantText, "Hello world")
 	r.BuildInner(80, false, styles) // populate wrappedLines
 
 	for _, d := range []string{" more text", "\n\nSecond paragraph", " continues", "\n"} {
-		r.AppendFromTLV(tlv.TagAssistantT, d)
+		r.AppendFromTLV(tagAssistantText, d)
 		if _, ok := r.TryLineCount(80); !ok {
 			t.Fatalf("plain delta %q must keep the incremental path (TryLineCount valid)", d)
 		}
@@ -191,12 +191,12 @@ func TestMarkdownModeIncrementalPlainDelta(t *testing.T) {
 // re-flowed table is visible immediately.
 func TestMarkdownModeIncrementalPipeDelta(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
-	r := &textRenderer{tag: tlv.TagAssistantT, mdMode: true}
-	r.AppendFromTLV(tlv.TagAssistantT, "intro\n")
+	r := &textRenderer{tag: tagAssistantText, mdMode: true}
+	r.AppendFromTLV(tagAssistantText, "intro\n")
 	r.BuildInner(80, false, styles) // populate wrappedLines
 
 	// Table header arrives: pipe line → full path.
-	r.AppendFromTLV(tlv.TagAssistantT, "| name | age |\n")
+	r.AppendFromTLV(tagAssistantText, "| name | age |\n")
 	if _, ok := r.TryLineCount(80); ok {
 		t.Fatal("pipe delta must invalidate the incremental cache")
 	}
@@ -206,7 +206,7 @@ func TestMarkdownModeIncrementalPipeDelta(t *testing.T) {
 	}
 
 	// Delimiter arrives: full path, table now padded.
-	r.AppendFromTLV(tlv.TagAssistantT, "|---|---|")
+	r.AppendFromTLV(tagAssistantText, "|---|---|")
 	lines, _ = r.BuildInner(80, false, styles)
 	if !strings.Contains(joinVisualLines(lines), "┌──────┬─────┐\n│ name │ age │") {
 		t.Fatalf("table not rendered as a grid after the header: %q", joinVisualLines(lines))
@@ -221,10 +221,10 @@ func TestMarkdownModeTailTransition(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 
 	// Without trailing newline: the next delta merges onto the table row.
-	r := &textRenderer{tag: tlv.TagAssistantT, mdMode: true}
-	r.AppendFromTLV(tlv.TagAssistantT, "| a | b |\n|---|---|\n| 1 | 2 |")
+	r := &textRenderer{tag: tagAssistantText, mdMode: true}
+	r.AppendFromTLV(tagAssistantText, "| a | b |\n|---|---|\n| 1 | 2 |")
 	r.BuildInner(80, false, styles)
-	r.AppendFromTLV(tlv.TagAssistantT, " tail") // merges onto "| 1 | 2 |"
+	r.AppendFromTLV(tagAssistantText, " tail") // merges onto "| 1 | 2 |"
 	if _, ok := r.TryLineCount(80); ok {
 		t.Fatal("delta after an open table tail must re-render")
 	}
@@ -237,10 +237,10 @@ func TestMarkdownModeTailTransition(t *testing.T) {
 
 	// With trailing newline: the table is closed; plain deltas are safe
 	// to append incrementally.
-	r2 := &textRenderer{tag: tlv.TagAssistantT, mdMode: true}
-	r2.AppendFromTLV(tlv.TagAssistantT, "| a | b |\n|---|---|\n| 1 | 2 |\n")
+	r2 := &textRenderer{tag: tagAssistantText, mdMode: true}
+	r2.AppendFromTLV(tagAssistantText, "| a | b |\n|---|---|\n| 1 | 2 |\n")
 	r2.BuildInner(80, false, styles)
-	r2.AppendFromTLV(tlv.TagAssistantT, "after the table")
+	r2.AppendFromTLV(tagAssistantText, "after the table")
 	if _, ok := r2.TryLineCount(80); !ok {
 		t.Fatal("plain delta after a closed table must go incremental")
 	}
@@ -257,7 +257,7 @@ func TestNoMarkdownFlagDefaultOff(t *testing.T) {
 	appCfg := &app.Config{Cfg: &config.Settings{NoMarkdown: true}}
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, appCfg, 120, 24, theme.DefaultTheme(), nil, "theme-dark")
 	terminal = terminal.focusDisplay()
-	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", mdTableContent)
+	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", mdTableContent)
 	terminal.display = terminal.display.WithWindowCursor(0)
 
 	w := terminal.out.WindowBuffer().WindowAt(0)
@@ -274,7 +274,7 @@ func TestNoMarkdownFlagDefaultOff(t *testing.T) {
 func TestRKeyTogglesMarkdownMode(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 120, 24, theme.DefaultTheme(), nil, "theme-dark")
 	terminal = terminal.focusDisplay()
-	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", mdTableContent)
+	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", mdTableContent)
 	terminal.display = terminal.display.WithWindowCursor(0)
 
 	w := terminal.out.WindowBuffer().WindowAt(0)
@@ -310,7 +310,7 @@ func TestRKeyTogglesMarkdownMode(t *testing.T) {
 func TestRKeyNoopWhenFolded(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 120, 24, theme.DefaultTheme(), nil, "theme-dark")
 	terminal = terminal.focusDisplay()
-	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", mdTableContent)
+	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", mdTableContent)
 	terminal.display = terminal.display.WithWindowCursor(0)
 	terminal.out.WindowBuffer().ToggleFold(0) // fold it
 
@@ -329,7 +329,7 @@ func TestRKeyNoopWhenFolded(t *testing.T) {
 func TestRKeyNoopOnNonTextWindow(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 120, 24, theme.DefaultTheme(), nil, "theme-dark")
 	terminal = terminal.focusDisplay()
-	terminal.out.WindowBuffer().HandleToolInputEvent(protocol.ToolInputData{ID: "tool1", Name: "read_file", Input: json.RawMessage(`{"path":"x"}`)}, 1)
+	terminal.out.WindowBuffer().HandleToolInputEvent(protocol.ToolInputData{CallID: "tool1", Name: "read_file", Input: json.RawMessage(`{"path":"x"}`)}, 1)
 	terminal.display = terminal.display.WithWindowCursor(0)
 
 	w := terminal.out.WindowBuffer().WindowAt(0)
@@ -352,7 +352,7 @@ func TestRKeyNoopOnNonTextWindow(t *testing.T) {
 // re-rendering the whole cell as "/run/user/1001 |".
 func TestMarkdownModeTableCellSplitAcrossDeltas(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
-	r := &textRenderer{tag: tlv.TagAssistantT, mdMode: true}
+	r := &textRenderer{tag: tagAssistantText, mdMode: true}
 
 	// A small df-style table, last row streamed with a split cell.
 	deltas := []string{
@@ -366,7 +366,7 @@ func TestMarkdownModeTableCellSplitAcrossDeltas(t *testing.T) {
 		"001 |\n",
 	}
 	for _, d := range deltas {
-		r.AppendFromTLV(tlv.TagAssistantT, d)
+		r.AppendFromTLV(tagAssistantText, d)
 		if _, ok := r.TryLineCount(80); !ok {
 			r.BuildInner(80, false, styles)
 		}
@@ -470,8 +470,8 @@ func TestMarkdownTableWideChars(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &textRenderer{tag: tlv.TagAssistantT}
-			r.AppendFromTLV(tlv.TagAssistantT, tt.content)
+			r := &textRenderer{tag: tagAssistantText}
+			r.AppendFromTLV(tagAssistantText, tt.content)
 			r.ToggleMarkdownMode() // enable table formatting
 			lines, _ := r.BuildInner(tt.width, false, styles)
 			rendered := joinVisualLines(lines)
@@ -524,8 +524,8 @@ func TestMarkdownTableRowAlignment(t *testing.T) {
 		"| ☺\uFE0F (text vs emoji style) | 1 or 2 cells | content C |"
 
 	for i, content := range []string{content, content2} {
-		r := &textRenderer{tag: tlv.TagAssistantT}
-		r.AppendFromTLV(tlv.TagAssistantT, content)
+		r := &textRenderer{tag: tagAssistantText}
+		r.AppendFromTLV(tagAssistantText, content)
 		r.ToggleMarkdownMode()
 
 		for _, width := range []int{200, 100, 80, 60, 40} {

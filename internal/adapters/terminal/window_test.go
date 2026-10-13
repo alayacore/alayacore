@@ -3,6 +3,7 @@ package terminal
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"strings"
 	"testing"
 
@@ -28,7 +29,7 @@ func TestWindowBuffer(t *testing.T) {
 
 	t.Run("append creates new window", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", "Hello")
+		wb.AppendOrUpdate(tagAssistantText, "window-1", "Hello")
 
 		if wb.WindowCount() != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", wb.WindowCount())
@@ -40,8 +41,8 @@ func TestWindowBuffer(t *testing.T) {
 
 	t.Run("update appends to existing window", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", "Hello")
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", " World")
+		wb.AppendOrUpdate(tagAssistantText, "window-1", "Hello")
+		wb.AppendOrUpdate(tagAssistantText, "window-1", " World")
 
 		if wb.WindowCount() != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", wb.WindowCount())
@@ -56,9 +57,9 @@ func TestWindowBuffer(t *testing.T) {
 
 	t.Run("multiple windows", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", "First")
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-2", "Second")
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-3", "Third")
+		wb.AppendOrUpdate(tagAssistantText, "window-1", "First")
+		wb.AppendOrUpdate(tagAssistantText, "window-2", "Second")
+		wb.AppendOrUpdate(tagAssistantText, "window-3", "Third")
 
 		if wb.WindowCount() != 3 {
 			t.Fatalf("len(Windows) = %d, want 3", wb.WindowCount())
@@ -71,12 +72,12 @@ func TestWindowBuffer(t *testing.T) {
 			t.Errorf("WindowCount() = %d, want 0", wb.WindowCount())
 		}
 
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", "First")
+		wb.AppendOrUpdate(tagAssistantText, "window-1", "First")
 		if wb.WindowCount() != 1 {
 			t.Errorf("WindowCount() = %d, want 1", wb.WindowCount())
 		}
 
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-2", "Second")
+		wb.AppendOrUpdate(tagAssistantText, "window-2", "Second")
 		if wb.WindowCount() != 2 {
 			t.Errorf("WindowCount() = %d, want 2", wb.WindowCount())
 		}
@@ -92,7 +93,7 @@ func TestWindowBuffer(t *testing.T) {
 
 	t.Run("get all returns content", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", "Hello")
+		wb.AppendOrUpdate(tagAssistantText, "window-1", "Hello")
 		content := wb.GetAll(-1, false)
 		if content == "" {
 			t.Error("GetAll() should not be empty")
@@ -103,8 +104,8 @@ func TestWindowBuffer(t *testing.T) {
 		// DeleteWindow is not exposed on WindowBuffer
 		// This test verifies the buffer structure is correct
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", "First")
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-2", "Second")
+		wb.AppendOrUpdate(tagAssistantText, "window-1", "First")
+		wb.AppendOrUpdate(tagAssistantText, "window-2", "Second")
 
 		if wb.WindowCount() != 2 {
 			t.Fatalf("len(Windows) = %d, want 2", wb.WindowCount())
@@ -121,7 +122,7 @@ func TestWindowBufferViewport(t *testing.T) {
 
 	t.Run("get total lines virtual", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", strings.Repeat("line\n", 10))
+		wb.AppendOrUpdate(tagAssistantText, "window-1", strings.Repeat("line\n", 10))
 		// Should return total lines
 		lines := wb.GetTotalLines()
 		if lines <= 0 {
@@ -134,7 +135,7 @@ func TestWindowBufferDiff(t *testing.T) {
 	t.Run("append diff content", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 		content := "edit_file: test.txt\n- old line\n+ new line\n"
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "diff-1", Name: "edit_file", Input: json.RawMessage(content)}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "diff-1", Name: "edit_file", Input: json.RawMessage(content)}, 0)
 
 		if wb.WindowCount() != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", wb.WindowCount())
@@ -158,7 +159,7 @@ func TestWindowBufferDiff(t *testing.T) {
 			content.WriteString("\n")
 		}
 
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "diff-1", Name: "edit_file", Input: json.RawMessage(content.String())}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "diff-1", Name: "edit_file", Input: json.RawMessage(content.String())}, 0)
 
 		// Verify window is folded by default
 		if !wb.WindowAt(0).Folded {
@@ -197,7 +198,7 @@ func TestWindowBufferDiff(t *testing.T) {
 			content.WriteString("\n")
 		}
 
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "diff-1", Name: "edit_file", Input: json.RawMessage(content.String())}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "diff-1", Name: "edit_file", Input: json.RawMessage(content.String())}, 0)
 
 		// Unfold the window
 		wb.ToggleFold(0)
@@ -224,7 +225,7 @@ func TestWindowBufferDiff(t *testing.T) {
 			"- removed line\n" +
 			"+ added line\n"
 
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "diff-1", Name: "edit_file", Input: json.RawMessage(content)}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "diff-1", Name: "edit_file", Input: json.RawMessage(content)}, 0)
 
 		// Unfold to see all lines
 		wb.ToggleFold(0)
@@ -272,7 +273,7 @@ func TestWindowBufferDiff(t *testing.T) {
 			content.WriteString("\n")
 		}
 
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "diff-1", Name: "edit_file", Input: json.RawMessage(content.String())}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "diff-1", Name: "edit_file", Input: json.RawMessage(content.String())}, 0)
 
 		// First render - should be folded (Folded=true)
 		rendered1 := wb.GetAll(-1, false)
@@ -309,7 +310,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		// drawn as context says nothing happened, which is what a reader who saw
 		// this call concluded.
 		formatted := GetHandler("edit_file").FormatCall([]byte(`{"path":"f.go","old_string":"a\nb\n","new_string":"a\nb"}`))
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "blank-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "blank-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
 		wb.HandleToolOutput("blank-1", "File edited successfully", false, 0)
 		wb.ToggleFold(0)
 
@@ -328,7 +329,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		// bare path: reading that colon as the "name: " framing would print
 		// "\src\a.go".
 		formatted := GetHandler("edit_file").FormatCall([]byte(`{"path":"C:\\src\\a.go","old_string":"x","new_string":"y"}`))
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "colon-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "colon-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
 		wb.ToggleFold(0)
 
 		if plain := stripANSI(wb.GetAll(-1, false)); !strings.Contains(plain, `C:\src\a.go`) {
@@ -348,7 +349,7 @@ func TestWindowBufferDiff(t *testing.T) {
 
 		formatted := GetHandler("edit_file").FormatCall([]byte(
 			`{"path":"f.go","old_string":"` + strings.Join(oldLines, `\n`) + `","new_string":"` + strings.Join(newLines, `\n`) + `"}`))
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "fold-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "fold-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
 		wb.HandleToolOutput("fold-1", "File edited successfully", false, 0)
 		wb.ToggleFold(0)
 
@@ -372,7 +373,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		}
 		formatted := GetHandler("edit_file").FormatCall([]byte(
 			`{"path":"f.go","old_string":"` + strings.Join(oldLines, `\n`) + `","new_string":"` + strings.Join(newLines, `\n`) + `"}`))
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "big-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "big-1", Name: "edit_file", Input: json.RawMessage(formatted)}, 0)
 		wb.HandleToolOutput("big-1", "File edited successfully", false, 0)
 		wb.ToggleFold(0)
 
@@ -389,10 +390,10 @@ func TestWindowBufferDiff(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 
 		// Create windows for different tag types
-		wb.AppendOrUpdate(tlv.TagUserT, "user-1", "User message")
-		wb.AppendOrUpdate(tlv.TagAssistantT, "assistant-1", "Assistant message")
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "tool-1", Name: "test_tool", Input: json.RawMessage("Tool output")}, 0)
-		wb.AppendOrUpdate(tlv.TagAssistantR, "reasoning-1", "Reasoning content")
+		wb.AppendOrUpdate(tagUserText, "user-1", "User message")
+		wb.AppendOrUpdate(tagAssistantText, "assistant-1", "Assistant message")
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "tool-1", Name: "test_tool", Input: json.RawMessage("Tool output")}, 0)
+		wb.AppendOrUpdate(tagAssistantReasoning, "reasoning-1", "Reasoning content")
 
 		// The conversation the reader came for is expanded: the user's own
 		// turn (it is the request the answer below it answers).
@@ -417,7 +418,7 @@ func TestWindowBufferDiff(t *testing.T) {
 func TestWindowBufferVisibility(t *testing.T) {
 	t.Run("tool windows are always visible", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.HandleToolInputEvent(protocol.ToolInputData{ID: "tool-1", Name: "execute_command", Input: json.RawMessage("")}, 0)
+		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "tool-1", Name: "execute_command", Input: json.RawMessage("")}, 0)
 
 		if wb.WindowCount() != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", wb.WindowCount())
@@ -429,7 +430,7 @@ func TestWindowBufferVisibility(t *testing.T) {
 
 	t.Run("delta window with content is visible", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "Hello")
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "Hello")
 
 		if wb.WindowCount() != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", wb.WindowCount())
@@ -441,7 +442,7 @@ func TestWindowBufferVisibility(t *testing.T) {
 
 	t.Run("delta window with only whitespace is not visible", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "   \n\t  ")
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "   \n\t  ")
 
 		if wb.WindowCount() != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", wb.WindowCount())
@@ -453,7 +454,7 @@ func TestWindowBufferVisibility(t *testing.T) {
 
 	t.Run("delta window with empty content is not visible", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "")
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "")
 
 		if wb.WindowCount() != 1 {
 			t.Fatalf("len(Windows) = %d, want 1", wb.WindowCount())
@@ -467,13 +468,13 @@ func TestWindowBufferVisibility(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 
 		// Start with whitespace-only content
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "\n\n")
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "\n\n")
 		if wb.WindowAt(0).Visible {
 			t.Error("Delta window with only newlines should NOT be visible initially")
 		}
 
 		// Add actual content
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "Hello")
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "Hello")
 		if !wb.WindowAt(0).Visible {
 			t.Error("Delta window should become visible when non-whitespace content is added")
 		}
@@ -483,19 +484,19 @@ func TestWindowBufferVisibility(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 
 		// Start with whitespace
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "  \n  ")
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "  \n  ")
 		if wb.WindowAt(0).Visible {
 			t.Error("Delta window with only whitespace should NOT be visible")
 		}
 
 		// Add more whitespace - still not visible
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "\t")
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "\t")
 		if wb.WindowAt(0).Visible {
 			t.Error("Delta window should still not be visible with only whitespace")
 		}
 
 		// Add actual content
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "World")
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "World")
 		if !wb.WindowAt(0).Visible {
 			t.Error("Delta window should be visible after adding non-whitespace")
 		}
@@ -511,10 +512,10 @@ func TestWindowBufferVisibility(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 
 		// Create visible and non-visible windows
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "\n\n")  // Not visible
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-2", "Hello") // Visible
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-3", "  ")    // Not visible
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-4", "World") // Visible
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "\n\n")  // Not visible
+		wb.AppendOrUpdate(tagAssistantText, "delta-2", "Hello") // Visible
+		wb.AppendOrUpdate(tagAssistantText, "delta-3", "  ")    // Not visible
+		wb.AppendOrUpdate(tagAssistantText, "delta-4", "World") // Visible
 
 		rendered := wb.GetAll(-1, false)
 
@@ -537,8 +538,8 @@ func TestWindowBufferVisibility(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 
 		// Create visible and non-visible windows
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-1", "Hello\nWorld") // Visible, 2 lines
-		wb.AppendOrUpdate(tlv.TagAssistantT, "delta-2", "\n\n\n")       // Not visible
+		wb.AppendOrUpdate(tagAssistantText, "delta-1", "Hello\nWorld") // Visible, 2 lines
+		wb.AppendOrUpdate(tagAssistantText, "delta-2", "\n\n\n")       // Not visible
 
 		lines := wb.GetTotalLines()
 		// Only delta-1 contributes to total lines (plus border = ~4 lines)
@@ -555,7 +556,7 @@ func TestWindowBufferVisibility(t *testing.T) {
 
 	t.Run("user message windows follow same visibility rules", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagUserT, "user-1", "  ") // whitespace only
+		wb.AppendOrUpdate(tagUserText, "user-1", "  ") // whitespace only
 
 		// User messages are delta windows (not tool windows), so they follow the same visibility rules
 		if wb.WindowAt(0).Visible {
@@ -563,7 +564,7 @@ func TestWindowBufferVisibility(t *testing.T) {
 		}
 
 		// But should become visible when actual content is added
-		wb.AppendOrUpdate(tlv.TagUserT, "user-1", "Hello")
+		wb.AppendOrUpdate(tagUserText, "user-1", "Hello")
 		if !wb.WindowAt(0).Visible {
 			t.Error("User message window should be visible when it has non-whitespace content")
 		}
@@ -577,7 +578,7 @@ func TestWindowBufferVisibility(t *testing.T) {
 // AppendOrUpdate applies.
 func TestArrivingUserPromptIsExpanded(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	if err := tlv.WriteTLV(out, tlv.TagUserT, tlv.WrapID("7", "what is lisp?")); err != nil {
+	if err := tlv.WriteTLV(out, tlv.TagUserX, wiretest.UserText("7", "what is lisp?")); err != nil {
 		t.Fatalf("write user frame: %v", err)
 	}
 	if err := tlv.WriteTLV(out, tlv.TagUserEnd, ""); err != nil {

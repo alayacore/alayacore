@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"encoding/json"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"strings"
 	"testing"
 
@@ -15,9 +16,9 @@ func TestHandleToolInputEvent(t *testing.T) {
 
 	// Send a "call" type event (creates the window with Name set = start frame)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "tool123",
-		Name:  "execute_command",
-		Input: json.RawMessage("execute_command: git status"),
+		CallID: "tool123",
+		Name:   "execute_command",
+		Input:  json.RawMessage("execute_command: git status"),
 	}, 0)
 
 	// Verify window was created
@@ -55,9 +56,9 @@ func TestRenderWindowContentWithStatus(t *testing.T) {
 
 	// Create a tool window (Name set = start frame)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "tool123",
-		Name:  "execute_command",
-		Input: json.RawMessage("execute_command: git status"),
+		CallID: "tool123",
+		Name:   "execute_command",
+		Input:  json.RawMessage("execute_command: git status"),
 	}, 0)
 
 	// Test rendering with pending status (default on creation)
@@ -124,18 +125,18 @@ func TestOutputWriterToolCallStartThenFull(t *testing.T) {
 
 	makeStartFD := func(id, name string) []byte {
 		fd, _ := json.Marshal(protocol.ToolInputData{
-			ID:   id,
-			Name: name,
+			CallID: id,
+			Name:   name,
 		})
-		return encodeTestTLV(tlv.TagAssistantF, tlv.WrapID("1", string(fd)))
+		return encodeTestTLV(tlv.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
 	}
 
 	makeInputFD := func(id, input string) []byte {
 		fd, _ := json.Marshal(protocol.ToolInputData{
-			ID:    id,
-			Input: json.RawMessage(input),
+			CallID: id,
+			Input:  json.RawMessage(input),
 		})
-		return encodeTestTLV(tlv.TagAssistantF, tlv.WrapID("1", string(fd)))
+		return encodeTestTLV(tlv.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
 	}
 
 	// 1. Simulate ToolCallStart: Name set, no input yet

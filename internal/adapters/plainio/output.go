@@ -120,36 +120,36 @@ func (o *stdoutOutput) printMessage(tag string, value string) {
 //nolint:gocyclo // dispatch over many tag types; each case is simple
 func (o *stdoutOutput) handleTag(tag, value string) {
 	switch tag {
-	case tlv.TagAssistantTDelta, tlv.TagAssistantRDelta:
-		id, _, ok := tlv.UnwrapID(value)
+	case tlv.TagAssistantXDelta:
+		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		o.markDeltaSeen(id)
-		o.handleTextDelta(tag, value)
+		o.markDeltaSeen(d.ID)
+		o.handleTextDelta(d.Type, d.ID, d.Text)
 
-	case tlv.TagAssistantT, tlv.TagAssistantR:
-		id, _, ok := tlv.UnwrapID(value)
+	case tlv.TagAssistantX:
+		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		if o.seenDelta[id] {
+		if o.seenDelta[d.ID] {
 			return
 		}
-		o.handleTextDelta(tag, value)
+		o.handleTextDelta(d.Type, d.ID, d.Text)
 
-	case tlv.TagUserT:
-		_, content, ok := tlv.UnwrapID(value)
+	case tlv.TagUserX:
+		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		// Render the echoed user prompt as its own block so it stands out
-		// from the assistant stream. The fixed format replaces the old
-		// conditional emitSeparator logic: the leading newline separates
-		// it from the previous message (a blank line when the previous
-		// output already ended with a newline), the two trailing newlines
-		// guarantee a blank line before the assistant response.
-		fmt.Fprintf(o.writer, "\nUser: %s\n\n", content)
+		if d.Type == protocol.TypeText {
+			// Render the echoed user prompt as its own block so it stands
+			// out from the assistant stream.
+			fmt.Fprintf(o.writer, "\nUser: %s\n\n", d.Text)
+		} else {
+			o.handleMediaKind(d.Type)
+		}
 		o.lastTag = tag
 		o.lastHistoryID = ""
 
@@ -160,17 +160,13 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		o.handleCommandOut(value)
 
 	case tlv.TagAssistantF:
-		_, payload, ok := tlv.UnwrapID(value)
-		if !ok {
-			return
-		}
 		if o.lastTag != "" {
 			fmt.Fprintln(o.writer)
 		}
 		o.lastTag = tag
 		o.lastHistoryID = ""
 		// Show complete tool call JSON.
-		fmt.Fprintf(o.writer, "%s\n", payload)
+		fmt.Fprintf(o.writer, "%s\n", value)
 
 	// Tool argument deltas are ephemeral — printed via AF complete frame.
 	case tlv.TagAssistantFDelta:
@@ -181,25 +177,27 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		// Ignore.
 
 	case tlv.TagUserF:
-		_, payload, ok := tlv.UnwrapID(value)
-		if !ok {
-			return
-		}
 		// Show complete tool result JSON.
 		if o.lastTag != "" && o.lastTag != tag {
 			fmt.Fprintln(o.writer)
 		}
 		o.lastTag = tag
 		o.lastHistoryID = ""
-		fmt.Fprintf(o.writer, "%s\n", payload)
-
-	case tlv.TagUserI, tlv.TagUserV, tlv.TagUserA, tlv.TagUserD:
-		o.handleMediaTag(tag, value)
+		fmt.Fprintf(o.writer, "%s\n", value)
 
 	default:
 		o.emitSeparator(tag)
 		fmt.Fprintf(o.writer, "[unknown-tag:%s %s]", tag, value)
 	}
+}
+
+// decodeContent parses a content-frame body. ok is false on malformed JSON.
+func decodeContent(value string) (protocol.ContentData, bool) {
+	var d protocol.ContentData
+	if err := json.Unmarshal([]byte(value), &d); err != nil {
+		return protocol.ContentData{}, false
+	}
+	return d, true
 }
 
 // handleCommandOut processes a CO (Command Output) frame.
@@ -223,7 +221,7 @@ func (o *stdoutOutput) handleCommandOut(value string) {
 		}
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.ID)
+	name, _ := commandNames.LoadAndDelete(msg.CallID)
 	nameStr, _ := name.(string)
 	o.lastTag = ""
 	o.lastHistoryID = ""
@@ -293,19 +291,19 @@ func (o *stdoutOutput) markDeltaSeen(id string) {
 	o.seenDelta[id] = true
 }
 
-// handleTextDelta handles assistant text/reasoning tags (AT/AR/At/Ar).
-// It prints a separator when transitioning between different tags or
-// history IDs, then prints the content delta.
-func (o *stdoutOutput) handleTextDelta(tag, value string) {
-	id, content, _ := tlv.UnwrapID(value)
-	if o.lastHistoryID != "" && o.lastTag != tag {
-		// Transitioning from a different tag → separator
+// handleTextDelta handles assistant content frames (AX/Ax). kind is the
+// content kind ("text" or "reasoning"); it stands in for the old tag
+// (AT/AR/At/Ar) when deciding whether a separator is due, so a text →
+// reasoning transition still opens a new block.
+func (o *stdoutOutput) handleTextDelta(kind, id, content string) {
+	if o.lastHistoryID != "" && o.lastTag != kind {
+		// Transitioning from a different kind → separator
 		fmt.Fprintln(o.writer)
 	} else if o.lastHistoryID != "" && id != o.lastHistoryID {
-		// Same tag but different history ID → separator
+		// Same kind but different history ID → separator
 		fmt.Fprintln(o.writer)
 	}
-	o.lastTag = tag
+	o.lastTag = kind
 	o.lastHistoryID = id
 	fmt.Fprint(o.writer, content)
 	if id == "" {
@@ -313,17 +311,10 @@ func (o *stdoutOutput) handleTextDelta(tag, value string) {
 	}
 }
 
-// handleMediaTag prints a media label (image/video/audio/document).
-func (o *stdoutOutput) handleMediaTag(tag, value string) {
-	tlv.UnwrapID(value)
-	o.emitSeparator(tag)
-	label := map[string]string{
-		tlv.TagUserI: "image",
-		tlv.TagUserV: "video",
-		tlv.TagUserA: "audio",
-		tlv.TagUserD: "document",
-	}[tag]
-	fmt.Fprintf(o.writer, "[%s]\n", label)
+// handleMediaKind prints a media label for a non-text content item.
+func (o *stdoutOutput) handleMediaKind(kind string) {
+	o.emitSeparator(kind)
+	fmt.Fprintf(o.writer, "[%s]\n", kind)
 }
 
 // emitSeparator prints a newline if the previous visible tag differs from the

@@ -252,7 +252,7 @@ func TestKeycapRowKeepsTheFrameHeight(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newFrameHarness(t, tc.width, 20)
 			h.step("empty")
-			h.appendWin(tlv.TagAssistantT, "w1", tc.content)
+			h.appendWin(tagAssistantText, "w1", tc.content)
 			h.step("content")
 
 			// Every visual row the wrapper produced must fit the budget it
@@ -293,7 +293,7 @@ func TestOverlayBoxFitsANarrowPane(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", tc.width, tc.height), func(t *testing.T) {
 			h := newFrameHarness(t, tc.width, tc.height)
 			for i := 0; i < 8; i++ {
-				h.appendWin(tlv.TagAssistantT, fmt.Sprintf("w%d", i),
+				h.appendWin(tagAssistantText, fmt.Sprintf("w%d", i),
 					strings.Repeat(fmt.Sprintf("message %d line of text that wraps around. ", i), 3))
 				h.step(fmt.Sprintf("build %d", i))
 			}
@@ -408,7 +408,7 @@ func sessionContent(rng *rand.Rand, width int) string {
 // one dispatch over the things a user can do; each case is a call
 func randomSession(h *frameHarness, rng *rand.Rand) {
 	nav := []rune{'j', 'k', 'J', 'K', 'G', 'g', 'b', 'e', 'r', 'R', 'f'}
-	tags := []string{tlv.TagAssistantT, tlv.TagUserT, tlv.TagAssistantR}
+	tags := []string{tagAssistantText, tagUserText, tagAssistantReasoning}
 	typed := []string{"the ", "quick ", "中文 ", "テスト ", "x", "  ", "1️⃣", "\n"}
 
 	steps := 250
@@ -421,7 +421,7 @@ func randomSession(h *frameHarness, rng *rand.Rand) {
 			h.appendWin(tags[rng.Intn(len(tags))], fmt.Sprintf("w%d", rng.Intn(14)),
 				sessionContent(rng, h.width))
 		case 4:
-			h.appendWin(tlv.TagAssistantT, fmt.Sprintf("w%d", rng.Intn(14)),
+			h.appendWin(tagAssistantText, fmt.Sprintf("w%d", rng.Intn(14)),
 				strings.Repeat("q", 1+rng.Intn(20)))
 		case 5:
 			h.m.out.Write(toolCallFrames(fmt.Sprintf("t%d", rng.Intn(6)),

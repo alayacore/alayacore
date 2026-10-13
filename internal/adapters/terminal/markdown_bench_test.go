@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // BenchmarkRenderMarkdownTables_Small measures the pure transform cost (no wrap).
@@ -72,7 +71,7 @@ func markdownTableDeltas(rows int) []string {
 // re-renders (exactly what ensureLineHeights does on cache invalidation).
 func runMarkdownStreaming(r *textRenderer, deltas []string, styles *Styles) {
 	for _, d := range deltas {
-		r.AppendFromTLV(tlv.TagAssistantT, d)
+		r.AppendFromTLV(tagAssistantText, d)
 		if _, ok := r.TryLineCount(80); !ok {
 			r.BuildInner(80, false, styles)
 		}
@@ -87,7 +86,7 @@ func BenchmarkMarkdownStreaming_PlainDeltas(b *testing.B) {
 	styles := NewStyles(theme.DefaultTheme())
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		r := &textRenderer{tag: tlv.TagAssistantT, mdMode: true}
+		r := &textRenderer{tag: tagAssistantText, mdMode: true}
 		runMarkdownStreaming(r, markdownPlainDeltas, styles)
 	}
 }
@@ -101,7 +100,7 @@ func BenchmarkMarkdownStreaming_TableDeltas(b *testing.B) {
 	deltas := markdownTableDeltas(20)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		r := &textRenderer{tag: tlv.TagAssistantT, mdMode: true}
+		r := &textRenderer{tag: tagAssistantText, mdMode: true}
 		runMarkdownStreaming(r, deltas, styles)
 	}
 }
@@ -112,7 +111,7 @@ func BenchmarkMarkdownStreaming_RawMode(b *testing.B) {
 	styles := NewStyles(theme.DefaultTheme())
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		r := &textRenderer{tag: tlv.TagAssistantT}
+		r := &textRenderer{tag: tagAssistantText}
 		runMarkdownStreaming(r, markdownPlainDeltas, styles)
 	}
 }

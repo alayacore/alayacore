@@ -48,7 +48,9 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 // steeringStep is one scripted provider call: the text it streams, the tool
@@ -231,11 +233,15 @@ func echoedUserIDs(t *testing.T, out string) []string {
 		if err != nil {
 			return ids
 		}
-		if tag != tlv.TagUserT {
+		if tag != tlv.TagUserX {
 			continue
 		}
-		if id, _, ok := tlv.UnwrapID(value); ok {
-			ids = append(ids, id)
+		var d protocol.ContentData
+		if json.Unmarshal([]byte(value), &d) != nil {
+			continue
+		}
+		if d.ID != "" {
+			ids = append(ids, d.ID)
 		}
 	}
 }
@@ -560,8 +566,8 @@ func TestSteeringEchoedBeforeTheAnswerItSteered(t *testing.T) {
 	driveRun(t, s)
 
 	out := output.String()
-	ut := frameIndexContaining(t, out, tlv.TagUserT, steeringText)
-	at := frameIndexContaining(t, out, tlv.TagAssistantT, steeringAnswer)
+	ut := frameIndexContaining(t, out, tlv.TagUserX, steeringText)
+	at := frameIndexContaining(t, out, tlv.TagAssistantX, steeringAnswer)
 	if ut < 0 || at < 0 {
 		t.Fatalf("steering UT frame at %d, answer AT frame at %d — both must be present:\n%q", ut, at, out)
 	}
@@ -1072,8 +1078,8 @@ func TestSteeringEndToEndThroughInputPipe(t *testing.T) {
 // writePrompt sends one complete user message: text then the UE flush.
 func writePrompt(t *testing.T, w io.Writer, text string) {
 	t.Helper()
-	if err := tlv.WriteTLV(w, tlv.TagUserT, text); err != nil {
-		t.Fatalf("write UT: %v", err)
+	if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("", text)); err != nil {
+		t.Fatalf("write UX: %v", err)
 	}
 	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
 		t.Fatalf("write UE: %v", err)

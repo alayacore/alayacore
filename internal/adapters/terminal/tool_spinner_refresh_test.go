@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestToolSpinnerFrameAt locks the wall-clock frame math: one frame per
@@ -53,17 +52,17 @@ func TestToolSpinnerFrameAt(t *testing.T) {
 func TestInvalidateRunningToolSpinnersInvalidatesPendingOnly(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "running",
-		Name:  "execute_command",
-		Input: json.RawMessage("sleep 60"),
+		CallID: "running",
+		Name:   "execute_command",
+		Input:  json.RawMessage("sleep 60"),
 	}, 0)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "done",
-		Name:  "read_file",
-		Input: json.RawMessage("x"),
+		CallID: "done",
+		Name:   "read_file",
+		Input:  json.RawMessage("x"),
 	}, 0)
 	wb.HandleToolOutput("done", "content", false, 0)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", "hello")
+	wb.AppendOrUpdate(tagAssistantText, "w1", "hello")
 
 	// Render once so every render cache is populated/valid.
 	wb.GetAll(-1, false)
@@ -104,14 +103,14 @@ func TestInvalidateRunningToolSpinnersInvalidatesPendingOnly(t *testing.T) {
 func TestInvalidateRunningToolSpinnersMultiplePending(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "a",
-		Name:  "execute_command",
-		Input: json.RawMessage("sleep 1"),
+		CallID: "a",
+		Name:   "execute_command",
+		Input:  json.RawMessage("sleep 1"),
 	}, 0)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "b",
-		Name:  "search_content",
-		Input: json.RawMessage("x"),
+		CallID: "b",
+		Name:   "search_content",
+		Input:  json.RawMessage("x"),
 	}, 0)
 	wb.GetAll(-1, false)
 
@@ -140,18 +139,18 @@ func TestInvalidateRunningToolSpinnersIdleNoop(t *testing.T) {
 	// Finished tools + text windows only.
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "done",
-		Name:  "read_file",
-		Input: json.RawMessage("x"),
+		CallID: "done",
+		Name:   "read_file",
+		Input:  json.RawMessage("x"),
 	}, 0)
 	wb.HandleToolOutput("done", "content", false, 0)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "failed",
-		Name:  "execute_command",
-		Input: json.RawMessage("boom"),
+		CallID: "failed",
+		Name:   "execute_command",
+		Input:  json.RawMessage("boom"),
 	}, 0)
 	wb.HandleToolOutput("failed", "err", true, 0)
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", "hello")
+	wb.AppendOrUpdate(tagAssistantText, "w1", "hello")
 	wb.GetAll(-1, false)
 
 	if wb.InvalidateRunningToolSpinners() {
@@ -168,9 +167,9 @@ func TestInvalidateRunningToolSpinnersIdleNoop(t *testing.T) {
 func TestDisplayRefreshAdvancesSpinnerWithoutDeltas(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	out.WindowBuffer().HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: json.RawMessage("sleep 60"),
+		CallID: "t1",
+		Name:   "execute_command",
+		Input:  json.RawMessage("sleep 60"),
 	}, 0)
 	m := newTerminalForUpdateStatusTest(out)
 	m.display = m.display.updateContent()
@@ -198,7 +197,7 @@ func TestDisplayRefreshAdvancesSpinnerWithoutDeltas(t *testing.T) {
 // (the perf contract of the 100% idle skip).
 func TestDisplayRefreshIdleSkipsRender(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "w1", "hello")
+	out.WindowBuffer().AppendOrUpdate(tagAssistantText, "w1", "hello")
 	m := newTerminalForUpdateStatusTest(out)
 	m.display = m.display.updateContent()
 	before := m.display.lastContent
@@ -217,9 +216,9 @@ func TestDisplayRefreshIdleSkipsRenderWithFinishedTool(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	wb := out.WindowBuffer()
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "t1",
-		Name:  "execute_command",
-		Input: json.RawMessage("echo hi"),
+		CallID: "t1",
+		Name:   "execute_command",
+		Input:  json.RawMessage("echo hi"),
 	}, 0)
 	wb.HandleToolOutput("t1", "hi", false, 0)
 	m := newTerminalForUpdateStatusTest(out)
@@ -258,7 +257,7 @@ func toolSpinnerGlyph(t *testing.T, content string) string {
 func BenchmarkInvalidateRunningToolSpinnersIdle(b *testing.B) {
 	wb := NewWindowBuffer(120, DefaultStyles())
 	for i := 0; i < 100; i++ {
-		wb.AppendOrUpdate(tlv.TagAssistantT, fmt.Sprintf("w%d", i), "hello world")
+		wb.AppendOrUpdate(tagAssistantText, fmt.Sprintf("w%d", i), "hello world")
 	}
 	wb.GetAll(-1, false)
 	b.ResetTimer()
@@ -275,12 +274,12 @@ func BenchmarkInvalidateRunningToolSpinnersIdle(b *testing.B) {
 func BenchmarkInvalidateRunningToolSpinnersPending(b *testing.B) {
 	wb := NewWindowBuffer(120, DefaultStyles())
 	for i := 0; i < 100; i++ {
-		wb.AppendOrUpdate(tlv.TagAssistantT, fmt.Sprintf("w%d", i), "hello world")
+		wb.AppendOrUpdate(tagAssistantText, fmt.Sprintf("w%d", i), "hello world")
 	}
 	wb.HandleToolInputEvent(protocol.ToolInputData{
-		ID:    "tool",
-		Name:  "execute_command",
-		Input: json.RawMessage("sleep 60"),
+		CallID: "tool",
+		Name:   "execute_command",
+		Input:  json.RawMessage("sleep 60"),
 	}, 0)
 	wb.GetAll(-1, false)
 	b.ResetTimer()

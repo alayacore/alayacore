@@ -160,7 +160,7 @@ func (wb *WindowBuffer) AppendOrUpdate(tag string, id string, content string) in
 	// does not push the conversation off the screen. (A user prompt is the
 	// one message the reader is certain to want in full: it is the request
 	// the answer below it is answering, and it is short by nature.)
-	folded := tag != tlv.TagAssistantT && tag != tlv.TagUserT
+	folded := tag != tagAssistantText && tag != tagUserText
 	historyID := parseHistoryID(id)
 	w := NewWindow(id, tag, wb.styles)
 	w.HistoryID = historyID
@@ -185,7 +185,7 @@ func (wb *WindowBuffer) HandleToolInputEvent(data protocol.ToolInputData, histor
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
-	if idx, ok := wb.idIndex[data.ID]; ok {
+	if idx, ok := wb.idIndex[data.CallID]; ok {
 		w := wb.windows[idx]
 		w.HandleToolInput(data, historyID)
 		wb.markDirty(idx)
@@ -193,7 +193,7 @@ func (wb *WindowBuffer) HandleToolInputEvent(data protocol.ToolInputData, histor
 	}
 
 	// Create new window with tool renderer
-	w := NewWindow(data.ID, tlv.TagAssistantF, wb.styles)
+	w := NewWindow(data.CallID, tlv.TagAssistantF, wb.styles)
 	w.HistoryID = historyID
 	w.Folded = true
 	w.Visible = true
@@ -205,7 +205,7 @@ func (wb *WindowBuffer) HandleToolInputEvent(data protocol.ToolInputData, histor
 	}
 
 	wb.windows = append(wb.windows, w)
-	wb.idIndex[data.ID] = len(wb.windows) - 1
+	wb.idIndex[data.CallID] = len(wb.windows) - 1
 	wb.markDirty(len(wb.windows) - 1)
 }
 

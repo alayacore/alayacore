@@ -9,8 +9,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // liveEdgeFixture returns a terminal with enough transcript to scroll, at
@@ -19,7 +17,7 @@ func liveEdgeFixture(windows int) Terminal {
 	m := newTestTerminal()
 	wb := m.out.WindowBuffer()
 	for i := 0; i < windows; i++ {
-		wb.AppendOrUpdate(tlv.TagAssistantT, "w"+itoa(i), "line "+itoa(i))
+		wb.AppendOrUpdate(tagAssistantText, "w"+itoa(i), "line "+itoa(i))
 	}
 	return m.updateDisplayHeight()
 }

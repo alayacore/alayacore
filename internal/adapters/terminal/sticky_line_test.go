@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // stickyFixture returns a width-40 buffer holding one tall expanded window
@@ -37,8 +35,8 @@ func stickyFixture() *WindowBuffer {
 	for i := 0; i < 10; i++ {
 		fmt.Fprintf(&body, "row%02d\n", i)
 	}
-	wb.AppendOrUpdate(tlv.TagAssistantT, "tall", strings.TrimSuffix(body.String(), "\n"))
-	wb.AppendOrUpdate(tlv.TagUserT, "after", "next message")
+	wb.AppendOrUpdate(tagAssistantText, "tall", strings.TrimSuffix(body.String(), "\n"))
+	wb.AppendOrUpdate(tagUserText, "after", "next message")
 	return wb
 }
 
@@ -174,13 +172,13 @@ func stickyWideFixtureWith(body int, before []string) *WindowBuffer {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	for i, id := range before {
 		_ = i
-		wb.AppendOrUpdate(tlv.TagAssistantR, id, "step")
+		wb.AppendOrUpdate(tagAssistantReasoning, id, "step")
 	}
 	var b strings.Builder
 	for i := 0; i < body; i++ {
 		fmt.Fprintf(&b, "row%03d\n", i)
 	}
-	wb.AppendOrUpdate(tlv.TagAssistantT, "tall", strings.TrimSuffix(b.String(), "\n"))
+	wb.AppendOrUpdate(tagAssistantText, "tall", strings.TrimSuffix(b.String(), "\n"))
 	return wb
 }
 
@@ -241,7 +239,7 @@ func TestPinnedAnnotationYieldsToTheTimestamp(t *testing.T) {
 	firstWithCount, sawTimestamp := 0, false
 	for width := 12; width <= 90; width++ {
 		wb := NewWindowBuffer(width, DefaultStyles())
-		wb.AppendOrUpdate(tlv.TagAssistantT, "tall", "row00\nrow01\nrow02\nrow03")
+		wb.AppendOrUpdate(tagAssistantText, "tall", "row00\nrow01\nrow02\nrow03")
 		pinCreatedAt(wb)
 		rows := stickyRows(t, wb, 1, 3)
 		row := rows[0]
@@ -385,8 +383,8 @@ func TestStickyPinAddsNoAllocations(t *testing.T) {
 			for i := 0; i < 10; i++ {
 				fmt.Fprintf(&body, "row%02d\n", i)
 			}
-			wb.AppendOrUpdate(tlv.TagAssistantT, "tall", strings.TrimSuffix(body.String(), "\n"))
-			wb.AppendOrUpdate(tlv.TagUserT, "after", "next message")
+			wb.AppendOrUpdate(tagAssistantText, "tall", strings.TrimSuffix(body.String(), "\n"))
+			wb.AppendOrUpdate(tagUserText, "after", "next message")
 
 			render := func(y int) func() {
 				return func() {
@@ -437,7 +435,7 @@ func TestStickyPinFollowsTheCursor(t *testing.T) {
 // window's name stays visible at the top.
 func TestStickyPinUnderAutoFollow(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", strings.TrimSuffix(strings.Repeat("streamed answer line\n", 6), "\n"))
+	wb.AppendOrUpdate(tagAssistantText, "a1", strings.TrimSuffix(strings.Repeat("streamed answer line\n", 6), "\n"))
 	dm := NewDisplayModel(wb, DefaultStyles()).WithHeight(4).updateContent()
 
 	if !dm.shouldFollow() {
@@ -451,7 +449,7 @@ func TestStickyPinUnderAutoFollow(t *testing.T) {
 		t.Errorf("the newest line must stay visible at the bottom, got %q", got)
 	}
 	// A delta that widens the answer keeps both properties.
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", "\nand one more line")
+	wb.AppendOrUpdate(tagAssistantText, "a1", "\nand one more line")
 	dm = dm.updateContent()
 	rows = strings.Split(stripANSI(dm.View().Content), "\n")
 	if !strings.HasPrefix(rows[0], unfoldArrow+" ASSISTANT") {

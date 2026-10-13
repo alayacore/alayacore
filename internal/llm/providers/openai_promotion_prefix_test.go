@@ -38,10 +38,11 @@ func captureRawMessages(t *testing.T, contents []llm.ContentPart) []json.RawMess
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Non-default values on purpose: fps/media_resolution are embedded in every
-	// video block, so a changing value rewrites earlier messages — the exact
-	// kind of prefix invalidation this test is about.
-	p.SetVideoConfig(4, 0)
+	// fps/media_resolution are embedded in every video block, so they must be a
+	// pure function of the record. They now live on the VideoPart (below,
+	// non-default on purpose) rather than on the provider — the exact property
+	// that keeps an earlier message from being rewritten when a later setting
+	// changes.
 
 	events, err := p.StreamMessages(context.Background(), contents, nil, "", "")
 	if err != nil {
@@ -53,12 +54,13 @@ func captureRawMessages(t *testing.T, contents []llm.ContentPart) []json.RawMess
 }
 
 // mediaRound builds one assistant tool_call plus a tool result carrying both an
-// image and a video, so the round produces a promoted user message.
+// image and a video, so the round produces a promoted user message. The video
+// carries non-default fps/resolution so the promoted bytes exercise them.
 func mediaRound(id string) []llm.ContentPart {
 	out := &llm.ToolOutputPart{ID: id, Output: []llm.ContentPart{
 		&llm.TextPart{Text: "Read " + id},
 		&llm.ImagePart{URI: mustPNGDataURI(1, 1)},
-		&llm.VideoPart{URI: "data:video/mp4;base64,BBBB"},
+		&llm.VideoPart{URI: "data:video/mp4;base64,BBBB", FPS: 4, Res: 0},
 	}}
 	out.SetRole(llm.RoleTool)
 	contents := testMsg(llm.RoleAssistant,

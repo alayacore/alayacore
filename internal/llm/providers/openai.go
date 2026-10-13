@@ -264,14 +264,6 @@ func (p *OpenAIProvider) SetReasoningLevel(level int) {
 	p.reasoningLevel = level
 }
 
-// SetVideoConfig sets the default FPS and resolution for video attachments.
-// fps: frames per second (0 means default 2)
-// resolution: 0=default, 1=max
-func (p *OpenAIProvider) SetVideoConfig(fps int, resolution int) {
-	p.videoFPS = fps
-	p.videoRes = resolution
-}
-
 // StreamMessages streams messages from OpenAI
 func (p *OpenAIProvider) StreamMessages(
 	ctx context.Context,
@@ -295,7 +287,7 @@ func (p *OpenAIProvider) StreamMessages(
 	if extraSystemPrompt != "" {
 		apiMessages = append(apiMessages, openAIMessage{Role: "system", Content: extraSystemPrompt})
 	}
-	apiMessages = append(apiMessages, openaiConvertContents(contents, p.reasoningLevel, p.videoFPS, p.videoRes, p.reasoningField)...)
+	apiMessages = append(apiMessages, openaiConvertContents(contents, p.reasoningLevel, p.reasoningField)...)
 
 	// Convert tools to OpenAI format
 	apiTools := make([]openAITool, 0, len(tools))
@@ -858,7 +850,7 @@ func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEve
 // It groups consecutive same-role ContentParts into API messages.
 // reasoningKey names the wire key for replayed reasoning text (gotcha 7);
 // empty means the reasoning_content default.
-func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, videoFPS int, videoRes int, reasoningKey string) []openAIMessage {
+func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, reasoningKey string) []openAIMessage {
 	chunks := llm.GroupByRole(contents)
 	if len(chunks) == 0 {
 		return nil
@@ -870,7 +862,7 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, video
 		role := chunk[0].GetRole()
 
 		if role == llm.RoleTool {
-			apiMessages = append(apiMessages, openaiConvertToolOutputs(chunk, videoFPS, videoRes)...)
+			apiMessages = append(apiMessages, openaiConvertToolOutputs(chunk)...)
 			continue
 		}
 
@@ -879,7 +871,7 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, video
 		if role == llm.RoleAssistant && openaiHasToolInputs(chunk) {
 			openaiConvertToolInputs(&apiMsg, chunk)
 		} else {
-			openaiConvertRegularContent(&apiMsg, chunk, videoFPS, videoRes)
+			openaiConvertRegularContent(&apiMsg, chunk)
 		}
 
 		if role == llm.RoleAssistant {
@@ -923,7 +915,7 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, video
 // Media stays flattened to a text summary when this protocol cannot express it
 // as a block at all (documents, audio given as a remote URL) or when the server
 // could not fetch the URI (see openaiPromotableURI).
-func openaiConvertToolOutputs(contents []llm.ContentPart, videoFPS int, videoRes int) []openAIMessage {
+func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 	results := make([]openAIMessage, 0, len(contents)+1)
 	var promoted []map[string]any // blocks for the follow-up user message
 
@@ -946,7 +938,7 @@ func openaiConvertToolOutputs(contents []llm.ContentPart, videoFPS int, videoRes
 			case *llm.TextPart:
 				textParts = append(textParts, v.Text)
 			default:
-				block, native := openaiMediaBlock(cp, videoFPS, videoRes)
+				block, native := openaiMediaBlock(cp)
 				if !native || !openaiPromotableURI(cp) {
 					textParts = append(textParts, openaiMediaSummary(v))
 					continue
@@ -1109,7 +1101,7 @@ func openaiConvertToolInputs(apiMsg *openAIMessage, contents []llm.ContentPart) 
 // openaiConvertRegularContent handles conversion of regular text content.
 // Media shapes are delegated to openaiMediaBlock so that user/assistant
 // messages and promoted tool media cannot drift apart.
-func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPart, videoFPS int, videoRes int) {
+func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPart) {
 	var contentParts []map[string]any
 	for _, part := range contents {
 		if v, ok := part.(*llm.TextPart); ok {
@@ -1119,7 +1111,7 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPa
 		// nil means "not a media part" (tool/reasoning parts, which this
 		// converter does not own — see openaiConvertToolInputs and
 		// openaiExtractReasoning), so nothing is appended.
-		if block, _ := openaiMediaBlock(part, videoFPS, videoRes); block != nil {
+		if block, _ := openaiMediaBlock(part); block != nil {
 			contentParts = append(contentParts, block)
 		}
 	}
@@ -1139,7 +1131,7 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPa
 // use the bool to decide between promoting and summarizing.
 //
 // A nil block means the part is not media; callers must check for it.
-func openaiMediaBlock(part llm.ContentPart, videoFPS int, videoRes int) (map[string]any, bool) {
+func openaiMediaBlock(part llm.ContentPart) (map[string]any, bool) {
 	switch v := part.(type) {
 	case *llm.ImagePart:
 		// Accepts both data URIs and remote URLs via the url field.
@@ -1161,7 +1153,7 @@ func openaiMediaBlock(part llm.ContentPart, videoFPS int, videoRes int) (map[str
 		}
 		return openaiTextBlock(fmt.Sprintf("[Audio file: %s (remote URL not supported)]", v.URI)), false
 	case *llm.VideoPart:
-		return openAIVideoPart(v.URI, videoFPS, videoRes), true
+		return openAIVideoPart(v.URI, v.FPS, v.Res), true
 	case *llm.DocumentPart:
 		// Document (PDF) is not natively supported by OpenAI Chat Completions
 		// API. Include a text placeholder so the model knows a document was

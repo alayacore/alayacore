@@ -3,8 +3,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestEnsureCursorVisible_OversizedWindowDoesNotOscillate verifies that
@@ -16,8 +14,8 @@ func TestEnsureCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T) {
 
 	// Window 0: small (1 line)
 	// Window 1: oversized — 100 lines, much taller than the viewport
-	wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", "Small window")
-	wb.AppendOrUpdate(tlv.TagAssistantT, "window-2", strings.Repeat("line\n", 100))
+	wb.AppendOrUpdate(tagAssistantText, "window-1", "Small window")
+	wb.AppendOrUpdate(tagAssistantText, "window-2", strings.Repeat("line\n", 100))
 
 	// Set viewport height to 50 (smaller than window-2 which is ~100 lines)
 	display = display.WithHeight(50)
@@ -66,8 +64,8 @@ func TestEnsureCursorVisible_OversizedWindowScrollsWhenOffScreen(t *testing.T) {
 
 	// Window 0: oversized — 100 lines
 	// Window 1: small tail window
-	wb.AppendOrUpdate(tlv.TagAssistantT, "window-1", strings.Repeat("line\n", 100))
-	wb.AppendOrUpdate(tlv.TagAssistantT, "window-2", "Tail")
+	wb.AppendOrUpdate(tagAssistantText, "window-1", strings.Repeat("line\n", 100))
+	wb.AppendOrUpdate(tagAssistantText, "window-2", "Tail")
 
 	display = display.WithHeight(50)
 	display = display.updateContent()
@@ -109,7 +107,7 @@ func TestEnsureCursorVisible_PartiallyVisibleWindowNotMoved(t *testing.T) {
 
 	// 20 windows, each ~8 rendered lines → ~160 total lines
 	for i := range 20 {
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-"+strings.Repeat("x", i+1),
+		wb.AppendOrUpdate(tagAssistantText, "window-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
 	}
 
@@ -148,7 +146,7 @@ func TestEnsureCursorVisible_OffScreenWindowScrolls(t *testing.T) {
 	display := NewDisplayModel(wb, DefaultStyles())
 
 	for i := range 20 {
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-"+strings.Repeat("x", i+1),
+		wb.AppendOrUpdate(tagAssistantText, "window-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
 	}
 
@@ -189,7 +187,7 @@ func TestEnsureCursorVisible_EntirelyAboveScrolls(t *testing.T) {
 	display := NewDisplayModel(wb, DefaultStyles())
 
 	for i := range 20 {
-		wb.AppendOrUpdate(tlv.TagAssistantT, "window-"+strings.Repeat("x", i+1),
+		wb.AppendOrUpdate(tagAssistantText, "window-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
 	}
 
@@ -221,9 +219,9 @@ func TestAutoFollow_OnlyGEnables(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", strings.Repeat("line\n", 5))
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w2", strings.Repeat("line\n", 5))
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w3", strings.Repeat("line\n", 5))
+	wb.AppendOrUpdate(tagAssistantText, "w1", strings.Repeat("line\n", 5))
+	wb.AppendOrUpdate(tagAssistantText, "w2", strings.Repeat("line\n", 5))
+	wb.AppendOrUpdate(tagAssistantText, "w3", strings.Repeat("line\n", 5))
 
 	display = display.WithHeight(10)
 	display = display.updateContent()
@@ -250,7 +248,7 @@ func TestAutoFollow_OnlyGEnables(t *testing.T) {
 	}
 
 	// Simulate new content arriving — viewport should NOT jump to bottom
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w3", strings.Repeat("line\n", 20))
+	wb.AppendOrUpdate(tagAssistantText, "w3", strings.Repeat("line\n", 20))
 	display = display.updateContent()
 
 	if display.scrollView.YOffset() != yOffsetAtBottom {
@@ -270,7 +268,7 @@ func TestAutoFollow_OnlyGEnables(t *testing.T) {
 	t.Logf("After second G: YOffset=%d", yOffsetNow)
 
 	// More new content — should follow to bottom
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w3", strings.Repeat("line\n", 50))
+	wb.AppendOrUpdate(tagAssistantText, "w3", strings.Repeat("line\n", 50))
 	display = display.updateContent()
 
 	yOffsetFinal := display.scrollView.YOffset()
@@ -296,9 +294,9 @@ func TestAutoFollow_JNoOpWhenNewWindowBetweenTicks(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w1", strings.Repeat("line\n", 5))
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w2", strings.Repeat("line\n", 5))
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w3", strings.Repeat("line\n", 5))
+	wb.AppendOrUpdate(tagAssistantText, "w1", strings.Repeat("line\n", 5))
+	wb.AppendOrUpdate(tagAssistantText, "w2", strings.Repeat("line\n", 5))
+	wb.AppendOrUpdate(tagAssistantText, "w3", strings.Repeat("line\n", 5))
 
 	display = display.WithHeight(20)
 	display = display.updateContent()
@@ -325,7 +323,7 @@ func TestAutoFollow_JNoOpWhenNewWindowBetweenTicks(t *testing.T) {
 	}
 
 	// Now a new window arrives between ticks (buffer updated, tick not yet fired).
-	wb.AppendOrUpdate(tlv.TagAssistantT, "w4", strings.Repeat("line\n", 5))
+	wb.AppendOrUpdate(tagAssistantText, "w4", strings.Repeat("line\n", 5))
 	// Window count is now 4; cursor is still at old last (index 2).
 	// Before the fix, pressing j here would move cursor to index 3 and
 	// disable auto-follow.
@@ -374,9 +372,9 @@ func TestScrollCursorToTop_PositionsWindowAtTop(t *testing.T) {
 
 	// Create several windows with some content
 	for i := range 10 {
-		wb.AppendOrUpdate(tlv.TagUserT, "prompt-"+strings.Repeat("x", i+1),
+		wb.AppendOrUpdate(tagUserText, "prompt-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
-		wb.AppendOrUpdate(tlv.TagAssistantT, "response-"+strings.Repeat("x", i+1),
+		wb.AppendOrUpdate(tagAssistantText, "response-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
 	}
 
@@ -416,7 +414,7 @@ func TestScrollCursorToTop_PartiallyVisibleWindowMovesToTop(t *testing.T) {
 	// Create windows (user text — expanded by default: its own line plus
 	// the five content lines each)
 	for i := range 10 {
-		wb.AppendOrUpdate(tlv.TagUserT, "window-"+strings.Repeat("x", i+1),
+		wb.AppendOrUpdate(tagUserText, "window-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
 	}
 
@@ -467,7 +465,7 @@ func TestScrollCursorToTop_NoCursorDoesNothing(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
-	wb.AppendOrUpdate(tlv.TagUserT, "window-1", "hello")
+	wb.AppendOrUpdate(tagUserText, "window-1", "hello")
 	display = display.WithHeight(10)
 	display = display.updateContent()
 
@@ -489,7 +487,7 @@ func TestScrollCursorToTop_AlreadyAtTopIsStable(t *testing.T) {
 	display := NewDisplayModel(wb, DefaultStyles())
 
 	for i := range 5 {
-		wb.AppendOrUpdate(tlv.TagUserT, "window-"+strings.Repeat("x", i+1),
+		wb.AppendOrUpdate(tagUserText, "window-"+strings.Repeat("x", i+1),
 			strings.Repeat("line\n", 5))
 	}
 

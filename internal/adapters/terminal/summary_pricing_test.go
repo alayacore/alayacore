@@ -23,8 +23,6 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // summaryPricingCorpus is summaryCorpus — the shapes that reach the summary paths,
@@ -47,7 +45,7 @@ func summaryPricingCorpus() []string {
 // newSummaryRenderer builds a text renderer whose content arrives as two deltas,
 // split at offset split.
 func newSummaryRenderer(content string, split int) *textRenderer {
-	r := &textRenderer{tag: tlv.TagAssistantR}
+	r := &textRenderer{tag: tagAssistantReasoning}
 	r.AppendFromTLV("", content[:split])
 	r.AppendFromTLV("", content[split:])
 	return r
@@ -98,7 +96,7 @@ func snapToRuneStart(s string, i int) int {
 // the escape parser on the other side of it are relying on.
 func TestContentThatIsNotWellFormedIsRepairedNotHeld(t *testing.T) {
 	// A byte that is not UTF-8 at all is one replacement.
-	lone := &textRenderer{tag: tlv.TagAssistantR}
+	lone := &textRenderer{tag: tagAssistantReasoning}
 	lone.AppendFromTLV("", "a\x80b")
 	if got := lone.rawContent(); got != "a\uFFFDb" {
 		t.Errorf("a lone continuation byte: content is %q, want %q", got, "a\uFFFDb")
@@ -107,7 +105,7 @@ func TestContentThatIsNotWellFormedIsRepairedNotHeld(t *testing.T) {
 	// The two halves of 中 (E4 B8 AD), appended separately, are three
 	// replacements — the repair is per delta and does not wait to see whether the
 	// next one completes the character.
-	split := &textRenderer{tag: tlv.TagAssistantR}
+	split := &textRenderer{tag: tagAssistantReasoning}
 	split.AppendFromTLV("", "a\xe4")
 	split.AppendFromTLV("", "\xb8\xadb")
 	if got := split.rawContent(); got != "a\uFFFD\uFFFD\uFFFDb" {
@@ -280,7 +278,7 @@ func TestSummaryFitsWhatEscapeBreaksDraws(t *testing.T) {
 func TestSummaryCountsSurviveAFold(t *testing.T) {
 	content := strings.Repeat("reasoning about the task, and planning the next steps\n", 30)
 	for _, split := range []int{1, 2, 7, maxContentParts, maxContentParts + 1} {
-		r := &textRenderer{tag: tlv.TagAssistantR}
+		r := &textRenderer{tag: tagAssistantReasoning}
 		for i := 0; i < len(content); i += split {
 			r.AppendFromTLV("", content[i:min(i+split, len(content))])
 		}
@@ -289,7 +287,7 @@ func TestSummaryCountsSurviveAFold(t *testing.T) {
 		if r.summary != before {
 			t.Errorf("split %d: a fold moved the counts from %+v to %+v", split, before, r.summary)
 		}
-		ref := &textRenderer{tag: tlv.TagAssistantR, content: content}
+		ref := &textRenderer{tag: tagAssistantReasoning, content: content}
 		ref.summary.retire()
 		for _, width := range []int{8, 40, 80} {
 			got, _ := r.BuildCollapsed(width, DefaultStyles())
@@ -307,7 +305,7 @@ func TestSummaryCountsSurviveAFold(t *testing.T) {
 // admitted it could not price byte by byte.
 func TestSummaryCountsRetireForGood(t *testing.T) {
 	for _, retiring := range []string{"\t", "\r", "\x1b[0m", "你", "\u0301", "\x7f", "\uFE0F"} {
-		r := &textRenderer{tag: tlv.TagAssistantR}
+		r := &textRenderer{tag: tagAssistantReasoning}
 		r.AppendFromTLV("", "plain ascii before")
 		if r.summary.retired() {
 			t.Fatalf("%q: plain ASCII retired the counts", retiring)
@@ -330,11 +328,11 @@ func TestSummaryCountsRetireForGood(t *testing.T) {
 // measured rather than priced at zero cells.
 func TestSummaryCountsAreNotTrustedForContentTheyNeverSaw(t *testing.T) {
 	content := "content that was set rather than appended, and is long enough to truncate"
-	r := &textRenderer{tag: tlv.TagAssistantR, content: content}
+	r := &textRenderer{tag: tagAssistantReasoning, content: content}
 	if r.summary.bytes != 0 {
 		t.Fatalf("a fresh renderer accounts for %d bytes, want 0", r.summary.bytes)
 	}
-	ref := &textRenderer{tag: tlv.TagAssistantR, content: content}
+	ref := &textRenderer{tag: tagAssistantReasoning, content: content}
 	ref.summary.retire()
 	for _, width := range []int{8, 40, 80} {
 		got, _ := r.BuildCollapsed(width, DefaultStyles())

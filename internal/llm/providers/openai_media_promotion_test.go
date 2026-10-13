@@ -250,8 +250,8 @@ func TestOpenAIToolMediaGroupedPerResult(t *testing.T) {
 func TestOpenAIToolResultVideoPromotedWithConfig(t *testing.T) {
 	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 		ID:     "call-1",
-		Output: []llm.ContentPart{&llm.VideoPart{URI: testVideoURI}},
-	}), func(p *providers.OpenAIProvider) { p.SetVideoConfig(8, 1) })
+		Output: []llm.ContentPart{&llm.VideoPart{URI: testVideoURI, FPS: 8, Res: 1}},
+	}), nil)
 
 	promoted := contentBlocks(t, msgs[3])
 	v := promoted[1]

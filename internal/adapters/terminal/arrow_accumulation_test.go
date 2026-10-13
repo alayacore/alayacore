@@ -11,16 +11,14 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestArrowNotAccumulatedAcrossRenders verifies repeated GetAll renders
 // keep exactly one arrow per folded line.
 func TestArrowNotAccumulatedAcrossRenders(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagUserT, "u1", "say hello")
-	wb.AppendOrUpdate(tlv.TagAssistantR, "r1", `The user says "say hello".`)
+	wb.AppendOrUpdate(tagUserText, "u1", "say hello")
+	wb.AppendOrUpdate(tagAssistantReasoning, "r1", `The user says "say hello".`)
 
 	// Render several times (each re-renders the row that carries the marker).
 	for i := 0; i < 5; i++ {

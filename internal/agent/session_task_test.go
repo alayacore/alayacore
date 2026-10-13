@@ -237,19 +237,15 @@ func TestDeltaWriterHandleToolOutputDelta(t *testing.T) {
 	length := int(binary.BigEndian.Uint32(raw[2:6]))
 	value := string(raw[6 : 6+length])
 
-	id, payload, ok := tlv.UnwrapID(value)
-	if !ok {
-		t.Fatalf("failed to unwrap frame value %q", value)
-	}
-	if id != "42" {
-		t.Errorf("historyID = %q, want %q", id, "42")
-	}
 	var od protocol.ToolOutputDeltaData
-	if err := json.Unmarshal([]byte(payload), &od); err != nil {
+	if err := json.Unmarshal([]byte(value), &od); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
-	if od.ID != "call_1" || od.Text != " 99%" {
-		t.Errorf("payload = %+v, want id=call_1 text=\" 99%%\"", od)
+	if od.ID != "42" {
+		t.Errorf("historyID = %q, want %q", od.ID, "42")
+	}
+	if od.CallID != "call_1" || od.Text != " 99%" {
+		t.Errorf("payload = %+v, want call_id=call_1 text=\" 99%%\"", od)
 	}
 }
 

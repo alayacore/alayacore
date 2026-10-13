@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // stickyBenchSession builds a session that is realistic for the pinned case:
@@ -29,14 +27,14 @@ import (
 // a folded prompt and followed by a column of folded steps.
 func stickyBenchSession() *WindowBuffer {
 	wb := NewWindowBuffer(120, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagUserT, "u1", "summarize the whole repo")
+	wb.AppendOrUpdate(tagUserText, "u1", "summarize the whole repo")
 	lines := make([]string, 0, 300)
 	for i := 0; i < 300; i++ {
 		lines = append(lines, fmt.Sprintf("answer paragraph %03d with enough words to fill a row", i))
 	}
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", strings.Join(lines, "\n"))
+	wb.AppendOrUpdate(tagAssistantText, "a1", strings.Join(lines, "\n"))
 	for i := 0; i < 60; i++ {
-		wb.AppendOrUpdate(tlv.TagAssistantR, fmt.Sprintf("r%02d", i), "short reasoning")
+		wb.AppendOrUpdate(tagAssistantReasoning, fmt.Sprintf("r%02d", i), "short reasoning")
 	}
 	_ = wb.GetTotalLines()
 	return wb

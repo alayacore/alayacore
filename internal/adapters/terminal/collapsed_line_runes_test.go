@@ -16,8 +16,6 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestCollapsedToolLineKeepsRunesWhole sweeps the widths where the row's
@@ -80,7 +78,7 @@ func TestCollapsedTextLineKeepsRunesWhole(t *testing.T) {
 	styles := DefaultStyles()
 	for _, content := range contents {
 		for width := 4; width <= 80; width++ {
-			tr := &textRenderer{tag: tlv.TagAssistantT, content: content}
+			tr := &textRenderer{tag: tagAssistantText, content: content}
 			line, _ := tr.BuildCollapsed(width, styles)
 			if !utf8.ValidString(line) {
 				t.Errorf("width=%d content=%.16q: the line is not valid UTF-8: %q", width, content, line)

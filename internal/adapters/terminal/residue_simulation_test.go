@@ -6,8 +6,6 @@ package terminal
 import (
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // applyFrame paints a rendered frame onto a terminal grid ([][]rune rows).
@@ -147,14 +145,14 @@ var errFmt = fmtErr{}
 func TestNoResidueAcrossFrames(t *testing.T) {
 	const width = 40
 	wb := NewWindowBuffer(width, DefaultStyles())
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", strings.Repeat("word ", 25)) // long rows
+	wb.AppendOrUpdate(tagAssistantText, "a1", strings.Repeat("word ", 25)) // long rows
 	wb.SetViewportPosition(0, 6)
 	frame1 := wb.GetAll(-1, false)
 
 	// Frame 2: different windows, short rows + blank padding.
 	wb.Clear()
-	wb.AppendOrUpdate(tlv.TagAssistantR, "r1", "short")
-	wb.AppendOrUpdate(tlv.TagUserT, "u1", "hi")
+	wb.AppendOrUpdate(tagAssistantReasoning, "r1", "short")
+	wb.AppendOrUpdate(tagUserText, "u1", "hi")
 	wb.SetViewportPosition(0, 6)
 	frame2 := wb.GetAll(-1, false)
 

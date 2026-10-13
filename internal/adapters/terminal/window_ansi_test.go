@@ -46,13 +46,13 @@ func TestWindow_WithANSIContent(t *testing.T) {
 		},
 		{
 			name:     "text with embedded ANSI",
-			tag:      tlv.TagAssistantT,
+			tag:      tagAssistantText,
 			content:  "Here is \x1b[1mbold\x1b[0m text",
 			expected: "Here is bold text",
 		},
 		{
 			name:     "reasoning with OSC sequence",
-			tag:      tlv.TagAssistantR,
+			tag:      tagAssistantReasoning,
 			content:  "Thinking\x1b]0;Title\x07...",
 			expected: "Thinking...",
 		},
@@ -107,13 +107,13 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 		},
 		{
 			name:            "text assistant is plain text",
-			tag:             tlv.TagAssistantT,
+			tag:             tagAssistantText,
 			content:         "Hello world",
 			shouldHaveColor: false, // streaming content carries no styling (markdown tables are plain text too)
 		},
 		{
 			name:            "reasoning is plain text",
-			tag:             tlv.TagAssistantR,
+			tag:             tagAssistantReasoning,
 			content:         "Thinking...",
 			shouldHaveColor: false, // streaming content carries no styling
 		},
@@ -199,7 +199,7 @@ func TestWindow_WriteFileContentStaysPlain(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 	content := "write_file: /tmp/notes.md\n- item one\n+ item two\n  plain line"
-	wb.HandleToolInputEvent(protocol.ToolInputData{ID: "t1", Name: "write_file", Input: json.RawMessage(content)}, 0)
+	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t1", Name: "write_file", Input: json.RawMessage(content)}, 0)
 	wb.ToggleFold(0)
 
 	rendered := wb.GetAll(-1, false)

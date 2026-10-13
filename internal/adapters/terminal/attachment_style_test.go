@@ -46,7 +46,7 @@ func TestAttachmentBadgesNeverDrawWithTheAlertColor(t *testing.T) {
 		t.Fatalf("Styles.Confirm no longer carries the warning color; this test proves nothing")
 	}
 
-	media := []string{tlv.MediaLabel(tlv.TagUserI), tlv.MediaLabel(tlv.TagUserA)}
+	media := []string{tlv.MediaLabel(tlv.KindImage), tlv.MediaLabel(tlv.KindAudio)}
 	ur := &userRenderer{textParts: []string{"what are these?"}, mediaParts: media}
 
 	lines, _ := ur.BuildInner(80, false, st)
@@ -65,7 +65,7 @@ func TestAttachmentBadgesNeverDrawWithTheAlertColor(t *testing.T) {
 
 func TestAttachmentBadgesKeepTheirRegisterAcrossFold(t *testing.T) {
 	st := DefaultStyles()
-	media := []string{tlv.MediaLabel(tlv.TagUserI), tlv.MediaLabel(tlv.TagUserA)}
+	media := []string{tlv.MediaLabel(tlv.KindImage), tlv.MediaLabel(tlv.KindAudio)}
 	ur := &userRenderer{textParts: []string{"what are these?"}, mediaParts: media}
 
 	lines, _ := ur.BuildInner(80, false, st)
@@ -96,8 +96,8 @@ func TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem(t *testing.T) {
 	ur := &userRenderer{
 		textParts: []string{strings.Repeat("analyze ", 8) + "this"},
 		mediaParts: []string{
-			tlv.MediaLabel(tlv.TagUserI), tlv.MediaLabel(tlv.TagUserV),
-			tlv.MediaLabel(tlv.TagUserA), tlv.MediaLabel(tlv.TagUserD),
+			tlv.MediaLabel(tlv.KindImage), tlv.MediaLabel(tlv.KindVideo),
+			tlv.MediaLabel(tlv.KindAudio), tlv.MediaLabel(tlv.KindDocument),
 		},
 	}
 	line := collapseOf(t, ur, st, 24)

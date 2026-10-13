@@ -22,16 +22,16 @@ import (
 
 func TestMarshalToolInputDataValidJSON(t *testing.T) {
 	input := json.RawMessage(`{"path":"/tmp/x","content":"hello"}`)
-	data, err := marshalToolInputData("call_1", "write_file", input)
+	data, err := marshalToolInputBody(protocol.ContentMeta{}, "call_1", "write_file", input)
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
 	}
 	var td protocol.ToolInputData
-	if err := json.Unmarshal(data, &td); err != nil {
+	if err := json.Unmarshal([]byte(data), &td); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if td.ID != "call_1" || td.Name != "write_file" {
-		t.Errorf("id/name = %q/%q, want call_1/write_file", td.ID, td.Name)
+	if td.CallID != "call_1" || td.Name != "write_file" {
+		t.Errorf("id/name = %q/%q, want call_1/write_file", td.CallID, td.Name)
 	}
 	if string(td.Input) != string(input) {
 		t.Errorf("valid input must pass through unchanged: got %q want %q", td.Input, input)
@@ -41,12 +41,12 @@ func TestMarshalToolInputDataValidJSON(t *testing.T) {
 func TestMarshalToolInputDataMalformedFallback(t *testing.T) {
 	// Truncated JSON — the exact class that used to abort the step.
 	input := json.RawMessage(`{"path":"/tmp/x","content":"hel`)
-	data, err := marshalToolInputData("call_1", "write_file", input)
+	data, err := marshalToolInputBody(protocol.ContentMeta{}, "call_1", "write_file", input)
 	if err != nil {
 		t.Fatalf("marshal must not fail on malformed input: %v", err)
 	}
 	var td protocol.ToolInputData
-	if err := json.Unmarshal(data, &td); err != nil {
+	if err := json.Unmarshal([]byte(data), &td); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 	// Fallback: input arrives as a JSON string carrying the malformed
@@ -63,23 +63,23 @@ func TestMarshalToolInputDataMalformedFallback(t *testing.T) {
 
 func TestMarshalToolInputDataNilAndEmpty(t *testing.T) {
 	// Start frames pass nil input — must stay JSON null.
-	data, err := marshalToolInputData("call_1", "write_file", nil)
+	data, err := marshalToolInputBody(protocol.ContentMeta{}, "call_1", "write_file", nil)
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
 	}
 	var td protocol.ToolInputData
-	if err := json.Unmarshal(data, &td); err != nil {
+	if err := json.Unmarshal([]byte(data), &td); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 	if td.Input != nil {
 		t.Errorf("nil input must stay null, got %q", td.Input)
 	}
 	// Empty (len 0) input behaves like nil.
-	data, err = marshalToolInputData("call_2", "read_file", json.RawMessage{})
+	data, err = marshalToolInputBody(protocol.ContentMeta{}, "call_2", "read_file", json.RawMessage{})
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
 	}
-	if err := json.Unmarshal(data, &td); err != nil {
+	if err := json.Unmarshal([]byte(data), &td); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 	if td.Input != nil {
@@ -100,12 +100,12 @@ func TestMarshalToolInputDataValidPrimitives(t *testing.T) {
 		json.RawMessage(`"malformed tool input: just a string"`),
 	}
 	for _, input := range cases {
-		data, err := marshalToolInputData("call_1", "write_file", input)
+		data, err := marshalToolInputBody(protocol.ContentMeta{}, "call_1", "write_file", input)
 		if err != nil {
 			t.Fatalf("marshal failed for %s: %v", input, err)
 		}
 		var td protocol.ToolInputData
-		if err := json.Unmarshal(data, &td); err != nil {
+		if err := json.Unmarshal([]byte(data), &td); err != nil {
 			t.Fatalf("unmarshal failed for %s: %v", input, err)
 		}
 		if string(td.Input) != string(input) {
@@ -119,12 +119,12 @@ func TestMarshalToolInputDataInvalidUTF8Fallback(t *testing.T) {
 	// invalid UTF-8 with U+FFFD inside the string (standard Go behavior),
 	// so the fallback is always a valid JSON string.
 	input := json.RawMessage("{\"path\":\"/tmp/x\",\"bad\":\xff\xfe}")
-	data, err := marshalToolInputData("call_1", "write_file", input)
+	data, err := marshalToolInputBody(protocol.ContentMeta{}, "call_1", "write_file", input)
 	if err != nil {
 		t.Fatalf("marshal must not fail on invalid UTF-8: %v", err)
 	}
 	var td protocol.ToolInputData
-	if err := json.Unmarshal(data, &td); err != nil {
+	if err := json.Unmarshal([]byte(data), &td); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 	var round string

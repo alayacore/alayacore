@@ -13,7 +13,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestPageScrollNoResidueBelowDisplay renders full Terminal frames before
@@ -26,8 +25,8 @@ func TestPageScrollNoResidueBelowDisplay(t *testing.T) {
 	mm, _ := m.Update(WindowSizeMsg{Width: W, Height: H})
 	m = mm.(Terminal)
 	wb := m.out.WindowBuffer()
-	wb.AppendOrUpdate(tlv.TagAssistantT, "a1", strings.Repeat("long assistant row content here\n", 20))
-	wb.AppendOrUpdate(tlv.TagAssistantR, "r1", `The user says "say hello".`)
+	wb.AppendOrUpdate(tagAssistantText, "a1", strings.Repeat("long assistant row content here\n", 20))
+	wb.AppendOrUpdate(tagAssistantReasoning, "r1", `The user says "say hello".`)
 	mm, _ = m.Update(WindowSizeMsg{Width: W, Height: H})
 	m = mm.(Terminal)
 

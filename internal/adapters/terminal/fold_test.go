@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 func TestSpaceKeyTogglesFold(t *testing.T) {
@@ -12,7 +11,7 @@ func TestSpaceKeyTogglesFold(t *testing.T) {
 	terminal = terminal.focusDisplay()
 
 	// Add a window with content that can be folded
-	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello world")
+	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", "Hello world")
 
 	// Set cursor to first window
 	terminal.display = terminal.display.WithWindowCursor(0)
@@ -60,7 +59,7 @@ func TestSpaceKeyDoesNothingInInputWindow(t *testing.T) {
 	terminal = terminal.focusInput()
 
 	// Add a window with content
-	terminal.out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "test1", "Hello world")
+	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", "Hello world")
 
 	// Press Space key while in input window
 	msg := KeyPressMsg(Key{Code: ' '})

@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"io"
 	"iter"
 	"sync"
@@ -103,7 +104,7 @@ func TestTaskStartAutoSummarizeReportsInProgressWhileInFlight(t *testing.T) {
 			name: "normal_prompt",
 			send: func(t *testing.T, w io.Writer) {
 				t.Helper()
-				if err := tlv.WriteTLV(w, tlv.TagUserT, tlv.WrapID("1", "do it")); err != nil {
+				if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", "do it")); err != nil {
 					t.Fatalf("write UT: %v", err)
 				}
 				if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
@@ -209,7 +210,7 @@ func startStatusTestSession(t *testing.T, provider llm.Provider, cfg SessionConf
 
 func writeCI(t *testing.T, w io.Writer, id, name string) {
 	t.Helper()
-	data, err := json.Marshal(protocol.CmdMsg{ID: id, Name: name})
+	data, err := json.Marshal(protocol.CmdMsg{CallID: id, Name: name})
 	if err != nil {
 		t.Fatalf("marshal CI: %v", err)
 	}

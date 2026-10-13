@@ -4,8 +4,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestRawViewSoftWrapEndToEnd verifies the fixed end-to-end layout with the
@@ -18,9 +16,9 @@ func TestRawViewSoftWrapEndToEnd(t *testing.T) {
 	wb := m.out.WindowBuffer()
 
 	// Expanded AT (long content, wraps to several visual rows).
-	wb.AppendOrUpdate(tlv.TagAssistantT, "1", strings.Repeat("word ", 40))
+	wb.AppendOrUpdate(tagAssistantText, "1", strings.Repeat("word ", 40))
 	// Folded reasoning window.
-	wb.AppendOrUpdate(tlv.TagAssistantR, "2", "short reasoning")
+	wb.AppendOrUpdate(tagAssistantReasoning, "2", "short reasoning")
 
 	m = m.updateDisplayHeight()
 	m = m.updateDisplayHeight()
@@ -69,7 +67,7 @@ func TestRawViewNoFakeNewlines(t *testing.T) {
 	m := newTestTerminal()
 	wb := m.out.WindowBuffer()
 	original := strings.Repeat("word ", 40) // single long line
-	wb.AppendOrUpdate(tlv.TagAssistantT, "1", original)
+	wb.AppendOrUpdate(tagAssistantText, "1", original)
 
 	m = m.updateDisplayHeight()
 	m = m.updateDisplayHeight()

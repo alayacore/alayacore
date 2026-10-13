@@ -37,9 +37,9 @@ func writeCommand(input io.Writer, cmd string) error {
 	name, args := commands.SplitCommand(cmd)
 	id := fmt.Sprintf("terse-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
-		ID:    id,
-		Name:  name,
-		Input: args,
+		CallID: id,
+		Name:   name,
+		Input:  args,
 	})
 	if err != nil {
 		return err
@@ -80,7 +80,11 @@ func readAllPrompt(input io.Writer, reader io.Reader) error {
 		}
 		return writeCommand(input, strings.TrimPrefix(text, ":"))
 	}
-	if err := tlv.WriteTLV(input, tlv.TagUserT, text); err != nil {
+	body, err := json.Marshal(protocol.ContentData{ContentItem: protocol.ContentItem{Type: protocol.TypeText, Text: text}})
+	if err != nil {
+		return err
+	}
+	if err := tlv.WriteTLV(input, tlv.TagUserX, string(body)); err != nil {
 		return err
 	}
 	return tlv.WriteTLV(input, tlv.TagUserEnd, "")

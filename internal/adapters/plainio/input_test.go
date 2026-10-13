@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/alayacore/alayacore/internal/wiretest"
 	"io"
 	"strings"
 	"testing"
@@ -28,10 +29,10 @@ func TestReadPrompts_SingleLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserT {
+	if tag != tlv.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
-	if value != "hello" {
+	if value != wiretest.UserText("", "hello") {
 		t.Errorf("expected value 'hello', got %q", value)
 	}
 	// UE
@@ -58,10 +59,10 @@ func TestReadPrompts_MultiLineBackslash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserT {
+	if tag != tlv.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
-	if value != "first line\nsecond line\nthird line" {
+	if value != wiretest.UserText("", "first line\nsecond line\nthird line") {
 		t.Errorf("expected multi-line value, got %q", value)
 	}
 	// UE
@@ -90,10 +91,10 @@ func TestReadPrompts_TrailingBackslash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserT {
+	if tag != tlv.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
-	if value != "hello" {
+	if value != wiretest.UserText("", "hello") {
 		t.Errorf("expected 'hello', got %q", value)
 	}
 	// UE
@@ -121,10 +122,10 @@ func TestReadPrompts_MultipleLines(t *testing.T) {
 		if err != nil {
 			t.Fatalf("prompt %d: failed to read TLV: %v", i, err)
 		}
-		if tag != tlv.TagUserT {
+		if tag != tlv.TagUserX {
 			t.Errorf("prompt %d: expected tag UT, got %s", i, tag)
 		}
-		if value != expected {
+		if value != wiretest.UserText("", expected) {
 			t.Errorf("prompt %d: expected %q, got %q", i, expected, value)
 		}
 		// UE
@@ -153,10 +154,10 @@ func TestReadPrompts_EmptyLines(t *testing.T) {
 		if err != nil {
 			t.Fatalf("prompt %d: failed to read TLV: %v", i, err)
 		}
-		if tag != tlv.TagUserT {
+		if tag != tlv.TagUserX {
 			t.Errorf("prompt %d: expected tag UT, got %s", i, tag)
 		}
-		if value != expected {
+		if value != wiretest.UserText("", expected) {
 			t.Errorf("prompt %d: expected %q, got %q", i, expected, value)
 		}
 		// UE
@@ -189,10 +190,10 @@ func TestReadPrompts_EOFPartialLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserT {
+	if tag != tlv.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
-	if value != "partial prompt" {
+	if value != wiretest.UserText("", "partial prompt") {
 		t.Errorf("expected 'partial prompt', got %q", value)
 	}
 	// UE
@@ -232,7 +233,7 @@ func TestReadPrompts_Command(t *testing.T) {
 	if cmd.Input != "" {
 		t.Errorf("expected empty input, got %q", cmd.Input)
 	}
-	if cmd.ID == "" {
+	if cmd.CallID == "" {
 		t.Error("CI frame should carry a generated call ID")
 	}
 
@@ -286,10 +287,10 @@ func TestReadPrompts_QuitCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf(":%s: failed to read TLV: %v", word, err)
 		}
-		if tag != tlv.TagUserT {
+		if tag != tlv.TagUserX {
 			t.Errorf(":%s: expected tag UT, got %s", word, tag)
 		}
-		if value != "some text" {
+		if value != wiretest.UserText("", "some text") {
 			t.Errorf(":%s: expected 'some text', got %q", word, value)
 		}
 
@@ -360,7 +361,7 @@ func assertQuitCommand(t *testing.T, buf *bytes.Buffer, typed string) {
 	if cmd.Input != "" {
 		t.Errorf(":%s: quit command input = %q, want empty", typed, cmd.Input)
 	}
-	if cmd.ID == "" {
+	if cmd.CallID == "" {
 		t.Errorf(":%s: quit CI frame should carry a generated call ID", typed)
 	}
 }
@@ -379,10 +380,10 @@ func TestReadPrompts_BackslashThenEOF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserT {
+	if tag != tlv.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
-	if value != "hello" {
+	if value != wiretest.UserText("", "hello") {
 		t.Errorf("expected 'hello', got %q", value)
 	}
 	// UE
@@ -436,7 +437,7 @@ func TestReadPrompts_WritesWithoutWaiting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the prompt frame: %v", err)
 	}
-	if tag != tlv.TagUserT || value != "hello" {
+	if tag != tlv.TagUserX || value != wiretest.UserText("", "hello") {
 		t.Errorf("first frame = %s %q, want UT %q", tag, value, "hello")
 	}
 }

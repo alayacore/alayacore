@@ -24,7 +24,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // TestUpdateStatusSkipsWhenVersionUnchanged verifies that calling
@@ -105,7 +104,7 @@ func TestSnapshotModelsSkipsEmptySlice(t *testing.T) {
 // the contentDirty flag (which is cleared after a successful render).
 func TestUpdateContentSkipsWhenIdle(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "w1", "hello")
+	out.WindowBuffer().AppendOrUpdate(tagAssistantText, "w1", "hello")
 	m := newTerminalForUpdateStatusTest(out)
 
 	// First render populates lastContent / clears dirty.
@@ -133,11 +132,11 @@ func TestUpdateContentSkipsWhenIdle(t *testing.T) {
 // dirty (new content arrived, or windows were invalidated).
 func TestUpdateContentRunsOnBufferDirty(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "w1", "hello")
+	out.WindowBuffer().AppendOrUpdate(tagAssistantText, "w1", "hello")
 	m := newTerminalForUpdateStatusTest(out)
 	m1 := m.display.updateContent() // populate cache, clear dirty
 
-	out.WindowBuffer().AppendOrUpdate(tlv.TagAssistantT, "w1", "hello world")
+	out.WindowBuffer().AppendOrUpdate(tagAssistantText, "w1", "hello world")
 	if !m.out.WindowBuffer().IsDirty() {
 		t.Fatal("AppendOrUpdate should mark the buffer dirty")
 	}
