@@ -132,8 +132,10 @@ Three consequences of promotion worth knowing:
   (provider-dependent; alayacore sets no explicit `cache_control` breakpoint,
   while still parsing `cache_read_input_tokens` into usage). The costs that are
   genuinely repeated are upload bytes and server-side tokenization, plus full
-  input pricing on endpoints that do not cache. It also means anything that
-  rewrites an *earlier* block invalidates the prefix from that point:
+  input pricing on endpoints that do not cache. Nothing in alayacore rewrites an
+  *earlier* block any more — a video's `fps`/`media_resolution` is fixed on the
+  part when it enters the conversation, so `:video_config` cannot invalidate the
+  prefix from the point of an existing video. One caveat remains for adoption:
   `video_url` itself is a non-standard extension — so promoting
   video to a strict Chat Completions endpoint can turn a request that
   previously succeeded (media flattened to text) into a 400.

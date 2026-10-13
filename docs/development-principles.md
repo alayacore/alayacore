@@ -56,8 +56,9 @@ Every capability available to built-in adapters must be achievable through TLV f
 > echo of that input with an assigned history ID. Adapters must handle both.
 
 > **Note — frame order is part of the contract.** Within one assistant step,
-> `AR` precedes `AT` precedes `AF`, matching the order the step's content parts
-> are persisted in. Adapters rely on it: the terminal creates a window per block
+> the reasoning content item precedes the text item, which precedes the tool
+> calls (`AX` reasoning, `AX` text, `AF`), matching the order the step's content
+> parts are persisted in. Adapters rely on it: the terminal creates a window per block
 > as its frame arrives (positions are fixed at creation), and `--plainio` prints
 > in arrival order. They do not sort by the numeric history ID — it records
 > *first touch*, so it only tracks this order while providers emit in it (see

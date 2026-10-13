@@ -162,6 +162,18 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			// receives the complete history from taskResultCh at task end.
 			if prevLen <= len(fullContents) {
 				ev.NewParts = fullContents[prevLen:]
+				// Stamp the fields a part cannot know about itself — its
+				// message time, and a video's session default — HERE, in the
+				// task goroutine, before the parts are handed over.
+				//
+				// After the handoff both goroutines hold these parts: run()
+				// echoes them and appends them to Contents, while this
+				// goroutine reads them back for the next step's request and for
+				// a mid-task session save. A write from either side after that
+				// point is a data race on the part (a summarize that saves the
+				// history while run() stamps it, for one). Stamping once, on the
+				// near side, is what keeps the part immutable to everyone else.
+				s.stampParts(ev.NewParts)
 			}
 		}
 		s.sendEvent(ev)
@@ -401,9 +413,13 @@ func (s *Session) applyVideoDefault(part llm.ContentPart) {
 
 // stampParts stamps the fields a freshly assembled assistant/tool part cannot
 // know about itself: its time, and (for a video) the session's current default.
-// Called as the parts enter the record — the same rule finalizeUserPart applies
-// to user parts — so a later serialization reads only the part and never
-// consults live state.
+//
+// It must run in the goroutine that OWNS the parts, before they are handed to
+// run() — that is onStepFinish, in the task goroutine (and finalizeUserPart for
+// user parts, and handleToolOutput for a tool result). Stamping after the
+// handoff would race the other goroutine reading the part back, and every
+// reader below serialization must see a part that is already complete: a later
+// serialization reads only the part and never consults live state.
 func (s *Session) stampParts(parts []llm.ContentPart) {
 	now := time.Now()
 	for _, p := range parts {
@@ -749,6 +765,10 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 	if outputTokens > 0 {
 		s.sendEvent(setContextTokensEvent{Tokens: outputTokens})
 	}
+	// The compacted parts are new records like any other: stamp their message
+	// time here, in the goroutine that owns them, before they are handed to
+	// run() (see stampParts). Without it a reloaded summary would carry no time.
+	s.stampParts(result)
 	s.writeNotify("Summarized conversation")
 	return result, nil
 }

@@ -372,12 +372,12 @@ The path input is a bare input like every other overlay filter — no prompt pre
 
 The attachment type is determined by file extension (or URL path extension):
 
-| Type | Icon | TLV Tag | Extensions |
-|------|------|---------|------------|
-| Image | 📷 | `UI` | `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.bmp`, `.svg` |
-| Video | 🎬 | `UV` | `.mp4`, `.mpeg`, `.mpg`, `.avi`, `.mov`, `.webm`, `.mkv` |
-| Audio | 🎵 | `UA` | `.mp3`, `.wav`, `.ogg`, `.flac`, `.aac`, `.m4a`, `.wma` |
-| Document | 📄 | `UD` | `.pdf`, `.txt`, `.md`, others / unknown |
+| Type | Icon | Content type | Extensions |
+|------|------|--------------|------------|
+| Image | 📷 | `image` | `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.bmp`, `.svg` |
+| Video | 🎬 | `video` | `.mp4`, `.mpeg`, `.mpg`, `.avi`, `.mov`, `.webm`, `.mkv` |
+| Audio | 🎵 | `audio` | `.mp3`, `.wav`, `.ogg`, `.flac`, `.aac`, `.m4a`, `.wma` |
+| Document | 📄 | `document` | `.pdf`, `.txt`, `.md`, others / unknown |
 
 ### Display
 
@@ -448,7 +448,7 @@ Every window spends exactly ONE row of chrome — its own line — and it never 
 
 A window's position in the list is fixed at creation time: `WindowBuffer` only ever appends, and `HistoryID` is stored for navigation, never used to re-sort. So the display order is the order in which windows were *first created*.
 
-Streaming text deltas (`At`/`Ar`) do not touch the buffer as they arrive — they accumulate in `pendingTextDeltas` and are written in one batch by `flushPendingDeltas`, which runs when an authoritative frame arrives or on a UI tick. A short reasoning and the answer that follows it are therefore often pending together, and because the flush used to iterate a Go map (randomized order per run), the `REASONING` window could be created below the `ASSISTANT` window it preceded — for the rest of the session. `flushPendingDeltas` now sorts the pending entries by `historyID` first, tool deltas included, so a step's windows are created in one deterministic order instead of one coin flip per pending entry. `delta_flush_order_test.go` pins it for both frame orders.
+Streaming text deltas (`Ax`) do not touch the buffer as they arrive — they accumulate in `pendingTextDeltas` and are written in one batch by `flushPendingDeltas`, which runs when an authoritative frame arrives or on a UI tick. A short reasoning and the answer that follows it are therefore often pending together, and because the flush used to iterate a Go map (randomized order per run), the `REASONING` window could be created below the `ASSISTANT` window it preceded — for the rest of the session. `flushPendingDeltas` now sorts the pending entries by `historyID` first, tool deltas included, so a step's windows are created in one deterministic order instead of one coin flip per pending entry. `delta_flush_order_test.go` pins it for both frame orders.
 
 The sort reproduces *arrival* order, not a ranking of block kinds: in delta mode `historyID` is handed out on first delta touch, so a provider that genuinely streams its answer before its reasoning numbers the answer lower and renders it first. It is not "reasoning always above text". Elsewhere in the tree `historyID` is never compared across records — the numeric uses are per-window max-tracking and a `> 0` validity guard, and `handleFork` resolves an ID to an index and slices positionally — so this flush is the only place treating ID magnitude as an ordering signal, and it depends on providers numbering blocks in the order they are persisted. That obligation, and the one arrival-order case no provider-side ordering can satisfy, are in [providers.md](providers.md) → "Complete-event order".
 
