@@ -44,7 +44,7 @@ The vocabulary is a 2x2 over {into the model (`U`), out of the model (`A`)} x
 {content (`X`), function (`F`)}:
 
 ```
-UX  <→  content    User content: JSON content item {"type":"..."} (both directions)
+UX  ↔   content    User content: JSON content item {"type":"..."} (both directions)
 AX  ←   content    Assistant content: JSON content item, complete/authoritative
 Ax  ←   content    Assistant content delta: JSON content item, fragment
 AF  ←   function   Function/tool call (JSON: {"call_id":...,"name":...,"input":...})
