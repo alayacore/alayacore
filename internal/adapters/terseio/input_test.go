@@ -12,7 +12,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 func TestReadAllPrompt_MultiLine(t *testing.T) {
@@ -22,19 +22,19 @@ func TestReadAllPrompt_MultiLine(t *testing.T) {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
 
-	frames := parseTLVFrames(t, buf.Bytes())
+	frames := parseFrames(t, buf.Bytes())
 	if len(frames) != 2 {
 		t.Fatalf("frames = %d, want 2 (UT + UE), got %q", len(frames), buf.String())
 	}
-	if frames[0].tag != tlv.TagUserX {
-		t.Errorf("frame[0] tag = %q, want %q", frames[0].tag, tlv.TagUserX)
+	if frames[0].tag != wire.TagUserX {
+		t.Errorf("frame[0] tag = %q, want %q", frames[0].tag, wire.TagUserX)
 	}
 	// Trailing newlines trimmed, inner newlines preserved.
 	if frames[0].value != wiretest.UserText("", "line one\nline two") {
 		t.Errorf("prompt = %q, want %q", frames[0].value, "line one\nline two")
 	}
-	if frames[1].tag != tlv.TagUserEnd {
-		t.Errorf("frame[1] tag = %q, want %q", frames[1].tag, tlv.TagUserEnd)
+	if frames[1].tag != wire.TagUserEnd {
+		t.Errorf("frame[1] tag = %q, want %q", frames[1].tag, wire.TagUserEnd)
 	}
 }
 
@@ -44,7 +44,7 @@ func TestReadAllPrompt_SingleLineNoNewline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
-	frames := parseTLVFrames(t, buf.Bytes())
+	frames := parseFrames(t, buf.Bytes())
 	if len(frames) != 2 || frames[0].value != wiretest.UserText("", "single line") {
 		t.Errorf("frames = %+v, want UT with %q + UE", frames, "single line")
 	}
@@ -67,12 +67,12 @@ func TestReadAllPrompt_Command(t *testing.T) {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
 
-	frames := parseTLVFrames(t, buf.Bytes())
+	frames := parseFrames(t, buf.Bytes())
 	if len(frames) != 1 {
 		t.Fatalf("frames = %d, want 1 (CI only, no UE)", len(frames))
 	}
-	if frames[0].tag != tlv.TagCommandIn {
-		t.Errorf("frame[0] tag = %q, want %q", frames[0].tag, tlv.TagCommandIn)
+	if frames[0].tag != wire.TagCommandIn {
+		t.Errorf("frame[0] tag = %q, want %q", frames[0].tag, wire.TagCommandIn)
 	}
 
 	var cmd protocol.CmdMsg
@@ -103,8 +103,8 @@ func TestReadAllPrompt_CommandMultiLine(t *testing.T) {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
 
-	frames := parseTLVFrames(t, buf.Bytes())
-	if len(frames) != 1 || frames[0].tag != tlv.TagCommandIn {
+	frames := parseFrames(t, buf.Bytes())
+	if len(frames) != 1 || frames[0].tag != wire.TagCommandIn {
 		t.Fatalf("frames = %+v, want 1 CI frame", frames)
 	}
 	var cmd protocol.CmdMsg
@@ -126,8 +126,8 @@ func TestReadAllPrompt_CommandNoArgs(t *testing.T) {
 		t.Fatalf("readAllPrompt() error = %v", err)
 	}
 
-	frames := parseTLVFrames(t, buf.Bytes())
-	if len(frames) != 1 || frames[0].tag != tlv.TagCommandIn {
+	frames := parseFrames(t, buf.Bytes())
+	if len(frames) != 1 || frames[0].tag != wire.TagCommandIn {
 		t.Fatalf("frames = %+v, want 1 CI frame", frames)
 	}
 	var cmd protocol.CmdMsg
@@ -148,12 +148,12 @@ func TestReadAllPrompt_Quit(t *testing.T) {
 		if !errors.Is(err, errQuitPrompt) {
 			t.Errorf("readAllPrompt(%q) error = %v, want errQuitPrompt", input, err)
 		}
-		frames := parseTLVFrames(t, buf.Bytes())
+		frames := parseFrames(t, buf.Bytes())
 		if len(frames) != 1 {
 			t.Fatalf("readAllPrompt(%q) frames = %d, want 1 (CI)", input, len(frames))
 		}
-		if frames[0].tag != tlv.TagCommandIn {
-			t.Errorf("readAllPrompt(%q) frame tag = %q, want %q", input, frames[0].tag, tlv.TagCommandIn)
+		if frames[0].tag != wire.TagCommandIn {
+			t.Errorf("readAllPrompt(%q) frame tag = %q, want %q", input, frames[0].tag, wire.TagCommandIn)
 		}
 		var cmd protocol.CmdMsg
 		if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
@@ -174,8 +174,8 @@ func TestReadAllPrompt_QuitWithArgsIsSent(t *testing.T) {
 		t.Fatalf("readAllPrompt() error = %v, want nil", err)
 	}
 
-	frames := parseTLVFrames(t, buf.Bytes())
-	if len(frames) != 1 || frames[0].tag != tlv.TagCommandIn {
+	frames := parseFrames(t, buf.Bytes())
+	if len(frames) != 1 || frames[0].tag != wire.TagCommandIn {
 		t.Fatalf("frames = %+v, want 1 CI frame", frames)
 	}
 	var cmd protocol.CmdMsg
@@ -207,8 +207,8 @@ func TestReadAllPrompt_WritesWithoutWaiting(t *testing.T) {
 		t.Fatal("readAllPrompt() blocked: the feed must not wait for the session")
 	}
 
-	frames := parseTLVFrames(t, buf.Bytes())
-	if len(frames) != 2 || frames[0].tag != tlv.TagUserX || frames[0].value != wiretest.UserText("", "hello") {
+	frames := parseFrames(t, buf.Bytes())
+	if len(frames) != 2 || frames[0].tag != wire.TagUserX || frames[0].value != wiretest.UserText("", "hello") {
 		t.Errorf("frames = %+v, want UT %q + UE", frames, "hello")
 	}
 }

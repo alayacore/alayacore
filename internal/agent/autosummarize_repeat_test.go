@@ -29,7 +29,7 @@ import (
 	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // recordProvider records every request's history and counts how many of them
@@ -204,10 +204,10 @@ func TestAutoSummarizeEndToEnd_RealRunLoop(t *testing.T) {
 	// the first is over the threshold when it starts.
 	long := strings.Repeat("x", 800)
 	for i := 1; i <= 3; i++ {
-		if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", long)); err != nil {
+		if err := wire.WriteFrame(w, wire.TagUserX, wiretest.UserText("1", long)); err != nil {
 			t.Fatalf("write UT: %v", err)
 		}
-		if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
+		if err := wire.WriteFrame(w, wire.TagUserEnd, ""); err != nil {
 			t.Fatalf("write UE: %v", err)
 		}
 		// Wait for this task's answer before submitting the next prompt;

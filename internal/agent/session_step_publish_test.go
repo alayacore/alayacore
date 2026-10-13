@@ -32,7 +32,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // containsText reports whether any TextPart in parts contains s.
@@ -399,10 +399,10 @@ func TestSaveDuringStreaming_EndToEnd(t *testing.T) {
 	s.Start()
 
 	// Deliver a prompt (what plainio/terseio do).
-	if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", "hello")); err != nil {
+	if err := wire.WriteFrame(w, wire.TagUserX, wiretest.UserText("1", "hello")); err != nil {
 		t.Fatalf("write UT: %v", err)
 	}
-	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
+	if err := wire.WriteFrame(w, wire.TagUserEnd, ""); err != nil {
 		t.Fatalf("write UE: %v", err)
 	}
 
@@ -419,7 +419,7 @@ func TestSaveDuringStreaming_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal save cmd: %v", err)
 	}
-	if err := tlv.WriteTLV(w, tlv.TagCommandIn, string(cmd)); err != nil {
+	if err := wire.WriteFrame(w, wire.TagCommandIn, string(cmd)); err != nil {
 		t.Fatalf("write CI save: %v", err)
 	}
 	waitFor(t, func() bool { return fileContains(savePath, "Step 1.") }, "save written with step 1")

@@ -22,7 +22,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // malformedToolInputPrefix marks a tool-input field whose raw bytes are
@@ -110,32 +110,32 @@ func contentPartJSON(part llm.ContentPart, id string) (tag string, body string, 
 
 	switch v := part.(type) {
 	case *llm.TextPart:
-		tag = tlv.TagUserX
+		tag = wire.TagUserX
 		if part.GetRole() == llm.RoleAssistant {
-			tag = tlv.TagAssistantX
+			tag = wire.TagAssistantX
 		}
 		body, err = marshalContentBody(meta, protocol.ContentItem{Type: protocol.TypeText, Text: v.Text})
 	case *llm.ReasoningPart:
 		body, err = marshalContentBody(meta, protocol.ContentItem{Type: protocol.TypeReasoning, Text: v.Text})
-		tag = tlv.TagAssistantX
+		tag = wire.TagAssistantX
 	case *llm.ImagePart:
 		body, err = marshalContentBody(meta, protocol.ContentItem{Type: protocol.TypeImage, URI: v.URI})
-		tag = tlv.TagUserX
+		tag = wire.TagUserX
 	case *llm.VideoPart:
 		body, err = marshalContentBody(meta, protocol.ContentItem{Type: protocol.TypeVideo, URI: v.URI, FPS: v.FPS, Res: v.Res})
-		tag = tlv.TagUserX
+		tag = wire.TagUserX
 	case *llm.AudioPart:
 		body, err = marshalContentBody(meta, protocol.ContentItem{Type: protocol.TypeAudio, URI: v.URI})
-		tag = tlv.TagUserX
+		tag = wire.TagUserX
 	case *llm.DocumentPart:
 		body, err = marshalContentBody(meta, protocol.ContentItem{Type: protocol.TypeDocument, URI: v.URI})
-		tag = tlv.TagUserX
+		tag = wire.TagUserX
 	case *llm.ToolInputPart:
 		body, err = marshalToolInputBody(meta, v.ID, v.Name, v.Input)
-		tag = tlv.TagAssistantF
+		tag = wire.TagAssistantF
 	case *llm.ToolOutputPart:
 		body, err = marshalToolOutputBody(meta, v.ID, v.Output, v.IsError)
-		tag = tlv.TagUserF
+		tag = wire.TagUserF
 	default:
 		return "", "", fmt.Errorf("unknown content part type: %T", part)
 	}
@@ -170,7 +170,7 @@ func assistantKind(kind string) bool {
 // AF start frame (name only) is skipped, matching the old writer's shape.
 func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 	switch tag {
-	case tlv.TagUserX, tlv.TagAssistantX:
+	case wire.TagUserX, wire.TagAssistantX:
 		var d protocol.ContentData
 		if err := json.Unmarshal(body, &d); err != nil {
 			return nil, fmt.Errorf("failed to parse content: %w", err)
@@ -182,20 +182,20 @@ func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 		if err != nil {
 			return nil, err
 		}
-		if tag == tlv.TagUserX && !intoModelKind(d.Type) {
+		if tag == wire.TagUserX && !intoModelKind(d.Type) {
 			return nil, fmt.Errorf("content type %q cannot be user content", d.Type)
 		}
-		if tag == tlv.TagAssistantX && !assistantKind(d.Type) {
+		if tag == wire.TagAssistantX && !assistantKind(d.Type) {
 			return nil, fmt.Errorf("content type %q cannot be assistant content", d.Type)
 		}
 		role := llm.RoleUser
-		if tag == tlv.TagAssistantX {
+		if tag == wire.TagAssistantX {
 			role = llm.RoleAssistant
 		}
 		part.SetRole(role)
 		part.SetTime(parseWireTime(d.Time))
 		return part, nil
-	case tlv.TagAssistantF:
+	case wire.TagAssistantF:
 		var fd protocol.ToolInputData
 		if err := json.Unmarshal(body, &fd); err != nil {
 			return nil, fmt.Errorf("failed to parse function data: %w", err)
@@ -207,7 +207,7 @@ func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 			ID: fd.CallID, Name: fd.Name, Input: fd.Input,
 			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, Time: parseWireTime(fd.Time)},
 		}, nil
-	case tlv.TagUserF:
+	case wire.TagUserF:
 		var tr protocol.ToolOutputData
 		if err := json.Unmarshal(body, &tr); err != nil {
 			return nil, fmt.Errorf("failed to parse tool result: %w", err)

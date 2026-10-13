@@ -35,7 +35,8 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 // textAndReasoningProvider streams one reasoning block and one text block, each
@@ -138,11 +139,11 @@ func readContentFrames(stream string) map[string][]frame {
 	out := map[string][]frame{}
 	rest := strings.NewReader(stream)
 	for {
-		tag, value, err := tlv.ReadTLV(rest)
+		tag, value, err := wiretest.NextFrame(rest)
 		if err != nil {
 			return out
 		}
-		if tag != tlv.TagAssistantXDelta && tag != tlv.TagAssistantX {
+		if tag != wire.TagAssistantXDelta && tag != wire.TagAssistantX {
 			continue
 		}
 		var d protocol.ContentData
@@ -156,10 +157,10 @@ func readContentFrames(stream string) map[string][]frame {
 
 // Keys for readContentFrames, so the test does not spell out "tag:kind".
 const (
-	axText      = tlv.TagAssistantXDelta + ":" + protocol.TypeText
-	axReasoning = tlv.TagAssistantXDelta + ":" + protocol.TypeReasoning
-	axComplete  = tlv.TagAssistantX + ":" + protocol.TypeText
-	arComplete  = tlv.TagAssistantX + ":" + protocol.TypeReasoning
+	axText      = wire.TagAssistantXDelta + ":" + protocol.TypeText
+	axReasoning = wire.TagAssistantXDelta + ":" + protocol.TypeReasoning
+	axComplete  = wire.TagAssistantX + ":" + protocol.TypeText
+	arComplete  = wire.TagAssistantX + ":" + protocol.TypeReasoning
 )
 
 func contents(frames map[string][]frame, key string) []string {

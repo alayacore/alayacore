@@ -1,8 +1,8 @@
 package plainio
 
 import (
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,7 +13,7 @@ import (
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // maxSeenDeltaEntries caps the seenDelta map. History IDs are never
@@ -38,8 +38,8 @@ const maxSeenDeltaEntries = 512
 // takes o.mu) without deadlocking.
 type stdoutOutput struct {
 	writer        io.Writer
-	mu            sync.Mutex // protects buf, lastTag, lastHistoryID, seenDelta, pendingHooks
-	buf           []byte
+	mu            sync.Mutex // protects dec, lastTag, lastHistoryID, seenDelta, pendingHooks
+	dec           wire.Decoder
 	inProgress    atomic.Bool
 	lastTag       string
 	lastHistoryID string
@@ -77,13 +77,20 @@ func (o *stdoutOutput) Closed() <-chan struct{} { return o.closed.Done() }
 
 func (o *stdoutOutput) Write(p []byte) (int, error) {
 	o.mu.Lock()
-	o.buf = append(o.buf, p...)
-	o.processBuffer()
+	o.dec.Feed(p)
+	fatal := o.processBuffer()
 	hooks := o.pendingHooks
 	o.pendingHooks = nil
 	o.mu.Unlock()
 	for _, h := range hooks {
 		h() // outside the lock, in FIFO order
+	}
+	if fatal != nil {
+		// The stream is finished. The error travels back on Write so the session
+		// stops, and out on stderr because a canceled session reports nothing
+		// else.
+		fmt.Fprintf(os.Stderr, "Error: %v\n", fatal)
+		return 0, fatal
 	}
 	return len(p), nil
 }
@@ -99,16 +106,17 @@ func (o *stdoutOutput) deferHook(hook func()) {
 	o.pendingHooks = append(o.pendingHooks, hook)
 }
 
-// processBuffer parses and prints complete TLV frames from the buffer.
-func (o *stdoutOutput) processBuffer() {
-	for len(o.buf) >= 6 {
-		tag := string(o.buf[0:2])
-		length := int(binary.BigEndian.Uint32(o.buf[2:6]))
-		if len(o.buf) < 6+length {
-			break
+// processBuffer prints every complete frame in the decoder and returns the error
+// that finished the stream, if any. Must be called with o.mu held.
+func (o *stdoutOutput) processBuffer() error {
+	for {
+		tag, value, err := o.dec.Next()
+		if err != nil {
+			if errors.Is(err, wire.ErrIncomplete) {
+				return nil
+			}
+			return err
 		}
-		value := string(o.buf[6 : 6+length])
-		o.buf = o.buf[6+length:]
 		o.printMessage(tag, value)
 	}
 }
@@ -120,7 +128,7 @@ func (o *stdoutOutput) printMessage(tag string, value string) {
 //nolint:gocyclo // dispatch over many tag types; each case is simple
 func (o *stdoutOutput) handleTag(tag, value string) {
 	switch tag {
-	case tlv.TagAssistantXDelta:
+	case wire.TagAssistantXDelta:
 		d, ok := decodeContent(value)
 		if !ok {
 			return
@@ -128,7 +136,7 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		o.markDeltaSeen(d.ID)
 		o.handleTextDelta(d.Type, d.ID, d.Text)
 
-	case tlv.TagAssistantX:
+	case wire.TagAssistantX:
 		d, ok := decodeContent(value)
 		if !ok {
 			return
@@ -138,7 +146,7 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		}
 		o.handleTextDelta(d.Type, d.ID, d.Text)
 
-	case tlv.TagUserX:
+	case wire.TagUserX:
 		d, ok := decodeContent(value)
 		if !ok {
 			return
@@ -153,13 +161,13 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		o.lastTag = tag
 		o.lastHistoryID = ""
 
-	case tlv.TagSystemMsg:
+	case wire.TagSystemMsg:
 		o.handleSystemMsg(value)
 
-	case tlv.TagCommandOut:
+	case wire.TagCommandOut:
 		o.handleCommandOut(value)
 
-	case tlv.TagAssistantF:
+	case wire.TagAssistantF:
 		if o.lastTag != "" {
 			fmt.Fprintln(o.writer)
 		}
@@ -169,14 +177,14 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		fmt.Fprintf(o.writer, "%s\n", value)
 
 	// Tool argument deltas are ephemeral — printed via AF complete frame.
-	case tlv.TagAssistantFDelta:
+	case wire.TagAssistantFDelta:
 		// Ignore.
 
 	// Tool result preview snapshots are ephemeral — printed via UF frame.
-	case tlv.TagUserFDelta:
+	case wire.TagUserFDelta:
 		// Ignore.
 
-	case tlv.TagUserF:
+	case wire.TagUserF:
 		// Show complete tool result JSON.
 		if o.lastTag != "" && o.lastTag != tag {
 			fmt.Fprintln(o.writer)

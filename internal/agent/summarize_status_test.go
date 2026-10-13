@@ -26,7 +26,7 @@ import (
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // parkFirstProvider parks inside the first request until release is closed,
@@ -105,10 +105,10 @@ func TestTaskStartAutoSummarizeReportsInProgressWhileInFlight(t *testing.T) {
 			name: "normal_prompt",
 			send: func(t *testing.T, w io.Writer) {
 				t.Helper()
-				if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", "do it")); err != nil {
+				if err := wire.WriteFrame(w, wire.TagUserX, wiretest.UserText("1", "do it")); err != nil {
 					t.Fatalf("write UT: %v", err)
 				}
-				if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
+				if err := wire.WriteFrame(w, wire.TagUserEnd, ""); err != nil {
 					t.Fatalf("write UE: %v", err)
 				}
 			},
@@ -215,7 +215,7 @@ func writeCI(t *testing.T, w io.Writer, id, name string) {
 	if err != nil {
 		t.Fatalf("marshal CI: %v", err)
 	}
-	if err := tlv.WriteTLV(w, tlv.TagCommandIn, string(data)); err != nil {
+	if err := wire.WriteFrame(w, wire.TagCommandIn, string(data)); err != nil {
 		t.Fatalf("write CI: %v", err)
 	}
 }
@@ -272,11 +272,11 @@ func taskFrames(t *testing.T, output string) []taskFrame {
 	var frames []taskFrame
 	r := bytes.NewReader([]byte(output))
 	for {
-		tag, value, err := tlv.ReadTLV(r)
+		tag, value, err := wiretest.NextFrame(r)
 		if err != nil {
 			break
 		}
-		if tag != tlv.TagSystemMsg {
+		if tag != wire.TagSystemMsg {
 			continue
 		}
 		env, err := protocol.ParseSystemMsg(value)

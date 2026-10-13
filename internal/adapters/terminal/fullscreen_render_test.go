@@ -58,7 +58,7 @@ func TestViewAlwaysFillsScreen(t *testing.T) {
 			// against an empty frame while claiming to cover "with windows".
 			out := NewTerminalOutput(DefaultStyles())
 			for i, w := range tc.windows {
-				out.Write(tlvFrame(w[0], fmt.Sprintf("w%d", i), w[1]))
+				out.Write(testFrame(w[0], fmt.Sprintf("w%d", i), w[1]))
 			}
 			out.FlushPendingDeltas()
 

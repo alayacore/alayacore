@@ -12,7 +12,7 @@ import (
 // a session that saved successfully could not be loaded back: a tool result
 // whose serialized TLV frame exceeds the old private 10MiB cap (for example
 // read_file returning an 8-9MB image as a base64 data URI) was rejected by the
-// persistence reader with "invalid length", even though tlv.EncodeTLV happily
+// persistence reader with "invalid length", even though wire.EncodeTLV happily
 // wrote it (MaxMessageSize ≈ 2GiB).
 //
 // The persistence reader must not impose a tighter bound than the writer.

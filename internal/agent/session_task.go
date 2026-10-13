@@ -17,7 +17,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // ============================================================================
@@ -458,7 +458,7 @@ func (dw *deltaWriter) handleContentDelta(kind, text string, historyID uint64) e
 	if err != nil {
 		return err
 	}
-	return tlv.WriteTLV(dw.output, tlv.TagAssistantXDelta, body)
+	return wire.WriteFrame(dw.output, wire.TagAssistantXDelta, body)
 }
 
 func (dw *deltaWriter) handleToolInputDelta(toolCallID, delta string, historyID uint64) error {
@@ -470,7 +470,7 @@ func (dw *deltaWriter) handleToolInputDelta(toolCallID, delta string, historyID 
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input delta: %w", err)
 	}
-	return tlv.WriteTLV(dw.output, tlv.TagAssistantFDelta, string(data))
+	return wire.WriteFrame(dw.output, wire.TagAssistantFDelta, string(data))
 }
 
 // handleToolOutputDelta writes a TagUserFDelta (Uf) frame carrying an
@@ -485,7 +485,7 @@ func (dw *deltaWriter) handleToolOutputDelta(toolCallID, text string, historyID 
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool output delta: %w", err)
 	}
-	return tlv.WriteTLV(dw.output, tlv.TagUserFDelta, string(data))
+	return wire.WriteFrame(dw.output, wire.TagUserFDelta, string(data))
 }
 
 // handleToolConfirm handles a tool confirmation request.
@@ -538,7 +538,7 @@ func (s *Session) handleToolOutput(toolCallID string, contents []llm.ContentPart
 	if marshalErr != nil {
 		return fmt.Errorf("failed to marshal tool output: %w", marshalErr)
 	}
-	s.writeTLV(tlv.TagUserF, data)
+	s.writeTLV(wire.TagUserF, data)
 	return nil
 }
 
@@ -572,7 +572,7 @@ func (s *Session) writeContentFrame(kind, text string, historyID uint64) error {
 	if err != nil {
 		return err
 	}
-	s.writeTLV(tlv.TagAssistantX, body)
+	s.writeTLV(wire.TagAssistantX, body)
 	return nil
 }
 
@@ -582,7 +582,7 @@ func (s *Session) handleToolInputStart(toolCallID, name string, historyID uint64
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input start: %w", err)
 	}
-	s.writeTLV(tlv.TagAssistantF, data)
+	s.writeTLV(wire.TagAssistantF, data)
 	return nil
 }
 
@@ -592,7 +592,7 @@ func (s *Session) handleToolInputComplete(toolCallID string, input json.RawMessa
 	if err != nil {
 		return fmt.Errorf("failed to marshal tool input complete: %w", err)
 	}
-	s.writeTLV(tlv.TagAssistantF, data)
+	s.writeTLV(wire.TagAssistantF, data)
 	return nil
 }
 

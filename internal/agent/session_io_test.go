@@ -15,7 +15,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // newInputFrameSession returns a minimal Session whose inputMsgCh is
@@ -50,7 +50,7 @@ func TestInputFrame_CommandIn_Valid(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	staged := s.handleInputFrame(tlv.TagCommandIn, string(payload), nil)
+	staged := s.handleInputFrame(wire.TagCommandIn, string(payload), nil)
 	if staged != nil {
 		t.Errorf("CI frame should not stage content, got %d parts", len(staged))
 	}
@@ -82,7 +82,7 @@ func TestInputFrame_CommandIn_NoInput(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	s.handleInputFrame(tlv.TagCommandIn, string(payload), nil)
+	s.handleInputFrame(wire.TagCommandIn, string(payload), nil)
 
 	msg := readInputMsg(t, s)
 	if msg.cmd != "cancel" || msg.cmdInput != "" {
@@ -93,7 +93,7 @@ func TestInputFrame_CommandIn_NoInput(t *testing.T) {
 func TestInputFrame_CommandIn_InvalidJSON(t *testing.T) {
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagCommandIn, "{not json", nil)
+	staged := s.handleInputFrame(wire.TagCommandIn, "{not json", nil)
 	if staged != nil {
 		t.Errorf("invalid CI should not stage content")
 	}
@@ -110,14 +110,14 @@ func TestInputFrame_CommandIn_InvalidJSON(t *testing.T) {
 func TestInputFrame_CommandIn_WithStagedContent(t *testing.T) {
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagUserX, wiretest.UserText("", "hello"), nil)
+	staged := s.handleInputFrame(wire.TagUserX, wiretest.UserText("", "hello"), nil)
 	if len(staged) != 1 {
 		t.Fatalf("expected 1 staged part, got %d", len(staged))
 	}
 
 	cmd := protocol.CmdMsg{CallID: "x", Name: "save"}
 	payload, _ := json.Marshal(cmd)
-	staged = s.handleInputFrame(tlv.TagCommandIn, string(payload), staged)
+	staged = s.handleInputFrame(wire.TagCommandIn, string(payload), staged)
 	if staged != nil {
 		t.Errorf("CI with staged content should return nil staged")
 	}
@@ -132,7 +132,7 @@ func TestInputFrame_UserText_NoCommandSniffing(t *testing.T) {
 	// UT no longer carries commands: ":cancel" is plain user text now.
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagUserX, wiretest.UserText("", ":cancel"), nil)
+	staged := s.handleInputFrame(wire.TagUserX, wiretest.UserText("", ":cancel"), nil)
 	if len(staged) != 1 {
 		t.Fatalf("expected 1 staged part, got %d", len(staged))
 	}
@@ -155,8 +155,8 @@ func TestInputFrame_UserText_NoCommandSniffing(t *testing.T) {
 func TestInputFrame_UserText_ThenEnd(t *testing.T) {
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagUserX, wiretest.UserText("", "hello"), nil)
-	staged = s.handleInputFrame(tlv.TagUserEnd, "", staged)
+	staged := s.handleInputFrame(wire.TagUserX, wiretest.UserText("", "hello"), nil)
+	staged = s.handleInputFrame(wire.TagUserEnd, "", staged)
 	if staged != nil {
 		t.Errorf("UE should clear staged content, got %d parts", len(staged))
 	}

@@ -10,7 +10,8 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 // brokenThemeFolder returns a themes folder holding one readable theme and one
@@ -36,11 +37,11 @@ func systemMsgFrames(t *testing.T, output string, want string) []json.RawMessage
 	var frames []json.RawMessage
 	r := bytes.NewReader([]byte(output))
 	for {
-		tag, value, err := tlv.ReadTLV(r)
+		tag, value, err := wiretest.NextFrame(r)
 		if err != nil {
 			break
 		}
-		if tag != tlv.TagSystemMsg {
+		if tag != wire.TagSystemMsg {
 			continue
 		}
 		env, err := protocol.ParseSystemMsg(value)

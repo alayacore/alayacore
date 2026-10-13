@@ -18,7 +18,8 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 // testMaxEdge mirrors llm's unexported maxImageEdge.
@@ -103,7 +104,7 @@ func outFrames(t *testing.T, raw []byte) []outFrame {
 	var frames []outFrame
 	r := bytes.NewReader(raw)
 	for {
-		tag, value, err := tlv.ReadTLV(r)
+		tag, value, err := wiretest.NextFrame(r)
 		if err != nil {
 			return frames
 		}
@@ -159,7 +160,7 @@ func TestRunTaskNormalKeepsUndecodableImageAndEchoesItAsMedia(t *testing.T) {
 
 	var hasMedia, hasUserText bool
 	for _, f := range outFrames(t, out.Bytes()) {
-		if f.tag != tlv.TagUserX {
+		if f.tag != wire.TagUserX {
 			continue
 		}
 		var d protocol.ContentData

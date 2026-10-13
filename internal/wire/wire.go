@@ -68,7 +68,7 @@
 // in CRLF.
 //
 // A blank line is an error, not a separator. This package is what knows that:
-// lines.Splitter hands a blank line back like any other, and decodeLine is what
+// lines.Splitter hands a blank line back like any other, and Decode is what
 // rejects it, because only the frame format knows a blank line is never a frame.
 //
 // # Decoding
@@ -158,7 +158,7 @@ func isLetter(b byte) bool {
 }
 
 // checkTag validates the tag half of the format. Extracted from Encode so the
-// rule reads the same here as it does in decodeLine.
+// rule reads the same here as it does in Decode.
 func checkTag(tag string) error {
 	if len(tag) != 2 {
 		return fmt.Errorf("wire: tag must be exactly 2 characters, got %q (len %d)", tag, len(tag))
@@ -167,6 +167,20 @@ func checkTag(tag string) error {
 		return fmt.Errorf("wire: tag must be two ASCII letters, got %q", tag)
 	}
 	return nil
+}
+
+// checkValueShape validates the value half of a frame. The format allows an
+// empty value — a control frame's line is the tag alone — or a JSON object. It is
+// a shape check, not a parse: '{' is as far as this package looks, and whether
+// the bytes are well-formed JSON is the consumer's business.
+//
+// Both directions use it, so the package cannot write a frame it would refuse to
+// read back.
+func checkValueShape(value string) error {
+	if value == "" || value[0] == '{' {
+		return nil
+	}
+	return errors.New("wire: a frame's value must be a JSON object, or empty for a control frame")
 }
 
 // fitsInFrame reports whether a frame of this many bytes (tag, value and
@@ -182,12 +196,16 @@ func fitsInFrame(frameLen int) error {
 // Encode builds the wire bytes of a single frame: the tag, the value, and the
 // terminator.
 //
-// It rejects a tag that is not two ASCII letters, a value that contains a raw
-// LF or CR (which would end the frame early), and a frame above MaxFrameSize.
-// The caller must surface these rather than dropping the frame — a frame that
-// was never written reads as the adapter going quiet.
+// It rejects a tag that is not two ASCII letters, a value that is not empty or a
+// JSON object, a value that contains a raw LF or CR (which would end the frame
+// early), and a frame above MaxFrameSize. The caller must surface these rather
+// than dropping the frame — a frame that was never written reads as the adapter
+// going quiet.
 func Encode(tag, value string) ([]byte, error) {
 	if err := checkTag(tag); err != nil {
+		return nil, err
+	}
+	if err := checkValueShape(value); err != nil {
 		return nil, err
 	}
 	if i := strings.IndexAny(value, "\n\r"); i >= 0 {
@@ -221,6 +239,9 @@ func WriteFrame(w io.Writer, tag, value string) error {
 // Call it as Feed followed by Next, until Next reports ErrIncomplete. The bounds
 // and the buffering live in lines; this type is what turns a line into a frame,
 // so the two cannot disagree about where a frame ends.
+//
+// The zero value is ready to use, so a struct that holds one — every adapter
+// does — needs no constructor and no nil check.
 type Decoder struct {
 	sp *lines.Splitter
 	// err is sticky: once a frame is malformed the stream is finished, and every
@@ -230,25 +251,28 @@ type Decoder struct {
 	err error
 }
 
-// NewDecoder returns a Decoder bounded by MaxFrameSize.
-func NewDecoder() *Decoder {
-	return newDecoder(MaxFrameSize)
+// splitter returns the decoder's splitter, creating it on first use.
+func (d *Decoder) splitter() *lines.Splitter {
+	if d.sp == nil {
+		d.sp = lines.NewSplitter(MaxFrameSize)
+	}
+	return d.sp
 }
 
-// newDecoder is NewDecoder with the bound spelled out, so a test can reach the
-// limit without allocating it.
+// newDecoder returns a Decoder with the bound spelled out, so a test can reach
+// the limit without allocating it. Everything else uses the zero value.
 func newDecoder(limit int) *Decoder {
 	return &Decoder{sp: lines.NewSplitter(limit)}
 }
 
 // Feed appends bytes received from the stream.
 func (d *Decoder) Feed(p []byte) {
-	d.sp.Feed(p)
+	d.splitter().Feed(p)
 }
 
 // Pending reports how many bytes of an unterminated frame are buffered.
 func (d *Decoder) Pending() int {
-	return d.sp.Pending()
+	return d.splitter().Pending()
 }
 
 // Next returns the next complete frame and consumes it from the buffer.
@@ -261,20 +285,33 @@ func (d *Decoder) Next() (tag, value string, err error) {
 	if d.err != nil {
 		return "", "", d.err
 	}
-	line, err := d.sp.Next()
+	line, err := d.splitter().Next()
 	if err != nil {
 		return "", "", err
 	}
-	tag, value, err = decodeLine(line)
+	tag, value, err = Decode(line)
 	if err != nil {
 		d.err = err
 	}
 	return tag, value, err
 }
 
-// decodeLine validates one frame's line (already split from the stream) and
-// splits it into tag and value.
-func decodeLine(line []byte) (tag, value string, err error) {
+// Decode validates one frame's bytes and splits them into tag and value.
+//
+// The bytes may be the line a Reader or Decoder split out, or that line with its
+// terminator still on it: a trailing LF, and a CR before it, are dropped first.
+// That is not leniency — a value can never contain either character, so the only
+// thing a trailing one can be is the terminator — and it makes this usable on a
+// line read whole, as a session file's body may be.
+func Decode(line []byte) (tag, value string, err error) {
+	// Drop the terminator, if the caller passed the line whole.
+	if n := len(line); n > 0 && line[n-1] == '\n' {
+		line = line[:n-1]
+	}
+	if n := len(line); n > 0 && line[n-1] == '\r' {
+		line = line[:n-1]
+	}
+
 	switch {
 	case len(line) == 0:
 		return "", "", errors.New("wire: blank line; every line must be one frame")
@@ -286,8 +323,8 @@ func decodeLine(line []byte) (tag, value string, err error) {
 
 	tag = string(line[:2])
 	value = string(line[2:])
-	if value != "" && value[0] != '{' {
-		return "", "", fmt.Errorf("wire: %s frame's value is not a JSON object", tag)
+	if err := checkValueShape(value); err != nil {
+		return "", "", fmt.Errorf("%s frame: %w", tag, err)
 	}
 	return tag, value, nil
 }
@@ -339,7 +376,7 @@ func (r *Reader) ReadFrame() (tag, value string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	tag, value, err = decodeLine(line)
+	tag, value, err = Decode(line)
 	if err != nil {
 		r.err = err
 	}

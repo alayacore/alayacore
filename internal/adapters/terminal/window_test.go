@@ -9,7 +9,7 @@ import (
 	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 func TestWindowBuffer(t *testing.T) {
@@ -579,10 +579,10 @@ func TestWindowBufferVisibility(t *testing.T) {
 // AppendOrUpdate applies.
 func TestArrivingUserPromptIsExpanded(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	if err := tlv.WriteTLV(out, tlv.TagUserX, wiretest.UserText("7", "what is lisp?")); err != nil {
+	if err := wire.WriteFrame(out, wire.TagUserX, wiretest.UserText("7", "what is lisp?")); err != nil {
 		t.Fatalf("write user frame: %v", err)
 	}
-	if err := tlv.WriteTLV(out, tlv.TagUserEnd, ""); err != nil {
+	if err := wire.WriteFrame(out, wire.TagUserEnd, ""); err != nil {
 		t.Fatalf("write end frame: %v", err)
 	}
 

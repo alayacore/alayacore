@@ -1,8 +1,8 @@
 package terseio
 
 import (
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,7 +12,7 @@ import (
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // answerOutput implements io.Writer. It parses TLV messages, buffers the
@@ -30,8 +30,8 @@ type answerOutput struct {
 	stdout io.Writer
 	stderr io.Writer
 
-	mu  sync.Mutex // protects buf, finalText, finalTextID, lastMsgHasText
-	buf []byte
+	mu  sync.Mutex // protects dec, finalText, finalTextID, lastMsgHasText
+	dec wire.Decoder
 
 	// inProgress tracks the task system-message state. The final text is
 	// flushed on the true→false edge.
@@ -98,9 +98,17 @@ func (o *answerOutput) diagnostic(format string, args ...any) {
 // Write parses and buffers complete TLV frames from p.
 func (o *answerOutput) Write(p []byte) (int, error) {
 	o.mu.Lock()
-	o.buf = append(o.buf, p...)
-	o.processBuffer()
+	o.dec.Feed(p)
+	fatal := o.processBuffer()
+	if fatal != nil {
+		// The stream is finished. Say so on stderr under the lock (as diagnostic
+		// does), then hand the error back so the session stops writing.
+		fmt.Fprintf(o.stderr, "[error: %v]\n", fatal)
+	}
 	o.mu.Unlock()
+	if fatal != nil {
+		return 0, fatal
+	}
 	return len(p), nil
 }
 
@@ -152,29 +160,30 @@ func (o *answerOutput) discardFinal() {
 	o.finalFlushed.Store(true)
 }
 
-// processBuffer parses complete TLV frames from the buffer.
-func (o *answerOutput) processBuffer() {
-	for len(o.buf) >= 6 {
-		tag := string(o.buf[0:2])
-		length := int(binary.BigEndian.Uint32(o.buf[2:6]))
-		if len(o.buf) < 6+length {
-			break
+// processBuffer handles every complete frame in the decoder and returns the error
+// that finished the stream, if any. Must be called with o.mu held.
+func (o *answerOutput) processBuffer() error {
+	for {
+		tag, value, err := o.dec.Next()
+		if err != nil {
+			if errors.Is(err, wire.ErrIncomplete) {
+				return nil
+			}
+			return err
 		}
-		value := string(o.buf[6 : 6+length])
-		o.buf = o.buf[6+length:]
 		o.handleTag(tag, value)
 	}
 }
 
 func (o *answerOutput) handleTag(tag, value string) {
 	switch tag {
-	case tlv.TagAssistantXDelta:
+	case wire.TagAssistantXDelta:
 		if d, ok := decodeContent(value); ok && d.Type == protocol.TypeText {
 			o.lastMsgHasText = true
 			o.bufferFinalText(d.ID, d.Text)
 		}
 
-	case tlv.TagAssistantX:
+	case wire.TagAssistantX:
 		// Delta mode: AX carries empty content (already streamed via Ax);
 		// --no-delta: AX carries the full text. Buffering both is safe.
 		if d, ok := decodeContent(value); ok && d.Type == protocol.TypeText {
@@ -182,22 +191,22 @@ func (o *answerOutput) handleTag(tag, value string) {
 			o.bufferFinalText(d.ID, d.Text)
 		}
 
-	case tlv.TagAssistantFDelta, tlv.TagAssistantF,
-		tlv.TagUserFDelta, tlv.TagUserX:
+	case wire.TagAssistantFDelta, wire.TagAssistantF,
+		wire.TagUserFDelta, wire.TagUserX:
 		// Reasoning (AX with type "reasoning"), tool calls, and user
 		// content are never part of the final answer. Suppressed.
 
-	case tlv.TagUserF:
+	case wire.TagUserF:
 		// A tool result closes the current assistant message group: the
 		// next AX/AF frame belongs to a new message. Resetting here
 		// ensures a final message without text (e.g. reasoning-only)
 		// never flushes the previous message's intermediate text.
 		o.lastMsgHasText = false
 
-	case tlv.TagSystemMsg:
+	case wire.TagSystemMsg:
 		o.handleSystemMsg(value)
 
-	case tlv.TagCommandOut:
+	case wire.TagCommandOut:
 		o.handleCommandOut(value)
 
 	default:

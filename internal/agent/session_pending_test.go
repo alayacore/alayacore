@@ -24,7 +24,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/mcp"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // readyProbeProvider records whether the session's ready frame was already on
@@ -318,8 +318,8 @@ func TestShouldExit(t *testing.T) {
 func TestInputFrame_InputEndFlushesStagedFirst(t *testing.T) {
 	s := newInputFrameSession()
 
-	staged := s.handleInputFrame(tlv.TagUserX, wiretest.UserText("", "hello"), nil)
-	staged = s.handleInputFrame(tlv.TagInputEnd, "", staged)
+	staged := s.handleInputFrame(wire.TagUserX, wiretest.UserText("", "hello"), nil)
+	staged = s.handleInputFrame(wire.TagInputEnd, "", staged)
 	if staged != nil {
 		t.Errorf("CE should clear staged content, got %d parts", len(staged))
 	}
@@ -342,7 +342,7 @@ func TestInputFrame_InputEndFlushesStagedFirst(t *testing.T) {
 func TestInputFrame_InputEndAlone(t *testing.T) {
 	s := newInputFrameSession()
 
-	s.handleInputFrame(tlv.TagInputEnd, "", nil)
+	s.handleInputFrame(wire.TagInputEnd, "", nil)
 
 	msg := readInputMsg(t, s)
 	if !msg.inputEnd || msg.isCmd || len(msg.contentParts) != 0 {
@@ -357,7 +357,7 @@ func TestInputEndFrame_EndsTheRun(t *testing.T) {
 	defer cleanup()
 
 	// The session is running a task; CE says the input is over.
-	if err := tlv.WriteTLV(w, tlv.TagInputEnd, ""); err != nil {
+	if err := wire.WriteFrame(w, wire.TagInputEnd, ""); err != nil {
 		t.Fatalf("write CE: %v", err)
 	}
 	select {
@@ -384,12 +384,12 @@ func TestInputEndFrame_CommandsStillFlow(t *testing.T) {
 	_, output, w, cleanup := newQuitTestSession(t, true)
 	defer cleanup()
 
-	if err := tlv.WriteTLV(w, tlv.TagInputEnd, ""); err != nil {
+	if err := wire.WriteFrame(w, wire.TagInputEnd, ""); err != nil {
 		t.Fatalf("write CE: %v", err)
 	}
 
 	path := t.TempDir() + "/after-ce.alaya"
-	if err := tlv.WriteTLV(w, tlv.TagCommandIn,
+	if err := wire.WriteFrame(w, wire.TagCommandIn,
 		`{"call_id":"c1","name":"save","input":"`+path+`"}`); err != nil {
 		t.Fatalf("write CI after CE: %v", err)
 	}

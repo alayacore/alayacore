@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // TestUserPromptMediaAndTextHaveNoDividerRow pins the media/text boundary:
@@ -19,7 +19,7 @@ import (
 // BEFORE the first non-empty text part was found, so an all-blank text block
 // under media rendered a rule with nothing under it.
 func TestUserPromptMediaAndTextHaveNoDividerRow(t *testing.T) {
-	media := []string{tlv.MediaLabel(tlv.KindImage), tlv.MediaLabel(tlv.KindAudio)}
+	media := []string{wire.MediaLabel(wire.KindImage), wire.MediaLabel(wire.KindAudio)}
 
 	ur := &userRenderer{textParts: []string{"what are these?"}, mediaParts: media}
 	lines, count := ur.BuildInner(80, false, DefaultStyles())
@@ -34,7 +34,7 @@ func TestUserPromptMediaAndTextHaveNoDividerRow(t *testing.T) {
 		t.Errorf("media + text:\n  got  %q\n  want %q", got, want)
 	}
 
-	blank := &userRenderer{textParts: []string{"   "}, mediaParts: []string{tlv.MediaLabel(tlv.KindImage)}}
+	blank := &userRenderer{textParts: []string{"   "}, mediaParts: []string{wire.MediaLabel(wire.KindImage)}}
 	lines, _ = blank.BuildInner(80, false, DefaultStyles())
 	if len(lines) != 1 {
 		t.Fatalf("media + blank text rows = %d, want 1 (no rule, no empty row): %q",
@@ -153,11 +153,11 @@ func TestSoftWrappedWindowEndsOnAHardRowBoundary(t *testing.T) {
 
 func TestCompactMediaSummary(t *testing.T) {
 	labels := []string{
-		tlv.MediaLabel(tlv.KindImage),
-		tlv.MediaLabel(tlv.KindAudio),
-		tlv.MediaLabel(tlv.KindImage),
-		tlv.MediaLabel(tlv.KindDocument),
-		tlv.MediaLabel(tlv.KindAudio),
+		wire.MediaLabel(wire.KindImage),
+		wire.MediaLabel(wire.KindAudio),
+		wire.MediaLabel(wire.KindImage),
+		wire.MediaLabel(wire.KindDocument),
+		wire.MediaLabel(wire.KindAudio),
 	}
 
 	got := compactMediaSummary(labels)
@@ -172,9 +172,9 @@ func TestUserPromptCollapsedMediaSummary(t *testing.T) {
 	ur := &userRenderer{
 		textParts: []string{"analyze this"},
 		mediaParts: []string{
-			tlv.MediaLabel(tlv.KindImage),
-			tlv.MediaLabel(tlv.KindAudio),
-			tlv.MediaLabel(tlv.KindImage),
+			wire.MediaLabel(wire.KindImage),
+			wire.MediaLabel(wire.KindAudio),
+			wire.MediaLabel(wire.KindImage),
 		},
 	}
 
@@ -191,10 +191,10 @@ func TestUserPromptCollapsedMediaSummary(t *testing.T) {
 func TestUserPromptCollapsedMediaOnlySummary(t *testing.T) {
 	ur := &userRenderer{
 		mediaParts: []string{
-			tlv.MediaLabel(tlv.KindImage),
-			tlv.MediaLabel(tlv.KindAudio),
-			tlv.MediaLabel(tlv.KindImage),
-			tlv.MediaLabel(tlv.KindVideo),
+			wire.MediaLabel(wire.KindImage),
+			wire.MediaLabel(wire.KindAudio),
+			wire.MediaLabel(wire.KindImage),
+			wire.MediaLabel(wire.KindVideo),
 		},
 	}
 
@@ -212,10 +212,10 @@ func TestUserPromptCollapsedMediaSummaryFitsAndPrioritizesMedia(t *testing.T) {
 	ur := &userRenderer{
 		textParts: []string{strings.Repeat("long text ", 10)},
 		mediaParts: []string{
-			tlv.MediaLabel(tlv.KindImage),
-			tlv.MediaLabel(tlv.KindVideo),
-			tlv.MediaLabel(tlv.KindAudio),
-			tlv.MediaLabel(tlv.KindDocument),
+			wire.MediaLabel(wire.KindImage),
+			wire.MediaLabel(wire.KindVideo),
+			wire.MediaLabel(wire.KindAudio),
+			wire.MediaLabel(wire.KindDocument),
 		},
 	}
 

@@ -11,9 +11,11 @@ package wiretest
 
 import (
 	"encoding/json"
+	"io"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/protocol"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // Stamp is the fixed time written onto authoritative frames.
@@ -153,4 +155,28 @@ func ToolOutputDeltaLegacy(id, legacy string) string {
 		callID = m.ID
 	}
 	return ToolOutputDelta(id, callID, m.Text)
+}
+
+// NextFrame reads one frame from a test stream, consuming exactly the frame's
+// bytes and no more.
+//
+// It reads a byte at a time on purpose: wire.Reader reads ahead into a buffer of
+// its own, so wrapping a test buffer in a fresh one per call would swallow the
+// frames behind the one it returns. A test stream holds a handful of frames, so
+// the cost is nothing, and every call site stays one line.
+func NextFrame(src io.Reader) (tag, value string, err error) {
+	b := make([]byte, 1)
+	var line []byte
+	for {
+		n, err := src.Read(b)
+		if n > 0 {
+			line = append(line, b[0])
+			if b[0] == '\n' {
+				return wire.Decode(line)
+			}
+		}
+		if err != nil {
+			return "", "", err
+		}
+	}
 }

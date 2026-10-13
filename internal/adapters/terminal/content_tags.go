@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // Display tags — the terminal's internal window vocabulary.
@@ -32,7 +32,7 @@ const (
 // terminal's display tag. ok is false for a kind this adapter does not render.
 func contentDisplayTag(wireTag, kind string) (string, bool) {
 	switch wireTag {
-	case tlv.TagUserX:
+	case wire.TagUserX:
 		switch kind {
 		case protocol.TypeText:
 			return tagUserText, true
@@ -45,7 +45,7 @@ func contentDisplayTag(wireTag, kind string) (string, bool) {
 		case protocol.TypeDocument:
 			return tagUserDoc, true
 		}
-	case tlv.TagAssistantX:
+	case wire.TagAssistantX:
 		switch kind {
 		case protocol.TypeText:
 			return tagAssistantText, true
@@ -56,17 +56,42 @@ func contentDisplayTag(wireTag, kind string) (string, bool) {
 	return "", false
 }
 
+// displayTagFrame maps a display tag back to the wire tag and content kind it
+// travels as: the inverse of contentDisplayTag, and the vocabulary's other
+// direction. Tests name a window by the tag the renderer uses, so feeding one a
+// frame the way a session would needs this mapping rather than a second copy of
+// it.
+func displayTagFrame(displayTag string) (wireTag, kind string, ok bool) {
+	switch displayTag {
+	case tagUserText:
+		return wire.TagUserX, protocol.TypeText, true
+	case tagUserImage:
+		return wire.TagUserX, protocol.TypeImage, true
+	case tagUserVideo:
+		return wire.TagUserX, protocol.TypeVideo, true
+	case tagUserAudio:
+		return wire.TagUserX, protocol.TypeAudio, true
+	case tagUserDoc:
+		return wire.TagUserX, protocol.TypeDocument, true
+	case tagAssistantText:
+		return wire.TagAssistantX, protocol.TypeText, true
+	case tagAssistantReasoning:
+		return wire.TagAssistantX, protocol.TypeReasoning, true
+	}
+	return "", "", false
+}
+
 // mediaLabel returns the display label for a user-media display tag.
 func mediaLabel(displayTag string) string {
 	switch displayTag {
 	case tagUserImage:
-		return tlv.MediaLabel(tlv.KindImage)
+		return wire.MediaLabel(wire.KindImage)
 	case tagUserVideo:
-		return tlv.MediaLabel(tlv.KindVideo)
+		return wire.MediaLabel(wire.KindVideo)
 	case tagUserAudio:
-		return tlv.MediaLabel(tlv.KindAudio)
+		return wire.MediaLabel(wire.KindAudio)
 	case tagUserDoc:
-		return tlv.MediaLabel(tlv.KindDocument)
+		return wire.MediaLabel(wire.KindDocument)
 	}
 	return ""
 }

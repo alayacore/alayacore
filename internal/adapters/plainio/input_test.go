@@ -13,7 +13,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 func TestReadPrompts_SingleLine(t *testing.T) {
@@ -26,22 +26,22 @@ func TestReadPrompts_SingleLine(t *testing.T) {
 	}
 
 	// Should emit TLV(UT, "hello") followed by UE
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserX {
+	if tag != wire.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
 	if value != wiretest.UserText("", "hello") {
 		t.Errorf("expected value 'hello', got %q", value)
 	}
 	// UE
-	tag, _, err = tlv.ReadTLV(&buf)
+	tag, _, err = wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read UE TLV: %v", err)
 	}
-	if tag != tlv.TagUserEnd {
+	if tag != wire.TagUserEnd {
 		t.Errorf("expected UE tag, got %s", tag)
 	}
 }
@@ -56,22 +56,22 @@ func TestReadPrompts_MultiLineBackslash(t *testing.T) {
 	}
 
 	// Should emit TLV(UT, "first line\nsecond line\nthird line") followed by UE
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserX {
+	if tag != wire.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
 	if value != wiretest.UserText("", "first line\nsecond line\nthird line") {
 		t.Errorf("expected multi-line value, got %q", value)
 	}
 	// UE
-	tag, _, err = tlv.ReadTLV(&buf)
+	tag, _, err = wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read UE TLV: %v", err)
 	}
-	if tag != tlv.TagUserEnd {
+	if tag != wire.TagUserEnd {
 		t.Errorf("expected UE tag, got %s", tag)
 	}
 }
@@ -88,22 +88,22 @@ func TestReadPrompts_TrailingBackslash(t *testing.T) {
 	}
 
 	// Should emit TLV(UT, "hello") followed by UE
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserX {
+	if tag != wire.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
 	if value != wiretest.UserText("", "hello") {
 		t.Errorf("expected 'hello', got %q", value)
 	}
 	// UE
-	tag, _, err = tlv.ReadTLV(&buf)
+	tag, _, err = wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read UE TLV: %v", err)
 	}
-	if tag != tlv.TagUserEnd {
+	if tag != wire.TagUserEnd {
 		t.Errorf("expected UE tag, got %s", tag)
 	}
 }
@@ -119,22 +119,22 @@ func TestReadPrompts_MultipleLines(t *testing.T) {
 
 	// Each prompt is followed by UE.
 	for i, expected := range []string{"first", "second", "third"} {
-		tag, value, err := tlv.ReadTLV(&buf)
+		tag, value, err := wiretest.NextFrame(&buf)
 		if err != nil {
 			t.Fatalf("prompt %d: failed to read TLV: %v", i, err)
 		}
-		if tag != tlv.TagUserX {
+		if tag != wire.TagUserX {
 			t.Errorf("prompt %d: expected tag UT, got %s", i, tag)
 		}
 		if value != wiretest.UserText("", expected) {
 			t.Errorf("prompt %d: expected %q, got %q", i, expected, value)
 		}
 		// UE
-		tag, _, err = tlv.ReadTLV(&buf)
+		tag, _, err = wiretest.NextFrame(&buf)
 		if err != nil {
 			t.Fatalf("prompt %d: failed to read UE TLV: %v", i, err)
 		}
-		if tag != tlv.TagUserEnd {
+		if tag != wire.TagUserEnd {
 			t.Errorf("prompt %d: expected UE tag, got %s", i, tag)
 		}
 	}
@@ -151,22 +151,22 @@ func TestReadPrompts_EmptyLines(t *testing.T) {
 
 	// Each prompt is followed by UE.
 	for i, expected := range []string{"hello", "world"} {
-		tag, value, err := tlv.ReadTLV(&buf)
+		tag, value, err := wiretest.NextFrame(&buf)
 		if err != nil {
 			t.Fatalf("prompt %d: failed to read TLV: %v", i, err)
 		}
-		if tag != tlv.TagUserX {
+		if tag != wire.TagUserX {
 			t.Errorf("prompt %d: expected tag UT, got %s", i, tag)
 		}
 		if value != wiretest.UserText("", expected) {
 			t.Errorf("prompt %d: expected %q, got %q", i, expected, value)
 		}
 		// UE
-		tag, _, err = tlv.ReadTLV(&buf)
+		tag, _, err = wiretest.NextFrame(&buf)
 		if err != nil {
 			t.Fatalf("prompt %d: failed to read UE TLV: %v", i, err)
 		}
-		if tag != tlv.TagUserEnd {
+		if tag != wire.TagUserEnd {
 			t.Errorf("prompt %d: expected UE tag, got %s", i, tag)
 		}
 	}
@@ -187,22 +187,22 @@ func TestReadPrompts_EOFPartialLine(t *testing.T) {
 	}
 
 	// Partial prompt on EOF should also flush with UE.
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserX {
+	if tag != wire.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
 	if value != wiretest.UserText("", "partial prompt") {
 		t.Errorf("expected 'partial prompt', got %q", value)
 	}
 	// UE
-	tag, _, err = tlv.ReadTLV(&buf)
+	tag, _, err = wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read UE TLV: %v", err)
 	}
-	if tag != tlv.TagUserEnd {
+	if tag != wire.TagUserEnd {
 		t.Errorf("expected UE tag, got %s", tag)
 	}
 }
@@ -217,11 +217,11 @@ func TestReadPrompts_Command(t *testing.T) {
 	}
 
 	// Commands should emit a CI frame (not UT), with no UE after it.
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Errorf("expected tag CI, got %s", tag)
 	}
 	var cmd protocol.CmdMsg
@@ -239,7 +239,7 @@ func TestReadPrompts_Command(t *testing.T) {
 	}
 
 	// Should be no UE after command
-	tag, _, err = tlv.ReadTLV(&buf)
+	tag, _, err = wiretest.NextFrame(&buf)
 	if err == nil {
 		t.Errorf("expected EOF after command, got tag %s", tag)
 	}
@@ -254,11 +254,11 @@ func TestReadPrompts_CommandWithArgs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Errorf("expected tag CI, got %s", tag)
 	}
 	var cmd protocol.CmdMsg
@@ -284,11 +284,11 @@ func TestReadPrompts_QuitCommand(t *testing.T) {
 		}
 
 		// Only "some text" should be emitted as a prompt
-		tag, value, err := tlv.ReadTLV(&buf)
+		tag, value, err := wiretest.NextFrame(&buf)
 		if err != nil {
 			t.Fatalf(":%s: failed to read TLV: %v", word, err)
 		}
-		if tag != tlv.TagUserX {
+		if tag != wire.TagUserX {
 			t.Errorf(":%s: expected tag UT, got %s", word, tag)
 		}
 		if value != wiretest.UserText("", "some text") {
@@ -296,11 +296,11 @@ func TestReadPrompts_QuitCommand(t *testing.T) {
 		}
 
 		// UE after first prompt
-		tag, _, err = tlv.ReadTLV(&buf)
+		tag, _, err = wiretest.NextFrame(&buf)
 		if err != nil {
 			t.Fatalf(":%s: failed to read UE TLV: %v", word, err)
 		}
-		if tag != tlv.TagUserEnd {
+		if tag != wire.TagUserEnd {
 			t.Errorf(":%s: expected UE tag, got %s", word, tag)
 		}
 
@@ -322,11 +322,11 @@ func TestReadPrompts_QuitWithArgsIsNotLocalQuit(t *testing.T) {
 		t.Fatalf("readPrompts() error = %v, want nil (EOF)", err)
 	}
 
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Fatalf("tag = %s, want CI", tag)
 	}
 	var cmd protocol.CmdMsg
@@ -336,7 +336,7 @@ func TestReadPrompts_QuitWithArgsIsNotLocalQuit(t *testing.T) {
 	if cmd.Name != commands.CommandNameQuit || cmd.Input != "foo" {
 		t.Errorf("cmd = %+v, want name %q input %q", cmd, commands.CommandNameQuit, "foo")
 	}
-	if tag, _, err := tlv.ReadTLV(&buf); err == nil {
+	if tag, _, err := wiretest.NextFrame(&buf); err == nil {
 		t.Errorf("expected EOF after the command, got tag %s", tag)
 	}
 }
@@ -345,11 +345,11 @@ func TestReadPrompts_QuitWithArgsIsNotLocalQuit(t *testing.T) {
 // session's quit command of the user's typed word, with no arguments.
 func assertQuitCommand(t *testing.T, buf *bytes.Buffer, typed string) {
 	t.Helper()
-	tag, value, err := tlv.ReadTLV(buf)
+	tag, value, err := wiretest.NextFrame(buf)
 	if err != nil {
 		t.Fatalf(":%s: failed to read quit CI frame: %v", typed, err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Fatalf(":%s: quit frame tag = %s, want CI", typed, tag)
 	}
 	var cmd protocol.CmdMsg
@@ -377,22 +377,22 @@ func TestReadPrompts_BackslashThenEOF(t *testing.T) {
 	}
 
 	// The backslash consumed the newline, "hello" is the accumulated text.
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read TLV: %v", err)
 	}
-	if tag != tlv.TagUserX {
+	if tag != wire.TagUserX {
 		t.Errorf("expected tag UT, got %s", tag)
 	}
 	if value != wiretest.UserText("", "hello") {
 		t.Errorf("expected 'hello', got %q", value)
 	}
 	// UE
-	tag, _, err = tlv.ReadTLV(&buf)
+	tag, _, err = wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("failed to read UE TLV: %v", err)
 	}
-	if tag != tlv.TagUserEnd {
+	if tag != wire.TagUserEnd {
 		t.Errorf("expected UE tag, got %s", tag)
 	}
 }
@@ -434,11 +434,11 @@ func TestReadPrompts_WritesWithoutWaiting(t *testing.T) {
 		t.Fatal("readPrompts() blocked: the feed must not wait for the session")
 	}
 
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("read the prompt frame: %v", err)
 	}
-	if tag != tlv.TagUserX || value != wiretest.UserText("", "hello") {
+	if tag != wire.TagUserX || value != wiretest.UserText("", "hello") {
 		t.Errorf("first frame = %s %q, want UT %q", tag, value, "hello")
 	}
 }

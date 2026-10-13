@@ -86,6 +86,18 @@ func TestEncode_RejectsIndentedJSON(t *testing.T) {
 	}
 }
 
+func TestEncode_RejectsValueThatIsNotAnObject(t *testing.T) {
+	for _, value := range []string{"plain text", "[]", "42", `"quoted"`, "null"} {
+		if _, err := Encode(TagUserX, value); err == nil {
+			t.Errorf("Encode(%q) succeeded, want an error", value)
+		}
+	}
+	// An empty value stays legal: the control frames' line is the tag alone.
+	if _, err := Encode(TagUserEnd, ""); err != nil {
+		t.Errorf("Encode(%q, \"\") = %v, want nil", TagUserEnd, err)
+	}
+}
+
 func TestEncode_RejectsInvalidTag(t *testing.T) {
 	for _, tag := range []string{"", "A", "ABC", "A1", "1A", "A-"} {
 		if _, err := Encode(tag, textValue); err == nil {
@@ -118,7 +130,7 @@ func TestDecoder_Next(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := NewDecoder()
+			d := &Decoder{}
 			var got []string
 			for _, chunk := range tt.feed {
 				d.Feed([]byte(chunk))
@@ -140,11 +152,11 @@ func TestDecoder_Next_RejectsMalformedFrame(t *testing.T) {
 		{name: "blank line", feed: "\n", want: "blank line"},
 		{name: "one byte line", feed: "U\n", want: "shorter than"},
 		{name: "tag is not two letters", feed: textValue + "\n", want: "two-letter tag"},
-		{name: "value is not an object", feed: "UXhello\n", want: "not a JSON object"},
+		{name: "value is not an object", feed: "UXhello\n", want: "must be a JSON object"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := NewDecoder()
+			d := &Decoder{}
 			d.Feed([]byte(tt.feed))
 
 			_, _, err := d.Next()
@@ -156,7 +168,7 @@ func TestDecoder_Next_RejectsMalformedFrame(t *testing.T) {
 }
 
 func TestDecoder_Next_Incomplete(t *testing.T) {
-	d := NewDecoder()
+	d := &Decoder{}
 	d.Feed([]byte("UX{}"))
 
 	if _, _, err := d.Next(); !errors.Is(err, ErrIncomplete) {
@@ -176,7 +188,7 @@ func TestDecoder_Next_Incomplete(t *testing.T) {
 // from being skipped: the stream is finished by it, so the frames behind it are
 // never read and a caller cannot resynchronise onto the middle of the stream.
 func TestDecoder_Next_ErrorIsTerminal(t *testing.T) {
-	d := NewDecoder()
+	d := &Decoder{}
 	d.Feed([]byte("bad\nUX{}\n"))
 
 	_, _, first := d.Next()
@@ -212,7 +224,7 @@ func TestDecoder_Next_FrameTooLong(t *testing.T) {
 func TestDecoder_Next_MultiLineValueIsNeverTwoFrames(t *testing.T) {
 	const indented = "UF{\"call_id\":\"c1\",\"output\":[\n{\"type\":\"text\",\"text\":\"hi\"}\n],\"is_error\":false}\n"
 
-	d := NewDecoder()
+	d := &Decoder{}
 	d.Feed([]byte(indented))
 
 	tag, value := nextFrame(t, d)

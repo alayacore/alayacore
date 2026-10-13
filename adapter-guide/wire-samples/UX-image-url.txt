@@ -1,0 +1,1 @@
+UX{"type":"image","uri":"https://example-files.cnbj1.mi-fds.com/example-files/image/image_example.png"}

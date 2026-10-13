@@ -1,0 +1,1 @@
+SM{"type":"steering","data":{"phase":"refused","text":"Too many prompts are already queued for the running task; this one was not queued. Wait for it to continue, or cancel it."}}

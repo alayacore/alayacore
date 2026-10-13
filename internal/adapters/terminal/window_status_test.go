@@ -9,7 +9,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 func TestHandleToolInputEvent(t *testing.T) {
@@ -129,7 +129,7 @@ func TestOutputWriterToolCallStartThenFull(t *testing.T) {
 			CallID: id,
 			Name:   name,
 		})
-		return encodeTestTLV(tlv.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
+		return encodeTestTLV(wire.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
 	}
 
 	makeInputFD := func(id, input string) []byte {
@@ -137,7 +137,7 @@ func TestOutputWriterToolCallStartThenFull(t *testing.T) {
 			CallID: id,
 			Input:  json.RawMessage(input),
 		})
-		return encodeTestTLV(tlv.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
+		return encodeTestTLV(wire.TagAssistantF, wiretest.ToolInputLegacy("1", string(fd)))
 	}
 
 	// 1. Simulate ToolCallStart: Name set, no input yet

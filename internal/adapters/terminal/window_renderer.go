@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // ============================================================================
@@ -793,13 +793,13 @@ func compactMediaSummary(mediaParts []string) string {
 // Known labels are explicit; unknown labels use their first token.
 func compactMediaIcon(label string) string {
 	switch label {
-	case tlv.MediaLabel(tlv.KindImage):
+	case wire.MediaLabel(wire.KindImage):
 		return "📷"
-	case tlv.MediaLabel(tlv.KindVideo):
+	case wire.MediaLabel(wire.KindVideo):
 		return "🎬"
-	case tlv.MediaLabel(tlv.KindAudio):
+	case wire.MediaLabel(wire.KindAudio):
 		return "🎵"
-	case tlv.MediaLabel(tlv.KindDocument):
+	case wire.MediaLabel(wire.KindDocument):
 		return "📄"
 	}
 	if i := strings.IndexByte(label, ' '); i >= 0 {
@@ -1042,7 +1042,7 @@ type toolRenderer struct {
 	deltaBuffer string
 }
 
-func (r *toolRenderer) Tag() string { return tlv.TagAssistantF }
+func (r *toolRenderer) Tag() string { return wire.TagAssistantF }
 
 func (r *toolRenderer) ToolInfo() *ToolInfo {
 	return &ToolInfo{

@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // ToolInfo holds the identifying details of a tool call window.
@@ -218,8 +218,8 @@ func (w *Window) setRenderer(tag string) {
 	switch tag {
 	case tagUserText:
 		w.renderer = &userRenderer{}
-	case tlv.TagAssistantF, tlv.TagUserF:
-		w.renderer = &toolRenderer{isUF: tag == tlv.TagUserF}
+	case wire.TagAssistantF, wire.TagUserF:
+		w.renderer = &toolRenderer{isUF: tag == wire.TagUserF}
 	default:
 		w.renderer = &textRenderer{tag: tag}
 	}
@@ -287,7 +287,7 @@ func (w *Window) SetRendererForTool(name, input string) {
 // HandleToolInput updates the tool call data on an existing tool window
 // or creates a tool renderer if none exists.
 func (w *Window) HandleToolInput(data protocol.ToolInputData, historyID uint64) {
-	if w.renderer == nil || w.renderer.Tag() != tlv.TagAssistantF {
+	if w.renderer == nil || w.renderer.Tag() != wire.TagAssistantF {
 		w.renderer = &toolRenderer{}
 	}
 	if tr, ok := w.renderer.(*toolRenderer); ok {
@@ -687,7 +687,7 @@ func replaceFirstLine(s, first string) string {
 // "SYSTEM NOTIFY", "SYSTEM ERROR".
 func (w *Window) windowLabel() string {
 	switch w.Tag() {
-	case tlv.TagAssistantF, tlv.TagUserF:
+	case wire.TagAssistantF, wire.TagUserF:
 		if ti := w.ToolInfo(); ti != nil && ti.Name != "" {
 			return toolHeaderLabel + " " + ti.Name
 		}

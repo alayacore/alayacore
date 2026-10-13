@@ -29,7 +29,7 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // frameHarness drives a real Terminal model and a real Screen, keeping the
@@ -190,7 +190,7 @@ func (h *frameHarness) key(code rune, mod KeyMod) {
 // ones.
 func (h *frameHarness) appendWin(tag, id, content string) {
 	h.t.Helper()
-	h.m.out.Write(tlvFrame(tag, id, content))
+	h.m.out.Write(testFrame(tag, id, content))
 	h.m.out.FlushPendingDeltas()
 }
 
@@ -483,9 +483,9 @@ func randomSession(h *frameHarness, rng *rand.Rand) {
 // toolCallFrames builds the AF/UF pair a session sends for one tool call.
 func toolCallFrames(id, name, input, output string) []byte {
 	var b []byte
-	b = append(b, tlvFrame(tlv.TagAssistantF, id,
+	b = append(b, testFrame(wire.TagAssistantF, id,
 		fmt.Sprintf(`{"id":%s,"name":%s,"input":%s}`, jsonString(id), jsonString(name), jsonString(input)))...)
-	b = append(b, tlvFrame(tlv.TagUserF, id,
+	b = append(b, testFrame(wire.TagUserF, id,
 		fmt.Sprintf(`{"id":%s,"content":[{"type":"text","text":%s}],"is_error":false}`,
 			jsonString(id), jsonString(output)))...)
 	return b

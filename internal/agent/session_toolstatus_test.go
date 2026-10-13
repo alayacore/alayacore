@@ -1,14 +1,13 @@
 package agent
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 func TestOnToolOutputCallback(t *testing.T) {
@@ -29,7 +28,7 @@ func TestOnToolOutputCallback(t *testing.T) {
 
 		data, marshalErr := marshalToolOutputBody(protocol.ContentMeta{}, id, content, err != nil)
 		if marshalErr == nil {
-			session.writeTLV(tlv.TagUserF, data)
+			session.writeTLV(wire.TagUserF, data)
 		}
 	}
 
@@ -39,9 +38,9 @@ func TestOnToolOutputCallback(t *testing.T) {
 		t.Fatalf("Expected 1 content part, got %d", len(session.Contents))
 	}
 
-	tag, value := parseTLVFromBytes(output.data)
-	if tag != tlv.TagUserF {
-		t.Errorf("Expected tag %s, got %s", tlv.TagUserF, tag)
+	tag, value := parseFrameFromBytes(output.data)
+	if tag != wire.TagUserF {
+		t.Errorf("Expected tag %s, got %s", wire.TagUserF, tag)
 	}
 
 	var got protocol.ToolOutputData
@@ -55,9 +54,9 @@ func TestOnToolOutputCallback(t *testing.T) {
 	output.data = nil
 	callback("call2", []llm.ContentPart{&llm.TextPart{Text: "something failed"}}, errors.New("something failed"))
 
-	tag, value = parseTLVFromBytes(output.data)
-	if tag != tlv.TagUserF {
-		t.Errorf("Expected tag %s, got %s", tlv.TagUserF, tag)
+	tag, value = parseFrameFromBytes(output.data)
+	if tag != wire.TagUserF {
+		t.Errorf("Expected tag %s, got %s", wire.TagUserF, tag)
 	}
 
 	if err := json.Unmarshal([]byte(value), &got); err != nil {
@@ -68,15 +67,11 @@ func TestOnToolOutputCallback(t *testing.T) {
 	}
 }
 
-func parseTLVFromBytes(data []byte) (string, string) {
-	if len(data) < 6 {
+// parseFrameFromBytes decodes one frame from what a writer captured.
+func parseFrameFromBytes(data []byte) (string, string) {
+	tag, value, err := wire.Decode(data)
+	if err != nil {
 		return "", ""
 	}
-	tag := string(data[0:2])
-	length := int(binary.BigEndian.Uint32(data[2:6]))
-	if len(data) < 6+length {
-		return tag, ""
-	}
-	value := string(data[6 : 6+length])
 	return tag, value
 }

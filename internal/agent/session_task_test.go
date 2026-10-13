@@ -3,7 +3,6 @@ package agent
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +13,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 type stepResponse struct {
@@ -226,16 +225,13 @@ func TestDeltaWriterHandleToolOutputDelta(t *testing.T) {
 	}
 
 	// Verify the emitted frame is a Uf frame with the expected payload.
-	raw := buf.Bytes()
-	if len(raw) < 6 {
-		t.Fatalf("frame too short: %d bytes", len(raw))
+	tag, value, err := wire.Decode(buf.Bytes())
+	if err != nil {
+		t.Fatalf("decode the emitted frame: %v", err)
 	}
-	tag := string(raw[0:2])
-	if tag != tlv.TagUserFDelta {
-		t.Fatalf("tag = %q, want %q", tag, tlv.TagUserFDelta)
+	if tag != wire.TagUserFDelta {
+		t.Fatalf("tag = %q, want %q", tag, wire.TagUserFDelta)
 	}
-	length := int(binary.BigEndian.Uint32(raw[2:6]))
-	value := string(raw[6 : 6+length])
 
 	var od protocol.ToolOutputDeltaData
 	if err := json.Unmarshal([]byte(value), &od); err != nil {

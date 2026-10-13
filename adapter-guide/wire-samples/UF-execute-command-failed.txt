@@ -1,0 +1,1 @@
+UF{"call_id":"t5","output":[{"type":"text","text":"command not found"}],"is_error":true,"id":"15","time":"2026-10-14T10:00:00Z"}

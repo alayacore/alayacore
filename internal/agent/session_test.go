@@ -14,7 +14,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // MockOutput captures output messages for testing
@@ -560,7 +560,7 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to serialize part: %v", err)
 		}
-		_ = tlv.WriteTLV(mockOutput, tag, body)
+		_ = wire.WriteFrame(mockOutput, tag, body)
 	}
 
 	// Verify that output was written

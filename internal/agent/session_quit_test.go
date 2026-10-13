@@ -18,7 +18,7 @@ import (
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // newQuitTestSession builds a started Session whose run() loop is live and
@@ -76,7 +76,7 @@ func sendQuit(t *testing.T, w io.Writer, id string) {
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	if err := tlv.WriteTLV(w, tlv.TagCommandIn, string(payload)); err != nil {
+	if err := wire.WriteFrame(w, wire.TagCommandIn, string(payload)); err != nil {
 		t.Fatalf("write CI: %v", err)
 	}
 }

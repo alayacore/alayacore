@@ -7,7 +7,6 @@ package agent
 // persistenceService wraps Load/Save with optional future state (e.g. config).
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,7 +16,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // errSessionVersionMismatch is returned when a session file has a version
@@ -73,9 +72,11 @@ func formatFrontmatter(meta *sessionMeta) string {
 	return "---\n" + config.FormatKeyValue(meta) + "---\n"
 }
 
-// formatSessionMarkdown serializes Content to TLV (without history IDs).
+// formatSessionMarkdown serializes Content as frames, one per line and without
+// history IDs. The body is exactly the frames: no separator lines, so every line
+// of the file after the frontmatter is one frame.
 func formatSessionMarkdown(data *sessionData) ([]byte, error) {
-	var buf, tlvBuf strings.Builder
+	var buf strings.Builder
 	buf.WriteString(formatFrontmatter(&data.sessionMeta))
 
 	for _, part := range data.Contents {
@@ -83,15 +84,13 @@ func formatSessionMarkdown(data *sessionData) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("save: %w", err)
 		}
-		encoded, err := tlv.EncodeTLV(tag, body)
+		frame, err := wire.Encode(tag, body)
 		if err != nil {
 			return nil, fmt.Errorf("save: %w", err)
 		}
-		tlvBuf.WriteString("\n\n")
-		tlvBuf.Write(encoded)
+		buf.Write(frame)
 	}
 
-	buf.WriteString(tlvBuf.String())
 	return []byte(buf.String()), nil
 }
 
@@ -139,7 +138,7 @@ func parseSessionMeta(frontmatter string) (sessionMeta, error) {
 	return meta, nil
 }
 
-// parseSessionData parses a session file (frontmatter + TLV body) into sessionData.
+// parseSessionData parses a session file (frontmatter + one frame per line) into sessionData.
 func parseSessionData(data []byte) (*sessionData, error) {
 	frontmatter, body, err := parseFrontmatter(string(data))
 	if err != nil {
@@ -156,7 +155,7 @@ func parseSessionData(data []byte) (*sessionData, error) {
 	}
 
 	if len(body) > 0 {
-		content, err := parseMessagesTLV(body)
+		content, err := parseMessageFrames(body)
 		if err != nil {
 			return nil, err
 		}
@@ -166,27 +165,29 @@ func parseSessionData(data []byte) (*sessionData, error) {
 	return sd, nil
 }
 
-// parseMessagesTLV parses TLV-encoded body into ContentParts.
-func parseMessagesTLV(body string) ([]llm.ContentPart, error) {
+// parseMessageFrames parses a session file's body — one frame per line — into
+// ContentParts. The frame reader is the same one the wire uses, so a file that
+// saves is a file that loads, and a corrupt one is reported rather than half-read.
+func parseMessageFrames(body string) ([]llm.ContentPart, error) {
 	est := len(body) / 64
 	if est < 8 {
 		est = 8
 	}
 	contents := make([]llm.ContentPart, 0, est)
 
-	reader := newTLVReader(body)
+	reader := wire.NewReader(strings.NewReader(body))
 	var seqID uint64
 
 	for {
-		tag, raw, err := reader.read()
-		if err == io.EOF {
+		tag, value, err := reader.ReadFrame()
+		if errors.Is(err, io.EOF) {
 			return contents, nil
 		}
 		if err != nil {
 			return contents, fmt.Errorf("read error at chunk %d: %w", len(contents), err)
 		}
 
-		msgPart, err := contentPartFromJSON(tag, raw)
+		msgPart, err := contentPartFromJSON(tag, []byte(value))
 		if err != nil {
 			return contents, fmt.Errorf("parse error at chunk %d (tag %q): %w", len(contents), tag, err)
 		}
@@ -198,53 +199,4 @@ func parseMessagesTLV(body string) ([]llm.ContentPart, error) {
 		msgPart.SetHistoryID(seqID)
 		contents = append(contents, msgPart)
 	}
-}
-
-// persistenceTLVReader reads sequential TLV records from a string.
-// Exported as an alias from session_persist.go for backward compatibility.
-type persistenceTLVReader struct {
-	reader *strings.Reader
-}
-
-func newTLVReader(body string) *persistenceTLVReader {
-	return &persistenceTLVReader{reader: strings.NewReader(body)}
-}
-
-// read advances to the next TLV record. Returns io.EOF when exhausted.
-func (r *persistenceTLVReader) read() (tag string, content []byte, err error) {
-	for {
-		b, err := r.reader.ReadByte()
-		if err != nil {
-			return "", nil, err
-		}
-		if b != '\n' && b != '\r' && b != ' ' && b != '\t' {
-			_ = r.reader.UnreadByte()
-			break
-		}
-	}
-
-	tagBytes := make([]byte, 2)
-	if _, err := io.ReadFull(r.reader, tagBytes); err != nil {
-		return "", nil, err
-	}
-
-	var length int32
-	if err := binary.Read(r.reader, binary.BigEndian, &length); err != nil {
-		return "", nil, fmt.Errorf("failed to read length: %w", err)
-	}
-	// Reject before allocating, but never apply a tighter bound than
-	// EncodeTLV: a session record that saved successfully must load back.
-	// The remaining-body check keeps a corrupt length field from triggering
-	// an outsized allocation, while still admitting any frame the writer
-	// could have produced (a real frame can never exceed the bytes on disk).
-	if length < 0 || length > tlv.MaxMessageSize || int(length) > r.reader.Len() {
-		return "", nil, fmt.Errorf("invalid length: %d", length)
-	}
-
-	content = make([]byte, length)
-	if _, err := io.ReadFull(r.reader, content); err != nil {
-		return "", nil, fmt.Errorf("failed to read content: %w", err)
-	}
-
-	return string(tagBytes), content, nil
 }

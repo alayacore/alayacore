@@ -1,0 +1,1 @@
+SM{"type":"steering","data":{"phase":"dropped","reason":"canceled","text":"steering dropped — the task was canceled before it was delivered"}}

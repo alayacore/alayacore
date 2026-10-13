@@ -6,7 +6,7 @@ import (
 	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // Regression test for a REASONING window appearing below the ASSISTANT window
@@ -31,10 +31,10 @@ import (
 func TestFlushPendingDeltasCreatesWindowsInHistoryIDOrder(t *testing.T) {
 	const iterations = 200
 
-	arDelta := encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantReasoningDelta("1", "The user said hello?"))
-	atDelta := encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "Hello! How can I help?"))
-	arFrame := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantReasoning("1", ""))
-	atFrame := encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", ""))
+	arDelta := encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantReasoningDelta("1", "The user said hello?"))
+	atDelta := encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "Hello! How can I help?"))
+	arFrame := encodeTestTLV(wire.TagAssistantX, wiretest.AssistantReasoning("1", ""))
+	atFrame := encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("2", ""))
 
 	tests := []struct {
 		name   string

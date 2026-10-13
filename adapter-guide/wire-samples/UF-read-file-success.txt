@@ -1,0 +1,1 @@
+UF{"call_id":"t1","output":[{"type":"text","text":"package main\n\nfunc main() {}"}],"id":"7","time":"2026-10-14T10:00:00Z"}

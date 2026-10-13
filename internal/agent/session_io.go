@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,7 +25,7 @@ import (
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // ============================================================================
@@ -60,22 +61,35 @@ type inputMsg struct {
 	err          error             // non-nil when the input pump hit a validation error
 }
 
-// inputPump runs in its own goroutine.  It reads TLV frames from the
-// input stream, builds inputMsg values, and sends them to inputMsgCh.
-// It does NOT interpret commands or access session state — all of
-// that lives in the run() goroutine.
+// inputPump runs in its own goroutine.  It reads frames from the input
+// stream, builds inputMsg values, and sends them to inputMsgCh. It does NOT
+// interpret commands or access session state — all of that lives in the run()
+// goroutine.
 //
 // EOF is reported by closing inputMsgCh: a reader that ends (a pipe whose
 // writer closed, a keyboard at Ctrl-D) is the adapter saying it has no more
 // input, exactly like a CE frame, and run() treats the two identically.
+//
+// The reader is local to this goroutine, so it carries the bytes it has read
+// ahead of the frame it returned without any synchronization.
 func (s *Session) inputPump() {
 	var staged []llm.ContentPart
+	frames := wire.NewReader(s.Input)
 
 	for {
-		tag, value, err := tlv.ReadTLV(s.Input)
+		tag, value, err := frames.ReadFrame()
 		if err != nil {
-			if len(staged) > 0 {
-				s.inputMsgCh <- inputMsg{contentParts: staged}
+			if errors.Is(err, io.EOF) {
+				if len(staged) > 0 {
+					s.inputMsgCh <- inputMsg{contentParts: staged}
+				}
+			} else {
+				// A malformed frame: the bytes are not a frame and there is no
+				// frame boundary to resynchronise on, so the message being staged
+				// is not a message. Drop it and report — handleInputMsg turns the
+				// error into a CO frame, so the adapter learns why the input
+				// stopped instead of the session quietly going deaf.
+				s.inputMsgCh <- inputMsg{err: fmt.Errorf("invalid frame: %w", err)}
 			}
 			close(s.inputMsgCh)
 			return
@@ -93,8 +107,8 @@ func (s *Session) inputPump() {
 // flushes whatever is staged before it.
 func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) []llm.ContentPart {
 	switch tag {
-	case tlv.TagUserX:
-		part, err := contentPartFromJSON(tlv.TagUserX, []byte(value))
+	case wire.TagUserX:
+		part, err := contentPartFromJSON(wire.TagUserX, []byte(value))
 		if err != nil {
 			s.inputMsgCh <- inputMsg{err: fmt.Errorf("invalid content frame: %v", err)}
 			return nil
@@ -103,7 +117,7 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 			return staged // an empty text part contributes nothing
 		}
 		return append(staged, part)
-	case tlv.TagCommandIn:
+	case wire.TagCommandIn:
 		if len(staged) > 0 {
 			s.inputMsgCh <- inputMsg{err: fmt.Errorf("command can not be sent with staged content")}
 			return nil
@@ -115,12 +129,12 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 		}
 		s.inputMsgCh <- inputMsg{isCmd: true, cmd: cmd.Name, cmdInput: cmd.Input, cmdID: cmd.CallID}
 		return staged
-	case tlv.TagUserEnd:
+	case wire.TagUserEnd:
 		if len(staged) > 0 {
 			s.inputMsgCh <- inputMsg{contentParts: staged}
 		}
 		return nil
-	case tlv.TagInputEnd:
+	case wire.TagInputEnd:
 		// The adapter has no more input. This is the same fact as EOF on the
 		// stream, so it takes the same shape: whatever is staged is a complete
 		// message first, and only then does the input end. The order cannot be

@@ -13,7 +13,7 @@ import (
 	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // newCancelTestSession builds a minimal started Session whose run() loop
@@ -205,10 +205,10 @@ func TestCancelTask_EndToEnd(t *testing.T) {
 
 	// Deliver a prompt over the TLV input pipe (what terseio does after
 	// reading stdin to EOF).
-	if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", "hello")); err != nil {
+	if err := wire.WriteFrame(w, wire.TagUserX, wiretest.UserText("1", "hello")); err != nil {
 		t.Fatalf("write UT: %v", err)
 	}
-	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
+	if err := wire.WriteFrame(w, wire.TagUserEnd, ""); err != nil {
 		t.Fatalf("write UE: %v", err)
 	}
 
@@ -331,10 +331,10 @@ func TestCancelTask_KeepsExecutedToolResult(t *testing.T) {
 	s.Start()
 
 	// Deliver a prompt.
-	if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("1", "hello")); err != nil {
+	if err := wire.WriteFrame(w, wire.TagUserX, wiretest.UserText("1", "hello")); err != nil {
 		t.Fatalf("write UT: %v", err)
 	}
-	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
+	if err := wire.WriteFrame(w, wire.TagUserEnd, ""); err != nil {
 		t.Fatalf("write UE: %v", err)
 	}
 

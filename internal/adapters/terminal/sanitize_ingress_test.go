@@ -15,7 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // ingressIllFormed carries one of every way a byte can fail to be UTF-8: a lone
@@ -73,7 +73,7 @@ func TestEveryContentIngressDrawsWellFormedUTF8(t *testing.T) {
 			wb.HandleToolOutput("ufe", ingressIllFormed, true, 1)
 		}},
 		{"SetRendererForTool, name and input", func(wb *WindowBuffer) {
-			wb.AppendOrUpdate(tlv.TagAssistantF, "srt", "")
+			wb.AppendOrUpdate(wire.TagAssistantF, "srt", "")
 			for i := range wb.windows {
 				wb.WindowAt(i).SetRendererForTool(ingressIllFormed, ingressIllFormed)
 			}

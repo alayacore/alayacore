@@ -1,34 +1,50 @@
 package terminal
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
-func tlvFrame(tag, id, payload string) []byte {
-	value := "\x00" + id + "\x00" + payload
-	b := make([]byte, 6+len(value))
-	copy(b[0:2], tag)
-	binary.BigEndian.PutUint32(b[2:6], uint32(len(value)))
-	copy(b[6:], value)
-	return b
+// testFrame builds the frame a session sends for a content window.
+//
+// This package names windows by display tag (AT/AR/UT); the wire stopped carrying
+// those when content frames collapsed to UX/AX, so a display tag is mapped back
+// to the wire tag and the content kind it travels with now, and the history id
+// goes in the item. A wire tag (AF/UF) means the content is already the JSON body
+// the frame carries.
+func testFrame(tag, id, content string) []byte {
+	if wireTag, kind, ok := displayTagFrame(tag); ok {
+		return encodeFrame(wireTag, contentItemBody(id, kind, content))
+	}
+	return encodeFrame(tag, content)
 }
 
-// encodeFrame wraps a JSON body in a TLV frame (no id prefix — the history id
-// travels inside the body).
+// contentBody is the JSON body of a content frame: the item plus its history id.
+func contentItemBody(id, kind, text string) string {
+	body, err := json.Marshal(protocol.ContentData{
+		ContentMeta: protocol.ContentMeta{ID: id},
+		ContentItem: protocol.ContentItem{Type: kind, Text: text},
+	})
+	if err != nil {
+		panic("contentItemBody: " + err.Error())
+	}
+	return string(body)
+}
+
+// encodeFrame wraps an already-built JSON body in a frame.
 func encodeFrame(tag, body string) []byte {
-	b := make([]byte, 6+len(body))
-	copy(b[0:2], tag)
-	binary.BigEndian.PutUint32(b[2:6], uint32(len(body)))
-	copy(b[6:], body)
-	return b
+	frame, err := wire.Encode(tag, body)
+	if err != nil {
+		panic("encodeFrame: " + err.Error())
+	}
+	return frame
 }
 
 // TestRealAppWrappedLineContinuity drives the real Terminal with a tool
@@ -46,9 +62,9 @@ func TestRealAppWrappedLineContinuity(t *testing.T) {
 	terminal.out.SetWindowWidth(width)
 
 	writeTool := func(command string, expand bool) string {
-		af := encodeFrame(tlv.TagAssistantF, wiretest.ToolInput("t1", "t1", "execute_command",
+		af := encodeFrame(wire.TagAssistantF, wiretest.ToolInput("t1", "t1", "execute_command",
 			json.RawMessage(fmt.Sprintf(`{"command":%q}`, command))))
-		uf := encodeFrame(tlv.TagUserF, wiretest.ToolOutputLegacy("t1", `{"id":"t1","content":[],"is_error":false}`))
+		uf := encodeFrame(wire.TagUserF, wiretest.ToolOutputLegacy("t1", `{"id":"t1","content":[],"is_error":false}`))
 		terminal.out.Write(append(af, uf...))
 		terminal.out.FlushPendingDeltas()
 		if expand {

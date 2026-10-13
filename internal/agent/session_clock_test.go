@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // TestStepClockIsSharedByEchoAndRecord pins the reason Session.stepStartedAt
@@ -57,18 +57,18 @@ func TestContentFrameRejectsAKindOnTheWrongSide(t *testing.T) {
 		body    string
 		wantErr bool
 	}{
-		{"reasoning under UX", tlv.TagUserX, `{"type":"reasoning","text":"x"}`, true},
-		{"image under AX", tlv.TagAssistantX, `{"type":"image","uri":"x"}`, true},
-		{"video under AX", tlv.TagAssistantX, `{"type":"video","uri":"x"}`, true},
-		{"text under UX", tlv.TagUserX, `{"type":"text","text":"x"}`, false},
-		{"image under UX", tlv.TagUserX, `{"type":"image","uri":"x"}`, false},
-		{"reasoning under AX", tlv.TagAssistantX, `{"type":"reasoning","text":"x"}`, false},
-		{"text under AX", tlv.TagAssistantX, `{"type":"text","text":"x"}`, false},
-		{"reasoning in a tool result", tlv.TagUserF,
+		{"reasoning under UX", wire.TagUserX, `{"type":"reasoning","text":"x"}`, true},
+		{"image under AX", wire.TagAssistantX, `{"type":"image","uri":"x"}`, true},
+		{"video under AX", wire.TagAssistantX, `{"type":"video","uri":"x"}`, true},
+		{"text under UX", wire.TagUserX, `{"type":"text","text":"x"}`, false},
+		{"image under UX", wire.TagUserX, `{"type":"image","uri":"x"}`, false},
+		{"reasoning under AX", wire.TagAssistantX, `{"type":"reasoning","text":"x"}`, false},
+		{"text under AX", wire.TagAssistantX, `{"type":"text","text":"x"}`, false},
+		{"reasoning in a tool result", wire.TagUserF,
 			`{"call_id":"t1","output":[{"type":"reasoning","text":"x"}]}`, true},
-		{"image in a tool result", tlv.TagUserF,
+		{"image in a tool result", wire.TagUserF,
 			`{"call_id":"t1","output":[{"type":"image","uri":"x"}]}`, false},
-		{"text in a tool result", tlv.TagUserF,
+		{"text in a tool result", wire.TagUserF,
 			`{"call_id":"t1","output":[{"type":"text","text":"x"}]}`, false},
 	}
 	for _, tc := range cases {

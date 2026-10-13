@@ -1,0 +1,1 @@
+SM{"type":"mcp","data":{"status":"failed","server":"github","error":"connection timeout"}}

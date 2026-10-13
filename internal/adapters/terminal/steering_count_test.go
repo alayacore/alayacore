@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // steeringPhase feeds one "steering" SM frame the way the session writes it:
@@ -20,7 +20,7 @@ func steeringPhase(t *testing.T, out interface{ Write([]byte) (int, error) }, ph
 	if err != nil {
 		t.Fatalf("marshal steering %q: %v", phase, err)
 	}
-	if err := tlv.WriteTLV(out, tlv.TagSystemMsg, `{"type":"steering","data":`+string(data)+`}`); err != nil {
+	if err := wire.WriteFrame(out, wire.TagSystemMsg, `{"type":"steering","data":`+string(data)+`}`); err != nil {
 		t.Fatalf("write steering %q: %v", phase, err)
 	}
 }

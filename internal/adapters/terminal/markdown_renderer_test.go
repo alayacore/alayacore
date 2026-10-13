@@ -10,7 +10,7 @@ import (
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 const mdTableContent = "| name | gender | age |\n|---|---|---|\n| Walllace Gibbon | male | 100 |\n| Harry Potter | male | 10 |"
@@ -151,7 +151,7 @@ func TestWindowToggleMarkdownModeRestricted(t *testing.T) {
 	for _, tc := range []struct {
 		tag string
 	}{
-		{TagWindowSN}, {TagWindowSE}, {tagUserText}, {tlv.TagAssistantF}, {tlv.TagUserF},
+		{TagWindowSN}, {TagWindowSE}, {tagUserText}, {wire.TagAssistantF}, {wire.TagUserF},
 	} {
 		other := NewWindow("x", tc.tag, styles)
 		if other.ToggleMarkdownMode() {

@@ -1,4 +1,4 @@
-package protocol
+package protocol_test
 
 import (
 	"bytes"
@@ -8,8 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 // samplePath is the adapter-guide's model_list export. Nothing regenerated it
@@ -17,12 +19,12 @@ import (
 // omitempty) the committed sample silently stopped matching what the binary
 // broadcasts — and the guide's schema table omitted the field with it. This
 // check ties the sample back to the type: the sample must round-trip through
-// ModelInfo byte for byte.
+// protocol.ModelInfo byte for byte.
 //
 // To update the sample deliberately, change ModelInfo, then re-emit it with the
 // same models the sample documents and replace the file; this test failing is
 // the reminder, not a reason to hand-edit JSON.
-const samplePath = "../../adapter-guide/tlv-samples/SM-model-list.bin"
+const samplePath = "../../adapter-guide/wire-samples/SM-model-list.txt"
 
 func TestModelListSampleMatchesModelInfo(t *testing.T) {
 	raw, err := os.ReadFile(samplePath)
@@ -32,24 +34,24 @@ func TestModelListSampleMatchesModelInfo(t *testing.T) {
 
 	// The sample is one TLV frame: tag "SM", value an envelope.
 	reader := bytes.NewReader(raw)
-	tag, value, err := tlv.ReadTLV(reader)
+	tag, value, err := wiretest.NextFrame(reader)
 	if err != nil {
 		t.Fatalf("decode TLV frame: %v", err)
 	}
-	if tag != tlv.TagSystemMsg {
-		t.Fatalf("tag = %q, want %q", tag, tlv.TagSystemMsg)
+	if tag != wire.TagSystemMsg {
+		t.Fatalf("tag = %q, want %q", tag, wire.TagSystemMsg)
 	}
 
-	env, err := ParseSystemMsg(value)
+	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
 		t.Fatalf("parse system message: %v", err)
 	}
-	if env.Type != string(MsgTypeModelList) {
-		t.Fatalf("type = %q, want %q", env.Type, MsgTypeModelList)
+	if env.Type != string(protocol.MsgTypeModelList) {
+		t.Fatalf("type = %q, want %q", env.Type, protocol.MsgTypeModelList)
 	}
 
 	var payload struct {
-		Models []ModelInfo `json:"models"`
+		Models []protocol.ModelInfo `json:"models"`
 	}
 	if err := json.Unmarshal(env.Data, &payload); err != nil {
 		t.Fatalf("decode model_list payload: %v", err)
@@ -65,7 +67,7 @@ func TestModelListSampleMatchesModelInfo(t *testing.T) {
 		t.Fatalf("re-marshal payload: %v", err)
 	}
 	if !bytes.Equal(regenerated, env.Data) {
-		t.Errorf("SM-model-list.bin no longer matches protocol.ModelInfo:\n  sample:      %s\n  regenerated: %s",
+		t.Errorf("SM-model-list.txt no longer matches protocol.ModelInfo:\n  sample:      %s\n  regenerated: %s",
 			env.Data, regenerated)
 	}
 }
@@ -79,7 +81,7 @@ func TestModelListSampleMatchesModelInfo(t *testing.T) {
 // the point: the schema table, the wire-value example, and this shipped frame
 // must move together. They did not when `selection` went — the table and example
 // were updated and the .bin was not, and the sweep below cannot see a field.
-const themeListSamplePath = "../../adapter-guide/tlv-samples/SM-theme-list.bin"
+const themeListSamplePath = "../../adapter-guide/wire-samples/SM-theme-list.txt"
 
 func TestThemeListSampleMatchesTheme(t *testing.T) {
 	raw, err := os.ReadFile(themeListSamplePath)
@@ -89,20 +91,20 @@ func TestThemeListSampleMatchesTheme(t *testing.T) {
 
 	// The sample is one TLV frame: tag "SM", value an envelope.
 	reader := bytes.NewReader(raw)
-	tag, value, err := tlv.ReadTLV(reader)
+	tag, value, err := wiretest.NextFrame(reader)
 	if err != nil {
 		t.Fatalf("decode TLV frame: %v", err)
 	}
-	if tag != tlv.TagSystemMsg {
-		t.Fatalf("tag = %q, want %q", tag, tlv.TagSystemMsg)
+	if tag != wire.TagSystemMsg {
+		t.Fatalf("tag = %q, want %q", tag, wire.TagSystemMsg)
 	}
 
-	env, err := ParseSystemMsg(value)
+	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
 		t.Fatalf("parse system message: %v", err)
 	}
-	if env.Type != string(MsgTypeThemeList) {
-		t.Fatalf("type = %q, want %q", env.Type, MsgTypeThemeList)
+	if env.Type != string(protocol.MsgTypeThemeList) {
+		t.Fatalf("type = %q, want %q", env.Type, protocol.MsgTypeThemeList)
 	}
 
 	var payload struct {
@@ -125,20 +127,20 @@ func TestThemeListSampleMatchesTheme(t *testing.T) {
 		t.Fatalf("re-marshal payload: %v", err)
 	}
 	if !bytes.Equal(regenerated, env.Data) {
-		t.Errorf("SM-theme-list.bin no longer matches theme.Theme:\n  sample:      %s\n  regenerated: %s",
+		t.Errorf("SM-theme-list.txt no longer matches theme.Theme:\n  sample:      %s\n  regenerated: %s",
 			env.Data, regenerated)
 	}
 }
 
-// The guide ships one .bin per frame it documents, and nothing kept them in
+// The guide ships one .txt per frame it documents, and nothing kept them in
 // step with the code. Two had already drifted by the time this was written:
-// SM-model-list.bin had lost a field (the file above), and
-// UF-read-file-success.bin carried raw 0x0A bytes inside a JSON string — no
+// SM-model-list.txt had lost a field (the file above), and
+// UF-read-file-success.txt carried raw 0x0A bytes inside a JSON string — no
 // parser accepts it, yet it was published as the reference for what a UF frame
 // looks like.
 //
 // This guard checks every sample for what must hold for any frame drawn from
-// this protocol: exactly one TLV frame and no trailing bytes, a tag this
+// this protocol: exactly one frame and no trailing bytes, a tag this
 // package defines, a filename that names that tag, an id prefix (where present)
 // that decodes, and JSON where the tag carries JSON.
 //
@@ -148,7 +150,7 @@ func TestThemeListSampleMatchesTheme(t *testing.T) {
 // full-fidelity checks; see TestModelListSampleMatchesModelInfo and
 // TestThemeListSampleMatchesTheme.
 func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
-	files, err := filepath.Glob("../../adapter-guide/tlv-samples/*.bin")
+	files, err := filepath.Glob("../../adapter-guide/wire-samples/*.txt")
 	if err != nil {
 		t.Fatalf("glob samples: %v", err)
 	}
@@ -157,20 +159,20 @@ func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 	}
 
 	known := map[string]bool{
-		tlv.TagAssistantF: true, tlv.TagUserF: true,
-		tlv.TagUserX: true, tlv.TagAssistantX: true, tlv.TagAssistantXDelta: true,
-		tlv.TagUserEnd: true, tlv.TagInputEnd: true,
-		tlv.TagCommandIn: true, tlv.TagCommandOut: true, tlv.TagSystemMsg: true,
-		tlv.TagAssistantFDelta: true, tlv.TagUserFDelta: true,
+		wire.TagAssistantF: true, wire.TagUserF: true,
+		wire.TagUserX: true, wire.TagAssistantX: true, wire.TagAssistantXDelta: true,
+		wire.TagUserEnd: true, wire.TagInputEnd: true,
+		wire.TagCommandIn: true, wire.TagCommandOut: true, wire.TagSystemMsg: true,
+		wire.TagAssistantFDelta: true, wire.TagUserFDelta: true,
 	}
 	// Tags whose payload is JSON. With v14 that is every frame except the
 	// zero-length control frames (UE/CE): text, media and tool frames all carry
 	// a JSON object.
 	jsonBearing := map[string]bool{
-		tlv.TagUserX: true, tlv.TagAssistantX: true, tlv.TagAssistantXDelta: true,
-		tlv.TagAssistantF: true, tlv.TagAssistantFDelta: true,
-		tlv.TagUserF: true, tlv.TagUserFDelta: true,
-		tlv.TagCommandIn: true, tlv.TagCommandOut: true, tlv.TagSystemMsg: true,
+		wire.TagUserX: true, wire.TagAssistantX: true, wire.TagAssistantXDelta: true,
+		wire.TagAssistantF: true, wire.TagAssistantFDelta: true,
+		wire.TagUserF: true, wire.TagUserFDelta: true,
+		wire.TagCommandIn: true, wire.TagCommandOut: true, wire.TagSystemMsg: true,
 	}
 
 	for _, path := range files {
@@ -182,7 +184,7 @@ func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 			}
 
 			reader := bytes.NewReader(raw)
-			tag, value, err := tlv.ReadTLV(reader)
+			tag, value, err := wiretest.NextFrame(reader)
 			if err != nil {
 				t.Fatalf("not a TLV frame: %v", err)
 			}
@@ -195,7 +197,7 @@ func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 
 			// The name is "<tag>-<what>" (or just "<tag>"); the tag must match,
 			// so a renamed or misfiled sample cannot go unnoticed.
-			wantTag := strings.TrimSuffix(name, ".bin")
+			wantTag := strings.TrimSuffix(name, ".txt")
 			if i := strings.IndexByte(wantTag, '-'); i >= 0 {
 				wantTag = wantTag[:i]
 			}

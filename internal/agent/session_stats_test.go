@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 // TestStepStatsBroadcast verifies that stepStatsEvent handling stores
@@ -114,11 +115,11 @@ func TestTaskMsgSpeedFieldsAbsentWithoutSteps(t *testing.T) {
 
 	session.sendTaskMsg()
 
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("ReadTLV failed: %v", err)
 	}
-	if tag != tlv.TagSystemMsg {
+	if tag != wire.TagSystemMsg {
 		t.Fatalf("tag = %q, want system msg", tag)
 	}
 	env, err := protocol.ParseSystemMsg(value)
@@ -139,11 +140,11 @@ func TestTaskMsgSpeedFieldsAbsentWithoutSteps(t *testing.T) {
 // message, and unmarshals its data into m.
 func readTaskMsg(t *testing.T, buf *bytes.Buffer, m any) {
 	t.Helper()
-	tag, value, err := tlv.ReadTLV(buf)
+	tag, value, err := wiretest.NextFrame(buf)
 	if err != nil {
 		t.Fatalf("ReadTLV failed: %v", err)
 	}
-	if tag != tlv.TagSystemMsg {
+	if tag != wire.TagSystemMsg {
 		t.Fatalf("tag = %q, want system msg", tag)
 	}
 	env, err := protocol.ParseSystemMsg(value)

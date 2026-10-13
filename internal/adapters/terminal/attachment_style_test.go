@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // warningColorParams returns the parameters the theme's warning color paints
@@ -46,7 +46,7 @@ func TestAttachmentBadgesNeverDrawWithTheAlertColor(t *testing.T) {
 		t.Fatalf("Styles.Confirm no longer carries the warning color; this test proves nothing")
 	}
 
-	media := []string{tlv.MediaLabel(tlv.KindImage), tlv.MediaLabel(tlv.KindAudio)}
+	media := []string{wire.MediaLabel(wire.KindImage), wire.MediaLabel(wire.KindAudio)}
 	ur := &userRenderer{textParts: []string{"what are these?"}, mediaParts: media}
 
 	lines, _ := ur.BuildInner(80, false, st)
@@ -65,7 +65,7 @@ func TestAttachmentBadgesNeverDrawWithTheAlertColor(t *testing.T) {
 
 func TestAttachmentBadgesKeepTheirRegisterAcrossFold(t *testing.T) {
 	st := DefaultStyles()
-	media := []string{tlv.MediaLabel(tlv.KindImage), tlv.MediaLabel(tlv.KindAudio)}
+	media := []string{wire.MediaLabel(wire.KindImage), wire.MediaLabel(wire.KindAudio)}
 	ur := &userRenderer{textParts: []string{"what are these?"}, mediaParts: media}
 
 	lines, _ := ur.BuildInner(80, false, st)
@@ -96,8 +96,8 @@ func TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem(t *testing.T) {
 	ur := &userRenderer{
 		textParts: []string{strings.Repeat("analyze ", 8) + "this"},
 		mediaParts: []string{
-			tlv.MediaLabel(tlv.KindImage), tlv.MediaLabel(tlv.KindVideo),
-			tlv.MediaLabel(tlv.KindAudio), tlv.MediaLabel(tlv.KindDocument),
+			wire.MediaLabel(wire.KindImage), wire.MediaLabel(wire.KindVideo),
+			wire.MediaLabel(wire.KindAudio), wire.MediaLabel(wire.KindDocument),
 		},
 	}
 	line := collapseOf(t, ur, st, 24)

@@ -3,7 +3,7 @@ package app
 import (
 	"io"
 
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // SendInputEnd tells the session that the adapter has no more input, without
@@ -19,5 +19,5 @@ import (
 // the pipe is broken, which the adapter cannot act on and would only report
 // twice — Session.Done() and the exit code already cover what it can observe.
 func SendInputEnd(w io.Writer) {
-	_ = tlv.WriteTLV(w, tlv.TagInputEnd, "")
+	_ = wire.WriteFrame(w, wire.TagInputEnd, "")
 }

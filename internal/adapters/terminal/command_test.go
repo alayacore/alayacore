@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 // ============================================================================
@@ -18,11 +19,11 @@ func TestWriteCommand_CIFrame(t *testing.T) {
 	var buf bytes.Buffer
 	writeCommand(&buf, ":save /tmp/x.alaya")
 
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("ReadTLV failed: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Errorf("expected CI tag, got %s", tag)
 	}
 
@@ -48,11 +49,11 @@ func TestWriteCommand_NoArgs(t *testing.T) {
 	var buf bytes.Buffer
 	writeCommand(&buf, ":cancel")
 
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("ReadTLV failed: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Errorf("expected CI tag, got %s", tag)
 	}
 	var msg protocol.CmdMsg
@@ -68,11 +69,11 @@ func TestWriteCommand_CommandWithoutColon(t *testing.T) {
 	var buf bytes.Buffer
 	writeCommand(&buf, "model_set 3")
 
-	tag, value, err := tlv.ReadTLV(&buf)
+	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
 		t.Fatalf("ReadTLV failed: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Errorf("expected CI tag, got %s", tag)
 	}
 	var msg protocol.CmdMsg
@@ -96,7 +97,7 @@ func TestCommandOut_ErrorRendersMessage(t *testing.T) {
 		IsError: true,
 		Output:  mustRaw(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
 	})
-	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {
+	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
 
@@ -123,7 +124,7 @@ func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 		CallID: "x2",
 		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
-	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {
+	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
 
@@ -145,7 +146,7 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 		CallID: "t1",
 		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
-	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {
+	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
 
@@ -174,7 +175,7 @@ func TestCommandOut_UnknownCommandSilent(t *testing.T) {
 		CallID: "t2",
 		Output: mustRaw(`{"foo":"bar"}`),
 	})
-	if err := tlv.WriteTLV(out, tlv.TagCommandOut, string(payload)); err != nil {
+	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
 
@@ -190,7 +191,7 @@ func TestCommandOut_UnknownCommandSilent(t *testing.T) {
 func TestCommandOut_MalformedIgnored(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
-	if err := tlv.WriteTLV(out, tlv.TagCommandOut, "{not json"); err != nil {
+	if err := wire.WriteFrame(out, wire.TagCommandOut, "{not json"); err != nil {
 		t.Fatalf("WriteTLV failed: %v", err)
 	}
 

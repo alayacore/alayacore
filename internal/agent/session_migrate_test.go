@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/sessionmigrate"
-	"github.com/alayacore/alayacore/internal/tlv"
 )
 
 // newSaveSession returns a bare Session usable for save/load, mirroring the
@@ -22,16 +22,20 @@ func newSaveSession() *Session {
 	}
 }
 
-// TestMigrateV13SessionLoadsAsV14 pins the whole point of the migration: a file
+// TestMigrateV13SessionLoadsAsV15 pins the whole point of the migration: a file
 // the core can no longer read (message_version 13, v13 tags) becomes one it
 // loads, with the same parts in the same order.
-func TestMigrateV13SessionLoadsAsV14(t *testing.T) {
+func TestMigrateV13SessionLoadsAsV15(t *testing.T) {
 	var body []byte
+	// The fixture is a v13 body, so it is framed the way v13 framed: a 2-byte
+	// tag, a 4-byte big-endian length, and the value, with a blank line between
+	// frames. Nothing in the program writes that any more, so the test carries
+	// its own copy of it — the same reason the migration package does.
 	add := func(tag, value string) {
-		frame, err := tlv.EncodeTLV(tag, value)
-		if err != nil {
-			t.Fatal(err)
-		}
+		frame := make([]byte, 6+len(value))
+		copy(frame, tag)
+		binary.BigEndian.PutUint32(frame[2:6], uint32(len(value)))
+		copy(frame[6:], value)
 		body = append(body, []byte("\n\n")...)
 		body = append(body, frame...)
 	}

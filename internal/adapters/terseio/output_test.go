@@ -2,7 +2,6 @@ package terseio
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,13 +11,13 @@ import (
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // encodeTestTLV encodes a TLV frame for test input. Test payloads are
-// tiny and never exceed tlv.MaxMessageSize, so the encode error is ignored.
+// tiny and never exceed wire.MaxFrameSize, so the encode error is ignored.
 func encodeTestTLV(tag, value string) []byte {
-	msg, _ := tlv.EncodeTLV(tag, value)
+	msg, _ := wire.Encode(tag, value)
 	return msg
 }
 
@@ -28,7 +27,7 @@ func taskMsg(inProgress bool) []byte {
 		Type: string(protocol.MsgTypeTask),
 		Data: json.RawMessage(fmt.Sprintf(`{"in_progress":%v}`, inProgress)),
 	})
-	return encodeTestTLV(tlv.TagSystemMsg, string(payload))
+	return encodeTestTLV(wire.TagSystemMsg, string(payload))
 }
 
 // cmdResultMsg builds a CO frame. output is the structured result (or the
@@ -40,7 +39,7 @@ func cmdResultMsg(id string, output any, isError bool) []byte {
 		Output:  raw,
 		IsError: isError,
 	})
-	return encodeTestTLV(tlv.TagCommandOut, string(payload))
+	return encodeTestTLV(wire.TagCommandOut, string(payload))
 }
 
 // errorMsg builds an SM error frame.
@@ -49,7 +48,7 @@ func errorMsg(text string) []byte {
 		Type: string(protocol.MsgTypeError),
 		Data: json.RawMessage(fmt.Sprintf(`{"text":%q}`, text)),
 	})
-	return encodeTestTLV(tlv.TagSystemMsg, string(payload))
+	return encodeTestTLV(wire.TagSystemMsg, string(payload))
 }
 
 func newTestOutput() (*answerOutput, *bytes.Buffer, *bytes.Buffer) {
@@ -61,15 +60,15 @@ func TestTerseOutput_OnlyFinalText(t *testing.T) {
 	o, out, _ := newTestOutput()
 
 	// First assistant message (intermediate — must be dropped).
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "I'll check that.\n")))
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", ""))) // delta-mode complete
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "I'll check that.\n")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("1", ""))) // delta-mode complete
 	// Tool call + result (must be suppressed).
-	o.Write(encodeTestTLV(tlv.TagAssistantF, `{"id":"c1","type":"call","name":"search_content","input":"{}"}`))
-	o.Write(encodeTestTLV(tlv.TagUserF, `{"id":"c1","output":[],"is_error":false}`))
+	o.Write(encodeTestTLV(wire.TagAssistantF, `{"id":"c1","type":"call","name":"search_content","input":"{}"}`))
+	o.Write(encodeTestTLV(wire.TagUserF, `{"id":"c1","output":[],"is_error":false}`))
 	// Final assistant message.
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "final ")))
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "answer")))
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", "")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "final ")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "answer")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("2", "")))
 
 	// Nothing printed before the task completes.
 	if out.String() != "" {
@@ -88,9 +87,9 @@ func TestTerseOutput_NoDeltaCompleteFrames(t *testing.T) {
 	o, out, _ := newTestOutput()
 
 	// --no-delta mode: AT carries the full text; reasoning is separate.
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantReasoning("1", "thinking...")))
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("2", "intermediate text")))
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("3", "final answer")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantReasoning("1", "thinking...")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("2", "intermediate text")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("3", "final answer")))
 	o.Write(taskMsg(true))
 	o.Write(taskMsg(false))
 
@@ -102,16 +101,16 @@ func TestTerseOutput_NoDeltaCompleteFrames(t *testing.T) {
 func TestTerseOutput_ReasoningAndNoiseSuppressed(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantReasoningDelta("1", "secret thinking")))
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantReasoning("1", "")))
-	o.Write(encodeTestTLV(tlv.TagUserX, wiretest.UserText("", "user prompt")))
-	o.Write(encodeTestTLV(tlv.TagUserX, wiretest.UserMedia("", "image", "data:image/png;base64,xxx")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantReasoningDelta("1", "secret thinking")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantReasoning("1", "")))
+	o.Write(encodeTestTLV(wire.TagUserX, wiretest.UserText("", "user prompt")))
+	o.Write(encodeTestTLV(wire.TagUserX, wiretest.UserMedia("", "image", "data:image/png;base64,xxx")))
 	// Notification goes to stderr, not stdout.
 	payload, _ := json.Marshal(protocol.SystemMsgEnvelope{
 		Type: string(protocol.MsgTypeNotify),
 		Data: json.RawMessage(`{"text":"MCP servers initialized: 2 servers"}`),
 	})
-	o.Write(encodeTestTLV(tlv.TagSystemMsg, string(payload)))
+	o.Write(encodeTestTLV(wire.TagSystemMsg, string(payload)))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())
@@ -130,7 +129,7 @@ func TestTerseOutput_ReasoningAndNoiseSuppressed(t *testing.T) {
 func TestTerseOutput_ErrorGoesToStderrAndDiscardsAnswer(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "partial answer")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "partial answer")))
 	o.Write(taskMsg(true))
 	o.Write(errorMsg("boom"))
 
@@ -230,7 +229,7 @@ func TestTerseOutput_CommandSuccess_UnknownNameSilent(t *testing.T) {
 func TestTerseOutput_FlushIdempotent(t *testing.T) {
 	o, out, _ := newTestOutput()
 
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "the answer")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "the answer")))
 	o.Write(taskMsg(true))
 	o.Write(taskMsg(false)) // flush #1 (task completion)
 
@@ -247,7 +246,7 @@ func TestTerseOutput_FlushWithoutTaskMsg(t *testing.T) {
 
 	// Task-completion SM never arrived (edge case); the adapter's
 	// safety-net flush prints the buffered answer.
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "answer")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "answer")))
 	o.FlushFinal()
 
 	if got := out.String(); got != "answer\n" {
@@ -265,7 +264,7 @@ func TestTerseOutput_ToolConfirmIgnored(t *testing.T) {
 		Type: string(protocol.MsgTypeToolConfirm),
 		Data: json.RawMessage(`{"id":"call_1"}`),
 	})
-	o.Write(encodeTestTLV(tlv.TagSystemMsg, string(payload)))
+	o.Write(encodeTestTLV(wire.TagSystemMsg, string(payload)))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())
@@ -279,14 +278,14 @@ func TestTerseOutput_FinalMessageReasoningOnly_PrintsNothing(t *testing.T) {
 	o, out, _ := newTestOutput()
 
 	// Intermediate message with text (must not leak into stdout).
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "I'll check that.")))
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", "")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "I'll check that.")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("1", "")))
 	// Tool call + result: UF closes the message group.
-	o.Write(encodeTestTLV(tlv.TagAssistantF, `{"id":"c1","type":"call","name":"search_content","input":"{}"}`))
-	o.Write(encodeTestTLV(tlv.TagUserF, `{"id":"c1","output":[],"is_error":false}`))
+	o.Write(encodeTestTLV(wire.TagAssistantF, `{"id":"c1","type":"call","name":"search_content","input":"{}"}`))
+	o.Write(encodeTestTLV(wire.TagUserF, `{"id":"c1","output":[],"is_error":false}`))
 	// Final message: reasoning only, no text.
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantReasoningDelta("2", "deep thinking")))
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantReasoning("2", "")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantReasoningDelta("2", "deep thinking")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantReasoning("2", "")))
 
 	o.Write(taskMsg(true))
 	o.Write(taskMsg(false))
@@ -300,13 +299,13 @@ func TestTerseOutput_FinalMessageToolCallOnly_PrintsNothing(t *testing.T) {
 	o, out, _ := newTestOutput()
 
 	// Intermediate message with text.
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "old intermediate text")))
-	o.Write(encodeTestTLV(tlv.TagAssistantX, wiretest.AssistantText("1", "")))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "old intermediate text")))
+	o.Write(encodeTestTLV(wire.TagAssistantX, wiretest.AssistantText("1", "")))
 	// Tool call + result closes the group.
-	o.Write(encodeTestTLV(tlv.TagAssistantF, `{"id":"c1","type":"call","name":"read_file","input":"{}"}`))
-	o.Write(encodeTestTLV(tlv.TagUserF, `{"id":"c1","output":[],"is_error":false}`))
+	o.Write(encodeTestTLV(wire.TagAssistantF, `{"id":"c1","type":"call","name":"read_file","input":"{}"}`))
+	o.Write(encodeTestTLV(wire.TagUserF, `{"id":"c1","output":[],"is_error":false}`))
 	// Final message: tool call only, no text.
-	o.Write(encodeTestTLV(tlv.TagAssistantF, `{"id":"c2","type":"call","name":"execute_command","input":"{}"}`))
+	o.Write(encodeTestTLV(wire.TagAssistantF, `{"id":"c2","type":"call","name":"execute_command","input":"{}"}`))
 
 	o.Write(taskMsg(true))
 	o.Write(taskMsg(false))
@@ -321,8 +320,8 @@ func TestTerseOutput_TextThenToolCallInFinalMessage_PrintsText(t *testing.T) {
 
 	// Final message: text + tool call, no UF afterwards (defensive: the
 	// text came before the tool call in the same message, so it IS text).
-	o.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "answer text")))
-	o.Write(encodeTestTLV(tlv.TagAssistantF, `{"id":"c1","type":"call","name":"save","input":"{}"}`))
+	o.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "answer text")))
+	o.Write(encodeTestTLV(wire.TagAssistantF, `{"id":"c1","type":"call","name":"save","input":"{}"}`))
 
 	o.Write(taskMsg(true))
 	o.Write(taskMsg(false))
@@ -332,27 +331,28 @@ func TestTerseOutput_TextThenToolCallInFinalMessage_PrintsText(t *testing.T) {
 	}
 }
 
-// tlvFrame is a parsed test frame.
-type tlvFrame struct {
+// wireFrame is a parsed test frame.
+type wireFrame struct {
 	tag   string
 	value string
 }
 
-// parseTLVFrames parses a raw TLV byte stream into frames.
-func parseTLVFrames(t *testing.T, data []byte) []tlvFrame {
+// parseFrames parses a frame stream into its frames: one frame per line, which is
+// why the two guards below are both no-ops unless a writer left something behind.
+func parseFrames(t *testing.T, data []byte) []wireFrame {
 	t.Helper()
-	var frames []tlvFrame
-	for len(data) >= 6 {
-		tag := string(data[0:2])
-		length := int(binary.BigEndian.Uint32(data[2:6]))
-		if len(data) < 6+length {
-			t.Fatalf("truncated TLV frame: tag=%q length=%d remaining=%d", tag, length, len(data)-6)
+	var frames []wireFrame
+	for len(data) > 0 {
+		i := bytes.IndexByte(data, '\n')
+		if i < 0 {
+			t.Fatalf("trailing %d bytes with no terminator: %q", len(data), data)
 		}
-		frames = append(frames, tlvFrame{tag: tag, value: string(data[6 : 6+length])})
-		data = data[6+length:]
-	}
-	if len(data) != 0 {
-		t.Fatalf("trailing %d bytes after TLV frames", len(data))
+		tag, value, err := wire.Decode(data[:i])
+		if err != nil {
+			t.Fatalf("malformed frame %q: %v", data[:i], err)
+		}
+		frames = append(frames, wireFrame{tag: tag, value: value})
+		data = data[i+1:]
 	}
 	return frames
 }
@@ -363,7 +363,7 @@ func sessionMsg(state string) []byte {
 		Type: string(protocol.MsgTypeSession),
 		Data: json.RawMessage(fmt.Sprintf(`{"state":%q}`, state)),
 	})
-	return encodeTestTLV(tlv.TagSystemMsg, string(payload))
+	return encodeTestTLV(wire.TagSystemMsg, string(payload))
 }
 
 // mcpMsg builds an SM "mcp" frame.
@@ -373,7 +373,7 @@ func mcpMsg(status, server, url, errText string) []byte {
 		Data: json.RawMessage(fmt.Sprintf(`{"status":%q,"server":%q,"url":%q,"error":%q}`,
 			status, server, url, errText)),
 	})
-	return encodeTestTLV(tlv.TagSystemMsg, string(payload))
+	return encodeTestTLV(wire.TagSystemMsg, string(payload))
 }
 
 // Session lifecycle frames are not user content: the adapter renders nothing

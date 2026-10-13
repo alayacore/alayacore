@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // TestToolStatusIndicatorInheritsLabelColor verifies every status glyph
@@ -320,7 +320,7 @@ func TestUserPromptLabel(t *testing.T) {
 func TestUFOnlyCollapsedHeadAndTailEllipsis(t *testing.T) {
 	wb := NewWindowBuffer(30, DefaultStyles())
 	long := strings.Repeat("0123456789", 6) // 60 chars
-	wb.AppendOrUpdate(tlv.TagUserF, "uf-1", long)
+	wb.AppendOrUpdate(wire.TagUserF, "uf-1", long)
 
 	plain := stripANSI(wb.GetAll(-1, false))
 	if strings.Contains(plain, "\n") {

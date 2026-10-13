@@ -22,7 +22,7 @@ import (
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 	ansi "github.com/charmbracelet/x/ansi"
 )
 
@@ -53,7 +53,7 @@ func writeCommand(w io.Writer, cmd string) {
 		return
 	}
 	commandNames.Store(id, name)
-	_ = tlv.WriteTLV(w, tlv.TagCommandIn, string(payload))
+	_ = wire.WriteFrame(w, wire.TagCommandIn, string(payload))
 }
 
 // ============================================================================
@@ -149,16 +149,16 @@ func submitCmd(w io.WriteCloser, attachments []attachment, prompt string) Cmd {
 					errs = append(errs, fmt.Sprintf("Failed to read attachment: %s", err))
 					continue
 				}
-				mime := tlv.MimeTypeForPath(a.path)
+				mime := wire.MimeTypeForPath(a.path)
 				b64 := base64.StdEncoding.EncodeToString(data)
 				value = fmt.Sprintf("data:%s;base64,%s", mime, b64)
 			}
-			_ = tlv.WriteTLV(w, tlv.TagUserX, contentBody(a.kind, value))
+			_ = wire.WriteFrame(w, wire.TagUserX, contentBody(a.kind, value))
 		}
 		if prompt != "" {
-			_ = tlv.WriteTLV(w, tlv.TagUserX, contentBody(protocol.TypeText, prompt))
+			_ = wire.WriteFrame(w, wire.TagUserX, contentBody(protocol.TypeText, prompt))
 		}
-		_ = tlv.WriteTLV(w, tlv.TagUserEnd, "")
+		_ = wire.WriteFrame(w, wire.TagUserEnd, "")
 
 		if len(errs) > 0 {
 			return displayErrorMsg{
@@ -171,7 +171,7 @@ func submitCmd(w io.WriteCloser, attachments []attachment, prompt string) Cmd {
 
 // addAttachment adds a local file path to pending attachments.
 func (m Terminal) addAttachment(path string) Terminal {
-	kind := tlv.KindForPath(path)
+	kind := wire.KindForPath(path)
 	m.pendingAttachments = append(m.pendingAttachments, attachment{path: path, kind: kind})
 	m.input = m.input.WithAttachments(m.pendingAttachmentLabels())
 	m = m.updateDisplayHeight()
@@ -180,7 +180,7 @@ func (m Terminal) addAttachment(path string) Terminal {
 
 // addURLAttachment adds a URL to pending attachments.
 func (m Terminal) addURLAttachment(url string) Terminal {
-	kind := tlv.KindForPath(url)
+	kind := wire.KindForPath(url)
 	m.pendingAttachments = append(m.pendingAttachments, attachment{path: url, kind: kind, isURL: true})
 	m.input = m.input.WithAttachments(m.pendingAttachmentLabels())
 	m = m.updateDisplayHeight()
@@ -199,7 +199,7 @@ func (m Terminal) clearAttachments() Terminal {
 func (m Terminal) pendingAttachmentLabels() []string {
 	labels := make([]string, len(m.pendingAttachments))
 	for i, a := range m.pendingAttachments {
-		labels[i] = tlv.MediaLabel(a.kind)
+		labels[i] = wire.MediaLabel(a.kind)
 	}
 	return labels
 }
@@ -329,7 +329,7 @@ type Terminal struct {
 // attachment represents a pending file attachment for multi-modal input.
 type attachment struct {
 	path  string // file path or URL
-	kind  string // content kind: tlv.KindImage, KindVideo, KindAudio, or KindDocument
+	kind  string // content kind: wire.KindImage, KindVideo, KindAudio, or KindDocument
 	isURL bool   // true if it's a URL (sent as-is, no file reading)
 }
 

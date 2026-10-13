@@ -11,7 +11,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 func visibleLength(s string) int {
@@ -465,19 +465,19 @@ func TestCtrlUClearsInput(t *testing.T) {
 func TestWindowBufferDeltaRouting(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	// Write assistant text delta with history ID
-	err := tlv.WriteTLV(out, tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "Hello"))
+	err := wire.WriteFrame(out, wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "Hello"))
 	if err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 	// Write another delta with same history ID
-	err = tlv.WriteTLV(out, tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", " world"))
+	err = wire.WriteFrame(out, wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", " world"))
 	if err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 	// Write different history ID
-	err = tlv.WriteTLV(out, tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "Another"))
+	err = wire.WriteFrame(out, wire.TagAssistantXDelta, wiretest.AssistantTextDelta("2", "Another"))
 	if err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 	// Flush pending deltas so windows are created in the buffer.
 	out.FlushPendingDeltas()
@@ -580,28 +580,28 @@ func TestWindowBufferNonDeltaMessages(t *testing.T) {
 
 func TestWindowBufferEdgeCases(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	// Delta message without valid NUL-delimited history ID (plain text)
-	// is malformed — should be silently ignored.
-	err := tlv.WriteTLV(out, tlv.TagAssistantXDelta, "plain text without history ID")
-	if err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+	// A frame whose body is not a content item is not a frame this format has:
+	// it is refused at the writer, so nothing arrives to be ignored. (A body that
+	// is a content item but carries no history id is a different case — the frame
+	// is well formed and the id is simply empty.)
+	if err := wire.WriteFrame(out, wire.TagAssistantXDelta, "plain text without a content item"); err == nil {
+		t.Error("writing a frame whose value is not a JSON object succeeded, want an error")
 	}
-	// Should NOT create a window (frame rejected)
-	windows := out.windowBuffer.AllWindows()
-	if len(windows) != 0 {
-		t.Errorf("Expected 0 windows (malformed frame), got %d", len(windows))
+	if refused := out.windowBuffer.AllWindows(); len(refused) != 0 {
+		t.Errorf("Expected 0 windows after a refused frame, got %d", len(refused))
 	}
 	// Mixed delta and non-delta messages
-	err = tlv.WriteTLV(out, tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("3", "Delta"))
+	err := wire.WriteFrame(out, wire.TagAssistantXDelta, wiretest.AssistantTextDelta("3", "Delta"))
 	if err != nil {
-		t.Fatalf("WriteTLV failed: %v", err)
+		t.Fatalf("WriteFrame failed: %v", err)
 	}
 	err = protocol.WriteSystemMsg(out, protocol.ErrorMsg{Text: "Error"})
 	if err != nil {
 		t.Fatalf("WriteSystemMsg failed: %v", err)
 	}
-	// Should have two windows total (malformed frame rejected)
-	windows = out.windowBuffer.AllWindows()
+	// Two windows total: the delta's and the error's, with nothing from the
+	// refused frame.
+	windows := out.windowBuffer.AllWindows()
 	if len(windows) != 2 {
 		t.Errorf("Expected 2 windows, got %d", len(windows))
 	}

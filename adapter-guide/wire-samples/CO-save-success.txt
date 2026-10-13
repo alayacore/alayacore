@@ -1,0 +1,1 @@
+CO{"call_id":"2","output":{"path":"/tmp/x.alaya"}}

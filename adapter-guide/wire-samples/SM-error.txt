@@ -1,0 +1,1 @@
+SM{"type":"error","data":{"text":"something broke"}}

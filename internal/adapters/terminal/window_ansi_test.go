@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // TestWindow_WithANSIContent verifies that windows properly handle content
@@ -22,25 +22,25 @@ func TestWindow_WithANSIContent(t *testing.T) {
 	}{
 		{
 			name:     "read_file result with ANSI",
-			tag:      tlv.TagUserF,
+			tag:      wire.TagUserF,
 			content:  "File content with \x1b[31mred text\x1b[0m",
 			expected: "File content with red text",
 		},
 		{
 			name:     "execute_command result with colors",
-			tag:      tlv.TagUserF,
+			tag:      wire.TagUserF,
 			content:  "Command output:\n\x1b[32mSuccess\x1b[0m\nDone",
 			expected: "Command output:\nSuccess\nDone",
 		},
 		{
 			name:     "write_file result with cursor codes",
-			tag:      tlv.TagUserF,
+			tag:      wire.TagUserF,
 			content:  "Writing\x1b[2K\rComplete",
 			expected: "Writing\nComplete",
 		},
 		{
 			name:     "tool call with ANSI in command",
-			tag:      tlv.TagAssistantF,
+			tag:      wire.TagAssistantF,
 			content:  "execute_command: echo \x1b[31mtest\x1b[0m",
 			expected: "echo test", // tool indicator and tool name live in the header line
 		},
@@ -61,7 +61,7 @@ func TestWindow_WithANSIContent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := NewWindow("test-window", tt.tag, styles)
-			if tt.tag == tlv.TagAssistantF {
+			if tt.tag == wire.TagAssistantF {
 				// Real tool windows carry a name — the renderer needs it to
 				// strip the "name: " prefix from the input.
 				w.SetRendererForTool("execute_command", "")
@@ -95,13 +95,13 @@ func TestWindow_PreservesLipglossColors(t *testing.T) {
 	}{
 		{
 			name:            "tool call is plain text",
-			tag:             tlv.TagAssistantF,
+			tag:             wire.TagAssistantF,
 			content:         "execute_command: echo test",
 			shouldHaveColor: false, // tool args render as plain text
 		},
 		{
 			name:            "tool result is plain text",
-			tag:             tlv.TagUserF,
+			tag:             wire.TagUserF,
 			content:         "output text",
 			shouldHaveColor: false, // tool output renders as plain text
 		},

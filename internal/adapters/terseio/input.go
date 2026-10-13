@@ -11,7 +11,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // errQuitPrompt is returned by readAllPrompt when stdin is ":quit" or ":q".
@@ -45,7 +45,7 @@ func writeCommand(input io.Writer, cmd string) error {
 		return err
 	}
 	commandNames.Store(id, name)
-	return tlv.WriteTLV(input, tlv.TagCommandIn, string(payload))
+	return wire.WriteFrame(input, wire.TagCommandIn, string(payload))
 }
 
 // readAllPrompt reads the entire reader and emits it as ONE TLV message:
@@ -84,8 +84,8 @@ func readAllPrompt(input io.Writer, reader io.Reader) error {
 	if err != nil {
 		return err
 	}
-	if err := tlv.WriteTLV(input, tlv.TagUserX, string(body)); err != nil {
+	if err := wire.WriteFrame(input, wire.TagUserX, string(body)); err != nil {
 		return err
 	}
-	return tlv.WriteTLV(input, tlv.TagUserEnd, "")
+	return wire.WriteFrame(input, wire.TagUserEnd, "")
 }

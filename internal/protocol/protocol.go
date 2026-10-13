@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // SystemMsgType constants identify the type field of a TagSystemMsg frame.
@@ -88,7 +88,7 @@ func WriteSystemMsg(w io.Writer, msg SystemMsg) error {
 	if err != nil {
 		return err
 	}
-	return tlv.WriteTLV(w, tlv.TagSystemMsg, string(env))
+	return wire.WriteFrame(w, wire.TagSystemMsg, string(env))
 }
 
 // ModelInfo is the wire format for a model in system messages (model_list).
@@ -124,14 +124,14 @@ type ModelInfo struct {
 }
 
 // Content kind values carried by a content item's "type" field. The
-// image/audio/video/document values mirror tlv.Kind* — the wire vocabulary.
+// image/audio/video/document values mirror wire.Kind* — the wire vocabulary.
 const (
 	TypeText      = "text"
 	TypeReasoning = "reasoning"
-	TypeImage     = tlv.KindImage
-	TypeVideo     = tlv.KindVideo
-	TypeAudio     = tlv.KindAudio
-	TypeDocument  = tlv.KindDocument
+	TypeImage     = wire.KindImage
+	TypeVideo     = wire.KindVideo
+	TypeAudio     = wire.KindAudio
+	TypeDocument  = wire.KindDocument
 )
 
 // ContentMeta is the frame-level metadata embedded in every content frame's

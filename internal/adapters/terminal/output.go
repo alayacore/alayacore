@@ -12,7 +12,7 @@ package terminal
 //
 // Three mutexes exist, but they are NEVER nested across goroutines:
 //
-//   outputWriter.mu  — protects the raw TLV buffer and processBuffer() call chain
+//   outputWriter.mu  — protects the frame decoder and processBuffer() call chain
 //   WindowBuffer.mu  — protects window data (windows slice, line heights)
 //   sessionState.mu  — protects status/model/queue snapshot fields
 //
@@ -31,8 +31,8 @@ package terminal
 // "root" lock (or no nesting at all for the UI goroutine).
 
 import (
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -44,15 +44,15 @@ import (
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // outputWriter parses TLV from the session and writes styled content to the WindowBuffer.
 // It implements io.Writer for the agent/session output stream.
 type outputWriter struct {
 	windowBuffer *WindowBuffer
-	buffer       []byte
-	mu           sync.Mutex // protects buffer and processBuffer
+	dec          wire.Decoder
+	mu           sync.Mutex // protects dec and processBuffer
 	dirty        atomic.Bool
 	styles       atomic.Pointer[Styles]
 	nextWindowID atomic.Int64
@@ -106,9 +106,19 @@ func (to *outputWriter) WithStyles(styles *Styles) {
 
 func (to *outputWriter) Write(p []byte) (n int, err error) {
 	to.mu.Lock()
-	to.buffer = append(to.buffer, p...)
-	to.processBuffer()
+	to.dec.Feed(p)
+	fatal := to.processBuffer()
+	if fatal != nil {
+		// The stream is finished, and the display still works: say so in the UI
+		// before handing the error back, because a session canceled by a write
+		// error reports nothing else. WriteError is called under to.mu, which is
+		// the documented order (outputWriter.mu → WindowBuffer.mu).
+		to.WriteError(fmt.Sprintf("frame error: %v", fatal))
+	}
 	to.mu.Unlock()
+	if fatal != nil {
+		return 0, fatal
+	}
 	return len(p), nil
 }
 
@@ -128,19 +138,21 @@ func (to *outputWriter) WriteNotify(msg string) {
 	to.dirty.Store(true)
 }
 
-// processBuffer parses TLV-encoded data from the buffer
-func (to *outputWriter) processBuffer() {
-	for len(to.buffer) >= 6 {
-		tag := string(to.buffer[0:2])
-		length := int(binary.BigEndian.Uint32(to.buffer[2:6]))
-
-		if len(to.buffer) < 6+length {
-			break
+// processBuffer writes out every complete frame in the decoder and returns the
+// error that finished the stream, if any. Must be called with to.mu held.
+func (to *outputWriter) processBuffer() error {
+	for {
+		tag, value, err := to.dec.Next()
+		if err != nil {
+			if errors.Is(err, wire.ErrIncomplete) {
+				return nil
+			}
+			// A malformed frame ends the stream: the decoder never recovers, so
+			// every later frame would report the same error. The caller stops the
+			// session with it rather than pretending the output continued.
+			return err
 		}
-
-		value := string(to.buffer[6 : 6+length])
 		to.writeColored(tag, value)
-		to.buffer = to.buffer[6+length:]
 	}
 }
 
@@ -170,12 +182,12 @@ func (to *outputWriter) writeColored(tag string, value string) {
 	// Streaming content delta — incremental content appended to an existing
 	// window. Instead of writing directly to WindowBuffer, accumulate for
 	// coalescing. The content kind (text vs reasoning) rides in the JSON.
-	case tlv.TagAssistantXDelta:
+	case wire.TagAssistantXDelta:
 		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		displayTag, ok := contentDisplayTag(tlv.TagAssistantX, d.Type)
+		displayTag, ok := contentDisplayTag(wire.TagAssistantX, d.Type)
 		if !ok {
 			return
 		}
@@ -184,12 +196,12 @@ func (to *outputWriter) writeColored(tag string, value string) {
 	// Complete authoritative content — already delivered via deltas during
 	// live streaming, but carries the authoritative content during replay.
 	// Only display if no window exists yet (replay case).
-	case tlv.TagAssistantX:
+	case wire.TagAssistantX:
 		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		displayTag, ok := contentDisplayTag(tlv.TagAssistantX, d.Type)
+		displayTag, ok := contentDisplayTag(wire.TagAssistantX, d.Type)
 		if !ok {
 			return
 		}
@@ -199,12 +211,12 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		to.applyWireTime(d.ID, d.Time)
 
 	// User content — accumulated until the next non-user tag triggers flush.
-	case tlv.TagUserX:
+	case wire.TagUserX:
 		d, ok := decodeContent(value)
 		if !ok {
 			return
 		}
-		displayTag, ok := contentDisplayTag(tlv.TagUserX, d.Type)
+		displayTag, ok := contentDisplayTag(wire.TagUserX, d.Type)
 		if !ok {
 			return
 		}
@@ -215,14 +227,14 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		}
 		to.applyWireTime(to.activeUserWindowID, d.Time)
 
-	case tlv.TagUserEnd:
+	case wire.TagUserEnd:
 		// Flush any pending user content. TagUserEnd should only appear
 		// on the input stream, but handle it here as a safety measure.
 		to.flushUserContent()
 
 	// Function lifecycle (JSON: call_id, name, input). The history id rides in
 	// the body's "id"; call_id pairs the call with its result.
-	case tlv.TagAssistantF:
+	case wire.TagAssistantF:
 		var fd protocol.ToolInputData
 		if err := json.Unmarshal([]byte(value), &fd); err != nil {
 			return
@@ -247,7 +259,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		to.applyWireTime(fd.CallID, fd.Time)
 
 	// Tool input delta — partial JSON arguments during streaming.
-	case tlv.TagAssistantFDelta:
+	case wire.TagAssistantFDelta:
 		var fd protocol.ToolInputDeltaData
 		if err := json.Unmarshal([]byte(value), &fd); err != nil {
 			return
@@ -261,7 +273,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 
 	// Tool result preview snapshot (JSON: call_id, text)
 	// Ephemeral display-only frame; authoritative result arrives via UF.
-	case tlv.TagUserFDelta:
+	case wire.TagUserFDelta:
 		var od protocol.ToolOutputDeltaData
 		if err := json.Unmarshal([]byte(value), &od); err != nil {
 			return
@@ -269,7 +281,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		to.windowBuffer.HandleToolOutputDelta(od.CallID, od.Text, parseHistoryID(od.ID))
 
 	// Function result (JSON: call_id, output, is_error)
-	case tlv.TagUserF:
+	case wire.TagUserF:
 		var tr protocol.ToolOutputData
 		if err := json.Unmarshal([]byte(value), &tr); err != nil {
 			return
@@ -280,12 +292,12 @@ func (to *outputWriter) writeColored(tag string, value string) {
 		to.applyWireTime(tr.CallID, tr.Time)
 
 	// System tags
-	case tlv.TagSystemMsg:
+	case wire.TagSystemMsg:
 		to.handleSystemMsg(value)
 		return
 
 	// Command output (CO) — command result frames
-	case tlv.TagCommandOut:
+	case wire.TagCommandOut:
 		to.handleCommandOut(value)
 		return
 
@@ -315,7 +327,7 @@ func (to *outputWriter) triggerUpdateForTag(tag string) {
 // incorrectly.
 func isAccumulatingDelta(tag string) bool {
 	switch tag {
-	case tlv.TagAssistantXDelta, tlv.TagAssistantFDelta:
+	case wire.TagAssistantXDelta, wire.TagAssistantFDelta:
 		return true
 	}
 	return false
@@ -325,7 +337,7 @@ func isAccumulatingDelta(tag string) bool {
 // (Uf). It updates the window directly (snapshot semantics, no coalescing)
 // and also does not trigger flushPendingDeltas on arrival.
 func isWriteThroughDelta(tag string) bool {
-	return tag == tlv.TagUserFDelta
+	return tag == wire.TagUserFDelta
 }
 
 // tagsThatSetDirty marks tags whose arrival requires a redraw. Ax/Af
@@ -334,11 +346,11 @@ func isWriteThroughDelta(tag string) bool {
 // those pending deltas are eventually written out. Uf IS in the set
 // because it updates the window directly (snapshot semantics).
 var tagsThatSetDirty = map[string]bool{
-	tlv.TagAssistantX: true,
-	tlv.TagUserX:      true,
-	tlv.TagAssistantF: true,
-	tlv.TagUserF:      true,
-	tlv.TagUserFDelta: true,
+	wire.TagAssistantX: true,
+	wire.TagUserX:      true,
+	wire.TagAssistantF: true,
+	wire.TagUserF:      true,
+	wire.TagUserFDelta: true,
 }
 
 // pendTextDelta accumulates a text delta ("Ax") for coalescing.
@@ -839,7 +851,7 @@ func (to *outputWriter) generateWindowID() string {
 
 // userTag returns true if tag is a user content tag (on the wire).
 func userTag(tag string) bool {
-	return tag == tlv.TagUserX || tag == tlv.TagUserEnd
+	return tag == wire.TagUserX || tag == wire.TagUserEnd
 }
 
 // applyWireTime stamps a window's CreatedAt from a frame's "time" field, when

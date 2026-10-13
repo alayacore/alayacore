@@ -40,7 +40,7 @@ const (
 )
 
 // Window tag constants for internal window types in the terminal adapter.
-// These are NOT TLV protocol tags (those are defined in internal/tlv/tlv.go).
+// These are NOT TLV protocol tags (those are defined in internal/tlv/wire.go).
 const (
 	TagWindowSE = "SE"
 	TagWindowSN = "SN"

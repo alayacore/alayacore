@@ -13,7 +13,7 @@ import (
 	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // ============================================================================
@@ -194,7 +194,7 @@ func (wb *WindowBuffer) HandleToolInputEvent(data protocol.ToolInputData, histor
 	}
 
 	// Create new window with tool renderer
-	w := NewWindow(data.CallID, tlv.TagAssistantF, wb.styles)
+	w := NewWindow(data.CallID, wire.TagAssistantF, wb.styles)
 	w.HistoryID = historyID
 	w.Folded = true
 	w.Visible = true
@@ -221,7 +221,7 @@ func (wb *WindowBuffer) HandleToolInputDelta(id, name, delta string, historyID u
 	idx, ok := wb.idIndex[id]
 	if !ok {
 		// No window yet — create placeholder with just the tool name.
-		w := NewWindow(id, tlv.TagAssistantF, wb.styles)
+		w := NewWindow(id, wire.TagAssistantF, wb.styles)
 		w.HistoryID = historyID
 		w.Folded = true
 		w.Visible = true
@@ -259,7 +259,7 @@ func (wb *WindowBuffer) HandleToolOutputDelta(id, text string, historyID uint64)
 	idx, ok := wb.idIndex[id]
 	if !ok {
 		// No window yet — create a placeholder (e.g. Uf arrived first).
-		w := NewWindow(id, tlv.TagUserF, wb.styles)
+		w := NewWindow(id, wire.TagUserF, wb.styles)
 		w.HistoryID = historyID
 		w.Folded = true
 		w.Visible = true
@@ -303,7 +303,7 @@ func (wb *WindowBuffer) HandleToolOutput(id, output string, isError bool, histor
 	if isError {
 		status = ToolStatusError
 	}
-	w := NewWindow(id, tlv.TagUserF, wb.styles)
+	w := NewWindow(id, wire.TagUserF, wb.styles)
 	w.HistoryID = historyID
 	w.Folded = true
 	w.Visible = true

@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // pinnedTime is the arrival stamp the tests below give their windows. It is
@@ -236,7 +236,7 @@ func TestWindowLineColorIsTheDefaultExceptErrors(t *testing.T) {
 		{"user prompt", tagUserText, "USER PROMPT", defaultLine},
 		{"reasoning", tagAssistantReasoning, "REASONING", defaultLine},
 		{"assistant", tagAssistantText, "ASSISTANT", defaultLine},
-		{"tool call", tlv.TagAssistantF, "TOOL CALL", defaultLine},
+		{"tool call", wire.TagAssistantF, "TOOL CALL", defaultLine},
 		{"system notify", TagWindowSN, "SYSTEM NOTIFY", defaultLine},
 		{"system error", TagWindowSE, "SYSTEM ERROR", errorLine},
 	}

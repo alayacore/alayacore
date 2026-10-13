@@ -17,7 +17,7 @@ import (
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // captureWriteCloser records what the Terminal writes to the session's input
@@ -70,11 +70,11 @@ func TestConfirmQuitSendsQuitCommand(t *testing.T) {
 	if msg := cmd(); msg != nil {
 		t.Errorf("the quit command should not produce a message, got %T", msg)
 	}
-	tag, value, err := tlv.ReadTLV(cap)
+	tag, value, err := wiretest.NextFrame(cap)
 	if err != nil {
 		t.Fatalf("read the emitted command: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Fatalf("tag = %s, want CI", tag)
 	}
 	var sent protocol.CmdMsg
@@ -103,10 +103,10 @@ func TestSessionClosedFrameEndsTheProgram(t *testing.T) {
 	// itself an authoritative frame, so the outputWriter flushed the delta when
 	// the frame arrived — this pins that the session's last words are in the
 	// WindowBuffer by the time the program leaves.
-	if _, err := m.out.Write(encodeTestTLV(tlv.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "bye"))); err != nil {
+	if _, err := m.out.Write(encodeTestTLV(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "bye"))); err != nil {
 		t.Fatalf("write delta frame: %v", err)
 	}
-	m.out.Write(encodeTestTLV(tlv.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`)) // test frame
+	m.out.Write(encodeTestTLV(wire.TagSystemMsg, `{"type":"session","data":{"state":"closed"}}`)) // test frame
 
 	after, cmd := m.handleTick()
 	if cmd == nil {
@@ -134,7 +134,7 @@ func TestQuitWaitingOverlayOffersCancel(t *testing.T) {
 	m.quitting = true
 
 	// A task in progress, as the session reports it.
-	m.out.Write(encodeTestTLV(tlv.TagSystemMsg,
+	m.out.Write(encodeTestTLV(wire.TagSystemMsg,
 		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame
 
 	after, cmd := m.handleTick()
@@ -160,11 +160,11 @@ func TestQuitWaitingOverlayOffersCancel(t *testing.T) {
 		t.Fatal("'c' should emit the cancel command")
 	}
 	cmd()
-	tag, value, err := tlv.ReadTLV(cap)
+	tag, value, err := wiretest.NextFrame(cap)
 	if err != nil {
 		t.Fatalf("read the emitted command: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Fatalf("tag = %s, want CI", tag)
 	}
 	var sent protocol.CmdMsg
@@ -202,7 +202,7 @@ func TestQuitWaitingWindowAfterCancel(t *testing.T) {
 	m = m.updateComponentSizes(80, 24)
 	m.streamInput = &captureWriteCloser{}
 	m.quitting = true
-	m.out.Write(encodeTestTLV(tlv.TagSystemMsg,
+	m.out.Write(encodeTestTLV(wire.TagSystemMsg,
 		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame
 
 	after, _ := m.handleTick()

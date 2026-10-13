@@ -67,10 +67,10 @@ func TestScreenMatchesATerminalUnderTmux(t *testing.T) {
 	// an ASCII base with a variation selector, a ZWJ family (one cluster, two
 	// cells), a regional-indicator pair, CJK, and the box-drawing and braille
 	// glyphs the chrome is drawn with (East-Asian Ambiguous, one cell).
-	h.appendWin(tlvAssistantText, "w1",
+	h.appendWin(tagAssistantText, "w1",
 		"步骤如下：\n1️⃣ 第一步：安装依赖并确认环境变量已经正确设置好了\n2️⃣ 第二步：运行测试\n3️⃣ 第三步：部署上线\n")
 	h.step("keycaps")
-	h.appendWin(tlvAssistantText, "w2",
+	h.appendWin(tagAssistantText, "w2",
 		"widths: 1️⃣ a\uFE0F 👨\u200d👩\u200d👧\u200d👦 🇨🇳 中文 ─── ⠿ ✓ ✅\uFE0F\n"+
 			"a row that runs past the pane width so the terminal has to soft-wrap it, "+
 			"and a second wrapped row to make the run span two terminal rows\n")
@@ -85,7 +85,7 @@ func TestScreenMatchesATerminalUnderTmux(t *testing.T) {
 	// emits are well-formed, and the pane tmux paints from them is the pane the grid
 	// model predicted. Without sanitizeUTF8 the raw bytes would go out, tmux would
 	// substitute for them on its own rules, and the two would differ.
-	h.appendWin(tlvAssistantText, "w3",
+	h.appendWin(tagAssistantText, "w3",
 		"ill-formed: a\x80b\n"+
 			"truncated: a\xe4\xb8z\n"+
 			"lone C1: a\x9b[m b\n"+
@@ -208,8 +208,6 @@ func clusterComposed(s string) bool {
 	}
 	return false
 }
-
-const tlvAssistantText = "AT"
 
 // replayInTmux feeds stream to a pane of the given size and returns the pane's
 // text. chunk > 0 writes the stream in fixed-size pieces through dd, which is

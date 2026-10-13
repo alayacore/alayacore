@@ -49,7 +49,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
 	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
@@ -229,11 +229,11 @@ func echoedUserIDs(t *testing.T, out string) []string {
 	var ids []string
 	r := strings.NewReader(out)
 	for {
-		tag, value, err := tlv.ReadTLV(r)
+		tag, value, err := wiretest.NextFrame(r)
 		if err != nil {
 			return ids
 		}
-		if tag != tlv.TagUserX {
+		if tag != wire.TagUserX {
 			continue
 		}
 		var d protocol.ContentData
@@ -566,8 +566,8 @@ func TestSteeringEchoedBeforeTheAnswerItSteered(t *testing.T) {
 	driveRun(t, s)
 
 	out := output.String()
-	ut := frameIndexContaining(t, out, tlv.TagUserX, steeringText)
-	at := frameIndexContaining(t, out, tlv.TagAssistantX, steeringAnswer)
+	ut := frameIndexContaining(t, out, wire.TagUserX, steeringText)
+	at := frameIndexContaining(t, out, wire.TagAssistantX, steeringAnswer)
 	if ut < 0 || at < 0 {
 		t.Fatalf("steering UT frame at %d, answer AT frame at %d — both must be present:\n%q", ut, at, out)
 	}
@@ -582,7 +582,7 @@ func frameIndexContaining(t *testing.T, out, tag, want string) int {
 	t.Helper()
 	r := strings.NewReader(out)
 	for i := 0; ; i++ {
-		gotTag, value, err := tlv.ReadTLV(r)
+		gotTag, value, err := wiretest.NextFrame(r)
 		if err != nil {
 			return -1
 		}
@@ -1078,10 +1078,10 @@ func TestSteeringEndToEndThroughInputPipe(t *testing.T) {
 // writePrompt sends one complete user message: text then the UE flush.
 func writePrompt(t *testing.T, w io.Writer, text string) {
 	t.Helper()
-	if err := tlv.WriteTLV(w, tlv.TagUserX, wiretest.UserText("", text)); err != nil {
+	if err := wire.WriteFrame(w, wire.TagUserX, wiretest.UserText("", text)); err != nil {
 		t.Fatalf("write UX: %v", err)
 	}
-	if err := tlv.WriteTLV(w, tlv.TagUserEnd, ""); err != nil {
+	if err := wire.WriteFrame(w, wire.TagUserEnd, ""); err != nil {
 		t.Fatalf("write UE: %v", err)
 	}
 }

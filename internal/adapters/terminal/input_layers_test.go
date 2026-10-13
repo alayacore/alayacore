@@ -13,7 +13,8 @@ import (
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/tlv"
+	"github.com/alayacore/alayacore/internal/wire"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 // TestInputLayersForEveryState cross-checks the stack each fixture produces
@@ -123,11 +124,11 @@ func TestMCPInitModalOwnsTheKeyboard(t *testing.T) {
 	default:
 		t.Fatalf("Ctrl+G produced %T, want a BatchMsg", msg)
 	}
-	tag, value, err := tlv.ReadTLV(cap)
+	tag, value, err := wiretest.NextFrame(cap)
 	if err != nil {
 		t.Fatalf("read the emitted command: %v", err)
 	}
-	if tag != tlv.TagCommandIn {
+	if tag != wire.TagCommandIn {
 		t.Fatalf("tag = %s, want CI", tag)
 	}
 	var sent protocol.CmdMsg

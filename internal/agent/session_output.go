@@ -30,8 +30,8 @@ import (
 
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
-	"github.com/alayacore/alayacore/internal/tlv"
 	"github.com/alayacore/alayacore/internal/version"
+	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // systemInfoKind selects which state to broadcast to the adapter.
@@ -68,7 +68,7 @@ func (s *Session) writeTLV(tag string, value string) {
 	if s.outputBroken.Load() || s.Output == nil {
 		return
 	}
-	if err := tlv.WriteTLV(s.Output, tag, value); err != nil {
+	if err := wire.WriteFrame(s.Output, tag, value); err != nil {
 		s.markOutputBroken()
 	}
 }
@@ -145,7 +145,7 @@ func (s *Session) writeCmdResult(id string, result any, err error) {
 		// Last resort: drop the frame entirely (writeTLV would corrupt).
 		return
 	}
-	s.writeTLV(tlv.TagCommandOut, string(data))
+	s.writeTLV(wire.TagCommandOut, string(data))
 }
 
 // ============================================================================
