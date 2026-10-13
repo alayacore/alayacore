@@ -32,7 +32,10 @@
 # part of the build.
 #
 # Old files carry no per-message time, so converted parts carry none either: the
-# adapter stamps those with its receipt clock, exactly as v13 did.
+# adapter stamps those with its receipt clock. They carry no per-video
+# fps/resolution either, so a migrated video serializes with the provider default
+# (2 / "default"), not the session's :video_config — and so does not follow later
+# changes to it, which is what keeps history immutable.
 
 set -euo pipefail
 

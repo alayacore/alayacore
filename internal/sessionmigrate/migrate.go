@@ -8,7 +8,12 @@
 // v13 writer emitted: UT/UI/UV/UA/UD, AT/AR, AF, UF.
 //
 // Old files carry no per-message time, so the converted parts carry none either.
-// The adapter stamps those with its receipt clock, exactly as v13 did.
+// The adapter stamps those with its receipt clock, exactly as v13 did. They carry
+// no per-video fps/resolution either, so a migrated video serializes with the
+// provider default (2 / "default"), not the session's :video_config — the old
+// file never recorded a per-video setting, and "unset" is the provider default.
+// It therefore does not follow later :video_config changes, which is what keeps
+// history immutable.
 package sessionmigrate
 
 import (

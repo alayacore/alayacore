@@ -41,6 +41,7 @@ func TestMigrateV13SessionLoadsAsV14(t *testing.T) {
 	add("UF", `{"id":"t1","output":[{"type":"text","text":"ok"}],"is_error":false}`)
 	add("AT", "Here it is.")
 	add("AR", "thinking...")
+	add("UV", "data:video/mp4;base64,AAAA")
 
 	front := "---\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n" +
 		"message_version: 13\nreasoning_level: 1\n---\n"
@@ -58,8 +59,8 @@ func TestMigrateV13SessionLoadsAsV14(t *testing.T) {
 		t.Fatalf("load migrated session: %v", err)
 	}
 
-	if len(data.Contents) != 6 {
-		t.Fatalf("loaded %d parts, want 6", len(data.Contents))
+	if len(data.Contents) != 7 {
+		t.Fatalf("loaded %d parts, want 7", len(data.Contents))
 	}
 	if _, ok := data.Contents[0].(*llm.TextPart); !ok || data.Contents[0].GetRole() != llm.RoleUser {
 		t.Errorf("part 0 = %T role %q, want user TextPart", data.Contents[0], data.Contents[0].GetRole())
@@ -75,6 +76,12 @@ func TestMigrateV13SessionLoadsAsV14(t *testing.T) {
 	}
 	if rp, ok := data.Contents[5].(*llm.ReasoningPart); !ok || rp.Text != "thinking..." {
 		t.Errorf("part 5 = %#v, want ReasoningPart \"thinking...\"", data.Contents[5])
+	}
+	// A migrated video has no fps/res (the v13 file never recorded one), so it
+	// serializes with the provider default and cannot follow a later
+	// :video_config — see the sessionmigrate package doc.
+	if v, ok := data.Contents[6].(*llm.VideoPart); !ok || v.URI == "" || v.FPS != 0 || v.Res != 0 {
+		t.Errorf("part 6 = %#v, want a VideoPart with unset fps/res", data.Contents[6])
 	}
 	// Ids are re-issued in record order on load, as for any file.
 	for i, p := range data.Contents {
