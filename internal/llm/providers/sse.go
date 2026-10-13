@@ -11,11 +11,11 @@ package providers
 // The cap belongs on what the event decodes to.
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/alayacore/alayacore/internal/lines"
 )
 
 // maxEventBytes bounds one decoded SSE event — the data accumulated between
@@ -43,47 +43,32 @@ func errEventTooLarge() error {
 	return fmt.Errorf("SSE event exceeded %dMB — the model may have generated an oversized tool call", maxEventBytes>>20)
 }
 
-// sseLineReader reads newline-delimited lines with no fixed per-line cap. A
-// line longer than maxEventBytes fails, since no acceptable event could
-// contain it, which keeps a stream with no newline from growing without bound.
+// sseLineReader reads newline-delimited lines from an event stream, bounded by
+// maxEventBytes: a longer line fails, since no acceptable event could contain
+// it, which keeps a stream with no newline from growing without bound.
+//
+// It is lines.Reader with this package's words for that bound. The bound has a
+// name here because of what exceeding it means — an oversized tool call, far more
+// often than a hostile stream — and lines' own wording would hide that. A stream
+// that ends without a terminator hands its last line over as a line, as it always
+// has.
 type sseLineReader struct {
-	r   *bufio.Reader
-	buf []byte
+	lines *lines.Reader
 }
 
 func newSSELineReader(r io.Reader) *sseLineReader {
-	return &sseLineReader{r: bufio.NewReader(r)}
+	return &sseLineReader{lines: lines.NewReader(r, maxEventBytes)}
 }
 
-// next returns the next line without its trailing CR/LF. It returns io.EOF
-// once the stream is exhausted.
+// next returns the next line without its terminator. It returns io.EOF once the
+// stream is exhausted.
 func (l *sseLineReader) next() (string, error) {
-	l.buf = l.buf[:0]
-	for {
-		frag, err := l.r.ReadSlice('\n')
-		if len(l.buf)+len(frag) > maxEventBytes {
-			return "", errEventTooLarge()
-		}
-		l.buf = append(l.buf, frag...)
-
-		switch {
-		case err == nil:
-			return string(trimEOL(l.buf)), nil
-		case errors.Is(err, bufio.ErrBufferFull):
-			continue // the line continues; ReadSlice returned what fit
-		case errors.Is(err, io.EOF):
-			if len(l.buf) == 0 {
-				return "", io.EOF
-			}
-			return string(trimEOL(l.buf)), nil
-		default:
-			return "", err
-		}
+	line, err := l.lines.ReadLine()
+	if errors.Is(err, lines.ErrLineTooLong) {
+		return "", errEventTooLarge()
 	}
-}
-
-// trimEOL strips a trailing newline and any preceding carriage return.
-func trimEOL(b []byte) []byte {
-	b = bytes.TrimSuffix(b, []byte("\n"))
-	return bytes.TrimSuffix(b, []byte("\r"))
+	if err != nil {
+		return "", err
+	}
+	return string(line), nil
 }

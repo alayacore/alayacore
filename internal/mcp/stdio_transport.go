@@ -1,9 +1,9 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,19 +14,20 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/debug"
+	"github.com/alayacore/alayacore/internal/lines"
 )
 
 // StdioTransport communicates with an MCP server via stdin/stdout.
 // JSON-RPC messages are newline-delimited JSON (NDJSON).
 //
 // A single background goroutine (readLoop) reads all response lines from
-// the scanner and dispatches them to waiting callers by request ID.
+// the lines.Reader and dispatches them to waiting callers by request ID.
 // This eliminates per-call goroutine leaks and prevents response
 // desynchronization on context cancellation.
 type StdioTransport struct {
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
-	scanner   *bufio.Scanner
+	reader    *lines.Reader
 	closeOnce sync.Once // guards the Close() cleanup sequence
 	doneOnce  sync.Once // guards close(done) — shared with the monitor goroutine
 	done      chan struct{}
@@ -44,7 +45,7 @@ type StdioTransport struct {
 
 	// readErr records why the response reader stopped. A request whose
 	// channel is closed by readLoop reports this instead of a bare EOF, so a
-	// line longer than maxMessageBytes reads as "token too long" rather than
+	// line longer than maxMessageBytes reads as "line too long" rather than
 	// as the server vanishing. Guarded by pendingMu (written before the
 	// pending channels are closed, read after one is observed closed).
 	readErr  error
@@ -63,16 +64,15 @@ type StdioTransport struct {
 	notificationHandler atomic.Pointer[NotificationHandler]
 }
 
-// newStdioScanner builds the reader for an MCP server's NDJSON stdout.
+// newStdioReader builds the reader for an MCP server's NDJSON stdout.
 //
-// bufio.Scanner's default token size is 64KB, which a legitimate MCP tool
-// result (a file read through a filesystem server, say) easily exceeds; the
-// line is then dropped and the request fails. The explicit buffer keeps stdio
-// in step with the HTTP transport, which shares maxMessageBytes.
-func newStdioScanner(r io.Reader) *bufio.Scanner {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxMessageBytes)
-	return scanner
+// It is bounded by maxMessageBytes, which the HTTP transport shares: a line over
+// that is reported rather than buffered, so a server that never terminates one
+// cannot grow this in memory. A stream that ends without a terminator hands its
+// last line over as a line, which is what bufio.Scanner did and what servers in
+// the wild rely on.
+func newStdioReader(r io.Reader) *lines.Reader {
+	return lines.NewReader(r, maxMessageBytes)
 }
 
 // NewStdioTransport creates a stdio transport that spawns the given command.
@@ -140,7 +140,7 @@ func NewStdioTransport(command string, args []string, env map[string]string, deb
 	t := &StdioTransport{
 		cmd:           cmd,
 		stdin:         stdin,
-		scanner:       newStdioScanner(stdout),
+		reader:        newStdioReader(stdout),
 		done:          make(chan struct{}),
 		processExited: make(chan struct{}),
 		pending:       make(map[requestID]chan<- jsonrpcResponse),
@@ -182,8 +182,20 @@ func (t *StdioTransport) readLoop() {
 	defer cancel()
 	go func() { <-t.done; cancel() }()
 
-	for t.scanner.Scan() {
-		data := t.scanner.Bytes()
+	for {
+		data, err := t.reader.ReadLine()
+		if err != nil {
+			// EOF is the server closing its end; anything else is why it stopped.
+			// Record it first: a closed pending channel alone reports only EOF, and
+			// a line over maxMessageBytes is the failure most worth naming.
+			if !errors.Is(err, io.EOF) {
+				t.readErr = fmt.Errorf("read MCP response: %w", err)
+				if t.debugWriter != nil {
+					fmt.Fprintf(t.debugWriter, "MCP: response reader stopped: %v\n", err)
+				}
+			}
+			break
+		}
 		if err := parseAndDispatchJSONRPC(ctx, data, t.pending, &t.pendingMu, t.debugWriter, t.handleServerRequest, t.notifHandler()); err != nil {
 			if t.debugWriter != nil {
 				fmt.Fprintf(t.debugWriter, "MCP: malformed response line (len=%d): %v\n",
@@ -192,16 +204,8 @@ func (t *StdioTransport) readLoop() {
 		}
 	}
 
-	// Scanner error or EOF — close all remaining pending channels. Record the
-	// scanner error first: a line over maxMessageBytes is the failure most
-	// worth naming, and a closed channel alone reports only EOF.
+	// Reader finished — close all remaining pending channels.
 	t.pendingMu.Lock()
-	if err := t.scanner.Err(); err != nil {
-		t.readErr = fmt.Errorf("read MCP response: %w", err)
-		if t.debugWriter != nil {
-			fmt.Fprintf(t.debugWriter, "MCP: response reader stopped: %v\n", err)
-		}
-	}
 	for id, ch := range t.pending {
 		close(ch)
 		delete(t.pending, id)

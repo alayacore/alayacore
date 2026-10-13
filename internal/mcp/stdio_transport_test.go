@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/alayacore/alayacore/internal/lines"
 )
 
 // ============================================================================
@@ -881,14 +883,10 @@ func TestStdioTransport_ResponseLargerThanScanBuffer(t *testing.T) {
 // pending channel on its own reports EOF, which reads as "the server went
 // away" and hides the real cause.
 func TestStdioTransport_ScanErrorIsSurfaced(t *testing.T) {
-	// A scanner with a deliberately tiny token budget stands in for a line
-	// over the real maxMessageBytes; the real bound is 64MB, too large to
-	// exercise end to end.
-	scanner := bufio.NewScanner(strings.NewReader(strings.Repeat("x", 4096) + "\n"))
-	scanner.Buffer(make([]byte, 0, 16), 32)
-
+	// A reader with a deliberately tiny bound stands in for a line over the real
+	// maxMessageBytes; the real bound is 64MB, too large to exercise end to end.
 	transport := &StdioTransport{
-		scanner: scanner,
+		reader:  lines.NewReader(strings.NewReader(strings.Repeat("x", 4096)+"\n"), 32),
 		done:    make(chan struct{}),
 		pending: make(map[requestID]chan<- jsonrpcResponse),
 	}
@@ -901,7 +899,7 @@ func TestStdioTransport_ScanErrorIsSurfaced(t *testing.T) {
 	if err == nil {
 		t.Fatal("readError() = nil, want the scanner failure")
 	}
-	if !errors.Is(err, bufio.ErrTooLong) {
-		t.Errorf("readError() = %v, want it to wrap %v", err, bufio.ErrTooLong)
+	if !errors.Is(err, lines.ErrLineTooLong) {
+		t.Errorf("readError() = %v, want it to wrap %v", err, lines.ErrLineTooLong)
 	}
 }

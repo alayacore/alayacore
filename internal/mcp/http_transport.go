@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,7 @@ import (
 	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/debug"
+	"github.com/alayacore/alayacore/internal/lines"
 	"github.com/alayacore/alayacore/internal/mcp/auth"
 )
 
@@ -69,18 +69,16 @@ type HTTPTransport struct {
 // scanner and SSE parsing state needed to read SSE events from it.
 type sseReadCloser struct {
 	body     io.ReadCloser
-	scanner  *bufio.Scanner
+	lines    *lines.Reader
 	closed   bool
 	closedMu sync.Mutex
 }
 
 // newSSEReadCloser creates an sseReadCloser from an HTTP response body.
 func newSSEReadCloser(body io.ReadCloser) *sseReadCloser {
-	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxMessageBytes)
 	return &sseReadCloser{
-		body:    body,
-		scanner: scanner,
+		body:  body,
+		lines: lines.NewReader(body, maxMessageBytes),
 	}
 }
 
@@ -98,8 +96,15 @@ func (s *sseReadCloser) readEvent() (eventType, data string, err error) {
 	var currentEvent string
 	var currentData strings.Builder
 
-	for s.scanner.Scan() {
-		line := s.scanner.Text()
+	for {
+		raw, err := s.lines.ReadLine()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return "", "", io.EOF
+			}
+			return "", "", fmt.Errorf("SSE read: %w", err)
+		}
+		line := string(raw)
 
 		// Empty line signals end of an SSE event.
 		if line == "" {
@@ -111,11 +116,6 @@ func (s *sseReadCloser) readEvent() (eventType, data string, err error) {
 
 		processSSELine(line, &currentEvent, &currentData)
 	}
-
-	if err := s.scanner.Err(); err != nil {
-		return "", "", fmt.Errorf("SSE read: %w", err)
-	}
-	return "", "", io.EOF
 }
 
 // Close closes the underlying body.
