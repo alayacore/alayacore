@@ -33,6 +33,21 @@ var planeKinds = map[Plane][]string{
 	PlaneAssistant: {TypeText, TypeReasoning},
 }
 
+// Unknown kinds — the contract, and why it is not symmetric.
+//
+// A kind that appears in none of the sets above is admitted nowhere. The core
+// rejects it rather than carrying a content item it has no part type for: the
+// domain's ContentPart is a sealed set (llm/types.go), so there is deliberately
+// no UnknownPart to hold one. On the live input path this surfaces as an error
+// message to the adapter; in a session file it fails the load — a file is
+// already gated on message_version, so an unknown kind there is corruption or a
+// same-version bug, never a file from a newer build.
+//
+// An adapter, which only draws what it is handed, degrades instead: it skips a
+// kind it cannot render, or shows a label, so one unrecognized kind never breaks
+// the stream. The asymmetry is the point — fail closed where a value becomes
+// history, degrade where it is only displayed.
+
 // KindAllowed reports whether the given content kind may appear on the plane.
 // An unknown plane admits nothing.
 func KindAllowed(plane Plane, kind string) bool {

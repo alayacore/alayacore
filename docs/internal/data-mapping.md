@@ -10,8 +10,12 @@ All providers eat different wire formats and emit the same domain types:
 // llm/types.go — the domain types
 
 // ContentPart is implemented by all content block types.
-// Each implementation embeds ContentPartMeta for HistoryID, Role and Time.
+// Each implementation embeds ContentPartMeta for HistoryID, Role and Time, and
+// declares the isContentPart marker. The interface is sealed: only the part
+// types below can be content parts, so "a kind nobody handles" is a compile
+// error where the value is used, not a silent drop in a type switch.
 type ContentPart interface {
+	isContentPart()
 	GetHistoryID() uint64
 	SetHistoryID(uint64)
 	GetRole() MessageRole

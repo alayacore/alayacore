@@ -109,6 +109,13 @@ The same shape is used at the top level and inside a tool result's `output`
 array. `fps`/`res` are a video's own settings: they are fixed when the video
 enters the conversation, so a later `:video_config` never rewrites it.
 
+Which kinds a plane admits is fixed by the protocol, not by the shape: `UX`
+bodies and `UF.output` elements carry `text`/`image`/`video`/`audio`/`document`
+(both go into the model), and `AX` bodies carry `text`/`reasoning`. A kind
+outside its plane's set is malformed and the core rejects the frame — it has no
+part type to hold one. An adapter should degrade instead: skip a kind it cannot
+draw, or show a placeholder, so an unrecognized kind never breaks the stream.
+
 **History id and time.** Output content and function frames carry the history id
 as the JSON top-level `"id"`, and authoritative frames also carry `"time"`
 (RFC3339, the message time). Deltas carry `"id"` but not `"time"`. Input frames

@@ -223,7 +223,10 @@ type CmdMsg struct {
 }
 
 // CmdResultMsg is the JSON payload for TagCommandOut (CO) — the result of
-// a command. Its structure mirrors ToolOutputData (UF) exactly.
+// a command. It shares UF's three fields (call_id, output, is_error) but is not
+// the same shape: a command's Output is opaque and command-defined, not a
+// content-item array, and a command result is not a conversation record, so
+// there is no ContentMeta (no id, no time).
 //
 //   - IsError=false: Output is the command's structured result (schema defined
 //     per command; may be null for fire-and-forget commands).
