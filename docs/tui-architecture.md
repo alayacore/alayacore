@@ -28,7 +28,7 @@ type Cmd func() Msg  // not data — an opaque function
 | Aspect | Elm | Our runtime | Consequence |
 |--------|-----|------------|-------------|
 | Cmd | Data (inspectable record) | `func() Msg` (opaque) | Runtime cannot inspect Cmd; renders before executing it |
-| Msg dispatch | Sum types, exhaustive | `interface{}` + type switch | No compiler guarantee |
+| Msg dispatch | Sum types, exhaustive | sealed `interface{ isMsg() }` + type switch | No compile-time check; a test-fatal default pins it |
 | Same-frame effect | Yes — runtime recurses before render | Cmd runs after render | UI transitions are reported as `Result` values and folded in the same Update; `Cmd` carries only I/O |
 
 ## Architecture Overview
@@ -152,6 +152,6 @@ Sequence(a,b) → a(); b()                    ← event loop, no goroutine
 |--------|----------|----------|-------------|
 | Cmd | Data (inspectable) | `func() Msg` (opaque) | Yes — runtime constraint |
 | Same-frame updates | `Cmd` is same-frame | UI facts are `Result` values folded same-frame; `Cmd` is I/O only | Yes — same frame kept, I/O kept async |
-| Messages | Sum types, exhaustive | `interface{}` + type switch | Yes — Go limitation |
+| Messages | Sum types, exhaustive | sealed `interface{ isMsg() }` + type switch | Yes — Go cannot check exhaustiveness; sealing plus a test-fatal default get it back |
 | Sub-components | `Cmd.map` for type-safe routing | Ordered input layer stack + `Result` fold in Terminal | Yes — Go has no generics for this |
 | Immutable syntax | Record update `{ x \| f = v }` | Field assignment on local copy | Yes — equivalent semantics |
