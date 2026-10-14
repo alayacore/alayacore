@@ -1,9 +1,12 @@
 //go:build ignore
 
-// session_upgrade_v15 converts one old session file — v13 or v14 — to the current
-// wire format. It is the engine behind misc/session_upgrade_v15.sh and is not
-// part of the build; the conversion itself lives in internal/sessionmigrate, which
-// the migration test also exercises.
+// session_upgrade_v15 converts one v14 session file to the v15 wire format — one
+// frame per line, no length field. It is the engine behind
+// misc/session_upgrade_v15.sh and is not part of the build; the conversion itself
+// lives in internal/sessionmigrate, which the migration test also exercises.
+//
+// A v13 file is not this step's job: it goes to v14 first, with
+// misc/session_upgrade_v14.sh.
 //
 // Usage: go run ./misc/session_upgrade_v15.go <input> <output>
 package main
@@ -24,7 +27,7 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	out, err := sessionmigrate.Migrate(raw)
+	out, err := sessionmigrate.V14ToV15(raw)
 	if err != nil {
 		fatal(err)
 	}

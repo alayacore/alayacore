@@ -1,0 +1,138 @@
+package sessionmigrate
+
+import (
+	"bytes"
+	"encoding/binary"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/alayacore/alayacore/internal/wire"
+)
+
+// v14Frame frames a value the way v13 and v14 both framed it, and the way nothing
+// in the program does any more: a 2-byte tag, a 4-byte big-endian length, and the
+// value.
+func v14Frame(tag, value string) []byte {
+	frame := make([]byte, 6+len(value))
+	copy(frame, tag)
+	binary.BigEndian.PutUint32(frame[2:6], uint32(len(value)))
+	copy(frame[6:], value)
+	return frame
+}
+
+// v14File builds a session file at the given version with the given body frames,
+// separated the way both v13 and v14 separated them.
+func v14File(version int, frames ...[]byte) []byte {
+	var b strings.Builder
+	b.WriteString("---\ncreated_at: 2026-01-01T00:00:00Z\nmessage_version: ")
+	b.WriteString(strconv.Itoa(version))
+	b.WriteString("\n---\n")
+	for _, f := range frames {
+		b.WriteString("\n\n")
+		b.Write(f)
+	}
+	return []byte(b.String())
+}
+
+// bodyOf returns the part of a session file after its frontmatter.
+func bodyOf(t *testing.T, raw []byte) []byte {
+	t.Helper()
+	_, body, err := split(raw)
+	if err != nil {
+		t.Fatalf("split(%q): %v", raw, err)
+	}
+	return body
+}
+
+// TestV14ToV15_CompactsTheValues is the step's one real job. An indented value is
+// legal in v14 and cannot be one in v15 — a value that is not one line is not a
+// frame — so the step compacts every value on the way through. Key order is kept,
+// which is what lets a hand-edited file convert instead of producing a file nothing
+// can read.
+func TestV14ToV15_CompactsTheValues(t *testing.T) {
+	const indented = "{\n  \"id\": \"1\",\n  \"type\": \"text\",\n  \"text\": \"hi\"\n}"
+	raw := v14File(14, v14Frame("UX", indented), v14Frame("UE", ""))
+
+	out, err := V14ToV15(raw)
+	if err != nil {
+		t.Fatalf("V14ToV15: %v", err)
+	}
+
+	want := "---\ncreated_at: 2026-01-01T00:00:00Z\nmessage_version: 15\n---\n" +
+		"UX{\"id\":\"1\",\"type\":\"text\",\"text\":\"hi\"}\nUE\n"
+	if string(out) != want {
+		t.Errorf("V14ToV15() =\n%q\nwant\n%q", out, want)
+	}
+}
+
+func TestV14ToV15_LeavesACurrentFileAlone(t *testing.T) {
+	raw := []byte("---\nmessage_version: 15\n---\nUE\n")
+
+	out, err := V14ToV15(raw)
+	if err != nil {
+		t.Fatalf("V14ToV15: %v", err)
+	}
+	if string(out) != string(raw) {
+		t.Errorf("V14ToV15() = %q, want the file unchanged", out)
+	}
+}
+
+// TestV14ToV15_SendsV13ToTheOtherStep checks that the refusal names the step to
+// run: a v13 file is one generation further back, and being told which script
+// performs that conversion is the difference between a two-command upgrade and a
+// puzzle. The second step's converter is not the one that knows v13 tags.
+func TestV14ToV15_SendsV13ToTheOtherStep(t *testing.T) {
+	_, err := V14ToV15(v14File(13, v14Frame("UT", "hello")))
+	if err == nil {
+		t.Fatal("V14ToV15 accepted a v13 file")
+	}
+	if !strings.Contains(err.Error(), "session_upgrade_v14.sh") {
+		t.Errorf("error = %q, want it to name the v13 step's script", err)
+	}
+}
+
+// TestV13ToV14_LeavesItsOwnOutputAlone is the pair of V14ToV15's no-op, and it is
+// the shape both steps share: a file at my output version is one I have nothing to
+// do, so it comes back untouched rather than as an error.
+func TestV13ToV14_LeavesItsOwnOutputAlone(t *testing.T) {
+	raw := v14File(14, v14Frame("UX", `{"type":"text"}`))
+
+	out, err := V13ToV14(raw)
+	if err != nil {
+		t.Fatalf("V13ToV14: %v", err)
+	}
+	if string(out) != string(raw) {
+		t.Errorf("V13ToV14() = %q, want the file unchanged", out)
+	}
+}
+
+// TestV13ToV14_RefusesANewerFile is the other side of that: a file ahead of this
+// step is not one it may touch. Running the steps out of order would otherwise
+// reinterpret a v15 body as length-prefixed frames.
+func TestV13ToV14_RefusesANewerFile(t *testing.T) {
+	raw := []byte("---\nmessage_version: 15\n---\nUE\n")
+
+	if _, err := V13ToV14(raw); err == nil {
+		t.Error("V13ToV14 accepted a v15 file")
+	}
+}
+
+// TestV13ToV14_WritesTheV14Framing pins the framing the first step has to produce:
+// the second step reads v14, so a v13 → v14 conversion that emitted lines instead
+// would leave it nothing to read.
+func TestV13ToV14_WritesTheV14Framing(t *testing.T) {
+	out, err := V13ToV14(v14File(13, v14Frame("UT", "hello")))
+	if err != nil {
+		t.Fatalf("V13ToV14: %v", err)
+	}
+
+	body := bodyOf(t, out)
+	body = body[bytes.IndexByte(body, 'U'):] // past the blank line v14 kept between frames
+	if len(body) < 6 || string(body[:2]) != wire.TagUserX {
+		t.Fatalf("body starts with %q, want a UX tag", body[:min(6, len(body))])
+	}
+	if got, want := int(binary.BigEndian.Uint32(body[2:6])), len(`{"type":"text","text":"hello"}`); got != want {
+		t.Errorf("length field = %d, want %d — the output is not v14-framed", got, want)
+	}
+}

@@ -22,9 +22,10 @@ func newSaveSession() *Session {
 	}
 }
 
-// TestMigrateV13SessionLoadsAsV15 pins the whole point of the migration: a file
+// TestMigrateV13SessionLoadsAsV15 pins the whole point of the migrations: a file
 // the core can no longer read (message_version 13, v13 tags) becomes one it
-// loads, with the same parts in the same order.
+// loads, with the same parts in the same order — through both steps, in the order
+// the two scripts in misc/ run them.
 func TestMigrateV13SessionLoadsAsV15(t *testing.T) {
 	var body []byte
 	// The fixture is a v13 body, so it is framed the way v13 framed: a 2-byte
@@ -49,9 +50,15 @@ func TestMigrateV13SessionLoadsAsV15(t *testing.T) {
 
 	front := "---\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n" +
 		"message_version: 13\nreasoning_level: 1\n---\n"
-	migrated, err := sessionmigrate.Migrate(append([]byte(front), body...))
+	// A v13 file is two generations behind: the v14 step converts its tags and
+	// value shapes, the v15 step re-frames what that produced.
+	v14, err := sessionmigrate.V13ToV14(append([]byte(front), body...))
 	if err != nil {
-		t.Fatalf("migrate: %v", err)
+		t.Fatalf("v13 → v14: %v", err)
+	}
+	migrated, err := sessionmigrate.V14ToV15(v14)
+	if err != nil {
+		t.Fatalf("v14 → v15: %v", err)
 	}
 
 	path := filepath.Join(t.TempDir(), "migrated.alaya")

@@ -1,28 +1,18 @@
-// Package sessionmigrate upgrades an old session file to the current wire format.
+// Package sessionmigrate upgrades a session file one wire generation at a time:
+// V13ToV14 for the content-item change, V14ToV15 for the move to one frame per
+// line.
 //
-// The core does not read an older file any more — loading demands an exact
-// message_version match — so an upgrade needs its own copy of the old formats.
-// This package is that copy: it reads the length-prefixed framing that v13 and
-// v14 both used (a 2-byte tag, a 4-byte big-endian length, and the value) and
-// writes the current one, one frame per line. It is a one-off tool: nothing in
-// the running program imports it (only misc/session_upgrade_v15.go and the
-// migration test do).
+// The core reads none of the older generations — loading demands an exact
+// message_version match — so an upgrade needs its own copy of the old framing.
+// v13 and v14 share it (a 2-byte tag, a 4-byte big-endian length, and the value),
+// and this package carries that reader, plus a writer for it, because nothing in
+// the running program reads or writes either any more.
 //
-// The two old generations differ in more than framing. A v13 frame's tags and
-// value shapes are a generation away from the current vocabulary, so it is
-// converted as it is read. A v14 frame's values are already the ones this version
-// carries, so it only needs re-framing. Either way every value is re-marshaled
-// through encoding/json's compactor, which is what guarantees a converted file
-// has one frame per line — and is why a hand-edited file with an indented value
-// converts instead of producing a file no reader accepts.
-//
-// Old files carry no per-message time, so converted v13 parts carry none either.
-// The adapter stamps those with its receipt clock, exactly as v13 did. They carry
-// no per-video fps/resolution either, so a migrated video serializes with the
-// provider default (2 / "default"), not the session's :video_config — the old
-// file never recorded a per-video setting, and "unset" is the provider default.
-// It therefore does not follow later :video_config changes, which is what keeps
-// history immutable.
+// The two steps stay separate on purpose: each is a generation, a file may be one
+// or two generations behind, and chaining them would hide which conversion a file
+// actually needed. misc/session_upgrade_v14.sh performs the first and
+// misc/session_upgrade_v15.sh the second; a v13 file goes through both, in that
+// order.
 package sessionmigrate
 
 import (
@@ -30,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -40,16 +31,24 @@ import (
 const (
 	version13 = 13
 	version14 = 14
-	// targetVersion is the format this package writes. It must equal
-	// internal/agent's messageVersion: a file this tool produces has to load, and
-	// loading demands an exact match.
-	targetVersion = 15
+	// version15 is the oldest generation this package leaves alone: a file at it
+	// is current. It must equal internal/agent's messageVersion, since a file
+	// these tools produce has to load, and loading demands an exact match.
+	version15 = 15
 )
 
-// Migrate rewrites a v13 or v14 session file (frontmatter + length-prefixed body)
-// in the current wire format. A file already at the current version is returned
-// unchanged.
-func Migrate(raw []byte) ([]byte, error) {
+// V13ToV14 rewrites a v13 session file as v14.
+//
+// v14 collapsed the per-kind content tags into UX/AX with the concrete kind in a
+// content item's "type", moved the history id from a NUL-delimited prefix into the
+// frame's "id", and renamed the tool-call id to "call_id". Old files carry no
+// per-message time, so converted parts carry none either: the adapter stamps those
+// with its receipt clock, exactly as v13 did. They carry no per-video
+// fps/resolution either, so a migrated video serializes with the provider default
+// (2 / "default"), not the session's :video_config — the old file never recorded a
+// per-video setting, and "unset" is the provider default. It therefore does not
+// follow later :video_config changes, which is what keeps history immutable.
+func V13ToV14(raw []byte) ([]byte, error) {
 	front, body, err := split(raw)
 	if err != nil {
 		return nil, err
@@ -58,26 +57,53 @@ func Migrate(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if from == targetVersion {
-		return raw, nil
+	if from == version14 {
+		return raw, nil // already this step's output
+	}
+	if from != version13 {
+		return nil, fmt.Errorf("this step upgrades a v13 file; this one says message_version: %d", from)
 	}
 
-	// convert is nil for a v14 body: its frames only need re-framing, since its
-	// tags and value shapes are already the current ones.
-	var convert func(tag, value string) (string, string, error)
+	newBody, err := reframe(body, encodeV14, convertV13)
+	if err != nil {
+		return nil, err
+	}
+	return append(setVersion(front, version14), newBody...), nil
+}
+
+// V14ToV15 rewrites a v14 session file as v15: one frame per line.
+//
+// A v14 frame's tag and value are already the ones v15 carries, so there is no
+// conversion — only re-framing, with one thing to be careful about: a v14 file
+// written by hand may hold a value with line breaks in it, and a value that is not
+// one line is not a frame in v15. Every value is therefore re-marshaled through
+// encoding/json's compactor, which elides insignificant whitespace and keeps
+// everything else — key order included, so a value that a test compares against a
+// re-marshaled struct still matches. A file already at v15 is returned unchanged.
+func V14ToV15(raw []byte) ([]byte, error) {
+	front, body, err := split(raw)
+	if err != nil {
+		return nil, err
+	}
+	from, err := versionOf(front)
+	if err != nil {
+		return nil, err
+	}
 	switch from {
+	case version15:
+		return raw, nil
 	case version13:
-		convert = convertV13
+		return nil, fmt.Errorf("this step upgrades a v14 file; this one is v13 — upgrade it to v14 first with misc/session_upgrade_v14.sh")
 	case version14:
 	default:
 		return nil, fmt.Errorf("cannot upgrade a message_version %d file", from)
 	}
 
-	newBody, err := reframe(body, convert)
+	newBody, err := reframe(body, wire.Encode, nil)
 	if err != nil {
 		return nil, err
 	}
-	return append(upgradeFrontmatter(front), newBody...), nil
+	return append(setVersion(front, version15), newBody...), nil
 }
 
 // split peels the "---\n…---\n" frontmatter off the body, mirroring the offsets
@@ -111,10 +137,11 @@ func versionOf(front []byte) (int, error) {
 	return 0, fmt.Errorf("frontmatter has no message_version")
 }
 
-// upgradeFrontmatter sets message_version to the target, adding the key if absent.
-func upgradeFrontmatter(front []byte) []byte {
+// setVersion returns the frontmatter with message_version set, adding the key if
+// it is absent.
+func setVersion(front []byte, version int) []byte {
 	s := string(front)
-	target := "message_version: " + strconv.Itoa(targetVersion)
+	target := "message_version: " + strconv.Itoa(version)
 	if i := strings.Index(s, "message_version:"); i >= 0 {
 		lineEnd := strings.IndexByte(s[i:], '\n')
 		if lineEnd < 0 {
@@ -126,10 +153,11 @@ func upgradeFrontmatter(front []byte) []byte {
 	return []byte(s[:closing] + target + "\n" + s[closing:])
 }
 
-// reframe rewrites the length-prefixed body as one frame per line. convert, when
-// non-nil, rewrites each frame's tag and value as it goes (the v13 path); a value
-// is compacted either way, so what comes out is one line whatever the input held.
-func reframe(body []byte, convert func(tag, value string) (string, string, error)) ([]byte, error) {
+// reframe reads the body's length-prefixed frames and writes each one back with
+// encode. convert, when non-nil, rewrites a frame's tag and value first (the v13
+// step); either way the value is compacted, so what comes out is one line per
+// frame whatever the input held.
+func reframe(body []byte, encode func(tag, value string) ([]byte, error), convert func(tag, value string) (string, string, error)) ([]byte, error) {
 	var out bytes.Buffer
 	pos := 0
 	for pos < len(body) {
@@ -158,12 +186,11 @@ func reframe(body []byte, convert func(tag, value string) (string, string, error
 			}
 			tag, value = newTag, newValue
 		}
-
 		compacted, err := compactValue(tag, value)
 		if err != nil {
 			return nil, fmt.Errorf("frame %q at byte %d: %w", tag, pos, err)
 		}
-		frame, err := wire.Encode(tag, compacted)
+		frame, err := encode(tag, compacted)
 		if err != nil {
 			return nil, fmt.Errorf("frame %q at byte %d: %w", tag, pos, err)
 		}
@@ -172,9 +199,31 @@ func reframe(body []byte, convert func(tag, value string) (string, string, error
 	return out.Bytes(), nil
 }
 
+// encodeV14 writes a frame in the v14 framing: a 2-byte tag, a 4-byte big-endian
+// length, and the value. This package carries it because internal/wire writes the
+// v15 framing now — one frame per line — and the v13 step's output has to be a v14
+// file, which is the input the v14 step expects.
+func encodeV14(tag, value string) ([]byte, error) {
+	if len(tag) != 2 {
+		return nil, fmt.Errorf("tag %q is not two bytes", tag)
+	}
+	// The length field is four bytes, so a value that does not fit in one cannot be
+	// framed this way. Nothing in a session file comes close (the current bound is
+	// 64MB), but the conversion has to be a total function, and a wrapped length
+	// would produce a file that reads as something else entirely.
+	if len(value) > math.MaxUint32 {
+		return nil, fmt.Errorf("%s frame's value is %d bytes, too long for the v14 length field", tag, len(value))
+	}
+	frame := make([]byte, 6+len(value))
+	copy(frame, tag)
+	binary.BigEndian.PutUint32(frame[2:6], uint32(len(value))) //nolint:gosec // G115: bounded by the check above
+	copy(frame[6:], value)
+	return frame, nil
+}
+
 // compactValue elides the insignificant whitespace in a value, so the line it
-// becomes is one line. Key order is preserved, which matters: a sample or a
-// fixture that a test compares against a re-marshaled struct still matches.
+// becomes is one line. Key order is preserved, which matters: a value that a test
+// compares against a re-marshaled struct still matches.
 //
 // A control frame (UE, CE) carries no value at all, and is passed through.
 func compactValue(tag, value string) (string, error) {
@@ -188,7 +237,8 @@ func compactValue(tag, value string) (string, error) {
 	return compact.String(), nil
 }
 
-// convertV13 maps a v13 frame's tag and value onto the current vocabulary.
+// convertV13 maps a v13 frame's tag and value onto the v14 (and current)
+// vocabulary.
 func convertV13(tag, value string) (string, string, error) {
 	switch tag {
 	case "UT", "UI", "UV", "UA", "UD", "AT", "AR":
