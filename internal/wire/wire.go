@@ -183,6 +183,22 @@ func checkValueShape(value string) error {
 	return errors.New("wire: a frame's value must be a JSON object, or empty for a control frame")
 }
 
+// firstRawLineBreak returns the offset and byte of the first LF or CR in value,
+// or (-1, 0) when there is none.
+//
+// IndexByte twice rather than IndexAny once: both scan the whole value, and
+// IndexAny's general path is an order of magnitude slower for no gain — these two
+// bytes are the whole question, and IndexByte compiles to memchr.
+func firstRawLineBreak(value string) (int, byte) {
+	if i := strings.IndexByte(value, '\n'); i >= 0 {
+		return i, '\n'
+	}
+	if i := strings.IndexByte(value, '\r'); i >= 0 {
+		return i, '\r'
+	}
+	return -1, 0
+}
+
 // fitsInFrame reports whether a frame of this many bytes (tag, value and
 // terminator) is within the bound, without building it. Extracted as a pure
 // function so the MaxFrameSize path can be tested without allocating 64MB.
@@ -208,9 +224,9 @@ func Encode(tag, value string) ([]byte, error) {
 	if err := checkValueShape(value); err != nil {
 		return nil, err
 	}
-	if i := strings.IndexAny(value, "\n\r"); i >= 0 {
+	if i, b := firstRawLineBreak(value); i >= 0 {
 		return nil, fmt.Errorf("wire: %s frame's value contains a raw %q at offset %d; a frame is one line",
-			tag, value[i], i)
+			tag, b, i)
 	}
 	if err := fitsInFrame(len(tag) + len(value) + 1); err != nil {
 		return nil, err
