@@ -55,7 +55,7 @@ func writeCommand(input io.Writer, cmd string) error {
 //     ":save", ":cancel", ...).
 //   - ":quit" / ":q" ask the session to end (the quit command is sent
 //     first) and stop reading: clean exit, code 0.
-//   - anything else is sent as one UT + UE prompt pair.
+//   - anything else is sent as one UX + UE prompt pair.
 //
 // Nothing here waits for the session: a prompt that arrives before MCP
 // initialization settles is accepted and held by the session, which is the only

@@ -20,9 +20,9 @@
 #      where the checkout is LF either way and so nothing else is any wiser. The
 #      next Windows build is where it surfaces, as 144 findings again.
 #   2. every binary is binary by declaration, not by git's guess at content
-#      `text=auto` peeks at bytes. For prose that is a fair bet; for the TLV
-#      recordings under adapter-guide it is one heuristic away from a rewrite,
-#      and gofmt will never say anything because it does not read .go-less files.
+#      `text=auto` peeks at bytes. For prose that is a fair bet; for a fixture
+#      whose bytes are the point it is one heuristic away from a rewrite, and
+#      gofmt will never say anything because it does not read .go-less files.
 #
 # What this deliberately does not check, with the reason, so nobody adds it back:
 #

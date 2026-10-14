@@ -648,8 +648,8 @@ UX-audio-url.txt               UX{"type":"audio","uri":"https://..."}
 UX-video.txt                   UX{"type":"video","uri":"data:video/mp4;base64,...","fps":5,"res":1}
 UX-video-url.txt               UX{"type":"video","uri":"https://...","fps":5,"res":1}
 UX-document.txt                UX{"type":"document","uri":"data:application/pdf;base64,..."}
-UE.txt                         UE "" (length 0)
-CE.txt                         CE "" (length 0) — input end: no more prompts, commands may still follow
+UE.txt                         UE                  (the tag alone — a control frame carries no value)
+CE.txt                         CE                  (the tag alone) — input end: no more prompts, commands may still follow
 CI-cancel.txt                  CI{"call_id":"1","name":"cancel"}
 CI-save.txt                    CI{"call_id":"2","name":"save","input":"/tmp/x.alaya"}
 CI-model-sync.txt              CI{"call_id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}

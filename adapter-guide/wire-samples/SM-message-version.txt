@@ -1,1 +1,1 @@
-SM{"type":"version","data":{"message_version":14,"core_version":"(set at build time)"}}
+SM{"type":"version","data":{"message_version":15,"core_version":"(set at build time)"}}

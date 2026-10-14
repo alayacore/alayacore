@@ -1,4 +1,4 @@
-// Package wiretest builds v14 wire frames for tests.
+// Package wiretest builds frames' JSON values for tests.
 //
 // It exists so the hundred-odd tests that feed a frame into a session or an
 // adapter do not each have to hand-write the content-item JSON. Every builder

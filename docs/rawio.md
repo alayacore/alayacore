@@ -31,8 +31,8 @@ what `wirecat` is for.
 
 - Raw bytes from stdin are piped directly to the session. The session's
   frame reader handles boundary detection internally.
-- **Commands**: send a `CI` frame (`{"id":"...","name":"save","input":"..."}`)
-  and receive exactly one `CO` frame back with the matching `id`. See
+- **Commands**: send a `CI` frame (`{"call_id":"...","name":"save","input":"..."}`)
+  and receive exactly one `CO` frame back with the matching `call_id`. See
   [adapter-guide](../adapter-guide/README.md) for the full command table.
 - **Ctrl-D** (EOF): closes stdin, the session finishes pending tasks, and
   the process exits with code `0`.

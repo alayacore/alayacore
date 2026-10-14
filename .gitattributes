@@ -40,11 +40,10 @@
 LICENSE     text eol=lf
 Makefile    text eol=lf
 
-# Binary by name, never by detection: adapter-guide/tlv-samples/*.bin are byte
-# exact TLV recordings the adapter tests replay, and a fixture that happened to
-# read as text would be "corrected" into a different file. The -eol backs out of
-# the catch-all's eol=lf, so `git check-attr` does not answer "lf" about a file
-# git is not converting at all.
+# Binary by name, never by detection: `text=auto` peeks at bytes, and a file git
+# guesses wrong about is rewritten on checkout. The -eol backs out of the
+# catch-all's eol=lf, so `git check-attr` does not answer "lf" about a file git
+# is not converting at all.
 *.bin  binary -eol
 *.gif  binary -eol
 *.jpg  binary -eol

@@ -29,7 +29,7 @@ Enter
 Sleep 500ms
 Show
 
-Type "printf 'UT\x00\x00\x00\x0ccurrent time' | ./alayacore --rawio --config-path ./misc/samples/config/ | go run ./misc/tlvcat.go"
+Type 'printf "UX{\"type\":\"text\",\"text\":\"current time\"}\nUE\n" | ./alayacore --rawio --config-path ./misc/samples/config/ | go run ./misc/wirecat.go'
 
 Enter
 

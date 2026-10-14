@@ -268,7 +268,7 @@ func renderCommandResult(name string, output json.RawMessage) string {
 }
 
 // markDeltaSeen records a history ID whose Ax deltas were printed, so
-// the matching AT/AR complete frame (empty in delta mode, a terminator
+// the matching AX complete frame (empty in delta mode, a terminator
 // only) can be skipped instead of injecting a spurious separator.
 //
 // The map is capped to keep memory bounded for long sessions: history IDs

@@ -35,12 +35,13 @@
 //
 // Communication Protocol:
 //
-//	Adapters talk to Session over one frame (Tag-Length-Value) byte stream. The
-//	tag vocabulary (UT/UE/UI/UV/UA/UD in; AT/AR/AF/UF/CO/SM out) and the
-//	frame-order contract live in docs/development-principles.md. Each frame's
-//	history ID prefix corresponds to ContentPart.GetHistoryID(); those IDs are
-//	a stream concern only — the session file stores none, and loading re-issues
-//	them 1..N in file order (see docs/architecture.md, "Session Persistence").
+//	Adapters talk to Session over one frame per line byte stream — a two-byte
+//	tag, a JSON value, an LF. The tag vocabulary (UX/AX/AF/UF with the Ax/Af/Uf
+//	deltas, UE and CE, CI/CO, SM) and the frame-order contract live in
+//	docs/development-principles.md. A frame's history id is its JSON top-level
+//	"id"; those IDs are a stream concern only — the session file stores none,
+//	and loading re-issues them 1..N in file order (see docs/architecture.md,
+//	"Session Persistence").
 //
 // Usage:
 //

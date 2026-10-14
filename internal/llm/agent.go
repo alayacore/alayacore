@@ -161,7 +161,7 @@ type StreamCallbacks struct {
 	OnStepStats func(StepStats) error
 
 	// IDGen provides unique history IDs. Called once per content block
-	// (first delta for AT/AR, once for each AF/UF). The returned ID is
+	// (first delta for Ax, once for each AF/UF). The returned ID is
 	// passed to callbacks and stored on the ContentPart.
 	IDGen func() uint64
 }

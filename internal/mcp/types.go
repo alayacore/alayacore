@@ -85,11 +85,12 @@ type jsonrpcError struct {
 
 // ProgressToken is used to associate progress notifications with the
 // original request. Values can be a string or number.
-// Defined here for future protocol versions.
 type ProgressToken = string
 
 // LoggingLevel represents the severity of a log message.
-// Defined here for future protocol versions.
+//
+// The values below are the spec's full enumeration, declared so the type reads
+// as the specification defines it; nothing here sets or compares one yet.
 type LoggingLevel string
 
 const (
@@ -111,9 +112,8 @@ type Meta map[string]json.RawMessage
 // MCP 2026-07-28+ protocol specification. It extends Meta with reserved
 // fields for protocol version, client identity, and capabilities.
 //
-// In the 2025-11-25 protocol this type is not used (Meta is sufficient).
-// It is defined here to prepare for migration and to document the expected
-// structure.
+// Earlier protocol versions do not carry it: their adapters' BuildRequestMeta
+// returns nil, and a plain Meta is sufficient there.
 //
 // Key naming rules (from the spec):
 //   - Prefix: optional reverse-DNS notation (e.g. "io.modelcontextprotocol/")

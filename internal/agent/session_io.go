@@ -100,8 +100,8 @@ func (s *Session) inputPump() {
 
 // handleInputFrame processes a single frame from the input stream.
 // Returns the updated staged content (nil when staged content has been
-// consumed by UE or discarded by an error). Media tags (UI/UV/UA/UD)
-// and regular text (UT) are staged until UE or EOF. Command frames (CI)
+// consumed by UE or discarded by an error). Content frames (UX, carrying
+// text or media) are staged until UE or EOF. Command frames (CI)
 // are sent immediately without staging. CE reports that the adapter has no
 // more input — the same fact as EOF, on a stream that stays open — and
 // flushes whatever is staged before it.

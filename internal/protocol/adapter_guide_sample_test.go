@@ -165,9 +165,9 @@ func TestAdapterGuideSamplesAreWellFormedFrames(t *testing.T) {
 		wire.TagCommandIn: true, wire.TagCommandOut: true, wire.TagSystemMsg: true,
 		wire.TagAssistantFDelta: true, wire.TagUserFDelta: true,
 	}
-	// Tags whose payload is JSON. With v14 that is every frame except the
-	// zero-length control frames (UE/CE): text, media and tool frames all carry
-	// a JSON object.
+	// Tags whose payload is JSON. Every frame except the control frames (UE/CE),
+	// whose line is the tag alone, carries a JSON object — text, media and tool
+	// frames alike.
 	jsonBearing := map[string]bool{
 		wire.TagUserX: true, wire.TagAssistantX: true, wire.TagAssistantXDelta: true,
 		wire.TagAssistantF: true, wire.TagAssistantFDelta: true,
