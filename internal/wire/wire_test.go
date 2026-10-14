@@ -153,6 +153,10 @@ func TestDecoder_Next_RejectsMalformedFrame(t *testing.T) {
 		{name: "one byte line", feed: "U\n", want: "shorter than"},
 		{name: "tag is not two letters", feed: textValue + "\n", want: "two-letter tag"},
 		{name: "value is not an object", feed: "UXhello\n", want: "must be a JSON object"},
+		// A space after the tag is not a separator: the value starts at byte 2, so
+		// the space is its first character. Documents write `UX {...}` for
+		// readability, and this is the case that keeps that from becoming bytes.
+		{name: "space after the tag", feed: "UX {\"type\":\"text\"}\n", want: "must be a JSON object"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -8,9 +8,9 @@ Commands travel over a dedicated control plane, mirroring the tool control
 plane (AF/UF):
 
 ```
-CI {"call_id":"<call-id>","name":"<command>","input":"<args-string>"}   adapter → agent
-CO {"call_id":"<call-id>","output":<result>}                            agent → adapter
-CO {"call_id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
+CI{"call_id":"<call-id>","name":"<command>","input":"<args-string>"}   adapter → agent
+CO{"call_id":"<call-id>","output":<result>}                            agent → adapter
+CO{"call_id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
 ```
 
 - The adapter generates the call ID and echoes it back — every CI receives

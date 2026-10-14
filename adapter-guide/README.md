@@ -22,6 +22,12 @@ The tag is two ASCII letters. The value is a JSON object, except for the control
 frames `UE` and `CE`, whose line is the tag alone. Nothing else follows the value
 on the line, and there are no separator lines: every line is a frame.
 
+There is no separator between the tag and the value: the value begins at byte 2.
+`UX{"type":"text","text":"hi"}` is a frame; `UX {"type":"text","text":"hi"}` is a
+malformed one, because the space is then the value's first character and a value
+is a JSON object. Every frame written in this guide is byte-exact for that reason;
+where a caption wants to say what a frame carries, it says so in words.
+
 Two consequences shape everything below.
 
 **A value is never more than one line.** A raw LF or CR inside a value would end
@@ -43,7 +49,7 @@ be read as a complete one.
 The first `SM` frame of a session is the version frame:
 
 ```
-SM {"type":"version","data":{"message_version":15,"core_version":"<build-time version>"}}
+SM{"type":"version","data":{"message_version":15,"core_version":"<build-time version>"}}
 ```
 
 `message_version` identifies the wire format described in this document — the
@@ -223,14 +229,14 @@ single user message. Other tag types use different grouping mechanisms:
 Each user content item gets its own **unique** history id (monotonic counter).
 
 ```
-Adapter writes → stdin:       UX {"type":"image","uri":"data:image/jpeg;base64,..."}
-                               UX {"type":"image","uri":"data:image/png;base64,..."}
-                               UX {"type":"text","text":"What's in these images?"}
+Adapter writes → stdin:       UX{"type":"image","uri":"data:image/jpeg;base64,..."}
+                               UX{"type":"image","uri":"data:image/png;base64,..."}
+                               UX{"type":"text","text":"What's in these images?"}
                                UE
-Session writes → stdout:      UX {"id":"1","time":"...","type":"image","uri":"data:image/jpeg;base64,..."}
-                               UX {"id":"2","time":"...","type":"image","uri":"data:image/png;base64,..."}  ← different id
-                               UX {"id":"3","time":"...","type":"text","text":"What's in these images?"}   ← different id
-                               AX {"id":"4","time":"...","type":"text","text":"These images show..."}     ← starts assistant message
+Session writes → stdout:      UX{"id":"1","time":"...","type":"image","uri":"data:image/jpeg;base64,..."}
+                               UX{"id":"2","time":"...","type":"image","uri":"data:image/png;base64,..."}  ← different id
+                               UX{"id":"3","time":"...","type":"text","text":"What's in these images?"}   ← different id
+                               AX{"id":"4","time":"...","type":"text","text":"These images show..."}     ← starts assistant message
 ```
 
 ## Function Lifecycle (AF, UF)
@@ -266,41 +272,41 @@ A tool call (AF) without a matching UF is still in progress. Each `.txt` sample 
 ## Example: Text Prompt Flow (with streaming deltas)
 
 ```
-Adapter writes → stdin:       UX {"type":"text","text":"Read the file main.go"}
+Adapter writes → stdin:       UX{"type":"text","text":"Read the file main.go"}
                                UE
-Session writes → stdout:      UX {"id":"1","time":"...","type":"text","text":"Read the file main.go"}  ← echo
-                               AF {"id":"2","time":"...","call_id":"t1","name":"read_file"}          ← non-UX tag flushes user msg
-                               Af {"id":"2","call_id":"t1","delta":"{\"path\":"}                    ← partial arg delta
-                               Af {"id":"2","call_id":"t1","delta":"\"main.go\"}"}                  ← more args
-                               AF {"id":"2","time":"...","call_id":"t1","input":{"path":"main.go"}} ← complete args
-                               Uf {"id":"2","call_id":"t1","text":"reading main.go..."}             ← ephemeral result preview (optional)
-                               UF {"id":"3","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
-                               Ax {"id":"4","type":"text","text":"Here's what main.go does..."}     ← streaming text delta
-                               AX {"id":"4","time":"...","type":"text"}                             ← authoritative complete (empty terminator)
-                               SM {"type":"task","data":{"in_progress":false,"context":1500}}
+Session writes → stdout:      UX{"id":"1","time":"...","type":"text","text":"Read the file main.go"}  ← echo
+                               AF{"id":"2","time":"...","call_id":"t1","name":"read_file"}          ← non-UX tag flushes user msg
+                               Af{"id":"2","call_id":"t1","delta":"{\"path\":"}                    ← partial arg delta
+                               Af{"id":"2","call_id":"t1","delta":"\"main.go\"}"}                  ← more args
+                               AF{"id":"2","time":"...","call_id":"t1","input":{"path":"main.go"}} ← complete args
+                               Uf{"id":"2","call_id":"t1","text":"reading main.go..."}             ← ephemeral result preview (optional)
+                               UF{"id":"3","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
+                               Ax{"id":"4","type":"text","text":"Here's what main.go does..."}     ← streaming text delta
+                               AX{"id":"4","time":"...","type":"text"}                             ← authoritative complete (empty terminator)
+                               SM{"type":"task","data":{"in_progress":false,"context":1500}}
 ```
 
 ## Example: Text Prompt Flow (replay, no deltas)
 
 ```
-Session writes → stdout:      UX {"id":"1","time":"...","type":"text","text":"Read the file main.go"}
-                               AF {"id":"2","time":"...","call_id":"t1","name":"read_file","input":{"path":"main.go"}}
-                               UF {"id":"3","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
-                               AX {"id":"4","time":"...","type":"text","text":"Here's what main.go does..."}
-                               SM {"type":"task","data":{"in_progress":false,"context":1500}}
+Session writes → stdout:      UX{"id":"1","time":"...","type":"text","text":"Read the file main.go"}
+                               AF{"id":"2","time":"...","call_id":"t1","name":"read_file","input":{"path":"main.go"}}
+                               UF{"id":"3","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
+                               AX{"id":"4","time":"...","type":"text","text":"Here's what main.go does..."}
+                               SM{"type":"task","data":{"in_progress":false,"context":1500}}
 ```
 
 ## Example: Image Prompt Flow
 
 ```
-Adapter writes → stdin:       UX {"type":"image","uri":"data:image/jpeg;base64,..."}
-                               UX {"type":"image","uri":"data:image/png;base64,..."}
-                               UX {"type":"text","text":"What's in these images?"}
+Adapter writes → stdin:       UX{"type":"image","uri":"data:image/jpeg;base64,..."}
+                               UX{"type":"image","uri":"data:image/png;base64,..."}
+                               UX{"type":"text","text":"What's in these images?"}
                                UE
-Session writes → stdout:      UX {"id":"1","time":"...","type":"image","uri":"data:image/jpeg;base64,..."}
-                               UX {"id":"2","time":"...","type":"image","uri":"data:image/png;base64,..."}
-                               UX {"id":"3","time":"...","type":"text","text":"What's in these images?"}
-                               AX {"id":"4","time":"...","type":"text","text":"These images contain..."}
+Session writes → stdout:      UX{"id":"1","time":"...","type":"image","uri":"data:image/jpeg;base64,..."}
+                               UX{"id":"2","time":"...","type":"image","uri":"data:image/png;base64,..."}
+                               UX{"id":"3","time":"...","type":"text","text":"What's in these images?"}
+                               AX{"id":"4","time":"...","type":"text","text":"These images contain..."}
 ```
 
 The three user frames (ids 1, 2, 3) are accumulated into one user message.
@@ -309,18 +315,18 @@ The `AX` frame triggers the flush and begins the assistant response.
 ## Example: Media Prompt Flow
 
 ```
-Adapter writes → stdin:       UX {"type":"image","uri":"data:image/jpeg;base64,..."}   (or URL)
-                               UX {"type":"audio","uri":"data:audio/mpeg;base64,..."}   (or URL)
-                               UX {"type":"video","uri":"data:video/mp4;base64,...","fps":5,"res":1}  (or URL)
-                               UX {"type":"document","uri":"data:application/pdf;base64,..."}  (or URL)
-                               UX {"type":"text","text":"Analyze these files"}          (optional — media-only is valid)
+Adapter writes → stdin:       UX{"type":"image","uri":"data:image/jpeg;base64,..."}   (or URL)
+                               UX{"type":"audio","uri":"data:audio/mpeg;base64,..."}   (or URL)
+                               UX{"type":"video","uri":"data:video/mp4;base64,...","fps":5,"res":1}  (or URL)
+                               UX{"type":"document","uri":"data:application/pdf;base64,..."}  (or URL)
+                               UX{"type":"text","text":"Analyze these files"}          (optional — media-only is valid)
                                UE
-Session writes → stdout:      UX {"id":"1","time":"...","type":"image","uri":"..."}
-                               UX {"id":"2","time":"...","type":"audio","uri":"..."}
-                               UX {"id":"3","time":"...","type":"video","uri":"...","fps":5,"res":1}
-                               UX {"id":"4","time":"...","type":"document","uri":"..."}
-                               UX {"id":"5","time":"...","type":"text","text":"Analyze these files"}  (absent for media-only)
-                               AX {"id":"6","time":"...","type":"text","text":"Here's my analysis..."}
+Session writes → stdout:      UX{"id":"1","time":"...","type":"image","uri":"..."}
+                               UX{"id":"2","time":"...","type":"audio","uri":"..."}
+                               UX{"id":"3","time":"...","type":"video","uri":"...","fps":5,"res":1}
+                               UX{"id":"4","time":"...","type":"document","uri":"..."}
+                               UX{"id":"5","time":"...","type":"text","text":"Analyze these files"}  (absent for media-only)
+                               AX{"id":"6","time":"...","type":"text","text":"Here's my analysis..."}
 ```
 
 All media types accept either `data:` URIs or plain URLs. Media frames and text
@@ -337,12 +343,12 @@ video_config) are broadcast first, then the replayed content, and finally —
 once initialization completes — the session-ready frame:
 
 ```
-Session writes → stdout:      SM {"type":"task","data":{"in_progress":false,"context":1500}}  ← startup broadcast (before replay)
-                               UX {"id":"1","time":"...","type":"text","text":"Hello"}       ← user
-                               AX {"id":"2","time":"...","type":"text","text":"Hi! How can I help?"}  ← assistant
-                               UX {"id":"3","time":"...","type":"text","text":"Read main.go"} ← user
-                               AF {"id":"4","time":"...","call_id":"t1","name":"read_file","input":{"path":"main.go"}}
-                               UF {"id":"5","time":"...","call_id":"t1","output":[...]}
+Session writes → stdout:      SM{"type":"task","data":{"in_progress":false,"context":1500}}  ← startup broadcast (before replay)
+                               UX{"id":"1","time":"...","type":"text","text":"Hello"}       ← user
+                               AX{"id":"2","time":"...","type":"text","text":"Hi! How can I help?"}  ← assistant
+                               UX{"id":"3","time":"...","type":"text","text":"Read main.go"} ← user
+                               AF{"id":"4","time":"...","call_id":"t1","name":"read_file","input":{"path":"main.go"}}
+                               UF{"id":"5","time":"...","call_id":"t1","output":[...]}
 ```
 
 Note: During replay, a tool call is a single AF frame with both `name` and
@@ -356,8 +362,8 @@ The session reports its lifecycle in `session` system messages — exactly one
 per transition, so a client that waits for a frame is never left guessing:
 
 ```
-SM {"type":"session","data":{"state":"ready"}}   ← ready to accept prompts
-SM {"type":"session","data":{"state":"closed"}}  ← the session is over
+SM{"type":"session","data":{"state":"ready"}}   ← ready to accept prompts
+SM{"type":"session","data":{"state":"closed"}}  ← the session is over
 ```
 
 **`ready`** — sent **once per session**, when the session becomes ready to
@@ -479,7 +485,7 @@ after one the transcript an adapter has accumulated is not the session's
    deserialized (unknown tag, malformed JSON), the session load fails and the
    agent sends an error message like:
    ```
-   SM {"type":"error","data":{"text":"corrupt session file: failed to serialize content part (HistoryID=5): unexpected end of JSON input"}}
+   SM{"type":"error","data":{"text":"corrupt session file: failed to serialize content part (HistoryID=5): unexpected end of JSON input"}}
    ```
    The adapter should display the error and stop sending new prompts — no
    further frames will be processed.
@@ -488,8 +494,8 @@ after one the transcript an adapter has accumulated is not the session's
    fields, duplicate names, etc.) are sent to the adapter as system error
    messages:
    ```
-   SM {"type":"error","data":{"text":"model \"Bad Model\": unknown protocol_type \"foobar\" — skipped"}}
-   SM {"type":"error","data":{"text":"model.conf block 3: duplicate name \"Model A\" — skipped"}}
+   SM{"type":"error","data":{"text":"model \"Bad Model\": unknown protocol_type \"foobar\" — skipped"}}
+   SM{"type":"error","data":{"text":"model.conf block 3: duplicate name \"Model A\" — skipped"}}
    ```
    These are informational — the session continues with whatever valid models
    are available. The adapter should display them so the user can fix their
@@ -502,8 +508,8 @@ after one the transcript an adapter has accumulated is not the session's
    name, duplicate server names, etc.) are sent to the adapter as system error
    messages:
    ```
-   SM {"type":"error","data":{"text":"mcp.conf block 1: skipping block with empty server name"}}
-   SM {"type":"error","data":{"text":"mcp.conf block 2: duplicate server name \"my-db\" — skipped"}}
+   SM{"type":"error","data":{"text":"mcp.conf block 1: skipping block with empty server name"}}
+   SM{"type":"error","data":{"text":"mcp.conf block 2: duplicate server name \"my-db\" — skipped"}}
    ```
    These are informational — the session continues with whatever valid MCP
    servers are available. The adapter should display them so the user can fix
@@ -513,9 +519,9 @@ after one the transcript an adapter has accumulated is not the session's
    the conversation at risk are sent as system error messages during or
    after task execution:
    ```
-   SM {"type":"error","data":{"text":"Auto-save failed: <error>"}}
-   SM {"type":"error","data":{"text":"Failed to create pre-summarize backup: <error>"}}
-   SM {"type":"error","data":{"text":"Auto-summarization failed: <error>"}}
+   SM{"type":"error","data":{"text":"Auto-save failed: <error>"}}
+   SM{"type":"error","data":{"text":"Failed to create pre-summarize backup: <error>"}}
+   SM{"type":"error","data":{"text":"Auto-summarization failed: <error>"}}
    ```
    - **Auto-save** arrives after the task completes (before the final `task`
      message with `in_progress:false`) — the conversation is unaffected, but
@@ -555,13 +561,13 @@ tag it carries and the frame is the JSON body in the file.
 ### read_file
 
 ```
-stdin:  UX-read-file.txt               UX {"type":"text","text":"Read the file main.go"}
+stdin:  UX-read-file.txt               UX{"type":"text","text":"Read the file main.go"}
                                        UE
-stdout: UX-echo-read-file.txt          UX {"id":"5","time":"...","type":"text","text":"Read the file main.go"}
-        AF-read-file-start.txt         AF {"id":"6","time":"...","call_id":"t1","name":"read_file"}
-        AF-read-file-input.txt         AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go"}}   ← or AF-read-file-input-range.txt
-        UF-read-file-success.txt       UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
-        UF-read-file-failed.txt        UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"file not found"}],"is_error":true}
+stdout: UX-echo-read-file.txt          UX{"id":"5","time":"...","type":"text","text":"Read the file main.go"}
+        AF-read-file-start.txt         AF{"id":"6","time":"...","call_id":"t1","name":"read_file"}
+        AF-read-file-input.txt         AF{"id":"6","time":"...","call_id":"t1","input":{"path":"main.go"}}   ← or AF-read-file-input-range.txt
+        UF-read-file-success.txt       UF{"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
+        UF-read-file-failed.txt        UF{"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"file not found"}],"is_error":true}
 ```
 
 The `AF-read-file-input-range.txt` sample is an **alternative** to `AF-read-file-input.txt` — it demonstrates the `start_line` and `num_lines` optional parameters. Only one input frame is sent per tool invocation.
@@ -569,51 +575,51 @@ The `AF-read-file-input-range.txt` sample is an **alternative** to `AF-read-file
 ### write_file
 
 ```
-stdin:  UX-write-file.txt              UX {"type":"text","text":"Write a hello world Go program to hello.go"}
+stdin:  UX-write-file.txt              UX{"type":"text","text":"Write a hello world Go program to hello.go"}
                                        UE
-stdout: (echo)                         UX {"id":"9","time":"...","type":"text","text":"Write a hello world Go program to hello.go"}
-        AF-write-file-start.txt        AF {"id":"10","time":"...","call_id":"t3","name":"write_file"}
-        AF-write-file-input.txt        AF {"id":"10","time":"...","call_id":"t3","input":{"content":"package main","path":"main.go"}}
-        UF-write-file-success.txt      UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"File written successfully"}]}
-        UF-write-file-failed.txt       UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"permission denied"}],"is_error":true}
+stdout: (echo)                         UX{"id":"9","time":"...","type":"text","text":"Write a hello world Go program to hello.go"}
+        AF-write-file-start.txt        AF{"id":"10","time":"...","call_id":"t3","name":"write_file"}
+        AF-write-file-input.txt        AF{"id":"10","time":"...","call_id":"t3","input":{"content":"package main","path":"main.go"}}
+        UF-write-file-success.txt      UF{"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"File written successfully"}]}
+        UF-write-file-failed.txt       UF{"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"permission denied"}],"is_error":true}
 ```
 
 ### edit_file
 
 ```
-stdin:  UX-edit-file.txt               UX {"type":"text","text":"Edit main.go to fix the greeting"}
+stdin:  UX-edit-file.txt               UX{"type":"text","text":"Edit main.go to fix the greeting"}
                                        UE
-stdout: (echo)                         UX {"id":"7","time":"...","type":"text","text":"Edit main.go to fix the greeting"}
-        AF-edit-file-start.txt         AF {"id":"8","time":"...","call_id":"t2","name":"edit_file"}
-        AF-edit-file-input.txt         AF {"id":"8","time":"...","call_id":"t2","input":{"new_string":"fmt.Printf","old_string":"fmt.Println","path":"main.go"}}
-        UF-edit-file-success.txt       UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"File edited successfully"}]}
-        UF-edit-file-failed.txt        UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"old_string not found"}],"is_error":true}
+stdout: (echo)                         UX{"id":"7","time":"...","type":"text","text":"Edit main.go to fix the greeting"}
+        AF-edit-file-start.txt         AF{"id":"8","time":"...","call_id":"t2","name":"edit_file"}
+        AF-edit-file-input.txt         AF{"id":"8","time":"...","call_id":"t2","input":{"new_string":"fmt.Printf","old_string":"fmt.Println","path":"main.go"}}
+        UF-edit-file-success.txt       UF{"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"File edited successfully"}]}
+        UF-edit-file-failed.txt        UF{"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"old_string not found"}],"is_error":true}
 ```
 
 ### search_content
 
 ```
-stdin:  UX-search-content.txt          UX {"type":"text","text":"Search for TODO in Go files"}
+stdin:  UX-search-content.txt          UX{"type":"text","text":"Search for TODO in Go files"}
                                        UE
-stdout: (echo)                         UX {"id":"11","time":"...","type":"text","text":"Search for TODO in Go files"}
-        AF-search-content-start.txt    AF {"id":"12","time":"...","call_id":"t4","name":"search_content"}
-        AF-search-content-input.txt    AF {"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
-        Uf-search-content-preview.txt  Uf {"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}   ← ephemeral preview (optional)
-        UF-search-content-success.txt  UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
-        UF-search-content-failed.txt   UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
+stdout: (echo)                         UX{"id":"11","time":"...","type":"text","text":"Search for TODO in Go files"}
+        AF-search-content-start.txt    AF{"id":"12","time":"...","call_id":"t4","name":"search_content"}
+        AF-search-content-input.txt    AF{"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
+        Uf-search-content-preview.txt  Uf{"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}   ← ephemeral preview (optional)
+        UF-search-content-success.txt  UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
+        UF-search-content-failed.txt   UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
 ```
 
 ### execute_command
 
 ```
-stdin:  UX-execute-command.txt         UX {"type":"text","text":"Run: ls -la"}
+stdin:  UX-execute-command.txt         UX{"type":"text","text":"Run: ls -la"}
                                        UE
-stdout: (echo)                         UX {"id":"13","time":"...","type":"text","text":"Run: ls -la"}
-        AF-execute-command-start.txt   AF {"id":"14","time":"...","call_id":"t5","name":"execute_command"}
-        AF-execute-command-input.txt   AF {"id":"14","time":"...","call_id":"t5","input":{"command":"ls -la"}}
-        Uf-execute-command-preview.txt Uf {"id":"14","call_id":"t5","text":"total 42..."}   ← ephemeral preview (optional)
-        UF-execute-command-success.txt UF {"id":"15","time":"...","call_id":"t5","output":[{"type":"text","text":"total 42..."}]}
-        UF-execute-command-failed.txt  UF {"id":"15","time":"...","call_id":"t5","output":[{"type":"text","text":"command not found"}],"is_error":true}
+stdout: (echo)                         UX{"id":"13","time":"...","type":"text","text":"Run: ls -la"}
+        AF-execute-command-start.txt   AF{"id":"14","time":"...","call_id":"t5","name":"execute_command"}
+        AF-execute-command-input.txt   AF{"id":"14","time":"...","call_id":"t5","input":{"command":"ls -la"}}
+        Uf-execute-command-preview.txt Uf{"id":"14","call_id":"t5","text":"total 42..."}   ← ephemeral preview (optional)
+        UF-execute-command-success.txt UF{"id":"15","time":"...","call_id":"t5","output":[{"type":"text","text":"total 42..."}]}
+        UF-execute-command-failed.txt  UF{"id":"15","time":"...","call_id":"t5","output":[{"type":"text","text":"command not found"}],"is_error":true}
 ```
 
 ### Text / Reasoning / System / Tool samples
@@ -623,69 +629,69 @@ Samples are grouped by direction below.
 **stdin (adapter → agent, no history id, no time):**
 
 ```
-UX-hello.txt                   UX {"type":"text","text":"hello"}
-UX-empty.txt                   UX {"type":"text"}   (no text — an empty prompt)
-UX-image.txt                   UX {"type":"image","uri":"data:image/jpeg;base64,..."}
-UX-image-url.txt               UX {"type":"image","uri":"https://..."}
-UX-audio.txt                   UX {"type":"audio","uri":"data:audio/mpeg;base64,..."}
-UX-audio-url.txt               UX {"type":"audio","uri":"https://..."}
-UX-video.txt                   UX {"type":"video","uri":"data:video/mp4;base64,...","fps":5,"res":1}
-UX-video-url.txt               UX {"type":"video","uri":"https://...","fps":5,"res":1}
-UX-document.txt                UX {"type":"document","uri":"data:application/pdf;base64,..."}
+UX-hello.txt                   UX{"type":"text","text":"hello"}
+UX-empty.txt                   UX{"type":"text"}   (no text — an empty prompt)
+UX-image.txt                   UX{"type":"image","uri":"data:image/jpeg;base64,..."}
+UX-image-url.txt               UX{"type":"image","uri":"https://..."}
+UX-audio.txt                   UX{"type":"audio","uri":"data:audio/mpeg;base64,..."}
+UX-audio-url.txt               UX{"type":"audio","uri":"https://..."}
+UX-video.txt                   UX{"type":"video","uri":"data:video/mp4;base64,...","fps":5,"res":1}
+UX-video-url.txt               UX{"type":"video","uri":"https://...","fps":5,"res":1}
+UX-document.txt                UX{"type":"document","uri":"data:application/pdf;base64,..."}
 UE.txt                         UE "" (length 0)
 CE.txt                         CE "" (length 0) — input end: no more prompts, commands may still follow
-CI-cancel.txt                  CI {"call_id":"1","name":"cancel"}
-CI-save.txt                    CI {"call_id":"2","name":"save","input":"/tmp/x.alaya"}
-CI-model-sync.txt              CI {"call_id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
+CI-cancel.txt                  CI{"call_id":"1","name":"cancel"}
+CI-save.txt                    CI{"call_id":"2","name":"save","input":"/tmp/x.alaya"}
+CI-model-sync.txt              CI{"call_id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
 ```
 
 **stdout — content (history id in `"id"`, time on authoritative frames):**
 
 ```
-UX-echo-hello.txt              UX {"id":"1","time":"...","type":"text","text":"Hello"}
-UX-echo-read-file.txt          UX {"id":"5","time":"...","type":"text","text":"Read the file main.go"}
-UX-echo-image.txt              UX {"id":"2","time":"...","type":"image","uri":"data:image/jpeg;..."}
-UX-echo-audio-url.txt          UX {"id":"3","time":"...","type":"audio","uri":"https://..."}
-UX-echo-video-url.txt          UX {"id":"4","time":"...","type":"video","uri":"https://..."}
-Ax-hello.txt                   Ax {"id":"1","type":"text","text":"Hello"}
-Ax-world.txt                   Ax {"id":"1","type":"text","text":" world"} (same stream)
-Ax-new-step.txt                Ax {"id":"2","type":"text","text":"Next step"} (new stream)
-Ax-thinking.txt                Ax {"id":"3","type":"reasoning","text":"thinking..."}
-AX-complete.txt                AX {"id":"4","time":"...","type":"text","text":"Here's what main.go does..."}   (content varies by mode)
-AX-reasoning.txt               AX {"id":"3","time":"...","type":"reasoning","text":"I need to read the file first..."} (content varies by mode)
+UX-echo-hello.txt              UX{"id":"1","time":"...","type":"text","text":"Hello"}
+UX-echo-read-file.txt          UX{"id":"5","time":"...","type":"text","text":"Read the file main.go"}
+UX-echo-image.txt              UX{"id":"2","time":"...","type":"image","uri":"data:image/jpeg;..."}
+UX-echo-audio-url.txt          UX{"id":"3","time":"...","type":"audio","uri":"https://..."}
+UX-echo-video-url.txt          UX{"id":"4","time":"...","type":"video","uri":"https://..."}
+Ax-hello.txt                   Ax{"id":"1","type":"text","text":"Hello"}
+Ax-world.txt                   Ax{"id":"1","type":"text","text":" world"} (same stream)
+Ax-new-step.txt                Ax{"id":"2","type":"text","text":"Next step"} (new stream)
+Ax-thinking.txt                Ax{"id":"3","type":"reasoning","text":"thinking..."}
+AX-complete.txt                AX{"id":"4","time":"...","type":"text","text":"Here's what main.go does..."}   (content varies by mode)
+AX-reasoning.txt               AX{"id":"3","time":"...","type":"reasoning","text":"I need to read the file first..."} (content varies by mode)
 ```
 
 **stdout — tool frames (history id in `"id"`; matching by `"call_id"`):**
 
 ```
-AF-read-file-start.txt         AF {"id":"6","time":"...","call_id":"t1","name":"read_file"}
-AF-read-file-input.txt         AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go"}}
-AF-read-file-input-range.txt   AF {"id":"6","time":"...","call_id":"t1","input":{"path":"main.go","start_line":10,"num_lines":20}}
-UF-read-file-success.txt       UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
-UF-read-file-failed.txt        UF {"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"file not found"}],"is_error":true}
-AF-edit-file-start.txt         AF {"id":"8","time":"...","call_id":"t2","name":"edit_file"}
-AF-edit-file-input.txt         AF {"id":"8","time":"...","call_id":"t2","input":{"new_string":"fmt.Printf","old_string":"fmt.Println","path":"main.go"}}
-UF-edit-file-success.txt       UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"File edited successfully"}]}
-UF-edit-file-failed.txt        UF {"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"old_string not found"}],"is_error":true}
-AF-write-file-start.txt        AF {"id":"10","time":"...","call_id":"t3","name":"write_file"}
-AF-write-file-input.txt        AF {"id":"10","time":"...","call_id":"t3","input":{"content":"package main","path":"main.go"}}
-UF-write-file-success.txt      UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"File written successfully"}]}
-UF-write-file-failed.txt       UF {"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"permission denied"}],"is_error":true}
-AF-search-content-start.txt    AF {"id":"12","time":"...","call_id":"t4","name":"search_content"}
-AF-search-content-input.txt    AF {"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
-Uf-search-content-preview.txt  Uf {"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}
-UF-search-content-success.txt  UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
-UF-search-content-failed.txt   UF {"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
-Af-tool-delta.txt              Af {"id":"6","call_id":"t1","delta":"{\"path\":\""}
-Uf-execute-command-preview.txt Uf {"id":"14","call_id":"t5","text":"total 42..."}
+AF-read-file-start.txt         AF{"id":"6","time":"...","call_id":"t1","name":"read_file"}
+AF-read-file-input.txt         AF{"id":"6","time":"...","call_id":"t1","input":{"path":"main.go"}}
+AF-read-file-input-range.txt   AF{"id":"6","time":"...","call_id":"t1","input":{"path":"main.go","start_line":10,"num_lines":20}}
+UF-read-file-success.txt       UF{"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
+UF-read-file-failed.txt        UF{"id":"7","time":"...","call_id":"t1","output":[{"type":"text","text":"file not found"}],"is_error":true}
+AF-edit-file-start.txt         AF{"id":"8","time":"...","call_id":"t2","name":"edit_file"}
+AF-edit-file-input.txt         AF{"id":"8","time":"...","call_id":"t2","input":{"new_string":"fmt.Printf","old_string":"fmt.Println","path":"main.go"}}
+UF-edit-file-success.txt       UF{"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"File edited successfully"}]}
+UF-edit-file-failed.txt        UF{"id":"9","time":"...","call_id":"t2","output":[{"type":"text","text":"old_string not found"}],"is_error":true}
+AF-write-file-start.txt        AF{"id":"10","time":"...","call_id":"t3","name":"write_file"}
+AF-write-file-input.txt        AF{"id":"10","time":"...","call_id":"t3","input":{"content":"package main","path":"main.go"}}
+UF-write-file-success.txt      UF{"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"File written successfully"}]}
+UF-write-file-failed.txt       UF{"id":"11","time":"...","call_id":"t3","output":[{"type":"text","text":"permission denied"}],"is_error":true}
+AF-search-content-start.txt    AF{"id":"12","time":"...","call_id":"t4","name":"search_content"}
+AF-search-content-input.txt    AF{"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
+Uf-search-content-preview.txt  Uf{"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}
+UF-search-content-success.txt  UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
+UF-search-content-failed.txt   UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
+Af-tool-delta.txt              Af{"id":"6","call_id":"t1","delta":"{\"path\":\""}
+Uf-execute-command-preview.txt Uf{"id":"14","call_id":"t5","text":"total 42..."}
 ```
 
 **stdout — commands and system messages (no history id):**
 
 ```
-CO-save-success.txt            CO {"call_id":"2","output":{"path":"/tmp/x.alaya"}}
-CO-command-error.txt           CO {"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
-CO-task-started.txt            CO {"call_id":"9","output":{"status":"started"}}
+CO-save-success.txt            CO{"call_id":"2","output":{"path":"/tmp/x.alaya"}}
+CO-command-error.txt           CO{"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+CO-task-started.txt            CO{"call_id":"9","output":{"status":"started"}}
 ```
 
 The system-message samples follow with their schema.
@@ -745,7 +751,7 @@ Commands are sent as **CI** (Command Input) frames — a JSON envelope with an
 adapter-generated call ID, the command name, and an argument string:
 
 ```
-CI {"call_id":"<call-id>","name":"<command>","input":"<args-string>"}
+CI{"call_id":"<call-id>","name":"<command>","input":"<args-string>"}
 ```
 
 The `input` is an opaque string whose syntax is defined by each command
@@ -764,8 +770,8 @@ Every CI frame receives exactly one **CO** (Command Output) frame, echoing
 the same `call_id`:
 
 ```
-CO {"call_id":"<call-id>","output":<command result>}                    ← success
-CO {"call_id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
+CO{"call_id":"<call-id>","output":<command result>}                    ← success
+CO{"call_id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
 ```
 
 - `output` is structured JSON defined per command (may be `null` for
@@ -793,10 +799,10 @@ These commands start a long-running task. CO replies **immediately** —
 via an SM `task` message carrying the same `command_id`:
 
 ```
-CI {"call_id":"9","name":"continue"}
-SM {"type":"task","data":{"in_progress":true,"command_id":"9"}}      ← running
-CO {"call_id":"9","output":{"status":"started"}}                          ← accepted
-SM {"type":"task","data":{"in_progress":false,"command_id":"9"}}     ← done
+CI{"call_id":"9","name":"continue"}
+SM{"type":"task","data":{"in_progress":true,"command_id":"9"}}      ← running
+CO{"call_id":"9","output":{"status":"started"}}                          ← accepted
+SM{"type":"task","data":{"in_progress":false,"command_id":"9"}}     ← done
 ```
 
 CI/CO (the control plane) and SM (the state plane) are independent channels
@@ -809,15 +815,15 @@ command produces the CO error and no running frame.
 ### Example: save command
 
 ```
-stdin:  CI {"call_id":"1","name":"save","input":"/tmp/x.alaya"}
-stdout: CO {"call_id":"1","output":{"path":"/tmp/x.alaya"}}
+stdin:  CI{"call_id":"1","name":"save","input":"/tmp/x.alaya"}
+stdout: CO{"call_id":"1","output":{"path":"/tmp/x.alaya"}}
 ```
 
 ### Example: failed command
 
 ```
-stdin:  CI {"call_id":"2","name":"model_set","input":"99"}
-stdout: CO {"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+stdin:  CI{"call_id":"2","name":"model_set","input":"99"}
+stdout: CO{"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
 ```
 
 ### Tool Confirmation
