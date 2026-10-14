@@ -152,7 +152,7 @@ content. `I`/`O` encode **direction**: `CI` is sent by the adapter on stdin,
 The adapter must be prepared to **receive** `UX` on stdout in these scenarios:
 
 1. **Prompt echo** — When the user sends a prompt (`UX` + `UE` on stdin), the agent echoes each content item back on stdout with an assigned history id before sending them to the LLM.
-2. **Session replay** — When a saved session file (key-value frontmatter + frame body, specified via `--session`) is loaded, all historical content (including user messages) is replayed to the adapter on stdout with their original history ids.
+2. **Session replay** — When a saved session file (key-value frontmatter + frame body, specified via `--session`) is loaded, all historical content (including user messages) is replayed to the adapter on stdout with their original history ids. A file's body is conversation content only: `UE` and `CE` delimit messages on a stream, and a file has no message boundaries to mark — its messages are grouped by role — so a control frame in one is refused rather than ignored.
 3. **The agent's own user turns** — Not every `UX` frame is something the user typed: the `Continue` that resumes a cancelled turn (`:continue`) and the one a mid-task compaction appends are written by the agent. They are parts of the conversation like any other, so they are echoed like any other.
 4. **Steering** — A prompt sent while a task is running is spliced into that turn at its next step boundary (or becomes the next prompt if the turn ends first), so its echo (with its history id) arrives when the model receives it — one step later, not immediately. The session reports this lifecycle as an SM `steering` message carrying a `phase` of `queued`, `delivered`, `dropped`, or `refused`. The echo is the authoritative record — the words enter `Contents` only at delivery.
 
@@ -902,7 +902,8 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 ## Use
 
 A sample file *is* the bytes to send — one frame per line, so it can be piped
-straight in. `wirecat` decodes what comes back with the same reader the core uses,
+straight in. That is a *stream*: the control frames among the samples (`UE`,
+`CE`) belong to one, and a session file's body does not take them. `wirecat` decodes what comes back with the same reader the core uses,
 which means it also reports a frame the format does not allow.
 
 ```sh

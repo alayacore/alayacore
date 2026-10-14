@@ -167,14 +167,10 @@ func assistantKind(kind string) bool {
 
 // contentPartFromJSON converts a frame tag + JSON body into a ContentPart with
 // Role and Time set. A nil part with a nil error means "nothing to keep": an AF
-// start frame (name only), or a control frame, which carries no conversation
-// content at all.
+// start frame carries only a name, and is skipped, matching the writer's shape.
 //
-// The control frames are skipped rather than rejected because a session file's
-// body is the conversation, and UE/CE are stream delimiters that can only ever be
-// noise in it — but they *are* frames the format has, so one appearing in a file
-// is not an error. It is what you get by assembling a file out of the sample
-// frames, or out of a session's own stdout, both of which carry them.
+// Everything else either becomes a part or is an error — including the stream's
+// control frames, whose meaning a file cannot express (see their case below).
 func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 	switch tag {
 	case wire.TagUserX, wire.TagAssistantX:
@@ -205,7 +201,12 @@ func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleTool, Time: parseWireTime(tr.Time)},
 		}, nil
 	case wire.TagUserEnd, wire.TagInputEnd:
-		return nil, nil
+		// A delimiter, not content: it marks where a message ends on the stream. A
+		// file has no message boundaries to mark — its messages are grouped by role
+		// on load — so skipping one would silently merge the messages it was
+		// written between, which is a change to the conversation that nobody asked
+		// for. Say what the frame is instead.
+		return nil, fmt.Errorf("%s frame is a stream delimiter, not conversation content: a session file has no message boundaries to mark", tag)
 	default:
 		// Says what is wrong with a frame in a file rather than calling a tag
 		// unknown: SM, CI and CO are all tags this build knows, and none of them is
