@@ -37,7 +37,6 @@ func (p *scriptedProvider) StreamMessages(_ context.Context, _ []llm.ContentPart
 
 func (p *scriptedProvider) SetReasoningLevel(int)                       {}
 func (p *scriptedProvider) SetReasoningConfigs(map[int]json.RawMessage) {}
-func (p *scriptedProvider) SetVideoConfig(int, int)                     {}
 
 // Example_usage demonstrates the tool-calling loop end to end: the provider asks
 // for the echo tool, the agent executes it, and the next step uses the result.

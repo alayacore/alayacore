@@ -28,7 +28,6 @@ func (invertedArrivalProvider) StreamMessages(_ context.Context, _ []llm.Content
 
 func (invertedArrivalProvider) SetReasoningLevel(_ int)                       {}
 func (invertedArrivalProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (invertedArrivalProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // The requirement is about the session file, not the screen: whatever order the
 // bytes arrived in, the record written to disk has to be the turn as the protocol

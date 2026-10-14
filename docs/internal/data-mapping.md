@@ -10,13 +10,14 @@ All providers eat different wire formats and emit the same domain types:
 // llm/types.go — the domain types
 
 // ContentPart is implemented by all content block types.
-// Each implementation embeds ContentPartMeta for HistoryID and Role.
+// Each implementation embeds ContentPartMeta for HistoryID, Role and Time.
 type ContentPart interface {
 	GetHistoryID() uint64
 	SetHistoryID(uint64)
 	GetRole() MessageRole
 	SetRole(MessageRole)
-	UpdateContentPartMeta(historyID uint64, role MessageRole)
+	GetTime() time.Time
+	SetTime(time.Time)
 }
 
 // Implementations:
@@ -30,7 +31,7 @@ type ToolInputPart  struct { ContentPartMeta; ID string; Name string; Input json
 type ToolOutputPart struct { ContentPartMeta; ID string; Output []ContentPart; IsError bool }
 
 // Messages are represented as flat []ContentPart slices.
-// There is no Message wrapper struct — role and history ID are stored
+// There is no Message wrapper struct — role, history ID and time are stored
 // on each ContentPart via ContentPartMeta. These are in-memory fields
 // (all three are `json:"-"`): the session file stores no history ID, and
 // loading re-issues IDs sequentially in file order. See architecture.md,

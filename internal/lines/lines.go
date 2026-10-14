@@ -170,11 +170,6 @@ func NewReader(src io.Reader, limit int) *Reader {
 	return &Reader{src: src, sp: NewSplitter(limit), chunk: make([]byte, chunkSize)}
 }
 
-// Pending reports how many bytes of an unterminated line are buffered.
-func (r *Reader) Pending() int {
-	return r.sp.Pending()
-}
-
 // ReadLine returns the next line, blocking until one is available.
 //
 // At the end of the stream it returns io.EOF, but only at a line boundary unless

@@ -351,7 +351,6 @@ func (m *stepBlockingProvider) StreamMessages(_ context.Context, _ []llm.Content
 
 func (m *stepBlockingProvider) SetReasoningLevel(_ int)                       {}
 func (m *stepBlockingProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *stepBlockingProvider) SetVideoConfig(_ int, _ int)                   {}
 
 func TestSaveDuringStreaming_EndToEnd(t *testing.T) {
 	output := &syncOutput{}

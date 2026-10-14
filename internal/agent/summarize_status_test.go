@@ -74,7 +74,6 @@ func (p *parkFirstProvider) StreamMessages(ctx context.Context, _ []llm.ContentP
 
 func (p *parkFirstProvider) SetReasoningLevel(_ int)                       {}
 func (p *parkFirstProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (p *parkFirstProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // TestSummarizeReportsInProgressWhileInFlight covers the runTaskSummarize
 // entry point: a :summarize emits no opening step event, so only the

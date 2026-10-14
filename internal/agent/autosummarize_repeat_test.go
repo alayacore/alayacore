@@ -97,7 +97,6 @@ func (m *recordProvider) StreamMessages(_ context.Context, history []llm.Content
 
 func (m *recordProvider) SetReasoningLevel(_ int)                       {}
 func (m *recordProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *recordProvider) SetVideoConfig(_ int, _ int)                   {}
 
 func (m *recordProvider) summarizeCalls() int {
 	m.mu.Lock()

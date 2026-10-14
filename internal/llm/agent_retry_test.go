@@ -33,7 +33,6 @@ func (p *retryScriptProvider) StreamMessages(_ context.Context, _ []ContentPart,
 
 func (p *retryScriptProvider) SetReasoningLevel(_ int)                       {}
 func (p *retryScriptProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (p *retryScriptProvider) SetVideoConfig(_ int, _ int)                   {}
 
 func (p *retryScriptProvider) onRetry(n RetryNotice) error {
 	p.notices = append(p.notices, n)

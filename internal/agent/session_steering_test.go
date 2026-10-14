@@ -136,7 +136,6 @@ func (p *steeringProvider) StreamMessages(ctx context.Context, history []llm.Con
 
 func (p *steeringProvider) SetReasoningLevel(_ int)                       {}
 func (p *steeringProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (p *steeringProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // request returns the history the n-th provider call (0-based) was sent on.
 //

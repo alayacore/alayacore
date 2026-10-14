@@ -22,7 +22,6 @@ func (p *salvageProvider) StreamMessages(_ context.Context, _ []ContentPart, _ [
 
 func (p *salvageProvider) SetReasoningLevel(_ int)                       {}
 func (p *salvageProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (p *salvageProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // fastTool returns a tool that executes immediately, closes executed to
 // signal completion, and returns a success result.

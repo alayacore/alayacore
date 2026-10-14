@@ -49,7 +49,6 @@ func (p *readyProbeProvider) StreamMessages(_ context.Context, _ []llm.ContentPa
 
 func (p *readyProbeProvider) SetReasoningLevel(_ int)                       {}
 func (p *readyProbeProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (p *readyProbeProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // newDeferredPromptSession returns a session that is Initializing (MCP
 // configured, init not settled), with the given provider behind an initialized

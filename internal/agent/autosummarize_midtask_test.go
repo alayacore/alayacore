@@ -80,7 +80,6 @@ func (m *midTaskProvider) StreamMessages(_ context.Context, history []llm.Conten
 
 func (m *midTaskProvider) SetReasoningLevel(_ int)                       {}
 func (m *midTaskProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *midTaskProvider) SetVideoConfig(_ int, _ int)                   {}
 
 func (m *midTaskProvider) summarizeCalls() int {
 	m.mu.Lock()
@@ -146,7 +145,6 @@ func (m *compactFailProvider) StreamMessages(_ context.Context, history []llm.Co
 
 func (m *compactFailProvider) SetReasoningLevel(_ int)                       {}
 func (m *compactFailProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *compactFailProvider) SetVideoConfig(_ int, _ int)                   {}
 
 func (m *compactFailProvider) summarizeCalls() int {
 	m.mu.Lock()

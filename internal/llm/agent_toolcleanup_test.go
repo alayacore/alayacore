@@ -36,7 +36,6 @@ func (m *errorMidStreamProvider) StreamMessages(_ context.Context, _ []ContentPa
 
 func (m *errorMidStreamProvider) SetReasoningLevel(_ int)                       {}
 func (m *errorMidStreamProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *errorMidStreamProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // TestStreamErrorCancelsInFlightTool verifies that when the provider
 // errors while a tool is executing, Stream cancels the in-flight tool and

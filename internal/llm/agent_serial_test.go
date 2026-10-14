@@ -338,7 +338,6 @@ func (m *mockProviderDyingMidCall) StreamMessages(_ context.Context, _ []Content
 
 func (m *mockProviderDyingMidCall) SetReasoningLevel(_ int)                       {}
 func (m *mockProviderDyingMidCall) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *mockProviderDyingMidCall) SetVideoConfig(_ int, _ int)                   {}
 
 // A stream that fails after a call has streamed must run nothing at all. Under
 // the parallel driver the call was already launched when the stream died, which

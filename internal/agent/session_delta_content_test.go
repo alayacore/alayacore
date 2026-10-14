@@ -65,7 +65,6 @@ func (textAndReasoningProvider) StreamMessages(_ context.Context, _ []llm.Conten
 
 func (textAndReasoningProvider) SetReasoningLevel(_ int)                       {}
 func (textAndReasoningProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (textAndReasoningProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // TestCompleteFramesCarryContentOnlyWhenDeltasAreOff runs the same turn in both
 // modes and reads the frames the session actually writes. Each mode asserts both

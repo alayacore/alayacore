@@ -68,7 +68,6 @@ func (m *mockProviderStepFail) StreamMessages(_ context.Context, _ []llm.Content
 
 func (m *mockProviderStepFail) SetReasoningLevel(_ int)                       {}
 func (m *mockProviderStepFail) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *mockProviderStepFail) SetVideoConfig(_ int, _ int)                   {}
 
 func TestRunTaskPreservesPartialResultsOnError(t *testing.T) {
 	provider := &mockProviderStepFail{
@@ -259,7 +258,6 @@ func (panicProvider) StreamMessages(_ context.Context, _ []llm.ContentPart, _ []
 
 func (panicProvider) SetReasoningLevel(_ int)                       {}
 func (panicProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (panicProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // The content a user watched stream in must survive a panic all the way to the
 // session's history, not just to llm.Agent's return value. llm.Agent converts the

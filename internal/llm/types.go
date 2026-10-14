@@ -29,18 +29,6 @@ const (
 	RoleTool      MessageRole = "tool"
 )
 
-// ContentPart type discriminator strings for frame serialization.
-const (
-	ContentPartText       = "text"
-	ContentPartImage      = "image"
-	ContentPartVideo      = "video"
-	ContentPartAudio      = "audio"
-	ContentPartDocument   = "document"
-	ContentPartReasoning  = "reasoning"
-	ContentPartToolCall   = "tool_use"
-	ContentPartToolResult = "tool_result"
-)
-
 // ContentPart represents a part of message content
 type ContentPart interface {
 	GetHistoryID() uint64
@@ -49,7 +37,6 @@ type ContentPart interface {
 	SetRole(MessageRole)
 	GetTime() time.Time
 	SetTime(time.Time)
-	UpdateContentPartMeta(historyID uint64, role MessageRole)
 }
 
 // ContentPartMeta holds the metadata common to all ContentPart types.
@@ -71,10 +58,6 @@ func (m *ContentPartMeta) GetRole() MessageRole   { return m.Role }
 func (m *ContentPartMeta) SetRole(r MessageRole)  { m.Role = r }
 func (m *ContentPartMeta) GetTime() time.Time     { return m.Time }
 func (m *ContentPartMeta) SetTime(t time.Time)    { m.Time = t }
-func (m *ContentPartMeta) UpdateContentPartMeta(id uint64, r MessageRole) {
-	m.HistoryID = id
-	m.Role = r
-}
 
 // TextPart represents text content
 type TextPart struct {

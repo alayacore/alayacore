@@ -96,9 +96,6 @@ func (cd ConfirmDialog) WithStyles(styles *Styles) ConfirmDialog {
 // Kind returns the type of confirmation dialog currently active.
 func (cd ConfirmDialog) Kind() ConfirmKind { return cd.kind }
 
-// ToolName returns the tool name for tool confirmations.
-func (cd ConfirmDialog) ToolName() string { return cd.toolName }
-
 // ToolInput returns the tool input for tool confirmations.
 func (cd ConfirmDialog) ToolInput() string { return cd.toolInput }
 

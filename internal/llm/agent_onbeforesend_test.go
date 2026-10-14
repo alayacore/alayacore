@@ -55,7 +55,6 @@ func (p *onBeforeSendProvider) StreamMessages(_ context.Context, history []Conte
 
 func (p *onBeforeSendProvider) SetReasoningLevel(_ int)                       {}
 func (p *onBeforeSendProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (p *onBeforeSendProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // TestOnBeforeSendReplacesHistory pins the seam: a replacement returned by
 // OnBeforeSend is what the next step is sent on, and it becomes the history the

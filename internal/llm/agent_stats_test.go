@@ -41,7 +41,6 @@ func (m *timedProvider) StreamMessages(
 
 func (m *timedProvider) SetReasoningLevel(_ int)                       {}
 func (m *timedProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *timedProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // TestAgentStepStats verifies that Agent.Stream computes per-step speed
 // metrics from the provider's authoritative usage and fires OnStepStats
@@ -273,7 +272,6 @@ func (m *variedProvider) StreamMessages(
 
 func (m *variedProvider) SetReasoningLevel(_ int)                       {}
 func (m *variedProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *variedProvider) SetVideoConfig(_ int, _ int)                   {}
 
 // toolOnlyTimedProvider emits a tool call on its first call (step 1, zero
 // output tokens) and a text-only response on the second (step 2, 5 tokens).
@@ -318,4 +316,3 @@ func (m *toolOnlyTimedProvider) StreamMessages(
 
 func (m *toolOnlyTimedProvider) SetReasoningLevel(_ int)                       {}
 func (m *toolOnlyTimedProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *toolOnlyTimedProvider) SetVideoConfig(_ int, _ int)                   {}

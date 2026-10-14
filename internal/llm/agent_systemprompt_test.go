@@ -29,7 +29,6 @@ func (m *mockProvider) StreamMessages(
 
 func (m *mockProvider) SetReasoningLevel(_ int)                       {}
 func (m *mockProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
-func (m *mockProvider) SetVideoConfig(_ int, _ int)                   {}
 
 func TestAgentSystemPromptSeparation(t *testing.T) {
 	tests := []struct {
