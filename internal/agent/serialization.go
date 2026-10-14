@@ -166,35 +166,19 @@ func assistantKind(kind string) bool {
 }
 
 // contentPartFromJSON converts a frame tag + JSON body into a ContentPart with
-// Role and Time set. A nil part with a nil error means "nothing to keep" — an
-// AF start frame (name only) is skipped, matching the old writer's shape.
+// Role and Time set. A nil part with a nil error means "nothing to keep": an AF
+// start frame (name only), or a control frame, which carries no conversation
+// content at all.
+//
+// The control frames are skipped rather than rejected because a session file's
+// body is the conversation, and UE/CE are stream delimiters that can only ever be
+// noise in it — but they *are* frames the format has, so one appearing in a file
+// is not an error. It is what you get by assembling a file out of the sample
+// frames, or out of a session's own stdout, both of which carry them.
 func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 	switch tag {
 	case wire.TagUserX, wire.TagAssistantX:
-		var d protocol.ContentData
-		if err := json.Unmarshal(body, &d); err != nil {
-			return nil, fmt.Errorf("failed to parse content: %w", err)
-		}
-		// The tag names the side, the item names the kind; a kind on the wrong
-		// side is a malformed frame. Checked after partFromContentItem so an
-		// unknown kind still reports itself as unknown.
-		part, err := partFromContentItem(d.ContentItem)
-		if err != nil {
-			return nil, err
-		}
-		if tag == wire.TagUserX && !intoModelKind(d.Type) {
-			return nil, fmt.Errorf("content type %q cannot be user content", d.Type)
-		}
-		if tag == wire.TagAssistantX && !assistantKind(d.Type) {
-			return nil, fmt.Errorf("content type %q cannot be assistant content", d.Type)
-		}
-		role := llm.RoleUser
-		if tag == wire.TagAssistantX {
-			role = llm.RoleAssistant
-		}
-		part.SetRole(role)
-		part.SetTime(parseWireTime(d.Time))
-		return part, nil
+		return contentPartFromContentFrame(tag, body)
 	case wire.TagAssistantF:
 		var fd protocol.ToolInputData
 		if err := json.Unmarshal(body, &fd); err != nil {
@@ -220,9 +204,42 @@ func contentPartFromJSON(tag string, body []byte) (llm.ContentPart, error) {
 			ID: tr.CallID, Output: parts, IsError: tr.IsError,
 			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleTool, Time: parseWireTime(tr.Time)},
 		}, nil
+	case wire.TagUserEnd, wire.TagInputEnd:
+		return nil, nil
 	default:
-		return nil, fmt.Errorf("unknown tag: %s", tag)
+		// Says what is wrong with a frame in a file rather than calling a tag
+		// unknown: SM, CI and CO are all tags this build knows, and none of them is
+		// conversation content.
+		return nil, fmt.Errorf("%s frame is not conversation content", tag)
 	}
+}
+
+// contentPartFromContentFrame builds the part for a UX or AX frame. The tag names
+// the side and the item names the kind, and a kind on the wrong side is a malformed
+// frame; the check runs after partFromContentItem so that an unknown kind still
+// reports itself as unknown.
+func contentPartFromContentFrame(tag string, body []byte) (llm.ContentPart, error) {
+	var d protocol.ContentData
+	if err := json.Unmarshal(body, &d); err != nil {
+		return nil, fmt.Errorf("failed to parse content: %w", err)
+	}
+	part, err := partFromContentItem(d.ContentItem)
+	if err != nil {
+		return nil, err
+	}
+	if tag == wire.TagUserX && !intoModelKind(d.Type) {
+		return nil, fmt.Errorf("content type %q cannot be user content", d.Type)
+	}
+	if tag == wire.TagAssistantX && !assistantKind(d.Type) {
+		return nil, fmt.Errorf("content type %q cannot be assistant content", d.Type)
+	}
+	role := llm.RoleUser
+	if tag == wire.TagAssistantX {
+		role = llm.RoleAssistant
+	}
+	part.SetRole(role)
+	part.SetTime(parseWireTime(d.Time))
+	return part, nil
 }
 
 // wireID formats a history id for the wire "id" field.
