@@ -29,31 +29,49 @@ const (
 )
 
 // contentDisplayTag maps a content frame (wire tag + content item kind) to the
-// terminal's display tag. ok is false for a kind this adapter does not render.
+// terminal's display tag. ok is false for a plane this adapter does not ingest
+// or a kind that plane does not admit.
+//
+// Which kinds a plane admits is the protocol's call (protocol.KindAllowed), not
+// this adapter's; the table below only names how each admitted kind is drawn. A
+// kind admitted there but absent here would be a silent drop at ingest, so
+// content_tags_drift_test.go pins the two together.
 func contentDisplayTag(wireTag, kind string) (string, bool) {
+	plane, ok := contentPlane(wireTag)
+	if !ok || !protocol.KindAllowed(plane, kind) {
+		return "", false
+	}
+	tag, ok := contentDisplayTagFor[plane][kind]
+	return tag, ok
+}
+
+// contentPlane maps a content frame's wire tag to the plane it carries.
+func contentPlane(wireTag string) (protocol.Plane, bool) {
 	switch wireTag {
 	case wire.TagUserX:
-		switch kind {
-		case protocol.TypeText:
-			return tagUserText, true
-		case protocol.TypeImage:
-			return tagUserImage, true
-		case protocol.TypeVideo:
-			return tagUserVideo, true
-		case protocol.TypeAudio:
-			return tagUserAudio, true
-		case protocol.TypeDocument:
-			return tagUserDoc, true
-		}
+		return protocol.PlaneUser, true
 	case wire.TagAssistantX:
-		switch kind {
-		case protocol.TypeText:
-			return tagAssistantText, true
-		case protocol.TypeReasoning:
-			return tagAssistantReasoning, true
-		}
+		return protocol.PlaneAssistant, true
 	}
 	return "", false
+}
+
+// contentDisplayTagFor is this adapter's rendering vocabulary: for each plane it
+// draws, the display tag each admitted kind renders as. Kept as data so that
+// contentDisplayTag and its inverse displayTagFrame cannot disagree about a
+// kind.
+var contentDisplayTagFor = map[protocol.Plane]map[string]string{
+	protocol.PlaneUser: {
+		protocol.TypeText:     tagUserText,
+		protocol.TypeImage:    tagUserImage,
+		protocol.TypeVideo:    tagUserVideo,
+		protocol.TypeAudio:    tagUserAudio,
+		protocol.TypeDocument: tagUserDoc,
+	},
+	protocol.PlaneAssistant: {
+		protocol.TypeText:      tagAssistantText,
+		protocol.TypeReasoning: tagAssistantReasoning,
+	},
 }
 
 // displayTagFrame maps a display tag back to the wire tag and content kind it

@@ -65,11 +65,11 @@ func contentItemsFromParts(parts []llm.ContentPart) ([]protocol.ContentItem, err
 }
 
 // partsFromContentItems converts wire items back to domain parts. Nested items
-// are tool-result content, which is model *input*: a kind that is not
-// intoModelKind (reasoning, or anything unknown) is rejected here for the same
-// reason contentPartFromJSON rejects it under UX — a tool result may not carry
-// assistant-only content, and the writer cannot produce any (contentItemFromPart
-// errors on a ReasoningPart).
+// are tool-result content, which is model *input*: a kind the protocol does not
+// admit on the tool-result plane (reasoning, or anything unknown) is rejected
+// here for the same reason contentPartFromJSON rejects it under UX — a tool
+// result may not carry assistant-only content, and the writer cannot produce any
+// (contentItemFromPart errors on a ReasoningPart).
 func partsFromContentItems(items []protocol.ContentItem) ([]llm.ContentPart, error) {
 	parts := make([]llm.ContentPart, 0, len(items))
 	for _, item := range items {
@@ -77,7 +77,7 @@ func partsFromContentItems(items []protocol.ContentItem) ([]llm.ContentPart, err
 		if err != nil {
 			return nil, err
 		}
-		if !intoModelKind(item.Type) {
+		if !protocol.KindAllowed(protocol.PlaneToolResult, item.Type) {
 			return nil, fmt.Errorf("content type %q cannot be tool-result content", item.Type)
 		}
 		parts = append(parts, p)

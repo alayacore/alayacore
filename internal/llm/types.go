@@ -29,8 +29,15 @@ const (
 	RoleTool      MessageRole = "tool"
 )
 
-// ContentPart represents a part of message content
+// ContentPart represents a part of message content.
+//
+// The interface is sealed: only the part types declared in this file satisfy
+// it, each through its isContentPart marker below. Sealing makes the set of
+// content kinds closed on purpose — a part must be one the protocol and every
+// provider know how to carry, so a kind nobody handles is a compile error
+// where the value is used, not a silent drop in a type switch's default.
 type ContentPart interface {
+	isContentPart()
 	GetHistoryID() uint64
 	SetHistoryID(uint64)
 	GetRole() MessageRole
@@ -149,6 +156,22 @@ type ToolOutputPart struct {
 	Output  []ContentPart
 	IsError bool
 }
+
+// isContentPart seals ContentPart to the part types declared above.
+//
+// The marker is declared per type, not inherited from the embedded
+// ContentPartMeta, so that embedding the metadata is not by itself enough to
+// become a part: a new kind has to opt in here, and forgetting to leaves it
+// unsatisfying ContentPart — a compile error at the point someone first tries
+// to use it as one, rather than a value that reaches a switch with no case.
+func (*TextPart) isContentPart()       {}
+func (*ReasoningPart) isContentPart()  {}
+func (*ImagePart) isContentPart()      {}
+func (*VideoPart) isContentPart()      {}
+func (*AudioPart) isContentPart()      {}
+func (*DocumentPart) isContentPart()   {}
+func (*ToolInputPart) isContentPart()  {}
+func (*ToolOutputPart) isContentPart() {}
 
 // ToolDefinition defines a tool that can be called
 type ToolDefinition struct {

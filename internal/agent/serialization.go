@@ -145,26 +145,6 @@ func contentPartJSON(part llm.ContentPart, id string) (tag string, body string, 
 	return tag, body, nil
 }
 
-// intoModelKind reports whether a content kind travels into the model — user
-// content (UX) and tool-result content (UF.output). Reasoning is the one kind
-// that belongs to the assistant side alone, so it may appear under neither; a
-// kind accepted on one side and not the other would let a part's role depend on
-// which representation a reader saw.
-func intoModelKind(kind string) bool {
-	switch kind {
-	case protocol.TypeText, protocol.TypeImage, protocol.TypeVideo, protocol.TypeAudio, protocol.TypeDocument:
-		return true
-	}
-	return false
-}
-
-// assistantKind reports whether a content kind may appear under AX: the
-// assistant produces text and reasoning. Tool calls and their results have
-// their own frames (AF/UF), not content items.
-func assistantKind(kind string) bool {
-	return kind == protocol.TypeText || kind == protocol.TypeReasoning
-}
-
 // contentPartFromJSON converts a frame tag + JSON body into a ContentPart with
 // Role and Time set. A nil part with a nil error means "nothing to keep": an AF
 // start frame carries only a name, and is skipped, matching the writer's shape.
@@ -228,10 +208,10 @@ func contentPartFromContentFrame(tag string, body []byte) (llm.ContentPart, erro
 	if err != nil {
 		return nil, err
 	}
-	if tag == wire.TagUserX && !intoModelKind(d.Type) {
+	if tag == wire.TagUserX && !protocol.KindAllowed(protocol.PlaneUser, d.Type) {
 		return nil, fmt.Errorf("content type %q cannot be user content", d.Type)
 	}
-	if tag == wire.TagAssistantX && !assistantKind(d.Type) {
+	if tag == wire.TagAssistantX && !protocol.KindAllowed(protocol.PlaneAssistant, d.Type) {
 		return nil, fmt.Errorf("content type %q cannot be assistant content", d.Type)
 	}
 	role := llm.RoleUser
