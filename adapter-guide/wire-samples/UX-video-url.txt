@@ -1,1 +1,1 @@
-UX{"type":"video","uri":"https://example-files.cnbj1.mi-fds.com/example-files/video/video_example.mp4"}
+UX{"type":"video","uri":"https://example-files.cnbj1.mi-fds.com/example-files/video/video_example.mp4","fps":5,"res":1}
