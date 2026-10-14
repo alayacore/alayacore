@@ -172,10 +172,12 @@ func fitPart(p ContentPart, noteUnfit bool) ContentPart {
 // cannot measure (webp, heic) — it is handed to shrinkDataURI, which either
 // fits it or fails, and the caller then applies its own form's rule.
 //
-// A URI that is not a data URI is left alone. A remote URL is the server's to
-// fetch, so its size is the server's to bound; the remaining shapes a URI can
-// take (a bare path, file:, empty) are already degraded by each protocol's own
-// handling — see openaiPromotableURI.
+// A URI that is not a data URI is left alone here: a remote URL is the server's
+// to fetch, so its size is the server's to bound, and the shapes a server
+// cannot fetch at all (a bare path, file:, empty) are degraded by each
+// protocol's own media block instead — see openaiPromotableURI and
+// anthropicUnretrievableMediaBlock. The split is deliberate: this gate exists
+// to bound image *size*, and a URI nothing can fetch is not a size question.
 func imageSendable(uri string) bool {
 	_, data, isData := ParseDataURI(uri)
 	if !isData {

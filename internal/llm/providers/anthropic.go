@@ -953,11 +953,17 @@ func anthropicPartToBlock(part llm.ContentPart) *anthropicContentBlock {
 			Text: v.Text,
 		}
 	case *llm.ImagePart:
+		if !llm.FetchableMediaURI(v.URI) {
+			return anthropicUnretrievableMediaBlock("image", v.URI)
+		}
 		return anthropicMediaBlock(anthropicBlockTypeImage, v.URI)
 	case *llm.VideoPart, *llm.AudioPart:
 		// No native block exists for these — see anthropicUnsupportedMediaBlock.
 		return anthropicUnsupportedMediaBlock(part)
 	case *llm.DocumentPart:
+		if !llm.FetchableMediaURI(v.URI) {
+			return anthropicUnretrievableMediaBlock("document", v.URI)
+		}
 		return anthropicMediaBlock(anthropicBlockTypeDocument, v.URI)
 	case *llm.ReasoningPart:
 		text := v.Text
@@ -1021,6 +1027,28 @@ func anthropicMediaBlock(blockType, uri string) *anthropicContentBlock {
 			Type: "url",
 			URL:  uri,
 		},
+	}
+}
+
+// anthropicUnretrievableMediaBlock is the text placeholder for media whose URI
+// this API cannot retrieve. A native image/document block carries the URI as a
+// url source, and only data: and http(s): can be fetched, so a bare path, a
+// file: URI or an empty string would fail the whole request instead of one
+// block — and, being persisted history, every later turn with it.
+//
+// The wording follows anthropicUnsupportedMediaBlock for the same reason: it
+// must read as "you did not receive this", never as "a result came back", or
+// the model describes media it never perceived.
+func anthropicUnretrievableMediaBlock(kind, uri string) *anthropicContentBlock {
+	where := uri
+	if where == "" {
+		where = "no URI"
+	}
+	return &anthropicContentBlock{
+		Type: anthropicBlockTypeText,
+		Text: fmt.Sprintf(
+			"[Unreadable %s at %s: this API can only retrieve a data: or http(s): URI, so the content was NOT delivered to you and you have not perceived it. Do not describe or quote it.]",
+			kind, where),
 	}
 }
 

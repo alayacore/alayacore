@@ -46,3 +46,20 @@ func ParseDataURI(uri string) (mediaType, data string, ok bool) {
 	}
 	return mediaType, rest[len(b64Prefix):], true
 }
+
+// FetchableMediaURI reports whether a media part's URI is one an API server can
+// retrieve on its own: a data: URI carries its own bytes, and http/https are the
+// only remote schemes a server fetches. Every other shape — a bare filesystem
+// path, a file: URI, an empty string — cannot be handed to a provider inside a
+// content block, because the request carrying it fails whole rather than block
+// by block; and since the part is persisted history, every later turn fails the
+// same way. A caller that can degrade must degrade rather than forward.
+//
+// Both providers consult this before writing a native media block (the OpenAI
+// promotion gate and the Anthropic media block); it is the one place the
+// fetchable set is defined, so the two cannot disagree about it.
+func FetchableMediaURI(uri string) bool {
+	return strings.HasPrefix(uri, "data:") ||
+		strings.HasPrefix(uri, "http://") ||
+		strings.HasPrefix(uri, "https://")
+}

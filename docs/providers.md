@@ -76,6 +76,18 @@ The two providers have complementary multimodal capabilities — neither covers 
 | **Video** | ✅ `video_url.url` + `fps` + `media_resolution` | ❌ No such block in the API → degraded to a text placeholder, same as audio |
 | **Document (PDF)** | ❌ Falls back to text placeholder | ✅ `source.type="base64"` or `"url"` |
 
+> **The URI must be one the server can fetch.** A native media block carries the
+> URI verbatim, so only `data:` (which includes its own bytes) and `http(s):` are
+> sent. A bare path, a `file:` URI or an empty string is degraded to a text
+> placeholder on both providers rather than forwarded — `openaiPromotableURI` on
+> either OpenAI path, `anthropicUnretrievableMediaBlock` on Anthropic. Forwarding
+> one is not a partial failure: the server rejects the *whole* request, and since
+> the part is persisted history, every later turn in the session fails the same
+> way. Built-in sources never produce such a URI (attachments and `read_file`
+> embed a data URI, an attached URL stays an `http(s)` URL); the gate is what
+> keeps a malformed frame from a `--rawio` adapter, or a hand-edited session,
+> from poisoning the conversation.
+
 > **Why audio/video degrade instead of failing loudly:** sending an
 > `{type:"audio"}` or `{type:"video"}` block is not a partial failure — the API
 > rejects the *whole* request. The realistic trigger is not a user attaching a

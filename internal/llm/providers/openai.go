@@ -975,20 +975,14 @@ func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 }
 
 // openaiPromotableURI reports whether a media part's URI can actually be handed
-// to the server inside a content block.
+// to the server inside a content block. It is the part-shaped form of
+// llm.FetchableMediaURI, which carries the rationale; the type switch exists
+// only to reach each part's URI field.
 //
-// Promotion originally trusted any URI it was given. That trust is misplaced:
-// a bare filesystem path, a file:// URI, or an empty string becomes
-// image_url.url "/tmp/x.png" on the wire, and an unfetchable value there does
-// not fail one block quietly — it fails the whole request. The cost is
-// asymmetric, so rejecting is strictly better than forwarding: before
-// promotion such a part cost a harmless text label, and forwarding it would
-// instead take the entire turn down with it.
-//
-// Only two shapes are safe to forward. A data: URI carries its own bytes, so
-// the server needs nothing else. http/https are the only remote schemes a
-// server will retrieve; audio additionally never reaches here as a remote URL
-// (openaiMediaBlock already rejects that as non-native).
+// Both paths that can write a native media block consult this — the promotion
+// path (openaiConvertToolOutputs) and the regular path
+// (openaiConvertRegularContent) — because an unfetchable value there does not
+// fail one block quietly: it fails the whole request.
 func openaiPromotableURI(part llm.ContentPart) bool {
 	var uri string
 	switch v := part.(type) {
@@ -1003,9 +997,7 @@ func openaiPromotableURI(part llm.ContentPart) bool {
 	default:
 		return false
 	}
-	return strings.HasPrefix(uri, "data:") ||
-		strings.HasPrefix(uri, "http://") ||
-		strings.HasPrefix(uri, "https://")
+	return llm.FetchableMediaURI(uri)
 }
 
 // openaiPromotedMediaLabel is the tool-message text for media delivered on the
@@ -1029,25 +1021,34 @@ func openaiMediaSummary(part llm.ContentPart) string {
 		if mediaType, _, ok := llm.ParseDataURI(v.URI); ok {
 			return fmt.Sprintf("[Image (%s)]", mediaType)
 		}
-		return fmt.Sprintf("[Image: %s]", v.URI)
+		return openaiMediaSummaryURI("Image", v.URI)
 	case *llm.AudioPart:
 		if mediaType, _, ok := llm.ParseDataURI(v.URI); ok {
 			return fmt.Sprintf("[Audio (%s)]", mediaType)
 		}
-		return fmt.Sprintf("[Audio: %s]", v.URI)
+		return openaiMediaSummaryURI("Audio", v.URI)
 	case *llm.VideoPart:
 		if mediaType, _, ok := llm.ParseDataURI(v.URI); ok {
 			return fmt.Sprintf("[Video (%s)]", mediaType)
 		}
-		return fmt.Sprintf("[Video: %s]", v.URI)
+		return openaiMediaSummaryURI("Video", v.URI)
 	case *llm.DocumentPart:
 		if mediaType, _, ok := llm.ParseDataURI(v.URI); ok {
 			return fmt.Sprintf("[Document (%s)]", mediaType)
 		}
-		return fmt.Sprintf("[Document: %s]", v.URI)
+		return openaiMediaSummaryURI("Document", v.URI)
 	default:
 		return ""
 	}
+}
+
+// openaiMediaSummaryURI renders the "<kind>: <uri>" half of a summary, naming an
+// empty URI rather than leaving a reader with a bare "[Image: ]".
+func openaiMediaSummaryURI(kind, uri string) string {
+	if uri == "" {
+		return fmt.Sprintf("[%s: no URI]", kind)
+	}
+	return fmt.Sprintf("[%s: %s]", kind, uri)
 }
 
 func openaiHasToolInputs(contents []llm.ContentPart) bool {
@@ -1102,7 +1103,7 @@ func openaiConvertToolInputs(apiMsg *openAIMessage, contents []llm.ContentPart) 
 // Media shapes are delegated to openaiMediaBlock so that user/assistant
 // messages and promoted tool media cannot drift apart.
 func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPart) {
-	var contentParts []map[string]any
+	contentParts := make([]map[string]any, 0, len(contents))
 	for _, part := range contents {
 		if v, ok := part.(*llm.TextPart); ok {
 			contentParts = append(contentParts, openaiTextBlock(v.Text))
@@ -1111,9 +1112,20 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPa
 		// nil means "not a media part" (tool/reasoning parts, which this
 		// converter does not own — see openaiConvertToolInputs and
 		// openaiExtractReasoning), so nothing is appended.
-		if block, _ := openaiMediaBlock(part); block != nil {
-			contentParts = append(contentParts, block)
+		block, native := openaiMediaBlock(part)
+		if block == nil {
+			continue
 		}
+		// A native block forwards the URI verbatim, so an unfetchable one must
+		// degrade to text here exactly as it does on the promotion path — the
+		// same gate, or a bare-path or empty URI on a user message would fail
+		// the whole request, and every later turn with it. Documents and remote
+		// audio already come back as text (native == false).
+		if native && !openaiPromotableURI(part) {
+			contentParts = append(contentParts, openaiTextBlock(openaiMediaSummary(part)))
+			continue
+		}
+		contentParts = append(contentParts, block)
 	}
 	if len(contentParts) == 0 {
 		apiMsg.Content = ""
