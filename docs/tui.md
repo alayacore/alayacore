@@ -322,6 +322,16 @@ AlayaCore supports multi-modal input — attaching images, audio, video, or docu
 [UX frames (image/audio/video/document, then text)] + [UE]
 ```
 
+A local file is read and embedded as a base64 data URI, so it is bounded by the
+media limit (`tools.MaxMediaBytes`, 16MB): the whole file is loaded, base64 costs a
+third more again, and the frame it becomes has to fit a frame. Media cannot be
+truncated, so a file above the limit is refused with a message saying so — and the
+route for media that large is the picker's **URL mode** (its own size is then the
+provider's to bound, since the provider fetches it), or a tool the model can drive
+(`execute_command`) for a smaller form of the same thing. For images the limit
+rarely bites: an image over 4096 pixels on a side is shrunk for the request rather
+than refused.
+
 ### Attachment Picker
 
 Press `Ctrl+A` to open and toggle the attachment picker overlay. Two modes are available:

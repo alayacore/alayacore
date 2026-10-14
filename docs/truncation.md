@@ -6,7 +6,7 @@ How AlayaCore handles large outputs from tools to stay within context budgets.
 
 | Tool | Behavior | File Pattern |
 |------|----------|--------------|
-| `read_file` | Truncates at 64KB with metadata header; lines above 1MB are truncated and marked; media files above 16MB are reported instead of read | N/A (in-memory) |
+| `read_file` | Truncates at 64KB with metadata header; lines above 1MB are truncated and marked; media files above 16MB (`tools.MaxMediaBytes`) are reported instead of read | N/A (in-memory) |
 | `execute_command` | Saves to file | `cmd-*.txt` |
 | `search_content` | Saves to file when over 64KB or `max_lines` (`0` = no line limit) | `search-*.txt` |
 
@@ -44,7 +44,7 @@ Files larger than 64KB are truncated at a line boundary with metadata:
   `[start_line 99 is past the end of the file (3 lines); no content to read]`
   or `[file is empty — 0 lines]`
 - Media files (image/video/audio/document) are embedded as base64 and
-  cannot be truncated: files above 16MB are reported with a size-limit
+  cannot be truncated: files above 16MB (`tools.MaxMediaBytes`) are reported with a size-limit
   message instead of being read
 
 ## execute_command
