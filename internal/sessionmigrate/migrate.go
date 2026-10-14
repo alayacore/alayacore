@@ -141,24 +141,41 @@ func versionOf(front []byte) (int, error) {
 
 // setVersion returns the frontmatter with message_version set, adding the key if
 // it is absent.
+//
+// The key is found the way versionOf finds it — a line, after trimming, that begins
+// with it — rather than by searching the text anywhere in the frontmatter. A file
+// whose commented line mentions message_version would otherwise be the line
+// rewritten, leaving the real key at the old version and the conversion reporting
+// success.
 func setVersion(front []byte, version int) []byte {
-	s := string(front)
+	lines := strings.Split(string(front), "\n")
 	target := "message_version: " + strconv.Itoa(version)
-	if i := strings.Index(s, "message_version:"); i >= 0 {
-		lineEnd := strings.IndexByte(s[i:], '\n')
-		if lineEnd < 0 {
-			lineEnd = len(s) - i
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "message_version:") {
+			lines[i] = target
+			return []byte(strings.Join(lines, "\n"))
 		}
-		return []byte(s[:i] + target + s[i+lineEnd:])
 	}
-	closing := strings.LastIndex(s, "---")
-	return []byte(s[:closing] + target + "\n" + s[closing:])
+	// Absent: file it with the other keys, before the closing delimiter, which
+	// split has already found.
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "---" {
+			lines = append(lines[:i], append([]string{target}, lines[i:]...)...)
+			break
+		}
+	}
+	return []byte(strings.Join(lines, "\n"))
 }
 
 // reframe reads the body's length-prefixed frames and writes each one back with
 // encode. convert, when non-nil, rewrites a frame's tag and value first (the v13
 // step); either way the value is compacted, so what comes out is one line per
 // frame whatever the input held.
+//
+// A frame's byte offset is where its tag begins, and that is the offset every
+// error names — including the ones raised after the frame has been read, where
+// pos has moved on to the next frame and reporting it would point past the
+// offending bytes.
 func reframe(body []byte, encode func(tag, value string) ([]byte, error), convert func(tag, value string) (string, string, error)) ([]byte, error) {
 	var out bytes.Buffer
 	pos := 0
@@ -169,8 +186,9 @@ func reframe(body []byte, encode func(tag, value string) ([]byte, error), conver
 		if pos >= len(body) {
 			break
 		}
+		frameAt := pos
 		if pos+6 > len(body) {
-			return nil, fmt.Errorf("truncated frame header at byte %d", pos)
+			return nil, fmt.Errorf("truncated frame header at byte %d", frameAt)
 		}
 		tag := string(body[pos : pos+2])
 		rawLength := binary.BigEndian.Uint32(body[pos+2 : pos+6])
@@ -181,7 +199,7 @@ func reframe(body []byte, encode func(tag, value string) ([]byte, error), conver
 		// remaining is >= 0: the header was bounds-checked above.
 		remaining := len(body) - pos - 6
 		if int64(rawLength) > int64(remaining) {
-			return nil, fmt.Errorf("frame %q at byte %d overruns the body", tag, pos)
+			return nil, fmt.Errorf("frame %q at byte %d overruns the body", tag, frameAt)
 		}
 		length := int(rawLength) //nolint:gosec // G115: bounded by remaining, checked above
 		start := pos + 6
@@ -191,17 +209,17 @@ func reframe(body []byte, encode func(tag, value string) ([]byte, error), conver
 		if convert != nil {
 			newTag, newValue, err := convert(tag, value)
 			if err != nil {
-				return nil, fmt.Errorf("frame %q at byte %d: %w", tag, pos, err)
+				return nil, fmt.Errorf("frame %q at byte %d: %w", tag, frameAt, err)
 			}
 			tag, value = newTag, newValue
 		}
 		compacted, err := compactValue(tag, value)
 		if err != nil {
-			return nil, fmt.Errorf("frame %q at byte %d: %w", tag, pos, err)
+			return nil, fmt.Errorf("frame %q at byte %d: %w", tag, frameAt, err)
 		}
 		frame, err := encode(tag, compacted)
 		if err != nil {
-			return nil, fmt.Errorf("frame %q at byte %d: %w", tag, pos, err)
+			return nil, fmt.Errorf("frame %q at byte %d: %w", tag, frameAt, err)
 		}
 		out.Write(frame)
 	}

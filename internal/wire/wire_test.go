@@ -73,6 +73,26 @@ func TestEncode_RejectsRawLineBreak(t *testing.T) {
 	}
 }
 
+// TestEncode_NamesTheFirstRawLineBreak pins which of the two bytes the error
+// blames when a value holds both: the one that comes first. A value is rejected
+// either way, so nothing else would notice a message that points at the LF
+// behind a CR — and that message is all a writer has to debug with.
+func TestEncode_NamesTheFirstRawLineBreak(t *testing.T) {
+	const value = "{\"t\":\"x\ry\nz\"}" // raw CR at offset 7, raw LF at offset 9
+
+	if i, b := firstRawLineBreak(value); i != 7 || b != '\r' {
+		t.Errorf("firstRawLineBreak(%q) = (%d, %q), want (7, '\\r')", value, i, b)
+	}
+
+	_, err := Encode(TagUserX, value)
+	if err == nil {
+		t.Fatalf("Encode(%q) succeeded, want an error", value)
+	}
+	if !strings.Contains(err.Error(), `'\r' at offset 7`) {
+		t.Errorf("error = %v;\nwant it to name the CR at offset 7 — the first line break in the value", err)
+	}
+}
+
 // TestEncode_RejectsIndentedJSON pins the invariant the whole format rests on: a
 // value with a line break in it cannot be written, so no reader ever has to cope
 // with one. Under the fixed-length format an indented value was legal.

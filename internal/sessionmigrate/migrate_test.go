@@ -3,6 +3,7 @@ package sessionmigrate
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -124,6 +125,43 @@ func TestV13ToV14_LeavesItsOwnOutputAlone(t *testing.T) {
 	}
 	if string(out) != string(raw) {
 		t.Errorf("V13ToV14() = %q, want the file unchanged", out)
+	}
+}
+
+// TestSetVersion_TouchesTheKeyNotAMentionOfIt pins which line the step rewrites: a
+// commented line that merely contains the key's text is not the key. Searching the
+// frontmatter for that text found the comment first, so the real key kept its old
+// version and the conversion reported success anyway.
+func TestSetVersion_TouchesTheKeyNotAMentionOfIt(t *testing.T) {
+	front := []byte("---\n# message_version: 12 was here\ncreated_at: 2026-01-01T00:00:00Z\nmessage_version: 13\n---\n")
+
+	got := string(setVersion(front, 14))
+	if !strings.Contains(got, "# message_version: 12 was here") {
+		t.Errorf("setVersion rewrote the commented line:\n%s", got)
+	}
+	if !strings.Contains(got, "\nmessage_version: 14\n") {
+		t.Errorf("setVersion did not set the key:\n%s", got)
+	}
+}
+
+// TestReframe_NamesTheFrameThatFailed pins which byte an error reports: the one
+// the frame *starts* at. pos has already moved past the frame by the time a value
+// is compacted or converted, so a message that printed it pointed at the next
+// frame's tag — past the bytes the reader is being asked about, and at EOF for the
+// last frame in the file.
+func TestReframe_NamesTheFrameThatFailed(t *testing.T) {
+	var body []byte
+	body = append(body, v14Frame("UX", `{"type":"text","text":"fine"}`)...)
+	body = append(body, []byte("\n\n")...)
+	badAt := len(body)
+	body = append(body, v14Frame("UX", "not json")...)
+
+	_, err := reframe(body, encodeV14, nil)
+	if err == nil {
+		t.Fatal("reframe accepted a value that is not JSON")
+	}
+	if want := fmt.Sprintf("at byte %d", badAt); !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %v;\nwant it to name %s, where the bad frame starts", err, want)
 	}
 }
 

@@ -80,8 +80,7 @@ having its input quietly discarded.
 printf 'UX{"type":"text","text":"hello"}\nUE\n' | alayacore --rawio
 ```
 
-Frames come back as lines, so the shell reads them directly: `grep '^SM'` for one
-plane of the vocabulary, or `cut -c3-` to drop a tag and read the value as JSON.
+The same recipes against a live session:
 
 ```sh
 # Only the system messages

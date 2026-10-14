@@ -29,7 +29,7 @@ func TestNewlineBetweenDifferentStreamGroups(t *testing.T) {
 		writer: &buf,
 	}
 
-	// Simulate: assistant text delta with NUL-delimited history IDs
+	// Simulate: assistant text delta, history id "1" on both
 	msg1 := frameBytes(wire.TagAssistantX, wiretest.AssistantText("1", "hello "))
 	msg2 := frameBytes(wire.TagAssistantX, wiretest.AssistantText("1", "world"))
 	// New step: different history ID
@@ -262,8 +262,8 @@ func TestUserPromptResetsStreamPrefix(t *testing.T) {
 	}
 
 	msg1 := frameBytes(wire.TagAssistantX, wiretest.AssistantText("1", "response"))
-	// Echoed user prompts carry a NUL-delimited history ID (the agent
-	// assigns one before echoing back).
+	// Echoed user prompts carry a history ID (the agent assigns one before
+	// echoing back), which is the JSON top-level "id".
 	msg2 := frameBytes(wire.TagUserX, wiretest.UserText("9", "next prompt"))
 	msg3 := frameBytes(wire.TagAssistantX, wiretest.AssistantText("2", "new response"))
 

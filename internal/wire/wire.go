@@ -203,15 +203,21 @@ func checkValueShape(value string) error {
 //
 // IndexByte twice rather than IndexAny once: both scan the whole value, and
 // IndexAny's general path is an order of magnitude slower for no gain — these two
-// bytes are the whole question, and IndexByte compiles to memchr.
+// bytes are the whole question, and IndexByte compiles to memchr. The two offsets
+// are then compared, because a value may hold both and the one the error names has
+// to be the one that comes first: a CR before an LF reported as the LF behind it
+// points the writer at the wrong byte.
 func firstRawLineBreak(value string) (int, byte) {
-	if i := strings.IndexByte(value, '\n'); i >= 0 {
-		return i, '\n'
+	lf := strings.IndexByte(value, '\n')
+	cr := strings.IndexByte(value, '\r')
+	switch {
+	case lf < 0 && cr < 0:
+		return -1, 0
+	case cr >= 0 && (lf < 0 || cr < lf):
+		return cr, '\r'
+	default:
+		return lf, '\n'
 	}
-	if i := strings.IndexByte(value, '\r'); i >= 0 {
-		return i, '\r'
-	}
-	return -1, 0
 }
 
 // fitsInFrame reports whether a frame of this many bytes (tag, value and
