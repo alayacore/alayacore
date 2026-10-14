@@ -137,13 +137,28 @@ const (
 // It is 64MB because that is what the MCP transports bound one of their messages
 // by (internal/mcp's maxMessageBytes): the streams are shaped the same way, and a
 // tool result that one of them carries is carried by the other. The two constants
-// stay separate because the two bounds belong to different protocols and may
-// drift, but they are meant to agree.
+// stay separate — they bound different things, and the protocols behind them may
+// drift — but internal/mcp asserts that its bound clears this one, so neither can
+// move alone.
 //
-// It is as large as it is for the session file too: a session that saved a
-// multi-megabyte base64 attachment must load again. Producers bound themselves
-// well below it (a tool result is a 64KB text read or a 16MB media file), so
-// hitting this is a bug rather than a use.
+// Where the number comes from is the media bound, and this comment is where that
+// chain is stated in full, because it is one decision spread over three packages:
+//
+//	tools.MaxMediaBytes   16MB   one media file, as a file
+//	×4/3 + JSON wrapper   ~22MB  the same file as a frame — measured, by
+//	                             internal/tools' TestMaxMediaFitsInAFrame
+//	MaxFrameSize          64MB   what a frame may be: a third of it, the rest
+//	                             headroom
+//	maxMessageBytes (mcp) 64MB    what a message we read may be: at least this
+//
+// The headroom is the point. A frame bound should be the last resort behind the
+// policies that decide what we send, not the thing those policies run up against —
+// and hitting it is a bug rather than a use, because producers bound themselves
+// well below it (a tool result is a 64KB text read or a 16MB media file; 64KB comes
+// from maxToolTextBytes).
+//
+// It is the session file's bound too, since a file's body is frames: a session that
+// saved a multi-megabyte attachment has to load again.
 const MaxFrameSize = 64 << 20
 
 // ErrIncomplete reports that the bytes fed so far do not hold a whole frame yet:
