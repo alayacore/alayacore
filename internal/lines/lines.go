@@ -91,7 +91,10 @@ func (s *Splitter) Next() ([]byte, error) {
 		// at least len(buf)+1 bytes long — past the bound even if the terminator
 		// arrives next.
 		if len(s.buf) >= s.limit {
-			return nil, tooLong(len(s.buf), s.limit)
+			// The line is at least one byte longer still: the terminator it lacks
+			// takes a byte of its own. Reporting len(buf) would print a size equal
+			// to the limit, which reads as an off-by-one in the bound.
+			return nil, tooLong(len(s.buf)+1, s.limit)
 		}
 		return nil, ErrIncomplete
 	}
@@ -120,9 +123,10 @@ func (s *Splitter) Next() ([]byte, error) {
 	return line, nil
 }
 
-// tooLong reports a line over the bound. The bytes are left where they are: a
-// caller that asks again is told the same thing, rather than being stepped past
-// the line silently.
+// tooLong reports a line over the bound. size is the line's exact length when its
+// terminator was seen, and the smallest length it can still have when it was not.
+// The bytes are left where they are: a caller that asks again is told the same
+// thing, rather than being stepped past the line silently.
 func tooLong(size, limit int) error {
 	return fmt.Errorf("%w: %d bytes (limit %d)", ErrLineTooLong, size, limit)
 }

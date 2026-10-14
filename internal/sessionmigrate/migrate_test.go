@@ -66,6 +66,26 @@ func TestV14ToV15_CompactsTheValues(t *testing.T) {
 	}
 }
 
+// TestV14ToV15_ReadsCRLF covers the same tolerance on the migration path: a v14
+// file whose line endings an editor translated converts like any other, and comes
+// out LF, which is what this writer writes.
+func TestV14ToV15_ReadsCRLF(t *testing.T) {
+	lf := v14File(14, v14Frame("UX", `{"type":"text","text":"hi"}`))
+	crlf := strings.ReplaceAll(string(lf), "\n", "\r\n")
+
+	fromLF, err := V14ToV15(lf)
+	if err != nil {
+		t.Fatalf("V14ToV15(lf): %v", err)
+	}
+	fromCRLF, err := V14ToV15([]byte(crlf))
+	if err != nil {
+		t.Fatalf("V14ToV15(crlf): %v", err)
+	}
+	if string(fromCRLF) != string(fromLF) {
+		t.Errorf("CRLF input converted to\n%q\nwant the same as LF input\n%q", fromCRLF, fromLF)
+	}
+}
+
 func TestV14ToV15_LeavesACurrentFileAlone(t *testing.T) {
 	raw := []byte("---\nmessage_version: 15\n---\nUE\n")
 

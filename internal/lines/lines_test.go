@@ -105,6 +105,12 @@ func TestSplitter_Next_LinePastMaxIsRejected(t *testing.T) {
 	if !errors.Is(err, ErrLineTooLong) {
 		t.Fatalf("Next() error = %v, want ErrLineTooLong", err)
 	}
+	// The size it reports is the line's, not the buffer's: four bytes are buffered
+	// and the line is already at least five, since it still needs a terminator.
+	// Reporting four would print a size equal to the limit.
+	if !strings.Contains(err.Error(), "5 bytes (limit 4)") {
+		t.Errorf("error = %q, want it to report the line's length, not the buffer's", err)
+	}
 	// The bytes are left alone: a caller that asks again is told the same thing,
 	// rather than being stepped past the line silently.
 	if got := sp.Pending(); got != 4 {

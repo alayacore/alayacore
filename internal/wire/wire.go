@@ -240,8 +240,10 @@ func WriteFrame(w io.Writer, tag, value string) error {
 // and the buffering live in lines; this type is what turns a line into a frame,
 // so the two cannot disagree about where a frame ends.
 //
-// The zero value is ready to use, so a struct that holds one — every adapter
-// does — needs no constructor and no nil check.
+// The zero value is ready to use, so a struct that holds one — every adapter does
+// — needs no constructor and no nil check. A Decoder is not safe for concurrent
+// use: the adapters take the lock that already covered the bytes they used to
+// buffer themselves.
 type Decoder struct {
 	sp *lines.Splitter
 	// err is sticky: once a frame is malformed the stream is finished, and every

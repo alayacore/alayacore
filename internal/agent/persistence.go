@@ -147,7 +147,13 @@ func parseSessionMeta(frontmatter string) (sessionMeta, error) {
 
 // parseSessionData parses a session file (frontmatter + one frame per line) into sessionData.
 func parseSessionData(data []byte) (*sessionData, error) {
-	frontmatter, body, err := parseFrontmatter(string(data))
+	// A file written on a platform that translates line endings reads the same as
+	// one that does not. The body already tolerates it (lines.Splitter strips the
+	// CR before the LF it splits on), so the frontmatter has to as well — without
+	// this, an editor's line endings make a session unloadable, with a message
+	// about a missing delimiter that says nothing about why.
+	raw := strings.ReplaceAll(string(data), "\r\n", "\n")
+	frontmatter, body, err := parseFrontmatter(raw)
 	if err != nil {
 		return nil, err
 	}

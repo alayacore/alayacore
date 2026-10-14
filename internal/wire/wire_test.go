@@ -106,6 +106,32 @@ func TestEncode_RejectsInvalidTag(t *testing.T) {
 	}
 }
 
+// TestEncodeAndDecoderAgreeOnTheBound ties the two counts together: Encode's bound
+// counts the terminator, and so does the decoder's, so a frame written at the
+// bound is exactly a frame that reads back — and one byte over it is neither.
+func TestEncodeAndDecoderAgreeOnTheBound(t *testing.T) {
+	const value = `{"type":"text"}`
+	frameLen := len(TagUserX) + len(value) + 1
+
+	// What Encode writes is what the bound counts: the tag, the value, and the
+	// terminator.
+	if frame := mustEncode(t, TagUserX, value); len(frame) != frameLen {
+		t.Fatalf("Encode() produced %d bytes, want %d", len(frame), frameLen)
+	}
+
+	atBound := newDecoder(frameLen)
+	atBound.Feed(mustEncode(t, TagUserX, value))
+	if tag, _, err := atBound.Next(); err != nil || tag != TagUserX {
+		t.Errorf("Next() at the bound = %q, %v; want the frame", tag, err)
+	}
+
+	oneUnder := newDecoder(frameLen - 1)
+	oneUnder.Feed(mustEncode(t, TagUserX, value))
+	if _, _, err := oneUnder.Next(); !errors.Is(err, lines.ErrLineTooLong) {
+		t.Errorf("Next() one byte under the bound = %v, want lines.ErrLineTooLong", err)
+	}
+}
+
 // TestFitsInFrame checks the bound without allocating MaxFrameSize bytes.
 func TestFitsInFrame(t *testing.T) {
 	if err := fitsInFrame(MaxFrameSize); err != nil {

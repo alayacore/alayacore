@@ -75,8 +75,8 @@ func reFrame(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("shorter than a v14 frame header (%d bytes)", len(raw))
 	}
 	tag := raw[:2]
-	length := int(binary.BigEndian.Uint32(raw[2:6]))
-	if 6+length != len(raw) {
+	length := uint64(binary.BigEndian.Uint32(raw[2:6]))
+	if 6+length != uint64(len(raw)) {
 		return nil, fmt.Errorf("frame says %d value bytes but the file holds %d", length, len(raw)-6)
 	}
 

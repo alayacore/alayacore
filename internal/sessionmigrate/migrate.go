@@ -109,7 +109,9 @@ func V14ToV15(raw []byte) ([]byte, error) {
 // split peels the "---\n…---\n" frontmatter off the body, mirroring the offsets
 // persistence.parseFrontmatter uses.
 func split(raw []byte) (front, body []byte, err error) {
-	s := string(raw)
+	// Same tolerance the reader and the frame splitter have: a file whose line
+	// endings were translated by an editor still converts.
+	s := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	if !strings.HasPrefix(s, "---\n") {
 		return nil, nil, fmt.Errorf("missing frontmatter")
 	}
@@ -171,11 +173,18 @@ func reframe(body []byte, encode func(tag, value string) ([]byte, error), conver
 			return nil, fmt.Errorf("truncated frame header at byte %d", pos)
 		}
 		tag := string(body[pos : pos+2])
-		length := int(binary.BigEndian.Uint32(body[pos+2 : pos+6]))
-		start := pos + 6
-		if start+length > len(body) {
+		rawLength := binary.BigEndian.Uint32(body[pos+2 : pos+6])
+		// Checked in 64-bit arithmetic, which is exact on both platforms: on a
+		// 32-bit one, int is 32 bits, a four-byte field can exceed it, and a length
+		// that came out negative would slip past an overrun check and then panic on
+		// the slice below. A corrupt file has to be an error, not a crash.
+		// remaining is >= 0: the header was bounds-checked above.
+		remaining := len(body) - pos - 6
+		if int64(rawLength) > int64(remaining) {
 			return nil, fmt.Errorf("frame %q at byte %d overruns the body", tag, pos)
 		}
+		length := int(rawLength) //nolint:gosec // G115: bounded by remaining, checked above
+		start := pos + 6
 		value := string(body[start : start+length])
 		pos = start + length
 
