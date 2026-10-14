@@ -23,9 +23,10 @@ control frames `UE` and `CE`, whose line is the tag alone. See the
 [Wire Format](internal/adapter-architecture.md#wire-format) for how it is
 read and written.
 
-A frame is a line, so a session's output is readable as text: `cat`,
-`grep` and `jq` work on it. What they cannot do is check a frame, which is
-what `wirecat` is for.
+A frame is a line, so a session's output is readable as text: `cat` shows the
+whole stream, `grep '^SM'` picks out one plane of the vocabulary, and `cut -c3-`
+drops the tag so `jq` can read the value. Nothing between the stream and you has
+to parse it — the checking is the session's, on the way in (see Errors below).
 
 ## Input
 
@@ -79,20 +80,24 @@ having its input quietly discarded.
 printf 'UX{"type":"text","text":"hello"}\nUE\n' | alayacore --rawio
 ```
 
-Inspect the frames with `wirecat`, which decodes each one with the same reader
-the core uses (so a frame the format does not allow is reported):
+Frames come back as lines, so the shell reads them directly: `grep '^SM'` for one
+plane of the vocabulary, or `cut -c3-` to drop a tag and read the value as JSON.
 
 ```sh
-printf 'UX{"type":"text","text":"hello"}\nUE\n' | alayacore --rawio | go run ./misc/wirecat.go
+# Only the system messages
+printf 'UX{"type":"text","text":"hello"}\nUE\n' | alayacore --rawio | grep '^SM'
+
+# Every frame's value, as JSON
+printf 'UX{"type":"text","text":"hello"}\nUE\n' | alayacore --rawio | cut -c3- | jq -c .
 ```
 
-Or generate a request with images and inspect the result:
+Or generate a request with images and watch what the session does with it:
 
 ```sh
 # Generate a request with 2 images
 go run misc/gen_wire_request.go \
   "What's in these images?" image1.jpg image2.jpg \
-  | alayacore --rawio | go run ./misc/wirecat.go
+  | alayacore --rawio
 ```
 
 ## Use Cases

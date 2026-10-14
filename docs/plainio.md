@@ -141,7 +141,7 @@ alayacore --plainio --session my-convo.alaya <<< "what is my name?"
 alayacore --plainio --session my-convo.alaya <<< "remember this fact: dogs are fluffy"
 ```
 
-A session file is text: one frame per line after the key-value frontmatter, holding conversation content only (`UE`/`CE` are stream delimiters and are refused in a file, since the loader groups frames into messages by role and a delimiter is a boundary it cannot honour). `cat` shows the conversation, `grep` finds a turn in it, and `wirecat.go` (in `misc/`) decodes each frame with the reader the core uses — which also means it reports one the format does not allow. `--plainio` replays the conversation instead.
+A session file is text: one frame per line after the key-value frontmatter, holding conversation content only (`UE`/`CE` are stream delimiters and are refused in a file, since the loader groups frames into messages by role and a delimiter is a boundary it cannot honour). `cat` shows the conversation, `grep` finds a turn in it, and `cut -c3-` drops a frame's tag when you want the value on its own. `--plainio` replays the conversation instead.
 
 ## Examples
 

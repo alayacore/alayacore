@@ -913,21 +913,23 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 
 A sample file *is* the bytes to send — one frame per line, so it can be piped
 straight in. That is a *stream*: the control frames among the samples (`UE`,
-`CE`) belong to one, and a session file's body does not take them. `wirecat` decodes what comes back with the same reader the core uses,
-which means it also reports a frame the format does not allow.
+`CE`) belong to one, and a session file's body does not take them. What comes
+back is frames too, so the shell reads it as it stands: `grep '^SM'` for one
+plane of the vocabulary, or `cut -c3-` to drop a tag and hand the value to `jq`.
 
 ```sh
 # Pipe a user prompt to the agent
 cat wire-samples/UX-read-file.txt | alayacore --rawio
 
-# Pipe a user prompt and decode the response frames
-cat wire-samples/UX-read-file.txt | alayacore --rawio | go run ./misc/wirecat.go
+# Pipe a user prompt and watch the system messages that come back
+cat wire-samples/UX-read-file.txt | alayacore --rawio | grep '^SM'
 
-# Decode a single frame (stdin or stdout direction)
-cat wire-samples/AF-read-file-start.txt | go run ./misc/wirecat.go
+# A frame's value as JSON — cut -c3- drops the two-letter tag, since the value
+# begins at byte 2
+cat wire-samples/AF-read-file-start.txt | cut -c3- | jq -c .
 
-# Decode a user echo frame (agent → adapter, with history ID)
-cat wire-samples/UX-echo-hello.txt | go run ./misc/wirecat.go
+# A user echo frame as it arrives (agent → adapter, with a history ID)
+cat wire-samples/UX-echo-hello.txt
 ```
 
 ## Generate Media Requests (Go)

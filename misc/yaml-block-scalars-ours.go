@@ -10,11 +10,10 @@
 // this reader claims to read exactly as YAML does is wrong if it also has
 // something to report.
 //
-// A dev tool in the shape misc/wirecat.go already has: run with `go run`, and
-// kept out of the module's build by the ignore tag. The other half cannot live
-// here — yaml.v3 is deliberately not a dependency of this module (see
-// docs/dependencies.md) — so the driver builds it in a scratch module of its
-// own.
+// A dev tool of the usual shape here: run with `go run`, and kept out of the
+// module's build by the ignore tag. The other half cannot live here — yaml.v3
+// is deliberately not a dependency of this module (see docs/dependencies.md) —
+// so the driver builds it in a scratch module of its own.
 
 package main
 
