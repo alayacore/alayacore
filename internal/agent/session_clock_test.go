@@ -80,3 +80,30 @@ func TestContentFrameRejectsAKindOnTheWrongSide(t *testing.T) {
 		})
 	}
 }
+
+// TestContentFrameRejectsAnUnknownKind pins the contract stated in
+// protocol/kinds.go: the core has no part type to hold a kind it does not model
+// (ContentPart is a sealed set), so an unknown kind is rejected rather than
+// silently dropped. An adapter degrades instead — skip or label — but the core
+// fails closed, because a value that becomes history has to mean something. A
+// silent drop here would be the worse failure: the frame would vanish with no
+// trace, and the conversation would differ from the one the model was sent.
+func TestContentFrameRejectsAnUnknownKind(t *testing.T) {
+	cases := []struct {
+		name string
+		tag  string
+		body string
+	}{
+		{"unknown kind under UX", wire.TagUserX, `{"type":"holo","text":"x"}`},
+		{"unknown kind under AX", wire.TagAssistantX, `{"type":"holo","text":"x"}`},
+		{"unknown kind in a tool result", wire.TagUserF,
+			`{"call_id":"t1","output":[{"type":"holo"}]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := contentPartFromJSON(tc.tag, []byte(tc.body)); err == nil {
+				t.Errorf("contentPartFromJSON(%s, %s) accepted an unknown kind instead of rejecting it", tc.tag, tc.body)
+			}
+		})
+	}
+}
