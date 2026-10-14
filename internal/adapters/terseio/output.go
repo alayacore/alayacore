@@ -47,9 +47,9 @@ type answerOutput struct {
 	finalFlushed atomic.Bool
 
 	// lastMsgHasText reports whether the CURRENT (i.e. last) assistant
-	// message contains text. It is set on every AT/At frame and reset on
-	// every UF (tool result) — tool results always close the message
-	// group, so the next AT/AR/AF frame starts a new message. On flush,
+	// message contains text. It is set on every AX/Ax frame and reset on every
+	// UF (tool result) — tool results always close the message group, so the
+	// next AX/AF frame starts a new message. On flush,
 	// an empty value means the final message had no text (e.g. reasoning-
 	// only) and the stale buffer from an earlier message must NOT print.
 	// Protected by mu.

@@ -292,8 +292,9 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 
 	if !s.NoDelta {
 		// Delta streaming enabled: register delta callbacks.
-		// AT/AR complete frames carry empty content (terminators only)
-		// since the content was already delivered via deltas.
+		// The complete AX frames then carry empty content (terminators only),
+		// since the content was already delivered via Ax deltas — text and
+		// reasoning alike, distinguished by the item's "type".
 		callbacks.OnTextDelta = dw.handleTextDelta
 		callbacks.OnReasoningDelta = dw.handleReasoningDelta
 		callbacks.OnToolInputDelta = dw.handleToolInputDelta

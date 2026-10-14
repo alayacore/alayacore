@@ -12,7 +12,8 @@ package terminal
 // its own rendering and content management.
 //
 // Renderers (window_renderer.go):
-//   - textRenderer:  assistant text (AT, At), reasoning (AR, Ar), sys msg (SN), sys err (SE)
+//   - textRenderer:  assistant text (AT) and reasoning (AR) — the wire tag for
+//     both is Ax, split by the item's "type" — sys msg (SN), sys err (SE)
 //   - userRenderer:  user messages with optional media attachments (UT)
 //   - toolRenderer:  tool calls and results (AF, Af, UF)
 //

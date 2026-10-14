@@ -28,13 +28,23 @@ malformed one, because the space is then the value's first character and a value
 is a JSON object. Every frame written in this guide is byte-exact for that reason;
 where a caption wants to say what a frame carries, it says so in words.
 
-Two consequences shape everything below.
+A frame is at most 64MB: the tag, the value and the terminator together
+(`wire.MaxFrameSize`). Both ends enforce it — a writer refuses to produce a frame
+over the bound, and a reader refuses to buffer one — so a peer cannot make the
+other allocate without limit, and exceeding it is a protocol error rather than
+something either end recovers from.
 
 **A value is never more than one line.** A raw LF or CR inside a value would end
 the frame early, so it is not allowed, and a writer that marshals JSON with any
 standard library gets that for free (`\n` is escaped). Skip the library and the
 reader reports the fragments as malformed rather than reading them as frames —
 no line of a multi-line JSON object begins with two ASCII letters.
+
+A *trailing* CR is accepted on input and never written: a writer on a platform
+that translates line endings produces it. Reading it is safe, since a JSON object
+ends with `}` and a line ending in CR therefore ended in CRLF.
+
+Two consequences shape everything that follows.
 
 **A malformed frame ends the stream.** The reader does not skip it and does not
 resynchronise: a frame that is not a frame means the writer lost its place, and
@@ -548,8 +558,8 @@ after one the transcript an adapter has accumulated is not the session's
    live streaming they come from a single counter; during replay they are
    rebuilt from `seqID++`. Collisions cannot occur under normal operation.
    If a corrupt session causes duplicate IDs, the adapter should treat each
-   frame as an independent content block (AT/AR delta concatenation on same
-   ID still applies).
+   frame as an independent content block (Ax deltas on the same ID still
+   concatenate).
 
 ## Samples by Tool
 

@@ -206,7 +206,7 @@ func TestToolDeltaWithNameResolution(t *testing.T) {
 // ============================================================================
 
 func TestDeltaFlushOnCompleteFrame(t *testing.T) {
-	// When an authoritative AT frame arrives after At deltas,
+	// When an authoritative AX frame arrives after Ax deltas,
 	// the deltas should be flushed before the AT is processed.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
 	out.SetWindowWidth(80)

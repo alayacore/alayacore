@@ -418,9 +418,9 @@ func (to *outputWriter) flushPendingDeltas() {
 	//
 	// Providers must still emit their complete events in content-array order,
 	// but for what those events are here for — display, not numbering. In
-	// --no-delta no At/Ar frame ever reaches this writer, so nothing is pending
-	// and flushPendingDeltas does not run: the authoritative AT/AR frames
-	// create the windows themselves, in the order they arrive. Out of
+	// --no-delta no Ax frame ever reaches this writer, so nothing is pending and
+	// flushPendingDeltas does not run: the authoritative AX frames create the
+	// AT/AR windows themselves, in the order they arrive. Out of
 	// array order, that put ASSISTANT above its own REASONING. Pinned by
 	// openai_event_order_test.go, openai_history_id_order_test.go, and
 	// TestStreamNumbersBlocksAtDeltasEvenWithNoDeltaCallbacks for the

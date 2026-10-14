@@ -17,8 +17,8 @@ import (
 )
 
 // maxSeenDeltaEntries caps the seenDelta map. History IDs are never
-// reused and an AT/AR complete frame always arrives right after its
-// At/Ar deltas, so entries older than the cap are never consulted again —
+// reused and an AX complete frame always arrives right after its
+// Ax deltas, so entries older than the cap are never consulted again —
 // evicting the smallest (oldest) ID keeps memory bounded for long
 // sessions without changing visible output.
 const maxSeenDeltaEntries = 512
@@ -43,7 +43,7 @@ type stdoutOutput struct {
 	inProgress    atomic.Bool
 	lastTag       string
 	lastHistoryID string
-	seenDelta     map[string]bool // bounded set of IDs already printed via At/Ar deltas (see markDeltaSeen)
+	seenDelta     map[string]bool // bounded set of IDs already printed via Ax deltas (see markDeltaSeen)
 	pendingHooks  []func()        // hooks collected under mu, executed by Write after unlock
 
 	// MCP hooks, injected by the adapter. mcpAuthRequired is invoked when
@@ -267,7 +267,7 @@ func renderCommandResult(name string, output json.RawMessage) string {
 	return "" // no generic confirmation
 }
 
-// markDeltaSeen records a history ID whose At/Ar deltas were printed, so
+// markDeltaSeen records a history ID whose Ax deltas were printed, so
 // the matching AT/AR complete frame (empty in delta mode, a terminator
 // only) can be skipped instead of injecting a spurious separator.
 //
@@ -299,10 +299,9 @@ func (o *stdoutOutput) markDeltaSeen(id string) {
 	o.seenDelta[id] = true
 }
 
-// handleTextDelta handles assistant content frames (AX/Ax). kind is the
-// content kind ("text" or "reasoning"); it stands in for the old tag
-// (AT/AR/At/Ar) when deciding whether a separator is due, so a text →
-// reasoning transition still opens a new block.
+// handleTextDelta handles assistant content frames (AX/Ax). kind is the content
+// kind ("text" or "reasoning"), and it is what decides whether a separator is
+// due: the wire carries both kinds under one tag now, so the tag cannot.
 func (o *stdoutOutput) handleTextDelta(kind, id, content string) {
 	if o.lastHistoryID != "" && o.lastTag != kind {
 		// Transitioning from a different kind → separator

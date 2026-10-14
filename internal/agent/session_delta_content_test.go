@@ -3,7 +3,7 @@ package agent
 // The complete frames — AT and AR — mean two different things on the two streams
 // that carry them, and `NoDelta` is what decides which.
 //
-// Live, with deltas on, the content arrived in At/Ar fragments and the complete
+// Live, with deltas on, the content arrived in Ax fragments and the complete
 // frame is written with empty content, as a terminator. The adapter leans on
 // that: `outputWriter.writeColored` flushes the pending fragments before it
 // handles a non-delta frame, so by the time a complete frame is processed the

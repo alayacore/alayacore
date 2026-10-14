@@ -70,7 +70,7 @@ export ALAYACORE_SHELL=zsh
 | `--reasoning-level` | `1` (normal) | Startup reasoning level: `0`=off, `1`=normal, `2`=max. Explicitly provided values win over the session file's saved `reasoning_level`; without the flag the saved value (or default) is used. Equivalent to running `:reason <level>` at startup. |
 | `--tool-confirm` | *(none)* | Comma-separated tool `names` that require user confirmation before execution (e.g. `--tool-confirm execute_command,search_content`). Not compatible with `--terseio` |
 | `--builtin-tools` | *(all)* | Comma-separated built-in tool `names` to enable. Empty (`--builtin-tools=`) disables all built-in tools. Unspecified means all tools enabled. |
-| `--no-delta` | `false` | Disable delta frames (At, Ar, Af, Uf); use complete frames only. Reduces wire overhead when the adapter does not need streaming previews. |
+| `--no-delta` | `false` | Disable the streaming delta frames (`Ax`, `Af`, `Uf`); use complete frames only. Reduces wire overhead when the adapter does not need streaming previews. |
 | `--no-markdown` | `false` | Disable markdown rendering by default — new assistant text windows start in raw mode. Per-window toggling with `r` still works. |
 | `--plainio` | `false` | Plain stdin/stdout mode — interactive use without a TUI (full transcript output) |
 | `--terseio` | `false` | Read all of stdin as one prompt (or one command if it starts with `:`) and print only the final answer (stdout stays clean; errors go to stderr). Incompatible with `--tool-confirm` |

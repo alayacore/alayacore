@@ -140,7 +140,7 @@ type Settings struct {
 	CommandTimeout int // max duration for execute_command in seconds (0 = no limit)
 
 	// Delta streaming
-	NoDelta bool // If true, suppress delta frames (At, Ar, Af); use complete frames only
+	NoDelta bool // If true, suppress the delta frames (Ax, Af, Uf); use complete frames only
 
 	// Markdown rendering
 	NoMarkdown bool // If true, new assistant text windows start in raw mode ('r' still toggles per window)
@@ -174,7 +174,7 @@ func Parse() *Settings {
 	maxSteps := fs.Int("max-steps", defaultMaxSteps, "Maximum agent loop steps (0 = no limit)")
 	autoSummarize := fs.Int("auto-summarize", 0, "Enable auto-summarization at given threshold percentage (e.g. --auto-summarize=65, 0 = disabled)")
 	toolConfirm := fs.String("tool-confirm", "", "Comma-separated tool `names` requiring user confirmation (e.g. execute_command,search_content)")
-	noDelta := fs.Bool("no-delta", false, "Disable delta frames (At, Ar, Af); use complete frames only")
+	noDelta := fs.Bool("no-delta", false, "Disable the streaming delta frames (Ax, Af, Uf); use complete frames only")
 	noMarkdown := fs.Bool("no-markdown", false, "Disable markdown rendering by default (new assistant text windows start raw; 'r' still toggles per window)")
 	fs.String("builtin-tools", "", "Comma-separated built-in tool `names` to enable (empty = no builtin tools, unspecified = all tools)")
 	commandTimeout := fs.Int("command-timeout", 0,
