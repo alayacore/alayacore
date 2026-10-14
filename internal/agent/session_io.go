@@ -875,7 +875,7 @@ func (s *Session) saveSession(args string) (any, error) {
 	}
 
 	if err := s.saveContentToFile(path, s.Contents); err != nil {
-		return nil, &cmdErr{Code: "IO_ERROR", Message: fmt.Sprintf("save: failed to save session: %v", err)}
+		return nil, &cmdErr{Code: "IO_ERROR", Message: fmt.Sprintf("failed to save session: %v", err)}
 	}
 	return map[string]any{"path": path}, nil
 }

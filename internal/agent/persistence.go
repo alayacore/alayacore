@@ -40,7 +40,9 @@ var defaultPersistence = newPersistenceService()
 func (ps *persistenceService) loadSession(path string) (*sessionData, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("load: %w", err)
+		// No prefix of its own: the caller names the file it asked for, and the
+		// error from the OS already says why it could not be read.
+		return nil, err
 	}
 	return parseSessionData(data)
 }
@@ -55,10 +57,15 @@ func (ps *persistenceService) SaveContentToFile(path string, meta sessionMeta, c
 
 	raw, err := formatSessionMarkdown(&data)
 	if err != nil {
-		return fmt.Errorf("save: %w", err)
+		// Already names the step that failed (see formatSessionMarkdown); the
+		// caller names the operation.
+		return err
 	}
 	if err := os.WriteFile(path, raw, 0600); err != nil {
-		return fmt.Errorf("save: %w", err)
+		// The caller names the operation, the OS error names the path and the
+		// reason. Repeating either here is what made one failure read
+		// "save: save: open …".
+		return err
 	}
 	return nil
 }
@@ -82,11 +89,11 @@ func formatSessionMarkdown(data *sessionData) ([]byte, error) {
 	for _, part := range data.Contents {
 		tag, body, err := contentPartJSON(part, "")
 		if err != nil {
-			return nil, fmt.Errorf("save: %w", err)
+			return nil, fmt.Errorf("encoding the session body: %w", err)
 		}
 		frame, err := wire.Encode(tag, body)
 		if err != nil {
-			return nil, fmt.Errorf("save: %w", err)
+			return nil, fmt.Errorf("encoding the session body: %w", err)
 		}
 		buf.Write(frame)
 	}
@@ -97,12 +104,12 @@ func formatSessionMarkdown(data *sessionData) ([]byte, error) {
 // parseFrontmatter extracts the frontmatter and body from content with "---" delimiters.
 func parseFrontmatter(content string) (frontmatter, body string, err error) {
 	if !strings.HasPrefix(content, "---\n") {
-		return "", "", fmt.Errorf("load: session file missing frontmatter")
+		return "", "", fmt.Errorf("session file missing frontmatter")
 	}
 
 	endIdx := strings.Index(content[4:], "\n---\n")
 	if endIdx == -1 {
-		return "", "", fmt.Errorf("load: session file missing frontmatter end marker")
+		return "", "", fmt.Errorf("session file missing frontmatter end marker")
 	}
 
 	frontmatter = content[4 : endIdx+4]
@@ -116,7 +123,7 @@ func parseSessionMeta(frontmatter string) (sessionMeta, error) {
 	if errs := config.ParseKeyValue(frontmatter, &meta); len(errs) > 0 {
 		// Surface parse errors (unknown keys, type conversion failures) so they
 		// are not silently lost when loading session files.
-		return meta, fmt.Errorf("load: session frontmatter has parse errors: %v", errs)
+		return meta, fmt.Errorf("session frontmatter has parse errors: %v", errs)
 	}
 
 	// Check message format version — must match exactly.
@@ -177,6 +184,10 @@ func parseMessageFrames(body string) ([]llm.ContentPart, error) {
 
 	reader := wire.NewReader(strings.NewReader(body))
 	var seqID uint64
+	// frameNo counts frames read, not parts kept: control frames and AF start
+	// frames are skipped, and a position that counted the kept ones would name
+	// the wrong line of the file.
+	frameNo := 0
 
 	for {
 		tag, value, err := reader.ReadFrame()
@@ -184,12 +195,13 @@ func parseMessageFrames(body string) ([]llm.ContentPart, error) {
 			return contents, nil
 		}
 		if err != nil {
-			return contents, fmt.Errorf("read error at chunk %d: %w", len(contents), err)
+			return contents, fmt.Errorf("read error at frame %d: %w", frameNo+1, err)
 		}
+		frameNo++
 
 		msgPart, err := contentPartFromJSON(tag, []byte(value))
 		if err != nil {
-			return contents, fmt.Errorf("parse error at chunk %d (tag %q): %w", len(contents), tag, err)
+			return contents, fmt.Errorf("parse error at frame %d (tag %q): %w", frameNo, tag, err)
 		}
 		if msgPart == nil {
 			continue

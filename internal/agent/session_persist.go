@@ -7,7 +7,6 @@ package agent
 // that add the session's metadata when saving.
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
@@ -54,8 +53,7 @@ func (s *Session) saveContentToFileWithContext(path string, contents []llm.Conte
 		VideoFPS:       videoFPS,
 		VideoRes:       videoRes,
 	}
-	if err := defaultPersistence.SaveContentToFile(path, meta, contents); err != nil {
-		return fmt.Errorf("save: %w", err)
-	}
-	return nil
+	// The error travels unwrapped: this layer knows nothing about it that the
+	// caller (a command, or the auto-save) does not say better.
+	return defaultPersistence.SaveContentToFile(path, meta, contents)
 }
