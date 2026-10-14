@@ -27,12 +27,11 @@ type SearchContentInput struct {
 // so the "not installed" error and the exec call cannot drift.
 const ripgrepBinary = "rg"
 
-// maxSearchContentSize caps the number of bytes of search output returned
+// maxToolTextBytes caps the number of bytes of search output returned
 // inline, mirroring execute_command and read_file (64KB). A line-count cap
-// alone is not enough: a single matching line (e.g. minified JS or base64
-// data) can be arbitrarily large and would blow the context window.
-const maxSearchContentSize = 64 * 1024 // 64KB
-
+// alone is not enough: a single matching line (e.g. minified JS or base64 data)
+// can be arbitrarily large and would blow the context window, which is what
+// maxToolTextBytes is for.
 // NewSearchContentTool creates the search_content tool for use by the agent.
 func NewSearchContentTool() llm.Tool {
 	return llm.NewTool(
@@ -49,7 +48,7 @@ func NewSearchContentTool() llm.Tool {
 // search between runSearch and formatSearchResult, keeping execution and
 // formatting independently testable. The streams are captures rather than
 // strings so a search matching hundreds of megabytes costs memory only up to
-// maxSearchContentSize, with the remainder already on disk.
+// maxToolTextBytes, with the remainder already on disk.
 type searchResult struct {
 	stdout   *capture
 	stderr   *capture
@@ -167,13 +166,13 @@ func formatSearchResult(result searchResult, maxLines int) ([]llm.ContentPart, e
 
 	totalLines := result.stdout.lineTotal()
 
-	// If output exceeds maxLines or maxSearchContentSize, save full results
+	// If output exceeds maxLines or maxToolTextBytes, save full results
 	// to file and return metadata. maxLines of 0 (the default when omitted)
 	// means no line limit; the 64KB byte cap always applies as a
 	// context-window safety net. A spilled capture is by definition over the
 	// byte cap.
 	if (maxLines > 0 && totalLines > int64(maxLines)) || result.stdout.spilled() ||
-		result.stdout.size() > maxSearchContentSize {
+		result.stdout.size() > maxToolTextBytes {
 		return handleLargeSearchResult(result.stdout, totalLines)
 	}
 
@@ -213,7 +212,7 @@ func handleLargeSearchResult(stdout *capture, totalLines int64) ([]llm.ContentPa
 // executeSearchContent is the typed entry point for the search_content tool.
 // It runs ripgrep and formats the results.
 func executeSearchContent(ctx context.Context, args SearchContentInput) ([]llm.ContentPart, error) {
-	stdout, stderr := newCapture(maxSearchContentSize), newCapture(maxSearchContentSize)
+	stdout, stderr := newCapture(maxToolTextBytes), newCapture(maxToolTextBytes)
 	defer stdout.Close()
 	defer stderr.Close()
 
@@ -233,7 +232,7 @@ func executeSearchContent(ctx context.Context, args SearchContentInput) ([]llm.C
 // ripgrep output while the search runs, then returns the authoritative
 // result exactly as the non-streaming path does.
 func executeSearchContentStreaming(ctx context.Context, args SearchContentInput, onDelta func(string)) ([]llm.ContentPart, error) {
-	sw := newStreamingWriterWith(onDelta, maxSearchContentSize)
+	sw := newStreamingWriterWith(onDelta, maxToolTextBytes)
 	defer sw.Close()
 	exitCode, err := runSearch(ctx, args, sw, errWriter{sw})
 	sw.flushPreview() // search finished — emit the final snapshot

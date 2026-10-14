@@ -23,6 +23,7 @@ import (
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/theme"
+	"github.com/alayacore/alayacore/internal/tools"
 	"github.com/alayacore/alayacore/internal/wire"
 	ansi "github.com/charmbracelet/x/ansi"
 )
@@ -175,16 +176,12 @@ func submitCmd(w io.WriteCloser, attachments []attachment, prompt string) Cmd {
 	}
 }
 
-// maxAttachmentBytes bounds one attachment, counting the file as it is on disk.
-// The frame it becomes is about a third larger again (base64) plus its JSON
-// wrapper, which leaves it well inside wire.MaxFrameSize — that bound is the
-// transport's last resort, not one a user action should ever reach.
-//
-// 16MB is the same ceiling read_file uses for media it hands the model, and for
-// the same reason: a file this size is already far past what a provider will
-// accept in one turn, and the failure it prevents is not a rejected prompt but a
-// frame that cannot be written at all.
-const maxAttachmentBytes = 16 * 1024 * 1024
+// An attachment is bounded by tools.MaxMediaBytes, the media policy itself: the
+// question is the same one a tool reading a file asks — how much media may one
+// message embed as a data URI — so it has one answer, not two that have to be kept
+// in step. The frame that media becomes is a third larger again (base64) plus its
+// wrapper, which is why the media bound and the frame bound are one decision; see
+// internal/wire's MaxFrameSize.
 
 // attachmentValue returns the frame value for one attachment — the file as a
 // base64 data URI, or its URL — or, as the second result, the message to show
@@ -198,9 +195,9 @@ func attachmentValue(a attachment) (value, problem string) {
 	if err != nil {
 		return "", fmt.Sprintf("Failed to read attachment: %s", err)
 	}
-	if info.Size() > maxAttachmentBytes {
-		return "", fmt.Sprintf("Attachment %s is %.1fMB — over the %dMB limit. Media is embedded as base64 and cannot be truncated; attach a smaller file or process it with execute_command instead.",
-			filepath.Base(a.path), float64(info.Size())/(1024*1024), maxAttachmentBytes/(1024*1024))
+	if info.Size() > tools.MaxMediaBytes {
+		return "", fmt.Sprintf("Attachment %s is %.1fMB — over the %dMB media limit. Media is embedded as base64 and cannot be truncated; attach a smaller file, or attach a URL and let the model's provider fetch it.",
+			filepath.Base(a.path), float64(info.Size())/(1024*1024), tools.MaxMediaBytes/(1024*1024))
 	}
 	data, err := os.ReadFile(a.path)
 	if err != nil {

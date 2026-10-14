@@ -166,7 +166,7 @@ func TestReadFileWithLineRange(t *testing.T) {
 func TestReadFileTooLarge(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "large.txt")
-	largeContent := make([]byte, maxTextReadSize+1)
+	largeContent := make([]byte, maxToolTextBytes+1)
 	for i := range largeContent {
 		largeContent[i] = 'x'
 	}
@@ -199,7 +199,7 @@ func TestReadFileMediaTooLarge(t *testing.T) {
 	tmpFile := filepath.Join(tmpDir, "big.jpg")
 	// JPEG SOI magic bytes at the start so both extension and content
 	// sniffing agree the file is media; the rest is binary filler.
-	largeContent := make([]byte, maxMediaReadSize+1)
+	largeContent := make([]byte, MaxMediaBytes+1)
 	copy(largeContent, []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10})
 	for i := 6; i < len(largeContent); i++ {
 		largeContent[i] = 0xFF

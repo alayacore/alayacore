@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/tools"
 	"github.com/alayacore/alayacore/internal/wire"
 )
 
@@ -17,7 +18,7 @@ import (
 // written.
 func TestAttachmentValue_RejectsAnOversizedFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "big.png")
-	if err := os.WriteFile(path, make([]byte, maxAttachmentBytes+1), 0o600); err != nil {
+	if err := os.WriteFile(path, make([]byte, tools.MaxMediaBytes+1), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -25,8 +26,14 @@ func TestAttachmentValue_RejectsAnOversizedFile(t *testing.T) {
 	if value != "" {
 		t.Errorf("attachmentValue() = %q, want no value for an oversized attachment", value)
 	}
-	if !strings.Contains(problem, "16MB limit") {
+	if !strings.Contains(problem, "16MB media limit") {
 		t.Errorf("problem = %q, want it to name the limit", problem)
+	}
+	// The route for media this large is a URL — the provider fetches it, so its size
+	// is the provider's to bound — and this is the message a user sees when they hit
+	// the wall, so it is where the route belongs.
+	if !strings.Contains(problem, "URL") {
+		t.Errorf("problem = %q, want it to point at the route for media this large", problem)
 	}
 }
 

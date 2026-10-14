@@ -220,7 +220,7 @@ func TestFormatSearchResultNoLineLimit(t *testing.T) {
 	}
 
 	// Even with max_lines = 0 the 64KB byte cap still applies.
-	hugeLine := strings.Repeat("x", maxSearchContentSize+1)
+	hugeLine := strings.Repeat("x", maxToolTextBytes+1)
 	parts, err = formatSearchResult(searchResult{
 		stdout:   newTestCapture(t, hugeLine),
 		stderr:   newTestCapture(t, ""),
@@ -241,9 +241,9 @@ func TestFormatSearchResultNoLineLimit(t *testing.T) {
 func TestFormatSearchResultByteCap(t *testing.T) {
 	// A single matching line can be arbitrarily large (minified JS,
 	// base64 blobs) — the line-count cap alone would return it inline and
-	// blow the context window. Output above maxSearchContentSize must be
+	// blow the context window. Output above maxToolTextBytes must be
 	// saved to a temp file with a reference message instead.
-	hugeLine := strings.Repeat("x", maxSearchContentSize+1)
+	hugeLine := strings.Repeat("x", maxToolTextBytes+1)
 	parts, err := formatSearchResult(searchResult{
 		stdout:   newTestCapture(t, hugeLine),
 		stderr:   newTestCapture(t, ""),
@@ -261,7 +261,7 @@ func TestFormatSearchResultByteCap(t *testing.T) {
 	}
 
 	// At exactly the cap the output is still returned inline.
-	atCap := strings.Repeat("y", maxSearchContentSize)
+	atCap := strings.Repeat("y", maxToolTextBytes)
 	parts, err = formatSearchResult(searchResult{
 		stdout:   newTestCapture(t, atCap),
 		stderr:   newTestCapture(t, ""),
@@ -270,7 +270,7 @@ func TestFormatSearchResultByteCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := extractFirstText(parts); len(text) != maxSearchContentSize {
+	if text := extractFirstText(parts); len(text) != maxToolTextBytes {
 		t.Errorf("output at the cap should be inline, got %d bytes", len(text))
 	}
 }

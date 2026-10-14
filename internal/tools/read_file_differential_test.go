@@ -57,7 +57,7 @@ func oldReadLargeTruncated(file *os.File, totalSize int64) (string, int, error) 
 		if collecting {
 			line := scanner.Text()
 			lineBytes := int64(len(line)) + 1
-			if bytesRead+lineBytes > maxTextReadSize && len(lines) > 0 {
+			if bytesRead+lineBytes > maxToolTextBytes && len(lines) > 0 {
 				collecting = false
 				continue
 			}
@@ -166,7 +166,7 @@ func TestTruncatedReadMatchesOldScannerSemantics(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if info.Size() <= maxTextReadSize {
+			if info.Size() <= maxToolTextBytes {
 				t.Skip("input is not over the truncation threshold")
 			}
 
@@ -187,7 +187,7 @@ func TestTruncatedReadMatchesOldScannerSemantics(t *testing.T) {
 
 			// The old code could exceed the budget on a huge first line; where
 			// it stayed within budget the outputs must match exactly.
-			if len(oldText) <= maxTextReadSize+512 && newText != oldText {
+			if len(oldText) <= maxToolTextBytes+512 && newText != oldText {
 				t.Errorf("output changed:\n new=%.160q\n old=%.160q", newText, oldText)
 			}
 			// The header format is part of the tool's contract with the model.

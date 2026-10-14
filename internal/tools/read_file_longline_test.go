@@ -76,7 +76,7 @@ func TestReadFileLineLongerThanScannerLimit(t *testing.T) {
 	}
 }
 
-// maxTextReadSize is documented to the model as the read limit. A single line
+// maxToolTextBytes is documented to the model as the read limit. A single line
 // larger than it used to be emitted whole (a 700KB line was returned against a
 // 64KB limit) because "always keep at least one line" outran the cap.
 func TestReadFileRespectsTheStatedSizeLimit(t *testing.T) {
@@ -87,8 +87,8 @@ func TestReadFileRespectsTheStatedSizeLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The header and the marker are overhead; the payload must fit the budget.
-	if len(out) > maxTextReadSize+512 {
-		t.Errorf("returned %d bytes for a %d byte limit", len(out), maxTextReadSize)
+	if len(out) > maxToolTextBytes+512 {
+		t.Errorf("returned %d bytes for a %d byte limit", len(out), maxToolTextBytes)
 	}
 	if !strings.Contains(out, budgetTruncationMarker) {
 		t.Errorf("expected the budget marker, got %.120q", out)

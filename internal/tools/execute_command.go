@@ -17,8 +17,6 @@ import (
 	"github.com/alayacore/alayacore/internal/tools/shell"
 )
 
-const maxCommandOutput = 64 * 1024 // 64KB
-
 // ExecuteCommandInput is the input of the execute_command tool. It is exported
 // because the terminal adapter formats a tool call from it.
 type ExecuteCommandInput struct {
@@ -169,7 +167,7 @@ func executeCommand(ctx context.Context, args ExecuteCommandInput) ([]llm.Conten
 		return nil, err
 	}
 
-	stdout, stderr := newCapture(maxCommandOutput), newCapture(maxCommandOutput)
+	stdout, stderr := newCapture(maxToolTextBytes), newCapture(maxToolTextBytes)
 	defer stdout.Close()
 	defer stderr.Close()
 
@@ -302,14 +300,13 @@ type streamingWriter struct {
 }
 
 func newStreamingWriter(onDelta func(string)) *streamingWriter {
-	return newStreamingWriterWith(onDelta, maxCommandOutput)
+	return newStreamingWriterWith(onDelta, maxToolTextBytes)
 }
 
-// newStreamingWriterWith takes the memory budget explicitly. execute_command
-// and search_content share this writer but own separate caps
-// (maxCommandOutput / maxSearchContentSize); hardcoding one here would let the
-// capture spill at a different threshold than the formatter later compares
-// against the moment either constant changes.
+// newStreamingWriterWith takes the memory budget explicitly rather than reading
+// the constant, because the capture and the formatter that later compares against
+// the budget have to agree: hardcoding it here would let them drift the moment it
+// changes.
 func newStreamingWriterWith(onDelta func(string), maxBytes int) *streamingWriter {
 	return &streamingWriter{
 		onDelta: onDelta,
@@ -467,7 +464,7 @@ func handleCommandOutput(stdout, stderr *capture, exitCode int, execErr error) (
 	// The common case: nothing spilled to disk and the formatted output still
 	// fits the budget, so it goes back inline.
 	if !stdout.spilled() && !stderr.spilled() {
-		if output := formatCommandOutput(stdout, stderr, header); len(output) <= maxCommandOutput {
+		if output := formatCommandOutput(stdout, stderr, header); len(output) <= maxToolTextBytes {
 			return inlineCommandOutput(output, execErr)
 		}
 	}
@@ -506,7 +503,7 @@ func handleLargeCommandOutput(stdout, stderr *capture, header string, execErr er
 		// No file: fall back to the in-memory prefix rather than discarding a
 		// whole command's output because the temp directory is unusable.
 		note := fmt.Sprintf("\n\n[Output was %s and could not be saved to a file (%v); the text above is only its first %s.]",
-			describeSize(stdout.size()+stderr.size()), err, describeSize(int64(maxCommandOutput)))
+			describeSize(stdout.size()+stderr.size()), err, describeSize(int64(maxToolTextBytes)))
 		return inlineCommandOutput(formatCommandOutput(stdout, stderr, header)+note, execErr)
 	}
 

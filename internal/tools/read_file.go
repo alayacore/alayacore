@@ -18,8 +18,6 @@ import (
 	"github.com/alayacore/alayacore/internal/llm"
 )
 
-const maxTextReadSize = 64 * 1024 // 64KB limit for text files (~16K tokens)
-
 // ReadFileInput represents the input for the read_file tool
 type ReadFileInput struct {
 	Path      string `json:"path" jsonschema:"required" jsonschema_desc:"File path to read"`
@@ -138,7 +136,7 @@ func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart
 
 	// Full file read case
 	if args.StartLine == 0 && args.NumLines == 0 {
-		if info.Size() > maxTextReadSize {
+		if info.Size() > maxToolTextBytes {
 			return readLargeFileTruncated(file, info.Size())
 		}
 		var content []byte
@@ -188,25 +186,31 @@ func rangeDiagnostic(lines []string, startLine, totalSeen int) (string, bool) {
 	return "", false
 }
 
-// maxMediaReadSize caps the size of media files (image/video/audio/document)
-// read fully into memory and embedded as base64 data URIs. Unlike text files
-// (capped at maxTextReadSize), media cannot be meaningfully truncated — the
-// whole file is loaded and then base64-encoded (×1.33), so a multi-GB video
-// would OOM the process. Files above the cap are reported instead of read.
-const maxMediaReadSize = 16 * 1024 * 1024 // 16MB
+// MaxMediaBytes caps one media file (image, video, audio, document) read fully
+// into memory and embedded as a base64 data URI — the same ceiling for a file a
+// tool reads and for one a user attaches, because it is the same decision. Unlike
+// text (capped at maxToolTextBytes), media cannot be meaningfully truncated: the
+// whole file is loaded and then base64-encoded (×4/3), so a multi-GB video would
+// OOM the process. Files above the cap are reported instead of read.
+//
+// The frame it becomes is base64 inside a JSON wrapper, so this and the wire's
+// MaxFrameSize are one decision rather than two that have to agree; the derived
+// sizes live in one place, in internal/wire's MaxFrameSize comment, and are held
+// together by TestMaxMediaFitsInAFrame.
+const MaxMediaBytes = 16 * 1024 * 1024 // 16MB
 
 // readMediaFile reads a media file from the already-open handle and returns
 // a ContentPart with base64-encoded data. Supported types: image, video,
 // audio, document (PDF, etc.). info comes from the same handle (file.Stat),
 // so the size check and the read are one consistent snapshot.
-// Files larger than maxMediaReadSize are not loaded; the caller receives a
+// Files larger than MaxMediaBytes are not loaded; the caller receives a
 // text message pointing at the limit so it can pick a smaller file instead.
 func readMediaFile(file *os.File, path string, info os.FileInfo, mimeType string) ([]llm.ContentPart, error) {
-	if info.Size() > maxMediaReadSize {
+	if info.Size() > MaxMediaBytes {
 		mb := float64(info.Size()) / (1024 * 1024)
 		return []llm.ContentPart{&llm.TextPart{Text: fmt.Sprintf(
 			"File %s is %.1fMB — larger than the %dMB media read limit. Media is embedded as base64 and cannot be truncated; use a smaller file or process it with execute_command instead.",
-			filepath.Base(path), mb, maxMediaReadSize/(1024*1024),
+			filepath.Base(path), mb, MaxMediaBytes/(1024*1024),
 		)}}, nil
 	}
 
@@ -321,7 +325,7 @@ func (lr *lineReader) finish() string {
 	return strings.TrimSuffix(s, "\r")
 }
 
-// readLargeFileTruncated reads a large file and returns up to maxTextReadSize
+// readLargeFileTruncated reads a large file and returns up to maxToolTextBytes
 // bytes of content with a metadata header showing total line count and size.
 // Single-pass: collects lines until the byte limit, then continues counting.
 func readLargeFileTruncated(file *os.File, totalSize int64) ([]llm.ContentPart, error) {
@@ -346,13 +350,13 @@ func readLargeFileTruncated(file *os.File, totalSize int64) ([]llm.ContentPart, 
 		}
 
 		lineBytes := int64(len(line)) + 1 // +1 for newline
-		if bytesRead+lineBytes > maxTextReadSize {
+		if bytesRead+lineBytes > maxToolTextBytes {
 			if len(lines) == 0 {
 				// The first line alone overflows the whole budget. It used to
 				// be emitted in full (a 700KB line against a documented 64KB
 				// limit) because the "always keep one line" rule bypassed the
 				// cap; cut it to the budget instead.
-				shown := cutToBudget(line, maxTextReadSize-bytesRead)
+				shown := cutToBudget(line, maxToolTextBytes-bytesRead)
 				lines = append(lines, shown)
 				bytesRead += int64(len(shown))
 			}

@@ -14,7 +14,7 @@ import (
 // output without running a command.
 func newTestCapture(t *testing.T, s string) *capture {
 	t.Helper()
-	c := newCapture(maxCommandOutput)
+	c := newCapture(maxToolTextBytes)
 	if _, err := c.Write([]byte(s)); err != nil {
 		t.Fatalf("preload: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestCaptureStaysInMemoryUnderBudget(t *testing.T) {
 func TestLargeOutputFallbackStaysMemoryBounded(t *testing.T) {
 	const spillSize = 8 * 1024 * 1024 // 8MB, far over the 64KB inline budget
 
-	stdout := newCapture(maxCommandOutput)
+	stdout := newCapture(maxToolTextBytes)
 	defer stdout.Close()
 	if _, err := stdout.Write([]byte(strings.Repeat("m", spillSize))); err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestLargeOutputFallbackStaysMemoryBounded(t *testing.T) {
 	if !stdout.spilled() {
 		t.Fatal("test setup: expected the stream to have spilled")
 	}
-	stderr := newCapture(maxCommandOutput)
+	stderr := newCapture(maxToolTextBytes)
 	defer stderr.Close()
 
 	// Make saving fail the same way a full/read-only temp dir would.
@@ -76,7 +76,7 @@ func TestLargeOutputFallbackStaysMemoryBounded(t *testing.T) {
 
 	// Bounded: the in-memory prefix plus the explanatory note — never the
 	// whole spilled stream.
-	if len(text) > maxCommandOutput+4096 {
+	if len(text) > maxToolTextBytes+4096 {
 		t.Errorf("fallback returned %d bytes; the spilled %d bytes were materialized into memory",
 			len(text), spillSize)
 	}

@@ -6,12 +6,23 @@ import (
 	"os"
 )
 
+// maxToolTextBytes is how much text one tool may put in the conversation: what it
+// reads (read_file) or what it keeps of what it ran (execute_command,
+// search_content). One cap for all three, because it is a context budget rather
+// than a per-tool one — 64KB is roughly 16K tokens.
+//
+// Above the cap the answer differs by tool, which is why the cap is not the whole
+// story: a text file is truncated with a header (read_file), command output is
+// spilled to a temp file and reported (capture, below), and media cannot be
+// truncated at all — it is bounded by MaxMediaBytes instead.
+const maxToolTextBytes = 64 * 1024
+
 // capture collects one output stream (a tool's stdout or stderr) with bounded
 // memory, for commands that can produce more output than the process should
 // ever hold.
 //
 // Tool output used to be accumulated in a bytes.Buffer and only then measured
-// against maxCommandOutput, so the cap decided what the *model* saw but not
+// against maxToolTextBytes, so the cap decided what the *model* saw but not
 // what the *process* allocated: a command streaming 286MB peaked at ~1.1GB of
 // heap to deliver a 126-byte answer, and with the default unlimited timeout a
 // non-terminating producer (`yes`) grew until the OOM killer took the process
