@@ -220,7 +220,7 @@ func (g *grid) write(data []byte) {
 			if g.host {
 				// A host that bills this cluster differently wraps the row
 				// somewhere else than the layout counted (host_width_test.go).
-				cells = max(0, cells+hostDelta(text, cells))
+				cells = max(0, cells+hostDelta(text))
 			}
 			g.put(text, cells)
 			i += len(text)

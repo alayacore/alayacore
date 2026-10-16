@@ -961,10 +961,11 @@ func (m Terminal) View() View {
 		sb.WriteString(ansi.EraseLine(0))
 		sb.WriteString("\n")
 		// Status bar: hard anchor to the last row, cleared to its end for the
-		// same reason. renderStatusBar leaves one cell of the row unspent —
-		// this is the frame's bottom row, and a cell written past the bottom
-		// row scrolls the terminal: the whole frame, including rows the diff
-		// will not rewrite, off by a row until a full repaint.
+		// same reason. renderStatusBar lays the row out against what a host may
+		// charge its own text (the model name is the session's), because this
+		// is the frame's bottom row and a cell written past the bottom row
+		// scrolls the terminal: the whole frame — including rows the diff will
+		// not rewrite — off by a row until a full repaint.
 		sb.WriteString(ansi.CursorPosition(1, m.windowHeight))
 		sb.WriteString(m.renderStatusBar())
 		sb.WriteString(ansi.EraseLine(0))

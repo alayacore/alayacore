@@ -904,10 +904,14 @@ on it), and every row the frame owns from column 0 below a written transcript ro
 — the live edge, the input box, the status bar, any dialog layered over the
 transcript — is re-established in the same frame. The chrome rows end with an EL,
 the live edge row is written whether or not the marker has anything to say, and
-the status bar spends one cell less than the window width: the bottom row is the
-one place a mis-fitting cell has nowhere to go, and a cell written past it scrolls
-the terminal (`screen_tmux_join_test.go` measures it), which moves rows that no
-diff will ever rewrite.
+the status row is laid out against what a host may charge its own text
+(`host_width.go` → `hostMaxCells`; the model name in it comes from the session):
+the bottom row is the one place a mis-fitting cell has nowhere to go, and a cell
+written past it scrolls the terminal (`screen_tmux_join_test.go` measures it),
+which moves rows that no diff will ever rewrite. That reservation is exactly the
+disagreement and nothing more — a name no host can bill differently still fills
+the window — and `TestTheStatusRowReservesOnlyWhereAHostMayBillWider` pins both
+halves.
 
 The bound, stated rather than implied: a host that disagrees by more than one
 row's width can still push a row's tail past the row the frame re-establishes.

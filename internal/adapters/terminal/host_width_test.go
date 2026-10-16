@@ -11,16 +11,11 @@ package terminal
 // must not reach the rows the frame owns from column 0, and a row a write
 // touched must not leave a stray cell on the row below it.
 //
-// The host model bills the classes that were MEASURED to disagree, with the
-// numbers tmux 3.7c gave (misc/probe-tmux-widths.sh): a cluster carrying a
-// spacing mark the host does not combine onto its base (the Indic and
-// South-East Asian vowel signs), a soft hyphen or an Arabic number sign is one
-// cell wider; the cell an emoji-presentation request (U+FE0F) joined is two
-// cells wide to the host whatever this table made of it; a ZWJ sequence is
-// several cells to a host that does not cluster; and a lone regional indicator
-// and U+3164 HANGUL FILLER are narrower. Every class measured over-bills a
-// cluster by at most one cell, and a cluster costs at least one cell — which is
-// the bound the write-set closure in screen.go → diffFrameRows is sized for.
+// The host model bills the classes host_width.go holds — the ones a host was
+// MEASURED to disagree about, with the numbers tmux 3.7c gave
+// (misc/probe-tmux-widths.sh). Every class over-bills a cluster by at most one
+// cell, and a cluster costs at least one cell — which is the bound the write-set
+// closure in screen.go → diffFrameRows is sized for.
 //
 // The grid model's own displaywidth table is NOT replaced: this is the same
 // model with a host's arithmetic, so the two can be compared row by row.
@@ -33,75 +28,6 @@ import (
 	"github.com/alayacore/alayacore/internal/wire"
 	"github.com/alayacore/alayacore/internal/wiretest"
 )
-
-// hostWiderByOne are the code points the host billed one cell wider than this
-// package's table, measured as part of a cluster. Each is a spacing mark the
-// host does not combine onto the previous cell (this table's UAX #29 clustering
-// does), or a format character this table charges nothing for.
-var hostWiderByOne = map[rune]bool{
-	0x093E: true, // devanagari aa-matra
-	0x093F: true, // devanagari i-matra
-	0x0940: true, // devanagari ii-matra
-	0x09BE: true, // bengali aa-matra
-	0x09BF: true, // bengali i-matra
-	0x0A3F: true, // gurmukhi sihari
-	0x0ABF: true, // gujarati i-matra
-	0x0BBE: true, // tamil aa-matra
-	0x0BBF: true, // tamil i-matra
-	0x0D3E: true, // malayalam aa-matra
-	0x0D3F: true, // malayalam i-matra
-	0x0DDA: true, // sinhala aeda-pilla
-	0x0E33: true, // thai sara am
-	0x17B6: true, // khmer aa
-	0x00AD: true, // soft hyphen
-	0x0600: true, // arabic number sign
-}
-
-// hostNarrowerBy is the same, for the classes the host billed LESS than this
-// table does: U+3164 HANGUL FILLER, which the host ignores entirely (0 cells
-// where the table reserves two). A lone regional indicator is the other
-// narrower class and is handled by hostDelta, because a PAIR of them agrees.
-var hostNarrowerBy = map[rune]int{0x3164: 2}
-
-// hostDelta returns the cells to add to the cells this package's table charges
-// a cluster, to get the cells the measured host charges it.
-func hostDelta(cluster string, cells int) int {
-	delta := 0
-	for _, r := range cluster {
-		if hostWiderByOne[r] {
-			delta++
-		}
-		delta -= hostNarrowerBy[r]
-	}
-	// A variation selector: the host makes the cell the selector joined TWO
-	// cells wide (screen_write_combine forces the width when the sequence
-	// should combine), whatever this table made of it. So a cluster this table
-	// bills one cell is two to the host — measured on "a" + U+FE0F, which is
-	// 1 here and 2 there — while a cluster it already bills two (a keycap, a
-	// sun, a heart with the selector) agrees.
-	if strings.Contains(cluster, "\uFE0F") && cells < 2 {
-		delta += 2 - cells
-	}
-	// A zero-width joiner: a sequence this table draws as ONE cluster (two
-	// cells, the first emoji's) is several to a host that does not cluster at
-	// all — the class docs/tui.md records as "a ZWJ family is one cluster here
-	// and several there", where such a host bills every emoji it can see. Each
-	// joiner is one more emoji the host draws, at two cells.
-	delta += 2 * strings.Count(cluster, "\u200D")
-	if delta == 0 && isLoneRegionalIndicator(cluster) {
-		// The host's default width cache bills a regional indicator one cell;
-		// this table bills a lone one two (a pair is two on both).
-		delta--
-	}
-	return delta
-}
-
-// isLoneRegionalIndicator reports whether the cluster is exactly one regional
-// indicator code point.
-func isLoneRegionalIndicator(cluster string) bool {
-	runes := []rune(cluster)
-	return len(runes) == 1 && runes[0] >= 0x1F1E6 && runes[0] <= 0x1F1FF
-}
 
 // newHostGrid returns the screen model with a host's width arithmetic in place
 // of this package's (see the file comment).
@@ -225,29 +151,52 @@ func TestAStrayCellOnTheNextLineIsRepaired(t *testing.T) {
 	}
 }
 
-// TestAContestedModelNameCannotScrollTheFrame pins the one cell the status bar
-// leaves unspent. The bar is the frame's BOTTOM row, and its content is not all
-// the app's: the model name comes from the session. A name carrying a cluster the
-// host bills one cell wider makes the row one cell wider than the frame's width,
-// and a cell written past the bottom row scrolls the terminal — every row,
-// including the rows a diff will never rewrite, moves up one.
-func TestAContestedModelNameCannotScrollTheFrame(t *testing.T) {
-	const width, height = 40, 20
-	h := newFrameHarnessWithHost(t, width, height)
+// TestTheStatusRowReservesOnlyWhereAHostMayBillWider pins how the bottom row is
+// kept from wrapping, and how much that costs.
+//
+// The bottom row is the one place a cell written past the last column has
+// nowhere to go: it wraps, and the wrap scrolls the terminal, which moves rows a
+// diff will never rewrite (screen_tmux_join_test.go measures the scroll itself).
+// The status bar's right group carries the model name, which the session
+// provides, so a name carrying a cluster a host bills wider would put the row
+// one cell over — so the row is laid out against what a host may charge it
+// (host_width.go → hostMaxCells). The reservation is then exactly the
+// disagreement: a name no host can bill differently fills the window exactly, as
+// it always did, and no session pays a blank cell for another session's name.
+func TestTheStatusRowReservesOnlyWhereAHostMayBillWider(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		modelName  string
+		reservedBy int // cells the row leaves unspent, over the whole window
+	}{
+		{"plain name", "model-name", 0},
+		{"name a host bills wider", "कि-model", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const width, height = 40, 20
+			h := newFrameHarnessWithHost(t, width, height)
 
-	h.step("empty")
-	h.appendWin(tagAssistantText, "w1", "a line of the window\nand another")
-	h.step("content")
+			h.step("empty")
+			h.appendWin(tagAssistantText, "w1", "a line of the window\nand another")
+			h.step("content")
 
-	// The status bar's right group is server-provided text, so a cluster the
-	// host bills wider can arrive in it.
-	h.m.out.Write(encodeFrame(wire.TagSystemMsg,
-		`{"type":"model","data":{"active_id":1,"active_name":"कि-model","context_limit":0}}`))
-	h.m.out.FlushPendingDeltas()
-	h.m = h.m.updateStatus()
-	h.step("model name")
-	if !strings.Contains(stripANSI(h.m.renderStatusBar()), "कि") {
-		t.Fatalf("fixture: the model name is not in the status bar (%q)", stripANSI(h.m.renderStatusBar()))
+			h.m.out.Write(encodeFrame(wire.TagSystemMsg,
+				fmt.Sprintf(`{"type":"model","data":{"active_id":1,"active_name":%q,"context_limit":0}}`, tc.modelName)))
+			h.m.out.FlushPendingDeltas()
+			h.m = h.m.updateStatus()
+			h.step("model name")
+
+			row := stripANSI(h.m.renderStatusBar())
+			if !strings.Contains(row, tc.modelName) {
+				t.Fatalf("fixture: the model name is not in the status bar (%q)", row)
+			}
+			if got := hostMaxCells(row); got > width {
+				t.Errorf("the status row is %d cells to a host, over the %d-cell window — the bottom row would wrap and scroll the frame", got, width)
+			}
+			if want := width - tc.reservedBy; Width(row) != want {
+				t.Errorf("status row is %d cells wide, want %d (window %d, reserved %d)", Width(row), want, width, tc.reservedBy)
+			}
+		})
 	}
 }
 
@@ -303,34 +252,95 @@ func hostSession(t *testing.T, width, height int) {
 	h.step("after Ctrl-R")
 }
 
-// hostMayBillDifferently reports whether s carries a cluster whose width this
-// package's table and a host's are measured — or recorded as likely — to
-// disagree about, so a screen comparison that reads the cluster back cannot be
-// judged on it:
+// TestHostDeltaMatchesTheMeasuredHost pins host_width.go's classes to the numbers
+// the probe took (misc/probe-tmux-widths.sh, tmux 3.7c): this table's cells for
+// the bytes, and the cells the host drew for them. A class added, removed or
+// re-numbered without re-taking the probe fails here, on the number, rather than
+// in a reader's memory of one — and the assertion is on hostCells' output, not on
+// the map, so a rule that stops being expressible as a per-code-point set is
+// still checked.
 //
-//   - a spacing mark the host bills on its own (hostWiderByOne),
-//   - the cell a variation selector joined, which the host forces to two cells,
-//   - a zero-width joiner, one cluster here and several to a host that does not
-//     cluster,
-//   - U+3164 HANGUL FILLER, which the host ignores, and a lone regional
-//     indicator, which its width cache bills one cell (hostNarrowerBy,
-//     isLoneRegionalIndicator).
+// The agreeing rows are here on purpose: they are the classes a rule must NOT be
+// invented for. Emoji presentation is the one that caught a wrong entry — a
+// cluster ending in a variation selector is two cells to this table already, and
+// two to tmux, so "a" + U+FE0F is 2 and 2, not the 1-and-2 a hand-written column
+// claimed. The app draws CJK, box drawing and braille, and the model charges them
+// what the table does.
 //
-// The list is the measured classes (misc/probe-tmux-widths.sh, tmux 3.7c) plus
-// the two the glyph policy already records as host-dependent (a variation
-// selector and a ZWJ sequence). Everything else — ASCII, CJK, the box-drawing
-// glyphs, braille, the tool indicators — is asserted where it is compared.
-func hostMayBillDifferently(s string) bool {
-	if strings.ContainsAny(s, "\uFE0E\uFE0F\u20E3\u200D") {
-		return true
-	}
-	for _, r := range s {
-		if hostWiderByOne[r] || hostNarrowerBy[r] != 0 {
-			return true
+// ZWJ sequences are NOT in this table: tmux clusters them (2 and 2, in the
+// probe's agreeing group), while hostDelta models the recorded host that bills
+// every emoji separately (docs/tui.md → the ZWJ family note). That pessimism is
+// asserted on its own, in TestHostModelsTheWorseCaseForZWJSequences.
+func TestHostDeltaMatchesTheMeasuredHost(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		app  int
+		host int
+	}{
+		{"devanagari i-matra", "कि", 1, 2},
+		{"devanagari aa-matra", "का", 1, 2},
+		{"bengali i-matra", "কি", 1, 2},
+		{"gurmukhi sihari", "ਕਿ", 1, 2},
+		{"tamil aa-matra", "கா", 1, 2},
+		{"malayalam i-matra", "കി", 1, 2},
+		{"sinhala aeda", "\u0D9A\u0DDA", 1, 2},
+		{"thai sara am", "กำ", 1, 2},
+		{"khmer aa", "កា", 1, 2},
+		{"soft hyphen after a", "a\u00AD", 1, 2},
+		{"arabic number sign after a", "a\u0600", 1, 2},
+		{"lone regional indicator", "\U0001F1E6", 2, 1},
+		{"hangul filler", "\u3164", 2, 0},
+		{"hangul jungseong filler", "\u1160", 1, 0},
+		{"ascii a + vs16", "a\uFE0F", 2, 2},
+		{"digit one + vs16", "1\uFE0F", 2, 2},
+		{"bang + vs16", "!\uFE0F", 2, 2},
+		{"keycap one", "1\uFE0F\u20E3", 2, 2},
+		{"ascii a + vs15", "a\uFE0E", 1, 1},
+		{"regional pair", "\U0001F1E8\U0001F1F3", 2, 2},
+		{"hangul choseong filler", "\u115F", 2, 2},
+		{"halfwidth hangul filler", "\uFFA0", 1, 1},
+		{"cjk", "中文", 4, 4},
+		{"box rule", "─", 1, 1},
+		{"braille", "⠿", 1, 1},
+	} {
+		if got := cellWidth(tc.in); got != tc.app {
+			t.Errorf("%s: this table bills %q %d cells, the recorded number is %d", tc.name, tc.in, got, tc.app)
+			continue
 		}
-		if r >= 0x1F1E6 && r <= 0x1F1FF {
-			return true
+		if got := hostCells(tc.in); got != tc.host {
+			t.Errorf("%s: the host model bills %q %d cells, the probe recorded %d", tc.name, tc.in, got, tc.host)
 		}
 	}
-	return false
+}
+
+// TestHostModelsTheWorseCaseForZWJSequences pins the one rule in host_width.go
+// that is not a measurement of tmux: a host that does not cluster bills every
+// emoji in a ZWJ sequence, and the model charges accordingly. It is what makes a
+// spill wider than a row reachable in the containment tests at all — every
+// measured class over-bills by one cell per cluster, and a cluster costs at least
+// a cell, so measured classes alone can never wrap past the row below.
+func TestHostModelsTheWorseCaseForZWJSequences(t *testing.T) {
+	const family = "👨\u200D👩\u200D👧\u200D👦"
+	if cellWidth(family) != 2 {
+		t.Fatalf("fixture: this table bills the family %d cells, want 2", cellWidth(family))
+	}
+	if got := hostCells(family); got <= cellWidth(family) {
+		t.Errorf("the host model bills the family %d cells, want more than this table's %d (a host that does not cluster draws every emoji)", got, cellWidth(family))
+	}
+}
+
+// TestHostMaxCellsIsAnUpperBound pins the one property a reservation needs: the
+// space a caller reserves for a string must never be less than what the host
+// charges it, for every class in the table and their mixtures.
+func TestHostMaxCellsIsAnUpperBound(t *testing.T) {
+	for _, in := range []string{
+		"", "plain ascii", "कि", "กำ", "a\u00AD", "\U0001F1E6", "\u3164",
+		"1\uFE0F\u20E3", "👨\u200D👩\u200D👧\u200D👦", "a\uFE0F", "中文 ─ ⠿",
+		"model-name कि-model", "R0",
+	} {
+		if want, got := hostCells(in), hostMaxCells(in); got < want {
+			t.Errorf("hostMaxCells(%q) = %d, less than the host's %d", in, got, want)
+		}
+	}
 }

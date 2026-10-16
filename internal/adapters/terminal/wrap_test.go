@@ -192,32 +192,31 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 		return stripANSI(m.renderStatusBar())
 	}
 
-	// Ample space (window 28 → row budget 27, gap 4): the group floats, blank
-	// padding.
-	if got := render(28); got != "⠿ 12.3K/128K    gpt-4o | R0" {
+	// Ample space (W=27, gap 4): the group floats, blank padding.
+	if got := render(27); got != "⠿ 12.3K/128K    gpt-4o | R0" {
 		t.Errorf("gap>3: got %q, want %q", got, "⠿ 12.3K/128K    gpt-4o | R0")
 	}
 
-	// Gap exactly 3 (window 27): merges into the left — reads like another
+	// Gap exactly 3 (W=26): merges into the left — reads like another
 	// segment, group stays flush right.
-	if got := render(27); got != "⠿ 12.3K/128K | gpt-4o | R0" {
+	if got := render(26); got != "⠿ 12.3K/128K | gpt-4o | R0" {
 		t.Errorf("gap==3: got %q, want %q", got, "⠿ 12.3K/128K | gpt-4o | R0")
 	}
 
-	// Tight space (window 25, gap 1): merged; the level's cells go first, the
+	// Tight space (W=24, gap 1): merged; the level's cells go first, the
 	// model name is still whole.
-	if got := render(25); got != "⠿ 12.3K/128K | gpt-4o |…" {
+	if got := render(24); got != "⠿ 12.3K/128K | gpt-4o |…" {
 		t.Errorf("gap<3 with full level: got %q, want %q", got, "⠿ 12.3K/128K | gpt-4o |…")
 	}
 
-	// Tighter (window 22): the truncation reaches the model name.
-	if got := render(22); got != "⠿ 12.3K/128K | gpt-4…" {
+	// Tighter (W=21): the truncation reaches the model name.
+	if got := render(21); got != "⠿ 12.3K/128K | gpt-4…" {
 		t.Errorf("gap<3 with truncated model: got %q, want %q", got, "⠿ 12.3K/128K | gpt-4…")
 	}
 
-	// No room even merged (window 15): the left segment is truncated, the
+	// No room even merged (W=14): the left segment is truncated, the
 	// group is cut away and "…" marks the truncation.
-	if got := render(15); got != "⠿ 12.3K/128K …" {
+	if got := render(14); got != "⠿ 12.3K/128K …" {
 		t.Errorf("no room for the group: got %q, want %q", got, "⠿ 12.3K/128K …")
 	}
 }
@@ -238,7 +237,7 @@ func TestStatusBarTruncatedSeparatorStyled(t *testing.T) {
 	m.statusLeft = "12.3K/128K"
 	m.statusRight = "gpt-4o | R0"
 	m.inProgress = false
-	m.windowWidth = 16 // row budget 14 → inner budget 12: head "12.3K/128K |" + "…": the space after "|" is the cell cut
+	m.windowWidth = 15 // budget 13 → head "12.3K/128K |" + "…": the space after "|" is the cell cut
 
 	rendered := m.renderStatusBar()
 	if !strings.Contains(rendered, sepSig+"|") {
