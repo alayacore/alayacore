@@ -81,7 +81,6 @@ func TestScreenStopOrder(t *testing.T) {
 	out := buf.String()
 
 	ordered := []string{
-		seqSyncOff,     // release a synchronized update first: the teardown below would be buffered behind it
 		seqHomeLastRow, // 1. park the caret on the bottom row
 		seqEraseAll,    // 2. blank the screen we are leaving
 		seqPasteOff,    // 3. turn the modes off
@@ -104,11 +103,12 @@ func TestScreenStopOrder(t *testing.T) {
 		}
 	}
 
-	// The release must be the FIRST byte: a stuck update buffers everything
-	// written after it, so a teardown that released it last would not paint at
-	// all — the one case this reset is for.
-	if !strings.HasPrefix(out, seqSyncOff) {
-		t.Errorf("Stop() must release a synchronized update before its own bytes, got %q", out)
+	// The reset has to be in the buffer or a stuck update swallows the whole
+	// teardown. Its position is not load-bearing, and deliberately not pinned:
+	// the mode defers painting, not parsing, so the bytes around it are applied
+	// either way.
+	if !strings.Contains(out, seqSyncOff) {
+		t.Errorf("Stop() must carry the synchronized-update reset, or a stuck update swallows the teardown: %q", out)
 	}
 
 	// The restore must be the last byte on the stream: after it, the console

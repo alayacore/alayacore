@@ -52,6 +52,23 @@ func NewScreen(out *os.File) *Screen {
 	return &Screen{out: out, sizeFile: out}
 }
 
+// writeAll writes buf to the terminal in full. A writer that accepts only part
+// of a buffer and reports no error would leave a truncated frame on the terminal
+// while Render moved its state on to the frame it believes it wrote — a
+// divergence no later frame notices and only a full repaint repairs. A tty takes
+// a write in full or blocks, so this guards a silent failure rather than a
+// reachable one.
+func (s *Screen) writeAll(buf []byte) error {
+	n, err := s.out.Write(buf)
+	if err != nil {
+		return err
+	}
+	if n < len(buf) {
+		return fmt.Errorf("%w: %d of %d bytes", io.ErrShortWrite, n, len(buf))
+	}
+	return nil
+}
+
 // mouseReportingOff turns off every mouse-tracking encoding a host might be
 // using. This UI has no mouse handling at all — console_events.go drops a mouse
 // event, and key_parser.go consumes a report's bytes in both encodings — so it
@@ -112,7 +129,7 @@ func (s *Screen) Start() error {
 	// update, which would buffer everything written after it.
 	buf = append(buf, ansi.ResetModeSynchronizedOutput...)
 	buf = append(buf, ansi.ResetModeTextCursorEnable...)
-	if _, err := s.out.Write(buf); err != nil {
+	if err := s.writeAll(buf); err != nil {
 		return fmt.Errorf("terminal: enter alt screen: %w", err)
 	}
 	s.started = true
@@ -126,11 +143,13 @@ func (s *Screen) Start() error {
 //
 // The order is not cosmetic. Everything here is written while the alternate
 // buffer is still current, which is what makes it safe to move and erase. The
-// synchronized update is reset first, before any of it: it is the one mode
-// whose leftover state would swallow the bytes below, and the reason Start and
-// Stop both re-assert it (docs/tui.md → Line Wrapping). The cursor is re-shown
-// here for the same reason — a kill mid-frame must not leave the terminal in a
-// state this program set.
+// buffer carries the synchronized-update reset, because that mode is the one
+// whose leftover state would swallow every byte below it (docs/tui.md → Line
+// Wrapping). Its position in the buffer is not load-bearing — the mode defers
+// painting, not parsing, so the teardown's own bytes are applied by the time the
+// reset releases them — which is why it is pinned by presence and not by order.
+// The cursor is re-shown here for the same reason: a kill mid-frame must not
+// leave the terminal in a state this program set.
 //
 //  1. Home the cursor to column 1 of the last row. A frame ends with the caret
 //     in the middle of the screen (the prompt row), and a host that ignores
@@ -163,7 +182,8 @@ func (s *Screen) Stop() error {
 		return nil
 	}
 	var buf []byte
-	// First, so the teardown below cannot be buffered behind a stuck update.
+	// Carried with the teardown so a stuck update cannot swallow it; see the
+	// note on the order above.
 	buf = append(buf, ansi.ResetModeSynchronizedOutput...)
 	if s.height > 0 {
 		buf = append(buf, ansi.CursorPosition(1, s.height)...)
@@ -179,7 +199,7 @@ func (s *Screen) Stop() error {
 	buf = append(buf, ansi.SetModeTextCursorEnable...)
 	buf = append(buf, ansi.ResetModeAltScreenSaveCursor...)
 	buf = append(buf, ansi.RestoreCurrentCursorPosition...)
-	if _, err := s.out.Write(buf); err != nil {
+	if err := s.writeAll(buf); err != nil {
 		return fmt.Errorf("terminal: exit alt screen: %w", err)
 	}
 	s.started = false
@@ -316,7 +336,7 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 
 	// Close the synchronized update; the terminal paints the frame now.
 	buf = append(buf, ansi.ResetModeSynchronizedOutput...)
-	if _, err := s.out.Write(buf); err != nil {
+	if err := s.writeAll(buf); err != nil {
 		return fmt.Errorf("terminal: render: %w", err)
 	}
 

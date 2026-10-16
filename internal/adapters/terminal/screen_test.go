@@ -2,7 +2,9 @@ package terminal
 
 import (
 	"bytes"
+	"errors"
 	"image/color"
+	"io"
 	"strings"
 	"testing"
 )
@@ -121,6 +123,35 @@ func TestScreenRenderWrapsEveryFrameInASynchronizedUpdate(t *testing.T) {
 				t.Fatal("frame wrote nothing between the markers")
 			}
 		})
+	}
+}
+
+// shortWriter accepts only its first keep bytes of each write and reports no
+// error — a partial write with nothing to signal it.
+type shortWriter struct{ keep int }
+
+func (w shortWriter) Write(p []byte) (int, error) { return min(w.keep, len(p)), nil }
+
+// TestScreenRenderShortWriteIsAnError pins the frame state against a partial
+// write. The terminal would be holding a truncated frame; if Render read that as
+// success it would also move lastContent forward, and no later frame could
+// notice the rows that never arrived — they would stay missing until a full
+// repaint. The write is checked instead, so the frame is simply written again.
+func TestScreenRenderShortWriteIsAnError(t *testing.T) {
+	s := &Screen{out: shortWriter{keep: 4}}
+	if err := s.Render("content", nil, true); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("Render through a partial write = %v, want io.ErrShortWrite", err)
+	}
+
+	// Nothing was recorded for the failed frame, so this render is the
+	// clear-first path rather than a diff against rows the terminal never got.
+	var buf bytes.Buffer
+	s.out = &buf
+	if err := s.Render("content", nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if out := unwrapSync(t, buf.String()); !strings.HasPrefix(out, "\x1b[2J") {
+		t.Errorf("a frame that failed to write must not be diffed against; want a full frame, got %q", out)
 	}
 }
 

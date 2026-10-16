@@ -20,6 +20,13 @@ package terminal
 // a corrupted frame is the program's arithmetic, not the transport — which is
 // what the geometry tests then go and find.
 //
+// What this cannot settle is the frame's synchronized update (DECSET 2026,
+// docs/tui.md → Line Wrapping): the capture reads the pane's grid, which is
+// updated whether or not the host defers painting, so a host that implements the
+// mode and one that drops it compare equal here. The replay pins the bytes — both
+// kinds of host end on the same screen — and the flicker's absence is left to a
+// host that implements the mode.
+//
 // The comparison against the model is a different kind of claim and is treated
 // as one: it puts this package's width table next to a terminal's, and for
 // cluster-composed text those are two implementations of a moving standard.
