@@ -780,13 +780,21 @@ the app does not own — a model's keycap list, a user's paste. `width.go`
 bills `1️⃣` two cells, which is what UAX #29 and #11 say and what tmux 3.7c
 draws; the tmux 3.4 that `ubuntu-latest` ships came back with a 2-cell
 `1`+VS16 followed by a separate combining keycap, three cells, so on that
-build the app's rows land a cell off wherever such a cluster appears. There
-is no table that satisfies both hosts — answering it needs a capability
-probe, which the adapter does not issue (see
+build the app's rows land a cell off wherever such a cluster appears. And in
+this frame a cell is not a cell: the row is padded to the frame width and the
+terminal wraps it, so a row the layout counted as one terminal row is wrapped
+onto the row below it by a host that disagrees, and the rows under it move.
+That consequence is contained rather than fixed (see
+[Line Wrapping](#line-wrapping) → "When the host wraps differently") — the
+cluster's own cell count is the part no table can settle, because the host's
+table is the host's. There is no table that satisfies both hosts — answering
+it needs a capability probe, which the adapter does not issue (see
 [Paste and terminal capability](#paste-and-terminal-capability)) — so it is
 recorded as an exposure with the same shape as waiver 2, and
 `TestScreenMatchesATerminalUnderTmux` reports rather than fails on the rows
-where a host and the table disagree.
+where a host and the table disagree, over the classes measured with
+`misc/probe-tmux-widths.sh` (the list is `hostMayBillDifferently`, which cites
+it).
 
 One environment variable is worth naming, because it looks like support and
 is not: `RUNEWIDTH_EASTASIAN` is read by `x/ansi` at init and makes it charge
@@ -868,6 +876,47 @@ selection still copies the original text.
 The wrapping breakpoints are **character-boundary** — a word wider than
 the line width is broken mid-word, matching how a typical terminal
 behaves.
+
+### When the host wraps differently
+
+The breakpoints above are this package's; the row **boundary** is the host's. A
+row is padded to the frame width and the terminal wraps it, so a host whose width
+table disagrees with `width.go`'s wraps the row somewhere else than the layout
+counted. The disagreement is measured, not hypothetical
+(`misc/probe-tmux-widths.sh`, tmux 3.7c): a cluster carrying a spacing mark the
+host does not combine onto its base — the vowel signs of the Indic and
+South-East Asian scripts — the soft hyphen and the Arabic number sign are one
+cell wider to the host than to the table; the cell an emoji-presentation request
+(U+FE0F) joined is two cells to the host whatever the table made of it; a ZWJ
+sequence is one cluster here and several to a host that does not cluster; and a
+lone regional indicator and U+3164 HANGUL FILLER are narrower. The glyphs the app
+draws are none of those classes — ASCII, box drawing, braille — and the table and
+tmux agree on every one of them.
+
+What that costs, and what the frame does about it: a row the layout counted as
+one terminal row is one cell wider to such a host, which wraps it onto the row
+below. The frame cannot prevent that — the host's table is the host's — so it is
+**contained** instead, by two rules in `screen.go` → `diffFrameRows` that are
+properties of a write rather than guesses at the host's table. The write set
+reaches the terminal row below every row it writes (a write's footprint can reach
+exactly there: the cell that does not fit, and the EL that ends the write, land
+on it), and every row the frame owns from column 0 below a written transcript row
+— the live edge, the input box, the status bar, any dialog layered over the
+transcript — is re-established in the same frame. The chrome rows end with an EL,
+the live edge row is written whether or not the marker has anything to say, and
+the status bar spends one cell less than the window width: the bottom row is the
+one place a mis-fitting cell has nowhere to go, and a cell written past it scrolls
+the terminal (`screen_tmux_join_test.go` measures it), which moves rows that no
+diff will ever rewrite.
+
+The bound, stated rather than implied: a host that disagrees by more than one
+row's width can still push a row's tail past the row the frame re-establishes.
+The damage then stays inside the transcript region — the rows the frame owns are
+re-established above it — and any redraw (Ctrl-R, a resize) repairs it.
+`host_width_test.go` is the check: a screen model with the measured host
+arithmetic, the contract asserted after every frame of a session built from
+exactly those classes, and one test per rule, each mutation-checked against the
+rule it pins.
 
 Width calculation is **Unicode-aware**:
 

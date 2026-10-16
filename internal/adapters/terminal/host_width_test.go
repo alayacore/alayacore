@@ -15,10 +15,12 @@ package terminal
 // numbers tmux 3.7c gave (misc/probe-tmux-widths.sh): a cluster carrying a
 // spacing mark the host does not combine onto its base (the Indic and
 // South-East Asian vowel signs), a soft hyphen or an Arabic number sign is one
-// cell wider; a lone regional indicator and U+3164 HANGUL FILLER are narrower.
-// Every class measured over-bills a cluster by at most one cell, and a cluster
-// costs at least one cell — which is the bound the write-set closure in
-// screen.go → diffFrameRows is sized for.
+// cell wider; the cell an emoji-presentation request (U+FE0F) joined is two
+// cells wide to the host whatever this table made of it; a ZWJ sequence is
+// several cells to a host that does not cluster; and a lone regional indicator
+// and U+3164 HANGUL FILLER are narrower. Every class measured over-bills a
+// cluster by at most one cell, and a cluster costs at least one cell — which is
+// the bound the write-set closure in screen.go → diffFrameRows is sized for.
 //
 // The grid model's own displaywidth table is NOT replaced: this is the same
 // model with a host's arithmetic, so the two can be compared row by row.
@@ -70,6 +72,15 @@ func hostDelta(cluster string, cells int) int {
 			delta++
 		}
 		delta -= hostNarrowerBy[r]
+	}
+	// A variation selector: the host makes the cell the selector joined TWO
+	// cells wide (screen_write_combine forces the width when the sequence
+	// should combine), whatever this table made of it. So a cluster this table
+	// bills one cell is two to the host — measured on "a" + U+FE0F, which is
+	// 1 here and 2 there — while a cluster it already bills two (a keycap, a
+	// sun, a heart with the selector) agrees.
+	if strings.Contains(cluster, "\uFE0F") && cells < 2 {
+		delta += 2 - cells
 	}
 	// A zero-width joiner: a sequence this table draws as ONE cluster (two
 	// cells, the first emoji's) is several to a host that does not cluster at
@@ -285,4 +296,36 @@ func TestChromeSurvivesAHostThatBillsDifferently(t *testing.T) {
 	// other way a spilled row reaches the chrome.
 	h.redraw()
 	h.step("after Ctrl-R")
+}
+
+// hostMayBillDifferently reports whether s carries a cluster whose width this
+// package's table and a host's are measured — or recorded as likely — to
+// disagree about, so a screen comparison that reads the cluster back cannot be
+// judged on it:
+//
+//   - a spacing mark the host bills on its own (hostWiderByOne),
+//   - the cell a variation selector joined, which the host forces to two cells,
+//   - a zero-width joiner, one cluster here and several to a host that does not
+//     cluster,
+//   - U+3164 HANGUL FILLER, which the host ignores, and a lone regional
+//     indicator, which its width cache bills one cell (hostNarrowerBy,
+//     isLoneRegionalIndicator).
+//
+// The list is the measured classes (misc/probe-tmux-widths.sh, tmux 3.7c) plus
+// the two the glyph policy already records as host-dependent (a variation
+// selector and a ZWJ sequence). Everything else — ASCII, CJK, the box-drawing
+// glyphs, braille, the tool indicators — is asserted where it is compared.
+func hostMayBillDifferently(s string) bool {
+	if strings.ContainsAny(s, "\uFE0E\uFE0F\u20E3\u200D") {
+		return true
+	}
+	for _, r := range s {
+		if hostWiderByOne[r] || hostNarrowerBy[r] != 0 {
+			return true
+		}
+		if r >= 0x1F1E6 && r <= 0x1F1FF {
+			return true
+		}
+	}
+	return false
 }

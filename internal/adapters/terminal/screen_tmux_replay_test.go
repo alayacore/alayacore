@@ -146,22 +146,24 @@ func tmuxVersion(t *testing.T, tmux string) string {
 
 // assertMatchesModel compares a captured pane with the grid model's screen.
 //
-// Rows whose text contains a cluster-composed glyph are not asserted, only
-// reported. Their width depends on whether the host applies UAX #29 clustering
-// and the emoji-presentation rule, or falls back to wcwidth per code point —
-// two answers that are both defensible and that different terminal builds
-// give. This test was written against tmux 3.7c, where a keycap is one 2-cell
-// cluster; on the tmux 3.4 that ubuntu-latest ships, the same bytes come back
-// as a 2-cell "1"+VS16 followed by a separate combining keycap, so five rows
-// differed and the build went red over a fact about somebody else's Unicode
-// tables. Everything else — ASCII, CJK, box drawing, braille, the flags and
-// the ZWJ family — is asserted, and those are the glyphs the app draws.
+// Rows carrying a cluster whose width a HOST is measured to bill differently are
+// not asserted, only reported (hostMayBillDifferently, which lists them and
+// cites the probe). Their width depends on whether the host applies UAX #29
+// clustering and the emoji-presentation rule, or falls back to wcwidth per code
+// point — two answers that are both defensible and that different terminal
+// builds give. This test was written against tmux 3.7c, where a keycap is one
+// 2-cell cluster; on the tmux 3.4 that ubuntu-latest ships, the same bytes come
+// back as a 2-cell "1"+VS16 followed by a separate combining keycap, so five
+// rows differed and the build went red over a fact about somebody else's Unicode
+// tables. Everything else — ASCII, CJK, box drawing, braille, the flags and the
+// ZWJ family — is asserted, and those are the glyphs the app draws.
 //
-// The product consequence is real and is recorded rather than fixed: on a host
-// that bills such a cluster differently, the frame's rows land a cell off. No
-// width table can prevent that; it is the same exposure the glyph policy
-// already waives for East-Asian Ambiguous (docs/tui.md), and it is why
-// program-owned symbols stay single codepoints.
+// The consequence is not just a cell: a row the layout counts as one terminal
+// row is one cell wider to such a host, so the HOST wraps it onto the row below,
+// and the frame's rows below it move. That is the frame's problem and it is
+// contained rather than fixed (docs/tui.md → Line Wrapping, and the closure in
+// screen.go → diffFrameRows); what is not fixable by any width table is the
+// cluster's own cell count, and no table can be the host's.
 func assertMatchesModel(t *testing.T, version string, want, got []string) {
 	t.Helper()
 	var unexplained, hostDependent []string
@@ -177,7 +179,7 @@ func assertMatchesModel(t *testing.T, version string, want, got []string) {
 			continue
 		}
 		row := fmt.Sprintf("  row %d:\n    model: %q\n    tmux:  %q", i, w, g)
-		if clusterComposed(w) || clusterComposed(g) {
+		if hostMayBillDifferently(w) || hostMayBillDifferently(g) {
 			hostDependent = append(hostDependent, row)
 			continue
 		}
@@ -191,22 +193,6 @@ func assertMatchesModel(t *testing.T, version string, want, got []string) {
 		t.Logf("%s bills %d row(s) of cluster-composed text differently than this package's table does, so the app's rows would land a cell off there; the model is not judged on them:\n%s",
 			version, len(hostDependent), strings.Join(hostDependent, "\n"))
 	}
-}
-
-// clusterComposed reports whether s contains a character that only means
-// something as part of a cluster: a variation selector, a combining enclosing
-// keycap, a zero-width joiner, or a regional indicator. A host's cell count
-// for such a sequence is a property of the host.
-func clusterComposed(s string) bool {
-	if strings.ContainsAny(s, "\uFE0E\uFE0F\u20E3\u200D") {
-		return true
-	}
-	for _, r := range s {
-		if r >= 0x1F1E6 && r <= 0x1F1FF {
-			return true
-		}
-	}
-	return false
 }
 
 // replayInTmux feeds stream to a pane of the given size and returns the pane's
