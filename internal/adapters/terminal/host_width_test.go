@@ -133,10 +133,6 @@ func fillerRows(n int) string {
 	return b.String()
 }
 
-// offendingRow is a row of exactly the frame width whose last cluster is one a
-// host bills wider: 39 ASCII cells plus "कि" is 40 cells here and 41 to the host.
-func offendingRow() string { return strings.Repeat("x", 39) + "कि" }
-
 // TestHostWidthDisagreementStaysOffTheChrome is the reported symptom, pinned on
 // a host that bills differently: a transcript row that ends ON the frame's width
 // and carries a Devanagari vowel sign is one cell wider to the host, so the host
@@ -264,7 +260,16 @@ func TestAContestedModelNameCannotScrollTheFrame(t *testing.T) {
 // screen, and typed content would put the host's arithmetic inside the row under
 // test.
 func TestChromeSurvivesAHostThatBillsDifferently(t *testing.T) {
-	const width, height = 40, 20
+	// Two sizes: the contract is about rows, not about a width, and a fixture
+	// that only ever runs at one width cannot show that.
+	for _, size := range [][2]int{{40, 20}, {60, 24}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			hostSession(t, size[0], size[1])
+		})
+	}
+}
+
+func hostSession(t *testing.T, width, height int) {
 	h := newFrameHarnessWithHost(t, width, height)
 
 	h.step("empty")
