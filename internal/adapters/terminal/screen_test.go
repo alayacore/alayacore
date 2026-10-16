@@ -10,9 +10,9 @@ import (
 )
 
 // The synchronized-update markers every frame is wrapped in (Screen.Render;
-// docs/tui.md → Line Wrapping). They are literals rather than the ansi
-// package's constants so the wire form is pinned: a helper that peeled
-// whatever it found would absorb a change to the marker instead of catching it.
+// docs/tui.md → Line Wrapping). They are spelled as literals rather than read
+// from the ansi package, so the wire form is pinned by this test instead of by
+// the library both sides get it from.
 const (
 	syncBegin = "\x1b[?2026h"
 	syncEnd   = "\x1b[?2026l"
@@ -70,9 +70,10 @@ func TestScreenRenderRaw(t *testing.T) {
 
 // TestScreenRenderWrapsEveryFrameInASynchronizedUpdate pins the wrapper on each
 // path Render can take — the clear-first frame, the steady row diff, and the
-// first frame that does not clear — so a branch added later cannot quietly
-// write an unwrapped frame. Each frame carries a changed row with an overlay
-// layer over base content: the composite the wrapper exists for.
+// first frame that does not clear. The last of those is why this is a table: the
+// frame harness never reaches it, so nothing else covers it. Each frame carries
+// a changed row with an overlay layer over base content: the composite the
+// wrapper exists for.
 func TestScreenRenderWrapsEveryFrameInASynchronizedUpdate(t *testing.T) {
 	const overlay = "base row\n\x1b[3;5Hoverlay row"
 	cases := []struct {

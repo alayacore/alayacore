@@ -4,12 +4,12 @@ package terminal
 // renderer. This is module 4 of the self-built TUI stack (see
 // docs/tui-architecture.md).
 //
-// Render writes the view content VERBATIM after clearing the screen and
-// homing the cursor: `ED2` + home + content + absolute CUP. This is the
-// same raw passthrough logic Bubble Tea's renderer used in its Raw branch:
-// the terminal soft-wraps the content natively, so window fragments
+// Render writes the view content VERBATIM and positions with absolute CUP. It
+// is the same raw passthrough logic Bubble Tea's renderer used in its Raw
+// branch: the terminal soft-wraps the content natively, so window fragments
 // (continuous text padded to the terminal width) land exactly on the intended
-// visual rows and selections copy without fake newlines.
+// visual rows and selections copy without fake newlines. Which frames clear,
+// and what a steady frame rewrites instead, is Render's own doc.
 
 import (
 	"fmt"
@@ -125,8 +125,6 @@ func (s *Screen) Start() error {
 	buf = append(buf, ansi.SetModeBracketedPaste...)
 	buf = append(buf, ansi.SetModeFocusEvent...)
 	buf = append(buf, mouseReportingOff...)
-	// A child killed mid-frame leaves the terminal holding a synchronized
-	// update, which would buffer everything written after it.
 	buf = append(buf, ansi.ResetModeSynchronizedOutput...)
 	buf = append(buf, ansi.ResetModeTextCursorEnable...)
 	if err := s.writeAll(buf); err != nil {
@@ -182,8 +180,8 @@ func (s *Screen) Stop() error {
 		return nil
 	}
 	var buf []byte
-	// Carried with the teardown so a stuck update cannot swallow it; see the
-	// note on the order above.
+	// A stuck update would swallow the teardown; the order note above says why
+	// it does not matter where this sits.
 	buf = append(buf, ansi.ResetModeSynchronizedOutput...)
 	if s.height > 0 {
 		buf = append(buf, ansi.CursorPosition(1, s.height)...)
@@ -213,12 +211,12 @@ func (s *Screen) Stop() error {
 //
 //   - Full-screen frames (fullScreen=true): the content soft-wraps to
 //     exactly the screen height and every row is padded to the full width,
-//     so it can overwrite any previous frame without clearing first —
-//     `\x1b[H` + content. This eliminates the clear-then-redraw flicker of
-//     ED2 during streaming. If the previous frame drew overlay rows (CUP
-//     sequences at arbitrary rows — e.g. an overlay row overlapping the
-//     short status bar that the new frame cannot cover), the residue is
-//     cleared with a one-frame ED2 fallback.
+//     so a steady frame can overwrite the previous one in place, rewriting
+//     only the rows that changed. This eliminates the clear-then-redraw
+//     flicker of ED2 during streaming. If the previous frame drew overlay
+//     rows (CUP sequences at arbitrary rows — e.g. an overlay row
+//     overlapping the short status bar that the new frame cannot cover), the
+//     residue is cleared with a one-frame ED2 fallback.
 //
 //   - Non-full-screen frames (loading, errors): keep `ED2` + home + content,
 //     clearing whatever the previous frame left below.
@@ -251,12 +249,10 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	// temporarily short (viewport sizing edge cases).
 	clearFirst := !fullScreen || (s.lastHadOverlay && !hadOverlay) || s.lastFullScreen != fullScreen
 
-	// The frame is one synchronized update (DECSET 2026): the end marker is
-	// appended at the write below, and both markers ride in this buffer, so a
-	// host can never receive one without the other. docs/tui.md → Line Wrapping
-	// says why the diff needs the mode and what a host without it does — it
-	// drops both markers, leaving these bytes exactly what this function wrote
-	// before.
+	// The frame is one synchronized update (DECSET 2026): both markers ride in
+	// this buffer, so a host can never receive one without the other. Why the
+	// diff needs the mode, and what a host without it does with the markers, is
+	// docs/tui.md → Line Wrapping.
 	buf := []byte(ansi.SetModeSynchronizedOutput)
 	switch {
 	case clearFirst:

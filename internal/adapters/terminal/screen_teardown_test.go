@@ -59,9 +59,7 @@ func TestScreenStartSavesCursorBeforeEnteringAlt(t *testing.T) {
 	if !strings.HasSuffix(out, seqCursorHidden) {
 		t.Errorf("Start() should end by hiding the cursor, got %q", out)
 	}
-	// A child killed mid-frame can leave the synchronized update open, which
-	// would buffer everything written after it; Start re-asserts the reset
-	// with the other modes (docs/tui.md → Line Wrapping).
+	// Start re-asserts the reset alongside the mouse modes (its doc says why).
 	if !strings.Contains(out, seqSyncOff) {
 		t.Errorf("Start() must release a synchronized update a child left open, got %q", out)
 	}
@@ -103,10 +101,8 @@ func TestScreenStopOrder(t *testing.T) {
 		}
 	}
 
-	// The reset has to be in the buffer or a stuck update swallows the whole
-	// teardown. Its position is not load-bearing, and deliberately not pinned:
-	// the mode defers painting, not parsing, so the bytes around it are applied
-	// either way.
+	// Presence, not position: a stuck update would swallow the whole teardown,
+	// but where in the buffer the reset sits decides nothing (Stop's doc).
 	if !strings.Contains(out, seqSyncOff) {
 		t.Errorf("Stop() must carry the synchronized-update reset, or a stuck update swallows the teardown: %q", out)
 	}

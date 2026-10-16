@@ -869,11 +869,11 @@ before it, `ESC[?2026l` closed after it, both markers in the frame's own
 write — so a terminal that implements DECSET 2026 paints the whole frame in
 a single pass instead of showing a changed row's base content for the
 instant before its overlay layers land on it. A terminal that does not
-implement the mode ignores the two markers. The pair rides in one write, but
-the kernel may still split one at any byte, so `Screen.Start` and
-`Screen.Stop` reset the mode as well: a run killed mid-write would otherwise
-leave the terminal holding an update, with the teardown's own bytes sitting
-behind the marker that never arrived. Overlays are drawn with
+implement the mode ignores the two markers. That single write can still be split
+by the kernel at any byte, so `Screen.Start` and `Screen.Stop` reset the mode as
+well: a run killed mid-write would otherwise leave the terminal holding an
+update, with the teardown's own bytes sitting behind the marker that never
+arrived. Overlays are drawn with
 absolute cursor-position sequences instead of line compositing (see
 `docs/tui-architecture.md`).
 
