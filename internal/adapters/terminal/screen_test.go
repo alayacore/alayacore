@@ -7,6 +7,35 @@ import (
 	"testing"
 )
 
+// The synchronized-update markers every frame is wrapped in (Screen.Render;
+// docs/tui.md → Line Wrapping). They are literals rather than the ansi
+// package's constants so the wire form is pinned: a helper that peeled
+// whatever it found would absorb a change to the marker instead of catching it.
+const (
+	syncBegin = "\x1b[?2026h"
+	syncEnd   = "\x1b[?2026l"
+)
+
+// assertSyncFrame requires out to be exactly one synchronized update — the
+// wrapper every frame carries.
+func assertSyncFrame(t *testing.T, out string) {
+	t.Helper()
+	if !strings.HasPrefix(out, syncBegin) || !strings.HasSuffix(out, syncEnd) {
+		t.Fatalf("frame must be one synchronized update, got %q", out)
+	}
+	if strings.Count(out, syncBegin) != 1 || strings.Count(out, syncEnd) != 1 {
+		t.Fatalf("a frame must carry exactly one synchronized-update pair, got %q", out)
+	}
+}
+
+// unwrapSync is assertSyncFrame plus the frame body, for the byte-level
+// assertions below.
+func unwrapSync(t *testing.T, out string) string {
+	t.Helper()
+	assertSyncFrame(t, out)
+	return out[len(syncBegin) : len(out)-len(syncEnd)]
+}
+
 // TestScreenRenderRaw verifies the raw render output byte sequence:
 // ED2 + home + content + absolute CUP for the cursor.
 func TestScreenRenderRaw(t *testing.T) {
@@ -19,7 +48,7 @@ func TestScreenRenderRaw(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := buf.String()
+	out := unwrapSync(t, buf.String())
 	if !strings.HasPrefix(out, "\x1b[2J\x1b[H") {
 		t.Errorf("non-full-screen render should start with ED2+home, got %q", out[:min(len(out), 20)])
 	}
@@ -37,6 +66,64 @@ func TestScreenRenderRaw(t *testing.T) {
 	}
 }
 
+// TestScreenRenderWrapsEveryFrameInASynchronizedUpdate pins the wrapper on each
+// path Render can take — the clear-first frame, the steady row diff, and the
+// first frame that does not clear — so a branch added later cannot quietly
+// write an unwrapped frame. Each frame carries a changed row with an overlay
+// layer over base content: the composite the wrapper exists for.
+func TestScreenRenderWrapsEveryFrameInASynchronizedUpdate(t *testing.T) {
+	const overlay = "base row\n\x1b[3;5Hoverlay row"
+	cases := []struct {
+		name  string
+		frame func(t *testing.T) string
+	}{
+		{"clear first", func(t *testing.T) string {
+			var buf bytes.Buffer
+			s := &Screen{out: &buf}
+			if err := s.Render(overlay, nil, true); err != nil {
+				t.Fatal(err)
+			}
+			return buf.String()
+		}},
+		{"steady row diff", func(t *testing.T) string {
+			var buf bytes.Buffer
+			s := &Screen{out: &buf}
+			if err := s.Render("base row\nmore\n", nil, true); err != nil {
+				t.Fatal(err)
+			}
+			buf.Reset()
+			if err := s.Render(overlay, nil, true); err != nil {
+				t.Fatal(err)
+			}
+			return buf.String()
+		}},
+		{"first frame without a clear", func(t *testing.T) string {
+			// An empty full-screen frame takes the clear path and leaves
+			// lastContent empty with the fill mode set — the state the
+			// no-clear default branch is reached from.
+			var buf bytes.Buffer
+			s := &Screen{out: &buf}
+			if err := s.Render("", nil, true); err != nil {
+				t.Fatal(err)
+			}
+			buf.Reset()
+			if err := s.Render(overlay, nil, true); err != nil {
+				t.Fatal(err)
+			}
+			return buf.String()
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := tc.frame(t)
+			assertSyncFrame(t, out)
+			if len(out) == len(syncBegin)+len(syncEnd) {
+				t.Fatal("frame wrote nothing between the markers")
+			}
+		})
+	}
+}
+
 // TestScreenRenderFullScreenNoClear locks the flicker-free overlay render
 // path: consecutive full-screen frames overwrite without ED2, but the
 // first frame (fill-mode change) clears once so no previous content can
@@ -49,7 +136,7 @@ func TestScreenRenderFullScreenNoClear(t *testing.T) {
 	if err := s.Render("row1\r\nrow2\r\n", nil, true); err != nil {
 		t.Fatal(err)
 	}
-	out := buf.String()
+	out := unwrapSync(t, buf.String())
 	if !strings.HasPrefix(out, "\x1b[2J\x1b[H") {
 		t.Errorf("first full-screen render should clear (mode change), got %q", out)
 	}
@@ -60,7 +147,7 @@ func TestScreenRenderFullScreenNoClear(t *testing.T) {
 	if err := s.Render("row1\r\nrow2\r\nCHANGED", nil, true); err != nil {
 		t.Fatal(err)
 	}
-	out = buf.String()
+	out = unwrapSync(t, buf.String())
 	if strings.Contains(out, "\x1b[2J") {
 		t.Errorf("steady full-screen render must not clear the screen, got %q", out)
 	}
@@ -90,7 +177,7 @@ func TestScreenRenderOverlayResidueCleanup(t *testing.T) {
 	if !strings.Contains(buf.String(), "\x1b[10;20H") {
 		t.Fatalf("overlay frame should contain CUP rows, got %q", buf.String())
 	}
-	first := buf.String()
+	first := unwrapSync(t, buf.String())
 	if !strings.HasPrefix(first, "\x1b[2J") {
 		t.Fatalf("first full-screen frame should clear once (mode change), got %q", first)
 	}
@@ -154,7 +241,7 @@ func TestScreenTabRepaintsOnlyChangedRows(t *testing.T) {
 	if err := s.Render(v2.Content, v2.Cursor, true); err != nil {
 		t.Fatal(err)
 	}
-	out := buf.String()
+	out := unwrapSync(t, buf.String())
 
 	if strings.Contains(out, "\x1b[2J") {
 		t.Errorf("steady Tab frame must not clear the screen, got %q", out)

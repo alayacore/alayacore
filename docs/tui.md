@@ -862,9 +862,20 @@ This requires a **raw passthrough renderer**: cell-buffer renderers
 truncate lines wider than the screen and re-materialize wrapped rows as
 hard rows, which breaks both the display and copy fidelity. The self-built
 TUI stack renders directly — `screen.go` writes the view content verbatim
-to the terminal (`ED2` + home + content + absolute CUP) and leaves it to
-the terminal to soft-wrap. Overlays are drawn with absolute cursor-position
-sequences instead of line compositing (see `docs/tui-architecture.md`).
+to the terminal (a full frame is `ED2` + home + content; a steady frame
+rewrites only the rows that changed) and leaves it to the terminal to
+soft-wrap. Every frame is one **synchronized update** — `ESC[?2026h` opened
+before it, `ESC[?2026l` closed after it, both markers in the frame's own
+write — so a terminal that implements DECSET 2026 paints the whole frame in
+a single pass instead of showing a changed row's base content for the
+instant before its overlay layers land on it. A terminal that does not
+implement the mode ignores the two markers. The pair rides in one write, but
+the kernel may still split one at any byte, so `Screen.Start` and
+`Screen.Stop` reset the mode as well: a run killed mid-write would otherwise
+leave the terminal holding an update, with the teardown's own bytes sitting
+behind the marker that never arrived. Overlays are drawn with
+absolute cursor-position sequences instead of line compositing (see
+`docs/tui-architecture.md`).
 
 The program runs the terminal in **raw mode** (`x/term` MakeRaw clears
 OPOST/ONLCR), so the renderer emits `\r\n` for every `\n` in the view

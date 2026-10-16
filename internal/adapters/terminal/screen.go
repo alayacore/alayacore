@@ -89,9 +89,10 @@ const mouseReportingOff = ansi.ResetModeMouseX10 +
 // turns mouse reporting off. The cursor is hidden until the first render.
 //
 // It is re-run after every child that owned the terminal (ExecProcess: the
-// external editor, Ctrl-Z), so the modes here are re-asserted rather than
-// negotiated once — which is what makes the mouse reset reach a mode a child
-// left behind.
+// external editor, Ctrl-Z), so the resets here are re-asserted rather than
+// negotiated once — which is what makes them reach a mode a child left behind:
+// the mouse encodings, and the synchronized update a child killed mid-frame
+// left open (docs/tui.md → Line Wrapping).
 func (s *Screen) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -107,6 +108,9 @@ func (s *Screen) Start() error {
 	buf = append(buf, ansi.SetModeBracketedPaste...)
 	buf = append(buf, ansi.SetModeFocusEvent...)
 	buf = append(buf, mouseReportingOff...)
+	// A child killed mid-frame leaves the terminal holding a synchronized
+	// update, which would buffer everything written after it.
+	buf = append(buf, ansi.ResetModeSynchronizedOutput...)
 	buf = append(buf, ansi.ResetModeTextCursorEnable...)
 	if _, err := s.out.Write(buf); err != nil {
 		return fmt.Errorf("terminal: enter alt screen: %w", err)
@@ -121,7 +125,12 @@ func (s *Screen) Start() error {
 // defer it.
 //
 // The order is not cosmetic. Everything here is written while the alternate
-// buffer is still current, which is what makes it safe to move and erase:
+// buffer is still current, which is what makes it safe to move and erase. The
+// synchronized update is reset first, before any of it: it is the one mode
+// whose leftover state would swallow the bytes below, and the reason Start and
+// Stop both re-assert it (docs/tui.md → Line Wrapping). The cursor is re-shown
+// here for the same reason — a kill mid-frame must not leave the terminal in a
+// state this program set.
 //
 //  1. Home the cursor to column 1 of the last row. A frame ends with the caret
 //     in the middle of the screen (the prompt row), and a host that ignores
@@ -154,6 +163,8 @@ func (s *Screen) Stop() error {
 		return nil
 	}
 	var buf []byte
+	// First, so the teardown below cannot be buffered behind a stuck update.
+	buf = append(buf, ansi.ResetModeSynchronizedOutput...)
 	if s.height > 0 {
 		buf = append(buf, ansi.CursorPosition(1, s.height)...)
 	}
@@ -220,7 +231,13 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	// temporarily short (viewport sizing edge cases).
 	clearFirst := !fullScreen || (s.lastHadOverlay && !hadOverlay) || s.lastFullScreen != fullScreen
 
-	var buf []byte
+	// The frame is one synchronized update (DECSET 2026): the end marker is
+	// appended at the write below, and both markers ride in this buffer, so a
+	// host can never receive one without the other. docs/tui.md → Line Wrapping
+	// says why the diff needs the mode and what a host without it does — it
+	// drops both markers, leaving these bytes exactly what this function wrote
+	// before.
+	buf := []byte(ansi.SetModeSynchronizedOutput)
 	switch {
 	case clearFirst:
 		buf = append(buf, ansi.EraseDisplay(2)...)
@@ -297,6 +314,8 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	}
 	// cur == nil: the cursor stays hidden (already hidden at frame start).
 
+	// Close the synchronized update; the terminal paints the frame now.
+	buf = append(buf, ansi.ResetModeSynchronizedOutput...)
 	if _, err := s.out.Write(buf); err != nil {
 		return fmt.Errorf("terminal: render: %w", err)
 	}

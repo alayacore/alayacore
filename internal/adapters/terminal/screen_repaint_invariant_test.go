@@ -115,6 +115,12 @@ func (h *frameHarness) render(label string) {
 	if err := h.screen.Render(v.Content, v.Cursor, v.FullScreen); err != nil {
 		h.t.Fatalf("%s: render: %v", label, err)
 	}
+	// Every frame that gets painted carries the synchronized-update wrapper
+	// (screen_test.go). The harness is where the whole app's frames pass, so
+	// the wrapper is checked here once rather than at each call site.
+	if h.sink.Len() > 0 {
+		assertSyncFrame(h.t, h.sink.String())
+	}
 	h.written = append(h.written, append([]byte(nil), h.sink.Bytes()...))
 	h.grid.write(h.sink.Bytes())
 	if h.host != nil {

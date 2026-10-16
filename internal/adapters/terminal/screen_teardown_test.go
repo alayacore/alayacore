@@ -36,6 +36,7 @@ const (
 	seqLeaveAlt     = "\x1b[?1049l"
 	seqPasteOff     = "\x1b[?2004l"
 	seqFocusOff     = "\x1b[?1004l"
+	seqSyncOff      = "\x1b[?2026l"
 	seqCursorShown  = "\x1b[?25h"
 	seqCursorHidden = "\x1b[?25l"
 )
@@ -58,6 +59,12 @@ func TestScreenStartSavesCursorBeforeEnteringAlt(t *testing.T) {
 	if !strings.HasSuffix(out, seqCursorHidden) {
 		t.Errorf("Start() should end by hiding the cursor, got %q", out)
 	}
+	// A child killed mid-frame can leave the synchronized update open, which
+	// would buffer everything written after it; Start re-asserts the reset
+	// with the other modes (docs/tui.md → Line Wrapping).
+	if !strings.Contains(out, seqSyncOff) {
+		t.Errorf("Start() must release a synchronized update a child left open, got %q", out)
+	}
 }
 
 // TestScreenStopOrder is the whole contract of the teardown.
@@ -74,6 +81,7 @@ func TestScreenStopOrder(t *testing.T) {
 	out := buf.String()
 
 	ordered := []string{
+		seqSyncOff,     // release a synchronized update first: the teardown below would be buffered behind it
 		seqHomeLastRow, // 1. park the caret on the bottom row
 		seqEraseAll,    // 2. blank the screen we are leaving
 		seqPasteOff,    // 3. turn the modes off
@@ -94,6 +102,13 @@ func TestScreenStopOrder(t *testing.T) {
 		} else {
 			prev = at
 		}
+	}
+
+	// The release must be the FIRST byte: a stuck update buffers everything
+	// written after it, so a teardown that released it last would not paint at
+	// all — the one case this reset is for.
+	if !strings.HasPrefix(out, seqSyncOff) {
+		t.Errorf("Stop() must release a synchronized update before its own bytes, got %q", out)
 	}
 
 	// The restore must be the last byte on the stream: after it, the console

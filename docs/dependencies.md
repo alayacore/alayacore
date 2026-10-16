@@ -28,8 +28,9 @@ dependency:
   Windows), raw mode via `golang.org/x/term`, and the platform's
   sequence-processing mode via the `enterVT`/`exitVT` hooks in
   `console_unix.go` / `console_windows.go`
-- **`screen.go`** — alternate screen, cursor management, raw passthrough
-  rendering (`ED2` + home + content verbatim + absolute CUP)
+- **`screen.go`** — alternate screen, cursor management, and the raw passthrough
+  frame renderer (frame shape and its wrapping in one synchronized update:
+  [Line Wrapping](tui.md#line-wrapping))
 - **`exec.go`** — external editor handoff (`ExecProcess`) and Ctrl-Z
   suspend: release the terminal (exit alt screen, restore cooked mode),
   run the child in the foreground, then re-acquire and repaint
