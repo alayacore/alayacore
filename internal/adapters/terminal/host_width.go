@@ -141,6 +141,11 @@ func isLoneRegionalIndicator(cluster string) bool {
 	return len(runes) == 1 && runes[0] >= 0x1F1E6 && runes[0] <= 0x1F1FF
 }
 
+// hostReserve returns the cells a host may charge a string BEYOND what this
+// table bills it: the space a layout has to leave free for that string, and zero
+// for text no measured class touches.
+func hostReserve(s string) int { return hostMaxCells(s) - cellWidth(s) }
+
 // hostMaxCells returns the cells a host may charge s: this package's width plus
 // every cell the measured classes can add to it, and never less than this
 // table's own answer. The clusters a host charges less for (a lone regional

@@ -174,31 +174,17 @@ func (m *Terminal) renderStatusBar() string {
 	segStyle := indicatorStyle
 	sepStyle := indicatorStyle
 
-	// Hard cap: the status bar row may occupy at most the full terminal
-	// width. Unlike a collapsed window header, which spends two cells on the
-	// fold marker and its separating space (collapsedPrefixWidth), the status
-	// row reserves nothing before its content. The status content is assembled
-	// from program-controlled segments (indicator, tokens, steps, video) that
-	// contain no tabs — the one case the width model documents as unreliable
-	// (the width table counts a tab as 0 cells) — plus ONE piece of text the
-	// app does not own: the model name in the right group, which comes from
-	// the session.
-	//
-	// That one piece is why the layout below is computed with hostMaxCells
-	// rather than Width: this row is the frame's BOTTOM row, the one place a
-	// cell written past the last column wraps AND the wrap scrolls the
-	// terminal (measured: screen_tmux_join_test.go). A host that bills a
-	// cluster in the name one cell wider would otherwise take the whole frame
-	// off by a row, on a frame the diff will never rewrite. So the row reserves
-	// what a host may charge for its own text — and only that: a session whose
-	// name cannot be billed differently fills the full width, as before.
+	// Hard cap: the row may occupy at most the full terminal width, and the
+	// content is program-controlled except for the model name in the right group
+	// — which is why assembleStatusLeft measures with hostMaxCells rather than
+	// Width (host_width.go), and why the row can still fill the width.
 	lineBudget := max(0, m.windowWidth)
 
 	// Assemble the plain line: indicator + truncated segments +
 	// right-aligned truncated group (see assembleStatusLeft), measured for the
 	// layout with hostMaxCells — this row must fit what a host may charge it,
 	// because it is the frame's bottom row (host_width.go).
-	leftPlain := assembleStatusLeft(m.statusLeft, m.statusRight, indicatorGlyph, lineBudget, hostMaxCells)
+	leftPlain := assembleStatusLeft(m.statusLeft, m.statusRight, indicatorGlyph, lineBudget)
 
 	// Render: the indicator with its own style, then the rest per segment
 	// (segments and " | " separators share one muted style now, so the whole
@@ -250,25 +236,23 @@ func (m *Terminal) renderStatusBar() string {
 // the model name). The bar never shows a squeezed right-aligned group or
 // a 1-3 cell gap.
 //
-// cells measures a piece of plain text for the LAYOUT, and it is hostMaxCells
-// from the caller (renderStatusBar): the row is laid out so that the widest
-// count a host may charge still fits the budget, so a name a host bills wider
-// shifts the group in by that many cells instead of taking the bottom row — and
-// with it the frame — off by a row. Everything the layout decides with it
-// (whether the group floats, how many blanks pad it, how much of the merged
-// form survives) is therefore conservative by exactly the disagreement, and the
-// text itself is never altered by it: the styles and the characters drawn are
-// the ones the plain text carries.
+// The measurements are hostMaxCells (host_width.go), not Width: the group
+// carries the model name, the one piece of this row the app does not own, and
+// this row is the frame's bottom one — a host that bills a cluster in the name
+// wider would wrap the row past the last column, and that wrap scrolls the
+// terminal. For the text the app owns the two agree, so an ordinary session's
+// row still fills the window exactly, and a name a host may bill wider shifts
+// the group in by exactly that much instead of costing every session a cell.
 //
 // An empty statusRight renders the left segments alone. updateStatus
 // never produces one — the group always carries at least the reasoning
 // level — but renderStatusBar is also reached by a hand-built Terminal
 // whose status has not been loaded yet, and by tests that pin this
 // layout with bare segments.
-func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudget int, cells func(string) int) string {
+func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudget int) string {
 	left := indicatorGlyph
 	if statusLeft != "" {
-		segBudget := max(0, lineBudget-cells(left)-1) // indicator + separator space
+		segBudget := max(0, lineBudget-hostMaxCells(left)-1) // indicator + separator space
 		if seg := truncateWithSuffix(statusLeft, segBudget); seg != "" {
 			left += " " + seg
 		}
@@ -278,23 +262,21 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudg
 	}
 
 	// Ample space (gap > 3): the group floats flush right.
-	if gap := lineBudget - cells(left) - cells(statusRight); gap > 3 {
+	if gap := lineBudget - hostMaxCells(left) - hostMaxCells(statusRight); gap > 3 {
 		return left + strings.Repeat(" ", gap) + statusRight
 	}
 
 	// Tight space (gap ≤ 3): no right-aligned element — the group joins
-	// the left segments, truncated together.
+	// the left segments, truncated together. The truncation's own budget gives
+	// up what the host may add to the merged text (a prefix of it carries at
+	// most the whole string's reserve, so over-reserving is safe).
 	merged := statusLeft
 	if merged != "" {
 		merged += " | "
 	}
 	merged += statusRight
-	// The reservation, for the merged branch's own truncation: what the host may
-	// charge for the text BEYOND what this table bills (a prefix keeps at most
-	// the whole string's reserve, so over-reserving is safe and can only leave
-	// the row a cell short).
-	reserve := cells(merged) - Width(merged)
-	if merged = truncateWithSuffix(merged, max(0, lineBudget-cells(indicatorGlyph)-1-reserve)); merged != "" {
+	budget := max(0, lineBudget-hostMaxCells(indicatorGlyph)-1-hostReserve(merged))
+	if merged = truncateWithSuffix(merged, budget); merged != "" {
 		return indicatorGlyph + " " + merged
 	}
 	return indicatorGlyph
