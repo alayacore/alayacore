@@ -214,6 +214,20 @@ func clusterComposed(s string) bool {
 // what puts a write boundary inside an escape sequence.
 func replayInTmux(t *testing.T, tmux string, width, height int, stream []byte, chunk int) []string {
 	t.Helper()
+	return replayInTmuxCapture(t, tmux, width, height, stream, chunk, false)
+}
+
+// replayInTmuxJoined is replayInTmux with `capture-pane -J`, which joins the
+// rows the pane considers ONE logical (soft-wrapped) line. Two captures of the
+// same stream therefore answer a second question: whether a write form leaves a
+// wrapped line joined (screen_tmux_join_test.go) or splits it into hard rows.
+func replayInTmuxJoined(t *testing.T, tmux string, width, height int, stream []byte) []string {
+	t.Helper()
+	return replayInTmuxCapture(t, tmux, width, height, stream, 0, true)
+}
+
+func replayInTmuxCapture(t *testing.T, tmux string, width, height int, stream []byte, chunk int, join bool) []string {
+	t.Helper()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "stream.bin")
 	if err := os.WriteFile(src, stream, 0o600); err != nil {
@@ -238,11 +252,16 @@ func replayInTmux(t *testing.T, tmux string, width, height int, stream []byte, c
 	// them: these checks run under whatever shell the reader used.
 	env := append(os.Environ(), "TMUX=", "TMUX_PANE=", "TMUX_TMPDIR="+sockDir)
 
-	cat := "cat " + src
+	// Every path in the pane's command is quoted. The command is a shell string
+	// and the paths carry the test's name (t.TempDir() does), so a subtest name
+	// with a space or a parenthesis would otherwise end the command early: the
+	// pane's shell exits, the session ends, the server exits, and this harness
+	// waits out its deadline instead of failing where the mistake is.
+	cat := "cat " + shellQuote(src)
 	if chunk > 0 {
-		cat = fmt.Sprintf("dd if=%s bs=%d 2>/dev/null", src, chunk)
+		cat = fmt.Sprintf("dd if=%s bs=%d 2>/dev/null", shellQuote(src), chunk)
 	}
-	pane := fmt.Sprintf("%s; touch %s; exec sleep 30", cat, done)
+	pane := fmt.Sprintf("%s; touch %s; exec sleep 30", cat, shellQuote(done))
 
 	// A socket of its own: the reader's tmux, if any, is not this test's to
 	// kill.
@@ -272,7 +291,12 @@ func replayInTmux(t *testing.T, tmux string, width, height int, stream []byte, c
 	// The pane has the bytes; give the server its redraw.
 	time.Sleep(300 * time.Millisecond)
 
-	out, err := run("capture-pane", "-p", "-t", "replay").Output()
+	args := []string{"capture-pane", "-p"}
+	if join {
+		args = append(args, "-J")
+	}
+	args = append(args, "-t", "replay")
+	out, err := run(args...).Output()
 	if err != nil {
 		t.Fatalf("tmux capture-pane: %v", err)
 	}
@@ -300,4 +324,10 @@ func compareLines(want, got []string) string {
 		}
 	}
 	return b.String()
+}
+
+// shellQuote wraps s in single quotes for a shell command, escaping any single
+// quote inside it, so a path with a space, parenthesis or quote is one word.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
