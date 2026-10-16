@@ -926,28 +926,48 @@ func (m Terminal) View() View {
 	// comes up a row short), and the CUP keeps the row's position absolute
 	// so a drift in the display's actual row count cannot drag it along.
 	//
-	// The '\n' is written whether or not the marker has anything to say: the
-	// layout reserved the row, and the frame must still soft-wrap to exactly
-	// the screen height. The whole block is skipped when inputBoxY is 0 — a
-	// terminal too short for the input box plus the status bar has no row to
-	// spare, and adding one here would put more rows in the frame than the
-	// screen has.
+	// The row is written whether or not the marker has anything to say, and it
+	// ends with an EL. That is the chrome contract the three blocks in this
+	// function keep: a row the frame owns from column 0 is positioned
+	// absolutely and cleared to its own end, so nothing the row above flowed
+	// onto it can survive beside what the frame drew. The pair matters for a
+	// host whose width table disagrees with width.go's (docs/tui.md → Line
+	// Wrapping): such a host can wrap a transcript row one row early or late,
+	// and the cell that does not fit lands on the row below it — which for the
+	// last transcript row is this one. The marker is constant while output
+	// streams, so the row diff would never rewrite it, and the stray cell
+	// would stay until a full repaint.
+	//
+	// The whole block is skipped when inputBoxY is 0 — a terminal too short for
+	// the input box plus the status bar has no row to spare, and adding one
+	// here would put more rows in the frame than the screen has.
 	if m.windowHeight > 0 && inputBoxY > 0 {
 		sb.WriteString("\n")
-		if edge := m.renderLiveEdge(); edge != "" {
-			sb.WriteString(ansi.CursorPosition(1, inputBoxY)) // row inputBoxY-1
-			sb.WriteString(edge)
-		}
+		sb.WriteString(ansi.CursorPosition(1, inputBoxY)) // row inputBoxY-1
+		sb.WriteString(m.renderLiveEdge())
+		sb.WriteString(ansi.EraseLine(0))
 	}
 
 	if m.windowHeight > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(ansi.CursorPosition(1, inputBoxY+1))
 		sb.WriteString(m.input.View().Content)
+		// The box is the frame's from column 0 as well: clear the tail of the
+		// block's last row (a box shorter than the previous frame's, or a cell
+		// the row above flowed onto it). The box's inner rows are separated by
+		// hard newlines, so a host that bills one of them a different width
+		// cannot merge two of them — the rows below the first are positioned by
+		// the newline and re-anchored by the status bar's CUP.
+		sb.WriteString(ansi.EraseLine(0))
 		sb.WriteString("\n")
-		// Status bar: hard anchor to the last row.
+		// Status bar: hard anchor to the last row, cleared to its end for the
+		// same reason. renderStatusBar leaves one cell of the row unspent —
+		// this is the frame's bottom row, and a cell written past the bottom
+		// row scrolls the terminal: the whole frame, including rows the diff
+		// will not rewrite, off by a row until a full repaint.
 		sb.WriteString(ansi.CursorPosition(1, m.windowHeight))
 		sb.WriteString(m.renderStatusBar())
+		sb.WriteString(ansi.EraseLine(0))
 	}
 
 	baseContent := sb.String()

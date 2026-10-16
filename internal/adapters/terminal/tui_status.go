@@ -175,19 +175,29 @@ func (m *Terminal) renderStatusBar() string {
 	sepStyle := indicatorStyle
 
 	// Hard cap: the status bar row may occupy at most the full terminal
-	// width — anything wider would soft-wrap onto a second row. The cap
-	// is the full width: unlike a collapsed window header, which spends
-	// two cells on the fold marker and its separating space
-	// (collapsedPrefixWidth), the status row reserves nothing before its
-	// content. The TUI's design language is
-	// flush-to-edge (input box rules, window separators all span the
-	// full width), and the status content is assembled from program-
-	// controlled segments (indicator, tokens, steps, video, model
-	// name with its reasoning level) that contain no tabs — the one
-	// case the width model documents as unreliable (the width table
-	// counts a tab as 0 cells).
-	// So the rendered line may legitimately run right up to the edge.
-	lineBudget := max(0, m.windowWidth)
+	// width, and it spends ONE CELL LESS than that. The cap is the full
+	// width — unlike a collapsed window header, which spends two cells on
+	// the fold marker and its separating space (collapsedPrefixWidth), the
+	// status row reserves nothing before its content, and the status
+	// content is assembled from program-controlled segments (indicator,
+	// tokens, steps, video, model name with its reasoning level) that
+	// contain no tabs — the one case the width model documents as
+	// unreliable (the width table counts a tab as 0 cells).
+	//
+	// The cell it does not spend is the reason the cap is not the full
+	// width: this row is the frame's BOTTOM row, and the bottom row is the
+	// only one where a mis-fitting cell has nowhere to go. A host that bills
+	// one cell wider than width.go does (docs/tui.md → Glyphs and Terminal
+	// Width) wraps the row's last cell past the bottom, and a cell written
+	// past the bottom row scrolls the terminal — measured: a 1-cell overrun
+	// on the last row of an 8-column pane moved every row up one and dropped
+	// the top one. The frame would then be off by a row with the diff writing
+	// only the rows whose text changed, so it would stay that way. One cell of
+	// slack absorbs the class of disagreement that is measured (+1 per
+	// cluster), at the cost of a cell at the right edge of a chrome row; the
+	// row's own tail is EL'd at its end (tui.go → View), so the slack cannot
+	// keep a stale cell either.
+	lineBudget := max(0, m.windowWidth-1)
 
 	// Assemble the plain line: indicator + truncated segments +
 	// right-aligned truncated group (see assembleStatusLeft).

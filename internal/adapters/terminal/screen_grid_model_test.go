@@ -63,6 +63,11 @@ type grid struct {
 	// column and the next printable cluster moves to the next row first.
 	pendingWrap bool
 
+	// host bills a cluster the cells a HOST's width table charges it instead of
+	// this package's (host_width_test.go). The screen is otherwise the same
+	// model, so the two can be compared row by row.
+	host bool
+
 	// scrolls counts the rows the screen lost off the top. A frame that fits
 	// the screen never scrolls, so this is how a test learns that the frame
 	// was taller than the terminal.
@@ -211,6 +216,11 @@ func (g *grid) write(data []byte) {
 			if text == "" {
 				i++
 				continue
+			}
+			if g.host {
+				// A host that bills this cluster differently wraps the row
+				// somewhere else than the layout counted (host_width_test.go).
+				cells = max(0, cells+hostDelta(text, cells))
 			}
 			g.put(text, cells)
 			i += len(text)

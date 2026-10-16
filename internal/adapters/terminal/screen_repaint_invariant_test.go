@@ -42,6 +42,14 @@ type frameHarness struct {
 	sink          *bytes.Buffer
 	grid          *grid
 
+	// host is the same bytes painted by a host whose width table is not
+	// width.go's (nil unless the run is judging the containment contract —
+	// see host_width_test.go). Every frame asserts the chrome contract on it,
+	// and hostBefore is its screen as it stood before the frame being
+	// asserted (nil for a frame that painted nothing).
+	host       *grid
+	hostBefore []string
+
 	// written is every byte the Screen emitted, frame by frame, so a run can
 	// be replayed into a real terminal (screen_tmux_replay_test.go).
 	written [][]byte
@@ -61,6 +69,16 @@ func newFrameHarness(t *testing.T, width, height int) *frameHarness {
 	h.m = mm.(Terminal)
 	h.screen = &Screen{out: h.sink, width: width, height: height}
 	h.grid = newGrid(width, height)
+	return h
+}
+
+// newFrameHarnessWithHost is newFrameHarness plus a screen model with a host's
+// width arithmetic, so the run also checks the containment contract
+// (host_width_test.go).
+func newFrameHarnessWithHost(t *testing.T, width, height int) *frameHarness {
+	t.Helper()
+	h := newFrameHarness(t, width, height)
+	h.host = newHostGrid(width, height)
 	return h
 }
 
@@ -90,11 +108,18 @@ func (h *frameHarness) render(label string) {
 		return
 	}
 	h.sink.Reset()
+	h.hostBefore = nil
+	if h.host != nil {
+		h.hostBefore = h.host.text()
+	}
 	if err := h.screen.Render(v.Content, v.Cursor, v.FullScreen); err != nil {
 		h.t.Fatalf("%s: render: %v", label, err)
 	}
 	h.written = append(h.written, append([]byte(nil), h.sink.Bytes()...))
 	h.grid.write(h.sink.Bytes())
+	if h.host != nil {
+		h.host.write(h.sink.Bytes())
+	}
 	switch {
 	case bytes.Contains(h.sink.Bytes(), []byte("\x1b[2J")):
 		h.fullFrames++
@@ -123,6 +148,138 @@ func (h *frameHarness) assertFrame(v View, label string) {
 	if d := gridDiff(h.grid, h.repaint(v.Content)); len(d) > 0 {
 		h.fail(label, "the painted screen is not the screen a full repaint of the same frame leaves:\n"+
 			strings.Join(d, "\n"))
+	}
+	if h.host != nil {
+		h.assertHostContainment(v, label, lastFrame(h.written), h.hostBefore)
+	}
+}
+
+// lastFrame returns the most recent frame the Screen wrote, or nil.
+func lastFrame(written [][]byte) []byte {
+	if len(written) == 0 {
+		return nil
+	}
+	return written[len(written)-1]
+}
+
+// chromeRows returns the terminal rows the frame owns from column 0 below the
+// transcript region: the live edge, the input box and the status bar (tui.go →
+// View). They are the rows a host's width disagreement must never be visible on.
+func chromeRows(content string, width int) []int {
+	rows := positionedRows(content, width)
+	baseEnd := 0
+	for _, r := range rows {
+		if r.base {
+			baseEnd = max(baseEnd, r.frameRow.row+r.terminalRows)
+		}
+	}
+	var out []int
+	for _, r := range rows {
+		if r.base || r.frameRow.col != 0 || r.frameRow.row < baseEnd {
+			continue
+		}
+		for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// assertHostContainment requires the two per-frame halves of the containment
+// contract on a host whose width table disagrees with ours (docs/tui.md → Line
+// Wrapping):
+//
+//  1. A frame's writes cannot reach ABOVE the topmost row it wrote. That is the
+//     property that keeps a host's width error out of the rows the frame did not
+//     touch — and it is the one a cell written past the bottom row breaks, since
+//     that scrolls the terminal and moves every row up. before is the host's
+//     screen as it stood before this frame.
+//  2. The chrome rows — the rows the frame owns from column 0 — must be exactly
+//     what the frame drew, whether or not this frame wrote them.
+//
+// What is deliberately NOT asserted here: the transcript rows a write can
+// reach. A host that wraps a row elsewhere re-flows that row's line, and the
+// re-flow can reach the row below it; that is the damage the contract confines
+// to the transcript region, and the closure in screen.go → diffFrameRows repairs
+// the part of it that lands on a row the frame does not own. That repair is
+// pinned by the scenario tests in host_width_test.go, which can name the row
+// they mean.
+func (h *frameHarness) assertHostContainment(v View, label string, frame []byte, before []string) {
+	h.t.Helper()
+	if len(frame) == 0 || before == nil {
+		return
+	}
+	wrote := rowsWritten(frame, h.height)
+	if len(wrote) == 0 {
+		return
+	}
+	top := h.height
+	for row := range wrote {
+		top = min(top, row)
+	}
+	after := h.host.text()
+	for row := 0; row < top && row < len(before) && row < len(after); row++ {
+		if before[row] != after[row] {
+			h.fail(label, fmt.Sprintf(
+				"a write at row %d changed row %d, which is above it:\n    before: %q\n    after:  %q",
+				top, row, before[row], after[row]))
+		}
+	}
+	h.assertChrome(v, label)
+}
+
+// rowsWritten returns the terminal rows a frame's bytes address: every row its
+// CUPs name, or — for a frame that re-establishes the whole screen (ED2, or the
+// home-and-flow first paint) — every row of the screen.
+func rowsWritten(frame []byte, height int) map[int]bool {
+	out := make(map[int]bool, height)
+	if bytes.Contains(frame, []byte("\x1b[2J")) || bytes.Contains(frame, []byte("\x1b[H")) {
+		for row := 0; row < height; row++ {
+			out[row] = true
+		}
+		return out
+	}
+	for i := 0; i+1 < len(frame); i++ {
+		if frame[i] != 0x1b || frame[i+1] != '[' {
+			continue
+		}
+		j := i + 2
+		for j < len(frame) && (frame[j] == ';' || (frame[j] >= '0' && frame[j] <= '9')) {
+			j++
+		}
+		if j < len(frame) && frame[j] == 'H' {
+			if row, _, ok := parseCUP(string(frame[i+1 : j+1])); ok {
+				out[row] = true
+			}
+			i = j
+		}
+	}
+	return out
+}
+
+// assertChrome requires the chrome rows to be exactly what the frame draws, on a
+// host whose width table disagrees with ours. Those rows are positioned at
+// absolute rows and cleared to their own end, so nothing a transcript row flowed
+// onto them can survive beside what the frame drew — the containment contract
+// (docs/tui.md → Line Wrapping; screen.go → diffFrameRows closes the write set
+// downwards for the same reason).
+//
+// Only the chrome is required to match the frame here. The transcript region is
+// allowed to differ: a host that wraps a row somewhere else re-flows that row's
+// line, and no table choice can prevent that — the point of the contract is that
+// the damage stays inside the transcript.
+func (h *frameHarness) assertChrome(v View, label string) {
+	h.t.Helper()
+	want, got := h.grid.text(), h.host.text()
+	for _, row := range chromeRows(v.Content, h.width) {
+		if row >= len(want) || row >= len(got) {
+			continue
+		}
+		if want[row] != got[row] {
+			h.fail(label, fmt.Sprintf(
+				"a host that bills a cluster differently damaged chrome row %d, which the frame owns from column 0:\n"+
+					"    the frame: %q\n    the host:  %q", row, want[row], got[row]))
+		}
 	}
 }
 
@@ -212,6 +369,16 @@ func (h *frameHarness) resize(width, height int) {
 		}
 	}
 	h.grid = g
+	if h.host != nil {
+		oldHost := h.host
+		hg := newHostGrid(width, height)
+		for r := 0; r < min(len(oldHost.rows), height); r++ {
+			for c := 0; c < min(len(oldHost.rows[r]), width); c++ {
+				hg.rows[r][c] = oldHost.rows[r][c]
+			}
+		}
+		h.host = hg
+	}
 	h.step(fmt.Sprintf("resize %dx%d", width, height))
 }
 

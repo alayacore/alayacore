@@ -600,6 +600,78 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 			}
 		}
 	}
+
+	// Close the write set downwards. A WRITE'S FOOTPRINT CAN REACH THE ROW
+	// BELOW IT: the terminal wraps a row whose text is wider in its own width
+	// table than in ours, so the cell that does not fit — and the EL that ends
+	// the write — land on the next terminal row. Every row this function
+	// leaves out of the write set is a row that keeps whatever landed on it,
+	// and the row whose text did not change is exactly the row that is never
+	// written again (the live edge marker is constant while output streams),
+	// which is how a stray cell came to stay on screen until a full repaint.
+	//
+	// So two closures, both properties of the write it just planned rather
+	// than guesses about the host's table:
+	//
+	//   - the SUCCESSOR: the terminal row after the one written — after its
+	//     whole span, for a logical line that soft-wraps. This re-establishes
+	//     the row a write's tail landed on.
+	//   - the OVERLAY rows below a written BASE row: the chrome the frame owns
+	//     from column 0 (live edge, input box, status bar) and any dialog
+	//     layered over the transcript. They are painted at absolute rows, so a
+	//     transcript write cannot move them — but it can spill onto them, and a
+	//     row the frame owns must never keep what the row above flowed onto it.
+	//
+	// What this repairs, and what it does not: a row the host bills wider by N
+	// cells pushes into the N cells below it. Every disagreement measured
+	// over-bills a cluster by one cell (misc/probe-tmux-widths.sh: the spacing
+	// marks of the Indic and South-East Asian scripts, the soft hyphen, the
+	// Arabic number sign), and a cluster costs at least one cell, so a row
+	// over-bills by less than its own width — under one row, which is what the
+	// successor covers. A host that disagrees by more than that can still push
+	// a row's tail past the row re-established here; the damage then stays
+	// inside the transcript region, because the overlay rows below it are
+	// re-established too, and any redraw — Ctrl-R, a resize, a fill-mode
+	// switch — repairs it.
+	present := make(map[int]bool, len(newRows))
+	for _, r := range newRows {
+		for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
+			present[row] = true
+		}
+	}
+	written := make([]int, 0, len(changed))
+	for row := range changed {
+		written = append(written, row)
+	}
+	firstWrittenBase := -1
+	for _, row := range written {
+		if base, ok := baseRowAt(newRows, row); ok {
+			if firstWrittenBase < 0 || base.frameRow.row < firstWrittenBase {
+				firstWrittenBase = base.frameRow.row
+			}
+			if next := base.frameRow.row + base.terminalRows; present[next] {
+				changed[next] = true
+			}
+			continue
+		}
+		if present[row+1] {
+			changed[row+1] = true
+		}
+	}
+	if firstWrittenBase >= 0 {
+		for _, r := range newRows {
+			if r.base || r.frameRow.row <= firstWrittenBase {
+				continue
+			}
+			// A wrapped overlay run is repainted whole from its start row (see
+			// below); mark that row so it takes that path rather than having a
+			// segment of it written out of context.
+			changed[r.frameRow.row] = true
+			if r.terminalRows > 1 {
+				wrappedChanged[r.frameRow.row] = true
+			}
+		}
+	}
 	overlaysByRow := make(map[int][]positionedRow)
 	overlayStarts := make(map[int]bool, len(newRows))
 	for _, r := range newRows {

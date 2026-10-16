@@ -247,13 +247,22 @@ func TestStatusBarShowsActiveModelRightAligned(t *testing.T) {
 	if !strings.Contains(plain, " test-model") {
 		t.Errorf("expected padding before the right-aligned model, got %q", plain)
 	}
-	// Flush against the right edge: no trailing cells after the model.
+	// Flush against the row's right edge: no trailing cells after the model.
 	// (Regression guard: the model used to be right-aligned to
-	// windowWidth-2, leaving 2 blank cells after its name.)
-	if w := Width(plain); w != m.windowWidth {
-		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	// windowWidth-2, leaving 2 blank cells after its name. The row now ends
+	// at windowWidth-1 — the bottom row's one unspent cell — so the guard is
+	// against more than that, not against the frame's own slack.)
+	if w, want := Width(plain), statusBarBudget(m.windowWidth); w != want {
+		t.Errorf("status bar width %d should fill the row budget %d exactly: %q", w, want, plain)
 	}
 }
+
+// statusBarBudget is the cells the status bar may spend in a window of the
+// given width. The frame's BOTTOM row leaves one cell unspent: a cell written
+// past the bottom row scrolls the terminal, so a host that bills the row one
+// cell wider would take the whole frame off by a row (tui_status.go →
+// renderStatusBar has the measurement).
+func statusBarBudget(windowWidth int) int { return max(0, windowWidth-1) }
 
 // TestStatusBarModelTruncatedWithEllipsis verifies the right-aligned
 // model group is truncated with "…" when the remaining space cannot fit
@@ -278,8 +287,8 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 	if strings.Contains(plain, modelName) {
 		t.Errorf("status bar should not contain the full model name, got %q", plain)
 	}
-	if w := Width(plain); w != m.windowWidth {
-		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	if w, want := Width(plain), statusBarBudget(m.windowWidth); w != want {
+		t.Errorf("status bar width %d should fill the row budget %d exactly: %q", w, want, plain)
 	}
 
 	// Extremely narrow window: the group joins the (empty) left segments
@@ -303,7 +312,7 @@ func TestStatusBarSqueezedLineDropsReasoningFirst(t *testing.T) {
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
-	m.windowWidth = 9 // "  gpt-4o | R0" (13 cells) merges → "  gpt-4o…" (9)
+	m.windowWidth = 10 // row budget 9: "  gpt-4o | R0" (13 cells) merges → "  gpt-4o…" (9)
 
 	plain := stripANSI(m.renderStatusBar())
 	if !strings.Contains(plain, "gpt-4o") {
@@ -336,8 +345,8 @@ func TestStatusBarNoModelKeepsLevelRightAligned(t *testing.T) {
 	if !strings.HasSuffix(plain, "R0") {
 		t.Errorf("status bar should end with the level, got %q", plain)
 	}
-	if w := Width(plain); w != m.windowWidth {
-		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	if w, want := Width(plain), statusBarBudget(m.windowWidth); w != want {
+		t.Errorf("status bar width %d should fill the row budget %d exactly: %q", w, want, plain)
 	}
 }
 
@@ -365,11 +374,12 @@ func TestStatusBarIndicatorColumn(t *testing.T) {
 	}
 }
 
-// TestStatusBarNoModelMayFillWidth verifies the no-model path shares
-// the same full-width cap as the model path: an overlong status line is
-// truncated to the window width (flush-to-edge design), not to
-// windowWidth-2 — the level stays in the right group throughout.
-func TestStatusBarNoModelMayFillWidth(t *testing.T) {
+// TestStatusBarNoModelFillsTheRowBudget verifies the no-model path shares
+// the same cap as the model path: an overlong status line is truncated to
+// the row's budget (windowWidth-1 — the bottom row leaves a cell unspent,
+// renderStatusBar), not to windowWidth-2 — the level stays in the right
+// group throughout.
+func TestStatusBarNoModelFillsTheRowBudget(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	// Long reasoning + context segments so the row overflows a narrow
 	// window.
@@ -381,8 +391,8 @@ func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 	m = m.updateStatus()
 
 	plain := stripANSI(m.renderStatusBar())
-	if w := Width(plain); w != m.windowWidth {
-		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	if w, want := Width(plain), statusBarBudget(m.windowWidth); w != want {
+		t.Errorf("status bar width %d should fill the row budget %d exactly: %q", w, want, plain)
 	}
 	if strings.HasSuffix(plain, " ") {
 		t.Errorf("status bar should not end with padding, got %q", plain)
