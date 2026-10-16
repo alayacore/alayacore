@@ -155,8 +155,9 @@ func tmuxVersion(t *testing.T, tmux string) string {
 // 2-cell cluster; on the tmux 3.4 that ubuntu-latest ships, the same bytes come
 // back as a 2-cell "1"+VS16 followed by a separate combining keycap, so five
 // rows differed and the build went red over a fact about somebody else's Unicode
-// tables. Everything else — ASCII, CJK, box drawing, braille, the flags and the
-// ZWJ family — is asserted, and those are the glyphs the app draws.
+// tables. Everything else — ASCII, CJK, box drawing, braille — is asserted, and
+// those are the glyphs the app draws. The flags and the ZWJ family are not: the
+// waiver covers any row carrying a regional indicator or a joiner.
 //
 // The consequence is not just a cell: a row the layout counts as one terminal
 // row is one cell wider to such a host, so the HOST wraps it onto the row below,

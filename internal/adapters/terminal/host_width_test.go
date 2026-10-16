@@ -57,8 +57,9 @@ func hostCells(s string) int {
 //     not a measured difference: tmux agrees with the table on every such pair),
 //   - a zero-width joiner, one cluster here and several to a host that does not
 //     cluster,
-//   - U+3164 HANGUL FILLER or U+1160, which the host ignores, and a lone regional
-//     indicator, which its width cache bills one cell.
+//   - U+3164 HANGUL FILLER or U+1160, which the host ignores, and a regional
+//     indicator, whose lone form its width cache bills one cell (the scan below
+//     is per code point, so a pair is waived with it).
 //
 // The list is the measured classes plus the two the glyph policy records as
 // host-dependent. Everything else — ASCII, CJK, box drawing, braille, the tool
@@ -360,6 +361,66 @@ func TestHostDeltaMatchesTheMeasuredHost(t *testing.T) {
 		}
 		if got := hostCells(tc.in); got != tc.host {
 			t.Errorf("%s: the host model bills %q %d cells, the probe recorded %d", tc.name, tc.in, got, tc.host)
+		}
+	}
+}
+
+// TestHostMayBillDifferentlyWaivesTheDisputedClasses pins the waiver list on both
+// sides: a row carrying one of the classes below is reported rather than asserted
+// by screen_tmux_replay_test.go, and a row carrying none of them is still judged.
+//
+// Both sides need saying. The waiver is the whole width of that test's tolerance,
+// and part of it is literals — the two variation selectors, the keycap mark and the
+// joiner are code points in the predicate, not entries in the class maps the probe
+// pairs above price — so a class added to the list stops being asserted with nothing
+// to say so. The asserted side is what keeps the tolerance from being a blanket
+// skip: the glyphs the app draws (ASCII, CJK, box drawing, braille) and the classes
+// a host was measured to agree about have to stay off it.
+//
+// It runs wherever the package is built, which is deliberate: the replay it waives
+// rows for is Linux-only (screen_tmux_replay_test.go), so elsewhere this list is
+// compiled and otherwise never read.
+func TestHostMayBillDifferentlyWaivesTheDisputedClasses(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		in     string
+		waived bool
+	}{
+		// The measured classes a host bills wider: a spacing mark it does not
+		// combine onto its base, and the two format characters it charges for.
+		{"devanagari i-matra", "कि", true},
+		{"thai sara am", "กำ", true},
+		{"soft hyphen", "a\u00AD", true},
+		{"arabic number sign", "a\u0600", true},
+		// The classes it bills narrower, and the regional indicator its width
+		// cache charges one cell alone. The scan is per code point, so a pair is
+		// waived with it — coarser than the class, and the predicate's doc says so.
+		{"hangul filler", "\u3164", true},
+		{"hangul jungseong filler", "\u1160", true},
+		{"lone regional indicator", "\U0001F1E6", true},
+		{"regional pair", "\U0001F1E8\U0001F1F3", true},
+		// The two the glyph policy records as host-dependent: the cell a
+		// variation selector joined, and a ZWJ sequence a host that does not
+		// cluster draws as several.
+		{"ascii plus vs16", "a\uFE0F", true},
+		{"ascii plus vs15", "a\uFE0E", true},
+		{"keycap one", "1\uFE0F\u20E3", true},
+		{"zwj family", "👨\u200D👩\u200D👧\u200D👦", true},
+		// The asserted side.
+		{"plain ascii", "plain ascii", false},
+		{"a row of agreeing glyphs", "the quick brown fox 中文 ─ ⠿", false},
+		{"cjk", "中文", false},
+		{"box rule", "─", false},
+		{"braille", "⠿", false},
+		{"hangul choseong filler", "\u115F", false},
+		{"halfwidth hangul filler", "\uFFA0", false},
+	} {
+		if got := hostMayBillDifferently(tc.in); got != tc.waived {
+			if tc.waived {
+				t.Errorf("%s: hostMayBillDifferently(%q) = false, so the replay would judge a row a host may bill differently", tc.name, tc.in)
+			} else {
+				t.Errorf("%s: hostMayBillDifferently(%q) = true, so the replay stops judging a class this table and a host agree about", tc.name, tc.in)
+			}
 		}
 	}
 }
