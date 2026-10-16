@@ -147,8 +147,8 @@ func tmuxVersion(t *testing.T, tmux string) string {
 // assertMatchesModel compares a captured pane with the grid model's screen.
 //
 // Rows carrying a cluster whose width a HOST is measured to bill differently are
-// not asserted, only reported (hostMayBillDifferently, which lists them and
-// cites the probe). Their width depends on whether the host applies UAX #29
+// not asserted, only reported (hostMayBillDifferently; host_width_test.go ties
+// its list to the probe). Their width depends on whether the host applies UAX #29
 // clustering and the emoji-presentation rule, or falls back to wcwidth per code
 // point — two answers that are both defensible and that different terminal
 // builds give. This test was written against tmux 3.7c, where a keycap is one

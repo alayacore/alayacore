@@ -626,13 +626,14 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 	// cells pushes into the N cells below it. Every disagreement measured
 	// over-bills a cluster by one cell (misc/probe-tmux-widths.sh: the spacing
 	// marks of the Indic and South-East Asian scripts, the soft hyphen, the
-	// Arabic number sign), and a cluster costs at least one cell, so a row
-	// over-bills by less than its own width — under one row, which is what the
-	// successor covers. A host that disagrees by more than that can still push
-	// a row's tail past the row re-established here; the damage then stays
-	// inside the transcript region, because the overlay rows below it are
-	// re-established too, and any redraw — Ctrl-R, a resize, a fill-mode
-	// switch — repairs it.
+	// Arabic number sign). The marks that ride a base character cost this table
+	// at least a cell, so a row of them over-bills by at most its own width —
+	// one row, which the successor covers. The two format characters cost
+	// nothing on their own, so a row made of them (or a ZWJ sequence a host does
+	// not cluster) can over-bill further: that is why the overlay rows below are
+	// re-established even where one successor would do, and why a spill larger
+	// than that is repaired by a redraw — Ctrl-R, a resize, a fill-mode switch —
+	// rather than never. It stays in the transcript region either way.
 	present := make(map[int]bool, len(newRows))
 	for _, r := range newRows {
 		for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {

@@ -25,8 +25,8 @@ package terminal
 //     writes a row whose own text did not change. If that split the line above
 //     it, the closure would cost the feature it is protecting.
 //
-// The last case is the reason renderStatusBar leaves a cell of the bottom row
-// unspent, and it is the one measurement here of a HOST's behavior rather than
+// The last case is why the status row's layout reserves what a host may charge
+// its own text (host_width.go), and it is the one measurement here of a HOST's behavior rather than
 // the frame's: a cell written past the bottom row scrolls the pane, which moves
 // every row — including the rows a diff will never rewrite.
 
@@ -109,8 +109,9 @@ func TestTmuxKeepsARepaintedRowJoined(t *testing.T) {
 	}
 }
 
-// TestTmuxScrollsOnACellPastTheBottomRow records why the status bar leaves one
-// cell of the bottom row unspent (tui_status.go → renderStatusBar): a cell
+// TestTmuxScrollsOnACellPastTheBottomRow records why the status row reserves what
+// a host may charge its own text (tui_status.go → renderStatusBar, host_width.go):
+// a cell
 // written past the bottom row scrolls the pane, and the rows that move are the
 // ones a row diff will never rewrite. The expectation is what tmux 3.7c did when
 // it was measured — a build that stops scrolling is a reason to re-take the

@@ -930,8 +930,8 @@ func (m Terminal) View() View {
 	// ends with an EL. That is the chrome contract the three blocks in this
 	// function keep: a row the frame owns from column 0 is positioned
 	// absolutely and cleared to its own end, so nothing the row above flowed
-	// onto it can survive beside what the frame drew. The pair matters for a
-	// host whose width table disagrees with width.go's (docs/tui.md → Line
+	// onto it can survive beside what the frame drew. Both matter for a host
+	// whose width table disagrees with width.go's (docs/tui.md → Line
 	// Wrapping): such a host can wrap a transcript row one row early or late,
 	// and the cell that does not fit lands on the row below it — which for the
 	// last transcript row is this one. The marker is constant while output

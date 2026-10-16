@@ -13,9 +13,12 @@ package terminal
 //
 // The host model bills the classes host_width.go holds — the ones a host was
 // MEASURED to disagree about, with the numbers tmux 3.7c gave
-// (misc/probe-tmux-widths.sh). Every class over-bills a cluster by at most one
-// cell, and a cluster costs at least one cell — which is the bound the write-set
-// closure in screen.go → diffFrameRows is sized for.
+// (misc/probe-tmux-widths.sh): one cell per cluster, and for the marks that ride
+// a base character that is under one row's width, which is the bound the
+// write-set closure in screen.go → diffFrameRows is sized for. The two classes
+// that cost this table nothing on their own (the soft hyphen, the Arabic number
+// sign) and the ZWJ sequences it clusters are why the model reaches past one
+// successor: a spill can be wider than a row.
 //
 // The grid model's own displaywidth table is NOT replaced: this is the same
 // model with a host's arithmetic, so the two can be compared row by row.
@@ -28,6 +31,53 @@ import (
 	"github.com/alayacore/alayacore/internal/wire"
 	"github.com/alayacore/alayacore/internal/wiretest"
 )
+
+// hostCells returns the cells the measured host charges s — this table's width
+// plus every delta hostDelta applies, positive or negative. It is the oracle the
+// probe's recorded numbers are asserted against (TestHostDeltaMatchesTheMeasuredHost);
+// a LAYOUT reserves space with hostMaxCells, because a reservation must never be
+// short. Test-only: production needs the upper bound, not the measured sum.
+func hostCells(s string) int {
+	cells := 0
+	walkCells(s, func(text string, w int) bool {
+		cells += w + hostDelta(text)
+		return true
+	})
+	return cells
+}
+
+// hostMayBillDifferently reports whether s carries a cluster whose width this
+// package's table and a host's are measured — or recorded as likely — to
+// disagree about, so a screen comparison that reads the cluster back cannot be
+// judged on it:
+//
+//   - a spacing mark the host bills on its own (hostWiderByOne),
+//   - the cell a variation selector joined (a host that ignores the request
+//     draws one cell where the table reserves two — the glyph policy's exposure,
+//     not a measured difference: tmux agrees with the table on every such pair),
+//   - a zero-width joiner, one cluster here and several to a host that does not
+//     cluster,
+//   - U+3164 HANGUL FILLER or U+1160, which the host ignores, and a lone regional
+//     indicator, which its width cache bills one cell.
+//
+// The list is the measured classes plus the two the glyph policy records as
+// host-dependent. Everything else — ASCII, CJK, box drawing, braille, the tool
+// indicators — is asserted where it is compared. Test-only: this is the waiver
+// screen_tmux_replay_test.go needs, not something the adapter draws by.
+func hostMayBillDifferently(s string) bool {
+	if strings.ContainsAny(s, "\uFE0E\uFE0F\u20E3\u200D") {
+		return true
+	}
+	for _, r := range s {
+		if hostWiderByOne[r] || hostNarrowerBy[r] != 0 {
+			return true
+		}
+		if r >= 0x1F1E6 && r <= 0x1F1FF {
+			return true
+		}
+	}
+	return false
+}
 
 // newHostGrid returns the screen model with a host's width arithmetic in place
 // of this package's (see the file comment).
@@ -167,7 +217,7 @@ func TestTheStatusRowReservesOnlyWhereAHostMayBillWider(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		modelName  string
-		reservedBy int // cells the row leaves unspent, over the whole window
+		reservedBy int // cells of the window the row does not spend
 	}{
 		{"plain name", "model-name", 0},
 		{"name a host bills wider", "कि-model", 1},

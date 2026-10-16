@@ -59,8 +59,9 @@ probe() {
 
 echo "tmux $(tmux -V)  — the build these numbers are from (the recorded table is 3.7c)"
 echo
-echo "the classes docs/tui.md (Line Wrapping) records, and the emoji-presentation"
-echo "classes the glyph policy waives (they are the same kind of fact)"
+echo "the classes docs/tui.md (Line Wrapping) records — and, for contrast, rows"
+echo "where this table and tmux AGREE (emoji presentation, which the table applies"
+echo "itself; a ZWJ sequence, which tmux clusters; the glyphs the app draws)"
 echo
 # A spacing mark the host does not combine onto its base: this table clusters it
 # (one cell with the base), the host charges it a cell of its own.

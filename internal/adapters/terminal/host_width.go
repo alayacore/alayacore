@@ -14,9 +14,9 @@ package terminal
 //     charge for its own text, instead of leaving a cell blank in every session
 //     whether or not that session's name can be billed differently.
 //   - the containment tests (host_width_test.go), which judge the frame against
-//     a screen model that bills like a host: the classes it exercises are these,
-//     so the list the tests lean on and the list the layout reserves for cannot
-//     drift apart.
+//     a screen model that bills like a host: they bill it with hostDelta below
+//     and assert it against the probe's recorded numbers, so the list the tests
+//     lean on and the list the layout reserves for cannot drift apart.
 //
 // The classes and their numbers are MEASURED rather than derived.
 // misc/probe-tmux-widths.sh re-takes them against a real tmux (one run per row,
@@ -28,29 +28,14 @@ package terminal
 // charge anything, and double-width-ambiguous hosts are outside the supported
 // configurations at all (constants.go → glyph policy, waiver 2).
 
-// The code points the class checks below name as NUMBERS rather than as literals,
+// cpZWJ is the zero-width joiner, named as a NUMBER rather than as a literal
 // because glyphs_test.go reads every non-ASCII literal in this package's sources
-// as a glyph the adapter DRAWS and demands a policy entry for it. These four are
-// a lookup set — joiners and selectors, listed so a cluster can be tested for
-// them — and the adapter never writes one to a terminal on its own.
-const (
-	cpKeycap = 0x20E3 // combining enclosing keycap
-	cpZWJ    = 0x200D // zero-width joiner
-	cpVS15   = 0xFE0E // variation selector-15, text presentation
-	cpVS16   = 0xFE0F // variation selector-16, emoji presentation
-)
-
-// hasCodePoint reports whether s contains any of the given code points.
-func hasCodePoint(s string, cps ...rune) bool {
-	for _, r := range s {
-		for _, cp := range cps {
-			if r == cp {
-				return true
-			}
-		}
-	}
-	return false
-}
+// as a glyph the adapter DRAWS and demands a policy entry for it. This one is a
+// lookup: hostDelta counts the joiners in a cluster, and the adapter never writes
+// a joiner to a terminal on its own. (The waiver that needs the code points
+// around it — the selectors and the keycap mark — is hostMayBillDifferently, and
+// it is test-only, like the replay test that reads it.)
+const cpZWJ = 0x200D
 
 // countCodePoint returns how many times cp appears in s.
 func countCodePoint(s string, cp rune) int {
@@ -161,48 +146,4 @@ func hostMaxCells(s string) int {
 		return true
 	})
 	return cells
-}
-
-// hostCells returns the cells the measured host charges s — this table's width
-// plus every delta, positive or negative. It is what the probe's recorded
-// numbers are compared against (host_width_test.go); a LAYOUT reserves space
-// with hostMaxCells, because a reservation must never be short.
-func hostCells(s string) int {
-	cells := 0
-	walkCells(s, func(text string, w int) bool {
-		cells += w + hostDelta(text)
-		return true
-	})
-	return cells
-}
-
-// hostMayBillDifferently reports whether s carries a cluster whose width this
-// package's table and a host's are measured — or recorded as likely — to
-// disagree about, so a screen comparison that reads the cluster back cannot be
-// judged on it:
-//
-//   - a spacing mark the host bills on its own (hostWiderByOne),
-//   - the cell a variation selector joined, which the host forces to two cells,
-//   - a zero-width joiner, one cluster here and several to a host that does not
-//     cluster,
-//   - U+3164 HANGUL FILLER, which the host ignores, and a lone regional
-//     indicator, which its width cache bills one cell.
-//
-// The list is the measured classes plus the two the glyph policy already records
-// as host-dependent (a variation selector and a ZWJ sequence). Everything else —
-// ASCII, CJK, the box-drawing glyphs, braille, the tool indicators — is asserted
-// where it is compared.
-func hostMayBillDifferently(s string) bool {
-	if hasCodePoint(s, cpVS15, cpVS16, cpKeycap, cpZWJ) {
-		return true
-	}
-	for _, r := range s {
-		if hostWiderByOne[r] || hostNarrowerBy[r] != 0 {
-			return true
-		}
-		if r >= 0x1F1E6 && r <= 0x1F1FF {
-			return true
-		}
-	}
-	return false
 }
