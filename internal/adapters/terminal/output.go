@@ -834,12 +834,12 @@ func (to *outputWriter) ConsumeSessionClosed() bool {
 	return to.status.takeSessionClosed()
 }
 
-// ConsumeTaskStarted returns true if a turn began since the last call, and
+// ConsumeTaskStarted returns true if a task began since the last call, and
 // resets the flag. The Terminal uses it to return the view to the live edge:
-// a turn that starts from a command — :continue, :summarize — appends what the
+// a task that starts from a command — :continue, :summarize — appends what the
 // user asked to watch, exactly as a submitted prompt does, and a scrolled-back
 // viewport would otherwise hide all of it. The edge is the session's own, so
-// the adapter needs no list of which commands start a turn.
+// the adapter needs no list of which commands start a task.
 func (to *outputWriter) ConsumeTaskStarted() bool {
 	return to.status.takeTaskStarted()
 }

@@ -91,10 +91,10 @@ type sessionState struct {
 	sessionClosed bool
 
 	// taskStarted is set on the idle → in-progress edge of the "task"
-	// system frame. Consumed one-shot by takeTaskStarted: a turn beginning
+	// system frame. Consumed one-shot by takeTaskStarted: a task beginning
 	// is what the sender asked to watch, and the Terminal re-arms
 	// auto-follow on it (see handleDisplayRefresh). It is deliberately the
-	// domain's own edge rather than a list of commands that start a turn —
+	// domain's own edge rather than a list of commands that start a task —
 	// :continue, :summarize, and the prompt path all cross it, and a
 	// command added later crosses it without the adapter naming it.
 	taskStarted bool
@@ -399,8 +399,8 @@ func (s *sessionState) takeSessionClosed() bool {
 	return true
 }
 
-// takeTaskStarted returns true if a turn began since the last call, and resets
-// the flag. One-shot so the Terminal re-arms auto-follow once per turn rather
+// takeTaskStarted returns true if a task began since the last call, and resets
+// the flag. One-shot so the Terminal re-arms auto-follow once per task rather
 // than on every "task" frame of a run.
 func (s *sessionState) takeTaskStarted() bool {
 	s.mu.Lock()

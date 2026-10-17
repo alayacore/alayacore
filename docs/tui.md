@@ -483,9 +483,9 @@ is happening now": `G`/`End`, and submitting a prompt. A send is a request to
 watch the answer — the prompt the session echoes back and everything streamed
 after it must not land below a viewport left parked in the scrollback, where a
 silent `Enter` reads as a prompt that never went. Sending while a task runs
-(steering) counts as a send for the same reason, and so does a turn that starts
+(steering) counts as a send for the same reason, and so does a task that starts
 from a command (`:continue`, `:summarize`): the view follows the session's own
-idle → in-progress edge, not a list of command names, so a turn-starting command
+idle → in-progress edge, not a list of command names, so a task-starting command
 added later is covered without teaching the TUI what a command means. An empty
 prompt box, and a command that appends no transcript (`:save`, `:cancel`,
 `:tool_confirm`, …), move nothing. While auto-follow is active:
@@ -493,7 +493,7 @@ prompt box, and a command that appends no transcript (`:save`, `:cancel`,
 |-----|----------|-----------------------|
 | `G` | Follow the last window | ✅ Re-enables |
 | `Enter` | Submit prompt | ✅ Re-enables (empty box: ❌) |
-| `:continue` / `:summarize` | Start a turn | ✅ Re-enables |
+| `:continue` / `:summarize` | Start a task | ✅ Re-enables |
 | `j` | Move cursor down | ❌ No-op (race protection) |
 | `L` | Move cursor to bottom | ❌ No-op (race protection) |
 | `↓` / `J` | Scroll down one line | ❌ No-op when at bottom |

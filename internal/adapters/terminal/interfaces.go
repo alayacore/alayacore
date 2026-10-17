@@ -107,7 +107,7 @@ type OutputWriter interface {
 	ClearMCPAuths()
 	ConsumeSessionReady() bool  // returns true if initialization just completed (SM "session" ready frame)
 	ConsumeSessionClosed() bool // returns true if the session ended (SM "session" closed frame)
-	ConsumeTaskStarted() bool   // returns true if a turn began since the last call (idle → in-progress edge)
+	ConsumeTaskStarted() bool   // returns true if a task began since the last call (idle → in-progress edge)
 
 	// Update signaling
 	FlushPendingDeltas() // flushes accumulated delta frames to WindowBuffer

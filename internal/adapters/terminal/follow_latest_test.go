@@ -7,8 +7,8 @@ package terminal
 //     answer it asks for are exactly what the sender wants to watch. With
 //     follow off they would be appended below a viewport left parked in the
 //     scrollback, where a silent Enter reads as a prompt that never went.
-//   - A turn beginning — a session fact, consumed from the idle → in-progress
-//     edge. :continue and :summarize start a turn without submitting anything,
+//   - A task beginning — a session fact, consumed from the idle → in-progress
+//     edge. :continue and :summarize start a task without submitting anything,
 //     and the adapter must not name them to know it: the edge is what the
 //     status bar already reports.
 //
@@ -16,7 +16,7 @@ package terminal
 // that produces no transcript (cancel, save, tool_confirm, …). The state under
 // test is the one ↑/Ctrl+U leave behind.
 //
-// Where a turn starts without a prompt, the session state is the writer's, so
+// Where a task starts without a prompt, the session state is the writer's, so
 // the frame-level half of that rule — the one-shot edge — is pinned in
 // output_session_test.go.
 
@@ -82,7 +82,7 @@ func TestEmptySubmitLeavesTheViewportPut(t *testing.T) {
 }
 
 // TestTaskStartReturnsTheViewToTheLiveEdge covers :continue and :summarize:
-// they start a turn on the session side alone, so the jump rides the task
+// they start a task on the session side alone, so the jump rides the task
 // frame's start edge through the tick — no command name reaches the adapter.
 func TestTaskStartReturnsTheViewToTheLiveEdge(t *testing.T) {
 	m, w := scrolledBackTranscript(t)
@@ -91,9 +91,9 @@ func TestTaskStartReturnsTheViewToTheLiveEdge(t *testing.T) {
 	m, _ = m.handleTick()
 
 	if !m.display.autoFollow {
-		t.Error("a turn starting did not re-enable auto-follow")
+		t.Error("a task starting did not re-enable auto-follow")
 	}
 	if got := m.display.LinesBelow(); got != 0 {
-		t.Errorf("%d lines still below the viewport after a turn started", got)
+		t.Errorf("%d lines still below the viewport after a task started", got)
 	}
 }

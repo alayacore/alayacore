@@ -634,7 +634,7 @@ func (m DisplayModel) ClampWindowCursor() DisplayModel {
 // re-enables auto-follow. It is the one place auto-follow comes back on —
 // setWindowCursor and clearWindowCursor only ever turn it off — so every caller is a
 // deliberate "take me to what is happening now": FollowLatest (G/End,
-// submitting, a turn starting) and focusDisplay's cursorless case.
+// submitting, a task starting) and focusDisplay's cursorless case.
 func (m DisplayModel) WithWindowCursorToLastWindow() DisplayModel {
 	i := m.windowBuffer.LastVisibleIndex()
 	if i >= 0 {
@@ -653,7 +653,7 @@ func (m DisplayModel) WithWindowCursorToLastWindow() DisplayModel {
 // watch the answer, so the prompt the session echoes back and everything
 // streamed after it must land in view instead of below a viewport left parked
 // in the scrollback (where a silent Enter reads as a prompt that never went).
-// The third caller is not a gesture but the session's own report that a turn
+// The third caller is not a gesture but the session's own report that a task
 // began (see Terminal.handleDisplayRefresh), which is the same request made by
 // a command: :continue and :summarize.
 //

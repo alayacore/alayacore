@@ -755,7 +755,7 @@ func (m Terminal) handleDisplayRefresh() Terminal {
 	// before we check the dirty flag.
 	m.out.FlushPendingDeltas()
 
-	// A turn began — a submitted prompt, :continue, :summarize, or any future
+	// A task began — a submitted prompt, :continue, :summarize, or any future
 	// command that starts one. What follows is what the sender asked to watch,
 	// so the view returns to the live edge and follows, as it does on Enter.
 	// Above the dirty check on purpose: the refresh below only re-arms follow
