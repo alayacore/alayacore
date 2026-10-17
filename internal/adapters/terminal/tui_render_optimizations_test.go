@@ -33,7 +33,7 @@ import (
 func TestUpdateStatusSkipsWhenVersionUnchanged(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	out.handleSystemFrame(`{"type":"reasoning_level","data":{"level":1}}`)
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":3,"max_steps":5,"context":1000}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":3,"max_steps":5,"context_tokens":1000}}`)
 	snap1 := out.SnapshotStatus()
 
 	m := newTerminalForUpdateStatusTest(out)
@@ -57,14 +57,14 @@ func TestUpdateStatusSkipsWhenVersionUnchanged(t *testing.T) {
 // counter triggers a rebuild when the session actually changes.
 func TestUpdateStatusRebuildsAfterSessionUpdate(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":5,"context":1000}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":5,"context_tokens":1000}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
 	first := m.statusLeft
 
 	// Token count changes — version should bump and rebuild.
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":5,"context":9999}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":5,"context_tokens":9999}}`)
 	m = m.updateStatus()
 	if m.statusLeft == first {
 		t.Errorf("status text should change when context tokens change: %q == %q", first, m.statusLeft)
@@ -235,7 +235,7 @@ func TestModelSelectorLoadModelsProtocol(t *testing.T) {
 // changed.
 func TestRenderStatusBarCachedOnIdle(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":5,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":5,"context_tokens":0}}`)
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
 
@@ -254,7 +254,7 @@ func TestRenderStatusBarCachedOnIdle(t *testing.T) {
 // (here: in-progress flag).
 func TestRenderStatusBarCacheInvalidatesOnChange(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":5,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":5,"context_tokens":0}}`)
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
 	first := m.renderStatusBar()
@@ -262,7 +262,7 @@ func TestRenderStatusBarCacheInvalidatesOnChange(t *testing.T) {
 	// Task starts → inProgress flips; the indicator becomes the spinner and
 	// the row is no longer served from the cache, so the rendered string must
 	// differ.
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context_tokens":0}}`)
 	m = m.updateStatus()
 	second := m.renderStatusBar()
 	if first == second {

@@ -300,7 +300,7 @@ Session writes → stdout:      UX{"id":"1","time":"...","type":"text","text":"R
                                UF{"id":"3","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
                                Ax{"id":"4","type":"text","text":"Here's what main.go does..."}     ← streaming text delta
                                AX{"id":"4","time":"...","type":"text"}                             ← authoritative complete (empty terminator)
-                               SM{"type":"task","data":{"in_progress":false,"context":1500}}
+                               SM{"type":"task","data":{"in_progress":false,"context_tokens":1500}}
 ```
 
 ## Example: Text Prompt Flow (replay, no deltas)
@@ -310,7 +310,7 @@ Session writes → stdout:      UX{"id":"1","time":"...","type":"text","text":"R
                                AF{"id":"2","time":"...","call_id":"t1","name":"read_file","input":{"path":"main.go"}}
                                UF{"id":"3","time":"...","call_id":"t1","output":[{"type":"text","text":"package main..."}]}
                                AX{"id":"4","time":"...","type":"text","text":"Here's what main.go does..."}
-                               SM{"type":"task","data":{"in_progress":false,"context":1500}}
+                               SM{"type":"task","data":{"in_progress":false,"context_tokens":1500}}
 ```
 
 ## Example: Image Prompt Flow
@@ -360,7 +360,7 @@ video_config) are broadcast first, then the replayed content, and finally —
 once initialization completes — the session-ready frame:
 
 ```
-Session writes → stdout:      SM{"type":"task","data":{"in_progress":false,"context":1500}}  ← startup broadcast (before replay)
+Session writes → stdout:      SM{"type":"task","data":{"in_progress":false,"context_tokens":1500}}  ← startup broadcast (before replay)
                                UX{"id":"1","time":"...","type":"text","text":"Hello"}       ← user
                                AX{"id":"2","time":"...","type":"text","text":"Hi! How can I help?"}  ← assistant
                                UX{"id":"3","time":"...","type":"text","text":"Read main.go"} ← user
@@ -724,7 +724,7 @@ The system-message samples follow with their schema.
 | `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, added, removed: string}}`) | `SM-theme-list.txt` |
 | `reasoning_level` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning-level.txt` |
 | `video_config` | `fps` (int), `res` (int) | `SM-video-config.txt` |
-| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`), `step_tps` (float, opt — latest step's end-to-end throughput in tokens/sec: output tokens ÷ round-trip duration, latency included; absent until a step with output tokens completes; 0 for a step with no output tokens), `ttft_ms` (int, opt — latest step's time-to-first-token in ms) | `SM-task-start.txt`, `SM-task-step.txt`, `SM-task-end.txt` |
+| `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context_tokens` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`), `step_tps` (float, opt — latest step's end-to-end throughput in tokens/sec: output tokens ÷ round-trip duration, latency included; absent until a step with output tokens completes; 0 for a step with no output tokens), `ttft_ms` (int, opt — latest step's time-to-first-token in ms) | `SM-task-start.txt`, `SM-task-step.txt`, `SM-task-end.txt` |
 | `error` | `text` (string) | `SM-error.txt` |
 | `notify` | `text` (string) | `SM-notify.txt` |
 | `tool_confirm` | `call_id` (string) — one-way notification; the user's decision is returned via the `tool_confirm` / `tool_decline` commands (CI frames), not via an SM response | `SM-tool-confirm.txt` |
@@ -742,9 +742,9 @@ SM-theme.txt                   {"type":"theme","data":{"name":"theme-dark"}}
 SM-theme-list.txt              {"type":"theme_list","data":{"themes":[{"name":"theme-dark","theme":{"primary":"#89d4fa","dim":"#313244","muted":"#6c7086","warning":"#f77923","error":"#f38ba8","added":"#a6e3a1","removed":"#f38ba8"}},{"name":"theme-light","theme":{"primary":"#1e66f5","dim":"#ccd0da","muted":"#9ca0b0","warning":"#df8e1d","error":"#d20f39","added":"#40a02b","removed":"#d20f39"}}]}}
 SM-reasoning-level.txt         {"type":"reasoning_level","data":{"level":2}}
 SM-video-config.txt            {"type":"video_config","data":{"fps":5,"res":1}}
-SM-task-start.txt              {"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":10,"context":0}}
-SM-task-step.txt               {"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":10,"context":8600,"step_tps":12.5,"ttft_ms":1200}}
-SM-task-end.txt                {"type":"task","data":{"in_progress":false,"context":1500,"step_tps":12.5,"ttft_ms":1200}}
+SM-task-start.txt              {"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":10,"context_tokens":0}}
+SM-task-step.txt               {"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":10,"context_tokens":8600,"step_tps":12.5,"ttft_ms":1200}}
+SM-task-end.txt                {"type":"task","data":{"in_progress":false,"context_tokens":1500,"step_tps":12.5,"ttft_ms":1200}}
 SM-error.txt                   {"type":"error","data":{"text":"something broke"}}
 SM-notify.txt                  {"type":"notify","data":{"text":"all good"}}
 SM-tool-confirm.txt            {"type":"tool_confirm","data":{"call_id":"t1"}}
@@ -903,14 +903,14 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 |---------|-------|---------------------|
 | `cancel` | — | `null` |
 | `save` | `[filename]` | `{"path":...}` |
-| `fork` | `<id> <filename>` | `{"path":...,"count":...,"history_id":...}` |
+| `fork` | `<history_id> <filename>` | `{"path":...,"count":...,"history_id":...}` |
 | `theme_set` | `<name>` (TUI only — `UNAVAILABLE` in NoTheme modes: plainio/terseio/rawio) | `{"name":...}` |
-| `tool_confirm` / `tool_decline` | `<tool-id>` | `{"tool_id":...}` |
+| `tool_confirm` / `tool_decline` | `<call_id>` | `{"call_id":...}` |
 | `model_set` | `<id>` | `{"active_id":...,"active_name":...}` |
 | `model_load` | — | `{"models":[...]}` |
 | `model_sync` | `<json>` | `{"models":[...]}` |
-| `reason` | `<0\|1\|2>` | `{"level":...}` |
-| `video_config` | `<fps> <0\|1>` | `{"fps":...,"res":...}` — sets the session **default** for videos ingested after it; each video keeps the settings it was ingested with |
+| `reasoning_level_set` | `<0\|1\|2>` | `{"level":...}` |
+| `video_config` | `<fps> <res>` | `{"fps":...,"res":...}` — sets the session **default** for videos ingested after it; each video keeps the settings it was ingested with |
 | `mcp_confirm` | `<server> <code> <redirect_uri>` | `{"server":...}` |
 | `mcp_decline` | `<server>` | `{"server":...}` |
 | `mcp_skip` | — | `null` |

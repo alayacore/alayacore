@@ -86,11 +86,11 @@ func (s SessionState) String() string {
 // step only — a simple end-to-end throughput (output tokens / round-trip
 // duration, latency included); no task-level averaging is reported.
 type taskMsg struct {
-	InProgress  bool   `json:"in_progress"`
-	CurrentStep int    `json:"current_step,omitempty"`
-	MaxSteps    int    `json:"max_steps,omitempty"`
-	Context     int64  `json:"context"`
-	CommandID   string `json:"command_id,omitempty"`
+	InProgress    bool   `json:"in_progress"`
+	CurrentStep   int    `json:"current_step,omitempty"`
+	MaxSteps      int    `json:"max_steps,omitempty"`
+	ContextTokens int64  `json:"context_tokens"`
+	CommandID     string `json:"command_id,omitempty"`
 
 	StepTPS float64 `json:"step_tps,omitempty"` // latest step's end-to-end tok/s
 	TTFTMS  int64   `json:"ttft_ms,omitempty"`  // latest step's TTFT in ms
@@ -236,12 +236,16 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // nothing here migrates an older file: editing the field to load one anyway is
 // the user's call. See docs/architecture.md ("message_version").
 //
-// v16: the vocabulary only, with no framing change — :mcp_cancel is :mcp_skip
-// ("cancel" already means stopping the running task), :reason is
-// :reasoning_level, and the SM that reports a reasoning-level change is
-// "reasoning_level", so no wire string means two things. Adapters that speak
-// v15 keep working until they use one of those names; a v15 session file no
-// longer loads, because loading demands this number exactly (see above) and
+// v16: the vocabulary only, with no framing change. What moved: :mcp_cancel is
+// :mcp_skip ("cancel" already stops the running task); :reason is
+// :reasoning_level_set, the setting's name plus the verb; the SM that reports a
+// reasoning-level change is "reasoning_level", so no wire string means two
+// things; the task SM's token count is "context_tokens", the name the session
+// file and the adapters already used; a tool call's id is "call_id" in the CO
+// result too, and the arguments that carry an id say which one (":tool_confirm
+// <call_id>", ":fork <history_id> <filename>"). Adapters that speak v15 keep
+// working until they use one of those names; a v15 session file no longer
+// loads, because loading demands this number exactly (see above) and
 // sessionmigrate carries the step that rewrites it.
 // v15: the wire dropped its 4-byte length field. A frame is one line — a
 // two-byte tag, a JSON value, an LF — so the boundary now rests on the value

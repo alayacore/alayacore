@@ -106,7 +106,7 @@ func TestStatusBarShowsCurrentStepsDuringProgress(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	// Simulate task in progress
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":7,"max_steps":20,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":7,"max_steps":20,"context_tokens":0,"context_limit":0}}`)
 
 	// Create terminal with the output writer
 	styles := DefaultStyles()
@@ -143,9 +143,9 @@ func TestStatusBarShowsLastStepsAfterCompletion(t *testing.T) {
 	// Create output writer and simulate a task that ran 5 of 10 steps
 	out := NewTerminalOutput(DefaultStyles())
 
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":5,"max_steps":10,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":5,"max_steps":10,"context_tokens":0,"context_limit":0}}`)
 	// Completion broadcast carries current_step zeroed.
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":10,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":10,"context_tokens":0,"context_limit":0}}`)
 
 	// Create terminal with the output writer
 	styles := DefaultStyles()
@@ -182,8 +182,8 @@ func TestStatusBarShowsLastStepsUnlimited(t *testing.T) {
 	// Simulate a task with unlimited max steps (default --max-steps=0)
 	out := NewTerminalOutput(DefaultStyles())
 
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":0,"context":0,"context_limit":0}}`)
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":0,"context_tokens":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context_tokens":0,"context_limit":0}}`)
 
 	styles := DefaultStyles()
 	terminal := &Terminal{
@@ -356,7 +356,7 @@ func TestStatusBarIndicatorColumn(t *testing.T) {
 		t.Errorf("idle status bar should open with %q, got %q", statusIdleGlyph, idle)
 	}
 
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context_tokens":0}}`)
 	m = m.updateStatus()
 	running := stripANSI(m.renderStatusBar())
 	first := string([]rune(running)[0])
@@ -374,7 +374,7 @@ func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 	// Long reasoning + context segments so the row overflows a narrow
 	// window.
 	out.handleSystemFrame(`{"type":"reasoning_level","data":{"level":2}}`)
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":999999999,"context_limit":1000000000}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context_tokens":999999999,"context_limit":1000000000}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
 	m.screenWidth = 12 // the 22-cell context segment overflows the budget on its own → truncated

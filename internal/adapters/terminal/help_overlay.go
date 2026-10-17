@@ -73,7 +73,7 @@ func buildHelpItems() []HelpItem {
 		{ID: nextID(), Key: ":tool_confirm <id>", Description: "Confirm pending tool execution", Type: HelpItemCommand},
 		{ID: nextID(), Key: ":tool_decline <id>", Description: "Decline pending tool execution", Type: HelpItemCommand},
 		{ID: nextID(), Key: ":continue", Description: "Retry last prompt", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":" + commands.CommandNameReasoningLevel + " <0|1|2>", Description: "Set reasoning level", Type: HelpItemCommand},
+		{ID: nextID(), Key: ":" + commands.CommandNameReasoningLevelSet + " <0|1|2>", Description: "Set reasoning level", Type: HelpItemCommand},
 		{ID: nextID(), Key: ":cancel", Description: "Cancel current task", Type: HelpItemCommand},
 		{ID: nextID(), Key: ":summarize", Description: "Summarize/Compress history", Type: HelpItemCommand},
 		{ID: nextID(), Key: ":theme_set <name>", Description: "Switch theme by name", Type: HelpItemCommand},

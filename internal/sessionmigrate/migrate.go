@@ -113,7 +113,7 @@ func V14ToV15(raw []byte) ([]byte, error) {
 // V15ToV16 rewrites a v15 session file as v16.
 //
 // v16 renamed vocabulary and nothing else: :mcp_cancel became :mcp_skip,
-// :reason became :reasoning_level, and the SM that reports a reasoning-level
+// :reason became :reasoning_level_set, and the SM that reports a reasoning-level
 // change became "reasoning_level". None of those is in a file — a file holds
 // conversation content — so the body is returned untouched and only the
 // frontmatter's number moves. It is a real step rather than a no-op because

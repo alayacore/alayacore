@@ -65,7 +65,7 @@ func TestUpdateTaskResetsSpeedOnNewTask(t *testing.T) {
 // steps segment.
 func TestStatusBarShowsSpeed(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":1500,"step_tps":12.5,"ttft_ms":1200}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context_tokens":1500,"step_tps":12.5,"ttft_ms":1200}}`)
 
 	styles := DefaultStyles()
 	terminal := &Terminal{
@@ -111,7 +111,7 @@ func TestStatusBarShowsSpeed(t *testing.T) {
 // the status bar.
 func TestStatusBarKeepsSpeedAfterCompletion(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":5,"context":100,"step_tps":12.5,"ttft_ms":1200}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":5,"context_tokens":100,"step_tps":12.5,"ttft_ms":1200}}`)
 
 	styles := DefaultStyles()
 	terminal := &Terminal{

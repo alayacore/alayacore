@@ -305,7 +305,7 @@ func (s *Session) resolveToolConfirm(id string, allowed bool) (any, error) {
 	}
 
 	ch <- allowed
-	return map[string]any{"tool_id": id}, nil
+	return map[string]any{"call_id": id}, nil
 }
 
 // cleanupConfirmChannels removes any leftover tool-confirmation channels
@@ -700,16 +700,16 @@ func (s *Session) handleModelSync(args string) (any, error) {
 }
 
 // ============================================================================
-// Configuration commands — handleReasoningLevel, handleVideoConfig, handleThemeSet
+// Configuration commands — handleReasoningLevelSet, handleVideoConfig, handleThemeSet
 //
 // These commands let the user adjust session-level settings such as
 // reasoning effort, video encoding parameters, and the active theme.
 // ============================================================================
 
-func (s *Session) handleReasoningLevel(args string) (any, error) {
+func (s *Session) handleReasoningLevelSet(args string) (any, error) {
 	level, err := strconv.Atoi(args)
 	if err != nil || level < config.ReasoningLevelOff || level > config.ReasoningLevelMax {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :reasoning_level [0|1|2]  (0=off, 1=normal, 2=max)"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :reasoning_level_set <0|1|2>  (0=off, 1=normal, 2=max)"}
 	}
 	s.SetReasoningLevel(level)
 	return map[string]any{"level": level}, nil
@@ -718,10 +718,10 @@ func (s *Session) handleReasoningLevel(args string) (any, error) {
 // handleVideoConfig sets the default video FPS and resolution for video attachments.
 // Usage: :video_config <fps> <resolution>
 //
-//	fps:        frames per second (positive integer, e.g. 2)
-//	resolution: 0=default, 1=max
+//	fps: frames per second (positive integer, e.g. 2)
+//	res: 0=default, 1=max
 func (s *Session) handleVideoConfig(args string) (any, error) {
-	const usage = "usage: :video_config <fps> <resolution>  (fps: positive integer, resolution: 0=default, 1=max)"
+	const usage = "usage: :video_config <fps> <res>  (fps: positive integer, res: 0=default, 1=max)"
 	fields := strings.Fields(args)
 	if len(fields) < 2 {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: usage}

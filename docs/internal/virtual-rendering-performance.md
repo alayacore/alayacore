@@ -46,7 +46,7 @@ changes, each removing work a frame did and threw away:
    instead of measuring the row to work them out. This was the one change of the
    five with a cost; the cost is closed, and both the cost and the closing are
    measured where it landed.
-5. **`ensureCursorVisible` asks one pass instead of five to eight.** Every
+5. **`ensureCaretVisible` asks one pass instead of five to eight.** Every
    quantity it decides with is a prefix sum over the same line's clusters, and
    each walk encoded the line as a string first.
 6. **The wrap stopped allocating per line and per byte.** `restyleBreaks` built a
@@ -130,7 +130,7 @@ Two things were not fine, and both are fixed rather than recorded:
   folds the streaming delta parts at a threshold instead of every frame; the
   summary paths price their message once instead of four times, and the tail cut
   runs backwards on plain ASCII; `windowFragment` stops measuring every row of
-  the window to draw forty of them; and `ensureCursorVisible` asks one pass for
+  the window to draw forty of them; and `ensureCaretVisible` asks one pass for
   the five to eight prefix sums it used to ask separately. At 128KB of content
   the **unfolded** streaming frame went 231μs/757,278 B → **18.2μs/80,156 B**
   (12.7x, 9.4x) and the folded one 709μs/134,136 B → **63.9μs/133,801 B**
@@ -508,7 +508,7 @@ alone, `clusters` over a 2 KB string was 44.6μs and 245,408 B: ~120 B of garbag
 per input byte, for answers that are O(1).
 
 The same helper was the input chain's width source (`graphemeClusters` wrapped
-it and copied the result into a second slice), and `ensureCursorVisible` asks
+it and copied the result into a second slice), and `ensureCaretVisible` asks
 four or five such questions per keystroke over the whole current line. So the
 defect had two user-visible faces: a folded reasoning window re-summarizing
 itself every tick, and typing at the end of a long prompt line.
@@ -583,11 +583,11 @@ now, so it is cluster-aligned with every other cut in the adapter.
 **232μs** and 5.2 MB → 156 KB → **115 KB**; `InputFieldViewLongLine` (one
 `View()` of a 2000-cell line) went 81μs → **24.9μs** and 306 KB → **5,064 B**.
 Movement was always cheaper than insertion because `handleMovement` does not call
-`ensureCursorVisible`; that asymmetry is unchanged and is now the only thing
+`ensureCaretVisible`; that asymmetry is unchanged and is now the only thing
 separating the two.
 
 The last row of the first column is the five-to-eight walks becoming one. Every
-quantity `ensureCursorVisible` decides with is a prefix sum over the same line's
+quantity `ensureCaretVisible` decides with is a prefix sum over the same line's
 clusters — where the stored visible start anchors now that inserts have shifted
 the boundaries, the cells before it, the cells before the caret, the width of
 the cluster under the caret, whether the line fits at all — and each walk encoded

@@ -102,7 +102,7 @@ Terminal has to execute and inspect:
 
 ```
 DisplayModel.Update     → []Result{openEditorForDisplayMsg} → Terminal.applyResult
-DisplayModel.Update     → []Result{focusInputWithValueMsg}  → Terminal.applyResult
+DisplayModel.Update     → []Result{focusPromptWithValueMsg}  → Terminal.applyResult
 PromptInput.Update      → []Result{openEditorForPromptMsg}  → Terminal.applyResult
 ThemeSelector.Update    → []Result{ThemeSelectedMsg}        → Terminal.applyResult
 ModelSelector.Update    → []Result{ModelSelectedMsg}        → Terminal.applyResult

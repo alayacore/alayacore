@@ -45,7 +45,7 @@
 //   - Command results (CO): failures as "[error: ...]" (does not affect the
 //     exit code), successes rendered from the structured result (e.g.
 //     "Session saved to <path>"); commands whose effect is self-evident
-//     (e.g. :cancel, :reasoning_level) are silent.
+//     (e.g. :cancel, :reasoning_level_set) are silent.
 //   - Errors: rendered as "[error: ...]".
 //   - Notifications: prefixed with "[...]".
 //   - Tool confirmations: shown as "[tool_confirm: allow tool "id" to run?]".

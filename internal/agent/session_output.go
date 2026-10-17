@@ -194,13 +194,13 @@ func (s *Session) sendTaskMsg() {
 		cmdID = s.activeTask.commandID
 	}
 	s.writeSystemMsg(taskMsg{
-		InProgress:  s.activeTask != nil,
-		CurrentStep: s.activeTaskStep(),
-		MaxSteps:    s.MaxSteps,
-		Context:     s.ContextTokens,
-		CommandID:   cmdID,
-		StepTPS:     s.lastStepTPS,
-		TTFTMS:      s.lastTTFTMS,
+		InProgress:    s.activeTask != nil,
+		CurrentStep:   s.activeTaskStep(),
+		MaxSteps:      s.MaxSteps,
+		ContextTokens: s.ContextTokens,
+		CommandID:     cmdID,
+		StepTPS:       s.lastStepTPS,
+		TTFTMS:        s.lastTTFTMS,
 	})
 }
 

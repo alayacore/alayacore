@@ -74,7 +74,7 @@ func TestWindowCursorFramePadsTheRowsItDraws(t *testing.T) {
 	}
 
 	wb.SetViewportPosition(0, len(allLines))
-	frame := wb.GetAll(0, false) // cursorIndex 0: row 0 is swapped for its register
+	frame := wb.GetAll(0, false) // windowCursorIndex 0: row 0 is swapped for its register
 
 	// Row 0 in the cursor's register, then the body rows joined by
 	// continuation mark. The branch structure mirrors renderVirtual's: a row

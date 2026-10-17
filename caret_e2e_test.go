@@ -7,7 +7,7 @@ package main_test
 // The prompt scrolls horizontally: a line wider than the field shows a window of
 // itself, and two pieces of arithmetic have to agree about which window — the one
 // the caret is drawn in, and the one the text is drawn from. InputField decides
-// both from a prefix sum over the line's clusters (ensureCursorVisible,
+// both from a prefix sum over the line's clusters (ensureCaretVisible,
 // CaretCell, buildVisibleText), and a disagreement is not a wrong number so much
 // as a caret that sits on a character other than the one it edits.
 //

@@ -1,1 +1,1 @@
-SM{"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":10,"context":8600,"step_tps":12.5,"ttft_ms":1200}}
+SM{"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":10,"context_tokens":8600,"step_tps":12.5,"ttft_ms":1200}}

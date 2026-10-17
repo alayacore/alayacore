@@ -333,7 +333,7 @@ hatch; `max_completion_tokens` already behaves the same way.
 
 ## Reasoning mode and reasoning fields
 
-When reasoning mode is set via `:reasoning_level [0|1|2]` (or at startup via `--reasoning-level <0|1|2>`), the provider looks up `reasoning_<level>` from the active model in `model.conf` and **merges that JSON verbatim into the request body**. Top-level keys in the JSON become top-level keys of the request.
+When reasoning mode is set via `:reasoning_level_set <0|1|2>` (or at startup via `--reasoning-level <0|1|2>`), the provider looks up `reasoning_<level>` from the active model in `model.conf` and **merges that JSON verbatim into the request body**. Top-level keys in the JSON become top-level keys of the request.
 
 This is data-driven: each model carries its own `reasoning_0`, `reasoning_1`, `reasoning_2` blocks describing exactly what thinking-related fields the provider should send. Different provider families have different vocabularies (Anthropic uses `output_config.effort`; OpenAI/DeepSeek use `reasoning_effort`; Qwen3 might use yet another scheme) — the per-model config captures that, so alayacore itself stays provider-agnostic.
 
@@ -522,7 +522,7 @@ whereas the model.conf entry already knows which stack it points at.
 **The failure mode to watch for:** reasoning disappearing with no error. A
 wrong or missing `reasoning_field` produces exactly that — the `REASONING`
 window never appears, text streams normally, nothing logs. Check this setting
-before suspecting `:reasoning_level` itself. See `TestOpenAIReasoningField`.
+before suspecting `:reasoning_level_set` itself. See `TestOpenAIReasoningField`.
 
 ### Empty reasoning block padding — implementation
 

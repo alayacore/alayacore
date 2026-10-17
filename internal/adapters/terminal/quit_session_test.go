@@ -135,7 +135,7 @@ func TestQuitWaitingOverlayOffersCancel(t *testing.T) {
 
 	// A task in progress, as the session reports it.
 	m.out.Write(frameBytes(wire.TagSystemMsg,
-		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame
+		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context_tokens":100}}`)) // test frame
 
 	after, cmd := m.handleTick()
 	m = after
@@ -203,7 +203,7 @@ func TestQuitWaitingWindowAfterCancel(t *testing.T) {
 	m.sessionPipe = &captureWriteCloser{}
 	m.quitting = true
 	m.out.Write(frameBytes(wire.TagSystemMsg,
-		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame
+		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context_tokens":100}}`)) // test frame
 
 	after, _ := m.handleTick()
 	m = after

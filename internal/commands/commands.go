@@ -23,19 +23,23 @@ const (
 	// running still finishes. ":q" is accepted as an alias (see Canonical).
 	CommandNameQuit = "quit"
 
-	CommandNameSummarize      = "summarize"
-	CommandNameCancel         = "cancel"
-	CommandNameContinue       = "continue"
-	CommandNameSave           = "save"
-	CommandNameModelSet       = "model_set"
-	CommandNameModelLoad      = "model_load"
-	CommandNameModelSync      = "model_sync"
-	CommandNameReasoningLevel = "reasoning_level"
-	CommandNameThemeSet       = "theme_set"
-	CommandNameToolConfirm    = "tool_confirm"
-	CommandNameToolDecline    = "tool_decline"
-	CommandNameFork           = "fork"
-	CommandNameVideoConfig    = "video_config"
+	CommandNameSummarize = "summarize"
+	CommandNameCancel    = "cancel"
+	CommandNameContinue  = "continue"
+	CommandNameSave      = "save"
+	CommandNameModelSet  = "model_set"
+	CommandNameModelLoad = "model_load"
+	CommandNameModelSync = "model_sync"
+	// The setting's name plus the verb: the setters here are scope+verb
+	// (model_set, theme_set), and the scope is reasoning_level — the name it has
+	// in the frontmatter, on --reasoning-level, and in the SM that broadcasts it.
+	// A shorter thing to type is an adapter's choice; it does not reach the wire.
+	CommandNameReasoningLevelSet = "reasoning_level_set"
+	CommandNameThemeSet          = "theme_set"
+	CommandNameToolConfirm       = "tool_confirm"
+	CommandNameToolDecline       = "tool_decline"
+	CommandNameFork              = "fork"
+	CommandNameVideoConfig       = "video_config"
 	// The MCP auth trio: confirm one server's authorization, decline it, or
 	// skip MCP initialization altogether. "skip" and not "cancel": :cancel
 	// already means stopping the running task, and this name says which of the

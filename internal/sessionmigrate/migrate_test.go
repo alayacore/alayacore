@@ -199,7 +199,7 @@ func TestV13ToV14_WritesTheV14Framing(t *testing.T) {
 // vocabulary, which a file does not carry, so the body must come through byte
 // for byte and only the frontmatter's number may move.
 func TestV15ToV16_RewritesTheNumberAndNothingElse(t *testing.T) {
-	body := "UX{\"id\":\"1\",\"type\":\"text\",\"value\":\"hello\"}\nUX{\"id\":\"2\",\"type\":\"text\",\"value\":\"world\"}\n"
+	body := "UX{\"id\":\"1\",\"type\":\"text\",\"text\":\"hello\"}\nUX{\"id\":\"2\",\"type\":\"text\",\"text\":\"world\"}\n"
 	raw := []byte("---\ncreated_at: 2026-01-01T00:00:00Z\nmessage_version: 15\n---\n" + body)
 
 	out, err := V15ToV16(raw)
