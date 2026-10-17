@@ -121,7 +121,9 @@ one.
 
 ### Input Cursor & IME
 
-The prompt input (and overlay filter boxes) render the **real terminal cursor** (the emulator's default steady block — themes do not configure cursor color, since the `cursor` field was dropped from `Theme` when body content rendering stopped carrying an explicit foreground color). This keeps input behavior identical to a shell prompt: Chinese/Japanese IME composition draws its inline preedit directly in the input field and the candidate window anchors to the input line, so it does not jump around while streaming output is being rendered.
+The prompt input (and overlay filter boxes) render the **real terminal cursor** (the emulator's default steady block — themes do not configure cursor color, since the `cursor` field was dropped from `Theme` when body content rendering stopped carrying an explicit foreground color). This keeps input behavior identical to a shell prompt: Chinese/Japanese IME composition draws its inline preedit directly in the input field and the candidate window anchors to the input line.
+
+The preedit is drawn at wherever that cursor is **when the host paints**, and a frame has to move the cursor through the rows it writes. A host that implements DECSET 2026 paints the frame in one pass, so the preedit never sees it move ([Line Wrapping](#line-wrapping)); a host that drops the mode may paint mid-frame, and the composing text is then drawn for that paint at the row the frame had reached, before the frame's closing cursor position brings it back — the preedit flicker reported while output streams. No arrangement of the frame prevents it: writing a row requires the cursor on that row. The program's part is the single write and the mode; a host that drops the mode owns the rest.
 
 ### Paste and terminal capability
 
