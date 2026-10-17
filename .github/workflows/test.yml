@@ -62,6 +62,12 @@ jobs:
       - name: Check docs
         run: ./misc/check-docs.sh
 
+      # One concept, one name (docs/vocabulary.md). The compiler sees neither
+      # a synonym nor an overload, so the tree is checked for the names that
+      # page retires and for the words it confines to the file that owns them.
+      - name: Check terms
+        run: ./misc/check-terms.sh
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
