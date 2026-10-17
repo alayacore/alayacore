@@ -165,6 +165,18 @@ Three corollaries:
   the reader who wants the number runs the command. Say what is true of the
   design and let the number be derived.
 
+### One concept, one name
+
+[Vocabulary](vocabulary.md) names each concept the tree talks about — task,
+turn, step, window, overlay, caret, the two cursors — and the words it does not
+allow for them. A synonym costs a reader a guess and an overload costs them a
+wrong one, and the compiler sees neither, so `misc/check-terms.sh`
+(`make check-terms`, run in CI) enforces the mechanical half: a retired name
+absent, a word confined to the file whose subject it is, one English spelling.
+It cannot tell you a *new* synonym has appeared; that is where this page's rule
+about stating a fact once meets the vocabulary — a new concept gets its name
+there, in the same change that introduces it.
+
 `misc/check-docs.sh` (`make check-docs`, run in CI) fails on both shapes a tool
 can decide exactly: a relative Markdown link that does not resolve from the file
 that wrote it, and a perishable shape in prose — a line number or a line count.
