@@ -67,7 +67,7 @@ These commands are rejected with an error if a task is currently running:
 | `:mcp_decline <server>` | Decline MCP OAuth authorization | `{"server"}` |
 | `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
 | `:model_load` | Reload model configs from the config file | `{"models"}` |
-| `:model_sync` | Apply edited model config (sent by UI, not user-facing) | `{"models"}` |
+| `:model_sync <content>` | Apply edited model config (sent by UI, not user-facing) | `{"models"}` |
 | `:reasoning_level_set <0\|1\|2>` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 — set the startup level with `--reasoning-level <0\|1\|2>` (CLI flag wins over the session file's saved `reasoning_level`) | `{"level"}` |
 | `:video_config <fps> <res>` | Set the default video FPS and resolution (`res`: 0=default, 1=max) applied to videos ingested after it — each video keeps the settings it was ingested with | `{"fps","res"}` |
 
