@@ -96,7 +96,7 @@ type taskMsg struct {
 	TTFTMS  int64   `json:"ttft_ms,omitempty"`  // latest step's TTFT in ms
 }
 
-func (taskMsg) SystemMsgType() string { return "task" }
+func (taskMsg) SystemMsgType() string { return string(protocol.MsgTypeTask) }
 
 // modelMsg carries active model info (type "model").
 type modelMsg struct {
@@ -105,7 +105,7 @@ type modelMsg struct {
 	ContextLimit    int64  `json:"context_limit"`
 }
 
-func (modelMsg) SystemMsgType() string { return "model" }
+func (modelMsg) SystemMsgType() string { return string(protocol.MsgTypeModel) }
 
 // modelListMsg carries the full model list (type "model_list").
 // Only sent when models change.
@@ -113,7 +113,7 @@ type modelListMsg struct {
 	Models []protocol.ModelInfo `json:"models"`
 }
 
-func (modelListMsg) SystemMsgType() string { return "model_list" }
+func (modelListMsg) SystemMsgType() string { return string(protocol.MsgTypeModelList) }
 
 // themeMsg carries the active theme name (type "theme").
 // On startup the full Theme is included; on theme changes only the name is sent.
@@ -122,7 +122,7 @@ type themeMsg struct {
 	Theme *theme.Theme `json:"theme,omitempty"`
 }
 
-func (themeMsg) SystemMsgType() string { return "theme" }
+func (themeMsg) SystemMsgType() string { return string(protocol.MsgTypeTheme) }
 
 // themeInfo carries a theme's name and full content for adapters.
 type themeInfo struct {
@@ -137,14 +137,14 @@ type themeListMsg struct {
 	Themes []themeInfo `json:"themes"`
 }
 
-func (themeListMsg) SystemMsgType() string { return "theme_list" }
+func (themeListMsg) SystemMsgType() string { return string(protocol.MsgTypeThemeList) }
 
 // reasoningMsg carries the reasoning level (type "reasoning").
 type reasoningMsg struct {
 	Level int `json:"level"`
 }
 
-func (reasoningMsg) SystemMsgType() string { return "reasoning" }
+func (reasoningMsg) SystemMsgType() string { return string(protocol.MsgTypeReasoningLevel) }
 
 // videoConfigMsg carries the video FPS and resolution (type "video_config").
 type videoConfigMsg struct {
@@ -152,7 +152,7 @@ type videoConfigMsg struct {
 	Res int `json:"res"`
 }
 
-func (videoConfigMsg) SystemMsgType() string { return "video_config" }
+func (videoConfigMsg) SystemMsgType() string { return string(protocol.MsgTypeVideoConfig) }
 
 // mcpMsg communicates MCP initialization progress (type "mcp").
 // The adapter uses these messages to show init progress; overlay closure
@@ -173,7 +173,7 @@ type mcpMsg struct {
 	Error  string `json:"error,omitempty"` // set for "failed"
 }
 
-func (mcpMsg) SystemMsgType() string { return "mcp" }
+func (mcpMsg) SystemMsgType() string { return string(protocol.MsgTypeMCP) }
 
 // sessionMsg carries the session lifecycle state (type "session").
 //
@@ -187,7 +187,7 @@ type sessionMsg struct {
 	State string `json:"state"`
 }
 
-func (sessionMsg) SystemMsgType() string { return "session" }
+func (sessionMsg) SystemMsgType() string { return string(protocol.MsgTypeSession) }
 
 // steeringMsg reports the lifecycle of steering — prompts a user sends while a
 // task is already running (type "steering"). See session_steering.go for the
