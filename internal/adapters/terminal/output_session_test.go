@@ -16,7 +16,7 @@ func TestSessionReadyFrameClosesInitOverlay(t *testing.T) {
 	}
 
 	// Session-ready frame arrives.
-	w.handleSystemMsg(`{"type":"session","data":{"state":"ready"}}`)
+	w.handleSystemFrame(`{"type":"session","data":{"state":"ready"}}`)
 
 	if !w.ConsumeSessionReady() {
 		t.Fatal("ConsumeSessionReady should be true after the session-ready frame")
@@ -32,8 +32,8 @@ func TestSessionReadyFrameClosesInitOverlay(t *testing.T) {
 func TestSessionReadyIgnoresOtherStates(t *testing.T) {
 	w := NewTerminalOutput(DefaultStyles())
 
-	w.handleSystemMsg(`{"type":"session","data":{"state":"initializing"}}`)
-	w.handleSystemMsg(`{"type":"session","data":{}}`)
+	w.handleSystemFrame(`{"type":"session","data":{"state":"initializing"}}`)
+	w.handleSystemFrame(`{"type":"session","data":{}}`)
 
 	if w.ConsumeSessionReady() {
 		t.Fatal("ConsumeSessionReady should be false for non-ready states")
@@ -51,12 +51,12 @@ func TestSessionClosedFrameIsTerminal(t *testing.T) {
 		t.Fatal("ConsumeSessionClosed should be false before the terminal frame")
 	}
 
-	w.handleSystemMsg(`{"type":"session","data":{"state":"ready"}}`)
+	w.handleSystemFrame(`{"type":"session","data":{"state":"ready"}}`)
 	if w.ConsumeSessionClosed() {
 		t.Fatal("the ready frame must not report the session as over")
 	}
 
-	w.handleSystemMsg(`{"type":"session","data":{"state":"closed"}}`)
+	w.handleSystemFrame(`{"type":"session","data":{"state":"closed"}}`)
 	if !w.ConsumeSessionClosed() {
 		t.Fatal("ConsumeSessionClosed should be true after the terminal frame")
 	}
@@ -72,14 +72,14 @@ func TestSessionClosedFrameIsTerminal(t *testing.T) {
 func TestMCPDoneDoesNotCloseOverlay(t *testing.T) {
 	w := NewTerminalOutput(DefaultStyles())
 
-	w.handleSystemMsg(`{"type":"mcp","data":{"status":"done"}}`)
+	w.handleSystemFrame(`{"type":"mcp","data":{"status":"done"}}`)
 
 	if w.ConsumeSessionReady() {
 		t.Fatal("ConsumeSessionReady should NOT be triggered by the mcp done frame")
 	}
 
 	// The real ready frame still works afterwards.
-	w.handleSystemMsg(`{"type":"session","data":{"state":"ready"}}`)
+	w.handleSystemFrame(`{"type":"session","data":{"state":"ready"}}`)
 	if !w.ConsumeSessionReady() {
 		t.Fatal("ConsumeSessionReady should be true after the session-ready frame")
 	}
@@ -92,8 +92,8 @@ func TestConsumeSessionReadyClearsStaleAuths(t *testing.T) {
 	w := NewTerminalOutput(DefaultStyles())
 
 	// An auth prompt was pending when init settled.
-	w.handleSystemMsg(`{"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://example.com/auth"}}`)
-	w.handleSystemMsg(`{"type":"session","data":{"state":"ready"}}`)
+	w.handleSystemFrame(`{"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://example.com/auth"}}`)
+	w.handleSystemFrame(`{"type":"session","data":{"state":"ready"}}`)
 
 	if !w.ConsumeSessionReady() {
 		t.Fatal("ConsumeSessionReady should report ready")
@@ -116,7 +116,7 @@ func TestTaskStartEdgeIsOneShotPerTurn(t *testing.T) {
 		t.Fatal("ConsumeTaskStarted should be false before any task frame")
 	}
 
-	w.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1}}`)
+	w.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1}}`)
 	if !w.ConsumeTaskStarted() {
 		t.Fatal("the start of a turn did not report a start edge")
 	}
@@ -125,14 +125,14 @@ func TestTaskStartEdgeIsOneShotPerTurn(t *testing.T) {
 	}
 
 	// A later step of the same run is not a new turn.
-	w.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":2}}`)
+	w.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":2}}`)
 	if w.ConsumeTaskStarted() {
 		t.Error("a running turn's progress frame reported a new start")
 	}
 
 	// The next run is.
-	w.handleSystemMsg(`{"type":"task","data":{"in_progress":false}}`)
-	w.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1}}`)
+	w.handleSystemFrame(`{"type":"task","data":{"in_progress":false}}`)
+	w.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1}}`)
 	if !w.ConsumeTaskStarted() {
 		t.Error("the next turn did not report a start edge")
 	}

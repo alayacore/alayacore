@@ -56,7 +56,7 @@ func TestSpaceKeyTogglesFold(t *testing.T) {
 
 func TestSpaceKeyDoesNothingInInputWindow(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 
 	// Add a window with content
 	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", "Hello world")

@@ -102,7 +102,7 @@ func (r *textRenderer) AppendFromFrame(_ string, value string) {
 	// top later, when BuildInner returns (bodyStyled) — never here — so
 	// the incremental path stays ANSI-free and O(delta).
 	if r.plainContent() && len(r.wrappedLines) > 0 && r.cacheWidth > 0 {
-		// stripANSI only (no expandTabs here): tabs are expanded per
+		// stripANSI only (no expandTabs here): tabs are unfolded per
 		// original line inside wrapVisualLines, so incremental and full
 		// re-wrap agree on tab columns even when a delta starts with '\t'.
 		r.wrappedLines = appendDeltaToVisualLines(r.wrappedLines, stripANSI(value), r.cacheWidth)
@@ -204,7 +204,7 @@ func (r *textRenderer) ToggleMarkdownMode() bool {
 // pending streaming deltas folded in. It does NOT store the merge — the
 // deltas stay separate until mergeParts folds them for good.
 //
-// This is the read path, not a test helper: BuildCollapsed derives a folded
+// This is the read path, not a test helper: BuildFolded derives a folded
 // summary from it (one call per frame while a text window streams), as does
 // Window.RawContent and the markdown tail probe.
 func (r *textRenderer) rawContent() string {
@@ -322,7 +322,7 @@ func plainSummaryCounts(s string) (summaryCounts, bool) {
 // While the counts cover every byte of raw, prepareContent has nothing to do — a
 // tab, a carriage return and an escape each retire them — so the content is raw
 // itself and the price is the counts. Those are the passes over the message this
-// exists to avoid: on 128 KB, measure is 38μs of a 46μs BuildCollapsed,
+// exists to avoid: on 128 KB, measure is 38μs of a 46μs BuildFolded,
 // prepareContent's two scans are 2.7μs more, and escapedWidth counts the line
 // breaks in a third.
 func (r *textRenderer) summaryContent(raw string) summaryPrice {
@@ -373,7 +373,7 @@ func (r *textRenderer) plainContent() bool {
 // dim Body color. Each returned line is one terminal row (no '\n'
 // inside) with a continuation mark: rows of the same original line join
 // without '\n' (soft wrap); rows starting a new original line are
-// separated by hard '\n'. lineCount is the window's expanded height
+// separated by hard '\n'. lineCount is the window's unfolded height
 // (len(lines) + 1): the content rows plus the labeled rule that opens
 // them.
 func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
@@ -396,12 +396,12 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	// The wrap reads one string, so the deltas are folded for good.
 	r.mergeParts()
 
-	// stripANSI only — tabs are expanded per original line inside
+	// stripANSI only — tabs are unfolded per original line inside
 	// wrapVisualLines so the full path matches the incremental path.
 	content := stripANSI(r.content)
 	if r.mdMode {
 		// Markdown table transform (toggled with 'r'). Tabs inside table
-		// lines are expanded per original line by the parser itself, so
+		// lines are unfolded per original line by the parser itself, so
 		// column widths match what the terminal will render; the padded
 		// output contains no tabs, leaving wrapVisualLines' expandTabs a
 		// no-op. Cells are wrapped by the transform itself, so no row ever
@@ -415,9 +415,9 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	return r.bodyStyled(r.wrappedLines, styles), len(r.wrappedLines) + 1
 }
 
-// BuildCollapsed returns the single-line collapsed form: the label column, then a
+// BuildFolded returns the single-line folded form: the label column, then a
 // summary of the content — "REASONING  the head of the message…its tail" — cut to
-// fit width minus collapsedPrefixWidth, the arrow and the space after it.
+// fit width minus foldedPrefixWidth, the arrow and the space after it.
 //
 // The summary is head + "…" + tail, not the tail alone: the head carries the topic
 // of the message and the tail carries where it has got to, which in a window that
@@ -430,26 +430,26 @@ func (r *textRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 // streaming delta previews, and lives in toolRenderer.
 //
 // AT/AR: the label is styled (bold + muted) and the content summary is
-// muted — the collapsed header is UI chrome, while the expanded body
+// muted — the folded header is UI chrome, while the unfolded body
 // stays plain text in normal mode (dimmed Body color under overlays).
-// The collapsed preview always shows the RAW content
+// The folded preview always shows the RAW content
 // (never the markdown table transform — the preview is one line and
-// markdown state only affects expanded rendering).
+// markdown state only affects unfolded rendering).
 //
 // The marker is rendered with styles.Status (the dim color) to separate it from
-// the content, which uses the muted foreground — renderCollapsedLineWithEllipsis
+// the content, which uses the muted foreground — renderFoldedLineWithEllipsis
 // splits the row at the marker's offset to do it. toolRenderer dims its own
 // markers, middle and leading, at the places it builds them.
-func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
+func (r *textRenderer) BuildFolded(width int, styles *Styles) (string, int) {
 	label := labelForTag(r.tag)
 	line := ""
 	if label != "" {
 		line = padLabel(label)
 	}
-	summaryWidth := max(0, width-collapsedPrefixWidth-CollapsedLabelWidth)
-	summary, ellipsisOffset := collapsedSummary(r.summaryContent(r.rawContent()), summaryWidth)
+	summaryWidth := max(0, width-foldedPrefixWidth-FoldedLabelWidth)
+	summary, ellipsisOffset := foldedSummary(r.summaryContent(r.rawContent()), summaryWidth)
 	line += summary
-	line = truncateWithSuffix(line, max(0, width-collapsedPrefixWidth)) // safety net
+	line = truncateWithSuffix(line, max(0, width-foldedPrefixWidth)) // safety net
 
 	if label == "" {
 		if styles == nil {
@@ -457,10 +457,10 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 		}
 		return styles.System.Render(line), 1
 	}
-	return renderCollapsedLineWithEllipsis(line, label, ellipsisOffset, r.tag, styles), 1
+	return renderFoldedLineWithEllipsis(line, label, ellipsisOffset, r.tag, styles), 1
 }
 
-// collapsedSummary returns the summary text for the collapsed view and
+// foldedSummary returns the summary text for the folded view and
 // the byte offset of the "…" truncation marker within that summary (or
 // -1 if no marker is present). All non-delta text uses head+tail (so
 // the user sees both topic and latest content); the only leading "…"
@@ -469,7 +469,7 @@ func (r *textRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 // It takes the message already priced, because that price is what a renderer
 // keeps as its content grows (summaryContent) and re-deriving either half of it
 // is a pass over the whole message.
-func collapsedSummary(p summaryPrice, summaryWidth int) (string, int) {
+func foldedSummary(p summaryPrice, summaryWidth int) (string, int) {
 	head, tail, truncated := headAndTailParts(p, summaryWidth)
 	switch {
 	case !truncated, tail == "":
@@ -479,7 +479,7 @@ func collapsedSummary(p summaryPrice, summaryWidth int) (string, int) {
 	}
 }
 
-// renderCollapsedLineWithEllipsis styles a collapsed line: the label
+// renderFoldedLineWithEllipsis styles a folded line: the label
 // portion in its type style, the content portion (padding + head) in
 // muted (NOT bold — only the label is bold), the "…" truncation marker
 // in dim, and the tail in muted. If styles is nil, the line is returned
@@ -491,7 +491,7 @@ func collapsedSummary(p summaryPrice, summaryWidth int) (string, int) {
 // muted-only, producing inconsistent visual weight between head and
 // tail. The label is bold by design (it's the "chrome"); the head is
 // content and should match the tail's muted weight.
-func renderCollapsedLineWithEllipsis(line, label string, ellipsisOffset int, tag string, styles *Styles) string {
+func renderFoldedLineWithEllipsis(line, label string, ellipsisOffset int, tag string, styles *Styles) string {
 	labelPart := padLabel(label)
 	// The label column is a byte offset into a line a later truncation may
 	// have shortened into the middle of the column — and the ellipsis it
@@ -547,7 +547,7 @@ func labelForTag(tag string) string {
 // TryLineCount returns the line count from cached wrapped lines (fast path).
 // With incremental append, wrappedLines is kept current during streaming,
 // so this succeeds even after content changes (no cacheValid check).
-// The count is the window's expanded height: the content rows plus the one
+// The count is the window's unfolded height: the content rows plus the one
 // labeled rule that opens it.
 func (r *textRenderer) TryLineCount(width int) (int, bool) {
 	innerWidth := max(0, width)
@@ -586,7 +586,7 @@ func tailParts(content string, maxWidth int) (string, bool) {
 }
 
 // headAndTailParts returns the leading and trailing parts of a message for a
-// collapsed text window (REASONING / ASSISTANT / USER PROMPT) as separate
+// folded text window (REASONING / ASSISTANT / USER PROMPT) as separate
 // strings, plus a flag indicating whether the content was truncated. The
 // middle "…" marker is not included — callers render it themselves with their
 // own Style, which is what lets the marker be dimmed independently.
@@ -656,7 +656,7 @@ func headAndTailParts(p summaryPrice, maxWidth int) (head, tail string, truncate
 //
 // Not tool_handler.go's escapeNewlines, and the two must not be merged: that
 // one also turns a tab into `\t` for a command line shown inline and keeps
-// '\r', while a summary has already had its tabs expanded to spaces
+// '\r', while a summary has already had its tabs unfolded to spaces
 // (prepareContent / flattenDelta) and must not carry a carriage return.
 func escapeBreaks(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "\n", "\\n"), "\r", "")
@@ -672,7 +672,7 @@ func escapedWidth(s string, cells int) int {
 	return cells + 2*strings.Count(s, "\n")
 }
 
-// summaryPrice is one message priced for a collapsed row: the measurement its cuts
+// summaryPrice is one message priced for a folded row: the measurement its cuts
 // spend, and the width that measurement becomes once escapeBreaks has run, which
 // is what "does it all fit" reads. The two are facts about the same string, and a
 // summary that priced the fit against one message and cut another would draw a row
@@ -688,7 +688,7 @@ type summaryPrice struct {
 	escaped int
 }
 
-// priceSummary prices s for a collapsed row.
+// priceSummary prices s for a folded row.
 func priceSummary(s string) summaryPrice {
 	m := measure(s)
 	return summaryPrice{m: m, escaped: escapedWidth(s, m.cells)}
@@ -735,8 +735,8 @@ func firstLine(s string) string {
 	return s
 }
 
-// padLabel left-justifies a collapsed-window label to the fixed label
-// column (CollapsedLabelWidth, display columns) so content lines align
+// padLabel left-justifies a folded-window label to the fixed label
+// column (FoldedLabelWidth, display columns) so content lines align
 // across window types. Longer labels (e.g. "TOOL execute_command") are
 // returned unchanged. Width is measured in display columns (not bytes) —
 // labels may contain multi-byte glyphs such as the tool indicator.
@@ -745,13 +745,13 @@ func padLabel(label string) string {
 		return ""
 	}
 	w := cellWidth(label)
-	if w >= CollapsedLabelWidth {
+	if w >= FoldedLabelWidth {
 		return label
 	}
-	return label + strings.Repeat(" ", CollapsedLabelWidth-w)
+	return label + strings.Repeat(" ", FoldedLabelWidth-w)
 }
 
-// flattenDelta flattens a streaming delta to a single line, expanding
+// flattenDelta flattens a streaming delta to a single line, unfolding
 // tabs first so width accounting matches the final render (expandTabs →
 // TabWidth columns; the width table counts a tab as 0 cells).
 func flattenDelta(delta string) string {
@@ -762,7 +762,7 @@ func flattenDelta(delta string) string {
 
 // compactMediaSummary renders attachment labels as a compact single-line
 // summary. Duplicate media types are counted (for example, "📷1 🎵1") so a
-// collapsed window does not hide the fact that more than one attachment is
+// folded window does not hide the fact that more than one attachment is
 // present.
 func compactMediaSummary(mediaParts []string) string {
 	counts := make(map[string]int, len(mediaParts))
@@ -854,7 +854,7 @@ func (r *userRenderer) Invalidate() {}
 // Wrapping is performed by wrapVisualLines (NOT by a pre-pass of
 // wrapContent): a pre-pass would insert hard '\n' at wrap points and
 // wrapVisualLines would then mistake them for original-line breaks,
-// collapsing soft-wrap semantics. Only genuinely-long SINGLE lines
+// folding soft-wrap semantics. Only genuinely-long SINGLE lines
 // use soft-wrap (their continuation rows join without '\n'); ordinary
 // multi-line content stays multi-line.
 func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLine, int) {
@@ -904,7 +904,7 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	return styleBodyLines(lines, styles), len(lines) + 1
 }
 
-// BuildCollapsed returns the single-line collapsed form: the label column, then a
+// BuildFolded returns the single-line folded form: the label column, then a
 // head + "…" + tail summary of the content — "USER PROMPT 📷2 the head of the
 // prompt…its tail" — cut to fit width minus the arrow. The content summarized is
 // the media badges followed by the text (compactMediaSummary, "📷2 📄1"), so the
@@ -914,7 +914,7 @@ func (r *userRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 //
 // Truncation markers ("…") are rendered with styles.Status to visually
 // separate them from the actual content (muted).
-func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
+func (r *userRenderer) BuildFolded(width int, styles *Styles) (string, int) {
 	textContent := prepareContent(strings.Join(r.textParts, "\n"))
 	textContent = strings.TrimSpace(textContent)
 	mediaSummary := compactMediaSummary(r.mediaParts)
@@ -923,7 +923,7 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	}
 
 	label := padLabel("USER PROMPT")
-	room := max(0, width-collapsedPrefixWidth-cellWidth(label))
+	room := max(0, width-foldedPrefixWidth-cellWidth(label))
 
 	// Combine media + text into a single content string and run head+tail
 	// truncation on it (same rule as all other non-delta text windows).
@@ -945,22 +945,22 @@ func (r *userRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if tail != "" {
 		plainLine += "…" + tail
 	}
-	line := truncateWithSuffix(plainLine, max(0, width-collapsedPrefixWidth)) // safety net
+	line := truncateWithSuffix(plainLine, max(0, width-foldedPrefixWidth)) // safety net
 
-	return collapsedRow{
+	return foldedRow{
 		line: line, label: label, head: head, tail: tail,
 		truncated: truncated, media: mediaSummary,
 	}.style(styles), 1
 }
 
-// collapsedRow is a user window's collapsed line: the plain row as it will be
-// drawn, plus the runs that produced it. userRenderer.BuildCollapsed decides
-// where to cut, collapsedRow.style decides which run each byte belongs to, and
+// foldedRow is a user window's folded line: the plain row as it will be
+// drawn, plus the runs that produced it. userRenderer.BuildFolded decides
+// where to cut, foldedRow.style decides which run each byte belongs to, and
 // the second question can only be answered from the first one's result — so
 // the row travels with its parts instead of the styler re-deriving them from
-// the content. (Splitting the two is also what fits BuildCollapsed back into
+// the content. (Splitting the two is also what fits BuildFolded back into
 // the complexity budget it had outgrown.)
-type collapsedRow struct {
+type foldedRow struct {
 	line      string // plain, already truncated to the row's width
 	label     string // the padded label column; a prefix of line
 	head      string // content kept from the front, after the label
@@ -972,14 +972,14 @@ type collapsedRow struct {
 // style paints the row's runs: the label in the window line's register, the
 // badge run in the attachment style, the text muted, "…" dim.
 //
-// The badges take styles.Attachment — the one style the expanded body draws
-// them in — because the collapsed row and the expanded block show the same
+// The badges take styles.Attachment — the one style the unfolded body draws
+// them in — because the folded row and the unfolded block show the same
 // tokens, and folding must not restyle them (toolNameStyle, window.go, is the
 // same lesson from the other side). The summary is a prefix of the content, so
 // a prefix test on the plain line locates it exactly; when truncation cut into
 // the badge run itself there is no intact run to paint, and the summary stays
 // in the content's muted color rather than showing half a badge in bold.
-func (row collapsedRow) style(styles *Styles) string {
+func (row foldedRow) style(styles *Styles) string {
 	labelStyle := lineStyleForTag(tagUserText, styles)
 	if len(row.line) <= len(row.label) {
 		return labelStyle.Render(row.line)
@@ -1030,11 +1030,11 @@ func (row collapsedRow) style(styles *Styles) string {
 
 // toolRenderer handles tool call windows that show input and optional output.
 type toolRenderer struct {
-	isUF   bool   // true for UF-only windows (no prior AF frame)
-	name   string // tool name (e.g. "read_file")
-	input  string // formatted tool call input (complete, from AF)
-	output string // tool execution output
-	status ToolStatus
+	isUF      bool   // true for UF-only windows (no prior AF frame)
+	name      string // tool name (e.g. "read_file")
+	toolInput string // the call's arguments, formatted (complete, from AF) (complete, from AF)
+	output    string // tool execution output
+	status    ToolStatus
 
 	// deltaBuffer accumulates partial JSON from Af frames during streaming.
 	// Not appended to window content — rendered as a one-line preview
@@ -1047,11 +1047,11 @@ func (r *toolRenderer) Tag() string { return wire.TagAssistantF }
 func (r *toolRenderer) ToolInfo() *ToolInfo {
 	return &ToolInfo{
 		Name:  r.name,
-		Input: r.input,
+		Input: r.toolInput,
 	}
 }
 
-// setName, setInput, setOutput and the delta writer below are the only things that
+// setName, setToolInput, setOutput and the delta writer below are the only things that
 // assign a tool renderer's drawn fields, and each one repairs what it is given.
 // That is what makes "a Window's content is well-formed UTF-8" hold structurally
 // rather than by every caller remembering: the fields are written in four places
@@ -1059,7 +1059,7 @@ func (r *toolRenderer) ToolInfo() *ToolInfo {
 // fails TestEveryContentIngressDrawsWellFormedUTF8.
 func (r *toolRenderer) setName(s string) { r.name = sanitizeUTF8(s) }
 
-func (r *toolRenderer) setInput(s string) { r.input = sanitizeUTF8(s) }
+func (r *toolRenderer) setToolInput(s string) { r.toolInput = sanitizeUTF8(s) }
 
 func (r *toolRenderer) setOutput(s string) { r.output = sanitizeUTF8(s) }
 
@@ -1069,7 +1069,7 @@ func (r *toolRenderer) AppendFromFrame(_ string, value string) {
 	if r.isUF {
 		r.setOutput(value)
 	} else {
-		r.setInput(value)
+		r.setToolInput(value)
 	}
 }
 
@@ -1110,7 +1110,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	var call string
 	if r.deltaBuffer != "" {
 		// Arguments still streaming in — one-line preview showing the
-		// LATEST chunk: like every other collapsed/delta summary, keep the
+		// LATEST chunk: like every other folded/delta summary, keep the
 		// tail of the delta (new JSON arrives at the tail) and mark the
 		// truncated head with a leading "…" (never a trailing ellipsis).
 		deltaContent := flattenDelta(r.deltaBuffer)
@@ -1126,13 +1126,13 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 		case "edit_file":
 			// edit_file's input is a real diff (the model emits -/+
 			// prefixed rows) — colored per row by RenderDiffContent.
-			call = RenderDiffContent(r.input, r.name, styles)
+			call = RenderDiffContent(r.toolInput, r.name, styles)
 		default:
 			// Everything else — including write_file, whose input is the
 			// RAW file content being written (not a diff; - / + prefixed
 			// lines there are literal content and must stay plain in
 			// normal mode; dimmed under overlays by styleBodyLines).
-			call = renderToolArgLine(r.name, defaultToolRender(r.input, r.name), styles)
+			call = renderToolArgLine(r.name, defaultToolRender(r.toolInput, r.name), styles)
 		}
 	}
 
@@ -1155,7 +1155,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 	return styleBodyLines(lines, styles), len(lines) + 1
 }
 
-// BuildCollapsed returns the single-line collapsed form for tool windows:
+// BuildFolded returns the single-line folded form for tool windows:
 // "TOOL CALL ⠋    execute_command lscpu…" — bold TOOL CALL + status
 // indicator (rotating spinner while streaming/executing, ✓/✗ when done,
 // all in the muted + bold label color) in the fixed label column, then
@@ -1163,7 +1163,7 @@ func (r *toolRenderer) BuildInner(width int, _ bool, styles *Styles) ([]visualLi
 // delta preview tail, ellipsis at the line start in dim), truncated to
 // fit width minus arrow. No wrapping is performed — only the first
 // input line is read.
-func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
+func (r *toolRenderer) BuildFolded(width int, styles *Styles) (string, int) {
 	if styles == nil {
 		return "", 1
 	}
@@ -1171,13 +1171,13 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	// so the whole summary uses the muted color. An over-long first line
 	// keeps its tail with a leading "…" (dim) like every other summary.
 	if r.isUF && r.name == "" {
-		return renderUFOnlyCollapsed(r, width, styles), 1
+		return renderUFOnlyFolded(r, width, styles), 1
 	}
 
 	labelStyle := lineStyleForTag(r.Tag(), styles)
 	dot, dotStyle := r.status.statusDot(labelStyle)
 
-	inputFirst, inputFirstHasEllipsis := r.toolCollapsedInput(width, dot)
+	inputFirst, inputFirstHasEllipsis := r.toolFoldedInput(width, dot)
 
 	labelPart := padLabel(toolLabelWithIndicator(dot))
 	line := labelPart
@@ -1187,18 +1187,18 @@ func (r *toolRenderer) BuildCollapsed(width int, styles *Styles) (string, int) {
 	if inputFirst != "" {
 		line += " " + inputFirst
 	}
-	line = truncateWithSuffix(line, max(0, width-collapsedPrefixWidth))
+	line = truncateWithSuffix(line, max(0, width-foldedPrefixWidth))
 
-	return renderToolCollapsedLine(line, labelStyle, dotStyle, dot, r.name, inputFirstHasEllipsis, styles), 1
+	return renderToolFoldedLine(line, labelStyle, dotStyle, dot, r.name, inputFirstHasEllipsis, styles), 1
 }
 
-// renderUFOnlyCollapsed renders the collapsed view for UF-only tool
+// renderUFOnlyFolded renders the folded view for UF-only tool
 // windows (no tool name, no AF frame): plain muted text with head+tail
 // truncation (same as text windows) so the user sees both the topic and
 // the latest content.
-func renderUFOnlyCollapsed(r *toolRenderer, width int, styles *Styles) string {
+func renderUFOnlyFolded(r *toolRenderer, width int, styles *Styles) string {
 	first := firstLine(prepareContent(r.output))
-	head, tail, truncated := headAndTailParts(priceSummary(first), max(0, width-collapsedPrefixWidth))
+	head, tail, truncated := headAndTailParts(priceSummary(first), max(0, width-foldedPrefixWidth))
 	var sb strings.Builder
 	if truncated && tail != "" {
 		sb.WriteString(styles.System.Render(head))
@@ -1210,36 +1210,36 @@ func renderUFOnlyCollapsed(r *toolRenderer, width int, styles *Styles) string {
 	return sb.String()
 }
 
-// toolCollapsedInput returns the input portion that follows the tool
-// name in the collapsed view (either the streaming delta preview tail
+// toolFoldedInput returns the input portion that follows the tool
+// name in the folded view (either the streaming delta preview tail
 // or the FIRST LINE of the completed input — a tool's argument block can be
 // long, so its first line is the whole of what a one-row summary can promise,
 // and that is the rule for every tool). A line a handler put below the first —
-// an execute_command annotation — is therefore drawn in the expanded body only.
+// an execute_command annotation — is therefore drawn in the unfolded body only.
 // The second return value is true when the input was truncated and has a
 // leading "…" marker.
-func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) {
+func (r *toolRenderer) toolFoldedInput(width int, dot string) (string, bool) {
 	if r.deltaBuffer != "" {
 		// Streaming delta preview: keep the LATEST chunk's tail (new JSON
 		// arrives at the tail) with the ellipsis at the line START, exactly
-		// like the collapsed text windows — the tail shows what just
+		// like the folded text windows — the tail shows what just
 		// arrived, "…" marks the truncated head (rendered dim). Room is
 		// everything after the label column + tool name + separator space.
 		prefix := padLabel(toolLabelWithIndicator(dot))
 		if r.name != "" {
 			prefix += r.name + " "
 		}
-		room := max(0, width-collapsedPrefixWidth-cellWidth(prefix))
+		room := max(0, width-foldedPrefixWidth-cellWidth(prefix))
 		tail, hasEllipsis := tailParts(flattenDelta(r.deltaBuffer), room-1)
 		if hasEllipsis {
 			return "…" + tail, true
 		}
 		return tail, false
 	}
-	if r.input == "" {
+	if r.toolInput == "" {
 		return "", false
 	}
-	inputFirst := firstLine(prepareContent(r.input))
+	inputFirst := firstLine(prepareContent(r.toolInput))
 	// The input's first line is usually "name: args". The tool name is
 	// shown right after the label column, so strip the repeated prefix
 	// ("TOOL CALL ⠋ execute_command lscpu", not "execute_command:
@@ -1252,8 +1252,8 @@ func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) 
 	return inputFirst, false
 }
 
-// renderToolCollapsedLine applies per-segment styling to a tool window's
-// collapsed line. The window line's own chrome — the "TOOL CALL" label and
+// renderToolFoldedLine applies per-segment styling to a tool window's
+// folded line. The window line's own chrome — the "TOOL CALL" label and
 // the status indicator — takes labelStyle, the single style the whole line
 // is drawn in (see lineStyleForTag); the separator space and the
 // label-column padding are plain (they are spaces); the tool name takes
@@ -1262,16 +1262,16 @@ func (r *toolRenderer) toolCollapsedInput(width int, dot string) (string, bool) 
 // true).
 //
 // The name is the one glyph on the row that is not the line's style, and it
-// has to be the same style the expanded row paints it with: see
+// has to be the same style the unfolded row paints it with: see
 // toolNameStyle.
 //
-// Every offset here is a position in the line as BuildCollapsed BUILT it, and
+// Every offset here is a position in the line as BuildFolded BUILT it, and
 // the line it receives has been through truncateWithSuffix since — so each one
 // goes through cut (runeBoundary) before it is used, and the name segment is
 // measured against the line rather than against `name`, which the truncation
 // may have shortened (a 32-column pane does it to "execute_command"). See
 // runeBoundary for what an unaligned offset costs.
-func renderToolCollapsedLine(
+func renderToolFoldedLine(
 	line string,
 	labelStyle, dotStyle Style,
 	dot, name string,
@@ -1309,7 +1309,7 @@ func renderToolCollapsedLine(
 	}
 
 	// Label column padding (plain spaces) + the tool name. The name takes
-	// toolNameStyle — the same style the expanded line paints it with — so
+	// toolNameStyle — the same style the unfolded line paints it with — so
 	// that folding a window does not repaint it; the padding around it is
 	// part of the label column and moves with the line.
 	padEnd := cut(contentStart)
@@ -1370,9 +1370,9 @@ func (r *toolRenderer) previewOutput(innerWidth int, styles *Styles) string {
 	// Flatten to a single line.
 	out := strings.ReplaceAll(r.output, "\n", " ")
 	out = strings.ReplaceAll(out, "\r", "")
-	// Expand tabs BEFORE truncation so width accounting matches the final
+	// Unfold tabs BEFORE truncation so width accounting matches the final
 	// render (expandTabs → TabWidth columns): the width table counts a tab
-	// as 0 cells, so truncating raw tabs would let the expanded preview
+	// as 0 cells, so truncating raw tabs would let the unfolded preview
 	// overflow the window and soft-wrap at the terminal.
 	out = expandTabs(out)
 	// Tail kept with a leading ellipsis (dim) when it does not fit.
@@ -1403,7 +1403,7 @@ func defaultToolRender(input, name string) string {
 	return content
 }
 
-// renderToolArgLine renders a tool call's argument block for the expanded window
+// renderToolArgLine renders a tool call's argument block for the unfolded window
 // body. content is the block as defaultToolRender produced it.
 //
 // execute_command's block is the command and, at most, one annotation the

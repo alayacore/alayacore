@@ -100,7 +100,7 @@ func RenderDiffContent(content, name string, styles *Styles) string {
 }
 
 // prepareContent normalizes content for rendering by stripping ANSI escape
-// sequences and expanding tabs to spaces (8-space width).
+// sequences and unfolding tabs to spaces (8-space width).
 func prepareContent(s string) string {
 	s = stripANSI(s)
 	s = expandTabs(s)

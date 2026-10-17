@@ -15,7 +15,7 @@ import (
 // testFrame builds the frame a session sends for a content window.
 //
 // This package names windows by display tag (AT/AR/UT); the wire stopped carrying
-// those when content frames collapsed to UX/AX, so a display tag is mapped back
+// those when content frames folded to UX/AX, so a display tag is mapped back
 // to the wire tag and the content kind it travels with now, and the history id
 // goes in the item. A wire tag (AF/UF) means the content is already the JSON body
 // the frame carries.
@@ -59,17 +59,17 @@ func TestRealAppWrappedLineContinuity(t *testing.T) {
 
 	out := NewTerminalOutput(DefaultStyles())
 	terminal := NewTerminalWithTheme(out, nopWriteCloser{}, nil, width, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.out.SetWindowWidth(width)
+	terminal.out.SetScreenWidth(width)
 
-	writeTool := func(command string, expand bool) string {
+	writeTool := func(command string, unfold bool) string {
 		af := encodeFrame(wire.TagAssistantF, wiretest.ToolInput("t1", "t1", "execute_command",
 			json.RawMessage(fmt.Sprintf(`{"command":%q}`, command))))
 		uf := encodeFrame(wire.TagUserF, wiretest.ToolOutputLegacy("t1", `{"id":"t1","content":[],"is_error":false}`))
 		terminal.out.Write(append(af, uf...))
 		terminal.out.FlushPendingDeltas()
-		if expand {
+		if unfold {
 			if wb := terminal.out.WindowBuffer(); wb.WindowCount() > 0 {
-				wb.ToggleFold(0) // expand: window starts folded
+				wb.ToggleFold(0) // unfold: window starts folded
 			}
 		}
 		terminal = terminal.handleDisplayRefresh()

@@ -122,7 +122,7 @@ func TestOutputWriterToolCallStartThenFull(t *testing.T) {
 	// End-to-end test: write TagAssistantF frames through the actual
 	// outputWriter pipeline (Write → processBuffer → writeColored → HandleToolInputEvent).
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	makeStartFD := func(id, name string) []byte {
 		fd, _ := json.Marshal(protocol.ToolInputData{
@@ -248,10 +248,10 @@ func TestToolRendererUfPreviewTruncated(t *testing.T) {
 	// Pending + over-long output (Uf preview) → truncated to a single line.
 	styles := NewStyles(theme.DefaultTheme())
 	tr := &toolRenderer{
-		name:   "execute_command",
-		input:  "command: ls -la",
-		output: strings.Repeat("x", 200),
-		status: ToolStatusPending,
+		name:      "execute_command",
+		toolInput: "command: ls -la",
+		output:    strings.Repeat("x", 200),
+		status:    ToolStatusPending,
 	}
 
 	lines, lineCount := tr.BuildInner(80, false, styles)
@@ -271,10 +271,10 @@ func TestToolRendererUfPreviewShort(t *testing.T) {
 	// Pending + short output (Uf preview) → single line, no truncation.
 	styles := NewStyles(theme.DefaultTheme())
 	tr := &toolRenderer{
-		name:   "execute_command",
-		input:  "command: ls -la",
-		output: " 42%",
-		status: ToolStatusPending,
+		name:      "execute_command",
+		toolInput: "command: ls -la",
+		output:    " 42%",
+		status:    ToolStatusPending,
 	}
 
 	lines, lineCount := tr.BuildInner(80, false, styles)
@@ -296,10 +296,10 @@ func TestToolRendererUfPreviewAuthoritative(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 	long := strings.Repeat("line content that wraps\n", 3)
 	tr := &toolRenderer{
-		name:   "execute_command",
-		input:  "command: ls -la",
-		output: long,
-		status: ToolStatusSuccess,
+		name:      "execute_command",
+		toolInput: "command: ls -la",
+		output:    long,
+		status:    ToolStatusSuccess,
 	}
 
 	_, lineCount := tr.BuildInner(80, false, styles)
@@ -312,17 +312,17 @@ func TestToolRendererUfPreviewAuthoritative(t *testing.T) {
 }
 
 func TestToolRendererUfPreviewTabs(t *testing.T) {
-	// Uf preview containing tabs: tabs must be expanded before truncation
+	// Uf preview containing tabs: tabs must be unfolded before truncation
 	// so width accounting matches the final render (expandTabs = 8 cols).
 	// The width table counts a tab as 0 cells, so truncating raw tabs lets
-	// the expanded preview overflow the window and soft-wrap at the
+	// the unfolded preview overflow the window and soft-wrap at the
 	// terminal (invisible to lineCount, which only counts '\n').
 	styles := NewStyles(theme.DefaultTheme())
 	tr := &toolRenderer{
-		name:   "execute_command",
-		input:  "command: ls -la",
-		output: "\t" + strings.Repeat("x", 100),
-		status: ToolStatusPending,
+		name:      "execute_command",
+		toolInput: "command: ls -la",
+		output:    "\t" + strings.Repeat("x", 100),
+		status:    ToolStatusPending,
 	}
 
 	lines, lineCount := tr.BuildInner(80, false, styles)
@@ -351,10 +351,10 @@ func TestToolRendererUfPreviewFlattensNewlines(t *testing.T) {
 	// current single-line producer) is still flattened to one line.
 	styles := NewStyles(theme.DefaultTheme())
 	tr := &toolRenderer{
-		name:   "execute_command",
-		input:  "command: ls -la",
-		output: "line one\nline two",
-		status: ToolStatusPending,
+		name:      "execute_command",
+		toolInput: "command: ls -la",
+		output:    "line one\nline two",
+		status:    ToolStatusPending,
 	}
 
 	lines, lineCount := tr.BuildInner(80, false, styles)
@@ -373,10 +373,10 @@ func TestToolRendererUfPreviewFillsRemainingWidth(t *testing.T) {
 	// line — like Af's "fill the window" behavior.
 	styles := NewStyles(theme.DefaultTheme())
 	tr := &toolRenderer{
-		name:   "execute_command",
-		input:  "ls",
-		output: strings.Repeat("y", 60),
-		status: ToolStatusPending,
+		name:      "execute_command",
+		toolInput: "ls",
+		output:    strings.Repeat("y", 60),
+		status:    ToolStatusPending,
 	}
 
 	lines, lineCount := tr.BuildInner(80, false, styles)
@@ -398,10 +398,10 @@ func TestToolRendererUfPreviewBlockGlyphs(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 	bar := " 42% [████████░░░░░░░░] 3.2MB/s"
 	tr := &toolRenderer{
-		name:   "execute_command",
-		input:  "wget",
-		output: bar,
-		status: ToolStatusPending,
+		name:      "execute_command",
+		toolInput: "wget",
+		output:    bar,
+		status:    ToolStatusPending,
 	}
 
 	lines, lineCount := tr.BuildInner(80, false, styles)

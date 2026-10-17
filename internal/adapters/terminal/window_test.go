@@ -171,21 +171,21 @@ func TestWindowBufferDiff(t *testing.T) {
 		rendered := wb.GetAll(-1, false)
 		renderedLines := strings.Split(rendered, "\n")
 
-		// New collapsed design: folded windows are a single header line
+		// New folded design: folded windows are a single header line
 		// (fold marker + "TOOL indicator edit_file …") with no border
 		// and no fold-indicator row.
 		if len(renderedLines) != 1 {
-			t.Errorf("Rendered diff has %d lines, should collapse to 1", len(renderedLines))
+			t.Errorf("Rendered diff has %d lines, should fold to 1", len(renderedLines))
 		}
 		if strings.Contains(rendered, "⁝") {
-			t.Error("Collapsed window should not contain the old fold indicator")
+			t.Error("Folded window should not contain the old fold indicator")
 		}
 		if !strings.Contains(stripANSI(rendered), "TOOL CALL") || !strings.Contains(stripANSI(rendered), "edit_file") {
-			t.Errorf("Collapsed diff should show TOOL CALL + tool name, got %q", stripANSI(rendered))
+			t.Errorf("Folded diff should show TOOL CALL + tool name, got %q", stripANSI(rendered))
 		}
 	})
 
-	t.Run("diff window expands when unfolded", func(t *testing.T) {
+	t.Run("diff window unfolds when unfolded", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
 
 		// Create a diff with many lines
@@ -286,7 +286,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		// Toggle fold
 		wb.ToggleFold(0)
 
-		// Second render - should be expanded (Folded=false)
+		// Second render - should be unfolded (Folded=false)
 		rendered2 := wb.GetAll(-1, false)
 		removeCount2 := strings.Count(rendered2, "- ")
 		if removeCount2 != 20 {
@@ -396,7 +396,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "tool-1", Name: "test_tool", Input: json.RawMessage("Tool output")}, 0)
 		wb.AppendOrUpdate(tagAssistantReasoning, "reasoning-1", "Reasoning content")
 
-		// The conversation the reader came for is expanded: the user's own
+		// The conversation the reader came for is unfolded: the user's own
 		// turn (it is the request the answer below it answers).
 		if wb.WindowAt(0).Folded {
 			t.Error("User window should NOT be folded by default")
@@ -405,7 +405,7 @@ func TestWindowBufferDiff(t *testing.T) {
 			t.Error("Assistant window should NOT be folded by default")
 		}
 
-		// The scaffolding around it is collapsed, so a step's tool calls and
+		// The scaffolding around it is folded, so a step's tool calls and
 		// reasoning do not push the conversation off the screen.
 		if !wb.WindowAt(2).Folded {
 			t.Error("Tool window should be folded by default")
@@ -572,12 +572,12 @@ func TestWindowBufferVisibility(t *testing.T) {
 	})
 }
 
-// TestArrivingUserPromptIsExpanded goes through the frame path the adapter
+// TestArrivingUserPromptIsUnfolded goes through the frame path the adapter
 // actually uses — the agent echoes the submitted prompt back as user text
 // frames, and a replayed session arrives the same way — so the default this
 // test pins is the one a user sees after pressing Enter, not just the one
 // AppendOrUpdate applies.
-func TestArrivingUserPromptIsExpanded(t *testing.T) {
+func TestArrivingUserPromptIsUnfolded(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	if err := wire.WriteFrame(out, wire.TagUserX, wiretest.UserText("7", "what is lisp?")); err != nil {
 		t.Fatalf("write user frame: %v", err)
@@ -592,7 +592,7 @@ func TestArrivingUserPromptIsExpanded(t *testing.T) {
 	}
 	w := wb.WindowAt(0)
 	if w.Folded {
-		t.Error("the prompt that just arrived should be expanded")
+		t.Error("the prompt that just arrived should be unfolded")
 	}
 	// Its own line and its content — the request is on screen in full.
 	plain := stripANSI(wb.GetAll(-1, false))

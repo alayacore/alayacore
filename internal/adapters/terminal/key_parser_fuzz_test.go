@@ -40,7 +40,7 @@ func FuzzStringControlBodiesAreNotKeys(f *testing.F) {
 		}
 		for _, fam := range families {
 			stream := fam.head + string(body) + fam.tail
-			var p InputParser
+			var p KeyParser
 			msgs := p.Parse([]byte(stream))
 			msgs = append(msgs, p.Flush()...)
 			for _, m := range msgs {
@@ -62,7 +62,7 @@ func FuzzX10MouseCoordinatesAreNotKeys(f *testing.F) {
 	f.Add(byte('E'), byte('E'), byte('F'))
 	f.Fuzz(func(t *testing.T, a, b, c byte) {
 		stream := string([]byte{0x1b, '[', 'M', a, b, c})
-		var p InputParser
+		var p KeyParser
 		msgs := p.Parse([]byte(stream))
 		msgs = append(msgs, p.Flush()...)
 		for _, m := range msgs {

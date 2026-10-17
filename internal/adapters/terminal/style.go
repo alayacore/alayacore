@@ -80,7 +80,7 @@ func parseHexColor(s string) color.RGBA {
 			if !ok {
 				return c
 			}
-			v |= v << 4 // expand 4-bit to 8-bit
+			v |= v << 4 // unfold 4-bit to 8-bit
 			switch i {
 			case 1:
 				c.R = v

@@ -120,7 +120,7 @@ func TestContentThatIsNotWellFormedIsRepairedNotHeld(t *testing.T) {
 				for _, folded := range []bool{true, false} {
 					var frame string
 					if folded {
-						frame, _ = r.BuildCollapsed(width, styles)
+						frame, _ = r.BuildFolded(width, styles)
 					} else {
 						frame = joinVisualLines(mustBuildInner(r, width, styles))
 					}
@@ -210,8 +210,8 @@ func TestFoldedSummaryIsPricedTheSameWhicheverWay(t *testing.T) {
 
 			for _, width := range widths {
 				for si, styles := range registers {
-					gotLine, gotN := a.BuildCollapsed(width, styles)
-					wantLine, wantN := b.BuildCollapsed(width, styles)
+					gotLine, gotN := a.BuildFolded(width, styles)
+					wantLine, wantN := b.BuildFolded(width, styles)
 					if gotLine != wantLine || gotN != wantN {
 						t.Fatalf("%q split %d width %d register %d:\n  counted:  %q (marker at %d)\n  measured: %q (marker at %d)",
 							content, split, width, si, gotLine, gotN, wantLine, wantN)
@@ -290,8 +290,8 @@ func TestSummaryCountsSurviveAFold(t *testing.T) {
 		ref := &textRenderer{tag: tagAssistantReasoning, content: content}
 		ref.summary.retire()
 		for _, width := range []int{8, 40, 80} {
-			got, _ := r.BuildCollapsed(width, DefaultStyles())
-			want, _ := ref.BuildCollapsed(width, DefaultStyles())
+			got, _ := r.BuildFolded(width, DefaultStyles())
+			want, _ := ref.BuildFolded(width, DefaultStyles())
 			if got != want {
 				t.Errorf("split %d width %d: after a fold the row is %q, want %q", split, width, got, want)
 			}
@@ -335,8 +335,8 @@ func TestSummaryCountsAreNotTrustedForContentTheyNeverSaw(t *testing.T) {
 	ref := &textRenderer{tag: tagAssistantReasoning, content: content}
 	ref.summary.retire()
 	for _, width := range []int{8, 40, 80} {
-		got, _ := r.BuildCollapsed(width, DefaultStyles())
-		want, _ := ref.BuildCollapsed(width, DefaultStyles())
+		got, _ := r.BuildFolded(width, DefaultStyles())
+		want, _ := ref.BuildFolded(width, DefaultStyles())
 		if got != want {
 			t.Errorf("width %d: content it never counted gave %q, want %q", width, got, want)
 		}
@@ -352,8 +352,8 @@ func TestSummaryCountsAreNotTrustedForContentTheyNeverSaw(t *testing.T) {
 	ref.AppendFromFrame("", " more")
 	ref.summary.retire()
 	for _, width := range []int{8, 40, 80} {
-		got, _ := r.BuildCollapsed(width, DefaultStyles())
-		want, _ := ref.BuildCollapsed(width, DefaultStyles())
+		got, _ := r.BuildFolded(width, DefaultStyles())
+		want, _ := ref.BuildFolded(width, DefaultStyles())
 		if got != want {
 			t.Errorf("width %d: after appending to content it never counted, got %q, want %q", width, got, want)
 		}

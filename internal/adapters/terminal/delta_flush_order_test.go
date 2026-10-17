@@ -48,7 +48,7 @@ func TestFlushPendingDeltasCreatesWindowsInHistoryIDOrder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for i := range iterations {
 				out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-				out.SetWindowWidth(80)
+				out.SetScreenWidth(80)
 
 				var buf []byte
 				for _, f := range tt.frames {

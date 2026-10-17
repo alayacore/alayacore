@@ -21,8 +21,8 @@ var _ io.WriteCloser = bufferWriteCloser{}
 func TestSubmitDuringRunIsSentForSteering(t *testing.T) {
 	m := newTestTerminal()
 	var sent bytes.Buffer
-	m.streamInput = bufferWriteCloser{&sent}
-	m.input = m.input.WithValue("use Y instead")
+	m.sessionPipe = bufferWriteCloser{&sent}
+	m.promptBox = m.promptBox.WithValue("use Y instead")
 	m.inProgress = true
 
 	m2, cmd := m.handleSubmit()
@@ -47,7 +47,7 @@ func TestSubmitDuringRunIsSentForSteering(t *testing.T) {
 	if !strings.Contains(sent.String(), "use Y instead") {
 		t.Fatalf("the prompt never reached the session: %q", sent.String())
 	}
-	if m2.input.Value() != "" {
-		t.Fatalf("the input box still holds %q after a submit", m2.input.Value())
+	if m2.promptBox.Value() != "" {
+		t.Fatalf("the input box still holds %q after a submit", m2.promptBox.Value())
 	}
 }

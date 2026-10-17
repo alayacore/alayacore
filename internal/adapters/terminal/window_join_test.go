@@ -16,7 +16,7 @@ import (
 // joined — in either register, and never a projection outliving the rows it
 // was built from.
 
-// longBody is content an expanded window wraps into many rows: enough that
+// longBody is content an unfolded window wraps into many rows: enough that
 // joining them is the frame's largest single allocation, and more rows than
 // any viewport below shows.
 const longBody = "a line of assistant text that wraps at eighty columns\n"
@@ -29,7 +29,7 @@ func TestViewportFrameNeverJoinsTheWindow(t *testing.T) {
 	wb.AppendOrUpdate(tagAssistantText, "msg", strings.Repeat(longBody, 200))
 	w := wb.WindowAt(0)
 	if w.Folded {
-		t.Fatal("an assistant text window starts expanded; the test needs many rows")
+		t.Fatal("an assistant text window starts unfolded; the test needs many rows")
 	}
 
 	wb.SetViewportPosition(10, 20)

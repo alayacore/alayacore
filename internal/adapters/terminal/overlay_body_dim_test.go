@@ -4,7 +4,7 @@ package terminal
 // reasoning, user message text, tool input/output) carries NO explicit
 // foreground color in normal mode — it renders in the terminal's default
 // color, exactly like a shell. When an overlay is active (Dimmed styles),
-// the body gains the dim color so expanded window content dims together
+// the body gains the dim color so unfolded window content dims together
 // with the chrome.
 
 import (
@@ -13,7 +13,7 @@ import (
 )
 
 // TestBodyNormalKeepsPlain locks the "terminal default color" contract:
-// with normal styles, expanded body text must contain no ANSI at all.
+// with normal styles, unfolded body text must contain no ANSI at all.
 func TestBodyNormalKeepsPlain(t *testing.T) {
 	styles := DefaultStyles()
 
@@ -37,7 +37,7 @@ func TestBodyNormalKeepsPlain(t *testing.T) {
 	// toolRenderer (plain input/output rows). The "───" separator keeps
 	// its System color even in normal mode — only the body rows must be
 	// ANSI-free.
-	tool := &toolRenderer{name: "execute_command", input: "ls -la", output: "tool output"}
+	tool := &toolRenderer{name: "execute_command", toolInput: "ls -la", output: "tool output"}
 	for _, l := range mustLines(t, tool, styles) {
 		body := stripANSI(l.Text)
 		if body == "ls -la" || body == "tool output" {
@@ -79,7 +79,7 @@ func TestBodyDimmedUnderOverlay(t *testing.T) {
 	}
 
 	// toolRenderer: plain input row + output row, separator stays styled.
-	tool := &toolRenderer{name: "execute_command", input: "ls -la", output: "tool output"}
+	tool := &toolRenderer{name: "execute_command", toolInput: "ls -la", output: "tool output"}
 	lines := mustLines(t, tool, styles)
 	joined := joinVisualLines(lines)
 	if got := stripANSI(joined); !strings.Contains(got, "ls -la") || !strings.Contains(got, "tool output") {
@@ -124,7 +124,7 @@ func TestBodyDimmedStyledRowsNotDoubleWrapped(t *testing.T) {
 
 	// edit_file diff: +/- rows are styled (DiffAdd/DiffRemove → dim);
 	// context rows are plain and must get the Body dim.
-	tr := &toolRenderer{name: "edit_file", input: "edit_file: /tmp/x\n- old\n+ new\n  ctx"}
+	tr := &toolRenderer{name: "edit_file", toolInput: "edit_file: /tmp/x\n- old\n+ new\n  ctx"}
 	lines := mustLines(t, tr, styles)
 	for _, l := range lines {
 		if l.Text == "" {

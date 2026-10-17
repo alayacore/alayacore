@@ -29,11 +29,11 @@ func TestOverlayBoxSpansTerminalWidth(t *testing.T) {
 	if ts.Width != 137 {
 		t.Errorf("theme selector width = %d, want terminal width 137", ts.Width)
 	}
-	hw := NewHelpWindow(styles).WithSize(137, 50)
+	hw := NewHelpOverlay(styles).WithSize(137, 50)
 	if hw.Width != 137 {
 		t.Errorf("help window width = %d, want terminal width 137", hw.Width)
 	}
-	aw := NewAttachmentWindow(styles).WithSize(137, 50)
+	aw := NewAttachmentOverlay(styles).WithSize(137, 50)
 	if aw.Width != 137 {
 		t.Errorf("attachment window width = %d, want terminal width 137", aw.Width)
 	}
@@ -53,8 +53,8 @@ func TestOverlayBoxSpansTerminalWidth(t *testing.T) {
 func TestTabKeepsOverlayAtWideTerminal(t *testing.T) {
 	const W = 137
 	m := newTestTerminal()
-	m.windowWidth = W
-	m.windowHeight = 50
+	m.screenWidth = W
+	m.screenHeight = 50
 	wb := m.out.WindowBuffer()
 	wb.AppendOrUpdate(tagAssistantText, "a1", "assistant answer line one\nline two more content")
 	wb.AppendOrUpdate(tagUserText, "u1", "user prompt here")
@@ -73,7 +73,7 @@ func TestTabKeepsOverlayAtWideTerminal(t *testing.T) {
 	}
 
 	v1 := m.View()
-	if err := s.Render(v1.Content, v1.Cursor, true); err != nil {
+	if err := s.Render(v1.Content, v1.ScreenCursor, true); err != nil {
 		t.Fatal(err)
 	}
 	applyFrame(grid, buf.String(), W)
@@ -82,7 +82,7 @@ func TestTabKeepsOverlayAtWideTerminal(t *testing.T) {
 	mm, _ := m.Update(tab)
 	m = mm.(Terminal)
 	v2 := m.View()
-	if err := s.Render(v2.Content, v2.Cursor, true); err != nil {
+	if err := s.Render(v2.Content, v2.ScreenCursor, true); err != nil {
 		t.Fatal(err)
 	}
 	applyFrame(grid, buf.String(), W)
@@ -106,8 +106,8 @@ func TestTabKeepsOverlayAtWideTerminal(t *testing.T) {
 func TestTabKeepsOverlayNarrowTerminal(t *testing.T) {
 	const W = 50 // narrower than the 60-col box
 	m := newTestTerminal()
-	m.windowWidth = W
-	m.windowHeight = 20
+	m.screenWidth = W
+	m.screenHeight = 20
 	wb := m.out.WindowBuffer()
 	wb.AppendOrUpdate(tagAssistantText, "a1", "assistant answer line one")
 	m.display = m.display.updateContent()
@@ -125,7 +125,7 @@ func TestTabKeepsOverlayNarrowTerminal(t *testing.T) {
 	}
 
 	v1 := m.View()
-	if err := s.Render(v1.Content, v1.Cursor, true); err != nil {
+	if err := s.Render(v1.Content, v1.ScreenCursor, true); err != nil {
 		t.Fatal(err)
 	}
 	applyFrame(grid, buf.String(), W)
@@ -134,7 +134,7 @@ func TestTabKeepsOverlayNarrowTerminal(t *testing.T) {
 	mm, _ := m.Update(tab)
 	m = mm.(Terminal)
 	v2 := m.View()
-	if err := s.Render(v2.Content, v2.Cursor, true); err != nil {
+	if err := s.Render(v2.Content, v2.ScreenCursor, true); err != nil {
 		t.Fatal(err)
 	}
 	applyFrame(grid, buf.String(), W)

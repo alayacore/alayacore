@@ -63,7 +63,7 @@ func TestViewAlwaysFillsScreen(t *testing.T) {
 			out.FlushPendingDeltas()
 
 			m := NewTerminalWithTheme(out, nopWriteCloser{}, &app.Config{}, tc.width, tc.height, theme.DefaultTheme(), nil, "theme-dark")
-			mm, _ := m.Update(WindowSizeMsg{Width: tc.width, Height: tc.height})
+			mm, _ := m.Update(ScreenSizeMsg{Width: tc.width, Height: tc.height})
 			m = mm.(Terminal)
 			for _, r := range tc.type_ {
 				mm, _ := m.Update(KeyPressMsg(Key{Code: r}))

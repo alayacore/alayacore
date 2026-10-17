@@ -167,7 +167,7 @@ func TestCompactMediaSummary(t *testing.T) {
 	}
 }
 
-func TestUserPromptCollapsedMediaSummary(t *testing.T) {
+func TestUserPromptFoldedMediaSummary(t *testing.T) {
 	styles := DefaultStyles()
 	ur := &userRenderer{
 		textParts: []string{"analyze this"},
@@ -178,17 +178,17 @@ func TestUserPromptCollapsedMediaSummary(t *testing.T) {
 		},
 	}
 
-	line, count := ur.BuildCollapsed(100, styles)
+	line, count := ur.BuildFolded(100, styles)
 	if count != 1 {
-		t.Fatalf("collapsed lineCount = %d, want 1", count)
+		t.Fatalf("folded lineCount = %d, want 1", count)
 	}
 	want := "USER PROMPT     📷2 🎵1 analyze this"
 	if got := stripANSI(line); got != want {
-		t.Errorf("BuildCollapsed() = %q, want %q", got, want)
+		t.Errorf("BuildFolded() = %q, want %q", got, want)
 	}
 }
 
-func TestUserPromptCollapsedMediaOnlySummary(t *testing.T) {
+func TestUserPromptFoldedMediaOnlySummary(t *testing.T) {
 	ur := &userRenderer{
 		mediaParts: []string{
 			wire.MediaLabel(wire.KindImage),
@@ -198,17 +198,17 @@ func TestUserPromptCollapsedMediaOnlySummary(t *testing.T) {
 		},
 	}
 
-	line, _ := ur.BuildCollapsed(30, DefaultStyles())
+	line, _ := ur.BuildFolded(30, DefaultStyles())
 	want := "USER PROMPT     📷2 🎵1 🎬1"
 	if got := stripANSI(line); got != want {
-		t.Errorf("BuildCollapsed() = %q, want %q", got, want)
+		t.Errorf("BuildFolded() = %q, want %q", got, want)
 	}
 	if width := cellWidth(stripANSI(line)); width > 28 {
-		t.Errorf("collapsed media summary width = %d, want <= 28", width)
+		t.Errorf("folded media summary width = %d, want <= 28", width)
 	}
 }
 
-func TestUserPromptCollapsedMediaSummaryFitsAndPrioritizesMedia(t *testing.T) {
+func TestUserPromptFoldedMediaSummaryFitsAndPrioritizesMedia(t *testing.T) {
 	ur := &userRenderer{
 		textParts: []string{strings.Repeat("long text ", 10)},
 		mediaParts: []string{
@@ -219,15 +219,15 @@ func TestUserPromptCollapsedMediaSummaryFitsAndPrioritizesMedia(t *testing.T) {
 		},
 	}
 
-	line, _ := ur.BuildCollapsed(34, DefaultStyles())
+	line, _ := ur.BuildFolded(34, DefaultStyles())
 	plain := stripANSI(line)
 	if !strings.Contains(plain, "📷1") {
-		t.Errorf("collapsed media summary should retain the image badge, got %q", plain)
+		t.Errorf("folded media summary should retain the image badge, got %q", plain)
 	}
 	if width := cellWidth(plain); width > 32 {
-		t.Errorf("collapsed media summary width = %d, want <= 32", width)
+		t.Errorf("folded media summary width = %d, want <= 32", width)
 	}
 	if strings.Contains(plain, "\n") {
-		t.Errorf("collapsed media summary must remain one line, got %q", plain)
+		t.Errorf("folded media summary must remain one line, got %q", plain)
 	}
 }

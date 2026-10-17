@@ -23,8 +23,8 @@ func TestSelectorOverlaysDrawOnlyTheFilterBoxRules(t *testing.T) {
 	}{
 		{"model", NewModelSelector(styles).Open().WithSize(60, 24).View().Content},
 		{"theme", NewThemeSelector(styles).Open([]ThemeEntry{{Name: "dark"}}, "dark").WithSize(60, 24).View().Content},
-		{"help", NewHelpWindow(styles).Open().WithSize(72, 24).View().Content},
-		{"attachment", NewAttachmentWindow(styles).Open().WithSize(60, 24).View().Content},
+		{"help", NewHelpOverlay(styles).Open().WithSize(72, 24).View().Content},
+		{"attachment", NewAttachmentOverlay(styles).Open().WithSize(60, 24).View().Content},
 	}
 
 	// The one line that used to sit between the search and the list, in both

@@ -50,13 +50,13 @@ func TestWindowRow0IsNeverSoftWrapped(t *testing.T) {
 	}
 }
 
-// TestCursorFramePadsTheRowsItDraws is the second, at frame level: with the
+// TestWindowCursorFramePadsTheRowsItDraws is the second, at frame level: with the
 // window under the cursor and the fragment starting at its first row, the frame
 // is still exactly the rows as drawn, each padded one joined against the next.
 // The expectation is rebuilt here from the window's own rows rather than read
 // back out of the renderer, so a width taken from the wrong row shows up as a
 // misaligned pad.
-func TestCursorFramePadsTheRowsItDraws(t *testing.T) {
+func TestWindowCursorFramePadsTheRowsItDraws(t *testing.T) {
 	const width = 40
 	wb := makeDiffWindow(t, width)
 	_ = wb.GetAll(-1, false) // full render populates the rows

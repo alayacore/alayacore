@@ -17,7 +17,7 @@ import "testing"
 func TestSingleLineFieldStripsBreaksFromEveryDoor(t *testing.T) {
 	f := NewInputField().WithWidth(40)
 
-	// The paste door (block text, inserted at the cursor).
+	// The paste door (block text, inserted at the caret).
 	if got := f.handlePaste(PasteMsg{Content: "alpha\nbeta\n"}).Value(); got != "alphabeta" {
 		t.Errorf("paste kept a break: %q, want %q", got, "alphabeta")
 	}
@@ -33,7 +33,7 @@ func TestSingleLineFieldStripsBreaksFromEveryDoor(t *testing.T) {
 	}
 
 	// An explicit break request is refused.
-	if got := f.WithValue("ab").CursorEnd().insertNewline().Value(); got != "ab" {
+	if got := f.WithValue("ab").CaretEnd().insertNewline().Value(); got != "ab" {
 		t.Errorf("insertNewline added a break: %q, want %q", got, "ab")
 	}
 }
@@ -53,7 +53,7 @@ func TestMultilineFieldKeepsBreaks(t *testing.T) {
 	if got := f.WithValue("a\nb").Value(); got != "a\nb" {
 		t.Errorf("WithValue lost a break: %q, want %q", got, "a\nb")
 	}
-	if got := f.WithValue("ab").CursorEnd().insertNewline().Value(); got != "ab\n" {
+	if got := f.WithValue("ab").CaretEnd().insertNewline().Value(); got != "ab\n" {
 		t.Errorf("insertNewline did not add a break: %q, want %q", got, "ab\n")
 	}
 }

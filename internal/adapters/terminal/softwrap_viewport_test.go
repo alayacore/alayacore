@@ -32,8 +32,8 @@ func fragmentRows(fragment string) int {
 // extractWindowContent returns the plain text of the content region that
 // follows a window's opening line — the rows after row 0, up to the row
 // that begins the next window (a rule, or a window's own line), which is
-// what now ends a window: an expanded window draws no closing rule. A
-// window's own line opens with "+ " when folded and "- " when expanded,
+// what now ends a window: an unfolded window draws no closing rule. A
+// window's own line opens with "+ " when folded and "- " when unfolded,
 // and the live-edge row above the input box also opens with "- "; all
 // three are chrome, not content, so any of them ends the region.
 //
@@ -279,7 +279,7 @@ func TestDisplayViewSoftWrapRows(t *testing.T) {
 	wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))
 	// Folded reasoning: 1 visual line.
 	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "short reasoning")
-	// User prompt: expanded by default — its own line + 1 content row.
+	// User prompt: unfolded by default — its own line + 1 content row.
 	wb.AppendOrUpdate(tagUserText, "ut-1", "hello user")
 
 	dm := NewDisplayModel(wb, DefaultStyles()).WithHeight(5).updateContent()
@@ -317,11 +317,11 @@ func TestDisplayViewSoftWrapRows(t *testing.T) {
 	}
 }
 
-// TestRenderVirtualCursorHighlight verifies the cursor render colors the
-// one navigational element the window draws — for an expanded window that
+// TestRenderVirtualWindowCursorHighlight verifies the cursor render colors the
+// one navigational element the window draws — for an unfolded window that
 // is the label inside the top rule — and that the highlight appears only
 // while that row is visible.
-func TestRenderVirtualCursorHighlight(t *testing.T) {
+func TestRenderVirtualWindowCursorHighlight(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(40, styles)
 	idx := wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))

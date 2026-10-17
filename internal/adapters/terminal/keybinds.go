@@ -72,8 +72,8 @@ func (m Terminal) handlePaneKeys(msg KeyMsg) (Terminal, Cmd) {
 	switch m.focusedWindow {
 	case focusDisplay:
 		return m.handleDisplayKeys(msg)
-	case focusInput:
-		return m.handleInputKeys(msg)
+	case focusPrompt:
+		return m.handlePromptKeys(msg)
 	}
 	return m, nil
 }
@@ -158,7 +158,7 @@ func (m Terminal) handleConfirmQuit(r *ConfirmResult, fromCmd bool) (Terminal, C
 		return m, m.emitCommand(":" + commands.CommandNameQuit)
 	}
 	if fromCmd {
-		m.input = m.input.WithValue("")
+		m.promptBox = m.promptBox.WithValue("")
 	}
 	m = m.restoreFocusAfterConfirm()
 	return m, nil
@@ -166,7 +166,7 @@ func (m Terminal) handleConfirmQuit(r *ConfirmResult, fromCmd bool) (Terminal, C
 
 func (m Terminal) handleConfirmCancel(r *ConfirmResult, fromCmd bool) (Terminal, Cmd) {
 	if fromCmd {
-		m.input = m.input.WithValue("")
+		m.promptBox = m.promptBox.WithValue("")
 	}
 	m = m.restoreFocusAfterConfirm()
 	if r.Confirmed {
@@ -177,7 +177,7 @@ func (m Terminal) handleConfirmCancel(r *ConfirmResult, fromCmd bool) (Terminal,
 
 func (m Terminal) handleConfirmTool(r *ConfirmResult, fromCmd bool) (Terminal, Cmd) {
 	if fromCmd {
-		m.input = m.input.WithValue("")
+		m.promptBox = m.promptBox.WithValue("")
 	}
 
 	var cmd Cmd
@@ -196,7 +196,7 @@ func (m Terminal) handleConfirmTool(r *ConfirmResult, fromCmd bool) (Terminal, C
 
 func (m Terminal) handleConfirmMCPAuth(r *ConfirmResult, fromCmd bool) (Terminal, Cmd) {
 	if fromCmd {
-		m.input = m.input.WithValue("")
+		m.promptBox = m.promptBox.WithValue("")
 	}
 
 	var cmd Cmd
@@ -240,8 +240,8 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 	filledURL = strings.ReplaceAll(filledURL, "{{redirect_uri}}", encodedRedirect)
 	filledURL = strings.ReplaceAll(filledURL, "{{state}}", state)
 
-	// Capture streamInput for frame writes in phase 2 (it's a pointer, safe to capture)
-	streamInput := m.streamInput
+	// Capture sessionPipe for frame writes in phase 2 (it's a pointer, safe to capture)
+	sessionPipe := m.sessionPipe
 
 	return Sequence(
 		// Phase 1: Notify user and try to open browser
@@ -269,7 +269,7 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 					// Decline only this server — keeps the rest of MCP
 					// init (and any other servers' authorizations) intact,
 					// mirroring the plainio adapter.
-					writeCommand(streamInput, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
+					writeCommand(sessionPipe, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
 					return displayErrorMsg{
 						message: fmt.Sprintf("MCP auth callback error: %v", res.Err),
 					}
@@ -278,7 +278,7 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 				if res.Iss != "" {
 					cmd += " " + res.Iss
 				}
-				writeCommand(streamInput, cmd)
+				writeCommand(sessionPipe, cmd)
 				return nil
 			case <-time.After(mcpAuthTimeout):
 				cleanup()
@@ -297,7 +297,7 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 // keys in handleKeyMsg.
 func (m Terminal) restoreFocusAfterConfirm() Terminal {
 	if m.modelSelector.IsOpen() || m.themeSelector.IsOpen() ||
-		m.helpWindow.IsOpen() || m.mcpInitOverlay.IsOpen() {
+		m.helpOverlay.IsOpen() || m.mcpInitOverlay.IsOpen() {
 		m.display = m.display.WithBlocked(m.isBlocked())
 		m.display = m.display.updateContent()
 		return m
@@ -354,12 +354,12 @@ func (m Terminal) handleSelectorOverlayKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 		tm, cmd := m.handleOverlayModelSelector(msg)
 		return tm, cmd, true
 	}
-	if m.attachmentWindow.IsOpen() {
-		aw := m.attachmentWindow
+	if m.attachmentOverlay.IsOpen() {
+		aw := m.attachmentOverlay
 		t := trackOverlay(aw)
 		var results []Result
 		aw, results = aw.Update(msg)
-		m.attachmentWindow = aw
+		m.attachmentOverlay = aw
 		// Folding applies an AttachmentSelectedMsg — adding the file — before
 		// the focus is restored, which is the order the result's meaning wants:
 		// the selection lands, then the pane the user returns to is decided.
@@ -370,12 +370,12 @@ func (m Terminal) handleSelectorOverlayKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 		}
 		return m, cmd, true
 	}
-	if m.helpWindow.IsOpen() {
-		hw := m.helpWindow
+	if m.helpOverlay.IsOpen() {
+		hw := m.helpOverlay
 		t := trackOverlay(hw)
 		var results []Result
 		hw, results = hw.Update(msg)
-		m.helpWindow = hw
+		m.helpOverlay = hw
 		var cmd Cmd
 		m, cmd = m.foldResults(results)
 		if t.JustClosed(hw) {
@@ -464,7 +464,7 @@ func (m Terminal) handleGlobalKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 		return tm, cmd, true
 
 	case keyCtrlH, keyF1:
-		m = m.openHelpWindow()
+		m = m.openHelpOverlay()
 		return m, nil, true
 	}
 
@@ -477,9 +477,9 @@ func (m Terminal) handleGlobalKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 // If a session file is bound, it submits the save command directly.
 func (m Terminal) handleSaveKey() (Terminal, Cmd) {
 	if m.appConfig.Cfg.Session == "" {
-		m = m.focusInput()
-		m.input = m.input.WithValue(":" + commands.CommandNameSave + " ")
-		m.input = m.input.CursorEnd()
+		m = m.focusPrompt()
+		m.promptBox = m.promptBox.WithValue(":" + commands.CommandNameSave + " ")
+		m.promptBox = m.promptBox.CaretEnd()
 		m.display = m.display.updateContent()
 		return m, nil
 	}
@@ -500,7 +500,7 @@ func (m Terminal) handleSaveKey() (Terminal, Cmd) {
 //     to defeat the same-content check, which forced two diff renders
 //     per Ctrl-R (one for adding the suffix, one for removing it on
 //     the next toggle); and
-//   - the synthetic WindowSizeMsg trick relied on Screen.Resize clearing
+//   - the synthetic ScreenSizeMsg trick relied on Screen.Resize clearing
 //     lastContent, which worked but coupled redraw to resize handling.
 //
 // The single-message approach clears caches directly and produces
@@ -511,10 +511,10 @@ func (m Terminal) handleRedraw() (Terminal, Cmd) {
 	return m, ForceRepaintCmd()
 }
 
-// handleInputKeys handles keys when the input field is focused.
+// handlePromptKeys handles keys when the input field is focused.
 // It processes submit, editor open, attachment, newline, and clear commands,
 // then delegates unrecognized keys to PromptInput.
-func (m Terminal) handleInputKeys(msg KeyMsg) (Terminal, Cmd) {
+func (m Terminal) handlePromptKeys(msg KeyMsg) (Terminal, Cmd) {
 	switch msg.Chord() {
 	case keyEnter:
 		return m.handleSubmit()
@@ -526,19 +526,19 @@ func (m Terminal) handleInputKeys(msg KeyMsg) (Terminal, Cmd) {
 		// than as submissions. Enter keeps submitting — it is the byte the
 		// Enter key produces, and nothing a user pastes can be confused with
 		// it. See docs/tui.md → "Paste and terminal capability".
-		m.input = m.input.InsertNewline()
+		m.promptBox = m.promptBox.InsertNewline()
 		return m, nil
 	case keyCtrlA:
-		m = m.openAttachmentWindow()
+		m = m.openAttachmentOverlay()
 		return m, nil
 	case keyCtrlC:
-		m.input = m.input.WithValue("")
+		m.promptBox = m.promptBox.WithValue("")
 		m = m.clearAttachments()
 		return m, nil
 	}
 
 	var results []Result
-	m.input, results = m.input.Update(msg)
+	m.promptBox, results = m.promptBox.Update(msg)
 	return m.foldResults(results)
 }
 
@@ -548,13 +548,13 @@ func (m Terminal) handleInputKeys(msg KeyMsg) (Terminal, Cmd) {
 
 // handleSubmit sends the current input as the prompt. It is what Enter does,
 // and Shift+Enter does not reach here as a different key on most hosts: the
-// line-break binding is Ctrl+J (see handleInputKeys and docs/tui.md → "Paste and
+// line-break binding is Ctrl+J (see handlePromptKeys and docs/tui.md → "Paste and
 // terminal capability"), which is the only byte that distinguishes the two
 // intentions without asking the terminal for a capability it may not have.
 func (m Terminal) handleSubmit() (Terminal, Cmd) {
 	// The line's grammar decides what it is: a command never travels as prompt
 	// text and prompt text never reaches the command path.
-	sub := parseSubmission(m.input.Value())
+	sub := parseSubmission(m.promptBox.Value())
 	if command, ok := sub.(CommandSubmission); ok {
 		return m.handleCommand(command)
 	}
@@ -581,8 +581,8 @@ func (m Terminal) handleSubmit() (Terminal, Cmd) {
 
 	// Capture resources, clear state, return Cmd for I/O
 	attachments := m.pendingAttachments
-	writer := m.streamInput
-	m.input = m.input.WithValue("")
+	writer := m.sessionPipe
+	m.promptBox = m.promptBox.WithValue("")
 	m = m.clearAttachments()
 
 	// Sending is a request to watch the answer, so the view goes back to the
@@ -616,12 +616,12 @@ func (m Terminal) handleCommand(sub CommandSubmission) (Terminal, Cmd) {
 			return m, nil
 
 		case cmdSuspend:
-			m.input = m.input.WithValue("")
+			m.promptBox = m.promptBox.WithValue("")
 			return m, Suspend
 
 		case cmdHelp:
-			m.input = m.input.WithValue("")
-			m = m.openHelpWindow()
+			m.promptBox = m.promptBox.WithValue("")
+			m = m.openHelpOverlay()
 			return m, nil
 		}
 	}
@@ -634,7 +634,7 @@ func (m Terminal) handleCommand(sub CommandSubmission) (Terminal, Cmd) {
 func (m Terminal) submitCommand(command string, clearInput bool) (Terminal, Cmd) {
 	cmd := m.emitCommand(":" + command)
 	if clearInput {
-		m.input = m.input.WithValue("")
+		m.promptBox = m.promptBox.WithValue("")
 	}
 	return m, Batch(cmd, scheduleTick())
 }

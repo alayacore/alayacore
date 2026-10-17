@@ -4,7 +4,7 @@ package terminal
 //
 // These simulate a realistic long agent session like the one in the
 // user's screenshot: the majority of windows are folded tool calls
-// (AF) and reasoning (AR) collapsed to a single header line, with a
+// (AF) and reasoning (AR) folded to a single header line, with a
 // handful of unfolded user (UT) / assistant (AT) messages.
 
 import (
@@ -25,7 +25,7 @@ import (
 //
 // Total 120 windows: 100 folded and 20 unfolded, which is what the fold
 // defaults in WindowBuffer.AppendOrUpdate produce for these tags (AT and UT
-// open expanded, everything else collapsed). Width 120 like a wide terminal.
+// open unfolded, everything else folded). Width 120 like a wide terminal.
 func makeFoldedSession() *WindowBuffer {
 	styles := NewStyles(theme.DefaultTheme())
 	wb := NewWindowBuffer(120, styles)
@@ -80,10 +80,10 @@ func BenchmarkFoldedSessionGetAll(b *testing.B) {
 	}
 }
 
-// BenchmarkFoldedSessionCursorMovement moves the window cursor through the
+// BenchmarkFoldedSessionWindowCursorMovement moves the window cursor through the
 // session (20 moves per iteration), like pressing j/k repeatedly. Includes
-// the EnsureCursorVisible + updateContent path.
-func BenchmarkFoldedSessionCursorMovement(b *testing.B) {
+// the EnsureWindowCursorVisible + updateContent path.
+func BenchmarkFoldedSessionWindowCursorMovement(b *testing.B) {
 	wb := makeFoldedSession()
 	wb.SetViewportPosition(0, 40)
 	_ = wb.GetTotalLines()
@@ -97,7 +97,7 @@ func BenchmarkFoldedSessionCursorMovement(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 20; j++ {
 			dm = dm.WithWindowCursor(j)
-			dm = dm.EnsureCursorVisible()
+			dm = dm.EnsureWindowCursorVisible()
 			dm = dm.updateContent()
 		}
 	}
@@ -133,8 +133,8 @@ func BenchmarkFoldedToolStreamingDelta(b *testing.B) {
 // The two fold summaries are built differently. A folded tool window shows the
 // first line of its input, so an output delta does not re-read the output at
 // all — that is the 100ns the benchmark above measures. A folded text window
-// shows head + "…" + tail of its whole content (textRenderer.BuildCollapsed →
-// collapsedSummary → headAndTailParts), so deriving that row used to mean
+// shows head + "…" + tail of its whole content (textRenderer.BuildFolded →
+// foldedSummary → headAndTailParts), so deriving that row used to mean
 // reading the message: one pass to price it, then a head cut that stops at its
 // budget and a tail cut that counts back from the end. The pricing pass is gone —
 // the renderer keeps the cells and the line breaks as its content grows — and what
@@ -157,20 +157,20 @@ func BenchmarkFoldedToolStreamingDelta(b *testing.B) {
 //
 // READ THE TWO SIDES AGAINST EACH OTHER, because the inversion has gone back the
 // other way. Folded is the cheaper state in TIME at 2 KB and 128 KB and level with
-// expanded at 32 KB — 3.4μs against 3.9μs, 5.8μs against 6.0μs, 12.6μs against
+// unfolded at 32 KB — 3.4μs against 3.9μs, 5.8μs against 6.0μs, 12.6μs against
 // 14.2μs, the middle pair inside the run-to-run band — and the dearer one in
 // MEMORY above 2 KB: 35 KB against 24 KB, and 134 KB against 73 KB. The memory is
 // the join. A folded frame still folds the streaming delta
 // parts into one string in order to cut a head and a tail out of it, while an
-// expanded frame appends one delta to rows that are already wrapped and draws ≤40
+// unfolded frame appends one delta to rows that are already wrapped and draws ≤40
 // of them. So the folded row is O(budget) in the work it does over the message and
 // O(content) in the bytes it copies to reach them, and the copying is what is left
 // — see docs/internal/virtual-rendering-performance.md → "The fold summary
 // materialized every cluster (found and fixed)" for why a summary that reads the
 // parts directly is not a local change.
 //
-// Each size runs twice, folded and expanded, on identical content, so the
-// expanded side is the control and the slope across the three sizes is the
+// Each size runs twice, folded and unfolded, on identical content, so the
+// unfolded side is the control and the slope across the three sizes is the
 // point rather than any one number. Folding is supposed to be the cheap state,
 // and for a tool window it is; for a text window the pair says which of the two
 // is dearer and by how much, without anyone having to trust a prose figure.
@@ -189,7 +189,7 @@ func BenchmarkFoldedTextStreamingDelta(b *testing.B) {
 	states := []struct {
 		name   string
 		folded bool
-	}{{"folded", true}, {"expanded", false}}
+	}{{"folded", true}, {"unfolded", false}}
 
 	for _, size := range sizes {
 		content := strings.Repeat(line, size.kb*1000/len(line))

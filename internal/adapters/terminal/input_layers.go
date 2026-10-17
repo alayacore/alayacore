@@ -58,8 +58,8 @@ func (m Terminal) inputLayers() []inputLayer {
 
 // anyOverlayOpen reports whether a selector overlay owns the screen.
 func (m Terminal) anyOverlayOpen() bool {
-	return m.attachmentWindow.IsOpen() ||
+	return m.attachmentOverlay.IsOpen() ||
 		m.modelSelector.IsOpen() ||
 		m.themeSelector.IsOpen() ||
-		m.helpWindow.IsOpen()
+		m.helpOverlay.IsOpen()
 }

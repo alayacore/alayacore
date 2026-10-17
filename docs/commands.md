@@ -90,7 +90,7 @@ the command (the TUI confirmation dialogs), or handles it entirely locally:
 |---------|-----|----------|----------|--------|
 | `:quit` / `:q` | Shows confirmation dialog, then sends `quit` and exits when the session ends | Sends `quit`, then exits (code 0) | Sends `quit`, then exits (code 0) | Not interpreted — raw CI/CO pass-through |
 | `:cancel` | Shows confirmation dialog, then forwards `:cancel` to the session | Sent to session | Sent to session | Not interpreted — raw CI/CO pass-through |
-| `:help` | Opens help window | Sent to session (unknown command) | Sent to session (unknown command) | Not interpreted — raw CI/CO pass-through |
+| `:help` | Opens help overlay | Sent to session (unknown command) | Sent to session (unknown command) | Not interpreted — raw CI/CO pass-through |
 | `:suspend` | Suspends process (Ctrl+Z) | Not supported | Not supported | Not interpreted — raw CI/CO pass-through |
 
 `:quit` appears in both tables: the session owns what quitting means — a `quit`

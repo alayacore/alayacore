@@ -21,10 +21,10 @@ import (
 	"time"
 )
 
-// fakeInput is an inputSource a test drives. It answers like the real sources do
+// fakeKeys is an keySource a test drives. It answers like the real sources do
 // — bytes when it has them, an empty slice when its wait ends — and keeps the one
 // fact the protocol depends on observable: whether a read is in flight right now.
-type fakeInput struct {
+type fakeKeys struct {
 	tokens chan []byte   // what next() hands out
 	wait   time.Duration // how long an empty round waits, as a poll timeout does
 
@@ -40,14 +40,14 @@ type fakeInput struct {
 	reads  int
 }
 
-func newFakeInput() *fakeInput {
-	return &fakeInput{
+func newFakeKeys() *fakeKeys {
+	return &fakeKeys{
 		tokens: make(chan []byte, 8),
 		wait:   2 * time.Millisecond,
 	}
 }
 
-func (f *fakeInput) next() ([]byte, error) {
+func (f *fakeKeys) next() ([]byte, error) {
 	f.mu.Lock()
 	f.inRead = true
 	f.reads++
@@ -70,7 +70,7 @@ func (f *fakeInput) next() ([]byte, error) {
 }
 
 // round is the wait itself: a queued token, or nothing once the timeout ends.
-func (f *fakeInput) round() ([]byte, bool, error) {
+func (f *fakeKeys) round() ([]byte, bool, error) {
 	select {
 	case data, ok := <-f.tokens:
 		if !ok {
@@ -83,14 +83,14 @@ func (f *fakeInput) round() ([]byte, bool, error) {
 }
 
 // inARead reports whether a read is in flight.
-func (f *fakeInput) inARead() bool {
+func (f *fakeKeys) inARead() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.inRead
 }
 
 // readCount reports how many reads the loop has started.
-func (f *fakeInput) readCount() int {
+func (f *fakeKeys) readCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.reads
@@ -103,12 +103,12 @@ func (f *fakeInput) readCount() int {
 // single stream and there is no output traffic to interleave, so the split the
 // real loop makes (program.go → inputMsgs) has nothing to prove in this fixture;
 // the priority itself is tested where it can be observed.
-func newParkedProgram(msgs chan Msg, input inputSource) *Program {
+func newParkedProgram(msgs chan Msg, input keySource) *Program {
 	return &Program{
-		parser:       &InputParser{},
+		parser:       &KeyParser{},
 		msgs:         msgs,
 		inputMsgs:    msgs,
-		input:        input,
+		keys:         input,
 		parkedCh:     make(chan struct{}, 1),
 		resumeCh:     make(chan struct{}, 1),
 		inputStopped: make(chan struct{}),
@@ -116,31 +116,31 @@ func newParkedProgram(msgs chan Msg, input inputSource) *Program {
 }
 
 // TestPauseInputWaitsForAnInFlightRead is the guarantee the editor handoff
-// depends on: pauseInput does not return while a read is still in flight, so the
+// depends on: pauseKeys does not return while a read is still in flight, so the
 // terminal it goes on to release cannot still be answering this program's request
 // for input. A pause that set the flag and walked away — which is what the Windows
 // implementation used to do — fails here at the first select.
 func TestPauseInputWaitsForAnInFlightRead(t *testing.T) {
-	input := newFakeInput()
+	input := newFakeKeys()
 	input.entered = make(chan struct{})
 	input.release = make(chan struct{})
 	msgs := make(chan Msg, 16)
 	p := newParkedProgram(msgs, input)
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
-	go p.readInput(ctxDone)
+	go p.readKeys(ctxDone)
 
 	input.tokens <- []byte{'j'}
 	<-input.entered // the loop is inside a read, and staying there until told
 
 	paused := make(chan struct{})
 	go func() {
-		p.pauseInput()
+		p.pauseKeys()
 		close(paused)
 	}()
 	select {
 	case <-paused:
-		t.Fatal("pauseInput returned while a read was still in flight")
+		t.Fatal("pauseKeys returned while a read was still in flight")
 	case <-time.After(50 * time.Millisecond):
 	}
 
@@ -148,10 +148,10 @@ func TestPauseInputWaitsForAnInFlightRead(t *testing.T) {
 	select {
 	case <-paused:
 	case <-time.After(2 * time.Second):
-		t.Fatal("pauseInput did not return after the read finished")
+		t.Fatal("pauseKeys did not return after the read finished")
 	}
 	if input.inARead() {
-		t.Error("pauseInput returned with a read in flight")
+		t.Error("pauseKeys returned with a read in flight")
 	}
 }
 
@@ -161,13 +161,13 @@ func TestPauseInputWaitsForAnInFlightRead(t *testing.T) {
 // program.
 func TestNoReadHappensWhileParked(t *testing.T) {
 	msgs := make(chan Msg, 16)
-	input := newFakeInput()
+	input := newFakeKeys()
 	p := newParkedProgram(msgs, input)
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
-	go p.readInput(ctxDone)
+	go p.readKeys(ctxDone)
 
-	p.pauseInput()
+	p.pauseKeys()
 	// Let the acknowledgement settle, so the count below is the count at the
 	// moment of parking and not one still landing from the round before it.
 	time.Sleep(10 * input.wait)
@@ -183,7 +183,7 @@ func TestNoReadHappensWhileParked(t *testing.T) {
 		t.Errorf("the parked loop started %d more reads; a foreground child would have had its input stolen", got-reads)
 	}
 
-	p.resumeInput()
+	p.resumeKeys()
 	select {
 	case msg := <-msgs:
 		if _, ok := msg.(KeyPressMsg); !ok {
@@ -199,16 +199,16 @@ func TestNoReadHappensWhileParked(t *testing.T) {
 // program afterwards arrive in order once the terminal comes back.
 func TestResumeAfterParkDeliversEveryQueuedByte(t *testing.T) {
 	msgs := make(chan Msg, 16)
-	input := newFakeInput()
+	input := newFakeKeys()
 	p := newParkedProgram(msgs, input)
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
-	go p.readInput(ctxDone)
+	go p.readKeys(ctxDone)
 
-	p.pauseInput()
+	p.pauseKeys()
 	input.tokens <- []byte{':', 'q'}
 	input.tokens <- []byte{'\r'}
-	p.resumeInput()
+	p.resumeKeys()
 
 	var got []string
 	for range 3 {
@@ -242,9 +242,9 @@ func TestResumeAfterParkDeliversEveryQueuedByte(t *testing.T) {
 //
 // It is asserted on parkIfSuspended directly rather than by counting reads through
 // the loop: the extra read the old code allowed can land before a snapshot taken
-// after pauseInput returns, and the test would then pass for the wrong reason.
+// after pauseKeys returns, and the test would then pass for the wrong reason.
 func TestStaleWakeTokenCannotReleaseAPark(t *testing.T) {
-	p := newParkedProgram(make(chan Msg, 16), newFakeInput())
+	p := newParkedProgram(make(chan Msg, 16), newFakeKeys())
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
 
@@ -265,58 +265,58 @@ func TestStaleWakeTokenCannotReleaseAPark(t *testing.T) {
 	select {
 	case <-p.parkedCh:
 	default:
-		t.Error("the park was never acknowledged, so pauseInput could not have waited for it")
+		t.Error("the park was never acknowledged, so pauseKeys could not have waited for it")
 	}
 
-	p.resumeInput()
+	p.resumeKeys()
 	select {
 	case keptReading := <-parked:
 		if keptReading {
 			t.Error("a resume reported the loop finished instead of resuming it")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("resumeInput did not release the parked loop")
+		t.Fatal("resumeKeys did not release the parked loop")
 	}
 }
 
-// TestStopInputWaitsForTheLoopToLeave is the teardown guarantee: when stopInput
+// TestStopInputWaitsForTheLoopToLeave is the teardown guarantee: when stopKeys
 // returns, the loop has finished and is not inside a read, so the terminal can be
 // restored, its files closed, and the process exit — without a console read still
 // waiting for input. The delayed shell prompt this replaces was exactly that wait:
 // os.File.Close does not return until the read in flight on the file does.
 //
-// The evidence is inputStopped, which readInput closes from its own defer as it
+// The evidence is inputStopped, which readKeys closes from its own defer as it
 // leaves the loop, so a closed channel here is the loop reporting that it has
 // stopped reading — the property the handback needs. It is deliberately not a
-// second channel closed by the goroutine that launched readInput: in the program
-// readInput is that goroutine's whole body, so there is nothing after the loop to
+// second channel closed by the goroutine that launched readKeys: in the program
+// readKeys is that goroutine's whole body, so there is nothing after the loop to
 // wait for, and a wrapper channel would close after inputStopped and could only
 // ever be observed through a scheduling window — the race this test used to have.
 func TestStopInputWaitsForTheLoopToLeave(t *testing.T) {
-	input := newFakeInput()
+	input := newFakeKeys()
 	p := newParkedProgram(make(chan Msg, 16), input)
 	ctxDone := make(chan struct{})
-	go p.readInput(ctxDone)
+	go p.readKeys(ctxDone)
 	mustWaitFor(t, "the first read", func() bool { return input.readCount() > 0 })
 
 	// run() returns first, and its defer closes ctxDone; the teardown waits
 	// here, before touching the terminal.
 	close(ctxDone)
 	start := time.Now()
-	p.stopInput()
+	p.stopKeys()
 
 	select {
 	case <-p.inputStopped:
 	default:
-		t.Error("stopInput returned before the input loop reported itself finished")
+		t.Error("stopKeys returned before the input loop reported itself finished")
 	}
 	if input.inARead() {
-		t.Error("a read is still in flight after stopInput: the teardown would wait for input")
+		t.Error("a read is still in flight after stopKeys: the teardown would wait for input")
 	}
 	// Bounded by the source's own wait, not by the timeout that stands in for a
 	// wedged loop: waiting that long on every quit would be its own bug.
 	if elapsed := time.Since(start); elapsed > readLoopTimeout/2 {
-		t.Errorf("stopInput waited %v for a loop that had nowhere to be", elapsed)
+		t.Errorf("stopKeys waited %v for a loop that had nowhere to be", elapsed)
 	}
 }
 
@@ -326,9 +326,9 @@ func TestStopInputWaitsForTheLoopToLeave(t *testing.T) {
 func TestStopInputWithoutInputSourceIsImmediate(t *testing.T) {
 	p := &Program{msgs: make(chan Msg, 1)}
 	start := time.Now()
-	p.stopInput()
+	p.stopKeys()
 	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-		t.Errorf("stopInput with no input source waited %v", elapsed)
+		t.Errorf("stopKeys with no input source waited %v", elapsed)
 	}
 }
 

@@ -112,7 +112,7 @@ func TestThemePreviewStaleTickIgnoredAfterCancel(t *testing.T) {
 	// The stale tick fires late (fires the 150ms timer) — it must be
 	// ignored: handleThemePreview only applies when the tick's ID still
 	// matches, and the close bumped it.
-	msg := pending() // Batch collapses to the single Tick when the inner Cmd is nil
+	msg := pending() // Batch folds to the single Tick when the inner Cmd is nil
 	if batch, ok := msg.(BatchMsg); ok {
 		msg = nil
 		for _, c := range batch {

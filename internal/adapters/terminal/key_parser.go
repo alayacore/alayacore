@@ -17,7 +17,7 @@ package terminal
 // final byte does not delimit), and the OSC/DCS/SOS/PM/APC string controls whose
 // bodies are a color, a capability or a clipboard read. A sequence that a read
 // boundary cuts in half is completed by the next read rather than resolved
-// early (program_input.go → readInput), which is what keeps a split report from
+// early (program_input.go → readKeys), which is what keeps a split report from
 // arriving as its own parameters. The paste-end marker is held by the same rule
 // from inside a paste (takePaste → pasteTailHold): a marker whose head is written
 // into the content rather than kept is a paste that never ends, and every
@@ -217,8 +217,8 @@ type PasteMsg struct {
 	Content string
 }
 
-// WindowSizeMsg is emitted when the terminal size changes.
-type WindowSizeMsg struct {
+// ScreenSizeMsg is emitted when the terminal size changes.
+type ScreenSizeMsg struct {
 	Width, Height int
 }
 
@@ -228,10 +228,10 @@ type FocusMsg struct{}
 // BlurMsg is emitted when the terminal loses focus.
 type BlurMsg struct{}
 
-// InputParser is a streaming key parser. It retains the bytes of an unfinished
+// KeyParser is a streaming key parser. It retains the bytes of an unfinished
 // sequence across Parse calls — an escape sequence, or a multi-byte character a
 // read boundary cut in half — and tracks bracketed paste state.
-type InputParser struct {
+type KeyParser struct {
 	pending []byte // bytes of an unfinished sequence, escape or UTF-8
 	inPaste bool
 	paste   strings.Builder
@@ -252,7 +252,7 @@ const (
 )
 
 // state reports which of the three the parser is in.
-func (p *InputParser) state() parserState {
+func (p *KeyParser) state() parserState {
 	switch {
 	case p.inPaste:
 		return stPaste
@@ -269,11 +269,11 @@ func (p *InputParser) state() parserState {
 // bytes: an open paste with no marker head buffered is unfinished just the same,
 // and a timeout that only saw pending bytes would leave a paste that never closes
 // swallowing every keystroke that follows (see Flush).
-func (p *InputParser) MidSequence() bool { return p.state() != stGround }
+func (p *KeyParser) MidSequence() bool { return p.state() != stGround }
 
 // Parse consumes data and returns the decoded messages. Bytes that form an
 // incomplete sequence are retained internally until the next call.
-func (p *InputParser) Parse(data []byte) []Msg {
+func (p *KeyParser) Parse(data []byte) []Msg {
 	if len(p.pending) > 0 {
 		data = append(p.pending, data...)
 		p.pending = nil
@@ -318,7 +318,7 @@ func (p *InputParser) Parse(data []byte) []Msg {
 			// next read. An incomplete sequence is held here until the loop
 			// resolves it — a timeout of silence, so at least as long as the
 			// escape-sequence timeout and longer if more bytes keep arriving
-			// (program_input.go → readInput) — which is long enough for the
+			// (program_input.go → readKeys) — which is long enough for the
 			// buffer to be read out from under, and a split sequence that
 			// resolved to the tail of the next keystroke instead of its own
 			// would be wrong in a way nobody could reproduce.
@@ -409,12 +409,12 @@ func indexSeq(data []byte, seq string) int {
 // into the content, it is a paste that never ends: the parser stays in paste
 // mode and takes every keystroke after it as pasted text. Held in pending
 // instead, it is completed by the next read like any other sequence a boundary
-// splits (program_input.go → readInput).
+// splits (program_input.go → readKeys).
 //
 // rest is what is left of the read once the paste closed, and spent reports that
 // there is nothing left — the read is over, and whatever the parser is holding
 // needs the next one.
-func (p *InputParser) takePaste(data []byte) (msgs []Msg, rest []byte, spent bool) {
+func (p *KeyParser) takePaste(data []byte) (msgs []Msg, rest []byte, spent bool) {
 	if i := indexSeq(data, pasteEnd); i >= 0 {
 		p.paste.Write(data[:i])
 		return []Msg{PasteMsg{Content: p.closePaste()}}, data[i+len(pasteEnd):], false
@@ -449,7 +449,7 @@ func pasteTailHold(data []byte) int {
 // PasteMsg gets a well-formed string and no consumer has to decide for itself what
 // an ill-formed byte means — the same rule and the same measurements the keystroke
 // path and the render path use (sanitize.go, key_replacement_test.go).
-func (p *InputParser) closePaste() string {
+func (p *KeyParser) closePaste() string {
 	content := sanitizeUTF8(p.paste.String())
 	p.inPaste = false
 	p.paste.Reset()
@@ -995,7 +995,7 @@ var ss3Keys = map[byte]Key{
 // parser in paste mode takes every keystroke that follows as pasted text. That is
 // a dead keyboard, not a lost paste; delivering the collected content and leaving
 // paste mode is what keeps a broken paste from becoming one.
-func (p *InputParser) Flush() []Msg {
+func (p *KeyParser) Flush() []Msg {
 	switch p.state() {
 	case stPaste:
 		// A held marker head is meaningless once the paste is given up: it is

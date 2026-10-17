@@ -39,7 +39,7 @@ func TestCtrlOOpensEditor(t *testing.T) {
 
 func TestCtrlOWithExistingContent(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue("existing input text")
+	terminal.promptBox = terminal.promptBox.WithValue("existing input text")
 
 	msg := KeyPressMsg(Key{
 		Code: 'o',
@@ -57,8 +57,8 @@ func TestCtrlOWithExistingContent(t *testing.T) {
 		t.Fatal("Update returned nil command - should return editor command")
 	}
 
-	if terminal.input.Value() != "existing input text" {
-		t.Errorf("Input should retain existing text before editor opens, got '%s'", terminal.input.Value())
+	if terminal.promptBox.Value() != "existing input text" {
+		t.Errorf("Input should retain existing text before editor opens, got '%s'", terminal.promptBox.Value())
 	}
 }
 
@@ -78,7 +78,7 @@ func TestEditorFinishedMsg(t *testing.T) {
 		t.Fatal("Update returned nil model")
 	}
 
-	inputValue := terminal.input.Value()
+	inputValue := terminal.promptBox.Value()
 	if inputValue != "test content from editor" {
 		t.Errorf("Expected exact content in input, got '%s'", inputValue)
 	}
@@ -101,8 +101,8 @@ func TestEditorFinishedMsgWithWhitespace(t *testing.T) {
 	}
 
 	// Should preserve leading/trailing spaces but strip trailing newlines.
-	if terminal.input.Value() != "  content with leading and trailing spaces  " {
-		t.Errorf("Expected to preserve spaces but strip trailing newline, got '%s'", terminal.input.Value())
+	if terminal.promptBox.Value() != "  content with leading and trailing spaces  " {
+		t.Errorf("Expected to preserve spaces but strip trailing newline, got '%s'", terminal.promptBox.Value())
 	}
 }
 
@@ -123,8 +123,8 @@ func TestEditorFinishedMsgWithMultipleTrailingNewlines(t *testing.T) {
 	}
 
 	// All trailing newlines should be stripped.
-	if terminal.input.Value() != "content with multiple trailing newlines" {
-		t.Errorf("Expected to strip all trailing newlines, got '%s'", terminal.input.Value())
+	if terminal.promptBox.Value() != "content with multiple trailing newlines" {
+		t.Errorf("Expected to strip all trailing newlines, got '%s'", terminal.promptBox.Value())
 	}
 }
 
@@ -145,14 +145,14 @@ func TestEditorFinishedMsgMultiline(t *testing.T) {
 	}
 
 	// Multi-line content should be stored directly in the input value.
-	if terminal.input.Value() != "line1\nline2\nline3" {
-		t.Errorf("Expected multi-line content preserved in input, got '%s'", terminal.input.Value())
+	if terminal.promptBox.Value() != "line1\nline2\nline3" {
+		t.Errorf("Expected multi-line content preserved in input, got '%s'", terminal.promptBox.Value())
 	}
 }
 
 func TestEditorFinishedMsgWithError(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue("original content")
+	terminal.promptBox = terminal.promptBox.WithValue("original content")
 
 	msg := EditorFinishedMsg{
 		Action:  EditorActionUpdateInput,
@@ -178,8 +178,8 @@ func TestEditorFinishedMsgWithError(t *testing.T) {
 		t.Fatal("Update returned nil model")
 	}
 
-	if terminal.input.Value() != "original content" {
-		t.Errorf("Input should remain unchanged on error, got '%s'", terminal.input.Value())
+	if terminal.promptBox.Value() != "original content" {
+		t.Errorf("Input should remain unchanged on error, got '%s'", terminal.promptBox.Value())
 	}
 
 	displayContent := terminal.out.WindowBuffer().GetAll(-1, false)
@@ -334,10 +334,10 @@ func TestWrapContentPreservesANSI(t *testing.T) {
 
 func TestCtrlCClearsInput(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue("test input text")
+	terminal.promptBox = terminal.promptBox.WithValue("test input text")
 
 	// Press Ctrl+C while in input window
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 	msg := KeyPressMsg(Key{Code: 'c', Mod: ModCtrl})
 
 	model, cmd := terminal.Update(msg)
@@ -349,8 +349,8 @@ func TestCtrlCClearsInput(t *testing.T) {
 	}
 
 	// Input should be cleared
-	if terminal.input.Value() != "" {
-		t.Errorf("Input should be cleared after Ctrl+C in input window, got %q", terminal.input.Value())
+	if terminal.promptBox.Value() != "" {
+		t.Errorf("Input should be cleared after Ctrl+C in input window, got %q", terminal.promptBox.Value())
 	}
 
 	// Should not emit any command (cmd should be nil)
@@ -361,7 +361,7 @@ func TestCtrlCClearsInput(t *testing.T) {
 
 func TestCtrlCInDisplayWindow(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue("test input text")
+	terminal.promptBox = terminal.promptBox.WithValue("test input text")
 
 	// Press Ctrl+C while in display window
 	terminal = terminal.focusDisplay()
@@ -381,17 +381,17 @@ func TestCtrlCInDisplayWindow(t *testing.T) {
 	}
 
 	// Input should NOT be cleared
-	if terminal.input.Value() != "test input text" {
-		t.Errorf("Input should NOT be cleared when Ctrl+C is pressed in display window, got %q", terminal.input.Value())
+	if terminal.promptBox.Value() != "test input text" {
+		t.Errorf("Input should NOT be cleared when Ctrl+C is pressed in display window, got %q", terminal.promptBox.Value())
 	}
 }
 
 func TestCtrlGTriggersCancel(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue("test input text")
+	terminal.promptBox = terminal.promptBox.WithValue("test input text")
 
 	// Press Ctrl+G (should work regardless of focus)
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 	msg := KeyPressMsg(Key{Code: 'g', Mod: ModCtrl})
 
 	model, cmd := terminal.Update(msg)
@@ -415,8 +415,8 @@ func TestCtrlGTriggersCancel(t *testing.T) {
 	}
 
 	// Input should remain unchanged
-	if terminal.input.Value() != "test input text" {
-		t.Errorf("Input should remain unchanged after Ctrl+G, got %q", terminal.input.Value())
+	if terminal.promptBox.Value() != "test input text" {
+		t.Errorf("Input should remain unchanged after Ctrl+G, got %q", terminal.promptBox.Value())
 	}
 
 	// Test confirming the dialog by pressing 'y'
@@ -437,10 +437,10 @@ func TestCtrlGTriggersCancel(t *testing.T) {
 
 func TestCtrlUClearsInput(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue("test input text")
+	terminal.promptBox = terminal.promptBox.WithValue("test input text")
 
 	// Press Ctrl+U while in input window
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 	msg := KeyPressMsg(Key{Code: 'u', Mod: ModCtrl})
 
 	model, cmd := terminal.Update(msg)
@@ -452,8 +452,8 @@ func TestCtrlUClearsInput(t *testing.T) {
 	}
 
 	// Input should remain unchanged (Ctrl+U is ignored in input)
-	if terminal.input.Value() != "test input text" {
-		t.Errorf("Input should remain unchanged after Ctrl+U in input window, got %q", terminal.input.Value())
+	if terminal.promptBox.Value() != "test input text" {
+		t.Errorf("Input should remain unchanged after Ctrl+U in input window, got %q", terminal.promptBox.Value())
 	}
 
 	// Should not emit any command
@@ -723,7 +723,7 @@ func TestEKeyDoesNothingWithNoWindow(t *testing.T) {
 
 func TestEKeyDoesNothingInInputWindow(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 
 	// Add a window with content
 	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", "Hello from display")
@@ -749,7 +749,7 @@ func TestEKeyDoesNothingInInputWindow(t *testing.T) {
 
 func TestDisplayEditorFinishedDoesNotPopulateInput(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue("original input")
+	terminal.promptBox = terminal.promptBox.WithValue("original input")
 
 	// Simulate display editor finishing (user viewed content, then quit)
 	msg := EditorFinishedMsg{Action: EditorActionNone, Err: nil}
@@ -762,14 +762,14 @@ func TestDisplayEditorFinishedDoesNotPopulateInput(t *testing.T) {
 	}
 
 	// Input should remain unchanged
-	if terminal.input.Value() != "original input" {
-		t.Errorf("Input should not be modified after display editor closes, got '%s'", terminal.input.Value())
+	if terminal.promptBox.Value() != "original input" {
+		t.Errorf("Input should not be modified after display editor closes, got '%s'", terminal.promptBox.Value())
 	}
 }
 
 func TestDisplayEditorFinishedWithError(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue("original input")
+	terminal.promptBox = terminal.promptBox.WithValue("original input")
 
 	// Simulate display editor finishing with error
 	msg := EditorFinishedMsg{Action: EditorActionNone, Err: fmt.Errorf("editor failed")}
@@ -782,8 +782,8 @@ func TestDisplayEditorFinishedWithError(t *testing.T) {
 	}
 
 	// Input should remain unchanged
-	if terminal.input.Value() != "original input" {
-		t.Errorf("Input should not be modified after display editor error, got '%s'", terminal.input.Value())
+	if terminal.promptBox.Value() != "original input" {
+		t.Errorf("Input should not be modified after display editor error, got '%s'", terminal.promptBox.Value())
 	}
 
 	// Error should be shown in display (check window buffer has error)
@@ -852,7 +852,7 @@ func TestEditorBufferLandsAsNewlines(t *testing.T) {
 	if !ok {
 		t.Fatalf("model = %T, want Terminal", model)
 	}
-	if got := m.input.Value(); got != "first line\nsecond line" {
+	if got := m.promptBox.Value(); got != "first line\nsecond line" {
 		t.Errorf("input value = %q, want %q", got, "first line\nsecond line")
 	}
 	if strings.Contains(m.View().Content, "\r") {

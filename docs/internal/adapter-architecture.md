@@ -15,8 +15,8 @@ The adapter layer handles user interaction and translates between user actions a
 | `FilteredListCore` | Shared filtering, navigation, and overlay logic |
 | `ModelSelector` | Modal for switching between AI models |
 | `ThemeSelector` | Modal for switching between color themes |
-| `HelpWindow` | Overlay listing keybindings and commands with search |
-| `AttachmentWindow` | File/URL attachment picker with directory browser |
+| `HelpOverlay` | Overlay listing keybindings and commands with search |
+| `AttachmentOverlay` | File/URL attachment picker with directory browser |
 | `ConfirmDialog` | Confirmation dialog for tool execution and other actions |
 | `OutputWriter` | Parses frame from session and renders styled content |
 | `WindowBuffer` | Virtual scrolling buffer for display windows |

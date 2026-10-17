@@ -1,6 +1,6 @@
 package terminal
 
-// A collapsed window line is assembled by slicing a plain line at byte offsets
+// A folded window line is assembled by slicing a plain line at byte offsets
 // derived from the pieces it was built from; a truncation between building and
 // slicing moves every piece after the cut (runeBoundary is the fix, and its doc
 // is the account). This file sweeps the widths and names where that happens — a
@@ -18,11 +18,11 @@ import (
 	"unicode/utf8"
 )
 
-// TestCollapsedToolLineKeepsRunesWhole sweeps the widths where the row's
+// TestFoldedToolLineKeepsRunesWhole sweeps the widths where the row's
 // budget runs out inside the tool name, inside the ellipsis, and inside the
 // input, for names of every length around the label column. Every line the
 // renderer returns must be whole UTF-8 and must fit the budget it was given.
-func TestCollapsedToolLineKeepsRunesWhole(t *testing.T) {
+func TestFoldedToolLineKeepsRunesWhole(t *testing.T) {
 	names := []string{
 		"ls", "edit_file", "read_file", "execute_command",
 		"search_content", "a_really_quite_absurdly_long_tool_name",
@@ -39,8 +39,8 @@ func TestCollapsedToolLineKeepsRunesWhole(t *testing.T) {
 	for _, name := range names {
 		for _, input := range inputs {
 			for width := 4; width <= 80; width++ {
-				tr := &toolRenderer{name: name, input: input, status: ToolStatusSuccess}
-				line, count := tr.BuildCollapsed(width, styles)
+				tr := &toolRenderer{name: name, toolInput: input, status: ToolStatusSuccess}
+				line, count := tr.BuildFolded(width, styles)
 				if count != 1 {
 					t.Fatalf("name=%q width=%d: lineCount = %d, want 1", name, width, count)
 				}
@@ -53,9 +53,9 @@ func TestCollapsedToolLineKeepsRunesWhole(t *testing.T) {
 					t.Errorf("name=%q input=%.12q width=%d: the line is not valid UTF-8: %q",
 						name, input, width, plain)
 				}
-				// The collapsed line is one row of a window, which the
+				// The folded line is one row of a window, which the
 				// viewport prefixes with the fold marker and a space.
-				if budget := max(0, width-collapsedPrefixWidth); cellWidth(line) > budget {
+				if budget := max(0, width-foldedPrefixWidth); cellWidth(line) > budget {
 					t.Errorf("name=%q input=%.12q width=%d: the row is %d cells for a %d-cell budget: %q",
 						name, input, width, cellWidth(line), budget, line)
 				}
@@ -64,11 +64,11 @@ func TestCollapsedToolLineKeepsRunesWhole(t *testing.T) {
 	}
 }
 
-// TestCollapsedTextLineKeepsRunesWhole is the same sweep for the text
+// TestFoldedTextLineKeepsRunesWhole is the same sweep for the text
 // windows, whose summary carries a head, an ellipsis and a tail, and whose
 // ellipsis offset is a byte offset into a line a later truncation can
 // shorten.
-func TestCollapsedTextLineKeepsRunesWhole(t *testing.T) {
+func TestFoldedTextLineKeepsRunesWhole(t *testing.T) {
 	contents := []string{
 		"short",
 		strings.Repeat("中文测试内容", 20),
@@ -79,11 +79,11 @@ func TestCollapsedTextLineKeepsRunesWhole(t *testing.T) {
 	for _, content := range contents {
 		for width := 4; width <= 80; width++ {
 			tr := &textRenderer{tag: tagAssistantText, content: content}
-			line, _ := tr.BuildCollapsed(width, styles)
+			line, _ := tr.BuildFolded(width, styles)
 			if !utf8.ValidString(line) {
 				t.Errorf("width=%d content=%.16q: the line is not valid UTF-8: %q", width, content, line)
 			}
-			if budget := max(0, width-collapsedPrefixWidth); cellWidth(line) > budget {
+			if budget := max(0, width-foldedPrefixWidth); cellWidth(line) > budget {
 				t.Errorf("width=%d content=%.16q: the row is %d cells for a %d-cell budget: %q",
 					width, content, cellWidth(line), budget, line)
 			}

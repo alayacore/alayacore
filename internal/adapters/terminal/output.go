@@ -293,7 +293,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 
 	// System tags
 	case wire.TagSystemMsg:
-		to.handleSystemMsg(value)
+		to.handleSystemFrame(value)
 		return
 
 	// Command output (CO) — command result frames
@@ -481,9 +481,9 @@ func (to *outputWriter) FlushPendingDeltas() {
 	to.mu.Unlock()
 }
 
-// handleSystemMsg processes a TagSystemMsg frame.
+// handleSystemFrame processes a TagSystemMsg frame.
 // Called from processBuffer which holds outputWriter.mu.
-func (to *outputWriter) handleSystemMsg(value string) {
+func (to *outputWriter) handleSystemFrame(value string) {
 	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
 		return
@@ -914,8 +914,8 @@ func (to *outputWriter) flushUserContent() {
 	to.pendingUserMaxID = 0
 }
 
-// SetWindowWidth updates the window buffer width.
-func (to *outputWriter) SetWindowWidth(width int) {
+// SetScreenWidth updates the window buffer width.
+func (to *outputWriter) SetScreenWidth(width int) {
 	to.windowBuffer.WithWidth(width)
 }
 

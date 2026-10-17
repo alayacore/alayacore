@@ -65,25 +65,25 @@ func TestUpdateTaskResetsSpeedOnNewTask(t *testing.T) {
 // steps segment.
 func TestStatusBarShowsSpeed(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":1500,"step_tps":12.5,"ttft_ms":1200}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":1500,"step_tps":12.5,"ttft_ms":1200}}`)
 
 	styles := DefaultStyles()
 	terminal := &Terminal{
-		out:              out,
-		display:          NewDisplayModel(out.WindowBuffer(), styles),
-		input:            NewPromptInput(styles),
-		editor:           NewEditor(),
-		modelSelector:    NewModelSelector(styles),
-		themeSelector:    NewThemeSelector(styles),
-		helpWindow:       NewHelpWindow(styles),
-		confirmOverlay:   NewConfirmDialog(styles),
-		mcpInitOverlay:   NewConfirmDialog(styles),
-		attachmentWindow: NewAttachmentWindow(styles),
-		focusedWindow:    focusInput,
-		windowWidth:      80,
-		windowHeight:     24,
-		styles:           styles,
-		hasFocus:         true,
+		out:               out,
+		display:           NewDisplayModel(out.WindowBuffer(), styles),
+		promptBox:         NewPromptInput(styles),
+		editor:            NewEditor(),
+		modelSelector:     NewModelSelector(styles),
+		themeSelector:     NewThemeSelector(styles),
+		helpOverlay:       NewHelpOverlay(styles),
+		confirmOverlay:    NewConfirmDialog(styles),
+		mcpInitOverlay:    NewConfirmDialog(styles),
+		attachmentOverlay: NewAttachmentOverlay(styles),
+		focusedWindow:     focusPrompt,
+		screenWidth:       80,
+		screenHeight:      24,
+		styles:            styles,
+		hasFocus:          true,
 	}
 
 	*terminal = terminal.updateStatus()
@@ -111,25 +111,25 @@ func TestStatusBarShowsSpeed(t *testing.T) {
 // the status bar.
 func TestStatusBarKeepsSpeedAfterCompletion(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":5,"context":100,"step_tps":12.5,"ttft_ms":1200}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":5,"context":100,"step_tps":12.5,"ttft_ms":1200}}`)
 
 	styles := DefaultStyles()
 	terminal := &Terminal{
-		out:              out,
-		display:          NewDisplayModel(out.WindowBuffer(), styles),
-		input:            NewPromptInput(styles),
-		editor:           NewEditor(),
-		modelSelector:    NewModelSelector(styles),
-		themeSelector:    NewThemeSelector(styles),
-		helpWindow:       NewHelpWindow(styles),
-		confirmOverlay:   NewConfirmDialog(styles),
-		mcpInitOverlay:   NewConfirmDialog(styles),
-		attachmentWindow: NewAttachmentWindow(styles),
-		focusedWindow:    focusInput,
-		windowWidth:      80,
-		windowHeight:     24,
-		styles:           styles,
-		hasFocus:         true,
+		out:               out,
+		display:           NewDisplayModel(out.WindowBuffer(), styles),
+		promptBox:         NewPromptInput(styles),
+		editor:            NewEditor(),
+		modelSelector:     NewModelSelector(styles),
+		themeSelector:     NewThemeSelector(styles),
+		helpOverlay:       NewHelpOverlay(styles),
+		confirmOverlay:    NewConfirmDialog(styles),
+		mcpInitOverlay:    NewConfirmDialog(styles),
+		attachmentOverlay: NewAttachmentOverlay(styles),
+		focusedWindow:     focusPrompt,
+		screenWidth:       80,
+		screenHeight:      24,
+		styles:            styles,
+		hasFocus:          true,
 	}
 
 	*terminal = terminal.updateStatus()

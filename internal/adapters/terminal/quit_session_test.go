@@ -38,8 +38,8 @@ func quitConfirmTerminal(t *testing.T) (Terminal, *captureWriteCloser) {
 	t.Helper()
 	cap := &captureWriteCloser{}
 	m := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), cap, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	m.input = m.input.WithValue(":q")
-	m = m.focusInput()
+	m.promptBox = m.promptBox.WithValue(":q")
+	m = m.focusPrompt()
 
 	model, _ := m.Update(KeyPressMsg(Key{Code: KeyEnter}))
 	m = model.(Terminal)
@@ -91,7 +91,7 @@ func TestConfirmQuitSendsQuitCommand(t *testing.T) {
 func TestSessionClosedFrameEndsTheProgram(t *testing.T) {
 	m := newTestTerminal()
 	cap := &captureWriteCloser{}
-	m.streamInput = cap
+	m.sessionPipe = cap
 
 	// Nothing has been announced yet: the tick keeps the program alive.
 	if _, cmd := m.handleTick(); cmd == nil {
@@ -130,7 +130,7 @@ func TestQuitWaitingOverlayOffersCancel(t *testing.T) {
 	m := newTestTerminal()
 	m = m.updateComponentSizes(80, 24) // as the constructor does; overlays wrap at Width
 	cap := &captureWriteCloser{}
-	m.streamInput = cap
+	m.sessionPipe = cap
 	m.quitting = true
 
 	// A task in progress, as the session reports it.
@@ -183,7 +183,7 @@ func TestQuitWaitingOverlayOffersCancel(t *testing.T) {
 // session's terminal frame arrives at once and the program leaves.
 func TestQuitWaitingOverlayStaysHiddenWhenIdle(t *testing.T) {
 	m := newTestTerminal()
-	m.streamInput = &captureWriteCloser{}
+	m.sessionPipe = &captureWriteCloser{}
 	m.quitting = true
 
 	if _, cmd := m.handleTick(); cmd == nil {
@@ -200,7 +200,7 @@ func TestQuitWaitingOverlayStaysHiddenWhenIdle(t *testing.T) {
 func TestQuitWaitingWindowAfterCancel(t *testing.T) {
 	m := newTestTerminal()
 	m = m.updateComponentSizes(80, 24)
-	m.streamInput = &captureWriteCloser{}
+	m.sessionPipe = &captureWriteCloser{}
 	m.quitting = true
 	m.out.Write(frameBytes(wire.TagSystemMsg,
 		`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":10,"context":100}}`)) // test frame

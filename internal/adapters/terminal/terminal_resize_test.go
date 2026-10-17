@@ -6,9 +6,9 @@ import (
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
-// TestTerminalResizeCursorValidation tests that the window cursor is properly
+// TestTerminalResizeWindowCursorValidation tests that the window cursor is properly
 // validated when the terminal is resized.
-func TestTerminalResizeCursorValidation(t *testing.T) {
+func TestTerminalResizeWindowCursorValidation(t *testing.T) {
 	// Create a terminal with initial size
 	output := NewTerminalOutput(DefaultStyles())
 	input := nopWriteCloser{}
@@ -26,7 +26,7 @@ func TestTerminalResizeCursorValidation(t *testing.T) {
 	}
 
 	// Simulate a resize event
-	resizeMsg := WindowSizeMsg{
+	resizeMsg := ScreenSizeMsg{
 		Width:  120, // Wider terminal
 		Height: 40,  // Taller terminal
 	}
@@ -37,16 +37,16 @@ func TestTerminalResizeCursorValidation(t *testing.T) {
 		t.Fatalf("Expected *Terminal, got %T", model)
 	}
 
-	// Cursor should still be valid
+	// ScreenCursor should still be valid
 	cursor := terminal.display.GetWindowCursor()
 	if cursor < 0 || cursor >= 3 {
-		t.Errorf("Cursor %d is out of valid range [0, 2] after resize", cursor)
+		t.Errorf("ScreenCursor %d is out of valid range [0, 2] after resize", cursor)
 	}
 }
 
-// TestTerminalResizeClampsCursor tests that cursor is clamped when windows
+// TestTerminalResizeClampsWindowCursor tests that cursor is clamped when windows
 // change height during resize.
-func TestTerminalResizeClampsCursor(t *testing.T) {
+func TestTerminalResizeClampsWindowCursor(t *testing.T) {
 	output := NewTerminalOutput(DefaultStyles())
 	input := nopWriteCloser{}
 	terminal := NewTerminalWithTheme(output, input, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
@@ -59,7 +59,7 @@ func TestTerminalResizeClampsCursor(t *testing.T) {
 	terminal.display.windowCursor = 10
 
 	// Simulate resize
-	resizeMsg := WindowSizeMsg{
+	resizeMsg := ScreenSizeMsg{
 		Width:  100,
 		Height: 30,
 	}
@@ -70,10 +70,10 @@ func TestTerminalResizeClampsCursor(t *testing.T) {
 		t.Fatalf("Expected *Terminal, got %T", model)
 	}
 
-	// Cursor should be clamped to valid range
+	// ScreenCursor should be clamped to valid range
 	cursor := terminal.display.GetWindowCursor()
 	if cursor < -1 || cursor >= 2 {
-		t.Errorf("Cursor %d should be clamped to [-1, 1] after resize", cursor)
+		t.Errorf("ScreenCursor %d should be clamped to [-1, 1] after resize", cursor)
 	}
 
 	// Should be clamped to last window (index 1)
@@ -100,7 +100,7 @@ func TestTerminalResizeUpdatesDisplayContent(t *testing.T) {
 	initialContent := initialView.Content
 
 	// Simulate a resize to a narrower width
-	resizeMsg := WindowSizeMsg{
+	resizeMsg := ScreenSizeMsg{
 		Width:  40, // Narrower terminal
 		Height: 24,
 	}

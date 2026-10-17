@@ -186,8 +186,8 @@ func TestStreamingProfileLongContent(t *testing.T) {
 	t.Logf("Total for 50 updates: %v", totalTime)
 }
 
-// TestCursorMovementProfile profiles cursor movement performance
-func TestCursorMovementProfile(t *testing.T) {
+// TestWindowCursorMovementProfile profiles cursor movement performance
+func TestWindowCursorMovementProfile(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())
 	wb := NewWindowBuffer(80, styles)
 
@@ -211,7 +211,7 @@ func TestCursorMovementProfile(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		start := time.Now()
 		dm = dm.WithWindowCursor(i)
-		dm = dm.EnsureCursorVisible()
+		dm = dm.EnsureWindowCursorVisible()
 		dm = dm.updateContent()
 		elapsed := time.Since(start)
 		totalTime += elapsed
@@ -230,7 +230,7 @@ func TestCursorMovementProfile(t *testing.T) {
 		}
 	}
 
-	t.Logf("\n=== Cursor Movement Profile ===")
+	t.Logf("\n=== ScreenCursor Movement Profile ===")
 	t.Logf("Average: %v", avgTime)
 	t.Logf("Min: %v", minTime)
 	t.Logf("Max: %v", maxTime)
@@ -238,9 +238,9 @@ func TestCursorMovementProfile(t *testing.T) {
 	t.Logf("Moves per second: %.1f", 100/totalTime.Seconds())
 
 	if avgTime > 500*time.Microsecond {
-		t.Logf("\n⚠  SLOW: Cursor movement > 500μs")
+		t.Logf("\n⚠  SLOW: ScreenCursor movement > 500μs")
 	} else {
-		t.Logf("\n✅ FAST: Cursor movement < 500μs")
+		t.Logf("\n✅ FAST: ScreenCursor movement < 500μs")
 	}
 }
 

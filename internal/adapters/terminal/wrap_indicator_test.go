@@ -13,36 +13,36 @@ import (
 // mid-cluster. 7 codepoints (4 emoji + 3 ZWJ), 1 grapheme, 2 display cols.
 const familyEmoji = "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466"
 
-func TestFoldedToolCollapsedLine(t *testing.T) {
+func TestFoldedToolLine(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
 	// Create a tool window with VERY long content that would wrap to many
-	// lines if expanded. The collapsed form must be a single truncated line.
+	// lines if unfolded. The folded form must be a single truncated line.
 	longContent := strings.Repeat("This is a test sentence that will wrap. ", 12)
 	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "tool123", Name: "test_tool", Input: json.RawMessage(longContent)}, 0)
 
 	// Folded by default — render the window
 	rendered := wb.GetAll(-1, false)
 
-	// Collapsed form: exactly one line, starting with the fold marker.
+	// Folded form: exactly one line, starting with the fold marker.
 	renderedLines := strings.Split(rendered, "\n")
 	if len(renderedLines) != 1 {
-		t.Fatalf("Collapsed tool window should be a single line, got %d lines:\n%s", len(renderedLines), rendered)
+		t.Fatalf("Folded tool window should be a single line, got %d lines:\n%s", len(renderedLines), rendered)
 	}
 	plain := stripANSI(rendered)
 	if !strings.HasPrefix(plain, foldArrow) {
-		t.Errorf("Collapsed line should start with the fold marker, got %q", plain)
+		t.Errorf("Folded line should start with the fold marker, got %q", plain)
 	}
 	if !strings.Contains(plain, "TOOL") || !strings.Contains(plain, "test_tool") {
-		t.Errorf("Collapsed line should contain TOOL + tool name, got %q", plain)
+		t.Errorf("Folded line should contain TOOL + tool name, got %q", plain)
 	}
 	// Long content is truncated to a single line.
 	if strings.Contains(plain, "\n") {
-		t.Error("Collapsed line must not contain newlines")
+		t.Error("Folded line must not contain newlines")
 	}
 }
 
-func TestFoldedToolCollapsedTruncatesToWidth(t *testing.T) {
+func TestFoldedToolTruncatesToWidth(t *testing.T) {
 	wb := NewWindowBuffer(30, DefaultStyles())
 
 	longContent := strings.Repeat("This is a very long tool argument that will definitely overflow. ", 8)
@@ -51,18 +51,18 @@ func TestFoldedToolCollapsedTruncatesToWidth(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
 
-	// The collapsed line must fit the terminal width (30) — otherwise the
+	// The folded line must fit the terminal width (30) — otherwise the
 	// terminal soft-wraps it and the 1-line invariant breaks.
 	if w := displayWidth(plain); w > 30 {
-		t.Errorf("Collapsed line width = %d, want <= 30: %q", w, plain)
+		t.Errorf("Folded line width = %d, want <= 30: %q", w, plain)
 	}
 	// Truncation should leave an ellipsis.
 	if !strings.Contains(plain, "…") {
-		t.Errorf("Collapsed line should be truncated with ellipsis, got %q", plain)
+		t.Errorf("Folded line should be truncated with ellipsis, got %q", plain)
 	}
 }
 
-func TestFoldedDiffCollapsedLine(t *testing.T) {
+func TestFoldedDiffLine(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
 	// Create a diff window with many lines
@@ -83,13 +83,13 @@ func TestFoldedDiffCollapsedLine(t *testing.T) {
 	// Single line, no borders, no fold indicator row.
 	renderedLines := strings.Split(rendered, "\n")
 	if len(renderedLines) != 1 {
-		t.Errorf("Folded diff should collapse to a single line, got %d lines:\n%s", len(renderedLines), rendered)
+		t.Errorf("Folded diff should fold to a single line, got %d lines:\n%s", len(renderedLines), rendered)
 	}
 	if !strings.HasPrefix(stripANSI(rendered), foldArrow) {
-		t.Error("Collapsed line must not contain box borders")
+		t.Error("Folded line must not contain box borders")
 	}
 	if !strings.Contains(stripANSI(rendered), "TOOL CALL") || !strings.Contains(stripANSI(rendered), "edit_file") {
-		t.Errorf("Collapsed diff should show TOOL CALL + tool name, got %q", stripANSI(rendered))
+		t.Errorf("Folded diff should show TOOL CALL + tool name, got %q", stripANSI(rendered))
 	}
 }
 
@@ -105,7 +105,7 @@ func TestUnfoldedWindowHasHeaderAndBox(t *testing.T) {
 	// Line 0: the window's own line (marker + label + timestamp); then the
 	// content. No closing line — the next window's own line ends this one.
 	if len(lines) != 2 {
-		t.Fatalf("Expanded window should be 2 lines (window line + content), got %d:\n%s", len(lines), rendered)
+		t.Fatalf("Unfolded window should be 2 lines (window line + content), got %d:\n%s", len(lines), rendered)
 	}
 	ownLine := stripANSI(lines[0])
 	if !strings.HasPrefix(ownLine, "- ASSISTANT") {
@@ -146,7 +146,7 @@ func TestFoldedSystemWindowLabels(t *testing.T) {
 	}
 }
 
-func TestExpandedSystemWindowHeaderLabels(t *testing.T) {
+func TestUnfoldedSystemWindowHeaderLabels(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 
 	// Unfold both system windows: the labeled top rules must show SYSTEM
@@ -160,16 +160,16 @@ func TestExpandedSystemWindowHeaderLabels(t *testing.T) {
 	lines := strings.Split(rendered, "\n")
 
 	if !strings.HasPrefix(stripANSI(lines[0]), "- SYSTEM NOTIFY") {
-		t.Errorf("Expanded notify window line should carry 'SYSTEM NOTIFY', got %q", stripANSI(lines[0]))
+		t.Errorf("Unfolded notify window line should carry 'SYSTEM NOTIFY', got %q", stripANSI(lines[0]))
 	}
 	// SE window: window line + content = 2 lines, so its own line is at
 	// index 2.
 	if !strings.HasPrefix(stripANSI(lines[2]), "- SYSTEM ERROR") {
-		t.Errorf("Expanded error window line should carry 'SYSTEM ERROR', got %q", stripANSI(lines[2]))
+		t.Errorf("Unfolded error window line should carry 'SYSTEM ERROR', got %q", stripANSI(lines[2]))
 	}
 }
 
-func TestFoldedCollapsedLabelColors(t *testing.T) {
+func TestFoldedLabelColors(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
@@ -178,7 +178,7 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 	wb.AppendOrUpdate("SN", "sys-1", "nothing to cancel")
 	wb.AppendOrUpdate("SE", "sys-2", "session failed")
 
-	// Fold the assistant window so every window is a single collapsed line.
+	// Fold the assistant window so every window is a single folded line.
 	wb.ToggleFold(1)
 
 	rendered := wb.GetAll(-1, false)
@@ -196,12 +196,12 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 				return l
 			}
 		}
-		t.Fatalf("no collapsed line for label %q in:\n%s", label, rendered)
+		t.Fatalf("no folded line for label %q in:\n%s", label, rendered)
 		return ""
 	}
 
 	// REASONING: label plain bold (no italic, no color); content summary
-	// muted (uniform with all collapsed window types).
+	// muted (uniform with all folded window types).
 	line := findLine("REASONING")
 	if !strings.Contains(line, labelBold.Render(padLabel("REASONING"))) {
 		t.Errorf("REASONING label should be plain bold (no color): %q", line)
@@ -245,7 +245,7 @@ func TestFoldedCollapsedLabelColors(t *testing.T) {
 	}
 }
 
-func TestFoldedToolCollapsedLabelColor(t *testing.T) {
+func TestFoldedToolLabelColor(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
@@ -262,10 +262,10 @@ func TestFoldedToolCollapsedLabelColor(t *testing.T) {
 	// tool name is bold + muted (so it stands out from the arguments), and
 	// the arguments after the name stay muted (no bold).
 	//
-	// The name's style is the SAME one the expanded row uses, which in this
+	// The name's style is the SAME one the unfolded row uses, which in this
 	// register is the same bytes as the label's — so the assertion below
 	// cannot tell the two apart. What pins the name's style as its own is
-	// TestToolNameIsIdenticalFoldedAndExpanded, which compares the two fold
+	// TestToolNameIsIdenticalFoldedAndUnfolded, which compares the two fold
 	// states under the cursor, where they differ.
 	if !strings.Contains(rendered, styles.Label.Bold(true).Render("TOOL CALL")) {
 		t.Errorf("TOOL CALL label should be plain bold (the label color): %q", rendered)
@@ -289,34 +289,34 @@ func TestFoldedLabelsAligned(t *testing.T) {
 	wb.AppendOrUpdate("SE", "e", "session failed")
 	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t", Name: "cat", Input: json.RawMessage("cat: /tmp/x")}, 5)
 
-	// Collapse the user and assistant windows (both start expanded).
+	// Fold the user and assistant windows (both start unfolded).
 	wb.ToggleFold(0)
 	wb.ToggleFold(2)
 
 	rendered := wb.GetAll(-1, false)
 	lines := strings.Split(rendered, "\n")
 
-	// Every collapsed line: content must start at the same display column
-	// (arrow + space + CollapsedLabelWidth) — labels are left-justified to a
+	// Every folded line: content must start at the same display column
+	// (arrow + space + FoldedLabelWidth) — labels are left-justified to a
 	// fixed column so USER/REASONING/ASSISTANT/… content aligns.
-	wantCol := 2 + CollapsedLabelWidth
+	wantCol := 2 + FoldedLabelWidth
 	for _, l := range lines {
 		plain := stripANSI(l)
 		if !strings.HasPrefix(plain, foldArrow) {
 			continue
 		}
 		if c := contentColumn(plain); c != wantCol {
-			t.Errorf("collapsed line content column = %d, want %d: %q", c, wantCol, plain)
+			t.Errorf("folded line content column = %d, want %d: %q", c, wantCol, plain)
 		}
 	}
 }
 
 // contentColumn returns the display column where the visible content begins
-// for a collapsed line: after the arrow (2 cols) and the fixed label column
-// (CollapsedLabelWidth). Labels longer than the column shift content right.
+// for a folded line: after the arrow (2 cols) and the fixed label column
+// (FoldedLabelWidth). Labels longer than the column shift content right.
 func contentColumn(plain string) int {
 	col := 0
-	limit := 2 + CollapsedLabelWidth
+	limit := 2 + FoldedLabelWidth
 	for _, r := range plain {
 		w := cellWidth(string(r))
 		if col < limit {
@@ -341,28 +341,28 @@ func TestFoldedToolStatusIndicatorNoReplacementChar(t *testing.T) {
 	}, 1)
 	wb.HandleToolOutput("t1", "x86_64", false, 1)
 
-	// Collapsed (default for tools) — success shows the plain ✓.
+	// Folded (default for tools) — success shows the plain ✓.
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
 	if strings.Contains(rendered, "\uFFFD") {
-		t.Errorf("collapsed line contains replacement char: %q", rendered)
+		t.Errorf("folded line contains replacement char: %q", rendered)
 	}
 	if !strings.Contains(plain, "TOOL CALL ✓") {
-		t.Errorf("collapsed line should contain TOOL CALL + success check, got %q", plain)
+		t.Errorf("folded line should contain TOOL CALL + success check, got %q", plain)
 	}
 	// Content column must be exactly "arrow + space" + label column.
-	if c := contentColumn(plain); c != 2+CollapsedLabelWidth {
-		t.Errorf("collapsed TOOL content column = %d, want %d: %q", c, 2+CollapsedLabelWidth, plain)
+	if c := contentColumn(plain); c != 2+FoldedLabelWidth {
+		t.Errorf("folded TOOL content column = %d, want %d: %q", c, 2+FoldedLabelWidth, plain)
 	}
 
-	// Expanded.
+	// Unfolded.
 	wb.ToggleFold(0)
 	rendered = wb.GetAll(-1, false)
 	if strings.Contains(rendered, "\uFFFD") {
-		t.Errorf("expanded header contains replacement char: %q", rendered)
+		t.Errorf("unfolded header contains replacement char: %q", rendered)
 	}
 	if !strings.Contains(stripANSI(rendered), "TOOL CALL ✓") {
-		t.Errorf("expanded header should contain TOOL CALL + success check, got %q", stripANSI(rendered))
+		t.Errorf("unfolded header should contain TOOL CALL + success check, got %q", stripANSI(rendered))
 	}
 }
 
@@ -552,7 +552,7 @@ func TestHeadAndTailParts(t *testing.T) {
 }
 
 func TestFoldedTextWindowEllipsisIsDimmed(t *testing.T) {
-	// The truncation marker ("…") in collapsed text summaries is rendered
+	// The truncation marker ("…") in folded text summaries is rendered
 	// with the dim color (styles.Status), not muted (styles.System).
 	// This visually separates the marker from the actual content. Applies
 	// to both head+tail ("…middle…") and tail-only ("…tail") summaries.
@@ -566,7 +566,7 @@ func TestFoldedTextWindowEllipsisIsDimmed(t *testing.T) {
 	atRendered := wb.GetAll(-1, false)
 	atPlain := stripANSI(atRendered)
 	if !strings.Contains(atPlain, "…") {
-		t.Fatalf("AT collapsed summary should contain the middle ellipsis: %q", atPlain)
+		t.Fatalf("AT folded summary should contain the middle ellipsis: %q", atPlain)
 	}
 	// Find the "…" in the rendered output and verify it carries the dim
 	// color codes (status style), not the muted ones.
@@ -580,7 +580,7 @@ func TestFoldedTextWindowEllipsisIsDimmed(t *testing.T) {
 	snRendered := wb2.GetAll(-1, false)
 	snPlain := stripANSI(snRendered)
 	if !strings.HasPrefix(snPlain, foldArrow+" SYSTEM NOTIFY") || !strings.Contains(snPlain, "…") {
-		t.Fatalf("SN collapsed summary should start with the leading ellipsis: %q", snPlain)
+		t.Fatalf("SN folded summary should start with the leading ellipsis: %q", snPlain)
 	}
 	if !containsDimEllipsis(snRendered, styles) {
 		t.Errorf("SN leading ellipsis should carry the dim (Status) color, got %q", snRendered)
@@ -619,63 +619,63 @@ func containsDimEllipsis(rendered string, styles *Styles) bool {
 }
 
 func TestFoldedTextWindowShowsTail(t *testing.T) {
-	// Streaming content: the collapsed summary shows the LATEST text so
+	// Streaming content: the folded summary shows the LATEST text so
 	// the user sees new deltas arriving.
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
 	wb.AppendOrUpdate(tagAssistantText, "a1", "first line\nsecond line\nthird line tail")
-	wb.ToggleFold(0) // AT is expanded by default; fold it for the summary test
+	wb.ToggleFold(0) // AT is unfolded by default; fold it for the summary test
 
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
 
 	// Tail visible, truncation marker present, newline escaped.
 	if !strings.Contains(plain, "third line tail") {
-		t.Errorf("collapsed summary should show the tail, got %q", plain)
+		t.Errorf("folded summary should show the tail, got %q", plain)
 	}
 	if !strings.Contains(plain, "\\n") {
 		t.Errorf("newlines should be escaped as literal \\n, got %q", plain)
 	}
 	// Single visual line.
 	if strings.Contains(plain, "\n") {
-		t.Errorf("collapsed line must stay a single line, got %q", plain)
+		t.Errorf("folded line must stay a single line, got %q", plain)
 	}
 }
 
 func TestFoldedTextWindowHeadAndTailUpdatesOnDelta(t *testing.T) {
-	// The whole point: as deltas arrive, the collapsed summary keeps the
+	// The whole point: as deltas arrive, the folded summary keeps the
 	// head (topic) stable and updates the tail (latest content). The
 	// truncation marker sits in the MIDDLE — never at the line start
 	// (that's tailParts's behavior, used for streaming-tail content).
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
-	// Simulate a streaming assistant window: long content so the collapsed
+	// Simulate a streaming assistant window: long content so the folded
 	// summary truncates and shows head + "…" + tail.
 	wb.AppendOrUpdate(tagAssistantText, "a1", strings.Repeat("beginning of answer ", 3))
 	wb.AppendOrUpdate(tagAssistantText, "a1", " and then some more content ending")
-	wb.ToggleFold(0) // AT is expanded by default; fold it for the summary test
+	wb.ToggleFold(0) // AT is unfolded by default; fold it for the summary test
 
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
 	if !strings.Contains(plain, "some more content ending") {
-		t.Errorf("collapsed summary should reflect the latest delta, got %q", plain)
+		t.Errorf("folded summary should reflect the latest delta, got %q", plain)
 	}
 	if !strings.Contains(plain, "beginning of answer") {
-		t.Errorf("collapsed summary should keep the head (topic), got %q", plain)
+		t.Errorf("folded summary should keep the head (topic), got %q", plain)
 	}
 	// The middle ellipsis sits between head and tail — the line does NOT
 	// begin with "…" (that's tailParts's behavior).
 	if strings.HasPrefix(plain, foldArrow+" ASSISTANT       …") {
-		t.Errorf("collapsed summary must not start with a leading ellipsis: %q", plain)
+		t.Errorf("folded summary must not start with a leading ellipsis: %q", plain)
 	}
 	if !strings.Contains(plain, "…") {
-		t.Errorf("collapsed summary should contain the middle ellipsis, got %q", plain)
+		t.Errorf("folded summary should contain the middle ellipsis, got %q", plain)
 	}
 }
 
-func TestCursorArrowColor(t *testing.T) {
+func TestWindowCursorArrowColor(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	wb.AppendOrUpdate("AT", "assistant-1", "Hello world")
 
@@ -696,7 +696,7 @@ func displayWidth(s string) int {
 }
 
 // TestFoldedTextHeadAndTailEqualWeight: regression test for a bug where
-// the head of a collapsed text window (REASONING / ASSISTANT / SN / SE)
+// the head of a folded text window (REASONING / ASSISTANT / SN / SE)
 // was rendered with bold+muted styling while the tail was rendered with
 // muted-only styling — inconsistent visual weight between the two halves
 // of "head + … + tail". The label is bold by design; the head and tail

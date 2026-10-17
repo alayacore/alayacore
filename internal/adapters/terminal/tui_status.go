@@ -145,7 +145,7 @@ func (m *Terminal) renderStatusBar() string {
 	cacheKey := renderStatusBarCacheKey{
 		active:     active,
 		inProgress: m.inProgress,
-		width:      m.windowWidth,
+		width:      m.screenWidth,
 		styles:     m.styles,
 		left:       m.statusLeft,
 		right:      m.statusRight,
@@ -178,7 +178,7 @@ func (m *Terminal) renderStatusBar() string {
 	// content is program-controlled except for the model name in the right group
 	// — which is why assembleStatusLeft measures with hostMaxCells rather than
 	// Width (host_width.go), and why the row can still fill the width.
-	lineBudget := max(0, m.windowWidth)
+	lineBudget := max(0, m.screenWidth)
 
 	// Assemble the plain line: indicator + truncated segments +
 	// right-aligned truncated group (see assembleStatusLeft), measured for the

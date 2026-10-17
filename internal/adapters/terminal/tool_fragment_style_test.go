@@ -16,7 +16,7 @@ import (
 	"github.com/alayacore/alayacore/internal/protocol"
 )
 
-// makeDiffWindow builds a WindowBuffer with one expanded edit_file window
+// makeDiffWindow builds a WindowBuffer with one unfolded edit_file window
 // carrying diff input (colored - / + lines) and a tool output with a long
 // line that wraps across visual rows.
 func makeDiffWindow(t *testing.T, width int) *WindowBuffer {
@@ -29,12 +29,12 @@ func makeDiffWindow(t *testing.T, width int) *WindowBuffer {
 	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t1", Name: "edit_file", Input: json.RawMessage(input)}, 1)
 	// Output: a separator + a long line that wraps across visual rows.
 	wb.HandleToolOutput("t1", "long output line that definitely wraps across several visual rows at this width", false, 2)
-	wb.ToggleFold(0) // expand
+	wb.ToggleFold(0) // unfold
 	return wb
 }
 
 // TestToolFragmentStylesMatchFullRender verifies that a viewport clipped
-// into the middle of an expanded diff/tool window produces fragments with
+// into the middle of an unfolded diff/tool window produces fragments with
 // exactly the same ANSI styling as the corresponding visual lines of a
 // full window render (styles are self-contained per visual line).
 func TestToolFragmentStylesMatchFullRender(t *testing.T) {

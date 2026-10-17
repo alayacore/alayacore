@@ -2,7 +2,7 @@ package terminal
 
 // Regression test: the fold marker must not accumulate across renders.
 // Row 0 is built once per cache generation with its marker already in it
-// (Window.Render → buildExpandHeader), and every path that touches row 0 —
+// (Window.Render → buildUnfoldedHeader), and every path that touches row 0 —
 // windowFragment's cursor swap, the pinned row, the cursor row — REPLACES
 // the row rather than prepending to it. A previous in-place mutation of the
 // cached rows prepended another marker on every render

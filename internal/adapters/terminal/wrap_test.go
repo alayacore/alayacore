@@ -114,7 +114,7 @@ func TestStatusBarTruncatedEllipsisStyled(t *testing.T) {
 
 	newTerm := func(width int, status, right string) Terminal {
 		m := newTerminalForUpdateStatusTest(NewTerminalOutput(styles))
-		m.windowWidth = width
+		m.screenWidth = width
 		m.statusLeft = status
 		m.statusRight = right
 		m.inProgress = true
@@ -188,7 +188,7 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 	m.inProgress = false
 
 	render := func(width int) string {
-		m.windowWidth = width
+		m.screenWidth = width
 		return stripANSI(m.renderStatusBar())
 	}
 
@@ -237,7 +237,7 @@ func TestStatusBarTruncatedSeparatorStyled(t *testing.T) {
 	m.statusLeft = "12.3K/128K"
 	m.statusRight = "gpt-4o | R0"
 	m.inProgress = false
-	m.windowWidth = 15 // budget 13 → head "12.3K/128K |" + "…": the space after "|" is the cell cut
+	m.screenWidth = 15 // budget 13 → head "12.3K/128K |" + "…": the space after "|" is the cell cut
 
 	rendered := m.renderStatusBar()
 	if !strings.Contains(rendered, sepSig+"|") {

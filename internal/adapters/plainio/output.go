@@ -162,7 +162,7 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		o.lastHistoryID = ""
 
 	case wire.TagSystemMsg:
-		o.handleSystemMsg(value)
+		o.handleSystemFrame(value)
 
 	case wire.TagCommandOut:
 		o.handleCommandOut(value)
@@ -335,12 +335,12 @@ func (o *stdoutOutput) emitSeparator(tag string) {
 	o.lastHistoryID = ""
 }
 
-// handleSystemMsg processes a TagSystemMsg frame.
+// handleSystemFrame processes a TagSystemMsg frame.
 // Handles error, notify, task, and tool_confirm system messages.
 // Task completion transitions print a trailing blank line between tasks.
 //
 //nolint:gocyclo // dispatch over system message types; each case is simple
-func (o *stdoutOutput) handleSystemMsg(value string) {
+func (o *stdoutOutput) handleSystemFrame(value string) {
 	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
 		return
@@ -463,7 +463,7 @@ func (o *stdoutOutput) handleSystemMCP(data json.RawMessage) {
 }
 
 // printMCPStatus renders one MCP progress line and resets streaming state.
-// Must be called with o.mu held (from handleSystemMsg).
+// Must be called with o.mu held (from handleSystemFrame).
 func (o *stdoutOutput) printMCPStatus(format string, args ...any) {
 	fmt.Fprintf(o.writer, "\n[mcp: "+format+"]\n", args...)
 	o.lastTag = ""

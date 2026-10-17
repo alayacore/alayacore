@@ -97,7 +97,7 @@ func TestOverlayOutranksGlobalKeys(t *testing.T) {
 func TestMCPInitModalOwnsTheKeyboard(t *testing.T) {
 	cap := &captureWriteCloser{}
 	m := openMCPInit(t)
-	m.streamInput = cap
+	m.sessionPipe = cap
 
 	after, cmd := m.Update(KeyPressMsg{Code: 'g', Mod: ModCtrl})
 	m = after.(Terminal)

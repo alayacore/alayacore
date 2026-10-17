@@ -66,7 +66,7 @@ package terminal
 // — the running task is marked by the spinner's motion, not by a color.
 //
 // Case: lowercase. Uppercase in this UI is a block heading (`USER PROMPT`,
-// `TOOL CALL`, padded to CollapsedLabelWidth), and a heading here would be
+// `TOOL CALL`, padded to FoldedLabelWidth), and a heading here would be
 // read as one more window title, with the eye looking for its content box
 // underneath. Runtime readouts are lowercase throughout — the status
 // segments, the placeholder, the help bars.
@@ -189,7 +189,7 @@ func liveEdgeSteering(pending int) string {
 // on its own, never nested under WindowBuffer.mu (the lock order output.go
 // records).
 func (m Terminal) renderLiveEdge() string {
-	if m.windowWidth <= 0 {
+	if m.screenWidth <= 0 {
 		return ""
 	}
 	label := liveEdgeText(m.display.shouldFollow(), m.display.LinesBelow(),
@@ -208,12 +208,12 @@ func (m Terminal) renderLiveEdge() string {
 	// so there is no ambiguous-glyph allowance to bill — the box-drawing frame
 	// this replaced needed one.
 	line := liveEdgeFrame + " " + label + " " + liveEdgeFrame
-	if Width(line) > m.windowWidth {
+	if Width(line) > m.screenWidth {
 		// The frame costs its two hyphens and the spaces around the label; the
 		// rest is the phrase's. A row with no room for the frame and one cell
 		// of phrase draws nothing at all: an empty frame ("-  -") would be a
 		// readout of nothing, on a row too narrow to be reading status from.
-		labelBudget := m.windowWidth - 2*Width(liveEdgeFrame) - 2
+		labelBudget := m.screenWidth - 2*Width(liveEdgeFrame) - 2
 		if labelBudget <= 0 {
 			return ""
 		}

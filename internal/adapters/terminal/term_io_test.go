@@ -8,7 +8,7 @@ package terminal
 // on that file, so closing the stream the input loop reads from is a shutdown that
 // waits for a keystroke: the process does not exit, and the shell behind it does
 // not get its prompt back (docs/internal/windows-console.md records the report).
-// Program.stopInput is the fix that removes the in-flight read; not closing what
+// Program.stopKeys is the fix that removes the in-flight read; not closing what
 // this program never opened is the one that keeps the shell's own streams intact,
 // and it is what these tests pin.
 

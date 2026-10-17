@@ -17,7 +17,7 @@ import (
 //	Dependencies  — pointers to shared styles.
 type PromptInput struct {
 	// ── Elm UI state (value types, copied on every WithXxx) ─
-	input       InputField // wrapped input field (cursor, buffer, selection)
+	field       InputField // the text field: caret, buffer, selection
 	attachments []string   // attachment display rows, verbatim (today: media badges)
 	// active is the painting answer to "is this the box the user is writing
 	// into, in a window the operating system has focused". Terminal derives it
@@ -42,7 +42,7 @@ func NewPromptInput(styles *Styles) PromptInput {
 	input = input.WithWidth(max(0, DefaultWidth))
 
 	return PromptInput{
-		input:  input,
+		field:  input,
 		active: true,
 		styles: styles,
 		width:  DefaultWidth,
@@ -54,15 +54,15 @@ func (m PromptInput) Init() Cmd {
 
 // Update handles messages for the prompt input.
 func (m PromptInput) Update(msg Msg) (PromptInput, []Result) {
-	if msg, ok := msg.(WindowSizeMsg); ok {
+	if msg, ok := msg.(ScreenSizeMsg); ok {
 		m.width = msg.Width
-		m.input = m.input.WithWidth(max(0, msg.Width))
+		m.field = m.field.WithWidth(max(0, msg.Width))
 	}
 	if keyMsg, ok := msg.(KeyMsg); ok && keyMsg.Chord() == keyCtrlO {
-		return m, []Result{openEditorForPromptMsg{content: m.input.Value()}}
+		return m, []Result{openEditorForPromptMsg{content: m.field.Value()}}
 	}
 	var results []Result
-	m.input, results = m.input.Update(msg)
+	m.field, results = m.field.Update(msg)
 	return m, results
 }
 
@@ -111,7 +111,7 @@ func (m PromptInput) borderColor() color.Color {
 		return m.styles.ColorDim
 	case !m.active:
 		return m.styles.BorderBlurred
-	case m.input.LineCount() > 1:
+	case m.field.LineCount() > 1:
 		return m.styles.ColorWarning
 	default:
 		return m.styles.BorderFocused
@@ -149,23 +149,23 @@ func (m PromptInput) updateInputStyles() InputField {
 		// answer to "am I live" is set from here, never from the input path.
 		focused = blurred
 	}
-	return m.input.WithStyles(focused, blurred)
+	return m.field.WithStyles(focused, blurred)
 }
 
 // WithActive says whether this box is the live one — the user's target, in a
 // window the operating system has focused — for painting: the border, the
-// register of the text, and whether the real terminal cursor belongs here (IME
-// preedit and the candidate window anchor on that cursor, so an unfocused
+// register of the text, and whether the real terminal caret belongs here (IME
+// preedit and the candidate window anchor on that caret, so an unfocused
 // window is asked to give it up).
 //
 // Idempotent like WithBlocked: Terminal.View() syncs it every frame, and the
 // value type would otherwise be replaced on each render.
 func (m PromptInput) WithActive(active bool) PromptInput {
-	if m.active == active && m.input.IsActive() == active {
+	if m.active == active && m.field.IsActive() == active {
 		return m
 	}
 	m.active = active
-	m.input = m.input.WithActive(active)
+	m.field = m.field.WithActive(active)
 	return m
 }
 
@@ -173,19 +173,19 @@ func (m PromptInput) WithActive(active bool) PromptInput {
 func (m PromptInput) IsActive() bool { return m.active }
 
 func (m PromptInput) Value() string {
-	return m.input.Value()
+	return m.field.Value()
 }
 
 func (m PromptInput) WithValue(value string) PromptInput {
-	m.input = m.input.WithValue(value)
+	m.field = m.field.WithValue(value)
 	return m
 }
 
 // WithBlockValue replaces the prompt with a block of text that arrived whole —
-// an external editor's buffer — cursor at the end, through the wrapped field's
+// an external editor's buffer — caret at the end, through the wrapped field's
 // block rule (InputField.WithBlockValue).
 func (m PromptInput) WithBlockValue(value string) PromptInput {
-	m.input = m.input.WithBlockValue(value)
+	m.field = m.field.WithBlockValue(value)
 	return m
 }
 
@@ -234,47 +234,47 @@ func (m PromptInput) WithBlocked(blocked bool) PromptInput {
 
 func (m PromptInput) WithWidth(width int) PromptInput {
 	m.width = width
-	m.input = m.input.WithWidth(max(0, width))
+	m.field = m.field.WithWidth(max(0, width))
 	return m
 }
 
 func (m PromptInput) WithStyles(styles *Styles) PromptInput {
 	m.styles = styles
-	m.input = m.updateInputStyles()
+	m.field = m.updateInputStyles()
 	return m
 }
 
-// CursorEnd moves cursor to end.
-func (m PromptInput) CursorEnd() PromptInput {
-	m.input = m.input.CursorEnd()
+// CaretEnd moves caret to end.
+func (m PromptInput) CaretEnd() PromptInput {
+	m.field = m.field.CaretEnd()
 	return m
 }
 
-// InsertNewline inserts a line break at the cursor (the prompt's Ctrl+J
-// action). Bound from handleInputKeys only, so overlay filter boxes — which
+// InsertNewline inserts a line break at the caret (the prompt's Ctrl+J
+// action). Bound from handlePromptKeys only, so overlay filter boxes — which
 // embed their own InputField and read Enter as "accept" — never see it.
 func (m PromptInput) InsertNewline() PromptInput {
-	m.input = m.input.insertNewline()
+	m.field = m.field.insertNewline()
 	return m
 }
 
-// CursorPos returns the cursor position (in runes) within the input field.
-func (m PromptInput) CursorPos() int {
-	return m.input.CursorPos()
+// CaretPos returns the caret position (in runes) within the input field.
+func (m PromptInput) CaretPos() int {
+	return m.field.CaretPos()
 }
 
-// CursorCell returns the cursor's cell offset within the input text area
+// CaretCell returns the caret's cell offset within the input text area
 // (0 = leftmost visible cell of the current line). Used by Terminal.View to
-// position the real terminal cursor. The input renders a single line, so the
-// cursor's vertical position is independent of the value's line index.
-func (m PromptInput) CursorCell() int {
-	return m.input.CursorCell()
+// position the real terminal caret. The input renders a single line, so the
+// caret's vertical position is independent of the value's line index.
+func (m PromptInput) CaretCell() int {
+	return m.field.CaretCell()
 }
 
 // AttachmentsOffset returns the number of content lines above the input
 // text inside the bordered box (the wrapped attachment rows), or 0 when
 // there are no pending attachments. It is the one source of the real
-// cursor's row inside the box (Terminal.View), so it must agree with what
+// caret's row inside the box (Terminal.View), so it must agree with what
 // View() emits row for row — including the absence of a divider row.
 func (m PromptInput) AttachmentsOffset() int {
 	if len(m.attachments) == 0 {

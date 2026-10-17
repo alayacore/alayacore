@@ -27,7 +27,7 @@ func TestUnixInputParksWhileSuspended(t *testing.T) {
 	defer pr.Close()
 	defer pw.Close()
 
-	input, err := newInput(&TTY{in: pr, out: pr})
+	input, err := newKeyReader(&TTY{in: pr, out: pr})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestUnixInputParksWhileSuspended(t *testing.T) {
 	p := newParkedProgram(msgs, input)
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
-	go p.readInput(ctxDone)
+	go p.readKeys(ctxDone)
 
 	// A keystroke while running reaches the loop.
 	if _, err := pw.Write([]byte{'j'}); err != nil {
@@ -55,9 +55,9 @@ func TestUnixInputParksWhileSuspended(t *testing.T) {
 	// session, and the child waits for the program's read to time out before
 	// it can be given the terminal.
 	start := time.Now()
-	p.pauseInput()
+	p.pauseKeys()
 	if elapsed := time.Since(start); elapsed > 4*inputPollTimeout*time.Millisecond {
-		t.Errorf("pauseInput waited %v; the loop is meant to be between reads within %v",
+		t.Errorf("pauseKeys waited %v; the loop is meant to be between reads within %v",
 			elapsed, time.Duration(inputPollTimeout)*time.Millisecond)
 	}
 
@@ -73,7 +73,7 @@ func TestUnixInputParksWhileSuspended(t *testing.T) {
 	}
 
 	// Resuming delivers it.
-	p.resumeInput()
+	p.resumeKeys()
 	select {
 	case msg := <-msgs:
 		if _, ok := msg.(KeyPressMsg); !ok {
@@ -98,7 +98,7 @@ func TestParkGivesTheKeystrokeToTheOtherReader(t *testing.T) {
 	defer pr.Close()
 	defer pw.Close()
 
-	input, err := newInput(&TTY{in: pr, out: pr})
+	input, err := newKeyReader(&TTY{in: pr, out: pr})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,11 +106,11 @@ func TestParkGivesTheKeystrokeToTheOtherReader(t *testing.T) {
 	p := newParkedProgram(msgs, input)
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
-	go p.readInput(ctxDone)
+	go p.readKeys(ctxDone)
 
-	// pauseInput blocks until the loop answers, so there is nothing to wait for
+	// pauseKeys blocks until the loop answers, so there is nothing to wait for
 	// here: the answer can only come from a loop that has stopped reading.
-	p.pauseInput()
+	p.pauseKeys()
 
 	if _, err := pw.Write([]byte{'k'}); err != nil {
 		t.Fatal(err)

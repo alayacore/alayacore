@@ -104,7 +104,7 @@ func TestParseIsInvariantToReadBoundaries(t *testing.T) {
 // parseReads feeds each read to one parser and returns the messages delivered,
 // followed by whatever the silence timeout resolves at the end of the stream.
 func parseReads(reads [][]byte) (msgs, flushed string) {
-	p := &InputParser{}
+	p := &KeyParser{}
 	var out []string
 	for _, r := range reads {
 		out = renderMsgs(out, p.Parse(r))

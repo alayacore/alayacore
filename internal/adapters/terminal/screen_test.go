@@ -44,7 +44,7 @@ func TestScreenRenderRaw(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}
 
-	cur := NewCursor(3, 5)
+	cur := NewScreenCursor(3, 5)
 	err := s.Render("line1\nline2", cur, false)
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestScreenTabRepaintsOnlyChangedRows(t *testing.T) {
 	v1 := m.View()
 	buf := &bytes.Buffer{}
 	s := &Screen{out: buf}
-	if err := s.Render(v1.Content, v1.Cursor, true); err != nil {
+	if err := s.Render(v1.Content, v1.ScreenCursor, true); err != nil {
 		t.Fatal(err)
 	}
 	buf.Reset()
@@ -270,7 +270,7 @@ func TestScreenTabRepaintsOnlyChangedRows(t *testing.T) {
 	mm, _ := m.Update(tab)
 	m = mm.(Terminal)
 	v2 := m.View()
-	if err := s.Render(v2.Content, v2.Cursor, true); err != nil {
+	if err := s.Render(v2.Content, v2.ScreenCursor, true); err != nil {
 		t.Fatal(err)
 	}
 	out := unwrapSync(t, buf.String())
@@ -326,7 +326,7 @@ func TestScreenRenderNoCursor(t *testing.T) {
 func TestScreenRenderSkipIdentical(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}
-	cur := NewCursor(0, 0)
+	cur := NewScreenCursor(0, 0)
 	if err := s.Render("same", cur, true); err != nil {
 		t.Fatal(err)
 	}
@@ -337,8 +337,8 @@ func TestScreenRenderSkipIdentical(t *testing.T) {
 	if buf.String() != first {
 		t.Errorf("identical render should be skipped, got %q", buf.String()[len(first):])
 	}
-	// Cursor position change must re-render.
-	cur2 := NewCursor(1, 0)
+	// ScreenCursor position change must re-render.
+	cur2 := NewScreenCursor(1, 0)
 	if err := s.Render("same", cur2, true); err != nil {
 		t.Fatal(err)
 	}
@@ -359,8 +359,8 @@ func TestScreenRenderCursorStyle(t *testing.T) {
 	var buf bytes.Buffer
 	s := &Screen{out: &buf}
 
-	cur := NewCursor(0, 0)
-	cur.Shape = CursorBlock
+	cur := NewScreenCursor(0, 0)
+	cur.Shape = ScreenCursorBlock
 	cur.Blink = false
 	cur.Color = color.RGBA{R: 0x12, G: 0x34, B: 0x56, A: 0xff}
 

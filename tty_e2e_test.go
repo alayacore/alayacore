@@ -19,7 +19,7 @@
 // It also caught a wrong measurement: the first sweep of the blur matrix appeared
 // to show that only a paste arriving within a few hundred ms of the blur was lost.
 // The program had not finished starting — closing the MCP-init overlay runs
-// restoreFocusAfterConfirm → focusInput, which undid the blur under the test. See
+// restoreFocusAfterConfirm → focusPrompt, which undid the blur under the test. See
 // settled(); assert against an idle frame or assert nothing.
 //
 // Linux-only, and deliberately so: on Windows the program reads console events and
@@ -295,7 +295,7 @@ func TestEndToEndOverPty(t *testing.T) {
 	//    lengths, because reading a menu and finding "Paste" takes seconds. The
 	//    blur gate, when it existed, was permanent, so every dwell lost it.
 	//
-	//    "exactly once" is asked behaviourally: one more character must land at
+	//    "exactly once" is asked behaviorally: one more character must land at
 	//    the end of a single copy. Counting the marker in the byte stream cannot
 	//    say that, because every repaint writes the line again.
 	for _, dwell := range []time.Duration{0, 500 * time.Millisecond, 2 * time.Second} {

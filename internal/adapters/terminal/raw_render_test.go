@@ -10,12 +10,12 @@ import (
 // forked raw passthrough renderer: the Terminal's View content is written
 // verbatim (no fake newlines inside windows), and when a terminal
 // soft-wraps it at the screen width the result is exactly the screen
-// height — expanded windows fully visible, prompt input at its position.
+// height — unfolded windows fully visible, prompt input at its position.
 func TestRawViewSoftWrapEndToEnd(t *testing.T) {
 	m := newTestTerminal()
 	wb := m.out.WindowBuffer()
 
-	// Expanded AT (long content, wraps to several visual rows).
+	// Unfolded AT (long content, wraps to several visual rows).
 	wb.AppendOrUpdate(tagAssistantText, "1", strings.Repeat("word ", 40))
 	// Folded reasoning window.
 	wb.AppendOrUpdate(tagAssistantReasoning, "2", "short reasoning")
@@ -45,10 +45,10 @@ func TestRawViewSoftWrapEndToEnd(t *testing.T) {
 
 	plain := stripANSI(wrapped)
 	if !strings.Contains(plain, "ASSISTANT") {
-		t.Error("expanded AT header not shown")
+		t.Error("unfolded AT header not shown")
 	}
 	if !strings.Contains(plain, "word word word") {
-		t.Error("expanded AT content not shown")
+		t.Error("unfolded AT content not shown")
 	}
 	if !strings.Contains(plain, "REASONING") {
 		t.Error("folded reasoning window not shown")

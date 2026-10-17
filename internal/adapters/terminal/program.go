@@ -7,7 +7,7 @@ package terminal
 // The loop mirrors Bubble Tea's event loop (its tea.go), minus the cell-buffer
 // renderer: messages arrive from the input reader and from
 // commands, special messages (QuitMsg/SuspendMsg/BatchMsg/sequenceMsg/
-// WindowSizeMsg) are handled internally, everything else goes
+// ScreenSizeMsg) are handled internally, everything else goes
 // to model.Update. After every Update the view is rendered through
 // Screen.Render (raw passthrough; skipped when content and cursor are
 // unchanged). Terminal cleanup (alt screen exit + raw mode restore) happens
@@ -55,11 +55,11 @@ type View struct {
 	// terminal (raw passthrough mode).
 	Content string
 
-	// Cursor, when not nil, shows the real terminal cursor at the given
+	// ScreenCursor, when not nil, shows the real terminal cursor at the given
 	// position (X, Y are cell coordinates relative to the frame's top-left
 	// corner). A visible real cursor is required for IME on-the-spot
 	// preedit rendering and candidate-window anchoring.
-	Cursor *Cursor
+	ScreenCursor *ScreenCursor
 
 	// AltScreen puts the program in the alternate screen buffer.
 	AltScreen bool
@@ -88,28 +88,28 @@ func NewView(s string) View {
 	return View{Content: s}
 }
 
-// CursorShape represents a terminal cursor shape.
-type CursorShape int
+// ScreenCursorShape represents a terminal cursor shape.
+type ScreenCursorShape int
 
-// Cursor shapes (DECSCUSR parameter values).
+// ScreenCursor shapes (DECSCUSR parameter values).
 const (
-	CursorBlock CursorShape = iota
-	CursorUnderline
-	CursorBar
+	ScreenCursorBlock ScreenCursorShape = iota
+	ScreenCursorUnderline
+	ScreenCursorBar
 )
 
-// Cursor represents a cursor on the terminal screen.
-type Cursor struct {
+// ScreenCursor represents a cursor on the terminal screen.
+type ScreenCursor struct {
 	X, Y  int
 	Color color.Color
-	Shape CursorShape
+	Shape ScreenCursorShape
 	Blink bool
 }
 
-// NewCursor returns a new cursor with the default settings and the given
+// NewScreenCursor returns a new cursor with the default settings and the given
 // position (block, blinking).
-func NewCursor(x, y int) *Cursor {
-	return &Cursor{X: x, Y: y, Shape: CursorBlock, Blink: true}
+func NewScreenCursor(x, y int) *ScreenCursor {
+	return &ScreenCursor{X: x, Y: y, Shape: ScreenCursorBlock, Blink: true}
 }
 
 // Quit is a special command that tells the program to exit.
@@ -205,13 +205,13 @@ func Tick(d time.Duration, fn func(time.Time) Msg) Cmd {
 // the loop's timer, not a function of one read: the loop keeps reading while a
 // sequence is outstanding and starts this clock over on every byte, so it
 // measures silence rather than the gap between two reads (program_input.go →
-// readInput).
+// readKeys).
 const escSequenceTimeout = 50 * time.Millisecond
 
 // Program runs a Model.
 type Program struct {
 	tty    *TTY
-	parser *InputParser
+	parser *KeyParser
 	screen *Screen
 
 	// msgs carries everything the loop acts on except the keyboard: command
@@ -237,7 +237,7 @@ type Program struct {
 	// inputPaused is the request; parkedCh is the loop's acknowledgement;
 	// resumeCh wakes it again; inputStopped says the loop is gone for good,
 	// which is what the teardown waits for before closing the terminal.
-	input        inputSource
+	keys         keySource
 	inputPaused  atomic.Bool
 	parkedCh     chan struct{}
 	resumeCh     chan struct{}
@@ -257,7 +257,7 @@ func Run(model Model) (Model, error) {
 	// The input source is negotiated next: it is the step that decides whether
 	// this program can read the keyboard at all, and nothing should be written
 	// to the terminal before that is known.
-	input, err := newInput(tty)
+	input, err := newKeyReader(tty)
 	if err != nil {
 		_ = tty.Restore()
 		return model, err
@@ -265,9 +265,9 @@ func Run(model Model) (Model, error) {
 
 	p := &Program{
 		tty:          tty,
-		parser:       &InputParser{},
+		parser:       &KeyParser{},
 		screen:       NewScreen(tty.Out()),
-		input:        input,
+		keys:         input,
 		msgs:         make(chan Msg, 64),
 		inputMsgs:    make(chan Msg, 64),
 		parkedCh:     make(chan struct{}, 1),
@@ -294,7 +294,7 @@ func Run(model Model) (Model, error) {
 		// console read waits for input — so skipping this step is how quitting
 		// ends up waiting for a keystroke before the shell gets its prompt
 		// back. See program_input.go.
-		p.stopInput()
+		p.stopKeys()
 		_ = p.screen.Stop()
 		_ = tty.Restore()
 		_ = tty.Close()
@@ -311,9 +311,9 @@ func (p *Program) run(model Model) (Model, error) {
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
 
-	if p.input != nil {
+	if p.keys != nil {
 		// Input reader: the one place bytes become messages.
-		go p.readInput(ctxDone)
+		go p.readKeys(ctxDone)
 	}
 	if p.tty != nil {
 		// Signal watcher (quit, and the resize signal where one exists).
@@ -332,7 +332,7 @@ func (p *Program) run(model Model) (Model, error) {
 	// not be the TTY Run opened).
 	if p.tty != nil {
 		var sizeCmd Cmd
-		model, sizeCmd = model.Update(WindowSizeMsg{Width: p.width, Height: p.height})
+		model, sizeCmd = model.Update(ScreenSizeMsg{Width: p.width, Height: p.height})
 		if sizeCmd != nil {
 			go p.dispatch(sizeCmd, ctxDone)
 		}
@@ -343,7 +343,7 @@ func (p *Program) run(model Model) (Model, error) {
 		// Input first, without blocking: a keystroke must not wait behind a
 		// backlog of output messages. Drain what is already queued, then wait
 		// on both channels — inputMsgs is nil in a program with no input
-		// source, and a nil channel is never ready, so this collapses to the
+		// source, and a nil channel is never ready, so this folds to the
 		// plain msgs wait there.
 		select {
 		case msg, ok := <-p.inputMsgs:
@@ -418,7 +418,7 @@ func (p *Program) handleMsg(model Model, msg Msg, ctxDone <-chan struct{}) (Mode
 		p.forceRepaint()
 		p.render(model)
 		return model, false, nil
-	case WindowSizeMsg:
+	case ScreenSizeMsg:
 		p.width, p.height = msg.Width, msg.Height
 		p.screen.Resize(msg.Width, msg.Height)
 
@@ -539,14 +539,14 @@ func (p *Program) watchSignals(ctxDone <-chan struct{}) {
 		case s := <-sig:
 			if s == p.resizeSignal() {
 				// Only the event is handled here; p.width/p.height belong to
-				// the loop (see run, case WindowSizeMsg). Writing them from
+				// the loop (see run, case ScreenSizeMsg). Writing them from
 				// this goroutine would put a second, unsynchronized writer on
 				// the values Program.refreshSize compares against — and a
 				// stale compare is how one resize ends up sending two
-				// WindowSizeMsg, each forcing a full repaint.
+				// ScreenSizeMsg, each forcing a full repaint.
 				w, h := p.screen.Size()
 				select {
-				case p.msgs <- WindowSizeMsg{Width: w, Height: h}:
+				case p.msgs <- ScreenSizeMsg{Width: w, Height: h}:
 				case <-ctxDone:
 					return
 				}
@@ -561,7 +561,7 @@ func (p *Program) watchSignals(ctxDone <-chan struct{}) {
 	}
 }
 
-// refreshSize re-reads the terminal size and queues a WindowSizeMsg when it
+// refreshSize re-reads the terminal size and queues a ScreenSizeMsg when it
 // changed. It runs from the model's tick (see run), which makes it the resize
 // source on platforms with no resize signal: Windows has none at all
 // (signals_windows.go → resizeSignal returns nil, and a pseudo console does not
@@ -577,7 +577,7 @@ func (p *Program) watchSignals(ctxDone <-chan struct{}) {
 // a full buffer would otherwise deadlock the program against itself. On a drop
 // the tracked size is deliberately left alone, so the next tick still sees a
 // difference and retries. Leaving it updated would swallow the change with no
-// WindowSizeMsg and no cache clear, and the display would keep laying out the
+// ScreenSizeMsg and no cache clear, and the display would keep laying out the
 // old width forever.
 //
 // The cost is measured rather than assumed: about 200ns and zero allocations
@@ -592,7 +592,7 @@ func (p *Program) refreshSize() {
 		return
 	}
 	select {
-	case p.msgs <- WindowSizeMsg{Width: w, Height: h}:
+	case p.msgs <- ScreenSizeMsg{Width: w, Height: h}:
 		p.width, p.height = w, h
 	default:
 	}
@@ -606,13 +606,13 @@ func (p *Program) render(model Model) {
 	defer p.mu.Unlock()
 	if p.lastView != nil &&
 		p.lastView.Content == v.Content &&
-		cursorsEqual(p.lastView.Cursor, v.Cursor) &&
+		screenCursorsEqual(p.lastView.ScreenCursor, v.ScreenCursor) &&
 		p.lastView.AltScreen == v.AltScreen &&
 		p.lastView.Raw == v.Raw &&
 		p.lastView.FullScreen == v.FullScreen {
 		return
 	}
-	_ = p.screen.Render(v.Content, v.Cursor, v.FullScreen)
+	_ = p.screen.Render(v.Content, v.ScreenCursor, v.FullScreen)
 	last := v
 	p.lastView = &last
 }

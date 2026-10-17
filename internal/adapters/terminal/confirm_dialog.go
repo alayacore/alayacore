@@ -24,7 +24,7 @@ import (
 
 // ConfirmContentRows defines the fixed number of content lines inside
 // the confirm dialog border. Matches SelectorListRows (8) used by
-// ModelSelector, ModelSelector, ThemeSelector, and HelpWindow.
+// ModelSelector, ModelSelector, ThemeSelector, and HelpOverlay.
 // If content exceeds this, it gets truncated with a "…" indicator —
 // same pattern used by ModelSelector for items.
 const ConfirmContentRows = 8

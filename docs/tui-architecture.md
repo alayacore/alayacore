@@ -56,7 +56,7 @@ Terminal (value type, root model)
 │   Chord, and every handler switches on a Chord (keys.go).
 │
 ├── Asynchronous messages still handled by Update: session load results,
-│   WindowSizeMsg, tickMsg, themePreviewMsg, editor events,
+│   ScreenSizeMsg, tickMsg, themePreviewMsg, editor events,
 │   displayError/NotifyMsg, FocusMsg/BlurMsg, PasteMsg.
 │
 ├── Components (each has Update returning []Result):
@@ -65,8 +65,8 @@ Terminal (value type, root model)
 │   ├── ConfirmDialog     Update(msg Msg) → (ConfirmDialog,    []Result)
 │   ├── ThemeSelector     Update(msg Msg) → (ThemeSelector,    []Result)
 │   ├── ModelSelector     Update(msg Msg) → (ModelSelector,    []Result)
-│   ├── HelpWindow        Update(msg Msg) → (HelpWindow,       []Result)
-│   ├── AttachmentWindow  Update(msg Msg) → (AttachmentWindow, []Result)
+│   ├── HelpOverlay        Update(msg Msg) → (HelpOverlay,       []Result)
+│   ├── AttachmentOverlay  Update(msg Msg) → (AttachmentOverlay, []Result)
 │   └── InputField        Update(msg Msg) → (InputField,       []Result)
 │
 ├── Code reuse units (pure functions, no I/O):
@@ -74,7 +74,7 @@ Terminal (value type, root model)
 │
 └── External systems (via interfaces/pointers):
     ├── out         OutputWriter    (session output, shared mutable)
-    ├── streamInput io.WriteCloser  (frame pipe to session)
+    ├── sessionPipe io.WriteCloser  (frame pipe to session)
     └── themeManager *ThemeManager  (theme load errors at startup)
 
 ```
@@ -106,8 +106,8 @@ DisplayModel.Update     → []Result{focusInputWithValueMsg}  → Terminal.apply
 PromptInput.Update      → []Result{openEditorForPromptMsg}  → Terminal.applyResult
 ThemeSelector.Update    → []Result{ThemeSelectedMsg}        → Terminal.applyResult
 ModelSelector.Update    → []Result{ModelSelectedMsg}        → Terminal.applyResult
-HelpWindow.Update       → []Result{HelpCmdMsg}              → Terminal.applyResult
-AttachmentWindow.Update → []Result{AttachmentSelectedMsg}   → Terminal.applyResult
+HelpOverlay.Update       → []Result{HelpCmdMsg}              → Terminal.applyResult
+AttachmentOverlay.Update → []Result{AttachmentSelectedMsg}   → Terminal.applyResult
 ConfirmDialog.Update    → []Result{ConfirmResultMsg}        → Terminal.applyResult
 ```
 

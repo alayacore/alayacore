@@ -1,12 +1,12 @@
 package terminal
 
-// Tests for the fold/unfold anchor (DisplayModel.anchorCursorWindow): toggling
+// Tests for the fold/unfold anchor (DisplayModel.anchorWindowCursor): toggling
 // a window with Space must not move the line under the cursor.
 //
 // The case that used to jump: a window taller than the viewport whose own line
 // has scrolled above the top is drawn pinned to screen row 0 (see
-// sticky_line_test.go); collapsing it leaves that single row entirely above the
-// viewport, and EnsureCursorVisible then dragged the viewport to its bottom
+// sticky_line_test.go); folding it leaves that single row entirely above the
+// viewport, and EnsureWindowCursorVisible then dragged the viewport to its bottom
 // edge. The anchor pulls the offset up to the window's own line instead, so the
 // header folds to the row the pin occupied — the rule is that a cursor window
 // scrolled above the top returns to the top. Folding while the line is already
@@ -24,7 +24,7 @@ const (
 	anchorViewport = 6  // viewport height these tests read at
 )
 
-// foldAnchorFixture builds anchorLeads short user prompts, a tall expanded
+// foldAnchorFixture builds anchorLeads short user prompts, a tall unfolded
 // assistant message (40 body rows), then `trails` short user prompts. The tall
 // window sits at index anchorLeads; trailing content keeps the document long
 // below it so its header can be scrolled to the screen top.
@@ -140,7 +140,7 @@ func TestFoldWhileVisibleDoesNotMoveTheViewport(t *testing.T) {
 	}
 }
 
-// TestUnfoldDoesNotMoveTheViewport is the reverse: expanding a folded window
+// TestUnfoldDoesNotMoveTheViewport is the reverse: unfolding a folded window
 // whose line is on screen leaves it where it is.
 func TestUnfoldDoesNotMoveTheViewport(t *testing.T) {
 	wb, idx := foldAnchorFixture(t, 10)
@@ -185,7 +185,7 @@ func TestFoldNearTranscriptEndClampsToTheBottom(t *testing.T) {
 func TestFoldUnderAutoFollowKeepsTheLiveEdge(t *testing.T) {
 	wb, _ := foldAnchorFixture(t, 0)
 	dm := NewDisplayModel(wb, DefaultStyles()).WithHeight(anchorViewport).WithDisplayFocused(true)
-	dm = dm.WithCursorToLastWindow() // cursor on the tall last window + auto-follow on
+	dm = dm.WithWindowCursorToLastWindow() // cursor on the tall last window + auto-follow on
 	dm = dm.updateContent()
 
 	if row := topRow(dm); !strings.HasPrefix(row, unfoldArrow+" ASSISTANT") {
@@ -201,7 +201,7 @@ func TestFoldUnderAutoFollowKeepsTheLiveEdge(t *testing.T) {
 
 // TestMarkdownToggleWhilePinnedKeepsTheHeaderAtTheTop: 'r' shares the anchor.
 // Markdown pads table cells, so toggling it can shrink a pinned table below the
-// viewport top the same way a fold collapses a message — the header must stay
+// viewport top the same way a fold folds a message — the header must stay
 // on row 0 rather than being re-seated to the offset's bottom edge.
 func TestMarkdownToggleWhilePinnedKeepsTheHeaderAtTheTop(t *testing.T) {
 	var table strings.Builder

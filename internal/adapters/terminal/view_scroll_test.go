@@ -44,7 +44,7 @@ func tallTranscript(t *testing.T) DisplayModel {
 // press parses raw terminal bytes — the same stream a host writes for a wheel
 // notch or an arrow key — and applies every key it yields.
 func press(m DisplayModel, bytes string) DisplayModel {
-	var p InputParser
+	var p KeyParser
 	for _, msg := range p.Parse([]byte(bytes)) {
 		if km, ok := msg.(KeyPressMsg); ok {
 			m, _ = m.Update(km)

@@ -30,7 +30,7 @@ func TestKeyParserC0(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var p InputParser
+			var p KeyParser
 			msgs := p.Parse(tt.in)
 			if tt.want == "esc" && len(msgs) == 0 && p.HasPending() {
 				// Lone ESC is resolved by Flush (the program does this
@@ -68,7 +68,7 @@ func TestKeyParserPrintables(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var p InputParser
+			var p KeyParser
 			msgs := p.Parse([]byte(tt.in))
 			if len(msgs) != 1 {
 				t.Fatalf("expected 1 msg, got %d", len(msgs))
@@ -139,7 +139,7 @@ func TestKeyParserSequences(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var p InputParser
+			var p KeyParser
 			msgs := p.Parse([]byte(tt.in))
 			if len(msgs) != 1 {
 				t.Fatalf("expected 1 msg, got %d (%#v)", len(msgs), msgs)
@@ -157,7 +157,7 @@ func TestKeyParserSequences(t *testing.T) {
 
 // TestKeyParserMultiKeys verifies a stream of keys in one chunk.
 func TestKeyParserMultiKeys(t *testing.T) {
-	var p InputParser
+	var p KeyParser
 	msgs := p.Parse([]byte("jk\x1b[A\x1b[B:q\x1b[1;2A"))
 	wants := []string{"j", "k", "up", "down", ":", "q", "shift+up"}
 	if len(msgs) != len(wants) {
@@ -174,7 +174,7 @@ func TestKeyParserMultiKeys(t *testing.T) {
 // TestKeyParserIncomplete verifies incomplete sequences are retained across
 // Parse calls.
 func TestKeyParserIncomplete(t *testing.T) {
-	var p InputParser
+	var p KeyParser
 	// Lone ESC: incomplete — no message yet.
 	msgs := p.Parse([]byte{0x1b})
 	if len(msgs) != 0 {
@@ -195,7 +195,7 @@ func TestKeyParserIncomplete(t *testing.T) {
 
 // TestKeyParserFlushEsc verifies Flush resolves a lone ESC as the Escape key.
 func TestKeyParserFlushEsc(t *testing.T) {
-	var p InputParser
+	var p KeyParser
 	p.Parse([]byte{0x1b})
 	msgs := p.Flush()
 	if len(msgs) != 1 || msgs[0].(KeyPressMsg).String() != "esc" {
@@ -205,7 +205,7 @@ func TestKeyParserFlushEsc(t *testing.T) {
 
 // TestKeyParserPaste verifies bracketed paste passthrough.
 func TestKeyParserPaste(t *testing.T) {
-	var p InputParser
+	var p KeyParser
 	msgs := p.Parse([]byte("\x1b[200~hello \x1b[A world\x1b[201~"))
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 msg (paste), got %d: %#v", len(msgs), msgs)
@@ -222,7 +222,7 @@ func TestKeyParserPaste(t *testing.T) {
 
 // TestKeyParserPasteSplit verifies paste spanning multiple reads.
 func TestKeyParserPasteSplit(t *testing.T) {
-	var p InputParser
+	var p KeyParser
 	msgs := p.Parse([]byte("\x1b[200~part1"))
 	if len(msgs) != 0 {
 		t.Fatalf("expected 0 msgs from start-only input, got %d: %#v", len(msgs), msgs)
@@ -243,7 +243,7 @@ func TestKeyParserPasteSplit(t *testing.T) {
 
 // TestKeyParserUnknownDropped verifies unknown sequences are dropped.
 func TestKeyParserUnknownDropped(t *testing.T) {
-	var p InputParser
+	var p KeyParser
 	msgs := p.Parse([]byte("\x1b[999~ab"))
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 msgs (unknown dropped), got %#v", msgs)
@@ -268,7 +268,7 @@ func TestKeyParserFocusEvents(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var p InputParser
+			var p KeyParser
 			msgs := p.Parse([]byte(tt.in))
 			if len(msgs) != 1 {
 				t.Fatalf("expected 1 msg, got %d: %#v", len(msgs), msgs)
@@ -283,7 +283,7 @@ func TestKeyParserFocusEvents(t *testing.T) {
 // TestKeyParserFocusEventsSplit verifies a focus sequence split across
 // reads is retained and resolved (pending handling).
 func TestKeyParserFocusEventsSplit(t *testing.T) {
-	var p InputParser
+	var p KeyParser
 	if msgs := p.Parse([]byte("\x1b[")); len(msgs) != 0 || !p.HasPending() {
 		t.Fatalf("expected pending state, got msgs=%#v pending=%v", msgs, p.HasPending())
 	}
@@ -332,6 +332,6 @@ func TestKeyString(t *testing.T) {
 // paste), while these tests ask the narrower question — "is a marker head held
 // in pending?" — to name the exact state they are asserting. It lives here
 // rather than in key_parser.go because no shipped code path consumes it.
-func (p *InputParser) HasPending() bool {
+func (p *KeyParser) HasPending() bool {
 	return len(p.pending) > 0
 }

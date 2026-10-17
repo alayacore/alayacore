@@ -87,91 +87,91 @@ func TestInputFieldCJKInsertion(t *testing.T) {
 	}
 }
 
-// TestInputFieldCursorCell verifies CursorCell returns the correct cell
+// TestInputFieldCaretCell verifies CaretCell returns the correct cell
 // offset for empty values, ASCII, CJK wide characters, multiline values,
 // and horizontally scrolled lines.
-func TestInputFieldCursorCell(t *testing.T) {
-	// Empty value: cursor at cell 0.
+func TestInputFieldCaretCell(t *testing.T) {
+	// Empty value: caret at cell 0.
 	f := NewInputField()
-	if cell := f.CursorCell(); cell != 0 {
+	if cell := f.CaretCell(); cell != 0 {
 		t.Fatalf("empty: got cell %d, want 0", cell)
 	}
 
-	// ASCII text, cursor at end.
+	// ASCII text, caret at end.
 	f = NewInputField()
-	f = f.WithValue("hello").CursorEnd()
-	if cell := f.CursorCell(); cell != 5 {
+	f = f.WithValue("hello").CaretEnd()
+	if cell := f.CaretCell(); cell != 5 {
 		t.Fatalf("hello end: got cell %d, want 5", cell)
 	}
 
 	// CJK wide characters occupy 2 cells each.
 	f = NewInputField()
-	f = f.WithValue("你好").CursorEnd()
-	if cell := f.CursorCell(); cell != 4 {
+	f = f.WithValue("你好").CaretEnd()
+	if cell := f.CaretCell(); cell != 4 {
 		t.Fatalf("你好 end: got cell %d, want 4", cell)
 	}
 
-	// Cursor in the middle of mixed ASCII/CJK content (before the wide rune).
+	// ScreenCursor in the middle of mixed ASCII/CJK content (before the wide rune).
 	f = NewInputField()
 	f = f.WithValue("a你b")
-	f = f.WithCursorPos(1) // between 'a' (cell 1) and '你' (cells 1-2)
-	if cell := f.CursorCell(); cell != 1 {
+	f = f.WithCaretPos(1) // between 'a' (cell 1) and '你' (cells 1-2)
+	if cell := f.CaretCell(); cell != 1 {
 		t.Fatalf("a你b pos1: got cell %d, want 1", cell)
 	}
 	// After the wide rune: cell = 1 + 2 = 3.
-	f = f.WithCursorPos(2)
-	if cell := f.CursorCell(); cell != 3 {
+	f = f.WithCaretPos(2)
+	if cell := f.CaretCell(); cell != 3 {
 		t.Fatalf("a你b pos2: got cell %d, want 3", cell)
 	}
 
-	// Multiline: cursor on the second line — the displayed line is the
+	// Multiline: caret on the second line — the displayed line is the
 	// current line, so the cell offset is relative to that line only.
 	f = NewMultilineInputField()
-	f = f.WithValue("first\nsecond").CursorEnd()
-	if cell := f.CursorCell(); cell != 6 {
+	f = f.WithValue("first\nsecond").CaretEnd()
+	if cell := f.CaretCell(); cell != 6 {
 		t.Fatalf("multiline end: got cell %d, want 6", cell)
 	}
 
-	// Horizontal scroll: long line in a narrow viewport, cursor at end.
-	// CursorEnd runs ensureCursorVisible, so visStart > 0 and the cell is
+	// Horizontal scroll: long line in a narrow viewport, caret at end.
+	// CaretEnd runs ensureCaretVisible, so visStart > 0 and the cell is
 	// measured relative to the visible window.
 	f = NewInputField()
 	f = f.WithWidth(5)
-	f = f.WithValue("abcdefghij").CursorEnd()
+	f = f.WithValue("abcdefghij").CaretEnd()
 	if f.visStart == 0 {
 		t.Fatal("setup failed: expected horizontal scroll (visStart > 0)")
 	}
 	wantCell := 10 - runesWidth([]rune("abcdefghij")[:f.visStart])
-	if cell := f.CursorCell(); cell != wantCell {
+	if cell := f.CaretCell(); cell != wantCell {
 		t.Fatalf("scrolled end: got cell %d, want %d", cell, wantCell)
 	}
 
-	// Horizontal scroll with a wide char before the cursor.
+	// Horizontal scroll with a wide char before the caret.
 	f = NewInputField()
 	f = f.WithWidth(4)
-	f = f.WithValue("abcdefgh").CursorEnd()
-	f = f.WithCursorPos(2) // after 'a','b' — ensureCursorVisible adjusts
-	f = f.ensureCursorVisible()
+	f = f.WithValue("abcdefgh").CaretEnd()
+	f = f.WithCaretPos(2) // after 'a','b' — ensureCaretVisible adjusts
+	f = f.ensureCaretVisible()
 	wantCell = runesWidth([]rune("ab")) - runesWidth([]rune("abcdefgh")[:f.visStart])
-	if cell := f.CursorCell(); cell != wantCell {
+	if cell := f.CaretCell(); cell != wantCell {
 		t.Fatalf("scrolled mid: got cell %d, want %d", cell, wantCell)
 	}
 }
 
-// TestInputFieldCursorCellAlignedWithVisibleText is a regression test for a
-// bug where the real terminal cursor drifted onto the last character when a
+// TestInputFieldCaretCellAlignedWithVisibleText is a regression test for a
+// bug where the real terminal caret drifted onto the last character when a
 // mixed CJK/ASCII line overflowed the input width.
 //
 // The scroll offset (in cells) could land in the middle of a wide CJK
 // character: buildVisibleText rounded the start down to the character
-// boundary (rendering one extra cell), while CursorCell subtracted the raw
-// offset — placing the cursor one cell too early, on top of the last
+// boundary (rendering one extra cell), while CaretCell subtracted the raw
+// offset — placing the caret one cell too early, on top of the last
 // character. Typing then appeared to replace the last character (display
 // error only).
-func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
+func TestInputFieldCaretCellAlignedWithVisibleText(t *testing.T) {
 	// Exact user flow: type CJK until the line overflows, type an ASCII char,
 	// then type more CJK. The scroll offset becomes odd (mid-wide-char), which
-	// used to desync CursorCell from the rendered text.
+	// used to desync CaretCell from the rendered text.
 	f := NewInputField()
 	f = f.WithWidth(20)
 
@@ -182,12 +182,12 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 	f, _ = f.Update(KeyPressMsg{Text: "你", Code: '你'})
 
 	vis := f.buildVisibleText()
-	if cell, want := f.CursorCell(), runesWidth(vis); cell != want {
-		t.Fatalf("cursor at end of line: CursorCell=%d but visible text width=%d — cursor is drawn %d cell(s) too early (on the last char); value=%q visStart=%d visible=%q",
+	if cell, want := f.CaretCell(), runesWidth(vis); cell != want {
+		t.Fatalf("caret at end of line: CaretCell=%d but visible text width=%d — caret is drawn %d cell(s) too early (on the last char); value=%q visStart=%d visible=%q",
 			cell, want, want-cell, f.Value(), f.visStart, string(vis))
 	}
 
-	// Sweep: for a range of widths and mixed ASCII/CJK sequences, the cursor
+	// Sweep: for a range of widths and mixed ASCII/CJK sequences, the caret
 	// must always sit exactly after the last visible character when at the end
 	// of the line, and never drift onto it. (WithWidth is a value-type
 	// method — the result must be assigned back, or the width silently stays
@@ -201,15 +201,15 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 				g, _ = g.Update(KeyPressMsg{Text: string(r), Code: r})
 			}
 			vis := g.buildVisibleText()
-			if cell, want := g.CursorCell(), runesWidth(vis); cell != want {
-				t.Fatalf("width=%d chars=%q: CursorCell=%d but visible text width=%d — cursor drawn %d cell(s) too early (on the last char); visStart=%d visible=%q",
+			if cell, want := g.CaretCell(), runesWidth(vis); cell != want {
+				t.Fatalf("width=%d chars=%q: CaretCell=%d but visible text width=%d — caret drawn %d cell(s) too early (on the last char); visStart=%d visible=%q",
 					width, string(chars[:n]), cell, want, want-cell, g.visStart, string(vis))
 			}
 		}
 	}
 
 	// Degenerate viewports (width 1 and 2) can push the scroll offset to the
-	// end of the line; the cursor must still sit after the last visible
+	// end of the line; the caret must still sit after the last visible
 	// character instead of on it.
 	for width := 1; width <= 2; width++ {
 		g := NewInputField()
@@ -218,37 +218,37 @@ func TestInputFieldCursorCellAlignedWithVisibleText(t *testing.T) {
 			g, _ = g.Update(KeyPressMsg{Text: string(r), Code: r})
 		}
 		vis := g.buildVisibleText()
-		if cell, want := g.CursorCell(), runesWidth(vis); cell != want {
-			t.Fatalf("width=%d CJK: CursorCell=%d but visible text width=%d — cursor drawn %d cell(s) off; visStart=%d visible=%q",
+		if cell, want := g.CaretCell(), runesWidth(vis); cell != want {
+			t.Fatalf("width=%d CJK: CaretCell=%d but visible text width=%d — caret drawn %d cell(s) off; visStart=%d visible=%q",
 				width, cell, want, want-cell, g.visStart, string(vis))
 		}
 	}
 }
 
 // TestInputFieldWideRuneAtRightEdgeVisible is a regression test for wide (CJK)
-// runes being clipped by the right edge of the viewport. When the cursor sits
+// runes being clipped by the right edge of the viewport. When the caret sits
 // right before a wide rune whose second cell falls outside the viewport, the
 // viewport must scroll so the rune is fully visible.
 func TestInputFieldWideRuneAtRightEdgeVisible(t *testing.T) {
 	// "abcd你fg世": a0 b1 c2 d3 你4-5 f6 g7 世8-9, width=5.
-	// CursorEnd -> offset=7; WithCursorPos(3) pulls the offset back to 3;
-	// WithCursorPos(7) (before 世, cursorCell=8) fires a scroll whose raw
+	// CaretEnd -> offset=7; WithCaretPos(3) pulls the offset back to 3;
+	// WithCaretPos(7) (before 世, caretCell=8) fires a scroll whose raw
 	// offset (8-5+2=5) falls mid-你. Rounding it DOWN used to yield offset=4
 	// (rel=4), clipping 世 at the right edge; rounding UP to the next rune
 	// boundary (6) keeps 世 fully visible.
 	g := NewInputField()
 	g = g.WithWidth(5)
-	g = g.WithValue("abcd你fg世").CursorEnd()
-	g = g.WithCursorPos(3)
-	g = g.WithCursorPos(7) // before 世
+	g = g.WithValue("abcd你fg世").CaretEnd()
+	g = g.WithCaretPos(3)
+	g = g.WithCaretPos(7) // before 世
 
 	vis := g.buildVisibleText()
-	cell := g.CursorCell()
+	cell := g.CaretCell()
 	if cell+2 > runesWidth(vis) {
-		t.Fatalf("wide rune at cursor clipped: CursorCell=%d, rune width=2, visible width=%d; visStart=%d visible=%q",
+		t.Fatalf("wide rune at caret clipped: CaretCell=%d, rune width=2, visible width=%d; visStart=%d visible=%q",
 			cell, runesWidth(vis), g.visStart, string(vis))
 	}
-	// The rune starting at the cursor cell must be the wide rune itself.
+	// The rune starting at the caret cell must be the wide rune itself.
 	cells, idx := 0, -1
 	for i := range vis {
 		if cells == cell {
@@ -258,26 +258,26 @@ func TestInputFieldWideRuneAtRightEdgeVisible(t *testing.T) {
 		cells = runesWidth(vis[:i+1])
 	}
 	if idx < 0 || vis[idx] != '世' {
-		t.Fatalf("rune at cursor cell %d is not 世; visible=%q", cell, string(vis))
+		t.Fatalf("rune at caret cell %d is not 世; visible=%q", cell, string(vis))
 	}
 }
 
-// assertCursorRuneVisible checks the two cursor/rendering invariants against
-// an InputField: the cursor never sits beyond the rendered visible text, and
-// the rune at the cursor (when there is one and it could fit in the viewport)
+// assertCursorRuneVisible checks the two caret/rendering invariants against
+// an InputField: the caret never sits beyond the rendered visible text, and
+// the rune at the caret (when there is one and it could fit in the viewport)
 // is never clipped by the right edge.
 func assertCursorRuneVisible(t *testing.T, g InputField) {
 	t.Helper()
 	vis := g.buildVisibleText()
-	cell := g.CursorCell()
+	cell := g.CaretCell()
 	if cell > runesWidth(vis) {
-		t.Fatalf("CursorCell=%d beyond rendered width=%d; visStart=%d visible=%q", cell, runesWidth(vis), g.visStart, string(vis))
+		t.Fatalf("CaretCell=%d beyond rendered width=%d; visStart=%d visible=%q", cell, runesWidth(vis), g.visStart, string(vis))
 	}
 	val := []rune(g.Value())
 	if g.pos >= len(val) {
 		return // end of line
 	}
-	// Width of the grapheme cluster at the cursor (same single width source
+	// Width of the grapheme cluster at the caret (same single width source
 	// as the implementation).
 	w := 1
 	if g.pos < len(val) && val[g.pos] != '\n' {
@@ -290,37 +290,37 @@ func assertCursorRuneVisible(t *testing.T, g InputField) {
 		}
 	}
 	if w <= g.width && cell+w > runesWidth(vis) {
-		t.Fatalf("rune %q at cursor clipped: CursorCell=%d + w=%d > visible width=%d; visStart=%d visible=%q",
+		t.Fatalf("rune %q at caret clipped: CaretCell=%d + w=%d > visible width=%d; visStart=%d visible=%q",
 			string(val[g.pos]), cell, w, runesWidth(vis), g.visStart, string(vis))
 	}
 }
 
-// TestInputFieldCursorNeverClipsWideRune sweeps every viewport width, prefix
-// length, and cursor position over mixed ASCII/CJK content, asserting that the
-// cursor never sits beyond the rendered text and a rune at the cursor is never
-// clipped by the right edge. Cursor positions are reached both directly (via
-// WithCursorPos) and through real movement sequences (CursorEnd -> move left
+// TestInputFieldCaretNeverClipsWideRune sweeps every viewport width, prefix
+// length, and caret position over mixed ASCII/CJK content, asserting that the
+// caret never sits beyond the rendered text and a rune at the caret is never
+// clipped by the right edge. ScreenCursor positions are reached both directly (via
+// WithCaretPos) and through real movement sequences (CaretEnd -> move left
 // to the start -> move right to the target), which exercises the path where a
 // scroll offset is first pulled back and then advanced again.
-func TestInputFieldCursorNeverClipsWideRune(t *testing.T) {
+func TestInputFieldCaretNeverClipsWideRune(t *testing.T) {
 	chars := []rune("a你b好c世d界e你f好g世h界")
 	for width := 1; width <= 12; width++ {
 		for n := 1; n <= len(chars); n++ {
 			val := string(chars[:n])
 
-			// Direct cursor placement.
+			// Direct caret placement.
 			for pos := 0; pos <= n; pos++ {
 				g := NewInputField()
 				g = g.WithWidth(width)
-				g = g.WithValue(val).WithCursorPos(pos)
+				g = g.WithValue(val).WithCaretPos(pos)
 				assertCursorRuneVisible(t, g)
 			}
 
-			// Movement walk: CursorEnd -> left to start -> right to end,
+			// Movement walk: CaretEnd -> left to start -> right to end,
 			// asserting at every step.
 			g := NewInputField()
 			g = g.WithWidth(width)
-			g = g.WithValue(val).CursorEnd()
+			g = g.WithValue(val).CaretEnd()
 			assertCursorRuneVisible(t, g)
 			for p := n - 1; p >= 0; p-- {
 				g, _ = g.handleKeyMsg(KeyPressMsg{Code: KeyLeft})
@@ -336,8 +336,8 @@ func TestInputFieldCursorNeverClipsWideRune(t *testing.T) {
 
 // TestInputFieldViewCursorPosition verifies that buildVisibleText returns the
 // correct visible portion of the line. This test caught a bug where
-// buildVisibleText was returning cursorIdx=0 because the second loop
-// corrupted startIdx (cursorIdx is gone now, but the visible-text logic
+// buildVisibleText was returning caretIdx=0 because the second loop
+// corrupted startIdx (caretIdx is gone now, but the visible-text logic
 // remains).
 func TestInputFieldViewCursorPosition(t *testing.T) {
 	f := NewInputField().WithWidth(20)
@@ -359,15 +359,15 @@ func TestInputFieldViewCursorPosition(t *testing.T) {
 		t.Errorf("buildVisibleText visible=%q, want 'hello'", string(vis))
 	}
 
-	// View() should render the text without any painted cursor cell.
+	// View() should render the text without any painted caret cell.
 	view := f.View()
 	if strings.Contains(view, "\x1b[48") {
-		t.Error("input view must not paint a cursor cell (background color)")
+		t.Error("input view must not paint a caret cell (background color)")
 	}
 
-	// Blurred rendering must also be cursor-free.
+	// Blurred rendering must also be caret-free.
 	if strings.Contains(f.WithActive(false).View(), "\x1b[48") {
-		t.Error("blurred view must not paint a cursor cell")
+		t.Error("blurred view must not paint a caret cell")
 	}
 }
 
@@ -380,7 +380,7 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 	// Scrolled single-line value...
 	g := NewInputField()
 	g = g.WithWidth(5)
-	g = g.WithValue("abcdefghij").CursorEnd()
+	g = g.WithValue("abcdefghij").CaretEnd()
 	if g.visStart == 0 {
 		t.Fatal("setup failed: expected scrolled state (visStart > 0)")
 	}
@@ -391,7 +391,7 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 	vis := g.buildVisibleText()
 	// The view must be recomputed from the new value: scrolling to the end
 	// of "ABCDEFGHIJK" (11 cells, width 5, need=1 at end of line) yields
-	// target = 11+1-5 = 7, so visStart = 7 ("HIJK", cursor at rel 4 =
+	// target = 11+1-5 = 7, so visStart = 7 ("HIJK", caret at rel 4 =
 	// width-1), independent of the old value's state.
 	newLine := []rune("ABCDEFGHIJK")
 	wantStart, _ := firstRuneStartAtLeast(newLine, runesWidth(newLine)+1-5)
@@ -401,8 +401,8 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 	if string(vis) != "HIJK" {
 		t.Errorf("visible=%q, want %q (stale scroll position applied to new value)", string(vis), "HIJK")
 	}
-	if cell := g.CursorCell(); cell != 4 {
-		t.Errorf("CursorCell=%d, want 4", cell)
+	if cell := g.CaretCell(); cell != 4 {
+		t.Errorf("CaretCell=%d, want 4", cell)
 	}
 
 	// Short replacement must also reset (no stale visStart).
@@ -421,7 +421,7 @@ func TestInputFieldWithValueResetsVisibleStart(t *testing.T) {
 func TestInputFieldWithValuePreservesAllContent(t *testing.T) {
 	g := NewInputField()
 	g = g.WithWidth(80)
-	g = g.WithValue("abcdef").WithCursorPos(2) // cursor in middle, visStart=0
+	g = g.WithValue("abcdef").WithCaretPos(2) // caret in middle, visStart=0
 
 	// Without the fix, visStart from prior state could survive. With the
 	// fix it's explicitly reset to 0 in WithValue, so the whole new value
@@ -437,13 +437,13 @@ func TestInputFieldWithValuePreservesAllContent(t *testing.T) {
 }
 
 // TestInputFieldUnifiedWidthSource verifies the full View rendering path
-// with a multi-rune cluster: every width calculation (truncation, cursor,
+// with a multi-rune cluster: every width calculation (truncation, caret,
 // padding) comes from the single width table in width.go, so ❤️ (a 2-cell
 // cluster) can never make the view overflow or produce negative padding.
 func TestInputFieldUnifiedWidthSource(t *testing.T) {
 	g := NewInputField()
 	g = g.WithWidth(5)
-	g = g.WithValue("a❤️b").CursorEnd()
+	g = g.WithValue("a❤️b").CaretEnd()
 
 	vis := g.buildVisibleText()
 	if w := runesWidth(vis); w > g.width {
@@ -469,11 +469,11 @@ func TestInputFieldUnifiedWidthSource(t *testing.T) {
 // cluster (❤️, ZWJ family emoji, e + combining acute) is measured and
 // truncated as one unit with its terminal display width, never split.
 func TestInputFieldGraphemeWidth(t *testing.T) {
-	// 1. Truncation never splits a cluster: with the cursor before ❤️ the
+	// 1. Truncation never splits a cluster: with the caret before ❤️ the
 	// whole 2-cell cluster fits and b is excluded entirely.
 	g := NewInputField()
 	g = g.WithWidth(2)
-	g = g.WithValue("❤️b").WithCursorPos(0) // before ❤️
+	g = g.WithValue("❤️b").WithCaretPos(0) // before ❤️
 	vis := g.buildVisibleText()
 	if got := string(vis); got != "❤️" {
 		t.Fatalf("visible=%q, want %q (b must be excluded, ❤️ kept whole)", got, "❤️")
@@ -482,37 +482,37 @@ func TestInputFieldGraphemeWidth(t *testing.T) {
 		t.Fatalf("visible width=%d, want 2", w)
 	}
 
-	// 2. A wide cluster at the cursor must be kept fully visible: cursor
+	// 2. A wide cluster at the caret must be kept fully visible: caret
 	// before ❤️ scrolls so the whole 2-cell cluster fits.
 	g = NewInputField()
 	g = g.WithWidth(2)
-	g = g.WithValue("a❤️b").WithCursorPos(1) // before ❤️
+	g = g.WithValue("a❤️b").WithCaretPos(1) // before ❤️
 	vis = g.buildVisibleText()
 	if got := string(vis); got != "❤️" {
-		t.Fatalf("visible=%q, want %q (❤️ at cursor must be fully visible)", got, "❤️")
+		t.Fatalf("visible=%q, want %q (❤️ at caret must be fully visible)", got, "❤️")
 	}
-	if cell := g.CursorCell(); cell != 0 {
-		t.Fatalf("CursorCell=%d, want 0 (cursor before ❤️)", cell)
+	if cell := g.CaretCell(); cell != 0 {
+		t.Fatalf("CaretCell=%d, want 0 (caret before ❤️)", cell)
 	}
 
-	// 3. With a 1-cell cluster at the cursor the view may keep the cursor at
+	// 3. With a 1-cell cluster at the caret the view may keep the caret at
 	// rel = width-1, so content before it stays visible (no over-scroll).
 	g = NewInputField()
 	g = g.WithWidth(3)
-	g = g.WithValue("a❤️b").WithCursorPos(1) // before ❤️
-	g = g.WithCursorPos(3)                   // after ❤️, before b (in-window move)
+	g = g.WithValue("a❤️b").WithCaretPos(1) // before ❤️
+	g = g.WithCaretPos(3)                   // after ❤️, before b (in-window move)
 	vis = g.buildVisibleText()
 	if got := string(vis); got != "❤️b" {
-		t.Fatalf("visible=%q, want %q (cursor at rel 2, ❤️ still visible)", got, "❤️b")
+		t.Fatalf("visible=%q, want %q (caret at rel 2, ❤️ still visible)", got, "❤️b")
 	}
-	if cell := g.CursorCell(); cell != 2 {
-		t.Fatalf("CursorCell=%d, want 2", cell)
+	if cell := g.CaretCell(); cell != 2 {
+		t.Fatalf("CaretCell=%d, want 2", cell)
 	}
 
 	// 4. ZWJ family emoji is one 2-cell cluster.
 	g = NewInputField()
 	g = g.WithWidth(3)
-	g = g.WithValue("👨‍👩‍👧‍👦x").CursorEnd()
+	g = g.WithValue("👨‍👩‍👧‍👦x").CaretEnd()
 	vis = g.buildVisibleText()
 	if got := string(vis); got != "👨‍👩‍👧‍👦x" {
 		t.Fatalf("visible=%q, want the family emoji plus x (both fit in 3 cells)", got)
@@ -524,7 +524,7 @@ func TestInputFieldGraphemeWidth(t *testing.T) {
 	// 5. e + combining acute is one 1-cell cluster.
 	g = NewInputField()
 	g = g.WithWidth(2)
-	g = g.WithValue("e\u0301x").CursorEnd()
+	g = g.WithValue("e\u0301x").CaretEnd()
 	vis = g.buildVisibleText()
 	if w := runesWidth(vis); w != 2 {
 		t.Fatalf("visible %q width=%d, want 2 (e\u0301 is one 1-cell cluster)", string(vis), w)

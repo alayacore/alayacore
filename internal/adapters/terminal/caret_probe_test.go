@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// ensureCursorVisible used to ask one question per walk — and a walk encodes
+// ensureCaretVisible used to ask one question per walk — and a walk encodes
 // the line as a string before it can segment it, so a keystroke at the end of a
 // 4000-cell line encoded and segmented that line five to eight times. It now
 // asks them all of a single pass (probeLine).
@@ -16,7 +16,7 @@ import (
 // start, not merely "the invariants still hold". The fuzz test in
 // fuzz_invariants_test.go checks the properties; this checks the answer.
 
-// oldEnsureCursorVisible is ensureCursorVisible before the single pass. Kept
+// oldEnsureCursorVisible is ensureCaretVisible before the single pass. Kept
 // verbatim — same walks, same order, same arithmetic.
 func oldEnsureCursorVisible(m InputField) InputField {
 	if m.width <= 0 {
@@ -39,7 +39,7 @@ func oldEnsureCursorVisible(m InputField) InputField {
 	}
 
 	relPos := m.pos - lineStart
-	cursorCell := runesWidth(line[:relPos])
+	caretCell := runesWidth(line[:relPos])
 	need := 1
 	if relPos < len(line) {
 		walkLineClusters(line, func(start, end, width int) bool {
@@ -53,11 +53,11 @@ func oldEnsureCursorVisible(m InputField) InputField {
 	startCell := runesWidth(line[:m.visStart])
 
 	switch {
-	case cursorCell < startCell:
+	case caretCell < startCell:
 		m.visStart = oldClusterStartAt(line, relPos)
-	case cursorCell+need > startCell+m.width:
-		m.visStart = oldFirstRuneStartAtLeast(line, cursorCell+need-m.width)
-		if runesWidth(line[:m.visStart]) > cursorCell {
+	case caretCell+need > startCell+m.width:
+		m.visStart = oldFirstRuneStartAtLeast(line, caretCell+need-m.width)
+		if runesWidth(line[:m.visStart]) > caretCell {
 			m.visStart = oldClusterStartAt(line, relPos)
 		}
 	}
@@ -125,12 +125,12 @@ var cursorValues = []string{
 	"aaaaaaaaaa你你你你你你你你你你aaaaaaaaaa",
 }
 
-// TestEnsureCursorVisibleMatchesOracle sweeps every (value, width, pos,
+// TestEnsureCaretVisibleMatchesOracle sweeps every (value, width, pos,
 // visLine, visStart) combination the field can be handed, including stale
 // visible starts that fall inside a cluster — the case the re-anchor exists for
 // — and requires the single pass to land on exactly the index the old walks
 // landed on.
-func TestEnsureCursorVisibleMatchesOracle(t *testing.T) {
+func TestEnsureCaretVisibleMatchesOracle(t *testing.T) {
 	widths := []int{1, 2, 3, 4, 5, 8, 13, 40}
 	checked := 0
 	for _, v := range cursorValues {
@@ -152,7 +152,7 @@ func TestEnsureCursorVisibleMatchesOracle(t *testing.T) {
 					for _, visLine := range []int{0, -1, len(runes) + 3} {
 						for _, multiline := range []bool{false, true} {
 							g := newProbeField(v, width, pos, visLine, visStart, multiline)
-							got := g.ensureCursorVisible()
+							got := g.ensureCaretVisible()
 							want := oldEnsureCursorVisible(g)
 							checked++
 							if got.visStart != want.visStart || got.visLine != want.visLine {
@@ -172,11 +172,11 @@ func TestEnsureCursorVisibleMatchesOracle(t *testing.T) {
 	t.Logf("compared %d states", checked)
 }
 
-// TestEnsureCursorVisibleMatchesOracleRandom is the same comparison over states
+// TestEnsureCaretVisibleMatchesOracleRandom is the same comparison over states
 // the sweep does not reach: longer values, wider fields, and sequences of
 // operations that leave the visible start wherever the previous operation put
 // it.
-func TestEnsureCursorVisibleMatchesOracleRandom(t *testing.T) {
+func TestEnsureCaretVisibleMatchesOracleRandom(t *testing.T) {
 	chars := []rune("ab你cd好e世fg界h\u0301❤️\u200d")
 	rng := rand.New(rand.NewSource(20260929))
 	for iter := 0; iter < 4000; iter++ {
@@ -208,7 +208,7 @@ func TestEnsureCursorVisibleMatchesOracleRandom(t *testing.T) {
 			if len(line) > 0 {
 				probe.visStart = rng.Intn(len(line) + 1)
 			}
-			got := probe.ensureCursorVisible()
+			got := probe.ensureCaretVisible()
 			want := oldEnsureCursorVisible(probe)
 			if got.visStart != want.visStart || got.visLine != want.visLine {
 				t.Fatalf("iter=%d step=%d value=%q pos=%d width=%d visLine=%d visStart=%d multiline=%v:\n  single pass: visLine=%d visStart=%d\n  oracle:      visLine=%d visStart=%d",
@@ -248,47 +248,47 @@ func TestProbeLineAnswersThePrefixQuestions(t *testing.T) {
 	for _, v := range cursorValues {
 		line := []rune(v)
 		for width := 1; width <= 12; width++ {
-			for cursor := 0; cursor <= len(line); cursor++ {
+			for caret := 0; caret <= len(line); caret++ {
 				for vis := 0; vis <= len(line); vis++ {
-					p := probeLine(line, cursor, vis, width)
+					p := probeLine(line, caret, vis, width)
 
 					if want := oldClusterStartAt(line, vis); p.anchored != want {
-						t.Errorf("probeLine(%q, cursor=%d, vis=%d, width=%d).anchored = %d, clusterStartAt = %d",
-							v, cursor, vis, width, p.anchored, want)
+						t.Errorf("probeLine(%q, caret=%d, vis=%d, width=%d).anchored = %d, clusterStartAt = %d",
+							v, caret, vis, width, p.anchored, want)
 					}
 					// startCell is measured at the ANCHORED index, which is
 					// where the field will actually start drawing.
 					if want := runesWidth(line[:p.anchored]); p.startCell != want {
-						t.Errorf("probeLine(%q, cursor=%d, vis=%d, width=%d).startCell = %d, runesWidth(line[:anchored=%d]) = %d",
-							v, cursor, vis, width, p.startCell, p.anchored, want)
+						t.Errorf("probeLine(%q, caret=%d, vis=%d, width=%d).startCell = %d, runesWidth(line[:anchored=%d]) = %d",
+							v, caret, vis, width, p.startCell, p.anchored, want)
 					}
-					if want := runesWidth(line[:min(cursor, len(line))]); p.cursorCell != want {
-						t.Errorf("probeLine(%q, cursor=%d, vis=%d, width=%d).cursorCell = %d, runesWidth = %d",
-							v, cursor, vis, width, p.cursorCell, want)
+					if want := runesWidth(line[:min(caret, len(line))]); p.caretCell != want {
+						t.Errorf("probeLine(%q, caret=%d, vis=%d, width=%d).caretCell = %d, runesWidth = %d",
+							v, caret, vis, width, p.caretCell, want)
 					}
-					// need: the width of the cluster the cursor is inside, or 1
+					// need: the width of the cluster the caret is inside, or 1
 					// at end-of-line where there is no cluster.
 					wantNeed := 1
-					if cursor < len(line) {
+					if caret < len(line) {
 						walkLineClusters(line, func(a, b, w int) bool {
-							if cursor >= a && cursor < b {
+							if caret >= a && caret < b {
 								wantNeed = w
 								return false
 							}
-							return a <= cursor
+							return a <= caret
 						})
 					}
 					if p.need != wantNeed {
-						t.Errorf("probeLine(%q, cursor=%d, vis=%d, width=%d).need = %d, the cluster at the cursor is %d",
-							v, cursor, vis, width, p.need, wantNeed)
+						t.Errorf("probeLine(%q, caret=%d, vis=%d, width=%d).need = %d, the cluster at the caret is %d",
+							v, caret, vis, width, p.need, wantNeed)
 					}
-					if want := oldClusterStartAt(line, cursor); p.clusterAt != want {
-						t.Errorf("probeLine(%q, cursor=%d, vis=%d, width=%d).clusterAt = %d, clusterStartAt = %d",
-							v, cursor, vis, width, p.clusterAt, want)
+					if want := oldClusterStartAt(line, caret); p.clusterAt != want {
+						t.Errorf("probeLine(%q, caret=%d, vis=%d, width=%d).clusterAt = %d, clusterStartAt = %d",
+							v, caret, vis, width, p.clusterAt, want)
 					}
 					if want := runesWidth(line) <= width; p.fits != want {
-						t.Errorf("probeLine(%q, cursor=%d, vis=%d, width=%d).fits = %v, runesWidth(line)=%d <= %d is %v",
-							v, cursor, vis, width, p.fits, runesWidth(line), width, want)
+						t.Errorf("probeLine(%q, caret=%d, vis=%d, width=%d).fits = %v, runesWidth(line)=%d <= %d is %v",
+							v, caret, vis, width, p.fits, runesWidth(line), width, want)
 					}
 				}
 			}

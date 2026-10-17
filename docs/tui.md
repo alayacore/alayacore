@@ -81,14 +81,14 @@ stacked on top of `Esc`, and one key per job is why `Esc` is the only way out.
 | `Ctrl+L` | Open model selector |
 | `Ctrl+R` | Force redraw screen |
 | `Ctrl+P` | Open theme selector |
-| `Ctrl+H` | Open help window |
+| `Ctrl+H` | Open help overlay |
 | `Ctrl+G` | Cancel current task (with confirmation) |
 | `Ctrl+Z` | Suspend process |
 | `Ctrl+C` | Clear text |
 | `Ctrl+F` | Fork session from cursor position |
 | `Ctrl+A` | Open attachment picker for multi-modal input |
 | `:` | Switch to input with `:` prefix (command mode) |
-| `Space` | Toggle window fold (expand/collapse) |
+| `Space` | Toggle window fold (fold/unfold) |
 | `r` | Toggle markdown rendering (unfolded assistant text/reasoning) |
 
 ### Why `Shift+Enter` is not the line break
@@ -121,7 +121,7 @@ one.
 
 ### Input Cursor & IME
 
-The prompt input (and overlay filter boxes) render the **real terminal cursor** (the emulator's default steady block — themes do not configure cursor color, since the `cursor` field was dropped from `Theme` when body content rendering stopped carrying an explicit foreground color). This keeps input behavior identical to a shell prompt: Chinese/Japanese IME composition draws its inline preedit directly in the input field and the candidate window anchors to the input line.
+The prompt box (and overlay filter boxes) render the **real terminal cursor** (the emulator's default steady block — themes do not configure cursor color, since the `cursor` field was dropped from `Theme` when body content rendering stopped carrying an explicit foreground color). This keeps input behavior identical to a shell prompt: Chinese/Japanese IME composition draws its inline preedit directly in the input field and the candidate window anchors to the input line.
 
 The preedit is drawn at wherever that cursor is **when the host paints**, and a frame has to move the cursor through the rows it writes. A host that implements DECSET 2026 paints the frame in one pass, so the preedit never sees it move ([Line Wrapping](#line-wrapping)); a host that drops the mode may paint mid-frame, and the composing text is then drawn for that paint at the row the frame had reached, before the frame's closing cursor position brings it back — the preedit flicker reported while output streams. No arrangement of the frame prevents it: writing a row requires the cursor on that row. The program's part is the single write and the mode; a host that drops the mode owns the rest.
 
@@ -166,7 +166,7 @@ The head is now held for the next read (`key_parser.go` → `takePaste`) and
 completed by it, exactly as any other sequence a boundary splits, and the input
 loop's silence timeout resolves the marker that never does arrive — the paste
 delivered, the head dropped as the unknown sequence it is, paste mode left. That
-timeout arms on *any* unfinished input (`InputParser.MidSequence`), not only on a
+timeout arms on *any* unfinished input (`KeyParser.MidSequence`), not only on a
 held marker head: a paste whose body never resembles the closing marker is
 unfinished just the same, and only the state test covers it. The sweep over every
 cut offset and every read size is `key_parser_paste_cut_test.go`; the loop's half
@@ -206,7 +206,7 @@ asserted here — the gate below is removed on the general rule that input arriv
 on this program's own pty is input addressed to it, whatever the window's
 painting state says. Gating the input path on the blur made "Paste" from that menu
 delete the block silently, while a middle-click paste — no menu, no blur — worked,
-and the same menu paste worked in the attachment window's URL box, whose filter
+and the same menu paste worked in the attachment overlay's URL box, whose filter
 gated on the pane only.
 
 So the routing answer lives in exactly one place, derived from state the user
@@ -242,7 +242,7 @@ uses for line endings:
   spliced into it as **steering** at the next step boundary
   (`agent/session_steering.go`). So the model receives the block's lines as one
   or two user turns rather than as the single message that was pasted — and no
-  line is left in the input box to be sent a second time. Past the steering
+  line is left in the prompt box to be sent a second time. Past the steering
   queue's bound (`maxSteeringParts`) the extra lines are refused (a `steering`
   message with phase `refused`) and are lost with that message; the three options
   below are what to use instead.
@@ -369,7 +369,7 @@ Enter a remote URL to attach as an attachment.
 `Ctrl+W` — not a modified Backspace — carries the segment delete, because a
 control byte is the only kind of chord that reliably reaches a program:
 `Shift+Backspace` *is* a plain Backspace on most terminals, `Ctrl+Backspace`
-arrives as `Ctrl+H` (which opens the help window here), and the encodings that
+arrives as `Ctrl+H` (which opens the help overlay here), and the encodings that
 could tell them apart — the kitty keyboard protocol's `ESC [ 127 ; 2 u`, xterm's
 `modifyOtherKeys` — are the ones [documented
 below](#why-shiftenter-is-not-the-line-break) as not read by `key_parser.go`.
@@ -414,7 +414,7 @@ way, and grows upward rather than downward: its top rule is anchored from the
 bottom of the screen, so attaching a file costs the transcript a row and never
 moves the caret.
 
-Collapsed (`Space`), the same window keeps the attachments as a compact badge
+Folded (`Space`), the same window keeps the attachments as a compact badge
 summary and shows the text tail after it — two images and one audio here. The
 badges keep the register they hold unfolded (bold, in the terminal's default
 color — deliberately not the window line's muted color, which would make them
@@ -427,10 +427,10 @@ rather than painting half a bold badge:
 + USER PROMPT     📷2 🎵1 analyze this
 ```
 
-The label column is padded to `CollapsedLabelWidth` by `padLabel`, the fold
+The label column is padded to `FoldedLabelWidth` by `padLabel`, the fold
 marker is prefixed by the window layer, and the tail is cut by
 `tailCells`/`tailParts` (see
-[Collapsed Summary Truncation](#collapsed-summary-truncation)). Expand the
+[Folded Summary Truncation](#folded-summary-truncation)). Unfold the
 window (`Space`) to see the full attachment labels and content — the marker
 becomes `-`, the timestamp appears on the right, and the content follows.
 
@@ -448,13 +448,13 @@ Attachments are cleared after sending. Use `Ctrl+C` to discard both text and pen
 
 See [commands.md](commands.md) for the full list of session commands (`:save`, `:cancel`, `:fork`, etc.).
 
-Note: `:quit` / `:q`, `:cancel`, `:help`, and `:suspend` are intercepted by each adapter where supported — see [commands.md](commands.md#adapter-specific-commands) for the per-adapter table. In the terminal, `:quit`/`:q` and `:cancel` open a confirmation dialog: confirming quit sends the session's `quit` command, and the terminal exits when the session announces that it is over — a task that is already running is allowed to finish first, and while it does a wait window shows the task's step and `c` cancels it (after that the window reports the task being stopped, and Esc never takes the quit back: it has already been sent); confirming cancel forwards `:cancel` to the session; `:help` (opens the help window) and `:suspend` (suspends the process) are handled locally and never reach the session. Elsewhere: plainio and terseio send `quit` the same way and then exit with code 0 — `:help` and `:suspend` are not adapter-handled, so `:help` is sent to the session as a regular command; rawio passes all commands through as raw CI frames since it doesn't interpret frame payloads.
+Note: `:quit` / `:q`, `:cancel`, `:help`, and `:suspend` are intercepted by each adapter where supported — see [commands.md](commands.md#adapter-specific-commands) for the per-adapter table. In the terminal, `:quit`/`:q` and `:cancel` open a confirmation dialog: confirming quit sends the session's `quit` command, and the terminal exits when the session announces that it is over — a task that is already running is allowed to finish first, and while it does a wait window shows the task's step and `c` cancels it (after that the window reports the task being stopped, and Esc never takes the quit back: it has already been sent); confirming cancel forwards `:cancel` to the session; `:help` (opens the help overlay) and `:suspend` (suspends the process) are handled locally and never reach the session. Elsewhere: plainio and terseio send `quit` the same way and then exit with code 0 — `:help` and `:suspend` are not adapter-handled, so `:help` is sent to the session as a regular command; rawio passes all commands through as raw CI frames since it doesn't interpret frame payloads.
 
 ## Window Container
 
 The display area organizes content into separate windows — one per message or tool call. Windows have synchronized widths and can be navigated independently.
 
-Every window spends exactly ONE row of chrome — its own line — and it never draws a border. That line opens with the fold marker (`+` folded, `-` expanded), then the label in the fixed `CollapsedLabelWidth` column, so the label sits at the same cell in both states and folding never moves it. What follows the label is what tells the two states apart: the content summary when folded, the arrival timestamp right-aligned to the window edge when expanded — with the message's hidden-line count beside it while that row is pinned to the screen top ([Sticky Window Line](#sticky-window-line)). Nothing delimits a window's end: the next window's own line does, and the last one is closed by the live-edge row and the prompt box under it. A *floating* surface instead brackets its content with top and bottom rules — the prompt box around the draft (and, when files are attached, the badge rows above it), a selector overlay around its filter box. In a selector, that box's closing rule is the only divider between the search and the bare list under it, and the help bar closes the overlay below.
+Every window spends exactly ONE row of chrome — its own line — and it never draws a border. That line opens with the fold marker (`+` folded, `-` unfolded), then the label in the fixed `FoldedLabelWidth` column, so the label sits at the same cell in both states and folding never moves it. What follows the label is what tells the two states apart: the content summary when folded, the arrival timestamp right-aligned to the window edge when unfolded — with the message's hidden-line count beside it while that row is pinned to the screen top ([Sticky Window Line](#sticky-window-line)). Nothing delimits a window's end: the next window's own line does, and the last one is closed by the live-edge row and the prompt box under it. A *floating* surface instead brackets its content with top and bottom rules — the prompt box around the draft (and, when files are attached, the badge rows above it), a selector overlay around its filter box. In a selector, that box's closing rule is the only divider between the search and the bare list under it, and the help bar closes the overlay below.
 
 ### Window Order
 
@@ -466,11 +466,11 @@ The sort reproduces *arrival* order, not a ranking of block kinds: in delta mode
 
 ### Tool Status Indicator
 
-Every tool window's line carries a status indicator right after the `TOOL CALL` label (`TOOL CALL ⠋`, `TOOL CALL ✓`, `TOOL CALL ✗`), separated by one space, and then the tool name — folded (`+ TOOL CALL ⠋     execute_command uname -a`) and expanded (`- TOOL CALL ⠋     execute_command …`) alike, so the same window reads the same way in both states. The label and the indicator share the line's single style; the name takes the tool-content color (bold) — the same one in both fold states, so folding a window does not repaint it — and the argument block is plain content, with one exception ([Tool Result Separator](#tool-result-separator) below describes it). While arguments are still streaming in and while the tool is executing, the indicator is the same braille dot-segment spinner used by the session-loading screen and drawn by the status bar's indicator column (whose idle cell is the still braille cell `⠿`, the union of those frames — see [Glyphs and Terminal Width](#glyphs-and-terminal-width)). The glyph is a pure wall-clock function (10 frames × 150ms), so it advances with every header re-render; re-renders come from two sources — incoming deltas (`Af` argument chunks, `Uf` execution previews) and, while a tool executes with no output, a tick-driven invalidation that keeps the spinner rotating even during silent commands (see `WindowBuffer.InvalidateRunningToolSpinners` and [tool-spinner-refresh.md](internal/tool-spinner-refresh.md)). There is no dedicated animation timer. When the tool finishes, the spinner is replaced by a check mark (`✓` on success) or cross (`✗` on error); as a safety net, any tool window still running when the task ends is settled to `✗` (see `WindowBuffer.SettleUnfinishedTools`). The indicator shares the `TOOL CALL` label color (muted + bold) so `TOOL CALL` + indicator + tool name read as a single colored unit — the indicator carries no semantic color of its own. The one place the three part company is the cursor register: the highlight recolors the label and the indicator and leaves the name muted, exactly as it does when the window is expanded ([Fold Mode](#fold-mode)).
+Every tool window's line carries a status indicator right after the `TOOL CALL` label (`TOOL CALL ⠋`, `TOOL CALL ✓`, `TOOL CALL ✗`), separated by one space, and then the tool name — folded (`+ TOOL CALL ⠋     execute_command uname -a`) and unfolded (`- TOOL CALL ⠋     execute_command …`) alike, so the same window reads the same way in both states. The label and the indicator share the line's single style; the name takes the tool-content color (bold) — the same one in both fold states, so folding a window does not repaint it — and the argument block is plain content, with one exception ([Tool Result Separator](#tool-result-separator) below describes it). While arguments are still streaming in and while the tool is executing, the indicator is the same braille dot-segment spinner used by the session-loading screen and drawn by the status bar's indicator column (whose idle cell is the still braille cell `⠿`, the union of those frames — see [Glyphs and Terminal Width](#glyphs-and-terminal-width)). The glyph is a pure wall-clock function (10 frames × 150ms), so it advances with every header re-render; re-renders come from two sources — incoming deltas (`Af` argument chunks, `Uf` execution previews) and, while a tool executes with no output, a tick-driven invalidation that keeps the spinner rotating even during silent commands (see `WindowBuffer.InvalidateRunningToolSpinners` and [tool-spinner-refresh.md](internal/tool-spinner-refresh.md)). There is no dedicated animation timer. When the tool finishes, the spinner is replaced by a check mark (`✓` on success) or cross (`✗` on error); as a safety net, any tool window still running when the task ends is settled to `✗` (see `WindowBuffer.SettleUnfinishedTools`). The indicator shares the `TOOL CALL` label color (muted + bold) so `TOOL CALL` + indicator + tool name read as a single colored unit — the indicator carries no semantic color of its own. The one place the three part company is the cursor register: the highlight recolors the label and the indicator and leaves the name muted, exactly as it does when the window is unfolded ([Fold Mode](#fold-mode)).
 
 ### Tool Result Separator
 
-Tool windows separate the tool call's arguments from its result with a dimmed `───` rule. The arguments are shown without the status indicator or the `name: ` prefix (both live on the window's own line), so a window reads: its own line (`- TOOL CALL ⠋ execute_command`), argument block, `───`, result. The block is `lscpu | grep …` — and, when the call carried a `workdir`, the command on one line with a `[dir=/home/me/skills/weather]` line under it. That annotation is not command text but the harness recording where the command ran, so it is **bold** — the channel this UI uses to tell a position apart without spending a color (the tool name on the line above does the same) — while the command stays plain, and it dims with the body under an overlay. A line of its own is what keeps it from reading as one more argument of the command, and it is what makes it exact to find: nothing is matched in the text, so a command that merely contains a bracketed `[dir=…]` (a glob, say) is never taken for an annotation. `write_file` and `edit_file` follow the same layout, each block's first line being the payload (a path) and its remaining lines the tool's own (raw file content; diff rows). Only `edit_file`'s argument block is a real diff: the removed rows (`- `) render in the theme's removed color and the added rows (`+ `) in the added color (each wrapped continuation row stays self-contained); context rows and the bare argument line stay plain; a hunk keeps three rows of context on either side of a change, and every longer stretch of unchanged lines is drawn as one row that counts itself (`… 412 lines hidden`) in the muted color the `───` rule above it uses, because a row that stands in for lines has to say how many. That is also what an argument pair too large to diff gets: one such row saying so (`… 3512 lines hidden, too large to diff`) instead of every line being drawn as removed and added, which would claim a change nobody compared. A blank line is a row like any other, and only its marker can say what happened to it: a removed blank line and an unchanged one are the same text, so the `- ` (or `+ `) with nothing after the marker is the whole evidence that a change happened — which is why the block's own rows are never trimmed away. `write_file` shows the raw file content being written — plain, never diff-colored (`- `/`+ ` lines there are literal content). Because a folded window summarizes only the block's first line, the `[dir=…]` line appears when the window is expanded — as `edit_file`'s diff rows do. While an overlay (model selector, help window, confirm dialog, …) is open, all this body text dims to the theme's `dim` color — see [configuration.md](configuration.md).
+Tool windows separate the tool call's arguments from its result with a dimmed `───` rule. The arguments are shown without the status indicator or the `name: ` prefix (both live on the window's own line), so a window reads: its own line (`- TOOL CALL ⠋ execute_command`), argument block, `───`, result. The block is `lscpu | grep …` — and, when the call carried a `workdir`, the command on one line with a `[dir=/home/me/skills/weather]` line under it. That annotation is not command text but the harness recording where the command ran, so it is **bold** — the channel this UI uses to tell a position apart without spending a color (the tool name on the line above does the same) — while the command stays plain, and it dims with the body under an overlay. A line of its own is what keeps it from reading as one more argument of the command, and it is what makes it exact to find: nothing is matched in the text, so a command that merely contains a bracketed `[dir=…]` (a glob, say) is never taken for an annotation. `write_file` and `edit_file` follow the same layout, each block's first line being the payload (a path) and its remaining lines the tool's own (raw file content; diff rows). Only `edit_file`'s argument block is a real diff: the removed rows (`- `) render in the theme's removed color and the added rows (`+ `) in the added color (each wrapped continuation row stays self-contained); context rows and the bare argument line stay plain; a hunk keeps three rows of context on either side of a change, and every longer stretch of unchanged lines is drawn as one row that counts itself (`… 412 lines hidden`) in the muted color the `───` rule above it uses, because a row that stands in for lines has to say how many. That is also what an argument pair too large to diff gets: one such row saying so (`… 3512 lines hidden, too large to diff`) instead of every line being drawn as removed and added, which would claim a change nobody compared. A blank line is a row like any other, and only its marker can say what happened to it: a removed blank line and an unchanged one are the same text, so the `- ` (or `+ `) with nothing after the marker is the whole evidence that a change happened — which is why the block's own rows are never trimmed away. `write_file` shows the raw file content being written — plain, never diff-colored (`- `/`+ ` lines there are literal content). Because a folded window summarizes only the block's first line, the `[dir=…]` line appears when the window is unfolded — as `edit_file`'s diff rows do. While an overlay (model selector, help overlay, confirm dialog, …) is open, all this body text dims to the theme's `dim` color — see [configuration.md](configuration.md).
 
 ### Auto-Follow
 
@@ -577,12 +577,12 @@ variant costs what the plain one does; and `pinned-scrolling` 3370ns at 85
 allocations against 46 — one row rebuilt per row scrolled.
 `TestStickyPinCostIsIndependentOfTheWindowSize` holds a 400-row
 message to the same allocations as a 40-row one. `sticky_line_test.go` pins the
-behaviour, the boundaries and the cost.
+behavior, the boundaries and the cost.
 
 ### Live Edge
 
 The state reads on the **live edge** — the one row between the last message
-and the input box's top rule, which is where the newest line arrives. It says
+and the prompt box's top rule, which is where the newest line arrives. It says
 `- following -` while auto-follow is on, counts what the viewport hides
 otherwise (`- 12 lines below -`), and stays blank when it has nothing to say
 (scrolled back to the last line: the whole transcript is on screen).
@@ -592,7 +592,7 @@ turn and not yet delivered to it, spelled `2 steering` and shown only while it
 is non-zero. It is the one readout about the prompts themselves (the status
 bar's telemetry describes the run — steps, tokens, speed — not the words
 waiting to join it), and it is here rather than in the status bar for the plain
-reason that the status bar is the row *below* the input box: a reader watching
+reason that the status bar is the row *below* the prompt box: a reader watching
 the words they just typed has no reason to look there, and a count that shows
 up where they are not looking is worth nothing. The live edge is the row
 directly above the box — the boundary between what came back and what is about
@@ -631,9 +631,9 @@ The row belongs to the layout whether or not it carries text.
 and disappeared with the state would shift the viewport by a line on every flip
 and take the frame's height with it — the content must soft-wrap to exactly the
 screen height. The label is lowercase and dim: uppercase is this UI's block
-heading (`USER PROMPT`, `TOOL CALL`, padded to `CollapsedLabelWidth`) and a
+heading (`USER PROMPT`, `TOOL CALL`, padded to `FoldedLabelWidth`) and a
 heading here would be read as one more window title; dim is what the rules and
-borders are drawn with, so on the row directly above the input box's rule the
+borders are drawn with, so on the row directly above the prompt box's rule the
 marker recedes into the frame rather than competing with it — deliberately the
 quietest thing on screen, since it is on most of the time. The frame is an ASCII
 hyphen, so the row is one cell in every terminal. No bold either: the running
@@ -641,7 +641,7 @@ task is marked by the spinner's motion, not by a color. `live_edge.go` renders i
 pins it.
 
 It used to be a `F↓` segment at the start of the status bar — and that row is
-*below* the input box, so the arrow pointed down at the prompt while the fact it
+*below* the prompt box, so the arrow pointed down at the prompt while the fact it
 reported was above it, and the `F` asked the reader to already know it meant
 follow. Its glyph, U+2193, was also the only entry on the width-waiver list
 carrying its own "candidate for an ASCII replacement" note (see
@@ -655,15 +655,15 @@ being typed, and the words are typed at the box this row sits on top of.
 
 ### Fold Mode
 
-Windows arrive expanded when they are the conversation (assistant answers and the user's own prompts) and collapsed when they are the machinery around it (reasoning steps, tool calls, system messages), so a step's scaffolding does not push the conversation off the screen.
+Windows arrive unfolded when they are the conversation (assistant answers and the user's own prompts) and folded when they are the machinery around it (reasoning steps, tool calls, system messages), so a step's scaffolding does not push the conversation off the screen.
 
-Press `Space` on any window to collapse it — the window becomes one line: the fold marker `+`, the label (`TOOL CALL` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `SYSTEM NOTIFY` for system notifications, or `SYSTEM ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOL CALL` + indicator followed by the tool name + arguments). The marker marks the state — `+` folded, `-` expanded — and the label lands in the same column either way, so folding never shifts the text the eye is scanning down.
+Press `Space` on any window to fold it — the window becomes one line: the fold marker `+`, the label (`TOOL CALL` + status indicator, `REASONING`, `ASSISTANT`, `USER PROMPT`, `SYSTEM NOTIFY` for system notifications, or `SYSTEM ERROR`) and a content summary. Labels are left-justified to a fixed column so summaries align across window types (tool windows show `TOOL CALL` + indicator followed by the tool name + arguments). The marker marks the state — `+` folded, `-` unfolded — and the label lands in the same column either way, so folding never shifts the text the eye is scanning down.
 
-**Folding does not move the viewport.** A fold changes only a window's body, so the line that names it — the row the cursor highlight sits on — keeps its document position, and the window reads as collapsing in place. Only a line above the viewport top moves: the [sticky window line](#sticky-window-line) — a message taller than the viewport, scrolled until its own line is pinned to the screen top — would otherwise collapse to the viewport's bottom edge, and `DisplayModel.anchorCursorWindow` instead pulls the offset up to the window's own line so the header, and the cursor on it, return to row 0 (the same rule applies to a window scrolled entirely past the top). At or below the top the offset is untouched; near the transcript's end its own clamp still decides how high the header can settle; and under [auto-follow](#auto-follow) the live edge wins — the viewport re-seats to the new bottom. `r` uses the same anchor, because a markdown table's cell padding can shrink a pinned message the same way ([Markdown Rendering](#markdown-rendering)). `fold_anchor_test.go` pins the cases.
+**Folding does not move the viewport.** A fold changes only a window's body, so the line that names it — the row the cursor highlight sits on — keeps its document position, and the window reads as folding in place. Only a line above the viewport top moves: the [sticky window line](#sticky-window-line) — a message taller than the viewport, scrolled until its own line is pinned to the screen top — would otherwise fold to the viewport's bottom edge, and `DisplayModel.anchorWindowCursor` instead pulls the offset up to the window's own line so the header, and the cursor on it, return to row 0 (the same rule applies to a window scrolled entirely past the top). At or below the top the offset is untouched; near the transcript's end its own clamp still decides how high the header can settle; and under [auto-follow](#auto-follow) the live edge wins — the viewport re-seats to the new bottom. `r` uses the same anchor, because a markdown table's cell padding can shrink a pinned message the same way ([Markdown Rendering](#markdown-rendering)). `fold_anchor_test.go` pins the cases.
 
 **The line is one style**, with one exception. The marker, the label and the timestamp — everything that names the window — are painted with a single `Style`: `lineStyleForTag`'s, bold, in the label color (muted) for **every** window type, because a user's turn, a reasoning step, an answer, a tool call and a system notification are all the same kind of thing — conversation — and none of them earns its line an accent. The single color exception is `SYSTEM ERROR`, which keeps the error color because an error has to be recognizable at a glance and from the far end of a scrollback. (The accent in this UI belongs to the prompt box at the bottom of the screen — the one live surface — and, transiently, to the cursor's own line: the highlight is the only thing that borrows it, and no window *type* carries it. Every line above the prompt is a record.)
 
-The exception is a tool window's **name**, which is the row's payload rather than its chrome: it takes `toolNameStyle` (the tool-content color, bold) in the collapsed row and in the expanded one, so folding a window never repaints the token that says which tool ran. In the normal register this is the same color the line is drawn in; the two part company only under the cursor, where the highlight covers what names the window and leaves the name and the arguments in the content color. The other thing on the line that is *not* chrome is a folded window's content summary: it stays muted, and stays muted under the cursor too. The cursor register is the same object with those colors swapped for the accent color (`Styles.Selected()`), which is why the highlight needs no per-glyph logic.
+The exception is a tool window's **name**, which is the row's payload rather than its chrome: it takes `toolNameStyle` (the tool-content color, bold) in the folded row and in the unfolded one, so folding a window never repaints the token that says which tool ran. In the normal register this is the same color the line is drawn in; the two part company only under the cursor, where the highlight covers what names the window and leaves the name and the arguments in the content color. The other thing on the line that is *not* chrome is a folded window's content summary: it stays muted, and stays muted under the cursor too. The cursor register is the same object with those colors swapped for the accent color (`Styles.Selected()`), which is why the highlight needs no per-glyph logic.
 
 ```
 + REASONING       The user says "my os" — unclear. Perhaps they w… running. Let me check with a command.
@@ -673,11 +673,11 @@ The user says "my os" — unclear. Perhaps they want to know what OS they are on
 
 **The markers are ASCII**, and that is the argument for them: a glyph that sits at column 0 of every window row must measure one cell in every terminal and must exist in every font, and only ASCII guarantees both. They replaced the triangles `▸`/`▾` (U+25B8/U+25BE), which were chosen for width alone (East-Asian Neutral, outside Extended_Pictographic — see the glyph policy in `constants.go`): a good reason, and a weaker guarantee than the character set itself. Nothing in the frame depends on a symbol block any more; every glyph the window layer draws is either ASCII or a box-drawing rule, and box drawing is a class-wide waiver the frame has always paid for.
 
-An expanded window's line is `- LABEL`, the arrival timestamp right-aligned to the window edge — and, while that line is pinned to the screen top, the count of the window's own lines hidden above it — and then the content. There is **no rule above and none below**: a window is opened by its own line, and closed by the next window's own line (the prompt box closes the last one). A *floating* surface brackets its content with rules instead — the prompt input around the draft, with the attachment badge rows above it when files are attached, and a selector overlay around its filter box — and in a selector the bare list hangs under that box's closing rule, with the help bar closing the overlay below.
+An unfolded window's line is `- LABEL`, the arrival timestamp right-aligned to the window edge — and, while that line is pinned to the screen top, the count of the window's own lines hidden above it — and then the content. There is **no rule above and none below**: a window is opened by its own line, and closed by the next window's own line (the prompt box closes the last one). A *floating* surface brackets its content with rules instead — the prompt box around the draft, with the attachment badge rows above it when files are attached, and a selector overlay around its filter box — and in a selector the bare list hangs under that box's closing rule, with the help bar closing the overlay below.
 
 #### The timestamp
 
-The expanded line carries `2026/09/14 16:32:07 +08:00` at its right end: **when the adapter received this window**, which is the only time the display has. The session record carries no per-message time (its `created_at`/`updated_at` are session-level), so a replayed session stamps every message with the moment the replay reached the adapter — the honest reading of "arrival time", and the reason the header calls it nothing more.
+The unfolded line carries `2026/09/14 16:32:07 +08:00` at its right end: **when the adapter received this window**, which is the only time the display has. The session record carries no per-message time (its `created_at`/`updated_at` are session-level), so a replayed session stamps every message with the moment the replay reached the adapter — the honest reading of "arrival time", and the reason the header calls it nothing more.
 
 It is the adapter's receipt clock, read once when the window is created (`Window.CreatedAt`) and never read again while rendering: rendering stays a pure function of the window's state (cacheable, testable), and the clock is touched at exactly one boundary. The column is a fixed 26 cells (`timeStampLayout`, pinned by a test) and right-aligned, so the label yields to it and never the other way round: a tool header too long for the row keeps its name and loses the timestamp rather than the reverse. On a terminal too narrow for both, the timestamp is simply not drawn — no truncation, no shortened format. The pinned row's `N lines above` sits in the gap to the left of it and yields first, because the timestamp is the anchor that places it: a label too wide leaves room for the timestamp alone, and the count then drops out (a count without its timestamp would be unanchored chrome). Label, then timestamp, then count: the count costs 15 cells at its narrowest (`1 line above` plus its ` | ` separator) and grows with the number, so it first fits at width 53 on an `ASSISTANT` row and at 75 on a tool row carrying `execute_command` — comfortable at 80 columns, out of reach on a 40-column terminal, which keeps the label and the timestamp.
 
@@ -685,19 +685,19 @@ Twenty-six cells, where the column was 16 before, buys two things. **Seconds**: 
 
 #### Cursor highlight
 
-The cursor highlight covers the window's own line, and never its content: on a folded window that is the marker and the label column, on an expanded one the same chrome plus the timestamp at the far end (and, when that row is the pinned one, the `N lines above` and its ` | `, which takes the row's own style with the rest). Two things on that row stay out of it, because they are content — a tool window's name (it takes `toolNameStyle` in both fold states, so folding a window does not repaint it) and a folded row's summary, which keeps the muted color. That is why the label and the summary are separate styles (`Styles.Label` vs `Styles.System`), and why the name is a third one. And because the chrome is one style, "the highlight" is a single styles swap — the row is not assembled from pieces that would each need their own color. Mechanically this is a derived styles set — `Styles.Selected()` swaps the two colours that can name a window (the label colour, which is what every window line is drawn in, and the error colour, which `SYSTEM ERROR` uses) for the accent color (the theme's primary), and the renderers paint the row from whatever styles they are handed, so "who is the cursor" needs no extra parameter. The highlighted row is built on first request rather than by `Window.Render`, because the collapsed variant costs a second `BuildCollapsed`: `Render` runs for every window on every content change, while exactly one window at a time is under the cursor. Under an overlay (`Styles.Dimmed()`) the accent color *is* the dim color, so the highlight disappears while a modal owns the screen.
+The cursor highlight covers the window's own line, and never its content: on a folded window that is the marker and the label column, on an unfolded one the same chrome plus the timestamp at the far end (and, when that row is the pinned one, the `N lines above` and its ` | `, which takes the row's own style with the rest). Two things on that row stay out of it, because they are content — a tool window's name (it takes `toolNameStyle` in both fold states, so folding a window does not repaint it) and a folded row's summary, which keeps the muted color. That is why the label and the summary are separate styles (`Styles.Label` vs `Styles.System`), and why the name is a third one. And because the chrome is one style, "the highlight" is a single styles swap — the row is not assembled from pieces that would each need their own color. Mechanically this is a derived styles set — `Styles.Selected()` swaps the two colors that can name a window (the label color, which is what every window line is drawn in, and the error color, which `SYSTEM ERROR` uses) for the accent color (the theme's primary), and the renderers paint the row from whatever styles they are handed, so "who is the window cursor" needs no extra parameter. The highlighted row is built on first request rather than by `Window.Render`, because the folded variant costs a second `BuildFolded`: `Render` runs for every window on every content change, while exactly one window at a time is under the cursor. Under an overlay (`Styles.Dimmed()`) the accent color *is* the dim color, so the highlight disappears while a modal owns the screen.
 
-The marker glyph is fixed by the terminal layout (`foldArrow`/`unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the line reserves exactly one cell for it, so the glyph is a geometry decision and switching color schemes must not change it. The spinner frames `⠋…⠏` and the tool markers `✓ ✗` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale — with one distinction that document benchmarks rather than asserts: a collapsed window's line *count* is O(1) to track, while drawing its summary row is O(1) for a tool window (the first input line) and one pass over the message for a text window (head + "…" + tail of it), which is why a folded reasoning window that streams is measured against the same content expanded.
+The marker glyph is fixed by the terminal layout (`foldArrow`/`unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the line reserves exactly one cell for it, so the glyph is a geometry decision and switching color schemes must not change it. The spinner frames `⠋…⠏` and the tool markers `✓ ✗` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale — with one distinction that document benchmarks rather than asserts: a folded window's line *count* is O(1) to track, while drawing its summary row is O(1) for a tool window (the first input line) and one pass over the message for a text window (head + "…" + tail of it), which is why a folded reasoning window that streams is measured against the same content unfolded.
 
-### Collapsed Summary Truncation
+### Folded Summary Truncation
 
-Collapsed window summaries use **head + "…" + tail** (40/60 split of the available width) for all one-shot content, so the user sees both the topic phrase and the latest content — e.g. a long ASSISTANT message becomes `beginning of answer begi…er  and then some more content ending` rather than just the tail.
+Folded window summaries use **head + "…" + tail** (40/60 split of the available width) for all one-shot content, so the user sees both the topic phrase and the latest content — e.g. a long ASSISTANT message becomes `beginning of answer begi…er  and then some more content ending` rather than just the tail.
 
 **The only exception is streaming delta content** — tool argument deltas (`Af`) and the UF execution preview (`Uf` while `ToolStatusPending`). For these, the head is "what already happened" and the tail is "what just arrived", so a **leading `…`** is more useful: `…"content":"hello"}`. The user just wants to see the latest chunk, not the start of the stream.
 
 This gives a clean rule: **only delta → leading `…`; everything else → head+tail.**
 
-The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in both forms, while the surrounding content uses the muted color (`t.Muted`). This creates a clear visual hierarchy: actual content vs. truncation marker. The dim color is lighter than muted on a light background, so the `…` recedes — appropriate because it's metadata, not content. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster. On a `USER PROMPT` row the content may open with the attachment badge summary; that run keeps the register (default foreground, **bold**) it holds unfolded — but only while the cut leaves it whole, since half a badge is not worth two registers (`collapsedRow.style`).
+The truncation marker (`…`) is rendered with the **dim** color (`t.Dim`) in both forms, while the surrounding content uses the muted color (`t.Muted`). This creates a clear visual hierarchy: actual content vs. truncation marker. The dim color is lighter than muted on a light background, so the `…` recedes — appropriate because it's metadata, not content. The truncation is grapheme-cluster-aware: ZWJ emoji (👨‍👩‍👧‍👦), combining marks (é), and wide CJK characters are never split mid-cluster. On a `USER PROMPT` row the content may open with the attachment badge summary; that run keeps the register (default foreground, **bold**) it holds unfolded — but only while the cut leaves it whole, since half a badge is not worth two registers (`foldedRow.style`).
 
 ### Markdown Rendering
 
@@ -931,7 +931,7 @@ Measuring and cutting both go through `width.go`, against one table
   terminal for emoji presentation, and a terminal that ignores the request
   draws one cell where this table reserves two
 - ANSI escape codes (colors, bold, etc.) occupy **0 cells**
-- Tabs are expanded to **8 cells** (`TabWidth`) via `expandTabs` **before** any
+- Tabs are unfolded to **8 cells** (`TabWidth`) via `expandTabs` **before** any
   width-sensitive operation (truncation, wrapping), because the table in
   `width.go` counts a tab as 0 cells while a terminal renders it at the tab
   stop — expanding first keeps truncation budgets and the final render
@@ -971,7 +971,7 @@ properties of a write rather than guesses at the host's table. The write set
 reaches the terminal row below every row it writes (a write's footprint can reach
 exactly there: the cell that does not fit, and the EL that ends the write, land
 on it), and every row the frame owns from column 0 below a written transcript row
-— the live edge, the input box, the status bar, any dialog layered over the
+— the live edge, the prompt box, the status bar, any dialog layered over the
 transcript — is re-established in the same frame. The chrome rows end with an EL,
 the live edge row is written whether or not the marker has anything to say, and
 the status row is laid out against what a host may charge its own text
@@ -999,26 +999,26 @@ it. A row's display width is measured where the frame pads it for a soft wrap,
 and nowhere else — an earlier design cached every row's width per render, which
 meant measuring all ~2,600 rows of a 128 KB message to draw the 40 on screen.
 `lineHeights` are the visual line counts, so cursor navigation (j/k/H/M/L) and
-`EnsureCursorVisible` operate on terminal rows exactly as before.
+`EnsureWindowCursorVisible` operate on terminal rows exactly as before.
 
 Incremental updates avoid re-wrapping the entire content on every token. Only the last line is combined with the new delta and re-wrapped, keeping per-token cost proportional to the delta size rather than total content.
 
 ## Help Window
 
-Press `Ctrl+H` or type `:help` to open a help window listing all keybindings and commands. The filter input at the top lets you fuzzy-search for specific keys or commands (e.g. typing `gt` matches `:theme_set`):
+Press `Ctrl+H` or type `:help` to open a help overlay listing all keybindings and commands. The filter input at the top lets you fuzzy-search for specific keys or commands (e.g. typing `gt` matches `:theme_set`):
 
 | Key | Action |
 |-----|--------|
 | `Tab` | Toggle focus between filter input and list |
-| `Esc` | Close help window |
+| `Esc` | Close help overlay |
 | `j` | Move selection down |
 | `k` | Move selection up |
 | `Enter` | Copy selected command to input (commands only) |
 
-The help window is organized into three sections:
+The help overlay is organized into three sections:
 
 - **Commands** — colon commands available in the input field
 - **Global Shortcuts** — keybindings that work from any context
 - **Display Mode** — navigation and editing keys for the display area
 
-The help window uses the same size, position, and overlay pattern as the model selector and theme selector.
+The help overlay uses the same size, position, and overlay pattern as the model selector and theme selector.

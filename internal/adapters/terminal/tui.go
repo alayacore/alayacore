@@ -110,10 +110,10 @@ type openEditorForDisplayMsg struct {
 	content string
 }
 
-// focusInputWithValueMsg is sent by DisplayModel when a display key press
+// focusPromptWithValueMsg is sent by DisplayModel when a display key press
 // requires switching focus to the input field and inserting a value.
 // Used by ':' (command prefix) and Ctrl-F (fork command).
-type focusInputWithValueMsg struct {
+type focusPromptWithValueMsg struct {
 	value string
 }
 
@@ -129,7 +129,7 @@ type openEditorForPromptMsg struct {
 // session may close the input stream at any time.
 func (m Terminal) emitCommand(cmd string) Cmd {
 	return func() Msg {
-		writeCommand(m.streamInput, cmd)
+		writeCommand(m.sessionPipe, cmd)
 		return nil
 	}
 }
@@ -220,7 +220,7 @@ func reportErrs(errs []string) Msg {
 func (m Terminal) addAttachment(path string) Terminal {
 	kind := wire.KindForPath(path)
 	m.pendingAttachments = append(m.pendingAttachments, attachment{path: path, kind: kind})
-	m.input = m.input.WithAttachments(m.pendingAttachmentLabels())
+	m.promptBox = m.promptBox.WithAttachments(m.pendingAttachmentLabels())
 	m = m.updateDisplayHeight()
 	return m
 }
@@ -229,7 +229,7 @@ func (m Terminal) addAttachment(path string) Terminal {
 func (m Terminal) addURLAttachment(url string) Terminal {
 	kind := wire.KindForPath(url)
 	m.pendingAttachments = append(m.pendingAttachments, attachment{path: url, kind: kind, isURL: true})
-	m.input = m.input.WithAttachments(m.pendingAttachmentLabels())
+	m.promptBox = m.promptBox.WithAttachments(m.pendingAttachmentLabels())
 	m = m.updateDisplayHeight()
 	return m
 }
@@ -237,7 +237,7 @@ func (m Terminal) addURLAttachment(url string) Terminal {
 // clearAttachments clears all pending attachments.
 func (m Terminal) clearAttachments() Terminal {
 	m.pendingAttachments = nil
-	m.input = m.input.WithAttachments(nil)
+	m.promptBox = m.promptBox.WithAttachments(nil)
 	m = m.updateDisplayHeight()
 	return m
 }
@@ -288,7 +288,7 @@ const (
 
 // Focus constants
 const (
-	focusInput   = "input"
+	focusPrompt  = "input"
 	focusDisplay = "display"
 )
 
@@ -317,24 +317,24 @@ const (
 // pointers.  See docs/tui-architecture.md for the rationale.
 type Terminal struct {
 	// ── Elm UI state (value types, copied on every Update) ──────────────
-	display            DisplayModel     // conversation display with virtual scrolling
-	input              PromptInput      // text input, attachments, focus
-	modelSelector      ModelSelector    // model switching overlay
-	themeSelector      ThemeSelector    // theme switching overlay
-	helpWindow         HelpWindow       // keybinding help overlay
-	confirmOverlay     ConfirmDialog    // quit/cancel/tool confirm dialogs
-	mcpInitOverlay     ConfirmDialog    // MCP initialization progress overlay
-	attachmentWindow   AttachmentWindow // file/URL attachment picker
-	focusedWindow      string           // which pane has focus: "input" or "display"
-	statusLeft         string           // status bar left segments, PLAIN text joined with " | " (no ANSI — styles applied at render time)
-	statusRight        string           // status bar right group — the active model name with the reasoning level ("gpt-4o | R2"), or the bare level with no model ("R2"); PLAIN (styled at render time, right-aligned)
-	inProgress         bool             // whether a task is currently running
-	windowWidth        int              // terminal width in cells
-	windowHeight       int              // terminal height in cells
-	activeTheme        string           // last theme name from system info updates
-	appliedTheme       string           // last theme name that was visually applied
-	pendingAttachments []attachment     // pending file attachments for multi-modal input
-	lastStatusVersion  uint64           // last StatusSnapshot.Version seen by updateStatus
+	display            DisplayModel      // conversation display with virtual scrolling
+	promptBox          PromptInput       // the prompt box: text, attachments, focus
+	modelSelector      ModelSelector     // model switching overlay
+	themeSelector      ThemeSelector     // theme switching overlay
+	helpOverlay        HelpOverlay       // keybinding help overlay
+	confirmOverlay     ConfirmDialog     // quit/cancel/tool confirm dialogs
+	mcpInitOverlay     ConfirmDialog     // MCP initialization progress overlay
+	attachmentOverlay  AttachmentOverlay // file/URL attachment picker
+	focusedWindow      string            // which pane has focus: "input" or "display"
+	statusLeft         string            // status bar left segments, PLAIN text joined with " | " (no ANSI — styles applied at render time)
+	statusRight        string            // status bar right group — the active model name with the reasoning level ("gpt-4o | R2"), or the bare level with no model ("R2"); PLAIN (styled at render time, right-aligned)
+	inProgress         bool              // whether a task is currently running
+	screenWidth        int               // terminal width in cells
+	screenHeight       int               // terminal height in cells
+	activeTheme        string            // last theme name from system info updates
+	appliedTheme       string            // last theme name that was visually applied
+	pendingAttachments []attachment      // pending file attachments for multi-modal input
+	lastStatusVersion  uint64            // last StatusSnapshot.Version seen by updateStatus
 
 	lastModelVersion uint64 // last ModelSnapshot.Version seen by the selector rebuild
 
@@ -360,7 +360,7 @@ type Terminal struct {
 
 	// ── Dependencies (pointer types, shared, not copied semantically) ──
 	out          OutputWriter   // output writer (shared, thread-safe)
-	streamInput  io.WriteCloser // input writer (shared, thread-safe)
+	sessionPipe  io.WriteCloser // input writer (shared, thread-safe)
 	pipeReader   *io.PipeReader // read end of input pipe; set before async loading
 	appConfig    *app.Config    // application configuration (read-only)
 	editor       *Editor        // external editor process helper (stateless service)
@@ -397,36 +397,36 @@ func NewTerminalWithTheme(
 
 	modelSelector := NewModelSelector(styles)
 	themeSelector := NewThemeSelector(styles)
-	helpWindow := NewHelpWindow(styles)
+	helpOverlay := NewHelpOverlay(styles)
 	confirmOverlay := NewConfirmDialog(styles)
 	mcpInitOverlay := NewConfirmDialog(styles)
-	attachmentWindow := NewAttachmentWindow(styles)
+	attachmentOverlay := NewAttachmentOverlay(styles)
 
 	m := Terminal{
-		out:              out,
-		streamInput:      inputWriter,
-		appConfig:        appCfg,
-		editor:           editor,
-		display:          NewDisplayModel(out.WindowBuffer(), styles),
-		input:            NewPromptInput(styles),
-		themeManager:     themeManager,
-		modelSelector:    modelSelector,
-		themeSelector:    themeSelector,
-		helpWindow:       helpWindow,
-		confirmOverlay:   confirmOverlay,
-		mcpInitOverlay:   mcpInitOverlay,
-		attachmentWindow: attachmentWindow,
-		focusedWindow:    focusInput,
-		windowWidth:      initialWidth,
-		windowHeight:     initialHeight,
-		styles:           styles,
-		hasFocus:         true,
-		activeTheme:      themeName,
-		appliedTheme:     themeName,
+		out:               out,
+		sessionPipe:       inputWriter,
+		appConfig:         appCfg,
+		editor:            editor,
+		display:           NewDisplayModel(out.WindowBuffer(), styles),
+		promptBox:         NewPromptInput(styles),
+		themeManager:      themeManager,
+		modelSelector:     modelSelector,
+		themeSelector:     themeSelector,
+		helpOverlay:       helpOverlay,
+		confirmOverlay:    confirmOverlay,
+		mcpInitOverlay:    mcpInitOverlay,
+		attachmentOverlay: attachmentOverlay,
+		focusedWindow:     focusPrompt,
+		screenWidth:       initialWidth,
+		screenHeight:      initialHeight,
+		styles:            styles,
+		hasFocus:          true,
+		activeTheme:       themeName,
+		appliedTheme:      themeName,
 	}
 
 	// Initialize component sizes
-	m.input = m.input.WithWidth(initialWidth)
+	m.promptBox = m.promptBox.WithWidth(initialWidth)
 	m = m.updateComponentSizes(initialWidth, initialHeight)
 	m = m.updateDisplayHeight()
 
@@ -489,7 +489,7 @@ func (m Terminal) loadSessionCmd() Cmd {
 // Update handles all incoming messages and routes them to appropriate handlers.
 // Messages are processed in order of priority:
 //  1. KeyMsg - keyboard input (highest priority for responsiveness)
-//  2. WindowSizeMsg - terminal resize
+//  2. ScreenSizeMsg - terminal resize
 //  3. tickMsg - periodic updates for display and model switching
 //  4. Editor messages - external editor completion
 //  5. Focus/Blur - application focus changes
@@ -520,8 +520,8 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	case KeyMsg:
 		return m.handleKeyMsg(msg)
 
-	case WindowSizeMsg:
-		return m.handleWindowSize(msg), nil
+	case ScreenSizeMsg:
+		return m.handleScreenSize(msg), nil
 
 	case tickMsg:
 		return m.handleTick()
@@ -567,23 +567,23 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 // tickMsg is sent periodically to update the display.
 type tickMsg struct{}
 
-// handleWindowSize handles terminal resize events.
-func (m Terminal) handleWindowSize(msg WindowSizeMsg) Terminal {
-	m.windowWidth = msg.Width
-	m.windowHeight = msg.Height
+// handleScreenSize handles terminal resize events.
+func (m Terminal) handleScreenSize(msg ScreenSizeMsg) Terminal {
+	m.screenWidth = msg.Width
+	m.screenHeight = msg.Height
 
 	// Update all components
-	m.out.SetWindowWidth(max(0, msg.Width))
-	m.input = m.input.WithWidth(max(0, msg.Width))
+	m.out.SetScreenWidth(max(0, msg.Width))
+	m.promptBox = m.promptBox.WithWidth(max(0, msg.Width))
 	m = m.updateComponentSizes(msg.Width, msg.Height)
 	m = m.updateDisplayHeight()
 
 	// Clamp cursor to valid bounds (windows may have been removed) but
 	// don't scroll to make it visible — the user's scroll position is
 	// preserved across resizes and suspend/resume cycles.
-	m.display = m.display.ClampCursor()
+	m.display = m.display.ClampWindowCursor()
 
-	// Re-render display content with new width (windowBuffer was marked dirty by SetWindowWidth)
+	// Re-render display content with new width (windowBuffer was marked dirty by SetScreenWidth)
 	m.display = m.display.updateContent()
 
 	return m
@@ -633,8 +633,8 @@ func (m Terminal) handleTick() (Terminal, Cmd) {
 // the time we decide to leave, which is the state the final render draws. The
 // input pipe is released because the session that read it is gone.
 func (m Terminal) handleSessionClosed() Terminal {
-	if m.streamInput != nil {
-		_ = m.streamInput.Close()
+	if m.sessionPipe != nil {
+		_ = m.sessionPipe.Close()
 	}
 	return m
 }
@@ -716,7 +716,7 @@ func (m Terminal) handleSessionLoadedMsg() Terminal {
 		m = m.updateStatus()
 		m = m.updateDisplayHeight()
 		if m.display.shouldFollow() {
-			m.display = m.display.WithCursorToLastWindow()
+			m.display = m.display.WithWindowCursorToLastWindow()
 		}
 		m.display = m.display.updateContent()
 	}
@@ -786,7 +786,7 @@ func (m Terminal) handleDisplayRefresh() Terminal {
 		m = m.updateStatus()
 		m = m.updateDisplayHeight()
 		if m.display.shouldFollow() {
-			m.display = m.display.WithCursorToLastWindow()
+			m.display = m.display.WithWindowCursorToLastWindow()
 		}
 		m.display = m.display.updateContent()
 	}
@@ -828,9 +828,9 @@ func (m Terminal) handleEditorFinished(msg EditorFinishedMsg) (Terminal, Cmd) {
 			// through the field so its line capacity applies too (input_field.go
 			// → WithBlockValue): a Windows editor writes CRLF, and a trailing
 			// newline the editor always adds.
-			m.input = m.input.WithBlockValue(msg.Content)
-			m.input = m.input.CursorEnd()
-			m = m.focusInput()
+			m.promptBox = m.promptBox.WithBlockValue(msg.Content)
+			m.promptBox = m.promptBox.CaretEnd()
+			m = m.focusPrompt()
 		}
 		return m, nil
 
@@ -856,8 +856,8 @@ func (m Terminal) updateDisplayHeight() Terminal {
 	// appears and disappears would shift the viewport by a line on every
 	// auto-follow flip, and the frame's row count is an invariant (the
 	// content must soft-wrap to exactly the screen height).
-	inputBoxHeight := m.input.Height()
-	m.display = m.display.WithHeight(max(0, m.windowHeight-inputBoxHeight-liveEdgeRows-1))
+	inputBoxHeight := m.promptBox.Height()
+	m.display = m.display.WithHeight(max(0, m.screenHeight-inputBoxHeight-liveEdgeRows-1))
 	m.display = m.display.updateContent()
 	return m
 }
@@ -898,10 +898,10 @@ func (m Terminal) View() View {
 	// its location does not depend on the display area's actual row
 	// count (which can drift from viewportHeight when soft-wrap or
 	// scroll-induced fragment count changes happen). Top rule sits at
-	// (m.windowHeight - inputHeight - 1) (0-indexed); the box content
+	// (m.screenHeight - inputHeight - 1) (0-indexed); the box content
 	// (attachments, input field) follows, then the bottom rule.
 	//
-	// The status bar sits at the last row (m.windowHeight - 1, 0-indexed)
+	// The status bar sits at the last row (m.screenHeight - 1, 0-indexed)
 	// and is also positioned with a CUP — guarantees the status bar is
 	// always visible, even if the input box's rendered content overshoots
 	// its computed height (e.g. a misbehaving renderer or an attachment
@@ -920,13 +920,13 @@ func (m Terminal) View() View {
 	// The CUPs are absolute, so the '\n' does not change where the
 	// subsequent content lands — only what the soft-wrap row counter
 	// sees, which is what we need.
-	m.input = m.input.WithBlocked(m.isBlocked() || m.postLoading)
+	m.promptBox = m.promptBox.WithBlocked(m.isBlocked() || m.postLoading)
 	// The live box, derived rather than stored: an overlay or a modal that owns
 	// the keyboard dims this box and takes the real caret with it, and so does
 	// the window losing OS focus — both painting facts, neither a routing one.
-	m.input = m.input.WithActive(m.keyboardTarget() == targetPrompt && m.hasFocus)
-	inputBoxHeight := m.input.Height()
-	inputBoxY := max(0, m.windowHeight-inputBoxHeight-1) // 0-indexed row of the top rule
+	m.promptBox = m.promptBox.WithActive(m.keyboardTarget() == targetPrompt && m.hasFocus)
+	inputBoxHeight := m.promptBox.Height()
+	inputBoxY := max(0, m.screenHeight-inputBoxHeight-1) // 0-indexed row of the top rule
 
 	// Live edge — the transcript's closing row (live_edge.go), the line
 	// between the last message and the input box's top rule. It gets its
@@ -951,17 +951,17 @@ func (m Terminal) View() View {
 	// The whole block is skipped when inputBoxY is 0 — a terminal too short for
 	// the input box plus the status bar has no row to spare, and adding one
 	// here would put more rows in the frame than the screen has.
-	if m.windowHeight > 0 && inputBoxY > 0 {
+	if m.screenHeight > 0 && inputBoxY > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(ansi.CursorPosition(1, inputBoxY)) // row inputBoxY-1
 		sb.WriteString(m.renderLiveEdge())
 		sb.WriteString(ansi.EraseLine(0))
 	}
 
-	if m.windowHeight > 0 {
+	if m.screenHeight > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(ansi.CursorPosition(1, inputBoxY+1))
-		sb.WriteString(m.input.View().Content)
+		sb.WriteString(m.promptBox.View().Content)
 		// The box is the frame's from column 0 as well: clear the tail of the
 		// block's last row (a box shorter than the previous frame's, or a cell
 		// the row above flowed onto it). The box's inner rows are separated by
@@ -976,7 +976,7 @@ func (m Terminal) View() View {
 		// is the frame's bottom row and a cell written past the bottom row
 		// scrolls the terminal: the whole frame — including rows the diff will
 		// not rewrite — off by a row until a full repaint.
-		sb.WriteString(ansi.CursorPosition(1, m.windowHeight))
+		sb.WriteString(ansi.CursorPosition(1, m.screenHeight))
 		sb.WriteString(m.renderStatusBar())
 		sb.WriteString(ansi.EraseLine(0))
 	}
@@ -984,7 +984,7 @@ func (m Terminal) View() View {
 	baseContent := sb.String()
 
 	// Render all overlay layers through the overlay manager.
-	overlayContent, _ := m.renderOverlays(baseContent, m.windowWidth, m.windowHeight)
+	overlayContent, _ := m.renderOverlays(baseContent, m.screenWidth, m.screenHeight)
 
 	v := NewView(overlayContent)
 	v.AltScreen = true
@@ -1009,54 +1009,54 @@ func (m Terminal) View() View {
 	// and stable candidate-window anchoring. The real cursor stays hidden
 	// when neither input has focus (display pane focused, app blurred, or
 	// overlays without a text input).
-	if x, y, ok := m.overlayCursorPosition(); ok {
-		v.Cursor = m.newCursor(x, y)
-	} else if m.input.IsActive() && !m.isBlocked() {
-		// y: the input box's top rule sits at (windowHeight - inputHeight - 1)
+	if x, y, ok := m.overlayCaretPosition(); ok {
+		v.ScreenCursor = m.newScreenCursor(x, y)
+	} else if m.promptBox.IsActive() && !m.isBlocked() {
+		// y: the input box's top rule sits at (screenHeight - inputHeight - 1)
 		// — the same expression View uses for inputBoxY. The rows above it
 		// belong to the display region and the live edge, which reach down
 		// no further than the row before it. Content starts after the rule,
 		// then the attachment rows. The input renders a single
 		// content line, so the cursor's line index within the value does not
 		// affect y.
-		y := max(0, m.windowHeight-m.input.Height()-1) // 0-indexed top rule
-		y++                                            // first content row
-		y += m.input.AttachmentsOffset()
+		y := max(0, m.screenHeight-m.promptBox.Height()-1) // 0-indexed top rule
+		y++                                                // first content row
+		y += m.promptBox.AttachmentsOffset()
 		// x: the prompt box has no side border or padding, so the cursor cell
 		// is the horizontal position directly (prompt is empty for the
 		// main input).
-		x := m.input.CursorCell()
-		v.Cursor = m.newCursor(x, y)
+		x := m.promptBox.CaretCell()
+		v.ScreenCursor = m.newScreenCursor(x, y)
 	}
 
 	return v
 }
 
-// newCursor returns a steady block cursor at the given screen position
+// newScreenCursor returns a steady block cursor at the given screen position
 // (cells relative to the frame's top-left corner). The cursor color is
 // left unset — the terminal emulator renders the OS-level cursor in its
 // default color. Set cur.Color to a color.Color to override via OSC 12
-// (Change Text Cursor Color) when supported.
-func (m Terminal) newCursor(x, y int) *Cursor {
-	cur := NewCursor(x, y)
-	cur.Shape = CursorBlock
+// (Change Text ScreenCursor Color) when supported.
+func (m Terminal) newScreenCursor(x, y int) *ScreenCursor {
+	cur := NewScreenCursor(x, y)
+	cur.Shape = ScreenCursorBlock
 	cur.Blink = false
 	return cur
 }
 
-// overlayCursorPosition returns the screen position of the active overlay's
+// overlayCaretPosition returns the screen position of the active overlay's
 // filter input cursor. ok is true only when an overlay with a text input is
-// open and its filter box has focus (see FilteredListCore.CursorPosition).
-func (m Terminal) overlayCursorPosition() (x, y int, ok bool) {
+// open and its filter box has focus (see FilteredListCore.CaretPosition).
+func (m Terminal) overlayCaretPosition() (x, y int, ok bool) {
 	switch {
 	case m.modelSelector.IsOpen():
-		return m.modelSelector.CursorPosition(m.windowWidth, m.windowHeight)
+		return m.modelSelector.CaretPosition(m.screenWidth, m.screenHeight)
 	case m.themeSelector.IsOpen():
-		return m.themeSelector.CursorPosition(m.windowWidth, m.windowHeight)
-	case m.helpWindow.IsOpen():
-		return m.helpWindow.CursorPosition(m.windowWidth, m.windowHeight)
-	case m.attachmentWindow.IsOpen():
-		return m.attachmentWindow.CursorPosition(m.windowWidth, m.windowHeight)
+		return m.themeSelector.CaretPosition(m.screenWidth, m.screenHeight)
+	case m.helpOverlay.IsOpen():
+		return m.helpOverlay.CaretPosition(m.screenWidth, m.screenHeight)
+	case m.attachmentOverlay.IsOpen():
+		return m.attachmentOverlay.CaretPosition(m.screenWidth, m.screenHeight)
 	}
 	return 0, 0, false
 }
@@ -1084,18 +1084,18 @@ func (m Terminal) renderLoadingView() View {
 	msg := fmt.Sprintf(" %s Loading session...", spinnerChar)
 	// Center the message vertically and horizontally (ASCII width ~= len).
 	contentWidth := len(msg)
-	padX := max(0, (m.windowWidth-contentWidth)/2)
-	padY := max(0, m.windowHeight/2-1)
-	bottomRows := max(0, m.windowHeight-padY-1)
+	padX := max(0, (m.screenWidth-contentWidth)/2)
+	padY := max(0, m.screenHeight/2-1)
+	bottomRows := max(0, m.screenHeight-padY-1)
 
 	// Build rows top-to-bottom: padY erased blank rows, the centered
-	// message row, bottomRows erased blank rows. Total rows = windowHeight
+	// message row, bottomRows erased blank rows. Total rows = screenHeight
 	// so the view fills the screen exactly and Screen.Render can take the
 	// diff path. The rows are joined with '\n' (not a trailing '\n') so the
-	// string has exactly windowHeight-1 newlines — wrapping it at the screen
-	// width reports windowHeight rows, matching the FullScreen invariant.
+	// string has exactly screenHeight-1 newlines — wrapping it at the screen
+	// width reports screenHeight rows, matching the FullScreen invariant.
 	blankRow := ansi.EraseLine(0)
-	lines := make([]string, 0, m.windowHeight)
+	lines := make([]string, 0, m.screenHeight)
 	for i := 0; i < padY; i++ {
 		lines = append(lines, blankRow)
 	}
@@ -1117,13 +1117,13 @@ func (m Terminal) applyTheme(theme *theme.Theme) Terminal {
 	m.styles = NewStyles(theme)
 	m.out.WithStyles(m.styles)
 	m.display = m.display.WithStyles(m.styles)
-	m.input = m.input.WithStyles(m.styles)
+	m.promptBox = m.promptBox.WithStyles(m.styles)
 	m.modelSelector = m.modelSelector.WithStyles(m.styles)
 	m.themeSelector = m.themeSelector.WithStyles(m.styles)
-	m.helpWindow = m.helpWindow.WithStyles(m.styles)
+	m.helpOverlay = m.helpOverlay.WithStyles(m.styles)
 	m.confirmOverlay = m.confirmOverlay.WithStyles(m.styles)
 	m.mcpInitOverlay = m.mcpInitOverlay.WithStyles(m.styles)
-	m.attachmentWindow = m.attachmentWindow.WithStyles(m.styles)
+	m.attachmentOverlay = m.attachmentOverlay.WithStyles(m.styles)
 	m.display = m.display.updateContent()
 	return m
 }
@@ -1132,10 +1132,10 @@ func (m Terminal) applyTheme(theme *theme.Theme) Terminal {
 func (m Terminal) updateComponentSizes(width, height int) Terminal {
 	m.modelSelector = m.modelSelector.WithSize(width, height)
 	m.themeSelector = m.themeSelector.WithSize(width, height)
-	m.helpWindow = m.helpWindow.WithSize(width, height)
+	m.helpOverlay = m.helpOverlay.WithSize(width, height)
 	m.confirmOverlay = m.confirmOverlay.WithSize(width, height)
 	m.mcpInitOverlay = m.mcpInitOverlay.WithSize(width, height)
-	m.attachmentWindow = m.attachmentWindow.WithSize(width, height)
+	m.attachmentOverlay = m.attachmentOverlay.WithSize(width, height)
 	return m
 }
 
@@ -1143,7 +1143,7 @@ func (m Terminal) updateComponentSizes(width, height int) Terminal {
 // that prevents interaction with the prompt input.
 func (m Terminal) isBlocked() bool {
 	return m.modelSelector.IsOpen() || m.themeSelector.IsOpen() ||
-		m.helpWindow.IsOpen() || m.attachmentWindow.IsOpen() ||
+		m.helpOverlay.IsOpen() || m.attachmentOverlay.IsOpen() ||
 		m.confirmOverlay.IsOpen() || m.mcpInitOverlay.IsOpen()
 }
 
@@ -1197,10 +1197,10 @@ func (m Terminal) renderOverlays(baseContent string, width, height int) (string,
 		overlayContent = m.modelSelector.RenderOverlay(baseContent, width, height)
 	case m.themeSelector.IsOpen():
 		overlayContent = m.themeSelector.RenderOverlay(baseContent, width, height)
-	case m.helpWindow.IsOpen():
-		overlayContent = m.helpWindow.RenderOverlay(baseContent, width, height)
-	case m.attachmentWindow.IsOpen():
-		overlayContent = m.attachmentWindow.RenderOverlay(baseContent, width, height)
+	case m.helpOverlay.IsOpen():
+		overlayContent = m.helpOverlay.RenderOverlay(baseContent, width, height)
+	case m.attachmentOverlay.IsOpen():
+		overlayContent = m.attachmentOverlay.RenderOverlay(baseContent, width, height)
 	}
 
 	if m.mcpInitOverlay.IsOpen() {

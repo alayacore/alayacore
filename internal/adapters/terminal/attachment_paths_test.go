@@ -92,12 +92,12 @@ func TestDeletePathSegment(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			value, cursor := splitCursor(tc.in)
-			want, wantCursor := splitCursor(tc.want)
+			want, wantCaret := splitCursor(tc.want)
 
-			aw := NewAttachmentWindow(DefaultStyles()).Open()
+			aw := NewAttachmentOverlay(DefaultStyles()).Open()
 			aw.FilterInput = aw.FilterInput.WithValue(value)
 			if cursor >= 0 {
-				aw.FilterInput = aw.FilterInput.WithCursorPos(cursor)
+				aw.FilterInput = aw.FilterInput.WithCaretPos(cursor)
 			}
 
 			aw = aw.deletePathSegment()
@@ -105,9 +105,9 @@ func TestDeletePathSegment(t *testing.T) {
 			if got := aw.FilterInput.Value(); got != want {
 				t.Errorf("deletePathSegment(%q) = %q, want %q", tc.in, got, want)
 			}
-			if wantCursor >= 0 && aw.FilterInput.CursorPos() != wantCursor {
+			if wantCaret >= 0 && aw.FilterInput.CaretPos() != wantCaret {
 				t.Errorf("deletePathSegment(%q) left the cursor at %d, want %d",
-					tc.in, aw.FilterInput.CursorPos(), wantCursor)
+					tc.in, aw.FilterInput.CaretPos(), wantCaret)
 			}
 		})
 	}
@@ -167,7 +167,7 @@ func TestPickerListsTheDirectoryTheInputNames(t *testing.T) {
 	}
 	wantRoot := filepath.Clean(root)
 
-	aw := NewAttachmentWindow(DefaultStyles()).Open()
+	aw := NewAttachmentOverlay(DefaultStyles()).Open()
 	aw.FilterInput = aw.FilterInput.WithValue(dirValue(root))
 	aw = aw.updateFiltered()
 
@@ -220,7 +220,7 @@ func TestPickerListsTheDirectoryTheInputNames(t *testing.T) {
 // binding honest about the wire form rather than about a hand-built Key.
 func parseKeyBytes(t *testing.T, seq []byte, want Chord) KeyMsg {
 	t.Helper()
-	var p InputParser
+	var p KeyParser
 	msgs := p.Parse(seq)
 	if len(msgs) != 1 {
 		t.Fatalf("%q parsed to %d messages, want one key press", seq, len(msgs))
@@ -245,7 +245,7 @@ func TestAutocompleteDirFollowsTheListing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	aw := NewAttachmentWindow(DefaultStyles()).Open()
+	aw := NewAttachmentOverlay(DefaultStyles()).Open()
 	aw.currentDir = filepath.Clean(root)
 	aw.FilterInput = aw.FilterInput.WithValue("stale text")
 	aw = aw.autocompleteDir("docs")

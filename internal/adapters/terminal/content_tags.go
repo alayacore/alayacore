@@ -9,7 +9,7 @@ import (
 
 // Display tags — the terminal's internal window vocabulary.
 //
-// The wire collapsed the per-kind content tags into UX/AX (content) with the
+// The wire folded the per-kind content tags into UX/AX (content) with the
 // concrete kind carried as a content item's "type" field. The renderers,
 // windows and buffers below still dispatch on a single string per window kind;
 // this is that vocabulary. The frame parser maps (wire tag, type) → display tag

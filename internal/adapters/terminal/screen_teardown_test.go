@@ -31,7 +31,7 @@ const (
 	seqSaveCursor   = "\x1b[s"
 	seqRestoreCur   = "\x1b[u"
 	seqEraseAll     = "\x1b[2J"
-	seqHomeLastRow  = "\x1b[24;1H" // CursorPosition(1, 24)
+	seqHomeLastRow  = "\x1b[24;1H" // CaretPosition(1, 24)
 	seqEnterAlt     = "\x1b[?1049h"
 	seqLeaveAlt     = "\x1b[?1049l"
 	seqPasteOff     = "\x1b[?2004l"
@@ -123,7 +123,7 @@ func TestScreenStopOrder(t *testing.T) {
 }
 
 // TestScreenStopWithoutSizeStillLeavesCleanly: a Screen that never learned its
-// size (no TTY, or a Start before the first WindowSizeMsg) cannot target a
+// size (no TTY, or a Start before the first ScreenSizeMsg) cannot target a
 // bottom row, so it must skip the move and still hand the terminal back.
 func TestScreenStopWithoutSizeStillLeavesCleanly(t *testing.T) {
 	var buf bytes.Buffer

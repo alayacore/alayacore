@@ -8,7 +8,7 @@ import (
 // The f/b keys jump the cursor between user prompts and re-seat the viewport
 // so the prompt sits at the top of the screen, leaving its answer visible
 // below it. That re-seat is the aggressive one: unlike the
-// EnsureCursorVisible used by every other jump key, ScrollCursorToTop moves
+// EnsureWindowCursorVisible used by every other jump key, ScrollWindowCursorToTop moves
 // the viewport unconditionally, to the head of whichever window the cursor
 // happens to rest on.
 //
@@ -18,7 +18,7 @@ import (
 // they found nothing but re-seated anyway, yanking the viewport up to the
 // head of the window already under the cursor. The reader lost their place
 // without the cursor moving a line, and with auto-follow still engaged (the
-// move never reached setCursor, which is what turns it off) the next tick
+// move never reached setWindowCursor, which is what turns it off) the next tick
 // dragged the view back to the bottom.
 
 // promptJumpViewport is the display height the fixtures below use: short
@@ -53,36 +53,36 @@ func answerIndex(turn int) int { return 2*turn + 1 }
 func TestPressFWithNoPromptBelowKeepsViewportPut(t *testing.T) {
 	display, wb := buildPromptTranscript(5, 5, 20)
 
-	// Cursor on the final answer, the last window in the transcript, and the
+	// ScreenCursor on the final answer, the last window in the transcript, and the
 	// view scrolled to the bottom of it. WithWindowCursor drops auto-follow,
 	// which is what makes the yank stick instead of being silently
 	// overwritten by the next follow-to-bottom render.
 	display = display.WithWindowCursor(answerIndex(2))
 	display = display.GotoBottom().updateContent()
 
-	cursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
+	windowCursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
 	if display.autoFollow {
 		t.Fatal("fixture kept auto-follow on; the scrolled-back view is the state under test")
 	}
-	if offsetBefore == headLine(t, wb, cursorBefore) {
+	if offsetBefore == headLine(t, wb, windowCursorBefore) {
 		t.Fatal("fixture is already seated at the window head; the yank would go undetected")
 	}
 
 	updated, _ := display.Update(KeyPressMsg(Key{Code: 'f'}))
 
-	if got := updated.GetWindowCursor(); got != cursorBefore {
-		t.Errorf("cursor moved with no prompt below it: %d -> %d", cursorBefore, got)
+	if got := updated.GetWindowCursor(); got != windowCursorBefore {
+		t.Errorf("cursor moved with no prompt below it: %d -> %d", windowCursorBefore, got)
 	}
 	if got := updated.YOffset(); got != offsetBefore {
 		t.Errorf("viewport moved with the cursor pinned at the end: %d -> %d (window head is %d)",
-			got, offsetBefore, headLine(t, wb, cursorBefore))
+			got, offsetBefore, headLine(t, wb, windowCursorBefore))
 	}
 }
 
 // TestPressFFollowingLeavesAutoFollowOn covers the other end-of-transcript
 // state: the reader never scrolled back, so f is pressed with auto-follow
 // still on, and a jump that failed must not disturb following — turning it
-// off lives in setCursor, which a miss never reaches.
+// off lives in setWindowCursor, which a miss never reaches.
 //
 // This one is not a regression guard for the yank. Under auto-follow,
 // updateContent ends in GotoBottom, which silently undoes the stray scroll
@@ -98,12 +98,12 @@ func TestPressFFollowingLeavesAutoFollowOn(t *testing.T) {
 		t.Fatal("fixture lost auto-follow; G should have engaged it")
 	}
 
-	cursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
+	windowCursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
 
 	updated, _ := display.Update(KeyPressMsg(Key{Code: 'f'}))
 
-	if got := updated.GetWindowCursor(); got != cursorBefore {
-		t.Errorf("cursor moved with no prompt below it: %d -> %d", cursorBefore, got)
+	if got := updated.GetWindowCursor(); got != windowCursorBefore {
+		t.Errorf("cursor moved with no prompt below it: %d -> %d", windowCursorBefore, got)
 	}
 	if !updated.autoFollow {
 		t.Error("a failed jump disabled auto-follow; nothing moved, so nothing should have been turned off")
@@ -151,16 +151,16 @@ func TestPressBWithNoPromptAboveKeepsViewportPut(t *testing.T) {
 	display = display.WithWindowCursor(promptIndex(0))
 	display = display.GotoBottom().updateContent()
 
-	cursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
+	windowCursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
 
 	updated, _ := display.Update(KeyPressMsg(Key{Code: 'b'}))
 
-	if got := updated.GetWindowCursor(); got != cursorBefore {
-		t.Errorf("cursor moved with no prompt above it: %d -> %d", cursorBefore, got)
+	if got := updated.GetWindowCursor(); got != windowCursorBefore {
+		t.Errorf("cursor moved with no prompt above it: %d -> %d", windowCursorBefore, got)
 	}
 	if got := updated.YOffset(); got != offsetBefore {
 		t.Errorf("viewport moved with the cursor on the first prompt: %d -> %d (window head is %d)",
-			got, offsetBefore, headLine(t, wb, cursorBefore))
+			got, offsetBefore, headLine(t, wb, windowCursorBefore))
 	}
 }
 

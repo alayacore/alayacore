@@ -56,10 +56,10 @@ func TestFoldResultsAppliesEachOnceInOrder(t *testing.T) {
 	// Order matters: the last focus request is the value that stands.
 	m2 := newTestTerminal()
 	after2, _ := m2.foldResults([]Result{
-		focusInputWithValueMsg{value: ":first "},
-		focusInputWithValueMsg{value: ":second "},
+		focusPromptWithValueMsg{value: ":first "},
+		focusPromptWithValueMsg{value: ":second "},
 	})
-	if got := after2.input.Value(); got != ":second " {
+	if got := after2.promptBox.Value(); got != ":second " {
 		t.Fatalf("input = %q, want %q: results must fold in order", got, ":second ")
 	}
 }

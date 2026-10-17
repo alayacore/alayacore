@@ -46,13 +46,13 @@ func scrolledBackTranscript(t *testing.T) (Terminal, *outputWriter) {
 	if m.display.LinesBelow() == 0 {
 		t.Fatal("fixture is already at the live edge; a jump would go undetected")
 	}
-	m.streamInput = bufferWriteCloser{&bytes.Buffer{}}
+	m.sessionPipe = bufferWriteCloser{&bytes.Buffer{}}
 	return m, w
 }
 
 func TestSubmitReturnsTheViewToTheLiveEdge(t *testing.T) {
 	m, _ := scrolledBackTranscript(t)
-	m.input = m.input.WithValue("what next?")
+	m.promptBox = m.promptBox.WithValue("what next?")
 
 	m, _ = m.handleSubmit()
 
@@ -87,7 +87,7 @@ func TestEmptySubmitLeavesTheViewportPut(t *testing.T) {
 func TestTaskStartReturnsTheViewToTheLiveEdge(t *testing.T) {
 	m, w := scrolledBackTranscript(t)
 
-	w.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":0}}`)
+	w.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":0}}`)
 	m, _ = m.handleTick()
 
 	if !m.display.autoFollow {

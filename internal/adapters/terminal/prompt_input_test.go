@@ -41,7 +41,7 @@ func TestPromptInputAttachmentsOffset(t *testing.T) {
 // single label wider than the box width was emitted on one line — the
 // terminal would soft-wrap it on render, so the displayed row count
 // exceeded what wrapLabels / Height() / AttachmentsOffset() reported,
-// pushing the prompt input box and cursor out of position.
+// pushing the prompt input box and caret out of position.
 func TestWrapLabelsSingleOversizeLabel(t *testing.T) {
 	styles := DefaultStyles()
 	for _, tc := range []struct {
@@ -80,7 +80,7 @@ func TestWrapLabelsSingleOversizeLabel(t *testing.T) {
 // TestPromptInputAttachmentOversizeAlignment verifies the end-to-end
 // invariant: when an attachment path is wider than the input box, the
 // attachment's rendered row count matches Height() and AttachmentsOffset()
-// — the prompt input box top rule therefore lands on the row the cursor
+// — the prompt input box top rule therefore lands on the row the caret
 // computation expects, even though the attachment path was longer than
 // the box width (the case that previously caused misalignment).
 func TestPromptInputAttachmentOversizeAlignment(t *testing.T) {

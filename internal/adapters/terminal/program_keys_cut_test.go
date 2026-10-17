@@ -39,16 +39,16 @@ func describeMsg(m Msg) string {
 	}
 }
 
-// collectInput runs the loop against a fake source fed the given reads, and
+// collectKeys runs the loop against a fake source fed the given reads, and
 // returns every message delivered within inputWindow.
-func collectInput(t *testing.T, reads ...[]byte) []string {
+func collectKeys(t *testing.T, reads ...[]byte) []string {
 	t.Helper()
 	msgs := make(chan Msg, 16)
-	input := newFakeInput()
+	input := newFakeKeys()
 	p := newParkedProgram(msgs, input)
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
-	go p.readInput(ctxDone)
+	go p.readKeys(ctxDone)
 
 	for _, r := range reads {
 		input.tokens <- r
@@ -161,7 +161,7 @@ func TestCutSequenceCompletesOnTheNextRead(t *testing.T) {
 		}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := collectInput(t, tt.read...)
+			got := collectKeys(t, tt.read...)
 			if len(got) != len(tt.want) {
 				t.Fatalf("reads %q delivered %v, want %v: a cut sequence must be completed, not typed",
 					tt.read, got, tt.want)
@@ -181,11 +181,11 @@ func TestCutSequenceCompletesOnTheNextRead(t *testing.T) {
 // can still arrive (Alt+a, an arrow, a mouse report).
 func TestLoneEscapeStillResolves(t *testing.T) {
 	msgs := make(chan Msg, 4)
-	input := newFakeInput()
+	input := newFakeKeys()
 	p := newParkedProgram(msgs, input)
 	ctxDone := make(chan struct{})
 	defer close(ctxDone)
-	go p.readInput(ctxDone)
+	go p.readKeys(ctxDone)
 
 	// Released at the end of the test, so the loop returns instead of polling
 	// an empty source for the rest of the run.
@@ -216,7 +216,7 @@ func TestLoneEscapeStillResolves(t *testing.T) {
 // then silence, is dropped rather than typed — and is resolved rather than held
 // forever.
 func TestIncompleteSequenceIsDropped(t *testing.T) {
-	if got := collectInput(t, []byte("\x1b[")); len(got) != 0 {
+	if got := collectKeys(t, []byte("\x1b[")); len(got) != 0 {
 		t.Errorf("loop delivered %v for an introducer with nothing behind it", got)
 	}
 }
@@ -227,7 +227,7 @@ func TestIncompleteSequenceIsDropped(t *testing.T) {
 // parser takes every keystroke that follows as pasted text — the dead keyboard
 // this case pins.
 func TestUnterminatedPasteIsDeliveredOnSilence(t *testing.T) {
-	got := collectInput(t, []byte(pasteStart+"hello"))
+	got := collectKeys(t, []byte(pasteStart+"hello"))
 	if len(got) != 1 || got[0] != "paste:hello" {
 		t.Fatalf("an unterminated paste delivered %v, want [paste:hello]", got)
 	}

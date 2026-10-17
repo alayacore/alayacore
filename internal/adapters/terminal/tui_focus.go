@@ -27,7 +27,7 @@ import "fmt"
 // toggleFocus switches between display and input windows.
 func (m Terminal) toggleFocus() Terminal {
 	if m.focusedWindow == focusDisplay {
-		m = m.focusInput()
+		m = m.focusPrompt()
 	} else {
 		m = m.focusDisplay()
 	}
@@ -35,11 +35,11 @@ func (m Terminal) toggleFocus() Terminal {
 	return m
 }
 
-// focusInput switches the user's target to the prompt. It does not touch how the
+// focusPrompt switches the user's target to the prompt. It does not touch how the
 // box paints: View() derives that from the keyboard target and hasFocus every
 // frame, so a routing change and a painting change cannot drift apart.
-func (m Terminal) focusInput() Terminal {
-	m.focusedWindow = focusInput
+func (m Terminal) focusPrompt() Terminal {
+	m.focusedWindow = focusPrompt
 	m.display = m.display.WithDisplayFocused(false)
 	return m
 }
@@ -49,7 +49,7 @@ func (m Terminal) focusDisplay() Terminal {
 	m.focusedWindow = focusDisplay
 	m.display = m.display.WithDisplayFocused(true)
 	if m.display.GetWindowCursor() < 0 {
-		m.display = m.display.WithCursorToLastWindow()
+		m.display = m.display.WithWindowCursorToLastWindow()
 	}
 	return m
 }
@@ -70,7 +70,7 @@ func (m Terminal) restoreFocus() Terminal {
 	if m.focusedWindow == focusDisplay {
 		m = m.focusDisplay()
 	} else {
-		m = m.focusInput()
+		m = m.focusPrompt()
 	}
 	m.display = m.display.updateContent()
 	return m
@@ -98,18 +98,18 @@ func (m Terminal) openThemeSelector() Terminal {
 	return m
 }
 
-// openHelpWindow opens the help window UI.
-func (m Terminal) openHelpWindow() Terminal {
-	m.helpWindow = m.helpWindow.Open()
+// openHelpOverlay opens the help window UI.
+func (m Terminal) openHelpOverlay() Terminal {
+	m.helpOverlay = m.helpOverlay.Open()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
 	return m
 }
 
-// openAttachmentWindow opens the attachment picker overlay.
-func (m Terminal) openAttachmentWindow() Terminal {
-	m.attachmentWindow = m.attachmentWindow.Open()
+// openAttachmentOverlay opens the attachment picker overlay.
+func (m Terminal) openAttachmentOverlay() Terminal {
+	m.attachmentOverlay = m.attachmentOverlay.Open()
 	m.display = m.display.WithBlocked(true)
 	m.display = m.display.WithDisplayFocused(false)
 	m.display = m.display.updateContent()
@@ -165,8 +165,8 @@ func (m Terminal) handleBlur() Terminal {
 	m.display = m.display.WithDisplayFocused(false)
 	m.modelSelector = m.modelSelector.WithFocus(false)
 	m.themeSelector = m.themeSelector.WithFocus(false)
-	m.helpWindow = m.helpWindow.WithFocus(false)
-	m.attachmentWindow = m.attachmentWindow.WithFocus(false)
+	m.helpOverlay = m.helpOverlay.WithFocus(false)
+	m.attachmentOverlay = m.attachmentOverlay.WithFocus(false)
 	m.display = m.display.updateContent()
 	return m
 }
@@ -177,13 +177,13 @@ func (m Terminal) handleFocus() Terminal {
 	m.display = m.display.WithBlocked(m.isBlocked())
 	m.modelSelector = m.modelSelector.WithFocus(true)
 	m.themeSelector = m.themeSelector.WithFocus(true)
-	m.helpWindow = m.helpWindow.WithFocus(true)
-	m.attachmentWindow = m.attachmentWindow.WithFocus(true)
+	m.helpOverlay = m.helpOverlay.WithFocus(true)
+	m.attachmentOverlay = m.attachmentOverlay.WithFocus(true)
 
 	if m.modelSelector.IsOpen() ||
 		m.themeSelector.IsOpen() ||
-		m.helpWindow.IsOpen() ||
-		m.attachmentWindow.IsOpen() ||
+		m.helpOverlay.IsOpen() ||
+		m.attachmentOverlay.IsOpen() ||
 		m.confirmOverlay.IsOpen() ||
 		m.mcpInitOverlay.IsOpen() {
 		m.display = m.display.updateContent()
@@ -193,7 +193,7 @@ func (m Terminal) handleFocus() Terminal {
 	if m.focusedWindow == focusDisplay {
 		m = m.focusDisplay()
 	} else {
-		m = m.focusInput()
+		m = m.focusPrompt()
 	}
 	m.display = m.display.updateContent()
 	return m
@@ -217,7 +217,7 @@ func (m Terminal) handlePaste(msg PasteMsg) (Terminal, Cmd) {
 	switch m.keyboardTarget() {
 	case targetPrompt:
 		var results []Result
-		m.input, results = m.input.Update(msg)
+		m.promptBox, results = m.promptBox.Update(msg)
 		return m.foldResults(results)
 
 	case targetOverlayFilter:
@@ -236,9 +236,9 @@ func (m Terminal) handlePaste(msg PasteMsg) (Terminal, Cmd) {
 // it is the target.
 func (m Terminal) pasteIntoOverlay(msg PasteMsg) (Terminal, Cmd) {
 	switch {
-	case m.attachmentWindow.IsOpen():
+	case m.attachmentOverlay.IsOpen():
 		var results []Result
-		m.attachmentWindow, results = m.attachmentWindow.Update(msg)
+		m.attachmentOverlay, results = m.attachmentOverlay.Update(msg)
 		return m.foldResults(results)
 	case m.modelSelector.IsOpen():
 		var results []Result
@@ -248,9 +248,9 @@ func (m Terminal) pasteIntoOverlay(msg PasteMsg) (Terminal, Cmd) {
 		var results []Result
 		m.themeSelector, results = m.themeSelector.Update(msg)
 		return m.foldResults(results)
-	case m.helpWindow.IsOpen():
+	case m.helpOverlay.IsOpen():
 		var results []Result
-		m.helpWindow, results = m.helpWindow.Update(msg)
+		m.helpOverlay, results = m.helpOverlay.Update(msg)
 		return m.foldResults(results)
 	}
 	return m, nil
@@ -337,14 +337,14 @@ func (m Terminal) keyboardTarget() inputTarget {
 // that would open another. The selector overlays are single-occupancy.
 func (m Terminal) overlayTextTarget() inputTarget {
 	switch {
-	case m.attachmentWindow.IsOpen():
-		return m.overlayFilterOrList(m.attachmentWindow.FilterInputFocused)
+	case m.attachmentOverlay.IsOpen():
+		return m.overlayFilterOrList(m.attachmentOverlay.FilterInputFocused)
 	case m.modelSelector.IsOpen():
 		return m.overlayFilterOrList(m.modelSelector.FilterInputFocused)
 	case m.themeSelector.IsOpen():
 		return m.overlayFilterOrList(m.themeSelector.FilterInputFocused)
-	case m.helpWindow.IsOpen():
-		return m.overlayFilterOrList(m.helpWindow.FilterInputFocused)
+	case m.helpOverlay.IsOpen():
+		return m.overlayFilterOrList(m.helpOverlay.FilterInputFocused)
 	}
 	return targetNothing
 }

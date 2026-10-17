@@ -103,7 +103,7 @@ func TestWindowLineNeverExceedsWidth(t *testing.T) {
 		if !strings.HasPrefix(plain, unfoldArrow) {
 			t.Errorf("width %d: row 0 should open with the open marker: %q", width, plain)
 		}
-		if width <= collapsedPrefixWidth {
+		if width <= foldedPrefixWidth {
 			// Not even room for the separator: the marker alone.
 			continue
 		}
@@ -143,7 +143,7 @@ func TestWindowLineTimestampYieldsToTheLabel(t *testing.T) {
 	// The tool label is "TOOL CALL ⠋" padded to the label column, then the
 	// name.
 	label := padLabel(toolLabelWithIndicator("✓")) + "execute_command"
-	fits := collapsedPrefixWidth + cellWidth(label) + 1 + timeStampWidth
+	fits := foldedPrefixWidth + cellWidth(label) + 1 + timeStampWidth
 
 	open := func(width int) string {
 		wb := NewWindowBuffer(width, styles)
@@ -194,10 +194,10 @@ func TestWindowLineWithoutATime(t *testing.T) {
 	}
 }
 
-// TestWindowLineToolHeaderIsTheCollapsedHeader: an expanded tool window
-// reuses the collapsed line's header layout — label, status indicator, then
+// TestWindowLineToolHeaderIsTheFoldedHeader: an unfolded tool window
+// reuses the folded line's header layout — label, status indicator, then
 // the tool name — so the same window reads the same way open or closed.
-func TestWindowLineToolHeaderIsTheCollapsedHeader(t *testing.T) {
+func TestWindowLineToolHeaderIsTheFoldedHeader(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 	wb.HandleToolInputEvent(protocol.ToolInputData{
@@ -210,10 +210,10 @@ func TestWindowLineToolHeaderIsTheCollapsedHeader(t *testing.T) {
 
 	plain := stripANSI(wb.GetAll(-1, false))
 	if !strings.HasPrefix(plain, unfoldArrow+" TOOL CALL ✓") {
-		t.Errorf("expanded tool line should carry 'TOOL CALL ✓', got %q", firstRow(plain))
+		t.Errorf("unfolded tool line should carry 'TOOL CALL ✓', got %q", firstRow(plain))
 	}
 	if !strings.Contains(wb.GetAll(-1, false), styles.ToolContent.Bold(true).Render("execute_command")) {
-		t.Error("the tool name should be bold + muted, as in the collapsed line")
+		t.Error("the tool name should be bold + muted, as in the folded line")
 	}
 }
 
@@ -246,7 +246,7 @@ func TestWindowLineColorIsTheDefaultExceptErrors(t *testing.T) {
 			wb := NewWindowBuffer(80, styles)
 			wb.AppendOrUpdate(tc.tag, "w1", "hello")
 			pinCreatedAt(wb)
-			if wb.WindowAt(0).Folded { // conversation starts expanded; scaffolding does not
+			if wb.WindowAt(0).Folded { // conversation starts unfolded; scaffolding does not
 				wb.ToggleFold(0)
 			}
 			if wb.WindowAt(0).Folded {

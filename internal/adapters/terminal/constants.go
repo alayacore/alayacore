@@ -47,7 +47,7 @@ const (
 )
 
 // The fold markers. A folded window is one line starting with "+" — there
-// is more to it; an expanded window's own line starts with "-" — its
+// is more to it; an unfolded window's own line starts with "-" — its
 // content follows. Both are ASCII, and that is the point: a marker that
 // sits at column 0 of every window row must measure one cell in EVERY
 // terminal and must not depend on the reader's font covering a symbol
@@ -62,7 +62,7 @@ const (
 // defined to be one cell in every terminal that has ever existed".
 //
 // The markers belong to the terminal layout, not to the theme: the
-// collapsed line is laid out as "marker + space + label column", so the
+// folded line is laid out as "marker + space + label column", so the
 // glyph owns a cell of that geometry, and a palette switch must never
 // change it.
 const (
@@ -74,11 +74,11 @@ const (
 	// no table can disagree about); arrows_test.go asserts it.
 	arrowCellWidth = 1
 
-	// collapsedPrefixWidth is what a collapsed line spends before the
+	// foldedPrefixWidth is what a folded line spends before the
 	// label column: the marker plus one separating space. Content is
 	// measured against the remaining width, and contentColumn tests pin
 	// the label column to start at exactly this offset.
-	collapsedPrefixWidth = arrowCellWidth + 1
+	foldedPrefixWidth = arrowCellWidth + 1
 )
 
 // timeStampLayout is the wall clock a window's own line carries on the
@@ -115,7 +115,7 @@ const (
 //
 // The width is not negotiable in the other direction either: a timestamp is
 // drawn only when the label leaves room for all of it beside itself (see
-// buildExpandHeader), never truncated and never shortened to fit.
+// buildUnfoldedHeader), never truncated and never shortened to fit.
 const (
 	timeStampLayout = "2006/01/02 15:04:05 -07:00"
 	timeStampWidth  = 26
@@ -200,11 +200,11 @@ const statusIdleGlyph = "⠿"
 // non-ASCII character it draws, and fails on an unclassified glyph, on a
 // stale entry, and on a glyph whose measured width contradicts its class.
 
-// CollapsedLabelWidth is the width of the label column in a window's own
-// line ("+ LABEL content…" folded, "- LABEL … timestamp" expanded), so
+// FoldedLabelWidth is the width of the label column in a window's own
+// line ("+ LABEL content…" folded, "- LABEL … timestamp" unfolded), so
 // content starts at the same column for every window type (USER PROMPT,
 // REASONING, ASSISTANT, SYSTEM NOTIFY, SYSTEM ERROR, TOOL). The widest
 // label is "SYSTEM NOTIFY" (13 columns); the column is 16 to keep a
 // separating space before content and leave headroom for longer labels
 // (e.g. "SYSTEM ERROR", "TOOL CALL") without re-tuning.
-const CollapsedLabelWidth = 16
+const FoldedLabelWidth = 16

@@ -103,13 +103,13 @@ func (p *Program) Suspend(run func() error) error {
 // parked loop is a program that renders and cannot be typed at, so the caller can
 // report the failure but the user cannot answer it.
 func (p *Program) releaseTerminal() error {
-	p.pauseInput() // waits for the loop to report that it is between reads
+	p.pauseKeys() // waits for the loop to report that it is between reads
 	if err := p.screen.Stop(); err != nil {
-		p.resumeInput()
+		p.resumeKeys()
 		return err
 	}
 	if err := p.tty.Restore(); err != nil {
-		p.resumeInput()
+		p.resumeKeys()
 		return err
 	}
 	return nil
@@ -137,7 +137,7 @@ func (p *Program) acquireTerminal() error {
 	// cannot be told to leave. The degraded path an error below opens onto is
 	// documented as the lesser harm, and it is only that if the user can still
 	// reach :quit.
-	defer p.resumeInput()
+	defer p.resumeKeys()
 	if err := p.tty.MakeRaw(); err != nil {
 		return err
 	}

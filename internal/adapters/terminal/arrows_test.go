@@ -8,7 +8,7 @@ import (
 )
 
 // The fold markers are pinned on purpose: they are the product's answer to
-// "how does a collapsed window look, and how does an open one look", they
+// "how does a folded window look, and how does an open one look", they
 // sit at column 0 of every window row, and the label column's arithmetic
 // depends on each being exactly one cell.
 //
@@ -41,9 +41,9 @@ func TestFoldMarkersAreAscii(t *testing.T) {
 			t.Errorf("%s measures %d cells, layout reserves %d", tc.name, w, arrowCellWidth)
 		}
 	}
-	if collapsedPrefixWidth != arrowCellWidth+1 {
-		t.Errorf("collapsedPrefixWidth = %d, want the marker (%d) + one separating space",
-			collapsedPrefixWidth, arrowCellWidth)
+	if foldedPrefixWidth != arrowCellWidth+1 {
+		t.Errorf("foldedPrefixWidth = %d, want the marker (%d) + one separating space",
+			foldedPrefixWidth, arrowCellWidth)
 	}
 }
 
@@ -64,11 +64,11 @@ func TestFoldMarkersIndependentOfTheme(t *testing.T) {
 		wb.ToggleFold(0)
 		first := firstRow(stripANSI(wb.GetAll(-1, false)))
 		if !strings.HasPrefix(first, foldArrow) {
-			t.Errorf("styles[%d]: collapsed line = %q, want it to start with %q", i, first, foldArrow)
+			t.Errorf("styles[%d]: folded line = %q, want it to start with %q", i, first, foldArrow)
 		}
-		if c := contentColumn(first); c != collapsedPrefixWidth+CollapsedLabelWidth {
+		if c := contentColumn(first); c != foldedPrefixWidth+FoldedLabelWidth {
 			t.Errorf("styles[%d]: content column = %d, want %d: %q",
-				i, c, collapsedPrefixWidth+CollapsedLabelWidth, first)
+				i, c, foldedPrefixWidth+FoldedLabelWidth, first)
 		}
 	}
 }
@@ -81,19 +81,19 @@ func TestFoldMarkersKeepTheLabelColumn(t *testing.T) {
 	wb := NewWindowBuffer(60, DefaultStyles())
 	wb.AppendOrUpdate(tagAssistantText, "a1", "hello there")
 
-	expanded := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(expanded, unfoldArrow+" ASSISTANT") {
-		t.Errorf("expanded line = %q, want %q + the label", firstRow(expanded), unfoldArrow)
+	unfolded := stripANSI(wb.GetAll(-1, false))
+	if !strings.HasPrefix(unfolded, unfoldArrow+" ASSISTANT") {
+		t.Errorf("unfolded line = %q, want %q + the label", firstRow(unfolded), unfoldArrow)
 	}
 
 	wb.ToggleFold(0)
-	collapsed := stripANSI(wb.GetAll(-1, false))
-	if !strings.HasPrefix(collapsed, foldArrow+" ASSISTANT") {
-		t.Fatalf("collapsed line = %q, want %q + the label", firstRow(collapsed), foldArrow)
+	folded := stripANSI(wb.GetAll(-1, false))
+	if !strings.HasPrefix(folded, foldArrow+" ASSISTANT") {
+		t.Fatalf("folded line = %q, want %q + the label", firstRow(folded), foldArrow)
 	}
-	if c := contentColumn(collapsed); c != collapsedPrefixWidth+CollapsedLabelWidth {
-		t.Errorf("collapsed content column = %d, want %d: %q",
-			c, collapsedPrefixWidth+CollapsedLabelWidth, collapsed)
+	if c := contentColumn(folded); c != foldedPrefixWidth+FoldedLabelWidth {
+		t.Errorf("folded content column = %d, want %d: %q",
+			c, foldedPrefixWidth+FoldedLabelWidth, folded)
 	}
 }
 

@@ -72,7 +72,7 @@ func TestMarkdownTableWideColumnsWithCJK(t *testing.T) {
 // (the grid is always box-drawing, and the vertical layout emits no rules of
 // those kinds), so anything the content carries there must survive the no-loss
 // check — a "|"-in-cell, a "10-20" range, a "+"/"-" diff marker. A tab cannot
-// appear on either side at all: parseTable expands tabs to spaces before
+// appear on either side at all: parseTable unfolds tabs to spaces before
 // rendering, and both sides of the comparison are trimmed.
 func dropLayoutNoise(r rune) rune {
 	switch r {

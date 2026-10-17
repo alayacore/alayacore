@@ -31,12 +31,12 @@ type Screen struct {
 	out      io.Writer
 	sizeFile *os.File // used for term.GetSize; nil when no real TTY
 
-	mu          sync.Mutex // serializes writes
-	width       int
-	height      int
-	started     bool
-	lastContent string
-	lastCursor  *Cursor
+	mu               sync.Mutex // serializes writes
+	width            int
+	height           int
+	started          bool
+	lastContent      string
+	lastScreenCursor *ScreenCursor
 
 	// Frame-state tracking for the overlay-free render path:
 	// lastFullScreen records the previous frame's fill mode (a change must
@@ -230,13 +230,13 @@ func (s *Screen) Stop() error {
 // selection copies the rendered screen, not the emitted bytes).
 //
 //nolint:gocyclo // clear-mode decision + cursor encoding branches
-func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
+func (s *Screen) Render(content string, cur *ScreenCursor, fullScreen bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	sameContent := content == s.lastContent
-	sameCursor := cursorsEqual(s.lastCursor, cur)
-	if sameContent && sameCursor && s.lastFullScreen == fullScreen {
+	sameScreenCursor := screenCursorsEqual(s.lastScreenCursor, cur)
+	if sameContent && sameScreenCursor && s.lastFullScreen == fullScreen {
 		return nil
 	}
 
@@ -341,9 +341,9 @@ func (s *Screen) Render(content string, cur *Cursor, fullScreen bool) error {
 	s.lastHadOverlay = hadOverlay
 	if cur != nil {
 		cc := *cur
-		s.lastCursor = &cc
+		s.lastScreenCursor = &cc
 	} else {
-		s.lastCursor = nil
+		s.lastScreenCursor = nil
 	}
 	return nil
 }
@@ -917,7 +917,7 @@ func (s *Screen) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.lastContent = ""
-	s.lastCursor = nil
+	s.lastScreenCursor = nil
 	s.lastFullScreen = false
 	s.lastHadOverlay = false
 }
@@ -953,8 +953,8 @@ func (s *Screen) Size() (int, int) {
 	return w, h
 }
 
-// cursorsEqual reports whether two cursors render identically.
-func cursorsEqual(a, b *Cursor) bool {
+// screenCursorsEqual reports whether two cursors render identically.
+func screenCursorsEqual(a, b *ScreenCursor) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
@@ -973,7 +973,7 @@ func colorHex(c color.Color) (string, bool) {
 
 // encodeCursorStyle returns the DECSCUSR parameter for the given cursor
 // shape and blink state (same mapping as bubbletea's renderer).
-func encodeCursorStyle(shape CursorShape, blink bool) int {
+func encodeCursorStyle(shape ScreenCursorShape, blink bool) int {
 	// DECSCUSR parameter: (shape*2)+1, +1 more when steady (non-blink).
 	style := (int(shape) * 2) + 1
 	if !blink {

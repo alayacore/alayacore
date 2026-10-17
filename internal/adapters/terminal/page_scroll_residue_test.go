@@ -21,13 +21,13 @@ import (
 func TestPageScrollNoResidueBelowDisplay(t *testing.T) {
 	const W, H = 100, 24
 	m := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, &app.Config{}, W, H, theme.DefaultTheme(), nil, "theme-dark")
-	m.out.SetWindowWidth(W)
-	mm, _ := m.Update(WindowSizeMsg{Width: W, Height: H})
+	m.out.SetScreenWidth(W)
+	mm, _ := m.Update(ScreenSizeMsg{Width: W, Height: H})
 	m = mm.(Terminal)
 	wb := m.out.WindowBuffer()
 	wb.AppendOrUpdate(tagAssistantText, "a1", strings.Repeat("long assistant row content here\n", 20))
 	wb.AppendOrUpdate(tagAssistantReasoning, "r1", `The user says "say hello".`)
-	mm, _ = m.Update(WindowSizeMsg{Width: W, Height: H})
+	mm, _ = m.Update(ScreenSizeMsg{Width: W, Height: H})
 	m = mm.(Terminal)
 
 	frame1 := m.View().Content

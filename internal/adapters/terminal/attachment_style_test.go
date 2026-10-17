@@ -51,10 +51,10 @@ func TestAttachmentBadgesNeverDrawWithTheAlertColor(t *testing.T) {
 
 	lines, _ := ur.BuildInner(80, false, st)
 	surfaces := map[string]string{
-		"expanded body":     joinVisualLines(lines),
-		"collapsed line":    collapseOf(t, ur, st, 80),
+		"unfolded body":     joinVisualLines(lines),
+		"folded line":       foldOf(t, ur, st, 80),
 		"prompt box":        NewPromptInput(st).WithWidth(60).WithAttachments(media).WithValue("hi").View().Content,
-		"expanded (dimmed)": dimmedBody(t, ur, st),
+		"unfolded (dimmed)": dimmedBody(t, ur, st),
 	}
 	for name, got := range surfaces {
 		if strings.Contains(got, warn) {
@@ -71,7 +71,7 @@ func TestAttachmentBadgesKeepTheirRegisterAcrossFold(t *testing.T) {
 	lines, _ := ur.BuildInner(80, false, st)
 	want := st.Attachment.Render("📷 Image  🎵 Audio")
 	if lines[0].Text != want {
-		t.Errorf("expanded badge row:\n  got  %q\n  want %q", lines[0].Text, want)
+		t.Errorf("unfolded badge row:\n  got  %q\n  want %q", lines[0].Text, want)
 	}
 	if wantBold := NewStyle().Bold(true).Render("📷 Image  🎵 Audio"); want != wantBold {
 		t.Errorf("Styles.Attachment is no longer the default-foreground + bold register:\n  got  %q\n  want %q", want, wantBold)
@@ -80,18 +80,18 @@ func TestAttachmentBadgesKeepTheirRegisterAcrossFold(t *testing.T) {
 		t.Error("Styles.Attachment now paints identically to the window label (muted + bold); the badge must not read as the tag")
 	}
 
-	collapsed := collapseOf(t, ur, st, 80)
-	if badgeRun := st.Attachment.Render("📷1 🎵1"); !strings.Contains(collapsed, badgeRun) {
-		t.Errorf("collapsed badge run is not in the attachment style:\n  got  %q\n  want it to contain %q", collapsed, badgeRun)
+	folded := foldOf(t, ur, st, 80)
+	if badgeRun := st.Attachment.Render("📷1 🎵1"); !strings.Contains(folded, badgeRun) {
+		t.Errorf("folded badge run is not in the attachment style:\n  got  %q\n  want it to contain %q", folded, badgeRun)
 	}
 }
 
-// TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem pins the degenerate
+// TestFoldedBadgesFallBackWhenTheCutLandsInsideThem pins the degenerate
 // half of the rule above: the run is styled only when it survived truncation
 // whole. A half-badge is not worth two registers, so the summary then takes
 // the content's plain muted — and nothing about the line's width or text
 // changes.
-func TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem(t *testing.T) {
+func TestFoldedBadgesFallBackWhenTheCutLandsInsideThem(t *testing.T) {
 	st := DefaultStyles()
 	ur := &userRenderer{
 		textParts: []string{strings.Repeat("analyze ", 8) + "this"},
@@ -100,9 +100,9 @@ func TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem(t *testing.T) {
 			wire.MediaLabel(wire.KindAudio), wire.MediaLabel(wire.KindDocument),
 		},
 	}
-	line := collapseOf(t, ur, st, 24)
+	line := foldOf(t, ur, st, 24)
 	if w := cellWidth(stripANSI(line)); w > 24 {
-		t.Errorf("collapsed line overflows its width: %d cells, %q", w, stripANSI(line))
+		t.Errorf("folded line overflows its width: %d cells, %q", w, stripANSI(line))
 	}
 	// One bold run only — the label column. The label is muted + bold, so it
 	// opens with "\x1b[1;"; a styled badge run would add its own bold opening
@@ -115,9 +115,9 @@ func TestCollapsedBadgesFallBackWhenTheCutLandsInsideThem(t *testing.T) {
 	}
 }
 
-func collapseOf(t *testing.T, ur *userRenderer, st *Styles, width int) string {
+func foldOf(t *testing.T, ur *userRenderer, st *Styles, width int) string {
 	t.Helper()
-	line, _ := ur.BuildCollapsed(width, st)
+	line, _ := ur.BuildFolded(width, st)
 	return line
 }
 

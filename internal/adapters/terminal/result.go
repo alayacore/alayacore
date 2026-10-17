@@ -29,7 +29,7 @@ func (ReloadModelsMsg) isResult()         {}
 func (ThemeSelectedMsg) isResult()        {}
 func (openEditorForDisplayMsg) isResult() {}
 func (openEditorForPromptMsg) isResult()  {}
-func (focusInputWithValueMsg) isResult()  {}
+func (focusPromptWithValueMsg) isResult() {}
 
 // foldResults applies each result in order, batching the Cmds they imply. It is
 // how a dispatcher consumes a component's results: the state changes happen
@@ -75,9 +75,9 @@ func (m Terminal) applyResult(r Result) (Terminal, Cmd) {
 	case openEditorForPromptMsg:
 		return m, m.editor.Open(msg.content)
 
-	case focusInputWithValueMsg:
-		m = m.focusInput()
-		m.input = m.input.WithValue(msg.value).CursorEnd()
+	case focusPromptWithValueMsg:
+		m = m.focusPrompt()
+		m.promptBox = m.promptBox.WithValue(msg.value).CaretEnd()
 		m.display = m.display.updateContent()
 		return m, nil
 
@@ -90,8 +90,8 @@ func (m Terminal) applyResult(r Result) (Terminal, Cmd) {
 		return m, nil
 
 	case HelpCmdMsg:
-		m = m.focusInput()
-		m.input = m.input.WithValue(msg.Command + " ").CursorEnd()
+		m = m.focusPrompt()
+		m.promptBox = m.promptBox.WithValue(msg.Command + " ").CaretEnd()
 		m.display = m.display.updateContent()
 		return m, nil
 	}

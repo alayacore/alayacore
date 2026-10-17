@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	// consoleInputPollInterval is how long next() waits before reporting that
+	// consoleKeyPollInterval is how long next() waits before reporting that
 	// the console has nothing. It bounds two things a user can feel: the delay
 	// before a keystroke is read, and the delay before a park request takes
 	// effect and the editor starts. The wait cannot be a real block on the
@@ -50,7 +50,7 @@ const (
 	// opened with FILE_FLAG_OVERLAPPED, and the one that answers it then
 	// sometimes signals with nothing to read, which turns a wait into a spin —
 	// so this is a poll, and it is short so that the poll is invisible.
-	consoleInputPollInterval = 10 * time.Millisecond
+	consoleKeyPollInterval = 10 * time.Millisecond
 
 	// consoleEventsPerRead caps how many events one call consumes. The cap
 	// exists to bound the batch, not to protect the buffer: the encoded bytes
@@ -63,7 +63,7 @@ var (
 	procReadConsoleInputW = modkernel32.NewProc("ReadConsoleInputW")
 )
 
-// consoleInput is the Windows implementation of inputSource.
+// consoleInput is the Windows implementation of keySource.
 type consoleInput struct {
 	handle  windows.Handle
 	records []inputRecord
@@ -71,14 +71,14 @@ type consoleInput struct {
 	enc     keyEncoder
 }
 
-// newInput prepares the program's input source. The console is the only input
+// newKeyReader prepares the program's input source. The console is the only input
 // this platform reads (openTTY falls back to CONIN$ precisely when stdin is not a
 // console), so the one thing to establish is that the handle really is an input
 // buffer: a console screen buffer answers the same queries for its own mode and
 // would fail the first read instead. Failing here is the honest answer — the
 // interface cannot read keys from this handle — and it is the same judgment
 // enterVT makes about the output handle.
-func newInput(t *TTY) (inputSource, error) {
+func newKeyReader(t *TTY) (keySource, error) {
 	h := windows.Handle(t.In().Fd())
 	if _, err := pendingConsoleEvents(h); err != nil {
 		return nil, fmt.Errorf("terminal: this stream is not a console keyboard the interface can read (%w)", err)
@@ -89,14 +89,14 @@ func newInput(t *TTY) (inputSource, error) {
 	}, nil
 }
 
-// next implements inputSource.
+// next implements keySource.
 func (c *consoleInput) next() ([]byte, error) {
 	pending, err := pendingConsoleEvents(c.handle)
 	if err != nil {
 		return nil, err
 	}
 	if pending == 0 {
-		time.Sleep(consoleInputPollInterval)
+		time.Sleep(consoleKeyPollInterval)
 		return nil, nil
 	}
 
@@ -111,7 +111,7 @@ func (c *consoleInput) next() ([]byte, error) {
 		// a child that has just been handed the terminal is the likeliest
 		// culprit — so wait rather than ask again immediately: a loop that
 		// spun here would be spinning in the middle of an editor session.
-		time.Sleep(consoleInputPollInterval)
+		time.Sleep(consoleKeyPollInterval)
 		return nil, nil
 	}
 

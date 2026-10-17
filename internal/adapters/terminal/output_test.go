@@ -27,7 +27,7 @@ func TestTextDeltaCoalescing(t *testing.T) {
 	// Three "At" deltas for the same window should result in a single
 	// window with accumulated content "hello world".
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	// Simulate three text deltas for window "5".
 	writeAt(out, "5", "he")
@@ -54,7 +54,7 @@ func TestTextDeltaCoalescing(t *testing.T) {
 func TestTextDeltaCoalescingMultipleWindows(t *testing.T) {
 	// Deltas for different windows should be accumulated separately.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAt(out, "5", "Hello")
 	writeAr(out, "3", "Reasoning...")
@@ -107,7 +107,7 @@ func TestTextDeltaCreatesWindowOnFirstDelta(t *testing.T) {
 	// The first "At" delta for a new window ID should create the window
 	// (via AppendOrUpdate) when flushed.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAt(out, "42", "first chunk")
 
@@ -137,7 +137,7 @@ func TestToolDeltaCoalescing(t *testing.T) {
 	// Three "Af" deltas for the same tool call should be merged into
 	// a single HandleToolInputDelta call with concatenated JSON.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAf(out, "1", "call_123", `{"location":`)
 	writeAf(out, "1", "call_123", `"San Francisco`)
@@ -170,7 +170,7 @@ func TestToolDeltaWithNameResolution(t *testing.T) {
 	// When an AF (start) frame arrives before Af frames, the tool name
 	// should be resolved from the existing window.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	// Write an AF start frame to create the window with tool name.
 	writeAFStart(out, "1", "call_456", "read_file")
@@ -209,7 +209,7 @@ func TestDeltaFlushOnCompleteFrame(t *testing.T) {
 	// When an authoritative AX frame arrives after Ax deltas,
 	// the deltas should be flushed before the AT is processed.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAt(out, "5", "stream")
 	writeAt(out, "5", "ing ")
@@ -235,7 +235,7 @@ func TestDeltaFlushOnCompleteFrame(t *testing.T) {
 func TestDeltaCoalescingPreservesOrder(t *testing.T) {
 	// Deltas should be concatenated in the order they arrive.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAt(out, "7", "a")
 	writeAt(out, "7", "b")
@@ -261,7 +261,7 @@ func TestDeltaCoalescingPreservesOrder(t *testing.T) {
 func TestToolDeltaCoalescingPreservesOrder(t *testing.T) {
 	// Tool JSON fragments should be concatenated in order.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAf(out, "1", "call_999", `{"a":1,`)
 	writeAf(out, "1", "call_999", `"b":2}`)
@@ -286,7 +286,7 @@ func TestTextAndToolDeltaInterleaving(t *testing.T) {
 	// Map iteration order is non-deterministic, so we check by window ID
 	// rather than buffer position.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAt(out, "5", "Hello")
 	writeAf(out, "5", "call_111", `{"x":`)
@@ -365,7 +365,7 @@ func TestFlushWithNoPendingDeltas(t *testing.T) {
 func TestEmptyDeltaContent(t *testing.T) {
 	// Empty delta content should not create visible windows.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAt(out, "5", "")
 	writeAt(out, "5", "")
@@ -390,7 +390,7 @@ func TestEmptyDeltaContent(t *testing.T) {
 
 func TestFlushThenDrainDirty(t *testing.T) {
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeAt(out, "5", "pending content")
 
@@ -420,7 +420,7 @@ func TestDrainDirtyIsPureQuery(t *testing.T) {
 	// DrainDirty should NOT flush pending deltas — only the TUI tick
 	// loop calls FlushPendingDeltas before DrainDirty.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	// Write a non-delta frame to set dirty.
 	var buf strings.Builder
@@ -466,7 +466,7 @@ func TestDrainDirtyIsPureQuery(t *testing.T) {
 func TestDeltaCoalescingThroughWrite(t *testing.T) {
 	// Write encoded deltas through the Write() -> processBuffer() path.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	// Single write with multiple frames.
 	var buf strings.Builder
@@ -513,7 +513,7 @@ func TestDeltaCoalescingThroughWrite(t *testing.T) {
 func TestDeltaFlushViaNonDeltaTag(t *testing.T) {
 	// A non-delta tag (e.g. TagUserF) in the same write should trigger flush.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	var buf strings.Builder
 	buf.Write(frameBytes(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "some text")))
@@ -583,7 +583,7 @@ func writeAFStart(out *outputWriter, historyID, toolID, toolName string) {
 
 func TestToolOutputDeltaPreview(t *testing.T) {
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	// Tool call starts (AF), then preview snapshots arrive (Uf).
 	writeAFStart(out, "1", "call_1", "execute_command")
@@ -623,7 +623,7 @@ func TestToolOutputDeltaPreview(t *testing.T) {
 func TestToolOutputDeltaNoPriorAF(t *testing.T) {
 	// Uf arriving without a prior AF frame creates a placeholder window.
 	out := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
-	out.SetWindowWidth(80)
+	out.SetScreenWidth(80)
 
 	writeUf(out, "1", "call_9", "running...")
 

@@ -24,7 +24,7 @@ import (
 // the parser was still waiting for a marker.
 func feedReads(tb *testing.T, stream string, cuts ...int) (msgs []Msg, inPaste bool) {
 	tb.Helper()
-	p := &InputParser{}
+	p := &KeyParser{}
 	prev := 0
 	for _, cut := range append(cuts, len(stream)) {
 		if cut <= prev || cut > len(stream) {
@@ -135,7 +135,7 @@ func TestPasteContentEndingInAMarkerHead(t *testing.T) {
 // was pasted in front of it still reaches the prompt, and the parser goes back to
 // reading keys instead of swallowing them.
 func TestPasteWithoutItsMarkerResolvesOnSilence(t *testing.T) {
-	p := &InputParser{}
+	p := &KeyParser{}
 	msgs := p.Parse([]byte(pasteStart + "pasted text" + "\x1b[20"))
 	if len(msgs) != 0 {
 		t.Fatalf("an open paste produced %v, want nothing until its marker", describeMsgs(msgs))
@@ -177,7 +177,7 @@ func TestPasteWithoutItsMarkerResolvesOnSilence(t *testing.T) {
 // pasted text. MidSequence (not HasPending) is the unfinished-input test, and
 // Flush must resolve the open paste even though pending is empty.
 func TestPasteWithNoMarkerHeadResolvesOnSilence(t *testing.T) {
-	p := &InputParser{}
+	p := &KeyParser{}
 	// "pasted text" is not a suffix of the end marker, so nothing is held.
 	msgs := p.Parse([]byte(pasteStart + "pasted text"))
 	if len(msgs) != 0 {
@@ -219,7 +219,7 @@ func TestPasteWithNoMarkerHeadResolvesOnSilence(t *testing.T) {
 // be false in ground and true for every unfinished state, including an open paste
 // whose buffer is empty.
 func TestParserMidSequence(t *testing.T) {
-	p := &InputParser{}
+	p := &KeyParser{}
 	if p.MidSequence() {
 		t.Fatal("a fresh parser is in ground, but MidSequence reported unfinished input")
 	}

@@ -35,12 +35,12 @@ func TestDeletePathSegmentOnWindows(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			value, cursor := splitCursor(tc.in)
-			want, wantCursor := splitCursor(tc.want)
+			want, wantCaret := splitCursor(tc.want)
 
-			aw := NewAttachmentWindow(DefaultStyles()).Open()
+			aw := NewAttachmentOverlay(DefaultStyles()).Open()
 			aw.FilterInput = aw.FilterInput.WithValue(value)
 			if cursor >= 0 {
-				aw.FilterInput = aw.FilterInput.WithCursorPos(cursor)
+				aw.FilterInput = aw.FilterInput.WithCaretPos(cursor)
 			}
 
 			aw = aw.deletePathSegment()
@@ -48,9 +48,9 @@ func TestDeletePathSegmentOnWindows(t *testing.T) {
 			if got := aw.FilterInput.Value(); got != want {
 				t.Errorf("deletePathSegment(%q) = %q, want %q", tc.in, got, want)
 			}
-			if wantCursor >= 0 && aw.FilterInput.CursorPos() != wantCursor {
+			if wantCaret >= 0 && aw.FilterInput.CaretPos() != wantCaret {
 				t.Errorf("deletePathSegment(%q) left the cursor at %d, want %d",
-					tc.in, aw.FilterInput.CursorPos(), wantCursor)
+					tc.in, aw.FilterInput.CaretPos(), wantCaret)
 			}
 		})
 	}
@@ -105,7 +105,7 @@ func TestPickerAcceptsEitherSeparatorOnWindows(t *testing.T) {
 	}
 
 	for _, spell := range []string{root, filepath.ToSlash(root)} {
-		aw := NewAttachmentWindow(DefaultStyles()).Open()
+		aw := NewAttachmentOverlay(DefaultStyles()).Open()
 		aw.FilterInput = aw.FilterInput.WithValue(dirValue(spell))
 		aw = aw.updateFiltered()
 

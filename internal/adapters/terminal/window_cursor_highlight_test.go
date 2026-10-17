@@ -12,7 +12,7 @@ package terminal
 // What the highlight must NOT touch: the folded line's content summary
 // (content, not chrome), anything below row 0, and a tool window's name —
 // which is the row's payload and takes toolNameStyle in both fold states,
-// the invariant TestToolNameIsIdenticalFoldedAndExpanded pins.
+// the invariant TestToolNameIsIdenticalFoldedAndUnfolded pins.
 
 import (
 	"strings"
@@ -32,7 +32,7 @@ func cursorLineStyle(styles *Styles) Style { return styles.Selected().Label.Bold
 
 // toolRow returns the transcript row belonging to the tool window (the one
 // carrying "TOOL CALL"), whatever its index — the window above it may be
-// expanded and push it down.
+// unfolded and push it down.
 func toolRow(out string) string {
 	for _, row := range strings.Split(out, "\n") {
 		if strings.Contains(stripANSI(row), "TOOL CALL") {
@@ -42,7 +42,7 @@ func toolRow(out string) string {
 	return ""
 }
 
-// TestWindowLineIsOneStyle: the expanded row — marker, label, timestamp —
+// TestWindowLineIsOneStyle: the unfolded row — marker, label, timestamp —
 // is painted with a single style, both normally and under the cursor. The
 // expectation is the whole row, built from that one style, so any glyph
 // rendered in a different color or weight fails here.
@@ -54,7 +54,7 @@ func TestWindowLineIsOneStyle(t *testing.T) {
 	pinCreatedAt(wb)
 
 	label, stamp := "ASSISTANT", pinnedTime.Format(timeStampLayout)
-	gap := strings.Repeat(" ", width-collapsedPrefixWidth-len(label)-timeStampWidth)
+	gap := strings.Repeat(" ", width-foldedPrefixWidth-len(label)-timeStampWidth)
 
 	rowWith := func(st Style) string {
 		return st.Render(unfoldArrow) + " " + st.Render(label) + gap + st.Render(stamp)
@@ -67,11 +67,11 @@ func TestWindowLineIsOneStyle(t *testing.T) {
 	}
 }
 
-// TestWindowLineCollapsedIsOneStyle: the collapsed row's marker and label
+// TestWindowLineFoldedIsOneStyle: the folded row's marker and label
 // share one style too; the content summary behind them is the exception by
 // design — it is content, and it keeps the muted color even under the
 // cursor.
-func TestWindowLineCollapsedIsOneStyle(t *testing.T) {
+func TestWindowLineFoldedIsOneStyle(t *testing.T) {
 	const width = 60
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(width, styles)
@@ -83,10 +83,10 @@ func TestWindowLineCollapsedIsOneStyle(t *testing.T) {
 		return st.Render(foldArrow) + " " + st.Render(padLabel("ASSISTANT")) + styles.System.Render("hello there")
 	}
 	if got, want := firstRow(wb.GetAll(-1, false)), rowWith(lineStyle(styles)); got != want {
-		t.Errorf("plain collapsed line:\n  got:  %q\n  want: %q", got, want)
+		t.Errorf("plain folded line:\n  got:  %q\n  want: %q", got, want)
 	}
 	if got, want := firstRow(wb.GetAll(idx, false)), rowWith(cursorLineStyle(styles)); got != want {
-		t.Errorf("cursor collapsed line:\n  got:  %q\n  want: %q", got, want)
+		t.Errorf("cursor folded line:\n  got:  %q\n  want: %q", got, want)
 	}
 }
 
@@ -111,7 +111,7 @@ func styleRun(row, token string) string {
 	return row[start : i+end+len("\x1b[m")]
 }
 
-// TestToolNameIsIdenticalFoldedAndExpanded: a tool window's name is the one
+// TestToolNameIsIdenticalFoldedAndUnfolded: a tool window's name is the one
 // token on the row that is not the line's style, and it must be painted the
 // same whichever way the window is folded.
 //
@@ -122,14 +122,14 @@ func styleRun(row, token string) string {
 // leaves the name and the arguments in the content color — see
 // toolNameStyle.
 //
-// The four runs (plain/cursor × folded/expanded) are compared against each
+// The four runs (plain/cursor × folded/unfolded) are compared against each
 // other rather than against an expected style, so what is pinned is the
-// property itself: folded == expanded, in both registers. The two extra
+// property itself: folded == unfolded, in both registers. The two extra
 // assertions keep that from passing vacuously — a row that highlights
 // nothing, and a row that highlights everything, both satisfy "all four
 // equal" — by requiring that the name does not carry the cursor's color and
 // that the label beside it does.
-func TestToolNameIsIdenticalFoldedAndExpanded(t *testing.T) {
+func TestToolNameIsIdenticalFoldedAndUnfolded(t *testing.T) {
 	const width, name = 80, "execute_command"
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(width, styles)
@@ -142,7 +142,7 @@ func TestToolNameIsIdenticalFoldedAndExpanded(t *testing.T) {
 	pinCreatedAt(wb)
 	ti, _ := wb.LookupID("t1")
 
-	// A tool window arrives folded; expand it halfway down.
+	// A tool window arrives folded; unfold it halfway down.
 	wb.HandleToolOutput("t1", "ok", false, 0)
 	pinCreatedAt(wb)
 
@@ -158,8 +158,8 @@ func TestToolNameIsIdenticalFoldedAndExpanded(t *testing.T) {
 	}
 	wb.ToggleFold(ti)
 	cases = append(cases,
-		rowCase{"expanded, plain", toolRow(wb.GetAll(-1, false)), false, false},
-		rowCase{"expanded, cursor", toolRow(wb.GetAll(ti, false)), true, false},
+		rowCase{"unfolded, plain", toolRow(wb.GetAll(-1, false)), false, false},
+		rowCase{"unfolded, cursor", toolRow(wb.GetAll(ti, false)), true, false},
 	)
 
 	want := styleRun(cases[0].row, name)
@@ -184,20 +184,20 @@ func TestToolNameIsIdenticalFoldedAndExpanded(t *testing.T) {
 		}
 	}
 
-	// The rest of the expanded row is still one style: the timestamp beside
+	// The rest of the unfolded row is still one style: the timestamp beside
 	// the name moves to the cursor register with the label.
 	stamp := pinnedTime.Format(timeStampLayout)
-	expandedCursor := cases[len(cases)-1]
-	if got := styleRun(expandedCursor.row, stamp); got != cursorLineStyle(styles).Render(stamp) {
-		t.Errorf("expanded, cursor: the timestamp should take the line's cursor style:\n  got:  %q\n"+
+	unfoldedCursor := cases[len(cases)-1]
+	if got := styleRun(unfoldedCursor.row, stamp); got != cursorLineStyle(styles).Render(stamp) {
+		t.Errorf("unfolded, cursor: the timestamp should take the line's cursor style:\n  got:  %q\n"+
 			"  want: %q", got, cursorLineStyle(styles).Render(stamp))
 	}
 }
 
-// TestCursorHighlightBlockedIsDim: under an overlay every color the line
+// TestWindowCursorHighlightBlockedIsDim: under an overlay every color the line
 // draws with is the dim color — marker, label and timestamp alike — so the
 // highlight disappears while a modal owns the screen.
-func TestCursorHighlightBlockedIsDim(t *testing.T) {
+func TestWindowCursorHighlightBlockedIsDim(t *testing.T) {
 	const width = 60
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(width, styles)
@@ -206,24 +206,24 @@ func TestCursorHighlightBlockedIsDim(t *testing.T) {
 
 	dimLine := styles.Dimmed().Label.Bold(true)
 	label, stamp := "ASSISTANT", pinnedTime.Format(timeStampLayout)
-	gap := strings.Repeat(" ", width-collapsedPrefixWidth-len(label)-timeStampWidth)
+	gap := strings.Repeat(" ", width-foldedPrefixWidth-len(label)-timeStampWidth)
 	want := dimLine.Render(unfoldArrow) + " " + dimLine.Render(label) + gap + dimLine.Render(stamp)
 	if got := firstRow(wb.GetAll(idx, true)); got != want {
 		t.Errorf("blocked window line:\n  got:  %q\n  want: %q", got, want)
 	}
 
 	wb.ToggleFold(idx)
-	wantCollapsed := dimLine.Render(foldArrow) + " " + dimLine.Render(padLabel("ASSISTANT")) +
+	wantFolded := dimLine.Render(foldArrow) + " " + dimLine.Render(padLabel("ASSISTANT")) +
 		styles.System.Foreground(styles.ColorDim).Render("hello there")
-	if got := firstRow(wb.GetAll(idx, true)); got != wantCollapsed {
-		t.Errorf("blocked collapsed line:\n  got:  %q\n  want: %q", got, wantCollapsed)
+	if got := firstRow(wb.GetAll(idx, true)); got != wantFolded {
+		t.Errorf("blocked folded line:\n  got:  %q\n  want: %q", got, wantFolded)
 	}
 }
 
-// TestCursorHighlightInViewportFragments: the same two states through the
+// TestWindowCursorHighlightInViewportFragments: the same two states through the
 // viewport path (renderVirtual), which replaces row 0 per fragment rather
 // than re-rendering the window.
-func TestCursorHighlightInViewportFragments(t *testing.T) {
+func TestWindowCursorHighlightInViewportFragments(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(40, styles)
 	idx := wb.AppendOrUpdate(tagAssistantText, "at-1", "hello there")
@@ -231,7 +231,7 @@ func TestCursorHighlightInViewportFragments(t *testing.T) {
 	wb.SetViewportPosition(0, 3)
 
 	if got := wb.GetAll(idx, false); !strings.Contains(got, cursorLineStyle(styles).Render(unfoldArrow)) {
-		t.Errorf("expanded fragment should highlight the marker: %q", got)
+		t.Errorf("unfolded fragment should highlight the marker: %q", got)
 	}
 	if got := wb.GetAll(-1, false); strings.Contains(got, cursorLineStyle(styles).Render(unfoldArrow)) {
 		t.Errorf("a non-cursor fragment must not highlight anything: %q", got)
@@ -241,10 +241,10 @@ func TestCursorHighlightInViewportFragments(t *testing.T) {
 	wb.SetViewportPosition(0, 2)
 	got := wb.GetAll(idx, false)
 	if !strings.Contains(got, cursorLineStyle(styles).Render(foldArrow)) {
-		t.Errorf("collapsed fragment should highlight the marker: %q", got)
+		t.Errorf("folded fragment should highlight the marker: %q", got)
 	}
 	if !strings.Contains(got, cursorLineStyle(styles).Render(padLabel("ASSISTANT"))) {
-		t.Errorf("collapsed fragment should highlight the label: %q", got)
+		t.Errorf("folded fragment should highlight the label: %q", got)
 	}
 	// Scrolled into the window: nothing of row 0 is on screen, so there is
 	// nothing to highlight.
@@ -254,10 +254,10 @@ func TestCursorHighlightInViewportFragments(t *testing.T) {
 	}
 }
 
-// TestCursorHighlightFollowsContent: the highlighted row is memoized per
+// TestWindowCursorHighlightFollowsContent: the highlighted row is memoized per
 // render-cache generation, so it must be rebuilt when the content that
 // feeds it changes (a longer summary, a tool status flip).
-func TestCursorHighlightFollowsContent(t *testing.T) {
+func TestWindowCursorHighlightFollowsContent(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(40, styles)
 	// Reasoning windows start folded — no toggle needed.

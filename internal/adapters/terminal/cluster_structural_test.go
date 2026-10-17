@@ -89,7 +89,7 @@ func TestGraphemeClustersStructural(t *testing.T) {
 // string the table segments (the field holds runes, the table reads strings).
 //
 // Before walkLineClusters every one of these built a []clusterInfo for the
-// whole line — a struct and a substring per cluster — and ensureCursorVisible
+// whole line — a struct and a substring per cluster — and ensureCaretVisible
 // asks five of them per keystroke, which is what made typing at the end of a
 // 4000-cell line cost ~1ms and ~4MB. One allocation each, whatever the line
 // holds, is the property that keeps it from coming back.

@@ -136,8 +136,8 @@ func TestTaskCompletionSettlesPendingTools(t *testing.T) {
 	}, 0)
 
 	// Task runs, then completes — no UF frame ever arrives for t1.
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":1,"context":0}}`)
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":1,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":1,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":1,"context":0}}`)
 
 	rendered := stripANSI(out.WindowBuffer().GetAll(-1, false))
 	if !containsToolLabel(rendered, "TOOL CALL ✗") {
@@ -167,8 +167,8 @@ func TestTaskCompletionDoesNotDisturbSettledTools(t *testing.T) {
 	}, 0)
 	wb.HandleToolOutput("bad", "err", true, 0)
 
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":1,"context":0}}`)
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":1,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":1,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":1,"context":0}}`)
 
 	rendered := stripANSI(wb.GetAll(-1, false))
 	if !strings.Contains(rendered, "TOOL CALL ✓") {

@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// TestWindowVisualLinesExpanded verifies that an expanded window renders to
+// TestWindowVisualLinesUnfolded verifies that an unfolded window renders to
 // a visual line array with the expected shape:
 //
 //	[0] the window's own line ("- ASSISTANT … timestamp")
@@ -21,7 +21,7 @@ import (
 // and that no element contains a hard newline. There is no rule above or
 // below: a window is opened by its own line, and the next window's own
 // line ends it.
-func TestWindowVisualLinesExpanded(t *testing.T) {
+func TestWindowVisualLinesUnfolded(t *testing.T) {
 	styles := DefaultStyles()
 	w := NewWindow("at-1", tagAssistantText, styles)
 	w.Visible = true
@@ -85,11 +85,11 @@ func TestWindowVisualLinesFolded(t *testing.T) {
 
 // TestWindowBufferLineHeightsAreVisual verifies ensureLineHeights derives
 // line heights from the visual line count (not '\n' counting), matching
-// Window.Render's cached rows for both folded and expanded windows.
+// Window.Render's cached rows for both folded and unfolded windows.
 func TestWindowBufferLineHeightsAreVisual(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 
-	// Expanded AT with multi-row content.
+	// Unfolded AT with multi-row content.
 	atIdx := wb.AppendOrUpdate(tagAssistantText, "at-1", strings.Repeat("word ", 25))
 	// Folded reasoning (default folded).
 	wb.AppendOrUpdate(tagAssistantReasoning, "ar-1", "short")

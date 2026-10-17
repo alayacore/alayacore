@@ -2,9 +2,9 @@ package terminal
 
 // Regression test: the incremental streaming path (appendDeltaToVisualLines)
 // must produce exactly the same visual rows as a full re-wrap of the entire
-// accumulated content. Previously, tabs were expanded per-delta (column
+// accumulated content. Previously, tabs were unfolded per-delta (column
 // starting at 0) in the incremental path but per-line in the full path — a
-// delta starting with '\t' mid-line expanded to 8 spaces instead of the
+// delta starting with '\t' mid-line unfolded to 8 spaces instead of the
 // correct 2–4, shifting wrap points and sometimes splitting a single line
 // into two (a visible hard wrap).
 
@@ -132,7 +132,7 @@ func TestIncrementalMatchesFullRewrap(t *testing.T) {
 	})
 
 	// 11–14. tab at delta boundary pushing the line over the wrap point —
-	// incremental used to expand the tab from col 0 (8 spaces) instead of
+	// incremental used to unfold the tab from col 0 (8 spaces) instead of
 	// the line's actual column (2–4 spaces), shifting wrap points and
 	// occasionally splitting one visual row into two.
 	for _, n := range []int{78, 77, 76, 79} {

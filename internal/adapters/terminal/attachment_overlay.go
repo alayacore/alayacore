@@ -1,6 +1,6 @@
 package terminal
 
-// AttachmentWindow is a file picker overlay for adding attachments to user input.
+// AttachmentOverlay is a file picker overlay for adding attachments to user input.
 // It provides two modes:
 //   - Local mode:  path input field with a filtered file list, similar to ModelSelector.
 //   - URL mode:    URL input field for adding remote attachments.
@@ -21,12 +21,12 @@ const (
 	modeURL
 )
 
-// AttachmentWindow is an overlay for selecting file attachments.
+// AttachmentOverlay is an overlay for selecting file attachments.
 //
 // All fields are Elm UI state (value types, copied on every WithXxx).
 // File system reads happen synchronously in the constructor or on directory
 // navigation, not in Update.
-type AttachmentWindow struct {
+type AttachmentOverlay struct {
 	FilteredListCore
 
 	entries    []fileEntry
@@ -54,9 +54,9 @@ type fileEntry struct {
 	isDir     bool
 }
 
-func NewAttachmentWindow(styles *Styles) AttachmentWindow {
+func NewAttachmentOverlay(styles *Styles) AttachmentOverlay {
 	input := newFilterInput("Search files...")
-	aw := AttachmentWindow{
+	aw := AttachmentOverlay{
 		entries:  []fileEntry{},
 		filtered: []fileEntry{},
 	}
@@ -69,22 +69,22 @@ func NewAttachmentWindow(styles *Styles) AttachmentWindow {
 	return aw
 }
 
-func (aw AttachmentWindow) WithSize(width, height int) AttachmentWindow {
+func (aw AttachmentOverlay) WithSize(width, height int) AttachmentOverlay {
 	aw.FilteredListCore = aw.FilteredListCore.WithSize(width, height)
 	return aw
 }
 
-func (aw AttachmentWindow) WithStyles(styles *Styles) AttachmentWindow {
+func (aw AttachmentOverlay) WithStyles(styles *Styles) AttachmentOverlay {
 	aw.FilteredListCore = aw.FilteredListCore.WithStyles(styles)
 	return aw
 }
 
-func (aw AttachmentWindow) WithFocus(focused bool) AttachmentWindow {
+func (aw AttachmentOverlay) WithFocus(focused bool) AttachmentOverlay {
 	aw.FilteredListCore = aw.FilteredListCore.WithFocus(focused)
 	return aw
 }
 
-func (aw AttachmentWindow) Open() AttachmentWindow {
+func (aw AttachmentOverlay) Open() AttachmentOverlay {
 	aw.State = FilteredListOpen
 	aw.mode = modeLocal
 	aw.lastFilterValue = "\x00"
@@ -101,12 +101,12 @@ func (aw AttachmentWindow) Open() AttachmentWindow {
 
 // withListedDirValue writes the directory being listed into the input, with the
 // separator that opens the segment the user is about to type.
-func (aw AttachmentWindow) withListedDirValue() AttachmentWindow {
+func (aw AttachmentOverlay) withListedDirValue() AttachmentOverlay {
 	aw.FilterInput = aw.FilterInput.WithValue(dirValue(aw.currentDir))
 	return aw
 }
 
-func (aw AttachmentWindow) loadDir(dir string) AttachmentWindow {
+func (aw AttachmentOverlay) loadDir(dir string) AttachmentOverlay {
 	aw.entries = aw.readDir(dir)
 	aw.filtered = make([]fileEntry, len(aw.entries))
 	copy(aw.filtered, aw.entries)
@@ -117,7 +117,7 @@ func (aw AttachmentWindow) loadDir(dir string) AttachmentWindow {
 	return aw
 }
 
-func (aw AttachmentWindow) readDir(dir string) []fileEntry {
+func (aw AttachmentOverlay) readDir(dir string) []fileEntry {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -151,7 +151,7 @@ func isDirEntry(dir string, e os.DirEntry) bool {
 }
 
 // Update handles all messages for the attachment window: key events and paste.
-func (aw AttachmentWindow) Update(msg Msg) (AttachmentWindow, []Result) {
+func (aw AttachmentOverlay) Update(msg Msg) (AttachmentOverlay, []Result) {
 	switch msg := msg.(type) {
 	case KeyMsg:
 		return aw.updateForKeyMsg(msg)
@@ -167,7 +167,7 @@ func (aw AttachmentWindow) Update(msg Msg) (AttachmentWindow, []Result) {
 }
 
 //nolint:gocyclo // key dispatch over local/URL/autocomplete modes; each case is simple
-func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, []Result) {
+func (aw AttachmentOverlay) updateForKeyMsg(msg KeyMsg) (AttachmentOverlay, []Result) {
 	if aw.State == FilteredListClosed {
 		return aw, nil
 	}
@@ -242,7 +242,7 @@ func (aw AttachmentWindow) updateForKeyMsg(msg KeyMsg) (AttachmentWindow, []Resu
 	return aw, nil
 }
 
-func (aw AttachmentWindow) handleLocalModeKeys(filterChanged bool, key Chord, inputWasFocused bool) AttachmentWindow {
+func (aw AttachmentOverlay) handleLocalModeKeys(filterChanged bool, key Chord, inputWasFocused bool) AttachmentOverlay {
 	if filterChanged && aw.FilterInputFocused {
 		aw = aw.updateFiltered()
 	}
@@ -255,7 +255,7 @@ func (aw AttachmentWindow) handleLocalModeKeys(filterChanged bool, key Chord, in
 	return aw
 }
 
-func (aw AttachmentWindow) toggleMode() AttachmentWindow {
+func (aw AttachmentOverlay) toggleMode() AttachmentOverlay {
 	aw.lastFilterValue = "\x00"
 	if aw.mode == modeLocal {
 		return aw.switchToURL()
@@ -265,7 +265,7 @@ func (aw AttachmentWindow) toggleMode() AttachmentWindow {
 
 // switchToURL transitions from local mode to URL mode, saving the local path
 // for later restoration and restoring any previously saved URL.
-func (aw AttachmentWindow) switchToURL() AttachmentWindow {
+func (aw AttachmentOverlay) switchToURL() AttachmentOverlay {
 	aw.savedLocalPath = aw.FilterInput.Value()
 	aw.mode = modeURL
 	savedURL := aw.savedURLPath
@@ -283,7 +283,7 @@ func (aw AttachmentWindow) switchToURL() AttachmentWindow {
 
 // switchToLocal transitions from URL mode to local mode, saving the URL
 // for later restoration and restoring the previously saved local path.
-func (aw AttachmentWindow) switchToLocal() AttachmentWindow {
+func (aw AttachmentOverlay) switchToLocal() AttachmentOverlay {
 	aw.savedURLPath = aw.FilterInput.Value()
 	aw.mode = modeLocal
 	saved := aw.savedLocalPath
@@ -300,7 +300,7 @@ func (aw AttachmentWindow) switchToLocal() AttachmentWindow {
 	return aw
 }
 
-func (aw AttachmentWindow) handleURLEntry() AttachmentWindow {
+func (aw AttachmentOverlay) handleURLEntry() AttachmentOverlay {
 	url := strings.TrimSpace(aw.FilterInput.Value())
 	if url == "" {
 		return aw
@@ -310,7 +310,7 @@ func (aw AttachmentWindow) handleURLEntry() AttachmentWindow {
 	return aw
 }
 
-func (aw AttachmentWindow) autocompleteDir(dirName string) AttachmentWindow {
+func (aw AttachmentOverlay) autocompleteDir(dirName string) AttachmentOverlay {
 	// currentDir is the directory on screen, so the chosen entry is appended to
 	// it rather than to whatever partial text is in the box.
 	aw.FilterInput = aw.FilterInput.WithValue(dirValue(filepath.Join(aw.currentDir, dirName)))
@@ -318,7 +318,7 @@ func (aw AttachmentWindow) autocompleteDir(dirName string) AttachmentWindow {
 	return aw.updateFiltered()
 }
 
-func (aw AttachmentWindow) handleEnter() AttachmentWindow {
+func (aw AttachmentOverlay) handleEnter() AttachmentOverlay {
 	if len(aw.filtered) == 0 || aw.SelectedIdx < 0 || aw.SelectedIdx >= len(aw.filtered) {
 		return aw
 	}
@@ -337,7 +337,7 @@ func (aw AttachmentWindow) handleEnter() AttachmentWindow {
 	return aw
 }
 
-func (aw AttachmentWindow) handleSearchEnter() AttachmentWindow {
+func (aw AttachmentOverlay) handleSearchEnter() AttachmentOverlay {
 	if len(aw.filtered) == 0 || aw.SelectedIdx < 0 || aw.SelectedIdx >= len(aw.filtered) {
 		return aw
 	}
@@ -352,7 +352,7 @@ func (aw AttachmentWindow) handleSearchEnter() AttachmentWindow {
 	return aw
 }
 
-func (aw AttachmentWindow) handleListKeys(key Chord) AttachmentWindow {
+func (aw AttachmentOverlay) handleListKeys(key Chord) AttachmentOverlay {
 	switch key {
 	case keyJ:
 		if aw.SelectedIdx < len(aw.filtered)-1 {
@@ -373,7 +373,7 @@ func (aw AttachmentWindow) handleListKeys(key Chord) AttachmentWindow {
 // so a Windows path typed with either separator and a POSIX path behave the
 // same way. Text that names no place — and a directory that does not exist —
 // stays a filter term for the listing already on screen.
-func (aw AttachmentWindow) navigateByPath(search string) (AttachmentWindow, string) {
+func (aw AttachmentOverlay) navigateByPath(search string) (AttachmentOverlay, string) {
 	dir, filter := filepath.Split(search)
 	if !isRooted(dir) {
 		return aw, search
@@ -392,7 +392,7 @@ func (aw AttachmentWindow) navigateByPath(search string) (AttachmentWindow, stri
 	return aw, filter
 }
 
-func (aw AttachmentWindow) updateFiltered() AttachmentWindow {
+func (aw AttachmentOverlay) updateFiltered() AttachmentOverlay {
 	search := aw.FilterInput.Value()
 	if search == aw.lastFilterValue {
 		return aw
@@ -492,21 +492,21 @@ func rootEnd(value string) int {
 	return utf8.RuneCountInString(value[:n])
 }
 
-// deletePathSegment deletes the path segment before the cursor, back to the
+// deletePathSegment deletes the path segment before the caret, back to the
 // separator that starts it, and never past the root of the path. The character
-// immediately before the cursor is skipped when looking for that separator, so
+// immediately before the caret is skipped when looking for that separator, so
 // a trailing separator goes with the segment in front of it:
 //
-//	"/abc/def/"   (cursor at end)  →  "/abc/"
-//	"/abc/def"    (cursor at end)  →  "/abc/"
-//	"/abc/"       (cursor at end)  →  "/"
-//	"abc/def/"    (cursor at end)  →  "abc/"
-//	`C:\abc\def\` (cursor at end)  →  `C:\abc\`    (Windows)
-//	"/"           (cursor at end)  →  "/"          (rootEnd protects the root)
-func (aw AttachmentWindow) deletePathSegment() AttachmentWindow {
+//	"/abc/def/"   (caret at end)  →  "/abc/"
+//	"/abc/def"    (caret at end)  →  "/abc/"
+//	"/abc/"       (caret at end)  →  "/"
+//	"abc/def/"    (caret at end)  →  "abc/"
+//	`C:\abc\def\` (caret at end)  →  `C:\abc\`    (Windows)
+//	"/"           (caret at end)  →  "/"          (rootEnd protects the root)
+func (aw AttachmentOverlay) deletePathSegment() AttachmentOverlay {
 	val := aw.FilterInput.Value()
 	runes := []rune(val)
-	pos := aw.FilterInput.CursorPos()
+	pos := aw.FilterInput.CaretPos()
 
 	// At or before the end of the root there is no segment left to delete.
 	floor := rootEnd(val)
@@ -525,18 +525,18 @@ func (aw AttachmentWindow) deletePathSegment() AttachmentWindow {
 	}
 
 	aw.FilterInput = aw.FilterInput.WithValue(string(runes[:deleteFrom]) + string(runes[pos:]))
-	aw.FilterInput = aw.FilterInput.WithCursorPos(deleteFrom)
+	aw.FilterInput = aw.FilterInput.WithCaretPos(deleteFrom)
 	return aw
 }
 
-func (aw AttachmentWindow) View() View {
+func (aw AttachmentOverlay) View() View {
 	if aw.State == FilteredListClosed {
 		return NewView("")
 	}
 	return NewView(aw.render())
 }
 
-func (aw AttachmentWindow) render() string {
+func (aw AttachmentOverlay) render() string {
 	var sb strings.Builder
 
 	titleStyle := NewStyle().Background(aw.Styles.ColorDim).Foreground(aw.Styles.ColorAccent).Bold(true)
@@ -576,14 +576,14 @@ func (aw AttachmentWindow) render() string {
 	return sb.String()
 }
 
-func (aw AttachmentWindow) renderURLBody(sb *strings.Builder, _ int) {
+func (aw AttachmentOverlay) renderURLBody(sb *strings.Builder, _ int) {
 	sb.WriteString(aw.Styles.System.Render("Enter a URL to attach (e.g. https://example.com/image.jpg)"))
 	// Pad to the local list's height (SelectorListRows rows), so switching
 	// modes with Ctrl+A does not resize the overlay and shift it vertically.
 	sb.WriteString(strings.Repeat("\n", SelectorListRows-1))
 }
 
-func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
+func (aw AttachmentOverlay) renderLocalBody(sb *strings.Builder, boxWidth int) {
 	listHeight := SelectorListRows
 	innerWidth := max(0, boxWidth)
 
@@ -614,15 +614,15 @@ func (aw AttachmentWindow) renderLocalBody(sb *strings.Builder, boxWidth int) {
 	sb.WriteString(fileBody)
 }
 
-func (aw AttachmentWindow) RenderOverlay(baseContent string, screenWidth, screenHeight int) string {
+func (aw AttachmentOverlay) RenderOverlay(baseContent string, screenWidth, screenHeight int) string {
 	if aw.State == FilteredListClosed {
 		return baseContent
 	}
 	return renderOverlay(baseContent, aw.View().Content, screenWidth, screenHeight, 0)
 }
 
-// CursorPosition returns the screen position of the filter input's real
-// terminal cursor when the overlay is open and the filter has focus.
-func (aw AttachmentWindow) CursorPosition(screenWidth, screenHeight int) (x, y int, ok bool) {
-	return aw.FilteredListCore.CursorPosition(aw.View().Content, screenWidth, screenHeight)
+// CaretPosition returns the screen position of the filter input's real
+// screen cursor when the overlay is open and the filter has focus.
+func (aw AttachmentOverlay) CaretPosition(screenWidth, screenHeight int) (x, y int, ok bool) {
+	return aw.FilteredListCore.CaretPosition(aw.View().Content, screenWidth, screenHeight)
 }

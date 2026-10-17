@@ -116,7 +116,7 @@ func TestProgramUpdateAndQuit(t *testing.T) {
 
 	go func() {
 		msgs <- KeyPressMsg(Key{Code: 'j'})
-		msgs <- WindowSizeMsg{Width: 100, Height: 40}
+		msgs <- ScreenSizeMsg{Width: 100, Height: 40}
 		msgs <- QuitMsg{}
 	}()
 
@@ -130,9 +130,9 @@ func TestProgramUpdateAndQuit(t *testing.T) {
 	if _, ok := m.updates[0].(KeyPressMsg); !ok {
 		t.Errorf("update[0] = %T, want KeyPressMsg", m.updates[0])
 	}
-	ws, ok := m.updates[1].(WindowSizeMsg)
+	ws, ok := m.updates[1].(ScreenSizeMsg)
 	if !ok || ws.Width != 100 || ws.Height != 40 {
-		t.Errorf("update[1] = %#v, want WindowSizeMsg{100,40}", m.updates[1])
+		t.Errorf("update[1] = %#v, want ScreenSizeMsg{100,40}", m.updates[1])
 	}
 }
 

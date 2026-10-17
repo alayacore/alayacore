@@ -23,14 +23,14 @@ import (
 func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	const W = 137
 	m := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, &app.Config{}, W, 24, theme.DefaultTheme(), nil, "theme-dark")
-	m.out.SetWindowWidth(W)
-	mm, _ := m.Update(WindowSizeMsg{Width: W, Height: 24})
+	m.out.SetScreenWidth(W)
+	mm, _ := m.Update(ScreenSizeMsg{Width: W, Height: 24})
 	m = mm.(Terminal)
 	wb := m.out.WindowBuffer()
 
-	// Frame 1: assistant expanded (long row on screen row N).
+	// Frame 1: assistant unfolded (long row on screen row N).
 	wb.AppendOrUpdate(tagAssistantText, "a1", `This is part of Intel's Core Ultra 200 series (Arrow Lake architecture, launched late 2024).`)
-	mm, _ = m.Update(WindowSizeMsg{Width: W, Height: 24})
+	mm, _ = m.Update(ScreenSizeMsg{Width: W, Height: 24})
 	m = mm.(Terminal)
 	frame1 := m.View().Content
 	t.Logf("frame1 contains long assistant row: %v", strings.Contains(stripANSI(frame1), "Core Ultra 200 series"))
@@ -38,7 +38,7 @@ func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	// Frame 2: a folded USER window appears — its short row lands on a
 	// screen row previously occupied by a long assistant row (or rule).
 	wb.AppendOrUpdate(tagUserText, "u1", "my os?")
-	mm, _ = m.Update(WindowSizeMsg{Width: W, Height: 24})
+	mm, _ = m.Update(ScreenSizeMsg{Width: W, Height: 24})
 	m = mm.(Terminal)
 	frame2 := m.View().Content
 

@@ -64,8 +64,8 @@ func newFrameHarness(t *testing.T, width, height int) *frameHarness {
 	h := &frameHarness{t: t, width: width, height: height, sink: &bytes.Buffer{}}
 	out := NewTerminalOutput(DefaultStyles())
 	m := NewTerminalWithTheme(out, nopWriteCloser{}, nil, width, height, theme.DefaultTheme(), nil, "theme-dark")
-	m.out.SetWindowWidth(width)
-	mm, _ := m.Update(WindowSizeMsg{Width: width, Height: height})
+	m.out.SetScreenWidth(width)
+	mm, _ := m.Update(ScreenSizeMsg{Width: width, Height: height})
 	h.m = mm.(Terminal)
 	h.screen = &Screen{out: h.sink, width: width, height: height}
 	h.grid = newGrid(width, height)
@@ -100,7 +100,7 @@ func (h *frameHarness) render(label string) {
 	v := h.m.View()
 	if h.lastView != nil &&
 		h.lastView.Content == v.Content &&
-		cursorsEqual(h.lastView.Cursor, v.Cursor) &&
+		screenCursorsEqual(h.lastView.ScreenCursor, v.ScreenCursor) &&
 		h.lastView.AltScreen == v.AltScreen &&
 		h.lastView.Raw == v.Raw &&
 		h.lastView.FullScreen == v.FullScreen {
@@ -112,7 +112,7 @@ func (h *frameHarness) render(label string) {
 	if h.host != nil {
 		h.hostBefore = h.host.text()
 	}
-	if err := h.screen.Render(v.Content, v.Cursor, v.FullScreen); err != nil {
+	if err := h.screen.Render(v.Content, v.ScreenCursor, v.FullScreen); err != nil {
 		h.t.Fatalf("%s: render: %v", label, err)
 	}
 	// Every frame this harness paints carries the synchronized-update wrapper
@@ -363,7 +363,7 @@ func (h *frameHarness) appendWin(tag, id, content string) {
 func (h *frameHarness) resize(width, height int) {
 	h.t.Helper()
 	h.width, h.height = width, height
-	mm, _ := h.m.Update(WindowSizeMsg{Width: width, Height: height})
+	mm, _ := h.m.Update(ScreenSizeMsg{Width: width, Height: height})
 	h.m = mm.(Terminal)
 	h.screen.Resize(width, height)
 	old := h.grid
@@ -522,7 +522,7 @@ func TestOverlayRowFitsTheScreen(t *testing.T) {
 // resizes and redraws — and checks both invariants after every frame. The
 // shapes are chosen rather than uniform: rows that land exactly on the width,
 // one cell either side of it, clusters the width libraries disagree about, and
-// tabs (which the wrapper expands before it measures).
+// tabs (which the wrapper unfolds before it measures).
 func TestFrameInvariantsOverRandomSessions(t *testing.T) {
 	sizes := [][2]int{{24, 12}, {28, 24}, {37, 13}, {40, 10}, {60, 18}, {80, 24}, {100, 30}, {20, 40}}
 	seeds := 12

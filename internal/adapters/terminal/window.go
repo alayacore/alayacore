@@ -53,7 +53,7 @@ type WindowRendering interface {
 	// width is the full window width (content wraps at the full width —
 	// windows have no side borders or padding).
 	// The folded parameter is legacy (folded windows now render via
-	// BuildCollapsed); it is always false.
+	// BuildFolded); it is always false.
 	//
 	// The returned lines are the VISUAL content lines (each element is one
 	// terminal row, no '\n' inside) with continuation marks (visualLine
@@ -61,18 +61,18 @@ type WindowRendering interface {
 	// soft-wrap), rows starting a new original line are separated by hard
 	// '\n' — the soft-wrap breakpoints that the viewport clips against
 	// (see docs/internal/virtual-rendering-performance.md). lineCount is
-	// the window's expanded height (len(lines) + 1): the content rows plus
+	// the window's unfolded height (len(lines) + 1): the content rows plus
 	// the window's own line above them.
 	BuildInner(width int, folded bool, styles *Styles) (lines []visualLine, lineCount int)
 
-	// BuildCollapsed returns the single-line collapsed representation of
+	// BuildFolded returns the single-line folded representation of
 	// the window (label + content summary, truncated to fit width), WITHOUT
 	// the leading fold marker — Window.Render composes row 0 (marker +
 	// this). lineCount is always 1. Long-form text windows summarize the escaped HEAD + "…"
-	// + TAIL of the content (see collapsedSummary / headAndTailParts);
+	// + TAIL of the content (see foldedSummary / headAndTailParts);
 	// short system messages use TAIL-only (see tailParts). Tool windows
 	// summarize the first input line. Truncation markers are rendered dim.
-	BuildCollapsed(width int, styles *Styles) (inner string, lineCount int)
+	BuildFolded(width int, styles *Styles) (inner string, lineCount int)
 
 	// Invalidate clears any cached rendering state.
 	Invalidate()
@@ -119,7 +119,7 @@ type renderCache struct {
 	// renderCursor swaps row 0 in. Built on first request, not by buildLines
 	// — the viewport path slices `lines` and never reads the string, so
 	// joining there would allocate the window's whole rendered text on every
-	// frame to throw it away (for a long expanded window that is the single
+	// frame to throw it away (for a long unfolded window that is the single
 	// largest allocation in the frame).
 	// joinedDone tells "not built yet" from "built and empty".
 	joined     string
@@ -127,13 +127,13 @@ type renderCache struct {
 
 	// line0Cursor is row 0 rendered in the cursor's register: a folded
 	// line's marker and label column recolored (its content summary keeps
-	// the muted color), an expanded line's whole row — marker, label and
-	// timestamp — in the accent color. Cursor rendering swaps row 0 for
+	// the muted color), an unfolded line's whole row — marker, label and
+	// timestamp — in the accent color. ScreenCursor rendering swaps row 0 for
 	// it; the row is the same width as the cached one, so the rest of the
 	// window (and all width accounting) is reused as-is.
 	//
-	// Built on first request, not by Render: the collapsed variant costs a
-	// second BuildCollapsed, which for a text window is a pass over the whole
+	// Built on first request, not by Render: the folded variant costs a
+	// second BuildFolded, which for a text window is a pass over the whole
 	// content to derive its head + "…" + tail (BenchmarkFoldedTextStreamingDelta
 	// prices the frame that contains one: 3.8μs at 2 KB of content, 64μs at
 	// 128 KB). Render runs for every window on every content change, and
@@ -280,7 +280,7 @@ func (w *Window) Invalidate() {
 func (w *Window) SetRendererForTool(name, input string) {
 	tr := &toolRenderer{status: ToolStatusPending}
 	tr.setName(name)
-	tr.setInput(input)
+	tr.setToolInput(input)
 	w.renderer = tr
 	w.cache.valid = false
 }
@@ -295,19 +295,19 @@ func (w *Window) HandleToolInput(data protocol.ToolInputData, historyID uint64) 
 		if data.Name != "" && len(data.Input) == 0 {
 			// Start frame — set name, keep existing input
 			tr.setName(data.Name)
-			if tr.input == "" {
-				tr.setInput(string(data.Input))
+			if tr.toolInput == "" {
+				tr.setToolInput(string(data.Input))
 			}
 		} else {
 			if data.Name != "" {
 				tr.setName(data.Name)
 			} else if tr.name == "" {
 				// AF frame arrived with empty name. Without a fallback
-				// the tool window's BuildCollapsed path treats name=="" as
+				// the tool window's BuildFolded path treats name=="" as
 				// a UF-only window and renders nothing useful.
 				tr.setName("_")
 			}
-			tr.setInput(string(data.Input))
+			tr.setToolInput(string(data.Input))
 			// Complete input arrived, clear delta preview.
 			tr.deltaBuffer = ""
 		}
@@ -355,7 +355,7 @@ func (w *Window) RawContent() string {
 	case *userRenderer:
 		return strings.Join(r.textParts, "\n")
 	case *toolRenderer:
-		return r.input
+		return r.toolInput
 	}
 	return ""
 }
@@ -431,13 +431,13 @@ func (w *Window) RawDelta() string {
 // with the fold marker and the label column, and what follows the label is
 // what tells them apart.
 //   - Folded: marker "+", label, content summary — one line, no content.
-//   - Expanded: marker "-", label, the arrival timestamp right-aligned —
+//   - Unfolded: marker "-", label, the arrival timestamp right-aligned —
 //     then the content, one row per wrapped line. No rule above or below:
 //     a window is opened by this line and closed by the next window's own
 //     (the prompt box closes the last one).
 //
 // The cursor highlight recolors row 0 — marker and label (and, on an
-// expanded line, the timestamp), never a folded line's content summary.
+// unfolded line, the timestamp), never a folded line's content summary.
 // The markers are layout constants, not theme values (constants.go).
 //
 // The rows and their join are separate work, and not every caller wants
@@ -446,12 +446,12 @@ func (w *Window) RawDelta() string {
 // draws nothing; the guard has to be here rather than in buildLines because
 // renderCursor dereferences frameStyles and renderer, which only a render
 // fills.
-func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) string {
+func (w *Window) Render(width int, isWindowCursor bool, styles *Styles, blocked bool) string {
 	if w.renderer == nil {
 		return ""
 	}
 	w.buildLines(width, styles, blocked)
-	if isCursor {
+	if isWindowCursor {
 		return w.renderCursor()
 	}
 	return w.joined()
@@ -462,7 +462,7 @@ func (w *Window) Render(width int, isCursor bool, styles *Styles, blocked bool) 
 // Render minus the join, and it is what the callers that want rows call:
 // WindowBuffer.windowFragment clips cache.lines to the viewport and
 // WindowBuffer.ensureLineHeights reads only LineCount. Neither ever looks at
-// the joined string, and for a long expanded window that string is the
+// the joined string, and for a long unfolded window that string is the
 // frame's largest single allocation.
 //
 // It carries its own no-renderer guard because it is called directly, where
@@ -507,13 +507,13 @@ func (w *Window) buildLines(width int, styles *Styles, blocked bool) {
 	w.cache.joinedDone = false
 	w.cache.frameStyles = styles
 	if w.Folded {
-		// Collapsed: one line — marker + label + content summary. The
+		// Folded: one line — marker + label + content summary. The
 		// marker is part of the row (not prefixed later by the viewport
 		// layer): both states' first rows are built here, so the cursor
 		// render has exactly one row to swap and every width is accounted
 		// for in one place.
 		//
-		// BuildCollapsed does no wrapping. For a tool window it reads only
+		// BuildFolded does no wrapping. For a tool window it reads only
 		// the first line of the input, so its cost does not depend on the
 		// output. For a text window the summary is head + "…" + tail of the
 		// whole content, so deriving it costs a pass over that content:
@@ -521,7 +521,7 @@ func (w *Window) buildLines(width int, styles *Styles, blocked bool) {
 		// clusters rather than build a list of them (width.go). They used to
 		// build it, twice per frame, at ~430 B per byte of message —
 		// BenchmarkFoldedTextStreamingDelta is the benchmark that prices it.
-		summary, _ := w.renderer.BuildCollapsed(width, styles)
+		summary, _ := w.renderer.BuildFolded(width, styles)
 		// Row 0 carries no padding, and nothing here has to work out that it
 		// carries none: it is never followed by a continuation
 		// (TestWindowRow0IsNeverSoftWrapped), so no frame pads it. Measuring it
@@ -531,7 +531,7 @@ func (w *Window) buildLines(width int, styles *Styles, blocked bool) {
 		w.cache.lines = []visualLine{{Text: w.lineStyle(styles).Render(w.markerChar()) + " " + summary}}
 		w.cache.lineCount = 1
 	} else {
-		// Expanded: the window's own line — marker + label, the timestamp
+		// Unfolded: the window's own line — marker + label, the timestamp
 		// on the right — then the content. There is no rule and no closing
 		// line: a window is opened by its marker row, and the next window
 		// opens with its own. BuildInner returns the visual content lines
@@ -541,7 +541,7 @@ func (w *Window) buildLines(width int, styles *Styles, blocked bool) {
 		lines := make([]visualLine, 0, len(contentLines)+1)
 		// The header is row 0 and carries no padding, for the reason the folded
 		// branch gives.
-		lines = append(lines, visualLine{Text: w.buildExpandHeader(width, styles, "")})
+		lines = append(lines, visualLine{Text: w.buildUnfoldedHeader(width, styles, "")})
 		lines = append(lines, contentLines...)
 		w.cache.lines = lines
 		w.cache.lineCount = len(lines)
@@ -572,7 +572,7 @@ func (w *Window) joined() string {
 }
 
 // markerChar returns the window's fold marker glyph: "+" while folded
-// (there is more), "-" while expanded (its content follows). Both states
+// (there is more), "-" while unfolded (its content follows). Both states
 // draw one, at column 0, so the label column never moves when a window
 // folds — and the marker is the row's only structural glyph, which is why
 // it is ASCII (constants.go).
@@ -593,8 +593,8 @@ func (w *Window) lineStyle(styles *Styles) Style {
 // label column recolored, the content summary behind them left alone —
 // building it on first request and caching it in the render cache.
 //
-// It is not built by Render on purpose: the collapsed variant costs a
-// second BuildCollapsed, which for a text window is a pass over the whole
+// It is not built by Render on purpose: the folded variant costs a
+// second BuildFolded, which for a text window is a pass over the whole
 // content to derive its head + "…" + tail
 // (BenchmarkFoldedTextStreamingDelta prices the frame that contains one),
 // while Render runs for every window on every content change and exactly one
@@ -618,11 +618,11 @@ func (w *Window) cursorLine0() string {
 		// The summary is content and keeps its muted color; the marker and
 		// the label column take the accent color, so the two read as one
 		// highlighted unit.
-		inner, _ := w.renderer.BuildCollapsed(w.cache.width, styles)
+		inner, _ := w.renderer.BuildFolded(w.cache.width, styles)
 		w.cache.line0Cursor = w.lineStyle(styles).Render(w.markerChar()) + " " + inner
 		return w.cache.line0Cursor
 	}
-	w.cache.line0Cursor = w.buildExpandHeader(w.cache.width, styles, "")
+	w.cache.line0Cursor = w.buildUnfoldedHeader(w.cache.width, styles, "")
 	return w.cache.line0Cursor
 }
 
@@ -645,17 +645,17 @@ func (w *Window) cursorLine0() string {
 // changes (a scroll step that crosses one of its rows) and the frame reuses
 // it otherwise (streaming, a keystroke elsewhere), where the cost is one
 // comparison — no render, no measure, no allocation.
-func (w *Window) pinnedLine0(linesAbove int, isCursor bool) string {
-	if w.cache.pinnedDone && w.cache.pinnedAbove == linesAbove && w.cache.pinnedCursor == isCursor {
+func (w *Window) pinnedLine0(linesAbove int, isWindowCursor bool) string {
+	if w.cache.pinnedDone && w.cache.pinnedAbove == linesAbove && w.cache.pinnedCursor == isWindowCursor {
 		return w.cache.pinnedRow
 	}
 	styles := w.cache.frameStyles
-	if isCursor {
+	if isWindowCursor {
 		styles = styles.Selected()
 	}
-	w.cache.pinnedRow = w.buildExpandHeader(w.cache.width, styles, lineCountText(linesAbove, "above"))
+	w.cache.pinnedRow = w.buildUnfoldedHeader(w.cache.width, styles, lineCountText(linesAbove, "above"))
 	w.cache.pinnedAbove = linesAbove
-	w.cache.pinnedCursor = isCursor
+	w.cache.pinnedCursor = isWindowCursor
 	w.cache.pinnedDone = true
 	return w.cache.pinnedRow
 }
@@ -708,15 +708,15 @@ func (w *Window) windowLabel() string {
 	}
 }
 
-// buildExpandHeader returns the expanded window's first row: the marker,
+// buildUnfoldedHeader returns the unfolded window's first row: the marker,
 // the window's label, and the timestamp right-aligned to the window edge —
 //
 //   - REASONING                              2026/09/14 16:32:07 +08:00
 //
-// The label starts at the same cell as on a collapsed line (marker + one
+// The label starts at the same cell as on a folded line (marker + one
 // space), so folding a window never moves its label. What differs between
 // the two states is the marker glyph and what follows the label: a content
-// summary when folded, the timestamp when expanded.
+// summary when folded, the timestamp when unfolded.
 //
 // Every piece of the row's own chrome — the marker, the label, the timestamp
 // and the annotation — is drawn in the row's one line style (lineStyle →
@@ -725,7 +725,7 @@ func (w *Window) windowLabel() string {
 // window, when the caller hands in Styles.Selected() and the whole row comes
 // out highlighted as a unit (see Window.cursorLine0). A tool window's name is
 // the one piece that is not line style: it takes toolNameStyle in both fold
-// states (expandTitle).
+// states (unfoldedTitle).
 //
 // Widths, in priority order: the marker and the label always render (the
 // label is what identifies the window); then the timestamp, then the
@@ -739,15 +739,15 @@ func (w *Window) windowLabel() string {
 //
 // annotation is the pinned row's "<n> lines above" (see pinnedLine0) or ""
 // for every other row; an empty annotation changes nothing.
-func (w *Window) buildExpandHeader(width int, styles *Styles, annotation string) string {
+func (w *Window) buildUnfoldedHeader(width int, styles *Styles, annotation string) string {
 	if width <= 0 {
 		return ""
 	}
 	lineStyle := w.lineStyle(styles)
 	marker := lineStyle.Render(w.markerChar())
-	plain, styled := w.expandTitle(styles)
+	plain, styled := w.unfoldedTitle(styles)
 	if plain == "" {
-		// A window type with no label (see expandTitle): the marker stands
+		// A window type with no label (see unfoldedTitle): the marker stands
 		// alone, and there is nothing for a timestamp to be right-aligned
 		// against.
 		return takeCells(marker, width)
@@ -771,7 +771,7 @@ func (w *Window) buildExpandHeader(width int, styles *Styles, annotation string)
 	}
 	annCells := cellWidth(annBlock)
 
-	budget := width - collapsedPrefixWidth // cells left for label + gap + time
+	budget := width - foldedPrefixWidth // cells left for label + gap + time
 	if budget < 1 {
 		return takeCells(marker, width)
 	}
@@ -808,17 +808,17 @@ func (w *Window) timeStamp() string {
 	return w.CreatedAt.Local().Format(timeStampLayout)
 }
 
-// expandTitle returns an expanded window's label in two forms: the plain
+// unfoldedTitle returns an unfolded window's label in two forms: the plain
 // text (for the row's width accounting) and the styled rendering.
 //
-// Tool windows keep the collapsed line's layout — bold "TOOL CALL" + a space
+// Tool windows keep the folded line's layout — bold "TOOL CALL" + a space
 // + the status indicator in the fixed label column, then the tool name:
 // "- TOOL CALL ⠋    execute_command". The label and indicator share one
 // color so they read as a unit, and the bold name is the semantic payload.
 // Other windows use their plain label ("ASSISTANT", "SYSTEM NOTIFY",
 // "USER PROMPT", …).
 //
-// The name takes toolNameStyle, the same style the collapsed row paints it
+// The name takes toolNameStyle, the same style the folded row paints it
 // with, so folding a window leaves it alone; everything else on the row
 // takes lineStyleForTag's style.
 //
@@ -826,7 +826,7 @@ func (w *Window) timeStamp() string {
 // passes Styles.Selected() and gets a highlighted label — and, for tool
 // windows, a highlighted status indicator with it (statusDot inherits the
 // label color). The name is not highlighted in either state.
-func (w *Window) expandTitle(styles *Styles) (plain, styled string) {
+func (w *Window) unfoldedTitle(styles *Styles) (plain, styled string) {
 	labelStyle := lineStyleForTag(w.Tag(), styles)
 	if tr, ok := w.renderer.(*toolRenderer); ok && tr.name != "" {
 		dot, dotStyle := tr.status.statusDot(labelStyle)
@@ -882,9 +882,9 @@ func lineStyleForTag(tag string, styles *Styles) Style {
 // toolNameStyle is the style a tool window's name is drawn in — in BOTH fold
 // states. That is the reason it exists as a named function rather than as the
 // expression written out twice: writing it twice is what once let folded and
-// expanded drift apart, since Label and ToolContent are both muted and the two
+// unfolded drift apart, since Label and ToolContent are both muted and the two
 // only differed under the cursor — the name turned to the accent color folded
-// and stayed muted expanded, so folding a window repainted the one token the
+// and stayed muted unfolded, so folding a window repainted the one token the
 // reader was looking at.
 //
 // The name is the row's payload, not chrome, so it is deliberately NOT
@@ -910,12 +910,12 @@ func (w *Window) LineCount() int {
 // Folded windows are always a single line, so this returns immediately
 // without touching the renderer — during streaming, deltas to folded
 // windows no longer trigger any wrapping or rendering for line TRACKING.
-// That is the main performance win of the collapsed-line design, and it is
+// That is the main performance win of the folded-line design, and it is
 // the whole of it: drawing the folded row is not free, because a folded text
 // window's summary is head + "…" + tail of its entire content. That cost
 // lands in buildLines, not here, and it grows with the message —
 // BenchmarkFoldedTextStreamingDelta measures it against the same content
-// expanded.
+// unfolded.
 func (w *Window) UpdateLineCountFast(width int) (int, bool) {
 	if w.renderer == nil {
 		return 0, false

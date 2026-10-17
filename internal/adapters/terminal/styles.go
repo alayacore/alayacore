@@ -28,8 +28,8 @@ type Styles struct {
 	ToolContent Style
 	Error       Style
 	System      Style
-	// Attachment is the badge row of a user message — the expanded window
-	// body, its collapsed summary, and the prompt box: the terminal's own
+	// Attachment is the badge row of a user message — the unfolded window
+	// body, its folded summary, and the prompt box: the terminal's own
 	// DEFAULT foreground plus bold. It is header material naming what came
 	// with the message, not part of the message's text, and it is told from
 	// that text by WEIGHT, not by color: the plain body under it is
@@ -42,7 +42,7 @@ type Styles struct {
 	// waiting to be sent), never on a routine attachment.
 	//
 	// It is a field of its own rather than an alias of Label because the
-	// cursor highlight recolors Label and must not recolor the badge
+	// window cursor highlight recolors Label and must not recolor the badge
 	// (Styles.Selected).
 	Attachment Style
 	DiffRemove Style
@@ -56,10 +56,10 @@ type Styles struct {
 	// label, timestamp and, on the pinned row, the hidden-line count:
 	// "ASSISTANT", "REASONING", "TOOL CALL", "USER PROMPT", …) in both fold
 	// states. It is a field of its own — not derived from System at the call
-	// site — because it is exactly what the cursor highlight recolors: the
+	// site — because it is exactly what the window cursor highlight recolors: the
 	// chrome that names the window, never the content underneath it. The
 	// things that must therefore keep their own style, unswapped by
-	// Styles.Selected(), are a collapsed line's summary (System), a tool
+	// Styles.Selected(), are a folded line's summary (System), a tool
 	// window's name (ToolContent — toolNameStyle, window.go), and the
 	// attachment badges (Attachment).
 	Label Style
@@ -67,7 +67,7 @@ type Styles struct {
 	// reasoning, user message text, tool input/output). It carries NO
 	// foreground color in normal mode — body text renders in the
 	// terminal's default color, exactly like a shell. Styles.Dimmed()
-	// (overlay active) gives it the dim color so expanded window bodies
+	// (overlay active) gives it the dim color so unfolded window bodies
 	// dim together with the chrome.
 	Body Style
 
@@ -95,7 +95,7 @@ type Styles struct {
 // and the list, which hangs bare under it (RenderListBody).
 //
 // Transcript windows deliberately do NOT use it. A window is opened by its
-// own line carrying its label (Window.buildExpandHeader — text, not a rule)
+// own line carrying its label (Window.buildUnfoldedHeader — text, not a rule)
 // and the next window is opened by its own, so a closing rule under the
 // content would repeat a delimiter that is already there — see Window.Render.
 // Callers must wrap (wrapContent) and truncate (truncateWithSuffix) every
@@ -201,7 +201,7 @@ func NewStyles(t *theme.Theme) *Styles {
 		Status:  baseStyle.Foreground(Color(t.Dim)),
 		Confirm: baseStyle.Foreground(Color(t.Warning)).Bold(true),
 		// Label: the muted color, like System — kept as its own field so
-		// the cursor highlight can recolor the label without touching the
+		// the window cursor highlight can recolor the label without touching the
 		// content summary that shares the muted color.
 		Label: baseStyle.Foreground(Color(t.Muted)),
 		// Body stays colorless (terminal default) — see Styles.Body.
@@ -239,7 +239,7 @@ func (s *Styles) Dimmed() *Styles {
 		Status:  s.Status.Foreground(s.ColorDim),
 		Confirm: s.Confirm.Foreground(s.ColorDim),
 		// Label dims with the rest of the chrome. (Under an overlay it
-		// therefore reads the same as the cursor's own register, which is
+		// therefore reads the same as the window cursor's own register, which is
 		// how the highlight is hidden while a modal owns the screen.)
 		Label: s.Label.Foreground(s.ColorDim),
 		// Body gains the dim foreground under an overlay so plain body
@@ -259,7 +259,7 @@ func (s *Styles) Dimmed() *Styles {
 
 // Selected returns a copy of Styles in which the window-chrome styles carry
 // the accent color: the register a window's own line is drawn in while the
-// display cursor is on it.
+// window cursor is on it.
 //
 // Only the styles that name a window are swapped — Label and Error, which are
 // exactly the colors lineStyleForTag can return. Everything else keeps its
@@ -268,9 +268,9 @@ func (s *Styles) Dimmed() *Styles {
 //
 // The accent is ColorAccent — the theme's primary, the same color the prompt
 // box and a focused rule carry — so the palette has a single highlight color
-// rather than a second one spent on the cursor alone. It is the counterpart of
+// rather than a second one spent on the window cursor alone. It is the counterpart of
 // Dimmed() in the same spirit: a derived Styles rather than a flag threaded
-// through every renderer, so "who is the cursor" reaches the labels through
+// through every renderer, so "which window the cursor is on" reaches the labels through
 // the one channel the renderers already take their colors from.
 func (s *Styles) Selected() *Styles {
 	if s == nil {

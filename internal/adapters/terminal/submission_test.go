@@ -38,19 +38,19 @@ func TestParseSubmission(t *testing.T) {
 // the session's command and never opens a local dialog.
 func TestSubmissionGrammarRoutesLocally(t *testing.T) {
 	m := newTestTerminal()
-	m.input = m.input.WithValue(":q")
+	m.promptBox = m.promptBox.WithValue(":q")
 	m = feedMsg(t, m, KeyPressMsg{Code: KeyEnter})
 	if !m.confirmOverlay.IsOpen() {
 		t.Fatal(":q did not open the local quit confirm")
 	}
 
 	m = newTestTerminal()
-	m.input = m.input.WithValue(":quit foo")
+	m.promptBox = m.promptBox.WithValue(":quit foo")
 	m = feedMsg(t, m, KeyPressMsg{Code: KeyEnter})
 	if m.confirmOverlay.IsOpen() {
 		t.Fatal(":quit foo was treated as the local quit; arguments must go to the session")
 	}
-	if m.input.Value() != "" {
-		t.Errorf("a command should clear the input, got %q", m.input.Value())
+	if m.promptBox.Value() != "" {
+		t.Errorf("a command should clear the input, got %q", m.promptBox.Value())
 	}
 }

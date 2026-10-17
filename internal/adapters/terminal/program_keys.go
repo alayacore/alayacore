@@ -13,7 +13,7 @@ package terminal
 // So releasing the terminal always means waiting for the loop to report that it
 // is between reads, and taking the terminal back always means waking it up.
 //
-// What makes the wait safe is the other half of the design: an inputSource's
+// What makes the wait safe is the other half of the design: an keySource's
 // next() returns in bounded time on its own, on every platform
 // (program_input_unix.go polls with a timeout; program_input_windows.go only
 // reads events it has already counted). A loop that could sit in an unbounded
@@ -22,9 +22,9 @@ package terminal
 
 import "time"
 
-// inputSource is where the loop gets its bytes. The platform files provide it: a
+// keySource is where the loop gets its bytes. The platform files provide it: a
 // byte stream on a Unix terminal, decoded console events on Windows.
-type inputSource interface {
+type keySource interface {
 	// next returns the bytes the terminal has delivered, or an empty slice when
 	// nothing arrived before its wait ended. The slice belongs to the source and
 	// is valid until the next call — the loop parses it before calling again,
@@ -36,17 +36,17 @@ const (
 	// readLoopTimeout bounds how long the program waits for the input loop to
 	// report that it has stopped reading. The loop re-checks the park request
 	// once per wait of its own — inputPollTimeout on Unix,
-	// consoleInputPollInterval on Windows — so reaching this timeout means the
+	// consoleKeyPollInterval on Windows — so reaching this timeout means the
 	// loop is wedged somewhere else, and the alternative to giving up after a
 	// bounded wait is never starting the editor, or never handing the terminal
 	// back.
 	readLoopTimeout = 500 * time.Millisecond
 )
 
-// readInput runs the loop. It exits when ctxDone is closed, when the source
+// readKeys runs the loop. It exits when ctxDone is closed, when the source
 // reports an error, or when a delivery is abandoned because the program is
 // finishing — and it announces that it is finished either way, because the
-// teardown may not hand the terminal back before then (stopInput).
+// teardown may not hand the terminal back before then (stopKeys).
 //
 // An incomplete escape sequence is resolved here, on *silence*, and not on the
 // read that happened to stop in the middle of it. The difference is the whole of
@@ -61,7 +61,7 @@ const (
 // — program_input_unix.go says as much of the parser ("it keeps an incomplete
 // sequence across calls") — and it becomes invisible here, where the next read
 // is asked for the rest before any timer is allowed to resolve it.
-func (p *Program) readInput(ctxDone <-chan struct{}) {
+func (p *Program) readKeys(ctxDone <-chan struct{}) {
 	defer close(p.inputStopped)
 
 	// pendingSince is when the parser last received bytes and was still
@@ -80,7 +80,7 @@ func (p *Program) readInput(ctxDone <-chan struct{}) {
 		if p.parkIfSuspended(ctxDone) {
 			return
 		}
-		data, err := p.input.next()
+		data, err := p.keys.next()
 		if len(data) > 0 {
 			if p.deliverParsed(data, ctxDone) {
 				return
@@ -107,7 +107,7 @@ func (p *Program) readInput(ctxDone <-chan struct{}) {
 			// a parser in paste mode that swallows every later keystroke.
 			pendingSince = time.Time{}
 			for _, msg := range p.parser.Flush() {
-				if p.sendInput(msg, ctxDone) {
+				if p.sendKeys(msg, ctxDone) {
 					return
 				}
 			}
@@ -150,21 +150,21 @@ func (p *Program) parkIfSuspended(ctxDone <-chan struct{}) bool {
 //
 // Resolving an incomplete sequence is deliberately not done here: this function
 // is called with the bytes of one read, and the reader that can fetch the rest
-// is the loop (readInput), not this call.
+// is the loop (readKeys), not this call.
 func (p *Program) deliverParsed(data []byte, ctxDone <-chan struct{}) bool {
 	for _, msg := range p.parser.Parse(data) {
-		if p.sendInput(msg, ctxDone) {
+		if p.sendKeys(msg, ctxDone) {
 			return true
 		}
 	}
 	return false
 }
 
-// sendInput delivers one input message, returning true when ctxDone fired. It
+// sendKeys delivers one input message, returning true when ctxDone fired. It
 // goes to the dedicated input channel, which the event loop drains before
 // anything else (program.go → run): input must not wait behind a backlog of
 // command results, ticks and display writes.
-func (p *Program) sendInput(msg Msg, ctxDone <-chan struct{}) bool {
+func (p *Program) sendKeys(msg Msg, ctxDone <-chan struct{}) bool {
 	select {
 	case p.inputMsgs <- msg:
 		return false
@@ -173,7 +173,7 @@ func (p *Program) sendInput(msg Msg, ctxDone <-chan struct{}) bool {
 	}
 }
 
-// pauseInput asks the input loop to park and waits for it to acknowledge, so a
+// pauseKeys asks the input loop to park and waits for it to acknowledge, so a
 // foreground child can be given the terminal. With no input source (a program
 // with no TTY, which is every test that drives the loop by hand) there is no loop
 // to wait for.
@@ -183,8 +183,8 @@ func (p *Program) sendInput(msg Msg, ctxDone <-chan struct{}) bool {
 // in the channel at this moment belongs to an earlier pause — typically one that
 // timed out while the loop was blocked delivering into a full queue, and parked
 // afterwards. Waiting on that would return while the loop is still reading.
-func (p *Program) pauseInput() {
-	if p.input == nil {
+func (p *Program) pauseKeys() {
+	if p.keys == nil {
 		return
 	}
 	select {
@@ -199,11 +199,11 @@ func (p *Program) pauseInput() {
 	}
 }
 
-// resumeInput wakes a parked input loop and lets it read the terminal again. The
+// resumeKeys wakes a parked input loop and lets it read the terminal again. The
 // wake is a hint (see parkIfSuspended): a token left over because the loop was
 // not parked when this ran cannot release a later park.
-func (p *Program) resumeInput() {
-	if p.input == nil {
+func (p *Program) resumeKeys() {
+	if p.keys == nil {
 		return
 	}
 	p.inputPaused.Store(false)
@@ -213,7 +213,7 @@ func (p *Program) resumeInput() {
 	}
 }
 
-// stopInput ends the input loop for good and waits for it to be gone. The
+// stopKeys ends the input loop for good and waits for it to be gone. The
 // teardown calls it before restoring the terminal and closing the files: an
 // abandoned read is not merely untidy — os.File.Close waits for a read in flight,
 // and a console read waits for input, so closing the terminal this program still
@@ -224,8 +224,8 @@ func (p *Program) resumeInput() {
 // returns first, and its defer closes it), which is what the loop returns on. The
 // park flag is set anyway so that the loop is guaranteed not to start another read
 // even if the ordering above ever changes.
-func (p *Program) stopInput() {
-	if p.input == nil {
+func (p *Program) stopKeys() {
+	if p.keys == nil {
 		return
 	}
 	p.inputPaused.Store(true)

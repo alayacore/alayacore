@@ -146,14 +146,14 @@ func TestModelSelectorColumnsShrinkInPlace(t *testing.T) {
 	}
 }
 
-// TestHelpWindowTruncatedKeyFillsBox locks the help rows: a key that has to
+// TestHelpOverlayTruncatedKeyFillsBox locks the help rows: a key that has to
 // truncate takes the whole width once the description can no longer keep its
 // gap and a cell. Reserving that gap anyway left the row one cell short, so a
 // truncated key's ellipsis had a stray cell after it.
-func TestHelpWindowTruncatedKeyFillsBox(t *testing.T) {
+func TestHelpOverlayTruncatedKeyFillsBox(t *testing.T) {
 	styles := DefaultStyles()
 	for w := 8; w <= 96; w++ {
-		hw := NewHelpWindow(styles).WithSize(w, 50).Open()
+		hw := NewHelpOverlay(styles).WithSize(w, 50).Open()
 		for _, item := range hw.items {
 			if item.IsSection {
 				continue

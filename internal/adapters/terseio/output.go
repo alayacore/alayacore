@@ -65,7 +65,7 @@ type answerOutput struct {
 	// MCP hooks, injected by the adapter. mcpAuthRequired starts the
 	// automatic OAuth flow for a server; onMCPConnected stops a flow whose
 	// server connected by another path; onMCPDone stops every flow when MCP
-	// init settles. They are invoked from inside handleSystemMsg (under
+	// init settles. They are invoked from inside handleSystemFrame (under
 	// mu), so they must not block: mcpauth.Flow's methods only do
 	// bookkeeping and hand off to their own goroutines.
 	mcpAuthRequired func(server, url string)
@@ -137,7 +137,7 @@ func (o *answerOutput) FlushFinal() {
 }
 
 // flushFinalLocked is the mutex-free core of FlushFinal. Must be called
-// with o.mu held — e.g. from handleSystemMsg, which runs inside
+// with o.mu held — e.g. from handleSystemFrame, which runs inside
 // processBuffer under the mutex (taking the mutex there would deadlock).
 func (o *answerOutput) flushFinalLocked() {
 	if !o.finalFlushed.CompareAndSwap(false, true) {
@@ -204,7 +204,7 @@ func (o *answerOutput) handleTag(tag, value string) {
 		o.lastMsgHasText = false
 
 	case wire.TagSystemMsg:
-		o.handleSystemMsg(value)
+		o.handleSystemFrame(value)
 
 	case wire.TagCommandOut:
 		o.handleCommandOut(value)
@@ -301,14 +301,14 @@ func (o *answerOutput) bufferFinalText(id, content string) {
 	o.finalText.WriteString(content)
 }
 
-// handleSystemMsg processes a TagSystemMsg frame.
+// handleSystemFrame processes a TagSystemMsg frame.
 //   - error: rendered to stderr, buffered answer discarded (a partial
 //     answer is never printed), exit-code machinery triggered.
 //   - notify: rendered to stderr (diagnostics must not pollute stdout).
 //   - task: on the in_progress true→false edge, the final answer is flushed.
 //
 //nolint:gocyclo // dispatch over system message types; each case is simple
-func (o *answerOutput) handleSystemMsg(value string) {
+func (o *answerOutput) handleSystemFrame(value string) {
 	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
 		return
@@ -417,7 +417,7 @@ func (o *answerOutput) handleSystemMCP(data json.RawMessage) {
 }
 
 // mcpStatus writes one MCP progress line to stderr. Called under o.mu
-// (from handleSystemMsg).
+// (from handleSystemFrame).
 func (o *answerOutput) mcpStatus(format string, args ...any) {
 	fmt.Fprintf(o.stderr, "\n[mcp: "+format+"]\n", args...)
 }

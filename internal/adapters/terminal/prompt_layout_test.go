@@ -6,7 +6,7 @@ package terminal
 // and status as base rows in sequence), so when that count drifted from
 // viewportHeight — an attachment path wider than the box that wrapLabels did
 // not pre-wrap, fragment content changes from scrolling — the input box and
-// the cursor landed on the wrong row. Anchoring each block with an absolute
+// the caret landed on the wrong row. Anchoring each block with an absolute
 // CUP makes its position invariant under display content and scroll position.
 //
 // The assertions name the whole anchor sequence rather than "the first CUP in
@@ -45,12 +45,12 @@ func cupRows(content string) []int {
 // size, bottom-up: status bar on the last row, input box above it, live
 // edge above that (omitted when the marker draws nothing).
 func wantCupRows(m Terminal) []int {
-	inputY := max(0, m.windowHeight-m.input.Height()-1) // 0-indexed top rule
+	inputY := max(0, m.screenHeight-m.promptBox.Height()-1) // 0-indexed top rule
 	rows := make([]int, 0, 3)
 	if inputY > 0 && m.renderLiveEdge() != "" {
 		rows = append(rows, inputY) // 1-indexed row inputY-1+1
 	}
-	rows = append(rows, inputY+1, m.windowHeight)
+	rows = append(rows, inputY+1, m.screenHeight)
 	return rows
 }
 
@@ -72,11 +72,11 @@ func TestInputBoxCUPAnchoredToBottom(t *testing.T) {
 	if len(want) != 3 {
 		t.Fatalf("fixture expected 3 anchors (live edge, input, status), got %v — newTestTerminal changed", want)
 	}
-	if want[1] != m.windowHeight-m.input.Height() {
-		t.Errorf("input box top rule row = %d, want %d (windowHeight - inputHeight)", want[1], m.windowHeight-m.input.Height())
+	if want[1] != m.screenHeight-m.promptBox.Height() {
+		t.Errorf("input box top rule row = %d, want %d (screenHeight - inputHeight)", want[1], m.screenHeight-m.promptBox.Height())
 	}
-	if want[2] != m.windowHeight {
-		t.Errorf("status bar CUP row = %d, want %d (last row)", want[2], m.windowHeight)
+	if want[2] != m.screenHeight {
+		t.Errorf("status bar CUP row = %d, want %d (last row)", want[2], m.screenHeight)
 	}
 }
 
@@ -180,9 +180,9 @@ func TestStatusBarSingleRow(t *testing.T) {
 	// Find the last non-empty row — should be the status bar.
 	rows := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	last := rows[len(rows)-1]
-	if w := cellWidth(last); w > m.windowWidth {
+	if w := cellWidth(last); w > m.screenWidth {
 		t.Errorf("status bar row display width = %d, want ≤ %d (status text must be truncated)",
-			w, m.windowWidth)
+			w, m.screenWidth)
 	}
 }
 

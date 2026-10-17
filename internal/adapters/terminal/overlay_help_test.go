@@ -28,7 +28,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 		{
 			name: "attachment, path input", boxWidth: 60,
 			render: func() string {
-				aw := NewAttachmentWindow(s).Open()
+				aw := NewAttachmentOverlay(s).Open()
 				aw.FilterInputFocused = true
 				return aw.View().Content
 			},
@@ -37,7 +37,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 		{
 			name: "attachment, file list", boxWidth: 60,
 			render: func() string {
-				aw := NewAttachmentWindow(s).Open()
+				aw := NewAttachmentOverlay(s).Open()
 				aw.FilterInputFocused = false
 				return aw.View().Content
 			},
@@ -46,7 +46,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 		{
 			name:     "attachment, URL mode",
 			boxWidth: 60,
-			render:   func() string { return NewAttachmentWindow(s).Open().switchToURL().View().Content },
+			render:   func() string { return NewAttachmentOverlay(s).Open().switchToURL().View().Content },
 			want:     "enter: add URL | ctrl+a: switch to local | esc: close",
 		},
 		{
@@ -89,7 +89,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 			name:     "help, filter",
 			boxWidth: 72,
 			render: func() string {
-				hw := NewHelpWindow(s).Open()
+				hw := NewHelpOverlay(s).Open()
 				hw.FilterInputFocused = true
 				return hw.View().Content
 			},
@@ -99,7 +99,7 @@ func TestOverlayHelpBarsFit(t *testing.T) {
 			name:     "help, list",
 			boxWidth: 72,
 			render: func() string {
-				hw := NewHelpWindow(s).Open()
+				hw := NewHelpOverlay(s).Open()
 				hw.FilterInputFocused = false
 				return hw.View().Content
 			},

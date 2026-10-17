@@ -246,7 +246,7 @@ noise on both sides, so a dropped `│` would pass it silently.
 
 ## Related
 
-- Keybindings and window behaviour: [tui.md](tui.md)
+- Keybindings and window behavior: [tui.md](tui.md)
 - Streaming cost, allocation counts and why timings are not quoted:
   [internal/virtual-rendering-performance.md](internal/virtual-rendering-performance.md)
 - How tool output is bounded before it ever reaches the renderer:

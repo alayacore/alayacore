@@ -1,4 +1,4 @@
-# External Editor and WindowSizeMsg
+# External Editor and ScreenSizeMsg
 
 When the user opens an external editor (e.g. via `Ctrl+O`) and then exits
 back, the TUI runtime re-checks the terminal size and tells the model about it.
@@ -52,7 +52,7 @@ func (p *Program) acquireTerminal() error {
 	if err := p.screen.Start(); err != nil {
 		return err
 	}
-	p.resumeInput()
+	p.resumeKeys()
 	p.forceRepaint()
 	p.refreshSize()
 	return nil
@@ -67,7 +67,7 @@ either way.
 
 ## Implications for AlayaCore
 
-`Terminal.handleWindowSize()` re-renders the display on every `WindowSizeMsg`, so a
+`Terminal.handleScreenSize()` re-renders the display on every `ScreenSizeMsg`, so a
 resize that happened while the editor was in the foreground is picked up on the
 far side of the handoff. When nothing changed, no message is sent and the
 repaint from `forceRepaint` is the only work done — which is the same frame

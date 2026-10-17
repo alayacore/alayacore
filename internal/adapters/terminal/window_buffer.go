@@ -156,8 +156,8 @@ func (wb *WindowBuffer) AppendOrUpdate(tag string, id string, content string) in
 
 	// Create new window. The conversation windows a reader wants to see —
 	// assistant answers (AT) and the user's own turns (UT) — start
-	// expanded; the machinery around them — tools (AF/UF), reasoning (AR),
-	// system messages (SN/SE) — starts collapsed, so a step's scaffolding
+	// unfolded; the machinery around them — tools (AF/UF), reasoning (AR),
+	// system messages (SN/SE) — starts folded, so a step's scaffolding
 	// does not push the conversation off the screen. (A user prompt is the
 	// one message the reader is certain to want in full: it is the request
 	// the answer below it is answering, and it is short by nature.)
@@ -676,7 +676,7 @@ func (wb *WindowBuffer) ensureLineHeights(blocked bool) {
 				if w.Folded {
 					// Folded windows are always a single line; no rendering
 					// needed for line tracking (renderVirtual renders the
-					// collapsed line on demand for viewport windows).
+					// folded line on demand for viewport windows).
 					wb.lineHeights[i] = 1
 					wb.totalLines++
 					continue
@@ -885,7 +885,7 @@ func (wb *WindowBuffer) SetViewportPosition(yOffset, height int) {
 }
 
 // GetAll returns rendered windows, using virtual rendering if viewport is set.
-func (wb *WindowBuffer) GetAll(cursorIndex int, blocked bool) string {
+func (wb *WindowBuffer) GetAll(windowCursorIndex int, blocked bool) string {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
@@ -898,11 +898,11 @@ func (wb *WindowBuffer) GetAll(cursorIndex int, blocked bool) string {
 
 	// Use virtual rendering if viewport is set
 	if wb.viewportHeight > 0 {
-		return wb.renderVirtual(cursorIndex, blocked)
+		return wb.renderVirtual(windowCursorIndex, blocked)
 	}
 
 	// Full render
-	return wb.renderAll(cursorIndex, blocked)
+	return wb.renderAll(windowCursorIndex, blocked)
 }
 
 // renderVirtual renders only the windows overlapping the viewport
@@ -922,7 +922,7 @@ func (wb *WindowBuffer) GetAll(cursorIndex int, blocked bool) string {
 // placeholders are emitted; ScrollView pads to the viewport height.
 //
 //nolint:gocyclo // fragment assembly branches
-func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
+func (wb *WindowBuffer) renderVirtual(windowCursorIndex int, blocked bool) string {
 	if len(wb.windows) == 0 {
 		return ""
 	}
@@ -978,7 +978,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			continue
 		}
 
-		lines := wb.windowFragment(w, from, to, cursorIndex == i && !pinned, blocked)
+		lines := wb.windowFragment(w, from, to, windowCursorIndex == i && !pinned, blocked)
 		emittedRows += len(lines)
 
 		if firstWritten {
@@ -1000,7 +1000,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 			// between the own line and the fragment's first row are
 			// exactly startLine-winStart. Always ≥ 1 here (the pin needs
 			// winStart < startLine), which is also the count the row shows.
-			row := w.pinnedLine0(startLine-winStart, cursorIndex == i)
+			row := w.pinnedLine0(startLine-winStart, windowCursorIndex == i)
 			sb.WriteString(row)
 			sb.WriteString(ansi.EraseLine(0))
 			sb.WriteString("\n")
@@ -1067,7 +1067,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 // windowFragment renders window w if needed and returns its clipped visual
 // lines [from,to).
 //
-// Row 0 is the window's own line — marker, label, and (expanded) the
+// Row 0 is the window's own line — marker, label, and (unfolded) the
 // timestamp — and it is entirely built by Window.buildLines, so when the
 // fragment starts at the window's first line the cursor's register is a
 // single row swap (Window.cursorLine0). Nothing is prefixed or appended
@@ -1096,7 +1096,7 @@ func (wb *WindowBuffer) renderVirtual(cursorIndex int, blocked bool) string {
 // moment the row is made and expensive at every point after; and an int32 fits in
 // the padding Cont's bool already leaves in the struct, so carrying it costs no
 // memory.
-func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocked bool) []visualLine {
+func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isWindowCursor, blocked bool) []visualLine {
 	// Ensure the window's rows are built (lineHeights alone don't render
 	// folded windows — the fast path skips rendering). buildLines, not
 	// Render: this clips rows, so the joined string Render returns would be
@@ -1107,7 +1107,7 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 	// The first row is REPLACED (not mutated in place): lines aliases
 	// w.cache.lines, so mutating it would double the effects on the next
 	// render. from != 0 means row 0 (and its highlight) is off-screen.
-	if from == 0 && isCursor {
+	if from == 0 && isWindowCursor {
 		first := lines[0]
 		lines = append([]visualLine{{Text: w.cursorLine0(), Cont: first.Cont}}, lines[1:]...)
 	}
@@ -1115,7 +1115,7 @@ func (wb *WindowBuffer) windowFragment(w *Window, from, to int, isCursor, blocke
 }
 
 // renderAll renders all visible windows
-func (wb *WindowBuffer) renderAll(cursorIndex int, blocked bool) string {
+func (wb *WindowBuffer) renderAll(windowCursorIndex int, blocked bool) string {
 	var sb strings.Builder
 	firstWritten := false
 	for i, w := range wb.windows {
@@ -1127,7 +1127,7 @@ func (wb *WindowBuffer) renderAll(cursorIndex int, blocked bool) string {
 		if firstWritten {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(w.Render(wb.width, cursorIndex == i, wb.styles, blocked))
+		sb.WriteString(w.Render(wb.width, windowCursorIndex == i, wb.styles, blocked))
 		firstWritten = true
 	}
 	return sb.String()

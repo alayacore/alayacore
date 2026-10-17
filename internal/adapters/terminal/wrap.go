@@ -516,10 +516,10 @@ func wrapVisualLines(s string, width int) []visualLine {
 	// produced them, when the rows they belong to are being appended to out.
 	var widths []int
 	for _, part := range strings.Split(s, "\n") {
-		// Expand tabs per ORIGINAL line (column resets at '\n'): this is
+		// Unfold tabs per ORIGINAL line (column resets at '\n'): this is
 		// done here — not on the whole content — so the incremental
 		// streaming path and the full re-wrap path agree on tab columns
-		// (a delta starting with '\t' must expand from the line's actual
+		// (a delta starting with '\t' must unfold from the line's actual
 		// column, not from 0).
 		part = expandTabs(part)
 		var rows []string
@@ -656,7 +656,7 @@ func wrapLabels(labels []string, width int, style Style) string {
 		// first. Without this, the label would land on one line wider
 		// than width and the terminal's soft-wrap would push every
 		// subsequent row down — but Height() / AttachmentsOffset() would
-		// still count just one line, so the input box cursor position
+		// still count just one line, so the caret position in the prompt box
 		// would land on the wrong row (raw passthrough mode relies on
 		// the displayed rows matching the computed row count exactly).
 		if labelWidth > width {

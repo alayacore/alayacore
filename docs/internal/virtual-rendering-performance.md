@@ -112,7 +112,7 @@ Two things were not fine, and both are fixed rather than recorded:
 - 🔧 **A folded text window's summary row used to materialize every grapheme
   cluster of the message, twice, per frame.** Reasoning windows fold by default
   and re-summarize on every delta, so at 128KB that frame cost 13.5ms and
-  56.8 MB — 41x the time and 76x the memory the *same content expanded* costs,
+  56.8 MB — 41x the time and 76x the memory the *same content unfolded* costs,
   which is backwards for the state whose whole job is to be cheap. Four rounds
   of whole-message work came out: the cutters' cluster list, the whole-message
   escape copy they cut out of, the four separate pricings of the same message per
@@ -132,7 +132,7 @@ Two things were not fine, and both are fixed rather than recorded:
   runs backwards on plain ASCII; `windowFragment` stops measuring every row of
   the window to draw forty of them; and `ensureCursorVisible` asks one pass for
   the five to eight prefix sums it used to ask separately. At 128KB of content
-  the **expanded** streaming frame went 231μs/757,278 B → **18.2μs/80,156 B**
+  the **unfolded** streaming frame went 231μs/757,278 B → **18.2μs/80,156 B**
   (12.7x, 9.4x) and the folded one 709μs/134,136 B → **63.9μs/133,801 B**
   (11.1x), and on to 12.5μs when the summary's last pricing pass went with it.
   The fifth of those first traded a per-rebuild cost for a per-frame one
@@ -353,13 +353,13 @@ Measured via `BenchmarkVirtualRenderingCursorMovementSingle`,
 
 | Metric | Value | Memory | Allocs |
 |--------|-------|--------|-------:|
-| Single cursor move (EnsureCursorVisible + updateContent) | **1.99μs** | 6,254 B | 38 |
+| Single cursor move (EnsureWindowCursorVisible + updateContent) | **1.99μs** | 6,254 B | 38 |
 | 20 cursor moves through the buffer | **39.3μs** | 125,090 B | 760 |
 | Scroll 20 steps down + 20 steps up | **64.0μs** | 177,282 B | 1,400 |
 
-### Collapsed-Window Design (single-line fold headers)
+### Folded-Window Design (single-line fold headers)
 
-The collapsed-window design replaces the bordered fold (3 content lines +
+The folded-window design replaces the bordered fold (3 content lines +
 2 border lines) with a single marker line (`LABEL summary`:
 text windows show the escaped head + "…" + tail of the content (40/60
 split), tool windows the first input line; only streaming delta windows
@@ -371,7 +371,7 @@ holding **100 folded windows (80 tool + 20 reasoning) and 20 unfolded ones
 (10 assistant + 10 user)**, which is what the fold defaults in
 `WindowBuffer.AppendOrUpdate` produce. (This section and that file's header both
 said "110 folded" until 2026-09-28; the counts come from the tags, and AT/UT
-open expanded.) The fourth row is `BenchmarkFoldedTextStreamingDelta/2KB/folded`,
+open unfolded.) The fourth row is `BenchmarkFoldedTextStreamingDelta/2KB/folded`,
 which builds its own single-window buffer and is the subject of the next
 section. Minimum of 10 runs at `-benchtime 1s`; of 4 for the fourth row.
 
@@ -385,7 +385,7 @@ section. Minimum of 10 runs at `-benchtime 1s`; of 4 for the fourth row.
 The three figures this section quoted before 2026-09-28 were deleted on the
 grounds that "the folded-session benchmark these figures came from is gone from
 the tree". It was not gone: `folded_bench_test.go` has held all three benchmarks
-since the collapsed-window redesign, they run in the normal suite, and they
+since the folded-window redesign, they run in the normal suite, and they
 reproduce those figures (7.9μs → 6.75μs, 0.17ms → 149μs, 0.11μs → 104ns). They
 are restored here, re-measured, with the fourth row that was missing.
 
@@ -395,15 +395,15 @@ Why the shape is cheap where it is cheap:
   immediately for folded windows — no wrapping, no row render, no renderer
   access. The tool window's summary shows the first input line, which appends
   never change, so its row is O(1) too: that is the 105ns row above.
-- **No full-content wrap on fold**: `BuildCollapsed` wraps nothing. For a text
+- **No full-content wrap on fold**: `BuildFolded` wraps nothing. For a text
   window it still *reads* everything — see the next section.
 - **Cursor moves don't rebuild a window's rows**: only the one navigational element
   is recolored — the fold marker and the label column on a folded line, all
   of row 0 (marker, label, timestamp, and the pinned row's count) on an
-  expanded one — reusing the cached content (`renderCursor`,
+  unfolded one — reusing the cached content (`renderCursor`,
   `renderCache.line0Cursor`).
 - **Fewer total lines**: 1 line per folded window, and one row of chrome per
-  expanded window (its label opens the window; there is no header line above
+  unfolded window (its label opens the window; there is no header line above
   it and no closing rule below it), shrinking `lineHeights`/scrolling math
   proportionally. The 120-window session above is 190 document lines.
 
@@ -413,12 +413,12 @@ composed into it, plus the timestamp — 1.00μs per delta via
 the length of the message, with a crossover between 2KB and 32KB. It does not any
 more: the folded side prices its summary from counts kept as the content grew, so
 it is the cheaper state in **time** at 2KB and 128KB and indistinguishable from
-expanded at 32KB (0.97x, inside the run-to-run band), and the dearer one in
+unfolded at 32KB (0.97x, inside the run-to-run band), and the dearer one in
 **memory** above 2KB, because summarizing still joins the message into one string
-while an expanded frame appends one delta to rows that are already wrapped.
+while an unfolded frame appends one delta to rows that are already wrapped.
 Minimum of 6 runs at `-benchtime 1500x`, both sides from the same binary:
 
-| Content size | Folded | Expanded | Folded ÷ expanded |
+| Content size | Folded | Unfolded | Folded ÷ unfolded |
 |---|---:|---:|---:|
 | 2KB | 3.38μs, 4,776 B | 3.92μs, 8,816 B | **0.86x time**, 0.54x memory |
 | 32KB | 5.76μs, 35,496 B | 5.96μs, 24,177 B | **0.97x time**, 1.5x memory |
@@ -428,7 +428,7 @@ Reasoning windows fold by default and are the ones that get long while streaming
 so the time column is the one that matters for them, and the memory column is what
 is left to argue about. The previous revision had this the other way round in
 memory (5,112 B against 20,064 B at 2KB, 134 KB against 757 KB at 128KB)
-because the expanded frame still carried the whole-window work listed in
+because the unfolded frame still carried the whole-window work listed in
 [What is left in the frame path](#what-is-left-in-the-frame-path); that work is
 gone, and what is left on the folded side is itemized there too.
 
@@ -438,10 +438,10 @@ gone, and what is left on the folded side is itemized there too.
 the one frame shape nothing else in the tree measured: a folded **text** window
 streaming. It rebuilds its buffer under `StopTimer`, so one iteration is exactly
 one frame at a fixed content size and its memory columns mean the same thing at
-any `-benchtime`. Each size runs folded and expanded on identical content; the
-expanded side is the control. Minimum of 4 runs at `-benchtime 1s`.
+any `-benchtime`. Each size runs folded and unfolded on identical content; the
+unfolded side is the control. Minimum of 4 runs at `-benchtime 1s`.
 
-| Content size | Folded: as found | cutters streamed | summary cut before escaping | frame priced from counts (now) | Expanded: as found | Expanded: now |
+| Content size | Folded: as found | cutters streamed | summary cut before escaping | frame priced from counts (now) | Unfolded: as found | Unfolded: now |
 |---|---:|---:|---:|---:|---:|---:|
 | 2KB | 99.0μs, 503,259 B, 95 | 17.5μs, 12,312 B, 63 | 15.1μs, 5,112 B, 55 | **3.38μs, 4,776 B, 51** | 7.84μs, 20,064 B, 97 | **3.92μs, 8,816 B, 75** |
 | 32KB | 4.20ms, 13,739,011 B, 127 | 249μs, 222,752 B, 73 | 193μs, 35,833 B, 55 | **5.76μs, 35,496 B, 51** | 57.0μs, 221,878 B, 106 | **5.96μs, 24,177 B, 75** |
@@ -452,7 +452,7 @@ measured them (minimum of 4 at `-benchtime 1s`); the last three are this tree's
 (minimum of 6 at `-benchtime 1500x`). The two benchtimes are comparable here and
 would not be elsewhere: this benchmark rebuilds its buffer under `StopTimer`, so
 one iteration is exactly one frame at a fixed content size, and the memory
-columns do not move with `-benchtime` — the folded 133,800 B and expanded
+columns do not move with `-benchtime` — the folded 133,800 B and unfolded
 73,332 B are the same figures a `-benchtime 1s` run reports.
 
 The fourth folded column is labelled for the change that moved it most and spans
@@ -462,19 +462,19 @@ wrap's per-line and per-byte allocations going
 the middle and last of those were this document's own stale figures, left behind
 when the pricing change landed and corrected here. End to end the folded frame is
 **29x faster and 105x lighter at 2KB, 1,070x and 424x at 128KB**, and the
-expanded control — which nobody set out to fix — is **15.5x faster and 10.3x
-lighter at 128KB**, because three of the six changes were about work an expanded
-frame did and discarded and the sixth was mostly about expanded frames.
+unfolded control — which nobody set out to fix — is **15.5x faster and 10.3x
+lighter at 128KB**, because three of the six changes were about work an unfolded
+frame did and discarded and the sixth was mostly about unfolded frames.
 
 **The inversion this benchmark was added to expose has flipped, and then flipped
-again in memory only.** Folded used to be 12x–81x dearer than expanded. It is not
+again in memory only.** Folded used to be 12x–81x dearer than unfolded. It is not
 dearer in *time* at any size measured: 3.38μs against 3.92μs at 2KB, 5.76μs
 against 5.96μs at 32KB — inside the run-to-run band, so call those two equal —
 and 12.6μs against 14.2μs at 128KB. It is dearer in **memory** above 2KB, and by
 more the longer the message: 1.5x at 32KB, 1.8x at 128KB. That is what the two
 states now cost:
 
-- an **expanded** frame appends one delta to the already-wrapped rows and draws
+- an **unfolded** frame appends one delta to the already-wrapped rows and draws
   the ≤40 of them the viewport shows — O(delta + viewport), independent of how
   long the message has become;
 - a **folded** frame re-derives head + "…" + tail of the *whole* message and
@@ -497,8 +497,8 @@ per call, twice.
 There were two materializations, and they were found one at a time.
 
 **First: the cutters built a cluster list.** A folded text window's row is
-head + "…" + tail of its content: `textRenderer.BuildCollapsed` →
-`collapsedSummary` → `headAndTailParts` → `takeCells` (head) and `tailCells`
+head + "…" + tail of its content: `textRenderer.BuildFolded` →
+`foldedSummary` → `headAndTailParts` → `takeCells` (head) and `tailCells`
 (tail). Both answered from a `clusters(s)` helper that returned *every* grapheme
 cluster of the string as a `[]cluster` — one struct per cluster, each holding
 its own substring — so keeping ~30 cells from the front and ~45 from the back
@@ -631,7 +631,7 @@ budget) and `TestLineQueriesCostOneEncoding` (the four input-chain queries over
 implementation reports one allocation per cluster, ~10,000 against a ceiling of
 8. The ceiling is not an exact count because `AllocsPerRun` reads process-wide
 mallocs and a `-race` build adds one of its own; the first version of the first
-test failed under `-race` for exactly that reason. Behaviour: the two
+test failed under `-race` for exactly that reason. Behavior: the two
 differential tests above and `TestTailPartsNeverSplitsACluster`, plus the
 invariants that already existed and still run — budget over the whole breaker
 corpus, maximality and cluster alignment against the oracle, the styled-cut
@@ -766,7 +766,7 @@ branch that fits returning the content unescaped.
 Two other mutations survived the shape before this one, and neither is writable now.
 `headAndTailParts` used to take a measurement and a line-break count as separate
 arguments, so every caller had to keep them in step, and passing `0` for the count
-at `userRenderer.BuildCollapsed` — or `7` at `renderUFOnlyCollapsed` — passed the
+at `userRenderer.BuildFolded` — or `7` at `renderUFOnlyFolded` — passed the
 whole package. Nothing catches a pair assembled wrongly when the assembling is
 spread across the callers. There is one constructor and one cached path now, and
 neither can hand over a count belonging to a different string; the two cold call
@@ -810,7 +810,7 @@ The pricing pass that used to be listed beside it is gone: `measure` walked the
 whole message — 37μs of the then-64μs frame — to answer "does this fit in 70
 cells?", a question settled after 70 cells. A text renderer now keeps the cells and
 the line breaks, summed per delta, and a folded row reads the counts. **The folded
-frame at 128 KB went 66μs → 12.5μs and at 32 KB 20μs → 5.9μs**; the expanded frame,
+frame at 128 KB went 66μs → 12.5μs and at 32 KB 20μs → 5.9μs**; the unfolded frame,
 which builds no summary, did not move. [What is left in the frame
 path](#what-is-left-in-the-frame-path) states the rule for when the counts may be
 kept and what retires them.
@@ -833,7 +833,7 @@ proportional to the whole window while a frame shows at most `viewportHeight`
 rows of it. **All three are fixed.** They are kept here with what each cost and
 what each was worth, because the third one has a price and the price is real.
 Minimum of 6 runs at `-benchtime 1s`; the three figures per item are the 128 KB
-expanded streaming frame, measured after each change in isolation.
+unfolded streaming frame, measured after each change in isolation.
 
 1. **`BuildInner` compacted the delta parts on every render.** Its fast path
    merged `contentParts` into `r.content` through a `strings.Builder` — a full
@@ -897,7 +897,7 @@ expanded streaming frame, measured after each change in isolation.
 164μs, which is items 2 and 3 together: a resize is the one operation that
 rebuilds every window at once.
 
-**What is left.** The expanded frame is now O(delta + viewport). The folded one is
+**What is left.** The unfolded frame is now O(delta + viewport). The folded one is
 O(budget) in time for content that can be priced as it arrives and O(content) for
 content that cannot, and O(content) in bytes either way: at 128 KB the frame is
 12.5μs and 134 KB, and a profile puts 97% of the bytes — and, with the pricing
@@ -933,7 +933,7 @@ in any single measurement: **assistant text and reasoning content are not
 capped.** `docs/truncation.md` bounds *tool output* (64 KB in memory, then a
 scratch file); nothing bounds an AT or AR window. A frame that is O(content)
 therefore grows for as long as the model streams, and the total work of one long
-answer is quadratic in its length. At 128 KB the expanded frame is 18μs and
+answer is quadratic in its length. At 128 KB the unfolded frame is 18μs and
 would stay there at 4 MB, because it is O(delta + viewport); the folded one is
 12.5μs and would be ~0.4ms, because the join it still does is O(content) even
 though the summary's pricing is not. Both are inside a 250ms tick, and the
@@ -1016,7 +1016,7 @@ at viewport 30; the folded session is the 120-window one at viewport 40.
 
 The folded row was dropped from this table on 2026-09-28 as unmeasurable and is
 restored: the benchmark exists (see
-[Collapsed-Window Design](#collapsed-window-design-single-line-fold-headers)).
+[Folded-Window Design](#folded-window-design-single-line-fold-headers)).
 It is the most expensive of the six because it is the largest frame — 40 rows at
 120 columns where the others are 30 rows at 80 — and *not* because folding is
 costly: nothing in that benchmark invalidates a window, so every summary is read
@@ -1248,7 +1248,7 @@ varied from 33,501 to 36,648 across the 10 runs because it scaled with content
 that grows per iteration. Today's is 49 and 50 — flat across all 10 runs, because
 nothing in the path is per byte any more. Time moved with it:
 `AppendVsFullWrap_LongContent/full-rewrap` 526μs → 253μs, `FullWrap` 63.9μs →
-19.8μs, `FullWrappingPath` 6.1μs → 2.1μs, and the expanded side of a folded text
+19.8μs, `FullWrappingPath` 6.1μs → 2.1μs, and the unfolded side of a folded text
 window's frame 18.3μs → 14.4μs at 128 KB. Those are interleaved `benchstat`
 comparisons of the two binaries over 8 to 12 rounds, all at p=0.000; the folded
 side, which does not wrap a body, is unchanged at every size.
@@ -1267,7 +1267,7 @@ the reference machine; the memory and allocation columns move with the tree, the
 time column with the machine and its state.
 
 This is the from-scratch re-wrap path: `WithWidth` invalidates every window, so
-each pays a full `wrapContent`. Its 50 windows are expanded text windows of 65
+each pays a full `wrapContent`. Its 50 windows are unfolded text windows of 65
 bytes each, which is the shape that pays a re-wrap per window — and 65 bytes is
 short enough that the per-line cost of the style pass was most of what a window
 paid, which is why this row halved. A folded window answers with the summary row

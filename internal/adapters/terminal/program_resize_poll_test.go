@@ -32,9 +32,9 @@ func TestRefreshSizeQueuesChangeAndTracksIt(t *testing.T) {
 
 	select {
 	case msg := <-msgs:
-		ws, ok := msg.(WindowSizeMsg)
+		ws, ok := msg.(ScreenSizeMsg)
 		if !ok {
-			t.Fatalf("queued %T, want WindowSizeMsg", msg)
+			t.Fatalf("queued %T, want ScreenSizeMsg", msg)
 		}
 		if ws.Width != 120 || ws.Height != 40 {
 			t.Errorf("got %dx%d, want 120x40", ws.Width, ws.Height)
@@ -74,7 +74,7 @@ func TestRefreshSizeIgnoresUnchangedSize(t *testing.T) {
 // non-blocking because the loop that drains p.msgs is the caller, so a full
 // buffer can drop the message — and if the tracked size had been updated
 // anyway, the change would be swallowed: the next tick sees no difference, no
-// WindowSizeMsg is ever sent, and Screen.Resize never clears the frame caches,
+// ScreenSizeMsg is ever sent, and Screen.Resize never clears the frame caches,
 // leaving the layout on the old width for the rest of the session.
 func TestRefreshSizeDoesNotTrackADroppedMessage(t *testing.T) {
 	// Buffered to one, and that one already taken: the send cannot succeed.
@@ -95,9 +95,9 @@ func TestRefreshSizeDoesNotTrackADroppedMessage(t *testing.T) {
 	p.refreshSize()
 
 	msg := <-msgs
-	ws, ok := msg.(WindowSizeMsg)
+	ws, ok := msg.(ScreenSizeMsg)
 	if !ok {
-		t.Fatalf("retry produced %T, want WindowSizeMsg", msg)
+		t.Fatalf("retry produced %T, want ScreenSizeMsg", msg)
 	}
 	if ws.Width != 132 || ws.Height != 43 {
 		t.Errorf("retry produced %dx%d, want 132x43", ws.Width, ws.Height)
@@ -107,7 +107,7 @@ func TestRefreshSizeDoesNotTrackADroppedMessage(t *testing.T) {
 	}
 }
 
-// resizeQuitModel quits the loop from the WindowSizeMsg itself, which is the
+// resizeQuitModel quits the loop from the ScreenSizeMsg itself, which is the
 // only way to end the loop after a message the tick queued: anything the test
 // put in the channel beforehand is drained first, so a QuitMsg sent up front
 // would be handled before the resize and the loop would exit with the resize
@@ -119,14 +119,14 @@ type resizeQuitModel struct {
 
 func (m *resizeQuitModel) Update(msg Msg) (Model, Cmd) {
 	m.fakeModel.Update(msg)
-	if _, ok := msg.(WindowSizeMsg); ok {
+	if _, ok := msg.(ScreenSizeMsg); ok {
 		return m, func() Msg { return QuitMsg{} }
 	}
 	return m, nil
 }
 
 // TestConsecutiveTicksQueueOneResizeMessage is the anti-storm guard: a resize
-// must produce exactly one WindowSizeMsg, not one per tick. Three ticks are
+// must produce exactly one ScreenSizeMsg, not one per tick. Three ticks are
 // queued and the tracked size only moves on the tick that delivered the
 // message, so the two that follow have nothing to report.
 //
@@ -154,7 +154,7 @@ drain:
 	for {
 		select {
 		case msg := <-msgs:
-			if _, ok := msg.(WindowSizeMsg); ok {
+			if _, ok := msg.(ScreenSizeMsg); ok {
 				resizes++
 			}
 		default:
@@ -162,7 +162,7 @@ drain:
 		}
 	}
 	if resizes != 1 {
-		t.Errorf("%d WindowSizeMsg queued for one real change, want exactly 1", resizes)
+		t.Errorf("%d ScreenSizeMsg queued for one real change, want exactly 1", resizes)
 	}
 	if p.width != 100 || p.height != 30 {
 		t.Errorf("tracked size = %dx%d, want 100x30", p.width, p.height)
@@ -170,7 +170,7 @@ drain:
 }
 
 // TestTickDrivesSizeRefresh runs the real loop: a tickMsg must be enough to
-// deliver a WindowSizeMsg to the model, which is the whole point — nothing on
+// deliver a ScreenSizeMsg to the model, which is the whole point — nothing on
 // Windows sends that message any other way.
 func TestTickDrivesSizeRefresh(t *testing.T) {
 	msgs := make(chan Msg, 8)
@@ -186,14 +186,14 @@ func TestTickDrivesSizeRefresh(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	var seen []WindowSizeMsg
+	var seen []ScreenSizeMsg
 	for _, msg := range m.updates {
-		if ws, ok := msg.(WindowSizeMsg); ok {
+		if ws, ok := msg.(ScreenSizeMsg); ok {
 			seen = append(seen, ws)
 		}
 	}
 	if len(seen) != 1 {
-		t.Fatalf("model saw %d WindowSizeMsg (%v), want exactly 1", len(seen), m.updates)
+		t.Fatalf("model saw %d ScreenSizeMsg (%v), want exactly 1", len(seen), m.updates)
 	}
 	if seen[0].Width != 100 || seen[0].Height != 30 {
 		t.Errorf("model saw %dx%d, want 100x30", seen[0].Width, seen[0].Height)

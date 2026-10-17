@@ -107,7 +107,7 @@ func TestSteeringCountReadsStateAtRenderTime(t *testing.T) {
 // where a reader watching their own words looks (live_edge.go).
 func TestSteeringCountIsNotInTheStatusBar(t *testing.T) {
 	m := newTestTerminal()
-	m.windowWidth = 200 // ample room, so an absent segment cannot be a truncation
+	m.screenWidth = 200 // ample room, so an absent segment cannot be a truncation
 
 	steeringPhase(t, m.out, "queued", "")
 	steeringPhase(t, m.out, "queued", "")

@@ -10,9 +10,9 @@ import (
 
 // TestHMLPositioningWithFoldedWindows verifies that H (top), M (center) and
 // L (bottom) positioning account for the folded/unfolded state of windows:
-// a folded window occupies exactly 1 line (its own marker line), an expanded
+// a folded window occupies exactly 1 line (its own marker line), an unfolded
 // one its own line plus its content lines (no rules, no borders — see
-// buildExpandHeader). Folding a window must shift the visual rows of
+// buildUnfoldedHeader). Folding a window must shift the visual rows of
 // everything below it, so M's target changes accordingly.
 func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	styles := DefaultStyles()
@@ -22,7 +22,7 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t0", Name: "read_file", Input: json.RawMessage("read_file: /a.txt")}, 0)
 	wb.HandleToolOutput("t0", "ok", false, 0)
 
-	// Window 1: expanded assistant (default unfolded) — 3 content lines →
+	// Window 1: unfolded assistant (default unfolded) — 3 content lines →
 	// its own line + 3 = 4 lines.
 	wb.AppendOrUpdate(tagAssistantText, "a1", "line one\nline two\nline three")
 
@@ -40,38 +40,38 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	dm = dm.MarkUserScrolled() // H/M/L require auto-follow off
 	dm = dm.updateContent()
 
-	// Row layout while a1 is expanded (7 total rows: a window's own line and
+	// Row layout while a1 is unfolded (7 total rows: a window's own line and
 	// its content, nothing else — the fixture is asserted below so this
 	// comment cannot rot again):
 	//   0:   + TOOL CALL ✓     read_file ⋯     (folded)
-	//   1:   - ASSISTANT                       (expanded: its own line)
+	//   1:   - ASSISTANT                       (unfolded: its own line)
 	//   2-4: its three content lines
 	//   5:   + TOOL CALL ✓     grep ⋯          (folded)
 	//   6:   + TOOL CALL ✓     cat ⋯           (folded)
 	// Viewport [0,4): rows 0,1,2,3 — the top row is window 0, but its center
 	// (row 2) and its bottom (row 3) are inside window 1.
 	if got := wb.GetTotalLines(); got != 7 {
-		t.Fatalf("fixture: total lines = %d, want 7 (one folded row + one expanded "+
+		t.Fatalf("fixture: total lines = %d, want 7 (one folded row + one unfolded "+
 			"window's own line + its 3 content lines + two folded rows)", got)
 	}
 
 	// H: top visible window is window 0.
 	dm, _ = dm.MoveWindowCursorToTop()
 	if got := dm.GetWindowCursor(); got != 0 {
-		t.Errorf("H with a1 expanded: cursor = %d, want 0", got)
+		t.Errorf("H with a1 unfolded: cursor = %d, want 0", got)
 	}
 
 	// M: viewport center row = 4/2 = 2 → inside window 1 (rows 1-4).
 	dm, _ = dm.MoveWindowCursorToCenter()
 	if got := dm.GetWindowCursor(); got != 1 {
-		t.Errorf("M with a1 expanded: cursor = %d, want 1", got)
+		t.Errorf("M with a1 unfolded: cursor = %d, want 1", got)
 	}
 
 	// L: bottommost visible window in [0,4) is window 1 (its rows 1-6
 	// overlap the viewport; windows 2/3 start at rows 7/8, below).
 	dm, _ = dm.MoveWindowCursorToBottom()
 	if got := dm.GetWindowCursor(); got != 1 {
-		t.Errorf("L with a1 expanded: cursor = %d, want 1", got)
+		t.Errorf("L with a1 unfolded: cursor = %d, want 1", got)
 	}
 
 	// Fold window 1: total rows shrink to 4 (all windows 1 line each).
@@ -98,7 +98,7 @@ func TestHMLLineRangeConsistency(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
-	// Mixed session: folded tools + expanded assistant + folded reasoning.
+	// Mixed session: folded tools + unfolded assistant + folded reasoning.
 	wb.HandleToolInputEvent(protocol.ToolInputData{CallID: "t0", Name: "edit_file", Input: json.RawMessage("edit_file: /x.css")}, 0)
 	wb.HandleToolOutput("t0", "done", false, 0)
 	wb.AppendOrUpdate(tagAssistantText, "a1", "multi\nline\nassistant\nreply")
@@ -163,7 +163,7 @@ func TestHMLFoldedScrollClamp(t *testing.T) {
 	styles := DefaultStyles()
 	wb := NewWindowBuffer(80, styles)
 
-	// Many expanded windows, scrolled to the bottom.
+	// Many unfolded windows, scrolled to the bottom.
 	for i := 0; i < 5; i++ {
 		wb.AppendOrUpdate(tagAssistantText, fmt.Sprintf("a%d", i), "some\ncontent\nlines")
 	}

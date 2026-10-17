@@ -46,7 +46,7 @@ func (a *Adapter) Start() int {
 
 	// Get terminal size before creating the TUI (so we can size the loading screen)
 	initialWidth, initialHeight := getTerminalSize()
-	terminalOutput.SetWindowWidth(initialWidth)
+	terminalOutput.SetScreenWidth(initialWidth)
 
 	// Create the input pipe BEFORE starting the TUI. The TUI gets the
 	// write end (pipeWriter) immediately; the session will read from

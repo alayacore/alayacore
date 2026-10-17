@@ -19,15 +19,15 @@ import (
 //  4. At end of line, the cursor sits exactly after the last visible rune.
 //  5. The rendered visible text is exactly the contiguous slice of the
 //     current line starting at the visible start (no drift between
-//     buildVisibleText and CursorCell).
+//     buildVisibleText and CaretCell).
 //  6. visStart is a rune index within the current line and belongs to that
 //     line (visLine): the visible start is inherently a rune boundary, so
 //     a wide character can never be split at the left edge.
 func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 	t.Helper()
 	check := func(format string, args ...any) {
-		t.Fatalf("%s\n  state: value=%q pos=%d width=%d visLine=%d visStart=%d CursorCell=%d visible=%q visCells=%d\n  "+format,
-			append([]any{ctx, string(g.value), g.pos, g.width, g.visLine, g.visStart, g.CursorCell(), string(g.buildVisibleText()), runesWidth(g.buildVisibleText())}, args...)...)
+		t.Fatalf("%s\n  state: value=%q pos=%d width=%d visLine=%d visStart=%d CaretCell=%d visible=%q visCells=%d\n  "+format,
+			append([]any{ctx, string(g.value), g.pos, g.width, g.visLine, g.visStart, g.CaretCell(), string(g.buildVisibleText()), runesWidth(g.buildVisibleText())}, args...)...)
 	}
 	if g.pos < 0 || g.pos > len(g.value) {
 		check("pos=%d out of range [0,%d]", g.pos, len(g.value))
@@ -52,7 +52,7 @@ func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 		check("visible width=%d exceeds viewport width=%d", visCells, g.width)
 	}
 
-	cell := g.CursorCell()
+	cell := g.CaretCell()
 
 	val := g.value
 	// Visible-start cell of the current line (shared by the cluster checks).
@@ -74,7 +74,7 @@ func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 	physicallyUnfit := cursorClusterW > g.width
 
 	if cell > visCells && !physicallyUnfit {
-		check("CursorCell=%d beyond visible width=%d", cell, visCells)
+		check("CaretCell=%d beyond visible width=%d", cell, visCells)
 	}
 
 	if g.pos < len(val) {
@@ -96,12 +96,12 @@ func assertInputFieldInvariants(t *testing.T, ctx string, g InputField) {
 				}
 			}
 		} else if cell != visCells {
-			// Cursor sits at end of line (before the newline): it must hug
+			// ScreenCursor sits at end of line (before the newline): it must hug
 			// the last visible rune exactly.
-			check("end of line (before \\n): CursorCell=%d != visible width=%d", cell, visCells)
+			check("end of line (before \\n): CaretCell=%d != visible width=%d", cell, visCells)
 		}
 	} else if cell != visCells {
-		check("end of line: CursorCell=%d != visible width=%d", cell, visCells)
+		check("end of line: CaretCell=%d != visible width=%d", cell, visCells)
 	}
 
 	// Invariant 5: visible text must be the exact slice starting at the
@@ -182,7 +182,7 @@ func TestInputFieldFuzzInvariants(t *testing.T) {
 					g, _ = g.Update(PasteMsg{Content: content})
 				case 7: // cursor jump
 					desc = "setpos"
-					g = g.WithCursorPos(rng.Intn(len(g.value) + 1))
+					g = g.WithCaretPos(rng.Intn(len(g.value) + 1))
 				case 8: // reset value
 					n := rng.Intn(10)
 					s := ""
@@ -193,14 +193,14 @@ func TestInputFieldFuzzInvariants(t *testing.T) {
 						s += "\n" + s // newline boundaries
 					}
 					desc = fmt.Sprintf("reset %q", s)
-					g = g.WithValue(s).CursorEnd()
+					g = g.WithValue(s).CaretEnd()
 					// Reference-implementation check: after replacing the
 					// value, the visible start must equal what a fresh
 					// InputField with the same width and value computes.
 					// (Without this, a stale visStart could survive when the
 					// new value coincidentally shares the old lineStart —
 					// all internal invariants would still pass.)
-					fresh := newField().WithWidth(g.width).WithValue(s).CursorEnd()
+					fresh := newField().WithWidth(g.width).WithValue(s).CaretEnd()
 					if fresh.visStart != g.visStart || fresh.visLine != g.visLine {
 						t.Fatalf("seed=%d iter=%d: reset leaked visible start: g.visLine=%d visStart=%d, fresh visLine=%d visStart=%d (value=%q width=%d)",
 							seed, iter, g.visLine, g.visStart, fresh.visLine, fresh.visStart, s, g.width)

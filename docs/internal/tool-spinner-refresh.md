@@ -9,7 +9,7 @@ at the last rendered frame.
 Root cause chain:
 
 1. The spinner glyph is **baked into the window's render cache** at render
-   time (`BuildCollapsed`/`BuildInner` → `statusDot()` →
+   time (`BuildFolded`/`BuildInner` → `statusDot()` →
    `spinnerFrame()`, a pure wall-clock function: 10 frames × 150ms).
 2. Render caches are only rebuilt when a window is invalidated, and that
    is **delta-driven**: `Af` argument deltas, `Uf` preview deltas, and
@@ -42,7 +42,7 @@ it — spinner frame and all — on every tick (idle keeps the cache).
   idle buffer (`BenchmarkInvalidateRunningToolSpinnersIdle`, minimum of 10 runs
   at `-benchtime 1s`), and at **33ns/op, 0 allocs** for the same buffer with one
   pending tool (`…Pending`). Both are per tick and neither allocates. The frame
-  the invalidation triggers is the ordinary viewport render with one collapsed
+  the invalidation triggers is the ordinary viewport render with one folded
   row rebuilt inside it — what a frame costs, by session shape, is tabulated in
   [virtual-rendering-performance.md](virtual-rendering-performance.md).
 

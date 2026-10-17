@@ -74,11 +74,11 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	// cases.
 	case keyJ:
 		m, _ = m.MoveWindowCursorDown()
-		return m.EnsureCursorVisible().updateContent(), nil
+		return m.EnsureWindowCursorVisible().updateContent(), nil
 
 	case keyK:
 		m, _ = m.MoveWindowCursorUp()
-		return m.EnsureCursorVisible().updateContent(), nil
+		return m.EnsureWindowCursorVisible().updateContent(), nil
 
 	case keyCtrlD, keyPgDown:
 		if !m.AtBottom() {
@@ -140,26 +140,26 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 
 	case keyH:
 		m, _ = m.MoveWindowCursorToTop()
-		return m.EnsureCursorVisible().updateContent(), nil
+		return m.EnsureWindowCursorVisible().updateContent(), nil
 
 	case keyL:
 		m, _ = m.MoveWindowCursorToBottom()
-		return m.EnsureCursorVisible().updateContent(), nil
+		return m.EnsureWindowCursorVisible().updateContent(), nil
 
 	case keyM:
 		m, _ = m.MoveWindowCursorToCenter()
-		return m.EnsureCursorVisible().updateContent(), nil
+		return m.EnsureWindowCursorVisible().updateContent(), nil
 
 	case keySpace:
 		m, _ = m.ToggleWindowFold()
-		return m.anchorCursorWindow().EnsureCursorVisible().updateContent(), nil
+		return m.anchorWindowCursor().EnsureWindowCursorVisible().updateContent(), nil
 
 	case keyR:
 		// Toggle markdown rendering — only effective on an
 		// UNFOLDED plain-text window (assistant text / reasoning).
 		//
 		// The toggle leaves the buffer dirty, but the anchor and
-		// EnsureCursorVisible below both call GetWindowLineRange →
+		// EnsureWindowCursorVisible below both call GetWindowLineRange →
 		// ensureLineHeights, which clears wb.dirty as a side effect.
 		// contentDirty is therefore set explicitly, so updateContent (last)
 		// still rebuilds the viewport with the new rendering — without it,
@@ -171,20 +171,20 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		}
 		if m.windowBuffer.ToggleMarkdownMode(m.windowCursor) {
 			m.contentDirty = true
-			return m.anchorCursorWindow().EnsureCursorVisible().updateContent(), nil
+			return m.anchorWindowCursor().EnsureWindowCursorVisible().updateContent(), nil
 		}
 		return m, nil
 
 	case keyF:
 		// Re-seat the viewport only when the jump happened. Unlike the
-		// EnsureCursorVisible used by the other jump keys,
-		// ScrollCursorToTop always moves: it puts the cursor window's first
+		// EnsureWindowCursorVisible used by the other jump keys,
+		// ScrollWindowCursorToTop always moves: it puts the cursor window's first
 		// line at the top of the viewport. With the cursor parked below the
 		// last user prompt (where a finished turn leaves it) there is no
 		// next prompt to find, and re-seating anyway would yank the
 		// viewport up to the head of the window already under the cursor.
 		if next, moved := m.MoveWindowCursorToNextUserPrompt(); moved {
-			return next.ScrollCursorToTop().updateContent(), nil
+			return next.ScrollWindowCursorToTop().updateContent(), nil
 		}
 		return m, nil
 
@@ -192,12 +192,12 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		// Same guard as keyF, mirrored: no prompt above the cursor means
 		// nothing to jump to and nothing to re-seat.
 		if prev, moved := m.MoveWindowCursorToPrevUserPrompt(); moved {
-			return prev.ScrollCursorToTop().updateContent(), nil
+			return prev.ScrollWindowCursorToTop().updateContent(), nil
 		}
 		return m, nil
 
 	case keyE:
-		content := m.GetCursorWindowContent()
+		content := m.GetWindowCursorContent()
 		if content != "" {
 			m = m.MarkUserScrolled()
 			return m, []Result{openEditorForDisplayMsg{content: content}}
@@ -205,11 +205,11 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		return m, nil
 
 	case keyColon:
-		return m, []Result{focusInputWithValueMsg{value: ":"}}
+		return m, []Result{focusPromptWithValueMsg{value: ":"}}
 
 	case keyCtrlF:
-		if historyID := m.GetCursorWindowHistoryID(); historyID > 0 {
-			return m, []Result{focusInputWithValueMsg{value: fmt.Sprintf(":%s %d ", commands.CommandNameFork, historyID)}}
+		if historyID := m.GetWindowCursorHistoryID(); historyID > 0 {
+			return m, []Result{focusPromptWithValueMsg{value: fmt.Sprintf(":%s %d ", commands.CommandNameFork, historyID)}}
 		}
 		return m, nil
 
@@ -300,9 +300,9 @@ func (m DisplayModel) updateContent() DisplayModel {
 	}
 	m.contentDirty = false
 
-	cursorIndex := -1
+	windowCursorIndex := -1
 	if m.displayFocused {
-		cursorIndex = m.windowCursor
+		windowCursorIndex = m.windowCursor
 	}
 
 	totalLines := m.windowBuffer.GetTotalLines()
@@ -320,7 +320,7 @@ func (m DisplayModel) updateContent() DisplayModel {
 
 	m.windowBuffer.SetViewportPosition(targetYOffset, viewportHeight)
 
-	newContent := m.windowBuffer.GetAll(cursorIndex, m.blocked)
+	newContent := m.windowBuffer.GetAll(windowCursorIndex, m.blocked)
 	if newContent == m.lastContent {
 		// Content unchanged — but auto-follow may still need to move the
 		// viewport to the new bottom. With soft-wrap fragments the clip
@@ -391,7 +391,7 @@ func (m DisplayModel) GetWindowCursor() int {
 }
 
 // Returns empty string if no window is selected.
-func (m DisplayModel) GetCursorWindowContent() string {
+func (m DisplayModel) GetWindowCursorContent() string {
 	if m.windowCursor < 0 {
 		return ""
 	}
@@ -399,7 +399,7 @@ func (m DisplayModel) GetCursorWindowContent() string {
 }
 
 // Returns 0 if no window is selected.
-func (m DisplayModel) GetCursorWindowHistoryID() uint64 {
+func (m DisplayModel) GetWindowCursorHistoryID() uint64 {
 	if m.windowCursor < 0 {
 		return 0
 	}
@@ -410,9 +410,9 @@ func (m DisplayModel) GetCursorWindowHistoryID() uint64 {
 	return w.HistoryID
 }
 
-// setCursor sets the window cursor and disables auto-follow.
-// Only WithCursorToLastWindow re-enables auto-follow afterwards.
-func (m DisplayModel) setCursor(i int) DisplayModel {
+// setWindowCursor sets the window cursor and disables auto-follow.
+// Only WithWindowCursorToLastWindow re-enables auto-follow afterwards.
+func (m DisplayModel) setWindowCursor(i int) DisplayModel {
 	if m.windowCursor == i && !m.autoFollow {
 		return m
 	}
@@ -422,8 +422,8 @@ func (m DisplayModel) setCursor(i int) DisplayModel {
 	return m
 }
 
-// clearCursor unsets the window cursor and disables auto-follow.
-func (m DisplayModel) clearCursor() DisplayModel {
+// clearWindowCursor unsets the window cursor and disables auto-follow.
+func (m DisplayModel) clearWindowCursor() DisplayModel {
 	if m.windowCursor == -1 && !m.autoFollow {
 		return m
 	}
@@ -435,19 +435,19 @@ func (m DisplayModel) clearCursor() DisplayModel {
 
 // If the index points to an invisible window, the nearest visible window is chosen instead.
 // Disables auto-follow only if the cursor actually moves; only
-// WithCursorToLastWindow re-enables it.
+// WithWindowCursorToLastWindow re-enables it.
 func (m DisplayModel) WithWindowCursor(index int) DisplayModel {
 	if index < 0 || m.windowBuffer.WindowCount() == 0 {
-		return m.clearCursor()
+		return m.clearWindowCursor()
 	}
 	index = m.windowBuffer.NearestVisibleIndex(index)
 	if index < 0 {
-		return m.clearCursor()
+		return m.clearWindowCursor()
 	}
 	if m.windowCursor == index {
 		return m // cursor unchanged, preserve autoFollow
 	}
-	return m.setCursor(index)
+	return m.setWindowCursor(index)
 }
 
 // MoveWindowCursorDown moves the window cursor down, skipping invisible windows.
@@ -470,7 +470,7 @@ func (m DisplayModel) MoveWindowCursorDown() (DisplayModel, bool) {
 	if m.windowCursor < 0 {
 		i := m.windowBuffer.FirstVisibleIndex()
 		if i >= 0 {
-			return m.setCursor(i), true
+			return m.setWindowCursor(i), true
 		}
 		return m, false
 	}
@@ -478,7 +478,7 @@ func (m DisplayModel) MoveWindowCursorDown() (DisplayModel, bool) {
 	// Step forward to the next visible window
 	found := false
 	m.windowBuffer.ForEachVisible(m.windowCursor+1, func(i int, _ *Window) bool {
-		m = m.setCursor(i)
+		m = m.setWindowCursor(i)
 		found = true
 		return false
 	})
@@ -498,7 +498,7 @@ func (m DisplayModel) MoveWindowCursorUp() (DisplayModel, bool) {
 			if m.windowCursor == i {
 				return m, false
 			}
-			return m.setCursor(i), true
+			return m.setWindowCursor(i), true
 		}
 		return m, false
 	}
@@ -506,7 +506,7 @@ func (m DisplayModel) MoveWindowCursorUp() (DisplayModel, bool) {
 	// Step backward to the previous visible window
 	found := false
 	m.windowBuffer.ForEachVisibleBackward(m.windowCursor-1, func(i int, _ *Window) bool {
-		m = m.setCursor(i)
+		m = m.setWindowCursor(i)
 		found = true
 		return false
 	})
@@ -530,14 +530,14 @@ func (m DisplayModel) DisableAutoFollow() DisplayModel {
 	return m
 }
 
-// EnsureCursorVisible scrolls the viewport only if the cursor window is
+// EnsureWindowCursorVisible scrolls the viewport only if the cursor window is
 // completely off-screen. If any part of the window is already visible, the
 // viewport position is left unchanged. The cursor highlight tells the user
 // where they are; explicit scroll keys (Ctrl-D, J, etc.) can reveal more.
 //
 // This avoids viewport jumping on repeated navigation and prevents
 // oscillation when a window is taller than the viewport.
-func (m DisplayModel) EnsureCursorVisible() DisplayModel {
+func (m DisplayModel) EnsureWindowCursorVisible() DisplayModel {
 	if m.windowCursor < 0 {
 		return m
 	}
@@ -558,11 +558,11 @@ func (m DisplayModel) EnsureCursorVisible() DisplayModel {
 	return m
 }
 
-// ScrollCursorToTop scrolls the viewport so the cursor window's start line
+// ScrollWindowCursorToTop scrolls the viewport so the cursor window's start line
 // is at the top of the viewport.  This is used when jumping to a specific
 // prompt (e.g. via b/f) so the user can see both the prompt and the
 // response that follows it.
-func (m DisplayModel) ScrollCursorToTop() DisplayModel {
+func (m DisplayModel) ScrollWindowCursorToTop() DisplayModel {
 	if m.windowCursor < 0 {
 		return m
 	}
@@ -572,22 +572,22 @@ func (m DisplayModel) ScrollCursorToTop() DisplayModel {
 	return m
 }
 
-// anchorCursorWindow re-seats the viewport after a toggle that changes only the
+// anchorWindowCursor re-seats the viewport after a toggle that changes only the
 // window's body — a fold/unfold, or a markdown re-render. The own line keeps its
 // document position either way, so a line that is on screen keeps its row. A
 // line above the viewport top does not: when the shrunken window no longer
 // reaches below that line, the row is left entirely above the viewport and
-// EnsureCursorVisible would drag the viewport to the row's bottom edge — the
-// jump a pinned line took when its window collapsed to a single row. Pulling
+// EnsureWindowCursorVisible would drag the viewport to the row's bottom edge — the
+// jump a pinned line took when its window folded to a single row. Pulling
 // the offset up to the own line brings it back to row 0, so the toggle reads as
 // a change in place: the rule is simply that a cursor window scrolled above the
-// top returns to the top, the place ScrollCursorToTop puts it.
+// top returns to the top, the place ScrollWindowCursorToTop puts it.
 //
 // Only a line above the top moves the offset; at or below the top it is left
-// alone, and EnsureCursorVisible still covers a window scrolled off the bottom.
+// alone, and EnsureWindowCursorVisible still covers a window scrolled off the bottom.
 // The offset is clamped, so a window near the transcript's end settles as high
 // as the shrunken document allows.
-func (m DisplayModel) anchorCursorWindow() DisplayModel {
+func (m DisplayModel) anchorWindowCursor() DisplayModel {
 	if m.windowCursor < 0 {
 		return m
 	}
@@ -598,44 +598,44 @@ func (m DisplayModel) anchorCursorWindow() DisplayModel {
 	return m
 }
 
-// ValidateCursor ensures the window cursor is valid and visible.
+// ValidateWindowCursor ensures the window cursor is valid and visible.
 // Uses partial visibility check to avoid jarring scroll jumps on resize.
-func (m DisplayModel) ValidateCursor() DisplayModel {
-	m = m.ClampCursor()
+func (m DisplayModel) ValidateWindowCursor() DisplayModel {
+	m = m.ClampWindowCursor()
 	if m.windowCursor >= 0 && m.windowBuffer.WindowCount() > 0 {
-		m = m.EnsureCursorVisible()
+		m = m.EnsureWindowCursorVisible()
 	}
 	return m
 }
 
-// ClampCursor clamps the window cursor to a visible window without scrolling.
-// Unlike ValidateCursor, this does not call EnsureCursorVisible, preserving
+// ClampWindowCursor clamps the window cursor to a visible window without scrolling.
+// Unlike ValidateWindowCursor, this does not call EnsureWindowCursorVisible, preserving
 // the user's scroll position. Use this on resize events where only bounds
 // correction is needed.
-func (m DisplayModel) ClampCursor() DisplayModel {
+func (m DisplayModel) ClampWindowCursor() DisplayModel {
 	if m.windowBuffer.WindowCount() == 0 {
 		m.windowCursor = -1
 		return m
 	}
-	// Cursor is intentionally unset or negative — normalize to -1
+	// ScreenCursor is intentionally unset or negative — normalize to -1
 	if m.windowCursor < 0 {
 		m.windowCursor = -1
 		return m
 	}
 	// Use NearestVisibleIndex to handle out-of-bounds or invisible cursor.
-	// Note: we assign directly instead of using setCursor because ClampCursor
+	// Note: we assign directly instead of using setWindowCursor because ClampWindowCursor
 	// intentionally does NOT modify autoFollow — it's a silent correction that
 	// preserves the user's scroll/follow state.
 	m.windowCursor = m.windowBuffer.NearestVisibleIndex(m.windowCursor)
 	return m
 }
 
-// WithCursorToLastWindow parks the cursor on the last visible window and
+// WithWindowCursorToLastWindow parks the cursor on the last visible window and
 // re-enables auto-follow. It is the one place auto-follow comes back on —
-// setCursor and clearCursor only ever turn it off — so every caller is a
+// setWindowCursor and clearWindowCursor only ever turn it off — so every caller is a
 // deliberate "take me to what is happening now": FollowLatest (G/End,
 // submitting, a turn starting) and focusDisplay's cursorless case.
-func (m DisplayModel) WithCursorToLastWindow() DisplayModel {
+func (m DisplayModel) WithWindowCursorToLastWindow() DisplayModel {
 	i := m.windowBuffer.LastVisibleIndex()
 	if i >= 0 {
 		m.windowCursor = i
@@ -658,14 +658,14 @@ func (m DisplayModel) WithCursorToLastWindow() DisplayModel {
 // a command: :continue and :summarize.
 //
 // At submit time the echo has not arrived yet, so the cursor lands on the last
-// window there is and the tick handler's WithCursorToLastWindow advances it as
+// window there is and the tick handler's WithWindowCursorToLastWindow advances it as
 // the session's frames append windows — the same state G leaves the display in.
 //
 // The render belongs to the gesture: View paints scrollView's cached clip, and
 // a tick returns early when no output delta arrived, so a jump that skipped
 // updateContent would not be drawn until content happened to follow.
 func (m DisplayModel) FollowLatest() DisplayModel {
-	return m.WithCursorToLastWindow().GotoBottom().updateContent()
+	return m.WithWindowCursorToLastWindow().GotoBottom().updateContent()
 }
 
 func (m DisplayModel) ToggleWindowFold() (DisplayModel, bool) {
@@ -696,7 +696,7 @@ func (m DisplayModel) MoveWindowCursorToTop() (DisplayModel, bool) {
 		// Check if this is the first visible window at or near the viewport top
 		if (startLine <= viewportTop && endLine > viewportTop) || startLine >= viewportTop {
 			if i != m.windowCursor {
-				m = m.setCursor(i)
+				m = m.setWindowCursor(i)
 				found = true
 			}
 			return false
@@ -732,7 +732,7 @@ func (m DisplayModel) MoveWindowCursorToBottom() (DisplayModel, bool) {
 		}
 		// This window is at least partially visible and is the bottommost one
 		if i != m.windowCursor {
-			m = m.setCursor(i)
+			m = m.setWindowCursor(i)
 			found = true
 		}
 		return false
@@ -759,7 +759,7 @@ func (m DisplayModel) MoveWindowCursorToCenter() (DisplayModel, bool) {
 		if idx == m.windowCursor {
 			return m, false // cursor unchanged, preserve autoFollow
 		}
-		return m.setCursor(idx), true
+		return m.setWindowCursor(idx), true
 	}
 
 	// If center line falls in a gap (or all windows are above/below center),
@@ -768,7 +768,7 @@ func (m DisplayModel) MoveWindowCursorToCenter() (DisplayModel, bool) {
 		if idx == m.windowCursor {
 			return m, false // cursor unchanged, preserve autoFollow
 		}
-		return m.setCursor(idx), true
+		return m.setWindowCursor(idx), true
 	}
 
 	return m, false
@@ -822,7 +822,7 @@ func (m DisplayModel) findClosestVisibleWindow(viewportTop, viewportBottom, view
 // the next visible window whose tag is tagUserText (a user message). Returns false if
 // no such window exists below the current cursor, in which case the cursor
 // and the viewport are left untouched. Callers must test that flag before
-// re-seating the viewport, which always moves (see ScrollCursorToTop).
+// re-seating the viewport, which always moves (see ScrollWindowCursorToTop).
 func (m DisplayModel) MoveWindowCursorToNextUserPrompt() (DisplayModel, bool) {
 	if m.windowBuffer.WindowCount() == 0 {
 		return m, false
@@ -831,7 +831,7 @@ func (m DisplayModel) MoveWindowCursorToNextUserPrompt() (DisplayModel, bool) {
 	found := false
 	m.windowBuffer.ForEachVisible(m.windowCursor+1, func(i int, w *Window) bool {
 		if w.Tag() == tagUserText {
-			m = m.setCursor(i)
+			m = m.setWindowCursor(i)
 			found = true
 			return false
 		}
@@ -845,7 +845,7 @@ func (m DisplayModel) MoveWindowCursorToNextUserPrompt() (DisplayModel, bool) {
 // the previous visible window whose tag is tagUserText (a user message). Returns false
 // if no such window exists above the current cursor, in which case the
 // cursor and the viewport are left untouched. Callers must test that flag
-// before re-seating the viewport, which always moves (see ScrollCursorToTop).
+// before re-seating the viewport, which always moves (see ScrollWindowCursorToTop).
 func (m DisplayModel) MoveWindowCursorToPrevUserPrompt() (DisplayModel, bool) {
 	if m.windowBuffer.WindowCount() == 0 {
 		return m, false
@@ -854,7 +854,7 @@ func (m DisplayModel) MoveWindowCursorToPrevUserPrompt() (DisplayModel, bool) {
 	found := false
 	m.windowBuffer.ForEachVisibleBackward(m.windowCursor-1, func(i int, w *Window) bool {
 		if w.Tag() == tagUserText {
-			m = m.setCursor(i)
+			m = m.setWindowCursor(i)
 			found = true
 			return false
 		}

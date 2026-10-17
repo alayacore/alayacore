@@ -24,26 +24,26 @@ const inputPollTimeout = 100
 // and keeps an incomplete sequence across calls (key_parser.go).
 const inputReadSize = 256
 
-// ttyInput is the Unix implementation of inputSource.
-type ttyInput struct {
+// ttyKeys is the Unix implementation of keySource.
+type ttyKeys struct {
 	tty *TTY
 	buf []byte
 	fds []unix.PollFd
 }
 
-// newInput prepares the program's input source. There is nothing to negotiate:
+// newKeyReader prepares the program's input source. There is nothing to negotiate:
 // MakeRaw has already proved this stream is a terminal, and a terminal is read as
 // bytes.
-func newInput(t *TTY) (inputSource, error) {
-	return &ttyInput{
+func newKeyReader(t *TTY) (keySource, error) {
+	return &ttyKeys{
 		tty: t,
 		buf: make([]byte, inputReadSize),
 		fds: []unix.PollFd{{Fd: int32(t.In().Fd()), Events: unix.POLLIN}},
 	}, nil
 }
 
-// next implements inputSource.
-func (i *ttyInput) next() ([]byte, error) {
+// next implements keySource.
+func (i *ttyKeys) next() ([]byte, error) {
 	n, err := unix.Poll(i.fds, inputPollTimeout)
 	if err != nil {
 		if err == unix.EINTR {

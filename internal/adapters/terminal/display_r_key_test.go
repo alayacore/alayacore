@@ -13,12 +13,12 @@ import (
 // Ctrl+R (handleRedraw) to see the change.
 //
 // Root cause: the display.go case keyR handler called
-// EnsureCursorVisible().updateContent() — EnsureCursorVisible calls
+// EnsureWindowCursorVisible().updateContent() — EnsureWindowCursorVisible calls
 // GetWindowLineRange → ensureLineHeights, which sets wb.dirty=false at
 // the end as a side effect. By the time updateContent ran, IsDirty()
 // returned false and updateContent early-returned without rebuilding
 // scroll content. Fix: mark contentDirty explicitly before the anchor and
-// EnsureCursorVisible, so the viewport is rebuilt regardless of wb.dirty
+// EnsureWindowCursorVisible, so the viewport is rebuilt regardless of wb.dirty
 // (see the note on case keyR).
 func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 	styles := NewStyles(theme.DefaultTheme())

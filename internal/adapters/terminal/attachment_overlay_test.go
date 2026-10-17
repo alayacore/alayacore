@@ -10,9 +10,9 @@ import (
 	"testing"
 )
 
-func TestAttachmentWindowBareInputPrompt(t *testing.T) {
+func TestAttachmentOverlayBareInputPrompt(t *testing.T) {
 	styles := DefaultStyles()
-	aw := NewAttachmentWindow(styles)
+	aw := NewAttachmentOverlay(styles)
 
 	aw = aw.Open()
 	if aw.FilterInput.Prompt != "" {
@@ -30,9 +30,9 @@ func TestAttachmentWindowBareInputPrompt(t *testing.T) {
 	}
 }
 
-func TestAttachmentWindowListRowsFlushLeft(t *testing.T) {
+func TestAttachmentOverlayListRowsFlushLeft(t *testing.T) {
 	styles := DefaultStyles()
-	aw := NewAttachmentWindow(styles).Open()
+	aw := NewAttachmentOverlay(styles).Open()
 	if len(aw.filtered) == 0 {
 		t.Skip("current directory has no entries — nothing to render")
 	}
@@ -81,7 +81,7 @@ func TestSegmentDeleteKeyIsCtrlW(t *testing.T) {
 
 	// Ctrl+W as the keyboard delivers it, so the binding is checked against the
 	// wire form rather than a hand-built Key.
-	var p InputParser
+	var p KeyParser
 	msgs := p.Parse([]byte{0x17})
 	if len(msgs) != 1 {
 		t.Fatalf("0x17 parsed to %d messages, want one key press", len(msgs))
@@ -94,8 +94,8 @@ func TestSegmentDeleteKeyIsCtrlW(t *testing.T) {
 		t.Fatalf("0x17 reads as %q, want %q", got, keyCtrlW)
 	}
 
-	openWith := func(value string) AttachmentWindow {
-		aw := NewAttachmentWindow(styles).Open()
+	openWith := func(value string) AttachmentOverlay {
+		aw := NewAttachmentOverlay(styles).Open()
 		aw.FilterInput = aw.FilterInput.WithValue(value)
 		return aw
 	}

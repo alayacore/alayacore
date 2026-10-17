@@ -111,7 +111,7 @@ func TestExecuteCommandNoWorkdirStaysPlain(t *testing.T) {
 
 // TestExecuteCommandDirMarkerNotInFoldedRow: the folded row summarizes the
 // call's first line and nothing below it, so the annotation appears when the
-// window is expanded — the placement docs/tui.md → "Tool Result Separator"
+// window is unfolded — the placement docs/tui.md → "Tool Result Separator"
 // records, pinned so it is not taken
 // for a bug and "fixed".
 func TestExecuteCommandDirMarkerNotInFoldedRow(t *testing.T) {
@@ -133,7 +133,7 @@ func TestExecuteCommandDirMarkerNotInFoldedRow(t *testing.T) {
 // (TestWindow_WriteFileContentStaysPlain).
 func TestDirMarkerOnlyBoldedForExecuteCommand(t *testing.T) {
 	styles := DefaultStyles()
-	tr := &toolRenderer{name: "write_file", input: "write_file: /tmp/x.md\nsee the note\n" + dirMarker("/tmp")}
+	tr := &toolRenderer{name: "write_file", toolInput: "write_file: /tmp/x.md\nsee the note\n" + dirMarker("/tmp")}
 	for _, l := range mustLines(t, tr, styles) {
 		if strings.Contains(l.Text, "\x1b[") {
 			t.Fatalf("write_file content must stay plain, got %q", l.Text)

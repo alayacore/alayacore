@@ -4,9 +4,9 @@ import (
 	"testing"
 )
 
-func TestHelpWindowOpenClose(t *testing.T) {
+func TestHelpOverlayOpenClose(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	if hw.IsOpen() {
 		t.Error("Help window should not be open initially")
@@ -23,9 +23,9 @@ func TestHelpWindowOpenClose(t *testing.T) {
 	}
 }
 
-func TestHelpWindowNavigation(t *testing.T) {
+func TestHelpOverlayNavigation(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 	hw = hw.Open()
 
 	// Initially search box is focused; Tab to list to navigate
@@ -55,9 +55,9 @@ func TestHelpWindowNavigation(t *testing.T) {
 	}
 }
 
-func TestHelpWindowSkipsSectionHeaders(t *testing.T) {
+func TestHelpOverlaySkipsSectionHeaders(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	// Manually set items with a specific structure for testing
 	hw.items = []HelpItem{
@@ -89,9 +89,9 @@ func TestHelpWindowSkipsSectionHeaders(t *testing.T) {
 	}
 }
 
-func TestHelpWindowNavigationBoundary(t *testing.T) {
+func TestHelpOverlayNavigationBoundary(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	hw.items = []HelpItem{
 		{ID: 1, IsSection: true, Description: "Section"},
@@ -127,14 +127,14 @@ func TestHelpWindowNavigationBoundary(t *testing.T) {
 	}
 }
 
-func TestHelpWindowCloseKeys(t *testing.T) {
+func TestHelpOverlayCloseKeys(t *testing.T) {
 	styles := DefaultStyles()
 
 	// `Esc` is the way out, from either focus. `q` used to quit while the list
 	// was focused; it is gone, so this asserts the one key that closes and, below,
 	// that `q` survives as text where it was always text.
 	for _, listFocused := range []bool{true, false} {
-		hw := NewHelpWindow(styles).Open()
+		hw := NewHelpOverlay(styles).Open()
 		if listFocused {
 			hw, _ = hw.Update(KeyPressMsg(Key{Code: KeyTab}))
 		}
@@ -147,7 +147,7 @@ func TestHelpWindowCloseKeys(t *testing.T) {
 	// `q` in the filter is a character the user is typing, not a quit. The list
 	// state — where `q` used to close — is covered for every list overlay by
 	// overlay_nav_test.go.
-	hw := NewHelpWindow(styles).Open()
+	hw := NewHelpOverlay(styles).Open()
 	hw, _ = hw.Update(KeyPressMsg(Key{Code: 'q'}))
 	if !hw.IsOpen() {
 		t.Fatal("q closed the help window from the filter input")
@@ -157,9 +157,9 @@ func TestHelpWindowCloseKeys(t *testing.T) {
 	}
 }
 
-func TestHelpWindowViewWhenClosed(t *testing.T) {
+func TestHelpOverlayViewWhenClosed(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	// View should return empty when closed
 	view := hw.View()
@@ -175,9 +175,9 @@ func TestHelpWindowViewWhenClosed(t *testing.T) {
 	}
 }
 
-func TestHelpWindowViewWhenOpen(t *testing.T) {
+func TestHelpOverlayViewWhenOpen(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 	hw = hw.Open()
 
 	view := hw.View()
@@ -203,9 +203,9 @@ func TestHelpWindowViewWhenOpen(t *testing.T) {
 	}
 }
 
-func TestHelpWindowWithSize(t *testing.T) {
+func TestHelpOverlayWithSize(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	hw = hw.WithSize(80, 30)
 	// By design the overlay box spans the full terminal width — WithSize
@@ -219,7 +219,7 @@ func TestHelpWindowWithSize(t *testing.T) {
 	}
 }
 
-func TestHelpWindowBuildHelpItems(t *testing.T) {
+func TestHelpOverlayBuildHelpItems(t *testing.T) {
 	items := buildHelpItems()
 
 	if len(items) == 0 {
@@ -262,9 +262,9 @@ func TestHelpWindowBuildHelpItems(t *testing.T) {
 	}
 }
 
-func TestHelpWindowEnterOnCommand(t *testing.T) {
+func TestHelpOverlayEnterOnCommand(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	// Set up items with a :command at index 1
 	hw.items = []HelpItem{
@@ -301,9 +301,9 @@ func TestHelpWindowEnterOnCommand(t *testing.T) {
 	}
 }
 
-func TestHelpWindowEnterOnCommandStripsArgs(t *testing.T) {
+func TestHelpOverlayEnterOnCommandStripsArgs(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	// Set up items with argument syntax in the key
 	hw.items = []HelpItem{
@@ -315,7 +315,7 @@ func TestHelpWindowEnterOnCommandStripsArgs(t *testing.T) {
 	hw = hw.Open()
 
 	// Helper to extract command from the results (must Tab to list first)
-	getCmd := func(hw HelpWindow) string {
+	getCmd := func(hw HelpOverlay) string {
 		// Open returns with search focused; Tab to list
 		hw2, _ := hw.Update(KeyPressMsg(Key{Code: KeyTab}))
 		hw2, results := hw2.Update(KeyPressMsg(Key{Code: KeyEnter}))
@@ -349,9 +349,9 @@ func TestHelpWindowEnterOnCommandStripsArgs(t *testing.T) {
 	}
 }
 
-func TestHelpWindowEnterOnKeyBinding(t *testing.T) {
+func TestHelpOverlayEnterOnKeyBinding(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	// Set up items with a key binding (not a :command)
 	hw.items = []HelpItem{
@@ -375,9 +375,9 @@ func TestHelpWindowEnterOnKeyBinding(t *testing.T) {
 	}
 }
 
-func TestHelpWindowFilter(t *testing.T) {
+func TestHelpOverlayFilter(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 	hw = hw.Open()
 
 	// Initially all items should be shown
@@ -418,9 +418,9 @@ func TestHelpWindowFilter(t *testing.T) {
 	}
 }
 
-func TestHelpWindowFilterSectionHeaders(t *testing.T) {
+func TestHelpOverlayFilterSectionHeaders(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 	hw = hw.Open()
 
 	// Filter for "Ctrl" - should only show Global Shortcuts section (has Ctrl+ entries)
@@ -451,9 +451,9 @@ func TestHelpWindowFilterSectionHeaders(t *testing.T) {
 	}
 }
 
-func TestHelpWindowTabToggle(t *testing.T) {
+func TestHelpOverlayTabToggle(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 	hw = hw.Open()
 
 	// Initially search box is focused
@@ -474,9 +474,9 @@ func TestHelpWindowTabToggle(t *testing.T) {
 	}
 }
 
-func TestHelpWindowFilterEmptyResult(t *testing.T) {
+func TestHelpOverlayFilterEmptyResult(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 	hw = hw.Open()
 
 	// Directly set filter value to test filtering logic
@@ -495,9 +495,9 @@ func TestHelpWindowFilterEmptyResult(t *testing.T) {
 	}
 }
 
-func TestHelpWindowHeaderReappearsOnScrollBack(t *testing.T) {
+func TestHelpOverlayHeaderReappearsOnScrollBack(t *testing.T) {
 	styles := DefaultStyles()
-	hw := NewHelpWindow(styles)
+	hw := NewHelpOverlay(styles)
 
 	// Use a small set of items to control the scenario precisely:
 	// 1 header + 9 items = 10 entries, with SelectorListRows = 8

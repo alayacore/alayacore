@@ -34,7 +34,7 @@ Both Windows reports about the external editor had one root: **a console read th
 was pending when it should not have been.**
 
 *Opening an editor left it unresponsive to the keyboard.* `exec_windows.go` said
-`pauseInput` was a no-op, so releasing the terminal did not stop the input loop.
+`pauseKeys` was a no-op, so releasing the terminal did not stop the input loop.
 Its read was still queued on the console input buffer when the child started, and
 the console delivers input to whoever asked first — so the editor never saw a
 keystroke. On top of that, `TTY.Restore` puts the buffer back into cooked mode
@@ -101,7 +101,7 @@ longer load-bearing; and the mapping runs on every platform's test job, because
 
 **Three events are deliberately not encoded as the console reported them.**
 Backspace carries BS (`0x08`) in its character field, which this parser reads as
-`ctrl+h` — the help window; terminals report Backspace as DEL (`0x7f`) and the
+`ctrl+h` — the help overlay; terminals report Backspace as DEL (`0x7f`) and the
 input field binds `backspace`, so DEL is what is emitted. AltGr is Ctrl+Alt on the
 layouts that need both to type a character; prefixing those characters with ESC
 would turn `@` into `alt+@`, so Alt is reported as a chord only when Ctrl is not
@@ -131,9 +131,9 @@ loop. A 10 ms poll costs one cheap query per interval, caps both the keystroke
 delay and the delay before an editor starts, and owns no extra handle. (Bubble
 Tea's `peekConsInput` settles on the same shape with a 16 ms sleep.)
 
-**Parking is shared, and it is not advisory.** `pauseInput` waits for the loop's
+**Parking is shared, and it is not advisory.** `pauseKeys` waits for the loop's
 acknowledgement before `releaseTerminal` touches the terminal; `Run`'s teardown
-calls `stopInput` and waits for the loop to finish before it writes the
+calls `stopKeys` and waits for the loop to finish before it writes the
 leave-alt-screen sequences, restores the mode, and closes anything. The wait is
 bounded (`readLoopTimeout`) because a bounded wait that expires is better than no
 wait at all — and, given the reads above, expiring means the loop is wedged in
@@ -296,7 +296,7 @@ below for what hosts actually do.
 accept sequence processing cannot host a cursor-addressed UI, and a second render
 path with no host to exercise it in CI is worse than the error message that says
 `--plainio`. The input side now makes the same judgment for the same reason:
-`newInput` asks the handle whether it is a console input buffer and refuses to
+`newKeyReader` asks the handle whether it is a console input buffer and refuses to
 start if it is not (`program_input_windows.go`).
 
 ## What is proven where
@@ -346,9 +346,9 @@ Covered by tests that run there:
 - `input_field_test.go` → `TestInputFieldIgnoresEscapeKeys` — the field's half of
   the same contract: a key that is not text inserts nothing, which is why an ESC
   that reaches the prompt is invisible rather than stored.
-- `program_input_test.go` — the parking protocol: `pauseInput` does not return
+- `program_input_test.go` — the parking protocol: `pauseKeys` does not return
   while a read is in flight, a parked loop starts no reads and delivers what
-  arrived only after it is resumed, and `stopInput` returns only once the loop has
+  arrived only after it is resumed, and `stopKeys` returns only once the loop has
   finished. Also build-tagged for nothing, so the Windows job runs these against
   the loop it used to be unable to park.
 - `program_input_cut_test.go` — that a sequence a read boundary cuts in half is
@@ -383,7 +383,7 @@ Covered by tests that run there:
 - `program_input_unix_test.go` — that the real Unix source keeps the promise the
   protocol is built on: it is between reads within one poll timeout, and the
   terminal is left alone while parked.
-- `program_input_windows_test.go` — that `newInput` refuses a handle that is not a
+- `program_input_windows_test.go` — that `newKeyReader` refuses a handle that is not a
   console input buffer, with an error that says so. A runner's stdin is a pipe,
   which is exactly the wrong kind of stream, so this is the one Windows startup
   decision a runner can observe.
@@ -391,7 +391,7 @@ Covered by tests that run there:
   the half of the delayed-prompt fix that is not about reading: the process's own
   standard streams are not this program's to close.
 - `program_resize_poll_test.go` — `refreshSize` queues exactly one
-  `WindowSizeMsg` per real change (`TestConsecutiveTicksQueueOneResizeMessage`
+  `ScreenSizeMsg` per real change (`TestConsecutiveTicksQueueOneResizeMessage`
   sends three ticks and counts one message), does not advance the tracked size
   when the send is dropped (so the next tick retries), and is driven by a
   `tickMsg` through the actual event loop.
@@ -406,7 +406,7 @@ the 250ms tick that is ~1µs of CPU per second of running the UI — which is wh
 branch.
 
 It cannot storm, and the reason is structural rather than a rate limit: every
-`WindowSizeMsg` sender in the tree takes the size from `Screen.Size()`, and the
+`ScreenSizeMsg` sender in the tree takes the size from `Screen.Size()`, and the
 tracked pair is only ever assigned by the event loop. There are four places a
 message can come from — `run`'s initial frame, `watchSignals` (where a resize
 signal exists), `refreshSize` on the tick, and `acquireTerminal` after a child
@@ -450,7 +450,7 @@ onto a path no runner can exercise, so these are not academic:
 - [ ] The chords the application binds: Ctrl+A/C/D/G/H/J/L/O/P/R/S/U/W, F1, and
       Ctrl+J versus Enter (the line-break split, which Ctrl+Enter should also
       reach as a line break).
-- [ ] Function keys — F1 is the one the help window is bound to, and the SS3/CSI
+- [ ] Function keys — F1 is the one the help overlay is bound to, and the SS3/CSI
       split is where a hand-written table is most likely to be wrong.
 - [ ] A CJK and an emoji input, typed and pasted (the surrogate pairing lives in
       `keyEncoder`, not in the console).

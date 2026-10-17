@@ -1,6 +1,6 @@
 package terminal
 
-// HelpWindow manages a help overlay that displays keybindings and commands.
+// HelpOverlay manages a help overlay that displays keybindings and commands.
 // It provides a filter input to search items, following the same pattern
 // as ModelSelector.
 
@@ -27,12 +27,12 @@ type HelpItem struct {
 	searchStr   string
 }
 
-// HelpWindow manages a help overlay that displays keybindings and commands.
-// HelpWindow is an overlay showing keybindings and commands.
+// HelpOverlay manages a help overlay that displays keybindings and commands.
+// HelpOverlay is an overlay showing keybindings and commands.
 //
 // All fields are Elm UI state (value types, copied on every WithXxx).
 // No external dependencies — help items are built from static definitions.
-type HelpWindow struct {
+type HelpOverlay struct {
 	FilteredListCore
 
 	items          []HelpItem
@@ -40,10 +40,10 @@ type HelpWindow struct {
 	keyColumnWidth int
 }
 
-// NewHelpWindow creates a new help window.
-func NewHelpWindow(styles *Styles) HelpWindow {
+// NewHelpOverlay creates a new help window.
+func NewHelpOverlay(styles *Styles) HelpOverlay {
 	input := newFilterInput("Filter command or key...")
-	hw := HelpWindow{
+	hw := HelpOverlay{
 		items: buildHelpItems(),
 	}
 	hw.Width = 72
@@ -104,7 +104,7 @@ func buildHelpItems() []HelpItem {
 		{ID: nextID(), Key: "g", Description: "Go to first window", Type: HelpItemKey},
 		{ID: nextID(), Key: "G", Description: "Follow the last window", Type: HelpItemKey},
 		{ID: nextID(), Key: "Home/End", Description: "First / last window", Type: HelpItemKey},
-		{ID: nextID(), Key: "H/L/M", Description: "Cursor top/btm/mid", Type: HelpItemKey},
+		{ID: nextID(), Key: "H/L/M", Description: "ScreenCursor top/btm/mid", Type: HelpItemKey},
 		{ID: nextID(), Key: "e", Description: "Open in editor", Type: HelpItemKey},
 		{ID: nextID(), Key: "f/b", Description: "Next/prev prompt", Type: HelpItemKey},
 		{ID: nextID(), Key: ":", Description: "Enter command mode", Type: HelpItemKey},
@@ -120,7 +120,7 @@ func buildHelpItems() []HelpItem {
 	return items
 }
 
-func (hw HelpWindow) recalculateColumnWidths() HelpWindow {
+func (hw HelpOverlay) recalculateColumnWidths() HelpOverlay {
 	maxKeyLen := 0
 	maxDescLen := 0
 	for _, item := range hw.items {
@@ -149,22 +149,22 @@ func (hw HelpWindow) recalculateColumnWidths() HelpWindow {
 	return hw
 }
 
-func (hw HelpWindow) WithSize(width, height int) HelpWindow {
+func (hw HelpOverlay) WithSize(width, height int) HelpOverlay {
 	hw.FilteredListCore = hw.FilteredListCore.WithSize(width, height)
 	return hw.recalculateColumnWidths()
 }
 
-func (hw HelpWindow) WithStyles(styles *Styles) HelpWindow {
+func (hw HelpOverlay) WithStyles(styles *Styles) HelpOverlay {
 	hw.FilteredListCore = hw.FilteredListCore.WithStyles(styles)
 	return hw.recalculateColumnWidths()
 }
 
-func (hw HelpWindow) WithFocus(focused bool) HelpWindow {
+func (hw HelpOverlay) WithFocus(focused bool) HelpOverlay {
 	hw.FilteredListCore = hw.FilteredListCore.WithFocus(focused)
 	return hw
 }
 
-func (hw HelpWindow) Open() HelpWindow {
+func (hw HelpOverlay) Open() HelpOverlay {
 	hw.State = FilteredListOpen
 	hw.FilterInput = hw.FilterInput.WithValue("")
 	hw.lastFilterValue = "\x00"
@@ -178,12 +178,12 @@ func (hw HelpWindow) Open() HelpWindow {
 	return hw
 }
 
-func (hw HelpWindow) Close() HelpWindow {
+func (hw HelpOverlay) Close() HelpOverlay {
 	hw.FilteredListCore = hw.FilteredListCore.Close()
 	return hw
 }
 
-func (hw HelpWindow) updateFilteredItems() HelpWindow {
+func (hw HelpOverlay) updateFilteredItems() HelpOverlay {
 	filter := strings.ToLower(hw.FilterInput.Value())
 	if filter == hw.lastFilterValue {
 		return hw
@@ -226,12 +226,12 @@ func (hw HelpWindow) updateFilteredItems() HelpWindow {
 	return hw
 }
 
-func (hw HelpWindow) filteredLen() int {
+func (hw HelpOverlay) filteredLen() int {
 	return len(hw.filteredItems)
 }
 
 //nolint:gocyclo // key dispatch over filter/list/focus states; each case is simple
-func (hw HelpWindow) Update(msg Msg) (HelpWindow, []Result) {
+func (hw HelpOverlay) Update(msg Msg) (HelpOverlay, []Result) {
 	// A paste is text for the filter box; the re-filter matches typing.
 	if pmsg, isPaste := msg.(PasteMsg); isPaste {
 		var changed bool
@@ -307,7 +307,7 @@ func (hw HelpWindow) Update(msg Msg) (HelpWindow, []Result) {
 	return hw, nil
 }
 
-func (hw HelpWindow) moveDown() HelpWindow {
+func (hw HelpOverlay) moveDown() HelpOverlay {
 	for i := hw.SelectedIdx + 1; i < hw.filteredLen(); i++ {
 		if !hw.filteredItems[i].IsSection {
 			hw.SelectedIdx = i
@@ -317,7 +317,7 @@ func (hw HelpWindow) moveDown() HelpWindow {
 	return hw
 }
 
-func (hw HelpWindow) moveUp() HelpWindow {
+func (hw HelpOverlay) moveUp() HelpOverlay {
 	for i := hw.SelectedIdx - 1; i >= 0; i-- {
 		if !hw.filteredItems[i].IsSection {
 			hw.SelectedIdx = i
@@ -327,7 +327,7 @@ func (hw HelpWindow) moveUp() HelpWindow {
 	return hw
 }
 
-func (hw HelpWindow) firstSelectableIdx() int {
+func (hw HelpOverlay) firstSelectableIdx() int {
 	for i, item := range hw.filteredItems {
 		if !item.IsSection {
 			return i
@@ -336,7 +336,7 @@ func (hw HelpWindow) firstSelectableIdx() int {
 	return 0
 }
 
-func (hw HelpWindow) skipSectionHeaders() HelpWindow {
+func (hw HelpOverlay) skipSectionHeaders() HelpOverlay {
 	if hw.SelectedIdx < 0 || hw.SelectedIdx >= hw.filteredLen() {
 		return hw
 	}
@@ -358,13 +358,13 @@ func (hw HelpWindow) skipSectionHeaders() HelpWindow {
 	return hw
 }
 
-func (hw HelpWindow) clampSelection() HelpWindow {
+func (hw HelpOverlay) clampSelection() HelpOverlay {
 	hw.FilteredListCore = hw.FilteredListCore.ClampSelection(hw.filteredLen())
 	hw = hw.skipSectionHeaders()
 	return hw.ensureVisible()
 }
 
-func (hw HelpWindow) ensureVisible() HelpWindow {
+func (hw HelpOverlay) ensureVisible() HelpOverlay {
 	listHeight := SelectorListRows
 	if hw.SelectedIdx <= hw.ScrollIdx {
 		hw.ScrollIdx = max(0, hw.SelectedIdx-1)
@@ -374,7 +374,7 @@ func (hw HelpWindow) ensureVisible() HelpWindow {
 	return hw
 }
 
-func (hw HelpWindow) View() View {
+func (hw HelpOverlay) View() View {
 	if hw.State == FilteredListClosed {
 		return NewView("")
 	}
@@ -422,7 +422,7 @@ func (hw HelpWindow) View() View {
 	return NewView(title + "\n" + filterBox + "\n" + listBody + "\n" + helpBar)
 }
 
-func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {
+func (hw HelpOverlay) renderItem(item HelpItem, selected bool) string {
 	innerWidth := max(0, hw.Width)
 
 	if item.IsSection {
@@ -457,15 +457,15 @@ func (hw HelpWindow) renderItem(item HelpItem, selected bool) string {
 	return hw.Styles.System.Render(line)
 }
 
-func (hw HelpWindow) RenderOverlay(baseContent string, screenWidth, screenHeight int) string {
+func (hw HelpOverlay) RenderOverlay(baseContent string, screenWidth, screenHeight int) string {
 	if hw.State == FilteredListClosed {
 		return baseContent
 	}
 	return renderOverlay(baseContent, hw.View().Content, screenWidth, screenHeight, 0)
 }
 
-// CursorPosition returns the screen position of the filter input's real
-// terminal cursor when the overlay is open and the filter has focus.
-func (hw HelpWindow) CursorPosition(screenWidth, screenHeight int) (x, y int, ok bool) {
-	return hw.FilteredListCore.CursorPosition(hw.View().Content, screenWidth, screenHeight)
+// CaretPosition returns the screen position of the filter input's real
+// screen cursor when the overlay is open and the filter has focus.
+func (hw HelpOverlay) CaretPosition(screenWidth, screenHeight int) (x, y int, ok bool) {
+	return hw.FilteredListCore.CaretPosition(hw.View().Content, screenWidth, screenHeight)
 }

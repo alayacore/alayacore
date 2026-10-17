@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// TestEnsureCursorVisible_OversizedWindowDoesNotOscillate verifies that
-// repeatedly calling EnsureCursorVisible on a window taller than the
+// TestEnsureWindowCursorVisible_OversizedWindowDoesNotOscillate verifies that
+// repeatedly calling EnsureWindowCursorVisible on a window taller than the
 // viewport does not cause the YOffset to oscillate between two positions.
-func TestEnsureCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T) {
+func TestEnsureWindowCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -24,10 +24,10 @@ func TestEnsureCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T) {
 	// Place cursor on the oversized last window
 	display = display.WithWindowCursor(1)
 
-	// Simulate pressing "L" (MoveWindowCursorToBottom + EnsureCursorVisible + updateContent)
+	// Simulate pressing "L" (MoveWindowCursorToBottom + EnsureWindowCursorVisible + updateContent)
 	// The first press scrolls to make the window visible
 	display, _ = display.MoveWindowCursorToBottom()
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
 	yOffsetAfterFirst := display.scrollView.YOffset()
@@ -35,7 +35,7 @@ func TestEnsureCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T) {
 
 	// Press "L" a second time — should NOT change the YOffset
 	display, _ = display.MoveWindowCursorToBottom()
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
 	yOffsetAfterSecond := display.scrollView.YOffset()
@@ -43,7 +43,7 @@ func TestEnsureCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T) {
 
 	// Press "L" a third time — must stay stable
 	display, _ = display.MoveWindowCursorToBottom()
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
 	yOffsetAfterThird := display.scrollView.YOffset()
@@ -55,10 +55,10 @@ func TestEnsureCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T) {
 	}
 }
 
-// TestEnsureCursorVisible_OversizedWindowScrollsWhenOffScreen verifies that
-// EnsureCursorVisible still scrolls when an oversized window is completely
+// TestEnsureWindowCursorVisible_OversizedWindowScrollsWhenOffScreen verifies that
+// EnsureWindowCursorVisible still scrolls when an oversized window is completely
 // off-screen (entirely above or entirely below the viewport).
-func TestEnsureCursorVisible_OversizedWindowScrollsWhenOffScreen(t *testing.T) {
+func TestEnsureWindowCursorVisible_OversizedWindowScrollsWhenOffScreen(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -81,10 +81,10 @@ func TestEnsureCursorVisible_OversizedWindowScrollsWhenOffScreen(t *testing.T) {
 
 	// Now ensure the oversized window is visible — it's entirely above,
 	// so it should scroll to show its bottom edge
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 
 	yOffsetAfter := display.scrollView.YOffset()
-	t.Logf("YOffset after EnsureCursorVisible: %d", yOffsetAfter)
+	t.Logf("YOffset after EnsureWindowCursorVisible: %d", yOffsetAfter)
 
 	startLine, endLine := wb.GetWindowLineRange(0)
 	vpTop := yOffsetAfter
@@ -99,9 +99,9 @@ func TestEnsureCursorVisible_OversizedWindowScrollsWhenOffScreen(t *testing.T) {
 	}
 }
 
-// TestEnsureCursorVisible_PartiallyVisibleWindowNotMoved verifies that a
+// TestEnsureWindowCursorVisible_PartiallyVisibleWindowNotMoved verifies that a
 // normal-sized window that is already partially visible is NOT scrolled.
-func TestEnsureCursorVisible_PartiallyVisibleWindowNotMoved(t *testing.T) {
+func TestEnsureWindowCursorVisible_PartiallyVisibleWindowNotMoved(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -128,7 +128,7 @@ func TestEnsureCursorVisible_PartiallyVisibleWindowNotMoved(t *testing.T) {
 	yOffsetBefore := display.scrollView.YOffset()
 	t.Logf("YOffset before: %d (viewport %d-%d)", yOffsetBefore, yOffsetBefore, yOffsetBefore+20)
 
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 
 	yOffsetAfter := display.scrollView.YOffset()
 	t.Logf("YOffset after: %d", yOffsetAfter)
@@ -139,9 +139,9 @@ func TestEnsureCursorVisible_PartiallyVisibleWindowNotMoved(t *testing.T) {
 	}
 }
 
-// TestEnsureCursorVisible_OffScreenWindowScrolls verifies that a window
+// TestEnsureWindowCursorVisible_OffScreenWindowScrolls verifies that a window
 // completely off-screen (below viewport) does get scrolled into view.
-func TestEnsureCursorVisible_OffScreenWindowScrolls(t *testing.T) {
+func TestEnsureWindowCursorVisible_OffScreenWindowScrolls(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -162,7 +162,7 @@ func TestEnsureCursorVisible_OffScreenWindowScrolls(t *testing.T) {
 	yOffsetBefore := display.scrollView.YOffset()
 	t.Logf("YOffset before: %d", yOffsetBefore)
 
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 
 	yOffsetAfter := display.scrollView.YOffset()
 	t.Logf("YOffset after: %d", yOffsetAfter)
@@ -180,9 +180,9 @@ func TestEnsureCursorVisible_OffScreenWindowScrolls(t *testing.T) {
 	}
 }
 
-// TestEnsureCursorVisible_EntirelyAboveScrolls verifies that a window
+// TestEnsureWindowCursorVisible_EntirelyAboveScrolls verifies that a window
 // completely above the viewport gets scrolled into view.
-func TestEnsureCursorVisible_EntirelyAboveScrolls(t *testing.T) {
+func TestEnsureWindowCursorVisible_EntirelyAboveScrolls(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -201,7 +201,7 @@ func TestEnsureCursorVisible_EntirelyAboveScrolls(t *testing.T) {
 	display.scrollView = display.scrollView.GotoBottom()
 	display = display.updateContent()
 
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 
 	_, endLine := wb.GetWindowLineRange(3)
 	vpTop := display.scrollView.YOffset()
@@ -230,7 +230,7 @@ func TestAutoFollow_GReEnablesNavigationDisables(t *testing.T) {
 
 	// Start: autoFollow is true by default (SetCursorToLastWindow from init)
 	// Simulate G: enables auto-follow
-	display = display.WithCursorToLastWindow()
+	display = display.WithWindowCursorToLastWindow()
 	display = display.GotoBottom()
 	display = display.updateContent()
 
@@ -242,7 +242,7 @@ func TestAutoFollow_GReEnablesNavigationDisables(t *testing.T) {
 
 	// Now navigate up with k — disables auto-follow
 	display, _ = display.MoveWindowCursorUp()
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
 	if display.autoFollow {
@@ -259,7 +259,7 @@ func TestAutoFollow_GReEnablesNavigationDisables(t *testing.T) {
 	}
 
 	// Now press G again — re-enables auto-follow
-	display = display.WithCursorToLastWindow()
+	display = display.WithWindowCursorToLastWindow()
 	display = display.GotoBottom()
 	display = display.updateContent()
 
@@ -304,15 +304,15 @@ func TestAutoFollow_JNoOpWhenNewWindowBetweenTicks(t *testing.T) {
 	display = display.updateContent()
 
 	// Simulate G: cursor at last window, auto-follow enabled.
-	display = display.WithCursorToLastWindow()
+	display = display.WithWindowCursorToLastWindow()
 	display = display.GotoBottom()
 	display = display.updateContent()
 
 	if !display.autoFollow {
 		t.Fatal("expected autoFollow=true after G")
 	}
-	cursorBefore := display.GetWindowCursor()
-	t.Logf("After G: cursor=%d, autoFollow=%v", cursorBefore, display.autoFollow)
+	windowCursorBefore := display.GetWindowCursor()
+	t.Logf("After G: cursor=%d, autoFollow=%v", windowCursorBefore, display.autoFollow)
 
 	// Press j while at the last window — should be a no-op.
 	var moved bool
@@ -338,8 +338,8 @@ func TestAutoFollow_JNoOpWhenNewWindowBetweenTicks(t *testing.T) {
 	if !display.autoFollow {
 		t.Error("autoFollow should NOT be disabled by j when a new window was appended between ticks")
 	}
-	if display.GetWindowCursor() != cursorBefore {
-		t.Errorf("cursor should stay at %d, got %d", cursorBefore, display.GetWindowCursor())
+	if display.GetWindowCursor() != windowCursorBefore {
+		t.Errorf("cursor should stay at %d, got %d", windowCursorBefore, display.GetWindowCursor())
 	}
 
 	// L (MoveWindowCursorToBottom) should also be a no-op while auto-following.
@@ -353,7 +353,7 @@ func TestAutoFollow_JNoOpWhenNewWindowBetweenTicks(t *testing.T) {
 
 	// Now simulate the tick handler: SetCursorToLastWindow advances cursor
 	// to the new last window and keeps auto-follow.
-	display = display.WithCursorToLastWindow()
+	display = display.WithWindowCursorToLastWindow()
 	display = display.GotoBottom()
 	display = display.updateContent()
 
@@ -365,10 +365,10 @@ func TestAutoFollow_JNoOpWhenNewWindowBetweenTicks(t *testing.T) {
 	}
 }
 
-// TestScrollCursorToTop_PositionsWindowAtTop verifies that ScrollCursorToTop
+// TestScrollWindowCursorToTop_PositionsWindowAtTop verifies that ScrollWindowCursorToTop
 // scrolls the viewport so the cursor window's start line is at the top of the
 // viewport, even when the window is already partially visible.
-func TestScrollCursorToTop_PositionsWindowAtTop(t *testing.T) {
+func TestScrollWindowCursorToTop_PositionsWindowAtTop(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -385,35 +385,35 @@ func TestScrollCursorToTop_PositionsWindowAtTop(t *testing.T) {
 
 	// Place cursor on window 8 (near the end) and bring it into view
 	display = display.WithWindowCursor(8)
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
 	// Verify the window is visible but NOT necessarily at the top
 	startLine, _ := wb.GetWindowLineRange(8)
 	viewportTop := display.scrollView.YOffset()
-	t.Logf("Before ScrollCursorToTop: startLine=%d, viewportTop=%d", startLine, viewportTop)
+	t.Logf("Before ScrollWindowCursorToTop: startLine=%d, viewportTop=%d", startLine, viewportTop)
 
-	// Now use ScrollCursorToTop — should position the window at the top
-	display = display.ScrollCursorToTop()
+	// Now use ScrollWindowCursorToTop — should position the window at the top
+	display = display.ScrollWindowCursorToTop()
 	display = display.updateContent()
 
 	newViewportTop := display.scrollView.YOffset()
-	t.Logf("After ScrollCursorToTop: startLine=%d, viewportTop=%d", startLine, newViewportTop)
+	t.Logf("After ScrollWindowCursorToTop: startLine=%d, viewportTop=%d", startLine, newViewportTop)
 
 	if newViewportTop != startLine {
 		t.Errorf("expected viewport top at %d (window start), got %d", startLine, newViewportTop)
 	}
 }
 
-// TestScrollCursorToTop_PartiallyVisibleWindowMovesToTop verifies that
+// TestScrollWindowCursorToTop_PartiallyVisibleWindowMovesToTop verifies that
 // when a window is partially visible at the bottom of the viewport,
-// ScrollCursorToTop scrolls it to the top (unlike EnsureCursorVisible
+// ScrollWindowCursorToTop scrolls it to the top (unlike EnsureWindowCursorVisible
 // which would leave it in place).
-func TestScrollCursorToTop_PartiallyVisibleWindowMovesToTop(t *testing.T) {
+func TestScrollWindowCursorToTop_PartiallyVisibleWindowMovesToTop(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
-	// Create windows (user text — expanded by default: its own line plus
+	// Create windows (user text — unfolded by default: its own line plus
 	// the five content lines each)
 	for i := range 10 {
 		wb.AppendOrUpdate(tagUserText, "window-"+strings.Repeat("x", i+1),
@@ -428,7 +428,7 @@ func TestScrollCursorToTop_PartiallyVisibleWindowMovesToTop(t *testing.T) {
 
 	// Set cursor to a window and ensure it's visible (but not at top)
 	display = display.WithWindowCursor(5)
-	display = display.EnsureCursorVisible()
+	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
 	startLine5, endLine5 := wb.GetWindowLineRange(5)
@@ -443,27 +443,27 @@ func TestScrollCursorToTop_PartiallyVisibleWindowMovesToTop(t *testing.T) {
 	t.Logf("Before: viewport=%d-%d, window starts at %d",
 		viewportTopBefore, viewportTopBefore+viewportHeight, startLine5)
 
-	// EnsureCursorVisible would NOT scroll (window is partially visible)
-	display = display.EnsureCursorVisible()
+	// EnsureWindowCursorVisible would NOT scroll (window is partially visible)
+	display = display.EnsureWindowCursorVisible()
 	viewportTopAfterEnsure := display.scrollView.YOffset()
 	if viewportTopAfterEnsure != viewportTopBefore {
-		t.Fatalf("EnsureCursorVisible should not have scrolled (it did: %d -> %d)",
+		t.Fatalf("EnsureWindowCursorVisible should not have scrolled (it did: %d -> %d)",
 			viewportTopBefore, viewportTopAfterEnsure)
 	}
 
-	// ScrollCursorToTop SHOULD scroll to put window at top
-	display = display.ScrollCursorToTop()
+	// ScrollWindowCursorToTop SHOULD scroll to put window at top
+	display = display.ScrollWindowCursorToTop()
 	viewportTopAfterScroll := display.scrollView.YOffset()
-	t.Logf("After ScrollCursorToTop: viewportTop=%d, expected=%d", viewportTopAfterScroll, startLine5)
+	t.Logf("After ScrollWindowCursorToTop: viewportTop=%d, expected=%d", viewportTopAfterScroll, startLine5)
 
 	if viewportTopAfterScroll != startLine5 {
 		t.Errorf("expected viewport top at %d (window start), got %d", startLine5, viewportTopAfterScroll)
 	}
 }
 
-// TestScrollCursorToTop_NoCursorDoesNothing verifies that ScrollCursorToTop
+// TestScrollWindowCursorToTop_NoCursorDoesNothing verifies that ScrollWindowCursorToTop
 // is a no-op when no window cursor is set.
-func TestScrollCursorToTop_NoCursorDoesNothing(t *testing.T) {
+func TestScrollWindowCursorToTop_NoCursorDoesNothing(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -473,18 +473,18 @@ func TestScrollCursorToTop_NoCursorDoesNothing(t *testing.T) {
 
 	// No cursor set (-1 is the default)
 	yOffsetBefore := display.scrollView.YOffset()
-	display = display.ScrollCursorToTop()
+	display = display.ScrollWindowCursorToTop()
 	yOffsetAfter := display.scrollView.YOffset()
 
 	if yOffsetBefore != yOffsetAfter {
-		t.Errorf("ScrollCursorToTop should be no-op with no cursor; YOffset changed %d -> %d",
+		t.Errorf("ScrollWindowCursorToTop should be no-op with no cursor; YOffset changed %d -> %d",
 			yOffsetBefore, yOffsetAfter)
 	}
 }
 
-// TestScrollCursorToTop_AlreadyAtTopIsStable verifies that calling
-// ScrollCursorToTop when the window is already at the top is idempotent.
-func TestScrollCursorToTop_AlreadyAtTopIsStable(t *testing.T) {
+// TestScrollWindowCursorToTop_AlreadyAtTopIsStable verifies that calling
+// ScrollWindowCursorToTop when the window is already at the top is idempotent.
+func TestScrollWindowCursorToTop_AlreadyAtTopIsStable(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -497,17 +497,17 @@ func TestScrollCursorToTop_AlreadyAtTopIsStable(t *testing.T) {
 	display = display.updateContent()
 
 	display = display.WithWindowCursor(2)
-	display = display.ScrollCursorToTop()
+	display = display.ScrollWindowCursorToTop()
 	display = display.updateContent()
 
 	yOffset1 := display.scrollView.YOffset()
 
 	// Call again — should be stable
-	display = display.ScrollCursorToTop()
+	display = display.ScrollWindowCursorToTop()
 	display = display.updateContent()
 
 	yOffset2 := display.scrollView.YOffset()
 	if yOffset1 != yOffset2 {
-		t.Errorf("ScrollCursorToTop not stable: first=%d, second=%d", yOffset1, yOffset2)
+		t.Errorf("ScrollWindowCursorToTop not stable: first=%d, second=%d", yOffset1, yOffset2)
 	}
 }

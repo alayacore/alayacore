@@ -334,7 +334,7 @@ func countPadded(rows []visualLine) int {
 // it needs content wide enough that the count is not zero.
 //
 // An ASCII row that a hard wrap broke is exactly the width, so it asks for no
-// padding — which is why TestCursorFramePadsTheRowsItDraws, whose fixture is ASCII,
+// padding — which is why TestWindowCursorFramePadsTheRowsItDraws, whose fixture is ASCII,
 // passes whether the frame reads the count a row carries or ignores it. Two cells
 // against an odd width cannot divide evenly, and then a frame that stopped
 // consulting the count draws a short row and every row after it lands one terminal

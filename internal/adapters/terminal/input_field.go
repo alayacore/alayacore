@@ -1,7 +1,7 @@
 package terminal
 
 // InputField is a text input component. Its display is always one line — the
-// line the cursor is on — and its *capacity* is one line or many: a multi-line
+// line the caret is on — and its *capacity* is one line or many: a multi-line
 // field's value may contain line breaks (Up/Down navigate them, a pasted block
 // keeps them) while a single-line field's value may not, and every door that
 // could introduce one removes it. Capacity is set once at construction
@@ -18,7 +18,7 @@ import (
 )
 
 // InputField is the Elm-style model for a text input with multi-line support
-// but single-line display. Cursor up/down navigates between lines.
+// but single-line display. Caret up/down navigates between lines.
 //
 // Horizontal scrolling is modeled with a rune-index visible start
 // (visStart), never a raw cell offset: a rune index is inherently a rune
@@ -27,7 +27,7 @@ import (
 // which line visStart belongs to so that a line change resets the view.
 type InputField struct {
 	value       []rune
-	pos         int // cursor position in value
+	pos         int // caret position in value
 	goalCol     int // remembered column position for up/down navigation (-1 = none)
 	visLine     int // line start index of the current visible start
 	visStart    int // visible start: rune index within the current line
@@ -127,7 +127,7 @@ func (m InputField) handleKeyMsg(msg KeyMsg) (InputField, []Result) {
 	return m, nil
 }
 
-// handleMovement returns true if the key was a cursor movement.
+// handleMovement returns true if the key was a caret movement.
 func (m InputField) handleMovement(key Chord) (InputField, bool) {
 	switch key {
 	case keyLeft:
@@ -150,15 +150,15 @@ func (m InputField) handleMovement(key Chord) (InputField, bool) {
 		m.pos = m.lineStart(m.pos)
 		m.visStart = 0
 		m.goalCol = -1
-		return m.ensureCursorVisible(), true
+		return m.ensureCaretVisible(), true
 	case keyEnd:
 		m.pos = m.lineEnd(m.pos)
 		m.goalCol = -1
-		return m.ensureCursorVisible(), true
+		return m.ensureCaretVisible(), true
 	default:
 		return m, false
 	}
-	return m.ensureCursorVisible(), true
+	return m.ensureCaretVisible(), true
 }
 
 // handleDeletion returns true if the key was a deletion action.
@@ -171,7 +171,7 @@ func (m InputField) handleDeletion(key Chord) (InputField, bool) {
 	default:
 		return m, false
 	}
-	return m.ensureCursorVisible(), true
+	return m.ensureCaretVisible(), true
 }
 
 // handleInsertion returns true if the key inserted a character. A printable
@@ -190,11 +190,11 @@ func (m InputField) handleInsertion(key Chord) (InputField, bool) {
 	m.value = slices.Insert(m.value, m.pos, key.Code)
 	m.pos++
 	m.goalCol = -1
-	return m.ensureCursorVisible(), true
+	return m.ensureCaretVisible(), true
 }
 
-// insertNewline inserts a single line break at the cursor. It is the prompt's
-// Ctrl+J action (see keybinds.go → handleInputKeys).
+// insertNewline inserts a single line break at the caret. It is the prompt's
+// Ctrl+J action (see keybinds.go → handlePromptKeys).
 //
 // This is deliberately a separate primitive rather than
 // handlePaste(PasteMsg{Content: "\n"}): handlePaste trims trailing newlines
@@ -206,7 +206,7 @@ func (m InputField) handleInsertion(key Chord) (InputField, bool) {
 //
 // goalCol is reset for the same reason the character-insertion path resets it:
 // the remembered goal column of up/down navigation belongs to the line the
-// cursor was on, and a new line starts at column 0.
+// caret was on, and a new line starts at column 0.
 //
 // On a single-line field there is no line to break to, so it is a no-op — the
 // same disposition a pasted break gets (stripLineBreaks). Only the prompt, the
@@ -219,7 +219,7 @@ func (m InputField) insertNewline() InputField {
 	m.value = slices.Insert(m.value, m.pos, '\n')
 	m.pos++
 	m.goalCol = -1
-	return m.ensureCursorVisible()
+	return m.ensureCaretVisible()
 }
 
 // blockText is the one rule for text that arrives as a *block* rather than as
@@ -232,7 +232,7 @@ func (m InputField) insertNewline() InputField {
 // disagree with every other terminal about line endings: the clipboard ends lines
 // with CRLF, and an editor writing a fresh temp file (notepad always, vim with
 // fileformat=dos) hands back CRLF too. A bare CR inside the value is not merely
-// untidy — it reaches the frame verbatim, and on screen it moves the cursor to
+// untidy — it reaches the frame verbatim, and on screen it moves the caret to
 // column 0, painting the rest of the line over the beginning of another.
 //
 // Trailing newlines go because both sources add one: a terminal appends it to a
@@ -271,7 +271,7 @@ func blockText(content string) []rune {
 	return filtered
 }
 
-// handlePaste inserts pasted text at the cursor position, filtered by the block
+// handlePaste inserts pasted text at the caret position, filtered by the block
 // rule (blockText) that an editor's buffer goes through as well, and then
 // stripped of line breaks when the field is single-line. Both rules apply here
 // and in WithBlockValue — the two doors a block enters by — so the field's
@@ -287,7 +287,7 @@ func (m InputField) handlePaste(msg PasteMsg) InputField {
 	m.value = slices.Insert(m.value, m.pos, filtered...)
 	m.pos += len(filtered)
 	m.goalCol = -1
-	return m.ensureCursorVisible()
+	return m.ensureCaretVisible()
 }
 
 // stripLineBreaks returns runes with every line break removed. It is the whole
@@ -312,18 +312,18 @@ func stripLineBreaks(runes []rune) []rune {
 	return out
 }
 
-// ensureCursorVisible scrolls the field's viewport so the cursor — and the
+// ensureCaretVisible scrolls the field's viewport so the caret — and the
 // whole of the grapheme cluster it sits in — is inside the visible text.
 //
 // Everything it decides with is a prefix sum over the same line's clusters:
 // where the stored visible start anchors now that inserts have shifted the
-// boundaries, the cells before it, the cells before the cursor, the width of
-// the cluster under the cursor, and whether the line fits at all. probeLine
+// boundaries, the cells before it, the cells before the caret, the width of
+// the cluster under the caret, and whether the line fits at all. probeLine
 // takes them in one pass. Asked separately they were five to eight walks per
 // keystroke, and a walk encodes the line as a string before it can segment it —
 // which is what made typing into a 4000-cell line cost half a millisecond and
 // 57 KB of re-encoding per character (BenchmarkInputFieldInsertLongLine).
-func (m InputField) ensureCursorVisible() InputField {
+func (m InputField) ensureCaretVisible() InputField {
 	if m.width <= 0 {
 		return m
 	}
@@ -338,7 +338,7 @@ func (m InputField) ensureCursorVisible() InputField {
 	}
 	// The value is mutable: inserts/deletes can shrink the current line, so
 	// a previously valid visStart may now point past its end. Clamp it; the
-	// scroll logic below then pulls the view back to the cursor.
+	// scroll logic below then pulls the view back to the caret.
 	if m.visStart > len(line) {
 		m.visStart = len(line)
 	}
@@ -356,58 +356,58 @@ func (m InputField) ensureCursorVisible() InputField {
 	}
 
 	switch {
-	case p.cursorCell < p.startCell:
-		// Cursor left of the window: show the cluster containing the cursor
+	case p.caretCell < p.startCell:
+		// Caret left of the window: show the cluster containing the caret
 		// at the left edge. Anchor at the cluster start so visStart stays a
-		// cluster boundary even when the cursor sits inside a cluster (e.g.
+		// cluster boundary even when the caret sits inside a cluster (e.g.
 		// between an emoji and its variation selector).
 		m.visStart = p.clusterAt
-	case p.cursorCell+p.need > p.startCell+m.width:
-		// Scroll so the cluster at the cursor is fully visible: the visible
+	case p.caretCell+p.need > p.startCell+m.width:
+		// Scroll so the cluster at the caret is fully visible: the visible
 		// start must be a cluster boundary with
-		// startCell >= cursorCell + need - width. Rounding that target up
+		// startCell >= caretCell + need - width. Rounding that target up
 		// to a cluster boundary (firstRuneStartAtLeast) yields rel <=
 		// width-need, so the cluster is never clipped by the right edge —
-		// and for 1-cell clusters the cursor can sit at rel = width-1
+		// and for 1-cell clusters the caret can sit at rel = width-1
 		// instead of being pushed further left than necessary.
-		start, startCells := firstRuneStartAtLeast(line, p.cursorCell+p.need-m.width)
+		start, startCells := firstRuneStartAtLeast(line, p.caretCell+p.need-m.width)
 		m.visStart = start
 		// Physical limit: when the viewport cannot fit the cluster at the
-		// cursor (need > width), keep at least the cursor block visible. The
+		// caret (need > width), keep at least the caret block visible. The
 		// walk that found start counted the cells before it on the way.
-		if startCells > p.cursorCell {
+		if startCells > p.caretCell {
 			m.visStart = p.clusterAt
 		}
 	}
 	return m
 }
 
-// lineProbe is what one pass over a line's clusters tells ensureCursorVisible.
+// lineProbe is what one pass over a line's clusters tells ensureCaretVisible.
 type lineProbe struct {
-	fits       bool // the whole line draws within the field's width
-	anchored   int  // vis, moved to the start of the cluster it falls inside
-	startCell  int  // cells drawn before anchored
-	cursorCell int  // cells drawn before cursor
-	need       int  // cells the cluster under the cursor draws (1 at end-of-line)
-	clusterAt  int  // where that cluster starts (cursor itself at end-of-line)
+	fits      bool // the whole line draws within the field's width
+	anchored  int  // vis, moved to the start of the cluster it falls inside
+	startCell int  // cells drawn before anchored
+	caretCell int  // cells drawn before caret
+	need      int  // cells the cluster under the caret draws (1 at end-of-line)
+	clusterAt int  // where that cluster starts (caret itself at end-of-line)
 }
 
 // probeLine walks line's clusters once and answers every prefix question the
 // caller has about two positions in it.
 //
-// cursor and vis are rune indices into line, each in [0, len(line)]. A position
+// caret and vis are rune indices into line, each in [0, len(line)]. A position
 // AT len(line) belongs to no cluster and is reported as end-of-line — which is
 // what a caret after the last character and a visible start clamped to the end
 // both are, and why need degrades to 1 there: no cluster has to fit, but the
-// cursor block still needs a cell.
+// caret block still needs a cell.
 //
 // The pass stops as soon as no answer can still change: the line is known not to
 // fit and both positions have been passed. "fits" is only ever asked as a
 // yes/no, so the exact width of a long line is nobody's business — a caret near
 // the left edge of a 4000-cell line costs the caret's neighborhood, not the
 // line.
-func probeLine(line []rune, cursor, vis, width int) lineProbe {
-	p := lineProbe{fits: true, anchored: vis, clusterAt: cursor, need: 1}
+func probeLine(line []rune, caret, vis, width int) lineProbe {
+	p := lineProbe{fits: true, anchored: vis, clusterAt: caret, need: 1}
 	if len(line) == 0 {
 		return p
 	}
@@ -419,7 +419,7 @@ func probeLine(line []rune, cursor, vis, width int) lineProbe {
 			p.startCell = cells
 			seenVis = true
 		}
-		if !seenCursor && cursor >= start && cursor < end {
+		if !seenCursor && caret >= start && caret < end {
 			p.clusterAt = start
 			p.need = w
 			seenCursor = true
@@ -427,11 +427,11 @@ func probeLine(line []rune, cursor, vis, width int) lineProbe {
 			// variation selector, or after the "e" of an "e" + combining acute.
 			// The cells before it are then the cells before the cluster plus
 			// whatever the part of the cluster left of the caret draws on its
-			// own, which is what runesWidth(line[:cursor]) has always reported
-			// and what positions the cursor block. start is a cluster boundary,
+			// own, which is what runesWidth(line[:caret]) has always reported
+			// and what positions the caret block. start is a cluster boundary,
 			// so segmenting from it again gives the same clusters: the two
 			// measures add.
-			p.cursorCell = cells + runesWidth(line[start:cursor])
+			p.caretCell = cells + runesWidth(line[start:caret])
 		}
 		cells += w
 		if cells > width {
@@ -448,8 +448,8 @@ func probeLine(line []rune, cursor, vis, width int) lineProbe {
 		p.startCell = cells
 	}
 	if !seenCursor {
-		p.clusterAt = cursor
-		p.cursorCell = cells
+		p.clusterAt = caret
+		p.caretCell = cells
 	}
 	return p
 }
@@ -503,7 +503,7 @@ func (m InputField) View() string {
 	}
 
 	// The live box pads to fill the input width.
-	// Width comes from the same source as the truncation/cursor math
+	// Width comes from the same source as the truncation/caret math
 	// (runesWidth), so padding never disagrees with the rendered text.
 	valWidth := runesWidth(visible)
 	if m.width <= 0 || valWidth >= m.width {
@@ -592,22 +592,22 @@ func (m InputField) IsActive() bool { return m.active }
 
 func (m InputField) Value() string { return string(m.value) }
 
-// CursorPos returns the cursor position (in runes) within the current value.
-func (m InputField) CursorPos() int { return m.pos }
+// CaretPos returns the caret position (in runes) within the current value.
+func (m InputField) CaretPos() int { return m.pos }
 
-// CursorCell returns the cursor's cell offset within the currently displayed
+// CaretCell returns the caret's cell offset within the currently displayed
 // line after horizontal scrolling (0 = leftmost visible cell of the line).
 // The input field renders only the current line, so the screen y of the
-// cursor never depends on the value's line index. The cell offset is where
-// the cursor block should be rendered — i.e. the first cell of the character
-// under the cursor (or the cell after the last character at end-of-line).
-func (m InputField) CursorCell() int {
+// caret never depends on the value's line index. The cell offset is where
+// the caret block should be rendered — i.e. the first cell of the character
+// under the caret (or the cell after the last character at end-of-line).
+func (m InputField) CaretCell() int {
 	if len(m.value) == 0 {
 		return 0
 	}
 	lineStart, lineEnd := m.currentLine(m.pos)
 	line := m.value[lineStart:lineEnd]
-	relPos := m.pos - lineStart // cursor position within the line
+	relPos := m.pos - lineStart // caret position within the line
 	start := min(m.visStart, len(line))
 	cell := runesWidth(line[:relPos]) - runesWidth(line[:start])
 	if cell < 0 {
@@ -667,7 +667,7 @@ func (m InputField) lineEnd(pos int) int {
 	return e
 }
 
-// ensureGoalColumn sets goalCol from the current cursor column if not set.
+// ensureGoalColumn sets goalCol from the current caret column if not set.
 func (m InputField) ensureGoalColumn() InputField {
 	if m.goalCol >= 0 {
 		return m
@@ -677,7 +677,7 @@ func (m InputField) ensureGoalColumn() InputField {
 	return m
 }
 
-// moveLeft moves the cursor one position left.
+// moveLeft moves the caret one position left.
 // Stops at the start of a line (no wrapping to previous line).
 func (m InputField) moveLeft() InputField {
 	if m.pos <= 0 {
@@ -691,7 +691,7 @@ func (m InputField) moveLeft() InputField {
 	return m
 }
 
-// moveRight moves the cursor one position right.
+// moveRight moves the caret one position right.
 // Stops at the end of a line (no wrapping to next line).
 func (m InputField) moveRight() InputField {
 	if m.pos >= len(m.value) {
@@ -705,7 +705,7 @@ func (m InputField) moveRight() InputField {
 	return m
 }
 
-// moveLineUp moves the cursor up one line, maintaining the column position.
+// moveLineUp moves the caret up one line, maintaining the column position.
 // Returns false if already on the first line.
 func (m InputField) moveLineUp() (InputField, bool) {
 	ls := m.lineStart(m.pos)
@@ -721,7 +721,7 @@ func (m InputField) moveLineUp() (InputField, bool) {
 	return m, true
 }
 
-// moveLineDown moves the cursor down one line, maintaining the column position.
+// moveLineDown moves the caret down one line, maintaining the column position.
 // Returns false if already on the last line.
 func (m InputField) moveLineDown() (InputField, bool) {
 	le := m.lineEnd(m.pos)
@@ -737,7 +737,7 @@ func (m InputField) moveLineDown() (InputField, bool) {
 	return m, true
 }
 
-// deleteBackward deletes the character before the cursor (backspace).
+// deleteBackward deletes the character before the caret (backspace).
 // At the start of a line, it joins with the previous line by removing the \n.
 func (m InputField) deleteBackward() InputField {
 	if m.pos <= 0 {
@@ -746,7 +746,7 @@ func (m InputField) deleteBackward() InputField {
 	if m.value[m.pos-1] == '\n' {
 		ls := m.lineStart(m.pos)
 		m.value = slices.Delete(m.value, m.pos-1, m.pos) // delete the \n
-		// The following line shifts left by one rune, so the cursor (which
+		// The following line shifts left by one rune, so the caret (which
 		// stays at the start of the joined line) moves back one position.
 		// Without this, pos could end up past the end of the value when the
 		// joined line is empty.
@@ -759,7 +759,7 @@ func (m InputField) deleteBackward() InputField {
 	return m
 }
 
-// deleteForward deletes the character at the cursor (delete key).
+// deleteForward deletes the character at the caret (delete key).
 // At the end of a line, it joins with the next line by removing the \n.
 func (m InputField) deleteForward() InputField {
 	if m.pos >= len(m.value) {
@@ -770,13 +770,13 @@ func (m InputField) deleteForward() InputField {
 	return m
 }
 
-func (m InputField) CursorEnd() InputField {
+func (m InputField) CaretEnd() InputField {
 	m.pos = len(m.value)
 	m.goalCol = -1
-	return m.ensureCursorVisible()
+	return m.ensureCaretVisible()
 }
 
-// WithValue replaces the whole value and puts the cursor at the end. A
+// WithValue replaces the whole value and puts the caret at the end. A
 // single-line field strips any line break the value carries, the same rule
 // handlePaste applies, so a caller cannot leave such a field holding a
 // character it cannot represent.
@@ -792,11 +792,11 @@ func (m InputField) WithValue(s string) InputField {
 	// start at 0), which the line-change detection alone cannot distinguish.
 	m.visLine = -1
 	m.visStart = 0
-	return m.ensureCursorVisible()
+	return m.ensureCaretVisible()
 }
 
 // WithBlockValue replaces the value with a block of text that arrived whole —
-// an external editor's buffer — cursor at the end. Routing it through the field
+// an external editor's buffer — caret at the end. Routing it through the field
 // rather than letting the caller run blockText itself keeps the block rule in
 // one place and makes the field's line capacity hold for the editor exactly as
 // it does for a paste: this and handlePaste are the two doors a block enters by.
@@ -804,9 +804,9 @@ func (m InputField) WithBlockValue(s string) InputField {
 	return m.WithValue(string(blockText(s)))
 }
 
-// WithCursorPos sets the cursor position to pos (in runes) within the value.
+// WithCaretPos sets the caret position to pos (in runes) within the value.
 // Clamps to valid range [0, len(value)].
-func (m InputField) WithCursorPos(pos int) InputField {
+func (m InputField) WithCaretPos(pos int) InputField {
 	if pos < 0 {
 		pos = 0
 	}
@@ -815,12 +815,12 @@ func (m InputField) WithCursorPos(pos int) InputField {
 	}
 	m.pos = pos
 	m.goalCol = -1
-	return m.ensureCursorVisible()
+	return m.ensureCaretVisible()
 }
 
 func (m InputField) WithWidth(w int) InputField {
 	m.width = max(0, w)
-	return m.ensureCursorVisible()
+	return m.ensureCaretVisible()
 }
 
 func (m InputField) WithStyles(focused, blurred inputFieldStyle) InputField {

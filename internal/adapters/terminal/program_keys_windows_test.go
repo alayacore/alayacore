@@ -25,14 +25,14 @@ func TestNewInputRefusesANonConsole(t *testing.T) {
 	defer pr.Close()
 	defer pw.Close()
 
-	_, err = newInput(&TTY{in: pr, out: pr})
+	_, err = newKeyReader(&TTY{in: pr, out: pr})
 	if err == nil {
-		t.Fatal("newInput accepted a pipe as a console input buffer")
+		t.Fatal("newKeyReader accepted a pipe as a console input buffer")
 	}
 	// The error has to say what could not be read, because it is the whole
 	// explanation a user gets for a startup that produced no TUI at all.
 	if !strings.Contains(err.Error(), "console keyboard") {
-		t.Errorf("newInput error = %q, want it to name the console keyboard", err)
+		t.Errorf("newKeyReader error = %q, want it to name the console keyboard", err)
 	}
 }
 

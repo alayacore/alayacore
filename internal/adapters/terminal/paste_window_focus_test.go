@@ -40,7 +40,7 @@ func TestPasteLandsWhileTheWindowIsUnfocused(t *testing.T) {
 	}
 
 	feed(t, &m, PasteMsg{Content: "pasted from the menu"})
-	if got := m.input.Value(); got != "pasted from the menu" {
+	if got := m.promptBox.Value(); got != "pasted from the menu" {
 		t.Errorf("prompt after a paste during the blur = %q, want the pasted text", got)
 	}
 
@@ -48,13 +48,13 @@ func TestPasteLandsWhileTheWindowIsUnfocused(t *testing.T) {
 	// that arrives on it was addressed to it. Gating that on window focus is
 	// what deleted the paste.
 	feed(t, &m, KeyPressMsg{Code: '!'})
-	if got, want := m.input.Value(), "pasted from the menu!"; got != want {
+	if got, want := m.promptBox.Value(), "pasted from the menu!"; got != want {
 		t.Errorf("prompt after a key during the blur = %q, want %q", got, want)
 	}
 
 	// And the focus that comes back when the menu closes must not repeat it.
 	feed(t, &m, FocusMsg{})
-	if got, want := m.input.Value(), "pasted from the menu!"; got != want {
+	if got, want := m.promptBox.Value(), "pasted from the menu!"; got != want {
 		t.Errorf("prompt after the focus returned = %q, want it unchanged at %q", got, want)
 	}
 }
@@ -65,22 +65,22 @@ func TestPasteLandsWhileTheWindowIsUnfocused(t *testing.T) {
 func TestOverlayFilterAlsoTakesThePasteWhileUnfocused(t *testing.T) {
 	m := newTestTerminal()
 	feed(t, &m, KeyPressMsg{Code: 'a', Mod: ModCtrl}) // Ctrl+A: the attachment picker
-	if !m.attachmentWindow.IsOpen() {
+	if !m.attachmentOverlay.IsOpen() {
 		t.Fatal("Ctrl+A did not open the attachment window")
 	}
 	feed(t, &m, KeyPressMsg{Code: 'a', Mod: ModCtrl}) // and Ctrl+A again: URL mode
-	if m.attachmentWindow.mode != modeURL {
-		t.Fatalf("mode = %v, want %v", m.attachmentWindow.mode, modeURL)
+	if m.attachmentOverlay.mode != modeURL {
+		t.Fatalf("mode = %v, want %v", m.attachmentOverlay.mode, modeURL)
 	}
 
 	feed(t, &m, BlurMsg{})
 	const url = "https://example.org/a.png"
 	feed(t, &m, PasteMsg{Content: url})
-	if got := m.attachmentWindow.FilterInput.Value(); got != url {
+	if got := m.attachmentOverlay.FilterInput.Value(); got != url {
 		t.Errorf("URL box after a paste during the blur = %q, want %q", got, url)
 	}
-	if m.input.Value() != "" {
-		t.Errorf("the prompt took text meant for the open overlay: %q", m.input.Value())
+	if m.promptBox.Value() != "" {
+		t.Errorf("the prompt took text meant for the open overlay: %q", m.promptBox.Value())
 	}
 }
 
@@ -92,15 +92,15 @@ func TestPaneFocusStillDecidesWhereAPasteGoes(t *testing.T) {
 	m = m.focusDisplay()
 
 	feed(t, &m, PasteMsg{Content: "not for the prompt"})
-	if got := m.input.Value(); got != "" {
+	if got := m.promptBox.Value(); got != "" {
 		t.Errorf("a paste landed in the prompt while the display had focus: %q", got)
 	}
 
 	// Back on the prompt, the same message does land — the gate is the pane,
 	// not the window.
-	m = m.focusInput()
+	m = m.focusPrompt()
 	feed(t, &m, PasteMsg{Content: "for the prompt"})
-	if got := m.input.Value(); got != "for the prompt" {
+	if got := m.promptBox.Value(); got != "for the prompt" {
 		t.Errorf("prompt = %q, want %q", got, "for the prompt")
 	}
 }
@@ -116,13 +116,13 @@ func TestPaneFocusStillDecidesWhereAPasteGoes(t *testing.T) {
 func TestWindowBlurKeepsTheVisualCue(t *testing.T) {
 	m := newTestTerminal()
 	focused := m.View()
-	if focused.Cursor == nil {
+	if focused.ScreenCursor == nil {
 		t.Fatal("the fixture starts with no caret to lose")
 	}
 
 	feed(t, &m, BlurMsg{})
 	blurred := m.View()
-	if blurred.Cursor != nil {
+	if blurred.ScreenCursor != nil {
 		t.Error("the real caret stayed on the screen while the window was unfocused")
 	}
 	if blurred.Content == focused.Content {
@@ -131,7 +131,7 @@ func TestWindowBlurKeepsTheVisualCue(t *testing.T) {
 
 	feed(t, &m, FocusMsg{})
 	back := m.View()
-	if back.Cursor == nil {
+	if back.ScreenCursor == nil {
 		t.Error("the caret did not come back with the window focus")
 	}
 	if back.Content != focused.Content {
@@ -150,16 +150,16 @@ func TestOverlayFilterCueFollowsTheWindowToo(t *testing.T) {
 	if got := m.keyboardTarget(); got != targetOverlayFilter {
 		t.Fatalf("target with the attachment picker open = %v, want the filter box", got)
 	}
-	if m.View().Cursor == nil {
+	if m.View().ScreenCursor == nil {
 		t.Fatal("the overlay filter should own the caret while the window is focused")
 	}
 
 	feed(t, &m, BlurMsg{})
-	if m.View().Cursor != nil {
+	if m.View().ScreenCursor != nil {
 		t.Error("the overlay kept the real caret while the window was unfocused")
 	}
 	feed(t, &m, PasteMsg{Content: "x"})
-	if m.attachmentWindow.FilterInput.Value() != "x" {
+	if m.attachmentOverlay.FilterInput.Value() != "x" {
 		t.Error("the overlay filter stopped taking text when the window lost focus")
 	}
 }

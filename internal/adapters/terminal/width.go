@@ -15,7 +15,7 @@ package terminal
 //     on 4193 codepoints of the two, 237 of them printable; a keycap
 //     ("1" + U+FE0F + U+20E3) is 1 cell to uniseg and 2 to displaywidth. A
 //     4-cell budget was then filled with what measured 5 cells, and the row
-//     overflowed by one: the collapsed summary that pushed the next row
+//     overflowed by one: the folded summary that pushed the next row
 //     right, the wrapped line that ate a frame column. One table for both
 //     halves makes that class of bug unrepresentable.
 //
@@ -183,7 +183,7 @@ func (m measured) walk(fn func(text string, cells int) bool) {
 
 // cellWidth returns the number of terminal cells s occupies. ANSI/ECMA-48
 // escape sequences are not drawn and count for nothing, tabs and newlines
-// count for nothing (callers expand tabs before measuring — see
+// count for nothing (callers unfold tabs before measuring — see
 // expandTabs), and a grapheme cluster is measured whole.
 //
 // A caller that also cuts s should measure it once and use measured.head /

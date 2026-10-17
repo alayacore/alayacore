@@ -74,7 +74,7 @@ func TestLiveEdgeWidthNeverChangesTheFacts(t *testing.T) {
 	needed := Width(full)
 
 	for width := 5; width <= needed; width++ {
-		m.windowWidth = width
+		m.screenWidth = width
 		got := stripANSI(m.renderLiveEdge())
 		if Width(got) > width {
 			t.Errorf("width %d: rendered %q is %d cells, over the terminal", width, got, Width(got))
@@ -102,7 +102,7 @@ func TestLiveEdgeWidthNeverChangesTheFacts(t *testing.T) {
 	// Below the frame's own width there is no row to be a marker on: nothing
 	// is drawn, and nothing overflows.
 	for _, width := range []int{4, 3, 2, 1, 0} {
-		m.windowWidth = width
+		m.screenWidth = width
 		if got := stripANSI(m.renderLiveEdge()); got != "" {
 			t.Errorf("width %d: rendered %q, want nothing (no room for the frame)", width, got)
 		}
@@ -222,7 +222,7 @@ func TestLiveEdgeSitsAboveInputRule(t *testing.T) {
 	v := m.View()
 	grid := applyFrame(nil, v.Content, W)
 
-	markerRow := H - m.input.Height() - 1 - liveEdgeRows // the reserved row
+	markerRow := H - m.promptBox.Height() - 1 - liveEdgeRows // the reserved row
 	if got := lineAt(grid, markerRow); got != "- following -" {
 		t.Errorf("live edge row %d = %q, want the marker", markerRow, got)
 	}
@@ -282,7 +282,7 @@ func TestLiveEdgeFitsItsWidth(t *testing.T) {
 	full := liveEdgeFrame + " following " + liveEdgeFrame
 	needed := Width(full)
 	for _, width := range []int{needed, needed - 1, Width("following"), 5, 4, 1, 0} {
-		m.windowWidth = width
+		m.screenWidth = width
 		got := stripANSI(m.renderLiveEdge())
 		if Width(got) > width {
 			t.Errorf("width %d: rendered %q is %d cells, over the terminal", width, got, Width(got))
@@ -336,12 +336,12 @@ func TestLiveEdgeRepaintLeavesNoResidue(t *testing.T) {
 	// back 23 lines does not clamp at the document top (which would make
 	// the count a function of the document length instead of the scroll).
 	m := liveEdgeFixture(30)
-	markerRow := m.windowHeight - m.input.Height() - 1 - liveEdgeRows
+	markerRow := m.screenHeight - m.promptBox.Height() - 1 - liveEdgeRows
 
 	paint := func(t *testing.T, frames ...Terminal) [][]rune {
 		t.Helper()
 		s := &Screen{out: &bytes.Buffer{}}
-		s.Resize(W, m.windowHeight)
+		s.Resize(W, m.screenHeight)
 		var grid [][]rune
 		for i, f := range frames {
 			s.out.(*bytes.Buffer).Reset()

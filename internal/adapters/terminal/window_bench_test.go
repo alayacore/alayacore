@@ -163,12 +163,12 @@ func BenchmarkWindowBufferDeltaWithGetAll(b *testing.B) {
 	}
 }
 
-// BenchmarkVirtualRenderingCursorMovement benchmarks cursor movement with virtual rendering.
-// This tests the EnsureCursorVisible + updateContent path.
+// BenchmarkVirtualRenderingWindowCursorMovement benchmarks cursor movement with virtual rendering.
+// This tests the EnsureWindowCursorVisible + updateContent path.
 // Uses 20 cursor moves per iteration for statistical significance while keeping
-// wall time reasonable.  See BenchmarkVirtualRenderingCursorMovementSingle for
+// wall time reasonable.  See BenchmarkVirtualRenderingWindowCursorMovementSingle for
 // the per-move cost.
-func BenchmarkVirtualRenderingCursorMovement(b *testing.B) {
+func BenchmarkVirtualRenderingWindowCursorMovement(b *testing.B) {
 	styles := NewStyles(theme.DefaultTheme())
 	wb := NewWindowBuffer(80, styles)
 
@@ -193,14 +193,14 @@ func BenchmarkVirtualRenderingCursorMovement(b *testing.B) {
 		// Simulate moving cursor through windows
 		for j := 0; j < 20; j++ {
 			dm = dm.WithWindowCursor(j)
-			dm = dm.EnsureCursorVisible()
+			dm = dm.EnsureWindowCursorVisible()
 			dm = dm.updateContent()
 		}
 	}
 }
 
-// BenchmarkVirtualRenderingCursorMovementSingle tests a single cursor move (more realistic)
-func BenchmarkVirtualRenderingCursorMovementSingle(b *testing.B) {
+// BenchmarkVirtualRenderingWindowCursorMovementSingle tests a single cursor move (more realistic)
+func BenchmarkVirtualRenderingWindowCursorMovementSingle(b *testing.B) {
 	styles := NewStyles(theme.DefaultTheme())
 	wb := NewWindowBuffer(80, styles)
 
@@ -224,7 +224,7 @@ func BenchmarkVirtualRenderingCursorMovementSingle(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Single cursor move (realistic user action)
 		dm = dm.WithWindowCursor(i % 100)
-		dm = dm.EnsureCursorVisible()
+		dm = dm.EnsureWindowCursorVisible()
 		dm = dm.updateContent()
 	}
 }

@@ -59,7 +59,7 @@ func openTheme(tb *testing.T) Terminal {
 	m.themeManager = NewThemeManager(tb.TempDir())
 	return m.openThemeSelector()
 }
-func openHelp(tb *testing.T) Terminal { return newTestTerminal().openHelpWindow() }
+func openHelp(tb *testing.T) Terminal { return newTestTerminal().openHelpOverlay() }
 
 func openLoading(tb *testing.T) Terminal {
 	m := newTestTerminal()
@@ -123,11 +123,11 @@ var boxOrder = []string{"prompt", "attachment", "model", "theme", "help"}
 // boxValues reads every text box the program owns, by the name the table uses.
 func boxValues(m Terminal) map[string]string {
 	return map[string]string{
-		"prompt":     m.input.Value(),
-		"attachment": m.attachmentWindow.FilterInput.Value(),
+		"prompt":     m.promptBox.Value(),
+		"attachment": m.attachmentOverlay.FilterInput.Value(),
 		"model":      m.modelSelector.FilterInput.Value(),
 		"theme":      m.themeSelector.FilterInput.Value(),
-		"help":       m.helpWindow.FilterInput.Value(),
+		"help":       m.helpOverlay.FilterInput.Value(),
 	}
 }
 

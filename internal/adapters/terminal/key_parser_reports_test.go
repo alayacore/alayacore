@@ -45,7 +45,7 @@ func TestKeyParserDropsMouseReports(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var p InputParser
+			var p KeyParser
 			if msgs := p.Parse([]byte(tt.in)); len(msgs) != 0 {
 				t.Errorf("Parse(%q) produced %#v, want nothing (a mouse report is not typing)", tt.in, msgs)
 			}
@@ -76,7 +76,7 @@ func TestKeyParserDropsStringControls(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var p InputParser
+			var p KeyParser
 			if msgs := p.Parse([]byte(tt.in)); len(msgs) != 0 {
 				t.Errorf("Parse(%q) produced %#v, want nothing (a reply is not typing)", tt.in, msgs)
 			}
@@ -107,7 +107,7 @@ func TestKeyParserAltChordsAndHeldControls(t *testing.T) {
 			{"\x1b\x1b[A", []string{"alt+up"}},
 		}
 		for _, tt := range tests {
-			var p InputParser
+			var p KeyParser
 			msgs := p.Parse([]byte(tt.in))
 			if len(msgs) != len(tt.want) {
 				t.Fatalf("Parse(%q) = %d messages %#v, want %v", tt.in, len(msgs), msgs, tt.want)
@@ -141,7 +141,7 @@ func TestKeyParserAltChordsAndHeldControls(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				var p InputParser
+				var p KeyParser
 				if msgs := p.Parse([]byte(tt.head)); len(msgs) != 0 {
 					t.Errorf("Parse(%q) produced %#v, want the control held as incomplete", escBytes(tt.head), msgs)
 				}
@@ -159,7 +159,7 @@ func TestKeyParserAltChordsAndHeldControls(t *testing.T) {
 	})
 
 	t.Run("a control that never terminates is dropped, not typed", func(t *testing.T) {
-		var p InputParser
+		var p KeyParser
 		if msgs := p.Parse([]byte("\x1b]11;rgb:1e1e/1e1e")); len(msgs) != 0 {
 			t.Fatalf("an unterminated reply produced %#v", msgs)
 		}

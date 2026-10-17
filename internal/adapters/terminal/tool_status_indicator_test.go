@@ -1,7 +1,7 @@
 package terminal
 
 // Tests for the tool status indicator (spinner while running, ✓/✗ when
-// done — both share the "TOOL CALL" label color), the collapsed/expanded
+// done — both share the "TOOL CALL" label color), the folded/unfolded
 // delta preview ellipsis position (tail shown, "…" at the line start),
 // and the USER PROMPT label.
 
@@ -115,11 +115,11 @@ func TestToolStatusIndicatorHeaderStates(t *testing.T) {
 	}
 }
 
-// TestCollapsedToolDeltaPreviewTailEllipsis: while arguments stream, the
-// collapsed tool line must show the LATEST delta chunk at the line end
+// TestFoldedToolDeltaPreviewTailEllipsis: while arguments stream, the
+// folded tool line must show the LATEST delta chunk at the line end
 // with the ellipsis at the line start (like every other delta summary) —
 // never a trailing "…" after the content.
-func TestCollapsedToolDeltaPreviewTailEllipsis(t *testing.T) {
+func TestFoldedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	wb := NewWindowBuffer(50, DefaultStyles())
 	longDelta := `{"path":"/home/user/very/long/path/that/exceeds/the/preview/width","content":"hello"}`
 	wb.HandleToolInputDelta("t1", "write_file", longDelta, 0)
@@ -127,7 +127,7 @@ func TestCollapsedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	rendered := wb.GetAll(-1, false)
 	plain := stripANSI(rendered)
 	if strings.Contains(plain, "\n") {
-		t.Fatalf("collapsed tool line must be a single line, got %q", plain)
+		t.Fatalf("folded tool line must be a single line, got %q", plain)
 	}
 	if !strings.Contains(plain, "…") {
 		t.Fatalf("long delta should be truncated with an ellipsis, got %q", plain)
@@ -138,17 +138,17 @@ func TestCollapsedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	}
 	// The line ends with the delta tail (latest characters).
 	if !strings.HasSuffix(trimmed, `hello"}`) {
-		t.Errorf("collapsed line should end with the delta tail, got %q", plain)
+		t.Errorf("folded line should end with the delta tail, got %q", plain)
 	}
 	// And it fits the terminal width (single soft-wrap-free row).
 	if w := cellWidth(plain); w > 50 {
-		t.Errorf("collapsed line width = %d, want <= 50: %q", w, plain)
+		t.Errorf("folded line width = %d, want <= 50: %q", w, plain)
 	}
 }
 
-// TestExpandedToolDeltaPreviewTailEllipsis: the expanded (BuildInner)
+// TestUnfoldedToolDeltaPreviewTailEllipsis: the unfolded (BuildInner)
 // streaming preview follows the same rule — tail visible, "…" leading.
-func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
+func TestUnfoldedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	styles := DefaultStyles()
 	longDelta := `{"path":"/home/user/very/long/path/that/exceeds/the/preview/width","content":"hello"}`
 	tr := &toolRenderer{
@@ -164,28 +164,28 @@ func TestExpandedToolDeltaPreviewTailEllipsis(t *testing.T) {
 	preview := lines[0].Text
 	plain := stripANSI(preview)
 	if !strings.HasPrefix(plain, "…") {
-		t.Errorf("expanded delta preview should start with the ellipsis, got %q", preview)
+		t.Errorf("unfolded delta preview should start with the ellipsis, got %q", preview)
 	}
 	if !strings.HasSuffix(preview, `hello"}`) {
-		t.Errorf("expanded delta preview should end with the delta tail, got %q", preview)
+		t.Errorf("unfolded delta preview should end with the delta tail, got %q", preview)
 	}
 	if w := cellWidth(preview); w > 30 {
 		t.Errorf("preview width = %d, want <= 30: %q", w, preview)
 	}
 }
 
-// TestUserPromptCollapsed covers the user-prompt collapsed-view summary
+// TestUserPromptFolded covers the user-prompt folded-view summary
 // across the cases that matter: short content that fits, multi-part
 // content with newlines, narrow-width ASCII truncation, and narrow-width
 // CJK truncation. All cases share the same invariant: the summary is a
 // single line, the "…" sits between head and tail (never at the line
 // start — that's reserved for streaming delta content), the topic
 // survives in the head, and the line fits the width budget.
-func TestUserPromptCollapsed(t *testing.T) {
+func TestUserPromptFolded(t *testing.T) {
 	styles := DefaultStyles()
 
 	// Direct-renderer cases — verify the exact rendering output. These
-	// cases use BuildCollapsed directly because they assert byte-exact
+	// cases use BuildFolded directly because they assert byte-exact
 	// output (escaping, multi-part concatenation).
 	t.Run("direct", func(t *testing.T) {
 		cases := []struct {
@@ -210,7 +210,7 @@ func TestUserPromptCollapsed(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				ur := &userRenderer{textParts: tc.textParts}
-				line, count := ur.BuildCollapsed(tc.width, styles)
+				line, count := ur.BuildFolded(tc.width, styles)
 				if count != 1 {
 					t.Fatalf("lineCount = %d, want 1", count)
 				}
@@ -255,13 +255,13 @@ func TestUserPromptCollapsed(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				wb := NewWindowBuffer(tc.width, styles)
 				wb.AppendOrUpdate(tagUserText, "u1", tc.content)
-				wb.ToggleFold(0) // collapse it: these are the collapsed-line invariants
+				wb.ToggleFold(0) // fold it: these are the folded-line invariants
 
 				plain := stripANSI(wb.GetAll(-1, false))
 
 				// Single visual line.
 				if strings.Contains(plain, "\n") {
-					t.Fatalf("collapsed user line must be a single line, got %q", plain)
+					t.Fatalf("folded user line must be a single line, got %q", plain)
 				}
 				// Width budget.
 				if w := cellWidth(plain); w > tc.width {
@@ -291,40 +291,40 @@ func TestUserPromptCollapsed(t *testing.T) {
 }
 
 // TestUserPromptLabel: the user window label is "USER PROMPT" in both the
-// expanded window line and the collapsed one, and its content stays aligned
+// unfolded window line and the folded one, and its content stays aligned
 // at the fixed label column like every other window type.
 func TestUserPromptLabel(t *testing.T) {
 	wb := NewWindowBuffer(40, DefaultStyles())
 	wb.AppendOrUpdate(tagUserText, "u1", "what is lisp?")
 
-	// Expanded by default: the window's own line carries the label.
+	// Unfolded by default: the window's own line carries the label.
 	plain := stripANSI(wb.GetAll(-1, false))
 	if !strings.HasPrefix(plain, unfoldArrow+" USER PROMPT") {
 		t.Errorf("window line should carry the 'USER PROMPT' label, got %q", plain)
 	}
 
-	// Collapsed (Space): "+ USER PROMPT     what is lisp?".
+	// Folded (Space): "+ USER PROMPT     what is lisp?".
 	wb.ToggleFold(0)
 	plain = stripANSI(wb.GetAll(-1, false))
 	if !strings.HasPrefix(plain, foldArrow+" USER PROMPT     what is lisp?") {
-		t.Errorf("collapsed user line should start with the fold marker + 'USER PROMPT', got %q", plain)
+		t.Errorf("folded user line should start with the fold marker + 'USER PROMPT', got %q", plain)
 	}
-	if c := contentColumn(plain); c != 2+CollapsedLabelWidth {
-		t.Errorf("collapsed USER content column = %d, want %d: %q", c, 2+CollapsedLabelWidth, plain)
+	if c := contentColumn(plain); c != 2+FoldedLabelWidth {
+		t.Errorf("folded USER content column = %d, want %d: %q", c, 2+FoldedLabelWidth, plain)
 	}
 }
 
-// TestUFOnlyCollapsedHeadAndTailEllipsis: a UF-only tool window (no AF
+// TestUFOnlyFoldedHeadAndTailEllipsis: a UF-only tool window (no AF
 // frame, no tool name — created via replayed UF content) summarizes its
 // output with head+tail (NOT leading "…"), same rule as text windows.
-func TestUFOnlyCollapsedHeadAndTailEllipsis(t *testing.T) {
+func TestUFOnlyFoldedHeadAndTailEllipsis(t *testing.T) {
 	wb := NewWindowBuffer(30, DefaultStyles())
 	long := strings.Repeat("0123456789", 6) // 60 chars
 	wb.AppendOrUpdate(wire.TagUserF, "uf-1", long)
 
 	plain := stripANSI(wb.GetAll(-1, false))
 	if strings.Contains(plain, "\n") {
-		t.Fatalf("collapsed UF-only line must be a single line, got %q", plain)
+		t.Fatalf("folded UF-only line must be a single line, got %q", plain)
 	}
 	if !strings.Contains(plain, "…") {
 		t.Fatalf("long UF-only summary should be truncated with an ellipsis, got %q", plain)
@@ -335,10 +335,10 @@ func TestUFOnlyCollapsedHeadAndTailEllipsis(t *testing.T) {
 		t.Errorf("ellipsis must NOT be at the line START: %q", plain)
 	}
 	if !strings.HasSuffix(strings.TrimRight(plain, " "), "0123456789") {
-		t.Errorf("collapsed UF-only line should end with the output tail, got %q", plain)
+		t.Errorf("folded UF-only line should end with the output tail, got %q", plain)
 	}
 	if w := cellWidth(plain); w > 30 {
-		t.Errorf("collapsed line width = %d, want <= 30: %q", w, plain)
+		t.Errorf("folded line width = %d, want <= 30: %q", w, plain)
 	}
 }
 
@@ -349,10 +349,10 @@ func TestUFOnlyCollapsedHeadAndTailEllipsis(t *testing.T) {
 func TestUfPreviewTailEllipsis(t *testing.T) {
 	long := strings.Repeat("progress line ", 10) // > 80 columns
 	tr := &toolRenderer{
-		name:   "execute_command",
-		input:  "ls",
-		output: long,
-		status: ToolStatusPending,
+		name:      "execute_command",
+		toolInput: "ls",
+		output:    long,
+		status:    ToolStatusPending,
 	}
 
 	styles := DefaultStyles()

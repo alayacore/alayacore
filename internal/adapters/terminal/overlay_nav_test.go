@@ -83,7 +83,7 @@ func TestListOverlaysTakeNoArrowsAndNoQ(t *testing.T) {
 			name:    "help window",
 			movable: true,
 			press: func(chord Chord) (int, bool) {
-				hw := NewHelpWindow(styles).Open()
+				hw := NewHelpOverlay(styles).Open()
 				hw.FilterInputFocused = false
 				hw, _ = hw.Update(keyMsg(chord))
 				return hw.SelectedIdx, hw.IsOpen()
@@ -92,7 +92,7 @@ func TestListOverlaysTakeNoArrowsAndNoQ(t *testing.T) {
 		{
 			name: "attachment window",
 			press: func(chord Chord) (int, bool) {
-				aw := NewAttachmentWindow(styles).Open()
+				aw := NewAttachmentOverlay(styles).Open()
 				aw.FilterInputFocused = false
 				aw, _ = aw.Update(keyMsg(chord))
 				return aw.SelectedIdx, aw.IsOpen()

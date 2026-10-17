@@ -133,12 +133,12 @@ func TestRenderMarkdownTables_Alignment(t *testing.T) {
 }
 
 func TestRenderMarkdownTables_Tabs(t *testing.T) {
-	// A tab inside a cell is expanded from the line start (column of the
-	// pipe, not the cell) — the parser expands the whole line first.
+	// A tab inside a cell is unfolded from the line start (column of the
+	// pipe, not the cell) — the parser unfolds the whole line first.
 	in := "| a\tb | c |\n|---|---|\n| 1 | 2 |"
 	got := renderMarkdownTables(in, 80)
 	if !strings.Contains(got, "│ a     b │") {
-		t.Fatalf("expected the tab-expanded cell in the grid, got %q", got)
+		t.Fatalf("expected the tab-unfolded cell in the grid, got %q", got)
 	}
 	// The cell "a\tb" must not survive as a raw tab.
 	if strings.Contains(got, "\t") {

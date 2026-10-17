@@ -22,25 +22,25 @@ func TestStatusBarReasoningRidesWithModelWithoutHighlight(t *testing.T) {
 	for _, level := range []int{0, 1, 2} {
 		t.Run(fmt.Sprintf("level=%d", level), func(t *testing.T) {
 			out := NewTerminalOutput(DefaultStyles())
-			out.handleSystemMsg(fmt.Sprintf(`{"type":"reasoning","data":{"level":%d}}`, level))
+			out.handleSystemFrame(fmt.Sprintf(`{"type":"reasoning","data":{"level":%d}}`, level))
 
 			styles := DefaultStyles()
 			terminal := &Terminal{
-				out:              out,
-				display:          NewDisplayModel(out.WindowBuffer(), styles),
-				input:            NewPromptInput(styles),
-				editor:           NewEditor(),
-				modelSelector:    NewModelSelector(styles),
-				themeSelector:    NewThemeSelector(styles),
-				helpWindow:       NewHelpWindow(styles),
-				confirmOverlay:   NewConfirmDialog(styles),
-				mcpInitOverlay:   NewConfirmDialog(styles),
-				attachmentWindow: NewAttachmentWindow(styles),
-				focusedWindow:    focusInput,
-				windowWidth:      80,
-				windowHeight:     24,
-				styles:           styles,
-				hasFocus:         true,
+				out:               out,
+				display:           NewDisplayModel(out.WindowBuffer(), styles),
+				promptBox:         NewPromptInput(styles),
+				editor:            NewEditor(),
+				modelSelector:     NewModelSelector(styles),
+				themeSelector:     NewThemeSelector(styles),
+				helpOverlay:       NewHelpOverlay(styles),
+				confirmOverlay:    NewConfirmDialog(styles),
+				mcpInitOverlay:    NewConfirmDialog(styles),
+				attachmentOverlay: NewAttachmentOverlay(styles),
+				focusedWindow:     focusPrompt,
+				screenWidth:       80,
+				screenHeight:      24,
+				styles:            styles,
+				hasFocus:          true,
 			}
 
 			*terminal = terminal.updateStatus()
@@ -60,7 +60,7 @@ func TestStatusBarReasoningRidesWithModelWithoutHighlight(t *testing.T) {
 
 			// 2. Active model: the level rides after the model name in the
 			//    right group.
-			out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
+			out.handleSystemFrame(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
 			*terminal = terminal.updateStatus()
 
 			rendered = terminal.renderStatusBar()
@@ -106,26 +106,26 @@ func TestStatusBarShowsCurrentStepsDuringProgress(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	// Simulate task in progress
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":7,"max_steps":20,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":7,"max_steps":20,"context":0,"context_limit":0}}`)
 
 	// Create terminal with the output writer
 	styles := DefaultStyles()
 	terminal := &Terminal{
-		out:              out,
-		display:          NewDisplayModel(out.WindowBuffer(), styles),
-		input:            NewPromptInput(styles),
-		editor:           NewEditor(),
-		modelSelector:    NewModelSelector(styles),
-		themeSelector:    NewThemeSelector(styles),
-		helpWindow:       NewHelpWindow(styles),
-		confirmOverlay:   NewConfirmDialog(styles),
-		mcpInitOverlay:   NewConfirmDialog(styles),
-		attachmentWindow: NewAttachmentWindow(styles),
-		focusedWindow:    focusInput,
-		windowWidth:      80,
-		windowHeight:     24,
-		styles:           styles,
-		hasFocus:         true,
+		out:               out,
+		display:           NewDisplayModel(out.WindowBuffer(), styles),
+		promptBox:         NewPromptInput(styles),
+		editor:            NewEditor(),
+		modelSelector:     NewModelSelector(styles),
+		themeSelector:     NewThemeSelector(styles),
+		helpOverlay:       NewHelpOverlay(styles),
+		confirmOverlay:    NewConfirmDialog(styles),
+		mcpInitOverlay:    NewConfirmDialog(styles),
+		attachmentOverlay: NewAttachmentOverlay(styles),
+		focusedWindow:     focusPrompt,
+		screenWidth:       80,
+		screenHeight:      24,
+		styles:            styles,
+		hasFocus:          true,
 	}
 
 	// Update status
@@ -143,28 +143,28 @@ func TestStatusBarShowsLastStepsAfterCompletion(t *testing.T) {
 	// Create output writer and simulate a task that ran 5 of 10 steps
 	out := NewTerminalOutput(DefaultStyles())
 
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":5,"max_steps":10,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":5,"max_steps":10,"context":0,"context_limit":0}}`)
 	// Completion broadcast carries current_step zeroed.
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":10,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":10,"context":0,"context_limit":0}}`)
 
 	// Create terminal with the output writer
 	styles := DefaultStyles()
 	terminal := &Terminal{
-		out:              out,
-		display:          NewDisplayModel(out.WindowBuffer(), styles),
-		input:            NewPromptInput(styles),
-		editor:           NewEditor(),
-		modelSelector:    NewModelSelector(styles),
-		themeSelector:    NewThemeSelector(styles),
-		helpWindow:       NewHelpWindow(styles),
-		confirmOverlay:   NewConfirmDialog(styles),
-		mcpInitOverlay:   NewConfirmDialog(styles),
-		attachmentWindow: NewAttachmentWindow(styles),
-		focusedWindow:    focusInput,
-		windowWidth:      80,
-		windowHeight:     24,
-		styles:           styles,
-		hasFocus:         true,
+		out:               out,
+		display:           NewDisplayModel(out.WindowBuffer(), styles),
+		promptBox:         NewPromptInput(styles),
+		editor:            NewEditor(),
+		modelSelector:     NewModelSelector(styles),
+		themeSelector:     NewThemeSelector(styles),
+		helpOverlay:       NewHelpOverlay(styles),
+		confirmOverlay:    NewConfirmDialog(styles),
+		mcpInitOverlay:    NewConfirmDialog(styles),
+		attachmentOverlay: NewAttachmentOverlay(styles),
+		focusedWindow:     focusPrompt,
+		screenWidth:       80,
+		screenHeight:      24,
+		styles:            styles,
+		hasFocus:          true,
 	}
 
 	// Update status
@@ -182,26 +182,26 @@ func TestStatusBarShowsLastStepsUnlimited(t *testing.T) {
 	// Simulate a task with unlimited max steps (default --max-steps=0)
 	out := NewTerminalOutput(DefaultStyles())
 
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":0,"context":0,"context_limit":0}}`)
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":3,"max_steps":0,"context":0,"context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":0,"context_limit":0}}`)
 
 	styles := DefaultStyles()
 	terminal := &Terminal{
-		out:              out,
-		display:          NewDisplayModel(out.WindowBuffer(), styles),
-		input:            NewPromptInput(styles),
-		editor:           NewEditor(),
-		modelSelector:    NewModelSelector(styles),
-		themeSelector:    NewThemeSelector(styles),
-		helpWindow:       NewHelpWindow(styles),
-		confirmOverlay:   NewConfirmDialog(styles),
-		mcpInitOverlay:   NewConfirmDialog(styles),
-		attachmentWindow: NewAttachmentWindow(styles),
-		focusedWindow:    focusInput,
-		windowWidth:      80,
-		windowHeight:     24,
-		styles:           styles,
-		hasFocus:         true,
+		out:               out,
+		display:           NewDisplayModel(out.WindowBuffer(), styles),
+		promptBox:         NewPromptInput(styles),
+		editor:            NewEditor(),
+		modelSelector:     NewModelSelector(styles),
+		themeSelector:     NewThemeSelector(styles),
+		helpOverlay:       NewHelpOverlay(styles),
+		confirmOverlay:    NewConfirmDialog(styles),
+		mcpInitOverlay:    NewConfirmDialog(styles),
+		attachmentOverlay: NewAttachmentOverlay(styles),
+		focusedWindow:     focusPrompt,
+		screenWidth:       80,
+		screenHeight:      24,
+		styles:            styles,
+		hasFocus:          true,
 	}
 
 	*terminal = terminal.updateStatus()
@@ -230,7 +230,7 @@ func containsSubstring(s, substr string) bool {
 // segments and the group.
 func TestStatusBarShowsActiveModelRightAligned(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"test-model","context_limit":131072}}`)
+	out.handleSystemFrame(`{"type":"model","data":{"active_id":1,"active_name":"test-model","context_limit":131072}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
@@ -249,9 +249,9 @@ func TestStatusBarShowsActiveModelRightAligned(t *testing.T) {
 	}
 	// Flush against the right edge: no trailing cells after the model.
 	// (Regression guard: the model used to be right-aligned to
-	// windowWidth-2, leaving 2 blank cells after its name.)
-	if w := Width(plain); w != m.windowWidth {
-		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	// screenWidth-2, leaving 2 blank cells after its name.)
+	if w := Width(plain); w != m.screenWidth {
+		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.screenWidth, plain)
 	}
 }
 
@@ -262,10 +262,10 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 	const modelName = "a-very-long-model-name-that-does-not-fit"
 
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemMsg(fmt.Sprintf(`{"type":"model","data":{"active_id":1,"active_name":%q,"context_limit":0}}`, modelName))
+	out.handleSystemFrame(fmt.Sprintf(`{"type":"model","data":{"active_id":1,"active_name":%q,"context_limit":0}}`, modelName))
 
 	m := newTerminalForUpdateStatusTest(out)
-	m.windowWidth = 24 // the 45-cell group ("<40-cell name> | R0") cannot share 24 with the dot → merged, truncated
+	m.screenWidth = 24 // the 45-cell group ("<40-cell name> | R0") cannot share 24 with the dot → merged, truncated
 	m = m.updateStatus()
 
 	rendered := m.renderStatusBar()
@@ -278,13 +278,13 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 	if strings.Contains(plain, modelName) {
 		t.Errorf("status bar should not contain the full model name, got %q", plain)
 	}
-	if w := Width(plain); w != m.windowWidth {
-		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	if w := Width(plain); w != m.screenWidth {
+		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.screenWidth, plain)
 	}
 
 	// Extremely narrow window: the group joins the (empty) left segments
 	// and the truncation cuts into the model name itself.
-	m.windowWidth = 6 // budget 4: only the first cells of the model name survive
+	m.screenWidth = 6 // budget 4: only the first cells of the model name survive
 	m = m.updateStatus()
 	plain = stripANSI(m.renderStatusBar())
 	if strings.Contains(plain, modelName) {
@@ -299,11 +299,11 @@ func TestStatusBarModelTruncatedWithEllipsis(t *testing.T) {
 // a setting the session file already records is still on screen.
 func TestStatusBarSqueezedLineDropsReasoningFirst(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
-	m.windowWidth = 9 // "  gpt-4o | R0" (13 cells) merges → "  gpt-4o…" (9)
+	m.screenWidth = 9 // "  gpt-4o | R0" (13 cells) merges → "  gpt-4o…" (9)
 
 	plain := stripANSI(m.renderStatusBar())
 	if !strings.Contains(plain, "gpt-4o") {
@@ -336,8 +336,8 @@ func TestStatusBarNoModelKeepsLevelRightAligned(t *testing.T) {
 	if !strings.HasSuffix(plain, "R0") {
 		t.Errorf("status bar should end with the level, got %q", plain)
 	}
-	if w := Width(plain); w != m.windowWidth {
-		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	if w := Width(plain); w != m.screenWidth {
+		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.screenWidth, plain)
 	}
 }
 
@@ -347,7 +347,7 @@ func TestStatusBarNoModelKeepsLevelRightAligned(t *testing.T) {
 // starts or ends. The state reads from the motion, not from a color.
 func TestStatusBarIndicatorColumn(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemMsg(`{"type":"reasoning","data":{"level":0}}`)
+	out.handleSystemFrame(`{"type":"reasoning","data":{"level":0}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
@@ -356,7 +356,7 @@ func TestStatusBarIndicatorColumn(t *testing.T) {
 		t.Errorf("idle status bar should open with %q, got %q", statusIdleGlyph, idle)
 	}
 
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":0}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":5,"context":0}}`)
 	m = m.updateStatus()
 	running := stripANSI(m.renderStatusBar())
 	first := string([]rune(running)[0])
@@ -368,21 +368,21 @@ func TestStatusBarIndicatorColumn(t *testing.T) {
 // TestStatusBarNoModelMayFillWidth verifies the no-model path shares
 // the same full-width cap as the model path: an overlong status line is
 // truncated to the window width (flush-to-edge design), not to
-// windowWidth-2 — the level stays in the right group throughout.
+// screenWidth-2 — the level stays in the right group throughout.
 func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	// Long reasoning + context segments so the row overflows a narrow
 	// window.
-	out.handleSystemMsg(`{"type":"reasoning","data":{"level":2}}`)
-	out.handleSystemMsg(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":999999999,"context_limit":1000000000}}`)
+	out.handleSystemFrame(`{"type":"reasoning","data":{"level":2}}`)
+	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":999999999,"context_limit":1000000000}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
-	m.windowWidth = 12 // the 22-cell context segment overflows the budget on its own → truncated
+	m.screenWidth = 12 // the 22-cell context segment overflows the budget on its own → truncated
 	m = m.updateStatus()
 
 	plain := stripANSI(m.renderStatusBar())
-	if w := Width(plain); w != m.windowWidth {
-		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.windowWidth, plain)
+	if w := Width(plain); w != m.screenWidth {
+		t.Errorf("status bar width %d should fill the window width %d exactly: %q", w, m.screenWidth, plain)
 	}
 	if strings.HasSuffix(plain, " ") {
 		t.Errorf("status bar should not end with padding, got %q", plain)
@@ -395,7 +395,7 @@ func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 // other input is unchanged.
 func TestStatusBarModelGroupInvalidatesRenderCache(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemMsg(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"model","data":{"active_id":1,"active_name":"gpt-4o","context_limit":0}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
@@ -407,7 +407,7 @@ func TestStatusBarModelGroupInvalidatesRenderCache(t *testing.T) {
 	}
 
 	// Model change → new render.
-	out.handleSystemMsg(`{"type":"model","data":{"active_id":2,"active_name":"claude-sonnet-4-5","context_limit":0}}`)
+	out.handleSystemFrame(`{"type":"model","data":{"active_id":2,"active_name":"claude-sonnet-4-5","context_limit":0}}`)
 	m = m.updateStatus()
 	second := m.renderStatusBar()
 	if second == first {
@@ -419,7 +419,7 @@ func TestStatusBarModelGroupInvalidatesRenderCache(t *testing.T) {
 
 	// Reasoning level change → new render: the level is part of the group,
 	// so a level change has to move the cache key too.
-	out.handleSystemMsg(`{"type":"reasoning","data":{"level":2}}`)
+	out.handleSystemFrame(`{"type":"reasoning","data":{"level":2}}`)
 	m = m.updateStatus()
 	third := m.renderStatusBar()
 	if third == second {

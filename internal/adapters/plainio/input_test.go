@@ -417,7 +417,7 @@ func (r *errorReader) Read(p []byte) (int, error) {
 // The feed never waits for the session: a prompt that arrives before MCP init
 // has settled is held by the session, which is the only side that can tell
 // whether refusing it would leave the client with no way to retry. Pinned
-// behaviourally: nothing else has to happen for the frames to be written.
+// behaviorally: nothing else has to happen for the frames to be written.
 func TestReadPrompts_WritesWithoutWaiting(t *testing.T) {
 	var buf bytes.Buffer
 	done := make(chan error, 1)

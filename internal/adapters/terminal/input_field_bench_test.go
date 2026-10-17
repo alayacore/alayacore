@@ -24,7 +24,7 @@ func BenchmarkInputFieldInsertLongLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		g := NewInputField()
 		g = g.WithWidth(60)
-		g = g.WithValue(benchLine(4000)).CursorEnd()
+		g = g.WithValue(benchLine(4000)).CaretEnd()
 		for j := 0; j < 20; j++ {
 			g, _ = g.Update(KeyPressMsg{Text: "你", Code: '你'})
 		}
@@ -36,7 +36,7 @@ func BenchmarkInputFieldMoveLongLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		g := NewInputField()
 		g = g.WithWidth(60)
-		g = g.WithValue(benchLine(4000)).CursorEnd()
+		g = g.WithValue(benchLine(4000)).CaretEnd()
 		for j := 0; j < 100; j++ {
 			g, _ = g.handleKeyMsg(KeyPressMsg{Text: "left", Code: 0})
 		}
@@ -70,7 +70,7 @@ func BenchmarkInputFieldViewLongLine(b *testing.B) {
 	b.ReportAllocs()
 	g := NewInputField()
 	g = g.WithWidth(60)
-	g = g.WithValue(benchLine(2000)).CursorEnd()
+	g = g.WithValue(benchLine(2000)).CaretEnd()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = g.View()

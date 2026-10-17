@@ -25,7 +25,7 @@ import (
 	"testing"
 )
 
-// stickyFixture returns a width-40 buffer holding one tall expanded window
+// stickyFixture returns a width-40 buffer holding one tall unfolded window
 // whose ten body rows are individually identifiable ("row00" … "row09"),
 // plus a folded window after it. Ten body rows at viewport height 4 give
 // room for every boundary case below.
@@ -102,7 +102,7 @@ func TestStickyPinEntersAndLeavesAtTheRightBoundaries(t *testing.T) {
 	own := stripANSI(windowLine(t, wb))
 	const h = 3
 
-	// The document: [0] window line, [1..10] row00..row09, [11] the expanded
+	// The document: [0] window line, [1..10] row00..row09, [11] the unfolded
 	// user prompt's line, [12] its content.
 	cases := []struct {
 		yOffset   int
@@ -285,13 +285,13 @@ func TestPinnedAnnotationYieldsToTheTimestamp(t *testing.T) {
 	t.Logf("label + '%s | ' + timestamp first fit at width %d", count, firstWithCount)
 }
 
-// TestPinnedAnnotationUnderTheCursor: with the cursor on the pinned window,
+// TestPinnedAnnotationUnderTheWindowCursor: with the cursor on the pinned window,
 // the count, the " | " separator and the timestamp all take the accent
 // color with the rest of the chrome — the row is one color, and " | "
 // separates the two fields by its two spaces rather than by a second color.
 // (The separator used to stay dim in every register; that second color is
 // gone, so it is no longer a cursor accident either way.)
-func TestPinnedAnnotationUnderTheCursor(t *testing.T) {
+func TestPinnedAnnotationUnderTheWindowCursor(t *testing.T) {
 	styles := DefaultStyles()
 	wb := stickyWideFixture()
 	pinCreatedAt(wb)
@@ -407,10 +407,10 @@ func TestStickyPinAddsNoAllocations(t *testing.T) {
 	}
 }
 
-// TestStickyPinFollowsTheCursor: the pinned row is the window's own line, so
+// TestStickyPinFollowsTheWindowCursor: the pinned row is the window's own line, so
 // when the cursor is on that window it is the highlighted variant — the
 // selected window's line stays visible while its body scrolls.
-func TestStickyPinFollowsTheCursor(t *testing.T) {
+func TestStickyPinFollowsTheWindowCursor(t *testing.T) {
 	styles := DefaultStyles()
 	wb := stickyFixture()
 	wb.SetViewportPosition(1, 4)

@@ -8,10 +8,10 @@ import (
 
 func TestQuitCommandRequiresConfirm(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue(":q")
+	terminal.promptBox = terminal.promptBox.WithValue(":q")
 
 	// Press Enter to submit the command
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 	msg := KeyPressMsg(Key{Code: KeyEnter})
 
 	model, cmd := terminal.Update(msg)
@@ -42,10 +42,10 @@ func TestQuitCommandRequiresConfirm(t *testing.T) {
 
 func TestQuitCommandCanceledClearsInput(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue(":q")
+	terminal.promptBox = terminal.promptBox.WithValue(":q")
 
 	// Press Enter to submit the command
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 	msg := KeyPressMsg(Key{Code: KeyEnter})
 	model, _ := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -64,8 +64,8 @@ func TestQuitCommandCanceledClearsInput(t *testing.T) {
 	terminal = model.(Terminal)
 
 	// Input should be cleared after canceling the dialog
-	if terminal.input.Value() != "" {
-		t.Errorf("Input should be cleared after canceling :q confirmation, got %q", terminal.input.Value())
+	if terminal.promptBox.Value() != "" {
+		t.Errorf("Input should be cleared after canceling :q confirmation, got %q", terminal.promptBox.Value())
 	}
 
 	// Dialog should be closed
@@ -76,10 +76,10 @@ func TestQuitCommandCanceledClearsInput(t *testing.T) {
 
 func TestQuitCommandEscapeCancels(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue(":q")
+	terminal.promptBox = terminal.promptBox.WithValue(":q")
 
 	// Press Enter to submit the command
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 	msg := KeyPressMsg(Key{Code: KeyEnter})
 	model, _ := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -98,8 +98,8 @@ func TestQuitCommandEscapeCancels(t *testing.T) {
 	terminal = model.(Terminal)
 
 	// Input should be cleared after canceling the dialog
-	if terminal.input.Value() != "" {
-		t.Errorf("Input should be cleared after canceling :q confirmation with Escape, got %q", terminal.input.Value())
+	if terminal.promptBox.Value() != "" {
+		t.Errorf("Input should be cleared after canceling :q confirmation with Escape, got %q", terminal.promptBox.Value())
 	}
 
 	// Dialog should be closed
@@ -110,10 +110,10 @@ func TestQuitCommandEscapeCancels(t *testing.T) {
 
 func TestQuitCommandConfirmed(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue(":q")
+	terminal.promptBox = terminal.promptBox.WithValue(":q")
 
 	// Press Enter to submit the command
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 	msg := KeyPressMsg(Key{Code: KeyEnter})
 	model, _ := terminal.Update(msg)
 	terminal = model.(Terminal)
@@ -148,10 +148,10 @@ func TestQuitCommandConfirmed(t *testing.T) {
 
 func TestFullQuitCommandRequiresConfirm(t *testing.T) {
 	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
-	terminal.input = terminal.input.WithValue(":quit")
+	terminal.promptBox = terminal.promptBox.WithValue(":quit")
 
 	// Press Enter to submit the command
-	terminal = terminal.focusInput()
+	terminal = terminal.focusPrompt()
 	msg := KeyPressMsg(Key{Code: KeyEnter})
 
 	model, cmd := terminal.Update(msg)

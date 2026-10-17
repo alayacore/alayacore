@@ -237,7 +237,7 @@ func TestEncoderDropsAltOverASequenceHead(t *testing.T) {
 	// The cost the drop pays for, asserted rather than argued: after the chord,
 	// the next key must arrive. Encoding the chord as `ESC [` used to leave the
 	// parser holding a sequence, and the character behind it went into that hold.
-	p := &InputParser{}
+	p := &KeyParser{}
 	chord := enc.append(nil, keyRecordOf(keyEvent{down: true, virtualKey: 'P', char: 'P', ctrlState: altHeld}))
 	if msgs := p.Parse(chord); len(msgs) != 0 {
 		t.Fatalf("the dropped chord produced %#v, want nothing", msgs)
@@ -260,7 +260,7 @@ func TestEncoderDropsAltOverASequenceHead(t *testing.T) {
 	if string(altB) != "\x1bb" {
 		t.Fatalf("Alt+B encoded as %q, want %q", altB, "\x1bb")
 	}
-	if msgs := (&InputParser{}).Parse(altB); len(msgs) != 1 || msgs[0].(KeyMsg).String() != "alt+b" {
+	if msgs := (&KeyParser{}).Parse(altB); len(msgs) != 1 || msgs[0].(KeyMsg).String() != "alt+b" {
 		t.Errorf("Alt+B parsed as %#v, want one alt+b", msgs)
 	}
 }
@@ -573,7 +573,7 @@ func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
 // the flush that resolves a trailing incomplete sequence.
 func parseAll(t *testing.T, data []byte) []Msg {
 	t.Helper()
-	p := &InputParser{}
+	p := &KeyParser{}
 	msgs := p.Parse(data)
 	if p.HasPending() {
 		msgs = append(msgs, p.Flush()...)
@@ -613,7 +613,7 @@ func TestEncodedRecordsAreSelfDelimiting(t *testing.T) {
 					t.Fatalf("VK %#02x state %#x char %#04x emitted %q: a NUL at %d reads back as a keystroke",
 						vk, state, char, data, i)
 				}
-				p := &InputParser{}
+				p := &KeyParser{}
 				p.Parse(data)
 				if p.HasPending() && !allESC(data) {
 					t.Fatalf("VK %#02x state %#x char %#04x emitted %q, which the parser can only resolve by waiting out the escape-sequence timeout",

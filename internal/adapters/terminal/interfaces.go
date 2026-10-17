@@ -90,7 +90,7 @@ type OutputWriter interface {
 	io.Writer
 
 	// Configuration
-	SetWindowWidth(width int)
+	SetScreenWidth(width int)
 	WithStyles(styles *Styles)
 
 	// Snapshots (replaces many individual getters)

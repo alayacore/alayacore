@@ -84,7 +84,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 📊 **Markdown rendering** — Assistant markdown output (currently tables) renders by default; press `r` on an unfolded window to toggle raw/rendered (`--no-markdown` disables the default).
 - 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`; a model can also read media itself via `read_file`. Which types actually reach it is protocol-dependent — image works on both, audio/video need an OpenAI-style endpoint, documents need Anthropic (see [providers.md](docs/providers.md)).
 - 🎨 **Theme system** — Customizable color schemes with live switching.
-- ⌨️ **Model selector, theme selector, help window** — Overlay-based UI components for runtime configuration.
+- ⌨️ **Model selector, theme selector, help overlay** — Overlay-based UI components for runtime configuration.
 
 ### Plain IO (`--plainio`)
 
@@ -156,6 +156,7 @@ See [providers.md](docs/providers.md) for provider-specific details.
 | [Dependencies](docs/dependencies.md) | Third-party dependencies and why each is needed |
 | [TUI Architecture](docs/tui-architecture.md) | Elm architecture and the TUI's internal design |
 | [Development Principles](docs/development-principles.md) | Project conventions — adapter/agent isolation, testing and code style |
+| [Vocabulary](docs/vocabulary.md) | One name per concept — the terms the code and docs use, and the ones they must not |
 
 **Internal design docs**: [docs/internal/](docs/internal/)
 

@@ -1,5 +1,5 @@
 .PHONY: all build test lint tools fmt clean install run release release-all \
-       build-windows build-darwin build-linux check check-gitattributes check-shell-style check-docs
+       build-windows build-darwin build-linux check check-gitattributes check-shell-style check-docs check-terms
 
 # Go parameters
 GOCMD=go
@@ -136,12 +136,16 @@ check-shell-style:
 check-docs:
 	./misc/check-docs.sh
 
+## check-terms: Assert one concept has one name, per docs/vocabulary.md (misc/check-terms.sh)
+check-terms:
+	./misc/check-terms.sh
+
 ## check-yaml-block-scalars: Re-verify our block scalars against yaml.v3 (misc/check-yaml-block-scalars.sh; needs yaml.v3 on disk, so it is not in `check`)
 check-yaml-block-scalars:
 	./misc/check-yaml-block-scalars.sh
 
-## check: Run all checks (attributes, shell style, doc links, fmt, vet, lint, test)
-check: check-gitattributes check-shell-style check-docs fmt vet lint test
+## check: Run all checks (attributes, shell style, doc links, terms, fmt, vet, lint, test)
+check: check-gitattributes check-shell-style check-docs check-terms fmt vet lint test
 
 ## pre-commit: Run checks before committing
 pre-commit: fmt vet test

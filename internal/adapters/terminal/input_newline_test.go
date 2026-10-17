@@ -1,7 +1,7 @@
 package terminal
 
 // Tests for the prompt's Ctrl+J line-break action (keybinds.go →
-// handleInputKeys) and for the primitive behind it (input_field.go →
+// handlePromptKeys) and for the primitive behind it (input_field.go →
 // insertNewline).
 //
 // Ctrl+J is the byte-accurate name for LF (0x0a): key_parser.go → decodeC0
@@ -40,14 +40,14 @@ func TestInputFieldCtrlJNotHandledGenerically(t *testing.T) {
 	// the generic path rather than the prompt's routing, this is the field it
 	// would wrongly extend.
 	f := NewMultilineInputField().WithWidth(20)
-	f = f.WithValue("ab").CursorEnd()
+	f = f.WithValue("ab").CaretEnd()
 
 	after, _ := f.Update(keyCtrlJMsg())
 	if after.Value() != "ab" {
 		t.Errorf("value = %q, want %q: Ctrl+J must not be handled generically", after.Value(), "ab")
 	}
-	if after.CursorPos() != 2 {
-		t.Errorf("cursor = %d, want 2", after.CursorPos())
+	if after.CaretPos() != 2 {
+		t.Errorf("caret = %d, want 2", after.CaretPos())
 	}
 }
 
@@ -72,17 +72,17 @@ func TestInputFieldLoneNewlineIsDropped(t *testing.T) {
 func TestPromptCtrlJInsertsNewlineWithoutSubmitting(t *testing.T) {
 	m := newTestTerminal()
 
-	m, cmd := m.handleInputKeys(keyCtrlJMsg())
+	m, cmd := m.handlePromptKeys(keyCtrlJMsg())
 	if cmd != nil {
 		t.Error("Ctrl+J returned a Cmd; it must not start a task — that is what Enter is for")
 	}
-	if got := m.input.Value(); got != "\n" {
+	if got := m.promptBox.Value(); got != "\n" {
 		t.Errorf("value = %q, want %q", got, "\n")
 	}
 
 	// Text typed after the break continues on the new line.
-	m, _ = m.handleInputKeys(KeyPressMsg(Key{Code: 'b'}))
-	if got := m.input.Value(); got != "\nb" {
+	m, _ = m.handlePromptKeys(KeyPressMsg(Key{Code: 'b'}))
+	if got := m.promptBox.Value(); got != "\nb" {
 		t.Errorf("value after typing = %q, want %q", got, "\nb")
 	}
 }
@@ -91,14 +91,14 @@ func TestPromptCtrlJInsertsNewlineWithoutSubmitting(t *testing.T) {
 // still submits, so the new binding did not take over the submit key.
 func TestPromptEnterStillSubmits(t *testing.T) {
 	m := newTestTerminal()
-	m.input = m.input.WithValue("hello")
+	m.promptBox = m.promptBox.WithValue("hello")
 
-	updated, cmd := m.handleInputKeys(KeyPressMsg(Key{Code: KeyEnter}))
+	updated, cmd := m.handlePromptKeys(KeyPressMsg(Key{Code: KeyEnter}))
 	if cmd == nil {
 		t.Fatal("Enter produced no command; a submit must be scheduled")
 	}
-	if updated.input.Value() != "" {
-		t.Errorf("Enter left %q in the input; a submit clears it", updated.input.Value())
+	if updated.promptBox.Value() != "" {
+		t.Errorf("Enter left %q in the input; a submit clears it", updated.promptBox.Value())
 	}
 }
 
@@ -120,40 +120,40 @@ func TestInputFieldLoneNewlinePasteIsTrimmed(t *testing.T) {
 	}
 }
 
-// TestInputFieldInsertNewline covers the primitive: content, cursor position,
+// TestInputFieldInsertNewline covers the primitive: content, caret position,
 // the goalCol reset, insertion at an arbitrary offset, and repeated presses.
 func TestInputFieldInsertNewline(t *testing.T) {
 	f := NewMultilineInputField().WithWidth(20).
-		WithValue("ab").CursorEnd()
+		WithValue("ab").CaretEnd()
 	f.goalCol = 7 // a stale up/down goal column from earlier line navigation
 
 	f = f.insertNewline()
 	if f.Value() != "ab\n" {
 		t.Errorf("value = %q, want %q", f.Value(), "ab\n")
 	}
-	if f.CursorPos() != 3 {
-		t.Errorf("cursor = %d, want 3 (moved past the inserted break)", f.CursorPos())
+	if f.CaretPos() != 3 {
+		t.Errorf("caret = %d, want 3 (moved past the inserted break)", f.CaretPos())
 	}
 	if f.goalCol != -1 {
 		t.Errorf("goalCol = %d, want -1: the old goal belonged to the previous line", f.goalCol)
 	}
 
-	// Insert at an arbitrary offset: the break lands at the cursor and splits
+	// Insert at an arbitrary offset: the break lands at the caret and splits
 	// the line.
 	g := NewMultilineInputField().WithWidth(20).
-		WithValue("abcdef").WithCursorPos(2).insertNewline()
+		WithValue("abcdef").WithCaretPos(2).insertNewline()
 	if g.Value() != "ab\ncdef" {
 		t.Errorf("mid-value insert = %q, want %q", g.Value(), "ab\ncdef")
 	}
-	if g.CursorPos() != 3 {
-		t.Errorf("mid-value cursor = %d, want 3", g.CursorPos())
+	if g.CaretPos() != 3 {
+		t.Errorf("mid-value caret = %d, want 3", g.CaretPos())
 	}
 
 	// Repeated presses stack lines: the multi-line value the field is built
 	// for (up/down navigate lines) is reachable without a terminal that
 	// supports bracketed paste.
 	h := NewMultilineInputField().WithWidth(20).
-		WithValue("x").CursorEnd().
+		WithValue("x").CaretEnd().
 		insertNewline().insertNewline().insertNewline()
 	if h.Value() != "x\n\n\n" {
 		t.Errorf("three inserts = %q, want %q", h.Value(), "x\n\n\n")
@@ -176,17 +176,17 @@ func TestPasteThenEnterSubmitsEverything(t *testing.T) {
 			msg = KeyPressMsg(Key{Text: string(r), Code: r})
 		}
 		var cmd Cmd
-		m, cmd = m.handleInputKeys(msg)
+		m, cmd = m.handlePromptKeys(msg)
 		if cmd != nil {
 			t.Fatalf("pasted byte %q triggered a command; nothing may submit until Enter", r)
 		}
 	}
 
-	if got := m.input.Value(); got != "line1\nline2\n" {
+	if got := m.promptBox.Value(); got != "line1\nline2\n" {
 		t.Errorf("value = %q, want %q", got, "line1\nline2\n")
 	}
 
-	_, cmd := m.handleInputKeys(KeyPressMsg(Key{Code: KeyEnter}))
+	_, cmd := m.handlePromptKeys(KeyPressMsg(Key{Code: KeyEnter}))
 	if cmd == nil {
 		t.Fatal("Enter after a pasted block did not submit")
 	}

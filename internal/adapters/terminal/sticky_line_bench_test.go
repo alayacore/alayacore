@@ -23,7 +23,7 @@ import (
 )
 
 // stickyBenchSession builds a session that is realistic for the pinned case:
-// a very tall expanded answer (the window a reader scrolls through), behind
+// a very tall unfolded answer (the window a reader scrolls through), behind
 // a folded prompt and followed by a column of folded steps.
 func stickyBenchSession() *WindowBuffer {
 	wb := NewWindowBuffer(120, DefaultStyles())

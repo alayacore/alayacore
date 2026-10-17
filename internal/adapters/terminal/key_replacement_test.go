@@ -22,7 +22,7 @@ import (
 // program_input.go calls Parse with a read — and returns the text the prompt would
 // receive: the keys it produced, in order.
 func inputText(in string) string {
-	p := &InputParser{}
+	p := &KeyParser{}
 	var b strings.Builder
 	for _, msg := range p.Parse([]byte(in)) {
 		if k, ok := msg.(KeyPressMsg); ok {
@@ -61,7 +61,7 @@ func TestInputReplacementsMatchWhatATerminalDraws(t *testing.T) {
 // each of them would have to decide about separately.
 func TestPastedContentIsReplacedByTheSameRule(t *testing.T) {
 	for _, tc := range terminalCases {
-		p := &InputParser{}
+		p := &KeyParser{}
 		var content string
 		var seen bool
 		for _, msg := range p.Parse([]byte("\x1b[200~" + tc.in + "\x1b[201~")) {
@@ -90,7 +90,7 @@ func TestPastedContentIsReplacedByTheSameRule(t *testing.T) {
 // matter of course, and without the hold a CJK character typed into the prompt
 // arrives as three boxes.
 func TestInputHoldsASequenceAReadCutShort(t *testing.T) {
-	p := &InputParser{}
+	p := &KeyParser{}
 	for _, msg := range p.Parse([]byte("a\xe4\xb8")) { // ─ of 一 (E4 B8 80)
 		if k, ok := msg.(KeyPressMsg); ok && k.Code == utf8.RuneError {
 			t.Fatalf("the parser replaced a character that is still arriving: %q", k.Code)

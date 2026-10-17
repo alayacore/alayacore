@@ -108,7 +108,7 @@ func (t *TTY) Read(p []byte) (int, error) {
 // Close releases the files openTTY opened. The process's own stdin and stdout
 // are deliberately left open: they belong to the shell that runs whatever comes
 // next, and closing one whose read is still in flight would make this call wait
-// for a keystroke that has no reason to arrive (Program.stopInput exists so that
+// for a keystroke that has no reason to arrive (Program.stopKeys exists so that
 // no read is in flight here — but the streams are not ours to close either way).
 func (t *TTY) Close() error {
 	var errs []error
