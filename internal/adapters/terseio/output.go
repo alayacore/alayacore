@@ -368,7 +368,7 @@ func (o *answerOutput) handleSystemFrame(value string) {
 		var m struct {
 			State string `json:"state"`
 		}
-		if json.Unmarshal(env.Data, &m) == nil && m.State == "closed" {
+		if json.Unmarshal(env.Data, &m) == nil && m.State == protocol.SessionStateClosed {
 			o.closed.Mark()
 		}
 	}
@@ -389,16 +389,16 @@ func (o *answerOutput) handleSystemMCP(data json.RawMessage) {
 		return
 	}
 	switch m.Status {
-	case "connecting":
+	case protocol.MCPStatusConnecting:
 		o.mcpStatus("connecting %q", m.Server)
-	case "connected":
+	case protocol.MCPStatusConnected:
 		o.mcpStatus("connected %q", m.Server)
 		if o.onMCPConnected != nil {
 			o.onMCPConnected(m.Server)
 		}
-	case "failed":
+	case protocol.MCPStatusFailed:
 		o.mcpStatus("failed %q: %s", m.Server, m.Error)
-	case "auth_required":
+	case protocol.MCPStatusAuthRequired:
 		if m.Server == "" {
 			return
 		}
@@ -406,9 +406,9 @@ func (o *answerOutput) handleSystemMCP(data json.RawMessage) {
 		if o.mcpAuthRequired != nil {
 			o.mcpAuthRequired(m.Server, m.URL)
 		}
-	case "auth_running":
+	case protocol.MCPStatusAuthRunning:
 		o.mcpStatus("waiting for authorization for %q…", m.Server)
-	case "done":
+	case protocol.MCPStatusDone:
 		// Natural completion, or :mcp_skip — stop any running flow.
 		if o.onMCPDone != nil {
 			o.onMCPDone()

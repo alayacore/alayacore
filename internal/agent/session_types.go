@@ -60,13 +60,13 @@ const (
 func (s SessionState) String() string {
 	switch s {
 	case SessionStarting:
-		return "starting"
+		return protocol.SessionStateStarting
 	case SessionInitializing:
-		return "initializing"
+		return protocol.SessionStateInitializing
 	case SessionReady:
-		return "ready"
+		return protocol.SessionStateReady
 	case SessionClosed:
-		return "closed"
+		return protocol.SessionStateClosed
 	default:
 		return fmt.Sprintf("SessionState(%d)", int(s))
 	}

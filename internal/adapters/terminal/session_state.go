@@ -261,8 +261,8 @@ func (s *sessionState) updateThemeList(themes []ThemeEntry) {
 	s.mu.Unlock()
 }
 
-// updateReasoning atomically updates the reasoning level.
-func (s *sessionState) updateReasoning(level int) {
+// updateReasoningLevel atomically updates the reasoning level.
+func (s *sessionState) updateReasoningLevel(level int) {
 	s.mu.Lock()
 	s.reasoningLevel = level
 	s.statusVersion++
@@ -293,9 +293,9 @@ func (s *sessionState) updateMCPProgress(status, server string) {
 	s.mcpStatus = status
 	s.mcpServer = server
 	switch status {
-	case "connecting":
+	case protocol.MCPStatusConnecting:
 		// New init cycle — reset list if coming from idle/done state.
-		if prevStatus == "" || prevStatus == "done" {
+		if prevStatus == "" || prevStatus == protocol.MCPStatusDone {
 			s.mcpServers = nil
 		}
 		// Add to list if not already present.
@@ -309,7 +309,7 @@ func (s *sessionState) updateMCPProgress(status, server string) {
 		if !found {
 			s.mcpServers = append(s.mcpServers, server)
 		}
-	case "connected", "failed":
+	case protocol.MCPStatusConnected, protocol.MCPStatusFailed:
 		// Remove from list.
 		for i, n := range s.mcpServers {
 			if n == server {

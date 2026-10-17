@@ -503,8 +503,8 @@ func (to *outputWriter) handleSystemFrame(value string) {
 		to.handleSystemTheme(env.Data)
 	case protocol.MsgTypeThemeList:
 		to.handleSystemThemeList(env.Data)
-	case protocol.MsgTypeReasoning:
-		to.handleSystemReasoning(env.Data)
+	case protocol.MsgTypeReasoningLevel:
+		to.handleSystemReasoningLevel(env.Data)
 	case protocol.MsgTypeVideoConfig:
 		to.handleSystemVideoConfig(env.Data)
 	case protocol.MsgTypeToolConfirm:
@@ -702,14 +702,14 @@ func (to *outputWriter) handleSystemThemeList(data json.RawMessage) {
 	to.status.updateThemeList(infos)
 }
 
-func (to *outputWriter) handleSystemReasoning(data json.RawMessage) {
+func (to *outputWriter) handleSystemReasoningLevel(data json.RawMessage) {
 	var m struct {
 		Level int `json:"level"`
 	}
 	if json.Unmarshal(data, &m) != nil {
 		return
 	}
-	to.status.updateReasoning(m.Level)
+	to.status.updateReasoningLevel(m.Level)
 }
 
 // handleSystemVideoConfig updates the video FPS and resolution in session status.
@@ -738,17 +738,17 @@ func (to *outputWriter) handleSystemMCP(data json.RawMessage) {
 	}
 
 	switch msg.Status {
-	case "connecting", "connected", "failed":
+	case protocol.MCPStatusConnecting, protocol.MCPStatusConnected, protocol.MCPStatusFailed:
 		to.status.updateMCPProgress(msg.Status, msg.Server)
-	case "auth_required":
+	case protocol.MCPStatusAuthRequired:
 		if msg.Server != "" {
-			to.status.updateMCPProgress("auth_required", msg.Server)
+			to.status.updateMCPProgress(protocol.MCPStatusAuthRequired, msg.Server)
 			to.status.addMCPAuthPending(msg.Server, msg.URL)
 		}
-	case "auth_running":
+	case protocol.MCPStatusAuthRunning:
 		to.status.updateMCPProgress(msg.Status, msg.Server)
-	case "done":
-		to.status.updateMCPProgress("done", "")
+	case protocol.MCPStatusDone:
+		to.status.updateMCPProgress(protocol.MCPStatusDone, "")
 		// Display-only terminal state: the init overlay is closed by the
 		// authoritative SM "session" ready frame (ConsumeSessionReady).
 	}
@@ -769,9 +769,9 @@ func (to *outputWriter) handleSystemSession(data json.RawMessage) {
 		return
 	}
 	switch m.State {
-	case "ready":
+	case protocol.SessionStateReady:
 		to.status.markSessionReady()
-	case "closed":
+	case protocol.SessionStateClosed:
 		to.status.markSessionClosed()
 	}
 }

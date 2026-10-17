@@ -25,6 +25,14 @@ qualified. That is the rule the table encodes.
 | **frame** | `wire.WriteFrame`, `Tag*` | The transport unit: a tag byte, a body, a newline. | `message` for the unit (a `system message` names one frame's payload) |
 | **tag** | `wire.TagUserX` | The two letters that open a frame. | — |
 
+### A wire value is a constant
+
+Every status, state and phase string — `ready`/`closed`, `connecting`/`done`,
+`queued`/`refused` — is declared once in `internal/protocol`, the producer
+returns it, and every adapter compares it. A literal in an adapter is a second
+home for the same word, and it is the copy the producer changes that nobody
+sees (`misc/check-terms.sh` fails on one).
+
 ## The TUI
 
 | Term | In code | Means | Never |

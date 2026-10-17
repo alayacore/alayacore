@@ -1174,7 +1174,7 @@ func (m Terminal) handleMCPProgress() (Terminal, OverlayAction) {
 	}
 
 	st := out.SnapshotStatus()
-	if st.MCPStatus != "" && st.MCPStatus != "done" {
+	if st.MCPStatus != "" && st.MCPStatus != protocol.MCPStatusDone {
 		if m.mcpInitOverlay.IsOpen() {
 			m.mcpInitOverlay = m.mcpInitOverlay.UpdateMCPInitProgress(st.MCPServers)
 		} else {

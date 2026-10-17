@@ -21,20 +21,47 @@ import (
 type SystemMsgType string
 
 const (
-	MsgTypeError       SystemMsgType = "error"
-	MsgTypeNotify      SystemMsgType = "notify"
-	MsgTypeTask        SystemMsgType = "task"
-	MsgTypeModel       SystemMsgType = "model"
-	MsgTypeModelList   SystemMsgType = "model_list"
-	MsgTypeTheme       SystemMsgType = "theme"
-	MsgTypeThemeList   SystemMsgType = "theme_list"
-	MsgTypeReasoning   SystemMsgType = "reasoning_level"
-	MsgTypeVideoConfig SystemMsgType = "video_config"
-	MsgTypeToolConfirm SystemMsgType = "tool_confirm"
-	MsgTypeMCP         SystemMsgType = "mcp"
-	MsgTypeSession     SystemMsgType = "session"
-	MsgTypeVersion     SystemMsgType = "version"
-	MsgTypeSteering    SystemMsgType = "steering"
+	MsgTypeError          SystemMsgType = "error"
+	MsgTypeNotify         SystemMsgType = "notify"
+	MsgTypeTask           SystemMsgType = "task"
+	MsgTypeModel          SystemMsgType = "model"
+	MsgTypeModelList      SystemMsgType = "model_list"
+	MsgTypeTheme          SystemMsgType = "theme"
+	MsgTypeThemeList      SystemMsgType = "theme_list"
+	MsgTypeReasoningLevel SystemMsgType = "reasoning_level"
+	MsgTypeVideoConfig    SystemMsgType = "video_config"
+	MsgTypeToolConfirm    SystemMsgType = "tool_confirm"
+	MsgTypeMCP            SystemMsgType = "mcp"
+	MsgTypeSession        SystemMsgType = "session"
+	MsgTypeVersion        SystemMsgType = "version"
+	MsgTypeSteering       SystemMsgType = "steering"
+)
+
+// Session states — the "state" field of a "session" system message. The
+// session broadcasts two of them: ready (initialization settled, prompts are
+// accepted) and closed (the terminal frame, sent as run() exits). starting and
+// initializing are named here for completeness: they are the same field's
+// vocabulary, and a reader of a frame should not have to guess them from the
+// producer.
+const (
+	SessionStateStarting     = "starting"
+	SessionStateInitializing = "initializing"
+	SessionStateReady        = "ready"
+	SessionStateClosed       = "closed"
+)
+
+// MCP init statuses — the "status" field of an "mcp" system message, which is
+// the wire form of internal/mcp's InitEventType. The values live here so that an
+// adapter compares a name rather than a literal and a new status cannot reach
+// the wire under a spelling only its producer knows.
+const (
+	MCPStatusConnecting   = "connecting"
+	MCPStatusConnected    = "connected"
+	MCPStatusFailed       = "failed"
+	MCPStatusAuthRequired = "auth_required"
+	MCPStatusAuthRunning  = "auth_running"
+	MCPStatusDone         = "done"
+	MCPStatusCanceled     = "canceled"
 )
 
 // Steering phases — the "phase" field of a "steering" system message, which

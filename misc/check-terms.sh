@@ -78,6 +78,17 @@ report "$hits" 'the folded state is folded/unfolded'
 hits=$(grep -rnE '\b(expanded|Expanded)\b' docs/tui.md docs/internal/virtual-rendering-performance.md 2>/dev/null)
 report "$hits" 'the folded state is folded/unfolded'
 
+# ── 4. Wire values that have a name ────────────────────────────────────────
+# A status or state string means one thing because it is written once, in
+# protocol: the producer returns the constant and the adapter compares it. A
+# literal comparison in an adapter is a second home for the same word, and the
+# copy the producer changes is the one nobody sees. Exact quoted values only —
+# a message that merely contains the word ("connecting %q") is not a comparison.
+wires='"(ready|closed|starting|initializing|connecting|connected|failed|auth_required|auth_running|done|queued|delivered|dropped|refused)"'
+hits=$(grep -rnE "$wires" --include=*.go internal/adapters 2>/dev/null |
+	grep -vE '_test\.go:' | grep -vE ':[0-9]+:[[:space:]]*//')
+report "$hits" 'a wire value spelled as a literal in an adapter — use the protocol constant'
+
 # ── 4. One spelling for English, everywhere ───────────────────────────────
 hits=$(grep -rniE '\b(behaviour|colour|summarise|organise|recognise|normalise|initialis|serialis)[a-z]*' \
 	--include=*.go --include=*.md . 2>/dev/null)

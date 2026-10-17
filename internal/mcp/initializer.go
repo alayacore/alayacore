@@ -32,6 +32,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/mcp/auth"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 var errSkipped = errors.New("skipped")
@@ -112,14 +113,17 @@ func deriveIssuer(tokenEndpoint string) string {
 // The session receives these from Events() and reacts accordingly.
 type InitEventType string
 
+// The values are protocol's: an InitEventType goes onto the wire as the "mcp"
+// system message's status, so a second spelling here would be a second home for
+// the same word (and a status no adapter could match).
 const (
-	InitConnecting  InitEventType = "connecting"
-	InitConnected   InitEventType = "connected"
-	InitFailed      InitEventType = "failed"
-	InitAuthConfirm InitEventType = "auth_required"
-	InitAuthRunning InitEventType = "auth_running"
-	InitDone        InitEventType = "done"
-	InitCanceled    InitEventType = "canceled"
+	InitConnecting  InitEventType = protocol.MCPStatusConnecting
+	InitConnected   InitEventType = protocol.MCPStatusConnected
+	InitFailed      InitEventType = protocol.MCPStatusFailed
+	InitAuthConfirm InitEventType = protocol.MCPStatusAuthRequired
+	InitAuthRunning InitEventType = protocol.MCPStatusAuthRunning
+	InitDone        InitEventType = protocol.MCPStatusDone
+	InitCanceled    InitEventType = protocol.MCPStatusCanceled
 )
 
 type InitEvent struct {
