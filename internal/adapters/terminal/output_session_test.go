@@ -102,3 +102,38 @@ func TestConsumeSessionReadyClearsStaleAuths(t *testing.T) {
 		t.Fatal("stale MCP auth confirmation should be cleared on session ready")
 	}
 }
+
+// TestTaskStartEdgeIsOneShotPerTurn covers ConsumeTaskStarted — what the tick
+// uses to return the view to the live edge. A turn beginning is an edge, not a
+// state: the frames that follow within the same run must not report it again,
+// or a reader who scrolled back mid-turn would be dragged to the bottom on
+// every step. :continue and :summarize cross the same edge as a prompt, which
+// is why no command name appears in the adapter.
+func TestTaskStartEdgeIsOneShotPerTurn(t *testing.T) {
+	w := NewTerminalOutput(DefaultStyles())
+
+	if w.ConsumeTaskStarted() {
+		t.Fatal("ConsumeTaskStarted should be false before any task frame")
+	}
+
+	w.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1}}`)
+	if !w.ConsumeTaskStarted() {
+		t.Fatal("the start of a turn did not report a start edge")
+	}
+	if w.ConsumeTaskStarted() {
+		t.Fatal("ConsumeTaskStarted should be one-shot (false after consumption)")
+	}
+
+	// A later step of the same run is not a new turn.
+	w.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":2}}`)
+	if w.ConsumeTaskStarted() {
+		t.Error("a running turn's progress frame reported a new start")
+	}
+
+	// The next run is.
+	w.handleSystemMsg(`{"type":"task","data":{"in_progress":false}}`)
+	w.handleSystemMsg(`{"type":"task","data":{"in_progress":true,"current_step":1}}`)
+	if !w.ConsumeTaskStarted() {
+		t.Error("the next turn did not report a start edge")
+	}
+}

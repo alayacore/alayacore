@@ -211,11 +211,13 @@ func TestEnsureCursorVisible_EntirelyAboveScrolls(t *testing.T) {
 	}
 }
 
-// TestAutoFollow_OnlyGEnables verifies the new auto-follow design:
-//   - Only G enables auto-follow
-//   - All other navigation disables it
+// TestAutoFollow_GReEnablesNavigationDisables verifies the auto-follow design
+// on the navigation side:
+//   - G re-enables auto-follow (submitting a prompt is the other enabler —
+//     see follow_latest_test.go)
+//   - navigation only ever disables it
 //   - auto-follow keeps viewport at bottom across updateContent calls
-func TestAutoFollow_OnlyGEnables(t *testing.T) {
+func TestAutoFollow_GReEnablesNavigationDisables(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 

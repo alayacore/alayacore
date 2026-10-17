@@ -18,7 +18,7 @@ type DisplayModel struct {
 	scrollView     ScrollView // viewport into the window buffer content
 	height         int        // display area height (viewport height)
 	windowCursor   int        // currently selected window index (-1 = none)
-	autoFollow     bool       // true on init and after G; disabled by navigation
+	autoFollow     bool       // true on init and after FollowLatest (G, submit); disabled by navigation
 	displayFocused bool       // whether the display pane has input focus
 	blocked        bool       // true when an overlay is active (dim rendering)
 	lastContent    string     // cached last rendered output for change detection
@@ -131,9 +131,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		return m.updateContent(), nil
 
 	case keyG, keyEnd:
-		m = m.WithCursorToLastWindow()
-		m = m.GotoBottom()
-		return m.updateContent(), nil
+		return m.FollowLatest(), nil
 
 	case keyGSmall, keyHome:
 		m = m.WithWindowCursor(0)
@@ -413,7 +411,7 @@ func (m DisplayModel) GetCursorWindowHistoryID() uint64 {
 }
 
 // setCursor sets the window cursor and disables auto-follow.
-// Only SetCursorToLastWindow re-enables auto-follow afterwards.
+// Only WithCursorToLastWindow re-enables auto-follow afterwards.
 func (m DisplayModel) setCursor(i int) DisplayModel {
 	if m.windowCursor == i && !m.autoFollow {
 		return m
@@ -436,7 +434,8 @@ func (m DisplayModel) clearCursor() DisplayModel {
 }
 
 // If the index points to an invisible window, the nearest visible window is chosen instead.
-// Disables auto-follow only if the cursor actually moves; only G re-enables it.
+// Disables auto-follow only if the cursor actually moves; only
+// WithCursorToLastWindow re-enables it.
 func (m DisplayModel) WithWindowCursor(index int) DisplayModel {
 	if index < 0 || m.windowBuffer.WindowCount() == 0 {
 		return m.clearCursor()
@@ -456,8 +455,9 @@ func (m DisplayModel) WithWindowCursor(index int) DisplayModel {
 // appended to the buffer between ticks, making the cursor appear to be
 // "not at the last window" even though the user never moved.  Allowing j
 // to move in that case would silently jump to a window the user can't see
-// and disable auto-follow.  Only the tick handler (SetCursorToLastWindow)
-// should advance the cursor while auto-following.
+// and disable auto-follow.  While auto-following, only the tick handler
+// (SetCursorToLastWindow) advances the cursor — FollowLatest is what put it
+// there, and this key must not move it.
 func (m DisplayModel) MoveWindowCursorDown() (DisplayModel, bool) {
 	if m.autoFollow {
 		return m, false
@@ -630,6 +630,11 @@ func (m DisplayModel) ClampCursor() DisplayModel {
 	return m
 }
 
+// WithCursorToLastWindow parks the cursor on the last visible window and
+// re-enables auto-follow. It is the one place auto-follow comes back on —
+// setCursor and clearCursor only ever turn it off — so every caller is a
+// deliberate "take me to what is happening now": FollowLatest (G/End,
+// submitting, a turn starting) and focusDisplay's cursorless case.
 func (m DisplayModel) WithCursorToLastWindow() DisplayModel {
 	i := m.windowBuffer.LastVisibleIndex()
 	if i >= 0 {
@@ -640,6 +645,27 @@ func (m DisplayModel) WithCursorToLastWindow() DisplayModel {
 	m.autoFollow = true
 	m.contentDirty = true
 	return m
+}
+
+// FollowLatest is the "take me to what is happening now" gesture: park the
+// cursor on the last window, re-enable auto-follow, and paint the live edge.
+// Two things mean it — G/End, and submitting a prompt. A send is a request to
+// watch the answer, so the prompt the session echoes back and everything
+// streamed after it must land in view instead of below a viewport left parked
+// in the scrollback (where a silent Enter reads as a prompt that never went).
+// The third caller is not a gesture but the session's own report that a turn
+// began (see Terminal.handleDisplayRefresh), which is the same request made by
+// a command: :continue and :summarize.
+//
+// At submit time the echo has not arrived yet, so the cursor lands on the last
+// window there is and the tick handler's WithCursorToLastWindow advances it as
+// the session's frames append windows — the same state G leaves the display in.
+//
+// The render belongs to the gesture: View paints scrollView's cached clip, and
+// a tick returns early when no output delta arrived, so a jump that skipped
+// updateContent would not be drawn until content happened to follow.
+func (m DisplayModel) FollowLatest() DisplayModel {
+	return m.WithCursorToLastWindow().GotoBottom().updateContent()
 }
 
 func (m DisplayModel) ToggleWindowFold() (DisplayModel, bool) {

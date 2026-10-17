@@ -90,6 +90,15 @@ type sessionState struct {
 	// over without holding a session handle.
 	sessionClosed bool
 
+	// taskStarted is set on the idle → in-progress edge of the "task"
+	// system frame. Consumed one-shot by takeTaskStarted: a turn beginning
+	// is what the sender asked to watch, and the Terminal re-arms
+	// auto-follow on it (see handleDisplayRefresh). It is deliberately the
+	// domain's own edge rather than a list of commands that start a turn —
+	// :continue, :summarize, and the prompt path all cross it, and a
+	// command added later crosses it without the adapter naming it.
+	taskStarted bool
+
 	// Per-server init progress.
 	mcpServer  string   // current server being connected/authorized
 	mcpServers []string // full list of servers currently being initialized
@@ -155,6 +164,7 @@ func (s *sessionState) updateTask(inProgress bool, currentStep, maxSteps int, co
 		// doesn't show stale values.
 		s.stepTPS = 0
 		s.ttftMS = 0
+		s.taskStarted = true
 	}
 	s.inProgress = inProgress
 	s.currentStep = currentStep
@@ -386,6 +396,19 @@ func (s *sessionState) takeSessionClosed() bool {
 		return false
 	}
 	s.sessionClosed = false
+	return true
+}
+
+// takeTaskStarted returns true if a turn began since the last call, and resets
+// the flag. One-shot so the Terminal re-arms auto-follow once per turn rather
+// than on every "task" frame of a run.
+func (s *sessionState) takeTaskStarted() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.taskStarted {
+		return false
+	}
+	s.taskStarted = false
 	return true
 }
 
