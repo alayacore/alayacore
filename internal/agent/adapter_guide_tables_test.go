@@ -8,11 +8,13 @@ package agent
 //
 // What is checked, and why it is exact:
 //
-//   - A command name in either table must be one the session dispatches. The
-//     authority is defaultCommandDefs (what lookupCommand serves), not a list in
-//     this file that could drift the same way.
-//   - The arguments in docs/commands.md's command cell must equal the registry's
-//     usage string, character for character once the table's `\|` is unescaped.
+//   - A command name in either table must be in the vocabulary (commands.Defs),
+//     and that table is itself pinned to the session's handler table by
+//     TestCommandVocabularyMatchesTheRegistry — so this compares the docs to the
+//     declarations rather than to a list kept here.
+//   - The arguments in docs/commands.md's command cell must equal the
+//     vocabulary's usage string, character for character once the table's `\|`
+//     is unescaped.
 //   - An SM type in the guide's table must be one protocol declares.
 //   - A field name in an SM table's schema column must be a JSON key of that
 //     message's payload. "Field name" is exact: a backticked identifier
@@ -351,6 +353,7 @@ func TestShortFormsResolveToDispatchedCommands(t *testing.T) {
 	if len(forms) == 0 {
 		t.Fatal("no short forms — the table moved, so the check went quiet")
 	}
+	seen := map[string]string{}
 	for short, name := range forms {
 		if !known[name] {
 			t.Errorf("short form %q expands to %q, which the session does not dispatch", short, name)
@@ -358,5 +361,9 @@ func TestShortFormsResolveToDispatchedCommands(t *testing.T) {
 		if known[short] {
 			t.Errorf("short form %q shadows the command of the same name", short)
 		}
+		if prev, dup := seen[name]; dup {
+			t.Errorf("%q and %q both expand to %q; the help list shows one short form per command", prev, short, name)
+		}
+		seen[name] = short
 	}
 }

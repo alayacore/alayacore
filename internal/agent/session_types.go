@@ -243,9 +243,11 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // things; the task SM's token count is "context_tokens", the name the session
 // file and the adapters already used; a tool call's id is "call_id" in the CO
 // result too, and the arguments that carry an id say which one (":tool_confirm
-// <call_id>", ":fork <history_id> <filename>"). Adapters that speak v15 keep
-// working until they use one of those names; a v15 session file no longer
-// loads, because loading demands this number exactly (see above) and
+// <call_id>", ":fork <history_id> <filename>"). A short form is an adapter's
+// word, not a wire name: "q" is refused like any unknown command, and the
+// adapter that accepts it resolves it before writing the frame. Adapters that
+// speak v15 keep working until they use one of those names; a v15 session file
+// no longer loads, because loading demands this number exactly (see above) and
 // sessionmigrate carries the step that rewrites it.
 // v15: the wire dropped its 4-byte length field. A frame is one line — a
 // two-byte tag, a JSON value, an LF — so the boundary now rests on the value

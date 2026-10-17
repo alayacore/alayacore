@@ -56,9 +56,10 @@ sees (`misc/check-terms.sh` fails on one).
 | **keys** | `KeyParser`, `keySource`, `readKeys` | Bytes read from the host, and their parsing. | `input` for the host side |
 | **session pipe** | `Terminal.sessionPipe` | The writer a prompt or command leaves the TUI through. | `streamInput`, `stdin` |
 | **display** | `DisplayModel`, `Terminal.display` | The pane that shows the transcript. | `screen` (that is the terminal) |
+| **transcript** | the windows, in order | Everything the display shows: the conversation and the machinery around it, as one document. | `scrollback`, `content area` |
 | **live edge** | `live_edge.go` | The transcript's closing row: the newest line plus what the viewport hides. | — |
 
-Two layer-local shortcuts are allowed because the file owns the word:
+Three layer-local shortcuts are allowed because the file owns the word:
 
 - inside `screen.go` / `program.go`, `cursor` is the **screen cursor** (the
   terminal's own term — `DECSCUSR` is "cursor style");
@@ -66,7 +67,8 @@ Two layer-local shortcuts are allowed because the file owns the word:
   **window cursor**;
 - inside `input_field.go` / `prompt_input.go`, `caret` is the **caret**.
 
-Nothing else may use an unqualified `cursor`, `input` or `window`.
+Nothing else may use an unqualified `cursor` or `input`, and `window` never
+means the screen or an overlay.
 
 ## Frozen vocabulary
 

@@ -66,10 +66,10 @@ func NewHelpOverlay(styles *Styles) HelpOverlay {
 // appended — they are the TUI's own, with no session command behind them — and a
 // command that has a short form shows it.
 func commandHelpItems(nextID func() int) []HelpItem {
+	// The table holds one short form per command — a second would need a
+	// separator here — and TestShortFormsResolveToDispatchedCommands pins that.
 	shortFor := map[string]string{}
 	for short, name := range commands.ShortForms() {
-		// One short form per command is all the table has; a second would need a
-		// separator here, not a silent overwrite.
 		shortFor[name] = short
 	}
 

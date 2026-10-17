@@ -884,12 +884,13 @@ init settles. rawio delegates the whole flow to the controlling process.
 
 ### Model Sync
 
-When the user finishes editing model config in an external editor, the adapter
-sends the full model list JSON back to the agent via `model_sync`:
+An adapter that lets the user edit the model list — none of the built-in ones
+does; they read `model.conf` and reload with `:model_load` — posts the edited
+list back through `model_sync` when its editor session ends:
 
 | Trigger | Adapter Action | CI Response |
 |---------|----------------|-------------|
-| `:model` command → editor session ends | Read edited file, send content as JSON array | `{"call_id":"...","name":"model_sync","input":"[{...}, {...}]"}` |
+| The adapter's model-config editor session ends | Read the edited file, send its content as a JSON array | `{"call_id":"...","name":"model_sync","input":"[{...}, {...}]"}` |
 
 The `input` is a serialized array of model config objects (same format as the
 `models` field in `SM-model-list.txt`). The agent replaces all models with

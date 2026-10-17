@@ -478,17 +478,23 @@ Auto-follow is enabled by default at startup. When enabled, the viewport
 automatically scrolls to keep the newest content visible as it arrives.
 
 Auto-follow is disabled by any navigation that actually moves the cursor or
-scrolls the viewport. Two gestures re-enable it, both meaning "take me to what
-is happening now": `G`/`End`, and submitting a prompt. A send is a request to
-watch the answer — the prompt the session echoes back and everything streamed
-after it must not land below a viewport left parked in the scrollback, where a
-silent `Enter` reads as a prompt that never went. Sending while a task runs
-(steering) counts as a send for the same reason, and so does a task that starts
-from a command (`:continue`, `:summarize`): the view follows the session's own
-idle → in-progress edge, not a list of command names, so a task-starting command
-added later is covered without teaching the TUI what a command means. An empty
-prompt box, and a command that appends no transcript (`:save`, `:cancel`,
-`:tool_confirm`, …), move nothing. While auto-follow is active:
+scrolls the viewport. Three things re-enable it, all meaning "take me to what is
+happening now":
+
+- **`G` / `End`.**
+- **Submitting a prompt.** A send is a request to watch the answer: the prompt the
+  session echoes back and everything streamed after it must not land below a
+  viewport left parked in the scrollback, where a silent `Enter` reads as a
+  prompt that never went. Sending while a task runs (steering) counts too.
+- **A task starting.** `:continue` and `:summarize` start one without a prompt.
+  The view follows the session's own idle → in-progress edge rather than a list
+  of command names, so a task-starting command added later is covered without
+  teaching the TUI what a command means.
+
+An empty prompt box, and a command that appends no transcript (`:save`,
+`:cancel`, `:tool_confirm`, …), move nothing.
+
+While auto-follow is active:
 | Key | Behavior | Disables auto-follow? |
 |-----|----------|-----------------------|
 | `G` | Follow the last window | ✅ Re-enables |

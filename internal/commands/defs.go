@@ -1,23 +1,22 @@
 package commands
 
-// The command vocabulary: what each command is called, what it does, and what
-// arguments it takes. The session owns the handlers and their policy
+// Definition is one command's vocabulary: what it is called, what it does, and
+// what arguments it takes. The session owns the handler and its policy
 // (internal/agent/command_registry.go); an adapter that shows a list of commands
 // reads this table, so the two cannot disagree and neither keeps a copy.
-//
-// Defs is the order a command list should show — most-used first, the
-// housekeeping last — not the dispatcher's order, which is a lookup and does
-// not care.
 type Definition struct {
 	Name        string
 	Description string
 	Usage       string // "" when the command takes no arguments
 }
 
-// Defs is every command a session dispatches. The two task commands (:continue,
-// :summarize) are here and not in the agent's handler table: the dispatcher
-// starts them before it reaches the registry, but they are commands an adapter
-// sends and a help list shows.
+// Defs is every command a session dispatches, in the order a command list should
+// show — most-used first, the housekeeping last — which is not the dispatcher's
+// order: that is a lookup and does not care.
+//
+// The two task commands (:continue, :summarize) are here and not in the agent's
+// handler table: the dispatcher starts them before it reaches the registry, but
+// they are commands an adapter sends and a help list shows.
 var Defs = []Definition{
 	{CommandNameMCPConfirm, "Confirm MCP OAuth authorization", "<server> <code> <redirect_uri> [iss]"},
 	{CommandNameMCPDecline, "Decline MCP OAuth authorization", "<server>"},
