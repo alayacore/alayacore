@@ -59,7 +59,7 @@ be read as a complete one.
 The first `SM` frame of a session is the version frame:
 
 ```
-SM{"type":"version","data":{"message_version":15,"core_version":"<build-time version>"}}
+SM{"type":"version","data":{"message_version":16,"core_version":"<build-time version>"}}
 ```
 
 `message_version` identifies the wire format described in this document — the
@@ -418,7 +418,7 @@ session that ends before it was ever ready still sends `closed`:
 |-------------|------------------------|
 | Not configured | Broadcast at the start of the session loop |
 | Initialized (`done`) | After the final `mcp` `done` frame |
-| User canceled (`:mcp_cancel`) | After the `mcp` `done` frame that follows cancellation |
+| User canceled (`:mcp_skip`) | After the `mcp` `done` frame that follows cancellation |
 | Server failure (`failed`) | After the final `mcp` `done` frame — init always ends with a `done` event, even when some or all servers failed |
 | Event stream closed abnormally | After the "MCP initialization canceled" error frame |
 
@@ -722,7 +722,7 @@ The system-message samples follow with their schema.
 | `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, serial_tool_calls:bool, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.txt` |
 | `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string), `theme` (object, optional — full palette sent on startup, omitted on theme switch) | `SM-theme.txt` |
 | `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, added, removed: string}}`) | `SM-theme-list.txt` |
-| `reasoning` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning.txt` |
+| `reasoning_level` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning-level.txt` |
 | `video_config` | `fps` (int), `res` (int) | `SM-video-config.txt` |
 | `task` | `in_progress` (bool), `current_step` (int, opt), `max_steps` (int, opt), `context` (int), `command_id` (string, opt — set when the task was started by `continue`/`summarize`), `step_tps` (float, opt — latest step's end-to-end throughput in tokens/sec: output tokens ÷ round-trip duration, latency included; absent until a step with output tokens completes; 0 for a step with no output tokens), `ttft_ms` (int, opt — latest step's time-to-first-token in ms) | `SM-task-start.txt`, `SM-task-step.txt`, `SM-task-end.txt` |
 | `error` | `text` (string) | `SM-error.txt` |
@@ -735,12 +735,12 @@ The system-message samples follow with their schema.
 Complete wire values:
 
 ```
-SM-message-version.txt         {"type":"version","data":{"message_version":15,"core_version":"(set at build time)"}}
+SM-message-version.txt         {"type":"version","data":{"message_version":16,"core_version":"(set at build time)"}}
 SM-model.txt                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
 SM-model-list.txt              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
 SM-theme.txt                   {"type":"theme","data":{"name":"theme-dark"}}
 SM-theme-list.txt              {"type":"theme_list","data":{"themes":[{"name":"theme-dark","theme":{"primary":"#89d4fa","dim":"#313244","muted":"#6c7086","warning":"#f77923","error":"#f38ba8","added":"#a6e3a1","removed":"#f38ba8"}},{"name":"theme-light","theme":{"primary":"#1e66f5","dim":"#ccd0da","muted":"#9ca0b0","warning":"#df8e1d","error":"#d20f39","added":"#40a02b","removed":"#d20f39"}}]}}
-SM-reasoning.txt               {"type":"reasoning","data":{"level":2}}
+SM-reasoning-level.txt         {"type":"reasoning_level","data":{"level":2}}
 SM-video-config.txt            {"type":"video_config","data":{"fps":5,"res":1}}
 SM-task-start.txt              {"type":"task","data":{"in_progress":true,"current_step":1,"max_steps":10,"context":0}}
 SM-task-step.txt               {"type":"task","data":{"in_progress":true,"current_step":2,"max_steps":10,"context":8600,"step_tps":12.5,"ttft_ms":1200}}
@@ -862,7 +862,7 @@ the OAuth code, then respond with the code:
 |-------------|----------------|-------------|
 | `{"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://..."}}` | Open browser to `url` (with `{{redirect_uri}}`/`{{state}}` replaced), start callback server | `{"call_id":"...","name":"mcp_confirm","input":"github <code> <redirect_uri>"}` |
 | User declines or flow fails | Send decline command | `{"call_id":"...","name":"mcp_decline","input":"github"}` |
-| User cancels entire init | Send cancel command | `{"call_id":"...","name":"mcp_cancel"}` |
+| User cancels entire init | Send cancel command | `{"call_id":"...","name":"mcp_skip"}` |
 
 The `url` field may contain `{{redirect_uri}}` and `{{state}}` placeholders
 that the adapter must replace with real values before opening the browser:
@@ -913,7 +913,7 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 | `video_config` | `<fps> <0\|1>` | `{"fps":...,"res":...}` — sets the session **default** for videos ingested after it; each video keeps the settings it was ingested with |
 | `mcp_confirm` | `<server> <code> <redirect_uri>` | `{"server":...}` |
 | `mcp_decline` | `<server>` | `{"server":...}` |
-| `mcp_cancel` | — | `null` |
+| `mcp_skip` | — | `null` |
 | `continue` / `summarize` | — | `{"status":"started"}` (async; completion via SM `task` with `command_id`) |
 
 ## Use

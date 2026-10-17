@@ -145,7 +145,7 @@ defaults. This makes the fields purely additive: existing model.conf
 files without them keep working exactly as before.
 
 Reasoning level is independent of provider configuration. The level
-(`0`/`1`/`2`) is controlled by `:reason <level>` at runtime or
+(`0`/`1`/`2`) is controlled by `:reasoning_level <level>` at runtime or
 `--reasoning-level <level>` at startup, and is also persisted in the
 session file. Switching levels picks a different `reasoning_*` block at
 request time.

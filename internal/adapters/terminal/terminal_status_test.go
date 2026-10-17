@@ -22,7 +22,7 @@ func TestStatusBarReasoningRidesWithModelWithoutHighlight(t *testing.T) {
 	for _, level := range []int{0, 1, 2} {
 		t.Run(fmt.Sprintf("level=%d", level), func(t *testing.T) {
 			out := NewTerminalOutput(DefaultStyles())
-			out.handleSystemFrame(fmt.Sprintf(`{"type":"reasoning","data":{"level":%d}}`, level))
+			out.handleSystemFrame(fmt.Sprintf(`{"type":"reasoning_level","data":{"level":%d}}`, level))
 
 			styles := DefaultStyles()
 			terminal := &Terminal{
@@ -347,7 +347,7 @@ func TestStatusBarNoModelKeepsLevelRightAligned(t *testing.T) {
 // starts or ends. The state reads from the motion, not from a color.
 func TestStatusBarIndicatorColumn(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemFrame(`{"type":"reasoning","data":{"level":0}}`)
+	out.handleSystemFrame(`{"type":"reasoning_level","data":{"level":0}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
 	m = m.updateStatus()
@@ -373,7 +373,7 @@ func TestStatusBarNoModelMayFillWidth(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 	// Long reasoning + context segments so the row overflows a narrow
 	// window.
-	out.handleSystemFrame(`{"type":"reasoning","data":{"level":2}}`)
+	out.handleSystemFrame(`{"type":"reasoning_level","data":{"level":2}}`)
 	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":0,"max_steps":0,"context":999999999,"context_limit":1000000000}}`)
 
 	m := newTerminalForUpdateStatusTest(out)
@@ -419,7 +419,7 @@ func TestStatusBarModelGroupInvalidatesRenderCache(t *testing.T) {
 
 	// Reasoning level change → new render: the level is part of the group,
 	// so a level change has to move the cache key too.
-	out.handleSystemFrame(`{"type":"reasoning","data":{"level":2}}`)
+	out.handleSystemFrame(`{"type":"reasoning_level","data":{"level":2}}`)
 	m = m.updateStatus()
 	third := m.renderStatusBar()
 	if third == second {

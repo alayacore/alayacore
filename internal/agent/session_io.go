@@ -700,16 +700,16 @@ func (s *Session) handleModelSync(args string) (any, error) {
 }
 
 // ============================================================================
-// Configuration commands — handleReason, handleVideoConfig, handleThemeSet
+// Configuration commands — handleReasoningLevel, handleVideoConfig, handleThemeSet
 //
 // These commands let the user adjust session-level settings such as
 // reasoning effort, video encoding parameters, and the active theme.
 // ============================================================================
 
-func (s *Session) handleReason(args string) (any, error) {
+func (s *Session) handleReasoningLevel(args string) (any, error) {
 	level, err := strconv.Atoi(args)
 	if err != nil || level < config.ReasoningLevelOff || level > config.ReasoningLevelMax {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :reason [0|1|2]  (0=off, 1=normal, 2=max)"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :reasoning_level [0|1|2]  (0=off, 1=normal, 2=max)"}
 	}
 	s.SetReasoningLevel(level)
 	return map[string]any{"level": level}, nil
@@ -777,16 +777,16 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 }
 
 // ============================================================================
-// MCP commands — handleMCPCancel, handleMCPConfirm, handleMCPDecline
+// MCP commands — handleMCPSkip, handleMCPConfirm, handleMCPDecline
 //
 // These commands manage MCP server lifecycle: cancel initialization,
 // confirm an OAuth authorization code, or decline an authorization request.
 // ============================================================================
 
-// handleMCPCancel handles the :mcp_cancel command.
+// handleMCPSkip handles the :mcp_skip command.
 // Called when the user presses Ctrl+G (init overlay or globally) or types
 // the command directly. Cancels the entire MCP initialization.
-func (s *Session) handleMCPCancel() (any, error) {
+func (s *Session) handleMCPSkip() (any, error) {
 	if err := s.checkMCPReady(); err != nil {
 		return nil, err
 	}

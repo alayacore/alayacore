@@ -1,6 +1,7 @@
 // Package sessionmigrate upgrades a session file one wire generation at a time:
 // V13ToV14 for the content-item change, V14ToV15 for the move to one frame per
-// line.
+// line, V15ToV16 for the renamed vocabulary (a number rewrite and nothing else —
+// the framing did not move).
 //
 // The core reads none of the older generations — loading demands an exact
 // message_version match — so an upgrade needs its own copy of the old framing.
@@ -31,9 +32,12 @@ import (
 const (
 	version13 = 13
 	version14 = 14
-	// version15 is the oldest generation this package leaves alone: a file at it
-	// is current. It must equal internal/agent's messageVersion, since a file
-	// these tools produce has to load, and loading demands an exact match.
+	// version16 is the generation this package leaves alone: a file at it is
+	// current. It must equal internal/agent's messageVersion, since a file these
+	// tools produce has to load, and loading demands an exact match.
+	version16 = 16
+	// version15 is v16's input: the same framing, written under the previous
+	// vocabulary.
 	version15 = 15
 )
 
@@ -90,7 +94,7 @@ func V14ToV15(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	switch from {
-	case version15:
+	case version15, version16:
 		return raw, nil
 	case version13:
 		return nil, fmt.Errorf("this step upgrades a v14 file; this one is v13 — upgrade it to v14 first with misc/session_upgrade_v14.sh")
@@ -105,6 +109,61 @@ func V14ToV15(raw []byte) ([]byte, error) {
 	}
 	return append(setVersion(front, version15), newBody...), nil
 }
+
+// V15ToV16 rewrites a v15 session file as v16.
+//
+// v16 renamed vocabulary and nothing else: :mcp_cancel became :mcp_skip,
+// :reason became :reasoning_level, and the SM that reports a reasoning-level
+// change became "reasoning_level". None of those is in a file — a file holds
+// conversation content — so the body is returned untouched and only the
+// frontmatter's number moves. It is a real step rather than a no-op because
+// loading demands the number exactly (see internal/agent's messageVersion): a
+// v15 file does not open in this build, and this is the tool that makes it.
+//
+// The body is still checked, for the one failure worth catching here: a file
+// whose frontmatter claims v15 while its body is the old length-prefixed
+// framing is not v15, and rewriting its number would produce a v16 file that
+// cannot load. A body that is not one frame per line is refused.
+func V15ToV16(raw []byte) ([]byte, error) {
+	front, body, err := split(raw)
+	if err != nil {
+		return nil, err
+	}
+	from, err := versionOf(front)
+	if err != nil {
+		return nil, err
+	}
+	switch from {
+	case version16:
+		return raw, nil
+	case version14:
+		return nil, fmt.Errorf("this step upgrades a v15 file; this one is v14 — upgrade it to v15 first with misc/session_upgrade_v15.sh")
+	case version15:
+	default:
+		return nil, fmt.Errorf("cannot upgrade a message_version %d file", from)
+	}
+	if err := checkOneFramePerLine(body); err != nil {
+		return nil, err
+	}
+	return append(setVersion(front, version16), body...), nil
+}
+
+// checkOneFramePerLine rejects a body that is not the v15/v16 framing: every
+// non-empty line must open with a two-letter tag and a brace.
+func checkOneFramePerLine(body []byte) error {
+	for i, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		if line == "" {
+			continue
+		}
+		if len(line) < 3 || line[2] != '{' || !isLetter(line[0]) || !isLetter(line[1]) {
+			return fmt.Errorf("body line %d is not a frame — this file is not v15 framing", i+1)
+		}
+	}
+	return nil
+}
+
+func isLetter(b byte) bool { return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') }
 
 // split peels the "---\n…---\n" frontmatter off the body, mirroring the offsets
 // persistence.parseFrontmatter uses.

@@ -455,7 +455,7 @@ func (o *stdoutOutput) handleSystemMCP(data json.RawMessage) {
 	case "done":
 		// Completion is already announced by the session's notify
 		// ("MCP servers initialized: ..."). Just release any running
-		// auth flow — this covers both natural completion and :mcp_cancel.
+		// auth flow — this covers both natural completion and :mcp_skip.
 		if o.onMCPDone != nil {
 			o.deferHook(o.onMCPDone)
 		}

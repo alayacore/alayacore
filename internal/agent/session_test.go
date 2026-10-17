@@ -756,10 +756,10 @@ func TestFrameFormatRecursionProtection(t *testing.T) {
 	}
 }
 
-// sessionFrontmatter returns a session frontmatter block carrying the current
-// message_version, plus any extra lines. Built from the constant rather than a
-// literal: the number is the protocol's, and a fixture that hardcoded it went
-// stale on every bump (the version check is exact, so the fixture would quietly
+// sessionFrontmatter returns a session frontmatter block carrying the file's
+// current framing version, plus any extra lines. Built from the constant rather
+// than a literal: the number is the format's, and a fixture that hardcoded it
+// went stale on every bump (the check is exact, so the fixture would quietly
 // stop testing what it was written for).
 func sessionFrontmatter(extra ...string) []byte {
 	lines := []string{
@@ -933,7 +933,7 @@ func TestLoadSessionVersionValid(t *testing.T) {
 	}
 
 	if data.MessageVersion != messageVersion {
-		t.Errorf("expected messageVersion=%d, got %d", messageVersion, data.MessageVersion)
+		t.Errorf("expected message_version=%d, got %d", messageVersion, data.MessageVersion)
 	}
 }
 

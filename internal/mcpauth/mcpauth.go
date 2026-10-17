@@ -137,7 +137,7 @@ func (f *Flow) Connected(server string) {
 }
 
 // Abort stops every running flow. Called when MCP init completes — both
-// natural completion and :mcp_cancel.
+// natural completion and :mcp_skip.
 func (f *Flow) Abort() {
 	f.mu.Lock()
 	runs := make([]*run, 0, len(f.runs))

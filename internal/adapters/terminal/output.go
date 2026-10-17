@@ -597,7 +597,7 @@ func (to *outputWriter) handleCommandOut(value string) {
 		// No text feedback needed — the command's UI effect (task stop,
 		// theme switch, status change, overlay close) is itself the
 		// confirmation. Staying silent keeps the log free of noise for
-		// commands like :cancel, :theme_set, :reason.
+		// commands like :cancel, :theme_set, :reasoning_level.
 		return
 	}
 	id := to.generateWindowID()

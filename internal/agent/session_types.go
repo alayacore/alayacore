@@ -236,6 +236,13 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // nothing here migrates an older file: editing the field to load one anyway is
 // the user's call. See docs/architecture.md ("message_version").
 //
+// v16: the vocabulary only, with no framing change — :mcp_cancel is :mcp_skip
+// ("cancel" already means stopping the running task), :reason is
+// :reasoning_level, and the SM that reports a reasoning-level change is
+// "reasoning_level", so no wire string means two things. Adapters that speak
+// v15 keep working until they use one of those names; a v15 session file no
+// longer loads, because loading demands this number exactly (see above) and
+// sessionmigrate carries the step that rewrites it.
 // v15: the wire dropped its 4-byte length field. A frame is one line — a
 // two-byte tag, a JSON value, an LF — so the boundary now rests on the value
 // being one line, which the encoder enforces and the decoder checks, instead of
@@ -264,7 +271,7 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // v11: commands moved to the CI/CO control plane — text commands
 // (UT ':' sniffing) removed, command results now travel as CO frames,
 // taskMsg gained command_id for async command correlation.
-const messageVersion = 15
+const messageVersion = 16
 
 // sessionMeta is the frontmatter metadata.
 type sessionMeta struct {

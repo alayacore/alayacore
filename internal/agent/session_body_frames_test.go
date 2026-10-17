@@ -20,7 +20,7 @@ import (
 func writeSessionFile(t *testing.T, lines ...string) string {
 	t.Helper()
 	raw := "---\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n" +
-		"message_version: 15\nreasoning_level: 1\n---\n" +
+		"message_version: 16\nreasoning_level: 1\n---\n" +
 		strings.Join(lines, "\n") + "\n"
 	path := filepath.Join(t.TempDir(), "session.alaya")
 	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
@@ -73,7 +73,7 @@ func TestLoadSession_ConsecutiveContentFramesLoad(t *testing.T) {
 // frontmatter — parsed line by line — has to as well, or the file is unloadable
 // with a message about a missing delimiter that says nothing about line endings.
 func TestLoadSession_ReadsCRLF(t *testing.T) {
-	raw := "---\r\ncreated_at: 2026-01-01T00:00:00Z\r\nmessage_version: 15\r\n---\r\n" +
+	raw := "---\r\ncreated_at: 2026-01-01T00:00:00Z\r\nmessage_version: 16\r\n---\r\n" +
 		"UX{\"type\":\"text\",\"text\":\"hello\"}\r\n"
 	path := filepath.Join(t.TempDir(), "crlf.alaya")
 	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {

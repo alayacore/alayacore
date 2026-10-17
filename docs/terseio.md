@@ -60,11 +60,11 @@ alayacore --terseio --session my-convo.alaya <<< ":save backup.alaya"
 > ⚠️ **Commands and prompts cannot be combined in one invocation.** terseio
 > reads all of stdin as *either* one command *or* one prompt. To run a
 > prompt with a non-default reasoning level, use `--reasoning-level` instead
-> of a `:reason` command:
+> of a `:reasoning_level` command:
 >
 > ```sh
-> # Reasoning off for a cheap one-shot query (flag instead of :reason 0,
-> # because ":reason 0" would consume stdin as the command)
+> # Reasoning off for a cheap one-shot query (flag instead of :reasoning_level 0,
+> # because ":reasoning_level 0" would consume stdin as the command)
 > alayacore --terseio --reasoning-level 0 <<< "summarize this file"
 > ```
 

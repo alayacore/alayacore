@@ -46,7 +46,7 @@ Commands fall into three categories:
 | `:fork <id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count","history_id"}` |
 | `:tool_confirm <id>` | Confirm a pending tool execution | `{"tool_id"}` |
 | `:tool_decline <id>` | Decline a pending tool execution | `{"tool_id"}` |
-| `:mcp_cancel` | Cancel MCP server initialization | `null` |
+| `:mcp_skip` | Cancel MCP server initialization | `null` |
 
 `:cancel` cancels the running task, and it takes the task's *queued* steering with
 it: words that have not yet been spliced into a step are dropped, with a
@@ -68,7 +68,7 @@ These commands are rejected with an error if a task is currently running:
 | `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
 | `:model_load` | Reload model configs from the config file | `{"models"}` |
 | `:model_sync` | Apply edited model config (sent by UI, not user-facing) | `{"models"}` |
-| `:reason [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 — set the startup level with `--reasoning-level <0\|1\|2>` (CLI flag wins over the session file's saved `reasoning_level`) | `{"level"}` |
+| `:reasoning_level [0\|1\|2]` | Set reasoning level (0=off, 1=normal, 2=max). Default: 1 — set the startup level with `--reasoning-level <0\|1\|2>` (CLI flag wins over the session file's saved `reasoning_level`) | `{"level"}` |
 | `:video_config <fps> <0\|1>` | Set the default video FPS and resolution (0=default, 1=max) applied to videos ingested after it — each video keeps the settings it was ingested with | `{"fps","res"}` |
 
 ## Task Commands

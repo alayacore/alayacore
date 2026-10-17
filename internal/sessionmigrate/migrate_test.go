@@ -194,3 +194,59 @@ func TestV13ToV14_WritesTheV14Framing(t *testing.T) {
 		t.Errorf("length field = %d, want %d — the output is not v14-framed", got, want)
 	}
 }
+
+// TestV15ToV16_RewritesTheNumberAndNothingElse is the whole step: v16 renamed
+// vocabulary, which a file does not carry, so the body must come through byte
+// for byte and only the frontmatter's number may move.
+func TestV15ToV16_RewritesTheNumberAndNothingElse(t *testing.T) {
+	body := "UX{\"id\":\"1\",\"type\":\"text\",\"value\":\"hello\"}\nUX{\"id\":\"2\",\"type\":\"text\",\"value\":\"world\"}\n"
+	raw := []byte("---\ncreated_at: 2026-01-01T00:00:00Z\nmessage_version: 15\n---\n" + body)
+
+	out, err := V15ToV16(raw)
+	if err != nil {
+		t.Fatalf("V15ToV16: %v", err)
+	}
+	want := "---\ncreated_at: 2026-01-01T00:00:00Z\nmessage_version: 16\n---\n" + body
+	if string(out) != want {
+		t.Errorf("V15ToV16() =\n%q\nwant\n%q", out, want)
+	}
+}
+
+func TestV15ToV16_LeavesACurrentFileAlone(t *testing.T) {
+	raw := []byte("---\nmessage_version: 16\n---\nUE\n")
+
+	out, err := V15ToV16(raw)
+	if err != nil {
+		t.Fatalf("V15ToV16: %v", err)
+	}
+	if string(out) != string(raw) {
+		t.Errorf("V15ToV16() = %q, want the file unchanged", out)
+	}
+}
+
+// TestV15ToV16_RefusesABodyItCannotRead: a file whose frontmatter claims v15
+// while its body is still the length-prefixed framing is not v15. Rewriting its
+// number would produce a v16 file that cannot load, which is the one outcome a
+// migration must not produce.
+func TestV15ToV16_RefusesABodyItCannotRead(t *testing.T) {
+	raw := []byte("---\nmessage_version: 15\n---\nUE\x00\x00\x00\x05hello\n")
+
+	if _, err := V15ToV16(raw); err == nil {
+		t.Fatal("V15ToV16 accepted a body that is not one frame per line")
+	}
+}
+
+// TestV15ToV16_SendsV14ToTheOtherStep mirrors the v13 refusal above: being told
+// which script performs the missing conversion is the difference between a
+// two-command upgrade and a puzzle.
+func TestV15ToV16_SendsV14ToTheOtherStep(t *testing.T) {
+	raw := []byte("---\nmessage_version: 14\n---\nUE\n")
+
+	_, err := V15ToV16(raw)
+	if err == nil {
+		t.Fatal("V15ToV16 accepted a v14 file")
+	}
+	if !strings.Contains(err.Error(), "session_upgrade_v15.sh") {
+		t.Errorf("refusal does not name the step to run first: %v", err)
+	}
+}

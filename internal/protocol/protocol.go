@@ -28,7 +28,7 @@ const (
 	MsgTypeModelList   SystemMsgType = "model_list"
 	MsgTypeTheme       SystemMsgType = "theme"
 	MsgTypeThemeList   SystemMsgType = "theme_list"
-	MsgTypeReasoning   SystemMsgType = "reasoning"
+	MsgTypeReasoning   SystemMsgType = "reasoning_level"
 	MsgTypeVideoConfig SystemMsgType = "video_config"
 	MsgTypeToolConfirm SystemMsgType = "tool_confirm"
 	MsgTypeMCP         SystemMsgType = "mcp"

@@ -63,7 +63,7 @@ All output is plain text with no ANSI escape codes:
 | User prompts | `User: prompt` (own line; blank line after, blank line before when the previous message ended with a newline) |
 | Tool calls | Raw JSON (id, name, input) |
 | Tool results | Raw JSON (id, output, is_error) |
-| Command results | Success: rendered from the structured result (e.g. `Session saved to <path>`); commands whose effect is self-evident (e.g. `:cancel`, `:reason`) are silent; failure: `[error: message]` (does not affect exit code) |
+| Command results | Success: rendered from the structured result (e.g. `Session saved to <path>`); commands whose effect is self-evident (e.g. `:cancel`, `:reasoning_level`) are silent; failure: `[error: message]` (does not affect exit code) |
 | Errors | `[error: message]` |
 | Notifications | `[message]` |
 | Tool confirmations | `[tool_confirm: allow tool "id" to run?]` |
@@ -80,13 +80,13 @@ startup and their tools (and `tool_confirm` prompts) behave identically. Each
 prompt is sent as soon as it is read; a prompt that arrives before MCP
 initialization has settled is held by the session and runs as soon as it is
 ready, so an early prompt is never rejected with `MCP_NOT_READY` and there is
-nothing to retype. Commands (`:mcp_cancel`, `:quit`, …) are never held.
+nothing to retype. Commands (`:mcp_skip`, `:quit`, …) are never held.
 When a server requires OAuth authorization, plainio prints the
 authorization URL, starts a local callback server, and opens the browser
 automatically — once you authorize, the code is submitted for you. If
 the browser doesn't open, visit the printed URL and type
 `:mcp_confirm <server> <code> <redirect_uri>`; use `:mcp_decline
-<server>` to skip a server or `:mcp_cancel` to abort MCP init. See
+<server>` to skip a server or `:mcp_skip` to abort MCP init. See
 [OAuth](oauth.md) for the full flow.
 
 > ⚠️ **Piped stdin cannot type a code.** When the automatic callback does

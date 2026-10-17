@@ -32,7 +32,7 @@ import (
 // the early-exit.
 func TestUpdateStatusSkipsWhenVersionUnchanged(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	out.handleSystemFrame(`{"type":"reasoning","data":{"level":1}}`)
+	out.handleSystemFrame(`{"type":"reasoning_level","data":{"level":1}}`)
 	out.handleSystemFrame(`{"type":"task","data":{"in_progress":false,"current_step":3,"max_steps":5,"context":1000}}`)
 	snap1 := out.SnapshotStatus()
 

@@ -409,7 +409,7 @@ func (o *answerOutput) handleSystemMCP(data json.RawMessage) {
 	case "auth_running":
 		o.mcpStatus("waiting for authorization for %q…", m.Server)
 	case "done":
-		// Natural completion, or :mcp_cancel — stop any running flow.
+		// Natural completion, or :mcp_skip — stop any running flow.
 		if o.onMCPDone != nil {
 			o.onMCPDone()
 		}

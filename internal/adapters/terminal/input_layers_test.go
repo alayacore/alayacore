@@ -89,7 +89,7 @@ func TestOverlayOutranksGlobalKeys(t *testing.T) {
 
 // The MCP-init overlay's one key, and where it goes.
 //
-// Ctrl+G cancels initialization by emitting :mcp_cancel — it must not reach the
+// Ctrl+G cancels initialization by emitting :mcp_skip — it must not reach the
 // global layer, which would open the cancel-confirm dialog instead. The overlay
 // itself stays up: nothing on it closes it, because it is closed by the
 // session's ready frame. That is also why ConfirmDialog has no key branch for
@@ -109,10 +109,10 @@ func TestMCPInitModalOwnsTheKeyboard(t *testing.T) {
 			m.mcpInitOverlay.IsOpen(), m.mcpInitOverlay.Kind())
 	}
 
-	// The key's I/O: one :mcp_cancel CI frame. The handler batches it with the
+	// The key's I/O: one :mcp_skip CI frame. The handler batches it with the
 	// next tick, so the batch is run the way the event loop runs it.
 	if cmd == nil {
-		t.Fatal("Ctrl+G should emit :mcp_cancel")
+		t.Fatal("Ctrl+G should emit :mcp_skip")
 	}
 	switch msg := cmd().(type) {
 	case BatchMsg:

@@ -23,22 +23,26 @@ const (
 	// running still finishes. ":q" is accepted as an alias (see Canonical).
 	CommandNameQuit = "quit"
 
-	CommandNameSummarize   = "summarize"
-	CommandNameCancel      = "cancel"
-	CommandNameContinue    = "continue"
-	CommandNameSave        = "save"
-	CommandNameModelSet    = "model_set"
-	CommandNameModelLoad   = "model_load"
-	CommandNameModelSync   = "model_sync"
-	CommandNameReason      = "reason"
-	CommandNameThemeSet    = "theme_set"
-	CommandNameToolConfirm = "tool_confirm"
-	CommandNameToolDecline = "tool_decline"
-	CommandNameFork        = "fork"
-	CommandNameVideoConfig = "video_config"
-	CommandNameMCPConfirm  = "mcp_confirm"
-	CommandNameMCPDecline  = "mcp_decline"
-	CommandNameMCPSkip     = "mcp_cancel"
+	CommandNameSummarize      = "summarize"
+	CommandNameCancel         = "cancel"
+	CommandNameContinue       = "continue"
+	CommandNameSave           = "save"
+	CommandNameModelSet       = "model_set"
+	CommandNameModelLoad      = "model_load"
+	CommandNameModelSync      = "model_sync"
+	CommandNameReasoningLevel = "reasoning_level"
+	CommandNameThemeSet       = "theme_set"
+	CommandNameToolConfirm    = "tool_confirm"
+	CommandNameToolDecline    = "tool_decline"
+	CommandNameFork           = "fork"
+	CommandNameVideoConfig    = "video_config"
+	// The MCP auth trio: confirm one server's authorization, decline it, or
+	// skip MCP initialization altogether. "skip" and not "cancel": :cancel
+	// already means stopping the running task, and this name says which of the
+	// two things is being given up.
+	CommandNameMCPConfirm = "mcp_confirm"
+	CommandNameMCPDecline = "mcp_decline"
+	CommandNameMCPSkip    = "mcp_skip"
 )
 
 // commandAliases maps the aliases users may type to their canonical command

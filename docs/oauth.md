@@ -342,7 +342,7 @@ the same reason the URL is printed bare — it is meant to be selected and
 typed.
 
 `:mcp_decline <server>` skips just that server (the rest of MCP init and
-any other server's authorization stay intact); `:mcp_cancel` cancels the
+any other server's authorization stay intact); `:mcp_skip` cancels the
 whole init.
 
 ## External URLs Summary

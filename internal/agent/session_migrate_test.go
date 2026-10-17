@@ -26,7 +26,7 @@ func newSaveSession() *Session {
 // the core can no longer read (message_version 13, v13 tags) becomes one it
 // loads, with the same parts in the same order — through both steps, in the order
 // the two scripts in misc/ run them.
-func TestMigrateV13SessionLoadsAsV15(t *testing.T) {
+func TestMigrateV13SessionLoadsAsCurrent(t *testing.T) {
 	var body []byte
 	// The fixture is a v13 body, so it is framed the way v13 framed: a 2-byte
 	// tag, a 4-byte big-endian length, and the value, with a blank line between
@@ -50,15 +50,20 @@ func TestMigrateV13SessionLoadsAsV15(t *testing.T) {
 
 	front := "---\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n" +
 		"message_version: 13\nreasoning_level: 1\n---\n"
-	// A v13 file is two generations behind: the v14 step converts its tags and
-	// value shapes, the v15 step re-frames what that produced.
+	// A v13 file is three generations behind: the v14 step converts its tags and
+	// value shapes, the v15 step re-frames what that produced, and the v16 step
+	// moves the number to the vocabulary this build speaks.
 	v14, err := sessionmigrate.V13ToV14(append([]byte(front), body...))
 	if err != nil {
 		t.Fatalf("v13 → v14: %v", err)
 	}
-	migrated, err := sessionmigrate.V14ToV15(v14)
+	v15, err := sessionmigrate.V14ToV15(v14)
 	if err != nil {
 		t.Fatalf("v14 → v15: %v", err)
+	}
+	migrated, err := sessionmigrate.V15ToV16(v15)
+	if err != nil {
+		t.Fatalf("v15 → v16: %v", err)
 	}
 
 	path := filepath.Join(t.TempDir(), "migrated.alaya")

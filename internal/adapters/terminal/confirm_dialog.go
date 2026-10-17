@@ -250,7 +250,7 @@ func (cd ConfirmDialog) Close() ConfirmDialog {
 //
 // Only the confirm overlay is driven this way. The MCP-init overlay is
 // display-only (its one key is handled by the Terminal, which sends
-// :mcp_cancel — see handleMCPInitKeys), so there is no branch for it here, and
+// :mcp_skip — see handleMCPInitKeys), so there is no branch for it here, and
 // adding one would be unreachable.
 func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 	if !cd.IsOpen() {
