@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// streamAssembler turns one step's event stream into that step's content parts.
+// streamAssembler tasks one step's event stream into that step's content parts.
 // It is the only place that does this: providers describe what arrived and where
 // a block ended, and the record is built from those descriptions alone. Being
 // the only one is the point — a step used to be assembled in three places, on
@@ -296,7 +296,7 @@ func attachToolResults(record, results []ContentPart, dropUnanswered bool) ([]Co
 // Layout is protocol knowledge, and it is the record's own property — not a
 // by-product of how the transport ended. A block the server announced first is
 // placed first whether it closed at once, at the end, or never at all, because
-// this array is what gets replayed to the model on the next turn and what a
+// this array is what gets replayed to the model on the next task and what a
 // reopened session re-lays.
 //
 // A tool block contributes only if it got a part — its arguments were complete

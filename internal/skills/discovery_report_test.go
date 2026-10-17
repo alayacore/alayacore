@@ -27,7 +27,7 @@ func hasLoadError(m *Manager, substr string) bool {
 
 // A container that cannot be read is a container problem, not a program problem.
 // It used to be both: discovery returned the error, Setup wrapped it, and main
-// exited before the first turn — so an optional feature that one path could not
+// exited before the first task — so an optional feature that one path could not
 // open stopped the whole agent, while the failures users actually hit (a folder
 // with nothing in it) stayed silent.
 func TestUnreadableContainerCostsOnlyItself(t *testing.T) {

@@ -114,7 +114,7 @@ func (tt *toolTracer) peakConcurrency() int {
 }
 
 // runTurn takes a model.conf block, builds the provider and agent from it the
-// way a model switch does, and runs one turn against the stub server.
+// way a model switch does, and runs one task against the stub server.
 func runTurn(t *testing.T, confText string) (firstBody map[string]any, tracer *toolTracer) {
 	t.Helper()
 

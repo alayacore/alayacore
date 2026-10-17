@@ -87,7 +87,7 @@ func describe(parts []llm.ContentPart) []string {
 
 // message_stop is the only event that ends an Anthropic message and the only
 // place StepCompleteEvent is emitted. Without it the old code returned no
-// events and no error: the turn was reported successful while the reasoning and
+// events and no error: the task was reported successful while the reasoning and
 // text streamed to the display never reached history, so they vanished on
 // save-and-reopen. The premature end is now an error, and llm.Agent's
 // failed-step path still contributes the streamed blocks.
@@ -129,7 +129,7 @@ func TestAnthropicStreamWithMessageStopUnaffected(t *testing.T) {
 
 // The point of one assembler is that a step cannot be described two ways. Run
 // the same message once whole and once cut off before message_stop, and require
-// the histories to match part for part, ID for ID: the cut turn keeps its content
+// the histories to match part for part, ID for ID: the cut task keeps its content
 // and is simply known, by the error, to be unfinished.
 //
 // This is the property the previous design hoped for and could not enforce, since

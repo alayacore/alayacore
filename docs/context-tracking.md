@@ -98,17 +98,17 @@ whenever the measured context reaches N% of `ContextLimit`. The check runs at
 two points, both *before* a request is sent:
 
 1. **At the start of a task** — `runTaskNormal` (a prompt) and `runTaskContinue`
-   (`:continue`) call `shouldAutoSummarize()` before the turn's own input is
-   appended. This compacts a completed conversation before the next turn begins.
+   (`:continue`) call `shouldAutoSummarize()` before the task's own input is
+   appended. This compacts a completed conversation before the next task begins.
 2. **Before each step of a running task** — `processPrompt`'s `OnBeforeSend`
-   hook checks after every agent step. This compacts a *long single turn* (many
+   hook checks after every agent step. This compacts a *long single task* (many
    tool calls) mid-flight, instead of letting it run past the limit.
 
 Both use the same predicate (`exceedsAutoSummarizeThreshold`) and the same
 operation (`summarizeContents`) — one rule, one implementation, two call sites.
 
-A summarize call is an internal helper of whichever turn invoked it, not a task
-of its own, so it does not emit task-step events: a compaction between steps
+A summarize call is an internal helper of whichever task invoked it — not a task
+start of its own — so it does not emit task-step events: a compaction between steps
 must not reset the displayed step to 1 or blank the speed readout.
 
 ### Mid-task compaction and tool results
@@ -116,16 +116,16 @@ must not reset the displayed step to 1 or blank the speed readout.
 A step boundary always ends with a paired `assistant(tool_use)` and the
 `tool_result` answering it. The summarize prompt is appended **after** that tool
 result and the request is sent, so the model reads the result — and the whole
-turn — and folds them into the summary. The compacted history then replaces the
-conversation, and the turn continues from it. Nothing is discarded without the
+task — and folds them into the summary. The compacted history then replaces the
+conversation, and the task continues from it. Nothing is discarded without the
 model having seen it.
 
 The replacement ends on the assistant summary. That would be the one request in
 the session that ends on an assistant message, which every API reads as
-*prefill* — "continue this assistant turn" — and the model may keep writing the
-summary instead of resuming the work. So the turn is ended on a user part
+*prefill* — "continue this assistant message" — and the model may keep writing the
+summary instead of resuming the work. So the task is ended on a user part
 instead: the user's own steering words when any are waiting (they go last
-anyway — see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn)),
+anyway — see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-task)),
 otherwise a synthetic `Continue`, the resume word `runTaskContinue` uses. That
 trailing part is appended, numbered, echoed and published like any other part
 added at a step boundary (`spliceUserParts`), so its history ID resolves in
@@ -136,30 +136,30 @@ Two mechanical requirements make this valid:
 - **`OnBeforeSend`** (`internal/llm`) lets a caller hand the loop a replacement
   history at the top of any step; a nil return leaves the history unchanged.
 - **`groupForAnthropic`** (`internal/llm/providers`) treats a tool result and a
-  following user text as one user turn, so a summarize prompt appended after a
+  following user text as one user message, so a summarize prompt appended after a
   tool result does not become two consecutive user messages.
 
 `OnBeforeSend` has a second caller, with a fixed order relative to compaction:
-**steering** (see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn)).
-A prompt that arrives while a turn is running is spliced in at a step boundary
+**steering** (see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-task)).
+A prompt that arrives while a task is running is spliced in at a step boundary
 too, and it must be spliced *after* a compaction replacement — a compaction
 replaces the history wholesale, so words appended before it would vanish from
 `Contents` while the adapter kept the history ID it was shown.
 
-A summarize is a `summarizeCall`, not a `userTurn` (see `promptKind` in
+A summarize is a `summarizeCall`, not a `userPrompt` (see `promptKind` in
 `internal/agent/session_task.go`), and it is never given the `OnBeforeSend` hook
-at all: `processPrompt` installs that hook for a turn only, so the steering queue
+at all: `processPrompt` installs that hook for a task only, so the steering queue
 is not reachable from one, at any of its steps. That is not bookkeeping: a summarize
-drives the same multi-step tool loop as a turn, but its history is a copy that
+drives the same multi-step tool loop as a task, but its history is a copy that
 either replaces the conversation or is thrown away, so words spliced into it would
 be consumed by a request whose result nobody keeps. And there is no exception on
 the other side: a summarize that **fails** is a call that did not land, so
 whatever was queued during it is dropped with it, by the same rule that governs a
-failed turn (see
-[architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn)).
+failed task (see
+[architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-task)).
 
 The replacement is published (`contentsReplacedEvent`) so `:save` during the
-turn writes the compacted history — the same one the model is running on.
+task writes the compacted history — the same one the model is running on.
 
 ### Limits
 
@@ -180,10 +180,10 @@ turn writes the compacted history — the same one the model is running on.
   131072 is calibrated for a 1M context, and on a smaller window it takes half or
   more of the room the prompt needs, putting the ceiling above within reach of
   ordinary thresholds.
-- Compaction is **fail-closed**: if the summarize request fails, the turn ends
+- Compaction is **fail-closed**: if the summarize request fails, the task ends
   rather than continuing on the uncompressed history (reported as a system
   error). The request that would follow is the one the threshold exists to
-  prevent. The room that is left may carry the turn to its end anyway — that is
+  prevent. The room that is left may carry the task to its end anyway — that is
   what this rule costs — but the constraint the user set would otherwise be
   broken in silence, and where the provider enforces `prompt + max_tokens` the
   failure is attributed to the summarize rather than to the request it failed to
@@ -206,7 +206,7 @@ The `:summarize` command is a **task command** — it runs in a task goroutine a
    - **Blocked** — Unresolved errors, failing tests, open questions
    - **Next** — Ordered actions to resume
 2. Calls the LLM to generate the summary
-3. **Replaces the entire conversation history** with the summary, preceded by the user turn it answers (the summary request) — the summary is an assistant message, so a turn has to come in front of it
+3. **Replaces the entire conversation history** with the summary, preceded by the user message it answers (the summary request) — the summary is an assistant message, so a task has to come in front of it
 4. Resets `ContextTokens` to the summary's output token count via `setContextTokensEvent` (a dedicated event that corrects the value after the `stepFinishEvent` from `processPrompt` has been processed)
 
 ### ⚠️ Event ordering
@@ -219,7 +219,7 @@ Both are sent by the same goroutine sequentially, and the FIFO channel guarantee
 
 ### ⚠️ Important caveats
 
-- **Destructive** — The conversation history is replaced by the summary. Previous turns are lost. Only run `:summarize` when you're confident the summary captures everything needed.
+- **Destructive** — The conversation history is replaced by the summary. Previous tasks are lost. Only run `:summarize` when you're confident the summary captures everything needed.
 - **One-shot** — There is no undo. Consider saving the session first (`:save`) if you might need the full history later.
 
 ### When to use
@@ -231,9 +231,9 @@ Both are sent by the same goroutine sequentially, and the FIFO channel guarantee
 ## Related
 
 - `shouldAutoSummarize()` / `exceedsAutoSummarizeThreshold()` — triggers when `ContextTokens >= ContextLimit * threshold / 100` (threshold set via `--auto-summarize`, e.g. `--auto-summarize=65`; 0 = disabled). Called at task start and, via `processPrompt`'s `OnBeforeSend`, before each step of a running task.
-- `processPrompt` `OnBeforeSend` — the mid-task trigger: `compactForContinuation` summarizes and hands the compacted history back to the agent loop for the rest of the turn.
+- `processPrompt` `OnBeforeSend` — the mid-task trigger: `compactForContinuation` summarizes and hands the compacted history back to the agent loop for the rest of the task.
 - `runTaskSummarize()` / `summarizeContents()` (in `session_task.go`) — sends the summarize prompt via `processPrompt`, then replaces conversation history with the summary and resets `ContextTokens` to the summary's output token count via `setContextTokensEvent`
 - `setContextTokensEvent` — a dedicated task event that sets `ContextTokens` to the correct value after summarization, overriding the stale value from the preceding `stepFinishEvent`
-- `groupForAnthropic` — groups a tool result and a following user text into one user turn (Anthropic wire rule; keeps a post-tool-result summarize prompt from splitting into two user messages)
+- `groupForAnthropic` — groups a tool result and a following user text into one user message (Anthropic wire rule; keeps a post-tool-result summarize prompt from splitting into two user messages)
 - `SwitchModel()` / `ensureAgentInitialized()` — sync `ContextLimit` from the active model's config (`modelService.contextLimit`) on a model switch and on lazy agent init
 - `sessionMeta.ContextTokens` — persisted to session file frontmatter so the status bar shows the correct context usage immediately after loading a session

@@ -1,7 +1,7 @@
 package terminal
 
 // A prompt submitted while a task is running is sent to the session, which
-// splices it into the running turn (steering). The TUI used to refuse it here
+// splices it into the running task (steering). The TUI used to refuse it here
 // and keep the text in the input box — which, with steering in the core, would
 // mean the core's queue could never be reached from the TUI at all.
 

@@ -49,7 +49,7 @@ func TestInputReplacementsMatchWhatATerminalDraws(t *testing.T) {
 
 // TestPastedContentIsReplacedByTheSameRule is the third way text gets in and the
 // one with no replacement of its own: pasted bytes are copied verbatim into a
-// string, and whatever first turns that string into runes — []rune, on the way
+// string, and whatever first tasks that string into runes — []rune, on the way
 // into the prompt — replaces an ill-formed byte with one U+FFFD, because that is
 // what the language does by default and not because anything decided it.
 //

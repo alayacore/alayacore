@@ -1,10 +1,10 @@
 package agent
 
 // A prompt that arrives before the session is ready is held, not refused; one
-// that arrives while a task is already in flight is spliced into that turn
+// that arrives while a task is already in flight is spliced into that task
 // (steering) rather than refused. These pin the split: "not ready yet" is a
 // stage the session passes through (the client cannot see it, and a piped
-// client has no way to retry), while "busy" is a turn the words can still
+// client has no way to retry), while "busy" is a task the words can still
 // reach — and only a full steering queue is left to refuse.
 //
 // The second half of the file covers CE: the adapter's "no more input" frame,
@@ -161,8 +161,8 @@ func TestSecondPromptWhileHoldingIsRefused(t *testing.T) {
 	}
 }
 
-// A prompt that arrives with a task already running is spliced into that turn
-// (steering), not refused: refusing is what made a mid-turn correction cost a
+// A prompt that arrives with a task already running is spliced into that task
+// (steering), not refused: refusing is what made a mid-task correction cost a
 // cancel and a wasted step.
 func TestPromptWhileTaskRunningIsSteered(t *testing.T) {
 	output := &syncOutput{}

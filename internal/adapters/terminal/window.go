@@ -856,7 +856,7 @@ func (w *Window) unfoldedTitle(styles *Styles) (plain, styled string) {
 // is chrome and is meant to be scannable.
 //
 // The color is the label color for EVERY window type except the system
-// errors: no window type earns an accent, because no user's turn, reasoning
+// errors: no window type earns an accent, because no user's task, reasoning
 // step, answer or tool call is more urgent than another (the resting accent is
 // the prompt box's — docs/tui.md, "Fold Mode"). SYSTEM ERROR keeps the error
 // color, because an error has to be recognizable at a glance and from the far

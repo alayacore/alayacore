@@ -5,7 +5,7 @@ package terminal
 //
 //	- following -              new output lands right here
 //	- 12 lines below -         you are scrolled back; that much is hidden
-//	- following, 2 steering -  two prompts are waiting for the running turn
+//	- following, 2 steering -  two prompts are waiting for the running task
 //
 // It replaces the "F↓" segment of the status bar, which had two problems.
 // It reported a fact about the transcript from the row *below the input
@@ -31,7 +31,7 @@ package terminal
 // not the case.
 //
 // The row carries a second kind of fact: the steering queue ("2 steering", the
-// prompts accepted for the running turn and not yet delivered — see
+// prompts accepted for the running task and not yet delivered — see
 // sessionState.updateSteering). Two reasons it is here and not in the status
 // bar. First, where the eye is: a prompt is typed at the input box, and the
 // status bar is the row *below* it — the one part of the frame a reader
@@ -164,7 +164,7 @@ func liveEdgePosition(following bool, linesBelow int) string {
 }
 
 // liveEdgeSteering returns the queue fact: the count of prompts accepted for
-// the running turn and not yet delivered, spelled with the noun the SM and the
+// the running task and not yet delivered, spelled with the noun the SM and the
 // docs use. "" at zero — that the queue is empty needs no saying, and the row
 // saying nothing is how a reader knows there is nothing to wait for.
 func liveEdgeSteering(pending int) string {

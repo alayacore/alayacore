@@ -38,7 +38,7 @@ func (m *mockProviderStepFail) StreamMessages(_ context.Context, _ []llm.Content
 	}
 	return func(yield func(llm.StreamEvent, error) bool) {
 		// A stub provider states only what the wire carried. llm.Agent assembles
-		// the step's record from these events, so a fake cannot describe the turn
+		// the step's record from these events, so a fake cannot describe the task
 		// in terms the events do not support.
 		if resp.text != "" {
 			if !yield(llm.TextDeltaEvent{Delta: resp.text, Key: "block:0"}, nil) {

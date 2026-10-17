@@ -36,8 +36,8 @@ prompt that spans two lines.
 > and has no task queue. If you pipe multiple prompts into stdin, the **first**
 > one starts the task; the ones that arrive while it runs are **steered** into
 > it — spliced in at the next step boundary (`agent/session_steering.go`) rather
-> than refused — so the model sees them as one or two turns, not as separate
-> exchanges. Anything left when the turn ends is delivered as the next prompt.
+> than refused — so the model sees them as one or two tasks, not as separate
+> exchanges. Anything left when the task ends is delivered as the next prompt.
 > Which refusal you see depends on how far along the session is:
 > ```
 > [error: MCP servers are still initializing or OAuth authorization is pending. Please wait for initialization to complete.]
@@ -105,12 +105,12 @@ the browser doesn't open, visit the printed URL and type
 ## Session Persistence
 
 > ⚠️ A **pipe** can send one prompt per invocation (see the note above), so
-> multi-turn *scripting* needs saving and resuming with `--session`. Interactive
+> multi-step *scripting* needs saving and resuming with `--session`. Interactive
 > use keeps the whole conversation in one invocation; the session file is what
 > survives it.
 
 Plain IO can persist conversations using a **session file**, just like the
-TUI mode. The session file records every turn (prompts, assistant replies,
+TUI mode. The session file records every task (prompts, assistant replies,
 tool calls, tool results) in key-value frontmatter + one frame per line.
 
 **How it works:**
@@ -126,22 +126,22 @@ tool calls, tool results) in key-value frontmatter + one frame per line.
    previous conversation is loaded and replayed so the assistant sees
    the full history.
 3. **Multiple questions, same conversation** — Each `--plainio`
-   invocation adds one turn to the conversation.
+   invocation adds one task to the conversation.
 
-**Example — multi-turn conversation with session persistence:**
+**Example — multi-step conversation with session persistence:**
 
 ```sh
 # First prompt — creates the session file
 alayacore --plainio --session my-convo.alaya <<< "my name is Alice"
 
-# Second prompt — loads the previous conversation, appends this turn
+# Second prompt — loads the previous conversation, appends this task
 alayacore --plainio --session my-convo.alaya <<< "what is my name?"
 
-# Third prompt — session now has 3 turns
+# Third prompt — session now has 3 tasks
 alayacore --plainio --session my-convo.alaya <<< "remember this fact: dogs are fluffy"
 ```
 
-A session file is text: one frame per line after the key-value frontmatter, holding conversation content only (`UE`/`CE` are stream delimiters and are refused in a file, since the loader groups frames into messages by role and a delimiter is a boundary it cannot honour). `cat` shows the conversation, `grep` finds a turn in it, and `cut -c3-` drops a frame's tag when you want the value on its own. `--plainio` replays the conversation instead.
+A session file is text: one frame per line after the key-value frontmatter, holding conversation content only (`UE`/`CE` are stream delimiters and are refused in a file, since the loader groups frames into messages by role and a delimiter is a boundary it cannot honour). `cat` shows the conversation, `grep` finds a task in it, and `cut -c3-` drops a frame's tag when you want the value on its own. `--plainio` replays the conversation instead.
 
 ## Examples
 

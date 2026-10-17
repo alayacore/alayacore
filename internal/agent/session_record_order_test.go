@@ -13,7 +13,7 @@ import (
 )
 
 // invertedArrivalProvider streams the answer BEFORE the thinking and never closes
-// a block — the shape of a stream cut mid-turn by a server that put `content`
+// a block — the shape of a stream cut mid-task by a server that put `content`
 // ahead of `reasoning`. It declares the record layout (Position) as it goes, which
 // is the only reason the persisted order can still be right.
 type invertedArrivalProvider struct{}
@@ -30,7 +30,7 @@ func (invertedArrivalProvider) SetReasoningLevel(_ int)                       {}
 func (invertedArrivalProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 // The requirement is about the session file, not the screen: whatever order the
-// bytes arrived in, the record written to disk has to be the turn as the protocol
+// bytes arrived in, the record written to disk has to be the task as the protocol
 // defines it, because that file is replayed to the model and re-laid on reopen.
 //
 // This walks the whole way: a cut step, through llm.Agent, through the task's
@@ -67,7 +67,7 @@ func TestSessionFileKeepsProtocolOrderForCutStep(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 
-	// Compare the assistant's turn only: the prompts are the user's own parts.
+	// Compare the assistant's task only: the prompts are the user's own parts.
 	var got []string
 	for _, p := range reloaded.Contents {
 		if p.GetRole() != llm.RoleAssistant {
@@ -84,6 +84,6 @@ func TestSessionFileKeepsProtocolOrderForCutStep(t *testing.T) {
 	want := "reasoning:THINK,text:ANSWER"
 	if joined != want {
 		t.Errorf("session file order = [%s], want [%s] — an answer recorded before the thinking that "+
-			"produced it is replayed as a turn the model never sent", joined, want)
+			"produced it is replayed as a task the model never sent", joined, want)
 	}
 }

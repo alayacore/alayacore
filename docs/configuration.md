@@ -117,11 +117,11 @@ sequence it asked for.
 
 Two consequences worth knowing:
 
-- **A serial turn is slower** when the model asks for several things at once,
+- **A serial task is slower** when the model asks for several things at once,
   because the calls queue instead of overlapping. The option is a correctness
   setting, not a performance one.
 - **Tool confirmations become one-at-a-time by construction.** A confirmation is
-  requested when its own turn comes, so a later call will not have its window
+  requested when its own task comes, so a later call will not have its window
   appear before an earlier one is answered.
 
 ### Reasoning configuration (`reasoning_0` / `reasoning_1` / `reasoning_2`)

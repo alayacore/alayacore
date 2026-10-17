@@ -11,7 +11,7 @@ import (
 
 // DefaultMaxTokens is the maximum output tokens used when the user doesn't
 // specify one: an eighth of a 1M context, the window it is calibrated for. A
-// long turn needs the room — a coding agent writes large code blocks, multi-file
+// long task needs the room — a coding agent writes large code blocks, multi-file
 // changes and long tool call chains — but a window of 262144 or less has to name
 // its own cap. At this value such a window leaves the prompt half of itself or
 // less, and that caps the --auto-summarize threshold with it, since a request is
@@ -247,7 +247,7 @@ type TextDeltaEvent struct {
 	// declaration from the first slot. It travels with the content because a
 	// block's closure — the other place layout is declared — may never arrive:
 	// a stream cut before any block closed left the record ordered by arrival,
-	// which can invert the shape the protocol defines for an assistant turn.
+	// which can invert the shape the protocol defines for an assistant message.
 	// 1-based rather than 0-based also keeps a provider that never declares
 	// anything from accidentally claiming the first slot.
 	Position int
@@ -332,7 +332,7 @@ func (ToolInputCompleteEvent) isStreamEvent() {}
 //
 // It reports what the step ended with and nothing about what it contained: the
 // step's content parts are assembled from the events by llm.Agent, on this path
-// and on the ones that never reach it, so a provider cannot describe a turn
+// and on the ones that never reach it, so a provider cannot describe a task
 // differently depending on how it ended.
 type StepCompleteEvent struct {
 	Usage      Usage

@@ -1,7 +1,7 @@
 package agent
 
 // Tests for steering: a prompt that arrives while a task is running is spliced
-// into that turn at its next step boundary, instead of being refused.
+// into that task at its next step boundary, instead of being refused.
 //
 // What these pin, in the order the design depends on them:
 //
@@ -17,7 +17,7 @@ package agent
 //   - TestSteeringPublishedBeforeItsStepFinishes — the words reach Contents at
 //     the splice, not at the step's finish, so a :save/:fork mid-step sees what
 //     the transcript already shows.
-//   - TestSteeringLeftoverDeliveredAsNextPrompt — a turn that ends without a
+//   - TestSteeringLeftoverDeliveredAsNextPrompt — a task that ends without a
 //     next step still delivers the words: they become the next prompt.
 //   - TestSteeringSplicedStaysWhenTurnFails   — a batch that reached a step is
 //     in the conversation: a later failure leaves it in Contents, with the ID
@@ -26,9 +26,9 @@ package agent
 //     history the step was sent on, not fullContents: a first-step splice that
 //     then fails keeps the history instead of being replaced by the words.
 //   - TestSteeringQueuedDuringFailingRequestIsDropped — the words that never
-//     reached a step are the ones a failed turn drops.
+//     reached a step are the ones a failed task drops.
 //   - TestSteeringNotTakenBySummarizeCall     — a summarize call (an internal
-//     helper of a turn) must not drain the queue.
+//     helper of a task) must not drain the queue.
 //   - TestSteeringSpliceIsOnceOnly            — a spliced batch is numbered and
 //     echoed once, and later steps re-publish nothing.
 
@@ -591,7 +591,7 @@ func frameIndexContaining(t *testing.T, out, tag, want string) int {
 	}
 }
 
-// A turn that ends without another step (the model answered without calling a
+// A task that ends without another step (the model answered without calling a
 // tool) still delivers the words: they become the next prompt.
 func TestSteeringLeftoverDeliveredAsNextPrompt(t *testing.T) {
 	output := &syncOutput{}
@@ -617,16 +617,16 @@ func TestSteeringLeftoverDeliveredAsNextPrompt(t *testing.T) {
 
 	driveRun(t, s)
 
-	// The first turn had no tool call, so it ended before a boundary existed;
+	// The first task had no tool call, so it ended before a boundary existed;
 	// the words must have become the next prompt rather than being dropped.
 	if n := provider.callCount(); n != 2 {
-		t.Fatalf("provider calls = %d, want 2 (the turn, then the promoted prompt)", n)
+		t.Fatalf("provider calls = %d, want 2 (the task, then the promoted prompt)", n)
 	}
 	req := provider.request(1)
 	if idx := indexOfSteering(req); idx < 0 {
 		t.Fatalf("the promoted prompt did not carry the words: %s", summary(req))
 	} else if idx != len(req)-1 {
-		t.Fatalf("the words are not the trailing user turn: %s", summary(req))
+		t.Fatalf("the words are not the trailing user message: %s", summary(req))
 	}
 
 	count := 0
@@ -688,7 +688,7 @@ func TestSteeringSplicedStaysWhenTurnFails(t *testing.T) {
 	// replaced by them), echoed exactly once, and the ID the adapter was shown
 	// resolves there.
 	if countText(s.Contents, "earlier") != 1 || countText(s.Contents, "do it") != 1 {
-		t.Fatalf("the failed turn lost its history: %s", summary(s.Contents))
+		t.Fatalf("the failed task lost its history: %s", summary(s.Contents))
 	}
 	if last, ok := s.Contents[len(s.Contents)-1].(*llm.TextPart); !ok || last.Text != steeringText {
 		t.Fatalf("the words must be the trailing part of Contents: %s", summary(s.Contents))
@@ -711,7 +711,7 @@ func TestSteeringSplicedStaysWhenTurnFails(t *testing.T) {
 		t.Fatalf("provider calls = %d, want 2 — the failure must not re-send it", n)
 	}
 	if parts := s.takeSteering(); len(parts) != 0 {
-		t.Fatalf("the queue holds %d parts after a failed turn, want none", len(parts))
+		t.Fatalf("the queue holds %d parts after a failed task, want none", len(parts))
 	}
 	// Nothing was left in the queue, so nothing was dropped, so nothing is
 	// announced as dropped.
@@ -800,8 +800,8 @@ func TestSteeringSplicedAtCompactionBoundaryThenStepFails(t *testing.T) {
 
 // The case the queue drain cannot cover: the words arrive while the request that
 // then fails is already in flight, so no boundary ever takes them. They must go
-// with the turn all the same — otherwise they would run on as a turn of their
-// own, which is exactly the "spent a turn nobody asked for" shape.
+// with the task all the same — otherwise they would run on as a task of their
+// own, which is exactly the "spent a task nobody asked for" shape.
 func TestSteeringQueuedDuringFailingRequestIsDropped(t *testing.T) {
 	output := &syncOutput{}
 	requestInFlight := make(chan struct{})
@@ -836,18 +836,18 @@ func TestSteeringQueuedDuringFailingRequestIsDropped(t *testing.T) {
 	}
 	for _, p := range s.Contents {
 		if tp, ok := p.(*llm.TextPart); ok && tp.Text == steeringText {
-			t.Fatalf("steering of a failed turn survived into Contents: %s", summary(s.Contents))
+			t.Fatalf("steering of a failed task survived into Contents: %s", summary(s.Contents))
 		}
 	}
 	if n := provider.callCount(); n != 2 {
-		t.Fatalf("provider calls = %d, want 2 — the words must not run on as their own turn", n)
+		t.Fatalf("provider calls = %d, want 2 — the words must not run on as their own task", n)
 	}
 	if !strings.Contains(output.String(), "steering dropped") {
 		t.Errorf("the discard was silent: %q", output.String())
 	}
 }
 
-// The turn that never started. When the task-start auto-summarize fails,
+// The task that never started. When the task-start auto-summarize fails,
 // runTaskNormal returns before the prompt is even appended — no step, no
 // processPrompt — so the words typed while it ran are dropped by the call site,
 // not by processPrompt's defer. Same rule, same notice, and exactly one of them:
@@ -882,7 +882,7 @@ func TestSteeringDroppedWhenTaskStartSummarizeFails(t *testing.T) {
 		t.Fatalf("expected exactly one discard notice, got %d: %q", n, output.String())
 	}
 	if n := provider.callCount(); n != 1 {
-		t.Fatalf("provider calls = %d, want 1 — the words must not run on as their own turn", n)
+		t.Fatalf("provider calls = %d, want 1 — the words must not run on as their own task", n)
 	}
 	for _, p := range s.Contents {
 		if tp, ok := p.(*llm.TextPart); ok && tp.Text == steeringText {
@@ -892,7 +892,7 @@ func TestSteeringDroppedWhenTaskStartSummarizeFails(t *testing.T) {
 }
 
 // The take side needs no rule of its own either: a summarize call is simply
-// never given the step-boundary hook (processPrompt installs it for a turn
+// never given the step-boundary hook (processPrompt installs it for a task
 // only), so this test's queue stays where it is. Nothing in the steering code
 // asks whether the call is a summarize.
 //
@@ -928,22 +928,22 @@ func TestSteeringDroppedWhenSummarizeFails(t *testing.T) {
 	}
 }
 
-// A summarize call is not a turn, and nothing in the steering code has to know
-// that: processPrompt installs the step-boundary hook for a turn only, and a
-// summarize never gets it. So the queue is not reachable from one — and the
+// A summarize call is never a userPrompt, and nothing in the steering code has
+// to know that: processPrompt installs the step-boundary hook for a userPrompt
+// only, and a summarize never gets it. So the queue is not reachable from one — and the
 // reason that matters is not bookkeeping: a summarize's history is a copy that
 // either replaces the conversation or is thrown away, so words spliced into it
 // would be consumed by a request whose result nobody keeps. They would vanish
 // with nothing to report, because from the queue's point of view they were
 // delivered.
 //
-// A summarize runs the *same* multi-step tool loop as a turn, so this has to
+// A summarize runs the *same* multi-step tool loop as a task, so this has to
 // hold for every step of it. The test scripts a two-step summarize whose first
 // step calls a tool, which is where the words would land if the hook were
 // installed: after the summarize prompt and between the model's own tool calls.
 //
 // And when a summarize fails, what was queued during it is dropped — the same
-// rule as a failed turn, with the same notice (see
+// rule as a failed task, with the same notice (see
 // TestSteeringDroppedWhenSummarizeFails).
 func TestSteeringNotTakenBySummarizeCall(t *testing.T) {
 	toolRan := make(chan struct{})
@@ -988,7 +988,7 @@ func TestSteeringNotTakenBySummarizeCall(t *testing.T) {
 }
 
 // The whole wire, end to end: a second prompt typed through the real input pump
-// while the first one's tool is still running reaches the turn's next step
+// while the first one's tool is still running reaches the task's next step
 // boundary. Unit tests call runTaskNormal and queueSteering directly; this one
 // goes through run(), handleInputMsg, submitPrompt and the auto-save, so a
 // wiring mistake between those layers cannot pass unnoticed.
@@ -1094,7 +1094,7 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-// Canceling stops the turn *and* what the turn was going to be told: leaving
+// Canceling stops the task *and* what the task was going to be told: leaving
 // the queue in place would start a fresh task on its own the moment the
 // canceled one unwinds.
 // A :quit with steering still queued drops it — it will not run — but the drop
@@ -1120,7 +1120,7 @@ func TestQuitDropsLeftoverSteeringWithNotice(t *testing.T) {
 		t.Errorf("a quit must report the leftover steering dropped with reason quit: %q", got)
 	}
 	if n := provider.callCount(); n != 0 {
-		t.Fatalf("a quit must not start a turn for the leftover steering: %d provider calls", n)
+		t.Fatalf("a quit must not start a task for the leftover steering: %d provider calls", n)
 	}
 }
 
@@ -1148,7 +1148,7 @@ func TestCancelDropsQueuedSteering(t *testing.T) {
 	s.activeTask = nil
 	s.handleTaskDone(nil)
 	if n := provider.callCount(); n != 0 {
-		t.Fatalf("provider was called %d times after a cancel, want 0 — canceled steering must not start a turn", n)
+		t.Fatalf("provider was called %d times after a cancel, want 0 — canceled steering must not start a task", n)
 	}
 }
 
@@ -1183,15 +1183,15 @@ func TestCancelKeepsSteeringArrivingAfterIt(t *testing.T) {
 	req := provider.request(0)
 	last, ok := req[len(req)-1].(*llm.TextPart)
 	if !ok || last.Text != "and use Y" {
-		t.Fatalf("the post-cancel prompt must be delivered as the trailing user turn: %s", summary(req))
+		t.Fatalf("the post-cancel prompt must be delivered as the trailing user message: %s", summary(req))
 	}
 }
 
 // The cancel rule in the window it actually happens in: the prompt a user types
 // after ":cancel" is queued while the canceled task is still unwinding, into the
 // same session-wide queue. processPrompt's deferred discard runs in exactly that
-// window — it fires whenever the turn's context is canceled — so it must leave
-// the post-cancel intent alone. cancelSteering already disposed of the turn's
+// window — it fires whenever the task's context is canceled — so it must leave
+// the post-cancel intent alone. cancelSteering already disposed of the task's
 // own words at the instant of the cancel; a second drain here is what used to
 // sweep up the post-cancel prompt and lose it.
 func TestPostCancelSteeringSurvivesDeferredDiscard(t *testing.T) {
@@ -1200,7 +1200,7 @@ func TestPostCancelSteeringSurvivesDeferredDiscard(t *testing.T) {
 	s := steeringSession(t, output, provider, nil, nil)
 	s.activeTask = &taskHandle{cancel: func() {}}
 
-	// The turn's own words, then the cancel: drained and announced right there.
+	// The task's own words, then the cancel: drained and announced right there.
 	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: "old intent"}}) {
 		t.Fatal("queueSteering refused a prompt that fits")
 	}
@@ -1212,10 +1212,10 @@ func TestPostCancelSteeringSurvivesDeferredDiscard(t *testing.T) {
 	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "and use Y"}})
 
 	// The task goroutine reaches processPrompt's deferred discard, which runs
-	// because the turn was canceled. It must not take the post-cancel prompt.
+	// because the task was canceled. It must not take the post-cancel prompt.
 	s.discardQueuedSteering()
 
-	// The canceled task ends; the post-cancel prompt becomes the next turn.
+	// The canceled task ends; the post-cancel prompt becomes the next task.
 	s.activeTask = nil
 	s.handleTaskDone(nil)
 	driveRun(t, s)
@@ -1226,19 +1226,19 @@ func TestPostCancelSteeringSurvivesDeferredDiscard(t *testing.T) {
 	req := provider.request(0)
 	last, ok := req[len(req)-1].(*llm.TextPart)
 	if !ok || last.Text != "and use Y" {
-		t.Fatalf("post-cancel prompt not delivered as the trailing user turn: %s", summary(req))
+		t.Fatalf("post-cancel prompt not delivered as the trailing user message: %s", summary(req))
 	}
-	if strings.Contains(output.String(), "the turn ended before it could be delivered") {
+	if strings.Contains(output.String(), "the task ended before it could be delivered") {
 		t.Errorf("post-cancel prompt was reported dropped: %q", output.String())
 	}
 }
 
-// A cancel marks the queue drained for *its own* turn only. The next turn must
+// A cancel marks the queue drained for *its own* task only. The next task must
 // start clean: if it fails with words still queued, they are dropped like any
-// other failed turn's, not carried forward on a flag the cancel left set. This
-// guards beginTask's per-turn reset of steeringDrained — without it, a single
+// other failed task's, not carried forward on a flag the cancel left set. This
+// guards beginTask's per-task reset of steeringDrained — without it, a single
 // cancel would suppress every later failure's discard, and the queued words
-// would leak into an unintended next turn.
+// would leak into an unintended next task.
 func TestSteeringDroppedOnFailureAfterACancel(t *testing.T) {
 	output := &syncOutput{}
 	requestInFlight := make(chan struct{})
@@ -1257,30 +1257,30 @@ func TestSteeringDroppedOnFailureAfterACancel(t *testing.T) {
 		&llm.TextPart{Text: "earlier", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
 	})
 
-	// A canceled turn first: cancelTask sets the per-turn drain flag.
+	// A canceled task first: cancelTask sets the per-task drain flag.
 	s.activeTask = &taskHandle{cancel: func() {}}
 	if _, err := s.cancelTask(); err != nil {
 		t.Fatalf("cancelTask() = %v, want success", err)
 	}
 	s.activeTask = nil // the canceling task unwinds
 
-	// The next turn starts through the real entry point (beginTask runs here,
+	// The next task starts through the real entry point (beginTask runs here,
 	// and must clear the flag) and fails with words queued behind its step 2.
 	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "do it"}})
-	waitFor(t, func() bool { return provider.callCount() == 2 }, "the failing turn's second request to be in flight")
+	waitFor(t, func() bool { return provider.callCount() == 2 }, "the failing task's second request to be in flight")
 	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
 		t.Fatal("queueSteering refused a prompt that fits")
 	}
 	close(requestInFlight)
 	driveRun(t, s)
 
-	// The failed turn's words are gone, and were not promoted to a new turn.
+	// The failed task's words are gone, and were not promoted to a new task.
 	if n := provider.callCount(); n != 2 {
-		t.Fatalf("provider calls = %d, want 2 — the words must not run on as their own turn", n)
+		t.Fatalf("provider calls = %d, want 2 — the words must not run on as their own task", n)
 	}
 	for _, p := range s.Contents {
 		if tp, ok := p.(*llm.TextPart); ok && tp.Text == steeringText {
-			t.Fatalf("steering of a failed turn survived into Contents: %s", summary(s.Contents))
+			t.Fatalf("steering of a failed task survived into Contents: %s", summary(s.Contents))
 		}
 	}
 	if !strings.Contains(output.String(), "steering dropped") {
@@ -1290,7 +1290,7 @@ func TestSteeringDroppedOnFailureAfterACancel(t *testing.T) {
 
 // The half of the cancel rule the queue drain cannot cover: a batch the task
 // goroutine had already spliced was sent to the model and echoed to the adapter,
-// so it is in the conversation. The cancel stops the turn, but it cannot unsend
+// so it is in the conversation. The cancel stops the task, but it cannot unsend
 // what the model was already given — the words stay in Contents with the ID the
 // adapter was shown, which is what keeps the adapter from holding a window
 // nothing resolves.
@@ -1346,7 +1346,7 @@ func TestCancelKeepsSplicedBatch(t *testing.T) {
 	if indexOfSteering(provider.request(1)) < 0 {
 		t.Fatalf("the batch was never spliced into the canceled step: %s", summary(provider.request(1)))
 	}
-	// ...and it is part of the conversation, not re-sent as its own turn: in
+	// ...and it is part of the conversation, not re-sent as its own task: in
 	// Contents, with the ID the adapter was shown.
 	idx := indexOfSteering(s.Contents)
 	if idx < 0 {

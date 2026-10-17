@@ -565,7 +565,7 @@ func (m Terminal) handleSubmit() (Terminal, Cmd) {
 	}
 
 	// No refusal for a running task here: the prompt is sent anyway. The
-	// session splices a prompt that arrives mid-turn into that turn at its
+	// session splices a prompt that arrives mid-task into that task at its
 	// next step boundary (steering) and acknowledges it with a notify — or
 	// refuses it with an SM error when its steering queue is full. Refusing
 	// here, as this used to on m.inProgress, would keep steering out of the

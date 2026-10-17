@@ -465,16 +465,16 @@ func (p *AnthropicProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEv
 		// sends message_stop to end a message, and it is the only place
 		// StepCompleteEvent is emitted, so stopping here without it would
 		// return no events and no error: llm.Agent would treat the step as
-		// having produced nothing, report the turn as a success, and the
+		// having produced nothing, report the task as a success, and the
 		// reasoning and text the user watched stream in would exist only in
-		// the display -- never saved, gone on reopen. A truncated turn is worth
+		// the display -- never saved, gone on reopen. A truncated task is worth
 		// keeping, so this is surfaced as an error and left to llm.Agent, whose
 		// failed-step path contributes the streamed blocks plus any completed
 		// tool pairs to history.
 		//
 		// Not synthesizing a StepCompleteEvent here is deliberate: the stop
 		// reason would be absent, and presenting a cut connection as a normally
-		// finished turn is what makes a retry believe the assistant concluded.
+		// finished task is what makes a retry believe the assistant concluded.
 		// (OpenAI's parseStream does synthesize at EOF, which preserves content
 		// but has the same honesty problem.)
 		if !state.sawMessageStop {
@@ -846,7 +846,7 @@ func unmarshalSSE[T any](data string, yield func(llm.StreamEvent, error) bool) (
 // groupForAnthropic groups consecutive parts by their Anthropic wire role.
 //
 // It differs from llm.GroupByRole (which OpenAI uses) in one place: a tool
-// result and a user text part both belong to a single "user" turn on Anthropic,
+// result and a user text part both belong to a single "user" message on Anthropic,
 // so they are grouped together. GroupByRole would split them, emitting two
 // consecutive user messages — invalid for the Messages API, and exactly the
 // shape produced when a mid-task summarization prompt lands right after a tool
@@ -1034,7 +1034,7 @@ func anthropicMediaBlock(blockType, uri string) *anthropicContentBlock {
 // this API cannot retrieve. A native image/document block carries the URI as a
 // url source, and only data: and http(s): can be fetched, so a bare path, a
 // file: URI or an empty string would fail the whole request instead of one
-// block — and, being persisted history, every later turn with it.
+// block — and, being persisted history, every later task with it.
 //
 // The wording follows anthropicUnsupportedMediaBlock for the same reason: it
 // must read as "you did not receive this", never as "a result came back", or
@@ -1057,7 +1057,7 @@ func anthropicUnretrievableMediaBlock(kind, uri string) *anthropicContentBlock {
 //
 // Sending the native block is not a partial failure — the API rejects the
 // entire request — so before this existed, a model that called read_file on a
-// clip broke its own next turn rather than merely losing an attachment. And
+// clip broke its own next task rather than merely losing an attachment. And
 // read_file advertises that it handles video and audio, so the model is
 // actively invited to do this.
 //
@@ -1069,7 +1069,7 @@ func anthropicUnretrievableMediaBlock(kind, uri string) *anthropicContentBlock {
 //
 // The base64 payload is deliberately excluded: it is usually the largest thing
 // in the conversation, and echoing it into a text block would bill every
-// following turn for bytes no model can use.
+// following task for bytes no model can use.
 func anthropicUnsupportedMediaBlock(part llm.ContentPart) *anthropicContentBlock {
 	var kind, uri, remedy string
 	switch v := part.(type) {

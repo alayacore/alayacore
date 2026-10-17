@@ -24,7 +24,7 @@ package providers
 //    in openaiConvertContents, not in the sub-converters.
 //
 // 4. NULL ARGUMENTS IN TOOL CALL CHUNKS: Some providers emit no-op deltas
-//    with "arguments": null. unquoteToolArg turns such a chunk into the empty
+//    with "arguments": null. unquoteToolArg tasks such a chunk into the empty
 //    string, so it contributes nothing to the arguments llm.Agent assembles.
 //    See docs/providers.md → "Null arguments in tool call chunks".
 //
@@ -501,7 +501,7 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		}
 
 		// A body that simply stops — proxy timeout, upstream close — is not a
-		// turn the server finished. OpenAI has no terminal *event*, but it does
+		// step the server finished. OpenAI has no terminal *event*, but it does
 		// have two terminal *signals*, and either one is enough: the
 		// `finish_reason` field on the last chunk, or the `[DONE]` sentinel
 		// closing the stream. Requiring `finish_reason` specifically would
@@ -509,7 +509,7 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		// requiring `[DONE]` on top of a reason would reject endpoints that end
 		// the body after the final chunk. Both rejections were measured against
 		// this repo's own suite — 12 tests for the first. A body carrying
-		// *neither* is the one case that cannot be a completed turn, and
+		// *neither* is the one case that cannot be a completed task, and
 		// synthesizing one there presented a cut-off sentence as a concluded
 		// answer, so a retry believed the assistant had finished thinking.
 		//
@@ -534,12 +534,12 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		//
 		// ORDER MATTERS: the order these arrive in is the order the step is
 		// persisted in, because the assembler lays the record out by close order.
-		// It has to match the shape an assistant turn has in this protocol —
+		// It has to match the shape an assistant message has in this protocol —
 		// reasoning, content, tool calls — because it is also the order these
 		// frames reach the adapters. Under --no-delta nothing is coalesced, so a
 		// frame is what creates its TUI window: emitted out of record order,
 		// ASSISTANT lands above the REASONING that produced it, and a saved
-		// session re-lays the same turn the other way on reopen. --plainio prints
+		// session re-lays the same task the other way on reopen. --plainio prints
 		// in the same frame order.
 		//
 		// This ordering does NOT decide history IDs: those are minted when a
@@ -658,7 +658,7 @@ func (s *openAIStreamState) toolIndices() []int {
 // its calls laid out as it asked for them. That ordering is what llm.Agent's
 // assembler uses for the persisted record, so switching this to first-appearance
 // order would decide, by streaming luck, the sequence a model sees its own
-// parallel calls in on the next turn. Nothing here may do that.
+// parallel calls in on the next task. Nothing here may do that.
 func (s *openAIStreamState) closedToolCalls() []llm.ToolInputCompleteEvent {
 	indices := s.toolIndices()
 	out := make([]llm.ToolInputCompleteEvent, len(indices))
@@ -689,7 +689,7 @@ const (
 
 func openaiToolKey(rawIndex int) string { return fmt.Sprintf("tool:%d", rawIndex) }
 
-// Record layout for an assistant turn in this protocol: reasoning, content, then
+// Record layout for an assistant message in this protocol: reasoning, content, then
 // tool calls in index order. Positions are 1-based because llm's contract uses the
 // zero value to mean "not declared"; the offset for tools leaves slots 1 and 2 for
 // the two flat fields even when one of them never streamed.
@@ -697,7 +697,7 @@ func openaiToolKey(rawIndex int) string { return fmt.Sprintf("tool:%d", rawIndex
 // This is declared alongside the content rather than only at the step's closure so
 // that a stream cut before anything closed still lands in the protocol's shape:
 // the persisted record is what gets replayed, and an answer recorded ahead of the
-// thinking that produced it reads to the model as a turn it never sent.
+// thinking that produced it reads to the model as a task it never sent.
 const (
 	openaiReasoningPos = 1
 	openaiTextPos      = 2
@@ -1119,7 +1119,7 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPa
 		// A native block forwards the URI verbatim, so an unfetchable one must
 		// degrade to text here exactly as it does on the promotion path — the
 		// same gate, or a bare-path or empty URI on a user message would fail
-		// the whole request, and every later turn with it. Documents and remote
+		// the whole request, and every later task with it. Documents and remote
 		// audio already come back as text (native == false).
 		if native && !openaiPromotableURI(part) {
 			contentParts = append(contentParts, openaiTextBlock(openaiMediaSummary(part)))

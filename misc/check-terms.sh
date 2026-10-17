@@ -60,6 +60,17 @@ hits=$(printf '%s\n' "$decls" |
 	grep -v '^$')
 report "$hits" 'a declaration using a word another file owns — say windowCursor, caret or screenCursor'
 
+# ── 3. The retired word for "a run" ─────────────────────────────────────────
+# A run is a task; what used to be spelled "turn" is task plus promptKind.
+# The verb and the idioms ("turn it off", "turn a request into", "in turn",
+# "turns out") are English, not the term, so only the noun signatures are
+# banned — an article before it, a possessive, the compounds, and the phrase
+# tails no verb would take. `pause_turn`/`end_turn` are Anthropic's field
+# names and do not match.
+turnnoun='\b(mid|multi|per|three|two)-turn\b|\b(assistant|user) turns?\b|\buserTurn\b|\bturn'"'"'s\b|\b(the|a|an|this|that|next|each|per|one|any|every|same|previous|new|own|first|last|whole|single|both|its) turns?\b|\bturns? (ended|never|boundary|is|was|starts|has|already|splices|spliced|takes|whose)\b'
+hits=$(grep -rnE "$turnnoun" --include=*.go --include=*.md . 2>/dev/null)
+report "$hits" 'a run is a task — say the kind (userPrompt/summarizeCall) when it matters'
+
 # ── 3. Docs, for the states whose two names this page settles ──────────────
 hits=$(grep -rniE '\bcollaps' docs/tui.md docs/internal/virtual-rendering-performance.md 2>/dev/null)
 report "$hits" 'the folded state is folded/unfolded'

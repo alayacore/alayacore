@@ -122,7 +122,7 @@ apiMsg.ToolCalls = ...        // only ToolInputParts go here
 
 And on receive, both providers use the same pattern: accumulate content by `index` across streaming chunks, then assemble into a single `[]ContentPart` at step completion. OpenAI accumulates three parallel fields (reasoning, text, tool arguments) by index; Anthropic accumulates content blocks by index — structurally the same approach.
 
-**Conclusion:** The domain layer was clearly inspired by Anthropic's content block array model. It's the more general and extensible design — but the extent is bounded, on purpose: a new content type means a new part type with its `isContentPart` marker in `llm/types.go`, its kind admitted on the right plane in `internal/protocol/kinds.go`, and a new case in each provider's switch. The sealed interface and the plane table turn "somewhere you might have to add a case" into a fixed, findable set — a missing one fails the build or a test. OpenAI's flat-field model is the odd one out requiring non-trivial split/merge logic.
+**Conclusion:** The domain layer was clearly inspired by Anthropic's content block array model. It's the more general and extensible design — but the extent is bounded, on purpose: a new content type means a new part type with its `isContentPart` marker in `llm/types.go`, its kind admitted on the right plane in `internal/protocol/kinds.go`, and a new case in each provider's switch. The sealed interface and the plane table task "somewhere you might have to add a case" into a fixed, findable set — a missing one fails the build or a test. OpenAI's flat-field model is the odd one out requiring non-trivial split/merge logic.
 
 ## Wire Format Comparison
 

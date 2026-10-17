@@ -11,7 +11,7 @@ import (
 	"github.com/alayacore/alayacore/internal/llm/providers"
 )
 
-// openaiChunks builds an SSE body for one assistant turn: a reasoning delta and
+// openaiChunks builds an SSE body for one assistant message: a reasoning delta and
 // a content delta. finishReason adds the last chunk carrying it; done adds the
 // [DONE] sentinel. Neither argument set leaves a body that simply stops.
 func openaiChunks(finishReason bool, done bool) func(io.Writer) {
@@ -61,7 +61,7 @@ func streamOpenAI(t *testing.T, body func(io.Writer)) ([]llm.ContentPart, error)
 
 const wantOpenAIHistory = "reasoning:a long reasoning,text:Answer."
 
-// The three ways a body can end. Only the third is not a turn the server
+// The three ways a body can end. Only the third is not a step the server
 // finished: with no `finish_reason` and no `[DONE]`, nothing ever said the
 // response was over, and rebuilding the step from the accumulators anyway
 // presented a cut-off sentence as a concluded answer.

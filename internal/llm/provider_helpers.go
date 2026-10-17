@@ -52,7 +52,7 @@ func ParseDataURI(uri string) (mediaType, data string, ok bool) {
 // only remote schemes a server fetches. Every other shape — a bare filesystem
 // path, a file: URI, an empty string — cannot be handed to a provider inside a
 // content block, because the request carrying it fails whole rather than block
-// by block; and since the part is persisted history, every later turn fails the
+// by block; and since the part is persisted history, every later task fails the
 // same way. A caller that can degrade must degrade rather than forward.
 //
 // Both providers consult this before writing a native media block (the OpenAI

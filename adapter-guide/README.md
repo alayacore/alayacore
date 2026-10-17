@@ -170,8 +170,8 @@ The adapter must be prepared to **receive** `UX` on stdout in these scenarios:
 
 1. **Prompt echo** — When the user sends a prompt (`UX` + `UE` on stdin), the agent echoes each content item back on stdout with an assigned history id before sending them to the LLM.
 2. **Session replay** — When a saved session file (key-value frontmatter + frame body, specified via `--session`) is loaded, all historical content (including user messages) is replayed to the adapter on stdout with their original history ids. A file's body is conversation content only: `UE` and `CE` delimit messages on a stream, and a file has no message boundaries to mark — its messages are grouped by role — so a control frame in one is refused rather than ignored.
-3. **The agent's own user turns** — Not every `UX` frame is something the user typed: the `Continue` that resumes a cancelled turn (`:continue`) and the one a mid-task compaction appends are written by the agent. They are parts of the conversation like any other, so they are echoed like any other.
-4. **Steering** — A prompt sent while a task is running is spliced into that turn at its next step boundary (or becomes the next prompt if the turn ends first), so its echo (with its history id) arrives when the model receives it — one step later, not immediately. The session reports this lifecycle as an SM `steering` message carrying a `phase` of `queued`, `delivered`, `dropped`, or `refused`. The echo is the authoritative record — the words enter `Contents` only at delivery.
+3. **The agent's own user tasks** — Not every `UX` frame is something the user typed: the `Continue` that resumes a cancelled task (`:continue`) and the one a mid-task compaction appends are written by the agent. They are parts of the conversation like any other, so they are echoed like any other.
+4. **Steering** — A prompt sent while a task is running is spliced into that task at its next step boundary (or becomes the next prompt if the task ends first), so its echo (with its history id) arrives when the model receives it — one step later, not immediately. The session reports this lifecycle as an SM `steering` message carrying a `phase` of `queued`, `delivered`, `dropped`, or `refused`. The echo is the authoritative record — the words enter `Contents` only at delivery.
 
 > **For adapter implementors:** You cannot assume user content only appears on stdin.
 > The terminal adapter (`internal/adapters/terminal/output.go`), the plainio
@@ -492,9 +492,9 @@ after one the transcript an adapter has accumulated is not the session's
   while streaming, and the compacted history then carries the summary as a fresh
   part with a fresh ID. A window keyed by the frame's ID names a part no
   `Contents` holds, and `:fork` on it answers `NOT_FOUND`.
-- **The user turn that opens the compacted history is not sent as a frame.** The
-  history opens on a user turn (the summary request); it is never echoed, so live
-  the summary appears with no user turn in front of it, and a reload shows it.
+- **The user message that opens the compacted history is not sent as a frame.** The
+  history opens on a user message (the summary request); it is never echoed, so live
+  the summary appears with no user message in front of it, and a reload shows it.
 
 ### Error handling
 
@@ -544,10 +544,10 @@ after one the transcript an adapter has accumulated is not the session's
      message with `in_progress:false`) — the conversation is unaffected, but
      the session file is stale and may be lost.
    - **Pre-summarize backup / auto-summarization** arrive during the task. A
-     failed auto-summarization ends the turn rather than sending the oversized
+     failed auto-summarization ends the task rather than sending the oversized
      request that would follow, and the task's completion arrives behind it. A
      failed backup does not stop the summarize. Display both: the first says
-     why the turn stopped, the second that a summarize which proceeds without
+     why the task stopped, the second that a summarize which proceeds without
      a backup leaves the original conversation unrecoverable.
 
 5. **Output stream broken**: On the first write error to stdout, the agent
@@ -756,7 +756,7 @@ SM-mcp-failed.txt              {"type":"mcp","data":{"status":"failed","server":
 SM-mcp-done.txt                {"type":"mcp","data":{"status":"done"}}
 SM-session-ready.txt           {"type":"session","data":{"state":"ready"}}
 SM-session-closed.txt          {"type":"session","data":{"state":"closed"}}
-SM-steering-queued.txt         {"type":"steering","data":{"phase":"queued","text":"steering queued — delivered into the running turn, or as your next prompt"}}
+SM-steering-queued.txt         {"type":"steering","data":{"phase":"queued","text":"steering queued — delivered into the running task, or as your next prompt"}}
 SM-steering-delivered.txt      {"type":"steering","data":{"phase":"delivered"}}
 SM-steering-dropped.txt        {"type":"steering","data":{"phase":"dropped","reason":"canceled","text":"steering dropped — the task was canceled before it was delivered"}}
 SM-steering-refused.txt        {"type":"steering","data":{"phase":"refused","text":"Too many prompts are already queued for the running task; this one was not queued. Wait for it to continue, or cancel it."}}

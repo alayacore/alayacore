@@ -6,7 +6,7 @@ package agent
 // every runTaskNormal. There is no "already summarized" flag, and a successful
 // summarize resets ContextTokens to the summary size, so it can grow back over
 // the threshold and trigger again. These tests pin that down so a future change
-// cannot silently turn auto-summarize into a once-per-session action.
+// cannot silently task auto-summarize into a once-per-session action.
 //
 //   - TestAutoSummarizeTriggersRepeatedly      — three over-threshold tasks,
 //     each must summarize (drives runTaskNormal + handleTaskEvent by hand).

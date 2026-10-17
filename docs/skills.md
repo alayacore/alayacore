@@ -65,7 +65,7 @@ depth is the one worth memorising.
 | `PATH/<group>/<dir>/SKILL.md` (one extra level) | **not loaded** — the scan is exactly one level deep, not recursive. Nothing names the buried skill; only if the container holds nothing else does the run report it as loading no skills, and even then without the reason |
 | `--skill PATH/<skill>` (the skill dir itself) | **nothing loaded** — see the warning above; the startup line says so |
 | `PATH` does not exist | reported at startup as a container that contributed nothing; the run continues |
-| `PATH` is a file, or a directory that cannot be read | reported at startup as a load error; **the program still starts** (it used to exit before the first turn) |
+| `PATH` is a file, or a directory that cannot be read | reported at startup as a load error; **the program still starts** (it used to exit before the first task) |
 | a symlinked skill directory inside `PATH` | loaded like any other — the link is followed |
 | `PATH` given twice, or spelled two ways (`./skills`, `skills/`, the absolute path) | read once; a container cannot collide with itself |
 | `~` in the path | expanded before anything else reads it; no shell needed |

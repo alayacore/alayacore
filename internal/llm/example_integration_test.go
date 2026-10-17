@@ -114,7 +114,7 @@ func TestFullIntegration(t *testing.T) {
 	}
 }
 
-// TestAgentMultiTurnWithTools tests multi-turn conversation with tool calls
+// TestAgentMultiTurnWithTools tests multi-step conversation with tool calls
 // This simulates the session pattern where messages are accumulated across queries
 func TestAgentMultiTurnWithTools(t *testing.T) {
 	// Track how many times the API is called
@@ -343,7 +343,7 @@ func TestAgentMultiTurnSequentialTools(t *testing.T) {
 	}
 }
 
-// TestOpenAIMultiTurnWithTools tests multi-turn conversation with tool calls for OpenAI-compatible APIs
+// TestOpenAIMultiTurnWithTools tests multi-step conversation with tool calls for OpenAI-compatible APIs
 // This simulates the session pattern where messages are accumulated across queries
 func TestOpenAIMultiTurnWithTools(t *testing.T) {
 	callCount := 0

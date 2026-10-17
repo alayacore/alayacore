@@ -32,7 +32,7 @@ still detect the interruption by exit code. Ctrl-C during the stdin read
 phase (interactive use without EOF) aborts the read; Ctrl-C after the
 task finished only forces the exit code.
 
-Any SM error sets exit code `1` — including failed persistence (auto-save, pre-summarize backup) and failed auto-summarization, which ends the turn rather than sending the oversized request. Such errors also discard the buffered final answer: a script should retry or inspect the session file.
+Any SM error sets exit code `1` — including failed persistence (auto-save, pre-summarize backup) and failed auto-summarization, which ends the task rather than sending the oversized request. Such errors also discard the buffered final answer: a script should retry or inspect the session file.
 
 Empty stdin produces no prompt and exits `0` with empty output.
 
@@ -133,7 +133,7 @@ alayacore --terseio < prompt.txt
 # Pipe the answer into another tool
 alayacore --terseio < question.txt | jq -r .
 
-# Multi-turn: persist the conversation, print only the new answer each time
+# Multi-task: persist the conversation, print only the new answer each time
 alayacore --terseio --session my-convo.alaya <<< "my name is Alice"
 alayacore --terseio --session my-convo.alaya <<< "what is my name?"
 

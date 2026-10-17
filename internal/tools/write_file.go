@@ -84,7 +84,7 @@ func executeWriteFile(_ context.Context, args WriteFileInput) ([]llm.ContentPart
 		// A rename needs write permission on the *directory*; os.WriteFile
 		// never did, it only needed the file itself to be writable. Without
 		// this fallback, a writable file sitting in a read-only directory —
-		// a normal layout for vendored trees and service configs — would turn
+		// a normal layout for vendored trees and service configs — would task
 		// a write that used to work into a hard failure. Degraded, not denied.
 		if existing {
 			return writeInPlace(target, args.Content)

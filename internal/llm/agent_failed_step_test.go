@@ -9,9 +9,9 @@ import (
 )
 
 // A canceled or failed step must still contribute what it produced. The
-// reasoning is the expensive, often longest part of a turn, and it was already
+// reasoning is the expensive, often longest part of a task, and it was already
 // shown on screen; dropping it leaves history holding a bare tool_use for a
-// turn in which the model plainly thought first.
+// task in which the model plainly thought first.
 func TestFailedStepKeepsReasoningAndText(t *testing.T) {
 	noop := Tool{
 		Definition: ToolDefinition{Name: "noop"},

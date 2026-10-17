@@ -668,7 +668,7 @@ func TestAnthropicReasoningStreaming(t *testing.T) {
 		t.Fatal("Expected StepCompleteEvent")
 	}
 
-	// Check the recorded turn includes both reasoning and text
+	// Check the recorded task includes both reasoning and text
 	msg := stepRecord(t, provider)
 	if len(msg) != 2 {
 		t.Fatalf("Expected 2 content parts, got %d", len(msg))
@@ -726,7 +726,7 @@ func TestAnthropicThinkingOmittedMode(t *testing.T) {
 		reasoningParts int
 		textParts      int
 	)
-	// The turn's record, assembled by llm.Agent from this provider's stream.
+	// The task's record, assembled by llm.Agent from this provider's stream.
 	for _, part := range stepRecord(t, provider) {
 		switch part.(type) {
 		case *llm.ReasoningPart:
@@ -1230,7 +1230,7 @@ func TestOpenAIWithReasoning(t *testing.T) {
 		t.Fatal("Expected StepCompleteEvent")
 	}
 
-	// Verify the recorded turn holds both reasoning and text
+	// Verify the recorded task holds both reasoning and text
 	msg := stepRecord(t, provider)
 	if len(msg) < 2 {
 		t.Fatalf("Expected at least 2 content parts (reasoning + text), got %d", len(msg))
@@ -1473,7 +1473,7 @@ func TestOpenAIReasoningFieldAppliesToSendSide(t *testing.T) {
 			}
 			provider.SetReasoningLevel(config.ReasoningLevelNormal)
 
-			// A prior assistant turn that reasoned, then a fresh user turn.
+			// A prior assistant message that reasoned, then a fresh user message.
 			messages := append(
 				testMsg(llm.RoleAssistant,
 					&llm.ReasoningPart{Text: "I thought about it"},
@@ -1508,7 +1508,7 @@ func TestOpenAIReasoningFieldAppliesToSendSide(t *testing.T) {
 }
 
 // TestOpenAIReasoningFieldGovernsEmptyPadding covers the replay requirement
-// for a tool-call-only assistant turn: with reasoning mode on, the key is sent
+// for a tool-call-only assistant message: with reasoning mode on, the key is sent
 // even when there is no reasoning text, and that placeholder has to land under
 // the configured key too — padding under a name the endpoint does not use
 // satisfies nothing.
@@ -1529,7 +1529,7 @@ func TestOpenAIReasoningFieldGovernsEmptyPadding(t *testing.T) {
 	}
 	provider.SetReasoningLevel(config.ReasoningLevelNormal)
 
-	// Assistant turn with a tool call and no reasoning text, then its result.
+	// Assistant task with a tool call and no reasoning text, then its result.
 	messages := append(
 		append(
 			testMsg(llm.RoleAssistant, &llm.ToolInputPart{
@@ -1589,7 +1589,7 @@ func findAssistantMessage(t *testing.T, body map[string]any) map[string]any {
 
 func TestOpenAITextWithToolCallsConversion(t *testing.T) {
 	// Test that text content is preserved when converting assistant messages
-	// with tool calls back to wire format (for multi-turn tool call chains).
+	// with tool calls back to wire format (for multi-step tool call chains).
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request body preserves text content alongside tool calls
 		var reqBody map[string]any
@@ -1651,7 +1651,7 @@ func TestOpenAITextWithToolCallsConversion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Simulate a multi-turn conversation where assistant returned text + tool call
+	// Simulate a multi-step conversation where assistant returned text + tool call
 	messages := testMsg(llm.RoleUser, &llm.TextPart{Text: "Check the weather"})
 	messages = append(messages, testMsg(llm.RoleAssistant,
 		&llm.TextPart{Text: "Let me check that."},
@@ -2520,7 +2520,7 @@ func streamedToolParts(events iter.Seq2[llm.StreamEvent, error]) []llm.ToolInput
 }
 
 // stepRecord runs a provider's stream through a real agent step and returns the
-// content parts that reached history. Tests asking "what did this turn record"
+// content parts that reached history. Tests asking "what did this task record"
 // need this rather than an inspection of the events: the record is assembled by
 // llm.Agent, so asserting on events alone would not notice a broken assembly, and
 // asserting on a hand-built copy would test the test.
@@ -2572,7 +2572,7 @@ func recordOfStepWithTools(t *testing.T, provider llm.Provider, tools ...llm.Too
 		failure = err
 	}
 	// OnStepFinish publishes the accumulated conversation, prompt included. A
-	// test asking what *this turn* recorded wants the assistant's parts only.
+	// test asking what *this task* recorded wants the assistant's parts only.
 	var step []llm.ContentPart
 	for _, p := range published {
 		if p.GetRole() != llm.RoleUser {

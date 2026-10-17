@@ -55,7 +55,7 @@ The session uses three goroutines for concurrent operation:
 | `taskEventCh` (buffered, cap 64) | task worker | run() | Step progress, token counts |
 | `outputBroken` (atomic.Bool) | both | — | Output stream failure flag (any goroutine can set) |
 | `confirmChs` (map + mutex) | both | — | Per-tool confirmation channel map (MCP-style) |
-| `steering` (slice + mutex) | both | — | Prompts that arrive while a task runs, waiting for that turn's next step boundary |
+| `steering` (slice + mutex) | both | — | Prompts that arrive while a task runs, waiting for that task's next step boundary |
 
 **Lifecycle — the end of input:**
 
@@ -88,14 +88,14 @@ input ends (EOF or CE) ──▶ run() records it ──┐
 
 **Design rationale:** Tasks must run in a separate goroutine because LLM streaming is blocking (3-10s per step). If tasks ran synchronously in `run()`, the main loop could not process user input (`:cancel`, new prompts, immediate commands) during task execution. The per-task goroutine keeps the main loop responsive.
 
-#### Steering — a prompt that arrives mid-turn
+#### Steering — a prompt that arrives mid-task
 
 One task runs at a time, and there is no task queue (see the `run()` comment in
 `internal/agent/session_loop.go`). A prompt that arrives while a task is in
 flight is therefore neither parked as a second task nor refused: it is **spliced
-into the running turn** at that turn's next step boundary, so a correction
+into the running task** at that task's next step boundary, so a correction
 reaches the model without canceling the step in flight and paying for a repeat
-turn. Only a full steering queue is refused (reported as a `steering` message
+task. Only a full steering queue is refused (reported as a `steering` message
 with phase `refused`, not the generic BUSY text).
 
 The boundary is the only injection point there can be. It is the one place the
@@ -117,25 +117,25 @@ the step's delta, so a `:save` or `:fork` during that step sees what the
 transcript already shows.
 
 The rule for where a steering message ends up turns on one question — had the
-turn spliced it in before the turn ended?
+task spliced it in before the task ended?
 
 - **Spliced** — the words were sent to the model and echoed to the adapter, so
   they are part of the conversation: numbered, in `Contents`, and a failure or a
   cancel afterwards cannot take them back.
-- **Still queued when the turn ended** — delivered as the next prompt if the turn
+- **Still queued when the task ended** — delivered as the next prompt if the task
   landed (the model answered without calling another tool, which is what "type
   the next thing while it is working" means, and the common case), or dropped
-  with a `steering` message (phase `dropped`) if it did not. These words never reached a step, so a turn
+  with a `steering` message (phase `dropped`) if it did not. These words never reached a step, so a task
   that dies cannot leave them to run on afterwards. An input arriving *after* the
-  turn ends is untouched by any of this: it was never part of that turn.
+  task ends is untouched by any of this: it was never part of that task.
 
-A canceled turn is the clearest case of the second rule, since a queue that
+A canceled task is the clearest case of the second rule, since a queue that
 survived it would start a new task on its own the moment the canceled one
 unwound — a stop button that keeps going. The words it had already spliced stay,
 because the model has been given them.
 
 The take side needs no rule of its own: it falls out of the same distinction.
-Only a `userTurn` is given the hook that can reach the queue, so a
+Only a `userPrompt` is given the hook that can reach the queue, so a
 `summarizeCall` — even a multi-step one, tools and all — never takes the words,
 and that has to be so: its history is a copy that either replaces the conversation
 or is thrown away, so words consumed by it would vanish with nothing to report,
@@ -148,7 +148,7 @@ because from the queue's point of view they had been delivered. See
 - **Auto-save** — Always enabled when `--session` is specified. The session file is written after each task completes (and on `:save`). During a running task, completed steps are synced into the in-memory `Contents` via task events, so a `:save` mid-task captures all steps finished so far — but no disk write happens per step (each write is a full-file rewrite). A failed save is reported to the adapter as a system error message — the user must know the session may be lost.
 - **Manual save** — `:save [file]` or `Ctrl+S` at any time (TUI mode).
 - **Load** — On startup, AlayaCore starts a new empty session unless you specify `--session` to load an existing one. A missing session file is the normal first-run case (silent). If the file exists but is corrupt or unreadable, an error message is emitted (system error message, shown by the active adapter) and a fresh session is started; an incompatible `message_version` is rejected outright (see below).
-- **Auto-summarize** — When `--auto-summarize` is set to a positive threshold percentage (e.g. `--auto-summarize=65`), AlayaCore automatically triggers `:summarize` when context reaches that percentage of the limit. It is checked at the start of every prompt **and before each step of a running task**, so a single long turn is compacted mid-flight rather than only between prompts: the summarize prompt is sent after the step's tool result (so the model reads it before summarizing), the compacted history replaces the conversation, and the turn continues from it. A failed summarization ends the turn and is reported to the adapter as a system error message — the uncompressed history is preserved rather than the request that would follow being sent (see `docs/context-tracking.md`).
+- **Auto-summarize** — When `--auto-summarize` is set to a positive threshold percentage (e.g. `--auto-summarize=65`), AlayaCore automatically triggers `:summarize` when context reaches that percentage of the limit. It is checked at the start of every prompt **and before each step of a running task**, so a single long task is compacted mid-flight rather than only between prompts: the summarize prompt is sent after the step's tool result (so the model reads it before summarizing), the compacted history replaces the conversation, and the task continues from it. A failed summarization ends the task and is reported to the adapter as a system error message — the uncompressed history is preserved rather than the request that would follow being sent (see `docs/context-tracking.md`).
 
 Session files use a key-value frontmatter + one-frame-per-line body format. The frontmatter uses `---` delimiters with simple `key: value` lines (parsed by `config.ParseKeyValue`). The body contains the conversation (messages, tool calls, tool results) written directly as frames after the frontmatter — conversation content only, so a stream's control frames (`UE`, `CE`) do not belong in it: the loader groups frames into messages by role, and a delimiter would be a boundary it cannot honour.
 

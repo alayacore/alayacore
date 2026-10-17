@@ -387,8 +387,8 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 	}
 	taskCtx, taskCancel := context.WithCancel(s.sessionCtx)
 	s.activeTask = &taskHandle{cancel: taskCancel, step: 0, commandID: commandID}
-	// This turn owns the steering queue afresh: a cancel that drained the
-	// previous turn's queue (cancelSteering) must not suppress this turn's
+	// This task owns the steering queue afresh: a cancel that drained the
+	// previous task's queue (cancelSteering) must not suppress this task's
 	// deferred discard. See steeringDrained.
 	s.steeringMu.Lock()
 	s.steeringDrained = false
@@ -412,7 +412,7 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 	// stepFinishEvent arrives only once the round trip is over — so for
 	// essentially the whole summarize the adapter would read the session as
 	// idle, and the status bar's indicator would sit on the idle glyph instead
-	// of spinning. (The task-start auto-summarize runs before the turn's first
+	// of spinning. (The task-start auto-summarize runs before the task's first
 	// step event and has the same gap.)
 	s.sendSystemInfo(systemInfoTask)
 	return taskCtx, nil
@@ -443,10 +443,10 @@ func (s *Session) startTaskCommand(id string, run func(context.Context)) {
 // Three outcomes, and the difference between them is the point:
 //
 //   - The session is idle: the prompt starts a task.
-//   - A task is in flight: the prompt is spliced into that turn at its next
+//   - A task is in flight: the prompt is spliced into that task at its next
 //     step boundary (steering — see session_steering.go) instead of being
 //     refused. This is the case that used to be a plain BUSY error and the
-//     reason a correction no longer costs a cancel plus a wasted turn.
+//     reason a correction no longer costs a cancel plus a wasted task.
 //   - The session cannot start a task at all: refused. A *stage* it is passing
 //     through — MCP initialization — is not a refusal but a hold: the adapter
 //     has no way to know when that stage ends, and a client that submitted its
@@ -474,11 +474,11 @@ func (s *Session) submitPrompt(parts []llm.ContentPart) {
 			return
 		}
 		// Accepted: say so. Nothing else tells the user their words were taken.
-		// They reach the transcript at the turn's next step boundary, where they
+		// They reach the transcript at the task's next step boundary, where they
 		// are spliced in and echoed — a whole tool call away, or not at all if
-		// the turn ends first.
+		// the task ends first.
 		s.writeSteering(protocol.SteeringQueued, "",
-			"steering queued — delivered into the running turn, or as your next prompt")
+			"steering queued — delivered into the running task, or as your next prompt")
 	default:
 		s.writeError(err.Error()) // MCP slot already taken, or a permanent failure
 	}
@@ -910,7 +910,7 @@ func (s *Session) cancelTask() (any, error) {
 	}
 	if s.activeTask != nil {
 		if s.cancelRunningTask() {
-			// Canceling means stop, so anything the user steered into the turn
+			// Canceling means stop, so anything the user steered into the task
 			// being canceled goes with it: leaving it queued would start a new
 			// task on its own the instant this one unwinds, which is a stop
 			// button that keeps going. The user is told, because the words are
@@ -924,7 +924,7 @@ func (s *Session) cancelTask() (any, error) {
 			// What the task goroutine has already spliced is not here to take,
 			// and is not dropped: those words were sent to the model and echoed
 			// to the adapter, so they are part of the conversation. A cancel
-			// stops the turn; it cannot unsend what the model was given (see
+			// stops the task; it cannot unsend what the model was given (see
 			// session_steering.go).
 			if s.cancelSteering() {
 				s.writeSteering(protocol.SteeringDropped, protocol.SteeringDroppedCanceled,

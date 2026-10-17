@@ -93,7 +93,7 @@ func TestSummarizeReportsInProgressWhileInFlight(t *testing.T) {
 // TestTaskStartAutoSummarizeReportsInProgressWhileInFlight covers the
 // runTaskNormal (prompt) and runTaskContinue (:continue) entry points in the
 // one state where they too have no opening step event: the task-start
-// auto-summarize runs before the turn's first step.
+// auto-summarize runs before the task's first step.
 func TestTaskStartAutoSummarizeReportsInProgressWhileInFlight(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -128,7 +128,7 @@ func TestTaskStartAutoSummarizeReportsInProgressWhileInFlight(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Over the 65% auto-summarize threshold, so the task's first
-			// request is the auto-summarize, not a step of the real turn.
+			// request is the auto-summarize, not a step of the real task.
 			contents := []llm.ContentPart{
 				&llm.TextPart{Text: "old user", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
 				&llm.TextPart{Text: "old assistant", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant}},

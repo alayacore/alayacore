@@ -7,7 +7,7 @@ import (
 )
 
 // TestAnthropicGroupsToolResultWithFollowingUserText pins the wire rule that a
-// tool_result and a text part that follows it form ONE user turn.
+// tool_result and a text part that follows it form ONE user message.
 //
 // This is the exact shape a mid-task summarization produces: the summarize
 // prompt is appended right after the pending tool result, so the model reads
@@ -36,7 +36,7 @@ func TestAnthropicGroupsToolResultWithFollowingUserText(t *testing.T) {
 		t.Fatalf("last role = %q, want %q", last.Role, string(llm.RoleUser))
 	}
 	if len(last.Content) != 2 {
-		t.Fatalf("last user turn has %d blocks, want 2 (tool_result then text): %+v", len(last.Content), last.Content)
+		t.Fatalf("last user message has %d blocks, want 2 (tool_result then text): %+v", len(last.Content), last.Content)
 	}
 	if last.Content[0].Type != anthropicBlockTypeToolResult {
 		t.Errorf("block 0 type = %q, want %q (tool results come first)", last.Content[0].Type, anthropicBlockTypeToolResult)
@@ -47,8 +47,8 @@ func TestAnthropicGroupsToolResultWithFollowingUserText(t *testing.T) {
 }
 
 // TestAnthropicSplitsAssistantAndUser turns the same rule around: a plain user
-// message after an assistant turn stays its own message (the merge only folds a
-// user part into a tool turn, never two distinct turns).
+// message after an assistant message stays its own message (the merge only folds a
+// user part into a tool task, never two distinct tasks).
 func TestAnthropicSplitsAssistantAndUser(t *testing.T) {
 	asst := &llm.TextPart{Text: "answer"}
 	asst.SetRole(llm.RoleAssistant)

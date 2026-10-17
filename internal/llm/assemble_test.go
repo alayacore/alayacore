@@ -145,7 +145,7 @@ func TestAssemblerDropsToolWithoutPart(t *testing.T) {
 }
 
 // An empty slot is not content. Providers open a reasoning and a text block for
-// every turn, and the one that was never used must not be saved as an empty part
+// every task, and the one that was never used must not be saved as an empty part
 // the model then sees.
 func TestAssemblerSkipsEmptyBlocks(t *testing.T) {
 	a := newStreamAssembler(counter(1))
@@ -202,7 +202,7 @@ func TestAssemblerIsIdempotentOnCloseAndKind(t *testing.T) {
 // The declaration travels with the content, not only with the closure, because a
 // stream can be cut before any block closes. Here nothing closes, and the deltas
 // arrive in the wrong order — the case that left the persisted record inverted
-// against the protocol's shape for an assistant turn, and replayed that way.
+// against the protocol's shape for an assistant message, and replayed that way.
 func TestDeclaredPositionOrdersBlocksThatNeverClosed(t *testing.T) {
 	a := newStreamAssembler(counter(1))
 	a.text(2, "text", "ANSWER")          // arrives first, declared second

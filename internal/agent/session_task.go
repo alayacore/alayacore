@@ -36,15 +36,19 @@ import (
 // stream, the same multi-step tool loop, the same callbacks — but they are
 // different jobs, and the difference is not a detail this code may forget:
 //
-//   - userTurn is the user's own turn. Its progress belongs on the adapter's
-//     status bar, its history is the conversation's, and it is the only kind
-//     that may take the user's steering.
+//   - userPrompt is the task behind the user's own words. Its progress belongs
+//     on the adapter's status bar, its history is the conversation's, and it is
+//     the only kind that may take the user's steering.
 //   - summarizeCall is a summarize — :summarize, the auto-summarize at the
-//     start of a turn, or the one a full context triggers between steps. It
+//     start of a task, or the one a full context triggers between steps. It
 //     drives the same loop (it can even call tools), but its result never
 //     becomes the conversation: it replaces the history or is thrown away. So
 //     nothing about it is published, and it must keep its hands off the user's
 //     words.
+//
+// Both are tasks (both cross `in_progress`), which is why "task" has no
+// second word: what distinguishes them is the kind, and every sentence that
+// needs to say which says kind.
 //
 // Named rather than a bare bool because the value is read at the call site,
 // where "false" said only "do not publish steps" — one of the three things it
@@ -52,7 +56,7 @@ import (
 type promptKind int
 
 const (
-	userTurn promptKind = iota
+	userPrompt promptKind = iota
 	summarizeCall
 )
 
@@ -62,12 +66,12 @@ const (
 // total output token usage.
 //
 // kind decides what the call is given, and everything it is given follows from
-// that one answer (see promptKind): a userTurn publishes its step progress
+// that one answer (see promptKind): a userPrompt publishes its step progress
 // (stepStartEvent/stepStatsEvent for the status bar, and a stepFinishEvent
 // delta per step so :save/:fork see in-progress task content) and may rewrite
 // the history it is about to send — that is where a mid-task compaction and the
 // user's steering are spliced in. A summarizeCall gets none of that: publishing
-// its steps would move the displayed step and blank the speed mid-turn, its
+// its steps would move the displayed step and blank the speed mid-task, its
 // internals (prompt, response, and any tool calls of its own) must not
 // transiently pollute Contents, and it must not compact again or take steering
 // into a history that will be discarded.
@@ -100,15 +104,15 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// compaction has replaced it at this very boundary, which is what the
 	// assignment in onBeforeSend captures).
 	//
-	// turnFailed records that this call — the user's turn — did not land. The
-	// deferred discard below reads it together with ctx: a turn that failed and
-	// a turn that was canceled are the same event as far as the user's steering
+	// turnFailed records that this call — the user's task — did not land. The
+	// deferred discard below reads it together with ctx: a task that failed and
+	// a task that was canceled are the same event as far as the user's steering
 	// is concerned.
 	var pendingInjected []llm.ContentPart
 	var stepBase []llm.ContentPart
 	var turnFailed bool
 	defer func() {
-		// A turn that did not land — it failed, or it was canceled — takes the
+		// A task that did not land — it failed, or it was canceled — takes the
 		// steering it never spliced with it, and says so. Only the queue: what a
 		// step had already spliced was numbered, echoed and sent, and belongs to
 		// the conversation whatever the step did next (see session_steering.go).
@@ -148,7 +152,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			CacheReadTokens:     usage.CacheReadTokens,
 			CacheCreationTokens: usage.CacheCreationTokens,
 		}
-		if kind == userTurn {
+		if kind == userPrompt {
 			// NewParts is a view into the agent's accumulation; run()
 			// copies the pointers out immediately and never retains the
 			// view (see stepFinishEvent docs).
@@ -182,20 +186,20 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		return nil
 	}
 
-	// onBeforeSend runs at the top of every step of a userTurn, before its
+	// onBeforeSend runs at the top of every step of a userPrompt, before its
 	// request is sent. If the context has grown past the --auto-summarize
 	// threshold mid-task, it summarizes the conversation and hands the compacted
-	// history back for the rest of the turn; and it is where the user's steering
+	// history back for the rest of the task; and it is where the user's steering
 	// is spliced in. Both are rewrites of the history the next request is built
 	// from, which is why this hook — like the step-boundary events — is
-	// installed for a userTurn alone (see the callbacks below): a summarizeCall
+	// installed for a userPrompt alone (see the callbacks below): a summarizeCall
 	// never gets it, so it can neither re-trigger compaction nor swallow words
 	// meant for the user.
 	//
-	// A failed compaction ends the turn rather than continuing on the
+	// A failed compaction ends the task rather than continuing on the
 	// uncompressed history: --auto-summarize is a constraint the user declared,
 	// and the request that would follow is the one it exists to prevent. The
-	// room that is left may carry the turn to its end anyway — that is what this
+	// room that is left may carry the task to its end anyway — that is what this
 	// rule costs — but the constraint would otherwise be broken in silence, and
 	// where the provider enforces prompt + max_tokens it answers that request a
 	// step later with an error naming neither the summarize nor the threshold
@@ -284,7 +288,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// decision, in one place. A summarize gets no step-boundary events and no
 	// OnBeforeSend: that hook is "rewrite the history the next request is built
 	// from", which a summarize has no business doing (see promptKind).
-	if kind == userTurn {
+	if kind == userPrompt {
 		callbacks.OnStepStart = s.handleStepStart
 		callbacks.OnStepStats = s.handleStepStats
 		callbacks.OnBeforeSend = onBeforeSend
@@ -335,10 +339,10 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 // It is empty when the boundary needs neither, which is the ordinary case.
 //
 // The rule behind the second case is that a request must not end on an
-// assistant message: every API reads that as "continue this assistant turn"
+// assistant message: every API reads that as "continue this assistant message"
 // (prefill), and the model may keep writing the summary instead of resuming the
 // work. A compaction's replacement ends on the assistant summary, so it needs
-// the trailing user turn; a boundary that did not compact ends on the tool
+// the trailing user message; a boundary that did not compact ends on the tool
 // results the model just asked for, and needs nothing.
 func (s *Session) stepUserParts(contents []llm.ContentPart) (parts []llm.ContentPart, steering bool) {
 	if p := s.takeSteering(); len(p) > 0 {
@@ -627,7 +631,7 @@ func (s *Session) handleStepStats(stats llm.StepStats) error {
 // handleRetry tells the adapter that a transient provider failure is being
 // handled — a rate limit, an overload, a gateway blip — so it is visible while
 // it happens instead of looking like a hang. It is deliberately a notify, not
-// an error: the turn has not failed. Only when every retry is exhausted does
+// an error: the task has not failed. Only when every retry is exhausted does
 // the ordinary error path (writeError / the final failed step) report a
 // failure.
 func (s *Session) handleRetry(n llm.RetryNotice) error {
@@ -704,7 +708,7 @@ func cleanIncompleteToolInputs(contents []llm.ContentPart) []llm.ContentPart {
 // On any failure, returns the original contents (without the prompt).
 func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentPart) ([]llm.ContentPart, error) {
 	// Build and append the summarize prompt. It is an instruction to the model,
-	// not a turn the user took, so it is never echoed as a user tag: it is not
+	// not words the user wrote, so it is never echoed as a user tag: it is not
 	// part of Contents (the callers discard it on failure and the summary
 	// replaces it on success), and an ID advertised to the adapter that no
 	// record holds is one :fork cannot resolve. The notify frames around the
@@ -740,19 +744,19 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 	}
 
 	// Build the summarized conversation: the request the summary answers, as a
-	// user turn, followed by the summary itself.
+	// user message, followed by the summary itself.
 	//
-	// The user turn is structural, not decoration. The summary is an assistant
-	// message, so without a turn in front of it the compacted history would
+	// The user message is structural, not decoration. The summary is an assistant
+	// message, so without a task in front of it the compacted history would
 	// open on an assistant message — and the summary cannot move to the user
 	// side instead, because the next user part (the resuming prompt, or the
-	// trailing resume turn) would then group into the same turn as the summary
+	// trailing resume task) would then group into the same task as the summary
 	// and bury the instruction inside it.
 	//
 	// Its text is the request the model actually answered. It used to read
 	// "Continue", which named an instruction nobody gave — the summary answers
 	// "summarize the conversation", not "continue" — and collided with the
-	// resume turn, which is the only other thing that word means here.
+	// resume task, which is the only other thing that word means here.
 	result := make([]llm.ContentPart, 0, 2)
 	requestID := s.histIncAndGet()
 	result = append(result, &llm.TextPart{
@@ -826,11 +830,11 @@ func (s *Session) summarizeBackup(contents []llm.ContentPart, contextTokens int6
 
 // doAutoSummarize logs progress notifications and triggers summarization.
 // Called synchronously from runTaskNormal and runTaskContinue when the context
-// is near the token limit — it must complete before the user's turn is
-// processed, and the turn does not proceed if it fails.
+// is near the token limit — it must complete before the user's task is
+// processed, and the task does not proceed if it fails.
 //
 // On success the conversation has been replaced by the summary. On failure it
-// returns the error and the caller ends the turn rather than sending a request
+// returns the error and the caller ends the task rather than sending a request
 // the --auto-summarize threshold exists to prevent (see onBeforeSend for the
 // same rule mid-task). The uncompressed history is returned unchanged and stays
 // the session's, so nothing is lost.
@@ -865,7 +869,7 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 // It is the mid-task counterpart of doAutoSummarize. The history it is given
 // ends with a tool result the model asked for and has not yet acted on; the
 // summarize prompt is appended after it, so the model reads that result — and
-// the whole turn — and folds them into the summary. The compacted history
+// the whole task — and folds them into the summary. The compacted history
 // replaces the conversation and the loop continues from it, which is why no
 // tool result is discarded: it was folded into the summary by the model that
 // saw it.
@@ -874,7 +878,7 @@ func (s *Session) doAutoSummarize(ctx context.Context, contents []llm.ContentPar
 // count processPrompt keeps). It is passed, not read from s.ContextTokens,
 // because this runs on the task goroutine while run() is writing that field.
 //
-// On failure it returns the error, which ends the turn: the caller must not
+// On failure it returns the error, which ends the task: the caller must not
 // continue on the uncompressed history (see onBeforeSend for why).
 func (s *Session) compactForContinuation(ctx context.Context, contents []llm.ContentPart, contextTokens int64) ([]llm.ContentPart, error) {
 	s.writeNotify("Context limit reached. Summarizing to continue...")
@@ -885,7 +889,7 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 		return nil, err
 	}
 	// The replacement is [summary request (user), summary (assistant)], and it
-	// ends on the assistant. The trailing user turn that fixes that is added by
+	// ends on the assistant. The trailing user message that fixes that is added by
 	// the caller — see stepUserParts, which is where the rule lives because that
 	// is the one place that knows whether the user's own words are arriving to
 	// end the request instead.
@@ -909,7 +913,7 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 //   runTaskNormal     — normal prompt. Appends user parts to history, calls
 //                       processPrompt. If the context was near the token limit,
 //                       it synchronously runs doAutoSummarize first to free
-//                       space; a turn that grows past the limit mid-flight is
+//                       space; a task that grows past the limit mid-flight is
 //                       compacted between steps by processPrompt's OnBeforeSend.
 //
 //   runTaskContinue   — retry last prompt. First runs the same task-start
@@ -930,9 +934,9 @@ func (s *Session) compactForContinuation(ctx context.Context, contents []llm.Con
 //
 // The key difference: doAutoSummarize (from runTaskNormal) and
 // compactForContinuation (from processPrompt's OnBeforeSend) both run
-// synchronously inside the turn that needs the space — the first before a new
+// synchronously inside the task that needs the space — the first before a new
 // prompt is processed, the second between two of its steps — because each must
-// free token space before the next request is sent. When one fails the turn
+// free token space before the next request is sent. When one fails the task
 // ends rather than sending that request anyway. runTaskSummarize runs as an
 // independent task goroutine because :summarize is an explicit user command,
 // not a precondition for another operation.
@@ -955,8 +959,8 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 		compacted, err := s.doAutoSummarize(ctx, contents)
 		if err != nil {
 			s.writeErrorf("Auto-summarization failed: %v", err)
-			// The turn never started, so nothing was spliced: whatever the user
-			// steered in while this ran is still queued, and goes with the turn
+			// The task never started, so nothing was spliced: whatever the user
+			// steered in while this ran is still queued, and goes with the task
 			// (session_steering.go).
 			s.discardQueuedSteering()
 			return
@@ -980,7 +984,7 @@ func (s *Session) runTaskNormal(ctx context.Context, parts []llm.ContentPart) {
 	// during the task includes the just-submitted prompt.
 	s.sendEvent(promptPartsEvent{Parts: parts})
 
-	fullContents, _, err := s.processPrompt(ctx, contents, userTurn)
+	fullContents, _, err := s.processPrompt(ctx, contents, userPrompt)
 	if err != nil {
 		s.writeError(err.Error())
 	}
@@ -1006,7 +1010,7 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 		return
 	}
 
-	// Same task-start check as runTaskNormal: a retried turn is still a turn,
+	// Same task-start check as runTaskNormal: a retried task is still a task,
 	// and its history can be over the threshold. Done before "Continue" is
 	// appended, so the summarize prompt lands on the completed conversation
 	// rather than after a fresh user part.
@@ -1014,7 +1018,7 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 		compacted, err := s.doAutoSummarize(ctx, contents)
 		if err != nil {
 			s.writeErrorf("Auto-summarization failed: %v", err)
-			// The turn never started, so nothing was spliced — see runTaskNormal.
+			// The task never started, so nothing was spliced — see runTaskNormal.
 			s.discardQueuedSteering()
 			return
 		}
@@ -1032,7 +1036,7 @@ func (s *Session) runTaskContinue(ctx context.Context) {
 		s.sendEvent(promptPartsEvent{Parts: []llm.ContentPart{part}})
 	}
 
-	fullContents, _, err := s.processPrompt(ctx, contents, userTurn)
+	fullContents, _, err := s.processPrompt(ctx, contents, userPrompt)
 	if err != nil {
 		s.writeError(err.Error())
 	}

@@ -70,7 +70,7 @@ func TestTextWithToolCalls(t *testing.T) {
 		t.Fatal("No StepCompleteEvent received")
 	}
 
-	// Verify the recorded turn holds both text AND the tool call. The record is
+	// Verify the recorded task holds both text AND the tool call. The record is
 	// assembled by llm.Agent from the stream, so it is taken from a real step.
 	msg := stepRecord(t, provider)
 	t.Logf("Message role: %s", "(assistant)")

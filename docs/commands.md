@@ -48,14 +48,14 @@ Commands fall into three categories:
 | `:tool_decline <id>` | Decline a pending tool execution | `{"tool_id"}` |
 | `:mcp_cancel` | Cancel MCP server initialization | `null` |
 
-`:cancel` cancels the running task, and it takes the turn's *queued* steering with
+`:cancel` cancels the running task, and it takes the task's *queued* steering with
 it: words that have not yet been spliced into a step are dropped, with a
 `steering` message (phase `dropped`, reason `canceled`) saying so. Leaving them queued would start a fresh task on its own the
-moment the canceled one unwinds — a stop button that keeps going. Words the turn
+moment the canceled one unwinds — a stop button that keeps going. Words the task
 had already spliced were sent to the model, so they stay in the conversation —
-a cancel stops the turn, it cannot unsend what the model was given. A prompt that
+a cancel stops the task, it cannot unsend what the model was given. A prompt that
 arrives *after* the cancel is a fresh intent and is delivered normally (see
-[architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn)).
+[architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-task)).
 
 ## Idle Commands
 
@@ -122,6 +122,6 @@ See [error-handling.md](error-handling.md) for details on error recovery with `:
 
 The `:summarize` command asks the LLM to produce a concise summary of the conversation, then replaces the entire message history with that summary. This is the only way to reduce context usage manually when auto-summarize is disabled.
 
-> ⚠️ **Destructive** — The conversation history is replaced by the summary. Previous turns are lost. Consider saving first with `:save`.
+> ⚠️ **Destructive** — The conversation history is replaced by the summary. Previous tasks are lost. Consider saving first with `:save`.
 
 See [context-tracking.md](context-tracking.md) for details.

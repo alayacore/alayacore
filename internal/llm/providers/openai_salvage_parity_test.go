@@ -13,7 +13,7 @@ import (
 	"github.com/alayacore/alayacore/internal/llm/providers"
 )
 
-// openaiStepBody streams one assistant turn — reasoning, text, and a complete
+// openaiStepBody streams one assistant message — reasoning, text, and a complete
 // tool call — and either terminates it or stops dead after the last delta.
 func openaiStepBody(terminate, withTool bool) func(io.Writer) {
 	return func(w io.Writer) {
@@ -142,7 +142,7 @@ func TestCutStepRecordsWhatAFinishedStepWouldHave(t *testing.T) {
 // OpenAI's delta schema has no per-field terminator, so a cut stream is the
 // normal way to reach the record without closures — and a server is free to put
 // `content` before `reasoning_content` in its chunks. The record must still come
-// out in the shape an assistant turn has in this protocol (reasoning, content,
+// out in the shape an assistant message has in this protocol (reasoning, content,
 // tool calls), because that array is what gets replayed and what a saved session
 // re-lays on reopen.
 func TestOpenAICutStepRecordsAssistantTurnShape(t *testing.T) {
@@ -170,13 +170,13 @@ func TestOpenAICutStepRecordsAssistantTurnShape(t *testing.T) {
 		}
 	}
 	if got := strings.Join(kinds, ","); got != "reasoning,text" {
-		t.Errorf("record = [%s], want reasoning,text: the provider declares this turn's shape "+
+		t.Errorf("record = [%s], want reasoning,text: the provider declares this task's shape "+
 			"with the content, so a cut stream cannot scramble the file", got)
 	}
 }
 
 // The same rule for OpenAI, whose protocol gives it nothing to forward: the
-// positions are constants derived from the assistant-turn shape, so a new event
+// positions are constants derived from the assistant-task shape, so a new event
 // site (a fourth block kind, a new delta field) is the realistic way this breaks.
 func TestOpenAIDeclaresPositionOnEveryContentEvent(t *testing.T) {
 	server := newMockSSEServer(t, func(w io.Writer) {

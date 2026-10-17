@@ -152,7 +152,7 @@ func TestAnthropicStrandedBoundaryReleasedAtMessageStop(t *testing.T) {
 // closure is not the only place the record's order comes from: an earlier design
 // ordered blocks that never closed by arrival, and a server that opened thinking=0
 // then text=1 but streamed text's delta first recorded [text, reasoning] —
-// inverted against the shape Anthropic defines for an assistant turn, and replayed
+// inverted against the shape Anthropic defines for an assistant message, and replayed
 // to the model that way.
 //
 // What the closure still decides is whether a block is *finished*; it no longer

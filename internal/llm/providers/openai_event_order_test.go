@@ -10,13 +10,13 @@ import (
 	"github.com/alayacore/alayacore/internal/llm/providers"
 )
 
-// An OpenAI assistant turn has one shape — reasoning, content, tool calls — and
+// An OpenAI assistant message has one shape — reasoning, content, tool calls — and
 // this provider closes its blocks in it. The closures are what place blocks in
 // the persisted record (llm.Agent's assembler lays out by close order), so when
 // the tail emitted the boundary events text-then-reasoning the record and the
 // display inverted against the shape the protocol defines.
 //
-// Pin closure order to the protocol's assistant-turn shape.
+// Pin closure order to the protocol's assistant-task shape.
 func TestOpenAICompleteEventsFollowContentPositions(t *testing.T) {
 	server := newMockSSEServer(t, func(w io.Writer) {
 		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"reasoning\":\"thinking hard\"}}]}\n\n")
@@ -75,7 +75,7 @@ func TestOpenAICompleteEventsFollowContentPositions(t *testing.T) {
 }
 
 // A step that also calls a tool must close the tool *last*, because tools sit
-// after reasoning and text in an assistant turn. Before the tool loop moved below
+// after reasoning and text in an assistant message. Before the tool loop moved below
 // this pair, a --no-delta run closed the tool first: the record followed that
 // order while the window for TOOL CALL was created above the REASONING that
 // produced it.

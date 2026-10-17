@@ -155,7 +155,7 @@ func (wb *WindowBuffer) AppendOrUpdate(tag string, id string, content string) in
 	}
 
 	// Create new window. The conversation windows a reader wants to see —
-	// assistant answers (AT) and the user's own turns (UT) — start
+	// assistant answers (AT) and the user's own tasks (UT) — start
 	// unfolded; the machinery around them — tools (AF/UF), reasoning (AR),
 	// system messages (SN/SE) — starts folded, so a step's scaffolding
 	// does not push the conversation off the screen. (A user prompt is the

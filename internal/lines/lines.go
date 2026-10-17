@@ -44,7 +44,7 @@ var ErrIncomplete = errors.New("lines: incomplete line")
 // the maximum without a terminator, so the line would exceed it.
 var ErrLineTooLong = errors.New("lines: line too long")
 
-// Splitter turns bytes that arrive in pieces into lines (push style).
+// Splitter tasks bytes that arrive in pieces into lines (push style).
 type Splitter struct {
 	buf []byte
 	// limit bounds one line *including* its terminator — the bytes this splitter

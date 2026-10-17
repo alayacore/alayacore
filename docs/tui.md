@@ -241,7 +241,7 @@ uses for line endings:
   block submits in turn: the first line starts the task, and the rest are
   spliced into it as **steering** at the next step boundary
   (`agent/session_steering.go`). So the model receives the block's lines as one
-  or two user turns rather than as the single message that was pasted — and no
+  or two user tasks rather than as the single message that was pasted — and no
   line is left in the prompt box to be sent a second time. Past the steering
   queue's bound (`maxSteeringParts`) the extra lines are refused (a `steering`
   message with phase `refused`) and are lost with that message; the three options
@@ -588,7 +588,7 @@ otherwise (`- 12 lines below -`), and stays blank when it has nothing to say
 (scrolled back to the last line: the whole transcript is on screen).
 
 It also carries the **steering queue** — the prompts accepted for the running
-turn and not yet delivered to it, spelled `2 steering` and shown only while it
+task and not yet delivered to it, spelled `2 steering` and shown only while it
 is non-zero. It is the one readout about the prompts themselves (the status
 bar's telemetry describes the run — steps, tokens, speed — not the words
 waiting to join it), and it is here rather than in the status bar for the plain
@@ -661,7 +661,7 @@ Press `Space` on any window to fold it — the window becomes one line: the fold
 
 **Folding does not move the viewport.** A fold changes only a window's body, so the line that names it — the row the cursor highlight sits on — keeps its document position, and the window reads as folding in place. Only a line above the viewport top moves: the [sticky window line](#sticky-window-line) — a message taller than the viewport, scrolled until its own line is pinned to the screen top — would otherwise fold to the viewport's bottom edge, and `DisplayModel.anchorWindowCursor` instead pulls the offset up to the window's own line so the header, and the cursor on it, return to row 0 (the same rule applies to a window scrolled entirely past the top). At or below the top the offset is untouched; near the transcript's end its own clamp still decides how high the header can settle; and under [auto-follow](#auto-follow) the live edge wins — the viewport re-seats to the new bottom. `r` uses the same anchor, because a markdown table's cell padding can shrink a pinned message the same way ([Markdown Rendering](#markdown-rendering)). `fold_anchor_test.go` pins the cases.
 
-**The line is one style**, with one exception. The marker, the label and the timestamp — everything that names the window — are painted with a single `Style`: `lineStyleForTag`'s, bold, in the label color (muted) for **every** window type, because a user's turn, a reasoning step, an answer, a tool call and a system notification are all the same kind of thing — conversation — and none of them earns its line an accent. The single color exception is `SYSTEM ERROR`, which keeps the error color because an error has to be recognizable at a glance and from the far end of a scrollback. (The accent in this UI belongs to the prompt box at the bottom of the screen — the one live surface — and, transiently, to the cursor's own line: the highlight is the only thing that borrows it, and no window *type* carries it. Every line above the prompt is a record.)
+**The line is one style**, with one exception. The marker, the label and the timestamp — everything that names the window — are painted with a single `Style`: `lineStyleForTag`'s, bold, in the label color (muted) for **every** window type, because a user's task, a reasoning step, an answer, a tool call and a system notification are all the same kind of thing — conversation — and none of them earns its line an accent. The single color exception is `SYSTEM ERROR`, which keeps the error color because an error has to be recognizable at a glance and from the far end of a scrollback. (The accent in this UI belongs to the prompt box at the bottom of the screen — the one live surface — and, transiently, to the cursor's own line: the highlight is the only thing that borrows it, and no window *type* carries it. Every line above the prompt is a record.)
 
 The exception is a tool window's **name**, which is the row's payload rather than its chrome: it takes `toolNameStyle` (the tool-content color, bold) in the folded row and in the unfolded one, so folding a window never repaints the token that says which tool ran. In the normal register this is the same color the line is drawn in; the two part company only under the cursor, where the highlight covers what names the window and leaves the name and the arguments in the content color. The other thing on the line that is *not* chrome is a folded window's content summary: it stays muted, and stays muted under the cursor too. The cursor register is the same object with those colors swapped for the accent color (`Styles.Selected()`), which is why the highlight needs no per-glyph logic.
 

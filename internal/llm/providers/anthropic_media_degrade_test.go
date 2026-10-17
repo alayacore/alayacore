@@ -16,7 +16,7 @@ import (
 // The Messages API has no audio/video content block, and an unrecognized block
 // type fails the entire request. These tests lock the degradation to text —
 // including the case that motivated it: a model calling read_file on a video
-// (which the tool description invites) must not take down its own next turn.
+// (which the tool description invites) must not take down its own next task.
 
 // captureAnthropicMessages runs the Anthropic provider against a stub server
 // and returns the wire messages it received.

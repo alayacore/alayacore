@@ -14,7 +14,7 @@ import (
 // HistoryIDs are minted by llm.Agent's assembler at the first streamed event of
 // each content block, whether or not a callback consumes it, so numbering tracks
 // arrival. What must still line up with the record is the *closure* order
-// providers deliver (see openai_event_order_test.go): an assistant turn is
+// providers deliver (see openai_event_order_test.go): an assistant message is
 // [reasoning, text, tools], and under --no-delta that closure order is what
 // creates each TUI window.
 //

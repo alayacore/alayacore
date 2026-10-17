@@ -180,7 +180,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		// EnsureWindowCursorVisible used by the other jump keys,
 		// ScrollWindowCursorToTop always moves: it puts the cursor window's first
 		// line at the top of the viewport. With the cursor parked below the
-		// last user prompt (where a finished turn leaves it) there is no
+		// last user prompt (where a finished task leaves it) there is no
 		// next prompt to find, and re-seating anyway would yank the
 		// viewport up to the head of the window already under the cursor.
 		if next, moved := m.MoveWindowCursorToNextUserPrompt(); moved {

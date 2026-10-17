@@ -124,7 +124,7 @@ func (m *mockProviderWithTextAndTools) StreamMessages(_ context.Context, _ []Con
 		// Send tool call events — identity, arguments, then where they ended.
 		// A stub provider states only what the wire carried: llm.Agent assembles
 		// the step's record from these, so there is no second copy to build and
-		// no way for this fake to describe the turn differently from the events
+		// no way for this fake to describe the task differently from the events
 		// it sent.
 		for i, tc := range resp.toolCalls {
 			key := fmt.Sprintf("block:%d", i+1) // 0 is the text block

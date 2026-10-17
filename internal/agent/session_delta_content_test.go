@@ -66,7 +66,7 @@ func (textAndReasoningProvider) StreamMessages(_ context.Context, _ []llm.Conten
 func (textAndReasoningProvider) SetReasoningLevel(_ int)                       {}
 func (textAndReasoningProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
-// TestCompleteFramesCarryContentOnlyWhenDeltasAreOff runs the same turn in both
+// TestCompleteFramesCarryContentOnlyWhenDeltasAreOff runs the same task in both
 // modes and reads the frames the session actually writes. Each mode asserts both
 // directions, because either one alone can be satisfied by a mistake: "the
 // complete frame is empty" by never sending the text at all, and "the complete
@@ -119,7 +119,7 @@ func TestCompleteFramesCarryContentOnlyWhenDeltasAreOff(t *testing.T) {
 			// The ids matter as much as the content: the adapter skips a complete
 			// frame by looking up the window its id names, so a complete frame
 			// numbered differently from its fragments would find no window, create
-			// a second one for the same block, and show the turn twice.
+			// a second one for the same block, and show the task twice.
 			fragIDs, completeIDs := ids(frames, axText), ids(frames, axComplete)
 			if len(fragIDs) > 0 && len(completeIDs) > 0 && fragIDs[0] != completeIDs[0] {
 				t.Errorf("AT names window %q, its At fragments name %q", completeIDs[0], fragIDs[0])

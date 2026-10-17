@@ -103,7 +103,7 @@ const mouseReportingOff = ansi.ResetModeMouseX10 +
 	ansi.ResetModeMouseExtSgrPixel
 
 // Start enters the alt screen, enables bracketed paste and focus reporting, and
-// turns mouse reporting off. The cursor is hidden until the first render.
+// tasks mouse reporting off. The cursor is hidden until the first render.
 //
 // It is re-run after every child that owned the terminal (ExecProcess: the
 // external editor, Ctrl-Z), so the resets here are re-asserted rather than

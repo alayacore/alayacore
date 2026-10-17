@@ -41,8 +41,8 @@ func (e *APIError) Error() string {
 
 // RetryNotice describes one re-send that is about to happen. It exists so the
 // adapter can show that a rate limit (or another transient failure) is being
-// handled, instead of the turn looking like a hang. It is informational: the
-// turn has not failed, and if every retry is exhausted the ordinary error path
+// handled, instead of the task looking like a hang. It is informational: the
+// task has not failed, and if every retry is exhausted the ordinary error path
 // reports the final failure.
 type RetryNotice struct {
 	Retry      int           // 1-based retry number — the attempt about to be made

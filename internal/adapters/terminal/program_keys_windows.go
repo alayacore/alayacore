@@ -6,7 +6,7 @@ package terminal
 // translated into the byte stream the parser reads (console_events.go).
 //
 // The console is read as events rather than as bytes because a byte read cannot be
-// bounded. Go turns os.File.Read on a console into ReadConsole, which in cooked
+// bounded. Go tasks os.File.Read on a console into ReadConsole, which in cooked
 // mode waits for a whole line and which no API reliably cancels
 // (CancelIoEx/CancelSynchronousIo are best-effort on console input — the reason
 // Bubble Tea's reader warns against counting on cancellation, and the reason

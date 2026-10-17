@@ -16,7 +16,7 @@ import (
 // streaming deltas are coalesced into pendingTextDeltas keyed by historyID, so
 // the flush that first materializes both windows decides their order. That
 // flush iterated a Go map — randomized per run — making the outcome a coin
-// flip whenever a turn's reasoning and text are still pending together, which
+// flip whenever a task's reasoning and text are still pending together, which
 // is the normal case for a short reasoning. flushPendingDeltas now sorts by
 // historyID.
 //

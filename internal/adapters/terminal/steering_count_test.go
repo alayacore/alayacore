@@ -130,7 +130,7 @@ func TestSteeringPhasesReachTheTranscriptOnlyWhenTheTextSaysSomethingNew(t *test
 	m := liveEdgeFixture(20)
 	windows := func() []*Window { return m.out.WindowBuffer().AllWindows() }
 
-	queuedText := "steering queued — delivered into the running turn, or as your next prompt"
+	queuedText := "steering queued — delivered into the running task, or as your next prompt"
 	steeringPhase(t, m.out, "queued", queuedText)
 	if n := len(windows()); n != 20 {
 		t.Errorf("a queued frame put %d window(s) in the transcript, want 0 more than the 20 in the fixture", n)
@@ -156,7 +156,7 @@ func TestSteeringPhasesReachTheTranscriptOnlyWhenTheTextSaysSomethingNew(t *test
 
 	// Dropped: the words are gone, which no count can say, so the line goes to
 	// the transcript in the notify register and the count goes to zero.
-	droppedText := "steering dropped — the turn ended before it could be delivered"
+	droppedText := "steering dropped — the task ended before it could be delivered"
 	steeringPhase(t, m.out, "dropped", droppedText)
 	if n := len(windows()); n != 22 {
 		t.Fatalf("a dropped frame put %d window(s) in the transcript, want 1 more", n)

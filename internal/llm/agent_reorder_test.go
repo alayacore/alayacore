@@ -133,7 +133,7 @@ func TestAttachToolResultsAmbiguousID(t *testing.T) {
 	}
 }
 
-// A record with no calls passes through untouched — the ordinary text-only turn.
+// A record with no calls passes through untouched — the ordinary text-only task.
 func TestAttachToolResultsNoCalls(t *testing.T) {
 	record := []ContentPart{&TextPart{Text: "hi", ContentPartMeta: ContentPartMeta{Role: RoleAssistant}}}
 

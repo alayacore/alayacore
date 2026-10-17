@@ -221,7 +221,7 @@ func TestForkRefusesUnrepairableHistory(t *testing.T) {
 		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 1}},
 		&llm.ToolInputPart{ID: "ghost", Name: "noop", Input: json.RawMessage(`{}`),
 			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, HistoryID: 2}}, // no result, anywhere
-		&llm.TextPart{Text: "next turn", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 3}},
+		&llm.TextPart{Text: "next task", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 3}},
 		&llm.TextPart{Text: "Answer.", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleAssistant, HistoryID: 4}},
 	}
 	s := newForkTestSession(contents)

@@ -475,7 +475,7 @@ func TestStartTaskCommand_RefusedDoesNotBroadcast(t *testing.T) {
 				t.Errorf("expected echoed id in CO: %s", joined)
 			}
 			// No task frame at all: neither in_progress:true (the indicator must
-			// not turn for work that is not running) nor a spurious idle frame.
+			// not task for work that is not running) nor a spurious idle frame.
 			if frames := taskFrames(t, joined); len(frames) != 0 {
 				t.Errorf("a refused task must not emit a task frame: %v (%s)", frames, joined)
 			}

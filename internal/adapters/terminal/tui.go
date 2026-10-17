@@ -207,7 +207,7 @@ func attachmentValue(a attachment) (value, problem string) {
 		wire.MimeTypeForPath(a.path), base64.StdEncoding.EncodeToString(data)), ""
 }
 
-// reportErrs turns accumulated failures into the message the event loop shows,
+// reportErrs tasks accumulated failures into the message the event loop shows,
 // or nil when there is nothing to say.
 func reportErrs(errs []string) Msg {
 	if len(errs) == 0 {

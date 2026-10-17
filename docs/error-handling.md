@@ -48,7 +48,7 @@ if choice.FinishReason != "" && choice.FinishReason != "stop" &&
 | `max_tokens` | Hit token limit | **Error** — `ErrResponseTruncated` |
 | `stop_sequence` | Hit custom stop sequence | Valid |
 | `tool_use` | Tool call complete | Execute tool and continue |
-| `pause_turn` | Server-side extended turn | Valid — part of extended flow |
+| `pause_turn` | Server-side extended task | Valid — part of extended flow |
 
 ### Error Stop Reasons
 
@@ -104,13 +104,13 @@ so adapters treat them consistently (e.g. terseio sets exit code 1):
 
 - **Auto-save** — writing the session file when a task ends (success or failure — including after a failed step) failed (`Auto-save failed: ...`)
 - **Pre-summarize backup** — the timestamped backup written before auto-summarization failed (`Failed to create pre-summarize backup: ...`); without it the original conversation is unrecoverable after summarization
-- **Auto-summarization** — the summarization LLM call failed (`Auto-summarization failed: ...`). The turn ends rather than continuing on the uncompressed history: the request that would follow is the one the threshold exists to prevent, and where the provider enforces `prompt + max_tokens` it is that request the user sees rejected a step later, with no mention of the summarize that failed to prevent it. This arrives at the start of a task or part-way through one (see [context-tracking.md](context-tracking.md)).
+- **Auto-summarization** — the summarization LLM call failed (`Auto-summarization failed: ...`). The task ends rather than continuing on the uncompressed history: the request that would follow is the one the threshold exists to prevent, and where the provider enforces `prompt + max_tokens` it is that request the user sees rejected a step later, with no mention of the summarize that failed to prevent it. This arrives at the start of a task or part-way through one (see [context-tracking.md](context-tracking.md)).
 
 ## Automatic Retry of Transient Failures
 
 A provider that is rate-limiting (429), overloaded (529), or briefly unavailable
 (408/500/502/503/504, plus transport timeouts) is retried automatically before
-the turn is allowed to fail — so a transient failure stays invisible unless it
+the task is allowed to fail — so a transient failure stays invisible unless it
 outlives the retry budget.
 
 **Where.** `llm.Agent.sendWithRetry` (`internal/llm/agent.go`) re-sends the
@@ -136,7 +136,7 @@ so `:cancel` interrupts a backoff immediately.
 
 **Visibility.** Each retry is announced **before** the wait through
 `StreamCallbacks.OnRetry`, which the session turns into an SM `notify` (not an
-`error` — the turn has not failed):
+`error` — the task has not failed):
 
 ```
 provider rate limited the request (status 429) — retrying in 2s (retry 1/3)
@@ -160,11 +160,11 @@ Errors include:
 The user can:
 - `:continue` — retry the last prompt
 - `:model_set` — switch to a different model, then `:continue`
-- Type a new prompt — sent as a new user message; if a task is still running, it is spliced into that turn at its next step boundary instead (see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-turn))
+- Type a new prompt — sent as a new user message; if a task is still running, it is spliced into that task at its next step boundary instead (see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-task))
 
-The session is idle as soon as a turn fails, which is what makes the two commands
-above usable: a failed turn does **not** start anything on its own. Anything the
-user had steered into it — never delivered, because the turn did not land — is
+The session is idle as soon as a task fails, which is what makes the two commands
+above usable: a failed task does **not** start anything on its own. Anything the
+user had steered into it — never delivered, because the task did not land — is
 discarded, with a `steering` message (phase `dropped`, reason `failed`) saying so; retyping it is the user's call. That is
 the one place the session drops input, and it is never silent.
 

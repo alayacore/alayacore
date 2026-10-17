@@ -34,7 +34,7 @@ package agent
 //   - session_model.go — model management, provider creation, reasoning level
 //   - session_task.go  — input processing, prompt execution, agent loop
 //   - session_loop.go  — the main event loop (run) and task completion
-//   - session_steering.go — prompts that arrive mid-turn, and their delivery
+//   - session_steering.go — prompts that arrive mid-task, and their delivery
 //   - session_io.go    — command handling, summarize, save
 //   - session_output.go — frame write helpers, usage tracking, system info
 //   - session_persist.go — session save/load, markdown format
@@ -138,7 +138,7 @@ type sharedState struct {
 	histCounter uint64
 
 	// stepStartedAt is the wall clock of the step whose request is in flight,
-	// captured in OnBeforeSend (userTurn only) and read both by the echo helpers
+	// captured in OnBeforeSend (userPrompt only) and read both by the echo helpers
 	// and by stampParts — so a message's live timestamp is the same value that
 	// gets persisted, instead of two time.Now() calls that differ by however
 	// long the step's tools ran.
@@ -172,7 +172,7 @@ type sharedState struct {
 	confirmMu  sync.Mutex
 
 	// steering holds prompts that arrived while a task was in flight, waiting
-	// for that turn's next step boundary. It is shared state for the same
+	// for that task's next step boundary. It is shared state for the same
 	// reason confirmChs is: run() writes it (a prompt arrived) and drains it
 	// (a cancel, or a task ending), while the task goroutine takes from it at a
 	// boundary. Parts in here are deliberately unnumbered and unechoed — that
@@ -181,13 +181,13 @@ type sharedState struct {
 	steering   []llm.ContentPart
 	steeringMu sync.Mutex
 
-	// steeringDrained records that a cancel already disposed of this turn's
+	// steeringDrained records that a cancel already disposed of this task's
 	// steering (cancelSteering), so processPrompt's deferred discard must not
 	// drain a second time. The two drains are not the same event: the words a
 	// user types *in the window between ":cancel" and the canceled task
 	// unwinding* land in this same session-wide queue, and they are a fresh
-	// intent, not the canceled turn's. Clearing the flag in beginTask makes it
-	// per-turn. See session_steering.go.
+	// intent, not the canceled task's. Clearing the flag in beginTask makes it
+	// per-task. See session_steering.go.
 	steeringDrained bool
 
 	outputBroken atomic.Bool

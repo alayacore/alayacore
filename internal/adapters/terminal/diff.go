@@ -184,7 +184,7 @@ func elideUnchangedRuns(rows []diffRow) []diffRow {
 	return out
 }
 
-// lcsRows returns the rows that turn oldLines into newLines: unchanged lines as
+// lcsRows returns the rows that task oldLines into newLines: unchanged lines as
 // context, the rest as removals and additions covering the longest common
 // subsequence's gaps. A changed line is a removal followed by the addition that
 // replaced it, so it reads "- old" over "+ new". No row here stands in for a

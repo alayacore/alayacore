@@ -35,8 +35,8 @@ func (m *midTaskProvider) StreamMessages(_ context.Context, history []llm.Conten
 		if !ok {
 			continue
 		}
-		// "Continue" is the resume turn and nothing else: the compacted
-		// history's opening user turn is the summary request, so matching this
+		// "Continue" is the resume task and nothing else: the compacted
+		// history's opening user message is the summary request, so matching this
 		// word matches the resume.
 		switch tp.Text {
 		case summarizePrompt:
@@ -153,7 +153,7 @@ func (m *compactFailProvider) summarizeCalls() int {
 }
 
 // normalRequestCount counts the requests that were not summarize requests. A
-// turn that fails to compact ends before its next normal step, so this stays at
+// task that fails to compact ends before its next normal step, so this stays at
 // 1 mid-task and 0 at the task start.
 func (m *compactFailProvider) normalRequestCount() int {
 	m.mu.Lock()
@@ -162,7 +162,7 @@ func (m *compactFailProvider) normalRequestCount() int {
 }
 
 // TestAutoSummarizeMidTaskFailureEndsTheTurn: a failed mid-task summarization
-// ends the turn. Carrying on would send the oversized request the user's
+// ends the task. Carrying on would send the oversized request the user's
 // --auto-summarize threshold exists to prevent, so the step after the failed
 // compaction is never issued — and the uncompressed history survives intact, so
 // :continue resumes from it rather than from a truncated one.
@@ -201,7 +201,7 @@ func TestAutoSummarizeMidTaskFailureEndsTheTurn(t *testing.T) {
 		t.Fatalf("summarizeCalls = %d, want 1 attempt", got)
 	}
 	if got := provider.normalRequestCount(); got != 1 {
-		t.Fatalf("normalCalls = %d, want 1 (the turn ends instead of sending the next step)", got)
+		t.Fatalf("normalCalls = %d, want 1 (the task ends instead of sending the next step)", got)
 	}
 	if containsText(session.Contents, "recovered") {
 		t.Fatalf("the step after the failed compaction was issued: %v", texts(session.Contents))
@@ -213,7 +213,7 @@ func TestAutoSummarizeMidTaskFailureEndsTheTurn(t *testing.T) {
 
 // TestAutoSummarizeTaskStartFailureSkipsTheTurn: the same rule at the task
 // start. The compaction runs before the user's parts are appended, so a failure
-// ends the turn with the prompt never sent and the history untouched.
+// ends the task with the prompt never sent and the history untouched.
 func TestAutoSummarizeTaskStartFailureSkipsTheTurn(t *testing.T) {
 	provider := &compactFailProvider{}
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
@@ -246,8 +246,8 @@ func TestAutoSummarizeTaskStartFailureSkipsTheTurn(t *testing.T) {
 }
 
 // TestAutoSummarizeTaskStartFailureSkipsContinue covers the same rule on the
-// :continue entry point, whose copy of it is its own branch: a retried turn runs
-// the task-start summarize first, and its failure has to end the turn there too.
+// :continue entry point, whose copy of it is its own branch: a retried task runs
+// the task-start summarize first, and its failure has to end the task there too.
 func TestAutoSummarizeTaskStartFailureSkipsContinue(t *testing.T) {
 	provider := &compactFailProvider{}
 	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
@@ -279,12 +279,12 @@ func TestAutoSummarizeTaskStartFailureSkipsContinue(t *testing.T) {
 				t.Fatalf("summarizeCalls = %d, want 1 (task-start summarize did not fire)", got)
 			}
 			if got := provider.normalRequestCount(); got != 0 {
-				t.Fatalf("normalRequestCount = %d, want 0 (the turn must not proceed)", got)
+				t.Fatalf("normalRequestCount = %d, want 0 (the task must not proceed)", got)
 			}
-			// The turn ended before runTaskContinue's own step, so the
+			// The task ended before runTaskContinue's own step, so the
 			// "Continue" it appends for an assistant tail was never added.
 			if containsText(session.Contents, "Continue") {
-				t.Fatalf("the turn proceeded past the failed compaction: %v", texts(session.Contents))
+				t.Fatalf("the task proceeded past the failed compaction: %v", texts(session.Contents))
 			}
 			if !containsText(session.Contents, "partial") {
 				t.Fatalf("the history should be preserved: %v", texts(session.Contents))
@@ -306,9 +306,9 @@ func texts(parts []llm.ContentPart) []string {
 	return out
 }
 
-// TestAutoSummarizeRunsAtContinueStart pins that :continue — a turn like any
+// TestAutoSummarizeRunsAtContinueStart pins that :continue — a task like any
 // other — runs the task-start auto-summarize, not only the mid-task one. Before
-// that check, a retried turn whose history was already over the threshold would
+// that check, a retried task whose history was already over the threshold would
 // send its first request uncompressed.
 func TestAutoSummarizeRunsAtContinueStart(t *testing.T) {
 	provider := &midTaskProvider{}
@@ -351,8 +351,8 @@ func TestAutoSummarizeRunsAtContinueStart(t *testing.T) {
 }
 
 // TestAutoSummarizeCompactsMidTask is the whole point of the feature: a single
-// long turn whose context crosses the threshold must summarize part-way through
-// — not only at the start of a turn — and then keep running on the summary.
+// long task whose context crosses the threshold must summarize part-way through
+// — not only at the start of a task — and then keep running on the summary.
 func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 	provider := &midTaskProvider{}
 	output := &syncOutput{}
@@ -402,12 +402,12 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 		t.Fatalf("pre-compaction content survived into the final history: %v", texts(session.Contents))
 	}
 
-	// The request after compaction must end on a user turn. Ending on the
+	// The request after compaction must end on a user message. Ending on the
 	// assistant summary would be read as prefill ("continue this assistant
-	// turn"), not as a fresh turn to resume.
+	// task"), not as a fresh task to resume.
 	tail := provider.lastRequest()
 	if len(tail) == 0 || tail[len(tail)-1].GetRole() != llm.RoleUser {
-		t.Fatalf("post-compaction request ends on %v, want a user turn", tail)
+		t.Fatalf("post-compaction request ends on %v, want a user message", tail)
 	}
 
 	// The trailing "Continue" is part of the session's Contents, so the adapter
@@ -420,11 +420,11 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 
 	// The summarize prompt is the one part the agent builds that no record
 	// holds: the callers discard it, and the summary replaces the history it was
-	// appended to. So it is not echoed as a user turn — an ID the adapter was
+	// appended to. So it is not echoed as a user message — an ID the adapter was
 	// shown but Contents does not hold is one :fork cannot resolve.
 	firstLine, _, _ := strings.Cut(summarizePrompt, "\n")
 	if strings.Contains(output.String(), firstLine) {
-		t.Fatalf("the summarize prompt was echoed as a user turn; output:\n%s", output.String())
+		t.Fatalf("the summarize prompt was echoed as a user message; output:\n%s", output.String())
 	}
 }
 

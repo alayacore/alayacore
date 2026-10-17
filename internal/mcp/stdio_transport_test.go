@@ -108,7 +108,7 @@ func runMCPServer() {
 			//
 			// The helper has no *testing.T to fail, so a bad value has to be
 			// reported some other way. Exiting beats what it replaces:
-			// leaving ms at zero turns "respond after N ms" into "respond at
+			// leaving ms at zero tasks "respond after N ms" into "respond at
 			// once", and the delay-dependent test then fails as a *missing
 			// context cancellation* — a shape that reads as flaky and gets
 			// re-run. Measured, not assumed: the failure text for that test is

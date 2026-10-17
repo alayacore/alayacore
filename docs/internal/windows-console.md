@@ -104,7 +104,7 @@ Backspace carries BS (`0x08`) in its character field, which this parser reads as
 `ctrl+h` — the help overlay; terminals report Backspace as DEL (`0x7f`) and the
 input field binds `backspace`, so DEL is what is emitted. AltGr is Ctrl+Alt on the
 layouts that need both to type a character; prefixing those characters with ESC
-would turn `@` into `alt+@`, so Alt is reported as a chord only when Ctrl is not
+would task `@` into `alt+@`, so Alt is reported as a chord only when Ctrl is not
 held. And Alt over a byte that can *begin* a sequence — `[`, `O`, or a string
 control's `] P X ^ _`, or a second `ESC` — is encoded as nothing at all. That one
 is the encoder spending knowledge the byte path does not have: the console has
@@ -223,7 +223,7 @@ the paste delivered, the head dropped, paste mode left. See
 [tui.md → Paste and terminal capability](../tui.md#paste-and-terminal-capability).
 
 **An external editor's buffer is block text, not keystrokes.** `blockText`
-(`input_field.go`) is what turns text arriving as a chunk into something the input
+(`input_field.go`) is what tasks text arriving as a chunk into something the input
 field may hold: CRLF and lone CR become LF, control characters other than the
 newlines go, trailing newlines go. It has always been the rule for a bracketed
 paste; the editor handoff now runs the finished buffer through it as well. The

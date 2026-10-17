@@ -91,7 +91,7 @@ func TestOverlayFilterIsSingleLine(t *testing.T) {
 }
 
 // TestPromptBorderWarnsOnlyForMultiline pins the prompt affordance itself: the
-// rule turns warning only when the draft spans more than one line, and is the
+// rule tasks warning only when the draft spans more than one line, and is the
 // normal focused color otherwise.
 func TestPromptBorderWarnsOnlyForMultiline(t *testing.T) {
 	styles := DefaultStyles()

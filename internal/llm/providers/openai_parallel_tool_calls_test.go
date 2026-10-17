@@ -26,7 +26,7 @@ func oneTool() []llm.ToolDefinition {
 }
 
 // postOpenAI sends one request through a capturing server and returns the body
-// the provider built. The response is a plain text turn: only the request is
+// the provider built. The response is a plain text task: only the request is
 // under test here.
 func postOpenAI(t *testing.T, cfg providers.BaseConfig, tools []llm.ToolDefinition) map[string]any {
 	t.Helper()

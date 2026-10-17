@@ -46,14 +46,14 @@ const (
 const (
 	SteeringQueued    = "queued"    // accepted into the steering queue
 	SteeringDelivered = "delivered" // spliced into the run (or promoted to the next prompt)
-	SteeringDropped   = "dropped"   // discarded because the turn did not land
+	SteeringDropped   = "dropped"   // discarded because the task did not land
 	SteeringRefused   = "refused"   // not queued: the steering queue was full
 )
 
 // Reasons carried by a Dropped steering message.
 const (
 	SteeringDroppedCanceled = "canceled" // the running task was canceled
-	SteeringDroppedFailed   = "failed"   // the turn ended without landing
+	SteeringDroppedFailed   = "failed"   // the task ended without landing
 	SteeringDroppedQuit     = "quit"     // the session is quitting, so it will not run
 )
 

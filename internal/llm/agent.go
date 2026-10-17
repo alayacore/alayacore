@@ -145,7 +145,7 @@ type StreamCallbacks struct {
 	// OnBeforeSend is called at the top of every step, before that step's
 	// request is sent, with the history as it currently stands. It may return
 	// a replacement history (e.g. a compacted conversation); a nil return
-	// leaves the history unchanged, and a non-nil error aborts the turn.
+	// leaves the history unchanged, and a non-nil error aborts the task.
 	//
 	// When a replacement is returned it becomes the working history for this
 	// and every subsequent step, and is what a final StreamResult reports. The
@@ -410,16 +410,16 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	// What a failed step still contributes: the reasoning and text streamed so
 	// far, plus tool pairs whose results arrived. The content a step produced is
 	// part of what happened — replaying a bare tool_use to an endpoint that
-	// expects the turn's reasoning alongside it (see openaiConvertContents,
+	// expects the task's reasoning alongside it (see openaiConvertContents,
 	// which pads an empty reasoning field rather than omitting the key) shows
-	// the model a turn it never emitted, and the longer the thinking, the worse
+	// the model a task it never emitted, and the longer the thinking, the worse
 	// that reads. A partial answer is kept for the same reason max_tokens
-	// truncation keeps one: it is what lets :continue resume the turn.
+	// truncation keeps one: it is what lets :continue resume the task.
 
 	// The step's record, assembled here from the stream: content, block
 	// identity, history IDs, and layout. One assembler serves every path out of
 	// this function — a step that finished, one that errored, one that was
-	// canceled — so what a turn contributes to history cannot depend on how it
+	// canceled — so what a task contributes to history cannot depend on how it
 	// ended. Its IDs are minted when a block first appears, which is the same
 	// moment an adapter first hears about it, so a window on screen and the part
 	// that gets persisted are two views of one block.
@@ -625,7 +625,7 @@ func genHistoryID(callbacks StreamCallbacks) uint64 {
 }
 
 // hasToolInputs reports whether a step's record contains a tool call, which is
-// what decides whether the agent loop continues to execute it or the turn is
+// what decides whether the agent loop continues to execute it or the task is
 // over.
 func hasToolInputs(contents []ContentPart) bool {
 	for _, p := range contents {

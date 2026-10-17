@@ -397,7 +397,7 @@ func TestWindowBufferDiff(t *testing.T) {
 		wb.AppendOrUpdate(tagAssistantReasoning, "reasoning-1", "Reasoning content")
 
 		// The conversation the reader came for is unfolded: the user's own
-		// turn (it is the request the answer below it answers).
+		// task (it is the request the answer below it answers).
 		if wb.WindowAt(0).Folded {
 			t.Error("User window should NOT be folded by default")
 		}

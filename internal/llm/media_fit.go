@@ -7,7 +7,7 @@ package llm
 // persisted history every later request fails the same way, leaving the model
 // no way to recover. Telling the model about it instead costs a whole extra
 // round trip (the model must resize it and re-read) and repeats that cost on
-// every turn in between. Shrinking removes both: the image goes out, the turn
+// every task in between. Shrinking removes both: the image goes out, the task
 // proceeds, and nothing is added to the model's context.
 //
 // There are two entry points, and the difference between them is the part that
@@ -57,7 +57,7 @@ import (
 //
 // It is a constant, not configuration, on purpose. The gate runs afresh on
 // every send, so a value that could change between runs would let what the
-// model is shown now differ from what an already-answered turn was shown — the
+// model is shown now differ from what an already-answered task was shown — the
 // exact incoherence this design avoids by never writing the decision back. A
 // session is rendered by the constant of the build that opens it.
 const maxImageEdge = 4096
@@ -443,7 +443,7 @@ func premul8(avg uint64) uint8 {
 // will describe media it never received. The note therefore states flatly that
 // nothing was delivered and names the workaround that does work. The base64
 // payload is deliberately absent — it is usually the largest thing in the
-// conversation, and echoing it would bill every following turn for bytes no
+// conversation, and echoing it would bill every following task for bytes no
 // model can use.
 func unsendableImageNote(uri string) string {
 	mediaType, data, _ := ParseDataURI(uri)

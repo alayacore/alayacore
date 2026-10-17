@@ -71,7 +71,7 @@ func mediaRound(id string) []llm.ContentPart {
 // TestOpenAIPromotionIsDeterministicAndPrefixStable locks the property asserted
 // in docs/providers.md → "Tool results": promoted media sits in the MIDDLE of
 // the conversation (a user message after the tool messages), so it must be a
-// pure function of history. If it were not, every turn would rewrite the prefix
+// pure function of history. If it were not, every task would rewrite the prefix
 // from that point and destroy provider-side prompt caching.
 //
 // This is the rare case where a regression is invisible in behavior: requests
@@ -118,11 +118,11 @@ func TestOpenAIPromotionIsDeterministicAndPrefixStable(t *testing.T) {
 
 	grown := captureRawMessages(t, turn2)
 	if len(grown) <= len(first) {
-		t.Fatalf("turn 2 produced %d messages, expected more than turn 1's %d", len(grown), len(first))
+		t.Fatalf("task 2 produced %d messages, expected more than task 1's %d", len(grown), len(first))
 	}
 	for i := range first {
 		if string(first[i]) != string(grown[i]) {
-			t.Fatalf("turn 1 is no longer an exact prefix of turn 2 at message %d — every provider cache from this point on would miss:\n turn1: %s\n turn2: %s",
+			t.Fatalf("task 1 is no longer an exact prefix of task 2 at message %d — every provider cache from this point on would miss:\n turn1: %s\n turn2: %s",
 				i, first[i], grown[i])
 		}
 	}

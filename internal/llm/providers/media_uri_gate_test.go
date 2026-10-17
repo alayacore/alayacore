@@ -7,7 +7,7 @@ package providers_test
 // handed. A bare path, a file: URI or an empty string then went out as
 // image_url.url "/tmp/x.png" (or a video/document url source), which does not
 // fail one block — the server rejects the whole request, and because the part is
-// persisted history, every later turn in the session fails the same way.
+// persisted history, every later task in the session fails the same way.
 //
 // These tests pin the gate on the regular path for both providers, and pin that
 // a data: or http(s): URI still becomes a native block.

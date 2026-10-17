@@ -395,7 +395,7 @@ func TestScreenStartStop(t *testing.T) {
 		}
 	}
 	if !strings.Contains(out, mouseReportingOff) {
-		t.Errorf("Start() must turn mouse reporting off, got %q", out)
+		t.Errorf("Start() must task mouse reporting off, got %q", out)
 	}
 	buf.Reset()
 	if err := s.Stop(); err != nil {

@@ -219,7 +219,7 @@ func TestWindowLineToolHeaderIsTheFoldedHeader(t *testing.T) {
 
 // TestWindowLineColorIsTheDefaultExceptErrors pins the rule the line colors
 // follow: EVERY window type is painted in the default label style — a user
-// turn, a reasoning step, an answer and a tool call alike, because they are
+// task, a reasoning step, an answer and a tool call alike, because they are
 // all conversation — and the error color is the one exception, because an
 // error has to be recognizable at a glance. Whatever the type, the whole
 // line takes that one style, marker to timestamp.

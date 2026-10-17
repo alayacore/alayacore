@@ -7,7 +7,7 @@ package agent
 //
 // There is no task queue: one task runs at a time, and a prompt that arrives
 // while one is in flight is neither parked as a second task nor refused — it is
-// spliced into the running turn at that turn's next step boundary (steering;
+// spliced into the running task at that task's next step boundary (steering;
 // see session_steering.go), and refused with BUSY only when the steering queue
 // is full. The one prompt that *is* held is one that arrives before the session
 // is ready (MCP init still running) — it waits in a single slot, because a
@@ -212,10 +212,10 @@ func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 
 	s.sendSystemInfo(systemInfoTask)
 
-	// Anything the user steered that is still queued when the turn ends — the
-	// turn ended without another step boundary, or the words arrived after the
+	// Anything the user steered that is still queued when the task ends — the
+	// task ended without another step boundary, or the words arrived after the
 	// last one — becomes the next prompt. Dropping it here would lose input the
-	// user watched leave the input box. (What a turn that failed or was
+	// user watched leave the input box. (What a task that failed or was
 	// canceled had queued was already drained: processPrompt's deferred
 	// discard, or cancelTask. And a batch a step had already spliced is in the
 	// conversation already, so neither reaches here.)

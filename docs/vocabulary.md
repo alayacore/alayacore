@@ -12,8 +12,7 @@ qualified. That is the rule the table encodes.
 
 | Term | In code | Means | Never |
 |------|---------|-------|-------|
-| **task** | `task`, `beginTask`, `in_progress` | One run of the session: `in_progress` true → false. Contains N steps. | `job`, `run` (except Go's own `run()` loop) |
-| **turn** | `userTurn` (`promptKind`) | A task the *user's words* started. Its progress is the status bar's. `:summarize` is a task, **not** a turn — it is a `summarizeCall`. | as a synonym for "task" |
+| **task** | `task`, `beginTask`, `in_progress` | One run of the session: `in_progress` true → false. Contains N steps. Its *kind* — `promptKind` — is the only distinction there is: `userPrompt` (the user's words started it) or `summarizeCall` (`:summarize`, auto-summarize). | `job`, `run` (except Go's own `run()` loop), **`turn`** — a run is a task; say which kind when the difference matters |
 | **step** | `step`, `current_step` | One LLM request and the tool calls it asks for, inside a task. | `round`, `iteration` |
 | **prompt** | `prompt` | The user's words. In the TUI, the text in the prompt box. | `query`, `message` |
 | **command** | `command`, `:name` | A session command: `:save`, `:continue`. Never prompt text. | — |
@@ -66,7 +65,7 @@ defects this page exists to prevent.
 
 | Pair | Why both stand |
 |------|----------------|
-| `task` / `turn` | A turn is the kind of task the user's words start; `:summarize` is a task without being a turn. |
+| `userPrompt` / `summarizeCall` | Two kinds of task, not two units: one publishes its progress, keeps the conversation and takes steering; the other does none of that. Both are tasks, and neither is called anything else. |
 | `notify` / `notice` | A `SYSTEM NOTIFY` frame versus the verb ("a host that never notices"). |
 | `frame` (wire) / `frame` (screen) | The transport unit versus one painted screenful. The file owns the word: `wire`/`protocol` versus `screen.go`. |
 | `Msg` (Elm) / `system message` | A UI event versus one frame's payload. In the `terminal` package, Elm's `Msg` owns the bare word; the wire side says `Frame`. |

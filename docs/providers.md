@@ -10,7 +10,7 @@ Non-obvious patterns when working with LLM provider implementations.
 
 An image whose longest side exceeds **4096 px** is shrunk to fit before it is stored or sent. 4096 is the largest side that is safe while a request carries few images: DeepSeek allows 8192 px per side and Anthropic 8000×8000. Both tighten that cap as the request grows — DeepSeek to 4096 once it carries 15 or more images, Anthropic to 2000 once it carries more than 20 — and the fit covers neither, because the cap counts the **request**, not the image. See **What this does not cover** below.
 
-It is a constant rather than a `model.conf` field on purpose: the fit is re-evaluated on every send, so a value that could change between runs would let what the model is shown now differ from what an already-answered turn was shown.
+It is a constant rather than a `model.conf` field on purpose: the fit is re-evaluated on every send, so a value that could change between runs would let what the model is shown now differ from what an already-answered task was shown.
 
 The fit runs in two places, and what separates them is the image that cannot be decoded:
 
@@ -41,7 +41,7 @@ The wording is the substance. A terse `[image too large]` reads to a model as "a
 
 Two limits are left to the endpoints, and both fail the same way: the request is **refused**, and because the image is in the persisted history that every later request re-sends, the refusal repeats — the session cannot recover.
 
-- **The count, not the image.** The tightening above is measured across the whole request, and every request re-sends the history, so an image from an earlier turn counts again — and so does one nested in a `tool_result`, which is where a `read_file` of a screenshot lands. Anthropic refuses a request whose images are over its many-image cap with an `invalid_request_error` naming "many-image requests"; 4096 is over the 2000 that applies past 20 images. The cap moves with the request, one constant cannot express it, and the fit does not try.
+- **The count, not the image.** The tightening above is measured across the whole request, and every request re-sends the history, so an image from an earlier task counts again — and so does one nested in a `tool_result`, which is where a `read_file` of a screenshot lands. Anthropic refuses a request whose images are over its many-image cap with an `invalid_request_error` naming "many-image requests"; 4096 is over the 2000 that applies past 20 images. The cap moves with the request, one constant cannot express it, and the fit does not try.
 - **Bytes, not pixels.** The fit measures dimensions only. Endpoints also cap the encoded size of one image and of the whole body: Anthropic at 10 MB per image (base64; 5 MB on Bedrock and Google Cloud) and 32 MB per request, DeepSeek at 32 MiB per image and 48 MiB per request. An image can be under every dimension limit and still be over these, and nothing in the fit measures bytes.
 
 ## OpenAI multimodal content format
@@ -82,7 +82,7 @@ The two providers have complementary multimodal capabilities — neither covers 
 > placeholder on both providers rather than forwarded — `openaiPromotableURI` on
 > either OpenAI path, `anthropicUnretrievableMediaBlock` on Anthropic. Forwarding
 > one is not a partial failure: the server rejects the *whole* request, and since
-> the part is persisted history, every later turn in the session fails the same
+> the part is persisted history, every later task in the session fails the same
 > way. Built-in sources never produce such a URI (attachments and `read_file`
 > embed a data URI, an attached URL stays an `http(s)` URL); the gate is what
 > keeps a malformed frame from a `--rawio` adapter, or a hand-edited session,
@@ -93,7 +93,7 @@ The two providers have complementary multimodal capabilities — neither covers 
 > rejects the *whole* request. The realistic trigger is not a user attaching a
 > clip but a model calling `read_file` on one, because the tool description
 > advertises video and audio support; before this degradation, that model broke
-> its own next turn. The placeholder text is deliberately explicit that nothing
+> its own next task. The placeholder text is deliberately explicit that nothing
 > was delivered: a bare "[video unsupported]" reads to a model as an ordinary
 > tool result, after which it will describe frames it never received. This is a
 > workaround to delete, not a policy to maintain — if the API gains the blocks,
@@ -132,9 +132,9 @@ Three consequences of promotion worth knowing:
   ambiguous as soon as one result returns several items (an MCP server may) —
   resolving it needs the model to count items per id across messages, and a
   miscount misattributes media silently, with no error to reveal it.
-- **Recomputed every turn, but prefix-stable — which is what keeps prompt
+- **Recomputed every task, but prefix-stable — which is what keeps prompt
   caching intact.** Promotion is a pure function of history, so unlike a
-  cached/synthesized message it cannot drift between turns: the same history
+  cached/synthesized message it cannot drift between tasks: the same history
   serializes to the same bytes, and the message sequence of a shorter history
   stays an exact prefix of a longer one, with new content appended after it
   (locked by `TestOpenAIPromotionIsDeterministicAndPrefixStable` — a property
@@ -204,12 +204,12 @@ Every content-bearing event carries `Position` (1-based; `0` = not declared) bes
 2. **Closed before unclosed** — a closure is a weaker form of the same declaration (providers deliver them in declared order).
 3. **Close order**, then **arrival order**.
 
-Why the declaration must ride with the content rather than only with the closure: a stream can be cut before any block closes, and for OpenAI that is the *normal* shape (no per-field terminator at all). Before `Position` existed, a cut step's blocks were laid out by arrival — so a server streaming `content` before `reasoning_content`, or an Anthropic message whose `text` delta came before its `thinking` delta, **persisted the answer ahead of the thinking that produced it**, and that array is what gets replayed to the model on the next turn and what a reopened session re-lays. Display order can be arrival-based (the user watched it arrive in that order); the file cannot.
+Why the declaration must ride with the content rather than only with the closure: a stream can be cut before any block closes, and for OpenAI that is the *normal* shape (no per-field terminator at all). Before `Position` existed, a cut step's blocks were laid out by arrival — so a server streaming `content` before `reasoning_content`, or an Anthropic message whose `text` delta came before its `thinking` delta, **persisted the answer ahead of the thinking that produced it**, and that array is what gets replayed to the model on the next task and what a reopened session re-lays. Display order can be arrival-based (the user watched it arrive in that order); the file cannot.
 
 | Provider | Declaration | Source of the claim |
 |---|---|---|
 | Anthropic | `Position = index + 1` on every event | The server announces `content_block_start(index)` before any of the block's content — a fact forwarded, not inferred |
-| OpenAI | `1` = reasoning, `2` = content, `3 + tool_calls[].index` = tools | The shape an assistant turn has in that protocol; the provider knows it statically, so it declares it on each chunk |
+| OpenAI | `1` = reasoning, `2` = content, `3 + tool_calls[].index` = tools | The shape an assistant message has in that protocol; the provider knows it statically, so it declares it on each chunk |
 | Test stubs / non-declaring providers | `0` | Falls back to closure then arrival — the pre-`Position` behavior, still deterministic |
 
 `Position` is the record's layout and nothing else: it never renumbers history IDs, which stay arrival-based because they are how the display addresses a block (`TestPositionDoesNotReorderIDs`). A block no one declared for lands after the declared ones; ordering it any other way would invent a slot the protocol never named.
@@ -235,11 +235,11 @@ Row 2's numbering did not move because of the frame reorder. It moved because nu
 
 **What it cannot fix** (row 3): a provider that *streams* its `tool_calls` delta before its reasoning/text deltas takes the tool's ID at that first delta, long before the trailing block runs — reordering the trailing block doesn't reach it.
 
-**Why the record is ordered by kind, not by arrival.** For Anthropic the question does not arise: the server declares a block index, blocks arrive in it, and `anthropicConvertContents` emits content blocks back in array order, so arrival order *is* record order. For OpenAI it is a real choice, and arrival order was rejected because it is not reliably observable. `ChatCompletionStreamResponseDelta` has no notion of a block — `reasoning`, `content` and `tool_calls` are three flat fields that can all be populated in the same chunk, and `handleDelta` walks them in a fixed field order. So "which arrived first" is partly decided by our own handler, not by the model. Recording that as history would be exactly the invented-authority move that produced the bug above. OpenAI instead closes its blocks in the one shape its protocol defines for an assistant turn — reasoning, content, tool calls — so the same reply yields the same record however it is transported. One order constraint is hard and unrelated to this: a `ToolInputPart` must precede its `ToolOutputPart`, since `attachToolResults` sequences results by input order (outputs are appended by the agent after execution, never by the provider).
+**Why the record is ordered by kind, not by arrival.** For Anthropic the question does not arise: the server declares a block index, blocks arrive in it, and `anthropicConvertContents` emits content blocks back in array order, so arrival order *is* record order. For OpenAI it is a real choice, and arrival order was rejected because it is not reliably observable. `ChatCompletionStreamResponseDelta` has no notion of a block — `reasoning`, `content` and `tool_calls` are three flat fields that can all be populated in the same chunk, and `handleDelta` walks them in a fixed field order. So "which arrived first" is partly decided by our own handler, not by the model. Recording that as history would be exactly the invented-authority move that produced the bug above. OpenAI instead closes its blocks in the one shape its protocol defines for an assistant message — reasoning, content, tool calls — so the same reply yields the same record however it is transported. One order constraint is hard and unrelated to this: a `ToolInputPart` must precede its `ToolOutputPart`, since `attachToolResults` sequences results by input order (outputs are appended by the agent after execution, never by the provider).
 
 Order *within* the tools is the protocol's, not ours to reinterpret: `closedToolCalls()` sorts by the declared `tool_calls[].index`, so a server that streams index 1 before index 0 still persists `call_first` first, and `attachToolResults` then sequences the results by that same call order. Block keys are `"tool:<index>"`, taken from that same value, so identity and order agree by construction. Nothing here may switch to first-appearance order — that would lay out and number parallel calls by streaming luck instead of by what the model asked for. Pinned by `openai_tool_order_test.go`.
 
-So the remaining residue is OpenAI-only, needs a server to stream against its own message shape, and has never been observed; the code path is confirmed with a synthetic stream. Note also that array order carries no weight on OpenAI's *request* side (`openaiConvertContents` routes parts into separate fields by kind) — it is Anthropic, where the array becomes an ordered block list, where record order decides what the model sees next turn. Either way the divergence is not durable: IDs are not saved, and reload renumbers in record order.
+So the remaining residue is OpenAI-only, needs a server to stream against its own message shape, and has never been observed; the code path is confirmed with a synthetic stream. Note also that array order carries no weight on OpenAI's *request* side (`openaiConvertContents` routes parts into separate fields by kind) — it is Anthropic, where the array becomes an ordered block list, where record order decides what the model sees next task. Either way the divergence is not durable: IDs are not saved, and reload renumbers in record order.
 
 **Separately fixed:** an ID no longer depends on a position matching. Blocks are bound by the opaque key they stream under (see [data-mapping.md](internal/data-mapping.md) → "Block keys"), which retired the `2 + index` arithmetic entirely. A server whose tool-call indices skipped a number used to leave that tool holding `HistoryID = 0` for the rest of the session — indistinguishable from "never numbered", invisible, and unresolvable by `:fork`, which looks parts up by ID. It now claims its own ID, and a part naming a block that was never streamed is rejected with an error instead. (The bad value never reached disk: history IDs are not stored in the session file and are re-issued on load — see [architecture.md](architecture.md) → session file format.)
 
@@ -249,15 +249,15 @@ Pinned by `openai_event_order_test.go` (emission order, tools last), `openai_his
 
 The two protocols end a stream differently, and the difference is load-bearing for what reaches history.
 
-**Anthropic** ends a message with `message_stop`, and that event is the only place this provider emits `StepCompleteEvent`. A body that simply stops — a proxy timeout, an upstream close — therefore yielded no events and no error: `llm.Agent` saw a step that produced nothing, reported the turn as a success, and the reasoning and text the user had watched stream in existed only in the display, so they disappeared on save-and-reopen. `parseStream` now tracks whether `message_stop` arrived and, on a clean EOF without it, yields `anthropic stream ended before message_stop`. The error is the point: `llm.Agent`'s failed-step path then contributes the streamed blocks to history (see [step-messages.md](step-messages.md)), so a truncated turn is kept *and* known to be truncated. Synthesizing a `StepCompleteEvent` instead was rejected because there would be no stop reason, and a cut connection presented as a normally finished turn makes a retry believe the assistant concluded.
+**Anthropic** ends a message with `message_stop`, and that event is the only place this provider emits `StepCompleteEvent`. A body that simply stops — a proxy timeout, an upstream close — therefore yielded no events and no error: `llm.Agent` saw a step that produced nothing, reported the task as a success, and the reasoning and text the user had watched stream in existed only in the display, so they disappeared on save-and-reopen. `parseStream` now tracks whether `message_stop` arrived and, on a clean EOF without it, yields `anthropic stream ended before message_stop`. The error is the point: `llm.Agent`'s failed-step path then contributes the streamed blocks to history (see [step-messages.md](step-messages.md)), so a truncated task is kept *and* known to be truncated. Synthesizing a `StepCompleteEvent` instead was rejected because there would be no stop reason, and a cut connection presented as a normally finished task makes a retry believe the assistant concluded.
 
-**OpenAI** has no terminal event, but it has two terminal *signals*: the `finish_reason` field on the last chunk, and the `[DONE]` sentinel that closes the stream. Neither used to be required — `parseStream` rebuilt the step from its accumulators whenever the body ended, so a proxy timeout or upstream close completed a turn with whatever `finish_reason` had arrived, which for a cut stream is none at all, and `llm.Agent` treats only `max_tokens`/`length` as truncation. Measured before the change: a stream with no `[DONE]` returned `err = nil` and persisted its reasoning and text as a concluded answer, so a retry believed the assistant had finished thinking.
+**OpenAI** has no terminal event, but it has two terminal *signals*: the `finish_reason` field on the last chunk, and the `[DONE]` sentinel that closes the stream. Neither used to be required — `parseStream` rebuilt the step from its accumulators whenever the body ended, so a proxy timeout or upstream close completed a task with whatever `finish_reason` had arrived, which for a cut stream is none at all, and `llm.Agent` treats only `max_tokens`/`length` as truncation. Measured before the change: a stream with no `[DONE]` returned `err = nil` and persisted its reasoning and text as a concluded answer, so a retry believed the assistant had finished thinking.
 
 `parseStream` now requires **either** signal and errors on a body carrying neither, which puts both providers under one rule: a premature end is an error, and the streamed content still reaches history through the failed-step path (see [step-messages.md](step-messages.md)), kept *and* known to be partial.
 
 **Where the error is raised matters as much as raising it.** It replaces the step's *conclusion* only — the per-block complete events are still emitted first, because a block whose arguments arrived in full did complete individually regardless of how the message ended. Reporting the error before them (the first version of this rule) made a cut stream drop the tool call entirely: never executed, never recorded, while the adapter had already drawn it from its deltas. Measured, that version gave `tool ran=0 history=[]` where the terminated stream gave `tool ran=1 history=[call result]` — the same "display holds what history lacks" shape as the ordering bug above, reached from the opposite direction.
 
-Why *either*, not both: each signal alone is a legitimate ending for real endpoints, and demanding the pair would reject them. Measured against this repo's own suite — requiring `finish_reason` specifically fails 12 tests whose bodies close with `[DONE]` and never name a reason (including every tool-call streaming test); requiring `[DONE]` on top of a `finish_reason` fails the ones that end the body after the final chunk. A body with neither is the only shape that cannot be a finished turn.
+Why *either*, not both: each signal alone is a legitimate ending for real endpoints, and demanding the pair would reject them. Measured against this repo's own suite — requiring `finish_reason` specifically fails 12 tests whose bodies close with `[DONE]` and never name a reason (including every tool-call streaming test); requiring `[DONE]` on top of a `finish_reason` fails the ones that end the body after the final chunk. A body with neither is the only shape that cannot be a finished task.
 
 Pinned by `anthropic_stream_termination_test.go` and `openai_stream_termination_test.go` (each terminal signal accepted on its own, no signal rejected, and the rejected stream's content verified to land in history anyway). `openai_salvage_parity_test.go` pins the stronger property, which is the one that keeps the two independent assemblers honest: the same body run terminated and run cut must land the *same* history — same parts, same order, same IDs — and must execute the tool both times.
 
@@ -269,9 +269,9 @@ The distinction is the point. SSE lets one event's data span several `data:` lin
 
 8MB is fixed rather than derived from `max_tokens`: it is the memory ceiling, and a ceiling a config value can raise is not a ceiling. Provider output limits are tens of thousands to ~128K tokens — around half a megabyte of text, a few MB at the worst with JSON escaping — so nothing legitimate is rejected, while a misbehaving server is still bounded.
 
-Past the bound the turn fails with `SSE event exceeded 8MB — the model may have generated an oversized tool call`, and the scanner stays stopped. This is not the EOF case: a pending event at EOF is still drained, so a cleanly truncated stream keeps its last event (see [Stream termination](#stream-termination) above).
+Past the bound the task fails with `SSE event exceeded 8MB — the model may have generated an oversized tool call`, and the scanner stays stopped. This is not the EOF case: a pending event at EOF is still drained, so a cleanly truncated stream keeps its last event (see [Stream termination](#stream-termination) above).
 
-The constant tracks what providers can emit, not what is typical. **If a turn can ever approach 1MB or more of output, revisit it** — that is the change that would invalidate the number.
+The constant tracks what providers can emit, not what is typical. **If a task can ever approach 1MB or more of output, revisit it** — that is the change that would invalidate the number.
 
 ## Null arguments in tool call chunks
 
@@ -469,9 +469,9 @@ With `reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max
 
 Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. Per [DeepSeek's documentation](https://api-docs.deepseek.com/guides/thinking_mode):
 
-> Between two user messages, if the model performed a tool call, the intermediate assistant's `reasoning_content` must participate in the context concatenation and must be passed back to the API in all subsequent user interaction turns.
+> Between two user messages, if the model performed a tool call, the intermediate assistant's `reasoning_content` must participate in the context concatenation and must be passed back to the API in all subsequent user interaction tasks.
 
-This means **all** intermediate assistant messages in a multi-turn tool call chain must include their reasoning text. Dropping it causes a 400 error from providers that require it. The key that text travels under is the one declared by `reasoning_field` — `reasoning_content` by default, which is the spelling DeepSeek itself expects.
+This means **all** intermediate assistant messages in a multi-step tool call chain must include their reasoning text. Dropping it causes a 400 error from providers that require it. The key that text travels under is the one declared by `reasoning_field` — `reasoning_content` by default, which is the spelling DeepSeek itself expects.
 
 ### Which key carries reasoning (`reasoning_field`)
 

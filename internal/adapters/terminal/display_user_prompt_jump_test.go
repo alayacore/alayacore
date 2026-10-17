@@ -13,7 +13,7 @@ import (
 // happens to rest on.
 //
 // So the jump keys have to re-seat only on a hit. When there is no prompt
-// left in the direction asked for — the usual state at the end of a turn,
+// left in the direction asked for — the usual state at the end of a task,
 // where the cursor sits on the last assistant window, below the last prompt —
 // they found nothing but re-seated anyway, yanking the viewport up to the
 // head of the window already under the cursor. The reader lost their place
@@ -22,7 +22,7 @@ import (
 // dragged the view back to the bottom.
 
 // promptJumpViewport is the display height the fixtures below use: short
-// enough that a three-turn transcript overflows it, so a stray scroll shows
+// enough that a three-task transcript overflows it, so a stray scroll shows
 // up as a changed YOffset rather than being clamped away.
 const promptJumpViewport = 10
 
@@ -44,8 +44,8 @@ func buildPromptTranscript(answerLineCounts ...int) (DisplayModel, *WindowBuffer
 // User prompt i and its answer i are windows 2i and 2i+1.
 func promptID(i int) string    { return "prompt-" + string(rune('a'+i)) }
 func answerID(i int) string    { return "answer-" + string(rune('a'+i)) }
-func promptIndex(turn int) int { return 2 * turn }
-func answerIndex(turn int) int { return 2*turn + 1 }
+func promptIndex(task int) int { return 2 * task }
+func answerIndex(task int) int { return 2*task + 1 }
 
 // TestPressFWithNoPromptBelowKeepsViewportPut verifies the reported bug: with
 // the cursor parked below the last user prompt, f has nowhere to jump and

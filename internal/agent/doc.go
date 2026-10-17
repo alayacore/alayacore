@@ -5,7 +5,7 @@
 //
 //   - Prompt execution and task management
 //   - Steering: a prompt that arrives while a task runs is spliced into that
-//     turn at its next step boundary instead of being refused
+//     task at its next step boundary instead of being refused
 //     (session_steering.go)
 //   - Model interaction and streaming
 //   - Context management and auto-summarization (--auto-summarize=threshold)
