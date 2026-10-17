@@ -45,6 +45,7 @@ var commandNames sync.Map // id → command name
 // into {id, name, input}; the session never sees colon-text anymore.
 func writeCommand(w io.Writer, cmd string) {
 	name, args := commands.SplitCommand(strings.TrimPrefix(cmd, ":"))
+	name = commands.Canonical(name)
 	id := fmt.Sprintf("tui-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
 		CallID: id,

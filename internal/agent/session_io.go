@@ -167,7 +167,7 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 func (s *Session) handleFork(args string) (any, error) {
 	fields := strings.Fields(args)
 	if len(fields) < 2 {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :fork <history_id> <filename>"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameFork)}
 	}
 
 	id, err := strconv.ParseUint(fields[0], 10, 64)
@@ -278,7 +278,7 @@ func forkEndIndex(contents []llm.ContentPart, id uint64) int {
 func (s *Session) handleToolConfirmCmd(args string) (any, error) {
 	fields := strings.Fields(args)
 	if len(fields) != 1 {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :tool_confirm <id>"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameToolConfirm)}
 	}
 	return s.resolveToolConfirm(fields[0], true)
 }
@@ -288,7 +288,7 @@ func (s *Session) handleToolConfirmCmd(args string) (any, error) {
 func (s *Session) handleToolDeclineCmd(args string) (any, error) {
 	fields := strings.Fields(args)
 	if len(fields) != 1 {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :tool_decline <id>"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameToolDecline)}
 	}
 	return s.resolveToolConfirm(fields[0], false)
 }
@@ -601,7 +601,7 @@ func (s *Session) handleModelSet(args string) (any, error) {
 	}
 
 	if args == "" {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :model_set <id>"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameModelSet)}
 	}
 
 	modelID, err := strconv.Atoi(args)
@@ -678,7 +678,7 @@ func (s *Session) handleModelSync(args string) (any, error) {
 	}
 
 	if args == "" {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :model_sync <json>"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameModelSync)}
 	}
 
 	msgs := mm.syncFromContent(args)
@@ -709,7 +709,7 @@ func (s *Session) handleModelSync(args string) (any, error) {
 func (s *Session) handleReasoningLevelSet(args string) (any, error) {
 	level, err := strconv.Atoi(args)
 	if err != nil || level < config.ReasoningLevelOff || level > config.ReasoningLevelMax {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :reasoning_level_set <0|1|2>  (0=off, 1=normal, 2=max)"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameReasoningLevelSet) + "  (0=off, 1=normal, 2=max)"}
 	}
 	s.SetReasoningLevel(level)
 	return map[string]any{"level": level}, nil
@@ -721,7 +721,7 @@ func (s *Session) handleReasoningLevelSet(args string) (any, error) {
 //	fps: frames per second (positive integer, e.g. 2)
 //	res: 0=default, 1=max
 func (s *Session) handleVideoConfig(args string) (any, error) {
-	const usage = "usage: :video_config <fps> <res>  (fps: positive integer, res: 0=default, 1=max)"
+	usage := commands.UsageLine(commands.CommandNameVideoConfig) + "  (fps: positive integer, res: 0=default, 1=max)"
 	fields := strings.Fields(args)
 	if len(fields) < 2 {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: usage}
@@ -746,7 +746,7 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 		return nil, &cmdErr{Code: "UNAVAILABLE", Message: "theme management is not available in this mode"}
 	}
 	if args == "" {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :theme_set <name>"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameThemeSet)}
 	}
 	name := args
 
@@ -818,7 +818,7 @@ func (s *Session) checkMCPReady() error {
 func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) {
 	fields := strings.Fields(args)
 	if len(fields) < 3 {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :mcp_confirm <server> <code> <redirect_uri> [iss]"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameMCPConfirm)}
 	}
 	if err := s.checkMCPReady(); err != nil {
 		return nil, err
@@ -843,7 +843,7 @@ func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) 
 func (s *Session) handleMCPDecline(args string) (any, error) {
 	fields := strings.Fields(args)
 	if len(fields) < 1 {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :mcp_decline <server>"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameMCPDecline)}
 	}
 	if err := s.checkMCPReady(); err != nil {
 		return nil, err
@@ -886,7 +886,7 @@ func (s *Session) saveSession(args string) (any, error) {
 // Idempotent.
 func (s *Session) handleQuit(args string) (any, error) {
 	if strings.TrimSpace(args) != "" {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: "usage: :quit (no arguments)"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameQuit) + " (no arguments)"}
 	}
 	s.quitting = true
 	if s.pending != nil {

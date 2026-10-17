@@ -41,13 +41,14 @@ type cmdErr struct {
 
 func (e cmdErr) Error() string { return e.Message }
 
-// command describes a user-facing command with its handler and metadata.
+// command is the session's half of a command: its handler and when that handler
+// may run. The name, description and usage are vocabulary
+// (commands.Defs) — an adapter shows the same table, and one of the two keeping
+// a copy is how the help list drifted from the registry.
 type command struct {
-	Name        string
-	Description string
-	Usage       string
-	Policy      cmdPolicy
-	Handler     commandHandler
+	Name    string
+	Policy  cmdPolicy
+	Handler commandHandler
 }
 
 // commandRegistry manages the set of available commands.
@@ -87,34 +88,34 @@ var defaultCommandRegistry = newCommandRegistry()
 // come from the shared commands package (single source of truth for the
 // agent registry and adapter-side rendering).
 var defaultCommandDefs = []command{
-	{commands.CommandNameQuit, "End the session", "", cmdImmediate,
+	{commands.CommandNameQuit, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleQuit(args) }},
-	{commands.CommandNameCancel, "Cancel the current task", "", cmdImmediate,
+	{commands.CommandNameCancel, cmdImmediate,
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.cancelTask() }},
-	{commands.CommandNameSave, "Save the current session", "[filename]", cmdImmediate,
+	{commands.CommandNameSave, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.saveSession(args) }},
-	{commands.CommandNameModelSet, "Switch to a different model", "<id>", cmdIdle,
+	{commands.CommandNameModelSet, cmdIdle,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleModelSet(args) }},
-	{commands.CommandNameModelLoad, "Reload models from configuration file", "", cmdIdle,
+	{commands.CommandNameModelLoad, cmdIdle,
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.handleModelLoad() }},
-	{commands.CommandNameModelSync, "Replace all models with edited content", "<content>", cmdIdle,
+	{commands.CommandNameModelSync, cmdIdle,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleModelSync(args) }},
-	{commands.CommandNameReasoningLevelSet, "Set reasoning level (0=off, 1=normal, 2=max)", "<0|1|2>", cmdIdle,
+	{commands.CommandNameReasoningLevelSet, cmdIdle,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleReasoningLevelSet(args) }},
-	{commands.CommandNameThemeSet, "Set the active theme", "<name>", cmdImmediate,
+	{commands.CommandNameThemeSet, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleThemeSet(args) }},
-	{commands.CommandNameToolConfirm, "Confirm a pending tool execution", "<call_id>", cmdImmediate,
+	{commands.CommandNameToolConfirm, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleToolConfirmCmd(args) }},
-	{commands.CommandNameToolDecline, "Decline a pending tool execution", "<call_id>", cmdImmediate,
+	{commands.CommandNameToolDecline, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleToolDeclineCmd(args) }},
-	{commands.CommandNameFork, "Fork session up to content ID and save to file", "<history_id> <filename>", cmdImmediate,
+	{commands.CommandNameFork, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleFork(args) }},
-	{commands.CommandNameVideoConfig, "Set video FPS and resolution", "<fps> <res>", cmdIdle,
+	{commands.CommandNameVideoConfig, cmdIdle,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleVideoConfig(args) }},
-	{commands.CommandNameMCPConfirm, "Confirm MCP OAuth authorization with auth code", "<server> <code> <redirect_uri>", cmdIdle,
+	{commands.CommandNameMCPConfirm, cmdIdle,
 		func(s *Session, ctx context.Context, args string) (any, error) { return s.handleMCPConfirm(ctx, args) }},
-	{commands.CommandNameMCPDecline, "Decline MCP OAuth authorization", "<server>", cmdIdle,
+	{commands.CommandNameMCPDecline, cmdIdle,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleMCPDecline(args) }},
-	{commands.CommandNameMCPSkip, "Skip MCP initialization", "", cmdImmediate,
+	{commands.CommandNameMCPSkip, cmdImmediate,
 		func(s *Session, _ context.Context, _ string) (any, error) { return s.handleMCPSkip() }},
 }

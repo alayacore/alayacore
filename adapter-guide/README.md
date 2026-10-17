@@ -899,6 +899,12 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 
 ### Full command list
 
+Command names are exact: `name` carries one of these strings and nothing else.
+The built-in interactive adapters also accept a couple of short forms a user may
+type (`:q` for `quit`, `:r` for `reasoning_level_set`) and resolve them before
+writing the frame — that is an input convenience, not a protocol alias, and a
+client speaking this protocol sends the full name.
+
 | Command | input | CO output (success) |
 |---------|-------|---------------------|
 | `cancel` | — | `null` |
@@ -911,7 +917,7 @@ fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
 | `model_sync` | `<json>` | `{"models":[...]}` |
 | `reasoning_level_set` | `<0\|1\|2>` | `{"level":...}` |
 | `video_config` | `<fps> <res>` | `{"fps":...,"res":...}` — sets the session **default** for videos ingested after it; each video keeps the settings it was ingested with |
-| `mcp_confirm` | `<server> <code> <redirect_uri>` | `{"server":...}` |
+| `mcp_confirm` | `<server> <code> <redirect_uri> [iss]` | `{"server":...}` |
 | `mcp_decline` | `<server>` | `{"server":...}` |
 | `mcp_skip` | — | `null` |
 | `continue` / `summarize` | — | `{"status":"started"}` (async; completion via SM `task` with `command_id`) |

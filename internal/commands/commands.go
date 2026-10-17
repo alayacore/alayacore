@@ -49,22 +49,38 @@ const (
 	CommandNameMCPSkip    = "mcp_skip"
 )
 
-// commandAliases maps the aliases users may type to their canonical command
-// name. Which words name a command is this package's business, so the
-// resolution lives here: neither the agent's registry nor the adapters have
-// to keep a copy of this table.
-var commandAliases = map[string]string{
+// shortForms maps what a user may type to the command it means. It is an
+// adapter's table, resolved at the input boundary — where a typed line becomes
+// a frame — and never on the wire: a CI frame carries the canonical name only,
+// so an out-of-process client speaks one vocabulary and cannot depend on a
+// nickname. Which words name a command is this package's business, so the table
+// lives here and every adapter resolves from it rather than keeping its own.
+//
+// A short form is worth having when a command is typed often and its name is
+// long (r for reasoning_level_set), or when a keystroke has no other way to say
+// it (q for quit). A command with a keybinding does not earn one.
+var shortForms = map[string]string{
 	"q": CommandNameQuit,
+	"r": CommandNameReasoningLevelSet,
 }
 
-// Canonical resolves an alias to its canonical command name; a name that is
-// not an alias is returned unchanged. Applying it to every command name is
-// safe — command names that carry no alias are their own canonical form.
+// Canonical resolves a short form to its command name; anything else is
+// returned unchanged, so applying it to every name is safe.
 func Canonical(name string) string {
-	if canonical, ok := commandAliases[name]; ok {
+	if canonical, ok := shortForms[name]; ok {
 		return canonical
 	}
 	return name
+}
+
+// ShortForms returns a copy of the table, for a check that every short form
+// resolves to a command the session dispatches.
+func ShortForms() map[string]string {
+	out := make(map[string]string, len(shortForms))
+	for short, name := range shortForms {
+		out[short] = name
+	}
+	return out
 }
 
 // SplitCommand splits a command string into its name and argument tail at

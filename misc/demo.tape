@@ -66,7 +66,7 @@ Sleep 500ms
 
 # ── Exit ────────────────────────────────────────────────────────────
 
-Type ":quit"
+Type ":q"
 Enter
 Sleep 1s
 Type "y"

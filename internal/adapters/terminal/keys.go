@@ -81,12 +81,12 @@ var (
 
 // Command names (used with ":" prefix in input). cmdQuit and cmdCancel are
 // session command names (shared constants) that the TUI intercepts to add its
-// own behavior — the confirmation dialog, the exit code. cmdQShort is the
-// quit alias; suspend/help are adapter-local controls with no session command
-// behind them.
+// own behavior — the confirmation dialog, the exit code. A short form such as
+// ":q" needs no constant of its own: handleCommand resolves it through
+// commands.Canonical before this table is consulted. suspend/help are
+// adapter-local controls with no session command behind them.
 const (
 	cmdQuit    = commands.CommandNameQuit
-	cmdQShort  = "q"
 	cmdCancel  = commands.CommandNameCancel
 	cmdSuspend = "suspend"
 	cmdHelp    = "help"

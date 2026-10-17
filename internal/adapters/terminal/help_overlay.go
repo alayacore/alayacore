@@ -59,6 +59,39 @@ func NewHelpOverlay(styles *Styles) HelpOverlay {
 	return hw
 }
 
+// commandHelpItems is the Commands section of the help list, derived from the
+// vocabulary (commands.Defs) rather than written out here: a hand-kept copy is
+// how this list came to disagree with the registry about `:tool_confirm`'s
+// argument and to miss the short forms. The two adapter-local controls are
+// appended — they are the TUI's own, with no session command behind them — and a
+// command that has a short form shows it.
+func commandHelpItems(nextID func() int) []HelpItem {
+	shortFor := map[string]string{}
+	for short, name := range commands.ShortForms() {
+		// One short form per command is all the table has; a second would need a
+		// separator here, not a silent overwrite.
+		shortFor[name] = short
+	}
+
+	items := make([]HelpItem, 0, len(commands.Defs)+2)
+	for _, def := range commands.Defs {
+		key := ":" + def.Name
+		if def.Usage != "" {
+			key += " " + def.Usage
+		}
+		description := def.Description
+		if short := shortFor[def.Name]; short != "" {
+			description += " (or :" + short + ")"
+		}
+		items = append(items, HelpItem{ID: nextID(), Key: key, Description: description, Type: HelpItemCommand})
+	}
+	items = append(items,
+		HelpItem{ID: nextID(), Key: ":" + cmdSuspend, Description: "Suspend process", Type: HelpItemCommand},
+		HelpItem{ID: nextID(), Key: ":" + cmdHelp, Description: "Open help window", Type: HelpItemCommand},
+	)
+	return items
+}
+
 func buildHelpItems() []HelpItem {
 	id := 0
 	nextID := func() int {
@@ -67,53 +100,37 @@ func buildHelpItems() []HelpItem {
 	}
 	items := []HelpItem{
 		{ID: nextID(), IsSection: true, Description: "Commands"},
-		{ID: nextID(), Key: ":mcp_confirm <server> <code> <redirect_uri>", Description: "Confirm MCP OAuth authorization", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":mcp_decline <server>", Description: "Decline MCP OAuth authorization", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":" + commands.CommandNameMCPSkip, Description: "Skip MCP initialization", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":tool_confirm <id>", Description: "Confirm pending tool execution", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":tool_decline <id>", Description: "Decline pending tool execution", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":continue", Description: "Retry last prompt", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":" + commands.CommandNameReasoningLevelSet + " <0|1|2>", Description: "Set reasoning level", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":cancel", Description: "Cancel current task", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":summarize", Description: "Summarize/Compress history", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":theme_set <name>", Description: "Switch theme by name", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":model_set <id>", Description: "Switch model by ID", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":model_load", Description: "Reload model config", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":model_sync", Description: "Apply edited model config", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":save [filename]", Description: "Save session", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":fork <id> <filename>", Description: "Fork session up to content", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":video_config <fps> <0|1>", Description: "Set video FPS & resolution", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":suspend", Description: "Suspend process", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":quit", Description: "Exit application", Type: HelpItemCommand},
-		{ID: nextID(), Key: ":help", Description: "Open help window", Type: HelpItemCommand},
-		{ID: nextID(), IsSection: true, Description: "Global Shortcuts"},
-		{ID: nextID(), Key: "Tab", Description: "Toggle focus display/input", Type: HelpItemKey},
-		{ID: nextID(), Key: "Enter", Description: "Submit prompt or command", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+H", Description: "Open help window", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+G", Description: "Cancel current task", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+C", Description: "Clear text", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+S", Description: "Save session", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+O", Description: "Open prompt input in editor", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+A", Description: "Open attachment picker", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+L", Description: "Open model selector", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+R", Description: "Force redraw screen", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+P", Description: "Open theme selector", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+Z", Description: "Suspend process", Type: HelpItemKey},
-		{ID: nextID(), IsSection: true, Description: "Display Mode"},
-		{ID: nextID(), Key: "j/k", Description: "Move window cursor", Type: HelpItemKey},
-		{ID: nextID(), Key: "J/K, Down/Up", Description: "Scroll one line (wheel too)", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+D/U, PgUp/Dn", Description: "Scroll half screen", Type: HelpItemKey},
-		{ID: nextID(), Key: "g", Description: "Go to first window", Type: HelpItemKey},
-		{ID: nextID(), Key: "G", Description: "Follow the last window", Type: HelpItemKey},
-		{ID: nextID(), Key: "Home/End", Description: "First / last window", Type: HelpItemKey},
-		{ID: nextID(), Key: "H/L/M", Description: "ScreenCursor top/btm/mid", Type: HelpItemKey},
-		{ID: nextID(), Key: "e", Description: "Open in editor", Type: HelpItemKey},
-		{ID: nextID(), Key: "f/b", Description: "Next/prev prompt", Type: HelpItemKey},
-		{ID: nextID(), Key: ":", Description: "Enter command mode", Type: HelpItemKey},
-		{ID: nextID(), Key: "Space", Description: "Toggle window fold", Type: HelpItemKey},
-		{ID: nextID(), Key: "r", Description: "Toggle markdown rendering", Type: HelpItemKey},
-		{ID: nextID(), Key: "Ctrl+F", Description: "Fork session from cursor", Type: HelpItemKey},
 	}
+	items = append(items, commandHelpItems(nextID)...)
+	items = append(items,
+		HelpItem{ID: nextID(), IsSection: true, Description: "Global Shortcuts"},
+		HelpItem{ID: nextID(), Key: "Tab", Description: "Toggle focus display/input", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Enter", Description: "Submit prompt or command", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+H", Description: "Open help window", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+G", Description: "Cancel current task", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+C", Description: "Clear text", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+S", Description: "Save session", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+O", Description: "Open prompt input in editor", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+A", Description: "Open attachment picker", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+L", Description: "Open model selector", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+R", Description: "Force redraw screen", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+P", Description: "Open theme selector", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+Z", Description: "Suspend process", Type: HelpItemKey},
+		HelpItem{ID: nextID(), IsSection: true, Description: "Display Mode"},
+		HelpItem{ID: nextID(), Key: "j/k", Description: "Move window cursor", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "J/K, Down/Up", Description: "Scroll one line (wheel too)", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+D/U, PgUp/Dn", Description: "Scroll half screen", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "g", Description: "Go to first window", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "G", Description: "Follow the last window", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Home/End", Description: "First / last window", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "H/L/M", Description: "Window cursor top/btm/mid", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "e", Description: "Open in editor", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "f/b", Description: "Next/prev prompt", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: ":", Description: "Enter command mode", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Space", Description: "Toggle window fold", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "r", Description: "Toggle markdown rendering", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+F", Description: "Fork session from cursor", Type: HelpItemKey},
+	)
 	for i := range items {
 		if !items[i].IsSection {
 			items[i].searchStr = strings.ToLower(items[i].Key + " " + items[i].Description)

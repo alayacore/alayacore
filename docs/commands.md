@@ -39,7 +39,7 @@ Commands fall into three categories:
 
 | Command | Action | CO result |
 |---------|--------|-----------|
-| `:quit` | End the session (alias: `:q`). A task that is already running is allowed to finish first. | `null` |
+| `:quit` | End the session. A task that is already running is allowed to finish first. | `null` |
 | `:cancel` | Cancel current task | `null` |
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. | `{"path"}` |
 | `:theme_set <name>` | Switch to a different theme. TUI only — rejected with `UNAVAILABLE` in Plain IO, Terse IO, and Raw IO (`NoTheme`) | `{"name"}` |
@@ -47,6 +47,14 @@ Commands fall into three categories:
 | `:tool_confirm <call_id>` | Confirm a pending tool execution | `{"call_id"}` |
 | `:tool_decline <call_id>` | Decline a pending tool execution | `{"call_id"}` |
 | `:mcp_skip` | Skip MCP server initialization | `null` |
+
+Two commands carry a short form a user may type instead — `:q` for `:quit` and
+`:r` for `:reasoning_level_set <0|1|2>`. An adapter resolves a short form where a
+typed line becomes a frame, so the session (and a Raw IO client) sees the full
+name; the wire has no aliases, and a client that sends `q` is told the command
+is unknown. A command with a keybinding does not get one: `Ctrl+S`, `Ctrl+L`,
+`Ctrl+P`, `Ctrl+G` and `Ctrl+F` already cover `:save`, `:model_set`,
+`:theme_set`, `:cancel` and `:fork`.
 
 `:cancel` cancels the running task, and it takes the task's *queued* steering with
 it: words that have not yet been spliced into a step are dropped, with a
@@ -63,7 +71,7 @@ These commands are rejected with an error if a task is currently running:
 
 | Command | Action | CO result |
 |---------|--------|-----------|
-| `:mcp_confirm <server> <code> <redirect_uri>` | Confirm MCP OAuth authorization with auth code | `{"server"}` |
+| `:mcp_confirm <server> <code> <redirect_uri> [iss]` | Confirm MCP OAuth authorization with auth code | `{"server"}` |
 | `:mcp_decline <server>` | Decline MCP OAuth authorization | `{"server"}` |
 | `:model_set <id>` | Switch to a model by numeric ID | `{"active_id","active_name"}` |
 | `:model_load` | Reload model configs from the config file | `{"models"}` |

@@ -77,34 +77,50 @@ func jsonTags(v any) map[string]bool {
 	return tags
 }
 
-// taskCommands is the second family the dispatcher accepts: handleInputMsg
-// starts these as task goroutines before it ever reaches lookupCommand, so they
-// are commands an adapter may send without appearing in defaultCommandDefs.
-//
-// The list is read out of the dispatcher itself below, and a mismatch fails the
-// test: a third task command must not reach the wire without the docs being
-// checked for it.
-func taskCommands() []string {
-	return []string{commands.CommandNameContinue, commands.CommandNameSummarize}
-}
-
-// dispatchedCommands is the set the session accepts: the registry and the task
-// commands, resolved through the alias table so a documented short form counts.
+// dispatchedCommands is the command names, taken from the vocabulary table
+// (commands.Defs): every name an adapter may send and a help list may show.
+// TestCommandVocabularyMatchesTheRegistry pins that table to the handler table.
 func dispatchedCommands(t *testing.T) map[string]bool {
 	t.Helper()
 	known := map[string]bool{}
-	for _, c := range defaultCommandDefs {
-		known[commands.Canonical(c.Name)] = true
-	}
-	for _, name := range taskCommands() {
-		known[commands.Canonical(name)] = true
-	}
-	for _, c := range defaultCommandDefs {
-		if !known[commands.Canonical(c.Name)] {
-			t.Errorf("alias %q resolves to %q, which is not a command", c.Name, commands.Canonical(c.Name))
-		}
+	for _, d := range commands.Defs {
+		known[d.Name] = true
 	}
 	return known
+}
+
+// TestCommandVocabularyMatchesTheRegistry is the link between the two halves of
+// a command: commands.Defs holds the name, the description and the usage; the
+// agent's registry holds the handler and its policy. A name in one and not the
+// other is a command that cannot run, or a handler nothing can reach.
+//
+// The two task commands are the one allowed difference: handleInputMsg starts
+// them before it reaches the registry, so they have no handler entry. The set is
+// asserted exactly, which is what makes a third one visible here.
+func TestCommandVocabularyMatchesTheRegistry(t *testing.T) {
+	inRegistry := map[string]bool{}
+	for _, c := range defaultCommandDefs {
+		inRegistry[c.Name] = true
+		if _, ok := commands.DefinitionOf(c.Name); !ok {
+			t.Errorf("the registry handles %q, which commands.Defs does not define", c.Name)
+		}
+	}
+
+	unhandled := map[string]bool{}
+	for _, d := range commands.Defs {
+		if !inRegistry[d.Name] {
+			unhandled[d.Name] = true
+		}
+	}
+	for _, name := range []string{commands.CommandNameContinue, commands.CommandNameSummarize} {
+		if !unhandled[name] {
+			t.Errorf("%q is dispatched before the registry, so it must have no handler entry", name)
+		}
+		delete(unhandled, name)
+	}
+	for name := range unhandled {
+		t.Errorf("%q is in commands.Defs with no handler in the registry", name)
+	}
 }
 
 // tableAfter returns the rows of the Markdown table that follows the first line
@@ -163,8 +179,8 @@ func readDoc(t *testing.T, path string) string {
 func TestDocsCommandsTableMatchesTheRegistry(t *testing.T) {
 	known := dispatchedCommands(t)
 	usage := map[string]string{}
-	for _, c := range defaultCommandDefs {
-		usage[c.Name] = c.Usage
+	for _, d := range commands.Defs {
+		usage[d.Name] = d.Usage
 	}
 
 	doc := readDoc(t, "../../docs/commands.md")
@@ -321,6 +337,26 @@ func TestSMPayloadsAnnounceDeclaredTypes(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("%T announces %q but is registered here as %q", payload, got, want)
+		}
+	}
+}
+
+// TestShortFormsResolveToDispatchedCommands: a short form is an adapter's
+// convenience, so its target must be a command the session dispatches, and it
+// must not shadow one — a short form equal to a command name would make that
+// name untypeable.
+func TestShortFormsResolveToDispatchedCommands(t *testing.T) {
+	known := dispatchedCommands(t)
+	forms := commands.ShortForms()
+	if len(forms) == 0 {
+		t.Fatal("no short forms — the table moved, so the check went quiet")
+	}
+	for short, name := range forms {
+		if !known[name] {
+			t.Errorf("short form %q expands to %q, which the session does not dispatch", short, name)
+		}
+		if known[short] {
+			t.Errorf("short form %q shadows the command of the same name", short)
 		}
 	}
 }

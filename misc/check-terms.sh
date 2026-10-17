@@ -78,6 +78,14 @@ report "$hits" 'the folded state is folded/unfolded'
 hits=$(grep -rnE '\b(expanded|Expanded)\b' docs/tui.md docs/internal/virtual-rendering-performance.md 2>/dev/null)
 report "$hits" 'the folded state is folded/unfolded'
 
+# ── 4. A usage line is rendered, not spelled ───────────────────────────────
+# commands.Defs owns a command's argument shape and commands.UsageLine renders
+# it; a handler that wrote its own "usage: :name <args>" drifted from the table
+# (:tool_confirm <id> against a <call_id>, :model_sync <json> against <content>).
+# The renderer itself lives in internal/commands and is the one allowed spelling.
+hits=$(grep -rn '"usage: :' --include=*.go internal/agent internal/adapters 2>/dev/null)
+report "$hits" 'a usage line spelled in a handler — render it with commands.UsageLine'
+
 # ── 4. Wire values that have a name ────────────────────────────────────────
 # A status or state string means one thing because it is written once, in
 # protocol: the producer returns the constant and the adapter compares it. A

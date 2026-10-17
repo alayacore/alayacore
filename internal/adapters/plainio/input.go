@@ -33,6 +33,7 @@ var commandNames sync.Map // id → command name
 // The adapter translates the human-facing text into {id, name, input}.
 func writeCommand(input io.Writer, cmd string) error {
 	name, args := commands.SplitCommand(strings.TrimPrefix(cmd, ":"))
+	name = commands.Canonical(name)
 	id := fmt.Sprintf("plain-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
 		CallID: id,

@@ -25,6 +25,14 @@ qualified. That is the rule the table encodes.
 | **frame** | `wire.WriteFrame`, `Tag*` | The transport unit: a tag byte, a body, a newline. | `message` for the unit (a `system message` names one frame's payload) |
 | **tag** | `wire.TagUserX` | The two letters that open a frame. | — |
 
+### A short form belongs to an adapter
+
+`:q` and `:r` are words a user may type, not wire values. `commands.shortForms`
+holds the table and every interactive adapter resolves a name at its input
+boundary — the one place a typed line becomes a frame; the session and a Raw IO
+client see the full name only. A nickname on the wire would be a second name for
+a command, which is what this page exists to prevent.
+
 ### A wire value is a constant
 
 Every status, state and phase string — `ready`/`closed`, `connecting`/`done`,

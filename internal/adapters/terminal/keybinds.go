@@ -599,13 +599,20 @@ func (m Terminal) handleSubmit() (Terminal, Cmd) {
 }
 
 // handleCommand processes a command line (the ":"-form, already parsed).
+//
+// The name is resolved through the short-form table first (commands.Canonical):
+// this is the input boundary, the one place a typed word becomes a frame, so a
+// nickname is resolved here and nowhere else. What the session sees — local
+// handler or CI frame alike — is the canonical name.
 func (m Terminal) handleCommand(sub CommandSubmission) (Terminal, Cmd) {
+	name := commands.Canonical(sub.Name)
+
 	// An adapter-local command is matched on its name with no arguments: a
 	// command that carries arguments is the session's, which is what the old
 	// whole-string comparison did (":quit foo" is not the local quit).
 	if sub.Args == "" {
-		switch sub.Name {
-		case cmdQuit, cmdQShort:
+		switch name {
+		case cmdQuit:
 			m = m.openConfirmQuit()
 			m.confirmFromCommand = true
 			return m, nil
@@ -626,8 +633,17 @@ func (m Terminal) handleCommand(sub CommandSubmission) (Terminal, Cmd) {
 		}
 	}
 
-	// Everything else is the session's command.
-	return m.submitCommand(sub.Raw, true)
+	// Everything else is the session's command, under its canonical name. The
+	// raw line is kept as typed unless the name changed, so inner spacing in the
+	// arguments survives.
+	raw := sub.Raw
+	if name != sub.Name {
+		raw = name
+		if sub.Args != "" {
+			raw += " " + sub.Args
+		}
+	}
+	return m.submitCommand(raw, true)
 }
 
 // submitCommand sends a command to the session and optionally clears input.
