@@ -172,7 +172,7 @@ func NewStdioTransport(command string, args []string, env map[string]string, deb
 }
 
 // readLoop is the dedicated background goroutine that reads all JSON-RPC
-// response lines from the scanner and dispatches them by request ID.
+// response lines from the line reader and dispatches them by request ID.
 // Server-to-client requests (e.g. ping) are handled inline.
 func (t *StdioTransport) readLoop() {
 	defer t.readerWg.Done()

@@ -263,13 +263,13 @@ Pinned by `anthropic_stream_termination_test.go` and `openai_stream_termination_
 
 ## Stream size bound
 
-An SSE event is bounded at 8MB, and the bound is on the **decoded event** — the data accumulated between blank lines — not on a line. `internal/llm/providers/sse.go` holds the constant and a small line reader; both scanners check the event as it accumulates.
+An SSE event is bounded at 8MB, and the bound is on the **decoded event** — the data accumulated between blank lines — not on a line. The reader is `internal/sse`, shared with the MCP HTTP transport; `internal/llm/providers/sse.go` holds the constant and this package's wording for a bound hit. The same reader bounds one line, which is what keeps a stream that never sends a terminator from growing the buffer instead.
 
 The distinction is the point. SSE lets one event's data span several `data:` lines, so a per-line cap makes the same payload pass or fail depending on how the provider chose to break it up — and that is what the cap used to be: `bufio.Scanner`'s token budget, 1MB. A provider that sent a large tool call atomically (one `data:` line) failed the read; the same call streamed as many small deltas did not. The scanner is gone, so line breaks decide nothing.
 
 8MB is fixed rather than derived from `max_tokens`: it is the memory ceiling, and a ceiling a config value can raise is not a ceiling. Provider output limits are tens of thousands to ~128K tokens — around half a megabyte of text, a few MB at the worst with JSON escaping — so nothing legitimate is rejected, while a misbehaving server is still bounded.
 
-Past the bound the task fails with `SSE event exceeded 8MB — the model may have generated an oversized tool call`, and the scanner stays stopped. This is not the EOF case: a pending event at EOF is still drained, so a cleanly truncated stream keeps its last event (see [Stream termination](#stream-termination) above).
+Past the bound the task fails with `SSE event exceeded 8MB — the model may have generated an oversized tool call`, and the reader stays stopped. This is not the EOF case: a pending event at EOF is still drained, so a cleanly truncated stream keeps its last event. A transport error is the other case — a half-read event is refused rather than handed over as if the stream had finished it (see [Stream termination](#stream-termination) above).
 
 The constant tracks what providers can emit, not what is typical. **If a task can ever approach 1MB or more of output, revisit it** — that is the change that would invalidate the number.
 

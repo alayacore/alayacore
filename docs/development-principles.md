@@ -86,6 +86,8 @@ internal/protocol/  ← System-message payloads and their decoder, tool data
                       structures, ModelInfo
 internal/wire/      ← frame tags, encoding/decoding
 internal/lines/     ← splitting a byte stream into lines (the frame boundary)
+internal/sse/       ← reading Server-Sent Events from a stream (both the
+                      provider decoders and the MCP HTTP transport)
 internal/theme/     ← Theme data structures (shared with adapters)
 internal/commands/  ← Command name constants (CI/CO vocabulary) and the one
                       renderer for a command's result

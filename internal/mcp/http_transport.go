@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/debug"
-	"github.com/alayacore/alayacore/internal/lines"
 	"github.com/alayacore/alayacore/internal/mcp/auth"
+	"github.com/alayacore/alayacore/internal/sse"
 )
 
 // ============================================================================
@@ -65,11 +65,16 @@ type HTTPTransport struct {
 	notificationHandler atomic.Pointer[NotificationHandler]
 }
 
-// sseReadCloser wraps an io.ReadCloser (HTTP response body) with the
-// scanner and SSE parsing state needed to read SSE events from it.
+// sseReadCloser wraps an io.ReadCloser (HTTP response body) with the reader that
+// folds its events, and the closed flag that stops it.
+//
+// The folding is internal/sse — the same reader the providers use. What is here
+// is what belongs to a transport: the body to close, and a Close that a reader
+// parked on the stream has to see (hence a flag checked before each read, rather
+// than only at Close).
 type sseReadCloser struct {
 	body     io.ReadCloser
-	lines    *lines.Reader
+	events   *sse.Reader
 	closed   bool
 	closedMu sync.Mutex
 }
@@ -77,52 +82,37 @@ type sseReadCloser struct {
 // newSSEReadCloser creates an sseReadCloser from an HTTP response body.
 func newSSEReadCloser(body io.ReadCloser) *sseReadCloser {
 	return &sseReadCloser{
-		body:  body,
-		lines: lines.NewReader(body, maxMessageBytes),
+		body:   body,
+		events: sse.NewReader(body, maxMessageBytes),
 	}
 }
 
-// readEvent reads the next complete SSE event (a blank-line-delimited
-// sequence of field lines). Returns the event type, data, and any error.
-// If the stream is closed cleanly, returns io.EOF.
+// readEvent reads the next complete SSE event. Returns the event type, data, and
+// any error; io.EOF means the stream is over (closed by us, or ended by the
+// server).
+//
+// An event past maxMessageBytes is reported in this package's terms rather than
+// the reader's: see errEventTooLarge.
 func (s *sseReadCloser) readEvent() (eventType, data string, err error) {
 	s.closedMu.Lock()
-	if s.closed {
-		s.closedMu.Unlock()
+	closed := s.closed
+	s.closedMu.Unlock()
+	if closed {
 		return "", "", io.EOF
 	}
-	s.closedMu.Unlock()
 
-	var currentEvent string
-	var currentData strings.Builder
-
-	for {
-		raw, err := s.lines.ReadLine()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return "", "", io.EOF
+	if !s.events.Next() {
+		if err := s.events.Err(); err != nil {
+			if errors.Is(err, sse.ErrTooLarge) {
+				return "", "", errEventTooLarge()
 			}
 			return "", "", fmt.Errorf("SSE read: %w", err)
 		}
-		line := string(raw)
-
-		// Empty line signals end of an SSE event.
-		if line == "" {
-			if currentEvent != "" || currentData.Len() > 0 {
-				return currentEvent, currentData.String(), nil
-			}
-			continue
-		}
-
-		processSSELine(line, &currentEvent, &currentData)
-
-		// The bound is on the assembled event, not on its lines (see
-		// errEventTooLarge): one small data: field at a time, a server could
-		// otherwise grow this event until the process ran out of memory.
-		if currentData.Len() > maxMessageBytes {
-			return "", "", errEventTooLarge()
-		}
+		return "", "", io.EOF
 	}
+
+	ev := s.events.Event()
+	return ev.Type, ev.Data, nil
 }
 
 // Close closes the underlying body.
@@ -563,33 +553,5 @@ func (t *HTTPTransport) closePendingResponse(reqID requestID) {
 
 	if ours {
 		close(respCh)
-	}
-}
-
-// processSSELine parses a single SSE field line.
-func processSSELine(line string, currentEvent *string, currentData *strings.Builder) {
-	switch {
-	case strings.HasPrefix(line, "event:"):
-		if len(line) > 6 && line[6] == ' ' {
-			*currentEvent = line[7:]
-		} else {
-			*currentEvent = line[6:]
-		}
-
-	case strings.HasPrefix(line, "data:"):
-		if currentData.Len() > 0 {
-			currentData.WriteString("\n")
-		}
-		if len(line) > 5 && line[5] == ' ' {
-			currentData.WriteString(line[6:])
-		} else {
-			currentData.WriteString(line[5:])
-		}
-
-	case len(line) > 0 && line[0] == ':':
-		// Comment — ignore.
-
-	default:
-		// Unknown field — ignore per SSE spec.
 	}
 }

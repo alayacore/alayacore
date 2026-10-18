@@ -91,7 +91,6 @@ package providers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -100,6 +99,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/sse"
 )
 
 // ============================================================================
@@ -369,107 +369,11 @@ func (p *OpenAIProvider) SetReasoningConfigs(configs map[int]json.RawMessage) {
 
 // ============================================================================
 // SSE Stream Parsing (OpenAI data-only format)
-// ============================================================================
-
-// openaiScanner reads SSE events in the OpenAI "data-only" format.
 //
-// An event's data is one or more consecutive "data:" lines joined with
-// "\n" (multi-line data is legal per the SSE spec and used by some
-// providers that pretty-print JSON), terminated by a blank line or EOF.
-// Lines without the "data:" prefix (event:, comments, blank lines) are
-// ignored, matching the Anthropic scanner's accumulation model.
-type openaiScanner struct {
-	reader      *sseLineReader
-	currentData string
-	err         error
-}
-
-func newOpenAIScanner(reader io.Reader) *openaiScanner {
-	return &openaiScanner{reader: newSSELineReader(reader)}
-}
-
-// Next advances to the next complete SSE event.
-// Returns false when the stream is exhausted or an error occurs. Once an
-// error is set the scanner stays stopped, like bufio.Scanner.
-func (s *openaiScanner) Next() bool {
-	if s.err != nil {
-		return false
-	}
-
-	var data strings.Builder
-	hasData := false
-	var readErr error
-
-	for {
-		line, err := s.reader.next()
-		if err != nil {
-			// EOF is the normal end of a (possibly truncated) stream and is
-			// handled by draining a pending event below. Any other error is
-			// fatal and is reported instead: the pending event is unfinished
-			// or unverifiable, so it is not emitted as if it were complete.
-			if !errors.Is(err, io.EOF) {
-				readErr = err
-			}
-			break
-		}
-		line = strings.TrimSpace(line) // also tolerates CRLF
-
-		// Empty line — terminate the current event if we have one
-		// (per the SSE spec).
-		if line == "" {
-			if hasData {
-				s.currentData = data.String()
-				return true
-			}
-			continue
-		}
-
-		if strings.HasPrefix(line, "data:") {
-			if hasData {
-				data.WriteString("\n")
-			}
-			if len(line) > 5 && line[5] == ' ' {
-				data.WriteString(line[6:]) // "data: hello" → "hello"
-			} else {
-				data.WriteString(line[5:]) // "data:hello" → "hello", "data:" → ""
-			}
-			hasData = true
-			// The bound is on the event, not the line: a provider may put a
-			// whole large tool call in one, or spread it over many.
-			if data.Len() > maxEventBytes {
-				readErr = errEventTooLarge()
-				break
-			}
-			continue
-		}
-
-		// Other SSE fields (event:, comments) are ignored and do not
-		// terminate the current data event.
-	}
-
-	if readErr != nil {
-		s.err = readErr
-		return false
-	}
-
-	// EOF reached. Drain any pending event that wasn't terminated by a
-	// blank line (handles truncated streams gracefully).
-	if hasData {
-		s.currentData = data.String()
-		return true
-	}
-	return false
-}
-
-// Data returns the current event's data payload.
-func (s *openaiScanner) Data() string {
-	return s.currentData
-}
-
-// Err returns any error encountered during scanning.
-func (s *openaiScanner) Err() error {
-	return s.err
-}
+// The field folding is internal/sse's. This format names no event type — the
+// payload is the whole of what a chunk says — so only Data is read, and a stream
+// that happens to carry "event:" lines is unaffected.
+// ============================================================================
 
 // parseStream returns an iterator that yields SSE events from the OpenAI response.
 func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent, error] {
@@ -481,11 +385,11 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 		}()
 
 		state := &openAIStreamState{}
-		scanner := newOpenAIScanner(reader)
+		events := sse.NewReader(reader, maxEventBytes)
 		sawDone := false
 
-		for scanner.Next() {
-			data := scanner.Data()
+		for events.Next() {
+			data := events.Event().Data
 			if data == "[DONE]" {
 				sawDone = true
 				break
@@ -495,7 +399,7 @@ func (p *OpenAIProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent
 			}
 		}
 
-		if err := scanner.Err(); err != nil {
+		if err := sseErr(events.Err()); err != nil {
 			yield(nil, err)
 			return
 		}

@@ -1,21 +1,18 @@
 package providers
 
-// Shared SSE reader.
+// The providers' SSE vocabulary.
 //
-// The reader is bounded by the decoded *event*, not by a line. SSE lets one
-// event's data span several "data:" lines, so a per-line cap makes the same
-// payload pass or fail depending on how the provider chose to break it up —
-// an artifact of the reader, not a property of the protocol. bufio.Scanner,
-// which tokenizes on lines with a fixed maximum, has exactly that shape (and
-// is why a provider sending a large tool call atomically used to fail here).
-// The cap belongs on what the event decodes to.
+// The reader itself is internal/sse — one implementation shared with the MCP
+// HTTP transport, which reads Server-Sent Events from a server for the same
+// reasons and had its own copy (the two had already diverged on what a stream
+// that ends mid-event means). What stays here is the one thing that is this
+// package's: what an oversized event means for a model.
 
 import (
 	"errors"
 	"fmt"
-	"io"
 
-	"github.com/alayacore/alayacore/internal/lines"
+	"github.com/alayacore/alayacore/internal/sse"
 )
 
 // maxEventBytes bounds one decoded SSE event — the data accumulated between
@@ -36,39 +33,12 @@ import (
 // is not to be tightened to whatever is typical today.
 const maxEventBytes = 8 << 20 // 8MB
 
-// errEventTooLarge reports an event past maxEventBytes. It names the model's
-// oversized output because that is the realistic cause; a hostile or broken
-// peer is the other.
-func errEventTooLarge() error {
-	return fmt.Errorf("SSE event exceeded %dMB — the model may have generated an oversized tool call", maxEventBytes>>20)
-}
-
-// sseLineReader reads newline-delimited lines from an event stream, bounded by
-// maxEventBytes: a longer line fails, since no acceptable event could contain
-// it, which keeps a stream with no newline from growing without bound.
-//
-// It is lines.Reader with this package's words for that bound. The bound has a
-// name here because of what exceeding it means — an oversized tool call, far more
-// often than a hostile stream — and lines' own wording would hide that. A stream
-// that ends without a terminator hands its last line over as a line, as it always
-// has.
-type sseLineReader struct {
-	lines *lines.Reader
-}
-
-func newSSELineReader(r io.Reader) *sseLineReader {
-	return &sseLineReader{lines: lines.NewReader(r, maxEventBytes)}
-}
-
-// next returns the next line without its terminator. It returns io.EOF once the
-// stream is exhausted.
-func (l *sseLineReader) next() (string, error) {
-	line, err := l.lines.ReadLine()
-	if errors.Is(err, lines.ErrLineTooLong) {
-		return "", errEventTooLarge()
+// sseErr words the shared reader's size failure in this package's terms: from
+// here, an event past the bound is a model that generated an oversized tool
+// call, not a peer that framed its message oddly.
+func sseErr(err error) error {
+	if errors.Is(err, sse.ErrTooLarge) {
+		return fmt.Errorf("SSE event exceeded %dMB — the model may have generated an oversized tool call", maxEventBytes>>20)
 	}
-	if err != nil {
-		return "", err
-	}
-	return string(line), nil
+	return err
 }

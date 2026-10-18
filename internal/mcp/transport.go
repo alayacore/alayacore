@@ -64,15 +64,11 @@ const maxTextResponseBytes = 1 << 20 // 1MB
 // what a hostile or misconfigured server can make us allocate.
 const maxMessageBytes = 64 << 20 // 64MB
 
-// errEventTooLarge reports an SSE event that passed maxMessageBytes once its
-// data: fields were assembled.
-//
-// It exists because the bound above is on the *message*, and a message is not a
-// line: SSE lets one event carry its JSON across any number of data: fields, so
-// the line reader's own limit says nothing about how large the event it is being
-// read into may become. A peer that exceeds this is one whose reply cannot be
-// read at all — a tool result bigger than the transports agreed to carry — not
-// one whose framing this reader failed to follow.
+// errEventTooLarge reports an event past maxMessageBytes in this package's
+// terms: the peer's reply is larger than the two transports agreed to carry,
+// which is a different thing from a reader that failed to follow its framing.
+// The bound itself — and why it falls on the event rather than on a line — is
+// internal/sse's, and is stated there.
 func errEventTooLarge() error {
 	return fmt.Errorf("SSE event exceeded the %dMB message limit", maxMessageBytes>>20)
 }

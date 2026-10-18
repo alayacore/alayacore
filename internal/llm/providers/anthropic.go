@@ -32,15 +32,14 @@ package providers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"iter"
 	"sort"
-	"strings"
 
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/sse"
 )
 
 // ============================================================================
@@ -304,135 +303,11 @@ func (p *AnthropicProvider) SetReasoningConfigs(configs map[int]json.RawMessage)
 
 // ============================================================================
 // SSE Stream Parsing (Anthropic named-event format)
+//
+// The field folding is internal/sse's. What this provider needs from an event is
+// its type and its data, and an event with no data is skipped: a keep-alive has
+// nothing to hand the state machine.
 // ============================================================================
-
-// anthropicScanner reads named-event SSE (Anthropic format).
-//
-//   - Lines with "event:" set the event type.
-//   - Lines with "data:" append to the data payload.
-//   - Lines with ":" are comments.
-//   - A blank line ("") terminates the current event.
-//   - Unknown fields are silently ignored.
-//
-// The field name may optionally be followed by a space (per the SSE spec).
-//
-// This follows the same logic as MCP's processSSELine.
-type anthropicScanner struct {
-	reader    *sseLineReader
-	eventType string
-	eventData strings.Builder
-	hasData   bool // true if we've accumulated any data for the current event
-	err       error
-}
-
-func newAnthropicScanner(reader io.Reader) *anthropicScanner {
-	return &anthropicScanner{reader: newSSELineReader(reader)}
-}
-
-// Next advances to the next complete SSE event.
-// Returns false when the stream is exhausted or an error occurs. Once an
-// error is set the scanner stays stopped, like bufio.Scanner.
-func (s *anthropicScanner) Next() bool {
-	if s.err != nil {
-		return false
-	}
-
-	var readErr error
-
-	for {
-		line, err := s.reader.next()
-		if err != nil {
-			// EOF is the normal end of a (possibly truncated) stream and is
-			// handled by draining a pending event below. Any other error is
-			// fatal and is reported instead: the pending event is unfinished
-			// or unverifiable, so it is not emitted as if it were complete.
-			if !errors.Is(err, io.EOF) {
-				readErr = err
-			}
-			break
-		}
-
-		// Empty line — terminate the current event if we have one.
-		if line == "" {
-			if s.hasData {
-				s.hasData = false
-				return true
-			}
-			// Consecutive blank lines: skip.
-			continue
-		}
-
-		if readErr = s.applyField(line); readErr != nil {
-			break
-		}
-	}
-
-	if readErr != nil {
-		s.err = readErr
-		return false
-	}
-
-	// EOF reached. Drain any pending event that wasn't terminated by
-	// a blank line (handles truncated streams gracefully).
-	if s.hasData {
-		s.hasData = false
-		return true
-	}
-
-	return false
-}
-
-// applyField folds one non-empty SSE field line into the pending event.
-// Unknown fields and comments are ignored. It returns errEventTooLarge once
-// the accumulated event passes maxEventBytes.
-func (s *anthropicScanner) applyField(line string) error {
-	// Same field parsing as MCP's processSSELine.
-	switch {
-	case strings.HasPrefix(line, "event:"):
-		// Reset both fields — this is the start of a new event.
-		s.eventType = ""
-		s.eventData.Reset()
-		s.hasData = false
-		if len(line) > 6 && line[6] == ' ' {
-			s.eventType = line[7:]
-		} else {
-			s.eventType = line[6:]
-		}
-
-	case strings.HasPrefix(line, "data:"):
-		if s.eventData.Len() > 0 {
-			s.eventData.WriteString("\n")
-		}
-		if len(line) > 5 && line[5] == ' ' {
-			s.eventData.WriteString(line[6:])
-		} else {
-			s.eventData.WriteString(line[5:])
-		}
-		s.hasData = true
-		// The bound is on the event, not the line: a provider may put a
-		// whole large tool call in one, or spread it over many.
-		if s.eventData.Len() > maxEventBytes {
-			return errEventTooLarge()
-		}
-
-	case line[0] == ':':
-		// Comment — ignore.
-
-	default:
-		// Unknown field — ignore per SSE spec.
-	}
-	return nil
-}
-
-// Err returns any error encountered during scanning.
-func (s *anthropicScanner) Err() error {
-	return s.err
-}
-
-// Event returns the current event's type and data payload.
-func (s *anthropicScanner) Event() (eventType string, data string) {
-	return s.eventType, s.eventData.String()
-}
 
 // parseStream returns an iterator that yields SSE events from the Anthropic response.
 func (p *AnthropicProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEvent, error] {
@@ -444,19 +319,19 @@ func (p *AnthropicProvider) parseStream(reader io.Reader) iter.Seq2[llm.StreamEv
 		}()
 
 		state := &anthropicStreamState{}
-		scanner := newAnthropicScanner(reader)
+		events := sse.NewReader(reader, maxEventBytes)
 
-		for scanner.Next() {
-			eventType, data := scanner.Event()
-			if data == "" {
+		for events.Next() {
+			ev := events.Event()
+			if ev.Data == "" {
 				continue
 			}
-			if !p.handleEvent(eventType, data, yield, state) {
+			if !p.handleEvent(ev.Type, ev.Data, yield, state) {
 				return
 			}
 		}
 
-		if err := scanner.Err(); err != nil {
+		if err := sseErr(events.Err()); err != nil {
 			yield(nil, err)
 			return
 		}
