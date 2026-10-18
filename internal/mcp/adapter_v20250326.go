@@ -1,4 +1,4 @@
-//nolint:dupl // intentional: each version is a self-contained adapter
+//nolint:dupl // intentional: each protocol revision is its own adapter — see Adapter in protocol_adapter.go
 package mcp
 
 import (

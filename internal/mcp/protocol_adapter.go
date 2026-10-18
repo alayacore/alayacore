@@ -8,6 +8,27 @@ import (
 
 // Adapter is the common interface that all protocol version adapters
 // must implement. These methods are used regardless of transport type.
+//
+// # Why each version is its own file and not one parameterized adapter
+//
+// Several versions are, today, identical apart from the version string: the
+// 2025-03-26, 2025-06-18 and 2025-11-25 adapters diff to nothing once the
+// literal is normalized, and each carries a `//nolint:dupl` saying so. That is
+// deliberate, and it is not a refactor waiting to happen.
+//
+// The MCP specification adds, removes and revises features between revisions —
+// handshakes appear and disappear, the session and GET-stream machinery arrives
+// in one version and is gone in another, headers are introduced, requirements
+// move from SHOULD to MUST and back. A version adapter is a statement about one
+// revision of that document, and its shape is decided by that revision. Folding
+// the ones that happen to agree into a shared implementation would mean every
+// future revision edits the shared code on behalf of the versions that already
+// shipped, and a bug fixed for the newest one silently changes what the oldest
+// one claims to do.
+//
+// So: a new revision gets its own file, copied from the closest one in time.
+// Duplication between two revisions is a fact about the specification, not about
+// this package.
 type Adapter interface {
 	// ProtocolVersion returns the protocol version string
 	// (e.g. "2025-11-25" or "2026-07-28").
