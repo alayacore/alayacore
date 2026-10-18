@@ -59,7 +59,7 @@ be read as a complete one.
 The first `SM` frame of a session is the version frame:
 
 ```
-SM{"type":"version","data":{"message_version":16,"core_version":"<build-time version>"}}
+SM{"type":"version","data":{"message_version":17,"core_version":"<build-time version>"}}
 ```
 
 `message_version` identifies the wire format described in this document — the
@@ -735,7 +735,7 @@ The system-message samples follow with their schema.
 Complete wire values:
 
 ```
-SM-message-version.txt         {"type":"version","data":{"message_version":16,"core_version":"(set at build time)"}}
+SM-message-version.txt         {"type":"version","data":{"message_version":17,"core_version":"(set at build time)"}}
 SM-model.txt                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
 SM-model-list.txt              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
 SM-theme.txt                   {"type":"theme","data":{"name":"theme-dark"}}

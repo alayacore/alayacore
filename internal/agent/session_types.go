@@ -240,6 +240,27 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // nothing here migrates an older file: editing the field to load one anyway is
 // the user's call. See docs/architecture.md ("message_version").
 //
+// v17: the command plane's vocabulary, and what a command accepts. What moved:
+// CI's "call_id"/"input" are "command_id"/"args" and CO's "call_id"/"output"
+// are "command_id"/"result" — the tool plane keeps "call_id" (the provider's
+// tool_call_id) and "input"/"output" (typed content); a command request has no
+// provider behind it and its answer is whatever the command returns. Every CO
+// error code is renamed into one vocabulary whose first segment says what a
+// caller can do (REQUEST_, CONFIG_, STATE_, IO_, INTERNAL_), and the fallback
+// is "INTERNAL_UNCLASSIFIED" rather than "ERROR", which told a client nothing
+// is_error had not already said. A CI the agent cannot read is answered with
+// an SM error instead of a CO: a CO answers exactly one command, and a request
+// that could not be read has no id to echo. The empty id that used to stand in
+// for one also let a well-formed CI without a command_id run and reply with a
+// frame no adapter could correlate, so that is refused instead. A command now
+// accepts exactly the arguments `commands.Defs` declares, while a
+// readable-but-refused request (a CI sent with unsent content staged) still
+// gets its CO. A canceled MCP initialization no longer reports per-server
+// "failed" frames ("context canceled" for the user's own :mcp_skip), and a
+// stream that ends without a terminal event says "aborted unexpectedly" rather
+// than "canceled". None of it is in a file: the upgrade is the one-line
+// frontmatter edit, not a conversion — sessionmigrate holds no v17 step and
+// misc/ ships no v17 script, because there is nothing to convert.
 // v16: the vocabulary only, with no framing change. What moved: :mcp_cancel is
 // :mcp_skip ("cancel" already stops the running task); :reason is
 // :reasoning_level_set, the setting's name plus the verb; the SM that reports a
@@ -283,7 +304,7 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // v11: commands moved to the CI/CO control plane — text commands
 // (UT ':' sniffing) removed, command results now travel as CO frames,
 // taskMsg gained command_id for async command correlation.
-const messageVersion = 16
+const messageVersion = 17
 
 // sessionMeta is the frontmatter metadata.
 type sessionMeta struct {
