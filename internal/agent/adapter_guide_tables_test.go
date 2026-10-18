@@ -367,3 +367,45 @@ func TestShortFormsResolveToDispatchedCommands(t *testing.T) {
 		seen[name] = short
 	}
 }
+
+// TestCommandsDocErrorCodesMatchTheProtocol pins the code vocabulary in both
+// directions: a code the agent can send but the doc omits is one a client
+// cannot branch on, and a row the agent never sends is a promise nothing keeps.
+// The doc table is the contract clients read; protocol.CmdErrorCodes is the
+// list the producers use, so the two are compared exactly.
+func TestCommandsDocErrorCodesMatchTheProtocol(t *testing.T) {
+	doc := readDoc(t, "../../docs/commands.md")
+
+	documented := map[string]bool{}
+	for _, row := range tableAfter(t, doc, "| Code | Meaning | What a caller can do |") {
+		cols := cells(row)
+		if len(cols) != 3 {
+			t.Fatalf("error-code row has %d columns, want 3: %s", len(cols), row)
+		}
+		code := strings.Trim(cols[0], "`")
+		if documented[code] {
+			t.Errorf("%s is documented twice", code)
+		}
+		documented[code] = true
+	}
+
+	declared := map[string]bool{}
+	for _, code := range protocol.CmdErrorCodes {
+		if declared[code] {
+			t.Errorf("protocol.CmdErrorCodes lists %s twice", code)
+		}
+		declared[code] = true
+		if !documented[code] {
+			t.Errorf("%s is sent by the agent but missing from docs/commands.md's table", code)
+		}
+	}
+	for code := range documented {
+		if !declared[code] {
+			t.Errorf("docs/commands.md documents %s, which protocol.CmdErrorCodes does not declare", code)
+		}
+	}
+
+	if len(documented) != len(protocol.CmdErrorCodes) {
+		t.Errorf("documented %d codes, declared %d", len(documented), len(protocol.CmdErrorCodes))
+	}
+}

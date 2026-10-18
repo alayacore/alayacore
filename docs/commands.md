@@ -54,6 +54,36 @@ A command whose usage line is empty (`:quit`, `:cancel`, `:summarize`,
 `:continue`, `:model_load`, `:mcp_skip`) takes no arguments at all; a stray word
 is `INVALID_ARGS`.
 
+## Error codes
+
+A failed CO carries `{"code": ..., "message": ...}`. `message` is for display
+and may change; `code` is the contract, and these are all of them — a client can
+branch on it without reading the source. `protocol.CmdErrorCodes` is the same
+list on the Go side, and `make check` fails if the two disagree.
+
+| Code | Meaning | What a caller can do |
+|------|---------|----------------------|
+| `INVALID_ARGS` | the arguments do not match the command's usage line | fix the request |
+| `UNKNOWN_COMMAND` | the name is not a command | fix the request |
+| `BUSY` | a task is already running | retry when idle, or `:cancel` first |
+| `SHUTTING_DOWN` | the session is ending | reconnect |
+| `MCP_NOT_READY` | MCP initialization or authorization is still pending | retry later |
+| `NOT_CONFIGURED` | nothing is configured to act on: no model, no MCP server, no session file | fix the configuration |
+| `NOT_INITIALIZED` | the subsystem was never created | report a bug |
+| `NOT_IN_PROGRESS` | nothing is in flight to act on | nothing — the state is already what was asked for |
+| `NOTHING_TO_CANCEL` | no task and no held prompt | nothing |
+| `NOT_FOUND` | the thing named does not exist, or is not pending | fix the request |
+| `INVALID_STATE` | the session's state forbids the operation (e.g. forking across an unpaired tool call) | change what is asked for |
+| `UNAVAILABLE` | the feature does not exist in this adapter mode | nothing |
+| `IO_ERROR` | a file operation failed | check the path and permissions |
+| `PERSIST_FAILED` | a setting could not be written | check the path and permissions |
+| `LOAD_FAILED` | the configuration could not be read | check the file |
+| `MODEL_ERROR` | the model subsystem failed: switching, rebuilding, or creating the provider | check the provider configuration |
+| `MODEL_NOT_FOUND` | no model has that id | fix the request |
+| `MODEL_VALIDATION` | the config parsed but models were rejected; `message` lists why | fix the configuration |
+| `THEME_ERROR` | the theme subsystem failed, e.g. a theme file that exists but cannot be read | check the theme file |
+| `UNCLASSIFIED` | a handler returned a bare error: a bug, since every refusal above names its cause | report a bug |
+
 Commands fall into three categories:
 
 - **Immediate commands** (`cmdImmediate`) — run synchronously in the main loop, always allowed

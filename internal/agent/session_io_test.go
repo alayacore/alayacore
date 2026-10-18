@@ -271,14 +271,16 @@ func TestWriteCmdResult_CmdErr(t *testing.T) {
 	}
 }
 
-func TestWriteCmdResult_PlainErrorDefaultsToERROR(t *testing.T) {
+// A handler that returns a bare error is a bug — every refusal in this tree
+// names its cause — so the fallback says exactly that much and no more.
+func TestWriteCmdResult_PlainErrorDefaultsToUnclassified(t *testing.T) {
 	s, output := newCmdOutputSession()
 
 	s.writeCmdResult("e5f6", nil, fmt.Errorf("boom"))
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"code":"ERROR"`) {
-		t.Errorf("plain error should default to code ERROR: %s", joined)
+	if !strings.Contains(joined, `"code":"UNCLASSIFIED"`) {
+		t.Errorf("plain error should default to code UNCLASSIFIED: %s", joined)
 	}
 	if !strings.Contains(joined, `"is_error":true`) {
 		t.Errorf("missing is_error in CO: %s", joined)
@@ -518,7 +520,7 @@ func TestStartTaskCommand_RefusedDoesNotBroadcast(t *testing.T) {
 				// No active model: ensureAgentInitialized cannot build an agent.
 				s.modelService = newModelService(newModelManager(""), newRuntimeManager(""))
 			},
-			wantCode: "ERROR",
+			wantCode: "NOT_CONFIGURED",
 		},
 	}
 

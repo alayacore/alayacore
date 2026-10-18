@@ -114,21 +114,22 @@ func (s *Session) writeSteering(phase, reason, text string) {
 //
 // On success, result is serialized into Result (nil → JSON null).
 // On error, Result carries a uniform CmdError object; cmdErr codes are
-// preserved, plain errors default to "ERROR".
+// preserved, and a plain error defaults to UNCLASSIFIED — a bug, since every
+// refusal in this tree names its cause (see protocol.ErrCodeUnclassified).
 func (s *Session) writeCmdResult(commandID string, result any, err error) {
 	msg := protocol.CmdResultMsg{CommandID: commandID}
 
 	switch {
 	case err != nil:
 		msg.IsError = true
-		code := "ERROR"
+		code := protocol.ErrCodeUnclassified
 		var ce *cmdErr
 		if errors.As(err, &ce) {
 			code = ce.Code
 		}
 		data, marshalErr := json.Marshal(protocol.CmdError{Code: code, Message: err.Error()})
 		if marshalErr != nil {
-			data = json.RawMessage(`{"code":"ERROR","message":"failed to serialize command error"}`)
+			data = json.RawMessage(`{"code":"UNCLASSIFIED","message":"failed to serialize command error"}`)
 		}
 		msg.Result = data
 	case result != nil:
@@ -136,7 +137,7 @@ func (s *Session) writeCmdResult(commandID string, result any, err error) {
 		if marshalErr != nil {
 			// A serialization failure is itself a command error.
 			msg.IsError = true
-			msg.Result = json.RawMessage(`{"code":"ERROR","message":"failed to serialize command result"}`)
+			msg.Result = json.RawMessage(`{"code":"UNCLASSIFIED","message":"failed to serialize command result"}`)
 		} else {
 			msg.Result = data
 		}

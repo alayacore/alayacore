@@ -794,7 +794,9 @@ CO{"command_id":"<command-id>","is_error":true,"result":{"code":"...","message":
 - `result` is structured JSON defined per command (may be `null` for
   fire-and-forget commands like `cancel`).
 - On failure, `result` is a **uniform error object**: `{"code":"<machine-readable>","message":"<human-readable>"}`.
-  Machine clients key off `is_error`/`code`; the `message` is for display.
+  Machine clients key off `is_error`/`code`; the `message` is for display. The
+  codes are a closed vocabulary — every one, and what a caller should make of
+  it, is [the error-code table](../docs/commands.md#error-codes).
 - The `command_id` is required. A CI without one, or with JSON the agent cannot
   parse, gets no CO at all — the answer would have no id to echo — and is
   reported as an SM `error` instead. Read the id as the correlation handle it
