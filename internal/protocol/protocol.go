@@ -381,14 +381,14 @@ type ErrorMsg struct {
 	Text string `json:"text"`
 }
 
-func (ErrorMsg) SystemMsgType() string { return "error" }
+func (ErrorMsg) SystemMsgType() string { return string(MsgTypeError) }
 
 // NotifyMsg is a system notification (type "notify").
 type NotifyMsg struct {
 	Text string `json:"text"`
 }
 
-func (NotifyMsg) SystemMsgType() string { return "notify" }
+func (NotifyMsg) SystemMsgType() string { return string(MsgTypeNotify) }
 
 // ToolConfirmMsg is sent when a tool call needs user confirmation
 // (type "tool_confirm"). It is a one-way notification: the user's
@@ -400,4 +400,4 @@ type ToolConfirmMsg struct {
 	CallID string `json:"call_id"`
 }
 
-func (ToolConfirmMsg) SystemMsgType() string { return "tool_confirm" }
+func (ToolConfirmMsg) SystemMsgType() string { return string(MsgTypeToolConfirm) }

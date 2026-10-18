@@ -202,12 +202,14 @@ the same change that introduces it.
 can decide exactly: a relative Markdown link that does not resolve from the file
 that wrote it, a fragment naming a heading that does not exist in the file it
 points at, a file named in a code span that is not in the tree, a flag name in a
-code span that `config.Parse` does not register (the set is read out of the source
-rather than listed), and a perishable shape in prose — a line number or a line
-count. It guesses at nothing else; its header says what it leaves to review, and
-why. The fragment half is `misc/check-doc-anchors.go`, because a heading becomes an
-anchor by a Unicode transform (the Chinese headings in `README.zh-CN.md` have
-anchors too) that shell cannot do honestly.
+code span that the program does not accept (`config.FlagNames`), and a perishable
+shape in prose — a line number or a line count. It guesses at nothing else; its
+header says what it leaves to review, and why. Two halves need Go rather than
+shell: `misc/check-doc-anchors.go` computes heading fragments, because a heading
+becomes an anchor by a Unicode transform (the Chinese headings in
+`README.zh-CN.md` have anchors too) that shell cannot do honestly; and
+`misc/check-doc-flags.go` asks `internal/config` which flags it registers, so the
+list a page is checked against is the list the command line answers to.
 
 A name that a rename leaves behind is the same defect in a place no link check
 reaches: a comment still naming a file that was renamed out from under it, an

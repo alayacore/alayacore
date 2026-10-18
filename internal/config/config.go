@@ -205,7 +205,8 @@ func registerFlags(fs *flag.FlagSet) *flagValues {
 	return f
 }
 
-// FlagNames returns every flag this program accepts, in registration order.
+// FlagNames returns every flag this program accepts, in the order --help shows
+// them (the flag package's own order, not the order registerFlags writes them in).
 //
 // It builds the set and asks it rather than listing the names: a flag added to
 // registerFlags is docable the same day, a flag removed there is a finding the same
