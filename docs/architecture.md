@@ -170,7 +170,7 @@ The agent layer handles LLM interaction and tool-calling orchestration.
 |-----------|-------------|
 | `Agent` | Tool-calling loop orchestration with configurable max steps |
 | `Provider` interface | Streaming LLM abstraction — `StreamMessages` returns an event iterator the agent consumes |
-| `Factory` | Creates the correct provider based on `protocol_type` |
+| `factory` package | Creates the correct provider based on `protocol_type` |
 | `Providers` | Anthropic and OpenAI implementations |
 | `TypedExecute` | Type-safe tool execution via Go generics |
 | `GenerateSchema` | Auto-generates JSON schemas from struct tags |

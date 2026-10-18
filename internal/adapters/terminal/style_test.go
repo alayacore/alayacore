@@ -1,9 +1,9 @@
 package terminal
 
 // Style layer tests (module 6, S3). The expected SGR bytes were locked
-// against lipgloss v2 output by style_compat_test.go (now deleted): every
-// assertion here is byte-for-byte what lipgloss produced for the same
-// chain, so replacing lipgloss did not change any rendered output.
+// against lipgloss v2 output when this layer replaced it: every assertion here
+// is byte-for-byte what lipgloss produced for the same chain, which is how
+// swapping the implementation stayed invisible in the rendered output.
 
 import (
 	"bytes"

@@ -8,8 +8,8 @@ import "github.com/alayacore/alayacore/internal/llm"
 // contributes the parts past what was already published, and each step boundary
 // may rewrite the history (a compaction) and append user parts to it (steering, or
 // the synthetic "Continue" a compaction needs). Three facts have to hold together
-// for that to stay consistent, and they used to be three loose variables in the
-// middle of a 250-line function:
+// for that to stay consistent, and each was a loose variable before they were
+// gathered here:
 //
 //   - publishedLen counts the parts run() has been told about. A step's delta is
 //     the suffix past it, so nothing is published twice.

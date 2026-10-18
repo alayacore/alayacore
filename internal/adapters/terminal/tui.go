@@ -361,9 +361,9 @@ type attachment struct {
 // its frames go, the session settings it mirrors, the screen it starts on, and the
 // theme it draws in.
 //
-// A struct rather than a parameter list because that list had grown to eight
-// values, two of them an adjacent pair of ints — a caller could swap the width and
-// the height, and every one of those eight positions had to be remembered.
+// A struct rather than a parameter list: the list had grown to the point where a
+// call site was a row of values in a remembered order, two of them an adjacent pair
+// of ints that a caller could swap without the compiler noticing.
 type Options struct {
 	Out       OutputWriter   // session output, parsed into windows as it arrives
 	Input     io.WriteCloser // frames to the session

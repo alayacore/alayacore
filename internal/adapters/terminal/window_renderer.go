@@ -3,14 +3,14 @@ package terminal
 // Window renderers: type-specific content management and rendering.
 //
 // Each renderer implements WindowRendering and owns its content storage and
-// caching. The Window struct delegates to the renderer for everything that varies
-// by window type. One file each, because a renderer is one thing:
+// caching, and the Window struct delegates to it for everything that varies by
+// window type — window.go lists them and the frames each one serves. One file
+// each, because a renderer is one thing:
 //
-//	text_renderer.go   assistant text (AT), reasoning (AR), system messages (SN/SE)
-//	user_renderer.go   user messages with optional media attachments
-//	tool_renderer.go   tool calls and results (AF, Af, UF)
-//	folded_summary.go  fitting any of them into one folded row: the label column,
-//	                   and the priced summary it is drawn beside
+//	text_renderer.go   textRenderer: the one that can re-read content as markdown
+//	user_renderer.go   userRenderer, and the attachment badges it draws
+//	tool_renderer.go   toolRenderer, and the leading-"…" previews only it cuts
+//	folded_summary.go  fitting any of them into one folded row
 //
 // What is left here is the one helper two of them share: styleBodyLines.
 

@@ -1,90 +1,27 @@
-// Package plainio provides a plain stdin/stdout adapter for AlayaCore.
-//
-// It reads user prompts from stdin (one per newline) and prints assistant
-// messages to stdout. Rendering uses no terminal features (ANSI codes, TTY
-// detection, etc.) — just plain IO. TTY-ness of stdin is consulted only to
-// choose the MCP OAuth fallback policy (see below).
+// Package plainio provides a plain stdin/stdout adapter for AlayaCore: prompts
+// arrive as lines on stdin, and the session transcript leaves on stdout.
 //
 // Activate with the --plainio flag.
 //
-// This mode is a sibling of terseio, not a variant of it: the two look alike
-// because both print plain text, but every policy a mode is defined by (input
-// rules, where output goes, what an error does to the exit code, whether a
-// confirmation can be answered) is answered differently here. See
+// No terminal feature is used — no ANSI, no alternate screen, no TUI. stdin's
+// TTY-ness is consulted for exactly one decision, the MCP OAuth fallback: a
+// terminal can still answer a server by hand with :mcp_confirm, a pipe cannot, so
+// on a pipe the server is declined and initialization settles without it.
+//
+// The contract this mode promises — input rules, the output layout, exit codes,
+// Ctrl-C, and the MCP flow — is docs/plainio.md's subject, stated once there. The
+// two facts that belong to the implementation rather than to that contract live
+// where they are used: the output lock and the hooks it defers (output.go), so an
+// MCP progress line can print from inside a frame handler without deadlocking, and
+// the single serialized writer that the stdin reader shares with the OAuth flow
+// (app.LockedWriter), because both feed the session's pipe.
+//
+// Key files:
+//   - adapter.go: Adapter, Start(), and the signal handling that keeps Ctrl-C from
+//     killing the process
+//   - input.go:   the line reader: what the user types becomes frames
+//   - output.go:  the frame parser and plain-text renderer
+//
+// This mode is a sibling of terseio, not a variant of it: see
 // docs/internal/adapter-architecture.md → "Siblings, not variants".
-//
-// Input rules:
-//   - Each line is read as a prompt.
-//   - A trailing backslash (\) before newline continues the prompt on the next line.
-//   - There is no task queue: one task runs at a time, and a prompt that arrives
-//     while one is in flight is steered into it rather than refused. docs/plainio.md
-//     has the cases — including the one refusal, a full steering queue — and what
-//     a piped stdin can expect.
-//   - :quit / :q stops reading input; the program waits for any running
-//     task, then exits with code 0.
-//   - Ctrl-D (EOF) closes input; the program waits for the current task to
-//     finish, then exits with code 0 — like :quit, regardless of whether
-//     any task errored during the session.
-//   - Ctrl-C (SIGINT): cancels the current task through the session (the
-//     same effect as typing ":cancel") and the session continues — the
-//     user can keep typing prompts. When idle, the session reports
-//     "nothing to cancel" (same as the terminal adapter's idle Ctrl-G).
-//     The process exits only via :quit/:q or EOF (Ctrl-D) — never via
-//     Ctrl-C. Canceling through the session (rather than dying) also
-//     aborts running tool processes, which are started detached (setsid)
-//     and never receive the terminal's SIGINT.
-//   - Task errors are reported and the session CONTINUES — plainio is an
-//     interactive mode, errors never terminate the session and the user
-//     can keep typing prompts. The exit code reflects process-level state
-//     only (0 = clean exit, 1 = startup/stdin failure); scripts that need
-//     a failure signal on task errors should use --terseio.
-//
-// Output format:
-//   - Assistant text/reasoning: printed directly (history ID prefix stripped).
-//     A blank line is inserted when consecutive deltas belong to different
-//     stream groups or different message types.
-//   - User prompts: rendered as a "User: <text>" block on its own line,
-//     with a blank line after it (and before it when the previous output
-//     ended with a newline).
-//   - Tool calls: printed as raw JSON (id, name, input).
-//   - Tool results: printed as raw JSON (id, output, is_error).
-//   - Command results (CO): failures as "[error: ...]" (does not affect the
-//     exit code), successes rendered from the structured result (e.g.
-//     "Session saved to <path>"); commands whose effect is self-evident
-//     (e.g. :cancel, :reasoning_level_set) are silent.
-//   - Errors: rendered as "[error: ...]".
-//   - Notifications: prefixed with "[...]".
-//   - Tool confirmations: shown as "[tool_confirm: allow tool "<call_id>" to run?]".
-//   - MCP init progress: "[mcp: connecting/connected/failed/server X requires
-//     authorization/waiting for authorization...]".
-//   - A blank line is printed after each task completes.
-//
-// MCP support:
-//   - MCP servers connect at startup and their tools behave like built-in
-//     tools (including tool_confirm prompts).
-//   - Prompts are written as soon as they are read, and the session holds one
-//     that arrives before it is ready: it runs as soon as replay and MCP init
-//     are done. The adapter never waits for readiness (an early prompt used to
-//     be refused, which a piped client cannot retry) and never closes the input
-//     pipe early — the OAuth flow below submits its :mcp_confirm through it.
-//   - When a server requires OAuth authorization, plainio prints the URL,
-//     starts a local callback server (internal/platform), opens the
-//     browser, and sends ":mcp_confirm <server> <code> <redirect_uri>"
-//     automatically once the code arrives — one concurrent flow per
-//     server, since MCP servers initialize in parallel. The flow is shared
-//     with terseio (internal/mcpauth).
-//   - Fallback when the automatic callback does not arrive (browser could
-//     not be opened, or the 5-minute wait timed out): on a terminal the
-//     manual :mcp_confirm/:mcp_decline commands are printed for the user to
-//     type; with piped stdin there is nothing to type into, so the server
-//     is declined instead (MCP init then settles and the prompt runs
-//     without that server's tools). See docs/oauth.md for the full flow.
-//
-// Communication with the session layer uses the same frame protocol as the
-// terminal, terseio, and rawio adapters.
-//
-// Key Files:
-//   - adapter.go: Adapter struct, Start() entry point
-//   - input.go: Stdin line reader with backslash continuation
-//   - output.go: frame parser and plain-text renderer
 package plainio

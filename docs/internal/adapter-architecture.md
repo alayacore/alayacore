@@ -24,11 +24,24 @@ The adapter layer handles user interaction and translates between user actions a
 
 ### PlainIO Adapter (`internal/adapters/plainio/`)
 
-Plain stdin/stdout mode, activated with `--plainio`. Shows assistant text, reasoning, tool call JSON, and tool result JSON. Displays tool_confirm system messages as plain text prompts. Reads prompts from stdin (one per line, backslash continuation for multi-line prompts) and writes each one as it is read — a prompt that arrives before MCP init has settled is held by the session and run when it is ready, so nothing here waits for a frame (`STATE_MCP_NOT_READY` is not a race a client has to avoid). When stdin ends, the adapter says so with a `CE` frame instead of closing the pipe, and closes it only after the session has exited: the pipe is what the session reads, and an OAuth callback running beside this goroutine submits its `:mcp_confirm` through it. Supports the full MCP flow: renders init progress (`[mcp: ...]` lines) and runs OAuth authorization automatically (callback server + browser, one flow per server) via the shared `internal/mcpauth` flow; a callback that does not arrive falls back to the manual `:mcp_confirm`/`:mcp_decline` commands on a terminal, or declines the server when stdin is a pipe (nothing to type into). Hooks fired by MCP system messages are deferred (registered under the output lock, executed after unlock) so they may safely print.
+Plain stdin/stdout mode, activated with `--plainio`: prompts arrive as lines on
+stdin, the session transcript leaves on stdout, and no terminal feature is used —
+stdin's TTY-ness is consulted for exactly one decision, the MCP OAuth fallback.
+The pipe stays open after `CE` so an OAuth callback can still submit a command
+through it, and the adapter closes it only once the session has exited.
+
+Behavior — input rules, output layout, exit codes, MCP — is
+[plainio.md](../plainio.md)'s subject, and is stated there once.
 
 ### TerseIO Adapter (`internal/adapters/terseio/`)
 
-Minimal stdin/stdout mode, activated with `--terseio`. Reads **all of stdin as a single prompt** — or, if it starts with `:`, as a **single command** (the whole input is sent as one CI frame; `:quit`/`:q` exit cleanly) — and prints **only the final assistant text** to stdout; errors, notifications, and informative command results go to stderr. Buffers the current AT/At message (dropping earlier text on new history IDs) and flushes it on the task-completion system message (`in_progress: false`) — but only if the final message actually contains text (reasoning-only or tool-call-only final messages produce empty stdout). CO frames are parsed: command errors go to stderr and set exit code 1; successful results render human-readable feedback for informative commands (`:save`, `:fork`) and stay silent for self-evident or async ones (`:cancel`, `:continue`, ...) whose feedback is the final answer. SM errors — task failures and session-level failures (auto-save, pre-summarize backup, auto-summarization) — likewise go to stderr, set exit code 1, and discard the buffered final answer. `--tool-confirm` is rejected at startup (conflict), so no tool_confirm frames can arrive and no confirmation machinery is needed. The single prompt is sent as soon as stdin is read: a prompt that arrives before MCP init has settled is held by the session and run when it is ready, so nothing here waits for a frame and `STATE_MCP_NOT_READY` is not a race this adapter has to avoid. When stdin ends, the adapter sends a `CE` frame rather than closing the pipe, and closes it only after the session has exited, since an OAuth callback started by this adapter may still need to submit its `:mcp_confirm`. MCP OAuth is automatic via the shared `internal/mcpauth` flow (progress and the authorization URL go to stderr); a server whose automatic authorization does not complete is declined, since there is nowhere to type a code.
+Answer-only mode, activated with `--terseio`: all of stdin becomes one prompt or
+one command, and stdout carries nothing but the final answer, with diagnostics and
+command results on stderr where the exit code can speak too. The `CE`-then-close
+ordering is plainio's, for the same reason.
+
+Behavior, including the exit-code contract, is [terseio.md](../terseio.md)'s
+subject.
 
 ### RawIO Adapter (`internal/adapters/rawio/`)
 
@@ -93,17 +106,31 @@ for the full isolation rules.
 
 ### Theme Persistence
 
-The session persists the active theme to `runtime.conf` and communicates it to the terminal adapter as frames as a `TagSystemMsg` with type `"theme"`. The session skips theme broadcasting entirely for plainio, terseio, and rawio modes (`NoTheme` — they have no visual rendering): no `theme`/`theme_list` messages are sent, theme errors are never emitted, and `:theme_set` is rejected as unavailable. On startup, the terminal reads the initial theme from the first `"theme"` message (defaulting to `"theme-dark"`).
+The session persists the active theme to `runtime.conf` and tells the terminal
+*which* theme is active as a `TagSystemMsg` of type `"theme"` — the name only. The
+palettes travel in `theme_list`, which the terminal caches on startup, so one frame
+names the entry and the cache supplies its colors. On startup the terminal draws
+the built-in default until the session's first `"theme"` frame arrives, and from
+then on that name, resolved against the cache, is the active theme.
+
+Theme broadcasting is skipped entirely for plainio, terseio and rawio (`NoTheme` —
+they have no visual rendering): no `theme`/`theme_list` messages are sent, theme
+errors are never emitted, and `:theme_set` is refused as unavailable.
 
 Theme changes flow through the session to keep a single source of truth:
 
-1. `:theme_set <name>` (typed by user) or theme selector confirm both send the command to the session (as a CI frame; the result arrives as a CO frame)
-2. Session persists the theme name to `runtime.conf` and broadcasts the updated theme via a `TagSystemMsg` frame (`{"type":"theme","data":{"name":"...","theme":{...}}}`)
-3. The terminal detects the theme change in `updateStatus()` and calls `applyTheme()` with the full theme data from the frame, updating all UI component styles
+1. `:theme_set <name>` (typed by the user) or a theme selector confirmation both
+   send the command to the session — a CI frame, whose result arrives as a CO
+   frame.
+2. The session persists the name to `runtime.conf` and broadcasts
+   `{"type":"theme","data":{"name":"..."}}`.
+3. The terminal's `syncThemeFromSession` resolves that name against the cached
+   `theme_list` and applies the palette, recording the name as the applied one so
+   the same broadcast cannot re-apply it.
 
-This ensures both paths converge: the theme selector's live preview applies
-themes via a debounced tick for smooth navigation, but the final commit
-always goes through the session.
+Both paths converge: the selector's live preview applies a palette through a
+debounced tick for smooth navigation, but the commit that sticks always goes
+through the session.
 
 ## Wire Format
 
@@ -147,7 +174,7 @@ User types prompt
   → PromptInput captures input
     → Emit frame(UX, one JSON content item), frame(UE)
       → inputPump reads frame, stages content, flushes on UE
-        → runTask() (task goroutine)
+        → runTaskNormal() (task goroutine)
           → processPrompt()
             → Agent.Stream()
               → Delta callbacks emit frame(Ax), frame(Af) (streaming deltas)

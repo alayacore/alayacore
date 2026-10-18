@@ -18,8 +18,9 @@ AlayaCore has four kinds of configuration: model config, runtime config, MCP ser
 **Default location**: `~/.alayacore/`
 **Override**: `--config-path /path/to/config-dir`
 
-Use a single `--config-path` flag to point to any directory with the same layout.
-This replaces the old per-file overrides (`--model-config`, `--runtime-config`, `--themes`).
+Use a single `--config-path` flag to point to a directory with the same layout:
+every file below it is derived from that one path, so there is no per-file flag
+that could disagree about which directory is in play.
 
 ```bash
 # Use a custom config directory

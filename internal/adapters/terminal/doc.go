@@ -42,17 +42,16 @@
 //	                keybinds.go, input_layers.go)
 //	  - rendering — the window model and its pipeline (window.go,
 //	                window_buffer.go, wrap.go, display.go, scroll_view.go,
-//	                live_edge.go), one file per renderer (text_renderer.go,
-//	                user_renderer.go, tool_renderer.go) with the folded-row
-//	                arithmetic they share in folded_summary.go, and the
-//	                terminal surface under it (screen.go)
+//	                live_edge.go), the renderers (window_renderer.go names the
+//	                file each of them lives in), and the terminal surface
+//	                under it (screen.go)
 //	  - surfaces  — prompt_input.go / input_field.go, overlay.go, the
 //	                selectors (model_selector.go, theme_selector.go,
 //	                help_overlay.go, attachment_overlay.go),
 //	                confirm_dialog.go, filtered_list.go
-//	  - look      — styles.go / style.go (SGR layer), theme_manager.go,
-//	                spinner.go, markdown.go, diff.go, constants.go (glyph
-//	                policy)
+//	  - look      — styles.go / style.go (SGR layer), spinner.go,
+//	                markdown.go, diff.go, constants.go (glyph policy); the
+//	                themes folder is prepared by internal/theme's Manager
 //	  - I/O       — output.go, tool_render.go / tool_handler.go, exec.go,
 //	                editor.go, term_io*.go, program_keys*.go
 //

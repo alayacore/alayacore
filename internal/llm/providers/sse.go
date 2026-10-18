@@ -2,11 +2,9 @@ package providers
 
 // The providers' SSE vocabulary.
 //
-// The reader itself is internal/sse — one implementation shared with the MCP
-// HTTP transport, which reads Server-Sent Events from a server for the same
-// reasons and had its own copy (the two had already diverged on what a stream
-// that ends mid-event means). What stays here is the one thing that is this
-// package's: what an oversized event means for a model.
+// The reader is internal/sse, shared with the MCP HTTP transport. What stays here
+// is the one thing that is this package's: what an oversized event means for a
+// model.
 
 import (
 	"errors"
