@@ -184,10 +184,14 @@ It cannot tell you a *new* synonym has appeared. That is where the rule about
 stating a fact once meets the vocabulary: a new concept gets its name there, in
 the same change that introduces it.
 
-`misc/check-docs.sh` (`make check-docs`, run in CI) fails on both shapes a tool
+`misc/check-docs.sh` (`make check-docs`, run in CI) fails on every shape a tool
 can decide exactly: a relative Markdown link that does not resolve from the file
-that wrote it, and a perishable shape in prose — a line number or a line count.
-It guesses at nothing else; its header says what it leaves to review, and why.
+that wrote it, a fragment naming a heading that does not exist in the file it
+points at, and a perishable shape in prose — a line number or a line count. It
+guesses at nothing else; its header says what it leaves to review, and why. The
+fragment half is `misc/check-doc-anchors.go`, because a heading becomes an anchor
+by a Unicode transform (the Chinese headings in `README.zh-CN.md` have anchors
+too) that shell cannot do honestly.
 
 ### A commit message names the kind of change, not the size of the diff
 

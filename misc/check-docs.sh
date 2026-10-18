@@ -6,8 +6,12 @@
 #   ./misc/check-docs.sh
 #   make check-docs
 #
-# Two classes. Both are exact — a claim in either holds or it does not, with
-# nothing in between for a reviewer to argue about.
+# Class 3 needs a Go toolchain (misc/check-doc-anchors.go). Without one the
+# script says so and fails, rather than reporting a pass over a check it did not
+# run.
+#
+# Three classes. Each is exact — a claim in any of them holds or it does not,
+# with nothing in between for a reviewer to argue about.
 #
 # 1. Relative links. The docs are a graph — architecture.md points at
 #    development-principles.md, tui.md points at internal/tool-spinner-refresh.md
@@ -23,6 +27,16 @@
 #    development-principles.md, "Don't write what a command can tell you": a doc
 #    that carried a line count had to be edited twice in one series, once to
 #    record a fallback and once to correct the number the first edit invalidated.
+#
+# 3. Heading anchors. A relative link has two ends, and only one of them was
+#    read: `](docs/tui.md#windows-consoles)` was checked for `docs/tui.md` and
+#    not for `#windows-consoles`. Retitling a section therefore broke every link
+#    to it in silence — exactly how tool-execution.md's "Same-File Writes Are
+#    Serialized" became "Writes Exclude All Access, and Order Nothing", leaving
+#    the link in the same file pointing at nothing. The transform from a heading
+#    to an anchor is GitHub's, and the half that computes it lives in
+#    misc/check-doc-anchors.go, because it is a Unicode transform (README.zh-CN.md
+#    links to (#模式)) and this script is byte-oriented shell.
 #
 # Scope, deliberately narrow. What this does NOT check, and why:
 #
@@ -40,10 +54,15 @@
 #     sample output ("Output (5000 lines, 194.2KB)") and wire dumps
 #     ("main.go:3:// TODO") are self-evidently samples, not claims about this
 #     tree. Blanking rather than deleting keeps the reported line numbers honest.
+#   - Setext headings (a title underlined with === or ---), and headings anchored
+#     by an explicit HTML id. Neither is used in this repo; a doc that adopts one
+#     would need misc/check-doc-anchors.go extended, and until then its links
+#     would be reported as broken rather than passed over.
 #
 # A link target is matched as ](target); one starting with a scheme or '#' is
-# skipped, and any #fragment is dropped before the path is resolved against the
-# directory of the file that wrote it.
+# skipped as a path, and any #fragment is dropped before the path is resolved
+# against the directory of the file that wrote it. The fragment, when there is
+# one, is then checked against the target's headings.
 
 set -euo pipefail
 
@@ -62,8 +81,13 @@ perishable='[A-Za-z0-9_./-]+\.(go|sh|md|json|conf|yaml|yml):[0-9]+|~[[:space:]]*
 broken=$(mktemp)
 shapes=$(mktemp)
 prose=$(mktemp)
-trap 'rm -f "$broken" "$shapes" "$prose"' EXIT
+fragments=$(mktemp)
+fragcount=$(mktemp)
+work=$(mktemp -d)
+trap 'rm -f "$broken" "$shapes" "$prose" "$fragments" "$fragcount"; rm -rf "$work"' EXIT
 checked=0
+anchors_checked=0
+anchors_built=1
 nfiles=0
 
 # strip_fences blanks a fenced code block, one blank line per input line, so a
@@ -98,11 +122,33 @@ while IFS= read -r f; do
 	grep -nE "$perishable" "$prose" | sed "s|^|$f:|" >>"$shapes" || true
 done <<<"$files"
 
+# Class 3. One program for the whole tree rather than one pass per file: a page
+# linked from twenty others is slugged once, not twenty times.
+if command -v go >/dev/null 2>&1; then
+	if go build -o "$work/check-doc-anchors" ./misc/check-doc-anchors.go; then
+		printf '%s\n' "$files" | "$work/check-doc-anchors" -report "$fragcount" >"$fragments" || true
+		anchors_checked=$(tr -d '[:space:]' <"$fragcount" 2>/dev/null || true)
+		anchors_checked=${anchors_checked:-0}
+	else
+		echo "misc/check-doc-anchors.go did not build — heading anchors were not checked" >&2
+		anchors_built=0
+	fi
+else
+	echo "no Go toolchain on PATH — heading anchors were not checked" >&2
+	anchors_built=0
+fi
+
 status=0
 if [ -s "$broken" ]; then
 	count=$(wc -l <"$broken" | tr -d ' ')
 	echo "$count relative Markdown links do not resolve from the file that wrote them:" >&2
 	sed 's/^/  /' "$broken" >&2
+	status=1
+fi
+if [ -s "$fragments" ]; then
+	count=$(wc -l <"$fragments" | tr -d ' ')
+	echo "$count fragment links name a heading that does not exist in the file they point at:" >&2
+	sed 's/^/  /' "$fragments" >&2
 	status=1
 fi
 if [ -s "$shapes" ]; then
@@ -111,6 +157,7 @@ if [ -s "$shapes" ]; then
 	sed 's/^/  /' "$shapes" >&2
 	status=1
 fi
+[ "$anchors_built" -eq 1 ] || status=1
 [ "$status" -eq 0 ] || exit 1
 
-echo "$checked relative Markdown links across $nfiles files resolve; no perishable shapes in prose."
+echo "$checked relative Markdown links and $anchors_checked heading anchors across $nfiles files resolve; no perishable shapes in prose."

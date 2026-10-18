@@ -56,9 +56,11 @@ jobs:
       # reads its edges: a renamed page leaves a 404 only a human would find.
       # This resolves every relative Markdown link against the file that wrote
       # it, so the two failures a link can have — a target that moved and one
-      # that never existed — are caught at the source. It also fails on the two
-      # shapes a doc can carry that are guaranteed to rot: a line number into a
-      # file, and a line count.
+      # that never existed — are caught at the source. It also checks the other
+      # end of a link: a #fragment is matched against the headings of the file
+      # it names, so retitling a section cannot silently orphan every link to
+      # it. And it fails on the two shapes a doc can carry that are guaranteed
+      # to rot: a line number into a file, and a line count.
       - name: Check docs
         run: ./misc/check-docs.sh
 

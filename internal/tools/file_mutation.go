@@ -2,9 +2,12 @@ package tools
 
 import "sync"
 
-// fileMutationMu serializes every in-process file mutation: edit_file and
-// write_file both take it, so at most one file mutation runs in the process at
-// any moment.
+// fileMutationMu serializes every in-process access to file bytes that either
+// changes them or could observe a change half-applied: edit_file and write_file
+// take the write lock around their whole mutation, read_file the read lock
+// around its whole read. A mutation therefore runs alone, and reads run
+// concurrently with each other — the invariant is "a write excludes everything,
+// two reads exclude each other from nothing".
 //
 // It exists because the concurrent tool runner (the default) launches one
 // goroutine per tool call the moment its arguments complete, so a model that
@@ -20,20 +23,40 @@ import "sync"
 // rename. Its in-place fallback needs it for its own sake too — two O_TRUNC
 // writers at offset 0 can interleave.
 //
+// read_file takes the read side of it for a narrower reason than the writers
+// take the write side. Against edit_file a reader needs no lock at all: the
+// commit is a rename, so a read that overlapped it would still return a whole
+// file, the old one or the new one. write_file's in-place fallback is the
+// exception — writeInPlace (used when the directory cannot hold a temp file)
+// truncates the target and then writes the new content into it, so a read inside
+// that window returns either an empty file or the new prefix as if it were the
+// whole file: shorter, entirely plausible, and with nothing in it to say it was
+// cut. The lock is what keeps a reader out of that window.
+//
+// The lock is a RWMutex rather than a Mutex so that this read-side requirement
+// does not cost what it has no reason to cost: excluding readers from a write is
+// the whole requirement, and excluding readers from each other is not part of
+// it. A model that reads eight files at once keeps its eight reads in parallel;
+// only a writer waits for them. Go's RWMutex prefers a waiting writer over newly
+// arriving readers, so a stream of reads cannot starve an edit_file.
+//
 // It is deliberately one coarse lock, not a map keyed by path. Path is not a
 // sound file identity — hard links and case-insensitive filesystems both map
 // two different path strings to one file — so a keyed table would let exactly
 // the writes it is meant to stop slip through, while adding an unbounded map
-// that must then be pruned safely. The critical section is a few file syscalls,
-// so there is nothing to gain from finer granularity and no state to get wrong.
+// that must then be pruned safely. The critical sections are a few file syscalls
+// for a write and one file's worth of reads for read_file, so there is nothing
+// to gain from finer granularity and no state to get wrong.
 //
-// It is NOT reentrant: a mutating file tool must never call another. Today
-// neither edit_file nor write_file calls the other, and write_file's in-place
-// fallback (writeInPlace) runs inside the same critical section rather than
-// re-entering it.
+// It is NOT reentrant: nothing that takes this lock may call anything else that
+// takes it, in either mode — an RLock turned into a Lock by a waiting writer
+// deadlocks just as a second Lock would. edit_file and write_file never call
+// each other, write_file's in-place fallback (writeInPlace) runs inside the same
+// critical section rather than re-entering it, and read_file returns media and
+// line ranges from the one handle it already holds.
 //
-// Scope: this serializes writes within this process only. Concurrent writers
-// outside it — another instance, an editor, git, a sync client, or a shell
-// command run by execute_command — are not detected; a competing write still
-// wins last. See docs/tool-execution.md.
-var fileMutationMu sync.Mutex
+// Scope: this serializes access within this process only. Writers (and readers)
+// outside it — another instance, an editor, git, a sync client, ripgrep under
+// search_content, or a shell command run by execute_command — are not detected;
+// a competing write still wins last. See docs/tool-execution.md.
+var fileMutationMu sync.RWMutex

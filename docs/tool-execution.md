@@ -15,7 +15,8 @@ Serial mode exists because a great many models and servers have no notion of
 parallel tool calls: their side effects have to land in the sequence the model
 asked for. Keeping two calls from writing the same file at once is no longer
 part of its job — that is now a property of the tools themselves, in either mode
-(see [Same-File Writes Are Serialized](#same-file-writes-are-serialized)).
+(see [Writes Exclude All Access, and Order
+Nothing](#writes-exclude-all-access-and-order-nothing)).
 
 Whether a call can start while later calls are still streaming is the provider's
 doing, not the mode's: Anthropic closes a tool block mid-message, so there the
@@ -84,7 +85,7 @@ See `internal/llm/agent.go` → `Stream()`, `streamEvents()` (which contains no
 mode check at all), and `internal/llm/agent_execution.go` → `toolRunner`,
 `serialToolRunner`, `parallelToolRunner`, `runToolCall`, `executeTool`.
 
-## Same-File Writes Are Serialized
+## Writes Exclude All Access, and Order Nothing
 
 Concurrent mode launches a goroutine per call, so a model that emits two
 `edit_file` calls for the same file in one step runs them at once. Both are
@@ -94,25 +95,83 @@ is told about, and one the user cannot prevent, since the model chose to emit
 the pair.
 
 That is fixed in the tools, not in a driver: `edit_file` and `write_file` take a
-single package-level mutex (`fileMutationMu`) around their whole mutation, so at
-most one in-process file mutation runs at a time. `write_file` is in the same
-lock chiefly to protect `edit_file`: a full write that landed between an edit's
-read and its rename would be swallowed by that rename. The runner is unchanged
-and stays concurrent; only the file writes serialize, and they are a few
-syscalls, so nothing that matters loses parallelism. Reads do not take the lock
-— the rename is atomic, so a reader sees either the old file or the new one,
-never a torn one.
+single package-level read-write mutex (`fileMutationMu`) around their whole
+mutation, so at most one in-process file mutation runs at a time — against any
+reader as well as against another writer. `write_file` is in the same lock
+chiefly to protect `edit_file`: a full write that landed between an edit's read
+and its rename would be swallowed by that rename. The runner is unchanged and
+stays concurrent; only the file writes exclude anything, and they are a few
+syscalls, so nothing that matters loses parallelism.
+
+`read_file` takes the read side of that lock for the length of its read, for a
+reason the writers do not have. Against `edit_file` a reader would need no lock
+at all: the commit is a rename, so it sees the old file or the new one, never a
+torn one. `write_file`'s in-place fallback is not atomic — `writeInPlace`,
+reachable when the directory cannot hold a temp file, truncates the target and
+then writes into it, so a read inside that window returns a prefix of the new
+content as if it were the whole file: shorter, plausible, and with nothing in it
+to say it was cut. That is the one read-side tear a lock can prevent, and the
+model could not detect it if it happened.
+
+The lock is an `RWMutex`, and reads take the read side, because excluding reads
+from a write is the entire requirement and excluding reads from each other is
+not part of it. A model that reads eight files in one step still reads them in
+parallel; only a writer waits for them all. Measured on this machine with eight
+concurrent `read_file` calls, the alternative — one mutex for all three tools —
+cost 2.2x on 8x8MB (21ms vs 9.7ms) and 2.4x on 8x2KB (160µs vs 67µs), all of it
+pure loss. Go's `RWMutex` prefers a waiting writer over newly arriving readers,
+so a run of reads cannot starve an `edit_file`.
+
+The price of the read side is that a read which blocks — a FIFO, a slow network
+mount — holds it while it blocks, and every mutation queues behind it (other
+reads do not). Such a read already keeps the step from finishing, so nothing
+that could have run is held up by it. The one read that is routinely long is a
+full read of a file over the 64KB text budget: `readLargeFileTruncated` scans to
+EOF so its header can report the total line count, which makes "one file's worth
+of reads" the whole file. Left as is — the total is what makes the header useful,
+and the fix, if it is ever wanted, is to report the count as a floor ("at least N
+lines") instead of reading the rest to learn it.
 
 It is one coarse lock rather than a map keyed by path because a path is not a
 sound file identity (hard links and case-insensitive filesystems both map two
-paths to one file), and a critical section this short has nothing to gain from
-finer granularity.
+paths to one file), and the critical sections — a few syscalls for a write, one
+file's worth of reads for `read_file` — have nothing to gain from finer
+granularity.
 
-Scope: this serializes writers **within this process** only. A competing write
-from outside it — another instance, an editor, `git`, a sync client — is not
-detected and still wins last, exactly as it would for any editor. Neither is a
-shell command run by `execute_command` that writes the same file, which the lock
-cannot cover. Detecting those would need a compare-and-swap at commit time.
+**The lock removes interleaving; it does not impose order.** Two calls that take
+it run one at a time, but which goes first is whichever the scheduler reaches
+first, and a mutex has no way to say "the order the model made them in". For two
+edits the gap is usually audible — when one's `old_string` lives in what the
+other introduced, the one that ran too early fails, and the model is told. For a
+`write_file` followed by an `edit_file` on the same file it is silent: the edit
+reads and rewrites the pre-write content, the write then replaces the whole
+file, and both calls report success while the file holds neither result. Order
+is a mode, not a lock — only `serial_tool_calls: true` runs a step's calls in
+the order the model declared them (see
+[configuration.md](configuration.md#tool-calling-mode-serial_tool_calls)).
+
+The system prompt therefore states the order contract the model can act on:
+calls made together may run concurrently and in any order, and a call that needs
+another's result belongs in a later step (`systemPromptBase` in
+`internal/app/app.go`). That is the **weak** guarantee — the one every
+`model.conf` satisfies — and deliberately not the serial one, even though serial
+mode would make a stronger statement true. The prompt is one string, built once
+at startup and handed unchanged to whichever model the session switches to, so
+a promise written for serial mode would be broken by `:model_set` to a model
+that does not set the option, and the history carries the consequences of that
+reliance across the switch. The cost of the weak wording is bounded and one-way:
+a serial-mode model that would have chained a dependent call inside a single
+step spends one more step instead — never a wrong result, because the rule it
+follows is always safe. The wording also has to keep batching attractive, which
+is why it says "batch independent calls" rather than leaving the model to infer
+that one call per step is what "may run in any order" wants.
+
+Scope: this serializes access **within this process** only. A competing write
+from outside it — another instance, an editor, `git`, a sync client, ripgrep
+under `search_content` — is not detected and still wins last, exactly as it
+would for any editor. Neither is a shell command run by `execute_command` that
+writes the same file, which the lock cannot cover. Detecting those would need a
+compare-and-swap at commit time.
 
 ## Execution Strategy
 

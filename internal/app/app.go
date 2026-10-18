@@ -22,7 +22,9 @@ const systemPromptBase = `You are a helpful AI assistant with access to a set of
 
 Never assume - verify with tools.
 
-Use search tools to locate code and patterns before using file read tools for detailed inspection.`
+Use search tools to locate code and patterns before using file read tools for detailed inspection.
+
+Tool calls you make together may run concurrently and in any order. Batch independent calls; put a call that needs another call's result in a later step.`
 
 const systemPromptSkills = `Check <available_skills> below; read the <location> file to load relevant skill instructions. Skill instructions may use relative paths (scripts/, references/) - run them with execute_command's workdir set to the skill's own directory, which is the folder containing <location>.`
 

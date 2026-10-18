@@ -107,6 +107,30 @@ func knownMediaType(mimeType string) (string, bool) {
 }
 
 func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart, error) {
+	// Serialize against in-process file mutations for the whole read.
+	// edit_file's commit is a rename, so a reader could skip the lock and
+	// still see a whole file — the old one or the new one. write_file's
+	// in-place fallback is not like that: writeInPlace truncates the target
+	// and then writes the new content into it, so a read overlapping that
+	// window returns a prefix of the new content that looks like a complete,
+	// merely shorter file — silently wrong, and nothing in the result says
+	// so. The lock is what keeps a reader out of that window; see
+	// fileMutationMu.
+	//
+	// The read lock, not the write lock: a read has to exclude a mutation, and
+	// nothing else. A model reading eight files in one step still reads them
+	// in parallel, which is why this is a RWMutex and why the cost of the
+	// exclusion stops at the writers.
+	//
+	// The price is that a read which blocks — a FIFO, a slow network mount —
+	// holds the read lock for as long as it blocks, and every in-process file
+	// mutation queues behind it (other reads do not). Accepted: such a read
+	// already keeps the step from finishing at all (the runner waits for its
+	// tool goroutines), so nothing is lost that could otherwise have run. See
+	// docs/tool-execution.md.
+	fileMutationMu.RLock()
+	defer fileMutationMu.RUnlock()
+
 	// Open once and operate on the same handle for every check (size,
 	// media sniffing) and every read. Statting the open file instead of
 	// the path means the size decision and the content read are the same

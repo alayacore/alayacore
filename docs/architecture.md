@@ -259,14 +259,31 @@ All other packages (LLM providers, session management, frame protocol, skills, s
 The system prompt is sent as **separate messages** (not a single concatenated string):
 
 ```
-System Message 1: Default Prompt (identity + rules + search preferences)
+System Message 1: Default Prompt (identity + rules + search preferences
+                  + tool-call ordering contract)
                   + Skills section (only when skills configured)
                   + Current working directory
 
 System Message 2: Extra System Prompt (from --system flag, repeatable)
 ```
 
-When `rg` is available, the default prompt includes an instruction to prefer the `search_content` tool for locating content over reading files chunk by chunk. This instruction is omitted when `rg` is not installed.
+The default prompt states one rule about tool calls: calls made together may run
+concurrently and in any order, so a call that needs another call's result belongs
+in a later step. It is stated without naming a mode, because there is only one
+prompt string for every `model.conf` and it is not rebuilt when the user switches
+models — a promise written for `serial_tool_calls: true` would be false the
+moment the session moved to a model that does not set it. See
+[tool-execution.md](tool-execution.md#writes-exclude-all-access-and-order-nothing).
+
+The search-before-read instruction is unconditional: it sits in
+`systemPromptBase`, so it is sent whether or not `rg` is installed and whether or
+not `search_content` survives `--builtin-tools` — deliberately, since the
+guidance is written for any search tool, an MCP-provided one included (see the
+note under [Tools Layer](#tools-layer-internaltools) for the tool-registration
+side). Nothing at startup probes for `rg`: `search_content` is registered like
+every other built-in (`BuiltinTools` in `internal/tools/tools.go`), and a
+missing binary surfaces as that tool's own error, which names it and points at
+`execute_command` with `grep`/`find` instead.
 
 When skill container paths are provided via `--skill` and skills are discovered, the prompt includes instructions for reading skill `SKILL.md` files from their `<location>` — and for running a skill's own relative paths with `execute_command`'s `workdir` set to the folder holding that file — followed by an `<available_skills>` XML fragment listing each skill's name, description, and location. Both are omitted entirely when no skills are configured. The three values come from files that may have come from anywhere, so each is folded to a single line and XML-escaped as it is written: the fragment stays well-formed no matter what a manifest contains.
 
