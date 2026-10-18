@@ -289,9 +289,10 @@ missing binary surfaces as that tool's own error, which names it and points at
 
 When skill container paths are provided via `--skill` and skills are discovered, the prompt includes instructions for reading skill `SKILL.md` files from their `<location>` — and for running a skill's own relative paths with `execute_command`'s `workdir` set to the folder holding that file — followed by an `<available_skills>` XML fragment listing each skill's name, description, and location. Both are omitted entirely when no skills are configured. The three values come from files that may have come from anywhere, so each is folded to a single line and XML-escaped as it is written: the fragment stays well-formed no matter what a manifest contains.
 
-Both providers (`openai`, `anthropic`) send these as two independent system
-messages. The default prompt and extra prompt are kept separate so the LLM API
-can cache them independently.
+Both providers (`openai`, `anthropic`) send these as independent system
+messages — the extra one only when `--system` gave something to send. They are
+kept separate rather than concatenated so the LLM API can cache them
+independently.
 
 ### Current Working Directory
 

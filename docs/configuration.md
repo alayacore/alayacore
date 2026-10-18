@@ -1,14 +1,16 @@
 # Configuration
 
-AlayaCore has three configuration files: model config, runtime config, and theme files. All live under a single config directory — `~/.alayacore/` by default — making it easy to manage, back up, or share your entire configuration.
+AlayaCore has four kinds of configuration: model config, runtime config, MCP server definitions, and theme files. All live under a single config directory — `~/.alayacore/` by default — making it easy to manage, back up, or share your entire configuration.
 
 ```
 ~/.alayacore/
 ├── model.conf        # LLM provider and model definitions
 ├── runtime.conf      # Active model/theme selections (auto-managed)
-└── themes/
-    ├── theme-dark.conf
-    └── theme-light.conf
+├── mcp.conf          # MCP server definitions (optional; see mcp.md)
+├── themes/
+│   ├── theme-dark.conf
+│   └── theme-light.conf
+└── mcp-cache/        # MCP OAuth tokens, written only by a server that needs them
 ```
 
 ## Config Directory

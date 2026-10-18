@@ -386,12 +386,14 @@ type CallToolResult struct {
 
 // ToolContent represents a piece of content in a tool call result.
 //
-// The MCP spec defines four content types:
+// The MCP spec defines five content types, and convertToolContent handles all
+// five:
 //
-//	text:     {"type":"text", "text":"..."}
-//	image:    {"type":"image", "data":"base64...", "mimeType":"..."}
-//	audio:    {"type":"audio", "data":"base64...", "mimeType":"..."}
-//	resource: {"type":"resource", "resource":{"uri":"...","mimeType":"...","text|blob":"..."}}
+//	text:          {"type":"text", "text":"..."}
+//	image:         {"type":"image", "data":"base64...", "mimeType":"..."}
+//	audio:         {"type":"audio", "data":"base64...", "mimeType":"..."}
+//	resource:      {"type":"resource", "resource":{"uri":"...","mimeType":"...","text|blob":"..."}}
+//	resource_link: {"type":"resource_link", "uri":"...", "name":"...", "mimeType":"..."}
 type ToolContent struct {
 	Type string `json:"type"`
 	// Text is used for type "text".

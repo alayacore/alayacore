@@ -159,7 +159,7 @@ func Parse() *Settings {
 	terseIO := fs.Bool("terseio", false, "Read all stdin as one prompt or command; print only the final answer")
 	plainIO := fs.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")
 	debugLog := fs.String("debug-log", "", "Debug log `directory` (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging.")
-	configPath := fs.String("config-path", defaultConfigPath, "Config directory `path` (contains model.conf, runtime.conf, themes/)")
+	configPath := fs.String("config-path", defaultConfigPath, "Config directory `path` (contains model.conf, runtime.conf, mcp.conf, themes/)")
 	modelName := fs.String("model", "", "Model `name` to activate (must exist in model config; overrides runtime config)")
 	skill := &stringSlice{}
 	fs.Var(skill, "skill", "Skill `path` (can be specified multiple times)")
