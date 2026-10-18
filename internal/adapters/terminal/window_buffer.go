@@ -1145,17 +1145,6 @@ func (wb *WindowBuffer) findWindowAtLine(line int) int {
 	return len(wb.windows) - 1
 }
 
-// RenderWindowContent renders the content of a window (for testing).
-func (wb *WindowBuffer) RenderWindowContent(w *Window, innerWidth int) string {
-	if w.renderer == nil {
-		return ""
-	}
-	// Use BuildInner to get the rendered content lines — the body only,
-	// without the window's own line (row 0) that Render composes above it.
-	lines, _ := w.renderer.BuildInner(innerWidth, false, wb.styles)
-	return joinVisualLines(lines)
-}
-
 // parseHistoryID parses a history ID string (from the wire format) to uint64.
 // Returns 0 if the string is not a valid number.
 func parseHistoryID(id string) uint64 {

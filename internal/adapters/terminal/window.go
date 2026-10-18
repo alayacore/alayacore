@@ -394,36 +394,6 @@ func (w *Window) SetMarkdownDefault(on bool) {
 	w.cache.valid = false
 }
 
-// RawStatus returns the tool status for testing.
-func (w *Window) RawStatus() ToolStatus {
-	if tr, ok := w.renderer.(*toolRenderer); ok {
-		return tr.status
-	}
-	return ToolStatusNone
-}
-
-// RawToolName returns the tool name for testing.
-func (w *Window) RawToolName() string {
-	if tr, ok := w.renderer.(*toolRenderer); ok {
-		return tr.name
-	}
-	return ""
-}
-
-// RawTag returns the frame tag for testing.
-func (w *Window) RawTag() string {
-	return w.Tag()
-}
-
-// RawDelta returns the current tool delta buffer for testing.
-// Returns empty string for non-tool windows.
-func (w *Window) RawDelta() string {
-	if tr, ok := w.renderer.(*toolRenderer); ok {
-		return tr.deltaBuffer
-	}
-	return ""
-}
-
 // Render returns the window, using cache if valid.
 // When blocked is true, the content is rendered with dimmed colors.
 //
