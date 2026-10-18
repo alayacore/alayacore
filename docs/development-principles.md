@@ -219,6 +219,50 @@ keep working unchanged?** If not, the commit is not a refactor.
 The rule is not "write less" — this repo's comments explain *why*, and that is the
 point. It is "do not write the same thing twice".
 
+## Tests
+
+### A test that cannot fail is not a test
+
+A `Test…` function that asserts nothing — a body that only logs a measurement, or
+a doc comment wearing a test signature — costs CI time, buys nothing, and reads to
+the next person as coverage. Measurements belong in `*_bench_test.go`; a design
+note belongs in the type's doc comment or in `docs/`.
+
+### A skipped test is not a passing test
+
+There are two reasons to skip — the platform cannot run it, or a prerequisite
+outside the tree is absent — and both have to be visible where it matters. A skip
+that fires in CI is coverage disappearing silently: `go test ./...` runs without
+`-v`, so nothing says so. Every external tool the suite runs is therefore
+**declared in the workflow** (tmux for the replay test, ripgrep for
+`search_content`), and the test fails in CI when it is missing while still
+skipping on a developer's box (`requireRipgrep`, `screen_tmux_replay_test.go`).
+A precondition that quietly invalidates the property — a library that stops
+honoring the variable the test injects — fails for the same reason: the
+guarantee is untested, and saying so is the point.
+
+### Test order is not a contract
+
+The suite passes in any order, and the workflow says so with `-shuffle=on`. Two
+consequences for a test that touches process state. The fixture it reads is one it
+creates — `t.TempDir`, `t.Chdir`, `t.Setenv`, never the package directory, the
+real `$HOME`, or whatever `os.Args` was left as. And a global it must change is
+restored, or, when restoring is not enough because something caches the value on
+first read, **pinned before the window opens**: `currentUmask` reads the umask
+once, and a test that narrowed the umask inside that read latched it for the rest
+of the binary.
+
+### Price what the build can measure
+
+Allocation counts come from process-wide `runtime.MemStats`, and a `-race` build
+allocates on its own account mid-measurement. The cost tests therefore run in the
+plain build and skip under `-race` (`cost_gate_test.go`; the standard library
+makes the same split), and they compare **bounds and slopes**, never the equality
+of two truncated averages — a count one allocation above its twin is noise, not a
+regression. A symbol only a test calls lives beside the tests
+(`window_accessors_test.go` is the worked example), where it cannot be mistaken
+for the shipped surface.
+
 ## Releases
 
 A release note is written **from the tree**, and the tree is read first. Every

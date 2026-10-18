@@ -76,9 +76,9 @@ release-all:
 	CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le $(GOBUILD) $(BUILDTAGS) $(RELEASE_LDFLAGS) -o $(MAIN_BINARY)-linux-ppc64le .
 	CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(GOBUILD) $(BUILDTAGS) $(RELEASE_LDFLAGS) -o $(MAIN_BINARY)-linux-s390x .
 
-## test: Run all tests
+## test: Run all tests, in a shuffled order (the order CI uses)
 test:
-	$(GOTEST) -v ./...
+	$(GOTEST) -shuffle=on -v ./...
 
 ## test-coverage: Run tests with coverage
 test-coverage:
