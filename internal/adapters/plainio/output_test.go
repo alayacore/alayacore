@@ -138,11 +138,16 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 	o := &stdoutOutput{
 		writer: &buf,
 	}
-	commandNames.Store("p1", "save")
-	defer commandNames.Delete("p1")
+	// The id comes from the CI this adapter sent: a command's name is in the
+	// request, never in its result.
+	var ci bytes.Buffer
+	id, err := plainCommands.Write(&ci, ":save /tmp/x.alaya")
+	if err != nil {
+		t.Fatalf("send the CI the CO answers: %v", err)
+	}
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CommandID: "p1",
+		CommandID: id,
 		Result:    json.RawMessage(`{"path":"/tmp/x.alaya"}`),
 	})
 	o.Write(frameBytes(wire.TagCommandOut, string(payload)))
@@ -154,7 +159,7 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 	if strings.Contains(got, "Command completed") {
 		t.Errorf("generic confirmation should not appear for a known command, got %q", got)
 	}
-	if _, ok := commandNames.Load("p1"); ok {
+	if _, ok := plainCommands.Name(id); ok {
 		t.Error("command name mapping should be consumed after the CO arrives")
 	}
 }

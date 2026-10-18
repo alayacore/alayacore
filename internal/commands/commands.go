@@ -4,10 +4,10 @@
 // rawio clients use the same names when constructing CI frames.
 //
 // The agent owns command semantics and handlers (internal/agent/
-// command_registry.go); adapters use these names to build CI frames and
-// render CO results. Keeping the names here — instead of in protocol —
-// reflects that commands are session-domain vocabulary, not wire format:
-// the protocol only says a CI frame carries a name string, not which
+// command_registry.go); adapters use these names to build CI frames (Writer)
+// and render CO results (RenderResult). Keeping the names here — instead of in
+// protocol — reflects that commands are session-domain vocabulary, not wire
+// format: the protocol only says a CI frame carries a name string, not which
 // names are valid.
 package commands
 

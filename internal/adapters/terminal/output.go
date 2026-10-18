@@ -596,9 +596,8 @@ func (to *outputWriter) handleCommandOut(value string) {
 		to.dirty.Store(true)
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.CommandID)
-	nameStr, _ := name.(string)
-	text := commands.RenderResult(nameStr, msg.Result)
+	name, _ := tuiCommands.Name(msg.CommandID)
+	text := commands.RenderResult(name, msg.Result)
 	if text == "" {
 		// No text feedback needed — the command's UI effect (task stop,
 		// theme switch, status change, overlay close) is itself the

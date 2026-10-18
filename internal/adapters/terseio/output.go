@@ -243,9 +243,8 @@ func (o *answerOutput) handleCommandOut(value string) {
 		}
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.CommandID)
-	nameStr, _ := name.(string)
-	text := commands.RenderResult(nameStr, msg.Result)
+	name, _ := terseCommands.Name(msg.CommandID)
+	text := commands.RenderResult(name, msg.Result)
 	if text != "" {
 		fmt.Fprintf(o.stderr, "[%s]\n", text)
 	}

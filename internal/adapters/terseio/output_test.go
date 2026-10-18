@@ -9,7 +9,6 @@ import (
 
 	"github.com/alayacore/alayacore/internal/wiretest"
 
-	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/wire"
 )
@@ -49,6 +48,19 @@ func errorMsg(text string) []byte {
 		Data: json.RawMessage(fmt.Sprintf(`{"text":%q}`, text)),
 	})
 	return frameBytes(wire.TagSystemMsg, string(payload))
+}
+
+// sendCommand sends cmd through this adapter's CI writer and returns the id the
+// frame went out under — the only id a CO can carry, since the result names no
+// command of its own.
+func sendCommand(t *testing.T, cmd string) string {
+	t.Helper()
+	var ci bytes.Buffer
+	id, err := terseCommands.Write(&ci, cmd)
+	if err != nil {
+		t.Fatalf("send %q: %v", cmd, err)
+	}
+	return id
 }
 
 func newTestOutput() (*answerOutput, *bytes.Buffer, *bytes.Buffer) {
@@ -179,12 +191,10 @@ func TestTerseOutput_CommandError_GoesToStderrAndSetsExitCode(t *testing.T) {
 func TestTerseOutput_CommandSuccess_SaveRendered(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
-	// Correlate the CI the adapter sent: id → CommandNameSave. The id uses
-	// a prefix writeCommand never generates ("terse-N"), so it cannot
-	// collide with the package-global command tracking the input tests
-	// drive.
-	commandNames.Store("co-save", commands.CommandNameSave)
-	o.Write(cmdResultMsg("co-save", map[string]any{"path": "/tmp/x.alaya"}, false))
+	// The id comes from the CI this adapter sent: a command's name is in the
+	// request, never in its result.
+	id := sendCommand(t, ":save /tmp/x.alaya")
+	o.Write(cmdResultMsg(id, map[string]any{"path": "/tmp/x.alaya"}, false))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())
@@ -201,8 +211,8 @@ func TestTerseOutput_CommandSuccess_SelfEvidentSilent(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
 	// :continue — the final answer on stdout is the feedback, not the CO.
-	commandNames.Store("co-continue", commands.CommandNameContinue)
-	o.Write(cmdResultMsg("co-continue", map[string]any{"status": "started"}, false))
+	id := sendCommand(t, ":continue")
+	o.Write(cmdResultMsg(id, map[string]any{"status": "started"}, false))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())

@@ -3,11 +3,8 @@ package terseio
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
-	"sync"
-	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -19,35 +16,14 @@ import (
 // the exit code stays 0 (a clean exit, like EOF).
 var errQuitPrompt = errors.New("quit")
 
-// commandSeq generates unique command IDs for CI frames.
-var commandSeq atomic.Uint64
-
-// commandNames maps command IDs to command names, mirroring how tool
-// names are tracked from AF frames: the request carries the name, the
-// result (CO) carries only the ID, and the output adapter correlates them.
-var commandNames sync.Map // id → command name
-
-// writeCommand sends a colon-command (e.g. ":save /tmp/x") as a CI frame.
-// The adapter translates the human-facing text into {command_id, name, args}.
-// The name/args split happens at the FIRST whitespace (space, tab, or
-// newline) — unlike plainio (line-based, splits at " "), terseio's input
-// can span multiple lines, so the whole stdin after ":" is the command
-// and a newline is just another separator.
-func writeCommand(input io.Writer, cmd string) error {
-	name, args := commands.SplitCommand(cmd)
-	name = commands.Canonical(name)
-	id := fmt.Sprintf("terse-%d", commandSeq.Add(1))
-	payload, err := json.Marshal(protocol.CmdMsg{
-		CommandID: id,
-		Name:      name,
-		Args:      args,
-	})
-	if err != nil {
-		return err
-	}
-	commandNames.Store(id, name)
-	return wire.WriteFrame(input, wire.TagCommandIn, string(payload))
-}
+// terseCommands is this adapter's CI writer: a typed command becomes a frame
+// here, and the output side reads that command's name back when its CO arrives
+// (output.go), since a CO carries only the id. See commands.Writer.
+//
+// The name/args split happens at the FIRST whitespace (space, tab, newline), the
+// same rule plainio's line-based reader gets: terseio's input can span several
+// lines, so a newline is just another separator rather than the end of a prompt.
+var terseCommands = commands.NewWriter("terse")
 
 // readAllPrompt reads the entire reader and emits it as ONE frame:
 //   - stdin starting with ":" (after trimming trailing newlines) is sent
@@ -76,10 +52,11 @@ func readAllPrompt(input io.Writer, reader io.Reader) error {
 	}
 	if strings.HasPrefix(text, ":") {
 		if text == ":quit" || text == ":q" {
-			_ = writeCommand(input, "quit") // best effort: the session may be gone
+			_, _ = terseCommands.Write(input, "quit") // best effort: the session may be gone
 			return errQuitPrompt
 		}
-		return writeCommand(input, strings.TrimPrefix(text, ":"))
+		_, cmdErr := terseCommands.Write(input, text)
+		return cmdErr
 	}
 	body, err := json.Marshal(protocol.ContentData{ContentItem: protocol.ContentItem{Type: protocol.TypeText, Text: text}})
 	if err != nil {

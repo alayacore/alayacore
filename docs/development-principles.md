@@ -89,8 +89,9 @@ internal/lines/     ← splitting a byte stream into lines (the frame boundary)
 internal/sse/       ← reading Server-Sent Events from a stream (both the
                       provider decoders and the MCP HTTP transport)
 internal/theme/     ← Theme data structures (shared with adapters)
-internal/commands/  ← Command name constants (CI/CO vocabulary) and the one
-                      renderer for a command's result
+internal/commands/  ← Command name constants (CI/CO vocabulary), the writer an
+                      adapter sends a CI frame through, and the renderer for a
+                      command's CO result
 internal/config/    ← Key-value parsing primitives, CLI Settings (no domain types)
 internal/agent/     ← Domain types: modelConfig, runtimeConfig, and the two
                       theme SM payloads (see internal/protocol/sm.go)

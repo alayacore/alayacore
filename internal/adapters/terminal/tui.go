@@ -15,8 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/app"
@@ -32,32 +30,10 @@ import (
 // Command transmission — CI frames
 // ============================================================================
 
-// commandSeq generates unique command IDs for CI frames.
-var commandSeq atomic.Uint64
-
-// commandNames maps command IDs to command names, mirroring how tool
-// names are tracked from AF frames: the request carries the name, the
-// result (CO) carries only the ID, and the adapter correlates them.
-var commandNames sync.Map // id → command name
-
-// writeCommand sends a colon-command (e.g. ":save /tmp/x") to the session as
-// a CI (Command Input) frame. The adapter translates the human-facing text
-// into {command_id, name, args}; the session never sees colon-text anymore.
-func writeCommand(w io.Writer, cmd string) {
-	name, args := commands.SplitCommand(strings.TrimPrefix(cmd, ":"))
-	name = commands.Canonical(name)
-	id := fmt.Sprintf("tui-%d", commandSeq.Add(1))
-	payload, err := json.Marshal(protocol.CmdMsg{
-		CommandID: id,
-		Name:      name,
-		Args:      args,
-	})
-	if err != nil {
-		return
-	}
-	commandNames.Store(id, name)
-	_ = wire.WriteFrame(w, wire.TagCommandIn, string(payload))
-}
+// tuiCommands is this adapter's CI writer: the event loop sends a command through
+// it, and the output side reads that command's name back when its CO arrives
+// (output.go), since a CO carries only the id. See commands.Writer.
+var tuiCommands = commands.NewWriter("tui")
 
 // ============================================================================
 // Async Session Loading Messages
@@ -130,7 +106,7 @@ type openEditorForPromptMsg struct {
 // session may close the input stream at any time.
 func (m Terminal) emitCommand(cmd string) Cmd {
 	return func() Msg {
-		writeCommand(m.sessionPipe, cmd)
+		_, _ = tuiCommands.Write(m.sessionPipe, cmd)
 		return nil
 	}
 }

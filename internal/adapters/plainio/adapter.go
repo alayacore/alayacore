@@ -97,7 +97,8 @@ func (a *Adapter) Start() int {
 		if w == nil {
 			return errors.New("input stream not ready")
 		}
-		return writeCommand(w, cmd)
+		_, err := plainCommands.Write(w, cmd)
+		return err
 	}, output.printLine)
 	flow.SetUnresolved(unresolvedPolicy(output, interactive))
 	output.mcpAuthRequired = flow.Start

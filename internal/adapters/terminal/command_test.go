@@ -12,12 +12,12 @@ import (
 )
 
 // ============================================================================
-// writeCommand — CI frame construction
+// CI frame construction — commands.Writer, as this adapter uses it
 // ============================================================================
 
 func TestWriteCommand_CIFrame(t *testing.T) {
 	var buf bytes.Buffer
-	writeCommand(&buf, ":save /tmp/x.alaya")
+	tuiCommands.Write(&buf, ":save /tmp/x.alaya")
 
 	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
@@ -47,7 +47,7 @@ func TestWriteCommand_CIFrame(t *testing.T) {
 
 func TestWriteCommand_NoArgs(t *testing.T) {
 	var buf bytes.Buffer
-	writeCommand(&buf, ":cancel")
+	tuiCommands.Write(&buf, ":cancel")
 
 	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
@@ -67,7 +67,7 @@ func TestWriteCommand_NoArgs(t *testing.T) {
 
 func TestWriteCommand_CommandWithoutColon(t *testing.T) {
 	var buf bytes.Buffer
-	writeCommand(&buf, "model_set 3")
+	tuiCommands.Write(&buf, "model_set 3")
 
 	tag, value, err := wiretest.NextFrame(&buf)
 	if err != nil {
@@ -139,11 +139,17 @@ func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 
 func TestCommandOut_SuccessRendersByName(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	commandNames.Store("t1", "save")
-	defer commandNames.Delete("t1")
+
+	// The id comes from the CI this adapter sent, which is the only id a CO can
+	// name: a command's name is in the request, never in its result.
+	var ci bytes.Buffer
+	id, err := tuiCommands.Write(&ci, ":save /tmp/x.alaya")
+	if err != nil {
+		t.Fatalf("send the CI the CO answers: %v", err)
+	}
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CommandID: "t1",
+		CommandID: id,
 		Result:    mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
@@ -161,18 +167,23 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 		t.Errorf("generic confirmation should not appear for a known command, got %q", windows[0].RawContent())
 	}
 	// The id → name mapping is consumed by the CO.
-	if _, ok := commandNames.Load("t1"); ok {
+	if _, ok := tuiCommands.Name(id); ok {
 		t.Error("command name mapping should be consumed after the CO arrives")
 	}
 }
 
 func TestCommandOut_UnknownCommandSilent(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
-	commandNames.Store("t2", "some_new_command")
-	defer commandNames.Delete("t2")
+
+	// A command this build does not know renders nothing, whatever it returns.
+	var ci bytes.Buffer
+	id, err := tuiCommands.Write(&ci, ":some_new_command")
+	if err != nil {
+		t.Fatalf("send the CI the CO answers: %v", err)
+	}
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CommandID: "t2",
+		CommandID: id,
 		Result:    mustRaw(`{"foo":"bar"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {

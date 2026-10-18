@@ -89,8 +89,8 @@ func TestReadAllPrompt_Command(t *testing.T) {
 		t.Errorf("cmd.CommandID = %q, want terse- prefix", cmd.CommandID)
 	}
 	// The adapter must track the id → name mapping for CO correlation.
-	if name, ok := commandNames.Load(cmd.CommandID); !ok || name != commands.CommandNameSave {
-		t.Errorf("commandNames[%q] = %v, %v; want %q, true", cmd.CommandID, name, ok, commands.CommandNameSave)
+	if name, ok := terseCommands.Name(cmd.CommandID); !ok || name != commands.CommandNameSave {
+		t.Errorf("Name(%q) = %v, %v; want %q, true", cmd.CommandID, name, ok, commands.CommandNameSave)
 	}
 }
 

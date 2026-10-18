@@ -220,11 +220,10 @@ func (o *stdoutOutput) handleCommandOut(value string) {
 		}
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.CommandID)
-	nameStr, _ := name.(string)
+	name, _ := plainCommands.Name(msg.CommandID)
 	o.lastTag = ""
 	o.lastHistoryID = ""
-	text := commands.RenderResult(nameStr, msg.Result)
+	text := commands.RenderResult(name, msg.Result)
 	if text == "" {
 		// No text feedback needed — the command's effect (task stop,
 		// status change) is itself the confirmation. Stay silent.

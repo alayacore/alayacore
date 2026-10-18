@@ -4,11 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
-	"sync"
-	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/protocol"
@@ -21,31 +18,10 @@ import (
 // code — unlike a stdin read error (code 1).
 var errQuitPrompt = errors.New("quit")
 
-// commandSeq generates unique command IDs for CI frames.
-var commandSeq atomic.Uint64
-
-// commandNames maps command IDs to command names, mirroring how tool
-// names are tracked from AF frames: the request carries the name, the
-// result (CO) carries only the ID, and the adapter correlates them.
-var commandNames sync.Map // id → command name
-
-// writeCommand sends a colon-command (e.g. ":save /tmp/x") as a CI frame.
-// The adapter translates the human-facing text into {command_id, name, args}.
-func writeCommand(input io.Writer, cmd string) error {
-	name, args := commands.SplitCommand(strings.TrimPrefix(cmd, ":"))
-	name = commands.Canonical(name)
-	id := fmt.Sprintf("plain-%d", commandSeq.Add(1))
-	payload, err := json.Marshal(protocol.CmdMsg{
-		CommandID: id,
-		Name:      name,
-		Args:      args,
-	})
-	if err != nil {
-		return err
-	}
-	commandNames.Store(id, name)
-	return wire.WriteFrame(input, wire.TagCommandIn, string(payload))
-}
+// plainCommands is this adapter's CI writer: a typed line becomes a frame here,
+// and the output side reads that command's name back when its CO arrives
+// (output.go), since a CO carries only the id. See commands.Writer.
+var plainCommands = commands.NewWriter("plain")
 
 // readPrompts reads lines from stdin and emits them as frames.
 // Lines ending with `\` are continued on the next line (backslash-escaped newline).
@@ -100,7 +76,7 @@ func readPrompts(input io.Writer, reader io.Reader) error {
 		// session is the session's decision (it knows whether a task is
 		// still running); the exit code stays the adapter's (0).
 		if text == ":quit" || text == ":q" {
-			_ = writeCommand(input, "quit") // best effort: the session may be gone
+			_, _ = plainCommands.Write(input, "quit") // best effort: the session may be gone
 			return errQuitPrompt
 		}
 
@@ -116,7 +92,8 @@ func readPrompts(input io.Writer, reader io.Reader) error {
 // MCP init. Returns the first write error, if any.
 func sendPrompt(input io.Writer, text string) error {
 	if strings.HasPrefix(text, ":") {
-		return writeCommand(input, text)
+		_, err := plainCommands.Write(input, text)
+		return err
 	}
 	body, err := json.Marshal(protocol.ContentData{ContentItem: protocol.ContentItem{Type: protocol.TypeText, Text: text}})
 	if err != nil {

@@ -238,7 +238,7 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 		// A template this build cannot fill is a bug in the session: report it
 		// and decline this server, keeping the rest of init intact.
 		cleanup()
-		writeCommand(m.sessionPipe, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
+		_, _ = tuiCommands.Write(m.sessionPipe, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
 		return func() Msg { return displayErrorMsg{message: err.Error()} }
 	}
 
@@ -271,7 +271,7 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 					// Decline only this server — keeps the rest of MCP
 					// init (and any other servers' authorizations) intact,
 					// mirroring the plainio adapter.
-					writeCommand(sessionPipe, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
+					_, _ = tuiCommands.Write(sessionPipe, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
 					return displayErrorMsg{
 						message: fmt.Sprintf("MCP auth callback error: %v", res.Err),
 					}
@@ -280,7 +280,7 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 				if res.Iss != "" {
 					cmd += " " + res.Iss
 				}
-				writeCommand(sessionPipe, cmd)
+				_, _ = tuiCommands.Write(sessionPipe, cmd)
 				return nil
 			case <-time.After(mcpAuthTimeout):
 				cleanup()

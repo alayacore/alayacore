@@ -63,7 +63,8 @@ func (a *Adapter) Start() int {
 		if w == nil {
 			return errors.New("input stream not ready")
 		}
-		return writeCommand(w, cmd)
+		_, err := terseCommands.Write(w, cmd)
+		return err
 	}, output.diagnostic)
 	// No interactive channel: leave the flow's default Unresolved policy in
 	// place (decline a server whose automatic authorization fails), so a
