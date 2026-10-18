@@ -30,6 +30,13 @@ func (m *mockProvider) StreamMessages(
 func (m *mockProvider) SetReasoningLevel(_ int)                       {}
 func (m *mockProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
+// TestAgentSystemPromptSeparation: the identity prompt and the user's extra
+// system prompts stay two values on the way to a provider, never one string.
+// A provider may send them as two array items (Anthropic's "system": [{"type":
+// "text"...}, …]; OpenAI's two {"role":"system"} messages), which is what keeps
+// each cacheable on its own key and keeps the default prompt out of what a
+// --system flag adds. What this test can pin is where the adapter hands them
+// over; a provider's request shape is asserted in internal/llm/providers.
 func TestAgentSystemPromptSeparation(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -88,32 +95,4 @@ func TestAgentSystemPromptSeparation(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestProviderSystemMessageArray documents that providers should send
-// system messages as separate array items, not merged into one string
-func TestProviderSystemMessageArray(_ *testing.T) {
-	// This test documents the expected behavior for provider implementations:
-	//
-	// Anthropic API format:
-	// {
-	//   "system": [
-	//     {"type": "text", "text": "IDENTITY: ..."},
-	//     {"type": "text", "text": "Extra 1\n\nExtra 2"}
-	//   ]
-	// }
-	//
-	// OpenAI API format:
-	// {
-	//   "messages": [
-	//     {"role": "system", "content": "IDENTITY: ..."},
-	//     {"role": "system", "content": "Extra 1\n\nExtra 2"},
-	//     {"role": "user", "content": "..."}
-	//   ]
-	// }
-	//
-	// This allows:
-	// 1. Better API cache efficiency (separate cache keys for each system message)
-	// 2. Proper separation of default prompt from user-provided extras
-	// 3. Multiple --system flags are merged with "\n\n" but kept separate from default
 }

@@ -142,3 +142,52 @@ func TestIncrementalMatchesFullRewrap(t *testing.T) {
 		})
 	}
 }
+
+// TestIncrementalPathIsUsed verifies that the incremental append path
+// actually fires during streaming. If TryLineCount returns false after
+// a delta append, the fast path is broken and every streaming frame
+// triggers a full O(n) re-wrap.
+func TestIncrementalPathIsUsed(t *testing.T) {
+	styles := NewStyles(theme.DefaultTheme())
+	wb := NewWindowBuffer(80, styles)
+
+	// Create a streaming window with initial content
+	wb.AppendOrUpdate("AT", "stream", "This is some initial content that will be wrapped.")
+	wb.SetViewportPosition(0, 30)
+
+	// First render populates wrappedLines in the textRenderer
+	_ = wb.GetTotalLines()
+	_ = wb.GetAll(-1, false)
+
+	// Find the window and verify the renderer is a textRenderer
+	idx, ok := wb.idIndex["stream"]
+	if !ok {
+		t.Fatal("stream window not found")
+	}
+	tr, ok := wb.windows[idx].renderer.(*textRenderer)
+	if !ok {
+		t.Fatal("stream window should have textRenderer")
+	}
+	if len(tr.wrappedLines) == 0 {
+		t.Fatal("wrappedLines should be populated after first render")
+	}
+
+	// Append a delta — this should use the incremental path,
+	// keeping wrappedLines populated for TryLineCount.
+	wb.AppendOrUpdate("AT", "stream", " more content")
+
+	// TryLineCount should return a valid count without full render
+	lc, ok := tr.TryLineCount(80)
+	if !ok {
+		t.Fatal("TryLineCount returned false after incremental append — incremental path is broken")
+	}
+	if lc < 1 {
+		t.Fatal("TryLineCount returned invalid line count")
+	}
+
+	// Verify the window is still at a reasonable height
+	totalLines := wb.GetTotalLines()
+	if totalLines < 1 {
+		t.Fatal("totalLines should be > 0 after append")
+	}
+}
