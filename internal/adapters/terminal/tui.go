@@ -357,18 +357,28 @@ type attachment struct {
 	isURL bool   // true if it's a URL (sent as-is, no file reading)
 }
 
-// NewTerminalWithTheme creates a new Terminal model with a custom theme.
-// themeName is the name of the initial theme (used for tracking session-driven theme changes).
-func NewTerminalWithTheme(
-	out OutputWriter,
-	inputWriter io.WriteCloser,
-	appCfg *app.Config,
-	initialWidth, initialHeight int,
-	theme *theme.Theme,
-	themeManager *theme.Manager,
-	themeName string,
-) Terminal {
-	styles := NewStyles(theme)
+// Options is everything the TUI needs before it can draw: where its output and
+// its frames go, the session settings it mirrors, the screen it starts on, and the
+// theme it draws in.
+//
+// A struct rather than a parameter list because that list had grown to eight
+// values, two of them an adjacent pair of ints — a caller could swap the width and
+// the height, and every one of those eight positions had to be remembered.
+type Options struct {
+	Out       OutputWriter   // session output, parsed into windows as it arrives
+	Input     io.WriteCloser // frames to the session
+	AppConfig *app.Config    // session settings this UI mirrors; nil in tests
+
+	Width, Height int // initial screen size, in cells
+
+	Theme        *theme.Theme   // the theme to start in
+	ThemeManager *theme.Manager // prepares the themes folder; nil when themes are not in play
+	ThemeName    string         // the name Theme was loaded as
+}
+
+// NewTerminal builds the root model. It does not draw: Run does.
+func NewTerminal(opts Options) Terminal {
+	styles := NewStyles(opts.Theme)
 
 	editor := NewEditor()
 
@@ -380,13 +390,13 @@ func NewTerminalWithTheme(
 	attachmentOverlay := NewAttachmentOverlay(styles)
 
 	m := Terminal{
-		out:               out,
-		sessionPipe:       inputWriter,
-		appConfig:         appCfg,
+		out:               opts.Out,
+		sessionPipe:       opts.Input,
+		appConfig:         opts.AppConfig,
 		editor:            editor,
-		display:           NewDisplayModel(out.WindowBuffer(), styles),
+		display:           NewDisplayModel(opts.Out.WindowBuffer(), styles),
 		promptBox:         NewPromptInput(styles),
-		themeManager:      themeManager,
+		themeManager:      opts.ThemeManager,
 		modelSelector:     modelSelector,
 		themeSelector:     themeSelector,
 		helpOverlay:       helpOverlay,
@@ -394,24 +404,24 @@ func NewTerminalWithTheme(
 		mcpInitOverlay:    mcpInitOverlay,
 		attachmentOverlay: attachmentOverlay,
 		focusedWindow:     focusPrompt,
-		screenWidth:       initialWidth,
-		screenHeight:      initialHeight,
+		screenWidth:       opts.Width,
+		screenHeight:      opts.Height,
 		styles:            styles,
 		hasFocus:          true,
-		activeTheme:       themeName,
-		appliedTheme:      themeName,
+		activeTheme:       opts.ThemeName,
+		appliedTheme:      opts.ThemeName,
 	}
 
 	// Initialize component sizes
-	m.promptBox = m.promptBox.WithWidth(initialWidth)
-	m = m.updateComponentSizes(initialWidth, initialHeight)
+	m.promptBox = m.promptBox.WithWidth(opts.Width)
+	m = m.updateComponentSizes(opts.Width, opts.Height)
 	m = m.updateDisplayHeight()
 
 	// Apply the CLI default for markdown rendering to new assistant
 	// text windows (--no-markdown turns it off; per-window 'r' toggling
 	// is unaffected). Tests pass a nil appCfg — keep the built-in default.
-	if appCfg != nil && appCfg.Cfg != nil {
-		out.WindowBuffer().SetMarkdownDefault(!appCfg.Cfg.NoMarkdown)
+	if opts.AppConfig != nil && opts.AppConfig.Cfg != nil {
+		opts.Out.WindowBuffer().SetMarkdownDefault(!opts.AppConfig.Cfg.NoMarkdown)
 	}
 
 	return m

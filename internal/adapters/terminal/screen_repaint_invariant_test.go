@@ -70,7 +70,11 @@ func newFrameHarness(t *testing.T, width, height int) *frameHarness {
 	t.Helper()
 	h := &frameHarness{t: t, width: width, height: height, sink: &bytes.Buffer{}}
 	out := NewTerminalOutput(DefaultStyles())
-	m := NewTerminalWithTheme(out, nopWriteCloser{}, nil, width, height, theme.DefaultTheme(), nil, "theme-dark")
+	m := NewTerminal(Options{
+		Out: out, Input: nopWriteCloser{},
+		Width: width, Height: height,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 	m.out.SetScreenWidth(width)
 	mm, _ := m.Update(ScreenSizeMsg{Width: width, Height: height})
 	h.m = mm.(Terminal)

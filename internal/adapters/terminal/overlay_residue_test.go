@@ -22,7 +22,11 @@ import (
 // the old assistant line) must not survive.
 func TestOverlayResidueFoldedOverContent(t *testing.T) {
 	const W = 137
-	m := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, &app.Config{}, W, 24, theme.DefaultTheme(), nil, "theme-dark")
+	m := NewTerminal(Options{
+		Out: NewTerminalOutput(DefaultStyles()), Input: nopWriteCloser{}, AppConfig: &app.Config{},
+		Width: W, Height: 24,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 	m.out.SetScreenWidth(W)
 	mm, _ := m.Update(ScreenSizeMsg{Width: W, Height: 24})
 	m = mm.(Terminal)

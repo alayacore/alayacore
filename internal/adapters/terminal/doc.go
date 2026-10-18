@@ -63,6 +63,10 @@
 //
 // Usage:
 //
-//	terminal := NewTerminal(output, input, config, width, height)
+//	terminal := NewTerminal(Options{
+//		Out: output, Input: input, AppConfig: config,
+//		Width: width, Height: height,
+//		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+//	})
 //	finalModel, err := Run(terminal)
 package terminal

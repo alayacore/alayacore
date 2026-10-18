@@ -10,7 +10,6 @@ import (
 	"github.com/alayacore/alayacore/internal/wiretest"
 
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/theme"
 	"github.com/alayacore/alayacore/internal/wire"
 )
 
@@ -19,7 +18,7 @@ func visibleLength(s string) int {
 }
 
 func TestCtrlOOpensEditor(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 
 	msg := KeyPressMsg(Key{
 		Code: 'o',
@@ -38,7 +37,7 @@ func TestCtrlOOpensEditor(t *testing.T) {
 }
 
 func TestCtrlOWithExistingContent(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue("existing input text")
 
 	msg := KeyPressMsg(Key{
@@ -63,7 +62,7 @@ func TestCtrlOWithExistingContent(t *testing.T) {
 }
 
 func TestEditorFinishedMsg(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 
 	msg := EditorFinishedMsg{
 		Action:  EditorActionUpdateInput,
@@ -85,7 +84,7 @@ func TestEditorFinishedMsg(t *testing.T) {
 }
 
 func TestEditorFinishedMsgWithWhitespace(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 
 	msg := EditorFinishedMsg{
 		Action:  EditorActionUpdateInput,
@@ -107,7 +106,7 @@ func TestEditorFinishedMsgWithWhitespace(t *testing.T) {
 }
 
 func TestEditorFinishedMsgWithMultipleTrailingNewlines(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 
 	msg := EditorFinishedMsg{
 		Action:  EditorActionUpdateInput,
@@ -129,7 +128,7 @@ func TestEditorFinishedMsgWithMultipleTrailingNewlines(t *testing.T) {
 }
 
 func TestEditorFinishedMsgMultiline(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 
 	msg := EditorFinishedMsg{
 		Action:  EditorActionUpdateInput,
@@ -151,7 +150,7 @@ func TestEditorFinishedMsgMultiline(t *testing.T) {
 }
 
 func TestEditorFinishedMsgWithError(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue("original content")
 
 	msg := EditorFinishedMsg{
@@ -333,7 +332,7 @@ func TestWrapContentPreservesANSI(t *testing.T) {
 }
 
 func TestCtrlCClearsInput(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue("test input text")
 
 	// Press Ctrl+C while in input window
@@ -360,7 +359,7 @@ func TestCtrlCClearsInput(t *testing.T) {
 }
 
 func TestCtrlCInDisplayWindow(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue("test input text")
 
 	// Press Ctrl+C while in display window
@@ -387,7 +386,7 @@ func TestCtrlCInDisplayWindow(t *testing.T) {
 }
 
 func TestCtrlGTriggersCancel(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue("test input text")
 
 	// Press Ctrl+G (should work regardless of focus)
@@ -436,7 +435,7 @@ func TestCtrlGTriggersCancel(t *testing.T) {
 }
 
 func TestCtrlUClearsInput(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue("test input text")
 
 	// Press Ctrl+U while in input window
@@ -673,7 +672,7 @@ func TestWindowBufferWidthMatchesInput(t *testing.T) {
 }
 
 func TestEKeyOpensDisplayWindowInEditor(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal = terminal.focusDisplay()
 
 	// Add a window with content
@@ -699,7 +698,7 @@ func TestEKeyOpensDisplayWindowInEditor(t *testing.T) {
 }
 
 func TestEKeyDoesNothingWithNoWindow(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal = terminal.focusDisplay()
 
 	// No windows in buffer
@@ -722,7 +721,7 @@ func TestEKeyDoesNothingWithNoWindow(t *testing.T) {
 }
 
 func TestEKeyDoesNothingInInputWindow(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal = terminal.focusPrompt()
 
 	// Add a window with content
@@ -748,7 +747,7 @@ func TestEKeyDoesNothingInInputWindow(t *testing.T) {
 }
 
 func TestDisplayEditorFinishedDoesNotPopulateInput(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue("original input")
 
 	// Simulate display editor finishing (user viewed content, then quit)
@@ -768,7 +767,7 @@ func TestDisplayEditorFinishedDoesNotPopulateInput(t *testing.T) {
 }
 
 func TestDisplayEditorFinishedWithError(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue("original input")
 
 	// Simulate display editor finishing with error
@@ -842,7 +841,7 @@ func TestGetWindowContentRegular(t *testing.T) {
 // the terminal acts on it as "go to column 0", painting the rest of the line over
 // the start of another one.
 func TestEditorBufferLandsAsNewlines(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 
 	model, _ := terminal.Update(EditorFinishedMsg{
 		Action:  EditorActionUpdateInput,

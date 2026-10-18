@@ -62,7 +62,11 @@ func TestViewAlwaysFillsScreen(t *testing.T) {
 			}
 			out.FlushPendingDeltas()
 
-			m := NewTerminalWithTheme(out, nopWriteCloser{}, &app.Config{}, tc.width, tc.height, theme.DefaultTheme(), nil, "theme-dark")
+			m := NewTerminal(Options{
+				Out: out, Input: nopWriteCloser{}, AppConfig: &app.Config{},
+				Width: tc.width, Height: tc.height,
+				Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+			})
 			mm, _ := m.Update(ScreenSizeMsg{Width: tc.width, Height: tc.height})
 			m = mm.(Terminal)
 			for _, r := range tc.type_ {
@@ -116,7 +120,11 @@ func frameBaseRegion(content string, width int) (baseEnd, firstCUP int) {
 // tick. The diff parser relies on the view soft-wrapping to exactly the
 // screen height, so the test also locks the row count.
 func TestViewLoadingFullScreen(t *testing.T) {
-	m := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, &app.Config{}, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	m := NewTerminal(Options{
+		Out: NewTerminalOutput(DefaultStyles()), Input: nopWriteCloser{}, AppConfig: &app.Config{},
+		Width: 80, Height: 24,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 	m.loading = true
 	v := m.View()
 	if !v.FullScreen {

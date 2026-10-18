@@ -59,11 +59,16 @@ func (a *Adapter) Start() int {
 	// for the brief startup phase. The session will load all theme files
 	// exactly once via sendThemeListMsg() and broadcast the full data,
 	// which the adapter caches and applies when loading completes.
-	t := NewTerminalWithTheme(
-		terminalOutput, pipeWriter, a.Config,
-		initialWidth, initialHeight,
-		theme.DefaultTheme(), themeManager, defaultThemeName,
-	)
+	t := NewTerminal(Options{
+		Out:          terminalOutput,
+		Input:        pipeWriter,
+		AppConfig:    a.Config,
+		Width:        initialWidth,
+		Height:       initialHeight,
+		Theme:        theme.DefaultTheme(),
+		ThemeManager: themeManager,
+		ThemeName:    defaultThemeName,
+	})
 	t.loading = true // enter async loading mode
 	t.pipeReader = pipeReader
 

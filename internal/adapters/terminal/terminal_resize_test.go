@@ -12,7 +12,11 @@ func TestTerminalResizeWindowCursorValidation(t *testing.T) {
 	// Create a terminal with initial size
 	output := NewTerminalOutput(DefaultStyles())
 	input := nopWriteCloser{}
-	terminal := NewTerminalWithTheme(output, input, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := NewTerminal(Options{
+		Out: output, Input: input,
+		Width: 80, Height: 24,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 
 	// Add some windows to the buffer
 	output.windowBuffer.AppendOrUpdate(tagAssistantText, "window-1", "Content 1")
@@ -49,7 +53,11 @@ func TestTerminalResizeWindowCursorValidation(t *testing.T) {
 func TestTerminalResizeClampsWindowCursor(t *testing.T) {
 	output := NewTerminalOutput(DefaultStyles())
 	input := nopWriteCloser{}
-	terminal := NewTerminalWithTheme(output, input, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := NewTerminal(Options{
+		Out: output, Input: input,
+		Width: 80, Height: 24,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 
 	// Add windows
 	output.windowBuffer.AppendOrUpdate(tagAssistantText, "window-1", "Short")
@@ -88,7 +96,11 @@ func TestTerminalResizeUpdatesDisplayContent(t *testing.T) {
 	// Create a terminal with initial size
 	output := NewTerminalOutput(DefaultStyles())
 	input := nopWriteCloser{}
-	terminal := NewTerminalWithTheme(output, input, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := NewTerminal(Options{
+		Out: output, Input: input,
+		Width: 80, Height: 24,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 
 	// Add content that will wrap differently at different widths
 	longContent := "This is a long line of text that will wrap differently depending on the terminal width"

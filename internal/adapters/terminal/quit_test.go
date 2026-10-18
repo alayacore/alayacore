@@ -2,12 +2,10 @@ package terminal
 
 import (
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/theme"
 )
 
 func TestQuitCommandRequiresConfirm(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue(":q")
 
 	// Press Enter to submit the command
@@ -41,7 +39,7 @@ func TestQuitCommandRequiresConfirm(t *testing.T) {
 }
 
 func TestQuitCommandCanceledClearsInput(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue(":q")
 
 	// Press Enter to submit the command
@@ -75,7 +73,7 @@ func TestQuitCommandCanceledClearsInput(t *testing.T) {
 }
 
 func TestQuitCommandEscapeCancels(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue(":q")
 
 	// Press Enter to submit the command
@@ -109,7 +107,7 @@ func TestQuitCommandEscapeCancels(t *testing.T) {
 }
 
 func TestQuitCommandConfirmed(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue(":q")
 
 	// Press Enter to submit the command
@@ -147,7 +145,7 @@ func TestQuitCommandConfirmed(t *testing.T) {
 }
 
 func TestFullQuitCommandRequiresConfirm(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal.promptBox = terminal.promptBox.WithValue(":quit")
 
 	// Press Enter to submit the command

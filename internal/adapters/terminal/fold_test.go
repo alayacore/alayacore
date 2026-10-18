@@ -2,12 +2,10 @@ package terminal
 
 import (
 	"testing"
-
-	"github.com/alayacore/alayacore/internal/theme"
 )
 
 func TestSpaceKeyTogglesFold(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal = terminal.focusDisplay()
 
 	// Add a window with content that can be folded
@@ -55,7 +53,7 @@ func TestSpaceKeyTogglesFold(t *testing.T) {
 }
 
 func TestSpaceKeyDoesNothingInInputWindow(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal = terminal.focusPrompt()
 
 	// Add a window with content
@@ -80,7 +78,7 @@ func TestSpaceKeyDoesNothingInInputWindow(t *testing.T) {
 }
 
 func TestSpaceKeyDoesNothingWithNoWindow(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUI()
 	terminal = terminal.focusDisplay()
 
 	// No windows in buffer

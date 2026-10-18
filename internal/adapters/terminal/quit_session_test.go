@@ -37,7 +37,11 @@ func (c *captureWriteCloser) Close() error {
 func quitConfirmTerminal(t *testing.T) (Terminal, *captureWriteCloser) {
 	t.Helper()
 	cap := &captureWriteCloser{}
-	m := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), cap, nil, 80, 24, theme.DefaultTheme(), nil, "theme-dark")
+	m := NewTerminal(Options{
+		Out: NewTerminalOutput(DefaultStyles()), Input: cap,
+		Width: 80, Height: 24,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 	m.promptBox = m.promptBox.WithValue(":q")
 	m = m.focusPrompt()
 

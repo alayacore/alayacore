@@ -255,7 +255,11 @@ func TestMarkdownModeTailTransition(t *testing.T) {
 // text windows start in raw mode while per-window toggling still works.
 func TestNoMarkdownFlagDefaultOff(t *testing.T) {
 	appCfg := &app.Config{Cfg: &config.Settings{NoMarkdown: true}}
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, appCfg, 120, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := NewTerminal(Options{
+		Out: NewTerminalOutput(DefaultStyles()), Input: nopWriteCloser{}, AppConfig: appCfg,
+		Width: 120, Height: 24,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 	terminal = terminal.focusDisplay()
 	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", mdTableContent)
 	terminal.display = terminal.display.WithWindowCursor(0)
@@ -272,7 +276,7 @@ func TestNoMarkdownFlagDefaultOff(t *testing.T) {
 }
 
 func TestRKeyTogglesMarkdownMode(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 120, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUIWide()
 	terminal = terminal.focusDisplay()
 	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", mdTableContent)
 	terminal.display = terminal.display.WithWindowCursor(0)
@@ -308,7 +312,7 @@ func TestRKeyTogglesMarkdownMode(t *testing.T) {
 // TestRKeyNoopWhenFolded verifies r does nothing on a folded window
 // (markdown state is unchanged).
 func TestRKeyNoopWhenFolded(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 120, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUIWide()
 	terminal = terminal.focusDisplay()
 	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", mdTableContent)
 	terminal.display = terminal.display.WithWindowCursor(0)
@@ -327,7 +331,7 @@ func TestRKeyNoopWhenFolded(t *testing.T) {
 
 // TestRKeyNoopOnNonTextWindow verifies r does nothing on tool windows.
 func TestRKeyNoopOnNonTextWindow(t *testing.T) {
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 120, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := testTUIWide()
 	terminal = terminal.focusDisplay()
 	terminal.out.WindowBuffer().HandleToolInputEvent(protocol.ToolInputData{CallID: "tool1", Name: "read_file", Input: json.RawMessage(`{"path":"x"}`)}, 1)
 	terminal.display = terminal.display.WithWindowCursor(0)

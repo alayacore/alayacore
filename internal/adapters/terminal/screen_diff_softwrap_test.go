@@ -58,7 +58,11 @@ func TestRealAppWrappedLineContinuity(t *testing.T) {
 	const width = 60
 
 	out := NewTerminalOutput(DefaultStyles())
-	terminal := NewTerminalWithTheme(out, nopWriteCloser{}, nil, width, 24, theme.DefaultTheme(), nil, "theme-dark")
+	terminal := NewTerminal(Options{
+		Out: out, Input: nopWriteCloser{},
+		Width: width, Height: 24,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 	terminal.out.SetScreenWidth(width)
 
 	writeTool := func(command string, unfold bool) string {

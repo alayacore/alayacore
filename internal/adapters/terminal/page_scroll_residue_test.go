@@ -20,7 +20,11 @@ import (
 // asserts the input box (and rows around it) carry no old content.
 func TestPageScrollNoResidueBelowDisplay(t *testing.T) {
 	const W, H = 100, 24
-	m := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, &app.Config{}, W, H, theme.DefaultTheme(), nil, "theme-dark")
+	m := NewTerminal(Options{
+		Out: NewTerminalOutput(DefaultStyles()), Input: nopWriteCloser{}, AppConfig: &app.Config{},
+		Width: W, Height: H,
+		Theme: theme.DefaultTheme(), ThemeName: "theme-dark",
+	})
 	m.out.SetScreenWidth(W)
 	mm, _ := m.Update(ScreenSizeMsg{Width: W, Height: H})
 	m = mm.(Terminal)
