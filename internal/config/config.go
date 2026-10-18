@@ -146,48 +146,89 @@ type Settings struct {
 	NoMarkdown bool // If true, new assistant text windows start in raw mode ('r' still toggles per window)
 }
 
+// flagValues holds what each flag was bound to. Parse fills them from the command
+// line; registering them is registerFlags' job, and that split is what lets
+// FlagNames answer "what does this program accept" without parsing anything.
+type flagValues struct {
+	showVersion, rawIO, terseIO, plainIO *bool
+	debugLog, configPath, modelName      *string
+	skill                                *stringSlice
+	session, proxy                       *string
+	systemPrompt                         *stringSlice
+	maxSteps, autoSummarize              *int
+	toolConfirm                          *string
+	noDelta, noMarkdown                  *bool
+	commandTimeout, reasoningLevel       *int
+}
+
+// registerFlags registers every flag this program accepts on fs and returns the
+// values it bound them to.
+//
+// One place registers, and FlagNames asks this same function rather than keeping a
+// list: the names a page may use are then the names the command line answers to,
+// with no second copy to drift. misc/check-doc-flags.go is FlagNames' only caller
+// (check-docs.sh, class 5).
+func registerFlags(fs *flag.FlagSet) *flagValues {
+	f := &flagValues{
+		skill:        &stringSlice{},
+		systemPrompt: &stringSlice{},
+	}
+
+	// Core
+	f.showVersion = fs.Bool("version", false, "Show version information")
+	f.rawIO = fs.Bool("rawio", false, "Use raw frame stdin/stdout mode instead of terminal UI (pipe frames directly)")
+	f.terseIO = fs.Bool("terseio", false, "Read all stdin as one prompt or command; print only the final answer")
+	f.plainIO = fs.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")
+	f.debugLog = fs.String("debug-log", "", "Debug log `directory` (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging.")
+	// The default is pre-computed so it appears in --help output.
+	f.configPath = fs.String("config-path", defaultConfigDir(), "Config directory `path` (contains model.conf, runtime.conf, mcp.conf, themes/)")
+	f.modelName = fs.String("model", "", "Model `name` to activate (must exist in model config; overrides runtime config)")
+	fs.Var(f.skill, "skill", "Skill `path` (can be specified multiple times)")
+	f.session = fs.String("session", "", "Session file `path` to load/save conversations")
+
+	// I/O
+	f.proxy = fs.String("proxy", "", "HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)")
+
+	// Agent behavior
+	fs.Var(f.systemPrompt, "system", "Extra `system-prompt` (can be specified multiple times, will be appended to default)")
+	f.maxSteps = fs.Int("max-steps", defaultMaxSteps, "Maximum agent loop steps (0 = no limit)")
+	f.autoSummarize = fs.Int("auto-summarize", 0, "Enable auto-summarization at given threshold percentage (e.g. --auto-summarize=65, 0 = disabled)")
+	f.toolConfirm = fs.String("tool-confirm", "", "Comma-separated tool `names` requiring user confirmation (e.g. execute_command,search_content)")
+	f.noDelta = fs.Bool("no-delta", false, "Disable the streaming delta frames (Ax, Af, Uf); use complete frames only")
+	f.noMarkdown = fs.Bool("no-markdown", false, "Disable markdown rendering by default (new assistant text windows start raw; 'r' still toggles per window)")
+	fs.String("builtin-tools", "", "Comma-separated built-in tool `names` to enable (empty = no builtin tools, unspecified = all tools)")
+	f.commandTimeout = fs.Int("command-timeout", 0,
+		"Maximum duration in seconds for shell command execution (0 = no limit)")
+	f.reasoningLevel = fs.Int("reasoning-level", DefaultReasoningLevel,
+		"Startup reasoning `level` (0=off, 1=normal, 2=max); explicit values override the session file's saved reasoning_level")
+
+	return f
+}
+
+// FlagNames returns every flag this program accepts, in registration order.
+//
+// It builds the set and asks it rather than listing the names: a flag added to
+// registerFlags is docable the same day, a flag removed there is a finding the same
+// day, and there is no second list for either to disagree with.
+func FlagNames() []string {
+	fs := flag.NewFlagSet("alayacore", flag.ContinueOnError)
+	registerFlags(fs)
+	names := make([]string, 0, 24)
+	fs.VisitAll(func(f *flag.Flag) { names = append(names, f.Name) })
+	return names
+}
+
 // Parse parses CLI flags and returns settings
 func Parse() *Settings {
 	fs := newFlagSet()
-
-	// Pre-compute default paths so they appear in --help output
-	defaultConfigPath := defaultConfigDir()
-
-	// Core
-	showVersion := fs.Bool("version", false, "Show version information")
-	rawIO := fs.Bool("rawio", false, "Use raw frame stdin/stdout mode instead of terminal UI (pipe frames directly)")
-	terseIO := fs.Bool("terseio", false, "Read all stdin as one prompt or command; print only the final answer")
-	plainIO := fs.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")
-	debugLog := fs.String("debug-log", "", "Debug log `directory` (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging.")
-	configPath := fs.String("config-path", defaultConfigPath, "Config directory `path` (contains model.conf, runtime.conf, mcp.conf, themes/)")
-	modelName := fs.String("model", "", "Model `name` to activate (must exist in model config; overrides runtime config)")
-	skill := &stringSlice{}
-	fs.Var(skill, "skill", "Skill `path` (can be specified multiple times)")
-	session := fs.String("session", "", "Session file `path` to load/save conversations")
-
-	// I/O
-	proxy := fs.String("proxy", "", "HTTP proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080)")
-
-	// Agent behavior
-	systemPrompt := &stringSlice{}
-	fs.Var(systemPrompt, "system", "Extra `system-prompt` (can be specified multiple times, will be appended to default)")
-	maxSteps := fs.Int("max-steps", defaultMaxSteps, "Maximum agent loop steps (0 = no limit)")
-	autoSummarize := fs.Int("auto-summarize", 0, "Enable auto-summarization at given threshold percentage (e.g. --auto-summarize=65, 0 = disabled)")
-	toolConfirm := fs.String("tool-confirm", "", "Comma-separated tool `names` requiring user confirmation (e.g. execute_command,search_content)")
-	noDelta := fs.Bool("no-delta", false, "Disable the streaming delta frames (Ax, Af, Uf); use complete frames only")
-	noMarkdown := fs.Bool("no-markdown", false, "Disable markdown rendering by default (new assistant text windows start raw; 'r' still toggles per window)")
-	fs.String("builtin-tools", "", "Comma-separated built-in tool `names` to enable (empty = no builtin tools, unspecified = all tools)")
-	commandTimeout := fs.Int("command-timeout", 0,
-		"Maximum duration in seconds for shell command execution (0 = no limit)")
-	reasoningLevel := fs.Int("reasoning-level", DefaultReasoningLevel,
-		"Startup reasoning `level` (0=off, 1=normal, 2=max); explicit values override the session file's saved reasoning_level")
+	f := registerFlags(fs)
 
 	// ExitOnError handling: parse errors (and --help) exit inside Parse,
 	// so the returned error is never non-nil.
 	_ = fs.Parse(os.Args[1:])
 
 	// Derive config file paths from config directory
-	cp := *configPath
+	cp := *f.configPath
 
 	// Detect if --builtin-tools was explicitly provided (even if empty).
 	var builtinToolsFilter tools.ToolFilter
@@ -208,28 +249,28 @@ func Parse() *Settings {
 		builtinToolsFilter = tools.ToolFilter{AllBuiltins: true}
 	}
 	s := &Settings{
-		ShowVersion:    *showVersion,
-		RawIO:          *rawIO,
-		TerseIO:        *terseIO,
-		PlainIO:        *plainIO,
-		DebugLogDir:    *debugLog,
+		ShowVersion:    *f.showVersion,
+		RawIO:          *f.rawIO,
+		TerseIO:        *f.terseIO,
+		PlainIO:        *f.plainIO,
+		DebugLogDir:    *f.debugLog,
 		ModelConfig:    filepath.Join(cp, "model.conf"),
 		RuntimeConfig:  filepath.Join(cp, "runtime.conf"),
 		MCPConfigPath:  filepath.Join(cp, "mcp.conf"),
 		ThemesFolder:   filepath.Join(cp, "themes"),
-		Skills:         skill.Get(),
-		Session:        *session,
-		ModelName:      *modelName,
-		Proxy:          *proxy,
-		SystemPrompt:   mergedSystemPrompt(systemPrompt),
-		MaxSteps:       *maxSteps,
-		AutoSummarize:  *autoSummarize,
-		ToolConfirm:    parseToolConfirm(*toolConfirm),
+		Skills:         f.skill.Get(),
+		Session:        *f.session,
+		ModelName:      *f.modelName,
+		Proxy:          *f.proxy,
+		SystemPrompt:   mergedSystemPrompt(f.systemPrompt),
+		MaxSteps:       *f.maxSteps,
+		AutoSummarize:  *f.autoSummarize,
+		ToolConfirm:    parseToolConfirm(*f.toolConfirm),
 		BuiltinTools:   builtinToolsFilter,
-		CommandTimeout: resolveCommandTimeout(fs, *commandTimeout),
-		NoDelta:        *noDelta,
-		NoMarkdown:     *noMarkdown,
-		ReasoningLevel: *reasoningLevel,
+		CommandTimeout: resolveCommandTimeout(fs, *f.commandTimeout),
+		NoDelta:        *f.noDelta,
+		NoMarkdown:     *f.noMarkdown,
+		ReasoningLevel: *f.reasoningLevel,
 		// Only apply --reasoning-level when explicitly provided: an absent
 		// flag must not override a session file's saved reasoning_level.
 		ReasoningLevelSet: flagSetHasBeenVisited(fs, "reasoning-level"),

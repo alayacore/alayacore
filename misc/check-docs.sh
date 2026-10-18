@@ -157,18 +157,20 @@ strip_fences() {
 	' "$1"
 }
 
-# Class 5 is class 4's other half. flag_src is the one place flags are
-# registered, so it is the one place the set is read from.
-flag_src=internal/config/config.go
-flags=$(grep -oE 'fs\.(Bool|String|Int|Var)\([^"]*"([a-z0-9-]+)"' "$flag_src" |
-	sed -E 's/.*"([a-z0-9-]+)"$/\1/' | sort -u) || true
-# The derivation is asserted, not trusted: a pattern that stopped matching would
-# report every mention (an empty set) or none (a broken loop). Both shapes are
-# checked, because they are what a changed registration looks like.
-if ! printf '%s\n' "$flags" | grep -qx session ||
-	! printf '%s\n' "$flags" | grep -qx skill; then
-	echo "the flags config.Parse registers could not be read from $flag_src — flags were not checked" >&2
-	flags_derived=0
+# Class 5 is class 4's other half. The set comes from the program: misc/
+# check-doc-flags.go asks internal/config, which registers the flags, so a page is
+# checked against the list the command line answers to. Nothing here reads Go
+# source — a regex at that job missed fs.Duration and fs.BoolVar, and derived "a"
+# from fs.Var(makeList("a"), "tags").
+flags_derived=0
+if ! command -v go >/dev/null 2>&1; then
+	echo "no Go toolchain on PATH — flags were not checked" >&2
+elif ! go build -o "$work/check-doc-flags" ./misc/check-doc-flags.go; then
+	echo "misc/check-doc-flags.go did not build — flags were not checked" >&2
+elif flags=$("$work/check-doc-flags") && [ -n "$flags" ]; then
+	flags_derived=1
+else
+	echo "misc/check-doc-flags.go named no flags — flags were not checked" >&2
 fi
 # --help is the flag package's own, answered whether or not this tree registers it.
 allowed=" $(printf '%s\n' "$flags" | tr '\n' ' ')help "
@@ -292,7 +294,7 @@ fi
 # of it would bury the one line that matters.
 if [ "$flags_derived" -eq 1 ] && [ -s "$badflags" ]; then
 	count=$(wc -l <"$badflags" | tr -d ' ')
-	echo "$count flags in the docs are not flags this program answers to (config.Parse registers them, $flag_src):" >&2
+	echo "$count flags in the docs are not flags this program answers to (config.FlagNames registers them):" >&2
 	sed 's/^/  /' "$badflags" >&2
 	status=1
 fi
