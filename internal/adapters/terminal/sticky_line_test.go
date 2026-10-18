@@ -350,10 +350,10 @@ type frameCost struct {
 // process-wide MemStats around the measured steps.
 //
 // It reports the cheapest of a few samples rather than one: MemStats counts
-// the whole process, so ambient work — a -race build's flusher, a GC worker —
-// can only ever ADD to the counters, never take away. The minimum is
-// therefore the best estimate of what the frame itself costs, and a single
-// noisy sample cannot lift it.
+// the whole process, so ambient work — a GC worker, a goroutine another test
+// left behind — can only ever ADD to the counters, never take away. The
+// minimum is therefore the best estimate of what the frame itself costs, and a
+// single noisy sample cannot lift it.
 func measureScrollStep(body int) frameCost {
 	wb := stickyWideFixtureWith(body, nil)
 	idx, _ := wb.LookupID("tall")
@@ -408,16 +408,14 @@ func measureScrollStep(body int) frameCost {
 // re-measured or re-wrapped anything would make a 400-row message cost ten
 // times a 40-row one.
 //
-// The two measurements are compared against bounds rather than equality:
-// the counts come from process-wide MemStats, so a -race build's own flusher
-// lands in either measurement (about one allocation and some tens of bytes a
-// frame on this fixture), and dividing the totals by the run count turns any
-// of it into a ±1 difference. The slack covers what survives the cheapest-of-
-// three sampling in measureScrollStep, and is still orders of magnitude below
-// both regressions: 360 more body rows at one allocation a row is hundreds of
-// allocations, and copied rows at visualLine's 24 bytes are ~8 KB a frame.
-// (width_test.go's cuts and cluster_structural_test.go's walks trade the same
-// way.)
+// The two measurements are compared against bounds rather than equality: the
+// counts come from process-wide MemStats, and dividing the totals by the run
+// count turns a stray allocation into a ±1 difference. The slack covers what
+// survives the cheapest-of-three sampling in measureScrollStep, and is still
+// orders of magnitude below both regressions: 360 more body rows at one
+// allocation a row is hundreds of allocations, and copied rows at visualLine's
+// 24 bytes are ~8 KB a frame. (width_test.go's cuts and
+// cluster_structural_test.go's walks trade the same way.)
 func TestStickyPinCostIsIndependentOfTheWindowSize(t *testing.T) {
 	requireQuietAllocMeasurement(t)
 

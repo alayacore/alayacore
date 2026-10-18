@@ -151,8 +151,9 @@ var restyleTokens = []string{
 // string without adding a break must therefore add almost nothing: what the writer
 // emits per byte is the byte itself, and what it emits per break is bounded by the
 // breaks. restyleBreaks sizes its buffer from the input once, so the ten-times-longer
-// line adds nothing at all; the slack in the bound is for what AllocsPerRun picks up
-// from a -race build's own allocations, not for growth.
+// line adds nothing at all; the slack in the bound is for the noise a shared
+// machine puts in process-wide mallocs, not for growth. (Under -race this test
+// does not run: see requireQuietAllocMeasurement.)
 func TestRestyleBreaksDoesNotAllocatePerByte(t *testing.T) {
 	requireQuietAllocMeasurement(t)
 
