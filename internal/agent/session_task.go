@@ -79,37 +79,16 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	var fullContents []llm.ContentPart
 	var outputTokens int64
 
-	// Baseline for per-step deltas: everything at or before this offset
-	// was already published (prompt parts via promptPartsEvent), so each
-	// step only publishes the parts after it. cleanIncompleteToolInputs
-	// strips only orphaned calls from the current step's tail (never
-	// parts before prevLen), so len(fullContents) >= prevLen always holds.
-	prevLen := len(history)
+	// The facts a step boundary shares — what run() has been told about, the
+	// history the current step was sent on, and the batch appended at this
+	// boundary — live on one value, which is where their invariants are stated
+	// (see stepRecord).
+	rec := newStepRecord(history)
 
-	// pendingInjected is the user parts this boundary appended to the step about
-	// to be sent — the user's steering, or the synthetic "Continue" a compaction
-	// needs (see stepUserParts) — held here until that step's finish. They are
-	// numbered, echoed and published to Contents at the append itself (see
-	// onBeforeSend), so they are part of the conversation from that moment and
-	// not from the step's finish. This field exists for the one case where the
-	// step never finishes: they were sent and shown, so the returned Contents
-	// must carry them too (an ID the adapter was shown that Contents does not
-	// hold is a window :fork cannot resolve, and a failed step cannot un-send
-	// them).
-	//
-	// stepBase is the history that step was sent on, before that append. It is
-	// the base the failure path needs, because the parts have to be added to the
-	// history *they* were appended to — and that is neither fullContents (empty
-	// when no step has finished) nor the caller's history (stale once a
-	// compaction has replaced it at this very boundary, which is what the
-	// assignment in onBeforeSend captures).
-	//
 	// turnFailed records that this call — the user's task — did not land. The
 	// deferred discard below reads it together with ctx: a task that failed and
 	// a task that was canceled are the same event as far as the user's steering
 	// is concerned.
-	var pendingInjected []llm.ContentPart
-	var stepBase []llm.ContentPart
 	var turnFailed bool
 	defer func() {
 		// A task that did not land — it failed, or it was canceled — takes the
@@ -137,12 +116,6 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	onStepFinish := func(contents []llm.ContentPart, usage llm.Usage) error {
 		fullContents = cleanIncompleteToolInputs(contents)
 
-		// The step landed, so the parts it carried are in fullContents through
-		// this same assignment — they were part of what the model was sent.
-		// Clearing the batch keeps a later failure from adding them a second
-		// time.
-		pendingInjected = nil
-
 		if n := usage.InputTokens + usage.OutputTokens + usage.CacheReadTokens + usage.CacheCreationTokens; n > 0 {
 			contextTokens = n
 		}
@@ -152,36 +125,31 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			CacheReadTokens:     usage.CacheReadTokens,
 			CacheCreationTokens: usage.CacheCreationTokens,
 		}
+		// The step's own output, and the baseline moved past it. Both happen for
+		// a summarizeCall too — its steps are not published, but the baseline is
+		// the same baseline, and leaving it behind is how a later suffix could
+		// describe parts nobody was told about.
+		newParts := rec.finished(fullContents)
 		if kind == userPrompt {
-			// NewParts is a view into the agent's accumulation; run()
-			// copies the pointers out immediately and never retains the
-			// view (see stepFinishEvent docs).
+			// NewParts is a view into the agent's accumulation; run() copies the
+			// pointers out immediately and never retains the view (see
+			// stepFinishEvent docs).
 			//
-			// cleanIncompleteToolInputs is documented to strip only from the
-			// current step's tail, which keeps len(fullContents) >= prevLen.
-			// Slicing on that faith turned a broken assumption into a panic
-			// ("slice bounds out of range") inside the task goroutine, so the
-			// bound is checked. When it does not hold the suffix is no longer
-			// well-defined and nothing is published for this step; run() still
-			// receives the complete history from taskResultCh at task end.
-			if prevLen <= len(fullContents) {
-				ev.NewParts = fullContents[prevLen:]
-				// Stamp the fields a part cannot know about itself — its
-				// message time, and a video's session default — HERE, in the
-				// task goroutine, before the parts are handed over.
-				//
-				// After the handoff both goroutines hold these parts: run()
-				// echoes them and appends them to Contents, while this
-				// goroutine reads them back for the next step's request and for
-				// a mid-task session save. A write from either side after that
-				// point is a data race on the part (a summarize that saves the
-				// history while run() stamps it, for one). Stamping once, on the
-				// near side, is what keeps the part immutable to everyone else.
-				s.stampParts(ev.NewParts)
-			}
+			// Stamp the fields a part cannot know about itself — its message
+			// time, and a video's session default — HERE, in the task goroutine,
+			// before the parts are handed over.
+			//
+			// After the handoff both goroutines hold these parts: run() echoes
+			// them and appends them to Contents, while this goroutine reads them
+			// back for the next step's request and for a mid-task session save. A
+			// write from either side after that point is a data race on the part
+			// (a summarize that saves the history while run() stamps it, for
+			// one). Stamping once, on the near side, is what keeps the part
+			// immutable to everyone else.
+			ev.NewParts = newParts
+			s.stampParts(newParts)
 		}
 		s.sendEvent(ev)
-		prevLen = len(fullContents)
 		outputTokens += usage.OutputTokens
 		return nil
 	}
@@ -225,7 +193,7 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			}
 			// The replacement is the published baseline now: the next step's
 			// delta is measured from its end, not from the old history's.
-			prevLen = len(compacted)
+			rec.replaced(compacted)
 			contents = compacted
 		}
 
@@ -235,12 +203,11 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		// model just asked for, and after a compaction replacement, so they are
 		// the freshest thing the model reads.
 		//
-		// stepBase is the history this step is sent on before them. It is taken
-		// here, after the compaction, so a boundary that both compacted and
-		// appended keeps the compacted form — a step that never finishes
-		// publishes nothing, and the failure path below needs the base the parts
-		// were appended to.
-		stepBase = contents
+		// The record takes the base here, after the compaction, so a boundary that
+		// both compacted and appended keeps the compacted form — a step that never
+		// finishes publishes nothing, and the failure path needs the base the
+		// parts were appended to.
+		rec.sentOn(contents)
 		if parts, steering := s.stepUserParts(contents); len(parts) > 0 {
 			if steering {
 				// The batch left the queue here. Report it delivered before the
@@ -255,16 +222,10 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 			// Publish them to Contents in the same breath as that echo — the
 			// same event runTaskNormal publishes a fresh prompt's parts with —
 			// so a :save or :fork during this step sees what the transcript
-			// already shows. prevLen moves past them, which leaves the step's
-			// delta carrying only the step's own output; without that, they
-			// would enter Contents twice.
+			// already shows (see stepRecord.spliced for the baseline that move
+			// makes).
 			s.sendEvent(promptPartsEvent{Parts: parts})
-			next := make([]llm.ContentPart, len(contents), len(contents)+len(parts))
-			copy(next, contents)
-			next = append(next, parts...)
-			prevLen += len(parts)
-			contents = next
-			pendingInjected = parts
+			contents = rec.spliced(contents, parts)
 		}
 		return contents, nil
 	}
@@ -311,16 +272,12 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 		turnFailed = true
 		// The parts appended to the step that failed were sent and echoed at the
 		// append, so they are already part of the adapter's conversation. Put
-		// them in the returned Contents too, on the history they were sent with
-		// — stepBase, not fullContents: fullContents is empty when no step has
-		// finished (this step is the first), and stale when a compaction
-		// replaced the history at this very boundary. Without this the adapter
-		// holds a window whose ID nothing resolves.
-		if len(pendingInjected) > 0 {
-			merged := make([]llm.ContentPart, 0, len(stepBase)+len(pendingInjected))
-			merged = append(merged, stepBase...)
-			merged = append(merged, pendingInjected...)
-			fullContents = merged
+		// them in the returned Contents too, on the history they were sent with;
+		// without this the adapter holds a window whose ID nothing resolves
+		// (stepRecord.salvaged covers which history that is and why it is
+		// neither fullContents nor the caller's).
+		if salvaged := rec.salvaged(); salvaged != nil {
+			fullContents = salvaged
 		}
 		return fullContents, outputTokens, err
 	}

@@ -32,7 +32,8 @@ package agent
 //   - session_types.go — type definitions (Task, SessionConfig, etc.)
 //   - session_event.go — taskEvent types for actor model communication
 //   - session_model.go — model management, provider creation, reasoning level
-//   - session_task.go  — input processing, prompt execution, agent loop
+//   - session_task.go  — prompt execution: the agent loop's callbacks and publication
+//   - session_step.go  — the state a prompt's step boundaries share
 //   - session_loop.go  — the main event loop (run) and task completion
 //   - session_steering.go — prompts that arrive mid-task, and their delivery
 //   - session_io.go    — command handling, summarize, save
