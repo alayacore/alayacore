@@ -80,6 +80,10 @@ release-all:
 test:
 	$(GOTEST) -shuffle=on -v ./...
 
+## bench: Run every benchmark once, comparing nothing (the CI smoke check)
+bench:
+	$(GOTEST) -run='^$$' -bench=. -benchtime=1x ./...
+
 ## test-coverage: Run tests with coverage
 test-coverage:
 	$(GOTEST) -v -coverprofile=coverage.out ./...
@@ -144,8 +148,8 @@ check-terms:
 check-yaml-block-scalars:
 	./misc/check-yaml-block-scalars.sh
 
-## check: Run all checks (attributes, shell style, doc links, terms, fmt, vet, lint, test)
-check: check-gitattributes check-shell-style check-docs check-terms fmt vet lint test
+## check: Run all checks (attributes, shell style, doc links, terms, fmt, vet, lint, test, bench)
+check: check-gitattributes check-shell-style check-docs check-terms fmt vet lint test bench
 
 ## pre-commit: Run checks before committing
 pre-commit: fmt vet test

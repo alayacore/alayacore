@@ -157,6 +157,17 @@ jobs:
         # 25s on a dev box for the whole tree; cheap enough to always run.
         run: go test -race -shuffle=on ./...
 
+      # Benchmarks are measurements, not gates: their numbers on a shared runner
+      # are noise, and a threshold tight enough to be worth asserting would be a
+      # flaky red build. Cost *shape* is asserted by tests, not timed here (see
+      # docs/development-principles.md → Tests). What is a correctness question
+      # is whether a benchmark still runs: the test step compiles it, but only
+      # running it finds a fixture that panics, or a case that has quietly
+      # started skipping (a pty it can no longer open). -benchtime=1x runs each
+      # case once and times nothing.
+      - name: Benchmarks run once (nothing is compared)
+        run: go test -run='^$' -bench=. -benchtime=1x ./...
+
   windows:
     name: Windows (vet every package, test the adapter)
     runs-on: windows-latest

@@ -263,6 +263,12 @@ regression. A symbol only a test calls lives beside the tests
 (`window_accessors_test.go` is the worked example), where it cannot be mistaken
 for the shipped surface.
 
+Benchmarks are measurements, not gates: their numbers on a shared runner are
+noise, and CI compares none of them. It does run every one **once**
+(`-benchtime=1x`, `make bench`): compiling a benchmark happens with the package's
+tests, but only running it finds a fixture that panics, or a case that has
+quietly started skipping. That is a correctness question; the number is not.
+
 ## Releases
 
 A release note is written **from the tree**, and the tree is read first. Every
