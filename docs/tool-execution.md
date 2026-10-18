@@ -185,7 +185,7 @@ compare-and-swap at commit time.
 
 ## Confirmation
 
-`ToolNeedsConfirm` filters which tools need user approval. When a tool needs confirmation, `OnToolConfirm` is called **per tool** and returns a per-tool channel. The caller blocks on this channel — a per-tool goroutine in concurrent mode, the serial driver itself in serial mode. The session stores the channel in a map keyed by tool call ID. When the user responds via `:tool_confirm <id>` or `:tool_decline <id>`, the session looks up the channel in the map and writes the response, unblocking the waiter which then executes the tool.
+`ToolNeedsConfirm` filters which tools need user approval. When a tool needs confirmation, `OnToolConfirm` is called **per tool** and returns a per-tool channel. The caller blocks on this channel — a per-tool goroutine in concurrent mode, the serial driver itself in serial mode. The session stores the channel in a map keyed by tool call ID. When the user responds via `:tool_confirm <call_id>` or `:tool_decline <call_id>`, the session looks up the channel in the map and writes the response, unblocking the waiter which then executes the tool.
 
 Each tool has its own confirm channel (buffered, capacity 1), following the same pattern used by MCP OAuth confirmation. This keeps the tool lifecycle continuous — no artificial segmentation between streaming, confirmation collection, and execution.
 

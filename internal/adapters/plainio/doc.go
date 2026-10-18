@@ -48,7 +48,7 @@
 //     (e.g. :cancel, :reasoning_level_set) are silent.
 //   - Errors: rendered as "[error: ...]".
 //   - Notifications: prefixed with "[...]".
-//   - Tool confirmations: shown as "[tool_confirm: allow tool "id" to run?]".
+//   - Tool confirmations: shown as "[tool_confirm: allow tool "<call_id>" to run?]".
 //   - MCP init progress: "[mcp: connecting/connected/failed/server X requires
 //     authorization/waiting for authorization...]".
 //   - A blank line is printed after each task completes.

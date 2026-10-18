@@ -61,15 +61,15 @@ All output is plain text with no ANSI escape codes:
 | Assistant text | Printed directly |
 | Reasoning | Printed directly |
 | User prompts | `User: prompt` (own line; blank line after, blank line before when the previous message ended with a newline) |
-| Tool calls | Raw JSON (id, name, input) |
-| Tool results | Raw JSON (id, output, is_error) |
+| Tool calls | Raw JSON (`call_id`, name, input) |
+| Tool results | Raw JSON (`call_id`, output, is_error) |
 | Command results | Success: rendered from the structured result (e.g. `Session saved to <path>`); commands whose effect is self-evident (e.g. `:cancel`, `:reasoning_level_set`) are silent; failure: `[error: message]` (does not affect exit code) |
 | Errors | `[error: message]` |
 | Notifications | `[message]` |
-| Tool confirmations | `[tool_confirm: allow tool "id" to run?]` |
+| Tool confirmations | `[tool_confirm: allow tool "<call_id>" to run?]` |
 | MCP init progress | `[mcp: connecting "server"]`, `[mcp: connected "server"]`, `[mcp: failed "server": error]`, `[mcp: waiting for authorization for "server"…]` |
 
-Respond with `:tool_confirm <id>` to allow or `:tool_decline <id>` to deny.
+Respond with `:tool_confirm <call_id>` to allow or `:tool_decline <call_id>` to deny.
 
 A blank line separates messages of different types.
 

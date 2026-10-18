@@ -326,6 +326,32 @@ func mcpSMFrame(status, server, url, errMsg string) []byte {
 	return frameBytes(wire.TagSystemMsg, string(v))
 }
 
+// TestSystemMsg_ToolConfirmRendersCallID pins the contract between the frame the
+// session writes and the one this adapter reads.
+//
+// The frame is built by protocol.WriteSystemMsg, not by hand. This case once
+// decoded "id" while the session wrote "call_id": every confirmation prompt was
+// dropped in silence, and the tool blocked with nothing on screen to answer. A
+// hand-written fixture would have agreed with whichever spelling its author had
+// in mind — the producer's own writer cannot.
+func TestSystemMsg_ToolConfirmRendersCallID(t *testing.T) {
+	var frame bytes.Buffer
+	if err := protocol.WriteSystemMsg(&frame, protocol.ToolConfirmMsg{CallID: "call-1"}); err != nil {
+		t.Fatalf("build frame: %v", err)
+	}
+
+	var buf bytes.Buffer
+	o := &stdoutOutput{writer: &buf}
+	if _, err := o.Write(frame.Bytes()); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "tool_confirm") || !strings.Contains(got, "call-1") {
+		t.Errorf("output = %q, want a tool_confirm prompt naming the call id %q", got, "call-1")
+	}
+}
+
 func TestSystemMsg_MCPStatusRendering(t *testing.T) {
 	var buf bytes.Buffer
 	o := &stdoutOutput{writer: &buf}

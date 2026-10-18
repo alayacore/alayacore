@@ -391,13 +391,17 @@ func (o *stdoutOutput) handleSystemFrame(value string) {
 			o.inProgress.Store(m.InProgress)
 		}
 	case protocol.MsgTypeToolConfirm:
-		var m struct {
-			ID string `json:"id"`
-		}
-		if json.Unmarshal(env.Data, &m) != nil || m.ID == "" {
+		// Decoded as the wire type the session writes, not as a struct spelled
+		// here. A local copy is invisible to the compiler: this case used to
+		// read `id` while the session wrote `call_id`, so every confirmation
+		// prompt was dropped in silence and the tool blocked with nothing on
+		// screen to answer. Reading protocol's type makes that rename a build
+		// error instead.
+		var m protocol.ToolConfirmMsg
+		if json.Unmarshal(env.Data, &m) != nil || m.CallID == "" {
 			return
 		}
-		fmt.Fprintf(o.writer, "\n[tool_confirm: allow tool %q to run?]\n", m.ID)
+		fmt.Fprintf(o.writer, "\n[tool_confirm: allow tool %q to run?]\n", m.CallID)
 		o.lastTag = ""
 		o.lastHistoryID = ""
 

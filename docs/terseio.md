@@ -117,7 +117,7 @@ on a browser. `Ctrl-C` during the wait aborts the run (exit `130`).
 | stdin | line-based prompts (backslash continuation for multi-line) | all of stdin = one prompt or one command |
 | stdout | full transcript: prompts, reasoning, tool JSON, results | final answer only |
 | errors | printed to stdout, never affect exit code | printed to stderr; session **and command** errors set exit code 1 |
-| tool confirmations | interactive (`:tool_confirm <id>` / `:tool_decline <id>`) | rejected at startup (`--tool-confirm` conflict) |
+| tool confirmations | interactive (`:tool_confirm <call_id>` / `:tool_decline <call_id>`) | rejected at startup (`--tool-confirm` conflict) |
 | MCP OAuth authorization | automatic (callback server + browser) with manual fallback | automatic (callback server + browser), shared with plainio; a server that cannot be authorized automatically is declined (there is nowhere to type a code) |
 | commands (`:save`, `:continue`, ...) | any line starting with `:` is a command | whole stdin starting with `:` is one command |
 

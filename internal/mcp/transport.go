@@ -64,6 +64,19 @@ const maxTextResponseBytes = 1 << 20 // 1MB
 // what a hostile or misconfigured server can make us allocate.
 const maxMessageBytes = 64 << 20 // 64MB
 
+// errEventTooLarge reports an SSE event that passed maxMessageBytes once its
+// data: fields were assembled.
+//
+// It exists because the bound above is on the *message*, and a message is not a
+// line: SSE lets one event carry its JSON across any number of data: fields, so
+// the line reader's own limit says nothing about how large the event it is being
+// read into may become. A peer that exceeds this is one whose reply cannot be
+// read at all — a tool result bigger than the transports agreed to carry — not
+// one whose framing this reader failed to follow.
+func errEventTooLarge() error {
+	return fmt.Errorf("SSE event exceeded the %dMB message limit", maxMessageBytes>>20)
+}
+
 // boundedTail is a goroutine-safe ring buffer keeping the last max bytes
 // written to it. It implements io.Writer, which makes it suitable as
 // exec.Cmd.Stderr: the child's output is copied by an exec-internal

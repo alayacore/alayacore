@@ -86,6 +86,18 @@ report "$hits" 'the folded state is folded/unfolded'
 hits=$(grep -rn '"usage: :' --include=*.go internal/agent internal/adapters 2>/dev/null)
 report "$hits" 'a usage line spelled in a handler — render it with commands.UsageLine'
 
+# ── 4. …and the same line in prose ─────────────────────────────────────────
+# The scan above reads Go. The two words it names are also the two a doc gets
+# wrong, and a doc is what a user acts on: `:tool_confirm <id>` stood in three
+# pages while the wire said call_id, and the adapter that read the frame agreed
+# with the pages rather than with the protocol. `<id>` is legitimate for the one
+# argument commands.Defs spells that way (:model_set's numeric id), so the rule
+# is the pair of commands whose argument is a call_id, not the placeholder
+# alone.
+hits=$(grep -rnE ':(tool_confirm|tool_decline) <id>' \
+	--include=*.md docs adapter-guide README.md README.zh-CN.md 2>/dev/null)
+report "$hits" 'a tool call is <call_id>'
+
 # ── 4. Wire values that have a name ────────────────────────────────────────
 # A status or state string means one thing because it is written once, in
 # protocol: the producer returns the constant and the adapter compares it. A

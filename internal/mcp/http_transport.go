@@ -115,6 +115,13 @@ func (s *sseReadCloser) readEvent() (eventType, data string, err error) {
 		}
 
 		processSSELine(line, &currentEvent, &currentData)
+
+		// The bound is on the assembled event, not on its lines (see
+		// errEventTooLarge): one small data: field at a time, a server could
+		// otherwise grow this event until the process ran out of memory.
+		if currentData.Len() > maxMessageBytes {
+			return "", "", errEventTooLarge()
+		}
 	}
 }
 

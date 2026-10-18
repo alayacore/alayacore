@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -725,4 +726,58 @@ func TestNoDoubleClose(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// ============================================================================
+// SSE event bound
+// ============================================================================
+
+// repeatingLines streams one line n times, then tail once, then EOF. It is a
+// source, not a buffer: the test below asks the reader to refuse a 64MB event,
+// and a test that had to hold 64MB to ask would be measuring the wrong thing.
+type repeatingLines struct {
+	line string
+	n    int
+	tail string
+}
+
+func (r *repeatingLines) Read(p []byte) (int, error) {
+	if r.n > 0 {
+		r.n--
+		return copy(p, r.line), nil
+	}
+	if r.tail != "" {
+		// copy may take only part of the tail; keep the rest for the next call.
+		n := copy(p, r.tail)
+		r.tail = r.tail[n:]
+		return n, nil
+	}
+	return 0, io.EOF
+}
+
+// TestSSEEventBoundIsOnTheEvent pins the bound the transport documents — one
+// assembled SSE event, not one line of it.
+//
+// A line limit says nothing about the event being read into: an event whose JSON
+// arrives as many small data: fields passes every per-line check while growing
+// without limit, which is how a server could make the process allocate until it
+// died. The providers' SSE reader was fixed for exactly this shape (see
+// internal/llm/providers/sse.go); this is the same property for the transport
+// that reads a server's replies.
+func TestSSEEventBoundIsOnTheEvent(t *testing.T) {
+	const lineBytes = 1024
+	line := "data: " + strings.Repeat("x", lineBytes-6) + "\n"
+	// Twice the bound: a reader that only checked when the stream ended would
+	// still be reading.
+	src := &repeatingLines{line: line, n: 2 * (maxMessageBytes / lineBytes), tail: "\n"}
+
+	sr := newSSEReadCloser(io.NopCloser(src))
+	_, data, err := sr.readEvent()
+
+	if err == nil {
+		t.Fatalf("readEvent assembled %d bytes with no error, want the %dMB bound reported", len(data), maxMessageBytes>>20)
+	}
+	if !strings.Contains(err.Error(), "message limit") {
+		t.Errorf("err = %v, want the oversized-event error", err)
+	}
 }
