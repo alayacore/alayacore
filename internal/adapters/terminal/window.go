@@ -11,14 +11,14 @@ package terminal
 // fast (direct field access) while allowing each window type to have
 // its own rendering and content management.
 //
-// Renderers (window_renderer.go):
+// Renderers, one file each (see window_renderer.go for the map):
 //   - textRenderer:  assistant text (AT) and reasoning (AR) — the wire tag for
 //     both is Ax, split by the item's "type" — sys msg (SN), sys err (SE)
 //   - userRenderer:  user messages with optional media attachments (UT)
 //   - toolRenderer:  tool calls and results (AF, Af, UF)
 //
 // Related files:
-//   - window_renderer.go — WindowRendering interface and implementations
+//   - window_renderer.go — the renderer map, and the one helper two of them share
 //   - window_buffer.go   — WindowBuffer, line tracking, virtual rendering
 //   - wrap.go            — wrapContent, wrapVisualLines, appendDeltaToVisualLines
 

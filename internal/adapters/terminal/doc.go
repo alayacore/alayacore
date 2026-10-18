@@ -41,8 +41,10 @@
 //	                the bindings and the dispatch stack (keys.go,
 //	                keybinds.go, input_layers.go)
 //	  - rendering — the window model and its pipeline (window.go,
-//	                window_renderer.go, window_buffer.go, wrap.go,
-//	                display.go, scroll_view.go, live_edge.go) and the
+//	                window_buffer.go, wrap.go, display.go, scroll_view.go,
+//	                live_edge.go), one file per renderer (text_renderer.go,
+//	                user_renderer.go, tool_renderer.go) with the folded-row
+//	                arithmetic they share in folded_summary.go, and the
 //	                terminal surface under it (screen.go)
 //	  - surfaces  — prompt_input.go / input_field.go, overlay.go, the
 //	                selectors (model_selector.go, theme_selector.go,

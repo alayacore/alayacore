@@ -58,7 +58,7 @@ changes, each removing work a frame did and threw away:
    outside the loop. [wrapContent](#wrapcontent) carries the figures, and the
    condition the skip needs — which is not the obvious one.
 
-Plus the stale figures in comments across `window.go`, `window_renderer.go`,
+Plus the stale figures in comments across `window.go`, the renderer files,
 `width.go` and the benchmark files. Every number below is measured on the tree
 that includes those changes; where a figure existed before them and moved, both
 values are given.

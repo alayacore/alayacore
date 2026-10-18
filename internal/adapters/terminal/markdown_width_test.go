@@ -104,8 +104,8 @@ func TestMarkdownTablesNeverTruncate(t *testing.T) {
 		},
 		{
 			name:    "no break chars",
-			content: "| tool | path |\n|---|---|\n| read_file | /home/wallace/playground/alayacore/internal/adapters/terminal/window_renderer.go |",
-			cells:   []string{"read_file", "/home/wallace/playground/alayacore/internal/adapters/terminal/window_renderer.go"},
+			content: "| tool | path |\n|---|---|\n| read_file | /home/wallace/playground/alayacore/internal/adapters/terminal/folded_summary.go |",
+			cells:   []string{"read_file", "/home/wallace/playground/alayacore/internal/adapters/terminal/folded_summary.go"},
 		},
 		{
 			// Long header labels: at an 18-20 column window the label column
