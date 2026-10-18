@@ -2,7 +2,6 @@ package agent
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/llm"
 )
 
@@ -294,7 +294,9 @@ func TestForkTrimsSurroundingWhitespace(t *testing.T) {
 	}
 }
 
-// Both halves are required: the id without a filename has nothing to write.
+// Both halves are required: the id without a filename has nothing to write. The
+// refusal is the dispatcher's — the shape is the definition's (Token, Rest) —
+// so the test drives the command the way the session receives it.
 func TestForkRequiresAFilename(t *testing.T) {
 	contents := []llm.ContentPart{
 		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 1}},
@@ -302,14 +304,9 @@ func TestForkRequiresAFilename(t *testing.T) {
 	s := newForkTestSession(contents)
 
 	for _, args := range []string{"1", "1   ", "   ", ""} {
-		_, err := s.handleFork(args)
-		if err == nil {
-			t.Errorf("handleFork(%q) accepted a fork with no filename", args)
-			continue
-		}
-		var ce *cmdErr
-		if !errors.As(err, &ce) || ce.Code != "REQUEST_INVALID_ARGS" {
-			t.Errorf("handleFork(%q) error = %v, want REQUEST_INVALID_ARGS", args, err)
+		joined := runCI(t, s, commands.CommandNameFork, args)
+		if !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
+			t.Errorf(":fork %q should be REFUSED, got: %s", args, joined)
 		}
 	}
 }

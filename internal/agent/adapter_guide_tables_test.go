@@ -182,7 +182,7 @@ func TestDocsCommandsTableMatchesTheRegistry(t *testing.T) {
 	known := dispatchedCommands(t)
 	usage := map[string]string{}
 	for _, d := range commands.Defs {
-		usage[d.Name] = d.Usage
+		usage[d.Name] = d.Signature()
 	}
 
 	doc := readDoc(t, "../../docs/commands.md")

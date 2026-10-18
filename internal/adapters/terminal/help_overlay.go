@@ -76,8 +76,8 @@ func commandHelpItems(nextID func() int) []HelpItem {
 	items := make([]HelpItem, 0, len(commands.Defs)+2)
 	for _, def := range commands.Defs {
 		key := ":" + def.Name
-		if def.Usage != "" {
-			key += " " + def.Usage
+		if sig := def.Signature(); sig != "" {
+			key += " " + sig
 		}
 		description := def.Description
 		if short := shortFor[def.Name]; short != "" {

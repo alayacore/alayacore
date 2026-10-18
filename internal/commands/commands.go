@@ -102,16 +102,11 @@ func SplitCommand(cmd string) (name, args string) {
 	return name, args
 }
 
-// SplitFirst splits an argument tail into its first token and the rest, with
+// splitFirst splits an argument tail into its first token and the rest, with
 // surrounding whitespace trimmed from both. It is SplitCommand's rule one level
-// down, for the commands whose last argument is one free-text value: `:fork
-// <history_id> <filename>` takes the whole remainder as the filename, so a path
-// containing spaces is a path, not several arguments.
-//
-// Whitespace INSIDE the rest is preserved — two spaces in the middle of a
-// filename are part of the name. The ends are trimmed because invisible
-// whitespace there is never intended: `:fork 5 out.alaya ` names out.alaya.
-func SplitFirst(args string) (head, rest string) {
+// down: the separator is consumed, and whitespace inside the rest is preserved
+// (two spaces in the middle of a filename are part of the name).
+func splitFirst(args string) (head, rest string) {
 	args = strings.Trim(args, cmdSpace)
 	if i := strings.IndexAny(args, cmdSpace); i >= 0 {
 		return args[:i], strings.Trim(args[i:], cmdSpace)

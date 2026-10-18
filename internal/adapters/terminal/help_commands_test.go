@@ -49,8 +49,8 @@ func TestHelpCommandsAreTheVocabulary(t *testing.T) {
 		if item.Description != def.Description && !strings.HasPrefix(item.Description, def.Description) {
 			t.Errorf(":%s says %q; the vocabulary says %q", def.Name, item.Description, def.Description)
 		}
-		if def.Usage != "" && !strings.Contains(item.Key, def.Usage) {
-			t.Errorf(":%s shows key %q, which is missing the usage %q", def.Name, item.Key, def.Usage)
+		if sig := def.Signature(); sig != "" && !strings.Contains(item.Key, sig) {
+			t.Errorf(":%s shows key %q, which is missing the usage %q", def.Name, item.Key, sig)
 		}
 	}
 

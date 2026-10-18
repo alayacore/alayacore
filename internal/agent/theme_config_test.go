@@ -192,12 +192,9 @@ func TestThemeSetRejectsWhitespaceOnly(t *testing.T) {
 	}
 	s.modelService = newModelService(newModelManager(""), newRuntimeManager(filepath.Join(t.TempDir(), "runtime.conf")))
 
-	_, err := s.handleThemeSet("   ")
-	if err == nil {
-		t.Fatal("handleThemeSet accepted a name made of spaces")
-	}
-	var cmdError *cmdErr
-	if !errors.As(err, &cmdError) || cmdError.Code != "REQUEST_INVALID_ARGS" {
-		t.Errorf("error = %v, want REQUEST_INVALID_ARGS", err)
+	// One required rest argument: a tail of spaces is no argument, and the
+	// dispatcher refuses it before the handler sees it.
+	if joined := runCI(t, s, "theme_set", "   "); !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
+		t.Errorf("whitespace-only name should be REFUSED, got: %s", joined)
 	}
 }

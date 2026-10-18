@@ -780,30 +780,34 @@ func TestZeroArgumentCommandsRejectArguments(t *testing.T) {
 	}
 }
 
+// runCI drives one CI frame through the dispatcher — the path a command
+// actually takes — and returns the frames it wrote. The argument shape is the
+// dispatcher's business, so a test of a refusal belongs here, not on a handler
+// the dispatcher has already vetted.
+func runCI(t *testing.T, s *Session, name, args string) string {
+	t.Helper()
+	output := &MockOutput{}
+	s.Output = output
+	s.inputMsgCh = make(chan inputMsg, 1)
+	s.handleInputMsg(inputMsg{isCmd: true, cmd: name, args: args, commandID: "c1"})
+	return strings.Join(output.Messages, "")
+}
+
 // A command that declares arguments keeps its exact count: a third token on
 // :video_config used to be ignored, which turns a typo into a setting.
 func TestVideoConfigRejectsExtraTokens(t *testing.T) {
 	s := &Session{sessionConfig: sessionConfig{
 		modelService:  newModelService(newModelManager(""), newRuntimeManager("")),
-		SessionConfig: SessionConfig{Output: &MockOutput{}},
+		SessionConfig: SessionConfig{Input: &nopInput{}},
 	}}
 
-	_, err := s.handleVideoConfig("5 1 junk")
-	if err == nil {
-		t.Fatal("handleVideoConfig accepted a third token")
-	}
-	var ce *cmdErr
-	if !errors.As(err, &ce) || ce.Code != "REQUEST_INVALID_ARGS" {
-		t.Errorf("error = %v, want REQUEST_INVALID_ARGS", err)
+	if joined := runCI(t, s, commands.CommandNameVideoConfig, "5 1 junk"); !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
+		t.Errorf("a third token should be REFUSED, got: %s", joined)
 	}
 
 	// The declared shape still works.
-	res, err := s.handleVideoConfig("5 1")
-	if err != nil {
-		t.Fatalf("handleVideoConfig(5 1): %v", err)
-	}
-	if got := res.(map[string]any)["fps"]; got != 5 {
-		t.Errorf("fps = %v, want 5", got)
+	if joined := runCI(t, s, commands.CommandNameVideoConfig, "5 1"); !strings.Contains(joined, `"fps":5`) {
+		t.Errorf("the declared shape should apply the setting, got: %s", joined)
 	}
 }
 
@@ -813,38 +817,56 @@ func TestVideoConfigRejectsExtraTokens(t *testing.T) {
 // authorization was never confirmed or declined.
 func TestMCPCommandsRejectTheWrongNumberOfTokens(t *testing.T) {
 	s, _ := newCmdOutputSession()
-	s.inputMsgCh = make(chan inputMsg, 1)
 
 	cases := []struct {
 		name string
-		call func() error
+		cmd  string
+		args string
 	}{
-		{"confirm: two tokens", func() error {
-			_, err := s.handleMCPConfirm(context.Background(), "srv code")
-			return err
-		}},
-		{"confirm: five tokens", func() error {
-			_, err := s.handleMCPConfirm(context.Background(), "srv code uri iss extra")
-			return err
-		}},
-		{"decline: a name with a space", func() error {
-			_, err := s.handleMCPDecline("my db")
-			return err
-		}},
-		{"decline: nothing", func() error {
-			_, err := s.handleMCPDecline("")
-			return err
-		}},
+		{"confirm: two tokens", commands.CommandNameMCPConfirm, "srv code"},
+		{"confirm: five tokens", commands.CommandNameMCPConfirm, "srv code uri iss extra"},
+		{"decline: a name with a space", commands.CommandNameMCPDecline, "my db"},
+		{"decline: nothing", commands.CommandNameMCPDecline, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.call()
-			if err == nil {
-				t.Fatal("accepted an argument count the usage line does not declare")
+			joined := runCI(t, s, tc.cmd, tc.args)
+			if !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
+				t.Errorf("want REQUEST_INVALID_ARGS (not a lookup miss), got: %s", joined)
 			}
-			var ce *cmdErr
-			if !errors.As(err, &ce) || ce.Code != "REQUEST_INVALID_ARGS" {
-				t.Errorf("error = %v, want REQUEST_INVALID_ARGS (not a lookup miss)", err)
+		})
+	}
+}
+
+// TestEveryCommandRejectsAnUndeclaredArgumentCount is the check the declaration
+// made possible: it walks commands.Defs and drives the real dispatcher with a
+// count the shape does not allow, so a handler that invents a different arity —
+// the class the :fork truncation lived in — fails here instead of in the field.
+// A command whose last argument takes the rest of the line has no "too many
+// words" case: the extra words are that argument.
+func TestEveryCommandRejectsAnUndeclaredArgumentCount(t *testing.T) {
+	s, _ := newCmdOutputSession()
+
+	words := func(n int) string {
+		if n <= 0 {
+			return ""
+		}
+		return strings.Repeat("x ", n-1) + "x"
+	}
+
+	for _, d := range commands.Defs {
+		t.Run(d.Name, func(t *testing.T) {
+			if d.Min() > 0 {
+				if joined := runCI(t, s, d.Name, words(d.Min()-1)); !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
+					t.Errorf("%d arguments for a shape needing %d should be REFUSED, got: %s",
+						d.Min()-1, d.Min(), joined)
+				}
+			}
+			if !d.EndsWithRest() {
+				if joined := runCI(t, s, d.Name, words(d.Max()+1)); !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
+					t.Errorf("%d arguments for a shape allowing %d should be REFUSED, got: %s",
+						d.Max()+1, d.Max(), joined)
+				}
 			}
 		})
 	}

@@ -198,12 +198,11 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 // Usage: :fork <history_id> <filename>
 func (s *Session) handleFork(args string) (any, error) {
 	// Two arguments: the history id, then the filename — and the filename is
-	// everything after it, because a path may contain spaces. Splitting on
-	// whitespace would turn ":fork 5 my report.alaya" into the file "my".
-	idStr, pathArg := commands.SplitFirst(args)
-	if idStr == "" || pathArg == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameFork)}
-	}
+	// everything after the id, because a path may contain spaces. The shape is
+	// the definition's (commands.Defs: Token, Rest); the dispatcher has already
+	// refused anything that does not match it, so this is reading, not checking.
+	values := commands.Values(commands.CommandNameFork, args)
+	idStr, pathArg := values[0], values[1]
 
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -311,21 +310,15 @@ func forkEndIndex(contents []llm.ContentPart, id uint64) int {
 // handleToolConfirmCmd processes a `:tool_confirm <id>` command.
 // It looks up the per-tool confirmation channel and allows the tool.
 func (s *Session) handleToolConfirmCmd(args string) (any, error) {
-	fields := strings.Fields(args)
-	if len(fields) != 1 {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameToolConfirm)}
-	}
-	return s.resolveToolConfirm(fields[0], true)
+	// The dispatcher has already refused anything but one argument (Defs:
+	// Token("call_id")), so this reads the value rather than checking the shape.
+	return s.resolveToolConfirm(strings.TrimSpace(args), true)
 }
 
 // handleToolDeclineCmd processes a `:tool_decline <id>` command.
 // It looks up the per-tool confirmation channel and denies the tool.
 func (s *Session) handleToolDeclineCmd(args string) (any, error) {
-	fields := strings.Fields(args)
-	if len(fields) != 1 {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameToolDecline)}
-	}
-	return s.resolveToolConfirm(fields[0], false)
+	return s.resolveToolConfirm(strings.TrimSpace(args), false)
 }
 
 // resolveToolConfirm looks up the confirmation channel and sends the decision.
@@ -589,16 +582,16 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 		return
 	}
 
-	// A command that declares no arguments takes none. An extra word is a
-	// typo, and ignoring it hides the mistake — `:quit` has always refused one,
-	// and the rest should not disagree with it. The declaration is the usage
-	// line in commands.Defs, the same one an adapter renders, so the check and
-	// the help text cannot drift apart: a command that gains an argument gains
-	// a usage line, and with it the right to have one.
-	if def, ok := commands.DefinitionOf(commands.Canonical(name)); ok &&
-		def.Usage == "" && strings.TrimSpace(args) != "" {
-		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(def.Name)})
-		return
+	// A command accepts exactly the arguments its definition declares. Too few,
+	// too many, or a word where the rest of the line was expected is a typo, and
+	// silently reading it as something else hides the mistake. The shape lives
+	// in commands.Defs, which is also where the usage line an adapter shows
+	// comes from, so the check and the prose cannot drift apart.
+	if def, ok := commands.DefinitionOf(commands.Canonical(name)); ok {
+		if _, shaped := def.Split(args); !shaped {
+			s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(def.Name)})
+			return
+		}
 	}
 
 	// Task commands — :continue and :summarize start a task goroutine.
@@ -659,10 +652,6 @@ func (s *Session) handleModelSet(args string) (any, error) {
 	mm, err := s.checkModelManager()
 	if err != nil {
 		return nil, err
-	}
-
-	if args == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameModelSet)}
 	}
 
 	modelID, err := strconv.Atoi(args)
@@ -738,10 +727,6 @@ func (s *Session) handleModelSync(args string) (any, error) {
 		return nil, err
 	}
 
-	if args == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameModelSync)}
-	}
-
 	msgs := mm.syncFromContent(args)
 
 	// Apply the successfully synced models, then fail the command if any
@@ -770,7 +755,7 @@ func (s *Session) handleModelSync(args string) (any, error) {
 func (s *Session) handleReasoningLevelSet(args string) (any, error) {
 	level, err := strconv.Atoi(args)
 	if err != nil || level < config.ReasoningLevelOff || level > config.ReasoningLevelMax {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameReasoningLevelSet) + "  (0=off, 1=normal, 2=max)"}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameReasoningLevelSet)}
 	}
 	s.SetReasoningLevel(level)
 	return map[string]any{"level": level}, nil
@@ -782,13 +767,10 @@ func (s *Session) handleReasoningLevelSet(args string) (any, error) {
 //	fps: frames per second (positive integer, e.g. 2)
 //	res: 0=default, 1=max
 func (s *Session) handleVideoConfig(args string) (any, error) {
-	usage := commands.UsageLine(commands.CommandNameVideoConfig) + "  (fps: positive integer, res: 0=default, 1=max)"
+	// Two tokens, which the dispatcher has already checked (Defs: Token, Token);
+	// what is left to reject is a value that is not a number in range.
+	usage := commands.UsageLine(commands.CommandNameVideoConfig)
 	fields := strings.Fields(args)
-	// Exactly two: a third token used to be ignored, which turns a typo into a
-	// setting the user did not ask for.
-	if len(fields) != 2 {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: usage}
-	}
 	fps, err := strconv.Atoi(fields[0])
 	if err != nil || fps < 1 {
 		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: usage}
@@ -812,9 +794,6 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 	// named by its file (my theme.conf → "my theme"), so inner spaces are part
 	// of the name and invisible whitespace at the ends is not.
 	name := strings.TrimSpace(args)
-	if name == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameThemeSet)}
-	}
 
 	// Validate that the theme exists before persisting.
 	if s.ThemesFolder != "" {
@@ -882,14 +861,10 @@ func (s *Session) checkMCPReady() error {
 // in which case issuer validation is skipped unless the authorization
 // server advertises mandatory support.
 func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) {
+	// Three tokens, or four with the optional iss — the dispatcher refused every
+	// other count (Defs). Refusing it there is also why a server name holding a
+	// space cannot arrive as two tokens and answer NOT_FOUND for the first half.
 	fields := strings.Fields(args)
-	// Three, or four with the optional iss. Anything else is a usage error
-	// rather than a misparse: a server name with a space arrives as two tokens,
-	// and answering NOT_FOUND for the first half names a server the user never
-	// typed.
-	if len(fields) != 3 && len(fields) != 4 {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameMCPConfirm)}
-	}
 	if err := s.checkMCPReady(); err != nil {
 		return nil, err
 	}
@@ -911,12 +886,8 @@ func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) 
 //
 // Usage: :mcp_decline <server>
 func (s *Session) handleMCPDecline(args string) (any, error) {
+	// One server name, which the dispatcher has already checked (Defs).
 	fields := strings.Fields(args)
-	// Exactly one server name for the same reason: "my db" is one name split in
-	// two, and declining "my" would report a server the user never configured.
-	if len(fields) != 1 {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameMCPDecline)}
-	}
 	if err := s.checkMCPReady(); err != nil {
 		return nil, err
 	}
@@ -960,10 +931,7 @@ func (s *Session) saveSession(args string) (any, error) {
 // deferred prompt is dropped, no new work is accepted, and run() returns as
 // soon as nothing is in flight — a task already running still finishes.
 // Idempotent.
-func (s *Session) handleQuit(args string) (any, error) {
-	if strings.TrimSpace(args) != "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameQuit)}
-	}
+func (s *Session) handleQuit(_ string) (any, error) {
 	s.quitting = true
 	if s.pending != nil {
 		// A prompt held for MCP readiness will not run: the session is leaving.
