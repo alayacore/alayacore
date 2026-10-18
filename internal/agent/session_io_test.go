@@ -13,6 +13,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/wiretest"
 
+	"github.com/alayacore/alayacore/internal/commands"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/wire"
@@ -735,5 +736,114 @@ func TestSaveSessionWhitespaceOnlyUsesTheSessionFile(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("the session file was not written: %v", err)
+	}
+}
+
+// A command whose usage line is empty takes no arguments: a stray word is a
+// typo, and ignoring it hides the mistake. `:quit` has always refused one; the
+// rest used to accept and discard it.
+func TestZeroArgumentCommandsRejectArguments(t *testing.T) {
+	names := []string{
+		commands.CommandNameQuit,
+		commands.CommandNameCancel,
+		commands.CommandNameSummarize,
+		commands.CommandNameContinue,
+		commands.CommandNameModelLoad,
+		commands.CommandNameMCPSkip,
+	}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			output := &MockOutput{}
+			s := &Session{sessionConfig: sessionConfig{
+				SessionConfig: SessionConfig{Output: output},
+			}}
+			s.inputMsgCh = make(chan inputMsg, 1)
+
+			s.handleInputMsg(inputMsg{isCmd: true, cmd: name, args: "now", commandID: "z1"})
+
+			joined := strings.Join(output.Messages, "")
+			if !strings.Contains(joined, `"code":"INVALID_ARGS"`) {
+				t.Errorf(":%s now should be INVALID_ARGS, got: %s", name, joined)
+			}
+			if !strings.Contains(joined, `"command_id":"z1"`) {
+				t.Errorf("the refusal must answer the request it refuses: %s", joined)
+			}
+			if s.activeTask != nil {
+				t.Error("a refused command must not start a task")
+			}
+			if s.quitting {
+				t.Error("a refused :quit must not end the session")
+			}
+		})
+	}
+}
+
+// A command that declares arguments keeps its exact count: a third token on
+// :video_config used to be ignored, which turns a typo into a setting.
+func TestVideoConfigRejectsExtraTokens(t *testing.T) {
+	s := &Session{sessionConfig: sessionConfig{
+		modelService:  newModelService(newModelManager(""), newRuntimeManager("")),
+		SessionConfig: SessionConfig{Output: &MockOutput{}},
+	}}
+
+	_, err := s.handleVideoConfig("5 1 junk")
+	if err == nil {
+		t.Fatal("handleVideoConfig accepted a third token")
+	}
+	var ce *cmdErr
+	if !errors.As(err, &ce) || ce.Code != "INVALID_ARGS" {
+		t.Errorf("error = %v, want INVALID_ARGS", err)
+	}
+
+	// The declared shape still works.
+	res, err := s.handleVideoConfig("5 1")
+	if err != nil {
+		t.Fatalf("handleVideoConfig(5 1): %v", err)
+	}
+	if got := res.(map[string]any)["fps"]; got != 5 {
+		t.Errorf("fps = %v, want 5", got)
+	}
+}
+
+// The MCP commands take whitespace-separated tokens, so a server name holding a
+// space arrives as two tokens. Rejecting the count names the problem; parsing
+// on used to answer NOT_FOUND for a server the user never typed, and the real
+// authorization was never confirmed or declined.
+func TestMCPCommandsRejectTheWrongNumberOfTokens(t *testing.T) {
+	s, _ := newCmdOutputSession()
+	s.inputMsgCh = make(chan inputMsg, 1)
+
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{"confirm: two tokens", func() error {
+			_, err := s.handleMCPConfirm(context.Background(), "srv code")
+			return err
+		}},
+		{"confirm: five tokens", func() error {
+			_, err := s.handleMCPConfirm(context.Background(), "srv code uri iss extra")
+			return err
+		}},
+		{"decline: a name with a space", func() error {
+			_, err := s.handleMCPDecline("my db")
+			return err
+		}},
+		{"decline: nothing", func() error {
+			_, err := s.handleMCPDecline("")
+			return err
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if err == nil {
+				t.Fatal("accepted an argument count the usage line does not declare")
+			}
+			var ce *cmdErr
+			if !errors.As(err, &ce) || ce.Code != "INVALID_ARGS" {
+				t.Errorf("error = %v, want INVALID_ARGS (not a lookup miss)", err)
+			}
+		})
 	}
 }

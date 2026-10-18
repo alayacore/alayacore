@@ -36,6 +36,24 @@ CO{"command_id":"<command-id>","is_error":true,"result":{"code":"...","message":
 - Command results never travel as SM `error`/`notify` — those are reserved
   for non-command events (task errors, MCP status, etc.).
 
+## Arguments
+
+`args` is text: the agent decides how each command reads it, and every command
+is one of two shapes.
+
+- **Tokens** — whitespace-separated, with an exact count. There is no quoting,
+  so a value containing a space cannot be one token: `:mcp_confirm <server> …`
+  answers `INVALID_ARGS` for a server name with a space in it, rather than
+  looking up the first half. Too many tokens is `INVALID_ARGS` too — never
+  silently ignored.
+- **A free-text tail** — the rest of the line, spaces included, with
+  surrounding whitespace trimmed: `:save [filename]`, `:fork <history_id>
+  <filename>`, `:theme_set <name>`, `:model_sync <content>`.
+
+A command whose usage line is empty (`:quit`, `:cancel`, `:summarize`,
+`:continue`, `:model_load`, `:mcp_skip`) takes no arguments at all; a stray word
+is `INVALID_ARGS`.
+
 Commands fall into three categories:
 
 - **Immediate commands** (`cmdImmediate`) — run synchronously in the main loop, always allowed

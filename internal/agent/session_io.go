@@ -589,6 +589,18 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 		return
 	}
 
+	// A command that declares no arguments takes none. An extra word is a
+	// typo, and ignoring it hides the mistake — `:quit` has always refused one,
+	// and the rest should not disagree with it. The declaration is the usage
+	// line in commands.Defs, the same one an adapter renders, so the check and
+	// the help text cannot drift apart: a command that gains an argument gains
+	// a usage line, and with it the right to have one.
+	if def, ok := commands.DefinitionOf(commands.Canonical(name)); ok &&
+		def.Usage == "" && strings.TrimSpace(args) != "" {
+		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(def.Name)})
+		return
+	}
+
 	// Task commands — :continue and :summarize start a task goroutine.
 	// CO replies immediately ({"status":"started"} or an error); task
 	// completion is correlated via taskMsg.command_id.
@@ -772,7 +784,9 @@ func (s *Session) handleReasoningLevelSet(args string) (any, error) {
 func (s *Session) handleVideoConfig(args string) (any, error) {
 	usage := commands.UsageLine(commands.CommandNameVideoConfig) + "  (fps: positive integer, res: 0=default, 1=max)"
 	fields := strings.Fields(args)
-	if len(fields) < 2 {
+	// Exactly two: a third token used to be ignored, which turns a typo into a
+	// setting the user did not ask for.
+	if len(fields) != 2 {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: usage}
 	}
 	fps, err := strconv.Atoi(fields[0])
@@ -869,7 +883,11 @@ func (s *Session) checkMCPReady() error {
 // server advertises mandatory support.
 func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) {
 	fields := strings.Fields(args)
-	if len(fields) < 3 {
+	// Three, or four with the optional iss. Anything else is a usage error
+	// rather than a misparse: a server name with a space arrives as two tokens,
+	// and answering NOT_FOUND for the first half names a server the user never
+	// typed.
+	if len(fields) != 3 && len(fields) != 4 {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameMCPConfirm)}
 	}
 	if err := s.checkMCPReady(); err != nil {
@@ -894,7 +912,9 @@ func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) 
 // Usage: :mcp_decline <server>
 func (s *Session) handleMCPDecline(args string) (any, error) {
 	fields := strings.Fields(args)
-	if len(fields) < 1 {
+	// Exactly one server name for the same reason: "my db" is one name split in
+	// two, and declining "my" would report a server the user never configured.
+	if len(fields) != 1 {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameMCPDecline)}
 	}
 	if err := s.checkMCPReady(); err != nil {
@@ -942,7 +962,7 @@ func (s *Session) saveSession(args string) (any, error) {
 // Idempotent.
 func (s *Session) handleQuit(args string) (any, error) {
 	if strings.TrimSpace(args) != "" {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameQuit) + " (no arguments)"}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameQuit)}
 	}
 	s.quitting = true
 	if s.pending != nil {
