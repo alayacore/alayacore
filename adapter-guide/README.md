@@ -91,9 +91,9 @@ Af  ←   function   Function/tool argument delta (JSON: {"call_id":...,"delta":
 UF  ←   function   Function/tool result (JSON: {"call_id":...,"output":[...],"is_error":...})
 Uf  ←   function   Function/tool result preview (ephemeral, display-only)
 UE  →   control    User message end — flushes staged content as a single message
-CI  →   command    Command input (JSON CmdMsg: {"call_id":...,"name":...,"input":...})
+CI  →   command    Command input (JSON CmdMsg: {"command_id":...,"name":...,"args":...})
 CE  →   control    Input end — no more prompts. Not a closed stream: commands may still follow
-CO  ←   command    Command output (JSON CmdResultMsg: {"call_id":...,"output":...,"is_error":...})
+CO  ←   command    Command output (JSON CmdResultMsg: {"command_id":...,"result":...,"is_error":...})
 SM  ←   system     System message (JSON: {"type":"...","data":{...}})
 ```
 
@@ -657,9 +657,9 @@ UX-video-url.txt               UX{"type":"video","uri":"https://...","fps":5,"re
 UX-document.txt                UX{"type":"document","uri":"data:application/pdf;base64,..."}
 UE.txt                         UE                  (the tag alone — a control frame carries no value)
 CE.txt                         CE                  (the tag alone) — input end: no more prompts, commands may still follow
-CI-cancel.txt                  CI{"call_id":"1","name":"cancel"}
-CI-save.txt                    CI{"call_id":"2","name":"save","input":"/tmp/x.alaya"}
-CI-model-sync.txt              CI{"call_id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
+CI-cancel.txt                  CI{"command_id":"1","name":"cancel"}
+CI-save.txt                    CI{"command_id":"2","name":"save","args":"/tmp/x.alaya"}
+CI-model-sync.txt              CI{"command_id":"3","name":"model_sync","args":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
 ```
 
 **stdout — content (history id in `"id"`, time on authoritative frames):**
@@ -706,9 +706,9 @@ Uf-execute-command-preview.txt Uf{"id":"14","call_id":"t5","text":"total 42..."}
 **stdout — commands and system messages (no history id):**
 
 ```
-CO-save-success.txt            CO{"call_id":"2","output":{"path":"/tmp/x.alaya"}}
-CO-command-error.txt           CO{"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
-CO-task-started.txt            CO{"call_id":"9","output":{"status":"started"}}
+CO-save-success.txt            CO{"command_id":"2","result":{"path":"/tmp/x.alaya"}}
+CO-command-error.txt           CO{"command_id":"2","is_error":true,"result":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+CO-task-started.txt            CO{"command_id":"9","result":{"status":"started"}}
 ```
 
 The system-message samples follow with their schema.
@@ -765,16 +765,16 @@ SM-steering-refused.txt        {"type":"steering","data":{"phase":"refused","tex
 ## Adapter → Agent Commands
 
 Commands are sent as **CI** (Command Input) frames — a JSON envelope with an
-adapter-generated call ID, the command name, and an argument string:
+adapter-generated command ID, the command name, and an argument string:
 
 ```
-CI{"call_id":"<call-id>","name":"<command>","input":"<args-string>"}
+CI{"command_id":"<command-id>","name":"<command>","args":"<args-string>"}
 ```
 
-The `input` is an opaque string whose syntax is defined by each command
+The `args` is an opaque string whose syntax is defined by each command
 (e.g. `"/tmp/x.alaya"` for `save`, `"3"` for `model_set`). The adapter does
 not need to understand command semantics — it only splits the human-facing
-text into name + input.
+text into name + args.
 
 The command vocabulary — every name, its arguments, and its result — is listed
 in [commands.md](../docs/commands.md); this chapter documents how a command
@@ -783,22 +783,26 @@ most: `cancel` stops the task in flight, and `quit` ends the session, letting a
 task that is already running finish first (the [session lifecycle
 signal](#session-lifecycle-signal) is what follows).
 
-Every CI frame receives exactly one **CO** (Command Output) frame, echoing
-the same `call_id`:
+Every CI frame the agent can read receives exactly one **CO** (Command Output)
+frame, echoing the same `command_id`:
 
 ```
-CO{"call_id":"<call-id>","output":<command result>}                    ← success
-CO{"call_id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
+CO{"command_id":"<command-id>","result":<command result>}                  ← success
+CO{"command_id":"<command-id>","is_error":true,"result":{"code":"...","message":"..."}}  ← failure
 ```
 
-- `output` is structured JSON defined per command (may be `null` for
+- `result` is structured JSON defined per command (may be `null` for
   fire-and-forget commands like `cancel`).
-- On failure, `output` is a **uniform error object**: `{"code":"<machine-readable>","message":"<human-readable>"}`.
+- On failure, `result` is a **uniform error object**: `{"code":"<machine-readable>","message":"<human-readable>"}`.
   Machine clients key off `is_error`/`code`; the `message` is for display.
+- The `command_id` is required. A CI without one, or with JSON the agent cannot
+  parse, gets no CO at all — the answer would have no id to echo — and is
+  reported as an SM `error` instead. Read the id as the correlation handle it
+  is: a CO answers one CI, and only a CI that carries an id is one.
 
 **Rendering is the adapter's job:** CO carries only structured data, never
 display text. To render a result (e.g. show the file name after `save`), the
-adapter correlates the CO's `call_id` with the CI it sent (the request carries the
+adapter correlates the CO's `command_id` with the CI it sent (the request carries the
 `name`) — exactly like tool results: AF carries the tool name, UF carries
 only the `id`, and the adapter tracks the mapping. Commands whose effect is
 self-evident in the UI (e.g. `cancel`, `theme_set`) render nothing — the
@@ -816,9 +820,9 @@ These commands start a long-running task. CO replies **immediately** —
 via an SM `task` message carrying the same `command_id`:
 
 ```
-CI{"call_id":"9","name":"continue"}
+CI{"command_id":"9","name":"continue"}
 SM{"type":"task","data":{"in_progress":true,"command_id":"9"}}      ← running
-CO{"call_id":"9","output":{"status":"started"}}                          ← accepted
+CO{"command_id":"9","result":{"status":"started"}}                        ← accepted
 SM{"type":"task","data":{"in_progress":false,"command_id":"9"}}     ← done
 ```
 
@@ -832,15 +836,15 @@ command produces the CO error and no running frame.
 ### Example: save command
 
 ```
-stdin:  CI{"call_id":"1","name":"save","input":"/tmp/x.alaya"}
-stdout: CO{"call_id":"1","output":{"path":"/tmp/x.alaya"}}
+stdin:  CI{"command_id":"1","name":"save","args":"/tmp/x.alaya"}
+stdout: CO{"command_id":"1","result":{"path":"/tmp/x.alaya"}}
 ```
 
 ### Example: failed command
 
 ```
-stdin:  CI{"call_id":"2","name":"model_set","input":"99"}
-stdout: CO{"call_id":"2","is_error":true,"output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+stdin:  CI{"command_id":"2","name":"model_set","args":"99"}
+stdout: CO{"command_id":"2","is_error":true,"result":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
 ```
 
 ### Tool Confirmation
@@ -850,7 +854,7 @@ with a `tool_confirm` or `tool_decline` CI frame:
 
 | SM Received | Adapter Action | CI Response |
 |-------------|----------------|-------------|
-| `{"type":"tool_confirm","data":{"call_id":"t1"}}` | Show prompt to user | `{"call_id":"...","name":"tool_confirm","input":"t1"}` or `{"call_id":"...","name":"tool_decline","input":"t1"}` |
+| `{"type":"tool_confirm","data":{"call_id":"t1"}}` | Show prompt to user | `{"command_id":"...","name":"tool_confirm","args":"t1"}` or `{"command_id":"...","name":"tool_decline","args":"t1"}` |
 
 ### MCP Initialization & OAuth
 
@@ -860,9 +864,9 @@ the OAuth code, then respond with the code:
 
 | SM Received | Adapter Action | CI Response |
 |-------------|----------------|-------------|
-| `{"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://..."}}` | Open browser to `url` (with `{{redirect_uri}}`/`{{state}}` replaced), start callback server | `{"call_id":"...","name":"mcp_confirm","input":"github <code> <redirect_uri>"}` |
-| User declines or flow fails | Send decline command | `{"call_id":"...","name":"mcp_decline","input":"github"}` |
-| User cancels entire init | Send cancel command | `{"call_id":"...","name":"mcp_skip"}` |
+| `{"type":"mcp","data":{"status":"auth_required","server":"github","url":"https://..."}}` | Open browser to `url` (with `{{redirect_uri}}`/`{{state}}` replaced), start callback server | `{"command_id":"...","name":"mcp_confirm","args":"github <code> <redirect_uri>"}` |
+| User declines or flow fails | Send decline command | `{"command_id":"...","name":"mcp_decline","args":"github"}` |
+| User cancels entire init | Send cancel command | `{"command_id":"...","name":"mcp_skip"}` |
 
 The `url` field may contain `{{redirect_uri}}` and `{{state}}` placeholders
 that the adapter must replace with real values before opening the browser:
@@ -890,7 +894,7 @@ list back through `model_sync` when its editor session ends:
 
 | Trigger | Adapter Action | CI Response |
 |---------|----------------|-------------|
-| The adapter's model-config editor session ends | Read the edited file, send its content as a JSON array | `{"call_id":"...","name":"model_sync","input":"[{...}, {...}]"}` |
+| The adapter's model-config editor session ends | Read the edited file, send its content as a JSON array | `{"command_id":"...","name":"model_sync","args":"[{...}, {...}]"}` |
 
 The `input` is a serialized array of model config objects (same format as the
 `models` field in `SM-model-list.txt`). The agent replaces all models with
@@ -906,8 +910,8 @@ type (`:q` for `quit`, `:r` for `reasoning_level_set`) and resolve them before
 writing the frame — that is an input convenience, not a protocol alias, and a
 client speaking this protocol sends the full name.
 
-| Command | input | CO output (success) |
-|---------|-------|---------------------|
+| Command | args | CO result (success) |
+|---------|------|---------------------|
 | `cancel` | — | `null` |
 | `save` | `[filename]` | `{"path":...}` |
 | `fork` | `<history_id> <filename>` | `{"path":...,"count":...,"history_id":...}` |

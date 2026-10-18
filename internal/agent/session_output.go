@@ -106,13 +106,17 @@ func (s *Session) writeSteering(phase, reason, text string) {
 	s.writeSystemMsg(steeringMsg{Phase: phase, Reason: reason, Text: text})
 }
 
-// writeCmdResult writes a CO (command Output) frame for a command call.
-// On success, result is serialized into Output (nil → JSON null).
-// On error, Output carries a uniform CmdError object; cmdErr codes are
-// preserved, plain errors default to "ERROR". An empty id is legal and
-// means the error could not be correlated to a request.
-func (s *Session) writeCmdResult(id string, result any, err error) {
-	msg := protocol.CmdResultMsg{CallID: id}
+// writeCmdResult writes a CO (Command Output) frame for one command request.
+//
+// commandID is that request's id and is never empty: the input plane refuses a
+// CI it cannot read or cannot correlate (see handleInputFrame), so every CO
+// answers exactly one CI and every CI the agent can read is answered once.
+//
+// On success, result is serialized into Result (nil → JSON null).
+// On error, Result carries a uniform CmdError object; cmdErr codes are
+// preserved, plain errors default to "ERROR".
+func (s *Session) writeCmdResult(commandID string, result any, err error) {
+	msg := protocol.CmdResultMsg{CommandID: commandID}
 
 	switch {
 	case err != nil:
@@ -126,18 +130,18 @@ func (s *Session) writeCmdResult(id string, result any, err error) {
 		if marshalErr != nil {
 			data = json.RawMessage(`{"code":"ERROR","message":"failed to serialize command error"}`)
 		}
-		msg.Output = data
+		msg.Result = data
 	case result != nil:
 		data, marshalErr := json.Marshal(result)
 		if marshalErr != nil {
 			// A serialization failure is itself a command error.
 			msg.IsError = true
-			msg.Output = json.RawMessage(`{"code":"ERROR","message":"failed to serialize command result"}`)
+			msg.Result = json.RawMessage(`{"code":"ERROR","message":"failed to serialize command result"}`)
 		} else {
-			msg.Output = data
+			msg.Result = data
 		}
 	default:
-		msg.Output = json.RawMessage("null")
+		msg.Result = json.RawMessage("null")
 	}
 
 	data, marshalErr := json.Marshal(msg)
@@ -189,16 +193,16 @@ func (s *Session) sendMessageVersionMsg() {
 func (s *Session) sendTaskMsg() {
 	// command ID: prefer the running task's; fall back to the just-finished
 	// task's (activeTask is nil during the completion broadcast).
-	cmdID := s.taskCommandID
+	commandID := s.taskCommandID
 	if s.activeTask != nil {
-		cmdID = s.activeTask.commandID
+		commandID = s.activeTask.commandID
 	}
 	s.writeSystemMsg(taskMsg{
 		InProgress:    s.activeTask != nil,
 		CurrentStep:   s.activeTaskStep(),
 		MaxSteps:      s.MaxSteps,
 		ContextTokens: s.ContextTokens,
-		CommandID:     cmdID,
+		CommandID:     commandID,
 		StepTPS:       s.lastStepTPS,
 		TTFTMS:        s.lastTTFTMS,
 	})

@@ -210,7 +210,7 @@ func startStatusTestSession(t *testing.T, provider llm.Provider, cfg SessionConf
 
 func writeCI(t *testing.T, w io.Writer, id, name string) {
 	t.Helper()
-	data, err := json.Marshal(protocol.CmdMsg{CallID: id, Name: name})
+	data, err := json.Marshal(protocol.CmdMsg{CommandID: id, Name: name})
 	if err != nil {
 		t.Fatalf("marshal CI: %v", err)
 	}

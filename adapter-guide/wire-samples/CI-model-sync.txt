@@ -1,1 +1,1 @@
-CI{"call_id":"3","name":"model_sync","input":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
+CI{"command_id":"3","name":"model_sync","args":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}

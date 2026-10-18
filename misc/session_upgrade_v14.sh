@@ -101,8 +101,22 @@ for f in "${files[@]}"; do
 	# alone, and a version it does not recognise is reported rather than guessed at.
 	version="$(file_version "$f")"
 	case "$version" in
+	'' | *[!0-9]*)
+		echo "this step converts v13; $f says message_version ${version:-nothing}" >&2
+		status=1
+		continue
+		;;
+	esac
+	# A file ahead of this step is one it has nothing to do. That includes a
+	# generation with no script at all: a version that moved no body bytes is an
+	# edit, not a conversion (see internal/sessionmigrate's package doc), so there
+	# is no step to look for and no error to report here.
+	if [ "$version" -gt 14 ]; then
+		echo "already past this step (v${version}): $f"
+		continue
+	fi
+	case "$version" in
 	14) echo "already v14: $f"; continue ;;
-	15) echo "already v15, past this step: $f"; continue ;;
 	13) ;;
 	*)
 		echo "this step converts v13; $f says message_version ${version:-nothing}" >&2

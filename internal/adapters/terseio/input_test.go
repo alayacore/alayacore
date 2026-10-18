@@ -82,15 +82,15 @@ func TestReadAllPrompt_Command(t *testing.T) {
 	if cmd.Name != commands.CommandNameSave {
 		t.Errorf("cmd.Name = %q, want %q", cmd.Name, commands.CommandNameSave)
 	}
-	if cmd.Input != "/tmp/x.alaya" {
-		t.Errorf("cmd.Input = %q, want %q", cmd.Input, "/tmp/x.alaya")
+	if cmd.Args != "/tmp/x.alaya" {
+		t.Errorf("cmd.Args = %q, want %q", cmd.Args, "/tmp/x.alaya")
 	}
-	if !strings.HasPrefix(cmd.CallID, "terse-") {
-		t.Errorf("cmd.CallID = %q, want terse- prefix", cmd.CallID)
+	if !strings.HasPrefix(cmd.CommandID, "terse-") {
+		t.Errorf("cmd.CommandID = %q, want terse- prefix", cmd.CommandID)
 	}
 	// The adapter must track the id → name mapping for CO correlation.
-	if name, ok := commandNames.Load(cmd.CallID); !ok || name != commands.CommandNameSave {
-		t.Errorf("commandNames[%q] = %v, %v; want %q, true", cmd.CallID, name, ok, commands.CommandNameSave)
+	if name, ok := commandNames.Load(cmd.CommandID); !ok || name != commands.CommandNameSave {
+		t.Errorf("commandNames[%q] = %v, %v; want %q, true", cmd.CommandID, name, ok, commands.CommandNameSave)
 	}
 }
 
@@ -114,8 +114,8 @@ func TestReadAllPrompt_CommandMultiLine(t *testing.T) {
 	if cmd.Name != commands.CommandNameSave {
 		t.Errorf("cmd.Name = %q, want %q", cmd.Name, commands.CommandNameSave)
 	}
-	if cmd.Input != "/tmp/x.alaya" {
-		t.Errorf("cmd.Input = %q, want %q", cmd.Input, "/tmp/x.alaya")
+	if cmd.Args != "/tmp/x.alaya" {
+		t.Errorf("cmd.Args = %q, want %q", cmd.Args, "/tmp/x.alaya")
 	}
 }
 
@@ -134,7 +134,7 @@ func TestReadAllPrompt_CommandNoArgs(t *testing.T) {
 	if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
 		t.Fatalf("CI payload not JSON: %v", err)
 	}
-	if cmd.Name != commands.CommandNameContinue || cmd.Input != "" {
+	if cmd.Name != commands.CommandNameContinue || cmd.Args != "" {
 		t.Errorf("cmd = %+v, want name %q with empty input", cmd, commands.CommandNameContinue)
 	}
 }
@@ -159,7 +159,7 @@ func TestReadAllPrompt_Quit(t *testing.T) {
 		if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
 			t.Fatalf("readAllPrompt(%q): CI payload not JSON: %v", input, err)
 		}
-		if cmd.Name != commands.CommandNameQuit || cmd.Input != "" {
+		if cmd.Name != commands.CommandNameQuit || cmd.Args != "" {
 			t.Errorf("readAllPrompt(%q) cmd = %+v, want name %q with empty input", input, cmd, commands.CommandNameQuit)
 		}
 	}
@@ -182,7 +182,7 @@ func TestReadAllPrompt_QuitWithArgsIsSent(t *testing.T) {
 	if err := json.Unmarshal([]byte(frames[0].value), &cmd); err != nil {
 		t.Fatalf("CI payload not JSON: %v", err)
 	}
-	if cmd.Name != commands.CommandNameQuit || cmd.Input != "now" {
+	if cmd.Name != commands.CommandNameQuit || cmd.Args != "now" {
 		t.Errorf("cmd = %+v, want name %q input %q", cmd, commands.CommandNameQuit, "now")
 	}
 }

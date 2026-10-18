@@ -237,7 +237,7 @@ func TestAdapterGuideCommandTableMatchesTheRegistry(t *testing.T) {
 
 	rowPattern := regexp.MustCompile("^\\| `([a-z_]+)`(?:\\s*/\\s*`([a-z_]+)`)?\\s*\\|")
 	checked := 0
-	for _, row := range tableAfter(t, guide, "| Command | input | CO output (success) |") {
+	for _, row := range tableAfter(t, guide, "| Command | args | CO result (success) |") {
 		m := rowPattern.FindStringSubmatch(row)
 		if m == nil {
 			continue

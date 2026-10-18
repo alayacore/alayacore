@@ -45,20 +45,31 @@ import (
 //
 // For command messages (from CI frames):
 //   - cmd holds the command name (no ':' prefix)
-//   - cmdInput holds the command's argument string
-//   - cmdID holds the adapter-generated call ID, echoed in the CO result
+//   - args holds the command's argument string
+//   - commandID holds the adapter-generated command id, echoed in the CO result
 //   - contentParts is nil, isCmd is true
 //
 // For the input-end frame (CE):
 //   - inputEnd is true and carries nothing else
+//
+// err is a frame-level failure: a malformed frame, a bad content frame, an
+// unknown tag, or a CI whose JSON cannot be read. None of those is a command
+// request, and the last one cannot even yield an id, so they are reported as an
+// SM error — the session plane — not as a CO.
+//
+// reject is a command request that was read but refused before dispatch
+// (currently only "a CI arrived with unsent content still staged"). It has an
+// id, so it is answered with a CO like any other command: the request exists
+// even though the answer is no.
 type inputMsg struct {
 	contentParts []llm.ContentPart // combined user content (media + text)
 	cmd          string            // command name for commands, empty for prompts
-	cmdInput     string            // command argument string (from CI frame)
-	cmdID        string            // command call ID (from CI frame), echoed in CO
+	args         string            // command argument string (from CI frame)
+	commandID    string            // command id (from CI frame), echoed in CO
 	isCmd        bool              // true when cmd is set
 	inputEnd     bool              // true for CE: the adapter has no more input
-	err          error             // non-nil when the input pump hit a validation error
+	err          error             // non-nil for a frame-level failure (reported as an SM error)
+	reject       *cmdErr           // non-nil for a readable command request that must be refused
 }
 
 // inputPump runs in its own goroutine.  It reads frames from the input
@@ -86,9 +97,11 @@ func (s *Session) inputPump() {
 			} else {
 				// A malformed frame: the bytes are not a frame and there is no
 				// frame boundary to resynchronise on, so the message being staged
-				// is not a message. Drop it and report — handleInputMsg turns the
-				// error into a CO frame, so the adapter learns why the input
-				// stopped instead of the session quietly going deaf.
+				// is not a message. Drop it and report — handleInputMsg writes an
+				// SM error, so the adapter learns why the input stopped instead of
+				// the session quietly going deaf. The stream is over at this
+				// point, which is a session event, not a command result: there is
+				// no CI to answer and no id to echo.
 				s.inputMsgCh <- inputMsg{err: fmt.Errorf("invalid frame: %w", err)}
 			}
 			close(s.inputMsgCh)
@@ -118,16 +131,35 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 		}
 		return append(staged, part)
 	case wire.TagCommandIn:
-		if len(staged) > 0 {
-			s.inputMsgCh <- inputMsg{err: fmt.Errorf("command can not be sent with staged content")}
-			return nil
-		}
 		var cmd protocol.CmdMsg
 		if err := json.Unmarshal([]byte(value), &cmd); err != nil {
+			// The id is part of what could not be read, so there is nothing to
+			// echo and no CO can be correlated: this is a frame-level failure and
+			// goes out as an SM error (see inputMsg.err).
 			s.inputMsgCh <- inputMsg{err: fmt.Errorf("invalid command frame: %v", err)}
 			return staged
 		}
-		s.inputMsgCh <- inputMsg{isCmd: true, cmd: cmd.Name, cmdInput: cmd.Input, cmdID: cmd.CallID}
+		if cmd.CommandID == "" {
+			// Readable but uncorrelatable. Running it would produce a side
+			// effect the adapter could not match to anything it sent, and a CO
+			// would carry the empty id this plane exists not to have — so the
+			// frame is refused on the session plane instead.
+			s.inputMsgCh <- inputMsg{err: fmt.Errorf("command frame without command_id: %q", cmd.Name)}
+			return staged
+		}
+		if len(staged) > 0 {
+			// The request is readable, so it gets its answer: refusing it is
+			// still a command result, and the adapter can correlate it.
+			s.inputMsgCh <- inputMsg{
+				isCmd:     true,
+				cmd:       cmd.Name,
+				args:      cmd.Args,
+				commandID: cmd.CommandID,
+				reject:    &cmdErr{Code: "INVALID_ARGS", Message: "command can not be sent with staged content"},
+			}
+			return nil
+		}
+		s.inputMsgCh <- inputMsg{isCmd: true, cmd: cmd.Name, args: cmd.Args, commandID: cmd.CommandID}
 		return staged
 	case wire.TagUserEnd:
 		if len(staged) > 0 {
@@ -294,18 +326,21 @@ func (s *Session) handleToolDeclineCmd(args string) (any, error) {
 }
 
 // resolveToolConfirm looks up the confirmation channel and sends the decision.
-func (s *Session) resolveToolConfirm(id string, allowed bool) (any, error) {
+// toolCallID is the *tool* call's id (the value AF carries), not a command id:
+// it arrives as this command's argument, and the CO result echoes it as
+// "call_id" so the adapter can match the decision to the confirm prompt.
+func (s *Session) resolveToolConfirm(toolCallID string, allowed bool) (any, error) {
 	s.confirmMu.Lock()
-	ch, ok := s.confirmChs[id]
-	delete(s.confirmChs, id)
+	ch, ok := s.confirmChs[toolCallID]
+	delete(s.confirmChs, toolCallID)
 	s.confirmMu.Unlock()
 
 	if !ok {
-		return nil, &cmdErr{Code: "NOT_FOUND", Message: "No pending tool confirmation for " + id}
+		return nil, &cmdErr{Code: "NOT_FOUND", Message: "No pending tool confirmation for " + toolCallID}
 	}
 
 	ch <- allowed
-	return map[string]any{"call_id": id}, nil
+	return map[string]any{"call_id": toolCallID}, nil
 }
 
 // cleanupConfirmChannels removes any leftover tool-confirmation channels
@@ -428,13 +463,13 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 // projections onto the control plane (CO) and the state plane (SM), and their
 // interleaving is not part of the contract (adapter-guide → "Async task
 // commands").
-func (s *Session) startTaskCommand(id string, run func(context.Context)) {
-	ctx, err := s.beginTask(id)
+func (s *Session) startTaskCommand(commandID string, run func(context.Context)) {
+	ctx, err := s.beginTask(commandID)
 	if err != nil {
-		s.writeCmdResult(id, nil, err)
+		s.writeCmdResult(commandID, nil, err)
 		return
 	}
-	s.writeCmdResult(id, map[string]any{"status": "started"}, nil)
+	s.writeCmdResult(commandID, map[string]any{"status": "started"}, nil)
 	go run(ctx)
 }
 
@@ -518,10 +553,21 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	}
 
 	if msg.err != nil {
-		// Input-pump validation errors (invalid CI JSON, staged-content
-		// conflict, unknown tags). No request ID is available — the empty
-		// id in the CO marks an uncorrelated error.
-		s.writeCmdResult("", nil, &cmdErr{Code: "BAD_FRAME", Message: msg.err.Error()})
+		// Frame-level failures go to the session plane, not the command plane.
+		// A CO answers exactly one command request, and none of these is one: a
+		// malformed frame, a bad content frame, an unknown tag. A CI whose JSON
+		// cannot be read lands here too — its id is precisely the part that
+		// could not be read, so a CO would be a frame no adapter could match to
+		// anything it sent.
+		s.writeError(msg.err.Error())
+		return
+	}
+
+	// A readable command request that was refused before dispatch still gets
+	// its CO: the request exists, the id is there to echo, and the adapter can
+	// match the refusal to what it sent.
+	if msg.reject != nil {
+		s.writeCmdResult(msg.commandID, nil, msg.reject)
 		return
 	}
 
@@ -530,13 +576,13 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 		return
 	}
 
-	// command dispatch. CI frames carry the command name and input
-	// separately; each handler parses the input string as appropriate
+	// command dispatch. CI frames carry the command name and argument text
+	// separately; each handler parses its argument string as appropriate
 	// for its command.
 	name := msg.cmd
-	args := msg.cmdInput
+	args := msg.args
 	if name == "" {
-		s.writeCmdResult(msg.cmdID, nil, &cmdErr{Code: "INVALID_ARGS", Message: "empty command"})
+		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: "INVALID_ARGS", Message: "empty command"})
 		return
 	}
 
@@ -545,10 +591,10 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	// completion is correlated via taskMsg.command_id.
 	switch name {
 	case commands.CommandNameContinue:
-		s.startTaskCommand(msg.cmdID, s.runTaskContinue)
+		s.startTaskCommand(msg.commandID, s.runTaskContinue)
 		return
 	case commands.CommandNameSummarize:
-		s.startTaskCommand(msg.cmdID, s.runTaskSummarize)
+		s.startTaskCommand(msg.commandID, s.runTaskSummarize)
 		return
 	}
 
@@ -557,24 +603,24 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	// a command is the vocabulary package's business, not the dispatcher's.
 	cmdDef, ok := lookupCommand(commands.Canonical(name))
 	if !ok {
-		s.writeCmdResult(msg.cmdID, nil, &cmdErr{Code: "UNKNOWN_COMMAND", Message: fmt.Sprintf("unknown command: %s", name)})
+		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: "UNKNOWN_COMMAND", Message: fmt.Sprintf("unknown command: %s", name)})
 		return
 	}
 
 	if cmdDef.Policy == cmdIdle && s.activeTask != nil {
-		s.writeCmdResult(msg.cmdID, nil, &cmdErr{Code: "BUSY",
+		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: "BUSY",
 			Message: "Cannot run this command while a task is in progress. Please wait or cancel the current task."})
 		return
 	}
-	s.execCommand(s.sessionCtx, msg.cmdID, cmdDef, args)
+	s.execCommand(s.sessionCtx, msg.commandID, cmdDef, args)
 }
 
 // execCommand runs a registered command handler and writes its CO result.
-// The handler is synchronous (runs in the run() goroutine), so the call ID
+// The handler is synchronous (runs in the run() goroutine), so the command ID
 // is passed directly and never needs to be stored on the Session.
-func (s *Session) execCommand(ctx context.Context, id string, cmdDef *command, args string) {
+func (s *Session) execCommand(ctx context.Context, commandID string, cmdDef *command, args string) {
 	result, err := cmdDef.Handler(s, ctx, args)
-	s.writeCmdResult(id, result, err)
+	s.writeCmdResult(commandID, result, err)
 }
 
 // ============================================================================

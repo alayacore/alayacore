@@ -244,7 +244,7 @@ func (o *answerOutput) handleCommandOut(value string) {
 	}
 	if msg.IsError {
 		var errObj protocol.CmdError
-		if json.Unmarshal(msg.Output, &errObj) == nil && errObj.Message != "" {
+		if json.Unmarshal(msg.Result, &errObj) == nil && errObj.Message != "" {
 			fmt.Fprintf(o.stderr, "[error: %s]\n", errObj.Message)
 			o.hasError.Store(true)
 			if o.errorClosed.CompareAndSwap(false, true) {
@@ -253,9 +253,9 @@ func (o *answerOutput) handleCommandOut(value string) {
 		}
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.CallID)
+	name, _ := commandNames.LoadAndDelete(msg.CommandID)
 	nameStr, _ := name.(string)
-	text := renderCommandResult(nameStr, msg.Output)
+	text := renderCommandResult(nameStr, msg.Result)
 	if text != "" {
 		fmt.Fprintf(o.stderr, "[%s]\n", text)
 	}

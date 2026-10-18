@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,10 +24,11 @@ func newSaveSession() *Session {
 	}
 }
 
-// TestMigrateV13SessionLoadsAsV15 pins the whole point of the migrations: a file
+// TestMigrateV13SessionLoadsAsCurrent pins the whole point of the migrations: a file
 // the core can no longer read (message_version 13, v13 tags) becomes one it
 // loads, with the same parts in the same order — through both steps, in the order
-// the two scripts in misc/ run them.
+// the two scripts in misc/ run them, and then the number bump a file with no
+// body change needs (an edit, so the test makes it as one).
 func TestMigrateV13SessionLoadsAsCurrent(t *testing.T) {
 	var body []byte
 	// The fixture is a v13 body, so it is framed the way v13 framed: a 2-byte
@@ -51,8 +54,11 @@ func TestMigrateV13SessionLoadsAsCurrent(t *testing.T) {
 	front := "---\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n" +
 		"message_version: 13\nreasoning_level: 1\n---\n"
 	// A v13 file is three generations behind: the v14 step converts its tags and
-	// value shapes, the v15 step re-frames what that produced, and the v16 step
-	// moves the number to the vocabulary this build speaks.
+	// value shapes, and the v15 step re-frames what that produced. v16 moved no
+	// body bytes — the vocabulary it renamed is not in a file — so it has no step
+	// (see sessionmigrate's package doc): the rest of the upgrade is the
+	// frontmatter edit the loader's exact-match rule asks for, made here the way a
+	// user would make it.
 	v14, err := sessionmigrate.V13ToV14(append([]byte(front), body...))
 	if err != nil {
 		t.Fatalf("v13 → v14: %v", err)
@@ -61,9 +67,11 @@ func TestMigrateV13SessionLoadsAsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("v14 → v15: %v", err)
 	}
-	migrated, err := sessionmigrate.V15ToV16(v15)
-	if err != nil {
-		t.Fatalf("v15 → v16: %v", err)
+	migrated := bytes.Replace(v15,
+		[]byte("message_version: 15"),
+		[]byte("message_version: "+strconv.Itoa(messageVersion)), 1)
+	if bytes.Equal(migrated, v15) {
+		t.Fatalf("the number bump changed nothing; the frontmatter no longer says message_version: 15")
 	}
 
 	path := filepath.Join(t.TempDir(), "migrated.alaya")

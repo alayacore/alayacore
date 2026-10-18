@@ -1,1 +1,1 @@
-CO{"call_id":"9","output":{"status":"started"}}
+CO{"command_id":"9","result":{"status":"started"}}

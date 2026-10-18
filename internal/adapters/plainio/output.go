@@ -222,18 +222,18 @@ func (o *stdoutOutput) handleCommandOut(value string) {
 	}
 	if msg.IsError {
 		var errObj protocol.CmdError
-		if json.Unmarshal(msg.Output, &errObj) == nil && errObj.Message != "" {
+		if json.Unmarshal(msg.Result, &errObj) == nil && errObj.Message != "" {
 			fmt.Fprintf(o.writer, "\n[error: %s]\n", errObj.Message)
 			o.lastTag = ""
 			o.lastHistoryID = ""
 		}
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.CallID)
+	name, _ := commandNames.LoadAndDelete(msg.CommandID)
 	nameStr, _ := name.(string)
 	o.lastTag = ""
 	o.lastHistoryID = ""
-	text := renderCommandResult(nameStr, msg.Output)
+	text := renderCommandResult(nameStr, msg.Result)
 	if text == "" {
 		// No text feedback needed — the command's effect (task stop,
 		// status change) is itself the confirmation. Stay silent.

@@ -44,7 +44,7 @@ func readInputMsg(t *testing.T, s *Session) inputMsg {
 func TestInputFrame_CommandIn_Valid(t *testing.T) {
 	s := newInputFrameSession()
 
-	cmd := protocol.CmdMsg{CallID: "a1b2", Name: "save", Input: "/tmp/x.alaya"}
+	cmd := protocol.CmdMsg{CommandID: "a1b2", Name: "save", Args: "/tmp/x.alaya"}
 	payload, err := json.Marshal(cmd)
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)
@@ -62,11 +62,11 @@ func TestInputFrame_CommandIn_Valid(t *testing.T) {
 	if msg.cmd != "save" {
 		t.Errorf("cmd = %q, want %q", msg.cmd, "save")
 	}
-	if msg.cmdInput != "/tmp/x.alaya" {
-		t.Errorf("cmdInput = %q, want %q", msg.cmdInput, "/tmp/x.alaya")
+	if msg.args != "/tmp/x.alaya" {
+		t.Errorf("args = %q, want %q", msg.args, "/tmp/x.alaya")
 	}
-	if msg.cmdID != "a1b2" {
-		t.Errorf("cmdID = %q, want %q", msg.cmdID, "a1b2")
+	if msg.commandID != "a1b2" {
+		t.Errorf("commandID = %q, want %q", msg.commandID, "a1b2")
 	}
 	if msg.contentParts != nil {
 		t.Errorf("command should have no contentParts, got %d", len(msg.contentParts))
@@ -76,7 +76,7 @@ func TestInputFrame_CommandIn_Valid(t *testing.T) {
 func TestInputFrame_CommandIn_NoInput(t *testing.T) {
 	s := newInputFrameSession()
 
-	cmd := protocol.CmdMsg{CallID: "c3d4", Name: "cancel"}
+	cmd := protocol.CmdMsg{CommandID: "c3d4", Name: "cancel"}
 	payload, err := json.Marshal(cmd)
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)
@@ -85,8 +85,8 @@ func TestInputFrame_CommandIn_NoInput(t *testing.T) {
 	s.handleInputFrame(wire.TagCommandIn, string(payload), nil)
 
 	msg := readInputMsg(t, s)
-	if msg.cmd != "cancel" || msg.cmdInput != "" {
-		t.Errorf("unexpected command fields: cmd=%q input=%q", msg.cmd, msg.cmdInput)
+	if msg.cmd != "cancel" || msg.args != "" {
+		t.Errorf("unexpected command fields: cmd=%q args=%q", msg.cmd, msg.args)
 	}
 }
 
@@ -107,6 +107,9 @@ func TestInputFrame_CommandIn_InvalidJSON(t *testing.T) {
 	}
 }
 
+// A CI that arrives with content still staged is a readable request that is
+// refused before dispatch: the agent has an id to echo, so the refusal travels
+// as a CO (the request exists — the answer is no) rather than as a session error.
 func TestInputFrame_CommandIn_WithStagedContent(t *testing.T) {
 	s := newInputFrameSession()
 
@@ -115,7 +118,7 @@ func TestInputFrame_CommandIn_WithStagedContent(t *testing.T) {
 		t.Fatalf("expected 1 staged part, got %d", len(staged))
 	}
 
-	cmd := protocol.CmdMsg{CallID: "x", Name: "save"}
+	cmd := protocol.CmdMsg{CommandID: "x", Name: "save"}
 	payload, _ := json.Marshal(cmd)
 	staged = s.handleInputFrame(wire.TagCommandIn, string(payload), staged)
 	if staged != nil {
@@ -123,8 +126,42 @@ func TestInputFrame_CommandIn_WithStagedContent(t *testing.T) {
 	}
 
 	msg := readInputMsg(t, s)
+	if msg.err != nil {
+		t.Fatalf("a readable CI must not be a frame error: %v", msg.err)
+	}
+	if msg.reject == nil {
+		t.Fatal("expected the request to be refused before dispatch")
+	}
+	if msg.commandID != "x" {
+		t.Errorf("commandID = %q, want the id the CI carried", msg.commandID)
+	}
+	if msg.reject.Code != "INVALID_ARGS" {
+		t.Errorf("reject code = %q, want INVALID_ARGS", msg.reject.Code)
+	}
+}
+
+// An empty command_id is not a legal request: without it nothing can be
+// correlated back, and running the command would produce a side effect the
+// adapter cannot match to anything it sent. The frame is refused on the session
+// plane, because a CO with no id is the frame this rule exists to prevent.
+func TestInputFrame_CommandIn_MissingCommandID(t *testing.T) {
+	s := newInputFrameSession()
+
+	payload, _ := json.Marshal(protocol.CmdMsg{Name: "save", Args: "/tmp/x.alaya"})
+	staged := s.handleInputFrame(wire.TagCommandIn, string(payload), nil)
+	if staged != nil {
+		t.Errorf("refused CI should not stage content")
+	}
+
+	msg := readInputMsg(t, s)
 	if msg.err == nil {
-		t.Fatal("expected err for CI sent with staged content")
+		t.Fatal("expected a frame-level error for a CI without command_id")
+	}
+	if !strings.Contains(msg.err.Error(), "command_id") {
+		t.Errorf("error should name the missing field: %v", msg.err)
+	}
+	if msg.isCmd || msg.commandID != "" {
+		t.Errorf("a refused CI must not be dispatched: %+v", msg)
 	}
 }
 
@@ -191,8 +228,8 @@ func TestWriteCmdResult_Success(t *testing.T) {
 	s.writeCmdResult("a1b2", map[string]any{"path": "/tmp/x.alaya"}, nil)
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"call_id":"a1b2"`) {
-		t.Errorf("missing id in CO: %s", joined)
+	if !strings.Contains(joined, `"command_id":"a1b2"`) {
+		t.Errorf("missing command id in CO: %s", joined)
 	}
 	if !strings.Contains(joined, `"path":"/tmp/x.alaya"`) {
 		t.Errorf("missing result in CO: %s", joined)
@@ -208,8 +245,8 @@ func TestWriteCmdResult_SuccessNoResult(t *testing.T) {
 	s.writeCmdResult("zzz", nil, nil)
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"output":null`) {
-		t.Errorf("fire-and-forget success should have output:null: %s", joined)
+	if !strings.Contains(joined, `"result":null`) {
+		t.Errorf("fire-and-forget success should have result:null: %s", joined)
 	}
 	if strings.Contains(joined, "is_error") {
 		t.Errorf("success CO should not carry is_error: %s", joined)
@@ -251,28 +288,60 @@ func TestHandleInputMsg_UnknownCommand(t *testing.T) {
 	s, output := newCmdOutputSession()
 	s.inputMsgCh = make(chan inputMsg, 1) // not used here, keeps Session consistent
 
-	s.handleInputMsg(inputMsg{isCmd: true, cmd: "nope", cmdID: "x1"})
+	s.handleInputMsg(inputMsg{isCmd: true, cmd: "nope", commandID: "x1"})
 
 	joined := strings.Join(output.Messages, "")
 	if !strings.Contains(joined, `"code":"UNKNOWN_COMMAND"`) {
 		t.Errorf("expected UNKNOWN_COMMAND in CO: %s", joined)
 	}
-	if !strings.Contains(joined, `"call_id":"x1"`) {
+	if !strings.Contains(joined, `"command_id":"x1"`) {
 		t.Errorf("expected echoed id in CO: %s", joined)
 	}
 }
 
-func TestHandleInputMsg_InputErrorUncorrelated(t *testing.T) {
+// A frame-level failure is not a command result. The command plane answers one
+// CI each, and a malformed frame is not one — least of all a CI whose id is the
+// part that could not be read. So the error goes out on the session plane, and
+// no CO is written at all.
+func TestHandleInputMsg_FrameErrorGoesToSessionPlane(t *testing.T) {
 	s, output := newCmdOutputSession()
 
 	s.handleInputMsg(inputMsg{err: fmt.Errorf("invalid command frame: boom")})
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"code":"BAD_FRAME"`) {
-		t.Errorf("expected BAD_FRAME in CO: %s", joined)
+	if !strings.Contains(joined, `SM{"type":"error","data":{"text":"invalid command frame: boom"}}`) {
+		t.Errorf("expected an SM error: %s", joined)
 	}
-	if !strings.Contains(joined, `"call_id":""`) {
-		t.Errorf("input errors should carry empty id: %s", joined)
+	if strings.Contains(joined, "CO{") {
+		t.Errorf("a frame-level failure must not be answered with a CO: %s", joined)
+	}
+}
+
+// The refusal path: a readable request that is not dispatched still gets its
+// CO, carrying the id and the reason, and the command does not run.
+func TestHandleInputMsg_RejectAnswersWithCOAndDoesNotRun(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.alaya")
+	output := &MockOutput{}
+	s := &Session{sessionConfig: sessionConfig{
+		SessionConfig: SessionConfig{Output: output, SessionFile: path},
+	}}
+	s.inputMsgCh = make(chan inputMsg, 1)
+
+	s.handleInputMsg(inputMsg{
+		isCmd:     true,
+		cmd:       "save",
+		args:      path,
+		commandID: "z1",
+		reject:    &cmdErr{Code: "INVALID_ARGS", Message: "command can not be sent with staged content"},
+	})
+
+	joined := strings.Join(output.Messages, "")
+	if !strings.Contains(joined, `"command_id":"z1"`) || !strings.Contains(joined, `"code":"INVALID_ARGS"`) {
+		t.Errorf("expected a CO refusal echoing the id: %s", joined)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("a refused command must not run (the session file was written)")
 	}
 }
 
@@ -471,7 +540,7 @@ func TestStartTaskCommand_RefusedDoesNotBroadcast(t *testing.T) {
 			if !strings.Contains(joined, `"code":"`+tc.wantCode+`"`) {
 				t.Errorf("expected %s error in CO: %s", tc.wantCode, joined)
 			}
-			if !strings.Contains(joined, `"call_id":"x2"`) {
+			if !strings.Contains(joined, `"command_id":"x2"`) {
 				t.Errorf("expected echoed id in CO: %s", joined)
 			}
 			// No task frame at all: neither in_progress:true (the indicator must

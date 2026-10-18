@@ -389,11 +389,11 @@ func TestInputEndFrame_CommandsStillFlow(t *testing.T) {
 
 	path := t.TempDir() + "/after-ce.alaya"
 	if err := wire.WriteFrame(w, wire.TagCommandIn,
-		`{"call_id":"c1","name":"save","input":"`+path+`"}`); err != nil {
+		`{"command_id":"c1","name":"save","args":"`+path+`"}`); err != nil {
 		t.Fatalf("write CI after CE: %v", err)
 	}
 
-	waitForOutput(t, output, `"call_id":"c1"`)
+	waitForOutput(t, output, `"command_id":"c1"`)
 	if !strings.Contains(output.String(), "after-ce.alaya") {
 		t.Errorf("the command after CE was not answered with its result: %q", output.String())
 	}

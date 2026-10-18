@@ -27,9 +27,9 @@ const (
 
 // commandHandler is a function that handles a command.
 // args is everything after the first space (empty string if no args).
-// It returns the structured result (serialized into CO output on success)
+// It returns the structured result (serialized into CO result on success)
 // and an error (serialized into a CmdError object on failure). The command
-// call ID is transport-level state — handlers never see it.
+// ID is transport-level state — handlers never see it.
 type commandHandler func(s *Session, ctx context.Context, args string) (any, error)
 
 // cmdErr is an error carrying a machine-readable code for the CO error

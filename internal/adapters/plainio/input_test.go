@@ -231,10 +231,10 @@ func TestReadPrompts_Command(t *testing.T) {
 	if cmd.Name != "cancel" {
 		t.Errorf("expected command 'cancel', got %q", cmd.Name)
 	}
-	if cmd.Input != "" {
-		t.Errorf("expected empty input, got %q", cmd.Input)
+	if cmd.Args != "" {
+		t.Errorf("expected empty args, got %q", cmd.Args)
 	}
-	if cmd.CallID == "" {
+	if cmd.CommandID == "" {
 		t.Error("CI frame should carry a generated call ID")
 	}
 
@@ -265,8 +265,8 @@ func TestReadPrompts_CommandWithArgs(t *testing.T) {
 	if err := json.Unmarshal([]byte(value), &cmd); err != nil {
 		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
 	}
-	if cmd.Name != "save" || cmd.Input != "/tmp/x.alaya" {
-		t.Errorf("unexpected cmd: name=%q input=%q", cmd.Name, cmd.Input)
+	if cmd.Name != "save" || cmd.Args != "/tmp/x.alaya" {
+		t.Errorf("unexpected cmd: name=%q args=%q", cmd.Name, cmd.Args)
 	}
 }
 
@@ -333,8 +333,8 @@ func TestReadPrompts_QuitWithArgsIsNotLocalQuit(t *testing.T) {
 	if err := json.Unmarshal([]byte(value), &cmd); err != nil {
 		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
 	}
-	if cmd.Name != commands.CommandNameQuit || cmd.Input != "foo" {
-		t.Errorf("cmd = %+v, want name %q input %q", cmd, commands.CommandNameQuit, "foo")
+	if cmd.Name != commands.CommandNameQuit || cmd.Args != "foo" {
+		t.Errorf("cmd = %+v, want name %q args %q", cmd, commands.CommandNameQuit, "foo")
 	}
 	if tag, _, err := wiretest.NextFrame(&buf); err == nil {
 		t.Errorf("expected EOF after the command, got tag %s", tag)
@@ -359,11 +359,11 @@ func assertQuitCommand(t *testing.T, buf *bytes.Buffer, typed string) {
 	if cmd.Name != commands.CommandNameQuit {
 		t.Errorf(":%s: quit command name = %q, want %q", typed, cmd.Name, commands.CommandNameQuit)
 	}
-	if cmd.Input != "" {
-		t.Errorf(":%s: quit command input = %q, want empty", typed, cmd.Input)
+	if cmd.Args != "" {
+		t.Errorf(":%s: quit command args = %q, want empty", typed, cmd.Args)
 	}
-	if cmd.CallID == "" {
-		t.Errorf(":%s: quit CI frame should carry a generated call ID", typed)
+	if cmd.CommandID == "" {
+		t.Errorf(":%s: quit CI frame should carry a generated command ID", typed)
 	}
 }
 

@@ -414,7 +414,7 @@ func TestSaveDuringStreaming_EndToEnd(t *testing.T) {
 
 	// :save mid-task → the file must contain the user prompt and step 1,
 	// but NOT step 2 (the task is still running and blocked).
-	cmd, err := json.Marshal(protocol.CmdMsg{CallID: "s1", Name: "save", Input: savePath})
+	cmd, err := json.Marshal(protocol.CmdMsg{CommandID: "s1", Name: "save", Args: savePath})
 	if err != nil {
 		t.Fatalf("marshal save cmd: %v", err)
 	}

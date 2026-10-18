@@ -81,7 +81,7 @@ func TestConfirmQuitSendsQuitCommand(t *testing.T) {
 	if err := json.Unmarshal([]byte(value), &sent); err != nil {
 		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
 	}
-	if sent.Name != commands.CommandNameQuit || sent.Input != "" {
+	if sent.Name != commands.CommandNameQuit || sent.Args != "" {
 		t.Errorf("sent %+v, want name %q with no arguments", sent, commands.CommandNameQuit)
 	}
 }

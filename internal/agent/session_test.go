@@ -473,7 +473,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	// Dispatch through handleInputMsg (the real entry point) so the
 	// cmdIdle policy is enforced.
 	output.Messages = nil
-	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true, cmdID: "t1"})
+	session.handleInputMsg(inputMsg{cmd: "model_set", args: "1", isCmd: true, commandID: "t1"})
 
 	if hasCOError(output.Messages) {
 		t.Error("model_set should succeed when no task is running, but got error")
@@ -482,7 +482,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	// Test 2: model_set should fail when task is running.
 	output.Messages = nil
 	session.activeTask = &taskHandle{}
-	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true, cmdID: "t2"})
+	session.handleInputMsg(inputMsg{cmd: "model_set", args: "1", isCmd: true, commandID: "t2"})
 
 	if !hasCOError(output.Messages) {
 		t.Error("model_set should fail when task is running, but no error was found")
@@ -491,7 +491,7 @@ func TestModelSetWhileTaskRunning(t *testing.T) {
 	// Test 3: model_set should work again after task completes.
 	output.Messages = nil
 	session.activeTask = nil
-	session.handleInputMsg(inputMsg{cmd: "model_set", cmdInput: "1", isCmd: true, cmdID: "t3"})
+	session.handleInputMsg(inputMsg{cmd: "model_set", args: "1", isCmd: true, commandID: "t3"})
 
 	if hasCOError(output.Messages) {
 		t.Error("model_set should succeed after task completes, but got error")

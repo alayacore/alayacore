@@ -40,7 +40,7 @@ Every capability available to built-in adapters must be achievable through frame
 |-----------|-----|--------|
 | adapter → agent (stdin) | `UX` + `UE` | User content prompts (JSON content item) |
 | adapter → agent (stdin) | `CE` | End of input: no more prompts (the stream stays open for commands) |
-| adapter → agent (stdin) | `CI` | All commands (`save`, `cancel`, `model_set`, etc.) — JSON `{call_id, name, input}` |
+| adapter → agent (stdin) | `CI` | All commands (`save`, `cancel`, `model_set`, etc.) — JSON `{command_id, name, args}` |
 | adapter → agent (stdin) | `UX` (`type` image/video/audio/document) | Media input |
 | agent → adapter (stdout) | `UX` | User content echo (with assigned history id) |
 | agent → adapter (stdout) | `AX` | Assistant content — text/reasoning (complete/authoritative; empty content if deltas preceded it) |
@@ -48,7 +48,7 @@ Every capability available to built-in adapters must be achievable through frame
 | agent → adapter (stdout) | `AF`/`UF` | Tool calls and results (JSON) |
 | agent → adapter (stdout) | `Af` | Tool call arguments (streaming delta, partial JSON; absent with `--no-delta`) |
 | agent → adapter (stdout) | `Uf` | Tool result preview snapshot (ephemeral, display-only; authoritative result arrives via `UF`; absent with `--no-delta`) |
-| agent → adapter (stdout) | `CO` | Command results (JSON `{call_id, output, is_error}` — one per CI) |
+| agent → adapter (stdout) | `CO` | Command results (JSON `{command_id, result, is_error}` — one per CI) |
 | agent → adapter (stdout) | `SM` | System state — task, model, theme, reasoning, mcp, session, error, notify, tool_confirm, version |
 
 > **Note:** User content (`UX`) flows in **both** directions.

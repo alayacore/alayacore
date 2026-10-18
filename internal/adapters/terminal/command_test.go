@@ -34,14 +34,14 @@ func TestWriteCommand_CIFrame(t *testing.T) {
 	if msg.Name != "save" {
 		t.Errorf("name = %q, want %q", msg.Name, "save")
 	}
-	if msg.Input != "/tmp/x.alaya" {
-		t.Errorf("input = %q, want %q", msg.Input, "/tmp/x.alaya")
+	if msg.Args != "/tmp/x.alaya" {
+		t.Errorf("args = %q, want %q", msg.Args, "/tmp/x.alaya")
 	}
-	if msg.CallID == "" {
-		t.Error("CI frame should carry a generated call ID")
+	if msg.CommandID == "" {
+		t.Error("CI frame should carry a generated command ID")
 	}
-	if !strings.HasPrefix(msg.CallID, "tui-") {
-		t.Errorf("unexpected id format: %q", msg.CallID)
+	if !strings.HasPrefix(msg.CommandID, "tui-") {
+		t.Errorf("unexpected id format: %q", msg.CommandID)
 	}
 }
 
@@ -60,8 +60,8 @@ func TestWriteCommand_NoArgs(t *testing.T) {
 	if err := json.Unmarshal([]byte(value), &msg); err != nil {
 		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
 	}
-	if msg.Name != "cancel" || msg.Input != "" {
-		t.Errorf("unexpected cmd: name=%q input=%q", msg.Name, msg.Input)
+	if msg.Name != "cancel" || msg.Args != "" {
+		t.Errorf("unexpected cmd: name=%q args=%q", msg.Name, msg.Args)
 	}
 }
 
@@ -80,8 +80,8 @@ func TestWriteCommand_CommandWithoutColon(t *testing.T) {
 	if err := json.Unmarshal([]byte(value), &msg); err != nil {
 		t.Fatalf("CI payload is not CmdMsg JSON: %v", err)
 	}
-	if msg.Name != "model_set" || msg.Input != "3" {
-		t.Errorf("unexpected cmd: name=%q input=%q", msg.Name, msg.Input)
+	if msg.Name != "model_set" || msg.Args != "3" {
+		t.Errorf("unexpected cmd: name=%q args=%q", msg.Name, msg.Args)
 	}
 }
 
@@ -93,9 +93,9 @@ func TestCommandOut_ErrorRendersMessage(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CallID:  "x1",
-		IsError: true,
-		Output:  mustRaw(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
+		CommandID: "x1",
+		IsError:   true,
+		Result:    mustRaw(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteFrame failed: %v", err)
@@ -121,8 +121,8 @@ func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 	out := NewTerminalOutput(DefaultStyles())
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CallID: "x2",
-		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
+		CommandID: "x2",
+		Result:    mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteFrame failed: %v", err)
@@ -143,8 +143,8 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 	defer commandNames.Delete("t1")
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CallID: "t1",
-		Output: mustRaw(`{"path":"/tmp/x.alaya"}`),
+		CommandID: "t1",
+		Result:    mustRaw(`{"path":"/tmp/x.alaya"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteFrame failed: %v", err)
@@ -172,8 +172,8 @@ func TestCommandOut_UnknownCommandSilent(t *testing.T) {
 	defer commandNames.Delete("t2")
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CallID: "t2",
-		Output: mustRaw(`{"foo":"bar"}`),
+		CommandID: "t2",
+		Result:    mustRaw(`{"foo":"bar"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteFrame failed: %v", err)

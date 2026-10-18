@@ -16,6 +16,12 @@
 # The core does not read v14 files (loading demands an exact message_version
 # match), so an old session must be converted before it can be reopened.
 #
+# This is the last script. A later generation that moved no body bytes has no
+# step and no script — its whole upgrade is the frontmatter's message_version
+# line, which is an edit, not a conversion (see internal/sessionmigrate's package
+# doc). A file newer than v15 is therefore reported below as past this step,
+# which is the expected answer rather than an error.
+#
 # The original is never destroyed. For each file the script:
 #   1. skips it if its frontmatter already says message_version: 15, or if it is
 #      one of this script's own backups;
@@ -112,15 +118,32 @@ for f in "${files[@]}"; do
 	# worth an instruction rather than a parse error from the converter.
 	version="$(file_version "$f")"
 	case "$version" in
-	15) echo "already v15: $f"; continue ;;
-	14) ;;
+	'' | *[!0-9]*)
+		echo "this step converts v14; $f says message_version ${version:-nothing}" >&2
+		status=1
+		continue
+		;;
+	esac
+	# A file ahead of this step is one it has nothing to do, and that is the
+	# expected end of the road for a generation with no script: a version whose
+	# body did not move is a frontmatter edit, not a conversion (see
+	# internal/sessionmigrate's package doc). Saying so is the point — a user who
+	# finds no script for their version should learn here that there is none to
+	# find.
+	if [ "$version" -gt "${target_version}" ]; then
+		echo "already past this step (v${version}): $f"
+		continue
+	fi
+	case "$version" in
+	"${target_version}") echo "already v${target_version}: $f"; continue ;;
+	"${previous_version}") ;;
 	13)
 		echo "a v13 file goes to v14 first, then here: run ${v14_script}: $f" >&2
 		status=1
 		continue
 		;;
 	*)
-		echo "this step converts v14; $f says message_version ${version:-nothing}" >&2
+		echo "this step converts v${previous_version}; $f says message_version ${version:-nothing}" >&2
 		status=1
 		continue
 		;;

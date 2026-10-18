@@ -103,9 +103,9 @@ func TestCommandOut_ErrorRenders(t *testing.T) {
 	}
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CallID:  "x1",
-		IsError: true,
-		Output:  json.RawMessage(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
+		CommandID: "x1",
+		IsError:   true,
+		Result:    json.RawMessage(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
 	})
 	o.Write(frameBytes(wire.TagCommandOut, string(payload)))
 
@@ -122,8 +122,8 @@ func TestCommandOut_NoNameMappingSilent(t *testing.T) {
 	}
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CallID: "x2",
-		Output: json.RawMessage(`{"path":"/tmp/x.alaya"}`),
+		CommandID: "x2",
+		Result:    json.RawMessage(`{"path":"/tmp/x.alaya"}`),
 	})
 	o.Write(frameBytes(wire.TagCommandOut, string(payload)))
 
@@ -142,8 +142,8 @@ func TestCommandOut_SuccessRendersByName(t *testing.T) {
 	defer commandNames.Delete("p1")
 
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CallID: "p1",
-		Output: json.RawMessage(`{"path":"/tmp/x.alaya"}`),
+		CommandID: "p1",
+		Result:    json.RawMessage(`{"path":"/tmp/x.alaya"}`),
 	})
 	o.Write(frameBytes(wire.TagCommandOut, string(payload)))
 

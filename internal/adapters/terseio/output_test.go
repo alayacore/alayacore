@@ -35,9 +35,9 @@ func taskMsg(inProgress bool) []byte {
 func cmdResultMsg(id string, output any, isError bool) []byte {
 	raw, _ := json.Marshal(output)
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
-		CallID:  id,
-		Output:  raw,
-		IsError: isError,
+		CommandID: id,
+		Result:    raw,
+		IsError:   isError,
 	})
 	return frameBytes(wire.TagCommandOut, string(payload))
 }

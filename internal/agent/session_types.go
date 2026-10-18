@@ -247,8 +247,10 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // word, not a wire name: "q" is refused like any unknown command, and the
 // adapter that accepts it resolves it before writing the frame. Adapters that
 // speak v15 keep working until they use one of those names; a v15 session file
-// no longer loads, because loading demands this number exactly (see above) and
-// sessionmigrate carries the step that rewrites it.
+// no longer loads, because loading demands this number exactly (see above) —
+// and since none of these names is in a file, the upgrade is the one-line
+// frontmatter edit, not a conversion step: sessionmigrate holds no v16 step and
+// misc/ ships no v16 script, because there is nothing to convert.
 // v15: the wire dropped its 4-byte length field. A frame is one line — a
 // two-byte tag, a JSON value, an LF — so the boundary now rests on the value
 // being one line, which the encoder enforces and the decoder checks, instead of

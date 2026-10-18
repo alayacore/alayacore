@@ -19,16 +19,16 @@ import (
 // the exit code stays 0 (a clean exit, like EOF).
 var errQuitPrompt = errors.New("quit")
 
-// commandSeq generates unique command call IDs for CI frames.
+// commandSeq generates unique command IDs for CI frames.
 var commandSeq atomic.Uint64
 
-// commandNames maps command call IDs to command names, mirroring how tool
+// commandNames maps command IDs to command names, mirroring how tool
 // names are tracked from AF frames: the request carries the name, the
 // result (CO) carries only the ID, and the output adapter correlates them.
 var commandNames sync.Map // id → command name
 
 // writeCommand sends a colon-command (e.g. ":save /tmp/x") as a CI frame.
-// The adapter translates the human-facing text into {id, name, input}.
+// The adapter translates the human-facing text into {command_id, name, args}.
 // The name/args split happens at the FIRST whitespace (space, tab, or
 // newline) — unlike plainio (line-based, splits at " "), terseio's input
 // can span multiple lines, so the whole stdin after ":" is the command
@@ -38,9 +38,9 @@ func writeCommand(input io.Writer, cmd string) error {
 	name = commands.Canonical(name)
 	id := fmt.Sprintf("terse-%d", commandSeq.Add(1))
 	payload, err := json.Marshal(protocol.CmdMsg{
-		CallID: id,
-		Name:   name,
-		Input:  args,
+		CommandID: id,
+		Name:      name,
+		Args:      args,
 	})
 	if err != nil {
 		return err

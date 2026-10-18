@@ -8,16 +8,23 @@ Commands travel over a dedicated control plane, mirroring the tool control
 plane (AF/UF):
 
 ```
-CI{"call_id":"<call-id>","name":"<command>","input":"<args-string>"}   adapter → agent
-CO{"call_id":"<call-id>","output":<result>}                            agent → adapter
-CO{"call_id":"<call-id>","is_error":true,"output":{"code":"...","message":"..."}}  ← failure
+CI{"command_id":"<command-id>","name":"<command>","args":"<args-string>"}   adapter → agent
+CO{"command_id":"<command-id>","result":<result>}                         agent → adapter
+CO{"command_id":"<command-id>","is_error":true,"result":{"code":"...","message":"..."}}  ← failure
 ```
 
-- The adapter generates the call ID and echoes it back — every CI receives
-  exactly one CO.
-- `output` is structured JSON defined per command (see table below); on
+- The adapter generates the `command_id` and the agent echoes it back — every
+  CI the agent can read receives exactly one CO. It is the command plane's own
+  id: a tool call's `call_id` (the provider's `tool_call_id`) is a different
+  value in a different plane, and the two are never compared.
+- The id is required, and its absence is a protocol violation, not a request:
+  a CI without one, or with JSON the agent cannot read, is answered with an SM
+  `error` instead — there is no id to echo, so a CO would be a frame no adapter
+  could correlate. The same goes for frame-level failures that are not commands
+  at all (a malformed frame, a bad content frame, an unknown tag).
+- `result` is structured JSON defined per command (see table below); on
   failure it is a uniform error object `{code, message}`. Rendering is the
-  adapter's job: CO carries no display text — adapters correlate the CO `call_id`
+  adapter's job: CO carries no display text — adapters correlate the CO `command_id`
   with the CI they sent (which carries the `name`) to render results.
 - Adapters translate the human-facing `:command args` text into CI frames;
   the agent never sees colon-text. The TUI, Plain IO, and Terse IO adapters

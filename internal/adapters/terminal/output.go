@@ -583,16 +583,16 @@ func (to *outputWriter) handleCommandOut(value string) {
 	}
 	if msg.IsError {
 		var errObj protocol.CmdError
-		if json.Unmarshal(msg.Output, &errObj) == nil && errObj.Message != "" {
+		if json.Unmarshal(msg.Result, &errObj) == nil && errObj.Message != "" {
 			id := to.generateWindowID()
 			to.windowBuffer.AppendOrUpdate(TagWindowSE, id, errObj.Message)
 		}
 		to.dirty.Store(true)
 		return
 	}
-	name, _ := commandNames.LoadAndDelete(msg.CallID)
+	name, _ := commandNames.LoadAndDelete(msg.CommandID)
 	nameStr, _ := name.(string)
-	text := renderCommandResult(nameStr, msg.Output)
+	text := renderCommandResult(nameStr, msg.Result)
 	if text == "" {
 		// No text feedback needed — the command's UI effect (task stop,
 		// theme switch, status change, overlay close) is itself the

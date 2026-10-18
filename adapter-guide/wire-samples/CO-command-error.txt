@@ -1,1 +1,1 @@
-CO{"call_id":"2","output":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"},"is_error":true}
+CO{"command_id":"2","result":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"},"is_error":true}

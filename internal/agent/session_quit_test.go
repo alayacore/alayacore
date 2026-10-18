@@ -72,7 +72,7 @@ func newQuitTestSession(t *testing.T, withTask bool) (*Session, *syncOutput, *io
 // sendQuit writes the CI frame an adapter sends for ":quit".
 func sendQuit(t *testing.T, w io.Writer, id string) {
 	t.Helper()
-	payload, err := json.Marshal(protocol.CmdMsg{CallID: id, Name: commands.CommandNameQuit})
+	payload, err := json.Marshal(protocol.CmdMsg{CommandID: id, Name: commands.CommandNameQuit})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestQuit_IdleEndsTheRun(t *testing.T) {
 	}
 
 	joined := output.String()
-	if !strings.Contains(joined, `"call_id":"q1"`) || !strings.Contains(joined, `"output":null`) {
+	if !strings.Contains(joined, `"command_id":"q1"`) || !strings.Contains(joined, `"result":null`) {
 		t.Errorf("quit CO missing: %q", joined)
 	}
 	if strings.Contains(joined, "is_error") {
@@ -125,7 +125,7 @@ func TestQuit_WaitsForRunningTask(t *testing.T) {
 	defer cleanup()
 
 	sendQuit(t, w, "q2")
-	waitForOutput(t, output, `"call_id":"q2"`)
+	waitForOutput(t, output, `"command_id":"q2"`)
 
 	if strings.Contains(output.String(), "BUSY") {
 		t.Fatalf(":quit must be allowed while a task runs: %q", output.String())
@@ -177,7 +177,7 @@ func TestHandleInputMsg_QuitWithArguments(t *testing.T) {
 		},
 	}
 
-	s.handleInputMsg(inputMsg{isCmd: true, cmd: commands.CommandNameQuit, cmdInput: "now", cmdID: "q3"})
+	s.handleInputMsg(inputMsg{isCmd: true, cmd: commands.CommandNameQuit, args: "now", commandID: "q3"})
 
 	joined := strings.Join(output.Messages, "")
 	if !strings.Contains(joined, `"code":"INVALID_ARGS"`) {
@@ -198,7 +198,7 @@ func TestHandleInputMsg_QuitAlias(t *testing.T) {
 		},
 	}
 
-	s.handleInputMsg(inputMsg{isCmd: true, cmd: "q", cmdID: "q4"})
+	s.handleInputMsg(inputMsg{isCmd: true, cmd: "q", commandID: "q4"})
 
 	if !s.quitting {
 		t.Error(":q should have ended the session")
