@@ -107,7 +107,7 @@ Commands fall into three categories:
 | `:quit` | End the session. A task that is already running is allowed to finish first. | `null` |
 | `:cancel` | Cancel current task | `null` |
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. | `{"path"}` |
-| `:theme_set <name>` | Switch to a different theme. TUI only — rejected with `UNAVAILABLE` in Plain IO, Terse IO, and Raw IO (`NoTheme`) | `{"name"}` |
+| `:theme_set <name>` | Switch to a different theme. TUI only — rejected with `CONFIG_UNSUPPORTED` in Plain IO, Terse IO, and Raw IO (`NoTheme`) | `{"name"}` |
 | `:fork <history_id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count","history_id"}` |
 | `:tool_confirm <call_id>` | Confirm a pending tool execution | `{"call_id"}` |
 | `:tool_decline <call_id>` | Decline a pending tool execution | `{"call_id"}` |
@@ -192,7 +192,7 @@ In the TUI, you can also press `Ctrl+F` at a window to pre-fill the `:fork` comm
 
 **The cut never separates a tool call from its result.** A file ending in a `tool_use` with no matching `tool_result` loads without complaint and is rejected by the provider on the *next* prompt, so `forkEndIndex` extends the cut forward until every tool call inside the prefix has its result inside it too. Because a step's results follow all of its calls (`call1, call2, result1, result2`), forking a two-call step at the first call writes both calls and both results — the whole group moves, rather than the named entry being quietly dropped. Forking at anything that carries no tool call (a prompt, reasoning, text) cuts exactly there.
 
-The reported `count` is the number of parts written, so a group extension is visible in the command result. When a call's result does not exist anywhere in the session, widening cannot help. A trailing one — what a cancel leaves behind — is dropped, reusing the same guard the task path applies. A dangling call in the **middle** of the history cannot be dropped without inventing a rule about whose content disappears, and writing it would ship a file that only fails later, so `:fork` refuses with `INVALID_STATE` naming the call and writes nothing; fork at a point before that call instead.
+The reported `count` is the number of parts written, so a group extension is visible in the command result. When a call's result does not exist anywhere in the session, widening cannot help. A trailing one — what a cancel leaves behind — is dropped, reusing the same guard the task path applies. A dangling call in the **middle** of the history cannot be dropped without inventing a rule about whose content disappears, and writing it would ship a file that only fails later, so `:fork` refuses with `REQUEST_INVALID_STATE` naming the call and writes nothing; fork at a point before that call instead.
 
 Note that a forked file stores no history IDs (see [architecture.md](architecture.md): IDs are re-issued sequentially on load), so the new file's IDs start from 1 regardless of where the fork landed.
 

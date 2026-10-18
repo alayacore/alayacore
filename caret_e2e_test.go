@@ -11,7 +11,7 @@ package main_test
 // CaretCell, buildVisibleText), and a disagreement is not a wrong number so much
 // as a caret that sits on a character other than the one it edits.
 //
-// That agreement is checked from the inside too: cursor_probe_test.go sweeps
+// That agreement is checked from the inside too: caret_probe_test.go sweeps
 // 83,712 states and requires the single pass to land where the walks it replaced
 // landed. What an internal comparison cannot say is whether any of it survives the
 // rest of the way out — the field's View, the window layout, the Screen's row

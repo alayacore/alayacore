@@ -2,7 +2,7 @@
 
 package terminal
 
-// The one decision program_input_windows.go makes that a CI runner can observe.
+// The one decision program_keys_windows.go makes that a CI runner can observe.
 //
 // A runner gives `go test` pipes, never a console window, and a pipe is exactly
 // the wrong kind of stream for this source: the console event API refuses it. That

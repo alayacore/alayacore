@@ -85,7 +85,7 @@ func sanitizeUTF8(s string) string {
 // a read, because this is one rule and the type it is written over is not a reason
 // for a second copy of it. The keystroke path needs it per byte of a buffer and the
 // render path per run of a string, and both are asking the same question the same
-// terminal was measured answering. (isPathSep in attachment_window.go is the same
+// terminal was measured answering. (isPathSep in attachment_overlay.go is the same
 // shape for the same reason: one rule, two types, and it is the rule that is the
 // single thing.)
 func illFormedRun[T ~string | ~[]byte](s T) int {

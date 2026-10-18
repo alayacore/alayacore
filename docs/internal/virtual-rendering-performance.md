@@ -347,8 +347,8 @@ never a ratio.
 
 ### Cursor Movement
 
-Measured via `BenchmarkVirtualRenderingCursorMovementSingle`,
-`BenchmarkVirtualRenderingCursorMovement` and `BenchmarkVirtualRenderingScroll`
+Measured via `BenchmarkVirtualRenderingWindowCursorMovementSingle`,
+`BenchmarkVirtualRenderingWindowCursorMovement` and `BenchmarkVirtualRenderingScroll`
 (100 windows, viewport=30). Minimum of 10 runs at `-benchtime 1s`.
 
 | Metric | Value | Memory | Allocs |
@@ -667,7 +667,7 @@ listed with what each would catch, because a refactor that only has to be
   states at four widths, is never followed by a continuation — the property that
   lets the frame measure the row it draws, since row 0 is the one the cursor
   swaps; and a cursor frame is byte-for-byte the rows as drawn, padding included.
-- *the caret pass* (`cursor_probe_test.go`, 3): the oracle comparison described
+- *the caret pass* (`caret_probe_test.go`, 3): the oracle comparison described
   above, plus `probeLine`'s six answers each checked against the walk they
   replaced. Outside this package, `caret_e2e_test.go` (3 cases) asks a terminal
   where the caret ended up and what it drew there.
@@ -683,7 +683,7 @@ listed with what each would catch, because a refactor that only has to be
   level, that the bytes written are the rows with the padding they ask for.
 
   The frame-level case needs wide content, and that is worth saying plainly:
-  `TestCursorFramePadsTheRowsItDraws` cannot see any of it, because its fixture is
+  `TestWindowCursorFramePadsTheRowsItDraws` cannot see any of it, because its fixture is
   ASCII and an ASCII row a hard wrap broke is exactly the width. A padding count of
   zero and a count nobody consulted look identical there — it passed unchanged
   through every mutation below.
@@ -1009,7 +1009,7 @@ at viewport 30; the folded session is the 120-window one at viewport 40.
 |-----------|------:|
 | `WindowBufferGetAll` | **1.71μs** |
 | `WindowBufferDeltaWithGetAll` | **1.89μs** |
-| `VirtualRenderingCursorMovement` | **39.3μs** |
+| `VirtualRenderingWindowCursorMovement` | **39.3μs** |
 | `VirtualRenderingScroll` | **64.0μs** |
 | `StreamingUpdateWithVirtualRendering` | **1.61μs** |
 | `FoldedSessionGetAll` | **6.75μs** |
@@ -1302,7 +1302,7 @@ history it was done for.
 | virtual-vs-not speedup | 16.6x | 14.6x | 10.9x | the baseline got 2.5x cheaper — the clip did not get worse |
 | `WindowBufferGetAll` | 2.6μs | 2.56μs ✓ | 1.62μs | `9cc28cb1` |
 | `VirtualRenderingScroll` | 113μs | 107μs ✓ | 67.4μs | `9cc28cb1` |
-| `VirtualRenderingCursorMovementSingle` | 3.2μs | 3.02μs ✓ | 1.96μs | `9cc28cb1` then `4cb2b34a` (allocs 64 → 51 → 38) |
+| `VirtualRenderingWindowCursorMovementSingle` | 3.2μs | 3.02μs ✓ | 1.96μs | `9cc28cb1` then `4cb2b34a` (allocs 64 → 51 → 38) |
 | `StreamingUpdateWithIncremental`, allocs | 121 | 123 ✓ | 93 | `9cc28cb1`/`4cb2b34a` |
 | Full re-wrap, memory | 796 KB | 797,202 B ✓ at `-benchtime 1s` | 476 KB at `300x` (616 KB at `1s`) | `9cc28cb1` (607→569 KB), `4cb2b34a` (570→476 KB), and the rest is benchtime |
 | Full re-wrap, allocs | 32,085 | 32,241 ✓ at `1s` | 27,328 at `300x` (32,148 at `1s`) | same |

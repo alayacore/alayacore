@@ -100,7 +100,7 @@ func (t *TTY) Restore() error {
 
 // Read reads bytes from the terminal. The Unix input source reads through it;
 // the Windows one goes around it and reads console events instead, because a
-// console byte read cannot be bounded (program_input_windows.go).
+// console byte read cannot be bounded (program_keys_windows.go).
 func (t *TTY) Read(p []byte) (int, error) {
 	return t.in.Read(p)
 }

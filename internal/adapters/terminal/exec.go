@@ -9,7 +9,7 @@ package terminal
 // The sequence mirrors bubbletea's exec.go + tty.go suspend path. Parking the
 // input loop — the half that decides whether the child can read the keyboard
 // at all, and whether the program can exit without waiting for a keystroke —
-// is shared, in program_input.go; the platform files only bound the read.
+// is shared, in program_keys.go; the platform files only bound the read.
 // SIGTSTP/SIGCONT is the part that stays in exec_unix.go / exec_windows.go.
 
 import (

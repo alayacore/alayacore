@@ -1,6 +1,6 @@
 package terminal
 
-// Tests for the input loop and its parking protocol (program_input.go).
+// Tests for the input loop and its parking protocol (program_keys.go).
 //
 // The protocol is why a foreground child (the editor) can be handed the keyboard
 // at all, and why the program can exit without waiting for a keystroke: the
@@ -11,7 +11,7 @@ package terminal
 // Both are asserted against a source the test controls, because the property is
 // about the loop rather than about any one terminal — and the loop is shared, so
 // these run on Windows too, where the byte-reading loop they replace could not be
-// parked at all. program_input_unix_test.go adds the one thing a fake cannot
+// parked at all. program_keys_unix_test.go adds the one thing a fake cannot
 // prove: that a real source keeps the promise the protocol is built on.
 
 import (

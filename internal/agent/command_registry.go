@@ -33,7 +33,9 @@ const (
 type commandHandler func(s *Session, ctx context.Context, args string) (any, error)
 
 // cmdErr is an error carrying a machine-readable code for the CO error
-// object. Handlers may return plain errors (code defaults to "ERROR").
+// object. Handlers may return plain errors (code defaults to
+// protocol.ErrCodeInternalUnclassified — every refusal in this tree names its
+// cause, so that fallback is a bug, not a code to branch on).
 type cmdErr struct {
 	Code    string
 	Message string

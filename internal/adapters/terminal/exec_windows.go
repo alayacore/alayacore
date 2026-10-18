@@ -10,7 +10,7 @@ package terminal
 // The input loop, which used to be the Windows limitation here, is not: it
 // parks on request like every other platform's, because it now reads console
 // events, which cannot block once they have been counted
-// (program_input_windows.go, program_input.go).
+// (program_keys_windows.go, program_keys.go).
 
 // suspendProcess is a no-op on Windows: see the file comment.
 func suspendProcess() {}

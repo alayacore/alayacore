@@ -6,8 +6,8 @@ package terminal
 //
 // The other half of a suspension — stopping the input loop so the foreground
 // process gets every keystroke — is the same on every platform and lives in
-// program_input.go. On Unix it works because the loop polls the TTY with a
-// bounded wait (program_input_unix.go) and so is always between reads within
+// program_keys.go. On Unix it works because the loop polls the TTY with a
+// bounded wait (program_keys_unix.go) and so is always between reads within
 // inputPollTimeout.
 
 import (

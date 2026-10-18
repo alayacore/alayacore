@@ -46,13 +46,13 @@
 //	                terminal surface under it (screen.go)
 //	  - surfaces  — prompt_input.go / input_field.go, overlay.go, the
 //	                selectors (model_selector.go, theme_selector.go,
-//	                help_window.go, attachment_window.go),
+//	                help_overlay.go, attachment_overlay.go),
 //	                confirm_dialog.go, filtered_list.go
 //	  - look      — styles.go / style.go (SGR layer), theme_manager.go,
 //	                spinner.go, markdown.go, diff.go, constants.go (glyph
 //	                policy)
 //	  - I/O       — output.go, tool_render.go / tool_handler.go, exec.go,
-//	                editor.go, term_io*.go, program_input*.go
+//	                editor.go, term_io*.go, program_keys*.go
 //
 //	docs/tui-architecture.md maps the whole stack.
 //

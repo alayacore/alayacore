@@ -5,8 +5,8 @@ package terminal
 // a sequence's tail has to be fetched by the next read, and a flush taken at the
 // end of the read that was cut drops the head and delivers the tail as typing.
 //
-// A read boundary is a real cut, not a theoretical one: program_input_unix.go
-// stops at inputReadSize bytes and program_input_windows.go at
+// A read boundary is a real cut, not a theoretical one: program_keys_unix.go
+// stops at inputReadSize bytes and program_keys_windows.go at
 // consoleEventsPerRead events. The reported case was a mouse report on Windows
 // Terminal, which the host synthesizes as characters; what was typed into the
 // prompt was the report's `Cb;Cx;CyM` parameters.

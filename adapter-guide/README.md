@@ -491,7 +491,7 @@ after one the transcript an adapter has accumulated is not the session's
 - **Its frame's history ID is not the stored part's ID.** The ID is assigned
   while streaming, and the compacted history then carries the summary as a fresh
   part with a fresh ID. A window keyed by the frame's ID names a part no
-  `Contents` holds, and `:fork` on it answers `NOT_FOUND`.
+  `Contents` holds, and `:fork` on it answers `REQUEST_NOT_FOUND`.
 - **The user message that opens the compacted history is not sent as a frame.** The
   history opens on a user message (the summary request); it is never echoed, so live
   the summary appears with no user message in front of it, and a reload shows it.
@@ -818,7 +818,7 @@ messages are reserved for non-command events (task errors, MCP status, etc.).
 
 These commands start a long-running task. CO replies **immediately** —
 `{"status":"started"}` on acceptance, or an error if the task cannot start
-(e.g. another task is running → `code:"BUSY"`). Task completion is reported
+(e.g. another task is running → `code:"STATE_BUSY"`). Task completion is reported
 via an SM `task` message carrying the same `command_id`:
 
 ```

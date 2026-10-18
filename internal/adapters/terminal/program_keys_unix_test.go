@@ -2,7 +2,7 @@
 
 package terminal
 
-// The Unix input source's share of the parking protocol (program_input.go). The
+// The Unix input source's share of the parking protocol (program_keys.go). The
 // protocol itself is tested against a source the test controls; what is asserted
 // here is that the real source keeps the promise the protocol depends on: it
 // returns from a round with nothing to read within its poll timeout, so the loop

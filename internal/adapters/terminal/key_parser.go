@@ -17,7 +17,7 @@ package terminal
 // final byte does not delimit), and the OSC/DCS/SOS/PM/APC string controls whose
 // bodies are a color, a capability or a clipboard read. A sequence that a read
 // boundary cuts in half is completed by the next read rather than resolved
-// early (program_input.go → readKeys), which is what keeps a split report from
+// early (program_keys.go → readKeys), which is what keeps a split report from
 // arriving as its own parameters. The paste-end marker is held by the same rule
 // from inside a paste (takePaste → pasteTailHold): a marker whose head is written
 // into the content rather than kept is a paste that never ends, and every
@@ -318,7 +318,7 @@ func (p *KeyParser) Parse(data []byte) []Msg {
 			// next read. An incomplete sequence is held here until the loop
 			// resolves it — a timeout of silence, so at least as long as the
 			// escape-sequence timeout and longer if more bytes keep arriving
-			// (program_input.go → readKeys) — which is long enough for the
+			// (program_keys.go → readKeys) — which is long enough for the
 			// buffer to be read out from under, and a split sequence that
 			// resolved to the tail of the next keystroke instead of its own
 			// would be wrong in a way nobody could reproduce.
@@ -409,7 +409,7 @@ func indexSeq(data []byte, seq string) int {
 // into the content, it is a paste that never ends: the parser stays in paste
 // mode and takes every keystroke after it as pasted text. Held in pending
 // instead, it is completed by the next read like any other sequence a boundary
-// splits (program_input.go → readKeys).
+// splits (program_keys.go → readKeys).
 //
 // rest is what is left of the read once the paste closed, and spent reports that
 // there is nothing left — the read is over, and whatever the parser is holding
@@ -543,14 +543,14 @@ func consumeEscape(data []byte) (string, int, bool) {
 		// capability, a clipboard read), and the point of reading one as a
 		// sequence is that no part of its body may reach the prompt. So an
 		// unterminated one is held, never resolved: the next read brings the
-		// terminator (program_input.go keeps reading while a sequence is
+		// terminator (program_keys.go keeps reading while a sequence is
 		// outstanding and arms its timeout on every byte), and the one that
 		// never terminates is dropped by the silence timeout as the unknown
 		// sequence it is.
 		//
 		// These five bytes are therefore never Alt+<char>. That costs nothing:
 		// this program binds no Alt chord at all (keys.go has none, and
-		// attachment_window.go records the same fact where it explains why a
+		// attachment_overlay.go records the same fact where it explains why a
 		// box binds a control byte instead), while the alternative — resolving
 		// the head early — is a reply's body arriving as typing.
 		if n, ok := consumeStringControl(data); ok {
@@ -658,7 +658,7 @@ const x10MouseLen = 6
 //
 // coming: `ESC [ M` is here and its coordinates are not, all or part of them
 // being in the next read. The caller holds it, which is what keeps a report a
-// read boundary cut from typing its own body — the failure program_input.go
+// read boundary cut from typing its own body — the failure program_keys.go
 // exists to prevent. Holding is cheap now that the loop keeps reading while a
 // sequence is outstanding and re-arms its timeout on every byte: the cost is at
 // most a few bytes of a report that never finishes, and mouse reporting being

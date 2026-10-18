@@ -12,9 +12,9 @@ re-litigated from scratch.
 | `term_io.go` | the lifecycle: `TTY.MakeRaw` negotiates raw mode **and** sequence processing, `TTY.Restore` undoes both, `TTY.Close` releases only the files `openTTY` opened. Nothing else enters or leaves that state |
 | `console_windows.go` | the `GetConsoleMode`/`SetConsoleMode` calls on the output handle, plus two pure functions (`outputVTMode`, `inputNoSelectionMode`) holding the bit arithmetic |
 | `console_unix.go` | the same two hooks as no-ops, so the lifecycle above is written once for every platform |
-| `program_input.go` | the input loop and the parking protocol, shared by every platform |
-| `program_input_unix.go` | the Unix input source: the TTY polled with a bounded wait, read as bytes |
-| `program_input_windows.go` | the Windows input source: the console input buffer read as **events**, and the two console syscalls that fill them |
+| `program_keys.go` | the input loop and the parking protocol, shared by every platform |
+| `program_keys_unix.go` | the Unix input source: the TTY polled with a bounded wait, read as bytes |
+| `program_keys_windows.go` | the Windows input source: the console input buffer read as **events**, and the two console syscalls that fill them |
 | `console_events.go` | the `INPUT_RECORD` layout and the translation of an event into the bytes a terminal would have sent. Built for every GOOS so it can be tested without a console |
 | `exec.go` → `releaseTerminal`/`acquireTerminal` | the handoff around a foreground child: park, release, run, re-acquire (which re-negotiates the mode a child may have reset) |
 | `program.go` → `refreshSize` | the size re-read that stands in for the resize signal Windows does not have |
@@ -189,7 +189,7 @@ is real silence (a lone Escape keypress). The parser's CSI path then consumes th
 reassembled report, as it always would have; a report whose `ESC [` is stripped
 *before* it reaches this program is not recoverable at all — `Cb;Cx;CyM` on its own
 is ordinary text — which is the part the mode reset, not the parser, has to prevent.
-`program_input_cut_test.go` and `key_parser_reports_test.go` pin both halves.
+`program_keys_cut_test.go` and `key_parser_reports_test.go` pin both halves.
 
 The other replies a terminal sends without being asked are consumed by the same
 rule: the X10 mouse report (`CSI M` plus three coordinate bytes the final byte
@@ -297,7 +297,7 @@ accept sequence processing cannot host a cursor-addressed UI, and a second rende
 path with no host to exercise it in CI is worse than the error message that says
 `--plainio`. The input side now makes the same judgment for the same reason:
 `newKeyReader` asks the handle whether it is a console input buffer and refuses to
-start if it is not (`program_input_windows.go`).
+start if it is not (`program_keys_windows.go`).
 
 ## What is proven where
 
@@ -346,12 +346,12 @@ Covered by tests that run there:
 - `input_field_test.go` → `TestInputFieldIgnoresEscapeKeys` — the field's half of
   the same contract: a key that is not text inserts nothing, which is why an ESC
   that reaches the prompt is invisible rather than stored.
-- `program_input_test.go` — the parking protocol: `pauseKeys` does not return
+- `program_keys_test.go` — the parking protocol: `pauseKeys` does not return
   while a read is in flight, a parked loop starts no reads and delivers what
   arrived only after it is resumed, and `stopKeys` returns only once the loop has
   finished. Also build-tagged for nothing, so the Windows job runs these against
   the loop it used to be unable to park.
-- `program_input_cut_test.go` — that a sequence a read boundary cuts in half is
+- `program_keys_cut_test.go` — that a sequence a read boundary cuts in half is
   completed by the next read instead of flushed, at the offsets that matter: the
   SGR report at three cuts, the X10 report cut after its final byte and again
   mid-coordinate (with a second report and an urxvt release behind the split, so
@@ -380,10 +380,10 @@ Covered by tests that run there:
   pass because its overlay silently failed to open — which is what the companion
   `keyboardTarget` check is for, and what caught two such fixtures while this was
   being written. Build-tagged for nothing.
-- `program_input_unix_test.go` — that the real Unix source keeps the promise the
+- `program_keys_unix_test.go` — that the real Unix source keeps the promise the
   protocol is built on: it is between reads within one poll timeout, and the
   terminal is left alone while parked.
-- `program_input_windows_test.go` — that `newKeyReader` refuses a handle that is not a
+- `program_keys_windows_test.go` — that `newKeyReader` refuses a handle that is not a
   console input buffer, with an error that says so. A runner's stdin is a pipe,
   which is exactly the wrong kind of stream, so this is the one Windows startup
   decision a runner can observe.

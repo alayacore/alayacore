@@ -38,11 +38,21 @@
 #    misc/check-doc-anchors.go, because it is a Unicode transform (README.zh-CN.md
 #    links to (#模式)) and this script is byte-oriented shell.
 #
+# 4. File names. A doc that names a file is asserting it exists: "the input loop
+#    and the parking protocol (`program_input.go`)" was true until the file
+#    became program_keys.go, and then the doc pointed at nothing — the same
+#    rename left the name in `internal/adapters/terminal`'s own comments, where a
+#    link check cannot see it (`check-terms.sh` retires those, because a Go
+#    comment is not prose a checker can resolve). Any
+#    `*.go`/`*.sh` in a code span on a non-fenced line must be a basename in the
+#    tree, or a path that resolves from the doc's directory or the repo root.
+#
 # Scope, deliberately narrow. What this does NOT check, and why:
 #
-#   - A bare filename in prose ("see width.go"). As likely to name a file in an
-#     upstream project (Bubble Tea's tea.go) as one here. That class is for
-#     review, not for a grep to guess at.
+#   - A bare filename in prose ("see width.go" without backticks). As likely to
+#     name a file in an upstream project (Bubble Tea's tea.go) as one here. Class
+#     4 covers the names a doc puts in a code span, which is how this tree writes
+#     one it means; the unquoted mention is for review.
 #   - A symbol name in prose (`handleMessageDelta`). A sweep of the names the
 #     docs mention reported 105 hits, of which ~103 are legitimate — upstream
 #     library symbols, MCP spec names, Windows API constants, labels a benchmark
@@ -58,6 +68,11 @@
 #     by an explicit HTML id. Neither is used in this repo; a doc that adopts one
 #     would need misc/check-doc-anchors.go extended, and until then its links
 #     would be reported as broken rather than passed over.
+#   - A file name that only a *test fixture* names, or one belonging to another
+#     project: `a.go` and `script.sh` are created by the tests that mention them,
+#     and `tea.go`/`tty.go` are Bubble Tea's. Class 4 checks the names a doc
+#     writes, where the convention is that the file is this repo's; `hello.go`
+#     in the adapter guide is the one documented exception (a user's program).
 #
 # A link target is matched as ](target); one starting with a scheme or '#' is
 # skipped as a path, and any #fragment is dropped before the path is resolved
@@ -83,12 +98,32 @@ shapes=$(mktemp)
 prose=$(mktemp)
 fragments=$(mktemp)
 fragcount=$(mktemp)
+stale=$(mktemp)
+namelist=$(mktemp)
+treepaths=$(mktemp)
+slashpaths=$(mktemp)
 work=$(mktemp -d)
-trap 'rm -f "$broken" "$shapes" "$prose" "$fragments" "$fragcount"; rm -rf "$work"' EXIT
+trap 'rm -f "$broken" "$shapes" "$prose" "$fragments" "$fragcount" "$stale" "$namelist" "$treepaths" "$slashpaths"; rm -rf "$work"' EXIT
 checked=0
 anchors_checked=0
 anchors_built=1
+names_checked=0
 nfiles=0
+
+# report_name records the name in $name as missing from $f.
+report_name() { printf '%s -> %s\n' "$f" "$name" >>"$stale"; }
+
+# Two indexes for class 4: every basename in the tree (a bare name is a claim
+# about this repo), and every full path with a leading slash (a path a doc writes
+# may start anywhere — `llm/types.go` means internal/llm/types.go — so it passes
+# when it ends a real path).
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+	git ls-files >"$treepaths"
+else
+	find . -type f -not -path './.git/*' | sed 's|^\./||' >"$treepaths"
+fi
+sed 's|.*/||' "$treepaths" | sort -u >"$namelist"
+sed 's|^|/|' "$treepaths" | sort -u >"$slashpaths"
 
 # strip_fences blanks a fenced code block, one blank line per input line, so a
 # line number in the output is still the line number in the file.
@@ -120,6 +155,20 @@ while IFS= read -r f; do
 
 	strip_fences "$f" >"$prose"
 	grep -nE "$perishable" "$prose" | sed "s|^|$f:|" >>"$shapes" || true
+
+	spans=$(grep -oE '`[^`]*\.(go|sh)`' "$prose" | tr -d '`') || true
+	while IFS= read -r name; do
+		[ -n "$name" ] || continue
+		case "$name" in
+		*'*'* | ./*) continue ;; # a glob, or a path inside an example project
+		hello.go) continue ;;    # the adapter guide's example program
+		esac
+		names_checked=$((names_checked + 1))
+		case "$name" in
+		*/*) grep -Fq "/$name" "$slashpaths" || report_name ;;
+		*) grep -Fxq "$name" "$namelist" || report_name ;;
+		esac
+	done <<<"$spans"
 done <<<"$files"
 
 # Class 3. One program for the whole tree rather than one pass per file: a page
@@ -151,6 +200,12 @@ if [ -s "$fragments" ]; then
 	sed 's/^/  /' "$fragments" >&2
 	status=1
 fi
+if [ -s "$stale" ]; then
+	count=$(wc -l <"$stale" | tr -d ' ')
+	echo "$count file names in a code span are not files in this tree:" >&2
+	sed 's/^/  /' "$stale" >&2
+	status=1
+fi
 if [ -s "$shapes" ]; then
 	count=$(wc -l <"$shapes" | tr -d ' ')
 	echo "$count perishable shapes in prose — a line number or a line count, which is what a command prints:" >&2
@@ -160,4 +215,4 @@ fi
 [ "$anchors_built" -eq 1 ] || status=1
 [ "$status" -eq 0 ] || exit 1
 
-echo "$checked relative Markdown links and $anchors_checked heading anchors across $nfiles files resolve; no perishable shapes in prose."
+echo "$checked relative Markdown links, $anchors_checked heading anchors and $names_checked file names across $nfiles files resolve; no perishable shapes in prose."

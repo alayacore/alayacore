@@ -90,7 +90,7 @@ import (
 // maxSteeringParts bounds the queue. A prompt arriving with a task in flight is
 // accepted only while there is room, so a client that sends without reading
 // cannot grow the session's memory without limit; past the bound the prompt is
-// refused with the same BUSY error a busy session has always returned. The
+// refused with the same `STATE_BUSY` error a busy session has always returned. The
 // bound is on parts, not messages, because that is what the queue stores — an
 // attachment-heavy prompt occupies more of it than a sentence.
 const maxSteeringParts = 16

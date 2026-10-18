@@ -15,7 +15,7 @@ package terminal
 //
 // What makes the wait safe is the other half of the design: an keySource's
 // next() returns in bounded time on its own, on every platform
-// (program_input_unix.go polls with a timeout; program_input_windows.go only
+// (program_keys_unix.go polls with a timeout; program_keys_windows.go only
 // reads events it has already counted). A loop that could sit in an unbounded
 // read could not be parked at all, which is exactly what the Windows input
 // reader used to be.
@@ -58,7 +58,7 @@ const (
 // Windows one at consoleEventsPerRead events, so a burst that is not a multiple
 // of the boundary (the characters a host synthesizes for a mouse report are the
 // reported case) is cut mid-sequence routinely. The cut is meant to be invisible
-// — program_input_unix.go says as much of the parser ("it keeps an incomplete
+// — program_keys_unix.go says as much of the parser ("it keeps an incomplete
 // sequence across calls") — and it becomes invisible here, where the next read
 // is asked for the rest before any timer is allowed to resolve it.
 func (p *Program) readKeys(ctxDone <-chan struct{}) {

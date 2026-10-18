@@ -30,7 +30,7 @@ package terminal
 //
 // Nothing in this file is a syscall: it is a byte layout and a table. It is built
 // for every GOOS so those can be asserted on any machine, not only in the Windows
-// CI job; the syscalls that fill the layout are in program_input_windows.go.
+// CI job; the syscalls that fill the layout are in program_keys_windows.go.
 
 import (
 	"encoding/binary"

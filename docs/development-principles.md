@@ -177,8 +177,9 @@ A synonym costs a reader a guess and an overload costs them a wrong one, and the
 compiler sees neither, so `misc/check-terms.sh` (`make check-terms`, run in CI)
 enforces the mechanical half: a retired name absent, a word confined to the file
 whose subject it is, a wire value compared as a constant rather than a literal, a
-command's usage line rendered rather than spelled, one English spelling. Its
-header lists the rules; this page does not repeat them.
+command's usage line rendered rather than spelled, a retired CO error code gone
+from prose and from Go literals, one English spelling. Its header lists the
+rules; this page does not repeat them.
 
 It cannot tell you a *new* synonym has appeared. That is where the rule about
 stating a fact once meets the vocabulary: a new concept gets its name there, in
@@ -187,11 +188,18 @@ the same change that introduces it.
 `misc/check-docs.sh` (`make check-docs`, run in CI) fails on every shape a tool
 can decide exactly: a relative Markdown link that does not resolve from the file
 that wrote it, a fragment naming a heading that does not exist in the file it
-points at, and a perishable shape in prose — a line number or a line count. It
-guesses at nothing else; its header says what it leaves to review, and why. The
-fragment half is `misc/check-doc-anchors.go`, because a heading becomes an anchor
-by a Unicode transform (the Chinese headings in `README.zh-CN.md` have anchors
-too) that shell cannot do honestly.
+points at, a file named in a code span that is not in the tree, and a perishable
+shape in prose — a line number or a line count. It guesses at nothing else; its
+header says what it leaves to review, and why. The fragment half is
+`misc/check-doc-anchors.go`, because a heading becomes an anchor by a Unicode
+transform (the Chinese headings in `README.zh-CN.md` have anchors too) that shell
+cannot do honestly.
+
+A name that a rename leaves behind is the same defect in a place no link check
+reaches: a comment still naming a file that was renamed out from under it, an
+error code that protocol no longer declares. Those are retired names, so
+`misc/check-terms.sh` carries them — see below — because what they need is a list
+of what has been renamed, not a resolution rule.
 
 ### A commit message names the kind of change, not the size of the diff
 
@@ -210,3 +218,33 @@ keep working unchanged?** If not, the commit is not a refactor.
 
 The rule is not "write less" — this repo's comments explain *why*, and that is the
 point. It is "do not write the same thing twice".
+
+## Releases
+
+A release note is written **from the tree**, and the tree is read first. Every
+claim in it — a flag, a default, a wire field, a limit, "nothing else moved" —
+is something a user will act on without checking, because the note is the one
+document read *instead of* the code.
+
+`make check` settles the mechanical half before drafting: links, heading
+anchors, file names, retired names, error codes. The other half it cannot
+decide — a default that changed, a behavior a paragraph describes, one
+generation's "nothing else moved" — is read out of the code, never remembered
+from the commit log. A note assembled from commit subjects is a summary of what
+was intended; a note assembled from the tree is a statement about what is.
+
+**Findings go at the top.** Anything found while writing the notes that the
+release would otherwise state wrongly goes *above* the draft, in its own block,
+one line per finding with the file and line, each marked as introduced by this
+release or already in the tree. Not a footnote, not a "by the way" at the end:
+
+- a page still naming a retired error code, while the note's table says what it
+  became;
+- a table row describing an option that no longer exists;
+- a sample frame in the previous generation's shape.
+
+The person publishing is the last one who can still fix it cheaply, and they are
+about to publish a document that contradicts the tree. The reason is not
+tidiness: a release is when accumulated drift is read by someone who did not
+write it — a user upgrading, an adapter author diffing two versions — so that is
+the moment the drift is cheapest to find and most expensive to miss.

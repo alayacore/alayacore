@@ -19,7 +19,7 @@ import (
 )
 
 // inputText feeds bytes through the parser the way the input loop does —
-// program_input.go calls Parse with a read — and returns the text the prompt would
+// program_keys.go calls Parse with a read — and returns the text the prompt would
 // receive: the keys it produced, in order.
 func inputText(in string) string {
 	p := &KeyParser{}

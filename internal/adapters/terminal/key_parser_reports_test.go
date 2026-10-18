@@ -13,7 +13,7 @@ import (
 
 // TestKeyParserDropsMouseReports pins both encodings a mouse report takes — SGR
 // and the older X10 form — arriving whole. A report that a read boundary cuts in
-// half is program_input_cut_test.go's subject.
+// half is program_keys_cut_test.go's subject.
 //
 // A mouse report is `CSI < Cb;Cx;Cy M` (SGR) or `CSI M` plus three raw bytes
 // (X10) — both introduced by `ESC [`, which is why the parser's CSI path is what

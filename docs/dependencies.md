@@ -148,13 +148,13 @@ console is read as events and the sequences are produced here
 
 Four uses, all of them the reason a plain `os`/`term` call is not enough:
 
-- `unix.Poll` — the timeout-bounded input read (`program_input_unix.go`), which
+- `unix.Poll` — the timeout-bounded input read (`program_keys_unix.go`), which
   is what lets the loop notice the pause request while parked.
 - `windows.GetConsoleMode`/`SetConsoleMode` — ANSI sequence processing and the
   QuickEdit clear (`console_windows.go`).
 - `windows.GetNumberOfConsoleInputEvents` — the count of events already queued,
   which is what lets the Windows input read return in bounded time
-  (`program_input_windows.go`). `ReadConsoleInputW` has no binding in the package,
+  (`program_keys_windows.go`). `ReadConsoleInputW` has no binding in the package,
   so that one call goes through `windows.NewLazySystemDLL`, the route the package
   takes internally.
 - Windows job objects — `CreateJobObjectW`/`AssignProcessToJobObject`/

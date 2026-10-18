@@ -109,7 +109,34 @@ hits=$(grep -rnE "$wire_use" --include=*.go internal/agent internal/mcp 2>/dev/n
 	grep -vE '_test\.go:' | grep -vE ':[0-9]+:[[:space:]]*//')
 report "$hits" 'a wire value spelled as a literal outside an adapter — use the constant'
 
-# ── 4. One spelling for English, everywhere ───────────────────────────────
+# ── 5. Retired file names ──────────────────────────────────────────────────
+# A rename in the vocabulary pass (0d1134ce) moved program_input*.go to
+# program_keys*.go, attachment_window.go to attachment_overlay.go and
+# help_window.go to help_overlay.go, and left 39 mentions of the old names in
+# comments and docs — the files they named no longer existed, and nothing
+# noticed, because a comment is not a link. check-docs.sh cannot see these
+# (`internal/adapters/terminal`'s own comments are not prose), so the names are
+# retired here, and the next rename adds its old name to this list.
+retired_files='\b(program_input[a-z_]*\.go|attachment_window\.go|help_window\.go|cursor_probe_test\.go)\b'
+hits=$(grep -rnE "$retired_files" --include=*.go . 2>/dev/null | grep -v '^\./misc/')
+report "$hits" 'a file name that no longer exists — say what it is called now'
+
+# ── 6. Retired CO error codes ──────────────────────────────────────────────
+# Protocol v17 replaced twenty codes with eighteen, in five classes named by what
+# a caller can do about them. docs/commands.md's table is checked against
+# protocol.CmdErrorCodes by TestCommandsDocErrorCodesMatchTheProtocol; this is the
+# copy that test cannot see — a literal in Go, and a name in prose anywhere else.
+# `ERROR` is left out: it is also a UI label ("SYSTEM ERROR"), so a word grep
+# cannot tell the code from the label. Its successor, INTERNAL_UNCLASSIFIED, is
+# in the list, which is what a reintroduction of the old fallback would have to
+# spell.
+old_codes='INVALID_ARGS|UNKNOWN_COMMAND|NOT_FOUND|MODEL_NOT_FOUND|INVALID_STATE|NOT_CONFIGURED|MODEL_VALIDATION|MODEL_ERROR|UNAVAILABLE|BUSY|SHUTTING_DOWN|MCP_NOT_READY|NOT_IN_PROGRESS|NOTHING_TO_CANCEL|LOAD_FAILED|THEME_ERROR|IO_ERROR|PERSIST_FAILED|NOT_INITIALIZED|UNCLASSIFIED|BAD_FRAME'
+hits=$(grep -rnE "\"($old_codes)\"" --include=*.go . 2>/dev/null | grep -v '^\./misc/')
+report "$hits" 'a retired CO error code spelled as a literal — use protocol.ErrCode*'
+hits=$(grep -rnE "\b($old_codes)\b" --include=*.md docs adapter-guide README.md README.zh-CN.md 2>/dev/null)
+report "$hits" 'a retired CO error code in prose — docs/commands.md has the table'
+
+# ── 6. One spelling for English, everywhere ───────────────────────────────
 hits=$(grep -rniE '\b(behaviour|colour|summarise|organise|recognise|normalise|initialis|serialis)[a-z]*' \
 	--include=*.go --include=*.md . 2>/dev/null)
 report "$hits" 'American spelling: behavior, color, summarize'

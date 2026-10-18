@@ -4,7 +4,7 @@ package terminal
 //
 // A read stops where the platform stops it — inputReadSize bytes on Unix,
 // consoleEventsPerRead events on Windows — so a paste longer than that is cut
-// wherever the boundary happens to fall. program_input_cut_test.go pins the
+// wherever the boundary happens to fall. program_keys_cut_test.go pins the
 // general rule (a sequence cut in half is completed by the next read, never
 // typed as its own parameters). A paste is where that rule has to be carried
 // into: paste content is read without looking for sequence structure in it, so a
@@ -99,8 +99,8 @@ func TestPasteEndMarkerSurvivesEveryCut(t *testing.T) {
 // TestPasteSurvivesEveryReadSize: the same stream delivered in reads of a fixed
 // size, which is what a platform boundary actually is. Every size is swept, so
 // the boundaries that matter are included with the ones that do not: the batch
-// caps in this tree are 256 bytes (program_input_unix.go) and 128 events
-// (program_input_windows.go), one event per character for a paste.
+// caps in this tree are 256 bytes (program_keys_unix.go) and 128 events
+// (program_keys_windows.go), one event per character for a paste.
 func TestPasteSurvivesEveryReadSize(t *testing.T) {
 	content := strings.Repeat("x", 40)
 	stream := pasteStart + content + pasteEnd + "z"

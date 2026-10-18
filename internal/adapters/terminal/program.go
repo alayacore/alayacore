@@ -204,7 +204,7 @@ func Tick(d time.Duration, fn func(time.Time) Msg) Cmd {
 // an incomplete escape sequence (e.g. a lone ESC) before resolving it. It is
 // the loop's timer, not a function of one read: the loop keeps reading while a
 // sequence is outstanding and starts this clock over on every byte, so it
-// measures silence rather than the gap between two reads (program_input.go →
+// measures silence rather than the gap between two reads (program_keys.go →
 // readKeys).
 const escSequenceTimeout = 50 * time.Millisecond
 
@@ -231,7 +231,7 @@ type Program struct {
 	mu       sync.Mutex
 	lastView *View // content/cursor of the last rendered frame
 
-	// Input parking (program_input.go): while the terminal is released — the
+	// Input parking (program_keys.go): while the terminal is released — the
 	// editor handoff, Ctrl-Z — the input loop parks so a foreground child gets
 	// every keystroke, and no read of ours is left pending on the terminal.
 	// inputPaused is the request; parkedCh is the loop's acknowledgement;
@@ -293,7 +293,7 @@ func Run(model Model) (Model, error) {
 		// Closing a file waits in Go for a read still in flight on it — and a
 		// console read waits for input — so skipping this step is how quitting
 		// ends up waiting for a keystroke before the shell gets its prompt
-		// back. See program_input.go.
+		// back. See program_keys.go.
 		p.stopKeys()
 		_ = p.screen.Stop()
 		_ = tty.Restore()

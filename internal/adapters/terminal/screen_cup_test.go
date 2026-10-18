@@ -1,6 +1,8 @@
 package terminal
 
-// Tests for the shared CSI/CUP parser extracted in TERMINAL_AUDIT.md §B-4.
+// Tests for the shared CSI/CUP parser, extracted from the two places that used
+// to parse CUP independently (parseFrameRows and containsCUP) — both go through
+// parseCUP now, so these cases are the one description of the grammar.
 
 import "testing"
 

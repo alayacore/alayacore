@@ -319,7 +319,7 @@ func TestEndToEndOverPty(t *testing.T) {
 	}
 
 	// 2. A read boundary inside the closing marker. The program reads at most
-	//    inputReadSize bytes at a time (program_input_unix.go); 6 + 245 = 251, so
+	//    inputReadSize bytes at a time (program_keys_unix.go); 6 + 245 = 251, so
 	//    the 256-byte read stops five bytes into `ESC [ 201 ~`. That head is
 	//    indistinguishable from paste content, and writing it into the content is
 	//    a paste that never closes — which then takes the keystrokes behind it

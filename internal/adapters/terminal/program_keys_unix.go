@@ -6,7 +6,7 @@ package terminal
 //
 // The read is polled rather than waited in: a read on a Unix terminal cannot be
 // interrupted, so the only way to bound it is not to start one until something is
-// there to read. That is what makes the park protocol (program_input.go) work —
+// there to read. That is what makes the park protocol (program_keys.go) work —
 // the loop is between reads once every inputPollTimeout at the latest, and a
 // foreground child is handed a terminal with no read of ours pending on it.
 

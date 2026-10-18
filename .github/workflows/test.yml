@@ -35,6 +35,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Before the checks, not after: check-docs builds and runs
+      # misc/check-doc-anchors.go, and without a toolchain it refuses to report a
+      # pass over the class it did not run.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       # .gitattributes keeps the checkout LF; gofmt is what notices when it stops
       # working, and gofmt only notices on the platform that mangles the checkout.
       # This asks git directly — that every text path still resolves to eol=lf,
@@ -59,21 +67,21 @@ jobs:
       # that never existed — are caught at the source. It also checks the other
       # end of a link: a #fragment is matched against the headings of the file
       # it names, so retitling a section cannot silently orphan every link to
-      # it. And it fails on the two shapes a doc can carry that are guaranteed
-      # to rot: a line number into a file, and a line count.
+      # it. A file name in a code span must be a file in the tree, which is how a
+      # rename leaves a doc pointing at nothing. And it fails on the two shapes a
+      # doc can carry that are guaranteed to rot: a line number into a file, and a
+      # line count.
       - name: Check docs
         run: ./misc/check-docs.sh
 
       # One concept, one name (docs/vocabulary.md). The compiler sees neither
       # a synonym nor an overload, so the tree is checked for the names that
       # page retires and for the words it confines to the file that owns them.
+      # It also retires what a rename leaves behind — a file name in a comment,
+      # a CO error code in prose — neither of which is a link, so nothing else
+      # in the build reads them.
       - name: Check terms
         run: ./misc/check-terms.sh
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
 
       # One file names the linter version: the Makefile reads it (make lint /
       # make tools), and each job that lints reads it here, so a bump is one

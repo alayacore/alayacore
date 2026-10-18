@@ -170,7 +170,7 @@ timeout arms on *any* unfinished input (`KeyParser.MidSequence`), not only on a
 held marker head: a paste whose body never resembles the closing marker is
 unfinished just the same, and only the state test covers it. The sweep over every
 cut offset and every read size is `key_parser_paste_cut_test.go`; the loop's half
-is a row in `program_input_cut_test.go`.
+is a row in `program_keys_cut_test.go`.
 
 The same boundary falls inside a *character*. A bracketed paste accumulates bytes
 and decodes once at the end, so no cut inside one can split a character; typed text

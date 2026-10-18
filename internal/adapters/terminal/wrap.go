@@ -9,8 +9,8 @@ package terminal
 //
 // Used by Window.renderer.BuildInner, tool_render.go
 // (RenderDiffContent), tui_status.go, model_selector.go,
-// theme_selector.go, help_window.go, confirm_dialog.go,
-// attachment_window.go, overlay.go, prompt_input.go, and tests.
+// theme_selector.go, help_overlay.go, confirm_dialog.go,
+// attachment_overlay.go, overlay.go, prompt_input.go, and tests.
 
 import (
 	"bytes"
