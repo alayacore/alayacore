@@ -119,8 +119,8 @@ func TestWriteFileFollowsSymlink(t *testing.T) {
 
 // TestWriteFileCreatesNewFile verifies that a brand-new file is created
 // and its content is readable back. The exact permission bits are
-// asserted in write_file_mode_unix_test.go (0644 narrowed by umask) —
-// they differ on Windows.
+// asserted against the cached umask in write_file_perm_test.go — they
+// differ on Windows.
 func TestWriteFileCreatesNewFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.txt")
 

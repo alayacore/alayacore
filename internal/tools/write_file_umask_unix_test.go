@@ -19,9 +19,16 @@ func TestWriteFileExistingKeepsExactModeUnderUmask(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Pin the cached umask BEFORE changing the process-global one. currentUmask
+	// reads the real value exactly once (sync.Once), and a read that happened
+	// inside this window would latch 0077 for the rest of this test binary —
+	// every later "a new file is 0644 narrowed by the umask" assertion would
+	// then see 0600, depending on test order.
+	_ = currentUmask()
+
 	old := syscall.Umask(0o077)
+	defer syscall.Umask(old) // defer, not a bare call: a Fatal or panic must not leave 0077 behind
 	_, err := executeWriteFile(context.Background(), WriteFileInput{Path: path, Content: "#!/bin/sh\necho hi\n"})
-	syscall.Umask(old)
 	if err != nil {
 		t.Fatal(err)
 	}

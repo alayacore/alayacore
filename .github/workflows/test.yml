@@ -129,12 +129,18 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # -shuffle: test order is not a contract anyone wrote down, and the tree
+      # already had one order-dependent pair — a test that changed the process
+      # umask inside the window where currentUmask()'s sync.Once latched it
+      # (write_file_umask_unix_test.go, fixed). Shuffling turns that class from
+      # "hidden until a refactor reorders the file" into a red build. Go prints
+      # the seed, so a failure is reproducible with -shuffle=<seed>.
       - name: Test
-        run: go test ./...
+        run: go test -shuffle=on ./...
 
       - name: Test (race detector)
         # 25s on a dev box for the whole tree; cheap enough to always run.
-        run: go test -race ./...
+        run: go test -race -shuffle=on ./...
 
   windows:
     name: Windows (vet every package, test the adapter)
