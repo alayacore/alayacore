@@ -35,7 +35,10 @@ func TestManagerCloseAllIsConcurrent(t *testing.T) {
 	for _, c := range m.Clients() {
 		if err := c.Connect(context.Background()); err != nil {
 			m.CloseAll()
-			t.Skipf("test server did not handshake (%v); shutdown timing not measurable", err)
+			// Not a skip: a test server that cannot handshake means this test
+			// measured nothing, and skipping would report that as a pass. The
+			// concurrency of CloseAll is the only thing asserted here.
+			t.Fatalf("test server did not handshake, so shutdown timing cannot be measured: %v", err)
 		}
 	}
 

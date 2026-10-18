@@ -1,13 +1,21 @@
-// Package providers_test contains integration tests for LLM providers.
-// These tests require real API credentials and are skipped by default.
-// Run with: go test -tags=integration ./internal/llm/providers/...
-// Or set the environment variable RUN_INTEGRATION_TESTS=1
+//go:build integration
+
+// Package providers_test integration tests: real provider APIs, real
+// credentials, real network. They are behind the `integration` build tag so
+// that `go test ./...` — the unit suite, which must be hermetic — never
+// compiles them, and the tag, not an environment variable, is what says "run
+// these": RUN_INTEGRATION_TESTS used to be a second switch that could be set
+// by hand and skip silently when it was not.
+//
+//	go test -tags=integration ./internal/llm/providers/
+//
+// Each test still skips when its own provider's credentials are absent: having
+// one provider's key is the normal case, and it must not block the others.
 package providers_test
 
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -17,15 +25,6 @@ import (
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/llm/factory"
 )
-
-// testMsg is a test helper that builds flat ContentParts from a role and content.
-// Replaces the old llm.Message{Role: X, Contents: []ContentPart{...}} pattern.
-func testMsg(role llm.MessageRole, parts ...llm.ContentPart) []llm.ContentPart {
-	for _, p := range parts {
-		p.SetRole(role)
-	}
-	return parts
-}
 
 // collectTextCallback returns an OnTextDelta callback that appends all text
 // deltas to the given strings.Builder.
@@ -45,18 +44,8 @@ func collectToolCallsCallback(dest *[]string) func(string, json.RawMessage, uint
 	}
 }
 
-var runIntegration = flag.Bool("integration", false, "run integration tests with real APIs")
-
-func skipIfNoIntegration(t *testing.T) {
-	if !*runIntegration && os.Getenv("RUN_INTEGRATION_TESTS") == "" {
-		t.Skip("Skipping integration test. Use -integration flag or set RUN_INTEGRATION_TESTS=1")
-	}
-}
-
 // TestAnthropicRealAPI tests the Anthropic-compatible provider with real API
 func TestAnthropicRealAPI(t *testing.T) {
-	skipIfNoIntegration(t)
-
 	baseURL := os.Getenv("ANTHROPIC_TEST_BASE_URL")
 	apiKey := os.Getenv("ANTHROPIC_TEST_API_KEY")
 	model := os.Getenv("ANTHROPIC_TEST_MODEL")
@@ -115,8 +104,6 @@ func TestAnthropicRealAPI(t *testing.T) {
 
 // TestOpenAICompatibleRealAPI tests an OpenAI-compatible provider with real API
 func TestOpenAICompatibleRealAPI(t *testing.T) {
-	skipIfNoIntegration(t)
-
 	baseURL := os.Getenv("OPENAI_COMPAT_TEST_BASE_URL")
 	apiKey := os.Getenv("OPENAI_COMPAT_TEST_API_KEY")
 	model := os.Getenv("OPENAI_COMPAT_TEST_MODEL")
@@ -162,8 +149,6 @@ func TestOpenAICompatibleRealAPI(t *testing.T) {
 
 // TestAnthropicRealToolCall tests tool calling with a real Anthropic-compatible API
 func TestAnthropicRealToolCall(t *testing.T) {
-	skipIfNoIntegration(t)
-
 	baseURL := os.Getenv("ANTHROPIC_TEST_BASE_URL")
 	apiKey := os.Getenv("ANTHROPIC_TEST_API_KEY")
 	model := os.Getenv("ANTHROPIC_TEST_MODEL")
@@ -237,8 +222,6 @@ func TestAnthropicRealToolCall(t *testing.T) {
 
 // TestOpenAIRealAPI tests the OpenAI provider with real API
 func TestOpenAIRealAPI(t *testing.T) {
-	skipIfNoIntegration(t)
-
 	baseURL := os.Getenv("OPENAI_TEST_BASE_URL")
 	apiKey := os.Getenv("OPENAI_TEST_API_KEY")
 	model := os.Getenv("OPENAI_TEST_MODEL")
@@ -288,8 +271,6 @@ func TestOpenAIRealAPI(t *testing.T) {
 
 // TestAgentToolLoopRealAPI tests the full agent tool-calling loop with a real API
 func TestAgentToolLoopRealAPI(t *testing.T) {
-	skipIfNoIntegration(t)
-
 	baseURL := os.Getenv("ANTHROPIC_TEST_BASE_URL")
 	apiKey := os.Getenv("ANTHROPIC_TEST_API_KEY")
 	model := os.Getenv("ANTHROPIC_TEST_MODEL")
@@ -389,8 +370,6 @@ func TestAgentToolLoopRealAPI(t *testing.T) {
 
 // TestAgentMultiToolLoopRealAPI tests multiple sequential tool calls with a real API
 func TestAgentMultiToolLoopRealAPI(t *testing.T) {
-	skipIfNoIntegration(t)
-
 	baseURL := os.Getenv("ANTHROPIC_TEST_BASE_URL")
 	apiKey := os.Getenv("ANTHROPIC_TEST_API_KEY")
 	model := os.Getenv("ANTHROPIC_TEST_MODEL")
@@ -473,8 +452,6 @@ func TestAgentMultiToolLoopRealAPI(t *testing.T) {
 // TestAgentSequentialQueriesWithTools tests multiple sequential queries with tool calls
 // This reproduces the issue where the 2nd query fails after a tool call in the 1st query
 func TestAgentSequentialQueriesWithTools(t *testing.T) {
-	skipIfNoIntegration(t)
-
 	baseURL := os.Getenv("ANTHROPIC_TEST_BASE_URL")
 	apiKey := os.Getenv("ANTHROPIC_TEST_API_KEY")
 	model := os.Getenv("ANTHROPIC_TEST_MODEL")
@@ -585,8 +562,6 @@ func TestAgentSequentialQueriesWithTools(t *testing.T) {
 // TestOpenAICompatSequentialQueriesWithTools tests multiple sequential queries with tool calls
 // using an OpenAI-compatible API
 func TestOpenAICompatSequentialQueriesWithTools(t *testing.T) {
-	skipIfNoIntegration(t)
-
 	baseURL := os.Getenv("OPENAI_COMPAT_TEST_BASE_URL")
 	apiKey := os.Getenv("OPENAI_COMPAT_TEST_API_KEY")
 	model := os.Getenv("OPENAI_COMPAT_TEST_MODEL")

@@ -14,16 +14,31 @@ import (
 	"github.com/alayacore/alayacore/internal/tools/shell"
 )
 
-// rgAvailable checks whether ripgrep is on the system, for test skipping.
+// requireRipgrep gates the tests below on ripgrep, the binary search_content
+// runs. On a developer's box a missing rg is a skip. In CI it is a failure:
+// the workflow installs it as this suite's reference implementation, and
+// `go test ./...` runs without -v, so a skip there would be invisible and the
+// whole search_content suite would quietly stop running. (The tmux replay test
+// makes the same disposition for the same reason.)
+func requireRipgrep(t *testing.T) {
+	t.Helper()
+	if rgAvailable() {
+		return
+	}
+	if os.Getenv("CI") != "" {
+		t.Fatalf("ripgrep is not installed, but the workflow installs it as search_content's reference implementation (see .github/workflows/test.yml)")
+	}
+	t.Skip("ripgrep (rg) is not installed")
+}
+
+// rgAvailable checks whether ripgrep is on the system.
 func rgAvailable() bool {
 	_, err := exec.LookPath("rg")
 	return err == nil
 }
 
 func TestSearchContentBasicSearch(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -47,9 +62,7 @@ func TestSearchContentBasicSearch(t *testing.T) {
 }
 
 func TestSearchContentNoMatches(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -84,9 +97,7 @@ func TestSearchContentEmptyPattern(t *testing.T) {
 }
 
 func TestSearchContentFileTypeFilter(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -115,9 +126,7 @@ func TestSearchContentFileTypeFilter(t *testing.T) {
 }
 
 func TestSearchContentIgnoreCase(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -153,9 +162,7 @@ func TestSearchContentIgnoreCase(t *testing.T) {
 }
 
 func TestSearchContentMaxLinesGlobal(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -276,9 +283,7 @@ func TestFormatSearchResultByteCap(t *testing.T) {
 }
 
 func TestSearchContentPatternLooksLikeFlag(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -304,9 +309,7 @@ func TestSearchContentPatternLooksLikeFlag(t *testing.T) {
 }
 
 func TestSearchContentStreaming(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -337,9 +340,7 @@ func TestSearchContentStreaming(t *testing.T) {
 }
 
 func TestSearchContentStreamingNoMatches(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -380,9 +381,7 @@ func TestSearchContentStreamingEmptyPattern(t *testing.T) {
 }
 
 func TestSearchContentStreamingMaxLines(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 
 	tmpDir := t.TempDir()
 
@@ -445,9 +444,7 @@ func TestSearchContentMissingRipgrepIsActionable(t *testing.T) {
 // 1 unconditionally, so every ripgrep result (which always ends with "\n") was
 // over-reported by one line: 7 matches announced themselves as 8.
 func TestSearchContentReportsExactLineCount(t *testing.T) {
-	if !rgAvailable() {
-		t.Skip("rg not available on system")
-	}
+	requireRipgrep(t)
 	dir := t.TempDir()
 
 	const wantMatches = 7

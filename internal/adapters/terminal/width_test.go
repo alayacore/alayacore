@@ -265,7 +265,11 @@ func TestCellWidthIgnoresRunewidthEastAsian(t *testing.T) {
 		t.Errorf("with RUNEWIDTH_EASTASIAN=1: cellWidth(%q) = %d, want 1 — the pinned table leaked the environment", "─", cell)
 	}
 	if ansiW != 2 {
-		t.Skipf("the library itself did not widen under RUNEWIDTH_EASTASIAN (ansi=%d); nothing to prove", ansiW)
+		// Not a skip: the whole point of this test is the case where the
+		// library widens. If a library upgrade stops honouring the variable,
+		// the guarantee below is untested — say so instead of passing quietly
+		// with a skip that `go test ./...` (no -v) would never show.
+		t.Fatalf("the library did not widen under RUNEWIDTH_EASTASIAN (ansi=%d), so this test can no longer prove the pinned table ignores it; the child-process trick needs revisiting", ansiW)
 	}
 }
 
