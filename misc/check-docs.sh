@@ -143,11 +143,16 @@ fi
 sed 's|.*/||' "$treepaths" | sort -u >"$namelist"
 sed 's|^|/|' "$treepaths" | sort -u >"$slashpaths"
 
+# What opens a fence, in one place: strip_fences and flag_lines both have to agree
+# on it, and two copies of a rule is how a fix to one leaves the other reading the
+# docs differently.
+fence_open='^[[:space:]]*```'
+
 # strip_fences blanks a fenced code block, one blank line per input line, so a
 # line number in the output is still the line number in the file.
 strip_fences() {
-	awk '
-		/^[[:space:]]*```/ { fence = !fence; print ""; next }
+	awk -v open="$fence_open" '
+		$0 ~ open { fence = !fence; print ""; next }
 		{ if (fence) print ""; else print }
 	' "$1"
 }
@@ -176,8 +181,8 @@ strip_targets() { sed -E 's/\]\([^)]*\)//g'; }
 # un-fenced line, and every line of a fenced block that names alayacore (an
 # example of running it, continuations included).
 flag_lines() {
-	awk '
-		/^[[:space:]]*```/ {
+	awk -v open="$fence_open" '
+		$0 ~ open {
 			if (fenced) { if (names) for (i = 1; i <= n; i++) print buf[i]; fenced = 0 }
 			else { fenced = 1 }
 			n = 0; names = 0; next
@@ -224,7 +229,15 @@ while IFS= read -r f; do
 		esac
 	done <<<"$spans"
 
-	flag_lines "$f" | strip_targets >"$flaglines" || true
+	# grep says 1 for "no mention", which is a clean file, and 2 for a failure,
+	# which is not: only the second one may pass for a result.
+	flag_scan_status=0
+	{ flag_lines "$f" | strip_targets | grep -E -e '--[a-z][a-z0-9-]*'; } >"$flaglines" ||
+		flag_scan_status=$?
+	if [ "$flag_scan_status" -gt 1 ]; then
+		echo "the flag scan failed on $f (status $flag_scan_status) — flags were not checked" >&2
+		flags_derived=0
+	fi
 	while IFS= read -r entry; do
 		[ -n "$entry" ] || continue
 		text=${entry#*:}
