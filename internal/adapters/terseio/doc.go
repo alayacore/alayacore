@@ -4,6 +4,12 @@
 //
 // Activate with the --terseio flag.
 //
+// This mode is a sibling of plainio, not a variant of it: the two look alike
+// because both print plain text, but every policy a mode is defined by (input
+// rules, where output goes, what an error does to the exit code, whether a
+// confirmation can be answered) is answered differently here. See
+// docs/internal/adapter-architecture.md → "Siblings, not variants".
+//
 // Contract:
 //   - stdin: read in full (until EOF) and treated as ONE message. Newlines
 //     are preserved; trailing newlines are trimmed.

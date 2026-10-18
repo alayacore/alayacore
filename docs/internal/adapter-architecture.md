@@ -34,6 +34,32 @@ Minimal stdin/stdout mode, activated with `--terseio`. Reads **all of stdin as a
 
 Raw frame stdin/stdout mode, activated with `--rawio`. Reads and writes raw frames directly, with no text parsing or formatting. Designed for parent programs that speak the frame protocol to control AlayaCore programmatically.
 
+### Siblings, not variants
+
+The four adapters are parallel modes, not four implementations of one thing, and
+they are deliberately not factored into a shared "adapter core". Each is a
+complete answer to *how this mode behaves* — what it reads, where output goes,
+what an error does to the exit code, whether a confirmation can be answered at
+all — and those answers are the mode.
+
+plainio and terseio look alike today, since both render frames as plain text over
+stdin/stdout, but they differ at every point a mode is defined by:
+
+| | plainio | terseio |
+|---|---|---|
+| input | one prompt per line, read continuously | all of stdin, as one prompt or one command |
+| stdout | the transcript | the final answer only |
+| errors | stdout, exit code unaffected | stderr, exit code 1 |
+| task errors | reported, the session continues | discard the buffered answer and exit 1 |
+| tool confirmations | answerable (`:tool_confirm`) | rejected at startup (`--tool-confirm` conflict) |
+| MCP OAuth fallback | manual commands on a terminal, decline on a pipe | declined — there is nowhere to type a code |
+
+A shared implementation would make one mode's next decision also a decision about
+the other's, and a fix for one would silently change what the other claims to do.
+That is the same trade this tree refuses for the MCP protocol revisions
+(`internal/mcp/protocol_adapter.go`, on the `Adapter` interface). Similarity
+between two modes is a fact about today's code, not a rule about the design.
+
 ### File Naming Convention
 
 Files in the adapter packages are named from the **session's perspective**:

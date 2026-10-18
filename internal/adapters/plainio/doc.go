@@ -7,13 +7,19 @@
 //
 // Activate with the --plainio flag.
 //
+// This mode is a sibling of terseio, not a variant of it: the two look alike
+// because both print plain text, but every policy a mode is defined by (input
+// rules, where output goes, what an error does to the exit code, whether a
+// confirmation can be answered) is answered differently here. See
+// docs/internal/adapter-architecture.md → "Siblings, not variants".
+//
 // Input rules:
 //   - Each line is read as a prompt.
 //   - A trailing backslash (\) before newline continues the prompt on the next line.
-//   - There is no task queue: prompts run one at a time, and a prompt that
-//     arrives while one is in flight is refused. On a pipe that means only the
-//     first prompt of a multi-line stdin is executed; interactively you can keep
-//     typing (the refusals are listed in docs/plainio.md).
+//   - There is no task queue: one task runs at a time, and a prompt that arrives
+//     while one is in flight is steered into it rather than refused. docs/plainio.md
+//     has the cases — including the one refusal, a full steering queue — and what
+//     a piped stdin can expect.
 //   - :quit / :q stops reading input; the program waits for any running
 //     task, then exits with code 0.
 //   - Ctrl-D (EOF) closes input; the program waits for the current task to
