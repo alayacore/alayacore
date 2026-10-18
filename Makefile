@@ -1,4 +1,4 @@
-.PHONY: all build test lint tools fmt clean install run release release-all \
+.PHONY: all build test test-race check-test-tools lint tools fmt clean install run release release-all \
        build-windows build-darwin build-linux check check-gitattributes check-shell-style check-docs check-terms
 
 # Go parameters
@@ -76,9 +76,32 @@ release-all:
 	CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le $(GOBUILD) $(BUILDTAGS) $(RELEASE_LDFLAGS) -o $(MAIN_BINARY)-linux-ppc64le .
 	CGO_ENABLED=0 GOOS=linux GOARCH=s390x $(GOBUILD) $(BUILDTAGS) $(RELEASE_LDFLAGS) -o $(MAIN_BINARY)-linux-s390x .
 
+## The external tools the suite tests against: tmux is the terminal replay test's
+## reference terminal, ripgrep is search_content's reference implementation. This
+## list is the requirement — `make test` refuses to run without them, because
+## `go test` shows a skip only with -v and a run that was meant to be complete
+## must not quietly lose a file's worth of tests. `go test ./...` on its own still
+## skips them, which is what a box without either should do.
+##
+## .github/actions/test-deps/action.yml installs them, from the same list.
+TEST_TOOLS=tmux rg
+
+## check-test-tools: Refuse to run the suite when a tool it tests against is absent
+check-test-tools:
+	@for t in $(TEST_TOOLS); do \
+		command -v $$t >/dev/null 2>&1 || { \
+			echo "make test needs $$t: install it, or run 'go test ./...' to skip the tests that need it (CI installs both via .github/actions/test-deps)" >&2; \
+			exit 1; \
+		}; \
+	done
+
 ## test: Run all tests, in a shuffled order (the order CI uses)
-test:
+test: check-test-tools
 	$(GOTEST) -shuffle=on -v ./...
+
+## test-race: The same suite under the race detector (also needs the tools)
+test-race: check-test-tools
+	$(GOTEST) -race -shuffle=on ./...
 
 ## bench: Run every benchmark once, comparing nothing (the CI smoke check)
 bench:

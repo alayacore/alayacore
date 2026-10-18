@@ -248,11 +248,18 @@ note belongs in the type's doc comment or in `docs/`.
 
 There are two reasons to skip — the platform cannot run it, or a prerequisite
 outside the tree is absent — and both have to be visible where it matters. A skip
-that fires in CI is coverage disappearing silently: `go test ./...` runs without
-`-v`, so nothing says so. Every external tool the suite runs is therefore
-**declared in the workflow** (tmux for the replay test, ripgrep for
-`search_content`), and the test fails in CI when it is missing while still
-skipping on a developer's box (`requireRipgrep`, `screen_tmux_replay_test.go`).
+in a run that was meant to be complete is coverage disappearing silently, so the
+requirement is declared by **the command that starts the run**, not guessed by the
+test: `make test` refuses to start when tmux or ripgrep is missing (the list is
+`TEST_TOOLS`), and `.github/actions/test-deps/action.yml` installs exactly those.
+Plain `go test ./...` skips them, which is what a box without either should do,
+and `internal/testenv` states the rule once.
+
+A test that read `CI` to make that decision guessed which workflow it was in, and
+guessed wrong once: it reported the tests workflow as the one that installs tmux
+while a release build — which declared nothing — was running it. The variable also
+made `CI=1 make test` on a laptop mean something the tree never said.
+
 A precondition that quietly invalidates the property — a library that stops
 honoring the variable the test injects — fails for the same reason: the
 guarantee is untested, and saying so is the point.

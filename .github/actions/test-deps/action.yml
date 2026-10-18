@@ -1,0 +1,42 @@
+name: Test dependencies
+description: |
+  The external tools the test suite treats as declared dependencies: tmux (the
+  terminal replay test's reference terminal) and ripgrep (search_content's
+  reference implementation).
+
+  Each was undeclared once, present only because the runner image happened to
+  ship it, and each cost a build. The image's tmux 3.4 and a development box's
+  3.7c bill a keycap cluster differently, so the model and the pane disagreed
+  about rows no code of ours controls. And a suite that skips when rg is absent
+  loses search_content's coverage without a word, because `go test ./...` runs
+  without -v.
+
+  So every workflow that runs the suite installs them here — the tests workflow
+  on every push, and the release workflow before the tag's binaries are built.
+  `make test` then refuses to start if either is still missing (TEST_TOOLS in the
+  Makefile), which is what makes a forgotten step a failed build rather than a
+  quietly shorter suite. This file is the one place that list lives: a second copy
+  is how a release job ends up testing without a dependency its own test step
+  needs, which is exactly what happened before this action existed.
+
+runs:
+  using: composite
+  steps:
+    - name: Install tmux and ripgrep
+      shell: bash
+      run: |
+        # One apt update for whichever are missing, so adding a third tool here
+        # does not add a third round trip.
+        missing=""
+        command -v tmux >/dev/null 2>&1 || missing="$missing tmux"
+        command -v rg   >/dev/null 2>&1 || missing="$missing ripgrep"
+        if [ -n "$missing" ]; then
+          sudo apt-get update -qq
+          # shellcheck disable=SC2086 # the list is split on purpose
+          sudo apt-get install -y --no-install-recommends $missing
+        fi
+        # Printed, not merely installed: the log should name the builds the suite
+        # is judged against, because that is what a version-dependent failure
+        # needs to read.
+        tmux -V
+        rg --version | head -1

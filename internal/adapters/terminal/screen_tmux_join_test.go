@@ -31,22 +31,17 @@ package terminal
 // every row — including the rows a diff will never rewrite.
 
 import (
-	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/testenv"
 )
 
 func TestTmuxKeepsARepaintedRowJoined(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns a tmux server and waits on paint timing")
 	}
-	tmux, err := exec.LookPath("tmux")
-	if err != nil {
-		if testing.Short() {
-			t.Skip("tmux is not installed")
-		}
-		t.Fatalf("tmux is not installed, but it is the reference terminal for what this package's writes do to a wrapped line: %v", err)
-	}
+	tmux := testenv.RequireTool(t, "tmux", "the reference terminal for what this package's writes do to a wrapped line")
 	const width, height = 8, 4
 	row1 := strings.Repeat("A", 8)
 	row2 := strings.Repeat("B", 8)
@@ -120,13 +115,7 @@ func TestTmuxScrollsOnACellPastTheBottomRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns a tmux server and waits on paint timing")
 	}
-	tmux, err := exec.LookPath("tmux")
-	if err != nil {
-		if testing.Short() {
-			t.Skip("tmux is not installed")
-		}
-		t.Fatalf("tmux is not installed, but it is the reference terminal for what a write past the bottom row does: %v", err)
-	}
+	tmux := testenv.RequireTool(t, "tmux", "the reference terminal for what a write past the bottom row does")
 	const width, height = 8, 4
 
 	// Fill the pane, then write exactly the row width on the last row (no

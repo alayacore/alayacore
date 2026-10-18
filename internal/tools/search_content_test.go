@@ -11,30 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/testenv"
 	"github.com/alayacore/alayacore/internal/tools/shell"
 )
 
 // requireRipgrep gates the tests below on ripgrep, the binary search_content
-// runs. On a developer's box a missing rg is a skip. In CI it is a failure:
-// the workflow installs it as this suite's reference implementation, and
-// `go test ./...` runs without -v, so a skip there would be invisible and the
-// whole search_content suite would quietly stop running. (The tmux replay test
-// makes the same disposition for the same reason.)
+// runs. A box without it skips them; `make test` refuses to start without it, so
+// a run that was meant to be complete cannot lose them (see internal/testenv).
 func requireRipgrep(t *testing.T) {
 	t.Helper()
-	if rgAvailable() {
-		return
-	}
-	if os.Getenv("CI") != "" {
-		t.Fatalf("ripgrep is not installed, but the workflow installs it as search_content's reference implementation (see .github/workflows/test.yml)")
-	}
-	t.Skip("ripgrep (rg) is not installed")
-}
-
-// rgAvailable checks whether ripgrep is on the system.
-func rgAvailable() bool {
-	_, err := exec.LookPath("rg")
-	return err == nil
+	testenv.RequireTool(t, "rg", "search_content's reference implementation")
 }
 
 func TestSearchContentBasicSearch(t *testing.T) {

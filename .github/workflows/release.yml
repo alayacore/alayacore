@@ -30,6 +30,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # The same external tools the tests workflow installs, for the same
+      # reason: `make test` is the same suite, and it refuses to start when tmux
+      # or ripgrep is missing. A release build must not be the first place that is
+      # discovered — the runner image changes under us, and this job only runs at
+      # tag time.
+      - name: Install the suite's external tools
+        uses: ./.github/actions/test-deps
+
       - name: Run tests
         run: make test
 

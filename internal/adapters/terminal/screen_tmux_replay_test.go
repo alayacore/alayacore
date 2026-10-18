@@ -44,25 +44,19 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alayacore/alayacore/internal/testenv"
 )
 
 func TestScreenMatchesATerminalUnderTmux(t *testing.T) {
 	if testing.Short() {
 		t.Skip("spawns a tmux server and waits on paint timing")
 	}
-	tmux, err := exec.LookPath("tmux")
-	if err != nil {
-		// On a developer's box this is a skip: the check needs a terminal
-		// multiplexer and not everyone has one. In CI it is a failure, because
-		// the workflow installs tmux as this test's reference terminal — and
-		// `go test ./...` runs without -v, so a skip here would be invisible
-		// and the suite would quietly lose its only comparison against a real
-		// terminal. Nothing else would say so.
-		if os.Getenv("CI") != "" {
-			t.Fatalf("tmux is not installed, but the workflow installs it as this test's reference terminal (see .github/workflows/test.yml): %v", err)
-		}
-		t.Skip("tmux is not installed")
-	}
+	// A box without a terminal multiplexer skips this test; `make test` is what
+	// refuses to start without tmux, so a run that was meant to be complete
+	// cannot lose the suite's only comparison against a real terminal (see
+	// internal/testenv).
+	tmux := testenv.RequireTool(t, "tmux", "this test's reference terminal")
 	version := tmuxVersion(t, tmux)
 
 	const width, height = 32, 24

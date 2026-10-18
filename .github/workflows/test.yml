@@ -107,39 +107,14 @@ jobs:
           # the linter gained since — its own change.
           install-mode: goinstall
 
-      # The terminal adapter's replay test judges its grid model against a real
-      # terminal: it writes a recorded frame stream into a tmux pane and diffs
-      # the capture against the model. That makes tmux a dependency of the
-      # suite, and it was an undeclared one — present only because the runner
-      # image happens to ship it, at whatever version the image was built with.
-      # That cost a red build once already: the image's tmux 3.4 and a
-      # development box's 3.7c bill a keycap cluster differently, so the model
-      # and the pane disagreed about rows no code of ours controls. Installing
-      # it here declares the dependency, so an image that drops it fails this
-      # step instead of silently skipping the test, and printing the version
-      # puts the build the suite is judging against into the log.
-      - name: Install tmux (the replay test's reference terminal)
-        run: |
-          if ! command -v tmux >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends tmux
-          fi
-          tmux -V
-
-      # ripgrep is search_content's reference implementation, the way tmux is
-      # the replay test's reference terminal — and it is declared here for the
-      # same reason. The image has shipped rg so far; relying on that is how a
-      # suite loses coverage silently, because the tests skip when it is
-      # missing and `go test ./...` (no -v) shows nothing. search_content's
-      # tests now fail in CI if rg is absent, so this step is what keeps that
-      # failure from ever firing.
-      - name: Install ripgrep (search_content's reference implementation)
-        run: |
-          if ! command -v rg >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends ripgrep
-          fi
-          rg --version | head -1
+      # The suite's external tools — tmux and ripgrep — are declared in one
+      # place and installed by one action: .github/actions/test-deps/action.yml,
+      # which says which two they are, why each is a dependency rather than an
+      # optional convenience, and why a missing one fails this job instead of
+      # skipping. The release workflow runs the same action, because a tag build
+      # runs this same suite.
+      - name: Install the suite's external tools
+        uses: ./.github/actions/test-deps
 
       - name: Vet
         run: go vet ./...
@@ -151,11 +126,11 @@ jobs:
       # "hidden until a refactor reorders the file" into a red build. Go prints
       # the seed, so a failure is reproducible with -shuffle=<seed>.
       - name: Test
-        run: go test -shuffle=on ./...
+        run: make test
 
       - name: Test (race detector)
         # 25s on a dev box for the whole tree; cheap enough to always run.
-        run: go test -race -shuffle=on ./...
+        run: make test-race
 
       # Benchmarks are measurements, not gates: their numbers on a shared runner
       # are noise, and a threshold tight enough to be worth asserting would be a
