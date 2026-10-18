@@ -121,6 +121,15 @@ The `:fork` command saves all session content from the beginning up to (and incl
 :fork 42 ./extract.alaya
 ```
 
+The two arguments are the history ID and the filename, and **the filename is
+everything after the ID** — a path may contain spaces, so `:fork 42 my
+notes.alaya` writes `my notes.alaya`. Surrounding whitespace is trimmed from
+both (a trailing space would name a file the user cannot see), and inner
+whitespace is kept. There is no quoting: whatever follows the ID is the path,
+verbatim. `:save [filename]` takes its path the same way, and so does
+`:theme_set <name>` — a theme is named by its file (`my theme.conf` →
+`my theme`), so its name may contain spaces.
+
 In the TUI, you can also press `Ctrl+F` at a window to pre-fill the `:fork` command with that window's history ID.
 
 **The cut never separates a tool call from its result.** A file ending in a `tool_use` with no matching `tool_result` loads without complaint and is rejected by the provider on the *next* prompt, so `forkEndIndex` extends the cut forward until every tool call inside the prefix has its result inside it too. Because a step's results follow all of its calls (`call1, call2, result1, result2`), forking a two-call step at the first call writes both calls and both results — the whole group moves, rather than the named entry being quietly dropped. Forking at anything that carries no tool call (a prompt, reasoning, text) cuts exactly there.

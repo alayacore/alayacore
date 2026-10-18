@@ -197,14 +197,17 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 // see forkEndIndex.
 // Usage: :fork <history_id> <filename>
 func (s *Session) handleFork(args string) (any, error) {
-	fields := strings.Fields(args)
-	if len(fields) < 2 {
+	// Two arguments: the history id, then the filename — and the filename is
+	// everything after it, because a path may contain spaces. Splitting on
+	// whitespace would turn ":fork 5 my report.alaya" into the file "my".
+	idStr, pathArg := commands.SplitFirst(args)
+	if idStr == "" || pathArg == "" {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameFork)}
 	}
 
-	id, err := strconv.ParseUint(fields[0], 10, 64)
+	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		return nil, &cmdErr{Code: "INVALID_ARGS", Message: fmt.Sprintf("invalid history ID: %s", fields[0])}
+		return nil, &cmdErr{Code: "INVALID_ARGS", Message: fmt.Sprintf("invalid history ID: %s", idStr)}
 	}
 
 	endIdx := forkEndIndex(s.Contents, id)
@@ -223,7 +226,7 @@ func (s *Session) handleFork(args string) (any, error) {
 			Message: fmt.Sprintf("cannot fork: tool call %q has no result in this session; fork at a point before it", dangling)}
 	}
 
-	path := config.ExpandPath(fields[1])
+	path := config.ExpandPath(pathArg)
 	if err := s.saveContentToFile(path, prefix); err != nil {
 		return nil, &cmdErr{Code: "IO_ERROR", Message: fmt.Sprintf("failed to fork: %v", err)}
 	}
@@ -791,10 +794,13 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 	if s.NoTheme {
 		return nil, &cmdErr{Code: "UNAVAILABLE", Message: "theme management is not available in this mode"}
 	}
-	if args == "" {
+	// ":theme_set <name>" — the name is the whole tail, trimmed: a theme is
+	// named by its file (my theme.conf → "my theme"), so inner spaces are part
+	// of the name and invisible whitespace at the ends is not.
+	name := strings.TrimSpace(args)
+	if name == "" {
 		return nil, &cmdErr{Code: "INVALID_ARGS", Message: commands.UsageLine(commands.CommandNameThemeSet)}
 	}
-	name := args
 
 	// Validate that the theme exists before persisting.
 	if s.ThemesFolder != "" {
@@ -911,13 +917,17 @@ func (s *Session) handleMCPDecline(args string) (any, error) {
 
 func (s *Session) saveSession(args string) (any, error) {
 	var path string
-	if args == "" {
+	// ":save [filename]" — the filename is the whole tail, and its surrounding
+	// whitespace is trimmed: "…alaya " names a file the user can see, not one
+	// ending in a space.
+	filename := strings.TrimSpace(args)
+	if filename == "" {
 		if s.SessionFile == "" {
 			return nil, &cmdErr{Code: "NOT_CONFIGURED", Message: "no session file set"}
 		}
 		path = s.SessionFile
 	} else {
-		path = config.ExpandPath(args)
+		path = config.ExpandPath(filename)
 	}
 
 	if err := s.saveContentToFile(path, s.Contents); err != nil {

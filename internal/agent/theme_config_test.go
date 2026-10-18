@@ -152,3 +152,52 @@ func TestThemeSetRejectsUnreadableThemesFolder(t *testing.T) {
 		t.Errorf("active theme = %q, want nothing persisted for a rejected switch", got)
 	}
 }
+
+// ":theme_set <name>" trims its argument. A theme is named by its file
+// (my theme.conf → "my theme"), so inner spaces are the name and surrounding
+// whitespace is not: ":theme_set  my theme  " used to look for the file
+// " my theme .conf" and answer NOT_FOUND for a theme that exists.
+func TestThemeSetTrimsTheName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "my theme.conf"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := &Session{
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{Output: &syncOutput{}, ThemesFolder: dir},
+		},
+	}
+	s.modelService = newModelService(newModelManager(""), newRuntimeManager(filepath.Join(t.TempDir(), "runtime.conf")))
+
+	res, err := s.handleThemeSet("  my theme  ")
+	if err != nil {
+		t.Fatalf("handleThemeSet: %v", err)
+	}
+	if got := res.(map[string]any)["name"]; got != "my theme" {
+		t.Errorf("reported name = %v, want %q", got, "my theme")
+	}
+	if got := s.modelService.runtimeMgr.getActiveTheme(); got != "my theme" {
+		t.Errorf("persisted theme = %q, want %q", got, "my theme")
+	}
+}
+
+// Whitespace is not a name: ":theme_set   " is the empty argument, refused the
+// same way ":theme_set" is.
+func TestThemeSetRejectsWhitespaceOnly(t *testing.T) {
+	dir := t.TempDir()
+	s := &Session{
+		sessionConfig: sessionConfig{
+			SessionConfig: SessionConfig{Output: &syncOutput{}, ThemesFolder: dir},
+		},
+	}
+	s.modelService = newModelService(newModelManager(""), newRuntimeManager(filepath.Join(t.TempDir(), "runtime.conf")))
+
+	_, err := s.handleThemeSet("   ")
+	if err == nil {
+		t.Fatal("handleThemeSet accepted a name made of spaces")
+	}
+	var cmdError *cmdErr
+	if !errors.As(err, &cmdError) || cmdError.Code != "INVALID_ARGS" {
+		t.Errorf("error = %v, want INVALID_ARGS", err)
+	}
+}

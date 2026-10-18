@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -239,5 +240,76 @@ func TestForkRefusesUnrepairableHistory(t *testing.T) {
 	// A cut before the dangling call is still valid and must succeed.
 	if _, err := s.handleFork("1 " + outPath); err != nil {
 		t.Errorf("fork before the dangling call should succeed, got: %v", err)
+	}
+}
+
+// ":fork <history_id> <filename>" takes everything after the id as the
+// filename, because a path may contain spaces. Splitting the tail on
+// whitespace instead turned ":fork 5 my report.alaya" into a write to the file
+// "my" — the path the user did not ask for, reported back in the result.
+func TestForkFilenameIsTheRestOfTheLine(t *testing.T) {
+	contents := []llm.ContentPart{
+		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 1}},
+	}
+	s := newForkTestSession(contents)
+	outPath := tempSessionPath(t, "my report") // the space is the whole point
+
+	res, err := s.handleFork("1 " + outPath)
+	if err != nil {
+		t.Fatalf("fork: %v", err)
+	}
+	if got := res.(map[string]any)["path"]; got != outPath {
+		t.Errorf("reported path = %v, want %q", got, outPath)
+	}
+	if _, err := os.Stat(outPath); err != nil {
+		t.Errorf("no file at the path the command named: %v", err)
+	}
+	loaded, err := loadSession(outPath)
+	if err != nil {
+		t.Errorf("load forked session: %v", err)
+	} else if len(loaded.Contents) != 1 {
+		t.Errorf("forked %d parts, want 1", len(loaded.Contents))
+	}
+}
+
+// The two arguments are trimmed of surrounding whitespace: ":fork 1 out.alaya "
+// names out.alaya. A path whose name ends in a space is not something a user
+// can see, retype, or mean.
+func TestForkTrimsSurroundingWhitespace(t *testing.T) {
+	contents := []llm.ContentPart{
+		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 1}},
+	}
+	s := newForkTestSession(contents)
+	outPath := tempSessionPath(t, "trimmed")
+
+	res, err := s.handleFork("  1 \t " + outPath + "  \n")
+	if err != nil {
+		t.Fatalf("fork: %v", err)
+	}
+	if got := res.(map[string]any)["path"]; got != outPath {
+		t.Errorf("reported path = %v, want %q", got, outPath)
+	}
+	if _, err := os.Stat(outPath + " "); err == nil {
+		t.Error("a file whose name ends in a space was written")
+	}
+}
+
+// Both halves are required: the id without a filename has nothing to write.
+func TestForkRequiresAFilename(t *testing.T) {
+	contents := []llm.ContentPart{
+		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser, HistoryID: 1}},
+	}
+	s := newForkTestSession(contents)
+
+	for _, args := range []string{"1", "1   ", "   ", ""} {
+		_, err := s.handleFork(args)
+		if err == nil {
+			t.Errorf("handleFork(%q) accepted a fork with no filename", args)
+			continue
+		}
+		var ce *cmdErr
+		if !errors.As(err, &ce) || ce.Code != "INVALID_ARGS" {
+			t.Errorf("handleFork(%q) error = %v, want INVALID_ARGS", args, err)
+		}
 	}
 }

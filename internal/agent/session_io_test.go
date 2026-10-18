@@ -695,3 +695,45 @@ func TestHandleTaskDone_CleansUpConfirmChannels(t *testing.T) {
 		t.Fatalf("confirmChs has %d entries after handleTaskDone, want 0", len(s.confirmChs))
 	}
 }
+
+// ":save <filename>" takes the whole tail as the path, trimmed of surrounding
+// whitespace: a trailing space would otherwise write a file whose name the
+// user can neither see nor retype.
+func TestSaveSessionTrimsThePath(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "my report.alaya")
+	s := newSaveSession()
+
+	res, err := s.saveSession("  " + want + "  ")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if got := res.(map[string]any)["path"]; got != want {
+		t.Errorf("path = %v, want %q", got, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("no file at the path the command named: %v", err)
+	}
+	if _, err := os.Stat(want + " "); err == nil {
+		t.Error("a file whose name ends in a space was written")
+	}
+}
+
+// Whitespace is not a filename. An argument of spaces only means "no argument",
+// so the configured session file is used — the same choice a typed ":save "
+// makes, where the separator is trimmed before the handler sees it.
+func TestSaveSessionWhitespaceOnlyUsesTheSessionFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.alaya")
+	s := newSaveSession()
+	s.SessionFile = path
+
+	res, err := s.saveSession("   ")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if got := res.(map[string]any)["path"]; got != path {
+		t.Errorf("path = %v, want the session file %q", got, path)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the session file was not written: %v", err)
+	}
+}

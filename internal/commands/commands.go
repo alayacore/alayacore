@@ -83,6 +83,11 @@ func ShortForms() map[string]string {
 	return out
 }
 
+// cmdSpace is the separator set a command's name ends at, and the one
+// SplitFirst splits on. One constant, so the two splitters cannot disagree
+// about what whitespace is.
+const cmdSpace = " \t\r\n"
+
 // SplitCommand splits a command string into its name and argument tail at
 // the FIRST whitespace (space, tab, CR, LF), trimming the separator from
 // the args. "save" → ("save", ""); "save\t/tmp/x" → ("save", "/tmp/x").
@@ -90,9 +95,26 @@ func ShortForms() map[string]string {
 // terseio) is preserved — only the first separator matters.
 func SplitCommand(cmd string) (name, args string) {
 	name = cmd
-	if i := strings.IndexAny(cmd, " \t\r\n"); i >= 0 {
+	if i := strings.IndexAny(cmd, cmdSpace); i >= 0 {
 		name = cmd[:i]
-		args = strings.TrimLeft(cmd[i:], " \t\r\n")
+		args = strings.TrimLeft(cmd[i:], cmdSpace)
 	}
 	return name, args
+}
+
+// SplitFirst splits an argument tail into its first token and the rest, with
+// surrounding whitespace trimmed from both. It is SplitCommand's rule one level
+// down, for the commands whose last argument is one free-text value: `:fork
+// <history_id> <filename>` takes the whole remainder as the filename, so a path
+// containing spaces is a path, not several arguments.
+//
+// Whitespace INSIDE the rest is preserved — two spaces in the middle of a
+// filename are part of the name. The ends are trimmed because invisible
+// whitespace there is never intended: `:fork 5 out.alaya ` names out.alaya.
+func SplitFirst(args string) (head, rest string) {
+	args = strings.Trim(args, cmdSpace)
+	if i := strings.IndexAny(args, cmdSpace); i >= 0 {
+		return args[:i], strings.Trim(args[i:], cmdSpace)
+	}
+	return args, ""
 }
