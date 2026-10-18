@@ -166,6 +166,10 @@ func (videoConfigMsg) SystemMsgType() string { return string(protocol.MsgTypeVid
 //   - "auth_required":  session needs user to authorize this server
 //   - "auth_running":  OAuth flow is running for this server
 //   - "done":          MCP initialization process has ended (completed, canceled, or aborted)
+//
+// Server is set for every per-server status; "done" is the only one without it,
+// because it is the one event that is about the whole initialization rather than
+// one server.
 type mcpMsg struct {
 	Status string `json:"status"`
 	Server string `json:"server,omitempty"`

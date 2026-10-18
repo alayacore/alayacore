@@ -10,7 +10,11 @@ import (
 	"html"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
+
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 // CallbackResult holds the result of the OAuth callback HTTP request.
@@ -143,4 +147,23 @@ func StartCallbackServer(listenAddr, state, serverName string) (<-chan CallbackR
 	go server.Serve(listener) //nolint:errcheck // server is closed via cleanup
 
 	return resultCh, redirectURI, func() { server.Close() }
+}
+
+// FillAuthURL substitutes the placeholders the session leaves in an
+// authorization URL (protocol.MCPPlaceholderRedirectURI and
+// MCPPlaceholderState) with this adapter's callback URL and the state it
+// generated. The redirect URI is escaped; the state was generated URL-safe.
+//
+// A template that still contains a placeholder afterwards is an error: the
+// browser would be sent a literal "{{redirect_uri}}" and the provider would
+// answer a redirect to nowhere. That is how a placeholder added to the protocol
+// but not here would show up — as a refusal naming the URL, instead of a
+// browser page that quietly fails.
+func FillAuthURL(template, redirectURI, state string) (string, error) {
+	filled := strings.ReplaceAll(template, protocol.MCPPlaceholderRedirectURI, url.QueryEscape(redirectURI))
+	filled = strings.ReplaceAll(filled, protocol.MCPPlaceholderState, state)
+	if i := strings.Index(filled, "{{"); i >= 0 {
+		return "", fmt.Errorf("authorization URL still carries a placeholder (%q…): %s", filled[i:min(i+20, len(filled))], filled)
+	}
+	return filled, nil
 }

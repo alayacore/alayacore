@@ -399,9 +399,6 @@ func (o *answerOutput) handleSystemMCP(data json.RawMessage) {
 	case protocol.MCPStatusFailed:
 		o.mcpStatus("failed %q: %s", m.Server, m.Error)
 	case protocol.MCPStatusAuthRequired:
-		if m.Server == "" {
-			return
-		}
 		o.mcpStatus("server %q requires authorization", m.Server)
 		if o.mcpAuthRequired != nil {
 			o.mcpAuthRequired(m.Server, m.URL)

@@ -113,9 +113,12 @@ func deriveIssuer(tokenEndpoint string) string {
 // The session receives these from Events() and reacts accordingly.
 type InitEventType string
 
-// The values are protocol's: an InitEventType goes onto the wire as the "mcp"
-// system message's status, so a second spelling here would be a second home for
-// the same word (and a status no adapter could match).
+// The values are protocol's, because an InitEventType goes onto the wire as the
+// "mcp" system message's status, and a second spelling here would be a second
+// home for the same word (and a status no adapter could match). InitCanceled is
+// the exception, and it is why it is not declared in protocol: the session
+// translates it to "done" (the client's reaction to both is to stop waiting), so
+// "canceled" never reaches a frame.
 const (
 	InitConnecting  InitEventType = protocol.MCPStatusConnecting
 	InitConnected   InitEventType = protocol.MCPStatusConnected
@@ -123,7 +126,7 @@ const (
 	InitAuthConfirm InitEventType = protocol.MCPStatusAuthRequired
 	InitAuthRunning InitEventType = protocol.MCPStatusAuthRunning
 	InitDone        InitEventType = protocol.MCPStatusDone
-	InitCanceled    InitEventType = protocol.MCPStatusCanceled
+	InitCanceled    InitEventType = "canceled"
 )
 
 type InitEvent struct {
@@ -315,13 +318,29 @@ func (in *Initializer) collectServerResult(ctx context.Context, c *Client) serve
 	in.sendEvent(InitEvent{Type: InitConnecting, Server: c.Name()})
 
 	if err := in.connectServer(ctx, c); err != nil {
-		in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
+		in.failServer(ctx, c, err)
 		return r
 	}
 
 	in.discoverCapabilities(ctx, c, &r)
-	in.sendEvent(InitEvent{Type: InitConnected, Server: c.Name()})
+	// A canceled discovery found nothing, and everything found is discarded
+	// anyway (results are applied only when the init completes) — so "connected"
+	// would claim a server is ready at the moment the whole init is ending.
+	if ctx.Err() == nil {
+		in.sendEvent(InitEvent{Type: InitConnected, Server: c.Name()})
+	}
 	return r
+}
+
+// failServer reports one server's failure — unless the initialization is being
+// torn down. Then the error is the cancellation itself, which InitCanceled
+// already reports; a "failed" frame would name the user's own action as this
+// server's connection error, with "context canceled" as the reason.
+func (in *Initializer) failServer(ctx context.Context, c *Client, err error) {
+	if ctx.Err() != nil {
+		return
+	}
+	in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
 }
 
 // connectServer connects to the server, running the OAuth authorization
@@ -379,8 +398,11 @@ func (in *Initializer) runOAuthForServer(ctx context.Context, c *Client, meta *a
 		return fmt.Errorf("%q: pkce: %w", c.Name(), err)
 	}
 
-	placeholderURI := "{{redirect_uri}}"
-	placeholderState := "{{state}}"
+	// The tokens are the wire's, declared once in protocol: the adapter that
+	// fills them in (platform.FillAuthURL) reads the same two constants, so a
+	// third placeholder cannot be added on one side only.
+	placeholderURI := protocol.MCPPlaceholderRedirectURI
+	placeholderState := protocol.MCPPlaceholderState
 
 	// RFC 8707 resource indicator — the canonical MCP server URL.
 	// Required by the 2026-07-28 spec (MUST be in authorization and token
@@ -470,21 +492,21 @@ func (in *Initializer) runOAuthForServer(ctx context.Context, c *Client, meta *a
 func (in *Initializer) discoverCapabilities(ctx context.Context, c *Client, r *serverResult) {
 	if c.HasTools() {
 		if tools, err := c.ListTools(ctx); err != nil {
-			in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
+			in.failServer(ctx, c, err)
 		} else {
 			r.tools = tools
 		}
 	}
 	if c.HasResources() {
 		if resources, err := c.ListResources(ctx); err != nil {
-			in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
+			in.failServer(ctx, c, err)
 		} else {
 			r.resources = resources
 		}
 	}
 	if c.HasPrompts() {
 		if prompts, err := c.ListPrompts(ctx); err != nil {
-			in.sendEvent(InitEvent{Type: InitFailed, Server: c.Name(), Error: err.Error()})
+			in.failServer(ctx, c, err)
 		} else {
 			r.prompts = prompts
 		}

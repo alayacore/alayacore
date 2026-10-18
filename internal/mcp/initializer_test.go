@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -74,5 +75,37 @@ func TestDeliverEventUnblocksOnCancel(t *testing.T) {
 	case <-in.Done():
 	case <-time.After(3 * time.Second):
 		t.Fatal("run() did not exit after cancel — deliverEvent blocked forever")
+	}
+}
+
+// A per-server failure frame is not about the server when the initialization is
+// being torn down: the error is the cancellation, which InitCanceled reports,
+// and "failed: context canceled" names the user's own action as a connection
+// error. The same guard covers the three discovery failures.
+func TestFailServerIsSilentDuringCancellation(t *testing.T) {
+	newInitializer := func() *Initializer {
+		return &Initializer{events: make(chan InitEvent, 4)}
+	}
+	client := &Client{config: ServerConfig{Name: "github"}}
+
+	live := newInitializer()
+	live.failServer(context.Background(), client, errors.New("connection refused"))
+	select {
+	case evt := <-live.events:
+		if evt.Type != InitFailed || evt.Server != "github" || evt.Error == "" {
+			t.Errorf("event = %+v, want a failed event naming the server", evt)
+		}
+	default:
+		t.Fatal("a live failure should be reported")
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	dead := newInitializer()
+	dead.failServer(canceled, client, context.Canceled)
+	select {
+	case evt := <-dead.events:
+		t.Errorf("a canceled initialization reported %+v; InitCanceled already says so", evt)
+	default:
 	}
 }

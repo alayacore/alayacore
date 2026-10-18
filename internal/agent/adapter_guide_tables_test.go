@@ -409,3 +409,57 @@ func TestCommandsDocErrorCodesMatchTheProtocol(t *testing.T) {
 		t.Errorf("documented %d codes, declared %d", len(documented), len(protocol.CmdErrorCodes))
 	}
 }
+
+// TestAdapterGuideMCPStatusesMatchTheProtocol pins the "mcp" row's status list
+// against protocol.MCPStatuses in both directions: a value the session can send
+// but the guide omits is one a client will not handle, and a value the guide
+// promises but nothing sends is a branch that can never run. "canceled" is the
+// case that made this worth checking — it is an init event, translated to
+// "done" before the frame, so it belongs to neither list.
+func TestAdapterGuideMCPStatusesMatchTheProtocol(t *testing.T) {
+	guide := readDoc(t, "../../adapter-guide/README.md")
+
+	var row string
+	for _, line := range strings.Split(guide, "\n") {
+		if strings.HasPrefix(line, "| `mcp` |") {
+			row = line
+			break
+		}
+	}
+	if row == "" {
+		t.Fatal("the guide has no `mcp` row — this check cannot run")
+	}
+	const intro = "one of "
+	i := strings.Index(row, intro)
+	if i < 0 {
+		t.Fatalf("the mcp row no longer lists its statuses: %s", row)
+	}
+	list := row[i+len(intro):]
+	if j := strings.Index(list, ")"); j >= 0 {
+		list = list[:j]
+	}
+
+	documented := map[string]bool{}
+	for _, m := range regexp.MustCompile("`([a-z_]+)`").FindAllStringSubmatch(list, -1) {
+		if documented[m[1]] {
+			t.Errorf("%s is listed twice in the mcp row", m[1])
+		}
+		documented[m[1]] = true
+	}
+	if len(documented) == 0 {
+		t.Fatalf("no statuses parsed out of the mcp row: %q", list)
+	}
+
+	declared := map[string]bool{}
+	for _, status := range protocol.MCPStatuses {
+		declared[status] = true
+		if !documented[status] {
+			t.Errorf("%s is sent by the session but missing from the guide's mcp row", status)
+		}
+	}
+	for status := range documented {
+		if !declared[status] {
+			t.Errorf("the guide documents mcp status %s, which protocol.MCPStatuses does not declare", status)
+		}
+	}
+}

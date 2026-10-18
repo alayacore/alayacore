@@ -420,7 +420,7 @@ session that ends before it was ever ready still sends `closed`:
 | Initialized (`done`) | After the final `mcp` `done` frame |
 | User canceled (`:mcp_skip`) | After the `mcp` `done` frame that follows cancellation |
 | Server failure (`failed`) | After the final `mcp` `done` frame — init always ends with a `done` event, even when some or all servers failed |
-| Event stream closed abnormally | After the "MCP initialization canceled" error frame |
+| Event stream closed abnormally | After the "MCP initialization aborted unexpectedly" error frame |
 
 This is guaranteed by three layers in the core:
 

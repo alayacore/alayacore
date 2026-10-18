@@ -22,6 +22,7 @@ package agent
 import (
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/mcp"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 // ============================================================================
@@ -105,9 +106,12 @@ func (s *Session) run() {
 				// Channel closed — disable this case permanently.
 				mcpEvents = nil
 				if !s.mcpService.IsReady() {
+					// Not a cancellation: the stream ended without a terminal
+					// event, which is a bug or a crash. Saying "canceled" here
+					// would blame the user for it.
 					s.mcpService.MarkAborted()
-					s.writeError("MCP initialization canceled.")
-					s.mcpService.sendSystemMsg(&mcpMsgData{Status: "done"})
+					s.writeError("MCP initialization aborted unexpectedly.")
+					s.mcpService.sendSystemMsg(&mcpMsgData{Status: protocol.MCPStatusDone})
 				}
 				// MCP init has settled (done, canceled, or aborted) —
 				// advance the lifecycle state.

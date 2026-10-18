@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -125,5 +126,33 @@ func TestStartCallbackServer_ProviderError(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for callback result")
+	}
+}
+
+// FillAuthURL is the one place the session's placeholders are resolved, and it
+// refuses a template it cannot finish: a browser sent a literal
+// "{{redirect_uri}}" would come back to nothing, and the user would see a
+// provider error page rather than the adapter's.
+func TestFillAuthURL(t *testing.T) {
+	const template = "https://as.example/authorize?client_id=x&redirect_uri={{redirect_uri}}&state={{state}}"
+
+	filled, err := FillAuthURL(template, "http://127.0.0.1:8080/cb?x=1", "abc123")
+	if err != nil {
+		t.Fatalf("FillAuthURL: %v", err)
+	}
+	want := "https://as.example/authorize?client_id=x&redirect_uri=" +
+		url.QueryEscape("http://127.0.0.1:8080/cb?x=1") + "&state=abc123"
+	if filled != want {
+		t.Errorf("FillAuthURL() = %q, want %q", filled, want)
+	}
+
+	// A third placeholder the session learned to send is not one this build
+	// knows how to fill; say so instead of opening the URL.
+	_, err = FillAuthURL(template+"&code_challenge={{code_challenge}}", "http://127.0.0.1:8080/cb", "abc")
+	if err == nil {
+		t.Fatal("FillAuthURL accepted a template with an unknown placeholder")
+	}
+	if !strings.Contains(err.Error(), "placeholder") {
+		t.Errorf("error = %v, want it to name the leftovers", err)
 	}
 }

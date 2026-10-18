@@ -50,10 +50,13 @@ const (
 	SessionStateClosed       = "closed"
 )
 
-// MCP init statuses — the "status" field of an "mcp" system message, which is
-// the wire form of internal/mcp's InitEventType. The values live here so that an
-// adapter compares a name rather than a literal and a new status cannot reach
-// the wire under a spelling only its producer knows.
+// MCP init statuses — the "status" field of an "mcp" system message. The values
+// live here so that an adapter compares a name rather than a literal and a new
+// status cannot reach the wire under a spelling only its producer knows.
+//
+// Canceled is not one of them: a canceled initialization is reported as "done",
+// because what a client does about it is the same (stop waiting). The init
+// package keeps "canceled" for its own event vocabulary.
 const (
 	MCPStatusConnecting   = "connecting"
 	MCPStatusConnected    = "connected"
@@ -61,8 +64,17 @@ const (
 	MCPStatusAuthRequired = "auth_required"
 	MCPStatusAuthRunning  = "auth_running"
 	MCPStatusDone         = "done"
-	MCPStatusCanceled     = "canceled"
 )
+
+// MCPStatuses is every value the status field can carry, for the guide's check.
+var MCPStatuses = []string{
+	MCPStatusConnecting,
+	MCPStatusConnected,
+	MCPStatusFailed,
+	MCPStatusAuthRequired,
+	MCPStatusAuthRunning,
+	MCPStatusDone,
+}
 
 // Steering phases — the "phase" field of a "steering" system message, which
 // reports the lifecycle of prompts a user sends while a task is running (see
@@ -236,6 +248,17 @@ type ToolOutputDeltaData struct {
 	Text   string `json:"text"`
 	ContentMeta
 }
+
+// Placeholders in the "mcp" system message's url field. The session builds the
+// authorization URL with them left raw — only an adapter knows the port its
+// callback server got and the state it generated — and the adapter substitutes
+// them before opening the browser. A URL that still contains one after
+// substitution is a bug: the provider would be asked to redirect to
+// "{{redirect_uri}}".
+const (
+	MCPPlaceholderRedirectURI = "{{redirect_uri}}"
+	MCPPlaceholderState       = "{{state}}"
+)
 
 // CmdMsg is the JSON payload for TagCommandIn (CI) — a command request
 // from the adapter to the agent.

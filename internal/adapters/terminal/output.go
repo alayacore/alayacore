@@ -741,10 +741,8 @@ func (to *outputWriter) handleSystemMCP(data json.RawMessage) {
 	case protocol.MCPStatusConnecting, protocol.MCPStatusConnected, protocol.MCPStatusFailed:
 		to.status.updateMCPProgress(msg.Status, msg.Server)
 	case protocol.MCPStatusAuthRequired:
-		if msg.Server != "" {
-			to.status.updateMCPProgress(protocol.MCPStatusAuthRequired, msg.Server)
-			to.status.addMCPAuthPending(msg.Server, msg.URL)
-		}
+		to.status.updateMCPProgress(protocol.MCPStatusAuthRequired, msg.Server)
+		to.status.addMCPAuthPending(msg.Server, msg.URL)
 	case protocol.MCPStatusAuthRunning:
 		to.status.updateMCPProgress(msg.Status, msg.Server)
 	case protocol.MCPStatusDone:

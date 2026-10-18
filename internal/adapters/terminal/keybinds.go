@@ -6,8 +6,6 @@ package terminal
 
 import (
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/alayacore/alayacore/internal/commands"
@@ -235,10 +233,14 @@ func (m Terminal) startMCPAuthFlow(serverName, authURL string) Cmd {
 
 	resultCh, redirectURI, cleanup := platform.StartCallbackServer("127.0.0.1:0", state, serverName)
 
-	encodedRedirect := url.QueryEscape(redirectURI)
-	filledURL := authURL
-	filledURL = strings.ReplaceAll(filledURL, "{{redirect_uri}}", encodedRedirect)
-	filledURL = strings.ReplaceAll(filledURL, "{{state}}", state)
+	filledURL, err := platform.FillAuthURL(authURL, redirectURI, state)
+	if err != nil {
+		// A template this build cannot fill is a bug in the session: report it
+		// and decline this server, keeping the rest of init intact.
+		cleanup()
+		writeCommand(m.sessionPipe, fmt.Sprintf(":%s %s", commands.CommandNameMCPDecline, serverName))
+		return func() Msg { return displayErrorMsg{message: err.Error()} }
+	}
 
 	// Capture sessionPipe for frame writes in phase 2 (it's a pointer, safe to capture)
 	sessionPipe := m.sessionPipe

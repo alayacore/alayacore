@@ -22,8 +22,6 @@ package mcpauth
 
 import (
 	"fmt"
-	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -162,8 +160,15 @@ func (f *Flow) run(server, authURL string, r *run) {
 	resultCh, redirectURI, cleanup := f.startServer("127.0.0.1:0", state, server)
 	defer cleanup()
 
-	filled := strings.ReplaceAll(authURL, "{{redirect_uri}}", url.QueryEscape(redirectURI))
-	filled = strings.ReplaceAll(filled, "{{state}}", state)
+	filled, err := platform.FillAuthURL(authURL, redirectURI, state)
+	if err != nil {
+		// A template this build cannot fill is a bug in the session, not a
+		// provider problem: say so and let the rest of init proceed without
+		// this server, rather than opening a URL that cannot come back.
+		f.printf("\n[mcp: %v]\n", err)
+		f.Decline(server)
+		return
+	}
 
 	f.printf("\n[mcp: opening browser for %q…]\n", server)
 	f.printf("[mcp: if the browser doesn't open, visit:]\n%s\n", filled)

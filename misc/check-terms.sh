@@ -92,10 +92,22 @@ report "$hits" 'a usage line spelled in a handler — render it with commands.Us
 # literal comparison in an adapter is a second home for the same word, and the
 # copy the producer changes is the one nobody sees. Exact quoted values only —
 # a message that merely contains the word ("connecting %q") is not a comparison.
-wires='"(ready|closed|starting|initializing|connecting|connected|failed|auth_required|auth_running|done|queued|delivered|dropped|refused)"'
+wires='"(ready|closed|starting|initializing|connecting|connected|failed|auth_required|auth_running|done|queued|delivered|dropped|refused|canceled)"'
 hits=$(grep -rnE "$wires" --include=*.go internal/adapters 2>/dev/null |
 	grep -vE '_test\.go:' | grep -vE ':[0-9]+:[[:space:]]*//')
 report "$hits" 'a wire value spelled as a literal in an adapter — use the protocol constant'
+
+# ── 5. …and where the value is produced ───────────────────────────────────
+# The rule is not about adapters; it is about any code that names a wire value.
+# Five literals lived in the session and the MCP client — one of them a `case`
+# for a value that never reaches the wire — because this scan stopped at
+# internal/adapters. Only a *use* matches here (a case label, a comparison, a
+# field or map value): a definition is where the literal belongs, so
+# `InitCanceled = "canceled"` passes and `case "canceled"` does not.
+wire_use="(case[[:space:]]+|==[[:space:]]*|!=[[:space:]]*|:[[:space:]]*)"$wires
+hits=$(grep -rnE "$wire_use" --include=*.go internal/agent internal/mcp 2>/dev/null |
+	grep -vE '_test\.go:' | grep -vE ':[0-9]+:[[:space:]]*//')
+report "$hits" 'a wire value spelled as a literal outside an adapter — use the constant'
 
 # ── 4. One spelling for English, everywhere ───────────────────────────────
 hits=$(grep -rniE '\b(behaviour|colour|summarise|organise|recognise|normalise|initialis|serialis)[a-z]*' \

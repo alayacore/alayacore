@@ -139,7 +139,7 @@ func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 	case mcp.InitAuthConfirm:
 		return &mcpEventResult{
 			SystemMsg: &mcpMsgData{
-				Status: "auth_required",
+				Status: protocol.MCPStatusAuthRequired,
 				Server: evt.Server,
 				URL:    evt.URL,
 			},
@@ -150,24 +150,23 @@ func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 			SystemMsg: &mcpMsgData{
 				Status: string(evt.Type),
 				Server: evt.Server,
-				Error:  evt.Error,
 			},
 		}
 
 	case mcp.InitDone:
 		m.ready.Store(true)
 		return &mcpEventResult{
-			SystemMsg:   &mcpMsgData{Status: "done"},
+			SystemMsg:   &mcpMsgData{Status: protocol.MCPStatusDone},
 			ApplyResult: true,
 			Tools:       evt.Tools,
 			SysFragment: evt.SysFragment,
 			Manager:     evt.Manager,
 		}
 
-	case "canceled":
+	case mcp.InitCanceled:
 		m.ready.Store(true)
 		return &mcpEventResult{
-			SystemMsg: &mcpMsgData{Status: "done"},
+			SystemMsg: &mcpMsgData{Status: protocol.MCPStatusDone},
 			Aborted:   true,
 		}
 	}
