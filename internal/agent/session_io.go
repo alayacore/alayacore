@@ -626,7 +626,7 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 // execCommand runs a registered command handler and writes its CO result.
 // The handler is synchronous (runs in the run() goroutine), so the command ID
 // is passed directly and never needs to be stored on the Session.
-func (s *Session) execCommand(ctx context.Context, commandID string, cmdDef *command, args string) {
+func (s *Session) execCommand(ctx context.Context, commandID string, cmdDef command, args string) {
 	result, err := cmdDef.Handler(s, ctx, args)
 	s.writeCmdResult(commandID, result, err)
 }

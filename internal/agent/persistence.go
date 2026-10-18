@@ -1,10 +1,10 @@
 package agent
 
-// Persistence service: saving, loading, and formatting sessions.
+// Session persistence: the file format and the two operations over it.
 //
-// Extracted from session_persist.go to separate concerns.
-// Stateless parsing/serialization utilities remain package-level functions.
-// persistenceService wraps Load/Save with optional future state (e.g. config).
+// Loading and saving are functions, not a service: there is no state to carry
+// between them (a session file is read whole or written whole), and the wrappers
+// that used to sit between the Session methods and these had nothing to add.
 
 import (
 	"errors"
@@ -23,21 +23,8 @@ import (
 // that does not match messageVersion and cannot be loaded.
 var errSessionVersionMismatch = errors.New("session file version mismatch")
 
-// persistenceService handles session file I/O and serialization.
-// It is stateless and thread-safe.
-type persistenceService struct{}
-
-// newPersistenceService creates a new persistenceService.
-func newPersistenceService() *persistenceService {
-	return &persistenceService{}
-}
-
-// defaultPersistence is the package-level persistence service instance.
-// Used by session_persist.go wrappers to maintain backward compatibility.
-var defaultPersistence = newPersistenceService()
-
 // loadSession loads a session from a file.
-func (ps *persistenceService) loadSession(path string) (*sessionData, error) {
+func loadSession(path string) (*sessionData, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		// No prefix of its own: the caller names the file it asked for, and the
@@ -47,8 +34,8 @@ func (ps *persistenceService) loadSession(path string) (*sessionData, error) {
 	return parseSessionData(data)
 }
 
-// SaveContentToFile saves session contents to a file in markdown format.
-func (ps *persistenceService) SaveContentToFile(path string, meta sessionMeta, contents []llm.ContentPart) error {
+// saveSessionFile saves session contents to a file in markdown format.
+func saveSessionFile(path string, meta sessionMeta, contents []llm.ContentPart) error {
 	meta.UpdatedAt = time.Now()
 	data := sessionData{
 		sessionMeta: meta,

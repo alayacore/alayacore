@@ -365,7 +365,7 @@ type Terminal struct {
 	pipeReader   *io.PipeReader // read end of input pipe; set before async loading
 	appConfig    *app.Config    // application configuration (read-only)
 	editor       *Editor        // external editor process helper (stateless service)
-	themeManager *ThemeManager  // theme loader (reads from disk, read-only after init)
+	themeManager *theme.Manager // prepares the themes folder; read-only after init
 	styles       *Styles        // derived styles (computed once, replaced on theme switch)
 
 	// ── Async session loading (transient, set once in Init / first tick) ─
@@ -389,7 +389,7 @@ func NewTerminalWithTheme(
 	appCfg *app.Config,
 	initialWidth, initialHeight int,
 	theme *theme.Theme,
-	themeManager *ThemeManager,
+	themeManager *theme.Manager,
 	themeName string,
 ) Terminal {
 	styles := NewStyles(theme)
@@ -449,15 +449,10 @@ func (m Terminal) Init() Cmd {
 	// Display any buffered init errors via messages so OutputWriter
 	// mutations go through Terminal.Update like all other display writes.
 	if m.themeManager != nil {
-		if errs := m.themeManager.GetInitErrors(); len(errs) > 0 {
-			for _, e := range errs {
-				err := e // capture
-				cmds = append(cmds, func() Msg {
-					return displayErrorMsg{
-						message: err.Message,
-					}
-				})
-			}
+		for _, msg := range m.themeManager.GetLoadErrors() {
+			cmds = append(cmds, func() Msg {
+				return displayErrorMsg{message: msg}
+			})
 		}
 	}
 

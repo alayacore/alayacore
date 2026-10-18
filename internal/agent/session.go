@@ -51,14 +51,12 @@ import (
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/skills"
 )
 
 // sessionConfig groups fields that are set once at construction and
 // never modified thereafter.
 type sessionConfig struct {
-	modelService  *modelService
-	SkillsManager *skills.Manager
+	modelService *modelService
 
 	SessionConfig
 
@@ -341,7 +339,6 @@ func newSession(cfg SessionConfig) *Session {
 	s := &Session{
 		sessionConfig: sessionConfig{
 			modelService:  modelService,
-			SkillsManager: cfg.SkillsMgr,
 			SessionConfig: cfg,
 		},
 		runState: runState{
@@ -397,7 +394,6 @@ func RestoreFromSession(cfg SessionConfig, data *sessionData) *Session {
 	s := &Session{
 		sessionConfig: sessionConfig{
 			modelService:  modelService,
-			SkillsManager: cfg.SkillsMgr,
 			SessionConfig: cfg,
 		},
 		runState: runState{

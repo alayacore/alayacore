@@ -39,8 +39,9 @@ func (a *Adapter) Start() int {
 	// Note: OAuth MCP authorization is handled via the :mcp_confirm command
 	// in the TUI, not synchronously before startup.
 
-	// Create theme manager
-	themeManager := NewThemeManager(a.Config.Cfg.ThemesFolder)
+	// Prepare the themes folder: creates it with the built-in themes on first
+	// run, and collects what it could not do for the loading screen to show.
+	themeManager := theme.NewManager(a.Config.Cfg.ThemesFolder)
 
 	terminalOutput := NewTerminalOutput(NewStyles(theme.DefaultTheme()))
 

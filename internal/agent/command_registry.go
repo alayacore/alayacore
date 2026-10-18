@@ -1,10 +1,12 @@
 package agent
 
-// Command registry: define, register, and dispatch commands.
+// The command table: what the session can dispatch, and when a command may run.
 //
-// Previously a flat package-level slice + lookupCommand function,
-// now wrapped in a commandRegistry struct for cleaner encapsulation.
-// The package-level lookupCommand still works via the default registry.
+// One table, because a session has one. A registry object wrapping it bought
+// nothing — there is no second set of commands to keep apart, and no state to
+// own — so the definitions are a slice and the lookup is a map built from it.
+// What a command is *called* and what arguments it takes is not here: that is
+// commands.Defs, which an adapter shows too (see command's own comment).
 
 import (
 	"context"
@@ -53,43 +55,27 @@ type command struct {
 	Handler commandHandler
 }
 
-// commandRegistry manages the set of available commands.
-type commandRegistry struct {
-	commands map[string]command
+// lookupCommand returns the handler and policy for name, or false when the name
+// is not a command this session dispatches.
+func lookupCommand(name string) (command, bool) {
+	cmd, ok := commandHandlers[name]
+	return cmd, ok
 }
 
-// newCommandRegistry creates a registry pre-populated with all built-in commands.
-func newCommandRegistry() *commandRegistry {
-	cr := &commandRegistry{
-		commands: make(map[string]command, len(defaultCommandDefs)),
+// commandHandlers is commandDefs indexed by name, built once. The two cannot
+// disagree: the map is derived from the slice, and the slice is the one list.
+var commandHandlers = func() map[string]command {
+	handlers := make(map[string]command, len(commandDefs))
+	for _, cmd := range commandDefs {
+		handlers[cmd.Name] = cmd
 	}
-	for _, cmd := range defaultCommandDefs {
-		cr.commands[cmd.Name] = cmd
-	}
-	return cr
-}
+	return handlers
+}()
 
-// Lookup returns the command metadata for name, or (nil, false).
-func (cr *commandRegistry) Lookup(name string) (*command, bool) {
-	cmd, ok := cr.commands[name]
-	if !ok {
-		return nil, false
-	}
-	return &cmd, true
-}
-
-// lookupCommand is a package-level shorthand for the default registry.
-func lookupCommand(name string) (*command, bool) {
-	return defaultCommandRegistry.Lookup(name)
-}
-
-// defaultCommandRegistry is the package-level singleton.
-var defaultCommandRegistry = newCommandRegistry()
-
-// defaultCommandDefs is the list of all built-in commands. command names
-// come from the shared commands package (single source of truth for the
-// agent registry and adapter-side rendering).
-var defaultCommandDefs = []command{
+// commandDefs is every command the session dispatches, with its handler and
+// policy. The names come from the shared commands package — the same table an
+// adapter renders — so neither side can introduce a spelling of its own.
+var commandDefs = []command{
 	{commands.CommandNameQuit, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleQuit(args) }},
 	{commands.CommandNameCancel, cmdImmediate,

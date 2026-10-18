@@ -78,7 +78,7 @@ func TestThemePreviewStaleTickIgnoredAfterCancel(t *testing.T) {
 	preview.Warning = "#123456" // arbitrary field just to mutate a copy
 	previewData := &preview
 
-	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, original, NewThemeManager(""), "theme-dark")
+	terminal := NewTerminalWithTheme(NewTerminalOutput(DefaultStyles()), nopWriteCloser{}, nil, 80, 24, original, theme.NewManager(""), "theme-dark")
 	ow := terminal.out.(*outputWriter)
 	ow.status.updateThemeList([]ThemeEntry{
 		{Name: "theme-dark", Theme: original},

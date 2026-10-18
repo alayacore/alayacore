@@ -102,7 +102,7 @@ func dispatchedCommands(t *testing.T) map[string]bool {
 // asserted exactly, which is what makes a third one visible here.
 func TestCommandVocabularyMatchesTheRegistry(t *testing.T) {
 	inRegistry := map[string]bool{}
-	for _, c := range defaultCommandDefs {
+	for _, c := range commandDefs {
 		inRegistry[c.Name] = true
 		if _, ok := commands.DefinitionOf(c.Name); !ok {
 			t.Errorf("the registry handles %q, which commands.Defs does not define", c.Name)
@@ -253,8 +253,8 @@ func TestAdapterGuideCommandTableMatchesTheRegistry(t *testing.T) {
 			checked++
 		}
 	}
-	if checked < len(defaultCommandDefs) {
-		t.Errorf("adapter-guide documents %d commands; the registry has %d", checked, len(defaultCommandDefs))
+	if checked < len(commandDefs) {
+		t.Errorf("adapter-guide documents %d commands; the registry has %d", checked, len(commandDefs))
 	}
 }
 

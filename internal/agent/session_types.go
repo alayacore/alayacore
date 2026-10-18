@@ -11,7 +11,6 @@ import (
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/mcp"
 	"github.com/alayacore/alayacore/internal/protocol"
-	"github.com/alayacore/alayacore/internal/skills"
 	"github.com/alayacore/alayacore/internal/theme"
 )
 
@@ -241,12 +240,6 @@ type SessionConfig struct {
 
 	// External dependencies.
 	//
-	// SkillsMgr is carried but not read: the prompt fragment is built once in
-	// app.Setup, and nothing in a session asks the manager anything today. It is
-	// the seam a /skills listing or a reload would attach to — see
-	// docs/skills.md ("Skill Specification") for what the feature does not do.
-	SkillsMgr *skills.Manager
-
 	// MCPInit handles MCP initialization lifecycle (connect, OAuth, discover).
 	// When non-nil, the session reads from its Events() channel in the main
 	// loop and applies results (tools, system prompt, manager) internally.

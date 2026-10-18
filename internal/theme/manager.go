@@ -4,49 +4,49 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 )
 
-// Info represents a theme's metadata.
-type Info struct {
-	Name string // Theme name (filename without .conf extension)
-	Path string // Full path to the theme file
-}
-
-// Manager handles theme loading and management.
-// It scans a themes folder for .conf files, provides lookup by name,
-// and creates default themes on first run.
+// Manager prepares a themes folder: it creates one holding the built-in themes
+// when the folder is missing, and reports what it could not do.
+//
+// Reading themes happens elsewhere — the agent lists this same folder for the
+// theme_list broadcast (internal/agent/session_output.go), an adapter resolves a
+// name against that list, and LoadTheme parses one file. What is left here is the
+// part that writes, and the reason it reports: a folder that cannot be created or
+// listed is a theme the user is never offered, and silence about it is
+// indistinguishable from "no themes configured".
 type Manager struct {
 	themesFolder string
-	themes       []Info
-	loadErrors   []string // parse errors, and paths that cannot be read or written
+	loadErrors   []string // paths that cannot be read or written
 }
 
-// NewManager creates a new theme manager.
-// themesFolder is the directory containing *.conf theme files.
-// If it's empty, theme listing is disabled.
-// If the directory doesn't exist, it's created with default themes.
+// NewManager prepares themesFolder and returns the manager holding whatever went
+// wrong. An empty folder does nothing: there is nothing to prepare, and the
+// caller has said themes are not in play.
 func NewManager(themesFolder string) *Manager {
 	tm := &Manager{themesFolder: themesFolder}
-	tm.initializeThemesFolder()
-	tm.ReloadThemes()
+	tm.prepare()
 	return tm
 }
 
-// initializeThemesFolder creates the themes folder and populates it with default themes.
-func (tm *Manager) initializeThemesFolder() {
+// prepare creates the folder with the built-in themes when it is missing, then
+// lists it either way — a folder that exists but cannot be read is exactly the
+// failure worth naming.
+func (tm *Manager) prepare() {
 	if tm.themesFolder == "" {
 		return
 	}
+
 	if _, err := os.Stat(tm.themesFolder); os.IsNotExist(err) {
 		if err := os.MkdirAll(tm.themesFolder, 0755); err != nil {
-			// Without the folder there are no themes at all, and the selector
-			// would show an empty list with nothing to explain it.
 			tm.recordError(tm.themesFolder, err)
 			return
 		}
 		tm.createDefaultThemes()
+	}
+
+	if _, err := os.ReadDir(tm.themesFolder); err != nil {
+		tm.recordError(tm.themesFolder, err)
 	}
 }
 
@@ -63,86 +63,17 @@ func (tm *Manager) createDefaultThemes() {
 	}
 }
 
-// recordError collects a theme problem that is not a parse error — a file or
-// folder that cannot be read or written. They go to the same list as parse
-// errors because they have the same audience: the adapter shows them at
-// startup, and a theme that is silently missing or silently default is a
-// failure the user cannot otherwise see.
+// recordError collects a folder or file problem for the startup screen: an
+// adapter shows these, and a theme that is silently missing is a failure the user
+// cannot otherwise see.
 func (tm *Manager) recordError(path string, err error) {
 	tm.loadErrors = append(tm.loadErrors, fmt.Sprintf("%s: %v", filepath.Base(path), err))
 }
 
-// ReloadThemes reloads the list of available themes from the themes folder.
-func (tm *Manager) ReloadThemes() {
-	tm.themes = nil
-	if tm.themesFolder == "" {
-		return
-	}
-
-	entries, err := os.ReadDir(tm.themesFolder)
-	if err != nil {
-		tm.recordError(tm.themesFolder, err)
-		return
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".conf") {
-			continue
-		}
-		themeName := strings.TrimSuffix(name, ".conf")
-		tm.themes = append(tm.themes, Info{
-			Name: themeName,
-			Path: filepath.Join(tm.themesFolder, name),
-		})
-	}
-
-	sort.Slice(tm.themes, func(i, j int) bool {
-		return tm.themes[i].Name < tm.themes[j].Name
-	})
-}
-
-func (tm *Manager) GetThemes() []Info {
-	if tm.themes == nil {
-		return nil
-	}
-	result := make([]Info, len(tm.themes))
-	copy(result, tm.themes)
-	return result
-}
-
-// LoadTheme loads a theme by name.
-// If the theme doesn't exist or name is empty, returns the default theme.
-// A theme file that cannot be read says so: it is reported through
-// GetLoadErrors and the default theme is returned, because a theme that
-// silently becomes the default is indistinguishable from a correct one.
-func (tm *Manager) LoadTheme(name string) *Theme {
-	if name == "" {
-		return DefaultTheme()
-	}
-	for _, t := range tm.themes {
-		if t.Name == name {
-			loaded, errs, err := LoadTheme(t.Path)
-			if err != nil {
-				tm.recordError(t.Path, err)
-				return DefaultTheme()
-			}
-			if len(errs) > 0 {
-				tm.loadErrors = append(tm.loadErrors, errs...)
-			}
-			return loaded
-		}
-	}
-	return DefaultTheme()
-}
-
-// GetLoadErrors returns any parse errors collected during
-// LoadTheme calls, and clears the internal buffer.
+// GetLoadErrors returns the problems found while preparing the folder and clears
+// the buffer: a caller that shows them is the only reader there is.
 func (tm *Manager) GetLoadErrors() []string {
-	w := tm.loadErrors
+	errs := tm.loadErrors
 	tm.loadErrors = nil
-	return w
+	return errs
 }

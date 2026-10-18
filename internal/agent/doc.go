@@ -24,9 +24,9 @@
 // Architecture:
 //
 //	Session wires together the model service, tools, IO streams and MCP.
-//	Sub-services (modelService, mcpService, persistenceService,
-//	commandRegistry) own distinct concerns and are composed by the Session
-//	struct. The parts that span the package boundary — the three-goroutine
+//	Sub-services (modelService, mcpService) own distinct concerns and are
+//	composed by the Session struct; the command table and session persistence
+//	are plain data and functions, because neither has state to own. The parts that span the package boundary — the three-goroutine
 //	concurrency model (run / task worker / inputPump), which state each
 //	goroutine owns, and how the active model is resolved — are documented
 //	where the adapters and the CLI can see them too, so they are not restated

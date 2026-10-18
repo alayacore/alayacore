@@ -16,12 +16,6 @@ import (
 // Load / Save — Session wrappers
 // ============================================================================
 
-// loadSession loads a session from a file.
-// Delegates to persistenceService for parsing.
-func loadSession(path string) (*sessionData, error) {
-	return defaultPersistence.loadSession(path)
-}
-
 // saveContentToFile saves the current session's contents with its metadata.
 //
 // Reads ContextTokens, so it must be called from the run() goroutine, which
@@ -55,5 +49,5 @@ func (s *Session) saveContentToFileWithContext(path string, contents []llm.Conte
 	}
 	// The error travels unwrapped: this layer knows nothing about it that the
 	// caller (a command, or the auto-save) does not say better.
-	return defaultPersistence.SaveContentToFile(path, meta, contents)
+	return saveSessionFile(path, meta, contents)
 }

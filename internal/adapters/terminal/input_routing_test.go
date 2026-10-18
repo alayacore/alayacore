@@ -23,6 +23,8 @@ package terminal
 import (
 	"strings"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/theme"
 )
 
 // routingState is one row: how to get there, and which box must hold text.
@@ -56,7 +58,7 @@ func openMCPInit(tb *testing.T) Terminal {
 // it is why that check exists.
 func openTheme(tb *testing.T) Terminal {
 	m := newTestTerminal()
-	m.themeManager = NewThemeManager(tb.TempDir())
+	m.themeManager = theme.NewManager(tb.TempDir())
 	return m.openThemeSelector()
 }
 func openHelp(tb *testing.T) Terminal { return newTestTerminal().openHelpOverlay() }

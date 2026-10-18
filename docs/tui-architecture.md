@@ -75,7 +75,7 @@ Terminal (value type, root model)
 └── External systems (via interfaces/pointers):
     ├── out         OutputWriter    (session output, shared mutable)
     ├── sessionPipe io.WriteCloser  (frame pipe to session)
-    └── themeManager *ThemeManager  (theme load errors at startup)
+    └── themeManager *theme.Manager  (prepares the themes folder; load errors at startup)
 
 ```
 

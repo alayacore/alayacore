@@ -31,7 +31,6 @@ const systemPromptSkills = `Check <available_skills> below; read the <location> 
 // Config holds the common app configuration
 type Config struct {
 	Cfg               *config.Settings
-	SkillsMgr         *skills.Manager
 	AgentTools        []llm.Tool
 	SystemPrompt      string   // Default system prompt (always present)
 	ExtraSystemPrompt string   // User-provided extra system prompt via --system flag
@@ -115,7 +114,6 @@ func Setup(cfg *config.Settings) (*Config, error) {
 
 	return &Config{
 		Cfg:               cfg,
-		SkillsMgr:         skillsManager,
 		AgentTools:        agentTools, // no MCP tools yet
 		SystemPrompt:      systemPrompt,
 		ExtraSystemPrompt: cfg.SystemPrompt,
