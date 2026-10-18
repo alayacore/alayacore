@@ -151,7 +151,7 @@ func TestSecondPromptWhileHoldingIsRefused(t *testing.T) {
 
 	got := output.String()
 	if !strings.Contains(got, "MCP servers are still initializing") {
-		t.Errorf("the second prompt should be refused as MCP_NOT_READY, got: %q", got)
+		t.Errorf("the second prompt should be refused as STATE_MCP_NOT_READY, got: %q", got)
 	}
 	if !strings.Contains(got, "prompt deferred") {
 		t.Errorf("the first prompt should have been accepted, got: %q", got)

@@ -155,7 +155,7 @@ func (s *Session) handleInputFrame(tag, value string, staged []llm.ContentPart) 
 				cmd:       cmd.Name,
 				args:      cmd.Args,
 				commandID: cmd.CommandID,
-				reject:    &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: "command can not be sent with staged content"},
+				reject:    &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: "command can not be sent with staged content"},
 			}
 			return nil
 		}
@@ -202,17 +202,17 @@ func (s *Session) handleFork(args string) (any, error) {
 	// whitespace would turn ":fork 5 my report.alaya" into the file "my".
 	idStr, pathArg := commands.SplitFirst(args)
 	if idStr == "" || pathArg == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameFork)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameFork)}
 	}
 
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: fmt.Sprintf("invalid history ID: %s", idStr)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: fmt.Sprintf("invalid history ID: %s", idStr)}
 	}
 
 	endIdx := forkEndIndex(s.Contents, id)
 	if endIdx < 0 {
-		return nil, &cmdErr{Code: protocol.ErrCodeNotFound, Message: fmt.Sprintf("no content found with history ID %d", id)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestNotFound, Message: fmt.Sprintf("no content found with history ID %d", id)}
 	}
 
 	// A call whose result exists nowhere cannot be completed by widening the
@@ -222,13 +222,13 @@ func (s *Session) handleFork(args string) (any, error) {
 	// loads fine and fails on the next prompt.
 	prefix := cleanIncompleteToolInputs(s.Contents[:endIdx+1])
 	if dangling := unpairedToolUse(prefix); dangling != "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidState,
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidState,
 			Message: fmt.Sprintf("cannot fork: tool call %q has no result in this session; fork at a point before it", dangling)}
 	}
 
 	path := config.ExpandPath(pathArg)
 	if err := s.saveContentToFile(path, prefix); err != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeIOError, Message: fmt.Sprintf("failed to fork: %v", err)}
+		return nil, &cmdErr{Code: protocol.ErrCodeIOWriteFailed, Message: fmt.Sprintf("failed to fork: %v", err)}
 	}
 	return map[string]any{"path": path, "count": len(prefix), "history_id": id}, nil
 }
@@ -313,7 +313,7 @@ func forkEndIndex(contents []llm.ContentPart, id uint64) int {
 func (s *Session) handleToolConfirmCmd(args string) (any, error) {
 	fields := strings.Fields(args)
 	if len(fields) != 1 {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameToolConfirm)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameToolConfirm)}
 	}
 	return s.resolveToolConfirm(fields[0], true)
 }
@@ -323,7 +323,7 @@ func (s *Session) handleToolConfirmCmd(args string) (any, error) {
 func (s *Session) handleToolDeclineCmd(args string) (any, error) {
 	fields := strings.Fields(args)
 	if len(fields) != 1 {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameToolDecline)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameToolDecline)}
 	}
 	return s.resolveToolConfirm(fields[0], false)
 }
@@ -339,7 +339,7 @@ func (s *Session) resolveToolConfirm(toolCallID string, allowed bool) (any, erro
 	s.confirmMu.Unlock()
 
 	if !ok {
-		return nil, &cmdErr{Code: protocol.ErrCodeNotFound, Message: "No pending tool confirmation for " + toolCallID}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestNotFound, Message: "No pending tool confirmation for " + toolCallID}
 	}
 
 	ch <- allowed
@@ -385,14 +385,14 @@ func (s *Session) cleanupConfirmChannels() {
 var (
 	// errMCPNotReady: MCP initialization has not settled, so the tool list is
 	// incomplete. Transient — the prompt waits for readiness instead of being
-	// refused. The code stays MCP_NOT_READY for wire compatibility.
-	errMCPNotReady = &cmdErr{Code: protocol.ErrCodeMCPNotReady,
+	// refused. The code stays STATE_MCP_NOT_READY for wire compatibility.
+	errMCPNotReady = &cmdErr{Code: protocol.ErrCodeStateMCPNotReady,
 		Message: "MCP servers are still initializing or OAuth authorization is pending. " +
 			"Please wait for initialization to complete."}
 
 	// errTaskBusy: a task is already running. Accepting a second one would
 	// need a queue, which this session does not have.
-	errTaskBusy = &cmdErr{Code: protocol.ErrCodeBusy,
+	errTaskBusy = &cmdErr{Code: protocol.ErrCodeStateBusy,
 		Message: "A task is already running. Wait for it to complete or cancel it."}
 )
 
@@ -407,7 +407,7 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 	// :quit has been accepted: the session is on its way out and must not
 	// take on work it would drop.
 	if s.quitting {
-		return nil, &cmdErr{Code: protocol.ErrCodeShuttingDown, Message: "the session is shutting down"}
+		return nil, &cmdErr{Code: protocol.ErrCodeStateShuttingDown, Message: "the session is shutting down"}
 	}
 	// Before the session is ready (MCP init pending), the tool list is
 	// incomplete. Sending an LLM request would produce a response without
@@ -585,7 +585,7 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	name := msg.cmd
 	args := msg.args
 	if name == "" {
-		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: "empty command"})
+		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: "empty command"})
 		return
 	}
 
@@ -597,7 +597,7 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	// a usage line, and with it the right to have one.
 	if def, ok := commands.DefinitionOf(commands.Canonical(name)); ok &&
 		def.Usage == "" && strings.TrimSpace(args) != "" {
-		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(def.Name)})
+		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(def.Name)})
 		return
 	}
 
@@ -618,12 +618,12 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 	// a command is the vocabulary package's business, not the dispatcher's.
 	cmdDef, ok := lookupCommand(commands.Canonical(name))
 	if !ok {
-		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeUnknownCommand, Message: fmt.Sprintf("unknown command: %s", name)})
+		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeRequestUnknownCommand, Message: fmt.Sprintf("unknown command: %s", name)})
 		return
 	}
 
 	if cmdDef.Policy == cmdIdle && s.activeTask != nil {
-		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeBusy,
+		s.writeCmdResult(msg.commandID, nil, &cmdErr{Code: protocol.ErrCodeStateBusy,
 			Message: "Cannot run this command while a task is in progress. Please wait or cancel the current task."})
 		return
 	}
@@ -650,7 +650,7 @@ func (s *Session) execCommand(ctx context.Context, commandID string, cmdDef *com
 func (s *Session) checkModelManager() (*modelManager, error) {
 	mm := s.modelService.manager
 	if mm == nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeNotInitialized, Message: "model manager not initialized"}
+		return nil, &cmdErr{Code: protocol.ErrCodeInternalNotInitialized, Message: "model manager not initialized"}
 	}
 	return mm, nil
 }
@@ -662,20 +662,20 @@ func (s *Session) handleModelSet(args string) (any, error) {
 	}
 
 	if args == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameModelSet)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameModelSet)}
 	}
 
 	modelID, err := strconv.Atoi(args)
 	if err != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: fmt.Sprintf("model_set: invalid model ID: %s", args)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: fmt.Sprintf("model_set: invalid model ID: %s", args)}
 	}
 	model := mm.getModel(modelID)
 	if model == nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeModelNotFound, Message: fmt.Sprintf("model_set: model not found: %d", modelID)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestModelUnknown, Message: fmt.Sprintf("model_set: model not found: %d", modelID)}
 	}
 
 	if err := mm.setActive(modelID); err != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeModelError, Message: err.Error()}
+		return nil, &cmdErr{Code: protocol.ErrCodeConfigModelFailed, Message: err.Error()}
 	}
 
 	// Persist the switch. Sessions with a file-specified model store the
@@ -689,10 +689,10 @@ func (s *Session) handleModelSet(args string) (any, error) {
 	}
 
 	if err := s.SwitchModel(model); err != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeModelError, Message: "Failed to switch model: " + err.Error()}
+		return nil, &cmdErr{Code: protocol.ErrCodeConfigModelFailed, Message: "Failed to switch model: " + err.Error()}
 	}
 	if persistErr != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodePersistFailed, Message: fmt.Sprintf("Failed to persist model switch: %v", persistErr)}
+		return nil, &cmdErr{Code: protocol.ErrCodeIOWriteFailed, Message: fmt.Sprintf("Failed to persist model switch: %v", persistErr)}
 	}
 	return map[string]any{"active_id": modelID, "active_name": model.Name}, nil
 }
@@ -705,11 +705,11 @@ func (s *Session) handleModelLoad() (any, error) {
 
 	path := mm.getFilePath()
 	if path == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeNotConfigured, Message: "no model file path configured"}
+		return nil, &cmdErr{Code: protocol.ErrCodeConfigMissing, Message: "no model file path configured"}
 	}
 
 	if err := mm.loadFromFile(path); err != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeLoadFailed, Message: fmt.Sprintf("model_load: failed to load models: %v", err)}
+		return nil, &cmdErr{Code: protocol.ErrCodeIOReadFailed, Message: fmt.Sprintf("model_load: failed to load models: %v", err)}
 	}
 
 	// Apply the successfully loaded models regardless of validation
@@ -718,13 +718,13 @@ func (s *Session) handleModelLoad() (any, error) {
 	s.modelService.ResolveActiveModel()
 	if model := mm.getActive(); model != nil {
 		if err := s.SwitchModel(model); err != nil {
-			return nil, &cmdErr{Code: protocol.ErrCodeModelError, Message: "Failed to reinitialize model after reload: " + err.Error()}
+			return nil, &cmdErr{Code: protocol.ErrCodeConfigModelFailed, Message: "Failed to reinitialize model after reload: " + err.Error()}
 		}
 	}
 	s.sendModelListMsg()
 
 	if msgs := mm.getLoadErrors(); len(msgs) > 0 {
-		return nil, &cmdErr{Code: protocol.ErrCodeModelValidation, Message: strings.Join(msgs, "; ")}
+		return nil, &cmdErr{Code: protocol.ErrCodeConfigModelInvalid, Message: strings.Join(msgs, "; ")}
 	}
 	return map[string]any{"models": mm.getModels()}, nil
 }
@@ -739,7 +739,7 @@ func (s *Session) handleModelSync(args string) (any, error) {
 	}
 
 	if args == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameModelSync)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameModelSync)}
 	}
 
 	msgs := mm.syncFromContent(args)
@@ -749,13 +749,13 @@ func (s *Session) handleModelSync(args string) (any, error) {
 	s.modelService.ResolveActiveModel()
 	if model := mm.getActive(); model != nil {
 		if err := s.SwitchModel(model); err != nil {
-			return nil, &cmdErr{Code: protocol.ErrCodeModelError, Message: "Failed to reinitialize model after sync: " + err.Error()}
+			return nil, &cmdErr{Code: protocol.ErrCodeConfigModelFailed, Message: "Failed to reinitialize model after sync: " + err.Error()}
 		}
 	}
 	s.sendModelListMsg()
 
 	if len(msgs) > 0 {
-		return nil, &cmdErr{Code: protocol.ErrCodeModelValidation, Message: strings.Join(msgs, "; ")}
+		return nil, &cmdErr{Code: protocol.ErrCodeConfigModelInvalid, Message: strings.Join(msgs, "; ")}
 	}
 	return map[string]any{"models": mm.getModels()}, nil
 }
@@ -770,7 +770,7 @@ func (s *Session) handleModelSync(args string) (any, error) {
 func (s *Session) handleReasoningLevelSet(args string) (any, error) {
 	level, err := strconv.Atoi(args)
 	if err != nil || level < config.ReasoningLevelOff || level > config.ReasoningLevelMax {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameReasoningLevelSet) + "  (0=off, 1=normal, 2=max)"}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameReasoningLevelSet) + "  (0=off, 1=normal, 2=max)"}
 	}
 	s.SetReasoningLevel(level)
 	return map[string]any{"level": level}, nil
@@ -787,15 +787,15 @@ func (s *Session) handleVideoConfig(args string) (any, error) {
 	// Exactly two: a third token used to be ignored, which turns a typo into a
 	// setting the user did not ask for.
 	if len(fields) != 2 {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: usage}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: usage}
 	}
 	fps, err := strconv.Atoi(fields[0])
 	if err != nil || fps < 1 {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: usage}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: usage}
 	}
 	res, err := strconv.Atoi(fields[1])
 	if err != nil || res < 0 || res > 1 {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: usage}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: usage}
 	}
 	s.SetVideoConfig(fps, res)
 	return map[string]any{"fps": fps, "res": res}, nil
@@ -806,14 +806,14 @@ func (s *Session) handleVideoConfig(args string) (any, error) {
 // Rejected with UNAVAILABLE when NoTheme is set (non-TUI modes).
 func (s *Session) handleThemeSet(args string) (any, error) {
 	if s.NoTheme {
-		return nil, &cmdErr{Code: protocol.ErrCodeUnavailable, Message: "theme management is not available in this mode"}
+		return nil, &cmdErr{Code: protocol.ErrCodeConfigUnsupported, Message: "theme management is not available in this mode"}
 	}
 	// ":theme_set <name>" — the name is the whole tail, trimmed: a theme is
 	// named by its file (my theme.conf → "my theme"), so inner spaces are part
 	// of the name and invisible whitespace at the ends is not.
 	name := strings.TrimSpace(args)
 	if name == "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameThemeSet)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameThemeSet)}
 	}
 
 	// Validate that the theme exists before persisting.
@@ -825,9 +825,9 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 		// adapter resolves a theme by looking it up in the list it was sent.
 		if _, err := os.Stat(themePath); err != nil {
 			if os.IsNotExist(err) {
-				return nil, &cmdErr{Code: protocol.ErrCodeNotFound, Message: fmt.Sprintf("Theme %q not found", name)}
+				return nil, &cmdErr{Code: protocol.ErrCodeRequestNotFound, Message: fmt.Sprintf("Theme %q not found", name)}
 			}
-			return nil, &cmdErr{Code: protocol.ErrCodeThemeError, Message: fmt.Sprintf("Cannot read theme %q: %v", name, err)}
+			return nil, &cmdErr{Code: protocol.ErrCodeIOReadFailed, Message: fmt.Sprintf("Cannot read theme %q: %v", name, err)}
 		}
 	}
 
@@ -837,7 +837,7 @@ func (s *Session) handleThemeSet(args string) (any, error) {
 	}
 	s.sendSystemInfo(systemInfoTheme)
 	if persistErr != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodePersistFailed, Message: fmt.Sprintf("Failed to persist theme switch: %v", persistErr)}
+		return nil, &cmdErr{Code: protocol.ErrCodeIOWriteFailed, Message: fmt.Sprintf("Failed to persist theme switch: %v", persistErr)}
 	}
 	return map[string]any{"name": name}, nil
 }
@@ -864,10 +864,10 @@ func (s *Session) handleMCPSkip() (any, error) {
 // verify MCP is configured and initializing.
 func (s *Session) checkMCPReady() error {
 	if !s.mcpService.HasInit() {
-		return &cmdErr{Code: protocol.ErrCodeNotConfigured, Message: "No MCP servers configured."}
+		return &cmdErr{Code: protocol.ErrCodeConfigMissing, Message: "No MCP servers configured."}
 	}
 	if s.mcpService.IsReady() {
-		return &cmdErr{Code: protocol.ErrCodeNotInProgress, Message: "MCP initialization is not in progress."}
+		return &cmdErr{Code: protocol.ErrCodeStateNotInProgress, Message: "MCP initialization is not in progress."}
 	}
 	return nil
 }
@@ -888,7 +888,7 @@ func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) 
 	// and answering NOT_FOUND for the first half names a server the user never
 	// typed.
 	if len(fields) != 3 && len(fields) != 4 {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameMCPConfirm)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameMCPConfirm)}
 	}
 	if err := s.checkMCPReady(); err != nil {
 		return nil, err
@@ -902,7 +902,7 @@ func (s *Session) handleMCPConfirm(_ context.Context, args string) (any, error) 
 		iss = fields[3]
 	}
 	if !s.mcpService.SendAuthCodeResult(server, code, redirectURI, iss) {
-		return nil, &cmdErr{Code: protocol.ErrCodeNotFound, Message: fmt.Sprintf("No pending authorization for MCP server %q.", server)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestNotFound, Message: fmt.Sprintf("No pending authorization for MCP server %q.", server)}
 	}
 	return map[string]any{"server": server}, nil
 }
@@ -915,7 +915,7 @@ func (s *Session) handleMCPDecline(args string) (any, error) {
 	// Exactly one server name for the same reason: "my db" is one name split in
 	// two, and declining "my" would report a server the user never configured.
 	if len(fields) != 1 {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameMCPDecline)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameMCPDecline)}
 	}
 	if err := s.checkMCPReady(); err != nil {
 		return nil, err
@@ -923,7 +923,7 @@ func (s *Session) handleMCPDecline(args string) (any, error) {
 
 	server := fields[0]
 	if !s.mcpService.SendAuthCodeResult(server, "", "", "") {
-		return nil, &cmdErr{Code: protocol.ErrCodeNotFound, Message: fmt.Sprintf("No pending authorization for MCP server %q.", server)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestNotFound, Message: fmt.Sprintf("No pending authorization for MCP server %q.", server)}
 	}
 	return map[string]any{"server": server}, nil
 }
@@ -943,7 +943,7 @@ func (s *Session) saveSession(args string) (any, error) {
 	filename := strings.TrimSpace(args)
 	if filename == "" {
 		if s.SessionFile == "" {
-			return nil, &cmdErr{Code: protocol.ErrCodeNotConfigured, Message: "no session file set"}
+			return nil, &cmdErr{Code: protocol.ErrCodeConfigMissing, Message: "no session file set"}
 		}
 		path = s.SessionFile
 	} else {
@@ -951,7 +951,7 @@ func (s *Session) saveSession(args string) (any, error) {
 	}
 
 	if err := s.saveContentToFile(path, s.Contents); err != nil {
-		return nil, &cmdErr{Code: protocol.ErrCodeIOError, Message: fmt.Sprintf("failed to save session: %v", err)}
+		return nil, &cmdErr{Code: protocol.ErrCodeIOWriteFailed, Message: fmt.Sprintf("failed to save session: %v", err)}
 	}
 	return map[string]any{"path": path}, nil
 }
@@ -962,7 +962,7 @@ func (s *Session) saveSession(args string) (any, error) {
 // Idempotent.
 func (s *Session) handleQuit(args string) (any, error) {
 	if strings.TrimSpace(args) != "" {
-		return nil, &cmdErr{Code: protocol.ErrCodeInvalidArgs, Message: commands.UsageLine(commands.CommandNameQuit)}
+		return nil, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs, Message: commands.UsageLine(commands.CommandNameQuit)}
 	}
 	s.quitting = true
 	if s.pending != nil {
@@ -1009,7 +1009,7 @@ func (s *Session) cancelTask() (any, error) {
 			return nil, nil
 		}
 	}
-	return nil, &cmdErr{Code: protocol.ErrCodeNothingToCancel, Message: "nothing to cancel"}
+	return nil, &cmdErr{Code: protocol.ErrCodeStateNothingToCancel, Message: "nothing to cancel"}
 }
 
 // CancelTask aborts the currently running task, if any. Safe to call from

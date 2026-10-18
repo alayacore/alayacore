@@ -518,7 +518,7 @@ after one the transcript an adapter has accumulated is not the session's
    are available. The adapter should display them so the user can fix their
    `model.conf`. After `:model_load` / `:model_sync`, the same validation
    errors arrive differently: the command **fails** with a CO frame
-   (`code:"MODEL_VALIDATION"`, errors joined in `message`) — the user must
+   (`code:"CONFIG_MODEL_INVALID"`, errors joined in `message`) — the user must
    see them to fix the config.
 
 3. **MCP config errors**: At startup, MCP configuration errors (empty server
@@ -707,7 +707,7 @@ Uf-execute-command-preview.txt Uf{"id":"14","call_id":"t5","text":"total 42..."}
 
 ```
 CO-save-success.txt            CO{"command_id":"2","result":{"path":"/tmp/x.alaya"}}
-CO-command-error.txt           CO{"command_id":"2","is_error":true,"result":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+CO-command-error.txt           CO{"command_id":"2","is_error":true,"result":{"code":"REQUEST_MODEL_UNKNOWN","message":"model_set: model not found: 99"}}
 CO-task-started.txt            CO{"command_id":"9","result":{"status":"started"}}
 ```
 
@@ -846,7 +846,7 @@ stdout: CO{"command_id":"1","result":{"path":"/tmp/x.alaya"}}
 
 ```
 stdin:  CI{"command_id":"2","name":"model_set","args":"99"}
-stdout: CO{"command_id":"2","is_error":true,"result":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}}
+stdout: CO{"command_id":"2","is_error":true,"result":{"code":"REQUEST_MODEL_UNKNOWN","message":"model_set: model not found: 99"}}
 ```
 
 ### Tool Confirmation
@@ -902,7 +902,7 @@ The `input` is a serialized array of model config objects (same format as the
 `models` field in `SM-model-list.txt`). The agent replaces all models with
 the provided list, re-resolves the active model, and reinitializes the
 provider. If any model block is rejected or persistence fails, the command
-fails with `code:"MODEL_VALIDATION"` and the errors in `message`.
+fails with `code:"CONFIG_MODEL_INVALID"` and the errors in `message`.
 
 ### Full command list
 
@@ -917,7 +917,7 @@ client speaking this protocol sends the full name.
 | `cancel` | — | `null` |
 | `save` | `[filename]` | `{"path":...}` |
 | `fork` | `<history_id> <filename>` | `{"path":...,"count":...,"history_id":...}` |
-| `theme_set` | `<name>` (TUI only — `UNAVAILABLE` in NoTheme modes: plainio/terseio/rawio) | `{"name":...}` |
+| `theme_set` | `<name>` (TUI only — `CONFIG_UNSUPPORTED` in NoTheme modes: plainio/terseio/rawio) | `{"name":...}` |
 | `tool_confirm` / `tool_decline` | `<call_id>` | `{"call_id":...}` |
 | `model_set` | `<id>` | `{"active_id":...,"active_name":...}` |
 | `model_load` | — | `{"models":[...]}` |

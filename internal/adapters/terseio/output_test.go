@@ -158,7 +158,7 @@ func TestTerseOutput_ErrorGoesToStderrAndDiscardsAnswer(t *testing.T) {
 func TestTerseOutput_CommandError_GoesToStderrAndSetsExitCode(t *testing.T) {
 	o, out, errBuf := newTestOutput()
 
-	o.Write(cmdResultMsg("co-err", protocol.CmdError{Code: "UNKNOWN_COMMAND", Message: "unknown command: foo"}, true))
+	o.Write(cmdResultMsg("co-err", protocol.CmdError{Code: "REQUEST_UNKNOWN_COMMAND", Message: "unknown command: foo"}, true))
 
 	if out.String() != "" {
 		t.Errorf("stdout = %q, want empty", out.String())

@@ -91,7 +91,7 @@ Configured MCP servers connect at startup, exactly as in the TUI and
 plainio. The one prompt (or command) is sent as soon as stdin has been read:
 if MCP initialization has not settled yet the session holds the prompt and
 runs it as soon as it is ready, so a piped prompt is never rejected with
-`MCP_NOT_READY` and nothing in the adapter waits for a frame.
+`STATE_MCP_NOT_READY` and nothing in the adapter waits for a frame.
 
 When a server requires OAuth authorization, terseio runs the same automatic
 callback flow as plainio (shared code): it starts a loopback callback

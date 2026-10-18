@@ -105,7 +105,7 @@ func TestCommandOut_ErrorRenders(t *testing.T) {
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
 		CommandID: "x1",
 		IsError:   true,
-		Result:    json.RawMessage(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
+		Result:    json.RawMessage(`{"code":"REQUEST_MODEL_UNKNOWN","message":"model_set: model not found: 99"}`),
 	})
 	o.Write(frameBytes(wire.TagCommandOut, string(payload)))
 

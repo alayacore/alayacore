@@ -377,10 +377,10 @@ func TestCommandsDocErrorCodesMatchTheProtocol(t *testing.T) {
 	doc := readDoc(t, "../../docs/commands.md")
 
 	documented := map[string]bool{}
-	for _, row := range tableAfter(t, doc, "| Code | Meaning | What a caller can do |") {
+	for _, row := range tableAfter(t, doc, "| Code | Meaning |") {
 		cols := cells(row)
-		if len(cols) != 3 {
-			t.Fatalf("error-code row has %d columns, want 3: %s", len(cols), row)
+		if len(cols) != 2 {
+			t.Fatalf("error-code row has %d columns, want 2: %s", len(cols), row)
 		}
 		code := strings.Trim(cols[0], "`")
 		if documented[code] {

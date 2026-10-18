@@ -167,7 +167,7 @@ func TestReadAllPrompt_Quit(t *testing.T) {
 
 // An argument makes the line the session's command, not the local quit:
 // ":quit now" is sent as a "quit" command carrying "now" (the session
-// answers INVALID_ARGS), and it is not a clean exit.
+// answers REQUEST_INVALID_ARGS), and it is not a clean exit.
 func TestReadAllPrompt_QuitWithArgsIsSent(t *testing.T) {
 	var buf bytes.Buffer
 	if err := readAllPrompt(&buf, strings.NewReader(":quit now\n")); err != nil {

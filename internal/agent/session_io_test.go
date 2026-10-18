@@ -136,8 +136,8 @@ func TestInputFrame_CommandIn_WithStagedContent(t *testing.T) {
 	if msg.commandID != "x" {
 		t.Errorf("commandID = %q, want the id the CI carried", msg.commandID)
 	}
-	if msg.reject.Code != "INVALID_ARGS" {
-		t.Errorf("reject code = %q, want INVALID_ARGS", msg.reject.Code)
+	if msg.reject.Code != "REQUEST_INVALID_ARGS" {
+		t.Errorf("reject code = %q, want REQUEST_INVALID_ARGS", msg.reject.Code)
 	}
 }
 
@@ -257,13 +257,13 @@ func TestWriteCmdResult_SuccessNoResult(t *testing.T) {
 func TestWriteCmdResult_CmdErr(t *testing.T) {
 	s, output := newCmdOutputSession()
 
-	s.writeCmdResult("c3d4", nil, &cmdErr{Code: "MODEL_NOT_FOUND", Message: "model_set: model not found: 99"})
+	s.writeCmdResult("c3d4", nil, &cmdErr{Code: "REQUEST_MODEL_UNKNOWN", Message: "model_set: model not found: 99"})
 
 	joined := strings.Join(output.Messages, "")
 	if !strings.Contains(joined, `"is_error":true`) {
 		t.Errorf("missing is_error in CO: %s", joined)
 	}
-	if !strings.Contains(joined, `"code":"MODEL_NOT_FOUND"`) {
+	if !strings.Contains(joined, `"code":"REQUEST_MODEL_UNKNOWN"`) {
 		t.Errorf("missing error code in CO: %s", joined)
 	}
 	if !strings.Contains(joined, `"message":"model_set: model not found: 99"`) {
@@ -279,8 +279,8 @@ func TestWriteCmdResult_PlainErrorDefaultsToUnclassified(t *testing.T) {
 	s.writeCmdResult("e5f6", nil, fmt.Errorf("boom"))
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"code":"UNCLASSIFIED"`) {
-		t.Errorf("plain error should default to code UNCLASSIFIED: %s", joined)
+	if !strings.Contains(joined, `"code":"INTERNAL_UNCLASSIFIED"`) {
+		t.Errorf("plain error should default to code INTERNAL_UNCLASSIFIED: %s", joined)
 	}
 	if !strings.Contains(joined, `"is_error":true`) {
 		t.Errorf("missing is_error in CO: %s", joined)
@@ -294,7 +294,7 @@ func TestHandleInputMsg_UnknownCommand(t *testing.T) {
 	s.handleInputMsg(inputMsg{isCmd: true, cmd: "nope", commandID: "x1"})
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"code":"UNKNOWN_COMMAND"`) {
+	if !strings.Contains(joined, `"code":"REQUEST_UNKNOWN_COMMAND"`) {
 		t.Errorf("expected UNKNOWN_COMMAND in CO: %s", joined)
 	}
 	if !strings.Contains(joined, `"command_id":"x1"`) {
@@ -336,11 +336,11 @@ func TestHandleInputMsg_RejectAnswersWithCOAndDoesNotRun(t *testing.T) {
 		cmd:       "save",
 		args:      path,
 		commandID: "z1",
-		reject:    &cmdErr{Code: "INVALID_ARGS", Message: "command can not be sent with staged content"},
+		reject:    &cmdErr{Code: "REQUEST_INVALID_ARGS", Message: "command can not be sent with staged content"},
 	})
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"command_id":"z1"`) || !strings.Contains(joined, `"code":"INVALID_ARGS"`) {
+	if !strings.Contains(joined, `"command_id":"z1"`) || !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
 		t.Errorf("expected a CO refusal echoing the id: %s", joined)
 	}
 	if _, err := os.Stat(path); err == nil {
@@ -374,8 +374,8 @@ model_name: ""
 		t.Fatal("model_load with rejected model blocks must fail")
 	}
 	var ce *cmdErr
-	if !errors.As(err, &ce) || ce.Code != "MODEL_VALIDATION" {
-		t.Errorf("expected MODEL_VALIDATION, got %+v", err)
+	if !errors.As(err, &ce) || ce.Code != "CONFIG_MODEL_INVALID" {
+		t.Errorf("expected CONFIG_MODEL_INVALID, got %+v", err)
 	}
 	if !strings.Contains(ce.Message, "unknown protocol_type") {
 		t.Errorf("validation error should mention the rejected model: %s", ce.Message)
@@ -498,12 +498,12 @@ func TestStartTaskCommand_RefusedDoesNotBroadcast(t *testing.T) {
 				s.state.Store(int32(SessionReady))
 				s.quitting = true
 			},
-			wantCode: "SHUTTING_DOWN",
+			wantCode: "STATE_SHUTTING_DOWN",
 		},
 		{
 			name:     "not_ready",
 			setup:    func(s *Session) { s.state.Store(int32(SessionStarting)) },
-			wantCode: "MCP_NOT_READY",
+			wantCode: "STATE_MCP_NOT_READY",
 		},
 		{
 			name: "busy",
@@ -511,7 +511,7 @@ func TestStartTaskCommand_RefusedDoesNotBroadcast(t *testing.T) {
 				s.state.Store(int32(SessionReady))
 				s.activeTask = &taskHandle{}
 			},
-			wantCode: "BUSY",
+			wantCode: "STATE_BUSY",
 		},
 		{
 			name: "agent_init_failed",
@@ -520,7 +520,7 @@ func TestStartTaskCommand_RefusedDoesNotBroadcast(t *testing.T) {
 				// No active model: ensureAgentInitialized cannot build an agent.
 				s.modelService = newModelService(newModelManager(""), newRuntimeManager(""))
 			},
-			wantCode: "NOT_CONFIGURED",
+			wantCode: "CONFIG_MISSING",
 		},
 	}
 
@@ -764,8 +764,8 @@ func TestZeroArgumentCommandsRejectArguments(t *testing.T) {
 			s.handleInputMsg(inputMsg{isCmd: true, cmd: name, args: "now", commandID: "z1"})
 
 			joined := strings.Join(output.Messages, "")
-			if !strings.Contains(joined, `"code":"INVALID_ARGS"`) {
-				t.Errorf(":%s now should be INVALID_ARGS, got: %s", name, joined)
+			if !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
+				t.Errorf(":%s now should be REQUEST_INVALID_ARGS, got: %s", name, joined)
 			}
 			if !strings.Contains(joined, `"command_id":"z1"`) {
 				t.Errorf("the refusal must answer the request it refuses: %s", joined)
@@ -793,8 +793,8 @@ func TestVideoConfigRejectsExtraTokens(t *testing.T) {
 		t.Fatal("handleVideoConfig accepted a third token")
 	}
 	var ce *cmdErr
-	if !errors.As(err, &ce) || ce.Code != "INVALID_ARGS" {
-		t.Errorf("error = %v, want INVALID_ARGS", err)
+	if !errors.As(err, &ce) || ce.Code != "REQUEST_INVALID_ARGS" {
+		t.Errorf("error = %v, want REQUEST_INVALID_ARGS", err)
 	}
 
 	// The declared shape still works.
@@ -843,8 +843,8 @@ func TestMCPCommandsRejectTheWrongNumberOfTokens(t *testing.T) {
 				t.Fatal("accepted an argument count the usage line does not declare")
 			}
 			var ce *cmdErr
-			if !errors.As(err, &ce) || ce.Code != "INVALID_ARGS" {
-				t.Errorf("error = %v, want INVALID_ARGS (not a lookup miss)", err)
+			if !errors.As(err, &ce) || ce.Code != "REQUEST_INVALID_ARGS" {
+				t.Errorf("error = %v, want REQUEST_INVALID_ARGS (not a lookup miss)", err)
 			}
 		})
 	}

@@ -43,8 +43,8 @@ is one of two shapes.
 
 - **Tokens** — whitespace-separated, with an exact count. There is no quoting,
   so a value containing a space cannot be one token: `:mcp_confirm <server> …`
-  answers `INVALID_ARGS` for a server name with a space in it, rather than
-  looking up the first half. Too many tokens is `INVALID_ARGS` too — never
+  answers `REQUEST_INVALID_ARGS` for a server name with a space in it, rather than
+  looking up the first half. Too many tokens is `REQUEST_INVALID_ARGS` too — never
   silently ignored.
 - **A free-text tail** — the rest of the line, spaces included, with
   surrounding whitespace trimmed: `:save [filename]`, `:fork <history_id>
@@ -52,7 +52,7 @@ is one of two shapes.
 
 A command whose usage line is empty (`:quit`, `:cancel`, `:summarize`,
 `:continue`, `:model_load`, `:mcp_skip`) takes no arguments at all; a stray word
-is `INVALID_ARGS`.
+is `REQUEST_INVALID_ARGS`.
 
 ## Error codes
 
@@ -61,28 +61,38 @@ and may change; `code` is the contract, and these are all of them — a client c
 branch on it without reading the source. `protocol.CmdErrorCodes` is the same
 list on the Go side, and `make check` fails if the two disagree.
 
-| Code | Meaning | What a caller can do |
-|------|---------|----------------------|
-| `INVALID_ARGS` | the arguments do not match the command's usage line | fix the request |
-| `UNKNOWN_COMMAND` | the name is not a command | fix the request |
-| `BUSY` | a task is already running | retry when idle, or `:cancel` first |
-| `SHUTTING_DOWN` | the session is ending | reconnect |
-| `MCP_NOT_READY` | MCP initialization or authorization is still pending | retry later |
-| `NOT_CONFIGURED` | nothing is configured to act on: no model, no MCP server, no session file | fix the configuration |
-| `NOT_INITIALIZED` | the subsystem was never created | report a bug |
-| `NOT_IN_PROGRESS` | nothing is in flight to act on | nothing — the state is already what was asked for |
-| `NOTHING_TO_CANCEL` | no task and no held prompt | nothing |
-| `NOT_FOUND` | the thing named does not exist, or is not pending | fix the request |
-| `INVALID_STATE` | the session's state forbids the operation (e.g. forking across an unpaired tool call) | change what is asked for |
-| `UNAVAILABLE` | the feature does not exist in this adapter mode | nothing |
-| `IO_ERROR` | a file operation failed | check the path and permissions |
-| `PERSIST_FAILED` | a setting could not be written | check the path and permissions |
-| `LOAD_FAILED` | the configuration could not be read | check the file |
-| `MODEL_ERROR` | the model subsystem failed: switching, rebuilding, or creating the provider | check the provider configuration |
-| `MODEL_NOT_FOUND` | no model has that id | fix the request |
-| `MODEL_VALIDATION` | the config parsed but models were rejected; `message` lists why | fix the configuration |
-| `THEME_ERROR` | the theme subsystem failed, e.g. a theme file that exists but cannot be read | check the theme file |
-| `UNCLASSIFIED` | a handler returned a bare error: a bug, since every refusal above names its cause | report a bug |
+One rule builds every code: **the first segment says what a caller can do about
+it**, the rest names the cause. Match the prefix for the coarse answer, or the
+whole string for the detail.
+
+| Prefix | What a caller can do |
+|--------|----------------------|
+| `REQUEST_` | the request cannot be satisfied as sent — change what is asked |
+| `CONFIG_` | the installation or model setup is at fault — fix the configuration |
+| `STATE_` | nothing is wrong; the session is not in a position to act — wait |
+| `IO_` | a file operation failed — check the path and permissions |
+| `INTERNAL_` | a bug: the state a command needs was never built — report it |
+
+| Code | Meaning |
+|------|---------|
+| `REQUEST_INVALID_ARGS` | the arguments do not match the command's usage line |
+| `REQUEST_UNKNOWN_COMMAND` | the name is not a command |
+| `REQUEST_NOT_FOUND` | the thing named does not exist, or is not pending: a history id, a tool confirmation, a theme, an MCP authorization |
+| `REQUEST_MODEL_UNKNOWN` | no model has that id |
+| `REQUEST_INVALID_STATE` | the request cannot be satisfied by this history, e.g. forking across an unpaired tool call |
+| `CONFIG_MISSING` | nothing is configured to act on: no model, no MCP server, no session file |
+| `CONFIG_MODEL_INVALID` | the config parsed but models were rejected; `message` lists why |
+| `CONFIG_MODEL_FAILED` | the model subsystem failed: switching, rebuilding, or creating the provider |
+| `CONFIG_UNSUPPORTED` | the feature does not exist in this adapter mode |
+| `STATE_BUSY` | a task is already running |
+| `STATE_SHUTTING_DOWN` | the session is ending |
+| `STATE_MCP_NOT_READY` | MCP initialization or authorization is still pending |
+| `STATE_NOT_IN_PROGRESS` | nothing is in flight to act on |
+| `STATE_NOTHING_TO_CANCEL` | no task and no held prompt |
+| `IO_READ_FAILED` | a file could not be read: the model config, a theme file |
+| `IO_WRITE_FAILED` | a file could not be written: the session, the runtime settings |
+| `INTERNAL_NOT_INITIALIZED` | a subsystem that should exist does not |
+| `INTERNAL_UNCLASSIFIED` | a handler returned a bare error: a bug, since every refusal above names its cause |
 
 Commands fall into three categories:
 

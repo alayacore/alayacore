@@ -74,10 +74,10 @@ func TestCmdResultMsgMarshal(t *testing.T) {
 			name: "error with uniform error object",
 			msg: CmdResultMsg{
 				CommandID: "c3d4",
-				Result:    json.RawMessage(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
+				Result:    json.RawMessage(`{"code":"REQUEST_MODEL_UNKNOWN","message":"model_set: model not found: 99"}`),
 				IsError:   true,
 			},
-			want: `{"command_id":"c3d4","result":{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"},"is_error":true}`,
+			want: `{"command_id":"c3d4","result":{"code":"REQUEST_MODEL_UNKNOWN","message":"model_set: model not found: 99"},"is_error":true}`,
 		},
 	}
 	for _, tt := range tests {

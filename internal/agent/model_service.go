@@ -195,21 +195,21 @@ func (ms *modelService) SwitchModel(modelConfig *modelConfig, baseTools []llm.To
 //
 // Each failure carries the code a client acts on: nothing configured, nothing
 // initialized, or the model subsystem refusing to build. Returning them bare
-// would put the command plane's UNCLASSIFIED fallback on the wire, which tells
+// would put the command plane's INTERNAL_UNCLASSIFIED fallback on the wire, which tells
 // a caller nothing about whether to fix its config or its provider.
 func (ms *modelService) EnsureInitialized(baseTools []llm.Tool, systemPrompt, extraSystemPrompt string, maxSteps int) error {
 	if ms.agent != nil && ms.provider != nil {
 		return nil
 	}
 	if ms.manager == nil {
-		return &cmdErr{Code: protocol.ErrCodeNotInitialized, Message: "model manager not initialized"}
+		return &cmdErr{Code: protocol.ErrCodeInternalNotInitialized, Message: "model manager not initialized"}
 	}
 	activeModel := ms.manager.getActive()
 	if activeModel == nil {
-		return &cmdErr{Code: protocol.ErrCodeNotConfigured, Message: "no model configured; please add a model to model.conf"}
+		return &cmdErr{Code: protocol.ErrCodeConfigMissing, Message: "no model configured; please add a model to model.conf"}
 	}
 	if err := ms.SwitchModel(activeModel, baseTools, systemPrompt, extraSystemPrompt, maxSteps); err != nil {
-		return &cmdErr{Code: protocol.ErrCodeModelError, Message: err.Error()}
+		return &cmdErr{Code: protocol.ErrCodeConfigModelFailed, Message: err.Error()}
 	}
 	return nil
 }

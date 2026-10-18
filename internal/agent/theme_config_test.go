@@ -145,8 +145,8 @@ func TestThemeSetRejectsUnreadableThemesFolder(t *testing.T) {
 	if !errors.As(err, &cmdError) {
 		t.Fatalf("error = %v, want a cmdErr", err)
 	}
-	if cmdError.Code != "THEME_ERROR" {
-		t.Errorf("code = %q, want THEME_ERROR (message: %s)", cmdError.Code, cmdError.Message)
+	if cmdError.Code != "IO_READ_FAILED" {
+		t.Errorf("code = %q, want IO_READ_FAILED (message: %s)", cmdError.Code, cmdError.Message)
 	}
 	if got := s.modelService.runtimeMgr.getActiveTheme(); got != "" {
 		t.Errorf("active theme = %q, want nothing persisted for a rejected switch", got)
@@ -197,7 +197,7 @@ func TestThemeSetRejectsWhitespaceOnly(t *testing.T) {
 		t.Fatal("handleThemeSet accepted a name made of spaces")
 	}
 	var cmdError *cmdErr
-	if !errors.As(err, &cmdError) || cmdError.Code != "INVALID_ARGS" {
-		t.Errorf("error = %v, want INVALID_ARGS", err)
+	if !errors.As(err, &cmdError) || cmdError.Code != "REQUEST_INVALID_ARGS" {
+		t.Errorf("error = %v, want REQUEST_INVALID_ARGS", err)
 	}
 }

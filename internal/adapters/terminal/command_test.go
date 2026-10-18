@@ -95,7 +95,7 @@ func TestCommandOut_ErrorRendersMessage(t *testing.T) {
 	payload, _ := json.Marshal(protocol.CmdResultMsg{
 		CommandID: "x1",
 		IsError:   true,
-		Result:    mustRaw(`{"code":"MODEL_NOT_FOUND","message":"model_set: model not found: 99"}`),
+		Result:    mustRaw(`{"code":"REQUEST_MODEL_UNKNOWN","message":"model_set: model not found: 99"}`),
 	})
 	if err := wire.WriteFrame(out, wire.TagCommandOut, string(payload)); err != nil {
 		t.Fatalf("WriteFrame failed: %v", err)

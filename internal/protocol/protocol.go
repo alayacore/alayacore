@@ -285,60 +285,70 @@ type CmdError struct {
 
 // Command error codes — the "code" field of a CmdError. They are wire values: a
 // client branches on them, so they are written once here rather than as
-// literals at each refusal, and docs/commands.md's table is checked against
-// this list. Each name is what a caller has to decide: fix the request, fix the
-// configuration, wait, or report a bug (see the doc's column).
+// literals at each refusal, and docs/commands.md's table is checked against this
+// list.
+//
+// One construction rule, and one axis: the first segment says what a caller can
+// do about it, the rest names the cause. A client may match the prefix to get
+// the coarse answer, or the whole string for the detail — so the vocabulary can
+// grow a cause without teaching every client a new branch.
+//
+//	REQUEST_  the request cannot be satisfied as sent  → change what is asked
+//	CONFIG_   the installation or model setup is at fault → fix the configuration
+//	STATE_    nothing is wrong; the session is not in a position to act → wait
+//	IO_       a file operation failed → check the path and permissions
+//	INTERNAL_ a bug: the state a command needs was never built → report it
 const (
-	ErrCodeInvalidArgs     = "INVALID_ARGS"      // the arguments do not match the usage line
-	ErrCodeUnknownCommand  = "UNKNOWN_COMMAND"   // the name is not a command
-	ErrCodeBusy            = "BUSY"              // a task is already running
-	ErrCodeShuttingDown    = "SHUTTING_DOWN"     // the session is ending
-	ErrCodeMCPNotReady     = "MCP_NOT_READY"     // MCP initialization or authorization is pending
-	ErrCodeNotConfigured   = "NOT_CONFIGURED"    // nothing is configured to act on
-	ErrCodeNotInitialized  = "NOT_INITIALIZED"   // the subsystem was never created
-	ErrCodeNotInProgress   = "NOT_IN_PROGRESS"   // nothing is in flight to act on
-	ErrCodeNothingToCancel = "NOTHING_TO_CANCEL" // no task and no held prompt
-	ErrCodeNotFound        = "NOT_FOUND"         // the thing named does not exist, or is not pending
-	ErrCodeInvalidState    = "INVALID_STATE"     // the session's state forbids the operation
-	ErrCodeUnavailable     = "UNAVAILABLE"       // the feature does not exist in this adapter mode
-	ErrCodeIOError         = "IO_ERROR"          // a file operation failed
-	ErrCodePersistFailed   = "PERSIST_FAILED"    // a setting could not be written
-	ErrCodeLoadFailed      = "LOAD_FAILED"       // the configuration could not be read
-	ErrCodeModelError      = "MODEL_ERROR"       // the model subsystem failed
-	ErrCodeModelNotFound   = "MODEL_NOT_FOUND"   // no model has that id
-	ErrCodeModelValidation = "MODEL_VALIDATION"  // the config parsed, the models were rejected
-	ErrCodeThemeError      = "THEME_ERROR"       // the theme subsystem failed
-	// ErrCodeUnclassified is the fallback for a handler that returned a bare
-	// error. It is a bug when it appears: every refusal above exists so that a
-	// client can act on the cause, and this one tells it nothing.
-	ErrCodeUnclassified = "UNCLASSIFIED"
+	ErrCodeRequestInvalidArgs    = "REQUEST_INVALID_ARGS"    // the arguments do not match the usage line
+	ErrCodeRequestUnknownCommand = "REQUEST_UNKNOWN_COMMAND" // the name is not a command
+	ErrCodeRequestNotFound       = "REQUEST_NOT_FOUND"       // the thing named does not exist, or is not pending
+	ErrCodeRequestModelUnknown   = "REQUEST_MODEL_UNKNOWN"   // no model has that id
+	ErrCodeRequestInvalidState   = "REQUEST_INVALID_STATE"   // the request cannot be satisfied by this history (e.g. forking across an unpaired tool call)
+
+	ErrCodeConfigMissing      = "CONFIG_MISSING"       // nothing is configured to act on: no model, no MCP server, no session file
+	ErrCodeConfigModelInvalid = "CONFIG_MODEL_INVALID" // the config parsed but models were rejected
+	ErrCodeConfigModelFailed  = "CONFIG_MODEL_FAILED"  // the model subsystem failed: switching, rebuilding, or creating the provider
+	ErrCodeConfigUnsupported  = "CONFIG_UNSUPPORTED"   // the feature does not exist in this adapter mode
+
+	ErrCodeStateBusy            = "STATE_BUSY"              // a task is already running
+	ErrCodeStateShuttingDown    = "STATE_SHUTTING_DOWN"     // the session is ending
+	ErrCodeStateMCPNotReady     = "STATE_MCP_NOT_READY"     // MCP initialization or authorization is pending
+	ErrCodeStateNotInProgress   = "STATE_NOT_IN_PROGRESS"   // nothing is in flight to act on
+	ErrCodeStateNothingToCancel = "STATE_NOTHING_TO_CANCEL" // no task and no held prompt
+
+	ErrCodeIOReadFailed  = "IO_READ_FAILED"  // a file could not be read: the model config, a theme file
+	ErrCodeIOWriteFailed = "IO_WRITE_FAILED" // a file could not be written: the session, the runtime settings
+
+	ErrCodeInternalNotInitialized = "INTERNAL_NOT_INITIALIZED" // a subsystem that should exist does not
+	// ErrCodeInternalUnclassified is the fallback for a handler that returned a
+	// bare error. It is a bug when it appears: every refusal above exists so
+	// that a client can act on the cause, and this one tells it nothing.
+	ErrCodeInternalUnclassified = "INTERNAL_UNCLASSIFIED"
 )
 
 // CmdErrorCodes is every code above, for the docs table's check. The list and
 // the constants are the same fact written twice on purpose: the check compares
-// the documentation against this slice, and a constant that is missing here is
-// a code no test would notice.
+// the documentation against this slice, and a constant missing from here is a
+// code no test would notice.
 var CmdErrorCodes = []string{
-	ErrCodeInvalidArgs,
-	ErrCodeUnknownCommand,
-	ErrCodeBusy,
-	ErrCodeShuttingDown,
-	ErrCodeMCPNotReady,
-	ErrCodeNotConfigured,
-	ErrCodeNotInitialized,
-	ErrCodeNotInProgress,
-	ErrCodeNothingToCancel,
-	ErrCodeNotFound,
-	ErrCodeInvalidState,
-	ErrCodeUnavailable,
-	ErrCodeIOError,
-	ErrCodePersistFailed,
-	ErrCodeLoadFailed,
-	ErrCodeModelError,
-	ErrCodeModelNotFound,
-	ErrCodeModelValidation,
-	ErrCodeThemeError,
-	ErrCodeUnclassified,
+	ErrCodeRequestInvalidArgs,
+	ErrCodeRequestUnknownCommand,
+	ErrCodeRequestNotFound,
+	ErrCodeRequestModelUnknown,
+	ErrCodeRequestInvalidState,
+	ErrCodeConfigMissing,
+	ErrCodeConfigModelInvalid,
+	ErrCodeConfigModelFailed,
+	ErrCodeConfigUnsupported,
+	ErrCodeStateBusy,
+	ErrCodeStateShuttingDown,
+	ErrCodeStateMCPNotReady,
+	ErrCodeStateNotInProgress,
+	ErrCodeStateNothingToCancel,
+	ErrCodeIOReadFailed,
+	ErrCodeIOWriteFailed,
+	ErrCodeInternalNotInitialized,
+	ErrCodeInternalUnclassified,
 }
 
 // ErrorMsg is a system error message (type "error").

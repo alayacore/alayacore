@@ -47,7 +47,7 @@ func DefinitionOf(name string) (Definition, bool) {
 	return Definition{}, false
 }
 
-// UsageLine renders the one-line usage a command's INVALID_ARGS message carries.
+// UsageLine renders the one-line usage a command's REQUEST_INVALID_ARGS message carries.
 // The handler does not spell it: the argument shape is Defs', and a handler that
 // repeated it drifted (":tool_confirm <id>" against a `<call_id>` in the table).
 // A command that explains its values appends the legend to this line.

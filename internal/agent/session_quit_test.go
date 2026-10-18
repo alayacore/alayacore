@@ -3,7 +3,7 @@ package agent
 // :quit tests — the session-owned shutdown path (C2a).
 //
 // :quit is a session command, not an adapter-local string comparison: it
-// sets runState.quitting, beginTask refuses new work with SHUTTING_DOWN,
+// sets runState.quitting, beginTask refuses new work with STATE_SHUTTING_DOWN,
 // and run() returns once nothing is in flight — a task that is already
 // running still finishes.
 
@@ -127,7 +127,7 @@ func TestQuit_WaitsForRunningTask(t *testing.T) {
 	sendQuit(t, w, "q2")
 	waitForOutput(t, output, `"command_id":"q2"`)
 
-	if strings.Contains(output.String(), "BUSY") {
+	if strings.Contains(output.String(), "STATE_BUSY") {
 		t.Fatalf(":quit must be allowed while a task runs: %q", output.String())
 	}
 	select {
@@ -160,7 +160,7 @@ func TestHandleInputMsg_PromptAfterQuitIsRejected(t *testing.T) {
 
 	joined := strings.Join(output.Messages, "")
 	if !strings.Contains(joined, "the session is shutting down") {
-		t.Errorf("expected SHUTTING_DOWN error, got: %q", joined)
+		t.Errorf("expected STATE_SHUTTING_DOWN error, got: %q", joined)
 	}
 	if s.activeTask != nil {
 		t.Error("no task should have started after :quit")
@@ -180,8 +180,8 @@ func TestHandleInputMsg_QuitWithArguments(t *testing.T) {
 	s.handleInputMsg(inputMsg{isCmd: true, cmd: commands.CommandNameQuit, args: "now", commandID: "q3"})
 
 	joined := strings.Join(output.Messages, "")
-	if !strings.Contains(joined, `"code":"INVALID_ARGS"`) {
-		t.Errorf("expected INVALID_ARGS for ':quit now', got: %q", joined)
+	if !strings.Contains(joined, `"code":"REQUEST_INVALID_ARGS"`) {
+		t.Errorf("expected REQUEST_INVALID_ARGS for ':quit now', got: %q", joined)
 	}
 	if s.quitting {
 		t.Error("a rejected :quit must not end the session")
@@ -204,7 +204,7 @@ func TestHandleInputMsg_QuitAlias(t *testing.T) {
 		t.Error(":q should have ended the session")
 	}
 	joined := strings.Join(output.Messages, "")
-	if strings.Contains(joined, "UNKNOWN_COMMAND") {
+	if strings.Contains(joined, "REQUEST_UNKNOWN_COMMAND") {
 		t.Errorf(":q should resolve to quit, got: %q", joined)
 	}
 }

@@ -305,11 +305,11 @@ func TestBeginTask_GatedOnSessionState(t *testing.T) {
 		sharedState: sharedState{sessionCtx: sessionCtx},
 	}
 
-	// SessionStarting → rejected with MCP_NOT_READY (wire-stable code).
+	// SessionStarting → rejected with STATE_MCP_NOT_READY (wire-stable code).
 	_, err := s.beginTask("")
 	var ce *cmdErr
-	if !errors.As(err, &ce) || ce.Code != "MCP_NOT_READY" {
-		t.Fatalf("beginTask() error = %v, want cmdErr MCP_NOT_READY", err)
+	if !errors.As(err, &ce) || ce.Code != "STATE_MCP_NOT_READY" {
+		t.Fatalf("beginTask() error = %v, want cmdErr STATE_MCP_NOT_READY", err)
 	}
 
 	// SessionReady → accepted.

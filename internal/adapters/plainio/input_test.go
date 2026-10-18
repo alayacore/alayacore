@@ -315,7 +315,7 @@ func TestReadPrompts_QuitCommand(t *testing.T) {
 
 // An argument makes the line the session's command, not the local quit:
 // ":quit foo" is sent as a "quit" command carrying "foo" (the session
-// answers INVALID_ARGS) and reading continues to EOF.
+// answers REQUEST_INVALID_ARGS) and reading continues to EOF.
 func TestReadPrompts_QuitWithArgsIsNotLocalQuit(t *testing.T) {
 	var buf bytes.Buffer
 	if err := readPrompts(&buf, strings.NewReader(":quit foo\n")); err != nil {

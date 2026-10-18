@@ -308,8 +308,8 @@ func TestForkRequiresAFilename(t *testing.T) {
 			continue
 		}
 		var ce *cmdErr
-		if !errors.As(err, &ce) || ce.Code != "INVALID_ARGS" {
-			t.Errorf("handleFork(%q) error = %v, want INVALID_ARGS", args, err)
+		if !errors.As(err, &ce) || ce.Code != "REQUEST_INVALID_ARGS" {
+			t.Errorf("handleFork(%q) error = %v, want REQUEST_INVALID_ARGS", args, err)
 		}
 	}
 }
