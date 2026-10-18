@@ -77,7 +77,7 @@ func newStreamAssembler(nextID func() uint64) *streamAssembler {
 // block returns the block for key, creating it on first sight — and minting the
 // history ID there, so a block's number is fixed by when it appeared, whatever
 // the caller's display wiring does with it. Reusing a key for a second kind of
-// content is a provider mislabelling its own stream: the kind was decided at the
+// content is a provider mislabeling its own stream: the kind was decided at the
 // first touch, so the later content is folded into the block the stream opened.
 func (a *streamAssembler) block(key string, kind assembledKind) *assembledBlock {
 	if b, ok := a.byKey[key]; ok {

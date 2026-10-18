@@ -163,7 +163,7 @@ func TestExecuteCommandWorkDirThroughSymlink(t *testing.T) {
 // The streaming variant is the path a real call takes (the TUI shows live
 // output); it has to honor the argument as well, or the same call would run in
 // two different places depending on whether the preview was wanted.
-func TestExecuteCommandStreamingHonoursWorkDir(t *testing.T) {
+func TestExecuteCommandStreamingHonorsWorkDir(t *testing.T) {
 	dir := t.TempDir()
 
 	var previews []string

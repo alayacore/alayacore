@@ -217,7 +217,7 @@ func TestAgentNonPositiveMaxStepsMeansNoLimit(t *testing.T) {
 
 // A positive bound is still honored exactly — the guard above must not task
 // every invalid value into "unlimited" in a way that breaks the real feature.
-func TestAgentPositiveMaxStepsIsHonoured(t *testing.T) {
+func TestAgentPositiveMaxStepsIsHonored(t *testing.T) {
 	provider := &mockProviderAlwaysToolCalls{}
 	agent := NewAgent(AgentConfig{
 		Provider: provider,

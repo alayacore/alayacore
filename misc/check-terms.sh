@@ -137,9 +137,15 @@ hits=$(grep -rnE "\b($old_codes)\b" --include=*.md docs adapter-guide README.md 
 report "$hits" 'a retired CO error code in prose — docs/commands.md has the table'
 
 # ── 6. One spelling for English, everywhere ───────────────────────────────
-hits=$(grep -rniE '\b(behaviour|colour|summarise|organise|recognise|normalise|initialis|serialis)[a-z]*' \
-	--include=*.go --include=*.md . 2>/dev/null)
-report "$hits" 'American spelling: behavior, color, summarize'
+# The British form of each pair; the American one is the tree's. Two deliberate
+# absences. "cancelled" is an MCP spec method name (internal/mcp/types.go
+# carries the same exemption for misspell). And "analyses" is the plural of
+# "analysis" in both dialects, so the analyse family is matched as whole words
+# rather than by stem. Scripts are scanned as well — a comment is prose wherever
+# it lives — except this file, which is made of the list.
+hits=$(grep -rniE '\b(behaviour|colour|honour|favour|labour|neighbour|defence|offence|licence|centre|metre|litre|organis|recognis|normalis|initialis|serialis|summaris|optimis|prioritis|minimis|maximis|customis|specialis|visualis|catalogue|dialogue|grey|judgement|whilst|amongst)[a-z]*\b|\b(analyse|analysed|analysing|labelled|labelling|modelled|modelling|travelled|travelling|fulfilment|enrolment|ageing|learnt|spelt)\b' \
+	--include=*.go --include=*.md --include=*.sh . 2>/dev/null | grep -v '^\./misc/check-terms.sh:')
+report "$hits" 'American spelling: behavior, honor, color, analyze, judgment'
 
 if [ "$fails" -gt 0 ]; then
 	printf '\n%d term violation(s). docs/vocabulary.md says what each name is.\n' "$fails" >&2

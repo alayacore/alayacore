@@ -162,7 +162,7 @@ Verified against the renderer:
 
 The last row is the reason the record form exists. Forty columns is an ordinary
 split pane, and `ps`-shaped output is exactly what an agent pastes into a
-message, so this is not a defence against a hypothetical terminal.
+message, so this is not a defense against a hypothetical terminal.
 
 ## What framing costs at the limit
 
@@ -227,7 +227,7 @@ were the same character.
 ```
 
 A cell containing `│` is the reverse — it is exactly the border glyph, so that row
-shows four verticals where its neighbours show three and reads as an extra
+shows four verticals where its neighbors show three and reads as an extra
 column. Every width is still computed correctly; only the reading is ambiguous:
 
 <!-- @example src=pipes_box width=40 -->

@@ -98,7 +98,7 @@ for f in "${files[@]}"; do
 	# Dispatch on what the file says it is, so that running the steps over a
 	# directory that holds more than one generation does the right thing per file:
 	# this step's input is converted, its own output and anything newer are left
-	# alone, and a version it does not recognise is reported rather than guessed at.
+	# alone, and a version it does not recognize is reported rather than guessed at.
 	version="$(file_version "$f")"
 	case "$version" in
 	'' | *[!0-9]*)

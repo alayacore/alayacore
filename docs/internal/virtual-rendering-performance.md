@@ -455,7 +455,7 @@ one iteration is exactly one frame at a fixed content size, and the memory
 columns do not move with `-benchtime` — the folded 133,800 B and unfolded
 73,332 B are the same figures a `-benchtime 1s` run reports.
 
-The fourth folded column is labelled for the change that moved it most and spans
+The fourth folded column is labeled for the change that moved it most and spans
 two: pricing the summary from counts kept as the content grew, and then the
 wrap's per-line and per-byte allocations going
 ([wrapContent](#wrapcontent)). It read 3.75μs / 18.1μs / 63.9μs between them —
@@ -912,7 +912,7 @@ walk. An early-exit walk would have made the pass shorter; this removes it, and
 them work is a byte that retires the count.
 
 The counts are kept only while they can be kept *exactly*, and that is a byte rule
-rather than a judgement: every byte on the width table's byte-wise route, and none
+rather than a judgment: every byte on the width table's byte-wise route, and none
 that `prepareContent` would rewrite. There one byte is one cluster, so a delta's
 cells add to the total exactly and no cluster can straddle two deltas — which is
 the whole reason a per-delta sum is sound here and would not be over arbitrary
@@ -1049,7 +1049,7 @@ pass has nothing to re-apply and returns that same string
 and 0 allocs mean.
 
 The A/B against the wrapper it replaced is below, and it needed correcting on
-two counts. The rows were labelled `ansi.Hardwrap (before)` against
+two counts. The rows were labeled `ansi.Hardwrap (before)` against
 `hardwrapCells (after)`, but the numbers in them were `wrapContent`'s — the
 whole call, breaker plus the `WrapWriter` style pass that follows it. Measured
 separately, `ansi.Hardwrap` alone on this input is 7,616 B and 8 allocs and
