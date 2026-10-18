@@ -421,6 +421,8 @@ func clusters(s string) []cluster {
 // can state exactly, and it is the part that regressed: one string returned,
 // whatever the input, and zero for a fold that returns a number.
 func TestCutsCostTheCutNotTheString(t *testing.T) {
+	requireQuietAllocMeasurement(t)
+
 	inputs := []struct {
 		name string
 		s    string
@@ -443,11 +445,12 @@ func TestCutsCostTheCutNotTheString(t *testing.T) {
 		{"measured.tail", func(s string, n int) string { return measure(s).tail(n) }},
 	}
 	// The bound is a ceiling rather than an exact count because AllocsPerRun
-	// reads process-wide mallocs, and a -race build can add one of its own mid-
-	// measurement. It does not need to be tight to do its job: an implementation
-	// that materializes the clusters reports one allocation per cluster, so
-	// ~10,000 on the long inputs against a ceiling of 8. Same budget, 100x the
-	// clusters, same bound — that pairing is what makes the cost follow the cut.
+	// reads process-wide mallocs and a shared machine adds noise to them. It
+	// does not need to be tight to do its job: an implementation that
+	// materializes the clusters reports one allocation per cluster, so ~10,000 on
+	// the long inputs against a ceiling of 8. Same budget, 100x the clusters,
+	// same bound — that pairing is what makes the cost follow the cut. (The
+	// quiet build is the only one that measures: requireQuietAllocMeasurement.)
 	const ceiling = 8
 	for _, cut := range cuts {
 		for _, budget := range []int{1, 20} {

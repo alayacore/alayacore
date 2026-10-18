@@ -94,6 +94,8 @@ func TestGraphemeClustersStructural(t *testing.T) {
 // 4000-cell line cost ~1ms and ~4MB. One allocation each, whatever the line
 // holds, is the property that keeps it from coming back.
 func TestLineQueriesCostOneEncoding(t *testing.T) {
+	requireQuietAllocMeasurement(t)
+
 	lines := []struct {
 		name string
 		line []rune
@@ -111,8 +113,9 @@ func TestLineQueriesCostOneEncoding(t *testing.T) {
 		{"runeIndexAtWidth", func(l []rune) { _ = runeIndexAtWidth(l, len(l)/2) }},
 	}
 	// A ceiling, not an exact count: AllocsPerRun reads process-wide mallocs and
-	// a -race build can add one of its own. The regression it guards reported one
-	// allocation per cluster — ~10,000 on the long line against this.
+	// a shared machine adds noise to them. The regression it guards reported one
+	// allocation per cluster — ~10,000 on the long line against this. (Under
+	// -race the test skips: see requireQuietAllocMeasurement.)
 	const ceiling = 8
 	for _, q := range queries {
 		for _, in := range lines {

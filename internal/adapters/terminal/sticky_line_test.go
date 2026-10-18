@@ -21,6 +21,7 @@ package terminal
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -330,40 +331,108 @@ func TestPinnedAnnotationUnderTheWindowCursor(t *testing.T) {
 	}
 }
 
+// frameCost is what one scrolling frame costs: the objects it allocates and
+// the bytes it asks the heap for. The two catch different regressions — a
+// count that re-measures or re-wraps anything allocates once per body row,
+// and a composite that copies the window's rows makes one allocation sized
+// by the body — so a test of "one row, not the window" needs both.
+type frameCost struct {
+	allocs, bytes uint64
+}
+
+// measureScrollStep prices a scroll step inside a window with the given
+// number of body rows: the viewport moves down one row, which rebuilds the
+// pinned row and nothing else, and the frame is rendered.
+//
+// This is AllocsPerRun's measurement written out, because the bytes are not
+// available through it and both numbers must come from the same window of
+// steps. Like AllocsPerRun it warms every cache first and reads only
+// process-wide MemStats around the measured steps.
+//
+// It reports the cheapest of a few samples rather than one: MemStats counts
+// the whole process, so ambient work — a -race build's flusher, a GC worker —
+// can only ever ADD to the counters, never take away. The minimum is
+// therefore the best estimate of what the frame itself costs, and a single
+// noisy sample cannot lift it.
+func measureScrollStep(body int) frameCost {
+	wb := stickyWideFixtureWith(body, nil)
+	idx, _ := wb.LookupID("tall")
+	winStart, _ := wb.GetWindowLineRange(idx)
+	_ = wb.GetTotalLines()
+
+	// A range both bodies support: a position that saturates at the
+	// document's end would compare a moving viewport against a clamped
+	// still one, and measure the clamp.
+	lo, hi := winStart+5, winStart+20
+	y := lo
+	step := func() {
+		y++
+		if y > hi {
+			y = lo
+		}
+		wb.SetViewportPosition(y, 10)
+		_ = wb.GetAll(-1, false)
+	}
+	// Warm every cache: the first render of a window, and the first pinned
+	// row for a position, are not the frame this contract is about.
+	for i := 0; i < 3; i++ {
+		step()
+	}
+	step()
+
+	const runs, samples = 200, 3
+	var best frameCost
+	for i := 0; i < samples; i++ {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for j := 0; j < runs; j++ {
+			step()
+		}
+		runtime.ReadMemStats(&after)
+		sample := frameCost{
+			allocs: (after.Mallocs - before.Mallocs) / runs,
+			bytes:  (after.TotalAlloc - before.TotalAlloc) / runs,
+		}
+		if i == 0 {
+			best = sample
+			continue
+		}
+		best.allocs = min(best.allocs, sample.allocs)
+		best.bytes = min(best.bytes, sample.bytes)
+	}
+	return best
+}
+
 // TestStickyPinCostIsIndependentOfTheWindowSize: scrolling through a pinned
 // window pays for one row — not for the window's body. A count that
 // re-measured or re-wrapped anything would make a 400-row message cost ten
 // times a 40-row one.
 //
-// The scroll position is cycled inside a range both bodies support (a
-// position that saturates at the document's end would compare a moving
-// viewport against a clamped still one, and measure the clamp).
+// The two measurements are compared against bounds rather than equality:
+// the counts come from process-wide MemStats, so a -race build's own flusher
+// lands in either measurement (about one allocation and some tens of bytes a
+// frame on this fixture), and dividing the totals by the run count turns any
+// of it into a ±1 difference. The slack covers what survives the cheapest-of-
+// three sampling in measureScrollStep, and is still orders of magnitude below
+// both regressions: 360 more body rows at one allocation a row is hundreds of
+// allocations, and copied rows at visualLine's 24 bytes are ~8 KB a frame.
+// (width_test.go's cuts and cluster_structural_test.go's walks trade the same
+// way.)
 func TestStickyPinCostIsIndependentOfTheWindowSize(t *testing.T) {
-	measure := func(body int) float64 {
-		wb := stickyWideFixtureWith(body, nil)
-		idx, _ := wb.LookupID("tall")
-		winStart, _ := wb.GetWindowLineRange(idx)
-		_ = wb.GetTotalLines()
+	requireQuietAllocMeasurement(t)
 
-		lo, hi := winStart+5, winStart+20
-		y := lo
-		step := func() {
-			y++
-			if y > hi {
-				y = lo
-			}
-			wb.SetViewportPosition(y, 10)
-			_ = wb.GetAll(-1, false)
-		}
-		for i := 0; i < 3; i++ {
-			step()
-		}
-		return testing.AllocsPerRun(200, step)
+	small, large := measureScrollStep(40), measureScrollStep(400)
+	t.Logf("a scroll step costs %d allocations / %d bytes with a 40-row body, %d / %d with a 400-row one",
+		small.allocs, small.bytes, large.allocs, large.bytes)
+	const slackAllocs, slackBytes = 2, 1024
+	allocs := int64(large.allocs) - int64(small.allocs)
+	if allocs > slackAllocs || allocs < -slackAllocs {
+		t.Errorf("a scrolling pinned frame allocated %d with a 40-row body and %d with a 400-row one — "+
+			"the cost must be one row, not the window", small.allocs, large.allocs)
 	}
-	small, large := measure(40), measure(400)
-	if small != large {
-		t.Errorf("a scrolling pinned frame allocated %v with a 40-row body and %v with a 400-row one — "+
-			"the cost must be one row, not the window", small, large)
+	if grew := int64(large.bytes) - int64(small.bytes); grew > slackBytes {
+		t.Errorf("a scrolling pinned frame asked for %d more bytes with a 400-row body than a 40-row one "+
+			"(%d vs %d) — the cost must be one row, not the window", grew, small.bytes, large.bytes)
 	}
 }
 
@@ -376,6 +445,8 @@ func TestStickyPinCostIsIndependentOfTheWindowSize(t *testing.T) {
 // count, so this also pins that the count's memo — not its absence — is what
 // keeps the frame free.
 func TestStickyPinAddsNoAllocations(t *testing.T) {
+	requireQuietAllocMeasurement(t)
+
 	for _, width := range []int{40, 80} {
 		t.Run(itoa(width)+" columns", func(t *testing.T) {
 			wb := NewWindowBuffer(width, DefaultStyles())

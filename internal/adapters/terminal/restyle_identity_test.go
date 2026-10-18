@@ -154,6 +154,8 @@ var restyleTokens = []string{
 // line adds nothing at all; the slack in the bound is for what AllocsPerRun picks up
 // from a -race build's own allocations, not for growth.
 func TestRestyleBreaksDoesNotAllocatePerByte(t *testing.T) {
+	requireQuietAllocMeasurement(t)
+
 	pad := func(n int) string {
 		return "\x1b[31m" + strings.Repeat("a", n) + "\n" + strings.Repeat("b", n) + "\x1b[0m"
 	}
@@ -179,6 +181,8 @@ func TestRestyleBreaksDoesNotAllocatePerByte(t *testing.T) {
 // line into; a scratch declared inside the loop doubles that, and losing the fast
 // path multiplies it by roughly 39.
 func TestWrapVisualLinesKeepsOneWidthScratch(t *testing.T) {
+	requireQuietAllocMeasurement(t)
+
 	const n = 200
 	line := "a short line that makes one row\n"
 	oneN := strings.Repeat(line, n)
