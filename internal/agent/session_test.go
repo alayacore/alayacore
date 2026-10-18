@@ -842,21 +842,21 @@ func TestLoadSessionInvalidReasoningLevel(t *testing.T) {
 // applied as the startup reasoning level for fresh sessions, and that an
 // absent flag leaves the package default in place.
 func TestNewSessionReasoningLevelFlag(t *testing.T) {
-	s := newSession(SessionConfig{
+	s := buildSession(SessionConfig{
 		Input:             &nopInput{},
 		Output:            &nopOutput{},
 		ReasoningLevel:    0,
 		ReasoningLevelSet: true,
-	})
+	}, nil)
 	if got := s.modelService.reasoningLevel; got != config.ReasoningLevelOff {
 		t.Errorf("reasoningLevel = %d, want %d (from --reasoning-level)", got, config.ReasoningLevelOff)
 	}
 
 	// Without the flag, the hardcoded package default applies.
-	s2 := newSession(SessionConfig{
+	s2 := buildSession(SessionConfig{
 		Input:  &nopInput{},
 		Output: &nopOutput{},
-	})
+	}, nil)
 	if got := s2.modelService.reasoningLevel; got != config.DefaultReasoningLevel {
 		t.Errorf("reasoningLevel = %d, want default %d", got, config.DefaultReasoningLevel)
 	}
@@ -871,7 +871,7 @@ func TestRestoreSessionReasoningLevelFlagPrecedence(t *testing.T) {
 	data := &sessionData{sessionMeta: sessionMeta{ReasoningLevel: 0}}
 
 	// Flag set → CLI wins (saved 0, requested 2).
-	s := RestoreFromSession(SessionConfig{
+	s := buildSession(SessionConfig{
 		Input:             &nopInput{},
 		Output:            &nopOutput{},
 		ReasoningLevel:    2,
@@ -882,7 +882,7 @@ func TestRestoreSessionReasoningLevelFlagPrecedence(t *testing.T) {
 	}
 
 	// Flag absent → saved value restored unchanged.
-	s2 := RestoreFromSession(SessionConfig{
+	s2 := buildSession(SessionConfig{
 		Input:  &nopInput{},
 		Output: &nopOutput{},
 	}, data)

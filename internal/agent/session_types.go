@@ -209,8 +209,8 @@ type sessionData struct {
 	Contents []llm.ContentPart // source of truth on reload
 }
 
-// SessionConfig bundles all configuration for creating or restoring a session.
-// This avoids passing 16+ positional parameters to newSession / RestoreFromSession.
+// SessionConfig bundles all configuration for creating or restoring a session,
+// so a constructor takes one value instead of a dozen positional parameters.
 type SessionConfig struct {
 	// IO — required, provided by the adapter.
 	Input  io.Reader

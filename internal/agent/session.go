@@ -299,12 +299,12 @@ func (s *Session) HasRejected() bool { return s.modelService.HasRejected() }
 func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 	cfg.SessionFile = config.ExpandPath(cfg.SessionFile)
 	if cfg.SessionFile == "" {
-		return newSession(cfg), cfg.SessionFile, nil
+		return buildSession(cfg, nil), cfg.SessionFile, nil
 	}
 
 	data, loadErr := loadSession(cfg.SessionFile)
 	if loadErr == nil {
-		s := RestoreFromSession(cfg, data)
+		s := buildSession(cfg, data)
 		if replayErr := s.replayContentsToAdapter(); replayErr != nil {
 			s.modelService.initError = replayErr
 		}
@@ -323,12 +323,18 @@ func LoadOrNewSession(cfg SessionConfig) (*Session, string, error) {
 		_ = protocol.WriteSystemMsg(cfg.Output, protocol.ErrorMsg{Text: fmt.Sprintf("could not load session file %q: %v", cfg.SessionFile, loadErr)})
 		_ = protocol.WriteSystemMsg(cfg.Output, protocol.ErrorMsg{Text: "starting new session"})
 	}
-	return newSession(cfg), cfg.SessionFile, nil
+	return buildSession(cfg, nil), cfg.SessionFile, nil
 }
 
-// newSession creates a fresh session. Does NOT start goroutines —
-// call Start() to begin processing input.
-func newSession(cfg SessionConfig) *Session {
+// buildSession wires a Session from cfg and, when data is non-nil, from the file
+// it was saved as. It does NOT start goroutines — call Start() to begin
+// processing input.
+//
+// One constructor for both cases, because they differ only in what a saved file
+// says: its contents, when it was created, its token count, its reasoning level
+// and its active model. Two copies of the other forty lines is how a field added
+// to a session gets initialized in one path and forgotten in the other.
+func buildSession(cfg SessionConfig, data *sessionData) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	modelService := newModelService(newModelManager(cfg.ModelConfigPath), newRuntimeManager(cfg.RuntimeConfigPath))
@@ -336,13 +342,21 @@ func newSession(cfg SessionConfig) *Session {
 	modelService.proxyURL = cfg.ProxyURL
 	modelService.debugDir = cfg.DebugLogDir
 
+	var contents []llm.ContentPart
+	createdAt := time.Now()
+	if data != nil {
+		modelService.sessionMetaModel = data.ActiveModel
+		contents = data.Contents
+		createdAt = data.CreatedAt
+	}
+
 	s := &Session{
 		sessionConfig: sessionConfig{
 			modelService:  modelService,
 			SessionConfig: cfg,
 		},
 		runState: runState{
-			Contents:     make([]llm.ContentPart, 0),
+			Contents:     contents,
 			taskEventCh:  make(chan taskEvent, 64),
 			taskResultCh: make(chan []llm.ContentPart, 1),
 			cancelReqCh:  make(chan chan bool, 1),
@@ -353,86 +367,42 @@ func newSession(cfg SessionConfig) *Session {
 			confirmChs:    make(map[string]chan bool),
 		},
 		runDoneCh: make(chan struct{}),
-		CreatedAt: time.Now(),
+		CreatedAt: createdAt,
 	}
-	s.initToolConfirmSet(cfg.ToolConfirmTools)
-	s.modelService.ResolveActiveModel()
-
-	// --reasoning-level CLI flag overrides the hardcoded default for fresh
-	// sessions. modelService.SetReasoningLevel (not Session.SetReasoningLevel)
-	// is used so no SM reasoning frame is emitted before the startup broadcast.
-	if cfg.ReasoningLevelSet {
-		s.modelService.SetReasoningLevel(cfg.ReasoningLevel)
+	if data != nil {
+		// History IDs are re-issued in record order on load, so the counter
+		// resumes past the restored contents (see messageVersion's note on why a
+		// file carries no ids).
+		s.ContextTokens = data.ContextTokens
+		s.histCounter = uint64(len(s.Contents))
 	}
-
-	if model := s.modelService.ActiveModel(); model != nil {
-		s.ContextLimit = s.modelService.contextLimit
-	}
-
-	// Set up MCP service (manages init lifecycle).
-	s.mcpService = newMCPService(cfg.MCPInit, s.Output)
-
-	// Session load + replay are synchronous and complete by construction
-	// (LoadOrNewSession), so the initial lifecycle state is Starting.
-	s.state.Store(int32(SessionStarting))
-
-	s.sendSystemInfo(systemInfoAll)
-	return s
-}
-
-// RestoreFromSession creates a session from saved data.
-// Does NOT start goroutines — call Start() to begin processing input.
-func RestoreFromSession(cfg SessionConfig, data *sessionData) *Session {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	modelService := newModelService(newModelManager(cfg.ModelConfigPath), newRuntimeManager(cfg.RuntimeConfigPath))
-	modelService.sessionMetaModel = data.ActiveModel
-	modelService.overrideModel = cfg.OverrideActiveModel
-	modelService.proxyURL = cfg.ProxyURL
-	modelService.debugDir = cfg.DebugLogDir
-
-	s := &Session{
-		sessionConfig: sessionConfig{
-			modelService:  modelService,
-			SessionConfig: cfg,
-		},
-		runState: runState{
-			Contents:     data.Contents,
-			taskEventCh:  make(chan taskEvent, 64),
-			taskResultCh: make(chan []llm.ContentPart, 1),
-			cancelReqCh:  make(chan chan bool, 1),
-		},
-		sharedState: sharedState{
-			sessionCtx:    ctx,
-			sessionCancel: cancel,
-			confirmChs:    make(map[string]chan bool),
-		},
-		runDoneCh: make(chan struct{}),
-		CreatedAt: data.CreatedAt,
-	}
-	s.ContextTokens = data.ContextTokens
-	s.histCounter = uint64(len(s.Contents))
 
 	s.initToolConfirmSet(cfg.ToolConfirmTools)
 	s.modelService.ResolveActiveModel()
 
-	// Precedence: an explicit --reasoning-level CLI flag wins over the
-	// session file's saved reasoning_level; without it, the saved value
-	// (or the package default for files missing the key) is restored.
-	reasoningLevel := data.ReasoningLevel
+	// Reasoning level: an explicit --reasoning-level wins over the session file's
+	// saved value, which wins over the default a fresh session starts with (a
+	// file that names none is defaulted by parseSessionMeta).
+	//
+	// modelService.SetReasoningLevel (not Session.SetReasoningLevel) is used so no
+	// SM reasoning frame is emitted before the startup broadcast.
+	reasoningLevel := config.DefaultReasoningLevel
+	if data != nil {
+		reasoningLevel = data.ReasoningLevel
+	}
 	if cfg.ReasoningLevelSet {
 		reasoningLevel = cfg.ReasoningLevel
 	}
 	s.modelService.SetReasoningLevel(reasoningLevel)
 
-	// Set up MCP service (manages init lifecycle).
-	s.mcpService = newMCPService(cfg.MCPInit, s.Output)
-
-	// Apply context limit from the resolved model so the status bar
-	// can show "tokens/limit (pct%)" immediately, before any API call.
+	// The context limit is applied up front so the status bar can show
+	// "tokens/limit (pct%)" before any API call.
 	if model := s.modelService.ActiveModel(); model != nil {
 		s.ContextLimit = s.modelService.contextLimit
 	}
+
+	// Set up MCP service (manages init lifecycle).
+	s.mcpService = newMCPService(cfg.MCPInit, s.Output)
 
 	// Session load + replay are synchronous and complete by construction
 	// (LoadOrNewSession), so the initial lifecycle state is Starting.

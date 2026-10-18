@@ -90,7 +90,7 @@ func TestSessionState_NewSessionStartsStarting(t *testing.T) {
 
 // A restored session starts in SessionStarting for the same reason.
 func TestSessionState_RestoreStartsStarting(t *testing.T) {
-	s := RestoreFromSession(SessionConfig{
+	s := buildSession(SessionConfig{
 		Input:  &nopInput{},
 		Output: &nopOutput{},
 	}, &sessionData{})

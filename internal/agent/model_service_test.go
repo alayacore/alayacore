@@ -57,10 +57,10 @@ context_limit: 1000000
 	}
 
 	output := &MockOutput{}
-	s := newSession(SessionConfig{
+	s := buildSession(SessionConfig{
 		Output:          output,
 		ModelConfigPath: configPath,
-	})
+	}, nil)
 
 	if s.modelService.contextLimit != 1000000 {
 		t.Errorf("modelService.contextLimit = %d, want 1000000", s.modelService.contextLimit)
