@@ -57,6 +57,13 @@ type frameHarness struct {
 	steps                  int
 	diffFrames, fullFrames int
 	lastView               *View // mirrors Program.lastView
+
+	// noOverlayRowWraps is set by a run whose subject is that an overlay's rows
+	// fit the pane (TestOverlayBoxFitsANarrowPane). A row wider than the screen
+	// wraps into a second terminal row, and the wrapped remainder is exactly
+	// the residue that test was written for, so every frame it paints is checked
+	// for it.
+	noOverlayRowWraps bool
 }
 
 func newFrameHarness(t *testing.T, width, height int) *frameHarness {
@@ -156,6 +163,25 @@ func (h *frameHarness) assertFrame(v View, label string) {
 	}
 	if h.host != nil {
 		h.assertHostContainment(v, label, lastFrame(h.written), h.hostBefore)
+	}
+	if h.noOverlayRowWraps {
+		h.assertOverlayRowsAreOneRowTall(v, label)
+	}
+}
+
+// assertOverlayRowsAreOneRowTall fails when a row the frame anchors with an
+// absolute cursor position — the overlay box, and nothing in the transcript —
+// is wider than the screen and therefore wraps. positionedRows works that out
+// the way a terminal would, so the check needs no knowledge of which component
+// drew the row.
+func (h *frameHarness) assertOverlayRowsAreOneRowTall(v View, label string) {
+	h.t.Helper()
+	for _, r := range positionedRows(v.Content, h.width) {
+		if r.base || r.terminalRows == 1 {
+			continue
+		}
+		h.fail(label, fmt.Sprintf("an overlay row is %d terminal rows tall on a %d-column screen, "+
+			"so its tail wraps onto the row below: %q", r.terminalRows, h.width, r.frameRow.text))
 	}
 }
 
@@ -464,6 +490,7 @@ func TestOverlayBoxFitsANarrowPane(t *testing.T) {
 	for _, tc := range []struct{ width, height int }{{20, 40}, {24, 24}, {26, 30}} {
 		t.Run(fmt.Sprintf("%dx%d", tc.width, tc.height), func(t *testing.T) {
 			h := newFrameHarness(t, tc.width, tc.height)
+			h.noOverlayRowWraps = true
 			for i := 0; i < 8; i++ {
 				h.appendWin(tagAssistantText, fmt.Sprintf("w%d", i),
 					strings.Repeat(fmt.Sprintf("message %d line of text that wraps around. ", i), 3))
