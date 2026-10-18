@@ -189,5 +189,20 @@ can decide exactly: a relative Markdown link that does not resolve from the file
 that wrote it, and a perishable shape in prose — a line number or a line count.
 It guesses at nothing else; its header says what it leaves to review, and why.
 
+### A commit message names the kind of change, not the size of the diff
+
+`refactor` means the behavior did not change: the same wire bytes, the same
+output, the same contract — only the shape of the code. Renaming a Go symbol is
+a refactor. Renaming a field on the wire is not, because a peer parses those
+bytes: an adapter written against the previous generation sends the old name and
+reads the old shape, and after the change it cannot. That is a **breaking
+change**, and the message says so — in the type, and in a `BREAKING CHANGE:`
+footer stating what a peer at the previous generation must do. A large diff is
+not a reason to reach for the word, and neither is the absence of a new command
+or flag.
+
+One question decides it: **could a program built against the previous generation
+keep working unchanged?** If not, the commit is not a refactor.
+
 The rule is not "write less" — this repo's comments explain *why*, and that is the
 point. It is "do not write the same thing twice".
