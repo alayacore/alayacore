@@ -189,24 +189,11 @@ func TestExecuteCommandNoTimeoutByDefault(t *testing.T) {
 func TestExecuteCommandWorkingDir(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Both halves are checked, and the reason is the pair: Getwd's error was
-	// already discarded, so a failure there left originalWd empty and the
-	// restore below would have "succeeded" at chdir("") — leaving every later
-	// test in this binary running out of tmpDir, which t.TempDir() then deletes.
-	// A test that fails for the wrong reason is bad; one that passes from the
-	// wrong directory is worse.
-	originalWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := os.Chdir(originalWd); err != nil {
-			t.Errorf("restore working directory: %v — later tests in this run inherit it", err)
-		}
-	}()
+	// t.Chdir restores the working directory even when the test fails, which
+	// is the half that used to go wrong: a discarded Getwd error left the
+	// restore chdir("")-ing, and every later test in this binary ran out of a
+	// t.TempDir() that was then deleted.
+	t.Chdir(tmpDir)
 
 	content, err := executeCommand(context.Background(), ExecuteCommandInput{
 		Command: "pwd",

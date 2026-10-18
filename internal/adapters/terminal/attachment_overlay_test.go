@@ -6,6 +6,8 @@ package terminal
 // with no "> " marker and no indent.
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -31,10 +33,22 @@ func TestAttachmentOverlayBareInputPrompt(t *testing.T) {
 }
 
 func TestAttachmentOverlayListRowsFlushLeft(t *testing.T) {
+	// The picker lists the working directory, so give it one. The package
+	// directory used to be the fixture: its contents are not ours to assert
+	// on, and the skip below it meant the test ran nowhere once the directory
+	// was empty.
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+
 	styles := DefaultStyles()
 	aw := NewAttachmentOverlay(styles).Open()
 	if len(aw.filtered) == 0 {
-		t.Skip("current directory has no entries — nothing to render")
+		t.Fatal("the fixture's two files should be listed")
 	}
 
 	plain := stripANSI(aw.View().Content)

@@ -49,12 +49,21 @@ func TestRelativeContainerAdvertisesAnAbsoluteLocation(t *testing.T) {
 // argument list. A literal "~" is a path that does not exist, so the whole
 // feature silently did nothing.
 func TestTildeContainerIsExpanded(t *testing.T) {
+	// The home here is the OS account's, not $HOME: config.ExpandPath resolves
+	// "~" through user.Current, which no environment variable can inject. So
+	// the two things this test cannot control are stated rather than assumed —
+	// a platform with no home, and a machine that happens to have the
+	// container below. Neither is a failure of the code under test.
 	home := config.ExpandPath("~")
 	if home == "~" {
-		t.Skip("no home directory to expand against")
+		t.Skip("this platform has no home directory to expand against")
 	}
 
 	missing := filepath.Join(".alayacore", "skills", "nothing-here")
+	if _, err := os.Stat(filepath.Join(home, missing)); err == nil {
+		t.Skipf("%s exists on this machine, so the \"does not exist\" notice cannot be observed", filepath.Join(home, missing))
+	}
+
 	m := NewManager([]string{"~/" + filepath.ToSlash(missing)})
 
 	if errs := m.GetLoadErrors(); len(errs) != 0 {
