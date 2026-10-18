@@ -10,8 +10,9 @@
 # script says so and fails, rather than reporting a pass over a check it did not
 # run.
 #
-# Three classes. Each is exact — a claim in any of them holds or it does not,
-# with nothing in between for a reviewer to argue about.
+# Each class below is exact — a claim in any of them holds or it does not, with
+# nothing in between for a reviewer to argue about. The list is not counted: a
+# number here is one more thing to update for a class that was already described.
 #
 # 1. Relative links. The docs are a graph — architecture.md points at
 #    development-principles.md, tui.md points at internal/tool-spinner-refresh.md
@@ -47,6 +48,14 @@
 #    `*.go`/`*.sh` in a code span on a non-fenced line must be a basename in the
 #    tree, or a path that resolves from the doc's directory or the repo root.
 #
+# 5. Flags. A doc that names --terseio is asserting the parser answers to it.
+#    --model-config, --runtime-config and --themes were retired when the four
+#    config files moved under one --config-path, and configuration.md went on
+#    listing all three in a migration note: a reader who copies one gets a usage
+#    error and no config directory. The set is derived, not maintained — every
+#    flag config.Parse registers, read out of the source — so a flag added there
+#    is docable the same day and a flag removed there is a finding the same day.
+#
 # Scope, deliberately narrow. What this does NOT check, and why:
 #
 #   - A bare filename in prose ("see width.go" without backticks). As likely to
@@ -59,6 +68,11 @@
 #     doc defines for itself. An allowlist of 100 names costs more than the drift
 #     it would catch, and a check whose allowlist is the answer to every finding
 #     is a check nobody keeps updated.
+#   - A flag belonging to another program, in a fenced block that does not name
+#     `alayacore`. Class 5 reads un-fenced lines (a `--name` in prose is this
+#     tree's by the same convention class 4 uses for file names) and the fenced
+#     blocks that are examples of running `alayacore`; a block showing `rg --json`
+#     is that program's, and a flag retired inside such a block would be missed.
 #   - Counts of call sites, symbols or allocations. Not decidable at all.
 #   - Quoted material. Fenced blocks are blanked before the shape checks run:
 #     sample output ("Output (5000 lines, 194.2KB)") and wire dumps
@@ -99,15 +113,19 @@ prose=$(mktemp)
 fragments=$(mktemp)
 fragcount=$(mktemp)
 stale=$(mktemp)
+badflags=$(mktemp)
+flaglines=$(mktemp)
 namelist=$(mktemp)
 treepaths=$(mktemp)
 slashpaths=$(mktemp)
 work=$(mktemp -d)
-trap 'rm -f "$broken" "$shapes" "$prose" "$fragments" "$fragcount" "$stale" "$namelist" "$treepaths" "$slashpaths"; rm -rf "$work"' EXIT
+trap 'rm -f "$broken" "$shapes" "$prose" "$fragments" "$fragcount" "$stale" "$namelist" "$treepaths" "$slashpaths" "$badflags" "$flaglines"; rm -rf "$work"' EXIT
 checked=0
 anchors_checked=0
 anchors_built=1
 names_checked=0
+flags_checked=0
+flags_derived=1
 nfiles=0
 
 # report_name records the name in $name as missing from $f.
@@ -131,6 +149,42 @@ strip_fences() {
 	awk '
 		/^[[:space:]]*```/ { fence = !fence; print ""; next }
 		{ if (fence) print ""; else print }
+	' "$1"
+}
+
+# Class 5 is class 4's other half. flag_src is the one place flags are
+# registered, so it is the one place the set is read from.
+flag_src=internal/config/config.go
+flags=$(grep -oE 'fs\.(Bool|String|Int|Var)\([^"]*"([a-z0-9-]+)"' "$flag_src" |
+	sed -E 's/.*"([a-z0-9-]+)"$/\1/' | sort -u) || true
+# The derivation is asserted, not trusted: a pattern that stopped matching would
+# report every mention (an empty set) or none (a broken loop). Both shapes are
+# checked, because they are what a changed registration looks like.
+if ! printf '%s\n' "$flags" | grep -qx session ||
+	! printf '%s\n' "$flags" | grep -qx skill; then
+	echo "the flags config.Parse registers could not be read from $flag_src — flags were not checked" >&2
+	flags_derived=0
+fi
+# --help is the flag package's own, answered whether or not this tree registers it.
+allowed=" $(printf '%s\n' "$flags" | tr '\n' ' ')help "
+
+# Keep a link target out of the scan: GitHub slugs "Steering — a prompt" to
+# #steering--a-prompt-…, whose two hyphens are an em dash, not a flag.
+strip_targets() { sed -E 's/\]\([^)]*\)//g'; }
+
+# flag_lines prints the lines a flag mention is read from, numbered: every
+# un-fenced line, and every line of a fenced block that names alayacore (an
+# example of running it, continuations included).
+flag_lines() {
+	awk '
+		/^[[:space:]]*```/ {
+			if (fenced) { if (names) for (i = 1; i <= n; i++) print buf[i]; fenced = 0 }
+			else { fenced = 1 }
+			n = 0; names = 0; next
+		}
+		fenced { n++; buf[n] = NR ":" $0; if ($0 ~ /alayacore/) names = 1; next }
+		{ print NR ":" $0 }
+		END { if (fenced && names) for (i = 1; i <= n; i++) print buf[i] }
 	' "$1"
 }
 
@@ -169,6 +223,21 @@ while IFS= read -r f; do
 		*) grep -Fxq "$name" "$namelist" || report_name ;;
 		esac
 	done <<<"$spans"
+
+	flag_lines "$f" | strip_targets >"$flaglines" || true
+	while IFS= read -r entry; do
+		[ -n "$entry" ] || continue
+		text=${entry#*:}
+		for flag in $(printf '%s\n' "$text" | grep -oE '\-\-[a-z][a-z0-9-]*' || true); do
+			flags_checked=$((flags_checked + 1))
+			# allowed holds names without their hyphens, as config registers them.
+			case "$allowed" in
+			*" ${flag#--} "*) continue ;;
+			esac
+			printf '%s:%s\n' "$f" "$entry" >>"$badflags"
+			break
+		done
+	done <"$flaglines"
 done <<<"$files"
 
 # Class 3. One program for the whole tree rather than one pass per file: a page
@@ -206,6 +275,14 @@ if [ -s "$stale" ]; then
 	sed 's/^/  /' "$stale" >&2
 	status=1
 fi
+# A failed derivation already said so; listing every mention as a finding on top
+# of it would bury the one line that matters.
+if [ "$flags_derived" -eq 1 ] && [ -s "$badflags" ]; then
+	count=$(wc -l <"$badflags" | tr -d ' ')
+	echo "$count flags in the docs are not flags this program answers to (config.Parse registers them, $flag_src):" >&2
+	sed 's/^/  /' "$badflags" >&2
+	status=1
+fi
 if [ -s "$shapes" ]; then
 	count=$(wc -l <"$shapes" | tr -d ' ')
 	echo "$count perishable shapes in prose — a line number or a line count, which is what a command prints:" >&2
@@ -213,6 +290,7 @@ if [ -s "$shapes" ]; then
 	status=1
 fi
 [ "$anchors_built" -eq 1 ] || status=1
+[ "$flags_derived" -eq 1 ] || status=1
 [ "$status" -eq 0 ] || exit 1
 
-echo "$checked relative Markdown links, $anchors_checked heading anchors and $names_checked file names across $nfiles files resolve; no perishable shapes in prose."
+echo "$checked relative Markdown links, $anchors_checked heading anchors, $names_checked file names and $flags_checked flag mentions across $nfiles files resolve; no perishable shapes in prose."
