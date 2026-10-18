@@ -100,7 +100,7 @@ type runState struct {
 	inputEnded bool
 
 	// taskCommandID holds the command ID of the task that just finished.
-	// sendTaskMsg uses it for the completion taskMsg, since activeTask is
+	// sendTaskMsg uses it for the completion task message, since activeTask is
 	// cleared before the final broadcast.
 	taskCommandID string
 
@@ -246,7 +246,7 @@ func (s *Session) setState(phase SessionState) {
 	}
 	s.state.Store(int32(phase))
 	if phase == SessionReady || phase == SessionClosed {
-		s.writeSystemMsg(sessionMsg{State: phase.String()})
+		s.writeSystemMsg(protocol.SessionMsg{State: phase.String()})
 	}
 }
 

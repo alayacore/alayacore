@@ -248,7 +248,7 @@ func (mm *modelManager) getModels() []modelConfig {
 
 // syncFromContent replaces all models with parsed JSON content, persists to the
 // config file, and returns validation messages.  The JSON format matches the
-// modelListMsg wire format ([]modelConfig).
+// protocol.ModelListMsg wire format ([]modelConfig).
 func (mm *modelManager) syncFromContent(content string) []string {
 	var models []modelConfig
 	if err := json.Unmarshal([]byte(content), &models); err != nil {

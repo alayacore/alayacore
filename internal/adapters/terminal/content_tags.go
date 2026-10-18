@@ -1,8 +1,6 @@
 package terminal
 
 import (
-	"encoding/json"
-
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/wire"
 )
@@ -112,14 +110,4 @@ func mediaLabel(displayTag string) string {
 		return wire.MediaLabel(wire.KindDocument)
 	}
 	return ""
-}
-
-// decodeContent parses a content-frame body. ok is false on malformed JSON; the
-// frame is then skipped rather than trusted.
-func decodeContent(value string) (protocol.ContentData, bool) {
-	var d protocol.ContentData
-	if err := json.Unmarshal([]byte(value), &d); err != nil {
-		return protocol.ContentData{}, false
-	}
-	return d, true
 }

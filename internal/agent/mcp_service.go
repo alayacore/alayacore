@@ -91,7 +91,7 @@ func (m *mcpService) SendAuthCodeResult(server, code, redirectURI, iss string) b
 
 // mcpEventResult describes what the Session should do after processing an event.
 type mcpEventResult struct {
-	SystemMsg *mcpMsgData
+	SystemMsg *protocol.MCPMsg
 
 	ApplyResult bool
 	Tools       []llm.Tool
@@ -99,14 +99,6 @@ type mcpEventResult struct {
 	Manager     *mcp.Manager
 
 	Aborted bool
-}
-
-// mcpMsgData carries the data for an MCP system message.
-type mcpMsgData struct {
-	Status string
-	Server string
-	URL    string
-	Error  string
 }
 
 // HandleEvent processes a single MCP initialization event.
@@ -121,7 +113,7 @@ func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 	switch evt.Type {
 	case mcp.InitConnecting, mcp.InitConnected:
 		return &mcpEventResult{
-			SystemMsg: &mcpMsgData{
+			SystemMsg: &protocol.MCPMsg{
 				Status: string(evt.Type),
 				Server: evt.Server,
 			},
@@ -129,7 +121,7 @@ func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 
 	case mcp.InitFailed:
 		return &mcpEventResult{
-			SystemMsg: &mcpMsgData{
+			SystemMsg: &protocol.MCPMsg{
 				Status: string(evt.Type),
 				Server: evt.Server,
 				Error:  evt.Error,
@@ -138,7 +130,7 @@ func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 
 	case mcp.InitAuthConfirm:
 		return &mcpEventResult{
-			SystemMsg: &mcpMsgData{
+			SystemMsg: &protocol.MCPMsg{
 				Status: protocol.MCPStatusAuthRequired,
 				Server: evt.Server,
 				URL:    evt.URL,
@@ -147,7 +139,7 @@ func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 
 	case mcp.InitAuthRunning:
 		return &mcpEventResult{
-			SystemMsg: &mcpMsgData{
+			SystemMsg: &protocol.MCPMsg{
 				Status: string(evt.Type),
 				Server: evt.Server,
 			},
@@ -156,7 +148,7 @@ func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 	case mcp.InitDone:
 		m.ready.Store(true)
 		return &mcpEventResult{
-			SystemMsg:   &mcpMsgData{Status: protocol.MCPStatusDone},
+			SystemMsg:   &protocol.MCPMsg{Status: protocol.MCPStatusDone},
 			ApplyResult: true,
 			Tools:       evt.Tools,
 			SysFragment: evt.SysFragment,
@@ -166,7 +158,7 @@ func (m *mcpService) HandleEvent(evt *mcp.InitEvent) *mcpEventResult {
 	case mcp.InitCanceled:
 		m.ready.Store(true)
 		return &mcpEventResult{
-			SystemMsg: &mcpMsgData{Status: protocol.MCPStatusDone},
+			SystemMsg: &protocol.MCPMsg{Status: protocol.MCPStatusDone},
 			Aborted:   true,
 		}
 	}
@@ -184,14 +176,9 @@ func (m *mcpService) MarkAborted() {
 }
 
 // sendSystemMsg writes an MCP system message to the output writer.
-func (m *mcpService) sendSystemMsg(data *mcpMsgData) {
+func (m *mcpService) sendSystemMsg(msg *protocol.MCPMsg) {
 	if m.output == nil {
 		return
 	}
-	_ = protocol.WriteSystemMsg(m.output, mcpMsg{
-		Status: data.Status,
-		Server: data.Server,
-		URL:    data.URL,
-		Error:  data.Error,
-	})
+	_ = protocol.WriteSystemMsg(m.output, *msg)
 }

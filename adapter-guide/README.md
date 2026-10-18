@@ -720,7 +720,7 @@ The system-message samples follow with their schema.
 | `version` | `message_version` (int), `core_version` (string) | `SM-message-version.txt` |
 | `model` | `active_id` (int), `active_name` (string), `context_limit` (int) | `SM-model.txt` |
 | `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, serial_tool_calls:bool, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.txt` |
-| `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string), `theme` (object, optional — full palette sent on startup, omitted on theme switch) | `SM-theme.txt` |
+| `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string) — the palette travels in `theme_list`, which an adapter caches, so this frame only says which entry is active | `SM-theme.txt` |
 | `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, added, removed: string}}`) | `SM-theme-list.txt` |
 | `reasoning_level` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning-level.txt` |
 | `video_config` | `fps` (int), `res` (int) | `SM-video-config.txt` |

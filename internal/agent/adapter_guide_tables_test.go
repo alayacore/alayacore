@@ -28,6 +28,7 @@ package agent
 //   - Every .txt named in the guide's sample column must exist.
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -45,20 +46,20 @@ import (
 // payload here, or its table row goes unchecked.
 func smPayloads() map[string]any {
 	return map[string]any{
-		string(protocol.MsgTypeVersion):        messageVersionMsg{},
-		string(protocol.MsgTypeModel):          modelMsg{},
-		string(protocol.MsgTypeModelList):      modelListMsg{},
+		string(protocol.MsgTypeVersion):        protocol.MessageVersionMsg{},
+		string(protocol.MsgTypeModel):          protocol.ModelMsg{},
+		string(protocol.MsgTypeModelList):      protocol.ModelListMsg{},
 		string(protocol.MsgTypeTheme):          themeMsg{},
 		string(protocol.MsgTypeThemeList):      themeListMsg{},
-		string(protocol.MsgTypeReasoningLevel): reasoningMsg{},
-		string(protocol.MsgTypeVideoConfig):    videoConfigMsg{},
-		string(protocol.MsgTypeTask):           taskMsg{},
+		string(protocol.MsgTypeReasoningLevel): protocol.ReasoningLevelMsg{},
+		string(protocol.MsgTypeVideoConfig):    protocol.VideoConfigMsg{},
+		string(protocol.MsgTypeTask):           protocol.TaskMsg{},
 		string(protocol.MsgTypeError):          protocol.ErrorMsg{},
 		string(protocol.MsgTypeNotify):         protocol.NotifyMsg{},
 		string(protocol.MsgTypeToolConfirm):    protocol.ToolConfirmMsg{},
-		string(protocol.MsgTypeMCP):            mcpMsg{},
-		string(protocol.MsgTypeSession):        sessionMsg{},
-		string(protocol.MsgTypeSteering):       steeringMsg{},
+		string(protocol.MsgTypeMCP):            protocol.MCPMsg{},
+		string(protocol.MsgTypeSession):        protocol.SessionMsg{},
+		string(protocol.MsgTypeSteering):       protocol.SteeringMsg{},
 	}
 }
 
@@ -460,6 +461,51 @@ func TestAdapterGuideMCPStatusesMatchTheProtocol(t *testing.T) {
 	for status := range documented {
 		if !declared[status] {
 			t.Errorf("the guide documents mcp status %s, which protocol.MCPStatuses does not declare", status)
+		}
+	}
+}
+
+// TestSMPayloadsRoundTripThroughTheDecoder checks the other end of the table
+// above: every payload smPayloads names is one protocol.DecodeSystemMsg can
+// decode, and it decodes to the value that was encoded.
+//
+// Without this, a type could join the vocabulary with a payload and no decoder
+// case, and every adapter would drop it in silence — the failure mode
+// protocol/sm.go exists to end. The two theme payloads are the stated exception:
+// they carry theme.Theme, which protocol does not depend on, so the adapter that
+// draws them decodes them itself. Asserting nil for those two is what keeps the
+// exception a decision rather than an oversight: add one to protocol and this
+// test says so.
+func TestSMPayloadsRoundTripThroughTheDecoder(t *testing.T) {
+	themed := map[string]bool{
+		string(protocol.MsgTypeTheme):     true,
+		string(protocol.MsgTypeThemeList): true,
+	}
+
+	for smType, payload := range smPayloads() {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			t.Errorf("%q: marshal payload: %v", smType, err)
+			continue
+		}
+		msg, err := protocol.DecodeSystemMsg(protocol.SystemMsgEnvelope{Type: smType, Data: data})
+		if err != nil {
+			t.Errorf("%q: decode: %v", smType, err)
+			continue
+		}
+
+		if themed[smType] {
+			if msg != nil {
+				t.Errorf("%q is decoded by protocol; drop it from this test's exception list", smType)
+			}
+			continue
+		}
+		if msg == nil {
+			t.Errorf("%q has a payload in smPayloads but no case in protocol.DecodeSystemMsg", smType)
+			continue
+		}
+		if !reflect.DeepEqual(msg, payload) {
+			t.Errorf("%q decoded to %#v, want %#v", smType, msg, payload)
 		}
 	}
 }

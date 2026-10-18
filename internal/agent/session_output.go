@@ -101,9 +101,9 @@ func (s *Session) writeNotifyf(format string, args ...any) {
 
 // writeSteering reports one steering lifecycle event as an SM "steering"
 // frame. phase is one of protocol.Steering*; reason and text are optional
-// (see steeringMsg).
+// (see protocol.SteeringMsg).
 func (s *Session) writeSteering(phase, reason, text string) {
-	s.writeSystemMsg(steeringMsg{Phase: phase, Reason: reason, Text: text})
+	s.writeSystemMsg(protocol.SteeringMsg{Phase: phase, Reason: reason, Text: text})
 }
 
 // writeCmdResult writes a CO (Command Output) frame for one command request.
@@ -188,7 +188,7 @@ func (s *Session) sendSystemInfo(kind systemInfoKind) {
 }
 
 func (s *Session) sendMessageVersionMsg() {
-	s.writeSystemMsg(messageVersionMsg{MessageVersion: messageVersion, CoreVersion: version.Version})
+	s.writeSystemMsg(protocol.MessageVersionMsg{MessageVersion: messageVersion, CoreVersion: version.Version})
 }
 
 func (s *Session) sendTaskMsg() {
@@ -198,7 +198,7 @@ func (s *Session) sendTaskMsg() {
 	if s.activeTask != nil {
 		commandID = s.activeTask.commandID
 	}
-	s.writeSystemMsg(taskMsg{
+	s.writeSystemMsg(protocol.TaskMsg{
 		InProgress:    s.activeTask != nil,
 		CurrentStep:   s.activeTaskStep(),
 		MaxSteps:      s.MaxSteps,
@@ -211,7 +211,7 @@ func (s *Session) sendTaskMsg() {
 
 func (s *Session) sendModelMsg() {
 	ms := s.modelService
-	s.writeSystemMsg(modelMsg{
+	s.writeSystemMsg(protocol.ModelMsg{
 		ActiveModelID:   ms.ActiveModelID(),
 		ActiveModelName: ms.ActiveModelName(),
 		ContextLimit:    ms.contextLimit,
@@ -224,7 +224,7 @@ func (s *Session) sendModelListMsg() {
 	if !ms.HasModels() {
 		return
 	}
-	s.writeSystemMsg(modelListMsg{
+	s.writeSystemMsg(protocol.ModelListMsg{
 		Models: toModelInfos(ms.GetModels()),
 	})
 }
@@ -290,9 +290,9 @@ func (s *Session) sendThemeListMsg() {
 }
 
 func (s *Session) sendReasoningMsg() {
-	s.writeSystemMsg(reasoningMsg{Level: s.modelService.reasoningLevel})
+	s.writeSystemMsg(protocol.ReasoningLevelMsg{Level: s.modelService.reasoningLevel})
 }
 
 func (s *Session) sendVideoConfigMsg() {
-	s.writeSystemMsg(videoConfigMsg{FPS: s.modelService.videoFPS, Res: s.modelService.videoRes})
+	s.writeSystemMsg(protocol.VideoConfigMsg{FPS: s.modelService.videoFPS, Res: s.modelService.videoRes})
 }

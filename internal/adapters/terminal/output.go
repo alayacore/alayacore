@@ -183,7 +183,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 	// window. Instead of writing directly to WindowBuffer, accumulate for
 	// coalescing. The content kind (text vs reasoning) rides in the JSON.
 	case wire.TagAssistantXDelta:
-		d, ok := decodeContent(value)
+		d, ok := protocol.DecodeContent(value)
 		if !ok {
 			return
 		}
@@ -197,7 +197,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 	// live streaming, but carries the authoritative content during replay.
 	// Only display if no window exists yet (replay case).
 	case wire.TagAssistantX:
-		d, ok := decodeContent(value)
+		d, ok := protocol.DecodeContent(value)
 		if !ok {
 			return
 		}
@@ -212,7 +212,7 @@ func (to *outputWriter) writeColored(tag string, value string) {
 
 	// User content — accumulated until the next non-user tag triggers flush.
 	case wire.TagUserX:
-		d, ok := decodeContent(value)
+		d, ok := protocol.DecodeContent(value)
 		if !ok {
 			return
 		}
@@ -488,49 +488,67 @@ func (to *outputWriter) handleSystemFrame(value string) {
 	if err != nil {
 		return
 	}
+	// The two theme payloads carry theme.Theme, which protocol does not depend on
+	// (protocol/sm.go says why), so they are the only ones this adapter reads
+	// itself. Everything else is decoded by protocol as the type its envelope
+	// names, so a payload's shape lives in one place and a renamed field is a
+	// compile error in the handler below rather than a zero value drawn as empty.
 	switch protocol.SystemMsgType(env.Type) {
-	case protocol.MsgTypeError:
-		to.handleSystemError(env.Data)
-	case protocol.MsgTypeNotify:
-		to.handleSystemNotify(env.Data)
-	case protocol.MsgTypeTask:
-		to.handleSystemTask(env.Data)
-	case protocol.MsgTypeModel:
-		to.handleSystemModel(env.Data)
-	case protocol.MsgTypeModelList:
-		to.handleSystemModelList(env.Data)
 	case protocol.MsgTypeTheme:
 		to.handleSystemTheme(env.Data)
 	case protocol.MsgTypeThemeList:
 		to.handleSystemThemeList(env.Data)
-	case protocol.MsgTypeReasoningLevel:
-		to.handleSystemReasoningLevel(env.Data)
-	case protocol.MsgTypeVideoConfig:
-		to.handleSystemVideoConfig(env.Data)
-	case protocol.MsgTypeToolConfirm:
-		to.handleSystemToolConfirm(env.Data)
-	case protocol.MsgTypeMCP:
-		to.handleSystemMCP(env.Data)
-	case protocol.MsgTypeSession:
-		to.handleSystemSession(env.Data)
-	case protocol.MsgTypeSteering:
-		to.handleSystemSteering(env.Data)
+	default:
+		msg, derr := protocol.DecodeSystemMsg(env)
+		if derr != nil {
+			// A known type whose payload is not that type. An adapter draws what
+			// it is handed and degrades on what it cannot use — the asymmetry
+			// protocol.KindAllowed documents — so the frame is dropped, and the
+			// stream is not.
+			return
+		}
+		to.applySystemMsg(msg)
 	}
 	to.dirty.Store(true)
+}
+
+// applySystemMsg folds one decoded system message into the display state.
+//
+// A nil msg is a type this build does not know, which is not a failure: the SM
+// vocabulary grows without breaking readers, and an adapter that answers every
+// type it can name keeps working when the core learns a new one.
+func (to *outputWriter) applySystemMsg(msg protocol.SystemMsg) {
+	switch m := msg.(type) {
+	case protocol.ErrorMsg:
+		to.handleSystemError(m.Text)
+	case protocol.NotifyMsg:
+		to.handleSystemNotify(m.Text)
+	case protocol.TaskMsg:
+		to.handleSystemTask(m)
+	case protocol.ModelMsg:
+		to.handleSystemModel(m)
+	case protocol.ModelListMsg:
+		to.handleSystemModelList(m)
+	case protocol.ReasoningLevelMsg:
+		to.status.updateReasoningLevel(m.Level)
+	case protocol.VideoConfigMsg:
+		to.status.updateVideoConfig(m.FPS, m.Res)
+	case protocol.ToolConfirmMsg:
+		to.handleSystemToolConfirm(m.CallID)
+	case protocol.MCPMsg:
+		to.handleSystemMCP(m)
+	case protocol.SessionMsg:
+		to.handleSystemSession(m.State)
+	case protocol.SteeringMsg:
+		to.handleSystemSteering(m)
+	}
 }
 
 // handleSystemSteering folds a steering event into the queue count, and renders
 // the human line it carries only where that line adds something the count does
 // not — a drop or a refusal. The refused phase keeps the error register the BUSY
 // text used to have.
-func (to *outputWriter) handleSystemSteering(data json.RawMessage) {
-	var m struct {
-		Phase string `json:"phase"`
-		Text  string `json:"text"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
+func (to *outputWriter) handleSystemSteering(m protocol.SteeringMsg) {
 	// The count is driven by the phase. The human line is shown only where it
 	// says something the count does not — a drop (the words are gone) or a
 	// refusal (this prompt was not queued). A "queued" line would only repeat
@@ -547,26 +565,14 @@ func (to *outputWriter) handleSystemSteering(data json.RawMessage) {
 	to.windowBuffer.AppendOrUpdate(tag, id, m.Text)
 }
 
-func (to *outputWriter) handleSystemError(data json.RawMessage) {
-	var m struct {
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
+func (to *outputWriter) handleSystemError(text string) {
 	id := to.generateWindowID()
-	to.windowBuffer.AppendOrUpdate(TagWindowSE, id, m.Text)
+	to.windowBuffer.AppendOrUpdate(TagWindowSE, id, text)
 }
 
-func (to *outputWriter) handleSystemNotify(data json.RawMessage) {
-	var m struct {
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
+func (to *outputWriter) handleSystemNotify(text string) {
 	id := to.generateWindowID()
-	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, m.Text)
+	to.windowBuffer.AppendOrUpdate(TagWindowSN, id, text)
 }
 
 // handleCommandOut processes a CO (Command Output) frame.
@@ -592,7 +598,7 @@ func (to *outputWriter) handleCommandOut(value string) {
 	}
 	name, _ := commandNames.LoadAndDelete(msg.CommandID)
 	nameStr, _ := name.(string)
-	text := renderCommandResult(nameStr, msg.Result)
+	text := commands.RenderResult(nameStr, msg.Result)
 	if text == "" {
 		// No text feedback needed — the command's UI effect (task stop,
 		// theme switch, status change, overlay close) is itself the
@@ -605,43 +611,7 @@ func (to *outputWriter) handleCommandOut(value string) {
 	to.dirty.Store(true)
 }
 
-// renderCommandResult formats a successful command result for display.
-// Commands whose effect is self-evident in the UI (cancel, theme_set,
-// reason, model_set, ...) return "" so nothing is rendered. The command
-// name comes from the adapter's own CI tracking; structured fields come
-// from the CO output (never display text — rendering is an adapter concern).
-func renderCommandResult(name string, output json.RawMessage) string {
-	var data struct {
-		Path      string `json:"path"`
-		HistoryID uint64 `json:"history_id"`
-		Server    string `json:"server"`
-	}
-	_ = json.Unmarshal(output, &data) // best-effort; zero fields render generically
-	switch name {
-	case commands.CommandNameSave:
-		return "Session saved to " + data.Path
-	case commands.CommandNameFork:
-		return fmt.Sprintf("Session forked to %s (up to content ID %d)", data.Path, data.HistoryID)
-	case commands.CommandNameMCPConfirm:
-		return fmt.Sprintf("MCP auth code received for %q.", data.Server)
-	case commands.CommandNameMCPDecline:
-		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
-	}
-	return "" // no generic confirmation
-}
-
-func (to *outputWriter) handleSystemTask(data json.RawMessage) {
-	var m struct {
-		InProgress    bool    `json:"in_progress"`
-		CurrentStep   int     `json:"current_step"`
-		MaxSteps      int     `json:"max_steps"`
-		ContextTokens int64   `json:"context_tokens"`
-		StepTPS       float64 `json:"step_tps"`
-		TTFTMS        int64   `json:"ttft_ms"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
+func (to *outputWriter) handleSystemTask(m protocol.TaskMsg) {
 	if to.status.updateTask(m.InProgress, m.CurrentStep, m.MaxSteps, m.ContextTokens, m.StepTPS, m.TTFTMS) {
 		// Task completion edge: settle tool windows left pending by
 		// abnormal paths (canceled confirmation, malformed/dropped frames).
@@ -652,46 +622,47 @@ func (to *outputWriter) handleSystemTask(data json.RawMessage) {
 	}
 }
 
-func (to *outputWriter) handleSystemModel(data json.RawMessage) {
-	var m struct {
-		ActiveID     int    `json:"active_id"`
-		ActiveName   string `json:"active_name"`
-		ContextLimit int64  `json:"context_limit"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
-	to.status.updateModel(m.ActiveID, m.ActiveName, m.ContextLimit)
+func (to *outputWriter) handleSystemModel(m protocol.ModelMsg) {
+	to.status.updateModel(m.ActiveModelID, m.ActiveModelName, m.ContextLimit)
 }
 
-func (to *outputWriter) handleSystemModelList(data json.RawMessage) {
-	var m struct {
-		Models []protocol.ModelInfo `json:"models"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
+func (to *outputWriter) handleSystemModelList(m protocol.ModelListMsg) {
 	to.status.updateModelList(m.Models)
 }
 
-func (to *outputWriter) handleSystemTheme(data json.RawMessage) {
-	var m struct {
+// themePayload and themeListPayload are this adapter's copy of the two theme SM
+// payloads. They are the only pair an adapter decodes itself: they carry
+// theme.Theme, and protocol does not depend on that package (protocol/sm.go says
+// why). The agent's side is internal/agent/session_types.go.
+//
+// A struct here cannot make the two ends agree, so two tests do. The agent's
+// adapter_guide_tables_test.go checks its structs against the table
+// adapter-guide/README.md documents, and this package's sm_payload_drift_test.go
+// feeds that same documented shape through this decoder — so a rename on either
+// side meets a test, and the doc is the shape both are measured against.
+type themePayload struct {
+	Name string `json:"name"`
+}
+
+type themeListPayload struct {
+	Themes []struct {
 		Name  string       `json:"name"`
 		Theme *theme.Theme `json:"theme"`
-	}
+	} `json:"themes"`
+}
+
+// handleSystemTheme activates a theme by name. The palette comes from the cache
+// theme_list filled; the frame carries no colors of its own.
+func (to *outputWriter) handleSystemTheme(data json.RawMessage) {
+	var m themePayload
 	if json.Unmarshal(data, &m) != nil {
 		return
 	}
-	to.status.updateTheme(m.Name, m.Theme)
+	to.status.updateTheme(m.Name, nil)
 }
 
 func (to *outputWriter) handleSystemThemeList(data json.RawMessage) {
-	var m struct {
-		Themes []struct {
-			Name  string       `json:"name"`
-			Theme *theme.Theme `json:"theme"`
-		} `json:"themes"`
-	}
+	var m themeListPayload
 	if json.Unmarshal(data, &m) != nil {
 		return
 	}
@@ -702,41 +673,9 @@ func (to *outputWriter) handleSystemThemeList(data json.RawMessage) {
 	to.status.updateThemeList(infos)
 }
 
-func (to *outputWriter) handleSystemReasoningLevel(data json.RawMessage) {
-	var m struct {
-		Level int `json:"level"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
-	to.status.updateReasoningLevel(m.Level)
-}
-
-// handleSystemVideoConfig updates the video FPS and resolution in session status.
-func (to *outputWriter) handleSystemVideoConfig(data json.RawMessage) {
-	var m struct {
-		FPS int `json:"fps"`
-		Res int `json:"res"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
-	to.status.updateVideoConfig(m.FPS, m.Res)
-}
-
 // handleSystemMCP processes a single "mcp" system message.
 // All MCP init progress (connecting, auth confirm, done) comes through here.
-func (to *outputWriter) handleSystemMCP(data json.RawMessage) {
-	var msg struct {
-		Status string `json:"status"`
-		Server string `json:"server,omitempty"`
-		URL    string `json:"url,omitempty"`
-		Error  string `json:"error,omitempty"`
-	}
-	if json.Unmarshal(data, &msg) != nil {
-		return
-	}
-
+func (to *outputWriter) handleSystemMCP(msg protocol.MCPMsg) {
 	switch msg.Status {
 	case protocol.MCPStatusConnecting, protocol.MCPStatusConnected, protocol.MCPStatusFailed:
 		to.status.updateMCPProgress(msg.Status, msg.Server)
@@ -759,14 +698,8 @@ func (to *outputWriter) handleSystemMCP(data json.RawMessage) {
 // overlay; state "closed" is the terminal frame, which it consumes to
 // leave the event loop. See outputWriter.ConsumeSessionReady() and
 // ConsumeSessionClosed().
-func (to *outputWriter) handleSystemSession(data json.RawMessage) {
-	var m struct {
-		State string `json:"state"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
-	switch m.State {
+func (to *outputWriter) handleSystemSession(state string) {
+	switch state {
 	case protocol.SessionStateReady:
 		to.status.markSessionReady()
 	case protocol.SessionStateClosed:
@@ -776,22 +709,19 @@ func (to *outputWriter) handleSystemSession(data json.RawMessage) {
 
 // handleSystemToolConfirm processes a tool_confirm system message.
 // Stores the pending state so the Terminal can open its confirm overlay.
-func (to *outputWriter) handleSystemToolConfirm(data json.RawMessage) {
-	var m struct {
-		CallID string `json:"call_id"`
-	}
-	if json.Unmarshal(data, &m) != nil || m.CallID == "" {
+func (to *outputWriter) handleSystemToolConfirm(callID string) {
+	if callID == "" {
 		return
 	}
 	// Look up the tool info from the function data window for a richer message.
 	toolName := ""
 	toolInput := ""
-	if info := to.windowBuffer.GetFunctionInfo(m.CallID); info != nil {
+	if info := to.windowBuffer.GetFunctionInfo(callID); info != nil {
 		toolName = info.Name
 		toolInput = info.Input
 	}
 	// Store pending state for the Terminal's confirm overlay.
-	to.status.addToolConfirmPending(m.CallID, toolName, toolInput)
+	to.status.addToolConfirmPending(callID, toolName, toolInput)
 }
 
 // GetPendingToolConfirm returns any pending tool confirmation and clears it.

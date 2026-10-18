@@ -129,7 +129,7 @@ func (o *stdoutOutput) printMessage(tag string, value string) {
 func (o *stdoutOutput) handleTag(tag, value string) {
 	switch tag {
 	case wire.TagAssistantXDelta:
-		d, ok := decodeContent(value)
+		d, ok := protocol.DecodeContent(value)
 		if !ok {
 			return
 		}
@@ -137,7 +137,7 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		o.handleTextDelta(d.Type, d.ID, d.Text)
 
 	case wire.TagAssistantX:
-		d, ok := decodeContent(value)
+		d, ok := protocol.DecodeContent(value)
 		if !ok {
 			return
 		}
@@ -147,7 +147,7 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 		o.handleTextDelta(d.Type, d.ID, d.Text)
 
 	case wire.TagUserX:
-		d, ok := decodeContent(value)
+		d, ok := protocol.DecodeContent(value)
 		if !ok {
 			return
 		}
@@ -199,15 +199,6 @@ func (o *stdoutOutput) handleTag(tag, value string) {
 	}
 }
 
-// decodeContent parses a content-frame body. ok is false on malformed JSON.
-func decodeContent(value string) (protocol.ContentData, bool) {
-	var d protocol.ContentData
-	if err := json.Unmarshal([]byte(value), &d); err != nil {
-		return protocol.ContentData{}, false
-	}
-	return d, true
-}
-
 // handleCommandOut processes a CO (Command Output) frame.
 // Errors print like system errors but do NOT affect the exit code (a
 // command failure is normal interaction, not a session error); successes
@@ -233,38 +224,13 @@ func (o *stdoutOutput) handleCommandOut(value string) {
 	nameStr, _ := name.(string)
 	o.lastTag = ""
 	o.lastHistoryID = ""
-	text := renderCommandResult(nameStr, msg.Result)
+	text := commands.RenderResult(nameStr, msg.Result)
 	if text == "" {
 		// No text feedback needed — the command's effect (task stop,
 		// status change) is itself the confirmation. Stay silent.
 		return
 	}
 	fmt.Fprintf(o.writer, "\n[%s]\n", text)
-}
-
-// renderCommandResult formats a successful command result for display.
-// Commands whose effect is self-evident (cancel, reason, model_set, ...)
-// return "" so nothing is printed. The command name comes from the
-// adapter's own CI tracking; structured fields come from the CO output
-// (never display text — rendering is an adapter concern).
-func renderCommandResult(name string, output json.RawMessage) string {
-	var data struct {
-		Path      string `json:"path"`
-		HistoryID uint64 `json:"history_id"`
-		Server    string `json:"server"`
-	}
-	_ = json.Unmarshal(output, &data) // best-effort; zero fields render generically
-	switch name {
-	case commands.CommandNameSave:
-		return "Session saved to " + data.Path
-	case commands.CommandNameFork:
-		return fmt.Sprintf("Session forked to %s (up to content ID %d)", data.Path, data.HistoryID)
-	case commands.CommandNameMCPConfirm:
-		return fmt.Sprintf("MCP auth code received for %q.", data.Server)
-	case commands.CommandNameMCPDecline:
-		return fmt.Sprintf("MCP authorization for %q declined.", data.Server)
-	}
-	return "" // no generic confirmation
 }
 
 // markDeltaSeen records a history ID whose Ax deltas were printed, so
@@ -336,87 +302,81 @@ func (o *stdoutOutput) emitSeparator(tag string) {
 }
 
 // handleSystemFrame processes a TagSystemMsg frame.
-// Handles error, notify, task, and tool_confirm system messages.
-// Task completion transitions print a trailing blank line between tasks.
 //
-//nolint:gocyclo // dispatch over system message types; each case is simple
+// The payload is decoded by protocol as the type its envelope names, so this
+// adapter holds no copy of an SM shape: a field renamed on the session's side is
+// a compile error in the case below rather than a zero value printed as empty.
 func (o *stdoutOutput) handleSystemFrame(value string) {
 	env, err := protocol.ParseSystemMsg(value)
 	if err != nil {
 		return
 	}
-	switch protocol.SystemMsgType(env.Type) {
-	case protocol.MsgTypeError:
-		var m struct {
-			Text string `json:"text"`
+	msg, derr := protocol.DecodeSystemMsg(env)
+	if derr != nil {
+		return
+	}
+	o.applySystemMsg(msg)
+}
+
+// applySystemMsg renders one decoded system message.
+//
+// A nil msg is a type this build does not know, which is not a failure: the SM
+// vocabulary grows without breaking readers, and a client that ignores what it
+// cannot name keeps working. The types this adapter has nothing to say about
+// (model, theme, reasoning, steering-queued, …) fall through the same way — a
+// plain-text transcript has no status bar for them.
+func (o *stdoutOutput) applySystemMsg(msg protocol.SystemMsg) {
+	switch m := msg.(type) {
+	case protocol.ErrorMsg:
+		fmt.Fprintf(o.writer, "\n[error: %s]\n", m.Text)
+		o.lastTag = ""
+		o.lastHistoryID = ""
+
+	case protocol.NotifyMsg:
+		fmt.Fprintf(o.writer, "\n[%s]\n", m.Text)
+		o.lastTag = ""
+		o.lastHistoryID = ""
+
+	case protocol.SteeringMsg:
+		// Only a line that tells the user something: queued repeats the prompt
+		// they just sent, and delivered is what the echo already shows.
+		if m.Text == "" {
+			return
 		}
-		if json.Unmarshal(env.Data, &m) == nil {
+		if m.Phase == protocol.SteeringRefused {
 			fmt.Fprintf(o.writer, "\n[error: %s]\n", m.Text)
-			o.lastTag = ""
-			o.lastHistoryID = ""
-		}
-	case protocol.MsgTypeNotify:
-		var m struct {
-			Text string `json:"text"`
-		}
-		if json.Unmarshal(env.Data, &m) == nil {
+		} else {
 			fmt.Fprintf(o.writer, "\n[%s]\n", m.Text)
+		}
+		o.lastTag = ""
+		o.lastHistoryID = ""
+
+	case protocol.TaskMsg:
+		// Task completion prints the blank line that separates tasks.
+		if o.inProgress.Load() && !m.InProgress {
+			fmt.Fprintln(o.writer)
 			o.lastTag = ""
 			o.lastHistoryID = ""
 		}
-	case protocol.MsgTypeSteering:
-		var m struct {
-			Phase string `json:"phase"`
-			Text  string `json:"text"`
-		}
-		if json.Unmarshal(env.Data, &m) == nil && m.Text != "" {
-			if m.Phase == protocol.SteeringRefused {
-				fmt.Fprintf(o.writer, "\n[error: %s]\n", m.Text)
-			} else {
-				fmt.Fprintf(o.writer, "\n[%s]\n", m.Text)
-			}
-			o.lastTag = ""
-			o.lastHistoryID = ""
-		}
-	case protocol.MsgTypeTask:
-		var m struct {
-			InProgress bool `json:"in_progress"`
-		}
-		if json.Unmarshal(env.Data, &m) == nil {
-			if o.inProgress.Load() && !m.InProgress {
-				fmt.Fprintln(o.writer)
-				o.lastTag = ""
-				o.lastHistoryID = ""
-			}
-			o.inProgress.Store(m.InProgress)
-		}
-	case protocol.MsgTypeToolConfirm:
-		// Decoded as the wire type the session writes, not as a struct spelled
-		// here. A local copy is invisible to the compiler: this case used to
-		// read `id` while the session wrote `call_id`, so every confirmation
-		// prompt was dropped in silence and the tool blocked with nothing on
-		// screen to answer. Reading protocol's type makes that rename a build
-		// error instead.
-		var m protocol.ToolConfirmMsg
-		if json.Unmarshal(env.Data, &m) != nil || m.CallID == "" {
+		o.inProgress.Store(m.InProgress)
+
+	case protocol.ToolConfirmMsg:
+		if m.CallID == "" {
 			return
 		}
 		fmt.Fprintf(o.writer, "\n[tool_confirm: allow tool %q to run?]\n", m.CallID)
 		o.lastTag = ""
 		o.lastHistoryID = ""
 
-	case protocol.MsgTypeMCP:
-		o.handleSystemMCP(env.Data)
+	case protocol.MCPMsg:
+		o.handleSystemMCP(m)
 
-	case protocol.MsgTypeSession:
+	case protocol.SessionMsg:
 		// The session's terminal frame: everything the session had to say has
 		// been written, so this is where the adapter stops reading and leaves.
 		// "ready" is deliberately not interpreted — nothing here waits for
 		// readiness any more (a prompt sent too early is held by the session).
-		var m struct {
-			State string `json:"state"`
-		}
-		if json.Unmarshal(env.Data, &m) == nil && m.State == protocol.SessionStateClosed {
+		if m.State == protocol.SessionStateClosed {
 			o.closed.Mark()
 		}
 	}
@@ -426,16 +386,7 @@ func (o *stdoutOutput) handleSystemFrame(value string) {
 // Each status renders as a plain-text line; "auth_required" additionally
 // hands off to the adapter-injected OAuth flow (async), and "done" signals
 // the flow to clean up any running callback server.
-func (o *stdoutOutput) handleSystemMCP(data json.RawMessage) {
-	var m struct {
-		Status string `json:"status"`
-		Server string `json:"server,omitempty"`
-		URL    string `json:"url,omitempty"`
-		Error  string `json:"error,omitempty"`
-	}
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
+func (o *stdoutOutput) handleSystemMCP(m protocol.MCPMsg) {
 	switch m.Status {
 	case protocol.MCPStatusConnecting:
 		o.printMCPStatus("connecting %q", m.Server)

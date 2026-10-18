@@ -74,52 +74,22 @@ func (s SessionState) String() string {
 
 // ============================================================================
 // TagSystemMsg (SM) payload types
+//
+// The payloads an adapter must decode live in internal/protocol, beside the
+// MsgType* constants that name them: they cross the adapter/agent boundary, and a
+// shape spelled on both sides is how a field rename became a silently dropped
+// frame (see protocol/sm.go). The three below stay here because they carry
+// theme.Theme, which protocol must not depend on (protocol/sm.go says why), and
+// the terminal's copy of them is pinned by a drift test.
 // ============================================================================
 
-// taskMsg carries task progress info (type "task").
-// CommandID is non-empty when the task was started by a CI command
-// (continue/summarize), correlating the async completion to its request.
+// themeMsg carries the active theme's name (type "theme").
 //
-// Speed fields (step_tps/ttft_ms) are additive and omitempty: they are
-// absent until the first step completes, so older adapters that ignore
-// unknown JSON fields keep working unchanged. They reflect the LATEST
-// step only — a simple end-to-end throughput (output tokens / round-trip
-// duration, latency included); no task-level averaging is reported.
-type taskMsg struct {
-	InProgress    bool   `json:"in_progress"`
-	CurrentStep   int    `json:"current_step,omitempty"`
-	MaxSteps      int    `json:"max_steps,omitempty"`
-	ContextTokens int64  `json:"context_tokens"`
-	CommandID     string `json:"command_id,omitempty"`
-
-	StepTPS float64 `json:"step_tps,omitempty"` // latest step's end-to-end tok/s
-	TTFTMS  int64   `json:"ttft_ms,omitempty"`  // latest step's TTFT in ms
-}
-
-func (taskMsg) SystemMsgType() string { return string(protocol.MsgTypeTask) }
-
-// modelMsg carries active model info (type "model").
-type modelMsg struct {
-	ActiveModelID   int    `json:"active_id"`
-	ActiveModelName string `json:"active_name"`
-	ContextLimit    int64  `json:"context_limit"`
-}
-
-func (modelMsg) SystemMsgType() string { return string(protocol.MsgTypeModel) }
-
-// modelListMsg carries the full model list (type "model_list").
-// Only sent when models change.
-type modelListMsg struct {
-	Models []protocol.ModelInfo `json:"models"`
-}
-
-func (modelListMsg) SystemMsgType() string { return string(protocol.MsgTypeModelList) }
-
-// themeMsg carries the active theme name (type "theme").
-// On startup the full Theme is included; on theme changes only the name is sent.
+// The name only: the palettes travel in theme_list, which an adapter caches, so
+// this frame says which entry is active and nothing else. (A `theme` object was
+// documented here and never sent; the field is gone rather than populated twice.)
 type themeMsg struct {
-	Name  string       `json:"name"`
-	Theme *theme.Theme `json:"theme,omitempty"`
+	Name string `json:"name"`
 }
 
 func (themeMsg) SystemMsgType() string { return string(protocol.MsgTypeTheme) }
@@ -139,95 +109,9 @@ type themeListMsg struct {
 
 func (themeListMsg) SystemMsgType() string { return string(protocol.MsgTypeThemeList) }
 
-// reasoningMsg carries the reasoning level (type "reasoning").
-type reasoningMsg struct {
-	Level int `json:"level"`
-}
-
-func (reasoningMsg) SystemMsgType() string { return string(protocol.MsgTypeReasoningLevel) }
-
-// videoConfigMsg carries the video FPS and resolution (type "video_config").
-type videoConfigMsg struct {
-	FPS int `json:"fps"`
-	Res int `json:"res"`
-}
-
-func (videoConfigMsg) SystemMsgType() string { return string(protocol.MsgTypeVideoConfig) }
-
-// mcpMsg communicates MCP initialization progress (type "mcp").
-// The adapter uses these messages to show init progress; overlay closure
-// is driven by the authoritative "session" ready frame, not by mcp
-// status "done" (see sessionMsg).
-//
-// Status values (from InitEvent.Type):
-//   - "connecting":    starting to connect a server (non-OAuth) or begins processing an OAuth server
-//   - "connected":     server connected and initialized (both non-OAuth and OAuth)
-//   - "failed":        connection or OAuth failed
-//   - "auth_required":  session needs user to authorize this server
-//   - "auth_running":  OAuth flow is running for this server
-//   - "done":          MCP initialization process has ended (completed, canceled, or aborted)
-//
-// Server is set for every per-server status; "done" is the only one without it,
-// because it is the one event that is about the whole initialization rather than
-// one server.
-type mcpMsg struct {
-	Status string `json:"status"`
-	Server string `json:"server,omitempty"`
-	URL    string `json:"url,omitempty"`   // set for "auth_required"
-	Error  string `json:"error,omitempty"` // set for "failed"
-}
-
-func (mcpMsg) SystemMsgType() string { return string(protocol.MsgTypeMCP) }
-
-// sessionMsg carries the session lifecycle state (type "session").
-//
-// Sent on the two transitions an adapter has a reason to observe: once on
-// SessionReady — after replay and after MCP init has settled
-// (done/canceled/aborted, or never configured), the authoritative "ready to
-// accept prompts" signal — and once on SessionClosed, the terminal frame,
-// written before run() returns and after all task output. The state value
-// mirrors SessionState.String().
-type sessionMsg struct {
-	State string `json:"state"`
-}
-
-func (sessionMsg) SystemMsgType() string { return string(protocol.MsgTypeSession) }
-
-// steeringMsg reports the lifecycle of steering — prompts a user sends while a
-// task is already running (type "steering"). See session_steering.go for the
-// mechanism; this only reports it.
-//
-// Phase is machine-readable: "queued", "delivered", "dropped", or "refused"
-// (protocol.Steering*). Granularity is deliberately mixed: Queued and Refused
-// are per submission, Delivered and Dropped are per batch (the whole queue is
-// spliced or discarded together, so there is never a partial delivery).
-//
-// Reason qualifies a Dropped message ("canceled" or "failed"). Text is an
-// optional human-readable line; an adapter may use it or ignore it entirely —
-// the session prescribes no rendering for any of this.
-type steeringMsg struct {
-	Phase  string `json:"phase"`
-	Reason string `json:"reason,omitempty"`
-	Text   string `json:"text,omitempty"`
-}
-
-func (steeringMsg) SystemMsgType() string { return string(protocol.MsgTypeSteering) }
-
-// messageVersionMsg carries the protocol version and the alayacore
-// application version (type "version").
-// Sent as the first TagSystemMsg frame so adapters can validate format
-// compatibility and identify the core version before processing
-// subsequent messages.
-type messageVersionMsg struct {
-	MessageVersion int    `json:"message_version"`
-	CoreVersion    string `json:"core_version"`
-}
-
-func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgTypeVersion) }
-
 // messageVersion is the adapter protocol version: the frame format adapters
 // speak — the tags, the SM types, and the states those carry. It is broadcast
-// as the first TagSystemMsg frame (messageVersionMsg) so an out-of-process
+// as the first TagSystemMsg frame (protocol.MessageVersionMsg) so an out-of-process
 // client can check compatibility before reading anything else.
 //
 // It moves for additive changes too — a new tag, a new state, a new command —
@@ -303,7 +187,7 @@ func (messageVersionMsg) SystemMsgType() string { return string(protocol.MsgType
 // knows none of them still speaks v11.
 // v11: commands moved to the CI/CO control plane — text commands
 // (UT ':' sniffing) removed, command results now travel as CO frames,
-// taskMsg gained command_id for async command correlation.
+// the task message gained command_id for async command correlation.
 const messageVersion = 17
 
 // sessionMeta is the frontmatter metadata.

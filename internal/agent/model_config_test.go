@@ -784,7 +784,7 @@ func TestModelListBroadcastSurvivesTheAdapterRoundTrip(t *testing.T) {
 		}
 
 		// Leg 1→2: what the session broadcasts.
-		broadcast, err := json.Marshal(modelListMsg{Models: toModelInfos([]modelConfig{stored})})
+		broadcast, err := json.Marshal(protocol.ModelListMsg{Models: toModelInfos([]modelConfig{stored})})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,9 +1,11 @@
 // Package protocol defines the high-level message types and wire format
 // for the AlayaCore communication protocol.
 //
-// It provides the SystemMsg interface and implementations (ErrorMsg, NotifyMsg,
-// ToolConfirmMsg), the tool data structures (ToolInputData, ToolOutputData), and
-// helpers for reading/writing system messages as frames.
+// It provides the SystemMsg interface and the payload types an adapter decodes
+// (task, model, steering, mcp, session, … — the whole set is in sm.go, with the
+// decoder that reads them), the tool data structures (ToolInputData,
+// ToolOutputData), and helpers for reading, writing and decoding system messages
+// as frames.
 //
 // The protocol layer depends on the internal/wire package for low-level frame
 // encoding.

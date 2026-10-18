@@ -74,14 +74,24 @@ message). Domain types used only inside the agent (e.g. `modelConfig`) stay
 in their domain package (`internal/agent`). Adapters decode wire types; they
 never import the agent package.
 
+That applies to every system-message payload an adapter reads, not only to
+`ModelInfo`, and `protocol.DecodeSystemMsg` is the one decoder: the agent
+encodes a payload, an adapter switches on the decoded type, and neither keeps a
+copy of the shape. The two theme payloads are the exception, for the reason
+`internal/protocol/sm.go` states (they carry `theme.Theme`, and `internal/theme` reaches
+the tool layer, which reads frames in its own tests).
+
 ```
-internal/protocol/  ← System message types, tool data structures, ModelInfo
+internal/protocol/  ← System-message payloads and their decoder, tool data
+                      structures, ModelInfo
 internal/wire/      ← frame tags, encoding/decoding
 internal/lines/     ← splitting a byte stream into lines (the frame boundary)
 internal/theme/     ← Theme data structures (shared with adapters)
-internal/commands/  ← Command name constants (CI/CO vocabulary)
+internal/commands/  ← Command name constants (CI/CO vocabulary) and the one
+                      renderer for a command's result
 internal/config/    ← Key-value parsing primitives, CLI Settings (no domain types)
-internal/agent/     ← Domain types: modelConfig, runtimeConfig, ...
+internal/agent/     ← Domain types: modelConfig, runtimeConfig, and the two
+                      theme SM payloads (see internal/protocol/sm.go)
 ```
 
 This prevents circular dependencies and keeps the boundary clean. When a

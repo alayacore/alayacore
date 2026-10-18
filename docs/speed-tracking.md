@@ -102,13 +102,13 @@ Agent.Stream (step start → time.Now)
       → OnStepStats(StepStats) callback
         → Session.handleStepStats → stepStatsEvent (taskEventCh)
           → run() stores lastStepTPS/lastTTFTMS
-            → taskMsg broadcast (SM "task"): step_tps, ttft_ms
+            → protocol.TaskMsg broadcast (SM "task"): step_tps, ttft_ms
               → terminal sessionState (mutex-protected) → status bar
 ```
 
 ## Wire Protocol
 
-`taskMsg` carries two additive, `omitempty` fields (absent until the
+`protocol.TaskMsg` carries two additive, `omitempty` fields (absent until the
 first step with output tokens completes; older adapters ignore them):
 
 | Field | Type | Meaning |

@@ -111,7 +111,7 @@ func (s *Session) run() {
 					// would blame the user for it.
 					s.mcpService.MarkAborted()
 					s.writeError("MCP initialization aborted unexpectedly.")
-					s.mcpService.sendSystemMsg(&mcpMsgData{Status: protocol.MCPStatusDone})
+					s.mcpService.sendSystemMsg(&protocol.MCPMsg{Status: protocol.MCPStatusDone})
 				}
 				// MCP init has settled (done, canceled, or aborted) —
 				// advance the lifecycle state.
@@ -193,7 +193,7 @@ func (s *Session) handleMCPEvent(evt *mcp.InitEvent) {
 func (s *Session) handleTaskDone(contents []llm.ContentPart) {
 	s.flushPendingEvents()
 	if s.activeTask != nil {
-		// Preserve the command ID for the final taskMsg — activeTask is
+		// Preserve the command ID for the final task message — activeTask is
 		// cleared below, before the completion broadcast.
 		s.taskCommandID = s.activeTask.commandID
 	}

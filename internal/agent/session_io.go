@@ -451,8 +451,8 @@ func (s *Session) beginTask(commandID string) (context.Context, error) {
 
 // startTaskCommand starts an async task command (:continue/:summarize).
 // It replies CO immediately — {"status":"started"} on acceptance, or an
-// error if the task cannot start. Task completion is reported via taskMsg
-// carrying the command ID (see sendTaskMsg).
+// error if the task cannot start. Task completion is reported via the task
+// message carrying the command ID (see sendTaskMsg).
 //
 // The CO is written after beginTask's running-state frame. Accepting the
 // command and starting the task are one event; the two frames are its
@@ -596,7 +596,7 @@ func (s *Session) handleInputMsg(msg inputMsg) {
 
 	// Task commands — :continue and :summarize start a task goroutine.
 	// CO replies immediately ({"status":"started"} or an error); task
-	// completion is correlated via taskMsg.command_id.
+	// completion is correlated via the task message's command_id.
 	switch name {
 	case commands.CommandNameContinue:
 		s.startTaskCommand(msg.commandID, s.runTaskContinue)
