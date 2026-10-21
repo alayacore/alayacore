@@ -161,6 +161,28 @@ failed task (see
 The replacement is published (`contentsReplacedEvent`) so `:save` during the
 task writes the compacted history — the same one the model is running on.
 
+### When the model writes no summary text
+
+A summarize is answered by the same model that drives the task, so it can end
+without text — reasoning its way to "now write it" and stopping, or an empty
+completion. The summarize asks **once more**: the original request, with one
+user part (`summarizeRetryPrompt`) saying the last reply carried no summary text
+and asking for the text, with no tools. One retry, not a loop; a second textless
+reply fails the summarize and the task ends as described under Limits.
+
+The failed attempt's response is deliberately **not** carried. The summarize
+runs near the window's ceiling, and putting that response back would make the
+retry larger than the request that just fit — the oversized request the
+threshold exists to prevent (see Limits). The cost is that the model thinks
+again, and a tool the failed attempt ran is not carried either; the retry
+forbids tools, which is what keeps it from running one again.
+
+Text is read from the response's final step (the parts after its last tool
+result), and every non-whitespace text part there is kept. Block layout belongs
+to the provider, so an answer may precede the reasoning that produced it. Text
+before the last tool result is a preamble to that tool call, never the summary;
+whitespace alone is not a summary.
+
 ### Limits
 
 - The trigger reads the **last reported usage**, which is one tool result short

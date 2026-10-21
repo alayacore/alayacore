@@ -175,8 +175,9 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	//
 	// Nothing is retried here: the summarize request is an ordinary request, so
 	// sendWithRetry has already retried it (llm.IsRetryable) before its error
-	// arrives. What arrives is permanent or exhausted, and the next step's
-	// context would only be larger.
+	// arrives — and the one semantic retry a textless reply gets has already
+	// happened inside summarizeContents. What arrives is permanent or
+	// exhausted, and the next step's context would only be larger.
 	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
 		// The step's clock, captured before anything else this step does. Both
 		// the echo helpers and stampParts read it, so what the adapter is shown
@@ -660,6 +661,16 @@ func cleanIncompleteToolInputs(contents []llm.ContentPart) []llm.ContentPart {
 // Summarization (built on processPrompt)
 // ============================================================================
 
+// summarizeRetryPrompt is the user part appended to the summarize request when
+// the model answered with no summary text. It names what was missing and what
+// the retry must produce; the summarize prompt is still in front of it.
+//
+// The retry is the original request, not the failed attempt's history: that
+// history would make the retry larger than the request that just fit, and a
+// summarize must not become the oversized request the --auto-summarize
+// threshold exists to prevent (docs/context-tracking.md → "Limits").
+const summarizeRetryPrompt = "Your previous reply contained no summary text. Write the summary now: the sections requested above, in full, as text. Do not call tools."
+
 // summarizeContents appends the summarize prompt, calls processPrompt,
 // and formats the response as a summary request + the assistant's summary.
 // On any failure, returns the original contents (without the prompt).
@@ -688,15 +699,37 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 		return contents, err
 	}
 
-	// The LLM response must end with assistant text. If it's empty, a tool
-	// call, reasoning, or empty text, summarization didn't produce a valid
-	// result — keep the original history.
 	response := fullContents[len(contents):]
-	if len(response) == 0 {
-		return contents, fmt.Errorf("summarization produced no content")
+	text, ok := summaryText(response)
+	if !ok {
+		// The summarize is answered by the same model that drives the task, so
+		// it can end without text: reasoning its way to "now write it" and
+		// stopping there, or an empty completion. Ask once more — one retry,
+		// not a loop, because every attempt is the whole conversation and a
+		// model that refuses the text twice will refuse it a third time.
+		//
+		// The retry is the original request — the conversation and the summarize
+		// prompt — plus a user part asking for the text. The failed attempt's
+		// response is deliberately not carried: the summarize runs near the
+		// window's ceiling, so putting that response back would make the retry
+		// larger than the request that just fit (docs/context-tracking.md →
+		// "Limits"). The cost is that the model thinks again, and a tool the
+		// failed attempt ran is not carried either; the retry forbids tools,
+		// which is what keeps it from running one again.
+		s.writeNotify("Summarization produced no text; retrying once")
+		retryPart := &llm.TextPart{Text: summarizeRetryPrompt}
+		retryPart.SetHistoryID(s.histIncAndGet())
+		retryPart.SetRole(llm.RoleUser)
+		retryContents := make([]llm.ContentPart, len(promptContents), len(promptContents)+1)
+		copy(retryContents, promptContents)
+		retryContents = append(retryContents, retryPart)
+		fullContents, outputTokens, err = s.processPrompt(ctx, retryContents, summarizeCall)
+		if err != nil {
+			return contents, err
+		}
+		text, ok = summaryText(fullContents[len(contents):])
 	}
-	tp, ok := response[len(response)-1].(*llm.TextPart)
-	if !ok || tp.Role != llm.RoleAssistant || tp.Text == "" {
+	if !ok {
 		return contents, fmt.Errorf("summarization produced no text")
 	}
 
@@ -725,7 +758,7 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 	})
 	summaryID := s.histIncAndGet()
 	result = append(result, &llm.TextPart{
-		Text: tp.Text,
+		Text: text,
 		ContentPartMeta: llm.ContentPartMeta{
 			HistoryID: summaryID,
 			Role:      llm.RoleAssistant,
@@ -740,6 +773,46 @@ func (s *Session) summarizeContents(ctx context.Context, contents []llm.ContentP
 	s.stampParts(result)
 	s.writeNotify("Summarized conversation")
 	return result, nil
+}
+
+// summaryText returns the summary a summarize response carries, if any.
+//
+// It reads the response's *final step*: the parts after the last tool result.
+// A tool result ends the step that asked for it, so text before it belongs to
+// an earlier step, where it was a preamble to that step's tool call and not the
+// answer. Promoting such a preamble to the summary would replace the
+// conversation with a sentence about the work instead of the work.
+//
+// Within that step the text need not be the last part: block layout is the
+// provider's to declare, and a provider that declares none leaves the record in
+// arrival order, so an answer can precede the reasoning that produced it —
+// requiring the last part to be text would discard that answer as "no text".
+//
+// Every non-empty text part of the final step is kept, in order: a step that
+// wrote the answer in pieces (or resumed after an interleaved reasoning block)
+// said all of it, and dropping the earlier pieces would silently shorten the
+// summary. Whitespace-only text does not count as text — accepting it would
+// replace the conversation with nothing, and the pre-summarize backup would be
+// the only way back.
+func summaryText(parts []llm.ContentPart) (string, bool) {
+	start := 0
+	for i, p := range parts {
+		if _, ok := p.(*llm.ToolOutputPart); ok {
+			start = i + 1
+		}
+	}
+	texts := make([]string, 0, len(parts))
+	for _, p := range parts[start:] {
+		tp, ok := p.(*llm.TextPart)
+		if !ok || tp.Role != llm.RoleAssistant || strings.TrimSpace(tp.Text) == "" {
+			continue
+		}
+		texts = append(texts, tp.Text)
+	}
+	if len(texts) == 0 {
+		return "", false
+	}
+	return strings.Join(texts, "\n"), true
 }
 
 // shouldAutoSummarize returns true when auto-summarization is enabled and

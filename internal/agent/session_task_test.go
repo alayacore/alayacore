@@ -168,13 +168,14 @@ func TestDoAutoSummarizePreservesContentsOnError(t *testing.T) {
 }
 
 func TestDoAutoSummarizeBuildSummaryFails(t *testing.T) {
-	// processPrompt succeeds (step 1 tool calls → loop continues,
-	// step 2 empty → no tool calls → loop exits with success).
-	// The response has no text, so summarizeContents returns an error.
+	// The summarize calls a tool and then ends with an empty step, so it writes
+	// no text. The retry is a fresh request — it does not carry the failed
+	// attempt — and is scripted empty too, so summarizeContents fails.
 	provider := &mockProviderStepFail{
 		responses: []stepResponse{
 			{toolCalls: []llm.ToolInputPart{{ID: "s1", Name: "t", Input: []byte(`{}`)}}},
 			{}, // empty step — no text, no tool calls
+			{}, // the retry, empty too
 		},
 	}
 	agent := llm.NewAgent(llm.AgentConfig{

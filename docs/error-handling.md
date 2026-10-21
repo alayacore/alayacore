@@ -104,7 +104,7 @@ so adapters treat them consistently (e.g. terseio sets exit code 1):
 
 - **Auto-save** — writing the session file when a task ends (success or failure — including after a failed step) failed (`Auto-save failed: ...`)
 - **Pre-summarize backup** — the timestamped backup written before auto-summarization failed (`Failed to create pre-summarize backup: ...`); without it the original conversation is unrecoverable after summarization
-- **Auto-summarization** — the summarization LLM call failed (`Auto-summarization failed: ...`). The task ends rather than continuing on the uncompressed history: the request that would follow is the one the threshold exists to prevent, and where the provider enforces `prompt + max_tokens` it is that request the user sees rejected a step later, with no mention of the summarize that failed to prevent it. This arrives at the start of a task or part-way through one (see [context-tracking.md](context-tracking.md)).
+- **Auto-summarization** — the summarization LLM call failed (`Auto-summarization failed: ...`). A reply with no summary text is asked once more before it is reported (see [context-tracking.md](context-tracking.md#when-the-model-writes-no-summary-text)); a retry that also writes no text arrives here. The task ends rather than continuing on the uncompressed history: the request that would follow is the one the threshold exists to prevent, and where the provider enforces `prompt + max_tokens` it is that request the user sees rejected a step later, with no mention of the summarize that failed to prevent it. This arrives at the start of a task or part-way through one (see [context-tracking.md](context-tracking.md)).
 
 ## Automatic Retry of Transient Failures
 

@@ -97,8 +97,9 @@ func (m *midTaskProvider) lastRequest() []llm.ContentPart {
 }
 
 // compactFailProvider asks for a tool on its first normal step (pushing the
-// context over the threshold), answers a summarize request with nothing (so
-// summarization fails), then finishes on the next normal step.
+// context over the threshold), answers every summarize request with nothing (so
+// summarization fails after its one retry), then finishes on the next normal
+// step.
 type compactFailProvider struct {
 	mu             sync.Mutex
 	normalCalls    int
@@ -124,7 +125,7 @@ func (m *compactFailProvider) StreamMessages(_ context.Context, history []llm.Co
 	return func(yield func(llm.StreamEvent, error) bool) {
 		switch {
 		case hasSummarize:
-			// No text, no tool call: summarizeContents rejects this.
+			// No text, no tool call: summarizeContents retries once, then rejects this.
 			yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 100, OutputTokens: 0}}, nil)
 		case n == 1:
 			if !yield(llm.TextDeltaEvent{Delta: "working", Key: "block:0"}, nil) {
@@ -197,8 +198,8 @@ func TestAutoSummarizeMidTaskFailureEndsTheTurn(t *testing.T) {
 	// goroutine, so a hang here fails the test rather than blocking forever.
 	runOneTask(t, session, []llm.ContentPart{&llm.TextPart{Text: "do it"}})
 
-	if got := provider.summarizeCalls(); got != 1 {
-		t.Fatalf("summarizeCalls = %d, want 1 attempt", got)
+	if got := provider.summarizeCalls(); got != 2 {
+		t.Fatalf("summarizeCalls = %d, want 2 (the attempt and its retry)", got)
 	}
 	if got := provider.normalRequestCount(); got != 1 {
 		t.Fatalf("normalCalls = %d, want 1 (the task ends instead of sending the next step)", got)
@@ -231,8 +232,8 @@ func TestAutoSummarizeTaskStartFailureSkipsTheTurn(t *testing.T) {
 
 	runOneTask(t, session, []llm.ContentPart{&llm.TextPart{Text: "do it"}})
 
-	if got := provider.summarizeCalls(); got != 1 {
-		t.Fatalf("summarizeCalls = %d, want 1 (task-start summarize did not fire)", got)
+	if got := provider.summarizeCalls(); got != 2 {
+		t.Fatalf("summarizeCalls = %d, want 2 (the attempt and its retry)", got)
 	}
 	if got := provider.normalRequestCount(); got != 0 {
 		t.Fatalf("normalCalls = %d, want 0 (the prompt must not be sent after a failed compaction)", got)
@@ -275,8 +276,8 @@ func TestAutoSummarizeTaskStartFailureSkipsContinue(t *testing.T) {
 			session.handleTaskEvent(ev)
 		case contents := <-session.taskResultCh:
 			session.drainAndHandleDone(t, contents)
-			if got := provider.summarizeCalls(); got != 1 {
-				t.Fatalf("summarizeCalls = %d, want 1 (task-start summarize did not fire)", got)
+			if got := provider.summarizeCalls(); got != 2 {
+				t.Fatalf("summarizeCalls = %d, want 2 (the attempt and its retry)", got)
 			}
 			if got := provider.normalRequestCount(); got != 0 {
 				t.Fatalf("normalRequestCount = %d, want 0 (the task must not proceed)", got)
