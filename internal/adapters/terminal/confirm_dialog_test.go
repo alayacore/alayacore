@@ -442,3 +442,31 @@ func TestConfirmQuitWaitingWithoutStep(t *testing.T) {
 		t.Errorf("wait window without a step:\n%s", got)
 	}
 }
+
+// TestConfirmDialogViewIsPure pins what Program.render relies on: the same
+// dialog renders the same bytes on every call.
+//
+// That determinism is the property worth having, because the loop discards a
+// frame by comparing it to the last one it wrote: a render that varies on its
+// own (map order, the wall clock, a counter) makes every tick a repaint. The
+// second assertion is weaker, and deliberately says so — a cache written through
+// a value receiver, the shape this View used to carry, is invisible from
+// outside: the method gets a copy, so nothing the caller holds can observe the
+// write. What the comparison does catch is the conversion that would make such a
+// cache *work*: the day View takes a pointer to mutate shared state, the dialog
+// it was handed changes and this fails.
+func TestConfirmDialogViewIsPure(t *testing.T) {
+	cd := NewConfirmDialog(DefaultStyles()).WithSize(40, 24)
+	cd = cd.OpenTool("1", "execute_command", `{"command":"ls -la /tmp/one/two/three"}`)
+
+	before := cd
+	first := cd.View()
+	second := cd.View()
+
+	if first.Content != second.Content {
+		t.Errorf("two View calls differ:\n%q\n%q", first.Content, second.Content)
+	}
+	if cd != before {
+		t.Error("View mutated the dialog it was called on: a render must not be state")
+	}
+}

@@ -72,12 +72,6 @@ type ConfirmDialog struct {
 
 	// ── Dependencies (pointer to shared data) ─
 	styles *Styles
-
-	// ── View cache ── invalidated whenever the rendered content would
-	// change: kind/toolName/toolInput (title, hint row) or Description
-	// (body) or Width (wrap). See viewCacheKey.
-	lastViewKey string
-	lastViewBox string
 }
 
 // NewConfirmDialog creates a new confirm dialog.
@@ -358,17 +352,18 @@ type ConfirmResult struct {
 // ---- Rendering ----
 
 // View returns the rendered dialog.
+//
+// It is a pure function of the dialog's state, which is what lets
+// Program.render discard a frame whose bytes did not change. (An earlier
+// revision kept a cache here, keyed on kind/toolName/Description/Width —
+// it could never hit: View has a value receiver and Terminal.View copies
+// the Terminal, so the key was written into a copy that was discarded on
+// return. Sharing state across copies needs a pointer, the way
+// Terminal.renderedStatusBarCache shares its map; this dialog does not
+// warrant that, and no other overlay caches its rendering.)
 func (cd ConfirmDialog) View() View {
 	if !cd.IsOpen() {
 		return NewView("")
-	}
-
-	// Cache the rendered content when neither the description nor the
-	// width has changed since the last View() call. UpdateMCPInitProgress
-	// fires ~4×/sec during MCP init; without this cache the wrap/center
-	// pipeline runs every tick even when nothing changed.
-	if cd.lastViewKey == cd.viewCacheKey() {
-		return NewView(cd.lastViewBox)
 	}
 
 	msgLines := cd.buildContentLines()
@@ -377,18 +372,7 @@ func (cd ConfirmDialog) View() View {
 	}
 	content := strings.Join(msgLines, "\n")
 	box := cd.styles.RenderOpenBox(content, cd.Width, cd.styles.ColorWarning, ConfirmContentRows)
-	cd.lastViewKey = cd.viewCacheKey()
-	cd.lastViewBox = box
 	return NewView(box)
-}
-
-// viewCacheKey produces a key that changes whenever the rendered output
-// would. Description drives the body preview; Width drives the wrap; kind
-// and toolName drive the title; the 'e' hint row appears for tool
-// confirms that carry input (Description, derived from toolInput, stands
-// in for whether input is present).
-func (cd ConfirmDialog) viewCacheKey() string {
-	return fmt.Sprintf("%d|%s|%s|%d", cd.kind, cd.toolName, cd.Description, cd.Width)
 }
 
 // buildContentLines returns the display lines for the dialog content.
