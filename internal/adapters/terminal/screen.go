@@ -615,6 +615,11 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 	// Start rows of wrapped overlay rows whose text changed or is new:
 	// repainted as one continuous run (see below), not per-row segments.
 	wrappedChanged := make(map[int]bool)
+	// Which rows the write set came from: a BASE row, or an overlay row. The
+	// successor closure needs that distinction and cannot ask baseRowAt for it
+	// (see below).
+	changedBase := make(map[int]bool)
+	changedOverlay := make(map[int]bool)
 	for _, r := range newRows {
 		if oldText, ok := oldMap[key(r.frameRow)]; !ok || oldText != r.frameRow.text {
 			if r.base {
@@ -622,12 +627,14 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 				// rows — every one of them must be repainted, not just
 				// the row the logical line starts on (the continuation
 				// rows would keep the old frame's text).
+				changedBase[r.frameRow.row] = true
 				for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
 					changed[row] = true
 				}
 			} else {
 				for row := r.frameRow.row; row < r.frameRow.row+r.terminalRows; row++ {
 					changed[row] = true
+					changedOverlay[row] = true
 				}
 				if r.terminalRows > 1 {
 					wrappedChanged[r.frameRow.row] = true
@@ -675,23 +682,31 @@ func diffFrameRows(oldContent, newContent string, width int) []byte {
 			present[row] = true
 		}
 	}
-	written := make([]int, 0, len(changed))
-	for row := range changed {
-		written = append(written, row)
-	}
-	firstWrittenBase := -1
-	for _, row := range written {
+	// The SUCCESSOR half of that plan, per kind of write. It cannot ask
+	// baseRowAt which kind a row is: a dialog and the chrome are drawn OVER the
+	// transcript, so every one of their terminal rows is covered by a base row,
+	// and "covered" was read as "this base row was written". That promoted a
+	// keystroke in a dialog to a transcript write, and the closure below then
+	// re-established every overlay row under the transcript's first line — the
+	// whole dialog and the five rows of chrome beneath it, on every key. Which
+	// kind of row was written is recorded while the write set is built, so the
+	// successors below are the ones the write actually implies.
+	for row := range changedBase {
 		if base, ok := baseRowAt(newRows, row); ok {
-			if firstWrittenBase < 0 || base.frameRow.row < firstWrittenBase {
-				firstWrittenBase = base.frameRow.row
-			}
 			if next := base.frameRow.row + base.terminalRows; present[next] {
 				changed[next] = true
 			}
-			continue
 		}
+	}
+	for row := range changedOverlay {
 		if present[row+1] {
 			changed[row+1] = true
+		}
+	}
+	firstWrittenBase := -1
+	for row := range changedBase {
+		if firstWrittenBase < 0 || row < firstWrittenBase {
+			firstWrittenBase = row
 		}
 	}
 	if firstWrittenBase >= 0 {

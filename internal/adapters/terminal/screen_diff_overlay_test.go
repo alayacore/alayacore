@@ -2,10 +2,16 @@ package terminal
 
 import (
 	"bytes"
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
 	ansi "github.com/charmbracelet/x/ansi"
+
+	"github.com/alayacore/alayacore/internal/app"
+	"github.com/alayacore/alayacore/internal/protocol"
+	"github.com/alayacore/alayacore/internal/theme"
 )
 
 // TestOverlayCloseRestoresWrappedLine: a floating overlay box covers a
@@ -126,4 +132,70 @@ func TestDiffRepaintsEveryOverlappingOverlayRun(t *testing.T) {
 	if d := gridDiff(grid, want); len(d) > 0 {
 		t.Errorf("the diff left a different screen than a full repaint:\n%s", strings.Join(d, "\n"))
 	}
+}
+
+// TestOverlayKeystrokeDoesNotRepaintChrome: a keystroke that changes only a
+// dialog (here the model selector's filter row) must write only the dialog's
+// rows.
+//
+// The chrome — live edge, input box, status bar — is painted at absolute rows
+// OVER the transcript, so every one of its terminal rows is *covered* by a base
+// row. The successor closure used to ask baseRowAt which kind of row it had
+// written, and read "covered by a base row" as "a base row was written": that
+// promoted a dialog keystroke to a transcript write, and the closure then
+// re-established every overlay row below the transcript's first line — the whole
+// dialog plus the five rows of chrome under it, on every key. Measured: 3,994
+// bytes and 16 rows per keystroke against 781 bytes and 3 rows, and on a
+// 115200 serial line the difference is a visible repaint of the bottom of the
+// screen.
+func TestOverlayKeystrokeDoesNotRepaintChrome(t *testing.T) {
+	const w, h = 100, 30
+	out := NewTerminalOutput(DefaultStyles())
+	for i := 0; i < 40; i++ {
+		out.Write(testFrame(tagAssistantText, fmt.Sprintf("w%d", i), "a transcript line long enough to occupy a full row of the viewport"))
+	}
+	out.FlushPendingDeltas()
+
+	m := NewTerminal(Options{Out: out, Input: nopWriteCloser{}, AppConfig: &app.Config{},
+		Width: w, Height: h, Theme: theme.DefaultTheme(), ThemeName: "theme-dark"})
+	mm, _ := m.Update(ScreenSizeMsg{Width: w, Height: h})
+	tm := mm.(Terminal)
+	tm.display = tm.display.updateContent()
+	tm.modelSelector = tm.modelSelector.LoadModels([]protocol.ModelInfo{
+		{ID: 1, Name: "alpha"}, {ID: 2, Name: "beta"},
+	}, 1).Open()
+	tm = tm.updateComponentSizes(w, h)
+
+	before := tm.View().Content
+	mm, _ = tm.Update(KeyPressMsg(Key{Code: 'a'}))
+	tm = mm.(Terminal)
+	diff := string(diffFrameRows(before, tm.View().Content, w))
+
+	rows := cupTargetRows(diff)
+	if len(rows) == 0 {
+		t.Fatal("the keystroke wrote no rows: the fixture no longer reaches the dialog's filter row")
+	}
+	// The live edge sits at inputBoxY (1-based), the same expression View uses.
+	chromeTop := max(0, tm.screenHeight-tm.promptBox.Height()-1)
+	for _, row := range rows {
+		if row >= chromeTop {
+			t.Errorf("row %d written, at or below the live edge (%d): a change confined to the dialog repainted the chrome", row, chromeTop)
+		}
+	}
+}
+
+// cupTargetRows returns the 1-based rows of every absolute-CUP write in a diff,
+// whatever column it targets.
+func cupTargetRows(s string) []int {
+	re := regexp.MustCompile("\x1b\\[(\\d+);\\d+H")
+	matches := re.FindAllStringSubmatch(s, -1)
+	rows := make([]int, 0, len(matches))
+	for _, m := range matches {
+		row := 0
+		for _, c := range m[1] {
+			row = row*10 + int(c-'0')
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
