@@ -657,9 +657,17 @@ func (m Terminal) submitCommand(command string, clearInput bool) (Terminal, Cmd)
 	return m, Batch(cmd, scheduleTick())
 }
 
-// scheduleTick schedules a tick message for UI updates.
+// scheduleTick schedules one early refresh after a submit, so the user sees
+// the result of submitting without waiting for the next beat of the periodic
+// chain (up to TickInterval away).
+//
+// It must NOT deliver tickMsg: handleTick answers a tickMsg by arming the next
+// beat, so a submit that did would leave a second, permanent 250ms chain
+// behind — one per submit, for the life of the process. Measured before the
+// split: one extra tickMsg doubled the rate (4.0/s → 8.0/s), four made it
+// 20.0/s. submitTickMsg runs the same work and schedules nothing.
 func scheduleTick() Cmd {
 	return Tick(SubmitTickDelay, func(_ time.Time) Msg {
-		return tickMsg{}
+		return submitTickMsg{}
 	})
 }

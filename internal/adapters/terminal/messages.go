@@ -16,8 +16,8 @@ package terminal
 // Handled by Terminal.Update:
 //
 //	KeyMsg (KeyPressMsg), PasteMsg, FocusMsg, BlurMsg, ScreenSizeMsg, tickMsg,
-//	themePreviewMsg, sessionLoadedMsg, sessionLoadingErrorMsg, editorStartMsg,
-//	EditorFinishedMsg, displayErrorMsg, displayNotifyMsg
+//	submitTickMsg, themePreviewMsg, sessionLoadedMsg, sessionLoadingErrorMsg,
+//	editorStartMsg, EditorFinishedMsg, displayErrorMsg, displayNotifyMsg
 
 func (QuitMsg) isMsg()                {}
 func (SuspendMsg) isMsg()             {}
@@ -31,6 +31,7 @@ func (FocusMsg) isMsg()               {}
 func (BlurMsg) isMsg()                {}
 func (ScreenSizeMsg) isMsg()          {}
 func (tickMsg) isMsg()                {}
+func (submitTickMsg) isMsg()          {}
 func (themePreviewMsg) isMsg()        {}
 func (sessionLoadedMsg) isMsg()       {}
 func (sessionLoadingErrorMsg) isMsg() {}

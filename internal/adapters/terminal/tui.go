@@ -484,7 +484,7 @@ func (m Terminal) loadSessionCmd() Cmd {
 // unwrap. What reaches this switch is only input events and asynchronous facts
 // from the runtime and the session.
 //
-// message dispatch over many Msg types; each case is a simple handler call
+//nolint:gocyclo // message dispatch over many Msg types; each case is a simple handler call
 func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	// Sync display dim state at the start of every update cycle.
 	m.display = m.display.WithBlocked(m.isBlocked())
@@ -507,6 +507,11 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 
 	case tickMsg:
 		return m.handleTick()
+
+	case submitTickMsg:
+		// A submit's one early refresh: the work of a beat, without arming a
+		// chain of its own (see keybinds.go → scheduleTick).
+		return m.tickWork()
 
 	case themePreviewMsg:
 		return m.handleThemePreview(msg), nil
@@ -546,8 +551,14 @@ func (m Terminal) Update(msg Msg) (Model, Cmd) {
 	}
 }
 
-// tickMsg is sent periodically to update the display.
+// tickMsg is sent periodically to update the display. It is the only message
+// that keeps that periodicity going: Update answers it with another tickCmd.
 type tickMsg struct{}
+
+// submitTickMsg is one early refresh requested by a submit (keybinds.go →
+// scheduleTick). It runs the same work as tickMsg but schedules nothing, so a
+// submit cannot seed a second periodic chain.
+type submitTickMsg struct{}
 
 // handleScreenSize handles terminal resize events.
 func (m Terminal) handleScreenSize(msg ScreenSizeMsg) Terminal {
@@ -571,14 +582,15 @@ func (m Terminal) handleScreenSize(msg ScreenSizeMsg) Terminal {
 	return m
 }
 
-// handleTick processes periodic updates for display and model switching.
-func (m Terminal) handleTick() (Terminal, Cmd) {
+// tickWork performs one beat of periodic work for display and overlays, and
+// reports the command that ends the program when the beat ended it (Quit).
+// It never schedules anything, so it can be run without touching the periodic
+// chain — that is what a submit's one-shot refresh does (submitTickMsg).
+func (m Terminal) tickWork() (Terminal, Cmd) {
 	// During async loading, the only periodic task is to re-render the
 	// loading screen (spinner animation). Skip all session-driven updates.
 	if m.loading {
-		return m, Tick(TickInterval, func(_ time.Time) Msg {
-			return tickMsg{}
-		})
+		return m, nil
 	}
 
 	// The session has announced that it is over (its terminal frame): leave,
@@ -603,7 +615,27 @@ func (m Terminal) handleTick() (Terminal, Cmd) {
 	}
 
 	m = m.handleDisplayRefresh()
-	return m, Tick(TickInterval, func(_ time.Time) Msg {
+	return m, nil
+}
+
+// handleTick runs one beat and keeps the periodic chain alive.
+//
+// Only tickMsg reaches this, which is the whole point: the chain has exactly
+// one owner. A second producer of tickMsg would silently become a second,
+// permanent 250ms chain — every submit used to do that, because the one-shot
+// tick it arms (keybinds.go → scheduleTick) was answered here with another
+// tickCmd. That tick is submitTickMsg now, and it runs tickWork alone.
+func (m Terminal) handleTick() (Terminal, Cmd) {
+	m, quit := m.tickWork()
+	if quit != nil {
+		return m, quit
+	}
+	return m, tickCmd()
+}
+
+// tickCmd arms the next beat of the periodic chain.
+func tickCmd() Cmd {
+	return Tick(TickInterval, func(_ time.Time) Msg {
 		return tickMsg{}
 	})
 }

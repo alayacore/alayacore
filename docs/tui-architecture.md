@@ -56,8 +56,9 @@ Terminal (value type, root model)
 │   Chord, and every handler switches on a Chord (keys.go).
 │
 ├── Asynchronous messages still handled by Update: session load results,
-│   ScreenSizeMsg, tickMsg, themePreviewMsg, editor events,
-│   displayError/NotifyMsg, FocusMsg/BlurMsg, PasteMsg.
+│   ScreenSizeMsg, tickMsg / submitTickMsg (the periodic beat and a submit's
+│   one-shot refresh, which arms no beat of its own), themePreviewMsg, editor
+│   events, displayError/NotifyMsg, FocusMsg/BlurMsg, PasteMsg.
 │
 ├── Components (each has Update returning []Result):
 │   ├── DisplayModel      Update(msg Msg) → (DisplayModel,     []Result)
