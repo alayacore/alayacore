@@ -397,6 +397,36 @@ func TestProgramPanicRecovery(t *testing.T) {
 	}
 }
 
+// panicViewModel panics in View, the other half of the model that handleMsg
+// runs. Update keeps the receiver (a promoted fakeModel.Update would return the
+// embedded model and View would then never be reached).
+type panicViewModel struct{ fakeModel }
+
+func (m *panicViewModel) Update(Msg) (Model, Cmd) { return m, nil }
+func (m *panicViewModel) View() View              { panic("view boom") }
+
+// TestProgramViewPanicRecovery verifies a panic in View is reported as an
+// error too. It matters more than the Update case: View is arithmetic over
+// whatever state the session put the UI in (a width it reported, a string it
+// sent), so it is the half where a state nobody tested can reach a bad
+// subtraction — and a panic there used to escape the loop entirely, killing the
+// process with a Go stack instead of the one-line error adapter.Start prints.
+func TestProgramViewPanicRecovery(t *testing.T) {
+	msgs := make(chan Msg, 4)
+	p, _ := newTestProgram(msgs)
+
+	// handleMsg directly: run would panic on its own first render before the
+	// loop ever delivered a message, which is a startup failure rather than
+	// the per-frame path this covers.
+	_, _, err := p.handleMsg(&panicViewModel{}, KeyPressMsg(Key{Code: 'j'}), nil)
+	if err == nil {
+		t.Fatal("expected error from a panic in View, got nil")
+	}
+	if !strings.Contains(err.Error(), "panic in View") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 // TestProgramSuspendNoTTYIsNoop verifies SuspendMsg does not end the loop
 // and is handled internally (never delivered to Update). Without a real TTY
 // the suspend is a no-op — releaseTerminal would otherwise stop the test

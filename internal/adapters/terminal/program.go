@@ -381,11 +381,34 @@ func (p *Program) run(model Model) (Model, error) {
 }
 
 // handleMsg applies one message to the model. quit is true when the message
-// ended the program (QuitMsg); err is non-nil when Update panicked.
+// ended the program (QuitMsg); err is non-nil when Update or View panicked.
 //
 // Factored out of run so that both of the loop's channels — input and
 // everything else — go through exactly one dispatch.
-func (p *Program) handleMsg(model Model, msg Msg, ctxDone <-chan struct{}) (Model, bool, error) {
+func (p *Program) handleMsg(model Model, msg Msg, ctxDone <-chan struct{}) (m Model, quit bool, err error) {
+	// One recover for the whole dispatch. A panic in Update and a panic in
+	// View are the same failure — a programming error in the model — and both
+	// are equally fatal to the frame the loop is building, so both are
+	// reported the same way: as the error Run returns, which adapter.Start
+	// prints after the terminal is back in cooked mode. Letting either
+	// through would spray a Go stack over the terminal instead, which on a
+	// slow line is a screenful of text nobody can read. It never resumes the
+	// loop: a model that panics in View panics on every frame, so the error
+	// ends the program.
+	phase := "Update"
+	defer func() {
+		if r := recover(); r != nil {
+			m, quit, err = model, false, fmt.Errorf("terminal: panic in %s: %v", phase, r)
+		}
+	}()
+	// renderNow is the loop's only way into View, and it names the phase for
+	// the recover above (a View panic reported as "panic in Update" would
+	// point at the wrong half of the model).
+	renderNow := func(model Model) {
+		phase = "View"
+		p.render(model)
+	}
+
 	switch msg := msg.(type) {
 	case QuitMsg:
 		return model, true, nil
@@ -393,13 +416,13 @@ func (p *Program) handleMsg(model Model, msg Msg, ctxDone <-chan struct{}) (Mode
 		// Ctrl-Z: release the terminal, stop the process group, and
 		// re-acquire on SIGCONT (no-op without a real TTY).
 		p.suspend()
-		p.render(model)
+		renderNow(model)
 		return model, false, nil
 	case execMsg:
 		// Editor handoff: run the command in the foreground with the
 		// terminal released, then re-acquire and repaint.
 		p.exec(msg, ctxDone)
-		p.render(model)
+		renderNow(model)
 		return model, false, nil
 	case BatchMsg:
 		go p.execBatch(msg, ctxDone)
@@ -416,7 +439,7 @@ func (p *Program) handleMsg(model Model, msg Msg, ctxDone <-chan struct{}) (Mode
 		// synchronous cache clear here triggers exactly one
 		// clear+repaint and leaves the view content untouched.
 		p.forceRepaint()
-		p.render(model)
+		renderNow(model)
 		return model, false, nil
 	case ScreenSizeMsg:
 		p.width, p.height = msg.Width, msg.Height
@@ -428,24 +451,12 @@ func (p *Program) handleMsg(model Model, msg Msg, ctxDone <-chan struct{}) (Mode
 		p.refreshSize()
 	}
 
-	var cmd Cmd
-	var err error
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("terminal: panic in Update: %v", r)
-			}
-		}()
-		model, cmd = model.Update(msg)
-	}()
-	if err != nil {
-		return model, false, err
-	}
+	next, cmd := model.Update(msg)
 	if cmd != nil {
 		go p.dispatch(cmd, ctxDone)
 	}
-	p.render(model)
-	return model, false, nil
+	renderNow(next)
+	return next, false, nil
 }
 
 // dispatch runs a command in a goroutine and delivers its result message.

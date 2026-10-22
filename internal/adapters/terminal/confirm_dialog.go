@@ -472,6 +472,19 @@ func (cd ConfirmDialog) buildTitleText() string {
 }
 
 func (cd ConfirmDialog) renderTitleLine(titleText string, innerWidth int) string {
+	// A dialog with no inner width has no title row: there is no cell to put a
+	// glyph in, and every row of the box is written cell-for-cell against this
+	// width. Without this the title still renders — hardwrapCells has no width
+	// to cut to and returns the text as it is — so the row is at least one
+	// cell in a zero-cell box and the trailing padding goes negative, which
+	// takes the whole program down with "strings: negative Repeat count".
+	// Inner width 0 is reachable without a user doing anything: it is the
+	// width of a terminal that reported no usable size (a winsize never set,
+	// e.g. a bare serial console), and the dialogs are opened by the session,
+	// not by the user.
+	if innerWidth <= 0 {
+		return ""
+	}
 	// Truncate the plain title first, then render with the Confirm style —
 	// the "…" inserted by truncation inherits the style from the render
 	// call (no escape-sequence handling needed).
@@ -488,7 +501,11 @@ func (cd ConfirmDialog) renderTitleLine(titleText string, innerWidth int) string
 	line = cd.styles.Confirm.Render(line)
 	w := Width(line)
 	pad := max(0, (innerWidth-w)/2)
-	return strings.Repeat(" ", pad) + line + strings.Repeat(" ", innerWidth-w-pad)
+	// w ≤ innerWidth by construction (the wrap and the cut above both measure
+	// with this package's table); the clamp is the same defensive form every
+	// other Repeat in this file takes, so a measurement that disagrees costs a
+	// long row rather than a panic.
+	return strings.Repeat(" ", pad) + line + strings.Repeat(" ", max(0, innerWidth-w-pad))
 }
 
 // renderDescriptionRows returns the 2-row preview of the description.
