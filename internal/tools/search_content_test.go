@@ -585,8 +585,14 @@ func TestSearchContentNoMatchesNamesTheSkippedFiles(t *testing.T) {
 // differently — no location argument at all versus "." — and ripgrep treats
 // those as different situations, so the same tree could answer "no matches"
 // through one and an error through the other. This pins the equality in both
-// directions: identical output when files are searchable, and ripgrep's "./"
-// prefix, which is what the default call pays for the uniformity.
+// directions: the same result lines when files are searchable, and ripgrep's
+// "./" prefix, which is what the default call pays for the uniformity.
+//
+// The comparison is on the lines as a set, not on the output as one string:
+// ripgrep writes matches as its threads find them, so the order of files in a
+// result is not a contract. Twelve runs of the same search over three files
+// produced three different orders — a test comparing whole outputs verbatim is
+// a coin flip, and it flaked in CI exactly that way.
 func TestSearchContentDefaultPathMatchesExplicitDot(t *testing.T) {
 	requireRipgrep(t)
 
@@ -611,12 +617,23 @@ func TestSearchContentDefaultPathMatchesExplicitDot(t *testing.T) {
 	}
 
 	got, want := extractFirstText(omitted), extractFirstText(explicit)
-	if got != want {
+	if a, b := sortedLines(got), sortedLines(want); !slices.Equal(a, b) {
 		t.Errorf("default path and \".\" disagree:\n no path: %q\n       .: %q", got, want)
 	}
-	if !strings.Contains(got, "./a.txt:1:needle") || !strings.Contains(got, "./sub/b.txt:1:needle") {
-		t.Errorf("expected ripgrep's ./ prefix from the default call, got %q", got)
+	for _, line := range []string{"./a.txt:1:needle", "./sub/b.txt:1:needle"} {
+		if !slices.Contains(sortedLines(got), line) {
+			t.Errorf("expected %q from the default call, got %q", line, got)
+		}
 	}
+}
+
+// sortedLines splits a result into its lines, sorted. Search results are
+// ordered within a file and unordered between files, so anything that compares
+// two results must compare these, not the streams.
+func sortedLines(s string) []string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	slices.Sort(lines)
+	return lines
 }
 
 // The case the change exists for: a tree with nothing searchable in it. With no

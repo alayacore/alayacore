@@ -275,6 +275,25 @@ first read, **pinned before the window opens**: `currentUmask` reads the umask
 once, and a test that narrowed the umask inside that read latched it for the rest
 of the binary.
 
+### A tool's output order is not a contract either
+
+`-shuffle` reorders *tests*. It cannot find a test that is random inside one run,
+which is the other way a suite reddens for no reason worth investigating. ripgrep
+writes matches as its threads find them, so the order of *files* in a result
+follows scheduling, not the invocation: over the same two-file tree, `-j4`
+produced two distinct orders in 200 runs, and `-j1` and a 16-thread default each
+produced one in 200. A test that compares two search results for equality
+therefore compares two coin flips — it passes a few runs locally and reddens a
+4-vCPU runner eventually.
+
+So an assertion may name only what is a contract. ripgrep documents no inter-file
+ordering, so a test compares result lines **as a set** (`sortedLines` in
+`internal/tools/search_content_test.go`), never the streams. The same holds for
+whatever else the tree shells out to: ordering that comes from the tool's own
+concurrency is a detail, and pinning it makes a test that fails without a change
+having landed. Repetition is what surfaces this class — `-count=N` — because one
+pass of a nondeterministic assertion is not evidence.
+
 ### Price what the build can measure
 
 Allocation counts come from process-wide `runtime.MemStats`, and a `-race` build
