@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,12 +77,16 @@ func TestEditFileSymlinkPreservesTargetMode(t *testing.T) {
 	}
 }
 
-// A dangling symlink (target not yet created) must still produce a file rather
-// than failing on the unresolvable link.
-func TestEditFileBrokenSymlinkReportsNotFound(t *testing.T) {
+// A dangling symlink (target not yet created) is not a missing path: the link
+// exists, and edit_file cannot create the target it points at. The message has
+// to say that, because "file not found" about a path the model can see sends it
+// back to the same path — write_file, which does create through the link, would
+// have succeeded, so the difference is the whole diagnosis.
+func TestEditFileDanglingSymlinkNamesTheTarget(t *testing.T) {
 	dir := t.TempDir()
 	link := filepath.Join(dir, "dangling.txt")
-	if err := os.Symlink(filepath.Join(dir, "never-created.txt"), link); err != nil {
+	target := filepath.Join(dir, "never-created.txt")
+	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
@@ -89,6 +94,13 @@ func TestEditFileBrokenSymlinkReportsNotFound(t *testing.T) {
 		Path: link, OldString: "x", NewString: "y",
 	})
 	if err == nil {
-		t.Fatal("expected an error for a file that does not exist")
+		t.Fatal("expected an error for a symlink whose target does not exist")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "file not found") {
+		t.Errorf("error claims the path does not exist, but the symlink does: %q", msg)
+	}
+	if !strings.Contains(msg, "symlink") || !strings.Contains(msg, target) {
+		t.Errorf("error should name the symlink condition and its target %q, got %q", target, msg)
 	}
 }

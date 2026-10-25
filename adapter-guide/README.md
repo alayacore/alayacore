@@ -622,7 +622,7 @@ stdout: (echo)                         UX{"id":"11","time":"...","type":"text","
         AF-search-content-start.txt    AF{"id":"12","time":"...","call_id":"t4","name":"search_content"}
         AF-search-content-input.txt    AF{"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
         Uf-search-content-preview.txt  Uf{"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}   ← ephemeral preview (optional)
-        UF-search-content-success.txt  UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
+        UF-search-content-success.txt  UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"./main.go:1:package main"}]}
         UF-search-content-failed.txt   UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
 ```
 
@@ -697,7 +697,7 @@ UF-write-file-failed.txt       UF{"id":"11","time":"...","call_id":"t3","output"
 AF-search-content-start.txt    AF{"id":"12","time":"...","call_id":"t4","name":"search_content"}
 AF-search-content-input.txt    AF{"id":"12","time":"...","call_id":"t4","input":{"pattern":"TODO"}}
 Uf-search-content-preview.txt  Uf{"id":"12","call_id":"t4","text":"main.go:3:// TODO: fix"}
-UF-search-content-success.txt  UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"main.go:1:package main"}]}
+UF-search-content-success.txt  UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"./main.go:1:package main"}]}
 UF-search-content-failed.txt   UF{"id":"13","time":"...","call_id":"t4","output":[{"type":"text","text":"invalid regex"}],"is_error":true}
 Af-tool-delta.txt              Af{"id":"6","call_id":"t1","delta":"{\"path\":\""}
 Uf-execute-command-preview.txt Uf{"id":"14","call_id":"t5","text":"total 42..."}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -65,8 +66,14 @@ func TestSearchContentNoMatches(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	text := extractFirstText(result)
-	if text != "No matches found" {
+	if !strings.HasPrefix(text, "No matches found") {
 		t.Errorf("expected 'No matches found', got %q", text)
+	}
+	// The searched root travels with the answer: a relative or omitted path
+	// resolves against a directory the model cannot see, so an unqualified
+	// "no matches" would be a false negative it has no way to detect.
+	if !strings.Contains(text, tmpDir) {
+		t.Errorf("no-match text %q does not name the searched root %q", text, tmpDir)
 	}
 }
 
@@ -129,8 +136,8 @@ func TestSearchContentIgnoreCase(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	text := extractFirstText(result)
-	if text != "No matches found" {
-		t.Errorf("expected 'No matches found' for case-sensitive search, got %q", text)
+	if !strings.HasPrefix(text, "No matches found") || !strings.Contains(text, tmpDir) {
+		t.Errorf("expected the case-sensitive search to report no matches in %q, got %q", tmpDir, text)
 	}
 
 	result, err = executeSearchContent(context.Background(), SearchContentInput{
@@ -142,7 +149,7 @@ func TestSearchContentIgnoreCase(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	text = extractFirstText(result)
-	if text == "" || text == "No matches found" {
+	if text == "" || strings.HasPrefix(text, "No matches found") {
 		t.Errorf("expected match with ignore_case=true, got %q", text)
 	}
 }
@@ -286,7 +293,7 @@ func TestSearchContentPatternLooksLikeFlag(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	text := extractFirstText(result)
-	if text == "" || text == "No matches found" {
+	if text == "" || strings.HasPrefix(text, "No matches found") {
 		t.Errorf("expected match for '--skill' pattern, got %q", text)
 	}
 	if !strings.Contains(text, "--skill") {
@@ -345,8 +352,8 @@ func TestSearchContentStreamingNoMatches(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	text := extractFirstText(result)
-	if text != "No matches found" {
-		t.Errorf("expected 'No matches found', got %q", text)
+	if !strings.HasPrefix(text, "No matches found") || !strings.Contains(text, tmpDir) {
+		t.Errorf("expected 'No matches found' naming %q, got %q", tmpDir, text)
 	}
 	// No output → no dirty state → no preview frames.
 	if previewCount != 0 {
@@ -491,5 +498,173 @@ func TestSearchContentTimeoutIsReportedAsErrTimeout(t *testing.T) {
 	}
 	if len(content) != 0 {
 		t.Errorf("a classified stop must carry no content, or the reason — which travels as the error — is dropped: content = %v", content)
+	}
+}
+
+// The scope the model did not name is the one it most needs told. A search that
+// ran in the wrong directory answers "No matches found" exactly like a symbol
+// that does not exist anywhere, and only the first is the tool's own doing — so
+// the answer has to carry the root it searched.
+func TestSearchContentNoMatchesNamesTheDefaultRoot(t *testing.T) {
+	requireRipgrep(t)
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	parts, err := executeSearchContent(context.Background(), SearchContentInput{
+		Pattern: "nonexistent_pattern_xyz", // no Path: the default scope
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := extractFirstText(parts)
+	if !strings.HasPrefix(text, "No matches found") {
+		t.Errorf("expected a no-match answer, got %q", text)
+	}
+	if !strings.Contains(text, cwd) {
+		t.Errorf("no-match text %q does not name the default root %q", text, cwd)
+	}
+}
+
+// "Searched X" must not claim coverage X does not have. ripgrep's defaults skip
+// hidden, gitignored and binary files and never follow symlinks, so a pattern
+// living only in one of those answers "No matches found" — a miss that is the
+// tool's own doing and is indistinguishable from the pattern not existing,
+// unless the answer says what it left out. Both halves are pinned here: the
+// directory search misses the hidden file, and the same file matches when it is
+// named as the path.
+func TestSearchContentNoMatchesNamesTheSkippedFiles(t *testing.T) {
+	requireRipgrep(t)
+
+	dir := t.TempDir()
+	hidden := filepath.Join(dir, ".hidden.txt")
+	if err := os.WriteFile(hidden, []byte("needle\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	parts, err := executeSearchContent(context.Background(), SearchContentInput{
+		Pattern: "needle",
+		Path:    dir,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := extractFirstText(parts)
+	if !strings.HasPrefix(text, "No matches found") {
+		t.Fatalf("expected the directory search to miss the hidden file, got %q", text)
+	}
+	for _, want := range []string{"hidden", "gitignored", "binary", "symlink"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no-match text should say that %s files are skipped: %q", want, text)
+		}
+	}
+
+	// The content was there all along: the miss is the default scope, which is
+	// exactly what the message has to distinguish.
+	parts, err = executeSearchContent(context.Background(), SearchContentInput{
+		Pattern: "needle",
+		Path:    hidden,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := extractFirstText(parts); strings.HasPrefix(got, "No matches found") {
+		t.Errorf("the hidden file does contain the pattern, but the search found nothing: %q", got)
+	}
+}
+
+// Omitting path and naming "." must be one call. They used to reach ripgrep
+// differently — no location argument at all versus "." — and ripgrep treats
+// those as different situations, so the same tree could answer "no matches"
+// through one and an error through the other. This pins the equality in both
+// directions: identical output when files are searchable, and ripgrep's "./"
+// prefix, which is what the default call pays for the uniformity.
+func TestSearchContentDefaultPathMatchesExplicitDot(t *testing.T) {
+	requireRipgrep(t)
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"a.txt", filepath.Join("sub", "b.txt")} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("needle\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	omitted, err := executeSearchContent(context.Background(), SearchContentInput{Pattern: "needle"})
+	if err != nil {
+		t.Fatalf("unexpected error without a path: %v", err)
+	}
+	explicit, err := executeSearchContent(context.Background(), SearchContentInput{Pattern: "needle", Path: "."})
+	if err != nil {
+		t.Fatalf("unexpected error with path %q: %v", ".", err)
+	}
+
+	got, want := extractFirstText(omitted), extractFirstText(explicit)
+	if got != want {
+		t.Errorf("default path and \".\" disagree:\n no path: %q\n       .: %q", got, want)
+	}
+	if !strings.Contains(got, "./a.txt:1:needle") || !strings.Contains(got, "./sub/b.txt:1:needle") {
+		t.Errorf("expected ripgrep's ./ prefix from the default call, got %q", got)
+	}
+}
+
+// The case the change exists for: a tree with nothing searchable in it. With no
+// location argument ripgrep exits 2 and advises --debug, which this tool cannot
+// pass; naming "." exits 1. The default now takes the second branch, so an empty
+// or fully-filtered directory is reported as the no-match it is.
+func TestSearchContentDefaultPathInEmptyTreeIsNoMatch(t *testing.T) {
+	requireRipgrep(t)
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parts, err := executeSearchContent(context.Background(), SearchContentInput{Pattern: "needle"})
+	if err != nil {
+		t.Fatalf("a directory with nothing to search must answer no-match, not fail: %v", err)
+	}
+	text := extractFirstText(parts)
+	if !strings.HasPrefix(text, "No matches found") {
+		t.Errorf("expected a no-match answer, got %q", text)
+	}
+	if !strings.Contains(text, cwd) {
+		t.Errorf("no-match text %q does not name the root %q", text, cwd)
+	}
+}
+
+// searchScopeNote tells the model what ripgrep's defaults leave out, and that
+// statement is true only while this argv stays free of the flags that would
+// widen the scope. This is the coupling: a flag added without the note changes a
+// helpful answer into a misleading one, silently, on every empty result.
+func TestSearchContentArgsDoNotWidenTheDefaultScope(t *testing.T) {
+	args := buildSearchContentArgs(SearchContentInput{Pattern: "p", Path: "."})
+
+	// Each of these makes ripgrep search files the note says it skips.
+	for _, widening := range []string{"--hidden", "--no-ignore", "--no-ignore-vcs", "--follow", "--binary", "-u", "-uu", "-uuu"} {
+		if slices.Contains(args, widening) {
+			t.Errorf("argv carries %q, which widens the scope — update searchScopeNote with what it adds", widening)
+		}
+	}
+
+	// And the note itself must keep naming every category those flags would add,
+	// or the reverse drift is possible: a note trimmed while the flags stay.
+	for _, want := range []string{"hidden", "gitignored", "binary", "symlink"} {
+		if !strings.Contains(searchScopeNote, want) {
+			t.Errorf("searchScopeNote no longer names %q: %q", want, searchScopeNote)
+		}
 	}
 }

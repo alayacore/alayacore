@@ -68,6 +68,15 @@ func newEditSession(path string) (*editSession, error) {
 	srcFile, err := os.Open(target)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// resolveWriteTarget falls back to the link itself when EvalSymlinks
+			// fails, so a dangling symlink arrives here looking like a missing
+			// file. Saying "not found" about a path that exists sends the model
+			// back to the same path; name the condition instead. edit_file can
+			// only edit what exists (unlike write_file, which creates through
+			// the link), so there is nothing to fall back to.
+			if link, lerr := os.Readlink(path); lerr == nil {
+				return nil, fmt.Errorf("cannot edit %s: it is a symlink to %s, which does not exist", path, link)
+			}
 			return nil, fmt.Errorf("file not found: %s", path)
 		}
 		return nil, err
@@ -323,7 +332,7 @@ func executeEditFile(ctx context.Context, args EditFileInput) ([]llm.ContentPart
 
 	if !editor.hasOccurrences() {
 		return nil, fmt.Errorf(
-			"old_string not found in file. Make sure to copy the exact text including all whitespace and indentation.\n\nSearched for:\n%q", args.OldString)
+			"old_string not found in the file. It must match exactly, every byte including whitespace — read the file and copy the text from what the read returned")
 	}
 
 	if err := session.commit(); err != nil {

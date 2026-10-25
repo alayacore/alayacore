@@ -63,15 +63,19 @@ func resolveWorkDir(workDir string) (string, error) {
 		return "", fmt.Errorf("workdir %q cannot be resolved: %w", workDir, err)
 	}
 
+	// Every error below names abs as well as the argument. A relative workdir
+	// is resolved against the process directory — a base the model cannot see
+	// — so echoing only the argument it sent would leave it unable to tell
+	// which tree the path was looked for in.
 	info, err := os.Stat(abs)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("workdir %q does not exist", workDir)
+			return "", fmt.Errorf("workdir %q does not exist (resolved to %s)", workDir, abs)
 		}
-		return "", fmt.Errorf("workdir %q cannot be used: %w", workDir, err)
+		return "", fmt.Errorf("workdir %q cannot be used (resolved to %s): %w", workDir, abs, err)
 	}
 	if !info.IsDir() {
-		return "", fmt.Errorf("workdir %q is not a directory", workDir)
+		return "", fmt.Errorf("workdir %q is not a directory (resolved to %s)", workDir, abs)
 	}
 	return abs, nil
 }
