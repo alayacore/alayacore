@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/alayacore/alayacore/internal/llm"
@@ -55,10 +54,6 @@ type searchResult struct {
 	stdout   *capture
 	stderr   *capture
 	exitCode int
-	// root is the absolute path the search actually covered. It travels with
-	// the result because nothing else in it says where ripgrep looked, and a
-	// "no matches" answer has to name it — see noMatches.
-	root string
 }
 
 // buildSearchContentArgs builds the ripgrep invocation. args.Path is normalized
@@ -101,8 +96,8 @@ func buildSearchContentArgs(args SearchContentInput) []string {
 // takes a separate branch: a tree that leaves nothing to search — empty, or with
 // every file filtered — exits 2 and advises --debug, a flag this tool cannot
 // pass, where "." exits 1 and is the no-match it actually is. One spelling makes
-// the default and the explicit call one call, and lets the root searchBase
-// reports be derived from the same string ripgrep was handed.
+// the default and the explicit call one call, so a result cannot depend on which
+// of the two ways the same request was written.
 func searchPath(path string) string {
 	if path == "" {
 		return "."
@@ -110,27 +105,18 @@ func searchPath(path string) string {
 	return path
 }
 
-// searchBase returns the directory ripgrep runs in, and the absolute root the
-// search covers.
+// searchDir returns the directory ripgrep runs in. A relative path argument —
+// including the "." an omitted one becomes (searchPath) — resolves against the
+// process directory, which is also what the system prompt states, so the tool
+// and the model agree on the base without either of them writing it down twice.
 //
-// The two are one decision: a relative path argument — including the "." an
-// omitted one becomes (searchPath) — resolves against the process directory, a
-// base the model cannot see any other way. That is why the root travels with the
-// result instead of being recomputed for display: reporting it anywhere else
-// would be a second guess at where ripgrep actually looked.
-//
-// Best effort on the directory: there is nothing to report if it cannot be
-// read, and failing a search over a display detail would be worse than
-// reporting a root of ".".
-func searchBase(path string) (dir, root string) {
-	dir = "."
+// Best effort: a process directory that cannot be read is no reason to fail a
+// search, and "." is what the shell would have used.
+func searchDir() string {
 	if cwd, err := os.Getwd(); err == nil {
-		dir = cwd
+		return cwd
 	}
-	if filepath.IsAbs(path) {
-		return dir, filepath.Clean(path)
-	}
-	return dir, filepath.Join(dir, path)
+	return "."
 }
 
 // runSearch executes ripgrep in dir, writing stdout/stderr to the provided
@@ -193,27 +179,14 @@ func runSearch(ctx context.Context, args SearchContentInput, dir string, stdout,
 // where the omission would otherwise read as "this exists nowhere".
 const searchScopeNote = "ripgrep skips hidden, gitignored and binary files and symlinks, unless named as the path"
 
-// noMatches is the result of a search that found nothing. It names the
-// absolute root that was searched, because a relative or omitted path resolves
-// against a directory the model cannot see: bare "No matches found" reads as
-// "this exists nowhere", which is the conclusion a false negative invites and
-// the one an agent acts on by going to change something else.
-//
-// Naming the root is not enough on its own, because the root is not what was
-// covered — searchScopeNote says which files the flags left out, and that it
-// can be sidestepped by naming one as the path. Together they are the two
-// things the caller cannot derive and would otherwise read as absence.
-//
-// A result carrying no root can only come from constructing one directly (both
-// entry points set it), and it says the root is unknown rather than falling
-// back to the unqualified answer this exists to prevent — a caller that forgot
-// is then visible in a test instead of reading as a correct message.
-func noMatches(root string) []llm.ContentPart {
-	scope := "searched " + root
-	if root == "" {
-		scope = "search root unknown"
-	}
-	return []llm.ContentPart{&llm.TextPart{Text: fmt.Sprintf("No matches found (%s; %s)", scope, searchScopeNote)}}
+// noMatches is the result of a search that found nothing. It says what the
+// search left out — the one part of this answer the caller cannot derive. Where
+// it searched is derivable (the system prompt states the working directory, and
+// the path argument is the caller's own), but ripgrep's default filters are
+// stated nowhere, and a file holding the pattern that was never read answers
+// "no matches" exactly like a pattern that does not exist.
+func noMatches() []llm.ContentPart {
+	return []llm.ContentPart{&llm.TextPart{Text: fmt.Sprintf("No matches found (%s)", searchScopeNote)}}
 }
 
 // formatSearchResult converts a structured search result into ContentParts.
@@ -222,7 +195,7 @@ func noMatches(root string) []llm.ContentPart {
 func formatSearchResult(result searchResult, maxLines int) ([]llm.ContentPart, error) {
 	// rg exits with code 1 when no matches found — that's not an error for us.
 	if result.exitCode == 1 && result.stderr.size() == 0 {
-		return noMatches(result.root), nil
+		return noMatches(), nil
 	}
 
 	// rg exits with code 2 when the run hit an error, and it keeps going after
@@ -243,7 +216,7 @@ func formatSearchResult(result searchResult, maxLines int) ([]llm.ContentPart, e
 
 	// Success path
 	if result.stdout.size() == 0 {
-		return noMatches(result.root), nil
+		return noMatches(), nil
 	}
 
 	// Said beside the results rather than as an error, because the results are
@@ -344,8 +317,7 @@ func executeSearchContent(ctx context.Context, args SearchContentInput) ([]llm.C
 	defer stdout.Close()
 	defer stderr.Close()
 
-	dir, root := searchBase(args.Path)
-	exitCode, err := runSearch(ctx, args, dir, stdout, stderr)
+	exitCode, err := runSearch(ctx, args, searchDir(), stdout, stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +325,6 @@ func executeSearchContent(ctx context.Context, args SearchContentInput) ([]llm.C
 		stdout:   stdout,
 		stderr:   stderr,
 		exitCode: exitCode,
-		root:     root,
 	}, args.MaxLines)
 }
 
@@ -366,8 +337,7 @@ func executeSearchContentStreaming(ctx context.Context, args SearchContentInput,
 
 	sw := newStreamingWriterWith(onDelta, maxToolTextBytes)
 	defer sw.Close()
-	dir, root := searchBase(args.Path)
-	exitCode, err := runSearch(ctx, args, dir, sw, errWriter{sw})
+	exitCode, err := runSearch(ctx, args, searchDir(), sw, errWriter{sw})
 	sw.flushPreview() // search finished — emit the final snapshot
 
 	if err != nil {
@@ -377,6 +347,5 @@ func executeSearchContentStreaming(ctx context.Context, args SearchContentInput,
 		stdout:   sw.buf,
 		stderr:   sw.errBuf,
 		exitCode: exitCode,
-		root:     root,
 	}, args.MaxLines)
 }

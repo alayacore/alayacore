@@ -234,7 +234,7 @@ func readMediaFile(file *os.File, path string, info os.FileInfo, mimeType string
 		mb := float64(info.Size()) / (1024 * 1024)
 		return []llm.ContentPart{&llm.TextPart{Text: fmt.Sprintf(
 			"File %s is %.1fMB — larger than the %dMB media read limit. Media is embedded as base64 and cannot be truncated; use a smaller file or process it with execute_command instead.",
-			filepath.Base(path), mb, MaxMediaBytes/(1024*1024),
+			path, mb, MaxMediaBytes/(1024*1024),
 		)}}, nil
 	}
 
@@ -248,9 +248,10 @@ func readMediaFile(file *os.File, path string, info os.FileInfo, mimeType string
 	sizeKB := float64(len(data)) / 1024
 
 	return []llm.ContentPart{
-		// The full path, not filepath.Base: the model needs to be able to act
-		// on the file (shrink it, convert it) when an image is too large to
-		// forward — the note that replaces the image carries no path.
+		// The caller's own path, in full and not filepath.Base: the model has to
+		// be able to act on the file (shrink it, convert it) when an image is
+		// too large to forward, and the note that replaces the image carries no
+		// path at all. Both branches of this function name it the same way.
 		&llm.TextPart{Text: fmt.Sprintf("Read %s (%.1fKB, %s)", path, sizeKB, mimeType)},
 		llm.MediaContentPart(mimeType, dataURI),
 	}, nil

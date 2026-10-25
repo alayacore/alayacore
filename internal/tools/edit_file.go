@@ -62,8 +62,17 @@ type editSession struct {
 // directory (to avoid cross-device rename errors). The rename target is the
 // resolved path, so editing a symlinked file updates the file rather than
 // replacing the link (see resolveWriteTarget).
+//
+// The target is made absolute: the temp file beside it is a path this tool
+// chose, and its name reaches the model inside the IO errors commit() reports,
+// where a relative form would be the one path in the tool that does not say
+// where it is. Pinning both paths to one form also means the read-rewrite-rename
+// cycle cannot have them reinterpreted between steps.
 func newEditSession(path string) (*editSession, error) {
 	target := resolveWriteTarget(path)
+	if abs, absErr := filepath.Abs(target); absErr == nil {
+		target = abs
+	}
 
 	srcFile, err := os.Open(target)
 	if err != nil {
@@ -75,6 +84,17 @@ func newEditSession(path string) (*editSession, error) {
 			// only edit what exists (unlike write_file, which creates through
 			// the link), so there is nothing to fall back to.
 			if link, lerr := os.Readlink(path); lerr == nil {
+				// A link's target is stored relative to the link's own
+				// directory, not to the process directory, so it is resolved
+				// here — and then to an absolute path, like every other path
+				// the tool found rather than was given. A relative form would
+				// leave the reader to work out which directory it sits in.
+				if !filepath.IsAbs(link) {
+					link = filepath.Join(filepath.Dir(path), link)
+				}
+				if abs, aerr := filepath.Abs(link); aerr == nil {
+					link = abs
+				}
 				return nil, fmt.Errorf("cannot edit %s: it is a symlink to %s, which does not exist", path, link)
 			}
 			return nil, fmt.Errorf("file not found: %s", path)

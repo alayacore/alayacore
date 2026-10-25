@@ -273,27 +273,29 @@ asked to imitate the other.
 ## What a Tool's Text May Say
 
 That text is the only channel, so every word in it is paid for on every call.
-One rule keeps it honest: **it may carry only what the caller cannot derive from
-its own call.**
+One rule keeps it honest: **name what failed, say what the caller cannot derive,
+and nothing else.**
 
 - **Nothing the caller sent comes back.** The arguments are in the model's own
   history, so echoing them adds bytes without adding information. `edit_file`
   used to append the whole `old_string` to a failed match — re-sending, escaped,
   a payload the model had just written, in a message whose only reader already
-  knew its contents. For the same reason a failure does not repeat the path it
-  was given: the model sent it, and the call that failed carries it too.
+  knew its contents. The rule is about payloads: a single path is the exception,
+  because it is what the message is *about* (see below).
 - **What the caller could not know is stated.** This is the inverse defect, and
-  the more damaging one, because silence reads as an answer. `search_content`
-  resolves a relative — or omitted — `path` against the process directory, which
-  the model cannot see, so a bare "No matches found" is a false negative it has
-  no way to detect: the root that was searched travels with the result
-  (`noMatches` in `internal/tools/search_content.go`). That root is not enough on
-  its own, because it is not what the search covered — ripgrep's defaults skip
-  hidden, gitignored and binary files and never follow symlinks, so the answer
-  names those too, or "searched X" would claim a coverage X does not have.
-  `execute_command` names the resolved absolute `workdir` for the same reason,
-  and `edit_file` tells a dangling symlink apart from a missing file rather than
-  reporting "not found" for a path that exists.
+  the more damaging one, because silence reads as an answer. The line runs
+  through *paths*. One the caller supplied is reported as supplied: the system
+  prompt already states the working directory, so re-stating it resolved adds
+  nothing the model cannot join itself. One the tool **chose or found** is
+  reported absolutely, because only that form resolves from where the reader
+  stands — a temp file's location exists only as the tool made it, and a
+  symlink's target is stored relative to the link's own directory, so echoing it
+  raw names a path that resolves from nowhere. What must be *stated*, rather than
+  echoed, is the part of a result the caller cannot derive: `search_content` says
+  which files ripgrep's defaults left out, because "No matches found" over a tree
+  that was not read in full is a false negative the model has no way to detect.
+  `edit_file` likewise tells a dangling symlink apart from a missing file rather
+  than reporting "not found" for a path that exists.
 - **A next step is not a diagnosis.** `old_string not found` has several causes —
   a stale read, a mis-transcription, differing whitespace — and every one of them
   has the same remedy, so the message states the remedy (read the file, copy from

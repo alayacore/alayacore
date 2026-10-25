@@ -212,32 +212,3 @@ func TestExecuteCommandWorkDirThroughToolSurface(t *testing.T) {
 		t.Error("an unusable workdir must fail the call, not run elsewhere")
 	}
 }
-
-// A relative workdir resolves against the process directory, which the model
-// cannot see. Echoing the argument it sent therefore says nothing it did not
-// already know: the error has to carry the path that was actually looked for,
-// or a wrong base is indistinguishable from a wrong argument.
-func TestExecuteCommandWorkDirErrorNamesTheResolvedPath(t *testing.T) {
-	root := t.TempDir()
-	t.Chdir(root)
-
-	// The process directory as the OS reports it (on macOS t.TempDir's /var
-	// path is reached through /private/var, and only Getwd knows which form
-	// the resolution used).
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = executeCommand(context.Background(), ExecuteCommandInput{
-		Command: "true",
-		WorkDir: "nope",
-	})
-	if err == nil {
-		t.Fatal("expected an error for a missing workdir")
-	}
-	want := filepath.Join(cwd, "nope")
-	if !strings.Contains(err.Error(), want) {
-		t.Errorf("err = %v, want it to name the resolved path %q", err, want)
-	}
-}

@@ -225,6 +225,12 @@ func TestReadFileMediaTooLarge(t *testing.T) {
 	if !strings.Contains(text, "media read limit") {
 		t.Errorf("expected media size-limit message, got %q", text)
 	}
+	// The path is the caller's own, so it is reported as given: a basename only
+	// would leave the model unable to name the file it has to shrink, which is
+	// the whole next step the message asks for.
+	if !strings.Contains(text, tmpFile) {
+		t.Errorf("size-limit message should name %q, got %q", tmpFile, text)
+	}
 	if len(result) != 1 {
 		t.Errorf("expected a single text part, got %d parts", len(result))
 	}

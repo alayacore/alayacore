@@ -69,11 +69,12 @@ func TestSearchContentNoMatches(t *testing.T) {
 	if !strings.HasPrefix(text, "No matches found") {
 		t.Errorf("expected 'No matches found', got %q", text)
 	}
-	// The searched root travels with the answer: a relative or omitted path
-	// resolves against a directory the model cannot see, so an unqualified
-	// "no matches" would be a false negative it has no way to detect.
-	if !strings.Contains(text, tmpDir) {
-		t.Errorf("no-match text %q does not name the searched root %q", text, tmpDir)
+	// What the answer must carry is the part the caller cannot derive: ripgrep's
+	// default filters. Where it searched is derivable — the system prompt states
+	// the working directory and the path was the caller's own — so it is not
+	// repeated here.
+	if !strings.Contains(text, "gitignored") {
+		t.Errorf("no-match text should say which files were skipped, got %q", text)
 	}
 }
 
@@ -136,8 +137,8 @@ func TestSearchContentIgnoreCase(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	text := extractFirstText(result)
-	if !strings.HasPrefix(text, "No matches found") || !strings.Contains(text, tmpDir) {
-		t.Errorf("expected the case-sensitive search to report no matches in %q, got %q", tmpDir, text)
+	if !strings.HasPrefix(text, "No matches found") {
+		t.Errorf("expected the case-sensitive search to report no matches, got %q", text)
 	}
 
 	result, err = executeSearchContent(context.Background(), SearchContentInput{
@@ -352,8 +353,8 @@ func TestSearchContentStreamingNoMatches(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	text := extractFirstText(result)
-	if !strings.HasPrefix(text, "No matches found") || !strings.Contains(text, tmpDir) {
-		t.Errorf("expected 'No matches found' naming %q, got %q", tmpDir, text)
+	if !strings.HasPrefix(text, "No matches found") {
+		t.Errorf("expected 'No matches found', got %q", text)
 	}
 	// No output → no dirty state → no preview frames.
 	if previewCount != 0 {
@@ -501,43 +502,10 @@ func TestSearchContentTimeoutIsReportedAsErrTimeout(t *testing.T) {
 	}
 }
 
-// The scope the model did not name is the one it most needs told. A search that
-// ran in the wrong directory answers "No matches found" exactly like a symbol
-// that does not exist anywhere, and only the first is the tool's own doing — so
-// the answer has to carry the root it searched.
-func TestSearchContentNoMatchesNamesTheDefaultRoot(t *testing.T) {
-	requireRipgrep(t)
-
-	dir := t.TempDir()
-	t.Chdir(dir)
-	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	parts, err := executeSearchContent(context.Background(), SearchContentInput{
-		Pattern: "nonexistent_pattern_xyz", // no Path: the default scope
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := extractFirstText(parts)
-	if !strings.HasPrefix(text, "No matches found") {
-		t.Errorf("expected a no-match answer, got %q", text)
-	}
-	if !strings.Contains(text, cwd) {
-		t.Errorf("no-match text %q does not name the default root %q", text, cwd)
-	}
-}
-
-// "Searched X" must not claim coverage X does not have. ripgrep's defaults skip
-// hidden, gitignored and binary files and never follow symlinks, so a pattern
-// living only in one of those answers "No matches found" — a miss that is the
-// tool's own doing and is indistinguishable from the pattern not existing,
+// A no-match answer must not claim a coverage the search did not have. ripgrep's
+// defaults skip hidden, gitignored and binary files and never follow symlinks, so
+// a pattern living only in one of those answers "No matches found" — a miss that
+// is the tool's own doing and is indistinguishable from the pattern not existing,
 // unless the answer says what it left out. Both halves are pinned here: the
 // directory search misses the hidden file, and the same file matches when it is
 // named as the path.
@@ -645,10 +613,6 @@ func TestSearchContentDefaultPathInEmptyTreeIsNoMatch(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Chdir(dir)
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	parts, err := executeSearchContent(context.Background(), SearchContentInput{Pattern: "needle"})
 	if err != nil {
@@ -657,9 +621,6 @@ func TestSearchContentDefaultPathInEmptyTreeIsNoMatch(t *testing.T) {
 	text := extractFirstText(parts)
 	if !strings.HasPrefix(text, "No matches found") {
 		t.Errorf("expected a no-match answer, got %q", text)
-	}
-	if !strings.Contains(text, cwd) {
-		t.Errorf("no-match text %q does not name the root %q", text, cwd)
 	}
 }
 

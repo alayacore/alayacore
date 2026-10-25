@@ -87,6 +87,15 @@ Use read_file to access specific matches.
 ```
 
 - Agent uses `read_file` to access the full results from the saved file
+- A run that hit an error and kept going is still a result: ripgrep exits 2 for an unreadable subdirectory beside readable ones and writes everything it could read to stdout, so the matches are delivered and the warning is added beside them rather than replacing them. Only a run with nothing on stdout is an error.
+
+  ```
+  Search found 500 matching lines (194.2KB). Results saved to: /tmp/alayacore-1234567890/search-12345.txt
+  Use read_file to access specific matches.
+  [Warning: the search was incomplete — ripgrep reported rg: /project/locked: Permission denied (os error 13)]
+  ```
+
+  The same line is appended to the saved file, for the reason the command section above gives: the file is what a model reads back through `read_file`, and a list of matches that does not say the tree was only partly read is a false negative at the point it is consulted.
 - Searches run under the same global timeout as `execute_command` (`shell.DefaultCommandTimeout`, default: no limit); timed-out and canceled searches are distinguished
 
 ## Temp File Location

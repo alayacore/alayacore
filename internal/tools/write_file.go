@@ -49,7 +49,14 @@ func executeWriteFile(_ context.Context, args WriteFileInput) ([]llm.ContentPart
 	defer fileMutationMu.Unlock()
 
 	// Write through a symlink to the file it points at (see resolveWriteTarget).
+	// Made absolute here rather than left as the caller wrote it: the temp file
+	// this tool picks is a path the tool chose, and its name reaches the model
+	// inside the IO errors below. One form across the whole create-write-rename
+	// also means nothing can reinterpret these paths mid-operation.
 	target := resolveWriteTarget(args.Path)
+	if abs, absErr := filepath.Abs(target); absErr == nil {
+		target = abs
+	}
 
 	// Permission semantics mirror os.WriteFile: an existing file keeps its
 	// exact mode (overwriting must not clobber it — an executable script would

@@ -104,3 +104,43 @@ func TestEditFileDanglingSymlinkNamesTheTarget(t *testing.T) {
 		t.Errorf("error should name the symlink condition and its target %q, got %q", target, msg)
 	}
 }
+
+// A link's target is stored relative to the link's own directory, so echoing it
+// raw names a path that resolves from nowhere: "../missing.md" in a message is
+// not the file the tool looked for. Like every other path the tool *found*
+// rather than was given, it is reported absolute.
+func TestEditFileDanglingSymlinkResolvesARelativeTarget(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(sub, "link.md")
+	if err := os.Symlink("../missing.md", link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	// Both forms of the argument: a relative path must resolve its target the
+	// same way an absolute one does, or the message's second path would depend
+	// on how the first was written.
+	for _, arg := range []string{link, filepath.Join("sub", "link.md")} {
+		t.Run(arg, func(t *testing.T) {
+			if arg != link {
+				t.Chdir(dir)
+			}
+			_, err := executeEditFile(context.Background(), EditFileInput{
+				Path: arg, OldString: "x", NewString: "y",
+			})
+			if err == nil {
+				t.Fatal("expected an error for a symlink whose target does not exist")
+			}
+			msg := err.Error()
+			if want := filepath.Join(dir, "missing.md"); !strings.Contains(msg, want) {
+				t.Errorf("error should name the resolved absolute target %q, got %q", want, msg)
+			}
+			if strings.Contains(msg, "../missing.md") {
+				t.Errorf("error echoes the link's raw target, which resolves from no directory: %q", msg)
+			}
+		})
+	}
+}
