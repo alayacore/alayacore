@@ -109,9 +109,21 @@ so adapters treat them consistently (e.g. terseio sets exit code 1):
 ## Automatic Retry of Transient Failures
 
 A provider that is rate-limiting (429), overloaded (529), or briefly unavailable
-(408/500/502/503/504, plus transport timeouts) is retried automatically before
-the task is allowed to fail — so a transient failure stays invisible unless it
-outlives the retry budget.
+(408/500/502/503/504) is retried automatically before the task is allowed to
+fail — and so is a connection that failed before any response: a timeout, a
+reset, or an EOF where the response should have been (`Post "...": EOF`, which
+is what a local server leaves behind when it is killed mid-request). A transient
+failure therefore stays invisible unless it outlives the retry budget.
+
+**Why the ambiguity does not stop the retry.** That last class is ambiguous: the
+provider may have generated — and billed — the answer before the response was
+lost. Withholding the retry does not buy those tokens back. The user's only
+alternative is [`:continue`](#continue), and because a failed pre-stream step
+contributes nothing to the history, `:continue` re-sends the **identical**
+request — the same tokens, plus a human, plus a wait (`:continue` is never
+cheaper: past the auto-summarize threshold it summarizes first). So the ambiguity
+is a reason to keep the retry bounded, visible and interruptible, not a reason to
+skip it.
 
 **Where.** `llm.Agent.sendWithRetry` (`internal/llm/agent.go`) re-sends the
 step's request. A step's request is issued **synchronously inside**
@@ -126,8 +138,14 @@ so it is surfaced as-is rather than retried.
 typed `*llm.APIError` (`internal/llm/retry.go`) carrying the HTTP status and the
 parsed `Retry-After` hint; `llm.IsRetryable` decides from those. The retryable
 statuses are listed explicitly — 501/505 are permanent, so retrying them only
-delays the error. `context.Canceled`/`context.DeadlineExceeded` are never
-retried.
+delays the error. A transport failure carries no status, so it is classified by
+the shape of the error `net/http` returned (`connectionFailed`, same file): a
+`net.Error` timeout, `io.EOF`/`io.ErrUnexpectedEOF`, `ECONNRESET`,
+`ECONNABORTED`, `EPIPE`. A refusal (`ECONNREFUSED`) is not included — a retry
+meets the same refusal moments later, so the error is reported without a backoff
+in front of it. `context.Canceled`/`context.DeadlineExceeded` are never retried,
+and a cancel that beats its own connection error is reported as the cancellation
+(no notice).
 
 **Timing.** `Retry-After` wins when the server sent one; otherwise exponential
 backoff (1s, 2s, 4s…), both capped. Retries are bounded (`maxRetries`), so a
@@ -139,12 +157,31 @@ so `:cancel` interrupts a backoff immediately.
 `error` — the task has not failed):
 
 ```
-provider rate limited the request (status 429) — retrying in 2s (retry 1/3)
+provider rate limited the request (status 429) — retrying in 1s (retry 1/3)
+provider connection failed — retrying in 1s (retry 1/3)
 ```
 
 If every retry is exhausted, the ordinary failed-step path reports the final
 failure as it always has. Because the retry lives in the session/agent layer,
 all four adapters inherit it.
+
+**What this does not cover.** A connection that goes silent — established,
+request delivered, then no bytes and no FIN/RST — has no client-side deadline,
+and that is deliberate: any "wait for the response header" limit is a guess, and
+a wrong guess fails a request the provider had already generated (and billed) in
+exactly the deployments nobody tests — the big model on the slow box. The gap is
+also narrower than it sounds. `DefaultTransport` already bounds connect (a 30s
+dialer), the TLS handshake (10s) and idle reuse (90s), and a peer whose kernel
+died with our bytes in flight gives up once its retransmit budget runs out,
+surfacing as a timeout — which *is* retried, above. What remains is a peer whose
+kernel answers while its application never does: rare, visible in that server's
+own logs, and `:cancel` ends it. Should it ever become necessary, the shape that
+cannot misfire is an opt-in limit (0 = off) or a notify-only watchdog that
+reports the silence without failing the request; `http.Client.Timeout` is the
+one thing not to reach for, since it cuts a long generation mid-answer. Note
+that `internal/llm/providers/proxy.go` builds a zero-value `http.Transport`, so
+the proxy path has no connect, handshake or idle limit at all — the first place
+to look if a hang is ever reported behind a proxy.
 
 ## Error Recovery
 
@@ -203,13 +240,17 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 
 | Test | Verifies |
 |------|----------|
-| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport timeouts are |
+| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport failures (timeout, reset, EOF) are, a refusal is not |
+| `TestRetryReason` | The user-facing notice text: 429, 529, other statuses, and the one wording every connection failure shares |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
+| `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF` is retried and announced as `provider connection failed` |
+| `TestAgentCanceledConnectionFailureIsNotRetried` | A cancel that beats the connection error is reported as `context.Canceled`, with no re-send and no notice |
 | `TestAgentRetriesExhausted` | A permanent 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
 | `TestAgentDoesNotRetryPermanentError` | A 401 is not retried |
 | `TestAgentRetryCanceledDuringBackoff` | A cancel during the wait stops before the next request (`context.Canceled`) |
 | `TestParseRetryAfter` / `TestDoRequestReturnsTypedAPIError` | Provider parses `Retry-After` (seconds and HTTP-date) and returns a typed `*llm.APIError` |
+| `TestStreamMessagesConnectionClosedBeforeResponseIsRetryable` | A server that closes the connection without responding produces an error `llm.IsRetryable` accepts — over a real socket, not a hand-built error |
 
 ## Error Message Construction (`fmt.Errorf` Chaining)
 

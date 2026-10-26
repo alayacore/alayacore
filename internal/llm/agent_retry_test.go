@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"iter"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -115,6 +118,62 @@ func TestAgentDoesNotRetryPermanentError(t *testing.T) {
 	}
 	if p.calls != 1 {
 		t.Fatalf("provider calls = %d, want 1 (permanent errors are not retried)", p.calls)
+	}
+	if len(p.notices) != 0 {
+		t.Fatalf("retry notices = %d, want 0", len(p.notices))
+	}
+}
+
+// A connection that died before any response — what the user sees as
+// `Post "...": EOF` — is retried like a 5xx. Nothing streamed, so re-sending
+// is safe, and withholding it would only move the same request to the user's
+// own `:continue`.
+func TestAgentRetriesConnectionFailure(t *testing.T) {
+	fastRetries(t)
+	eof := fmt.Errorf("failed to send request: %w", &url.Error{
+		Op:  "Post",
+		URL: "http://127.0.0.1:9999/v1/chat/completions",
+		Err: io.EOF,
+	})
+	p := &retryScriptProvider{failures: []error{eof}}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	result, err := agent.Stream(context.Background(), userText(), StreamCallbacks{OnRetry: p.onRetry})
+	if err != nil {
+		t.Fatalf("Stream error = %v, want nil", err)
+	}
+	if p.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (1 + 1 retry)", p.calls)
+	}
+	if len(p.notices) != 1 {
+		t.Fatalf("retry notices = %d, want 1", len(p.notices))
+	}
+	if got := p.notices[0].Reason; got != "provider connection failed" {
+		t.Errorf("notice Reason = %q, want %q", got, "provider connection failed")
+	}
+	if result == nil || len(result.Contents) == 0 {
+		t.Fatal("expected a non-empty result after the retry")
+	}
+}
+
+// A cancel that beats its own connection error must not announce a retry: the
+// next request would refuse it, and the user is owed the cancellation, not a
+// notice about a backoff that will never run.
+func TestAgentCanceledConnectionFailureIsNotRetried(t *testing.T) {
+	fastRetries(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	eof := &url.Error{Op: "Post", URL: "http://x/v1", Err: io.EOF}
+	p := &retryScriptProvider{failures: []error{eof, eof}}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	_, err := agent.Stream(ctx, userText(), StreamCallbacks{OnRetry: p.onRetry})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if p.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1 (no re-send after cancel)", p.calls)
 	}
 	if len(p.notices) != 0 {
 		t.Fatalf("retry notices = %d, want 0", len(p.notices))

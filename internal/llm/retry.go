@@ -13,15 +13,19 @@ package llm
 //
 // The agent drives the loop (see sendWithRetry in agent.go) because it is the
 // layer that can tell the adapter what is happening, through
-// StreamCallbacks.OnRetry. The provider's only contribution is a typed *APIError
-// so the decision is structural, never a string match.
+// StreamCallbacks.OnRetry. The provider contributes a typed *APIError for a
+// non-200 response, and for a transport failure the shape of the error
+// net/http returned; either way the decision is structural, never a string
+// match.
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 )
 
@@ -66,6 +70,14 @@ var (
 // The status codes are listed explicitly rather than ">= 500": 501 (Not
 // Implemented) and 505 (HTTP Version Not Supported) are permanent, so retrying
 // them only delays the error. 529 is Anthropic's non-standard "overloaded".
+//
+// A connection that failed before any response — timed out, reset, or closed
+// early (EOF) — is retried like a 5xx. That failure is ambiguous: the provider
+// may have generated (and billed) the answer before the response was lost. The
+// ambiguity is still not a reason to withhold the retry, because the user's
+// only alternative is `:continue`, which re-sends the identical request — the
+// same tokens, plus a human. See docs/error-handling.md, "Automatic Retry of
+// Transient Failures".
 func IsRetryable(err error) bool {
 	if err == nil ||
 		errors.Is(err, context.Canceled) ||
@@ -88,8 +100,24 @@ func IsRetryable(err error) bool {
 		}
 		return false
 	}
-	// Transport-level timeout (connect or read deadline). http.Client wraps
-	// these in *url.Error, which satisfies net.Error.
+	return connectionFailed(err)
+}
+
+// connectionFailed reports whether err is a transport-level failure that
+// arrived before any HTTP response: a timeout, a reset, a broken pipe, or a
+// clean EOF where a response should have been.
+//
+// http.Client wraps all of them in *url.Error, which satisfies net.Error — but
+// only a timeout reports Timeout() == true, so a reset or an EOF needs the
+// explicit test. A refusal (ECONNREFUSED) is deliberately not here: a retry
+// meets the same refusal moments later, and "nothing is listening" is worth
+// reporting without a backoff in front of it.
+func connectionFailed(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||
+		errors.Is(err, syscall.EPIPE) {
+		return true
+	}
 	var netErr net.Error
 	return errors.As(err, &netErr) && netErr.Timeout()
 }
@@ -123,7 +151,10 @@ func retryReason(err error) string {
 			return fmt.Sprintf("provider returned a transient error (status %d)", apiErr.StatusCode)
 		}
 	}
-	return "provider connection timed out"
+	// One message for every transport-level failure: a timeout, a reset and an
+	// EOF before the response are the same event to the user, and the retry
+	// they are about to see is the same retry.
+	return "provider connection failed"
 }
 
 // sleepCtx waits for d, returning early (with the context error) if ctx is

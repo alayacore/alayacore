@@ -587,11 +587,11 @@ func (s *Session) handleStepStats(stats llm.StepStats) error {
 }
 
 // handleRetry tells the adapter that a transient provider failure is being
-// handled — a rate limit, an overload, a gateway blip — so it is visible while
-// it happens instead of looking like a hang. It is deliberately a notify, not
-// an error: the task has not failed. Only when every retry is exhausted does
-// the ordinary error path (writeError / the final failed step) report a
-// failure.
+// handled — a rate limit, an overload, a gateway blip, a dropped connection —
+// so it is visible while it happens instead of looking like a hang. It is
+// deliberately a notify, not an error: the task has not failed. Only when every
+// retry is exhausted does the ordinary error path (writeError / the final failed
+// step) report a failure.
 func (s *Session) handleRetry(n llm.RetryNotice) error {
 	s.writeNotifyf("%s — retrying in %s (retry %d/%d)",
 		n.Reason, n.Wait.Round(time.Second), n.Retry, n.MaxRetries)

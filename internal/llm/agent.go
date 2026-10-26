@@ -302,7 +302,7 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 
 // sendWithRetry issues a step's request and re-sends it on transient provider
 // failures — a rate limit (429), an overload (529), a gateway/5xx blip, or a
-// network timeout (see IsRetryable).
+// connection that died before the response (see IsRetryable).
 //
 // It is deliberately confined to the pre-stream call: StreamMessages issues the
 // HTTP request synchronously and returns an error before any event is produced,
@@ -326,6 +326,14 @@ func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callb
 		retriesUsed := attempt - 1
 		if retriesUsed >= maxRetries || !IsRetryable(err) {
 			return nil, attemptStart, err
+		}
+
+		// A canceled request can lose the race against its own connection
+		// error: the transport reports the reset or the EOF rather than
+		// context.Canceled. The next attempt would refuse to run, so report
+		// the cancellation instead of announcing a retry that cannot happen.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, attemptStart, ctxErr
 		}
 
 		wait := retryDelay(retriesUsed+1, err)

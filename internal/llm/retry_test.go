@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -38,6 +42,19 @@ func TestIsRetryable(t *testing.T) {
 		{"canceled (wrapped)", fmt.Errorf("provider stream failed: %w", context.Canceled), false},
 		{"deadline", context.DeadlineExceeded, false},
 		{"net timeout", timeoutErr{}, true},
+		// A connection that died before any response — the `Post "...": EOF`
+		// a local server leaves behind when it is killed mid-request — is a
+		// transport failure like a timeout, but reports Timeout() == false,
+		// so each shape has to be named.
+		{"eof before response", &url.Error{Op: "Post", URL: "http://127.0.0.1:9999/v1/chat/completions", Err: io.EOF}, true},
+		{"eof unwrapped", io.EOF, true},
+		{"unexpected eof", io.ErrUnexpectedEOF, true},
+		{"connection reset", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}}, true},
+		{"broken pipe", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "write", Net: "tcp", Err: syscall.EPIPE}}, true},
+		{"nothing listening", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}}, false},
+		// Cancellation wins over the transport shape, so a request the caller
+		// gave up on is never re-sent as a "connection failure".
+		{"canceled inside url.Error", &url.Error{Op: "Post", URL: "http://x/v1", Err: context.Canceled}, false},
 		{"plain error", errors.New("boom"), false},
 	}
 	for _, tc := range cases {
@@ -46,6 +63,27 @@ func TestIsRetryable(t *testing.T) {
 				t.Errorf("IsRetryable(%v) = %v, want %v", tc.err, got, tc.want)
 			}
 		})
+	}
+}
+
+// The reason a retry notice carries is user-facing text that
+// docs/error-handling.md quotes, so it is pinned here — including the fact
+// that every transport-level failure shares one wording.
+func TestRetryReason(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{&APIError{StatusCode: 429}, "provider rate limited the request (status 429)"},
+		{&APIError{StatusCode: 529}, "provider is overloaded (status 529)"},
+		{&APIError{StatusCode: 503}, "provider returned a transient error (status 503)"},
+		{&url.Error{Op: "Post", URL: "http://x/v1", Err: io.EOF}, "provider connection failed"},
+		{timeoutErr{}, "provider connection failed"},
+	}
+	for _, tc := range cases {
+		if got := retryReason(tc.err); got != tc.want {
+			t.Errorf("retryReason(%v) = %q, want %q", tc.err, got, tc.want)
+		}
 	}
 }
 

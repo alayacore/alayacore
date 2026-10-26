@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,49 @@ func TestParseRetryAfter(t *testing.T) {
 			t.Errorf("parseRetryAfter(%q) = %v, want a positive duration <= 10s", in, got)
 		}
 	})
+}
+
+// A provider that takes the request and then dies — the `Post "...": EOF` a
+// local server leaves behind when it is OOM-killed mid-request — must reach
+// llm.IsRetryable as a transient failure. It runs over a real connection
+// because the classification depends on what net/http returns, not on an error
+// a test invents.
+func TestStreamMessagesConnectionClosedBeforeResponseIsRetryable(t *testing.T) {
+	var hijacked atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			return
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		hijacked.Store(true)
+		_ = conn.Close() // not one response byte: the connection just ends
+	}))
+	defer srv.Close()
+
+	p, err := NewOpenAI(BaseConfig{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = p.StreamMessages(context.Background(),
+		[]llm.ContentPart{&llm.TextPart{
+			Text:            "hi",
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser},
+		}}, nil, "", "")
+
+	if !hijacked.Load() {
+		t.Fatal("the server never closed the connection, so the case did not run")
+	}
+	if err == nil {
+		t.Fatal("StreamMessages error = nil, want a transport failure")
+	}
+	if !llm.IsRetryable(err) {
+		t.Fatalf("IsRetryable(%v) = false, want true: a connection closed before the response is transient", err)
+	}
 }
 
 // A non-200 response must arrive as a typed *llm.APIError carrying the status
