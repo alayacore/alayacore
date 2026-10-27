@@ -104,6 +104,7 @@ func TestRetryReason(t *testing.T) {
 		{&APIError{StatusCode: 529}, "provider is overloaded (status 529)"},
 		{&APIError{StatusCode: 503}, "provider returned a transient error (status 503)"},
 		{&url.Error{Op: "Post", URL: "http://x/v1", Err: io.EOF}, "provider connection failed"},
+		{&streamBreakError{err: io.EOF}, "provider stream ended early"},
 		{timeoutErr{}, "provider connection failed"},
 	}
 	for _, tc := range cases {

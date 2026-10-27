@@ -125,14 +125,37 @@ cheaper: past the auto-summarize threshold it summarizes first). So the ambiguit
 is a reason to keep the retry bounded, visible and interruptible, not a reason to
 skip it.
 
-**Where.** `llm.Agent.sendWithRetry` (`internal/llm/agent.go`) re-sends the
-step's request. A step's request is issued **synchronously inside**
-`Provider.StreamMessages`, so a failure there means nothing has streamed yet: no
-content, no tool call, no history ID. Re-sending is therefore idempotent — it
-cannot duplicate content, re-run a tool whose side effects already happened, or
-pollute history. An error that arrives *after* the stream has started (e.g. an
-Anthropic `error` event) may follow content the user already watched stream in,
-so it is surfaced as-is rather than retried.
+**Where.** `llm.Agent.sendWithRetry` (`internal/llm/agent.go`) re-sends a step's
+**attempt** — its request *and* its stream — as one unit, and the safety argument
+is a single condition: the attempt delivered nothing. No event reached the
+adapter, no content or tool call was published, no history ID was minted, nothing
+entered history. Re-sending is therefore idempotent: it cannot duplicate content,
+re-run a tool whose side effects already happened, or pollute history.
+
+Two failures meet that condition, and both are re-sent. One is a request that
+failed inside `Provider.StreamMessages`, before anything could stream. The other
+is a stream that ended with an error **before it recorded anything** — a 200 whose
+body stopped, a gateway that answered with nothing usable, an in-band error as the
+opening message — where no block was opened, so the step's record is empty and the
+adapter has seen nothing. That second case is retried by construction, not by
+classification: a stream failure never arrives inside a `*url.Error` and carries
+no status, so `IsRetryable` could only ever say no (`streamBreakError` is what
+tells the loop the record was empty). The price is the one already accepted
+elsewhere: a permanent in-band error — an `invalid_request` the provider sends as
+its opening message — spends the budget before it is reported, where a wrong port
+spends it too.
+
+The condition is asked of the **record**, not of the event count, and the
+difference is not academic: a provider is free to declare the end of blocks it
+never opened before it reports the error. OpenAI closes all three — reasoning,
+text, tool calls — so that a body which simply stops is not mistaken for a step
+that finished; those boundaries open no block, mint no history ID and reach no
+callback. Counting events looked equivalent and left that shape unreported and
+un-retried; `streamAssembler.empty` is what answers the question.
+
+An error that arrives *after* an event has been delivered is surfaced as-is.
+Content the user already watched stream in cannot be taken back, so re-sending
+would duplicate it.
 
 **Classification is structural, not a string match.** The provider returns a
 typed `*llm.APIError` (`internal/llm/retry.go`) carrying the HTTP status and the
@@ -193,6 +216,7 @@ so `:cancel` interrupts a backoff immediately.
 ```
 provider rate limited the request (status 429) — retrying in 1s (retry 1/3)
 provider connection failed — retrying in 1s (retry 1/3)
+provider stream ended early — retrying in 1s (retry 1/3)
 ```
 
 If every retry is exhausted, the ordinary failed-step path reports the final
@@ -281,6 +305,10 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 | `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF` and `readfrom ...: write ...: use of closed network connection` are both retried and announced as `provider connection failed` |
 | `TestAgentCanceledConnectionFailureIsNotRetried` | A cancel that beats the connection error is reported as `context.Canceled`, with no re-send and no notice |
 | `TestAgentCancelOnLastAttemptReportsCancellation` | A cancel landing on the last attempt is reported as `context.Canceled` too, not as the transport error the spent budget ended on |
+| `TestAgentRetriesStreamThatRecordedNothing` | A stream error from an attempt that recorded nothing is re-sent and announced as `provider stream ended early`, with the step announced once — and the error is a bare `io.EOF`, which the classifier alone would refuse |
+| `TestAgentRetriesStreamWithBoundariesForUnopenedBlocks` | Boundaries for blocks the stream never opened (the OpenAI shape) leave the record empty, so the attempt is still re-sent — the gate asks the record, not whether an event arrived |
+| `TestAgentDoesNotRetryStreamThatDiedAfterContent` | A stream error after a block was opened is surfaced in the provider's own words: no retry, no notice, no pre-stream prefix |
+| `TestAgentRetriesStreamBreakUntilTheBudgetIsSpent` | A stream that keeps dying with the record empty spends the budget and reports the provider's error unchanged |
 | `TestAgentRetriesExhausted` | A permanent 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
 | `TestAgentDoesNotRetryPermanentError` | A 401 is not retried |
 | `TestAgentRetryCanceledDuringBackoff` | A cancel during the wait stops before the next request (`context.Canceled`) |

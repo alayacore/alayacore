@@ -9,6 +9,7 @@ import (
 	"iter"
 	"net"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -48,6 +49,58 @@ func (p *retryScriptProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 
 func (p *retryScriptProvider) onRetry(n RetryNotice) error {
 	p.notices = append(p.notices, n)
+	return nil
+}
+
+// streamScript is what one call's stream delivers before the error it ends with.
+type streamScript struct {
+	events []StreamEvent
+	err    error
+}
+
+// streamScriptProvider scripts each call's stream. A call past the end of the
+// script succeeds with a minimal text answer, so a test can assert that a retry
+// recovered; stepStarts counts the step boundaries the agent announced.
+type streamScriptProvider struct {
+	script     []streamScript
+	calls      int
+	stepStarts int
+	notices    []RetryNotice
+}
+
+func (p *streamScriptProvider) StreamMessages(_ context.Context, _ []ContentPart, _ []ToolDefinition, _, _ string) (iter.Seq2[StreamEvent, error], error) {
+	call := p.calls
+	p.calls++
+	sc := streamScript{events: []StreamEvent{
+		TextDeltaEvent{Delta: "hello", Key: "text"},
+		TextCompleteEvent{Key: "text"},
+		StepCompleteEvent{},
+	}}
+	if call < len(p.script) {
+		sc = p.script[call]
+	}
+	return func(yield func(StreamEvent, error) bool) {
+		for _, e := range sc.events {
+			if !yield(e, nil) {
+				return
+			}
+		}
+		if sc.err != nil {
+			yield(nil, sc.err)
+		}
+	}, nil
+}
+
+func (p *streamScriptProvider) SetReasoningLevel(_ int)                       {}
+func (p *streamScriptProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
+
+func (p *streamScriptProvider) onRetry(n RetryNotice) error {
+	p.notices = append(p.notices, n)
+	return nil
+}
+
+func (p *streamScriptProvider) onStepStart(int) error {
+	p.stepStarts++
 	return nil
 }
 
@@ -259,5 +312,136 @@ func TestAgentRetryCanceledDuringBackoff(t *testing.T) {
 	}
 	if p.calls != 1 {
 		t.Fatalf("provider calls = %d, want 1 (no re-send after cancel)", p.calls)
+	}
+}
+
+// A stream that ends with an error before recording anything is the same event as
+// a request that never got a response: the step's record is empty and the adapter
+// saw nothing, so the attempt is re-sent. The error here is a bare io.EOF, which
+// the *classifier* rejects (a stream failure never arrives inside a *url.Error) —
+// the retry comes from the marker, not from the shape.
+func TestAgentRetriesStreamThatRecordedNothing(t *testing.T) {
+	fastRetries(t)
+	p := &streamScriptProvider{script: []streamScript{{err: io.EOF}}}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	result, err := agent.Stream(context.Background(), userText(), StreamCallbacks{
+		OnRetry:     p.onRetry,
+		OnStepStart: p.onStepStart,
+	})
+	if err != nil {
+		t.Fatalf("Stream error = %v, want the retry to recover", err)
+	}
+	if p.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (1 + 1 retry)", p.calls)
+	}
+	if len(p.notices) != 1 {
+		t.Fatalf("retry notices = %d, want 1", len(p.notices))
+	}
+	if got := p.notices[0].Reason; got != "provider stream ended early" {
+		t.Errorf("notice Reason = %q, want %q", got, "provider stream ended early")
+	}
+	if p.stepStarts != 1 {
+		t.Errorf("step starts = %d, want 1: a retry is not a new step", p.stepStarts)
+	}
+	if result == nil || len(result.Contents) == 0 {
+		t.Fatal("expected a non-empty result after the retry")
+	}
+}
+
+// A provider may close the blocks it never opened before reporting the error —
+// OpenAI closes all three, because a body that stops must not be mistaken for a
+// step that finished. Those boundaries open no block, mint no history ID and
+// reach no callback, so the attempt recorded nothing and is still re-sent. The
+// gate therefore asks the record, not whether an event arrived; counting events
+// looked right and failed on this exact shape.
+func TestAgentRetriesStreamWithBoundariesForUnopenedBlocks(t *testing.T) {
+	fastRetries(t)
+	p := &streamScriptProvider{script: []streamScript{{
+		events: []StreamEvent{
+			ReasoningCompleteEvent{Key: "reasoning", Position: 0},
+			TextCompleteEvent{Key: "text", Position: 1},
+		},
+		err: io.EOF,
+	}}}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	result, err := agent.Stream(context.Background(), userText(), StreamCallbacks{OnRetry: p.onRetry})
+	if err != nil {
+		t.Fatalf("Stream error = %v, want the retry to recover", err)
+	}
+	if p.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (1 + 1 retry)", p.calls)
+	}
+	if len(p.notices) != 1 || p.notices[0].Reason != "provider stream ended early" {
+		t.Fatalf("notices = %+v, want one %q", p.notices, "provider stream ended early")
+	}
+	if result == nil || len(result.Contents) == 0 {
+		t.Fatal("expected a non-empty result after the retry")
+	}
+}
+
+// The other side of the same gate: once an event has been delivered, the record
+// is no longer empty and re-sending would duplicate what the user watched. The
+// error is surfaced in the provider's own words, without the pre-stream prefix.
+func TestAgentDoesNotRetryStreamThatDiedAfterContent(t *testing.T) {
+	fastRetries(t)
+	died := errors.New("stream vanished mid-answer")
+	p := &streamScriptProvider{script: []streamScript{{
+		events: []StreamEvent{TextDeltaEvent{Delta: "partial", Key: "text"}},
+		err:    died,
+	}}}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	delivered := 0
+	_, err := agent.Stream(context.Background(), userText(), StreamCallbacks{
+		OnRetry:     p.onRetry,
+		OnTextDelta: func(string, uint64) error { delivered++; return nil },
+	})
+	if err == nil {
+		t.Fatal("Stream error = nil, want the stream failure surfaced")
+	}
+	if !strings.Contains(err.Error(), died.Error()) {
+		t.Errorf("error = %q, want the provider's own wording", err)
+	}
+	if strings.Contains(err.Error(), "provider stream failed:") {
+		t.Errorf("error = %q, want no pre-stream prefix on a stream failure", err)
+	}
+	if p.calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (content was delivered)", p.calls)
+	}
+	if len(p.notices) != 0 {
+		t.Errorf("retry notices = %d, want 0", len(p.notices))
+	}
+	if delivered == 0 {
+		t.Error("the partial content never reached the adapter, so the case did not run")
+	}
+}
+
+// A stream that keeps dying before its first event spends the budget and then
+// reports the provider's error as it arrived — the marker prints as what it
+// wraps, so no internal type name reaches the user.
+func TestAgentRetriesStreamBreakUntilTheBudgetIsSpent(t *testing.T) {
+	fastRetries(t)
+	died := errors.New("stream vanished before any content")
+	script := make([]streamScript, maxRetries+1)
+	for i := range script {
+		script[i] = streamScript{err: died}
+	}
+	p := &streamScriptProvider{script: script}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	_, err := agent.Stream(context.Background(), userText(), StreamCallbacks{OnRetry: p.onRetry})
+	if err == nil {
+		t.Fatal("Stream error = nil, want the stream failure surfaced")
+	}
+	if got := err.Error(); got != died.Error() {
+		t.Errorf("error = %q, want exactly %q", got, died.Error())
+	}
+	if p.calls != maxRetries+1 {
+		t.Errorf("provider calls = %d, want %d", p.calls, maxRetries+1)
+	}
+	if len(p.notices) != maxRetries {
+		t.Errorf("retry notices = %d, want %d", len(p.notices), maxRetries)
 	}
 }

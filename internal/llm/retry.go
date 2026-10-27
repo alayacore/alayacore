@@ -2,14 +2,15 @@ package llm
 
 // Retry policy for transient provider failures.
 //
-// A step's request is issued synchronously inside Provider.StreamMessages, so a
-// failure there means nothing has streamed yet: no content, no tool call, no
-// history ID. Re-sending the request is therefore idempotent — it cannot
-// duplicate content, re-run a tool whose side effects already happened, or
-// pollute history. That is the ONLY place the agent retries. An error that
-// arrives after the stream has started (e.g. an Anthropic `error` event) may
-// follow content the user already watched stream in, so it is surfaced as-is
-// rather than retried.
+// An attempt is a step's request AND its stream, and it is re-sent only while it
+// has delivered nothing: no event reached the adapter, no content or tool call
+// was published, no history ID was minted. That is what makes re-sending
+// idempotent — it cannot duplicate content, re-run a tool whose side effects
+// already happened, or pollute history. Two failures meet the condition: a
+// request that failed inside Provider.StreamMessages, and a stream that ended
+// with an error before it recorded anything (streamBreakError). An error that arrives
+// after an event has been delivered may follow content the user already watched
+// stream in, so it is surfaced as-is rather than retried.
 //
 // The agent drives the loop (see sendWithRetry in agent.go) because it is the
 // layer that can tell the adapter what is happening, through
@@ -42,6 +43,22 @@ type APIError struct {
 func (e *APIError) Error() string {
 	return fmt.Sprintf("API error (status %d): %s", e.StatusCode, e.Body)
 }
+
+// streamBreakError marks a provider stream that ended with an error before it
+// recorded anything: a 200 whose body stopped, a gateway that answered with
+// nothing usable, an in-band error as the opening message. No block was opened,
+// so nothing reached the adapter, no history ID was minted and nothing entered
+// history — which is why the attempt may be re-sent exactly like a request that
+// never got a response, and why the type carries that fact to the retry loop
+// instead of the error having to look transient: a stream failure never arrives
+// inside a *url.Error.
+//
+// It prints as the error it wraps, so a broken stream that outlives the retry
+// budget is reported in the provider's own words.
+type streamBreakError struct{ err error }
+
+func (e *streamBreakError) Error() string { return e.err.Error() }
+func (e *streamBreakError) Unwrap() error { return e.err }
 
 // RetryNotice describes one re-send that is about to happen. It exists so the
 // adapter can show that a rate limit (or another transient failure) is being
@@ -155,7 +172,7 @@ func unchangedByRetry(err error) bool {
 		return true
 	}
 	// A name that does not resolve — as opposed to a resolver that could not
-	// answer *this second*, which is IsTemporary and therefore retried.
+	// answer *this second*, which is retried like any other transport answer.
 	var dnsErr *net.DNSError
 	return errors.As(err, &dnsErr) && dnsErr.IsNotFound
 }
@@ -176,8 +193,20 @@ func retryDelay(retry int, err error) time.Duration {
 	return min(d, retryMaxDelay)
 }
 
+// reasonStreamEndedEarly is the notice wording for an attempt that recorded
+// nothing before its stream broke. Like every notice reason it is user-facing
+// text quoted in docs/error-handling.md, and pinned there by TestRetryReason.
+const reasonStreamEndedEarly = "provider stream ended early"
+
 // retryReason renders a short, user-facing reason for a retry notice.
 func retryReason(err error) string {
+	// A stream that died before delivering anything. Not "connection failed":
+	// what ended it may be an error the provider sent as its opening message,
+	// and no wording about the transport would be true of that.
+	var broke *streamBreakError
+	if errors.As(err, &broke) {
+		return reasonStreamEndedEarly
+	}
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.StatusCode {

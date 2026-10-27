@@ -133,10 +133,11 @@ type StreamCallbacks struct {
 	// If nil, no tools trigger confirmation — they all execute immediately.
 	ToolNeedsConfirm func(name string) bool
 
-	// OnRetry is called when a step's request failed transiently and the
-	// agent is about to wait and re-send it. It fires before the wait, so a
-	// caller can surface the rate limit (or other transient failure) while it
-	// is being handled instead of after the fact. Optional.
+	// OnRetry is called when a step's attempt — its request, or the stream that
+	// answered it before delivering anything — failed transiently and the agent
+	// is about to wait and re-send it. It fires before the wait, so a caller can
+	// surface the rate limit (or other transient failure) while it is being
+	// handled instead of after the fact. Optional.
 	OnRetry func(RetryNotice) error
 
 	OnStepStart  func(step int) error
@@ -238,31 +239,20 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 			}
 		}
 
-		// stepStart is the start of the attempt that actually succeeded.
-		// sendWithRetry re-sends a transiently failed request and reports
-		// that attempt's start, so the retry waits are not charged to the
-		// step's TTFT or tok/s. The request is issued synchronously inside
-		// StreamMessages, so starting there makes TTFT and Duration include
-		// request/network latency.
-		events, stepStart, err := a.sendWithRetry(ctx, allContents, callbacks)
-		if err != nil {
-			return nil, fmt.Errorf("provider stream failed: %w", err)
-		}
-
-		// streamEvents fills stats.TimeToFirstToken (first delta) and
-		// stats.Duration (StepCompleteEvent). Step/OutputTokens/TPS are
-		// completed below after the authoritative usage is known.
-		var stepStats StepStats
-		stepContents, stepUsage, truncated, err := a.streamEvents(ctx, events, callbacks, stepStart, &stepStats)
+		// One attempt is the request and its stream together, and sendWithRetry
+		// re-sends both as a unit — see its docs for what "delivered nothing"
+		// means and why that is the only thing it retries. A step is announced
+		// once (OnStepStart above) however many attempts it takes.
+		attempt, err := a.sendWithRetry(ctx, allContents, callbacks)
 		if err != nil {
 			// A failed step may still have executed tools whose side
 			// effects already happened (file writes, commands). Fold their
 			// salvaged input+result pairs into the history so a retry or
 			// :continue sees a state consistent with reality.
-			if len(stepContents) > 0 {
-				allContents = append(allContents, stepContents...)
+			if len(attempt.contents) > 0 {
+				allContents = append(allContents, attempt.contents...)
 				if callbacks.OnStepFinish != nil {
-					if cbErr := callbacks.OnStepFinish(allContents, stepUsage); cbErr != nil {
+					if cbErr := callbacks.OnStepFinish(allContents, attempt.usage); cbErr != nil {
 						return nil, cbErr
 					}
 				}
@@ -270,29 +260,29 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 			return nil, err
 		}
 
-		allContents = append(allContents, stepContents...)
+		allContents = append(allContents, attempt.contents...)
 
 		// Complete the step stats: authoritative output tokens from the
 		// provider usage; TPS is 0 for tool-only steps or degenerate
 		// durations. Fired before OnStepFinish so consumers can publish
 		// the stats ahead of the step-finish broadcast.
-		if err := a.completeStepStats(callbacks, step, stepUsage, &stepStats); err != nil {
+		if err := a.completeStepStats(callbacks, step, attempt.usage, &attempt.stats); err != nil {
 			return nil, err
 		}
 
 		if callbacks.OnStepFinish != nil {
-			if err := callbacks.OnStepFinish(allContents, stepUsage); err != nil {
+			if err := callbacks.OnStepFinish(allContents, attempt.usage); err != nil {
 				return nil, err
 			}
 		}
 
-		totalUsage.InputTokens += stepUsage.InputTokens
-		totalUsage.OutputTokens += stepUsage.OutputTokens
+		totalUsage.InputTokens += attempt.usage.InputTokens
+		totalUsage.OutputTokens += attempt.usage.OutputTokens
 
-		if truncated {
+		if attempt.truncated {
 			return &StreamResult{Contents: allContents, Usage: totalUsage}, ErrResponseTruncated
 		}
-		if !hasToolInputs(stepContents) {
+		if !hasToolInputs(attempt.contents) {
 			return &StreamResult{Contents: allContents, Usage: totalUsage}, nil
 		}
 	}
@@ -300,43 +290,77 @@ func (a *Agent) Stream(ctx context.Context, contents []ContentPart, callbacks St
 	return &StreamResult{Contents: allContents, Usage: totalUsage}, ErrMaxStepsExceeded
 }
 
-// sendWithRetry issues a step's request and re-sends it on transient provider
-// failures — a rate limit (429), an overload (529), a gateway/5xx blip, or a
-// connection that died before the response (see IsRetryable).
+// stepOutcome is what one successful attempt of a step produced: the record the
+// step contributes to history, its usage, whether the model was cut off, and the
+// stats the caller completes once the step number is known. On a failed attempt
+// contents holds the salvage — what streamed before the failure — so a step that
+// dies part-way still contributes the tool pairs whose side effects happened.
+type stepOutcome struct {
+	contents  []ContentPart
+	usage     Usage
+	truncated bool
+	stats     StepStats
+}
+
+// sendWithRetry runs one step's attempt — its request and its stream — and
+// re-sends the whole attempt on a failure that delivered nothing: a transient
+// pre-stream failure (see IsRetryable), or a stream that ended with an error
+// before it recorded anything (streamBreakError).
 //
-// It is deliberately confined to the pre-stream call: StreamMessages issues the
-// HTTP request synchronously and returns an error before any event is produced,
-// so a retry here cannot duplicate streamed content, re-run a tool with side
-// effects, or mint a history ID. An in-stream error (one that follows content)
-// is never routed here.
+// "Delivered nothing" is the whole safety argument, and it is one sentence: no
+// event reached the adapter, no content or tool call was published, no history ID
+// was minted, nothing entered history. A request that failed inside
+// StreamMessages cannot have delivered anything, and neither can a stream that
+// died before it recorded anything — no block opened, so the step's record is
+// still empty, which is why that case is re-sent rather than failed. An error that arrives after an event
+// has been delivered is surfaced as-is: content the user already watched stream
+// in cannot be taken back, so re-sending would duplicate it.
+//
+// A broken stream is retried by construction rather than by classification: a
+// stream failure never arrives inside a *url.Error, and there is no status to
+// respect, so asking IsRetryable would only ever say no. What it must not do is
+// retry an attempt that produced something, which the marker already encodes.
 //
 // Each retry is announced through callbacks.OnRetry *before* the wait, so the
 // adapter can show what is happening; the wait itself is interruptible, so
-// :cancel is honored during a backoff. The returned time is the start of the
-// attempt that succeeded, for the caller's speed metrics.
-func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callbacks StreamCallbacks) (iter.Seq2[StreamEvent, error], time.Time, error) {
+// :cancel is honored during a backoff. The attempt's own start time is what feeds
+// the stats, so retry waits are charged to neither TTFT nor tok/s.
+func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callbacks StreamCallbacks) (stepOutcome, error) {
 	for attempt := 1; ; attempt++ {
 		attemptStart := time.Now()
+
+		var out stepOutcome
 		events, err := a.config.Provider.StreamMessages(
 			ctx, contents, a.toolDefinitions(), a.config.SystemPrompt, a.config.ExtraSystemPrompt)
+		if err != nil {
+			// The prefix every log and doc has used for a request that never
+			// produced a stream. A stream failure below is reported in the
+			// provider's own words instead.
+			err = fmt.Errorf("provider stream failed: %w", err)
+		} else {
+			out.contents, out.usage, out.truncated, err = a.streamEvents(ctx, events, callbacks, attemptStart, &out.stats)
+		}
 		if err == nil {
-			return events, attemptStart, nil
+			return out, nil
 		}
 
 		// The caller's cancellation outranks the failure it caused, and it is
-		// checked first for two reasons. A request abandoned mid-flight comes
-		// back as whatever the transport was doing at the time — a reset, a
-		// closed socket, an EOF — and the next attempt would refuse to run, so
-		// announcing a retry would be a lie. And the budget has no say in it: a
-		// cancel that lands on the last attempt is still the user's decision,
-		// not the connection failure the budget happened to end on.
+		// checked first for two reasons. An attempt abandoned mid-flight comes
+		// back as whatever the transport or the stream was doing at the time — a
+		// reset, a closed socket, an EOF — and the next attempt would refuse to
+		// run, so announcing a retry would be a lie. And the budget has no say in
+		// it: a cancel that lands on the last attempt is still the user's
+		// decision, not the failure the budget happened to end on.
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, attemptStart, ctxErr
+			return out, ctxErr
 		}
 
+		var broke *streamBreakError
+		retryable := errors.As(err, &broke) || IsRetryable(err)
+
 		retriesUsed := attempt - 1
-		if retriesUsed >= maxRetries || !IsRetryable(err) {
-			return nil, attemptStart, err
+		if retriesUsed >= maxRetries || !retryable {
+			return out, err
 		}
 
 		wait := retryDelay(retriesUsed+1, err)
@@ -347,11 +371,11 @@ func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callb
 				Wait:       wait,
 				Reason:     retryReason(err),
 			}); cbErr != nil {
-				return nil, attemptStart, cbErr
+				return out, cbErr
 			}
 		}
 		if err := sleepCtx(ctx, wait); err != nil {
-			return nil, attemptStart, err
+			return out, err
 		}
 	}
 }
@@ -385,6 +409,11 @@ func (a *Agent) completeStepStats(callbacks StreamCallbacks, step int, stepUsage
 // minted by the assembler on each block's first appearance and passed to
 // callbacks, so a window on screen and the part that gets persisted are the same
 // block.
+//
+// An error that arrives with the record still empty comes back wrapped in a
+// *streamBreakError: it means this attempt delivered nothing, which is what lets
+// the caller re-send it (see sendWithRetry). Once a block has been opened the
+// error is returned as the provider raised it.
 //
 // Tool goroutines (started per ToolInputCompleteEvent) are tracked with a
 // WaitGroup and run under a per-stream context. On ANY exit path — stream error,
@@ -483,6 +512,15 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 	for event, err := range events {
 		if err != nil {
+			// The attempt can be re-sent only if it recorded nothing: no block
+			// opened, so no part, no history ID, no callback (streamBreakError).
+			// Asked of the record rather than by counting events, because a
+			// provider may declare boundaries for blocks it never opened before
+			// reporting the error — the OpenAI provider closes all three — and
+			// those declare nothing to the adapter.
+			if assembler.empty() {
+				return nil, Usage{}, false, &streamBreakError{err: err}
+			}
 			return nil, Usage{}, false, err
 		}
 
