@@ -323,17 +323,20 @@ func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callb
 			return events, attemptStart, nil
 		}
 
+		// The caller's cancellation outranks the failure it caused, and it is
+		// checked first for two reasons. A request abandoned mid-flight comes
+		// back as whatever the transport was doing at the time — a reset, a
+		// closed socket, an EOF — and the next attempt would refuse to run, so
+		// announcing a retry would be a lie. And the budget has no say in it: a
+		// cancel that lands on the last attempt is still the user's decision,
+		// not the connection failure the budget happened to end on.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, attemptStart, ctxErr
+		}
+
 		retriesUsed := attempt - 1
 		if retriesUsed >= maxRetries || !IsRetryable(err) {
 			return nil, attemptStart, err
-		}
-
-		// A canceled request can lose the race against its own connection
-		// error: the transport reports the reset or the EOF rather than
-		// context.Canceled. The next attempt would refuse to run, so report
-		// the cancellation instead of announcing a retry that cannot happen.
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, attemptStart, ctxErr
 		}
 
 		wait := retryDelay(retriesUsed+1, err)

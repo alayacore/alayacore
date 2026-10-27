@@ -20,11 +20,19 @@ type retryScriptProvider struct {
 	failures []error
 	calls    int
 	notices  []RetryNotice
+
+	// cancelOnCall, when set, cancels the request's context at the start of
+	// that 1-based call — a user giving up while the attempt is in flight.
+	cancelOnCall int
+	cancel       context.CancelFunc
 }
 
 func (p *retryScriptProvider) StreamMessages(_ context.Context, _ []ContentPart, _ []ToolDefinition, _, _ string) (iter.Seq2[StreamEvent, error], error) {
 	call := p.calls
 	p.calls++
+	if p.cancelOnCall > 0 && call+1 == p.cancelOnCall {
+		p.cancel()
+	}
 	if call < len(p.failures) {
 		return nil, p.failures[call]
 	}
@@ -197,6 +205,35 @@ func TestAgentCanceledConnectionFailureIsNotRetried(t *testing.T) {
 	}
 	if len(p.notices) != 0 {
 		t.Fatalf("retry notices = %d, want 0", len(p.notices))
+	}
+}
+
+// A cancel that lands on the last attempt is still the cancellation: the budget
+// being spent does not turn the user's decision into a connection failure. The
+// loop used to check the budget first, so this exact case reported whatever the
+// transport said when the context died.
+func TestAgentCancelOnLastAttemptReportsCancellation(t *testing.T) {
+	fastRetries(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	closed := &url.Error{Op: "Post", URL: "http://x/v1", Err: net.ErrClosed}
+	p := &retryScriptProvider{
+		failures:     []error{closed, closed, closed, closed},
+		cancelOnCall: maxRetries + 1,
+		cancel:       cancel,
+	}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	_, err := agent.Stream(ctx, userText(), StreamCallbacks{OnRetry: p.onRetry})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if p.calls != maxRetries+1 {
+		t.Fatalf("provider calls = %d, want %d (the last attempt)", p.calls, maxRetries+1)
+	}
+	if len(p.notices) != maxRetries {
+		t.Fatalf("retry notices = %d, want %d (every attempt before the last)", len(p.notices), maxRetries)
 	}
 }
 

@@ -156,7 +156,9 @@ structural to detect because `http.Client` wraps everything it returns in
 — three notices, about seven seconds — before reporting the same error, which is
 the accepted price of a local model server that is restarting.
 `context.Canceled`/`context.DeadlineExceeded` are never retried, and a cancel
-that beats its own connection error is reported as the cancellation (no notice).
+that beats its own connection error is reported as the cancellation (no notice) —
+including on the last attempt, where the budget has already run out: what the
+user did outranks the transport error the budget happened to end on.
 
 One shape still needs the argument spelled out, because its name says the
 opposite. `net.ErrClosed` means a socket was written to after it was closed, and
@@ -273,6 +275,7 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
 | `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF` and `readfrom ...: write ...: use of closed network connection` are both retried and announced as `provider connection failed` |
 | `TestAgentCanceledConnectionFailureIsNotRetried` | A cancel that beats the connection error is reported as `context.Canceled`, with no re-send and no notice |
+| `TestAgentCancelOnLastAttemptReportsCancellation` | A cancel landing on the last attempt is reported as `context.Canceled` too, not as the transport error the spent budget ended on |
 | `TestAgentRetriesExhausted` | A permanent 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
 | `TestAgentDoesNotRetryPermanentError` | A 401 is not retried |
 | `TestAgentRetryCanceledDuringBackoff` | A cancel during the wait stops before the next request (`context.Canceled`) |
