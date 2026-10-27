@@ -174,9 +174,9 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	// (docs/context-tracking.md).
 	//
 	// Nothing is retried here: the summarize request is an ordinary request, so
-	// sendWithRetry has already retried it (llm.IsRetryable) before its error
-	// arrives — and the one semantic retry a textless reply gets has already
-	// happened inside summarizeContents. What arrives is permanent or
+	// sendWithRetry has already re-sent whatever could be re-sent (IsRetryable,
+	// streamBreakError) before its error arrives — and the one semantic retry a
+	// textless reply gets has already happened inside summarizeContents. What arrives is permanent or
 	// exhausted, and the next step's context would only be larger.
 	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
 		// The step's clock, captured before anything else this step does. Both

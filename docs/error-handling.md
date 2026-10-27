@@ -110,16 +110,17 @@ so adapters treat them consistently (e.g. terseio sets exit code 1):
 
 A provider that is rate-limiting (429), overloaded (529), or briefly unavailable
 (408/500/502/503/504) is retried automatically before the task is allowed to
-fail — and so is a connection that failed before any response: a timeout, a
-reset, or an EOF where the response should have been (`Post "...": EOF`, which
-is what a local server leaves behind when it is killed mid-request). A transient
-failure therefore stays invisible unless it outlives the retry budget.
+fail. So is an attempt that delivered nothing: a connection that failed before any
+response (a timeout, a reset, an EOF where the response should have been —
+`Post "...": EOF`, which is what a local server leaves behind when it is killed
+mid-request) and a stream that ended with an error before it recorded anything. A
+transient failure therefore stays invisible unless it outlives the retry budget.
 
 **Why the ambiguity does not stop the retry.** That last class is ambiguous: the
 provider may have generated — and billed — the answer before the response was
 lost. Withholding the retry does not buy those tokens back. The user's only
-alternative is [`:continue`](#continue), and because a failed pre-stream step
-contributes nothing to the history, `:continue` re-sends the **identical**
+alternative is [`:continue`](#continue), and because a step that delivered
+nothing contributes nothing to the history, `:continue` re-sends the **identical**
 request — the same tokens, plus a human, plus a wait (`:continue` is never
 cheaper: past the auto-summarize threshold it summarizes first). So the ambiguity
 is a reason to keep the retry bounded, visible and interruptible, not a reason to
@@ -127,10 +128,10 @@ skip it.
 
 **Where.** `llm.Agent.sendWithRetry` (`internal/llm/agent.go`) re-sends a step's
 **attempt** — its request *and* its stream — as one unit, and the safety argument
-is a single condition: the attempt delivered nothing. No event reached the
-adapter, no content or tool call was published, no history ID was minted, nothing
-entered history. Re-sending is therefore idempotent: it cannot duplicate content,
-re-run a tool whose side effects already happened, or pollute history.
+is a single condition: the attempt delivered nothing — no block was opened, so the
+adapter was told nothing, no history ID was minted and nothing entered history.
+Re-sending is therefore idempotent: it cannot duplicate content, re-run a tool
+whose side effects already happened, or pollute history.
 
 Two failures meet that condition, and both are re-sent. One is a request that
 failed inside `Provider.StreamMessages`, before anything could stream. The other
@@ -151,11 +152,14 @@ never opened before it reports the error. OpenAI closes all three — reasoning,
 text, tool calls — so that a body which simply stops is not mistaken for a step
 that finished; those boundaries open no block, mint no history ID and reach no
 callback. Counting events looked equivalent and left that shape unreported and
-un-retried; `streamAssembler.empty` is what answers the question.
+un-retried; `streamAssembler.empty` is what answers the question. The gate is
+deliberately conservative where the two directions differ: under `--no-delta` a
+block can hold text the adapter was never sent, but the record already has it, so
+a re-send would duplicate it in history — nothing to gain, so nothing is re-sent.
 
-An error that arrives *after* an event has been delivered is surfaced as-is.
-Content the user already watched stream in cannot be taken back, so re-sending
-would duplicate it.
+An error that arrives once a block has been opened is surfaced as-is: content the
+user already watched stream in cannot be taken back, so re-sending would duplicate
+it.
 
 **Classification is structural, not a string match.** The provider returns a
 typed `*llm.APIError` (`internal/llm/retry.go`) carrying the HTTP status and the

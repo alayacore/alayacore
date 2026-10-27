@@ -307,19 +307,16 @@ type stepOutcome struct {
 // pre-stream failure (see IsRetryable), or a stream that ended with an error
 // before it recorded anything (streamBreakError).
 //
-// "Delivered nothing" is the whole safety argument, and it is one sentence: no
-// event reached the adapter, no content or tool call was published, no history ID
-// was minted, nothing entered history. A request that failed inside
+// "Delivered nothing" is the whole safety argument, and streamBreakError and
+// streamAssembler.empty are where it is defined. A request that failed inside
 // StreamMessages cannot have delivered anything, and neither can a stream that
-// died before it recorded anything — no block opened, so the step's record is
-// still empty, which is why that case is re-sent rather than failed. An error that arrives after an event
-// has been delivered is surfaced as-is: content the user already watched stream
-// in cannot be taken back, so re-sending would duplicate it.
+// died before it recorded anything — which is why both are re-sent. Once a block has been opened the error is surfaced as-is: content
+// the user already watched stream in cannot be taken back, so re-sending would
+// duplicate it.
 //
 // A broken stream is retried by construction rather than by classification: a
-// stream failure never arrives inside a *url.Error, and there is no status to
-// respect, so asking IsRetryable would only ever say no. What it must not do is
-// retry an attempt that produced something, which the marker already encodes.
+// stream failure never arrives inside a *url.Error and carries no status, so
+// asking IsRetryable would only ever say no.
 //
 // Each retry is announced through callbacks.OnRetry *before* the wait, so the
 // adapter can show what is happening; the wait itself is interruptible, so
@@ -512,12 +509,10 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 
 	for event, err := range events {
 		if err != nil {
-			// The attempt can be re-sent only if it recorded nothing: no block
-			// opened, so no part, no history ID, no callback (streamBreakError).
-			// Asked of the record rather than by counting events, because a
-			// provider may declare boundaries for blocks it never opened before
-			// reporting the error — the OpenAI provider closes all three — and
-			// those declare nothing to the adapter.
+			// Nothing recorded means nothing was delivered, so the attempt can
+			// be re-sent (streamBreakError). Boundaries for blocks the stream
+			// never opened — the OpenAI provider closes all three — are not
+			// delivery, which is why this asks the record, not an event count.
 			if assembler.empty() {
 				return nil, Usage{}, false, &streamBreakError{err: err}
 			}

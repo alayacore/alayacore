@@ -305,11 +305,10 @@ func attachToolResults(record, results []ContentPart, dropUnanswered bool) ([]Co
 // answers it. Empty text and reasoning blocks are skipped likewise: a slot the
 // provider opened but never filled adds nothing to the conversation.
 // empty reports whether this attempt recorded nothing at all: no block was ever
-// opened or closed, so no part exists, no history ID was minted and no callback
-// fired on its behalf. It is the question the retry loop must ask, and it is not
-// the same as "did an event arrive": a provider may declare the boundaries of
-// blocks it never opened — the OpenAI provider closes all three before reporting
-// a body that stopped — and those declare nothing to anyone.
+// opened or closed. It is the question the retry loop must ask, and it is not
+// "did an event arrive": a provider may declare the boundaries of blocks it never
+// opened — the OpenAI provider closes all three before reporting a body that
+// stopped — and those declare nothing to anyone.
 func (a *streamAssembler) empty() bool { return len(a.touched) == 0 }
 
 func (a *streamAssembler) parts() []ContentPart {

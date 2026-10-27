@@ -8,9 +8,9 @@ package llm
 // idempotent — it cannot duplicate content, re-run a tool whose side effects
 // already happened, or pollute history. Two failures meet the condition: a
 // request that failed inside Provider.StreamMessages, and a stream that ended
-// with an error before it recorded anything (streamBreakError). An error that arrives
-// after an event has been delivered may follow content the user already watched
-// stream in, so it is surfaced as-is rather than retried.
+// with an error before it recorded anything (streamBreakError). An error that
+// arrives once a block has been opened may follow content the user already
+// watched stream in, so it is surfaced as-is rather than retried.
 //
 // The agent drives the loop (see sendWithRetry in agent.go) because it is the
 // layer that can tell the adapter what is happening, through
