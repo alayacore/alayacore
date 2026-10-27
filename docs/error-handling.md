@@ -136,27 +136,29 @@ so it is surfaced as-is rather than retried.
 
 **Classification is structural, not a string match.** The provider returns a
 typed `*llm.APIError` (`internal/llm/retry.go`) carrying the HTTP status and the
-parsed `Retry-After` hint; `llm.IsRetryable` decides from those. The retryable
-statuses are listed explicitly — 501/505 are permanent, so retrying them only
-delays the error. A transport failure carries no status, so it is classified by
-the shape of the error `net/http` returned (`connectionFailed`, same file): a
-`net.Error` timeout, `io.EOF`/`io.ErrUnexpectedEOF`, `ECONNRESET`,
-`ECONNABORTED`, `EPIPE`, `net.ErrClosed`, and everything a connect can fail with
-short of an answer that cannot change: `ECONNREFUSED`, `EHOSTUNREACH`,
-`ENETUNREACH`, `ENETDOWN`, and a resolver that answered "not now"
-(`*net.DNSError.IsTemporary`). A refusal belongs there because the case it
-describes is a local model server that is restarting: the socket is not open
-*yet*, and the retry a second later is what starts working. What stays out is
-what the next attempt cannot make different — a certificate that does not
-verify, an https URL that reached a plain-HTTP server, a name that does not
-resolve (`IsNotFound`) — because three backoffs and seven seconds would be spent
-on the same deterministic answer. A wrong port or host is now paid for the same
-way, which is the accepted price of the restarting-server case.
-`context.Canceled`/`context.DeadlineExceeded`
-are never retried, and a cancel that beats its own connection error is reported
-as the cancellation (no notice).
+parsed `Retry-After` hint; `llm.IsRetryable` decides from those. A status is an
+allowlist and has to be: it is a decision the server made, and most decisions are
+final — 501/505 are permanent, 400/401/403/404/413 describe a request that would
+be rejected identically next time, and retrying them only delays the answer.
 
-The last shape needs the argument spelled out, because its name says the
+A transport failure carries no decision at all, so it is decided by the one
+question that matters — could a second attempt get a different answer? — and the
+default is **yes** (`transportFailed`, same file). That default is deliberate.
+The vocabulary for "the answer is not here" is open: kernels, resolvers, proxies,
+gateways and HTTP/2 each have their own, and the last three fixes each added a
+shape the previous classification had missed (`io.EOF`, then `net.ErrClosed`,
+then `ECONNREFUSED`). Enumerating it is a treadmill. What a retry cannot change
+is closed and small, so that is what gets written down: a certificate that does
+not verify, an https URL answered by a plain-HTTP server, and a name that does
+not resolve — plus anything that never reached the transport at all, which is
+structural to detect because `http.Client` wraps everything it returns in
+`*url.Error`. The price is stated once: a wrong port or host now costs the budget
+— three notices, about seven seconds — before reporting the same error, which is
+the accepted price of a local model server that is restarting.
+`context.Canceled`/`context.DeadlineExceeded` are never retried, and a cancel
+that beats its own connection error is reported as the cancellation (no notice).
+
+One shape still needs the argument spelled out, because its name says the
 opposite. `net.ErrClosed` means a socket was written to after it was closed, and
 on this path it is **not** "we closed it on purpose". The closers reachable here
 are `net/http`'s read half, reacting to a peer that has gone, and the request's
@@ -265,7 +267,7 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 
 | Test | Verifies |
 |------|----------|
-| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport failures (timeout, reset, EOF, a socket closed under the write, a refused connect, a connect with no route, a temporary DNS failure) are, while a missing name and a bad certificate are not |
+| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; a transport failure is retried, including an errno the classifier does not name, while a bad certificate, an https URL answered by plain HTTP, a name that does not resolve and an error that never reached the transport are not |
 | `TestRetryReason` | The user-facing notice text: 429, 529, other statuses, and the one wording every connection failure shares |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |

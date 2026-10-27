@@ -13,19 +13,19 @@ package llm
 //
 // The agent drives the loop (see sendWithRetry in agent.go) because it is the
 // layer that can tell the adapter what is happening, through
-// StreamCallbacks.OnRetry. The provider contributes a typed *APIError for a
-// non-200 response, and for a transport failure the shape of the error
-// net/http returned; either way the decision is structural, never a string
-// match.
+// StreamCallbacks.OnRetry. A non-200 response contributes a typed *APIError;
+// a transport failure is decided by whether the request reached the transport
+// at all and whether a retry could change the answer. Either way the decision is
+// structural, never a string match.
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"syscall"
+	"net/url"
 	"time"
 )
 
@@ -67,17 +67,20 @@ var (
 // safely re-sent. Only failures raised before anything streamed reach this
 // function, so re-sending cannot duplicate content.
 //
-// The status codes are listed explicitly rather than ">= 500": 501 (Not
-// Implemented) and 505 (HTTP Version Not Supported) are permanent, so retrying
-// them only delays the error. 529 is Anthropic's non-standard "overloaded".
+// A status is an allowlist, and it has to be: it says what the server decided,
+// and most decisions are final. 501 (Not Implemented) and 505 (HTTP Version Not
+// Supported) are permanent, so retrying them only delays the error, and 400/
+// 401/403/404/413 describe a request the server will reject identically next
+// time. 529 is Anthropic's non-standard "overloaded".
 //
-// A connection that failed before any response (connectionFailed, below, names
-// the shapes) is retried like a 5xx. That failure is ambiguous: the provider
-// may have generated (and billed) the answer before the response was lost. The
-// ambiguity is still not a reason to withhold the retry, because the user's
-// only alternative is `:continue`, which re-sends the identical request — the
-// same tokens, plus a human. See docs/error-handling.md, "Automatic Retry of
-// Transient Failures".
+// A transport failure carries no decision at all — only the absence of one — so
+// it is decided by the one question that matters: could a second attempt get a
+// different answer? There the default is yes (transportFailed, below). Retrying
+// is not free of ambiguity — the provider may have generated, and billed, the
+// answer before the response was lost — but withholding it does not buy those
+// tokens back: the user's only alternative is `:continue`, which re-sends the
+// identical request, the same tokens plus a human. See docs/error-handling.md,
+// "Automatic Retry of Transient Failures".
 func IsRetryable(err error) bool {
 	if err == nil ||
 		errors.Is(err, context.Canceled) ||
@@ -100,66 +103,54 @@ func IsRetryable(err error) bool {
 		}
 		return false
 	}
-	return connectionFailed(err)
+	return transportFailed(err)
 }
 
-// connectionFailed reports whether err is a transport-level failure that
-// arrived before any HTTP response: a connection that died mid-request, or one
-// that was never made for a reason a second attempt can change. Everything the
-// caller can do about it — a retry — is therefore worth trying, which is not
-// true of the shapes deliberately left out (below).
+// transportFailed reports whether a request that reached the transport came back
+// without an answer: the connection died mid-request, or was never made.
 //
-// http.Client wraps all of them in *url.Error, which satisfies net.Error — but
-// only a timeout reports Timeout() == true, so a reset or an EOF needs the
-// explicit test.
+// The default is to retry, deliberately. The vocabulary for "the answer is not
+// here" is open — kernels, resolvers, proxies and gateways each have their own,
+// and HTTP/2 another — and the last three fixes each added a shape the previous
+// classification had not anticipated: io.EOF, then net.ErrClosed, then
+// ECONNREFUSED. Enumerating that set is a treadmill. What a retry cannot
+// change is closed and small, so that is the list that gets written down
+// (unchangedByRetry), and everything else is retried.
 //
-// net.ErrClosed ("use of closed network connection") is here because in this
-// position it is not "we closed it on purpose". A request whose body is still
-// going out when the peer stops talking reports that one event in whichever
-// costume won the race: the peer's errno (ECONNRESET/EPIPE), a bare EOF, or —
-// when net/http's read half notices the peer first and closes the connection
-// underneath the writer — this local close. Which one you see follows the size
-// of the body, because that is how long the write stays in flight: a body that
-// fits in the socket's buffers is already written when the read half reports
-// the missing response as EOF, while the whole-conversation body of a summarize
-// is where `readfrom ...: write ...: use of closed network connection` was
-// reported. One event, one retry. The other closer on this path is the
-// request's own context ending, which net/http reports as the cancellation
-// (`context canceled`, ahead of the write error) — and sendWithRetry's ctx
-// check covers the race in which the peer's departure is reported instead.
-//
-// Two further families are connect-time, and the question that sorts them is
-// whether a second attempt could give a different answer. A refusal belongs
-// with the retried: the case it describes is a local model server that is
-// restarting, where the socket is not open *yet*, and a retry a second later is
-// exactly what starts working. So do EHOSTUNREACH, ENETUNREACH and ENETDOWN (a
-// laptop that just left the Wi-Fi, a VPN still coming up), and a resolver that
-// answered "not now" — a socket-level failure, SERVFAIL — found structurally
-// through *net.DNSError.IsTemporary, which the pure Go resolver the release
-// binaries use (CGO_ENABLED=0) fills in. What stays out is what the next attempt
-// cannot make different: a certificate that does not verify, an https URL that
-// reached a plain-HTTP server, a name that does not resolve. Retrying those
-// spends three backoffs on the same deterministic answer. A wrong port is now
-// paid for the same way — the budget, about seven seconds — which is the
-// accepted price of the restarting-server case.
-func connectionFailed(err error) bool {
-	// The connection died: under the request body, or before any response.
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
-		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||
-		errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) {
+// "Reached the transport" is structural: http.Client.Do wraps everything it
+// returns in *url.Error, so an error without one never left this process — a
+// body that could not be marshaled, a URL that could not be parsed — and is
+// reported at once.
+func transportFailed(err error) bool {
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return false
+	}
+	return !unchangedByRetry(err)
+}
+
+// unchangedByRetry reports whether err is one of the failures a second attempt
+// answers identically. Each is decided before a byte of the response could
+// arrive: the certificate, the protocol, or the name.
+func unchangedByRetry(err error) bool {
+	// An https:// URL answered by a plain-HTTP server, or by something whose
+	// first bytes are not a TLS record at all.
+	if errors.Is(err, http.ErrSchemeMismatch) {
 		return true
 	}
-	// Or it was never made, for a reason a second attempt can change.
-	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.EHOSTUNREACH) ||
-		errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.ENETDOWN) {
+	var recordErr tls.RecordHeaderError
+	if errors.As(err, &recordErr) {
 		return true
 	}
+	// A certificate that does not verify, whatever reason tls reports.
+	var verifyErr *tls.CertificateVerificationError
+	if errors.As(err, &verifyErr) {
+		return true
+	}
+	// A name that does not resolve — as opposed to a resolver that could not
+	// answer *this second*, which is IsTemporary and therefore retried.
 	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) && dnsErr.IsTemporary {
-		return true
-	}
-	var netErr net.Error
-	return errors.As(err, &netErr) && netErr.Timeout()
+	return errors.As(err, &dnsErr) && dnsErr.IsNotFound
 }
 
 // retryDelay returns how long to wait before the given retry (1-based). A

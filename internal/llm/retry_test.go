@@ -2,12 +2,14 @@ package llm
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
-	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -42,37 +44,26 @@ func TestIsRetryable(t *testing.T) {
 		{"403 permanent", &APIError{StatusCode: 403}, false},
 		{"canceled (wrapped)", fmt.Errorf("provider stream failed: %w", context.Canceled), false},
 		{"deadline", context.DeadlineExceeded, false},
-		{"net timeout", timeoutErr{}, true},
-		// A connection that died before any response — the `Post "...": EOF`
-		// a local server leaves behind when it is killed mid-request — is a
-		// transport failure like a timeout, but reports Timeout() == false,
-		// so each shape has to be named.
+		// A transport failure is retried by default, so the shapes below are
+		// samples with field history rather than the set: the vocabulary for
+		// "the answer is not here" is open, and "unlisted errno" pins that a
+		// shape nobody wrote down is retried too.
+		{"net timeout", &url.Error{Op: "Post", URL: "http://x/v1", Err: timeoutErr{}}, true},
 		{"eof before response", &url.Error{Op: "Post", URL: "http://127.0.0.1:9999/v1/chat/completions", Err: io.EOF}, true},
-		{"eof unwrapped", io.EOF, true},
-		{"unexpected eof", io.ErrUnexpectedEOF, true},
-		{"connection reset", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}}, true},
-		{"broken pipe", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "write", Net: "tcp", Err: syscall.EPIPE}}, true},
-		// The same peer event as the EOF above, when the body was still
-		// going out: net/http's read half sees the peer leave first and
-		// closes the connection under the writer, so the write reports
-		// net.ErrClosed instead of the peer's errno. Reported from the
-		// field on a summarize — the largest body the program sends.
 		{"closed under the write", &url.Error{Op: "Post", URL: "http://192.168.3.234:9999/v1/chat/completions", Err: &net.OpError{Op: "readfrom", Net: "tcp", Err: &net.OpError{Op: "write", Net: "tcp", Err: net.ErrClosed}}}, true},
-		// Connect-time failures a second attempt can change: the path is not
-		// there yet, or nothing is listening yet.
-		{"no route to host", &url.Error{Op: "Post", URL: "http://192.168.3.234:9999/v1/chat/completions", Err: &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)}}, true},
-		{"network unreachable", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ENETUNREACH)}}, true},
-		{"network down", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ENETDOWN)}}, true},
-		// The resolver's own "not now" (socket-level failure, SERVFAIL),
-		// marked structurally rather than by message.
-		{"temporary dns failure", &url.Error{Op: "Post", URL: "http://model.lan/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "server misbehaving", Name: "model.lan", IsTemporary: true}}}, true},
-		{"no such host", &url.Error{Op: "Post", URL: "http://model.lan/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "model.lan", IsNotFound: true}}}, false},
-		// A refusal is a local server that is restarting: the socket is not
-		// open yet, and the retry a second later is what starts working.
 		{"nothing listening", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}}, true},
-		// A certificate that does not verify is permanent: the same handshake
-		// fails the same way however often it is tried.
-		{"untrusted certificate", &url.Error{Op: "Post", URL: "https://x/v1", Err: errors.New("tls: failed to verify certificate: x509: certificate signed by unknown authority")}, false},
+		{"unlisted errno", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ENOBUFS}}, true},
+		// The closed list: a second attempt answers the same, so the budget is
+		// not spent on it.
+		{"untrusted certificate", &url.Error{Op: "Post", URL: "https://x/v1", Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}}, false},
+		{"not a tls server", &url.Error{Op: "Post", URL: "https://x/v1", Err: tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"}}, false},
+		{"https answered by plain http", &url.Error{Op: "Post", URL: "https://x/v1", Err: http.ErrSchemeMismatch}, false},
+		{"no such host", &url.Error{Op: "Post", URL: "http://model.lan/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "model.lan", IsNotFound: true}}}, false},
+		// Never reached the transport, so no transport failure: a request that
+		// could not be built is reported at once. http.Client wraps everything
+		// it returns in *url.Error, which is what makes this structural.
+		{"request not built", fmt.Errorf("failed to create request: %w", errors.New(`parse "http://[::1]: named port"`)), false},
+		{"transport error the provider did not wrap", io.EOF, false},
 		// Cancellation wins over the transport shape, so a request the caller
 		// gave up on is never re-sent as a "connection failure".
 		{"canceled inside url.Error", &url.Error{Op: "Post", URL: "http://x/v1", Err: context.Canceled}, false},
