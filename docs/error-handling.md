@@ -308,6 +308,7 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 | `TestAgentRetriesStreamThatRecordedNothing` | A stream error from an attempt that recorded nothing is re-sent and announced as `provider stream ended early`, with the step announced once — and the error is a bare `io.EOF`, which the classifier alone would refuse |
 | `TestAgentRetriesStreamWithBoundariesForUnopenedBlocks` | Boundaries for blocks the stream never opened (the OpenAI shape) leave the record empty, so the attempt is still re-sent — the gate asks the record, not whether an event arrived |
 | `TestAgentDoesNotRetryStreamThatDiedAfterContent` | A stream error after a block was opened is surfaced in the provider's own words: no retry, no notice, no pre-stream prefix |
+| `TestAgentDoesNotRetryStreamThatDiedWithAnOpenToolCall` | A tool call whose block opened and whose arguments never completed is not re-sent either — an unfinished call has no part, so this is what makes the gate ask about blocks rather than parts |
 | `TestAgentRetriesStreamBreakUntilTheBudgetIsSpent` | A stream that keeps dying with the record empty spends the budget and reports the provider's error unchanged |
 | `TestAgentRetriesExhausted` | A permanent 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
 | `TestAgentDoesNotRetryPermanentError` | A 401 is not retried |

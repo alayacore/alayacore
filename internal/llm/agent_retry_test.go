@@ -445,3 +445,43 @@ func TestAgentRetriesStreamBreakUntilTheBudgetIsSpent(t *testing.T) {
 		t.Errorf("retry notices = %d, want %d", len(p.notices), maxRetries)
 	}
 }
+
+// A tool call whose block was opened and whose arguments never completed: the
+// adapter has already drawn the call, so the attempt delivered something and must
+// not be re-sent — a second attempt would show it a second call under a new
+// history ID. This is why the gate asks whether a block was opened rather than
+// whether a *part* exists: an unfinished call yields no part, and asking parts
+// would call this attempt delivered-nothing.
+func TestAgentDoesNotRetryStreamThatDiedWithAnOpenToolCall(t *testing.T) {
+	fastRetries(t)
+	died := errors.New("stream vanished mid-call")
+	p := &streamScriptProvider{script: []streamScript{{
+		events: []StreamEvent{
+			ToolInputStartEvent{ID: "call-1", Name: "read_file", Key: "call-1", Position: 0},
+			ToolInputDeltaEvent{ID: "call-1", Delta: `{"pa`, Key: "call-1", Position: 0},
+		},
+		err: died,
+	}}}
+	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
+
+	starts := 0
+	_, err := agent.Stream(context.Background(), userText(), StreamCallbacks{
+		OnRetry:          p.onRetry,
+		OnToolInputStart: func(string, string, uint64) error { starts++; return nil },
+	})
+	if err == nil {
+		t.Fatal("Stream error = nil, want the stream failure surfaced")
+	}
+	if !strings.Contains(err.Error(), died.Error()) {
+		t.Errorf("error = %q, want the provider's own wording", err)
+	}
+	if p.calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (the adapter saw a tool call)", p.calls)
+	}
+	if len(p.notices) != 0 {
+		t.Errorf("retry notices = %d, want 0", len(p.notices))
+	}
+	if starts == 0 {
+		t.Fatal("the tool start never reached the adapter, so the case did not run")
+	}
+}
