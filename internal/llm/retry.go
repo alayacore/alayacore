@@ -104,14 +104,14 @@ func IsRetryable(err error) bool {
 }
 
 // connectionFailed reports whether err is a transport-level failure that
-// arrived before any HTTP response: a timeout, a reset, a broken pipe, a socket
-// closed under the write, or a clean EOF where a response should have been.
+// arrived before any HTTP response: a connection that died mid-request, or one
+// that was never made for a reason a second attempt can change. Everything the
+// caller can do about it — a retry — is therefore worth trying, which is not
+// true of the shapes deliberately left out (below).
 //
 // http.Client wraps all of them in *url.Error, which satisfies net.Error — but
 // only a timeout reports Timeout() == true, so a reset or an EOF needs the
-// explicit test. A refusal (ECONNREFUSED) is deliberately not here: a retry
-// meets the same refusal moments later, and "nothing is listening" is worth
-// reporting without a backoff in front of it.
+// explicit test.
 //
 // net.ErrClosed ("use of closed network connection") is here because in this
 // position it is not "we closed it on purpose". A request whose body is still
@@ -128,22 +128,30 @@ func IsRetryable(err error) bool {
 // (`context canceled`, ahead of the write error) — and sendWithRetry's ctx
 // check covers the race in which the peer's departure is reported instead.
 //
-// The same pair of questions — did the path fail, or did it answer no — decides
-// the connect-time shapes. ECONNREFUSED says a host is up and nothing is
-// listening, and a retry meets that answer moments later; EHOSTUNREACH,
-// ENETUNREACH and ENETDOWN say only that the path is not there *yet* (a laptop
-// that just left the Wi-Fi, a VPN still coming up), and a resolver that answered
-// "not now" — a socket-level failure, SERVFAIL — is the same kind of no. That
-// last one is found structurally through *net.DNSError.IsTemporary, which the
-// pure Go resolver the release binaries use (CGO_ENABLED=0) fills in; "no such
-// host" is deliberately not with it, because it names a record that does not
-// exist.
+// Two further families are connect-time, and the question that sorts them is
+// whether a second attempt could give a different answer. A refusal belongs
+// with the retried: the case it describes is a local model server that is
+// restarting, where the socket is not open *yet*, and a retry a second later is
+// exactly what starts working. So do EHOSTUNREACH, ENETUNREACH and ENETDOWN (a
+// laptop that just left the Wi-Fi, a VPN still coming up), and a resolver that
+// answered "not now" — a socket-level failure, SERVFAIL — found structurally
+// through *net.DNSError.IsTemporary, which the pure Go resolver the release
+// binaries use (CGO_ENABLED=0) fills in. What stays out is what the next attempt
+// cannot make different: a certificate that does not verify, an https URL that
+// reached a plain-HTTP server, a name that does not resolve. Retrying those
+// spends three backoffs on the same deterministic answer. A wrong port is now
+// paid for the same way — the budget, about seven seconds — which is the
+// accepted price of the restarting-server case.
 func connectionFailed(err error) bool {
+	// The connection died: under the request body, or before any response.
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||
-		errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) ||
-		errors.Is(err, syscall.EHOSTUNREACH) || errors.Is(err, syscall.ENETUNREACH) ||
-		errors.Is(err, syscall.ENETDOWN) {
+		errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	// Or it was never made, for a reason a second attempt can change.
+	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.ENETDOWN) {
 		return true
 	}
 	var dnsErr *net.DNSError

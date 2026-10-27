@@ -141,13 +141,17 @@ statuses are listed explicitly — 501/505 are permanent, so retrying them only
 delays the error. A transport failure carries no status, so it is classified by
 the shape of the error `net/http` returned (`connectionFailed`, same file): a
 `net.Error` timeout, `io.EOF`/`io.ErrUnexpectedEOF`, `ECONNRESET`,
-`ECONNABORTED`, `EPIPE`, `net.ErrClosed`, and the connect-time transients —
-`EHOSTUNREACH`, `ENETUNREACH`, `ENETDOWN`, and a resolver that answered "not
-now" (`*net.DNSError.IsTemporary`). A refusal (`ECONNREFUSED`) is not included:
-the host answered and nobody is listening, and a retry meets that answer moments
-later, so the error is reported without a backoff in front of it. Neither is a
-name that does not resolve (`IsNotFound`) nor a certificate that does not
-verify — the same attempt fails the same way however often it is repeated.
+`ECONNABORTED`, `EPIPE`, `net.ErrClosed`, and everything a connect can fail with
+short of an answer that cannot change: `ECONNREFUSED`, `EHOSTUNREACH`,
+`ENETUNREACH`, `ENETDOWN`, and a resolver that answered "not now"
+(`*net.DNSError.IsTemporary`). A refusal belongs there because the case it
+describes is a local model server that is restarting: the socket is not open
+*yet*, and the retry a second later is what starts working. What stays out is
+what the next attempt cannot make different — a certificate that does not
+verify, an https URL that reached a plain-HTTP server, a name that does not
+resolve (`IsNotFound`) — because three backoffs and seven seconds would be spent
+on the same deterministic answer. A wrong port or host is now paid for the same
+way, which is the accepted price of the restarting-server case.
 `context.Canceled`/`context.DeadlineExceeded`
 are never retried, and a cancel that beats its own connection error is reported
 as the cancellation (no notice).
@@ -261,7 +265,7 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 
 | Test | Verifies |
 |------|----------|
-| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport failures (timeout, reset, EOF, a socket closed under the write, a connect with no route, a temporary DNS failure) are, while a refusal, a missing name and a bad certificate are not |
+| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport failures (timeout, reset, EOF, a socket closed under the write, a refused connect, a connect with no route, a temporary DNS failure) are, while a missing name and a bad certificate are not |
 | `TestRetryReason` | The user-facing notice text: 429, 529, other statuses, and the one wording every connection failure shares |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
@@ -273,6 +277,7 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 | `TestParseRetryAfter` / `TestDoRequestReturnsTypedAPIError` | Provider parses `Retry-After` (seconds and HTTP-date) and returns a typed `*llm.APIError` |
 | `TestStreamMessagesConnectionClosedBeforeResponseIsRetryable` | A server that closes the connection without responding produces an error `llm.IsRetryable` accepts — over a real socket, not a hand-built error |
 | `TestStreamMessagesPeerGoneWhileSendingBodyIsRetryable` | The same peer event while the request body is still going out — small body (`EOF`) and whole-conversation body (the field's `use of closed network connection`) both stay retryable, over a real socket |
+| `TestStreamMessagesConnectionRefusedIsRetryable` | A provider that is not listening yet — a local server mid-restart — produces a refused connect `llm.IsRetryable` accepts, over a real socket |
 
 ## Error Message Construction (`fmt.Errorf` Chaining)
 

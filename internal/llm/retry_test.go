@@ -58,9 +58,8 @@ func TestIsRetryable(t *testing.T) {
 		// net.ErrClosed instead of the peer's errno. Reported from the
 		// field on a summarize — the largest body the program sends.
 		{"closed under the write", &url.Error{Op: "Post", URL: "http://192.168.3.234:9999/v1/chat/completions", Err: &net.OpError{Op: "readfrom", Net: "tcp", Err: &net.OpError{Op: "write", Net: "tcp", Err: net.ErrClosed}}}, true},
-		// Connect-time transients: the path was not there *yet*, which a
-		// retry a second later can meet, as opposed to the refusal below,
-		// where the host answered and nobody was listening.
+		// Connect-time failures a second attempt can change: the path is not
+		// there yet, or nothing is listening yet.
 		{"no route to host", &url.Error{Op: "Post", URL: "http://192.168.3.234:9999/v1/chat/completions", Err: &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)}}, true},
 		{"network unreachable", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ENETUNREACH)}}, true},
 		{"network down", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ENETDOWN)}}, true},
@@ -68,7 +67,9 @@ func TestIsRetryable(t *testing.T) {
 		// marked structurally rather than by message.
 		{"temporary dns failure", &url.Error{Op: "Post", URL: "http://model.lan/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "server misbehaving", Name: "model.lan", IsTemporary: true}}}, true},
 		{"no such host", &url.Error{Op: "Post", URL: "http://model.lan/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "model.lan", IsNotFound: true}}}, false},
-		{"nothing listening", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}}, false},
+		// A refusal is a local server that is restarting: the socket is not
+		// open yet, and the retry a second later is what starts working.
+		{"nothing listening", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}}, true},
 		// A certificate that does not verify is permanent: the same handshake
 		// fails the same way however often it is tried.
 		{"untrusted certificate", &url.Error{Op: "Post", URL: "https://x/v1", Err: errors.New("tls: failed to verify certificate: x509: certificate signed by unknown authority")}, false},

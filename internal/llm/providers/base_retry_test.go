@@ -3,10 +3,12 @@ package providers
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -159,6 +161,40 @@ func TestStreamMessagesPeerGoneWhileSendingBodyIsRetryable(t *testing.T) {
 				t.Fatalf("IsRetryable(%v) = false, want true: a peer that leaves mid-request is transient", err)
 			}
 		})
+	}
+}
+
+// A provider that is not listening yet — a local model server mid-restart — is
+// the case the next second's retry answers, so a refused connect is transient
+// too. Real socket: the listener is closed before the request is made, so this
+// is the kernel's refusal, not one a test invented.
+func TestStreamMessagesConnectionRefusedIsRetryable(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close() // from here on, nothing is listening there
+
+	p, err := NewOpenAI(BaseConfig{APIKey: "k", BaseURL: "http://" + addr})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = p.StreamMessages(context.Background(),
+		[]llm.ContentPart{&llm.TextPart{
+			Text:            "hi",
+			ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser},
+		}}, nil, "", "")
+
+	if err == nil {
+		t.Fatal("StreamMessages error = nil, want a refused connect")
+	}
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Fatalf("error = %v, want a refused connect", err)
+	}
+	if !llm.IsRetryable(err) {
+		t.Fatalf("IsRetryable(%v) = false, want true: nothing listening yet is transient", err)
 	}
 }
 
