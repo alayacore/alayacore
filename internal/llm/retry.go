@@ -127,10 +127,27 @@ func IsRetryable(err error) bool {
 // request's own context ending, which net/http reports as the cancellation
 // (`context canceled`, ahead of the write error) — and sendWithRetry's ctx
 // check covers the race in which the peer's departure is reported instead.
+//
+// The same pair of questions — did the path fail, or did it answer no — decides
+// the connect-time shapes. ECONNREFUSED says a host is up and nothing is
+// listening, and a retry meets that answer moments later; EHOSTUNREACH,
+// ENETUNREACH and ENETDOWN say only that the path is not there *yet* (a laptop
+// that just left the Wi-Fi, a VPN still coming up), and a resolver that answered
+// "not now" — a socket-level failure, SERVFAIL — is the same kind of no. That
+// last one is found structurally through *net.DNSError.IsTemporary, which the
+// pure Go resolver the release binaries use (CGO_ENABLED=0) fills in; "no such
+// host" is deliberately not with it, because it names a record that does not
+// exist.
 func connectionFailed(err error) bool {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||
-		errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) {
+		errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, syscall.EHOSTUNREACH) || errors.Is(err, syscall.ENETUNREACH) ||
+		errors.Is(err, syscall.ENETDOWN) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) && dnsErr.IsTemporary {
 		return true
 	}
 	var netErr net.Error

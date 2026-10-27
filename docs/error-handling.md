@@ -141,9 +141,14 @@ statuses are listed explicitly — 501/505 are permanent, so retrying them only
 delays the error. A transport failure carries no status, so it is classified by
 the shape of the error `net/http` returned (`connectionFailed`, same file): a
 `net.Error` timeout, `io.EOF`/`io.ErrUnexpectedEOF`, `ECONNRESET`,
-`ECONNABORTED`, `EPIPE`, and `net.ErrClosed`. A refusal (`ECONNREFUSED`) is not
-included — a retry meets the same refusal moments later, so the error is reported
-without a backoff in front of it. `context.Canceled`/`context.DeadlineExceeded`
+`ECONNABORTED`, `EPIPE`, `net.ErrClosed`, and the connect-time transients —
+`EHOSTUNREACH`, `ENETUNREACH`, `ENETDOWN`, and a resolver that answered "not
+now" (`*net.DNSError.IsTemporary`). A refusal (`ECONNREFUSED`) is not included:
+the host answered and nobody is listening, and a retry meets that answer moments
+later, so the error is reported without a backoff in front of it. Neither is a
+name that does not resolve (`IsNotFound`) nor a certificate that does not
+verify — the same attempt fails the same way however often it is repeated.
+`context.Canceled`/`context.DeadlineExceeded`
 are never retried, and a cancel that beats its own connection error is reported
 as the cancellation (no notice).
 
@@ -256,7 +261,7 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 
 | Test | Verifies |
 |------|----------|
-| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport failures (timeout, reset, EOF, a socket closed under the write) are, a refusal is not |
+| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport failures (timeout, reset, EOF, a socket closed under the write, a connect with no route, a temporary DNS failure) are, while a refusal, a missing name and a bad certificate are not |
 | `TestRetryReason` | The user-facing notice text: 429, 529, other statuses, and the one wording every connection failure shares |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
