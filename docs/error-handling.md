@@ -138,8 +138,13 @@ so it is surfaced as-is rather than retried.
 typed `*llm.APIError` (`internal/llm/retry.go`) carrying the HTTP status and the
 parsed `Retry-After` hint; `llm.IsRetryable` decides from those. A status is an
 allowlist and has to be: it is a decision the server made, and most decisions are
-final — 501/505 are permanent, 400/401/403/404/413 describe a request that would
-be rejected identically next time, and retrying them only delays the answer.
+final. In: 408, 425 (the server asking to be asked again later), 429, 500, 502,
+503, 504, 529, and Cloudflare's 520–524 — the codes a gateway in front of the
+provider returns where 502/504 would be if the origin were reachable. Out:
+501/505, which are permanent; 400/401/403/404/413, which describe a request that
+would be rejected identically next time; and 525/526, which are a TLS
+misconfiguration no retry can fix. A `Retry-After` on any of them — 425 is the
+usual carrier — wins over the backoff, so the wait is the server's, not ours.
 
 A transport failure carries no decision at all, so it is decided by the one
 question that matters — could a second attempt get a different answer? — and the
@@ -270,7 +275,7 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 | Test | Verifies |
 |------|----------|
 | `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; a transport failure is retried, including an errno the classifier does not name, while a bad certificate, an https URL answered by plain HTTP, a name that does not resolve and an error that never reached the transport are not |
-| `TestRetryReason` | The user-facing notice text: 429, 529, other statuses, and the one wording every connection failure shares |
+| `TestRetryReason` | The user-facing notice text: 425, 429, the gateway family, 529, other statuses, and the one wording every connection failure shares |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
 | `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF` and `readfrom ...: write ...: use of closed network connection` are both retried and announced as `provider connection failed` |

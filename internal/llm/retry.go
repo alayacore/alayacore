@@ -93,12 +93,19 @@ func IsRetryable(err error) bool {
 	if errors.As(err, &apiErr) {
 		switch apiErr.StatusCode {
 		case http.StatusRequestTimeout, // 408
+			http.StatusTooEarly,            // 425 — the server asking to be asked again later
 			http.StatusTooManyRequests,     // 429
 			http.StatusInternalServerError, // 500
 			http.StatusBadGateway,          // 502
 			http.StatusServiceUnavailable,  // 503
 			http.StatusGatewayTimeout,      // 504
 			529:                            // Anthropic "overloaded" (non-standard)
+			return true
+		case 520, 521, 522, 523, 524:
+			// Cloudflare's origin-unreachable family, which a provider behind
+			// that gateway returns where 502/504 would be if the origin could be
+			// reached at all. 525/526 are a TLS misconfiguration and are absent
+			// on purpose: no retry turns a bad certificate into a good one.
 			return true
 		}
 		return false
@@ -174,8 +181,12 @@ func retryReason(err error) string {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.StatusCode {
+		case http.StatusTooEarly:
+			return "provider was not ready for the request (status 425)"
 		case http.StatusTooManyRequests:
 			return "provider rate limited the request (status 429)"
+		case 520, 521, 522, 523, 524:
+			return fmt.Sprintf("provider's gateway could not reach the origin (status %d)", apiErr.StatusCode)
 		case 529:
 			return "provider is overloaded (status 529)"
 		default:

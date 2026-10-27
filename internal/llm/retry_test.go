@@ -36,7 +36,18 @@ func TestIsRetryable(t *testing.T) {
 		{"502", &APIError{StatusCode: 502}, true},
 		{"503", &APIError{StatusCode: 503}, true},
 		{"504", &APIError{StatusCode: 504}, true},
+		{"425 too early", &APIError{StatusCode: 425}, true},
 		{"529 overloaded", &APIError{StatusCode: 529}, true},
+		// A provider behind Cloudflare gets these where 502/504 would be. The
+		// TLS pair (525/526) is a misconfiguration no retry fixes, which is why
+		// it is pinned beside them.
+		{"520 cloudflare unknown", &APIError{StatusCode: 520}, true},
+		{"521 origin down", &APIError{StatusCode: 521}, true},
+		{"522 origin timed out", &APIError{StatusCode: 522}, true},
+		{"523 origin unreachable", &APIError{StatusCode: 523}, true},
+		{"524 timeout occurred", &APIError{StatusCode: 524}, true},
+		{"525 ssl handshake failed", &APIError{StatusCode: 525}, false},
+		{"526 invalid certificate", &APIError{StatusCode: 526}, false},
 		{"501 permanent", &APIError{StatusCode: 501}, false},
 		{"505 permanent", &APIError{StatusCode: 505}, false},
 		{"400 permanent", &APIError{StatusCode: 400}, false},
@@ -86,7 +97,10 @@ func TestRetryReason(t *testing.T) {
 		err  error
 		want string
 	}{
+		{&APIError{StatusCode: 425}, "provider was not ready for the request (status 425)"},
 		{&APIError{StatusCode: 429}, "provider rate limited the request (status 429)"},
+		{&APIError{StatusCode: 521}, "provider's gateway could not reach the origin (status 521)"},
+		{&APIError{StatusCode: 524}, "provider's gateway could not reach the origin (status 524)"},
 		{&APIError{StatusCode: 529}, "provider is overloaded (status 529)"},
 		{&APIError{StatusCode: 503}, "provider returned a transient error (status 503)"},
 		{&url.Error{Op: "Post", URL: "http://x/v1", Err: io.EOF}, "provider connection failed"},
