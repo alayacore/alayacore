@@ -51,6 +51,12 @@ func TestIsRetryable(t *testing.T) {
 		{"unexpected eof", io.ErrUnexpectedEOF, true},
 		{"connection reset", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}}, true},
 		{"broken pipe", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "write", Net: "tcp", Err: syscall.EPIPE}}, true},
+		// The same peer event as the EOF above, when the body was still
+		// going out: net/http's read half sees the peer leave first and
+		// closes the connection under the writer, so the write reports
+		// net.ErrClosed instead of the peer's errno. Reported from the
+		// field on a summarize — the largest body the program sends.
+		{"closed under the write", &url.Error{Op: "Post", URL: "http://192.168.3.234:9999/v1/chat/completions", Err: &net.OpError{Op: "readfrom", Net: "tcp", Err: &net.OpError{Op: "write", Net: "tcp", Err: net.ErrClosed}}}, true},
 		{"nothing listening", &url.Error{Op: "Post", URL: "http://x/v1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}}, false},
 		// Cancellation wins over the transport shape, so a request the caller
 		// gave up on is never re-sent as a "connection failure".

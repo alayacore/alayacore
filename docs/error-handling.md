@@ -141,11 +141,27 @@ statuses are listed explicitly — 501/505 are permanent, so retrying them only
 delays the error. A transport failure carries no status, so it is classified by
 the shape of the error `net/http` returned (`connectionFailed`, same file): a
 `net.Error` timeout, `io.EOF`/`io.ErrUnexpectedEOF`, `ECONNRESET`,
-`ECONNABORTED`, `EPIPE`. A refusal (`ECONNREFUSED`) is not included — a retry
-meets the same refusal moments later, so the error is reported without a backoff
-in front of it. `context.Canceled`/`context.DeadlineExceeded` are never retried,
-and a cancel that beats its own connection error is reported as the cancellation
-(no notice).
+`ECONNABORTED`, `EPIPE`, and `net.ErrClosed`. A refusal (`ECONNREFUSED`) is not
+included — a retry meets the same refusal moments later, so the error is reported
+without a backoff in front of it. `context.Canceled`/`context.DeadlineExceeded`
+are never retried, and a cancel that beats its own connection error is reported
+as the cancellation (no notice).
+
+The last shape needs the argument spelled out, because its name says the
+opposite. `net.ErrClosed` means a socket was written to after it was closed, and
+on this path it is **not** "we closed it on purpose". The closers reachable here
+are `net/http`'s read half, reacting to a peer that has gone, and the request's
+own context ending — and the second is reported as the cancellation, not as this
+shape. A peer that leaves while the body is still going out is reported in
+whichever costume wins the race: if the body fit in the kernel's buffers the
+write is already over, and the missing response arrives as a bare `EOF`; if it
+did not, the read half notices the peer first, closes the connection underneath
+the writer, and the write reports `readfrom tcp …: write tcp …: use of closed
+network connection`. One peer event, two costumes, decided by how long the write
+stays in flight — that is, by the size of the request. The earlier report was
+the `EOF` costume; this one is a summarize, the largest body the program sends
+(`Auto-summarization failed: provider stream failed: failed to send request:
+Post "…": readfrom tcp …: … use of closed network connection`).
 
 **Timing.** `Retry-After` wins when the server sent one; otherwise exponential
 backoff (1s, 2s, 4s…), both capped. Retries are bounded (`maxRetries`), so a
@@ -240,17 +256,18 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 
 | Test | Verifies |
 |------|----------|
-| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport failures (timeout, reset, EOF) are, a refusal is not |
+| `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; transport failures (timeout, reset, EOF, a socket closed under the write) are, a refusal is not |
 | `TestRetryReason` | The user-facing notice text: 429, 529, other statuses, and the one wording every connection failure shares |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
-| `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF` is retried and announced as `provider connection failed` |
+| `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF` and `readfrom ...: write ...: use of closed network connection` are both retried and announced as `provider connection failed` |
 | `TestAgentCanceledConnectionFailureIsNotRetried` | A cancel that beats the connection error is reported as `context.Canceled`, with no re-send and no notice |
 | `TestAgentRetriesExhausted` | A permanent 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
 | `TestAgentDoesNotRetryPermanentError` | A 401 is not retried |
 | `TestAgentRetryCanceledDuringBackoff` | A cancel during the wait stops before the next request (`context.Canceled`) |
 | `TestParseRetryAfter` / `TestDoRequestReturnsTypedAPIError` | Provider parses `Retry-After` (seconds and HTTP-date) and returns a typed `*llm.APIError` |
 | `TestStreamMessagesConnectionClosedBeforeResponseIsRetryable` | A server that closes the connection without responding produces an error `llm.IsRetryable` accepts — over a real socket, not a hand-built error |
+| `TestStreamMessagesPeerGoneWhileSendingBodyIsRetryable` | The same peer event while the request body is still going out — small body (`EOF`) and whole-conversation body (the field's `use of closed network connection`) both stay retryable, over a real socket |
 
 ## Error Message Construction (`fmt.Errorf` Chaining)
 

@@ -71,8 +71,8 @@ var (
 // Implemented) and 505 (HTTP Version Not Supported) are permanent, so retrying
 // them only delays the error. 529 is Anthropic's non-standard "overloaded".
 //
-// A connection that failed before any response — timed out, reset, or closed
-// early (EOF) — is retried like a 5xx. That failure is ambiguous: the provider
+// A connection that failed before any response (connectionFailed, below, names
+// the shapes) is retried like a 5xx. That failure is ambiguous: the provider
 // may have generated (and billed) the answer before the response was lost. The
 // ambiguity is still not a reason to withhold the retry, because the user's
 // only alternative is `:continue`, which re-sends the identical request — the
@@ -104,18 +104,33 @@ func IsRetryable(err error) bool {
 }
 
 // connectionFailed reports whether err is a transport-level failure that
-// arrived before any HTTP response: a timeout, a reset, a broken pipe, or a
-// clean EOF where a response should have been.
+// arrived before any HTTP response: a timeout, a reset, a broken pipe, a socket
+// closed under the write, or a clean EOF where a response should have been.
 //
 // http.Client wraps all of them in *url.Error, which satisfies net.Error — but
 // only a timeout reports Timeout() == true, so a reset or an EOF needs the
 // explicit test. A refusal (ECONNREFUSED) is deliberately not here: a retry
 // meets the same refusal moments later, and "nothing is listening" is worth
 // reporting without a backoff in front of it.
+//
+// net.ErrClosed ("use of closed network connection") is here because in this
+// position it is not "we closed it on purpose". A request whose body is still
+// going out when the peer stops talking reports that one event in whichever
+// costume won the race: the peer's errno (ECONNRESET/EPIPE), a bare EOF, or —
+// when net/http's read half notices the peer first and closes the connection
+// underneath the writer — this local close. Which one you see follows the size
+// of the body, because that is how long the write stays in flight: a body that
+// fits in the socket's buffers is already written when the read half reports
+// the missing response as EOF, while the whole-conversation body of a summarize
+// is where `readfrom ...: write ...: use of closed network connection` was
+// reported. One event, one retry. The other closer on this path is the
+// request's own context ending, which net/http reports as the cancellation
+// (`context canceled`, ahead of the write error) — and sendWithRetry's ctx
+// check covers the race in which the peer's departure is reported instead.
 func connectionFailed(err error) bool {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||
-		errors.Is(err, syscall.EPIPE) {
+		errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) {
 		return true
 	}
 	var netErr net.Error
@@ -151,9 +166,9 @@ func retryReason(err error) string {
 			return fmt.Sprintf("provider returned a transient error (status %d)", apiErr.StatusCode)
 		}
 	}
-	// One message for every transport-level failure: a timeout, a reset and an
-	// EOF before the response are the same event to the user, and the retry
-	// they are about to see is the same retry.
+	// One message for every transport-level failure before the response: they
+	// are the same event to the user, and the retry they are about to see is
+	// the same retry.
 	return "provider connection failed"
 }
 

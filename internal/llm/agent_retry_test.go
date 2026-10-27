@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"net"
 	"net/url"
 	"testing"
 	"time"
@@ -124,18 +125,37 @@ func TestAgentDoesNotRetryPermanentError(t *testing.T) {
 	}
 }
 
-// A connection that died before any response — what the user sees as
-// `Post "...": EOF` — is retried like a 5xx. Nothing streamed, so re-sending
-// is safe, and withholding it would only move the same request to the user's
-// own `:continue`.
+// A connection that died before any response is retried like a 5xx. Nothing
+// streamed, so re-sending is safe, and withholding it would only move the same
+// request to the user's own `:continue`.
+//
+// Both costumes of that one event are exercised: the bare EOF a request whose
+// body fit in the socket leaves behind, and the local close net/http reports
+// when the body was still going out and its read half noticed the peer first
+// (`readfrom ...: write ...: use of closed network connection`, reported from
+// the field on a summarize).
 func TestAgentRetriesConnectionFailure(t *testing.T) {
-	fastRetries(t)
-	eof := fmt.Errorf("failed to send request: %w", &url.Error{
-		Op:  "Post",
-		URL: "http://127.0.0.1:9999/v1/chat/completions",
-		Err: io.EOF,
+	t.Run("eof", func(t *testing.T) {
+		testAgentRetriesConnectionFailure(t, &url.Error{
+			Op:  "Post",
+			URL: "http://127.0.0.1:9999/v1/chat/completions",
+			Err: io.EOF,
+		})
 	})
-	p := &retryScriptProvider{failures: []error{eof}}
+	t.Run("closed under the write", func(t *testing.T) {
+		testAgentRetriesConnectionFailure(t, &url.Error{
+			Op:  "Post",
+			URL: "http://127.0.0.1:9999/v1/chat/completions",
+			Err: &net.OpError{Op: "readfrom", Net: "tcp", Err: &net.OpError{Op: "write", Net: "tcp", Err: net.ErrClosed}},
+		})
+	})
+}
+
+func testAgentRetriesConnectionFailure(t *testing.T, shape error) {
+	t.Helper()
+	fastRetries(t)
+	failure := fmt.Errorf("failed to send request: %w", shape)
+	p := &retryScriptProvider{failures: []error{failure}}
 	agent := NewAgent(AgentConfig{Provider: p, MaxSteps: 3})
 
 	result, err := agent.Stream(context.Background(), userText(), StreamCallbacks{OnRetry: p.onRetry})
