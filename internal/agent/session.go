@@ -180,13 +180,15 @@ type sharedState struct {
 	steering   []llm.ContentPart
 	steeringMu sync.Mutex
 
-	// steeringDrained records that a cancel already disposed of this task's
+	// steeringDrained records that a cancel already settled this task's
 	// steering (cancelSteering), so processPrompt's deferred discard must not
-	// drain a second time. The two drains are not the same event: the words a
-	// user types *in the window between ":cancel" and the canceled task
-	// unwinding* land in this same session-wide queue, and they are a fresh
-	// intent, not the canceled task's. Clearing the flag in beginTask makes it
-	// per-task. See session_steering.go.
+	// decide a second time. The two are not the same event: the words a user
+	// types *in the window between ":cancel" and the canceled task unwinding*
+	// land in this same session-wide queue, and they are a fresh intent, not the
+	// canceled task's. It is set for both fates — by :cancel keep_steering too,
+	// where the batch is kept and the deferred discard would otherwise be the
+	// thing that destroys it. Clearing the flag in beginTask makes it per-task.
+	// See session_steering.go.
 	steeringDrained bool
 
 	outputBroken atomic.Bool

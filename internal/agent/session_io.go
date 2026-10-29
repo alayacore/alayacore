@@ -943,10 +943,30 @@ func (s *Session) handleQuit(_ string) (any, error) {
 	return nil, nil
 }
 
-func (s *Session) cancelTask() (any, error) {
+// cancelSteeringFate reads :cancel's one optional argument. The dispatcher has
+// already checked the shape (commands.Defs: one optional token); what is left to
+// reject is a word the command does not declare. The bare form is the dropped
+// queue — the behavior :cancel has always had, and the one an adapter's
+// keybinding and a SIGINT handler can express, since neither carries arguments.
+func cancelSteeringFate(args string) (steeringOnCancel, error) {
+	switch strings.TrimSpace(args) {
+	case "":
+		return dropQueuedSteering, nil
+	case commands.CancelArgKeepSteering:
+		return keepQueuedSteering, nil
+	}
+	return dropQueuedSteering, &cmdErr{Code: protocol.ErrCodeRequestInvalidArgs,
+		Message: commands.UsageLine(commands.CommandNameCancel)}
+}
+
+func (s *Session) cancelTask(fate steeringOnCancel) (any, error) {
 	// A prompt accepted but not started: canceling it means dropping it, and
 	// then there is nothing in flight for run() to wait for. The drop is
 	// announced, like every other.
+	//
+	// No steering fate to settle here: nothing is ever queued while a prompt is
+	// held (beginTask refuses on the not-ready state before it reaches the busy
+	// check that queues words), so the queue is empty by construction.
 	if s.pending != nil {
 		s.pending = nil
 		s.writeNotify("prompt dropped — it was canceled before it could start")
@@ -954,15 +974,21 @@ func (s *Session) cancelTask() (any, error) {
 	}
 	if s.activeTask != nil {
 		if s.cancelRunningTask() {
-			// Canceling means stop, so anything the user steered into the task
-			// being canceled goes with it: leaving it queued would start a new
-			// task on its own the instant this one unwinds, which is a stop
-			// button that keeps going. The user is told, because the words are
-			// theirs to retype.
+			// Canceling means stop, so by default anything the user steered into
+			// the task being canceled goes with it: leaving it queued would start
+			// a new task on its own the instant this one unwinds, which is a
+			// stop button that keeps going. The user is told, because the words
+			// are theirs to retype.
 			//
-			// Only what is queued at this instant is dropped. A prompt that
-			// arrives after the cancel is a fresh intent — "cancel, then type
-			// what I actually wanted" is an ordinary sequence, and swallowing
+			// Unless the user said to keep them (:cancel keep_steering): then the
+			// queue is left alone and deliverLeftoverSteering runs it as the next
+			// prompt, reporting it "delivered". The task starts because the user
+			// asked for the words, which is the whole difference between that and
+			// the stop button.
+			//
+			// Either way only what is queued at this instant is settled. A prompt
+			// that arrives after the cancel is a fresh intent — "cancel, then
+			// type what I actually wanted" is an ordinary sequence, and swallowing
 			// it would be the silent loss this rule exists to avoid.
 			//
 			// What the task goroutine has already spliced is not here to take,
@@ -970,7 +996,7 @@ func (s *Session) cancelTask() (any, error) {
 			// to the adapter, so they are part of the conversation. A cancel
 			// stops the task; it cannot unsend what the model was given (see
 			// session_steering.go).
-			if s.cancelSteering() {
+			if s.cancelSteering(fate) {
 				s.writeSteering(protocol.SteeringDropped, protocol.SteeringDroppedCanceled,
 					"steering dropped — the task was canceled before it was delivered")
 			}
@@ -987,6 +1013,10 @@ func (s *Session) cancelTask() (any, error) {
 // has already exited. Used by the plainio/terseio SIGINT handlers — the
 // frame input pipe cannot carry a CI frame after the adapter closed it at
 // EOF, so cancellation must not depend on the pipe.
+//
+// It drops the steering queue, always: a signal carries no arguments, and a
+// keystroke that also commits the queued words to a new task is not a stop. The
+// keep form is the command's (:cancel keep_steering) and stays there.
 func (s *Session) CancelTask() bool {
 	done := make(chan bool, 1)
 	select {

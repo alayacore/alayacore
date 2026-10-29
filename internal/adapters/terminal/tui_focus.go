@@ -134,6 +134,17 @@ func (m Terminal) openConfirmCancel() Terminal {
 	return m
 }
 
+// openConfirmCancelSteering opens the second step of a cancel: the task is being
+// stopped either way, and the queued steering is the question. Like every other
+// confirm it blocks the display while it is up.
+func (m Terminal) openConfirmCancelSteering(queued int) Terminal {
+	m.confirmOverlay = m.confirmOverlay.OpenCancelSteering(queued)
+	m.display = m.display.WithBlocked(true)
+	m.display = m.display.WithDisplayFocused(false)
+	m.display = m.display.updateContent()
+	return m
+}
+
 // openConfirmTool opens the tool-execution confirmation dialog.
 func (m Terminal) openConfirmTool(id, toolName, toolInput string) Terminal {
 	m.confirmOverlay = m.confirmOverlay.OpenTool(id, toolName, toolInput)

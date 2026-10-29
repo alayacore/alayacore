@@ -82,7 +82,7 @@ stacked on top of `Esc`, and one key per job is why `Esc` is the only way out.
 | `Ctrl+R` | Force redraw screen |
 | `Ctrl+P` | Open theme selector |
 | `Ctrl+H` | Open help overlay |
-| `Ctrl+G` | Cancel current task (with confirmation) |
+| `Ctrl+G` | Cancel current task (with confirmation; when steering is queued, a second dialog asks whether those words go too) |
 | `Ctrl+Z` | Suspend process |
 | `Ctrl+C` | Clear text |
 | `Ctrl+F` | Fork session from cursor position |

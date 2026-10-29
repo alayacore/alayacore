@@ -161,7 +161,7 @@ var Defs = []Definition{
 	def(CommandNameContinue, "Retry last prompt"),
 	def(CommandNameReasoningLevelSet, "Set reasoning level", Token("0|1|2")).
 		withHint("(0=off, 1=normal, 2=max)"),
-	def(CommandNameCancel, "Cancel current task"),
+	def(CommandNameCancel, "Cancel current task", Optional(Token(CancelArgKeepSteering))),
 	def(CommandNameSummarize, "Summarize/compress history"),
 	def(CommandNameThemeSet, "Switch theme by name", Rest("name")),
 	def(CommandNameModelSet, "Switch model by ID", Token("id")),

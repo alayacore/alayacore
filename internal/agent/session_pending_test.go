@@ -237,11 +237,9 @@ func TestCancelDropsHeldPrompt(t *testing.T) {
 		runState:      runState{pending: []llm.ContentPart{&llm.TextPart{Text: "held"}}},
 	}
 
-	if _, err := s.cancelTask(); err != nil {
-		t.Fatalf("cancelTask() on a held prompt = %v, want success", err)
-	}
+	cancelNow(t, s, dropQueuedSteering)
 	if s.pending != nil {
-		t.Error("cancelTask() should clear the held prompt")
+		t.Error("the held prompt should be cleared")
 	}
 	if !strings.Contains(output.String(), "prompt dropped") {
 		t.Errorf("dropping the held prompt must be announced, got: %q", output.String())

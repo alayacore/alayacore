@@ -59,7 +59,7 @@ be read as a complete one.
 The first `SM` frame of a session is the version frame:
 
 ```
-SM{"type":"version","data":{"message_version":17,"core_version":"<build-time version>"}}
+SM{"type":"version","data":{"message_version":18,"core_version":"<build-time version>"}}
 ```
 
 `message_version` identifies the wire format described in this document — the
@@ -658,6 +658,7 @@ UX-document.txt                UX{"type":"document","uri":"data:application/pdf;
 UE.txt                         UE                  (the tag alone — a control frame carries no value)
 CE.txt                         CE                  (the tag alone) — input end: no more prompts, commands may still follow
 CI-cancel.txt                  CI{"command_id":"1","name":"cancel"}
+CI-cancel-keep-steering.txt    CI{"command_id":"4","name":"cancel","args":"keep_steering"}
 CI-save.txt                    CI{"command_id":"2","name":"save","args":"/tmp/x.alaya"}
 CI-model-sync.txt              CI{"command_id":"3","name":"model_sync","args":"[{id,name,protocol_type,base_url,api_key,model_name,context_limit,max_tokens},...]"}
 ```
@@ -735,7 +736,7 @@ The system-message samples follow with their schema.
 Complete wire values:
 
 ```
-SM-message-version.txt         {"type":"version","data":{"message_version":17,"core_version":"(set at build time)"}}
+SM-message-version.txt         {"type":"version","data":{"message_version":18,"core_version":"(set at build time)"}}
 SM-model.txt                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
 SM-model-list.txt              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
 SM-theme.txt                   {"type":"theme","data":{"name":"theme-dark"}}
@@ -779,9 +780,11 @@ text into name + args.
 The command vocabulary — every name, its arguments, and its result — is listed
 in [commands.md](../docs/commands.md); this chapter documents how a command
 travels, not which ones exist. For a client with no built-in adapter, two matter
-most: `cancel` stops the task in flight, and `quit` ends the session, letting a
-task that is already running finish first (the [session lifecycle
-signal](#session-lifecycle-signal) is what follows).
+most: `cancel` stops the task in flight (with `args:"keep_steering"` it stops the
+task but leaves the words the user steered in to run as the next prompt, so a
+client that offers that choice sends one or the other), and `quit` ends the
+session, letting a task that is already running finish first (the [session
+lifecycle signal](#session-lifecycle-signal) is what follows).
 
 Every CI frame the agent can read receives exactly one **CO** (Command Output)
 frame, echoing the same `command_id`:
@@ -914,7 +917,7 @@ client speaking this protocol sends the full name.
 
 | Command | args | CO result (success) |
 |---------|------|---------------------|
-| `cancel` | — | `null` |
+| `cancel` | `[keep_steering]` | `null` |
 | `save` | `[filename]` | `{"path":...}` |
 | `fork` | `<history_id> <filename>` | `{"path":...,"count":...,"history_id":...}` |
 | `theme_set` | `<name>` (TUI only — `CONFIG_UNSUPPORTED` in NoTheme modes: plainio/terseio/rawio) | `{"name":...}` |

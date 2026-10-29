@@ -79,7 +79,13 @@ var commandDefs = []command{
 	{commands.CommandNameQuit, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.handleQuit(args) }},
 	{commands.CommandNameCancel, cmdImmediate,
-		func(s *Session, _ context.Context, _ string) (any, error) { return s.cancelTask() }},
+		func(s *Session, _ context.Context, args string) (any, error) {
+			fate, err := cancelSteeringFate(args)
+			if err != nil {
+				return nil, err
+			}
+			return s.cancelTask(fate)
+		}},
 	{commands.CommandNameSave, cmdImmediate,
 		func(s *Session, _ context.Context, args string) (any, error) { return s.saveSession(args) }},
 	{commands.CommandNameModelSet, cmdIdle,

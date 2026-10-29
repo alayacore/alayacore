@@ -121,73 +121,11 @@ func (themeListMsg) SystemMsgType() string { return string(protocol.MsgTypeTheme
 // exact match (see parseSessionMeta). That is a side effect of carrying the
 // protocol version in the file, not a promise about the file's contents, and
 // nothing here migrates an older file: editing the field to load one anyway is
-// the user's call. See docs/architecture.md ("message_version").
+// the user's call.
 //
-// v17: the command plane's vocabulary, and what a command accepts. What moved:
-// CI's "call_id"/"input" are "command_id"/"args" and CO's "call_id"/"output"
-// are "command_id"/"result" — the tool plane keeps "call_id" (the provider's
-// tool_call_id) and "input"/"output" (typed content); a command request has no
-// provider behind it and its answer is whatever the command returns. Every CO
-// error code is renamed into one vocabulary whose first segment says what a
-// caller can do (REQUEST_, CONFIG_, STATE_, IO_, INTERNAL_), and the fallback
-// is "INTERNAL_UNCLASSIFIED" rather than "ERROR", which told a client nothing
-// is_error had not already said. A CI the agent cannot read is answered with
-// an SM error instead of a CO: a CO answers exactly one command, and a request
-// that could not be read has no id to echo. The empty id that used to stand in
-// for one also let a well-formed CI without a command_id run and reply with a
-// frame no adapter could correlate, so that is refused instead. A command now
-// accepts exactly the arguments `commands.Defs` declares, while a
-// readable-but-refused request (a CI sent with unsent content staged) still
-// gets its CO. A canceled MCP initialization no longer reports per-server
-// "failed" frames ("context canceled" for the user's own :mcp_skip), and a
-// stream that ends without a terminal event says "aborted unexpectedly" rather
-// than "canceled". None of it is in a file: the upgrade is the one-line
-// frontmatter edit, not a conversion — sessionmigrate holds no v17 step and
-// misc/ ships no v17 script, because there is nothing to convert.
-// v16: the vocabulary only, with no framing change. What moved: :mcp_cancel is
-// :mcp_skip ("cancel" already stops the running task); :reason is
-// :reasoning_level_set, the setting's name plus the verb; the SM that reports a
-// reasoning-level change is "reasoning_level", so no wire string means two
-// things; the task SM's token count is "context_tokens", the name the session
-// file and the adapters already used; a tool call's id is "call_id" in the CO
-// result too, and the arguments that carry an id say which one (":tool_confirm
-// <call_id>", ":fork <history_id> <filename>"). A short form is an adapter's
-// word, not a wire name: "q" is refused like any unknown command, and the
-// adapter that accepts it resolves it before writing the frame. Adapters that
-// speak v15 keep working until they use one of those names; a v15 session file
-// no longer loads, because loading demands this number exactly (see above) —
-// and since none of these names is in a file, the upgrade is the one-line
-// frontmatter edit, not a conversion step: sessionmigrate holds no v16 step and
-// misc/ ships no v16 script, because there is nothing to convert.
-// v15: the wire dropped its 4-byte length field. A frame is one line — a
-// two-byte tag, a JSON value, an LF — so the boundary now rests on the value
-// being one line, which the encoder enforces and the decoder checks, instead of
-// on a length that a peer could get wrong. Session file bodies lost their blank
-// line between frames with it: every line is one frame, which is also what makes
-// the body readable. The frame bound is 64MB, matching what the MCP transports
-// bound one of their messages by, down from 2GB.
-// v14: every content frame's value is JSON. Text and media tags collapsed into
-// a 2x2 — UX/AX (content) and AF/UF (function) — with the concrete kind carried
-// as a content item's "type". The history id moved from a NUL-delimited prefix
-// into the frame's top-level "id", so WrapID/UnwrapID are gone; the tool-call
-// id became "call_id" (freeing "id" to mean history id everywhere), and
-// ContentMeta gained "time" (message time, persisted and replayed). Video
-// fps/resolution became per-part (llm.VideoPart), so a :video_config change no
-// longer rewrites already-sent messages.
-// v13: steering is reported by a dedicated "steering" SM (queued / delivered /
-// dropped / refused), replacing the "steering queued" and "steering dropped"
-// notify texts and the SM error a full queue used to raise for a prompt.
-// Additive for adapters that ignore unknown SM types; the session-file
-// version moves with it as always.
-// v12: the input plane gained CE (TagInputEnd — the adapter's input is
-// exhausted without closing the stream, so commands may still follow), the
-// "session" message gained the terminal state "closed", and the quit command
-// joined the vocabulary (with the q alias). All additive: an adapter that
-// knows none of them still speaks v11.
-// v11: commands moved to the CI/CO control plane — text commands
-// (UT ':' sniffing) removed, command results now travel as CO frames,
-// the task message gained command_id for async command correlation.
-const messageVersion = 17
+// What each number means — what moved at each generation, and whether a session
+// file needs converting — is docs/architecture.md's "Wire version history".
+const messageVersion = 18
 
 // sessionMeta is the frontmatter metadata.
 type sessionMeta struct {

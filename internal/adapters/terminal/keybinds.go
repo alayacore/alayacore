@@ -167,10 +167,38 @@ func (m Terminal) handleConfirmCancel(r *ConfirmResult, fromCmd bool) (Terminal,
 		m.promptBox = m.promptBox.WithValue("")
 	}
 	m = m.restoreFocusAfterConfirm()
-	if r.Confirmed {
-		return m.submitCommand(commands.CommandNameCancel, fromCmd)
+	if !r.Confirmed {
+		return m, nil
 	}
-	return m, nil
+	// A cancel with words still queued is two questions, not one. The second is
+	// asked only when there is something to lose, so the common cancel costs no
+	// extra keystroke, and each answer means one thing (see
+	// ConfirmDialog.updateCancelSteering). The count is the status bar's own
+	// snapshot, so the two surfaces cannot disagree.
+	if queued := m.out.SnapshotStatus().SteeringPending; queued > 0 {
+		// fromCmd rides along: the second step is the same cancel, so it would
+		// be wrong to lose the fact that a typed :cancel was what started it.
+		m.confirmFromCommand = fromCmd
+		return m.openConfirmCancelSteering(queued), nil
+	}
+	return m.submitCommand(commands.CommandNameCancel, fromCmd)
+}
+
+// handleConfirmCancelSteering finishes a cancel whose task had steering queued:
+// y drops the words with the task (a bare :cancel), n keeps them so they run as
+// the next prompt (:cancel keep_steering). Esc sends nothing at all — nothing
+// had been sent yet — which is what keeps "cancel" reversible up to the moment
+// it is not. Focus comes back for all three, the withdrawn cancel included: the
+// dialog was the only thing holding it.
+func (m Terminal) handleConfirmCancelSteering(r *ConfirmResult, fromCmd bool) (Terminal, Cmd) {
+	m = m.restoreFocusAfterConfirm()
+	switch {
+	case r.Confirmed:
+		return m.submitCommand(commands.CommandNameCancel, fromCmd)
+	case r.Canceled:
+		return m.submitCommand(commands.CommandNameCancel+" "+commands.CancelArgKeepSteering, fromCmd)
+	}
+	return m, nil // Esc: the cancel is withdrawn, and nothing was sent
 }
 
 func (m Terminal) handleConfirmTool(r *ConfirmResult, fromCmd bool) (Terminal, Cmd) {
@@ -409,6 +437,8 @@ func (m Terminal) handleConfirmResult(r *ConfirmResult) (Terminal, Cmd) {
 		return m.handleConfirmQuit(r, fromCmd)
 	case ConfirmCancel:
 		return m.handleConfirmCancel(r, fromCmd)
+	case ConfirmCancelSteering:
+		return m.handleConfirmCancelSteering(r, fromCmd)
 	case ConfirmTool:
 		return m.handleConfirmTool(r, fromCmd)
 	case ConfirmMCPAuth:

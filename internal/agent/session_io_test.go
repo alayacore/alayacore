@@ -741,13 +741,15 @@ func TestSaveSessionWhitespaceOnlyUsesTheSessionFile(t *testing.T) {
 	}
 }
 
-// A command whose usage line is empty takes no arguments: a stray word is a
-// typo, and ignoring it hides the mistake. `:quit` has always refused one; the
-// rest used to accept and discard it.
+// A command whose shape declares an argument this test does not supply takes no
+// argument at all: a stray word is a typo, and ignoring it hides the mistake.
+// `:quit` has always refused one; the rest used to accept and discard it.
+// `:cancel` is deliberately absent — its one declared word is covered by
+// TestCancelRejectsAnUndeclaredSteeringFate, where a wrong value and a wrong
+// count are told apart.
 func TestZeroArgumentCommandsRejectArguments(t *testing.T) {
 	names := []string{
 		commands.CommandNameQuit,
-		commands.CommandNameCancel,
 		commands.CommandNameSummarize,
 		commands.CommandNameContinue,
 		commands.CommandNameModelLoad,
@@ -808,6 +810,65 @@ func TestVideoConfigRejectsExtraTokens(t *testing.T) {
 	// The declared shape still works.
 	if joined := runCI(t, s, commands.CommandNameVideoConfig, "5 1"); !strings.Contains(joined, `"fps":5`) {
 		t.Errorf("the declared shape should apply the setting, got: %s", joined)
+	}
+}
+
+// :cancel's argument is a value, not free text, so both halves of the check are
+// exercised here: the shape (a second token) and the handler (a word the command
+// does not declare). Both answer with the usage line. The two accepted forms
+// reach the command itself — STATE_NOTHING_TO_CANCEL, since no task is running —
+// which is what makes the refusals a statement about the argument and not about
+// the command.
+func TestCancelRejectsAnUndeclaredSteeringFate(t *testing.T) {
+	s, _ := newCmdOutputSession()
+
+	cases := []struct {
+		name string
+		args string
+		code string
+	}{
+		{"bare", "", protocol.ErrCodeStateNothingToCancel},
+		{"keep_steering", commands.CancelArgKeepSteering, protocol.ErrCodeStateNothingToCancel},
+		{"an undeclared word", "keep", protocol.ErrCodeRequestInvalidArgs},
+		{"too many tokens", commands.CancelArgKeepSteering + " " + commands.CancelArgKeepSteering, protocol.ErrCodeRequestInvalidArgs},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			joined := runCI(t, s, commands.CommandNameCancel, tc.args)
+			if !strings.Contains(joined, `"code":"`+tc.code+`"`) {
+				t.Errorf(":cancel %q should answer %s, got: %s", tc.args, tc.code, joined)
+			}
+		})
+	}
+}
+
+// The word reaches the behavior, not just the parser: a cancel CI carrying
+// keep_steering leaves the queue alone, and the bare form — what every adapter
+// written before the argument sends — still drains it. The CO is the same null
+// either way, so the queue is what tells the two apart.
+func TestCancelSteeringArgumentReachesTheQueue(t *testing.T) {
+	cases := []struct {
+		name string
+		args string
+		kept int
+	}{
+		{"bare drains the queue", "", 0},
+		{"keep_steering keeps it", commands.CancelArgKeepSteering, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := newCmdOutputSession()
+			s.activeTask = &taskHandle{cancel: func() {}}
+			if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: "steered words"}}) {
+				t.Fatal("queueSteering refused a prompt that fits")
+			}
+
+			runCI(t, s, commands.CommandNameCancel, tc.args)
+
+			if n := queuedParts(s); n != tc.kept {
+				t.Fatalf("%d parts queued after :cancel %q, want %d", n, tc.args, tc.kept)
+			}
+		})
 	}
 }
 

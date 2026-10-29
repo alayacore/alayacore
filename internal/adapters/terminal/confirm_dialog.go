@@ -5,6 +5,12 @@ package terminal
 // progress windows: MCP init, and the two phases of waiting for a task to finish
 // after a quit (waiting, then canceling).
 //
+// A cancel with queued steering is two dialogs, not one: ConfirmCancel asks
+// whether to stop the task, and ConfirmCancelSteering — opened only when the
+// status snapshot reports queued words — asks what happens to them. Each is a
+// real binary question; a single dialog would have to offer three outcomes with
+// two keys.
+//
 // Rendering follows the shared overlay pattern (see ModelSelector):
 //   - SetSize stores the terminal dimensions
 //   - View renders with RenderOpenBox
@@ -13,7 +19,10 @@ package terminal
 //     box spans the full terminal width (see RenderOverlay)
 //
 // Key handling: y/Y = confirm, n/N/esc = cancel, e (tool confirms with
-// input) = open the full tool input in $EDITOR (view-only).
+// input) = open the full tool input in $EDITOR (view-only). The cancel-steering
+// step reads them differently, because its question is different: y = drop the
+// queued words, n = keep them, esc = withdraw the cancel (nothing has been sent
+// yet, so there is nothing to undo).
 
 import (
 	"fmt"
@@ -33,14 +42,15 @@ const ConfirmContentRows = 8
 type ConfirmKind int
 
 const (
-	ConfirmNone          ConfirmKind = iota // No dialog active
-	ConfirmQuit                             // Confirm exit
-	ConfirmCancel                           // Confirm cancel current request
-	ConfirmTool                             // Confirm tool execution
-	ConfirmMCPAuth                          // Confirm MCP OAuth authorization (temporary)
-	ConfirmMCPInit                          // MCP servers initializing (persistent)
-	ConfirmQuitWaiting                      // Exit accepted, waiting for the running task (persistent)
-	ConfirmQuitCanceling                    // Exit accepted, that task told to stop (persistent)
+	ConfirmNone           ConfirmKind = iota // No dialog active
+	ConfirmQuit                              // Confirm exit
+	ConfirmCancel                            // Confirm cancel current request
+	ConfirmCancelSteering                    // Confirm whether that cancel also drops queued steering
+	ConfirmTool                              // Confirm tool execution
+	ConfirmMCPAuth                           // Confirm MCP OAuth authorization (temporary)
+	ConfirmMCPInit                           // MCP servers initializing (persistent)
+	ConfirmQuitWaiting                       // Exit accepted, waiting for the running task (persistent)
+	ConfirmQuitCanceling                     // Exit accepted, that task told to stop (persistent)
 )
 
 // ConfirmDialog manages a floating confirmation overlay: quit/cancel
@@ -132,6 +142,27 @@ func (cd ConfirmDialog) OpenQuit() ConfirmDialog {
 func (cd ConfirmDialog) OpenCancel() ConfirmDialog {
 	cd = cd.open(ConfirmCancel)
 	cd.Description = "The current request will be stopped."
+	return cd
+}
+
+// OpenCancelSteering opens the second step of a cancel: the cancel is already
+// confirmed, and the only question left is what happens to the words still
+// queued. It is a second dialog rather than a third key on the first because
+// every answer here means exactly one thing — y drops the words, n keeps them,
+// Esc abandons the cancel — and a dialog cannot offer three outcomes with two
+// keys.
+//
+// queued is the count the status bar is showing (the same snapshot), so the
+// dialog and the live edge cannot disagree on screen. It describes the last
+// report, not what the session will find when it processes the cancel: the queue
+// is settled at that instant, not at this one.
+func (cd ConfirmDialog) OpenCancelSteering(queued int) ConfirmDialog {
+	cd = cd.open(ConfirmCancelSteering)
+	word := "messages are"
+	if queued == 1 {
+		word = "message is"
+	}
+	cd.Description = fmt.Sprintf("%d steering %s queued.", queued, word)
 	return cd
 }
 
@@ -261,6 +292,10 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 		return cd.updateQuitWaiting(key)
 	}
 
+	if cd.kind == ConfirmCancelSteering {
+		return cd.updateCancelSteering(key)
+	}
+
 	switch key {
 	case keyY, keyYCapital:
 		cd.confirmed = true
@@ -289,6 +324,31 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 		return cd, nil
 	}
 
+	return cd, nil
+}
+
+// updateCancelSteering handles the second step of a cancel, once the cancel
+// itself is settled: the question is only what happens to the queued words.
+//
+//   - y — drop them with the task. The destructive answer, and the one that has
+//     to be spelled out: it is why this step exists as its own question.
+//   - n — keep them; the session runs them as the next prompt.
+//   - Esc — abandon the cancel. Nothing has been sent yet (the command leaves
+//     only when this dialog closes), so abandoning costs nothing, and it is the
+//     only way back once the first step has been answered. It reports a result
+//     with neither flag set — "no decision" is a decision here, and it is how the
+//     owner knows to put the focus back without sending anything.
+func (cd ConfirmDialog) updateCancelSteering(key Chord) (ConfirmDialog, []Result) {
+	switch key {
+	case keyY, keyYCapital:
+		cd.confirmed = true
+		return cd.closeWithResult()
+	case keyN, keyNCapital:
+		cd.canceled = true
+		return cd.closeWithResult()
+	case keyEsc:
+		return cd.closeWithResult()
+	}
 	return cd, nil
 }
 
@@ -404,6 +464,11 @@ func (cd ConfirmDialog) buildContentLines() []string {
 	case ConfirmQuitCanceling:
 		lines = append(lines, cd.wrapAndCenter("The task is being stopped.", cd.styles.System, innerWidth)[0])
 		lines = append(lines, cd.wrapAndCenter("(this window closes when the session ends)", cd.styles.System, innerWidth)[0])
+	case ConfirmCancelSteering:
+		// The two answers name their own outcomes: "y / n" alone would make the
+		// reader guess which one drops their words.
+		lines = append(lines, cd.wrapAndCenter("y / n", cd.styles.Confirm, innerWidth)[0])
+		lines = append(lines, cd.wrapAndCenter("y drops them, n runs them as the next prompt", cd.styles.System, innerWidth)[0])
 	default:
 		lines = append(lines, cd.wrapAndCenter("y / n", cd.styles.Confirm, innerWidth)[0])
 		// The tool-confirm dialog announces 'e' on its own centered hint
@@ -427,6 +492,8 @@ func (cd ConfirmDialog) buildTitleText() string {
 		return "Exit AlayaCore?"
 	case ConfirmCancel:
 		return "Cancel current task?"
+	case ConfirmCancelSteering:
+		return "Discard the queued steering?"
 	case ConfirmTool:
 		msg := "Allow "
 		if cd.toolName != "" {
@@ -610,10 +677,11 @@ func (cd ConfirmDialog) RenderOverlay(baseContent string, screenWidth, screenHei
 	// Box row layout (always 10 rows): rule, blank, title, blank,
 	// description ×2, blank, then kind-dependent rows — "y / n" plus
 	// either a blank (quit/cancel/MCP auth) or the tool-confirm hint
-	// "Press e to view the full input." (tool with input), or the two hint
-	// lines of a persistent progress window (MCP init, quit wait). The
-	// description always occupies rows 4 and 5, which is what the soft-run
-	// logic below keys on.
+	// "Press e to view the full input." (tool with input), the two hint
+	// lines of a persistent progress window (MCP init, quit wait), or the
+	// outcome-naming pair of the cancel-steering step. The description
+	// always occupies rows 4 and 5, which is what the soft-run logic below
+	// keys on.
 	rows := strings.Split(box, "\n")
 	descRun := cd.descriptionRowsFormSoftRun()
 

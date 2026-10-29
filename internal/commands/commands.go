@@ -49,6 +49,15 @@ const (
 	CommandNameMCPSkip    = "mcp_skip"
 )
 
+// CancelArgKeepSteering is :cancel's one argument value: cancel the task but
+// leave the queued steering alone, so it runs as the next prompt.
+//
+// It is a constant for the reason command names are: the same word is both the
+// argument shape the dispatcher enforces (the Arg in commands.Defs) and the
+// value the handler accepts, and two copies of one word is how `:tool_confirm`
+// once documented a `<call_id>` its handler read as `<id>`.
+const CancelArgKeepSteering = "keep_steering"
+
 // shortForms maps what a user may type to the command it means. It is an
 // adapter's table, resolved at the input boundary — where a typed line becomes
 // a frame — and never on the wire: a CI frame carries the canonical name only,

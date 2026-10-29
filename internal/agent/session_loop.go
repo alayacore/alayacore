@@ -92,7 +92,7 @@ func (s *Session) run() {
 			s.handleInputMsg(msg)
 
 		case done := <-s.cancelReqCh:
-			_, err := s.cancelTask()
+			_, err := s.cancelTask(dropQueuedSteering)
 			done <- err == nil
 
 		case ev := <-s.taskEventCh:

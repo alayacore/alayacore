@@ -49,16 +49,30 @@ import (
 //     The words never put anything on the wire, so a task that dies cannot
 //     leave them to run on afterwards: a queue that survived a cancel would
 //     start a task on its own the moment the canceled one unwound — a stop
-//     button that keeps going.
+//     button that keeps going. A cancel may therefore drop the queue
+//     (dropQueuedSteering, what a bare :cancel does), or — only when the user
+//     says so, with :cancel keep_steering — keep it, in which case this same
+//     branch promotes it: the words are the user's next request, and the task
+//     that would run them is one the user asked for. The distinction is not a
+//     mode of the queue but who decided: a button that keeps going on its own is
+//     a bug, one the user asked to keep going is an instruction.
 //
 // The drop side has one place, not two: only the queue is ever dropped, because
 // it is the only thing holding words the model has not been sent. run()'s
-// cancelTask drains it on a cancel and processPrompt's deferred discard drains it
-// on a failure; a part a boundary had already appended left the queue and is in
-// the conversation, where nothing can take it back. Every drop is announced: the
-// words are in neither the transcript nor the session file, so the user has to be
-// told, and retyping them is their call. Input arriving after a task ends is
-// untouched by any of this, because it was never part of the task that ended.
+// cancelTask drains it on a cancel — unless the cancel keeps it (steeringOnCancel)
+// — and processPrompt's deferred discard drains it on a failure; a part a boundary
+// had already appended left the queue and is in the conversation, where nothing
+// can take it back. Every drop is announced: the words are in neither the
+// transcript nor the session file, so the user has to be told, and retyping them
+// is their call. Input arriving after a task ends is untouched by any of this,
+// because it was never part of the task that ended.
+//
+// A kept queue stays a queue: it is not announced at the cancel, and it ends in
+// the same place a landed task's leftover does — deliverLeftoverSteering, which
+// reports it "delivered" and submits it. So keeping needs no second owner and no
+// new terminal phase, and the contract that every queued submission ends in
+// exactly one is untouched: what a cancel decides is when the queue's fate is
+// settled, not whether a second place may settle it.
 //
 // The queue is reachable only from a userPrompt, and that follows from the kind
 // rather than from any knowledge held here: processPrompt installs the
@@ -127,11 +141,13 @@ func (s *Session) takeSteering() []llm.ContentPart {
 // queue: a part a step had already spliced was sent and echoed, so it is in the
 // conversation, and nothing here can or should take it back.
 //
-// It is a no-op for a task a cancel already drained (steeringDrained). Those
+// It is a no-op for a task a cancel already settled (steeringDrained). Those
 // words are handled by cancelSteering the moment the cancel is processed; a
 // second drain here would sweep up whatever the user typed *after* the cancel,
 // while the canceled task was still unwinding — input that never belonged to
 // the task being discarded (see TestPostCancelSteeringSurvivesDeferredDiscard).
+// Under keepQueuedSteering the no-op is load-bearing for the queue itself: the
+// batch a cancel spared is the batch this would otherwise drop.
 //
 // The notice is what keeps the drop from being the silent kind: these words are
 // in neither the transcript nor the session file, so the user has to be told,
@@ -150,21 +166,46 @@ func (s *Session) discardQueuedSteering() {
 	}
 }
 
-// cancelSteering disposes of the queue when a running task is canceled, and
+// steeringOnCancel is what a cancel does with the queue. Named rather than a
+// bare bool for the reason promptKind is: the value is read at the call site,
+// where "false" would say only "do not drop" and not that the queue is being
+// handed to the promotion path instead.
+type steeringOnCancel int
+
+const (
+	// dropQueuedSteering takes the queue with the canceled task. This is what a
+	// bare :cancel does — stop means stop — and the only fate a cancel reached
+	// without the user's words can have (SIGINT and CancelTask() land here).
+	dropQueuedSteering steeringOnCancel = iota
+
+	// keepQueuedSteering leaves the queue for deliverLeftoverSteering, which
+	// promotes it to the next prompt (:cancel keep_steering). The user asked
+	// for that task by asking for the words.
+	keepQueuedSteering
+)
+
+// cancelSteering settles the queue's fate when a running task is canceled, and
 // records that it did so the canceled task's deferred discard stays a no-op.
 //
-// The second half is the point. The queue is session-wide, so a prompt the user
-// types after ":cancel" but before the task goroutine finishes unwinding lands
-// in it too. cancelTask drains at the instant of the cancel, which is exactly
-// the boundary the policy draws ("only what is queued at this instant is
-// dropped"); the deferred discard runs later, in that unwinding window, and
-// must therefore not drain again. Reports whether anything was actually
-// dropped, i.e. whether the user must be told.
-func (s *Session) cancelSteering() bool {
+// The second half is the point, and it holds in both modes. The queue is
+// session-wide, so a prompt the user types after ":cancel" but before the task
+// goroutine finishes unwinding lands in it too. cancelTask settles at the
+// instant of the cancel, which is exactly the boundary the policy draws ("only
+// what is queued at this instant"); the deferred discard runs later, in that
+// unwinding window, and must therefore not decide again — a drain there would
+// take the post-cancel input and, under keepQueuedSteering, the very batch the
+// user asked to keep.
+//
+// Reports whether anything was actually dropped, i.e. whether the user must be
+// told. It is false under keepQueuedSteering for a reason that is not "nothing
+// happened": the batch's report is deliverLeftoverSteering's to write, as
+// "delivered", and two reports for one batch would break the one-terminal-phase
+// contract.
+func (s *Session) cancelSteering(fate steeringOnCancel) bool {
 	s.steeringMu.Lock()
 	defer s.steeringMu.Unlock()
 	s.steeringDrained = true
-	if len(s.steering) == 0 {
+	if fate == keepQueuedSteering || len(s.steering) == 0 {
 		return false
 	}
 	s.steering = nil
@@ -176,11 +217,13 @@ func (s *Session) cancelSteering() bool {
 //
 // What is queued at that point is, by construction, input that arrived after the
 // task's last step boundary — and the task either landed (so it is the user's
-// next request, typed while the last answer was still streaming) or it was
-// canceled/turned out to have failed, in which case processPrompt already
-// drained the queue. Either way what is left here is fresh intent, and it is
-// delivered rather than held: this is the case that makes "type the next thing
-// while it is working" work.
+// next request, typed while the last answer was still streaming), failed (in
+// which case processPrompt already drained the queue), or was canceled (drained
+// by cancelTask, unless the cancel kept it: :cancel keep_steering, whose whole
+// meaning is that this function gets the batch and promotes it). Either way what
+// is left here is intent the user stands behind, and it is delivered rather than
+// held: this is the case that makes "type the next thing while it is working"
+// work.
 //
 // Ordering: called from run()'s handleTaskDone, after Contents has been
 // committed and the idle state broadcast. The task goroutine's last touch of the

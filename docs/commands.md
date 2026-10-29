@@ -50,9 +50,10 @@ is one of two shapes.
   surrounding whitespace trimmed: `:save [filename]`, `:fork <history_id>
   <filename>`, `:theme_set <name>`, `:model_sync <content>`.
 
-A command whose usage line is empty (`:quit`, `:cancel`, `:summarize`,
-`:continue`, `:model_load`, `:mcp_skip`) takes no arguments at all; a stray word
-is `REQUEST_INVALID_ARGS`.
+A command whose usage line is empty (`:quit`, `:summarize`, `:continue`,
+`:model_load`, `:mcp_skip`) takes no arguments at all; a stray word is
+`REQUEST_INVALID_ARGS`. `:cancel` is no longer one of them: its one optional
+token picks a behavior rather than supplying a value — `[keep_steering]`.
 
 ## Error codes
 
@@ -105,7 +106,7 @@ Commands fall into three categories:
 | Command | Action | CO result |
 |---------|--------|-----------|
 | `:quit` | End the session. A task that is already running is allowed to finish first. | `null` |
-| `:cancel` | Cancel current task | `null` |
+| `:cancel [keep_steering]` | Cancel current task. The argument keeps the queued steering instead of dropping it — see below. | `null` |
 | `:save [filename]` | Save session. Uses `--session` path if no filename given. | `{"path"}` |
 | `:theme_set <name>` | Switch to a different theme. TUI only — rejected with `CONFIG_UNSUPPORTED` in Plain IO, Terse IO, and Raw IO (`NoTheme`) | `{"name"}` |
 | `:fork <history_id> <filename>` | Fork session — save all content up to a history ID to a file | `{"path","count","history_id"}` |
@@ -129,6 +130,21 @@ had already spliced were sent to the model, so they stay in the conversation —
 a cancel stops the task, it cannot unsend what the model was given. A prompt that
 arrives *after* the cancel is a fresh intent and is delivered normally (see
 [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-task)).
+
+`:cancel keep_steering` is the one alternative, and the argument is one word
+because the behavior is one thing: stop the task, and keep the queued words, so
+they run as the next prompt (the same path a leftover queue takes after a task
+that landed). The batch is then reported `delivered`,
+not `dropped`, so every queued submission still ends in exactly one terminal
+phase. It is not the stop button that keeps going, because the user asked for
+that task by asking for its words; the bare form keeps meaning what it always
+meant. Only what is queued at the instant the cancel is processed is kept — a
+prompt typed afterwards is part of the next prompt either way. Any other word is
+`REQUEST_INVALID_ARGS`, with the usage line.
+
+The TUI reaches both forms from `Ctrl+G`: the confirmation dialog offers the
+keeping form only when the status bar reports queued steering, so the common case
+(nothing queued) asks nothing extra.
 
 ## Idle Commands
 
@@ -162,7 +178,7 @@ the command (the TUI confirmation dialogs), or handles it entirely locally:
 | Command | TUI | Plain IO | Terse IO | Raw IO |
 |---------|-----|----------|----------|--------|
 | `:quit` / `:q` | Shows confirmation dialog, then sends `quit` and exits when the session ends | Sends `quit`, then exits (code 0) | Sends `quit`, then exits (code 0) | Not interpreted — raw CI/CO pass-through |
-| `:cancel` | Shows confirmation dialog, then forwards `:cancel` to the session | Sent to session | Sent to session | Not interpreted — raw CI/CO pass-through |
+| `:cancel` | Shows confirmation dialog, then forwards `:cancel` to the session — with queued steering, a second dialog decides whether the words go too (`:cancel` or `:cancel keep_steering`). Typed with the argument, it goes straight to the session: an explicit full form is the user's own answer, the way `:quit foo` is not the local quit | Sent to session | Sent to session | Not interpreted — raw CI/CO pass-through |
 | `:help` | Opens help overlay | Sent to session (unknown command) | Sent to session (unknown command) | Not interpreted — raw CI/CO pass-through |
 | `:suspend` | Suspends process (Ctrl+Z) | Not supported | Not supported | Not interpreted — raw CI/CO pass-through |
 

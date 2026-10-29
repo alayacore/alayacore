@@ -256,6 +256,29 @@ func countText(parts []llm.ContentPart, want string) int {
 	return n
 }
 
+// cancelNow cancels through the session's own entry point and fails the test if
+// the cancel itself fails: every steering test's arrangement starts with a cancel
+// that must succeed, and what the test is about is what happened to the queue.
+func cancelNow(t *testing.T, s *Session, fate steeringOnCancel) {
+	t.Helper()
+	name := "dropQueuedSteering"
+	if fate == keepQueuedSteering {
+		name = "keepQueuedSteering"
+	}
+	if _, err := s.cancelTask(fate); err != nil {
+		t.Fatalf("cancelTask(%s) = %v, want success", name, err)
+	}
+}
+
+// queuedParts is how many parts the queue holds — a peek, for a test that must
+// assert the queue survived something. takeSteering would answer the same
+// question by draining it, which is the opposite of what such a test needs.
+func queuedParts(s *Session) int {
+	s.steeringMu.Lock()
+	defer s.steeringMu.Unlock()
+	return len(s.steering)
+}
+
 // indexOfSteering returns the index of the steering text in parts, or -1.
 func indexOfSteering(parts []llm.ContentPart) int {
 	for i, p := range parts {
@@ -1094,9 +1117,6 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-// Canceling stops the task *and* what the task was going to be told: leaving
-// the queue in place would start a fresh task on its own the moment the
-// canceled one unwinds.
 // A :quit with steering still queued drops it — it will not run — but the drop
 // is announced like every other, so the steering contract stays total: every
 // queued submission ends in exactly one terminal phase.
@@ -1124,6 +1144,9 @@ func TestQuitDropsLeftoverSteeringWithNotice(t *testing.T) {
 	}
 }
 
+// Canceling stops the task *and* what the task was going to be told: leaving
+// the queue in place would start a fresh task on its own the moment the
+// canceled one unwinds.
 func TestCancelDropsQueuedSteering(t *testing.T) {
 	output := &syncOutput{}
 	provider := &steeringProvider{steps: []steeringStep{{text: "never runs"}}}
@@ -1133,9 +1156,7 @@ func TestCancelDropsQueuedSteering(t *testing.T) {
 	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
 		t.Fatal("queueSteering refused a prompt that fits")
 	}
-	if _, err := s.cancelTask(); err != nil {
-		t.Fatalf("cancelTask() = %v, want success", err)
-	}
+	cancelNow(t, s, dropQueuedSteering)
 	if parts := s.takeSteering(); len(parts) != 0 {
 		t.Fatalf("cancel left %d parts queued, want none", len(parts))
 	}
@@ -1152,6 +1173,102 @@ func TestCancelDropsQueuedSteering(t *testing.T) {
 	}
 }
 
+// The other fate a cancel can give the queue, and the reason the command has an
+// argument: the user asked for the words by asking to keep them, so the cancel
+// stops only the task and the batch becomes the next prompt — reported
+// "delivered", never "dropped". This is not the stop button that keeps going,
+// because the keep was pressed.
+func TestCancelKeepsQueuedSteeringWhenAsked(t *testing.T) {
+	output := &syncOutput{}
+	provider := &steeringProvider{steps: []steeringStep{{text: "the answer"}}}
+	s := steeringSession(t, output, provider, nil, nil)
+	s.activeTask = &taskHandle{cancel: func() {}}
+
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: steeringText}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	cancelNow(t, s, keepQueuedSteering)
+	if n := queuedParts(s); n != 1 {
+		t.Fatalf("keep_steering left %d parts queued, want 1: the batch was drained", n)
+	}
+	if got := output.String(); strings.Contains(got, `"phase":"dropped"`) {
+		t.Errorf("keep_steering reported the batch dropped: %q", got)
+	}
+
+	// The canceled task unwinds: its deferred discard must leave the spared batch
+	// alone (that is what steeringDrained is for under keep_steering).
+	s.discardQueuedSteering()
+	if n := queuedParts(s); n != 1 {
+		t.Fatalf("the deferred discard took the batch keep_steering spared: %d parts left", n)
+	}
+
+	// The task ends, and the spared batch runs as the next one.
+	s.activeTask = nil
+	s.handleTaskDone(nil)
+	driveRun(t, s)
+
+	if n := provider.callCount(); n != 1 {
+		t.Fatalf("provider calls = %d, want 1 (the kept batch as the next task)", n)
+	}
+	req := provider.request(0)
+	if idx := indexOfSteering(req); idx != len(req)-1 {
+		t.Fatalf("the kept words are not the trailing user message: %s", summary(req))
+	}
+	got := output.String()
+	if !strings.Contains(got, `"phase":"delivered"`) {
+		t.Errorf("the kept batch was not reported delivered: %q", got)
+	}
+}
+
+// keep_steering with an empty queue is the same event as a bare cancel, and it
+// must stay silent: a "delivered" for words nobody queued would be a report of a
+// submission that never happened, and the terminal-phase contract counts
+// submissions, not cancels.
+func TestCancelKeepSteeringWithNothingQueuedIsSilent(t *testing.T) {
+	output := &syncOutput{}
+	provider := &steeringProvider{steps: []steeringStep{{text: "never runs"}}}
+	s := steeringSession(t, output, provider, nil, nil)
+	s.activeTask = &taskHandle{cancel: func() {}}
+
+	cancelNow(t, s, keepQueuedSteering)
+	s.activeTask = nil
+	s.handleTaskDone(nil)
+
+	if got := output.String(); strings.Contains(got, `"phase":`) {
+		t.Errorf("a keep with nothing queued reported steering: %q", got)
+	}
+	if n := provider.callCount(); n != 0 {
+		t.Fatalf("provider calls = %d, want 0 — an empty queue starts nothing", n)
+	}
+}
+
+// keep_steering spares the queue from the cancel, not from the session's exit: a
+// quit still drops it, with the reason that says so. Every queued submission ends
+// in exactly one terminal phase, and this is the case that keeps that true across
+// the two features.
+func TestCancelKeepSteeringStillDropsOnQuit(t *testing.T) {
+	output := &syncOutput{}
+	provider := &steeringProvider{steps: []steeringStep{{text: "never runs"}}}
+	s := steeringSession(t, output, provider, nil, nil)
+	s.activeTask = &taskHandle{cancel: func() {}}
+
+	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: "pending words"}}) {
+		t.Fatal("queueSteering refused a prompt that fits")
+	}
+	cancelNow(t, s, keepQueuedSteering)
+	s.quitting = true
+	s.activeTask = nil
+	s.handleTaskDone(nil)
+
+	got := output.String()
+	if !strings.Contains(got, `"phase":"dropped"`) || !strings.Contains(got, `"reason":"quit"`) {
+		t.Errorf("a quit must still drop the spared batch with reason quit: %q", got)
+	}
+	if n := provider.callCount(); n != 0 {
+		t.Fatalf("provider calls = %d, want 0 — the session is leaving", n)
+	}
+}
+
 // The other half of that rule, and the failure mode a "drop on next task end"
 // flag would have: a prompt typed *after* the cancel is a fresh intent and must
 // survive. Cancel, then type what you actually wanted, is an ordinary sequence.
@@ -1162,9 +1279,7 @@ func TestCancelKeepsSteeringArrivingAfterIt(t *testing.T) {
 	s.activeTask = &taskHandle{cancel: func() {}}
 
 	// Cancel with nothing queued.
-	if _, err := s.cancelTask(); err != nil {
-		t.Fatalf("cancelTask() = %v, want success", err)
-	}
+	cancelNow(t, s, dropQueuedSteering)
 	if strings.Contains(output.String(), "steering dropped") {
 		t.Error("nothing was queued, so nothing should have been reported dropped")
 	}
@@ -1204,9 +1319,7 @@ func TestPostCancelSteeringSurvivesDeferredDiscard(t *testing.T) {
 	if !s.queueSteering([]llm.ContentPart{&llm.TextPart{Text: "old intent"}}) {
 		t.Fatal("queueSteering refused a prompt that fits")
 	}
-	if _, err := s.cancelTask(); err != nil {
-		t.Fatalf("cancelTask() = %v, want success", err)
-	}
+	cancelNow(t, s, dropQueuedSteering)
 
 	// The canceled task is still unwinding; the user types what they meant.
 	s.submitPrompt([]llm.ContentPart{&llm.TextPart{Text: "and use Y"}})
@@ -1259,9 +1372,7 @@ func TestSteeringDroppedOnFailureAfterACancel(t *testing.T) {
 
 	// A canceled task first: cancelTask sets the per-task drain flag.
 	s.activeTask = &taskHandle{cancel: func() {}}
-	if _, err := s.cancelTask(); err != nil {
-		t.Fatalf("cancelTask() = %v, want success", err)
-	}
+	cancelNow(t, s, dropQueuedSteering)
 	s.activeTask = nil // the canceling task unwinds
 
 	// The next task starts through the real entry point (beginTask runs here,
