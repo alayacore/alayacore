@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/atomicfile"
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/wire"
@@ -48,7 +49,12 @@ func saveSessionFile(path string, meta sessionMeta, contents []llm.ContentPart) 
 		// caller names the operation.
 		return err
 	}
-	if err := os.WriteFile(path, raw, 0600); err != nil {
+	// Atomic (internal/atomicfile): the file being replaced is the whole
+	// conversation. os.WriteFile truncated it first, so a crash or a full disk
+	// during a save destroyed the previous transcript as well as failing to
+	// write the new one — and a second instance saving the same --session path
+	// could interleave with this one instead of merely winning.
+	if err := atomicfile.Write(path, raw, 0600); err != nil {
 		// The caller names the operation, the OS error names the path and the
 		// reason. Repeating either here is what made one failure read
 		// "save: save: open …".

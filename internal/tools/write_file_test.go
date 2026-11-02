@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/llm"
 )
 
 func TestWriteFileValidation(t *testing.T) {
@@ -130,6 +132,12 @@ func TestWriteFileCreatesNewFile(t *testing.T) {
 	}
 	if len(parts) == 0 {
 		t.Fatal("expected a result part")
+	}
+	// A normal write must not carry the "not atomic" note: a warning that is
+	// always there says nothing, and the note is how the read-only-directory
+	// fallback stays honest (see TestWriteFileWritableFileInReadOnlyDir).
+	if text, ok := parts[0].(*llm.TextPart); ok && strings.Contains(text.Text, "not atomic") {
+		t.Errorf("result = %q, want no atomicity warning for a rename commit", text.Text)
 	}
 
 	data, err := os.ReadFile(path)

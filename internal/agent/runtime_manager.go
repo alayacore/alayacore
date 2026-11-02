@@ -1,19 +1,23 @@
 package agent
 
 // runtimeManager owns the small, writable runtime.conf file that stores
-// state which can change while the program is running (currently only
-// the active model name). Unlike modelManager, it is allowed to write
+// state which can change while the program is running (the active model and
+// theme names). Unlike modelManager, it is allowed to write
 // its file and is used by the session layer to remember the last active
 // model across process restarts.
 //
 // All methods are called from the session's run() goroutine only, so no
-// synchronization is needed.
+// synchronization is needed inside the process. Other processes are a
+// different matter: the file is per user, not per instance, so every write
+// re-reads it and changes only its own field (see update), and commits with
+// internal/atomicfile so a reader never catches a half-written file.
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/alayacore/alayacore/internal/atomicfile"
 	"github.com/alayacore/alayacore/internal/config"
 )
 
@@ -57,7 +61,7 @@ func (rm *runtimeManager) load() error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Create the file with default content
-			return rm.save()
+			return rm.write(rm.config)
 		}
 		return err
 	}
@@ -66,8 +70,13 @@ func (rm *runtimeManager) load() error {
 	return nil
 }
 
-// save writes the runtime config to file
-func (rm *runtimeManager) save() error {
+// write replaces the file with cfg.
+//
+// The commit is atomic (internal/atomicfile): another instance, or a sync
+// client, reading runtime.conf while this one writes sees either the old file or
+// the new one — never an empty file to fall back from, and never two contents
+// mixed into one that does not parse.
+func (rm *runtimeManager) write(cfg runtimeConfig) error {
 	if rm.path == "" {
 		return nil
 	}
@@ -78,8 +87,57 @@ func (rm *runtimeManager) save() error {
 		return err
 	}
 
-	content := formatRuntimeConfig(rm.config)
-	return os.WriteFile(rm.path, []byte(content), 0600)
+	return atomicfile.Write(rm.path, []byte(formatRuntimeConfig(cfg)), 0600)
+}
+
+// update applies one change to the file on disk, after re-reading it.
+//
+// The in-memory copy is loaded once, at startup, and writing that whole copy
+// back is what let two instances overwrite each other wholesale: switching a
+// theme in one terminal reverted the model another had chosen hours earlier,
+// because the writer's snapshot predated it. Re-reading first shrinks that window
+// from the lifetime of a process to the few syscalls below. What is left is two
+// instances changing different fields in the same instant, which costs one of the
+// two switches — the same outcome as two instances changing the same field, and
+// not worth a cross-process lock on a file that only records a preference.
+func (rm *runtimeManager) update(mutate func(*runtimeConfig)) error {
+	if rm.path == "" {
+		mutate(&rm.config)
+		return nil
+	}
+
+	current, err := rm.readCurrent()
+	if err != nil {
+		// The file cannot be read, so there is nothing to merge with; writing
+		// this process's copy is the behavior every write had before the merge.
+		current = rm.config
+	}
+	mutate(&current)
+
+	if err := rm.write(current); err != nil {
+		return err
+	}
+	rm.config = current
+	return nil
+}
+
+// readCurrent returns the file as another process last left it, or the zero
+// value when there is no file yet.
+//
+// Parse errors are dropped rather than reported: load() already reported the
+// file it read at startup, a merge is not the place to repeat it, and the write
+// that follows replaces the file with well-formed content built from whatever
+// could be recovered.
+func (rm *runtimeManager) readCurrent() (runtimeConfig, error) {
+	data, err := os.ReadFile(rm.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return runtimeConfig{}, nil
+		}
+		return runtimeConfig{}, err
+	}
+	cfg, _ := parseRuntimeConfig(string(data), filepath.Base(rm.path))
+	return cfg, nil
 }
 
 // parseRuntimeConfig parses the key-value runtime config format.
@@ -110,18 +168,16 @@ func (rm *runtimeManager) getActiveModel() string {
 	return rm.config.ActiveModel
 }
 
-// SetActiveModel sets the active model name and saves to file
+// setActiveModel records name as the active model and saves it to file.
 func (rm *runtimeManager) setActiveModel(name string) error {
-	rm.config.ActiveModel = name
-	return rm.save()
+	return rm.update(func(cfg *runtimeConfig) { cfg.ActiveModel = name })
 }
 
 func (rm *runtimeManager) getActiveTheme() string {
 	return rm.config.ActiveTheme
 }
 
-// SetActiveTheme sets the active theme name and saves to file
+// setActiveTheme records name as the active theme and saves it to file.
 func (rm *runtimeManager) setActiveTheme(name string) error {
-	rm.config.ActiveTheme = name
-	return rm.save()
+	return rm.update(func(cfg *runtimeConfig) { cfg.ActiveTheme = name })
 }

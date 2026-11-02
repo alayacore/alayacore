@@ -266,6 +266,15 @@ active_model: "OpenAI GPT-4o"
 active_theme: "theme-dark"
 ```
 
+The file belongs to you, not to one instance. Every AlayaCore started with the
+same `--config-path` reads it at startup, and a switch writes back only the field
+it changed (re-reading the file first), so two terminals of AlayaCore do not undo
+each other: switching a model in one keeps the theme chosen in the other. The
+replacement is atomic — a reader sees the previous file or the new one, never a
+truncated one, even if the write is interrupted. If the directory cannot hold the
+temporary file this needs, the switch fails and says so rather than degrading to a
+write that another process could read half-finished.
+
 ### Model Selection Priority
 
 When a session starts (or reloads via `:model_load`), the active model is resolved using this priority chain:

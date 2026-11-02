@@ -106,12 +106,15 @@ syscalls, so nothing that matters loses parallelism.
 `read_file` takes the read side of that lock for the length of its read, for a
 reason the writers do not have. Against `edit_file` a reader would need no lock
 at all: the commit is a rename, so it sees the old file or the new one, never a
-torn one. `write_file`'s in-place fallback is not atomic — `writeInPlace`,
-reachable when the directory cannot hold a temp file, truncates the target and
-then writes into it, so a read inside that window returns a prefix of the new
-content as if it were the whole file: shorter, plausible, and with nothing in it
-to say it was cut. That is the one read-side tear a lock can prevent, and the
-model could not detect it if it happened.
+torn one. `write_file`'s in-place fallback is not atomic — it is
+`internal/atomicfile`'s `WriteBestEffort`, the variant that truncates the target
+when the directory cannot hold a temp file, so a read inside that window returns
+a prefix of the new content as if it were the whole file: shorter, plausible, and
+with nothing in it to say it was cut. That is the one read-side tear a lock can
+prevent, and the model could not detect it if it happened. The tool reports it
+instead ("this write was not atomic"), which is the one thing it can do about a
+tear it cannot prevent — and AlayaCore's own config files call `atomicfile.Write`,
+which has no fallback at all: it reports the failure rather than degrade.
 
 The lock is an `RWMutex`, and reads take the read side, because excluding reads
 from a write is the entire requirement and excluding reads from each other is

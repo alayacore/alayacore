@@ -27,7 +27,8 @@ import "sync"
 // take the write side. Against edit_file a reader needs no lock at all: the
 // commit is a rename, so a read that overlapped it would still return a whole
 // file, the old one or the new one. write_file's in-place fallback is the
-// exception — writeInPlace (used when the directory cannot hold a temp file)
+// exception — atomicfile.Write's in-place fallback (used when the directory
+// cannot hold a temp file)
 // truncates the target and then writes the new content into it, so a read inside
 // that window returns either an empty file or the new prefix as if it were the
 // whole file: shorter, entirely plausible, and with nothing in it to say it was
@@ -51,9 +52,9 @@ import "sync"
 // It is NOT reentrant: nothing that takes this lock may call anything else that
 // takes it, in either mode — an RLock turned into a Lock by a waiting writer
 // deadlocks just as a second Lock would. edit_file and write_file never call
-// each other, write_file's in-place fallback (writeInPlace) runs inside the same
-// critical section rather than re-entering it, and read_file returns media and
-// line ranges from the one handle it already holds.
+// each other, write_file's in-place fallback (inside atomicfile.Write) runs in
+// the same critical section rather than re-entering it, and read_file returns
+// media and line ranges from the one handle it already holds.
 //
 // Scope: this serializes access within this process only. Writers (and readers)
 // outside it — another instance, an editor, git, a sync client, ripgrep under

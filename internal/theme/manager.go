@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/alayacore/alayacore/internal/atomicfile"
 )
 
 // Manager prepares a themes folder: it creates one holding the built-in themes
@@ -53,12 +55,12 @@ func (tm *Manager) prepare() {
 // createDefaultThemes writes the built-in themes from embedded content.
 func (tm *Manager) createDefaultThemes() {
 	darkPath := filepath.Join(tm.themesFolder, "theme-dark.conf")
-	if err := os.WriteFile(darkPath, []byte(darkThemeContent), 0600); err != nil {
+	if err := atomicfile.Write(darkPath, []byte(darkThemeContent), 0600); err != nil {
 		tm.recordError(darkPath, err)
 	}
 
 	lightPath := filepath.Join(tm.themesFolder, "theme-light.conf")
-	if err := os.WriteFile(lightPath, []byte(lightThemeContent), 0600); err != nil {
+	if err := atomicfile.Write(lightPath, []byte(lightThemeContent), 0600); err != nil {
 		tm.recordError(lightPath, err)
 	}
 }

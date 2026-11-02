@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alayacore/alayacore/internal/atomicfile"
 	"github.com/alayacore/alayacore/internal/config"
 )
 
@@ -161,7 +162,7 @@ func (mm *modelManager) createDefaultConfig(path string) error {
 		return err
 	}
 
-	return os.WriteFile(path, []byte(defaultModelConfig), 0600)
+	return atomicfile.Write(path, []byte(defaultModelConfig), 0600)
 }
 
 // parseModelConfig parses the key-value model config format.
@@ -301,9 +302,19 @@ func (mm *modelManager) syncFromContent(content string) []string {
 }
 
 // writeConfigFile persists the current models to the config file in key-value format.
+//
+// The replacement is atomic (internal/atomicfile). model.conf can be the only
+// copy of an API key, and a truncated or half-mixed file is not something a user
+// can repair from memory — an interrupted write, or a second instance saving at
+// the same moment, must leave the previous list intact instead.
+//
+// Atomic does not mean conflict-free: :model_sync replaces the whole list from
+// this process's copy, so of two instances editing the same file the last save
+// still wins. That is the semantics of a full-file editor; what this rules out is
+// the file itself being lost.
 func (mm *modelManager) writeConfigFile() error {
 	data := formatModelList(mm.models)
-	return os.WriteFile(mm.filePath, []byte(data), 0600)
+	return atomicfile.Write(mm.filePath, []byte(data), 0600)
 }
 
 // getModel returns a model by ID (includes API key for internal use)

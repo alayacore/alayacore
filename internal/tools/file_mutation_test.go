@@ -80,10 +80,10 @@ func TestConcurrentEditsToSameFileDoNotLoseUpdates(t *testing.T) {
 
 // TestReadFileWaitsForTheFileMutationLock guards the read side of the lock.
 // edit_file's commit is a rename, which no reader can catch half-done, but
-// write_file's in-place fallback (writeInPlace) truncates the target and then
-// writes into it, all of it inside fileMutationMu. A read that ignored the lock
-// could therefore return the new prefix as a complete, merely shorter file —
-// and nothing in the result would say so.
+// write_file's in-place fallback (inside atomicfile.Write) truncates the target
+// and then writes into it, all of it inside fileMutationMu. A read that ignored
+// the lock could therefore return the new prefix as a complete, merely shorter
+// file — and nothing in the result would say so.
 //
 // The stand-in for a mutation in flight is the lock itself: hold it, start a
 // read, and require the read to still be waiting. Waiting 50ms can only be

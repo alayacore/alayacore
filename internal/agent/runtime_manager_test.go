@@ -121,7 +121,7 @@ func TestFormatRuntimeConfig(t *testing.T) {
 	result := formatRuntimeConfig(config)
 
 	// Check that it contains the expected content
-	if !contains(result, `active_model: "Test Model"`) {
+	if !strings.Contains(result, `active_model: "Test Model"`) {
 		t.Errorf("Expected output to contain active_model, got: %s", result)
 	}
 }
@@ -149,17 +149,4 @@ func TestRuntimeManagerCreatesFileOnLoad(t *testing.T) {
 	if rm.getActiveModel() != "" {
 		t.Errorf("Expected empty active model, got: %s", rm.getActiveModel())
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

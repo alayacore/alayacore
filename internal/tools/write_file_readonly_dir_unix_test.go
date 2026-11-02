@@ -6,14 +6,18 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/llm"
 )
 
-// An atomic replace needs write permission on the *directory*, while the
-// os.WriteFile this tool used only needed the file itself to be writable. A
-// writable file inside a read-only directory is a real layout (vendored trees,
-// service configs owned by root with a group-writable file), so the atomic path
-// must degrade to an in-place write instead of losing the capability.
+// An atomic replace needs write permission on the *directory*, while an in-place
+// write only needs the file itself to be writable. A writable file inside a
+// read-only directory is a real layout (vendored trees, service configs owned by
+// root with a group-writable file), so the tool keeps the capability — and says
+// that the write it made was not atomic, so neither the model nor the user
+// mistakes it for one.
 func TestWriteFileWritableFileInReadOnlyDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "ro")
 	if err := os.Mkdir(dir, 0o755); err != nil {
@@ -28,8 +32,19 @@ func TestWriteFileWritableFileInReadOnlyDir(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
-	if _, err := executeWriteFile(context.Background(), WriteFileInput{Path: path, Content: "updated"}); err != nil {
+	parts, err := executeWriteFile(context.Background(), WriteFileInput{Path: path, Content: "updated"})
+	if err != nil {
 		t.Fatalf("write failed in a read-only directory: %v", err)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("got %d content parts, want 1", len(parts))
+	}
+	text, ok := parts[0].(*llm.TextPart)
+	if !ok {
+		t.Fatalf("result is %T, want *llm.TextPart", parts[0])
+	}
+	if !strings.Contains(text.Text, "not atomic") {
+		t.Errorf("result = %q, want it to say the write was not atomic", text.Text)
 	}
 
 	data, err := os.ReadFile(path)

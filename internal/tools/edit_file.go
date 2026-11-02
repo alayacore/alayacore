@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/alayacore/alayacore/internal/atomicfile"
 	"github.com/alayacore/alayacore/internal/llm"
 )
 
@@ -61,7 +62,7 @@ type editSession struct {
 // newEditSession opens the source file and creates a temp file in the same
 // directory (to avoid cross-device rename errors). The rename target is the
 // resolved path, so editing a symlinked file updates the file rather than
-// replacing the link (see resolveWriteTarget).
+// replacing the link (see atomicfile.ResolveSymlink).
 //
 // The target is made absolute: the temp file beside it is a path this tool
 // chose, and its name reaches the model inside the IO errors commit() reports,
@@ -69,7 +70,7 @@ type editSession struct {
 // where it is. Pinning both paths to one form also means the read-rewrite-rename
 // cycle cannot have them reinterpreted between steps.
 func newEditSession(path string) (*editSession, error) {
-	target := resolveWriteTarget(path)
+	target := atomicfile.ResolveSymlink(path)
 	if abs, absErr := filepath.Abs(target); absErr == nil {
 		target = abs
 	}
@@ -77,7 +78,7 @@ func newEditSession(path string) (*editSession, error) {
 	srcFile, err := os.Open(target)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// resolveWriteTarget falls back to the link itself when EvalSymlinks
+			// atomicfile.ResolveSymlink falls back to the link itself when EvalSymlinks
 			// fails, so a dangling symlink arrives here looking like a missing
 			// file. Saying "not found" about a path that exists sends the model
 			// back to the same path; name the condition instead. edit_file can

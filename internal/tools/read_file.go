@@ -110,7 +110,7 @@ func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart
 	// Serialize against in-process file mutations for the whole read.
 	// edit_file's commit is a rename, so a reader could skip the lock and
 	// still see a whole file — the old one or the new one. write_file's
-	// in-place fallback is not like that: writeInPlace truncates the target
+	// in-place fallback is not like that: atomicfile.Write truncates the target
 	// and then writes the new content into it, so a read overlapping that
 	// window returns a prefix of the new content that looks like a complete,
 	// merely shorter file — silently wrong, and nothing in the result says

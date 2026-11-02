@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alayacore/alayacore/internal/atomicfile"
 	"github.com/alayacore/alayacore/internal/config"
 )
 
@@ -152,8 +153,13 @@ func (s *FileTokenStore) SaveToken(serverID string, token *Token) error {
 
 	data := config.FormatKeyValue(&payload)
 
+	// Atomic (internal/atomicfile): a token file read mid-write — by another
+	// instance refreshing the same server's token, or by this one on its next
+	// start — would look corrupt and send the user through authorization again.
+	// A refresh that loses the race still loses (one token per server, last
+	// writer wins), but it loses with a whole file, not a broken one.
 	path := s.tokenFilePath(serverID)
-	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+	if err := atomicfile.Write(path, []byte(data), 0600); err != nil {
 		return fmt.Errorf("write token file %s: %w", path, err)
 	}
 
