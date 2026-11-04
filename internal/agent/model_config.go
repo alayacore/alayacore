@@ -52,6 +52,39 @@ type modelConfig struct {
 	// leaving a consumer to infer it; the config tag does, so an unchanged
 	// model.conf stays free of a line saying nothing.
 	SerialToolCalls bool `json:"serial_tool_calls" config:"serial_tool_calls,omitempty"`
+
+	// InputModalities declares the complete set of input modalities this model
+	// accepts, drawn from protocol.PlaneKinds(protocol.PlaneUser): "text",
+	// "image", "video", "audio", "document".
+	//
+	// It narrows and never widens. What the protocol cannot encode stays
+	// degraded whatever is declared here (Anthropic has no audio or video
+	// block), so the effective set is the declared set intersected with what
+	// the wire can carry.
+	//
+	// Absent (nil) means "not declared" and is the behavior every model.conf
+	// written before this option had: the protocol decides, so an OpenAI-format
+	// endpoint takes image, audio and video and an Anthropic one takes image and
+	// document. An empty list is a declaration too — this model takes no media
+	// at all. "text" is accepted in the list because text is the one modality a
+	// request cannot omit; it is never filtered.
+	//
+	// The json tag has no omitempty, on purpose: an empty list would otherwise
+	// be broadcast (and written back through :model_sync) as an absent field,
+	// turning "takes no media" into "not declared" — a silent widening to every
+	// modality the protocol carries. The config tag does have it, because nil is
+	// what an undeclared model is and there is no line to write for it. Both
+	// tags also sit here rather than earlier so the struct's field order matches
+	// protocol.ModelInfo's: TestToModelInfosWireCompatible compares the two
+	// marshals byte for byte.
+	InputModalities []string `json:"input_modalities" config:"input_modalities,omitempty"`
+
+	// invalidKeys names the keys of this block whose value could not be parsed.
+	// Unexported: it is a parse-time fact about the block, not part of the model
+	// and not something a consumer may set. validateModel rejects the block over
+	// the ones in fatalParseKeys — everywhere else a bad value only costs that
+	// field, which is what docs/configuration.md documents.
+	invalidKeys []string
 }
 
 // ReasoningConfigs returns a map of reasoning level → raw provider JSON
@@ -110,6 +143,10 @@ func toModelInfos(models []modelConfig) []protocol.ModelInfo {
 			// the same negative way, so the one place that has to flip it is the
 			// Chat Completions body.
 			SerialToolCalls: m.SerialToolCalls,
+			// nil stays nil and an empty list stays empty: the two mean different
+			// things ("not declared" vs "no media at all") and the wire keeps
+			// them apart — see the json tag on modelConfig.InputModalities.
+			InputModalities: m.InputModalities,
 		}
 	}
 	return infos
@@ -147,6 +184,12 @@ func parseModelBlock(block string, blockIdx int, file string) ([]modelConfig, []
 	errs := make([]string, 0, len(parseErrs))
 	for _, e := range parseErrs {
 		errs = append(errs, fmt.Sprintf("%s block %d: %s", file, blockIdx+1, e.String()))
+		// The key travels with the block so validateModel can reject it over
+		// the handful of keys whose unparsed value is not "unset" but a mode —
+		// see fatalParseKeys.
+		if e.Key != "" {
+			m.invalidKeys = append(m.invalidKeys, e.Key)
+		}
 	}
 
 	if m.Name == "" && m.ModelName == "" {

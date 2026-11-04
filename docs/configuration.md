@@ -78,6 +78,7 @@ reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}
 | `reasoning_2` | No | Same as `reasoning_0` but for reasoning level **2** (max). |
 | `reasoning_field` | No | **OpenAI-protocol only.** Which key this endpoint uses for reasoning text — read from responses and used again when replaying reasoning. Omitted (or empty) → `reasoning_content`. See below. |
 | `serial_tool_calls` | No | `false` (default) or `true`. When `true`, alayacore runs a step's tool calls one at a time in the order the model made them, and the Chat Completions request asks for the same. See below. |
+| `input_modalities` | No | JSON array of the input modalities this model accepts, from `text`, `image`, `video`, `audio`, `document` — e.g. `["text","image"]`. Omitted → the protocol decides (OpenAI-format: image/audio/video; Anthropic: image/document). `[]` → the model takes no media at all. See below. |
 
 ### Tool-calling mode (`serial_tool_calls`)
 
@@ -126,6 +127,39 @@ Two consequences worth knowing:
 - **Tool confirmations become one-at-a-time by construction.** A confirmation is
   requested when its own task comes, so a later call will not have its window
   appear before an earlier one is answered.
+
+### Input modalities (`input_modalities`)
+
+Declares what this model accepts, as a JSON array:
+
+```
+input_modalities: ["text", "image"]
+input_modalities: ["text"]        # text only
+input_modalities: []              # no media at all
+```
+
+| Value | Meaning |
+|---|---|
+| the line is **omitted** | Not declared. The protocol decides, which is what every model.conf written before this option means: an OpenAI-format endpoint takes image, audio and video, an Anthropic one takes image and document (see [providers.md](providers.md#multimodal-support-comparison)). |
+| `[]` | Declared, and empty: this model takes no media. Every media part degrades to a note. |
+| `["text", …]` | The complete set. `text` never has to be listed — a message is text and there is no way to send one without it — but listing it is how "text only" says so without relying on the empty form. |
+
+The declaration **narrows**; it never widens. What the protocol cannot encode stays
+degraded whatever is written here: `input_modalities: ["text","audio"]` on an
+Anthropic model does not give it audio, because the Messages API has no block for
+it. The effective set is what is declared, intersected with what the wire can
+carry.
+
+A media part the model does not declare is replaced, at send time, by a text note
+that states it was not delivered — the same treatment audio and video already get
+on Anthropic, and for the same reason: a part that silently vanishes leaves the
+model describing media it never perceived, while sending it anyway makes the
+server reject the whole request, repeatedly, since the part is in the persisted
+history. The substitution is per request and is never written back: the record
+keeps the media it was given, so redeclaring the model later shows it again.
+
+Declaring a value that is not one of the five is a configuration error and the
+model is skipped (see the note on unparsable values below).
 
 ### Reasoning configuration (`reasoning_0` / `reasoning_1` / `reasoning_2`)
 
@@ -233,7 +267,7 @@ Rejected models are skipped — they won't appear in the model selector. Errors 
 
 If two or more models share the same `name`, the first occurrence is kept and subsequent duplicates are **rejected** with an error message. This prevents ambiguity in model selection.
 
-If a field value has the wrong type (e.g. `context_limit: abc`), an error is printed but the model is still loaded with the zero value for that field.
+If a field value has the wrong type (e.g. `context_limit: abc`), an error is printed but the model is still loaded with the zero value for that field. **`input_modalities` and `reasoning_0/1/2` are the exception**: their zero value is not "unset" but a mode — "not declared, so the protocol decides" and "no reasoning fields for this level" — so a value that cannot be parsed rejects the whole block with `could not be parsed, so the model cannot be used — skipped`. Loading it with the zero value would silently undo what the user wrote: a missing modality restriction, or a level that goes quiet instead of failing.
 
 `reasoning_field` and the contents of `reasoning_0/1/2` are **not** checked against the server. They name wire-format keys, and a name is only right or wrong relative to what a given deployment emits — alayacore has no way to know, and guessing would override a deliberate declaration. A mismatch therefore loads fine and reads as empty reasoning: the `REASONING` window never appears, text streams normally, nothing logs. When reasoning seems broken on an OpenAI-protocol model, compare this field against what the endpoint actually returns.
 

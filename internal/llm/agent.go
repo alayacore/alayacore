@@ -92,6 +92,16 @@ type AgentConfig struct {
 	// every one of them silently serial — the same trap the config key avoids,
 	// for the same reason.
 	SerialToolCalls bool
+
+	// InputModalities is the active model's declared input modalities
+	// (model.conf `input_modalities`), applied once per request before the
+	// provider serializes anything — see FitInputModalities.
+	//
+	// nil means "not declared", which leaves the protocol's own matrix in
+	// charge; that is what every model.conf without the key means, and it is
+	// also the zero value AgentConfig literals get. An empty non-nil slice
+	// declares a model that takes no media at all.
+	InputModalities []string
 }
 
 // Agent orchestrates tool-calling loops
@@ -323,6 +333,12 @@ type stepOutcome struct {
 // :cancel is honored during a backoff. The attempt's own start time is what feeds
 // the stats, so retry waits are charged to neither TTFT nor tok/s.
 func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callbacks StreamCallbacks) (stepOutcome, error) {
+	// The model's own declaration is applied once per request, here rather than
+	// in each provider: it is a fact about the model, not about the wire, and
+	// both providers would otherwise need the same walk. It only narrows — the
+	// provider's own media gate still runs and still has the last word.
+	contents = FitInputModalities(contents, a.config.InputModalities)
+
 	for attempt := 1; ; attempt++ {
 		attemptStart := time.Now()
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/atomicfile"
 	"github.com/alayacore/alayacore/internal/config"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 // modelManager manages model configurations.
@@ -204,10 +205,39 @@ func parseModelConfig(content string, file string) ([]modelConfig, []string) {
 	return result, msgs
 }
 
+// fatalParseKeys are the keys a parse failure rejects the whole block over.
+//
+// Everywhere else a value that cannot be parsed is reported and the field keeps
+// its zero value, leaving the model usable — see docs/configuration.md. That is
+// fine for a field whose zero has a documented meaning of its own, but not for
+// these: their zero is not "unset", it is a mode that changes what gets sent.
+//
+//   - input_modalities: an unreadable declaration leaves nil, which means
+//     "not declared" — the model silently widens back to every modality the
+//     protocol carries, so a restriction the user wrote disappears.
+//   - reasoning_N: an unreadable block leaves the level empty, which means
+//     "no reasoning fields at all" — the level goes quiet instead of failing.
+//
+// The keys are named here rather than the behavior being made global because
+// rejecting a model over `max_tokens: abc` is a change no existing model.conf
+// has ever seen, and that number still has a usable default.
+var fatalParseKeys = map[string]bool{
+	"input_modalities": true,
+	"reasoning_0":      true,
+	"reasoning_1":      true,
+	"reasoning_2":      true,
+}
+
 // validateModel checks required fields and returns errors for any issues found.
 // A model with errors is unusable and should not be added to the model list.
 func validateModel(m modelConfig) []string {
 	var errs []string
+
+	for _, key := range m.invalidKeys {
+		if fatalParseKeys[key] {
+			errs = append(errs, fmt.Sprintf("model %q: %s could not be parsed, so the model cannot be used — skipped", m.Name, key))
+		}
+	}
 
 	if m.ProtocolType == "" {
 		errs = append(errs, fmt.Sprintf("model %q: missing required field protocol_type — skipped", m.Name))
@@ -223,6 +253,17 @@ func validateModel(m modelConfig) []string {
 
 	if m.ModelName == "" {
 		errs = append(errs, fmt.Sprintf("model %q: missing required field model_name — skipped", m.Name))
+	}
+
+	// The vocabulary is protocol.PlaneKinds's, not a copy: a kind added to the
+	// input planes there becomes declarable here without a second list to keep
+	// in step, and anything else is not an input at all. An empty list passes —
+	// it is a legal declaration ("no media"), not a typo.
+	for _, modality := range m.InputModalities {
+		if !protocol.KindAllowed(protocol.PlaneUser, modality) {
+			errs = append(errs, fmt.Sprintf("model %q: unknown input_modalities value %q (expected some of %s) — skipped",
+				m.Name, modality, strings.Join(protocol.PlaneKinds(protocol.PlaneUser), ", ")))
+		}
 	}
 
 	return errs

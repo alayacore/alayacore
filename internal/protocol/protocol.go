@@ -162,6 +162,13 @@ type ModelInfo struct {
 	// and what comes back replaces model.conf, so the broadcast has to state the
 	// mode instead of leaving a default to infer.
 	SerialToolCalls bool `json:"serial_tool_calls"`
+
+	// InputModalities mirrors modelConfig's json tag for the same reason, and
+	// the omission would be worse here: with omitempty an empty list ("this
+	// model takes no media") would leave as an absent field and come back as
+	// "not declared", which widens the model to every modality the protocol can
+	// carry. Null (nil) is the undeclared value and travels as such.
+	InputModalities []string `json:"input_modalities"`
 }
 
 // Content kind values carried by a content item's "type" field. The

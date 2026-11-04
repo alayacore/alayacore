@@ -720,7 +720,7 @@ The system-message samples follow with their schema.
 |------|--------------------------|----------------|
 | `version` | `message_version` (int), `core_version` (string) | `SM-message-version.txt` |
 | `model` | `active_id` (int), `active_name` (string), `context_limit` (int) | `SM-model.txt` |
-| `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, serial_tool_calls:bool, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.txt` |
+| `model_list` | `models` (array of `{id:int, name:string, protocol_type:string, base_url:string, api_key:string, model_name:string, context_limit:int, max_tokens:int, serial_tool_calls:bool, input_modalities:array of strings or null, reasoning_0/1/2:raw JSON (optional), reasoning_field:string (optional)`) | `SM-model-list.txt` |
 | `theme` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `name` (string) — the palette travels in `theme_list`, which an adapter caches, so this frame only says which entry is active | `SM-theme.txt` |
 | `theme_list` | TUI only (not sent in NoTheme modes: plainio/terseio/rawio). `themes` (array of `{name:string, theme:{primary, dim, muted, warning, error, added, removed: string}}`) | `SM-theme-list.txt` |
 | `reasoning_level` | `level` (int: 0=off, 1=normal, 2=max) | `SM-reasoning-level.txt` |
@@ -738,7 +738,7 @@ Complete wire values:
 ```
 SM-message-version.txt         {"type":"version","data":{"message_version":18,"core_version":"(set at build time)"}}
 SM-model.txt                   {"type":"model","data":{"active_id":4,"active_name":"DeepSeek / DeepSeek-V4 Flash","context_limit":1000000}}
-SM-model-list.txt              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false}]}}
+SM-model-list.txt              {"type":"model_list","data":{"models":[{"id":0,"name":"Anthropic / Claude Haiku 4","protocol_type":"anthropic","base_url":"https://api.anthropic.com","api_key":"sk-ant-...","model_name":"claude-haiku-4-20260515","context_limit":200000,"max_tokens":0,"serial_tool_calls":false,"input_modalities":null},{"id":4,"name":"DeepSeek / DeepSeek-V4 Flash","protocol_type":"openai","base_url":"https://api.deepseek.com/v1","api_key":"sk-ds-...","model_name":"deepseek-v4-flash","context_limit":1000000,"max_tokens":0,"serial_tool_calls":false,"input_modalities":null}]}}
 SM-theme.txt                   {"type":"theme","data":{"name":"theme-dark"}}
 SM-theme-list.txt              {"type":"theme_list","data":{"themes":[{"name":"theme-dark","theme":{"primary":"#89d4fa","dim":"#313244","muted":"#6c7086","warning":"#f77923","error":"#f38ba8","added":"#a6e3a1","removed":"#f38ba8"}},{"name":"theme-light","theme":{"primary":"#1e66f5","dim":"#ccd0da","muted":"#9ca0b0","warning":"#df8e1d","error":"#d20f39","added":"#40a02b","removed":"#d20f39"}}]}}
 SM-reasoning-level.txt         {"type":"reasoning_level","data":{"level":2}}

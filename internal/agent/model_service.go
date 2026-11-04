@@ -266,6 +266,10 @@ func (ms *modelService) createProviderAndAgent(
 		// negatively so its absent form is already the behavior the agent
 		// falls back on.
 		SerialToolCalls: modelConfig.SerialToolCalls,
+		// nil stays nil: "not declared" must reach the agent as the zero value
+		// it already treats as "the protocol decides", and an empty declaration
+		// ("no media") must not be confused with it.
+		InputModalities: modelConfig.InputModalities,
 	})
 	return provider, agent, nil
 }

@@ -67,6 +67,11 @@ Key points:
 
 The two providers have complementary multimodal capabilities — neither covers all scenarios.
 
+The tables below are the **protocol's** limit. A model may take less than its protocol can
+carry — a text-only model on an OpenAI-format endpoint is the common case — and says so in
+`model.conf`: see [configuration.md](configuration.md#input-modalities-input_modalities).
+That declaration only narrows what follows; it cannot add a block the API does not have.
+
 ### User / assistant messages
 
 | Media type | OpenAI | Anthropic |
