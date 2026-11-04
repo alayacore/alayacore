@@ -43,6 +43,14 @@ func writeTemp(t *testing.T, name string, content []byte) string {
 // those lines just to count past them, start_line/num_lines failed too. Files
 // like minified bundles and single-line JSON were simply unreadable, and the
 // truncation header told the model to use the workaround that also failed.
+//
+// What a long line comes back as is the text budget's business now, not the
+// per-line cap's: the cap still bounds what one line costs the scanner
+// (lineReader, and TestLineReaderMarksALineOverTheCap for the marker it
+// attaches), but no reply can be larger than the budget, so a range read that
+// lands on a 3MB line is cut at the budget and the header says where the
+// remainder is reachable. The properties this test keeps are the ones that broke:
+// the read must succeed, must say it is truncated, and must stay bounded.
 func TestReadFileLineLongerThanScannerLimit(t *testing.T) {
 	path := writeTemp(t, "huge.txt", []byte(strings.Repeat("x", 3*1024*1024)+"\nsecond\n"))
 
@@ -68,11 +76,51 @@ func TestReadFileLineLongerThanScannerLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("range on the long line failed: %v", err)
 	}
-	if !strings.Contains(first, truncatedLineMarker) {
-		t.Errorf("oversized line was not marked as truncated: %.80q…", first)
+	if !strings.Contains(first, "longer than the 64KB text budget") {
+		t.Errorf("oversized line was not reported as cut: %.160q…", first)
 	}
-	if len(first) > maxLineBytes+len(truncatedLineMarker) {
-		t.Errorf("truncated line is %d bytes, over the %d per-line cap", len(first), maxLineBytes)
+	if len(first) > maxToolTextBytes+512 {
+		t.Errorf("a single long line returned %d bytes for a %d byte budget", len(first), maxToolTextBytes)
+	}
+}
+
+// The per-line cap is a memory bound on the scan, and this is the mechanism it
+// uses: keep the first maxLineBytes of the line, drop the rest without
+// buffering it, and still count what was dropped as the same one line.
+//
+// It is pinned here rather than through read_file because no reply can carry
+// this marker any more: the text budget (64KB) is the smaller bound on both the
+// full and the range path, so it decides where the reply stops and says so in
+// its own words. The cap still has to hold — it is what keeps a file made of one
+// 3GB line from being assembled in memory before the budget ever sees it — and
+// it must not split a line into two logical lines while doing it, which is the
+// half the differential test cannot reach.
+func TestLineReaderMarksALineOverTheCap(t *testing.T) {
+	path := writeTemp(t, "cap.txt", []byte(strings.Repeat("x", maxLineBytes+10)+"\ntail\n"))
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	lr := newLineReader(f)
+	line, err := lr.nextLine()
+	if err != nil {
+		t.Fatalf("the line over the cap must be readable, not an error: %v", err)
+	}
+	if !strings.HasSuffix(line, truncatedLineMarker) {
+		t.Errorf("line over the cap is not marked: %.60q…", line)
+	}
+	if len(line) > maxLineBytes+len(truncatedLineMarker) {
+		t.Errorf("the retained line is %d bytes, over the %d cap", len(line), maxLineBytes)
+	}
+
+	next, err := lr.nextLine()
+	if err != nil {
+		t.Fatalf("line after the capped one: %v", err)
+	}
+	if next != "tail" {
+		t.Errorf("line after the capped one = %q, want %q — the dropped bytes became a line of their own", next, "tail")
 	}
 }
 

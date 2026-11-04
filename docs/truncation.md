@@ -28,15 +28,22 @@ Files larger than 64KB are truncated at a line boundary with metadata:
 [file content...]
 ```
 
-- Agent can use `start_line`/`num_lines` to read specific ranges
+- Agent can use `start_line`/`num_lines` to read specific ranges. A range is
+  paged, not exempt: it holds the same 64KB budget, and when the range is larger
+  the reply says which `start_line` continues (`[Lines 1-5957 | the read stopped
+  at the 64KB text budget; pass start_line=5958 to continue]`). Naming a start
+  line used to be the cheap way around the budget, which put an arbitrarily large
+  file into the context in one reply
 - No file is created; truncation happens in-memory
-- **Individual lines are capped at 1MB.** A longer line is returned cut to the
-  cap with a `[…line truncated: exceeds 1MB per line…]` marker, and the rest of
-  it is skipped while still counting as one line. Files built from very long
-  single lines (minified bundles, single-line JSON, base64 blobs) are therefore
-  readable at all — they used to fail the whole read, in `start_line`/
-  `num_lines` ranges too, because the line had to be tokenized just to be
-  counted
+- **Individual lines are capped at 1MB while scanning.** A longer line is kept up
+  to the cap and the remainder is dropped without being buffered, still counting
+  as one line — that is what keeps a file made of very long single lines readable
+  at all (they used to fail the whole read, in `start_line`/`num_lines` ranges
+  too, because the line had to be tokenized just to be counted). The 64KB budget
+  is the smaller bound on what a reply carries, so a line cut by the cap is
+  reported by the budget's wording — including the one case a `start_line` cannot
+  reach: a first line longer than the whole budget says its remainder needs
+  `execute_command` (e.g. `cut -c`)
 - The 64KB budget is enforced even when the *first* line is larger: it is cut
   to the budget rather than emitted whole
 - An empty result is explained rather than left ambiguous, so the agent cannot

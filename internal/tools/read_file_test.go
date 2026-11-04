@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -317,6 +318,74 @@ func TestReadFileLargeWithLineRange(t *testing.T) {
 	text = extractFirstText(result)
 	if text != "third line" {
 		t.Errorf("expected 'third line', got %q", text)
+	}
+}
+
+// A range read is the documented way to read more of a file than one reply can
+// hold, so it pages — it does not opt out of the text budget. Naming a start
+// line used to be the cheapest way around it, and one mis-specified range put an
+// arbitrarily large file into the context and into memory at once.
+//
+// The second half is what makes paging usable: the header names the next
+// start_line, and reading from it continues exactly where the previous reply
+// stopped — no gap and no second copy of a line. A header that named the wrong
+// number would be the same bug in a quieter shape.
+func TestReadFileRangePagesAtTheTextBudget(t *testing.T) {
+	const lineCount = 6000 // 11 bytes each: over the budget, and two pages
+
+	line := func(i int) string {
+		s := itoa(i)
+		return "line-" + strings.Repeat("0", 5-len(s)) + s
+	}
+
+	var content strings.Builder
+	for i := 1; i <= lineCount; i++ {
+		content.WriteString(line(i) + "\n")
+	}
+	if content.Len() <= maxToolTextBytes {
+		t.Fatalf("fixture is %d bytes, not over the %d budget", content.Len(), maxToolTextBytes)
+	}
+
+	tmpFile := filepath.Join(t.TempDir(), "pages.txt")
+	if err := os.WriteFile(tmpFile, []byte(content.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := readText(t, ReadFileInput{Path: tmpFile, StartLine: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) > maxToolTextBytes+512 {
+		t.Errorf("a range read returned %d bytes for a %d byte budget", len(first), maxToolTextBytes)
+	}
+
+	const cutAt = "the read stopped at the 64KB text budget; pass start_line="
+	idx := strings.Index(first, cutAt)
+	if idx < 0 {
+		t.Fatalf("range read did not say the budget cut it: %.200q…", first)
+	}
+	var next int
+	if _, err := fmt.Sscanf(first[idx+len(cutAt):], "%d", &next); err != nil {
+		t.Fatalf("the cut header names no usable start_line: %.200q…", first)
+	}
+	if next < 2 || next > lineCount {
+		t.Fatalf("the cut header says start_line=%d, which is not a line of this file", next)
+	}
+	// The line before the cut is the last one shown, so nothing was skipped.
+	// The joined text ends on that line without a trailing newline.
+	if want := line(next - 1); !strings.HasSuffix(first, "\n"+want) {
+		t.Errorf("page 1 does not end on %s, the line before the cut: %.60q…", want, first[max(0, len(first)-60):])
+	}
+
+	second, err := readText(t, ReadFileInput{Path: tmpFile, StartLine: next})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(second, line(next)+"\n") {
+		t.Errorf("page 2 starts with %.40q, want %s — the header and the read disagree about where to continue", second, line(next))
+	}
+	if !strings.HasSuffix(second, line(lineCount)) {
+		t.Errorf("page 2 does not reach the end of the file: %.40q…", second)
 	}
 }
 

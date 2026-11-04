@@ -120,7 +120,8 @@ func TestLineReaderMatchesOldScannerSemantics(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				newLines, _, errNew := readLinesRange(context.Background(), newFile, max(r.start, 1), r.count)
+				rng, errNew := readLinesRange(context.Background(), newFile, max(r.start, 1), r.count)
+				newLines := rng.lines
 				newFile.Close()
 
 				oldFile, err := os.Open(path)
@@ -129,6 +130,14 @@ func TestLineReaderMatchesOldScannerSemantics(t *testing.T) {
 				}
 				oldLines, errOld := oldReadLinesRange(oldFile, max(r.start, 1), r.count)
 				oldFile.Close()
+
+				// The old reader had no text budget; the new one pages at 64KB.
+				// Comparing past that point would assert the bug, so an input the
+				// budget now interrupts is skipped — the same "behavior
+				// intentionally differs" note the per-line cap gets above.
+				if int64(len(strings.Join(oldLines, "\n"))) > maxToolTextBytes-1 {
+					continue
+				}
 
 				if (errNew == nil) != (errOld == nil) {
 					t.Fatalf("start=%d count=%d: new err=%v old err=%v", r.start, r.count, errNew, errOld)

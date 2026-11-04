@@ -28,7 +28,7 @@ type ReadFileInput struct {
 func NewReadFileTool() llm.Tool {
 	return llm.NewTool(
 		"read_file",
-		`Read file contents. For media files (image, video, audio, document/PDF), returns the content directly for you to see. For text files, supports optional line range using start_line and num_lines parameters (1-indexed).`,
+		`Read file contents. For media files (image, video, audio, document/PDF), returns the content directly for you to see. For text files, supports optional line range using start_line and num_lines parameters (1-indexed). A text read returns at most 64KB; when a range is cut at that budget the reply names the start_line that continues it.`,
 	).
 		WithSchema(llm.MustGenerateSchema(ReadFileInput{})).
 		WithExecute(llm.TypedExecute(executeReadFile)).
@@ -178,7 +178,7 @@ func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart
 		startLine = 1
 	}
 
-	lines, totalSeen, err := readLinesRange(ctx, file, startLine, args.NumLines)
+	rng, err := readLinesRange(ctx, file, startLine, args.NumLines)
 	if err != nil {
 		return nil, err
 	}
@@ -186,11 +186,53 @@ func executeReadFile(ctx context.Context, args ReadFileInput) ([]llm.ContentPart
 	// An empty range used to come back as "" — indistinguishable from an
 	// empty file, which invites a model to "restore" content by overwriting a
 	// file it merely mis-indexed. Say which it was.
-	if msg, ok := rangeDiagnostic(lines, startLine, totalSeen); ok {
+	if msg, ok := rangeDiagnostic(rng.lines, startLine, rng.scanned); ok {
 		return []llm.ContentPart{&llm.TextPart{Text: msg}}, nil
 	}
 
-	return []llm.ContentPart{&llm.TextPart{Text: strings.Join(lines, "\n")}}, nil
+	text := strings.Join(rng.lines, "\n")
+	if rng.truncated {
+		text = rng.cutHeader(startLine) + "\n\n" + text
+	}
+	return []llm.ContentPart{&llm.TextPart{Text: text}}, nil
+}
+
+// lineRange is what one start_line/num_lines read produced.
+type lineRange struct {
+	lines []string
+
+	// scanned is how many lines were read from the top of the file. It is the
+	// file's line count only when the range produced nothing — that read goes on
+	// to the end, because "start_line 99 is past the end of the file (3 lines)"
+	// cannot be said without it. A range that produced content stops at the byte
+	// budget and does not keep scanning to count what it will not return.
+	scanned int
+
+	// truncated reports that the 64KB text budget — not num_lines, and not the
+	// end of the file — is what stopped the read.
+	truncated bool
+
+	// cutMidLine reports that the stop fell inside a single line: that line is
+	// longer than the whole budget, so its remainder is reachable by no
+	// start_line, and the header says where it is reachable instead.
+	cutMidLine bool
+}
+
+// cutHeader explains a range the text budget cut short. The next start_line is
+// named because it is the whole reason the budget is not a wall: a range read
+// stops at the budget and the model pages on from the number it is given, so a
+// file of any size is read deliberately, a page at a time, instead of arriving
+// in one reply.
+func (r lineRange) cutHeader(startLine int) string {
+	last := startLine + len(r.lines) - 1
+	if r.cutMidLine {
+		return fmt.Sprintf(
+			"[Line %d is longer than the 64KB text budget, so only its beginning is shown | the rest of that line is reachable only with execute_command (e.g. cut -c); the lines after it start at start_line=%d]",
+			last, last+1)
+	}
+	return fmt.Sprintf(
+		"[Lines %d-%d | the read stopped at the 64KB text budget; pass start_line=%d to continue]",
+		startLine, last, last+1)
 }
 
 // rangeDiagnostic explains an empty line-range result, returning ok=false when
@@ -406,20 +448,34 @@ func readLargeFileTruncated(file *os.File, totalSize int64) ([]llm.ContentPart, 
 // budgetTruncationMarker is appended when the read budget cuts into a line.
 const budgetTruncationMarker = " […truncated at the 64KB read limit; read a line range for more…]"
 
-// cutToBudget keeps the first room bytes of s, stepping back to a UTF-8 rune
-// boundary so the result never ends on a split multi-byte character.
+// cutToBudget keeps the first room bytes of s and marks the cut, so the reader
+// of the result knows more exists. It is truncateToBudget plus the note.
 func cutToBudget(s string, room int64) string {
+	kept, truncated := truncateToBudget(s, room)
+	if !truncated {
+		return kept
+	}
+	return kept + budgetTruncationMarker
+}
+
+// truncateToBudget keeps the first room bytes of s, stepping back to a UTF-8
+// rune boundary so the result never ends on a split multi-byte character. The
+// bool reports that bytes were dropped, which is what the callers that phrase
+// their own note need — the range read cuts a line too long for its budget and
+// says so in the terms of a range, where "read a line range for more" (the
+// marker below) would be advice it has already taken.
+func truncateToBudget(s string, room int64) (string, bool) {
 	if room <= 0 {
-		return ""
+		return "", false
 	}
 	if int64(len(s)) <= room {
-		return s
+		return s, false
 	}
 	cut := int(room)
 	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
 	}
-	return s[:cut] + budgetTruncationMarker
+	return s[:cut], true
 }
 
 func validateLineParams(startLine, numLines int) error {
@@ -437,18 +493,26 @@ func validateLineParams(startLine, numLines int) error {
 // readLinesRange streams from the file to avoid loading it whole into memory,
 // collecting at most numLines lines starting at startLine (1-indexed; 0 means
 // from the beginning when numLines is also 0 it is the full-file case handled
-// elsewhere). It also reports how many lines the file actually holds, so the
-// caller can tell "out of range" apart from "empty result".
-func readLinesRange(ctx context.Context, file *os.File, startLine, numLines int) ([]string, int, error) {
+// elsewhere).
+//
+// It holds the same 64KB text budget the full read holds. A range is the
+// documented way to read *more* than one reply's worth of a file — the
+// full-read marker says exactly that — so it is paging, not an exemption: every
+// call is bounded, and the next page is asked for by number. Without this the
+// cheapest way around the budget was to name a start line, and one mis-specified
+// range put an arbitrarily large file into the context and into memory in a
+// single reply.
+func readLinesRange(ctx context.Context, file *os.File, startLine, numLines int) (lineRange, error) {
 	lr := newLineReader(file)
 
-	var lines []string
+	var out lineRange
 	currentLine := 1
+	var bytesRead int64
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, currentLine - 1, ctx.Err()
+			return out, ctx.Err()
 		default:
 		}
 
@@ -457,17 +521,36 @@ func readLinesRange(ctx context.Context, file *os.File, startLine, numLines int)
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, currentLine - 1, err
+			return out, err
 		}
+		out.scanned = currentLine
 
 		if currentLine >= startLine {
-			if numLines > 0 && len(lines) >= numLines {
+			if numLines > 0 && len(out.lines) >= numLines {
 				break
 			}
-			lines = append(lines, line)
+
+			lineBytes := int64(len(line)) + 1 // +1 for the newline it ended with
+			if bytesRead+lineBytes > maxToolTextBytes {
+				// The budget, not the range, is the limit that arrived. Stop
+				// before this line so the next page begins on a whole one — with
+				// the single exception of the first line, which alone overflows
+				// the budget and can only be cut (the same rule the full read
+				// follows for a file made of one enormous line).
+				if len(out.lines) == 0 {
+					kept, _ := truncateToBudget(line, maxToolTextBytes)
+					out.lines = append(out.lines, kept)
+					out.cutMidLine = true
+				}
+				out.truncated = true
+				return out, nil
+			}
+
+			bytesRead += lineBytes
+			out.lines = append(out.lines, line)
 		}
 		currentLine++
 	}
 
-	return lines, currentLine - 1, nil
+	return out, nil
 }
