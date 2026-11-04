@@ -67,7 +67,8 @@ type modelConfig struct {
 	// endpoint takes image, audio and video and an Anthropic one takes image and
 	// document. An empty list is a declaration too — this model takes no media
 	// at all. "text" is accepted in the list because text is the one modality a
-	// request cannot omit; it is never filtered.
+	// request cannot omit; it is never filtered, which makes an empty list and
+	// ["text"] two spellings of the same model.
 	//
 	// The json tag has no omitempty, on purpose: an empty list would otherwise
 	// be broadcast (and written back through :model_sync) as an absent field,

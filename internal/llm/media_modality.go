@@ -32,7 +32,8 @@ import "strings"
 // every model.conf written without the key means. An empty non-nil list is a
 // declaration too, so every media part is degraded: a model that takes no media.
 // "text" may appear in the list and is never filtered, because a message is text
-// and cannot be sent without it.
+// and cannot be sent without it — which is also why an empty list and ["text"]
+// put the model in the same state.
 //
 // It never mutates the parts it is handed, and returns the input unchanged when
 // nothing needs degrading.

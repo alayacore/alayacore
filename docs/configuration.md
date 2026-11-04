@@ -78,7 +78,7 @@ reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}
 | `reasoning_2` | No | Same as `reasoning_0` but for reasoning level **2** (max). |
 | `reasoning_field` | No | **OpenAI-protocol only.** Which key this endpoint uses for reasoning text — read from responses and used again when replaying reasoning. Omitted (or empty) → `reasoning_content`. See below. |
 | `serial_tool_calls` | No | `false` (default) or `true`. When `true`, alayacore runs a step's tool calls one at a time in the order the model made them, and the Chat Completions request asks for the same. See below. |
-| `input_modalities` | No | JSON array of the input modalities this model accepts, from `text`, `image`, `video`, `audio`, `document` — e.g. `["text","image"]`. Omitted → the protocol decides (OpenAI-format: image/audio/video; Anthropic: image/document). `[]` → the model takes no media at all. See below. |
+| `input_modalities` | No | JSON array of the input modalities this model accepts, from `text`, `image`, `video`, `audio`, `document` — e.g. `["text","image"]`. Omitted → the protocol decides (OpenAI-format: image/audio/video; Anthropic: image/document). `[]` → no media (the same as `["text"]`). See below. |
 
 ### Tool-calling mode (`serial_tool_calls`)
 
@@ -130,25 +130,32 @@ Two consequences worth knowing:
 
 ### Input modalities (`input_modalities`)
 
-Declares what this model accepts, as a JSON array:
+Declares which media this model accepts, as a JSON array. Text is not in question:
+a message is text, and there is no way to send one without it, so the declaration
+governs the four media modalities and text always flows.
 
 ```
-input_modalities: ["text", "image"]
-input_modalities: ["text"]        # text only
-input_modalities: []              # no media at all
+input_modalities: ["text", "image"]   # text and images
+input_modalities: ["text"]            # text only
+input_modalities: []                  # text only — the same thing
 ```
 
 | Value | Meaning |
 |---|---|
 | the line is **omitted** | Not declared. The protocol decides, which is what every model.conf written before this option means: an OpenAI-format endpoint takes image, audio and video, an Anthropic one takes image and document (see [providers.md](providers.md#multimodal-support-comparison)). |
-| `[]` | Declared, and empty: this model takes no media. Every media part degrades to a note. |
-| `["text", …]` | The complete set. `text` never has to be listed — a message is text and there is no way to send one without it — but listing it is how "text only" says so without relying on the empty form. |
+| `[]` | Declared, and empty: no media. Every media part degrades to a note. |
+| `["text"]` | The same model as `[]`, spelled out. `text` never has to be listed; listing it costs nothing and says what you mean. |
+
+`[]` and `["text"]` are one behavior, not two. Because text is never filtered, a
+declaration that names no media and a declaration that names only text leave the
+model in exactly the same state — which of the two to write is a matter of intent,
+not of effect.
 
 The declaration **narrows**; it never widens. What the protocol cannot encode stays
 degraded whatever is written here: `input_modalities: ["text","audio"]` on an
 Anthropic model does not give it audio, because the Messages API has no block for
-it. The effective set is what is declared, intersected with what the wire can
-carry.
+it. The effective set of **media** is what is declared, intersected with what the
+wire can carry.
 
 A media part the model does not declare is replaced, at send time, by a text note
 that states it was not delivered — the same treatment audio and video already get
