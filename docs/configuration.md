@@ -140,16 +140,33 @@ input_modalities: ["text"]            # text only
 input_modalities: []                  # text only — the same thing
 ```
 
+The accepted values, exactly spelled and case-sensitive:
+
 | Value | Meaning |
+|---|---|
+| `text` | Text. Never filtered — a message is text, so there is no way to send one without it. |
+| `image` | Images, classified by file extension (JPEG, PNG, GIF, webp, svg…). |
+| `video` | Video. |
+| `audio` | Audio. |
+| `document` | Documents. The catch-all: anything that is not image/video/audio, PDF and unrecognized extensions included. |
+
+A value outside that list is a configuration error and the model is skipped
+(`unknown input_modalities value "vision" (expected some of text, image, video,
+audio, document)`). The usual misses: `vision` for `image`, `pdf` or `file` for
+`document`, and `reasoning`, which is an assistant-side output kind and not an
+input modality at all.
+
+Which of those to declare:
+
+| Declared as | Meaning |
 |---|---|
 | the line is **omitted** | Not declared. The protocol decides, which is what every model.conf written before this option means: an OpenAI-format endpoint takes image, audio and video, an Anthropic one takes image and document (see [providers.md](providers.md#multimodal-support-comparison)). |
 | `[]` | Declared, and empty: no media. Every media part degrades to a note. |
 | `["text"]` | The same model as `[]`, spelled out. `text` never has to be listed; listing it costs nothing and says what you mean. |
 
-`[]` and `["text"]` are one behavior, not two. Because text is never filtered, a
-declaration that names no media and a declaration that names only text leave the
-model in exactly the same state — which of the two to write is a matter of intent,
-not of effect.
+`[]` and `["text"]` are one behavior, not two: with text never filtered, a
+declaration that names no media and one that names only text leave the model in
+exactly the same state. Which to write is a matter of intent, not effect.
 
 The declaration **narrows**; it never widens. What the protocol cannot encode stays
 degraded whatever is written here: `input_modalities: ["text","audio"]` on an

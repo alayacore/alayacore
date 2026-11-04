@@ -207,20 +207,13 @@ func parseModelConfig(content string, file string) ([]modelConfig, []string) {
 
 // fatalParseKeys are the keys a parse failure rejects the whole block over.
 //
-// Everywhere else a value that cannot be parsed is reported and the field keeps
-// its zero value, leaving the model usable — see docs/configuration.md. That is
-// fine for a field whose zero has a documented meaning of its own, but not for
-// these: their zero is not "unset", it is a mode that changes what gets sent.
-//
-//   - input_modalities: an unreadable declaration leaves nil, which means
-//     "not declared" — the model silently widens back to every modality the
-//     protocol carries, so a restriction the user wrote disappears.
-//   - reasoning_N: an unreadable block leaves the level empty, which means
-//     "no reasoning fields at all" — the level goes quiet instead of failing.
-//
-// The keys are named here rather than the behavior being made global because
-// rejecting a model over `max_tokens: abc` is a change no existing model.conf
-// has ever seen, and that number still has a usable default.
+// Everywhere else an unparsable value is reported and the field keeps its zero
+// value, leaving the model usable — docs/configuration.md tells the user so.
+// These are the keys whose zero is not "unset" but a mode: an unreadable
+// input_modalities widens the model back to everything the protocol carries, so
+// a restriction the user wrote disappears, and an unreadable reasoning_N leaves
+// that level silently without fields. Naming them here rather than making the
+// rule global keeps `max_tokens: abc` behaving exactly as it always has.
 var fatalParseKeys = map[string]bool{
 	"input_modalities": true,
 	"reasoning_0":      true,

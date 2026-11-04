@@ -54,30 +54,22 @@ type modelConfig struct {
 	SerialToolCalls bool `json:"serial_tool_calls" config:"serial_tool_calls,omitempty"`
 
 	// InputModalities declares the complete set of input modalities this model
-	// accepts, drawn from protocol.PlaneKinds(protocol.PlaneUser): "text",
-	// "image", "video", "audio", "document".
+	// accepts, drawn from protocol.PlaneKinds(protocol.PlaneUser). It narrows
+	// and never widens: what the protocol cannot encode stays degraded by the
+	// provider that owns that gate. The matrix and the value list are in
+	// docs/configuration.md.
 	//
-	// It narrows and never widens. What the protocol cannot encode stays
-	// degraded whatever is declared here (Anthropic has no audio or video
-	// block), so the effective set is the declared set intersected with what
-	// the wire can carry.
+	// Absent (nil) means "not declared" — the protocol decides, which is what
+	// every model.conf written before this option had. An empty list is a
+	// declaration too, and means no media: text is never filtered, so [] and
+	// ["text"] describe the same model.
 	//
-	// Absent (nil) means "not declared" and is the behavior every model.conf
-	// written before this option had: the protocol decides, so an OpenAI-format
-	// endpoint takes image, audio and video and an Anthropic one takes image and
-	// document. An empty list is a declaration too — this model takes no media
-	// at all. "text" is accepted in the list because text is the one modality a
-	// request cannot omit; it is never filtered, which makes an empty list and
-	// ["text"] two spellings of the same model.
-	//
-	// The json tag has no omitempty, on purpose: an empty list would otherwise
-	// be broadcast (and written back through :model_sync) as an absent field,
-	// turning "takes no media" into "not declared" — a silent widening to every
-	// modality the protocol carries. The config tag does have it, because nil is
-	// what an undeclared model is and there is no line to write for it. Both
-	// tags also sit here rather than earlier so the struct's field order matches
-	// protocol.ModelInfo's: TestToModelInfosWireCompatible compares the two
-	// marshals byte for byte.
+	// No omitempty on the json tag, on purpose: an empty list would otherwise
+	// travel as an absent field and come back as "not declared" through
+	// :model_sync — a silent widening to every modality the protocol carries.
+	// The config tag does have it, because nil is what an undeclared model is.
+	// Both tags sit here so the field order matches protocol.ModelInfo's, which
+	// TestToModelInfosWireCompatible compares byte for byte.
 	InputModalities []string `json:"input_modalities" config:"input_modalities,omitempty"`
 
 	// invalidKeys names the keys of this block whose value could not be parsed.
