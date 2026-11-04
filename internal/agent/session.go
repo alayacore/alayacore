@@ -416,7 +416,7 @@ func buildSession(cfg SessionConfig, data *sessionData) *Session {
 	}
 
 	// Set up MCP service (manages init lifecycle).
-	s.mcpService = newMCPService(cfg.MCPInit, s.Output)
+	s.mcpService = newMCPService(cfg.MCPInit)
 
 	// Session load + replay are synchronous and complete by construction
 	// (LoadOrNewSession), so the initial lifecycle state is Starting.

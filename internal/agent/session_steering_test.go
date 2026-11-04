@@ -1064,7 +1064,7 @@ func TestSteeringEndToEndThroughInputPipe(t *testing.T) {
 		},
 		runDoneCh: make(chan struct{}),
 	}
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.Start()
 
 	writePrompt(t, w, "first prompt")

@@ -8,7 +8,6 @@ package agent
 
 import (
 	"context"
-	"io"
 	"sync/atomic"
 
 	"github.com/alayacore/alayacore/internal/llm"
@@ -18,22 +17,22 @@ import (
 
 // mcpService manages MCP server initialization lifecycle.
 // Thread-safe: all public methods are safe to call from any goroutine.
+//
+// It holds no output writer. The frames it produces are the session's — the same
+// plane, the same broken-output rule — so it hands the payload back to run() (via
+// mcpEventResult) and the session writes it with writeSystemMsg. A private writer
+// here was one frame per init that a dead adapter could not report: the write
+// failed into a discarded error while the rest of the session went on writing to
+// nowhere.
 type mcpService struct {
 	initializer *mcp.Initializer
 	ready       atomic.Bool
-
-	// Output writer for system messages.
-	// Set by Session during construction; must not be nil if MCP is configured.
-	output io.Writer
 }
 
 // newMCPService creates an mcpService. If initializer is nil, MCP is not
 // configured and IsReady() always returns true.
-func newMCPService(initializer *mcp.Initializer, output io.Writer) *mcpService {
-	s := &mcpService{
-		initializer: initializer,
-		output:      output,
-	}
+func newMCPService(initializer *mcp.Initializer) *mcpService {
+	s := &mcpService{initializer: initializer}
 	if initializer == nil {
 		s.ready.Store(true)
 	}
@@ -173,12 +172,4 @@ func (m *mcpService) MarkAborted() {
 	if !m.ready.Load() {
 		m.ready.Store(true)
 	}
-}
-
-// sendSystemMsg writes an MCP system message to the output writer.
-func (m *mcpService) sendSystemMsg(msg *protocol.MCPMsg) {
-	if m.output == nil {
-		return
-	}
-	_ = protocol.WriteSystemMsg(m.output, *msg)
 }

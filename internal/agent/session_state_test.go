@@ -131,7 +131,7 @@ func TestSessionState_StartWithoutMCPReady(t *testing.T) {
 		},
 		runDoneCh: make(chan struct{}),
 	}
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 
 	s.Start()
 	waitForState(t, s, SessionReady)
@@ -169,7 +169,7 @@ func TestSessionState_MCPInitDoneTransitionsToReady(t *testing.T) {
 		},
 		sharedState: sharedState{},
 	}
-	s.mcpService = newMCPService(&mcp.Initializer{}, output)
+	s.mcpService = newMCPService(&mcp.Initializer{})
 	s.state.Store(int32(SessionInitializing)) // simulate run() initial phase
 
 	s.handleMCPEvent(&mcp.InitEvent{Type: mcp.InitDone})
@@ -194,7 +194,7 @@ func TestSessionState_MCPCanceledTransitionsToReady(t *testing.T) {
 		},
 		sharedState: sharedState{},
 	}
-	s.mcpService = newMCPService(&mcp.Initializer{}, output)
+	s.mcpService = newMCPService(&mcp.Initializer{})
 	s.state.Store(int32(SessionInitializing)) // simulate run() initial phase
 
 	s.handleMCPEvent(&mcp.InitEvent{Type: mcp.InitCanceled})
@@ -220,7 +220,7 @@ func TestSessionState_MarkAbortedTransitionsToReady(t *testing.T) {
 		},
 		sharedState: sharedState{},
 	}
-	s.mcpService = newMCPService(&mcp.Initializer{}, output)
+	s.mcpService = newMCPService(&mcp.Initializer{})
 	s.state.Store(int32(SessionInitializing)) // simulate run() initial phase
 
 	s.mcpService.MarkAborted()
@@ -246,7 +246,7 @@ func TestSessionState_SyncStateIgnoresInProgressEvents(t *testing.T) {
 		},
 		sharedState: sharedState{},
 	}
-	s.mcpService = newMCPService(&mcp.Initializer{}, output)
+	s.mcpService = newMCPService(&mcp.Initializer{})
 	s.state.Store(int32(SessionInitializing)) // simulate run() initial phase
 
 	s.syncState()
@@ -271,7 +271,7 @@ func TestSessionState_ReadyBroadcastExactlyOnce(t *testing.T) {
 		},
 		sharedState: sharedState{},
 	}
-	s.mcpService = newMCPService(&mcp.Initializer{}, output)
+	s.mcpService = newMCPService(&mcp.Initializer{})
 	s.state.Store(int32(SessionInitializing)) // simulate run() initial phase
 
 	s.syncState()            // Initializing → Ready: broadcast #1
@@ -359,7 +359,7 @@ func TestSessionState_ClosedFrameIsLastAndSentOnce(t *testing.T) {
 		},
 		runDoneCh: make(chan struct{}),
 	}
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.Start()
 
 	// A task reports completion — the last thing the session writes before
@@ -405,7 +405,7 @@ func TestSessionState_ClosedFrameWithoutEverBeingReady(t *testing.T) {
 		},
 		sharedState: sharedState{},
 	}
-	s.mcpService = newMCPService(&mcp.Initializer{}, output)
+	s.mcpService = newMCPService(&mcp.Initializer{})
 	s.state.Store(int32(SessionInitializing)) // init never settled
 
 	s.setState(SessionClosed) // what run()'s defer does on the way out

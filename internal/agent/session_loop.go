@@ -111,7 +111,7 @@ func (s *Session) run() {
 					// would blame the user for it.
 					s.mcpService.MarkAborted()
 					s.writeError("MCP initialization aborted unexpectedly.")
-					s.mcpService.sendSystemMsg(&protocol.MCPMsg{Status: protocol.MCPStatusDone})
+					s.writeSystemMsg(protocol.MCPMsg{Status: protocol.MCPStatusDone})
 				}
 				// MCP init has settled (done, canceled, or aborted) —
 				// advance the lifecycle state.
@@ -151,7 +151,7 @@ func (s *Session) handleMCPEvent(evt *mcp.InitEvent) {
 
 	// Send system message to the UI (progress updates, auth prompts, etc.)
 	if action.SystemMsg != nil {
-		s.mcpService.sendSystemMsg(action.SystemMsg)
+		s.writeSystemMsg(*action.SystemMsg)
 	}
 
 	// Display InitFailed errors in the chat window.

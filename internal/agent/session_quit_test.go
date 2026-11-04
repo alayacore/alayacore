@@ -59,7 +59,7 @@ func newQuitTestSession(t *testing.T, withTask bool) (*Session, *syncOutput, *io
 		s.activeTask = &taskHandle{}
 	}
 
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.Start()
 
 	cleanup := func() {

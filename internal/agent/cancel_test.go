@@ -55,7 +55,7 @@ func newCancelTestSession(t *testing.T, withTask bool) (*Session, chan struct{},
 		s.activeTask = &taskHandle{cancel: func() { close(canceled) }}
 	}
 
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.Start()
 
 	cleanup := func() {
@@ -199,7 +199,7 @@ func TestCancelTask_EndToEnd(t *testing.T) {
 		},
 		runDoneCh: make(chan struct{}),
 	}
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.Start()
 
 	// Deliver a prompt over the frame input pipe (what terseio does after
@@ -325,7 +325,7 @@ func TestCancelTask_KeepsExecutedToolResult(t *testing.T) {
 		},
 		runDoneCh: make(chan struct{}),
 	}
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.Start()
 
 	// Deliver a prompt.

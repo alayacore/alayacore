@@ -30,7 +30,7 @@ func readySessionWithTools(tools []llm.Tool, confirm []string) (*Session, *MockO
 	s.initToolConfirmSet(confirm)
 	// No MCP servers: the service is ready by construction, which is the
 	// ordinary case and the one where the tool list is final immediately.
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.state.Store(int32(SessionInitializing)) // the phase run() begins in
 	return s, output
 }

@@ -196,7 +196,7 @@ func TestAutoSummarizeEndToEnd_RealRunLoop(t *testing.T) {
 		},
 		runDoneCh: make(chan struct{}),
 	}
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.Start()
 
 	// Each prompt is longer than the 650-token threshold, so every task after

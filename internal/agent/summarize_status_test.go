@@ -200,7 +200,7 @@ func startStatusTestSession(t *testing.T, provider llm.Provider, cfg SessionConf
 		},
 		runDoneCh: make(chan struct{}),
 	}
-	s.mcpService = newMCPService(nil, output)
+	s.mcpService = newMCPService(nil)
 	s.Start()
 
 	// Commands and prompts are refused until the session is ready.

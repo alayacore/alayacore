@@ -84,7 +84,7 @@ func newDeferredPromptSession(t *testing.T, output *syncOutput, provider llm.Pro
 			confirmChs:    make(map[string]chan bool),
 		},
 	}
-	s.mcpService = newMCPService(&mcp.Initializer{}, output)
+	s.mcpService = newMCPService(&mcp.Initializer{})
 	s.state.Store(int32(SessionInitializing))
 	return s
 }
