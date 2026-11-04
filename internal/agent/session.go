@@ -45,6 +45,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -248,6 +250,15 @@ func (s *Session) setState(phase SessionState) {
 	s.state.Store(int32(phase))
 	if phase == SessionReady || phase == SessionClosed {
 		s.writeSystemMsg(protocol.SessionMsg{State: phase.String()})
+	}
+	if phase == SessionReady {
+		// Ready is also the deadline for the one check that needs the whole tool
+		// list: --tool-confirm names can only be matched against tools that
+		// exist, and MCP's arrive with the init that just settled. Doing it here
+		// rather than at the two places that reach this phase is what keeps it
+		// from being run twice — this function is the transition, and it is
+		// idempotent by construction.
+		s.announceUnmatchedToolConfirms()
 	}
 }
 
@@ -467,4 +478,49 @@ func (s *Session) initToolConfirmSet(tools []string) {
 	for _, name := range tools {
 		s.toolConfirmSet[name] = struct{}{}
 	}
+}
+
+// announceUnmatchedToolConfirms reports --tool-confirm names that no configured
+// tool answers to.
+//
+// Confirmation is the one gate that fails silently when it is off:
+// needsToolConfirm only asks whether a name is in the set, so a typo
+// ("--tool-confirm execute_comand") leaves every tool unguarded and produces no
+// symptom at all — not at startup, not during the task that writes the file the
+// gate existed to protect. Validation cannot catch it either, because an MCP
+// tool's name does not exist until its server has answered.
+//
+// The session can, at the one moment the tool list is final: built-ins have been
+// known since construction, MCP tools arrive with the init that settles into
+// ready, and nothing adds a tool afterwards. So becoming ready is the deadline
+// for this check, and saying nothing would be the silent outcome the gate itself
+// must not have.
+func (s *Session) announceUnmatchedToolConfirms() {
+	if len(s.ToolConfirmTools) == 0 {
+		return
+	}
+
+	known := make(map[string]struct{}, len(s.BaseTools))
+	for _, tool := range s.BaseTools {
+		known[tool.Definition.Name] = struct{}{}
+	}
+
+	unmatched := make([]string, 0, len(s.ToolConfirmTools))
+	seen := make(map[string]struct{}, len(s.ToolConfirmTools))
+	for _, name := range s.ToolConfirmTools {
+		if _, ok := known[name]; ok {
+			continue
+		}
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		unmatched = append(unmatched, strconv.Quote(name))
+	}
+	if len(unmatched) == 0 {
+		return
+	}
+
+	s.writeNotifyf("--tool-confirm names %s, which no configured tool answers to — no tool will ask for confirmation on that account. Check the spelling; an MCP tool's name is known only after its server connects.",
+		strings.Join(unmatched, ", "))
 }

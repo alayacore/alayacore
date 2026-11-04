@@ -190,6 +190,14 @@ compare-and-swap at commit time.
 
 `ToolNeedsConfirm` filters which tools need user approval. When a tool needs confirmation, `OnToolConfirm` is called **per tool** and returns a per-tool channel. The caller blocks on this channel — a per-tool goroutine in concurrent mode, the serial driver itself in serial mode. The session stores the channel in a map keyed by tool call ID. When the user responds via `:tool_confirm <call_id>` or `:tool_decline <call_id>`, the session looks up the channel in the map and writes the response, unblocking the waiter which then executes the tool.
 
+`--tool-confirm` names the tools, and it is matched by name alone — which makes a
+typo the one way this gate fails without a symptom: `--tool-confirm
+execute_comand` matches nothing, so no tool is gated and nothing says so. The
+check therefore runs where the tool list is final, on the transition to a ready
+session (built-in tools exist from the start; an MCP tool's name is known only
+after its server has answered). A name nothing answers to is reported as a
+notification, naming the name and the consequence.
+
 Each tool has its own confirm channel (buffered, capacity 1), following the same pattern used by MCP OAuth confirmation. This keeps the tool lifecycle continuous — no artificial segmentation between streaming, confirmation collection, and execution.
 
 The TUI adapter processes confirmations sequentially (one dialog at a time). Other adapters can process them in parallel. In serial mode there is at most one confirmation outstanding per step anyway, so a parallel-capable adapter sees the same one-at-a-time flow the TUI enforces.
