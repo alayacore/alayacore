@@ -146,7 +146,7 @@ And on receive, both providers use the same pattern: accumulate content by `inde
 
 > **Note on media inside OpenAI tool results (promotion):** `role:"tool"` accepts only a string, so an `ImagePart`/`AudioPart`/`VideoPart` nested in a `ToolOutputPart` cannot be serialized on its own message. `openaiConvertToolOutputs()` therefore *promotes* it: all tool messages are emitted first, then a single `user` message carries the media as native content blocks (built by the same `openaiMediaBlock()` used for regular messages). The tool message itself keeps a text label that points forward — `"[Image (image/png)] — attached to the next message"` — so the model correlates the label with the attachment instead of concluding the media is unavailable.
 >
-> Promotion covers image, video, and audio-as-data-URI. Document/PDF and audio-behind-a-remote URL have no Chat Completions block at all, so they remain flattened to a text summary and spawn no promoted message. `openaiMediaBlock()` reports which case applies via its boolean return.
+> Promotion covers image, video, and audio-as-data-URI. Document/PDF and audio-behind-a-remote URL have no Chat Completions block at all, so they remain flattened to a text note stating the content was not delivered, and spawn no promoted message. `openaiMediaBlock()` reports which case applies via its boolean return.
 
 ## Receiving (Wire → Domain)
 

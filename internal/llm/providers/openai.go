@@ -816,9 +816,10 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, reaso
 // heading, so a result returning several items (an MCP server may) stays
 // attributable without the model having to count items per id.
 //
-// Media stays flattened to a text summary when this protocol cannot express it
-// as a block at all (documents, audio given as a remote URL) or when the server
-// could not fetch the URI (see openaiPromotableURI).
+// Media stays flattened to text when this protocol cannot express it as a block
+// at all (documents, audio given as a remote URL) or when the server could not
+// fetch the URI (see openaiPromotableURI). That text is a note saying the
+// content was not delivered, never a bare label — see openaiNotDeliveredNote.
 func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 	results := make([]openAIMessage, 0, len(contents)+1)
 	var promoted []map[string]any // blocks for the follow-up user message
@@ -843,23 +844,35 @@ func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 				textParts = append(textParts, v.Text)
 			default:
 				block, native := openaiMediaBlock(cp)
-				if !native || !openaiPromotableURI(cp) {
-					textParts = append(textParts, openaiMediaSummary(v))
+				if native && openaiPromotableURI(cp) {
+					// Every media-carrying result opens its own section inside the
+					// promoted message. Provenance has to travel as text (a media
+					// block has nowhere to carry it), and a heading above a group
+					// needs no arithmetic to read — a single header listing ids
+					// would make the model count items per result to find the
+					// boundaries, and a miscount misattributes media silently.
+					if !mediaHere {
+						promoted = append(promoted, openaiTextBlock(fmt.Sprintf(
+							"Media returned by tool result %s:", tr.ID)))
+						mediaHere = true
+					}
+					promoted = append(promoted, block)
+					textParts = append(textParts, openaiPromotedMediaLabel(v))
 					continue
 				}
-				// Every media-carrying result opens its own section inside the
-				// promoted message. Provenance has to travel as text (a media
-				// block has nowhere to carry it), and a heading above a group
-				// needs no arithmetic to read — a single header listing ids
-				// would make the model count items per result to find the
-				// boundaries, and a miscount misattributes media silently.
-				if !mediaHere {
-					promoted = append(promoted, openaiTextBlock(fmt.Sprintf(
-						"Media returned by tool result %s:", tr.ID)))
-					mediaHere = true
+				// Not promotable. Two shapes, and each says its own thing:
+				// media the protocol has no block for already carries a
+				// placeholder that states it (built above), and media whose URI
+				// no server can fetch has no placeholder to reuse, so the same
+				// statement is made here.
+				if text, ok := block["text"].(string); ok && text != "" {
+					textParts = append(textParts, text)
+					continue
 				}
-				promoted = append(promoted, block)
-				textParts = append(textParts, openaiPromotedMediaLabel(v))
+				if native {
+					textParts = append(textParts, openaiNotDeliveredNote(v,
+						"its URI is not one the API can fetch (only data: and http(s): are)"))
+				}
 			}
 		}
 		combined := strings.Join(textParts, "\n")
@@ -914,11 +927,12 @@ func openaiPromotedMediaLabel(part llm.ContentPart) string {
 }
 
 // openaiMediaSummary returns a text label for a media ContentPart: a
-// structured "[Image (image/jpeg)]" form for a data URI, or the URL itself for
-// a remote one. After media promotion (gotcha 6) it reaches the model in only
-// two situations: media this protocol cannot express as a block at all
-// (documents, audio behind a remote URL), which stays flattened; and as the
-// base text that openaiPromotedMediaLabel turns into a forward pointer.
+// structured "[Image (image/jpeg)]" form for a data URI, or the URI itself for a
+// remote one. It never echoes an embedded payload.
+//
+// Two callers use it. openaiPromotedMediaLabel turns it into a forward pointer
+// for media delivered on the next message; openaiNotDeliveredNote turns it into
+// the statement that media which cannot be sent was not perceived.
 func openaiMediaSummary(part llm.ContentPart) string {
 	switch v := part.(type) {
 	case *llm.ImagePart:
@@ -1067,17 +1081,30 @@ func openaiMediaBlock(part llm.ContentPart) (map[string]any, bool) {
 				},
 			}, true
 		}
-		return openaiTextBlock(fmt.Sprintf("[Audio file: %s (remote URL not supported)]", v.URI)), false
+		return openaiTextBlock(openaiNotDeliveredNote(v, "this API takes audio as inline base64 only")), false
 	case *llm.VideoPart:
 		return openAIVideoPart(v.URI, v.FPS, v.Res), true
 	case *llm.DocumentPart:
 		// Document (PDF) is not natively supported by OpenAI Chat Completions
-		// API. Include a text placeholder so the model knows a document was
-		// attached.
-		return openaiTextBlock(fmt.Sprintf(
-			"[Document attached: %s (PDF not supported by this API, only filename available)]", v.URI)), false
+		// API. The placeholder names the media type, never the URI: a document
+		// arrives as a data URI carrying the whole file, and echoing that would
+		// put the largest thing in the conversation into a text block that no
+		// model can use — the mistake anthropicUnsupportedMediaBlock documents.
+		return openaiTextBlock(openaiNotDeliveredNote(v, "this API has no document block")), false
 	}
 	return nil, false
+}
+
+// openaiNotDeliveredNote is what a media part says when it cannot go out as a
+// block: what the media is, why it cannot, and that nothing was perceived.
+//
+// The last clause is the substance, as it is for anthropicUnsupportedMediaBlock
+// and llm.FitInputModalities: a terse "[Document (application/pdf)]" reads to a
+// model as "a document came back", and it will describe content it never
+// received. The media type is named rather than the URI, for the reason above.
+func openaiNotDeliveredNote(part llm.ContentPart, reason string) string {
+	return openaiMediaSummary(part) + " — " + reason +
+		", so the content was NOT delivered to you and you have not perceived it. Do not describe or quote it."
 }
 
 // openaiTextBlock builds a text content block.

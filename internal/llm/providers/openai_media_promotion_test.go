@@ -398,8 +398,9 @@ func TestOpenAIUserAttachedMediaUnchanged(t *testing.T) {
 	if got := blockTypes(blocks); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("block types = %v, want %v (PDF stays a text placeholder)", got, want)
 	}
-	if !strings.Contains(blocks[4]["text"].(string), "PDF not supported") {
-		t.Errorf("document placeholder changed: %s", blocks[4]["text"])
+	doc, _ := blocks[4]["text"].(string)
+	if !strings.Contains(doc, "no document block") || !strings.Contains(doc, "NOT delivered") {
+		t.Errorf("document placeholder must say the content was not delivered: %s", doc)
 	}
 	if v := blocks[3]; v["fps"] != float64(2) || v["media_resolution"] != "default" {
 		t.Errorf("video defaults = %v/%v, want 2/default", v["fps"], v["media_resolution"])
@@ -437,6 +438,9 @@ func TestOpenAIToolMediaWithUnfetchableURINotPromoted(t *testing.T) {
 			if strings.Contains(content, "attached to the next message") {
 				t.Errorf("unfetchable URI pointed forward: %s", content)
 			}
+			if !strings.Contains(content, "NOT delivered") {
+				t.Errorf("unfetchable media must say the content was not delivered: %s", content)
+			}
 			// Nothing on the wire may reference a media block.
 			body, _ := json.Marshal(msgs)
 			for _, bad := range []string{"image_url", "video_url", "input_audio"} {
@@ -445,6 +449,37 @@ func TestOpenAIToolMediaWithUnfetchableURINotPromoted(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestOpenAIDocumentPayloadNotEchoed guards the placeholder text itself. A
+// document arrives as a data URI carrying the whole file, so a placeholder built
+// from the URI puts the largest thing in the conversation into a text block no
+// model can use — the mistake anthropicUnsupportedMediaBlock documents. Both
+// paths that can flatten a document must name the media type and say it was not
+// delivered.
+func TestOpenAIDocumentPayloadNotEchoed(t *testing.T) {
+	// A distinctive body: if it turns up in the text, the payload leaked.
+	payload := "JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmoK"
+	uri := "data:application/pdf;base64," + payload
+
+	userText := contentBlocks(t, captureMessages(t,
+		testMsg(llm.RoleUser, &llm.DocumentPart{URI: uri}))[0])[0]["text"].(string)
+	toolMsgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
+		ID: "c1", Output: []llm.ContentPart{&llm.DocumentPart{URI: uri}},
+	}))
+	toolText, _ := toolMsgs[2]["content"].(string)
+
+	for name, text := range map[string]string{"user message": userText, "tool result": toolText} {
+		if strings.Contains(text, payload) {
+			t.Errorf("%s echoes the base64 payload: %s", name, text)
+		}
+		if !strings.Contains(text, "application/pdf") {
+			t.Errorf("%s does not name the media type: %s", name, text)
+		}
+		if !strings.Contains(text, "NOT delivered") {
+			t.Errorf("%s does not say the content was not delivered: %s", name, text)
+		}
 	}
 }
 
