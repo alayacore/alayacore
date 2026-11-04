@@ -1,7 +1,11 @@
 package llm
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"reflect"
+	"strings"
 )
 
 // ============================================================================
@@ -94,17 +98,19 @@ func parseSchemaMap(m map[string]any) *schemaInfo {
 //     schema has required fields
 //  4. Bare string where array expected — wraps in a single-element array
 //
-// If the input is already valid, it is returned unchanged.
+// If the input is already valid, it is returned unchanged — as the caller's own
+// bytes, not as a re-encoding of them (see the number rule below).
 // If the schema cannot be parsed, the input is returned as-is (fail-safe).
+//
+// Numbers are never re-spelled. A repair is the model's argument being fixed,
+// and nothing else about the call may move with it: the value a tool runs with
+// is the value the step's history records, so a number this function did not
+// choose to change has to come out exactly as it went in. See decodeToolInput
+// for what a decoder that loses that guarantee costs.
 func RepairToolInput(input json.RawMessage, schema json.RawMessage) json.RawMessage {
 	schemaObj := parseSchema(schema)
 	if schemaObj == nil || schemaObj.typeName == "" {
 		// No type info means "any type" — nothing to validate against
-		return input
-	}
-
-	var inputMap map[string]any
-	if err := json.Unmarshal(input, &inputMap); err != nil {
 		return input
 	}
 
@@ -113,18 +119,75 @@ func RepairToolInput(input json.RawMessage, schema json.RawMessage) json.RawMess
 		return input
 	}
 
+	inputMap, ok := decodeToolInput(input)
+	if !ok {
+		return input
+	}
+
 	result := repairObject(inputMap, schemaObj)
+
+	// Nothing to repair: hand back the caller's own bytes. The comparison is on
+	// the decoded trees and not on the re-encoded bytes because json.Marshal
+	// writes a map's keys in sorted order — an input this function changed
+	// nothing about would still come back reordered, and a byte comparison would
+	// read that as a repair and replace the model's own argument with it.
+	if reflect.DeepEqual(inputMap, result) {
+		return input
+	}
 
 	fixed, err := json.Marshal(result)
 	if err != nil {
 		return input
 	}
-
-	// Only return fixed JSON if it actually differs from the original
-	if string(fixed) == string(input) {
-		return input
-	}
 	return fixed
+}
+
+// decodeToolInput decodes a tool call's arguments, keeping every number as the
+// literal the model wrote.
+//
+// json.Unmarshal is the wrong decoder here, and using it was a silent
+// corruption: it turns every number into a float64, which holds integers exactly
+// only up to 2^53. A tool whose argument is a 64-bit identifier — a snowflake, a
+// database key, a nanosecond timestamp; anything MCP-shaped — was handed an
+// identifier the model never sent (…789 arrived as …800), and because the
+// repaired value is what the tool runs with AND what history records, nothing
+// anywhere disagreed out loud: the transcript showed the model's call, the tool
+// received a different one. json.Number is the literal text, so a number this
+// package does not deliberately change comes out byte for byte as it went in —
+// including 1.0 and 1e10, whose spelling float64 also normalizes.
+//
+// Decoded with a Decoder rather than json.Unmarshal because UseNumber is a
+// Decoder option. The trailing check keeps Unmarshal's strictness: an argument
+// blob with a second value after the object is not an object.
+func decodeToolInput(input json.RawMessage) (map[string]any, bool) {
+	var inputMap map[string]any
+	if !decodeLiterals(bytes.NewReader(input), &inputMap) {
+		return nil, false
+	}
+	return inputMap, true
+}
+
+// decodeStringifiedArray decodes a JSON array that arrived as a string, under
+// the same literal-preserving rule as decodeToolInput: a stringified array of
+// identifiers is one more spelling of the same loss.
+func decodeStringifiedArray(s string) ([]any, bool) {
+	var arr []any
+	if !decodeLiterals(strings.NewReader(s), &arr) {
+		return nil, false
+	}
+	return arr, true
+}
+
+// decodeLiterals decodes exactly one JSON value from r into dst, numbers kept as
+// their literals. It reports false on a malformed value or on anything after it.
+func decodeLiterals(r io.Reader, dst any) bool {
+	dec := json.NewDecoder(r)
+	dec.UseNumber()
+	if err := dec.Decode(dst); err != nil {
+		return false
+	}
+	_, err := dec.Token()
+	return err == io.EOF
 }
 
 // ============================================================================
@@ -194,8 +257,7 @@ func repairArrayValue(value any, schema *schemaInfo) any {
 
 	// Pattern 2: JSON string that looks like a serialized array
 	if str, ok := value.(string); ok {
-		var arr []any
-		if err := json.Unmarshal([]byte(str), &arr); err == nil {
+		if arr, ok := decodeStringifiedArray(str); ok {
 			return repairArrayElements(arr, schema)
 		}
 		// Pattern 4: bare string — wrap in single-element array

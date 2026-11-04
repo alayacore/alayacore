@@ -419,10 +419,96 @@ func TestRepairToolInput_NoSchemaType(t *testing.T) {
 	}
 }
 
+// A repair fixes one thing the model got wrong. Every number in the call is
+// something it got right, and a tool runs with what this function returns — so
+// the spellings here are the assertion, not an approximation of it. jsonEqual
+// cannot check that: it compares through float64 and would confirm the very loss
+// these cases exist to catch.
+func TestRepairToolInput_NumbersKeepTheirLiterals(t *testing.T) {
+	schema := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"id": {"type": "integer"},
+			"ratio": {"type": "number"},
+			"tags": {"type": "array", "items": {"type": "string"}},
+			"ids": {"type": "array", "items": {"type": "integer"}},
+			"note": {"type": "string"}
+		},
+		"required": ["id"]
+	}`)
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "identifier past float64's exact range survives a repair",
+			in:   `{"id":1234567890123456789,"tags":null}`,
+			want: `{"id":1234567890123456789}`,
+		},
+		{
+			name: "2^53+1 is not rounded down to 2^53",
+			in:   `{"id":9007199254740993}`,
+			want: `{"id":9007199254740993}`,
+		},
+		{
+			name: "negative identifier",
+			in:   `{"id":-9223372036854775808}`,
+			want: `{"id":-9223372036854775808}`,
+		},
+		{
+			name: "trailing-zero float keeps the spelling the model chose",
+			in:   `{"id":1,"ratio":1.0}`,
+			want: `{"id":1,"ratio":1.0}`,
+		},
+		{
+			name: "exponent keeps its spelling",
+			in:   `{"id":1,"ratio":1e10}`,
+			want: `{"id":1,"ratio":1e10}`,
+		},
+		{
+			name: "stringified array of identifiers",
+			in:   `{"id":1,"ids":"[1234567890123456789,9007199254740993]"}`,
+			want: `{"id":1,"ids":[1234567890123456789,9007199254740993]}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RepairToolInput(json.RawMessage(tt.in), schema)
+			if string(got) != tt.want {
+				t.Errorf("got %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+// An input that needs no repair is returned as the caller's own bytes. That is
+// what keeps an argument byte-identical to what the model sent — key order and
+// all — and it is the cheapest guarantee to state: no repair, no re-encoding.
+func TestRepairToolInput_UnchangedInputKeepsItsBytes(t *testing.T) {
+	schema := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"path": {"type": "string"},
+			"start_line": {"type": "integer"}
+		},
+		"required": ["path"]
+	}`)
+
+	// Deliberately not in sorted key order, and not spelled the way
+	// json.Marshal would: an unchanged input may not be re-encoded at all.
+	in := `{"start_line":5,"path":"/foo"}`
+
+	if got := RepairToolInput(json.RawMessage(in), schema); string(got) != in {
+		t.Errorf("unchanged input was re-encoded:\n got: %s\nwant: %s", got, in)
+	}
+}
+
 // ============================================================================
 // Integration-style test: RepairToolInput is idempotent
 // ============================================================================
-
 func TestRepairToolInput_Idempotent(t *testing.T) {
 	// Applying repair twice should give the same result as applying it once.
 	schema := json.RawMessage(`{
