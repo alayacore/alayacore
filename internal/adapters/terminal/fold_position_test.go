@@ -136,8 +136,10 @@ func TestHMLLineRangeConsistency(t *testing.T) {
 			}
 			visited++
 		}
-		if visited != wb.GetVisibleWindowCount() {
-			t.Errorf("fold toggle %d: visited %d visible windows, want %d", foldIdx, visited, wb.GetVisibleWindowCount())
+		// The loop above walks WindowAt; this counts the snapshot. Comparing the
+		// two is what checks WindowAt enumerates every window, gaps included.
+		if visible := visibleWindows(wb); visited != visible {
+			t.Errorf("fold toggle %d: WindowAt visited %d visible windows, snapshot has %d", foldIdx, visited, visible)
 		}
 
 		// H/M/L must land on a visible window after every toggle (they may

@@ -146,6 +146,20 @@ func TestRetryDelay(t *testing.T) {
 	}
 }
 
+// TestRetryDelayReachesThroughStreamBreak is what streamBreakError.Unwrap is
+// for: a stream that died on a server-supplied error still has to answer the
+// retry loop the way the error inside it would. Nothing in the tree produces an
+// APIError mid-stream today — a non-200 is answered before the stream opens —
+// so without this test the line that keeps the cause reachable is a claim no
+// run would notice losing.
+func TestRetryDelayReachesThroughStreamBreak(t *testing.T) {
+	broke := &streamBreakError{err: &APIError{StatusCode: 429, RetryAfter: 7 * time.Second}}
+
+	if got := retryDelay(1, broke); got != 7*time.Second {
+		t.Errorf("retryDelay through a stream break = %v, want the inner Retry-After 7s", got)
+	}
+}
+
 func TestSleepCtx(t *testing.T) {
 	if err := sleepCtx(context.Background(), 0); err != nil {
 		t.Fatalf("sleepCtx(0) = %v, want nil", err)

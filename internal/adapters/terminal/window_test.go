@@ -416,6 +416,20 @@ func TestWindowBufferDiff(t *testing.T) {
 	})
 }
 
+// visibleWindows counts the windows a render would draw. The buffer used to
+// expose this as a method, called from these tests only; counting from the
+// exported snapshot does the same job without a production accessor kept alive
+// for tests.
+func visibleWindows(wb *WindowBuffer) int {
+	n := 0
+	for _, w := range wb.AllWindows() {
+		if w.Visible {
+			n++
+		}
+	}
+	return n
+}
+
 func TestWindowBufferVisibility(t *testing.T) {
 	t.Run("tool windows are always visible", func(t *testing.T) {
 		wb := NewWindowBuffer(80, DefaultStyles())
@@ -529,9 +543,8 @@ func TestWindowBufferVisibility(t *testing.T) {
 		}
 
 		// Count windows - should only have 2 visible ones
-		visibleCount := wb.GetVisibleWindowCount()
-		if visibleCount != 2 {
-			t.Errorf("GetVisibleWindowCount() = %d, want 2", visibleCount)
+		if visible := visibleWindows(wb); visible != 2 {
+			t.Errorf("visible windows = %d, want 2", visible)
 		}
 	})
 

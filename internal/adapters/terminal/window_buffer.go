@@ -512,18 +512,6 @@ func (wb *WindowBuffer) AllWindows() []*Window {
 	return result
 }
 
-func (wb *WindowBuffer) GetVisibleWindowCount() int {
-	wb.mu.Lock()
-	defer wb.mu.Unlock()
-	count := 0
-	for _, w := range wb.windows {
-		if w.Visible {
-			count++
-		}
-	}
-	return count
-}
-
 func (wb *WindowBuffer) ToggleFold(windowIndex int) bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
