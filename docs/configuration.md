@@ -284,7 +284,20 @@ max_tokens: 65536
 Models are validated at load time (startup and after `:model_load`). A model is **rejected** if:
 
 - `protocol_type` is missing or not `"openai"` / `"anthropic"`
-- `base_url` is missing, or is not an absolute `http://`/`https://` URL with a host (a bare host and port is read as a scheme, so it is rejected here rather than failing on the first request)
+- `base_url` is missing, or is not an absolute `http://`/`https://` URL with a host.
+  The scheme is the part that gets left out, and it cannot be guessed: a bare host
+  and port is read as a scheme of its own, so `base_url: "localhost:11434"` is a
+  URL with scheme `localhost` and no host — rejected here, and the message names
+  the form that works:
+
+  ```
+  model "M": invalid base_url "localhost:11434": scheme "localhost" is not http or https — for a host and port, write "https://localhost:11434" — skipped
+  ```
+
+  Write `base_url: "http://localhost:11434"` instead. Without the scheme the
+  failure used to arrive much later, from inside a task, as
+  `unsupported protocol scheme ""` — an error naming neither the file nor the line
+  to fix
 - `model_name` is missing
 
 Rejected models are skipped — they won't appear in the model selector. Errors are printed at startup and shown after `:model_load` as a command failure (`CO` with `is_error:true`, code `CONFIG_MODEL_INVALID`). Other valid models in the same file are unaffected.
