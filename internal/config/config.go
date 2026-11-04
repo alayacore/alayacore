@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -39,19 +38,28 @@ func defaultConfigDir() string {
 	return filepath.Join(home, ".alayacore")
 }
 
-// ExpandPath expands ~ to the user's home directory.
+// ExpandPath expands a leading ~ to the current user's home directory.
+//
+// Only "~" and "~/" are expanded; every other spelling is returned as written.
+// "~otheruser/…" used to be joined onto *this* user's home, which is a path that
+// looks plausible, exists nowhere, and is wrong in the one way a caller cannot
+// see: a --session path that came back as "start a new session here" instead of
+// "cannot read that file". This client can expand its own home and nothing else,
+// so it does exactly that and leaves the rest to fail where it is used, with the
+// OS's own reason.
 func ExpandPath(path string) string {
-	if !strings.HasPrefix(path, "~") {
+	rest, ok := strings.CutPrefix(path, "~")
+	if !ok {
 		return path
 	}
-	usr, err := user.Current()
+	if rest != "" && rest[0] != '/' && rest[0] != filepath.Separator {
+		return path // "~user/…": not this user's home
+	}
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return path
 	}
-	if path == "~" {
-		return usr.HomeDir
-	}
-	return filepath.Join(usr.HomeDir, path[1:])
+	return filepath.Join(home, rest)
 }
 
 // newFlagSet creates the private FlagSet for alayacore's CLI flags. A
