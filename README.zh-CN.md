@@ -82,7 +82,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 🖥️ **流式输出** — 实时显示，支持虚拟滚动、可折叠窗口；光标仍用 Vim 的 `j`/`k`、`H`/`M`/`L`、`g`/`G` 移动，方向键与滚轮移动画面。
 - ⚡ **提供商速度跟踪** — 状态栏实时显示最近一步的端到端 tok/s 与首令牌时间（TTFT）（见 [速度跟踪](docs/speed-tracking.md)）。
 - 📊 **Markdown 渲染** — 助手输出的 Markdown（当前为表格）默认渲染；在展开窗口上按 `r` 切换原始/渲染视图（`--no-markdown` 可关闭默认渲染）。
-- 📷 **多模态输入** — 通过 `Ctrl+A` 附加图片、音频、视频或文档；模型也能自己用 `read_file` 读取媒体。实际可达的类型取决于协议——图片两者皆可，音频/视频需要 OpenAI 风格端点，文档需要 Anthropic（详见 [providers.md](docs/providers.md)）。
+- 📷 **多模态输入** — 通过 `Ctrl+A` 附加图片、音频、视频或文档；模型也能自己用 `read_file` 读取媒体。实际可达的类型取决于协议**和模型**——图片两者皆可，音频/视频需要 OpenAI 风格端点，文档需要 Anthropic，而模型在 `input_modalities` 里声明得更少时，收到的也会少于协议所能承载的（详见 [providers.md](docs/providers.md)、[configuration.md](docs/configuration.md#input-modalities-input_modalities)）。
 - 🎨 **主题系统** — 可自定义配色方案，支持实时切换。
 - ⌨️ **模型选择器、主题选择器、帮助窗口** — 基于覆盖层的 UI 组件，运行时配置。
 
