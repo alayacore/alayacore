@@ -32,7 +32,17 @@ still detect the interruption by exit code. Ctrl-C during the stdin read
 phase (interactive use without EOF) aborts the read; Ctrl-C after the
 task finished only forces the exit code.
 
-Any SM error sets exit code `1` — including failed persistence (auto-save, pre-summarize backup) and failed auto-summarization, which ends the task rather than sending the oversized request. Such errors also discard the buffered final answer: a script should retry or inspect the session file.
+Once a task is running, any SM error sets exit code `1` — including failed
+persistence (auto-save, pre-summarize backup) and failed auto-summarization, which
+ends the task rather than sending the oversized request. Such errors also discard
+the buffered final answer: a script should retry or inspect the session file.
+
+Errors that arrive **before** the session accepts a task are diagnostics about the
+machine rather than a verdict on the run: a `model.conf` block rejected beside a
+usable one, a theme file that does not parse, an MCP server that could not
+connect. They are printed to stderr and change neither stdout nor the exit code —
+the answer that was produced is still the answer. A configuration that cannot run
+at all never reaches a task; it fails at startup with exit code `1`.
 
 Empty stdin produces no prompt and exits `0` with empty output.
 

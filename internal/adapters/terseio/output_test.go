@@ -462,3 +462,62 @@ func TestTerseOutput_MCPHooks(t *testing.T) {
 		t.Errorf("onMCPDone called %d times, want 1", done)
 	}
 }
+
+// stderr and the exit code answer different questions. An error that arrives
+// before the session accepts a task is a diagnostic about the machine — a
+// rejected model block beside a usable one, a theme that does not parse, an MCP
+// server that could not connect — and the answer this process produces is still
+// the answer. Failing the invocation over it left a script with no stdout and a
+// nonzero status for a question that was answered.
+func TestTerseOutput_StartupDiagnosticDoesNotFailTheRun(t *testing.T) {
+	o, out, errBuf := newTestOutput()
+
+	// What StartSession writes before anything runs, then a clean task.
+	o.Write(errorMsg(`model.conf block 2: duplicate name "m" — skipped`))
+	o.Write(frameBytes(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "the answer")))
+	o.Write(taskMsg(true))
+	o.Write(taskMsg(false))
+
+	if got := out.String(); got != "the answer\n" {
+		t.Errorf("stdout = %q, want %q — a startup diagnostic must not cost the answer", got, "the answer\n")
+	}
+	if !strings.Contains(errBuf.String(), "duplicate name") {
+		t.Errorf("stderr = %q, want the diagnostic to be reported", errBuf.String())
+	}
+	if o.HasError() {
+		t.Error("HasError = true, want false: exit code describes this run, and this run answered")
+	}
+	select {
+	case <-o.ErrorChannel():
+		t.Error("ErrorChannel closed: the adapter would abandon a run that was going to succeed")
+	default:
+	}
+}
+
+// ...and the moment a task exists, an error is that task's failure, with the
+// consequences the contract promises: no partial answer on stdout, exit code 1.
+func TestTerseOutput_ErrorAfterTaskStartStillFailsTheRun(t *testing.T) {
+	o, out, errBuf := newTestOutput()
+
+	o.Write(errorMsg("startup diagnostic")) // before the task: reported only
+	o.Write(frameBytes(wire.TagAssistantXDelta, wiretest.AssistantTextDelta("1", "partial answer")))
+	o.Write(taskMsg(true))
+	o.Write(errorMsg("API error (status 500)")) // during the task: fatal
+
+	if out.String() != "" {
+		t.Errorf("stdout = %q, want empty (partial answer must not print)", out.String())
+	}
+	for _, want := range []string{"startup diagnostic", "API error (status 500)"} {
+		if !strings.Contains(errBuf.String(), want) {
+			t.Errorf("stderr = %q, want %q", errBuf.String(), want)
+		}
+	}
+	if !o.HasError() {
+		t.Error("HasError = false, want true")
+	}
+	select {
+	case <-o.ErrorChannel():
+	default:
+		t.Error("ErrorChannel not closed")
+	}
+}

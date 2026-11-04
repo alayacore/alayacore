@@ -24,6 +24,13 @@ import (
 // suppressed; errors, notifications, and informative command results go
 // to stderr so stdout stays a pure answer channel.
 //
+// stderr and the exit code answer two different questions, and the split matters:
+// stdout/exit code say what this invocation produced, stderr says what the
+// session and its configuration had to report along the way. A startup diagnostic
+// (a rejected model block beside a usable one, a theme that does not parse, an
+// MCP server that could not connect) belongs to the second and not the first; see
+// applySystemMsg.
+//
 // Concurrency: the session writes from two goroutines (task and run), so a
 // mutex protects the buffer and final-text state.
 type answerOutput struct {
@@ -36,6 +43,10 @@ type answerOutput struct {
 	// inProgress tracks the task system-message state. The final text is
 	// flushed on the true→false edge.
 	inProgress atomic.Bool
+	// taskStarted records that the session has accepted a task (its first task
+	// SM with in_progress true). It is the line between a diagnostic and a
+	// failure: see applySystemMsg.
+	taskStarted bool
 	// hasError is set on any SM error; drives the exit code.
 	hasError atomic.Bool
 	// errorClosed guards errorCh.
@@ -266,8 +277,10 @@ func (o *answerOutput) bufferFinalText(id, content string) {
 }
 
 // handleSystemFrame processes a TagSystemMsg frame.
-//   - error: rendered to stderr, buffered answer discarded (a partial
-//     answer is never printed), exit-code machinery triggered.
+//   - error: rendered to stderr. Once a task has been accepted the buffered
+//     answer is discarded (a partial answer is never printed) and the exit
+//     code machinery is triggered; before that the error is a startup
+//     diagnostic and does neither.
 //   - notify: rendered to stderr (diagnostics must not pollute stdout).
 //   - task: on the in_progress true→false edge, the final answer is flushed.
 //
@@ -297,6 +310,24 @@ func (o *answerOutput) applySystemMsg(msg protocol.SystemMsg) {
 	switch m := msg.(type) {
 	case protocol.ErrorMsg:
 		fmt.Fprintf(o.stderr, "[error: %s]\n", m.Text)
+
+		// An error before the session has accepted a task is a diagnostic about
+		// the machine, not a verdict on this run: a block in model.conf that was
+		// rejected beside a usable one, a theme file that does not parse, an MCP
+		// server that could not connect. It is reported — stderr is the
+		// diagnostic channel — and only that.
+		//
+		// Failing the invocation over it used to make a successful question look
+		// like a broken script: stdout empty, exit code 1, the answer thrown away
+		// by the same discard that exists so a half-streamed answer is never
+		// mistaken for a finished one. A configuration that cannot run at all
+		// never gets this far — it fails at startup with exit code 1 — so
+		// reaching a task means a usable session was built, and what it produced
+		// is what this process produced.
+		if !o.taskStarted {
+			return
+		}
+
 		o.hasError.Store(true)
 		// Never print a partial answer after an error.
 		o.discardFinal()
@@ -318,6 +349,11 @@ func (o *answerOutput) applySystemMsg(msg protocol.SystemMsg) {
 		}
 
 	case protocol.TaskMsg:
+		if m.InProgress {
+			// From here on every SM error is this run's: the task exists, so a
+			// failure in it is a failure of the answer stdout would carry.
+			o.taskStarted = true
+		}
 		if o.inProgress.Load() && !m.InProgress {
 			// Task finished: print the final answer. Called under o.mu
 			// (inside processBuffer), so use the locked core directly.
