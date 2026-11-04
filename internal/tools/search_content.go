@@ -61,6 +61,16 @@ type searchResult struct {
 // sent as "." rather than as no location argument, which ripgrep treats as a
 // separate case.
 //
+// The argument order is part of the tool's promise. Everything the caller writes
+// is either an option *value* or the path: the values ride on their flag
+// (--type=…, --glob=…, -e …), and the path — the one thing ripgrep reads as a
+// positional — is placed after "--", which ends option parsing. That matters
+// most for the path, because nothing else constrains it: a search of a directory
+// literally named "--hidden" used to be handed to ripgrep as its own --hidden
+// flag, so ripgrep searched the current directory instead, hidden files
+// included, and answered with matches from a scope searchScopeNote promises to
+// skip — exit status 0, no warning, a wrong answer.
+//
 // Nothing here widens the default scope, and noMatches tells the model what that
 // scope leaves out — the two are one fact, so a flag that changes which files
 // are searched (--hidden, --no-ignore, --follow, --binary) makes searchScopeNote
@@ -70,12 +80,14 @@ func buildSearchContentArgs(args SearchContentInput) []string {
 		"-n",
 		"--no-heading",
 		"--color=never",
-		"-e", args.Pattern,
-		args.Path,
 	}
 
 	if args.FileType != "" {
-		rgArgs = append(rgArgs, "--type", args.FileType)
+		// Attached rather than separate: ripgrep consumes the next token as the
+		// value either way, but a value starting with "-" is exactly the shape a
+		// reader (or a future parser) has to think twice about, and one spelling
+		// costs nothing.
+		rgArgs = append(rgArgs, "--type="+args.FileType)
 	}
 
 	if args.IgnoreCase {
@@ -83,10 +95,12 @@ func buildSearchContentArgs(args SearchContentInput) []string {
 	}
 
 	if args.Glob != "" {
-		rgArgs = append(rgArgs, "--glob", args.Glob)
+		rgArgs = append(rgArgs, "--glob="+args.Glob)
 	}
 
-	return rgArgs
+	// -e before the terminator: the pattern is an option's value, and ripgrep
+	// takes it as one even when it starts with "-" (TestSearchContentPatternLooksLikeFlag).
+	return append(rgArgs, "-e", args.Pattern, "--", args.Path)
 }
 
 // searchPath is the one place an omitted path is decided: it means the current

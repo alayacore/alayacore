@@ -646,3 +646,56 @@ func TestSearchContentArgsDoNotWidenTheDefaultScope(t *testing.T) {
 		}
 	}
 }
+
+// The path is the one argument the caller writes freely and the one thing
+// ripgrep reads as a positional, so it has to sit after the terminator where no
+// spelling of it can be an option.
+//
+// Without that, searching a directory named "--hidden" handed ripgrep its own
+// --hidden flag: the search ran in the current directory instead, hidden files
+// included, and returned matches from a scope this tool's no-match note promises
+// to skip. Exit status 0, no warning — the model got a wrong answer it had no way
+// to recognize, about files it never named.
+func TestSearchContentPathCannotBeReadAsAFlag(t *testing.T) {
+	for _, path := range []string{"--hidden", "-u", "--no-ignore", "--", "-dash.txt", "."} {
+		args := buildSearchContentArgs(SearchContentInput{Pattern: "p", Path: path})
+		if n := len(args); n < 2 || args[n-2] != "--" || args[n-1] != path {
+			t.Errorf("path %q: argv = %v, want it last and preceded by \"--\"", path, args)
+		}
+	}
+}
+
+// The same property end to end, because the argv shape is only worth anything if
+// ripgrep honors it. The decoy file is the assertion that matters: it is what
+// the misread call returned instead of the named directory.
+func TestSearchContentSearchesADirectoryNamedLikeAFlag(t *testing.T) {
+	requireRipgrep(t)
+
+	root := t.TempDir()
+	t.Chdir(root) // where the old call searched once the path became a flag
+	dir := filepath.Join(root, "--hidden")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x.txt"), []byte("needle\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "decoy.txt"), []byte("needle\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parts, err := executeSearchContent(context.Background(), SearchContentInput{Pattern: "needle", Path: dir})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := extractFirstText(parts)
+	if strings.HasPrefix(text, "No matches found") {
+		t.Fatalf("the named directory contains the pattern, but the search found nothing: %q", text)
+	}
+	if !strings.Contains(text, filepath.Join("--hidden", "x.txt")) {
+		t.Errorf("result does not name the searched directory: %q", text)
+	}
+	if strings.Contains(text, "decoy.txt") {
+		t.Errorf("result contains a file outside the named path — the path was read as a flag: %q", text)
+	}
+}
