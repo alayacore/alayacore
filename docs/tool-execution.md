@@ -240,10 +240,11 @@ concurrent collector does.
 
 ## What the Model Sees When a Tool Fails
 
-A tool result reaches the model as text plus an error flag: `is_error` on the
-wire — the `UF` payload and Anthropic name it the same — and a
-`{"status":"error",...}` content wrapper for OpenAI. The flag says *that*
-something failed and never *why*, so the reason has to be in the text. One
+A tool result reaches the model as text plus an error flag: `is_error` in the
+`UF` payload, Anthropic's native `tool_result.is_error`, and — for OpenAI, whose
+`tool` message has no such field — an inline `Error: ` at the start of the
+content. The flag says *that* something failed and never *why*, so the reason
+has to be in the text. One
 question decides where a tool puts it: does the tool produce output of its own?
 
 - **A tool that fails with nothing else to say returns `(nil, err)`**, and its

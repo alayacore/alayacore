@@ -318,7 +318,7 @@ environment.
 
 ## Multi-Modal Attachments
 
-AlayaCore supports multi-modal input — attaching images, audio, video, or documents alongside text. Attachments are sent as frames **before** the text frame, all within a single `TagUserEnd`-delimited message:
+AlayaCore supports multi-modal input — attaching images, audio, video, or documents alongside text. Attaching is not the same as delivering: the picker offers every kind, and a model that declares less in `model.conf`'s `input_modalities` receives a note saying the content was not delivered instead (see [configuration.md](configuration.md#input-modalities-input_modalities)). Attachments are sent as frames **before** the text frame, all within a single `TagUserEnd`-delimited message:
 
 ```
 [UX frames (image/audio/video/document, then text)] + [UE]

@@ -51,9 +51,9 @@ package providers
 //
 //    Promotion is also URI-gated (openaiPromotableURI): only `data:` and
 //    `http(s)://` are forwarded. A media part carrying a bare path, a `file:`
-//    URI or an empty string keeps its text label instead, because an
-//    unfetchable url fails the entire request — strictly worse than the missing
-//    media it would have stood for.
+//    URI or an empty string keeps a text note saying it was not delivered,
+//    because an unfetchable url fails the entire request — strictly worse than
+//    the missing media it would have stood for.
 //
 // 7. REASONING OUTPUT FIELD NAME IS NOT STANDARD: No candidate key is in the
 //    OpenAI schema — `ChatCompletionStreamResponseDelta` defines only
@@ -799,9 +799,11 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, reaso
 //
 // Two protocol constraints shape this function:
 //
-//  1. OpenAI has no native is_error field (unlike Anthropic), so results are
-//     JSON-wrapped with a "status" field — the model distinguishes success
-//     from failure structurally rather than by guessing from text.
+//  1. OpenAI has no native is_error field (unlike Anthropic), so a failure is
+//     marked in the text: `Error: ` at the very start of the content, inline
+//     because the text already opens with the tool's own header lines. A
+//     success is the tool's text byte for byte. See the marker's comment
+//     inside for why not a JSON envelope and not a line of its own.
 //  2. A `tool` message carries only a string, so media inside a tool result
 //     (read_file on an image, an MCP screenshot) cannot ride on its own
 //     result. It is promoted to a single follow-up `user` message, which does
@@ -1101,9 +1103,10 @@ func openaiMediaBlock(part llm.ContentPart) (map[string]any, bool) {
 	case *llm.DocumentPart:
 		// Document (PDF) is not natively supported by OpenAI Chat Completions
 		// API. The placeholder names the media type, never the URI: a document
-		// arrives as a data URI carrying the whole file, and echoing that would
-		// put the largest thing in the conversation into a text block that no
-		// model can use — the mistake anthropicUnsupportedMediaBlock documents.
+		// usually arrives as a data URI carrying the whole file (that is what an
+		// attachment and read_file produce), and echoing that would put the
+		// largest thing in the conversation into a text block that no model can
+		// use — the mistake anthropicUnsupportedMediaBlock documents.
 		return openaiTextBlock(openaiNotDeliveredNote(v, "this API has no document block")), false
 	}
 	return nil, false

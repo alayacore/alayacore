@@ -454,7 +454,8 @@ func TestOpenAIUserAttachedMediaUnchanged(t *testing.T) {
 // TestOpenAIToolMediaWithUnfetchableURINotPromoted covers the trust boundary.
 // Promotion forwards the URI verbatim, so a value the server cannot retrieve
 // (bare filesystem path, file:// URI, empty string) would fail the whole
-// request rather than one block. These must fall back to the text label.
+// request rather than one block. These must fall back to a text note saying
+// the content was not delivered.
 func TestOpenAIToolMediaWithUnfetchableURINotPromoted(t *testing.T) {
 	cases := []struct {
 		name string

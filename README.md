@@ -82,7 +82,7 @@ echo "what is 2+2?" | alayacore --terseio
 - 🖥️ **Streaming output** — Real-time display with virtual scrolling, foldable windows, and vim's keys for the cursor (`j`/`k`, `H`/`M`/`L`, `g`/`G`) while the arrow keys and the mouse wheel move the view.
 - ⚡ **Provider speed tracking** — Live end-to-end tok/s and time-to-first-token (TTFT) for the latest step in the status bar (see [speed-tracking.md](docs/speed-tracking.md)).
 - 📊 **Markdown rendering** — Assistant markdown output (currently tables) renders by default; press `r` on an unfolded window to toggle raw/rendered (`--no-markdown` disables the default).
-- 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`; a model can also read media itself via `read_file`. Which types actually reach it is protocol-dependent — image works on both, audio/video need an OpenAI-style endpoint, documents need Anthropic (see [providers.md](docs/providers.md)).
+- 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`; a model can also read media itself via `read_file`. Which types actually reach it is protocol- and model-dependent — image works on both protocols, audio/video need an OpenAI-style endpoint, documents need Anthropic, and a model that declares less in `input_modalities` takes less than its protocol can carry (see [providers.md](docs/providers.md), [configuration.md](docs/configuration.md#input-modalities-input_modalities)).
 - 🎨 **Theme system** — Customizable color schemes with live switching.
 - ⌨️ **Model selector, theme selector, help overlay** — Overlay-based UI components for runtime configuration.
 
