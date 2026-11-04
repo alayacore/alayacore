@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,6 +121,85 @@ model_name: "model"`
 	}
 	if !found {
 		t.Errorf("expected error about invalid base_url, got: %v", msgs)
+	}
+}
+
+// A base_url the request layer cannot use is caught where the file is read, not
+// from inside a task. url.Parse on its own accepted every case below except the
+// last: a bare word is a valid *relative reference*, so "localhost:11434" passed
+// validation and came back much later as `unsupported protocol scheme ""` from a
+// request whose message named neither the file nor the entry to fix.
+func TestParseModelConfig_BaseURLMustBeARequestTarget(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		want    string // substring of the rejection
+	}{
+		{
+			name:    "no scheme at all",
+			baseURL: "api.example.com/v1",
+			want:    "it has no scheme",
+		},
+		{
+			name:    "host and port written as a URL names the corrected form",
+			baseURL: "localhost:11434",
+			want:    `scheme "localhost" is not http or https — for a host and port, write "https://localhost:11434"`,
+		},
+		{
+			name:    "a scheme this client does not speak",
+			baseURL: "ftp://example.com",
+			want:    `scheme "ftp" is not http or https`,
+		},
+		{
+			name:    "a scheme with no host",
+			baseURL: "http:///v1",
+			want:    "it names no host",
+		},
+		{
+			name:    "unparseable",
+			baseURL: ":://invalid",
+			want:    "missing protocol scheme",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := fmt.Sprintf(`name: "M"
+protocol_type: "openai"
+base_url: %q
+api_key: "k"
+model_name: "m"`, tt.baseURL)
+
+			models, msgs := parseModelConfig(input, "model.conf")
+			if len(models) != 0 {
+				t.Fatalf("expected the model to be rejected, got %d usable", len(models))
+			}
+			if len(msgs) != 1 || !strings.Contains(msgs[0], tt.want) {
+				t.Errorf("messages = %v, want one containing %q", msgs, tt.want)
+			}
+		})
+	}
+}
+
+// The shapes a real endpoint uses must all still pass: loopback with a port, a
+// path, an IPv6 literal, and an upper-case scheme (url.Parse normalizes it).
+func TestParseModelConfig_BaseURLAcceptsRealEndpoints(t *testing.T) {
+	for _, baseURL := range []string{
+		"http://127.0.0.1:11434",
+		"https://api.example.com/v1",
+		"http://[::1]:8080",
+		"HTTP://example.com",
+	} {
+		input := fmt.Sprintf(`name: "M"
+protocol_type: "openai"
+base_url: %q
+api_key: "k"
+model_name: "m"`, baseURL)
+
+		models, msgs := parseModelConfig(input, "model.conf")
+		if len(models) != 1 {
+			t.Errorf("%q was rejected: %v", baseURL, msgs)
+		}
 	}
 }
 

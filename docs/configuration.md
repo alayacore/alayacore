@@ -68,7 +68,7 @@ reasoning_2: {"thinking":{"type":"enabled"},"reasoning_effort":"xhigh"}
 |-------|----------|-------------|
 | `name` | Yes | Display name shown in the model selector |
 | `protocol_type` | Yes | `openai` or `anthropic` — determines the API format |
-| `base_url` | Yes | API server base URL |
+| `base_url` | Yes | API server base URL. Must be absolute and `http://` or `https://` — a bare host (`localhost:11434`) is rejected at load time rather than failing on the first request |
 | `api_key` | Yes | API key for authentication |
 | `model_name` | Yes | Model identifier sent to the API |
 | `context_limit` | No | Maximum context window in tokens. `0` means unlimited. Used for context display and auto-summarization. |
@@ -284,7 +284,7 @@ max_tokens: 65536
 Models are validated at load time (startup and after `:model_load`). A model is **rejected** if:
 
 - `protocol_type` is missing or not `"openai"` / `"anthropic"`
-- `base_url` is missing or not a valid URL
+- `base_url` is missing, or is not an absolute `http://`/`https://` URL with a host (a bare host and port is read as a scheme, so it is rejected here rather than failing on the first request)
 - `model_name` is missing
 
 Rejected models are skipped — they won't appear in the model selector. Errors are printed at startup and shown after `:model_load` as a command failure (`CO` with `is_error:true`, code `CONFIG_MODEL_INVALID`). Other valid models in the same file are unaffected.

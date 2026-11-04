@@ -240,8 +240,8 @@ func validateModel(m modelConfig) []string {
 
 	if m.BaseURL == "" {
 		errs = append(errs, fmt.Sprintf("model %q: missing required field base_url — skipped", m.Name))
-	} else if _, err := url.Parse(m.BaseURL); err != nil {
-		errs = append(errs, fmt.Sprintf("model %q: invalid base_url %q: %v — skipped", m.Name, m.BaseURL, err))
+	} else if problem := baseURLProblem(m.BaseURL); problem != "" {
+		errs = append(errs, fmt.Sprintf("model %q: invalid base_url %q: %s — skipped", m.Name, m.BaseURL, problem))
 	}
 
 	if m.ModelName == "" {
@@ -260,6 +260,35 @@ func validateModel(m modelConfig) []string {
 	}
 
 	return errs
+}
+
+// baseURLProblem explains why a configured base_url cannot be a request target,
+// or returns "" when it can.
+//
+// url.Parse on its own is not a check: it accepts nearly every string, because a
+// bare word is a valid *relative reference*. "localhost:11434" and
+// "api.example.com/v1" both parse without complaint, so a base_url missing its
+// scheme used to pass validation and resurface much later, from inside a task,
+// as "unsupported protocol scheme """ — an error that names neither the file nor
+// the line to fix. The three questions here are the ones a request will ask
+// anyway: it can be parsed, it names a scheme this client speaks, and it names a
+// host.
+func baseURLProblem(raw string) string {
+	u, err := url.Parse(raw)
+	switch {
+	case err != nil:
+		return err.Error()
+	case u.Scheme == "":
+		return "it has no scheme (expected an absolute URL such as https://api.example.com/v1)"
+	case u.Scheme != "http" && u.Scheme != "https":
+		// A host and port written as a URL parses with the host as the scheme
+		// ("localhost:11434" → scheme "localhost"), so showing the corrected
+		// form is the shortest way to say what went wrong.
+		return fmt.Sprintf("scheme %q is not http or https — for a host and port, write %q", u.Scheme, "https://"+raw)
+	case u.Host == "":
+		return "it names no host"
+	}
+	return ""
 }
 
 func (mm *modelManager) hasModels() bool {
