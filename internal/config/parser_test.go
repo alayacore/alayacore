@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -347,10 +348,12 @@ type JSONConfig struct {
 func TestParseKeyValueJSON(t *testing.T) {
 	content := `scopes: ["read", "write"]
 env: {"TOKEN": "abc123", "HOST": "localhost"}
-tags: prod,us-east
+tags: ["prod", "us-east"]
 `
 	var cfg JSONConfig
-	ParseKeyValue(content, &cfg)
+	if errs := ParseKeyValue(content, &cfg); len(errs) > 0 {
+		t.Fatalf("unexpected parse errors: %v", errs)
+	}
 
 	if len(cfg.Scopes) != 2 || cfg.Scopes[0] != "read" || cfg.Scopes[1] != "write" {
 		t.Errorf("Expected scopes [read write], got %v", cfg.Scopes)
@@ -360,6 +363,64 @@ tags: prod,us-east
 	}
 	if len(cfg.Tags) != 2 || cfg.Tags[0] != "prod" || cfg.Tags[1] != "us-east" {
 		t.Errorf("Expected tags [prod us-east], got %v", cfg.Tags)
+	}
+}
+
+// TestParseKeyValueSliceRequiresJSON pins that JSON is the only spelling a
+// slice or map field accepts. A comma-separated list used to be a second one,
+// and its fallthrough was silent and wrong: "[read, write]" became
+// ["[read", "write]"], "{TOKEN: abc}" was dropped, and a malformed
+// json.RawMessage left the field empty — all without a parse error.
+func TestParseKeyValueSliceRequiresJSON(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{"bare comma list", `tags: prod,us-east`},
+		{"unquoted bracket list", `tags: [prod, us-east]`},
+		{"unquoted object", `env: {TOKEN: abc123}`},
+		{"scalar on a slice", `tags: prod`},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg JSONConfig
+			errs := ParseKeyValue(tt.content, &cfg)
+			if len(errs) != 1 {
+				t.Fatalf("expected one parse error, got %v", errs)
+			}
+			if !strings.Contains(errs[0].String(), "invalid JSON") {
+				t.Errorf("error does not name the problem: %s", errs[0].String())
+			}
+			if cfg.Tags != nil || cfg.Env != nil {
+				t.Errorf("a rejected value must not be stored: tags=%v env=%v", cfg.Tags, cfg.Env)
+			}
+		})
+	}
+}
+
+// TestParseKeyValueRawMessageRequiresJSON covers the field that lives in
+// model.conf: reasoning_N is a json.RawMessage, so a dropped quote is a parse
+// error rather than a silently empty reasoning block.
+func TestParseKeyValueRawMessageRequiresJSON(t *testing.T) {
+	type Cfg struct {
+		Reasoning json.RawMessage `config:"reasoning_0"`
+	}
+
+	var bad Cfg
+	if errs := ParseKeyValue(`reasoning_0: {thinking:{"type":"disabled"}}`, &bad); len(errs) != 1 {
+		t.Fatalf("expected one parse error, got %v", errs)
+	}
+	if bad.Reasoning != nil {
+		t.Errorf("a rejected value must not be stored: %s", bad.Reasoning)
+	}
+
+	var good Cfg
+	if errs := ParseKeyValue(`reasoning_0: {"thinking":{"type":"disabled"}}`, &good); len(errs) > 0 {
+		t.Fatalf("unexpected parse errors: %v", errs)
+	}
+	if string(good.Reasoning) != `{"thinking":{"type":"disabled"}}` {
+		t.Errorf("raw JSON not preserved: %s", good.Reasoning)
 	}
 }
 

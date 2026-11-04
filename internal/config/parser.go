@@ -55,6 +55,15 @@ func ParseKeyValueBlocks(content string) []string {
 // Empty lines are ignored.
 // Multiple configs can be separated by "---" on its own line (see ParseKeyValueBlocks).
 //
+// A slice or map field takes JSON and nothing else:
+//
+//	scopes: ["read", "write"]
+//	args: ["-m", "jlink_mcp"]
+//	env: {"TOKEN": "abc123"}
+//
+// A slice or map value that is not JSON is a parse error; there is no second
+// spelling (a comma-separated list used to be one, and it is gone).
+//
 // Keys must match the pattern `^[a-zA-Z_][a-zA-Z0-9_-]*$` — this ensures reliable
 // key-value separation and allows values to contain colons without ambiguity.
 // Lines that don't match this pattern are reported as parse errors.
@@ -194,16 +203,21 @@ func setField(fieldIdx int, v reflect.Value, value, key string) *ParseError {
 
 	field := v.Field(fieldIdx)
 
-	// JSON array or object: try json.Unmarshal for the field type.
-	// This enables values like scopes: ["read", "write"] or env: {"KEY": "val"}.
-	if len(value) > 0 && (value[0] == '[' || value[0] == '{') {
-		if field.CanAddr() && field.Addr().CanInterface() {
-			if err := json.Unmarshal([]byte(value), field.Addr().Interface()); err == nil {
-				return nil
-			}
+	// Slice and map fields take JSON, and only JSON: a list such as
+	// scopes: ["read", "write"], an object such as env: {"KEY": "val"}, and the
+	// raw JSON of a json.RawMessage field. There is deliberately no fallback to
+	// another spelling — a value that is not JSON is reported, because the
+	// alternative (splitting it on commas) turned [read, write] into the silent
+	// garbage ["[read", "write]"], dropped a malformed object entirely, and
+	// blanked a malformed json.RawMessage without a word.
+	if k := field.Kind(); k == reflect.Slice || k == reflect.Map {
+		if !field.CanAddr() || !field.Addr().CanInterface() {
+			return &ParseError{Key: key, Value: value, Err: "field cannot hold a JSON value"}
 		}
-		// If json.Unmarshal fails, fall through to type-specific parsing
-		// so the existing comma-separated slice logic still works.
+		if err := json.Unmarshal([]byte(value), field.Addr().Interface()); err != nil {
+			return &ParseError{Key: key, Value: value, Err: `invalid JSON (expected e.g. ["a","b"] or {"k":"v"})`}
+		}
+		return nil
 	}
 
 	// time.Time
@@ -256,9 +270,6 @@ func setField(fieldIdx int, v reflect.Value, value, key string) *ParseError {
 			return &ParseError{Key: key, Value: value, Err: "invalid float"}
 		}
 		field.SetFloat(f)
-
-	case reflect.Slice:
-		setSliceField(field, value)
 	}
 
 	return nil
@@ -312,18 +323,6 @@ func unescapeQuoted(s string) string {
 		}
 	}
 	return b.String()
-}
-
-func setSliceField(field reflect.Value, value string) {
-	// Handle []string with comma-separated values
-	if field.Type().Elem().Kind() == reflect.String {
-		parts := strings.Split(value, ",")
-		slice := reflect.MakeSlice(field.Type(), len(parts), len(parts))
-		for i, part := range parts {
-			slice.Index(i).SetString(strings.TrimSpace(part))
-		}
-		field.Set(slice)
-	}
 }
 
 // parseBool converts a boolean string to its bool value.
