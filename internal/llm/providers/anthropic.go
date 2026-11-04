@@ -555,10 +555,15 @@ func (p *AnthropicProvider) handleEvent(eventType, data string, yield func(llm.S
 		p.mergeUsage(event.Usage, state)
 		state.sawMessageStop = true
 		// Release any closure still held back by a block that never closed.
+		// A consumer that stopped there has stopped: report it to the caller
+		// instead of carrying on with a stream nobody is reading, and do not
+		// yield the step's completion to it either — a yield after the consumer
+		// said stop is an iteration that was cancelled, and the range it is
+		// iterating panics on the second one.
 		if !state.deliverCloses(true, yield) {
-			return true
+			return false
 		}
-		yield(llm.StepCompleteEvent{
+		return yield(llm.StepCompleteEvent{
 			Usage:      state.getUsage(),
 			StopReason: state.stopReason,
 		}, nil)
