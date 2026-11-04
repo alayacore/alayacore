@@ -108,8 +108,21 @@ type setContextTokensEvent struct {
 func (setContextTokensEvent) taskEvent() {}
 
 // sendEvent sends a task event to the run() goroutine.
-// Blocks until the event is received. The buffered channel (capacity 64)
-// means this only blocks when run() is seriously backed up.
+//
+// It waits while the loop is behind — the channel is buffered, so a block means
+// run() is seriously backed up — and it gives up once run() has exited, which is
+// what runDoneCh closed means. After that nothing drains the channel: a sender
+// that kept waiting would hold its goroutine, and whatever it had already
+// computed, for the life of the process, and a session that is over has nowhere
+// to write what the event describes anyway.
+//
+// The exit is read from runDoneCh rather than from the session's context because
+// it is the same fact stated once: run() closes the channel as its last act, and a
+// session that was never started (a partial construction in a test) has no channel
+// to receive from, which blocks exactly as it always did.
 func (s *Session) sendEvent(ev taskEvent) {
-	s.taskEventCh <- ev
+	select {
+	case s.taskEventCh <- ev:
+	case <-s.runDoneCh:
+	}
 }
