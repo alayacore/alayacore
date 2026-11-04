@@ -21,10 +21,14 @@ func TestAnthropicMessageStopReportsAStoppedConsumer(t *testing.T) {
 
 	// Block 0 is opened and never closed, so block 1's closure cannot be
 	// delivered as it happens: it waits for message_stop to flush what is left.
-	state.createBlock(0, anthropicBlockTypeText, "", "")
-	state.createBlock(1, anthropicBlockTypeToolCall, "t1", "read_file")
+	blocker := state.createBlock(0, anthropicBlockTypeText, "", "")
+	call := state.createBlock(1, anthropicBlockTypeToolCall, "t1", "read_file")
+	if blocker.blockType != anthropicBlockTypeText || call.id != "t1" {
+		t.Fatalf("fixture: blocks are %q and %q, want a text block and tool call t1",
+			blocker.blockType, call.id)
+	}
 	state.closeBlock(1)
-	state.queueCloseReturn(1, pendingClose{blockType: anthropicBlockTypeToolCall, id: "t1"},
+	state.queueCloseReturn(1, pendingClose{blockType: call.blockType, id: call.id},
 		func(llm.StreamEvent, error) bool { return true })
 
 	consumerStopped := false

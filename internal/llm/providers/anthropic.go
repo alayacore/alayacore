@@ -558,7 +558,7 @@ func (p *AnthropicProvider) handleEvent(eventType, data string, yield func(llm.S
 		// A consumer that stopped there has stopped: report it to the caller
 		// instead of carrying on with a stream nobody is reading, and do not
 		// yield the step's completion to it either — a yield after the consumer
-		// said stop is an iteration that was cancelled, and the range it is
+		// said stop is an iteration that was canceled, and the range it is
 		// iterating panics on the second one.
 		if !state.deliverCloses(true, yield) {
 			return false
