@@ -141,10 +141,15 @@ func TestOpenAIToolResultImageIsPromoted(t *testing.T) {
 	if !ok {
 		t.Fatalf("tool content = %T, want string", msgs[2]["content"])
 	}
-	for _, want := range []string{`"status":"success"`, "[Image (image/png)]", "attached to the next message"} {
+	for _, want := range []string{"[Image (image/png)]", "attached to the next message"} {
 		if !strings.Contains(toolContent, want) {
 			t.Errorf("tool content missing %q: %s", want, toolContent)
 		}
+	}
+	// Success is the unmarked form: the content is the tool's own text, with no
+	// envelope and no failure marker, so nothing is spent on saying "fine".
+	if strings.Contains(toolContent, `"status"`) || strings.HasPrefix(toolContent, "Error: ") {
+		t.Errorf("a successful result must carry no wrapper and no marker: %s", toolContent)
 	}
 
 	promoted := contentBlocks(t, msgs[3])
@@ -335,8 +340,8 @@ func TestOpenAINoMediaAddsNoUserMessage(t *testing.T) {
 }
 
 // TestOpenAIErrorToolResultMediaPromoted: screenshots and frames can come back
-// on a failed run (a test harness returning the captured screen). The error
-// wrapper must survive and the media must still be visible.
+// on a failed run (a test harness returning the captured screen). The failure
+// marker must survive and the media must still be visible.
 func TestOpenAIErrorToolResultMediaPromoted(t *testing.T) {
 	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
 		ID:      "call-1",
@@ -344,11 +349,50 @@ func TestOpenAIErrorToolResultMediaPromoted(t *testing.T) {
 		Output:  []llm.ContentPart{&llm.ImagePart{URI: testImageURI}},
 	}))
 
-	if c := msgs[2]["content"].(string); !strings.Contains(c, `"status":"error"`) {
-		t.Errorf("error status wrapper lost: %s", c)
+	// The marker is inline and at the very start, so it covers the whole
+	// content rather than the first line: this protocol has no is_error field.
+	if c := msgs[2]["content"].(string); !strings.HasPrefix(c, "Error: ") {
+		t.Errorf("failed result lost its inline marker: %s", c)
 	}
 	if got, want := blockTypes(contentBlocks(t, msgs[3])), []string{"text", "image_url"}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("promoted block types = %v, want %v", got, want)
+	}
+}
+
+// TestOpenAIToolTextIsSentVerbatim: a tool message's content is the tool's own
+// text, unescaped and unwrapped. The form that carried the failure bit as
+// {"status":...,"data":...} cost every single result 29 characters plus an
+// escape pass over every newline, quote and backslash, and this is the
+// regression guard for that.
+func TestOpenAIToolTextIsSentVerbatim(t *testing.T) {
+	const text = "line one\nhe said \"hi\"\nC:\\tmp\\x"
+	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
+		ID: "call-1", Output: []llm.ContentPart{&llm.TextPart{Text: text}},
+	}))
+
+	got, ok := msgs[2]["content"].(string)
+	if !ok {
+		t.Fatalf("tool content = %T, want string", msgs[2]["content"])
+	}
+	if got != text {
+		t.Errorf("tool text was rewritten:\n got %q\nwant %q", got, text)
+	}
+}
+
+// TestOpenAIToolErrorMarker pins the failure marker exactly: inline, at the very
+// start, and the only addition to the text. A newline of its own, a different
+// word, or a return of the JSON envelope must all fail here — the tool's own
+// header lines ("Exit Code: 130") already open the text, so a separate marker
+// line would stack two headers with the reason second.
+func TestOpenAIToolErrorMarker(t *testing.T) {
+	msgs := captureMessages(t, toolRound(&llm.ToolOutputPart{
+		ID:      "call-1",
+		IsError: true,
+		Output:  []llm.ContentPart{&llm.TextPart{Text: "Exit Code: 130\nCommand canceled."}},
+	}))
+
+	if got, want := msgs[2]["content"].(string), "Error: Exit Code: 130\nCommand canceled."; got != want {
+		t.Errorf("tool error content = %q, want %q", got, want)
 	}
 }
 

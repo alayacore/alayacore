@@ -834,8 +834,9 @@ func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 			ToolCallID: tr.ID,
 		}
 		// Build the combined string content. A media part becomes either a
-		// pointer to the promoted copy (native types) or a summary (the rest),
-		// because this message itself can only hold text.
+		// pointer to the promoted copy (native types) or a note saying it was
+		// not delivered (the rest), because this message itself can only hold
+		// text.
 		var textParts []string
 		mediaHere := false
 		for _, cp := range tr.Output {
@@ -876,12 +877,25 @@ func openaiConvertToolOutputs(contents []llm.ContentPart) []openAIMessage {
 			}
 		}
 		combined := strings.Join(textParts, "\n")
-		data, _ := json.Marshal(combined) // string can't fail marshal
+		// Failure is marked in the text, because this protocol has no field for
+		// it: a `tool` message carries role, content (a string) and
+		// tool_call_id, and nothing else. Anthropic has tool_result.is_error;
+		// Chat Completions does not, and nor does the Responses API's
+		// function_call_output. Sending a non-standard `is_error` key is not an
+		// option either — OpenAI rejects arguments it does not recognize.
+		//
+		// Inline rather than on its own line: the text already opens with the
+		// tool's own header lines ("Exit Code: 130", "Command canceled."), so a
+		// separate "Error:" line would stack two headers with the actual reason
+		// on the second. Inline costs 7 characters on a failed result and
+		// nothing on a successful one; the form it replaces wrapped every result
+		// in {"status":...,"data":...} — 29 characters and a round of JSON
+		// escaping (every newline, quote and backslash) on every single one, for
+		// the same one bit.
 		if tr.IsError {
-			apiMsg.Content = fmt.Sprintf(`{"status":"error","data":%s}`, data)
-		} else {
-			apiMsg.Content = fmt.Sprintf(`{"status":"success","data":%s}`, data)
+			combined = "Error: " + combined
 		}
+		apiMsg.Content = combined
 		results = append(results, apiMsg)
 	}
 
