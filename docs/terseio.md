@@ -22,7 +22,7 @@ alayacore --terseio < question.txt > answer.txt
 | stdin | The entire input, read until EOF, treated as **one** message. If it starts with `:`, it is **one command** (sent as a CI frame); otherwise it is **one prompt** (inner newlines preserved, trailing newlines trimmed) |
 | stdout | Only the final assistant text answer (with a trailing newline) |
 | stderr | Errors (`[error: ...]`), notifications (`[...]`), informative command results (e.g. `[Session saved to ...]`) |
-| exit code | `0` success, `1` session or command error, `2` flag conflict (`--tool-confirm`), `130` SIGINT |
+| exit code | `0` success, `1` session or command error, `2` flag conflict (`--tool-confirm`, or a second mode flag), `130` SIGINT |
 
 **`Ctrl-C`** (SIGINT) cancels the running task through the session
 instead of killing the process: the task (and its tool processes) is

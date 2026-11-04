@@ -47,6 +47,16 @@ func TestValidate(t *testing.T) {
 			wantErr: "--terseio and --tool-confirm are mutually exclusive",
 		},
 		{
+			name:    "two adapter modes are refused rather than outranked",
+			cfg:     Settings{RawIO: true, PlainIO: true},
+			wantErr: "--rawio and --plainio are mutually exclusive",
+		},
+		{
+			name:    "three adapter modes name every one of them",
+			cfg:     Settings{RawIO: true, TerseIO: true, PlainIO: true},
+			wantErr: "--rawio and --terseio and --plainio are mutually exclusive",
+		},
+		{
 			name: "tool-confirm alone is fine (plainio answers it)",
 			cfg:  Settings{PlainIO: true, ToolConfirm: []string{"execute_command"}},
 		},
@@ -87,6 +97,22 @@ func TestValidate(t *testing.T) {
 				t.Errorf("Validate() error %q is not wrapped in ErrUsage", err)
 			}
 		})
+	}
+}
+
+// One mode at a time is what main's switch can actually run, so each of the
+// three must validate alone — and the default (no mode flag, the TUI) with them.
+// The refusal above is about combinations, not about the flags themselves.
+func TestValidateAcceptsEachModeAlone(t *testing.T) {
+	for _, cfg := range []Settings{
+		{},
+		{RawIO: true},
+		{TerseIO: true},
+		{PlainIO: true},
+	} {
+		if err := Validate(&cfg); err != nil {
+			t.Errorf("Validate(%+v) = %v, want nil", cfg, err)
+		}
 	}
 }
 

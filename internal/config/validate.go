@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // ErrUsage marks a settings inconsistency caused by how the flags were
@@ -25,6 +26,15 @@ var ErrUsage = errors.New("invalid configuration")
 //
 // Returns the first problem found, wrapped in ErrUsage.
 func Validate(s *Settings) error {
+	// One adapter mode per run. main picks the mode with a switch over the three
+	// flags, so a second one was never refused — it was quietly outranked, and
+	// the run behaved like the winner. A user piping raw frames while believing
+	// they asked for --plainio gets a session that never prints, and nothing said
+	// why.
+	if modes := requestedModes(s); len(modes) > 1 {
+		return fmt.Errorf("%w: %s are mutually exclusive — a session runs one adapter mode", ErrUsage, strings.Join(modes, " and "))
+	}
+
 	// --terseio consumes all of stdin as the prompt or command, so tool
 	// confirmations (answered via subsequent stdin lines) can never be
 	// resolved. Fail fast instead of silently declining tools mid-task.
@@ -54,6 +64,26 @@ func Validate(s *Settings) error {
 	}
 
 	return nil
+}
+
+// requestedModes names every adapter mode the settings ask for, in the order
+// main's switch considers them. It is the one place the set is enumerated, so a
+// fourth mode cannot be added to the flags and forgotten here.
+func requestedModes(s *Settings) []string {
+	var modes []string
+	for _, mode := range []struct {
+		flag string
+		on   bool
+	}{
+		{"--rawio", s.RawIO},
+		{"--terseio", s.TerseIO},
+		{"--plainio", s.PlainIO},
+	} {
+		if mode.on {
+			modes = append(modes, mode.flag)
+		}
+	}
+	return modes
 }
 
 // Prepare performs the settings' filesystem side effects, after Validate has
