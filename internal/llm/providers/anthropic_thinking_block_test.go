@@ -24,16 +24,22 @@ import (
 	"github.com/alayacore/alayacore/internal/llm/providers"
 )
 
+// wireBlock and wireMessage are the parts of the Anthropic request these tests
+// read back.
+type wireBlock struct {
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Thinking string `json:"thinking"`
+}
+
+type wireMessage struct {
+	Role    string      `json:"role"`
+	Content []wireBlock `json:"content"`
+}
+
 // anthropicRequestMessages runs one StreamMessages and returns the messages the
 // provider actually put on the wire.
-func anthropicRequestMessages(t *testing.T, history []llm.ContentPart) []struct {
-	Role    string `json:"role"`
-	Content []struct {
-		Type     string `json:"type"`
-		Text     string `json:"text"`
-		Thinking string `json:"thinking"`
-	} `json:"content"`
-} {
+func anthropicRequestMessages(t *testing.T, history []llm.ContentPart) []wireMessage {
 	t.Helper()
 
 	var body []byte
@@ -65,14 +71,7 @@ func anthropicRequestMessages(t *testing.T, history []llm.ContentPart) []struct 
 	}
 
 	var request struct {
-		Messages []struct {
-			Role    string `json:"role"`
-			Content []struct {
-				Type     string `json:"type"`
-				Text     string `json:"text"`
-				Thinking string `json:"thinking"`
-			} `json:"content"`
-		} `json:"messages"`
+		Messages []wireMessage `json:"messages"`
 	}
 	if err := json.Unmarshal(body, &request); err != nil {
 		t.Fatalf("unmarshal the request body: %v\n%s", err, body)
