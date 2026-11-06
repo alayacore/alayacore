@@ -476,7 +476,7 @@ Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in a
 
 > for requests carrying the `tools` parameter, the `reasoning_content` must be fully passed back to the API in all subsequent requests … If your code does not correctly pass back `reasoning_content`, the API will return a 400 error.
 
-This agent sends `tools` on every request, so **all** intermediate assistant messages in a multi-step tool call chain must include their reasoning text, and dropping it is a 400 rather than a quiet loss. The key that text travels under is the one declared by `reasoning_field` — `reasoning_content` by default, which is the spelling DeepSeek itself expects. (The older `deepseek-reasoner` page said the opposite — that including the field was itself a 400 — so an endpoint still serving that generation is the one case where sending it back hurts; it is worth one test before pointing `model.conf` at one.)
+This agent sends `tools` on every request except one: `--builtin-tools=` with no MCP server contributing a tool leaves the list empty, and an empty list is not sent at all (see [architecture.md](architecture.md) → "Tools"). So on the ordinary request **all** intermediate assistant messages in a multi-step tool call chain must include their reasoning text, and dropping it is a 400 rather than a quiet loss; the tool-less configuration is the one where DeepSeek ignores the field instead. The key that text travels under is the one declared by `reasoning_field` — `reasoning_content` by default, which is the spelling DeepSeek itself expects. (The older `deepseek-reasoner` page said the opposite — that including the field was itself a 400 — so an endpoint still serving that generation is the one case where sending it back hurts; it is worth one test before pointing `model.conf` at one.)
 
 ### Which key carries reasoning (`reasoning_field`)
 
@@ -535,9 +535,9 @@ Both providers pad assistant messages with an empty reasoning value — but **on
 
 This behavior is independent of the `reasoning_*` JSON blocks — it is a hardcoded message-layer convention that DeepSeek and similar providers require. Configuring `reasoning_0: {"thinking":{"type":"disabled"}}` does NOT turn off empty padding; the padding is gated solely on the reasoning level being > 0.
 
-The requirement behind the padding is the one above: every request this agent sends carries `tools`, so the reasoning of earlier assistant messages must be present, and a message that produced none gets the empty value rather than a missing key. DeepSeek's Anthropic-format endpoint states the same rule for `thinking` blocks ("preserve and pass back the assistant's complete content array, including thinking and tool-use blocks").
+The padding answers the requirement above: on a request that carries tools the reasoning of earlier assistant messages must be present, so a message that produced none still cannot be the one that drops the key. DeepSeek's Anthropic-format endpoint states the same rule for `thinking` blocks ("preserve and pass back the assistant's complete content array, including thinking and tool-use blocks"), and that is the endpoint this wire is usually pointed at.
 
-- **Anthropic provider** (`anthropicConvertContents`): prepends an empty `{"type":"thinking","thinking":""}` block to every assistant message that lacks one. The thinking block must come first per Anthropic's API.
+- **Anthropic provider** (`anthropicConvertContents`): prepends an empty `{"type":"thinking","thinking":""}` block to every assistant message that lacks one — no `signature`, see below. The thinking block must come first per Anthropic's API.
 - **OpenAI provider** (`openaiConvertContents`): extracts reasoning text via `openaiExtractReasoning()` and sets the reasoning key — `reasoning_field`, default `reasoning_content` (`openAIMessage.MarshalJSON` performs the redirect) — on every assistant message, even as an empty string when no reasoning text exists.
 
 Both are conditional on reasoning mode being enabled. When reasoning mode is off, no padding is added.
