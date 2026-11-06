@@ -6,19 +6,17 @@ package providers
 // 1. DUAL SYSTEM PROMPT: --system flag appends extra system prompt rather than
 //    replacing default. Both prompts become separate system messages.
 //
-// 2. EMPTY THINKING BLOCK PADDING: The replay requirement is DeepSeek's, where
-//    the field is OpenAI-side `reasoning_content`; on this wire the same content
-//    is a `thinking` block, so it shows up as: the assistant messages between two
-//    user messages must carry their thinking back. It holds for a request that
-//    carries tools, and this client sends no `signature` with the block — the
-//    Anthropic-format endpoints this wire is spoken by carry none
-//    (docs/providers.md → "Sending reasoning back in tool-call chains", and the
-//    signature note under "Empty reasoning block padding — implementation").
-//    When reasoning mode is enabled, an empty "thinking" block is prepended to
-//    every assistant message that lacks one, so that assistant messages
-//    containing only tool calls still satisfy this requirement.
+// 2. THINKING BLOCKS ARE SENT AS THEY ARE: reasoning becomes a `thinking` block,
+//    in the order the record holds it, and an assistant message that produced no
+//    reasoning gets no block. An earlier version padded every assistant message
+//    with an empty one, as a workaround for a DeepSeek V4 failure of 2026-04-24;
+//    every Anthropic-format endpoint this tree can reach (DeepSeek, Qwen,
+//    MiniMax) now accepts an assistant message with no thinking block at all, and
+//    inventing one claims the model thought nothing. No `signature` is sent
+//    either — see docs/providers.md → "Reasoning in an assistant message —
+//    implementation" for what those endpoints accept and what this one does not
+//    establish.
 //    The thinking block must come first per Anthropic's API.
-//    Conditional on reasoning mode to avoid wasting tokens when thinking is off.
 //    Unlike the OpenAI provider, nothing here is configurable: this wire has one
 //    shape (gotcha 7 in openai.go covers the OpenAI-side naming).
 //
@@ -40,7 +38,6 @@ import (
 	"iter"
 	"sort"
 
-	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/sse"
 )
@@ -232,7 +229,7 @@ func (p *AnthropicProvider) StreamMessages(
 	contents = llm.FitImagesForSend(contents)
 
 	// Convert messages to Anthropic format
-	apiMessages := anthropicConvertContents(contents, p.reasoningLevel)
+	apiMessages := anthropicConvertContents(contents)
 
 	// Convert tools to Anthropic format
 	apiTools := make([]anthropicTool, 0, len(tools))
@@ -769,7 +766,7 @@ func groupForAnthropic(contents []llm.ContentPart) [][]llm.ContentPart {
 //   - llm.ReasoningPart  → anthropicContentBlock{Type: "thinking"}  (domain "reasoning" → wire "thinking")
 //   - llm.ToolInputPart   → anthropicContentBlock{Type: "tool_use"}
 //   - llm.ToolOutputPart → anthropicContentBlock{Type: "tool_result"} (role remapped to "user")
-func anthropicConvertContents(contents []llm.ContentPart, reasoningLevel int) []anthropicMessage {
+func anthropicConvertContents(contents []llm.ContentPart) []anthropicMessage {
 	chunks := groupForAnthropic(contents)
 	if len(chunks) == 0 {
 		return nil
@@ -793,24 +790,6 @@ func anthropicConvertContents(contents []llm.ContentPart, reasoningLevel int) []
 		for _, part := range chunk {
 			if block := anthropicPartToBlock(part); block != nil {
 				apiMsg.Content = append(apiMsg.Content, *block)
-			}
-		}
-
-		// Empty thinking block padding when reasoning is enabled
-		if reasoningLevel > config.ReasoningLevelOff && role == llm.RoleAssistant {
-			hasThinking := false
-			for _, block := range apiMsg.Content {
-				if block.Type == anthropicBlockTypeThinking {
-					hasThinking = true
-					break
-				}
-			}
-			if !hasThinking {
-				emptyStr := ""
-				apiMsg.Content = append([]anthropicContentBlock{{
-					Type:     anthropicBlockTypeThinking,
-					Thinking: &emptyStr,
-				}}, apiMsg.Content...)
 			}
 		}
 

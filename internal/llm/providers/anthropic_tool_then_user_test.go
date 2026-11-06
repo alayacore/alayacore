@@ -26,7 +26,7 @@ func TestAnthropicGroupsToolResultWithFollowingUserText(t *testing.T) {
 	prompt := &llm.TextPart{Text: "summarize the conversation"}
 	prompt.SetRole(llm.RoleUser)
 
-	msgs := anthropicConvertContents([]llm.ContentPart{text, toolUse, toolResult, prompt}, 0)
+	msgs := anthropicConvertContents([]llm.ContentPart{text, toolUse, toolResult, prompt})
 	if len(msgs) != 2 {
 		t.Fatalf("messages = %d, want 2 (assistant text+tool_use, merged user): %+v", len(msgs), msgs)
 	}
@@ -55,7 +55,7 @@ func TestAnthropicSplitsAssistantAndUser(t *testing.T) {
 	user := &llm.TextPart{Text: "next question"}
 	user.SetRole(llm.RoleUser)
 
-	msgs := anthropicConvertContents([]llm.ContentPart{asst, user}, 0)
+	msgs := anthropicConvertContents([]llm.ContentPart{asst, user})
 	if len(msgs) != 2 {
 		t.Fatalf("messages = %d, want 2", len(msgs))
 	}
