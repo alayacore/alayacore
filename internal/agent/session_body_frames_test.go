@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 // What a session file's body may hold. It is one frame per line, so a file can be
@@ -24,7 +25,7 @@ func writeSessionFile(t *testing.T, lines ...string) string {
 	// number would have to be edited at every bump, and a test about frame shape
 	// should not fail because the protocol moved.
 	raw := "---\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n" +
-		"message_version: " + strconv.Itoa(messageVersion) + "\nreasoning_level: 1\n---\n" +
+		"message_version: " + strconv.Itoa(protocol.MessageVersion) + "\nreasoning_level: 1\n---\n" +
 		strings.Join(lines, "\n") + "\n"
 	path := filepath.Join(t.TempDir(), "session.alaya")
 	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
@@ -77,7 +78,7 @@ func TestLoadSession_ConsecutiveContentFramesLoad(t *testing.T) {
 // frontmatter — parsed line by line — has to as well, or the file is unloadable
 // with a message about a missing delimiter that says nothing about line endings.
 func TestLoadSession_ReadsCRLF(t *testing.T) {
-	raw := "---\r\ncreated_at: 2026-01-01T00:00:00Z\r\nmessage_version: " + strconv.Itoa(messageVersion) + "\r\n---\r\n" +
+	raw := "---\r\ncreated_at: 2026-01-01T00:00:00Z\r\nmessage_version: " + strconv.Itoa(protocol.MessageVersion) + "\r\n---\r\n" +
 		"UX{\"type\":\"text\",\"text\":\"hello\"}\r\n"
 	path := filepath.Join(t.TempDir(), "crlf.alaya")
 	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {

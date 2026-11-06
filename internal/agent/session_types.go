@@ -108,26 +108,11 @@ type themeListMsg struct {
 
 func (themeListMsg) SystemMsgType() string { return string(protocol.MsgTypeThemeList) }
 
-// messageVersion is the adapter protocol version: the frame format adapters
-// speak — the tags, the SM types, and the states those carry. It is broadcast
-// as the first TagSystemMsg frame (protocol.MessageVersionMsg) so an out-of-process
-// client can check compatibility before reading anything else.
-//
-// It moves for additive changes too — a new tag, a new state, a new command —
-// because an adapter that knows only the older format has no other way to learn
-// that the newer one exists.
-//
-// Session files record the number in their frontmatter and loading demands an
-// exact match (see parseSessionMeta). That is a side effect of carrying the
-// protocol version in the file, not a promise about the file's contents, and
-// nothing here migrates an older file: editing the field to load one anyway is
-// the user's call.
-//
-// What each number means — what moved at each generation, and whether a session
-// file needs converting — is docs/architecture.md's "Wire version history".
-const messageVersion = 18
-
 // sessionMeta is the frontmatter metadata.
+//
+// MessageVersion is the adapter protocol version this file was written by
+// (protocol.MessageVersion says what the number means); parseSessionMeta accepts
+// nothing but that one number.
 type sessionMeta struct {
 	CreatedAt      time.Time `config:"created_at"`
 	UpdatedAt      time.Time `config:"updated_at"`

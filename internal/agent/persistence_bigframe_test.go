@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 // TestLoadSessionLargeToolResultFrame is a regression guard for the bug where
@@ -33,7 +34,7 @@ func TestLoadSessionLargeToolResultFrame(t *testing.T) {
 	}
 
 	data := &sessionData{
-		sessionMeta: sessionMeta{MessageVersion: messageVersion, UpdatedAt: time.Now()},
+		sessionMeta: sessionMeta{MessageVersion: protocol.MessageVersion, UpdatedAt: time.Now()},
 		Contents:    contents,
 	}
 

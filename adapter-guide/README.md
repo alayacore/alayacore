@@ -68,6 +68,9 @@ parsing anything else, because a core speaking a different version may use tags
 this document does not define, and an older client has no other way to learn that
 a newer core is there.
 
+`alayacore --version` prints the same number without starting a session — the
+check for tooling that needs it before a frame exists.
+
 It moves for additive changes too. A new tag, a new state, a new command: each is
 something an adapter may start relying on, and the number is where it finds out
 that it can.

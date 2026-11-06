@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/sessionmigrate"
 )
 
@@ -69,7 +70,7 @@ func TestMigrateV13SessionLoadsAsCurrent(t *testing.T) {
 	}
 	migrated := bytes.Replace(v15,
 		[]byte("message_version: 15"),
-		[]byte("message_version: "+strconv.Itoa(messageVersion)), 1)
+		[]byte("message_version: "+strconv.Itoa(protocol.MessageVersion)), 1)
 	if bytes.Equal(migrated, v15) {
 		t.Fatalf("the number bump changed nothing; the frontmatter no longer says message_version: 15")
 	}

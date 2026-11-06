@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/config"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 // --- EscapeQuoted tests ---
@@ -56,7 +57,7 @@ func TestFormatRuntimeConfig_RoundTrip(t *testing.T) {
 
 func TestFormatFrontmatter_RoundTrip(t *testing.T) {
 	meta := sessionMeta{
-		MessageVersion: messageVersion,
+		MessageVersion: protocol.MessageVersion,
 		ActiveModel:    `model "name" \\ thing`,
 		ReasoningLevel: 1,
 		ContextTokens:  12345,
@@ -126,7 +127,7 @@ func TestRuntimeManager_NewlineInModel_RoundTrip(t *testing.T) {
 // Verify formatFrontmatter doesn't produce broken output for special chars
 func TestFormatFrontmatter_NoBrokenOutput(t *testing.T) {
 	meta := sessionMeta{
-		MessageVersion: messageVersion,
+		MessageVersion: protocol.MessageVersion,
 		ActiveModel:    "has\nnewlines",
 		ReasoningLevel: 1,
 	}

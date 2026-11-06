@@ -188,7 +188,10 @@ func (s *Session) sendSystemInfo(kind systemInfoKind) {
 }
 
 func (s *Session) sendMessageVersionMsg() {
-	s.writeSystemMsg(protocol.MessageVersionMsg{MessageVersion: messageVersion, CoreVersion: version.Version})
+	s.writeSystemMsg(protocol.MessageVersionMsg{
+		MessageVersion: protocol.MessageVersion,
+		CoreVersion:    version.Version,
+	})
 }
 
 func (s *Session) sendTaskMsg() {

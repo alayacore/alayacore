@@ -183,7 +183,7 @@ func registerFlags(fs *flag.FlagSet) *flagValues {
 	}
 
 	// Core
-	f.showVersion = fs.Bool("version", false, "Show version information")
+	f.showVersion = fs.Bool("version", false, "Print the core version and the adapter protocol version, one per line, and exit")
 	f.rawIO = fs.Bool("rawio", false, "Use raw frame stdin/stdout mode instead of terminal UI (pipe frames directly)")
 	f.terseIO = fs.Bool("terseio", false, "Read all stdin as one prompt or command; print only the final answer")
 	f.plainIO = fs.Bool("plainio", false, "Use plain stdin/stdout mode instead of terminal UI")

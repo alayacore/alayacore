@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 // ============================================================================
@@ -41,7 +42,7 @@ func (s *Session) saveContentToFileWithContext(path string, contents []llm.Conte
 		CreatedAt:      s.CreatedAt,
 		UpdatedAt:      time.Now(),
 		ActiveModel:    s.activeModelName(),
-		MessageVersion: messageVersion,
+		MessageVersion: protocol.MessageVersion,
 		ReasoningLevel: reasoningLevel,
 		ContextTokens:  contextTokens,
 		VideoFPS:       videoFPS,

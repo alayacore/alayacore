@@ -96,10 +96,10 @@ import (
 // batch, because the whole queue is spliced or discarded at once (takeSteering
 // drains it), so there is never a partial delivery to correlate.
 //
-// The type was additive, but messageVersion moved 12 → 13 with it regardless
-// (the version moves for additive changes; see messageVersion). Session files
-// record that number and load only on an exact match, so an older file must be
-// edited to load — see parseSessionMeta.
+// The type was additive, but the protocol version moved 12 → 13 with it
+// regardless (protocol.MessageVersion moves for additive changes too). Session
+// files record that number and load only on an exact match, so an older file
+// must be edited to load — see parseSessionMeta.
 
 // maxSteeringParts bounds the queue. A prompt arriving with a task in flight is
 // accepted only while there is room, so a client that sends without reading

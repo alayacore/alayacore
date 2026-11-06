@@ -14,6 +14,7 @@ import (
 
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/wire"
 )
 
@@ -531,7 +532,7 @@ func TestDisplayMessagesWithToolCalls(t *testing.T) {
 	sessionData := &sessionData{
 		Contents: contents,
 		sessionMeta: sessionMeta{
-			MessageVersion: messageVersion,
+			MessageVersion: protocol.MessageVersion,
 			UpdatedAt:      time.Now(),
 		},
 	}
@@ -764,7 +765,7 @@ func TestFrameFormatRecursionProtection(t *testing.T) {
 func sessionFrontmatter(extra ...string) []byte {
 	lines := []string{
 		"---",
-		"message_version: " + strconv.Itoa(messageVersion),
+		"message_version: " + strconv.Itoa(protocol.MessageVersion),
 		"created_at: 2024-01-15T10:30:00Z",
 		"updated_at: 2024-01-15T10:30:00Z",
 	}
@@ -932,8 +933,8 @@ func TestLoadSessionVersionValid(t *testing.T) {
 		t.Fatalf("parseSessionData failed: %v", err)
 	}
 
-	if data.MessageVersion != messageVersion {
-		t.Errorf("expected message_version=%d, got %d", messageVersion, data.MessageVersion)
+	if data.MessageVersion != protocol.MessageVersion {
+		t.Errorf("expected message_version=%d, got %d", protocol.MessageVersion, data.MessageVersion)
 	}
 }
 

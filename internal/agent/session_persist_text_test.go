@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 )
 
 // TestSessionSavePreservesTextWithToolCalls verifies that text content parts
@@ -41,7 +42,7 @@ func TestSessionSavePreservesTextWithToolCalls(t *testing.T) {
 
 	data := &sessionData{
 		sessionMeta: sessionMeta{
-			MessageVersion: messageVersion,
+			MessageVersion: protocol.MessageVersion,
 		},
 		Contents: contents,
 	}

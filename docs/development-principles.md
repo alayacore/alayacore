@@ -82,8 +82,8 @@ copy of the shape. The two theme payloads are the exception, for the reason
 the tool layer, which reads frames in its own tests).
 
 ```
-internal/protocol/  ← System-message payloads and their decoder, tool data
-                      structures, ModelInfo
+internal/protocol/  ← System-message payloads and their decoder, the protocol
+                      version (MessageVersion), tool data structures, ModelInfo
 internal/wire/      ← frame tags, encoding/decoding
 internal/lines/     ← splitting a byte stream into lines (the frame boundary)
 internal/sse/       ← reading Server-Sent Events from a stream (both the

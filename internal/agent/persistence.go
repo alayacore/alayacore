@@ -17,11 +17,12 @@ import (
 	"github.com/alayacore/alayacore/internal/atomicfile"
 	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/wire"
 )
 
 // errSessionVersionMismatch is returned when a session file has a version
-// that does not match messageVersion and cannot be loaded.
+// that does not match protocol.MessageVersion and cannot be loaded.
 var errSessionVersionMismatch = errors.New("session file version mismatch")
 
 // loadSession loads a session from a file.
@@ -119,10 +120,15 @@ func parseSessionMeta(frontmatter string) (sessionMeta, error) {
 		return meta, fmt.Errorf("session frontmatter has parse errors: %v", errs)
 	}
 
-	// Check message format version — must match exactly.
-	if meta.MessageVersion != messageVersion {
+	// The protocol version must match exactly: the number says which vocabulary
+	// and framing wrote the file, and a reader that guessed would be reading a
+	// file it was never written for. Converting an older file is editing its
+	// frontmatter line — the user's call; nothing here migrates — and
+	// docs/architecture.md's "Wire version history" says what each generation
+	// moved.
+	if meta.MessageVersion != protocol.MessageVersion {
 		return meta, fmt.Errorf("%w: got %d, expected %d",
-			errSessionVersionMismatch, meta.MessageVersion, messageVersion)
+			errSessionVersionMismatch, meta.MessageVersion, protocol.MessageVersion)
 	}
 
 	// Default reasoning_level to 1 (normal) when the key is absent.

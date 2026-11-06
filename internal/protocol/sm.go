@@ -129,11 +129,29 @@ type SteeringMsg struct {
 
 func (SteeringMsg) SystemMsgType() string { return string(MsgTypeSteering) }
 
+// MessageVersion is the adapter protocol version: the frame format adapters
+// speak — the tags, the SM types, and the states and the commands those carry.
+//
+// Three places report it, all of them reading this constant: the version frame
+// (MessageVersionMsg) is the first TagSystemMsg of a session, so a client can
+// check compatibility before reading anything else; `--version` prints it, so a
+// check needs no session at all; and a session file's frontmatter records it,
+// where the loader demands an exact match (agent's parseSessionMeta) — a side
+// effect of the file carrying the protocol version, not a statement about the
+// file's contents.
+//
+// It moves for additive changes too — a new tag, a new state, a new command —
+// because an adapter that knows only the older format has no other way to learn
+// that the newer one exists. What moved at each generation, and whether
+// converting a session file takes more than editing that line, is
+// docs/architecture.md's "Wire version history".
+const MessageVersion = 18
+
 // MessageVersionMsg carries the adapter protocol version and the alayacore
 // application version (type "version"). It is the first TagSystemMsg frame of a
 // session, so a client can check format compatibility and identify the core
-// version before reading anything else. See the agent's messageVersion for what
-// the number means and when it moves.
+// version before reading anything else. See MessageVersion for what the number
+// means and when it moves.
 type MessageVersionMsg struct {
 	MessageVersion int    `json:"message_version"`
 	CoreVersion    string `json:"core_version"`

@@ -76,7 +76,7 @@ export ALAYACORE_SHELL=zsh
 | `--terseio` | `false` | Read all of stdin as one prompt (or one command if it starts with `:`) and print only the final answer (stdout stays clean; errors go to stderr). Incompatible with `--tool-confirm` |
 | `--rawio` | `false` | Raw frame stdin/stdout mode — pipe frames directly between agent and controlling process. Mutually exclusive with `--terseio`/`--plainio` |
 | `--debug-log` | `""` | Debug log directory (`.` = CWD, or any path; omitted = disabled). Enables both API and MCP debug logging. Each run writes its own `*-<n>.log`; once 1000 are present the oldest is reused, so a long-lived directory stays bounded instead of blocking the next start. |
-| `--version` | — | Print version and exit |
+| `--version` | — | Print the core version and the adapter protocol version (`message version`, the number a session file's frontmatter and the first frame carry — see [architecture.md](architecture.md#session-persistence)), one per line, and exit |
 | `--help` | — | Print help and exit |
 
 ## Examples

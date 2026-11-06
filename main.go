@@ -10,6 +10,7 @@ import (
 	"github.com/alayacore/alayacore/internal/adapters/terseio"
 	"github.com/alayacore/alayacore/internal/app"
 	"github.com/alayacore/alayacore/internal/config"
+	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/tools"
 	"github.com/alayacore/alayacore/internal/version"
 )
@@ -22,8 +23,14 @@ func main() {
 	// turn a version request into an error, and Validate has a filesystem side
 	// effect — it creates the --debug-log directory — which must not happen for
 	// a command whose only job is to print a string.
+	//
+	// Two numbers, one per line: the core version and the adapter protocol
+	// version. They are the pair the first system message of a session carries,
+	// and printing both answers "which build is this, and what can it speak"
+	// without starting anything.
 	if cfg.ShowVersion {
 		fmt.Printf("alayacore version %s\n", version.Version)
+		fmt.Printf("message version %d\n", protocol.MessageVersion)
 		os.Exit(0)
 	}
 

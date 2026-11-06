@@ -304,7 +304,7 @@ func (s *Session) HasRejected() bool { return s.modelService.HasRejected() }
 
 // LoadOrNewSession loads a session from file or creates a new one.
 // Returns an error if the session file exists but has an incompatible version
-// (version must match messageVersion exactly).
+// (the version must match protocol.MessageVersion exactly).
 // A missing session file is the normal first-run case and is silent.
 // If the session file exists but fails to load for other reasons (corrupt data,
 // permissions), an error is printed to stderr and a new session is created.
@@ -385,8 +385,8 @@ func buildSession(cfg SessionConfig, data *sessionData) *Session {
 	}
 	if data != nil {
 		// History IDs are re-issued in record order on load, so the counter
-		// resumes past the restored contents (see messageVersion's note on why a
-		// file carries no ids).
+		// resumes past the restored contents (a file carries no ids; see
+		// docs/architecture.md's Session Persistence for why).
 		s.ContextTokens = data.ContextTokens
 		s.histCounter = uint64(len(s.Contents))
 	}
