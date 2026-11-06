@@ -13,9 +13,9 @@ package providers
 //    every Anthropic-format endpoint this tree can reach (DeepSeek, Qwen,
 //    MiniMax) now accepts an assistant message with no thinking block at all, and
 //    inventing one claims the model thought nothing. No `signature` is sent
-//    either — see docs/providers.md → "Reasoning in an assistant message —
-//    implementation" for what those endpoints accept and what this one does not
-//    establish.
+//    either, which is a decision of its own (docs/internal/signature-removal.md);
+//    what the compatible endpoints accept is in docs/providers.md → "Reasoning in
+//    an assistant message — implementation".
 //    The thinking block must come first per Anthropic's API.
 //    Unlike the OpenAI provider, nothing here is configurable: this wire has one
 //    shape (gotcha 7 in openai.go covers the OpenAI-side naming).
@@ -90,9 +90,9 @@ type anthropicContentBlock struct {
 	Content    any    `json:"content,omitempty"`
 	IsError    bool   `json:"is_error,omitempty"`
 
-	// For thinking (extended thinking)
-	// Pointer so we can emit `"thinking": ""` (DeepSeek requires empty thinking block)
-	// vs. omitting the field on non-thinking blocks.
+	// For thinking (extended thinking): a pointer so a reasoning part whose text
+	// is empty still emits `"thinking": ""`, while every non-thinking block omits
+	// the field entirely.
 	Thinking *string `json:"thinking,omitempty"`
 
 	// For image

@@ -80,8 +80,15 @@ blindly, binding your message history to their platform.
 - The switch in `handleContentDelta` has no case for `"signature_delta"`,
   so these events are a no-op.
 - No signature data is included when sending history back to any API.
-- Anthropic, DeepSeek, GLM, MiniMax, and Ollama all work correctly
-  without it.
+- Every Anthropic-format endpoint this tree can reach — DeepSeek's, Qwen's
+  and MiniMax's `/anthropic` — accepts history with no `signature`, and in
+  fact accepts one that is deliberately fake: none of them validates the
+  field at all (measured 2026-11; the probe table is in
+  [providers.md](../providers.md#sending-reasoning-back-in-tool-call-chains)).
+- Anthropic's own API is the one endpoint not tested here. Its
+  documentation asks for thinking blocks back "complete and unmodified",
+  so a real-Anthropic user may see the rejection first. That is the
+  scenario the last section is about.
 
 If Anthropic ever enforces signature validation, users will see an API
 error and can re-evaluate at that point. For now, openness wins over
