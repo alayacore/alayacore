@@ -35,8 +35,13 @@ func (invertedArrivalProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
 //
 // This walks the whole way: a cut step, through llm.Agent, through the task's
 // publish path, into the file, and back out through the loader.
+//
+// The step budget is one, so the cut step is the whole task and the record below
+// is what that one step left. (A cut step is otherwise resumed rather than
+// ended — see llm/agent_retry_test.go for that behavior; this test is about the
+// order of what a step recorded, so a second step would only repeat the answer.)
 func TestSessionFileKeepsProtocolOrderForCutStep(t *testing.T) {
-	agent := llm.NewAgent(llm.AgentConfig{Provider: invertedArrivalProvider{}, MaxSteps: 2})
+	agent := llm.NewAgent(llm.AgentConfig{Provider: invertedArrivalProvider{}, MaxSteps: 1})
 	session := &Session{
 		sessionConfig: sessionConfig{
 			modelService:  &modelService{agent: agent},

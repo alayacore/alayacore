@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"iter"
 	"strings"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/protocol"
 	"github.com/alayacore/alayacore/internal/wire"
+	"github.com/alayacore/alayacore/internal/wiretest"
 )
 
 type stepResponse struct {
@@ -299,5 +301,151 @@ func TestRunTaskKeepsStreamedContentOnPanic(t *testing.T) {
 	want := "reasoning:a thought,text:half an answ"
 	if joined := strings.Join(got, ","); joined != want {
 		t.Errorf("history after the panic = [%s], want [%s]", joined, want)
+	}
+}
+
+// cutStreamProvider answers the first request by streaming part of an answer and
+// then losing the connection, and answers the continuation — the request whose
+// history carries the boundary's "Continue" — in full. It is the shape a session
+// sees when a provider goes away mid-answer, the one that used to end the task
+// with nothing but "unexpected EOF" on screen.
+type cutStreamProvider struct {
+	calls    int
+	requests [][]llm.ContentPart
+}
+
+func (p *cutStreamProvider) StreamMessages(_ context.Context, history []llm.ContentPart, _ []llm.ToolDefinition, _, _ string) (iter.Seq2[llm.StreamEvent, error], error) {
+	p.calls++
+	p.requests = append(p.requests, append([]llm.ContentPart(nil), history...))
+	continued := false
+	for _, part := range history {
+		if tp, ok := part.(*llm.TextPart); ok && tp.Text == "Continue" {
+			continued = true
+		}
+	}
+	return func(yield func(llm.StreamEvent, error) bool) {
+		if !continued {
+			if !yield(llm.TextDeltaEvent{Delta: "half an answer", Key: "block:0"}, nil) {
+				return
+			}
+			yield(nil, io.ErrUnexpectedEOF)
+			return
+		}
+		if !yield(llm.TextDeltaEvent{Delta: "the rest", Key: "block:0"}, nil) {
+			return
+		}
+		if !yield(llm.TextCompleteEvent{Key: "block:0"}, nil) {
+			return
+		}
+		yield(llm.StepCompleteEvent{Usage: llm.Usage{InputTokens: 10, OutputTokens: 5}}, nil)
+	}, nil
+}
+
+func (p *cutStreamProvider) SetReasoningLevel(_ int)                       {}
+func (p *cutStreamProvider) SetReasoningConfigs(_ map[int]json.RawMessage) {}
+
+// smTexts returns the text of every SM frame of one type in captured output, in
+// write order.
+func smTexts(t *testing.T, out, msgType string) []string {
+	t.Helper()
+	var texts []string
+	r := strings.NewReader(out)
+	for {
+		tag, value, err := wiretest.NextFrame(r)
+		if err != nil {
+			return texts
+		}
+		if tag != wire.TagSystemMsg {
+			continue
+		}
+		env, err := protocol.ParseSystemMsg(value)
+		if err != nil || env.Type != msgType {
+			continue
+		}
+		var m struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(env.Data, &m) != nil {
+			continue
+		}
+		texts = append(texts, m.Text)
+	}
+}
+
+// A cut stream mid-task is resumed without the user: the salvage stays in
+// history, the step boundary appends the same "Continue" :continue would — with a
+// history ID, echoed like any part added at a boundary — and the task finishes
+// instead of failing. This is the session half of llm.Agent.resumeStep, and the
+// half that makes the continuation a well-formed request rather than prefill.
+func TestRunTaskResumesACutStream(t *testing.T) {
+	provider := &cutStreamProvider{}
+	agent := llm.NewAgent(llm.AgentConfig{Provider: provider, MaxSteps: 10})
+	out := &syncOutput{}
+	session := &Session{
+		sessionConfig: sessionConfig{
+			modelService:  &modelService{agent: agent},
+			SessionConfig: SessionConfig{NoDelta: true, Output: out},
+		},
+		sharedState: sharedState{histCounter: 500, outputBroken: atomic.Bool{}},
+		runState:    runState{taskEventCh: make(chan taskEvent, 20)},
+	}
+	session.Contents = []llm.ContentPart{
+		&llm.TextPart{Text: "hi", ContentPartMeta: llm.ContentPartMeta{Role: llm.RoleUser}},
+	}
+
+	runOneTask(t, session, []llm.ContentPart{&llm.TextPart{Text: "do it"}})
+
+	if provider.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (the cut step, then its continuation)", provider.calls)
+	}
+	got := make([]string, 0, len(session.Contents))
+	var continueID uint64
+	for _, p := range session.Contents {
+		tp, ok := p.(*llm.TextPart)
+		if !ok {
+			continue
+		}
+		got = append(got, string(p.GetRole())+":"+tp.Text)
+		if tp.Text == "Continue" {
+			continueID = p.GetHistoryID()
+		}
+	}
+	want := "user:hi,user:do it,assistant:half an answer,user:Continue,assistant:the rest"
+	if joined := strings.Join(got, ","); joined != want {
+		t.Fatalf("contents after the resume = %s, want %s", joined, want)
+	}
+	if countText(session.Contents, "half an answer") != 1 {
+		t.Errorf("the partial answer appears %d times, want 1 (a resume keeps it, it does not re-send it)",
+			countText(session.Contents, "half an answer"))
+	}
+	// The Continue part is a part like any other: numbered, and echoed under the
+	// ID the adapter now holds a window for.
+	if continueID == 0 {
+		t.Fatal("the Continue part was never numbered")
+	}
+	var echoed bool
+	for _, id := range echoedUserIDs(t, out.String()) {
+		if id == wireID(continueID) {
+			echoed = true
+		}
+	}
+	if !echoed {
+		t.Errorf("the adapter was never shown the Continue part (id %d)", continueID)
+	}
+
+	// Announced before the wait, because words the user did not type have to be
+	// explained where they appear; and no failure, because the task landed.
+	notices := smTexts(t, out.String(), string(protocol.MsgTypeNotify))
+	var announced bool
+	for _, n := range notices {
+		if strings.HasPrefix(n, "provider stream was cut off — retrying in ") {
+			announced = true
+		}
+	}
+	if !announced {
+		t.Errorf("notices = %v, want one announcing the resume", notices)
+	}
+	if errs := smTexts(t, out.String(), string(protocol.MsgTypeError)); len(errs) != 0 {
+		t.Errorf("errors = %v, want none: the continuation finished the task", errs)
 	}
 }

@@ -8,16 +8,24 @@ package llm
 // idempotent — it cannot duplicate content, re-run a tool whose side effects
 // already happened, or pollute history. Two failures meet the condition: a
 // request that failed inside Provider.StreamMessages, and a stream that ended
-// with an error before it recorded anything (streamBreakError). An error that
-// arrives once a block has been opened may follow content the user already
-// watched stream in, so it is surfaced as-is rather than retried.
+// with an error before it recorded anything (streamBreakError).
 //
-// The agent drives the loop (see sendWithRetry in agent.go) because it is the
-// layer that can tell the adapter what is happening, through
-// StreamCallbacks.OnRetry. A non-200 response contributes a typed *APIError;
-// a transport failure is decided by whether the request reached the transport
-// at all and whether a retry could change the answer. Either way the decision is
-// structural, never a string match.
+// An error that arrives once a block has been opened may follow content the user
+// already watched stream in, so it is never re-sent (streamCutError). It is not
+// thrown away either: the step is *resumed* — the salvage stays in history, the
+// caller's step boundary makes the next request well-formed, and the model is
+// asked to carry on. That is the move `:continue` makes on the user's behalf, and
+// the agent makes it automatically (see resumeStep in agent.go).
+//
+// One arrival is outside all of this: an error that comes *after* the step's
+// terminal event is neither re-sent nor resumed. The step finished, so the error
+// is its epilogue, and the step simply lands (see streamEvents).
+//
+// The agent drives both loops because it is the layer that can tell the adapter
+// what is happening, through StreamCallbacks.OnRetry. A non-200 response
+// contributes a typed *APIError; a transport failure is decided by whether the
+// request reached the transport at all and whether a retry could change the
+// answer. Either way the decision is structural, never a string match.
 
 import (
 	"context"
@@ -60,11 +68,35 @@ type streamBreakError struct{ err error }
 func (e *streamBreakError) Error() string { return e.err.Error() }
 func (e *streamBreakError) Unwrap() error { return e.err }
 
+// streamCutError marks a provider stream that ended with an error *after* it had
+// already recorded content: the block it was in the middle of, or the ones it
+// delivered before that.
+//
+// It is streamBreakError's mirror, and the pair is the whole answer to "what can
+// be done with this failure". A break recorded nothing, so the attempt is re-sent;
+// a cut recorded content the user has already watched and history already holds,
+// so nothing may be re-sent — the step is resumed instead, which is the user's own
+// `:continue` without the human (Agent.resumeStep, and docs/error-handling.md →
+// "A Cut Stream Is Resumed, Not Re-sent"). The type exists because that difference
+// is a fact the record has and the error does not: a stream failure carries no
+// status and never arrives inside a *url.Error, so no classifier could recover it.
+//
+// It prints as the error it wraps, so a step that outlives the resume budget is
+// reported in the provider's own words.
+type streamCutError struct{ err error }
+
+func (e *streamCutError) Error() string { return e.err.Error() }
+func (e *streamCutError) Unwrap() error { return e.err }
+
 // RetryNotice describes one re-send that is about to happen. It exists so the
 // adapter can show that a rate limit (or another transient failure) is being
 // handled, instead of the task looking like a hang. It is informational: the
 // task has not failed, and if every retry is exhausted the ordinary error path
 // reports the final failure.
+//
+// A step that was cut mid-answer is announced through the same notice, because it
+// is the same wait for the same reason; Reason is where the difference reaches the
+// user (see reasonStreamCut).
 type RetryNotice struct {
 	Retry      int           // 1-based retry number — the attempt about to be made
 	MaxRetries int           // total retries allowed for this step
@@ -81,8 +113,10 @@ var (
 )
 
 // IsRetryable reports whether err is a transient provider failure that may be
-// safely re-sent. Only failures raised before anything streamed reach this
-// function, so re-sending cannot duplicate content.
+// safely re-sent. Only a failure raised before anything streamed can be, so a
+// streamCutError — the marker for a step that already delivered content — is
+// refused by name rather than by luck: a cut wrapped in a *url.Error would
+// otherwise pass the transport rule below and duplicate what the user watched.
 //
 // A status is an allowlist, and it has to be: it says what the server decided,
 // and most decisions are final. 501 (Not Implemented) and 505 (HTTP Version Not
@@ -104,6 +138,13 @@ func IsRetryable(err error) bool {
 		errors.Is(err, context.DeadlineExceeded) {
 		// The caller gave up or its deadline passed; re-sending would fight
 		// the cancellation instead of respecting it.
+		return false
+	}
+	// A cut stream already delivered content. Re-sending it would duplicate what
+	// the user watched, whatever the wrapped error looks like — the step is
+	// resumed instead (Agent.resumeStep).
+	var cut *streamCutError
+	if errors.As(err, &cut) {
 		return false
 	}
 	var apiErr *APIError
@@ -198,6 +239,12 @@ func retryDelay(retry int, err error) time.Duration {
 // text quoted in docs/error-handling.md, and pinned there by TestRetryReason.
 const reasonStreamEndedEarly = "provider stream ended early"
 
+// reasonStreamCut is the notice wording for a step that recorded something before
+// its stream broke and is being resumed. "Ended" says the stream ran out; "was cut
+// off" says something else ended it, which is what the user is being told: what
+// they watched stays, and the task carries on from it.
+const reasonStreamCut = "provider stream was cut off"
+
 // retryReason renders a short, user-facing reason for a retry notice.
 func retryReason(err error) string {
 	// A stream that died before delivering anything. Not "connection failed":
@@ -206,6 +253,12 @@ func retryReason(err error) string {
 	var broke *streamBreakError
 	if errors.As(err, &broke) {
 		return reasonStreamEndedEarly
+	}
+	// The same event after content arrived, where the response is a continuation
+	// rather than a re-send (Agent.resumeStep).
+	var cut *streamCutError
+	if errors.As(err, &cut) {
+		return reasonStreamCut
 	}
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
@@ -242,4 +295,26 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
+}
+
+// announceAndWait tells the adapter that the n-th re-attempt of a step is about to
+// happen, then waits out its backoff. It is the whole of what the two places that
+// make an attempt again agree on — sendWithRetry's re-send and resumeStep's
+// continuation — so neither can announce one wait and then take another.
+//
+// The callback error (a broken adapter) and the context error (:cancel during the
+// wait) both come back as the step's failure: there is nothing left to attempt.
+func announceAndWait(ctx context.Context, n int, err error, callbacks StreamCallbacks) error {
+	wait := retryDelay(n, err)
+	if callbacks.OnRetry != nil {
+		if cbErr := callbacks.OnRetry(RetryNotice{
+			Retry:      n,
+			MaxRetries: maxRetries,
+			Wait:       wait,
+			Reason:     retryReason(err),
+		}); cbErr != nil {
+			return cbErr
+		}
+	}
+	return sleepCtx(ctx, wait)
 }

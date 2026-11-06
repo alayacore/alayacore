@@ -228,8 +228,9 @@ for all in-flight tool goroutines to terminate before returning**:
 - Results of tools that already **executed** are **salvaged**: `streamEvents`
   pairs each delivered result with its tool call and folds the
   `[tool_use, tool_result]` pairs into the conversation history (via
-  `OnStepFinish`) before returning the error, so a retry or `:continue`
-  sees a state consistent with the side effects that happened. A tool
+  `OnStepFinish`) before returning the error, so the request that follows —
+  a cut step's automatic continuation, or the user's own `:continue` — sees a
+  state consistent with the side effects that happened. A tool
   that never completed (still running when the stream died, dropped by a
   racing result send, or never confirmed) produces no history entry — an
   assistant `tool_use` never appears without its `tool_result`. See

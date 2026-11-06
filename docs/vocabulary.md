@@ -84,6 +84,7 @@ defects this page exists to prevent.
 | Pair | Why both stand |
 |------|----------------|
 | `userPrompt` / `summarizeCall` | Two kinds of task, not two units: one publishes its progress, keeps the conversation and takes steering; the other does none of that. Both are tasks, and neither is called anything else. |
+| `retry` / `resume` | Both make the step's request again, and they differ in what the next request is built on. A retry re-sends an attempt that delivered nothing, byte for byte. A resume carries the salvage forward — it is a step of its own, the automatic `:continue` — and applies only where a stream was cut after it delivered content. |
 | `notify` / `notice` | A `SYSTEM NOTIFY` frame versus the verb ("a host that never notices"). |
 | `frame` (wire) / `frame` (screen) | The transport unit versus one painted screenful. The file owns the word: `wire`/`protocol` versus `screen.go`. |
 | `Msg` (Elm) / `system message` | A UI event versus one frame's payload. In the `terminal` package, Elm's `Msg` owns the bare word; the wire side says `Frame`. |

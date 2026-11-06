@@ -78,6 +78,11 @@ func TestIsRetryable(t *testing.T) {
 		// Cancellation wins over the transport shape, so a request the caller
 		// gave up on is never re-sent as a "connection failure".
 		{"canceled inside url.Error", &url.Error{Op: "Post", URL: "http://x/v1", Err: context.Canceled}, false},
+		// A cut stream is never re-sent, whatever shape it wraps: the content it
+		// delivered is already on screen and in history. The guard is by name
+		// rather than by luck — a cut wrapping a *url.Error would otherwise be
+		// accepted by the transport rule below.
+		{"cut stream", &streamCutError{err: &url.Error{Op: "Post", URL: "http://x/v1", Err: io.EOF}}, false},
 		{"plain error", errors.New("boom"), false},
 	}
 	for _, tc := range cases {
@@ -105,6 +110,7 @@ func TestRetryReason(t *testing.T) {
 		{&APIError{StatusCode: 503}, "provider returned a transient error (status 503)"},
 		{&url.Error{Op: "Post", URL: "http://x/v1", Err: io.EOF}, "provider connection failed"},
 		{&streamBreakError{err: io.EOF}, "provider stream ended early"},
+		{&streamCutError{err: io.ErrUnexpectedEOF}, "provider stream was cut off"},
 		{timeoutErr{}, "provider connection failed"},
 	}
 	for _, tc := range cases {

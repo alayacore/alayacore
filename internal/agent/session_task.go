@@ -175,9 +175,11 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 	//
 	// Nothing is retried here: the summarize request is an ordinary request, so
 	// sendWithRetry has already re-sent whatever could be re-sent (IsRetryable,
-	// streamBreakError) before its error arrives — and the one semantic retry a
-	// textless reply gets has already happened inside summarizeContents. What arrives is permanent or
-	// exhausted, and the next step's context would only be larger.
+	// streamBreakError) before its error arrives. A stream cut mid-answer is not
+	// resumed either — that needs the boundary hook a summarize call does not get
+	// (resumeStep). And the one semantic retry a textless reply gets has already
+	// happened inside summarizeContents. What arrives is permanent or exhausted,
+	// and the next step's context would only be larger.
 	onBeforeSend := func(contents []llm.ContentPart) ([]llm.ContentPart, error) {
 		// The step's clock, captured before anything else this step does. Both
 		// the echo helpers and stampParts read it, so what the adapter is shown
@@ -587,11 +589,11 @@ func (s *Session) handleStepStats(stats llm.StepStats) error {
 }
 
 // handleRetry tells the adapter that a transient provider failure is being
-// handled — a rate limit, an overload, a gateway blip, a dropped connection —
-// so it is visible while it happens instead of looking like a hang. It is
-// deliberately a notify, not an error: the task has not failed. Only when every
-// retry is exhausted does the ordinary error path (writeError / the final failed
-// step) report a failure.
+// handled — a rate limit, an overload, a gateway blip, a dropped connection, or a
+// stream that was cut and is about to be continued — so it is visible while it
+// happens instead of looking like a hang. It is deliberately a notify, not an
+// error: the task has not failed. Only when every attempt is exhausted does the
+// ordinary error path (writeError / the final failed step) report a failure.
 func (s *Session) handleRetry(n llm.RetryNotice) error {
 	s.writeNotifyf("%s — retrying in %s (retry %d/%d)",
 		n.Reason, n.Wait.Round(time.Second), n.Retry, n.MaxRetries)

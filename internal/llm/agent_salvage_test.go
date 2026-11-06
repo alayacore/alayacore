@@ -234,16 +234,31 @@ func TestStreamSalvageOmitsAmbiguousToolIDs(t *testing.T) {
 	}
 }
 
-// TestStreamSalvageAfterStepComplete verifies the complete-then-error edge: the
-// provider finishes a step (StepCompleteEvent with text + tool call) and THEN
-// the stream errors. History keeps the step's text alongside the executed
-// tool's pair — the text was received in full, and dropping it would leave the
-// display holding content that history and, after save-and-reopen, the file do
-// not. No orphaned tool_use and no duplicated parts.
-func TestStreamSalvageAfterStepComplete(t *testing.T) {
+// TestStreamKeepsAStepThatCompletedBeforeTheStreamFailed pins the complete-then-
+// error edge: the provider delivered the step's terminal event (StepCompleteEvent
+// with text + tool call) and THEN its stream errored. The step is over — the
+// provider said so — and an error about the bytes that follow it cannot un-finish
+// the answer, so the step lands: its tool call runs, its pair is attached, and the
+// task carries on.
+//
+// It used to fail the task. That put a complete answer behind an error whose only
+// recovery is :continue, which asks the model to continue an answer it already
+// finished — the duplication the retry design exists to prevent, arriving through
+// the error path instead. Dropping the epilogue hides nothing: if the connection
+// really is gone, the next step's request reports it, with a notice and a retry.
+func TestStreamKeepsAStepThatCompletedBeforeTheStreamFailed(t *testing.T) {
 	fastExecuted := make(chan struct{})
 	providerErr := errors.New("provider stream failed after step complete")
+	calls := 0
 	provider := &salvageProvider{seq: func(yield func(StreamEvent, error) bool) {
+		calls++
+		if calls > 1 {
+			// The step the task continues with, once the first one landed.
+			yield(TextDeltaEvent{Delta: "final", Key: "block:0"}, nil)
+			yield(TextCompleteEvent{Key: "block:0"}, nil)
+			yield(StepCompleteEvent{Usage: Usage{InputTokens: 10, OutputTokens: 5}}, nil)
+			return
+		}
 		yield(TextDeltaEvent{Delta: "partial text", Key: "block:0"}, nil)
 		yield(TextCompleteEvent{Key: "block:0"}, nil)
 		yield(ToolInputStartEvent{ID: "c1", Name: "fast_tool", Key: "block:1"}, nil)
@@ -256,7 +271,12 @@ func TestStreamSalvageAfterStepComplete(t *testing.T) {
 
 	var gotContents []ContentPart
 	finishCalled := 0
+	// The caller can make continuations well-formed, so the hook that would let a
+	// resumed — i.e. duplicated — answer happen is present here: this test pins
+	// that a completed step is never resumed in the first place.
+	caller := &resumeCaller{}
 	callbacks := StreamCallbacks{
+		OnBeforeSend: caller.onBeforeSend,
 		OnStepFinish: func(contents []ContentPart, _ Usage) error {
 			finishCalled++
 			gotContents = contents
@@ -267,32 +287,35 @@ func TestStreamSalvageAfterStepComplete(t *testing.T) {
 	agent := NewAgent(AgentConfig{
 		Provider: provider,
 		Tools:    []Tool{fastTool(fastExecuted)},
+		MaxSteps: 3,
 	})
 
-	_, err := agent.Stream(context.Background(), nil, callbacks)
-	if !errors.Is(err, providerErr) {
-		t.Fatalf("Stream() error = %v, want provider stream failure", err)
+	if _, err := agent.Stream(context.Background(), nil, callbacks); err != nil {
+		t.Fatalf("Stream() error = %v, want none: the step had already completed", err)
 	}
-	if finishCalled != 1 {
-		t.Fatalf("OnStepFinish called %d times, want 1 (the salvage fold)", finishCalled)
+	if finishCalled != 2 {
+		t.Fatalf("OnStepFinish called %d times, want 2 (the completed step, then its continuation)", finishCalled)
 	}
-	// Safe history: the step's text, then exactly one [tool_use, tool_result]
-	// pair. No orphaned tool_use, and the completed answer text survives.
-	if len(gotContents) != 3 {
-		t.Fatalf("salvaged contents = %d parts, want 3 (text + c1 pair): %#v", len(gotContents), gotContents)
+	// Safe history: the step's text, exactly one [tool_use, tool_result] pair —
+	// no orphaned tool_use — and then the step the task went on with.
+	if len(gotContents) != 4 {
+		t.Fatalf("contents = %d parts, want 4 (text + c1 pair + final): %#v", len(gotContents), gotContents)
 	}
 	tp, ok := gotContents[0].(*TextPart)
 	if !ok {
 		t.Fatalf("gotContents[0] = %#v, want TextPart (the step's text must not be dropped)", gotContents[0])
 	}
 	if tp.Text != "partial text" {
-		t.Errorf("salvaged text = %q, want %q", tp.Text, "partial text")
+		t.Errorf("step text = %q, want %q", tp.Text, "partial text")
 	}
 	if _, ok := gotContents[1].(*ToolInputPart); !ok {
 		t.Errorf("gotContents[1] = %#v, want ToolInputPart", gotContents[1])
 	}
 	if _, ok := gotContents[2].(*ToolOutputPart); !ok {
 		t.Errorf("gotContents[2] = %#v, want ToolOutputPart", gotContents[2])
+	}
+	if final, ok := gotContents[3].(*TextPart); !ok || final.Text != "final" {
+		t.Errorf("gotContents[3] = %#v, want the continuation's text", gotContents[3])
 	}
 }
 

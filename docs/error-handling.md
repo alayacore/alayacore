@@ -157,9 +157,10 @@ deliberately conservative where the two directions differ: under `--no-delta` a
 block can hold text the adapter was never sent, but the record already has it, so
 a re-send would duplicate it in history — nothing to gain, so nothing is re-sent.
 
-An error that arrives once a block has been opened is surfaced as-is: content the
-user already watched stream in cannot be taken back, so re-sending would duplicate
-it.
+An error that arrives once a block has been opened is never re-sent: content the
+user already watched stream in cannot be taken back, so a second request would
+duplicate it. It is **resumed** instead — see
+[A Cut Stream Is Resumed, Not Re-sent](#a-cut-stream-is-resumed-not-re-sent).
 
 **Classification is structural, not a string match.** The provider returns a
 typed `*llm.APIError` (`internal/llm/retry.go`) carrying the HTTP status and the
@@ -221,11 +222,72 @@ so `:cancel` interrupts a backoff immediately.
 provider rate limited the request (status 429) — retrying in 1s (retry 1/3)
 provider connection failed — retrying in 1s (retry 1/3)
 provider stream ended early — retrying in 1s (retry 1/3)
+provider stream was cut off — retrying in 1s (retry 1/3)
 ```
 
 If every retry is exhausted, the ordinary failed-step path reports the final
 failure as it always has. Because the retry lives in the session/agent layer,
-all four adapters inherit it.
+all four adapters inherit it. The last line is the one the next section is about.
+
+### A Cut Stream Is Resumed, Not Re-sent
+
+A stream can also die **after** it delivered something: a 200 whose body stopped
+in the middle of an answer, a connection reset between two blocks, an in-band
+error that arrived after the model had already started writing — `unexpected EOF`
+on screen, mid-reasoning. The attempt's record is no longer empty, so it cannot be
+re-sent: the content the user watched is on screen and in history. It is not thrown
+away either. The step is **resumed**: what streamed stays, and the model is asked
+to carry on from it.
+
+That is the move `:continue` makes, so the choice needs no classification: the
+argument is the one the section above already made for the ambiguous failure
+before the response — the user's only alternative is `:continue`, so the automatic
+move is that same request minus the human and minus the wait. A stream failure
+carries no status and never arrives inside a `*url.Error`, so `IsRetryable` could
+only ever answer the wrong question here; `streamCutError`
+(`internal/llm/retry.go`) is what tells the loop the record was *not* empty, which
+is the one fact the answer turns on. Both markers come from the same place —
+`streamEvents`, where the stream's own error arrives — so a failure that is this
+program's own (an adapter write that failed, a tool pairing defect, a panic) is
+never resumed: asking the model again repairs none of them.
+
+**How a continuation is made whole.** A resume is a new step, and its request is
+the history that now holds the salvage — which ends on what the model had already
+said. Every API reads a request ending on an assistant message as *prefill*
+("keep writing this"), so the request needs a trailing user part, and it gets the
+same one a compaction gets: `stepUserParts` appends the synthetic `Continue` at
+the step boundary, numbered and echoed like any other part added there, so the
+window the adapter shows and the part history keeps are the same block. That is
+why a resume needs a caller with the boundary hook (`OnBeforeSend`): a summarize
+call has none, cannot make its next request well-formed, and keeps its existing
+retry instead. One consequence is visible and intended: a `USER` window reading
+`Continue` appears in the transcript — exactly what the user would have typed —
+which is why the wait before it is announced (the last line of the notices above).
+
+**Not every error after content is a cut.** An error that arrives *after* the
+step's terminal event (`StepCompleteEvent`) is about the bytes that follow the
+answer, not about the answer: the provider said the step was over, so the step
+lands and the task carries on. Ending the task there would put a complete answer
+behind an error whose only recovery is `:continue` — a request to continue an
+answer the model already finished — and dropping the epilogue hides nothing: if
+the connection really is gone, the next step's request reports it, with a notice
+and a retry.
+
+**What the salvage keeps, and what it drops.** The reasoning and text that
+streamed, plus every tool call whose result actually arrived — the pairs whose
+side effects happened. A call whose arguments never completed, or whose result
+never came back, is left out: a `tool_use` without its `tool_result` is a request
+the next step cannot build. The model may therefore re-issue such a call, and a
+tool that had already begun its work may run twice — the exposure `:continue` has
+always had, unchanged by being automatic.
+
+**Bounds.** The resume budget is `maxRetries` consecutive resumes, cleared by a
+step that lands, so a long task that loses the network once every few steps is not
+penalized for it. A continuation is also a step, and spends the step budget as
+one: a task on its last `--max-steps` step reports the stream's own error, not a
+maximum it never reached. The wait is the ordinary backoff, interruptible, so
+`:cancel` ends it immediately. When the budget is spent the task fails in the
+provider's own words.
 
 **What this does not cover.** A connection that goes silent — established,
 request delivered, then no bytes and no FIN/RST — has no client-side deadline,
@@ -247,7 +309,10 @@ to look if a hang is ever reported behind a proxy.
 
 ## Error Recovery
 
-When an error occurs during prompt processing, the prompt **fails** instead of continuing.
+When an error occurs during prompt processing, the prompt **fails** instead of
+continuing. That is what remains once the automatic handling above has been tried
+and its budget spent: a rate limit or a dead connection is re-sent, a stream cut
+mid-answer is resumed, and only what outlives both reaches the user as a failure.
 
 Errors include:
 - **Provider errors** — network failure, API error, content filter, refusal
@@ -269,7 +334,7 @@ the one place the session drops input, and it is never silent.
 
 ### `:continue`
 
-`:continue` runs in a separate goroutine — it can be canceled with `:cancel` while the LLM call is in progress. It resends the last prompt to the LLM. See [commands.md](commands.md) for details.
+`:continue` runs in a separate goroutine — it can be canceled with `:cancel` while the LLM call is in progress. It resends the last prompt to the LLM, appending the synthetic `Continue` when the last message is the assistant's — the tail a cut stream leaves behind, and the part the automatic continuation is named for. See [commands.md](commands.md) for details.
 
 No queue management needed.
 
@@ -298,12 +363,15 @@ Max steps and truncation behavior is tested in `internal/llm/agent_maxsteps_test
 
 Automatic retry is tested in `internal/llm/retry_test.go`,
 `internal/llm/agent_retry_test.go`, and
-`internal/llm/providers/base_retry_test.go`:
+`internal/llm/providers/base_retry_test.go`, the edges where a stream stops in
+`internal/llm/agent_salvage_test.go`, and the session's half of the resume — the
+`Continue` part, its numbering and echo — in
+`internal/agent/session_task_test.go`:
 
 | Test | Verifies |
 |------|----------|
 | `TestIsRetryable` | Every status code in (and out of) the retryable set; cancel/deadline are not retried; a transport failure is retried, including an errno the classifier does not name, while a bad certificate, an https URL answered by plain HTTP, a name that does not resolve and an error that never reached the transport are not |
-| `TestRetryReason` | The user-facing notice text: 425, 429, the gateway family, 529, other statuses, and the one wording every connection failure shares |
+| `TestRetryReason` | The user-facing notice text: 425, 429, the gateway family, 529, other statuses, the one wording every connection failure shares, and the two stream failures — ended early (nothing recorded) and was cut off (a cut step being resumed) |
 | `TestRetryDelay` | Exponential backoff, `Retry-After` wins, both capped (no overflow) |
 | `TestAgentRetriesTransientThenSucceeds` | 429 then 503 then success: 3 calls, 2 notices with correct numbering |
 | `TestAgentRetriesConnectionFailure` | `failed to send request: Post "...": EOF` and `readfrom ...: write ...: use of closed network connection` are both retried and announced as `provider connection failed` |
@@ -311,9 +379,19 @@ Automatic retry is tested in `internal/llm/retry_test.go`,
 | `TestAgentCancelOnLastAttemptReportsCancellation` | A cancel landing on the last attempt is reported as `context.Canceled` too, not as the transport error the spent budget ended on |
 | `TestAgentRetriesStreamThatRecordedNothing` | A stream error from an attempt that recorded nothing is re-sent and announced as `provider stream ended early`, with the step announced once — and the error is a bare `io.EOF`, which the classifier alone would refuse |
 | `TestAgentRetriesStreamWithBoundariesForUnopenedBlocks` | Boundaries for blocks the stream never opened (the OpenAI shape) leave the record empty, so the attempt is still re-sent — the gate asks the record, not whether an event arrived |
-| `TestAgentDoesNotRetryStreamThatDiedAfterContent` | A stream error after a block was opened is surfaced in the provider's own words: no retry, no notice, no pre-stream prefix |
-| `TestAgentDoesNotRetryStreamThatDiedWithAnOpenToolCall` | A tool call whose block opened and whose arguments never completed is not re-sent either — an unfinished call has no part, so this is what makes the gate ask about blocks rather than parts |
+| `TestAgentResumesStreamThatDiedAfterContent` | A stream error after a block was opened is resumed, not re-sent: the continuation carries the salvage and the boundary's `Continue` last, the step is announced a second time, one notice names the cut stream, and the partial answer appears exactly once |
+| `TestAgentSurfacesCutStreamWhenTheCallerCannotResume` | Without `OnBeforeSend` there is no one to make the next request well-formed, so the cut stream is surfaced in the provider's own words: no continuation, no notice, no pre-stream prefix |
+| `TestAgentResumeLeavesAnUnfinishedToolCallOut` | A tool call whose block opened and whose arguments never completed is neither re-sent nor recorded: the continuation does not carry it, so this is also what makes the gate ask about blocks rather than parts |
+| `TestAgentResumeSendsWhatTheCallerAllows` | The agent never invents the continuation's trailing part: a salvage ending on the tool result the model asked for is sent as it stands |
+| `TestAgentDoesNotRetryStreamThatDiedWithAnOpenToolCall` | The same shape with no caller to resume for: surfaced, never re-sent |
+| `TestAgentResumeStopsWhenTheBudgetIsSpent` | A step that keeps being cut spends the resume budget and reports the provider's error unchanged |
+| `TestAgentResumeCannotOutrunTheStepBudget` | A continuation spends a step like any other: on the last step the task reports the stream's error rather than `ErrMaxStepsExceeded` |
+| `TestAgentResumeCanceledDuringBackoff` | A cancel during the resume's wait stops before the next request (`context.Canceled`) |
+| `TestAgentDoesNotResumeAfterACallbackFailure` | An adapter write that failed is not the provider's doing, and no continuation is attempted — the gate is the marker, not "content arrived" |
+| `TestStreamKeepsAStepThatCompletedBeforeTheStreamFailed` | An error after the step's terminal event is its epilogue, not its verdict: the step lands, its tool call still runs and pairs, and the task goes on instead of leaving a complete answer behind a failure |
+| `TestAgentDoesNotResumeAStepThatCompleted` | The same rule where the epilogue would be resumed: no `Continue` after a finished answer, no second request, no notice |
 | `TestAgentRetriesStreamBreakUntilTheBudgetIsSpent` | A stream that keeps dying with the record empty spends the budget and reports the provider's error unchanged |
+| `TestRunTaskResumesACutStream` | The session half: a cut step mid-task is resumed without the user — `Continue` is appended at the boundary, numbered and echoed under the ID the adapter holds, the resume is announced as a notify, and the task ends with no error |
 | `TestAgentRetriesExhausted` | A permanent 429 stops after `1+maxRetries` calls and surfaces the `*APIError` |
 | `TestAgentDoesNotRetryPermanentError` | A 401 is not retried |
 | `TestAgentRetryCanceledDuringBackoff` | A cancel during the wait stops before the next request (`context.Canceled`) |

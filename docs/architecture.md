@@ -218,7 +218,7 @@ Agent.Stream(ctx, contents, llm.StreamCallbacks{
 })
 ```
 
-Messages are appended incrementally in `OnStepFinish` so they're preserved even if the user cancels. On a canceled or failed step, the results of tools that already executed are also folded into history via `OnStepFinish` (the salvage path), so side effects stay visible to a retry or `:continue` — see [tool-execution.md](tool-execution.md).
+Messages are appended incrementally in `OnStepFinish` so they're preserved even if the user cancels. On a canceled or failed step, the results of tools that already executed are also folded into history via `OnStepFinish` (the salvage path), so side effects stay visible to the request that follows — a cut step's automatic continuation, or the user's own `:continue` — see [tool-execution.md](tool-execution.md).
 
 ### Tools Layer (`internal/tools/`)
 
