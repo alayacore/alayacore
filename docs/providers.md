@@ -535,6 +535,8 @@ Both providers pad assistant messages with an empty reasoning value — but **on
 
 This behavior is independent of the `reasoning_*` JSON blocks — it is a hardcoded message-layer convention that DeepSeek and similar providers require. Configuring `reasoning_0: {"thinking":{"type":"disabled"}}` does NOT turn off empty padding; the padding is gated solely on the reasoning level being > 0.
 
+The requirement is DeepSeek's, and it is conditional: a request that carries `tools` must pass back the reasoning of every earlier assistant message (omitting it is a 400), while one without tools may omit it — DeepSeek ignores the field there. This agent always sends `tools`, so the padding applies on both wires, and DeepSeek's Anthropic-format endpoint states the same rule for `thinking` blocks ("preserve and pass back the assistant's complete content array, including thinking and tool-use blocks").
+
 - **Anthropic provider** (`anthropicConvertContents`): prepends an empty `{"type":"thinking","thinking":""}` block to every assistant message that lacks one. The thinking block must come first per Anthropic's API.
 - **OpenAI provider** (`openaiConvertContents`): extracts reasoning text via `openaiExtractReasoning()` and sets the reasoning key — `reasoning_field`, default `reasoning_content` (`openAIMessage.MarshalJSON` performs the redirect) — on every assistant message, even as an empty string when no reasoning text exists.
 

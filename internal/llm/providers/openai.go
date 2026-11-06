@@ -17,7 +17,11 @@ package providers
 // 3. REASONING IN TOOL CALL CHAINS: Per DeepSeek's documentation, between two
 //    user messages all intermediate assistant reasoning must be passed back —
 //    under `reasoning_content` there, under `reasoning_field` on a vLLM-style
-//    endpoint (gotcha 7). When reasoning mode is enabled the key is always
+//    endpoint (gotcha 7) — and that is a request-level condition, not a
+//    model-wide one: the rule holds for a request that carries `tools`, which is
+//    every request this agent sends, while a request without them may omit it
+//    (DeepSeek ignores it there). Getting it wrong on the tools path is a 400,
+//    not a silent omission. When reasoning mode is enabled the key is always
 //    present on assistant messages (even as an empty string) so that messages
 //    containing only tool calls still satisfy this requirement.
 //    Conditional on reasoning mode to avoid wasting tokens. The logic lives
