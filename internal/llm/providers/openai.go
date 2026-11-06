@@ -15,15 +15,17 @@ package providers
 //    See `openaiConvertToolInputs()`.
 //
 // 3. REASONING IN TOOL CALL CHAINS: Per DeepSeek's documentation, between two
-//    user messages all intermediate assistant reasoning must be passed back —
+//    user messages all intermediate assistant reasoning should be passed back —
 //    under `reasoning_content` there, under `reasoning_field` on a vLLM-style
 //    endpoint (gotcha 7) — and that is a request-level condition, not a
-//    model-wide one: the rule holds for a request that carries `tools`, which is
-//    every request this agent sends, while a request without them may omit it
-//    (DeepSeek ignores it there). Getting it wrong on the tools path is a 400,
-//    not a silent omission. When reasoning mode is enabled the key is always
-//    present on assistant messages (even as an empty string) so that messages
-//    containing only tool calls still satisfy this requirement.
+//    model-wide one: it holds for a request that carries `tools`, while a request
+//    without them may omit it (DeepSeek ignores it there). The page says getting
+//    it wrong is a 400, and probing the live endpoint (deepseek-flash, 2026-11)
+//    could not reproduce one: a real tool-call turn replayed with the field
+//    removed, emptied, and intact all answered 200. So the key is always present
+//    when reasoning mode is enabled — cheap, documented, and what a stricter
+//    endpoint in this family would ask for — but it is not what makes a request
+//    legal here. What does is `content` (see openaiConvertRegularContent).
 //    Conditional on reasoning mode to avoid wasting tokens. The logic lives
 //    in openaiConvertContents, not in the sub-converters.
 //
@@ -788,9 +790,6 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, reaso
 			if reasoningText != "" || reasoningLevel > config.ReasoningLevelOff {
 				apiMsg.ReasoningContent = &reasoningText
 			}
-			if apiMsg.Content == nil && len(apiMsg.ToolCalls) == 0 {
-				apiMsg.Content = ""
-			}
 		}
 
 		apiMessages = append(apiMessages, apiMsg)
@@ -1065,6 +1064,12 @@ func openaiConvertRegularContent(apiMsg *openAIMessage, contents []llm.ContentPa
 		}
 		contentParts = append(contentParts, block)
 	}
+	// An assistant message with neither content nor tool calls is rejected —
+	// `Invalid assistant message: content or tool_calls must be set` — and a
+	// stream cut mid-reasoning leaves exactly that in history: a part holding
+	// nothing but thinking. The empty string is what makes such a message
+	// sendable, so a resumed task can be. Pinned at the wire by
+	// TestOpenAIReasoningOnlyAssistantMessageCarriesEmptyContent.
 	if len(contentParts) == 0 {
 		apiMsg.Content = ""
 	} else {
