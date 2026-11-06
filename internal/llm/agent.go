@@ -529,11 +529,10 @@ func (a *Agent) streamEvents(ctx context.Context, events iter.Seq2[StreamEvent, 
 	// What a failed step still contributes: the reasoning and text streamed so
 	// far, plus tool pairs whose results arrived. The content a step produced is
 	// part of what happened — replaying a bare tool_use to an endpoint that
-	// expects the task's reasoning alongside it (see openaiConvertContents,
-	// which pads an empty reasoning field rather than omitting the key) shows
-	// the model a task it never emitted, and the longer the thinking, the worse
-	// that reads. A partial answer is kept for the same reason max_tokens
-	// truncation keeps one: it is what lets :continue resume the task.
+	// expects the reasoning alongside it shows the model a task it never emitted,
+	// and the longer the thinking, the worse that reads. A partial answer is kept
+	// for the same reason max_tokens truncation keeps one: it is what lets
+	// :continue resume the task.
 
 	// The step's record, assembled here from the stream: content, block
 	// identity, history IDs, and layout. One assembler serves every path out of
