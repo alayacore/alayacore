@@ -1507,62 +1507,71 @@ func TestOpenAIReasoningFieldAppliesToSendSide(t *testing.T) {
 	}
 }
 
-// TestOpenAIReasoningFieldGovernsEmptyPadding covers the replay requirement
-// for a tool-call-only assistant message: with reasoning mode on, the key is sent
-// even when there is no reasoning text, and that placeholder has to land under
-// the configured key too — padding under a name the endpoint does not use
-// satisfies nothing.
-func TestOpenAIReasoningFieldGovernsEmptyPadding(t *testing.T) {
-	var requestBody map[string]any
-	server := newReasoningCaptureServer(t, &requestBody,
-		"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
-			"data: [DONE]\n\n",
-	)
+// TestOpenAIReasoningKeyCarriesOnlyReasoningTheRecordHas covers both directions
+// of the replay rule at the wire: the key appears when the history holds
+// reasoning, under whichever name `reasoning_field` declares, and does not appear
+// at all when the message reasoned nothing.
+func TestOpenAIReasoningKeyCarriesOnlyReasoningTheRecordHas(t *testing.T) {
+	send := func(t *testing.T, messages []llm.ContentPart) map[string]any {
+		t.Helper()
+		var requestBody map[string]any
+		server := newReasoningCaptureServer(t, &requestBody,
+			"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n"+
+				"data: [DONE]\n\n",
+		)
+		provider, err := providers.NewOpenAI(providers.BaseConfig{
+			APIKey:         "test-key",
+			BaseURL:        server.URL,
+			ReasoningField: "reasoning",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		provider.SetReasoningLevel(config.ReasoningLevelNormal)
 
-	provider, err := providers.NewOpenAI(providers.BaseConfig{
-		APIKey:         "test-key",
-		BaseURL:        server.URL,
-		ReasoningField: "reasoning",
+		events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range events {
+		}
+		return findAssistantMessage(t, requestBody)
+	}
+
+	t.Run("no reasoning in the record, no key on the wire", func(t *testing.T) {
+		assistant := send(t, append(
+			append(
+				testMsg(llm.RoleAssistant, &llm.ToolInputPart{
+					ID:    "call_1",
+					Name:  "read_file",
+					Input: json.RawMessage(`{"path":"go.mod"}`),
+				}),
+				testMsg(llm.RoleTool, &llm.ToolOutputPart{
+					ID:     "call_1",
+					Output: []llm.ContentPart{&llm.TextPart{Text: "module github.com/alayacore/alayacore"}},
+				})...,
+			),
+			testMsg(llm.RoleUser, &llm.TextPart{Text: "next"})...,
+		))
+		for _, key := range []string{"reasoning", "reasoning_content"} {
+			if v, present := assistant[key]; present {
+				t.Errorf("%q = %#v on a message that reasoned nothing; want the key absent", key, v)
+			}
+		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider.SetReasoningLevel(config.ReasoningLevelNormal)
 
-	// Assistant task with a tool call and no reasoning text, then its result.
-	messages := append(
-		append(
-			testMsg(llm.RoleAssistant, &llm.ToolInputPart{
-				ID:    "call_1",
-				Name:  "read_file",
-				Input: json.RawMessage(`{"path":"go.mod"}`),
-			}),
-			testMsg(llm.RoleTool, &llm.ToolOutputPart{
-				ID:     "call_1",
-				Output: []llm.ContentPart{&llm.TextPart{Text: "module github.com/alayacore/alayacore"}},
-			})...,
-		),
-		testMsg(llm.RoleUser, &llm.TextPart{Text: "next"})...,
-	)
-
-	events, err := provider.StreamMessages(context.Background(), messages, nil, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range events {
-	}
-
-	assistant := findAssistantMessage(t, requestBody)
-	v, present := assistant["reasoning"]
-	if !present {
-		t.Fatalf("empty padding missing under configured key: %v", assistant)
-	}
-	if v != "" {
-		t.Errorf("padding = %v, want empty string", v)
-	}
-	if _, stale := assistant["reasoning_content"]; stale {
-		t.Errorf("padding must not use the default key when reasoning_field is set: %v", assistant)
-	}
+	t.Run("reasoning in the record, sent under the configured key", func(t *testing.T) {
+		assistant := send(t, testMsg(llm.RoleAssistant,
+			&llm.ReasoningPart{Text: "the user greets me"},
+			&llm.TextPart{Text: "hello"},
+		))
+		if v, _ := assistant["reasoning"].(string); v != "the user greets me" {
+			t.Errorf("reasoning = %#v, want the record's text under the configured key", assistant["reasoning"])
+		}
+		if _, stale := assistant["reasoning_content"]; stale {
+			t.Errorf("reasoning must not also appear under the default key: %v", assistant)
+		}
+	})
 }
 
 // findAssistantMessage returns the first assistant message of a captured

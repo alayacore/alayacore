@@ -19,15 +19,11 @@ package providers
 //    under `reasoning_content` there, under `reasoning_field` on a vLLM-style
 //    endpoint (gotcha 7) — and that is a request-level condition, not a
 //    model-wide one: it holds for a request that carries `tools`, while a request
-//    without them may omit it (DeepSeek ignores it there). The page says getting
-//    it wrong is a 400, and probing the live endpoint (deepseek-flash, 2026-11)
-//    could not reproduce one: a real tool-call turn replayed with the field
-//    removed, emptied, and intact all answered 200. So the key is always present
-//    when reasoning mode is enabled — cheap, documented, and what a stricter
-//    endpoint in this family would ask for — but it is not what makes a request
-//    legal here. What does is `content` (see openaiConvertRegularContent).
-//    Conditional on reasoning mode to avoid wasting tokens. The logic lives
-//    in openaiConvertContents, not in the sub-converters.
+//    without them may omit it. So every assistant message sends back the
+//    reasoning the record holds for it, and nothing is invented for a message
+//    that has none. What an endpoint does require is `content` (see
+//    openaiConvertRegularContent).
+//    The logic lives in openaiConvertContents, not in the sub-converters.
 //
 // 4. NULL ARGUMENTS IN TOOL CALL CHUNKS: Some providers emit no-op deltas
 //    with "arguments": null. unquoteToolArg tasks such a chunk into the empty
@@ -103,7 +99,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alayacore/alayacore/internal/config"
 	"github.com/alayacore/alayacore/internal/llm"
 	"github.com/alayacore/alayacore/internal/sse"
 )
@@ -293,7 +288,7 @@ func (p *OpenAIProvider) StreamMessages(
 	if extraSystemPrompt != "" {
 		apiMessages = append(apiMessages, openAIMessage{Role: "system", Content: extraSystemPrompt})
 	}
-	apiMessages = append(apiMessages, openaiConvertContents(contents, p.reasoningLevel, p.reasoningField)...)
+	apiMessages = append(apiMessages, openaiConvertContents(contents, p.reasoningField)...)
 
 	// Convert tools to OpenAI format
 	apiTools := make([]openAITool, 0, len(tools))
@@ -760,7 +755,7 @@ func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEve
 // It groups consecutive same-role ContentParts into API messages.
 // reasoningKey names the wire key for replayed reasoning text (gotcha 7);
 // empty means the reasoning_content default.
-func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, reasoningKey string) []openAIMessage {
+func openaiConvertContents(contents []llm.ContentPart, reasoningKey string) []openAIMessage {
 	chunks := llm.GroupByRole(contents)
 	if len(chunks) == 0 {
 		return nil
@@ -786,8 +781,7 @@ func openaiConvertContents(contents []llm.ContentPart, reasoningLevel int, reaso
 
 		if role == llm.RoleAssistant {
 			apiMsg.reasoningKey = reasoningKey
-			reasoningText := openaiExtractReasoning(chunk)
-			if reasoningText != "" || reasoningLevel > config.ReasoningLevelOff {
+			if reasoningText := openaiExtractReasoning(chunk); reasoningText != "" {
 				apiMsg.ReasoningContent = &reasoningText
 			}
 		}

@@ -80,11 +80,9 @@ blindly, binding your message history to their platform.
 - The switch in `handleContentDelta` has no case for `"signature_delta"`,
   so these events are a no-op.
 - No signature data is included when sending history back to any API.
-- Every Anthropic-format endpoint this tree can reach — DeepSeek's, Qwen's
-  and MiniMax's `/anthropic` — accepts history with no `signature`, and in
-  fact accepts one that is deliberately fake: none of them validates the
-  field at all (measured 2026-11; the probe table is in
-  [providers.md](../providers.md#sending-reasoning-back-in-tool-call-chains)).
+- The compatible endpoints this tree speaks to do not carry the field and
+  do not check it: DeepSeek's, Qwen's and MiniMax's `/anthropic` all accept
+  a thinking block with a deliberately fake `signature`.
 - Anthropic's own API is the one endpoint not tested here. Its
   documentation asks for thinking blocks back "complete and unmodified",
   so a real-Anthropic user may see the rejection first. That is the

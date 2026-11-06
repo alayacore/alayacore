@@ -1,21 +1,16 @@
 package providers_test
 
-// The one assistant-message rule DeepSeek actually enforces, pinned at the wire.
+// The one assistant-message rule an endpoint here actually enforces.
 //
-// DeepSeek's thinking-mode page says a request carrying `tools` must pass the
-// earlier assistant messages' reasoning_content back, and that getting it wrong
-// is a 400. Probing the live endpoint (deepseek-flash, 2026-11) could not
-// reproduce that: a real tool-call exchange replayed without the field answered
-// 200, as did the same exchange with the field emptied. What *is* enforced is a different
-// sentence, which the page never states: an assistant message with neither
-// `content` nor `tool_calls` is rejected with
+// An assistant message carrying neither `content` nor `tool_calls` is rejected by
+// DeepSeek with
 //
 //	Invalid assistant message: content or tool_calls must be set
 //
-// That is the shape a stream cut mid-reasoning leaves in history — an assistant
-// part holding nothing but thinking — so it is the rule that decides whether a
-// resumed task can be sent at all. openaiConvertContents answers it by emitting
-// `"content": ""`, and this test pins the bytes rather than the intent.
+// and that is the shape a stream cut mid-reasoning leaves in history — an
+// assistant part holding nothing but thinking — so it is the rule that decides
+// whether a resumed task can be sent at all. openaiConvertContents answers it by
+// emitting `"content": ""`, and this test pins the bytes rather than the intent.
 
 import (
 	"encoding/json"

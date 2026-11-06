@@ -350,7 +350,6 @@ When **all** `reasoning_*` blocks are absent from a model entry, **no thinking-r
 
 Reasoning level itself (`0`/`1`/`2`) drives:
 - which `reasoning_*` block is merged into the request body,
-- the empty reasoning value the OpenAI-format wire puts on an assistant message that produced none (not configurable; the Anthropic-format wire pads nothing — see "Reasoning in an assistant message — implementation"),
 - the `R0`/`R1`/`R2` status indicator.
 
 ### Common shapes
@@ -472,29 +471,13 @@ With `reasoning_2: {"thinking":{"type":"enabled"},"output_config":{"effort":"max
 
 ### Sending reasoning back in tool-call chains
 
-Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. Whether the next request should carry it back is a property of the **request**, not of the vendor: [DeepSeek's thinking-mode documentation](https://api-docs.deepseek.com/guides/thinking_mode) makes it depend on whether the request carries the `tools` parameter — with tools, the reasoning of all previous assistant messages should come back and is concatenated into the context; without them, it need not be sent and is ignored if it is. The tools branch is put strongly:
+Some OpenAI-compatible providers (e.g. DeepSeek) return `reasoning_content` in assistant responses. [DeepSeek's thinking-mode documentation](https://api-docs.deepseek.com/guides/thinking_mode) makes whether a later request must carry it back depend on the request: with `tools`, the reasoning of earlier assistant messages should come back and is concatenated into the context; without them it need not be sent, and is ignored if it is.
 
 > for requests carrying the `tools` parameter, the `reasoning_content` must be fully passed back to the API in all subsequent requests … If your code does not correctly pass back `reasoning_content`, the API will return a 400 error.
 
-This agent sends `tools` on every request except one: `--builtin-tools=` with no MCP server contributing a tool leaves the list empty, and an empty list is not sent at all (see [architecture.md](architecture.md) → "Tools"). So the key travels under the name declared by `reasoning_field` — `reasoning_content` by default, which is the spelling DeepSeek expects — on every assistant message in a multi-step tool call chain.
+This agent sends `tools` on every request except one: `--builtin-tools=` with no MCP server contributing a tool leaves the list empty, and an empty list is not sent at all (see [architecture.md](architecture.md) → "Tools"). So every assistant message sends back the reasoning the record holds for it, under the key `reasoning_field` names — `reasoning_content` by default, the spelling DeepSeek expects.
 
-**What the endpoints enforce, measured (2026-11).** Every endpoint this tree is configured for was asked to replay a tool-call exchange with the reasoning field removed, emptied, and made up, then to accept an assistant message carrying reasoning alone. On the OpenAI-compatible wire:
-
-| replay shape | DeepSeek | Qwen | GLM | MiniMax | MiMo |
-|---|---|---|---|---|---|
-| reasoning field removed / empty / made up | 200 | 200 | 200 | 200 | 200 |
-| assistant message with reasoning only, no `content` and no `tool_calls` | **400** | 200 | 200 | 200 | 200 |
-
-and on the Anthropic-format wire, where a thinking block may also be absent, empty, or signed:
-
-| replay shape | DeepSeek `/anthropic` | Qwen `/anthropic` | MiniMax `/anthropic` |
-|---|---|---|---|
-| thinking block with text / empty / absent / a **fake** `signature` | 200 | 200 | 200 |
-| assistant message with nothing but a thinking block | 200 | 200 | 200 |
-
-So no endpoint here enforces the replay rule its page describes, and the one rule that *is* enforced is the one no page states: `Invalid assistant message: content or tool_calls must be set`. That is exactly the shape a stream cut mid-reasoning leaves in history, which makes it the rule that decides whether a resumed task can be sent at all — `openaiConvertContents` answers it with `"content": ""`, pinned by `TestOpenAIReasoningOnlyAssistantMessageCarriesEmptyContent`. The reasoning key is still sent because DeepSeek documents it and it costs a few tokens, not because an endpoint has been seen to insist.
-
-(The older `deepseek-reasoner` page said the opposite — that including the field was itself a 400 — so an endpoint still serving that generation is the one case where sending it back hurts; it is worth one test before pointing `model.conf` at one.)
+**The field an endpoint has been observed to require is `content`**, not the reasoning key: an assistant message carrying neither `content` nor `tool_calls` is rejected with `Invalid assistant message: content or tool_calls must be set`. That is the shape a stream cut mid-reasoning leaves in history, so it decides whether a resumed task can be sent at all; `openaiConvertContents` answers it with `"content": ""`, pinned by `TestOpenAIReasoningOnlyAssistantMessageCarriesEmptyContent`.
 
 ### Which key carries reasoning (`reasoning_field`)
 
@@ -547,11 +530,9 @@ wrong or missing `reasoning_field` produces exactly that — the `REASONING`
 window never appears, text streams normally, nothing logs. Check this setting
 before suspecting `:reasoning_level_set` itself. See `TestOpenAIReasoningField`.
 
-### Reasoning in an assistant message — implementation
+### Reasoning in an assistant message
 
-What each provider puts on the wire for an assistant message that produced reasoning, and for one that did not. Both gates are the reasoning level being above zero; the `reasoning_*` JSON blocks below have nothing to do with it.
+- **OpenAI provider** (`openaiConvertContents`): the reasoning the message has, extracted by `openaiExtractReasoning()` and keyed by `reasoning_field` (`openAIMessage.MarshalJSON` performs the redirect). A message with no reasoning carries no key.
+- **Anthropic provider** (`anthropicConvertContents`): a `thinking` block for a reasoning part, first in the message, as that API requires. Nothing else becomes a thinking block, and a message with no reasoning carries no block.
 
-- **OpenAI provider** (`openaiConvertContents`): extracts the reasoning text with `openaiExtractReasoning()` and sets the key — `reasoning_field`, default `reasoning_content` (`openAIMessage.MarshalJSON` performs the redirect) — on **every** assistant message, as the empty string when there is nothing to say. That is the requirement above, read literally: the key is present, so a message that only called a tool is not the one that drops it. No endpoint probed enforces the rule (see the table above); the key goes out because the vendor documents it.
-- **Anthropic provider** (`anthropicConvertContents`): sends a `thinking` block for a reasoning part and nothing else. An assistant message that produced no reasoning carries no thinking block: all three Anthropic-format endpoints probed accept that, and an invented block would claim the model thought nothing, which the record does not say. The thinking block, when present, comes first, as that API requires (pinned by `TestAnthropicSendsNoThinkingBlockForAnAssistantMessageWithoutReasoning` and its counterpart `TestAnthropicSendsTheThinkingBlockItHas`).
-
-**No `signature` is sent, on purpose** — a decision with its own page, [signature-removal.md](internal/signature-removal.md). What the wire shows is narrower: the Anthropic-format endpoints here neither carry the field nor check it. DeepSeek, Qwen and MiniMax all accept a thinking block bearing a deliberately fake `signature`, and all three accept a message with no thinking block at all (tables above). What Anthropic's own API does with an unsigned block — accept it, strip it, or disable thinking — is not something this tree establishes (the same limit the ⚠️ note above states: emitted, not verified).
+**No `signature` is sent** — the decision and its grounds are in [signature-removal.md](internal/signature-removal.md).

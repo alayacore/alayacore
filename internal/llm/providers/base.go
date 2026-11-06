@@ -75,7 +75,7 @@ type baseProvider struct {
 	client           *http.Client
 	model            string
 	maxTokens        int
-	reasoningLevel   int                     // 0=off, 1=normal, 2=max — UI display, session persistence, the reasoning_* block to merge, and the OpenAI wire's empty-value padding
+	reasoningLevel   int                     // 0=off, 1=normal, 2=max — UI display, session persistence, and which reasoning_* block is merged
 	reasoningConfigs map[int]json.RawMessage // per-level raw provider JSON merged into request body; nil entries omitted
 	reasoningField   string                  // response delta key carrying reasoning text; setBaseConfig applies the default when empty
 

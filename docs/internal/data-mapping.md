@@ -390,7 +390,7 @@ ToolInputPart{
 | **Message structure** | Flat fields (`content`, `reasoning_content` or `reasoning`, `tool_calls` at top level) | Content is always `[]anthropicContentBlock` array |
 | **Tool result role** | `"tool"` | Remapped to `"user"` |
 | **Tool call args encoding** | Double-encoded JSON string (`json.Marshal(string(rawMsg))`) | Raw JSON object (`json.RawMessage` directly) |
-| **Reasoning when reasoning mode is on** | Sets `"reasoning_content"` (string pointer) on every assistant message, `""` when there is none | Serializes a reasoning part as a `thinking` block; no block, and no padding, when there is no reasoning |
+| **Reasoning** | `"reasoning_content"` (or the configured `reasoning_field`) on an assistant message that has reasoning | A reasoning part becomes a `thinking` block |
 | **SSE event format** | Data-only lines, `[DONE]` terminator | Named events (`message_start`, `content_block_start`, etc.) |
 | **Tool call arg chunks** | Linked by `index` field across multiple deltas | Grouped by block lifecycle (start → delta → stop) |
 

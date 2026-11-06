@@ -2,16 +2,8 @@ package providers_test
 
 // The Anthropic-format wire sends the thinking blocks the record holds and
 // nothing else: a reasoning part becomes a `thinking` block (first in the
-// message, per the API), and a message that produced no reasoning gets no block
-// at all.
-//
-// An earlier version padded every assistant message with an empty `thinking`
-// block, working around a DeepSeek V4 failure recorded on 2026-04-24. Probing
-// the three Anthropic-format endpoints this tree can reach (2026-11) could not
-// reproduce it: DeepSeek, Qwen and MiniMax all accept an assistant message whose
-// content is only a tool_use, with no thinking block anywhere. Padding also
-// claims the model thought nothing, which is not what the record says — so the
-// padding is gone and this test keeps the honest shape, in both directions.
+// message, per the API), and a message that produced no reasoning gets no block.
+// No `signature` accompanies either — see docs/internal/signature-removal.md.
 
 import (
 	"encoding/json"
