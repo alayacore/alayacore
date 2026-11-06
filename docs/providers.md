@@ -518,7 +518,7 @@ Rules:
   canonical input field (`ChatMessage.reasoning`), so the symmetric choice is
   also the non-translated one. There is no separate send-side knob.
   Pinned by `TestOpenAIReasoningFieldAppliesToSendSide` and
-  `TestOpenAIReasoningFieldGovernsEmptyPadding`.
+  `TestOpenAIReasoningKeyCarriesOnlyReasoningTheRecordHas`.
 
 Why the key is configured rather than auto-detected: a guess has no sound
 tie-break once a server populates two names at once (OpenRouter does, as
@@ -532,7 +532,7 @@ before suspecting `:reasoning_level_set` itself. See `TestOpenAIReasoningField`.
 
 ### Reasoning in an assistant message
 
-- **OpenAI provider** (`openaiConvertContents`): the reasoning the message has, extracted by `openaiExtractReasoning()` and keyed by `reasoning_field` (`openAIMessage.MarshalJSON` performs the redirect). A message with no reasoning carries no key.
-- **Anthropic provider** (`anthropicConvertContents`): a `thinking` block for a reasoning part, first in the message, as that API requires. Nothing else becomes a thinking block, and a message with no reasoning carries no block.
+The reasoning the record holds goes out; nothing is invented for a message that has none.
 
-**No `signature` is sent** — the decision and its grounds are in [signature-removal.md](internal/signature-removal.md).
+- **OpenAI provider** (`openaiConvertContents`): the reasoning text, under the key above (a message with no reasoning carries no key).
+- **Anthropic provider** (`anthropicConvertContents`): a `thinking` block, first in the message, as that API requires (a message with no reasoning carries no block, and no `signature` accompanies one — see [signature-removal.md](internal/signature-removal.md)).
