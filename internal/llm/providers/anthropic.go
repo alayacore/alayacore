@@ -8,11 +8,9 @@ package providers
 //
 // 2. THINKING BLOCKS ARE SENT AS THEY ARE: reasoning becomes a `thinking` block,
 //    in the order the record holds it, and an assistant message that produced no
-//    reasoning gets no block. An earlier version padded every assistant message
-//    with an empty one, as a workaround for a DeepSeek V4 failure of 2026-04-24;
-//    every Anthropic-format endpoint this tree can reach (DeepSeek, Qwen,
-//    MiniMax) now accepts an assistant message with no thinking block at all, and
-//    inventing one claims the model thought nothing. No `signature` is sent
+//    reasoning gets no block — every Anthropic-format endpoint this tree can reach
+//    (DeepSeek, Qwen, MiniMax) accepts that, and inventing an empty block would
+//    claim the model thought nothing. No `signature` is sent
 //    either, which is a decision of its own (docs/internal/signature-removal.md);
 //    what the compatible endpoints accept is in docs/providers.md → "Reasoning in
 //    an assistant message — implementation".
