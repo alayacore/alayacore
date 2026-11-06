@@ -253,16 +253,19 @@ never resumed: asking the model again repairs none of them.
 
 **How a continuation is made whole.** A resume is a new step, and its request is
 the history that now holds the salvage — which ends on what the model had already
-said. Every API reads a request ending on an assistant message as *prefill*
-("keep writing this"), so the request needs a trailing user part, and it gets the
-same one a compaction gets: `stepUserParts` appends the synthetic `Continue` at
-the step boundary, numbered and echoed like any other part added there, so the
-window the adapter shows and the part history keeps are the same block. That is
-why a resume needs a caller with the boundary hook (`OnBeforeSend`): a summarize
-call has none, cannot make its next request well-formed, and keeps its existing
-retry instead. One consequence is visible and intended: a `USER` window reading
-`Continue` appears in the transcript — exactly what the user would have typed —
-which is why the wait before it is announced (the last line of the notices above).
+said. It cannot end there: Anthropic rejects a request whose last message is an
+assistant one (that shape is prefill, and its current models answer 400), and on a
+model that still accepts one it means "keep writing this message" — not "carry on
+with the task", which is what a resume asks. So the request gets a trailing user
+part, the same one a compaction gets: `stepUserParts` appends the synthetic
+`Continue` at the step boundary, numbered and echoed like any other part added
+there, so the window the adapter shows and the part history keeps are the same
+block. That is why a resume needs a caller with the boundary hook
+(`OnBeforeSend`): a summarize call has none, cannot make its next request
+well-formed, and keeps its existing retry instead. One consequence is visible and
+intended: a `USER` window reading `Continue` appears in the transcript — exactly
+what the user would have typed — which is why the wait before it is announced (the
+last line of the notices above).
 
 **Not every error after content is a cut.** An error that arrives *after* the
 step's terminal event (`StepCompleteEvent`) is about the bytes that follow the

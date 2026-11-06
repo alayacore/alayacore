@@ -403,9 +403,10 @@ func TestAutoSummarizeCompactsMidTask(t *testing.T) {
 		t.Fatalf("pre-compaction content survived into the final history: %v", texts(session.Contents))
 	}
 
-	// The request after compaction must end on a user message. Ending on the
-	// assistant summary would be read as prefill ("continue this assistant
-	// task"), not as a fresh task to resume.
+	// The request after compaction must end on a user message. Anthropic rejects
+	// a request ending on an assistant message outright (prefill, 400 on its
+	// current models), and where one is still accepted it reads as "keep writing
+	// this message" rather than as a task to resume.
 	tail := provider.lastRequest()
 	if len(tail) == 0 || tail[len(tail)-1].GetRole() != llm.RoleUser {
 		t.Fatalf("post-compaction request ends on %v, want a user message", tail)

@@ -410,8 +410,8 @@ func TestAgentRetriesStreamWithBoundariesForUnopenedBlocks(t *testing.T) {
 // resumeCaller stands in for the session's step boundary: it records the history
 // each step is built on and appends the synthetic "Continue" a caller appends when
 // that history ends on an assistant message — the rule Session.stepUserParts
-// applies in production, and the reason a continuation is a well-formed request
-// rather than prefill.
+// applies in production, and what keeps a continuation a request Anthropic will
+// accept rather than a prefilled one.
 type resumeCaller struct {
 	requests [][]ContentPart
 }
@@ -465,7 +465,8 @@ func TestAgentResumesStreamThatDiedAfterContent(t *testing.T) {
 	}
 
 	// The continuation was sent on the salvage, with the boundary's user part
-	// last — the shape that keeps the request from being read as prefill.
+	// last — the shape Anthropic accepts, where a request ending on an assistant
+	// message is a 400.
 	second := p.requests[1]
 	if len(second) != 3 {
 		t.Fatalf("continuation carried %d parts, want 3 (prompt, salvage, Continue)", len(second))

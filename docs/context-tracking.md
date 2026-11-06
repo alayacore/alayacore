@@ -121,11 +121,13 @@ conversation, and the task continues from it. Nothing is discarded without the
 model having seen it.
 
 The replacement ends on the assistant summary. That would be the one request in
-the session that ends on an assistant message, which every API reads as
-*prefill* — "continue this assistant message" — and the model may keep writing the
-summary instead of resuming the work. So the task is ended on a user part
-instead: the user's own steering words when any are waiting (they go last
-anyway — see [architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-task)),
+the session that ends on an assistant message, which Anthropic rejects outright —
+that shape is *prefill*, and its current models answer a 400 — and which, on a
+model that still accepts one, means "continue this assistant message", where the
+model may keep writing the summary instead of resuming the work. So the task is
+ended on a user part instead: the user's own steering words when any are waiting
+(they go last anyway — see
+[architecture.md](architecture.md#steering--a-prompt-that-arrives-mid-task)),
 otherwise a synthetic `Continue`, the resume word `runTaskContinue` uses. That
 trailing part is appended, numbered, echoed and published like any other part
 added at a step boundary (`spliceUserParts`), so its history ID resolves in

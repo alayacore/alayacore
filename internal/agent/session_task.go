@@ -299,11 +299,12 @@ func (s *Session) processPrompt(ctx context.Context, history []llm.ContentPart, 
 // It is empty when the boundary needs neither, which is the ordinary case.
 //
 // The rule behind the second case is that a request must not end on an
-// assistant message: every API reads that as "continue this assistant message"
-// (prefill), and the model may keep writing the summary instead of resuming the
-// work. A compaction's replacement ends on the assistant summary, so it needs
-// the trailing user message; a boundary that did not compact ends on the tool
-// results the model just asked for, and needs nothing.
+// assistant message: Anthropic rejects one — that shape is prefill, and its
+// current models answer a 400 — and on a model that still accepts one it means
+// "keep writing this message", where the model may keep writing the summary
+// instead of resuming the work. A compaction's replacement ends on the assistant
+// summary, so it needs the trailing user message; a boundary that did not
+// compact ends on the tool results the model just asked for, and needs nothing.
 func (s *Session) stepUserParts(contents []llm.ContentPart) (parts []llm.ContentPart, steering bool) {
 	if p := s.takeSteering(); len(p) > 0 {
 		return p, true

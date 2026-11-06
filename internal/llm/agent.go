@@ -420,11 +420,14 @@ func (a *Agent) sendWithRetry(ctx context.Context, contents []ContentPart, callb
 // Two conditions keep it honest rather than merely convenient:
 //
 //   - The caller must own the history the next request is built from
-//     (OnBeforeSend). A continuation ends on what the model already said, which
-//     every API reads as prefill, so it needs a trailing user part — the session's
-//     `stepUserParts` appends the same `Continue` a compaction uses, numbered and
-//     echoed like any other part added at a boundary. A prompt whose caller has no
-//     such hook (a summarize call) is not resumed and keeps its existing retry.
+//     (OnBeforeSend). A continuation ends on what the model already said, and a
+//     request may not end there: Anthropic rejects one (that shape is prefill,
+//     and its current models answer a 400), and a model that still accepts one
+//     reads it as "keep writing this message" instead of "carry on with the
+//     task". So it needs a trailing user part, and the session's `stepUserParts`
+//     appends the same `Continue` a compaction uses, numbered and echoed like any
+//     other part added at a boundary. A prompt whose caller has no such hook (a
+//     summarize call) is not resumed and keeps its existing retry.
 //   - The user must not have cut it. sendWithRetry reports a cancellation as the
 //     cancellation, and the context check below catches anything else that died
 //     before a resume is announced — a next attempt would refuse to run, so the
