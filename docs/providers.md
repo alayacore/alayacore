@@ -302,6 +302,21 @@ After `json.Unmarshal` into `json.RawMessage`, `args` becomes the 4 bytes `null`
 
 `unquoteToolArg` handles three shapes: a JSON-string-encoded fragment (`"{\"path\":...}"` → the inner text, the standard OpenAI form), a raw JSON fragment (`{"path":...}` → passed through as-is, used by some compatible providers), and `null` (→ empty string). `OpenAIProvider.handleDelta` emits each fragment as a `ToolInputDeltaEvent`, and `llm.Agent`'s `streamAssembler` appends it to the call's arguments.
 
+## One system message on the OpenAI protocol
+
+alayacore carries two system prompts — its own, and the operator's `--system` text — and the Chat
+Completions conventions put a system prompt at the front of `messages`, once. They travel as **one
+message**, the two texts joined by a blank line (`joinSystemPrompts` in `providers/openai.go`).
+
+A server may enforce that literally. llama.cpp's Jinja chat templates for the Qwen3.5 family raise
+`System message must be at the beginning.` on the second `role: "system"` message, and every request in
+that session comes back 500 — permanently, so it outlives the retries and the conversation cannot
+recover. Two messages was the shape sent until this rule existed, and it is not one this wire promises.
+
+Anthropic is unaffected: its `system` field takes an array of text blocks, so the two halves still
+travel as two blocks there, and the interface keeps both parameters for that reason. The joining is the
+OpenAI protocol's, not the domain layer's.
+
 ## `parallel_tool_calls` / `serial_tool_calls`: always sent, on one protocol only
 
 `model.conf`'s `serial_tool_calls` reaches the request body of a Chat

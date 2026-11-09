@@ -27,8 +27,10 @@ func oneTool() []llm.ToolDefinition {
 
 // postOpenAI sends one request through a capturing server and returns the body
 // the provider built. The response is a plain text task: only the request is
-// under test here.
-func postOpenAI(t *testing.T, cfg providers.BaseConfig, tools []llm.ToolDefinition) map[string]any {
+// under test here. The two system prompts are parameters because
+// openai_system_message_test.go is the other caller; the tests in this file ask
+// for none, and pass "".
+func postOpenAI(t *testing.T, cfg providers.BaseConfig, tools []llm.ToolDefinition, systemPrompt, extraSystemPrompt string) map[string]any {
 	t.Helper()
 
 	bodyCh := make(chan map[string]any, 1)
@@ -55,7 +57,7 @@ func postOpenAI(t *testing.T, cfg providers.BaseConfig, tools []llm.ToolDefiniti
 	}
 
 	events, err := provider.StreamMessages(context.Background(),
-		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}), tools, "", "")
+		testMsg(llm.RoleUser, &llm.TextPart{Text: "hi"}), tools, systemPrompt, extraSystemPrompt)
 	if err != nil {
 		t.Fatalf("StreamMessages: %v", err)
 	}
@@ -81,14 +83,14 @@ func postOpenAI(t *testing.T, cfg providers.BaseConfig, tools []llm.ToolDefiniti
 func TestOpenAIRequestAlwaysCarriesParallelToolCalls(t *testing.T) {
 	tools := oneTool()
 
-	parallel := postOpenAI(t, providers.BaseConfig{}, tools)
+	parallel := postOpenAI(t, providers.BaseConfig{}, tools, "", "")
 	if got, ok := parallel["parallel_tool_calls"]; !ok {
 		t.Error("field absent by default; it must be sent on every request with tools")
 	} else if got != true {
 		t.Errorf("default parallel_tool_calls = %#v, want true", got)
 	}
 
-	serial := postOpenAI(t, providers.BaseConfig{SerialToolCalls: true}, tools)
+	serial := postOpenAI(t, providers.BaseConfig{SerialToolCalls: true}, tools, "", "")
 	if got, ok := serial["parallel_tool_calls"]; !ok {
 		t.Error("field absent when serial is configured; the server cannot be expected to guess")
 	} else if got != false {
@@ -101,7 +103,7 @@ func TestOpenAIRequestAlwaysCarriesParallelToolCalls(t *testing.T) {
 // tools. It travels with the tools block, which is the only place it can mean
 // something.
 func TestOpenAIRequestWithoutToolsCarriesNoParallelToolCalls(t *testing.T) {
-	body := postOpenAI(t, providers.BaseConfig{}, nil)
+	body := postOpenAI(t, providers.BaseConfig{}, nil, "", "")
 
 	if _, ok := body["tools"]; ok {
 		t.Error("tools present for a request with no tool definitions")
@@ -114,7 +116,7 @@ func TestOpenAIRequestWithoutToolsCarriesNoParallelToolCalls(t *testing.T) {
 // Also with an explicit serial configuration, so the "no tools" rule is not
 // merely the zero value passing by accident.
 func TestOpenAIRequestWithoutToolsCarriesNoParallelToolCallsWhenSerial(t *testing.T) {
-	body := postOpenAI(t, providers.BaseConfig{SerialToolCalls: true}, nil)
+	body := postOpenAI(t, providers.BaseConfig{SerialToolCalls: true}, nil, "", "")
 	if _, ok := body["parallel_tool_calls"]; ok {
 		t.Errorf("parallel_tool_calls sent with no tools: %v", body["parallel_tool_calls"])
 	}

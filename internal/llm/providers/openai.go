@@ -280,13 +280,13 @@ func (p *OpenAIProvider) StreamMessages(
 	// fit degrades to slow, never to a rejected request.
 	contents = llm.FitImagesForSend(contents)
 
-	// Convert messages to OpenAI format
-	apiMessages := make([]openAIMessage, 0, len(contents)+2)
-	if systemPrompt != "" {
-		apiMessages = append(apiMessages, openAIMessage{Role: "system", Content: systemPrompt})
-	}
-	if extraSystemPrompt != "" {
-		apiMessages = append(apiMessages, openAIMessage{Role: "system", Content: extraSystemPrompt})
+	// One system message, not two: this wire has a single system slot, and a server may hold it to
+	// that literally — llama.cpp's Jinja Qwen3.5 templates answer a second one with 500, "System
+	// message must be at the beginning.", which no retry can fix. The split itself is alayacore's,
+	// not the protocol's. See docs/providers.md, "One system message on the OpenAI protocol".
+	apiMessages := make([]openAIMessage, 0, len(contents)+1)
+	if system := joinSystemPrompts(systemPrompt, extraSystemPrompt); system != "" {
+		apiMessages = append(apiMessages, openAIMessage{Role: "system", Content: system})
 	}
 	apiMessages = append(apiMessages, openaiConvertContents(contents, p.reasoningField)...)
 
@@ -750,6 +750,20 @@ func (p *OpenAIProvider) handleDelta(delta openAIDelta, yield func(llm.StreamEve
 // ============================================================================
 // Message Conversion (OpenAI wire format)
 // ============================================================================
+
+// joinSystemPrompts is the two halves of a system prompt as the one message this protocol can
+// carry. An empty half is not a paragraph break: the blank line separates two texts that both
+// exist.
+func joinSystemPrompts(systemPrompt, extraSystemPrompt string) string {
+	switch {
+	case systemPrompt == "":
+		return extraSystemPrompt
+	case extraSystemPrompt == "":
+		return systemPrompt
+	default:
+		return systemPrompt + "\n\n" + extraSystemPrompt
+	}
+}
 
 // openaiConvertContents converts domain ContentParts to OpenAI wire format.
 // It groups consecutive same-role ContentParts into API messages.
