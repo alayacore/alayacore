@@ -33,29 +33,36 @@ var (
 	keyDelete    = Chord{Code: KeyDelete}
 )
 
-// Letter keys. An uppercase letter is the chord a terminal reports for
-// shift+<letter> — the modifier never reaches the program, the case does.
+// Letter and punctuation keys. An uppercase letter is the chord a terminal
+// reports for shift+<letter> — the modifier never reaches the program, the
+// case does.
 var (
-	keyJ      = Chord{Code: 'j'}
-	keyK      = Chord{Code: 'k'}
-	keyH      = Chord{Code: 'H'}
-	keyL      = Chord{Code: 'L'}
-	keyM      = Chord{Code: 'M'}
-	keyG      = Chord{Code: 'G'}
-	keyB      = Chord{Code: 'b'}
-	keyE      = Chord{Code: 'e'}
-	keyF      = Chord{Code: 'f'}
-	keyR      = Chord{Code: 'r'}
-	keyY      = Chord{Code: 'y'}
-	keyN      = Chord{Code: 'n'}
-	keyC      = Chord{Code: 'c'}
-	keyGSmall = Chord{Code: 'g'}
+	keyJ = Chord{Code: 'j'}
+	keyK = Chord{Code: 'k'}
+	keyH = Chord{Code: 'H'}
+	keyL = Chord{Code: 'L'}
+	keyM = Chord{Code: 'M'}
+	keyB = Chord{Code: 'b'}
+	keyE = Chord{Code: 'e'}
+	keyF = Chord{Code: 'f'}
+	keyR = Chord{Code: 'r'}
+	keyY = Chord{Code: 'y'}
+	keyN = Chord{Code: 'n'}
+	keyC = Chord{Code: 'c'}
 
 	keyYCapital = Chord{Code: 'Y'}
 	keyNCapital = Chord{Code: 'N'}
 	keyCCapital = Chord{Code: 'C'}
 	keyJCapital = Chord{Code: 'J'}
 	keyKCapital = Chord{Code: 'K'}
+
+	// The endpoints of the transcript, on the plain `<` and `>` keys that both
+	// traditions give them: Emacs spells them M-< and M-> (beginning and end of
+	// buffer), and less binds the bare keys. The bare key is what a terminal
+	// reports; no modifier has to survive, so the binding is the same on every
+	// host.
+	keyLessThan    = Chord{Code: '<'}
+	keyGreaterThan = Chord{Code: '>'}
 
 	keyColon = Chord{Code: ':'}
 )

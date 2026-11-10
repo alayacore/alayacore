@@ -211,13 +211,13 @@ func TestEnsureWindowCursorVisible_EntirelyAboveScrolls(t *testing.T) {
 	}
 }
 
-// TestAutoFollow_GReEnablesNavigationDisables verifies the auto-follow design
+// TestAutoFollow_FollowKeyReEnablesNavigationDisables verifies the auto-follow design
 // on the navigation side:
-//   - G re-enables auto-follow (submitting a prompt is the other enabler —
+//   - `>` re-enables auto-follow (submitting a prompt is the other enabler —
 //     see follow_latest_test.go)
 //   - navigation only ever disables it
 //   - auto-follow keeps viewport at bottom across updateContent calls
-func TestAutoFollow_GReEnablesNavigationDisables(t *testing.T) {
+func TestAutoFollow_FollowKeyReEnablesNavigationDisables(t *testing.T) {
 	wb := NewWindowBuffer(80, DefaultStyles())
 	display := NewDisplayModel(wb, DefaultStyles())
 
@@ -229,16 +229,16 @@ func TestAutoFollow_GReEnablesNavigationDisables(t *testing.T) {
 	display = display.updateContent()
 
 	// Start: autoFollow is true by default (SetCursorToLastWindow from init)
-	// Simulate G: enables auto-follow
+	// Simulate `>`: enables auto-follow
 	display = display.WithWindowCursorToLastWindow()
 	display = display.GotoBottom()
 	display = display.updateContent()
 
 	if !display.autoFollow {
-		t.Fatal("expected autoFollow=true after G")
+		t.Fatal("expected autoFollow=true after `>`")
 	}
 	yOffsetAtBottom := display.scrollView.YOffset()
-	t.Logf("After G: YOffset=%d, autoFollow=%v", yOffsetAtBottom, display.autoFollow)
+	t.Logf("After `>`: YOffset=%d, autoFollow=%v", yOffsetAtBottom, display.autoFollow)
 
 	// Now navigate up with k — disables auto-follow
 	display, _ = display.MoveWindowCursorUp()
@@ -258,16 +258,16 @@ func TestAutoFollow_GReEnablesNavigationDisables(t *testing.T) {
 			yOffsetAtBottom, display.scrollView.YOffset())
 	}
 
-	// Now press G again — re-enables auto-follow
+	// Now press `>` again — re-enables auto-follow
 	display = display.WithWindowCursorToLastWindow()
 	display = display.GotoBottom()
 	display = display.updateContent()
 
 	if !display.autoFollow {
-		t.Fatal("expected autoFollow=true after second G")
+		t.Fatal("expected autoFollow=true after second `>`")
 	}
 	yOffsetNow := display.scrollView.YOffset()
-	t.Logf("After second G: YOffset=%d", yOffsetNow)
+	t.Logf("After second `>`: YOffset=%d", yOffsetNow)
 
 	// More new content — should follow to bottom
 	wb.AppendOrUpdate(tagAssistantText, "w3", strings.Repeat("line\n", 50))
@@ -303,16 +303,16 @@ func TestAutoFollow_JNoOpWhenNewWindowBetweenTicks(t *testing.T) {
 	display = display.WithHeight(20)
 	display = display.updateContent()
 
-	// Simulate G: cursor at last window, auto-follow enabled.
+	// Simulate `>`: cursor at last window, auto-follow enabled.
 	display = display.WithWindowCursorToLastWindow()
 	display = display.GotoBottom()
 	display = display.updateContent()
 
 	if !display.autoFollow {
-		t.Fatal("expected autoFollow=true after G")
+		t.Fatal("expected autoFollow=true after `>`")
 	}
 	windowCursorBefore := display.GetWindowCursor()
-	t.Logf("After G: cursor=%d, autoFollow=%v", windowCursorBefore, display.autoFollow)
+	t.Logf("After `>`: cursor=%d, autoFollow=%v", windowCursorBefore, display.autoFollow)
 
 	// Press j while at the last window — should be a no-op.
 	var moved bool

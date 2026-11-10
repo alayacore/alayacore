@@ -16,8 +16,8 @@ architecture.
 | `↑` / `K` | Scroll up one line |
 | `Ctrl+D` / `PgDn` | Scroll down half screen |
 | `Ctrl+U` / `PgUp` | Scroll up half screen |
-| `g` / `Home` | Go to first window, scroll to top |
-| `G` / `End` | Follow the last window |
+| `<` / `Home` | Go to first window, scroll to top |
+| `>` / `End` | Follow the last window |
 | `H` | Move cursor to top window in visible area |
 | `M` | Move cursor to middle window in visible area |
 | `L` | Move cursor to bottom window in visible area |
@@ -25,16 +25,20 @@ architecture.
 | `b` | Jump to previous user prompt and put it at the top; leaves the view alone when there is none |
 | `e` | Open window content in external editor |
 
-Two families, and they do not overlap: **the home row moves the pointer**
-(`j`/`k`, and the vim names `H`/`M`/`L`, `g`/`G`, `f`/`b`), **the arrows and the
-coarse keys move the viewport** (`↑`/`↓` one line; `Ctrl+U`/`Ctrl+D` and
-`PgUp`/`PgDn` half a screen — all four share one handler, so a Page key moves by
-half a screen here, which is what its table row says). `J`/`K` are the viewport
-motion spelled on the home row, so shift carries exactly one meaning in this
-table: leave the pointer, move the screen.
+Two families, and they do not overlap: **the keys that move the pointer**
+(`j`/`k`, the vim names `H`/`M`/`L`, `f`/`b`, and `<`/`>` for the two ends),
+**the arrows and the coarse keys move the viewport** (`↑`/`↓` one line;
+`Ctrl+U`/`Ctrl+D` and `PgUp`/`PgDn` half a screen — all four share one handler,
+so a Page key moves by half a screen here, which is what its table row says).
+`J`/`K` are the viewport motion spelled on the home row, so shift carries
+exactly one meaning in this table: leave the pointer, move the screen.
 
-Four keys serve both families: `g` and `Home` put the pointer on the first window
-and take the view with it, `G` and `End` do the last.
+Four keys serve both families: `<` and `Home` put the pointer on the first window
+and take the view with it, `>` and `End` do the last. The brackets are the two
+ends in two traditions at once — Emacs's M-< and M-> (beginning and end of
+buffer), and the bare keys `less` binds to the same two places. The modifier is
+dropped here because Alt arrives ESC-prefixed and is ambiguous with the head of
+an escape sequence, while the bare key is one every host delivers.
 
 The arrows are bound to the viewport rather than copied onto `j`/`k` because of
 the mouse wheel. While this program owns the alternate screen it asks for no
@@ -481,7 +485,7 @@ Auto-follow is disabled by any navigation that actually moves the cursor or
 scrolls the viewport. Three things re-enable it, all meaning "take me to what is
 happening now":
 
-- **`G` / `End`.**
+- **`>` / `End`.**
 - **Submitting a prompt.** A send is a request to watch the answer: the prompt the
   session echoes back and everything streamed after it must not land below a
   viewport left parked in the scrollback, where a silent `Enter` reads as a
@@ -497,7 +501,7 @@ An empty prompt box, and a command that appends no transcript (`:save`,
 While auto-follow is active:
 | Key | Behavior | Disables auto-follow? |
 |-----|----------|-----------------------|
-| `G` | Follow the last window | ✅ Re-enables |
+| `>` | Follow the last window | ✅ Re-enables |
 | `Enter` | Submit prompt | ✅ Re-enables (empty box: ❌) |
 | `:continue` / `:summarize` | Start a task | ✅ Re-enables |
 | `j` | Move cursor down | ❌ No-op (race protection) |
@@ -509,7 +513,7 @@ While auto-follow is active:
 | `M` | Move to center of visible area | ✅ If cursor actually moves |
 | `f` | Jump to next user prompt | ✅ If cursor actually moves |
 | `b` | Jump to previous user prompt | ✅ If cursor actually moves |
-| `g` / `Home` | Go to first window | ✅ If cursor actually moves |
+| `<` / `Home` | Go to first window | ✅ Always |
 | `↑` / `K` | Scroll up one line | ✅ Always |
 | `Ctrl+U` / `PgUp` | Scroll up half screen | ✅ Always |
 | `e` | Open in editor | ✅ Always |

@@ -169,8 +169,8 @@ func TestLiveEdgeHiddenBelowShortDocument(t *testing.T) {
 
 // TestLiveEdgeReadsStateAtRenderTime is the regression that "F↓" carried:
 // the indicator lived inside m.statusLeft, which updateStatus rebuilds only
-// when the session status version moves. Navigation (j/k/scroll/G) moves no
-// version, so the indicator went stale until the next session event. The
+// when the session status version moves. Navigation (j/k, scroll, `>`) moves
+// no version, so the indicator went stale until the next session event. The
 // marker is now derived from the display model while rendering, so a flip
 // must show up without updateStatus running at all — and the status bar must
 // not change, because it no longer carries the state.

@@ -18,9 +18,9 @@ package terminal
 // arrow a host produces for a notch — which is what `J`/`K` have always done,
 // and the two must stay in step.
 //
-// The pointer's keys are `j`/`k` and the vim names (`H`/`M`/`L`, `g`/`G`,
-// `f`/`b`). List overlays are not this file's subject: a picker has no viewport
-// apart from its selection, so its arrows move the selection.
+// The pointer's keys are `j`/`k`, the vim names (`H`/`M`/`L`, `f`/`b`), and
+// `<`/`>` for the two ends. List overlays are not this file's subject: a picker
+// has no viewport apart from its selection, so its arrows move the selection.
 
 import (
 	"fmt"

@@ -36,7 +36,7 @@ func TestPressRTogglesMarkdownInViewport(t *testing.T) {
 
 	// Prime the scroll content (mimics first paint).
 	display = display.WithHeight(20)
-	display, _ = display.Update(KeyPressMsg(Key{Code: 'G'})) // goto end + autoscroll
+	display, _ = display.Update(KeyPressMsg(Key{Code: '>'})) // goto end + autoscroll
 	display = display.updateContent()
 
 	before := display.scrollView.content

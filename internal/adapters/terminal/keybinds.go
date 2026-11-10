@@ -618,10 +618,10 @@ func (m Terminal) handleSubmit() (Terminal, Cmd) {
 	m = m.clearAttachments()
 
 	// Sending is a request to watch the answer, so the view goes back to the
-	// live edge and follows — G's gesture, on the one act that always deserves
-	// it. Placed after the empty-prompt return above, so Enter on an empty box
-	// moves nothing, and after the command branch, so ":save" and friends leave
-	// the reader where they are.
+	// live edge and follows — the gesture `>` makes, on the one act that always
+	// deserves it. Placed after the empty-prompt return above, so Enter on an
+	// empty box moves nothing, and after the command branch, so ":save" and
+	// friends leave the reader where they are.
 	m.display = m.display.FollowLatest()
 
 	return m, Batch(

@@ -24,7 +24,7 @@ package terminal
 // bottom in the same update that appends content — but `liveEdgeText` lets the
 // label win if the two ever disagree, because "more is coming here" is the
 // fact a user needs while output is streaming. Nothing is drawn when neither
-// holds: reaching the last line with `J` after scrolling up (only `G`
+// holds: reaching the last line with `J` after scrolling up (only `>`
 // re-enables follow) leaves the whole transcript on screen, and rule 4 of
 // the glyph policy (constants.go) — a marker that never changes is
 // decoration — is why the row keeps quiet there instead of stating what is
@@ -100,7 +100,7 @@ const (
 	liveEdgeFrame = "-"
 
 	// liveEdgeFollowing is the label while auto-follow pins the viewport
-	// to the newest line. The word is the one the docs use for `G`
+	// to the newest line. The word is the one the docs use for `>`
 	// ("Follow the last window"), so pressing it and watching this appear
 	// explains the key without a manual.
 	liveEdgeFollowing = "following"

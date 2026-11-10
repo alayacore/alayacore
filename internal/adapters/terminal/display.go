@@ -18,7 +18,7 @@ type DisplayModel struct {
 	scrollView     ScrollView // viewport into the window buffer content
 	height         int        // display area height (viewport height)
 	windowCursor   int        // currently selected window index (-1 = none)
-	autoFollow     bool       // true on init and after FollowLatest (G, submit); disabled by navigation
+	autoFollow     bool       // true on init and after FollowLatest (`>`, submit); disabled by navigation
 	displayFocused bool       // whether the display pane has input focus
 	blocked        bool       // true when an overlay is active (dim rendering)
 	lastContent    string     // cached last rendered output for change detection
@@ -130,10 +130,18 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		m = m.ScrollUp(1)
 		return m.updateContent(), nil
 
-	case keyG, keyEnd:
+	case keyGreaterThan, keyEnd:
 		return m.FollowLatest(), nil
 
-	case keyGSmall, keyHome:
+	case keyLessThan, keyHome:
+		// A jump to the head of the transcript is never a request to watch
+		// the live edge, so following goes off before the scroll. Without it,
+		// updateContent would put the viewport straight back at the bottom
+		// whenever the cursor already sat on the first window —
+		// WithWindowCursor preserves autoFollow when the index does not change
+		// — and the key would do nothing on a single window taller than the
+		// screen.
+		m = m.MarkUserScrolled()
 		m = m.WithWindowCursor(0)
 		m = m.GotoTop()
 		return m.updateContent(), nil
@@ -633,7 +641,7 @@ func (m DisplayModel) ClampWindowCursor() DisplayModel {
 // WithWindowCursorToLastWindow parks the cursor on the last visible window and
 // re-enables auto-follow. It is the one place auto-follow comes back on —
 // setWindowCursor and clearWindowCursor only ever turn it off — so every caller is a
-// deliberate "take me to what is happening now": FollowLatest (G/End,
+// deliberate "take me to what is happening now": FollowLatest (`>` / `End`,
 // submitting, a task starting) and focusDisplay's cursorless case.
 func (m DisplayModel) WithWindowCursorToLastWindow() DisplayModel {
 	i := m.windowBuffer.LastVisibleIndex()
@@ -649,17 +657,18 @@ func (m DisplayModel) WithWindowCursorToLastWindow() DisplayModel {
 
 // FollowLatest is the "take me to what is happening now" gesture: park the
 // cursor on the last window, re-enable auto-follow, and paint the live edge.
-// Two things mean it — G/End, and submitting a prompt. A send is a request to
-// watch the answer, so the prompt the session echoes back and everything
-// streamed after it must land in view instead of below a viewport left parked
-// in the scrollback (where a silent Enter reads as a prompt that never went).
+// Two things mean it — `>` / `End`, and submitting a prompt. A send is a
+// request to watch the answer, so the prompt the session echoes back and
+// everything streamed after it must land in view instead of below a viewport
+// left parked in the scrollback (where a silent Enter reads as a prompt that
+// never went).
 // The third caller is not a gesture but the session's own report that a task
 // began (see Terminal.handleDisplayRefresh), which is the same request made by
 // a command: :continue and :summarize.
 //
 // At submit time the echo has not arrived yet, so the cursor lands on the last
 // window there is and the tick handler's WithWindowCursorToLastWindow advances it as
-// the session's frames append windows — the same state G leaves the display in.
+// the session's frames append windows — the same state `>` leaves the display in.
 //
 // The render belongs to the gesture: View paints scrollView's cached clip, and
 // a tick returns early when no output delta arrived, so a jump that skipped
