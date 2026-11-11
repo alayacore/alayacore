@@ -35,7 +35,7 @@ Sleep 1s
 
 # ── Choose Model ────────────────────────────────────────────────────
 
-Ctrl+L
+Ctrl+P
 Sleep 1s
 Type "flash"
 Sleep 1s
