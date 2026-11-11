@@ -124,8 +124,8 @@ func TestShiftedArrowsAreBoundNowhere(t *testing.T) {
 
 func TestPointerKeysStillMoveThePointer(t *testing.T) {
 	// The other half of the split: `j`/`k` keep the cursor, which is what every
-	// cursor-gated action reads (Space folds, r toggles rendering, e opens the
-	// editor, Ctrl+F forks).
+	// cursor-gated action reads (Space folds, r toggles rendering, Ctrl+O opens
+	// the editor, Ctrl+X forks).
 	m := tallTranscript(t).GotoBottom()
 	m = press(m, "\x1b[A\x1b[A") // leave the live edge, then the pointer exists to move
 	if m.GetWindowCursor() != -1 {

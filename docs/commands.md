@@ -119,7 +119,7 @@ Two commands carry a short form a user may type instead — `:q` for `:quit` and
 typed line becomes a frame, so the session (and a Raw IO client) sees the full
 name; the wire has no aliases, and a client that sends `q` is told the command
 is unknown. A command with a keybinding does not get one: `Ctrl+S`, `Ctrl+P`,
-`Ctrl+T`, `Ctrl+G` and `Ctrl+F` already cover `:save`, `:model_set`,
+`Ctrl+T`, `Ctrl+G` and `Ctrl+X` already cover `:save`, `:model_set`,
 `:theme_set`, `:cancel` and `:fork`.
 
 `:cancel` cancels the running task, and it takes the task's *queued* steering with
@@ -204,7 +204,7 @@ verbatim. `:save [filename]` takes its path the same way, and so does
 `:theme_set <name>` — a theme is named by its file (`my theme.conf` →
 `my theme`), so its name may contain spaces.
 
-In the TUI, you can also press `Ctrl+F` at a window to pre-fill the `:fork` command with that window's history ID.
+In the TUI, you can also press `Ctrl+X` at a window to pre-fill the `:fork` command with that window's history ID.
 
 **The cut never separates a tool call from its result.** A file ending in a `tool_use` with no matching `tool_result` loads without complaint and is rejected by the provider on the *next* prompt, so `forkEndIndex` extends the cut forward until every tool call inside the prefix has its result inside it too. Because a step's results follow all of its calls (`call1, call2, result1, result2`), forking a two-call step at the first call writes both calls and both results — the whole group moves, rather than the named entry being quietly dropped. Forking at anything that carries no tool call (a prompt, reasoning, text) cuts exactly there.
 

@@ -155,7 +155,7 @@ stacked on top of `Esc`, and one key per job is why `Esc` is the only way out.
 | `Ctrl+W` | Delete the word before the cursor, back to the start of its line |
 | `Ctrl+U` | Delete back to the start of the line |
 | `Ctrl+C` | Clear text |
-| `Ctrl+F` | Fork session from cursor position |
+| `Ctrl+X` | Fork session from cursor position (pre-fills `:fork` with the window's history ID) |
 | `Ctrl+A` | Open attachment picker for multi-modal input |
 | `:` | Switch to input with `:` prefix (command mode) |
 | `Space` | Toggle window fold (fold/unfold) |

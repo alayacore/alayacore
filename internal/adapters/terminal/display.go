@@ -347,7 +347,11 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	case keyColon:
 		return m, []Result{focusPromptWithValueMsg{value: ":"}}
 
-	case keyCtrlF:
+	// `^X` for "cut the session here": X is a fork, and the key is free in vi's
+	// normal-mode table (^X is an ex-mode command there; vim's ^X decrements a
+	// number and needs a cursor on one, which this display has nowhere). `^F` was
+	// vi's page-forward, and it is left unbound rather than used for this.
+	case keyCtrlX:
 		if historyID := m.GetWindowCursorHistoryID(); historyID > 0 {
 			return m, []Result{focusPromptWithValueMsg{value: fmt.Sprintf(":%s %d ", commands.CommandNameFork, historyID)}}
 		}

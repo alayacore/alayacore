@@ -79,7 +79,6 @@ var (
 	keyCtrlC = Chord{Code: 'c', Mod: ModCtrl}
 	keyCtrlD = Chord{Code: 'd', Mod: ModCtrl}
 	keyCtrlE = Chord{Code: 'e', Mod: ModCtrl}
-	keyCtrlF = Chord{Code: 'f', Mod: ModCtrl}
 	keyCtrlG = Chord{Code: 'g', Mod: ModCtrl}
 	keyCtrlH = Chord{Code: 'h', Mod: ModCtrl}
 	keyCtrlJ = Chord{Code: 'j', Mod: ModCtrl}
@@ -91,6 +90,7 @@ var (
 	keyCtrlT = Chord{Code: 't', Mod: ModCtrl}
 	keyCtrlU = Chord{Code: 'u', Mod: ModCtrl}
 	keyCtrlW = Chord{Code: 'w', Mod: ModCtrl}
+	keyCtrlX = Chord{Code: 'x', Mod: ModCtrl}
 	keyCtrlY = Chord{Code: 'y', Mod: ModCtrl}
 	keyCtrlZ = Chord{Code: 'z', Mod: ModCtrl}
 )

@@ -524,7 +524,7 @@ func (m Terminal) handleGlobalKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 
 // handleSaveKey handles the Ctrl+S save shortcut.
 // If no session file is bound, it focuses the input and inserts ":save "
-// so the user can type a filename (same pattern as Ctrl+F for :fork).
+// so the user can type a filename (same pattern as Ctrl+X for :fork).
 // If a session file is bound, it submits the save command directly.
 func (m Terminal) handleSaveKey() (Terminal, Cmd) {
 	if m.appConfig.Cfg.Session == "" {

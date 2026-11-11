@@ -132,7 +132,7 @@ func buildHelpItems() []HelpItem {
 		HelpItem{ID: nextID(), Key: ":", Description: "Enter command mode", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "Space", Description: "Toggle window fold", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "r", Description: "Toggle markdown rendering", Type: HelpItemKey},
-		HelpItem{ID: nextID(), Key: "Ctrl+F", Description: "Fork session from cursor", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Ctrl+X", Description: "Fork session from cursor", Type: HelpItemKey},
 	)
 	for i := range items {
 		if !items[i].IsSection {

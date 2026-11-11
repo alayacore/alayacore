@@ -527,8 +527,9 @@ func TestEncodedBracketedPasteSurvivesTheParser(t *testing.T) {
 // constants instead of being a list of examples that can drift from them.
 func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
 	bound := []Chord{
-		keyCtrlA, keyCtrlC, keyCtrlD, keyCtrlF, keyCtrlG, keyCtrlH, keyCtrlJ,
-		keyCtrlL, keyCtrlO, keyCtrlP, keyCtrlR, keyCtrlS, keyCtrlT, keyCtrlU, keyCtrlW, keyCtrlZ,
+		keyCtrlA, keyCtrlC, keyCtrlD, keyCtrlG, keyCtrlH, keyCtrlJ,
+		keyCtrlL, keyCtrlO, keyCtrlP, keyCtrlR, keyCtrlS, keyCtrlT, keyCtrlU, keyCtrlW,
+		keyCtrlX, keyCtrlZ,
 	}
 	if len(bound) == 0 {
 		t.Fatal("no ctrl chords to check")
