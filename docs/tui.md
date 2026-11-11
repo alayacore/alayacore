@@ -35,6 +35,27 @@ so a Page key moves by half a screen here, which is what its table row says).
 what a mouse wheel writes into the input stream, so they are the one spelling of
 that motion that a wheel notch cannot produce.
 
+The split is not the one vi draws, because vi has **one** object and this display
+has two. In vi every key here acts on the cursor: `j`/`k` move it a line,
+`<C-e>`/`<C-y>` scroll the window under it, and `<C-d>`/`<C-u>` scroll the window
+*and take the cursor with them* — the cursor ends half a screen further into the
+file. Here `<C-e>`/`<C-y>` and `<C-d>`/`<C-u>` move the **scroll** and leave the
+pointer where it is: that is vi's `<C-e>`/`<C-y>` motion in both cases, half a
+screen at a time for the coarse pair. The pointer has its own motions, and they
+are the ones that answer "which window am I on" (`j`/`k`, `H`/`M`/`L`, `f`/`b`,
+`G`). So a vi hand gets vi's *count* on `<C-d>` and vi's *key*, but not vi's
+cursor; the two things it would reach for instead are `j`/`k` and `M`.
+
+One consequence, stated rather than papered over: **scrolling can leave the
+pointer off screen**, which vi never does. It stays where it was put, so `Space`,
+`r` and `e` act on a window the reader cannot see. `Space` and `r` reveal it by
+themselves (`DisplayModel.anchorWindowCursor` pulls the viewport back to the
+window's own line, the same rule a fold uses), and `e` shows the window's content
+in the editor, so the target is evident in every case. What is not offered is a
+scrolling pointer: a view motion that retargeted the pointer would be a second
+`H`/`M`/`L` with a different step, and the selection would move without being
+asked.
+
 Uppercase keys are bound only where vi spells the same gesture with the same
 letter: `H`/`M`/`L` are vi's own top/middle/bottom of the screen, and `G` is its
 address. `J`/`K` were the exception — the viewport motion spelled on the home row
@@ -52,13 +73,14 @@ spends them; `Esc` cancels, and so does any key that is not a motion. Two things
 are not counted: `M` (the middle of the screen has no ordinal), and the keys that
 do not move.
 
-One family counts something other than presses, because vi counts **lines** there
-and this table follows vi where the key means what vi's key means:
-`<C-d>`/`<C-u>` take vi's `[count]` as a line count, with the un-counted default
-coming from the `scroll` setting — half a screen here. So `3<C-d>` moves three
-lines and can move *less* than a bare `<C-d>`; that asymmetry is vi's, kept rather
-than smoothed over. `↑`/`↓` and `<C-e>`/`<C-y>` are line motions whose count is
-lines too, which is what vi's `[count]` on `<C-e>`/`<C-y>` already means.
+One family counts something other than presses, because vi counts **lines** on
+these keys: `<C-d>`/`<C-u>` take vi's `[count]` as a line count, with the
+un-counted default coming from the `scroll` setting — half a screen here. So
+`3<C-d>` moves three lines and can move *less* than a bare `<C-d>`; that asymmetry
+is vi's, kept rather than smoothed over. The **count** is what these two borrow
+from vi; the object they move is the scroll, as the paragraph above says.
+`↑`/`↓` and `<C-e>`/`<C-y>` are line motions whose count is lines too, which is
+what vi's `[count]` on `<C-e>`/`<C-y>` already means.
 
 `G` is the one absolute motion: bare it is the last window and a request to
 follow it, counted it is window N of the visible ones, resolved from the top of
