@@ -1003,7 +1003,8 @@ func (wb *WindowBuffer) renderVirtual(windowCursorIndex int, blocked bool) strin
 			// winStart < startLine), which is also the count the row shows.
 			// When the pin is the whole of the window (onlyPin) the count is
 			// every body row the window has: the pin does not draw the window's
-			// last row either, and "N lines above" is still exactly true.
+			// last row either, so "N lines hidden" covers every body row and is
+			// still exactly true.
 			row := w.pinnedLine0(startLine-winStart, windowCursorIndex == i)
 			sb.WriteString(row)
 			sb.WriteString(ansi.EraseLine(0))

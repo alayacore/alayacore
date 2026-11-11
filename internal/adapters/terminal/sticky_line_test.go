@@ -256,9 +256,9 @@ func TestPinnedRowCountsItsOwnHiddenLines(t *testing.T) {
 			for _, k := range []int{1, 2, 5, 17} {
 				// The viewport top sits k rows into the message.
 				rows := stickyRows(t, wb, winStart+k, 10)
-				want := fmt.Sprintf("%d lines above", k)
+				want := fmt.Sprintf("%d lines hidden", k)
 				if k == 1 {
-					want = "1 line above" // singular, like the live edge's "1 line below"
+					want = "1 line hidden" // singular, like the live edge's "1 line below"
 				}
 				if !strings.Contains(rows[0], want) {
 					t.Errorf("viewport %d rows into the message: row 0 = %q, want %q",
@@ -273,7 +273,7 @@ func TestPinnedRowCountsItsOwnHiddenLines(t *testing.T) {
 
 			// The line in its natural place is not pinned and carries no count.
 			rows := stickyRows(t, wb, winStart, 4)
-			if strings.Contains(rows[0], "lines above") {
+			if strings.Contains(rows[0], "lines hidden") {
 				t.Errorf("an unpinned row must not count anything: %q", rows[0])
 			}
 		})
@@ -286,7 +286,7 @@ func TestPinnedRowCountsItsOwnHiddenLines(t *testing.T) {
 // timestamp rather than trading it for the count. The label — what
 // identifies the message — is never the thing that gives way.
 func TestPinnedAnnotationYieldsToTheTimestamp(t *testing.T) {
-	const count = "1 line above"
+	const count = "1 line hidden"
 	firstWithCount, sawTimestamp := 0, false
 	for width := 12; width <= 90; width++ {
 		wb := NewWindowBuffer(width, DefaultStyles())
@@ -351,7 +351,7 @@ func TestPinnedAnnotationUnderTheWindowCursor(t *testing.T) {
 
 	wb.SetViewportPosition(winStart+3, 8)
 	row := firstRow(wb.GetAll(idx, false))
-	if got, want := styleRun(row, "3 lines above"), cursorLineStyle(styles).Render("3 lines above"); got != want {
+	if got, want := styleRun(row, "3 lines hidden"), cursorLineStyle(styles).Render("3 lines hidden"); got != want {
 		t.Errorf("the count should highlight with the row under the cursor:\n"+
 			"  got:  %q\n  want: %q", got, want)
 	}
@@ -368,10 +368,10 @@ func TestPinnedAnnotationUnderTheWindowCursor(t *testing.T) {
 	// The same row without the cursor is not highlighted, and the separator
 	// takes the row's own style there too — one style in every register.
 	plainRow := firstRow(wb.GetAll(-1, false))
-	if strings.Contains(plainRow, cursorLineStyle(styles).Render("3 lines above")) {
+	if strings.Contains(plainRow, cursorLineStyle(styles).Render("3 lines hidden")) {
 		t.Errorf("the count must not be highlighted when the cursor is elsewhere: %q", plainRow)
 	}
-	if got, want := styleRun(plainRow, "3 lines above"), lineStyle(styles).Render("3 lines above"); got != want {
+	if got, want := styleRun(plainRow, "3 lines hidden"), lineStyle(styles).Render("3 lines hidden"); got != want {
 		t.Errorf("the plain count should take the row's own style:\n"+
 			"  got:  %q\n  want: %q", got, want)
 	}

@@ -990,7 +990,7 @@ property the design is after: the cost does not depend on the document.
   this same pass: the decision reuses the `winStart` the loop already computes
   and the body row it displaces is one row less to assemble. The pinned row is
   the one thing on screen that depends on where the viewport is — it carries
-  the count of the window's hidden lines above — so it is not `lines[0]`: it is
+  the count of the window's hidden rows — so it is not `lines[0]`: it is
   memoized on that count in the window's render cache, which makes a frame that
   does not move the viewport a read (`pinned` 2122ns against `unpinned` 2037ns,
   46 allocations against 48 — the same frame within noise, and

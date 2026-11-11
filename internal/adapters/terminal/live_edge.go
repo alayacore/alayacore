@@ -112,10 +112,10 @@ const (
 	liveEdgeSeparator = ", "
 )
 
-// lineCountText spells a count of hidden lines out: "1 line above", "12 lines
-// below", "412 lines hidden". Singular for one — "1 lines above" is the kind of
+// lineCountText spells a count of hidden lines out: "1 line below", "12 lines
+// below", "412 lines hidden". Singular for one — "1 lines below" is the kind of
 // thing a reader notices — and shared by all three places that count lines the
-// frame did not draw (the live edge's "below", the pinned row's "above", an
+// frame did not draw (the live edge's "below", the pinned row's "hidden", an
 // edit_file block's "hidden"), so they cannot disagree about how to say it.
 //
 // They count different things and say so: the live edge counts DOCUMENT lines

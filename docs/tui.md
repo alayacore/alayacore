@@ -529,25 +529,34 @@ While auto-follow is active:
 ### Sticky Window Line
 
 While a window taller than the viewport is scrolled through, its own line —
-marker, label, timestamp, and a count of the lines of that message that are
-hidden above the screen — stays pinned to the **top row of the screen** for as
-long as any of its body is still visible below. Reading the middle of a long
-answer, you keep seeing whose answer it is, and how far into it you are:
+marker, label, timestamp, and a count of the rows of that message that are not
+on screen — stays pinned to the **top row of the screen** for as long as any of
+its body is still visible below. Reading the middle of a long answer, you keep
+seeing whose answer it is, and how far into it you are:
 
 ```
-- ASSISTANT                  14 lines above | 2026/09/14 16:32:07 +08:00   ← pinned
+- ASSISTANT                  14 lines hidden | 2026/09/14 16:32:07 +08:00   ← pinned
 …the part of the answer you have scrolled to…
 ```
 
 The count is the **window's own**, never the session's: it says "there are 14
-more lines of this message above you", which is the question the pin raises. It
-counts the body rows the pin did not draw — those between the message's own line
-and the fragment's first row, including the row the pin displaced — so it is 1
-at the first row that scrolls off and grows as you descend. Nothing about how
-much transcript is above the message can change it. `lineCountText` spells it
-(and the live edge's "N lines below") out, so the two phrasings cannot drift;
-they count different things and the words say so: the live edge counts document
-lines under the viewport (any window), this counts one window's lines above it.
+rows of this message you cannot see", which is the question the pin raises. It
+counts exactly the body rows the frame does not draw — those between the
+message's own line and the fragment's first row, **including the row the pin
+displaced** at the top edge — so it is 1 at the first row that scrolls off and
+grows as you descend. Nothing about how much transcript is above the message can
+change it.
+
+The word is *hidden* rather than *above* because of that displaced row: it is off
+screen, but it is not above the screen — the pin is in its place. The message's
+own row is not in the count either: the pin draws it, at screen row 0. So the
+number is "rows of this message that are not drawn anywhere", and it is the same
+number as the rows to scroll up to see the message from its first row.
+
+`lineCountText` spells it (and the live edge's "N lines below") out, so the two
+phrasings cannot drift; they count different things and the words say so: the
+live edge counts document lines under the viewport (any window), this counts one
+window's own rows that are off screen.
 
 Its own field is separated from the timestamp by ` | `, which is how this UI
 separates fields on a chrome row: the status bar (`renderStatusSegments`) and
@@ -640,10 +649,10 @@ what a very narrow row loses first; a row too narrow for the frame and one cell
 of label draws nothing at all (`TestLiveEdgeWidthNeverChangesTheFacts`).
 
 It counts **document** lines under the viewport, whatever window they belong to
-— a total, not a per-message figure; the pinned row's `N lines above` is the
+— a total, not a per-message figure; the pinned row's `N lines hidden` is the
 other kind, counting one message's own hidden lines (see
 [Sticky Window Line](#sticky-window-line)). Both are spelled by
-`lineCountText`, which is what keeps "1 line below" and "1 line above" from
+`lineCountText`, which is what keeps "1 line below" and "1 line hidden" from
 being written differently in two places.
 
 The row belongs to the layout whether or not it carries text.
@@ -699,13 +708,13 @@ An unfolded window's line is `- LABEL`, the arrival timestamp right-aligned to t
 
 The unfolded line carries `2026/09/14 16:32:07 +08:00` at its right end: **when the adapter received this window**, which is the only time the display has. The session record carries no per-message time (its `created_at`/`updated_at` are session-level), so a replayed session stamps every message with the moment the replay reached the adapter — the honest reading of "arrival time", and the reason the header calls it nothing more.
 
-It is the adapter's receipt clock, read once when the window is created (`Window.CreatedAt`) and never read again while rendering: rendering stays a pure function of the window's state (cacheable, testable), and the clock is touched at exactly one boundary. The column is a fixed 26 cells (`timeStampLayout`, pinned by a test) and right-aligned, so the label yields to it and never the other way round: a tool header too long for the row keeps its name and loses the timestamp rather than the reverse. On a terminal too narrow for both, the timestamp is simply not drawn — no truncation, no shortened format. The pinned row's `N lines above` sits in the gap to the left of it and yields first, because the timestamp is the anchor that places it: a label too wide leaves room for the timestamp alone, and the count then drops out (a count without its timestamp would be unanchored chrome). Label, then timestamp, then count: the count costs 15 cells at its narrowest (`1 line above` plus its ` | ` separator) and grows with the number, so it first fits at width 53 on an `ASSISTANT` row and at 75 on a tool row carrying `execute_command` — comfortable at 80 columns, out of reach on a 40-column terminal, which keeps the label and the timestamp.
+It is the adapter's receipt clock, read once when the window is created (`Window.CreatedAt`) and never read again while rendering: rendering stays a pure function of the window's state (cacheable, testable), and the clock is touched at exactly one boundary. The column is a fixed 26 cells (`timeStampLayout`, pinned by a test) and right-aligned, so the label yields to it and never the other way round: a tool header too long for the row keeps its name and loses the timestamp rather than the reverse. On a terminal too narrow for both, the timestamp is simply not drawn — no truncation, no shortened format. The pinned row's `N lines hidden` sits in the gap to the left of it and yields first, because the timestamp is the anchor that places it: a label too wide leaves room for the timestamp alone, and the count then drops out (a count without its timestamp would be unanchored chrome). Label, then timestamp, then count: the count costs 16 cells at its narrowest (`1 line hidden` plus its ` | ` separator) and grows with the number, so it first fits at width 54 on an `ASSISTANT` row and at 76 on a tool row carrying `execute_command` — comfortable at 80 columns, out of reach on a 40-column terminal, which keeps the label and the timestamp.
 
 Twenty-six cells, where the column was 16 before, buys two things. **Seconds**: a minute is shorter than the gaps this transcript is read for — a command that ran 40 seconds and the answer after it land in the same minute — while everything one delta flush delivers still shares one second (400 windows are created, stamped and rendered in a couple of milliseconds), so the finer resolution separates what a reader is looking at without fragmenting what arrived together. **The offset**: six cells that name the zone the clock is in, and they are the same six cells on every row of a session, because the zone is the process's — constant chrome, spent on making a column that appears nowhere else in the frame self-describing. A zone *name* would be three cells, `CST`, and mean three different zones. The format is the wall-clock shape the UI already used, so this is not RFC 3339 and a strict parser will reject it; a machine-readable column, if one is ever wanted, is a separate decision.
 
 #### Cursor highlight
 
-The cursor highlight covers the window's own line, and never its content: on a folded window that is the marker and the label column, on an unfolded one the same chrome plus the timestamp at the far end (and, when that row is the pinned one, the `N lines above` and its ` | `, which takes the row's own style with the rest). Two things on that row stay out of it, because they are content — a tool window's name (it takes `toolNameStyle` in both fold states, so folding a window does not repaint it) and a folded row's summary, which keeps the muted color. That is why the label and the summary are separate styles (`Styles.Label` vs `Styles.System`), and why the name is a third one. And because the chrome is one style, "the highlight" is a single styles swap — the row is not assembled from pieces that would each need their own color. Mechanically this is a derived styles set — `Styles.Selected()` swaps the two colors that can name a window (the label color, which is what every window line is drawn in, and the error color, which `SYSTEM ERROR` uses) for the accent color (the theme's primary), and the renderers paint the row from whatever styles they are handed, so "who is the window cursor" needs no extra parameter. The highlighted row is built on first request rather than by `Window.Render`, because the folded variant costs a second `BuildFolded`: `Render` runs for every window on every content change, while exactly one window at a time is under the cursor. Under an overlay (`Styles.Dimmed()`) the accent color *is* the dim color, so the highlight disappears while a modal owns the screen.
+The cursor highlight covers the window's own line, and never its content: on a folded window that is the marker and the label column, on an unfolded one the same chrome plus the timestamp at the far end (and, when that row is the pinned one, the `N lines hidden` and its ` | `, which takes the row's own style with the rest). Two things on that row stay out of it, because they are content — a tool window's name (it takes `toolNameStyle` in both fold states, so folding a window does not repaint it) and a folded row's summary, which keeps the muted color. That is why the label and the summary are separate styles (`Styles.Label` vs `Styles.System`), and why the name is a third one. And because the chrome is one style, "the highlight" is a single styles swap — the row is not assembled from pieces that would each need their own color. Mechanically this is a derived styles set — `Styles.Selected()` swaps the two colors that can name a window (the label color, which is what every window line is drawn in, and the error color, which `SYSTEM ERROR` uses) for the accent color (the theme's primary), and the renderers paint the row from whatever styles they are handed, so "who is the window cursor" needs no extra parameter. The highlighted row is built on first request rather than by `Window.Render`, because the folded variant costs a second `BuildFolded`: `Render` runs for every window on every content change, while exactly one window at a time is under the cursor. Under an overlay (`Styles.Dimmed()`) the accent color *is* the dim color, so the highlight disappears while a modal owns the screen.
 
 The marker glyph is fixed by the terminal layout (`foldArrow`/`unfoldArrow` in `internal/adapters/terminal/constants.go`), not by the theme: the line reserves exactly one cell for it, so the glyph is a geometry decision and switching color schemes must not change it. The spinner frames `⠋…⠏` and the tool markers `✓ ✗` are Neutral and were never part of the problem. See [performance analysis](internal/virtual-rendering-performance.md) for the rendering rationale — with one distinction that document benchmarks rather than asserts: a folded window's line *count* is O(1) to track, while drawing its summary row is O(1) for a tool window (the first input line) and one pass over the message for a text window (head + "…" + tail of it), which is why a folded reasoning window that streams is measured against the same content unfolded.
 

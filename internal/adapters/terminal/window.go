@@ -142,7 +142,7 @@ type renderCache struct {
 	line0Cursor     string
 	line0CursorDone bool
 
-	// pinnedRow is row 0 with the pinned annotation — "<n> lines above",
+	// pinnedRow is row 0 with the pinned annotation — "<n> lines hidden",
 	// the count of THIS window's lines hidden above the viewport. It is the
 	// one part of the row that depends on where the viewport is, so it
 	// cannot live in `lines[0]` (keyed on content, width, theme and the
@@ -597,15 +597,19 @@ func (w *Window) cursorLine0() string {
 }
 
 // pinnedLine0 returns row 0 for the pinned case: the row above, with
-// "<linesAbove> lines above" added left of the timestamp — how much of THIS
-// window the reader has scrolled past.
+// "<linesAbove> lines hidden" added left of the timestamp — how much of THIS
+// window is not on screen.
 //
-// linesAbove is winStart-relative: the pinned row is the window's own line,
-// and the body rows between it and the fragment's first row are exactly the
-// ones the pin did not draw (see renderVirtual). The count is the window's
-// own, never the transcript's: it says "there are 40 more lines of this
-// message above you", which is the question the pin raises — the pin says
-// whose message this is, this says where in it you are.
+// linesAbove is winStart-relative and counts exactly the rows of this window
+// that the frame does not draw: the body rows between the window's own line
+// (which the pin draws in its place) and the fragment's first row, including
+// the row the pin displaced at the top edge. The word is "hidden", not
+// "above", because of that last row — it is off screen but not above the
+// screen, and it is also why the message's own row is not in the count: it is
+// on screen, at row 0.
+//
+// The count is the window's own, never the transcript's: the pin says whose
+// message this is, this says how much of it you cannot see.
 //
 // Memoized on (linesAbove, register) in the render cache, and cleared by
 // Render with the rest of it. The annotation is viewport-dependent, which is
@@ -623,7 +627,7 @@ func (w *Window) pinnedLine0(linesAbove int, isWindowCursor bool) string {
 	if isWindowCursor {
 		styles = styles.Selected()
 	}
-	w.cache.pinnedRow = w.buildUnfoldedHeader(w.cache.width, styles, lineCountText(linesAbove, "above"))
+	w.cache.pinnedRow = w.buildUnfoldedHeader(w.cache.width, styles, lineCountText(linesAbove, "hidden"))
 	w.cache.pinnedAbove = linesAbove
 	w.cache.pinnedCursor = isWindowCursor
 	w.cache.pinnedDone = true
@@ -707,7 +711,7 @@ func (w *Window) windowLabel() string {
 // and a truncated tool header only happens on a terminal narrower than the
 // tool name.
 //
-// annotation is the pinned row's "<n> lines above" (see pinnedLine0) or ""
+// annotation is the pinned row's "<n> lines hidden" (see pinnedLine0) or ""
 // for every other row; an empty annotation changes nothing.
 func (w *Window) buildUnfoldedHeader(width int, styles *Styles, annotation string) string {
 	if width <= 0 {
