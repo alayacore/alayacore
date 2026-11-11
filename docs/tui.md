@@ -559,9 +559,14 @@ a row too narrow for the timestamp keeps the label. See
 [the timestamp](#the-timestamp) for the widths.
 
 The pin appears the moment the line is cut off (`windowStart < yOffset`) and
-disappears when the window's last row would be the only thing left above the
-body: an orphan header with nothing under it is never drawn. At that point the
-scroll position hands over to the next window, whose own line opens it.
+stays until the window is entirely above the viewport. There is no offset in
+between where it gives way: at the last one, where the pin has displaced the
+window's **last** body row, it is the whole of the window on screen — its count
+then covers every body row the window has — and the next window's own line
+opens the window below it. That is also the one scroll position where the pin is
+the only row the cursor can appear on (the highlight is drawn on a window's own
+line, and that line is exactly what the viewport top scrolled past), so letting a
+lone body row stand there would leave it both unnamed and unselected.
 
 **The pinned row displaces the body row that would have been at screen row 0**
 — it is the top row's content that gives way, not a row of the frame, so the

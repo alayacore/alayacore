@@ -954,17 +954,30 @@ func (wb *WindowBuffer) renderVirtual(windowCursorIndex int, blocked bool) strin
 		// untouched. (A viewport-dependent line height would put the
 		// document geometry in a feedback loop with the scroll position —
 		// clamping and cursor visibility would depend on themselves.)
-		// startLine+1 < winEnd is what keeps the pin from being an orphan:
-		// it guarantees at least one body row remains below the pinned one,
-		// which is also why the increment below can never empty the
-		// fragment.
-		pinned := i == startWindow && !w.Folded && winStart < startLine && startLine+1 < winEnd
+		//
+		// The rule is the whole of it: the viewport top is strictly inside an
+		// unfolded window. A window with ONE body row left at the top edge
+		// qualifies like any other, and the pin then displaces that last row
+		// and is the whole of the window on screen (onlyPin below). The
+		// alternative — letting the lone body row stand — leaves the frame's
+		// top row as the one row no window can be read into, and it is also
+		// the one scroll position where the cursor's register has nowhere to
+		// appear at all: windowFragment recolors row 0, and row 0 is exactly
+		// the row the viewport top scrolled past.
+		pinned := i == startWindow && !w.Folded && winStart < startLine
 		if pinned {
 			from++
 		}
-		if from >= to {
+		// A fragment with no rows left is a window outside the viewport's line
+		// range, with one exception: a pinned window whose pin displaced its
+		// LAST body row. That window still spends a row (its own), so it is not
+		// skipped — skipping it here would drop a row from the frame and let the
+		// pad loop put a blank one at the bottom of a transcript that has
+		// content there.
+		if from > to || (!pinned && from == to) {
 			continue
 		}
+		onlyPin := from == to
 
 		lines := wb.windowFragment(w, from, to, windowCursorIndex == i && !pinned, blocked)
 		emittedRows += len(lines)
@@ -988,11 +1001,25 @@ func (wb *WindowBuffer) renderVirtual(windowCursorIndex int, blocked bool) strin
 			// between the own line and the fragment's first row are
 			// exactly startLine-winStart. Always ≥ 1 here (the pin needs
 			// winStart < startLine), which is also the count the row shows.
+			// When the pin is the whole of the window (onlyPin) the count is
+			// every body row the window has: the pin does not draw the window's
+			// last row either, and "N lines above" is still exactly true.
 			row := w.pinnedLine0(startLine-winStart, windowCursorIndex == i)
 			sb.WriteString(row)
 			sb.WriteString(ansi.EraseLine(0))
-			sb.WriteString("\n")
 			emittedRows++
+		}
+		// The pin ends its own row, so the newline under it separates it from
+		// the window's first body row. When the pin is the whole of the window
+		// there is no body row to separate from: the next window's own separator
+		// is the one newline this row gets, and writing both would spend a row
+		// the frame does not have.
+		if onlyPin {
+			firstWritten = true
+			continue
+		}
+		if pinned {
+			sb.WriteString("\n")
 		}
 		// Join the fragment according to continuation marks: rows of the
 		// SAME original line (Cont) join without '\n' — the terminal

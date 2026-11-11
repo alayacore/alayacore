@@ -95,9 +95,11 @@ func TestStickyPinDisplacesTheTopBodyRow(t *testing.T) {
 }
 
 // TestStickyPinEntersAndLeavesAtTheRightBoundaries pins the transitions: the
-// pin appears as soon as the line is cut off and disappears when the window's
-// last row would be the only thing left above the body (never an orphan
-// header with nothing under it).
+// pin appears as soon as the viewport top is inside the window and stays until
+// the window is entirely above the viewport. There is no "orphan" offset in
+// between: when the pin has displaced the window's LAST body row it is the
+// whole of the window on screen, and the window's own row is exactly what the
+// row above the next window should be.
 func TestStickyPinEntersAndLeavesAtTheRightBoundaries(t *testing.T) {
 	wb := stickyFixture()
 	own := stripANSI(windowLine(t, wb))
@@ -113,7 +115,7 @@ func TestStickyPinEntersAndLeavesAtTheRightBoundaries(t *testing.T) {
 		{0, own, "the line is in its natural place"},
 		{1, own, "the line is cut off: pinned"},
 		{9, own, "still pinned: body rows remain below it"},
-		{10, "row09", "the line's last row is on screen: no pin (never an orphan header)"},
+		{10, own, "the pin has displaced the window's last body row: it is the whole of the window"},
 		{11, unfoldArrow + " USER PROMPT", "the window is entirely above the viewport: the next window's line"},
 	}
 	for _, tc := range cases {
@@ -127,6 +129,54 @@ func TestStickyPinEntersAndLeavesAtTheRightBoundaries(t *testing.T) {
 		if strings.Contains(strings.Join(rows, "|"), own) && tc.yOffset >= 11 {
 			t.Errorf("y=%d: the pinned line must be gone once the window scrolled past: %q", tc.yOffset, rows)
 		}
+	}
+}
+
+// TestStickyPinStandsAloneWhenItTakesTheLastBodyRow: at the offset where the
+// pin displaces the window's LAST body row, the pin is the whole of the window
+// on screen. The row that would have been there is gone — not replaced by a
+// blank one, because the frame's row budget is fixed and the pin already spent
+// it — and the next window follows immediately.
+//
+// That offset is also the one scroll position where the pin is the only place
+// a cursor can appear: windowFragment recolors a window's row 0, and row 0 here
+// is the row the viewport top scrolled past. So the pin is what keeps the
+// cursor visible, and this test asks for both facts at once.
+func TestStickyPinStandsAloneWhenItTakesTheLastBodyRow(t *testing.T) {
+	styles := DefaultStyles()
+	wb := stickyFixture()
+	own := stripANSI(windowLine(t, wb))
+
+	rows := stickyRows(t, wb, 10, 3)
+	if len(rows) != 3 {
+		t.Fatalf("rows at the window's last body row: got %d, want 3 (the frame height): %q", len(rows), rows)
+	}
+	if rows[0] != own {
+		t.Errorf("row 0 = %q, want the window's own line %q", rows[0], own)
+	}
+	// The next window follows the pin immediately: no displaced row, and no
+	// blank row standing in for the one the pin spent.
+	if !strings.HasPrefix(rows[1], unfoldArrow+" USER PROMPT") {
+		t.Errorf("row 1 = %q, want the next window's own line", rows[1])
+	}
+	if rows[2] != "next message" {
+		t.Errorf("row 2 = %q, want its content", rows[2])
+	}
+	if strings.Contains(strings.Join(rows, "|"), "row09") {
+		t.Errorf("the displaced last body row must not be drawn under the pin: %q", rows)
+	}
+
+	// Under the cursor the whole pin takes the selection register.
+	idx, _ := wb.LookupID("tall")
+	pinned := firstRow(wb.GetAll(idx, false))
+	if got, want := styleRun(pinned, "ASSISTANT"), cursorLineStyle(styles).Render("ASSISTANT"); got != want {
+		t.Errorf("the lone pin must carry the cursor's register:\n  got:  %q\n  want: %q", got, want)
+	}
+	if got, want := styleRun(pinned, "row09"), ""; got != want {
+		t.Errorf("the displaced body row must not appear even under the cursor: %q", pinned)
+	}
+	if plain := firstRow(wb.GetAll(-1, false)); strings.Contains(plain, cursorLineStyle(styles).Render("ASSISTANT")) {
+		t.Errorf("the pin must not be highlighted when the cursor is elsewhere: %q", plain)
 	}
 }
 
