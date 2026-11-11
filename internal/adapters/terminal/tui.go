@@ -837,15 +837,20 @@ func (m Terminal) handleEditorFinished(msg EditorFinishedMsg) (Terminal, Cmd) {
 		return m, nil
 
 	case EditorActionUpdateInput:
-		if msg.Content != "" {
-			// The buffer comes back through the same rule a paste does, and
-			// through the field so its line capacity applies too (input_field.go
-			// → WithBlockValue): a Windows editor writes CRLF, and a trailing
-			// newline the editor always adds.
-			m.promptBox = m.promptBox.WithBlockValue(msg.Content)
-			m.promptBox = m.promptBox.CaretEnd()
-			m = m.focusPrompt()
-		}
+		// What the file holds is what the prompt holds, empty included: saving an
+		// empty buffer is how a reader clears a draft in $EDITOR, and ignoring it
+		// left the old text standing with nothing to say why. A failed editor
+		// never reaches this line — msg.Err is answered above, before the action
+		// is looked at — so "empty" here means the user saved an empty file, not
+		// that an editor died and left one.
+		//
+		// The buffer comes back through the same rule a paste does, and through
+		// the field so its line capacity applies too (input_field.go →
+		// WithBlockValue): a Windows editor writes CRLF, and a trailing newline
+		// the editor always adds.
+		m.promptBox = m.promptBox.WithBlockValue(msg.Content)
+		m.promptBox = m.promptBox.CaretEnd()
+		m = m.focusPrompt()
 		return m, nil
 
 	default:

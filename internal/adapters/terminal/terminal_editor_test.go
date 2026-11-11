@@ -85,6 +85,26 @@ func TestEditorFinishedMsg(t *testing.T) {
 	}
 }
 
+// TestEditorEmptyBufferClearsThePrompt: the file is the prompt. Saving an empty
+// buffer in $EDITOR is a request to clear the draft, and it is the only way to
+// do that for a multi-line one in one edit; ignoring an empty result (which this
+// did) left the old text in place and read as "my editor did nothing".
+func TestEditorEmptyBufferClearsThePrompt(t *testing.T) {
+	terminal := testTUI()
+	terminal.promptBox = terminal.promptBox.WithValue("a draft, emptied in the editor")
+
+	model, _ := terminal.Update(EditorFinishedMsg{
+		Action:  EditorActionUpdateInput,
+		Content: "",
+		Err:     nil,
+	})
+	terminal = model.(Terminal)
+
+	if got := terminal.promptBox.Value(); got != "" {
+		t.Errorf("prompt = %q, want empty: what the editor saved is the prompt", got)
+	}
+}
+
 func TestEditorFinishedMsgWithWhitespace(t *testing.T) {
 	terminal := testTUI()
 

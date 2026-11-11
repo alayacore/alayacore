@@ -120,7 +120,7 @@ stacked on top of `Esc`, and one key per job is why `Esc` is the only way out.
 | `Enter` | Submit prompt (returns the view to the live edge) |
 | `Ctrl+J` | Insert a line break in the prompt |
 | `Ctrl+S` | Save session |
-| `Ctrl+O` | Open in editor (`$EDITOR`) for multi-line input |
+| `Ctrl+O` | Open in editor (`$EDITOR`) for multi-line input; what the file holds on save becomes the prompt, and saving it empty clears the prompt |
 | `Ctrl+L` | Open model selector |
 | `Ctrl+R` | Force redraw screen |
 | `Ctrl+P` | Open theme selector |
