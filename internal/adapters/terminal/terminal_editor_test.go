@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -209,17 +210,32 @@ func TestEditorFinishedMsgWithError(t *testing.T) {
 	}
 }
 
+// TestEditorSelectionOrder pins the platform's preference list, in order: "first
+// one that exists" is only as good as the list, and the two files are one
+// declaration per OS.
 func TestEditorSelectionOrder(t *testing.T) {
-	editor := getEditorCommand("")
-	if editor == "" {
-		t.Fatal("Expected editor to be found")
+	want := []string{"editor", "vi", "nvi", "vim"}
+	if runtime.GOOS == "windows" {
+		want = []string{"vim", "notepad"}
+	}
+	if !slices.Equal(defaultEditors, want) {
+		t.Errorf("defaultEditors = %v, want %v on %s", defaultEditors, want, runtime.GOOS)
 	}
 
-	// The choice must be the first of the platform's preference list that
-	// exists — unless $EDITOR named one, which is returned as it is.
-	if os.Getenv("EDITOR") == "" && !slices.Contains(defaultEditors, filepath.Base(editor)) {
-		t.Errorf("picked %q, want the first of defaultEditors that exists (%v)",
-			editor, defaultEditors)
+	// And whatever it picked came out of that list. The comparison strips the
+	// executable extension: LookPath answers `vim.exe` on Windows and `vim`
+	// everywhere else, and the same name has to satisfy both.
+	editor := getEditorCommand("")
+	if editor == "" {
+		t.Fatal("expected an editor to be found")
+	}
+	if os.Getenv("EDITOR") != "" {
+		return // $EDITOR names its own command; nothing to compare against.
+	}
+	base := filepath.Base(editor)
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	if !slices.Contains(defaultEditors, base) {
+		t.Errorf("picked %q (base %q), want one of defaultEditors (%v)", editor, base, defaultEditors)
 	}
 }
 
