@@ -9,6 +9,7 @@ package terminal
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/alayacore/alayacore/internal/commands"
 )
@@ -17,8 +18,9 @@ type DisplayModel struct {
 	// ── Elm UI state (value types, copied on every WithXxx) ─
 	scrollView     ScrollView // viewport into the window buffer content
 	height         int        // display area height (viewport height)
+	count          int        // count prefix typed but not yet spent (0 = none); see pushCount
 	windowCursor   int        // currently selected window index (-1 = none)
-	autoFollow     bool       // true on init and after FollowLatest (`>`, submit); disabled by navigation
+	autoFollow     bool       // true on init and after FollowLatest (`G`, submit); disabled by navigation
 	displayFocused bool       // whether the display pane has input focus
 	blocked        bool       // true when an overlay is active (dim rendering)
 	lastContent    string     // cached last rendered output for change detection
@@ -57,6 +59,13 @@ func NewDisplayModel(windowBuffer *WindowBuffer, styles *Styles) DisplayModel {
 // Init initializes the display
 func (m DisplayModel) Init() Cmd { return nil }
 
+// maxCount is where a count prefix saturates. It is not a ceiling on what can
+// be addressed — every motion clamps against the buffer it walks — but the one
+// guard against the parse overflowing into a negative number, which would walk
+// backwards. Six digits is far past any transcript (one step adds at most four
+// windows), and it keeps the echo at most seven cells wide.
+const maxCount = 999_999
+
 // Update handles key messages for display navigation and cursor movement.
 // Only pure display operations are handled here; cross-component actions
 // (e.g. switching focus, opening editor) are handled by Terminal.
@@ -68,32 +77,71 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		return m, nil
 	}
 
+	// The count prefix. A digit arms the next motion and nothing else, so it is
+	// read before the key means anything; every other key reaches takeCount
+	// below, which spends the count whether or not its case reads it. That is
+	// what makes "this key ignores the count" the default instead of a rule
+	// each case has to remember, and it is why ESC needs no code of its own to
+	// be the cancel: its case runs after the count is gone.
+	if d, ok := countDigit(keyMsg.Chord()); ok {
+		return m.pushCount(d), nil
+	}
+	n, hasCount := m.takeCount()
+	if !hasCount {
+		n = 1 // one press, for every motion that has no use for hasCount
+	}
+
 	switch keyMsg.Chord() {
 	// The pointer, on the home row only. `j`/`k` and the vim names below own
 	// it; the arrows belong to the viewport, for the reason written on those
 	// cases.
+	//
+	// A count is spent as N presses, not as one jump: the placement rule runs
+	// after every step (`EnsureWindowCursorVisible` is what a single `j` does),
+	// and a step that cannot move ends the run — which is also the bound on
+	// the loop. `100j` therefore lands exactly where 100 presses land, at the
+	// last window if there are fewer, ever leaving the viewport where the last
+	// press put it.
 	case keyJ:
-		m, _ = m.MoveWindowCursorDown()
-		return m.EnsureWindowCursorVisible().updateContent(), nil
+		for i := 0; i < n; i++ {
+			var moved bool
+			m, moved = m.MoveWindowCursorDown()
+			m = m.EnsureWindowCursorVisible()
+			if !moved {
+				break
+			}
+		}
+		return m.updateContent(), nil
 
 	case keyK:
-		m, _ = m.MoveWindowCursorUp()
-		return m.EnsureWindowCursorVisible().updateContent(), nil
+		for i := 0; i < n; i++ {
+			var moved bool
+			m, moved = m.MoveWindowCursorUp()
+			m = m.EnsureWindowCursorVisible()
+			if !moved {
+				break
+			}
+		}
+		return m.updateContent(), nil
 
+	// The coarse motions, counted as N of themselves. A scroll cannot fail —
+	// it clamps — so there is no per-step effect to preserve and the count is
+	// multiplied instead of run: `999999<C-d>` is one clamped scroll, not a
+	// million calls.
 	case keyCtrlD, keyPgDown:
 		if !m.AtBottom() {
 			m = m.MarkUserScrolled()
-			m = m.ScrollDown(max(1, m.GetHeight()/2))
+			m = m.ScrollDown(scrollAmount(n, max(1, m.GetHeight()/2)))
 			m = m.updateContent()
 		}
 		return m, nil
 
 	case keyCtrlU, keyPgUp:
 		m = m.MarkUserScrolled()
-		m = m.ScrollUp(max(1, m.GetHeight()/2))
+		m = m.ScrollUp(scrollAmount(n, max(1, m.GetHeight()/2)))
 		return m.updateContent(), nil
 
-	// The viewport, on the arrows.
+	// The viewport, on the arrows and on vi's own one-line scroll keys.
 	//
 	// The arrows belong here rather than beside `j`/`k` because of the mouse
 	// wheel. While this program owns the alternate screen it asks for no mouse
@@ -112,6 +160,11 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	// rolling down looked dead) and that steps whole windows at a time (rolling
 	// up jumped): the feel this replaced.
 	//
+	// `Ctrl+E`/`Ctrl+Y` are the same motion and are here for the one thing the
+	// arrows cannot give it: a spelling that is not also a wheel notch. vi binds
+	// them to exactly this (scroll the window a line, leave the cursor alone),
+	// so they are the one keyboard-only form of this family.
+	//
 	// No shifted letter is bound here, and the two that were are the reason. `J`
 	// and `K` used to spell this motion on the home row, so that shift carried
 	// one meaning in this table; the argument that wins is the reader's hands.
@@ -121,43 +174,76 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	// for a second reason: it was the only binding that needed a terminal to
 	// report a modified arrow, and a modified arrow is not what a wheel
 	// synthesizes. The parser still decodes them.
-	case keyDown:
+	case keyDown, keyCtrlE:
 		if !m.AtBottom() {
 			m = m.MarkUserScrolled()
-			m = m.ScrollDown(1)
+			m = m.ScrollDown(n)
 			m = m.updateContent()
 		}
 		return m, nil
 
-	case keyUp:
+	case keyUp, keyCtrlY:
 		m = m.MarkUserScrolled()
-		m = m.ScrollUp(1)
+		m = m.ScrollUp(n)
 		return m.updateContent(), nil
 
-	case keyGreaterThan, keyEnd:
-		return m.FollowLatest(), nil
-
-	case keyLessThan, keyHome:
-		// A jump to the head of the transcript is never a request to watch
-		// the live edge, so following goes off before the scroll. Without it,
-		// updateContent would put the viewport straight back at the bottom
-		// whenever the cursor already sat on the first window —
-		// WithWindowCursor preserves autoFollow when the index does not change
-		// — and the key would do nothing on a single window taller than the
-		// screen.
+	// `G` is the transcript's other end, and the only absolute motion here:
+	// bare, it is the last window and a request to follow it; counted, it is
+	// window N of the visible windows, in document order.
+	//
+	// A counted G is a jump, and a jump is never a request to watch the live
+	// edge — following goes off before the move, or updateContent would pull
+	// the viewport straight back to the bottom whenever the cursor already sat
+	// where the count points (`WithWindowCursor` preserves autoFollow when the
+	// index does not change, so on a single window taller than the screen the
+	// key would do nothing at all).
+	//
+	// There is no `GotoTop` here, and that is the decision rather than an
+	// omission: `1G` places the cursor on the first window exactly as `j` would
+	// after enough presses, and where the viewport ends up is that rule's
+	// answer. It is the top of the document whenever the first message fits the
+	// screen; when that message is taller than the viewport the pin names it and
+	// counts the rows that are hidden, and the scroll keys reach the rest.
+	case keyG:
+		if !hasCount {
+			return m.FollowLatest(), nil
+		}
+		// A counted G is an address, and an address past the end of the
+		// transcript is not a place: nothing moves, and auto-follow is left
+		// exactly as it was, because a motion that did not happen is not a
+		// departure from the live edge (the rule `f`/`b` already follow — a miss
+		// leaves follow alone). This is where `NG` parts company with `Nj`: N
+		// presses of `j` are a possible operation that stops at the last window,
+		// while N names a window that either exists or does not.
+		//
+		// vi clamps here (measured: `300G` in a 100-line buffer lands on line
+		// 100). This UI does not, because a clamp answers with a window the user
+		// did not ask for, and there is no bell to say the request was adjusted.
+		// The resolution therefore happens BEFORE any state changes.
+		target, ok := m.windowCursorAtOrdinal(n)
+		if !ok {
+			return m, nil
+		}
 		m = m.MarkUserScrolled()
-		m = m.WithWindowCursor(0)
-		m = m.GotoTop()
-		return m.updateContent(), nil
+		m = m.WithWindowCursor(target)
+		return m.EnsureWindowCursorVisible().updateContent(), nil
 
+	// `H`/`L` count through the windows the viewport shows, from its top edge
+	// down and from its bottom edge up. "On screen" is the viewport's line
+	// range, so a window straddling an edge is in the sequence — half a message
+	// is on screen. A count past the far edge clamps to that edge's window,
+	// which is the other key's first: `999H` lands where `L` does.
 	case keyH:
-		m, _ = m.MoveWindowCursorToTop()
+		m, _ = m.MoveWindowCursorToTop(n)
 		return m.EnsureWindowCursorVisible().updateContent(), nil
 
 	case keyL:
-		m, _ = m.MoveWindowCursorToBottom()
+		m, _ = m.MoveWindowCursorToBottom(n)
 		return m.EnsureWindowCursorVisible().updateContent(), nil
 
+	// The middle of what is on screen has no ordinal space, so `M` takes no
+	// count: the digit is spent and dropped like any other non-motion (vi's M
+	// has nothing to count either).
 	case keyM:
 		m, _ = m.MoveWindowCursorToCenter()
 		return m.EnsureWindowCursorVisible().updateContent(), nil
@@ -187,24 +273,48 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		}
 		return m, nil
 
+	// `f`/`b` count prompts, and they move as far as the prompts exist: a
+	// count whose last step finds nothing stays on the last prompt it reached,
+	// which is what pressing the key that many times does (a press at the last
+	// prompt is already a no-op). Re-seating happens once, after the walk: it
+	// depends only on where the cursor ended, and every press would have put
+	// the same window at the top.
+	//
+	// Re-seat only when the jump happened. Unlike the EnsureWindowCursorVisible
+	// used by the other jump keys, ScrollWindowCursorToTop always moves: it puts
+	// the cursor window's first line at the top of the viewport. With the cursor
+	// parked below the last user prompt (where a finished task leaves it) there
+	// is no next prompt to find, and re-seating anyway would yank the viewport up
+	// to the head of the window already under the cursor.
 	case keyF:
-		// Re-seat the viewport only when the jump happened. Unlike the
-		// EnsureWindowCursorVisible used by the other jump keys,
-		// ScrollWindowCursorToTop always moves: it puts the cursor window's first
-		// line at the top of the viewport. With the cursor parked below the
-		// last user prompt (where a finished task leaves it) there is no
-		// next prompt to find, and re-seating anyway would yank the
-		// viewport up to the head of the window already under the cursor.
-		if next, moved := m.MoveWindowCursorToNextUserPrompt(); moved {
-			return next.ScrollWindowCursorToTop().updateContent(), nil
+		moved := false
+		for i := 0; i < n; i++ {
+			var step bool
+			m, step = m.MoveWindowCursorToNextUserPrompt()
+			if !step {
+				break
+			}
+			moved = true
+		}
+		if moved {
+			return m.ScrollWindowCursorToTop().updateContent(), nil
 		}
 		return m, nil
 
 	case keyB:
 		// Same guard as keyF, mirrored: no prompt above the cursor means
 		// nothing to jump to and nothing to re-seat.
-		if prev, moved := m.MoveWindowCursorToPrevUserPrompt(); moved {
-			return prev.ScrollWindowCursorToTop().updateContent(), nil
+		moved := false
+		for i := 0; i < n; i++ {
+			var step bool
+			m, step = m.MoveWindowCursorToPrevUserPrompt()
+			if !step {
+				break
+			}
+			moved = true
+		}
+		if moved {
+			return m.ScrollWindowCursorToTop().updateContent(), nil
 		}
 		return m, nil
 
@@ -223,6 +333,15 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		if historyID := m.GetWindowCursorHistoryID(); historyID > 0 {
 			return m, []Result{focusPromptWithValueMsg{value: fmt.Sprintf(":%s %d ", commands.CommandNameFork, historyID)}}
 		}
+		return m, nil
+
+	// The one key that spends a count without doing anything. Without it,
+	// abandoning a mistyped count means pressing a key whose own action you did
+	// not want — `e` opens $EDITOR, `r` re-renders, Space folds — which is a poor
+	// way to cancel. The count is already gone (takeCount, above), so the case
+	// body is the whole of the behavior; with no count armed it is a no-op like
+	// any other key the display does not bind.
+	case keyEsc:
 		return m, nil
 
 	default:
@@ -400,6 +519,89 @@ func (m DisplayModel) LinesBelow() int {
 
 func (m DisplayModel) GetWindowCursor() int {
 	return m.windowCursor
+}
+
+// ── Count prefix ─────────────────────────────────────────────────────────
+//
+// The count lives here rather than in Terminal because this is the only pane
+// that reads it and the only one that can spend it: every key DisplayModel
+// reads goes through takeCount, so a count cannot outlive the key it was typed
+// for. Terminal clears it when a key lands anywhere else (handleKeyMsg), which
+// is the one place the two panes could otherwise leak into each other.
+
+// PendingCount returns the count typed but not yet spent, or 0. Read at render
+// time by the status bar, which is why it is an accessor and not a cached
+// string: a count flips on keypresses, and the status segments are rebuilt only
+// when the session's version moves.
+func (m DisplayModel) PendingCount() int {
+	return m.count
+}
+
+// pushCount appends a digit to the pending count, saturating at maxCount. A
+// leading `0` starts nothing — vi reads it as a column motion, this UI has no
+// columns — and is dropped rather than kept as a zero, so `0G` is `G`.
+func (m DisplayModel) pushCount(d int) DisplayModel {
+	if m.count == 0 && d == 0 {
+		return m
+	}
+	if m.count > (maxCount-d)/10 {
+		m.count = maxCount
+		return m
+	}
+	m.count = m.count*10 + d
+	return m
+}
+
+// takeCount spends the count: it returns it and clears it. Every key the display
+// reads calls it, so "this key ignores the count" is the default and ESC's
+// cancel is the case that then does nothing.
+func (m *DisplayModel) takeCount() (int, bool) {
+	n := m.count
+	m.count = 0
+	return n, n > 0
+}
+
+// ClearCount drops a count without spending it: the answer for a key that lands
+// in another pane, which is not the motion the digits were typed for.
+func (m DisplayModel) ClearCount() DisplayModel {
+	m.count = 0
+	return m
+}
+
+// scrollAmount is N presses of a step motion as one scroll. The steps here
+// clamp rather than fail, so there is no per-step state to preserve and the
+// count is multiplied; the multiplication saturates, because n is a count the
+// user typed and `int` is not required to hold the product.
+func scrollAmount(n, step int) int {
+	if step <= 0 {
+		step = 1
+	}
+	if n > math.MaxInt32/step {
+		return math.MaxInt32
+	}
+	return n * step
+}
+
+// windowCursorAtOrdinal resolves the address a counted `G` names: the index of
+// the n-th visible window (1-based, in document order), and whether it exists.
+// It counts what navigation can reach, so folded windows count as one each and
+// invisible ones are skipped, exactly as `j` steps over them.
+//
+// The ok result is the whole difference between an address and a step. Every
+// other motion starts from where the cursor is and stops where the buffer ends;
+// this one names a place, and a place that is not there cannot be moved to.
+func (m DisplayModel) windowCursorAtOrdinal(n int) (int, bool) {
+	target := -1
+	ordinal := 0
+	m.windowBuffer.ForEachVisible(0, func(i int, _ *Window) bool {
+		ordinal++
+		if ordinal == n {
+			target = i
+			return false
+		}
+		return true
+	})
+	return target, target >= 0
 }
 
 // Returns empty string if no window is selected.
@@ -645,7 +847,7 @@ func (m DisplayModel) ClampWindowCursor() DisplayModel {
 // WithWindowCursorToLastWindow parks the cursor on the last visible window and
 // re-enables auto-follow. It is the one place auto-follow comes back on —
 // setWindowCursor and clearWindowCursor only ever turn it off — so every caller is a
-// deliberate "take me to what is happening now": FollowLatest (`>` / `End`,
+// deliberate "take me to what is happening now": FollowLatest (`G`,
 // submitting, a task starting) and focusDisplay's cursorless case.
 func (m DisplayModel) WithWindowCursorToLastWindow() DisplayModel {
 	i := m.windowBuffer.LastVisibleIndex()
@@ -661,7 +863,7 @@ func (m DisplayModel) WithWindowCursorToLastWindow() DisplayModel {
 
 // FollowLatest is the "take me to what is happening now" gesture: park the
 // cursor on the last window, re-enable auto-follow, and paint the live edge.
-// Two things mean it — `>` / `End`, and submitting a prompt. A send is a
+// Two things mean it — `G`, and submitting a prompt. A send is a
 // request to watch the answer, so the prompt the session echoes back and
 // everything streamed after it must land in view instead of below a viewport
 // left parked in the scrollback (where a silent Enter reads as a prompt that
@@ -672,7 +874,7 @@ func (m DisplayModel) WithWindowCursorToLastWindow() DisplayModel {
 //
 // At submit time the echo has not arrived yet, so the cursor lands on the last
 // window there is and the tick handler's WithWindowCursorToLastWindow advances it as
-// the session's frames append windows — the same state `>` leaves the display in.
+// the session's frames append windows — the same state `G` leaves the display in.
 //
 // The render belongs to the gesture: View paints scrollView's cached clip, and
 // a tick returns early when no output delta arrived, so a jump that skipped
@@ -692,66 +894,64 @@ func (m DisplayModel) ToggleWindowFold() (DisplayModel, bool) {
 	return m, ok
 }
 
-func (m DisplayModel) MoveWindowCursorToTop() (DisplayModel, bool) {
-	if m.windowBuffer.WindowCount() == 0 {
-		return m, false
-	}
-
-	viewportTop := m.scrollView.YOffset()
-	viewportBottom := viewportTop + m.scrollView.Height()
-	found := false
-
+// windowsOnScreen returns the visible windows the viewport shows, in document
+// order — the sequence `H` and `L` count through. "On screen" is the viewport's
+// line range, so a window straddling an edge is in it: half a message is on
+// screen, and a window taller than the viewport is one entry however little of
+// it fits. Nothing else is: a window entirely above or below is not a place the
+// cursor can be sent to "within the view".
+func (m DisplayModel) windowsOnScreen() []int {
+	top := m.scrollView.YOffset()
+	bottom := top + m.scrollView.Height()
+	var onScreen []int
 	m.windowBuffer.ForEachVisibleRanged(func(i int, startLine, endLine int) bool {
-		// Skip windows entirely below the viewport
-		if startLine >= viewportBottom {
-			return true
+		if startLine >= bottom {
+			return false // document order: everything after this is below too
 		}
-		// Check if this is the first visible window at or near the viewport top
-		if (startLine <= viewportTop && endLine > viewportTop) || startLine >= viewportTop {
-			if i != m.windowCursor {
-				m = m.setWindowCursor(i)
-				found = true
-			}
-			return false
+		if endLine > top {
+			onScreen = append(onScreen, i)
 		}
 		return true
 	})
-
-	return m, found
+	return onScreen
 }
 
-// MoveWindowCursorToBottom moves cursor to bottom visible window.
+// MoveWindowCursorToTop moves the cursor to the n-th window counted from the
+// viewport's top edge: n=1 is the first window on screen — the one containing
+// the top row, or the first one that starts below it — and n counts down the
+// screen from there. A count past the bottom edge clamps to the last window on
+// screen, which is where L begins.
+func (m DisplayModel) MoveWindowCursorToTop(n int) (DisplayModel, bool) {
+	onScreen := m.windowsOnScreen()
+	if len(onScreen) == 0 {
+		return m, false
+	}
+	target := onScreen[min(max(n, 1), len(onScreen))-1]
+	if target == m.windowCursor {
+		return m, false
+	}
+	return m.setWindowCursor(target), true
+}
+
+// MoveWindowCursorToBottom moves the cursor to the n-th window counted from the
+// viewport's bottom edge, the mirror of MoveWindowCursorToTop: n=1 is the
+// bottom-most window on screen, and a count past the top edge clamps to the
+// window H begins at.
+//
 // No-op when auto-follow is active (same race as MoveWindowCursorDown).
-func (m DisplayModel) MoveWindowCursorToBottom() (DisplayModel, bool) {
+func (m DisplayModel) MoveWindowCursorToBottom(n int) (DisplayModel, bool) {
 	if m.autoFollow {
 		return m, false
 	}
-	if m.windowBuffer.WindowCount() == 0 {
+	onScreen := m.windowsOnScreen()
+	if len(onScreen) == 0 {
 		return m, false
 	}
-
-	viewportTop := m.scrollView.YOffset()
-	viewportBottom := viewportTop + m.scrollView.Height()
-	found := false
-
-	m.windowBuffer.ForEachVisibleBackwardRanged(func(i int, startLine, endLine int) bool {
-		// Skip windows entirely above the viewport
-		if endLine <= viewportTop {
-			return true
-		}
-		// Skip windows entirely below the viewport
-		if startLine >= viewportBottom {
-			return true
-		}
-		// This window is at least partially visible and is the bottommost one
-		if i != m.windowCursor {
-			m = m.setWindowCursor(i)
-			found = true
-		}
-		return false
-	})
-
-	return m, found
+	target := onScreen[max(0, len(onScreen)-max(n, 1))]
+	if target == m.windowCursor {
+		return m, false
+	}
+	return m.setWindowCursor(target), true
 }
 
 // MoveWindowCursorToCenter moves cursor to the window at the visual center of the screen.

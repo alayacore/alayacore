@@ -26,7 +26,7 @@ func TestEnsureWindowCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T)
 
 	// Simulate pressing "L" (MoveWindowCursorToBottom + EnsureWindowCursorVisible + updateContent)
 	// The first press scrolls to make the window visible
-	display, _ = display.MoveWindowCursorToBottom()
+	display, _ = display.MoveWindowCursorToBottom(1)
 	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
@@ -34,7 +34,7 @@ func TestEnsureWindowCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T)
 	t.Logf("YOffset after 1st L: %d", yOffsetAfterFirst)
 
 	// Press "L" a second time — should NOT change the YOffset
-	display, _ = display.MoveWindowCursorToBottom()
+	display, _ = display.MoveWindowCursorToBottom(1)
 	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
@@ -42,7 +42,7 @@ func TestEnsureWindowCursorVisible_OversizedWindowDoesNotOscillate(t *testing.T)
 	t.Logf("YOffset after 2nd L: %d", yOffsetAfterSecond)
 
 	// Press "L" a third time — must stay stable
-	display, _ = display.MoveWindowCursorToBottom()
+	display, _ = display.MoveWindowCursorToBottom(1)
 	display = display.EnsureWindowCursorVisible()
 	display = display.updateContent()
 
@@ -343,7 +343,7 @@ func TestAutoFollow_JNoOpWhenNewWindowBetweenTicks(t *testing.T) {
 	}
 
 	// L (MoveWindowCursorToBottom) should also be a no-op while auto-following.
-	display, moved = display.MoveWindowCursorToBottom()
+	display, moved = display.MoveWindowCursorToBottom(1)
 	if moved {
 		t.Errorf("L with autoFollow should be no-op; cursor=%d", display.GetWindowCursor())
 	}

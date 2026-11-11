@@ -54,22 +54,31 @@ var (
 	keyNCapital = Chord{Code: 'N'}
 	keyCCapital = Chord{Code: 'C'}
 
-	// The endpoints of the transcript, on the plain `<` and `>` keys that both
-	// traditions give them: Emacs spells them M-< and M-> (beginning and end of
-	// buffer), and less binds the bare keys. The bare key is what a terminal
-	// reports; no modifier has to survive, so the binding is the same on every
-	// host.
-	keyLessThan    = Chord{Code: '<'}
-	keyGreaterThan = Chord{Code: '>'}
+	// The endpoints of the transcript are `G`: bare for the last window (follow
+	// it), counted for an absolute window (`1G` is the first). It is the one
+	// uppercase key here, and the one vi spells the same way.
+	keyG = Chord{Code: 'G'}
 
 	keyColon = Chord{Code: ':'}
 )
+
+// countDigit reports the digit a chord spells, for the count prefix typed in the
+// display pane. Digits are read as themselves — no chord constant per digit —
+// and a modified digit is not one: Alt+<digit> arrives ESC-prefixed and is
+// decoded as its own chord, which is unbound (this file has no Alt chord).
+func countDigit(c Chord) (int, bool) {
+	if c.Mod != 0 || c.Code < '0' || c.Code > '9' {
+		return 0, false
+	}
+	return int(c.Code - '0'), true
+}
 
 // Control combinations.
 var (
 	keyCtrlA = Chord{Code: 'a', Mod: ModCtrl}
 	keyCtrlC = Chord{Code: 'c', Mod: ModCtrl}
 	keyCtrlD = Chord{Code: 'd', Mod: ModCtrl}
+	keyCtrlE = Chord{Code: 'e', Mod: ModCtrl}
 	keyCtrlF = Chord{Code: 'f', Mod: ModCtrl}
 	keyCtrlG = Chord{Code: 'g', Mod: ModCtrl}
 	keyCtrlH = Chord{Code: 'h', Mod: ModCtrl}
@@ -81,6 +90,7 @@ var (
 	keyCtrlS = Chord{Code: 's', Mod: ModCtrl}
 	keyCtrlU = Chord{Code: 'u', Mod: ModCtrl}
 	keyCtrlW = Chord{Code: 'w', Mod: ModCtrl}
+	keyCtrlY = Chord{Code: 'y', Mod: ModCtrl}
 	keyCtrlZ = Chord{Code: 'z', Mod: ModCtrl}
 )
 

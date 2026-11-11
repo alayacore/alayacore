@@ -56,7 +56,7 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	}
 
 	// H: top visible window is window 0.
-	dm, _ = dm.MoveWindowCursorToTop()
+	dm, _ = dm.MoveWindowCursorToTop(1)
 	if got := dm.GetWindowCursor(); got != 0 {
 		t.Errorf("H with a1 unfolded: cursor = %d, want 0", got)
 	}
@@ -69,7 +69,7 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 
 	// L: bottommost visible window in [0,4) is window 1 (its rows 1-6
 	// overlap the viewport; windows 2/3 start at rows 7/8, below).
-	dm, _ = dm.MoveWindowCursorToBottom()
+	dm, _ = dm.MoveWindowCursorToBottom(1)
 	if got := dm.GetWindowCursor(); got != 1 {
 		t.Errorf("L with a1 unfolded: cursor = %d, want 1", got)
 	}
@@ -85,7 +85,7 @@ func TestHMLPositioningWithFoldedWindows(t *testing.T) {
 	}
 
 	// L: bottommost visible window is now window 3.
-	dm, _ = dm.MoveWindowCursorToBottom()
+	dm, _ = dm.MoveWindowCursorToBottom(1)
 	if got := dm.GetWindowCursor(); got != 3 {
 		t.Errorf("L with a1 folded: cursor = %d, want 3", got)
 	}
@@ -145,9 +145,9 @@ func TestHMLLineRangeConsistency(t *testing.T) {
 		// H/M/L must land on a visible window after every toggle (they may
 		// legitimately not "move" if the cursor is already on the target).
 		for name, fn := range map[string]func() (DisplayModel, bool){
-			"H": dm.MoveWindowCursorToTop,
+			"H": func() (DisplayModel, bool) { return dm.MoveWindowCursorToTop(1) },
 			"M": dm.MoveWindowCursorToCenter,
-			"L": dm.MoveWindowCursorToBottom,
+			"L": func() (DisplayModel, bool) { return dm.MoveWindowCursorToBottom(1) },
 		} {
 			after, _ := fn()
 			idx := after.GetWindowCursor()
@@ -186,7 +186,7 @@ func TestHMLFoldedScrollClamp(t *testing.T) {
 	if y := dm.YOffset(); y > 1 {
 		t.Errorf("after folding all windows, YOffset = %d, want <= 1 (5 lines, viewport 4)", y)
 	}
-	dm, moved := dm.MoveWindowCursorToBottom()
+	dm, moved := dm.MoveWindowCursorToBottom(1)
 	if !moved || dm.GetWindowCursor() != 4 {
 		t.Errorf("L after folding all: cursor = %d (moved=%v), want 4", dm.GetWindowCursor(), moved)
 	}

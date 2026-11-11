@@ -31,6 +31,18 @@ const mcpAuthTimeout = 5 * time.Minute
 // does not apply passes to the next. The order is the one inputLayers defines,
 // so this function no longer carries a second copy of the priority.
 func (m Terminal) handleKeyMsg(msg KeyMsg) (Terminal, Cmd) {
+	// A count belongs to the display's next key, and nothing outside that pane
+	// can spend it — so a keypress that lands anywhere else drops it. This is the
+	// one place a count could otherwise leak between contexts: DisplayModel
+	// spends its own on every key it reads (takeCount), but a key it never sees
+	// (Tab, a global shortcut, an overlay, the prompt) would leave the digits
+	// armed for whatever came next. Re-asking before every dispatch means a
+	// round trip through another pane — `12`, Tab, Tab, `j` — cannot carry the
+	// count back: the first key after leaving clears it.
+	if m.keyboardTarget() != targetDisplay {
+		m.display = m.display.ClearCount()
+	}
+
 	for _, layer := range m.inputLayers() {
 		switch layer {
 		case layerLoading:

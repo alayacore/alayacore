@@ -610,7 +610,7 @@ func sessionContent(rng *rand.Rand, width int) string {
 //
 // one dispatch over the things a user can do; each case is a call
 func randomSession(h *frameHarness, rng *rand.Rand) {
-	nav := []rune{'j', 'k', '>', '<', 'b', 'e', 'r', 'R', 'f'}
+	nav := []rune{'j', 'k', 'G', 'b', 'e', 'r', 'R', 'f', '1', '0'}
 	tags := []string{tagAssistantText, tagUserText, tagAssistantReasoning}
 	typed := []string{"the ", "quick ", "中文 ", "テスト ", "x", "  ", "1️⃣", "\n"}
 

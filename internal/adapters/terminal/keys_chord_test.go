@@ -51,8 +51,9 @@ func TestKeyChordConstants(t *testing.T) {
 	}{
 		{keyJ, "j"},
 		{keyH, "H"},
-		{keyLessThan, "<"},
-		{keyGreaterThan, ">"},
+		{keyG, "G"},
+		{keyCtrlE, "ctrl+e"},
+		{keyCtrlY, "ctrl+y"},
 		{keyColon, ":"},
 		{keyEnter, "enter"},
 		{keyEsc, "esc"},

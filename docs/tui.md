@@ -12,12 +12,12 @@ architecture.
 | `Tab` | Switch focus between display and input window |
 | `j` | Move window cursor down |
 | `k` | Move window cursor up |
-| `↓` | Scroll down one line |
-| `↑` | Scroll up one line |
+| `↓` / `Ctrl+E` | Scroll down one line |
+| `↑` / `Ctrl+Y` | Scroll up one line |
 | `Ctrl+D` / `PgDn` | Scroll down half screen |
 | `Ctrl+U` / `PgUp` | Scroll up half screen |
-| `<` / `Home` | Go to first window, scroll to top |
-| `>` / `End` | Follow the last window |
+| `G` | Follow the last window |
+| `1G` … `NG` | Go to the N-th visible window, in document order |
 | `H` | Move cursor to top window in visible area |
 | `M` | Move cursor to middle window in visible area |
 | `L` | Move cursor to bottom window in visible area |
@@ -26,10 +26,13 @@ architecture.
 | `e` | Open window content in external editor |
 
 Two families, and they do not overlap: **the keys that move the pointer**
-(`j`/`k`, the vim names `H`/`M`/`L`, `f`/`b`, and `<`/`>` for the two ends),
+(`j`/`k`, the vim names `H`/`M`/`L`, `f`/`b`, and `G` with its count),
 **the arrows and the coarse keys move the viewport** (`↑`/`↓` one line;
 `Ctrl+U`/`Ctrl+D` and `PgUp`/`PgDn` half a screen — all four share one handler,
 so a Page key moves by half a screen here, which is what its table row says).
+`Ctrl+E`/`Ctrl+Y` are the line motion in vi's own spelling: the arrows are also
+what a mouse wheel writes into the input stream, so they are the one spelling of
+that motion that a wheel notch cannot produce.
 
 Uppercase keys are bound only where vi spells the same gesture with the same
 letter: `H`/`M`/`L` are vim's own top/middle/bottom of the screen. `J`/`K` were
@@ -38,12 +41,37 @@ because in vi `J` joins lines and `K` runs the keyword program. This UI is used
 *beside* that editor rather than instead of it, and a scroll on those keys
 trains the wrong reflex in both.
 
-Four keys serve both families: `<` and `Home` put the pointer on the first window
-and take the view with it, `>` and `End` do the last. The brackets are the two
-ends in two traditions at once — Emacs's M-< and M-> (beginning and end of
-buffer), and the bare keys `less` binds to the same two places. The modifier is
-dropped here because Alt arrives ESC-prefixed and is ambiguous with the head of
-an escape sequence, while the bare key is one every host delivers.
+Every motion in the table takes a **count**: `12j` moves twelve windows, `3<C-d>`
+scrolls three half-screens, `2f` jumps to the second prompt below. `N<key>` means
+N presses of that key, and that definition is what decides the edge cases — a
+count past the last window stops on it, and `9b` with three prompts above stops on
+the first of them, exactly as pressing `b` nine times would. The digits are shown
+in the status bar (`12x`, right after the indicator) until the key they belong to
+spends them; `Esc` cancels, and so does any key that is not a motion. Two things
+are not counted: `M` (the middle of the screen has no ordinal), and the keys that
+do not move.
+
+`G` is the one absolute motion, and the one that can fail. Bare it is the last
+window and a request to follow it, counted it is window N of the visible ones
+(`1G` the first). It also completes the pointer's two ends, which used to be
+`<`/`>` with `Home`/`End` beside them: `G` and `1G` are the same two places in
+vi's spelling, one key family instead of two, and `0G` is `G` because a leading
+zero is not a count.
+
+`NG` is an **address**, not a step, and that is the whole of its difference from
+`Nj`: N presses of `j` are a possible operation that stops at the last window,
+while N names a window that either exists or does not. Past the end of the
+transcript the address is impossible, so nothing happens — the cursor, the
+viewport and auto-follow all stay exactly as they were, because a motion that did
+not happen is not a departure from the live edge. (vi clamps `300G` in a 100-line
+buffer to line 100; this UI answers with nothing rather than with a window nobody
+asked for.) The same is why `1G` on an empty transcript does nothing.
+
+Where a counted `G` leaves the viewport is the rule the other pointer motions
+use, not a rule of its own: `1G` shows the document's first row whenever the
+first message fits the screen, and a first message taller than the viewport lands
+with its tail on screen and its [pinned line](#sticky-window-line) counting the
+rows that are hidden.
 
 The arrows are bound to the viewport rather than copied onto `j`/`k` because of
 the mouse wheel. While this program owns the alternate screen it asks for no
@@ -490,7 +518,7 @@ Auto-follow is disabled by any navigation that actually moves the cursor or
 scrolls the viewport. Three things re-enable it, all meaning "take me to what is
 happening now":
 
-- **`>` / `End`.**
+- **`G`, bare.**
 - **Submitting a prompt.** A send is a request to watch the answer: the prompt the
   session echoes back and everything streamed after it must not land below a
   viewport left parked in the scrollback, where a silent `Enter` reads as a
@@ -506,20 +534,21 @@ An empty prompt box, and a command that appends no transcript (`:save`,
 While auto-follow is active:
 | Key | Behavior | Disables auto-follow? |
 |-----|----------|-----------------------|
-| `>` | Follow the last window | ✅ Re-enables |
+| `G` | Follow the last window | ✅ Re-enables |
+| `NG` | Jump to the N-th window | ❌ Never (a counted jump; a miss moves nothing) |
 | `Enter` | Submit prompt | ✅ Re-enables (empty box: ❌) |
 | `:continue` / `:summarize` | Start a task | ✅ Re-enables |
 | `j` | Move cursor down | ❌ No-op (race protection) |
 | `L` | Move cursor to bottom | ❌ No-op (race protection) |
-| `↓` | Scroll down one line | ❌ No-op when at bottom |
+| `↓` / `Ctrl+E` | Scroll down one line | ❌ No-op when at bottom |
 | `Ctrl+D` / `PgDn` | Scroll down half screen | ❌ No-op when at bottom |
 | `k` | Move cursor up | ✅ If cursor actually moves |
 | `H` | Move to top of visible area | ✅ If cursor actually moves |
 | `M` | Move to center of visible area | ✅ If cursor actually moves |
 | `f` | Jump to next user prompt | ✅ If cursor actually moves |
 | `b` | Jump to previous user prompt | ✅ If cursor actually moves |
-| `<` / `Home` | Go to first window | ✅ Always |
-| `↑` | Scroll up one line | ✅ Always |
+| `1G` | Go to the first window | ✅ Always (it exists; a miss moves nothing) |
+| `↑` / `Ctrl+Y` | Scroll up one line | ✅ Always |
 | `Ctrl+U` / `PgUp` | Scroll up half screen | ✅ Always |
 | `e` | Open in editor | ✅ Always |
 | `Space` | Toggle window fold | ❌ Never |

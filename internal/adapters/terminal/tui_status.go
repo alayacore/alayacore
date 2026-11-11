@@ -142,11 +142,18 @@ func (m *Terminal) renderStatusBar() string {
 		indicatorGlyph = spinnerFrame()
 	}
 
+	// The count prefix is read here, from the display model, and not carried in
+	// statusLeft: a count flips on keypresses, and statusLeft is rebuilt only
+	// when the session's status version moves — the staleness the auto-follow
+	// marker ("F↓") was moved out of this bar for (live_edge.go). It is in the
+	// cache key because this renderer is a pure function of that key.
+	count := m.display.PendingCount()
 	cacheKey := renderStatusBarCacheKey{
 		active:     active,
 		inProgress: m.inProgress,
 		width:      m.screenWidth,
 		styles:     m.styles,
+		count:      count,
 		left:       m.statusLeft,
 		right:      m.statusRight,
 	}
@@ -184,7 +191,7 @@ func (m *Terminal) renderStatusBar() string {
 	// right-aligned truncated group (see assembleStatusLeft), measured for the
 	// layout with hostMaxCells — this row must fit what a host may charge it,
 	// because it is the frame's bottom row (host_width.go).
-	leftPlain := assembleStatusLeft(m.statusLeft, m.statusRight, indicatorGlyph, lineBudget)
+	leftPlain := assembleStatusLeft(m.statusLeft, m.statusRight, indicatorGlyph, countText(count), lineBudget)
 
 	// Render: the indicator with its own style, then the rest per segment
 	// (segments and " | " separators share one muted style now, so the whole
@@ -249,8 +256,23 @@ func (m *Terminal) renderStatusBar() string {
 // level — but renderStatusBar is also reached by a hand-built Terminal
 // whose status has not been loaded yet, and by tests that pin this
 // layout with bare segments.
-func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph string, lineBudget int) string {
+func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph, countText string, lineBudget int) string {
+	// The count sits right after the indicator and OUTSIDE the segment
+	// truncation below: it is the row's only live echo of what the user just
+	// typed, with nothing cached behind it, and truncation eats this row from
+	// its tail. Its width is still charged to the layout, so the segments pay
+	// for it by truncating sooner — the tail of the telemetry, which is the
+	// least valuable text at that width.
 	left := indicatorGlyph
+	if countText != "" {
+		// A row too narrow for the indicator, a space and the count draws the
+		// indicator alone. That is degenerate (the echo is at most 7 cells) but
+		// it is the one place the count may disappear: a row written past
+		// lineBudget wraps, and the wrap scrolls the frame.
+		if room := lineBudget - hostMaxCells(indicatorGlyph) - 1; room >= hostMaxCells(countText) {
+			left += " " + countText
+		}
+	}
 	if statusLeft != "" {
 		segBudget := max(0, lineBudget-hostMaxCells(left)-1) // indicator + separator space
 		if seg := truncateWithSuffix(statusLeft, segBudget); seg != "" {
@@ -337,8 +359,21 @@ type renderStatusBarCacheKey struct {
 	inProgress bool
 	width      int
 	styles     *Styles
+	count      int
 	left       string
 	right      string
+}
+
+// countText spells the pending count for the status bar: the digits and an "x",
+// which is what keeps a bare `12` from reading as one more measurement on a row
+// full of them ("12 12.3k/200k" is one field to the eye; "12x 12.3k/200k" is
+// not). Empty when no count is armed — 0 and 1 would both be claims the user
+// has not made.
+func countText(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dx", n)
 }
 
 // formatTokenCount returns a compact human-readable representation of a

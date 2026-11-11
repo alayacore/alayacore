@@ -91,11 +91,11 @@ func TestPressFWithNoPromptBelowKeepsViewportPut(t *testing.T) {
 func TestPressFFollowingLeavesAutoFollowOn(t *testing.T) {
 	display, _ := buildPromptTranscript(5, 5, 20)
 
-	// `>`: cursor to the last window and follow it.
-	display, _ = display.Update(KeyPressMsg(Key{Code: '>'}))
+	// `G`: cursor to the last window and follow it.
+	display, _ = display.Update(KeyPressMsg(Key{Code: 'G'}))
 	display = display.updateContent()
 	if !display.autoFollow {
-		t.Fatal("fixture lost auto-follow; > should have engaged it")
+		t.Fatal("fixture lost auto-follow; G should have engaged it")
 	}
 
 	windowCursorBefore, offsetBefore := display.GetWindowCursor(), display.YOffset()
