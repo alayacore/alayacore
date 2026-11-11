@@ -208,16 +208,19 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		if !hasCount {
 			return m.FollowLatest(), nil
 		}
-		// A counted G is the one motion that is all-or-nothing, and the reason is
-		// that it is an address rather than a walk: every other key either steps
-		// towards a place (and so has a meaningful "as far as it goes") or scrolls
-		// a document that is only known by trying. `NG` names a window that either
-		// exists or does not, vi agrees (measured in nvi: `999j`, `999G` and `999H`
-		// all leave the cursor alone), and the answer to "there is no window 300"
-		// is not some other window.
+		// A counted G counts down from the top of the transcript and stops where
+		// the count runs out: `10G` is the tenth window, and `999G` in a
+		// hundred-window session is the hundredth. That reading is what makes the
+		// count and the rest of the table one rule — the target is resolved
+		// against what exists and taken as far as it goes.
 		//
-		// Nothing may be touched before the address resolves: a refusal is not a
-		// departure from the live edge, so it must not reach MarkUserScrolled.
+		// Refusing instead ("there is no window 999") would need a way to say so.
+		// vi has a bell; this UI has no key-level error channel, and the transcript
+		// never shows its own length, so a refusal here would be a silent no-op
+		// indistinguishable from a broken key.
+		//
+		// The empty transcript is the one case with no target at all: nothing moves
+		// and auto-follow is untouched, because nothing happened.
 		target, ok := m.windowCursorAtOrdinal(n)
 		if !ok {
 			return m, nil
@@ -580,25 +583,22 @@ func scrollAmount(n, step int) int {
 	return n * step
 }
 
-// windowCursorAtOrdinal resolves the address a counted `G` names: the index of
-// the n-th visible window (1-based, in document order), and whether that window
-// exists. It counts what navigation can reach, so folded windows count as one
-// each and invisible ones are skipped, exactly as `j` steps over them.
+// windowCursorAtOrdinal counts down to the window a counted `G` names: the n-th
+// visible window (1-based, in document order), or the last one when the
+// transcript has fewer than n. It counts what navigation can reach, so folded
+// windows count as one each and invisible ones are skipped, exactly as `j` steps
+// over them.
 //
-// ok is false when the transcript has fewer than n visible windows: this is the
-// only caller for which an unreachable target is a refusal rather than a
-// boundary, because it is the only one that names a place instead of walking
-// towards one.
+// ok is false only when there is no visible window at all — a target that cannot
+// be counted down to versus nothing to count. That is the degenerate case every
+// motion has, not a rule of its own.
 func (m DisplayModel) windowCursorAtOrdinal(n int) (int, bool) {
 	target := -1
 	ordinal := 0
 	m.windowBuffer.ForEachVisible(0, func(i int, _ *Window) bool {
 		ordinal++
-		if ordinal == n {
-			target = i
-			return false
-		}
-		return true
+		target = i
+		return ordinal < n
 	})
 	return target, target >= 0
 }
