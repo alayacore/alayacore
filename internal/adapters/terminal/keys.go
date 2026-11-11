@@ -53,8 +53,6 @@ var (
 	keyYCapital = Chord{Code: 'Y'}
 	keyNCapital = Chord{Code: 'N'}
 	keyCCapital = Chord{Code: 'C'}
-	keyJCapital = Chord{Code: 'J'}
-	keyKCapital = Chord{Code: 'K'}
 
 	// The endpoints of the transcript, on the plain `<` and `>` keys that both
 	// traditions give them: Emacs spells them M-< and M-> (beginning and end of

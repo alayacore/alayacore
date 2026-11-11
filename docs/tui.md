@@ -12,8 +12,8 @@ architecture.
 | `Tab` | Switch focus between display and input window |
 | `j` | Move window cursor down |
 | `k` | Move window cursor up |
-| `↓` / `J` | Scroll down one line |
-| `↑` / `K` | Scroll up one line |
+| `↓` | Scroll down one line |
+| `↑` | Scroll up one line |
 | `Ctrl+D` / `PgDn` | Scroll down half screen |
 | `Ctrl+U` / `PgUp` | Scroll up half screen |
 | `<` / `Home` | Go to first window, scroll to top |
@@ -30,8 +30,13 @@ Two families, and they do not overlap: **the keys that move the pointer**
 **the arrows and the coarse keys move the viewport** (`↑`/`↓` one line;
 `Ctrl+U`/`Ctrl+D` and `PgUp`/`PgDn` half a screen — all four share one handler,
 so a Page key moves by half a screen here, which is what its table row says).
-`J`/`K` are the viewport motion spelled on the home row, so shift carries
-exactly one meaning in this table: leave the pointer, move the screen.
+
+Uppercase keys are bound only where vi spells the same gesture with the same
+letter: `H`/`M`/`L` are vim's own top/middle/bottom of the screen. `J`/`K` were
+the exception — the viewport motion spelled on the home row — and they are gone
+because in vi `J` joins lines and `K` runs the keyword program. This UI is used
+*beside* that editor rather than instead of it, and a scroll on those keys
+trains the wrong reflex in both.
 
 Four keys serve both families: `<` and `Home` put the pointer on the first window
 and take the view with it, `>` and `End` do the last. The brackets are the two
@@ -506,7 +511,7 @@ While auto-follow is active:
 | `:continue` / `:summarize` | Start a task | ✅ Re-enables |
 | `j` | Move cursor down | ❌ No-op (race protection) |
 | `L` | Move cursor to bottom | ❌ No-op (race protection) |
-| `↓` / `J` | Scroll down one line | ❌ No-op when at bottom |
+| `↓` | Scroll down one line | ❌ No-op when at bottom |
 | `Ctrl+D` / `PgDn` | Scroll down half screen | ❌ No-op when at bottom |
 | `k` | Move cursor up | ✅ If cursor actually moves |
 | `H` | Move to top of visible area | ✅ If cursor actually moves |
@@ -514,7 +519,7 @@ While auto-follow is active:
 | `f` | Jump to next user prompt | ✅ If cursor actually moves |
 | `b` | Jump to previous user prompt | ✅ If cursor actually moves |
 | `<` / `Home` | Go to first window | ✅ Always |
-| `↑` / `K` | Scroll up one line | ✅ Always |
+| `↑` | Scroll up one line | ✅ Always |
 | `Ctrl+U` / `PgUp` | Scroll up half screen | ✅ Always |
 | `e` | Open in editor | ✅ Always |
 | `Space` | Toggle window fold | ❌ Never |

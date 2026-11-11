@@ -118,7 +118,7 @@ func buildHelpItems() []HelpItem {
 		HelpItem{ID: nextID(), Key: "Ctrl+Z", Description: "Suspend process", Type: HelpItemKey},
 		HelpItem{ID: nextID(), IsSection: true, Description: "Display Mode"},
 		HelpItem{ID: nextID(), Key: "j/k", Description: "Move window cursor", Type: HelpItemKey},
-		HelpItem{ID: nextID(), Key: "J/K, Down/Up", Description: "Scroll one line (wheel too)", Type: HelpItemKey},
+		HelpItem{ID: nextID(), Key: "Down/Up", Description: "Scroll one line (wheel too)", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "Ctrl+D/U, PgUp/Dn", Description: "Scroll half screen", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "</>, Home/End", Description: "First / last window", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "H/L/M", Description: "Window cursor top/btm/mid", Type: HelpItemKey},

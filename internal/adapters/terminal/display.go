@@ -93,7 +93,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		m = m.ScrollUp(max(1, m.GetHeight()/2))
 		return m.updateContent(), nil
 
-	// The viewport, on the arrows and on their shifted letters.
+	// The viewport, on the arrows.
 	//
 	// The arrows belong here rather than beside `j`/`k` because of the mouse
 	// wheel. While this program owns the alternate screen it asks for no mouse
@@ -112,12 +112,16 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	// rolling down looked dead) and that steps whole windows at a time (rolling
 	// up jumped): the feel this replaced.
 	//
-	// `J`/`K` stay — the same motion spelled on the home row, so shift carries
-	// exactly one meaning in this table (leave the pointer, move the screen).
-	// Shift plus an arrow is deliberately unbound: it was the only binding that
-	// needed a terminal to report a modified arrow, and a modified arrow is not
-	// what a wheel synthesizes. The parser still decodes them.
-	case keyJCapital, keyDown:
+	// No shifted letter is bound here, and the two that were are the reason. `J`
+	// and `K` used to spell this motion on the home row, so that shift carried
+	// one meaning in this table; the argument that wins is the reader's hands.
+	// In vi `J` joins lines and `K` runs the keyword program, and this UI is
+	// used beside that editor rather than instead of it — a scroll on the same
+	// keys trains the wrong reflex in both. Shift plus an arrow stays unbound
+	// for a second reason: it was the only binding that needed a terminal to
+	// report a modified arrow, and a modified arrow is not what a wheel
+	// synthesizes. The parser still decodes them.
+	case keyDown:
 		if !m.AtBottom() {
 			m = m.MarkUserScrolled()
 			m = m.ScrollDown(1)
@@ -125,7 +129,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		}
 		return m, nil
 
-	case keyKCapital, keyUp:
+	case keyUp:
 		m = m.MarkUserScrolled()
 		m = m.ScrollUp(1)
 		return m.updateContent(), nil
@@ -521,7 +525,7 @@ func (m DisplayModel) MoveWindowCursorUp() (DisplayModel, bool) {
 	return m, found
 }
 
-// MarkUserScrolled disables auto-follow. Called by scroll keys (J/K/Ctrl-D/Ctrl-U).
+// MarkUserScrolled disables auto-follow. Called by scroll keys (arrows/Ctrl-D/Ctrl-U).
 func (m DisplayModel) MarkUserScrolled() DisplayModel {
 	return m.DisableAutoFollow()
 }
