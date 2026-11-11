@@ -92,7 +92,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	}
 
 	switch keyMsg.Chord() {
-	// The pointer, on the home row only. `j`/`k` and the vi names below own
+	// The pointer, on the home row only. `j`/`k` and the letters below own
 	// it; the arrows belong to the viewport, for the reason written on those
 	// cases.
 	//
@@ -168,9 +168,11 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	// No shifted letter is bound here, and the two that were are the reason. `J`
 	// and `K` used to spell this motion on the home row, so that shift carried
 	// one meaning in this table; the argument that wins is the reader's hands.
-	// In vi `J` joins lines and `K` runs the keyword program, and this UI is
-	// used beside that editor rather than instead of it — a scroll on the same
-	// keys trains the wrong reflex in both. Shift plus an arrow stays unbound
+	// In vi `J` joins lines; `K` is the keyword lookup a vim user's hands expect
+	// and nvi does not have at all (it has no `keywordprg` option). Either way
+	// neither key is a scroll, and this UI is used beside those editors rather
+	// than instead of them — a scroll on the same keys trains the wrong reflex
+	// in both. Shift plus an arrow stays unbound
 	// for a second reason: it was the only binding that needed a terminal to
 	// report a modified arrow, and a modified arrow is not what a wheel
 	// synthesizes. The parser still decodes them.

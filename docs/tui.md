@@ -9,6 +9,7 @@ architecture.
 
 | Key | Action |
 |-----|--------|
+| `N` | Count prefix: the next motion repeats N times (see below) |
 | `Tab` | Switch focus between display and input window |
 | `j` | Move window cursor down |
 | `k` | Move window cursor up |
@@ -26,7 +27,7 @@ architecture.
 | `e` | Open window content in external editor |
 
 Two families, and they do not overlap: **the keys that move the pointer**
-(`j`/`k`, the vi names `H`/`M`/`L`, `f`/`b`, and `G` with its count),
+(`j`/`k`, the vi names `H`/`M`/`L`, `f`/`b` for prompts, and `G` with its count),
 **the arrows and the coarse keys move the viewport** (`↑`/`↓` one line;
 `Ctrl+U`/`Ctrl+D` and `PgUp`/`PgDn` half a screen — all four share one handler,
 so a Page key moves by half a screen here, which is what its table row says).
@@ -35,11 +36,11 @@ what a mouse wheel writes into the input stream, so they are the one spelling of
 that motion that a wheel notch cannot produce.
 
 Uppercase keys are bound only where vi spells the same gesture with the same
-letter: `H`/`M`/`L` are vi's own top/middle/bottom of the screen. `J`/`K` were
-the exception — the viewport motion spelled on the home row — and they are gone
-because in vi `J` joins lines and `K` runs the keyword program. This UI is used
-*beside* that editor rather than instead of it, and a scroll on those keys
-trains the wrong reflex in both.
+letter: `H`/`M`/`L` are vi's own top/middle/bottom of the screen, and `G` is its
+address. `J`/`K` were the exception — the viewport motion spelled on the home row
+— and they are gone because neither is a scroll in the editors this one sits
+beside: `J` joins lines in vi, and `K` is the keyword lookup a vim user's hands
+expect and nvi does not have at all (nvi has no `keywordprg` option).
 
 Every motion in the table takes a **count**: `12j` moves twelve windows, `3<C-d>`
 scrolls three half-screens, `2f` jumps to the second prompt below. `N<key>` means
@@ -50,6 +51,12 @@ in the status bar (`12x`, right after the indicator) until the key they belong t
 spends them; `Esc` cancels, and so does any key that is not a motion. Two things
 are not counted: `M` (the middle of the screen has no ordinal), and the keys that
 do not move.
+
+One consequence of "N presses" is worth stating for a vi user: nvi's `[count]` on
+`<C-d>`/`<C-u>`/`<C-e>`/`<C-y>` is a count of **lines**, not of presses — its
+default is the `scroll` setting, so `3<C-d>` there moves three lines and can move
+*less* than a bare `<C-d>`. Here the count is a repetition, which is the rule the
+whole table shares: `3<C-d>` is three half-screens, and a bare `<C-d>` is one.
 
 `G` is the one absolute motion: bare it is the last window and a request to
 follow it, counted it is window N of the visible ones, resolved from the top of

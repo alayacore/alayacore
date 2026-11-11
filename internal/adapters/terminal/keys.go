@@ -55,8 +55,8 @@ var (
 	keyCCapital = Chord{Code: 'C'}
 
 	// The endpoints of the transcript are `G`: bare for the last window (follow
-	// it), counted for an absolute window (`1G` is the first). It is the one
-	// uppercase key here, and the one vi spells the same way.
+	// it), counted for an absolute window (`1G` is the first). It is vi's own
+	// letter for the last line.
 	keyG = Chord{Code: 'G'}
 
 	keyColon = Chord{Code: ':'}

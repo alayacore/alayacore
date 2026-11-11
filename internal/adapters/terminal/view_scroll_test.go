@@ -15,11 +15,11 @@ package terminal
 // Bound to the pointer, that same stream produced a gesture that looked dead
 // rolling down (auto-follow refuses MoveWindowCursorDown at the live edge) and
 // jumped whole windows rolling up. Bound to the viewport it is one line per
-// arrow a host produces for a notch, and a notch is then the only spelling of
-// that motion there is — the home row has none.
+// arrow a host produces for a notch — and `Ctrl+E`/`Ctrl+Y` are that same motion
+// in the one spelling a wheel notch cannot produce.
 //
-// The pointer's keys are `j`/`k`, the vi names (`H`/`M`/`L`, `f`/`b`), and
-// `<`/`>` for the two ends. List overlays are not this file's subject: a picker
+// The pointer's keys are `j`/`k`, `H`/`M`/`L`, `f`/`b` for prompts, and `G` for
+// the transcript's two ends. List overlays are not this file's subject: a picker
 // has no viewport apart from its selection, so its arrows move the selection.
 
 import (
