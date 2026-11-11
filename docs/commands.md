@@ -118,8 +118,8 @@ Two commands carry a short form a user may type instead — `:q` for `:quit` and
 `:r` for `:reasoning_level_set <0|1|2>`. An adapter resolves a short form where a
 typed line becomes a frame, so the session (and a Raw IO client) sees the full
 name; the wire has no aliases, and a client that sends `q` is told the command
-is unknown. A command with a keybinding does not get one: `Ctrl+S`, `Ctrl+L`,
-`Ctrl+P`, `Ctrl+G` and `Ctrl+F` already cover `:save`, `:model_set`,
+is unknown. A command with a keybinding does not get one: `Ctrl+S`, `Ctrl+P`,
+`Ctrl+T`, `Ctrl+G` and `Ctrl+F` already cover `:save`, `:model_set`,
 `:theme_set`, `:cancel` and `:fork`.
 
 `:cancel` cancels the running task, and it takes the task's *queued* steering with

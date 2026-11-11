@@ -425,6 +425,7 @@ func TestEncodedKeysAreWhatTheParserReads(t *testing.T) {
 		{"ctrl+j", keyEvent{down: true, virtualKey: 'J', char: 0x0a, ctrlState: ctrlLeftCtrl}, "ctrl+j"},
 		{"ctrl+o", keyEvent{down: true, virtualKey: 'O', char: 0x0f, ctrlState: ctrlLeftCtrl}, "ctrl+o"},
 		{"ctrl+r", keyEvent{down: true, virtualKey: 'R', char: 0x12, ctrlState: ctrlLeftCtrl}, "ctrl+r"},
+		{"ctrl+t", keyEvent{down: true, virtualKey: 'T', char: 0x14, ctrlState: ctrlLeftCtrl}, "ctrl+t"},
 		{"ctrl+z", keyEvent{down: true, virtualKey: 'Z', char: 0x1a, ctrlState: ctrlLeftCtrl}, "ctrl+z"},
 		{"cjk", keyEvent{down: true, virtualKey: ' ', char: 0x4E2D}, "中"},
 	}
@@ -527,7 +528,7 @@ func TestEncodedBracketedPasteSurvivesTheParser(t *testing.T) {
 func TestEveryBoundCtrlChordIsReachable(t *testing.T) {
 	bound := []Chord{
 		keyCtrlA, keyCtrlC, keyCtrlD, keyCtrlF, keyCtrlG, keyCtrlH, keyCtrlJ,
-		keyCtrlL, keyCtrlO, keyCtrlP, keyCtrlR, keyCtrlS, keyCtrlU, keyCtrlW, keyCtrlZ,
+		keyCtrlL, keyCtrlO, keyCtrlP, keyCtrlR, keyCtrlS, keyCtrlT, keyCtrlU, keyCtrlW, keyCtrlZ,
 	}
 	if len(bound) == 0 {
 		t.Fatal("no ctrl chords to check")

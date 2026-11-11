@@ -495,15 +495,18 @@ func (m Terminal) handleGlobalKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 		tm, cmd := m.handleSaveKey()
 		return tm, cmd, true
 
-	case keyCtrlL:
+	case keyCtrlP:
 		m = m.openModelSelector()
 		return m, nil, true
 
-	case keyCtrlP:
+	case keyCtrlT:
 		m = m.openThemeSelector()
 		return m, nil, true
 
-	case keyCtrlR:
+	case keyCtrlL:
+		// vi's own refresh key. ^R is vi's other spelling of the same command and
+		// is deliberately not bound: one action, one key (see the count/alias rule
+		// in docs/tui.md), and ^L is the one every vi-like editor has taught.
 		tm, cmd := m.handleRedraw()
 		return tm, cmd, true
 
@@ -530,7 +533,7 @@ func (m Terminal) handleSaveKey() (Terminal, Cmd) {
 	return m.submitCommand(commands.CommandNameSave, false)
 }
 
-// handleRedraw handles the Ctrl+R force-redraw shortcut.
+// handleRedraw handles the Ctrl+L force-redraw shortcut.
 //
 // Returns a Cmd that delivers a forceRepaintMsg: when the event loop
 // processes it, the Program clears both Program.lastView and the Screen
@@ -542,13 +545,13 @@ func (m Terminal) handleSaveKey() (Terminal, Cmd) {
 // Replaces the previous two-layer approach:
 //   - the old `\x1b[0m` content-suffix trick made the view bytes differ
 //     to defeat the same-content check, which forced two diff renders
-//     per Ctrl-R (one for adding the suffix, one for removing it on
+//     per Ctrl-L (one for adding the suffix, one for removing it on
 //     the next toggle); and
 //   - the synthetic ScreenSizeMsg trick relied on Screen.Resize clearing
 //     lastContent, which worked but coupled redraw to resize handling.
 //
 // The single-message approach clears caches directly and produces
-// exactly one full repaint per Ctrl-R.
+// exactly one full repaint per Ctrl-L.
 func (m Terminal) handleRedraw() (Terminal, Cmd) {
 	m.display = m.display.ForceContentDirty()
 	m.display = m.display.updateContent()

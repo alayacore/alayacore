@@ -9,7 +9,6 @@ package terminal
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/alayacore/alayacore/internal/commands"
 )
@@ -124,21 +123,35 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		}
 		return m.updateContent(), nil
 
-	// The coarse motions, counted as N of themselves. A scroll cannot fail —
-	// it clamps — so there is no per-step effect to preserve and the count is
-	// multiplied instead of run: `999999<C-d>` is one clamped scroll, not a
-	// million calls.
+	// The coarse motion, and the one place this table follows vi's count rather
+	// than its own "N presses" rule: vi's `[count]` on `<C-d>`/`<C-u>` is a number
+	// of LINES, and the un-counted default comes from the `scroll` setting — here,
+	// half a screen. So `3<C-d>` scrolls three lines and can move *less* than a
+	// bare `<C-d>`. That asymmetry is vi's, it is what a vi user's hands expect
+	// from this key, and it is kept rather than smoothed over.
+	//
+	// `PgUp`/`PgDn` are the same motion in this table (one handler, one table row)
+	// so they take the same rule; a scroll cannot fail — it clamps — so nothing is
+	// run N times here.
 	case keyCtrlD, keyPgDown:
+		lines := max(1, m.GetHeight()/2)
+		if hasCount {
+			lines = n
+		}
 		if !m.AtBottom() {
 			m = m.MarkUserScrolled()
-			m = m.ScrollDown(scrollAmount(n, max(1, m.GetHeight()/2)))
+			m = m.ScrollDown(lines)
 			m = m.updateContent()
 		}
 		return m, nil
 
 	case keyCtrlU, keyPgUp:
+		lines := max(1, m.GetHeight()/2)
+		if hasCount {
+			lines = n
+		}
 		m = m.MarkUserScrolled()
-		m = m.ScrollUp(scrollAmount(n, max(1, m.GetHeight()/2)))
+		m = m.ScrollUp(lines)
 		return m.updateContent(), nil
 
 	// The viewport, on the arrows and on vi's own one-line scroll keys.
@@ -264,7 +277,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		// contentDirty is therefore set explicitly, so updateContent (last)
 		// still rebuilds the viewport with the new rendering — without it,
 		// updateContent would early-return and the toggle would not show
-		// until Ctrl+R.
+		// until Ctrl+L.
 		w := m.windowBuffer.WindowAt(m.windowCursor)
 		if w == nil || w.Folded {
 			return m, nil
@@ -568,20 +581,6 @@ func (m *DisplayModel) takeCount() (int, bool) {
 func (m DisplayModel) ClearCount() DisplayModel {
 	m.count = 0
 	return m
-}
-
-// scrollAmount is N presses of a step motion as one scroll. The steps here
-// clamp rather than fail, so there is no per-step state to preserve and the
-// count is multiplied; the multiplication saturates, because n is a count the
-// user typed and `int` is not required to hold the product.
-func scrollAmount(n, step int) int {
-	if step <= 0 {
-		step = 1
-	}
-	if n > math.MaxInt32/step {
-		return math.MaxInt32
-	}
-	return n * step
 }
 
 // windowCursorAtOrdinal counts down to the window a counted `G` names: the n-th

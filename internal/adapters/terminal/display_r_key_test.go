@@ -10,7 +10,7 @@ import (
 // TestPressRTogglesMarkdownInViewport reproduces the bug where pressing
 // 'r' to toggle markdown rendering on an unfolded assistant-text window
 // did NOT update the visible viewport: the user had to fall back to
-// Ctrl+R (handleRedraw) to see the change.
+// Ctrl+L (handleRedraw) to see the change.
 //
 // Root cause: the display.go case keyR handler called
 // EnsureWindowCursorVisible().updateContent() — EnsureWindowCursorVisible calls

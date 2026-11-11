@@ -312,7 +312,7 @@ Comments (`#`) are **line-level**: a comment line may appear anywhere inside a m
 
 ### Switching Models at Runtime
 
-Press `Ctrl+L` to open the model selector. From there:
+Press `Ctrl+P` to open the model selector. From there:
 
 | Key | Action |
 |-----|--------|
@@ -388,4 +388,4 @@ removed: #f38ba8
 
 Body text (assistant messages, reasoning, user input, tool input/output) is rendered without an explicit foreground color — it uses the terminal's default. When an overlay (model selector, help overlay, confirm dialog, …) is open, the body dims to the theme's `dim` color together with the rest of the background content. Selected/active items in overlay lists are emphasized with **bold** weight only, not color. A user message's attachment badges share the body's default foreground but add **bold** — told apart by weight alone, deliberately not by the window line's `muted` color (which would make them read as part of the tag), and never by `warning`, because the alert color marks what the reader is asked to decide about, not what happened to arrive with a message. The terminal cursor uses the emulator's default color (the theme does not control it).
 
-Switch themes at runtime with `Ctrl+P`.
+Switch themes at runtime with `Ctrl+T`.

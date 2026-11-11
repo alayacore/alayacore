@@ -47,7 +47,11 @@ func countFixture(n, height int) DisplayModel {
 // pressing a key, and it leaves auto-follow off — the state a count is normally
 // typed in.
 func parkedFixture(n, start int) DisplayModel {
-	return countFixture(n, 6).WithWindowCursor(start).EnsureWindowCursorVisible().updateContent()
+	// The first render is load-bearing: ScrollView gets its document length from
+	// updateContent, and before that every offset clamps to zero — a fixture that
+	// parked the cursor first would scroll nowhere.
+	return countFixture(n, 6).updateContent().
+		WithWindowCursor(start).EnsureWindowCursorVisible().updateContent()
 }
 
 // TestCountIsNPresses is the definition, checked against the thing it is defined
@@ -116,6 +120,50 @@ func TestCountOnTheViewportMotions(t *testing.T) {
 	huge := pressWithCount(t, m, maxCount, Key{Code: KeyDown})
 	if !huge.AtBottom() {
 		t.Errorf("`%d<down>` left the viewport at %d, want the bottom", maxCount, huge.YOffset())
+	}
+}
+
+// TestCountedHalfScreenTakesLines: the one place this table follows vi's count
+// instead of its own "N presses" rule. vi's `[count]` on `<C-d>`/`<C-u>` is a
+// number of LINES, and the un-counted default comes from the `scroll` setting —
+// half a screen here. So a counted one can move *less* than a bare one, which is
+// vi's asymmetry and is kept on purpose.
+func TestCountedHalfScreenTakesLines(t *testing.T) {
+	// Six rows of viewport: a bare <C-d> scrolls three of them. parkedFixture
+	// renders once, which is what gives the viewport its document length —
+	// without it every scroll clamps to zero.
+	m := parkedFixture(20, 0)
+	if got := m.GetHeight() / 2; got != 3 {
+		t.Fatalf("fixture: half a screen is %d rows, want 3", got)
+	}
+
+	bare := pressWithCount(t, m, 0, Key{Code: 'd', Mod: ModCtrl})
+	if got, want := bare.YOffset(), 3; got != want {
+		t.Errorf("a bare <C-d> scrolled to %d, want %d (half a screen)", got, want)
+	}
+
+	// A count is lines, so two moves further than one row and less than half a
+	// screen — and it is the same rule for the named key, which this table binds
+	// to the same motion.
+	for _, key := range []Key{{Code: 'd', Mod: ModCtrl}, {Code: KeyPgDown}} {
+		counted := pressWithCount(t, m, 2, key)
+		if got, want := counted.YOffset(), 2; got != want {
+			t.Errorf("`2%v` scrolled to %d, want %d lines", key, got, want)
+		}
+	}
+
+	// Upwards, symmetric: two lines, and a bare <C-u> takes half a screen.
+	parked := parkedFixture(20, 5)
+	if got := parked.YOffset(); got < 3 {
+		t.Fatalf("fixture: yOffset %d, want at least half a screen", got)
+	}
+	upTwo := pressWithCount(t, parked, 2, Key{Code: 'u', Mod: ModCtrl})
+	if got, want := upTwo.YOffset(), parked.YOffset()-2; got != want {
+		t.Errorf("`2<C-u>` scrolled to %d, want %d", got, want)
+	}
+	upBare := pressWithCount(t, parked, 0, Key{Code: 'u', Mod: ModCtrl})
+	if got := parked.YOffset() - upBare.YOffset(); got != 3 {
+		t.Errorf("a bare <C-u> scrolled %d rows, want 3 (half a screen)", got)
 	}
 }
 

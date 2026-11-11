@@ -141,7 +141,7 @@ func TestMCPInitModalOwnsTheKeyboard(t *testing.T) {
 
 	// Any other global chord is swallowed too: the modal is the keyboard's owner
 	// while it is up.
-	if leaked := feedMsg(t, m, KeyPressMsg{Code: 'l', Mod: ModCtrl}); leaked.modelSelector.IsOpen() {
-		t.Error("Ctrl+L leaked past the MCP-init modal and opened the model selector")
+	if leaked := feedMsg(t, m, KeyPressMsg{Code: 'p', Mod: ModCtrl}); leaked.modelSelector.IsOpen() {
+		t.Error("Ctrl+P leaked past the MCP-init modal and opened the model selector")
 	}
 }

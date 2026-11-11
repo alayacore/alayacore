@@ -88,6 +88,7 @@ var (
 	keyCtrlP = Chord{Code: 'p', Mod: ModCtrl}
 	keyCtrlR = Chord{Code: 'r', Mod: ModCtrl}
 	keyCtrlS = Chord{Code: 's', Mod: ModCtrl}
+	keyCtrlT = Chord{Code: 't', Mod: ModCtrl}
 	keyCtrlU = Chord{Code: 'u', Mod: ModCtrl}
 	keyCtrlW = Chord{Code: 'w', Mod: ModCtrl}
 	keyCtrlY = Chord{Code: 'y', Mod: ModCtrl}

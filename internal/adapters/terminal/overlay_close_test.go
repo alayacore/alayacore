@@ -4,7 +4,7 @@ package terminal
 // complaint: when an overlay (model selector, help window, ...) closes,
 // the rows it covered must be repainted with the base content — the row
 // diff must not just EL-erase the vanished overlay rows (that leaves a
-// blank block until a manual Ctrl+R full repaint).
+// blank block until a manual Ctrl+L full repaint).
 //
 // Real TUI frames ALWAYS contain CUP rows (the input box and status bar
 // are anchored with absolute CUP), so containsCUP is true for every
