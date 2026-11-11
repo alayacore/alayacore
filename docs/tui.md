@@ -24,7 +24,6 @@ architecture.
 | `L` | Move cursor to bottom window in visible area |
 | `f` | Jump to next user prompt and put it at the top; leaves the view alone when there is none |
 | `b` | Jump to previous user prompt and put it at the top; leaves the view alone when there is none |
-| `Ctrl+O` | Open the window under the pointer in `$EDITOR` (the same chord edits the draft when the prompt has focus) |
 
 Two families, and they do not overlap: **the keys that move the pointer**
 (`j`/`k`, the vi names `H`/`M`/`L`, `f`/`b` for prompts, and `G` with its count),
@@ -160,6 +159,12 @@ stacked on top of `Esc`, and one key per job is why `Esc` is the only way out.
 | `:` | Switch to input with `:` prefix (command mode) |
 | `Space` | Toggle window fold (fold/unfold) |
 | `r` | Toggle markdown rendering (unfolded assistant text/reasoning) |
+
+Four of these act only while the **prompt** has focus: `Ctrl+H`, `Ctrl+W` and
+`Ctrl+U` edit the draft, and `Ctrl+C` clears it. `Ctrl+U` is therefore two keys in
+one — the draft's line kill at the prompt, the viewport's half-screen scroll in
+the display — the same split `Ctrl+O` makes between the draft and the window under
+the pointer.
 
 ### Why `Shift+Enter` is not the line break
 
@@ -937,7 +942,7 @@ breaks), and when the input does not fit, the last visible row ends with `…`
 so a cut never looks like the real end of the arguments. The Screen row diff
 tracks the run's wrapped span, so live updates and the dialog close repaint
 every row it covered. When the dialog carries tool input, a hint row under
-the `y / n` line says `Press e to view the full input.` — the title itself
+the `y / n` line says `Press Ctrl+O to view the full input.` — the title itself
 stays clean, so a long tool name never pushes the hint off. Press `Ctrl+O` to
 inspect the complete input in `$EDITOR` without closing the dialog.
 

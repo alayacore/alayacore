@@ -2,8 +2,8 @@ package terminal
 
 // Confirm dialog preview contract:
 //
-//  1. The tool-confirm dialog announces the 'e' key (full input in
-//     $EDITOR) on its own centered hint row — "Press e to view the full
+//  1. The tool-confirm dialog announces the ^O key (full input in
+//     $EDITOR) on its own centered hint row — "Press Ctrl+O to view the full
 //     input." — whenever it carries tool input, mirroring the MCP-init
 //     hint style. The title stays clean: a long tool name truncates the
 //     title, never the affordance.
@@ -57,21 +57,21 @@ func TestConfirmDialogAnnouncesEKey(t *testing.T) {
 	if strings.Contains(got, "e: full input") {
 		t.Errorf("title must not carry a cryptic '(e: full input)' tag:\n%s", got)
 	}
-	if !strings.Contains(got, "Press e to view the full input.") {
-		t.Errorf("tool-confirm dialog should announce the 'e' key on a hint row:\n%s", got)
+	if !strings.Contains(got, "Press Ctrl+O to view the full input.") {
+		t.Errorf("tool-confirm dialog should announce Ctrl+O on a hint row:\n%s", got)
 	}
 
 	// Without tool input: 'e' does nothing, so no hint.
 	emptyInput := openToolDialog(t, "edit_file", "")
 	got = strings.Join(confirmDialogRows(t, emptyInput), "\n")
-	if strings.Contains(got, "Press e to view the full input.") {
+	if strings.Contains(got, "Press Ctrl+O to view the full input.") {
 		t.Errorf("empty-input tool confirm must not advertise 'e', got:\n%s", got)
 	}
 
 	// Other dialog kinds never advertise 'e'.
 	quit := NewConfirmDialog(DefaultStyles()).WithSize(boxW, 24).OpenQuit()
 	got = strings.Join(confirmDialogRows(t, quit), "\n")
-	if strings.Contains(got, "Press e to view the full input.") {
+	if strings.Contains(got, "Press Ctrl+O to view the full input.") {
 		t.Errorf("quit dialog must not advertise 'e', got:\n%s", got)
 	}
 }
@@ -300,7 +300,7 @@ func TestConfirmDialogCloseClearsBothPreviewRows(t *testing.T) {
 		joined += lineAt(grid, r) + "\n"
 	}
 	if !strings.Contains(joined, `Allow "edit_file" to run?`) ||
-		!strings.Contains(joined, "Press e to view the full input.") ||
+		!strings.Contains(joined, "Press Ctrl+O to view the full input.") ||
 		!strings.Contains(joined, "…") || !strings.Contains(joined, "y / n") {
 		t.Fatalf("dialog not fully drawn in frame 1:\n%s", joined)
 	}

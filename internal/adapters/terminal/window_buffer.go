@@ -415,17 +415,6 @@ func (wb *WindowBuffer) SettleUnfinishedTools() int {
 }
 
 // Clear removes all windows.
-func (wb *WindowBuffer) Clear() {
-	wb.mu.Lock()
-	defer wb.mu.Unlock()
-	wb.windows = nil
-	wb.idIndex = make(map[string]int)
-	wb.lineHeights = nil
-	wb.totalLines = 0
-	wb.dirty = true
-	wb.dirtyIndex = dirtyClean
-}
-
 // AppendUserContent appends a user content frame to the window identified by id.
 // The window must already exist (created by a prior AppendOrUpdate call).
 // This is safe for concurrent access (holds WindowBuffer.mu).
@@ -714,14 +703,14 @@ func (wb *WindowBuffer) GetTotalLines() int {
 // If fn returns false, iteration stops. Returns true if all visible windows
 // were visited (fn never returned false).
 //
-// This is one of four core iteration methods:
+// This is one of three core iteration methods:
 //   - ForEachVisible(index, fn(i, w))        — forward from index
 //   - ForEachVisibleBackward(index, fn(i, w)) — backward from index
 //   - ForEachVisibleRanged(fn(i, start, end)) — forward from 0 with line ranges
-//   - ForEachVisibleBackwardRanged(fn(i, start, end)) — backward from end with line ranges
 //
 // Use the non-ranged variants for property-based searches (j, k, f, b).
-// Use the ranged variants for position-based searches (H, L, M, center helpers).
+// Use the ranged one for position-based searches (H, L, M, center helpers):
+// they all read the same "which windows does the viewport show" sequence.
 func (wb *WindowBuffer) ForEachVisible(start int, fn func(i int, w *Window) bool) bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -775,32 +764,6 @@ func (wb *WindowBuffer) ForEachVisibleRanged(fn func(i int, startLine, endLine i
 			return false
 		}
 		pos = end
-	}
-	return true
-}
-
-// ForEachVisibleBackwardRanged iterates backward over all visible windows,
-// calling fn with the window index and its line range [start, end).
-// If fn returns false, iteration stops. Returns true if all visible
-// windows were visited.
-func (wb *WindowBuffer) ForEachVisibleBackwardRanged(fn func(i int, startLine, endLine int) bool) bool {
-	wb.mu.Lock()
-	defer wb.mu.Unlock()
-	wb.ensureLineHeights(false)
-
-	// Pass 1: compute total lines
-	total := 0
-	for _, h := range wb.lineHeights {
-		total += h
-	}
-
-	// Pass 2: walk backward, deriving start/end from total
-	pos := total
-	for i := len(wb.windows) - 1; i >= 0; i-- {
-		pos -= wb.lineHeights[i]
-		if wb.windows[i].Visible && !fn(i, pos, pos+wb.lineHeights[i]) {
-			return false
-		}
 	}
 	return true
 }

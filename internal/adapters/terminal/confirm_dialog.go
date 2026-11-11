@@ -103,9 +103,6 @@ func (cd ConfirmDialog) Kind() ConfirmKind { return cd.kind }
 // ToolInput returns the tool input for tool confirmations.
 func (cd ConfirmDialog) ToolInput() string { return cd.toolInput }
 
-// ToolID returns the tool call ID for tool confirmations.
-func (cd ConfirmDialog) ToolID() string { return cd.toolID }
-
 // SetSize updates the terminal dimensions for responsive sizing.
 func (cd ConfirmDialog) WithSize(width, height int) ConfirmDialog {
 	if width > 0 {
@@ -313,7 +310,9 @@ func (cd ConfirmDialog) Update(msg Msg) (ConfirmDialog, []Result) {
 		}
 		return cd, nil // handled but no result
 
-	case keyE:
+	// `^O` is the one chord that opens $EDITOR, here as in both panes: the same
+	// key, the same act, whatever surface has the keyboard.
+	case keyCtrlO:
 		if cd.kind == ConfirmTool && cd.toolInput != "" {
 			content := cd.toolInput
 			if cd.toolName != "" && strings.HasPrefix(content, cd.toolName+": ") {
@@ -471,13 +470,13 @@ func (cd ConfirmDialog) buildContentLines() []string {
 		lines = append(lines, cd.wrapAndCenter("y drops them, n runs them as the next prompt", cd.styles.System, innerWidth)[0])
 	default:
 		lines = append(lines, cd.wrapAndCenter("y / n", cd.styles.Confirm, innerWidth)[0])
-		// The tool-confirm dialog announces 'e' on its own centered hint
+		// The tool-confirm dialog announces ^O on its own centered hint
 		// row (same pattern as the MCP-init hints above): the title stays
 		// clean so a long tool name only ever truncates the title, never
 		// the affordance, and the hint is a full sentence rather than a
-		// cryptic "(e: ...)" tag.
+		// cryptic "(^O: ...)" tag.
 		if cd.kind == ConfirmTool && cd.toolInput != "" {
-			lines = append(lines, cd.wrapAndCenter("Press e to view the full input.", cd.styles.System, innerWidth)[0])
+			lines = append(lines, cd.wrapAndCenter("Press Ctrl+O to view the full input.", cd.styles.System, innerWidth)[0])
 		} else {
 			lines = append(lines, "")
 		}
@@ -677,7 +676,7 @@ func (cd ConfirmDialog) RenderOverlay(baseContent string, screenWidth, screenHei
 	// Box row layout (always 10 rows): rule, blank, title, blank,
 	// description ×2, blank, then kind-dependent rows — "y / n" plus
 	// either a blank (quit/cancel/MCP auth) or the tool-confirm hint
-	// "Press e to view the full input." (tool with input), the two hint
+	// "Press Ctrl+O to view the full input." (tool with input), the two hint
 	// lines of a persistent progress window (MCP init, quit wait), or the
 	// outcome-naming pair of the cancel-steering step. The description
 	// always occupies rows 4 and 5, which is what the soft-run logic below

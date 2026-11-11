@@ -169,7 +169,7 @@ func TestPressBWithNoPromptAboveKeepsViewportPut(t *testing.T) {
 func TestPressFJumpsAndSeatsPromptAtTop(t *testing.T) {
 	display, wb := buildPromptTranscript(5, 5, 20)
 	display = display.WithWindowCursor(promptIndex(0))
-	display = display.GotoTop().updateContent()
+	display = display.ScrollWindowCursorToTop().updateContent()
 
 	display, _ = display.Update(KeyPressMsg(Key{Code: 'f'}))
 

@@ -3,7 +3,7 @@ package terminal
 // ScrollView is a vertically scrollable viewport that replaces
 // Bubbles' viewport component. It provides:
 //   - Content management (pre-clipped visible region)
-//   - Vertical scrolling (scroll up/down, goto top/bottom)
+//   - Vertical scrolling (scroll up/down, goto bottom)
 //   - YOffset management
 //   - Height control
 //
@@ -93,12 +93,6 @@ func (m ScrollView) ScrollUp(n int) ScrollView {
 // GotoBottom scrolls to the bottom of the content.
 func (m ScrollView) GotoBottom() ScrollView {
 	m.yOffset = m.maxYOffset()
-	return m
-}
-
-// GotoTop scrolls to the top of the content.
-func (m ScrollView) GotoTop() ScrollView {
-	m.yOffset = 0
 	return m
 }
 

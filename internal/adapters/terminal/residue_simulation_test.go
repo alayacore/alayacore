@@ -149,8 +149,10 @@ func TestNoResidueAcrossFrames(t *testing.T) {
 	wb.SetViewportPosition(0, 6)
 	frame1 := wb.GetAll(-1, false)
 
-	// Frame 2: different windows, short rows + blank padding.
-	wb.Clear()
+	// Frame 2: different windows, short rows + blank padding. A second buffer is
+	// the reset — a buffer that could be emptied had no caller in the program
+	// itself, so there is no Clear to call here either.
+	wb = NewWindowBuffer(width, DefaultStyles())
 	wb.AppendOrUpdate(tagAssistantReasoning, "r1", "short")
 	wb.AppendOrUpdate(tagUserText, "u1", "hi")
 	wb.SetViewportPosition(0, 6)

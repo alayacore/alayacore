@@ -212,9 +212,9 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	// index does not change, so on a single window taller than the screen the
 	// key would do nothing at all).
 	//
-	// There is no `GotoTop` here, and that is the decision rather than an
-	// omission: `1G` places the cursor on the first window exactly as `j` would
-	// after enough presses, and where the viewport ends up is that rule's
+	// There is no top-of-document jump here, and that is the decision rather than
+	// an omission: `1G` places the cursor on the first window exactly as `j`
+	// would after enough presses, and where the viewport ends up is that rule's
 	// answer. It is the top of the document whenever the first message fits the
 	// screen; when that message is taller than the viewport the pin names it and
 	// counts the rows that are hidden, and the scroll keys reach the rest.
@@ -520,13 +520,6 @@ func (m DisplayModel) GotoBottom() DisplayModel {
 	return m
 }
 
-// GotoTop goes to top
-func (m DisplayModel) GotoTop() DisplayModel {
-	m.scrollView = m.scrollView.GotoTop()
-	m.contentDirty = true
-	return m
-}
-
 func (m DisplayModel) shouldFollow() bool {
 	return m.autoFollow
 }
@@ -733,15 +726,10 @@ func (m DisplayModel) MoveWindowCursorUp() (DisplayModel, bool) {
 	return m, found
 }
 
-// MarkUserScrolled disables auto-follow. Called by scroll keys (arrows/Ctrl-D/Ctrl-U).
+// MarkUserScrolled disables auto-follow. It is the single method the scroll and
+// viewport keys call, so the state transition has one name: arrows, `Ctrl-E`/
+// `Ctrl-Y`, `Ctrl-D`/`Ctrl-U`, and the counted `G`.
 func (m DisplayModel) MarkUserScrolled() DisplayModel {
-	return m.DisableAutoFollow()
-}
-
-// DisableAutoFollow explicitly disables auto-follow.
-// This is the single method that scroll key handlers should call to
-// disable auto-follow, ensuring the state transition is clear.
-func (m DisplayModel) DisableAutoFollow() DisplayModel {
 	if !m.autoFollow {
 		return m
 	}
@@ -818,20 +806,9 @@ func (m DisplayModel) anchorWindowCursor() DisplayModel {
 	return m
 }
 
-// ValidateWindowCursor ensures the window cursor is valid and visible.
-// Uses partial visibility check to avoid jarring scroll jumps on resize.
-func (m DisplayModel) ValidateWindowCursor() DisplayModel {
-	m = m.ClampWindowCursor()
-	if m.windowCursor >= 0 && m.windowBuffer.WindowCount() > 0 {
-		m = m.EnsureWindowCursorVisible()
-	}
-	return m
-}
-
-// ClampWindowCursor clamps the window cursor to a visible window without scrolling.
-// Unlike ValidateWindowCursor, this does not call EnsureWindowCursorVisible, preserving
-// the user's scroll position. Use this on resize events where only bounds
-// correction is needed.
+// ClampWindowCursor clamps the window cursor to a visible window without
+// scrolling, preserving the user's scroll position: this is what a resize needs,
+// where only the bounds are corrected and the viewport is meant to stay put.
 func (m DisplayModel) ClampWindowCursor() DisplayModel {
 	if m.windowBuffer.WindowCount() == 0 {
 		m.windowCursor = -1

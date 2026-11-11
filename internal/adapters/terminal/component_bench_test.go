@@ -46,7 +46,7 @@ func BenchmarkScrollViewScroll(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		sv.ScrollDown(1)
 		if sv.AtBottom() {
-			sv.GotoTop()
+			sv.WithYOffset(0)
 		}
 	}
 }

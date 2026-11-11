@@ -81,7 +81,7 @@ type displayNotifyMsg struct {
 	message string
 }
 
-// openEditorForDisplayMsg is sent by DisplayModel when the user presses 'e'
+// openEditorForDisplayMsg is sent by DisplayModel when the user presses ^O
 // to edit the currently selected window's content in an external editor.
 type openEditorForDisplayMsg struct {
 	content string

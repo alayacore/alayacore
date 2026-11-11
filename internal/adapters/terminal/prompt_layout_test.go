@@ -105,7 +105,7 @@ func TestInputBoxPositionInvariantUnderScroll(t *testing.T) {
 	}
 
 	// Scroll up so the viewport now shows a different window range.
-	m.display = m.display.GotoTop()
+	m.display = m.display.ScrollUp(m.display.YOffset())
 	m = m.updateDisplayHeight()
 	rows1 := cupRows(m.View().Content)
 
