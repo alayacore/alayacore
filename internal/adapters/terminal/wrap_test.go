@@ -221,6 +221,63 @@ func TestStatusBarModelSeparatorGap(t *testing.T) {
 	}
 }
 
+// TestStatusBarCountEchoInBothPlacements pins the count echo in the one place it
+// used to vanish: the row's other placement. The bar draws the right group two
+// ways (see TestStatusBarModelSeparatorGap), and the merged one used to build the
+// row from the bare indicator — so on a bar busy enough to merge, the digits the
+// user just typed were drawn nowhere, while the layout had already paid their
+// cells. The sweep is the assertion that matters: whatever the bar is asked to
+// show, if the echo fits behind the indicator it is drawn, and the row never
+// grows past its width.
+func TestStatusBarCountEchoInBothPlacements(t *testing.T) {
+	m := newTerminalForUpdateStatusTest(NewTerminalOutput(DefaultStyles()))
+	m.statusLeft = "12.3K/128K"
+	m.statusRight = "gpt-4o | R0"
+	m.inProgress = false
+	m.display = m.display.pushCount(1).pushCount(2) // "12x"
+
+	render := func(width int) string {
+		m.screenWidth = width
+		return stripANSI(m.renderStatusBar())
+	}
+
+	// Ample space: the echo rides the prefix, the group still floats right.
+	if got, want := render(31), "⠿ 12x 12.3K/128K    gpt-4o | R0"; got != want {
+		t.Errorf("gap>3: got %q, want %q", got, want)
+	}
+
+	// Merged (gap ≤ 3): the echo is still there, and what it costs the row comes
+	// off the merged tail — the level first, then the model name.
+	if got, want := render(26), "⠿ 12x 12.3K/128K | gpt-4o…"; got != want {
+		t.Errorf("gap≤3: got %q, want %q", got, want)
+	}
+
+	// Sweep: both placements, every width, every count width. The echo is drawn
+	// whenever the row is wide enough for the indicator, a space and the echo —
+	// which is the only case it may disappear (and the row is never over budget).
+	for _, count := range []int{0, 7, 12, 999999} {
+		echo := countText(count)
+		m.display = m.display.ClearCount()
+		for _, d := range strings.TrimSuffix(echo, "x") {
+			m.display = m.display.pushCount(int(d - '0'))
+		}
+		if got := m.display.PendingCount(); got != count {
+			t.Fatalf("fixture armed %d, want %d", got, count)
+		}
+		for width := 1; width <= 60; width++ {
+			got := render(width)
+			if n := hostMaxCells(got); n > width {
+				t.Fatalf("count=%d width=%d: row is %d cells: %q", count, width, n, got)
+			}
+			fits := echo != "" && width-hostMaxCells(statusIdleGlyph)-1 >= hostMaxCells(echo)
+			if fits && !strings.HasPrefix(got, statusIdleGlyph+" "+echo) {
+				t.Errorf("count=%d width=%d: echo dropped from a row with room for it: %q",
+					count, width, got)
+			}
+		}
+	}
+}
+
 // TestStatusBarTruncatedSeparatorStyled covers the "|…" case: when
 // truncation replaces the space after a "|" with "…", the "|" must still be
 // rendered in the bar's one style (muted) — a " | "-based split would miss

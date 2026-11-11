@@ -35,10 +35,15 @@ func (m Terminal) handleKeyMsg(msg KeyMsg) (Terminal, Cmd) {
 	// can spend it — so a keypress that lands anywhere else drops it. This is the
 	// one place a count could otherwise leak between contexts: DisplayModel
 	// spends its own on every key it reads (takeCount), but a key it never sees
-	// (Tab, a global shortcut, an overlay, the prompt) would leave the digits
-	// armed for whatever came next. Re-asking before every dispatch means a
-	// round trip through another pane — `12`, Tab, Tab, `j` — cannot carry the
-	// count back: the first key after leaving clears it.
+	// would leave the digits armed for whatever came next. Re-asking before every
+	// dispatch means a round trip through another pane — `12`, Tab, Tab, `j` —
+	// cannot carry the count back: the first key after leaving clears it, because
+	// the second Tab is dispatched while the prompt still owns the keyboard.
+	//
+	// The layers ABOVE the pane are covered here; the global layer, which sits
+	// between it and the pane, is not: its keys are answered while the display
+	// still owns the keyboard, so this guard sees targetDisplay and does nothing.
+	// They are dropped where they are dispatched instead (dropCount, below).
 	if m.keyboardTarget() != targetDisplay {
 		m.display = m.display.ClearCount()
 	}
@@ -63,11 +68,19 @@ func (m Terminal) handleKeyMsg(msg KeyMsg) (Terminal, Cmd) {
 			return tm, cmd
 
 		case layerGlobal:
+			// Every key in this layer is one the display never reads, so none of
+			// them is the motion the digits were typed for: Tab moves the keyboard
+			// off the pane, and the shortcuts are commands. `12^L j` must be `j`,
+			// not `12j` — and `^L` is why this cannot be left to the guard above,
+			// which only sees a count when the keyboard has already moved: a
+			// redraw does not move it, so nothing would ever spend or drop those
+			// digits, and the echo would sit in the bar claiming a motion nobody
+			// asked for.
 			if msg.Chord() == keyTab {
-				return m.toggleFocus(), nil
+				return m.dropCount().toggleFocus(), nil
 			}
 			if tm, cmd, handled := m.handleGlobalKeys(msg); handled {
-				return tm, cmd
+				return tm.dropCount(), cmd
 			}
 
 		case layerPane:
@@ -75,6 +88,16 @@ func (m Terminal) handleKeyMsg(msg KeyMsg) (Terminal, Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// dropCount drops the display's pending count: this keypress was not the
+// display's to read, so it cannot be the motion the digits were typed for. It is
+// the global layer's half of the rule handleKeyMsg's guard states — one rule for
+// the layers above the pane, one for the layer between it and the pane, and the
+// pane itself spends its own (DisplayModel.takeCount).
+func (m Terminal) dropCount() Terminal {
+	m.display = m.display.ClearCount()
+	return m
 }
 
 // handlePaneKeys handles keys when a pane (display or prompt) owns the keyboard.

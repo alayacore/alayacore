@@ -68,7 +68,10 @@ N presses of that key, and that definition is what decides the edge cases — a
 count past the last window stops on it, and `9b` with three prompts above stops on
 the first of them, exactly as pressing `b` nine times would. The digits are shown
 in the status bar (`12x`, right after the indicator) until the key they belong to
-spends them; `Esc` cancels, and so does any key that is not a motion. Two things
+spends them — drawn even on a bar busy enough to truncate its segments, because
+the count is the one thing on that row that is live input rather than telemetry,
+and its cells come off the telemetry's tail; `Esc` cancels, and so does any key
+that is not a motion. Two things
 are not counted: `M` (the middle of the screen has no ordinal), and the keys that
 do not move.
 

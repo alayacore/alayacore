@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/alayacore/alayacore/internal/app"
+	"github.com/alayacore/alayacore/internal/config"
 )
 
 // pressWithCount types the digits of count (nothing when count <= 0) and then
@@ -407,5 +410,45 @@ func TestCountDoesNotSurviveLeavingTheDisplay(t *testing.T) {
 	m, _ = m.handleKeyMsg(KeyPressMsg(Key{Code: KeyTab}))
 	if got := m.display.PendingCount(); got != 0 {
 		t.Errorf("a round trip through the prompt carried %d back to the display", got)
+	}
+}
+
+// TestCountDoesNotSurviveAGlobalKey: the keys the global layer answers are keys
+// the display never reads, so none of them is the motion the digits were typed
+// for — and they are dropped where they are dispatched, not left for the next
+// key. The guard that clears a count whose pane lost the keyboard cannot see
+// them: a shortcut is answered while the display still owns it. `^L` is the one
+// that made the hole visible — a redraw does not move the keyboard, so nothing
+// downstream ever dropped the digits, and `12^L j` moved twelve windows.
+func TestCountDoesNotSurviveAGlobalKey(t *testing.T) {
+	globals := []Key{
+		{Code: KeyTab},
+		{Code: 'l', Mod: ModCtrl},
+		{Code: 's', Mod: ModCtrl},
+		{Code: 'g', Mod: ModCtrl},
+		{Code: 'p', Mod: ModCtrl},
+		{Code: 't', Mod: ModCtrl},
+		{Code: KeyF1},
+	}
+	for _, key := range globals {
+		t.Run(key.String(), func(t *testing.T) {
+			m := newTestTerminal()
+			m.appConfig = &app.Config{Cfg: &config.Settings{}} // ^S reads the session path
+			m = m.focusDisplay()
+			m.display = m.display.pushCount(1).pushCount(2)
+			if got := m.display.PendingCount(); got != 12 {
+				t.Fatalf("fixture armed %d, want 12", got)
+			}
+
+			m, _ = m.handleKeyMsg(KeyPressMsg(key))
+			if got := m.display.PendingCount(); got != 0 {
+				t.Errorf("%v left %d armed", key, got)
+			}
+			// The echo is gone with it: the bar never shows a count the next
+			// key cannot spend.
+			if bar := stripANSI(m.renderStatusBar()); strings.Contains(bar, "12x") {
+				t.Errorf("%v left the echo on the bar: %q", key, bar)
+			}
+		})
 	}
 }

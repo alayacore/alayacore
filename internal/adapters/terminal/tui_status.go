@@ -257,24 +257,32 @@ func (m *Terminal) renderStatusBar() string {
 // whose status has not been loaded yet, and by tests that pin this
 // layout with bare segments.
 func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph, countText string, lineBudget int) string {
-	// The count sits right after the indicator and OUTSIDE the segment
-	// truncation below: it is the row's only live echo of what the user just
-	// typed, with nothing cached behind it, and truncation eats this row from
-	// its tail. Its width is still charged to the layout, so the segments pay
+	// The row opens with the indicator and, while a count is armed, the count
+	// one cell after it. That pair is the prefix BOTH placements below build
+	// on: it sits outside the segment truncation (the count is the row's only
+	// live echo of what the user just typed, and truncation eats this row from
+	// its tail), and its width is charged to the layout, so the segments pay
 	// for it by truncating sooner — the tail of the telemetry, which is the
 	// least valuable text at that width.
-	left := indicatorGlyph
+	//
+	// It is computed once because the merged branch used to rebuild the row from
+	// the bare indicator instead: on any bar busy enough to merge the right group
+	// into the segments — which is most of them at 40-70 columns — the digits the
+	// user had just typed, and whose cells the layout had already been charged
+	// for, were drawn nowhere at all.
+	prefix := indicatorGlyph
 	if countText != "" {
 		// A row too narrow for the indicator, a space and the count draws the
 		// indicator alone. That is degenerate (the echo is at most 7 cells) but
 		// it is the one place the count may disappear: a row written past
 		// lineBudget wraps, and the wrap scrolls the frame.
 		if room := lineBudget - hostMaxCells(indicatorGlyph) - 1; room >= hostMaxCells(countText) {
-			left += " " + countText
+			prefix += " " + countText
 		}
 	}
+	left := prefix
 	if statusLeft != "" {
-		segBudget := max(0, lineBudget-hostMaxCells(left)-1) // indicator + separator space
+		segBudget := max(0, lineBudget-hostMaxCells(left)-1) // prefix + separator space
 		if seg := truncateWithSuffix(statusLeft, segBudget); seg != "" {
 			left += " " + seg
 		}
@@ -297,11 +305,11 @@ func assembleStatusLeft(statusLeft, statusRight, indicatorGlyph, countText strin
 		merged += " | "
 	}
 	merged += statusRight
-	budget := max(0, lineBudget-hostMaxCells(indicatorGlyph)-1-hostReserve(merged))
+	budget := max(0, lineBudget-hostMaxCells(prefix)-1-hostReserve(merged))
 	if merged = truncateWithSuffix(merged, budget); merged != "" {
-		return indicatorGlyph + " " + merged
+		return prefix + " " + merged
 	}
-	return indicatorGlyph
+	return prefix
 }
 
 // renderStatusSegments renders the plain joined status text ("seg | seg")
