@@ -88,8 +88,13 @@ func BenchmarkWindowBufferDeltaSingleWindow(b *testing.B) {
 	}
 }
 
-// BenchmarkWindowBufferGetWindowLineRange benchmarks the GetWindowLineRange function.
-// This has O(n) behavior that could be optimized with a prefix sum array.
+// BenchmarkWindowBufferGetWindowLineRange prices the linear scan in
+// GetWindowLineRange on the fixture the other WindowBuffer benchmarks use.
+//
+// The scan is deliberate, and it is not going to be replaced by a prefix-sum
+// table today: the cost, what multiplies it (a count prefix), and the measured
+// point where that argument flips are written down in
+// docs/internal/virtual-rendering-performance.md → GetWindowLineRange.
 func BenchmarkWindowBufferGetWindowLineRange(b *testing.B) {
 	styles := NewStyles(theme.DefaultTheme())
 	wb := NewWindowBuffer(80, styles)

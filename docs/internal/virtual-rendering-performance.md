@@ -951,6 +951,50 @@ Minimum of 20 runs at `-benchtime 1s`; both are allocation-free.
 | Single lookup (windowIndex=50, 100 windows) | `WindowBufferGetWindowLineRange` | **25.8ns** |
 | Three lookups (indices 50, 25, 75) | `GetWindowLineRangeCached` | **72.9ns total** |
 
+The lookup is a scan: a window's start line is the sum of every height before
+it, recomputed per call. Storing absolute positions instead is not an option —
+a window's height changes while it streams, so a stored position goes stale the
+moment a delta arrives, and the stale value would decide scroll clamping and
+cursor placement. Heights are the stable quantity; positions are derived.
+
+Derived means it scales with the transcript, which is fine until a count prefix
+multiplies it: `Nj` is N presses by definition, each press asks for a line
+number, so a counted motion is O(count × distance) — quadratic in the number of
+windows. Measured on one machine, current tree (lookups at `-benchtime 500x`,
+motions at `100x`; the last row at `3x`, which is all a 136 ms operation
+warrants):
+
+| Transcript | `GetWindowLineRange(last)` | one `j` | saturated `999999j` |
+|---|---|---|---|
+| 1 000 lines / 100 windows | 91 ns | 5.1 µs | 10 µs |
+| 10 000 lines / 1 000 windows | 0.31 µs | 3.8 µs | 0.21 ms |
+| 50 000 lines / 5 000 windows | — | 4.7 µs | 3.5 ms |
+| 300 000 lines / 30 000 windows | 9.0 µs | 16 µs | **136 ms** |
+
+Read the lookup column as the per-query cost (≈ 0.3 ns per window before it) and
+the last as what a count does with it: six times the windows is thirty-nine
+times the motion. The single press stays flat, because its cursor moves one
+window and the placement rule asks about that window only.
+`BenchmarkCountedWindowMotion` is the row that would move if a per-press scan
+came back into the motion path.
+
+**Kept linear on purpose, with a stated trigger.** A prefix-sum table (or a
+Fenwick tree) makes the lookup O(1) and the counted motion O(N); a prototype
+turned the 5 000-window row from 3.9 ms into 0.27 ms and removes the quadratic
+term, and `findWindowAtLine` — which walks the whole table twice per frame
+today — becomes a binary search in the same change. Against that: a second
+derived array that must stay correct across append, fold, markdown toggle,
+resize and theme switch, where a stale entry is not a slow frame but a silently
+wrong scroll clamp.
+
+So the trade is deferred, not dismissed, and the line is drawn by the last
+column: **the table gets added when a real transcript lands in the band between
+the last two rows — 50 000 lines is 3.5 ms, 300 000 is 136 ms — and the motion
+can be felt.** The differential test (random append/fold/resize, compare every
+window against a freshly summed range) is part of that change, not of a fix, and
+the benchmark above is how the next reader tells whether the line has been
+crossed.
+
 ### ScrollView Component
 
 ScrollView holds the **pre-clipped visible region** (produced by

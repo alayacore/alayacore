@@ -716,8 +716,19 @@ func (wb *WindowBuffer) ForEachVisible(start int, fn func(i int, w *Window) bool
 	defer wb.mu.Unlock()
 	wb.ensureLineHeights(false)
 
-	for i, w := range wb.windows {
-		if i >= start && w.Visible && !fn(i, w) {
+	// Walk from start, not from 0 with an `i >= start` filter: the filter only
+	// ever decided which windows NOT to visit, so the two are the same function,
+	// and a search begins at the cursor (`j`/`k`, and `f`/`b` on every step of a
+	// counted motion) — the windows above it were a prefix scan nobody asked for.
+	// The backward sibling reads the same way, which is the second reason.
+	//
+	// start out of range is the ordinary clamp: below zero visits everything, at
+	// or past the end visits nothing and reports all visited.
+	if start >= len(wb.windows) {
+		return true
+	}
+	for i := max(0, start); i < len(wb.windows); i++ {
+		if w := wb.windows[i]; w.Visible && !fn(i, w) {
 			return false
 		}
 	}

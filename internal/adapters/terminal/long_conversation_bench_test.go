@@ -62,3 +62,48 @@ func BenchmarkGetAllLongConversation(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkCountedWindowMotion prices one counted motion through the key
+// handler, which is the only place in the frame path whose cost grows with the
+// transcript AND with how far the user asks to go: `Nj` is N presses by
+// definition, and each press asks GetWindowLineRange for a line number that is
+// a linear sum, so the run is O(count × distance) rather than O(count).
+//
+// This is the benchmark to watch, not a contract to defend. The ceiling is
+// measured and written down in the performance analysis
+// (docs/internal/virtual-rendering-performance.md → GetWindowLineRange): a
+// saturated count costs microseconds up to a few thousand windows and a few
+// milliseconds on a 50 000-line transcript, which is where the argument for a
+// prefix-sum table starts — and it has not started, because that table is a
+// second derived array that must stay correct across append, fold, markdown
+// toggle, resize and theme switch, and a silent scroll-clamping bug is the
+// worse trade.
+func BenchmarkCountedWindowMotion(b *testing.B) {
+	for _, total := range []int{1000, 10000, 50000} {
+		dm := NewDisplayModel(buildLongBuffer(total), DefaultStyles()).
+			WithHeight(40).WithDisplayFocused(true).updateContent()
+		dm = dm.WithWindowCursor(0).EnsureWindowCursorVisible().updateContent()
+		nWindows := dm.windowBuffer.WindowCount()
+
+		// one press, from the top of the transcript: the uncounted motion.
+		b.Run(fmt.Sprintf("lines=%d/press", total), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, _ = dm.Update(KeyPressMsg(Key{Code: 'j'}))
+			}
+		})
+
+		// the count at its ceiling: it stops on the last window, so this is the
+		// whole transcript walked one placement rule at a time.
+		b.Run(fmt.Sprintf("lines=%d/windows=%d/saturated-count", total, nWindows), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				m := dm
+				for range 6 { // 999999, typed
+					m, _ = m.Update(KeyPressMsg(Key{Code: '9'}))
+				}
+				_, _ = m.Update(KeyPressMsg(Key{Code: 'j'}))
+			}
+		})
+	}
+}
