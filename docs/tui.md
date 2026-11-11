@@ -58,14 +58,15 @@ pointer's two ends, which used to be `<`/`>` with `Home`/`End` beside them: `G`
 and `1G` are the same two places in vi's spelling, one key family instead of two,
 and `0G` is `G` because a leading zero is not a count.
 
-`NG` names an address while `Nj` counts steps, and both resolve the same way: the
-result is clamped into the transcript. An address past the end is the last window
-— which is how the reader learns the count was larger than the transcript, and it
-is what makes `999G` the one way to jump to the end *without* turning auto-follow
-on (bare `G` is the way that turns it on). vi resolves it the same way: `300G` in
-a 100-line buffer lands on line 100, and `2G3k` on line 1. The only thing here
-that is not a place is an empty transcript, where there is no window to address
-and nothing moves — the same degenerate case `j`/`k` have.
+Every other motion clamps — a count past the end stops at the end, which is how
+the reader learns it was larger than the transcript — but a counted `G` is an
+**address**, and it is the one key that refuses: window N either exists or it
+does not, and answering with the last window would report one nobody asked for.
+A refusal leaves the cursor, the viewport and auto-follow exactly as they were,
+since a motion that did not happen is not a departure from the live edge (the
+rule a failed `f`/`b` already follows). nvi reads it the same way — `999j`,
+`999G` and `999H` all leave the cursor alone there — and the split is the one this
+table draws: `G` names a place, everything else walks towards one.
 
 Where a counted `G` leaves the viewport is the rule the other pointer motions
 use, not a rule of its own: `1G` shows the document's first row whenever the
@@ -535,7 +536,7 @@ While auto-follow is active:
 | Key | Behavior | Disables auto-follow? |
 |-----|----------|-----------------------|
 | `G` | Follow the last window | ✅ Re-enables |
-| `NG` | Jump to the N-th window | ❌ Never (a counted jump) |
+| `NG` | Jump to the N-th window | ❌ Never, and a miss changes nothing |
 | `Enter` | Submit prompt | ✅ Re-enables (empty box: ❌) |
 | `:continue` / `:summarize` | Start a task | ✅ Re-enables |
 | `j` | Move cursor down | ❌ No-op (race protection) |

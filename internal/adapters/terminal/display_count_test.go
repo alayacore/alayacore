@@ -132,45 +132,58 @@ func TestCountStopsAtTheBufferEnds(t *testing.T) {
 	}
 }
 
-// TestCountedGAddressesFromTheFirstWindow: a counted G is an absolute window, not
-// a step from the cursor, and the address is clamped into the transcript like
-// every other motion (vi does the same: `300G` in a 100-line buffer lands on line
-// 100). Landing on the last window is how the reader learns the count was larger
-// than the transcript, and it is what makes `999G` the one way to jump to the end
-// without turning auto-follow on.
-func TestCountedGAddressesFromTheFirstWindow(t *testing.T) {
+// TestCountedGIsAnAddress: `NG` names a window from the top of the transcript
+// rather than stepping from the cursor, and it is the one motion that refuses
+// instead of clamping — an address past the end is not a place, and answering it
+// with the last window would report one nobody asked for. (nvi agrees: `999j`,
+// `999G` and `999H` all leave the cursor alone there; the clamp this table uses
+// everywhere else comes from the motions that walk.)
+//
+// A refusal must leave every piece of state alone — the cursor, the viewport and
+// auto-follow — because nothing happened, which is the rule a failed `f`/`b`
+// already follows.
+func TestCountedGIsAnAddress(t *testing.T) {
 	m := parkedFixture(20, 3)
 
 	if got := pressWithCount(t, m, 2, Key{Code: 'G'}).GetWindowCursor(); got != 1 {
 		t.Errorf("`2G` left the cursor on window %d, want 1 (the second window)", got)
 	}
 	if got := pressWithCount(t, m, 20, Key{Code: 'G'}).GetWindowCursor(); got != 19 {
-		t.Errorf("`20G` left the cursor on window %d, want 19 (the last)", got)
+		t.Errorf("`20G` left the cursor on window %d, want 19 (the last, which exists)", got)
 	}
-	last := pressWithCount(t, m, 20, Key{Code: 'G'})
-	if last.autoFollow {
+	if last := pressWithCount(t, m, 20, Key{Code: 'G'}); last.autoFollow {
 		t.Error("`20G` engaged auto-follow; only bare `G` does that")
 	}
 
-	// Past the end: the last window, and still a jump — following stays off, which
-	// is the whole point of asking for the end with a count rather than with `G`.
-	past := pressWithCount(t, m, 999, Key{Code: 'G'})
-	if got := past.GetWindowCursor(); got != 19 {
-		t.Errorf("`999G` left the cursor on window %d, want 19 (the end)", got)
-	}
-	if past.autoFollow {
-		t.Error("`999G` engaged auto-follow; a counted G never does")
-	}
-	if !past.AtBottom() {
-		t.Errorf("`999G` left the viewport at %d, want the last window in view (bottom %d)",
-			past.YOffset(), past.YOffset()+past.GetHeight())
+	// Past the end: nothing moves, from either end of the transcript.
+	for _, start := range []int{3, 19} {
+		before := parkedFixture(20, start)
+		after := pressWithCount(t, before, 999, Key{Code: 'G'})
+		if got := after.GetWindowCursor(); got != start {
+			t.Errorf("`999G` from window %d moved the cursor to %d", start, got)
+		}
+		if after.YOffset() != before.YOffset() {
+			t.Errorf("`999G` from window %d scrolled %d → %d", start, before.YOffset(), after.YOffset())
+		}
 	}
 
-	// The one address that is not clampable is the empty transcript: no window to
-	// move to, so nothing moves — including auto-follow, since nothing happened.
+	// The same while following: a refused address must not strand the reader
+	// below the live edge.
+	following := countFixture(20, 6).FollowLatest()
+	after := pressWithCount(t, following, 999, Key{Code: 'G'})
+	if !after.autoFollow {
+		t.Error("a refused `999G` turned auto-follow off; nothing moved, so nothing changed")
+	}
+	if after.GetWindowCursor() != following.GetWindowCursor() || after.YOffset() != following.YOffset() {
+		t.Errorf("a refused `999G` moved something: cursor %d→%d, yOffset %d→%d",
+			following.GetWindowCursor(), after.GetWindowCursor(),
+			following.YOffset(), after.YOffset())
+	}
+
+	// An empty transcript has no first window either, so `1G` refuses too.
 	empty := NewDisplayModel(NewWindowBuffer(40, DefaultStyles()), DefaultStyles()).
 		WithHeight(6).WithDisplayFocused(true)
-	after := pressWithCount(t, empty, 1, Key{Code: 'G'})
+	after = pressWithCount(t, empty, 1, Key{Code: 'G'})
 	if after.GetWindowCursor() != empty.GetWindowCursor() || after.autoFollow != empty.autoFollow {
 		t.Errorf("`1G` on an empty transcript changed the display: cursor %d→%d, follow %v→%v",
 			empty.GetWindowCursor(), after.GetWindowCursor(), empty.autoFollow, after.autoFollow)
