@@ -2,7 +2,7 @@
 
 AlayaCore's terminal UI is built on a self-hosted minimal TUI stack (own
 event loop, key parser, terminal management, and style layer) and uses
-vim-like keybindings throughout. See `docs/tui-architecture.md` for the
+vi-like keybindings throughout. See `docs/tui-architecture.md` for the
 architecture.
 
 ## Navigation
@@ -26,7 +26,7 @@ architecture.
 | `e` | Open window content in external editor |
 
 Two families, and they do not overlap: **the keys that move the pointer**
-(`j`/`k`, the vim names `H`/`M`/`L`, `f`/`b`, and `G` with its count),
+(`j`/`k`, the vi names `H`/`M`/`L`, `f`/`b`, and `G` with its count),
 **the arrows and the coarse keys move the viewport** (`↑`/`↓` one line;
 `Ctrl+U`/`Ctrl+D` and `PgUp`/`PgDn` half a screen — all four share one handler,
 so a Page key moves by half a screen here, which is what its table row says).
@@ -35,7 +35,7 @@ what a mouse wheel writes into the input stream, so they are the one spelling of
 that motion that a wheel notch cannot produce.
 
 Uppercase keys are bound only where vi spells the same gesture with the same
-letter: `H`/`M`/`L` are vim's own top/middle/bottom of the screen. `J`/`K` were
+letter: `H`/`M`/`L` are vi's own top/middle/bottom of the screen. `J`/`K` were
 the exception — the viewport motion spelled on the home row — and they are gone
 because in vi `J` joins lines and `K` runs the keyword program. This UI is used
 *beside* that editor rather than instead of it, and a scroll on those keys

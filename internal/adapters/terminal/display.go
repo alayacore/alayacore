@@ -92,7 +92,7 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 	}
 
 	switch keyMsg.Chord() {
-	// The pointer, on the home row only. `j`/`k` and the vim names below own
+	// The pointer, on the home row only. `j`/`k` and the vi names below own
 	// it; the arrows belong to the viewport, for the reason written on those
 	// cases.
 	//

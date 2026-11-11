@@ -79,7 +79,7 @@ echo "what is 2+2?" | alayacore --terseio
 
 ### TUI (terminal interface)
 
-- 🖥️ **Streaming output** — Real-time display with virtual scrolling, foldable windows, and predictable cursor keys (`j`/`k`, `H`/`M`/`L`, `G` with a count for the N-th window — as in vim, whose counts they take), while the arrow keys, `Ctrl+E`/`Ctrl+Y` and the mouse wheel move the view.
+- 🖥️ **Streaming output** — Real-time display with virtual scrolling, foldable windows, and predictable cursor keys (`j`/`k`, `H`/`M`/`L`, `G` with a count for the N-th window — as in vi, whose counts they take), while the arrow keys, `Ctrl+E`/`Ctrl+Y` and the mouse wheel move the view.
 - ⚡ **Provider speed tracking** — Live end-to-end tok/s and time-to-first-token (TTFT) for the latest step in the status bar (see [speed-tracking.md](docs/speed-tracking.md)).
 - 📊 **Markdown rendering** — Assistant markdown output (currently tables) renders by default; press `r` on an unfolded window to toggle raw/rendered (`--no-markdown` disables the default).
 - 📷 **Multi-modal input** — Attach images, audio, video, or documents alongside text via `Ctrl+A`; a model can also read media itself via `read_file`. Which types actually reach it is protocol- and model-dependent — image works on both protocols, audio/video need an OpenAI-style endpoint, documents need Anthropic, and a model that declares less in `input_modalities` takes less than its protocol can carry (see [providers.md](docs/providers.md), [configuration.md](docs/configuration.md#input-modalities-input_modalities)).
