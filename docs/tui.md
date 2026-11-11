@@ -149,6 +149,55 @@ is inert while an overlay is open (it arrives as the arrows, and the arrows
 answer to nothing here), and `q` no longer closes a picker — it was a convention
 stacked on top of `Esc`, and one key per job is why `Esc` is the only way out.
 
+### Keys borrowed from other programs
+
+Most keys above are this program's own. The ones that are not were borrowed, and
+the habit a borrowed key breaks is not always vi's: the display pane is a pager,
+the prompt is a line editor, and the session keys answer to nothing outside.
+Recording which habit each one displaces is what keeps a collision from being
+re-litigated by the next reader who notices it.
+
+- **`f` / `b` — next / previous user prompt.** vi finds a character on the line,
+  which needs a cursor sitting in the text; this display has a pointer over
+  windows instead. `less` pages forward and back one screen, and that is the
+  motion this UI declined on purpose: the coarse keys here are `Ctrl+D`/`PgDn` at
+  half a screen, and a transcript is navigated by message. The collision left
+  standing is a `less` hand meaning to page forward and landing on the next
+  prompt.
+- **`r` — toggle markdown rendering.** vi replaces one character, which needs the
+  same cursor; `less` repaints, which is `Ctrl+L` here, as it is in every lineage
+  involved. Nothing is displaced.
+- **`Space` — fold or unfold the cursor window.** vi moves right one column, and
+  that needs the cursor again. `less` pages forward — the one real cost in this
+  list: a reader pressing `Space` to keep going folds a message instead. It stays
+  because folding is the pane's most frequent single-window action and has no
+  other home, while the coarse motion already has three spellings (`Ctrl+D`,
+  `PgDn`, and the arrows a wheel writes).
+- **`Ctrl+A` — attachment picker, prompt only.** Not a traditional vi command:
+  vim's `Ctrl+A` increments the number under the cursor and its word search is
+  `*`/`#`. The habit it breaks is readline's beginning-of-line, which fires with
+  the caret mid-line — `Home` is that motion here.
+- **`Ctrl+P` — model selector.** vi spells one line up `Ctrl+P`, which is the
+  motion `k` already owns; readline recalls the previous history entry, and this
+  prompt keeps no history to recall.
+- **`Ctrl+G` — cancel the running task.** vi shows file information; readline and
+  emacs abort whatever is running. This is the one entry that is a match rather
+  than a displacement — abort and cancel are the same word.
+- **`Ctrl+T` — theme selector.** readline transposes two characters and vi's
+  insert mode shifts the line; neither is a motion this prompt has.
+- **`Ctrl+X` — fork the session from the cursor window.** An ex-mode prefix in vi
+  and a number decrement in vim; both need a number under the cursor, which this
+  display does not have, and X reads as a fork.
+
+Two blanks are deliberate rather than forgotten. `q` is unbound in the pane as
+it is in a picker: it is the pager's quit key, and a stray keystroke must not end
+a session — `:q` is the spelling that cannot be typed by accident. `g` is unbound
+because the pointer's two ends are `G` and `1G`: one action, one spelling.
+
+The prompt keeps readline's keys where the two already agree — `Ctrl+H`,
+`Ctrl+W`, `Ctrl+U` for the three kills, `Ctrl+L` to redraw, `Ctrl+C` to clear —
+so the borrowings above are the exceptions, not the rule.
+
 ## Input & Actions
 
 | Key | Action |
