@@ -39,8 +39,8 @@ Uppercase keys are bound only where vi spells the same gesture with the same
 letter: `H`/`M`/`L` are vi's own top/middle/bottom of the screen, and `G` is its
 address. `J`/`K` were the exception — the viewport motion spelled on the home row
 — and they are gone because neither is a scroll in the editors this one sits
-beside: `J` joins lines in vi, and `K` is the keyword lookup a vim user's hands
-expect and nvi does not have at all (nvi has no `keywordprg` option).
+beside: `J` joins lines in vi, and `K` is vim's keyword lookup — traditional vi
+has no such command.
 
 Every motion in the table takes a **count**: `12j` moves twelve windows, `3<C-d>`
 scrolls three half-screens, `2f` jumps to the second prompt below. `N<key>` means
@@ -52,11 +52,12 @@ spends them; `Esc` cancels, and so does any key that is not a motion. Two things
 are not counted: `M` (the middle of the screen has no ordinal), and the keys that
 do not move.
 
-One consequence of "N presses" is worth stating for a vi user: nvi's `[count]` on
-`<C-d>`/`<C-u>`/`<C-e>`/`<C-y>` is a count of **lines**, not of presses — its
-default is the `scroll` setting, so `3<C-d>` there moves three lines and can move
-*less* than a bare `<C-d>`. Here the count is a repetition, which is the rule the
-whole table shares: `3<C-d>` is three half-screens, and a bare `<C-d>` is one.
+One consequence of "N presses" is worth stating for a vi user: vi's `[count]` on
+`<C-d>`/`<C-u>`/`<C-e>`/`<C-y>` is a count of **lines**, not of presses — the
+default comes from the `scroll` setting, so `3<C-d>` there moves three lines and
+can move *less* than a bare `<C-d>`. Here the count is a repetition, which is the
+rule the whole table shares: `3<C-d>` is three half-screens, and a bare `<C-d>` is
+one.
 
 `G` is the one absolute motion: bare it is the last window and a request to
 follow it, counted it is window N of the visible ones, resolved from the top of
