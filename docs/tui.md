@@ -84,6 +84,16 @@ from vi; the object they move is the scroll, as the paragraph above says.
 `↑`/`↓` and `<C-e>`/`<C-y>` are line motions whose count is lines too, which is
 what vi's `[count]` on `<C-e>`/`<C-y>` already means.
 
+`H`/`L` are the mirror case, and the count unit is where it shows: theirs is a
+**window**. vi's `[count]H` puts the cursor `count` lines below the screen's top
+line, which this display cannot do — the pointer selects a window and has no line
+position inside one (the same two objects). So `3H` is the third window down from
+the viewport's top edge and `3L` the third up from its bottom, each clamping to
+the window the other key starts at (`999H` lands where `L` does). Counting lines
+instead would put `1H` through `10H` on the same window whenever that window is
+taller than the screen: a count that visibly does nothing, which is the one
+failure mode a count must not have.
+
 `G` is the one absolute motion: bare it is the last window and a request to
 follow it, counted it is window N of the visible ones, resolved from the top of
 the transcript rather than from the cursor (`1G` the first). It also completes the
