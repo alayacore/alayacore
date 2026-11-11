@@ -128,7 +128,6 @@ func buildHelpItems() []HelpItem {
 		HelpItem{ID: nextID(), Key: "Ctrl+D/U, PgDn/PgUp", Description: "Scroll half screen", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "G/1G", Description: "Follow last / go to N", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "H/M/L", Description: "Window cursor top/mid/btm", Type: HelpItemKey},
-		HelpItem{ID: nextID(), Key: "Ctrl+O", Description: "Open the window in editor", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "f/b", Description: "Next/prev prompt", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: ":", Description: "Enter command mode", Type: HelpItemKey},
 		HelpItem{ID: nextID(), Key: "Space", Description: "Toggle window fold", Type: HelpItemKey},
