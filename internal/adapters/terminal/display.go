@@ -333,7 +333,10 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		}
 		return m, nil
 
-	case keyE:
+	// `Ctrl+O` opens in $EDITOR, in both panes: the prompt's draft there, the
+	// window under the pointer here. One chord for one action — `e` used to spell
+	// this one, and it is vi's end-of-word, which is a reflex worth not training.
+	case keyCtrlO:
 		content := m.GetWindowCursorContent()
 		if content != "" {
 			m = m.MarkUserScrolled()

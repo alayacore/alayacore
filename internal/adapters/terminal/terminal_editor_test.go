@@ -457,30 +457,64 @@ func TestCtrlGTriggersCancel(t *testing.T) {
 	}
 }
 
-func TestCtrlUClearsInput(t *testing.T) {
-	terminal := testTUI()
-	terminal.promptBox = terminal.promptBox.WithValue("test input text")
-
-	// Press Ctrl+U while in input window
-	terminal = terminal.focusPrompt()
-	msg := KeyPressMsg(Key{Code: 'u', Mod: ModCtrl})
-
-	model, cmd := terminal.Update(msg)
-	terminal = model.(Terminal)
-
-	// Should return a model and no command
-	if model == nil {
-		t.Fatal("Update returned nil model")
+// The three line-editing keys vi's insert mode has, and what each deletes: one
+// character, one word, one line's prefix. They are the prompt's, not the
+// display's — there ^U is the half-screen scroll.
+func TestPromptLineEditingKeys(t *testing.T) {
+	cases := []struct {
+		name  string
+		start string
+		keys  []Key
+		want  string
+	}{
+		{
+			name:  "ctrl+h deletes a character, like backspace",
+			start: "test input x",
+			keys:  []Key{{Code: 'h', Mod: ModCtrl}},
+			want:  "test input ",
+		},
+		{
+			name:  "ctrl+w deletes the word and the blanks behind it",
+			start: "test input text",
+			keys:  []Key{{Code: 'w', Mod: ModCtrl}},
+			want:  "test input ",
+		},
+		{
+			name:  "ctrl+u deletes back to the start of the line",
+			start: "test input text",
+			keys:  []Key{{Code: 'u', Mod: ModCtrl}},
+			want:  "",
+		},
+		{
+			name:  "ctrl+u stops at a hard newline, not the buffer start",
+			start: "above\nbelow",
+			keys:  []Key{{Code: 'u', Mod: ModCtrl}},
+			want:  "above\n",
+		},
+		{
+			name:  "ctrl+w stops at a hard newline too",
+			start: "above\nbelow",
+			keys:  []Key{{Code: 'w', Mod: ModCtrl}},
+			want:  "above\n",
+		},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			terminal := testTUI()
+			terminal = terminal.focusPrompt()
+			terminal.promptBox = terminal.promptBox.WithValue(tc.start).CaretEnd()
 
-	// Input should remain unchanged (Ctrl+U is ignored in input)
-	if terminal.promptBox.Value() != "test input text" {
-		t.Errorf("Input should remain unchanged after Ctrl+U in input window, got %q", terminal.promptBox.Value())
-	}
-
-	// Should not emit any command
-	if cmd != nil {
-		t.Errorf("Ctrl+U in input window should not emit command, got %v", cmd)
+			for _, key := range tc.keys {
+				model, cmd := terminal.Update(KeyPressMsg(key))
+				terminal = model.(Terminal)
+				if cmd != nil {
+					t.Fatalf("%v emitted a command: %v", key, cmd)
+				}
+			}
+			if got := terminal.promptBox.Value(); got != tc.want {
+				t.Errorf("after %v: %q, want %q", tc.keys, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -694,7 +728,7 @@ func TestWindowBufferWidthMatchesInput(t *testing.T) {
 	}
 }
 
-func TestEKeyOpensDisplayWindowInEditor(t *testing.T) {
+func TestCtrlOOpensDisplayWindowInEditor(t *testing.T) {
 	terminal := testTUI()
 	terminal = terminal.focusDisplay()
 
@@ -704,65 +738,63 @@ func TestEKeyOpensDisplayWindowInEditor(t *testing.T) {
 	// Set cursor to first window
 	terminal.display = terminal.display.WithWindowCursor(0)
 
-	// Press 'e' key in display window
-	msg := KeyPressMsg(Key{Code: 'e'})
-
-	model, cmd := terminal.Update(msg)
+	// ^O in the display opens the window under the pointer.
+	model, cmd := terminal.Update(KeyPressMsg(Key{Code: 'o', Mod: ModCtrl}))
 	terminal = model.(Terminal)
 
 	if model == nil {
 		t.Fatal("Update returned nil model")
 	}
-
-	// Should return a command (editor open)
 	if cmd == nil {
-		t.Fatal("Update returned nil command - should return editor command when 'e' pressed in display with content")
+		t.Fatal("Update returned nil command - ^O in the display should open the window in $EDITOR")
 	}
 }
 
-func TestEKeyDoesNothingWithNoWindow(t *testing.T) {
+func TestCtrlODoesNothingWithNoWindow(t *testing.T) {
 	terminal := testTUI()
 	terminal = terminal.focusDisplay()
 
 	// No windows in buffer
 	terminal.display = terminal.display.WithWindowCursor(-1)
 
-	// Press 'e' key in display window
-	msg := KeyPressMsg(Key{Code: 'e'})
-
-	model, cmd := terminal.Update(msg)
+	model, cmd := terminal.Update(KeyPressMsg(Key{Code: 'o', Mod: ModCtrl}))
 	terminal = model.(Terminal)
 
 	if model == nil {
 		t.Fatal("Update returned nil model")
 	}
-
-	// Should NOT return a command (no content to edit)
 	if cmd != nil {
 		t.Fatal("Update should return nil command when no window is selected")
 	}
 }
 
-func TestEKeyDoesNothingInInputWindow(t *testing.T) {
-	terminal := testTUI()
-	terminal = terminal.focusPrompt()
-
-	// Add a window with content
+// TestCtrlOInThePromptEditsTheDraft: the chord lives in both panes and each opens
+// its own target, so routing is what decides which. The prompt's ^O must never
+// reach the display's handler — its action carries no content back — and the
+// display's must never edit the draft.
+func TestCtrlOInThePromptEditsTheDraft(t *testing.T) {
+	terminal := testTUI().focusPrompt()
+	terminal.promptBox = terminal.promptBox.WithValue("a draft")
 	terminal.out.WindowBuffer().AppendOrUpdate(tagAssistantText, "test1", "Hello from display")
 
-	// Press 'e' key while in input window (should be passed to input, not open editor)
-	msg := KeyPressMsg(Key{Code: 'e'})
-
-	model, cmd := terminal.Update(msg)
+	model, cmd := terminal.Update(KeyPressMsg(Key{Code: 'o', Mod: ModCtrl}))
 	terminal = model.(Terminal)
 
 	if model == nil {
 		t.Fatal("Update returned nil model")
 	}
-
-	// Should NOT return a command (e key goes to input, not display handler)
-	if cmd != nil {
-		t.Fatal("Update should return nil command when 'e' pressed in input window")
+	if cmd == nil {
+		t.Fatal("^O in the prompt returned no command")
+	}
+	start, ok := cmd().(editorStartMsg)
+	if !ok {
+		t.Fatalf("^O in the prompt produced %T, want editorStartMsg", cmd())
+	}
+	if start.action != EditorActionUpdateInput {
+		t.Errorf("action = %v, want EditorActionUpdateInput (the draft, not the window)", start.action)
+	}
+	if start.content != "a draft" {
+		t.Errorf("content = %q, want the prompt's draft", start.content)
 	}
 
 	// The key is passed to input handler - we don't verify input value here

@@ -510,7 +510,11 @@ func (m Terminal) handleGlobalKeys(msg KeyMsg) (Terminal, Cmd, bool) {
 		tm, cmd := m.handleRedraw()
 		return tm, cmd, true
 
-	case keyCtrlH, keyF1:
+	case keyF1:
+		// F1 only. ^H is the terminal's own Delete-backwards (`Ctrl+Backspace`
+		// arrives as it on hosts that send no modified arrow — see the attachment
+		// picker's note) and vi's insert-mode backspace, so the help window is
+		// reached with F1 or `:help` rather than with a key the prompt needs.
 		m = m.openHelpOverlay()
 		return m, nil, true
 	}

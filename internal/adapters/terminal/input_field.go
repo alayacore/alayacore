@@ -162,17 +162,67 @@ func (m InputField) handleMovement(key Chord) (InputField, bool) {
 }
 
 // handleDeletion returns true if the key was a deletion action.
+//
+// Backspace and ^H are one action: a terminal sends 0x7f for the key labeled
+// Backspace and 0x08 for Ctrl+H, and vi's insert mode reads ^H as backspace too —
+// which is why ^H is not the help window's key (keybinds.go). ^W and ^U are the
+// line editor's word and line kills, the same two vi's insert mode has.
 func (m InputField) handleDeletion(key Chord) (InputField, bool) {
 	switch key {
-	case keyBackspace:
+	case keyBackspace, keyCtrlH:
 		m = m.deleteBackward()
 	case keyDelete:
 		m = m.deleteForward()
+	case keyCtrlW:
+		m = m.deleteWordBackward()
+	case keyCtrlU:
+		m = m.deleteToLineStart()
 	default:
 		return m, false
 	}
 	return m.ensureCaretVisible(), true
 }
+
+// deleteWordBackward removes the word before the caret: the blanks immediately
+// behind it and then the run of non-blanks. Blanks are space and tab — a hard
+// newline (Ctrl+J) is a line boundary, so ^W cannot silently swallow the line
+// above, which is the one place this is narrower than readline's
+// unix-word-rubout. At the start of a line it does nothing.
+func (m InputField) deleteWordBackward() InputField {
+	start, _ := m.currentLine(m.pos)
+	from := m.pos
+	for from > start && wordBlank(m.value[from-1]) {
+		from--
+	}
+	for from > start && !wordBlank(m.value[from-1]) {
+		from--
+	}
+	if from == m.pos {
+		return m
+	}
+	m.value = slices.Delete(m.value, from, m.pos)
+	m.pos = from
+	m.goalCol = -1
+	return m
+}
+
+// deleteToLineStart removes everything from the caret back to the start of its
+// line: vi's insert-mode ^U and readline's unix-line-discard. "The line" is the
+// draft's line, so in a multi-line prompt (Ctrl+J) it cannot swallow the
+// paragraph above; at the start of a line it does nothing.
+func (m InputField) deleteToLineStart() InputField {
+	start, _ := m.currentLine(m.pos)
+	if start == m.pos {
+		return m
+	}
+	m.value = slices.Delete(m.value, start, m.pos)
+	m.pos = start
+	m.goalCol = -1
+	return m
+}
+
+// wordBlank reports whether r separates words for ^W.
+func wordBlank(r rune) bool { return r == ' ' || r == '\t' }
 
 // handleInsertion returns true if the key inserted a character. A printable
 // character is inserted as itself; space is nothing special — it is the rune

@@ -318,7 +318,6 @@ Press `Ctrl+P` to open the model selector. From there:
 |-----|--------|
 | `j` / `k` | Navigate models |
 | `Enter` | Select model |
-| `e` | Edit models in `$EDITOR` (temp file with model.conf format) |
 | `Ctrl+R` | Reload models from config file |
 
 When you select a model:

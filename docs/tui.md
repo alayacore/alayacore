@@ -24,7 +24,7 @@ architecture.
 | `L` | Move cursor to bottom window in visible area |
 | `f` | Jump to next user prompt and put it at the top; leaves the view alone when there is none |
 | `b` | Jump to previous user prompt and put it at the top; leaves the view alone when there is none |
-| `e` | Open window content in external editor |
+| `Ctrl+O` | Open the window under the pointer in `$EDITOR` (the same chord edits the draft when the prompt has focus) |
 
 Two families, and they do not overlap: **the keys that move the pointer**
 (`j`/`k`, the vi names `H`/`M`/`L`, `f`/`b` for prompts, and `G` with its count),
@@ -48,9 +48,9 @@ cursor; the two things it would reach for instead are `j`/`k` and `M`.
 
 One consequence, stated rather than papered over: **scrolling can leave the
 pointer off screen**, which vi never does. It stays where it was put, so `Space`,
-`r` and `e` act on a window the reader cannot see. `Space` and `r` reveal it by
+`Space`, `r` and `Ctrl+O` act on a window the reader cannot see. `Space` and `r` reveal it by
 themselves (`DisplayModel.anchorWindowCursor` pulls the viewport back to the
-window's own line, the same rule a fold uses), and `e` shows the window's content
+window's own line, the same rule a fold uses), and `Ctrl+O` shows the window's content
 in the editor, so the target is evident in every case. What is not offered is a
 scrolling pointer: a view motion that retargeted the pointer would be a second
 `H`/`M`/`L` with a different step, and the selection would move without being
@@ -144,13 +144,16 @@ stacked on top of `Esc`, and one key per job is why `Esc` is the only way out.
 | `Enter` | Submit prompt (returns the view to the live edge) |
 | `Ctrl+J` | Insert a line break in the prompt |
 | `Ctrl+S` | Save session |
-| `Ctrl+O` | Open in editor (`$EDITOR`) for multi-line input; what the file holds on save becomes the prompt, and saving it empty clears the prompt |
+| `Ctrl+O` | Open in `$EDITOR`: the draft when the prompt has focus, the window under the pointer in the display. What the file holds on save becomes the prompt, and saving it empty clears the prompt |
 | `Ctrl+P` | Open model selector (P for provider) |
 | `Ctrl+T` | Open theme selector |
 | `Ctrl+L` | Force redraw screen (vi's refresh key) |
-| `Ctrl+H` | Open help overlay |
+| `F1` / `:help` | Open help overlay |
 | `Ctrl+G` | Cancel current task (with confirmation; when steering is queued, a second dialog asks whether those words go too) |
 | `Ctrl+Z` | Suspend process |
+| `Ctrl+H` | Delete the character before the cursor (what a terminal's Delete-backwards sends; vi's insert-mode `^H`) |
+| `Ctrl+W` | Delete the word before the cursor, back to the start of its line |
+| `Ctrl+U` | Delete back to the start of the line |
 | `Ctrl+C` | Clear text |
 | `Ctrl+F` | Fork session from cursor position |
 | `Ctrl+A` | Open attachment picker for multi-modal input |
@@ -436,14 +439,15 @@ Enter a remote URL to attach as an attachment.
 `Ctrl+W` — not a modified Backspace — carries the segment delete, because a
 control byte is the only kind of chord that reliably reaches a program:
 `Shift+Backspace` *is* a plain Backspace on most terminals, `Ctrl+Backspace`
-arrives as `Ctrl+H` (which opens the help overlay here), and the encodings that
+arrives as `Ctrl+H` (which deletes one character here, like Backspace), and the encodings that
 could tell them apart — the kitty keyboard protocol's `ESC [ 127 ; 2 u`, xterm's
 `modifyOtherKeys` — are the ones [documented
 below](#why-shiftenter-is-not-the-line-break) as not read by `key_parser.go`.
 An Alt-prefixed key does survive the trip — as `ESC` plus the character — for every character that cannot begin a terminal reply, and for nothing else (`key_parser.go` holds `ESC ]`, `ESC P`, `ESC X`, `ESC ^`, `ESC _` as replies in progress, which is affordable precisely because no Alt chord is bound). `Ctrl+W`
 is what readline uses to kill the word before the cursor, and in a path box the
-word is the segment. It is bound in this picker only; the prompt's own `Ctrl+W`
-does nothing.
+word is the segment. The prompt's `Ctrl+W` is the same key on the same field, so
+it deletes the same way; what this picker adds is the path box's *segment* rule —
+a URL has no blanks, so there the word is the whole URL.
 
 The path input is a bare input like every other overlay filter — no prompt prefix (the old `F`/`U` markers were removed). The current mode is discoverable from the help bar (`ctrl+a: switch to URL` / `switch to local`). File list rows render flush left, no `> ` marker; the selected row is **bold** in the default foreground while the others are muted.
 
@@ -580,7 +584,7 @@ While auto-follow is active:
 | `1G` | Go to the first window | ✅ Always |
 | `↑` / `Ctrl+Y` | Scroll up one line | ✅ Always |
 | `Ctrl+U` / `PgUp` | Scroll up half screen | ✅ Always |
-| `e` | Open in editor | ✅ Always |
+| `Ctrl+O` | Open in editor | ✅ Always |
 | `Space` | Toggle window fold | ❌ Never |
 | `r` | Toggle markdown rendering | ❌ Never |
 | `Tab` | Toggle focus | ❌ Never |
@@ -923,7 +927,7 @@ When a tool requires confirmation (configured via `--tool-confirm`), a dialog ov
 |-----|--------|
 | `y` | Allow the tool to run |
 | `n`, `Esc` | Reject the tool |
-| `e` | Open full tool input in external editor (view-only) |
+| `Ctrl+O` | Open full tool input in external editor (view-only) |
 
 The dialog shows the tool name in the title and a 2-row preview of the tool's
 input arguments. The preview wraps like a message window: rows of the same
@@ -934,7 +938,7 @@ so a cut never looks like the real end of the arguments. The Screen row diff
 tracks the run's wrapped span, so live updates and the dialog close repaint
 every row it covered. When the dialog carries tool input, a hint row under
 the `y / n` line says `Press e to view the full input.` — the title itself
-stays clean, so a long tool name never pushes the hint off. Press `e` to
+stays clean, so a long tool name never pushes the hint off. Press `Ctrl+O` to
 inspect the complete input in `$EDITOR` without closing the dialog.
 
 ## Line Wrapping
@@ -1074,7 +1078,7 @@ halves.
 The bound, stated rather than implied: a host that disagrees by more than one
 row's width can still push a row's tail past the row the frame re-establishes.
 The damage then stays inside the transcript region — the rows the frame owns are
-re-established above it — and any redraw (Ctrl-R, a resize) repairs it.
+re-established above it — and any redraw (`Ctrl+L`, a resize) repairs it.
 `host_width_test.go` is the check: a screen model with the measured host
 arithmetic, the contract asserted after every frame of a session built from
 exactly those classes, and one test per rule, each mutation-checked against the
@@ -1093,7 +1097,7 @@ Incremental updates avoid re-wrapping the entire content on every token. Only th
 
 ## Help Window
 
-Press `Ctrl+H` or type `:help` to open a help overlay listing all keybindings and commands. The filter input at the top lets you fuzzy-search for specific keys or commands (e.g. typing `gt` matches `:theme_set`):
+Press `F1` or type `:help` to open a help overlay listing all keybindings and commands. The filter input at the top lets you fuzzy-search for specific keys or commands (e.g. typing `gt` matches `:theme_set`):
 
 | Key | Action |
 |-----|--------|

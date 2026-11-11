@@ -18,13 +18,13 @@ context_limit: 262144
 max_tokens: 65536
 ```
 
-To use other providers, edit the config file — press `Ctrl+P` then `e` in the terminal, or edit it directly. See [configuration.md](configuration.md) for the full format.
+To use other providers, edit the config file directly. See [configuration.md](configuration.md) for the full format.
 
 ## First Steps
 
 1. **Start a conversation** — Type a prompt and press `Enter`. The agent will stream a response.
 2. **Give it a task** — Try `"read main.go and explain what this project does"`. The agent will use the `read_file` tool (or `search_content` to find content first), then answer.
-3. **Switch models** — Press `Ctrl+P` to open the model selector. Press `e` to edit your config, `Ctrl+R` to reload, `Enter` to select.
+3. **Switch models** — Press `Ctrl+P` to open the model selector. Press `Ctrl+R` to reload the config, `Enter` to select.
 4. **Save your session** — Type `:save my-session.alaya` or press `Ctrl+S`.
 
 ## Cross-Platform Support

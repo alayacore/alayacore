@@ -126,13 +126,15 @@ func TestSegmentDeleteKeyIsCtrlW(t *testing.T) {
 		t.Errorf("Ctrl+W gave %q, want the segment gone back to the separator", got)
 	}
 
-	// The chord belongs to the path box: URL text and the file list leave it
-	// alone rather than swallowing it or deleting from it.
+	// The *segment* delete belongs to the path box. URL text falls through to the
+	// field's own Ctrl+W — readline's word kill — and a URL has no blanks, so the
+	// word is the whole URL: the unit is a word, and only the path box measures it
+	// in segments.
 	url := openWith("").switchToURL()
 	url.FilterInput = url.FilterInput.WithValue("https://example.com/a.png")
 	url, _ = url.Update(killSegment)
-	if got := url.FilterInput.Value(); got != "https://example.com/a.png" {
-		t.Errorf("Ctrl+W in URL mode changed the text to %q, want it untouched", got)
+	if got := url.FilterInput.Value(); got != "" {
+		t.Errorf("Ctrl+W in URL mode gave %q, want the whole word (a URL has no blanks)", got)
 	}
 
 	list := openWith("/home/wallace/projects/")
