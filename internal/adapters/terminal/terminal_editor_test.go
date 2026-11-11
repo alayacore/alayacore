@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -193,10 +195,11 @@ func TestEditorSelectionOrder(t *testing.T) {
 		t.Fatal("Expected editor to be found")
 	}
 
-	// Should return one of the editors in order: vim, vi
-	// Or use EDITOR environment variable if set
-	if editor != "vim" && editor != "vi" {
-		t.Logf("Editor is: %s (may be set by EDITOR env var)", editor)
+	// The choice must be the first of the platform's preference list that
+	// exists — unless $EDITOR named one, which is returned as it is.
+	if os.Getenv("EDITOR") == "" && !slices.Contains(defaultEditors, filepath.Base(editor)) {
+		t.Errorf("picked %q, want the first of defaultEditors that exists (%v)",
+			editor, defaultEditors)
 	}
 }
 
@@ -206,7 +209,7 @@ func TestEditorSelectionOrder(t *testing.T) {
 // e.content field, which could be clobbered by a second open before the
 // first temp file was created.
 func TestEditorContentCarriedInMessage(t *testing.T) {
-	t.Setenv("EDITOR", "vim")
+	t.Setenv("EDITOR", "vi")
 	e := NewEditor()
 
 	msgA := e.Open("content A")()
@@ -835,8 +838,8 @@ func TestGetWindowContentRegular(t *testing.T) {
 }
 
 // TestEditorBufferLandsAsNewlines: the file a Windows editor hands back is a CRLF
-// document — notepad always, vim with fileformat=dos, which is its default for a
-// file it creates on Windows. The prompt has to read those as line breaks. A CR
+// document — notepad always, and any editor configured for DOS line endings. The
+// prompt has to read those as line breaks. A CR
 // that survives into the value is not cosmetic: it reaches the frame verbatim, and
 // the terminal acts on it as "go to column 0", painting the rest of the line over
 // the start of another one.

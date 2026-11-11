@@ -228,7 +228,7 @@ field may hold: CRLF and lone CR become LF, control characters other than the
 newlines go, trailing newlines go. It has always been the rule for a bracketed
 paste; the editor handoff now runs the finished buffer through it as well. The
 reason is a Windows default rather than a Windows bug: notepad writes CRLF, and so
-does vim for a file it creates, so a prompt composed in `$EDITOR` came back with
+does an editor configured for DOS line endings, so a prompt composed in `$EDITOR` came back with
 CRs in it — and a CR reaching the frame is the terminal being told to go to column
 0, with the rest of the line painted over another one.
 
@@ -497,7 +497,7 @@ onto a path no runner can exercise, so these are not academic:
   `enterVT`'s QuickEdit clear, so a click during an editor session can enter select
   mode, which suspends writes to the buffer. Checked on the machine that reported
   the original symptoms, and it does not outlive the handoff: the next keypress
-  ends the selection, so vim leaves select mode on `:` and the writes resume well
+  ends the selection, so the editor leaves select mode on `:` and the writes resume well
   before the teardown reaches anything of ours. The behavior is the host's own and
   the same one any console program gets, so `inputNoSelectionMode` is deliberately
   *not* re-applied after `TTY.Restore` on the release path — doing so would take

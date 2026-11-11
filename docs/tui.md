@@ -177,7 +177,7 @@ alacritty / kitty and friends on Unix, all take this path.
 keystrokes, so the finished buffer of an external editor goes through it too
 (`input_field.go` → `WithBlockValue`, reached from `tui.go` →
 `handleEditorFinished`). That matters most on Windows, where both
-sources use CRLF: notepad always, and vim by default for a file it creates.
+sources use CRLF: notepad always, and any editor configured for DOS line endings.
 Before the rule was shared, a prompt composed in `notepad` came back carrying
 CRs, which the terminal reads as "column 0" — the frame painted over itself.
 

@@ -230,8 +230,8 @@ func (m InputField) insertNewline() InputField {
 //
 // Each part of that is load-bearing on a Windows host, where the two sources
 // disagree with every other terminal about line endings: the clipboard ends lines
-// with CRLF, and an editor writing a fresh temp file (notepad always, vim with
-// fileformat=dos) hands back CRLF too. A bare CR inside the value is not merely
+// with CRLF, and an editor writing a fresh temp file (notepad always, and any
+// editor configured for DOS line endings) hands back CRLF too. A bare CR inside the value is not merely
 // untidy — it reaches the frame verbatim, and on screen it moves the caret to
 // column 0, painting the rest of the line over the beginning of another.
 //

@@ -35,7 +35,7 @@ import (
 // mode, so a rewrite cannot drop bits the user deliberately set (a 0755 script
 // would stop running under a 0077 umask). Because a rename needs permission on
 // the directory rather than on the file, an existing file is replaced even when
-// it is read-only — the same trade vim and nano make.
+// it is read-only — the same trade most editors make.
 //
 // A symlink is written through rather than replaced: the temp file is created
 // beside the link's target, so the link still points at the file it named (see
