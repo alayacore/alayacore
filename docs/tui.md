@@ -51,21 +51,21 @@ spends them; `Esc` cancels, and so does any key that is not a motion. Two things
 are not counted: `M` (the middle of the screen has no ordinal), and the keys that
 do not move.
 
-`G` is the one absolute motion, and the one that can fail. Bare it is the last
-window and a request to follow it, counted it is window N of the visible ones
-(`1G` the first). It also completes the pointer's two ends, which used to be
-`<`/`>` with `Home`/`End` beside them: `G` and `1G` are the same two places in
-vi's spelling, one key family instead of two, and `0G` is `G` because a leading
-zero is not a count.
+`G` is the one absolute motion: bare it is the last window and a request to
+follow it, counted it is window N of the visible ones, resolved from the top of
+the transcript rather than from the cursor (`1G` the first). It also completes the
+pointer's two ends, which used to be `<`/`>` with `Home`/`End` beside them: `G`
+and `1G` are the same two places in vi's spelling, one key family instead of two,
+and `0G` is `G` because a leading zero is not a count.
 
-`NG` is an **address**, not a step, and that is the whole of its difference from
-`Nj`: N presses of `j` are a possible operation that stops at the last window,
-while N names a window that either exists or does not. Past the end of the
-transcript the address is impossible, so nothing happens — the cursor, the
-viewport and auto-follow all stay exactly as they were, because a motion that did
-not happen is not a departure from the live edge. (vi clamps `300G` in a 100-line
-buffer to line 100; this UI answers with nothing rather than with a window nobody
-asked for.) The same is why `1G` on an empty transcript does nothing.
+`NG` names an address while `Nj` counts steps, and both resolve the same way: the
+result is clamped into the transcript. An address past the end is the last window
+— which is how the reader learns the count was larger than the transcript, and it
+is what makes `999G` the one way to jump to the end *without* turning auto-follow
+on (bare `G` is the way that turns it on). vi resolves it the same way: `300G` in
+a 100-line buffer lands on line 100, and `2G3k` on line 1. The only thing here
+that is not a place is an empty transcript, where there is no window to address
+and nothing moves — the same degenerate case `j`/`k` have.
 
 Where a counted `G` leaves the viewport is the rule the other pointer motions
 use, not a rule of its own: `1G` shows the document's first row whenever the
@@ -535,7 +535,7 @@ While auto-follow is active:
 | Key | Behavior | Disables auto-follow? |
 |-----|----------|-----------------------|
 | `G` | Follow the last window | ✅ Re-enables |
-| `NG` | Jump to the N-th window | ❌ Never (a counted jump; a miss moves nothing) |
+| `NG` | Jump to the N-th window | ❌ Never (a counted jump) |
 | `Enter` | Submit prompt | ✅ Re-enables (empty box: ❌) |
 | `:continue` / `:summarize` | Start a task | ✅ Re-enables |
 | `j` | Move cursor down | ❌ No-op (race protection) |
@@ -547,7 +547,7 @@ While auto-follow is active:
 | `M` | Move to center of visible area | ✅ If cursor actually moves |
 | `f` | Jump to next user prompt | ✅ If cursor actually moves |
 | `b` | Jump to previous user prompt | ✅ If cursor actually moves |
-| `1G` | Go to the first window | ✅ Always (it exists; a miss moves nothing) |
+| `1G` | Go to the first window | ✅ Always |
 | `↑` / `Ctrl+Y` | Scroll up one line | ✅ Always |
 | `Ctrl+U` / `PgUp` | Scroll up half screen | ✅ Always |
 | `e` | Open in editor | ✅ Always |

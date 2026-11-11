@@ -132,63 +132,45 @@ func TestCountStopsAtTheBufferEnds(t *testing.T) {
 	}
 }
 
-// TestCountedGAbsoluteAddress: `NG` names a window rather than stepping towards
-// one, so it is the only motion whose target can be missing. In range it moves
-// and leaves following off; out of range nothing happens at all — not the
-// cursor, not the viewport, and not auto-follow, because a motion that did not
-// happen is not a departure from the live edge.
-//
-// (vi clamps here — `300G` in a 100-line buffer lands on the last line. This UI
-// answers with nothing, because a clamp would report a window the user did not
-// ask for, and there is no bell to say the request was adjusted.)
-func TestCountedGAbsoluteAddress(t *testing.T) {
+// TestCountedGAddressesFromTheFirstWindow: a counted G is an absolute window, not
+// a step from the cursor, and the address is clamped into the transcript like
+// every other motion (vi does the same: `300G` in a 100-line buffer lands on line
+// 100). Landing on the last window is how the reader learns the count was larger
+// than the transcript, and it is what makes `999G` the one way to jump to the end
+// without turning auto-follow on.
+func TestCountedGAddressesFromTheFirstWindow(t *testing.T) {
 	m := parkedFixture(20, 3)
 
-	// In range, and it addresses from the first window, not from the cursor.
 	if got := pressWithCount(t, m, 2, Key{Code: 'G'}).GetWindowCursor(); got != 1 {
 		t.Errorf("`2G` left the cursor on window %d, want 1 (the second window)", got)
 	}
 	if got := pressWithCount(t, m, 20, Key{Code: 'G'}).GetWindowCursor(); got != 19 {
-		t.Errorf("`20G` left the cursor on window %d, want 19 (the last, which exists)", got)
+		t.Errorf("`20G` left the cursor on window %d, want 19 (the last)", got)
 	}
 	last := pressWithCount(t, m, 20, Key{Code: 'G'})
 	if last.autoFollow {
 		t.Error("`20G` engaged auto-follow; only bare `G` does that")
 	}
 
-	// Out of range: no movement of any kind.
-	for _, start := range []int{3, 19} {
-		before := parkedFixture(20, start)
-		after := pressWithCount(t, before, 999, Key{Code: 'G'})
-		if got := after.GetWindowCursor(); got != start {
-			t.Errorf("`999G` from window %d moved the cursor to %d", start, got)
-		}
-		if after.YOffset() != before.YOffset() {
-			t.Errorf("`999G` from window %d scrolled %d → %d", start, before.YOffset(), after.YOffset())
-		}
+	// Past the end: the last window, and still a jump — following stays off, which
+	// is the whole point of asking for the end with a count rather than with `G`.
+	past := pressWithCount(t, m, 999, Key{Code: 'G'})
+	if got := past.GetWindowCursor(); got != 19 {
+		t.Errorf("`999G` left the cursor on window %d, want 19 (the end)", got)
+	}
+	if past.autoFollow {
+		t.Error("`999G` engaged auto-follow; a counted G never does")
+	}
+	if !past.AtBottom() {
+		t.Errorf("`999G` left the viewport at %d, want the last window in view (bottom %d)",
+			past.YOffset(), past.YOffset()+past.GetHeight())
 	}
 
-	// And the same while following: nothing moves, and following stays on, so the
-	// failed address cannot strand the reader below the live edge.
-	following := countFixture(20, 6).FollowLatest()
-	if !following.autoFollow {
-		t.Fatal("fixture is not following")
-	}
-	after := pressWithCount(t, following, 999, Key{Code: 'G'})
-	if !after.autoFollow {
-		t.Error("a failed `999G` turned auto-follow off; nothing moved, so nothing should have changed")
-	}
-	if after.GetWindowCursor() != following.GetWindowCursor() || after.YOffset() != following.YOffset() {
-		t.Errorf("a failed `999G` moved something: cursor %d→%d, yOffset %d→%d",
-			following.GetWindowCursor(), after.GetWindowCursor(),
-			following.YOffset(), after.YOffset())
-	}
-
-	// An empty transcript has no first window either, so `1G` is a miss too and
-	// leaves the display alone rather than clearing the pointer.
+	// The one address that is not clampable is the empty transcript: no window to
+	// move to, so nothing moves — including auto-follow, since nothing happened.
 	empty := NewDisplayModel(NewWindowBuffer(40, DefaultStyles()), DefaultStyles()).
 		WithHeight(6).WithDisplayFocused(true)
-	after = pressWithCount(t, empty, 1, Key{Code: 'G'})
+	after := pressWithCount(t, empty, 1, Key{Code: 'G'})
 	if after.GetWindowCursor() != empty.GetWindowCursor() || after.autoFollow != empty.autoFollow {
 		t.Errorf("`1G` on an empty transcript changed the display: cursor %d→%d, follow %v→%v",
 			empty.GetWindowCursor(), after.GetWindowCursor(), empty.autoFollow, after.autoFollow)

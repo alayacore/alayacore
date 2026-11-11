@@ -208,18 +208,17 @@ func (m DisplayModel) Update(msg Msg) (DisplayModel, []Result) {
 		if !hasCount {
 			return m.FollowLatest(), nil
 		}
-		// A counted G is an address, and an address past the end of the
-		// transcript is not a place: nothing moves, and auto-follow is left
-		// exactly as it was, because a motion that did not happen is not a
-		// departure from the live edge (the rule `f`/`b` already follow — a miss
-		// leaves follow alone). This is where `NG` parts company with `Nj`: N
-		// presses of `j` are a possible operation that stops at the last window,
-		// while N names a window that either exists or does not.
+		// The address is clamped into the transcript, like every other motion and
+		// like vi itself (measured: `300G` in a 100-line buffer lands on line 100,
+		// and `2G3k` on line 1 — one rule, "resolve, then clamp"). So a count past
+		// the end lands on the last window and says so by landing there, and
+		// `999G` is the one way to jump to the end WITHOUT turning auto-follow on
+		// — the counterpart of bare `G` rather than a request that is refused.
 		//
-		// vi clamps here (measured: `300G` in a 100-line buffer lands on line
-		// 100). This UI does not, because a clamp answers with a window the user
-		// did not ask for, and there is no bell to say the request was adjusted.
-		// The resolution therefore happens BEFORE any state changes.
+		// The only target that cannot be clamped is the empty transcript: there is
+		// no visible window to address, so nothing moves — the same degenerate
+		// case `j`/`k` have, not a rule about addresses. It must not reach
+		// MarkUserScrolled: nothing happened, so nothing may leave the live edge.
 		target, ok := m.windowCursorAtOrdinal(n)
 		if !ok {
 			return m, nil
@@ -583,23 +582,23 @@ func scrollAmount(n, step int) int {
 }
 
 // windowCursorAtOrdinal resolves the address a counted `G` names: the index of
-// the n-th visible window (1-based, in document order), and whether it exists.
-// It counts what navigation can reach, so folded windows count as one each and
-// invisible ones are skipped, exactly as `j` steps over them.
+// the n-th visible window (1-based, in document order), clamped to the last one
+// the buffer has. It counts what navigation can reach, so folded windows count as
+// one each and invisible ones are skipped, exactly as `j` steps over them.
 //
-// The ok result is the whole difference between an address and a step. Every
-// other motion starts from where the cursor is and stops where the buffer ends;
-// this one names a place, and a place that is not there cannot be moved to.
+// Clamping is the motion rule everywhere in this table — an address past the end
+// resolves to the end, the way `3k` with one line above resolves to the first
+// line — and it is what makes the gesture legible: landing on the last window is
+// how the reader learns the count was larger than the transcript. The only
+// answer that is not a place is an empty transcript, which reports ok=false
+// because there is no window at all, not because the number was too big.
 func (m DisplayModel) windowCursorAtOrdinal(n int) (int, bool) {
 	target := -1
 	ordinal := 0
 	m.windowBuffer.ForEachVisible(0, func(i int, _ *Window) bool {
 		ordinal++
-		if ordinal == n {
-			target = i
-			return false
-		}
-		return true
+		target = i
+		return ordinal < n
 	})
 	return target, target >= 0
 }
