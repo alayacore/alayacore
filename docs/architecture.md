@@ -259,7 +259,7 @@ The `execute_command` tool uses a cross-platform shell detection system. On star
 | Windows PowerShell | `powershell` | Windows | `powershell -NoLogo -NonInteractive -Command <cmd>` | Ships with Windows |
 | cmd | `cmd` | Windows | `cmd /c <cmd>` | Guaranteed on all Windows machines |
 
-The tool description (shown to the LLM) is dynamically generated based on the detected shell so the LLM uses the correct syntax. Platform-specific process isolation is handled per-OS:
+The tool description (shown to the LLM) is the detected shell's syntax fragment, so the LLM uses the correct syntax. It holds nothing else on purpose: a description is prompt prefix, and `--command-timeout` — which a description used to spell out — is stated in the result of a command it stops instead (`Command timed out. (30s)`; see [tool-execution.md](tool-execution.md#where-the-command-timeout-is-stated)). Platform-specific process isolation is handled per-OS:
 
 - **Unix**: `setsid` creates a new session; `SIGINT` → `SIGKILL` for cancellation
 - **Windows**: `CREATE_NO_WINDOW` isolates the child; `process.Kill()` for cancellation

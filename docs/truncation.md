@@ -73,7 +73,7 @@ Use read_file to access specific sections.
 Or with a stop this tool caused — a `--command-timeout` expiry, or a cancellation:
 ```
 Exit Code: 130
-Command timed out.
+Command timed out. (30s)
 Output (5000 lines, 194.2KB) saved to: /tmp/alayacore-1234567890/cmd-12345.txt
 Use read_file to access specific sections.
 ```
@@ -82,6 +82,7 @@ Use read_file to access specific sections.
 - Same behavior for canceled/timed out commands
 - The reason line is part of the output layout, so the saved file opens with the same header the result did — the model reads the same explanation whether it sees the message or reads the file back
 - The exit status alone cannot say *why* a command was stopped (a timeout looks like any signal kill: 128+signal on Unix, 1 on Windows), which is what the reason line is for; `Exit Code: 1` above is a command that failed on its own and gets no reason line. See [tool-execution.md](tool-execution.md#what-the-model-sees-when-a-tool-fails)
+- A timeout also names the limit it hit — `(30s)` is `--command-timeout` as configured, rendered by `shell.FormatDuration` (`30s`, `5m`, `300ms`). That number is stated here, at the stop, and **not** in the tool description: the description is prompt prefix, so a value a startup flag sets would invalidate the provider's cached prefix every time the flag changed. The same spelling appears in `search_content`'s error text (`timed out (30s): context deadline exceeded`), so the limit reads the same whichever tool it stopped
 - Exit code semantics differ by platform: on Windows, canceled/timed-out commands report exit code `1` (set by `TerminateJobObject`/`taskkill`); on Unix, a `SIGKILL`-terminated command reports `137` (128+9). See [architecture.md](architecture.md) for details.
 
 ## search_content
@@ -103,7 +104,7 @@ Use read_file to access specific matches.
   ```
 
   The same line is appended to the saved file, for the reason the command section above gives: the file is what a model reads back through `read_file`, and a list of matches that does not say the tree was only partly read is a false negative at the point it is consulted.
-- Searches run under the same global timeout as `execute_command` (`shell.DefaultCommandTimeout`, default: no limit); timed-out and canceled searches are distinguished
+- Searches run under the same global timeout as `execute_command` (`shell.DefaultCommandTimeout`, default: no limit); timed-out and canceled searches are distinguished, and a timed-out search names the limit in its error text (`timed out (30s): context deadline exceeded`) — the same fact `execute_command` puts in its header, since the tool description carries no timeout
 
 ## Temp File Location
 

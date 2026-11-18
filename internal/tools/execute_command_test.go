@@ -26,6 +26,36 @@ func TestExecuteCommandNormalCompletion(t *testing.T) {
 	}
 }
 
+// A tool description is prompt prefix — it sits at the head of what the provider
+// caches — so nothing a startup flag sets may be spelled into it. The command
+// timeout used to be: the description ended with "All commands are killed after
+// N", which meant every run with a different --command-timeout (or a changed
+// ALAYACORE_COMMAND_TIMEOUT) paid for a full re-write of that prefix. The
+// description is the shell's syntax fragment and nothing else, whatever the
+// limit is; the limit itself is stated in the result of a command it stops (see
+// timeoutSuffix).
+func TestExecuteCommandDescriptionCarriesNoRuntimeConfig(t *testing.T) {
+	orig := shell.DefaultCommandTimeout
+	defer func() { shell.DefaultCommandTimeout = orig }()
+
+	shell.DefaultCommandTimeout = 0
+	unlimited := NewExecuteCommandTool().Definition.Description
+	shell.DefaultCommandTimeout = 30 * time.Second
+	described := NewExecuteCommandTool().Definition.Description
+
+	if described != unlimited {
+		t.Errorf("the tool description changed with --command-timeout:\n  limit 0: %q\n  limit 30s: %q", unlimited, described)
+	}
+	if described != shell.Detect().PromptFragment {
+		t.Errorf("the description is not the shell's syntax fragment: %q", described)
+	}
+	for _, leak := range []string{"30s", "killed after", "without a timeout"} {
+		if strings.Contains(described, leak) {
+			t.Errorf("the description still carries the timeout (%q): %q", leak, described)
+		}
+	}
+}
+
 // TestExecuteCommandEmptyCommandIsAnError pins the failure mode a wrong argument
 // name produces: a model that sends "cmd" instead of the required "command"
 // leaves Command empty, and an empty command used to run `bash -c ""` — exit 0,
@@ -159,6 +189,13 @@ func TestExecuteCommandConfiguredTimeoutIsErrTimeout(t *testing.T) {
 	if !strings.Contains(text, "Command timed out.") {
 		t.Errorf("the model is not told the command timed out: %q", text)
 	}
+	// The limit itself is named here, in the result, and nowhere in the tool
+	// description: the description is prompt prefix, so it cannot carry a value
+	// that a startup flag sets. 300ms is the value configured above, rendered
+	// as configured rather than rounded.
+	if !strings.Contains(text, "Command timed out. (300ms)") {
+		t.Errorf("the model is not told the limit that stopped the command: %q", text)
+	}
 	// The status is whatever the signal-killed process left behind (130 here,
 	// 137 if it had to be killed harder), so only its presence is pinned: the
 	// reason is added, not substituted.
@@ -208,6 +245,12 @@ func TestExecuteCommandWorkingDir(t *testing.T) {
 }
 
 func TestHandleCommandOutput(t *testing.T) {
+	// A timeout result presupposes a limit, so the fixture states the one a
+	// real --command-timeout would have installed: the header names it.
+	orig := shell.DefaultCommandTimeout
+	defer func() { shell.DefaultCommandTimeout = orig }()
+	shell.DefaultCommandTimeout = 30 * time.Second
+
 	tests := []struct {
 		name        string
 		stdout      string
@@ -296,7 +339,7 @@ func TestHandleCommandOutput(t *testing.T) {
 			stderr:   "",
 			exitCode: -1,
 			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
-			wantText: "Command timed out.\n",
+			wantText: "Command timed out. (30s)\n",
 			wantErr:  true,
 		},
 		{
@@ -305,7 +348,7 @@ func TestHandleCommandOutput(t *testing.T) {
 			stderr:   "",
 			exitCode: -1,
 			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
-			wantText: "Command timed out.\nSTDOUT:\npartial\n",
+			wantText: "Command timed out. (30s)\nSTDOUT:\npartial\n",
 			wantErr:  true,
 		},
 		{
@@ -318,7 +361,7 @@ func TestHandleCommandOutput(t *testing.T) {
 			stderr:   "",
 			exitCode: 1,
 			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
-			wantText: "Exit Code: 1\nCommand timed out.\n",
+			wantText: "Exit Code: 1\nCommand timed out. (30s)\n",
 			wantErr:  true,
 		},
 		{
@@ -361,12 +404,14 @@ func TestHandleCommandOutput(t *testing.T) {
 // TestCommandHeader pins what the header says: the child's own exit status, and
 // — because a number cannot say why this tool ended the command — the reason
 // the sentinels classify, rendered from the sentinels themselves so that no
-// caller has to invent the wording.
+// caller has to invent the wording. The timeout case also carries the limit,
+// which is the one thing the tool description no longer states.
 func TestCommandHeader(t *testing.T) {
 	tests := []struct {
 		name     string
 		exitCode int
 		execErr  error
+		limit    time.Duration // the configured timeout, 0 = none
 		want     string
 	}{
 		{
@@ -382,10 +427,11 @@ func TestCommandHeader(t *testing.T) {
 			want:     "Exit Code: 1\n",
 		},
 		{
-			name:     "timeout names the timeout",
+			name:     "timeout names the timeout and its limit",
 			exitCode: 130,
 			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
-			want:     "Exit Code: 130\nCommand timed out.\n",
+			limit:    30 * time.Second,
+			want:     "Exit Code: 130\nCommand timed out. (30s)\n",
 		},
 		{
 			name:     "cancellation names the cancellation",
@@ -397,6 +443,17 @@ func TestCommandHeader(t *testing.T) {
 			// A signal-killed process has no exit status of its own, but the
 			// reason still has to be stated.
 			name:     "timeout with no exit status still names the timeout",
+			exitCode: -1,
+			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
+			limit:    5 * time.Minute,
+			want:     "Command timed out. (5m)\n",
+		},
+		{
+			// No limit configured means no deadline to name. runCommand installs
+			// one only when the limit is positive, so this shape is unreachable
+			// in production; the header must still not claim "0s", which would
+			// read as "killed immediately".
+			name:     "timeout with no limit configured names no number",
 			exitCode: -1,
 			execErr:  fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded),
 			want:     "Command timed out.\n",
@@ -411,8 +468,12 @@ func TestCommandHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			orig := shell.DefaultCommandTimeout
+			defer func() { shell.DefaultCommandTimeout = orig }()
+			shell.DefaultCommandTimeout = tt.limit
+
 			if got := commandHeader(tt.exitCode, tt.execErr); got != tt.want {
-				t.Errorf("commandHeader(%d, %v):\n  expected: %q\n  got:      %q", tt.exitCode, tt.execErr, tt.want, got)
+				t.Errorf("commandHeader(%d, %v) with limit %v:\n  expected: %q\n  got:      %q", tt.exitCode, tt.execErr, tt.limit, tt.want, got)
 			}
 		})
 	}
@@ -508,6 +569,10 @@ func TestFormatCommandOutput(t *testing.T) {
 // gives — otherwise the explanation exists only for commands small enough not
 // to need the file, which is the wrong way round.
 func TestLargeCommandOutputFileCarriesTheStopReason(t *testing.T) {
+	orig := shell.DefaultCommandTimeout
+	defer func() { shell.DefaultCommandTimeout = orig }()
+	shell.DefaultCommandTimeout = 30 * time.Second
+
 	stdout := newTestCapture(t, strings.Repeat("L\n", 40000)) // 80KB > 64KB budget
 	defer stdout.Close()
 	stderr := newTestCapture(t, "")
@@ -520,15 +585,15 @@ func TestLargeCommandOutputFileCarriesTheStopReason(t *testing.T) {
 	}
 
 	msg := extractText(content)
-	if !strings.Contains(msg, "Command timed out.") {
-		t.Errorf("the message does not say why the command stopped: %q", msg)
+	if !strings.Contains(msg, "Command timed out. (30s)") {
+		t.Errorf("the message does not say why the command stopped and for how long it was allowed to run: %q", msg)
 	}
 
 	data, readErr := os.ReadFile(savedPathFromMessage(t, msg))
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if !strings.HasPrefix(string(data), "Exit Code: 130\nCommand timed out.\n") {
+	if !strings.HasPrefix(string(data), "Exit Code: 130\nCommand timed out. (30s)\n") {
 		t.Errorf("the saved file does not open with the header the message stated: %.80q", data)
 	}
 }

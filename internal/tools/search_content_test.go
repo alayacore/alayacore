@@ -497,6 +497,14 @@ func TestSearchContentTimeoutIsReportedAsErrTimeout(t *testing.T) {
 	if !strings.Contains(err.Error(), "timed out") {
 		t.Errorf("error = %q, want it to say the search timed out", err)
 	}
+	// The limit is named in the text, because the tool description no longer
+	// carries it. The expired parent context above stands in for the deadline
+	// runSearch itself installs (no slow search, no ripgrep needed), and that
+	// self-installed deadline is the only one a tool context ever carries — so
+	// the number in the message is DefaultCommandTimeout either way.
+	if !strings.Contains(err.Error(), "timed out (5s)") {
+		t.Errorf("error = %q, want it to name the limit that stopped the search", err)
+	}
 	if len(content) != 0 {
 		t.Errorf("a classified stop must carry no content, or the reason — which travels as the error — is dropped: content = %v", content)
 	}

@@ -164,7 +164,7 @@ func runSearch(ctx context.Context, args SearchContentInput, dir string, stdout,
 	if execErr != nil {
 		if timeoutCtx.Err() != nil {
 			if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
-				return 0, fmt.Errorf("%w: %w", ErrTimeout, context.DeadlineExceeded)
+				return 0, fmt.Errorf("%w%s: %w", ErrTimeout, timeoutSuffix(), context.DeadlineExceeded)
 			}
 			return 0, fmt.Errorf("%w: %w", ErrCanceled, timeoutCtx.Err())
 		}

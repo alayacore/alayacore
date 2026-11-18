@@ -106,21 +106,48 @@ func TestBuildCmdProducesValidCmd(t *testing.T) {
 	}
 }
 
-func TestDescriptionTimeoutHandling(t *testing.T) {
+// TestFormatDuration pins the spelling used where a limit is reported. It is
+// deliberately not Go's "5m0s": this line is paid for on every timeout, and the
+// number is the one that fired, so nothing about it is rounded.
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{300 * time.Millisecond, "300ms"},
+		{1 * time.Second, "1s"},
+		{30 * time.Second, "30s"},
+		{90 * time.Second, "1m30s"},
+		{5 * time.Minute, "5m"},
+		{1 * time.Hour, "1h"},
+		{90 * time.Minute, "1h30m"},
+	}
+	for _, tt := range tests {
+		if got := FormatDuration(tt.d); got != tt.want {
+			t.Errorf("FormatDuration(%v) = %q, want %q", tt.d, got, tt.want)
+		}
+	}
+}
+
+// The timeout must not reach the tool description: the description is prompt
+// prefix, so a value a startup flag sets would invalidate the provider's cache
+// on every change. This is the shape the bug had, pinned so it cannot come back
+// — the fragment is the whole description, whatever the limit is.
+func TestPromptFragmentIgnoresTheTimeout(t *testing.T) {
 	orig := DefaultCommandTimeout
 	defer func() { DefaultCommandTimeout = orig }()
 
 	s := detectForTest(t)
 
-	// 0 (the default) means no limit — the description must say so.
 	DefaultCommandTimeout = 0
-	if d := s.Description(); !strings.Contains(d, "without a timeout") {
-		t.Errorf("unlimited description should mention no timeout, got %q", d)
-	}
-
-	// A configured timeout is surfaced in the description.
+	unlimited := s.PromptFragment
 	DefaultCommandTimeout = 5 * time.Second
-	if d := s.Description(); !strings.Contains(d, "5 seconds") {
-		t.Errorf("timed description should mention 5 seconds, got %q", d)
+	if s.PromptFragment != unlimited {
+		t.Errorf("the shell's description changed with the timeout: %q", s.PromptFragment)
+	}
+	for _, leak := range []string{"5s", "killed after", "without a timeout"} {
+		if strings.Contains(s.PromptFragment, leak) {
+			t.Errorf("the shell's description still carries the timeout (%q): %q", leak, s.PromptFragment)
+		}
 	}
 }

@@ -27,7 +27,11 @@ type ExecuteCommandInput struct {
 func NewExecuteCommandTool() llm.Tool {
 	return llm.NewTool(
 		"execute_command",
-		shell.Detect().Description(),
+		// The description is the shell's syntax fragment and nothing else on
+		// purpose: it is prompt prefix, so anything that varies with a startup
+		// flag here would invalidate the provider's cache. The command timeout
+		// is stated in the result of the command it stops — see timeoutSuffix.
+		shell.Detect().PromptFragment,
 	).
 		WithSchema(llm.MustGenerateSchema(ExecuteCommandInput{})).
 		WithExecute(llm.TypedExecute(executeCommand)).
@@ -437,6 +441,9 @@ var (
 // beside the sentinels it comes from, keeps the explanation next to the
 // classification instead of leaving it to be reconstructed from a number.
 //
+// A timeout's line also carries the limit that fired — "Command timed out.
+// (30s)" — because the tool description no longer states it (see timeoutSuffix).
+//
 // An empty header means the streams speak for themselves: a clean exit, or a
 // failure this tool did not classify — where the error text is what
 // inlineCommandOutput falls back to, and only when the streams left nothing to
@@ -448,11 +455,35 @@ func commandHeader(exitCode int, execErr error) string {
 	}
 	switch {
 	case errors.Is(execErr, ErrTimeout):
-		b.WriteString("Command timed out.\n")
+		b.WriteString("Command timed out." + timeoutSuffix() + "\n")
 	case errors.Is(execErr, ErrCanceled):
 		b.WriteString("Command canceled.\n")
 	}
 	return b.String()
+}
+
+// timeoutSuffix states the limit that ended a command, appended to the reason:
+// " (30s)". It is empty when no limit is configured — a timeout sentinel cannot
+// legitimately arrive then, since runCommand installs a deadline only when
+// DefaultCommandTimeout > 0, and "no limit" is not a duration to report.
+//
+// Reading the package var is what makes the number the right one: a tool's
+// context carries no other deadline (nothing in the agent, the session or the
+// adapters installs one — only the MCP client bounds its own requests), so a
+// DeadlineExceeded reaching this point is the limit this variable set.
+//
+// The number lives here, in the result, rather than in the tool description
+// because the description is prompt prefix: a startup flag spelled there cost
+// the provider's cached prefix a full re-write whenever it changed, and bought
+// the model a limit it could not yet apply. Stated at the stop, it is exactly
+// what the model needs to decide its next move — retry smaller, or accept the
+// limit. search_content reports the same suffix through its error text, so the
+// limit reads the same whichever tool it stopped.
+func timeoutSuffix() string {
+	if shell.DefaultCommandTimeout <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (%s)", shell.FormatDuration(shell.DefaultCommandTimeout))
 }
 
 func handleCommandOutput(stdout, stderr *capture, exitCode int, execErr error) ([]llm.ContentPart, error) {

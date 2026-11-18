@@ -260,13 +260,13 @@ question decides where a tool puts it: does the tool produce output of its own?
   error string becomes the result text (`newToolOutput` in
   `internal/llm/agent_execution.go`). `read_file`, `edit_file`, `write_file`,
   `search_content` and the MCP tools all take this path, so whatever they report
-  reaches the model as the error's own words — `timed out: context deadline
-  exceeded` for a stop they classify with a sentinel, `context canceled` for
-  `read_file`'s raw context error, `file not found: x` for `edit_file` — without
-  any of them writing that text a second time. The substitution is a fallback
-  for that case, not a general error channel: it fires only when the result is
-  empty, because nothing at that layer can tell which part of a non-empty result
-  is output and which is the reason.
+  reaches the model as the error's own words — `timed out (30s): context
+  deadline exceeded` for a stop they classify with a sentinel, `context
+  canceled` for `read_file`'s raw context error, `file not found: x` for
+  `edit_file` — without any of them writing that text a second time. The
+  substitution is a fallback for that case, not a general error channel: it
+  fires only when the result is empty, because nothing at that layer can tell
+  which part of a non-empty result is output and which is the reason.
 - **A tool that produces text of its own must say why it stopped in that text.**
   `execute_command` is the only one. A command may have printed half its output
   before it was stopped, and that output has to be shown, so its result is never
@@ -281,7 +281,28 @@ question decides where a tool puts it: does the tool produce output of its own?
 Both paths deliver the same fact through the same channel — the text — from
 whichever layer knows it. The wording is deliberately not shared: `search_content`
 surfaces the error string, `execute_command` writes a sentence, and neither is
-asked to imitate the other.
+asked to imitate the other. What they do share is the fact itself, in one
+spelling: `shell.FormatDuration` renders `--command-timeout` as `30s` / `5m`, and
+both the header and the error text say it that way.
+
+## Where the Command Timeout Is Stated
+
+Not in the tool description. The description is part of the prompt prefix the
+provider caches, so a value that a startup flag sets — `--command-timeout`, or
+`ALAYACORE_COMMAND_TIMEOUT` in a shell profile — would be spelled into the head
+of every request, and any change to it would cost a full re-write of that prefix
+while buying the model a limit it cannot apply until it hits one. It is stated
+where it is actionable instead: `Command timed out. (30s)` in the result of the
+command it stopped, or `timed out (30s): ...` in the search that hit it. That
+result text is paid for only when a limit is actually reached.
+
+The syntax fragment stays. It varies with the shell the host detected
+(`ALAYACORE_SHELL` overrides the detection), and that variance cannot be
+removed: a model cannot write a command without knowing which syntax it is
+writing. The timeout could be, because it bought nothing until it was hit — it
+is gone, `shell.PromptFragment` is the whole description, and
+`execute_command_test.go` pins that: the description is byte-identical whether
+the limit is 0 or 30s.
 
 ## What a Tool's Text May Say
 
